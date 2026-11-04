@@ -36,6 +36,8 @@ const SEGMENT: u64 = 48;
 const INSTANCE: u64 = 60;
 /// An edge a wireframe draws (see `Wire`): its ends from the mesh's origin as three floats each, and its owner.
 const WIRE: u64 = 28;
+/// A scan's point (see `Dot`): where it is from the mesh's origin as three floats, its colour and its owner.
+const DOT: u64 = 20;
 
 /// The window's use of the card: whether the user asked for it, the wgpu state it would be made on (none where the window has
 /// no wgpu device, as in every test), the card once it's made, and why the last picture was drawn on the processor, if it was.
@@ -122,9 +124,12 @@ struct Targets {
 /// A mesh on the card, the buffers that change with the pictures, and what they were last written with.
 struct Uploaded {
     mesh: Arc<Mesh>,
-    /// Its vertices, as many buffers as they take, each but the last holding [`Uploaded::per`].
-    vertices: Vec<wgpu::Buffer>,
+    /// Its vertices, as many buffers as they take, each but the last holding [`Uploaded::per`]: those the card holds now.
+    vertices: Vec<Option<wgpu::Buffer>>,
     per: u64,
+    /// How many bytes of them it holds, and the most it may.
+    held: u64,
+    room: u64,
     count: u64,
     /// Where the vertices seen through start.
     clear_from: u64,
@@ -136,6 +141,9 @@ struct Uploaded {
     /// A wireframe's edges, as many buffers as they take, each but the last holding [`Uploaded::wires_per`].
     wires: Vec<wgpu::Buffer>,
     wires_per: u64,
+    /// A scan's points, as many buffers as they take, each but the last holding [`Uploaded::dots_per`].
+    dots: Vec<wgpu::Buffer>,
+    dots_per: u64,
     /// The copies a view sees, gathered in their order into one buffer (and how many it has room for) when it doesn't see them
     /// all: which they are, and where each shape's are in it.
     seen: Option<(wgpu::Buffer, u64)>,
@@ -160,6 +168,7 @@ struct UploadJob {
     device: wgpu::Device,
     queue: wgpu::Queue,
     vertex_bytes: u64,
+    room: Room,
     mesh: Arc<Mesh>,
 }
 
@@ -170,12 +179,146 @@ struct UploadDone {
 
 fn build_upload(job: UploadJob, cancel: &crate::view_worker::Cancel) -> Option<UploadDone> {
     let guard = scopes(&job.device);
-    let uploaded = Gpu::make_uploaded(&job.device, &job.queue, job.vertex_bytes, &job.mesh, &|| cancel.cancelled());
+    let uploaded = Gpu::make_uploaded(&job.device, &job.queue, job.vertex_bytes, job.room, &job.mesh, &|| cancel.cancelled());
     let caught = caught(guard);
     if cancel.cancelled() {
         return None;
     }
     Some(UploadDone { mesh: job.mesh, uploaded: uploaded.and_then(|u| caught.map(|()| u)) })
+}
+
+/// The most bytes of vertices a card is asked to hold, and where a test says allocations fail.
+#[derive(Clone, Copy, Debug)]
+struct Room {
+    bytes: u64,
+    full_at: Option<u64>,
+}
+
+/// Why a buffer of vertices isn't on the card: it has no room, which is a signal to hold less, or something else went wrong.
+enum Hold {
+    Full,
+    Failed(String),
+}
+
+const TOO_LITTLE: &str = "more memory than the card has: it can't hold one buffer of the model's vertices";
+
+/// `part`, on the card in a buffer of its own, with `held` bytes there already.
+fn hold_vertices(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    part: &[Vertex],
+    held: u64,
+    full_at: Option<u64>,
+    cancelled: &dyn Fn() -> bool,
+) -> Result<wgpu::Buffer, Hold> {
+    let size = part.len() as u64 * STRIDE;
+    if full_at.is_some_and(|at| held + size > at) {
+        return Err(Hold::Full);
+    }
+    let mut bytes = Words::with_capacity(size as usize);
+    for (k, Vertex { position, normal, face, color, owner, plane, tex }) in part.iter().enumerate() {
+        if k % 8192 == 0 && cancelled() {
+            return Err(Hold::Failed("3D upload was cancelled".into()));
+        }
+        put(&mut bytes, position);
+        put_unit(&mut bytes, normal);
+        put_unit(&mut bytes, face);
+        put_words(&mut bytes, &[*color, *owner, *plane, *tex]);
+    }
+    let guard = scopes(device);
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("bimcraft-3d-vertices"),
+        size,
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    queue.write_buffer(&buffer, 0, &bytes);
+    queue.submit([]);
+    match out_of_memory(guard) {
+        Ok(false) => Ok(buffer),
+        Ok(true) => Err(Hold::Full),
+        Err(e) => Err(Hold::Failed(e)),
+    }
+}
+
+impl Uploaded {
+    fn bytes_of(&self, k: usize) -> u64 {
+        let all = self.count.div_ceil(self.per.max(1));
+        if (k as u64) + 1 < all { self.per * STRIDE } else { (self.count - (k as u64) * self.per.max(1)) * STRIDE }
+    }
+
+    /// The buffers vertices `r` lie in.
+    fn buffers_of(&self, r: &std::ops::Range<usize>) -> std::ops::Range<usize> {
+        let per = self.per.max(1) as usize;
+        if r.is_empty() { 0..0 } else { r.start / per..(r.end - 1) / per + 1 }
+    }
+
+    fn holds(&self, r: &std::ops::Range<usize>) -> bool {
+        self.buffers_of(r).all(|k| matches!(self.vertices.get(k), Some(Some(_))))
+    }
+
+    /// The buffers `draws` read, each once.
+    fn wanted_by(&self, draws: &[(bool, Draw)]) -> Vec<usize> {
+        let mut wanted = std::collections::BTreeSet::new();
+        for (_, draw) in draws {
+            if let Draw::Own(r) = draw {
+                wanted.extend(self.buffers_of(r));
+            }
+        }
+        wanted.into_iter().collect()
+    }
+
+    /// Puts buffer `k` on the card, letting go of any it needn't `keep` to make room. False where there's none to be had.
+    fn bring_in(
+        &mut self,
+        (device, queue): (&wgpu::Device, &wgpu::Queue),
+        mesh: &Mesh,
+        k: usize,
+        keep: &dyn Fn(usize) -> bool,
+        full_at: Option<u64>,
+    ) -> Result<bool, String> {
+        if !matches!(self.vertices.get(k), Some(None)) {
+            return Ok(true);
+        }
+        let size = self.bytes_of(k);
+        let let_go = |up: &mut Uploaded| {
+            let Some(other) = (0..up.vertices.len()).rev().find(|&n| n != k && !keep(n) && matches!(up.vertices.get(n), Some(Some(_))))
+            else {
+                return false;
+            };
+            if let Some(slot) = up.vertices.get_mut(other) {
+                *slot = None;
+            }
+            up.held -= up.bytes_of(other);
+            true
+        };
+        loop {
+            while self.held + size > self.room {
+                if !let_go(self) {
+                    return Ok(false);
+                }
+            }
+            let per = self.per as usize;
+            let part = mesh.vertices.get(k * per..((k + 1) * per).min(mesh.vertices.len())).unwrap_or_default();
+            match hold_vertices(device, queue, part, self.held, full_at, &|| false) {
+                Ok(buffer) => {
+                    if let Some(slot) = self.vertices.get_mut(k) {
+                        *slot = Some(buffer);
+                    }
+                    self.held += size;
+                    return Ok(true);
+                }
+                Err(Hold::Full) => {
+                    // The card has no more than it holds now: from here on, no more than that is asked of it.
+                    self.room = self.held;
+                    if !let_go(self) {
+                        return Ok(false);
+                    }
+                }
+                Err(Hold::Failed(e)) => return Err(e),
+            }
+        }
+    }
 }
 
 /// The card, and what it keeps between pictures.
@@ -196,6 +339,8 @@ pub struct Gpu {
     /// A wireframe's edges; then, over them, only those tinted.
     wires: wgpu::RenderPipeline,
     wires_tinted: wgpu::RenderPipeline,
+    /// A scan's points, in the opaque surfaces' targets.
+    dots: wgpu::RenderPipeline,
     group0: wgpu::BindGroupLayout,
     group1: wgpu::BindGroupLayout,
     group2: wgpu::BindGroupLayout,
@@ -208,12 +353,16 @@ pub struct Gpu {
     texture: Option<TextureId>,
     adapter: String,
     /// The most bytes of vertices in one buffer.
-    vertex_bytes: u64,
+    pub(crate) vertex_bytes: u64,
     /// Whether what a view can't see is left out ([`Mesh::visible`]); off only to test that the picture is the same, and to
     /// measure what it saves.
     pub(crate) cull: bool,
     /// The most triangles a frame draws ([`FRAME_TRIANGLES`]; fewer in a test).
     pub(crate) budget: usize,
+    /// The most bytes of a mesh's own vertices the card holds at once: all there are, until an allocation says otherwise.
+    pub(crate) card_bytes: u64,
+    /// Where allocations fail, for a test: a card can't be made to run out to order.
+    pub(crate) full_at: Option<u64>,
     /// Hidden line is drawn as a section is, paper and ink swapped on a dark canvas (`canvas::color`).
     pub(crate) swapped_ink: bool,
 }
@@ -276,12 +425,13 @@ enum From {
     StandIns,
 }
 
-/// One draw of the surfaces: triangles drawn of their own, by their vertices, or copies of the shape whose vertices are
-/// `corners`.
+/// One draw of the surfaces: triangles drawn of their own, by their vertices, copies of the shape whose vertices are `corners`,
+/// or a scan's points, by their place in [`Mesh::dots`].
 #[derive(Clone, Debug, PartialEq)]
 enum Draw {
     Own(std::ops::Range<usize>),
     Copies { corners: std::ops::Range<u32>, from: From, copies: std::ops::Range<usize> },
+    Dots(std::ops::Range<usize>),
 }
 
 impl Draw {
@@ -290,6 +440,8 @@ impl Draw {
         match self {
             Draw::Own(r) => r.len() / 3,
             Draw::Copies { corners, copies, .. } => corners.len() / 3 * copies.len(),
+            // As much of a frame as a triangle takes, measured, though it is drawn in two very small ones.
+            Draw::Dots(r) => r.len(),
         }
     }
 
@@ -303,6 +455,7 @@ impl Draw {
                 let (first, last) = ((copies.start + a / each).min(copies.end), (copies.start + b / each).min(copies.end));
                 Draw::Copies { corners: corners.clone(), from: *from, copies: first..last }
             }
+            Draw::Dots(r) => Draw::Dots((r.start + a).min(r.end)..(r.start + b).min(r.end)),
         }
     }
 }
@@ -326,7 +479,7 @@ fn part_of(draws: &[(bool, Draw)], a: usize, b: usize) -> Vec<(bool, Draw)> {
 }
 
 /// The draws of what `seen` holds and of `stand_ins`, in the order the picture needs them: what is opaque of the triangles drawn
-/// of their own, then of each shape's copies, then the boxes; then what is seen through of each. The copies a view sees, when it
+/// of their own, then of each shape's copies, then the boxes, then a scan's points; then what is seen through of each. The copies a view sees, when it
 /// doesn't see them all, are gathered into one buffer in their order (one draw a shape), and the boxes into another, each
 /// written again only when it changes.
 fn surfaces(
@@ -413,6 +566,9 @@ fn surfaces(
             let corners = mesh.cube.start as u32..mesh.cube.end as u32;
             draws.push((false, Draw::Copies { corners, from: From::StandIns, copies: 0..boxes }));
         }
+        if !clear && !mesh.dots.is_empty() {
+            draws.push((false, Draw::Dots(0..mesh.dots.len())));
+        }
     }
     draws
 }
@@ -456,6 +612,17 @@ fn put_unit(into: &mut Words, v: &[f32; 3]) {
 
 fn rgb(c: Rgb) -> [f32; 3] {
     [c.0, c.1, c.2].map(f32::from)
+}
+
+/// Whether the work since `scope` began ran the card out of memory; what else went wrong, as text.
+fn out_of_memory(scopes: [wgpu::ErrorScopeGuard; 2]) -> Result<bool, String> {
+    let [first, second] = scopes;
+    let (memory, other) = (pollster::block_on(second.pop()), pollster::block_on(first.pop()));
+    match (memory, other) {
+        (Some(_), _) => Ok(true),
+        (None, Some(e)) => Err(e.to_string()),
+        (None, None) => Ok(false),
+    }
 }
 
 /// Waits for the device to say whether the work since `scope` began went wrong: validation and out-of-memory errors come back
@@ -655,6 +822,11 @@ impl Gpu {
             &[target(COLOR)],
             false,
         );
+        let dot_attributes = wgpu::vertex_attr_array![0 => Float32x3, 1 => Uint32, 2 => Uint32];
+        let dot_layout =
+            wgpu::VertexBufferLayout { array_stride: DOT, step_mode: wgpu::VertexStepMode::Instance, attributes: &dot_attributes };
+        let dots =
+            pipeline("bimcraft-3d-dots", &surface_layout, "vs_dot", "fs_dot", &[Some(dot_layout)], &[target(COLOR), target(IDS)], true);
         let globals = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("bimcraft-3d-globals"),
             size: GLOBALS,
@@ -677,6 +849,7 @@ impl Gpu {
             lines,
             wires,
             wires_tinted,
+            dots,
             group0,
             group1,
             group2,
@@ -691,6 +864,8 @@ impl Gpu {
             vertex_bytes: VERTEX_BUFFER,
             cull: true,
             budget: FRAME_TRIANGLES,
+            card_bytes: u64::MAX,
+            full_at: None,
             swapped_ink: false,
         })
     }
@@ -734,11 +909,45 @@ impl Gpu {
     pub fn draw_cut(&mut self, mesh: &Arc<Mesh>, cam: &Camera, tints: &[(Id, Rgb)], ground: Rgb, cut: Cut) -> Result<bool, String> {
         let guard = scopes(&self.device);
         let drawn = self.encode(mesh, cam, tints, ground, cut);
-        let caught = caught(guard);
+        let full = out_of_memory(guard);
+        if let Some(up) = &self.mesh {
+            self.card_bytes = self.card_bytes.min(up.room);
+        }
+        // The card ran out in the frame's own work: hold less and draw again, rather than give it up.
+        if matches!(full, Ok(true)) && drawn.is_ok() && self.hold_less() {
+            return Ok(false);
+        }
+        let caught = match full {
+            Ok(true) => Err(TOO_LITTLE.to_string()),
+            Ok(false) => Ok(()),
+            Err(e) => Err(e),
+        };
         if drawn.is_err() || caught.is_err() {
             (self.mesh, self.targets) = (None, None);
         }
         caught.and(drawn)
+    }
+
+    /// Asks the card to hold half of what it does, and starts the picture again. False where it holds no more than one buffer.
+    pub(crate) fn hold_less(&mut self) -> bool {
+        let Some(up) = &mut self.mesh else { return false };
+        if up.vertices.iter().flatten().count() < 2 {
+            return false;
+        }
+        up.room = up.held / 2;
+        for k in (0..up.vertices.len()).rev() {
+            if up.held <= up.room || up.vertices.iter().flatten().count() < 2 {
+                break;
+            }
+            if let Some(slot) = up.vertices.get_mut(k).filter(|slot| slot.is_some()) {
+                *slot = None;
+                up.held -= up.bytes_of(k);
+            }
+        }
+        up.room = up.room.max(up.held);
+        up.progress = None;
+        self.card_bytes = self.card_bytes.min(up.room);
+        true
     }
 
     /// Starts the large first upload away from the interface thread. A result belongs to its exact mesh snapshot.
@@ -750,7 +959,9 @@ impl Gpu {
         if let Some(done) = self.upload_worker.as_ref().and_then(crate::view_worker::Latest::take)
             && Arc::ptr_eq(&done.mesh, mesh)
         {
-            self.mesh = Some(done.uploaded?);
+            let up = done.uploaded?;
+            self.card_bytes = self.card_bytes.min(up.room);
+            self.mesh = Some(up);
             return Ok(true);
         }
         if !self.upload_requested.as_ref().is_some_and(|m| Arc::ptr_eq(m, mesh)) {
@@ -759,6 +970,7 @@ impl Gpu {
                 device: self.device.clone(),
                 queue: self.queue.clone(),
                 vertex_bytes: self.vertex_bytes,
+                room: Room { bytes: self.card_bytes, full_at: self.full_at },
                 mesh: Arc::clone(mesh),
             };
             let wake = ctx.clone();
@@ -777,6 +989,12 @@ impl Gpu {
             }
         }
         Ok(false)
+    }
+
+    /// How many bytes of the mesh's own vertices the card holds now.
+    #[cfg(test)]
+    pub(crate) fn holding(&self) -> u64 {
+        self.mesh.as_ref().map_or(0, |up| up.held)
     }
 
     /// Waits for what was sent to the card to be done, for a measurement.
@@ -811,7 +1029,7 @@ impl Gpu {
                 instances: std::iter::once(0..mesh.instances.len()).collect(),
             }
         };
-        let (device, queue) = (&self.device, &self.queue);
+        let (device, queue, full_at) = (&self.device, &self.queue, self.full_at);
         let write = |buffer: &wgpu::Buffer, bytes: &[u8]| {
             if !bytes.is_empty() {
                 queue.write_buffer(buffer, 0, bytes);
@@ -888,11 +1106,13 @@ impl Gpu {
         // picture); the next part of the exact drawing while the camera stays; else, the camera moved, all it sees if that fits
         // in a frame, or the nearest of it and a box for each of the rest, finished exactly once the camera stays.
         let budget = self.budget.max(1);
+        // A picture's points are few enough that they are all drawn: what is left of a frame is the surfaces'.
+        let dots = mesh.dots.len();
         let frame = match &up.progress {
             Some((c, k, Stage::Exact { done, total })) if c == cam && *k == cut && done >= total => Frame::Picture,
             Some((c, k, Stage::Exact { done, .. })) if c == cam && *k == cut => Frame::Exact(*done),
             Some((c, k, Stage::Moving)) if c == cam && *k == cut => Frame::Exact(0),
-            _ if mesh.cost(&seen) <= budget => Frame::Exact(0),
+            _ if mesh.cost(&seen).saturating_add(dots) <= budget && seen.vertices.iter().all(|r| up.holds(r)) => Frame::Exact(0),
             _ => Frame::Moving,
         };
         let limit = self.vertex_bytes.min(device.limits().max_buffer_size);
@@ -901,12 +1121,41 @@ impl Gpu {
             Frame::Exact(done) => {
                 let all = surfaces(mesh, up, queue, device, &seen, &[], limit);
                 let total: usize = all.iter().map(|(_, d)| d.cost()).sum();
-                let end = done.saturating_add(budget).min(total);
+                // A budget's worth, or as much as the card holds at once, what it has drawn let go for what comes next: the
+                // picture is in the targets, whatever is held, so however little it holds it comes to the same one.
+                let mut end = done.saturating_add(budget).min(total);
+                let part = loop {
+                    let part = part_of(&all, done, end);
+                    let wanted = up.wanted_by(&part);
+                    let bytes: u64 = wanted.iter().map(|&k| up.bytes_of(k)).sum();
+                    if bytes <= up.room {
+                        let keep = |k: usize| wanted.contains(&k);
+                        let mut whole = true;
+                        for &k in &wanted {
+                            whole &= up.bring_in((device, queue), mesh, k, &keep, full_at)?;
+                        }
+                        if whole {
+                            break part;
+                        }
+                    }
+                    if end <= done.saturating_add(1) {
+                        return Err(TOO_LITTLE.into());
+                    }
+                    end = done + ((end - done) / 2).max(1);
+                };
                 up.progress = Some((*cam, cut, Stage::Exact { done: end, total }));
-                (part_of(&all, done, end), done == 0)
+                (part, done == 0)
             }
             Frame::Moving => {
-                let near = mesh.nearest_first(cam, &seen, budget);
+                // A buffer a frame, the nearest the view wants and the card doesn't hold, in place of one the view doesn't see.
+                if let Some(next) = mesh.nearest_not_held(cam, &seen, &|r| up.holds(r)) {
+                    let seen_now: std::collections::BTreeSet<usize> = seen.vertices.iter().flat_map(|r| up.buffers_of(r)).collect();
+                    let keep = |k: usize| seen_now.contains(&k);
+                    for k in up.buffers_of(&next) {
+                        up.bring_in((device, queue), mesh, k, &keep, full_at)?;
+                    }
+                }
+                let near = mesh.nearest_first_held(cam, &seen, budget.saturating_sub(dots), &|r| up.holds(r));
                 up.progress = Some((*cam, cut, Stage::Moving));
                 (surfaces(mesh, up, queue, device, &near.seen, &near.stand_ins, limit), true)
             }
@@ -965,7 +1214,11 @@ impl Gpu {
             };
             let mut set = None;
             for (_, draw) in draws.iter().filter(|(c, _)| *c == clear) {
-                let pipeline = if matches!(draw, Draw::Own(_)) { own } else { copies };
+                let pipeline = match draw {
+                    Draw::Own(_) => own,
+                    Draw::Copies { .. } => copies,
+                    Draw::Dots(_) => &self.dots,
+                };
                 if set != Some(pipeline as *const wgpu::RenderPipeline) {
                     pass.set_pipeline(pipeline);
                     pass.set_bind_group(0, &*bind, &[]);
@@ -978,7 +1231,7 @@ impl Gpu {
                 match draw {
                     Draw::Own(range) => {
                         for (k, part) in spans(up.per, range.start as u64..range.end as u64) {
-                            if let Some(buffer) = up.vertices.get(k) {
+                            if let Some(Some(buffer)) = up.vertices.get(k) {
                                 pass.set_vertex_buffer(0, buffer.slice(..));
                                 pass.draw(part, 0..1);
                             }
@@ -1006,6 +1259,14 @@ impl Gpu {
                                 pass.draw(corners.clone(), copies.start as u32..copies.end as u32);
                             }
                             (_, None) => {}
+                        }
+                    }
+                    Draw::Dots(range) => {
+                        for (k, part) in spans(up.dots_per, range.start as u64..range.end as u64) {
+                            if let Some(buffer) = up.dots.get(k) {
+                                pass.set_vertex_buffer(0, buffer.slice(..));
+                                pass.draw(0..6, part);
+                            }
                         }
                     }
                 }
@@ -1080,7 +1341,8 @@ impl Gpu {
             return Ok(());
         }
         self.mesh = None;
-        self.mesh = Some(Self::make_uploaded(&self.device, &self.queue, self.vertex_bytes, mesh, &|| false)?);
+        let room = Room { bytes: self.card_bytes, full_at: self.full_at };
+        self.mesh = Some(Self::make_uploaded(&self.device, &self.queue, self.vertex_bytes, room, mesh, &|| false)?);
         Ok(())
     }
 
@@ -1088,6 +1350,7 @@ impl Gpu {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         vertex_bytes: u64,
+        room: Room,
         mesh: &Arc<Mesh>,
         cancelled: &dyn Fn() -> bool,
     ) -> Result<Uploaded, String> {
@@ -1104,32 +1367,33 @@ impl Gpu {
         // Whole triangles to a buffer, written and sent one at a time, so that what waits to go up is one buffer's.
         let per = (vertex_bytes.min(device.limits().max_buffer_size) / STRIDE / 3).max(1) * 3;
         let mut vertices = Vec::with_capacity((mesh.vertices.len() as u64 / per + 1) as usize);
-        let mut bytes = Words::new();
+        // As many as the card holds; the rest come when a view wants them.
+        let (mut held, mut most) = (0u64, room.bytes);
         for part in mesh.vertices.chunks(per as usize) {
             if cancelled() {
                 return Err("3D upload was cancelled".into());
             }
-            bytes.clear();
-            bytes.reserve(part.len() * STRIDE as usize);
-            for (k, Vertex { position, normal, face, color, owner, plane, tex }) in part.iter().enumerate() {
-                if k % 8192 == 0 && cancelled() {
-                    return Err("3D upload was cancelled".into());
-                }
-                put(&mut bytes, position);
-                put_unit(&mut bytes, normal);
-                put_unit(&mut bytes, face);
-                put_words(&mut bytes, &[*color, *owner, *plane, *tex]);
+            let size = part.len() as u64 * STRIDE;
+            if held + size > most {
+                vertices.push(None);
+                continue;
             }
-            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("bimcraft-3d-vertices"),
-                size: bytes.len() as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            queue.write_buffer(&buffer, 0, &bytes);
-            queue.submit([]);
-            vertices.push(buffer);
+            match hold_vertices(device, queue, part, held, room.full_at, cancelled) {
+                Ok(buffer) => {
+                    vertices.push(Some(buffer));
+                    held += size;
+                }
+                Err(Hold::Full) => {
+                    most = held;
+                    vertices.push(None);
+                }
+                Err(Hold::Failed(e)) => return Err(e),
+            }
         }
+        if held == 0 && !mesh.vertices.is_empty() {
+            return Err(TOO_LITTLE.into());
+        }
+        let mut bytes = Words::new();
         if cancelled() {
             return Err("3D upload was cancelled".into());
         }
@@ -1188,6 +1452,23 @@ impl Gpu {
             wires.push(vertex_buffer("bimcraft-3d-wires", &bytes));
             queue.submit([]);
         }
+        // A scan's points, from the origin so that f32 holds them.
+        let dots_per = (vertex_bytes.min(device.limits().max_buffer_size) / DOT).max(3);
+        let mut dots = Vec::new();
+        for part in mesh.dots.chunks(dots_per as usize) {
+            if cancelled() {
+                return Err("3D upload was cancelled".into());
+            }
+            bytes.clear();
+            bytes.reserve(part.len() * DOT as usize);
+            for dot in part {
+                let at = std::array::from_fn::<f32, 3, _>(|i| (dot.at[i] - mesh.origin[i]) as f32);
+                put(&mut bytes, &at);
+                put_words(&mut bytes, &[dot.color, dot.owner]);
+            }
+            dots.push(vertex_buffer("bimcraft-3d-dots", &bytes));
+            queue.submit([]);
+        }
         let planes = Gpu::storage(device, mesh.instance_planes.len() as u64 * 4);
         if !mesh.instance_planes.is_empty() {
             let mut words = Words::with_capacity(mesh.instance_planes.len() * 4);
@@ -1204,6 +1485,8 @@ impl Gpu {
             mesh: Arc::clone(mesh),
             vertices,
             per,
+            held,
+            room: most,
             count: mesh.vertices.len() as u64,
             clear_from: mesh.clear_from.min(mesh.vertices.len()) as u64,
             shape_vertices,
@@ -1211,6 +1494,8 @@ impl Gpu {
             instances_per,
             wires,
             wires_per,
+            dots,
+            dots_per,
             seen: None,
             seen_runs: Vec::new(),
             seen_shapes: Vec::new(),
@@ -1825,6 +2110,114 @@ mod tests {
         }
     }
 
+    /// A scan of a red face 4 m across standing in the sample house.
+    fn scanned(s: &mut Session) -> Id {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("scan.xyz");
+        let text: String = (0..=200)
+            .flat_map(|i| (0..=150).map(move |k| format!("{} 0 {} 220 30 30\n", f64::from(i) * 0.02, f64::from(k) * 0.02)))
+            .collect();
+        std::fs::write(&path, text).unwrap();
+        s.execute("point_cloud", &serde_json::json!({"path": path, "at": [4000, 3000]})).unwrap();
+        s.model.elements.iter().rev().find(|(_, e)| e.category() == "pointcloud").map(|(id, _)| *id).unwrap()
+    }
+
+    /// Holds the card's picture of `s` to the processor's through `cam`, and its points to theirs: of the pixels either picture
+    /// shows in the scan's red, no more than one in 100 only one of them does.
+    fn dots_as_the_processor(gpu: &mut Gpu, s: &Session, tints: &[(Id, Rgb)], cam: Camera, expect: bool) {
+        draws_through(gpu, s, tints, cam);
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let cpu = scene.render_in(&cam, tints, &look);
+        gpu.draw(&mesh, &cam, tints, PAPER).unwrap();
+        let pixels = read(gpu);
+        let red = |c: &[u8; 4]| c[0] > 200 && c[1] < 60 && c[2] < 60;
+        let (card, cpu) = (pixels.as_chunks::<4>().0, cpu.rgba.as_chunks::<4>().0);
+        let both = card.iter().zip(cpu).filter(|(a, b)| red(a) && red(b)).count();
+        let one = card.iter().zip(cpu).filter(|(a, b)| red(a) != red(b)).count();
+        assert_eq!(both > 200, expect, "{both} red pixels in both");
+        assert!(one * 100 <= both.max(100), "{one} red pixels in one picture only, {both} in both");
+    }
+
+    #[test]
+    fn the_card_draws_a_scan_s_points_as_the_processor_does() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let mut s = sample();
+        let scan = scanned(&mut s);
+        let wall = *s.model.elements.iter().find(|(_, e)| e.category() == "wall").unwrap().0;
+        s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"roofs": {"hidden": true}}})).unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let flat = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let cam = scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..flat }, &look);
+        dots_as_the_processor(&mut gpu, &s, &[], flat, true);
+        // Selected: the points mixed with the tint, no longer red, and a wall's edges unmoved by them.
+        draws_through(&mut gpu, &s, &[(scan, Rgb(0, 120, 215)), (wall, Rgb(255, 160, 0))], flat);
+        dots_as_the_processor(&mut gpu, &s, &[], cam, true);
+        draws_through(&mut gpu, &s, &[], inside(&s, cam));
+        // Hidden line: the faces paper, the points still in their colours and hiding and hidden as ever.
+        s.execute("visual_style", &serde_json::json!({"style": "hidden_line"})).unwrap();
+        dots_as_the_processor(&mut gpu, &s, &[], flat, true);
+        s.execute("visual_style", &serde_json::json!({"style": "shaded"})).unwrap();
+        // What is seen through blends over the points behind it.
+        s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"walls": {"transparency": 60}}})).unwrap();
+        draws_through(&mut gpu, &s, &[], flat);
+        s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"walls": {"transparency": 0}}})).unwrap();
+        // A section box keeps a point whole or not at all.
+        cut_through(&mut s, [0.6, 0.7, 0.45]);
+        dots_as_the_processor(&mut gpu, &s, &[], flat, true);
+        s.execute("section_box", &serde_json::json!({"on": false})).unwrap();
+        // What the view hides.
+        s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"pointcloud": {"hidden": true}}})).unwrap();
+        dots_as_the_processor(&mut gpu, &s, &[], flat, false);
+    }
+
+    #[test]
+    fn a_scan_alone_is_drawn_with_no_edges_round_its_points() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let mut s = Session::new();
+        scanned(&mut s);
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        dots_as_the_processor(&mut gpu, &s, &[], cam, true);
+        // Nothing but points and a level's lines: no edge is drawn round them.
+        gpu.draw(&Arc::new(Mesh::new(&scene, &look).unwrap()), &cam, &[], PAPER).unwrap();
+        let pixels = read(&gpu);
+        let edges = pixels.as_chunks::<4>().0.iter().filter(|c| c[..3] == [48, 48, 48]).count();
+        assert_eq!(edges, 0, "pixels in the edges' colour");
+    }
+
+    #[test]
+    fn past_a_frame_s_budget_a_scan_settles_on_the_picture_drawn_in_one_go() {
+        let Some(mut once) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let Some(mut parts) = headless() else { return };
+        let mut s = sample();
+        scanned(&mut s);
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        once.draw(&mesh, &cam, &[], PAPER).unwrap();
+        let want = read(&once);
+        parts.budget = (mesh.cost(&mesh.visible(&cam)) + mesh.dots.len()) / 5 + 1;
+        let turned = Camera { azimuth: cam.azimuth + 20.0, ..cam };
+        parts.draw(&mesh, &turned, &[], PAPER).unwrap();
+        let mut frames = 0;
+        while !parts.draw(&mesh, &cam, &[], PAPER).unwrap() {
+            frames += 1;
+            assert!(frames < 64, "it settles");
+        }
+        assert!(frames >= 2, "{frames} frames");
+        assert!(read(&parts) == want, "the settled picture is the one drawn in one go");
+    }
+
     #[test]
     fn past_a_frame_s_budget_a_section_box_settles_on_the_picture_drawn_in_one_go() {
         let Some(mut once) = headless() else {
@@ -1918,12 +2311,13 @@ mod tests {
         let draws = vec![
             (false, Draw::Own(0..30)),
             (false, Draw::Copies { corners: 6..18, from: From::Seen, copies: 2..9 }),
+            (false, Draw::Dots(5..12)),
             (true, Draw::Copies { corners: 0..9, from: From::Mesh, copies: 0..4 }),
         ];
         let total: usize = draws.iter().map(|(_, d)| d.cost()).sum();
-        assert_eq!(total, 10 + 28 + 12);
+        assert_eq!(total, 10 + 28 + 7 + 12);
         for step in [1, 3, 5, 7, 11, 50] {
-            let (mut own, mut copies) = (Vec::new(), Vec::new());
+            let (mut own, mut copies, mut dots) = (Vec::new(), Vec::new(), Vec::new());
             let mut a = 0;
             while a < total {
                 let b = (a + step).min(total);
@@ -1931,11 +2325,13 @@ mod tests {
                     match d {
                         Draw::Own(r) => own.extend(r),
                         Draw::Copies { copies: c, from, .. } => copies.extend(c.map(|k| (clear, from, k))),
+                        Draw::Dots(r) => dots.extend(r),
                     }
                 }
                 a = b;
             }
             assert_eq!(own, (0..30).collect::<Vec<_>>(), "step {step}");
+            assert_eq!(dots, (5..12).collect::<Vec<_>>(), "step {step}");
             let mut want: Vec<_> = (2..9).map(|k| (false, From::Seen, k)).collect();
             want.extend((0..4).map(|k| (true, From::Mesh, k)));
             assert_eq!(copies, want, "step {step}");
@@ -1951,6 +2347,176 @@ mod tests {
         // Past what 32 bits count, each buffer's own stay small.
         let far = 9_000_000_000 / 300 * 300;
         assert_eq!(spans(300, far..far + 600), vec![((far / 300) as usize, 0..300), ((far / 300 + 1) as usize, 0..300)]);
+    }
+
+    /// Draws until the picture is exact, the card never holding more than `room` bytes of vertices; how many frames it took.
+    fn settles(gpu: &mut Gpu, mesh: &Arc<Mesh>, cam: &Camera, room: u64) -> usize {
+        let mut frames = 1;
+        while !gpu.draw(mesh, cam, &[], PAPER).unwrap() {
+            frames += 1;
+            assert!(gpu.holding() <= room, "{} bytes held, of {room}", gpu.holding());
+            assert!(frames < 400, "it never settles");
+        }
+        assert!(gpu.holding() <= room, "{} bytes held, of {room}", gpu.holding());
+        frames
+    }
+
+    /// A buffer of 200 triangles, so that the sample house takes many.
+    const CHUNK: u64 = STRIDE * 3 * 200;
+
+    #[test]
+    fn a_card_that_holds_little_settles_on_the_picture_of_one_that_holds_all() {
+        let Some(mut whole) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let Some(mut small) = headless() else { return };
+        small.vertex_bytes = CHUNK;
+        small.card_bytes = 2 * CHUNK;
+        let mut s = sample();
+        for seen_through in [false, true] {
+            if seen_through {
+                s.execute("graphics", &serde_json::json!({"view": "{3D}", "categories": {"walls": {"transparency": 50}}})).unwrap();
+            }
+            let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+            let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+            assert!(mesh.vertices.len() as u64 * STRIDE > 8 * CHUNK, "far more than it holds: {} vertices", mesh.vertices.len());
+            let parallel = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+            let cam = scene.fit_from(Camera { lens: Some(bimcraft_core::view3d::LENS), ..parallel }, &look);
+            for cam in [parallel, cam, inside(&s, cam)] {
+                whole.draw(&mesh, &cam, &[], PAPER).unwrap();
+                let want = read(&whole);
+                let turned = Camera { azimuth: cam.azimuth + 10.0, ..cam };
+                small.draw(&mesh, &turned, &[], PAPER).unwrap();
+                let frames = settles(&mut small, &mesh, &cam, 2 * CHUNK);
+                assert!(frames >= 3, "{frames} frames");
+                assert!(read(&small) == want, "seen through {seen_through}: the settled picture is the one drawn with all of it held");
+            }
+        }
+    }
+
+    #[test]
+    fn an_allocation_that_fails_is_a_signal_to_hold_less_not_a_card_that_failed() {
+        let Some(mut whole) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        let Some(mut full) = headless() else { return };
+        full.vertex_bytes = CHUNK;
+        // It says nothing of how much it has until it has no more.
+        assert_eq!(full.card_bytes, u64::MAX);
+        full.full_at = Some(3 * CHUNK);
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        whole.draw(&mesh, &cam, &[], PAPER).unwrap();
+        settles(&mut full, &mesh, &cam, 3 * CHUNK);
+        assert!(full.card_bytes <= 3 * CHUNK, "{} bytes", full.card_bytes);
+        // Asked to hold less again, as a frame's own work running out asks: half of it, and the same picture.
+        assert!(full.hold_less());
+        assert!(full.card_bytes < 3 * CHUNK, "{} bytes", full.card_bytes);
+        let less = full.card_bytes;
+        settles(&mut full, &mesh, &cam, less);
+        assert!(read(&full) == read(&whole), "the same picture, for less held");
+        // And so is the next mesh, from what the last one found: it isn't asked to fail again.
+        let again = Arc::new(Mesh::new(&scene, &look).unwrap());
+        settles(&mut full, &again, &cam, 3 * CHUNK);
+        assert!(read(&full) == read(&whole));
+    }
+
+    #[test]
+    fn a_view_that_stays_within_what_the_card_holds_comes_to_be_drawn_whole_and_what_it_cannot_see_is_let_go() {
+        let Some(mut small) = headless() else {
+            eprintln!("no graphics adapter here: the card's picture is not compared");
+            return;
+        };
+        small.vertex_bytes = CHUNK;
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let fit = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        // Near the last of the vertices, seeing few of the buffers: room for those and no more, and they aren't the ones a first
+        // upload holds.
+        let last = mesh.vertices.last().map_or(fit.target, |v| std::array::from_fn(|i| f64::from(v.position[i]) + mesh.origin[i]));
+        let near = Camera { scale: fit.scale * 12.0, target: last, ..fit };
+        let chunks = |seen: &Visible| -> std::collections::BTreeSet<u64> {
+            let per = CHUNK / STRIDE;
+            seen.vertices.iter().flat_map(|r| r.start as u64 / per..=(r.end as u64 - 1) / per).collect()
+        };
+        let seen = chunks(&mesh.visible(&near));
+        let all = (mesh.vertices.len() as u64 * STRIDE).div_ceil(CHUNK);
+        assert!((seen.len() as u64) < all, "{} of {all} buffers seen", seen.len());
+        let room = seen.len() as u64 * CHUNK;
+        small.card_bytes = room;
+        // Past what it holds, standing in, at first; moving a little each frame, and the card bringing in what the view wants.
+        let moved = |i: u32| Camera { azimuth: near.azimuth + f64::from(i) * 1e-6, ..near };
+        small.draw(&mesh, &fit, &[], PAPER).unwrap();
+        let first: std::collections::BTreeSet<u64> =
+            small.mesh.as_ref().unwrap().vertices.iter().enumerate().filter(|(_, b)| b.is_some()).map(|(k, _)| k as u64).collect();
+        assert!(!seen.is_subset(&first), "seen {seen:?}, held at first {first:?}");
+        let mut whole = false;
+        for i in 0..seen.len() as u32 + 8 {
+            let cam = moved(i);
+            whole = small.draw(&mesh, &cam, &[], PAPER).unwrap();
+            assert!(small.holding() <= room, "{} bytes held, of {room}", small.holding());
+        }
+        assert!(whole, "all it sees is held, so a moved frame is drawn at once");
+        let up = small.mesh.as_ref().unwrap();
+        let held: std::collections::BTreeSet<u64> =
+            up.vertices.iter().enumerate().filter(|(_, b)| b.is_some()).map(|(k, _)| k as u64).collect();
+        assert!(chunks(&mesh.visible(&moved(0))).is_subset(&held), "held {held:?}");
+    }
+
+    /// The card run out for real: filled with buffers until an allocation fails, which takes all of its memory from whatever else
+    /// is using it, so it is run by hand, on a machine with nothing else to lose: `cargo test -p bimcraft-ui-egui -- --ignored
+    /// a_card_really_out_of_memory --nocapture`.
+    #[test]
+    #[ignore]
+    fn a_card_really_out_of_memory_still_settles_on_the_picture() {
+        let Some(mut whole) = headless() else { return };
+        let Some(mut full) = headless() else { return };
+        full.vertex_bytes = CHUNK;
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        whole.draw(&mesh, &cam, &[], PAPER).unwrap();
+        let want = read(&whole);
+        // The targets first, then all that is left in buffers, each written so that the card must place it.
+        full.draw(&Arc::new(Mesh::new(&Scene::new(&Session::new().model), &look).unwrap()), &cam, &[], PAPER).unwrap();
+        let mut filler = Vec::new();
+        for _ in 0..1024 {
+            let guard = scopes(&full.device);
+            let buffer = full.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("filler"),
+                size: VERTEX_BUFFER,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            full.queue.submit([]);
+            let out = out_of_memory(guard).unwrap();
+            if out {
+                break;
+            }
+            filler.push(buffer);
+        }
+        eprintln!("the card took {} MB of buffers before it said it was full", filler.len() * 256);
+        let frames = settles(&mut full, &mesh, &cam, u64::MAX);
+        eprintln!("settled in {frames} frames, holding {} bytes, room for {}", full.holding(), full.card_bytes);
+        assert!(read(&full) == want);
+    }
+
+    #[test]
+    fn a_card_too_small_for_one_buffer_says_so_and_nothing_is_kept() {
+        let Some(mut tiny) = headless() else { return };
+        tiny.card_bytes = 16;
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let err = tiny.draw(&mesh, &scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look), &[], PAPER).unwrap_err();
+        assert!(err.contains("memory"), "{err}");
+        assert!(tiny.mesh.is_none());
     }
 
     #[test]

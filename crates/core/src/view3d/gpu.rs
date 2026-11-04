@@ -1,7 +1,7 @@
 //! What a graphics card needs to draw the 3D view, and what picking needs when there is no picture to read: the scene's triangles
 //! as vertices relative to the middle of what is drawn (millimetres far from the origin would overflow f32's resolution, so the
 //! shader never sees them), and a bounding volume hierarchy to pick through. No graphics API is in here, so the core stays free
-//! of one; the desktop's `gpu.rs` draws it. What a card can't draw (point clouds) is refused with a reason, and
+//! of one; the desktop's `gpu.rs` draws it. What a machine can't hold is refused with a reason, and
 //! the CPU picture is drawn instead. A section box is not built in: the mesh holds all it would hold without one, and a card cuts
 //! each pixel to the box, so moving a face builds nothing. Surfaces seen through come after the opaque ones (from [`Mesh::clear_from`]), as the
 //! processor draws them in a pass of their own.
@@ -282,6 +282,15 @@ pub struct Wire {
     face: &'static str,
 }
 
+/// A scan's point a card draws: where it is in the model, its colour as a vertex packs one, and its element, numbered as a
+/// vertex's owner is.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Dot {
+    pub at: P3,
+    pub color: u32,
+    pub owner: u32,
+}
+
 /// An element a vertex belongs to: the colour its edges are drawn in, and how see-through the view makes it, percent.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Owner {
@@ -350,6 +359,9 @@ pub struct Mesh {
     pub lines: bool,
     /// Wireframe: no surfaces and no level's marks, only [`wires`](Self::wires) on the paper.
     pub wireframe: bool,
+    /// The points of the scans the view shows, as many as a picture draws, after the opaque surfaces, in the processor's order.
+    pub dots: Vec<Dot>,
+    dot_bvh: OnceLock<Bvh>,
     /// The edges a wireframe draws, in the order the processor draws them, which a later one is over an earlier by.
     pub wires: Vec<Wire>,
     levels: Vec<(Id, String, [P3; 4])>,
@@ -398,9 +410,7 @@ impl Mesh {
         let lines = look.style() != VisualStyle::Shaded;
         let plain = look.is_plain();
         // A wireframe draws a scan's points no more than the processor's does.
-        if !wireframe && scene.scans.iter().any(|s| plain || look.shows(s.owner)) {
-            return Err("a point cloud, which only the processor draws yet".into());
-        }
+        let scans: Vec<&super::Scan> = scene.scans.iter().filter(|s| !wireframe && (plain || look.shows(s.owner))).collect();
         // What the view shows, an element's run of triangles at a time.
         let mut shown = Vec::new();
         let mut reach: Option<(P3, P3)> = None;
@@ -546,7 +556,8 @@ impl Mesh {
         // The box round what is shown (the box round its elements' boxes) and the levels.
         let corners = levels.iter().flat_map(|(.., c)| c.iter());
         let reached = reach.iter().flat_map(|(lo, hi)| [lo, hi]);
-        let (lo, hi) = bounds(reached.chain(corners)).unwrap_or(([0.0; 3], [0.0; 3]));
+        let scanned = scans.iter().flat_map(|s| s.corners.iter());
+        let (lo, hi) = bounds(reached.chain(corners).chain(scanned)).unwrap_or(([0.0; 3], [0.0; 3]));
         let origin = mul(add(lo, hi), 0.5);
         let radius = dot(sub(hi, lo), sub(hi, lo)).sqrt() * 0.5;
         let mut mesh = Mesh {
@@ -574,6 +585,8 @@ impl Mesh {
             lines,
             wireframe,
             wires: Vec::new(),
+            dots: Vec::new(),
+            dot_bvh: OnceLock::new(),
             level_colors: levels.iter().map(|(id, ..)| (*id, look.edge(*id, DATUM))).collect(),
             levels,
             tris: Vec::new(),
@@ -699,6 +712,23 @@ impl Mesh {
                 let Some(t) = scene.tris.get(i).filter(|t| look.shows(t.owner)) else { continue };
                 let owner = owner_of(&mut mesh, t.owner, 0);
                 mesh.wires.push(Wire { ends, owner, face: face_at(i) });
+            }
+        }
+        // The points, every so many as the processor's picture takes them.
+        let step = super::every(scans.iter().map(|s| s.points.len()).sum());
+        mesh.dots.try_reserve_exact(scans.iter().map(|s| s.points.len().div_ceil(step)).sum()).map_err(room)?;
+        for scan in &scans {
+            if cancelled() {
+                return Ok(None);
+            }
+            let owner = owner_of(&mut mesh, scan.owner, 0);
+            for (i, p) in scan.points.iter().enumerate().step_by(step) {
+                if i % 8192 == 0 && cancelled() {
+                    return Ok(None);
+                }
+                let Rgb(r, g, b) = scan.colour(i, plain, look);
+                let color = u32::from(r) | u32::from(g) << 8 | u32::from(b) << 16;
+                mesh.dots.push(Dot { at: scan.place(*p), color, owner });
             }
         }
         // The cube a box standing in is placed from, its faces' planes numbered past the scene's.
@@ -945,17 +975,30 @@ impl Mesh {
     /// What a frame draws of `seen` in `budget` triangles: all of it if it fits; else the nearest groups and copies, in their
     /// order, up to the first that doesn't fit, and a box for each of the rest (its groups', in order, then its copies').
     pub fn nearest_first(&self, cam: &Camera, seen: &Visible, budget: usize) -> Nearest {
-        if self.cost(seen) <= budget {
-            return Nearest { seen: seen.clone(), stand_ins: Vec::new() };
-        }
+        self.nearest_first_held(cam, seen, budget, &|_| true)
+    }
+
+    /// [`nearest_first`](Self::nearest_first) where a card holds only the groups `held` says, by their vertices: the others stand
+    /// in however near they are.
+    pub fn nearest_first_held(
+        &self,
+        cam: &Camera,
+        seen: &Visible,
+        budget: usize,
+        held: &dyn Fn(&std::ops::Range<usize>) -> bool,
+    ) -> Nearest {
         let within = |runs: &[std::ops::Range<usize>], k: usize| {
             let at = runs.partition_point(|r| r.end <= k);
             runs.get(at).is_some_and(|r| r.contains(&k))
         };
+        let all_held = self.groups.iter().filter(|g| within(&seen.vertices, g.range.start)).all(|g| held(&g.range));
+        if all_held && self.cost(seen) <= budget {
+            return Nearest { seen: seen.clone(), stand_ins: Vec::new() };
+        }
         let shape_of = |k: usize| self.shapes.iter().position(|sh| sh.instances.contains(&k));
         // Each group and copy seen: how near, which, and its triangles.
         let mut items: Vec<(f64, bool, usize, usize)> = Vec::new();
-        for (k, g) in self.groups.iter().enumerate().filter(|(_, g)| within(&seen.vertices, g.range.start)) {
+        for (k, g) in self.groups.iter().enumerate().filter(|(_, g)| within(&seen.vertices, g.range.start) && held(&g.range)) {
             let sphere = self.group_spheres.get(k).copied().unwrap_or_default();
             items.push((self.nearness(cam, sphere), false, k, g.range.len() / 3));
         }
@@ -1019,6 +1062,25 @@ impl Mesh {
         Nearest { seen: Visible { vertices, instances }, stand_ins }
     }
 
+    /// The vertices of the nearest group of `seen` that `held` says a card doesn't hold, the next to bring in.
+    pub fn nearest_not_held(
+        &self,
+        cam: &Camera,
+        seen: &Visible,
+        held: &dyn Fn(&std::ops::Range<usize>) -> bool,
+    ) -> Option<std::ops::Range<usize>> {
+        let in_view = |k: usize| {
+            let at = seen.vertices.partition_point(|r| r.end <= k);
+            seen.vertices.get(at).is_some_and(|r| r.contains(&k))
+        };
+        self.groups
+            .iter()
+            .zip(&self.group_spheres)
+            .filter(|(g, _)| in_view(g.range.start) && !held(&g.range))
+            .min_by(|(_, a), (_, b)| self.nearness(cam, **a).total_cmp(&self.nearness(cam, **b)))
+            .map(|(g, _)| g.range.clone())
+    }
+
     /// The marks drawn over the surfaces: each shown level's plane and head, `tints` colouring (and showing all four edges of)
     /// those selected.
     pub fn marks(&self, cam: &Camera, tints: &[(Id, Rgb)]) -> Vec<LevelMarks> {
@@ -1053,9 +1115,18 @@ impl Mesh {
         self.bvh.get_or_init(|| Bvh::over(&self.boxes(), &|| false).unwrap_or_else(Bvh::empty))
     }
 
+    fn dot_boxes(&self) -> Vec<(P3, P3)> {
+        self.dots.iter().map(|d| (d.at, d.at)).collect()
+    }
+
+    fn dot_bvh(&self) -> &Bvh {
+        self.dot_bvh.get_or_init(|| Bvh::over(&self.dot_boxes(), &|| false).unwrap_or_else(Bvh::empty))
+    }
+
     /// Build the picking hierarchy while the mesh is still on a view worker.
     pub fn prepare_picking(&self) {
         self.bvh();
+        self.dot_bvh();
     }
 
     /// Build the hierarchy while a worker owns this mesh, abandoning a superseded snapshot.
@@ -1073,10 +1144,12 @@ impl Mesh {
             }
         }
         let Some(bvh) = Bvh::over(&self.boxes(), cancelled) else { return false };
+        let Some(dots) = Bvh::over(&self.dot_boxes(), cancelled) else { return false };
         if cancelled() {
             return false;
         }
         let _ = self.bvh.set(bvh);
+        let _ = self.dot_bvh.set(dots);
         true
     }
 
@@ -1140,7 +1213,7 @@ impl Mesh {
     /// The nearest opaque triangle covering the centre of a pixel, and the nearest seen through, as the CPU's rasterizer finds
     /// them: how near, as an f32 as it keeps it, and which. The first of triangles as near, in the scene, wins.
     fn nearest(&self, cam: &Camera, (x, y): (f64, f64)) -> (Found, Found) {
-        let Some(bvh) = Some(self.bvh()).filter(|b| !b.nodes.is_empty()) else { return (None, None) };
+        let bvh = self.bvh();
         // Opaque, then seen through.
         let mut found: [Option<(f32, usize, Hit)>; 2] = [None, None];
         let project = cam.projector();
@@ -1197,6 +1270,29 @@ impl Mesh {
                 });
             }
         });
+        // The points, drawn after the opaque surfaces and hiding as they do: where one is nearer than all of them, the first of
+        // those as near. A dot reaches a pixel and a half from its point.
+        let size = (cam.width.clamp(1, super::MAX_SIDE) as usize, cam.height.clamp(1, super::MAX_SIDE) as usize);
+        let pixel = (x.floor() as i64, y.floor() as i64);
+        let mut point: Option<(f32, usize)> = None;
+        let near_dot = |b: (P3, P3)| outside(&project, b, (x, y), 2.0);
+        self.dot_bvh().walk(&|n| (n.lo, n.hi), &near_dot, &mut |i| {
+            let Some(dot) = self.dots.get(i).filter(|d| cut.as_ref().is_none_or(|k| k.holds(d.at))) else { return };
+            let seen = project.at(dot.at);
+            let Some((x0, y0)) = super::dot_at(seen, size) else { return };
+            let wide = super::DOT as i64;
+            if (x0..x0 + wide).contains(&pixel.0) && (y0..y0 + wide).contains(&pixel.1) {
+                let z = seen.2 as f32;
+                if point.is_none_or(|(d, j)| z > d || z == d && i < j) {
+                    point = Some((z, i));
+                }
+            }
+        });
+        if let Some((z, i)) = point.filter(|(z, _)| found[0].is_none_or(|(d, ..)| *z > d))
+            && let Some(id) = self.dots.get(i).and_then(|d| self.owners.get(d.owner.checked_sub(1)? as usize))
+        {
+            found[0] = Some((z, usize::MAX, Hit { id: id.id, face: "" }));
+        }
         let hit = |f: Option<(f32, usize, Hit)>| f.map(|(z, _, hit)| (z, hit));
         (hit(found[0]), hit(found[1]))
     }
@@ -1776,6 +1872,86 @@ mod tests {
         picks_tinted(&s, flat, &[]);
     }
 
+    /// A scan of a red face 4 m across standing in the sample house, as a surveyor's points come in: `test` names its file.
+    fn scanned(s: &mut Session, test: &str) -> Id {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(format!("{test}.xyz"));
+        let text: String = (0..=200)
+            .flat_map(|i| (0..=150).map(move |k| format!("{} 0 {} 220 30 30\n", f64::from(i) * 0.02, f64::from(k) * 0.02)))
+            .collect();
+        std::fs::write(&path, text).unwrap();
+        let out = s.execute("point_cloud", &json!({"path": path, "at": [4000, 3000]})).unwrap();
+        s.model.elements.iter().rev().find(|(_, e)| e.category() == "pointcloud").map(|(id, _)| *id).unwrap_or_else(|| panic!("{out}"))
+    }
+
+    #[test]
+    fn picking_the_mesh_with_a_scan_finds_what_the_cpu_picture_shows() {
+        let mut s = sample();
+        let scan = scanned(&mut s, "picking");
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let flat = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let cam = scene.fit_from(Camera { lens: Some(crate::view3d::LENS), ..flat }, &look);
+        picks_through(&s, flat);
+        picks_tinted(&s, flat, &[(scan, Rgb(0, 120, 215))]);
+        picks_through(&s, cam);
+        picks_through(&s, crate::view3d::inside(&s.model, cam));
+        // The points are on the card, and the box round the view holds them.
+        let mesh = Mesh::new(&scene, &look).unwrap();
+        assert_eq!(mesh.dots.len(), 201 * 151);
+        let (lo, hi) = scene.scans[0].corners.iter().fold(([f64::MAX; 3], [f64::MIN; 3]), |(lo, hi), p| {
+            (std::array::from_fn(|i| lo[i].min(p[i])), std::array::from_fn(|i| hi[i].max(p[i])))
+        });
+        let far = (0..3).map(|i| (lo[i] - mesh.origin[i]).abs().max((hi[i] - mesh.origin[i]).abs())).fold(0.0, f64::max);
+        assert!(far <= mesh.radius + 1.0, "{far} from the middle, of {}", mesh.radius);
+        // Hidden line: paper faces, the points in their colours.
+        s.execute("visual_style", &json!({"style": "hidden_line"})).unwrap();
+        picks_through(&s, flat);
+        s.execute("visual_style", &json!({"style": "shaded"})).unwrap();
+        // Seen through, in front of the points and behind them.
+        s.execute("graphics", &json!({"view": "{3D}", "categories": {"walls": {"transparency": 50}}})).unwrap();
+        picks_through(&s, flat);
+        // Cut to a box, a point being kept or not whole.
+        cut_through(&mut s, [0.6, 0.7, 0.45]);
+        picks_through(&s, flat);
+    }
+
+    #[test]
+    fn the_mesh_reaches_a_scan_far_past_the_model_so_a_card_s_depth_holds_it() {
+        let mut s = Session::new();
+        s.execute("wall", &json!({"points": [[0, 0], [3000, 0]]})).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("far.xyz");
+        // Far above: a level's plane reaches a scan across, not up.
+        std::fs::write(&path, "0 0 300\n1 0 300\n0 1 300\n0 0 301\n").unwrap();
+        s.execute("point_cloud", &json!({"path": path, "origin": "file"})).unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Mesh::new(&scene, &look).unwrap();
+        assert_eq!(mesh.dots.len(), 4);
+        for d in &mesh.dots {
+            let off = sub(d.at, mesh.origin);
+            assert!(dot(off, off).sqrt() <= mesh.radius + 1.0, "{off:?} from the middle, of {}", mesh.radius);
+        }
+    }
+
+    #[test]
+    fn a_scan_alone_picks_its_points_and_what_the_view_hides_has_none() {
+        let mut s = Session::new();
+        let scan = scanned(&mut s, "alone");
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        picks_tinted(&s, cam, &[]);
+        let mesh = Mesh::new(&scene, &look).unwrap();
+        let image = scene.render_in(&cam, &[], &look);
+        let on = (0..480)
+            .flat_map(|y| (0..640).map(move |x| (f64::from(x) + 0.5, f64::from(y) + 0.5)))
+            .find(|&(x, y)| image.pick(x, y) == Some(scan))
+            .unwrap();
+        assert_eq!(mesh.pick(&cam, &[], on.0, on.1).map(|h| h.id), Some(scan));
+        s.execute("graphics", &json!({"view": "{3D}", "categories": {"pointcloud": {"hidden": true}}})).unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        assert!(Mesh::new(&scene, &look).unwrap().dots.is_empty());
+    }
+
     #[test]
     fn a_wireframe_abandoned_while_its_edges_are_found_makes_no_mesh() {
         let mut s = sample();
@@ -1789,6 +1965,29 @@ mod tests {
         assert!(Mesh::new_cancellable(&scene, &look, &later).unwrap().is_none());
         // What was abandoned isn't kept as the answer.
         assert!(!Mesh::new(&scene, &look).unwrap().wires.is_empty());
+    }
+
+    #[test]
+    fn what_a_card_does_not_hold_stands_in_however_near_it_is() {
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Mesh::new(&scene, &look).unwrap();
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let seen = mesh.visible(&cam);
+        let all = mesh.cost(&seen);
+        assert!(mesh.groups.len() >= 2, "{} groups", mesh.groups.len());
+        // The first group alone is held: with room for everything, it is all that is drawn of the triangles of their own.
+        let first = mesh.groups[0].range.clone();
+        let held = |r: &std::ops::Range<usize>| r.start >= first.start && r.end <= first.end;
+        let near = mesh.nearest_first_held(&cam, &seen, all, &held);
+        let drawn: usize = near.seen.vertices.iter().map(|r| r.len()).sum();
+        assert_eq!(drawn, first.len());
+        let own_left = mesh.groups.len() - 1;
+        assert!(near.stand_ins.len() >= own_left, "{} boxes", near.stand_ins.len());
+        // With all held it is as ever.
+        let every = mesh.nearest_first_held(&cam, &seen, all, &|_| true);
+        assert_eq!(every.seen, seen);
+        assert!(every.stand_ins.is_empty());
     }
 
     #[test]

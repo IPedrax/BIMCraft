@@ -349,14 +349,13 @@ fn what_is_nearer_hides_a_scan_and_a_scan_hides_what_is_behind_it() {
 }
 
 #[test]
-fn the_graphics_card_leaves_a_view_with_a_scan_to_the_processor() {
+fn the_graphics_card_holds_a_scan_s_points_unless_the_view_hides_it() {
     let mut s = Session::new();
     let id = run(&mut s, "point_cloud", json!({"path": scan("gpu", "box.xyz", BOX)}))["id"].as_u64().unwrap();
     run(&mut s, "wall", json!({"points": [[0, 0], [3000, 0]]}));
-    let err = gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).err().unwrap();
-    assert!(err.contains("point cloud"), "{err}");
+    assert!(!gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap().dots.is_empty());
     run(&mut s, "graphics", json!({"view": "{3D}", "hide_elements": [id]}));
-    assert!(gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).is_ok());
+    assert!(gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap().dots.is_empty());
 }
 
 // ---------- plans and sections ----------

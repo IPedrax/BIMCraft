@@ -832,6 +832,139 @@ mod worker_measurements {
 
     #[test]
     #[ignore]
+    fn tower_on_a_card_that_holds_little() {
+        let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
+        let model = bimcraft_core::sample::tower::annotated(bimcraft_core::sample::tower::Plate::REFERENCE, 10).unwrap();
+        let scene = bimcraft_core::view3d::Scene::new(&model);
+        let look = Look::of_3d(&model);
+        let mesh = Arc::new(bimcraft_core::view3d::gpu::Mesh::new(&scene, &look).unwrap());
+        let fitted = scene.fit_in(30.0, 30.0, 1920, 1080, &look);
+        eprintln!("{} MB of vertices of their own, in {} groups", (mesh.vertices.len() * 44) >> 20, mesh.groups.len());
+        for (chunk, room) in [(256u64, u64::MAX >> 20), (16, 64), (16, 32)] {
+            let Some(mut gpu) = crate::gpu::headless() else { return };
+            gpu.vertex_bytes = chunk << 20;
+            gpu.card_bytes = if room == u64::MAX >> 20 { u64::MAX } else { room << 20 };
+            let t = Instant::now();
+            gpu.draw(&mesh, &fitted, &[], bimcraft_core::render::PAPER).unwrap();
+            gpu.wait();
+            eprintln!("{chunk} MB buffers, room for {room} MB: first frame {:.0} ms", ms(t));
+            let mut frames = Vec::new();
+            for i in 0..30 {
+                let cam = Camera { azimuth: fitted.azimuth + f64::from(i) * 3.0, ..fitted };
+                let t = Instant::now();
+                gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+                gpu.wait();
+                if i >= 5 {
+                    frames.push(ms(t));
+                }
+            }
+            frames.sort_by(f64::total_cmp);
+            eprintln!(
+                "  moving: median {:.1} ms, p95 {:.1} ms, worst {:.1} ms",
+                frames[frames.len() / 2],
+                frames[frames.len() * 95 / 100],
+                frames[frames.len() - 1]
+            );
+            let cam = Camera { azimuth: fitted.azimuth + 100.0, ..fitted };
+            let (t, mut settle, mut worst) = (Instant::now(), 0, 0.0f64);
+            loop {
+                let one = Instant::now();
+                let whole = gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+                gpu.wait();
+                worst = worst.max(ms(one));
+                settle += 1;
+                if whole {
+                    break;
+                }
+            }
+            eprintln!("  settling: {settle} frames, {:.0} ms in all, the longest {worst:.1} ms", ms(t));
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn tower_with_a_scan_on_the_card() {
+        let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
+        let mut session = bimcraft_core::engine::Session::new();
+        session.model = bimcraft_core::sample::tower::annotated(bimcraft_core::sample::tower::Plate::REFERENCE, 10).unwrap().into();
+        // As many points as a picture draws, on a sheet across the tower's plate.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("scan.xyz");
+        let mut text = String::new();
+        for i in 0..2000 {
+            for k in 0..1000 {
+                text += &format!("{} {} {} 220 30 30\n", f64::from(i) * 0.04, f64::from(k) * 0.06, f64::from((i + k) % 7) * 0.5);
+            }
+        }
+        std::fs::write(&path, text).unwrap();
+        session.execute("point_cloud", &serde_json::json!({"path": path, "at": [0, 0]})).unwrap();
+        let Some(mut gpu) = crate::gpu::headless() else { return };
+        let scene = bimcraft_core::view3d::Scene::new(&session.model);
+        let look = Look::of_3d(&session.model);
+        let t = Instant::now();
+        let mesh = Arc::new(bimcraft_core::view3d::gpu::Mesh::new(&scene, &look).unwrap());
+        eprintln!("mesh {:.0} ms, {} triangles, {} points", ms(t), mesh.triangles(), mesh.dots.len());
+        let t = Instant::now();
+        mesh.prepare_picking();
+        eprintln!("picking hierarchies: {:.0} ms", ms(t));
+        let fitted = scene.fit_in(30.0, 30.0, 1920, 1080, &look);
+        let t = Instant::now();
+        gpu.draw(&mesh, &fitted, &[], bimcraft_core::render::PAPER).unwrap();
+        gpu.wait();
+        eprintln!("first frame, with the upload: {:.0} ms", ms(t));
+        let inside = bimcraft_core::view3d::inside(&session.model, Camera { lens: Some(bimcraft_core::view3d::LENS), ..fitted });
+        let plain = gpu.budget;
+        for (name, base, budget) in
+            [("whole, moving", fitted, plain), ("whole, all of it a frame", fitted, usize::MAX), ("inside", inside, plain)]
+        {
+            gpu.budget = budget;
+            let mut frames = Vec::new();
+            for i in 0..30 {
+                let cam = Camera { azimuth: base.azimuth + f64::from(i) * 3.0, ..base };
+                let t = Instant::now();
+                gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+                gpu.wait();
+                if i >= 5 {
+                    frames.push(ms(t));
+                }
+            }
+            frames.sort_by(f64::total_cmp);
+            eprintln!("frame, {name}: median {:.1} ms, p95 {:.1} ms", frames[frames.len() / 2], frames[frames.len() * 95 / 100]);
+        }
+        let t = Instant::now();
+        for i in 0..100 {
+            std::hint::black_box(mesh.pick(&fitted, &[], 400.0 + f64::from(i) * 10.0, 540.0));
+        }
+        eprintln!("pick: {:.3} ms each", ms(t) / 100.0);
+        let t = Instant::now();
+        std::hint::black_box(scene.render_in(&fitted, &[], &look));
+        eprintln!("the processor's picture: {:.0} ms", ms(t));
+        // The points alone.
+        let mut alone = bimcraft_core::engine::Session::new();
+        alone.execute("point_cloud", &serde_json::json!({"path": path, "at": [0, 0]})).unwrap();
+        let scene = bimcraft_core::view3d::Scene::new(&alone.model);
+        let look = Look::of_3d(&alone.model);
+        let mesh = Arc::new(bimcraft_core::view3d::gpu::Mesh::new(&scene, &look).unwrap());
+        let fitted = scene.fit_in(30.0, 30.0, 1920, 1080, &look);
+        gpu.budget = plain;
+        gpu.draw(&mesh, &fitted, &[], bimcraft_core::render::PAPER).unwrap();
+        gpu.wait();
+        let mut frames = Vec::new();
+        for i in 0..30 {
+            let cam = Camera { azimuth: fitted.azimuth + f64::from(i) * 3.0, ..fitted };
+            let t = Instant::now();
+            gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+            gpu.wait();
+            if i >= 5 {
+                frames.push(ms(t));
+            }
+        }
+        frames.sort_by(f64::total_cmp);
+        eprintln!("frame, the points alone: median {:.1} ms, p95 {:.1} ms", frames[frames.len() / 2], frames[frames.len() * 95 / 100]);
+    }
+
+    #[test]
+    #[ignore]
     fn tower_in_the_styles_of_lines() {
         let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
         let mut session = bimcraft_core::engine::Session::new();

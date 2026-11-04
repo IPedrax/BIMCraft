@@ -127,7 +127,7 @@ fn a_section_box_stays_on_the_card_and_what_it_cuts_away_is_not_picked() {
 }
 
 #[test]
-fn what_the_card_cant_draw_is_drawn_on_the_processor_and_the_page_says_why() {
+fn a_scan_stays_on_the_card_and_picks_its_points() {
     let Some(gpu) = headless() else {
         eprintln!("no graphics adapter here: the card's 3D view is not driven");
         return;
@@ -135,20 +135,34 @@ fn what_the_card_cant_draw_is_drawn_on_the_processor_and_the_page_says_why() {
     let mut h = app(BOX);
     h.state_mut().card = Card::with(gpu);
     press(&mut h, "Default 3D View");
-    assert!(h.state().orbit.on_card);
-    // A scan: the processor draws its points.
+    // A face of points 2 m square, its foot on the level, out in front of the south wall.
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("scan.xyz");
-    std::fs::write(&path, "0 0 0\n1 0 0\n0 1 0\n0 0 1\n").unwrap();
-    h.state_mut().session.execute("point_cloud", &json!({"path": path, "at": [1000, 1000]})).unwrap();
+    let text: String =
+        (0..=100).flat_map(|i| (0..=100).map(move |k| format!("{} 0 {}\n", f64::from(i) * 0.02, f64::from(k) * 0.02))).collect();
+    std::fs::write(&path, text).unwrap();
+    h.state_mut().run("point_cloud", json!({"path": path, "at": [4000, -2000]}));
     h.run();
-    assert!(!h.state().orbit.on_card, "points are the processor's");
-    let why = h.state().card.note.clone().unwrap_or_default();
-    assert!(why.contains("point cloud"), "{why}");
-    // The page tells the user.
+    assert!(h.state().orbit.on_card, "the card draws it: {:?}", h.state().card.note);
+    assert_eq!(h.state().card.note, None);
+    let scan = find(&h, |e| matches!(e, Element::PointCloud(_)));
+    let at = h.state().screen3([4000.0, -2000.0, 1000.0]);
+    click_at(&mut h, at);
+    assert_eq!(h.state().selection, [scan]);
+    assert!(h.state().orbit.on_card);
+}
+
+#[test]
+fn a_card_that_failed_leaves_the_view_on_the_processor_and_the_page_says_why() {
+    let mut h = app(BOX);
+    h.state_mut().card.failed = true;
+    h.state_mut().card.note = Some("the card ran away".into());
+    press(&mut h, "Default 3D View");
+    assert!(!h.state().orbit.on_card);
     press(&mut h, "Settings");
     press(&mut h, "Performance");
     assert!(h.query_by_label_contains("drawn on the processor").is_some());
+    assert!(h.query_by_label_contains("the card ran away").is_some());
 }
 
 #[test]

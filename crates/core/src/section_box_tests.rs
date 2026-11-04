@@ -65,12 +65,12 @@ fn picture(s: &Session, cam: &Camera) -> Image {
 }
 
 #[test]
-fn a_scan_keeps_a_shaded_view_on_the_processor_and_a_wireframe_which_draws_no_points_on_the_card() {
-    let (mut s, _) = floor_and_ceiling("wireframe_on_the_card");
-    let err = gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).err().unwrap();
-    assert!(err.contains("point cloud"), "{err}");
+fn a_mesh_holds_a_scan_s_points_but_in_wireframe_which_draws_none() {
+    let (mut s, _) = floor_and_ceiling("points_on_the_card");
+    let shaded = gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap();
+    assert!(!shaded.dots.is_empty());
     run(&mut s, "visual_style", json!({"style": "wireframe"}));
-    assert!(gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).is_ok());
+    assert!(gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap().dots.is_empty());
 }
 
 fn floor_and_ceiling(test: &str) -> (Session, Camera) {

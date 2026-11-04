@@ -1,7 +1,7 @@
 // The 3D view on the graphics card: the passes that make the picture the processor's rasterizer makes (core `view3d.rs`).
 //   1. vs_scene / fs_scene: the opaque surfaces into a colour target (shaded and textured) and an id target (the plane a pixel
 //      shows and its element), with their depth; then vs_instanced / fs_scene, each shape's copies, placed. Under a section box,
-//      fs_scene_cut, which keeps only what lies in it.
+//      fs_scene_cut, which keeps only what lies in it. Then vs_dot / fs_dot, a scan's points, in the same targets and depth.
 //   2. vs_scene and vs_instanced_clear / fs_clear: the surfaces seen through, the nearest of them where it is nearer than anything opaque, into a
 //      colour target and an element target of their own (only when the view sees through something).
 //   3. vs_full / fs_post: an edge wherever the opaque plane changes between a pixel and the one to its right or below it, else
@@ -313,7 +313,9 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let here = ids_at(x, y);
     let right = ids_at(x + 1, y);
     let below = ids_at(x, y + 1);
-    let edge = (x + 1 < size.x && right.x != here.x) || (y + 1 < size.y && below.x != here.x);
+    // A surface's edge is where it meets another surface or nothing; a point is not one.
+    let on_dot = here.x == DOT_PLANE;
+    let edge = !on_dot && ((x + 1 < size.x && right.x != DOT_PLANE && right.x != here.x) || (y + 1 < size.y && below.x != DOT_PLANE && below.x != here.x));
     let lines = g.ground.w > 0.5;
     var rgb = select(g.ground.xyz, vec3<f32>(255.0), lines);
     if edge {
@@ -324,14 +326,14 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
             color = owners[here.y - 1u].tint.xyz;
         } else if here.y != 0u {
             color = owners[here.y - 1u].edge.xyz;
-        } else if right.y != 0u {
+        } else if right.y != 0u && right.x != DOT_PLANE {
             color = owners[right.y - 1u].edge.xyz;
-        } else if below.y != 0u {
+        } else if below.y != 0u && below.x != DOT_PLANE {
             color = owners[below.y - 1u].edge.xyz;
         }
         rgb = color;
     } else if here.y != 0u {
-        if !lines {
+        if !lines || on_dot {
             rgb = bytes(textureLoad(scene_color, vec2<i32>(x, y), 0));
         }
         if owners[here.y - 1u].tint.w > 0.5 {
@@ -354,6 +356,54 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
         }
     }
     return vec4<f32>(inked(rgb) / 255.0, 1.0);
+}
+
+// The plane a pixel showing a scan's point holds: past any surface's.
+const DOT_PLANE: u32 = 0xffffffffu;
+
+struct DotIn {
+    @location(0) at: vec3<f32>,
+    @location(1) color: u32,
+    @location(2) owner: u32,
+}
+
+struct DotOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) @interpolate(flat) color: vec3<f32>,
+    @location(1) @interpolate(flat) ids: vec2<u32>,
+}
+
+// A point as the processor's `dots` draws it: two pixels each way from the one nearest, all at the point's own depth, kept whole
+// or not at all by a section box. One with nothing to draw is a point of nothing.
+@vertex
+fn vs_dot(v: DotIn, @builtin(vertex_index) i: u32) -> DotOut {
+    var o: DotOut;
+    o.clip = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    if g.cut_lo.w > 0.5 && (any(v.at < g.cut_lo.xyz) || any(v.at > g.cut_hi.xyz)) {
+        return o;
+    }
+    if g.lens.x > 0.0 && g.lens.y - dot(v.at - g.aim.xyz, g.back.xyz) <= 0.0 {
+        return o;
+    }
+    let seen = to_pixel(v.at);
+    var corners = array<vec2<f32>, 6>(
+        vec2<f32>(0.0, 0.0), vec2<f32>(2.0, 0.0), vec2<f32>(0.0, 2.0),
+        vec2<f32>(0.0, 2.0), vec2<f32>(2.0, 0.0), vec2<f32>(2.0, 2.0),
+    );
+    let xy = floor(seen.xy - vec2<f32>(0.5)) + corners[i];
+    // A point nearer than the near plane is drawn all the same, as near as depth goes.
+    o.clip = vec4<f32>(xy.x / g.size.x * 2.0 - 1.0, 1.0 - xy.y / g.size.y * 2.0, min(seen.z, 1.0), 1.0);
+    o.color = vec3<f32>(f32(v.color & 255u), f32((v.color >> 8u) & 255u), f32((v.color >> 16u) & 255u));
+    o.ids = vec2<u32>(DOT_PLANE, v.owner);
+    return o;
+}
+
+@fragment
+fn fs_dot(in: DotOut) -> SceneTargets {
+    var out: SceneTargets;
+    out.color = vec4<f32>(in.color / 255.0, 1.0);
+    out.ids = in.ids;
+    return out;
 }
 
 struct LineOut {

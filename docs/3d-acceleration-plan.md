@@ -404,6 +404,56 @@ Two things are left of wireframe, neither of which changes its picture:
 - **Finding the edges takes 16 s on this tower**, all of it `Scene::edges`' map over every triangle's three sides. The processor pays it too, on the interface's thread; the card's is on the worker and is abandoned with its view. They are kept with the scene, so it is the first wireframe after an edit that waits. Finding them from the shapes (a copy's edges are its shape's, but for where it touches another) or by element is the next thing to try.
 - **Lines have no budget of their own.** Every line goes to the card every frame, none left out by what the view can see (hence "inside" at 4.9 ms is the vertex shader's cutting, not culling). At this tower it fits a frame; at 100 storeys, by proportion (not measured), a frame would be about 120 ms, and piece 6 doesn't yet reach it. Grouping lines as `Mesh::groups` does triangles would give both culling and a budget.
 
+## Piece 8, fourth part: point clouds on the card (2026-11-04)
+
+A scan's points are drawn where the processor's `dots` writes them: after the opaque surfaces, into the same colour, id and depth targets, under the same depth test, so what is seen through and a level's lines read them as they read surfaces, with nothing else to say. Each is an instance of
+two triangles, snapped in `vs_dot` to the two pixels each way its processor's dot takes (`Scene::dot_at`), all at the point's own depth; past a section box it isn't drawn at all, as `Boxed::holds` asks of the point and not of its pixels. The same points as the processor's, every so many (`every`), so no more than `DRAWN` (2 million). A dot's pixels hold a plane number of their own (`DOT_PLANE`), at which the post pass draws no edge, and they keep their colours in hidden line. The mesh's box reaches the scans, or the card's depth would cut one off where a level's plane doesn't reach it.
+
+`Mesh::nearest` asks a hierarchy of the points after the triangles: the nearest whose dot covers the pixel, over any opaque surface it is nearer than, a tie going to what is drawn first. What is seen through and a level's mark then ask of that, as they ask of the processor's depth.
+
+`the_card_draws_a_scan_s_points_as_the_processor_does` (parallel, tinted, perspective, from inside, hidden line, seen through, cut, hidden: the whole picture within the usual 1 in 200, and of the pixels either shows in the scan's red, 1 in 100 in only one),
+`a_scan_alone_is_drawn_with_no_edges_round_its_points`, `past_a_frame_s_budget_a_scan_settles_on_the_picture_drawn_in_one_go`, `picking_the_mesh_with_a_scan_finds_what_the_cpu_picture_shows`, `a_scan_alone_picks_its_points_and_what_the_view_hides_has_none`,
+`the_mesh_reaches_a_scan_far_past_the_model_so_a_card_s_depth_holds_it` and `a_scan_stays_on_the_card_and_picks_its_points` hold it. Each of these was seen to catch its fault: the edges, the paper in hidden line, the box on the card and in a pick, and the mesh's box. That last was first tried across the plan and from the picture, where it caught nothing: a level's plane is fitted to the scan, and a fitted camera's target carries the depth with it.
+
+Not compared: a point on a surface to within f32, where the two depths differ, and which of them wins can differ. A scan's points lie about a surface as a rule, so a scan of a wall over that wall is where to look.
+
+The annotated 10-storey tower with 2 million points across its plate, 1920 x 1080, release, RTX 2060, the camera turning 3 degrees a frame. The processor's picture was 2.4 s:
+
+| | A frame, median | p95 |
+|---|---:|---:|
+| The points alone | **4.6 ms** | 15.9 ms |
+| The tower and the points | **11.9 ms** | 16.9 ms |
+| From inside | **3.5 ms** | 3.9 ms |
+| The tower without them, as measured earlier | 8.9 ms | 9.1 ms |
+
+The mesh took 0.66 s and the two hierarchies 1 s; a pick 0.8 ms. Every point goes to the card each frame, none left out by what the view can see, which `DRAWN` keeps bounded.
+
+What a dot weighs in a frame's budget was measured, not taken from its two triangles. Charged as two, the same frame went past the budget and took the moving path: **23.5 ms against 10.9 ms** for drawing all of it. A dot is charged as one triangle, and it fits. That is also a finding about piece 6: just past the budget, the moving path costs more than the frame it saves, as it sorts every group and copy and writes a box for each left out. The budget wants measuring against that, as "What isn't decided yet" already says of how it is set.
+
+## Piece 9, first part: a card that holds less (2026-11-04)
+
+A card that ran out of memory used to be given up for good. Now an allocation that fails is a signal to hold less. How much a card holds isn't asked of it: `Gpu::card_bytes` starts as all there are, and comes down to what it held when one failed (`hold_vertices`, whose error scope tells out of memory from anything else). It only ever comes down. A frame's own work running out (a box's buffer, say) halves it and draws again (`Gpu::hold_less`).
+
+What the card can hold less of so far is the triangles drawn of their own, a buffer of them at a time (`Uploaded::vertices`), which a first upload fills as far as there is room:
+
+- **The settled picture comes to the same, however little is held.** It is drawn in parts into targets that keep their pixels, so what is drawn can be let go for what comes next: a part is a budget's worth or as much as the card holds at once, whichever is less (`Uploaded::bring_in`). `a_card_that_holds_little_settles_on_the_picture_of_one_that_holds_all` holds it, byte for byte, with room for two buffers of more than ten.
+- **While the view moves**, what isn't held stands in as its box however near it is (`Mesh::nearest_first_held`), and each frame brings in one buffer, of the nearest group wanted (`Mesh::nearest_not_held`), in place of one the view doesn't see. One the view does see isn't let go for a nearer one, so a view wanting more than the card holds keeps what it has first, not what is nearest.
+- **A card that can't hold one buffer** says so, and the processor draws, as for a card that failed. Buffers aren't made smaller to fit.
+
+`an_allocation_that_fails_is_a_signal_to_hold_less_not_a_card_that_failed`, `a_view_that_stays_within_what_the_card_holds_comes_to_be_drawn_whole_and_what_it_cannot_see_is_let_go`, `a_card_too_small_for_one_buffer_says_so_and_nothing_is_kept` and `what_a_card_does_not_hold_stands_in_however_near_it_is` hold the rest. Allocations fail there because a test says so (`Gpu::full_at`): filling a card for real takes its memory from everything else on the machine, so `a_card_really_out_of_memory_still_settles_on_the_picture` is ignored and **has not been run**. How a real driver answers, and whether what the targets need survives, isn't known yet.
+
+The annotated 10-storey tower, 1920 x 1080, release, RTX 2060, 69 MB of its vertices being of their own (`tower_on_a_card_that_holds_little`):
+
+| Buffers, and room | Moving, median | Worst | Settling |
+|---|---:|---:|---|
+| 256 MB, all it wants | 11.5 ms | 12.9 ms | 1 frame, 9 ms |
+| 16 MB, room for 64 MB | 17.7 ms | 20.0 ms | 3 frames, 34 ms |
+| 16 MB, room for 32 MB | 18.4 ms | 20.4 ms | 5 frames, 71 ms |
+
+What is brought in is written on the frame's own thread, a buffer at a time, unlike a first upload. At the real size of a buffer (256 MB, not these 16) that is a longer frame than this table shows, not measured.
+
+What's left is most of what a large model holds in practice. On this tower the vertices of their own are 69 MB, and the shapes, copies and planes aren't released at all, nor a wireframe's lines (28 bytes each, 164 MB here) or a scan's points (20 bytes each, 40 MB at most). If those don't fit, the upload fails and the processor draws, as before. The plan's other measure, boxes for the farthest copies, doesn't let go of the copies' buffers either.
+
 ## What isn't decided yet
 
 - **How far a card gets.** Piece 1's measurement decides how much of piece 5 is on the processor's side, and whether piece 6 needs coarser
@@ -422,9 +472,12 @@ Two things are left of wireframe, neither of which changes its picture:
 - [x] 5. Draw what the view can see
 - [x] 6. A frame never waits for all of it
 - [x] 7. An edit changes only what it changed (the scene; the mesh, pick hierarchy and upload are still made whole, faster)
-- [ ] 8. What only the processor draws now
+- [x] 8. What only the processor draws now
   - [x] A section box
   - [x] Hidden line
   - [x] Wireframe
-  - [ ] Point clouds
+  - [x] Point clouds
 - [ ] 9. When the card runs out
+  - [x] The triangles drawn of their own: let go and brought back, and an allocation that fails holds less
+  - [ ] The copies, a wireframe's lines, a scan's points and the rest, which are still all or nothing
+  - [ ] Seen once on a card really out of memory (`a_card_really_out_of_memory_still_settles_on_the_picture`, by hand)

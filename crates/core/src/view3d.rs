@@ -1218,6 +1218,23 @@ impl Scan {
     }
 }
 
+impl Scan {
+    /// Point `i`'s colour: its own, or the grey of one with none; the view's, unless it gives none.
+    fn colour(&self, i: usize, plain: bool, look: &Look) -> Rgb {
+        let grey = Rgb(crate::cloud::GREY, crate::cloud::GREY, crate::cloud::GREY);
+        let base = self.colours.as_ref().and_then(|c| c.get(i)).map_or(grey, |c| Rgb(c[0], c[1], c[2]));
+        if plain { base } else { look.surface(self.owner, base) }
+    }
+}
+
+/// The first pixel of the dot a point seen at `(x, y, z)` draws, [`DOT`] pixels each way from it, in a picture of `(w, h)`; none
+/// where none of it is in the picture.
+fn dot_at((x, y, z): (f64, f64, f64), (w, h): (usize, usize)) -> Option<(i64, i64)> {
+    let half = DOT as f64 / 2.0;
+    let (x0, y0) = ((x - half).round(), (y - half).round());
+    (x0 > -(DOT as f64) && y0 > -(DOT as f64) && x0 < w as f64 && y0 < h as f64 && z.is_finite()).then_some((x0 as i64, y0 as i64))
+}
+
 /// The most points a picture draws, as Revit's density does: past it, every so many of each scan's.
 pub const DRAWN: usize = 2_000_000;
 
@@ -2175,8 +2192,6 @@ impl Scene {
         }
         let mut dots = vec![PAPER; w * h];
         let step = every(kept.iter().map(|(_, s)| s.points.len()).sum());
-        let grey = Rgb(crate::cloud::GREY, crate::cloud::GREY, crate::cloud::GREY);
-        let half = DOT as f64 / 2.0;
         for (n, scan) in kept {
             let slot = (self.tris.len() + n) as u32;
             for (i, p) in scan.points.iter().enumerate().step_by(step) {
@@ -2190,14 +2205,9 @@ impl Scene {
                 }) {
                     continue;
                 }
-                let (x0, y0) = ((x - half).round(), (y - half).round());
-                if !(x0 > -(DOT as f64) && y0 > -(DOT as f64) && x0 < w as f64 && y0 < h as f64 && z.is_finite()) {
-                    continue;
-                }
-                let base = scan.colours.as_ref().and_then(|c| c.get(i)).map_or(grey, |c| Rgb(c[0], c[1], c[2]));
-                let colour = if plain { base } else { look.surface(scan.owner, base) };
+                let Some((x0, y0)) = dot_at((x, y, z), (w, h)) else { continue };
+                let colour = scan.colour(i, plain, look);
                 let z = z as f32;
-                let (x0, y0) = (x0 as i64, y0 as i64);
                 for py in y0.max(0)..(y0 + DOT as i64).min(h as i64) {
                     for px in x0.max(0)..(x0 + DOT as i64).min(w as i64) {
                         let k = py as usize * w + px as usize;
