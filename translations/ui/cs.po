@@ -10262,6 +10262,14 @@ msgctxt "category-plural"
 msgid "Multi-Category"
 msgstr ""
 
+#: crates/core/src/snap.rs:70
+msgid "Annotation Anchor"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:2590
+msgid "Where a note, dimension, tag, spot elevation, section or elevation mark, detail group or repeating detail is placed"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3039
 #~ msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, then click where the dimension line goes"
 #~ msgstr "Zarovnaná kóta (DI): vyberte rovnoběžné plochy stěn, konce stěn, dveře, okna nebo osnovy a potom klikněte do místa vynášecí čáry"

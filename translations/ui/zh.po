@@ -10262,6 +10262,14 @@ msgctxt "category-plural"
 msgid "Multi-Category"
 msgstr ""
 
+#: crates/core/src/snap.rs:70
+msgid "Annotation Anchor"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:2590
+msgid "Where a note, dimension, tag, spot elevation, section or elevation mark, detail group or repeating detail is placed"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "单击圆弧经过的一点：由此确定半径。按 Esc 取消。"
