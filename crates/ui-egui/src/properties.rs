@@ -1089,6 +1089,7 @@ impl BimApp {
         self.opening_picker(ui, &model);
         self.room_colour(ui, &model);
         self.floor_slope(ui, &model);
+        self.sketch_slope(ui);
         if !ids.is_empty() {
             self.parameters(ui, &model, &ids, rows);
             if let Subject::Element(id) = subject {
@@ -1339,6 +1340,43 @@ impl BimApp {
         });
         if let Some(degrees) = pick {
             self.run("modify", json!({"ids": ids, "slope": degrees}));
+        }
+    }
+
+    /// A roof's sketch (a new roof's footprint or Edit Boundary's) with one line picked: its Slope, the angle in degrees the roof's
+    /// edges along it rise at, blank for the roof's own, which is what a line has until it is given one. It is set on the line, and
+    /// Finish Edit Mode sends it with the lines for the core to give the edges along the line theirs (`slopes`).
+    fn sketch_slope(&mut self, ui: &mut Ui) {
+        let Some(sk) = &self.sketch else { return };
+        let roof = match sk.of {
+            crate::sketch::Of::Roof(_) => true,
+            crate::sketch::Of::Edit(id) => matches!(self.session.model.elements.get(id), Some(Element::Roof(_))),
+            _ => false,
+        };
+        let picked: Vec<usize> = sk.picked.iter().copied().collect();
+        let (true, &[i]) = (roof, picked.as_slice()) else { return };
+        let Some(line) = sk.lines.get(i) else { return };
+        let current = line.slope.filter(|s| *s > 0.0).map_or_else(String::new, |s| text(&json!(s)));
+        let mut typed = None;
+        grid(ui, ("sketch-slope", i), |ui| {
+            let name = ui.label(t("Slope"));
+            typed = self.field(ui, 1 + i as Id, "sketch-slope", current, name.id, t("Roof's slope"));
+            end_row(ui);
+        });
+        let Some(typed) = typed else { return };
+        let max = bimcraft_core::model::MAX_SLOPE;
+        match Some(typed.trim()).filter(|s| !s.is_empty()).map_or(Some(0.0), |s| number(s).filter(|x| (0.0..=max).contains(x))) {
+            Some(slope) => {
+                if let Some(l) = self.sketch.as_mut().and_then(|sk| sk.lines.get_mut(i)) {
+                    l.slope = Some(slope);
+                }
+            }
+            None => {
+                self.status = Status {
+                    text: tf("Slope: a number of degrees from 0 to {}, or blank for the roof's", &[&max.to_string()]),
+                    error: true,
+                };
+            }
         }
     }
 

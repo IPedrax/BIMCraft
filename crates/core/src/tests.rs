@@ -2203,7 +2203,41 @@ fn hostile_params_never_panic_or_break_the_model() {
     assert_eq!(views(&base.model), 2, "the sweep's base has a section and an elevation to draw");
     // The default 3D view's silhouettes and ambient shadows on, last so that no id moves: every picture of it draws them.
     let _ = base.execute("graphic_display_options", &json!({"edges": false, "silhouette": 4, "ambient_shadows": true}));
-    let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).collect();
+    // A roof over a rectangle with a slope of its own on each edge, last so that no id moves, and the
+    // payloads that give its edges slopes they can't have, or the lines of its sketch.
+    let roof = base
+        .execute("roof", &json!({"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "slope": 30, "slopes": [30, 45, 30, 45]}))
+        .map_or(Value::Null, |r| r["id"].clone());
+    let line = |slope: Value| json!({"start": [0, 0], "end": [8000, 0], "slope": slope});
+    let rest = [
+        json!({"start": [8000, 0], "end": [8000, 6000]}),
+        json!({"start": [8000, 6000], "end": [0, 6000]}),
+        json!({"start": [0, 6000], "end": [0, 0]}),
+    ];
+    let slopes = [
+        json!({"id": roof, "slopes": [1e300, 0, 0, 0]}),
+        json!({"id": roof, "slopes": [1, 2, 3]}),
+        json!({"id": roof, "slopes": "x"}),
+        json!({"id": roof, "slopes": [null, 0, 0, 0]}),
+        json!({"id": roof, "slopes": [-1, 0, 0, 0], "slope": 1e-300}),
+        json!({"id": roof, "slopes": [1e-320, 74.9, 0.0001, 75]}),
+        json!({"id": roof, "slopes": [1e-320, 74.9, 0.0001, 75], "slope": 5e-324}),
+        json!({"id": roof, "slopes": [0, 0, 0, 0], "slope": 0}),
+        json!({"id": roof, "slopes": [30, 45, 30, 45], "gables": [0, 1, 2, 3]}),
+        json!({"id": roof, "slopes": vec![45; 100_000]}),
+        json!({"id": roof, "slope": 75, "slopes": [75, 1, 75, 1]}),
+        json!({"boundary": [[0, 0], [4000, 0], [0, 4000]], "slope": 45, "slopes": [1e300, -1, 5]}),
+        json!({"boundary": [[0, 0], [4000, 0], [0, 4000]], "slope": 45, "slopes": [10, 80, 30], "gables": [0]}),
+        json!({"boundary": [[0, 0], [4000, 0], [0, 4000]], "courtyards": [[[1000, 500], [2000, 500], [1000, 1500]]], "slopes": [10, 20, 30, 40, 50, 60]}),
+        json!({"sketch": [line(json!(1e300)), rest[0].clone(), rest[1].clone(), rest[2].clone()], "slope": 30}),
+        json!({"sketch": [line(json!(-5)), rest[0].clone(), rest[1].clone(), rest[2].clone()], "slope": 30, "slopes": [10, 20, 30, 40]}),
+        json!({"sketch": [line(json!("x")), rest[0].clone()]}),
+        json!({"id": roof, "sketch": [line(json!(1e300)), rest[0].clone(), rest[1].clone(), rest[2].clone()]}),
+        json!({"id": roof, "sketch": [line(json!(0)), rest[0].clone(), rest[1].clone(), rest[2].clone()]}),
+        json!({"id": roof, "sketch": [line(json!(60)), rest[0].clone(), rest[1].clone(), rest[2].clone()]}),
+        json!({"sketch": [line(json!(60)), rest[0].clone(), rest[1].clone(), rest[2].clone()]}),
+    ];
+    let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -5642,11 +5676,12 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_project_is_saved_as_format_14_and_one_of_format_4_to_13_opens_as_it_is_and_one_of_format_15_is_refused() {
-    use crate::model::Model;
+fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_is_and_a_newer_one_is_refused() {
+    use crate::model::{FORMAT, Model};
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch;
-    // 13 floors' and flat roofs' shapes; 14 the categories of family components, which the starter view templates name. Nothing in a file of 4
+    // 13 floors' and flat roofs' shapes; 14 the categories of family components, which the starter view templates name; 15 a roof's slope for each
+    // edge and a wall's top offset. Nothing in a file of 4
     // to 7 that holds no notes changes.
     let mut s = Session::new();
     let empty = serde_json::to_value(&*s.model).unwrap();
@@ -5654,38 +5689,41 @@ fn a_project_is_saved_as_format_14_and_one_of_format_4_to_13_opens_as_it_is_and_
     run(&mut s, "detail_line", json!({"start": [0, 0], "end": [1000, 0]}));
     let full = serde_json::to_value(&*s.model).unwrap();
     for v in [&empty, &full] {
-        assert_eq!(v["format"], 14, "a project is saved as format 14");
-        for old in [4, 5, 6, 7, 8, 9, 10, 11, 12, 13] {
+        assert_eq!(v["format"], FORMAT, "a project is saved as the current format");
+        for old in 4..FORMAT {
             let mut was = v.clone();
             was["format"] = json!(old);
             let (m, left_out) = Model::read(&was.to_string()).unwrap();
-            assert_eq!((m.format, left_out.len(), m.elements.len()), (14, 0, v["elements"].as_object().unwrap().len()));
+            assert_eq!((m.format, left_out.len(), m.elements.len()), (FORMAT, 0, v["elements"].as_object().unwrap().len()));
         }
     }
     assert!(full["elements"].as_object().unwrap().len() > 5);
-    // A project in Dutch is saved as format 14 (12 added Dutch), which is what tells a build that doesn't know `nl` to refuse it.
+    // A project in Dutch is saved in the current format, newer than 12, which added Dutch, which is what tells a build that doesn't know `nl` to refuse it.
     let mut dutch = Session::new();
     run(&mut dutch, "new", json!({"language": "nl"}));
     let v = serde_json::to_value(&*dutch.model).unwrap();
-    assert_eq!((v["format"].clone(), v["language"].clone()), (json!(14), json!("nl")));
+    assert_eq!((v["format"].clone(), v["language"].clone()), (json!(FORMAT), json!("nl")));
     // A newer file says what it is and what to do, even when nothing else in it is wrong.
     let mut newer = empty.clone();
-    newer["format"] = json!(15);
+    newer["format"] = json!(FORMAT + 1);
     let e = Model::read(&newer.to_string()).unwrap_err();
     assert!(
-        e.contains("newer BIMCraft") && e.contains("file format 15") && e.contains("reads up to 14") && e.contains("update BIMCraft"),
+        e.contains("newer BIMCraft")
+            && e.contains(&format!("file format {}", FORMAT + 1))
+            && e.contains(&format!("reads up to {FORMAT}"))
+            && e.contains("update BIMCraft"),
         "{e}"
     );
     // A file of this format with a field it doesn't know is read without it, and says which.
     let mut odd = full.clone();
     odd["something_new"] = json!(true);
     let (m, left_out) = Model::read(&odd.to_string()).unwrap();
-    assert_eq!((m.format, left_out), (14, vec!["/something_new".to_string()]));
+    assert_eq!((m.format, left_out), (FORMAT, vec!["/something_new".to_string()]));
 }
 
 #[test]
-fn a_format_5_file_that_holds_elements_and_scans_migrates_to_14_and_keeps_both() {
-    use crate::model::Model;
+fn a_format_5_file_that_holds_elements_and_scans_migrates_to_the_current_format_and_keeps_both() {
+    use crate::model::{FORMAT, Model};
     let mut s = Session::new();
     house(&mut s);
     run(&mut s, "detail_line", json!({"start": [0, 0], "end": [1000, 0]}));
@@ -5696,13 +5734,13 @@ fn a_format_5_file_that_holds_elements_and_scans_migrates_to_14_and_keeps_both()
     let mut file: serde_json::Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
     file["format"] = json!(5);
     let (m, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((m.format, m.clouds.len(), left_out.len(), m.elements.len()), (14, 1, 0, s.model.elements.len()));
-    // Written again, it says 14.
-    assert_eq!(serde_json::from_str::<serde_json::Value>(&m.to_json().unwrap()).unwrap()["format"], 14);
-    // A file of 6 (detailing, no CAD drawings) opens as 14 likewise.
+    assert_eq!((m.format, m.clouds.len(), left_out.len(), m.elements.len()), (FORMAT, 1, 0, s.model.elements.len()));
+    // Written again, it says the current format.
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&m.to_json().unwrap()).unwrap()["format"], FORMAT);
+    // A file of 6 (detailing, no CAD drawings) opens as the current format likewise.
     file["format"] = json!(6);
     let (m, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((m.format, left_out.len(), m.elements.len()), (14, 0, s.model.elements.len()));
+    assert_eq!((m.format, left_out.len(), m.elements.len()), (FORMAT, 0, s.model.elements.len()));
 }
 
 #[test]

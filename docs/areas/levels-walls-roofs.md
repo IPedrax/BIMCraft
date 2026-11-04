@@ -69,6 +69,17 @@ A roof by footprint is the straight skeleton of its outline and its `courtyards`
 counter-clockwise, the courtyards clockwise, the roof to the left of every edge): each edge moves in at speed 1, a gable's at
 0, and its slope rises from it, reaching the roof's base `overhang` in from its eaves; a courtyard's edges number on after
 the outline's, and every ring keeps its numbers whichever way round it runs, so `gables` stay put through a mirror.
+`Roof::slopes` (file format 15) gives each edge a slope of its own, in degrees, numbered as `gables` are: 0 is the roof's `slope`,
+and an empty list, every edge. `Model::roof_faces` then moves an edge in at the run over the rise of its slope, scaled so the
+shallowest moves at 1 (every edge at one slope still moves at exactly 1), so edges of different slopes reach the same height
+together and the slopes meet along their hips; the eaves stay level, the roof's base `overhang` in from them lowered by the roof's
+`slope`, whatever the edges' own. A gable stays upright whatever its slope, and a flat roof (`slope` 0) keeps its `slopes` as it keeps
+its `gables`, unused. `Model::check` refuses a list of the wrong length, saying how many edges there are, and a slope outside 0
+to 75°, saying which edge. A sketch line may carry a `slope` (`SketchLine::slope`; the Slope row of Properties, with one line of a
+roof's sketch picked, sets it): the roof keeps it as the `slopes` of the edges along that line (`sketch::along`), never in its
+`sketch`, which `sketch::check` refuses to hold one. `edit_boundary` keeps the slope of an edge that stays or that a new
+line cuts in two (an edge lying along an old one), the lines' own `slope` (0 sets the roof's) winning over it, and without
+`slope` on the lines it keeps what the edges had; `edit_boundary` without a sketch gives the lines with the slope their edges share.
 Over the walls (`floor_outline`, which `roof_footprint` grows by the overhang), a loop of them standing free inside the outer
 ones, joined to none of them and with no room in it, is a courtyard, open through the floor and the roof; one joined to them,
 or with a room in it, is rooms, and both run over it.

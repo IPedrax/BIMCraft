@@ -73,6 +73,8 @@ pub mod reinforce;
 mod reinforce_tests;
 pub mod render;
 #[cfg(test)]
+mod roof_slopes_tests;
+#[cfg(test)]
 mod room_area_tests;
 #[cfg(test)]
 mod room_bounds_tests;
