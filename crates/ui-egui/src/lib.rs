@@ -3100,6 +3100,13 @@ impl BimApp {
         fresh.autosave = std::mem::take(&mut self.autosave);
         fresh.card = std::mem::take(&mut self.card);
         fresh.home = self.home.put_away();
+        // A new or opened project keeps the plugins and their tabs: they are the user's folder, not the project's, and the
+        // session's external commands were already registered. Re-registering puts them back if the project replaced them.
+        (fresh.plugins, fresh.plugin_tabs) = (std::mem::take(&mut self.plugins), std::mem::take(&mut self.plugin_tabs));
+        fresh.plugins_job = self.plugins_job.take();
+        fresh.plugins_dialog = self.plugins_dialog;
+        fresh.plugins.register(&mut fresh.session);
+        fresh.plugin_tabs = fresh.plugins.tabs();
         *self = fresh;
     }
 

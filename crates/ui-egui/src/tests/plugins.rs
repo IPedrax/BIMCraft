@@ -56,6 +56,22 @@ fn a_plugin_tab_is_on_the_ribbon_and_its_button_runs_the_plugin() {
 }
 
 #[test]
+fn a_new_project_keeps_the_plugins_their_tab_and_their_commands() {
+    let dir = tempfile::tempdir().unwrap();
+    folder(dir.path());
+    let mut h = app_with_plugins(dir.path());
+    assert!(h.query_by_label("Areas").is_some());
+    press(&mut h, "File");
+    h.get_by_label_contains("New").click();
+    h.run();
+    assert!(h.state().session.model.name == "Project", "a new project");
+    assert_eq!(h.state().plugin_tabs.len(), 1, "the plugin's tab stays");
+    assert_eq!(h.state().plugins.plugins[0].status, bimcraft_plugin::Status::Loaded);
+    assert!(h.state().session.external_command("plugin:area-summary:summary").is_some(), "its commands stay registered");
+    assert!(h.query_by_label("Areas").is_some(), "and the tab is drawn again");
+}
+
+#[test]
 fn the_plugins_window_lists_a_plugin_and_switches_it_off_so_its_tab_goes() {
     let dir = tempfile::tempdir().unwrap();
     folder(dir.path());
