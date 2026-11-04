@@ -3066,6 +3066,26 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let Err(error) = m.check() else { break };
         let id = culprit(&error).filter(|id| from.contains_key(id)).ok_or_else(|| error.clone())?;
         let why = error.split_once(": ").map_or(error.as_str(), |(_, why)| why);
+        // A door or a window that rises past its wall's top, as Revit lets one: said with the file's wall and both heights.
+        let why = match (m.elements.get(id), why.starts_with("sill ")) {
+            (Some(e @ (Element::Door(o) | Element::Window(o))), true) => match (m.wall(o.host), m.opening_dims(e)) {
+                (Some(w), Ok(t)) => {
+                    let along = [o.offset - t.width / 2.0, o.offset, o.offset + t.width / 2.0];
+                    let top = along.map(|s| crate::walls::top_at(&m, w, s)).into_iter().fold(f64::INFINITY, f64::min);
+                    let wall = m.elements.id(o.host).and_then(|k| from.get(&k)).cloned().unwrap_or_default();
+                    format!(
+                        "sill {} + height {} reach {} mm, past its wall {wall}, {} mm high there; BIMCraft keeps a door or window \
+                         within its wall's height, where Revit lets one rise past the top",
+                        num(o.sill),
+                        num(t.height),
+                        num(o.sill + t.height),
+                        num(top - m.own_base(w))
+                    )
+                }
+                _ => why.to_string(),
+            },
+            _ => why.to_string(),
+        };
         skipped.push(format!("{}: {why}", from.get(&id).cloned().unwrap_or_default()));
         let gone = m.guid(id);
         m.elements.remove(id);
@@ -3733,6 +3753,35 @@ ENDSEC;END-ISO-10303-21;",
         let metres = file.replace(".MILLI.,.METRE.", "$,.METRE.").replace("IFCLENGTHMEASURE(2400.)", "IFCLENGTHMEASURE(2.4)");
         let i = ifc(metres.as_bytes(), "x").unwrap();
         assert_eq!(values(&i.model, "room").and_then(|p| p.get("Finish Height").cloned()), Some(json!(2400.0)));
+    }
+
+    #[test]
+    fn a_window_taller_than_its_wall_is_left_out_with_the_wall_and_both_heights_named() {
+        let mut s = crate::engine::Session::new();
+        s.script(
+            r#"wall {"points": [[0,0],[6000,0]], "height": 3000}
+               window {"at": [3000, 0]}"#,
+        )
+        .unwrap();
+        // Another program's window rises past its wall's top, as Revit lets one: its OverallHeight, the ninth attribute, is 5000.
+        let file: String = crate::ifc::export(&s.model)
+            .lines()
+            .map(|line| match line.split_once("=IFCWINDOW(") {
+                Some((at, args)) => {
+                    let mut parts: Vec<&str> = args.split(',').collect();
+                    parts[8] = "5000.";
+                    format!("{at}=IFCWINDOW({}", parts.join(","))
+                }
+                None => line.to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let i = ifc(file.as_bytes(), "x").unwrap();
+        assert!(only(&i.model, "window").is_empty(), "BIMCraft keeps a window within its wall");
+        let note = i.skipped.iter().find(|n| n.starts_with("IFCWINDOW")).unwrap();
+        assert!(note.contains("past its wall IFCWALL #"), "names the file's wall, not BIMCraft's id for it: {note}");
+        assert!(note.contains("3000 mm high") && note.contains("height 5000"), "says both heights: {note}");
+        assert!(note.contains("Revit"), "says why another program allowed it: {note}");
     }
 
     #[test]
