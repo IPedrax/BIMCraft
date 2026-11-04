@@ -529,6 +529,23 @@ mod tests {
         }
     }
 
+    /// The other kinds and commands (3D dimensions, camera views, shaped floors, roofs with a slope for each edge, a wall's top
+    /// offset, bars, plan symbols…) edited at random: the scene brought up to date by each is the one made whole.
+    #[test]
+    fn random_edits_of_the_other_kinds_bring_the_scene_up_to_date_as_made_whole() {
+        let model = crate::sample::tower::tower_on(crate::sample::tower::Plate::SMALL, 1).unwrap();
+        for seed in [1u64, 2] {
+            let mut s = Session::new();
+            s.reset(model.clone(), None);
+            let mut scene = Scene::new(&s.model);
+            let mut dice = Dice(0x3d3d_7a11_c0de_0188 ^ seed);
+            for _ in 0..30 {
+                let (cmd, p) = crate::oracle_tests::edit_more(&mut s, &mut dice);
+                scene = held(&mut s, scene, &cmd, &p);
+            }
+        }
+    }
+
     #[test]
     fn an_edit_makes_again_what_it_touched_not_the_model() {
         let model = crate::sample::tower::tower_on(crate::sample::tower::Plate::SMALL, 2).unwrap();

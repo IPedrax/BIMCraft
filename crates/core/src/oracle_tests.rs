@@ -185,3 +185,131 @@ fn a_point_finds_the_reference_and_the_end_near_it_that_every_element_would_give
     }
     assert!(found > 20 && ends > 5, "{found} references and {ends} ends found");
 }
+
+/// An edit of the kinds the other mixes leave out: 3D dimensions and camera views, how a 3D view draws and
+/// what it sketches on, a wall's top offset, a room's colour, a floor's shape points, split lines and falls, a roof with a
+/// slope for each edge, a schedule of several categories, a length typed into a dimension and a segment locked, bars a beam is
+/// reinforced with, plan symbols and a component of them, a spot slope, the project's voltages; then moved, copied, deleted,
+/// undone and redone.
+pub(crate) fn edit_more(s: &mut Session, dice: &mut Dice) -> (String, Value) {
+    let at = |dice: &mut Dice| [dice.mm(15_000) + 18_000, dice.mm(15_000) + 18_000];
+    let level = |s: &Session, dice: &mut Dice| {
+        let levels = s.model.levels();
+        levels.get(dice.below(levels.len())).map(|(id, _)| *id)
+    };
+    let new = ["dimension3d", "view3d", "roof", "rebar", "spot", "component", "schedule"];
+    match dice.below(24) {
+        0 => {
+            let ([x, y], z) = (at(dice), dice.mm(2000) + 2000);
+            let to = [x + dice.mm(6000), y, z];
+            ("dimension_3d".into(), json!({"refs": [{"at": [x, y, z]}, {"at": to}], "at": [x, y - 1000 - dice.mm(500), z]}))
+        }
+        1 => {
+            let [x, y] = at(dice);
+            let p = json!({"eye": [x - 20_000, y - 20_000, 1700 + dice.mm(1000)], "target": [x, y, 1500]});
+            ("camera".into(), p)
+        }
+        // A camera view's eye and target written back, as the 3D view does once the hand lets it be.
+        2 => match pick(s, dice, &["view3d"]) {
+            Some(v) => {
+                let [x, y] = at(dice);
+                ("camera".into(), json!({"view": v, "eye": [x - 15_000, y + 15_000, 3000], "target": [x, y, dice.mm(1000) + 1000]}))
+            }
+            None => ("camera".into(), json!({"eye": [-10_000, -10_000, 2000], "target": [18_000, 18_000, 0]})),
+        },
+        3 => (
+            "graphic_display_options".into(),
+            json!({"edges": dice.below(2) == 0, "silhouette": dice.below(5), "ambient_shadows": dice.below(2) == 0}),
+        ),
+        4 => ("work_plane".into(), json!({"level": level(s, dice), "offset": dice.mm(1000)})),
+        5 => {
+            let wall = pick(s, dice, &["wall"]);
+            ("modify".into(), json!({"ids": [wall], "top_level": level(s, dice), "top_offset": dice.mm(1500)}))
+        }
+        6 => {
+            let room = pick(s, dice, &["room"]);
+            ("modify".into(), json!({"ids": [room], "colour": [dice.below(256), dice.below(256), dice.below(256)]}))
+        }
+        7 => ("add_point".into(), json!({"id": pick(s, dice, &["floor", "roof"]), "at": at(dice), "offset": dice.mm(80)})),
+        8 => {
+            let a = at(dice);
+            ("add_split_line".into(), json!({"id": pick(s, dice, &["floor", "roof"]), "a": a, "b": [a[0] + dice.mm(9000), a[1]]}))
+        }
+        9 => ("falls".into(), json!({"id": pick(s, dice, &["floor", "roof"]), "drains": [at(dice)], "fall": 1.5})),
+        10 => ("reset_shape".into(), json!({"id": pick(s, dice, &["floor", "roof"])})),
+        11 => {
+            let [x, y] = at(dice);
+            let (w, d) = (6000 + dice.below(6000) as i64, 6000 + dice.below(6000) as i64);
+            let slopes: Vec<usize> = (0..4).map(|_| dice.below(4) * 10).collect();
+            ("roof".into(), json!({"boundary": [[x, y], [x + w, y], [x + w, y + d], [x, y + d]], "slope": 0, "slopes": slopes}))
+        }
+        12 => {
+            let roof = pick(s, dice, &["roof"]);
+            ("modify".into(), json!({"ids": [roof], "slopes": [dice.below(3) * 15, 0, dice.below(3) * 15, 0]}))
+        }
+        13 => {
+            let n = dice.below(1000);
+            ("schedule".into(), json!({"name": format!("Mixed {n}"), "categories": ["walls", "doors", "rooms"]}))
+        }
+        14 => ("dimension_value".into(), json!({"id": pick(s, dice, &["dimension"]), "value": 1000 + dice.below(4000)})),
+        15 => ("dimension_constraint".into(), json!({"id": pick(s, dice, &["dimension"]), "locked": [0]})),
+        16 => ("reinforce".into(), json!({"host": pick(s, dice, &["beam"]), "preset": "V 20 x 50"})),
+        17 => ("symbol_set".into(), json!({"set": "arei"})),
+        18 => {
+            let symbols: Vec<String> =
+                s.model.families.iter().filter(|(_, f)| f.forms.is_empty() && !f.symbols.is_empty()).map(|(n, _)| n.clone()).collect();
+            match symbols.get(dice.below(symbols.len())) {
+                Some(family) => ("component".into(), json!({"family": family, "at": at(dice), "level": level(s, dice)})),
+                None => ("symbol_set".into(), json!({"set": "arei"})),
+            }
+        }
+        19 => ("spot_slope".into(), json!({"at": at(dice)})),
+        20 => ("voltage".into(), json!({"name": format!("{} V", 100 + dice.below(300)), "nominal": 100 + dice.below(300)})),
+        21 => {
+            let by = json!([dice.mm(3000), dice.mm(3000)]);
+            if dice.below(2) == 0 {
+                ("move".into(), json!({"ids": [pick(s, dice, &new)], "by": by}))
+            } else {
+                ("copy".into(), json!({"ids": [pick(s, dice, &new)], "by": by}))
+            }
+        }
+        22 => ("delete".into(), json!({"ids": [pick(s, dice, &new)]})),
+        _ => (if dice.below(2) == 0 { "undo" } else { "redo" }.into(), json!({})),
+    }
+}
+
+/// The kinds `edit` and `edit_2d` leave out edited at random on a small tower, each command checked by what changed and whole, its library
+/// synced both ways, and the plan drawn now and then from the lookup's elements and from every element (the engine and the
+/// plan hold both to the same answer in tests).
+#[test]
+fn random_edits_of_the_other_kinds_check_sync_and_draw_the_same_by_what_changed_as_whole() {
+    let model = tower_on(Plate::SMALL, 2).unwrap();
+    let mut kinds = std::collections::BTreeSet::new();
+    for seed in [1u64, 2, 3] {
+        let mut s = Session::new();
+        s.reset(model.clone(), None);
+        s.execute("move", &json!({"ids": [], "by": [0, 0]})).ok();
+        let level = s.model.levels()[0].0;
+        let mut dice = Dice(0x3d3d_7a11_c0de_0188 ^ seed);
+        let (mut done, mut refused) = (0, 0);
+        for n in 0..70 {
+            let (cmd, p) = edit_more(&mut s, &mut dice);
+            match s.execute(&cmd, &p) {
+                Ok(_) => {
+                    done += 1;
+                    kinds.insert(cmd);
+                }
+                Err(_) => refused += 1,
+            }
+            if n % 10 == 9 {
+                crate::render::plan(&s.model, level, 800, 600);
+            }
+        }
+        assert!(done > 25 && refused > 0, "seed {seed}: {done} done, {refused} refused: the edits should do both");
+        assert_eq!(s.model.check(), Ok(()));
+        assert!(s.model.library_in_step());
+    }
+    for cmd in ["dimension_3d", "camera", "graphic_display_options", "work_plane", "modify", "add_point", "roof", "schedule", "symbol_set"] {
+        assert!(kinds.contains(cmd), "no `{cmd}` was taken: {kinds:?}");
+    }
+}
