@@ -602,6 +602,22 @@ fn dimension_line(p: &Painter, a: Pos2, b: Pos2, n: Vec2, off: f32) -> Pos2 {
     a + along / 2.0 + n * (off + 11.0)
 }
 
+/// A padlock at `at` in `ink`: its body, and its shackle, shut when `locked`, swung up and open when not.
+fn padlock(p: &Painter, at: Pos2, locked: bool, ink: Color32) {
+    let body = Rect::from_center_size(at + vec2(0.0, 3.0), vec2(10.0, 8.0));
+    p.rect_filled(body, 1.5, pal().surface);
+    p.rect_stroke(body, 1.5, Stroke::new(1.5, ink), StrokeKind::Middle);
+    let lift = if locked { 0.0 } else { -3.0 };
+    let top = body.top() + lift;
+    let shackle: Vec<Pos2> = (0..=8)
+        .map(|k| {
+            let t = std::f32::consts::PI * k as f32 / 8.0;
+            pos2(body.center().x - 3.0 * t.cos(), top - 4.0 * t.sin())
+        })
+        .collect();
+    p.add(Shape::line(shackle, Stroke::new(1.5, ink)));
+}
+
 /// An opening's temporary dimensions, drawn on `p` beside its host wall: from the face of the wall meeting its wall
 /// before it (or the wall's start) to the middle of the opening, and from there to the next face (or the wall's end)
 /// (`Model::opening_span`), each as where its number goes, its text, and its length in mm. None on a curved wall, and for
@@ -1494,6 +1510,7 @@ impl BimApp {
         self.line_grip_overlay(&ui.painter_at(rect), rect, &view, cursor);
         self.shape_overlay(ui, &model, &view, rect, level);
         self.temporary_dimension(ui, &model, &view, rect);
+        self.locks(ui, &model, &view, rect, key);
         self.context_menu(&response);
         self.nav_bar(ui, rect, key);
     }
@@ -1814,6 +1831,7 @@ impl BimApp {
             ) {
                 (None, Some((picked, line, _))) => {
                     self.drawing.align_reference = Some(picked);
+                    self.drawing.align_lock = None;
                     self.tool = Tool::Align(Some(line));
                 }
                 (Some(r), Some((draw::Picked::Sketch(i), line, _))) => self.align_sketch(r, i, line),
@@ -2478,13 +2496,19 @@ impl BimApp {
     }
 
     /// Align's second pick: turn and move the element so its picked line lies on the reference.
+    /// Its padlock is offered then, on the line where it went.
     fn align(&mut self, reference: (P2, P2), id: Id, line: (P2, P2)) {
-        if self
+        let to = match self.drawing.align_reference {
+            Some(draw::Picked::Element(r)) => Some(r),
+            _ => None,
+        };
+        if let Some(made) = self
             .run("align", json!({"id": id, "reference": [point(reference.0), point(reference.1)], "line": [point(line.0), point(line.1)]}))
-            .is_some()
         {
             self.tool = Tool::Align(None);
             self.drawing.align_reference = None;
+            let at = |k: usize| made["line"][k].as_array().and_then(|q| Some(P2(q.first()?.as_f64()?, q.get(1)?.as_f64()?)));
+            self.drawing.align_lock = at(0).zip(at(1)).map(|line| draw::AlignLock { id, to, reference, line });
         }
     }
 
@@ -2883,6 +2907,12 @@ impl BimApp {
     /// A temporary dimension's number at `at`, which a click turns into a field to type a new one: what was typed once
     /// the field is left (None inside it for Esc). `key` is the element and which of its dimensions.
     fn dimension_number(&mut self, ui: &mut Ui, at: Rect, key: (Id, usize), text: &str) -> Option<Option<String>> {
+        self.number_field(ui, at, key, text, bimcraft_i18n::msg!("Temporary dimension {}"))
+    }
+
+    /// A dimension's number at `at`, as [`dimension_number`](Self::dimension_number) shows one, named `name` (with the number
+    /// in it) for the screen reader.
+    fn number_field(&mut self, ui: &mut Ui, at: Rect, key: (Id, usize), text: &str, name: &str) -> Option<Option<String>> {
         let font = FontId::proportional(12.0);
         let field = ui.id().with(("temporary dimension", key));
         let (mut done, mut start) = (None, false);
@@ -2897,7 +2927,7 @@ impl BimApp {
             }
             _ => {
                 let r = ui.interact(at, field.with("number"), Sense::click());
-                r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Temporary dimension {}", &[text])));
+                r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf(name, &[text])));
                 ui.painter().rect_filled(at, 2.0, pal().surface);
                 ui.painter().text(at.center(), Align2::CENTER_CENTER, text, font, if r.hovered() { pal().hover } else { pal().accent });
                 start = r.clicked();
@@ -2944,25 +2974,29 @@ impl BimApp {
             } else {
                 pal().muted
             };
-            // A padlock: its body, and its shackle, shut when locked, swung up and open when not.
-            let body = Rect::from_center_size(at + vec2(0.0, 3.0), vec2(10.0, 8.0));
-            p.rect_filled(body, 1.5, pal().surface);
-            p.rect_stroke(body, 1.5, Stroke::new(1.5, ink), StrokeKind::Middle);
-            let lift = if locked { 0.0 } else { -3.0 };
-            let top = body.top() + lift;
-            let shackle: Vec<Pos2> = (0..=8)
-                .map(|k| {
-                    let t = std::f32::consts::PI * k as f32 / 8.0;
-                    pos2(body.center().x - 3.0 * t.cos(), top - 4.0 * t.sin())
-                })
-                .collect();
-            p.add(Shape::line(shackle, Stroke::new(1.5, ink)));
+            padlock(&p, at, locked, ink);
             if r.clicked() {
                 let mut segments: Vec<usize> = d.locked.iter().map(|l| l.segment).filter(|&s| s != i).collect();
                 if !locked {
                     segments.push(i);
                 }
                 self.run("dimension_constraint", json!({"id": id, "locked": segments}));
+            }
+        }
+        // Each segment's number, which a click turns into a field: a length typed there moves what the segment ends at
+        // (`dimension_value`), as a temporary dimension's does.
+        if m.dimension_type(d).string == bimcraft_core::dims::DimString::Continuous {
+            for (i, (pair, label)) in cross.windows(2).zip(m.dimension_labels(d)).enumerate() {
+                let [(s0, _), (s1, _)] = pair else { continue };
+                let size = p.layout_no_wrap(label.clone(), FontId::proportional(12.0), pal().accent).size() + vec2(10.0, 4.0);
+                let at = Rect::from_center_size(on((s0 + s1) / 2.0) - side * 12.0, size);
+                let Some(Some(typed)) = self.number_field(ui, at, (id, i), &label, bimcraft_i18n::msg!("Dimension {}")) else { continue };
+                match m.units.parse(&typed) {
+                    Some(value) => {
+                        self.run("dimension_value", json!({"id": id, "segment": i, "value": value}));
+                    }
+                    None => self.status = Status { text: tf("`{}` is not a length", &[typed.trim()]), error: true },
+                }
             }
         }
         if cross.len() > 2 {
@@ -2983,6 +3017,67 @@ impl BimApp {
             }
             if r.clicked() {
                 self.run("dimension_constraint", json!({"id": id, "equal": !d.equal}));
+            }
+        }
+    }
+
+    /// The locks of the dimensions in plan `key`, shown whether they're selected or not, as Revit shows them: a shut padlock
+    /// under each locked segment, and where Align left a lock, a padlock a click on which unlocks it (deletes the lock). The
+    /// dimension selected alone shows its own, which a click toggles (`dimension_constraints`); and while Align's last two
+    /// lines are lined up, an open padlock a click on which locks them (`align` with `lock`).
+    fn locks(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, key: Id) {
+        let screen = |q: P2| pos(rect.min, v.px(q));
+        let p = ui.painter_at(rect);
+        let alone = match (self.selection.as_slice(), &self.tool) {
+            (&[id], Tool::Modify) => Some(id),
+            _ => None,
+        };
+        let mut unlock = None;
+        for (&id, e) in m.elements.iter() {
+            let Element::Dimension(d) = e else { continue };
+            if d.locked.is_empty() || Some(id) == alone || !m.annotation_in(e, key) {
+                continue;
+            }
+            if d.alignment {
+                let at = screen(d.at) + vec2(12.0, -12.0);
+                let r = ui.interact(Rect::from_center_size(at, vec2(16.0, 18.0)), ui.id().with(("alignment lock", id)), Sense::click());
+                r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, true, t("Unlock alignment")));
+                padlock(&p, at, true, if r.hovered() { pal().hover } else { pal().accent });
+                if r.clicked() {
+                    unlock = Some(id);
+                }
+                continue;
+            }
+            let (n, cross) = m.crossings(d);
+            let on = |s: f64| screen(d.at + n * s);
+            let side = (screen(d.at - n.perp()) - screen(d.at)).normalized();
+            for (i, pair) in cross.windows(2).enumerate() {
+                let [(s0, _), (s1, _)] = pair else { continue };
+                if d.locked.iter().any(|l| l.segment == i) {
+                    let at = on((s0 + s1) / 2.0) + side * 14.0;
+                    let r = ui.interact(Rect::from_center_size(at, vec2(16.0, 18.0)), ui.id().with(("shown lock", id, i)), Sense::hover());
+                    r.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, tf("Locked segment {}", &[&(i + 1).to_string()])));
+                    padlock(&p, at, true, pal().muted);
+                }
+            }
+        }
+        if let Some(id) = unlock {
+            self.run("delete", json!({"ids": [id]}));
+        }
+        // Align's offer, while its tool is on.
+        let Some(lock) = self.drawing.align_lock.filter(|_| matches!(self.tool, Tool::Align(_))) else { return };
+        let at = screen((lock.line.0 + lock.line.1) * 0.5) + vec2(12.0, -12.0);
+        let r = ui.interact(Rect::from_center_size(at, vec2(16.0, 18.0)), ui.id().with("align lock"), Sense::click());
+        r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, false, t("Lock alignment")));
+        padlock(&p, at, false, if r.hovered() { pal().hover } else { pal().accent });
+        if r.clicked() {
+            let (a, b) = (lock.reference, lock.line);
+            let mut params = json!({"id": lock.id, "reference": [point(a.0), point(a.1)], "line": [point(b.0), point(b.1)], "lock": true});
+            if let Some(to) = lock.to {
+                params["to"] = json!(to);
+            }
+            if self.run("align", params).is_some() {
+                self.drawing.align_lock = None;
             }
         }
     }

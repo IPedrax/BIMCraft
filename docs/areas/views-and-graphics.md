@@ -608,6 +608,16 @@ two stations rigidly and equality tying all its segments to one length (a locked
 reference dragged goes back); a run of tied stations stays where what the command moved puts it, else where its first is. What has to move is
 moved by `commands::move_by`, as `move` moves it, and the dimensions are solved again (`PASSES`) until all hold; where they can't (locked
 lengths that differ made equal, one element pulled two ways), the command is refused, saying which dimension, and nothing changes.
+A length typed for a segment (`dimension_value`; in the window, a click on the selected dimension's number, as a temporary
+dimension's takes one) moves what the segment ends at, its second station's reference, along the dimension by the difference
+(`move_by`), and a locked segment is locked at it; the other locks then hold or the command is refused. Align with `lock` (Revit's
+padlock: in the window, the open padlock Align offers on the line it moved) leaves a lock: a dimension of the aligned line's reference
+and the reference's (`to`, else whatever has a line along it), its one segment locked at 0 and `alignment` set, which
+`constraints::keep` holds as it holds the others, so the two lines stay on one line whatever either is moved by; one that can't hold
+with the other locks is refused, and the project is as it was. A lock is drawn by a front end, never on paper (`render/dimensions.rs`
+draws nothing of it): the window shows each locked segment's shut padlock whether its dimension is selected or not, and each alignment
+lock's padlock beside where its lines meet, which a click unlocks (deletes). Format 15 holds them; 14 would read one as a dimension of
+nothing.
 `render/dimensions.rs` draws them all as the type says (`Ink`: its lines, ticks and witness lines, and its numbers laid out by `crate::text`
 over the paper where the background is opaque).
 

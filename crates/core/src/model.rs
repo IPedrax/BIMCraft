@@ -70,8 +70,8 @@ pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
 /// The version of the project file this build writes, and the newest it reads. 16: a 3D view may hold dimensions (the
-/// `dimension3d` category); nothing in a file of 15 changes, but a build that reads up to 15 would refuse one of 16 on
-/// opening ("isn't a category"), not say "saved by a newer BIMCraft". 15: a roof may have a slope for each edge of its
+/// `dimension3d` category), which a build that reads up to 15 doesn't know and would refuse, and Align may leave a lock,
+/// which it would read as a dimension of nothing; nothing in a file of 15 changes. 15: a roof may have a slope for each edge of its
 /// footprint (`slopes`) and a wall a top offset from its top constraint (`top_offset`); nothing in a file of 14 changes, but a
 /// build that reads up to 14 would leave either out as a field it doesn't know, drawing the roof at one slope and the wall short
 /// of its offset, not "saved by a newer BIMCraft". 14: a view's graphics, a view template and the
@@ -1064,6 +1064,10 @@ pub struct Dimension {
     /// Its segments locked at a length: what it measures to moves together to keep them so.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub locked: Vec<Lock>,
+    /// The lock Align left: two references kept on one line (its one segment locked at 0), drawn on screen as a padlock where
+    /// they meet and never on paper.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub alignment: bool,
 }
 
 /// A dimension in a 3D view, as Revit's aligned dimension there: the distance between two points of the model, or square
@@ -3307,7 +3311,8 @@ impl Model {
         // `component` for them all, which still does, and has the templates it was given: none, unless the user made them.
         // 14 to 15 (a roof's slope for each edge, a wall's top offset) has no step: the new fields default, to every edge at the
         // roof's `slope` and to a top at its level, which is what a file of 14 holds.
-        // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse) has no step: a file of 15 holds none.
+        // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
+        // read as dimensions of nothing) has no step: a file of 15 holds none.
         self.format = FORMAT;
     }
 
