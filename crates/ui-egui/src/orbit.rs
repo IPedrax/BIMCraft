@@ -1840,7 +1840,8 @@ mod worker_measurements {
     fn tower_in_the_styles_of_lines() {
         let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
         let mut session = bimcraft_core::engine::Session::new();
-        session.model = bimcraft_core::sample::tower::annotated(bimcraft_core::sample::tower::Plate::REFERENCE, 10).unwrap().into();
+        let storeys = std::env::var("STOREYS").ok().and_then(|s| s.parse().ok()).unwrap_or(10);
+        session.model = bimcraft_core::sample::tower::annotated(bimcraft_core::sample::tower::Plate::REFERENCE, storeys).unwrap().into();
         let Some(mut gpu) = crate::gpu::headless() else { return };
         let t = Instant::now();
         let scene = bimcraft_core::view3d::Scene::new(&session.model);
@@ -1851,6 +1852,14 @@ mod worker_measurements {
             let t = Instant::now();
             let mesh = Arc::new(bimcraft_core::view3d::gpu::Mesh::new(&scene, &look).unwrap());
             eprintln!("{style}: mesh {:.0} ms, {} triangles, {} lines", ms(t), mesh.triangles(), mesh.wires.len());
+            if std::env::var("MESH_ONLY").is_ok() {
+                let t = Instant::now();
+                std::hint::black_box(bimcraft_core::view3d::gpu::Mesh::new(&scene, &look).unwrap());
+                eprintln!("  mesh again, its edges kept: {:.0} ms", ms(t));
+                let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+                eprintln!("  {}", status.lines().filter(|l| l.starts_with("VmHWM")).collect::<String>());
+                continue;
+            }
             let t = Instant::now();
             mesh.prepare_picking();
             eprintln!("  picking hierarchy: {:.0} ms", ms(t));

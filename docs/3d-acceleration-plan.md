@@ -401,8 +401,26 @@ The annotated 10-storey tower, 1920 x 1080, release, RTX 2060, the camera turnin
 
 Two things are left of wireframe, neither of which changes its picture:
 
-- **Finding the edges takes 16 s on this tower**, all of it `Scene::edges`' map over every triangle's three sides. The processor pays it too, on the interface's thread; the card's is on the worker and is abandoned with its view. They are kept with the scene, so it is the first wireframe after an edit that waits. Finding them from the shapes (a copy's edges are its shape's, but for where it touches another) or by element is the next thing to try.
-- **Lines have no budget of their own.** Every line goes to the card every frame, none left out by what the view can see (hence "inside" at 4.9 ms is the vertex shader's cutting, not culling). At this tower it fits a frame; at 100 storeys, by proportion (not measured), a frame would be about 120 ms, and piece 6 doesn't yet reach it. Grouping lines as `Mesh::groups` does triangles would give both culling and a budget.
+- **Finding the edges took 16 s on this tower**, all of it `Scene::edges`' map over every triangle's three sides. It is now one list of sides, sorted, with the same edges in the same order (`the_edges_found_are_those_of_a_map_from_each_side_to_its_triangles`, which holds the map as its oracle and was seen to catch a wrong triangle and a wrong plane). The processor pays it too, on the interface's thread; the card's is on the worker and is abandoned with its view. They are kept with the scene, so it is the first wireframe after an edit that waits. Finding them from the shapes (a copy's edges are its shape's, but for where it touches another) or by element is the next thing to try.
+- **Lines have no budget of their own.** Every line goes to the card every frame, none left out by what the view can see (hence "inside" at 4.9 ms is the vertex shader's cutting, not culling). Grouping lines as `Mesh::groups` does triangles would give both culling and a budget. A frame grows with the lines, as the second table below shows, so at 100 storeys, by proportion (not measured), a frame would be about 80 ms, or 130 ms with something selected, and piece 6 doesn't yet reach it.
+
+The annotated tower in wireframe (`tower_in_the_styles_of_lines`, with `STOREYS` and `MESH_ONLY`), release, a machine near idle, old and new run in turn, each under a 20 GB limit:
+
+| Storeys | Lines | First mesh, the map | First mesh, the list | Peak memory, the map | Peak memory, the list |
+|---:|---:|---:|---:|---:|---:|
+| 10 | 5.8 million | 15.6 s | **4.6 s** | 5.4 GB | 4.7 GB |
+| 20 | 11.7 million | 33.2 s | **9.6 s** | 10.5 GB | 9.1 GB |
+| 30 | 17.5 million | 53.5 s | **14.2 s** | 17.4 GB | 13.5 GB |
+
+A frame on the same tower, before the list and on a busy machine, so only its growth is to be read:
+
+| Storeys | Whole, median | A wall selected | From inside |
+|---:|---:|---:|---:|
+| 10 | 9.1 ms | 13.0 ms | 5.0 ms |
+| 20 | 17.1 ms | 25.7 ms | 10.1 ms |
+| 30 | 24.7 ms | 38.2 ms | 14.5 ms |
+
+Memory is what stops a wireframe of the whole 100 storeys: about 0.45 GB a storey at its peak, so about 45 GB by proportion (not measured), past this machine's 46 GB with anything else running. It is why 100 storeys wasn't measured here, and it comes before a budget for its frames.
 
 ## Piece 8, fourth part: point clouds on the card (2026-11-04)
 
