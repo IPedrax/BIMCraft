@@ -2988,7 +2988,8 @@ impl BimApp {
                 ui.add_space(6.0);
                 ui.label(t("Category:"));
                 ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
-                    for cat in schedule::categories() {
+                    // Multi-Category first, as Revit's list has it.
+                    for cat in std::iter::once(schedule::MULTI).chain(schedule::categories()) {
                         if ui.selectable_label(d.category == Some(cat), lang::category(cat, true)).clicked() {
                             d.category = Some(cat);
                             // Named after it, as one of its kind there isn't yet.

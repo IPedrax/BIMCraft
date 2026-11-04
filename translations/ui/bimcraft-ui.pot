@@ -10255,3 +10255,13 @@ msgstr ""
 #: crates/ui-egui/src/dock.rs:555
 msgid "Project Browser · {}"
 msgstr ""
+
+#: crates/ui-egui/src/lang.rs:296
+msgctxt "category"
+msgid "Multi-Category"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:296
+msgctxt "category-plural"
+msgid "Multi-Category"
+msgstr ""

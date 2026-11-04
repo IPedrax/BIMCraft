@@ -667,3 +667,11 @@ msgstr "aseo"
 #: crates/core/src/loads.rs:78
 msgid "wc"
 msgstr "sanitario"
+
+#: crates/core/src/schedule.rs:220
+msgid "Category"
+msgstr ""
+
+#: crates/core/src/schedule.rs:230
+msgid "Material"
+msgstr ""

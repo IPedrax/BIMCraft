@@ -1525,10 +1525,14 @@ pub static ALL: &[Command] = &[
         "schedule",
         ui_msg!("Schedule"),
         &[],
-        "{name?, category?, fields?, filters?, sort?, grouped?, path?} a schedule view, as Revit's View > Schedules makes one, \
+        "{name?, category?, categories?, fields?, filters?, sort?, grouped?, path?} a schedule view, as Revit's View > Schedules makes one, \
          and its table: columns, rows, the `elements` each row lists, and totals (and a .csv file with a path, or an .xlsx workbook for a path ending .xlsx). A new one needs `name` and `category`: rooms, \
          doors, windows, walls, floors, ceilings, roofs, columns, structural columns, footings, beams, strip footings, components, \
-         stairs, ramps, railings or levels; `category` \
+         stairs, ramps, railings or levels, or `multicategory`, as Revit's Multi-Category Schedule: a row for each element of \
+         `categories` ([\"walls\", \"doors\"…]; none, every built one but rooms, levels and masses), with the fields they share \
+         (Category, Family, Type, Level, Count, Width, Height, Length, Thickness, Area: a wall's length by its height, a door's \
+         width by its height; Material: its type's structure layer's, a run's type's, a family's), each empty where its \
+         category has none; `category` \
          alone reads its own (Room Schedule, Door Schedule, Window Schedule, Wall Schedule, Floor Schedule, Level Schedule, \
          each the project's once changed). `fields`: its columns, in order, each a field's name (`available` lists them: its \
          category's own, Count, project parameters, a component's family's parameters) or {name, formula?, kind?: \
@@ -3224,8 +3228,11 @@ fn schedule(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let name = string(c, p, "name")?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
     let cat = match string(c, p, "category")? {
-        Some(k) if !schedule::categories().contains(&category(&k).as_str()) => {
-            return Err(bad(c, format!("`{k}` isn't a category schedules are of; there are: {}", schedule::categories().join(", "))));
+        Some(k) if !schedule::categories().contains(&category(&k).as_str()) && category(&k) != schedule::MULTI => {
+            return Err(bad(
+                c,
+                format!("`{k}` isn't a category schedules are of; there are: {}, {}", schedule::categories().join(", "), schedule::MULTI),
+            ));
         }
         k => k.map(|k| category(&k)),
     };
@@ -3259,6 +3266,11 @@ fn schedule(s: &mut Session, p: &Value) -> R {
         serde_json::from_value(v).map_err(|e| bad("schedule", format!("`{key}`: {e}")))
     }
     let mut changed = false;
+    // A multi-category one's categories, as elements name theirs; `[]`, every built one.
+    if let Some(v) = p.get("categories").filter(|v| !v.is_null()) {
+        let given: Vec<String> = read("categories", v.clone())?;
+        (sc.categories, changed) = (given.iter().map(|k| category(k)).collect(), true);
+    }
     if let Some(v) = named("fields", "name")? {
         (sc.fields, changed) = (read("fields", v)?, true);
     }
@@ -3302,6 +3314,9 @@ fn schedule(s: &mut Session, p: &Value) -> R {
     let columns: Vec<String> = t.columns.iter().map(|col| crate::schedule::heading(Units::Millimetres, col)).collect();
     let available: Vec<String> = crate::schedule::fields(m, &category(&sc.of)).into_iter().map(|(n, _)| n).collect();
     let mut out = json!({"id": id, "name": sc.name, "category": category(&sc.of), "columns": columns, "rows": t.rows, "elements": t.ids, "available": available});
+    if category(&sc.of) == schedule::MULTI {
+        out["categories"] = json!(schedule::listed(&sc));
+    }
     if let Some(totals) = t.totals {
         out["totals"] = json!(totals);
     }

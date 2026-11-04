@@ -10252,6 +10252,16 @@ msgstr "Superior"
 msgid "in the 3D view this tool draws on a level face: the top of a floor, a flat roof or a level"
 msgstr ""
 
+#: crates/ui-egui/src/lang.rs:296
+msgctxt "category"
+msgid "Multi-Category"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:296
+msgctxt "category-plural"
+msgid "Multi-Category"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "Haz clic en un punto por el que pasa el arco: define el radio. Esc cancela."

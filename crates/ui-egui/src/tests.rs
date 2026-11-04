@@ -3658,6 +3658,62 @@ fn project_parameters_are_made_in_their_window_and_given_values_in_properties() 
 }
 
 #[test]
+fn a_multi_category_schedule_is_made_from_the_new_schedule_dialog_and_lists_walls_and_doors() {
+    let mut h = app_at(&format!("{BOX}\ndoor {{\"at\": [2000, 0]}}"), 0.05);
+    press(&mut h, "View");
+    press(&mut h, "Schedules");
+    press(&mut h, "Schedule/Quantities…");
+    pick(&mut h, Role::Button, "Multi-Category");
+    let named = {
+        use egui_kittest::kittest::NodeT;
+        h.get_by_role_and_label(Role::TextInput, "Name:").accesskit_node().value()
+    };
+    assert_eq!(named.as_deref(), Some("Multi-Category Schedule"));
+    press(&mut h, "OK");
+    let sc = ids(&h, "schedule")[0];
+    assert_eq!(h.state().sheet, Sheet::Table(sc));
+    let Some(Element::Schedule(s)) = h.state().session.model.elements.get(sc).cloned() else { panic!("no schedule {sc}") };
+    assert_eq!(s.of, bimcraft_core::schedule::MULTI);
+    let t = bimcraft_core::schedule::table(&h.state().session.model, &s).unwrap();
+    let cats: Vec<&str> = t.rows.iter().filter_map(|r| r[0].as_str()).collect();
+    assert!(cats.contains(&"wall") && cats.contains(&"door"), "{cats:?}");
+}
+
+#[test]
+fn a_schedule_of_the_projects_own_is_deleted_from_the_browser_and_its_tab_closes() {
+    let mut h = app(&format!("{SAMPLE}\nschedule {{\"name\": \"Extras\", \"category\": \"multicategory\"}}"));
+    let sc = find(&h, |e| matches!(e, Element::Schedule(s) if s.name == "Extras"));
+    let before = ids(&h, "schedule").len();
+    h.get_by_label("Extras").scroll_to_me();
+    h.run();
+    browse(&mut h, "Extras");
+    assert_eq!(h.state().sheet, Sheet::Table(sc));
+    // Its entry in the browser, below its tab's: a widget's right click, pressed in one frame and let go in the next.
+    let pos = h.get_all_by_label("Extras").map(|n| n.rect()).max_by(|a, b| a.top().total_cmp(&b.top())).unwrap().center();
+    h.hover_at(pos);
+    h.run();
+    for pressed in [true, false] {
+        h.event(Event::PointerButton { pos, button: PointerButton::Secondary, pressed, modifiers: Modifiers::NONE });
+        h.run();
+    }
+    choose_item(&mut h, "Delete");
+    assert_eq!(ids(&h, "schedule").len(), before - 1, "deleted");
+    assert!(!h.state().session.model.elements.contains_key(sc), "it is the one deleted");
+    assert_ne!(h.state().sheet, Sheet::Table(sc), "its tab is closed");
+    // The six every project has have no Delete.
+    h.get_by_label("Room Schedule").scroll_to_me();
+    h.run();
+    let pos = h.get_by_label("Room Schedule").rect().center();
+    h.hover_at(pos);
+    h.run();
+    for pressed in [true, false] {
+        h.event(Event::PointerButton { pos, button: PointerButton::Secondary, pressed, modifiers: Modifiers::NONE });
+        h.run();
+    }
+    assert!(h.query_by_label("Delete").is_none(), "no Delete on a standard schedule");
+}
+
+#[test]
 fn a_new_schedule_takes_its_fields_filter_and_sorting_from_schedule_properties() {
     use bimcraft_core::schedule::{Filter, Op, Sort};
     let rooms = r#"wall {"points": [[5000,0],[5000,6000]], "type": "Interior - 100mm"}

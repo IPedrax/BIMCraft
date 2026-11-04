@@ -10253,6 +10253,16 @@ msgstr "Boven"
 msgid "in the 3D view this tool draws on a level face: the top of a floor, a flat roof or a level"
 msgstr ""
 
+#: crates/ui-egui/src/lang.rs:296
+msgctxt "category"
+msgid "Multi-Category"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:296
+msgctxt "category-plural"
+msgid "Multi-Category"
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Een patroon uit het bestand vervangt het patroon met dezelfde naam in deze lijst; anders wordt het weggelaten"
