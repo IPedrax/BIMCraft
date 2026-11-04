@@ -5747,7 +5747,7 @@ fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_i
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch;
     // 13 floors' and flat roofs' shapes; 14 the categories of family components, which the starter view templates name; 15 a roof's slope for each
-    // edge and a wall's top offset; 16 dimensions in 3D views and the locks Align leaves. Nothing in a file of 4
+    // edge and a wall's top offset; 16 dimensions in 3D views and the locks Align leaves; 17 multi-category schedules and Italian projects. Nothing in a file of 4
     // to 7 that holds no notes changes.
     let mut s = Session::new();
     let empty = serde_json::to_value(&*s.model).unwrap();

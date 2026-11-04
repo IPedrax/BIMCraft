@@ -1,5 +1,5 @@
 //! The interface's language: English, as the code writes it, Brazilian Portuguese, Spanish, Czech, French, German, Dutch,
-//! Vietnamese or Simplified Chinese. What
+//! Italian, Vietnamese or Simplified Chinese. What
 //! the window shows goes through [`t`], English being its own key; the widget helpers translate
 //! their labels and tips, so most call sites pass English and read it back translated. What a
 //! project holds (names, what its drawings say) follows the project's language instead, and the
@@ -51,13 +51,14 @@ pub enum Lang {
     French,
     German,
     Dutch,
+    Italian,
     Vietnamese,
     Chinese,
     TraditionalChinese,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 10] = [
+    pub const ALL: [Lang; 11] = [
         Lang::English,
         Lang::Portuguese,
         Lang::Spanish,
@@ -65,6 +66,7 @@ impl Lang {
         Lang::French,
         Lang::German,
         Lang::Dutch,
+        Lang::Italian,
         Lang::Vietnamese,
         Lang::Chinese,
         Lang::TraditionalChinese,
@@ -86,6 +88,7 @@ impl Lang {
             Lang::French => Language::French,
             Lang::German => Language::German,
             Lang::Dutch => Language::Dutch,
+            Lang::Italian => Language::Italian,
         }
     }
 
@@ -137,6 +140,7 @@ impl From<Language> for Lang {
             Language::French => Lang::French,
             Language::German => Lang::German,
             Language::Dutch => Lang::Dutch,
+            Language::Italian => Lang::Italian,
         }
     }
 }
@@ -421,6 +425,7 @@ mod tests {
         assert_eq!(Lang::from(Language::Swedish), Lang::English, "Swedish is a project language until its interface catalog is added");
         assert_eq!((Lang::TraditionalChinese.code(), Lang::TraditionalChinese.project()), ("zh_TW", Language::English));
         assert_eq!((Lang::Dutch.code(), Lang::Dutch.label(), Lang::Dutch.project()), ("nl", "Nederlands", Language::Dutch));
+        assert_eq!((Lang::Italian.code(), Lang::Italian.label(), Lang::Italian.project()), ("it", "Italiano", Language::Italian));
         assert_eq!(Lang::ALL.map(|l| Lang::from_code(l.code())), Lang::ALL.map(Some));
     }
 }

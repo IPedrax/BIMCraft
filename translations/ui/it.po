@@ -2241,7 +2241,7 @@ msgstr "Cilindro"
 
 #: crates/core/src/render.rs:2600
 msgid "DN"
-msgstr "Giù"
+msgstr "GIÙ"
 
 #: crates/ui-egui/src/settings.rs:420
 msgid "Dark"
@@ -8413,7 +8413,7 @@ msgstr "Tipi"
 
 #: crates/core/src/render.rs:2600
 msgid "UP"
-msgstr "Su"
+msgstr "SU"
 
 #: crates/core/src/schedule.rs:215
 #: crates/ui-egui/src/properties.rs:166

@@ -93,7 +93,7 @@ msgstr "Tratteggio incrociato"
 
 #: crates/core/src/render.rs:2600
 msgid "DN"
-msgstr "Giù"
+msgstr "GIÙ"
 
 #: crates/core/src/lines.rs:177
 msgid "Dash"
@@ -585,7 +585,7 @@ msgstr "Tipo"
 
 #: crates/core/src/render.rs:2600
 msgid "UP"
-msgstr "Su"
+msgstr "SU"
 
 #: crates/core/src/schedule.rs:215
 msgid "Unbounded Height"
