@@ -172,15 +172,15 @@ msgstr "Bogen 90"
 
 #: crates/core/src/graphics.rs:936
 msgid "Electrical Ceiling"
-msgstr ""
+msgstr "Elektro Decke"
 
 #: crates/core/src/graphics.rs:935
 msgid "Electrical Lighting"
-msgstr ""
+msgstr "Elektro Beleuchtung"
 
 #: crates/core/src/graphics.rs:934
 msgid "Electrical Power"
-msgstr ""
+msgstr "Elektro Energie"
 
 #: crates/core/src/commands.rs:8347
 #: crates/core/src/commands.rs:10324

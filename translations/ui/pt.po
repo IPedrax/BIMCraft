@@ -22,7 +22,7 @@ msgstr "(nenhum)"
 
 #: crates/ui-egui/src/settings.rs:709
 msgid "0 for any port that is free; an open port moves to a new one"
-msgstr ""
+msgstr "0 para qualquer porta livre; uma porta aberta passa para uma nova"
 
 #: crates/ui-egui/src/standards.rs:138
 msgid "0.75 in (19.05 mm) binding margin"
@@ -30,7 +30,7 @@ msgstr "0,75 pol (19,05 mm) margem de fixação"
 
 #: crates/ui-egui/src/settings.rs:713
 msgid "0: any free port"
-msgstr ""
+msgstr "0: qualquer porta livre"
 
 #: crates/ui-egui/src/revit.rs:203
 msgid "1 element"
@@ -42,7 +42,7 @@ msgstr ""
 
 #: crates/ui-egui/src/lib.rs:3463
 msgid "3D Scene as glTF…"
-msgstr ""
+msgstr "Cena 3D como glTF…"
 
 #: crates/ui-egui/src/browser.rs:397
 #: crates/ui-egui/src/lib.rs:3861
@@ -171,11 +171,11 @@ msgstr "Os pontos de um escaneamento onde o plano de corte da planta o corta, pa
 
 #: crates/ui-egui/src/start.rs:317
 msgid "A small house to look around in."
-msgstr ""
+msgstr "Uma casa pequena para explorar."
 
 #: crates/ui-egui/src/settings.rs:567
 msgid "A small marker at the project's 0, 0 with the directions of x (east) and y (north). It is drawn on the screen only: never in a printed drawing, a sheet or an export"
-msgstr ""
+msgstr "Uma pequena marca no 0, 0 do projeto, com as direções de x (leste) e y (norte). É desenhada apenas na tela: nunca em um desenho impresso, em uma folha ou em uma exportação"
 
 #: crates/ui-egui/src/graphics.rs:568
 msgid "A view always has a scale"
@@ -217,7 +217,7 @@ msgstr "Acima:"
 
 #: crates/ui-egui/src/lib.rs:4539
 msgid "Absolute"
-msgstr ""
+msgstr "Absoluta"
 
 #: crates/ui-egui/src/settings.rs:472
 msgid "Accent colour"
@@ -311,11 +311,11 @@ msgstr "Adicionar parâmetro"
 
 #: crates/ui-egui/src/lib.rs:2500
 msgid "Add Point"
-msgstr ""
+msgstr "Adicionar ponto"
 
 #: crates/ui-egui/src/lib.rs:2499
 msgid "Add Point: click on the top to raise or lower it there to the Options Bar's elevation"
-msgstr ""
+msgstr "Adicionar ponto: clique no topo para elevá-lo ou rebaixá-lo ali até a elevação da barra de opções"
 
 #: crates/ui-egui/src/editor.rs:841
 msgid "Add Revolve"
@@ -348,11 +348,11 @@ msgstr "Adicionar classificação"
 
 #: crates/ui-egui/src/lib.rs:2513
 msgid "Add Split Line"
-msgstr ""
+msgstr "Adicionar linha de divisão"
 
 #: crates/ui-egui/src/lib.rs:2511
 msgid "Add Split Line: click two points; the top folds along the line between them"
-msgstr ""
+msgstr "Adicionar linha de divisão: clique em dois pontos; o topo dobra ao longo da linha entre eles"
 
 #: crates/ui-egui/src/editor.rs:923
 msgid "Add Text"
@@ -410,35 +410,35 @@ msgstr "{} adicionado ao projeto"
 
 #: crates/ui-egui/src/settings.rs:277
 msgid "Agents"
-msgstr ""
+msgstr "Agentes"
 
 #: crates/ui-egui/src/settings.rs:725
 msgid "Agents connected: {}"
-msgstr ""
+msgstr "Agentes conectados: {}"
 
 #: crates/ui-egui/src/settings.rs:734
 msgid "Agents may only read this project."
-msgstr ""
+msgstr "Os agentes só podem ler este projeto."
 
 #: crates/ui-egui/src/control.rs:356
 msgid "Agents: off"
-msgstr ""
+msgstr "Agentes: desativados"
 
 #: crates/ui-egui/src/control.rs:359
 msgid "Agents: port {}"
-msgstr ""
+msgstr "Agentes: porta {}"
 
 #: crates/ui-egui/src/control.rs:360
 msgid "Agents: port {}, read-only"
-msgstr ""
+msgstr "Agentes: porta {}, somente leitura"
 
 #: crates/ui-egui/src/control.rs:361
 msgid "Agents: {} connected"
-msgstr ""
+msgstr "Agentes conectados: {}"
 
 #: crates/ui-egui/src/control.rs:362
 msgid "Agents: {} connected, read-only"
-msgstr ""
+msgstr "Agentes conectados: {}, somente leitura"
 
 #: crates/ui-egui/src/reinforce.rs:514
 msgid "Aggressiveness class"
@@ -487,11 +487,11 @@ msgstr "Cota alinhada (DI): escolha faces de parede paralelas, extremidades de p
 
 #: crates/core/src/commands.rs:711
 msgid "Aligned Dimension in 3D"
-msgstr ""
+msgstr "Cota alinhada em 3D"
 
 #: crates/ui-egui/src/orbit.rs:377
 msgid "Aligned dimension: {}"
-msgstr ""
+msgstr "Cota alinhada: {}"
 
 #: crates/ui-egui/src/lib.rs:357
 #: crates/ui-egui/src/properties.rs:2653
@@ -514,11 +514,11 @@ msgstr "Tudo"
 
 #: crates/ui-egui/src/settings.rs:728
 msgid "Allow agents to edit this project"
-msgstr ""
+msgstr "Permitir que os agentes editem este projeto"
 
 #: crates/ui-egui/src/lib.rs:4538
 msgid "Along Surface"
-msgstr ""
+msgstr "Ao longo da superfície"
 
 #: crates/ui-egui/src/reinforce.rs:102
 msgid "Along depth"
@@ -1345,7 +1345,7 @@ msgstr "Clique numa face para pintá-la com o material da Barra de Opções; a v
 
 #: crates/ui-egui/src/lib.rs:4840
 msgid "Click a floor or a roof: the spot slope reads how steeply its top falls there, and which way."
-msgstr ""
+msgstr "Clique num piso ou num telhado: a inclinação de ponto lê o quanto o topo cai ali e para que lado."
 
 #: crates/ui-egui/src/lib.rs:4839
 msgid "Click a floor, a roof, a stair or a wall: the spot elevation reads the height of its top there."
@@ -1373,11 +1373,11 @@ msgstr "Clique num ponto para marcar sua altura."
 
 #: crates/ui-egui/src/lib.rs:4760
 msgid "Click a point, a corner or an edge to select it (Shift adds), then type its height or drag its arrows; Delete removes it."
-msgstr ""
+msgstr "Clique num ponto, num vértice ou numa aresta para selecionar (Shift adiciona), depois digite a altura ou arraste as setas; Delete remove."
 
 #: crates/ui-egui/src/lib.rs:4887
 msgid "Click a point, a corner or an edge to select it (Shift adds), then type its height; drag a point to move it; Delete removes it."
-msgstr ""
+msgstr "Clique num ponto, num vértice ou numa aresta para selecionar (Shift adiciona), depois digite a altura; arraste um ponto para movê-lo; Delete remove."
 
 #: crates/ui-egui/src/lib.rs:4806
 msgid "Click a polyline or a spline where a vertex goes."
@@ -1498,7 +1498,7 @@ msgstr "Clique no modelo: um ponto da sua superfície."
 
 #: crates/ui-egui/src/lib.rs:4891
 msgid "Click on the top: a point there, the Options Bar's offset over the surface, or at its Absolute elevation."
-msgstr ""
+msgstr "Clique no topo: um ponto ali, no deslocamento da barra de opções sobre a superfície ou na elevação absoluta."
 
 #: crates/ui-egui/src/draw.rs:611
 msgid "Click one end of its axis."
@@ -1702,7 +1702,7 @@ msgstr "Clique onde termina: o grupo se repete ao longo da linha a cada espaçam
 
 #: crates/ui-egui/src/lib.rs:4894
 msgid "Click where it ends: the top folds along it. Esc cancels."
-msgstr ""
+msgstr "Clique onde ela termina: o topo dobra ao longo dela. Esc cancela."
 
 #: crates/ui-egui/src/lib.rs:4851
 msgid "Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels."
@@ -1794,7 +1794,7 @@ msgstr "Clique onde começa o detalhe repetido."
 
 #: crates/ui-egui/src/lib.rs:4893
 msgid "Click where the split line starts: a point, a corner or an edge of the top."
-msgstr ""
+msgstr "Clique onde a linha de divisão começa: um ponto, um vértice ou uma aresta do topo."
 
 #: crates/ui-egui/src/lib.rs:4849
 msgid "Click where the stair starts: the middle of its first riser."
@@ -1961,15 +1961,15 @@ msgstr "Contínua"
 
 #: crates/ui-egui/src/settings.rs:691
 msgid "Control port"
-msgstr ""
+msgstr "Porta de controle"
 
 #: crates/ui-egui/src/lib.rs:2506
 msgid "Convert Lines"
-msgstr ""
+msgstr "Converter linhas"
 
 #: crates/ui-egui/src/lib.rs:2504
 msgid "Convert Lines: make the selected folding lines split lines, so the top keeps folding along them"
-msgstr ""
+msgstr "Converter linhas: transforma as linhas de dobra selecionadas em linhas de divisão, para que o topo continue dobrando ao longo delas"
 
 #: crates/ui-egui/src/draw.rs:1098
 msgid "Convert Spline"
@@ -2073,7 +2073,7 @@ msgstr "Não foi possível instalar a atualização: {}"
 
 #: crates/ui-egui/src/control.rs:337
 msgid "Couldn't listen on port {} for agents: {}"
-msgstr ""
+msgstr "Não foi possível abrir a porta {} para os agentes: {}"
 
 #: crates/ui-egui/src/revit.rs:152
 #: crates/ui-egui/src/revit.rs:173
@@ -2544,7 +2544,7 @@ msgstr "Posicionamento do texto de cota:"
 
 #: crates/core/src/commands.rs:1100
 msgid "Dimension Value"
-msgstr ""
+msgstr "Valor da cota"
 
 #: crates/ui-egui/src/standards.rs:210
 msgid "Dimension lines, witness lines, terminators, text placement, and level marker symbols."
@@ -2552,7 +2552,7 @@ msgstr "Linhas de cota, linhas de extensão, terminadores, posicionamento de tex
 
 #: crates/ui-egui/src/canvas.rs:2993
 msgid "Dimension {}"
-msgstr ""
+msgstr "Cota {}"
 
 #: crates/ui-egui/src/lang.rs:29
 #: crates/ui-egui/src/properties.rs:443
@@ -2855,7 +2855,7 @@ msgstr "Editar {}"
 
 #: crates/ui-egui/src/settings.rs:727
 msgid "Editing"
-msgstr ""
+msgstr "Edição"
 
 #: crates/ui-egui/src/graphics.rs:598
 #: crates/ui-egui/src/graphics.rs:620
@@ -2916,7 +2916,7 @@ msgstr "Elevação (°)"
 
 #: crates/ui-egui/src/lib.rs:2527
 msgid "Elevation Base:"
-msgstr ""
+msgstr "Base da elevação:"
 
 #: crates/ui-egui/src/templates.rs:46
 msgid "Elevation/Section"
@@ -2925,7 +2925,7 @@ msgstr "Elevação/Corte"
 #: crates/ui-egui/src/lib.rs:4545
 #: crates/ui-egui/src/lib.rs:4551
 msgid "Elevation:"
-msgstr ""
+msgstr "Elevação:"
 
 #: crates/ui-egui/src/lib.rs:3881
 msgid "Elevation: click beside the building, on the side to look at"
@@ -4174,7 +4174,7 @@ msgstr "Lente:"
 
 #: crates/ui-egui/src/settings.rs:696
 msgid "Let agents work on this project"
-msgstr ""
+msgstr "Deixar os agentes trabalharem neste projeto"
 
 #: crates/core/src/commands.rs:122
 #: crates/ui-egui/src/shape.rs:101
@@ -4399,7 +4399,7 @@ msgstr "Listar {}"
 
 #: crates/ui-egui/src/settings.rs:718
 msgid "Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}"
-msgstr ""
+msgstr "Escutando em 127.0.0.1, porta {}: os agentes se conectam com bimcraft-cli mcp --connect {}"
 
 #: crates/core/src/fixtures.rs:247
 msgid "Load"
@@ -4455,7 +4455,7 @@ msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:3071
 msgid "Lock alignment"
-msgstr ""
+msgstr "Bloquear alinhamento"
 
 #: crates/ui-egui/src/canvas.rs:2968
 msgid "Lock segment {}"
@@ -4463,7 +4463,7 @@ msgstr "Bloquear segmento {}"
 
 #: crates/ui-egui/src/canvas.rs:3059
 msgid "Locked segment {}"
-msgstr ""
+msgstr "Segmento {} bloqueado"
 
 #: crates/core/src/lines.rs:178
 msgid "Long Dash"
@@ -4752,11 +4752,11 @@ msgstr "Modificar linhas"
 
 #: crates/ui-egui/src/lib.rs:2496
 msgid "Modify Sub Elements"
-msgstr ""
+msgstr "Modificar subelementos"
 
 #: crates/ui-egui/src/lib.rs:2494
 msgid "Modify Sub Elements: select a point, a corner or an edge of the top, then type its height on the Options Bar or its label"
-msgstr ""
+msgstr "Modificar subelementos: selecione um ponto, um vértice ou uma aresta do topo e digite a altura na barra de opções ou no rótulo"
 
 #: crates/ui-egui/src/lib.rs:4343
 msgid "Modify Wall"
@@ -5160,11 +5160,11 @@ msgstr "Desligado"
 
 #: crates/ui-egui/src/settings.rs:729
 msgid "Off, agents only read the project: they inspect it, read its schedules, render its views and export it to new files (its sheets to PDF among them), and whatever they ask that would change it, undo it, replace it or save over its file is refused"
-msgstr ""
+msgstr "Desativado, os agentes só leem o projeto: inspecionam-no, leem suas tabelas, renderizam suas vistas e o exportam para novos arquivos (suas folhas em PDF entre eles), e tudo o que pedirem que o altere, desfaça, substitua ou salve sobre o arquivo dele é recusado"
 
 #: crates/ui-egui/src/settings.rs:721
 msgid "Off: no agent can reach this window"
-msgstr ""
+msgstr "Desativado: nenhum agente alcança esta janela"
 
 #: crates/core/src/schedule.rs:191
 #: crates/ui-egui/src/linestyles/creator.rs:76
@@ -5181,7 +5181,7 @@ msgstr "Deslocamento (OF): escolha uma parede ou linha; uma cópia vai para o la
 
 #: crates/ui-egui/src/lib.rs:4542
 msgid "Offset from Surface:"
-msgstr ""
+msgstr "Deslocamento da superfície:"
 
 #: crates/ui-egui/src/draw.rs:350
 #: crates/ui-egui/src/lib.rs:4657
@@ -5262,7 +5262,7 @@ msgstr ""
 
 #: crates/ui-egui/src/settings.rs:694
 msgid "Opens the control port now and whenever BIMCraft starts: an agent connects with bimcraft-cli mcp --connect. Only this machine can reach it, and only with the token in bridge.json beside your favorites"
-msgstr ""
+msgstr "Abre a porta de controle agora e sempre que o BIMCraft iniciar: um agente se conecta com bimcraft-cli mcp --connect. Só este computador a alcança, e apenas com o token em bridge.json ao lado dos seus favoritos"
 
 #: crates/ui-egui/src/updates.rs:100
 msgid "Opens the release page on GitHub. This copy can't update itself."
@@ -5624,7 +5624,7 @@ msgstr "Selecionar paredes: uma linha de limite ao longo de cada parede clicada"
 
 #: crates/ui-egui/src/orbit.rs:381
 msgid "Pick a corner, an edge or a face of the model to dimension."
-msgstr ""
+msgstr "Selecione um vértice, uma aresta ou uma face do modelo para cotar."
 
 #: crates/ui-egui/src/lib.rs:4830
 msgid "Pick a curved wall or an arc."
@@ -6004,7 +6004,7 @@ msgstr "Plano YZ"
 
 #: crates/ui-egui/src/settings.rs:565
 msgid "Plans"
-msgstr ""
+msgstr "Plantas"
 
 #: crates/core/src/fixtures.rs:246
 msgid "Plaster"
@@ -6045,7 +6045,7 @@ msgstr "Nuvens de pontos"
 
 #: crates/ui-egui/src/shape.rs:354
 msgid "Point height {}"
-msgstr ""
+msgstr "Altura do ponto {}"
 
 #: crates/ui-egui/src/lib.rs:4809
 msgid "Point to a wall or a line: the offset goes to the cursor's side. Click to place it."
@@ -6069,7 +6069,7 @@ msgstr "Porcelana"
 
 #: crates/ui-egui/src/settings.rs:705
 msgid "Port"
-msgstr ""
+msgstr "Porta"
 
 #: crates/ui-egui/src/properties.rs:377
 msgid "Position"
@@ -6176,7 +6176,7 @@ msgstr "Unidades do projeto (UN): como os comprimentos aparecem e são lidos; ag
 
 #: crates/ui-egui/src/shape.rs:102
 msgid "Project Zero"
-msgstr ""
+msgstr "Zero do projeto"
 
 #: crates/ui-egui/src/presets.rs:158
 msgid "Project scale"
@@ -6535,11 +6535,11 @@ msgstr ""
 
 #: crates/ui-egui/src/lib.rs:2517
 msgid "Reset Shape"
-msgstr ""
+msgstr "Redefinir forma"
 
 #: crates/ui-egui/src/lib.rs:2516
 msgid "Reset Shape: take the points and split lines off, the top flat again"
-msgstr ""
+msgstr "Redefinir forma: tira os pontos e as linhas de divisão, deixando o topo plano de novo"
 
 #: crates/ui-egui/src/lib.rs:377
 msgid "Reset Temporary Hide/Isolate"
@@ -6658,7 +6658,7 @@ msgstr "Telhas"
 
 #: crates/ui-egui/src/properties.rs:1366
 msgid "Roof's slope"
-msgstr ""
+msgstr "Inclinação do telhado"
 
 #: crates/core/src/commands.rs:403
 msgid "Room"
@@ -6743,7 +6743,7 @@ msgstr "Amostra"
 
 #: crates/ui-egui/src/start.rs:317
 msgid "Sample Project"
-msgstr ""
+msgstr "Projeto de exemplo"
 
 #: crates/core/src/fills.rs:413
 #: crates/ui-egui/src/properties.rs:1250
@@ -7164,11 +7164,11 @@ msgstr "Mostrar guias de alinhamento temporárias ao desenhar"
 
 #: crates/ui-egui/src/settings.rs:566
 msgid "Show the origin marker in plans"
-msgstr ""
+msgstr "Mostrar a marca da origem nas plantas"
 
 #: crates/ui-egui/src/settings.rs:570
 msgid "Show the view's name in the corner of plans"
-msgstr ""
+msgstr "Mostrar o nome da vista no canto das plantas"
 
 #: crates/ui-egui/src/inquiry.rs:139
 msgid "Show: open the plan they are in, zoomed to them"
@@ -7294,7 +7294,7 @@ msgstr "Inclinação:"
 
 #: crates/ui-egui/src/properties.rs:1379
 msgid "Slope: a number of degrees from 0 to {}, or blank for the roof's"
-msgstr ""
+msgstr "Inclinação: um número de graus de 0 a {}, ou em branco para a do telhado"
 
 #: crates/ui-egui/src/settings.rs:621
 msgid "Smooth lines (anti-aliasing)"
@@ -7465,11 +7465,11 @@ msgstr "Elevação de ponto (EL): clique num piso, num telhado ou numa escada; n
 #: crates/ui-egui/src/lib.rs:1427
 #: crates/ui-egui/src/lib.rs:3729
 msgid "Spot Slope"
-msgstr ""
+msgstr "Inclinação de ponto"
 
 #: crates/ui-egui/src/lib.rs:3730
 msgid "Spot Slope: click a floor or a roof in a plan; an arrow points downhill with how steeply its top falls"
-msgstr ""
+msgstr "Inclinação de ponto: clique num piso ou num telhado em uma planta; uma seta aponta no sentido da descida e mostra o quanto o topo cai"
 
 #: crates/ui-egui/src/properties.rs:677
 msgid "Square Grid"
@@ -7776,7 +7776,7 @@ msgstr "Tira o que nada no projeto usa. Cada categoria mantém um tipo; Desfazer
 
 #: crates/ui-egui/src/properties.rs:2405
 msgid "Takes up a shaped top's falls: one layer at most"
-msgstr ""
+msgstr "Assume as quedas de um topo modelado: no máximo uma camada"
 
 #: crates/core/src/snap.rs:64
 msgid "Tangent"
@@ -7938,7 +7938,7 @@ msgstr "O centro de uma parede curva, de um pilar ou de um componente"
 
 #: crates/ui-egui/src/control.rs:375
 msgid "The control port, through which an agent works on this project (bimcraft-cli mcp --connect): whether it is open, how many agents are connected, and whether they may only read. Click for File > Settings > Agents"
-msgstr ""
+msgstr "A porta de controle, por onde um agente trabalha neste projeto (bimcraft-cli mcp --connect): se está aberta, quantos agentes estão conectados e se podem apenas ler. Clique para abrir Arquivo > Configurações > Agentes"
 
 #: crates/ui-egui/src/properties.rs:2623
 msgid "The ends of walls, grids and what else is drawn, and the points picked so far"
@@ -7989,7 +7989,7 @@ msgstr "O nome `{}` já está em uso."
 
 #: crates/ui-egui/src/settings.rs:571
 msgid "The name of the floor plan or ceiling plan in its bottom left corner. It is drawn on the screen only, and the view's tab names it too"
-msgstr ""
+msgstr "O nome da planta de piso ou da planta de forro, no canto inferior esquerdo dela. É desenhado apenas na tela, e a aba da vista também mostra o nome"
 
 #: crates/ui-egui/src/presets.rs:217
 msgid "The palettes, the tools shown, the project scale and the layout, kept under this name"
@@ -8059,7 +8059,7 @@ msgstr "A vista está de perfil em relação ao plano do esboço: gire-a para es
 
 #: crates/ui-egui/src/orbit.rs:367
 msgid "The view runs along the dimension: turn it to place its line."
-msgstr ""
+msgstr "A vista olha ao longo da cota: gire-a para posicionar a linha dela."
 
 #: crates/ui-egui/src/electrical.rs:294
 msgid "The voltages of the project, in volts, and the band a device may read within. A distribution system names them."
@@ -8067,7 +8067,7 @@ msgstr "As tensões do projeto, em volts, e a faixa em que um dispositivo pode o
 
 #: crates/ui-egui/src/triad.rs:131
 msgid "The work plane is on the level already"
-msgstr ""
+msgstr "O plano de trabalho já está no nível"
 
 #: crates/ui-egui/src/workplane.rs:416
 msgid "The work plane must be horizontal: a floor, a ceiling, a roof or a shaft is sketched on a level plane. Set the Work Plane (the 3D view's control bar) on a level, a level surface or three points at one height."
@@ -8246,7 +8246,7 @@ msgstr "Nível superior"
 
 #: crates/ui-egui/src/properties.rs:134
 msgid "Top Offset"
-msgstr ""
+msgstr "Deslocamento superior"
 
 #: crates/ui-egui/src/structure.rs:149
 #: crates/ui-egui/src/structure.rs:173
@@ -8501,7 +8501,7 @@ msgstr "Formato de unidades"
 
 #: crates/ui-egui/src/canvas.rs:3044
 msgid "Unlock alignment"
-msgstr ""
+msgstr "Desbloquear alinhamento"
 
 #: crates/core/src/commands.rs:8704
 msgid "Unnamed"
@@ -8513,7 +8513,7 @@ msgstr "Alterações não salvas"
 
 #: crates/ui-egui/src/shape.rs:100
 msgid "Unshaped Top"
-msgstr ""
+msgstr "Topo sem edição de forma"
 
 #: crates/ui-egui/src/autosave.rs:293
 msgid "Untitled project"
@@ -8585,7 +8585,7 @@ msgstr "Valor"
 #: crates/ui-egui/src/properties.rs:2376
 #: crates/ui-egui/src/properties.rs:2405
 msgid "Variable"
-msgstr ""
+msgstr "Variável"
 
 #: crates/ui-egui/src/start.rs:441
 msgid "Version {}"
@@ -9018,12 +9018,12 @@ msgstr "Plano de trabalho: {}"
 #: crates/ui-egui/src/triad.rs:108
 #: crates/ui-egui/src/triad.rs:133
 msgid "Work plane back to the level"
-msgstr ""
+msgstr "Plano de trabalho de volta ao nível"
 
 #: crates/ui-egui/src/triad.rs:107
 #: crates/ui-egui/src/triad.rs:119
 msgid "Work plane square to the {} axis"
-msgstr ""
+msgstr "Plano de trabalho perpendicular ao eixo {}"
 
 #: crates/core/src/family.rs:1825
 msgid "Worktop"
@@ -9172,7 +9172,7 @@ msgstr "um número inteiro"
 
 #: crates/ui-egui/src/shape.rs:265
 msgid "add point: `{}` is not {}"
-msgstr ""
+msgstr "adicionar ponto: `{}` não é {}"
 
 #: crates/ui-egui/src/canvas.rs:1054
 msgid "align"
@@ -9212,7 +9212,7 @@ msgstr "clique no fim da linha"
 
 #: crates/ui-egui/src/orbit.rs:1155
 msgid "click on the floor's top"
-msgstr ""
+msgstr "clique no topo do piso"
 
 #: crates/ui-egui/src/canvas.rs:2292
 msgid "click where its run ends"
@@ -9320,7 +9320,7 @@ msgstr "spline por pontos"
 
 #: crates/ui-egui/src/lib.rs:3464
 msgid "glTF binary"
-msgstr ""
+msgstr "glTF binário"
 
 #: crates/ui-egui/src/display.rs:43
 msgid "graphic display options are for the 3D view: open it from the Project Browser"
@@ -9368,7 +9368,7 @@ msgstr "material"
 
 #: crates/ui-egui/src/shape.rs:301
 msgid "modify sub elements: `{}` is not an elevation"
-msgstr ""
+msgstr "modificar subelementos: `{}` não é uma elevação"
 
 #: crates/ui-egui/src/workplane.rs:226
 #: crates/ui-egui/src/workplane.rs:238
@@ -9450,7 +9450,7 @@ msgstr "selecione um grupo de detalhes para desagrupar"
 
 #: crates/ui-egui/src/shape.rs:436
 msgid "select a point, a corner or an edge first"
-msgstr ""
+msgstr "selecione primeiro um ponto, um vértice ou uma aresta"
 
 #: crates/ui-egui/src/lib.rs:2306
 msgid "select an element that has a type first"
@@ -9466,7 +9466,7 @@ msgstr "selecione primeiro as linhas de detalhe, regiões preenchidas e textos a
 
 #: crates/ui-egui/src/lib.rs:2414
 msgid "select the floor or flat roof to shape first"
-msgstr ""
+msgstr "selecione primeiro o piso ou o telhado plano cuja forma será editada"
 
 #: crates/ui-egui/src/lib.rs:2410
 msgid "select the floor to slope first"
@@ -9565,7 +9565,7 @@ msgstr "dois tipos se chamam `{}`"
 
 #: crates/ui-egui/src/shape.rs:299
 msgid "type the elevation first"
-msgstr ""
+msgstr "digite primeiro a elevação"
 
 #: crates/core/src/graphics.rs:959
 msgid "view filter"
@@ -9834,11 +9834,11 @@ msgstr "{}: `{}` não é um número"
 
 #: crates/ui-egui/src/orbit.rs:409
 msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
-msgstr ""
+msgstr "{}: na vista 3D, apoia-se numa face horizontal (o topo de um piso, de um telhado plano ou de um nível): aponte para uma"
 
 #: crates/ui-egui/src/orbit.rs:405
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
-msgstr ""
+msgstr "{}: na vista 3D, os pontos ficam numa face horizontal (o topo de um piso, de um pilar, de um telhado plano ou de um nível): aponte para uma"
 
 #: crates/ui-egui/src/revit.rs:136
 msgid "{}: this build of BIMCraft was made without Revit support (`--no-default-features`); build with the default `rvt` feature to read Revit files"
@@ -9943,7 +9943,7 @@ msgstr "Vista 3D"
 #: crates/ui-egui/src/lang.rs:257
 msgctxt "category"
 msgid "Air Terminal"
-msgstr ""
+msgstr "Captor"
 
 #: crates/ui-egui/src/lang.rs:276
 msgctxt "category"
@@ -9968,7 +9968,7 @@ msgstr "Eletrocalha"
 #: crates/ui-egui/src/lang.rs:249
 msgctxt "category"
 msgid "Casework"
-msgstr ""
+msgstr "Marcenaria"
 
 #: crates/ui-egui/src/lang.rs:268
 msgctxt "category"
@@ -9993,7 +9993,7 @@ msgstr "Eletroduto"
 #: crates/ui-egui/src/lang.rs:262
 msgctxt "category"
 msgid "Data Outlet"
-msgstr ""
+msgstr "Ponto de dados"
 
 #: crates/ui-egui/src/lang.rs:289
 msgctxt "category"
@@ -10018,7 +10018,7 @@ msgstr "Condutor de descida"
 #: crates/ui-egui/src/lang.rs:251
 msgctxt "category"
 msgid "Drain"
-msgstr ""
+msgstr "Ralo"
 
 #: crates/ui-egui/src/lang.rs:281
 msgctxt "category"
@@ -10033,12 +10033,12 @@ msgstr "Condutor de aterramento"
 #: crates/ui-egui/src/lang.rs:258
 msgctxt "category"
 msgid "Earthing Electrode"
-msgstr ""
+msgstr "Haste de aterramento"
 
 #: crates/ui-egui/src/lang.rs:254
 msgctxt "category"
 msgid "Electrical Equipment"
-msgstr ""
+msgstr "Equipamento elétrico"
 
 #: crates/ui-egui/src/lang.rs:243
 msgctxt "category"
@@ -10063,12 +10063,12 @@ msgstr "Sapata"
 #: crates/ui-egui/src/lang.rs:248
 msgctxt "category"
 msgid "Furniture"
-msgstr ""
+msgstr "Mobiliário"
 
 #: crates/ui-egui/src/lang.rs:261
 msgctxt "category"
 msgid "Generic Component"
-msgstr ""
+msgstr "Componente genérico"
 
 #: crates/ui-egui/src/lang.rs:239
 msgctxt "category"
@@ -10078,7 +10078,7 @@ msgstr "Eixo"
 #: crates/ui-egui/src/lang.rs:259
 msgctxt "category"
 msgid "Inspection Box"
-msgstr ""
+msgstr "Caixa de inspeção"
 
 #: crates/ui-egui/src/lang.rs:238
 msgctxt "category"
@@ -10088,7 +10088,7 @@ msgstr "Nível"
 #: crates/ui-egui/src/lang.rs:260
 msgctxt "category"
 msgid "Lighting Fixture"
-msgstr ""
+msgstr "Luminária"
 
 #: crates/ui-egui/src/lang.rs:293
 msgctxt "category"
@@ -10108,12 +10108,12 @@ msgstr "Piso de massa"
 #: crates/ui-egui/src/lang.rs:255
 msgctxt "category"
 msgid "Outlet"
-msgstr ""
+msgstr "Tomada"
 
 #: crates/ui-egui/src/lang.rs:264
 msgctxt "category"
 msgid "Patch Panel"
-msgstr ""
+msgstr "Patch panel"
 
 #: crates/ui-egui/src/lang.rs:280
 msgctxt "category"
@@ -10123,17 +10123,17 @@ msgstr "Tubulação"
 #: crates/ui-egui/src/lang.rs:253
 msgctxt "category"
 msgid "Pipe Accessory"
-msgstr ""
+msgstr "Acessório de tubulação"
 
 #: crates/ui-egui/src/lang.rs:252
 msgctxt "category"
 msgid "Pipe Fitting"
-msgstr ""
+msgstr "Conexão de tubulação"
 
 #: crates/ui-egui/src/lang.rs:250
 msgctxt "category"
 msgid "Plumbing Fixture"
-msgstr ""
+msgstr "Peça sanitária"
 
 #: crates/ui-egui/src/lang.rs:294
 msgctxt "category"
@@ -10143,7 +10143,7 @@ msgstr "Nuvem de pontos"
 #: crates/ui-egui/src/lang.rs:265
 msgctxt "category"
 msgid "Rack"
-msgstr ""
+msgstr "Rack"
 
 #: crates/ui-egui/src/lang.rs:274
 msgctxt "category"
@@ -10213,7 +10213,7 @@ msgstr "Pilar estrutural"
 #: crates/ui-egui/src/lang.rs:256
 msgctxt "category"
 msgid "Switch"
-msgstr ""
+msgstr "Interruptor"
 
 #: crates/ui-egui/src/lang.rs:241
 msgctxt "category"
@@ -10233,7 +10233,7 @@ msgstr "Janela de vista"
 #: crates/ui-egui/src/lang.rs:263
 msgctxt "category"
 msgid "Voice Outlet"
-msgstr ""
+msgstr "Ponto de voz"
 
 #: crates/ui-egui/src/lang.rs:233
 msgctxt "category"
@@ -10258,7 +10258,7 @@ msgstr "Vistas 3D"
 #: crates/ui-egui/src/lang.rs:257
 msgctxt "category-plural"
 msgid "Air Terminals"
-msgstr ""
+msgstr "Captores"
 
 #: crates/ui-egui/src/lang.rs:276
 msgctxt "category-plural"
@@ -10283,7 +10283,7 @@ msgstr "Cabos"
 #: crates/ui-egui/src/lang.rs:249
 msgctxt "category-plural"
 msgid "Casework"
-msgstr ""
+msgstr "Marcenaria"
 
 #: crates/ui-egui/src/lang.rs:268
 msgctxt "category-plural"
@@ -10308,7 +10308,7 @@ msgstr "Eletrodutos"
 #: crates/ui-egui/src/lang.rs:262
 msgctxt "category-plural"
 msgid "Data Outlets"
-msgstr ""
+msgstr "Pontos de dados"
 
 #: crates/ui-egui/src/lang.rs:240
 msgctxt "category-plural"
@@ -10328,7 +10328,7 @@ msgstr "Condutores de descida"
 #: crates/ui-egui/src/lang.rs:251
 msgctxt "category-plural"
 msgid "Drains"
-msgstr ""
+msgstr "Ralos"
 
 #: crates/ui-egui/src/lang.rs:281
 msgctxt "category-plural"
@@ -10343,12 +10343,12 @@ msgstr "Condutores de aterramento"
 #: crates/ui-egui/src/lang.rs:258
 msgctxt "category-plural"
 msgid "Earthing Electrodes"
-msgstr ""
+msgstr "Hastes de aterramento"
 
 #: crates/ui-egui/src/lang.rs:254
 msgctxt "category-plural"
 msgid "Electrical Equipment"
-msgstr ""
+msgstr "Equipamentos elétricos"
 
 #: crates/ui-egui/src/lang.rs:243
 msgctxt "category-plural"
@@ -10373,12 +10373,12 @@ msgstr "Sapatas"
 #: crates/ui-egui/src/lang.rs:248
 msgctxt "category-plural"
 msgid "Furniture"
-msgstr ""
+msgstr "Mobiliário"
 
 #: crates/ui-egui/src/lang.rs:261
 msgctxt "category-plural"
 msgid "Generic Components"
-msgstr ""
+msgstr "Componentes genéricos"
 
 #: crates/ui-egui/src/lang.rs:239
 msgctxt "category-plural"
@@ -10388,7 +10388,7 @@ msgstr "Eixos"
 #: crates/ui-egui/src/lang.rs:259
 msgctxt "category-plural"
 msgid "Inspection Boxes"
-msgstr ""
+msgstr "Caixas de inspeção"
 
 #: crates/ui-egui/src/lang.rs:238
 msgctxt "category-plural"
@@ -10398,7 +10398,7 @@ msgstr "Níveis"
 #: crates/ui-egui/src/lang.rs:260
 msgctxt "category-plural"
 msgid "Lighting Fixtures"
-msgstr ""
+msgstr "Luminárias"
 
 #: crates/ui-egui/src/lang.rs:289
 msgctxt "category-plural"
@@ -10423,22 +10423,22 @@ msgstr "Massas"
 #: crates/ui-egui/src/lang.rs:255
 msgctxt "category-plural"
 msgid "Outlets"
-msgstr ""
+msgstr "Tomadas"
 
 #: crates/ui-egui/src/lang.rs:264
 msgctxt "category-plural"
 msgid "Patch Panels"
-msgstr ""
+msgstr "Patch panels"
 
 #: crates/ui-egui/src/lang.rs:253
 msgctxt "category-plural"
 msgid "Pipe Accessories"
-msgstr ""
+msgstr "Acessórios de tubulação"
 
 #: crates/ui-egui/src/lang.rs:252
 msgctxt "category-plural"
 msgid "Pipe Fittings"
-msgstr ""
+msgstr "Conexões de tubulação"
 
 #: crates/ui-egui/src/lang.rs:280
 msgctxt "category-plural"
@@ -10448,7 +10448,7 @@ msgstr "Tubulações"
 #: crates/ui-egui/src/lang.rs:250
 msgctxt "category-plural"
 msgid "Plumbing Fixtures"
-msgstr ""
+msgstr "Peças sanitárias"
 
 #: crates/ui-egui/src/lang.rs:294
 msgctxt "category-plural"
@@ -10458,7 +10458,7 @@ msgstr "Nuvens de pontos"
 #: crates/ui-egui/src/lang.rs:265
 msgctxt "category-plural"
 msgid "Racks"
-msgstr ""
+msgstr "Racks"
 
 #: crates/ui-egui/src/lang.rs:274
 msgctxt "category-plural"
@@ -10528,7 +10528,7 @@ msgstr "Pilares estruturais"
 #: crates/ui-egui/src/lang.rs:256
 msgctxt "category-plural"
 msgid "Switches"
-msgstr ""
+msgstr "Interruptores"
 
 #: crates/ui-egui/src/lang.rs:241
 msgctxt "category-plural"
@@ -10548,7 +10548,7 @@ msgstr "Janelas de vista"
 #: crates/ui-egui/src/lang.rs:263
 msgctxt "category-plural"
 msgid "Voice Outlets"
-msgstr ""
+msgstr "Pontos de voz"
 
 #: crates/ui-egui/src/lang.rs:233
 msgctxt "category-plural"
@@ -10568,32 +10568,32 @@ msgstr "Fios"
 #: crates/core/src/triad.rs:114
 msgctxt "side"
 msgid "Back"
-msgstr ""
+msgstr "Posterior"
 
 #: crates/core/src/triad.rs:112
 msgctxt "side"
 msgid "Bottom"
-msgstr ""
+msgstr "Inferior"
 
 #: crates/core/src/triad.rs:113
 msgctxt "side"
 msgid "Front"
-msgstr ""
+msgstr "Frontal"
 
 #: crates/core/src/triad.rs:115
 msgctxt "side"
 msgid "Left"
-msgstr ""
+msgstr "Esquerda"
 
 #: crates/core/src/triad.rs:116
 msgctxt "side"
 msgid "Right"
-msgstr ""
+msgstr "Direita"
 
 #: crates/core/src/triad.rs:111
 msgctxt "side"
 msgid "Top"
-msgstr ""
+msgstr "Superior"
 
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
