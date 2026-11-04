@@ -3296,6 +3296,64 @@ fn camera_mark(d: &mut Drawing, v: &View3D) {
     d.grow(from, a);
 }
 
+/// The eye of the nearest camera whose mark (body, lens or name) the cursor at pixel `at` is over, so that a click on
+/// the mark lands on the camera's eye, never on a corner of its symbol. None off a camera's mark. The body, lens and
+/// name sizes are those `render::camera_mark` draws with.
+pub fn camera_at(m: &Model, level: Id, v: &View, at: (f32, f32)) -> Option<(Id, P2)> {
+    let (x, y) = at;
+    let plan = m.plan_level(level).unwrap_or(level);
+    m.elements
+        .iter()
+        .filter_map(|(&id, e)| {
+            let Element::View3D(view) = e else { return None };
+            let c = view.camera?;
+            if m.camera_level(c.eye[2]) != Some(plan) {
+                return None;
+            }
+            let eye = P2(c.eye[0], c.eye[1]);
+            let target = P2(c.target[0], c.target[1]);
+            let a = v.px(eye);
+            let b = v.px(target);
+            let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+            let len = (dx * dx + dy * dy).sqrt();
+            let (ux, uy) = if len > 1e-6 { (dx / len, dy / len) } else { (1.0, 0.0) };
+            let (px, py) = (-uy, ux);
+            let (back, half, depth) = (-7.0, 9.0, 8.0);
+            let c = (a.0 + ux * back, a.1 + uy * back);
+            let body = [
+                (c.0 - ux * depth + px * half, c.1 - uy * depth + py * half),
+                (c.0 + ux * depth + px * half, c.1 + uy * depth + py * half),
+                (c.0 + ux * depth - px * half, c.1 + uy * depth - py * half),
+                (c.0 - ux * depth - px * half, c.1 - uy * depth - py * half),
+            ];
+            let lens = (c.0 + ux * (depth + 3.0), c.1 + uy * (depth + 3.0));
+            let w = font::width(&view.name, 10.0);
+            let name = (a.0 - ux * (14.0 + w / 2.0), a.1 - uy * (14.0 + w / 2.0));
+            let on_body = inside_polygon((x, y), &body);
+            let on_lens = (x - lens.0).powi(2) + (y - lens.1).powi(2) <= 5.5f32.powi(2);
+            let on_name = (x - name.0).abs() <= w / 2.0 + 2.0 && (y - name.1).abs() <= 7.0;
+            (on_body || on_lens || on_name).then_some(((x - a.0).powi(2) + (y - a.1).powi(2), id, eye))
+        })
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, id, eye)| (id, eye))
+}
+
+/// Whether `p` lies inside `polygon`, by the even-odd rule. A camera's mark is a turned box, so its corners are not
+/// axis-aligned.
+fn inside_polygon(p: (f32, f32), polygon: &[(f32, f32)]) -> bool {
+    let mut inside = false;
+    let mut j = polygon.len().saturating_sub(1);
+    for i in 0..polygon.len() {
+        let (xi, yi) = polygon[i];
+        let (xj, yj) = polygon[j];
+        if (yi > p.1) != (yj > p.1) && p.0 < (xj - xi) * (p.1 - yi) / (yj - yi) + xi {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
 fn hex(c: Rgb) -> String {
     format!("#{:02x}{:02x}{:02x}", c.0, c.1, c.2)
 }
