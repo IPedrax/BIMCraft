@@ -349,6 +349,12 @@ impl Session {
         }
     }
 
+    /// Whether the model now is the one the last command left that passed the check, so the next checks only what it changes.
+    #[cfg(test)]
+    pub(crate) fn verified_now(&self) -> bool {
+        self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &self.model))
+    }
+
     /// Runs `f` as a session that may only read ([`Session::read_only`]), `how` saying what would let it edit, unless the
     /// session already says; then gives the session back as it was. What `f` changed of the project, however it got at it, is
     /// taken back and refused too.
@@ -488,6 +494,9 @@ impl Session {
 /// things in, and how many times it was replaced.
 struct Kept {
     model: Arc<Model>,
+    /// The model the last command left that passed the check, as it was: put back with the model, the next command checks
+    /// only what it changes.
+    verified: Option<Arc<Model>>,
     path: Option<PathBuf>,
     phase: Option<String>,
     option: Option<String>,
@@ -500,6 +509,7 @@ impl Kept {
     fn of(s: &Session) -> Kept {
         Kept {
             model: Arc::clone(&s.model),
+            verified: s.verified.clone(),
             path: s.path.clone(),
             phase: s.phase.clone(),
             option: s.option.clone(),
@@ -515,7 +525,7 @@ impl Kept {
         let same = (Arc::ptr_eq(&self.model, &s.model) || *self.model == *s.model)
             && (s.phase == self.phase && s.option == self.option && s.resets == self.resets)
             && (s.undo.len() == self.undo.len() && s.redo.len() == self.redo.len());
-        (s.model, s.path, s.phase, s.option) = (self.model, self.path, self.phase, self.option);
+        (s.model, s.verified, s.path, s.phase, s.option) = (self.model, self.verified, self.path, self.phase, self.option);
         (s.undo, s.redo, s.resets) = (self.undo, self.redo, self.resets);
         if same { Ok(()) } else { Err(()) }
     }
