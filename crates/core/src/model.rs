@@ -70,8 +70,9 @@ pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
 /// The version of the project file this build writes, and the newest it reads. 15: a roof may have a slope for each edge of its
-/// footprint (`slopes`); nothing in a file of 14 changes, but a build that reads up to 14 would leave it out as a field it
-/// doesn't know, drawing the roof at one slope, not "saved by a newer BIMCraft". 14: a view's graphics, a view template and the
+/// footprint (`slopes`) and a wall a top offset from its top constraint (`top_offset`); nothing in a file of 14 changes, but a
+/// build that reads up to 14 would leave either out as a field it doesn't know, drawing the roof at one slope and the wall short
+/// of its offset, not "saved by a newer BIMCraft". 14: a view's graphics, a view template and the
 /// object styles may name the categories of family components (`lighting`, `outlet`, `switch`…, `graphics::COMPONENTS`) as well as
 /// `component`, which names them all, and a new project starts with three view templates (Electrical Power, Lighting and Ceiling)
 /// that do; nothing in a file of 13 changes, but a build that reads up to 13 would refuse one of 14 on opening ("isn't a category
@@ -245,6 +246,10 @@ pub struct Wall {
     pub height: f64,
     #[serde(default)]
     pub base_offset: f64,
+    /// Revit's Top Offset: with a `top_level`, its top is that level plus this many mm (below it, negative). An unconnected wall
+    /// has none: it stands `height` tall.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub top_offset: f64,
     /// How far it turns from its start to its end, degrees counter-clockwise: 0 straight, 180 a
     /// half circle bulging to its right.
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -3268,8 +3273,8 @@ impl Model {
         // 12 to 13 (a floor's or flat roof's shape, a variable layer, a spot slope) has none either: a file of 12 holds none.
         // 13 to 14 (the categories of family components, and the starter view templates) has no step: a file of 13 names
         // `component` for them all, which still does, and has the templates it was given: none, unless the user made them.
-        // 14 to 15 (a roof's slope for each edge) has no step: the new field defaults, to every edge at the roof's `slope`, which is
-        // what a file of 14 holds.
+        // 14 to 15 (a roof's slope for each edge, a wall's top offset) has no step: the new fields default, to every edge at the
+        // roof's `slope` and to a top at its level, which is what a file of 14 holds.
         self.format = FORMAT;
     }
 
@@ -3577,10 +3582,11 @@ impl Model {
         self.elevation(w.level) + w.base_offset
     }
 
-    /// Its top by its top constraint, whatever it's attached to.
+    /// Its top by its top constraint, whatever it's attached to: its top level and its top offset above that, or its base and its
+    /// height. Everything that reads a wall's top, its 3D solid, sections, IFC and what is attached to it, comes here.
     pub fn own_top(&self, w: &Wall) -> f64 {
         match w.top_level {
-            Some(t) => self.elevation(t),
+            Some(t) => self.elevation(t) + w.top_offset,
             None => self.own_base(w) + w.height,
         }
     }
@@ -5983,8 +5989,13 @@ impl Model {
                         Some(t) => level_ok(t)?,
                         None => size(&format!("{who} height"), w.height)?,
                     }
-                    if self.top_z(w) <= self.base_z(w) + TOL {
-                        return Err(format!("{who}: its top must be above its base"));
+                    coord(&format!("{who} top offset"), w.top_offset)?;
+                    let (base, top) = (self.base_z(w), self.top_z(w));
+                    if top <= base + TOL {
+                        let (tall, short) = ((top - base).round() + 0.0, (base - top).round() + 0.0);
+                        return Err(format!(
+                            "{who}: its top ({top:.0} mm) must be above its base ({base:.0} mm); it comes out {tall} mm tall, so raise its top constraint, top offset or height by more than {short} mm"
+                        ));
                     }
                 }
                 Element::Floor(f) => {
@@ -7117,6 +7128,7 @@ mod tests {
             top_level: None,
             height: 3000.0,
             base_offset: 0.0,
+            top_offset: 0.0,
             arc: 0.0,
             location: Location::Centre,
             attach_top: None,

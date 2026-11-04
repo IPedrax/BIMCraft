@@ -10158,6 +10158,10 @@ msgstr ""
 msgid "Slope: a number of degrees from 0 to {}, or blank for the roof's"
 msgstr ""
 
+#: crates/ui-egui/src/properties.rs:134
+msgid "Top Offset"
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Ein Muster der Datei ersetzt das gleichnamige in dieser Liste; sonst wird es ausgelassen"

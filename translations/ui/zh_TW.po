@@ -10161,6 +10161,10 @@ msgstr ""
 msgid "Slope: a number of degrees from 0 to {}, or blank for the roof's"
 msgstr ""
 
+#: crates/ui-egui/src/properties.rs:134
+msgid "Top Offset"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "單擊圓弧經過的一點：由此確定半徑。按 Esc 取消。"

@@ -10156,3 +10156,7 @@ msgstr ""
 #: crates/ui-egui/src/properties.rs:1375
 msgid "Slope: a number of degrees from 0 to {}, or blank for the roof's"
 msgstr ""
+
+#: crates/ui-egui/src/properties.rs:134
+msgid "Top Offset"
+msgstr ""

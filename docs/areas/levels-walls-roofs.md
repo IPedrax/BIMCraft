@@ -65,6 +65,11 @@ doors and windows in it (each cut to its height; joins aside), or only `Length` 
 a level slab its `Width` (depth), `Perimeter` and area and volume less its openings, a sloped one only its `Width`; a door or window
 its `Width`, `Height`, `Perimeter` and `Area`. An attached top or base follows the roof's or floor's plane
 over each part of the wall (a roof's slopes each over its own part of the plan); a mirrored wall runs back the other way.
+A wall's top is `Model::own_top`, and 3D, sections, plans, IFC and what a wall is attached to all read it there (`walls::heights`
+takes it, or what the wall is attached to): its `top_level`'s elevation plus its `top_offset` (file format 15, Revit's Top Offset,
+mm, negative below the level), or its base plus its `height` when it has no top level, which an offset does not touch.
+`Model::check` refuses a wall whose top does not come out above its base, saying how tall it comes out and by how much to raise it.
+The Properties palette shows Top Offset under Top Constraint for a wall that has one.
 A roof by footprint is the straight skeleton of its outline and its `courtyards` (`skeleton::faces`: the outline
 counter-clockwise, the courtyards clockwise, the roof to the left of every edge): each edge moves in at speed 1, a gable's at
 0, and its slope rises from it, reaching the roof's base `overhang` in from its eaves; a courtyard's edges number on after

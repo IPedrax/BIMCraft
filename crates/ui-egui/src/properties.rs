@@ -112,6 +112,8 @@ fn relevant(e: &Value, key: &str) -> bool {
     match (e["shape"].as_str(), key) {
         (Some(shape), "centre_mark") => matches!(shape, "arc" | "circle"),
         (Some(_), "revision") => !e["cloud"].is_null(),
+        // A wall's Top Offset is from its top constraint: an unconnected wall stands `height` tall and has none.
+        (_, "top_offset") => !e["top_level"].is_null(),
         _ => true,
     }
 }
@@ -129,6 +131,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "base_offset", msg!("Base Offset"), Length),
             ("Constraints", "attach_base", msg!("Base is Attached"), Attached),
             ("Constraints", "top_level", msg!("Top Constraint"), TopLevel),
+            ("Constraints", "top_offset", msg!("Top Offset"), Length),
             ("Constraints", "height", msg!("Unconnected Height"), Height),
             ("Constraints", "attach_top", msg!("Top is Attached"), Attached),
             ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),

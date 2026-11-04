@@ -10161,6 +10161,10 @@ msgstr ""
 msgid "Slope: a number of degrees from 0 to {}, or blank for the roof's"
 msgstr ""
 
+#: crates/ui-egui/src/properties.rs:134
+msgid "Top Offset"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "Haz clic en un punto por el que pasa el arco: define el radio. Esc cancela."
