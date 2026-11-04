@@ -30,6 +30,7 @@ mod filter;
 mod find;
 mod footer;
 mod gpu;
+pub use gpu::limits_for;
 mod graphics;
 mod groups;
 pub mod icons;
@@ -53,10 +54,12 @@ mod purge;
 pub mod recent;
 mod reinforce;
 mod renames;
+mod retained;
 pub mod revit;
 mod ribbon;
 mod section;
 mod section_box;
+mod section_worker;
 pub mod settings;
 mod shape;
 pub mod shortcuts;
@@ -73,6 +76,7 @@ mod titlebar;
 mod triad;
 mod typeprops;
 mod updates;
+mod view_worker;
 pub mod window;
 mod workplane;
 
@@ -2452,10 +2456,9 @@ impl BimApp {
             Sheet::Ceiling(level) => owners(render::ceiling_plan(&m, level, w, h)),
             Sheet::Section(id) => {
                 let view = render::section_fit(&m, id, w, h);
-                let scene = orbit::scene_of(&mut self.orbit.scene, &m);
                 // ponytail: the picture leaves out what's hidden behind something nearer; test the
                 // solids against the view's extent if SA should find those too.
-                let seen = render::section_image(&m, scene, id, view, &[]).map(|i| i.shows()).unwrap_or_default();
+                let seen = render::section_picture(&m, id, view, &[]).map(|i| i.shows()).unwrap_or_default();
                 owners(render::section(&m, id, view)).into_iter().chain(seen).collect()
             }
             // The whole model, but for what the default 3D view hides.
@@ -2683,6 +2686,8 @@ impl BimApp {
                 }
                 Some(Element::Railing(rl)) => pts.extend(stairs::railing(m, rl).into_iter().map(|(p, _)| p)),
                 Some(Element::Roof(r)) => pts.extend(&r.boundary),
+                // A camera stands on the plan at its eye: turning it turns it about that point unless Place Centre says otherwise.
+                Some(Element::View3D(v)) => pts.extend(v.camera.map(|c| P2(c.eye[0], c.eye[1]))),
                 _ => {}
             }
         }
@@ -2845,6 +2850,16 @@ impl BimApp {
 
     /// Open a view in a tab, or bring its tab forward.
     fn open_sheet(&mut self, sheet: Sheet) {
+        if !matches!(sheet, Sheet::Section(_)) {
+            self.cut.suspend();
+        }
+        if !matches!(sheet, Sheet::View3D) {
+            self.orbit.suspend();
+            if let Some(gpu) = &mut self.card.gpu {
+                gpu.suspend_upload();
+            }
+        }
+        self.canvas.drawing.suspend();
         if !self.views.contains(&sheet) && !self.floats(sheet) {
             self.views.push(sheet);
         }
@@ -2929,10 +2944,10 @@ impl BimApp {
     pub(crate) fn schedules(&self) -> Vec<(Id, &str)> {
         let m = &self.session.model;
         let mut out: Vec<(Id, &str)> = m
-            .elements
-            .iter()
-            .filter_map(|(id, e)| match e {
-                Element::Schedule(sc) if schedule::builtin(Some(&sc.name), None).is_none() => Some((*id, sc.name.as_str())),
+            .rare("schedule")
+            .into_iter()
+            .filter_map(|id| match m.elements.get(id) {
+                Some(Element::Schedule(sc)) if schedule::builtin(Some(&sc.name), None).is_none() => Some((id, sc.name.as_str())),
                 _ => None,
             })
             .collect();

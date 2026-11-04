@@ -4,7 +4,7 @@
 //! the tools' points, temporary dimensions, and previews of what a click would do.
 
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Weak};
 
 use bimcraft_core::geom::{self, P2};
@@ -67,6 +67,59 @@ pub(crate) struct PlanCache {
     shown: Option<PlanShot>,
     /// The pictures (a scan's) of the drawing shown, on the graphics card.
     pub(crate) pictures: Option<(Weak<Drawing>, Vec<TextureHandle>)>,
+    /// Its triangles on the graphics card.
+    pub(crate) retained: crate::retained::Retained,
+    /// Who makes the next drawing while a view moves.
+    work: PlanWork,
+    /// What each room lit so far covers, of the model it was found in.
+    outlines: Option<(Weak<Model>, HashMap<Id, RoomOutline>)>,
+}
+
+/// What a room covers in plan, and whether it is bounded.
+type RoomOutline = (Vec<P2>, bool);
+
+/// A plan's drawing and triangles asked of a worker: what a view that moved shows next.
+struct PlanJob {
+    model: Arc<Model>,
+    level: Id,
+    view: View,
+    ceiling: bool,
+    pipeline: Arc<crate::retained::Pipeline>,
+    look: crate::retained::Look,
+    selected: Vec<Id>,
+    hovered: Option<Id>,
+}
+
+struct PlanDone {
+    model: Weak<Model>,
+    level: Id,
+    view: View,
+    ceiling: bool,
+    drawing: Arc<Drawing>,
+    made: Option<crate::retained::Made>,
+}
+
+fn plan_job(job: PlanJob, cancel: &crate::view_worker::Cancel) -> Option<PlanDone> {
+    let PlanJob { model, level, view, ceiling, pipeline, look, selected, hovered } = job;
+    let drawing = Arc::new(if ceiling { render::draw_ceiling(&model, level, view) } else { render::draw(&model, level, view) });
+    if cancel.cancelled() {
+        return None;
+    }
+    let made = crate::retained::make(&pipeline, Arc::clone(&drawing), look, &selected, hovered, &|| cancel.cancelled());
+    if cancel.cancelled() {
+        return None;
+    }
+    Some(PlanDone { model: Arc::downgrade(&model), level, view, ceiling, drawing, made })
+}
+
+/// A copy of a canvas asks for its own.
+#[derive(Default)]
+struct PlanWork(Option<crate::view_worker::Latest<PlanJob, PlanDone>>);
+
+impl Clone for PlanWork {
+    fn clone(&self) -> Self {
+        PlanWork::default()
+    }
 }
 
 type PlanShot = (Weak<Model>, Id, View, bool, Arc<Drawing>);
@@ -86,6 +139,97 @@ impl PlanCache {
         drawing
     }
 
+    /// The drawing to show of a view at `view` on a card: the last whole one, while a worker makes the one for `view`, so that moving never
+    /// waits for a plan. Only what the view moved over waits: another level, or an edit, is made here, and shows at once.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn moving(
+        &mut self,
+        ctx: &egui::Context,
+        model: &Arc<Model>,
+        level: Id,
+        view: View,
+        ceiling: bool,
+        pipeline: &Arc<crate::retained::Pipeline>,
+        look: crate::retained::Look,
+    ) -> Arc<Drawing> {
+        // Whether it was idle first: then what it finished is all there is, and nothing can come after asking.
+        let idle = !self.work.0.as_ref().is_some_and(crate::view_worker::Latest::busy);
+        if let Some(done) = self.work.0.as_ref().and_then(crate::view_worker::Latest::take)
+            && done.model.ptr_eq(&Arc::downgrade(model))
+            && (done.level, done.ceiling) == (level, ceiling)
+        {
+            self.shown = Some((done.model, level, done.view, ceiling, done.drawing));
+            match done.made {
+                Some(made) => self.retained.adopt(made),
+                None => self.retained = Default::default(),
+            }
+        }
+        let Some(drawing) = self
+            .shown
+            .as_ref()
+            .filter(|(m, id, _, up, _)| m.ptr_eq(&Arc::downgrade(model)) && *id == level && *up == ceiling)
+            .map(|(.., drawing)| Arc::clone(drawing))
+        else {
+            return self.drawing(model, level, view, ceiling);
+        };
+        if drawing.view == view {
+            return drawing;
+        }
+        // One at a time, each for where the view is when it starts: a view that never stops still gets drawings.
+        let wake = ctx.clone();
+        let worker = self.work.0.get_or_insert_with(|| crate::view_worker::Latest::new(plan_job, move || wake.request_repaint()));
+        if worker.take_error().is_some() {
+            return self.drawing(model, level, view, ceiling);
+        }
+        if idle {
+            let (selected, hovered) = self.retained.tints();
+            worker.request(PlanJob {
+                model: Arc::clone(model),
+                level,
+                view,
+                ceiling,
+                pipeline: Arc::clone(pipeline),
+                look,
+                selected,
+                hovered,
+            });
+        }
+        if worker.start().is_err() {
+            return self.drawing(model, level, view, ceiling);
+        }
+        ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        drawing
+    }
+
+    /// The drawing shown now.
+    #[cfg(test)]
+    pub(crate) fn shown_drawing(&self) -> Option<Arc<Drawing>> {
+        self.shown.as_ref().map(|(.., drawing)| Arc::clone(drawing))
+    }
+
+    /// What the rooms among `ids` cover, each found once for a model, however many frames it stays lit. Those not known yet are found
+    /// together, as finding a level's loops is what costs, and it is the same for all its rooms.
+    pub(crate) fn room_outlines(&mut self, model: &Arc<Model>, ids: &[Id]) -> &HashMap<Id, RoomOutline> {
+        if !self.outlines.as_ref().is_some_and(|(m, _)| m.ptr_eq(&Arc::downgrade(model))) {
+            self.outlines = Some((Arc::downgrade(model), HashMap::new()));
+        }
+        let known = &mut self.outlines.get_or_insert_with(Default::default).1;
+        let rooms = bimcraft_core::rooms::Rooms::new(model);
+        for id in ids {
+            if !known.contains_key(id)
+                && let Some(Element::Room(r)) = model.elements.get(*id)
+            {
+                known.insert(*id, rooms.outline(r));
+            }
+        }
+        known
+    }
+
+    /// Leaving the plans: nothing more is made, and what was is let go.
+    pub(crate) fn suspend(&mut self) {
+        self.work = PlanWork::default();
+    }
+
     /// The pictures drawing `d` holds, in order, loaded once for as long as it is the one shown.
     pub(crate) fn pictures(&mut self, ctx: &egui::Context, d: &Arc<Drawing>) -> Vec<TextureId> {
         if !matches!(&self.pictures, Some((shown, _)) if shown.ptr_eq(&Arc::downgrade(d))) {
@@ -103,6 +247,51 @@ impl PlanCache {
             self.pictures = Some((Arc::downgrade(d), loaded));
         }
         self.pictures.as_ref().map(|(_, t)| t.iter().map(TextureHandle::id).collect()).unwrap_or_default()
+    }
+}
+
+/// The drawing shown, and where it lies on a canvas at a view that may have moved on from it: what's under a pixel of the canvas is
+/// what the drawing shows there.
+pub(crate) struct Shown {
+    drawing: Arc<Drawing>,
+    /// Where the drawing's own pixels go.
+    pub(crate) place: Place,
+    /// Its top left, from the canvas's.
+    offset: Vec2,
+}
+
+impl Shown {
+    pub(crate) fn new(drawing: Arc<Drawing>, view: View, origin: Pos2) -> Shown {
+        let (k, offset) = if drawing.view == view {
+            (1.0, Vec2::ZERO)
+        } else {
+            let (x, y) = view.px(drawing.view.mm((0.0, 0.0)));
+            ((view.scale / drawing.view.scale) as f32, vec2(x, y))
+        };
+        Shown { drawing, place: Place { k, ..Place::at(origin + offset) }, offset }
+    }
+
+    fn own(&self, (x, y): (f32, f32)) -> (f32, f32) {
+        ((x - self.offset.x) / self.place.k, (y - self.offset.y) / self.place.k)
+    }
+
+    fn pick(&self, at: (f32, f32), tol: f32) -> Option<Id> {
+        self.drawing.pick(self.own(at), tol / self.place.k)
+    }
+
+    pub(crate) fn pick_all(&self, at: (f32, f32), tol: f32) -> Vec<Id> {
+        self.drawing.pick_all(self.own(at), tol / self.place.k)
+    }
+
+    fn in_box(&self, a: (f32, f32), b: (f32, f32), crossing: bool) -> Vec<Id> {
+        self.drawing.in_box(self.own(a), self.own(b), crossing)
+    }
+}
+
+impl std::ops::Deref for Shown {
+    type Target = Drawing;
+    fn deref(&self) -> &Drawing {
+        &self.drawing
     }
 }
 
@@ -253,6 +442,20 @@ impl Canvas {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn current_view(&self, id: Id) -> Option<View> {
+        self.view(id)
+    }
+
+    /// Worker-computed initial framing, installed only if navigation has not supplied one.
+    pub(crate) fn has_view(&self, id: Id) -> bool {
+        self.cams.contains_key(&id)
+    }
+
+    pub(crate) fn fitted(&mut self, id: Id, view: View) {
+        self.cams.entry(id).or_insert(Camera { scale: view.scale, cx: view.cx, cy: view.cy });
+    }
+
     /// Show all of `level` again, the next time it's drawn.
     pub fn fit(&mut self, level: Id) {
         self.cams.remove(&level);
@@ -400,89 +603,159 @@ pub(crate) fn on_screen(width: f32, k: f32, thin: bool) -> f32 {
 /// The display list, with the selected and hovered elements in the accent colours, but for what `at` leaves out; with
 /// `thin`, every line one pixel wide. Its pictures are `pictures`, in order.
 pub(crate) fn paint(p: &Painter, at: Place, d: &Drawing, selected: &[Id], hovered: Option<Id>, thin: bool, pictures: &[TextureId]) {
-    let mut pictures = pictures.iter();
-    let color = |c: Rgb| if at.paper { Color32::from_rgb(c.0, c.1, c.2) } else { color(c) };
-    for ((prim, owner), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
-        if owner.is_some() && *owner == at.hide {
-            continue;
+    paint_to(
+        &mut |shape| {
+            p.add(shape);
+        },
+        p.clip_rect(),
+        at,
+        d,
+        selected,
+        hovered,
+        thin,
+        pictures,
+    );
+}
+
+/// Whether `prim` draws nothing inside `clip`, however it is drawn: all of it, past its widest line, to one side.
+fn outside(prim: &Prim, at: Place, thin: bool, clip: Rect) -> bool {
+    let (mut lo, mut hi) = (Pos2::new(f32::INFINITY, f32::INFINITY), Pos2::new(f32::NEG_INFINITY, f32::NEG_INFINITY));
+    let mut grow = |q: &(f32, f32)| {
+        let q = at.pos(*q);
+        (lo, hi) = (lo.min(q), hi.max(q));
+    };
+    // A mitred corner reaches past its line by some widths, and the edge is feathered: more than either could ever take.
+    let margin = match prim {
+        Prim::Fill { rings, .. } => {
+            rings.iter().flatten().for_each(&mut grow);
+            4.0
         }
-        let accent = match *owner {
-            Some(id) if selected.contains(&id) => Some((canvas_pal().accent, canvas_pal().select_fill)),
-            Some(id) if Some(id) == hovered => Some((canvas_pal().hover, canvas_pal().hover_fill)),
-            _ => None,
-        };
-        match prim {
-            // Notes and compound pattern glyphs use the non-zero fill rule, preserving counters and overlapping contours.
-            // Single-contour pattern fills (including dots) keep their ordinary polygon rendering below.
-            Prim::Fill { rings, color: c } if *part == render::Part::Text || (*part == render::Part::LinePattern && rings.len() > 1) => {
-                let fill = accent.map_or(color(*c), |a| a.0);
-                let mut mesh = Mesh::default();
-                for tri in letter(rings).iter() {
-                    let first = mesh.vertices.len() as u32;
-                    for q in tri {
-                        mesh.colored_vertex(at.pos(*q), fill);
-                    }
-                    mesh.add_triangle(first, first + 1, first + 2);
+        Prim::Line { pts, width, .. } => {
+            pts.iter().for_each(&mut grow);
+            on_screen(*width, at.k, thin) * 8.0 + 4.0
+        }
+        // A picture's place has more to it; it is few, and drawn.
+        Prim::Image { .. } => return false,
+    };
+    // Comparisons a number that isn't finite fails say nothing is outside.
+    hi.x + margin < clip.min.x || lo.x - margin > clip.max.x || hi.y + margin < clip.min.y || lo.y - margin > clip.max.y
+}
+
+/// [`paint`], its shapes handed to `out`, those that can't reach `clip` left out.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn paint_to(
+    out: &mut dyn FnMut(Shape),
+    clip: Rect,
+    at: Place,
+    d: &Drawing,
+    selected: &[Id],
+    hovered: Option<Id>,
+    thin: bool,
+    pictures: &[TextureId],
+) {
+    let mut pictures = pictures.iter();
+    // Looked up for each primitive: not searched through.
+    let set: HashSet<Id> = selected.iter().copied().collect();
+    for ((prim, owner), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+        paint_prim(out, clip, at, (prim, *owner, *part), &set, hovered, thin, &mut pictures);
+    }
+}
+
+/// One primitive of a drawing, as [`paint`] draws it.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn paint_prim(
+    out: &mut dyn FnMut(Shape),
+    clip: Rect,
+    at: Place,
+    (prim, owner, part): (&Prim, Option<Id>, render::Part),
+    selected: &HashSet<Id>,
+    hovered: Option<Id>,
+    thin: bool,
+    pictures: &mut std::slice::Iter<TextureId>,
+) {
+    let color = |c: Rgb| if at.paper { Color32::from_rgb(c.0, c.1, c.2) } else { color(c) };
+    if owner.is_some() && owner == at.hide {
+        return;
+    }
+    if outside(prim, at, thin, clip) {
+        return;
+    }
+    let accent = match owner {
+        Some(id) if selected.contains(&id) => Some((canvas_pal().accent, canvas_pal().select_fill)),
+        Some(id) if Some(id) == hovered => Some((canvas_pal().hover, canvas_pal().hover_fill)),
+        _ => None,
+    };
+    match prim {
+        // Notes and compound pattern glyphs use the non-zero fill rule, preserving counters and overlapping contours.
+        // Single-contour pattern fills (including dots) keep their ordinary polygon rendering below.
+        Prim::Fill { rings, color: c } if part == render::Part::Text || (part == render::Part::LinePattern && rings.len() > 1) => {
+            let fill = accent.map_or(color(*c), |a| a.0);
+            let mut mesh = Mesh::default();
+            for tri in letter(rings).iter() {
+                let first = mesh.vertices.len() as u32;
+                for q in tri {
+                    mesh.colored_vertex(at.pos(*q), fill);
                 }
-                p.add(Shape::mesh(mesh));
-                for r in rings {
-                    p.add(Shape::closed_line(r.iter().map(|q| at.pos(*q)).collect(), Stroke::new(0.5, fill)));
-                }
+                mesh.add_triangle(first, first + 1, first + 2);
             }
-            // Ordinary fills are convex rings or independent polygons, triangulated without seams.
-            Prim::Fill { rings, color: c } => {
-                let fill = accent.map_or(color(*c), |a| a.1);
-                match rings.as_slice() {
-                    [r] if convex(r) => {
-                        p.add(Shape::convex_polygon(r.iter().map(|q| at.pos(*q)).collect(), fill, Stroke::NONE));
-                    }
-                    _ => {
-                        let mut mesh = Mesh::default();
-                        for r in rings {
-                            let ring: Vec<P2> = r.iter().map(|q| P2(f64::from(q.0), f64::from(q.1))).collect();
-                            let first = mesh.vertices.len() as u32;
-                            for q in r {
-                                mesh.colored_vertex(at.pos(*q), fill);
-                            }
-                            for [a, b, c] in geom::triangulate(&ring) {
-                                mesh.add_triangle(first + a as u32, first + b as u32, first + c as u32);
-                            }
+            out(Shape::mesh(mesh));
+            for r in rings {
+                out(Shape::closed_line(r.iter().map(|q| at.pos(*q)).collect(), Stroke::new(0.5, fill)));
+            }
+        }
+        // Ordinary fills are convex rings or independent polygons, triangulated without seams.
+        Prim::Fill { rings, color: c } => {
+            let fill = accent.map_or(color(*c), |a| a.1);
+            match rings.as_slice() {
+                [r] if convex(r) => {
+                    out(Shape::convex_polygon(r.iter().map(|q| at.pos(*q)).collect(), fill, Stroke::NONE));
+                }
+                _ => {
+                    let mut mesh = Mesh::default();
+                    for r in rings {
+                        let ring: Vec<P2> = r.iter().map(|q| P2(f64::from(q.0), f64::from(q.1))).collect();
+                        let first = mesh.vertices.len() as u32;
+                        for q in r {
+                            mesh.colored_vertex(at.pos(*q), fill);
                         }
-                        p.add(Shape::mesh(mesh));
-                    }
-                }
-            }
-            Prim::Image { at: corner, width, height, ink, .. } => {
-                if let Some(texture) = pictures.next() {
-                    let rect = Rect::from_min_size(at.pos(*corner), vec2(*width as f32, *height as f32) * at.k);
-                    // On a dark canvas a plan's picture (a scan's) is dimmed, so the ink lightened over it still reads; a sheet's
-                    // paper stays white, and so does a scan the view fills with a colour of its own, which is ink itself.
-                    let plain = if !at.paper && !*ink && crate::style::canvas_dark() { Color32::from_gray(120) } else { Color32::WHITE };
-                    let tint = accent.map_or(plain, |a| a.1);
-                    p.image(*texture, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), tint);
-                }
-            }
-            Prim::Line { pts, width, color: c, dash, closed } => {
-                let stroke = Stroke::new(on_screen(*width, at.k, thin), accent.map_or(color(*c), |a| a.0));
-                let mut pts: Vec<Pos2> = pts.iter().map(|q| at.pos(*q)).collect();
-                match dash {
-                    Some(dash) => {
-                        // A dashed ring: its closing side too.
-                        if *closed {
-                            pts.extend(pts.first().copied());
+                        for [a, b, c] in geom::triangulate(&ring) {
+                            mesh.add_triangle(first + a as u32, first + b as u32, first + c as u32);
                         }
-                        // Its on and off lengths, as big as its width is drawn.
-                        let k = at.k.max(f32::EPSILON);
-                        let on: Vec<f32> = dash.iter().step_by(2).map(|x| x * k).collect();
-                        let off: Vec<f32> = dash.iter().skip(1).step_by(2).map(|x| x * k).collect();
-                        p.extend(Shape::dashed_line_with_offset(&pts, stroke, &on, &off, 0.0));
                     }
-                    None if *closed => {
-                        p.add(Shape::closed_line(pts, stroke));
+                    out(Shape::mesh(mesh));
+                }
+            }
+        }
+        Prim::Image { at: corner, width, height, ink, .. } => {
+            if let Some(texture) = pictures.next() {
+                let rect = Rect::from_min_size(at.pos(*corner), vec2(*width as f32, *height as f32) * at.k);
+                // On a dark canvas a plan's picture (a scan's) is dimmed, so the ink lightened over it still reads; a sheet's
+                // paper stays white, and so does a scan the view fills with a colour of its own, which is ink itself.
+                let plain = if !at.paper && !*ink && crate::style::canvas_dark() { Color32::from_gray(120) } else { Color32::WHITE };
+                let tint = accent.map_or(plain, |a| a.1);
+                out(Shape::image(*texture, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), tint));
+            }
+        }
+        Prim::Line { pts, width, color: c, dash, closed } => {
+            let stroke = Stroke::new(on_screen(*width, at.k, thin), accent.map_or(color(*c), |a| a.0));
+            let mut pts: Vec<Pos2> = pts.iter().map(|q| at.pos(*q)).collect();
+            match dash {
+                Some(dash) => {
+                    // A dashed ring: its closing side too.
+                    if *closed {
+                        pts.extend(pts.first().copied());
                     }
-                    None => {
-                        p.add(Shape::line(pts, stroke));
-                    }
+                    // Its on and off lengths, as big as its width is drawn.
+                    let k = at.k.max(f32::EPSILON);
+                    let on: Vec<f32> = dash.iter().step_by(2).map(|x| x * k).collect();
+                    let off: Vec<f32> = dash.iter().skip(1).step_by(2).map(|x| x * k).collect();
+                    Shape::dashed_line_with_offset(&pts, stroke, &on, &off, 0.0).into_iter().for_each(&mut *out);
+                }
+                None if *closed => {
+                    out(Shape::closed_line(pts, stroke));
+                }
+                None => {
+                    out(Shape::line(pts, stroke));
                 }
             }
         }
@@ -521,9 +794,10 @@ fn letter(rings: &[Vec<(f32, f32)>]) -> Triangles {
 
 /// The selected elements' outlines taken by `f` (on screen): where a move, a turn or a mirror
 /// puts them.
-fn ghost(p: &Painter, origin: Pos2, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos2) -> Pos2) {
+fn ghost(p: &Painter, place: Place, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos2) -> Pos2) {
     let stroke = Stroke::new(1.0, pal().accent);
-    let at = |q: &(f32, f32)| f(pos(origin, *q));
+    let at = |q: &(f32, f32)| f(place.pos(*q));
+    let selected: HashSet<Id> = selected.iter().copied().collect();
     for (prim, owner) in d.prims.iter().zip(&d.owners) {
         if !owner.is_some_and(|id| selected.contains(&id)) {
             continue;
@@ -725,6 +999,8 @@ struct Scene<'a> {
     p: &'a Painter,
     m: &'a Model,
     d: &'a Drawing,
+    /// Where the drawing's own pixels go.
+    place: Place,
     /// The level whose model the plan shows, and the plan's own key (the level's, or a plan view's): what annotation is in.
     level: Id,
     key: Id,
@@ -962,6 +1238,13 @@ impl BimApp {
     /// vertical.
     pub(crate) fn snap(&self, m: &Model, level: Id, v: &View, at: (f32, f32), from: &[P2], square: bool) -> Found {
         let reach = Reach { point: SNAP / v.scale, line: f64::from(PICK) / v.scale };
+        let snaps = self.snaps_now();
+        // A camera's mark is a symbol, not a set of snap points: anywhere on it lands on its eye.
+        if snaps.endpoint
+            && let Some((id, eye)) = render::camera_at(m, level, v, at)
+        {
+            return Found { at: eye, kind: Kind::Endpoint, guide: None, source: Some(id) };
+        }
         let view = self.plan_key().unwrap_or(level);
         let found = match &self.sketch {
             Some(sk) => {
@@ -969,9 +1252,9 @@ impl BimApp {
                     crate::sketch::Of::Edit(id) => Some(id),
                     _ => None,
                 };
-                snap::in_sketch(m, snap::Sketch { view, lines: &sk.lines, editing }, v.mm(at), reach, from, square, &self.snaps_now())
+                snap::in_sketch(m, snap::Sketch { view, lines: &sk.lines, editing }, v.mm(at), reach, from, square, &snaps)
             }
-            None => snap::snap(m, view, v.mm(at), reach, from, square, &self.snaps_now()),
+            None => snap::snap(m, view, v.mm(at), reach, from, square, &snaps),
         };
         if matches!(found.kind, Kind::Free | Kind::Angle)
             && !square
@@ -1170,6 +1453,10 @@ impl BimApp {
                 p.circle_stroke(at + vec2(0.0, 5.0), 5.0, stroke);
                 p.line_segment([at + vec2(-8.0, 0.0), at + vec2(8.0, 0.0)], stroke);
             }
+            Kind::Anchor => {
+                p.circle_stroke(at, 6.0, stroke);
+                p.circle_filled(at, 2.0, pal().accent);
+            }
             Kind::Angle => {
                 p.circle_filled(at, 3.0, pal().accent);
             }
@@ -1203,9 +1490,15 @@ impl BimApp {
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, key, fit) else { return };
         let mods = ui.input(|i| i.modifiers);
         let shape = self.shape();
+        let pipeline = self.card.canvas();
+        let look = crate::retained::Look::now(ui.ctx(), &ui.painter_at(rect), rect.min, self.writing(), self.thin);
         let c = &mut self.canvas;
         c.cursor = local.map(|q| view.mm(q));
-        let d = c.drawing.drawing(&model, key, view, up);
+        let d = match &pipeline {
+            Some(pipeline) => c.drawing.moving(ui.ctx(), &model, key, view, up, pipeline, look),
+            None => c.drawing.drawing(&model, key, view, up),
+        };
+        let d = Shown::new(d, view, rect.min);
 
         // What's under the cursor; Tab steps through it. (Without the app's input hook, as in
         // tests, egui moved the keyboard to a widget on that Tab: give it back.)
@@ -1414,7 +1707,7 @@ impl BimApp {
         if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } = self.tool {
             marked.push(first);
         }
-        let pictures = self.canvas.drawing.pictures(ui.ctx(), &d);
+        let pictures = self.canvas.drawing.pictures(ui.ctx(), &d.drawing);
         // Fillet Arc's lines picked so far, in the selection's colour.
         marked.extend(self.drawing.fillet.iter().filter_map(|(l, _)| match l {
             draw::Picked::Element(id) => Some(*id),
@@ -1422,7 +1715,13 @@ impl BimApp {
         }));
         let sketch_trim = self.sketch.is_some() && matches!(self.tool, Tool::Trim(_) | Tool::TrimTo { .. });
         let painted_hover = if matches!(self.tool, Tool::Align(_)) || sketch_trim { None } else { hovered };
-        paint(&p, Place { hide: self.writing(), ..Place::at(rect.min) }, &d, &marked, painted_hover, self.thin, &pictures);
+        let place = Place { hide: self.writing(), ..d.place };
+        let kept = pipeline.as_ref().is_some_and(|pipeline| {
+            self.canvas.drawing.retained.paint(ui.ctx(), pipeline, &p, place, rect.min, &d.drawing, &marked, painted_hover, self.thin)
+        });
+        if !kept {
+            paint(&p, place, &d, &marked, painted_hover, self.thin, &pictures);
+        }
         // The working aids: where the project's 0, 0 is, and which view this is. On the screen only; no drawing is made of them.
         if self.show_origin {
             let (x, y) = view.px(P2(0.0, 0.0));
@@ -1434,7 +1733,7 @@ impl BimApp {
             self.corner_name(ui.ctx(), &p, rect, &name);
         }
         if writing {
-            self.note_canvas(ui, &response, &p, Place::at(rect.min), &d);
+            self.note_canvas(ui, &response, &p, d.place, &d);
         }
         if let Some(sk) = &self.sketch {
             let over = local
@@ -1454,13 +1753,15 @@ impl BimApp {
             }
         }
         p.extend(crop);
-        let rooms = hovered.iter().map(|id| (*id, canvas_pal().hover)).chain(self.selection.iter().map(|id| (*id, canvas_pal().accent)));
-        for (id, accent) in rooms {
+        let lit: Vec<Id> = hovered.iter().chain(&self.selection).copied().collect();
+        let outlines = self.canvas.drawing.room_outlines(&model, &lit);
+        let hover_lit = usize::from(hovered.is_some());
+        for (i, id) in lit.iter().enumerate() {
             // An unbounded room: the square it sits as, dashed.
-            if let Some(Element::Room(r)) = model.elements.get(id) {
-                let (outline, bounded) = model.room_outline(r);
+            if let Some((outline, bounded)) = outlines.get(id) {
+                let accent = if i < hover_lit { canvas_pal().hover } else { canvas_pal().accent };
                 let mut ring: Vec<Pos2> = outline.iter().map(|q| pos(rect.min, view.px(*q))).collect();
-                if bounded {
+                if *bounded {
                     p.add(Shape::closed_line(ring, Stroke::new(2.0, accent)));
                 } else {
                     ring.extend(ring.first().copied());
@@ -1471,18 +1772,18 @@ impl BimApp {
         match (self.canvas.drag, local) {
             (Some(Drag::Move(from)), Some(q)) => {
                 let (a, b) = (view.px(from), view.px(from + self.dragged(&model, &view, from, view.mm(q))));
-                ghost(&p, rect.min, &d, &self.selection, &|q| q + vec2(b.0 - a.0, b.1 - a.1));
+                ghost(&p, d.place, &d, &self.selection, &|q| q + vec2(b.0 - a.0, b.1 - a.1));
             }
             (Some(Drag::Box(from)), Some(q)) => p.extend(box_shapes(rect, from, q)),
             _ => {}
         }
         if let Some(q) = local {
-            let scene = Scene { p: &p, m: &model, d: &d, level, key, v: &view };
+            let scene = Scene { p: &p, m: &model, d: &d, place: d.place, level, key, v: &view };
             self.preview(&scene, q, hovered, mods.shift);
         }
         // The Measure tool's ruler, as laid.
         if let (Tool::Measure(_), Some((a, b))) = (&self.tool, self.measured) {
-            let scene = Scene { p: &p, m: &model, d: &d, level, key, v: &view };
+            let scene = Scene { p: &p, m: &model, d: &d, place: d.place, level, key, v: &view };
             p.extend(ruler_shapes(&scene, a, b));
             let r = snap::ruler(a, b);
             let units = model.units;
@@ -1500,7 +1801,7 @@ impl BimApp {
                 p.rect_stroke(Rect::from_center_size(q, vec2(8.0, 8.0)), 0.0, Stroke::new(2.0, pal().accent), StrokeKind::Middle);
             }
         }
-        self.grip_overlay(ui, &model, &view, rect, level, &d);
+        self.grip_overlay(ui, &model, &view, rect, level, &d, d.place);
         // Where the cursor snaps is worked out only while a grip is held to it.
         let cursor = self
             .drawing
@@ -1615,13 +1916,22 @@ impl BimApp {
     /// The level selected alone, with Modify, in section or elevation `id` in `rect` through `view`:
     /// a grip at each end of its line. A drag from one moves that end along the line, and its extent
     /// with it (`Model::level_extent_along`); on release, `modify`. What to paint over the view.
-    pub(crate) fn level_grips(&mut self, ui: &Ui, response: &Response, rect: Rect, view: &View, id: Id) -> Vec<Shape> {
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn level_grips(
+        &mut self,
+        ui: &Ui,
+        response: &Response,
+        rect: Rect,
+        view: &View,
+        id: Id,
+        ends: Option<(f64, f64)>,
+    ) -> Vec<Shape> {
         let m = std::sync::Arc::clone(&self.session.model);
         let level = match self.selection.as_slice() {
             &[l] if self.tool == Tool::Modify => m.level(l).map(|lv| (l, lv.elevation)),
             _ => None,
         };
-        let Some(((level, z), (a, b))) = level.and_then(|(l, z)| Some(((l, z), render::level_ends(&m, l, id)?))) else {
+        let Some(((level, z), (a, b))) = level.and_then(|(l, z)| Some(((l, z), ends?))) else {
             self.canvas.level_grip = None;
             return Vec::new();
         };
@@ -2801,7 +3111,8 @@ impl BimApp {
 
     /// The selected wall's grips at its ends and, beside each, its angle to click and type: it
     /// turns about that end. Dragging one, the wall as it would stand, with its ruler.
-    fn grip_overlay(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, level: Id, d: &Drawing) {
+    #[allow(clippy::too_many_arguments)]
+    fn grip_overlay(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, level: Id, d: &Drawing, place: Place) {
         let Some(id) = self.gripped() else {
             self.angle_edit = None;
             return;
@@ -2815,7 +3126,7 @@ impl BimApp {
             let (mods, q) = (ui.input(|i| i.modifiers), (q.x - rect.min.x, q.y - rect.min.y));
             let (found, to) = self.grip_target(m, level, v, (w, start), q, mods);
             let moved = Wall { start: if start { to } else { w.start }, end: if start { w.end } else { to }, ..w.clone() };
-            let sc = Scene { p: &p, m, d, level, key: level, v };
+            let sc = Scene { p: &p, m, d, place, level, key: level, v };
             // The wall as it would stand: its outline, and the ruler from the end that stays.
             // Its faces, where its location line puts them.
             let (ext, int) = walls::faces(m, &moved);
@@ -3273,8 +3584,8 @@ impl BimApp {
         // An element a click would add, drawn as the plan would draw it.
         // What a dimension or a tag made here says it is in: the plan view, when the plan on screen is one.
         let in_view = || m.plan_view(key).map(|_| m.guid(key));
-        let sketched = |e: &Element| ghost(p, origin, &render::sketch(m, *v, m.next_id, e), &[m.next_id], &|pt| pt);
-        let ghost = |f: &dyn Fn(Pos2) -> Pos2| ghost(p, origin, sc.d, &self.selection, f);
+        let sketched = |e: &Element| ghost(p, Place::at(origin), &render::sketch(m, *v, m.next_id, e), &[m.next_id], &|pt| pt);
+        let ghost = |f: &dyn Fn(Pos2) -> Pos2| ghost(p, sc.place, sc.d, &self.selection, f);
         let chain = match &self.tool {
             Tool::Wall(chain) | Tool::Railing(chain) | Tool::Mass(chain) | Tool::DetailLine(chain) | Tool::SketchLine(chain) => {
                 chain.as_slice()
@@ -3405,7 +3716,9 @@ impl BimApp {
                 return;
             }
             &Tool::Rotate { centre, start, place } => {
-                let c = if place { cursor } else { sc.screen(centre) };
+                // Placing the centre, the cross sits where a click would put it, with its snap's marker.
+                let at = if place { self.found(sc, q, &[], false) } else { centre };
+                let c = sc.screen(at);
                 p.circle_stroke(c, 5.0, stroke);
                 p.line_segment([c - vec2(8.0, 0.0), c + vec2(8.0, 0.0)], thin);
                 p.line_segment([c - vec2(0.0, 8.0), c + vec2(0.0, 8.0)], thin);

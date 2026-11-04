@@ -19,9 +19,9 @@ use crate::model::{Id, Model};
 use crate::render::Rgb;
 use crate::view3d::{Facet, P3, Scene, dot};
 
-/// The most triangles a file holds: the card's limit for a mesh, which also keeps a file (at most 84 bytes a triangle) well under
-/// the size a project file may be.
-pub const MAX_TRIS: usize = crate::view3d::gpu::MAX_TRIS;
+/// The most triangles a file holds, which keeps a file (at most 84 bytes a triangle) well under the size a project file may be.
+/// The card draws a mesh of any size now, so the limit is the file's own.
+pub const MAX_TRIS: usize = 1_600_000;
 
 /// What an export wrote.
 pub struct Export {

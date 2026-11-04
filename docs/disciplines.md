@@ -102,7 +102,7 @@ IFC4 (ISO 16739-1:2018). Class names are checked against the IFC4 and IFC4X3_ADD
 | `stripfooting` | `IfcFooting` `.STRIP_FOOTING.` (a grade beam, baldrame, is `.FOOTING_BEAM.`) | yes |
 | structural `floor` | `IfcSlab` `.FLOOR.` (`.BASESLAB.` for a foundation slab) with `Pset_SlabCommon.LoadBearing` | yes |
 | `pipe` | `IfcPipeSegment` `.RIGIDSEGMENT.`; fittings `IfcPipeFitting`, valves `IfcValve` | yes |
-| sanitary fixtures | `IfcSanitaryTerminal` (`.NOTDEFINED.`: a family has one category and its forms, not a kind of fixture; `.WASHHANDBASIN.`, `.TOILETPAN.`, `.SINK.`, `.SHOWER.` would need one per kind); floor drains `IfcWasteTerminal` `.FLOORTRAP.` | yes |
+| sanitary fixtures | `IfcSanitaryTerminal` of the family's `kind` (`wc` `.TOILETPAN.`, `lav` `.WASHHANDBASIN.`, `sink` and `laundry` `.SINK.`, `shower`, `bath`, `bidet`, `urinal`), `.NOTDEFINED.` without one; floor drains `IfcWasteTerminal` `.FLOORTRAP.` (`floor_waste`, `roof_drain` their own); fittings by kind (`bend` `.BEND.`, `tee` and `cross` `.JUNCTION.`, `transition`, `coupling` `.CONNECTOR.`) | yes |
 | `conduit` | `IfcCableCarrierSegment` `.CONDUITSEGMENT.` | yes |
 | `cabletray` | `IfcCableCarrierSegment` `.CABLETRAYSEGMENT.` (`.CABLELADDERSEGMENT.`, which only another tool writes, is read as a tray) | yes |
 | `wire`, `cable` | `IfcCableSegment` `.CABLESEGMENT.`, which BIMCraft's `Category` tells apart | yes |
@@ -175,8 +175,8 @@ the four took a few lines in each of these places, and the tests are rows in two
 - A run's `system` is a name and an `IfcSystem`, with no rules: nothing checks that a pipe of "Esgoto" meets only pipes of it.
 - A fixture or a device is a `component` to Visibility/Graphics and to schedules (the Component schedule has `Family` to group by),
   so a project cannot hide "Plumbing Fixtures" alone. Its family category is there for it; `Element` has no variant for each.
-- A family has one category and no kind, so every sanitary terminal is `.NOTDEFINED.`: a basin, a WC, a sink and a shower are alike
-  to an IFC reader.
+- Two kinds share a predefined type in places (`sink` and `laundry` are both `.SINK.`; `tee` and `cross`, `.JUNCTION.`), and the
+  import reads the first back: a laundry tub comes back a sink. A sizing table that tells them apart reads the family's own `kind`.
 - A conductor or a conduit under its level (an earthing ring, usually) shows in a plan whose view range reaches it (its View Depth).
 - An inspection box is a proxy, so a filter on the other lightning kinds finds it; `IfcDistributionChamberElement`
   `.INSPECTIONCHAMBER.` is the real class. A patch panel is placed on the wall, not in a rack.

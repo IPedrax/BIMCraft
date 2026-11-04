@@ -699,22 +699,21 @@ fn perimeter(ring: &[P2]) -> f64 {
 }
 
 /// What a beam or a column measures, for its `Qto_BeamBaseQuantities` or `Qto_ColumnBaseQuantities`: its length (a column's
-/// height), the area of its section (m²), its surface (the sides and the two ends, m²) and its volume (m³). Nothing is
-/// subtracted from it, so it has no net values: nothing is taken off where a beam meets a column or a slab yet.
+/// height), the area of its section (m²), its outer surface (m²) and its volume (m³). The outer surface is the sides only,
+/// perimeter by length, without the two ends, as IFC 4.3 defines it for these sets. IFC gives the gross surface (with the
+/// ends) only when the outer surface and the section can't be given apart, so it isn't written: a reader adds two sections.
+/// Nothing is subtracted from it, so it has no net values: nothing is taken off where a beam meets a column or a slab yet.
 fn member_quantities(width: f64, depth: f64, round: bool, length: f64) -> Vec<(&'static str, &'static str, f64)> {
     let (area, perimeter) = if round {
         (std::f64::consts::PI * width * width / 4.0, std::f64::consts::PI * width)
     } else {
         (width * depth, 2.0 * (width + depth))
     };
-    let surface = (perimeter * length + 2.0 * area) / 1e6;
-    let volume = area * length / 1e9;
     vec![
         ("Length", "LENGTH", length),
         ("CrossSectionArea", "AREA", area / 1e6),
-        ("OuterSurfaceArea", "AREA", surface),
-        ("GrossSurfaceArea", "AREA", surface),
-        ("GrossVolume", "VOLUME", volume),
+        ("OuterSurfaceArea", "AREA", perimeter * length / 1e6),
+        ("GrossVolume", "VOLUME", area * length / 1e9),
     ]
 }
 
@@ -742,6 +741,7 @@ fn wall_quantities(m: &Model, wl: &crate::model::Wall, holes: &[(f64, f64, f64)]
 }
 
 pub fn export(m: &Model) -> String {
+    let rooms = crate::rooms::Rooms::new(m);
     let own = m.elements.with_guids().map(|(id, g, _)| (id, g)).collect();
     let mut w = Step {
         out: String::new(),
@@ -945,7 +945,7 @@ pub fn export(m: &Model) -> String {
                 // A room that isn't enclosed has no shape to give.
                 // As tall as its upper limit and offsets make it, from its base offset; in its colour on plans, if it has one.
                 let height = m.room_height(r);
-                let shape = match m.room_region(r) {
+                let shape = match rooms.region(r) {
                     Some(region) => {
                         let profile = w.profile(&region.outer, &region.holes);
                         let style = r.colour.map(|c| w.surface_style("$", c, "$"));
@@ -960,7 +960,7 @@ pub fn export(m: &Model) -> String {
                     s(&r.name)
                 ));
                 // Its areas both ways: gross at the walls' centre lines, net at their faces.
-                if let (Some(gross), Some(net)) = (m.room_region_at(r, RoomArea::Centre), m.room_region_at(r, RoomArea::Finish)) {
+                if let (Some(gross), Some(net)) = (rooms.region_at(r, RoomArea::Centre), rooms.region_at(r, RoomArea::Finish)) {
                     let values = [
                         ("Height", "LENGTH", height),
                         ("GrossPerimeter", "LENGTH", gross.perimeter()),
@@ -1119,15 +1119,16 @@ pub fn export(m: &Model) -> String {
                 }
                 let shape = w.tessellated(&items);
                 // A door's or a window's family is placed in a wall, never as a component.
-                let (entity, kind, object_type) = f.category.ifc();
+                let (entity, kind, object_type) = f.ifc();
                 let label = format!("{}:{}", cp.family, cp.type_name);
                 let name = s(&label);
                 let object = object_type.map_or_else(|| name.clone(), s);
                 let ent = w.add(format!("{entity}({},$,{name},$,{object},#{at},#{shape},'{id}',{kind})", w.guid(ELEMENT, id)));
                 contained.entry(cp.level).or_default().push(ent);
                 products.insert(id, ent);
-                // Its type object, of the class it is written as, its predefined type not defined.
-                w.typed_with(&format!("{entity}TYPE"), component_type_before(entity), ".NOTDEFINED.", "", &label, ent);
+                // Its type object, of the class it is written as, with its family's kind's predefined type, or none defined.
+                let type_kind = if f.kind.is_some() { kind } else { ".NOTDEFINED." };
+                w.typed_with(&format!("{entity}TYPE"), component_type_before(entity), type_kind, "", &label, ent);
                 // What it's made of: its material, or the set of them.
                 let relating = match made_of.as_slice() {
                     [] => None,
@@ -2000,13 +2001,15 @@ mod tests {
         assert_eq!(occurrences_of(&f, kinds[0]), beams);
         let q = quantities_of(&f, beams[0], "Qto_BeamBaseQuantities");
         assert!(near(q["Length"], 5000.0) && near(q["CrossSectionArea"], 0.09) && !q.contains_key("NetVolume"), "{q:?}");
-        assert!(near(q["GrossVolume"], 0.45) && near(q["OuterSurfaceArea"], 2.0 * (0.15 + 0.6) * 5.0 + 2.0 * 0.09), "{q:?}");
+        assert!(near(q["GrossVolume"], 0.45) && near(q["OuterSurfaceArea"], 2.0 * (0.15 + 0.6) * 5.0), "the sides only: {q:?}");
+        assert!(!q.contains_key("GrossSurfaceArea"), "outer surface and section are given apart: {q:?}");
         let columns = of_kind(&f, "IFCCOLUMN");
         let types = of_kind(&f, "IFCCOLUMNTYPE");
         assert_eq!((columns.len(), types.len()), (1, 1));
         assert_eq!(occurrences_of(&f, types[0]), columns);
         let q = quantities_of(&f, columns[0], "Qto_ColumnBaseQuantities");
         assert!(near(q["CrossSectionArea"], 0.09) && near(q["GrossVolume"], 0.09 * q["Length"] / 1e3), "{q:?}");
+        assert!(near(q["OuterSurfaceArea"], 4.0 * 0.3 * q["Length"] / 1e3) && !q.contains_key("GrossSurfaceArea"), "{q:?}");
         // Walls and slabs have theirs, one for each type used.
         let walls: BTreeSet<String> =
             s.model.elements.iter().filter_map(|(_, e)| if let Element::Wall(w) = e { Some(w.type_name.clone()) } else { None }).collect();
@@ -2161,7 +2164,10 @@ mod tests {
             let attrs = type_object(&f, &type_class, &format!("{family}:{type_name}"));
             // Furniture's type has its AssemblyPlace (mandatory) ahead of its PredefinedType; the others have ten attributes.
             let count = if class == "IFCFURNITURE" { 11 } else { 10 };
-            assert_eq!((attrs.len(), attrs[count - 1].as_str()), (count, ".NOTDEFINED."), "{type_class}");
+            // Its predefined type is its family's kind's (a kitchen sink's .SINK.), or not defined.
+            let fam = s.model.families.get(family).unwrap();
+            let predefined = if fam.kind.is_some() { fam.ifc().1 } else { ".NOTDEFINED." };
+            assert_eq!((attrs.len(), attrs[count - 1].as_str()), (count, predefined), "{type_class}");
             if class == "IFCFURNITURE" {
                 assert_eq!(attrs[9], ".NOTDEFINED.", "its assembly place");
             }

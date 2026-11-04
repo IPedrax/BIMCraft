@@ -176,3 +176,49 @@ fn a_wall_drawn_over_a_scan_snaps_to_where_the_plan_cuts_it_unless_manage_snaps_
     tool(&mut h, "Wall");
     assert_ne!(hover(&mut h, P2(4010.0, -970.0)).map(|f| f.kind), Some(Kind::Point));
 }
+
+#[test]
+fn a_rooms_outline_stays_lit_without_being_found_again_until_the_model_changes() {
+    let mut s = Session::new();
+    s.execute("wall", &json!({"points": [[0, 0], [4000, 0], [4000, 4000], [0, 4000], [0, 0]]})).unwrap();
+    let id = |made: serde_json::Value| made["id"].as_u64().unwrap() as bimcraft_core::model::Id;
+    let bounded = id(s.execute("room", &json!({"point": [2000, 2000]})).unwrap());
+    let open = id(s.execute("room", &json!({"point": [9000, 9000]})).unwrap());
+    let wall = s.model.elements.iter().find_map(|(i, e)| matches!(e, bimcraft_core::model::Element::Wall(_)).then_some(*i)).unwrap();
+    let mut cache = crate::canvas::PlanCache::default();
+    let lit = [wall, bounded, open];
+    let found = cache.room_outlines(&s.model, &lit);
+    assert!(!found.contains_key(&wall), "only rooms have one");
+    for room in [bounded, open] {
+        let Some(bimcraft_core::model::Element::Room(r)) = s.model.elements.get(room) else { panic!("a room") };
+        assert_eq!(found[&room], s.model.room_outline(r), "what the model says it covers");
+    }
+    assert!(found[&bounded].1 && !found[&open].1);
+    let kept = found[&bounded].0.as_ptr();
+    assert_eq!(cache.room_outlines(&s.model, &lit)[&bounded].0.as_ptr(), kept, "the next frame finds nothing");
+    let before = cache.room_outlines(&s.model, &lit)[&bounded].0.clone();
+    s.execute("wall", &json!({"points": [[2000, 0], [2000, 4000]]})).unwrap();
+    let Some(bimcraft_core::model::Element::Room(r)) = s.model.elements.get(bounded) else { panic!("a room") };
+    let after = &cache.room_outlines(&s.model, &lit)[&bounded];
+    assert_eq!(*after, s.model.room_outline(r), "an edit is seen");
+    assert_ne!(after.0, before, "the wall split the room");
+}
+
+#[test]
+fn the_browser_lists_the_same_from_the_lookup_as_from_every_element() {
+    let mut s = Session::new();
+    s.script(bimcraft_core::sample::SAMPLE).unwrap();
+    let level = s.model.levels()[0].0;
+    s.execute("duplicate_view", &json!({"view": level})).unwrap();
+    let scanned = |m: &bimcraft_core::model::Model| -> Vec<bimcraft_core::model::Id> {
+        m.elements
+            .iter()
+            .filter(|(_, e)| matches!(e, bimcraft_core::model::Element::PlanView(v) if m.same(v.level, level)))
+            .map(|(i, _)| *i)
+            .collect()
+    };
+    let _ = s.model.lookup();
+    let looked: Vec<_> = s.model.plan_views(level).into_iter().map(|(i, _)| i).collect();
+    assert!(!looked.is_empty());
+    assert_eq!(looked, scanned(&s.model));
+}

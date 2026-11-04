@@ -42,10 +42,20 @@ fn page(paper: P2) -> View {
 /// View `view` at 1 : `scale` on paper: the frame its drawing gets, `ROOM` mm around what it shows
 /// (a 3D view's picture, as large as the model comes out); a schedule's, its table's.
 fn framing(m: &Model, view: impl Key, scale: f64) -> Option<View> {
+    framing_in(m, &Work::new(), view, scale)
+}
+
+/// What a sheet's sections and elevations ask of the whole model, made once a sheet when the first asks.
+type Work = std::cell::OnceCell<render::SectionWork>;
+
+/// [`framing`], a section's of `work`.
+fn framing_in(m: &Model, work: &Work, view: impl Key, scale: f64) -> Option<View> {
     let k = DENSITY / scale;
     let pts: Vec<P2> = match m.elements.get(view)? {
         Element::Level(_) | Element::PlanView(_) => render::plan_extent(m, view),
-        Element::Section(_) | Element::Elevation(_) => render::section_extent(m, view, k, 1.0)?.to_vec(),
+        Element::Section(_) | Element::Elevation(_) => {
+            render::section_extent(m, work.get_or_init(|| render::SectionWork::new(m)), view, k, 1.0)?.to_vec()
+        }
         Element::Schedule(sc) => {
             let (width, height) = table_size(&sc.name, &table_of(m, sc));
             return Some(View { scale: 1.0, cx: 0.0, cy: 0.0, width, height });
@@ -72,8 +82,13 @@ pub fn size(m: &Model, view: impl Key, scale: f64) -> Option<P2> {
 /// Viewport `id`'s view frame, and where that frame's top left corner sits in its sheet's drawing,
 /// px: a point `p` of the view is at `frame.px(p)` plus that corner.
 pub fn frame(m: &Model, id: impl Key) -> Option<(View, (f32, f32))> {
+    frame_in(m, &Work::new(), id)
+}
+
+/// [`frame`], a section's of `work`.
+fn frame_in(m: &Model, work: &Work, id: impl Key) -> Option<(View, (f32, f32))> {
     let Some(Element::Viewport(vp)) = m.elements.get(id) else { return None };
-    let view = framing(m, vp.view, vp.scale)?;
+    let view = framing_in(m, work, vp.view, vp.scale)?;
     let (x, y) = page(paper(&m.sheet(vp.sheet)?.size)?).px(vp.at);
     Some((view, (x - view.width as f32 / 2.0, y - view.height as f32 / 2.0)))
 }
@@ -90,10 +105,10 @@ pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
     let middle = P2((margins.left + paper.0 - margins.right) / 2.0, (margins.bottom + margins.title_height + paper.1 - margins.top) / 2.0);
     let taken = size(m, view, scale).unwrap_or(P2(0.0, 0.0));
     let right = m
-        .elements
-        .values()
-        .filter_map(|e| match e {
-            Element::Viewport(v) if v.sheet == sheet => Some(v.at.0 + size(m, v.view, v.scale)?.0 / 2.0),
+        .on_sheet(sheet)
+        .into_iter()
+        .filter_map(|id| match m.elements.get(id) {
+            Some(Element::Viewport(v)) if v.sheet == sheet => Some(v.at.0 + size(m, v.view, v.scale)?.0 / 2.0),
             _ => None,
         })
         .fold(None, |r: Option<f64>, x| Some(r.map_or(x, |r| r.max(x))));
@@ -258,10 +273,11 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
     let sheet = m.sheet(id)?;
     let guid = m.guid(id);
     let paper = paper(&sheet.size)?;
-    let views: Vec<(Id, &Viewport)> = m
-        .elements
+    // What is on it, in the order of its ids: its viewports, and the 2D drawn on it.
+    let on: Vec<(Id, &Element)> = m.on_sheet(id).into_iter().filter_map(|id| Some((id, m.elements.get(id)?))).collect();
+    let views: Vec<(Id, &Viewport)> = on
         .iter()
-        .filter_map(|(&vid, e)| match e {
+        .filter_map(|&(vid, e)| match e {
             Element::Viewport(v) if v.sheet == guid => Some((vid, v)),
             _ => None,
         })
@@ -275,8 +291,9 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
         views.iter().filter(|(_, v)| !matches!(m.elements.get(v.view), Some(Element::Schedule(_)))).map(|(_, v)| *v).collect();
     title_block(&mut d, &m.name, sheet, paper, &scale_note(&scaled, m.language, m.units), m.standard());
     let mut scene = None;
+    let work = Work::new();
     for (vid, vp) in views {
-        let Some((view, (ox, oy))) = frame(m, vid) else { continue };
+        let Some((view, (ox, oy))) = frame_in(m, &work, vid) else { continue };
         d.own(Some(vid));
         // Paper under it, its own: a click anywhere over a view picks it.
         let (w, h) = (view.width as f32, view.height as f32);
@@ -284,11 +301,11 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
         let inner = match m.elements.get(vp.view) {
             Some(Element::Level(_) | Element::PlanView(_)) => render::draw_at(m, vp.view, view, 1.0),
             Some(Element::Section(_) | Element::Elevation(_)) => {
-                let scene = scene.get_or_insert_with(|| view3d::Scene::new(m));
                 // Its regions keep the ink of this very picture.
-                let img = render::section_image(m, scene, vp.view, view, &[]);
+                let w = work.get_or_init(|| render::SectionWork::new(m));
+                let img = render::section_picture_in(m, w, vp.view, view, &[]);
                 let drawing = match &img {
-                    Some(img) => render::section_at_over(m, vp.view, view, 1.0, img),
+                    Some(img) => render::section_at_over_in(m, w, vp.view, view, 1.0, img),
                     None => render::section_at(m, vp.view, view, 1.0),
                 };
                 if let Some(img) = img {
@@ -338,7 +355,7 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
         d.line(&[P2(x, corner.1 - 8.0), P2(x + line, corner.1 - 8.0)], Pen::MEDIUM, INK, false);
         left(&mut d, &m.units.scale(vp.scale), P2(x, corner.1 - 11.0), 2.0);
     }
-    for (&nid, e) in &m.elements {
+    for &(nid, e) in &on {
         if let Element::FilledRegion(r) = e
             && r.view == guid
         {
@@ -346,7 +363,7 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
             render::filled_region(&mut d, m, r);
         }
     }
-    for (&nid, e) in &m.elements {
+    for &(nid, e) in &on {
         if let Element::DetailGroup(g) = e
             && g.view == guid
         {

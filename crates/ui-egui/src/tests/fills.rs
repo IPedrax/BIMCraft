@@ -306,6 +306,32 @@ fn edit_type_keeps_annotation_boundary_styles_and_pattern_placement_and_imports_
 }
 
 #[test]
+fn a_still_section_keeps_its_drawing_and_a_zoom_draws_it_again() {
+    let mut h = app(&format!("{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}"));
+    browse(&mut h, "Section 1");
+    h.run();
+    let drawn = |h: &Harness<BimApp>| h.state().cut.drawings;
+    let still = drawn(&h);
+    assert!(still >= 1, "the drawing over the picture was made");
+    // Frames that change nothing: the pointer resting in the window.
+    h.hover_at(pos2(640.0, 400.0));
+    h.run();
+    let resting = drawn(&h);
+    for _ in 0..5 {
+        h.step();
+    }
+    assert_eq!(drawn(&h), resting, "frames that change nothing made the drawing again");
+    h.event(Event::MouseWheel {
+        unit: MouseWheelUnit::Point,
+        delta: vec2(0.0, 120.0),
+        phase: TouchPhase::Move,
+        modifiers: Modifiers::NONE,
+    });
+    h.run();
+    assert!(drawn(&h) > resting, "a zoom draws it again");
+}
+
+#[test]
 fn a_pan_or_a_zoom_of_a_section_with_a_region_over_it_draws_the_picture_once_a_frame() {
     let square = r#"[[[1000,1000],[4000,1000]],[[4000,1000],[4000,4000]],[[4000,4000],[1000,4000]],[[1000,4000],[1000,1000]]]"#;
     let mut h = app(&format!(
@@ -524,4 +550,23 @@ fn the_line_editor_stands_twenty_pixels_clear_of_the_row_of_buttons_under_it() {
     press(&mut h, "Crosshatch: Edit Lines");
     let (done, new) = (h.get_by_label("Done").rect(), h.get_by_label("New Pattern").rect());
     assert!(new.top() - done.bottom() >= 20.0, "{done:?} {new:?}");
+}
+
+#[test]
+fn section_selection_and_hover_reuse_geometry_and_visibility() {
+    let mut h = app(&format!("{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}"));
+    browse(&mut h, "Section 1");
+    h.run();
+    let pictures = h.state().cut.pictures;
+    let drawings = h.state().cut.drawings;
+    let wall = ids(&h, "wall")[0];
+    h.state_mut().selection = vec![wall];
+    h.run();
+    h.state_mut().selection.clear();
+    for at in [pos2(640.0, 400.0), pos2(700.0, 350.0), pos2(800.0, 450.0)] {
+        h.hover_at(at);
+        h.run();
+    }
+    assert_eq!(h.state().cut.pictures, pictures, "interaction rebuilt visibility");
+    assert_eq!(h.state().cut.drawings, drawings, "interaction rebuilt cut geometry");
 }

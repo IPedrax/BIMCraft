@@ -77,6 +77,8 @@ pub struct Step {
     pub label: String,
     pub made: Vec<(&'static str, usize)>,
     pub removed: Vec<(&'static str, usize)>,
+    /// Whether the model the step goes back to passed [`Model::check`]: going back to it needs no check.
+    checked: bool,
 }
 
 impl Step {
@@ -101,12 +103,12 @@ impl Step {
         } else {
             Vec::new()
         };
-        Step { label: label.to_string(), made, removed }
+        Step { label: label.to_string(), made, removed, checked: false }
     }
 }
 
 /// The commands that put another project in the session's place: a session that may only read, and a window's agent, never runs them.
-pub const REPLACES: &[&str] = &["new", "open", "recover", "highrise"];
+pub const REPLACES: &[&str] = &["new", "open", "recover", "highrise", "tower"];
 
 /// What a refusal of a session that may only read says, after what the command would do and before what would let it edit.
 pub const READ_ONLY: &str = "which is read-only for agents";
@@ -125,6 +127,9 @@ pub struct Session {
     pub option: Option<String>,
     undo: Vec<(Step, Arc<Model>)>,
     redo: Vec<(Step, Arc<Model>)>,
+    /// How many times a command's model was checked, for tests that it was or wasn't.
+    #[cfg(test)]
+    pub(crate) checks: usize,
     /// How many times the project was replaced, so a transaction knows its history went with it.
     resets: usize,
     /// What reads a DWG drawing, when the app has one (`cad::DwgReader`); none says to save it as DXF.
@@ -139,6 +144,10 @@ pub struct Session {
     /// What reads it (inspect, schedules, render, exports to new files, the sheets to PDF) answers; a copy saved as another file
     /// leaves the session with its own.
     pub read_only: Option<&'static str>,
+    /// The last model a command left that passed [`Model::check`]. Held here, it is never changed in place: a change
+    /// outside a command copies it first, so a model still this one is one that passed, and the next command need only
+    /// check what it changes ([`Model::check_changed`]).
+    verified: Option<Arc<Model>>,
 }
 
 impl Default for Session {
@@ -170,10 +179,13 @@ impl Session {
             option: None,
             undo: Vec::new(),
             redo: Vec::new(),
+            #[cfg(test)]
+            checks: 0,
             resets: 0,
             dwg: None,
             external: Vec::new(),
             read_only: None,
+            verified: None,
         }
     }
 
@@ -302,11 +314,18 @@ impl Session {
         let named = named(&self.model, params);
         let params = named.as_ref().unwrap_or(params);
         let before = Arc::clone(&self.model);
+        let verified = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &before));
         let (run, first_new, session) = (cmd.run, self.model.next_id, (self.phase.clone(), self.option.clone()));
         let result = catch_unwind(AssertUnwindSafe(|| run(self, params)))
             .unwrap_or_else(|p| Err(format!("internal error in `{}`: {}", cmd.id, panic_text(p.as_ref()))))
             .and_then(|v| {
                 if Arc::ptr_eq(&before, &self.model) {
+                    return Ok(v);
+                }
+                // Back to a model that passed (undo, redo): it is as it was then.
+                if self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &self.model)) {
+                    #[cfg(test)]
+                    assert_eq!(self.model.check(), Ok(()), "`{}` went back to a model that doesn't pass", cmd.id);
                     return Ok(v);
                 }
                 // A command that splits what stands keeps its phase; one that makes something makes it in the session's;
@@ -332,10 +351,43 @@ impl Session {
                     m.forget_cad_layers(&unplaced);
                 }
                 // What a command was given by id points at the element's GUID; what it put in the library has an id and a GUID.
-                self.model_mut().resolve();
-                self.model_mut().sync_library();
-                // A room frozen keeps the boundary it has now; one thawed lets it go.
-                if self.model.elements.values().any(|e| matches!(e, Element::Room(r) if r.frozen != r.kept.is_some())) {
+                if verified {
+                    self.model_mut().resolve_changed(&before);
+                } else {
+                    self.model_mut().resolve();
+                }
+                // A library in step needs nothing; after a verified model, what the command changed says whether it is.
+                let in_step = if verified { self.model.library_in_step_since(&before) } else { self.model.library_in_step() };
+                #[cfg(test)]
+                if verified {
+                    assert_eq!(in_step, self.model.library_in_step(), "library_in_step_since differs after `{}` {params}", cmd.id);
+                }
+                if !in_step {
+                    // After a verified model, what the command changed is synced; else (or when more than elements
+                    // changed) the whole library.
+                    #[cfg(test)]
+                    let oracle = verified.then(|| sync_oracle(&self.model, &before));
+                    if !(verified && self.model_mut().sync_since(&before)) {
+                        self.model_mut().sync_library();
+                    }
+                    #[cfg(test)]
+                    if let Some(Some((incremental, whole))) = oracle {
+                        assert!(
+                            incremental.elements.iter().eq(whole.elements.iter()) && incremental.library.parts().eq(whole.library.parts()),
+                            "the library synced by what `{}` changed isn't as the whole sync makes it",
+                            cmd.id
+                        );
+                        assert!(self.model.library_in_step(), "the library isn't in step after `{}`", cmd.id);
+                    }
+                }
+                // A room frozen keeps the boundary it has now; one thawed lets it go. After a verified model, only a room the
+                // command changed can be either.
+                let unsettled = |e: &Element| matches!(e, Element::Room(r) if r.frozen != r.kept.is_some());
+                let unsettled = match (verified, self.model.changed_since(&before)) {
+                    (true, crate::ids::Changed::Ids(ids)) => ids.iter().any(|id| self.model.elements.get(*id).is_some_and(unsettled)),
+                    _ => self.model.elements.values().any(unsettled),
+                };
+                if unsettled {
                     self.model_mut().keep_rooms();
                 }
                 // Locked and equal dimensions moved what they measure to as the command moved it.
@@ -346,7 +398,22 @@ impl Session {
                 // from before may break; Insert from File brings in what it finds.
                 // (Before the check, which would name a bow tie of no area by that, not by what to redraw.)
                 let edited = if cmd.undoable && cmd.id != "insert" { self.model.check_edits(&before, cmd.id, params) } else { Ok(()) };
-                edited.and_then(|()| self.model.check()).map(|()| v)
+                edited
+                    .and_then(|()| {
+                        #[cfg(test)]
+                        {
+                            self.checks += 1;
+                        }
+                        let checked = if verified { self.model.check_changed(&before) } else { self.model.check() };
+                        // Tests hold the two to the same answer after every command they run.
+                        #[cfg(test)]
+                        if verified {
+                            let full = self.model.check();
+                            assert_eq!(checked, full, "check_changed differs from check after `{}` {params}", cmd.id);
+                        }
+                        checked
+                    })
+                    .map(|()| v)
             });
         match result {
             Err(e) => {
@@ -356,8 +423,10 @@ impl Session {
                 Err(e)
             }
             Ok(v) => {
+                self.verified = Some(Arc::clone(&self.model));
                 if cmd.undoable && !Arc::ptr_eq(&before, &self.model) {
-                    self.undo.push((Step::new(cmd.label, &before, &self.model), before));
+                    let step = Step { checked: verified, ..Step::new(cmd.label, &before, &self.model) };
+                    self.undo.push((step, before));
                     if self.undo.len() > UNDO_LIMIT {
                         self.undo.remove(0);
                     }
@@ -374,6 +443,7 @@ impl Session {
         let named = named(&self.model, params);
         let params = named.as_ref().unwrap_or(params);
         let before = Arc::clone(&self.model);
+        let verified = self.verified.clone();
         let (undo, redo, session) = (self.undo.clone(), self.redo.clone(), (self.phase.clone(), self.option.clone()));
         let result = catch_unwind(AssertUnwindSafe(|| (cmd.run)(self, params)))
             .unwrap_or_else(|p| Err(format!("internal error in `{name}`: {}", panic_text(p.as_ref()))))
@@ -389,9 +459,13 @@ impl Session {
             Err(e) => {
                 (self.model, self.phase, self.option) = (before, session.0, session.1);
                 (self.undo, self.redo) = (undo, redo);
+                self.verified = verified;
                 Err(e)
             }
-            Ok(v) => Ok(v),
+            Ok(v) => {
+                self.verified = Some(Arc::clone(&self.model));
+                Ok(v)
+            }
         }
     }
 
@@ -401,6 +475,12 @@ impl Session {
         let kept = Kept::of(self);
         let result = self.execute_external(cmd, name, params);
         kept.keep(self).map_err(|()| format!("`{name}` would change the project, {READ_ONLY}: {how}")).and(result)
+    }
+
+    /// Whether the model now is the one the last command left that passed the check, so the next checks only what it changes.
+    #[cfg(test)]
+    pub(crate) fn verified_now(&self) -> bool {
+        self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &self.model))
     }
 
     /// Runs `f` as a session that may only read ([`Session::read_only`]), `how` saying what would let it edit, unless the
@@ -448,6 +528,7 @@ impl Session {
     /// `open`) left the history it began, so what came after it stays the steps it was.
     pub fn transaction<T>(&mut self, label: &str, f: impl FnOnce(&mut Session) -> Result<T, String>) -> Result<T, String> {
         let before = Arc::clone(&self.model);
+        let checked = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &before));
         let (path, phase, option) = (self.path.clone(), self.phase.clone(), self.option.clone());
         let (mut undo, redo, resets) = (std::mem::take(&mut self.undo), std::mem::take(&mut self.redo), self.resets);
         let result = catch_unwind(AssertUnwindSafe(|| f(self)))
@@ -464,7 +545,7 @@ impl Session {
                 if self.undo.is_empty() {
                     self.redo = redo;
                 } else {
-                    undo.push((Step::new(label, &before, &self.model), before));
+                    undo.push((Step { checked, ..Step::new(label, &before, &self.model) }, before));
                     if undo.len() > UNDO_LIMIT {
                         undo.remove(0);
                     }
@@ -522,10 +603,16 @@ impl Session {
             return Err(format!("`count` must be from 1 to {}, the steps there are to {what}", from.len()));
         }
         let mut label = String::new();
+        // Whether the model now passed: the step that comes back to it says so.
+        let mut checked = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &self.model));
         for _ in 0..count {
-            let Some((step, model)) = from.pop() else { break };
+            let Some((mut step, model)) = from.pop() else { break };
             label = step.label.clone();
+            std::mem::swap(&mut step.checked, &mut checked);
             to.push((step, std::mem::replace(&mut self.model, model)));
+        }
+        if checked {
+            self.verified = Some(Arc::clone(&self.model));
         }
         Ok(json!({ key: label, "count": count }))
     }
@@ -535,6 +622,9 @@ impl Session {
 /// things in, and how many times it was replaced.
 struct Kept {
     model: Arc<Model>,
+    /// The model the last command left that passed the check, as it was: put back with the model, the next command checks
+    /// only what it changes.
+    verified: Option<Arc<Model>>,
     path: Option<PathBuf>,
     phase: Option<String>,
     option: Option<String>,
@@ -547,6 +637,7 @@ impl Kept {
     fn of(s: &Session) -> Kept {
         Kept {
             model: Arc::clone(&s.model),
+            verified: s.verified.clone(),
             path: s.path.clone(),
             phase: s.phase.clone(),
             option: s.option.clone(),
@@ -562,7 +653,7 @@ impl Kept {
         let same = (Arc::ptr_eq(&self.model, &s.model) || *self.model == *s.model)
             && (s.phase == self.phase && s.option == self.option && s.resets == self.resets)
             && (s.undo.len() == self.undo.len() && s.redo.len() == self.redo.len());
-        (s.model, s.path, s.phase, s.option) = (self.model, self.path, self.phase, self.option);
+        (s.model, s.verified, s.path, s.phase, s.option) = (self.model, self.verified, self.path, self.phase, self.option);
         (s.undo, s.redo, s.resets) = (self.undo, self.redo, self.resets);
         if same { Ok(()) } else { Err(()) }
     }
@@ -600,4 +691,24 @@ fn named(m: &Model, params: &Value) -> Option<Value> {
 
 fn panic_text(p: &(dyn std::any::Any + Send)) -> String {
     p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_else(|| "panic".into())
+}
+
+/// The library synced both ways, by what changed since `before` and whole, each new GUID made the same way in order:
+/// what the engine holds the incremental sync to in tests. None where the incremental one can't say.
+#[cfg(test)]
+fn sync_oracle(m: &Model, before: &Model) -> Option<(Model, Model)> {
+    let counter = || {
+        let mut n = 0u64;
+        move |_: &Model, _: Option<&crate::library::Kind>, _: &str| {
+            n += 1;
+            crate::ids::Guid::seeded(0x5eed, n)
+        }
+    };
+    let mut incremental = m.clone();
+    if !incremental.sync_since_with(before, &mut counter()) {
+        return None;
+    }
+    let mut whole = m.clone();
+    whole.sync_library_with(&mut counter());
+    Some((incremental, whole))
 }

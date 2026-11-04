@@ -17,6 +17,7 @@ use crate::geom::P2;
 use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
 
+mod bounds;
 mod validate;
 
 /// What a family is: how IFC names its components; a door or a window is hosted in a wall, which
@@ -108,6 +109,40 @@ impl Category {
             Category::Lighting => ("IFCLIGHTFIXTURE", OPEN, None),
             Category::Generic | Category::Door | Category::Window => ("IFCBUILDINGELEMENTPROXY", OPEN, None),
         }
+    }
+
+    /// The kinds a family of it may say it is, each with the predefined type IFC writes a component of that kind with, the
+    /// category's own where it has none. A kind says which fixture or fitting it is, by the names the sizing commands count
+    /// fixtures by (`drain_size`'s and `water_size`'s `wc`, `lav`…), so a WC reaches IFC as a toilet pan, not as a sanitary
+    /// terminal of no type. Where two kinds share a predefined type, reading it back gives the first.
+    pub fn kinds(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            Category::Plumbing => &[
+                ("wc", ".TOILETPAN."),
+                ("lav", ".WASHHANDBASIN."),
+                ("sink", ".SINK."),
+                ("laundry", ".SINK."),
+                ("shower", ".SHOWER."),
+                ("bath", ".BATH."),
+                ("bidet", ".BIDET."),
+                ("urinal", ".URINAL."),
+            ],
+            Category::Drain => &[("floor_drain", ".FLOORTRAP."), ("floor_waste", ".FLOORWASTE."), ("roof_drain", ".ROOFDRAIN.")],
+            Category::PipeFitting => &[
+                ("bend", ".BEND."),
+                ("tee", ".JUNCTION."),
+                ("cross", ".JUNCTION."),
+                ("transition", ".TRANSITION."),
+                ("coupling", ".CONNECTOR."),
+            ],
+            _ => &[],
+        }
+    }
+
+    /// The kind of it an IFC product of predefined type `predefined` (as the file spells it, without the dots) is, if one is.
+    pub fn kind_of(self, predefined: Option<&str>) -> Option<&'static str> {
+        let p = predefined?;
+        self.kinds().iter().find(|(_, t)| t.trim_matches('.') == p).map(|(k, _)| *k)
     }
 
     /// Whether a device of it draws or switches a load, so its family should hold a connector that says how much.
@@ -444,6 +479,10 @@ fn no_mesh(mesh: &Arc<Vec<[P3; 3]>>) -> bool {
 pub struct Family {
     #[serde(default)]
     pub category: Category,
+    /// Which fixture or fitting of its category it is (`wc`, `bend`…), one of [`Category::kinds`]: IFC writes its
+    /// components' predefined type from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
     #[serde(default)]
     pub parameters: Vec<Parameter>,
     #[serde(default)]
@@ -1001,6 +1040,13 @@ impl Family {
         Ok(v)
     }
 
+    /// How IFC writes a component of it: [`Category::ifc`], with its kind's predefined type where it says one.
+    pub fn ifc(&self) -> (&'static str, &'static str, Option<&'static str>) {
+        let (class, predefined, object) = self.category.ifc();
+        let kind = self.kind.as_deref().and_then(|k| self.category.kinds().iter().find(|(n, _)| *n == k)).map(|(_, t)| *t);
+        (class, kind.unwrap_or(predefined), object)
+    }
+
     /// Whether it's sound: its parameters named once each, so formulas can say them, and holding
     /// what their kinds hold; its types setting only the type parameters no formula works out; its
     /// materials in the library (`has_material`); and every type building.
@@ -1018,6 +1064,18 @@ impl Family {
         }
         if self.types.is_empty() {
             return Err("it needs a type: add one to `types`".into());
+        }
+        if let Some(kind) = &self.kind {
+            let kinds = self.category.kinds();
+            if !kinds.iter().any(|(k, _)| k == kind) {
+                let shown: String = kind.chars().take(40).collect();
+                let names: Vec<&str> = kinds.iter().map(|(k, _)| *k).collect();
+                return Err(if names.is_empty() {
+                    format!("`kind` `{shown}`: a family of this category has no kinds; leave `kind` out")
+                } else {
+                    format!("`kind` is one of {}, not `{shown}`", names.join(", "))
+                });
+            }
         }
         if self.category.hosted() {
             for name in [WIDTH, HEIGHT] {
@@ -1841,6 +1899,7 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
         w(msg!("WC")),
         json!({
             "category": "plumbing",
+            "kind": "wc",
             "types": {"400 x 650": {}},
             "forms": [
                 block([n(-200.0), n(-180.0), n(200.0), n(0.0)], n(380.0), n(800.0), &porcelain),
@@ -1854,6 +1913,7 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
         w(msg!("Washbasin")),
         json!({
             "category": "plumbing",
+            "kind": "lav",
             "parameters": [size(&width, 600.0), size(&depth, 450.0), size(&height, 850.0)],
             "types": {"600 x 450": {}, "500 x 400": {&width: 500, &depth: 400}},
             "forms": [
@@ -1869,6 +1929,7 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
         w(msg!("Bathtub")),
         json!({
             "category": "plumbing",
+            "kind": "bath",
             "parameters": [size(&length, 1700.0), size(&width, 750.0), size(&height, 560.0)],
             "types": {"1700 x 750": {}, "1500 x 700": {&length: 1500, &width: 700}},
             "forms": [

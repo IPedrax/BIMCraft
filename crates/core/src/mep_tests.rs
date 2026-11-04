@@ -569,6 +569,8 @@ struct Fixture {
     predefined: &'static str,
     /// The object type a proxy carries, if the class has no home for it.
     object_type: Option<&'static str>,
+    /// Which fixture or fitting of its category it is, which writes its predefined type.
+    kind: Option<&'static str>,
     base: (f64, f64),
     top: (f64, f64),
 }
@@ -578,8 +580,9 @@ const FIXTURES: &[Fixture] = &[
         family: "WC",
         category: Category::Plumbing,
         class: "IFCSANITARYTERMINAL",
-        predefined: ".NOTDEFINED.",
+        predefined: ".TOILETPAN.",
         object_type: None,
+        kind: Some("wc"),
         base: (0.0, 0.0),
         top: (700.0, 900.0),
     },
@@ -587,8 +590,9 @@ const FIXTURES: &[Fixture] = &[
         family: "Washbasin",
         category: Category::Plumbing,
         class: "IFCSANITARYTERMINAL",
-        predefined: ".NOTDEFINED.",
+        predefined: ".WASHHANDBASIN.",
         object_type: None,
+        kind: Some("lav"),
         base: (0.0, 0.0),
         top: (800.0, 900.0),
     },
@@ -596,8 +600,9 @@ const FIXTURES: &[Fixture] = &[
         family: "Kitchen Sink",
         category: Category::Plumbing,
         class: "IFCSANITARYTERMINAL",
-        predefined: ".NOTDEFINED.",
+        predefined: ".SINK.",
         object_type: None,
+        kind: Some("sink"),
         base: (0.0, 0.0),
         top: (850.0, 1300.0),
     },
@@ -605,8 +610,9 @@ const FIXTURES: &[Fixture] = &[
         family: "Shower",
         category: Category::Plumbing,
         class: "IFCSANITARYTERMINAL",
-        predefined: ".NOTDEFINED.",
+        predefined: ".SHOWER.",
         object_type: None,
+        kind: Some("shower"),
         base: (0.0, 0.0),
         top: (2000.0, 2200.0),
     },
@@ -616,6 +622,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCWASTETERMINAL",
         predefined: ".FLOORTRAP.",
         object_type: None,
+        kind: Some("floor_drain"),
         base: (-100.0, 0.0),
         top: (0.0, 0.0),
     },
@@ -623,8 +630,9 @@ const FIXTURES: &[Fixture] = &[
         family: "Elbow 90",
         category: Category::PipeFitting,
         class: "IFCPIPEFITTING",
-        predefined: ".NOTDEFINED.",
+        predefined: ".BEND.",
         object_type: None,
+        kind: Some("bend"),
         base: (-100.0, -10.0),
         top: (10.0, 100.0),
     },
@@ -632,8 +640,9 @@ const FIXTURES: &[Fixture] = &[
         family: "Tee",
         category: Category::PipeFitting,
         class: "IFCPIPEFITTING",
-        predefined: ".NOTDEFINED.",
+        predefined: ".JUNCTION.",
         object_type: None,
+        kind: Some("tee"),
         base: (-100.0, -10.0),
         top: (10.0, 100.0),
     },
@@ -643,6 +652,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCVALVE",
         predefined: ".NOTDEFINED.",
         object_type: None,
+        kind: None,
         base: (-100.0, -10.0),
         top: (40.0, 300.0),
     },
@@ -652,6 +662,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCELECTRICDISTRIBUTIONBOARD",
         predefined: ".DISTRIBUTIONBOARD.",
         object_type: None,
+        kind: None,
         base: (1200.0, 1400.0),
         top: (1700.0, 2300.0),
     },
@@ -661,6 +672,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCLIGHTFIXTURE",
         predefined: ".NOTDEFINED.",
         object_type: None,
+        kind: None,
         base: (2900.0, 3000.0),
         top: (2950.0, 3050.0),
     },
@@ -670,6 +682,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCLIGHTFIXTURE",
         predefined: ".NOTDEFINED.",
         object_type: None,
+        kind: None,
         base: (2900.0, 3000.0),
         top: (2950.0, 3050.0),
     },
@@ -679,6 +692,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCOUTLET",
         predefined: ".POWEROUTLET.",
         object_type: None,
+        kind: None,
         base: (200.0, 2100.0),
         top: (300.0, 2200.0),
     },
@@ -688,6 +702,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCOUTLET",
         predefined: ".POWEROUTLET.",
         object_type: None,
+        kind: None,
         base: (200.0, 2100.0),
         top: (300.0, 2200.0),
     },
@@ -697,6 +712,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCSWITCHINGDEVICE",
         predefined: ".TOGGLESWITCH.",
         object_type: None,
+        kind: None,
         base: (200.0, 1200.0),
         top: (300.0, 1300.0),
     },
@@ -706,6 +722,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCBUILDINGELEMENTPROXY",
         predefined: ".USERDEFINED.",
         object_type: Some("LightningTerminal"),
+        kind: None,
         base: (-1.0, 1.0),
         top: (400.0, 2100.0),
     },
@@ -715,6 +732,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCBUILDINGELEMENTPROXY",
         predefined: ".USERDEFINED.",
         object_type: Some("EarthingRod"),
+        kind: None,
         base: (-3100.0, -2300.0),
         top: (0.0, 0.0),
     },
@@ -724,6 +742,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCBUILDINGELEMENTPROXY",
         predefined: ".USERDEFINED.",
         object_type: Some("InspectionBox"),
+        kind: None,
         base: (-350.0, -200.0),
         top: (0.0, 0.0),
     },
@@ -733,6 +752,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCOUTLET",
         predefined: ".DATAOUTLET.",
         object_type: None,
+        kind: None,
         base: (200.0, 1200.0),
         top: (300.0, 1300.0),
     },
@@ -742,6 +762,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCOUTLET",
         predefined: ".TELEPHONEOUTLET.",
         object_type: None,
+        kind: None,
         base: (200.0, 1200.0),
         top: (300.0, 1300.0),
     },
@@ -751,6 +772,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCCOMMUNICATIONSAPPLIANCE",
         predefined: ".NETWORKAPPLIANCE.",
         object_type: None,
+        kind: None,
         base: (1400.0, 1600.0),
         top: (1500.0, 1700.0),
     },
@@ -760,6 +782,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCBUILDINGELEMENTPROXY",
         predefined: ".USERDEFINED.",
         object_type: Some("Rack"),
+        kind: None,
         base: (-1.0, 1.0),
         top: (1900.0, 2100.0),
     },
@@ -774,6 +797,7 @@ fn a_new_project_has_the_starter_fixtures_of_its_tabs_in_every_language_and_each
             let name = l.word(f.family);
             let family = m.families.get(name).unwrap_or_else(|| panic!("{l:?}: no family `{name}`"));
             assert_eq!(family.category, f.category, "{l:?} {name}");
+            assert_eq!(family.kind.as_deref(), f.kind, "{l:?} {name}");
             assert!(!family.types.is_empty(), "{l:?} {name}");
         }
     }
@@ -800,8 +824,13 @@ fn a_starter_fixture_stands_as_it_is_and_every_type_of_it_has_a_body() {
 #[test]
 fn a_category_of_family_is_written_as_its_ifc_class_and_read_back_as_the_same_category() {
     for f in FIXTURES {
-        assert_eq!(f.category.ifc(), (f.class, f.predefined, f.object_type), "{}", f.family);
+        let (class, predefined, object) = f.category.ifc();
+        assert_eq!((class, object), (f.class, f.object_type), "{}", f.family);
+        // A kind writes its own predefined type; without one, the category's.
+        let own = f.kind.and_then(|k| f.category.kinds().iter().find(|(n, _)| *n == k)).map_or(predefined, |(_, t)| *t);
+        assert_eq!(own, f.predefined, "{}", f.family);
         assert_eq!(Category::from_ifc(f.class, Some(f.predefined.trim_matches('.')), f.object_type), Some(f.category), "{}", f.family);
+        assert_eq!(f.category.kind_of(Some(f.predefined.trim_matches('.'))), f.kind, "{}", f.family);
     }
     // A class BIMCraft makes no family of, or a proxy that says nothing, is the generic one's, or none.
     assert_eq!(Category::from_ifc("IFCBEAM", None, None), None);
@@ -840,6 +869,7 @@ fn fixtures_are_ifc_products_of_their_class_and_come_back_in_a_family_of_their_c
     for f in FIXTURES {
         let family = t.model.families.get(f.family).unwrap_or_else(|| panic!("{} came back", f.family));
         assert_eq!(family.category, f.category, "{}", f.family);
+        assert_eq!(family.kind.as_deref(), f.kind, "{}: its kind comes back from its predefined type", f.family);
     }
     assert_eq!(t.model.elements.values().filter(|e| e.category() == "component").count(), FIXTURES.len());
     // Each in the family it was of: the library's of the same name would stand in for one the import named wrongly.
@@ -852,6 +882,45 @@ fn fixtures_are_ifc_products_of_their_class_and_come_back_in_a_family_of_their_c
         .collect();
     let wanted: std::collections::BTreeSet<String> = FIXTURES.iter().map(|f| f.family.to_string()).collect();
     assert_eq!(named, wanted);
+}
+
+#[test]
+fn a_family_says_which_fixture_it_is_and_ifc_writes_that_predefined_type() {
+    let mut s = Session::new();
+    // A laundry tub (a tanque) made of the kitchen sink's shape: a sink to IFC, a laundry to the sizing tables.
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Basin", "category": "plumbing", "types": {"A": {}}, "forms": [
+        {"profile": [[-200, -200], [200, -200], [200, 200], [-200, 200]], "to": 800}]}),
+    );
+    assert_eq!(s.model.families["Basin"].kind, None);
+    run(&mut s, "family", json!({"name": "Basin", "kind": "laundry"}));
+    assert_eq!(s.model.families["Basin"].kind.as_deref(), Some("laundry"));
+    assert_eq!(s.model.families["Basin"].ifc(), ("IFCSANITARYTERMINAL", ".SINK.", None));
+    // A kind its category has no row for is refused, naming the ones it has; one for a category with none, too.
+    let e = fails(&mut s, "family", json!({"name": "Basin", "kind": "bend"}));
+    assert!(e.contains("wc, lav, sink, laundry, shower, bath, bidet, urinal") && e.contains("`bend`"), "{e}");
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Lamp", "category": "lighting", "types": {"A": {}}, "forms": [
+        {"profile": [[-100, -100], [100, -100], [100, 100], [-100, 100]], "to": 100}]}),
+    );
+    let e = fails(&mut s, "family", json!({"name": "Lamp", "kind": "wc"}));
+    assert!(e.contains("has no kinds"), "{e}");
+    // Changing the category leaves a kind it doesn't have: refused until the kind goes with it.
+    let e = fails(&mut s, "family", json!({"name": "Basin", "category": "drain"}));
+    assert!(e.contains("floor_drain") && e.contains("`laundry`"), "{e}");
+    run(&mut s, "family", json!({"name": "Basin", "category": "drain", "kind": "floor_drain"}));
+    assert_eq!(s.model.families["Basin"].ifc().1, ".FLOORTRAP.");
+    // An empty kind takes it away: the category's own predefined type again.
+    run(&mut s, "family", json!({"name": "Basin", "category": "plumbing", "kind": ""}));
+    assert_eq!(s.model.families["Basin"].kind, None);
+    assert_eq!(s.model.families["Basin"].ifc().1, ".NOTDEFINED.");
+    // A file without `kind` reads as it did, and a family without one writes none.
+    let saved = serde_json::to_value(&s.model.families["Basin"]).unwrap();
+    assert!(saved.get("kind").is_none(), "{saved}");
 }
 
 #[test]
