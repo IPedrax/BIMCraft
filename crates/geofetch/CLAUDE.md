@@ -18,7 +18,7 @@ are in the root `CLAUDE.md`.
   replies. Read the sources' own attribution documents before shipping (the Terrarium one is the Joerd `attribution.md`).
 - Aerial imagery: the sources are the core's table (`bimcraft_core::imagery::SOURCES`), and `net::Allow::standard` takes each one's
   addresses and no others (a query is pinned whole, pair by pair); a tile is a PNG or a JPEG of 256 by 256 or it is refused, and a
-  tile with no imagery (404, or one flat colour) is left clear. Try the services with `examples/imagery.rs`; its notes are in
+  tile with no imagery (a 404, a 400 that names `TileOutOfRange`, or one flat colour) is left clear. Try the services with `examples/imagery.rs`; its notes are in
   [geofetch](../../docs/areas/geofetch.md).
 - What a server says is hostile, and is still the best clue: an error status keeps its number and carries a short reason made of the
   first bytes of its page (`net::reason`, one line of plain text), so a 400 names the parameter it did not like.

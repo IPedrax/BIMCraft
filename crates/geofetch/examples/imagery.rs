@@ -69,7 +69,9 @@ const CANDIDATES: [Candidate; 6] = [
         place: "Ghent",
         longitude: 3.7174,
         latitude: 51.0543,
-        zooms: &[16, 17, 18, 19],
+        // 17 to 19 are proven; 20 to 22 are tried to find where it stops (its matrices run 0 to 22). Index 1 is the zoom of the far-away
+        // row and index 2 that of the variants, so those stay at 18 and 19.
+        zooms: &[17, 18, 19, 20, 21, 22],
         beyond: 23,
         caps: "https://geo.api.vlaanderen.be/OMWRGBMRVL/wmts?request=GetCapabilities&service=WMTS",
         licence: "free of charge; the usage right is on Digitaal Vlaanderen's 'gebruiksrecht en privacyverklaring geografische webdiensten' page: what credit does it ask for?",

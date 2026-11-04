@@ -1,7 +1,7 @@
 //! The tiles of an aerial imagery plan, fetched a few at a time, kept on disk, and laid in a mosaic. What a service sends is hostile:
 //! a tile is taken only if its bytes are a PNG or a JPEG of 256 by 256 pixels (told by the bytes, not by what the service says it
 //! is), a reply is read to a cap, and what is kept on disk is decoded again when it is read. A tile the service has none of (an
-//! error status 404, or a picture of one flat colour) is a tile with no imagery, left clear; any other trouble fails the fetch, so the
+//! error status 404 or an out-of-range 400, or a picture of one flat colour) is a tile with no imagery, left clear; any other trouble fails the fetch, so the
 //! picture never has a hole that is not the service's.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -11,7 +11,7 @@ use bimcraft_core::imagery::{Imagery, Mosaic, Plan, Source, TILE};
 use bimcraft_core::texture::{decode_rgb, flat_rgb};
 
 use crate::cache::{Cache, key};
-use crate::net::Net;
+use crate::net::{Net, NetError};
 use crate::probe::Format;
 
 /// How long a tile is kept, seconds: thirty days.
@@ -85,13 +85,20 @@ impl ImageryTiles {
         let reply = match self.net.get(url, MAX_TILE) {
             Ok(reply) => reply,
             // The service says it has none.
-            Err(e) if e.status == Some(404) => return Ok(Tile::None),
+            Err(e) if no_tile_here(&e) => return Ok(Tile::None),
             Err(e) => return Err(format!("{label}: {e}")),
         };
         let rgb = decode_tile(&reply.body).map_err(|e| format!("{label}: {e}"))?;
         self.cache.write(&name, &reply.body);
         Ok(Tile::of(rgb, false))
     }
+}
+
+/// Whether a failed request is the service saying it has no tile there: a 404, or the 400 an OGC tile service (GeoWebCache, PDOK) sends
+/// for a tile off its grid, which names `TileOutOfRange` in its exception (the reason `net::reason` carries). Another 400 is a parameter
+/// it did not like, and fails the fetch.
+fn no_tile_here(e: &NetError) -> bool {
+    e.status == Some(404) || (e.status == Some(400) && e.message.contains("TileOutOfRange"))
 }
 
 /// What came of one tile.
@@ -226,6 +233,56 @@ mod tests {
             .get(&url(s, &p, 1, 1), &flat);
         let why = fetcher(none, &Scratch::new("imagery-none")).fetch(s, &p).unwrap_err();
         assert!(why.contains("no imagery") && why.contains(s.name), "{why}");
+    }
+
+    #[test]
+    fn a_tile_outside_the_services_grid_is_a_tile_with_no_imagery_and_not_a_failed_fetch() {
+        // Flanders and PDOK answer a tile off their grid with an HTTP 400 that names `TileOutOfRange`, not with a 404.
+        let (s, p) = (source("flanders").unwrap(), plan(3, 1));
+        let off = "TileOutOfRange locator=TILECOLUMN Column 1001 is out of range, min: 66453";
+        let net =
+            Fake::new().get(&url(s, &p, 0, 0), &tile(1)).status_with("GET", &url(s, &p, 1, 0), 400, off).get(&url(s, &p, 2, 0), &tile(3));
+        let got = fetcher(net, &Scratch::new("imagery-range")).fetch(s, &p).unwrap();
+        got.mosaic.check().unwrap();
+        assert_eq!(got.mosaic.has, [true, false, true], "the rest of the picture is made");
+        // All of them off the grid: no imagery, said as for any other place that has none.
+        let all = (0..3).fold(Fake::new(), |net, col| net.status_with("GET", &url(s, &p, col, 0), 400, off));
+        let why = fetcher(all, &Scratch::new("imagery-range-none")).fetch(s, &p).unwrap_err();
+        assert!(why.contains("no imagery") && why.contains(s.name), "{why}");
+        // Only that one reason is a missing tile: another 400 (a parameter it did not like), or the same words with another status, fail.
+        for (status, why, says) in [
+            (400, "InvalidParameterValue locator=Style Style 'default' is invalid.", "locator=Style"),
+            (400, "", "400"),
+            (403, "TileOutOfRange", "403"),
+            (500, "TileOutOfRange", "500"),
+        ] {
+            let net = if why.is_empty() {
+                Fake::new().status("GET", &url(s, &plan(1, 1), 0, 0), status, None)
+            } else {
+                Fake::new().status_with("GET", &url(s, &plan(1, 1), 0, 0), status, why)
+            };
+            let failed = fetcher(net, &Scratch::new("imagery-range-bad")).fetch(s, &plan(1, 1)).unwrap_err();
+            assert!(failed.contains(says) && failed.contains("18/1000/2000"), "{status} {why:?}: {failed}");
+        }
+    }
+
+    #[test]
+    fn only_a_404_or_a_400_that_says_the_tile_is_out_of_range_is_a_tile_with_none() {
+        let e = |status: Option<u16>, message: &str| NetError { message: message.into(), status, retry_after: None };
+        assert!(no_tile_here(&e(Some(404), "x: HTTP 404")));
+        assert!(no_tile_here(&e(Some(400), "geo.api.vlaanderen.be: HTTP 400: TileOutOfRange locator=TILEROW Row 1 is out of range")));
+        assert!(no_tile_here(&e(Some(400), "service.pdok.nl: HTTP 400: TileOutOfRange The requested tile is outside the bounding box")));
+        for (status, message) in [
+            (Some(400), "x: HTTP 400"),
+            (Some(400), "x: HTTP 400: InvalidParameterValue locator=TILEMATRIX Unknown TILEMATRIX 23"),
+            (Some(400), "x: HTTP 400: tileoutofrange"),
+            (Some(403), "x: HTTP 403: TileOutOfRange"),
+            (Some(500), "x: HTTP 500: TileOutOfRange"),
+            (None, "x: TileOutOfRange"),
+            (Some(200), "TileOutOfRange"),
+        ] {
+            assert!(!no_tile_here(&e(status, message)), "{status:?} {message}");
+        }
     }
 
     #[test]

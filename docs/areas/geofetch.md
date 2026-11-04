@@ -107,7 +107,14 @@ whole, pinned one of a source that can only be asked by query (Flanders; never a
 JPEG as well as PNG (`tiles::decode`, the picker's map, still reads only PNG). Bing, Esri, Maxar, Mapbox and Google are left out: as far
 as the research found, their terms do not allow fetching them into a project.
 
-**Flanders and its 400** (found on a real machine, 2026-11-04): the first address asked with `style=default` and every tile came back
+**Found on a real machine (2026-11-04), Flanders works** once asked with an empty style: zoom 18 over Ghent, 0.375 m a pixel, 4 x 3 tiles,
+0 % without imagery. The service takes **PNG only** (`image/jpeg is not a supported format`), about 92 KB a tile, and its matrices run 0 to 22
+(23 is unknown); zooms 17 to 19 are proven, 20 to 22 are tried by `imagery probe`. **A tile off a service's grid is an HTTP 400 naming
+`TileOutOfRange`, not a 404** (Flanders: `Column 54613 is out of range, min: 66453`; PDOK: `outside the bounding box of the tile map`), so
+`ImageryTiles` takes that 400, and only that one, as a tile with no imagery (`no_tile_here`): a box at the edge of a service's grid gives a
+picture clear where there is no tile, not a failed fetch that falls through to a coarser source.
+
+**Flanders and its 400** (the first run, the same day): the first address asked with `style=default` and every tile came back
 HTTP 400, so Automatic over Belgium fell through to Sentinel-2 at 6 m a pixel. Every published request for this service family has an
 **empty `style=`** and its capabilities list no style, so the table now asks with an empty one (`flanders_is_asked_with_an_empty_style...`;
 the pinned-query rule takes an empty literal, a test says so). That this is the cause is a guess until a real run says so: **an error

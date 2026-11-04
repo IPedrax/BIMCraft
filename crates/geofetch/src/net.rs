@@ -288,8 +288,19 @@ fn attribute<'a>(tag: &'a str, key: &str) -> Option<&'a str> {
     None
 }
 
+/// `line` with the five entities an error page writes decoded (`&lt; &gt; &quot; &#39; &apos; &amp;`) and no others: a numeric
+/// reference in general could be a control character. `&amp;` is last, so that what it decodes to is not decoded again.
+fn decode_entities(line: &str) -> String {
+    line.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'")
+        .replace("&amp;", "&")
+}
+
 /// What a server's error page says, in one short line: the text of its body with the tags taken out (an OGC exception report's code
-/// and `locator`, which name the parameter it did not like, are kept), white space made one space, control characters dropped, cut at
+/// and `locator`, which name the parameter it did not like, are kept), white space made one space, control characters dropped, five entities decoded, cut at
 /// 200 characters. `None` for a body that is empty, binary, not UTF-8 or only tags. The body is hostile, so only its first kilobyte is looked at.
 pub fn reason(body: &[u8]) -> Option<String> {
     let body = body.get(..REASON_BYTES).unwrap_or(body);
@@ -338,7 +349,7 @@ pub fn reason(body: &[u8]) -> Option<String> {
     }
     plain.push_str(rest);
     let plain: String = plain.chars().filter(|c| !c.is_control() || c.is_whitespace()).collect();
-    let line = plain.split_whitespace().collect::<Vec<_>>().join(" ");
+    let line = decode_entities(&plain.split_whitespace().collect::<Vec<_>>().join(" "));
     if line.is_empty() {
         return None;
     }
@@ -767,6 +778,21 @@ mod tests {
         ] {
             let _ = reason(hostile);
         }
+    }
+
+    #[test]
+    fn a_reason_has_the_five_entities_of_a_page_decoded_and_no_others() {
+        assert_eq!(reason(b"Style &#39;default&#39; is invalid."), Some("Style 'default' is invalid.".into()));
+        assert_eq!(reason(b"a &amp; b &lt;c&gt; &quot;d&quot; &apos;e&apos;"), Some(r#"a & b <c> "d" 'e'"#.into()));
+        // Once: what an entity decodes to is not decoded again.
+        assert_eq!(reason(b"&amp;lt;b&amp;gt; &amp;amp;"), Some("&lt;b&gt; &amp;".into()));
+        // Not a numeric reference in general: a control character, a tag's bracket or an unknown name stays as written.
+        assert_eq!(reason(b"x&#0;y&#x1b;z&#60;&nbsp;&bogus;"), Some("x&#0;y&#x1b;z&#60;&nbsp;&bogus;".into()));
+        // A decoded bracket is text, not a tag taken out afterwards.
+        assert_eq!(reason(b"&lt;script&gt; ran"), Some("<script> ran".into()));
+        // And it is still one line of at most 200 characters.
+        let long = reason(&b"&quot;word&quot; ".repeat(300)).unwrap_or_default();
+        assert!(long.chars().count() <= 201 && !long.contains('&'), "{} characters", long.chars().count());
     }
 
     #[test]

@@ -116,6 +116,11 @@ impl Fake {
         self.push(method, url, Err(NetError { message: format!("{url}: HTTP {status}"), status: Some(status), retry_after }))
     }
 
+    /// An HTTP error with the reason the server gave, as the real client words it: `url: HTTP 400: why`.
+    pub fn status_with(self, method: &str, url: &str, status: u16, why: &str) -> Fake {
+        self.push(method, url, Err(NetError { message: format!("{url}: HTTP {status}: {why}"), status: Some(status), retry_after: None }))
+    }
+
     fn push(self, method: &str, url: &str, answer: Answer) -> Fake {
         self.answers.lock().unwrap().entry((method.into(), url.into())).or_default().push(answer);
         self
