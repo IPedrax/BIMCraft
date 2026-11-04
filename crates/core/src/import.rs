@@ -1682,6 +1682,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             top_level,
             height: (height * 1000.0).round() / 1000.0,
             base_offset: ((w.z.0 - elevation(w.level)) * 1000.0).round() / 1000.0,
+            top_offset: 0.0,
             arc: w.arc,
             location: Default::default(),
             attach_top: None,

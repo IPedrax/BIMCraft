@@ -2237,7 +2237,28 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"id": roof, "sketch": [line(json!(60)), rest[0].clone(), rest[1].clone(), rest[2].clone()]}),
         json!({"sketch": [line(json!(60)), rest[0].clone(), rest[1].clone(), rest[2].clone()]}),
     ];
-    let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).collect();
+    // Walls' top offsets they can't have: past what a coordinate is, taking the top to or under the base, or not a number.
+    let wall = json!({"points": [[0, 0], [4000, 0]], "top_level": "Level 2"});
+    let offsets = [
+        json!({"points": [[0, 0], [4000, 0]], "top_level": "Level 2", "top_offset": 1e300}),
+        json!({"points": [[0, 0], [4000, 0]], "top_level": "Level 2", "top_offset": -1e300}),
+        json!({"points": [[0, 0], [4000, 0]], "top_level": "Level 2", "top_offset": f64::MAX}),
+        json!({"points": [[0, 0], [4000, 0]], "top_level": "Level 2", "top_offset": -3000}),
+        json!({"points": [[0, 0], [4000, 0]], "top_level": "Level 2", "top_offset": -3500, "base_offset": 1e9}),
+        json!({"points": [[0, 0], [4000, 0]], "top_level": "Level 2", "top_offset": 500, "arc": 90, "closed": true}),
+        json!({"points": [[0, 0], [4000, 0]], "top_offset": "x"}),
+        json!({"points": [[0, 0], [4000, 0]], "top_offset": [], "height": 1e300}),
+        json!({"points": [[0, 0], [4000, 0]], "height": 2700, "top_offset": 1e300}),
+        json!({"id": 100002, "top_offset": -3000}),
+        json!({"id": 100002, "top_offset": 1e300}),
+        json!({"id": 100002, "top_offset": null}),
+        json!({"id": 100002, "top_offset": {}}),
+        json!({"id": 100002, "top_offset": -2999, "base_offset": 1e9}),
+        json!({"ids": [100002, 100003, 100004], "top_offset": -2999.999}),
+        json!({"ids": [100002, 100003], "top_offset": 1e-300, "top_level": null, "height": -1}),
+        wall,
+    ];
+    let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());

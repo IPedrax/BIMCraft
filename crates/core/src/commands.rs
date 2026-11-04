@@ -183,9 +183,9 @@ pub static ALL: &[Command] = &[
         "wall",
         msg!("Wall"),
         &["WA"],
-        "{points: [[x,y],…], closed?, type?, level?, top_level?, height?, base_offset?, arc?, location?, attach_top?, \
+        "{points: [[x,y],…], closed?, type?, level?, top_level?, top_offset?, height?, base_offset?, arc?, location?, attach_top?, \
          attach_base?, room_bounding?} one wall per segment of its location line; up to the next level, or `height` mm tall (unconnected), or up \
-         to `top_level`. `arc`: degrees each turns from its start to its end, counter-clockwise (180, a half circle bulging to \
+         to `top_level`, `top_offset` mm above it (0; negative, below it; the top must stay above the base). `arc`: degrees each turns from its start to its end, counter-clockwise (180, a half circle bulging to \
          its right). `location`: the line of it the points are on: centre (the default), core-centre, exterior-finish, \
          interior-finish, exterior-core or interior-core; its exterior side is to the left of its start to its end, so walls \
          drawn clockwise face out. `attach_top`, `attach_base`: a roof or floor its top follows from below, or its base stands \
@@ -6065,6 +6065,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
         _ => Some(level_param(c, m, p, "top_level")?),
     };
     let base_offset = num(c, p, "base_offset")?.unwrap_or(0.0);
+    let top_offset = num(c, p, "top_offset")?.unwrap_or(0.0);
     let height = height.unwrap_or(DEFAULT_HEIGHT);
     let arc = num(c, p, "arc")?.unwrap_or(0.0);
     let location = match string(c, p, "location")? {
@@ -6090,6 +6091,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 top_level,
                 height,
                 base_offset,
+                top_offset,
                 arc,
                 location,
                 attach_top,
@@ -7681,6 +7683,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             top_level: None,
             height: ridge - front,
             base_offset,
+            top_offset: 0.0,
             arc: 0.0,
             location: Location::Centre,
             attach_top: Some(roof_guid),

@@ -121,3 +121,31 @@ fn what_an_element_is_tied_to_is_a_link_that_selects_it_in_both_profiles() {
         assert_eq!(follow(&mut h, format!("Dimension {d}")), [d.as_u64().unwrap_or_default()], "rev {rev}");
     }
 }
+
+#[test]
+fn a_walls_top_offset_is_a_row_under_its_top_constraint_in_both_profiles() {
+    for rev in [false, true] {
+        let script = format!("{BOX}\nwall {{\"points\": [[0, -2000], [4000, -2000]], \"height\": 2700}}");
+        let mut h = if rev { app(&script) } else { bimcraft(&script) };
+        let (connected, free) = (ids(&h, "wall")[0], ids(&h, "wall")[4]);
+        let value = |h: &Harness<BimApp>| h.get_by_role_and_label(Role::TextInput, "Top Offset").value().unwrap_or_default();
+        // To Level 2, it shows 0 where the wall's JSON leaves the offset out, and sets one through `modify`.
+        h.state_mut().selection = vec![connected];
+        h.run();
+        assert_eq!(value(&h), "0", "rev {rev}");
+        type_into(&mut h, "Top Offset", "300");
+        key(&mut h, Key::Enter);
+        assert_eq!((field(&h, connected, "top_offset"), field(&h, connected, "height")), (json!(300.0), json!(3300.0)), "rev {rev}");
+        assert_eq!(h.state().session.history().last(), Some(&"Modify"), "rev {rev}");
+        assert_eq!(value(&h), "300", "rev {rev}");
+        // A negative one takes the top down; one that takes it to the base is refused, the wall staying as it was.
+        type_into(&mut h, "Top Offset", "-3000");
+        key(&mut h, Key::Enter);
+        assert!(h.state().status.error && h.state().status.text.contains("tall"), "rev {rev}: {}", h.state().status.text);
+        assert_eq!(field(&h, connected, "top_offset"), json!(300.0), "rev {rev}");
+        // An unconnected wall has no top constraint to offset from: no row.
+        h.state_mut().selection = vec![free];
+        h.run();
+        assert!(h.query_by_role_and_label(Role::TextInput, "Top Offset").is_none(), "rev {rev}");
+    }
+}
