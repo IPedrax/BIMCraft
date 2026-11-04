@@ -14,6 +14,15 @@ ids inside a view are per view (`push_id`), so two views on screen never clash. 
 they hand it a file): what it keeps is `Settings`, written when it changes, between drags; a setting still to come goes on
 its page greyed out (`later`).
 
+Two working aids are drawn over a plan's or a ceiling plan's canvas, in `canvas()` right after the drawing: the origin marker
+(`origin_marker`: an arrow east for x in the canvas's red and one north for y in its green, lettered, at the screen point of the
+project's 0, 0, `ORIGIN_ARM` points long at any zoom, left out when the origin is far off the screen) and the view's name in the
+bottom left corner (`BimApp::corner_name`, over the view control bar where that floats over the corner, `bar_cover`; a ceiling plan's
+reads `Level 1 (Ceiling Plan)`, as an image's does). They are the window's alone: `render::draw` has neither, so no PNG, sheet or
+printout does. File > Settings > User Interface > Plans has a box for each (`BimApp::show_origin`, `show_view_name`; kept in
+`settings.json` as `origin_marker` and `view_name`, on when the file doesn't say), and New and Open keep them. The 3D view, sections
+and sheets have neither. Tests: `tests/origin.rs`, in both profiles.
+
 The minimap (`minimap.rs`, the same in both profiles) is at the top of the Navigator, Rev's Project Browser, under a header that folds
 it away: folded at first, so the tree keeps its room (the tests that click the tree's entries where they are drawn rely on it), and
 egui keeps the fold for the session. Unfolded, it is as wide as the palette and no taller than a third of what is left of it. For the
@@ -357,6 +366,23 @@ sloped, or upright as a wall's face) its tool says the work plane must be horizo
 angle, for what comes to sketch on one later (an opening on a wall). A Line or Polyline sketched in 3D shows the line to come,
 from the last point to the cursor, with its length (`sketch3d_preview`; the other shapes' previews are `shape_preview`'s).
 
+The navigation triad (`triad.rs`; the core's `triad.rs` has what any front end needs of it). Left of the 3D view's navigation bar
+(`BimApp::triad_rect`, which steps under the Options Bar as the bar does) stand the x, y and z axes in red, green and blue, turning
+with the camera, each end a marker (the positive a disc with its letter, the negative a ring with a minus), the far ones fainter. It
+is a triad, not a cube (#154 argues about a patent on clickable cubes). A click on an end turns the camera to look from that side
+(`triad::turned`): +z the top, -z the bottom, -y the front, +y the back, -x the left, +x the right; the target, closeness and lens stay,
+and a second click on the end the camera already looks from turns to the opposite side. The camera never turns straight down
+(`Camera::orbit`), so the top and bottom views stand at 89 and -89 degrees, north up in the top view and the same turn in the bottom.
+A camera view's new position is written back to it as any turn is. Alt and a click on an end sets the work plane square to that axis
+(`triad::plane`, the `work_plane` command with a surface): through the point of the plane the view was on that is nearest the camera's
+target, to the millimetre, facing the way the end points (a plane square to z always faces up); Alt and a click on the triad's empty
+space clears the view's own plane, back to the lowest level (nothing is done, and there is no undo step, where it is there already).
+Hovering an end names the view a click turns to (`Top`, or `Bottom` when the camera is on top already), and with Alt held the plane it
+would set. `BimApp::triad_input` makes the widget over the view's, sensing clicks and drags, so a click or a drag that begins on it is
+its own and never reaches the model behind (the view under it is not hovered either); `view3d` turns the camera with what it asks, and
+`triad_draw` draws over the picture, so the processor's and the card's alike, and the pick uses the camera alone, so it picks the same
+on both. A floating or linked 3D view beside the active one draws it but takes no clicks.
+
 Floor goes into sketch mode at once, in a plan as in 3D, as Revit's does (`set_tool`); its sketch's ribbon has Walls' Outline
 (`walls_outline_panel`), which puts the outline the level's walls enclose, and its courtyards, in the sketch as lines to edit
 (`floor_outline`): what the tool's one click inside the walls made before.
@@ -456,7 +482,10 @@ and a custom one is tried before the defaults. Each name in `ACTIONS` is a tool 
 carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System, Reference Plane, the duct tools): it waits
 for the tool. Load File reads JSON (`{"WA": "Wall"}`), Revit's `<Shortcut CommandName=… Shortcuts="WA#W1">` lines, or `KEY - Name` lines, up to 64 KiB;
 a description is an action only by its whole name in one of the interface's languages (`resolve_action`), and a key that is not two characters, names no action or
-is another action's is skipped and counted in the message. Custom shortcuts last while the window is open. Match Properties (MA) is the `match_properties`
+is another action's is skipped and counted in the message. Custom shortcuts are kept in `settings.json` (`shortcuts`: key to the action's English name, as `Settings::shortcuts`), written when one is added, edited or loaded and
+read into `BimApp::custom_shortcuts` at startup (`use_settings`), so they last past the window; Restore Defaults is kept too, as an empty object, and New and Open keep them.
+`Settings::from_json` keeps only what the dialog could have made (a key of two letters or digits, in upper case whatever its case in the file, and a name in `ACTIONS`),
+at most `MAX_SHORTCUTS`; a value that isn't an object leaves what the window had. Tests: `tests/shortcuts_kept.rs`. Match Properties (MA) is the `match_properties`
 command; with one element selected the window remembers its type for the next one drawn, with several it gives the others of the first's category its type.
 
 Annotation dialogs and draw tools. Manage > Annotation Settings lists Line Weights, Line Styles, Line Patterns (Line Styles on its

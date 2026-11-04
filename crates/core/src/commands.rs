@@ -22,12 +22,12 @@ use crate::library::Kind as LibKind;
 use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
 use crate::model::{
-    CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, End,
-    Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, Id, Key, Landing, Layer, Level, Line, Location, MAX_COORD, MAX_POINTS,
-    MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind, Pattern, Perspective,
-    PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Rebar, Reference, Roof, RoofType,
-    Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, TREAD, Tag, Unbound,
-    View3D, Viewport, Wall, WallType, heading, paper,
+    CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
+    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, Id, Key, Landing, Layer, Level, Line, Location, MAX_COORD,
+    MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind, Pattern,
+    Perspective, PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Rebar, Ref3, Reference,
+    Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, TREAD,
+    Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -183,9 +183,9 @@ pub static ALL: &[Command] = &[
         "wall",
         msg!("Wall"),
         &["WA"],
-        "{points: [[x,y],…], closed?, type?, level?, top_level?, height?, base_offset?, arc?, location?, attach_top?, \
+        "{points: [[x,y],…], closed?, type?, level?, top_level?, top_offset?, height?, base_offset?, arc?, location?, attach_top?, \
          attach_base?, room_bounding?} one wall per segment of its location line; up to the next level, or `height` mm tall (unconnected), or up \
-         to `top_level`. `arc`: degrees each turns from its start to its end, counter-clockwise (180, a half circle bulging to \
+         to `top_level`, `top_offset` mm above it (0; negative, below it; the top must stay above the base). `arc`: degrees each turns from its start to its end, counter-clockwise (180, a half circle bulging to \
          its right). `location`: the line of it the points are on: centre (the default), core-centre, exterior-finish, \
          interior-finish, exterior-core or interior-core; its exterior side is to the left of its start to its end, so walls \
          drawn clockwise face out. `attach_top`, `attach_base`: a roof or floor its top follows from below, or its base stands \
@@ -658,14 +658,17 @@ pub static ALL: &[Command] = &[
         "roof",
         ui_msg!("Roof"),
         &[],
-        "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…] | sketch?: [[[x,y],[x,y]],…], slope?, overhang?, gables?: [edge, …], gable?, offset?, \
+        "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…] | sketch?: [[[x,y],[x,y]],…], slope?, slopes?: [degrees, …], overhang?, gables?: [edge, …], gable?, offset?, \
          extrusion?, openings?: [[[x,y],…],…], join?, type?} a roof on `level` (by default the one above the lowest), its \
          base `offset` mm above it. Over `boundary` or else the walls of the level below, `overhang` mm (500) past their \
          faces, round any `courtyards` (holes in it, inside it and apart, with eaves of their own; over the walls, by \
          default each loop of them standing free inside, joined to none of the outer ones and with no room in it): flat \
          at `slope` 0, else every edge sloping up at `slope` degrees (30), hips, valleys and ridges where the slopes meet, \
          but the edges in `gables` (edge i runs from point i to the next, the courtyards' edges numbered on after the \
-         boundary's) left upright, gable ends; `gable` leaves a rectangle's short ends upright. Or with `extrusion` {line: \
+         boundary's) left upright, gable ends; `gable` leaves a rectangle's short ends upright. `slopes`: a slope in \
+         degrees (up to 75) for each edge, numbered as `gables` are, 0 for an edge that takes `slope`; none, every edge \
+         does; the eaves stay level and an edge in `gables` stays upright whatever its slope. A `sketch` line may carry \
+         a `slope` for the edges along it. Or with `extrusion` {line: \
          [[x,y],[x,y]], profile: [[along, up],…], from?, to}: its underside's profile in the upright plane through `line`, \
          along it from its start and up from the base, swept square to it from `from` (0) to `to` mm to its left. \
          `openings` are holes through it in plan; with `join`, a roof it runs into, it ends where it meets that one's top",
@@ -702,6 +705,18 @@ pub static ALL: &[Command] = &[
          radial and diameter, on a round edge; for arc_length, on the arc), or {endpoint: [x, y]}, the end of one nearest \
          it, within 100 mm. It follows what it measures",
         dimension,
+    ),
+    edit(
+        "dimension_3d",
+        ui_msg!("Aligned Dimension in 3D"),
+        &[],
+        "{refs: [ref, ref], at: [x, y, z], view?, type?} an aligned dimension in a 3D view (the default 3D view unless `view` \
+         names another, by name or id), kept by the view and drawn in it and on a sheet that holds it: how far apart its two \
+         references are, along a line through `at` moved square off them. A ref is {at: [x, y, z]}, a point of the model, or \
+         {at, edge: [[x, y, z], [x, y, z]]}, a point on an edge, which it measures square to (from a point, to the edge's line; \
+         between two parallel edges, how far apart they are). `type` is a dimension type, the aligned one's unless told. On the \
+         desktop, Aligned Dimension (DI) in the 3D view runs it. Returns its id and its length",
+        dimension_3d,
     ),
     edit(
         "text",
@@ -1072,10 +1087,23 @@ pub static ALL: &[Command] = &[
         "align",
         ui_msg!("Align"),
         &["AL"],
-        "{id, reference: [[x,y],[x,y]], line: [[x,y],[x,y]]} aligns an element's picked line with a reference in plan: \
-         turns by the smaller angle about the picked line's midpoint, then moves it onto the reference, keeping its size. \
-         Doors and windows slide along their host wall; they cannot turn independently. Returns {aligned, angle, by}",
+        "{id, reference: [[x,y],[x,y]], line: [[x,y],[x,y]], lock?: true, to?: id} aligns an element's picked line with a \
+         reference in plan: turns by the smaller angle about the picked line's midpoint, then moves it onto the reference, keeping \
+         its size. Doors and windows slide along their host wall; they cannot turn independently. With `lock`, Revit's padlock: \
+         the line and the reference (of element `to`, else whatever has a line along it) are kept on one line after every \
+         command, as a locked dimension keeps its length; refused when that can't hold with the other locks. Returns {aligned, \
+         angle, by, line} (the picked line where it went), and the lock's id",
         align_element,
+    ),
+    edit(
+        "dimension_value",
+        ui_msg!("Dimension Value"),
+        &[],
+        "{id, value, segment?} types a length into an aligned or a linear dimension's segment (the first unless told), as a \
+         click on its number does: what the segment ends at (its second reference, as the dimension runs west to east or south \
+         to north) moves along the dimension so the segment is `value` mm; a locked segment is locked at it, and the other \
+         locks hold, or it is refused. Returns {id, moved, by}",
+        dimension_value,
     ),
     edit(
         "move",
@@ -2503,6 +2531,9 @@ pub fn element_json(m: &Model, id: Id) -> Value {
         Element::Level(l) => {
             extra.insert("computation_height".into(), json!(l.computation_height));
         }
+        Element::Dimension3D(d) => {
+            extra.insert("length".into(), json!(hundredth(crate::dims3d::length(d))));
+        }
         Element::Grid(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {}
     }
     let mut v = serde_json::to_value(e).unwrap_or_default();
@@ -3093,7 +3124,12 @@ fn render_view(s: &mut Session, p: &Value) -> R {
             (Some(_), None) => return Err(bad(c, "a parallel 3D view has no eye to raise: turn it to perspective first (`perspective`)")),
             (None, _) => fitted,
         };
-        let png = scene.render_in(&cam, &[], &look).png().map_err(|e| bad(c, e))?;
+        let mut image = scene.render_in(&cam, &[], &look);
+        // Its dimensions, over the picture.
+        if let Some(v) = three {
+            crate::dims3d::paint(&mut image, &crate::dims3d::marks(m, v, &cam, &look, crate::dims3d::SCREEN));
+        }
+        let png = image.png().map_err(|e| bad(c, e))?;
         return png_reply(
             c,
             p,
@@ -6062,6 +6098,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
         _ => Some(level_param(c, m, p, "top_level")?),
     };
     let base_offset = num(c, p, "base_offset")?.unwrap_or(0.0);
+    let top_offset = num(c, p, "top_offset")?.unwrap_or(0.0);
     let height = height.unwrap_or(DEFAULT_HEIGHT);
     let arc = num(c, p, "arc")?.unwrap_or(0.0);
     let location = match string(c, p, "location")? {
@@ -6087,6 +6124,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 top_level,
                 height,
                 base_offset,
+                top_offset,
                 arc,
                 location,
                 attach_top,
@@ -6757,6 +6795,52 @@ fn arc_near(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Referen
         .map(|(r, _)| r)
 }
 
+/// A dimension in a 3D view: see its params doc.
+fn dimension_3d(s: &mut Session, p: &Value) -> R {
+    let c = "dimension_3d";
+    let m = &s.model;
+    let default = absent(p.get("view"))
+        || matches!(p.get("view"), Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D"));
+    let view = if default {
+        m.default_3d()
+    } else {
+        let v = view_param(c, m, p, false)?;
+        if !matches!(m.elements.get(v), Some(Element::View3D(_))) {
+            return Err(bad(
+                c,
+                format!("{} isn't a 3D view; a dimension of points and edges in space goes in a 3D view", view_title(m, v)),
+            ));
+        }
+        Some(v)
+    };
+    let refs = match p.get("refs") {
+        Some(Value::Array(a)) if a.len() == 2 => a,
+        _ => return Err(bad(c, "`refs` is two references [{at: [x, y, z], edge?: [[x, y, z], [x, y, z]]}, …]")),
+    };
+    let one = |v: &Value| -> Result<Ref3, String> {
+        let r = serde_json::from_value::<Ref3>(v.clone()).map_err(|e| bad(c, format!("a ref is {{at: [x, y, z], edge?}}: {e}")))?;
+        let fine = |q: [f64; 3]| q.iter().all(|x| x.is_finite() && x.abs() <= MAX_COORD);
+        if !fine(r.at) || r.edge.is_some_and(|[a, b]| !fine(a) || !fine(b)) {
+            return Err(bad(c, format!("a ref's points must be [x, y, z] in mm within ±{MAX_COORD}, got {v}")));
+        }
+        Ok(r)
+    };
+    let refs = [one(&refs[0])?, one(&refs[1])?];
+    let at = point3_req(c, p, "at")?;
+    let type_name = match string(c, p, "type")? {
+        Some(t) => t,
+        None => crate::dims::default_type(&m.dimension_types, DimKind::Aligned).cloned().unwrap_or_default(),
+    };
+    let view = match view {
+        Some(v) => v,
+        None => s.model_mut().insert(Element::View3D(View3D::default_view())),
+    };
+    let d = Dimension3D { view: s.model.guid(view), refs, at, type_name };
+    let length = crate::dims3d::length(&d);
+    let id = s.model_mut().insert(Element::Dimension3D(d));
+    Ok(json!({"id": id, "view": view, "length": hundredth(length)}))
+}
+
 fn dimension(s: &mut Session, p: &Value) -> R {
     let c = "dimension";
     let m = &s.model;
@@ -6832,6 +6916,7 @@ fn dimension(s: &mut Session, p: &Value) -> R {
         texts: Vec::new(),
         equal: false,
         locked: Vec::new(),
+        alignment: false,
     };
     let values: Vec<f64> = m.dimension_values(&d).into_iter().map(hundredth).collect();
     let id = s.model_mut().insert(Element::Dimension(d));
@@ -7541,7 +7626,8 @@ fn roof(s: &mut Session, p: &Value) -> R {
     let type_name = type_param(c, p, m, "roof")?;
     let extrusion: Option<Extrusion> = shaped(c, p, "extrusion", "{line: [[x,y],[x,y]], profile: [[along, up],…], from?, to}")?;
     let drawn = sketched(c, p, "courtyards", &[])?;
-    let sketch = drawn.as_ref().map(|(_, lines)| lines.clone()).unwrap_or_default();
+    let lines = drawn.as_ref().map(|(_, lines)| lines.clone()).unwrap_or_default();
+    let sketch = unslope(&lines);
     let given = !absent(p.get("boundary")) || drawn.is_some();
     let overhang = num(c, p, "overhang")?.unwrap_or(if given || extrusion.is_some() { 0.0 } else { 500.0 });
     let (boundary, found) = match (drawn, given, &extrusion) {
@@ -7550,7 +7636,7 @@ fn roof(s: &mut Session, p: &Value) -> R {
         (None, false, Some(_)) => (Vec::new(), Vec::new()),
         (None, false, None) => roof_footprint(m, level, overhang).map_err(|e| bad(c, e))?,
     };
-    let r = Roof {
+    let mut r = Roof {
         params: Default::default(),
         type_name,
         level,
@@ -7560,6 +7646,7 @@ fn roof(s: &mut Session, p: &Value) -> R {
         overhang,
         gable: flag(c, p, "gable")?,
         gables: shaped(c, p, "gables", "a list of edge numbers")?.unwrap_or_default(),
+        slopes: shaped(c, p, "slopes", "a list of degrees, one for each edge")?.unwrap_or_default(),
         offset: num(c, p, "offset")?.unwrap_or(0.0),
         openings: rings(c, p, "openings")?.unwrap_or_default(),
         join: id_opt(c, p, "join")?,
@@ -7567,8 +7654,36 @@ fn roof(s: &mut Session, p: &Value) -> R {
         sketch,
         shape: Default::default(),
     };
+    // Its sketch lines' slopes are its edges', unless it is given `slopes`.
+    if absent(p.get("slopes")) {
+        r.slopes = slopes_of_edges(&r, &lines, &[]);
+    }
     let id = s.model_mut().insert(Element::Roof(r));
     Ok(json!({"id": id}))
+}
+
+/// `lines` as a roof keeps them: none holds a `slope`, which the roof keeps as its `slopes`.
+fn unslope(lines: &[SketchLine]) -> Vec<SketchLine> {
+    lines.iter().map(|l| SketchLine { slope: None, ..l.clone() }).collect()
+}
+
+/// The `slopes` of roof `r`'s footprint edges, as the sketch `lines` that say a `slope` give them: an edge along such a line has
+/// its slope, 0 meaning the roof's; any other edge the one it had along an edge of `was` (an edited roof's edges, each with its
+/// slope), else 0. Empty when none has a slope, and for a footprint too big to pitch, whose slopes nothing reads.
+fn slopes_of_edges(r: &Roof, lines: &[SketchLine], was: &[((P2, P2), f64)]) -> Vec<f64> {
+    let said: Vec<(Vec<P2>, f64)> = lines.iter().filter_map(|l| Some((l.points(), l.slope?))).collect();
+    if r.edges().count() > crate::model::MAX_ROOF_POINTS || (said.is_empty() && was.iter().all(|(_, s)| *s == 0.0)) {
+        return Vec::new();
+    }
+    let within = |(a, b): (P2, P2), (c, d): (P2, P2)| geom::dist_to_segment(c, a, b) <= TOL && geom::dist_to_segment(d, a, b) <= TOL;
+    let slopes: Vec<f64> = r
+        .edges()
+        .map(|e| {
+            let own = said.iter().find(|(drawn, _)| sketch::along(drawn, e.0, e.1)).map(|(_, s)| *s);
+            own.or_else(|| was.iter().find(|(old, _)| within(*old, e)).map(|(_, s)| *s)).unwrap_or(0.0)
+        })
+        .collect();
+    if slopes.iter().all(|s| *s == 0.0) { Vec::new() } else { slopes }
 }
 
 /// A dormer on a roof's slope: its front wall across the slope through `at`, its cheek walls back
@@ -7629,6 +7744,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
         overhang: f,
         gable: false,
         gables: vec![0, 2],
+        slopes: Vec::new(),
         offset: eave - model.elevation(level),
         openings: Vec::new(),
         join: Some(host),
@@ -7647,6 +7763,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             top_level: None,
             height: ridge - front,
             base_offset,
+            top_offset: 0.0,
             arc: 0.0,
             location: Location::Centre,
             attach_top: Some(roof_guid),
@@ -7695,7 +7812,7 @@ fn sketch_param(c: &str, p: &Value, key: &str, old: &[SketchLine]) -> Result<Opt
             Given::Arc([a, b, t]) => Ok(SketchLine::arc(a, b, t)),
             Given::Full(k) => {
                 let curve = k.fields().curve().map_err(|e| bad(c, format!("`{key}` line {i}: {e}")))?;
-                let mut l = SketchLine { style: k.style.clone(), invisible: k.invisible, ..SketchLine::from(curve) };
+                let mut l = SketchLine { style: k.style.clone(), invisible: k.invisible, slope: k.slope, ..SketchLine::from(curve) };
                 if k.id != 0 {
                     let id = k.id;
                     let was = old.iter().find(|o| o.id == id).ok_or_else(|| {
@@ -7772,7 +7889,24 @@ fn boundary_now(e: &Element) -> Option<Vec<SketchLine>> {
         _ => return None,
     };
     let kept = e.sketch().filter(|ls| sketch::draws(ls, &outline, &holes)).cloned();
-    Some(kept.unwrap_or_else(|| sketch::lines_of(&outline, &holes)))
+    let mut lines = kept.unwrap_or_else(|| sketch::lines_of(&outline, &holes));
+    // A roof's lines say the slope their edges share, when they have one of their own.
+    if let Element::Roof(r) = e
+        && !r.slopes.is_empty()
+        && r.edges().count() <= crate::model::MAX_ROOF_POINTS
+    {
+        for l in &mut lines {
+            let drawn = l.points();
+            let mine: Vec<f64> = r
+                .edges()
+                .enumerate()
+                .filter(|(_, (a, b))| sketch::along(&drawn, *a, *b))
+                .map(|(i, _)| r.slopes.get(i).copied().unwrap_or(0.0))
+                .collect();
+            l.slope = mine.first().copied().filter(|first| mine.iter().all(|s| s == first));
+        }
+    }
+    Some(lines)
 }
 
 /// Revit's Edit Boundary: an element's outline and its holes redrawn as one sketch.
@@ -7810,7 +7944,10 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
         Element::Shaft(_) if !r.holes.is_empty() => return Err(bad(c, "a shaft is one outline with no holes in it")),
         Element::Shaft(sh) => Element::Shaft(Shaft { boundary: r.outer, sketch: lines, ..sh }),
         Element::Roof(old) => {
-            let mut new = Roof { boundary: r.outer, courtyards: r.holes, gables: Vec::new(), sketch: lines, ..old.clone() };
+            let mut new = Roof { boundary: r.outer, courtyards: r.holes, gables: Vec::new(), sketch: unslope(&lines), ..old.clone() };
+            // A slope stays with its edge too, where the edge stays or is cut in two; the lines may say it instead.
+            let was: Vec<((P2, P2), f64)> = old.edges().enumerate().map(|(i, e)| (e, old.slopes.get(i).copied().unwrap_or(0.0))).collect();
+            new.slopes = slopes_of_edges(&new, &lines, &was);
             // A flat one's shape keeps what stays on its top, as a floor's does.
             let holes: Vec<Vec<P2>> = new.courtyards.iter().chain(&new.openings).cloned().collect();
             (new.shape, said) = shape_within(m, &m.roof_as_floor(&old), &new.boundary, &holes);
@@ -9942,6 +10079,20 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         },
         Element::Door(_) | Element::Window(_) => {}
         Element::Dimension(d) => d.at = f(d.at),
+        // In plan, its points and edges; their heights stay.
+        Element::Dimension3D(d) => {
+            let flat = |q: &mut [f64; 3]| {
+                let P2(x, y) = f(P2(q[0], q[1]));
+                (q[0], q[1]) = (x, y);
+            };
+            flat(&mut d.at);
+            for r in &mut d.refs {
+                flat(&mut r.at);
+                if let Some(e) = &mut r.edge {
+                    e.iter_mut().for_each(flat);
+                }
+            }
+        }
         // A tag's place hangs on its door or window's: see `relocate` and `duplicate`.
         Element::Tag(_) => {}
         Element::Section(v) | Element::Elevation(v) => {
@@ -10255,7 +10406,86 @@ fn align_element(s: &mut Session, p: &Value) -> R {
     }
     let mo = Motion { map: &|q| placement.map(q), slide: (placement.angle.abs() <= 1e-9).then_some(placement.by), mirror: false };
     relocate(c, s, &[id], &mo, None)?;
-    Ok(json!({"aligned": id, "angle": placement.angle, "by": placement.by}))
+    let (reference, line) = (line("reference")?, line("line")?);
+    let moved = (placement.map(line.0), placement.map(line.1));
+    let lock = if flag(c, p, "lock")? { Some(alignment_lock(c, s, id, id_opt(c, p, "to")?, reference, moved)?) } else { None };
+    Ok(json!({"aligned": id, "angle": placement.angle, "by": placement.by, "line": [moved.0, moved.1], "lock": lock}))
+}
+
+/// Align's padlock: element `id`'s reference along `moved`, and the reference of element `to` (else of whatever has one) along
+/// `reference`, kept on one line: a dimension between them, its one segment locked at 0 (`Dimension::alignment`), which
+/// `constraints::keep` holds as it holds the others.
+fn alignment_lock(c: &str, s: &mut Session, id: Id, to: Option<Guid>, reference: Line, moved: Line) -> Result<Id, String> {
+    let m = &s.model;
+    // Whether line `l` lies along the line through `on`.
+    let along = |l: Line, on: Line| {
+        let (u, len) = ((on.1 - on.0).unit(), on.0.dist(on.1));
+        len > TOL && l.0.dist(l.1) > TOL && [l.0, l.1].iter().all(|q| (*q - on.0).cross(u).abs() <= TOL)
+    };
+    let of = |e: Id, on: Line| m.reference_lines(e).into_iter().find(|(r, l)| r.point.is_none() && along(*l, on)).map(|(r, _)| r);
+    let mine = of(id, moved).ok_or_else(|| bad(c, format!("element {id} has no line along the one aligned to lock")))?;
+    let theirs = match to {
+        Some(g) => {
+            let t = m.elements.id(g).ok_or_else(|| bad(c, format!("`to`: no element {g:?}")))?;
+            of(t, reference).ok_or_else(|| bad(c, format!("element {t} has no line along the reference to lock to")))?
+        }
+        None => m
+            .elements
+            .keys()
+            .filter(|e| **e != id)
+            .find_map(|e| of(*e, reference))
+            .ok_or_else(|| bad(c, "nothing has a line along the reference to lock to: a wall's face or centre, a grid…"))?,
+    };
+    let level = m
+        .elements
+        .get(id)
+        .and_then(|e| m.level_of(e))
+        .or_else(|| m.levels().first().map(|(l, _)| m.guid(*l)))
+        .ok_or_else(|| bad(c, "the project has no level for the lock"))?;
+    let d = Dimension {
+        level,
+        refs: vec![theirs, mine],
+        at: micron((moved.0 + moved.1) * 0.5),
+        type_name: crate::dims::default_type(&m.dimension_types, DimKind::Aligned).cloned().unwrap_or_default(),
+        locked: vec![crate::model::Lock { segment: 0, length: 0.0 }],
+        alignment: true,
+        ..Dimension::default()
+    };
+    Ok(s.model_mut().insert(Element::Dimension(d)))
+}
+
+/// A typed value for a dimension's segment, as Revit's: what the segment ends at moves along the dimension (its second
+/// reference, as the dimension's line runs) so the segment is that long; a locked segment is locked at it.
+fn dimension_value(s: &mut Session, p: &Value) -> R {
+    let c = "dimension_value";
+    only(c, p, &["id", "value", "segment"])?;
+    let id = element_id(c, &s.model, p.get("id").unwrap_or(&Value::Null))?;
+    let Some(Element::Dimension(d)) = s.model.elements.get(id) else {
+        return Err(bad(c, format!("{} {id} isn't a dimension", s.model.elements.get(id).map_or("nothing", |e| e.category()))));
+    };
+    if !matches!(d.kind, DimKind::Aligned | DimKind::Linear) || d.alignment {
+        return Err(bad(c, format!("dimension {id} isn't an aligned or a linear one: only their lengths are typed")));
+    }
+    let mut d = d.clone();
+    let value = num(c, p, "value")?.ok_or_else(|| bad(c, "`value`, the length in mm, is required"))?;
+    if !(value > TOL && value <= MAX_COORD) {
+        return Err(bad(c, format!("`value` is a length above 0 and at most {MAX_COORD} mm, not {value}")));
+    }
+    let (n, st) = s.model.stations(&d);
+    let segment = count_opt(c, p, "segment", 0)?;
+    let (Some((from, ..)), Some((to, _, r))) = (st.get(segment), st.get(segment + 1)) else {
+        return Err(bad(c, format!("dimension {id} has segments 0 to {}, not {segment}", st.len().saturating_sub(2))));
+    };
+    let by = value - (to - from);
+    let moved = s.model.elements.id(r.id).ok_or_else(|| bad(c, "what it measures to is gone"))?;
+    if let Some(l) = d.locked.iter_mut().find(|l| l.segment == segment) {
+        l.length = value;
+        s.model_mut().elements.insert(id, Element::Dimension(d));
+    }
+    if by.abs() > 1e-9 {
+        move_by(s, moved, n * by)?;
+    }
+    Ok(json!({"id": id, "moved": moved, "by": hundredth(by)}))
 }
 
 /// Element `id` moved `by` in plan, as `move` moves it: what keeps a dimension's constraints.
@@ -10875,6 +11105,7 @@ fn delete(s: &mut Session, p: &Value) -> R {
                         Element::PlanView(v) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
                         Element::Tag(t) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
                         Element::Dimension(d) => d.view.is_some_and(|v| gone.contains(&v)),
+                        Element::Dimension3D(d) => gone.contains(&d.view),
                         Element::Viewport(v) => gone.contains(&v.sheet) || gone.contains(&v.view),
                         // Notes and spot elevations go with their view, spots with what they read.
                         Element::Text(n) => gone.contains(&n.view),

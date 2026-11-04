@@ -24,6 +24,7 @@ mod constraints;
 mod csg;
 pub mod curves;
 pub mod dims;
+pub mod dims3d;
 pub mod drainage;
 pub mod draw;
 pub mod dxf;
@@ -73,6 +74,8 @@ pub mod reinforce;
 mod reinforce_tests;
 pub mod render;
 #[cfg(test)]
+mod roof_slopes_tests;
+#[cfg(test)]
 mod room_area_tests;
 #[cfg(test)]
 mod room_bounds_tests;
@@ -100,9 +103,12 @@ pub mod styles;
 pub mod symbol_set;
 pub mod text;
 pub mod texture;
+pub mod triad;
 pub mod triangulation;
 pub mod units;
 pub mod view3d;
+#[cfg(test)]
+mod wall_top_offset_tests;
 pub mod walls;
 pub mod water;
 pub mod workplane;

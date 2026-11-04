@@ -33,6 +33,10 @@ pub struct SketchLine {
     pub style: Option<String>,
     /// A filled region's boundary line not drawn at all: Revit's Invisible lines, for this one.
     pub invisible: bool,
+    /// A roof's footprint line sloping at its own angle (degrees; 0, the roof's): the slope of the edges along it. Only a command
+    /// and a window carry it; the roof keeps it as `slopes`, and no sketch it keeps holds one (`check`). None: not said, so an
+    /// edit leaves its edges the slope they had.
+    pub slope: Option<f64>,
 }
 
 crate::curve_struct! {
@@ -46,19 +50,22 @@ crate::curve_struct! {
         style: Option<String>,
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         invisible: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        slope: Option<f64>,
     }
 }
 
 impl TryFrom<RawSketchLine> for SketchLine {
     type Error = String;
     fn try_from(r: RawSketchLine) -> Result<SketchLine, String> {
-        Ok(SketchLine { id: r.id, guid: r.guid, curve: r.fields().curve()?, style: r.style, invisible: r.invisible })
+        Ok(SketchLine { id: r.id, guid: r.guid, curve: r.fields().curve()?, style: r.style, invisible: r.invisible, slope: r.slope })
     }
 }
 
 impl From<SketchLine> for RawSketchLine {
     fn from(l: SketchLine) -> RawSketchLine {
-        let mut r = RawSketchLine { id: l.id, guid: l.guid, style: l.style, invisible: l.invisible, ..RawSketchLine::default() };
+        let mut r =
+            RawSketchLine { id: l.id, guid: l.guid, style: l.style, invisible: l.invisible, slope: l.slope, ..RawSketchLine::default() };
         r.set(&l.curve);
         r
     }
@@ -72,7 +79,7 @@ impl From<Line> for SketchLine {
 
 impl From<Curve> for SketchLine {
     fn from(curve: Curve) -> SketchLine {
-        SketchLine { id: 0, guid: Guid::default(), curve, style: None, invisible: false }
+        SketchLine { id: 0, guid: Guid::default(), curve, style: None, invisible: false, slope: None }
     }
 }
 
@@ -548,6 +555,13 @@ pub fn draws(lines: &[SketchLine], outline: &[P2], holes: &[Vec<P2>]) -> bool {
     }
 }
 
+/// Whether the straight piece from `a` to `b` lies along a line drawn through `drawn` (`SketchLine::points`): both its ends
+/// and its middle on it.
+pub fn along(drawn: &[P2], a: P2, b: P2) -> bool {
+    let on = |q: P2| drawn.windows(2).any(|w| matches!(w, [c, d] if geom::dist_to_segment(q, *c, *d) <= TOL));
+    on(a) && on(b) && on(P2((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0))
+}
+
 /// A kept sketch's lines checked as [`crate::model::Model::check`] checks what a file holds: no more than [`MAX_LINES`],
 /// every point a number within range, and no more than [`MAX_PIECES`] drawn between them.
 pub fn check(who: &str, lines: &[SketchLine]) -> Result<(), String> {
@@ -559,6 +573,9 @@ pub fn check(who: &str, lines: &[SketchLine]) -> Result<(), String> {
     }
     if let Some(i) = lines.iter().position(|l| !l.in_range()) {
         return Err(format!("{who}: sketch line {i} has a point that isn't a number within {MAX_COORD} mm, or a curve reaching further"));
+    }
+    if let Some(i) = lines.iter().position(|l| l.slope.is_some()) {
+        return Err(format!("{who}: sketch line {i} has a `slope`, which a roof keeps as its `slopes`, never in its sketch"));
     }
     let pieces: usize = lines.iter().map(|l| l.curve.drawn_len().saturating_sub(1)).sum();
     if pieces > MAX_PIECES {

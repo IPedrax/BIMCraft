@@ -417,12 +417,21 @@ The 3D view's tools draw on a **work plane**, as Revit's (`workplane.rs`): `work
 for a face that is level and turned up (a floor's top, a flat roof's, a level's plane), gives the level its points go on (the face's
 element's own level, a level's plane that level, else the highest level at or below it) and the offset over it, to the micron;
 with nothing under the cursor, the lowest level's plane, the ground. A face that isn't level, or is turned down, gives none, and
-the status line says what the tool draws on. In the 3D view the Wall tool (WA) takes its points so (`orbit.rs`'s `aim`, to the 10 mm
-as a plan's free point): the first point's plane holds for the rest of the chain, whatever the cursor passes over, and each wall
-goes through `place` as in a plan, with `base_offset` from `Orbit::wall_base`, which `wall_params` reads while the 3D view places a
-point; Component (CM) and the MEP fixtures run `component` with that level and offset. The point under the cursor is drawn as a
-plan's Nearest snap, naming the element whose face it is, with the wall from the chain's last point. Floor, sketches and faces
-that aren't level are not drawn on in 3D yet.
+the status line says what the tool draws on. Every drawing tool takes its points so in the 3D view (`orbit.rs`'s `aim`), and each
+point snaps as its level's plan snaps (`snap3d`: `snap::snap` on the plane's level, from the points the tool has picked, Shift squaring
+the step, within the snap's points as the plane is foreshortened there; else the nearest 10 mm). The Wall tool (WA): the first
+point's plane holds for the rest of the chain, whatever the cursor passes over, and each wall goes through `place` as in a plan, with
+`base_offset` from `Orbit::wall_base`, which `wall_params` reads while the 3D view places a point. A run's tool (beams, wall footings,
+pipes, ducts, conduits, cable trays, wires, conductors, cabling) takes each end on the face it is clicked on, so a run from a floor's
+top to a wall's or a column's top climbs (`place_run_lifted`: `offset` and `end_offset` over the start's level, the Options Bar's
+offset over each): that is a brace; where nothing is under the cursor, its end stays on its start's plane. Column (CL), Structural
+Column and Isolated Footing stand on the face (`place_column`, `place_stand_lifted`: `base_offset`, or a footing's top `offset`, its
+height over the level), and Component (CM) and the MEP fixtures run `component` with that level and offset. `Orbit::plane` keeps the
+last point clicked and its plane, which a chain or a run's end takes only while it is the tool's own point before. The point under the
+cursor is drawn as a plan's snap, naming what it snapped to (a free point: Nearest, of the element whose face it is), with the wall
+or run from the point before and its length. Where neither a level face nor the ground meets the line of sight, the tool says what
+it needs (`needs_face`, by the tool's title). Floor and Ceiling sketch on the view's work plane (below), which may be set on a level
+face picked on the model.
 
 A level's own plan is the level (its `view_range`, `crop` and `graphics` are the level's); every other plan of it is an `Element::PlanView`
 (Revit's Duplicate View: `duplicate_view`, which only plans take). A plan has a key: the level's id, or a plan view's. `Model::plan_level` says
@@ -599,5 +608,32 @@ two stations rigidly and equality tying all its segments to one length (a locked
 reference dragged goes back); a run of tied stations stays where what the command moved puts it, else where its first is. What has to move is
 moved by `commands::move_by`, as `move` moves it, and the dimensions are solved again (`PASSES`) until all hold; where they can't (locked
 lengths that differ made equal, one element pulled two ways), the command is refused, saying which dimension, and nothing changes.
+A length typed for a segment (`dimension_value`; in the window, a click on the selected dimension's number, as a temporary
+dimension's takes one) moves what the segment ends at, its second station's reference, along the dimension by the difference
+(`move_by`), and a locked segment is locked at it; the other locks then hold or the command is refused. Align with `lock` (Revit's
+padlock: in the window, the open padlock Align offers on the line it moved) leaves a lock: a dimension of the aligned line's reference
+and the reference's (`to`, else whatever has a line along it), its one segment locked at 0 and `alignment` set, which
+`constraints::keep` holds as it holds the others, so the two lines stay on one line whatever either is moved by; one that can't hold
+with the other locks is refused, and the project is as it was. A lock is drawn by a front end, never on paper (`render/dimensions.rs`
+draws nothing of it): the window shows each locked segment's shut padlock whether its dimension is selected or not, and each alignment
+lock's padlock beside where its lines meet, which a click unlocks (deletes). Format 15 holds them; 14 would read one as a dimension of
+nothing.
 `render/dimensions.rs` draws them all as the type says (`Ink`: its lines, ticks and witness lines, and its numbers laid out by `crate::text`
 over the paper where the background is opaque).
+
+A 3D view has dimensions of its own (`Element::Dimension3D`, the `dimension_3d` command; `dims3d.rs`), as Revit's aligned dimension in a 3D
+view: two references (`Ref3`), each a point of the model or a point on an edge (its two ends with it), and a point its line passes through,
+kept by the view (`view`, a GUID: deleting the view takes them with it) and of a dimension type as a plan's are. Between two points it measures
+straight from one to the other; to an edge, square to the edge's line, so between two parallel edges it is how far apart they are
+(`dims3d::ends`). They hold places in space, not references to elements: moving an element leaves them, and `move`, `rotate` and `mirror`
+take them in plan when they are moved themselves. They draw as marks (`dims3d::marks`, `Mark`: a polyline in the picture's pixels, its width
+and colour), through any camera and at any paper size (`SCREEN` pixels a paper millimetre on screen, `sheet::DENSITY` on a sheet): a
+witness line from each end of what it measures to its line, its line, a tick at each end and its number lettered along it in our strokes
+(`font.rs`), reading from the left, on the side away from what it measures; nothing hides them. `dims3d::paint` paints marks into the
+processor's picture, which the `render` command does for a 3D view; a sheet draws them as its own lines over the view's picture, so they print
+in its PDF; the window draws them over the picture on either painter (the card's too) with the theme's ink, the selection's colour when
+picked. Visibility/Graphics hides them with Dimensions (`category_of`). In the window the Aligned Dimension tool (DI) in the 3D view picks a
+corner seen within the snap's reach (`Scene::corner_near`), else an edge within a pick's (`Scene::edge_near`, the point of it nearest the
+cursor), else the point of the face there; after two, a click places the line where it meets the plane through the two that faces the
+camera most (`dims3d::line_through`), and the status line says how long it is. In Modify a click on a dimension's lines picks it before what
+the picture shows under them (`dims3d::pick`).

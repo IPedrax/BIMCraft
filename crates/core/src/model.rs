@@ -69,7 +69,12 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 14: a view's graphics, a view template and the
+/// The version of the project file this build writes, and the newest it reads. 16: a 3D view may hold dimensions (the
+/// `dimension3d` category), which a build that reads up to 15 doesn't know and would refuse, and Align may leave a lock,
+/// which it would read as a dimension of nothing; nothing in a file of 15 changes. 15: a roof may have a slope for each edge of its
+/// footprint (`slopes`) and a wall a top offset from its top constraint (`top_offset`); nothing in a file of 14 changes, but a
+/// build that reads up to 14 would leave either out as a field it doesn't know, drawing the roof at one slope and the wall short
+/// of its offset, not "saved by a newer BIMCraft". 14: a view's graphics, a view template and the
 /// object styles may name the categories of family components (`lighting`, `outlet`, `switch`…, `graphics::COMPONENTS`) as well as
 /// `component`, which names them all, and a new project starts with three view templates (Electrical Power, Lighting and Ceiling)
 /// that do; nothing in a file of 13 changes, but a build that reads up to 13 would refuse one of 14 on opening ("isn't a category
@@ -99,7 +104,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 14;
+pub const FORMAT: u32 = 16;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -243,6 +248,10 @@ pub struct Wall {
     pub height: f64,
     #[serde(default)]
     pub base_offset: f64,
+    /// Revit's Top Offset: with a `top_level`, its top is that level plus this many mm (below it, negative). An unconnected wall
+    /// has none: it stands `height` tall.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub top_offset: f64,
     /// How far it turns from its start to its end, degrees counter-clockwise: 0 straight, 180 a
     /// half circle bulging to its right.
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -1055,6 +1064,36 @@ pub struct Dimension {
     /// Its segments locked at a length: what it measures to moves together to keep them so.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub locked: Vec<Lock>,
+    /// The lock Align left: two references kept on one line (its one segment locked at 0), drawn on screen as a padlock where
+    /// they meet and never on paper.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub alignment: bool,
+}
+
+/// A dimension in a 3D view, as Revit's aligned dimension there: the distance between two points of the model, or square
+/// from one to an edge (between two parallel edges, how far apart they are), its line through `at` (what it measures moved
+/// square off it), drawn in `view` and on a sheet that holds the view (`crate::dims3d`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Dimension3D {
+    /// The 3D view that holds it.
+    pub view: Guid,
+    pub refs: [Ref3; 2],
+    /// A point its line passes through, [x, y, z] mm.
+    pub at: [f64; 3],
+    /// Its dimension type (`crate::dims`), as a plan's dimensions have: how it draws and letters its number.
+    #[serde(rename = "type", default)]
+    pub type_name: String,
+}
+
+/// What a dimension in a 3D view measures to: a point of the model, [x, y, z] mm; on an edge, the edge's two ends too, which
+/// it measures square to.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Ref3 {
+    pub at: [f64; 3],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge: Option<[[f64; 3]; 2]>,
 }
 
 /// A dimension's segment `segment` (counted as its values are) kept at `length` mm, Revit's padlock.
@@ -1639,9 +1678,10 @@ pub struct Railing {
 
 /// A roof on `level`, its base `offset` mm above it. By its footprint: its eaves along `boundary`
 /// and round its `courtyards` (holes in it), reaching its base `overhang` mm in from them; flat at
-/// `slope` 0, else each edge sloping up at `slope` degrees, hips and valleys where slopes meet, but
-/// the edges in `gables` (edge i from point i to the next, the courtyards' numbered on after the
-/// boundary's), left upright; `gable` leaves a rectangle's two short ends upright. Or by its
+/// `slope` 0, else each edge sloping up at `slope` degrees, or at its own in `slopes` (edge i from point i to the next, the
+/// courtyards' numbered on after the boundary's, as `gables` numbers them; 0, or none listed, for the roof's), hips and valleys
+/// where slopes meet, but the edges in `gables` left upright whatever their slopes; `gable` leaves a rectangle's two short
+/// ends upright. Or by its
 /// `extrusion`. Holed through by `openings` in plan, and where it runs into the roof it `join`s,
 /// it ends at that one's top.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -1656,6 +1696,10 @@ pub struct Roof {
     pub courtyards: Vec<Vec<P2>>,
     #[serde(default)]
     pub slope: f64,
+    /// Degrees for each edge of its footprint, numbered as `gables` numbers them: 0 for an edge that takes the roof's `slope`.
+    /// Empty: every edge does. Only a pitched roof by footprint uses them (a flat one keeps them, as it keeps its gables).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slopes: Vec<f64>,
     #[serde(default)]
     pub overhang: f64,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -1745,6 +1789,11 @@ impl Roof {
     /// Its footprint's edges as `gables` numbers them: its boundary's, then each courtyard's.
     pub fn edges(&self) -> impl Iterator<Item = (P2, P2)> + '_ {
         geom::ring_edges(&self.boundary).chain(self.courtyards.iter().flat_map(|c| geom::ring_edges(c)))
+    }
+
+    /// The slope of each edge of its footprint, degrees, as `edges` numbers them: its own in `slopes`, else the roof's.
+    pub fn edge_slopes(&self) -> Vec<f64> {
+        (0..self.edges().count()).map(|i| self.slopes.get(i).copied().filter(|s| *s > 0.0).unwrap_or(self.slope)).collect()
     }
 }
 
@@ -1953,6 +2002,7 @@ macro_rules! visit_refs {
                 f(& $($m)? t.host);
                 if let Some(g) = & $($m)? t.view { f(g) }
             }
+            Element::Dimension3D(d) => f(& $($m)? d.view),
             Element::Viewport(v) => {
                 f(& $($m)? v.sheet);
                 f(& $($m)? v.view);
@@ -2007,6 +2057,8 @@ pub enum Element {
     #[serde(rename = "roomseparator")]
     RoomSeparator(RoomSeparator),
     Dimension(Dimension),
+    /// A dimension in a 3D view, between points or edges of the model.
+    Dimension3D(Dimension3D),
     Tag(Tag),
     Section(Section),
     Elevation(Section),
@@ -2242,6 +2294,7 @@ impl Element {
             Element::RoomSeparator(_) => "roomseparator",
             Element::Rebar(_) => "rebar",
             Element::Dimension(_) => "dimension",
+            Element::Dimension3D(_) => "dimension3d",
             Element::Tag(_) => "tag",
             Element::Section(_) => "section",
             Element::Elevation(_) => "elevation",
@@ -3256,6 +3309,10 @@ impl Model {
         // 12 to 13 (a floor's or flat roof's shape, a variable layer, a spot slope) has none either: a file of 12 holds none.
         // 13 to 14 (the categories of family components, and the starter view templates) has no step: a file of 13 names
         // `component` for them all, which still does, and has the templates it was given: none, unless the user made them.
+        // 14 to 15 (a roof's slope for each edge, a wall's top offset) has no step: the new fields default, to every edge at the
+        // roof's `slope` and to a top at its level, which is what a file of 14 holds.
+        // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
+        // read as dimensions of nothing) has no step: a file of 15 holds none.
         self.format = FORMAT;
     }
 
@@ -3563,10 +3620,11 @@ impl Model {
         self.elevation(w.level) + w.base_offset
     }
 
-    /// Its top by its top constraint, whatever it's attached to.
+    /// Its top by its top constraint, whatever it's attached to: its top level and its top offset above that, or its base and its
+    /// height. Everything that reads a wall's top, its 3D solid, sections, IFC and what is attached to it, comes here.
     pub fn own_top(&self, w: &Wall) -> f64 {
         match w.top_level {
-            Some(t) => self.elevation(t),
+            Some(t) => self.elevation(t) + w.top_offset,
             None => self.own_base(w) + w.height,
         }
     }
@@ -3971,6 +4029,7 @@ impl Model {
             | Element::Viewport(_)
             | Element::Schedule(_)
             | Element::Link(_)
+            | Element::Dimension3D(_)
             | Element::View3D(_) => None,
         }
     }
@@ -4117,27 +4176,49 @@ impl Model {
                 // Its outline counter-clockwise and its courtyards clockwise, the roof to the left of
                 // every edge; its edges left upright, counted the other way round on a ring turned round.
                 let up = self.roof_uprights(r)?;
-                let (mut rings, mut speeds) = (Vec::new(), Vec::new());
+                let own = r.edge_slopes();
+                // Each edge's number as the footprint gives it, and how steeply it rises: tan of its slope.
+                let (mut rings, mut numbers) = (Vec::new(), Vec::new());
                 for (k, given) in std::iter::once(&r.boundary).chain(&r.courtyards).enumerate() {
-                    let (n, first) = (given.len(), speeds.len());
+                    let (n, first) = (given.len(), numbers.len());
                     let turn = (geom::area(given) < 0.0) == (k == 0);
                     rings.push(if turn { given.iter().rev().copied().collect() } else { given.clone() });
-                    speeds.extend(
-                        (0..n).map(|i| if up.get(first + if turn { (2 * n - 2 - i) % n } else { i }) == Some(&true) { 0.0 } else { 1.0 }),
-                    );
+                    numbers.extend((0..n).map(|i| first + if turn { (2 * n - 2 - i) % n } else { i }));
                 }
-                if !(3..=MAX_ROOF_POINTS).contains(&speeds.len()) {
-                    let n = speeds.len();
+                if !(3..=MAX_ROOF_POINTS).contains(&numbers.len()) {
+                    let n = numbers.len();
                     return Err(format!("a pitched roof's footprint has 3 to {MAX_ROOF_POINTS} points, courtyards and all, not {n}"));
                 }
-                let tan = r.slope.to_radians().tan();
-                let eave = base - r.overhang * tan;
+                let tans: Vec<f64> = numbers.iter().map(|k| own.get(*k).copied().unwrap_or(r.slope).to_radians().tan()).collect();
+                // An edge moves in as fast as its slope is shallow, run over rise, scaled so the shallowest is 1: each moves as far
+                // as it takes to rise as high as the others, and the eaves are level. Edges all at the roof's slope move at 1.
+                let runs: Vec<f64> = tans.iter().map(|t| 1.0 / t).collect();
+                let peak = runs.iter().copied().fold(0.0, f64::max);
+                let alike = r.slopes.iter().all(|s| *s <= 0.0);
+                if !alike && !(peak.is_finite() && peak > 0.0) {
+                    return Err("a slope of an edge is too shallow to work out where the slopes meet".into());
+                }
+                let speeds: Vec<f64> = numbers
+                    .iter()
+                    .zip(&runs)
+                    .map(|(k, run)| {
+                        if up.get(*k) == Some(&true) {
+                            0.0
+                        } else if alike {
+                            1.0
+                        } else {
+                            run / peak
+                        }
+                    })
+                    .collect();
+                let eave = base - r.overhang * r.slope.to_radians().tan();
                 let skeleton = crate::skeleton::faces(&rings, &speeds)?;
                 rings
                     .iter()
                     .flat_map(|ring| geom::ring_edges(ring))
                     .zip(skeleton)
-                    .filter_map(|((a, b), face)| {
+                    .zip(tans)
+                    .filter_map(|(((a, b), face), tan)| {
                         let inward = (b - a).unit().perp();
                         let plane = walls::Plane { z: eave - tan * a.dot(inward), g: inward * tan };
                         let loops: Vec<Vec<P2>> = face.into_iter().map(|l| l.into_iter().map(|(p, _)| p).collect()).collect();
@@ -5947,8 +6028,13 @@ impl Model {
                         Some(t) => level_ok(t)?,
                         None => size(&format!("{who} height"), w.height)?,
                     }
-                    if self.top_z(w) <= self.base_z(w) + TOL {
-                        return Err(format!("{who}: its top must be above its base"));
+                    coord(&format!("{who} top offset"), w.top_offset)?;
+                    let (base, top) = (self.base_z(w), self.top_z(w));
+                    if top <= base + TOL {
+                        let (tall, short) = ((top - base).round() + 0.0, (base - top).round() + 0.0);
+                        return Err(format!(
+                            "{who}: its top ({top:.0} mm) must be above its base ({base:.0} mm); it comes out {tall} mm tall, so raise its top constraint, top offset or height by more than {short} mm"
+                        ));
                     }
                 }
                 Element::Floor(f) => {
@@ -6078,6 +6164,31 @@ impl Model {
                             self.elevation(r.level),
                             r.base_offset
                         ));
+                    }
+                }
+                Element::Dimension3D(d) => {
+                    if !matches!(self.elements.get(d.view), Some(Element::View3D(_))) {
+                        return Err(format!("{who}: view {} isn't a 3D view", self.shown(d.view)));
+                    }
+                    for q in
+                        std::iter::once(d.at).chain(d.refs.iter().flat_map(|r| std::iter::once(r.at).chain(r.edge.into_iter().flatten())))
+                    {
+                        for v in q {
+                            coord(&format!("{who} point"), v)?;
+                        }
+                    }
+                    if d.refs.iter().any(|r| r.edge.is_some_and(|[a, b]| (0..3).map(|i| (a[i] - b[i]).powi(2)).sum::<f64>().sqrt() <= TOL))
+                    {
+                        return Err(format!("{who}: an edge it measures to has its two ends in one place"));
+                    }
+                    if crate::dims3d::length(d) <= TOL {
+                        return Err(format!(
+                            "{who}: it measures nothing: its references are in one place, or one lies on the other's edge"
+                        ));
+                    }
+                    if !self.dimension_types.contains_key(&d.type_name) {
+                        let there: Vec<&str> = self.dimension_types.keys().map(String::as_str).collect();
+                        return Err(format!("{who}: there's no dimension type `{}` (there are: {})", d.type_name, there.join(", ")));
                     }
                 }
                 Element::Dimension(d) => {
@@ -6592,6 +6703,21 @@ impl Model {
                         boundary(&format!("{who} courtyard {i}"), c)?;
                     }
                     holes(&who, "courtyard", &r.boundary, &r.courtyards)?;
+                    if !r.slopes.is_empty() {
+                        let n = r.edges().count();
+                        if r.extrusion.is_some() {
+                            return Err(format!("{who}: an extrusion roof has no footprint edges to give `slopes`; leave it empty"));
+                        }
+                        if r.slopes.len() != n {
+                            return Err(format!(
+                                "{who}: `slopes` has {} numbers for its {n} edges (one for each, the courtyards' after the boundary's; 0 for the roof's slope), or leave it empty",
+                                r.slopes.len()
+                            ));
+                        }
+                        if let Some((i, s)) = r.slopes.iter().enumerate().find(|(_, s)| !(0.0..=MAX_SLOPE).contains(*s)) {
+                            return Err(format!("{who}: edge {i}'s slope {s}° isn't from 0° (the roof's slope) to {MAX_SLOPE}°"));
+                        }
+                    }
                     crate::sketch::check(&who, &r.sketch)?;
                     if !r.shape.is_empty() {
                         if let Some(why) = r.unshapeable() {
@@ -7066,6 +7192,7 @@ mod tests {
             top_level: None,
             height: 3000.0,
             base_offset: 0.0,
+            top_offset: 0.0,
             arc: 0.0,
             location: Location::Centre,
             attach_top: None,

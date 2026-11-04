@@ -932,6 +932,9 @@ fn sent(l: &SketchLine) -> serde_json::Value {
     if l.invisible {
         v["invisible"] = json!(true);
     }
+    if let Some(slope) = l.slope {
+        v["slope"] = json!(slope);
+    }
     v
 }
 

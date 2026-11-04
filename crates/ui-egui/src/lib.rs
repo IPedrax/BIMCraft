@@ -70,6 +70,7 @@ mod templates;
 #[cfg(test)]
 mod tests;
 mod titlebar;
+mod triad;
 mod typeprops;
 mod updates;
 pub mod window;
@@ -501,6 +502,10 @@ pub struct BimApp {
     background_grid_dialog: Option<background_grid::GridDialog>,
     /// Global grid snapping preference, independent of view graphics and templates.
     grid_snapping: bool,
+    /// The origin marker on a plan, and the view's name in its corner (File > Settings): working aids, drawn on the screen and
+    /// never in a drawing that is printed or exported.
+    show_origin: bool,
+    show_view_name: bool,
     ribbon_bottom: Pos2,
     /// The Compact layout (File > Settings): the bars and palettes flush to the edges, not floating cards.
     compact: bool,
@@ -1258,6 +1263,8 @@ impl BimApp {
             scan_contrast: footer::HIGH_CONTRAST,
             background_grid_dialog: None,
             grid_snapping: false,
+            show_origin: true,
+            show_view_name: true,
             ribbon_bottom: Pos2::ZERO,
             settings_page: None,
             find: None,
@@ -3085,6 +3092,8 @@ impl BimApp {
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
+        (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
+        fresh.custom_shortcuts = std::mem::take(&mut self.custom_shortcuts);
         (fresh.light_canvas, fresh.scheme, fresh.accent) = (self.light_canvas, self.scheme, self.accent);
         (fresh.panel_colour, fresh.canvas_colour, fresh.text_colour) = (self.panel_colour, self.canvas_colour, self.text_colour);
         fresh.styled = self.styled;

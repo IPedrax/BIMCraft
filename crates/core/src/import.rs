@@ -1287,7 +1287,7 @@ fn item_styles(r: &Reader, ids: &[u64]) -> HashMap<u64, String> {
 }
 
 /// The material the file associates element `id`, or its type, with, by name: a material's, or
-/// the first of a set's, a list's or a layer set's.
+/// the first of a set's, a list's, a layer set's or a profile set's.
 fn element_material(r: &Reader, l: &Links, id: u64) -> Option<String> {
     let mut at = l.material.get(&id).or_else(|| l.typed.get(&id).and_then(|t| l.material.get(t))).and_then(|x| r.get(*x))?;
     for _ in 0..8 {
@@ -1296,7 +1296,9 @@ fn element_material(r: &Reader, l: &Links, id: u64) -> Option<String> {
             "IFCMATERIALCONSTITUENTSET" => r.get(*refs(at.args.get(2)).first()?)?,
             "IFCMATERIALCONSTITUENT" => r.at(at.args.get(2))?,
             "IFCMATERIALLIST" | "IFCMATERIALLAYERSET" => r.get(*refs(at.args.first()).first()?)?,
-            "IFCMATERIALLAYERSETUSAGE" | "IFCMATERIALLAYER" => r.at(at.args.first())?,
+            "IFCMATERIALLAYERSETUSAGE" | "IFCMATERIALLAYER" | "IFCMATERIALPROFILESETUSAGE" => r.at(at.args.first())?,
+            "IFCMATERIALPROFILESET" => r.get(*refs(at.args.get(2)).first()?)?,
+            "IFCMATERIALPROFILE" => r.at(at.args.get(2))?,
             _ => return None,
         };
     }
@@ -1682,6 +1684,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             top_level,
             height: (height * 1000.0).round() / 1000.0,
             base_offset: ((w.z.0 - elevation(w.level)) * 1000.0).round() / 1000.0,
+            top_offset: 0.0,
             arc: w.arc,
             location: Default::default(),
             attach_top: None,
@@ -1956,6 +1959,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                     overhang: 0.0,
                     gable: false,
                     gables: Vec::new(),
+                    slopes: Vec::new(),
                     offset: ((high - t - elevation(level)) * 1000.0).round() / 1000.0 + 0.0,
                     openings,
                     join: None,
@@ -2013,6 +2017,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                     overhang: (overhang * 1000.0).round() / 1000.0,
                     gable: false,
                     gables: rd.gables,
+                    slopes: Vec::new(),
                     offset: (offset * 100.0).round() / 100.0 + 0.0,
                     openings: rd.openings,
                     join: None,
@@ -2258,16 +2263,9 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let base = label(id).unwrap_or_else(|| {
             if found.round { format!("Imported Round {}", num(w)) } else { format!("Imported {} x {}", num(w), num(d)) }
         });
-        // Made of a material the library has, by name.
-        let material = l
-            .material
-            .get(&id)
-            .and_then(|x| e(*x))
-            .filter(|x| x.name == "IFCMATERIAL")
-            .and_then(|x| text(x.args.first()))
-            .filter(|n| m.materials.contains_key(*n))
-            .map(String::from)
-            .unwrap_or_default();
+        // Made of a material the library has, by name: the file gives it directly, or by a material profile set (as BIMCraft
+        // writes a beam's, on its type and its usage).
+        let material = element_material(&r, &l, id).filter(|n| m.materials.contains_key(n.as_str())).unwrap_or_default();
         let same =
             |k: &RunType| k.round == found.round && (k.width - w).abs() < 0.05 && (k.depth - d).abs() < 0.05 && k.material == material;
         let types = m.types.runs.entry(category.to_string()).or_default();

@@ -65,6 +65,8 @@ const DEVICE: u64 = 53;
 const DEVICE_DEFINES: u64 = 54;
 const CONNECTOR: u64 = 55;
 const CONNECTOR_DEFINES: u64 = 56;
+const TYPE_MATERIALS: u64 = 57;
+const USAGE_MATERIALS: u64 = 58;
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
@@ -214,15 +216,60 @@ struct Step {
     common: BTreeMap<Id, (u64, &'static str, Vec<u64>)>,
     /// The occurrences of each type object, by its key (see `TypeKey`). Written once at the end.
     typed: BTreeMap<TypeKey, TypeBuild>,
+    /// The profile definition of each section written, shared by the material profile set of the type that has it and the bodies of
+    /// its occurrences.
+    sections: BTreeMap<Section, u64>,
 }
 
-/// A type object's key: its IFC class, what comes ahead of and after its predefined type (each with its comma) and its name.
-type TypeKey = (String, String, String, String);
+/// A member's section as its type gives it: `width` and `depth` in mm (a round section is `width` across, so its depth is
+/// its width), kept as bits so a section can key a map.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct Section {
+    width: u64,
+    depth: u64,
+    round: bool,
+}
 
-/// A type object as the export builds it: the predefined type its occurrences share, and their ids.
+impl Section {
+    fn new(width: f64, depth: f64, round: bool) -> Section {
+        Section { width: width.to_bits(), depth: if round { width } else { depth }.to_bits(), round }
+    }
+
+    fn width(self) -> f64 {
+        f64::from_bits(self.width)
+    }
+
+    fn depth(self) -> f64 {
+        f64::from_bits(self.depth)
+    }
+}
+
+/// What a type object's material profile set holds: its section, and the name of its material (empty for none: a column's type
+/// has no material).
+type Member = (Section, String);
+
+/// A type object's key: its IFC class, what comes ahead of and after its predefined type (each with its comma), its name and, for
+/// a beam's, column's or footing's, its member (two types of one name and two sections are two type objects).
+type TypeKey = (String, String, String, String, Option<Member>);
+
+/// A type object as the export builds it: the predefined type its occurrences share, their ids, and which of them use its
+/// material profile set by each cardinal point.
 struct TypeBuild {
     predefined: &'static str,
     occurrences: Vec<u64>,
+    usages: BTreeMap<u8, Vec<u64>>,
+}
+
+/// The cardinal point (IFC4's `IfcCardinalPointReference`) a beam is placed by: its `justify` line, the top (8), the middle (5)
+/// or the bottom (2) of its section, which an upright one, with no top or bottom, has in the middle.
+fn cardinal_point(justify: crate::model::Justify, upright: bool) -> u8 {
+    use crate::model::Justify;
+    match justify {
+        _ if upright => 5,
+        Justify::Top => 8,
+        Justify::Centre => 5,
+        Justify::Bottom => 2,
+    }
 }
 
 impl Step {
@@ -269,25 +316,54 @@ impl Step {
     /// furniture type's assembly place comes before; a door's operation after). Occurrences whose predefined types differ make
     /// their type's NOTDEFINED: a roof type is flat only when every roof of it is.
     fn typed_with(&mut self, class: &str, before: &str, predefined: &'static str, after: &str, name: &str, ent: u64) {
-        let build = self
-            .typed
-            .entry((class.to_string(), before.to_string(), after.to_string(), name.to_string()))
-            .or_insert_with(|| TypeBuild { predefined, occurrences: Vec::new() });
+        let key = (class.to_string(), before.to_string(), after.to_string(), name.to_string(), None);
+        self.build(key, predefined).occurrences.push(ent);
+    }
+
+    /// As `typed`, for a beam, a column or a footing: its type holds `member` (its section and material) as a material profile
+    /// set, and `ent` uses that set, placed by `cardinal` (an `IfcCardinalPointReference`).
+    fn typed_member(&mut self, class: &str, predefined: &'static str, name: &str, member: Member, cardinal: u8, ent: u64) {
+        let key = (class.to_string(), String::new(), String::new(), name.to_string(), Some(member));
+        let build = self.build(key, predefined);
+        build.occurrences.push(ent);
+        build.usages.entry(cardinal).or_default().push(ent);
+    }
+
+    /// The type object `key`'s build, new with `predefined`; occurrences whose predefined types differ make it NOTDEFINED.
+    fn build(&mut self, key: TypeKey, predefined: &'static str) -> &mut TypeBuild {
+        let build = self.typed.entry(key).or_insert_with(|| TypeBuild { predefined, occurrences: Vec::new(), usages: BTreeMap::new() });
         if build.predefined != predefined {
             build.predefined = ".NOTDEFINED.";
         }
-        build.occurrences.push(ent);
+        build
     }
 
-    /// Writes each type object once, with its `IfcRelDefinesByType` to its occurrences. Both GlobalIds come from the
-    /// class and the name, so they are the same on every export.
-    fn write_types(&mut self) {
-        for ((class, before, after, name), TypeBuild { predefined, occurrences }) in std::mem::take(&mut self.typed) {
-            let key =
-                name.bytes().chain(class.bytes()).fold(0xCBF2_9CE4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
+    /// Writes each type object once, with its `IfcRelDefinesByType` to its occurrences and, for a beam's, column's or footing's,
+    /// its material profile set (one `IfcMaterialProfile`: its material and its section) with the `IfcMaterialProfileSetUsage`
+    /// its occurrences use, one for each cardinal point. All the GlobalIds come from the class, the name and the member, so they
+    /// are the same on every export.
+    fn write_types(&mut self, m: &Model) {
+        for ((class, before, after, name, member), TypeBuild { predefined, occurrences, usages }) in std::mem::take(&mut self.typed) {
+            let member_text = member.as_ref().map(|x| format!("{x:?}")).unwrap_or_default();
+            let key = name
+                .bytes()
+                .chain(class.bytes())
+                .chain(member_text.bytes())
+                .fold(0xCBF2_9CE4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
             // Six attributes after the name (description to element type), then `before`, the predefined type and `after`.
             let kind = self.add(format!("{class}({},$,{},$,$,$,$,$,${before},{predefined}{after})", self.guid(TYPES, key), s(&name)));
             self.add(format!("IFCRELDEFINESBYTYPE({},$,$,$,({}),#{kind})", self.guid(TYPE_DEFINES, key), refs(&occurrences)));
+            let Some((section, material)) = member else { continue };
+            let profile = self.section_profile(section);
+            let material = if material.is_empty() { "$".to_string() } else { format!("#{}", self.material(m, &material)) };
+            let entry = self.add(format!("IFCMATERIALPROFILE({},$,{material},#{profile},$,$)", s(&name)));
+            let set = self.add(format!("IFCMATERIALPROFILESET({},$,(#{entry}),$)", s(&name)));
+            self.add(format!("IFCRELASSOCIATESMATERIAL({},$,$,$,(#{kind}),#{set})", self.guid(TYPE_MATERIALS, key)));
+            for (cardinal, users) in usages {
+                let usage = self.add(format!("IFCMATERIALPROFILESETUSAGE(#{set},{cardinal},$)"));
+                let relation = self.guid(USAGE_MATERIALS, key.wrapping_add(u64::from(cardinal)));
+                self.add(format!("IFCRELASSOCIATESMATERIAL({relation},$,$,$,({}),#{usage})", refs(&users)));
+            }
         }
     }
 
@@ -401,6 +477,23 @@ impl Step {
         let c = self.point(centre);
         let at = self.add(format!("IFCAXIS2PLACEMENT2D(#{c},$)"));
         self.add(format!("IFCRECTANGLEPROFILEDEF(.AREA.,$,#{at},{},{})", real(size.0), real(size.1)))
+    }
+
+    /// The profile definition of `section` (a circle of half its width, or a rectangle, centred on the origin), written once: the
+    /// material profile set of a type and the bodies of its occurrences share it.
+    fn section_profile(&mut self, section: Section) -> u64 {
+        if let Some(&written) = self.sections.get(&section) {
+            return written;
+        }
+        let profile = if section.round {
+            let c = self.point(P2(0.0, 0.0));
+            let centre = self.add(format!("IFCAXIS2PLACEMENT2D(#{c},$)"));
+            self.add(format!("IFCCIRCLEPROFILEDEF(.AREA.,$,#{centre},{})", real(section.width() / 2.0)))
+        } else {
+            self.rectangle(P2(0.0, 0.0), P2(section.width(), section.depth()))
+        };
+        self.sections.insert(section, profile);
+        profile
     }
 
     /// A profile around `outer`, less `holes`.
@@ -662,6 +755,7 @@ pub fn export(m: &Model) -> String {
         materials: BTreeMap::new(),
         common: BTreeMap::new(),
         typed: BTreeMap::new(),
+        sections: BTreeMap::new(),
     };
     let origin = w.add("IFCCARTESIANPOINT((0.,0.,0.))");
     w.z = w.add("IFCDIRECTION((0.,0.,1.))");
@@ -914,13 +1008,9 @@ pub fn export(m: &Model) -> String {
                 let (Some(&(_, storey)), Some(t)) = (storeys.get(&col.level), m.column_type(e)) else { continue };
                 let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
                 let at = w.place(Some(storey), (col.at.0, col.at.1, col.base_offset), Some(heading(col.angle)));
-                let profile = if t.round {
-                    let c = w.point(P2(0.0, 0.0));
-                    let centre = w.add(format!("IFCAXIS2PLACEMENT2D(#{c},$)"));
-                    w.add(format!("IFCCIRCLEPROFILEDEF(.AREA.,$,#{centre},{})", real(t.width / 2.0)))
-                } else {
-                    w.rectangle(P2(0.0, 0.0), P2(t.width, t.depth))
-                };
+                // Its section is its type's, which the type's material profile set holds too.
+                let section = Section::new(t.width, t.depth, t.round);
+                let profile = w.section_profile(section);
                 let shape = w.body(profile, 0.0, top - bottom, &[]);
                 let (class, kind) =
                     if matches!(e, Element::Footing(_)) { ("IFCFOOTING", ".PAD_FOOTING.") } else { ("IFCCOLUMN", ".COLUMN.") };
@@ -937,10 +1027,11 @@ pub fn export(m: &Model) -> String {
                     Element::Footing(_) => w.load_bearing(ent, "Pset_FootingCommon", id),
                     _ => {}
                 }
+                // Placed by the middle of its section: the mid-depth centre, 5.
                 if matches!(e, Element::Footing(_)) {
-                    w.typed("IFCFOOTINGTYPE", ".PAD_FOOTING.", &col.type_name, ent);
+                    w.typed_member("IFCFOOTINGTYPE", ".PAD_FOOTING.", &col.type_name, (section, String::new()), 5, ent);
                 } else {
-                    w.typed("IFCCOLUMNTYPE", ".COLUMN.", &col.type_name, ent);
+                    w.typed_member("IFCCOLUMNTYPE", ".COLUMN.", &col.type_name, (section, String::new()), 5, ent);
                     let values = member_quantities(t.width, t.depth, t.round, top - bottom);
                     w.quantities(ent, "Qto_ColumnBaseQuantities", &values, id);
                 }
@@ -956,7 +1047,11 @@ pub fn export(m: &Model) -> String {
                 // Placed at the start of its centre line; its section's x across it, level, its y up.
                 let at = w.place(Some(storey), (g.a[0], g.a[1], g.a[2] - m.elevation(r.level)), None);
                 let across = if g.vertical() { [1.0, 0.0, 0.0] } else { crate::view3d::unit([-axis[1], axis[0], 0.0]) };
-                let profile = if g.round {
+                // A beam's section is its type's, which the type's material profile set holds too.
+                let section = Section::new(g.width, g.depth, g.round);
+                let profile = if matches!(e, Element::Beam(_)) {
+                    w.section_profile(section)
+                } else if g.round {
                     let c = w.point(P2(0.0, 0.0));
                     let centre = w.add(format!("IFCAXIS2PLACEMENT2D(#{c},$)"));
                     w.add(format!("IFCCIRCLEPROFILEDEF(.AREA.,$,#{centre},{})", real(g.width / 2.0)))
@@ -976,7 +1071,9 @@ pub fn export(m: &Model) -> String {
                 match e {
                     Element::Beam(_) => {
                         w.load_bearing(ent, "Pset_BeamCommon", id);
-                        w.typed("IFCBEAMTYPE", ".BEAM.", &r.type_name, ent);
+                        // Placed by the line its heights are on, the top, the middle or the bottom of its section.
+                        let cardinal = cardinal_point(r.justify, g.vertical());
+                        w.typed_member("IFCBEAMTYPE", ".BEAM.", &r.type_name, (section, t.material.clone()), cardinal, ent);
                         let values = member_quantities(g.width, g.depth, g.round, g.length());
                         w.quantities(ent, "Qto_BeamBaseQuantities", &values, id);
                     }
@@ -984,7 +1081,8 @@ pub fn export(m: &Model) -> String {
                     // A pipe, duct, conduit, tray, wire or cable: its type is of the segment class it is written as.
                     _ => w.typed(&format!("{class}TYPE"), kind, &r.type_name, ent),
                 }
-                if !t.material.is_empty() {
+                // A beam's material is in its type's material profile set; the others' is the material itself.
+                if !t.material.is_empty() && !matches!(e, Element::Beam(_)) {
                     let material = w.material(m, &t.material);
                     w.add(format!("IFCRELASSOCIATESMATERIAL({},$,$,$,(#{ent}),#{material})", w.guid(RUN_MATERIALS, id)));
                 }
@@ -1492,7 +1590,7 @@ pub fn export(m: &Model) -> String {
     for (id, (ent, pset, props)) in std::mem::take(&mut w.common) {
         w.define(ent, pset, &props, (COMMON, COMMON_DEFINES), id);
     }
-    w.write_types();
+    w.write_types(m);
     // Each element's phase and design option, in a property set of its own. The first phase is no value in a
     // model; here an element holding another value names it as its `Phase Created` (said to be implied), for
     // another tool to read. A door or a window holds only what it says: one with no phase follows its wall.
@@ -2097,6 +2195,216 @@ mod tests {
         typed_once(&f, "IFCCABLESEGMENT", "IFCCABLESEGMENTTYPE");
         let cables = kinds("IFCCABLESEGMENTTYPE");
         assert!(!cables.is_empty() && cables.iter().all(|k| k == ".CABLESEGMENT."), "{cables:?}");
+    }
+
+    /// The whole line of entity `#n` in `f`, as written.
+    fn line(f: &str, n: u64) -> String {
+        let head = format!("#{n}=");
+        f.lines().find(|l| l.starts_with(&head)).unwrap_or_else(|| panic!("no #{n}")).to_string()
+    }
+
+    /// The number a STEP reference names: `#12` is 12.
+    fn number(reference: &str) -> u64 {
+        reference.trim_start_matches('#').parse().unwrap_or_else(|_| panic!("not a reference: {reference}"))
+    }
+
+    /// What `IfcRelAssociatesMaterial` gives entity `#ent`: the number of the material, set or usage. There is exactly one.
+    fn material_of(f: &str, ent: u64) -> u64 {
+        let given: Vec<u64> = f
+            .lines()
+            .filter(|l| l.contains("=IFCRELASSOCIATESMATERIAL("))
+            .filter_map(|l| {
+                let (list, material) = l.split_once("$,$,$,(")?.1.split_once("),#")?;
+                list.split(',').any(|r| r == format!("#{ent}")).then(|| number(material.trim_end_matches(");")))
+            })
+            .collect();
+        assert_eq!(given.len(), 1, "#{ent} is associated with one material, set or usage");
+        given[0]
+    }
+
+    /// The one profile of material profile set `#set`: its material (none when `$`) and its profile definition, by number.
+    fn the_profile(f: &str, set: u64) -> (Option<u64>, u64) {
+        let set = attributes(&line(f, set));
+        assert_eq!(set.len(), 4, "IfcMaterialProfileSet's attributes");
+        let profiles = set[2].trim_matches(|c| c == '(' || c == ')');
+        assert!(!profiles.contains(','), "one profile: {profiles}");
+        let profile = attributes(&line(f, number(profiles)));
+        assert_eq!(profile.len(), 6, "IfcMaterialProfile's attributes");
+        ((profile[2] != "$").then(|| number(&profile[2])), number(&profile[3]))
+    }
+
+    /// The set and the cardinal point of the usage entity `#ent` is associated with.
+    fn usage_of(f: &str, ent: u64) -> (u64, String) {
+        let usage = line(f, material_of(f, ent));
+        assert!(usage.contains("=IFCMATERIALPROFILESETUSAGE("), "{usage}");
+        let a = attributes(&usage);
+        assert_eq!((a.len(), a[2].as_str()), (3, "$"), "IfcMaterialProfileSetUsage's attributes: {usage}");
+        (number(&a[0]), a[1].clone())
+    }
+
+    /// The set of the type object `#kind`, its profile definition's line and its material's line (empty when it has none).
+    fn section_of(f: &str, kind: u64) -> (u64, String, String) {
+        let set = material_of(f, kind);
+        assert!(line(f, set).contains("=IFCMATERIALPROFILESET("), "{}", line(f, set));
+        let (material, profile) = the_profile(f, set);
+        (set, line(f, profile), material.map(|m| line(f, m)).unwrap_or_default())
+    }
+
+    #[test]
+    fn a_beam_type_holds_its_section_in_a_material_profile_set_that_each_beam_uses() {
+        use crate::graphics::testing::{house, run};
+        let mut s = Session::new();
+        house(&mut s);
+        run(&mut s, "type", json!({"category": "beam", "name": "B 150x600", "width": 150, "depth": 600, "material": "Concrete"}));
+        run(&mut s, "beam", json!({"points": [[0, 0], [5000, 0]], "type": "B 150x600", "offset": 3000}));
+        run(&mut s, "beam", json!({"points": [[0, 4000], [5000, 4000]], "type": "B 150x600", "offset": 3000, "justify": "bottom"}));
+        let f = export(&s.model);
+        dangling(&f);
+        // The type holds one set: one profile, of the type's material, a 150 by 600 rectangle.
+        let kind = of_kind(&f, "IFCBEAMTYPE");
+        assert_eq!(kind.len(), 1);
+        let (set, profile, material) = section_of(&f, kind[0]);
+        assert_eq!(of_kind(&f, "IFCMATERIALPROFILESET"), [set], "one set for the type");
+        assert!(line(&f, set).contains("=IFCMATERIALPROFILESET('B 150x600',$,(#"), "{}", line(&f, set));
+        assert!(material.contains("=IFCMATERIAL('Concrete'"), "{material}");
+        assert!(profile.contains("=IFCRECTANGLEPROFILEDEF(.AREA."), "{profile}");
+        let rectangle = attributes(&profile);
+        assert_eq!((rectangle[3].as_str(), rectangle[4].as_str()), ("150.", "600."), "{profile}");
+        // Both beams use the set, each by a usage with the cardinal point it is placed by: the top of its section (a beam's
+        // default) is 8, its bottom 2.
+        let beams = of_kind(&f, "IFCBEAM");
+        assert_eq!(beams.len(), 2);
+        let usages: Vec<(u64, String)> = beams.iter().map(|b| usage_of(&f, *b)).collect();
+        assert!(usages.iter().all(|(of, _)| *of == set), "{usages:?}");
+        let mut points: Vec<&str> = usages.iter().map(|(_, c)| c.as_str()).collect();
+        points.sort_unstable();
+        assert_eq!(points, ["2", "8"]);
+        // The profile is written once, and both bodies sweep it.
+        assert_eq!(of_kind(&f, "IFCRECTANGLEPROFILEDEF").len(), 1);
+        let shared = the_profile(&f, set).1;
+        let swept = entities(&f, "IFCEXTRUDEDAREASOLID").iter().filter(|l| attributes(l)[0] == format!("#{shared}")).count();
+        assert_eq!(swept, 2, "both bodies sweep the type's profile");
+        // The material is in the set, so a beam has no other: one for the type, one for each cardinal point's usage.
+        assert_eq!(of_kind(&f, "IFCRELASSOCIATESMATERIAL").len(), 3);
+        assert_eq!(f, export(&s.model), "the same on every export");
+    }
+
+    #[test]
+    fn a_beam_type_with_no_material_gives_its_profile_none_and_a_round_one_a_circle() {
+        use crate::graphics::testing::run;
+        let mut s = Session::new();
+        run(&mut s, "type", json!({"category": "beam", "name": "Plain", "width": 120, "depth": 300}));
+        run(&mut s, "beam", json!({"points": [[0, 0], [4000, 0]], "type": "Plain", "offset": 3000, "justify": "centre"}));
+        run(&mut s, "type", json!({"category": "beam", "name": "Tube 160", "width": 160, "round": true, "material": "Metal"}));
+        run(&mut s, "beam", json!({"points": [[0, 2000], [4000, 2000]], "type": "Tube 160", "offset": 3000}));
+        let f = export(&s.model);
+        dangling(&f);
+        let kinds = of_kind(&f, "IFCBEAMTYPE");
+        assert_eq!(kinds.len(), 2);
+        let by_name = |name: &str| *kinds.iter().find(|k| line(&f, **k).contains(&format!("'{name}'"))).unwrap();
+        let (_, profile, material) = section_of(&f, by_name("Plain"));
+        assert_eq!(material, "", "no material, no IfcMaterial");
+        assert!(attributes(&profile)[3] == "120." && attributes(&profile)[4] == "300.", "{profile}");
+        // A round section is a circle of half its diameter, as its body is.
+        let (_, tube, material) = section_of(&f, by_name("Tube 160"));
+        assert!(tube.contains("=IFCCIRCLEPROFILEDEF(.AREA."), "{tube}");
+        assert_eq!(attributes(&tube)[3], "80.", "{tube}");
+        assert!(material.contains("=IFCMATERIAL('Metal'"), "{material}");
+        // Centred on the line it was drawn at is 5.
+        let plain = of_kind(&f, "IFCBEAM").into_iter().find(|b| occurrences_of(&f, by_name("Plain")).contains(b)).unwrap();
+        assert_eq!(usage_of(&f, plain).1, "5");
+    }
+
+    #[test]
+    fn a_columns_type_holds_a_circle_of_its_diameter_or_a_rectangle_and_its_columns_use_it() {
+        use crate::graphics::testing::run;
+        let mut s = Session::new();
+        run(&mut s, "structural_column", json!({"at": [0, 0], "type": "Concrete Round 400"}));
+        run(&mut s, "structural_column", json!({"at": [3000, 0], "type": "Concrete Round 400"}));
+        run(&mut s, "structural_column", json!({"at": [6000, 0], "type": "Concrete 200 x 500"}));
+        run(&mut s, "column", json!({"at": [9000, 0]}));
+        let f = export(&s.model);
+        dangling(&f);
+        let types = of_kind(&f, "IFCCOLUMNTYPE");
+        assert_eq!(types.len(), 3, "the round, the 200 by 500 and the default column");
+        let mut circles = 0;
+        for kind in &types {
+            let (set, profile, material) = section_of(&f, *kind);
+            assert_eq!(material, "", "a column's type has no material");
+            // Every column of the type uses its set, centred: the mid-depth centre, 5.
+            for column in occurrences_of(&f, *kind) {
+                assert_eq!(usage_of(&f, column), (set, "5".to_string()));
+            }
+            if profile.contains("=IFCCIRCLEPROFILEDEF(") {
+                circles += 1;
+                // 400 across: a radius of 200, for both columns of that type.
+                assert_eq!(attributes(&profile)[3], "200.", "{profile}");
+                assert_eq!(occurrences_of(&f, *kind).len(), 2);
+            }
+        }
+        assert_eq!(circles, 1);
+        assert!(entities(&f, "IFCRECTANGLEPROFILEDEF").iter().any(|r| attributes(r)[3] == "200." && attributes(r)[4] == "500."));
+        // Three usages: the two round columns share one, all five columns were related once.
+        assert_eq!(of_kind(&f, "IFCMATERIALPROFILESETUSAGE").len(), 3);
+    }
+
+    #[test]
+    fn a_pad_footings_type_has_a_profile_set_and_a_strip_footing_or_a_pipe_has_none() {
+        use crate::graphics::testing::run;
+        let mut s = Session::new();
+        run(&mut s, "footing", json!({"at": [0, 0]}));
+        run(&mut s, "strip_footing", json!({"points": [[0, 3000], [4000, 3000]]}));
+        run(&mut s, "pipe", json!({"points": [[0, 6000], [4000, 6000]], "offset": 500}));
+        let f = export(&s.model);
+        dangling(&f);
+        let kind = of_kind(&f, "IFCFOOTINGTYPE");
+        assert_eq!(kind.len(), 1, "the pad's type; the strip footing has none");
+        let (set, profile, _) = section_of(&f, kind[0]);
+        assert_eq!(of_kind(&f, "IFCMATERIALPROFILESET"), [set]);
+        let pad = s.model.types.footing.values().next().unwrap();
+        assert!(profile.contains("=IFCRECTANGLEPROFILEDEF("), "{profile}");
+        assert_eq!(attributes(&profile)[3..5], [real(pad.width), real(pad.depth)]);
+        let footing = occurrences_of(&f, kind[0]);
+        assert_eq!(usage_of(&f, footing[0]), (set, "5".to_string()));
+        // A strip footing and a pipe keep the plain material they have.
+        for class in ["IFCFOOTING", "IFCPIPESEGMENT"] {
+            let plain: Vec<String> =
+                of_kind(&f, class).into_iter().filter(|e| !footing.contains(e)).map(|e| line(&f, material_of(&f, e))).collect();
+            assert_eq!(plain.len(), 1, "{class}");
+            assert!(plain[0].contains("=IFCMATERIAL("), "{}", plain[0]);
+        }
+    }
+
+    #[test]
+    fn types_of_one_name_and_two_sections_stay_two_types_each_with_its_own_set_and_global_ids() {
+        use crate::graphics::testing::run;
+        let mut s = Session::new();
+        // The architectural and the structural column categories each have their own types; both may call one "C 300".
+        run(&mut s, "type", json!({"category": "column", "name": "C 300", "width": 300, "depth": 300}));
+        run(&mut s, "type", json!({"category": "structuralcolumn", "name": "C 300", "width": 250, "depth": 600}));
+        run(&mut s, "column", json!({"at": [0, 0], "type": "C 300"}));
+        run(&mut s, "structural_column", json!({"at": [3000, 0], "type": "C 300"}));
+        let f = export(&s.model);
+        dangling(&f);
+        let kinds = of_kind(&f, "IFCCOLUMNTYPE");
+        assert_eq!(kinds.len(), 2, "two sections, two types");
+        let mut sections: Vec<(String, String)> = kinds
+            .iter()
+            .map(|k| {
+                let (_, profile, _) = section_of(&f, *k);
+                (attributes(&profile)[3].clone(), attributes(&profile)[4].clone())
+            })
+            .collect();
+        sections.sort();
+        assert_eq!(sections, [("250.".to_string(), "600.".to_string()), ("300.".to_string(), "300.".to_string())]);
+        // No two entities of the file share a GlobalId.
+        let mut ids = BTreeSet::new();
+        for l in f.lines().filter(|l| l.contains("=IFCREL") || l.contains("TYPE(") || l.contains("=IFCCOLUMN(")) {
+            let first = attributes(l).swap_remove(0);
+            if first.len() == 24 && first.starts_with('\'') {
+                assert!(ids.insert(first.clone()), "GlobalId {first} is written twice: {l}");
+            }
+        }
     }
 
     #[test]

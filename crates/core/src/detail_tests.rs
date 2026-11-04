@@ -502,6 +502,12 @@ pub(crate) fn sweep_payloads(s: &mut Session) -> (Payloads, Payloads) {
     let repeat = id_of(&run(s, "repeating_detail", json!({"type": "Grp", "start": [0, 4000], "end": [4000, 4000], "spacing": 1000})));
     let floor = id_of(&run(s, "floor", json!({"sketch": square(0.0, 0.0, 8000.0)})));
     run(s, "linework", json!({"view": 100000, "id": 100002, "at": [4000, 95], "style": "Wide Lines"}));
+    // Two lines of their own (the others are joined, filleted and trimmed) and a locked dimension between them: what is typed
+    // into it, and Align's lock against it.
+    let (low, high) =
+        (line(s, json!({"start": [0, -2000], "end": [2000, -2000]})), line(s, json!({"start": [0, -1500], "end": [2000, -1500]})));
+    let dim = id_of(&run(s, "dimension", json!({"refs": [{"id": low}, {"id": high}], "at": [1000, -1750]})));
+    run(s, "dimension_constraint", json!({"id": dim, "locked": [0]}));
     let bow = json!([[[0, 0], [4000, 4000]], [[4000, 4000], [4000, 0]], [[4000, 0], [0, 2000]], [[0, 2000], [0, 0]]]);
     let open = json!([[[0, 0], [1000, 0]], [[1000, 0], [1000, 1000]]]);
     let far = json!([[[0, 0], [1e300, 0]], [[1e300, 0], [0, 1e300]], [[0, 1e300], [0, 0]]]);
@@ -535,6 +541,16 @@ pub(crate) fn sweep_payloads(s: &mut Session) -> (Payloads, Payloads) {
         ("detail_line", json!({"control": [[0, 0], [1, 1]], "knots": [0, 0, 1]})),
         ("detail_line", json!({"fit": [[0, 0], [0, 0], [0, 0]], "start_tangent": [0, 0], "end_tangent": [1e300, 0]})),
         ("detail_line", json!({"start": [0, 0], "end": [1000, 0], "cloud": 100, "insulation": 100, "revision": 5, "centre_mark": "yes"})),
+        // Typed lengths, Align's lock, and a 3D dimension to an edge of no size.
+        ("dimension_value", json!({"id": dim, "value": 1e300})),
+        ("dimension_value", json!({"id": dim, "value": 800, "segment": 1e300})),
+        ("dimension_value", json!({"id": dim, "value": 800})),
+        ("align", json!({"id": high, "reference": [[0, -2000], [2000, -2000]], "line": [[0, -1500], [2000, -1500]], "lock": true})),
+        (
+            "align",
+            json!({"id": low, "reference": [[0, -1500], [2000, -1500]], "line": [[0, -2000], [2000, -2000]], "lock": "x", "to": u64::MAX}),
+        ),
+        ("dimension_3d", json!({"refs": [{"at": [0, 0, 0]}, {"at": [1000, 0, 0], "edge": [[0, 0, 0], [0, 0, 0]]}], "at": [0, -500, 0]})),
         // Edits of them.
         ("split", json!({"id": a, "at": [1e300, 0]})),
         ("vertex", json!({"id": poly, "at": [1000, 1000], "delete": true})),
