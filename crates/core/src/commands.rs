@@ -345,6 +345,22 @@ pub static ALL: &[Command] = &[
         fetch_terrain,
     ),
     edit(
+        "fetch_imagery",
+        "Fetch Aerial Imagery",
+        &[],
+        "{id?, source?, max_side?} fetches aerial imagery of the ground a toposurface covers and lays it over it: the picture is a \
+         texture of the terrain's material, laid by where it is (`planar`), so the 3D view and the plans can show the ground as it \
+         is. `id` is the toposurface (needed only when the project has several); `source` is `auto` (the default: the first source \
+         of the table that has the place, finest and most local first) or a source's id: flanders (Flemish orthophotos), pdok \
+         (Dutch aerial photographs), usgs (US imagery, to about 2 m a pixel) or eox2016 (Sentinel-2 cloudless 2016, about 6 m \
+         worldwide); `max_side` is the pixels along the picture's long side, 64 to 1024 (1024 by default), and the tiles are as \
+         fine as that allows within what the source has. The project must be placed (`geolocate`). Needs a build with network \
+         access (the desktop app has it). The picture replaces any earlier one of the terrain. Its source, credit and terms are kept \
+         with the toposurface as the parameters Imagery Source, Imagery Credit and Imagery Terms; the reply has them too, with \
+         the zoom, the metres a pixel stands for, the picture's size and how much of it is without imagery",
+        fetch_imagery,
+    ),
+    edit(
         "import_osm",
         "Import OpenStreetMap",
         &[],
@@ -5703,6 +5719,149 @@ fn fetch_terrain(s: &mut Session, p: &Value) -> R {
     out["elevation_set"] = if set { json!(base) } else { Value::Null };
     out["attribution"] = json!(geo.attribution(&got.source));
     Ok(out)
+}
+
+/// The ground a toposurface covers, as west, south, east, north in the project's plane (mm): the box of its boundary, else of its
+/// points. None if it covers none.
+fn terrain_extent(t: &Toposurface) -> Option<[f64; 4]> {
+    let xy: Vec<(f64, f64)> = if t.boundary.len() >= 3 {
+        t.boundary.iter().map(|q| (q.0, q.1)).collect()
+    } else {
+        t.points.iter().map(|q| (q[0], q[1])).collect()
+    };
+    let (mut low, mut high) = ((f64::MAX, f64::MAX), (f64::MIN, f64::MIN));
+    for (x, y) in &xy {
+        low = (low.0.min(*x), low.1.min(*y));
+        high = (high.0.max(*x), high.1.max(*y));
+    }
+    let extent = [low.0, low.1, high.0, high.1];
+    (xy.len() >= 3 && extent.iter().all(|v| v.is_finite()) && low.0 < high.0 && low.1 < high.1).then_some(extent)
+}
+
+fn fetch_imagery(s: &mut Session, p: &Value) -> R {
+    use crate::imagery;
+    let c = "fetch_imagery";
+    only(c, p, &["id", "source", "max_side"])?;
+    let Some(geo) = s.geo.clone() else {
+        return Err(bad(
+            c,
+            "this BIMCraft has no network access built in (the desktop app has it): the terrain has no aerial imagery to lay over it",
+        ));
+    };
+    let (id, terrain) = terrain_of(c, &s.model, p)?;
+    let Some(location) = s.model.location else {
+        return Err(bad(c, "the project has no location yet: place it with `geolocate` (latitude and longitude) first"));
+    };
+    let side = num(c, p, "max_side")?.unwrap_or(f64::from(imagery::DEFAULT_SIDE));
+    let most = texture::MAX_SIDE as f64;
+    if side.fract() != 0.0 || !(f64::from(imagery::MIN_SIDE)..=most).contains(&side) {
+        return Err(bad(
+            c,
+            format!(
+                "`max_side` is the pixels along the picture's long side, a whole number from {} to {} (a project keeps a picture at most that across), not {side}",
+                imagery::MIN_SIDE,
+                texture::MAX_SIDE
+            ),
+        ));
+    }
+    let max_side = side as u32;
+    let wanted = string(c, p, "source")?;
+    if let Some(name) = wanted.as_deref().filter(|n| *n != "auto")
+        && imagery::source(name).is_none()
+    {
+        let names: Vec<&str> = imagery::SOURCES.iter().map(|x| x.id).collect();
+        return Err(bad(c, format!("there is no imagery source `{name}`: `auto` or one of {}", names.join(", "))));
+    }
+    let extent = terrain_extent(&terrain).ok_or_else(|| bad(c, "the toposurface covers no ground"))?;
+    let projector = location.projector().map_err(|why| bad(c, why))?;
+    let lonlat = |q: P2| projector.lonlat(q);
+    let envelope = imagery::envelope(extent, &lonlat).map_err(|why| bad(c, why))?;
+    let (width_m, height_m) = ((extent[2] - extent[0]) / 1000.0, (extent[3] - extent[1]) / 1000.0);
+    let sources: Vec<&imagery::Source> = match wanted.as_deref() {
+        None | Some("auto") => imagery::candidates(&envelope),
+        Some(name) => imagery::source(name).into_iter().collect(),
+    };
+    // The first source that brings imagery wins; the last reason is the answer if none does.
+    let mut reason = "no source of the table has this place: the project may be where none has imagery".to_string();
+    let mut found = None;
+    for source in sources {
+        match imagery::plan(source, &envelope, width_m, height_m, max_side)
+            .and_then(|plan| geo.imagery(source.id, &plan).map(|got| (plan, got)))
+        {
+            Ok((plan, got)) => {
+                found = Some((source, plan, got));
+                break;
+            }
+            Err(why) => reason = why,
+        }
+    }
+    let Some((source, plan, got)) = found else { return Err(bad(c, reason)) };
+    // What the fetcher brought is hostile, as a file is.
+    if got.source != source.id || got.plan != plan {
+        return Err(bad(c, "the fetcher answered for another source or another plan than it was asked for"));
+    }
+    got.mosaic.check().map_err(|why| bad(c, why))?;
+    let m = &got.mosaic;
+    if (m.zoom, m.x0, m.y0, m.cols, m.rows) != (plan.zoom, plan.x0, plan.y0, plan.cols, plan.rows) {
+        return Err(bad(c, "the tiles the fetcher brought are not the ones of the plan"));
+    }
+    let raster = imagery::warp(&got.mosaic, extent, plan.width, plan.height, &lonlat).map_err(|why| bad(c, why))?;
+    let (clear, all) = (raster.rgba.chunks_exact(4).filter(|px| px[3] == 0).count(), raster.rgba.len() / 4);
+    if clear == all {
+        return Err(bad(c, format!("{} has no imagery over this toposurface", source.name)));
+    }
+    let size = tiny_skia::IntSize::from_wh(raster.width, raster.height).ok_or_else(|| bad(c, "the picture has no size"))?;
+    let png = tiny_skia::Pixmap::from_vec(raster.rgba, size)
+        .ok_or_else(|| bad(c, "the picture has no pixels"))?
+        .encode_png()
+        .map_err(|e| bad(c, e.to_string()))?;
+    let picture = Picture::import(&format!("Aerial imagery: {}", source.name), &png).map_err(|e| bad(c, e))?;
+    let (picture_id, name) = (picture.id(), format!("Aerial imagery ({id})"));
+    let m = s.model_mut();
+    for parameter in ["Imagery Source", "Imagery Credit", "Imagery Terms"] {
+        declare_text(m, parameter, "toposurface").map_err(|why| bad(c, why))?;
+    }
+    m.images.insert(picture_id.clone(), picture);
+    let texture = Texture {
+        kind: Kind::Image,
+        size: [extent[2] - extent[0], extent[3] - extent[1]],
+        angle: 0.0,
+        offset: [extent[0], extent[3]],
+        image: picture_id,
+        planar: true,
+    };
+    texture.check(&m.images).map_err(|why| bad(c, format!("texture: {why}")))?;
+    // The same name each time, so a picture fetched again replaces the one before, which goes with its material.
+    m.materials.insert(name.clone(), crate::model::Material { color: [128, 128, 128], texture: Some(texture), ..Default::default() });
+    if let Some(Element::Toposurface(t)) = m.elements.get_mut(id) {
+        t.material = name.clone();
+        t.params.insert("Imagery Source".into(), json!(source.name));
+        t.params.insert("Imagery Credit".into(), json!(source.credit));
+        t.params.insert("Imagery Terms".into(), json!(source.terms));
+    }
+    prune_images(m);
+    if m.images.len() > texture::MAX_IMAGES {
+        return Err(bad(
+            c,
+            format!("the project holds {} pictures; at most {}: take a texture of one away first", m.images.len(), texture::MAX_IMAGES),
+        ));
+    }
+    Ok(json!({
+        "id": id,
+        "material": name,
+        "source": source.id,
+        "name": source.name,
+        "credit": source.credit,
+        "terms": source.terms,
+        "attribution": geo.attribution(source.id),
+        "zoom": plan.zoom,
+        "metres_per_pixel": plan.metres_per_pixel,
+        "tiles": [plan.cols, plan.rows],
+        "picture": [plan.width, plan.height],
+        "extent": extent,
+        "cached": got.cached,
+        "without_imagery_percent": 100.0 * clear as f64 / all as f64,
+    }))
 }
 
 /// The most buildings `import_osm` makes walls, floors and roofs of at once.

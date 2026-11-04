@@ -23,11 +23,34 @@ struct Fake {
     fail: Option<String>,
     /// How many nodes without a height the grid has, from the north west corner.
     holes: usize,
+    /// The imagery it was asked for, in order: the source and the plan.
+    imagery_asked: Mutex<Vec<(String, crate::imagery::Plan)>>,
+    /// The sources it has no imagery of.
+    no_imagery: Vec<&'static str>,
+    /// What it is untruthful about in the imagery it gives.
+    lie: Option<Lie>,
+}
+
+/// How a fetcher can be wrong about the imagery it brings: hostile, as a file is.
+#[derive(Clone, Copy)]
+enum Lie {
+    Source,
+    Plan,
+    Mosaic,
 }
 
 impl Fake {
     fn new(osm: String) -> Fake {
-        Fake { osm, asked: Mutex::default(), heights: Mutex::default(), fail: None, holes: 0 }
+        Fake {
+            osm,
+            asked: Mutex::default(),
+            heights: Mutex::default(),
+            fail: None,
+            holes: 0,
+            imagery_asked: Mutex::default(),
+            no_imagery: Vec::new(),
+            lie: None,
+        }
     }
 }
 
@@ -62,10 +85,42 @@ impl GeoSource for Fake {
         })
     }
 
+    fn imagery(&self, source: &str, plan: &crate::imagery::Plan) -> Result<crate::imagery::Imagery, String> {
+        use crate::imagery::{Imagery, Mosaic, TILE};
+        self.imagery_asked.lock().unwrap().push((source.to_string(), plan.clone()));
+        if let Some(why) = &self.fail {
+            return Err(why.clone());
+        }
+        if self.no_imagery.contains(&source) {
+            return Err(format!("{source} has no imagery of this place"));
+        }
+        // Every tile the same gradient: never one colour.
+        let tile: Vec<u8> = (0..TILE * TILE).flat_map(|k| [(k % TILE) as u8, (k / TILE) as u8, 90]).collect();
+        let mut mosaic = Mosaic::new(plan);
+        for row in 0..plan.rows {
+            for col in 0..plan.cols {
+                mosaic.put(col, row, &tile)?;
+            }
+        }
+        let mut got = Imagery { source: source.into(), plan: plan.clone(), mosaic, cached: false };
+        match self.lie {
+            Some(Lie::Source) => got.source = "usgs".into(),
+            Some(Lie::Plan) => got.plan.zoom = got.plan.zoom.saturating_sub(1),
+            Some(Lie::Mosaic) => {
+                got.mosaic.rgb.pop();
+            }
+            None => {}
+        }
+        Ok(got)
+    }
+
     fn attribution(&self, what: &str) -> String {
         match what {
             "osm" => "Data (c) OpenStreetMap contributors (ODbL)".into(),
-            other => format!("Elevation: {other}"),
+            other => match crate::imagery::source(other) {
+                Some(source) => source.credit.into(),
+                None => format!("Elevation: {other}"),
+            },
         }
     }
 }
@@ -405,6 +460,139 @@ fn a_fetcher_with_no_map_tiles_says_so_and_a_tile_is_checked() {
     let real: crate::geo::Fetcher = Arc::new(TileFake);
     let held = crate::geo::Prefetched::new(real, Bbox::new(-23.56, -46.64, -23.54, -46.62).unwrap());
     assert_eq!(held.tile(1, 0, 0).unwrap().side, 1);
+}
+
+/// A project placed at (`lat`, `lon`) with a terrain 300 m by 200 m from its origin northeast, and `fake` attached.
+fn terrain_session(fake: Arc<Fake>, lat: f64, lon: f64) -> Session {
+    let mut s = Session::new();
+    run(&mut s, "geolocate", json!({"latitude": lat, "longitude": lon}));
+    run(
+        &mut s,
+        "toposurface",
+        json!({"points": [[0, 0, 0], [300000, 0, 1000], [300000, 200000, 2000], [0, 200000, 500]], "boundary": [[0, 0], [300000, 0], [300000, 200000], [0, 200000]]}),
+    );
+    s.geo = Some(fake);
+    s
+}
+
+/// The id of the first toposurface the project has.
+fn terrain_id(s: &Session) -> crate::ids::Id {
+    s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Toposurface(_)).then_some(*id)).unwrap()
+}
+
+#[test]
+fn fetch_imagery_lays_a_picture_over_the_terrain_and_says_whose_it_is() {
+    let fake = Arc::new(Fake::new(String::new()));
+    let mut s = terrain_session(fake.clone(), HOME.1, HOME.0);
+    let id = terrain_id(&s);
+    let r = run(&mut s, "fetch_imagery", json!({"source": "pdok"}));
+    assert_eq!((r["source"].as_str(), &r["id"]), (Some("pdok"), &json!(id)), "{r}");
+    let pdok = crate::imagery::source("pdok").unwrap();
+    assert_eq!(
+        (r["credit"].as_str(), r["terms"].as_str(), r["attribution"].as_str()),
+        (Some(pdok.credit), Some(pdok.terms), Some(pdok.credit))
+    );
+    // The plan it asked for: a zoom of the source, the raster the size the plan says.
+    let (asked, plan) = fake.imagery_asked.lock().unwrap()[0].clone();
+    assert_eq!(asked, "pdok");
+    assert_eq!((r["zoom"].as_u64(), r["picture"].clone()), (Some(u64::from(plan.zoom)), json!([plan.width, plan.height])), "{r}");
+    assert!(r["metres_per_pixel"].as_f64().is_some_and(|m| m > 0.0 && m < 5.0) && plan.width <= 1024 && plan.height <= 1024, "{r}");
+    // The material is a picture over exactly the terrain's extent, by where it is.
+    let name = r["material"].as_str().unwrap().to_string();
+    let texture = s.model.materials[&name].texture.clone().unwrap();
+    assert!(texture.planar && texture.kind == crate::texture::Kind::Image);
+    assert_eq!((texture.size, texture.offset), ([300_000.0, 200_000.0], [0.0, 200_000.0]), "west and north corner, the ground it covers");
+    assert_eq!(s.model.images.len(), 1);
+    assert!(s.model.images.contains_key(&texture.image));
+    // And the terrain wears it, with the source and the credit kept with it where a schedule or a drawing can read them.
+    let Some(Element::Toposurface(t)) = s.model.elements.get(id) else { panic!("no terrain") };
+    assert_eq!(t.material, name);
+    assert_eq!(t.params["Imagery Source"], json!(pdok.name));
+    assert_eq!((t.params["Imagery Credit"].as_str(), t.params["Imagery Terms"].as_str()), (Some(pdok.credit), Some(pdok.terms)));
+    for parameter in ["Imagery Source", "Imagery Credit", "Imagery Terms"] {
+        assert!(s.model.parameters[parameter].categories.iter().any(|c| c == "toposurface"), "{parameter}");
+    }
+    // Again from another source: the picture and the material are replaced, not added to.
+    let r = run(&mut s, "fetch_imagery", json!({"source": "eox2016"}));
+    assert_eq!(r["source"], json!("eox2016"));
+    assert_eq!(s.model.images.len(), 1, "the earlier picture went with its material");
+    assert_eq!(s.model.materials.keys().filter(|k| k.starts_with("Aerial imagery")).count(), 1);
+    let Some(Element::Toposurface(t)) = s.model.elements.get(id) else { panic!("no terrain") };
+    assert_eq!(t.params["Imagery Source"], json!(crate::imagery::source("eox2016").unwrap().name));
+    // One undo takes the whole of it back.
+    run(&mut s, "undo", json!({}));
+    let Some(Element::Toposurface(t)) = s.model.elements.get(id) else { panic!("no terrain") };
+    assert_eq!(t.params["Imagery Source"], json!(pdok.name), "back to the first picture");
+    run(&mut s, "undo", json!({}));
+    assert!(s.model.images.is_empty() && !s.model.materials.keys().any(|k| k.starts_with("Aerial imagery")));
+}
+
+#[test]
+fn fetch_imagery_without_a_source_takes_the_first_that_has_the_place() {
+    // At Ghent the table offers Flanders first, then PDOK (its rectangle runs over the border), then the world's.
+    let fake = Arc::new(Fake { no_imagery: vec!["flanders"], ..Fake::new(String::new()) });
+    let mut s = terrain_session(fake.clone(), 51.0543, 3.7174);
+    let r = run(&mut s, "fetch_imagery", json!({}));
+    assert_eq!(r["source"], json!("pdok"), "Flanders had none here: {r}");
+    let asked: Vec<String> = fake.imagery_asked.lock().unwrap().iter().map(|(source, _)| source.clone()).collect();
+    assert_eq!(asked, ["flanders", "pdok"]);
+    // The first, when it has it; `auto` is the same as none.
+    let fake = Arc::new(Fake::new(String::new()));
+    let mut s = terrain_session(fake.clone(), 51.0543, 3.7174);
+    assert_eq!(run(&mut s, "fetch_imagery", json!({"source": "auto"}))["source"], json!("flanders"));
+    // Nobody has it: the last reason is the answer.
+    let fake = Arc::new(Fake { no_imagery: vec!["flanders", "pdok", "eox2016"], ..Fake::new(String::new()) });
+    let mut s = terrain_session(fake, 51.0543, 3.7174);
+    let why = refused(&mut s, "fetch_imagery", json!({}));
+    assert!(why.contains("eox2016 has no imagery"), "{why}");
+    assert!(s.model.images.is_empty(), "nothing was left");
+}
+
+#[test]
+fn fetch_imagery_refuses_what_it_cannot_do_and_leaves_the_project_as_it_was() {
+    let ok = || Arc::new(Fake::new(String::new()));
+    // No fetcher, no place, no terrain, or two to choose from.
+    let mut s = terrain_session(ok(), HOME.1, HOME.0);
+    s.geo = None;
+    assert!(refused(&mut s, "fetch_imagery", json!({})).contains("network"));
+    let mut bare = Session::new();
+    bare.geo = Some(ok());
+    assert!(refused(&mut bare, "fetch_imagery", json!({})).contains("toposurface"));
+    run(&mut bare, "toposurface", json!({"points": [[0, 0, 0], [10000, 0, 0], [0, 10000, 0]]}));
+    assert!(refused(&mut bare, "fetch_imagery", json!({})).contains("geolocate"), "no place yet");
+    let mut two = terrain_session(ok(), HOME.1, HOME.0);
+    let first = terrain_id(&two);
+    run(&mut two, "toposurface", json!({"points": [[0, 0, 0], [10000, 0, 0], [0, 10000, 0]]}));
+    assert!(refused(&mut two, "fetch_imagery", json!({"source": "pdok"})).contains("`id`"), "which one?");
+    assert_eq!(run(&mut two, "fetch_imagery", json!({"source": "pdok", "id": first}))["id"], json!(first));
+    // Parameters that are not what they should be.
+    let mut s = terrain_session(ok(), HOME.1, HOME.0);
+    for (what, p, says) in [
+        ("an unknown key", json!({"radius": 100}), "radius"),
+        ("a source the table lacks", json!({"source": "bing"}), "pdok"),
+        ("a source that is not a name", json!({"source": 5}), "source"),
+        ("a name with a path in it", json!({"source": "../pdok"}), "source"),
+        ("too few pixels", json!({"max_side": 63}), "max_side"),
+        ("too many", json!({"max_side": 1025}), "max_side"),
+        ("not a number", json!({"max_side": "big"}), "max_side"),
+        ("a fraction", json!({"max_side": 100.5}), "max_side"),
+        ("not an element", json!({"id": 999_999}), "toposurface"),
+    ] {
+        let why = refused(&mut s, "fetch_imagery", p);
+        assert!(why.contains(says), "{what}: {why}");
+    }
+    assert!(s.model.images.is_empty() && !s.model.materials.keys().any(|k| k.starts_with("Aerial imagery")));
+    // A fetcher that fails, and one that is untruthful about the source, the plan or the tiles: refused, and nothing is changed.
+    let down = Arc::new(Fake { fail: Some("service.pdok.nl: HTTP 503".into()), ..Fake::new(String::new()) });
+    let mut s = terrain_session(down, HOME.1, HOME.0);
+    assert!(refused(&mut s, "fetch_imagery", json!({"source": "pdok"})).contains("503"));
+    for (what, lie) in [("the source", Lie::Source), ("the plan", Lie::Plan), ("the tiles", Lie::Mosaic)] {
+        let fake = Arc::new(Fake { lie: Some(lie), ..Fake::new(String::new()) });
+        let mut s = terrain_session(fake, HOME.1, HOME.0);
+        let before = s.model.clone();
+        let why = refused(&mut s, "fetch_imagery", json!({"source": "pdok"}));
+        assert!(!why.is_empty() && s.model == before, "a fetcher wrong about {what}: {why}");
+    }
 }
 
 #[test]

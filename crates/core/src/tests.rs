@@ -1863,7 +1863,7 @@ fn hostile_params_never_panic_or_break_the_model() {
     let _ = base.execute("mass", &json!({"boundary": block(), "height": 9000, "lean": [1500, 500]}));
     // Detailing, one of each (detail lines, regions, a group, a repeating detail, a sketch floor, Linework), and the payloads
     // that name them: some for every command, some for the one they are for.
-    let (detailing, targeted) = crate::detail_tests::sweep_payloads(&mut base);
+    let (detailing, mut targeted) = crate::detail_tests::sweep_payloads(&mut base);
     // A section and an elevation of it, after those, so that no id the payloads name moves: their views are drawn too.
     let _ = base.execute("section", &json!({"start": [-1000, 3000], "end": [9000, 3000]}));
     let _ = base.execute("elevation", &json!({"facing": "south"}));
@@ -1881,6 +1881,18 @@ fn hostile_params_never_panic_or_break_the_model() {
     );
     // A pad on that terrain, for cut_fill and place_on_terrain, and what draws it.
     let _ = base.execute("pad", &json!({"boundary": [[1000, 1000], [6000, 1000], [6000, 5000], [1000, 5000]], "offset": 300}));
+    // Aerial imagery over that terrain: the fake fetcher answers, so the warp, the picture and the material are made and drawn.
+    targeted.extend([
+        ("fetch_imagery", json!({})),
+        ("fetch_imagery", json!({"source": "auto"})),
+        ("fetch_imagery", json!({"source": "pdok", "max_side": 64})),
+        ("fetch_imagery", json!({"source": "eox2016", "max_side": 1024})),
+        ("fetch_imagery", json!({"source": "usgs", "max_side": 100})),
+        ("fetch_imagery", json!({"source": "flanders", "id": 999_999})),
+        ("fetch_imagery", json!({"max_side": 1e300})),
+        ("fetch_imagery", json!({"max_side": -1})),
+        ("fetch_imagery", json!({"source": "../../etc/passwd"})),
+    ]);
     let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();

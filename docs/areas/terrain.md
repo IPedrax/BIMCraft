@@ -63,6 +63,20 @@ from the element's own level. What is not over the terrain is left and said. `im
 A level's elevation and a terrain's z are both project coordinates, so a building at terrain height 3 m is 3 m over Level 1 whatever the
 site's height above sea level; data in metres above sea level (a DEM) must have the project origin's `elevation` taken off first.
 
+## Aerial imagery
+
+`fetch_imagery` lays aerial photographs over a toposurface ([geofetch](geofetch.md) has the sources, their terms and how a fetch goes).
+It plans the tiles for the ground the toposurface covers (the box of its boundary, else of its points), asks the app's fetcher for them
+(`GeoSource::imagery`; a build without one refuses), warps them into the project's own axes (`imagery::warp`: north up, the project's
+turn undone) and keeps the result as a picture of the project (`Model::images`, at most 1024 px along its long side) on a material
+named `Aerial imagery (<id>)` that the toposurface wears. The texture is `planar`: laid by where it is, once, with `size` the ground
+it covers and `offset` its west and north corner, so the picture lies on the ground whatever the slope and its edge goes on beyond it
+(the processor looks it up by east and north in `view3d::GROUND`, the card in `gpu.wgsl` by its spare word). Fetched again, from the
+same source or another, it replaces the picture and the material, and one undo takes it back. The source, its credit and where its
+terms are stay with the toposurface as the parameters Imagery Source, Imagery Credit and Imagery Terms. A picture of a project has no
+alpha, so a place without imagery shows white, not the terrain's colour. Not yet: the Site tab's button, the plans' underlay, the
+credit drawn in the views.
+
 ## Not yet
 
 A toposurface drawn by clicking points (the [Site tab](desktop.md#the-site-tab) has Pad, Place on Terrain, Cut/Fill and the fetches; `TS` is free), pads that grade the surface (a slope out to the ground) and subregions, slope maps, contours cut by a section, points
