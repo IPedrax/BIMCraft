@@ -74,8 +74,8 @@ it covers and `offset` its west and north corner, so the picture lies on the gro
 (the processor looks it up by east and north in `view3d::GROUND`, the card in `gpu.wgsl` by its spare word). Fetched again, from the
 same source or another, it replaces the picture and the material, and one undo takes it back. The source, its credit and where its
 terms are stay with the toposurface as the parameters Imagery Source, Imagery Credit and Imagery Terms. A picture of a project has no
-alpha, so a place without imagery shows white, not the terrain's colour. Not yet: the Site tab's button, the plans' underlay, the
-credit drawn in the views.
+alpha, so a place without imagery shows white, not the terrain's colour. The Site tab's Aerial Imagery button runs it ([the desktop](desktop.md#the-site-tab)). Not yet: the plans' underlay, the credit
+drawn in the views.
 
 ## Not yet
 

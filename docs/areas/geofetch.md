@@ -121,7 +121,7 @@ addresses and no others: a REST address by its text and its numbers (one to ten 
 address that can only be asked by query (Flanders) by its exact path and its whole query, pair by pair, in order, each value as
 written or a number. `imagery warp` in the example does the whole of it for a place and writes the picture, the picture with a 100 m
 grid, a world file (`world_file` gives its six numbers; it has no CRS, so a note says which) and a note of the source and its terms.
-The `fetch_imagery` command, the planar texture and its drawing in the 3D view (processor and card) are built too ([terrain](terrain.md)). Not yet: the Site tab's button, the plans' underlay, the credit drawn in the views.
+The `fetch_imagery` command, the planar texture and its drawing in the 3D view (processor and card) are built too ([terrain](terrain.md)). The Site tab's Aerial Imagery button runs it. Not yet: the plans' underlay, the credit drawn in the views.
 
 ## Not yet
 

@@ -3,6 +3,8 @@
 //! plans can draw it by the ground's x and y alone. The core never touches the network: `GeoSource::imagery` is the hook an app
 //! attaches, and what it returns is hostile, as a file is, so a mosaic is checked before it is used.
 
+// What `fetch_imagery` asks the fetcher for: the window's thread works it out too, before it fetches.
+pub use crate::commands::{ImageryAsk, imagery_ask};
 use crate::geo::{Bbox, tile_xy};
 use crate::geom::P2;
 use crate::georef::Grid;

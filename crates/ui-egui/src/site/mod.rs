@@ -15,6 +15,7 @@ use bimcraft_core::geo::{self, Bbox, Elevation, Layers, Prefetched, Reply};
 use bimcraft_core::geom::P2;
 use bimcraft_core::georef::parse_coordinates;
 use bimcraft_core::ids::Id;
+use bimcraft_core::imagery::{self, Imagery, imagery_ask};
 use bimcraft_core::model::{Element, Model, Pad};
 use bimcraft_i18n::msg;
 use egui::{Align, Button, Context, Grid, Id as UiId, Layout, Response, RichText, ScrollArea, TextEdit, Ui};
@@ -32,6 +33,7 @@ use crate::{BimApp, Icon, Status, big_button, panel};
 pub(crate) enum Kind {
     Osm,
     Terrain,
+    Imagery,
 }
 
 /// What a fetch is made of: what for, over which box, the command's parameters, and (for heights) the spacing and source asked for.
@@ -41,6 +43,7 @@ type Built = (Kind, Bbox, Value, Option<(f64, Option<String>)>);
 enum Fetched {
     Osm { query: String, reply: Reply },
     Heights { spacing: f64, source: Option<String>, got: Elevation },
+    Imagery(Imagery),
 }
 
 /// A fetch running: for what, over which box, with which command's parameters, and its answer when it comes.
@@ -94,6 +97,14 @@ pub(crate) struct AreaBox {
     error: Option<String>,
 }
 
+/// The box for Aerial Imagery: from which source, and how many pixels the picture has along its long side.
+pub(crate) struct ImageryBox {
+    /// 0 for automatic, else one more than the source's place in the core's table.
+    source: usize,
+    side: String,
+    error: Option<String>,
+}
+
 /// What a fetch or a calculation says when it is done: kept in a box until it is closed.
 pub(crate) struct Said {
     title: String,
@@ -108,6 +119,7 @@ pub(crate) struct Said {
 pub(crate) struct Site {
     location: Option<LocationBox>,
     area: Option<AreaBox>,
+    imagery: Option<ImageryBox>,
     job: Option<Job>,
     said: Option<Said>,
     /// The map a place or an area is picked on.
@@ -192,6 +204,12 @@ impl BimApp {
             .clicked()
             {
                 self.open_area(Kind::Terrain);
+            }
+            let tip = msg!(
+                "Aerial Imagery: photographs of the ground, fetched from an imagery service and laid over the selected terrain (the only one when none is selected)"
+            );
+            if big_button(ui, Icon::Aerial, "Aerial Imagery", self.site.imagery.is_some(), tip).clicked() {
+                self.open_imagery();
             }
             let tip = msg!("Pad: click the corners of a building pad's outline; Enter, or the first corner again, finishes; Esc cancels");
             if big_button(ui, Icon::Pad, "Pad", crate::structure::same_tool(&self.tool, &crate::Tool::Pad(Vec::new())), tip).clicked() {
@@ -463,6 +481,7 @@ impl BimApp {
         let (title, kind) = match b.kind {
             Kind::Osm => (t("Import from OpenStreetMap"), Kind::Osm),
             Kind::Terrain => (t("Terrain from Elevation Data"), Kind::Terrain),
+            Kind::Imagery => return,
         };
         let offline = self.session.geo.is_none();
         let area = self.area_bbox(b);
@@ -500,6 +519,8 @@ impl BimApp {
                         text_field(ui, "East (°)", &mut b.east, "-46.62");
                     }
                     match kind {
+                        // (Aerial imagery has a box of its own.)
+                        Kind::Imagery => {}
                         Kind::Osm => {
                             text_field(ui, "Height of a building with none", &mut b.default_height, unit);
                             text_field(ui, "Height of a level", &mut b.level_height, unit);
@@ -561,6 +582,142 @@ impl BimApp {
         }
     }
 
+    // ---- Aerial imagery ----
+
+    fn open_imagery(&mut self) {
+        self.site.imagery = Some(ImageryBox { source: 0, side: imagery::DEFAULT_SIDE.to_string(), error: None });
+    }
+
+    /// The parameters of `fetch_imagery` the box describes, with the selected toposurface if one is.
+    fn imagery_params(&self, b: &ImageryBox) -> Result<Value, String> {
+        let side = b.side.trim().parse::<u32>().map_err(|_| tf("Picture size: `{}` is not a whole number of pixels", &[b.side.trim()]))?;
+        let mut params = json!({"max_side": side});
+        if let Some(source) = b.source.checked_sub(1).and_then(|i| imagery::SOURCES.get(i)) {
+            params["source"] = json!(source.id);
+        }
+        let model = &self.session.model;
+        if let Some(id) = self.selection.iter().copied().find(|id| matches!(model.elements.get(id), Some(Element::Toposurface(_)))) {
+            params["id"] = json!(id);
+        }
+        Ok(params)
+    }
+
+    fn imagery_error(&mut self, e: String) {
+        if let Some(b) = self.site.imagery.as_mut() {
+            b.error = Some(e);
+        }
+    }
+
+    fn imagery_window(&mut self, ctx: &Context) {
+        // While a fetch runs, its own box is the only one: this one is back, with what went wrong, if it did.
+        if self.site.job.is_some() {
+            return;
+        }
+        let offline = self.session.geo.is_none();
+        let Some(b) = self.site.imagery.as_mut() else { return };
+        let (mut ok, mut close) = (false, false);
+        let r = Modal::new(UiId::new("site-imagery"), t("Aerial Imagery")).width(460.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                ui.add_space(6.0);
+                if offline {
+                    ui.label(
+                        RichText::new(t(
+                            "This BIMCraft has no network access (BIMCRAFT_NO_NETWORK is set, or it runs in a sandbox that has none).",
+                        ))
+                        .color(pal().error),
+                    );
+                    ui.add_space(6.0);
+                }
+                ui.label(t("Photographs of the ground the terrain covers, fetched from an imagery service and laid over it."));
+                ui.add_space(6.0);
+                Grid::new("site-imagery-grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
+                    let l = ui.label(t("Imagery from"));
+                    let selected = match b.source.checked_sub(1).and_then(|i| imagery::SOURCES.get(i)) {
+                        Some(source) => source.name.to_string(),
+                        None => t("Automatic").to_string(),
+                    };
+                    let c = egui::ComboBox::from_id_salt("site-imagery-source").selected_text(selected).show_ui(ui, |ui| {
+                        ui.selectable_value(&mut b.source, 0, t("Automatic"));
+                        for (i, source) in imagery::SOURCES.iter().enumerate() {
+                            ui.selectable_value(&mut b.source, i + 1, source.name);
+                        }
+                    });
+                    c.response.labelled_by(l.id);
+                    ui.end_row();
+                    text_field(ui, "Picture size (pixels)", &mut b.side, "1024");
+                });
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new(t(
+                        "Automatic takes the finest source that has the place. The photographs' own terms of use go with the picture.",
+                    ))
+                    .color(pal().muted),
+                );
+                if let Some(e) = &b.error {
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(e).color(pal().error));
+                }
+            });
+            crate::popup::footer(ui, |ui| {
+                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                    close = ui.button(t("Cancel")).clicked();
+                    ok = ui.add_enabled(!offline, Button::new(t("Fetch"))).clicked();
+                });
+            });
+        });
+        if ok {
+            self.start_imagery(ctx);
+        } else if close || r.should_close() {
+            self.site.imagery = None;
+        }
+    }
+
+    /// Starts the imagery fetch the box describes, on a thread; the box stays until it is over (its refusals appear in it). What to ask
+    /// for is the command's own working out (`imagery_ask`), before anyone waits for the network.
+    fn start_imagery(&mut self, ctx: &Context) {
+        let Some(b) = self.site.imagery.as_ref() else { return };
+        let params = match self.imagery_params(b) {
+            Ok(p) => p,
+            Err(e) => return self.imagery_error(e),
+        };
+        let Some(geo) = self.session.geo.clone() else {
+            return self.imagery_error(t("This BIMCraft has no network access.").to_string());
+        };
+        let ask = match imagery_ask("fetch_imagery", &self.session.model, &params) {
+            Ok(a) if a.tries.is_empty() => return self.imagery_error(a.reason),
+            Ok(a) => a,
+            Err(e) => return self.imagery_error(e),
+        };
+        if self.site.job.is_some() {
+            return;
+        }
+        let mut params = params;
+        params["id"] = json!(ask.id);
+        let (send, answer) = channel();
+        let tries = ask.tries.clone();
+        let wake = ctx.clone();
+        let spawned = std::thread::Builder::new().name("site-fetch".into()).spawn(move || {
+            let got = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                // The first source that brings imagery wins; the last reason is the answer if none does.
+                let mut reason = String::new();
+                for (source, plan) in &tries {
+                    match geo.imagery(source.id, plan) {
+                        Ok(got) => return Ok(Fetched::Imagery(got)),
+                        Err(why) => reason = why,
+                    }
+                }
+                Err(reason)
+            }))
+            .unwrap_or_else(|_| Err("the fetcher stopped on this request".to_string()));
+            let _ = send.send(got);
+            wake.request_repaint();
+        });
+        if let Err(e) = spawned {
+            return self.imagery_error(e.to_string());
+        }
+        self.site.job = Some(Job { kind: Kind::Imagery, bbox: ask.envelope, params, query: None, answer });
+    }
+
     // ---- The fetch ----
 
     /// Starts the fetch the area box describes, on a thread; the box stays until it is over (its refusals appear in it).
@@ -603,6 +760,7 @@ impl BimApp {
                     }
                     Ok((Kind::Terrain, bbox, params, Some((spacing, source))))
                 }
+                Kind::Imagery => Err("an imagery fetch has its own box".to_string()),
             }
         })();
         let (kind, bbox, params, heights) = match built {
@@ -660,31 +818,51 @@ impl BimApp {
             }
             Err(TryRecvError::Disconnected) => Err("the fetch stopped without an answer".to_string()),
         };
-        let Some(job) = self.site.job.take() else { return };
+        let Some(mut job) = self.site.job.take() else { return };
         let fetched = match answer {
             Ok(f) => f,
-            Err(e) => return self.area_error(e),
+            Err(e) => return self.fetch_error(job.kind, e),
         };
-        let Some(real) = self.session.geo.clone() else { return self.area_error(t("This BIMCraft has no network access.").to_string()) };
+        let Some(real) = self.session.geo.clone() else {
+            return self.fetch_error(job.kind, t("This BIMCraft has no network access.").to_string());
+        };
         let held = Prefetched::new(real.clone(), job.bbox);
         let held = match fetched {
             Fetched::Osm { query, reply } => held.with_osm(query, reply),
             Fetched::Heights { spacing, source, got } => held.with_elevation(spacing, source, got),
+            // The command is told which source won, so it asks for just that one, and is handed what was fetched.
+            Fetched::Imagery(got) => {
+                job.params["source"] = json!(got.source);
+                held.with_imagery(got)
+            }
         };
         // The unchanged command, over what was fetched; the real fetcher comes back whatever it says.
         self.session.geo = Some(std::sync::Arc::new(held));
-        let command = if job.kind == Kind::Osm { "fetch_osm" } else { "fetch_terrain" };
+        let command = match job.kind {
+            Kind::Osm => "fetch_osm",
+            Kind::Terrain => "fetch_terrain",
+            Kind::Imagery => "fetch_imagery",
+        };
         let out = self.run(command, job.params);
         self.session.geo = Some(real);
         match out {
             Some(v) => {
                 self.site.area = None;
+                self.site.imagery = None;
                 self.say_fetched(job.kind, &v);
             }
             None => {
                 let e = std::mem::take(&mut self.status).text;
-                self.area_error(e);
+                self.fetch_error(job.kind, e);
             }
+        }
+    }
+
+    /// What went wrong with a fetch, in the box that asked for it.
+    fn fetch_error(&mut self, kind: Kind, e: String) {
+        match kind {
+            Kind::Imagery => self.imagery_error(e),
+            Kind::Osm | Kind::Terrain => self.area_error(e),
         }
     }
 
@@ -743,6 +921,26 @@ impl BimApp {
                 }
                 t("Terrain from Elevation Data").to_string()
             }
+            Kind::Imagery => {
+                let pixels = |i: usize| v["picture"][i].as_u64().unwrap_or(0).to_string();
+                lines.push(tf(
+                    "Photographs from {}, {} m a pixel (zoom {})",
+                    &[
+                        v["name"].as_str().unwrap_or("?"),
+                        &format!("{:.2}", v["metres_per_pixel"].as_f64().unwrap_or(0.0)),
+                        &n("zoom").to_string(),
+                    ],
+                ));
+                lines.push(tf("A picture of {} × {} pixels, laid over the terrain", &[&pixels(0), &pixels(1)]));
+                let blank = v["without_imagery_percent"].as_f64().unwrap_or(0.0);
+                if blank >= 0.5 {
+                    lines.push(tf("{} % of it has no imagery and shows white", &[&format!("{blank:.0}")]));
+                }
+                if let Some(terms) = v["terms"].as_str() {
+                    lines.push(tf("Terms of use: {}", &[terms]));
+                }
+                t("Aerial Imagery").to_string()
+            }
         };
         let credit = v["attribution"].as_str().map(str::to_string);
         let query = v["fetched"]["query"].as_str().map(str::to_string);
@@ -755,6 +953,7 @@ impl BimApp {
         let what = match job.kind {
             Kind::Osm => t("Fetching buildings from OpenStreetMap…"),
             Kind::Terrain => t("Fetching elevation data…"),
+            Kind::Imagery => t("Fetching aerial imagery…"),
         };
         let km2 = tf("{} km²", &[&format!("{:.2}", job.bbox.area_km2())]);
         let mut cancel = false;
@@ -817,6 +1016,7 @@ impl BimApp {
     pub(crate) fn site_windows(&mut self, ctx: &Context) {
         self.location_window(ctx);
         self.area_window(ctx);
+        self.imagery_window(ctx);
         self.fetching_box(ctx);
         self.said_window(ctx);
         self.map_window(ctx);

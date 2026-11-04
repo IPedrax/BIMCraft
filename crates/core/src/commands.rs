@@ -5738,18 +5738,24 @@ fn terrain_extent(t: &Toposurface) -> Option<[f64; 4]> {
     (xy.len() >= 3 && extent.iter().all(|v| v.is_finite()) && low.0 < high.0 && low.1 < high.1).then_some(extent)
 }
 
-fn fetch_imagery(s: &mut Session, p: &Value) -> R {
+/// What `fetch_imagery` asks the fetcher for, worked out from its parameters and the model: the toposurface, the ground it covers
+/// (west, south, east, north, mm), the box of degrees round that, and for each source to try in turn its plan. The desktop's thread
+/// works out the same before it fetches, so that the command, run over what it brought, plans the same.
+pub struct ImageryAsk {
+    pub id: Id,
+    pub extent: [f64; 4],
+    pub envelope: crate::geo::Bbox,
+    pub tries: Vec<(&'static crate::imagery::Source, crate::imagery::Plan)>,
+    /// Why there is nothing to try, when there is not: the last reason a source was left out.
+    pub reason: String,
+}
+
+/// The parameters of `fetch_imagery` (`id`, `source`, `max_side`) over `m`, checked, and what they ask for.
+pub fn imagery_ask(c: &str, m: &Model, p: &Value) -> Result<ImageryAsk, String> {
     use crate::imagery;
-    let c = "fetch_imagery";
     only(c, p, &["id", "source", "max_side"])?;
-    let Some(geo) = s.geo.clone() else {
-        return Err(bad(
-            c,
-            "this BIMCraft has no network access built in (the desktop app has it): the terrain has no aerial imagery to lay over it",
-        ));
-    };
-    let (id, terrain) = terrain_of(c, &s.model, p)?;
-    let Some(location) = s.model.location else {
+    let (id, terrain) = terrain_of(c, m, p)?;
+    let Some(location) = m.location else {
         return Err(bad(c, "the project has no location yet: place it with `geolocate` (latitude and longitude) first"));
     };
     let side = num(c, p, "max_side")?.unwrap_or(f64::from(imagery::DEFAULT_SIDE));
@@ -5774,21 +5780,42 @@ fn fetch_imagery(s: &mut Session, p: &Value) -> R {
     }
     let extent = terrain_extent(&terrain).ok_or_else(|| bad(c, "the toposurface covers no ground"))?;
     let projector = location.projector().map_err(|why| bad(c, why))?;
-    let lonlat = |q: P2| projector.lonlat(q);
-    let envelope = imagery::envelope(extent, &lonlat).map_err(|why| bad(c, why))?;
+    let envelope = imagery::envelope(extent, &|q| projector.lonlat(q)).map_err(|why| bad(c, why))?;
     let (width_m, height_m) = ((extent[2] - extent[0]) / 1000.0, (extent[3] - extent[1]) / 1000.0);
     let sources: Vec<&imagery::Source> = match wanted.as_deref() {
         None | Some("auto") => imagery::candidates(&envelope),
         Some(name) => imagery::source(name).into_iter().collect(),
     };
-    // The first source that brings imagery wins; the last reason is the answer if none does.
     let mut reason = "no source of the table has this place: the project may be where none has imagery".to_string();
-    let mut found = None;
+    let mut tries = Vec::new();
     for source in sources {
-        match imagery::plan(source, &envelope, width_m, height_m, max_side)
-            .and_then(|plan| geo.imagery(source.id, &plan).map(|got| (plan, got)))
-        {
-            Ok((plan, got)) => {
+        match imagery::plan(source, &envelope, width_m, height_m, max_side) {
+            Ok(plan) => tries.push((source, plan)),
+            Err(why) => reason = why,
+        }
+    }
+    Ok(ImageryAsk { id, extent, envelope, tries, reason })
+}
+
+fn fetch_imagery(s: &mut Session, p: &Value) -> R {
+    use crate::imagery;
+    let c = "fetch_imagery";
+    only(c, p, &["id", "source", "max_side"])?;
+    let Some(geo) = s.geo.clone() else {
+        return Err(bad(
+            c,
+            "this BIMCraft has no network access built in (the desktop app has it): the terrain has no aerial imagery to lay over it",
+        ));
+    };
+    let ImageryAsk { id, extent, tries, mut reason, .. } = imagery_ask(c, &s.model, p)?;
+    let Some(location) = s.model.location else { return Err(bad(c, "the project has no location yet")) };
+    let projector = location.projector().map_err(|why| bad(c, why))?;
+    let lonlat = |q: P2| projector.lonlat(q);
+    // The first source that brings imagery wins; the last reason is the answer if none does.
+    let mut found = None;
+    for (source, plan) in tries {
+        match geo.imagery(source.id, &plan) {
+            Ok(got) => {
                 found = Some((source, plan, got));
                 break;
             }

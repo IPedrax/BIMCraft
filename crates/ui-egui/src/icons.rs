@@ -190,6 +190,7 @@ icon_names! {
     PlaceOnTerrain,
     Location,
     FromMap,
+    Aerial,
     Shell,
 }
 
@@ -1018,6 +1019,12 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(4.0, 12.0), (4.0, 20.0), (20.0, 20.0), (20.0, 12.0)]);
             g.line(&[(2.0, 12.0), (12.0, 4.0), (22.0, 12.0)]);
             g.line(&[(4.0, 16.0), (20.0, 16.0)]);
+        }
+        Icon::Aerial => {
+            // A photograph: its frame, a ridge of hills in it and the sun over them.
+            g.closed(&[(3.0, 5.0), (21.0, 5.0), (21.0, 19.0), (3.0, 19.0)]);
+            g.line(&[(3.0, 16.0), (9.0, 10.0), (13.0, 14.0), (16.0, 11.0), (21.0, 16.0)]);
+            g.circle((17.0, 8.5), 1.6);
         }
         Icon::FromMap => {
             // Buildings, as a map of them: three blocks of different heights.

@@ -71,10 +71,31 @@ impl GeoSource for Fake {
         Ok(bimcraft_core::geo::Tile { rgba, side: 256, cached: false })
     }
 
+    fn imagery(&self, source: &str, plan: &bimcraft_core::imagery::Plan) -> Result<bimcraft_core::imagery::Imagery, String> {
+        use bimcraft_core::imagery::{Imagery, Mosaic, TILE};
+        *self.asked.lock().unwrap() += 1;
+        std::thread::sleep(self.delay);
+        if let Some(why) = &self.fail {
+            return Err(why.clone());
+        }
+        // Every tile the same gradient: never one colour.
+        let tile: Vec<u8> = (0..TILE * TILE).flat_map(|k| [(k % TILE) as u8, (k / TILE) as u8, 90]).collect();
+        let mut mosaic = Mosaic::new(plan);
+        for row in 0..plan.rows {
+            for col in 0..plan.cols {
+                mosaic.put(col, row, &tile)?;
+            }
+        }
+        Ok(Imagery { source: source.into(), plan: plan.clone(), mosaic, cached: false })
+    }
+
     fn attribution(&self, what: &str) -> String {
         match what {
             "osm" => "Data (c) OpenStreetMap contributors (ODbL)".into(),
-            other => format!("Elevation: {other}"),
+            other => match bimcraft_core::imagery::source(other) {
+                Some(source) => source.credit.into(),
+                None => format!("Elevation: {other}"),
+            },
         }
     }
 }
@@ -142,7 +163,9 @@ fn query_shown(h: &Harness<BimApp>) -> String {
 fn the_site_tab_has_its_panels_and_buttons() {
     let mut h = app(BOX);
     press(&mut h, "Site");
-    for label in ["Location", "Terrain from Elevation Data", "Pad", "Place on Terrain", "Cut/Fill", "Import from OpenStreetMap"] {
+    for label in
+        ["Location", "Terrain from Elevation Data", "Aerial Imagery", "Pad", "Place on Terrain", "Cut/Fill", "Import from OpenStreetMap"]
+    {
         assert!(h.query_by_label(label).is_some(), "{label}");
     }
     assert!(h.query_by_label("Door").is_none());
@@ -285,6 +308,61 @@ fn terrain_from_elevation_data_makes_a_toposurface_and_sets_the_project_height()
     assert!(h.query_by_label_contains("toposurface of").is_some());
     assert!(h.query_by_label_contains("Elevation: terrarium").is_some(), "its credit");
     assert_eq!(*fake.asked.lock().unwrap(), 1);
+}
+
+#[test]
+fn aerial_imagery_is_fetched_from_the_site_tab_and_laid_over_the_terrain_in_one_undo_step() {
+    let fake = Arc::new(Fake::new());
+    let mut h = located(fake.clone());
+    press(&mut h, "Site");
+    press(&mut h, "Terrain from Elevation Data");
+    type_into(&mut h, "Distance round the origin (m)", "300");
+    fetch(&mut h);
+    until_fetched(&mut h);
+    press(&mut h, "Close");
+    let before = *fake.asked.lock().unwrap();
+    press(&mut h, "Aerial Imagery");
+    fetch(&mut h);
+    until_fetched(&mut h);
+    assert_eq!(*fake.asked.lock().unwrap(), before + 1, "one request for imagery");
+    {
+        let m = &h.state().session.model;
+        let name = m.materials.keys().find(|k| k.starts_with("Aerial imagery")).cloned().expect("a material of the picture");
+        assert!(m.materials[&name].texture.as_ref().is_some_and(|t| t.planar), "laid over the ground");
+        assert_eq!(m.images.len(), 1);
+    }
+    // It says what it did and whose the photographs are.
+    assert!(h.query_by_label_contains("Photographs from").is_some());
+    assert!(h.query_by_label_contains("Sentinel data 2016").is_some(), "its credit");
+    // One undo takes it back.
+    press(&mut h, "Close");
+    h.state_mut().session.execute("undo", &json!({})).unwrap();
+    assert!(h.state().session.model.images.is_empty());
+}
+
+#[test]
+fn aerial_imagery_without_terrain_or_from_a_service_that_fails_says_why_in_its_own_box() {
+    let mut h = located(Arc::new(Fake::new()));
+    press(&mut h, "Site");
+    press(&mut h, "Aerial Imagery");
+    h.get_by_label("Fetch").click();
+    h.run();
+    assert!(h.query_by_label_contains("toposurface").is_some(), "no terrain to lay it over");
+    assert!(!h.state().fetching());
+    press(&mut h, "Cancel");
+    // A terrain, and a service that is down: the box stays, with what it said.
+    let mut h = located(Arc::new(Fake { fail: Some("service.pdok.nl: HTTP 503".into()), ..Fake::new() }));
+    h.state_mut()
+        .session
+        .execute("toposurface", &json!({"points": [[0, 0, 0], [300000, 0, 1000], [300000, 200000, 2000], [0, 200000, 500]]}))
+        .unwrap();
+    h.run();
+    press(&mut h, "Site");
+    press(&mut h, "Aerial Imagery");
+    fetch(&mut h);
+    until_fetched(&mut h);
+    assert!(h.query_by_label_contains("HTTP 503").is_some());
+    assert!(h.state().session.model.images.is_empty());
 }
 
 #[test]

@@ -329,7 +329,7 @@ and the credit the data is owed (ODbL, the elevation source). Import from OpenSt
 the first corner again finishes, Esc cancels; its Options Bar has the offset and thickness) and runs `pad`. Place on Terrain runs
 `place_on_terrain` on the selection; Cut/Fill runs `cut_fill` on the selected pads (every pad when none is) and lists each pad's cut and
 fill and the totals in a box. Properties has rows for pads (level, offset, thickness, area, cut/fill/net) and toposurfaces (contour
-interval, material, points, areas), edited through `modify`. While a fetch runs the window's keys and agents wait, as for a Revit file.
+interval, material, points, areas), edited through `modify`. While a fetch runs the window's keys and agents wait, as for a Revit file. **Aerial Imagery** (in the Terrain panel) opens a box with the source (Automatic, the finest that has the place, or one of the core's table) and the picture's size in pixels. Fetch works out what to ask for with the command's own `imagery_ask` (the selected toposurface, else the only one; a refusal stays in the box), asks the sources in turn on a thread, and runs `fetch_imagery` over what came, naming the source that won, so it is one undo step; a box then says whose the photographs are, how fine, how much of the picture has no imagery, and where the terms are ([terrain](terrain.md#aerial-imagery)).
 **Recent places**: Location's OK keeps where the project was put (latitude, longitude, true north, grid and an optional Name) in
 `settings.json` (`recent_places`, the ten newest, the same place to a millionth of a degree moves up instead of repeating; a damaged or
 hostile file is read kindly, places off the Earth dropped). The box lists them under its fields (a click fills them, ✕ forgets one), and
