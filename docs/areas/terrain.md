@@ -65,7 +65,7 @@ site's height above sea level; data in metres above sea level (a DEM) must have 
 
 ## Aerial imagery
 
-`fetch_imagery` lays aerial photographs over a toposurface ([geofetch](geofetch.md) has the sources, their terms and how a fetch goes).
+`fetch_imagery` lays aerial photographs over a toposurface ([geofetch](geofetch.md) has the sources, their terms and how a fetch goes). Its reply says which source made the picture and lists, as `skipped`, the sources tried before it with why they brought none.
 It plans the tiles for the ground the toposurface covers (the box of its boundary, else of its points), asks the app's fetcher for them
 (`GeoSource::imagery`; a build without one refuses), warps them into the project's own axes (`imagery::warp`: north up, the project's
 turn undone) and keeps the result as a picture of the project (`Model::images`, at most 1024 px along its long side) on a material

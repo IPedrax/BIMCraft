@@ -41,9 +41,20 @@ type Built = (Kind, Bbox, Value, Option<(f64, Option<String>)>);
 
 /// What a fetch brought, from its thread.
 enum Fetched {
-    Osm { query: String, reply: Reply },
-    Heights { spacing: f64, source: Option<String>, got: Elevation },
-    Imagery(Imagery),
+    Osm {
+        query: String,
+        reply: Reply,
+    },
+    Heights {
+        spacing: f64,
+        source: Option<String>,
+        got: Elevation,
+    },
+    /// What an imagery source brought, and the sources passed over before it (their names, and why).
+    Imagery {
+        got: Imagery,
+        skipped: Vec<(String, String)>,
+    },
 }
 
 /// A fetch running: for what, over which box, with which command's parameters, and its answer when it comes.
@@ -698,15 +709,16 @@ impl BimApp {
         let wake = ctx.clone();
         let spawned = std::thread::Builder::new().name("site-fetch".into()).spawn(move || {
             let got = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                // The first source that brings imagery wins; the last reason is the answer if none does.
-                let mut reason = String::new();
+                // The first source that brings imagery wins, and each one passed over is kept with why (as the command does); every
+                // reason is the answer if none does.
+                let mut skipped = Vec::new();
                 for (source, plan) in &tries {
                     match geo.imagery(source.id, plan) {
-                        Ok(got) => return Ok(Fetched::Imagery(got)),
-                        Err(why) => reason = why,
+                        Ok(got) => return Ok(Fetched::Imagery { got, skipped }),
+                        Err(why) => skipped.push((source.name.to_string(), imagery::short_reason(&why))),
                     }
                 }
-                Err(reason)
+                Err(skipped.into_iter().map(|(_, why)| why).collect::<Vec<_>>().join("; "))
             }))
             .unwrap_or_else(|_| Err("the fetcher stopped on this request".to_string()));
             let _ = send.send(got);
@@ -827,12 +839,14 @@ impl BimApp {
             return self.fetch_error(job.kind, t("This BIMCraft has no network access.").to_string());
         };
         let held = Prefetched::new(real.clone(), job.bbox);
+        let mut passed_over = Vec::new();
         let held = match fetched {
             Fetched::Osm { query, reply } => held.with_osm(query, reply),
             Fetched::Heights { spacing, source, got } => held.with_elevation(spacing, source, got),
             // The command is told which source won, so it asks for just that one, and is handed what was fetched.
-            Fetched::Imagery(got) => {
+            Fetched::Imagery { got, skipped } => {
                 job.params["source"] = json!(got.source);
+                passed_over = skipped;
                 held.with_imagery(got)
             }
         };
@@ -846,9 +860,13 @@ impl BimApp {
         let out = self.run(command, job.params);
         self.session.geo = Some(real);
         match out {
-            Some(v) => {
+            Some(mut v) => {
                 self.site.area = None;
                 self.site.imagery = None;
+                // The command was asked for the one source that won, so the ones passed over before it are the thread's to say.
+                if !passed_over.is_empty() {
+                    v["skipped"] = passed_over.iter().map(|(name, why)| json!({"name": name, "why": why})).collect();
+                }
                 self.say_fetched(job.kind, &v);
             }
             None => {
@@ -935,6 +953,13 @@ impl BimApp {
                 let blank = v["without_imagery_percent"].as_f64().unwrap_or(0.0);
                 if blank >= 0.5 {
                     lines.push(tf("{} % of it has no imagery and shows white", &[&format!("{blank:.0}")]));
+                }
+                // A source passed over is said, so that a coarser picture than expected is never a mystery.
+                for passed in v["skipped"].as_array().into_iter().flatten() {
+                    lines.push(tf(
+                        "{} was passed over: {}",
+                        &[passed["name"].as_str().unwrap_or("?"), passed["why"].as_str().unwrap_or("?")],
+                    ));
                 }
                 if let Some(terms) = v["terms"].as_str() {
                     lines.push(tf("Terms of use: {}", &[terms]));

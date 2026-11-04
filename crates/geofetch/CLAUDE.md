@@ -20,5 +20,7 @@ are in the root `CLAUDE.md`.
   addresses and no others (a query is pinned whole, pair by pair); a tile is a PNG or a JPEG of 256 by 256 or it is refused, and a
   tile with no imagery (404, or one flat colour) is left clear. Try the services with `examples/imagery.rs`; its notes are in
   [geofetch](../../docs/areas/geofetch.md).
+- What a server says is hostile, and is still the best clue: an error status keeps its number and carries a short reason made of the
+  first bytes of its page (`net::reason`, one line of plain text), so a 400 names the parameter it did not like.
 - Time is injected (`Cache::with_clock`, `Overpass::with_pause`), so no test waits or depends on the date.
 - `cargo test -p bimcraft-geofetch` runs in a few seconds.

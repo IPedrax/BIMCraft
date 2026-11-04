@@ -25,11 +25,21 @@ struct Fake {
     /// The map tiles asked for, in order, and whether there are none.
     tiles: Mutex<Vec<(u8, u32, u32)>>,
     no_tiles: bool,
+    /// The imagery sources it has no photographs from.
+    no_imagery: Vec<&'static str>,
 }
 
 impl Fake {
     fn new() -> Fake {
-        Fake { osm: overpass_reply(), delay: Duration::ZERO, fail: None, asked: Mutex::new(0), tiles: Mutex::default(), no_tiles: false }
+        Fake {
+            osm: overpass_reply(),
+            delay: Duration::ZERO,
+            fail: None,
+            asked: Mutex::new(0),
+            tiles: Mutex::default(),
+            no_tiles: false,
+            no_imagery: Vec::new(),
+        }
     }
 }
 
@@ -77,6 +87,9 @@ impl GeoSource for Fake {
         std::thread::sleep(self.delay);
         if let Some(why) = &self.fail {
             return Err(why.clone());
+        }
+        if self.no_imagery.contains(&source) {
+            return Err(format!("{source} has no imagery of this place"));
         }
         // Every tile the same gradient: never one colour.
         let tile: Vec<u8> = (0..TILE * TILE).flat_map(|k| [(k % TILE) as u8, (k / TILE) as u8, 90]).collect();
@@ -363,6 +376,27 @@ fn aerial_imagery_without_terrain_or_from_a_service_that_fails_says_why_in_its_o
     until_fetched(&mut h);
     assert!(h.query_by_label_contains("HTTP 503").is_some());
     assert!(h.state().session.model.images.is_empty());
+}
+
+#[test]
+fn a_source_that_was_passed_over_is_named_in_the_result_with_what_it_said() {
+    // At Ghent the table offers Flanders first: it has none here, so the next one is used, and the box says so rather than leave a
+    // coarser picture than expected a mystery.
+    let mut h = located(Arc::new(Fake { no_imagery: vec!["flanders"], ..Fake::new() }));
+    h.state_mut().session.execute("geolocate", &json!({"latitude": 51.0543, "longitude": 3.7174})).unwrap();
+    h.state_mut()
+        .session
+        .execute("toposurface", &json!({"points": [[0, 0, 0], [300000, 0, 1000], [300000, 200000, 2000], [0, 200000, 500]]}))
+        .unwrap();
+    h.run();
+    press(&mut h, "Site");
+    press(&mut h, "Aerial Imagery");
+    fetch(&mut h);
+    until_fetched(&mut h);
+    assert_eq!(h.state().session.model.images.len(), 1, "another source made the picture");
+    assert!(h.query_by_label_contains("Photographs from Aerial photographs").is_some(), "PDOK's");
+    assert!(h.query_by_label_contains("Flanders orthophoto mosaic (Digitaal Vlaanderen) was passed over").is_some());
+    assert!(h.query_by_label_contains("flanders has no imagery of this place").is_some(), "with what it said");
 }
 
 #[test]

@@ -5807,22 +5807,27 @@ fn fetch_imagery(s: &mut Session, p: &Value) -> R {
             "this BIMCraft has no network access built in (the desktop app has it): the terrain has no aerial imagery to lay over it",
         ));
     };
-    let ImageryAsk { id, extent, tries, mut reason, .. } = imagery_ask(c, &s.model, p)?;
+    let ImageryAsk { id, extent, tries, reason, .. } = imagery_ask(c, &s.model, p)?;
     let Some(location) = s.model.location else { return Err(bad(c, "the project has no location yet")) };
     let projector = location.projector().map_err(|why| bad(c, why))?;
     let lonlat = |q: P2| projector.lonlat(q);
-    // The first source that brings imagery wins; the last reason is the answer if none does.
+    // The first source that brings imagery wins. Each one passed over is said with why (what a fetcher says is cut: it is hostile), and
+    // every reason is the answer if none brings it.
     let mut found = None;
+    let mut skipped = Vec::new();
     for (source, plan) in tries {
         match geo.imagery(source.id, &plan) {
             Ok(got) => {
                 found = Some((source, plan, got));
                 break;
             }
-            Err(why) => reason = why,
+            Err(why) => skipped.push((source, imagery::short_reason(&why))),
         }
     }
-    let Some((source, plan, got)) = found else { return Err(bad(c, reason)) };
+    let Some((source, plan, got)) = found else {
+        let reasons: Vec<&str> = skipped.iter().map(|(_, why)| why.as_str()).collect();
+        return Err(bad(c, if reasons.is_empty() { reason } else { reasons.join("; ") }));
+    };
     // What the fetcher brought is hostile, as a file is.
     if got.source != source.id || got.plan != plan {
         return Err(bad(c, "the fetcher answered for another source or another plan than it was asked for"));
@@ -5888,6 +5893,7 @@ fn fetch_imagery(s: &mut Session, p: &Value) -> R {
         "extent": extent,
         "cached": got.cached,
         "without_imagery_percent": 100.0 * clear as f64 / all as f64,
+        "skipped": skipped.iter().map(|(source, why)| json!({"source": source.id, "name": source.name, "why": why})).collect::<Vec<_>>(),
     }))
 }
 

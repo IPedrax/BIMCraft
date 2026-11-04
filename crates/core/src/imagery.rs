@@ -51,16 +51,30 @@ pub struct Source {
     pub terms: &'static str,
 }
 
+/// The most characters of a fetcher's reason for not bringing imagery that a reply or a message carries.
+pub const MAX_REASON: usize = 300;
+
+/// What a fetcher said when it did not bring imagery, as one line of at most [`MAX_REASON`] characters: it is hostile, as a file is.
+pub fn short_reason(why: &str) -> String {
+    let line: String = why.chars().filter(|c| !c.is_control()).take(MAX_REASON + 1).collect();
+    if line.chars().count() > MAX_REASON {
+        let mut cut: String = line.chars().take(MAX_REASON).collect();
+        cut.push('…');
+        return cut;
+    }
+    line
+}
+
 /// The sources, the finest and most local first, so that the first one that has a place's imagery is the best there is.
 pub static SOURCES: [Source; 4] = [
     Source {
         id: "flanders",
         name: "Flanders orthophoto mosaic (Digitaal Vlaanderen)",
-        template: "https://geo.api.vlaanderen.be/OMWRGBMRVL/wmts?service=WMTS&request=GetTile&version=1.0.0&layer=omwrgbmrvl&style=default&tilematrixset=GoogleMapsVL&tilematrix={z}&tilerow={y}&tilecol={x}&format=image/png",
+        template: "https://geo.api.vlaanderen.be/OMWRGBMRVL/wmts?service=WMTS&request=GetTile&version=1.0.0&layer=omwrgbmrvl&style=&tilematrixset=GoogleMapsVL&tilematrix={z}&tilerow={y}&tilecol={x}&format=image/png",
         min_zoom: 0,
         max_zoom: 21,
         bounds: [50.67, 2.50, 51.52, 5.95],
-        credit: "Orthofotomozaiek, middenschalig, winteropnamen, kleur, meest recent: Digitaal Vlaanderen",
+        credit: "(c) Digitaal Vlaanderen - Orthofotomozaiek Vlaanderen",
         terms: "https://www.vlaanderen.be/digitaal-vlaanderen/onze-oplossingen/geografische-webdiensten/gebruiksrecht-en-privacyverklaring-geografische-webdiensten",
     },
     Source {

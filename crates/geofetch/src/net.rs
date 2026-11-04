@@ -270,6 +270,86 @@ fn agent(https_only: bool) -> Agent {
         .into()
 }
 
+/// How much of an error's body is looked at, and how long the reason made of it may be.
+const REASON_BYTES: usize = 1024;
+/// How many bytes of an error's page are read at all.
+const ERROR_PAGE: u64 = 512;
+const REASON_CHARS: usize = 200;
+
+/// The value of `key` in the attributes of a tag (`<Exception exceptionCode="x">`), in either kind of quote.
+fn attribute<'a>(tag: &'a str, key: &str) -> Option<&'a str> {
+    for quote in ['"', '\''] {
+        let needle = format!(" {key}={quote}");
+        if let Some(at) = tag.find(&needle) {
+            let value = tag.get(at + needle.len()..)?;
+            return value.find(quote).and_then(|end| value.get(..end));
+        }
+    }
+    None
+}
+
+/// What a server's error page says, in one short line: the text of its body with the tags taken out (an OGC exception report's code
+/// and `locator`, which name the parameter it did not like, are kept), white space made one space, control characters dropped, cut at
+/// 200 characters. `None` for a body that is empty, binary, not UTF-8 or only tags. The body is hostile, so only its first kilobyte is looked at.
+pub fn reason(body: &[u8]) -> Option<String> {
+    let body = body.get(..REASON_BYTES).unwrap_or(body);
+    if body.contains(&0) {
+        return None;
+    }
+    let text = match std::str::from_utf8(body) {
+        Ok(text) => text,
+        // A character cut by the end of what was read is no fault of the server's.
+        Err(e) if e.error_len().is_none() => std::str::from_utf8(body.get(..e.valid_up_to())?).ok()?,
+        Err(_) => return None,
+    };
+    let (mut chars, mut controls) = (0usize, 0usize);
+    for c in text.chars() {
+        chars += 1;
+        controls += usize::from(c.is_control() && !c.is_whitespace());
+    }
+    if controls * 10 > chars {
+        return None;
+    }
+    let mut plain = String::new();
+    let mut rest = text;
+    while let Some(open) = rest.find('<') {
+        plain.push_str(rest.get(..open).unwrap_or_default());
+        let Some(after) = rest.get(open + 1..) else { break };
+        let Some(close) = after.find('>') else {
+            // A tag that never ends: nothing after it is text.
+            rest = "";
+            break;
+        };
+        let tag = after.get(..close).unwrap_or_default();
+        plain.push(' ');
+        for key in ["exceptionCode", "code"] {
+            if let Some(code) = attribute(tag, key) {
+                plain.push_str(code);
+                plain.push(' ');
+                break;
+            }
+        }
+        if let Some(locator) = attribute(tag, "locator") {
+            plain.push_str("locator=");
+            plain.push_str(locator);
+            plain.push(' ');
+        }
+        rest = after.get(close + 1..).unwrap_or_default();
+    }
+    plain.push_str(rest);
+    let plain: String = plain.chars().filter(|c| !c.is_control() || c.is_whitespace()).collect();
+    let line = plain.split_whitespace().collect::<Vec<_>>().join(" ");
+    if line.is_empty() {
+        return None;
+    }
+    if line.chars().count() > REASON_CHARS {
+        let mut cut: String = line.chars().take(REASON_CHARS).collect();
+        cut.push('…');
+        return Some(cut);
+    }
+    Some(line)
+}
+
 /// How a request goes.
 enum Kind<'a> {
     Get,
@@ -344,7 +424,14 @@ impl Ureq {
                 // How long to wait, if it says in seconds: a date, or anything else, is not taken.
                 let retry_after =
                     response.headers().get("retry-after").and_then(|v| v.to_str().ok()).and_then(|v| v.trim().parse::<u64>().ok());
-                return Err(NetError { message: format!("{host}: HTTP {}", status.as_u16()), status: Some(status.as_u16()), retry_after });
+                // Why, if the server says: a few hundred bytes of its page, as one line of text (an error that cannot be read is no reason).
+                let mut page = Vec::new();
+                let _ = response.into_body().into_with_config().limit(ERROR_PAGE * 2).reader().take(ERROR_PAGE).read_to_end(&mut page);
+                let message = match reason(&page) {
+                    Some(why) => format!("{host}: HTTP {}: {why}", status.as_u16()),
+                    None => format!("{host}: HTTP {}", status.as_u16()),
+                };
+                return Err(NetError { message, status: Some(status.as_u16()), retry_after });
             }
             if let Kind::Range(start, _) = kind
                 && *start > 0
@@ -528,6 +615,27 @@ mod tests {
     }
 
     #[test]
+    fn a_query_pair_with_nothing_after_the_equals_sign_is_a_literal_like_any_other() {
+        let Some(entry) = Entry::of_template("https://geo.example/wmts?layer=l&style=&row={y}") else {
+            panic!("a template with an empty pair")
+        };
+        assert!(entry.allows("geo.example", "/wmts", Some("layer=l&style=&row=7")));
+        for bad in [
+            "layer=l&style=default&row=7",
+            "layer=l&style=x&row=7",
+            "layer=l&row=7",
+            "layer=l&style&row=7",
+            "layer=l&style=&&row=7",
+            "layer=l&style=&row=",
+            "layer=l&style=&row=x",
+            "style=&layer=l&row=7",
+        ] {
+            assert!(!entry.allows("geo.example", "/wmts", Some(bad)), "{bad}");
+        }
+        assert!(Allow(vec![entry]).allows("https://geo.example/wmts?layer=l&style=&row=7"));
+    }
+
+    #[test]
     fn a_server_the_user_names_is_added_by_name_and_only_if_it_is_https_and_plain() {
         let a = Allow::standard().with_endpoint("https://overpass.example.org/api/interpreter").unwrap();
         assert!(a.allows("https://overpass.example.org/api/interpreter"));
@@ -584,6 +692,81 @@ mod tests {
         assert_eq!((late.status, late.retry_after), (Some(504), None), "a date is not a number of seconds, and is not trusted");
         assert_eq!(c.get(&format!("{}/none", server.base), 100).unwrap_err().status, Some(404));
         assert!(!busy.message.contains(&server.base[7..]) || busy.message.contains("429"), "{busy}");
+    }
+
+    #[test]
+    fn an_error_status_says_why_when_the_server_does() {
+        let report = br#"<?xml version="1.0"?><ServiceExceptionReport><ServiceException code="InvalidParameterValue" locator="style">
+            Style 'default' is not one of the styles of omwrgbmrvl</ServiceException></ServiceExceptionReport>"#;
+        let server = Server::start(move |seen, _| match seen.path.as_str() {
+            "/report" => http(400, &[("Content-Type", "application/xml")], report),
+            "/binary" => http(400, &[], &[0, 159, 146, 150, 0, 1, 2, 3, 255, 254]),
+            "/long" => http(500, &[], &b"x".repeat(100_000)),
+            "/busy" => http(429, &[("Retry-After", "7")], b"slow down"),
+            "/empty" => http(404, &[], b""),
+            _ => http(200, &[], b"fine"),
+        });
+        let c = client(&server);
+        let at = |p: &str| format!("{}{p}", server.base);
+        let e = c.get(&at("/report"), 100).unwrap_err();
+        assert_eq!(e.status, Some(400));
+        assert!(e.message.contains("HTTP 400: "), "{e}");
+        assert!(e.message.contains("InvalidParameterValue") && e.message.contains("style") && e.message.contains("not one of"), "{e}");
+        assert!(!e.message.contains('<') && !e.message.contains('\n'), "tags and line breaks are not carried: {e}");
+        let e = c.get(&at("/binary"), 100).unwrap_err();
+        assert_eq!((e.status, e.message.ends_with("HTTP 400")), (Some(400), true), "a body that is not text says nothing: {e}");
+        let e = c.get(&at("/long"), 100).unwrap_err();
+        assert!(e.message.starts_with(&format!("{}: HTTP 500: ", host_of(&server.base))), "{e}");
+        assert!(e.message.chars().count() < 300, "a long body is cut: {} characters", e.message.chars().count());
+        let e = c.get(&at("/busy"), 100).unwrap_err();
+        assert_eq!((e.status, e.retry_after), (Some(429), Some(7)), "the number to wait is kept beside the reason");
+        assert!(e.message.contains("slow down"), "{e}");
+        let e = c.get(&at("/empty"), 100).unwrap_err();
+        assert!(e.message.ends_with("HTTP 404"), "no body, no colon: {e}");
+    }
+
+    #[test]
+    fn a_reason_is_one_short_line_of_plain_text_whatever_the_body() {
+        assert_eq!(reason(b"  Not  found\r\n here\t"), Some("Not found here".into()));
+        assert_eq!(
+            reason(b"<html><head><title>Bad</title></head><body><h1>Bad request</h1></body></html>"),
+            Some("Bad Bad request".into())
+        );
+        assert_eq!(
+            reason(
+                br#"<Exception exceptionCode="TileOutOfRange" locator="TileRow"><ExceptionText>row 9 too big</ExceptionText></Exception>"#
+            ),
+            Some("TileOutOfRange locator=TileRow row 9 too big".into())
+        );
+        assert_eq!(reason(b""), None);
+        assert_eq!(reason(b" \r\n\t "), None);
+        assert_eq!(reason(b"<a><b></b></a>"), None, "only tags is nothing");
+        assert_eq!(reason(&[0u8; 50]), None);
+        assert_eq!(reason(b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR"), None, "a picture is not a reason");
+        assert_eq!(reason(&[0xff, 0xfe, 0xfd, 0xfc]), None, "not UTF-8");
+        let long = reason(&b"word ".repeat(1000)).unwrap_or_default();
+        assert!(long.chars().count() <= 201 && long.ends_with('…'), "{} characters", long.chars().count());
+        // Control characters inside text are dropped, and an unterminated tag is not a loop or a panic.
+        assert_eq!(
+            reason(b"an error\x07 in the request, said the server\x1b[31m"),
+            Some("an error in the request, said the server[31m".into())
+        );
+        assert_eq!(reason(b"\x07\x07\x07a"), None, "mostly control characters is not text");
+        assert_eq!(reason(b"before <unterminated tag"), Some("before".into()));
+        for hostile in [
+            "é<<<>>>ü".as_bytes(),
+            b"<",
+            b">",
+            b"<<<<<<<",
+            b"<a locator=\"",
+            b"<a locator=",
+            b"<a locator=\"x",
+            b"locator=\"x\"",
+            b"\"\"\"\"",
+            b"<\0>",
+        ] {
+            let _ = reason(hostile);
+        }
     }
 
     #[test]

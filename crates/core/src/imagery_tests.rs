@@ -34,6 +34,14 @@ fn the_table_has_sources_that_can_be_asked_for_tiles() {
 }
 
 #[test]
+fn flanders_is_asked_with_an_empty_style_as_every_published_request_for_that_service_is() {
+    let flanders = source("flanders").expect("the table has Flanders");
+    let url = flanders.url(17, 66888, 43848).unwrap_or_default();
+    assert!(url.contains("&style=&") && !url.contains("default"), "{url}");
+    assert!(flanders.credit.starts_with("(c) Digitaal Vlaanderen"), "the credit Digitaal Vlaanderen recommends: {}", flanders.credit);
+}
+
+#[test]
 fn a_box_is_offered_the_sources_that_have_its_place_finest_first() {
     let ids = |lon: f64, lat: f64| -> Vec<&str> {
         let b = Bbox::around(lon, lat, 200.0).unwrap();

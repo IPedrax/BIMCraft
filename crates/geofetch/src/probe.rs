@@ -162,13 +162,15 @@ pub fn query_value_ok(value: &str) -> bool {
 }
 
 /// The address of a tile of a WMTS service that has no tile addresses of its own and is asked by query: `endpoint` (without a
-/// query), then the layer, style, tile matrix set and format, and `{z}`, `{y}` and `{x}` to be put in by [`expand`].
+/// query), then the layer, style (empty for a layer that lists none), tile matrix set and format, and `{z}`, `{y}` and `{x}` to be put
+/// in by [`expand`].
 pub fn kvp_address(endpoint: &str, layer: &str, style: &str, set: &str, format: &str) -> Result<String, String> {
     if !endpoint.starts_with("https://") || endpoint.contains(['?', '#']) || endpoint.chars().any(|c| c.is_control() || c.is_whitespace()) {
         return Err(format!("the endpoint is an https:// address without a query, a fragment or spaces, not `{endpoint}`"));
     }
+    // A layer that lists no style is asked with an empty one (`style=`), which is what the services of this kind take; only the style may be empty.
     for (what, value) in [("layer", layer), ("style", style), ("tile matrix set", set), ("format", format)] {
-        if !query_value_ok(value) {
+        if !(query_value_ok(value) || (what == "style" && value.is_empty())) {
             return Err(format!("the {what} `{value}` is not 1 to {QUERY_VALUE_MAX} letters, digits and . _ : / -"));
         }
     }
@@ -761,6 +763,9 @@ mod tests {
         );
         let tile = expand(&url, 17, 67146, 43905).unwrap();
         assert!(tile.ends_with("&tilematrix=17&tilerow=43905&tilecol=67146&format=image/jpeg"), "{tile}");
+        // A layer with no styles is asked with an empty one, and only the style may be empty.
+        let plain = kvp_address("https://geo.example/wmts", "omwrgbmrvl", "", "GoogleMapsVL", "image/png").unwrap();
+        assert!(plain.contains("&layer=omwrgbmrvl&style=&tilematrixset=GoogleMapsVL&"), "{plain}");
         let long = "a".repeat(QUERY_VALUE_MAX + 1);
         for (what, endpoint, layer, style, set, format) in [
             ("an endpoint with a query", "https://geo.example/wmts?a=b", "l", "s", "m", "image/png"),
@@ -771,6 +776,8 @@ mod tests {
             ("an ampersand in the style", "https://geo.example/wmts", "l", "s&x=1", "m", "image/png"),
             ("a percent in the set", "https://geo.example/wmts", "l", "s", "a%20b", "image/png"),
             ("an empty format", "https://geo.example/wmts", "l", "s", "m", ""),
+            ("an empty layer", "https://geo.example/wmts", "", "s", "m", "image/png"),
+            ("an empty set", "https://geo.example/wmts", "l", "s", "", "image/png"),
             ("a long layer", "https://geo.example/wmts", long.as_str(), "s", "m", "image/png"),
         ] {
             assert!(kvp_address(endpoint, layer, style, set, format).is_err(), "{what}");

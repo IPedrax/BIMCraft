@@ -102,10 +102,21 @@ What the first runs on a real machine found (2026-11-03; they are the only check
 - **Flanders** (`geo.api.vlaanderen.be/OMWRGBMRVL/wmts`, layer `omwrgbmrvl`, set `GoogleMapsVL`, 23 levels, 256 px): free of charge,
   with the terms on a Digitaal Vlaanderen page, and **no tile addresses of its own: it is asked by query string** (WMTS GetTile).
 
-Two limits of this crate shape what can be used: `net::Allow` takes no query string, so Flanders cannot be fetched as it stands (the
-plan is a strict rule for that one source, never a general opening), and `tiles::decode` reads only 256 x 256 PNG, while aerial tiles
-are JPEG. Bing, Esri, Maxar, Mapbox and Google are left out: as far as the research found, their terms do not allow fetching them into
-a project.
+Two limits of this crate shaped what could be used, and both are lifted for imagery: `net::Allow` refuses any query string except the
+whole, pinned one of a source that can only be asked by query (Flanders; never a general opening), and `imagery::ImageryTiles` reads
+JPEG as well as PNG (`tiles::decode`, the picker's map, still reads only PNG). Bing, Esri, Maxar, Mapbox and Google are left out: as far
+as the research found, their terms do not allow fetching them into a project.
+
+**Flanders and its 400** (found on a real machine, 2026-11-04): the first address asked with `style=default` and every tile came back
+HTTP 400, so Automatic over Belgium fell through to Sentinel-2 at 6 m a pixel. Every published request for this service family has an
+**empty `style=`** and its capabilities list no style, so the table now asks with an empty one (`flanders_is_asked_with_an_empty_style...`;
+the pinned-query rule takes an empty literal, a test says so). That this is the cause is a guess until a real run says so: **an error
+status now carries the service's own words** (`net::reason`: up to 512 bytes of the error page, tags taken out, an OGC exception's code
+and `locator`, which names the parameter it did not like, kept, one line of at most 200 characters, nothing for a body that is not text),
+so the next 400 says which parameter. `imagery probe` asks Flanders at zoom 18 in four more ways as rows of their own (style left out,
+`style=default`, the matrix as `GoogleMapsVL:{z}`, JPEG) so that one run shows which the service takes. A source that failed is never
+silent: `fetch_imagery`'s reply has `skipped` (each source passed over before the one used, with what it said, cut at 300 characters),
+the Site tab's result box lists them, and a refusal gives every source's reason, not only the last.
 
 **The parts that are built:** `bimcraft_core::imagery` is the table of
 sources that are allowed (those whose terms permit fetching their tiles into a project, each with its credit and where its terms are,

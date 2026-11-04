@@ -33,7 +33,7 @@ use bimcraft_core::imagery;
 use bimcraft_core::texture::Picture;
 use bimcraft_geofetch::Geofetch;
 use bimcraft_geofetch::cache::Cache;
-use bimcraft_geofetch::net::{Allow, Net, OVERPASS, Ureq};
+use bimcraft_geofetch::net::{Allow, Net, OVERPASS, Ureq, reason};
 use bimcraft_geofetch::probe::{Format, encode_png, expand, grid_overlay, kvp_address, metres_per_pixel, scan_capabilities, tile_at};
 
 /// The most a tile may be, bytes, and the most of a capabilities document that is read.
@@ -46,7 +46,7 @@ const PAUSE: Duration = Duration::from_millis(300);
 struct Candidate {
     name: &'static str,
     /// A tile address with `{z}`, `{x}` and `{y}`. Those of PDOK, USGS and EOX answered or were corrected from their capabilities
-    /// documents; Flanders' is built from its document the way a query-only WMTS service is asked, and its style is a guess.
+    /// documents; Flanders' is what the app asks (the core's table): the way a query-only WMTS service is asked, with an empty style.
     template: &'static str,
     place: &'static str,
     longitude: f64,
@@ -57,12 +57,15 @@ struct Candidate {
     caps: &'static str,
     /// What the research and the capabilities documents found about its terms. To verify at the service.
     licence: &'static str,
+    /// Other ways of asking for the same tile, each with what is different about it, tried at one zoom of their own. For a service
+    /// whose address was not right the first time: one run says which of them it takes (and its answer says why it refuses the rest).
+    variants: &'static [(&'static str, &'static str)],
 }
 
 const CANDIDATES: [Candidate; 6] = [
     Candidate {
         name: "flanders",
-        template: "https://geo.api.vlaanderen.be/OMWRGBMRVL/wmts?service=WMTS&request=GetTile&version=1.0.0&layer=omwrgbmrvl&style=default&tilematrixset=GoogleMapsVL&tilematrix={z}&tilerow={y}&tilecol={x}&format=image/jpeg",
+        template: "https://geo.api.vlaanderen.be/OMWRGBMRVL/wmts?service=WMTS&request=GetTile&version=1.0.0&layer=omwrgbmrvl&style=&tilematrixset=GoogleMapsVL&tilematrix={z}&tilerow={y}&tilecol={x}&format=image/png",
         place: "Ghent",
         longitude: 3.7174,
         latitude: 51.0543,
@@ -70,6 +73,24 @@ const CANDIDATES: [Candidate; 6] = [
         beyond: 23,
         caps: "https://geo.api.vlaanderen.be/OMWRGBMRVL/wmts?request=GetCapabilities&service=WMTS",
         licence: "free of charge; the usage right is on Digitaal Vlaanderen's 'gebruiksrecht en privacyverklaring geografische webdiensten' page: what credit does it ask for?",
+        variants: &[
+            (
+                "style left out",
+                "https://geo.api.vlaanderen.be/OMWRGBMRVL/wmts?service=WMTS&request=GetTile&version=1.0.0&layer=omwrgbmrvl&tilematrixset=GoogleMapsVL&tilematrix={z}&tilerow={y}&tilecol={x}&format=image/png",
+            ),
+            (
+                "style=default",
+                "https://geo.api.vlaanderen.be/OMWRGBMRVL/wmts?service=WMTS&request=GetTile&version=1.0.0&layer=omwrgbmrvl&style=default&tilematrixset=GoogleMapsVL&tilematrix={z}&tilerow={y}&tilecol={x}&format=image/png",
+            ),
+            (
+                "matrix GoogleMapsVL:{z}",
+                "https://geo.api.vlaanderen.be/OMWRGBMRVL/wmts?service=WMTS&request=GetTile&version=1.0.0&layer=omwrgbmrvl&style=&tilematrixset=GoogleMapsVL&tilematrix=GoogleMapsVL:{z}&tilerow={y}&tilecol={x}&format=image/png",
+            ),
+            (
+                "empty style, jpeg",
+                "https://geo.api.vlaanderen.be/OMWRGBMRVL/wmts?service=WMTS&request=GetTile&version=1.0.0&layer=omwrgbmrvl&style=&tilematrixset=GoogleMapsVL&tilematrix={z}&tilerow={y}&tilecol={x}&format=image/jpeg",
+            ),
+        ],
     },
     Candidate {
         name: "pdok",
@@ -81,6 +102,7 @@ const CANDIDATES: [Candidate; 6] = [
         beyond: 22,
         caps: "https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0?request=GetCapabilities&service=WMTS",
         licence: "CC-BY 4.0 per PDOK's dataset page (the document says fees and constraints: none): what wording does it ask for?",
+        variants: &[],
     },
     Candidate {
         name: "pdok25",
@@ -92,6 +114,7 @@ const CANDIDATES: [Candidate; 6] = [
         beyond: 22,
         caps: "https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0?request=GetCapabilities&service=WMTS",
         licence: "as pdok; the 25 cm layer",
+        variants: &[],
     },
     Candidate {
         name: "pdok2024",
@@ -103,6 +126,7 @@ const CANDIDATES: [Candidate; 6] = [
         beyond: 22,
         caps: "https://service.pdok.nl/hwh/luchtfotorgb/wmts/v1_0?request=GetCapabilities&service=WMTS",
         licence: "as pdok; one year's layer, so a project can name the year it shows",
+        variants: &[],
     },
     Candidate {
         name: "usgs",
@@ -114,6 +138,7 @@ const CANDIDATES: [Candidate; 6] = [
         beyond: 17,
         caps: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/WMTS/1.0.0/WMTSCapabilities.xml",
         licence: "US public domain, and USGS asks for a credit; the document states no terms. The cache stopped at zoom 16 at DC.",
+        variants: &[],
     },
     Candidate {
         name: "eox2016",
@@ -125,6 +150,7 @@ const CANDIDATES: [Candidate; 6] = [
         beyond: 17,
         caps: "https://tiles.maps.eox.at/wmts/1.0.0/WMTSCapabilities.xml",
         licence: "attribution with links is mandatory, and 'additional restrictions may apply for individual layers as indicated in the respective abstract': read the layer's with `caps URL DIR s2cloudless_3857`; is this the 2016 mosaic?",
+        variants: &[],
     },
 ];
 
@@ -264,7 +290,15 @@ fn try_tile(source: &str, template: &str, longitude: f64, latitude: f64, zoom: u
     let plain = url.contains('?');
     let reply: Result<(Option<String>, Vec<u8>), String> = if plain {
         plain_get(&url, MAX_TILE).and_then(|(status, content_type, body)| {
-            if status >= 400 { Err(format!("{}: HTTP {status}", host_of(&url))) } else { Ok((content_type, body)) }
+            if status >= 400 {
+                // The service's own words, if it gives any: they name the parameter it did not like.
+                Err(match reason(&body) {
+                    Some(why) => format!("{}: HTTP {status}: {why}", host_of(&url)),
+                    None => format!("{}: HTTP {status}", host_of(&url)),
+                })
+            } else {
+                Ok((content_type, body))
+            }
         })
     } else {
         Allow::default()
@@ -325,6 +359,10 @@ fn probe(args: &[String]) -> Result<(), String> {
         let far = c.zooms.get(1).copied().unwrap_or(16);
         rows.push(try_tile(c.name, c.template, -30.0, 0.0, far, &out, "far outside any coverage (mid-Atlantic)"));
         rows.push(try_tile(c.name, c.template, c.longitude, c.latitude, c.beyond, &out, "finer than the service is expected to go"));
+        let zoom = c.zooms.get(2).copied().unwrap_or(17);
+        for (label, template) in c.variants {
+            rows.push(try_tile(&format!("{} [{label}]", c.name), template, c.longitude, c.latitude, zoom, &out, c.place));
+        }
     }
     println!();
     print_table(&rows);
@@ -406,7 +444,7 @@ fn caps(args: &[String]) -> Result<(), String> {
     }
     if let (true, Some(l)) = (c.resource_urls.is_empty(), chosen) {
         // No addresses of its own: it is asked by query. Offer the addresses for the sets that are ordinary Web Mercator.
-        let style = l.styles.first().map_or("default", String::as_str);
+        let style = l.styles.first().map_or("", String::as_str);
         let format = l.formats.first().map_or("image/jpeg", String::as_str);
         for set in l.sets.iter().filter(|name| c.matrix_sets.iter().any(|s| &s.name == *name && s.web_mercator().is_ok())) {
             match kvp_address(&endpoint, &l.name, style, set, format) {

@@ -534,18 +534,28 @@ fn fetch_imagery_without_a_source_takes_the_first_that_has_the_place() {
     let mut s = terrain_session(fake.clone(), 51.0543, 3.7174);
     let r = run(&mut s, "fetch_imagery", json!({}));
     assert_eq!(r["source"], json!("pdok"), "Flanders had none here: {r}");
+    // A source passed over is said, with why, so that a coarser picture than expected is never a mystery.
+    let flanders = crate::imagery::source("flanders").unwrap();
+    assert_eq!(r["skipped"], json!([{"source": "flanders", "name": flanders.name, "why": "flanders has no imagery of this place"}]), "{r}");
     let asked: Vec<String> = fake.imagery_asked.lock().unwrap().iter().map(|(source, _)| source.clone()).collect();
     assert_eq!(asked, ["flanders", "pdok"]);
     // The first, when it has it; `auto` is the same as none.
     let fake = Arc::new(Fake::new(String::new()));
     let mut s = terrain_session(fake.clone(), 51.0543, 3.7174);
-    assert_eq!(run(&mut s, "fetch_imagery", json!({"source": "auto"}))["source"], json!("flanders"));
-    // Nobody has it: the last reason is the answer.
+    let r = run(&mut s, "fetch_imagery", json!({"source": "auto"}));
+    assert_eq!((r["source"].clone(), r["skipped"].clone()), (json!("flanders"), json!([])));
+    // Nobody has it: every reason is the answer, in the order they were asked.
     let fake = Arc::new(Fake { no_imagery: vec!["flanders", "pdok", "eox2016"], ..Fake::new(String::new()) });
     let mut s = terrain_session(fake, 51.0543, 3.7174);
     let why = refused(&mut s, "fetch_imagery", json!({}));
-    assert!(why.contains("eox2016 has no imagery"), "{why}");
+    let at = |what: &str| why.find(what).unwrap_or(usize::MAX);
+    assert!(at("flanders has no imagery") < at("pdok has no imagery") && at("pdok has no imagery") < at("eox2016 has no imagery"), "{why}");
     assert!(s.model.images.is_empty(), "nothing was left");
+    // What a fetcher says is hostile as a file is: a long reason is cut, and it cannot make the reply grow without end.
+    let fake = Arc::new(Fake { fail: Some("x".repeat(100_000)), ..Fake::new(String::new()) });
+    let mut s = terrain_session(fake, 51.0543, 3.7174);
+    let why = refused(&mut s, "fetch_imagery", json!({}));
+    assert!(why.chars().count() < 2000, "{} characters", why.chars().count());
 }
 
 #[test]
