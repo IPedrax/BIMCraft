@@ -58,12 +58,13 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      # The example plugin is built with the guest SDK for WebAssembly: the same module the integration test loads.
+      # The test fixture of the guest SDK is built with it for WebAssembly: the module the plugin tests load. It is
+      # not in the repository, and `cargo test` fails without it here (the tests skip only outside CI).
       - name: Sample plugin
         if: runner.os == 'Linux'
         run: |
           rustup target add wasm32-unknown-unknown
-          cargo build --manifest-path plugins/area-summary/Cargo.toml --target wasm32-unknown-unknown --release
+          cargo build --manifest-path crates/plugin/tests/sample-plugin/Cargo.toml --target wasm32-unknown-unknown --release
 
       - name: Test
         run: cargo test --workspace

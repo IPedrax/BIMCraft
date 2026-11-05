@@ -1,13 +1,12 @@
-//! An example BIMCraft plugin: the rooms' areas, read with a command and written back into the project with another.
-//!
-//! `summary` reads the rooms (`elements {category: "room"}`) and returns how many there are and their total area.
-//! `write_note` does that and puts the total on the plan as a text note at `at`. A project with no rooms is an error:
-//! the call comes back failed, and the plugin's transaction leaves the project as it was.
+//! A plugin built with the guest SDK, for the host's tests: the rooms' areas, read with a command and written back
+//! into the project with another. It is the end-to-end check of the SDK — `export!`, `bimcraft_alloc`/`bimcraft_free`,
+//! `bimcraft_run` and reading the call's pointers out of linear memory — not a user-facing example: the repository
+//! has none, and `docs/areas/plugins.md` is what an author builds from.
 
 use bimcraft_plugin_sdk::{Value, execute, info_log};
 use serde_json::json;
 
-/// How many rooms there are and how much floor they have, m²; with `level`, only that level's.
+/// How many rooms there are and how much floor they have, m².
 fn areas(params: &Value) -> Result<Value, String> {
     let mut query = json!({"category": "room", "limit": 5000});
     if let Some(level) = params.get("level").filter(|v| !v.is_null()) {
@@ -20,7 +19,6 @@ fn areas(params: &Value) -> Result<Value, String> {
     Ok(json!({
         "rooms": rooms["count"].as_u64().unwrap_or(list.len() as u64),
         "total_area_m2": total,
-        "rooms_without_area": list.iter().filter(|r| r["area_m2"].as_f64().unwrap_or(0.0) <= 0.0).count(),
     }))
 }
 
@@ -48,4 +46,11 @@ fn write_note(params: &Value) -> Result<Value, String> {
 bimcraft_plugin_sdk::export! {
     "summary" => summary,
     "write_note" => write_note,
+    "fail" => fail,
+}
+
+/// `fail`: changes the model, then fails, which is how a call's transaction is tested: nothing may stay.
+fn fail(_: &Value) -> Result<Value, String> {
+    execute("level", &json!({"elevation": 1200, "name": "Half done"}))?;
+    Err("the plugin changed the project and then failed".to_string())
 }

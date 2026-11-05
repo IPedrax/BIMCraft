@@ -1,0 +1,25 @@
+[package]
+name = "sample-plugin"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "A test fixture: a plugin built with the guest SDK, which crates/plugin's tests run end to end"
+
+# A test fixture, not a member of BIMCraft's workspace: it is built for the WebAssembly target on its own, and the
+# SDK is the only thing it needs. `cargo build --manifest-path crates/plugin/tests/sample-plugin/Cargo.toml
+# --target wasm32-unknown-unknown --release` writes the module `tests/sample.rs` runs.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+bimcraft-plugin-sdk = { path = "../../../../crates/plugin-sdk" }
+serde_json = "1"
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true
+strip = true
