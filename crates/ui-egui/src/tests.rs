@@ -5819,7 +5819,6 @@ fn the_massing_tab_makes_floors_walls_a_floor_and_a_roof_from_the_selected_mass(
 }
 
 mod align;
-mod qol;
 mod autosave;
 mod browser;
 mod cad;
@@ -5858,6 +5857,7 @@ mod popup;
 mod presets;
 mod profile;
 mod purge;
+mod qol;
 mod reinforce;
 mod revit;
 mod rooms;

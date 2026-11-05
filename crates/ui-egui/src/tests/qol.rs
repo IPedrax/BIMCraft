@@ -49,7 +49,8 @@ fn the_type_selector_s_list_is_no_wider_than_the_selector() {
     let names: Vec<String> = h.state().session.model.types.wall.keys().cloned().collect();
     assert!(!names.is_empty());
     for n in &names {
-        let row = h.query_all_by_label(n).map(|r| r.rect()).find(|r| r.top() > selector.bottom() - 1.0 || r.bottom() < selector.top() + 1.0);
+        let row =
+            h.query_all_by_label(n).map(|r| r.rect()).find(|r| r.top() > selector.bottom() - 1.0 || r.bottom() < selector.top() + 1.0);
         let row = row.unwrap_or_else(|| panic!("`{n}` isn't listed"));
         assert!(row.right() <= selector.right() + 0.5, "{n}: {row:?} past the selector's {selector:?}");
     }

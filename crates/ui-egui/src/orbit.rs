@@ -18,10 +18,10 @@ use std::sync::Arc;
 
 use bimcraft_i18n::msg;
 
-use bimcraft_core::handles::{self, Handle};
 use bimcraft_core::dims3d;
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::graphics::{Look, VisualStyle};
+use bimcraft_core::handles::{self, Handle};
 use bimcraft_core::model::{Dimension3D, Id, Model, Ref3, TOL, ViewCamera};
 use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::snap::{self, Found, Kind, Reach, Snaps};
@@ -1371,7 +1371,7 @@ impl BimApp {
             }
         }
         for (h, q) in &own_handles {
-            draw_handle(&p, &cam, *h, *q, o.handle.map(|(_, held, ..)| held), o.hot_handle, &screen);
+            draw_handle(&p, &cam, *h, *q, o.handle.map(|(_, held, ..)| held), o.hot_handle, screen);
         }
         // The drawing tools take their points on the face under the cursor (`workplane`), snapped as its level's plan snaps:
         // a wall chain under way on the plane its first point found, a run's end on the face it is clicked on (where there is

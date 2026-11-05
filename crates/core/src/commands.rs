@@ -11542,7 +11542,9 @@ fn angular_value(s: &mut Session, id: Id, mut d: Dimension, value: f64, moves: O
     }
     let (o, from, sweep) = s.model.angle_sector(&d).ok_or_else(|| bad(c, "its lines no longer cross"))?;
     let r = match moves {
-        Some(g) => d.refs.iter().find(|r| r.id == g).ok_or_else(|| bad(c, format!("element {} isn't what it measures", s.model.shown(g))))?,
+        Some(g) => {
+            d.refs.iter().find(|r| r.id == g).ok_or_else(|| bad(c, format!("element {} isn't what it measures", s.model.shown(g))))?
+        }
         None => d.refs.last().ok_or_else(|| bad(c, "what it measures to is gone"))?,
     };
     let (a, b) = s.model.reference_line(r).map_err(|e| bad(c, e))?;

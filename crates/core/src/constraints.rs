@@ -333,7 +333,9 @@ mod tests {
             let mut s = Session::new();
             let a = one(&mut s, json!({"points": [[0, 0], [4000, 0]]}));
             let b = one(&mut s, json!({"points": [[0, 0], [0, 4000]]}));
-            let d = run(&mut s, "dimension", json!({"kind": "angular", "refs": [{"id": a}, {"id": b}], "at": [1000, 1000]}))["id"].as_u64().unwrap();
+            let d = run(&mut s, "dimension", json!({"kind": "angular", "refs": [{"id": a}, {"id": b}], "at": [1000, 1000]}))["id"]
+                .as_u64()
+                .unwrap();
             let value = |s: &Session| match s.model.elements.get(d) {
                 Some(crate::model::Element::Dimension(dm)) => s.model.dimension_values(dm)[0],
                 _ => f64::NAN,

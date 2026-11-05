@@ -874,7 +874,15 @@ fn solids_in_with(
                 if parts.is_empty() {
                     out.push(slab(id, color, &m.column_outline(e), m.column_span(e)));
                 }
-                out.extend(parts.into_iter().map(|p| Solid::Prism { owner: id, color, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: None }));
+                out.extend(parts.into_iter().map(|p| Solid::Prism {
+                    owner: id,
+                    color,
+                    tex: 0,
+                    ring: p.ring,
+                    bottom: p.bottom,
+                    top: p.top,
+                    curve: None,
+                }));
             }
             // A rectangular run is a sloped prism, which a section cuts; a round one a tube, shown beyond its line.
             crate::model::run_arm!(_) => {

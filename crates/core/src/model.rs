@@ -5284,7 +5284,11 @@ impl Model {
                 .filter_map(|&(to, (p, q))| {
                     let hit = geom::line_intersection(at, at + toward, p, q)?;
                     let distance = (hit - at).dot(toward);
-                    (distance > TOL && distance <= REACH && geom::dist_to_segment(hit, p, q) <= 1e-6).then_some(Clearance { toward, distance, to })
+                    (distance > TOL && distance <= REACH && geom::dist_to_segment(hit, p, q) <= 1e-6).then_some(Clearance {
+                        toward,
+                        distance,
+                        to,
+                    })
                 })
                 .min_by(|x, y| x.distance.total_cmp(&y.distance))
         })
@@ -5292,7 +5296,7 @@ impl Model {
 
     /// The dimensions in the plan `key` that measure to element `of`, found in the lookup: what lights up, and what its number
     /// moves, while it's selected.
-    pub fn dimensions_on(&self, of: impl Key, key: impl Key + Copy) -> Vec<Id> {
+    pub fn dimensions_on(&self, of: impl Key, key: impl Key) -> Vec<Id> {
         let Some(g) = self.elements.guid(of) else { return Vec::new() };
         let lookup = self.lookup();
         lookup
