@@ -433,3 +433,38 @@ fn in_3d_the_measure_tool_says_how_its_chain_works() {
     h.run();
     assert!(h.state().prompt().contains("Click the first point again to close it"), "{}", h.state().prompt());
 }
+
+/// The owner's plan, as the window had it: two walls drawn one after the other, a door, an aligned string from the top
+/// wall's face over the door to the side wall's end.
+const OWNERS: &str = r#"wall {"points": [[-4060, -890], [10, -890]]}
+wall {"points": [[10, -890], [10, -5400]]}
+door {"at": [10, -2950]}
+dimension {"refs": [{"id": 100003, "face": "left", "point": "start"}, {"id": 100004, "face": "centre"}, {"id": 100003, "face": "left", "point": "end"}], "at": [2070, -3400]}"#;
+
+#[test]
+fn clicked_with_the_mouse_the_door_s_number_moves_the_door_and_nothing_else() {
+    let mut h = app(OWNERS);
+    let side_end = |h: &Harness<BimApp>| h.state().session.model.wall(100003).unwrap().end;
+    let before = side_end(&h);
+    click(&mut h, P2(10.0, -2950.0));
+    assert_eq!(h.state().selection, vec![100004], "the door selected");
+    h.run();
+    let label = "Dimension 2160";
+    let at = h.get_by_label(label).rect().center();
+    click_at(&mut h, at);
+    eprintln!(
+        "selection after the click {:?}, steps {:?}",
+        h.state().selection,
+        h.state().session.steps(false).iter().map(|s| s.label).collect::<Vec<_>>()
+    );
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.event(Event::Text("2820".into()));
+    h.run();
+    key(&mut h, Key::Enter);
+    h.run();
+    let m = &h.state().session.model;
+    let Some(Element::Dimension(d)) = m.elements.get(100005) else { panic!("the dimension") };
+    eprintln!("values {:?}, steps {:?}", m.dimension_values(d), h.state().session.steps(false).iter().map(|s| s.label).collect::<Vec<_>>());
+    assert_eq!(side_end(&h), before, "the side wall's end stays");
+    assert!((m.dimension_values(d)[1] - 2820.0).abs() < 0.5, "door to the top wall reads what was typed");
+}

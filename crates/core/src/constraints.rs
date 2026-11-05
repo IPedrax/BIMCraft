@@ -191,7 +191,8 @@ mod tests {
     use serde_json::{Value, json};
 
     use crate::engine::Session;
-    use crate::model::Id;
+    use crate::geom::P2;
+    use crate::model::{Element, Id};
 
     fn run(s: &mut Session, c: &str, p: Value) -> Value {
         s.execute(c, &p).unwrap_or_else(|e| panic!("{c} {p}: {e}"))
@@ -310,6 +311,33 @@ mod tests {
 
     fn one(s: &mut Session, p: Value) -> Id {
         run(s, "wall", p)["ids"][0].as_u64().unwrap_or_default()
+    }
+
+    /// The owner's plan: a wall down from the top wall's face, its door, an aligned string from the wall's top (held by its
+    /// join) over the door to the wall's bottom end. Typing the door's distance from the top moves the door, whatever the
+    /// window has selected: moving the wall it stands in would carry it the other way.
+    #[test]
+    fn a_value_between_a_door_and_its_own_wall_moves_the_door_the_way_typed() {
+        for moves in [None, Some("wall"), Some("door")] {
+            let mut s = Session::new();
+            one(&mut s, json!({"points": [[-4060, -890], [10, -890]]}));
+            let side = one(&mut s, json!({"points": [[10, -890], [10, -5400]]}));
+            let door = run(&mut s, "door", json!({"at": [10, -2950]}))["id"].as_u64().unwrap();
+            let refs = json!([{"id": side, "face": "left", "point": "start"}, {"id": door, "face": "centre"}, {"id": side, "face": "left", "point": "end"}]);
+            let d = run(&mut s, "dimension", json!({"refs": refs, "at": [2070, -3400]}))["id"].as_u64().unwrap();
+            let Some(Element::Dimension(dim)) = s.model.elements.get(d) else { panic!("the dimension") };
+            assert_eq!(s.model.dimension_values(dim), vec![2450.0, 2160.0]);
+            let mut p = json!({"id": d, "segment": 1, "value": 1500});
+            match moves {
+                Some("wall") => p["moves"] = json!(side),
+                Some(_) => p["moves"] = json!(door),
+                None => {}
+            }
+            run(&mut s, "dimension_value", p);
+            let Some(Element::Dimension(dim)) = s.model.elements.get(d) else { panic!("the dimension") };
+            assert_eq!(s.model.dimension_values(dim), vec![3110.0, 1500.0], "{moves:?}: the door 660 nearer the top");
+            assert_eq!(s.model.wall(side).map(|w| w.end), Some(P2(10.0, -5400.0)), "{moves:?}: the wall stays");
+        }
     }
 
     #[test]

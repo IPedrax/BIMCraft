@@ -11522,6 +11522,14 @@ fn dimension_value(s: &mut Session, p: &Value) -> R {
         Some(g) if g == first.id => (g, -grows),
         Some(g) => return Err(bad(c, format!("element {} isn't at either end of segment {segment}", s.model.shown(g)))),
     };
+    // A door or a window at the other end, standing in the wall that would move, rides with it: the wall's own end, held by
+    // its join, would stay, and the segment change the other way. The opening is what moves, toward or away from the end.
+    let other = if at == r.id { first.id } else { r.id };
+    let hosted = |g: Guid| match s.model.elements.get(s.model.elements.id(g).unwrap_or_default()) {
+        Some(Element::Door(o) | Element::Window(o)) => o.host == at,
+        _ => false,
+    };
+    let (at, by) = if other != at && hosted(other) { (other, -by) } else { (at, by) };
     let moved = s.model.elements.id(at).ok_or_else(|| bad(c, "what it measures to is gone"))?;
     if let Some(l) = d.locked.iter_mut().find(|l| l.segment == segment) {
         l.length = value;
@@ -11529,6 +11537,23 @@ fn dimension_value(s: &mut Session, p: &Value) -> R {
     }
     if by.abs() > 1e-9 {
         move_by(s, moved, n * by)?;
+    }
+    // What moving it did to the segment, which joins and hosts can turn: never the other way, nor short of what was typed.
+    if let Some(Element::Dimension(now)) = s.model.elements.get(id) {
+        let (_, st) = s.model.stations(now);
+        if let (Some((from, _, _)), Some((to, _, _))) = (st.get(segment), st.get(segment + 1))
+            && ((to - from) - value).abs() > 0.5
+        {
+            return Err(bad(
+                c,
+                format!(
+                    "moving {} makes segment {segment} {:.0} mm, not {value}: what holds it (a join, a host, a lock) keeps it from \
+                     reading what was typed; select the element at its other end and type the value again",
+                    s.model.shown(at),
+                    to - from
+                ),
+            ));
+        }
     }
     Ok(json!({"id": id, "moved": moved, "by": hundredth(by)}))
 }

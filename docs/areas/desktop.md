@@ -566,7 +566,9 @@ the segment ends at moves, or an angular dimension's second line turns. An eleme
 dimensions on it (`Model::dimensions_on`, added to what the canvas marks) and shows the numbers of the segments it is at one end of
 (`BimApp::element_dimensions`), each a field over the number the drawing letters (`Drawing::dimension_number_places`), drawn after
 the temporary dimensions so it is the one on top: typing one moves or turns that element, as `moves` says, whichever end it is. An angle turns about
-where the lines cross and takes the dimension's arc with it (`angular_value`). A selected wall also shows temporary dimensions across
+where the lines cross and takes the dimension's arc with it (`angular_value`). Where the element to move is the wall a door or a
+window at the segment's other end stands in, the opening moves instead (the wall would carry it, its end held by its join, and the
+segment change the other way); and a move that leaves the segment not reading what was typed is refused and rolled back. A selected wall also shows temporary dimensions across
 it, to the nearest parallel wall or grid each side (`Model::wall_clearances`), which move it square to itself. A dimension in a 3D
 view holds points, not elements, so there is nothing for its number to move.
 
