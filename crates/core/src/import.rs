@@ -11,6 +11,7 @@
 
 use bimcraft_i18n::{msg, ui_msg};
 
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::f64::consts::PI;
 use std::sync::Arc;
@@ -31,6 +32,11 @@ use crate::step::{self, Entity, File, V};
 use crate::view3d::{P3, add, cross, dot, mul, sub, unit};
 use crate::walls::{self, Axis, Plane};
 use serde_json::json;
+
+mod shapes;
+
+/// What a product whose body builds nothing is left out with; where the reader knows why, the note says that too.
+const NO_BODY: &str = "it has no body BIMCraft can read";
 
 /// The most project parameter values an import reads: a set related to many elements hands each
 /// all its values.
@@ -529,9 +535,17 @@ struct Reader<'a> {
     /// Taken off every plan point: brings a model placed far out (a site at its map
     /// coordinates) near the origin.
     shift: P2,
+    /// Why the representation item being read builds nothing, or less than it holds (`give_up`); and, by item, why each
+    /// that did so, once read.
+    why: Cell<Option<&'static str>>,
+    unread: RefCell<HashMap<u64, &'static str>>,
 }
 
 impl<'a> Reader<'a> {
+    fn new(f: &'a File, mm: f64, rad: f64, shift: P2) -> Reader<'a> {
+        Reader { f, mm, rad, shift, why: Cell::new(None), unread: RefCell::new(HashMap::new()) }
+    }
+
     fn get(&self, id: u64) -> Option<&'a Entity> {
         self.f.entities.get(&id)
     }
@@ -667,10 +681,11 @@ impl<'a> Reader<'a> {
                 Some(out)
             }
             "IFCTRIMMEDCURVE" => self.trimmed(e),
-            "IFCCIRCLE" => {
-                let (f, r) = (self.axes(reference(a(0))), self.len(a(1))?);
-                Some((0..24).map(|i| f64::from(i) * PI / 12.0).map(|t| f.at([r * t.cos(), r * t.sin(), 0.0])).collect())
+            "IFCCIRCLE" | "IFCELLIPSE" => {
+                let (f, ra, rb) = self.conic(e)?;
+                Some((0..24).map(|i| f64::from(i) * PI / 12.0).map(|t| f.at([ra * t.cos(), rb * t.sin(), 0.0])).collect())
             }
+            "IFCBSPLINECURVEWITHKNOTS" | "IFCRATIONALBSPLINECURVEWITHKNOTS" => self.bspline(e),
             _ => None,
         }
     }
@@ -700,15 +715,15 @@ impl<'a> Reader<'a> {
                 let at = |(p, t): (Option<P3>, Option<f64>)| p.or_else(|| t.map(|t| add(p0, mul(d, k * t))));
                 Some(vec![at(t1)?, at(t2)?])
             }
-            "IFCCIRCLE" => {
-                let (f, r) = (self.axes(reference(basis.args.first())), self.len(basis.args.get(1))?);
+            "IFCCIRCLE" | "IFCELLIPSE" => {
+                let (f, ra, rb) = self.conic(basis)?;
                 let angle = |(p, t): (Option<P3>, Option<f64>)| {
-                    p.map(|p| dot(sub(p, f.o), f.y).atan2(dot(sub(p, f.o), f.x))).or_else(|| t.map(|t| t * self.rad))
+                    p.map(|p| (dot(sub(p, f.o), f.y) / rb).atan2(dot(sub(p, f.o), f.x) / ra)).or_else(|| t.map(|t| t * self.rad))
                 };
                 let (a1, a2) = (angle(t1)?, angle(t2)?);
                 let ccw = (a2 - a1).rem_euclid(2.0 * PI);
                 let sweep = if enumeration(e.args.get(3)) == Some("F") { ccw - 2.0 * PI } else { ccw };
-                Some((0..=12).map(|i| a1 + sweep * f64::from(i) / 12.0).map(|t| f.at([r * t.cos(), r * t.sin(), 0.0])).collect())
+                Some((0..=12).map(|i| a1 + sweep * f64::from(i) / 12.0).map(|t| f.at([ra * t.cos(), rb * t.sin(), 0.0])).collect())
             }
             _ => Some(vec![t1.0?, t2.0?]),
         }
@@ -798,14 +813,21 @@ impl<'a> Reader<'a> {
                     }
                 }
             }
+            "IFCREVOLVEDAREASOLID" | "IFCREVOLVEDAREASOLIDTAPERED" => self.revolved(e, depth, out),
+            "IFCFIXEDREFERENCESWEPTAREASOLID" | "IFCSURFACECURVESWEPTAREASOLID" => self.along(e, depth, out),
+            "IFCADVANCEDBREP" | "IFCADVANCEDBREPWITHVOIDS" => self.advanced(e, out),
+            "IFCADVANCEDFACE" => match self.advanced_face(e) {
+                Ok(faces) => out.extend(faces),
+                Err(why) => self.give_up(why),
+            },
             // A disk swept along a curve, a cable's or a pipe's: a tube of 24 sides along each of its segments; a hollow one
             // as if solid.
-            "IFCSWEPTDISKSOLID" => {
+            "IFCSWEPTDISKSOLID" | "IFCSWEPTDISKSOLIDPOLYGONAL" => {
                 let (Some(line), Some(r)) = (self.curve(reference(a(0)), depth + 1), self.len(a(1))) else { return };
                 // A tube is 26 faces a segment, so a curve of millions of points would fill the memory: past MAX_POINTS segments'
                 // worth of faces in the item, the disk is left out.
                 if out.len() + 26 * line.len().saturating_sub(1) > 26 * MAX_POINTS {
-                    return;
+                    return self.give_up(shapes::TOO_MANY);
                 }
                 for w in line.windows(2) {
                     let &[p, q] = w else { continue };
@@ -927,22 +949,38 @@ impl<'a> Reader<'a> {
     /// A product's body item by item, each its faces in the product's own coordinates: its Body
     /// representation's, else any but a line or a footprint's.
     fn body_items(&self, product: &Entity) -> Vec<(u64, Vec<Vec<P3>>)> {
+        self.chosen(product)
+            .into_iter()
+            .map(|item| {
+                let mut out = Vec::new();
+                self.why.set(None);
+                self.faces(item, 0, &mut out);
+                if let Some(why) = self.why.take() {
+                    self.unread.borrow_mut().insert(item, why);
+                }
+                (item, out)
+            })
+            .collect()
+    }
+
+    /// The items of a product's body: its Body representation's, else any but a line or a footprint's.
+    fn chosen(&self, product: &Entity) -> Vec<u64> {
         let reps = self.reps(product);
         let items = |keep: &dyn Fn(&str) -> bool| {
             reps.iter().filter(|(i, _)| keep(&i.to_ascii_lowercase())).flat_map(|(_, it)| it.clone()).collect::<Vec<_>>()
         };
-        let mut chosen = items(&|i| i == "body" || i == "facetation");
+        let chosen = items(&|i| i == "body" || i == "facetation");
         if chosen.is_empty() {
-            chosen = items(&|i| !matches!(i, "axis" | "footprint" | "annotation" | "plan" | "profile" | "reference" | "surface"));
+            items(&|i| !matches!(i, "axis" | "footprint" | "annotation" | "plan" | "profile" | "reference" | "surface"))
+        } else {
+            chosen
         }
-        chosen
-            .into_iter()
-            .map(|item| {
-                let mut out = Vec::new();
-                self.faces(item, 0, &mut out);
-                (item, out)
-            })
-            .collect()
+    }
+
+    /// Why an item of a product's body, read, built nothing or less than it holds: the first's.
+    fn unread(&self, product: &Entity) -> Option<&'static str> {
+        let unread = self.unread.borrow();
+        self.chosen(product).into_iter().find_map(|item| unread.get(&item).copied())
     }
 
     /// A product's Axis representation, in model coordinates.
@@ -1462,7 +1500,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     ids.sort_unstable();
     let l = Links::read(&file, &ids);
     // Far from the origin (a site at its map coordinates), the model comes nearer.
-    let probe = Reader { f: &file, mm, rad, shift: P2(0.0, 0.0) };
+    let probe = Reader::new(&file, mm, rad, P2(0.0, 0.0));
     let origins: Vec<P3> = l.within.keys().filter_map(|id| probe.get(*id)).map(|x| probe.frame(x).o).collect();
     let shift = match (span(origins.iter().map(|p| p[0])), span(origins.iter().map(|p| p[1]))) {
         (Some((x0, x1)), Some((y0, y1))) if x0.abs().max(x1.abs()).max(y0.abs()).max(y1.abs()) > 1e8 => {
@@ -1470,7 +1508,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
         _ => P2(0.0, 0.0),
     };
-    let r = Reader { f: &file, mm, rad, shift };
+    let r = Reader::new(&file, mm, rad, shift);
     // What an element is made of: its layers, when they add up to how thick it is, and so how thick.
     let made_of = |id: u64, t: f64| {
         let layers = layers_of(&r, &l, id, t);
@@ -1609,7 +1647,10 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
     };
     let leave = |skipped: &mut Vec<String>, seen: &mut HashSet<u64>, id: u64, why: &str| {
-        skipped.push(format!("{}: {why}", who(id)));
+        match e(id).and_then(|x| r.unread(x)).filter(|_| why == NO_BODY) {
+            Some(because) => skipped.push(format!("{}: {why}: {because}", who(id))),
+            None => skipped.push(format!("{}: {why}", who(id))),
+        }
         seen.insert(id);
     };
 
@@ -1641,7 +1682,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             let arc = walls::sweep_through(p, mid, q);
             let radii = Axis::new(p, q, arc).centre().and_then(|c| Some((c, arc_faces(pts.iter().map(|x| r.flat(*x).dist(c)))?)));
             let (Some((c, (r0, r1))), Some((z0, z1))) = (radii, span(pts.iter().map(|x| x[2]))) else {
-                leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+                leave(&mut skipped, &mut seen, id, NO_BODY);
                 continue;
             };
             let t = ((r1 - r0) * 100.0).round() / 100.0;
@@ -1683,7 +1724,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let (a, b) = faced(a, b);
         let (u, n) = ((b - a).unit(), (b - a).unit().perp());
         let (Some((c0, c1)), Some((z0, z1))) = (span(pts.iter().map(|p| (r.flat(*p) - a).dot(n))), span(pts.iter().map(|p| p[2]))) else {
-            leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+            leave(&mut skipped, &mut seen, id, NO_BODY);
             continue;
         };
         if a.dist(b) <= TOL || c1 - c0 <= 0.0 || u.length() < 0.5 {
@@ -1793,7 +1834,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
         let faces = r.body(s);
         let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
-            leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+            leave(&mut skipped, &mut seen, id, NO_BODY);
             continue;
         };
         // A top of several planes: a level floor at its highest point, its shape's points under it and its creases.
@@ -1902,7 +1943,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let Some(c) = e(id).filter(|c| enumeration(c.args.get(8)) == Some("CEILING")) else { continue };
         let faces = r.body(c);
         let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
-            leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+            leave(&mut skipped, &mut seen, id, NO_BODY);
             continue;
         };
         let Some(geom::Region { outer: ring, holes }) = outline(&faces, Plane::flat(z1), true) else {
@@ -2150,7 +2191,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let Some(x) = e(id).filter(|x| text(x.args.get(4)) == Some("Mass")) else { continue };
         let faces = r.body(x);
         let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
-            leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+            leave(&mut skipped, &mut seen, id, NO_BODY);
             continue;
         };
         let flat = |g: geom::Region| -> Vec<P2> { g.outer.into_iter().map(|p| micron(r.flat([p.0, p.1, 0.0]))).collect() };
@@ -2207,7 +2248,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let Some(c) = e(id) else { continue };
         let faces = r.body(c);
         let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
-            leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+            leave(&mut skipped, &mut seen, id, NO_BODY);
             continue;
         };
         // Square to its longest outline edge: a level edge of one of its upright faces (a top
@@ -2528,7 +2569,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                 continue;
             }
             if !component(id, x, category, None, &HashSet::new(), &mut made, &mut placed, &mut skipped, &mut seen) {
-                leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+                leave(&mut skipped, &mut seen, id, NO_BODY);
             }
         }
     }
@@ -2551,7 +2592,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let mut fl = match measured {
             Ok(fl) if !fl.is_empty() => fl,
             Ok(_) => {
-                leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+                leave(&mut skipped, &mut seen, id, NO_BODY);
                 continue;
             }
             Err(why) => {
@@ -2616,7 +2657,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let mut fl = match measured {
             Ok(fl) if !fl.is_empty() => fl,
             Ok(_) => {
-                leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+                leave(&mut skipped, &mut seen, id, NO_BODY);
                 continue;
             }
             Err(why) => {
@@ -2829,7 +2870,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let (Some((s0, s1)), Some((z0, z1))) =
             (span(faces.iter().flatten().map(|p| (r.flat(*p) - a).dot(u))), span(faces.iter().flatten().map(|p| p[2])))
         else {
-            leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+            leave(&mut skipped, &mut seen, id, NO_BODY);
             continue;
         };
         let size = |x: f64| (x * 100.0).round() / 100.0;
@@ -3270,7 +3311,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
 
     // The rest of what's in the building, by kind: an assembly whose parts came in, what has no body BIMCraft can read, and
     // what it has no element for.
-    let mut left: BTreeMap<(&str, u8), usize> = BTreeMap::new();
+    let mut left: BTreeMap<(&str, u8, Option<&str>), usize> = BTreeMap::new();
     let held = wholes_of(&mut elements_from.keys().copied());
     for id in l.within.keys().filter(|id| !seen.contains(id)) {
         if let Some(x) = e(*id) {
@@ -3281,20 +3322,32 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             } else {
                 2
             };
-            *left.entry((x.name.as_str(), why)).or_default() += 1;
+            let because = if why == 1 { r.unread(x) } else { None };
+            *left.entry((x.name.as_str(), why, because)).or_default() += 1;
         }
     }
-    skipped.extend(left.into_iter().map(|((name, why), n)| {
+    skipped.extend(left.into_iter().map(|((name, why, because), n)| {
         let why = match (why, n == 1) {
             (0, true) => "its parts came in; BIMCraft has no element for the whole",
             (0, false) => "their parts came in; BIMCraft has no element for the wholes",
-            (1, true) => "it has no body BIMCraft can read",
+            (1, true) => NO_BODY,
             (1, false) => "they have no body BIMCraft can read",
             (_, true) => "BIMCraft has no element for it",
             (_, false) => "BIMCraft has no element for them",
         };
-        format!("{n} {name}: {why}")
+        match because {
+            Some(because) => format!("{n} {name}: {why}: {because}"),
+            None => format!("{n} {name}: {why}"),
+        }
     }));
+    // What came in without part of its body, and why.
+    let mut came: Vec<u64> = elements_from.keys().copied().collect();
+    came.sort_unstable();
+    for id in came {
+        if let Some(because) = e(id).and_then(|x| r.unread(x)) {
+            skipped.push(format!("{}: part of its body was left out, {because}", who(id)));
+        }
+    }
     let moved = (r.shift != P2(0.0, 0.0)).then_some(r.shift * -1.0);
     Ok(Imported { model: m, schema: file.schema.clone(), skipped, moved })
 }
@@ -3327,7 +3380,7 @@ fn roof_from(r: &Reader, faces: &[Vec<P3>], cut: &[Vec<P2>]) -> Result<RoofRead,
         })
         .collect();
     let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
-        return Err("it has no body BIMCraft can read".into());
+        return Err(NO_BODY.into());
     };
     // Its faces turned up, each with its plane (none for a sliver of a mesh's): their loops its
     // outline and its openings.
@@ -3464,7 +3517,7 @@ fn roof_from(r: &Reader, faces: &[Vec<P3>], cut: &[Vec<P2>]) -> Result<RoofRead,
     }
     let across: Vec<f64> = up.iter().flat_map(|(f, _)| f.iter().map(|q| P2(q[0], q[1]).dot(u.perp()))).collect();
     let (Some((c0, c1)), Some(first), Some(last)) = (span(across.into_iter()), profile.first().copied(), profile.last().copied()) else {
-        return Err("it has no body BIMCraft can read".into());
+        return Err(NO_BODY.into());
     };
     if ((last.0 - first.0) * (c1 - c0) - geom::area(&boundary)).abs() > 0.01 * geom::area(&boundary)
         || !openings.is_empty()
@@ -3549,7 +3602,7 @@ fn ramp_from(r: &Reader, faces: &[Vec<P3>]) -> Result<RampRun, String> {
     }
     let (u, n) = (top.g * (1.0 / tan), (top.g * (1.0 / tan)).perp());
     let (Some((s0, s1)), Some((c0, c1))) = (span(ring.iter().map(|p| p.dot(u))), span(ring.iter().map(|p| p.dot(n)))) else {
-        return Err("it has no body BIMCraft can read".into());
+        return Err(NO_BODY.into());
     };
     let foot = u * s0 + n * ((c0 + c1) / 2.0);
     let angle = (u.1.atan2(u.0).to_degrees() * 1e6).round() / 1e6 + 0.0;
@@ -3558,7 +3611,7 @@ fn ramp_from(r: &Reader, faces: &[Vec<P3>]) -> Result<RampRun, String> {
 
 fn stair_from(r: &Reader, s: &Entity, faces: &[Vec<P3>]) -> Result<Flight, String> {
     let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
-        return Err("it has no body BIMCraft can read".into());
+        return Err(NO_BODY.into());
     };
     // The treads: faces turned up, above the floor, one height each.
     let mut treads: Vec<(f64, P2)> = Vec::new();
@@ -3591,7 +3644,7 @@ fn stair_from(r: &Reader, s: &Entity, faces: &[Vec<P3>]) -> Result<Flight, Strin
     let plan: Vec<P2> = faces.iter().flatten().map(|p| r.flat(*p)).collect();
     let n = u.perp();
     let (Some((s0, s1)), Some((c0, c1))) = (span(plan.iter().map(|p| p.dot(u))), span(plan.iter().map(|p| p.dot(n)))) else {
-        return Err("it has no body BIMCraft can read".into());
+        return Err(NO_BODY.into());
     };
     let start = u * s0 + n * ((c0 + c1) / 2.0);
     let angle = (u.1.atan2(u.0).to_degrees() * 1e6).round() / 1e6 + 0.0;

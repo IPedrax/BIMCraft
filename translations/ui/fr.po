@@ -3268,7 +3268,7 @@ msgstr "Trouve {}; aucun élément n'a ceux-ci: {}"
 msgid "Fine"
 msgstr "Élevée"
 
-#: crates/core/src/import.rs:1217
+#: crates/core/src/import.rs:1255
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:718
 msgid "Finish"
@@ -3975,7 +3975,7 @@ msgstr "Installation de BIMCraft {}…"
 msgid "Instance"
 msgstr "Instance"
 
-#: crates/core/src/import.rs:1216
+#: crates/core/src/import.rs:1254
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Isolant"
@@ -4650,7 +4650,7 @@ msgstr "Moyen"
 msgid "Medium Lines"
 msgstr "Lignes moyennes"
 
-#: crates/core/src/import.rs:1219
+#: crates/core/src/import.rs:1257
 #: crates/ui-egui/src/properties.rs:717
 msgid "Membrane"
 msgstr "Membrane"
@@ -7636,7 +7636,7 @@ msgstr "Divisions de la sous-grille Y"
 msgid "Subgrid pen"
 msgstr "Plume de la sous-grille"
 
-#: crates/core/src/import.rs:1218
+#: crates/core/src/import.rs:1256
 #: crates/ui-egui/src/properties.rs:715
 msgid "Substrate"
 msgstr "Substrat"
