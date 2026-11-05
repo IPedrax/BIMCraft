@@ -5,7 +5,7 @@ msgstr "Project-Id-Version: BIMCraft\nLanguage: pl\nLast-Translator: OpenAI\nMIM
 
 #: crates/core/src/fixtures.rs:369
 msgid "Air Terminal"
-msgstr "Anemostat"
+msgstr "Nawiewnik"
 
 #: crates/core/src/schedule.rs:194
 #: crates/core/src/schedule.rs:230
@@ -34,7 +34,7 @@ msgstr "Cegła"
 
 #: crates/core/src/fills.rs:416
 msgid "Brick 225 x 75"
-msgstr "Cegła 225 x 75"
+msgstr "Cegła 225 × 75"
 
 #: crates/core/src/commands.rs:4054
 msgid "Camera"
@@ -54,7 +54,7 @@ msgstr "Oprawa sufitowa"
 
 #: crates/core/src/render.rs:3032
 msgid "Ceiling Plan"
-msgstr "Rzut sufitu"
+msgstr "Rzut sufitów"
 
 #: crates/core/src/lines.rs:182
 msgid "Centre"
@@ -86,7 +86,7 @@ msgstr "Miedź"
 
 #: crates/core/src/commands.rs:1141
 msgid "Copy"
-msgstr "Kopia"
+msgstr "Kopiuj"
 
 #: crates/core/src/schedule.rs:206
 msgid "Count"
@@ -191,11 +191,11 @@ msgstr "Instalacja elektryczna – zasilanie"
 #: crates/core/src/commands.rs:9340
 #: crates/core/src/commands.rs:11338
 msgid "Elevation"
-msgstr "Elewacja"
+msgstr "Widok elewacji"
 
 #: crates/core/src/phasing.rs:117
 msgid "Existing"
-msgstr "Istniejące"
+msgstr "Stan istniejący"
 
 #: crates/core/src/family.rs:1826
 msgid "Fabric"
@@ -248,7 +248,7 @@ msgstr "Szkło"
 
 #: crates/core/src/schedule.rs:483
 msgid "Gross Floor Area"
-msgstr "Powierzchnia całkowita"
+msgstr "Powierzchnia całkowita kondygnacji"
 
 #: crates/core/src/model.rs:2862
 msgid "Gypsum board"
@@ -357,7 +357,7 @@ msgstr "Wysokość montażu"
 
 #: crates/core/src/render.rs:2863
 msgid "NOT ENCLOSED"
-msgstr "NIEZAMKNIĘTE"
+msgstr "NIEZAMKNIĘTY OBSZAR"
 
 #: crates/core/src/model.rs:1487
 msgid "Name"
@@ -365,7 +365,7 @@ msgstr "Nazwa"
 
 #: crates/core/src/phasing.rs:117
 msgid "New Construction"
-msgstr "Nowa konstrukcja"
+msgstr "Nowy obiekt"
 
 #: crates/core/src/schedule.rs:1188
 msgid "No"
@@ -393,7 +393,7 @@ msgstr "Gniazdo"
 
 #: crates/core/src/lines.rs:208
 msgid "Overhead Lines"
-msgstr "Linie elementów nad głową"
+msgstr "Linie elementów powyżej"
 
 #: crates/core/src/fixtures.rs:190
 msgid "PVC"
@@ -441,7 +441,7 @@ msgstr "Wysokość podstopnicy"
 
 #: crates/core/src/schedule.rs:443
 msgid "Risers"
-msgstr "Podstopnice"
+msgstr "Liczba podstopnic"
 
 #: crates/core/src/model.rs:2864
 msgid "Roof tiles"
@@ -461,7 +461,7 @@ msgstr "SKALA"
 
 #: crates/core/src/sheet.rs:267
 msgid "SCALE AS INDICATED"
-msgstr "SKALA JAK OZNACZONO"
+msgstr "SKALA WEDŁUG OZNACZEŃ"
 
 #: crates/core/src/fills.rs:413
 msgid "Sand"
@@ -486,7 +486,7 @@ msgstr "Pokaż wszystko"
 
 #: crates/core/src/phasing.rs:130
 msgid "Show Complete"
-msgstr "Pokaż ukończone"
+msgstr "Pokaż zakończone"
 
 #: crates/core/src/phasing.rs:131
 msgid "Show New"
@@ -586,7 +586,7 @@ msgstr "Razem"
 
 #: crates/core/src/schedule.rs:445
 msgid "Tread"
-msgstr "Stopnica"
+msgstr "Głębokość stopnicy"
 
 #: crates/core/src/model.rs:1488
 msgid "Type"
@@ -666,11 +666,11 @@ msgstr "Tak"
 
 #: crates/core/src/loads.rs:78
 msgid "bath"
-msgstr "łazienka"
+msgstr "Łazienka"
 
 #: crates/core/src/loads.rs:78
 msgid "bwc"
-msgstr "łazienka z WC"
+msgstr "Łazienka z WC"
 
 #: crates/core/src/loads.rs:78
 msgid "wc"
