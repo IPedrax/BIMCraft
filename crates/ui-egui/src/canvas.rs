@@ -2316,12 +2316,7 @@ impl BimApp {
             // The selected walls, onto the roof or floor picked; then Modify, the walls still selected.
             Tool::Attach => {
                 if let Some(id) = hovered {
-                    let field = if self.attach_base { "attach_base" } else { "attach_top" };
-                    let mut p = json!({"ids": self.selected_walls()});
-                    p[field] = json!(id);
-                    if self.run("modify", p).is_some() {
-                        self.tool = Tool::Modify;
-                    }
+                    self.attach_to(id);
                 }
             }
             Tool::Component | Tool::Fixture(_) => {
@@ -4062,6 +4057,9 @@ impl BimApp {
                     top_level: None,
                     height: 0.0,
                     base_offset: 0.0,
+                    top_offset: 0.0,
+                    attach_top: None,
+                    attach_base: None,
                 });
                 sketched(&e);
                 for (_, at, text, _) in standing_dimensions(p, m, v, &e) {

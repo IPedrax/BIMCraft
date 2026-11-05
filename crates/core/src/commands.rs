@@ -2527,8 +2527,8 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             let top = m.component_pieces(cp).iter().map(|p| p.top).fold(base, f64::max);
             extra.insert("height".into(), json!(hundredth(top - base)));
         }
-        Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
-            let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
+        Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => {
+            let (bottom, top) = m.column_span(e);
             extra.insert("height".into(), json!(top - bottom));
             if let Some(t) = m.column_type(e) {
                 extra.insert("width".into(), json!(t.width));
@@ -8344,6 +8344,9 @@ pub fn stood_of(m: &Model, p: &Value, category: &str) -> Result<Element, String>
             top_level: None,
             height: thickness,
             base_offset: top - thickness,
+            top_offset: 0.0,
+            attach_top: None,
+            attach_base: None,
             room_bounding: true,
         };
         return Ok(Element::Footing(col));
@@ -8359,6 +8362,9 @@ pub fn stood_of(m: &Model, p: &Value, category: &str) -> Result<Element, String>
         top_level,
         height,
         base_offset: num(c, p, "base_offset")?.unwrap_or(0.0),
+        top_offset: num(c, p, "top_offset")?.unwrap_or(0.0),
+        attach_top: id_opt(c, p, "attach_top")?,
+        attach_base: id_opt(c, p, "attach_base")?,
     };
     Ok(if category == "column" { Element::Column(col) } else { Element::StructuralColumn(col) })
 }
@@ -11365,10 +11371,13 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
     }
     // Copied walls attached to roofs or floors copied with them attach to the copies.
     for id in &made {
-        if let Some(Element::Wall(w)) = m.elements.get_mut(id) {
-            for at in [&mut w.attach_top, &mut w.attach_base] {
-                *at = at.map(|a| hosts.get(&a).copied().unwrap_or(a));
-            }
+        let ties = match m.elements.get_mut(id) {
+            Some(Element::Wall(w)) => vec![&mut w.attach_top, &mut w.attach_base],
+            Some(Element::Column(col) | Element::StructuralColumn(col)) => vec![&mut col.attach_top, &mut col.attach_base],
+            _ => Vec::new(),
+        };
+        for at in ties {
+            *at = at.map(|a| hosts.get(&a).copied().unwrap_or(a));
         }
     }
     for (from, mut e) in notes {
@@ -12231,6 +12240,9 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
         .flat_map(|g| lookup.referrers(g))
         .filter(|id| match m.elements.get(*id) {
             Some(Element::Wall(w)) => w.attach_top.is_some_and(|g| gone.contains(&g)) || w.attach_base.is_some_and(|g| gone.contains(&g)),
+            Some(Element::Column(col) | Element::StructuralColumn(col)) => {
+                col.attach_top.is_some_and(|g| gone.contains(&g)) || col.attach_base.is_some_and(|g| gone.contains(&g))
+            }
             Some(Element::Roof(r)) => r.join.is_some_and(|g| gone.contains(&g)),
             // A 3D view whose work plane's level goes sketches on the lowest level again.
             Some(Element::View3D(v)) => v.work_plane.as_ref().is_some_and(|wp| wp.level.is_some_and(|l| gone.contains(&l))),
@@ -12272,6 +12284,14 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 }
                 if w.attach_base.is_some_and(|g| gone.contains(&g)) {
                     w.attach_base = None;
+                }
+            }
+            Some(Element::Column(col) | Element::StructuralColumn(col)) => {
+                if col.attach_top.is_some_and(|g| gone.contains(&g)) {
+                    col.attach_top = None;
+                }
+                if col.attach_base.is_some_and(|g| gone.contains(&g)) {
+                    col.attach_base = None;
                 }
             }
             Some(Element::Roof(r)) if r.join.is_some_and(|g| gone.contains(&g)) => r.join = None,
@@ -12369,6 +12389,7 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     for e in m.elements.values_mut() {
         let ties = match e {
             Element::Wall(w) => vec![&mut w.attach_top, &mut w.attach_base],
+            Element::Column(col) | Element::StructuralColumn(col) => vec![&mut col.attach_top, &mut col.attach_base],
             Element::Roof(r) => vec![&mut r.join],
             _ => Vec::new(),
         };

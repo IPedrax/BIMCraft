@@ -579,8 +579,8 @@ fn cut_outlines(m: &Model, elements: &[(Id, &Element)], z: f64, look: &Look, ind
 /// What a column (a structural one, a footing) or a run (a beam, a strip footing) takes in plan, and the heights it reaches:
 /// its outline, its bottom and its top.
 fn stands(m: &Model, e: &Element) -> Option<(Vec<P2>, f64, f64)> {
-    if let Some(col) = e.column() {
-        let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
+    if e.column().is_some() {
+        let (bottom, top) = m.column_span(e);
         return Some((m.column_outline(e), bottom, top));
     }
     let g = m.run_geom(e)?;

@@ -2411,8 +2411,8 @@ impl BimApp {
             self.status = Status { text: t("select what to move, copy, rotate or mirror first").into(), error: true };
             return;
         }
-        if tool == Tool::Attach && self.selected_walls().is_empty() {
-            self.status = Status { text: t("select the walls to attach first").into(), error: true };
+        if tool == Tool::Attach && self.selected_attachable().is_empty() {
+            self.status = Status { text: t("select the walls or columns to attach first").into(), error: true };
             return;
         }
         if matches!(tool, Tool::SlopeArrow(_)) && self.selected_floor().is_none() {
@@ -2484,6 +2484,24 @@ impl BimApp {
     /// The walls among the selection.
     fn selected_walls(&self) -> Vec<Id> {
         self.selection.iter().copied().filter(|id| self.session.model.wall(*id).is_some()).collect()
+    }
+
+    /// What's selected that Attach Top/Base takes: the walls and columns.
+    pub(crate) fn selected_attachable(&self) -> Vec<Id> {
+        let m = &self.session.model;
+        let can = |id: &Id| matches!(m.elements.get(*id), Some(Element::Wall(_) | Element::Column(_) | Element::StructuralColumn(_)));
+        self.selection.iter().copied().filter(can).collect()
+    }
+
+    /// Attach Top/Base's pick, in a plan or the 3D view: the selected walls and columns onto roof or floor `id`, then Modify, them
+    /// still selected.
+    pub(crate) fn attach_to(&mut self, id: Id) {
+        let field = if self.attach_base { "attach_base" } else { "attach_top" };
+        let mut p = json!({"ids": self.selected_attachable()});
+        p[field] = json!(id);
+        if self.run("modify", p).is_some() {
+            self.tool = Tool::Modify;
+        }
     }
 
     /// The roof selected, when one roof is all that is.
@@ -4336,20 +4354,23 @@ impl BimApp {
         }
         // Walls selected: Revit's Modify Wall panel.
         let walls = self.selected_walls();
-        if !walls.is_empty() && matches!(self.tool, Tool::Modify | Tool::Attach) {
-            panel(ui, msg!("Modify Wall"), |ui| {
-                let tip = msg!("Flip (Space): the walls' exterior sides go to the other side of their location lines");
-                if big_button(ui, Icon::Flip, "Flip", false, tip).clicked() {
-                    self.flip();
+        let attachable = self.selected_attachable();
+        if !attachable.is_empty() && matches!(self.tool, Tool::Modify | Tool::Attach) {
+            let title = if walls.is_empty() { msg!("Modify Column") } else { msg!("Modify Wall") };
+            panel(ui, title, |ui| {
+                if !walls.is_empty() {
+                    let tip = msg!("Flip (Space): the walls' exterior sides go to the other side of their location lines");
+                    if big_button(ui, Icon::Flip, "Flip", false, tip).clicked() {
+                        self.flip();
+                    }
                 }
-                let tip = msg!("Attach Top/Base: pick a roof or a floor for the walls' tops, or bases, to follow");
+                let tip = msg!("Attach Top/Base: pick a roof or a floor for the tops, or bases, of the walls and columns to follow");
                 if big_button(ui, Icon::Attach, "Attach Top/Base", self.tool == Tool::Attach, tip).clicked() {
                     self.set_tool(Tool::Attach);
                 }
-                if big_button(ui, Icon::Detach, "Detach Top/Base", false, "Detach Top/Base: the walls' tops and bases their own again")
-                    .clicked()
-                {
-                    self.run("modify", json!({"ids": walls, "attach_top": null, "attach_base": null}));
+                let tip = msg!("Detach Top/Base: the tops and bases of the walls and columns their own again");
+                if big_button(ui, Icon::Detach, "Detach Top/Base", false, tip).clicked() {
+                    self.run("modify", json!({"ids": attachable, "attach_top": null, "attach_base": null}));
                 }
             });
         }
@@ -4768,8 +4789,8 @@ impl BimApp {
             Tool::Modify => msg!("Click to select, Tab for what's underneath, Ctrl adds, Shift takes away; drag to box or to move."),
             Tool::Wall(chain) if chain.is_empty() => msg!("Click to enter the wall's start point."),
             Tool::Wall(_) => msg!("Click to build the wall to the next point. Enter or Esc ends the chain, Shift keeps it square."),
-            Tool::Attach if self.attach_base => msg!("Pick a roof or a floor: the selected walls' bases stand on it."),
-            Tool::Attach => msg!("Pick a roof or a floor: the selected walls' tops follow its underside."),
+            Tool::Attach if self.attach_base => msg!("Pick a roof or a floor: the bases of what's selected stand on it."),
+            Tool::Attach => msg!("Pick a roof or a floor: the tops of what's selected follow its underside."),
             Tool::Door => msg!("Click a wall to place the door."),
             Tool::Window => msg!("Click a wall to place the window."),
             Tool::Room => msg!("Click inside walls to place a room; the outline shows the room you'd get."),

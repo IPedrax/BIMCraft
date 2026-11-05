@@ -867,11 +867,14 @@ fn solids_in_with(
                     slabs(&mut out, m, id, CEILING, face, rise);
                 }
             }
-            Element::Column(col) => {
-                out.push(slab(id, WALL, &m.column_outline(e), m.span(col.level, col.base_offset, col.top_level, col.height)))
-            }
-            Element::StructuralColumn(col) | Element::Footing(col) => {
-                out.push(slab(id, STRUCTURE, &m.column_outline(e), m.span(col.level, col.base_offset, col.top_level, col.height)))
+            Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => {
+                let color = if matches!(e, Element::Column(_)) { WALL } else { STRUCTURE };
+                // Attached, its top follows what's over it, however that slopes: prisms, as a wall's.
+                let parts = walls::column_prisms(m, e);
+                if parts.is_empty() {
+                    out.push(slab(id, color, &m.column_outline(e), m.column_span(e)));
+                }
+                out.extend(parts.into_iter().map(|p| Solid::Prism { owner: id, color, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: None }));
             }
             // A rectangular run is a sloped prism, which a section cuts; a round one a tube, shown beyond its line.
             crate::model::run_arm!(_) => {

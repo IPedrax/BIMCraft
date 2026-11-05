@@ -50,6 +50,7 @@ pub mod geom;
 pub mod gltf;
 pub mod graphics;
 pub mod groups;
+pub mod handles;
 pub mod hydrant;
 pub mod ids;
 pub mod ifc;
