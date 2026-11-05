@@ -70,6 +70,15 @@ takes it, or what the wall is attached to): its `top_level`'s elevation plus its
 mm, negative below the level), or its base plus its `height` when it has no top level, which an offset does not touch.
 `Model::check` refuses a wall whose top does not come out above its base, saying how tall it comes out and by how much to raise it.
 The Properties palette shows Top Offset under Top Constraint for a wall that has one.
+A door or a window stands in its wall from its `sill` up its type's height (issue #215): `Model::check` keeps its width within the
+wall's length, its sill at or over the wall's base and under its top all across it (`walls::top_at`, which a roof the wall is
+attached to may raise; within `TOL` of the top is at it), and the openings in one wall apart; its head may rise past the top, as
+Revit lets it. The wall is then cut up to its top, a notch open there: `walls::prisms` leaves no part over the opening, so 3D,
+sections and elevations draw the notch, and the door or window at its full height, past the top. A plan cutting through the
+wall opens it at the opening as ever; one cutting over the wall's top cuts neither, and sees the notch's sides across the wall
+from above (`walls::notches`). IFC writes the opening's void at its full height (a boolean takes off only what is in the wall)
+and the door or window at its own size, and the wall's net quantities take off only the part of each opening in the wall; the
+IFC import brings such an opening in, and leaves out with a note naming the file's wall one whose sill is at or over its top.
 A roof by footprint is the straight skeleton of its outline and its `courtyards` (`skeleton::faces`: the outline
 counter-clockwise, the courtyards clockwise, the roof to the left of every edge): each edge moves in at speed 1, a gable's at
 0, and its slope rises from it, reaching the roof's base `overhang` in from its eaves; a courtyard's edges number on after

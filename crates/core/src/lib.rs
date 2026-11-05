@@ -67,6 +67,8 @@ pub mod massing;
 pub mod model;
 pub mod nbr5410;
 #[cfg(test)]
+mod openings_past_top_tests;
+#[cfg(test)]
 mod oracle_tests;
 pub mod paint;
 pub mod pat;

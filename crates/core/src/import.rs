@@ -3230,24 +3230,24 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let Err(error) = m.check() else { break };
         let id = culprit(&error).filter(|id| from.contains_key(id)).ok_or_else(|| error.clone())?;
         let why = error.split_once(": ").map_or(error.as_str(), |(_, why)| why);
-        // A door or a window that rises past its wall's top, as Revit lets one: said with the file's wall and both heights.
-        let why = match (m.elements.get(id), why.starts_with("sill ")) {
-            (Some(e @ (Element::Door(o) | Element::Window(o))), true) => match (m.wall(o.host), m.opening_dims(e)) {
-                (Some(w), Ok(t)) => {
-                    let along = [o.offset - t.width / 2.0, o.offset, o.offset + t.width / 2.0];
-                    let top = along.map(|s| crate::walls::top_at(&m, w, s)).into_iter().fold(f64::INFINITY, f64::min);
-                    let wall = m.elements.id(o.host).and_then(|k| from.get(&k)).cloned().unwrap_or_default();
-                    format!(
-                        "sill {} + height {} reach {} mm, past its wall {wall}, {} mm high there; BIMCraft keeps a door or window \
-                         within its wall's height, where Revit lets one rise past the top",
-                        num(o.sill),
-                        num(t.height),
-                        num(o.sill + t.height),
-                        num(top - m.own_base(w))
-                    )
+        // A door or a window whose sill is at or over its wall's top (one only rising past the top comes in, as Revit lets
+        // it): said with the file's wall, not BIMCraft's id for it, and its height there.
+        let why = match m.elements.get(id) {
+            Some(e @ (Element::Door(o) | Element::Window(o))) if why.starts_with("sill ") && why.contains(" top ") => {
+                match (m.wall(o.host), m.opening_dims(e)) {
+                    (Some(w), Ok(t)) => {
+                        let along = [o.offset - t.width / 2.0, o.offset, o.offset + t.width / 2.0];
+                        let top = along.map(|s| crate::walls::top_at(&m, w, s)).into_iter().fold(f64::INFINITY, f64::min);
+                        let wall = m.elements.id(o.host).and_then(|k| from.get(&k)).cloned().unwrap_or_default();
+                        format!(
+                            "sill {} is at or over the top of its wall {wall}, {} mm high there, so nothing of it is in the wall",
+                            num(o.sill),
+                            num(top - m.own_base(w))
+                        )
+                    }
+                    _ => why.to_string(),
                 }
-                _ => why.to_string(),
-            },
+            }
             _ => why.to_string(),
         };
         skipped.push(format!("{}: {why}", from.get(&id).cloned().unwrap_or_default()));
@@ -3937,7 +3937,7 @@ ENDSEC;END-ISO-10303-21;",
     }
 
     #[test]
-    fn a_window_taller_than_its_wall_is_left_out_with_the_wall_and_both_heights_named() {
+    fn a_window_taller_than_its_wall_comes_in_rising_past_the_top_as_revit_lets_it() {
         let mut s = crate::engine::Session::new();
         s.script(
             r#"wall {"points": [[0,0],[6000,0]], "height": 3000}
@@ -3958,11 +3958,11 @@ ENDSEC;END-ISO-10303-21;",
             .collect::<Vec<_>>()
             .join("\n");
         let i = ifc(file.as_bytes(), "x").unwrap();
-        assert!(only(&i.model, "window").is_empty(), "BIMCraft keeps a window within its wall");
-        let note = i.skipped.iter().find(|n| n.starts_with("IFCWINDOW")).unwrap();
-        assert!(note.contains("past its wall IFCWALL #"), "names the file's wall, not BIMCraft's id for it: {note}");
-        assert!(note.contains("3000 mm high") && note.contains("height 5000"), "says both heights: {note}");
-        assert!(note.contains("Revit"), "says why another program allowed it: {note}");
+        assert_eq!(i.skipped, Vec::<String>::new(), "nothing is left out");
+        let window = only(&i.model, "window");
+        assert_eq!(window.len(), 1, "it comes in, its head past the wall's top");
+        let t = i.model.opening_type(window[0]).unwrap();
+        assert_eq!(t.height, 5000.0, "at its own height");
     }
 
     #[test]

@@ -217,7 +217,7 @@ pub static ALL: &[Command] = &[
         &["DR"],
         "{at: [x,y] | wall: id, offset?, type?, family?, level?, mark?, flip_facing?, flip_hand?} in the wall under `at`, \
          or in `wall` centred `offset` mm from its start; with `family`, a door family's `type` (its first by default), \
-         which sizes the opening and draws the door",
+         which sizes the opening and draws the door; it may rise past a low wall's top, as Revit lets it",
         door,
     )
     .menu("Architecture > Door"),
@@ -226,7 +226,8 @@ pub static ALL: &[Command] = &[
         "Window",
         &["WN"],
         "{at: [x,y] | wall: id, offset?, sill?, type?, family?, level?, mark?, flip_facing?} like door; `sill` defaults to the \
-         type's (a family's `Sill Height`)",
+         type's (a family's `Sill Height`) and must be under the wall's top, while its head may rise past the top, as Revit \
+         lets it (the wall is notched up to its top)",
         window,
     )
     .menu("Architecture > Window"),
