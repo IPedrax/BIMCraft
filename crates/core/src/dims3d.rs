@@ -66,6 +66,13 @@ pub fn line(d: &Dimension3D) -> (P3, P3) {
     (add(p, off), add(q, off))
 }
 
+/// How far apart `a` and `b` are, and how far from `a` to `b` along x, y and z: what the Measure tool reads in a 3D view. Each
+/// axis's is unsigned: it says how long, as a ruler does, and the picture says which way.
+pub fn reading(a: P3, b: P3) -> (f64, P3) {
+    let d = sub(b, a);
+    (dot(d, d).sqrt(), d.map(f64::abs))
+}
+
 /// Where a pick at pixel `at` through `cam` puts the line of a dimension from `p` to `q`: on the plane through them that
 /// faces the camera most. None where the view runs along it.
 pub fn line_through(cam: &Camera, p: P3, q: P3, at: (f64, f64)) -> Option<P3> {

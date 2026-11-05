@@ -354,6 +354,9 @@ pub struct Orbit {
     slot: u64,
     /// What its processor picture's texture is called.
     name: &'static str,
+    /// The Measure tool in the 3D view: its first point, once clicked; then the ruler laid.
+    pub(crate) ruler_start: Option<P3>,
+    pub(crate) ruler: Option<(P3, P3)>,
 }
 
 /// The next view's slot on the card.
@@ -406,6 +409,8 @@ impl Default for Orbit {
             fitted: None,
             slot: NEXT_SLOT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             name: "view3d",
+            ruler_start: None,
+            ruler: None,
         }
     }
 }
@@ -454,6 +459,36 @@ fn dim_ref(scene: &Scene, cam: &Camera, at: (f64, f64), under: Option<Surface>, 
         return Some(Ref3 { at: q.map(f64::round), edge: Some([micron(a), micron(b)]) });
     }
     under.map(|s| Ref3 { at: s.at.map(f64::round), edge: None })
+}
+
+/// Where the Measure tool lands at pixel `at`: what a dimension would pick there, or the middle of the edge when the cursor is
+/// that near it. Any point of the model, whatever the work plane.
+fn measure_point(scene: &Scene, cam: &Camera, at: (f64, f64), under: Option<Surface>, ppp: f32, look: &Look) -> Option<Ref3> {
+    let mut r = dim_ref(scene, cam, at, under, ppp, look)?;
+    if let Some([a, b]) = r.edge {
+        let mid = [0, 1, 2].map(|k| f64::midpoint(a[k], b[k]));
+        let (x, y, _) = cam.project(mid);
+        if (x - at.0).hypot(y - at.1) <= SNAP * f64::from(ppp) {
+            r.at = mid;
+        }
+    }
+    Some(r)
+}
+
+/// The ruler from `a` to `b`, a dot at each end: its length beside `b`, and under it how far it goes along each axis.
+fn draw_ruler(p: &egui::Painter, m: &bimcraft_core::model::Model, a: P3, b: P3, screen: &dyn Fn(P3) -> Pos2) {
+    let (from, to) = (screen(a), screen(b));
+    if !(from.is_finite() && to.is_finite()) {
+        return;
+    }
+    p.line_segment([from, to], Stroke::new(2.0, pal().accent));
+    for end in [from, to] {
+        p.circle_filled(end, 3.5, pal().accent);
+    }
+    let (long, along) = dims3d::reading(a, b);
+    let [x, y, z] = along.map(|d| m.units.length(d));
+    let text = format!("{}\nΔX {x}  ΔY {y}  ΔZ {z}", m.units.with_unit(long));
+    crate::canvas::tag(p, to + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, text);
 }
 
 /// Whether `tool` draws in the 3D view on the face under the cursor.
@@ -1590,6 +1625,27 @@ impl BimApp {
                 }
             }
         }
+        // The Measure tool: what a click would take, snapped to the model wherever that is, and the ruler, begun or laid.
+        let measuring = matches!(self.tool, Tool::Measure(_)) && sketch_z.is_none() && !picking;
+        let measure_pick = |at: Pos2| measure_point(scene, &cam, px(at), surface(&o.picker, &cam, at), ppp, &look3);
+        if measuring {
+            let screen = |q: P3| on_screen(&cam, rect, ppp, q);
+            let aim = hover.filter(|_| o.drag.is_none()).and_then(measure_pick);
+            if let Some((a, b)) = o.ruler {
+                draw_ruler(&p, &model, a, b, &screen);
+            }
+            if let Some(r) = aim {
+                if let Some([a, b]) = r.edge {
+                    p.line_segment([screen(a), screen(b)], Stroke::new(3.0, pal().accent));
+                }
+                p.circle_stroke(screen(r.at), 5.0, Stroke::new(1.5, pal().accent));
+                if let Some(start) = o.ruler_start {
+                    draw_ruler(&p, &model, start, r.at, &screen);
+                }
+            } else if let Some(start) = o.ruler_start {
+                p.circle_filled(screen(start), 3.5, pal().accent);
+            }
+        }
         // Rooms aren't seen in 3D but while selected: then a see-through solid in the selection's colour, from their bottom to
         // their top, over their boundary (an unbounded one's square).
         // With Rooms shown in the view's Visibility/Graphics (they are off in every new 3D view), all of them so.
@@ -1814,6 +1870,7 @@ impl BimApp {
             .filter(|_| sketch_z.is_none() && !picking)
             .map(|at| dim_at(at).filter(|_| modify).or_else(|| pick(&o.picker, at).map(|h| h.id)));
         let dim_click = click.filter(|_| dimming).map(|at| (px(at), dim_pick(at)));
+        let measure_click = click.filter(|_| measuring).map(measure_pick);
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
         // Place on Face: the face under the click, of what hosts components, by its role.
@@ -1840,7 +1897,7 @@ impl BimApp {
                 Some((q, plane, _)) => self.draw3d(q, plane),
                 None => self.status = Status { text: self.needs_face(), error: true },
             },
-            Some(_) if dimming => {}
+            Some(_) if dimming || measuring => {}
             Some(_) => {
                 self.status =
                     Status { text: crate::lang::t("this tool works in plan views: open one from the Project Browser").into(), error: true }
@@ -1849,6 +1906,21 @@ impl BimApp {
         }
         if let Some((at, r)) = dim_click {
             self.dim3_click(&cam, at, r);
+        }
+        match measure_click {
+            Some(Some(r)) => match self.orbit.ruler_start.take() {
+                Some(start) => {
+                    let (long, _) = dims3d::reading(start, r.at);
+                    self.orbit.ruler = Some((start, r.at));
+                    self.status = Status { text: tf("Measured: {}", &[&model.units.with_unit(long)]), error: false };
+                }
+                None => {
+                    self.orbit.ruler = None;
+                    self.orbit.ruler_start = Some(r.at);
+                }
+            },
+            Some(None) => self.status = Status { text: t("Pick a corner, an edge or a face of the model to measure.").into(), error: true },
+            None => {}
         }
         // The selection box being dragged, and what one let go picks.
         if let (Some(from), Some(now)) = (self.orbit.select, latest) {
