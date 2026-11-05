@@ -2486,6 +2486,26 @@ impl BimApp {
         self.selection.iter().copied().filter(|id| self.session.model.wall(*id).is_some()).collect()
     }
 
+    /// A click of Trim/Extend to Corner or Trim/Extend Single or Multiple Elements on `hovered`, at plan point `at` (the side kept),
+    /// in a plan or the 3D view alike.
+    pub(crate) fn trim_click(&mut self, hovered: Option<Id>, at: P2) {
+        match (self.tool.clone(), hovered) {
+            (Tool::Trim(None), Some(a)) => self.tool = Tool::Trim(Some((a, at))),
+            (Tool::Trim(Some((a, keep))), Some(b)) if b != a => {
+                self.run("corner", json!({"ids": [a, b], "keep": [[keep.0, keep.1], [at.0, at.1]]}));
+                self.tool = Tool::Trim(None);
+            }
+            (Tool::TrimTo { boundary: None, many }, Some(b)) => self.tool = Tool::TrimTo { boundary: Some(b), many },
+            (Tool::TrimTo { boundary: Some(b), many }, Some(id)) if id != b => {
+                self.run("trim_extend", json!({"boundary": b, "ids": [id], "keep": [[at.0, at.1]]}));
+                if !many {
+                    self.tool = Tool::TrimTo { boundary: None, many };
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// What's selected that Attach Top/Base takes: the walls and columns.
     pub(crate) fn selected_attachable(&self) -> Vec<Id> {
         let m = &self.session.model;
@@ -4776,7 +4796,10 @@ impl BimApp {
                     "Click a point, a corner or an edge to select it (Shift adds), then type its height or drag its arrows; Delete removes it."
                 );
             }
-            (Sheet::View3D, Tool::AddPoint | Tool::AddSplitLine(_) | Tool::Measure(_) | Tool::Attach) => {}
+            (
+                Sheet::View3D,
+                Tool::AddPoint | Tool::AddSplitLine(_) | Tool::Measure(_) | Tool::Attach | Tool::Trim(_) | Tool::TrimTo { .. },
+            ) => {}
             (Sheet::View3D | Sheet::Section(_) | Sheet::Paper(_), _) => {
                 return msg!("This tool works in plan views: open one from the Project Browser.");
             }

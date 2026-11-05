@@ -644,6 +644,21 @@ pub(crate) fn combo(ui: &mut Ui, salt: (Id, &str), label: UiId, current: &str, o
     picked
 }
 
+/// [`combo`] of line styles: each row with a sample of the line its style draws (`linestyles::style_row`); `options` that
+/// aren't a style (Invisible) have none.
+fn style_combo(ui: &mut Ui, salt: (Id, &str), label: UiId, current: &str, options: &[String], model: &Model) -> Option<String> {
+    let mut picked = None;
+    let c = ComboBox::from_id_salt(salt).selected_text(current).width(ui.available_width()).truncate().show_ui(ui, |ui| {
+        for o in options {
+            if crate::linestyles::style_row(ui, model, model.line_styles.get(o), o == current, o) && o != current {
+                picked = Some(o.clone());
+            }
+        }
+    });
+    c.response.labelled_by(label);
+    picked
+}
+
 /// A button across a value cell, as wide as the drop-downs beside it, its text centred: Edit…, a view template's name.
 pub(crate) fn wide_button(ui: &mut Ui, text: impl Into<egui::WidgetText>) -> egui::Response {
     ui.add_sized([ui.available_width(), ui.spacing().interact_size.y], Button::new(text).truncate())
@@ -1732,7 +1747,7 @@ impl BimApp {
                         }
                         LineStyle => {
                             let options: Vec<String> = model.line_styles.keys().cloned().collect();
-                            if let Some(s) = combo(ui, (id, key), name.id, val.as_str().unwrap_or_default(), &options) {
+                            if let Some(s) = style_combo(ui, (id, key), name.id, val.as_str().unwrap_or_default(), &options, model) {
                                 change = Some((key, Ok(json!(s))));
                             }
                         }
@@ -1742,7 +1757,7 @@ impl BimApp {
                             let options: Vec<String> =
                                 std::iter::once(invisible.clone()).chain(model.line_styles.keys().cloned()).collect();
                             let now = val.as_str().map_or(invisible.clone(), str::to_string);
-                            if let Some(s) = combo(ui, (id, key), name.id, &now, &options) {
+                            if let Some(s) = style_combo(ui, (id, key), name.id, &now, &options, model) {
                                 change = Some((key, Ok(if s == invisible { Value::Null } else { json!(s) })));
                             }
                         }

@@ -265,3 +265,142 @@ fn in_3d_a_column_s_top_arrow_and_place_drag_as_a_wall_s_do() {
     let at = h.state().session.model.elements.get(column).and_then(Element::column).map(|c| c.at).unwrap();
     assert_ne!(at, P2(4000.0, 3000.0), "it went with the hand");
 }
+
+/// As in the owner's picture: a wall along the top, one down from its east end, a door on that one, and a dimension from the top
+/// wall's face down to the door.
+fn l_door(up: bool, door_first: bool) -> String {
+    let walls =
+        if up { r#"wall {"points": [[0, -9000], [0, 0], [-6000, 0]]}"# } else { r#"wall {"points": [[-6000, 0], [0, 0], [0, -9000]]}"# };
+    let refs = if door_first { "[[0, -7000], [-3000, 0]]" } else { "[[-3000, 0], [0, -7000]]" };
+    format!("{walls}\ndoor {{\"at\": [0, -7000]}}\ndimension {{\"refs\": {refs}, \"at\": [4000, -3000]}}")
+}
+
+/// The distance the door stands from the top wall's inner face, and from the bottom end of its wall.
+fn door_at(h: &Harness<BimApp>) -> f64 {
+    let door = all(h, "door")[0];
+    let Some(Element::Door(o)) = h.state().session.model.elements.get(door) else { panic!("the door") };
+    let w = h.state().session.model.wall(o.host).unwrap();
+    let axis = bimcraft_core::walls::Axis::of(w);
+    axis.at(o.offset, 0.0).1
+}
+
+#[test]
+fn every_number_beside_a_selected_door_moves_it_so_that_number_reads_what_was_typed() {
+    for (up, door_first) in [(false, false), (true, false), (false, true), (true, true)] {
+        number_beside_a_door(&l_door(up, door_first), &format!("drawn up {up}, door first {door_first}"));
+    }
+}
+
+fn number_beside_a_door(script: &str, case: &str) {
+    eprintln!("CASE {case}\n{script}");
+    let h = app(script);
+    let door = all(&h, "door")[0];
+    let dim = all(&h, "dimension")[0];
+    let Some(Element::Dimension(d)) = h.state().session.model.elements.get(dim) else { panic!("the dimension") };
+    let was = h.state().session.model.dimension_values(d)[0];
+    let y0 = door_at(&h);
+    // The permanent dimension, the door selected: 500 longer, so the door goes 500 further down.
+    let mut h = app(script);
+    h.state_mut().selection = vec![door];
+    h.run();
+    let label = format!("Dimension {}", h.state().session.model.units.length(was));
+    type_in(&mut h, &label, &format!("{}", was + 500.0));
+    let Some(Element::Dimension(d)) = h.state().session.model.elements.get(dim) else { panic!("the dimension") };
+    assert!(
+        (h.state().session.model.dimension_values(d)[0] - (was + 500.0)).abs() < 0.5,
+        "{case}: {} now {:?}, door from {y0} to {}: {} {:?}",
+        was,
+        h.state().session.model.dimension_values(d),
+        door_at(&h),
+        h.state().status.text,
+        h.state().session.steps(false).iter().map(|st| st.label).collect::<Vec<_>>()
+    );
+    assert!((door_at(&h) - (y0 - 500.0)).abs() < 0.5, "{case}: down, not up: {} from {y0}", door_at(&h));
+    // Its temporary dimensions, from the face of the top wall and to its wall's end: whichever is typed reads what was typed.
+    let spans = |h: &Harness<BimApp>| {
+        let m = &h.state().session.model;
+        let Some(Element::Door(o)) = m.elements.get(door) else { panic!("the door") };
+        let (start, end) = m.opening_span(o).unwrap();
+        [o.offset - start, end - o.offset].map(|x| (x * 100.0).round() / 100.0)
+    };
+    for n in 0..2 {
+        let mut h = app(script);
+        h.state_mut().selection = vec![door];
+        h.run();
+        let now = spans(&h)[n];
+        let label = format!("Temporary dimension {}", h.state().session.model.units.length(now));
+        type_in(&mut h, &label, &format!("{}", now - 300.0));
+        assert!((spans(&h)[n] - (now - 300.0)).abs() < 0.5, "{case}: typed {} into {now}: now {:?}", now - 300.0, spans(&h));
+    }
+}
+
+#[test]
+fn every_segment_of_a_string_along_the_top_reads_what_is_typed_into_it() {
+    for west in [false, true] {
+        for select_door in [false, true] {
+            let walls = if west {
+                r#"wall {"points": [[0, -9000], [0, 0], [-6000, 0]]}"#
+            } else {
+                r#"wall {"points": [[-6000, 0], [0, 0], [0, -9000]]}"#
+            };
+            // The two doors along the top wall, then the side wall's centre line.
+            let side = if west { 100002 } else { 100003 };
+            let script = format!(
+                "{walls}\ndoor {{\"at\": [-4000, 0]}}\ndoor {{\"at\": [-1500, 0]}}\ndimension {{\"refs\": [{{\"id\": 100004}}, {{\"id\": 100005}}, {{\"id\": {side}}}], \"at\": [-3000, 1500]}}"
+            );
+            for segment in 0..2 {
+                let case = format!("drawn west {west}, door selected {select_door}, segment {segment}");
+                let mut h = app(&script);
+                let (dim, door) = (all(&h, "dimension")[0], all(&h, "door")[0]);
+                let values = |h: &Harness<BimApp>| match h.state().session.model.elements.get(dim) {
+                    Some(Element::Dimension(d)) => h.state().session.model.dimension_values(d),
+                    _ => Vec::new(),
+                };
+                let was = values(&h);
+                // The first door is at one end of the first segment only.
+                if select_door && segment == 1 {
+                    continue;
+                }
+                h.state_mut().selection = vec![if select_door { door } else { dim }];
+                h.run();
+                let label = format!("Dimension {}", h.state().session.model.units.length(was[segment]));
+                type_in(&mut h, &label, &format!("{}", was[segment] + 300.0));
+                let now = values(&h);
+                assert!((now[segment] - (was[segment] + 300.0)).abs() < 0.5, "{case}: {was:?} to {now:?}: {}", h.state().status.text);
+            }
+        }
+    }
+}
+
+#[test]
+fn a_box_in_3d_takes_the_levels_it_takes_in_as_it_does_walls() {
+    let mut h = three_d(BOX);
+    let levels = all(&h, "level");
+    let rect = h.state().orbit.rect;
+    // Round the whole view, from the left: every level whole inside, the walls too.
+    drag_screen(&mut h, rect.min + vec2(2.0, 2.0), rect.max - vec2(2.0, 2.0), PointerButton::Primary);
+    let picked = h.state().selection.clone();
+    assert!(levels.iter().all(|l| picked.contains(l)), "{levels:?} in {picked:?}");
+    assert!(all(&h, "wall").iter().all(|w| picked.contains(w)));
+}
+
+#[test]
+fn trim_to_a_corner_works_in_the_3d_view_as_in_a_plan() {
+    // Two walls that cross, one each way: trimmed to a corner, the parts clicked are kept.
+    let mut h = three_d(
+        r#"wall {"points": [[0, 0], [8000, 0]]}
+wall {"points": [[6000, -2000], [6000, 4000]]}"#,
+    );
+    let walls = all(&h, "wall");
+    h.state_mut().set_tool(Tool::Trim(None));
+    h.run();
+    let a = h.state().screen3([2000.0, -100.0, 1500.0]);
+    click_at(&mut h, a);
+    assert!(matches!(h.state().tool, Tool::Trim(Some(_))), "{}", h.state().status.text);
+    let b = h.state().screen3([6000.0, 2000.0, 1500.0]);
+    click_at(&mut h, b);
+    let m = &h.state().session.model;
+    let (w0, w1) = (m.wall(walls[0]).unwrap(), m.wall(walls[1]).unwrap());
+    assert_eq!(w0.end, P2(6000.0, 0.0), "{}: {w0:?}", h.state().status.text);
+    assert_eq!(w1.start, P2(6000.0, 0.0), "{w1:?}");
+}

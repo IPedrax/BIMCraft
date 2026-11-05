@@ -146,19 +146,28 @@ fn sample(ui: &mut Ui, segments: &[Segment], width: f32, k: f32) {
 /// A row of a Line Style list: a short line as the style draws it, and its `name`. `style` is none for what draws nothing
 /// (Invisible) or by something else (By Category), which has a blank where the sample goes.
 pub(crate) fn style_row(ui: &mut Ui, m: &Model, style: Option<&LineStyle>, current: bool, name: &str) -> bool {
+    let sample = style.map(|s| {
+        let segments = s.pattern.as_ref().and_then(|p| m.line_patterns.get(p)).map_or(&[][..], |p| p.0.as_slice());
+        // A style's own colour, but black, which is the paper's ink in whichever theme.
+        let ink = match s.color {
+            [0, 0, 0] => ui.visuals().text_color(),
+            [r, g, b] => egui::Color32::from_rgb(r, g, b),
+        };
+        (segments, ink)
+    });
+    sample_row(ui, sample, current, name)
+}
+
+/// A row of any list that picks how a line is drawn (a style, a pattern, a dash): `sample`, the pattern's segments and its ink
+/// (a solid line where there are none; a blank where there is no sample), and its `name`. Whether a click picked it.
+pub(crate) fn sample_row(ui: &mut Ui, sample: Option<(&[Segment], egui::Color32)>, current: bool, name: &str) -> bool {
     ui.horizontal(|ui| {
-        let (rect, sample) = ui.allocate_exact_size(vec2(SAMPLE.0, SAMPLE.1), Sense::click());
-        if let Some(s) = style {
-            let segments = s.pattern.as_ref().and_then(|p| m.line_patterns.get(p)).map_or(&[][..], |p| p.0.as_slice());
-            // A style's own colour, but black, which is the paper's ink in whichever theme.
-            let ink = match s.color {
-                [0, 0, 0] => ui.visuals().text_color(),
-                [r, g, b] => egui::Color32::from_rgb(r, g, b),
-            };
+        let (rect, hit) = ui.allocate_exact_size(vec2(SAMPLE.0, SAMPLE.1), Sense::click());
+        if let Some((segments, ink)) = sample {
             creator::paint_in(ui, segments, rect, 3.0, ink);
         }
         // The sample is part of the row: a click on it picks too.
-        ui.selectable_label(current, name).clicked() || sample.clicked()
+        ui.selectable_label(current, name).clicked() || hit.clicked()
     })
     .inner
 }
@@ -189,10 +198,16 @@ fn styles_tab(ui: &mut Ui, d: &mut LineStylesDialog, below: f32) {
                 let shown =
                     s.pattern.and_then(|p| names.iter().find(|(i, _)| *i == p)).map_or_else(|| t(SOLID).to_string(), |(_, n)| n.clone());
                 let label = tf("{}: Pattern", &[&who]);
+                let ink = ui.visuals().text_color();
                 let c = ComboBox::from_id_salt(("line-style-pattern", i)).selected_text(shown).width(140.0).show_ui(ui, |ui| {
-                    ui.selectable_value(&mut s.pattern, None, t(SOLID));
+                    if sample_row(ui, Some((&[], ink)), s.pattern.is_none(), t(SOLID)) {
+                        s.pattern = None;
+                    }
                     for (p, n) in &names {
-                        ui.selectable_value(&mut s.pattern, Some(*p), n);
+                        let segments = d.patterns.get(*p).map_or(&[][..], |r| r.segments.as_slice());
+                        if sample_row(ui, Some((segments, ink)), s.pattern == Some(*p), n) {
+                            s.pattern = Some(*p);
+                        }
                     }
                 });
                 c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, label.clone()));

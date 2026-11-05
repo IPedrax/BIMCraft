@@ -794,6 +794,12 @@ impl BimApp {
         let (modify, demolish, selection) = (self.tool == Tool::Modify, self.tool == Tool::Demolish, self.selection.clone());
         let (paint, unpaint) = (self.tool == Tool::Paint, self.tool == Tool::Unpaint);
         let attaching = self.tool == Tool::Attach;
+        // Trim/Extend in the 3D view takes walls as a plan does, at the point of the face clicked.
+        let trimming = matches!(self.tool, Tool::Trim(_) | Tool::TrimTo { .. }) && self.sketch.is_none();
+        let trim_first = match self.tool {
+            Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } => Some(first),
+            _ => None,
+        };
         // The floor being shaped, with Shape Editing's tools: its points and corners where its top is, which Modify Sub
         // Elements' grips drag up or down; Add Point and Add Split Line click on its top.
         let shaping = self.shaping().and_then(|id| model.shapeable(id).ok());
@@ -1156,7 +1162,7 @@ impl BimApp {
         let lit_dim = hover.filter(|_| modify && o.drag.is_none() && sketch_z.is_none() && !picking).and_then(dim_at);
         let hovered = hover
             .filter(|_| {
-                (modify || demolish || paint || unpaint || attaching)
+                (modify || demolish || paint || unpaint || attaching || trimming)
                     && o.drag.is_none()
                     && o.hot_grip.is_none()
                     && o.hot_handle.is_none()
@@ -1166,10 +1172,12 @@ impl BimApp {
             .filter(|_| lit_dim.is_none())
             .and_then(|at| pick(&o.picker, at))
             .map(|h| h.id)
-            .filter(|id| !attaching || attach_target(&model, *id));
+            .filter(|id| !attaching || attach_target(&model, *id))
+            .filter(|id| !trimming || model.wall(*id).is_some());
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let tints: Vec<(Id, Rgb)> = selection
             .iter()
+            .chain(trim_first.iter())
             .filter(|id| Some(**id) != shaped)
             .map(|id| (*id, rgb(canvas_pal().accent)))
             .chain(hovered.filter(|id| !selection.contains(id)).map(|id| (id, rgb(canvas_pal().hover))))
@@ -1370,6 +1378,11 @@ impl BimApp {
                 crate::canvas::tag(&p, at + vec2(14.0, -8.0), egui::Align2::LEFT_BOTTOM, model.units.with_unit(z));
             }
         }
+        // A selected wall's location line, as a plan shows it, along its base.
+        if let Some(id) = single {
+            let line: Vec<Pos2> = handles::location_line(&model, id).into_iter().map(&screen).filter(|q| q.is_finite()).collect();
+            p.extend(egui::Shape::dashed_line(&line, Stroke::new(1.5, pal().accent), 8.0, 5.0));
+        }
         for (h, q) in &own_handles {
             draw_handle(&p, &cam, *h, *q, o.handle.map(|(_, held, ..)| held), o.hot_handle, screen);
         }
@@ -1555,6 +1568,8 @@ impl BimApp {
             .map(|at| dim_at(at).filter(|_| modify).or_else(|| pick(&o.picker, at).map(|h| h.id)));
         let dim_click = click.filter(|_| dimming).map(|at| (px(at), dim_pick(at)));
         let measure_click = click.filter(|_| measuring).map(measure_pick);
+        // Where on the face a Trim click is: the side of the wall it keeps.
+        let trim_at = click.filter(|_| trimming).and_then(|at| surface(&o.picker, &cam, at)).map(|s| s.at);
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
         let target = click.filter(|_| drawing).and_then(|at| aimed(&o.picker, at));
@@ -1570,6 +1585,11 @@ impl BimApp {
             },
             Some(_) if dimming || measuring => {}
             Some(Some(id)) if attaching && attach_target(&model, id) => self.attach_to(id),
+            Some(Some(id)) if trimming && model.wall(id).is_some() => {
+                let on = trim_at.map_or_else(|| model.wall(id).map_or(P2(0.0, 0.0), |w| (w.start + w.end) * 0.5), |q| P2(q[0], q[1]));
+                self.trim_click(Some(id), on);
+            }
+            Some(_) if trimming => {}
             Some(_) if attaching => {}
             Some(_) => {
                 self.status =
