@@ -28,6 +28,7 @@ pub mod curves;
 pub mod derived;
 pub mod dims;
 pub mod dims3d;
+pub mod dr;
 pub mod drainage;
 pub mod draw;
 pub mod dxf;
