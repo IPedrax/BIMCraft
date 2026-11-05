@@ -3268,7 +3268,7 @@ msgstr "Tìm {}; không có đối tượng nào có: {}"
 msgid "Fine"
 msgstr "Chi tiết"
 
-#: crates/core/src/import.rs:1255
+#: crates/core/src/import.rs:1319
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:718
 msgid "Finish"
@@ -3975,7 +3975,7 @@ msgstr "Đang cài đặt BIMCraft {}…"
 msgid "Instance"
 msgstr "Đối tượng"
 
-#: crates/core/src/import.rs:1254
+#: crates/core/src/import.rs:1318
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Lớp cách nhiệt"
@@ -4650,7 +4650,7 @@ msgstr "Trung bình"
 msgid "Medium Lines"
 msgstr "Nét trung bình"
 
-#: crates/core/src/import.rs:1257
+#: crates/core/src/import.rs:1321
 #: crates/ui-egui/src/properties.rs:717
 msgid "Membrane"
 msgstr "Màng"
@@ -7636,7 +7636,7 @@ msgstr "Số ô lưới phụ Y"
 msgid "Subgrid pen"
 msgstr "Bút lưới phụ"
 
-#: crates/core/src/import.rs:1256
+#: crates/core/src/import.rs:1320
 #: crates/ui-egui/src/properties.rs:715
 msgid "Substrate"
 msgstr "Lớp nền"

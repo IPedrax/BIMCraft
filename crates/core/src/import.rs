@@ -879,20 +879,8 @@ impl<'a> Reader<'a> {
                 }
             }
             "IFCTRIANGULATEDFACESET" | "IFCTRIANGULATEDIRREGULARNETWORK" | "IFCPOLYGONALFACESET" => {
-                let pts = self.point_list(reference(a(0)));
-                let triangles = e.name != "IFCPOLYGONALFACESET";
-                let pn = indices(a(if triangles { 4 } else { 3 }));
-                let at = |i: usize| {
-                    let i = if pn.is_empty() { i } else { i.checked_sub(1).and_then(|k| pn.get(k)).copied()? };
-                    i.checked_sub(1).and_then(|k| pts.get(k)).copied()
-                };
-                let polys: Vec<Vec<usize>> = if triangles {
-                    list(a(3)).iter().map(|t| indices(Some(t))).collect()
-                } else {
-                    refs(a(2)).into_iter().filter_map(|f| self.get(f)).map(|f| indices(f.args.first())).collect()
-                };
-                for poly in polys {
-                    polygon(out, poly.into_iter().filter_map(at).collect());
+                for face in self.face_set(e) {
+                    polygon(out, face);
                 }
             }
             "IFCMAPPEDITEM" => {
@@ -922,6 +910,82 @@ impl<'a> Reader<'a> {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// A tessellated face set's faces in order, each its corners: one for each face it lists, so a colour map's index reads
+    /// them.
+    fn face_set(&self, e: &Entity) -> Vec<Vec<P3>> {
+        let a = |i: usize| e.args.get(i);
+        let pts = self.point_list(reference(a(0)));
+        let triangles = e.name != "IFCPOLYGONALFACESET";
+        let pn = indices(a(if triangles { 4 } else { 3 }));
+        let at = |i: usize| {
+            let i = if pn.is_empty() { i } else { i.checked_sub(1).and_then(|k| pn.get(k)).copied()? };
+            i.checked_sub(1).and_then(|k| pts.get(k)).copied()
+        };
+        let polys: Vec<Vec<usize>> = if triangles {
+            list(a(3)).iter().map(|t| indices(Some(t))).collect()
+        } else {
+            refs(a(2)).into_iter().filter_map(|f| self.get(f)).map(|f| indices(f.args.first())).collect()
+        };
+        polys.into_iter().map(|poly| poly.into_iter().filter_map(at).collect()).collect()
+    }
+
+    /// A product's body as `body_items` reads it, by look: each item's faces with the look its styled item gives it, or
+    /// the styled item of what it is inside does (a mapped representation's item is styled in it, as Revit writes a type's
+    /// geometry), and a face set's faces each with its colour map's colour; none for what nothing styles.
+    fn looked_items(&self, product: &Entity, looks: &Looks) -> Vec<(Option<Look>, Vec<Vec<P3>>)> {
+        let mut out = Vec::new();
+        for item in self.chosen(product) {
+            self.why.set(None);
+            self.looked(item, 0, None, looks, &mut out);
+            if let Some(why) = self.why.take() {
+                self.unread.borrow_mut().insert(item, why);
+            }
+        }
+        out
+    }
+
+    fn looked(&self, id: u64, depth: usize, inherited: Option<&Look>, looks: &Looks, out: &mut Vec<(Option<Look>, Vec<Vec<P3>>)>) {
+        let Some(e) = self.get(id) else { return };
+        if depth > 16 {
+            return;
+        }
+        let look = looks.items.get(&id).or(inherited);
+        match e.name.as_str() {
+            "IFCMAPPEDITEM" => {
+                let Some(map) = self.at(e.args.first()) else { return };
+                let mut inner = Vec::new();
+                if let Some(rep) = self.at(map.args.get(1)) {
+                    for item in refs(rep.args.get(3)) {
+                        self.looked(item, depth + 1, look, looks, &mut inner);
+                    }
+                }
+                let f = self.operator(reference(e.args.get(1))).then(self.axes(reference(map.args.first())));
+                out.extend(
+                    inner
+                        .into_iter()
+                        .map(|(l, faces)| (l, faces.into_iter().map(|face| face.into_iter().map(|p| f.at(p)).collect()).collect())),
+                );
+            }
+            "IFCTRIANGULATEDFACESET" | "IFCTRIANGULATEDIRREGULARNETWORK" | "IFCPOLYGONALFACESET" if looks.maps.contains_key(&id) => {
+                let Some((colours, index)) = looks.maps.get(&id) else { return };
+                let mut by: Vec<(Option<Look>, Vec<Vec<P3>>)> = Vec::new();
+                for (k, face) in self.face_set(e).into_iter().enumerate().filter(|(_, f)| f.len() >= 3) {
+                    let l = index.get(k).and_then(|i| i.checked_sub(1)).and_then(|i| colours.get(i)).or(look).cloned();
+                    match by.iter_mut().find(|(o, _)| *o == l) {
+                        Some((_, faces)) => faces.push(face),
+                        None => by.push((l, vec![face])),
+                    }
+                }
+                out.extend(by);
+            }
+            _ => {
+                let mut faces = Vec::new();
+                self.faces(id, depth, &mut faces);
+                out.push((look.cloned(), faces));
+            }
         }
     }
 
@@ -1344,25 +1408,82 @@ fn item_colours(r: &Reader, ids: &[u64]) -> HashMap<u64, [u8; 3]> {
     styled.filter_map(|e| Some((reference(e.args.first())?, colour(r, refs(e.args.get(1)))?.0))).collect()
 }
 
-/// The name of the surface style each representation item is styled with: what a component's
-/// form made of it is made of.
-fn item_styles(r: &Reader, ids: &[u64]) -> HashMap<u64, String> {
-    let mut out = HashMap::new();
-    for e in ids.iter().filter_map(|id| r.get(*id)).filter(|e| e.name == "IFCSTYLEDITEM") {
-        let Some(item) = reference(e.args.first()) else { continue };
-        let mut styles = refs(e.args.get(1));
-        let mut seen = HashSet::new();
-        while let Some(id) = styles.pop() {
-            let Some(x) = r.get(id).filter(|_| seen.insert(id)) else { continue };
-            match x.name.as_str() {
-                "IFCPRESENTATIONSTYLEASSIGNMENT" => styles.extend(refs(x.args.first())),
-                "IFCSURFACESTYLE" => {
-                    if let Some(n) = text(x.args.first()) {
-                        out.entry(item).or_insert_with(|| clip(n));
+/// How a representation item is shaded: by a surface style of a name, which a material of that name takes the colour of;
+/// or by a colour and how see-through, percent (a style of no name, a colour map's colour).
+#[derive(Clone, Debug, PartialEq)]
+enum Look {
+    Named(String),
+    Colour([u8; 3], u8),
+}
+
+impl Look {
+    /// The material a form of this look is made of: the style's name, or one named for the colour (`Colour FF8000`, and
+    /// `25%` after it where it is see-through).
+    fn material(&self) -> String {
+        match self {
+            Look::Named(n) => n.clone(),
+            Look::Colour([r, g, b], 0) => format!("Colour {r:02X}{g:02X}{b:02X}"),
+            Look::Colour([r, g, b], t) => format!("Colour {r:02X}{g:02X}{b:02X} {t}%"),
+        }
+    }
+}
+
+/// The looks a file gives: each representation item's, from the styled item that names it, and each tessellated face set's
+/// colour map, its colours and each face's index into them (from 1).
+#[derive(Default)]
+struct Looks {
+    items: HashMap<u64, Look>,
+    maps: HashMap<u64, (Vec<Look>, Vec<usize>)>,
+}
+
+/// The looks of the file's styled items (a surface style straight, as IFC4 lets one say, or through IFC2x3's style
+/// assignments; a named one by its name, one of no name by its colour) and of its indexed colour maps (each colour, as
+/// see-through as the map's opacity leaves it: 1 opaque, none opaque).
+fn looks(r: &Reader, ids: &[u64]) -> Looks {
+    let mut out = Looks::default();
+    for e in ids.iter().filter_map(|id| r.get(*id)) {
+        match e.name.as_str() {
+            "IFCSTYLEDITEM" => {
+                let Some(item) = reference(e.args.first()) else { continue };
+                let mut styles = refs(e.args.get(1));
+                let mut seen = HashSet::new();
+                while let Some(id) = styles.pop() {
+                    let Some(x) = r.get(id).filter(|_| seen.insert(id)) else { continue };
+                    match x.name.as_str() {
+                        "IFCPRESENTATIONSTYLEASSIGNMENT" => styles.extend(refs(x.args.first())),
+                        "IFCSURFACESTYLE" => {
+                            let look = match text(x.args.first()) {
+                                Some(n) => Some(Look::Named(clip(n))),
+                                None => colour(r, vec![id]).map(|(c, t)| Look::Colour(c, t)),
+                            };
+                            if let Some(look) = look {
+                                out.items.entry(item).or_insert(look);
+                            }
+                        }
+                        _ => {}
                     }
                 }
-                _ => {}
             }
+            "IFCINDEXEDCOLOURMAP" => {
+                let Some(set) = reference(e.args.first()) else { continue };
+                let clear = real(e.args.get(1)).map_or(0, |o| ((1.0 - o.clamp(0.0, 1.0)) * 100.0).round() as u8);
+                let rgb = r.at(e.args.get(2)).map(|l| list(l.args.first())).unwrap_or_default();
+                let colours: Vec<Look> = rgb
+                    .iter()
+                    .take(MAX_POINTS)
+                    .filter_map(|c| match r.coords(Some(c)).as_slice() {
+                        [red, green, blue] => {
+                            Some(Look::Colour([*red, *green, *blue].map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8), clear))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                // A colour that isn't three numbers leaves the index past it pointing at another: none of them is read.
+                if colours.len() == rgb.len().min(MAX_POINTS) {
+                    out.maps.insert(set, (colours, indices(e.args.get(3))));
+                }
+            }
+            _ => {}
         }
     }
     out
@@ -2396,7 +2517,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     // their bodies, each a mesh in its own axes stood upright, its faces grouped by what they're made
     // of. A family for each name the file gives them ("Family:Type", as Revit and BIMCraft name
     // them), a type for each type; the file's family over the library's of its name.
-    let styles = item_styles(&r, &ids);
+    let looks = looks(&r, &ids);
     // Each family: its category, the IFC class a generic one remembers, its types in the order they came (each its forms and its
     // shapes' key), the types by the name the file gives them, and how many forms it has.
     #[derive(Default)]
@@ -2435,8 +2556,8 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         };
         let fallback = element_material(&r, &l, id).unwrap_or_default();
         let mut groups: BTreeMap<String, Vec<[P3; 3]>> = BTreeMap::new();
-        for (item, faces) in r.body_items(x) {
-            let tris = groups.entry(styles.get(&item).cloned().unwrap_or_else(|| fallback.clone())).or_default();
+        for (look, faces) in r.looked_items(x, &looks) {
+            let tris = groups.entry(look.map_or_else(|| fallback.clone(), |l| l.material())).or_default();
             for face in faces {
                 tris.extend(triangles(&face.into_iter().map(local).collect::<Vec<_>>()).into_iter().map(settled));
             }
@@ -3245,6 +3366,15 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         if let Some(x) = m.materials.get_mut(&name) {
             x.color = colour;
             x.transparency = clear;
+        }
+    }
+    // And those named for a colour, in it.
+    for look in looks.items.values().chain(looks.maps.values().flat_map(|(c, _)| c)) {
+        if let Look::Colour(colour, clear) = look
+            && let Some(x) = m.materials.get_mut(&look.material())
+        {
+            x.color = *colour;
+            x.transparency = *clear;
         }
     }
     // Each element's GUID is the GlobalId of what it was made of, where that's one; what points at an element points at it.

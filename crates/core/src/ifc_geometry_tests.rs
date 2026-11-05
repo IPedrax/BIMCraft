@@ -9,14 +9,14 @@ use crate::model::{Element, Model};
 use crate::view3d::{P3, cross, dot};
 
 /// An IFC4 file's text in millimetres and radians, entity by entity: proxies in one storey, each a body of the items given.
-struct G {
+pub(crate) struct G {
     text: String,
     next: u32,
     contained: Vec<u32>,
 }
 
 impl G {
-    fn new() -> G {
+    pub(crate) fn new() -> G {
         let mut g = G { text: String::new(), next: 9, contained: Vec::new() };
         g.text.push_str(
             "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
@@ -33,7 +33,7 @@ impl G {
         g
     }
 
-    fn add(&mut self, entity: &str) -> u32 {
+    pub(crate) fn add(&mut self, entity: &str) -> u32 {
         self.next += 1;
         self.text.push_str(&format!("#{}={entity};\n", self.next));
         self.next
@@ -48,7 +48,7 @@ impl G {
     }
 
     /// A proxy named `name` at the origin whose body is `items`.
-    fn proxy(&mut self, name: &str, items: &[u32]) -> u32 {
+    pub(crate) fn proxy(&mut self, name: &str, items: &[u32]) -> u32 {
         let rep = self.add(&format!("IFCSHAPEREPRESENTATION($,'Body','AdvancedSweptSolid',({}))", G::refs(items)));
         let shape = self.add(&format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))"));
         let place = self.add("IFCLOCALPLACEMENT(#6,#5)");
@@ -83,7 +83,7 @@ impl G {
         self.add(&format!("IFCADVANCEDFACE(({}),#{plane},.T.)", G::refs(&bounds)))
     }
 
-    fn import(mut self) -> Imported {
+    pub(crate) fn import(mut self) -> Imported {
         let g = format!("'{:0>22}'", self.next + 1);
         let of = G::refs(&self.contained);
         self.add(&format!("IFCRELCONTAINEDINSPATIALSTRUCTURE({g},$,$,$,({of}),#7)"));
@@ -93,7 +93,7 @@ impl G {
 }
 
 /// The triangles of the component of family `family`, in its own axes.
-fn mesh(m: &Model, family: &str) -> Vec<[P3; 3]> {
+pub(crate) fn mesh(m: &Model, family: &str) -> Vec<[P3; 3]> {
     let c = m
         .elements
         .values()
@@ -106,7 +106,7 @@ fn mesh(m: &Model, family: &str) -> Vec<[P3; 3]> {
 }
 
 /// A closed mesh's volume: its triangles' signed tetrahedra, positive while they face out.
-fn volume(tris: &[[P3; 3]]) -> f64 {
+pub(crate) fn volume(tris: &[[P3; 3]]) -> f64 {
     tris.iter().map(|[a, b, c]| dot(*a, cross(*b, *c)) / 6.0).sum()
 }
 

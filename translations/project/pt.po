@@ -282,7 +282,7 @@ msgstr "Horizontal"
 msgid "Inspection Box"
 msgstr "Caixa de inspeção"
 
-#: crates/core/src/import.rs:1254
+#: crates/core/src/import.rs:1318
 msgid "Insulation"
 msgstr "Isolamento"
 
@@ -343,7 +343,7 @@ msgstr ""
 msgid "Medium Lines"
 msgstr "Linhas médias"
 
-#: crates/core/src/import.rs:1257
+#: crates/core/src/import.rs:1321
 msgid "Membrane"
 msgstr "Manta impermeável"
 

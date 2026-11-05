@@ -38,3 +38,23 @@ An item builds at most `shapes::MAX_FACES` (a family mesh's `MAX_TRIANGLES`) fac
 takes at most `MAX_ROUND` points round it and `MAX_INSIDE` inside. Why an item built nothing, or less than it holds, is
 `Reader::give_up`'s, kept by item (`Reader::unread`): a product left out as having no body says it after `it has no body
 BIMCraft can read: `, and one that came in without part of its body has its own note, `part of its body was left out, …`.
+
+## Colours
+
+A material takes the colour a file shades it in: a surface style of its name, else its `IfcMaterialDefinitionRepresentation`'s
+(`material_colours`; how see-through, from a shading's or rendering's second argument). What a component's forms are made of
+comes from how its body is styled (`looks`, `Reader::looked_items`), each look a form of its own:
+
+- An `IfcStyledItem` names an item and its styles, a surface style straight (IFC4) or through an `IfcPresentationStyleAssignment`
+  (IFC2x3). A style with a name makes the form of that material, coloured as above; one with none makes it of a material named
+  for its colour (`Colour FF8000`, with `25%` after it where it is see-through), created in that colour.
+- A style on an item inside a mapped representation (as Revit writes a type's geometry once and maps it) is that item's, and an
+  item takes the style of the mapped item it is in where it has none of its own.
+- An `IfcIndexedColourMap` on a triangulated or polygonal face set colours each face by its index into the map's
+  `IfcColourRgbList` (from 1), a material for each colour; its `Opacity` read as its name says (1 opaque, none opaque, so 0.5
+  is 50% see-through). A face it gives no colour (past its list, or an index past the colours) is the item's look; a map with a
+  colour that isn't three numbers is not read at all.
+- What nothing styles is the element's material, as it was.
+
+Walls, floors, roofs and the other elements made of layers or of a type's material take their colour from those materials by
+name alone: a styled item on their bodies doesn't colour them.
