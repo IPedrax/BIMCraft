@@ -25,6 +25,8 @@ use crate::{
 enum Asked {
     Refresh,
     Set(String, bool),
+    /// Grant or take back a permission of a plugin, by its id and the permission's name.
+    Permit(String, &'static str, bool),
 }
 
 /// What a plugin's function asked the window to show: the text it wrote, under the label of the button that ran it, kept
@@ -102,6 +104,27 @@ impl BimApp {
                 self.plugins.register(&mut self.session);
                 self.plugin_tabs = self.plugins.tabs();
                 self.leave_a_gone_plugin_tab();
+            }
+            Err(e) => self.status = crate::Status { text: e, error: true },
+        }
+    }
+
+    /// Grants or takes back a permission the user chose in the window, and puts the plugins' commands in place again:
+    /// the grant is what lets a call reach the disk.
+    fn permit_plugin(&mut self, id: &str, permission: &'static str, granted: bool) {
+        match self.plugins.set_permission(id, permission, granted) {
+            Ok(()) => {
+                self.plugins.register(&mut self.session);
+                self.plugin_tabs = self.plugins.tabs();
+                self.leave_a_gone_plugin_tab();
+                self.status = crate::Status {
+                    text: if granted {
+                        t("The plugin may now use files.").to_string()
+                    } else {
+                        t("The plugin may no longer use files.").to_string()
+                    },
+                    error: false,
+                };
             }
             Err(e) => self.status = crate::Status { text: e, error: true },
         }
@@ -192,7 +215,12 @@ impl BimApp {
         let mut asked = None;
         let mut close = false;
         let folder = self.plugins.folder.as_ref().map(|f| f.display().to_string()).unwrap_or_else(|| t("None").to_string());
-        let plugins: Vec<PluginView> = self.plugins.plugins.iter().map(PluginView::of).collect();
+        let mut plugins: Vec<PluginView> =
+            self.plugins.plugins.iter().map(|p| PluginView::of(p, self.plugins.permission_granted(&p.manifest.id, "files"))).collect();
+        let _ = ctx;
+        for view in &mut plugins {
+            view.shown = ctx.data(|d| d.get_temp::<bool>(UiId::new(("permission", view.id.clone(), "files"))));
+        }
         let broken: Vec<Broken> = self.plugins.broken.clone();
         let log = self.plugins.log();
         let r = Modal::new(UiId::new("plugins"), t("Plugins")).width(720.0).show(ctx, |ui| {
@@ -251,6 +279,7 @@ impl BimApp {
         match asked {
             Some(Asked::Refresh) => self.refresh_plugins(),
             Some(Asked::Set(id, on)) => self.switch_plugin(&id, on),
+            Some(Asked::Permit(id, permission, on)) => self.permit_plugin(&id, permission, on),
             None => {}
         }
     }
@@ -262,19 +291,30 @@ struct PluginView {
     name: String,
     version: String,
     author: String,
+    /// The plugin's own description: what it says it is for, which is what the window says when it asks for a permission.
+    description: String,
     status: Status,
     functions: usize,
+    /// Whether the manifest asks to reach files, and whether the user granted it.
+    asks_files: bool,
+    files_granted: bool,
+    /// What the user just answered, before the folder's state has been written: the row says it at once.
+    shown: Option<bool>,
 }
 
 impl PluginView {
-    fn of(p: &Plugin) -> PluginView {
+    fn of(p: &Plugin, granted: bool) -> PluginView {
         PluginView {
             id: p.manifest.id.clone(),
             name: p.manifest.name.clone(),
             version: p.manifest.version.clone(),
             author: p.manifest.author.clone(),
+            description: p.manifest.description.clone(),
             status: p.status.clone(),
             functions: p.manifest.functions.len(),
+            asks_files: p.manifest.asks_for_files(),
+            files_granted: granted,
+            shown: None,
         }
     }
 }
@@ -309,6 +349,36 @@ fn plugin_row(ui: &mut Ui, p: &PluginView, asked: &mut Option<Asked>) {
             }
         });
     });
+    if p.asks_files {
+        // The manifest's request, which only the user can answer: the plugin's own description says why it wants it.
+        ui.horizontal(|ui| {
+            ui.add_space(4.0);
+            ui.label(RichText::new(t("File access")).strong().size(12.0)).on_hover_text(t(
+                "This plugin asks to read and write files on your computer. Its commands reach the disk only while you allow it.",
+            ));
+            let granted = p.shown.unwrap_or(p.files_granted);
+            if ui
+                .add_enabled(
+                    p.status.is_loaded(),
+                    egui::Button::new(if granted { t("Revoke file access") } else { t("Allow file access") }),
+                )
+                .clicked()
+            {
+                // The user's answer, shown at once: the row and its button change on this frame, as they would
+                // when the window read the answer; the folder's state is written after the window closes.
+                ui.ctx().data_mut(|d| d.insert_temp(UiId::new(("permission", p.id.clone(), "files")), !granted));
+
+                *asked = Some(Asked::Permit(p.id.clone(), "files", !granted));
+            }
+            ui.label(RichText::new(if granted { t("Allowed") } else { t("Not allowed") }).color(pal().muted).size(12.0));
+        });
+        if !p.description.is_empty() {
+            ui.horizontal(|ui| {
+                ui.add_space(4.0);
+                ui.label(RichText::new(&p.description).color(pal().muted).size(12.0));
+            });
+        }
+    }
     if let Status::Failed(why) = &p.status {
         ui.label(RichText::new(why).color(pal().error));
     }

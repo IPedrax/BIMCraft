@@ -91,6 +91,13 @@ impl Manifest {
         Ok(manifest)
     }
 
+    /// The manifest held in `text`, checked, as if it were the one at `path`.
+    pub fn parse(text: &str, path: &Path) -> Result<Manifest, String> {
+        let manifest: Manifest = serde_json::from_str(text).map_err(|e| format!("{} isn't a plugin manifest: {e}", path.display()))?;
+        manifest.check().map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok(manifest)
+    }
+
     /// Whether it is sound: names are names, the ABI is this one, the permissions are known, no function is
     /// declared twice.
     pub fn check(&self) -> Result<(), String> {
@@ -148,14 +155,15 @@ impl Manifest {
         }
     }
 
-    /// Whether the plugin declared `permission`.
-    pub fn allows(&self, permission: &str) -> bool {
+    /// Whether the manifest asks for `permission`. It is a request, not a grant: the user gives one in
+    /// Manage > Plugins, and it is kept in the folder's state file.
+    pub fn asks_for(&self, permission: &str) -> bool {
         self.permissions.iter().any(|p| p == permission)
     }
 
-    /// Whether the plugin may reach files outside the model.
-    pub fn files(&self) -> bool {
-        self.allows("files")
+    /// Whether the manifest asks to reach files outside the model.
+    pub fn asks_for_files(&self) -> bool {
+        self.asks_for("files")
     }
 
     /// Whether the plugin declared no ribbon tab: its functions go in the common Plugins section.

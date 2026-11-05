@@ -8,6 +8,7 @@
 
 pub mod manifest;
 pub mod runtime;
+pub mod testing;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -22,12 +23,17 @@ pub use manifest::{Function, Manifest};
 
 /// The manifest's file name, in a plugin's folder.
 pub const MANIFEST: &str = "plugin.json";
-/// The file that keeps the plugins the user switched off, in the plugin folder.
-pub const DISABLED: &str = "disabled.json";
+/// The file that keeps the plugins the user switched off and the permissions they granted, in the plugin folder.
+pub const STATE: &str = "state.json";
+/// The state file's former name, which an older version wrote: it kept the switched-off list alone, and is
+/// still read when `state.json` isn't there.
+pub const LEGACY_STATE: &str = "disabled.json";
 /// The most log lines kept, so a plugin that logs in a loop can't grow it without end.
 pub const MAX_LOG: usize = 2000;
 /// The most disabled ids the state file keeps, and its size.
 const MAX_DISABLED: usize = 1000;
+/// The most permissions one plugin's state keeps.
+const MAX_GRANTS: usize = 8;
 const MAX_STATE: u64 = 64 << 10;
 
 /// How important a log line is.
@@ -176,9 +182,13 @@ pub fn load() -> Plugins {
 
 #[derive(Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
-struct DisabledFile {
+struct StateFile {
     #[serde(default)]
     disabled: Vec<String>,
+    /// What the user let each plugin do, by plugin id: `{"sample": ["files"]}`. A manifest may only ask;
+    /// the grant is the user's, and none is granted until they do it in Manage > Plugins.
+    #[serde(default)]
+    permissions: BTreeMap<String, Vec<String>>,
 }
 
 /// The plugins of one folder, with what became of each and the log of the last read.
@@ -189,6 +199,8 @@ pub struct Plugins {
     pub broken: Vec<Broken>,
     log: Arc<Log>,
     disabled: BTreeSet<String>,
+    /// The permissions the user granted, by plugin id and permission name.
+    grants: BTreeMap<String, BTreeSet<String>>,
 }
 
 impl Default for Plugins {
@@ -200,7 +212,14 @@ impl Default for Plugins {
 impl Plugins {
     /// No folder at all: no plugins, and nothing changes.
     pub fn empty() -> Plugins {
-        Plugins { folder: None, plugins: Vec::new(), broken: Vec::new(), log: Arc::new(Log::new()), disabled: BTreeSet::new() }
+        Plugins {
+            folder: None,
+            plugins: Vec::new(),
+            broken: Vec::new(),
+            log: Arc::new(Log::new()),
+            disabled: BTreeSet::new(),
+            grants: BTreeMap::new(),
+        }
     }
 
     /// The folder at `folder`, read; none is no plugins.
@@ -209,11 +228,45 @@ impl Plugins {
         Plugins::load_into(folder, log)
     }
 
+    /// The plugins loaded, each with `module` in place of its own module. It is how a test or an embedder runs
+    /// a module it builds (a WAT, a file in `target/`) under a manifest in a folder, without a build of that
+    /// module beside the manifest: the folder's manifests say what the plugin is, `module` is what runs.
+    pub fn load_from_with_module(folder: Option<&Path>, module: Vec<u8>) -> Plugins {
+        let log = Arc::new(Log::new());
+        let compiled = match runtime::Runtime::new(&module) {
+            Ok(rt) => Arc::new(rt),
+            Err(e) => {
+                log.note("plugins", Level::Error, format!("the module given: {e}"));
+                return Plugins::empty();
+            }
+        };
+        // Built once, and what every plugin the folder loads runs: the file its manifest names is never read.
+        let mut plugins = Plugins::load_into_with(folder, log, Some(Arc::clone(&compiled)));
+        for plugin in plugins.plugins.iter_mut().filter(|p| p.status.is_loaded()) {
+            plugin.runtime = Some(Arc::clone(&compiled));
+        }
+        plugins
+    }
+
     fn load_into(folder: Option<&Path>, log: Arc<Log>) -> Plugins {
-        let mut plugins =
-            Plugins { folder: folder.map(Path::to_path_buf), plugins: Vec::new(), broken: Vec::new(), log, disabled: BTreeSet::new() };
+        Plugins::load_into_with(folder, log, None)
+    }
+
+    /// Reads `folder` with `module` for every plugin the caller gave one: the plugin's module is compiled from it,
+    /// and its own file isn't read.
+    fn load_into_with(folder: Option<&Path>, log: Arc<Log>, module: Option<Arc<runtime::Runtime>>) -> Plugins {
+        let mut plugins = Plugins {
+            folder: folder.map(Path::to_path_buf),
+            plugins: Vec::new(),
+            broken: Vec::new(),
+            log,
+            disabled: BTreeSet::new(),
+            grants: BTreeMap::new(),
+        };
         let Some(folder) = folder else { return plugins };
-        plugins.disabled = read_disabled(folder, &plugins.log);
+        let state = read_state(folder, &plugins.log);
+        plugins.disabled = state.disabled;
+        plugins.grants = state.grants;
         let list = match std::fs::read_dir(folder) {
             Ok(list) => list,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return plugins,
@@ -228,18 +281,22 @@ impl Plugins {
             if path.is_dir() {
                 let manifest = path.join(MANIFEST);
                 if manifest.is_file() {
-                    plugins.add(&manifest);
+                    plugins.add(&manifest, module.as_ref());
                 }
-            } else if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("json")) && path.file_name().is_none_or(|n| n != DISABLED) {
-                plugins.add(&path);
+            } else if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("json"))
+                && path.file_name().is_none_or(|n| n != STATE && n != LEGACY_STATE)
+            {
+                plugins.add(&path, module.as_ref());
             }
         }
         plugins.log.note("plugins", Level::Info, format!("{} plugin(s) in {}", plugins.plugins.len(), folder.display()));
         plugins
     }
 
-    /// Reads one manifest and its module, adding it to the list or saying why not.
-    fn add(&mut self, manifest_path: &Path) {
+    /// Reads one manifest and its module, adding it to the list or saying why not. `given` is the module the caller
+    /// supplied for every plugin ([`Plugins::load_from_with_module`]): it runs in place of the plugin's own, which
+    /// isn't read.
+    fn add(&mut self, manifest_path: &Path, given: Option<&Arc<runtime::Runtime>>) {
         let name = manifest_path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let manifest = match Manifest::read(manifest_path) {
             Ok(m) => m,
@@ -265,10 +322,21 @@ impl Plugins {
             self.plugins.push(plugin);
             return;
         }
-        match load_runtime(&plugin.manifest, manifest_path) {
+        let loaded = match given {
+            Some(rt) => Ok(Arc::clone(rt)),
+            None => load_runtime(&plugin.manifest, manifest_path).map(Arc::new),
+        };
+        match loaded {
             Ok(rt) => {
-                plugin.runtime = Some(Arc::new(rt));
+                plugin.runtime = Some(rt);
                 self.log.note(&id, Level::Info, format!("loaded `{}` {}", plugin.manifest.name, plugin.manifest.version));
+                if plugin.manifest.asks_for_files() {
+                    self.log.note(
+                        &id,
+                        Level::Info,
+                        "asks to read and write files; the user hasn't allowed it until they do in Manage > Plugins",
+                    );
+                }
             }
             Err(e) => {
                 plugin.status = Status::Failed(e.clone());
@@ -291,20 +359,60 @@ impl Plugins {
         } else {
             self.disabled.insert(id.to_string());
         }
-        self.save_disabled()?;
+        self.save_state()?;
         self.refresh();
         Ok(())
     }
 
-    fn save_disabled(&self) -> Result<(), String> {
+    fn save_state(&self) -> Result<(), String> {
         let Some(folder) = &self.folder else { return Ok(()) };
         std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
-        let path = folder.join(DISABLED);
-        let list = self.disabled.iter().take(MAX_DISABLED).cloned().collect();
-        let text = serde_json::to_string_pretty(&DisabledFile { disabled: list }).map_err(|e| e.to_string())?;
+        let path = folder.join(STATE);
+        let disabled = self.disabled.iter().take(MAX_DISABLED).cloned().collect();
+        let permissions: BTreeMap<String, Vec<String>> =
+            self.grants.iter().map(|(id, set)| (id.clone(), set.iter().take(MAX_GRANTS).cloned().collect())).collect();
+        let text = serde_json::to_string_pretty(&StateFile { disabled, permissions }).map_err(|e| e.to_string())?;
         let part = path.with_extension("json.part");
         std::fs::write(&part, text).map_err(|e| format!("{}: {e}", part.display()))?;
         std::fs::rename(&part, &path).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    /// Whether the user granted `permission` to the plugin `id`. A manifest only asks for one; none is granted
+    /// until the user says so in Manage > Plugins, and then it is kept in the folder's state file.
+    pub fn permission_granted(&self, id: &str, permission: &str) -> bool {
+        self.grants.get(id).is_some_and(|set| set.contains(permission))
+    }
+
+    /// Grants or takes back `permission` for the plugin `id`, keeps it in the state file, and reads the folder
+    /// again so the plugin's commands carry the new answer. A plugin that doesn't ask for it in its manifest
+    /// can't be granted it: the manifest is the request, the user the grant.
+    pub fn set_permission(&mut self, id: &str, permission: &str, granted: bool) -> Result<(), String> {
+        if granted {
+            let asks = self.plugins.iter().find(|p| p.manifest.id == id).is_some_and(|p| p.manifest.asks_for(permission));
+            if !asks {
+                return Err(format!("`{id}` doesn't ask for the `{permission}` permission in its manifest, so it can't be granted"));
+            }
+        }
+        if granted {
+            self.grants.entry(id.to_string()).or_default().insert(permission.to_string());
+        } else if let Some(set) = self.grants.get_mut(id) {
+            set.remove(permission);
+            if set.is_empty() {
+                self.grants.remove(id);
+            }
+        }
+        self.save_state()?;
+        self.log.note(
+            id,
+            Level::Info,
+            if granted {
+                format!("the user granted the `{permission}` permission")
+            } else {
+                format!("the user took back the `{permission}` permission")
+            },
+        );
+        self.refresh();
+        Ok(())
     }
 
     /// Registers every loaded plugin's functions in `session`, as commands of it. A session keeps the commands
@@ -318,8 +426,9 @@ impl Plugins {
                 let params = serde_json::to_string(&f.params).unwrap_or_else(|_| "{}".to_string());
                 let menu = f.tab.as_ref().map(|tab| format!("{tab} > {}", plugin.manifest.panel_name(f)));
                 let step = format!("{}: {}", plugin.manifest.name, f.label);
-                let (plugin_id, function, files, log) =
-                    (plugin.manifest.id.clone(), f.id.clone(), plugin.manifest.files(), Arc::clone(&self.log));
+                // The manifest asks for the permission; only the user's grant lets the call through.
+                let files = plugin.manifest.asks_for_files() && self.permission_granted(&plugin.manifest.id, "files");
+                let (plugin_id, function, log) = (plugin.manifest.id.clone(), f.id.clone(), Arc::clone(&self.log));
                 let rt = Arc::clone(rt);
                 let run = move |session: &mut Session, params: &Value| {
                     session.transaction(&step, |s| rt.invoke(s, &plugin_id, &function, files, params, &log))
@@ -417,27 +526,62 @@ fn load_runtime(manifest: &Manifest, manifest_path: &Path) -> Result<runtime::Ru
     runtime::Runtime::new(&bytes)
 }
 
-fn read_disabled(folder: &Path, log: &Log) -> BTreeSet<String> {
-    let path = folder.join(DISABLED);
+/// The folder's state: the plugins switched off and the permissions the user granted. A folder written before
+/// the state kept permissions has `disabled.json`, read as the switched-off list alone; a `state.json` beside it
+/// is what is saved from now on.
+fn read_state(folder: &Path, log: &Log) -> State {
+    let state = folder.join(STATE);
+    let (path, legacy) = if state.is_file() { (state, false) } else { (folder.join(LEGACY_STATE), true) };
     let text = match std::fs::metadata(&path) {
         Ok(m) if m.len() > MAX_STATE => {
-            log.note("plugins", Level::Warning, format!("{} is too large: the switched-off list is ignored", path.display()));
-            return BTreeSet::new();
+            log.note("plugins", Level::Warning, format!("{} is too large: the plugins' state is ignored", path.display()));
+            return State::default();
         }
         Ok(_) => match std::fs::read_to_string(&path) {
             Ok(t) => t,
             Err(e) => {
                 log.note("plugins", Level::Warning, format!("{}: {e}", path.display()));
-                return BTreeSet::new();
+                return State::default();
             }
         },
-        Err(_) => return BTreeSet::new(),
+        Err(_) => return State::default(),
     };
-    match serde_json::from_str::<DisabledFile>(&text) {
-        Ok(file) => file.disabled.into_iter().take(MAX_DISABLED).collect(),
+    match serde_json::from_str::<StateFile>(&text) {
+        Ok(file) => State {
+            disabled: file.disabled.into_iter().take(MAX_DISABLED).collect(),
+            grants: file
+                .permissions
+                .into_iter()
+                .filter(|(_, list)| !list.is_empty())
+                .take(MAX_DISABLED)
+                .map(|(id, list)| (id, list.into_iter().take(MAX_GRANTS).collect()))
+                .collect(),
+        },
+        // An older file had the disabled list alone; it is still one.
+        Err(e) if legacy => match serde_json::from_str::<LegacyDisabled>(&text) {
+            Ok(file) => State { disabled: file.disabled.into_iter().take(MAX_DISABLED).collect(), grants: BTreeMap::new() },
+            Err(_) => {
+                log.note("plugins", Level::Warning, format!("{} isn't a plugin state: {e}", path.display()));
+                State::default()
+            }
+        },
         Err(e) => {
-            log.note("plugins", Level::Warning, format!("{} isn't a switched-off list: {e}", path.display()));
-            BTreeSet::new()
+            log.note("plugins", Level::Warning, format!("{} isn't a plugin state: {e}", path.display()));
+            State::default()
         }
     }
+}
+
+/// What the folder's state file says.
+#[derive(Default)]
+struct State {
+    disabled: BTreeSet<String>,
+    grants: BTreeMap<String, BTreeSet<String>>,
+}
+
+/// The state file an older version wrote: the switched-off list alone.
+#[derive(Deserialize)]
+struct LegacyDisabled {
+    #[serde(default)]
+    disabled: Vec<String>,
 }
