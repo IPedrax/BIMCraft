@@ -24,6 +24,13 @@ use crate::manifest::ABI;
 pub const FUEL: u64 = 20_000_000;
 /// The most memory a guest may have, bytes.
 pub const MEMORY: usize = 64 << 20;
+/// The most elements a guest's tables may hold, in all: a host keeps room for a call's own tables, and no plugin
+/// needs more than the few thousand a function table takes.
+pub const TABLE_ELEMENTS: usize = 16_384;
+/// The most tables, instances and memories a guest's instance may declare.
+pub const TABLES: usize = 4;
+pub const INSTANCES: usize = 8;
+pub const MEMORIES: usize = 1;
 /// The most commands one plugin call may run.
 pub const MAX_COMMANDS: usize = 1000;
 /// The most a plugin's reply may be, bytes (the bridge's line limit).
@@ -42,21 +49,11 @@ const EXPORTS: [&str; 3] = ["memory", "bimcraft_alloc", "bimcraft_run"];
 /// The host functions ABI 1 provides.
 const HOST: [&str; 3] = ["execute", "log", "info"];
 
-/// The commands that touch the disk, and so need the `files` permission. A command's id, not an alias, is
-/// checked, so an alias cannot get around it.
-pub const FILE_COMMANDS: &[&str] =
-    &["new", "open", "highrise", "autosave", "recover", "insert", "link", "reload", "save", "point_cloud", "import_cad", "reload_cad"];
-
-/// Whether a command as the plugin calls it touches the disk. Three commands touch it only with some parameters:
-/// `render` with a `path`, `family` with `path` or `save`, and `favorite` whatever it does but list.
-fn needs_files(id: &str, params: &Value) -> bool {
-    let given = |key: &str| params.get(key).is_some_and(|v| !v.is_null());
-    match id {
-        "render" => given("path"),
-        "family" => given("path") || given("save"),
-        "favorite" => params.get("action").and_then(Value::as_str).is_none_or(|a| a != "list") || given("path"),
-        _ => FILE_COMMANDS.contains(&id),
-    }
+/// The commands that touch the disk are marked on the [`bimcraft_core::engine::Command`] itself, next to their
+/// parameters, and [`engine::touches_files`] reads the mark and, for a command that only sometimes takes a path,
+/// its parameters. The plugin crate keeps no list of its own, so a command added since cannot slip through.
+fn needs_files(cmd: &bimcraft_core::engine::Command, params: &Value) -> Option<bimcraft_core::engine::Files> {
+    engine::touches_files(cmd, params)
 }
 
 /// A compiled module, and the engine it belongs to. One is made per plugin at load and shared by its calls.
@@ -68,7 +65,9 @@ pub struct Runtime {
 /// What a host function sees of the call: the session the plugin works on, its permissions, how many commands
 /// it has run, and the log.
 struct HostState {
-    session: Session,
+    /// The session the call works on: in the store while the interpreter runs, and back in the caller's slot after
+    /// it, whatever way the call ends ([`Runtime::invoke`]).
+    session: Option<Session>,
     plugin: String,
     files: bool,
     calls: usize,
@@ -183,10 +182,16 @@ impl Runtime {
         params: &Value,
         log: &std::sync::Arc<Log>,
     ) -> Result<Value, String> {
-        let mut host = std::mem::replace(session, Session::new());
-        let limits = StoreLimitsBuilder::new().memory_size(MEMORY).trap_on_grow_failure(true).build();
+        let limits = StoreLimitsBuilder::new()
+            .memory_size(MEMORY)
+            .table_elements(TABLE_ELEMENTS)
+            .tables(TABLES)
+            .instances(INSTANCES)
+            .memories(MEMORIES)
+            .trap_on_grow_failure(true)
+            .build();
         let state = HostState {
-            session: host,
+            session: None,
             plugin: plugin.to_string(),
             files,
             calls: 0,
@@ -198,23 +203,24 @@ impl Runtime {
         let mut store = Store::new(&self.engine, state);
         store.limiter(|s: &mut HostState| &mut s.limits);
         if let Err(e) = store.set_fuel(FUEL) {
-            host = store.into_data().session;
-            *session = host;
             return Err(format!("plugin `{plugin}`: couldn't set the fuel: {e}"));
         }
         let mut linker: Linker<HostState> = Linker::new(&self.engine);
         if let Err(e) = install(&mut linker) {
-            host = store.into_data().session;
-            *session = host;
             return Err(format!("plugin `{plugin}`: {e}"));
         }
+        // The session is in the store only while the interpreter runs: it is taken out again on every path, a
+        // panic included, which is what keeps its path and the plugin registry through a call that stops the host.
+        store.data_mut().session = Some(std::mem::replace(session, Session::new()));
         let mut outcome = self.run(&mut store, &linker, function, params);
         if outcome.is_ok() && store.data().started.elapsed() > WALL {
             outcome = Err(Failed::halted(format!("the call took more than {} s", WALL.as_secs())));
         }
         let left = store.get_fuel().unwrap_or(0);
         let HostState { session: host, trace, calls, log: call_log, .. } = store.into_data();
-        *session = host;
+        if let Some(host) = host {
+            *session = host;
+        }
         outcome.map_err(|failed| {
             // The log keeps what the sandbox's error can't: the steps the plugin took and what each cost, which
             // is where a call that runs out of fuel or traps actually went. A plugin's own error said its why.
@@ -241,6 +247,15 @@ impl Runtime {
             .ok_or_else(|| Failed::halted("it has no exported memory"))?;
         if memory.data(&*store).len() > MEMORY {
             return Err(Failed::halted(format!("it asks for more than {} MB of memory", MEMORY >> 20)));
+        }
+        // A table the limiter doesn't measure at declaration is measured here: one element a page.
+        let mut elements = 0usize;
+        for name in instance.exports(&*store).map(|e| e.name().to_string()).collect::<Vec<_>>() {
+            let Some(table) = instance.get_export(&mut *store, &name).and_then(Extern::into_table) else { continue };
+            elements += table.size(&*store) as usize;
+        }
+        if elements > TABLE_ELEMENTS {
+            return Err(Failed::halted(format!("its tables hold {elements} elements, more than the call's {TABLE_ELEMENTS}")));
         }
         let input = serde_json::to_string(params).map_err(|e| Failed::halted(format!("the parameters aren't JSON: {e}")))?;
         if input.len() > MAX_REPLY {
@@ -306,20 +321,29 @@ fn request(caller: &mut Caller<'_, HostState>, text: &str) -> Result<Value, Stri
         return Err(format!("the call may run {MAX_COMMANDS} commands, and it has"));
     }
     let Some(cmd) = engine::find(&command) else {
-        let why = match state.session.external_command(&command) {
+        let why = match state.session.as_ref().and_then(|s| s.external_command(&command)) {
             Some(_) => format!("a plugin may call BIMCraft's commands, not another plugin's (`{command}`)"),
             None => format!("unknown command `{command}`"),
         };
         state.log.note(&state.plugin, crate::Level::Error, why.clone());
         return Err(why);
     };
-    if needs_files(cmd.id, &params) && !state.files {
-        let why = format!("the plugin isn't given the files permission, which `{}` needs", cmd.id);
+    let touched = needs_files(cmd, &params);
+    if touched.is_some() && !state.files {
+        let what = match touched {
+            Some(bimcraft_core::engine::Files::Read) => "read files",
+            Some(bimcraft_core::engine::Files::Write) => "write files",
+            _ => "use files",
+        };
+        let why = format!("`{}` needs to {what}, and the plugin isn't given the files permission", cmd.id);
         state.log.note(&state.plugin, crate::Level::Warning, why.clone());
         return Err(why);
     }
     state.calls += 1;
-    state.session.execute(cmd.id, &params)
+    let Some(session) = state.session.as_mut() else {
+        return Err("the call has no session to run the command on".to_string());
+    };
+    session.execute(cmd.id, &params)
 }
 
 fn host_log(mut caller: Caller<'_, HostState>, level: i32, ptr: i32, len: i32) -> Result<(), Error> {
@@ -347,7 +371,7 @@ fn host_info(mut caller: Caller<'_, HostState>) -> Result<i64, Error> {
             "version": env!("CARGO_PKG_VERSION"),
             "abi": ABI,
             "units": "mm",
-            "project": state.session.model.name,
+            "project": state.session.as_ref().map(|s| s.model.name.clone()).unwrap_or_default(),
         })
     };
     let text = serde_json::to_string(&info).map_err(|e| Error::new(format!("the host info isn't JSON: {e}")))?;
@@ -472,16 +496,35 @@ fn unpack(packed: i64) -> Result<(i32, i32), String> {
 mod tests {
     use super::*;
 
+    /// Whether `id` called with `params` reaches the disk, by the command's own mark in the core.
+    fn reaches(id: &str, params: Value) -> bool {
+        let command = engine::find(id).unwrap_or_else(|| panic!("there's no command `{id}`"));
+        needs_files(command, &params).is_some()
+    }
+
     #[test]
     fn only_the_calls_that_touch_the_disk_ask_for_the_files_permission() {
-        assert!(!needs_files("render", &json!({})));
-        assert!(needs_files("render", &json!({"path": "plan.png"})));
-        assert!(!needs_files("family", &json!({"name": "Desk"})));
-        assert!(needs_files("family", &json!({"path": "desk.json"})));
-        assert!(needs_files("family", &json!({"name": "Desk", "save": "desk.json"})));
-        assert!(!needs_files("favorite", &json!({"action": "list"})));
-        assert!(needs_files("favorite", &json!({"action": "save"})));
-        assert!(needs_files("save", &json!({"path": "x.bimcraft"})));
-        assert!(!needs_files("level", &json!({"elevation": 0})));
+        assert!(!reaches("render", json!({})));
+        assert!(reaches("render", json!({"path": "plan.png"})));
+        assert!(!reaches("family", json!({"name": "Desk"})));
+        assert!(reaches("family", json!({"path": "desk.json"})));
+        assert!(reaches("family", json!({"name": "Desk", "save": "desk.json"})));
+        assert!(!reaches("favorite", json!({"action": "list"})));
+        assert!(reaches("favorite", json!({"action": "save"})));
+        assert!(reaches("save", json!({"path": "x.bimcraft"})));
+        assert!(!reaches("level", json!({"elevation": 0})));
+    }
+
+    /// The commands the hand-kept list used to miss: a new command is now covered by its mark in the core.
+    #[test]
+    fn the_commands_the_old_list_missed_are_covered_by_their_mark() {
+        for id in ["schedule", "export_crosscheck", "export_fill_patterns"] {
+            assert!(reaches(id, json!({"path": "out.bin"})), "`{id}` writes a file");
+        }
+        for id in ["import_fill_patterns", "compare_crosscheck"] {
+            assert!(reaches(id, json!({"path": "in.txt"})), "`{id}` reads a file");
+        }
+        assert!(reaches("material", json!({"texture": {"kind": "image", "path": "oak.png"}})), "a texture reads a picture");
+        assert!(!reaches("material", json!({"name": "Oak"})), "a material without a picture touches no file");
     }
 }
