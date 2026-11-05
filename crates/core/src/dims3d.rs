@@ -73,6 +73,39 @@ pub fn reading(a: P3, b: P3) -> (f64, P3) {
     (dot(d, d).sqrt(), d.map(f64::abs))
 }
 
+/// What a chain of points measures, as the Measure tool reads it in a 3D view: how long it is end to end (and back to its start,
+/// `closed`), and, closed round three points or more that lie in one plane (within a millimetre), the area they enclose, mm².
+pub fn chain_reading(points: &[P3], closed: bool) -> (f64, Option<f64>) {
+    let n = points.len();
+    let edge = |i: usize| (points[i], points[(i + 1) % n]);
+    let edges = if closed { n } else { n.saturating_sub(1) };
+    let total = (0..edges)
+        .map(|i| {
+            let (a, b) = edge(i);
+            reading(a, b).0
+        })
+        .sum();
+    if !closed || n < 3 {
+        return (total, None);
+    }
+    // Newell's normal: its length is twice the area of a plane polygon, whichever way it faces.
+    let mut normal = [0.0; 3];
+    for i in 0..n {
+        let (a, b) = edge(i);
+        normal[0] += (a[1] - b[1]) * (a[2] + b[2]);
+        normal[1] += (a[2] - b[2]) * (a[0] + b[0]);
+        normal[2] += (a[0] - b[0]) * (a[1] + b[1]);
+    }
+    let twice = dot(normal, normal).sqrt();
+    if !(twice.is_finite() && twice > 1e-9) {
+        return (total, None);
+    }
+    let unit = mul(normal, 1.0 / twice);
+    let off = dot(points[0], unit);
+    let planar = points.iter().all(|p| (dot(*p, unit) - off).abs() <= 1.0);
+    (total, planar.then_some(twice / 2.0))
+}
+
 /// Where a pick at pixel `at` through `cam` puts the line of a dimension from `p` to `q`: on the plane through them that
 /// faces the camera most. None where the view runs along it.
 pub fn line_through(cam: &Camera, p: P3, q: P3, at: (f64, f64)) -> Option<P3> {
@@ -375,5 +408,22 @@ mod tests {
         let (fewer, without) = strokes(&s);
         assert!(lines - fewer > 6, "its witness lines, line, ticks and letters on the sheet: {}", lines - fewer);
         assert_eq!(with - without, lines - fewer, "each a stroke of the sheet's PDF");
+    }
+}
+
+#[cfg(test)]
+mod chain {
+    use super::chain_reading;
+
+    #[test]
+    fn a_closed_chain_in_one_plane_has_an_area_and_one_out_of_it_none() {
+        // A 4 m by 3 m rectangle up a wall: 14 m round, 12 m².
+        let wall = [[0.0, 0.0, 0.0], [4000.0, 0.0, 0.0], [4000.0, 0.0, 3000.0], [0.0, 0.0, 3000.0]];
+        assert_eq!(chain_reading(&wall, false), (11000.0, None), "open: no area, and no way back");
+        let (total, area) = chain_reading(&wall, true);
+        assert_eq!(total, 14000.0);
+        assert!((area.unwrap_or_default() - 12e6).abs() < 1e-3);
+        let bent = [[0.0, 0.0, 0.0], [4000.0, 0.0, 0.0], [4000.0, 500.0, 3000.0], [0.0, 0.0, 3000.0]];
+        assert_eq!(chain_reading(&bent, true).1, None, "not in one plane");
     }
 }

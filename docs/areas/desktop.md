@@ -173,19 +173,22 @@ finished (`Canvas::quick`, `BimApp::finish_drag`: grips, crop regions, a sheet's
 that drag's start replaced comes back (`BimApp::grab`) for the click to pick from. A slower press is the drag it is. In the 3D view
 a quick press is a click whatever the tool, and a camera the hand turned meanwhile goes back (`Orbit::before`). There, as in
 Revit, Shift and the middle button orbit, round the point under the pointer, and the middle button alone pans; a primary drag never
-moves the camera: in Modify it is a selection box, as in a plan, adding to the selection with Shift held (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
+moves the camera: in Modify it is a selection box, as in a plan, adding to the selection with Shift held; it takes levels by what of
+them is drawn, the far edges of each plane and its head (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
 inside, from the right what it touches, by where the model is rather than what's in front, so what's behind is boxed too.
 
 A wall or column selected alone in Modify has handles in the 3D view (core `handles.rs`, drawn by `orbit::draw_handle`): a wall's two
-ends, a column's place, and an arrow on the top and under the base of each, as a section box's faces have. A drag previews the element
+ends at its base on its location line, which is drawn dashed along its base (`handles::location_line`), a column's place, and an arrow on the top and under the base of each, as a section box's faces have. A drag previews the element
 and runs its command when it ends: an end or the place over its level's plane, snapped as a plan snaps; an arrow up or down, landing on
 a level within a few pixels, changing the top offset or unconnected height and the base offset. A base dragged keeps the top where it
 is. A top or base attached to a roof or a floor has no arrow, since it follows that. Attach Top/Base (`Tool::Attach`, `BimApp::attach_to`)
 takes walls and columns, and picks its roof or floor in a plan or the 3D view; a column attached stands on or under what it's attached
 to as a wall does (`walls::column_prisms`), and `Model::column_span` is what everything reads its heights from.
 
-The Measure tool in the 3D view (`measure_point`, `Orbit::ruler`) takes any two points of the model, corners, edges, the middle of an
-edge or a point on a face, whatever the work plane, and reads the length and its run along each axis (`dims3d::reading`).
+The Measure tool in the 3D view (`measure_point`, `Orbit::chain`) measures a chain of points of the model, corners, edges, the middle
+of an edge or a point on a face, whatever the work plane: each segment's length at its middle, the total, and for one segment its run
+along each axis (`dims3d::reading`). A click on the first point of three or more closes it, and if they lie in one plane its area
+reads too (`dims3d::chain_reading`); Enter ends a chain, Esc clears it. Trim/Extend works in the 3D view as in a plan (`BimApp::trim_click`).
 
 Startup (`apps/bimcraft/src/startup.rs`). A release build on Windows has no console, so a start that fails must say itself: `bimcraft.log`
 and `graphics.json` sit beside the favorites (`startup::Files::beside`). `startup::begin` runs once the arguments are read (never for
@@ -561,14 +564,17 @@ it equal or not.
 A number takes a value in any of three ways, each ending in `dimension_value`. A dimension selected alone shows its numbers, and what
 the segment ends at moves, or an angular dimension's second line turns. An element selected, alone or with a dimension, lights the
 dimensions on it (`Model::dimensions_on`, added to what the canvas marks) and shows the numbers of the segments it is at one end of
-(`BimApp::element_dimensions`): typing one moves or turns that element, as `moves` says, whichever end it is. An angle turns about
+(`BimApp::element_dimensions`), each a field over the number the drawing letters (`Drawing::dimension_number_places`), drawn after
+the temporary dimensions so it is the one on top: typing one moves or turns that element, as `moves` says, whichever end it is. An angle turns about
 where the lines cross and takes the dimension's arc with it (`angular_value`). A selected wall also shows temporary dimensions across
 it, to the nearest parallel wall or grid each side (`Model::wall_clearances`), which move it square to itself. A dimension in a 3D
 view holds points, not elements, so there is nothing for its number to move.
 
 In the app bar beside Settings, the AI button (`BimApp::agents_toggle`) is Settings > Agents' Let agents work on this project, for a
 quick switch, and is lit while it is on. Finish and Cancel Edit Mode wear green and red, in any theme, through the palette's `context`
-and `error` (`inked_button`). The Line Style lists show a sample of each style (`linestyles::style_row`). The Type Selector's list is as
+and `error` (`inked_button`). The Line Style lists show a sample of each style (`linestyles::style_row`): the Options Bar's, Properties', and the patterns of the
+Line Styles dialog and Visibility/Graphics' dashes (`sample_row`). A padlock open is hollow with its shackle swung clear; shut, it is
+filled; its tooltip says what it does. The Type Selector's list is as
 wide as the selector, a long name cut short and whole in its tooltip; wall types show their layers by share and material
 (`layer_bands`), and a curtain wall's type, which writes a `curtain` pattern (`curtain_type`), goes under its own heading.
 
