@@ -62,8 +62,8 @@ pub static ALL: &[Command] = &[
     other(
         "open",
         "Open",
-        "{path} a .bimcraft project, or an .ifc read into a new one (its `elements` by category, `generic` the components of \
-         IFC classes BIMCraft has no element for, `skipped` what was left out and why)",
+        "{path} a .bimcraft project (under 256 MiB), or an .ifc (under 512 MiB) read into a new one (its `elements` by \
+         category, `generic` the components of IFC classes BIMCraft has no element for, `skipped` what was left out and why)",
         open,
     ),
     other("highrise", "Synthetic Highrise", "{storeys?: 20} replace the project with an original 1–80 storey performance sample", highrise),
@@ -2676,6 +2676,31 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
 /// Project files this large or larger are refused.
 const MAX_FILE: u64 = 256 << 20;
 
+/// IFC files this large or larger are refused. Reading one peaks at about 12 to 14 times its size in memory (measured on
+/// Revit-like, meshed and BIMCraft-written files of 17 to 81 MB), so one just under 512 MiB stays under about 8 GB.
+const MAX_IFC: u64 = 512 << 20;
+
+/// Files of `extension` (in lower case) this large or larger are refused by `open`: an IFC file at [`MAX_IFC`], a project at
+/// [`MAX_FILE`].
+fn max_file(extension: &str) -> u64 {
+    if extension == "ifc" { MAX_IFC } else { MAX_FILE }
+}
+
+#[cfg(test)]
+mod max_file_tests {
+    use super::*;
+
+    #[test]
+    fn an_ifc_file_may_be_twice_as_large_as_a_project_so_issue_264s_opens() {
+        // Issue #264: an IFC file of 282,607,463 bytes was refused as too large; a project or a family keeps its 256 MiB.
+        assert!(max_file("ifc") > 282_607_463);
+        assert_eq!(max_file("ifc"), 512 << 20);
+        for other in ["bimcraft", "json", "", "ifczip", "IFC"] {
+            assert_eq!(max_file(other), MAX_FILE, "{other}");
+        }
+    }
+}
+
 fn ext(p: &Path) -> String {
     p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase()
 }
@@ -2733,8 +2758,9 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     let c = "open";
     let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?);
     let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
-    if size >= MAX_FILE {
-        return Err(bad(c, format!("{} is too large ({size} bytes)", path.display())));
+    let most = max_file(&ext(&path));
+    if size >= most {
+        return Err(bad(c, format!("{} is too large ({size} bytes; `open` takes one under {most})", path.display())));
     }
     // IFC comes in as a new project: saving it asks where.
     if ext(&path) == "ifc" {

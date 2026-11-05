@@ -2414,7 +2414,7 @@ msgstr "Demolido"
 msgid "Demolition"
 msgstr "Demolição"
 
-#: crates/core/src/commands.rs:9135
+#: crates/core/src/commands.rs:9161
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -8531,7 +8531,7 @@ msgstr "Formato de unidades"
 msgid "Unlock alignment"
 msgstr "Desbloquear alinhamento"
 
-#: crates/core/src/commands.rs:9276
+#: crates/core/src/commands.rs:9302
 msgid "Unnamed"
 msgstr "Sem nome"
 

@@ -2414,7 +2414,7 @@ msgstr ""
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:9135
+#: crates/core/src/commands.rs:9161
 msgid "Dependent"
 msgstr ""
 
@@ -8531,7 +8531,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:9276
+#: crates/core/src/commands.rs:9302
 msgid "Unnamed"
 msgstr ""
 
