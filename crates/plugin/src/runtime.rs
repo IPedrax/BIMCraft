@@ -209,18 +209,21 @@ impl Runtime {
         if let Err(e) = install(&mut linker) {
             return Err(format!("plugin `{plugin}`: {e}"));
         }
-        // The session is in the store only while the interpreter runs: it is taken out again on every path, a
-        // panic included, which is what keeps its path and the plugin registry through a call that stops the host.
-        store.data_mut().session = Some(std::mem::replace(session, Session::new()));
-        let mut outcome = self.run(&mut store, &linker, function, params);
-        if outcome.is_ok() && store.data().started.elapsed() > WALL {
+        // The session is in the store only while the interpreter runs, and a guard takes it out again on every way
+        // out — the end of the call, an early return, or a panic the interpreter raises: the caller's slot gets the
+        // session back, with its path and the registry of the plugins' commands, whatever ended the call.
+        let mut guard = SessionGuard { slot: session, store: &mut store };
+        guard.take_in();
+        let mut outcome = self.run(guard.store, &linker, function, params);
+        if outcome.is_ok() && guard.store.data().started.elapsed() > WALL {
             outcome = Err(Failed::halted(format!("the call took more than {} s", WALL.as_secs())));
         }
-        let left = store.get_fuel().unwrap_or(0);
-        let HostState { session: host, trace, calls, log: call_log, .. } = store.into_data();
-        if let Some(host) = host {
-            *session = host;
-        }
+        let left = guard.store.get_fuel().unwrap_or(0);
+        let (trace, calls, call_log) = {
+            let HostState { trace, calls, log, .. } = guard.store.data();
+            (trace.clone(), *calls, std::sync::Arc::clone(log))
+        };
+        guard.give_back();
         outcome.map_err(|failed| {
             // The log keeps what the sandbox's error can't: the steps the plugin took and what each cost, which
             // is where a call that runs out of fuel or traps actually went. A plugin's own error said its why.
@@ -280,6 +283,33 @@ impl Runtime {
             return Err(Failed::said(e));
         }
         Ok(value)
+    }
+}
+
+/// The caller's slot and the store of one call: the session is moved between them, and put back however the call
+/// ends — the guard's `Drop` runs on a panic too, which `Store::into_data` alone would not.
+struct SessionGuard<'a> {
+    slot: &'a mut Session,
+    store: &'a mut Store<HostState>,
+}
+
+impl SessionGuard<'_> {
+    /// Moves the caller's session into the store, for the host functions that run on it.
+    fn take_in(&mut self) {
+        self.store.data_mut().session = Some(std::mem::replace(self.slot, Session::new()));
+    }
+
+    /// Moves it back: whatever the call did, the caller's session is the one it had, with its path and its commands.
+    fn give_back(&mut self) {
+        if let Some(host) = self.store.data_mut().session.take() {
+            *self.slot = host;
+        }
+    }
+}
+
+impl Drop for SessionGuard<'_> {
+    fn drop(&mut self) {
+        self.give_back();
     }
 }
 
