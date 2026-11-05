@@ -15,5 +15,7 @@ entry points the host looks for. It is compiled into a plugin module (`wasm32-un
   error, so the plugin's transaction rolls every change back. A handler that returns a value returns it as the call's JSON.
 - **A build for the host is a stub.** Outside `wasm32` the calls answer with an error, so `cargo check` and the sample's
   `cargo fmt`/tests work without a WebAssembly toolchain.
-- **The example is the documentation.** `plugins/area-summary` uses only this crate and `serde_json`; its `README.md`
-  says how to build and install it, and `crates/plugin/tests/sample.rs` runs the built module.
+- **The docs are the documentation.** The repository has no example plugin crate: `docs/areas/plugins.md` holds the
+  manifest, the crate's `Cargo.toml` and a handler, and this crate's own doc comments the ABI. `crates/plugin/tests/sample-plugin`
+  is a test fixture, not an example: `crates/plugin/tests/sample.rs` builds it (CI does) and runs the built module, so the
+  ABI stays checked end to end.

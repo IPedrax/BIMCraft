@@ -36,7 +36,7 @@ msgstr "Brique"
 msgid "Brick 225 x 75"
 msgstr "Brique 225 x 75"
 
-#: crates/core/src/commands.rs:3988
+#: crates/core/src/commands.rs:4024
 msgid "Camera"
 msgstr "Caméra"
 
@@ -84,7 +84,7 @@ msgstr "Bloc de béton"
 msgid "Copper"
 msgstr "Cuivre"
 
-#: crates/core/src/commands.rs:1132
+#: crates/core/src/commands.rs:1161
 msgid "Copy"
 msgstr "Copie"
 
@@ -112,7 +112,7 @@ msgstr "Tiret point"
 msgid "Data Outlet"
 msgstr "Prise de données"
 
-#: crates/core/src/commands.rs:9126
+#: crates/core/src/commands.rs:9162
 msgid "Dependent"
 msgstr "Dépendant"
 
@@ -188,8 +188,8 @@ msgstr "Éclairage électrique"
 msgid "Electrical Power"
 msgstr "Alimentation électrique"
 
-#: crates/core/src/commands.rs:8910
-#: crates/core/src/commands.rs:10897
+#: crates/core/src/commands.rs:8946
+#: crates/core/src/commands.rs:10933
 msgid "Elevation"
 msgstr "Élévation"
 
@@ -306,7 +306,7 @@ msgstr "Largeur du pied"
 msgid "Length"
 msgstr "Longueur"
 
-#: crates/core/src/commands.rs:5676
+#: crates/core/src/commands.rs:5712
 #: crates/core/src/model.rs:3001
 msgid "Level"
 msgstr "Niveau"
@@ -331,7 +331,7 @@ msgstr "Repère"
 msgid "Masking"
 msgstr "Masque"
 
-#: crates/core/src/commands.rs:6934
+#: crates/core/src/commands.rs:6970
 msgid "Mass"
 msgstr "Volume"
 
@@ -419,7 +419,7 @@ msgstr "Plâtre"
 msgid "Porcelain"
 msgstr "Porcelaine"
 
-#: crates/core/src/commands.rs:2687
+#: crates/core/src/commands.rs:2723
 msgid "Project"
 msgstr "Projet"
 
@@ -447,7 +447,7 @@ msgstr "Contremarches"
 msgid "Roof tiles"
 msgstr "Tuiles"
 
-#: crates/core/src/commands.rs:7159
+#: crates/core/src/commands.rs:7195
 msgid "Room"
 msgstr "Pièce"
 
@@ -475,8 +475,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Hauteur assise"
 
-#: crates/core/src/commands.rs:8887
-#: crates/core/src/commands.rs:10896
+#: crates/core/src/commands.rs:8923
+#: crates/core/src/commands.rs:10932
 msgid "Section"
 msgstr "Coupe"
 
@@ -600,7 +600,7 @@ msgstr "MONTE"
 msgid "Unbounded Height"
 msgstr "Hauteur non délimitée"
 
-#: crates/core/src/commands.rs:9267
+#: crates/core/src/commands.rs:9303
 msgid "Unnamed"
 msgstr "Sans nom"
 
@@ -620,7 +620,7 @@ msgstr "Volume"
 msgid "WC"
 msgstr "WC"
 
-#: crates/core/src/commands.rs:196
+#: crates/core/src/commands.rs:222
 msgid "Wall"
 msgstr "Mur"
 
