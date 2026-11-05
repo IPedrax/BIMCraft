@@ -51,6 +51,37 @@ pub struct Command {
     /// place in the interface (a shortcut, or a command no menu reaches) — the field is always
     /// read, filled in as the catalog learns the interface.
     pub menu: Option<&'static str>,
+    /// Whether it reads or writes files, and so needs a plugin's `files` permission. A command that only
+    /// touches the disk with some parameters says [`Files::Conditional`] here and decides in
+    /// [`touches_files`].
+    pub files: Files,
+}
+
+/// What a command does with the disk. A plugin call may only reach the disk when its plugin is given the
+/// `files` permission, so every command that does is marked here, next to its parameters, rather than in a
+/// list somewhere else that a new command would forget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Files {
+    /// It never touches the disk.
+    None,
+    /// It reads files.
+    Read,
+    /// It writes, moves or replaces files.
+    Write,
+    /// It may: [`touches_files`] reads the parameters to say which.
+    Conditional,
+}
+
+impl Files {
+    /// The catalog's word for it, or `None` for a command that never touches the disk.
+    pub fn as_str(self) -> Option<&'static str> {
+        match self {
+            Files::None => None,
+            Files::Read => Some("read"),
+            Files::Write => Some("write"),
+            Files::Conditional => Some("conditional"),
+        }
+    }
 }
 
 impl Command {
@@ -64,6 +95,7 @@ impl Command {
             run: self.run,
             undoable: self.undoable,
             menu: Some(menu),
+            files: self.files,
         }
     }
 }
@@ -167,7 +199,35 @@ pub fn find(name: &str) -> Option<&'static Command> {
 
 /// The command catalog as agents read it.
 pub fn catalog() -> Value {
-    commands().iter().map(|c| json!({"id": c.id, "label": c.label, "aliases": c.aliases, "params": c.params, "menu": c.menu})).collect()
+    commands()
+        .iter()
+        .map(|c| {
+            let mut entry = json!({"id": c.id, "label": c.label, "aliases": c.aliases, "params": c.params, "menu": c.menu});
+            if let Some(files) = c.files.as_str() {
+                entry["files"] = json!(files);
+            }
+            entry
+        })
+        .collect()
+}
+
+/// Whether a call of `cmd` with `params` reads or writes a file, which a plugin may only do with the `files`
+/// permission. A command marked at the [`Command`] is the answer, unless [`Files::Conditional`] says the
+/// parameters decide: a command that only sometimes takes a path. The plugin does not keep a list of its own.
+pub fn touches_files(cmd: &Command, params: &Value) -> Option<Files> {
+    let given = |key: &str| params.get(key).is_some_and(|v| !v.is_null());
+    match cmd.files {
+        Files::None => None,
+        Files::Read => Some(Files::Read),
+        Files::Write => Some(Files::Write),
+        Files::Conditional => {
+            // A texture's picture is a file of its own, nested in the material's parameters.
+            let texture = params.get("texture").is_some_and(|t| t.get("path").is_some_and(|p| !p.is_null()));
+            // The favorites are a file of their own: saving, loading or deleting one writes it, listing only reads it.
+            let favorites = params.get("action").and_then(Value::as_str).is_some_and(|a| a != "list");
+            if given("path") || given("save") || texture || favorites { Some(Files::Write) } else { None }
+        }
+    }
 }
 
 impl Session {

@@ -22,6 +22,97 @@ fn count(s: &mut Session, category: &str) -> u64 {
     run(s, "elements", json!({"category": category}))["count"].as_u64().unwrap()
 }
 
+/// Every property a command's parameter schema declares, by its dotted path (`texture.path`).
+fn schema_paths(value: &Value, prefix: &str, out: &mut Vec<String>) {
+    let Some(object) = value.as_object() else { return };
+    if let Some(Value::Object(props)) = object.get("properties") {
+        for (name, schema) in props {
+            let path = if prefix.is_empty() { name.clone() } else { format!("{prefix}.{name}") };
+            out.push(path.clone());
+            schema_paths(schema, &path, out);
+        }
+    }
+    for key in ["items", "oneOf", "anyOf", "allOf"] {
+        if let Some(inner) = object.get(key) {
+            match inner {
+                Value::Array(all) => {
+                    for v in all {
+                        schema_paths(v, prefix, out);
+                    }
+                }
+                v => schema_paths(v, prefix, out),
+            }
+        }
+    }
+}
+
+/// A plugin only reaches the disk with the `files` permission, and what says a command reaches it is its own mark.
+/// So a command that takes a file's path cannot be left unmarked: a new command with a `path` (or a texture's
+/// picture, or a `save` file) fails here until it says [`crate::engine::Files::Read`] or `Write`, or
+/// [`crate::engine::Files::Conditional`] if only some of its parameters do.
+#[test]
+fn a_command_that_takes_a_path_is_marked_as_touching_files() {
+    let mut unmarked = Vec::new();
+    let mut conditional = Vec::new();
+    for command in commands() {
+        let schema: Value = match serde_json::from_str(command.params) {
+            Ok(schema) => schema,
+            // A documented example with its own words (`{name?, language?: en|pt|…}`) isn't a JSON schema: there
+            // is no property to find, so nothing to miss.
+            Err(_) => continue,
+        };
+        let mut paths = Vec::new();
+        schema_paths(&schema, "", &mut paths);
+        let kinds = ["path", "save", "texture.path"];
+        let takes = kinds.iter().find(|kind| paths.iter().any(|p| p == *kind));
+        let Some(kind) = takes else {
+            // A command with no file parameter that is marked as a file one is a lie too: it would need the
+            // permission for nothing.
+            assert!(
+                command.files == crate::engine::Files::Conditional || command.files == crate::engine::Files::None,
+                "`{}` is marked {:?} but takes no path",
+                command.id,
+                command.files
+            );
+            continue;
+        };
+        match command.files {
+            crate::engine::Files::None => unmarked.push(format!("{kind} in `{}`", command.id)),
+            crate::engine::Files::Conditional => conditional.push(command.id),
+            _ => {}
+        }
+    }
+    assert!(unmarked.is_empty(), "these commands take a file and aren't marked as touching files: {unmarked:?}");
+    // The conditional ones decide by their parameters; the test below checks each call.
+    for id in conditional {
+        let command = crate::engine::find(id).unwrap();
+        assert!(crate::engine::touches_files(command, &json!({})).is_none(), "`{id}` touches no file without parameters");
+    }
+}
+
+#[test]
+fn a_conditional_command_says_which_parameters_reach_the_disk() {
+    let given = |id: &str, params: Value| {
+        let command = crate::engine::find(id).unwrap();
+        crate::engine::touches_files(command, &params).is_some()
+    };
+    // `render` writes only a `.png`; any other path is refused before it reaches the disk.
+    assert!(given("render", json!({"path": "plan.png"})), "a picture written to a path");
+    assert!(!given("render", json!({})), "the default is a picture in the reply");
+    assert!(given("material", json!({"texture": {"kind": "image", "path": "oak.png"}})), "a texture read from a file");
+    assert!(!given("material", json!({"texture": {"kind": "image", "image": "aGVsbG8="}})), "a texture given as bytes");
+    assert!(given("family", json!({"save": "door.json"})), "a family written to a file");
+    assert!(given("family", json!({"path": "door.json"})), "a family read from a file");
+    assert!(!given("family", json!({"category": "door"})), "a family made in the project");
+    // The binary writers: any path they take is a file they write.
+    for id in ["schedule", "export_fill_patterns", "export_crosscheck"] {
+        assert!(given(id, json!({"path": "out.bin"})), "`{id}` writes a file");
+    }
+    for id in ["import_fill_patterns", "compare_crosscheck"] {
+        assert!(given(id, json!({"path": "in.txt"})), "`{id}` reads a file");
+    }
+}
+
 /// An 8 x 6 m box of walls on Level 1; the ids of its walls, bottom one first.
 fn house(s: &mut Session) -> Vec<u64> {
     let r = run(s, "wall", json!({"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true}));
