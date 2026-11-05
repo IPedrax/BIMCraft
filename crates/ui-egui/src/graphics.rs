@@ -559,7 +559,7 @@ impl BimApp {
                         set = Some(("scale", json!({"view": view, "scale": n})));
                     }
                 });
-                crate::properties::end_row(ui);
+                ui.end_row();
                 let label = ui.label(t("Scale Value 1:"));
                 let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
                 ui.add_enabled_ui(note.is_none(), |ui| {
@@ -571,7 +571,7 @@ impl BimApp {
                         }
                     }
                 });
-                crate::properties::end_row(ui);
+                ui.end_row();
                 let note = controlled(Group::Detail);
                 let label = ui.label(t("Detail Level"));
                 let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
@@ -580,7 +580,7 @@ impl BimApp {
                         set = Some(("detail", json!({"view": view, "detail": level.name()})));
                     }
                 });
-                crate::properties::end_row(ui);
+                ui.end_row();
             } else if self.sheet == Sheet::View3D {
                 let note = controlled(Group::Style);
                 let label = ui.label(t("Visual Style"));
@@ -590,7 +590,7 @@ impl BimApp {
                         set = Some(("visual_style", json!({"view": view, "style": v.name()})));
                     }
                 });
-                crate::properties::end_row(ui);
+                ui.end_row();
             }
             if let Some(id) = own_id {
                 let note = self.grid_controlled(id);
@@ -603,7 +603,7 @@ impl BimApp {
                 if let Some(note) = note {
                     r.on_disabled_hover_text(note);
                 }
-                crate::properties::end_row(ui);
+                ui.end_row();
             }
             // A button naming the template, as Revit's: it opens the dialog to pick another, or none.
             ui.label(t("View Template"));
@@ -615,12 +615,12 @@ impl BimApp {
                 info
             });
             assign |= r.clicked();
-            crate::properties::end_row(ui);
+            ui.end_row();
             ui.label(t("Visibility/Graphics Overrides"));
             let r = crate::properties::wide_button(ui, t("Edit…"));
             r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Edit {}", &[t("Visibility/Graphics Overrides")])));
             edit |= r.clicked();
-            crate::properties::end_row(ui);
+            ui.end_row();
         });
         if let Some((command, p)) = set {
             self.run(command, p);

@@ -6498,10 +6498,22 @@ impl Model {
                         self.shown(o.host)
                     ));
                 }
-                // Up to the wall's top over it, which a roof it's attached to may raise.
-                let top = [a, o.offset, b].map(|s| crate::walls::top_at(self, w, s)).into_iter().fold(f64::INFINITY, f64::min);
-                if o.sill < 0.0 || self.own_base(w) + o.sill + t.height > top + TOL {
-                    return Err(format!("{who}: sill {} + height {} doesn't fit wall {}'s height", o.sill, t.height, self.shown(o.host)));
+                // Its sill in the wall: on or over its base, and under its top all across it (which a roof it's attached to may
+                // raise). Its head may rise past the top, as Revit lets it: the wall is cut up to its top, a notch open there.
+                if o.sill < 0.0 {
+                    return Err(format!("{who}: sill {} is under wall {}'s base; give it a sill of 0 or more", o.sill, self.shown(o.host)));
+                }
+                let top =
+                    [a, o.offset, b].map(|s| crate::walls::top_at(self, w, s)).into_iter().fold(f64::INFINITY, f64::min) - self.own_base(w);
+                if o.sill > top - TOL {
+                    return Err(format!(
+                        "{who}: sill {} is at or over the top of wall {}, {} mm up from its base there, so nothing of it is in the \
+                         wall; lower its sill to {} or less, or raise the wall's top",
+                        o.sill,
+                        self.shown(o.host),
+                        (top * 100.0).round() / 100.0,
+                        ((top - TOL) * 100.0).round() / 100.0
+                    ));
                 }
                 let span = OpeningSpan { start: a, end: b, sill: o.sill, head: o.sill + t.height, id };
                 let list = spans.entry(o.host).or_default();

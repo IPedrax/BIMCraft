@@ -57,6 +57,8 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   walls hidden (`graphics {"view": "{3D}", "hide": ["wall"]}`), in the three looks.
 - IFC import: after touching `import.rs` or `step.rs`, open the sample's IFC (`run house.ifc --cmd 'elements {}'`) and
   compare it with the sample, then the same file with its bodies turned into triangle meshes by IfcOpenShell, and a
-  building written with IfcOpenShell's API. Render what came in and look at it. After touching how phases and design options
+  building written with IfcOpenShell's API. Render what came in and look at it. For what has no element (generic components),
+  write that building with coverings, a curtain wall's parts, terrain and the like, save it back and compare each product's
+  class, predefined type, type object and box with IfcOpenShell (`ifcopenshell.util.element.get_type`, `geom.create_shape`). After touching how phases and design options
   cross (`ifc::PHASING`), do it with a phased sample too: `run --sample --script phased.txt --save p.ifc`, `convert p.ifc
   p.bimcraft`, and compare `phases`, `phase_filters`, `phase_overrides`, `option_sets` and each element's `params` with the project's.

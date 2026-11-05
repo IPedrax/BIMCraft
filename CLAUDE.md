@@ -13,29 +13,15 @@ and MCP server, and milestone 2, the egui desktop app, are done. What works and 
 - **Everything is a command** (`ALL` in `crates/core/src/commands.rs`): an id after Revit's tool name, a Revit-style shortcut,
   a params doc written for agents, and a JSON `run`. The CLI, scripts and MCP all go through `Session::execute`, so new
   behaviour is a new command or parameter, with a test.
-- **Every element has an id and a GUID** (`ids.rs`), as Revit's ElementId and UniqueId: the id, six digits from `FIRST_ID`
-  (100000) up, is what people, agents and schedules use, and may be given anew when an element comes in from another file
-  (`insert`, `Elements::insert_as`); the GUID is made once and never changes. Anything that points at an element holds its
-  `Guid`, never its `Id`: a new element kind lists its references in `visit_refs!` (`Element::refs_mut`), and new code finds
-  elements by either (`Key`, `Model::same`, `Model::guid`). A command takes an element by id or GUID (`Guid` reads a number
-  as the id it names, `Model::resolve` swaps it for the GUID after the command, and `Model::check` refuses one left over).
-  A copy is a new element: a new id and a new GUID. IFC writes the GUID as the GlobalId and reads it back. The library has
-  ids and GUIDs too (`library.rs`): each type, material, picture, family, parameter, view filter and template, phase, phase
-  filter, option set and option is an `Entry` of `Model::library`, its id counting down from `LAST_ID` (999999) in the same
-  id space; code names entries as it always has, and a file holds their GUIDs (`Model::to_json`, `names_from_file`). So a
-  new name reference goes in `Element::lib_refs_mut` or `Model::lib_refs_mut`, a new kind of entry in `Kind` and
-  `library_names` (and `copy_definition` for Insert from File), and a new rename calls `Library::renamed`;
-  `Model::sync_library` (after every command) gives new entries theirs. Parts hold their own `id` and `guid` (`Layer`,
-  `Form`, `Symbol`; the `HasPart` trait, listed in `Library::parts` by `parts_now`): an edit that gives a list again keeps
-  them by place (`keep_parts`), the sync gives new ones (and a copy, which holds another's, its own; the one that held it
-  before keeps it). A family's types and parameters are entries (`family: name`), so a component's type and instance values
-  are GUIDs in a file; inside a family, its parts name its parameters as its formulas do. This is the standard for
-  everything new: a new kind of part implements `HasPart` and goes in `parts_now`, `sync_parts` and `forget_parts`.
+- **Every element has an id and a GUID** (`ids.rs`), as Revit's ElementId and UniqueId: the id (six digits from 100000) is for
+  people and may change when an element comes in from another file; the GUID never changes, and anything that points at an
+  element holds it. Library entries (`library.rs`: types, materials, families, phases, …; ids down from 999999) and parts
+  (`HasPart`) have both too. Everything new follows this standard: what to register where is in
+  [crates/core/CLAUDE.md](crates/core/CLAUDE.md#ids-and-guids).
 - **A file is read kindly, a command strictly.** The model's types keep `deny_unknown_fields`, so a misspelled key in a
-  command's params is an error. `Model::read` leaves out of a file what this version doesn't know (`lenient.rs` walks it as
-  the types would read it) and `open` lists it as `left_out`; a file of a newer `format` is refused. A change to what a file
-  holds that an older version would misread (not just a field it can do without) bumps `FORMAT` and adds its step to
-  `Model::migrate`; a new element category goes in `lenient::element` too (a test names any missing).
+  command's params is an error. `Model::read` leaves out of a file what this version doesn't know (`lenient.rs`) and `open`
+  lists it as `left_out`; a file of a newer `format` is refused. A change an older version would misread bumps `FORMAT` and
+  adds a step to `Model::migrate`.
 - **Validate in one place.** Commands build elements; `Model::check` validates the whole model after each command and the
   engine rolls back when it fails. New rules go there, with an error that says what to fix.
 - **Clean-room.** Never copy Autodesk content: no families (`.rfa`), templates, icons, help text, or anything from inside
@@ -52,9 +38,9 @@ and MCP server, and milestone 2, the egui desktop app, are done. What works and 
   the model. Logic any front end needs (what a plan shows, what's under the cursor) belongs in the core: the canvas draws
   `render::draw` and picks with `Drawing::pick`. UI behaviour is tested with egui_kittest: clicks at model points
   (`BimApp::screen`), buttons by label, keys (`crates/ui-egui/src/tests.rs`).
-- **Only the desktop app phones home, and only through `crates/update`.** The core, the CLI and the MCP server don't depend on it
-  (a test reads their manifests), and a `BimApp` starts with `updates: None`, so no UI test reaches the network. What comes from the
-  network is hostile, and how it is checked, a check at a time, is in [crates/update/CLAUDE.md](crates/update/CLAUDE.md).
+- **Only the desktop app phones home, and only through `crates/update`**; what comes from the network is hostile. A `BimApp`
+  starts with `updates: None`, so no test reaches the network. The checks are in
+  [crates/update/CLAUDE.md](crates/update/CLAUDE.md).
 - **Test first.** Write the failing test, watch it fail, then write the code. Drawings and IFC are tested through their output:
   pixels of the PNG, entity references in the STEP file.
 - **Keep the agent docs layered.** This file stays short: the rules, the checks, the conventions and a map of the modules. A
@@ -110,12 +96,15 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 - `dxf.rs`: DXF drawings read from the public reference. `cad.rs`: the drawings a project holds, and how an import colours, pens and dashes them ([CAD import](docs/areas/cad-import.md)).
 - `family.rs`, `family/validate.rs`, `csg.rs`, `fixtures.rs`, `favorites.rs`: families, what's wrong with one and what's worth knowing about it (its formulas, its checks, its forms' boxes), solids cut from solids, the starter fixtures, the user's favorites. `texture.rs`, `paint.rs`: textures and paint. Area: [families](docs/areas/families.md).
 - `curtain.rs`: curtain walls, their panel and mullion types, patterns and layout ([curtain walls](docs/areas/curtain-walls.md)).
-- `ifc.rs`, `import.rs`, `step.rs`: IFC export, IFC import, the STEP files they use. `lenient.rs`: what a file holds that this version doesn't know, found so it can be left out. `cloud.rs`: point clouds read from PTS, XYZ, PLY and LAS, and E57 (`cloud/e57.rs`) ([point clouds](docs/areas/point-clouds.md)). `insert.rs`, `inquiry.rs`: Insert from File, Select by ID and IDs of Selection. `autosave.rs`: background snapshots. `units.rs`, `language.rs`: units and a project's language. `sample.rs`, `sample/highrise.rs`, `sample/tower.rs`: the sample house and the benchmark towers. `component_geometry.rs`: family geometry reused within an operation.
+- `ifc.rs`, `import.rs`, `step.rs`: IFC export, IFC import, the STEP files they use; `ifc/classes.rs`: IFC4's element classes, which a generic family from IFC goes back out as ([families](docs/areas/families.md)). `lenient.rs`: what a file holds that this version doesn't know, found so it can be left out. `cloud.rs`: point clouds read from PTS, XYZ, PLY and LAS, and E57 (`cloud/e57.rs`) ([point clouds](docs/areas/point-clouds.md)). `insert.rs`, `inquiry.rs`: Insert from File, Select by ID and IDs of Selection. `autosave.rs`: background snapshots. `units.rs`, `language.rs`: units and a project's language. `sample.rs`, `sample/highrise.rs`, `sample/tower.rs`: the sample house and the benchmark towers. `component_geometry.rs`: family geometry reused within an operation.
 - The spatial core ([plan](docs/spatial-core-plan.md); each module in [crates/core/CLAUDE.md](crates/core/CLAUDE.md)): `derived.rs`, `rooms.rs`, `shared.rs`, `bounds.rs`, `family/bounds.rs`, `ids/revisions.rs`, `view3d/update.rs`, `view3d/fragments.rs`, `oracle_tests.rs`, `crosscheck.rs`.
 - `symbol_set.rs`: symbol sets, families of plan symbols loaded on demand by the `symbol_set` command (the AREI/RGIE's, `data/arei-symbols.json`; [families](docs/areas/families.md)).
 - `hydrant.rs`: the `hydrant_size` command, hydrants and hose reels by IT 22/2025 (Tabelas 1 to 3, Hazen-Williams).
 - `loads.rs`: the `load_points` command, a dwelling's lighting and outlets by room by NBR 5410 item 9.5.2.
-- `water.rs`: the `water_size` command, cold water by NBR 5626 (design flow, speed, head loss, pressure).
+- `dr.rs`: the `dr_check` command, which circuits NBR 5410 asks a 30 mA residual-current device for.
+- `demand.rs`: the `demand` command, an installation's demand and service category by a utility's own standard (CPFL's GED 13; Enel's ET 1569 by installed load).
+- `dps.rs`: the `dps_check` command, surge protection of a power line by NBR 5410 (when, where, connection, currents).
+- `water.rs`, `reservoir.rs`: `water_size`, cold water by NBR 5626, and `reservoir_size`, its reservation.
 - `storm.rs`: the `storm_size` command, storm drains by NBR 10844 (Manning, the downpipe abacuses).
 - `drainage.rs`: the `drain_size` and `vent_size` commands, sanitary drains and vents by NBR 8160's tables.
 - `conduit.rs`: the `conduit_fill` command, a conduit's fill by NBR 5410 (makers' catalogues in `conduit/tables.rs`).

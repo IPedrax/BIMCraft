@@ -16,7 +16,7 @@ use std::f64::consts::PI;
 use std::sync::Arc;
 
 use crate::commands::{micron, next_number, tidy};
-use crate::family::{Category, Expr, Family, Form, MAX_TRIANGLES, Parameter};
+use crate::family::{Category, Expr, Family, Form, IfcClass, MAX_TRIANGLES, Parameter};
 use crate::geom::{self, P2};
 use crate::library::Kind;
 use crate::model::{
@@ -35,6 +35,50 @@ use serde_json::json;
 /// The most project parameter values an import reads: a set related to many elements hands each
 /// all its values.
 const MAX_VALUES: usize = 1_000_000;
+
+/// The most generic families of one name an import makes, each of another IFC class.
+const MAX_NAMESAKES: usize = 100;
+
+/// How deep an import follows what an element is part of.
+const MAX_DEPTH: usize = 16;
+
+/// What never comes in as a generic component: openings and the other features, virtual elements, annotations, spatial
+/// elements, grids and ports (the structural analysis model's items besides).
+const NOT_GENERIC: &[&str] = &[
+    "IFCOPENINGELEMENT",
+    "IFCOPENINGSTANDARDCASE",
+    "IFCVOIDINGFEATURE",
+    "IFCPROJECTIONELEMENT",
+    "IFCSURFACEFEATURE",
+    "IFCEARTHWORKSCUT",
+    "IFCVIRTUALELEMENT",
+    "IFCANNOTATION",
+    "IFCGRID",
+    "IFCDISTRIBUTIONPORT",
+    "IFCPORT",
+    "IFCALIGNMENT",
+    "IFCREFERENT",
+    "IFCSITE",
+    "IFCBUILDING",
+    "IFCBUILDINGSTOREY",
+    "IFCSPACE",
+    "IFCSPATIALZONE",
+    "IFCEXTERNALSPATIALELEMENT",
+    "IFCFACILITY",
+    "IFCFACILITYPART",
+    "IFCFACILITYPARTCOMMON",
+    "IFCBRIDGE",
+    "IFCBRIDGEPART",
+    "IFCROAD",
+    "IFCROADPART",
+    "IFCRAILWAY",
+    "IFCRAILWAYPART",
+    "IFCMARINEFACILITY",
+    "IFCMARINEPART",
+];
+
+/// The spatial elements an element may be part of, which make it no part of another element.
+const SPATIAL: &[&str] = &["IFCSITE", "IFCBUILDING", "IFCBUILDINGSTOREY", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"];
 
 /// A model read from an IFC file: its schema, what was left out and why, and how far it was moved
 /// to bring it near the origin.
@@ -2314,11 +2358,12 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     // of. A family for each name the file gives them ("Family:Type", as Revit and BIMCraft name
     // them), a type for each type; the file's family over the library's of its name.
     let styles = item_styles(&r, &ids);
-    // Each family: its category, its types in the order they came (each its forms and its shapes'
-    // key), the types by the name the file gives them, and how many forms it has.
+    // Each family: its category, the IFC class a generic one remembers, its types in the order they came (each its forms and its
+    // shapes' key), the types by the name the file gives them, and how many forms it has.
     #[derive(Default)]
     struct Made {
         category: Category,
+        ifc: Option<IfcClass>,
         // Which fixture or fitting it is, from the first of its products' predefined types that names one.
         kind: Option<&'static str>,
         types: Vec<(String, Vec<Form>, u64)>,
@@ -2326,8 +2371,155 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         names: HashSet<String>,
         forms: usize,
     }
-    let mut made: BTreeMap<String, Made> = BTreeMap::new();
-    let mut placed: Vec<(u64, String, String, bool, P2, f64, f64)> = Vec::new();
+    // A product to place: it, its family and type, whether mirrored, where, its angle and its height.
+    type Placed = (u64, String, String, bool, P2, f64, f64);
+    // Reads product `x` as a component of a family of `category` in `made`, its type found or made, and puts it in `placed`; a
+    // generic family remembers `class`, its name apart from those `taken` and from a family of another class. Leaves it out
+    // where it breaks a rule; false where it has no body BIMCraft can read.
+    let component = |id: u64,
+                     x: &Entity,
+                     category: Category,
+                     class: Option<IfcClass>,
+                     taken: &HashSet<String>,
+                     made: &mut BTreeMap<String, Made>,
+                     placed: &mut Vec<Placed>,
+                     skipped: &mut Vec<String>,
+                     seen: &mut HashSet<u64>|
+     -> bool {
+        let f = r.frame(x);
+        let flat = |v: P3| unit([v[0], v[1], 0.0]);
+        let along = [flat(f.x), flat(f.y), [1.0, 0.0, 0.0]].into_iter().find(|v| dot(*v, *v) > 0.5).unwrap_or([1.0, 0.0, 0.0]);
+        let side = cross([0.0, 0.0, 1.0], along);
+        let local = |p: P3| {
+            let d = sub(f.at(p), f.o);
+            [dot(d, along), dot(d, side), d[2]].map(|v| (v * 1e3).round() / 1e3 + 0.0)
+        };
+        let fallback = element_material(&r, &l, id).unwrap_or_default();
+        let mut groups: BTreeMap<String, Vec<[P3; 3]>> = BTreeMap::new();
+        for (item, faces) in r.body_items(x) {
+            let tris = groups.entry(styles.get(&item).cloned().unwrap_or_else(|| fallback.clone())).or_default();
+            for face in faces {
+                tris.extend(triangles(&face.into_iter().map(local).collect::<Vec<_>>()).into_iter().map(settled));
+            }
+        }
+        groups.retain(|_, t| !t.is_empty());
+        if groups.is_empty() {
+            return false;
+        }
+        if groups.values().map(Vec::len).sum::<usize>() > MAX_TRIANGLES {
+            leave(skipped, seen, id, &format!("its body has more than {MAX_TRIANGLES} triangles"));
+            return true;
+        }
+        let forms: Vec<Form> =
+            groups.into_iter().map(|(material, mesh)| Form { mesh: Arc::new(mesh), material, ..Form::default() }).collect();
+        // A product whose object type marks what it is (a lightning terminal) has its family and type in its name.
+        let marked = category.ifc().2.is_some();
+        let name =
+            if marked { None } else { label(id) }.or_else(|| text(x.args.get(2)).map(String::from)).unwrap_or_else(|| x.name.clone());
+        let mut parts = name.splitn(3, ':').map(str::trim);
+        let family = clip(parts.next().unwrap_or_default());
+        let base = clip(parts.next().unwrap_or(&family));
+        // A generic family of the name but another class is another family, numbered on.
+        let family = match &class {
+            None => family,
+            Some(c) => {
+                let free = (1..=MAX_NAMESAKES)
+                    .map(|n| if n == 1 { family.clone() } else { clip(&format!("{family} ({n})")) })
+                    .find(|k| !taken.contains(k) && made.get(k).is_none_or(|f| f.ifc.as_ref() == Some(c)));
+                let Some(free) = free else {
+                    leave(skipped, seen, id, &format!("more than {MAX_NAMESAKES} families of another IFC class are named `{family}`"));
+                    return true;
+                };
+                free
+            }
+        };
+        let fam = made.entry(family.clone()).or_insert_with(|| Made { category, ifc: class, ..Made::default() });
+        if fam.kind.is_none() {
+            fam.kind = category.kind_of(enumeration(x.args.get(8)));
+        }
+        // A type of that name and shape, or its mirror image, found by its shapes' key; a type the
+        // file gives another shape is another type, while the family has room for its forms.
+        let flipped = mirrored(&forms);
+        let (key, flipped_key) = (shape_key(&forms), shape_key(&flipped));
+        let same = fam.named.get(&base).into_iter().flatten().find_map(|&i| {
+            let (t, fs, k) = fam.types.get(i)?;
+            (*k == key && *fs == forms)
+                .then(|| (t.clone(), false))
+                .or_else(|| (*k == flipped_key && *fs == flipped).then(|| (t.clone(), true)))
+        });
+        let pick = match same {
+            Some(pick) => pick,
+            None if fam.forms + forms.len() > crate::family::MAX_FORMS => {
+                let why = format!("family `{family}` has more shapes than one family holds ({} forms)", crate::family::MAX_FORMS);
+                leave(skipped, seen, id, &why);
+                return true;
+            }
+            None => {
+                let taken = fam.named.get(&base).map_or(0, Vec::len);
+                let t = (taken + 1..)
+                    .map(|n| if n == 1 { base.clone() } else { format!("{base} ({n})") })
+                    .find(|t| !fam.names.contains(t))
+                    .unwrap_or_else(|| base.clone());
+                fam.forms += forms.len();
+                fam.names.insert(t.clone());
+                fam.named.entry(base.clone()).or_default().push(fam.types.len());
+                fam.types.push((t.clone(), forms, key));
+                (t, false)
+            }
+        };
+        let (sin, cos) = (along[1], along[0]);
+        placed.push((id, family, pick.0, pick.1, r.flat(f.o), (sin.atan2(cos).to_degrees() * 1e6).round() / 1e6 + 0.0, f.o[2]));
+        true
+    };
+    // The families `made`, each a type for each of its types, and the components `placed` of them, in the model; a family that
+    // isn't sound leaves its components out, with why.
+    let settle = |made: BTreeMap<String, Made>,
+                  placed: Vec<Placed>,
+                  m: &mut Model,
+                  skipped: &mut Vec<String>,
+                  seen: &mut HashSet<u64>,
+                  from: &mut HashMap<Id, String>,
+                  origin: &mut HashMap<u64, Id>,
+                  elements_from: &mut HashMap<u64, Vec<Id>>| {
+        let mut families: BTreeMap<String, Family> = BTreeMap::new();
+        for (name, Made { category, ifc, kind, types, .. }) in made {
+            // Several types: each its own forms, shown by a parameter only its type sets.
+            let several = types.len() > 1;
+            let mut family = Family { category, ifc, kind: kind.map(String::from), ..Family::default() };
+            if several {
+                family.parameters.push(Parameter { name: "Variant".into(), kind: crate::family::Kind::Number, ..Parameter::default() });
+            }
+            for (k, (t, forms, _)) in (1..).zip(types) {
+                let set = if several { BTreeMap::from([("Variant".to_string(), serde_json::json!(k))]) } else { BTreeMap::new() };
+                family.types.insert(t, set);
+                family
+                    .forms
+                    .extend(forms.into_iter().map(|f| Form { visible: several.then(|| Expr::Formula(format!("Variant = {k}"))), ..f }));
+            }
+            families.insert(name, family);
+        }
+        // Each checked once.
+        let unsound: HashMap<String, String> =
+            families.iter().filter_map(|(n, f)| f.check(&|_| true).err().map(|e| (n.clone(), e))).collect();
+        for (id, family, type_name, mirrored, at, angle, z) in placed {
+            if let Some(why) = unsound.get(&family) {
+                leave(skipped, seen, id, why);
+                continue;
+            }
+            let level = level_for(id, z);
+            let offset = ((z - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
+            let c = Component { family, type_name, level, at: micron(at), angle, offset, mirrored, params: BTreeMap::new() };
+            let cid = m.insert(Element::Component(c));
+            from.insert(cid, who(id));
+            origin.entry(id).or_insert(cid);
+            elements_from.entry(id).or_default().push(cid);
+            seen.insert(id);
+        }
+        for (name, f) in families.into_iter().filter(|(n, _)| !unsound.contains_key(n)) {
+            m.families.insert(name, f);
+        }
+    };
+    let (mut made, mut placed) = (BTreeMap::new(), Vec::new());
     let read = Category::read_classes();
     for category in Category::PLACED {
         for id in named(&read) {
@@ -2337,112 +2529,14 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             if Category::from_ifc(&x.name, enumeration(x.args.get(8)), text(x.args.get(4))) != Some(category) {
                 continue;
             }
-            let f = r.frame(x);
-            let flat = |v: P3| unit([v[0], v[1], 0.0]);
-            let along = [flat(f.x), flat(f.y), [1.0, 0.0, 0.0]].into_iter().find(|v| dot(*v, *v) > 0.5).unwrap_or([1.0, 0.0, 0.0]);
-            let side = cross([0.0, 0.0, 1.0], along);
-            let local = |p: P3| {
-                let d = sub(f.at(p), f.o);
-                [dot(d, along), dot(d, side), d[2]].map(|v| (v * 1e3).round() / 1e3 + 0.0)
-            };
-            let fallback = element_material(&r, &l, id).unwrap_or_default();
-            let mut groups: BTreeMap<String, Vec<[P3; 3]>> = BTreeMap::new();
-            for (item, faces) in r.body_items(x) {
-                let tris = groups.entry(styles.get(&item).cloned().unwrap_or_else(|| fallback.clone())).or_default();
-                for face in faces {
-                    tris.extend(triangles(&face.into_iter().map(local).collect::<Vec<_>>()).into_iter().map(settled));
-                }
-            }
-            groups.retain(|_, t| !t.is_empty());
-            if groups.is_empty() {
+            if !component(id, x, category, None, &HashSet::new(), &mut made, &mut placed, &mut skipped, &mut seen) {
                 leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
-                continue;
             }
-            if groups.values().map(Vec::len).sum::<usize>() > MAX_TRIANGLES {
-                leave(&mut skipped, &mut seen, id, &format!("its body has more than {MAX_TRIANGLES} triangles"));
-                continue;
-            }
-            let forms: Vec<Form> =
-                groups.into_iter().map(|(material, mesh)| Form { mesh: Arc::new(mesh), material, ..Form::default() }).collect();
-            // A product whose object type marks what it is (a lightning terminal) has its family and type in its name.
-            let marked = category.ifc().2.is_some();
-            let name =
-                if marked { None } else { label(id) }.or_else(|| text(x.args.get(2)).map(String::from)).unwrap_or_else(|| x.name.clone());
-            let mut parts = name.splitn(3, ':').map(str::trim);
-            let family = clip(parts.next().unwrap_or_default());
-            let base = clip(parts.next().unwrap_or(&family));
-            let fam = made.entry(family.clone()).or_insert_with(|| Made { category, ..Made::default() });
-            if fam.kind.is_none() {
-                fam.kind = category.kind_of(enumeration(x.args.get(8)));
-            }
-            // A type of that name and shape, or its mirror image, found by its shapes' key; a type the
-            // file gives another shape is another type, while the family has room for its forms.
-            let flipped = mirrored(&forms);
-            let (key, flipped_key) = (shape_key(&forms), shape_key(&flipped));
-            let same = fam.named.get(&base).into_iter().flatten().find_map(|&i| {
-                let (t, fs, k) = fam.types.get(i)?;
-                (*k == key && *fs == forms)
-                    .then(|| (t.clone(), false))
-                    .or_else(|| (*k == flipped_key && *fs == flipped).then(|| (t.clone(), true)))
-            });
-            let pick = match same {
-                Some(pick) => pick,
-                None if fam.forms + forms.len() > crate::family::MAX_FORMS => {
-                    let why = format!("family `{family}` has more shapes than one family holds ({} forms)", crate::family::MAX_FORMS);
-                    leave(&mut skipped, &mut seen, id, &why);
-                    continue;
-                }
-                None => {
-                    let taken = fam.named.get(&base).map_or(0, Vec::len);
-                    let t = (taken + 1..)
-                        .map(|n| if n == 1 { base.clone() } else { format!("{base} ({n})") })
-                        .find(|t| !fam.names.contains(t))
-                        .unwrap_or_else(|| base.clone());
-                    fam.forms += forms.len();
-                    fam.names.insert(t.clone());
-                    fam.named.entry(base.clone()).or_default().push(fam.types.len());
-                    fam.types.push((t.clone(), forms, key));
-                    (t, false)
-                }
-            };
-            let (sin, cos) = (along[1], along[0]);
-            placed.push((id, family, pick.0, pick.1, r.flat(f.o), (sin.atan2(cos).to_degrees() * 1e6).round() / 1e6 + 0.0, f.o[2]));
         }
     }
-    let mut families: BTreeMap<String, Family> = BTreeMap::new();
-    for (name, Made { category, kind, types, .. }) in made {
-        // Several types: each its own forms, shown by a parameter only its type sets.
-        let several = types.len() > 1;
-        let mut family = Family { category, kind: kind.map(String::from), ..Family::default() };
-        if several {
-            family.parameters.push(Parameter { name: "Variant".into(), kind: crate::family::Kind::Number, ..Parameter::default() });
-        }
-        for (k, (t, forms, _)) in (1..).zip(types) {
-            let set = if several { BTreeMap::from([("Variant".to_string(), serde_json::json!(k))]) } else { BTreeMap::new() };
-            family.types.insert(t, set);
-            family.forms.extend(forms.into_iter().map(|f| Form { visible: several.then(|| Expr::Formula(format!("Variant = {k}"))), ..f }));
-        }
-        families.insert(name, family);
-    }
-    // A family that isn't sound leaves its components out, with why: each checked once.
-    let unsound: HashMap<String, String> = families.iter().filter_map(|(n, f)| f.check(&|_| true).err().map(|e| (n.clone(), e))).collect();
-    for (id, family, type_name, mirrored, at, angle, z) in placed {
-        if let Some(why) = unsound.get(&family) {
-            leave(&mut skipped, &mut seen, id, why);
-            continue;
-        }
-        let level = level_for(id, z);
-        let offset = ((z - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
-        let c = Component { family, type_name, level, at: micron(at), angle, offset, mirrored, params: BTreeMap::new() };
-        let cid = m.insert(Element::Component(c));
-        from.insert(cid, who(id));
-        origin.entry(id).or_insert(cid);
-        elements_from.entry(id).or_default().push(cid);
-        seen.insert(id);
-    }
-    for (name, f) in families.into_iter().filter(|(n, _)| !unsound.contains_key(n)) {
-        m.families.insert(name, f);
-    }
+    // The families of the file's, which a generic one takes no name of.
+    let of_file: HashSet<String> = made.keys().cloned().collect();
+    settle(made, placed, &mut m, &mut skipped, &mut seen, &mut from, &mut origin, &mut elements_from);
 
     // Stairs: each flight measured from its treads, a landing between each two and the way the next
     // one turns there. The railings among a stair's parts come in along it.
@@ -2854,6 +2948,76 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
     }
 
+    // What else in the building has a body: a component of a generic family that remembers the IFC class it came in as, with its
+    // predefined type (its type object's, where it has none of its own) and the object type that says what it is, so it goes back
+    // out as it. Not an opening or another feature, a virtual element, an annotation, a spatial element, a grid or a port; not a
+    // part of what came in above or was left out, which is that element's; an assembly (a curtain wall, an element assembly) by
+    // its parts, and itself only where none of them has a body.
+    let candidate = |x: &Entity| {
+        !NOT_GENERIC.contains(&x.name.as_str())
+            && !x.name.starts_with("IFCSTRUCTURAL")
+            && r.at(x.args.get(6)).is_some_and(|shape| shape.name == "IFCPRODUCTDEFINITIONSHAPE")
+    };
+    let owned = |id: u64, seen: &HashSet<u64>| {
+        let mut at = id;
+        (0..MAX_DEPTH).any(|_| match l.whole.get(&at) {
+            Some(&whole) => {
+                at = whole;
+                seen.contains(&whole) && e(whole).is_some_and(|w| !SPATIAL.contains(&w.name.as_str()))
+            }
+            None => false,
+        })
+    };
+    // What the products `came` are part of, and what that is part of, each found once.
+    let wholes_of = |came: &mut dyn Iterator<Item = u64>| {
+        let mut out = HashSet::new();
+        for id in came {
+            let mut at = id;
+            for _ in 0..MAX_DEPTH {
+                match l.whole.get(&at) {
+                    Some(&whole) if out.insert(whole) => at = whole,
+                    _ => break,
+                }
+            }
+        }
+        out
+    };
+    let remember = |id: u64, x: &Entity| {
+        let known = crate::ifc::classes::class(&x.name);
+        let at = known.and_then(|c| crate::ifc::classes::predefined_at(c.1, 8)).unwrap_or(8);
+        let type_at = known.and_then(|c| c.2).and_then(|a| crate::ifc::classes::predefined_at(a, 9)).unwrap_or(9);
+        let own = enumeration(x.args.get(at));
+        let of_type = l.typed.get(&id).and_then(|t| e(*t)).and_then(|t| enumeration(t.args.get(type_at)));
+        let predefined = own.filter(|p| *p != "NOTDEFINED").or(of_type).filter(|p| *p != "NOTDEFINED").map(String::from);
+        let userdefined = predefined.as_deref() == Some("USERDEFINED");
+        let object_type = text(x.args.get(4)).map(clip).filter(|o| userdefined || label(id).as_deref() != Some(o.as_str()));
+        let class = IfcClass { class: x.name.clone(), predefined, object_type };
+        // What IFC can't write back isn't remembered: an odd name, a predefined type or object type that breaks its rules.
+        let parts = [
+            class.clone(),
+            IfcClass { object_type: None, ..class.clone() },
+            IfcClass { predefined: None, ..class.clone() },
+            IfcClass { predefined: None, object_type: None, ..class },
+        ];
+        parts.into_iter().find(|c| c.check().is_ok())
+    };
+    let (mut made, mut placed, mut bodied) = (BTreeMap::new(), Vec::new(), HashSet::new());
+    for whole in [false, true] {
+        // Once the parts are read: the assemblies with a part, or a part of a part, that has a body or came in above.
+        let held = if whole { wholes_of(&mut bodied.iter().chain(elements_from.keys()).copied()) } else { HashSet::new() };
+        for &id in &ids {
+            let Some(x) = e(id).filter(|x| !seen.contains(&id) && candidate(x) && l.parts.contains_key(&id) == whole) else { continue };
+            if owned(id, &seen) || held.contains(&id) {
+                continue;
+            }
+            let class = remember(id, x);
+            if class.is_some() && component(id, x, Category::Generic, class, &of_file, &mut made, &mut placed, &mut skipped, &mut seen) {
+                bodied.insert(id);
+            }
+        }
+    }
+    settle(made, placed, &mut m, &mut skipped, &mut seen, &mut from, &mut origin, &mut elements_from);
+
     // The project's parameters: a mark for what a structural program has named (its name, where that is no one's type), and
     // a parameter for each single value in the property sets, the project's own as BIMCraft writes them and any other
     // program's, named for the property (less what a formula can't say, as the brackets of "Cargas (G2)"). Each one's kind from
@@ -3068,24 +3232,24 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let Err(error) = m.check() else { break };
         let id = culprit(&error).filter(|id| from.contains_key(id)).ok_or_else(|| error.clone())?;
         let why = error.split_once(": ").map_or(error.as_str(), |(_, why)| why);
-        // A door or a window that rises past its wall's top, as Revit lets one: said with the file's wall and both heights.
-        let why = match (m.elements.get(id), why.starts_with("sill ")) {
-            (Some(e @ (Element::Door(o) | Element::Window(o))), true) => match (m.wall(o.host), m.opening_dims(e)) {
-                (Some(w), Ok(t)) => {
-                    let along = [o.offset - t.width / 2.0, o.offset, o.offset + t.width / 2.0];
-                    let top = along.map(|s| crate::walls::top_at(&m, w, s)).into_iter().fold(f64::INFINITY, f64::min);
-                    let wall = m.elements.id(o.host).and_then(|k| from.get(&k)).cloned().unwrap_or_default();
-                    format!(
-                        "sill {} + height {} reach {} mm, past its wall {wall}, {} mm high there; BIMCraft keeps a door or window \
-                         within its wall's height, where Revit lets one rise past the top",
-                        num(o.sill),
-                        num(t.height),
-                        num(o.sill + t.height),
-                        num(top - m.own_base(w))
-                    )
+        // A door or a window whose sill is at or over its wall's top (one only rising past the top comes in, as Revit lets
+        // it): said with the file's wall, not BIMCraft's id for it, and its height there.
+        let why = match m.elements.get(id) {
+            Some(e @ (Element::Door(o) | Element::Window(o))) if why.starts_with("sill ") && why.contains(" top ") => {
+                match (m.wall(o.host), m.opening_dims(e)) {
+                    (Some(w), Ok(t)) => {
+                        let along = [o.offset - t.width / 2.0, o.offset, o.offset + t.width / 2.0];
+                        let top = along.map(|s| crate::walls::top_at(&m, w, s)).into_iter().fold(f64::INFINITY, f64::min);
+                        let wall = m.elements.id(o.host).and_then(|k| from.get(&k)).cloned().unwrap_or_default();
+                        format!(
+                            "sill {} is at or over the top of its wall {wall}, {} mm high there, so nothing of it is in the wall",
+                            num(o.sill),
+                            num(top - m.own_base(w))
+                        )
+                    }
+                    _ => why.to_string(),
                 }
-                _ => why.to_string(),
-            },
+            }
             _ => why.to_string(),
         };
         skipped.push(format!("{}: {why}", from.get(&id).cloned().unwrap_or_default()));
@@ -3106,16 +3270,33 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     }
     m.check()?;
 
-    // The rest of what's in the building, by kind.
-    let mut left: BTreeMap<&str, usize> = BTreeMap::new();
+    // The rest of what's in the building, by kind: an assembly whose parts came in, what has no body BIMCraft can read, and
+    // what it has no element for.
+    let mut left: BTreeMap<(&str, u8), usize> = BTreeMap::new();
+    let held = wholes_of(&mut elements_from.keys().copied());
     for id in l.within.keys().filter(|id| !seen.contains(id)) {
         if let Some(x) = e(*id) {
-            *left.entry(x.name.as_str()).or_default() += 1;
+            let why = if held.contains(id) {
+                0
+            } else if !NOT_GENERIC.contains(&x.name.as_str()) && !x.name.starts_with("IFCSTRUCTURAL") && r.body_items(x).is_empty() {
+                1
+            } else {
+                2
+            };
+            *left.entry((x.name.as_str(), why)).or_default() += 1;
         }
     }
-    skipped.extend(
-        left.into_iter().map(|(name, n)| format!("{n} {name}: BIMCraft has no element for {}", if n == 1 { "it" } else { "them" })),
-    );
+    skipped.extend(left.into_iter().map(|((name, why), n)| {
+        let why = match (why, n == 1) {
+            (0, true) => "its parts came in; BIMCraft has no element for the whole",
+            (0, false) => "their parts came in; BIMCraft has no element for the wholes",
+            (1, true) => "it has no body BIMCraft can read",
+            (1, false) => "they have no body BIMCraft can read",
+            (_, true) => "BIMCraft has no element for it",
+            (_, false) => "BIMCraft has no element for them",
+        };
+        format!("{n} {name}: {why}")
+    }));
     let moved = (r.shift != P2(0.0, 0.0)).then_some(r.shift * -1.0);
     Ok(Imported { model: m, schema: file.schema.clone(), skipped, moved })
 }
@@ -3758,7 +3939,7 @@ ENDSEC;END-ISO-10303-21;",
     }
 
     #[test]
-    fn a_window_taller_than_its_wall_is_left_out_with_the_wall_and_both_heights_named() {
+    fn a_window_taller_than_its_wall_comes_in_rising_past_the_top_as_revit_lets_it() {
         let mut s = crate::engine::Session::new();
         s.script(
             r#"wall {"points": [[0,0],[6000,0]], "height": 3000}
@@ -3779,11 +3960,11 @@ ENDSEC;END-ISO-10303-21;",
             .collect::<Vec<_>>()
             .join("\n");
         let i = ifc(file.as_bytes(), "x").unwrap();
-        assert!(only(&i.model, "window").is_empty(), "BIMCraft keeps a window within its wall");
-        let note = i.skipped.iter().find(|n| n.starts_with("IFCWINDOW")).unwrap();
-        assert!(note.contains("past its wall IFCWALL #"), "names the file's wall, not BIMCraft's id for it: {note}");
-        assert!(note.contains("3000 mm high") && note.contains("height 5000"), "says both heights: {note}");
-        assert!(note.contains("Revit"), "says why another program allowed it: {note}");
+        assert_eq!(i.skipped, Vec::<String>::new(), "nothing is left out");
+        let window = only(&i.model, "window");
+        assert_eq!(window.len(), 1, "it comes in, its head past the wall's top");
+        let t = i.model.opening_type(window[0]).unwrap();
+        assert_eq!(t.height, 5000.0, "at its own height");
     }
 
     #[test]

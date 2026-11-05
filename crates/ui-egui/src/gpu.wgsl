@@ -706,10 +706,15 @@ fn fs_wire(in: WireOut) -> @location(0) vec4<f32> {
         first = max(floor(min(i, j)), 0.0);
         last = min(ceil(max(i, j)), steps);
     }
+    var landed = false;
     for (var k = first; k <= last; k += 1.0) {
         if all(floor(in.p + d * (k / steps)) == at) {
-            return vec4<f32>(inked(in.color) / 255.0, 1.0);
+            landed = true;
+            break;
         }
     }
-    discard;
+    if !landed {
+        discard;
+    }
+    return vec4<f32>(inked(in.color) / 255.0, 1.0);
 }

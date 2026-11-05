@@ -436,18 +436,13 @@ window draws): `accent` is for fills, strokes and the drawing, `accent_ink` for 
 colours goes in that test.
 
 Profiles. File > Settings > User Interface > Profile picks the interface the window wears (`style::Profile`, kept in `settings.json` as
-`profile`, a name this version doesn't know read as the default): BIMCraft's own, the default, or Rev, laid out as the ribbon tool its
-users know. Rev has palettes of its own (`style::REV_LIGHT`, `REV_DARK`: the title bar and the ribbon's tabs in the ribbon's greys, where
-BIMCraft's bar is dark; the accent, its tints and the drawing's colours are the same), square corners (`style::corner`, and the widgets'
-own, which `style::follow` sets again when the profile changes), and one layout, flush, so the Layout choice is BIMCraft's and greyed while
-Rev is on. Its File is the ribbon's first tab, white on blue (`style::FILE_TAB`), and leaves the app bar; its open tab is outlined but
-along its foot, where it opens onto the panels; the panels' names sit on bands along the ribbon's foot (`ribbon::panel`); and the Options
-Bar is docked under the ribbon (`BimApp::show`), there with or without a tool's options, so the view never moves under it. In Properties
-each group is a ruled property grid (every group's rows go through `properties::grid`, which draws the line between the columns, and
-`properties::end_row`, which draws one under each row), the group headers are semibold, and Apply stays at the palette's foot over a line
-(`palette_body`), the rows scrolling above it. Each difference
-is read in the frame through `style::rev()`, never a second copy of a widget. Rev copies a layout, never another program's pictures or
-words: its icons are the ones `icons.rs` draws. `tests/profile.rs` drives it, and `tests/smallest.rs` runs the least window in both.
+`profile`, a name this version doesn't know read as the default): BIMCraft's own, the default, or Rev, the ribbon tool its users know.
+They differ in where things are, never in what the window is drawn in: Rev has the ribbon where BIMCraft has the Tools palette (`BimApp::show`), Revit's
+palette layout and names (`Docking::revit`, `Palette::label`), and Find as an icon among the app bar's. The cards, the colours, the dark
+app bar with File on it, the pills of the ribbon's and the view's tabs, the Options Bar over the view and the Layout choice are one code path and one
+palette in both, so a change to the look reaches both.
+What's left of the difference is read in the frame through `style::rev()`, never a second copy of a widget. Rev copies a layout, never another program's pictures or
+words: its icons are the ones `icons.rs` draws. `tests/profile.rs` drives it, and `tests/smallest.rs` runs the least window in both profiles and both layouts.
 
 The title bar (`titlebar.rs`). On Windows and Linux the window draws its own (`BimApp::own_title_bar`, set by `main`, which opens
 the window without the system's decorations): the app bar is the title bar. Its bare ground moves the window and a double-click

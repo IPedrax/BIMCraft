@@ -2573,11 +2573,11 @@ impl Scene {
         if cancelled() {
             return None;
         }
-        // Each edge by its corners to a micron, as `facets` names them: the triangles on it, and where on each.
+        // Each triangle's sides by their corners to a micron, as `facets` names them, sorted: a side's triangles lie together, in
+        // the triangles' order. A list and not a map, which on a large model is most of a wireframe's wait and many times the room.
         let corner = |t: &Tri, k: usize| t.p.get(k % 3).copied().unwrap_or_default();
         let q = |p: P3| p.map(|x| (x * 1e3).round() as i64);
-        type Corner = [i64; 3];
-        let mut on: HashMap<(Corner, Corner), Vec<(usize, usize)>> = HashMap::new();
+        let mut sides: Vec<([i64; 3], [i64; 3], usize)> = Vec::with_capacity(self.tris.len().saturating_mul(3));
         for (i, t) in self.tris.iter().enumerate() {
             if i % 8192 == 0 && cancelled() {
                 return None;
@@ -2585,24 +2585,47 @@ impl Scene {
             for k in 0..3 {
                 let (qa, qb) = (q(corner(t, k)), q(corner(t, k + 1)));
                 if qa != qb {
-                    on.entry((qa.min(qb), qa.max(qb))).or_default().push((i, k));
+                    sides.push((qa.min(qb), qa.max(qb), i * 3 + k));
                 }
             }
         }
-        let plane = |i: usize| self.planes.get(i).copied();
-        let mut edges: Vec<(usize, [P3; 2])> = on
-            .into_values()
-            .filter(|on| !matches!(on.as_slice(), [(x, _), (y, _)] if plane(*x) == plane(*y)))
+        if cancelled() {
+            return None;
+        }
+        let pool = (sides.len() >= 1 << 16).then(render_pool).flatten();
+        match pool {
+            Some(pool) => {
+                use rayon::prelude::*;
+                pool.install(|| sides.par_sort_unstable());
+            }
+            None => sides.sort_unstable(),
+        }
+        if cancelled() {
+            return None;
+        }
+        let plane = |side: usize| self.planes.get(side / 3).copied();
+        let mut edges: Vec<(usize, [P3; 2])> = sides
+            .chunk_by(|a, b| (a.0, a.1) == (b.0, b.1))
+            .filter(|on| !matches!(on, [x, y] if plane(x.2) == plane(y.2)))
             .filter_map(|on| {
-                let &(i, k) = on.first()?;
+                let (i, k) = (on.first()?.2 / 3, on.first()?.2 % 3);
                 let t = self.tris.get(i)?;
                 Some((i, [corner(t, k), corner(t, k + 1)]))
             })
             .collect();
+        drop(sides);
         if cancelled() {
             return None;
         }
-        edges.sort_by(|x, y| x.0.cmp(&y.0).then(x.1.partial_cmp(&y.1).unwrap_or(std::cmp::Ordering::Equal)));
+        let order =
+            |x: &(usize, [P3; 2]), y: &(usize, [P3; 2])| x.0.cmp(&y.0).then(x.1.partial_cmp(&y.1).unwrap_or(std::cmp::Ordering::Equal));
+        match pool {
+            Some(pool) => {
+                use rayon::prelude::*;
+                pool.install(|| edges.par_sort_by(order));
+            }
+            None => edges.sort_by(order),
+        }
         Some(self.edges.get_or_init(|| edges))
     }
 
@@ -5071,6 +5094,56 @@ mod tests {
     fn near_a_line(cam: &Camera, img: &Image, p: P3) -> bool {
         let (x, y) = at(cam, p);
         (-1..=1).any(|dy| (-1..=1).any(|dx| img.color(x + f64::from(dx), y + f64::from(dy)) != PAPER))
+    }
+
+    /// The edges by the whole computation: a map from each side to the triangles on it.
+    fn edges_by_a_map(scene: &Scene) -> Vec<(usize, [P3; 2])> {
+        let corner = |t: &Tri, k: usize| t.p[k % 3];
+        let q = |p: P3| p.map(|x| (x * 1e3).round() as i64);
+        type Corner = [i64; 3];
+        let mut on: HashMap<(Corner, Corner), Vec<(usize, usize)>> = HashMap::new();
+        for (i, t) in scene.tris.iter().enumerate() {
+            for k in 0..3 {
+                let (qa, qb) = (q(corner(t, k)), q(corner(t, k + 1)));
+                if qa != qb {
+                    on.entry((qa.min(qb), qa.max(qb))).or_default().push((i, k));
+                }
+            }
+        }
+        let plane = |i: usize| scene.planes.get(i).copied();
+        let mut edges: Vec<(usize, [P3; 2])> = on
+            .into_values()
+            .filter(|on| !matches!(on.as_slice(), [(x, _), (y, _)] if plane(*x) == plane(*y)))
+            .map(|on| (on[0].0, [corner(&scene.tris[on[0].0], on[0].1), corner(&scene.tris[on[0].0], on[0].1 + 1)]))
+            .collect();
+        edges.sort_by(|x, y| x.0.cmp(&y.0).then(x.1.partial_cmp(&y.1).unwrap()));
+        edges
+    }
+
+    #[test]
+    fn the_edges_found_are_those_of_a_map_from_each_side_to_its_triangles() {
+        let mut highrise = Session::new();
+        highrise.execute("highrise", &serde_json::json!({})).unwrap();
+        for (name, s) in [("house", house()), ("highrise", highrise)] {
+            let scene = Scene::new(&s.model);
+            let by_map = edges_by_a_map(&scene);
+            assert!(by_map.len() > 100, "{name}: {} edges", by_map.len());
+            assert_eq!(scene.edges(), by_map.as_slice(), "{name}");
+        }
+    }
+
+    #[test]
+    fn edges_asked_for_a_view_already_gone_are_not_kept_and_the_next_to_ask_finds_them() {
+        let scene = Scene::new(&house().model);
+        assert!(scene.edges_cancellable(&|| true).is_none());
+        // Cancelled only after the sides are gathered: still nothing kept.
+        let asked = std::cell::Cell::new(0);
+        let later = || {
+            asked.set(asked.get() + 1);
+            asked.get() > 2
+        };
+        assert!(scene.edges_cancellable(&later).is_none());
+        assert_eq!(scene.edges_cancellable(&|| false).unwrap(), edges_by_a_map(&scene).as_slice());
     }
 
     #[test]

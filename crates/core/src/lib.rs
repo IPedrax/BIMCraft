@@ -30,9 +30,12 @@ mod curtain_grid_tests;
 #[cfg(test)]
 mod curtain_tests;
 pub mod curves;
+pub mod demand;
 pub mod derived;
 pub mod dims;
 pub mod dims3d;
+pub mod dps;
+pub mod dr;
 pub mod drainage;
 pub mod draw;
 pub mod dxf;
@@ -55,6 +58,8 @@ pub mod groups;
 pub mod hydrant;
 pub mod ids;
 pub mod ifc;
+#[cfg(test)]
+mod ifc_generic_tests;
 pub mod import;
 pub mod inquiry;
 pub mod insert;
@@ -67,6 +72,8 @@ pub mod loads;
 pub mod massing;
 pub mod model;
 pub mod nbr5410;
+#[cfg(test)]
+mod openings_past_top_tests;
 #[cfg(test)]
 mod oracle_tests;
 pub mod paint;
@@ -83,6 +90,7 @@ pub mod reinforce;
 #[cfg(test)]
 mod reinforce_tests;
 pub mod render;
+pub mod reservoir;
 #[cfg(test)]
 mod roof_slopes_tests;
 #[cfg(test)]

@@ -29,6 +29,28 @@ it as the door's `OperationType` (`Operation::ifc_door`, its side from `flip_han
 `PartitioningType` (two leaves, `DOUBLE_PANEL_VERTICAL`); the import reads a door's back, or its `IfcDoorType`'s (IFC4) or
 `IfcDoorStyle`'s (IFC2x3), onto the type it makes. Schedules have it as the `Operation` field, in the project's language. A
 window's panel operation (`IfcWindowPanelProperties`, a sliding sash) needs an `IfcWindowType`, which the export doesn't write yet.
+What BIMCraft has no element for comes in from IFC as a component of a generic family that remembers the class it came in as
+(`Family::ifc`, an `IfcClass`: `{"class": "IFCPLATE", "predefined": "CURTAIN_PANEL"}`): a covering that is no ceiling, a curtain
+wall's panels and mullions, members, plates, duct fittings, terrain (`IfcGeographicElement`), a lift, anything the file builds
+that has a body BIMCraft can read. The import reads it, after every element of BIMCraft's own, through the same path as
+furniture (`import::ifc`'s `component`, families settled by `settle`): its predefined type is its own, else its type object's,
+`NOTDEFINED` left out; its object type is remembered where it says what it is (the predefined type is `USERDEFINED`, or it isn't
+the name the family and type take), so a family is one per name and class, and one of another class takes the name numbered on
+(`Fin (2)`). Never generic: openings and the other features, virtual elements, annotations, spatial elements, grids, ports,
+the structural analysis model (`import::NOT_GENERIC`), a part of an element that came in (a wall's or a roof's), and an
+assembly (`IfcCurtainWall`, `IfcElementAssembly`) whose parts came in, which is left out and listed as such; one whose parts
+have no body comes in itself. What stays out is listed by class, with what has no body BIMCraft can read said so, and the
+`open` reply's `generic` counts what came in. The export (`Family::ifc` and `ifc/classes.rs`, IFC4's element classes as
+`ci/ifc4_classes.py` reads them from the schema) writes a generic family's components as the class remembered, its attributes
+after `Tag` as IFC4 lays them out (an element assembly's place ahead of its predefined type, a door's sizes), the predefined
+type where IFC4's class takes it (else `.NOTDEFINED.`; nothing for a class with none, `IfcFlowSegment`), the object type
+remembered else the `Family:Type` name, and a type object only where IFC4 has a `<CLASS>TYPE` that isn't abstract (none for a
+`*StandardCase` or a flow terminal), with the predefined type but `USERDEFINED`, which a type object would have to name. A
+class IFC4 doesn't have (IFC4X3's `IfcKerb`) goes out as a proxy, `USERDEFINED`, its object type the class. The `family`
+command sets it (`ifc`, written in capitals, `null` to forget it) and `Family::check` refuses what IFC can't write: a class that
+isn't `IFC` and capitals, a predefined type of anything but capitals, digits and `_`, an object type of more than a line. A
+family of another category keeps what it remembers but goes out as its category says. An older BIMCraft leaves `ifc` out of
+a project and opens it, its components going out as proxies, so the field took no `FORMAT` step.
 A material's `texture` (`texture.rs`) is a pattern drawn in code or a picture of `Model::images` (a PNG or JPEG comes in, is kept
 as a PNG of at most 1024 px, its header checked before the decoder makes room for it), laid on a face at its `size` in mm by the
 face's own axes (`view3d::basis`: across is level, up goes up it, east and north where it lies flat), sampled per pixel from the

@@ -254,7 +254,8 @@ fn over_empty_space_each_tool_says_what_it_needs_in_the_3d_view() {
     let cam = h.state().orbit.camera.unwrap();
     h.state_mut().orbit.camera = Some(bimcraft_core::view3d::Camera { elevation: 0.0, ..cam });
     h.run();
-    let empty = h.state().orbit.rect.min + vec2(30.0, 30.0);
+    // Under the view's tabs and the Options Bar, which float over its top left corner.
+    let empty = h.state().orbit.rect.min + vec2(30.0, 110.0);
     let walls = ids(&h, "wall").len();
     let before = h.state().session.model.elements.len();
     for (tool, says) in [

@@ -11,6 +11,8 @@
 
 use bimcraft_i18n::ui_msg;
 
+pub mod classes;
+
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
@@ -279,12 +281,6 @@ fn refs(ids: &[u64]) -> String {
     ids.iter().map(|i| format!("#{i}")).collect::<Vec<_>>().join(",")
 }
 
-/// What IFC4 puts ahead of the predefined type of a component's type object (each with its comma): a furniture type's
-/// assembly place, which it requires, and nothing for the other classes.
-fn component_type_before(entity: &str) -> &'static str {
-    if entity == "IFCFURNITURE" { ",.NOTDEFINED." } else { "" }
-}
-
 struct Step {
     out: String,
     next: u64,
@@ -341,7 +337,7 @@ type TypeKey = (String, String, String, String, Option<Member>);
 /// A type object as the export builds it: the predefined type its occurrences share, their ids, and which of them use its
 /// material profile set by each cardinal point.
 struct TypeBuild {
-    predefined: &'static str,
+    predefined: String,
     occurrences: Vec<u64>,
     usages: BTreeMap<u8, Vec<u64>>,
 }
@@ -394,21 +390,21 @@ impl Step {
     }
 
     /// Says `ent` is an occurrence of the type object `class` (with its `predefined` type) named `name`.
-    fn typed(&mut self, class: &str, predefined: &'static str, name: &str, ent: u64) {
+    fn typed(&mut self, class: &str, predefined: &str, name: &str, ent: u64) {
         self.typed_with(class, "", predefined, "", name, ent);
     }
 
     /// As `typed`, for a type with attributes beside its PredefinedType: `before` it and `after` it, each with its comma (a
     /// furniture type's assembly place comes before; a door's operation after). Occurrences whose predefined types differ make
-    /// their type's NOTDEFINED: a roof type is flat only when every roof of it is.
-    fn typed_with(&mut self, class: &str, before: &str, predefined: &'static str, after: &str, name: &str, ent: u64) {
+    /// their type's NOTDEFINED: a roof type is flat only when every roof of it is. An empty `predefined` is a class that has none.
+    fn typed_with(&mut self, class: &str, before: &str, predefined: &str, after: &str, name: &str, ent: u64) {
         let key = (class.to_string(), before.to_string(), after.to_string(), name.to_string(), None);
         self.build(key, predefined).occurrences.push(ent);
     }
 
     /// As `typed`, for a beam, a column or a footing: its type holds `member` (its section and material) as a material profile
     /// set, and `ent` uses that set, placed by `cardinal` (an `IfcCardinalPointReference`).
-    fn typed_member(&mut self, class: &str, predefined: &'static str, name: &str, member: Member, cardinal: u8, ent: u64) {
+    fn typed_member(&mut self, class: &str, predefined: &str, name: &str, member: Member, cardinal: u8, ent: u64) {
         let key = (class.to_string(), String::new(), String::new(), name.to_string(), Some(member));
         let build = self.build(key, predefined);
         build.occurrences.push(ent);
@@ -416,10 +412,14 @@ impl Step {
     }
 
     /// The type object `key`'s build, new with `predefined`; occurrences whose predefined types differ make it NOTDEFINED.
-    fn build(&mut self, key: TypeKey, predefined: &'static str) -> &mut TypeBuild {
-        let build = self.typed.entry(key).or_insert_with(|| TypeBuild { predefined, occurrences: Vec::new(), usages: BTreeMap::new() });
+    fn build(&mut self, key: TypeKey, predefined: &str) -> &mut TypeBuild {
+        let build = self.typed.entry(key).or_insert_with(|| TypeBuild {
+            predefined: predefined.to_string(),
+            occurrences: Vec::new(),
+            usages: BTreeMap::new(),
+        });
         if build.predefined != predefined {
-            build.predefined = ".NOTDEFINED.";
+            build.predefined = ".NOTDEFINED.".into();
         }
         build
     }
@@ -437,7 +437,8 @@ impl Step {
                 .chain(member_text.bytes())
                 .fold(0xCBF2_9CE4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
             // Six attributes after the name (description to element type), then `before`, the predefined type and `after`.
-            let kind = self.add(format!("{class}({},$,{},$,$,$,$,$,${before},{predefined}{after})", self.guid(TYPES, key), s(&name)));
+            let predefined = if predefined.is_empty() { predefined } else { format!(",{predefined}") };
+            let kind = self.add(format!("{class}({},$,{},$,$,$,$,$,${before}{predefined}{after})", self.guid(TYPES, key), s(&name)));
             self.add(format!("IFCRELDEFINESBYTYPE({},$,$,$,({}),#{kind})", self.guid(TYPE_DEFINES, key), refs(&occurrences)));
             let Some((section, material)) = member else { continue };
             let profile = self.section_profile(section);
@@ -1214,13 +1215,21 @@ pub fn export(m: &Model) -> String {
                 let (entity, kind, object_type) = f.ifc();
                 let label = format!("{}:{}", cp.family, cp.type_name);
                 let name = s(&label);
-                let object = object_type.map_or_else(|| name.clone(), s);
-                let ent = w.add(format!("{entity}({},$,{name},$,{object},#{at},#{shape},'{id}',{kind})", w.guid(ELEMENT, id)));
+                let object = object_type.map_or_else(|| name.clone(), |o| s(&o));
+                // What follows its tag, as IFC4 has its class: its predefined type, and what comes round it.
+                let class = classes::class(&entity);
+                let tail = class.map_or_else(|| format!(",{kind}"), |c| classes::fill(c.1, &kind));
+                let ent = w.add(format!("{entity}({},$,{name},$,{object},#{at},#{shape},'{id}'{tail})", w.guid(ELEMENT, id)));
                 contained.entry(cp.level).or_default().push(ent);
                 products.insert(id, ent);
-                // Its type object, of the class it is written as, with its family's kind's predefined type, or none defined.
-                let type_kind = if f.kind.is_some() { kind } else { ".NOTDEFINED." };
-                w.typed_with(&format!("{entity}TYPE"), component_type_before(entity), type_kind, "", &label, ent);
+                // Its type object, of the class it is written as, where IFC4 has one: with its family's kind's predefined type,
+                // or the one it remembers but `USERDEFINED` (which a type object would have to say), else none defined.
+                let says = f.kind.is_some() || f.remembered().is_some();
+                let type_kind = if kind.is_empty() || says && kind != ".USERDEFINED." { &kind } else { ".NOTDEFINED." };
+                if let Some(attributes) = class.and_then(|c| c.2) {
+                    let (before, after) = classes::around(attributes);
+                    w.typed_with(&format!("{entity}TYPE"), &before, type_kind, &after, &label, ent);
+                }
                 // What it's made of: its material, or the set of them.
                 let relating = match made_of.as_slice() {
                     [] => None,
@@ -2260,8 +2269,8 @@ mod tests {
             let count = if class == "IFCFURNITURE" { 11 } else { 10 };
             // Its predefined type is its family's kind's (a kitchen sink's .SINK.), or not defined.
             let fam = s.model.families.get(family).unwrap();
-            let predefined = if fam.kind.is_some() { fam.ifc().1 } else { ".NOTDEFINED." };
-            assert_eq!((attrs.len(), attrs[count - 1].as_str()), (count, predefined), "{type_class}");
+            let predefined = if fam.kind.is_some() { fam.ifc().1 } else { ".NOTDEFINED.".into() };
+            assert_eq!((attrs.len(), attrs[count - 1].as_str()), (count, predefined.as_ref()), "{type_class}");
             if class == "IFCFURNITURE" {
                 assert_eq!(attrs[9], ".NOTDEFINED.", "its assembly place");
             }

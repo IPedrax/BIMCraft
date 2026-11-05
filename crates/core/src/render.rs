@@ -2808,7 +2808,14 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     for (id, o, top) in seen_below(m, &elements, &range, &look, index).into_iter().filter(|_| !up) {
         d.owner = Some(id);
         override_patterns(&mut d, m, std::slice::from_ref(&o), false, (P2(0.0, 0.0), 0.0));
-        d.line(&o, BY_CATEGORY, if top > range.bottom - TOL { INK } else { FAINT }, true);
+        let ink = if top > range.bottom - TOL { INK } else { FAINT };
+        d.line(&o, BY_CATEGORY, ink, true);
+        // A door or window rising past a wall's top notches it: the notch's sides, seen from above.
+        if matches!(m.elements.get(id), Some(Element::Wall(_))) {
+            for side in walls::notches(m, id) {
+                d.line(&side, BY_CATEGORY, ink, false);
+            }
+        }
     }
     // A run's centre line, faint and dashed, where it is seen but not cut: Revit's mark of a beam, and where to pick it.
     for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
