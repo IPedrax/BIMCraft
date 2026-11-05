@@ -2491,7 +2491,7 @@ fn dark_mode_turns_the_window_and_the_drawing_dark() {
     // Ink light on a dark ground, the grid still blue.
     let (ground, ink, grid) = (crate::canvas::color(PAPER), crate::canvas::color(Rgb(25, 25, 25)), crate::canvas::color(Rgb(60, 100, 150)));
     assert!(ground.r() < 40 && ink.r() > 200 && grid.b() > grid.r() + 40, "{ground:?} {ink:?} {grid:?}");
-    assert_eq!(crate::style::pal().surface, crate::style::REV_DARK.surface, "Rev's dark");
+    assert_eq!(crate::style::pal().surface, crate::style::DARK.surface);
     press(&mut h, "Dark Mode");
     pick(&mut h, Role::RadioButton, "Light");
     assert!(!crate::style::dark() && crate::canvas::color(PAPER) == egui::Color32::WHITE);
@@ -2506,7 +2506,7 @@ fn dark_ui_with_light_canvas_is_shared_with_settings_and_survives_new_projects()
     press(&mut h, "Dark Mode");
     pick(&mut h, Role::RadioButton, "Dark UI, Light Canvas");
     assert!(crate::style::dark() && h.ctx.theme() == egui::Theme::Dark);
-    assert_eq!(crate::style::pal().surface, crate::style::REV_DARK.surface, "Rev's dark");
+    assert_eq!(crate::style::pal().surface, crate::style::DARK.surface);
     assert_eq!(crate::canvas::color(PAPER), egui::Color32::WHITE);
     assert_eq!(crate::canvas::color(Rgb(25, 25, 25)), egui::Color32::from_gray(25));
     assert!(h.query_by_label("Dark UI, Light Canvas").is_none(), "menu closes after choosing");
@@ -5444,7 +5444,9 @@ fn a_view_that_does_not_show_the_active_option_says_so_and_picking_it_again_show
     press(&mut h, "Massing: Low");
     assert!(!h.state().active_option_unseen(), "Level 1 shows it now");
     // Level 2's plan still shows the primary: what is made there in Low would not be seen.
-    topmost(&mut h, "Level 2");
+    // By its row in the browser, whichever side of the palette's fold that lies.
+    h.get_all_by_label("Level 2").next().unwrap().click_accesskit();
+    h.run();
     assert!(plan_graphics(&h, 100001).options.is_empty());
     assert!(h.state().active_option_unseen());
     // The same pick again shows it in the view on screen.

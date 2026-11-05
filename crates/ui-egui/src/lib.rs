@@ -898,7 +898,7 @@ fn plugin_button(ui: &mut Ui, label: &str, tip: &str) -> Response {
         false => (Color32::TRANSPARENT, Stroke::NONE, if enabled { pal().text } else { pal().muted.gamma_multiply(0.6) }),
     };
     let stroke = if r.has_focus() { style::focus_ring() } else { stroke };
-    ui.painter().rect(rect, style::corner(6.0), fill, stroke, StrokeKind::Inside);
+    ui.painter().rect(rect, 6.0, fill, stroke, StrokeKind::Inside);
     let top = rect.center_top() + vec2(0.0, 30.0 - 6.5 * (lines.len().saturating_sub(1)) as f32);
     for (i, line) in lines.iter().enumerate() {
         ui.painter().text(top + vec2(0.0, 13.0 * i as f32), Align2::CENTER_CENTER, line, font.clone(), ink);
@@ -918,7 +918,7 @@ fn plugin_row(ui: &mut Ui, label: &str, tip: &str) -> Response {
     };
     let stroke = if r.has_focus() { style::focus_ring() } else { Stroke::NONE };
     let p = ui.painter();
-    p.rect(rect, style::corner(4.0), fill, stroke, StrokeKind::Inside);
+    p.rect(rect, 4.0, fill, stroke, StrokeKind::Inside);
     p.text(rect.left_center() + vec2(10.0, 0.0), Align2::LEFT_CENTER, label, FontId::proportional(12.5), ink);
     r.on_hover_text(t(tip))
 }
@@ -956,7 +956,7 @@ fn ribbon_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, 
     // Keyboard focus shows as a ring, whatever else the button shows.
     let stroke = if r.has_focus() { style::focus_ring() } else { stroke };
     let p = ui.painter();
-    p.rect(rect, style::corner(6.0), fill, stroke, StrokeKind::Inside);
+    p.rect(rect, 6.0, fill, stroke, StrokeKind::Inside);
     icons::paint(p, icon, Rect::from_center_size(rect.center_top() + vec2(0.0, 18.0), vec2(26.0, 26.0)), ink);
     let text = match (active, enabled) {
         (true, _) => pal().accent_ink,
@@ -994,7 +994,7 @@ fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -
         (false, false) => (Color32::TRANSPARENT, Stroke::NONE, if enabled { pal().icon } else { pal().icon.gamma_multiply(0.35) }),
     };
     let stroke = if r.has_focus() { style::focus_ring() } else { stroke };
-    ui.painter().rect(rect, style::corner(6.0), fill, stroke, StrokeKind::Inside);
+    ui.painter().rect(rect, 6.0, fill, stroke, StrokeKind::Inside);
     icons::paint(ui.painter(), icon, Rect::from_center_size(rect.center(), vec2(19.0, 19.0)), ink);
     if ribbon::editing_tools() {
         return edit_tool(ui, r, rect, name);
@@ -1024,9 +1024,9 @@ fn list_row_in(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, tr
         (false, false) => Color32::TRANSPARENT,
     };
     let p = ui.painter();
-    p.rect_filled(rect, style::corner(6.0), fill);
+    p.rect_filled(rect, 6.0, fill);
     if r.has_focus() {
-        p.rect_stroke(rect, style::corner(6.0), style::focus_ring(), StrokeKind::Inside);
+        p.rect_stroke(rect, 6.0, style::focus_ring(), StrokeKind::Inside);
     }
     let dim = |c: Color32| if enabled { c } else { c.gamma_multiply(0.4) };
     let ink = if active { pal().accent_ink } else { pal().icon };
@@ -1047,7 +1047,7 @@ fn edit_tool(ui: &Ui, r: Response, rect: Rect, name: &str) -> Response {
     r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, shown, label));
     let p = ui.painter();
     if !shown {
-        p.rect_filled(rect, style::corner(6.0), pal().panel.gamma_multiply(0.7));
+        p.rect_filled(rect, 6.0, pal().panel.gamma_multiply(0.7));
     }
     let tick = Rect::from_min_size(pos2(rect.right() - 15.0, rect.top() + 3.0), vec2(12.0, 12.0));
     p.rect(tick, 2.0, if shown { pal().accent } else { pal().surface }, Stroke::new(1.0, pal().accent_ink), StrokeKind::Inside);
@@ -1096,9 +1096,9 @@ pub(crate) fn stacked_button(ui: &mut Ui, icon: Icon, label: &str, active: bool,
     };
     let dim = |c: Color32| if enabled { c } else { c.gamma_multiply(0.4) };
     let (ink, text) = if active { (pal().accent_ink, pal().accent_ink) } else { (pal().icon, pal().text) };
-    ui.painter().rect_filled(rect, style::corner(3.0), fill);
+    ui.painter().rect_filled(rect, 3.0, fill);
     if r.has_focus() {
-        ui.painter().rect_stroke(rect, style::corner(3.0), style::focus_ring(), StrokeKind::Inside);
+        ui.painter().rect_stroke(rect, 3.0, style::focus_ring(), StrokeKind::Inside);
     }
     icons::paint(ui.painter(), icon, Rect::from_center_size(rect.left_center() + vec2(10.0, 0.0), vec2(14.0, 14.0)), dim(ink));
     ui.painter().text(rect.left_center() + vec2(22.0, 0.0), Align2::LEFT_CENTER, label, font, dim(text));
@@ -1115,10 +1115,10 @@ fn icon_button(ui: &mut Ui, icon: Icon, label: &str) -> Response {
     r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
     let (ink, hover) = style::icon_inks();
     if r.hovered() {
-        ui.painter().rect_filled(rect, style::corner(6.0), hover);
+        ui.painter().rect_filled(rect, 6.0, hover);
     }
     if r.has_focus() {
-        ui.painter().rect_stroke(rect, style::corner(6.0), style::focus_ring(), StrokeKind::Inside);
+        ui.painter().rect_stroke(rect, 6.0, style::focus_ring(), StrokeKind::Inside);
     }
     icons::paint(ui.painter(), icon, Rect::from_center_size(rect.center(), vec2(18.0, 18.0)), ink);
     r.on_hover_text(label)
@@ -1146,31 +1146,10 @@ fn tab_button(ui: &mut Ui, label: &str, active: bool, contextual: bool) -> Respo
 /// A tab that senses what `sense` says (a view's drags too), `room` px wider on its right for what's drawn in it (a view's ×).
 fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sense: Sense, room: f32) -> Response {
     let label = t(label);
-    let font = if active && !style::rev() { style::semibold(13.0) } else { FontId::proportional(13.0) };
+    let font = if active { style::semibold(13.0) } else { FontId::proportional(13.0) };
     let size = ui.painter().layout_no_wrap(label.to_string(), font.clone(), pal().text).size();
     let (rect, r) = ui.allocate_exact_size(vec2(size.x + 24.0 + room, 24.0), sense);
     r.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, active, label));
-    if style::rev() {
-        // Square, the open one in the panels' colour and outlined but along its foot, where it opens onto them.
-        let (fill, ink) = match (contextual, active, r.hovered()) {
-            (true, true, _) => (pal().context, pal().on_context),
-            (true, false, _) => (pal().context_fill, pal().context),
-            (false, true, _) => (pal().panel, pal().text),
-            (false, false, true) => (pal().hover_fill, pal().text),
-            (false, false, false) => (Color32::TRANSPARENT, pal().text),
-        };
-        let p = ui.painter();
-        p.rect_filled(rect, CornerRadius { nw: 2, ne: 2, sw: 0, se: 0 }, fill);
-        if active {
-            let line = Stroke::new(1.0, pal().border);
-            p.line(vec![rect.left_bottom(), rect.left_top(), rect.right_top(), rect.right_bottom()], line);
-        }
-        if r.has_focus() {
-            p.rect_stroke(rect, 2.0, style::focus_ring(), StrokeKind::Inside);
-        }
-        p.text(rect.center() - vec2(room / 2.0, 0.0), Align2::CENTER_CENTER, label, font, ink);
-        return r;
-    }
     // A pill: the open tab in the accent's soft tint, a contextual one solid green when open and tinted green when not.
     let (fill, stroke, ink) = match (contextual, active, r.hovered()) {
         (true, true, _) => (pal().context, Stroke::NONE, pal().on_context),
@@ -1219,9 +1198,9 @@ fn rail_button(ui: &mut Ui, icon: Icon, label: &str, open: bool) -> Response {
         (false, false) => (Color32::TRANSPARENT, pal().icon),
     };
     let p = ui.painter();
-    p.rect_filled(rect, style::corner(6.0), fill);
+    p.rect_filled(rect, 6.0, fill);
     if r.has_focus() {
-        p.rect_stroke(rect, style::corner(6.0), style::focus_ring(), StrokeKind::Inside);
+        p.rect_stroke(rect, 6.0, style::focus_ring(), StrokeKind::Inside);
     }
     icons::paint(p, icon, Rect::from_center_size(rect.center(), vec2(19.0, 19.0)), ink);
     r.on_hover_text(label)
@@ -1703,13 +1682,8 @@ impl BimApp {
         // The ribbon is Rev's: BIMCraft's tools are a palette (`Palette::Tools`), which Rev never shows.
         if style::rev() {
             self.docking.show(dock::Palette::Tools, false);
-            // Rev's tabs go on with the title bar's chrome; its panels are a card of their own under them.
-            let card = style::card([true, true, true, false]).fill(pal().app_bar).stroke(Stroke::NONE);
+            let card = style::card([true, true, true, false]);
             Panel::top("ribbon").frame(card).show_separator_line(false).show(ui, |ui| self.ribbon(ui));
-            // Docked under the ribbon, there with or without anything on it, so the view never moves when it fills.
-            let bar = style::card([true, true, false, false]).inner_margin(Margin::symmetric(10, 3));
-            self.options_rect =
-                Panel::top("options-bar").frame(bar).show_separator_line(false).show(ui, |ui| self.options(ui)).response.rect;
         }
         if self.has_update_banner() {
             Panel::top("update").frame(Frame::NONE).show_separator_line(false).show(ui, |ui| self.update_banner(ui));
@@ -3213,12 +3187,8 @@ impl BimApp {
                 if icon_button(ui, Icon::Home, "Home").clicked() {
                     self.toggle_home();
                 }
-                // Rev's File is the ribbon's first tab.
-                if !style::rev() {
-                    let file =
-                        egui::Button::new(RichText::new(t("File")).color(pal().app_bar_text)).frame(false).min_size(vec2(44.0, 24.0));
-                    MenuButton::from_button(file).ui(ui, |ui| self.file_menu(ui, &ctx));
-                }
+                let file = egui::Button::new(RichText::new(t("File")).color(pal().app_bar_text)).frame(false).min_size(vec2(44.0, 24.0));
+                MenuButton::from_button(file).ui(ui, |ui| self.file_menu(ui, &ctx));
                 if icon_button(ui, Icon::Open, "Open").clicked() {
                     self.guard(Pending::Open, &ctx);
                 }
@@ -3343,26 +3313,9 @@ impl BimApp {
     }
 
     fn ribbon(&mut self, ui: &mut Ui) {
-        let ctx = ui.ctx().clone();
-        let rev = style::rev();
-        // Rev's open tab is joined to the panels under it: no gap between.
-        let mut open = Rect::NOTHING;
-        Frame::new().inner_margin(Margin { left: 6, right: 6, top: 5, bottom: if rev { 0 } else { 5 } }).show(ui, |ui| {
+        Frame::new().inner_margin(Margin::symmetric(6, 5)).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            if rev {
-                // The row a tab's height: File, centred in it, then stands on the line under it as the tabs do.
-                ui.spacing_mut().interact_size.y = 24.0;
-            }
             ui.horizontal(|ui| {
-                if rev {
-                    let file = egui::Button::new(RichText::new(t("File")).color(Color32::WHITE))
-                        .fill(style::FILE_TAB)
-                        .stroke(Stroke::NONE)
-                        .corner_radius(CornerRadius { nw: 2, ne: 2, sw: 0, se: 0 })
-                        .min_size(vec2(56.0, 24.0));
-                    MenuButton::from_button(file).ui(ui, |ui| self.file_menu(ui, &ctx));
-                    ui.add_space(4.0);
-                }
                 // The tabs, scrolling sideways (with the wheel) in a window too narrow for them; the fold button at the end.
                 let room = ui.available_width() - 32.0;
                 // The tab that has just been picked (or a contextual tab that has just come) is brought into view: the row
@@ -3372,7 +3325,7 @@ impl BimApp {
                 let changed = ui.ctx().data(|d| d.get_temp::<u64>(seen)) != Some(now);
                 ui.ctx().data_mut(|d| d.insert_temp(seen, now));
                 let plugin_tabs: Vec<String> = self.plugin_tabs.iter().map(|p| self.plugin_tab_name(p)).collect();
-                let tabs = ScrollArea::horizontal()
+                ScrollArea::horizontal()
                     .id_salt("ribbon-tabs")
                     .max_width(room)
                     .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
@@ -3381,9 +3334,6 @@ impl BimApp {
                             ui.spacing_mut().item_spacing.x = 2.0;
                             for (tab, label, _) in TABS {
                                 let r = tab_button(ui, label, self.tab == tab, false);
-                                if self.tab == tab {
-                                    open = r.rect;
-                                }
                                 if changed && self.tab == tab {
                                     r.scroll_to_me(None);
                                 }
@@ -3393,9 +3343,6 @@ impl BimApp {
                             for (i, label) in plugin_tabs.iter().enumerate() {
                                 let tab = Tab::Plugin(i);
                                 let r = tab_button(ui, label, self.tab == tab, false);
-                                if self.tab == tab {
-                                    open = r.rect;
-                                }
                                 if changed && self.tab == tab {
                                     r.scroll_to_me(None);
                                 }
@@ -3403,9 +3350,6 @@ impl BimApp {
                             }
                             if let Some(name) = self.context() {
                                 let r = tab_button(ui, &name, self.tab == Tab::Context, true);
-                                if self.tab == Tab::Context {
-                                    open = r.rect;
-                                }
                                 if changed && self.tab == Tab::Context {
                                     r.scroll_to_me(None);
                                 }
@@ -3413,7 +3357,6 @@ impl BimApp {
                             }
                         });
                     });
-                open = open.intersect(tabs.inner_rect);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     let (icon, label) = if self.ribbon_min {
                         (Icon::Expand, msg!("Expand the Ribbon"))
@@ -3433,9 +3376,6 @@ impl BimApp {
         let base = ui.min_rect();
         if !self.ribbon_min {
             ui.painter().hline(base.x_range(), base.bottom(), Stroke::new(1.0, pal().border));
-            if rev && open.is_positive() {
-                ui.painter().hline(open.x_range().shrink(1.0), base.bottom(), Stroke::new(1.0, pal().panel));
-            }
         }
         self.ribbon_bottom = ui.min_rect().left_bottom();
         if !self.ribbon_min {
@@ -3559,12 +3499,7 @@ impl BimApp {
 
     /// The ribbon tab's panels of tools.
     fn ribbon_panels(&mut self, ui: &mut Ui) {
-        // Rev's panels are a card of their own under the tabs, their names on bands along its foot.
-        let frame = match style::rev() {
-            true => Frame::new().fill(pal().panel).inner_margin(Margin { left: 6, right: 6, top: 4, bottom: 0 }),
-            false => Frame::new().inner_margin(Margin { left: 6, right: 6, top: 4, bottom: 4 }),
-        };
-        frame.show(ui, |ui| {
+        Frame::new().inner_margin(Margin::symmetric(6, 4)).show(ui, |ui| {
             // A tab wider than the window folds its last panels; one still too wide scrolls sideways, each tab where it was
             // left.
             let key = UiId::new(("ribbon-widths", tab_key(self.tab)));
@@ -4587,10 +4522,6 @@ impl BimApp {
     /// The Options Bar, while there's something on it (a contextual tab's name, a tool's options): a card floating over the
     /// view's top left, so the view never moves when it comes and goes, and taking the clicks that land on it.
     fn options_bar(&mut self, ctx: &Context) {
-        // Rev's is docked under the ribbon (`show`).
-        if style::rev() {
-            return;
-        }
         if self.context().is_none() && matches!(self.tool, Tool::Modify) && self.note_edit.is_none() {
             self.options_rect = Rect::NOTHING;
             return;

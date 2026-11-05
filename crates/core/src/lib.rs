@@ -28,6 +28,8 @@ pub mod curves;
 pub mod derived;
 pub mod dims;
 pub mod dims3d;
+pub mod dps;
+pub mod dr;
 pub mod drainage;
 pub mod draw;
 pub mod dxf;
@@ -78,6 +80,7 @@ pub mod reinforce;
 #[cfg(test)]
 mod reinforce_tests;
 pub mod render;
+pub mod reservoir;
 #[cfg(test)]
 mod roof_slopes_tests;
 #[cfg(test)]
