@@ -70,6 +70,14 @@ pub(crate) fn credit_of(m: &Model, t: &Toposurface) -> Option<String> {
     (!line.is_empty()).then_some(line)
 }
 
+/// How far the photograph toposurface `t` wears is shifted from where the fetch put it, east and north in mm (`shift_imagery`'s
+/// numbers); none if it wears none.
+pub fn shift_of(m: &Model, t: &Toposurface) -> Option<(f64, f64)> {
+    let texture = m.materials.get(&t.material)?.texture.as_ref().filter(|x| x.kind == Kind::Image && x.planar)?;
+    let extent = crate::commands::terrain_extent(t)?;
+    Some((texture.offset[0] - extent[0], texture.offset[1] - extent[3]))
+}
+
 /// The credits of the photographs the view `look` shows: those of the toposurfaces it shows that wear one, once each, in order, no
 /// more than [`MAX_CREDITS`]. Whatever draws the photograph letters them with it.
 pub fn credits(m: &Model, look: &Look) -> Vec<String> {

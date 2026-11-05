@@ -455,3 +455,78 @@ fn the_render_command_stamps_the_credit_on_its_3d_picture() {
     let differing = pa.data().chunks_exact(4).zip(pb.data().chunks_exact(4)).filter(|(x, y)| x != y).count();
     assert!(differing > 60, "{differing} pixels differ");
 }
+
+// ---- Aligning the photograph with the map: shifted from where the fetch put it ----
+
+/// Where the photograph's west and north corner is, mm.
+fn offset(s: &Session) -> [f64; 2] {
+    s.model.materials["Aerial"].texture.as_ref().unwrap().offset
+}
+
+#[test]
+fn the_photograph_is_shifted_from_where_the_fetch_put_it_and_not_from_where_it_is() {
+    let mut s = terrained(&picture("shift", 8, 8, quadrants), square(), 0.0);
+    assert_eq!(offset(&s), [0.0, 10000.0], "the terrain's west and north corner");
+    let r = run(&mut s, "shift_imagery", json!({"east": 2000, "north": 1000}));
+    assert_eq!((r["east"].as_f64(), r["north"].as_f64()), (Some(2000.0), Some(1000.0)));
+    assert_eq!(offset(&s), [2000.0, 11000.0]);
+    // The same again is the same, not twice as far.
+    run(&mut s, "shift_imagery", json!({"east": 2000, "north": 1000}));
+    assert_eq!(offset(&s), [2000.0, 11000.0]);
+    // One of the two given keeps the other where it is.
+    let r = run(&mut s, "shift_imagery", json!({"east": -500}));
+    assert_eq!((offset(&s), r["north"].as_f64()), ([-500.0, 11000.0], Some(1000.0)));
+    // Reset puts it back, and says so.
+    let r = run(&mut s, "shift_imagery", json!({"reset": true}));
+    assert_eq!((offset(&s), r["east"].as_f64(), r["north"].as_f64()), ([0.0, 10000.0], Some(0.0), Some(0.0)));
+    // One step to undo.
+    run(&mut s, "shift_imagery", json!({"east": 3000}));
+    assert_eq!(offset(&s), [3000.0, 10000.0]);
+    run(&mut s, "undo", json!({}));
+    assert_eq!(offset(&s), [0.0, 10000.0]);
+}
+
+#[test]
+fn the_photograph_in_the_plan_moves_with_the_shift_under_a_terrain_that_stays() {
+    let mut s = terrained(&picture("shift-plan", 8, 8, quadrants), square(), 0.0);
+    let (west, east_of_middle) = (P2(1000.0, 7500.0), P2(6000.0, 7500.0));
+    let drawn = |s: &Session| render::draw(&s.model, level(s), window());
+    let d = drawn(&s);
+    assert!(is(under(&d, west), RED) && is(under(&d, east_of_middle), BLUE));
+    run(&mut s, "shift_imagery", json!({"east": 2000}));
+    let d = drawn(&s);
+    // The north west quarter now runs from 2 m to 7 m: the west strip has none, and 6 m east is red.
+    assert!(under(&d, west).is_none_or(|c| c[3] == 0), "{:?}", under(&d, west));
+    assert!(is(under(&d, east_of_middle), RED), "{:?}", under(&d, east_of_middle));
+}
+
+#[test]
+fn what_cannot_be_shifted_is_refused_naming_why_and_leaves_the_project_as_it_was() {
+    let mut s = terrained(&picture("shift-bad", 8, 8, quadrants), square(), 0.0);
+    let before = s.model.clone();
+    for (p, says) in [
+        (json!({}), "reset"),
+        (json!({"reset": true, "east": 5}), "reset"),
+        (json!({"reset": "yes"}), "reset"),
+        (json!({"east": "far"}), "east"),
+        (json!({"north": []}), "north"),
+        (json!({"east": 1e300}), "east"),
+        (json!({"north": -1e12}), "north"),
+        (json!({"east": 2_000_000}), "beyond"),
+        (json!({"north": -1_000_001}), "beyond"),
+        (json!({"east": 1, "colour": 2}), "colour"),
+        (json!({"east": 1, "id": 999_999}), "999999"),
+    ] {
+        let why = fails(&mut s, "shift_imagery", p.clone());
+        assert!(why.contains(says), "{p}: {why}");
+        assert_eq!(s.model, before, "{p}");
+    }
+    // Terrain that wears no photograph has none to shift.
+    let mut bare = Session::new();
+    run(&mut bare, "toposurface", json!({"points": [[0, 0, 0], [10000, 0, 0], [10000, 10000, 0]]}));
+    assert!(fails(&mut bare, "shift_imagery", json!({"east": 1})).contains("aerial imagery"));
+    // Two toposurfaces and no id: which?
+    let points: Vec<_> = (0..4).map(|i| json!([i * 1000, 0, 0])).chain([json!([0, 1000, 0])]).collect();
+    run(&mut s, "toposurface", json!({"points": points, "material": "Aerial", "name": "Other"}));
+    assert!(fails(&mut s, "shift_imagery", json!({"east": 1})).contains("`id`"));
+}

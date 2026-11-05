@@ -364,6 +364,18 @@ pub static ALL: &[Command] = &[
         fetch_imagery,
     ),
     edit(
+        "shift_imagery",
+        "Shift Aerial Imagery",
+        &[],
+        "{id?, east?, north?, reset?} moves the aerial imagery a toposurface wears, to line it up with the map or the survey (a photograph \
+         and a map differ by metres): `east` and `north` are mm from where the fetch put it, not from where it is now (the same twice is \
+         the same, not twice as far; one alone keeps the other), or `reset` puts it back. Up to 1 km. `id` is the toposurface (needed \
+         only when the project has several). It is the material's texture offset that moves, so the 3D view and the plans show it at \
+         once; a material that several toposurfaces wear moves them all. A photograph fetched again starts where the ground is. \
+         Replies {id, material, east, north}",
+        shift_imagery,
+    ),
+    edit(
         "import_osm",
         "Import OpenStreetMap",
         &[],
@@ -5739,7 +5751,7 @@ fn fetch_terrain(s: &mut Session, p: &Value) -> R {
 
 /// The ground a toposurface covers, as west, south, east, north in the project's plane (mm): the box of its boundary, else of its
 /// points. None if it covers none.
-fn terrain_extent(t: &Toposurface) -> Option<[f64; 4]> {
+pub(crate) fn terrain_extent(t: &Toposurface) -> Option<[f64; 4]> {
     let xy: Vec<(f64, f64)> = if t.boundary.len() >= 3 {
         t.boundary.iter().map(|q| (q.0, q.1)).collect()
     } else {
@@ -5911,6 +5923,49 @@ fn fetch_imagery(s: &mut Session, p: &Value) -> R {
         "without_imagery_percent": 100.0 * clear as f64 / all as f64,
         "skipped": skipped.iter().map(|(source, why)| json!({"source": source.id, "name": source.name, "why": why})).collect::<Vec<_>>(),
     }))
+}
+
+/// The farthest `shift_imagery` moves a photograph from where the fetch put it, mm: a kilometre.
+const MAX_SHIFT: f64 = 1_000_000.0;
+
+fn shift_imagery(s: &mut Session, p: &Value) -> R {
+    let c = "shift_imagery";
+    only(c, p, &["id", "east", "north", "reset"])?;
+    let reset = match p.get("reset") {
+        v if absent(v) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(v) => return Err(bad(c, format!("`reset` must be true or false, got {v}"))),
+        None => false,
+    };
+    let (east, north) = (num(c, p, "east")?, num(c, p, "north")?);
+    if reset && (east.is_some() || north.is_some()) {
+        return Err(bad(c, "`reset` puts the photograph back where the fetch put it: give it alone, not with `east` or `north`"));
+    }
+    if !reset && east.is_none() && north.is_none() {
+        return Err(bad(c, "give `east` and `north` (mm from where the fetch put the photograph; one alone keeps the other), or `reset`"));
+    }
+    for (what, value) in [("east", east), ("north", north)] {
+        if let Some(x) = value
+            && !(x.is_finite() && x.abs() <= MAX_SHIFT)
+        {
+            return Err(bad(c, format!("`{what}` {x} mm is beyond the {} m a photograph may be shifted", MAX_SHIFT / 1000.0)));
+        }
+    }
+    let (id, terrain) = terrain_of(c, &s.model, p)?;
+    let Some(extent) = terrain_extent(&terrain) else { return Err(bad(c, "the toposurface covers no ground")) };
+    let name = terrain.material;
+    let wears = s.model.materials.get(&name).and_then(|m| m.texture.as_ref()).is_some_and(|t| t.kind == Kind::Image && t.planar);
+    if !wears {
+        return Err(bad(c, format!("toposurface {id} wears no aerial imagery: lay some over it with `fetch_imagery`")));
+    }
+    let Some(texture) = s.model_mut().materials.get_mut(&name).and_then(|m| m.texture.as_mut()) else {
+        return Err(bad(c, format!("toposurface {id} wears no aerial imagery")));
+    };
+    // From the terrain's west and north corner, where the fetch laid it.
+    let (was_east, was_north) = (texture.offset[0] - extent[0], texture.offset[1] - extent[3]);
+    let (e, n) = if reset { (0.0, 0.0) } else { (east.unwrap_or(was_east), north.unwrap_or(was_north)) };
+    texture.offset = [extent[0] + e, extent[3] + n];
+    Ok(json!({"id": id, "material": name, "east": e, "north": n}))
 }
 
 /// The most buildings `import_osm` makes walls, floors and roofs of at once.

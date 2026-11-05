@@ -74,8 +74,17 @@ it covers and `offset` its west and north corner, so the picture lies on the gro
 (the processor looks it up by east and north in `view3d::GROUND`, the card in `gpu.wgsl` by its spare word). Fetched again, from the
 same source or another, it replaces the picture and the material, and one undo takes it back. The source, its credit and where its
 terms are stay with the toposurface as the parameters Imagery Source, Imagery Credit and Imagery Terms. The 3D view lays the picture over white where it has
-no imagery (its levels are over white, as every picture's are); **a plan leaves it clear** (below). The Site tab's Aerial Imagery button runs it ([the desktop](desktop.md#the-site-tab)). Not yet: a nudge, and imagery
+no imagery (its levels are over white, as every picture's are); **a plan leaves it clear** (below). The Site tab's Aerial Imagery button runs it ([the desktop](desktop.md#the-site-tab)). Not yet: imagery
 in the 3D view that lets the terrain's colour through where there is none.
+
+### Lining the photograph up with the map
+
+A photograph and a map differ by metres, so `shift_imagery {id?, east?, north?, reset?}` moves the photograph a toposurface wears: `east` and
+`north` are mm **from where the fetch put it** (the toposurface's west and north corner, `imagery::shift_of`), not from where it is, so
+typing 2 m twice is 2 m, one alone keeps the other, `reset` puts it back, and up to a kilometre. It is the material's texture offset that
+moves, so the 3D view (processor and card) and the plans show it at once, in one undo step; a photograph fetched again starts where the ground
+is. The Site tab's **Align Imagery** (off when no terrain wears a photograph) opens a box with the shift east and north in the project's units,
+Apply, Reset and Close; it stays open to be nudged again, and the plan shows the photograph move under its walls and masses.
 
 ### The photograph in plans
 

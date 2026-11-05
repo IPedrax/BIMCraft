@@ -127,6 +127,14 @@ struct ImageryPreview {
     error: Option<String>,
 }
 
+/// The Align Imagery box: the toposurface whose photograph it moves, and how far it is shifted, as typed (project units).
+pub(crate) struct AlignBox {
+    id: Id,
+    east: String,
+    north: String,
+    error: Option<String>,
+}
+
 /// What a fetch or a calculation says when it is done: kept in a box until it is closed.
 pub(crate) struct Said {
     title: String,
@@ -142,6 +150,7 @@ pub(crate) struct Site {
     location: Option<LocationBox>,
     area: Option<AreaBox>,
     imagery: Option<ImageryBox>,
+    align: Option<AlignBox>,
     job: Option<Job>,
     said: Option<Said>,
     /// The map a place or an area is picked on.
@@ -232,6 +241,13 @@ impl BimApp {
             );
             if big_button(ui, Icon::Aerial, "Aerial Imagery", self.site.imagery.is_some(), tip).clicked() {
                 self.open_imagery();
+            }
+            let tip = msg!(
+                "Align Imagery: move the photographs on the selected terrain (the only one when none is selected) east and north to line them up with the map"
+            );
+            let wears = self.aligned_terrain().is_some();
+            if ui.add_enabled_ui(wears, |ui| big_button(ui, Icon::Move, "Align Imagery", self.site.align.is_some(), tip)).inner.clicked() {
+                self.open_align();
             }
             let tip = msg!("Pad: click the corners of a building pad's outline; Enter, or the first corner again, finishes; Esc cancels");
             if big_button(ui, Icon::Pad, "Pad", crate::structure::same_tool(&self.tool, &crate::Tool::Pad(Vec::new())), tip).clicked() {
@@ -661,6 +677,99 @@ impl BimApp {
             )
         });
         ImageryPreview { lines, coarse, error: None }
+    }
+
+    // ---- Aligning the photograph ----
+
+    /// The toposurface whose photograph Align Imagery moves: the selected one that wears a photograph, else the only one that does.
+    fn aligned_terrain(&self) -> Option<Id> {
+        let m = &self.session.model;
+        let wears = |id: &Id| matches!(m.elements.get(id), Some(Element::Toposurface(t)) if imagery::shift_of(m, t).is_some());
+        self.selection.iter().copied().find(wears).or_else(|| {
+            let all: Vec<Id> = m.elements.keys().copied().filter(wears).collect();
+            if let [one] = all.as_slice() { Some(*one) } else { None }
+        })
+    }
+
+    fn open_align(&mut self) {
+        let Some(id) = self.aligned_terrain() else { return };
+        let m = &self.session.model;
+        let (east, north) = match m.elements.get(id) {
+            Some(Element::Toposurface(t)) => imagery::shift_of(m, t).unwrap_or((0.0, 0.0)),
+            _ => (0.0, 0.0),
+        };
+        let units = m.units;
+        self.site.align = Some(AlignBox { id, east: units.length(east), north: units.length(north), error: None });
+    }
+
+    /// Moves the photograph by what the box holds, or puts it back; the box stays so that it can be nudged again and again.
+    fn apply_align(&mut self, reset: bool) {
+        let Some(b) = self.site.align.as_ref() else { return };
+        let units = self.session.model.units;
+        let id = b.id;
+        let params = if reset {
+            json!({"id": id, "reset": true})
+        } else {
+            let length = |text: &str, what: &str| units.parse(text).ok_or_else(|| tf("{}: `{}` is not a length", &[t(what), text.trim()]));
+            match (length(&b.east, "Shift east"), length(&b.north, "Shift north")) {
+                (Ok(east), Ok(north)) => json!({"id": id, "east": east, "north": north}),
+                (Err(e), _) | (_, Err(e)) => {
+                    if let Some(b) = self.site.align.as_mut() {
+                        b.error = Some(e);
+                    }
+                    return;
+                }
+            }
+        };
+        let out = self.run("shift_imagery", params);
+        let error = std::mem::take(&mut self.status).text;
+        if let Some(b) = self.site.align.as_mut() {
+            match out {
+                Some(v) => {
+                    let shown = |key: &str| units.length(v[key].as_f64().unwrap_or(0.0));
+                    (b.east, b.north, b.error) = (shown("east"), shown("north"), None);
+                }
+                None => b.error = Some(error),
+            }
+        }
+    }
+
+    fn align_window(&mut self, ctx: &Context) {
+        if self.site.job.is_some() {
+            return;
+        }
+        let unit = self.session.model.units.name();
+        let Some(b) = self.site.align.as_mut() else { return };
+        let (mut apply, mut reset, mut close) = (false, false, false);
+        let r = Modal::new(UiId::new("site-align"), t("Align Imagery")).width(420.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                ui.add_space(6.0);
+                ui.label(t("Move the photographs east and north, from where the fetch laid them, until they line up with the map."));
+                ui.add_space(6.0);
+                Grid::new("site-align-grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
+                    text_field(ui, "Shift east", &mut b.east, unit);
+                    text_field(ui, "Shift north", &mut b.north, unit);
+                });
+                if let Some(e) = &b.error {
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(e).color(pal().error));
+                }
+            });
+            crate::popup::footer(ui, |ui| {
+                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                    close = ui.button(t("Close")).clicked();
+                    reset = ui.button(t("Reset")).clicked();
+                    apply = ui.button(t("Apply")).clicked();
+                });
+            });
+        });
+        if apply {
+            self.apply_align(false);
+        } else if reset {
+            self.apply_align(true);
+        } else if close || r.should_close() {
+            self.site.align = None;
+        }
     }
 
     fn imagery_error(&mut self, e: String) {
@@ -1141,6 +1250,7 @@ impl BimApp {
         self.location_window(ctx);
         self.area_window(ctx);
         self.imagery_window(ctx);
+        self.align_window(ctx);
         self.fetching_box(ctx);
         self.said_window(ctx);
         self.map_window(ctx);

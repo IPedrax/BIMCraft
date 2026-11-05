@@ -1889,7 +1889,17 @@ fn hostile_params_never_panic_or_break_the_model() {
     // A pad on that terrain, for cut_fill and place_on_terrain, and what draws it.
     let _ = base.execute("pad", &json!({"boundary": [[1000, 1000], [6000, 1000], [6000, 5000], [1000, 5000]], "offset": 300}));
     // Aerial imagery over that terrain: the fake fetcher answers, so the warp, the picture and the material are made and drawn.
+    // The base wears one, for the commands that draw or move it.
+    let _ = base.execute("fetch_imagery", &json!({"source": "pdok"}));
     targeted.extend([
+        ("shift_imagery", json!({"east": 2000, "north": -1000})),
+        ("shift_imagery", json!({"reset": true})),
+        ("shift_imagery", json!({})),
+        ("shift_imagery", json!({"east": 1e300})),
+        ("shift_imagery", json!({"east": "x", "north": []})),
+        ("shift_imagery", json!({"reset": "yes", "east": 1})),
+        ("shift_imagery", json!({"id": 999_999, "east": 1})),
+        ("shift_imagery", json!({"east": -999_999.9, "north": 999_999.9})),
         ("fetch_imagery", json!({})),
         ("fetch_imagery", json!({"source": "auto"})),
         ("fetch_imagery", json!({"source": "pdok", "max_side": 64})),

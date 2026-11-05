@@ -612,6 +612,54 @@ fn the_3d_view_letters_the_credit_of_the_photograph_on_its_terrain_and_the_plan_
 }
 
 #[test]
+fn align_imagery_moves_the_photograph_by_what_is_typed_and_puts_it_back() {
+    let mut h = ghent(Arc::new(Fake::new()));
+    press(&mut h, "Site");
+    // No photograph, nothing to move.
+    assert!(is_disabled(&h, Role::Button, "Align Imagery"));
+    press(&mut h, "Aerial Imagery");
+    fetch(&mut h);
+    until_fetched(&mut h);
+    press(&mut h, "Close");
+    assert!(!is_disabled(&h, Role::Button, "Align Imagery"));
+    let offset = |h: &Harness<BimApp>| {
+        let m = &h.state().session.model;
+        m.materials.iter().find(|(k, _)| k.starts_with("Aerial imagery")).and_then(|(_, mat)| mat.texture.as_ref()).unwrap().offset
+    };
+    // The terrain is 300 m by 200 m from the origin: its west and north corner is (0, 200 m).
+    let start = offset(&h);
+    assert_eq!(start, [0.0, 200_000.0]);
+    // The box is drawn last: of buttons named alike, its are the last.
+    let in_box = |h: &mut Harness<BimApp>, label: &str| {
+        h.get_all_by_label(label).last().unwrap().click();
+        h.run();
+    };
+    press(&mut h, "Align Imagery");
+    type_into(&mut h, "Shift east", "2 m");
+    type_into(&mut h, "Shift north", "1 m");
+    in_box(&mut h, "Apply");
+    assert_eq!(offset(&h), [2000.0, 201_000.0]);
+    // The box stays, with what is now, and a shift typed is from where the fetch put it, not from where it is.
+    in_box(&mut h, "Apply");
+    assert_eq!(offset(&h), [2000.0, 201_000.0]);
+    in_box(&mut h, "Reset");
+    assert_eq!(offset(&h), start);
+    // What is not a length is said in the box, and nothing is moved.
+    type_into(&mut h, "Shift east", "far");
+    in_box(&mut h, "Apply");
+    assert!(h.query_by_label_contains("is not a length").is_some());
+    assert_eq!(offset(&h), start);
+    in_box(&mut h, "Close");
+    // One undo takes a shift back.
+    press(&mut h, "Align Imagery");
+    type_into(&mut h, "Shift east", "5 m");
+    in_box(&mut h, "Apply");
+    assert_eq!(offset(&h)[0], 5000.0);
+    h.state_mut().session.execute("undo", &json!({})).unwrap();
+    assert_eq!(offset(&h), start);
+}
+
+#[test]
 fn a_pad_is_drawn_by_clicks_and_cut_fill_and_place_on_terrain_work_on_what_is_selected() {
     let mut h = located(Arc::new(Fake::new()));
     // A tilted ground, plainly: the fake's, 1 m rise each 100 m east, 2 m each 100 m north, from 0 at the origin.

@@ -528,6 +528,18 @@ fn fetch_imagery_lays_a_picture_over_the_terrain_and_says_whose_it_is() {
 }
 
 #[test]
+fn a_photograph_fetched_again_starts_at_its_place_whatever_it_was_shifted_by() {
+    let mut s = terrain_session(Arc::new(Fake::new(String::new())), HOME.1, HOME.0);
+    let name = run(&mut s, "fetch_imagery", json!({"source": "pdok"}))["material"].as_str().unwrap().to_string();
+    let offset = |s: &Session| s.model.materials[&name].texture.as_ref().unwrap().offset;
+    let start = offset(&s);
+    run(&mut s, "shift_imagery", json!({"east": 3000, "north": -2000}));
+    assert_eq!(offset(&s), [start[0] + 3000.0, start[1] - 2000.0]);
+    run(&mut s, "fetch_imagery", json!({"source": "pdok"}));
+    assert_eq!(offset(&s), start, "a fresh picture is laid where the ground is");
+}
+
+#[test]
 fn fetch_imagery_without_a_source_takes_the_first_that_has_the_place() {
     // At Ghent the table offers Flanders first, then PDOK (its rectangle runs over the border), then the world's.
     let fake = Arc::new(Fake { no_imagery: vec!["flanders"], ..Fake::new(String::new()) });

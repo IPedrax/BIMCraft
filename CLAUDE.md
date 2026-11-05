@@ -46,7 +46,7 @@ and MCP server, and milestone 2, the egui desktop app, are done. What works and 
   there names its source. Assets are original or openly licensed; the lettering of drawings is drawn in code (`font.rs`), the one exception being
   IBM Plex under the OFL, the interface's font and one text types letter notes in (`assets/fonts`, read by `text.rs`;
   `NOTICE` and each OFL.txt go in every package); a text type may also name a font the user's system has, read where it is
-  and never bundled or copied into a project.
+  and never bundled or copied into a project. The services aerial imagery comes from, and the GPL tools read for behaviour only, are recorded in [docs/imagery-provenance.md](docs/imagery-provenance.md).
 - **The core has no UI.** `bimcraft-core` must not depend on a UI toolkit, so front ends stay swappable.
 - **The UI is thin.** `crates/ui-egui` reads `session.model` and changes it only through `Session::execute`, never by editing
   the model. Logic any front end needs (what a plan shows, what's under the cursor) belongs in the core: the canvas draws
