@@ -116,11 +116,12 @@ pub struct Float {
 }
 
 /// Where a palette goes: docked on a side (a stack of its own, after the others there), a tab of the stack that holds
-/// another palette, or floating with its corner at a point.
+/// another palette, a stack of its own just before the docked stack that holds another, or floating with its corner at a point.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Target {
     Side(Side),
     With(Palette),
+    Before(Palette),
     Float(Pos2),
 }
 
@@ -245,11 +246,22 @@ impl Docking {
         self.floats.retain(|f| !f.stack.tabs.is_empty());
     }
 
-    /// Puts `p` where `to` says, out of where it was. A tab dropped on its own stack, or on a palette that isn't
-    /// open, stays where it was.
+    /// The side the docked stack holding `q` is on, and its place there.
+    fn place_of(&self, q: Palette) -> Option<(Side, usize)> {
+        let side = self.docked(q)?;
+        Some((side, self.side(side).iter().position(|s| s.tabs.contains(&q))?))
+    }
+
+    /// Puts `p` where `to` says, out of where it was. A tab dropped on its own stack, on a palette that isn't open, or
+    /// before itself or one that isn't docked, stays where it was.
     pub fn put(&mut self, p: Palette, to: Target) {
         if let Target::With(q) = to
             && (q == p || !self.shown(q))
+        {
+            return;
+        }
+        if let Target::Before(q) = to
+            && (q == p || self.docked(q).is_none())
         {
             return;
         }
@@ -268,12 +280,18 @@ impl Docking {
                     stack.active = stack.tabs.len() - 1;
                 }
             }
+            Target::Before(q) => {
+                if let Some((side, at)) = self.place_of(q) {
+                    self.side_mut(side).insert(at, Stack::of(p));
+                    self.home.insert(p, side);
+                }
+            }
             Target::Float(at) => self.floats.push(Float { stack: Stack::of(p), at, size: FLOAT_SIZE }),
         }
     }
 
-    /// Docks the whole window `p` floats in: a stack of its own on a side, or its tabs after another stack's. Dropped
-    /// anywhere else, it stays a window (dragging it moved it already).
+    /// Docks the whole window `p` floats in: a stack of its own on a side or before another docked stack, or its tabs after
+    /// another stack's. Dropped anywhere else, it stays a window (dragging it moved it already).
     pub fn put_window(&mut self, p: Palette, to: Target) {
         let Some(i) = self.floats.iter().position(|f| f.stack.tabs.contains(&p)) else { return };
         match to {
@@ -283,6 +301,15 @@ impl Docking {
                     self.home.insert(*q, side);
                 }
                 self.side_mut(side).push(f.stack);
+            }
+            Target::Before(q) => {
+                if let Some((side, at)) = self.place_of(q) {
+                    let f = self.floats.remove(i);
+                    for tab in &f.stack.tabs {
+                        self.home.insert(*tab, side);
+                    }
+                    self.side_mut(side).insert(at, f.stack);
+                }
             }
             Target::With(q) if self.shown(q) && !self.floats[i].stack.tabs.contains(&q) => {
                 let f = self.floats.remove(i);
@@ -412,6 +439,8 @@ pub enum Drag {
 enum Land {
     Side(Side),
     With(Palette),
+    /// The top edge of a docked palette's header (along the bottom, its left edge): a stack of its own before it.
+    Before(Palette),
     /// The views' tab bar, before the tab at this place.
     Tabs(usize),
 }
@@ -761,11 +790,27 @@ impl BimApp {
                     ),
                 ];
                 let own = self.docking.stack_of(p).cloned();
-                for (q, rect, _) in &self.drop_headers {
+                for (q, rect, floating) in &self.drop_headers {
                     // Not its own stack: a tab dropped there stays where it was, and so does a window.
                     let mine = own.as_ref().is_some_and(|s| s.tabs.contains(q));
                     if !mine {
                         out.insert(0, (Land::With(*q), *rect, tf("Tab with {}", &[t(q.name())])));
+                        // A thin strip along the header's leading edge puts it there as a stack of its own; it comes ahead of the
+                        // header's own zone, which makes a tab.
+                        let before = match self.docking.docked(*q) {
+                            Some(Side::Bottom) => Some((
+                                Rect::from_min_max(rect.left_top() - vec2(8.0, 0.0), pos2(rect.left() + 6.0, rect.bottom())),
+                                msg!("Left of {}"),
+                            )),
+                            Some(_) => Some((
+                                Rect::from_min_max(rect.left_top() - vec2(0.0, 8.0), pos2(rect.right(), rect.top() + 6.0)),
+                                msg!("Above {}"),
+                            )),
+                            None => None,
+                        };
+                        if let Some((edge, label)) = before.filter(|_| !*floating) {
+                            out.insert(0, (Land::Before(*q), edge, tf(label, &[t(q.name())])));
+                        }
                     }
                 }
                 out
@@ -807,7 +852,7 @@ impl BimApp {
                 Land::Side(Side::Right) => FRAC_PI_2,
                 _ => 0.0,
             };
-            if on || !matches!(land, Land::With(_)) {
+            if on || !matches!(land, Land::With(_) | Land::Before(_)) {
                 zone_label(&p, *r, label, angle, on);
             }
         }
@@ -826,9 +871,11 @@ impl BimApp {
         match (drag, hit) {
             (Drag::Palette(p), Some(Land::Side(s))) => self.docking.put(p, Target::Side(s)),
             (Drag::Palette(p), Some(Land::With(q))) => self.docking.put(p, Target::With(q)),
+            (Drag::Palette(p), Some(Land::Before(q))) => self.docking.put(p, Target::Before(q)),
             (Drag::Palette(p), _) => self.docking.put(p, Target::Float(corner)),
             (Drag::Window(p), Some(Land::Side(s))) => self.docking.put_window(p, Target::Side(s)),
             (Drag::Window(p), Some(Land::With(q))) => self.docking.put_window(p, Target::With(q)),
+            (Drag::Window(p), Some(Land::Before(q))) => self.docking.put_window(p, Target::Before(q)),
             (Drag::View(s), Some(Land::Tabs(i))) => {
                 // Dropped back on the bar, it moves along it.
                 let from = self.views.iter().position(|v| *v == s).unwrap_or(i);

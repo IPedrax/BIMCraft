@@ -352,3 +352,33 @@ fn a_layout_reads_back_as_written_and_a_hostile_one_reads_as_sense() {
     assert_eq!(d.docked(Palette::Properties), Some(Side::Left));
     assert_eq!(Docking::from_json(&json!([1, 2])), Docking::default());
 }
+
+#[test]
+fn a_palette_dropped_at_the_top_of_another_goes_above_it_in_its_own_stack_in_both_profiles() {
+    for rev in [true, false] {
+        let mut h = if rev { app(BOX) } else { bimcraft(BOX) };
+        let (side, first, second) =
+            if rev { (Side::Left, "Properties", "Project Browser") } else { (Side::Right, "Inspector", "Navigator") };
+        let stacks = |h: &Harness<BimApp>| docking(h).side(side).iter().map(|s| s.tabs.clone()).collect::<Vec<_>>();
+        assert_eq!(stacks(&h), [vec![Palette::Properties], vec![Palette::Browser]], "rev {rev}: as they start");
+        // The second's title to the top edge of the first's header: above it, no tabs made.
+        let header = h.state().drop_headers.iter().find(|(p, _, _)| *p == Palette::Properties).map(|(_, r, _)| *r).unwrap();
+        let from = at_start(&h, &format!("{second} ·"));
+        drag_screen(&mut h, from, pos2(header.center().x, header.top() + 2.0), PointerButton::Primary);
+        assert_eq!(stacks(&h), [vec![Palette::Browser], vec![Palette::Properties]], "rev {rev}: {second} above {first}");
+    }
+}
+
+#[test]
+fn the_app_bars_palettes_menu_brings_a_closed_palette_back_and_resets_the_layout() {
+    let mut h = bimcraft(BOX);
+    h.state_mut().show_palette(Palette::Tools, false);
+    h.state_mut().show_palette(Palette::Browser, false);
+    h.run();
+    press(&mut h, "Palettes");
+    pick(&mut h, Role::CheckBox, "Tools");
+    assert!(docking(&h).shown(Palette::Tools), "the Tools palette, which has no shortcut, comes back from the bar");
+    press(&mut h, "Palettes");
+    press(&mut h, "Reset Palette Layout");
+    assert_eq!(docking(&h), &Docking::default(), "the layout as at first, the Navigator back too");
+}

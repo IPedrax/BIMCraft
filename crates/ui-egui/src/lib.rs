@@ -3259,7 +3259,13 @@ impl BimApp {
         // buttons on the left and, where the window draws its own title bar, the caption buttons on the right; else as near it
         // as that room allows, and cut short where even it is too little.
         let gap = 12.0;
-        let right = ui.max_rect().right() + if self.own_bar() { 8.0 - 3.0 * titlebar::BUTTON_WIDTH } else { 0.0 } - gap;
+        // Which palettes show, in both profiles, at the bar's right end where an editor keeps its layout's buttons: a closed
+        // palette comes back from here, the Tools palette too, which has no shortcut. The title's middle stays the window's.
+        let end = ui.max_rect().right() + if self.own_bar() { 8.0 - 3.0 * titlebar::BUTTON_WIDTH } else { 0.0 } - 4.0;
+        let at = Rect::from_min_size(pos2(end - 26.0, row.center().y - 12.0), vec2(26.0, 24.0));
+        let palettes = ui.put(at, |ui: &mut Ui| icon_button(ui, Icon::Interface, msg!("Palettes")));
+        egui::Popup::menu(&palettes).show(|ui| self.palette_switches(ui));
+        let right = at.left() - gap;
         let left = row.right() + gap;
         let mut title = egui::text::LayoutJob::simple_singleline(
             format!("{} · {view}", self.session.model.name),
@@ -3500,18 +3506,22 @@ impl BimApp {
         let rows = all.with_min_x(all.left() + 40.0);
         ui.painter().vline(rows.left() - 2.0, all.y_range().shrink(6.0), Stroke::new(1.0, pal().border));
         ui.scope_builder(UiBuilder::new().max_rect(rail), |ui| {
-            ui.spacing_mut().item_spacing.y = 2.0;
-            for (tab, label, icon) in TABS {
-                if rail_button(ui, icon, label, tab == open).clicked() {
-                    self.tab = tab;
+            // A palette too short for every tab scrolls them, as the rows beside them scroll theirs.
+            ScrollArea::vertical().id_salt("tool-rail").auto_shrink([false, false]).show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                for (tab, label, icon) in TABS {
+                    if rail_button(ui, icon, label, tab == open).clicked() {
+                        self.tab = tab;
+                    }
                 }
-            }
-            let plugin_tabs: Vec<String> = self.plugin_tabs.iter().map(|p| self.plugin_tab_name(p)).collect();
-            for (i, label) in plugin_tabs.iter().enumerate() {
-                if rail_button(ui, Icon::Code, label, Tab::Plugin(i) == open).clicked() {
-                    self.tab = Tab::Plugin(i);
+                // The plugins' tabs come after BIMCraft's, scrolling with them.
+                let plugin_tabs: Vec<String> = self.plugin_tabs.iter().map(|p| self.plugin_tab_name(p)).collect();
+                for (i, label) in plugin_tabs.iter().enumerate() {
+                    if rail_button(ui, Icon::Code, label, Tab::Plugin(i) == open).clicked() {
+                        self.tab = Tab::Plugin(i);
+                    }
                 }
-            }
+            });
         });
         ui.scope_builder(UiBuilder::new().max_rect(rows), |ui| {
             ScrollArea::both().id_salt("tool-column").auto_shrink([false, false]).show(ui, |ui| {
