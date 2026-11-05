@@ -11,8 +11,8 @@ use crate::view3d::{P3, cross, dot};
 /// An IFC4 file's text in millimetres and radians, entity by entity: proxies in one storey, each a body of the items given.
 pub(crate) struct G {
     text: String,
-    next: u32,
-    contained: Vec<u32>,
+    pub(crate) next: u32,
+    pub(crate) contained: Vec<u32>,
 }
 
 impl G {

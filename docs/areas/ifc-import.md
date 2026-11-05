@@ -58,3 +58,27 @@ comes from how its body is styled (`looks`, `Reader::looked_items`), each look a
 
 Walls, floors, roofs and the other elements made of layers or of a type's material take their colour from those materials by
 name alone: a styled item on their bodies doesn't colour them.
+
+## Classes
+
+A product comes in as BIMCraft's element where BIMCraft has one with its meaning, and as a generic component that remembers its
+class where it hasn't ([families](families.md)); a class is never forced into an element of another meaning.
+
+- **`IfcMember` as a beam.** A member that frames, its predefined type (else its type object's) a brace, strut, chord, collar,
+  purlin, rafter, member or stiffening member, or none, comes in as a beam (`FRAMING`) where it runs along a line as a beam may
+  (`run_in`, then `runs::check`: not standing, sloping at most 75°), measured as an `IfcBeam` is. One that is part of anything
+  but the building's spaces or an `IfcElementAssembly` (a truss) stays out of it: a curtain wall's mullions and transoms, a
+  roof's or a stair's parts. A mullion, a plate, a post, a stud, a stringer, a user's own type (its object type says what it
+  is), one that stands or slopes past a beam's limit: generic, as before. A member that comes in as a beam goes back out as an
+  `IfcBeam`.
+- **`IfcAirTerminal` stays generic.** BIMCraft's `Category::AirTerminal` is a lightning air terminal (a captor), written as a
+  proxy of object type `LightningTerminal`; IFC's is a supply or extract grille or diffuser. Reading one as the other would put
+  diffusers in the SPDA tab's category, so it stays a generic component of its class, as Revit's Air Terminals do
+  (`crates/rvt` `generic.rs`).
+- **No new categories for mechanical equipment, duct fittings or fire protection terminals.** A category of BIMCraft's goes
+  out as one IFC class (`Category::ifc`), and these are many (`IfcPump`, `IfcFan`, `IfcBoiler`, `IfcTank`, `IfcChiller`…;
+  `IfcDuctFitting` of its kinds; `IfcFireSuppressionTerminal`'s sprinklers and hydrants): a category would send each back out
+  as one class, where the generic family sends it out as its own class, predefined type and object type. A category of its
+  own would also need its place in Visibility/Graphics, Object Styles, the schedules' `OWN` table, the Family Editor's list, the
+  discipline tabs, `lenient` and the translations; worth doing when BIMCraft has tools for those systems, not as an import's
+  side effect.

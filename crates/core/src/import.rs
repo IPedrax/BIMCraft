@@ -83,6 +83,10 @@ const NOT_GENERIC: &[&str] = &[
     "IFCMARINEPART",
 ];
 
+/// The predefined types of an `IfcMember` that frames, as a beam does: what comes in as a beam where it runs along a line. A
+/// mullion, a plate, a post, a stud, a stringer and a user's own type stay what they are.
+const FRAMING: &[&str] = &["BRACE", "STRUT", "CHORD", "COLLAR", "PURLIN", "RAFTER", "MEMBER", "STIFFENING_MEMBER"];
+
 /// The spatial elements an element may be part of, which make it no part of another element.
 const SPATIAL: &[&str] = &["IFCSITE", "IFCBUILDING", "IFCBUILDINGSTOREY", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"];
 
@@ -2446,21 +2450,49 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     // Runs (beams, strip footings, pipes): found in their bodies as the longest direction they run along and the section
     // square to it. A run rolled about its axis reads as the box round it. A product's class and type say which, or, where
     // it is one of BIMCraft's, its property set.
-    let classes: Vec<&str> = crate::runs::IFC.iter().map(|(_, class, _)| *class).chain(["IFCBEAMSTANDARDCASE"]).collect();
+    // A member that frames (its predefined type, else its type object's, one of `FRAMING`, or none), part of nothing but the
+    // building's spaces or an element assembly (a truss), is a beam where it runs along a line as a beam may; any other stays
+    // for the generic components, which remember it was a member.
+    let framing = |id: u64, x: &Entity| {
+        let own = enumeration(x.args.get(8)).filter(|p| *p != "NOTDEFINED");
+        let of_type = l.typed.get(&id).and_then(|t| e(*t)).and_then(|t| enumeration(t.args.get(9))).filter(|p| *p != "NOTDEFINED");
+        let mut at = id;
+        let alone = (0..MAX_DEPTH).all(|_| match l.whole.get(&at) {
+            Some(&whole) => {
+                at = whole;
+                e(whole).is_some_and(|w| SPATIAL.contains(&w.name.as_str()) || w.name == "IFCELEMENTASSEMBLY")
+            }
+            None => true,
+        });
+        own.or(of_type).is_none_or(|k| FRAMING.contains(&k)) && alone
+    };
+    let classes: Vec<&str> =
+        crate::runs::IFC.iter().map(|(_, class, _)| *class).chain(["IFCBEAMSTANDARDCASE", "IFCMEMBER", "IFCMEMBERSTANDARDCASE"]).collect();
     for id in named(&classes).into_iter().filter(|id| e(*id).is_some_and(|x| x.name != "IFCFOOTING") || strip(*id)) {
         let Some(b) = e(id) else { continue };
+        let member = matches!(b.name.as_str(), "IFCMEMBER" | "IFCMEMBERSTANDARDCASE");
+        if member && !framing(id, b) {
+            continue;
+        }
         let declared = run_props.get(&id).and_then(|(_, c)| c.as_deref());
-        let Some(category) = crate::runs::from_ifc(&b.name, enumeration(b.args.get(8)), declared) else { continue };
+        let category = if member { Some("beam") } else { crate::runs::from_ifc(&b.name, enumeration(b.args.get(8)), declared) };
+        let Some(category) = category else { continue };
         let pts: Vec<P3> = r.body(b).into_iter().flatten().collect();
         // A body extruded along anything but up runs along it, however short that is for its section (a beam between two columns
         // may be shallower than it is deep); one extruded up is read by its shape, as a strip footing's outline stood up is.
         let along = r.extrusion(b).filter(|d| d[0].hypot(d[1]) > 1e-6);
-        let Some(found) = run_in(&pts, along) else {
+        let found = run_in(&pts, along);
+        let geom = found.as_ref().map(|f| crate::runs::Geom { a: f.start, b: f.end, width: f.width, depth: f.depth, round: f.round });
+        let ruled = geom.map(|g| crate::runs::check(&who(id), category, &g));
+        // A member that is no beam's line is left for the generic components.
+        if member && !matches!(ruled, Some(Ok(()))) {
+            continue;
+        }
+        let Some(found) = found else {
             leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read, or it stands (a column) or lies flat");
             continue;
         };
-        let geom = crate::runs::Geom { a: found.start, b: found.end, width: found.width, depth: found.depth, round: found.round };
-        if let Err(why) = crate::runs::check(&who(id), category, &geom) {
+        if let Some(Err(why)) = ruled {
             leave(&mut skipped, &mut seen, id, why.split_once(": ").map_or(why.as_str(), |(_, w)| w));
             continue;
         }

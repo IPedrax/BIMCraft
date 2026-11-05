@@ -281,7 +281,7 @@ msgstr "Horizontal"
 msgid "Inspection Box"
 msgstr "Anschlussdose"
 
-#: crates/core/src/import.rs:1318
+#: crates/core/src/import.rs:1322
 msgid "Insulation"
 msgstr "Dämmung"
 
@@ -342,7 +342,7 @@ msgstr ""
 msgid "Medium Lines"
 msgstr "Mittlere Linien"
 
-#: crates/core/src/import.rs:1321
+#: crates/core/src/import.rs:1325
 msgid "Membrane"
 msgstr "Membran"
 
