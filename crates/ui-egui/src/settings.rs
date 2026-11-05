@@ -765,12 +765,7 @@ impl BimApp {
             t("Opens the control port now and whenever BIMCraft starts: an agent connects with bimcraft-cli mcp --connect. Only this \
              machine can reach it, and only with the token in bridge.json beside your favorites");
         if ui.checkbox(&mut on, t("Let agents work on this project")).on_hover_text(tip).changed() {
-            self.agents.listen = on;
-            if on {
-                self.open_control();
-            } else {
-                self.close_control();
-            }
+            self.set_agents(on);
         }
         ui.horizontal(|ui| {
             let l = ui.label(t("Port"));
