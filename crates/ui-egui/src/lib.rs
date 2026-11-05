@@ -2238,6 +2238,15 @@ impl BimApp {
         if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() {
             self.escape();
         }
+        // Enter ends the 3D view's measured chain where it is.
+        if self.sheet == Sheet::View3D
+            && matches!(self.tool, Tool::Measure(_))
+            && self.orbit.chain.len() >= 2
+            && self.orbit.chain_done.is_none()
+            && pressed(Modifiers::NONE, Key::Enter)
+        {
+            self.orbit.chain_done = Some(false);
+        }
         // Enter confirms Edit Dimension References; else it places a typed length, else builds the wall chain.
         let mut enter = pressed(Modifiers::NONE, Key::Enter);
         if enter && self.dimension_refs_edit.is_some() {
@@ -2846,7 +2855,7 @@ impl BimApp {
         }
         if !matches!(tool, Tool::Measure(_)) {
             self.measured = None;
-            (self.orbit.ruler_start, self.orbit.ruler) = (None, None);
+            (self.orbit.chain, self.orbit.chain_done) = (Vec::new(), None);
         }
         self.snap_once = None;
         self.door_flip_hand = false;
@@ -3154,7 +3163,10 @@ impl BimApp {
             Tool::Section(Some(_)) => Tool::Section(None),
             Tool::Measure(Some(_)) => Tool::Measure(None),
             // The ruler begun or laid goes first, then the tool, in a plan and in the 3D view alike.
-            Tool::Measure(None) if self.orbit.ruler_start.take().is_some() || self.orbit.ruler.take().is_some() => Tool::Measure(None),
+            Tool::Measure(None) if !std::mem::take(&mut self.orbit.chain).is_empty() => {
+                self.orbit.chain_done = None;
+                Tool::Measure(None)
+            }
             Tool::Measure(None) if self.measured.take().is_some() => Tool::Measure(None),
             Tool::Stair(pts) if !pts.is_empty() => Tool::Stair(Vec::new()),
             Tool::Ramp(pts) if !pts.is_empty() => Tool::Ramp(Vec::new()),
@@ -5552,10 +5564,12 @@ impl BimApp {
                     "Click a point, a corner or an edge to select it (Shift adds), then type its height or drag its arrows; Delete removes it."
                 );
             }
-            (
-                Sheet::View3D,
-                Tool::AddPoint | Tool::AddSplitLine(_) | Tool::Measure(_) | Tool::Attach | Tool::Trim(_) | Tool::TrimTo { .. },
-            ) => {}
+            (Sheet::View3D, Tool::Measure(_)) => {
+                return msg!(
+                    "Click points along what to measure: each length and the total read beside them. Click the first point again to close it and read its area; Enter ends the chain, Esc clears it."
+                );
+            }
+            (Sheet::View3D, Tool::AddPoint | Tool::AddSplitLine(_) | Tool::Attach | Tool::Trim(_) | Tool::TrimTo { .. }) => {}
             (Sheet::View3D | Sheet::Section(_) | Sheet::Paper(_), _) => {
                 return msg!("This tool works in plan views: open one from the Project Browser.");
             }

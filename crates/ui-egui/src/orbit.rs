@@ -359,9 +359,10 @@ pub struct Orbit {
     pub(crate) handle: Option<(Id, Handle, P3, Pos2)>,
     /// The handle under the pointer.
     pub(crate) hot_handle: Option<Handle>,
-    /// The Measure tool in the 3D view: its first point, once clicked; then the ruler laid.
-    pub(crate) ruler_start: Option<P3>,
-    pub(crate) ruler: Option<(P3, P3)>,
+    /// The Measure tool in the 3D view: the chain of points clicked, and whether it is done (closed back to its start, or ended
+    /// with Enter); the next click begins another.
+    pub(crate) chain: Vec<P3>,
+    pub(crate) chain_done: Option<bool>,
 }
 
 /// The next view's slot on the card.
@@ -416,8 +417,8 @@ impl Default for Orbit {
             name: "view3d",
             handle: None,
             hot_handle: None,
-            ruler_start: None,
-            ruler: None,
+            chain: Vec::new(),
+            chain_done: None,
         }
     }
 }
@@ -497,6 +498,12 @@ fn draw_handle(p: &egui::Painter, cam: &Camera, h: Handle, q: P3, held: Option<H
     p.rect_stroke(r, 1.0, stroke, StrokeKind::Middle);
 }
 
+/// Whether point `b` is on chain point `a` as the cursor sees it: the same point, or within a snap of it on screen.
+fn closes(cam: &Camera, a: P3, b: P3, ppp: f32) -> bool {
+    let ((x0, y0, _), (x1, y1, _)) = (cam.project(a), cam.project(b));
+    a == b || (x1 - x0).hypot(y1 - y0) <= SNAP * f64::from(ppp)
+}
+
 /// Where the Measure tool lands at pixel `at`: what a dimension would pick there, or the middle of the edge when the cursor is
 /// that near it. Any point of the model, whatever the work plane.
 fn measure_point(scene: &Scene, cam: &Camera, at: (f64, f64), under: Option<Surface>, ppp: f32, look: &Look) -> Option<Ref3> {
@@ -511,20 +518,47 @@ fn measure_point(scene: &Scene, cam: &Camera, at: (f64, f64), under: Option<Surf
     Some(r)
 }
 
-/// The ruler from `a` to `b`, a dot at each end: its length beside `b`, and under it how far it goes along each axis.
-fn draw_ruler(p: &egui::Painter, m: &bimcraft_core::model::Model, a: P3, b: P3, screen: &dyn Fn(P3) -> Pos2) {
-    let (from, to) = (screen(a), screen(b));
-    if !(from.is_finite() && to.is_finite()) {
+/// A chain of measured points, a dot at each and the line between, each segment's length at its middle; then by its last point
+/// (or `to`, the point the cursor is on while it grows) its total and, closed in one plane, its area. `closed` draws its way
+/// back to its start.
+fn draw_chain(p: &egui::Painter, m: &bimcraft_core::model::Model, points: &[P3], closed: bool, screen: &dyn Fn(P3) -> Pos2) {
+    let n = points.len();
+    if n == 0 {
         return;
     }
-    p.line_segment([from, to], Stroke::new(2.0, pal().accent));
-    for end in [from, to] {
-        p.circle_filled(end, 3.5, pal().accent);
+    let on: Vec<Pos2> = points.iter().map(|q| screen(*q)).collect();
+    if on.iter().any(|q| !q.is_finite()) {
+        return;
     }
-    let (long, along) = dims3d::reading(a, b);
-    let [x, y, z] = along.map(|d| m.units.length(d));
-    let text = format!("{}\nΔX {x}  ΔY {y}  ΔZ {z}", m.units.with_unit(long));
-    crate::canvas::tag(p, to + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, text);
+    let edges = if closed { n } else { n.saturating_sub(1) };
+    for i in 0..edges {
+        let (a, b) = (on[i], on[(i + 1) % n]);
+        p.line_segment([a, b], Stroke::new(2.0, pal().accent));
+        if edges > 1 {
+            let long = dims3d::reading(points[i], points[(i + 1) % n]).0;
+            crate::canvas::tag(p, a + (b - a) * 0.5 + vec2(0.0, -6.0), egui::Align2::CENTER_BOTTOM, m.units.length(long));
+        }
+    }
+    for q in &on {
+        p.circle_filled(*q, 3.5, pal().accent);
+    }
+    if n < 2 {
+        return;
+    }
+    let (total, area) = dims3d::chain_reading(points, closed);
+    let mut text = if edges > 1 { tf("Total {}", &[&m.units.with_unit(total)]) } else { m.units.with_unit(total) };
+    if edges == 1 {
+        let [x, y, z] = dims3d::reading(points[0], points[1]).1.map(|d| m.units.length(d));
+        text = format!("{text}\nΔX {x}  ΔY {y}  ΔZ {z}");
+    }
+    if let Some(a) = area {
+        let (area, unit) = m.units.area(a);
+        text = format!("{text}\n{}", tf("Area {}", &[&format!("{area:.2} {unit}")]));
+    } else if closed {
+        text = format!("{text}\n{}", t("No area: its points aren't in one plane"));
+    }
+    let at = if closed { on[0] } else { on[n - 1] };
+    crate::canvas::tag(p, at + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, text);
 }
 
 /// Whether `tool` draws in the 3D view on the face under the cursor.
@@ -1734,19 +1768,25 @@ impl BimApp {
         if measuring {
             let screen = |q: P3| on_screen(&cam, rect, ppp, q);
             let aim = hover.filter(|_| o.drag.is_none()).and_then(measure_pick);
-            if let Some((a, b)) = o.ruler {
-                draw_ruler(&p, &model, a, b, &screen);
+            // The chain so far, and on to the point under the cursor while it grows.
+            let growing = o.chain_done.is_none() && !o.chain.is_empty();
+            match aim.filter(|_| growing) {
+                Some(r) => {
+                    let mut chain = o.chain.clone();
+                    // Back on its first point, it would close.
+                    let closing = chain.len() >= 3 && closes(&cam, chain[0], r.at, ppp);
+                    if !closing {
+                        chain.push(r.at);
+                    }
+                    draw_chain(&p, &model, &chain, closing, &screen);
+                }
+                None => draw_chain(&p, &model, &o.chain, o.chain_done == Some(true), &screen),
             }
             if let Some(r) = aim {
                 if let Some([a, b]) = r.edge {
                     p.line_segment([screen(a), screen(b)], Stroke::new(3.0, pal().accent));
                 }
                 p.circle_stroke(screen(r.at), 5.0, Stroke::new(1.5, pal().accent));
-                if let Some(start) = o.ruler_start {
-                    draw_ruler(&p, &model, start, r.at, &screen);
-                }
-            } else if let Some(start) = o.ruler_start {
-                p.circle_filled(screen(start), 3.5, pal().accent);
             }
         }
         // Rooms aren't seen in 3D but while selected: then a see-through solid in the selection's colour, from their bottom to
@@ -2040,13 +2080,18 @@ impl BimApp {
             self.dim3_click(&cam, at, r);
         }
         match measure_click {
-            Some(Some(r)) => match self.orbit.ruler_start.take() {
-                Some(start) => self.orbit.ruler = Some((start, r.at)),
-                None => {
-                    self.orbit.ruler = None;
-                    self.orbit.ruler_start = Some(r.at);
+            Some(Some(r)) => {
+                let o = &mut self.orbit;
+                // A chain done, the click begins another; back on the first point of three or more, it closes.
+                if o.chain_done.take().is_some() {
+                    o.chain.clear();
                 }
-            },
+                if o.chain.len() >= 3 && closes(&cam, o.chain[0], r.at, ppp) {
+                    o.chain_done = Some(true);
+                } else if o.chain.last() != Some(&r.at) {
+                    o.chain.push(r.at);
+                }
+            }
             Some(None) => self.status = Status { text: t("Pick a corner, an edge or a face of the model to measure.").into(), error: true },
             None => {}
         }

@@ -90,18 +90,38 @@ fn the_measure_tool_in_3d_reads_between_two_corners_at_different_heights_whateve
     let (a, b): ([f64; 3], [f64; 3]) = ([-100.0, -100.0, 0.0], [8100.0, -100.0, 3000.0]);
     let at = h.state().screen3(a);
     click_at(&mut h, at);
-    let first = h.state().orbit.ruler_start.expect("its start");
     let to = h.state().screen3(b);
     click_at(&mut h, to);
-    let (p, q) = h.state().orbit.ruler.expect("the ruler");
-    assert_eq!(p, first);
-    let long = bimcraft_core::dims3d::reading(p, q).0;
-    assert!((long - 8200.0f64.hypot(3000.0)).abs() < 1.0, "{long} from {p:?} to {q:?}");
-    // Esc takes the ruler away, then the tool; the camera stayed.
+    let chain = h.state().orbit.chain.clone();
+    assert_eq!(chain.len(), 2, "{chain:?}");
+    let long = bimcraft_core::dims3d::reading(chain[0], chain[1]).0;
+    assert!((long - 8200.0f64.hypot(3000.0)).abs() < 1.0, "{long} along {chain:?}");
+    // Esc takes the chain away, then the tool; the camera stayed.
     key(&mut h, Key::Escape);
-    assert!(h.state().orbit.ruler.is_none() && matches!(h.state().tool, Tool::Measure(_)));
+    assert!(h.state().orbit.chain.is_empty() && matches!(h.state().tool, Tool::Measure(_)));
     key(&mut h, Key::Escape);
     assert_eq!(h.state().tool, Tool::Modify);
+}
+
+#[test]
+fn a_measured_chain_round_a_wall_s_face_closes_on_its_first_point_and_reads_its_area() {
+    let mut h = three_d(BOX);
+    h.state_mut().set_tool(Tool::Measure(None));
+    h.run();
+    // The south wall's outer face, corner to corner, and back to the first: in one plane.
+    let face = [[-100.0, -100.0, 0.0], [8100.0, -100.0, 0.0], [8100.0, -100.0, 3000.0], [-100.0, -100.0, 3000.0], [-100.0, -100.0, 0.0]];
+    for q in face {
+        let at = h.state().screen3(q);
+        click_at(&mut h, at);
+    }
+    assert_eq!(h.state().orbit.chain_done, Some(true), "closed: {:?}", h.state().orbit.chain);
+    let (total, area) = bimcraft_core::dims3d::chain_reading(&h.state().orbit.chain, true);
+    assert!((total - 2.0 * (8200.0 + 3000.0)).abs() < 2.0, "{total}");
+    assert!((area.unwrap_or_default() - 8200.0 * 3000.0).abs() < 8200.0 * 3000.0 * 1e-3, "{area:?}");
+    // The next click begins another chain.
+    let at = h.state().screen3(face[1]);
+    click_at(&mut h, at);
+    assert_eq!((h.state().orbit.chain.len(), h.state().orbit.chain_done), (1, None));
 }
 
 #[test]
@@ -111,7 +131,7 @@ fn over_nothing_the_measure_tool_says_what_it_needs() {
     h.run();
     let corner = h.state().orbit.rect.min + vec2(4.0, 4.0);
     click_at(&mut h, corner);
-    assert!(h.state().orbit.ruler_start.is_none());
+    assert!(h.state().orbit.chain.is_empty());
     assert!(h.state().status.error, "{}", h.state().status.text);
 }
 
@@ -235,4 +255,12 @@ wall {"points": [[6000, -2000], [6000, 4000]]}"#,
     let (w0, w1) = (m.wall(walls[0]).unwrap(), m.wall(walls[1]).unwrap());
     assert_eq!(w0.end, P2(6000.0, 0.0), "{}: {w0:?}", h.state().status.text);
     assert_eq!(w1.start, P2(6000.0, 0.0), "{w1:?}");
+}
+
+#[test]
+fn in_3d_the_measure_tool_says_how_its_chain_works() {
+    let mut h = three_d(BOX);
+    h.state_mut().set_tool(Tool::Measure(None));
+    h.run();
+    assert!(h.state().prompt().contains("Click the first point again to close it"), "{}", h.state().prompt());
 }
