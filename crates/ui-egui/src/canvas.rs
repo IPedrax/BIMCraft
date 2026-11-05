@@ -308,7 +308,7 @@ pub struct Canvas {
     pub(crate) drawing: PlanCache,
     cams: BTreeMap<Id, Camera>,
     /// Where the plan was last shown, in points.
-    rect: Rect,
+    pub(crate) rect: Rect,
     /// How much of its height the cards floating over the view (its tabs at the top, its view control bar at the foot) take
     /// between them, points: a view is fitted into the rest.
     pub(crate) room: f32,

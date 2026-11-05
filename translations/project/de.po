@@ -51,7 +51,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Deckenleuchte"
 
-#: crates/core/src/render.rs:3099
+#: crates/core/src/render.rs:3116
 msgid "Ceiling Plan"
 msgstr "Deckenspiegel"
 
@@ -95,7 +95,7 @@ msgstr "Anzahl"
 msgid "Crosshatch"
 msgstr "Schraffur"
 
-#: crates/core/src/render.rs:3691
+#: crates/core/src/render.rs:3708
 msgid "DN"
 msgstr "AB"
 
@@ -175,15 +175,15 @@ msgstr "Osten"
 msgid "Elbow 90"
 msgstr "Bogen 90"
 
-#: crates/core/src/graphics.rs:939
+#: crates/core/src/graphics.rs:941
 msgid "Electrical Ceiling"
 msgstr "Elektro Decke"
 
-#: crates/core/src/graphics.rs:938
+#: crates/core/src/graphics.rs:940
 msgid "Electrical Lighting"
 msgstr "Elektro Beleuchtung"
 
-#: crates/core/src/graphics.rs:937
+#: crates/core/src/graphics.rs:939
 msgid "Electrical Power"
 msgstr "Elektro Energie"
 
@@ -241,7 +241,7 @@ msgid "Gate Valve"
 msgstr "Absperrventil"
 
 #: crates/core/src/family.rs:1959
-#: crates/core/src/view3d.rs:1040
+#: crates/core/src/view3d.rs:1137
 msgid "Glass"
 msgstr "Glas"
 
@@ -354,7 +354,7 @@ msgstr "Metall"
 msgid "Mounting Height"
 msgstr "Montagehöhe"
 
-#: crates/core/src/render.rs:2930
+#: crates/core/src/render.rs:2947
 msgid "NOT ENCLOSED"
 msgstr "NICHT UMSCHLOSSEN"
 
@@ -422,7 +422,7 @@ msgstr "Porzellan"
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/render.rs:2930
+#: crates/core/src/render.rs:2947
 msgid "REDUNDANT"
 msgstr "REDUNDANT"
 
@@ -591,7 +591,7 @@ msgstr "Auftritt"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:3691
+#: crates/core/src/render.rs:3708
 msgid "UP"
 msgstr "AUF"
 

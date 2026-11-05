@@ -16,7 +16,7 @@ use serde_json::json;
 use crate::BimApp;
 use crate::lang::{t, tf};
 use crate::popup::Modal;
-use crate::style::pal;
+use crate::style::{canvas_pal, pal};
 use crate::typeprops;
 
 /// A place on the pattern that holds a type or nothing: `row` and `column` of its segments.
@@ -192,6 +192,14 @@ impl CurtainEditor {
         let x = |u: f64| area.left() + (u * k) as f32;
         let y = |v: f64| area.bottom() - (v * k) as f32;
         let p = ui.painter_at(rect);
+        // A sheet of the canvas's own ground, for the wall to stand out from the dialog.
+        p.rect_filled(rect, 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
+        p.rect_stroke(rect, 0.0, Stroke::new(1.0, pal().border), egui::StrokeKind::Inside);
+        // Painted, and named for tests and screen readers: a widget here would move what comes after the preview.
+        let hint = t("Select members in the preview panel to edit them.");
+        p.text(rect.center_top() + vec2(0.0, 4.0), egui::Align2::CENTER_TOP, hint, egui::FontId::proportional(11.0), canvas_pal().muted);
+        ui.interact(Rect::from_min_size(rect.min, vec2(rect.width(), 18.0)), UiId::new("curtain-hint"), Sense::hover())
+            .widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, hint));
         let mut clicked = None;
         let shift = ui.input(|i| i.modifiers.shift);
         let mut hit = |ui: &mut Ui, r: Rect, piece: Piece| {
@@ -209,11 +217,13 @@ impl CurtainEditor {
                 let cell = Rect::from_min_max(pos2(x(*u0), y(*v1)), pos2(x(*u1), y(*v0)));
                 let piece = Piece::Cell(r, c);
                 let held = self.l.panels.get(r).and_then(|x| x.get(c)).cloned().flatten();
-                let fill =
-                    held.as_ref().and_then(|n| m.types.curtain_panel.get(n)).map_or(pal().panel, |t| colour(&t.material, pal().panel));
+                let fill = held
+                    .as_ref()
+                    .and_then(|n| m.types.curtain_panel.get(n))
+                    .map_or(canvas_pal().panel, |t| colour(&t.material, canvas_pal().panel));
                 p.rect_filled(cell, 0.0, fill);
                 if self.selected.contains(&piece) {
-                    p.rect_stroke(cell.shrink(3.0), 0.0, Stroke::new(2.0, pal().accent), egui::StrokeKind::Inside);
+                    p.rect_stroke(cell.shrink(3.0), 0.0, Stroke::new(2.0, canvas_pal().accent), egui::StrokeKind::Inside);
                 }
                 hit(ui, cell, piece);
             }
@@ -241,16 +251,16 @@ impl CurtainEditor {
                 hit(ui, line.expand2(vec2(-6.0, 6.0)), piece);
             }
         }
-        p.rect_stroke(area, 0.0, Stroke::new(1.0, pal().border), egui::StrokeKind::Middle);
+        p.rect_stroke(area, 0.0, Stroke::new(1.0, canvas_pal().border), egui::StrokeKind::Middle);
         // The segments' names, as the lists beside it call them.
         let font = egui::FontId::proportional(12.0);
         for (c, (u0, u1)) in cols.iter().enumerate() {
             let at = pos2((x(*u0) + x(*u1)) / 2.0, area.bottom() + 3.0);
-            p.text(at, egui::Align2::CENTER_TOP, letter(c), font.clone(), pal().text);
+            p.text(at, egui::Align2::CENTER_TOP, letter(c), font.clone(), canvas_pal().text);
         }
         for (r, (v0, v1)) in rows.iter().enumerate() {
             let at = pos2(area.left() - 5.0, (y(*v0) + y(*v1)) / 2.0);
-            p.text(at, egui::Align2::RIGHT_CENTER, (r + 1).to_string(), font.clone(), pal().text);
+            p.text(at, egui::Align2::RIGHT_CENTER, (r + 1).to_string(), font.clone(), canvas_pal().text);
         }
         if let Some(piece) = clicked {
             if !shift {
@@ -363,11 +373,11 @@ impl CurtainEditor {
 /// A grid line on the pattern: as wide as its mullion, or thin and pale with none.
 fn paint_edge(p: &egui::Painter, line: Rect, width: Option<f32>, selected: bool, upright: bool) {
     let colour = if selected {
-        pal().accent
+        canvas_pal().accent
     } else if width.is_some() {
-        pal().text
+        canvas_pal().text
     } else {
-        pal().border
+        canvas_pal().border
     };
     let w = width.unwrap_or(1.0).max(if selected { 3.0 } else { 1.0 });
     let (a, b) = if upright { (line.center_top(), line.center_bottom()) } else { (line.left_center(), line.right_center()) };
@@ -390,7 +400,22 @@ pub(crate) fn parts_under(m: &Model, view: Id, selection: &[Id], under: &[Id], a
     let (along, _) = axis.project(at);
     let up = m.plan_range(view).cut - m.own_base(w);
     let reach = REACH.max(f64::from(crate::canvas::PICK) / scale.max(f64::MIN_POSITIVE));
-    Some((id, curtain::layout(m, w).at(along, up, reach)))
+    Some((id, shown_parts(m, view, curtain::layout(m, w).at(along, up, reach))))
+}
+
+/// Of the parts in `list`, those view `view` draws: Tab goes only through what can be seen.
+pub(crate) fn shown_parts(m: &Model, view: Id, mut list: Vec<Address>) -> Vec<Address> {
+    let look = bimcraft_core::graphics::Look::of(m, view);
+    list.retain(|a| look.shows_part(a.kind()));
+    list
+}
+
+/// Under the cursor in a section or an elevation, or a 3D view's camera: the selected curtain wall `id`'s parts on the ray
+/// `from` to `to`, as view `view` draws them.
+pub(crate) fn parts_on_ray(m: &Model, view: Id, id: Id, from: [f64; 3], to: [f64; 3]) -> Option<Vec<Address>> {
+    let w = m.wall(id).filter(|w| curtain::pattern(m, w).is_some())?;
+    let (along, up) = curtain::on_plane(m, w, from, to)?;
+    Some(shown_parts(m, view, curtain::layout(m, w).at(along, up, REACH)))
 }
 
 /// The part after `now` in `list`, then none: the whole wall again.

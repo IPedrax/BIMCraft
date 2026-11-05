@@ -436,12 +436,22 @@ impl Mesh {
                 return Ok(None);
             }
             if plain || look.shows(span.id) {
-                shown.extend(span.at.clone());
-                let view = if plain { 0 } else { look.transparency(span.id) };
+                // A curtain wall's parts a view hides or sees through apart are asked after one by one.
+                if look.hides_parts() {
+                    shown.extend(span.at.clone().filter(|i| scene.tris.get(*i).is_some_and(|t| t.seen_in(look))));
+                } else {
+                    shown.extend(span.at.clone());
+                }
                 for (a, t) in
                     alphas.get_mut(span.at.clone()).unwrap_or_default().iter_mut().zip(scene.tris.get(span.at.clone()).unwrap_or_default())
                 {
-                    *a = if lines { 0 } else { t.clearness().max(view) };
+                    *a = if lines {
+                        0
+                    } else if plain {
+                        t.clearness()
+                    } else {
+                        t.clearness().max(look.transparency_of(t.part(), span.id))
+                    };
                 }
                 let [lo, hi] = span.bounds;
                 reach = Some(match reach {
@@ -464,7 +474,7 @@ impl Mesh {
             } else if plain {
                 t.color
             } else {
-                look.surface(t.owner, t.color)
+                t.surface(look)
             }
         };
         let textured =
@@ -493,7 +503,7 @@ impl Mesh {
             }
             let Some(local) = scene.shapes.get(place.shape) else { continue };
             let Some(tris) = scene.tris.get(first..first + local.len()) else { continue };
-            if !(plain || look.shows(place.owner)) {
+            if !(plain || (look.shows(place.owner) && tris.first().is_none_or(|t| t.seen_in(look)))) {
                 continue;
             }
             // One owner for what is seen through of a copy, so one way see-through.
@@ -605,20 +615,23 @@ impl Mesh {
         let room = |_| "more than this machine's memory holds".to_string();
         mesh.vertices.try_reserve_exact(drawn.saturating_mul(3)).map_err(room)?;
         mesh.tris.try_reserve_exact(drawn).map_err(room)?;
-        let mut owners: BTreeMap<(Id, u8), u32> = BTreeMap::new();
+        // An element's parts may have edges of their own colours (a curtain wall's): one owner for each.
+        type OwnerKey = (Id, u8, (u8, u8, u8));
+        let mut owners: BTreeMap<OwnerKey, u32> = BTreeMap::new();
         // The last asked: the triangles of an element come together.
-        let mut last: Option<((Id, u8), u32)> = None;
-        let mut owner_of = |mesh: &mut Mesh, id: Id, alpha: u8| {
-            if let Some((key, n)) = last
-                && key == (id, alpha)
+        let mut last: Option<(OwnerKey, u32)> = None;
+        let mut owner_of = |mesh: &mut Mesh, id: Id, alpha: u8, edge: Rgb| {
+            let key = (id, alpha, (edge.0, edge.1, edge.2));
+            if let Some((was, n)) = last
+                && was == key
             {
                 return n;
             }
-            let n = *owners.entry((id, alpha)).or_insert_with(|| {
-                mesh.owners.push(Owner { id, edge: look.edge(id, EDGE), transparency: alpha });
+            let n = *owners.entry(key).or_insert_with(|| {
+                mesh.owners.push(Owner { id, edge, transparency: alpha });
                 mesh.owners.len() as u32
             });
-            last = Some(((id, alpha), n));
+            last = Some((key, n));
             n
         };
         for (k, i) in shown.into_iter().enumerate() {
@@ -628,7 +641,7 @@ impl Mesh {
             let t = &scene.tris[i];
             let alpha = alpha_at(i);
             // The owners numbered in the order they are met, a copy's among them.
-            let owner = owner_of(&mut mesh, t.owner, alpha);
+            let owner = owner_of(&mut mesh, t.owner, alpha, t.edge(look, EDGE));
             if is_taken(i) {
                 continue;
             }
@@ -685,8 +698,9 @@ impl Mesh {
             let index = mesh.shapes.len();
             let first_instance = mesh.instances.len();
             for &&(first, place) in &copies {
-                let owner = owner_of(&mut mesh, place.owner, 0);
-                let clear_owner = clear_alpha.map_or(0, |a| owner_of(&mut mesh, place.owner, a));
+                let edge = scene.tris.get(first).map_or(EDGE, |t| t.edge(look, EDGE));
+                let owner = owner_of(&mut mesh, place.owner, 0, edge);
+                let clear_owner = clear_alpha.map_or(0, |a| owner_of(&mut mesh, place.owner, a, edge));
                 let planes = u32::try_from(mesh.instance_planes.len()).map_err(|_| too_many())?;
                 mesh.instance_planes.try_reserve(local.len()).map_err(room)?;
                 for i in order.iter().map(|k| first + k) {
@@ -718,8 +732,8 @@ impl Mesh {
                 if k % 8192 == 0 && cancelled() {
                     return Ok(None);
                 }
-                let Some(t) = scene.tris.get(i).filter(|t| look.shows(t.owner)) else { continue };
-                let owner = owner_of(&mut mesh, t.owner, 0);
+                let Some(t) = scene.tris.get(i).filter(|t| t.seen_in(look)) else { continue };
+                let owner = owner_of(&mut mesh, t.owner, 0, t.edge(look, EDGE));
                 mesh.wires.push(Wire { ends, owner, face: face_at(i) });
             }
         }
@@ -730,7 +744,7 @@ impl Mesh {
             if cancelled() {
                 return Ok(None);
             }
-            let owner = owner_of(&mut mesh, scan.owner, 0);
+            let owner = owner_of(&mut mesh, scan.owner, 0, look.edge(scan.owner, EDGE));
             for (i, p) in scan.points.iter().enumerate().step_by(step) {
                 if i % 8192 == 0 && cancelled() {
                     return Ok(None);
@@ -1699,6 +1713,220 @@ mod tests {
         assert!(mesh.shapes.iter().any(|sh| sh.vertices.len() == tube && sh.instances.len() == 5), "one tube: {:?}", mesh.shapes);
         copies_hold_the_flat_triangles(&mesh, &flat);
         picks_as_the_picture(&s);
+    }
+
+    /// The sample with two curtain walls of one pattern, one square to the axes and one at an angle.
+    pub(crate) fn with_curtain_walls() -> Session {
+        let mut s = sample();
+        let curtain = json!({"columns": {"segments": [1500]}, "rows": {"segments": [1000]}});
+        s.execute("type", &json!({"category": "wall", "name": "Facade", "curtain": curtain})).unwrap();
+        s.execute("wall", &json!({"points": [[0, -9000], [15000, -9000]], "type": "Facade"})).unwrap();
+        s.execute("wall", &json!({"points": [[0, -12000], [12000, -21000]], "type": "Facade"})).unwrap();
+        s
+    }
+
+    #[test]
+    fn a_curtain_wall_s_like_parts_are_shapes_placed_again_and_again() {
+        let s = with_curtain_walls();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let (mesh, flat) = (Mesh::new(&scene, &look).unwrap(), Mesh::flat(&scene, &look).unwrap());
+        let walls: Vec<(Id, usize)> = s
+            .model
+            .elements
+            .iter()
+            .filter_map(|(id, e)| match e {
+                crate::model::Element::Wall(w) if crate::curtain::pattern(&s.model, w).is_some() => {
+                    Some((*id, crate::curtain::layout(&s.model, w).parts.len()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(walls.len(), 2);
+        for (id, parts) in &walls {
+            assert!(*parts > 100, "{parts} parts");
+            let copies = mesh.instances.iter().filter(|i| mesh.owners[i.owner as usize - 1].id == *id).count();
+            assert_eq!(copies, *parts, "every part of wall {id} a copy");
+        }
+        // The two walls' whole panels and mullions are one set of shapes, whichever way each wall runs.
+        let parts: usize = walls.iter().map(|(_, n)| n).sum();
+        let shapes: usize = mesh.shapes.iter().filter(|sh| sh.instances.len() > 1).map(|sh| sh.instances.len()).sum();
+        assert!(shapes >= parts, "{shapes} copies of {parts} parts in shapes shared");
+        assert!(mesh.shapes.len() < parts / 4, "{} shapes for {parts} parts", mesh.shapes.len());
+        assert_eq!(mesh.triangles(), flat.triangles());
+        assert_eq!(mesh.owners, flat.owners, "the owners numbered alike");
+        assert!(mesh.vertices.len() < flat.vertices.len());
+        picks_as_the_picture(&s);
+    }
+
+    #[test]
+    fn a_curtain_wall_s_mitred_bars_are_its_own_triangles_and_the_rest_copies() {
+        let mut s = sample();
+        let edge = json!({"type": "50 x 150", "join": "mitre"});
+        let curtain = json!({
+            "columns": {"segments": [1500]},
+            "rows": {"segments": [1000]},
+            "borders": {"left": edge, "right": edge, "bottom": edge, "top": edge},
+        });
+        s.execute("type", &json!({"category": "wall", "name": "Mitred", "curtain": curtain})).unwrap();
+        s.execute("wall", &json!({"points": [[0, -9000], [15000, -9000]], "type": "Mitred"})).unwrap();
+        let (id, w) = s
+            .model
+            .elements
+            .iter()
+            .find_map(|(id, e)| match e {
+                crate::model::Element::Wall(w) if crate::curtain::pattern(&s.model, w).is_some() => Some((*id, w)),
+                _ => None,
+            })
+            .unwrap();
+        let l = crate::curtain::layout(&s.model, w);
+        let mitred = l.parts.iter().filter(|p| l.shapes[p.shape as usize].face.is_some()).count();
+        assert!(mitred > 0, "the wall's corners are mitred");
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let (mesh, flat) = (Mesh::new(&scene, &look).unwrap(), Mesh::flat(&scene, &look).unwrap());
+        let copies = mesh.instances.iter().filter(|i| mesh.owners[i.owner as usize - 1].id == id).count();
+        assert_eq!(copies, l.parts.len() - mitred);
+        assert_eq!(mesh.triangles(), flat.triangles());
+        picks_as_the_picture(&s);
+    }
+
+    #[test]
+    fn a_big_curtain_wall_holds_its_shapes_once_on_the_card() {
+        let mut s = Session::new();
+        let curtain = json!({"columns": {"segments": [1500]}, "rows": {"segments": [1000]}});
+        s.execute("type", &json!({"category": "wall", "name": "Facade", "curtain": curtain})).unwrap();
+        s.execute("wall", &json!({"points": [[0, 0], [100000, 0]], "height": 100000, "type": "Facade"})).unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let (mesh, flat) = (Mesh::new(&scene, &look).unwrap(), Mesh::flat(&scene, &look).unwrap());
+        println!(
+            "{} triangles: flat {} vertices, shared {} + {} of shapes, {} copies of {} shapes",
+            mesh.triangles(),
+            flat.vertices.len(),
+            mesh.vertices.len(),
+            mesh.shape_vertices.len(),
+            mesh.instances.len(),
+            mesh.shapes.len(),
+        );
+        assert_eq!(mesh.triangles(), flat.triangles());
+        assert!((mesh.vertices.len() + mesh.shape_vertices.len()) * 100 < flat.vertices.len());
+    }
+
+    #[test]
+    fn a_curtain_wall_s_glass_is_seen_through_as_a_copy() {
+        let mut s = with_curtain_walls();
+        s.execute("material", &json!({"name": "Clear", "color": [180, 220, 240], "transparency": 70})).unwrap();
+        s.execute("type", &json!({"category": "curtainpanel", "name": "Glazed", "material": "Clear"})).unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let (mesh, flat) = (Mesh::new(&scene, &look).unwrap(), Mesh::flat(&scene, &look).unwrap());
+        let glass: Vec<&Instance> = mesh.instances.iter().filter(|i| i.clear_owner != 0).collect();
+        assert!(glass.len() > 50, "{} panels seen through", glass.len());
+        assert!(glass.iter().all(|g| mesh.owners[g.clear_owner as usize - 1].transparency == 70));
+        assert_eq!(mesh.triangles(), flat.triangles());
+        picks_as_the_picture(&s);
+    }
+
+    /// How many of the project's curtain panels and mullions there are.
+    fn curtain_counts(s: &Session) -> (usize, usize) {
+        let mut counts = (0, 0);
+        for w in s.model.elements.values().filter_map(|e| if let crate::model::Element::Wall(w) = e { Some(w) } else { None }) {
+            if crate::curtain::pattern(&s.model, w).is_some() {
+                let l = crate::curtain::layout(&s.model, w);
+                for p in &l.parts {
+                    match l.shapes[p.shape as usize].kind {
+                        crate::curtain::PartKind::Panel => counts.0 += 1,
+                        crate::curtain::PartKind::Mullion => counts.1 += 1,
+                    }
+                }
+            }
+        }
+        counts
+    }
+
+    #[test]
+    fn a_view_hides_a_curtain_wall_s_panels_and_mullions_apart() {
+        let mut s = with_curtain_walls();
+        let (panels, mullions) = curtain_counts(&s);
+        assert!(panels > 50 && mullions > 50);
+        let drawn = |s: &Session| {
+            let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+            let (mesh, flat) = (Mesh::new(&scene, &look).unwrap(), Mesh::flat(&scene, &look).unwrap());
+            assert_eq!(mesh.triangles(), flat.triangles());
+            assert_eq!(mesh.triangles(), scene.shown(&look));
+            picks_as_the_picture(s);
+            mesh.triangles()
+        };
+        let hide = |s: &mut Session, panels: bool, mullions: bool| {
+            let categories = json!({"curtainpanel": {"hidden": panels}, "mullion": {"hidden": mullions}});
+            s.execute("graphics", &json!({"view": "{3D}", "categories": categories})).unwrap();
+        };
+        let all = drawn(&s);
+        hide(&mut s, false, true);
+        assert_eq!(drawn(&s), all - mullions * 12, "the mullions gone");
+        hide(&mut s, true, false);
+        assert_eq!(drawn(&s), all - panels * 12, "the panels gone");
+        hide(&mut s, true, true);
+        assert_eq!(drawn(&s), all - (panels + mullions) * 12, "both");
+        // Under Walls: hiding them hides the parts, whatever the parts' rows say.
+        hide(&mut s, false, false);
+        s.execute("graphics", &json!({"view": "{3D}", "categories": {"wall": {"hidden": true}}})).unwrap();
+        let plain = drawn(&s);
+        assert!(plain < all - (panels + mullions) * 12, "{plain} of {all}");
+    }
+
+    #[test]
+    fn a_view_paints_a_curtain_wall_s_mullions_apart_from_its_panels_on_the_card_and_in_a_file() {
+        let mut s = with_curtain_walls();
+        let (panels, mullions) = curtain_counts(&s);
+        let red = json!({"projection": {"fill": [200, 0, 0], "color": [0, 0, 200]}});
+        let categories = json!({"mullion": red, "curtainpanel": {"transparency": 90}});
+        s.execute("graphics", &json!({"view": "{3D}", "categories": categories})).unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let facets: Vec<_> = scene.facets(&look).collect();
+        assert_eq!(facets.iter().filter(|f| f.color == Rgb(200, 0, 0)).count(), mullions * 12);
+        assert!(facets.iter().filter(|f| f.clearness == 90).count() >= panels * 12);
+        let (mesh, flat) = (Mesh::new(&scene, &look).unwrap(), Mesh::flat(&scene, &look).unwrap());
+        assert_eq!(mesh.triangles(), flat.triangles());
+        // A copy all seen through also holds an owner for what is opaque of it, of which it has none.
+        assert!(flat.owners.iter().all(|o| mesh.owners.contains(o)), "every owner there");
+        assert!(mesh.owners.iter().any(|o| o.edge == Rgb(0, 0, 200)), "the mullions' edges in their own colour");
+        assert!(mesh.instances.iter().filter(|i| i.clear_owner != 0).count() >= panels, "the panels seen through, still copies");
+        assert!(mesh.instances.len() >= panels + mullions, "painting them apart leaves them shapes");
+        picks_as_the_picture(&s);
+    }
+
+    #[test]
+    fn each_part_of_a_curtain_wall_has_its_own_faces_so_the_joints_show() {
+        // No mullions: the panels stand edge to edge in one plane.
+        let mut s = Session::new();
+        let curtain = json!({"columns": {"segments": [1500]}, "rows": {"segments": [3000]}, "mullion": null});
+        s.execute("type", &json!({"category": "wall", "name": "Bare", "curtain": curtain})).unwrap();
+        s.execute("wall", &json!({"points": [[0, 0], [6000, 0]], "height": 3000, "type": "Bare"})).unwrap();
+        let scene = Scene::new(&s.model);
+        assert_eq!(scene.tris.len(), 4 * 12, "four panels");
+        // In each box each face's two triangles are one plane, and no two boxes share one.
+        for (k, a) in scene.planes.chunks(12).enumerate() {
+            for pair in a.chunks(2) {
+                assert_eq!(pair[0], pair[1], "a face's two triangles");
+            }
+            for b in scene.planes.chunks(12).skip(k + 1) {
+                assert!(a.iter().all(|p| !b.contains(p)), "{a:?} {b:?}");
+            }
+        }
+        // So a mitre and a butt of one material look different from the front.
+        let front = |join: &str| {
+            let mut s = Session::new();
+            let edge = json!({"type": "50 x 150", "join": join});
+            let curtain = json!({
+                "columns": {"segments": [1500]},
+                "rows": {"segments": [1000]},
+                "borders": {"left": edge, "right": edge, "bottom": edge, "top": edge},
+            });
+            s.execute("type", &json!({"category": "wall", "name": "Edged", "curtain": curtain})).unwrap();
+            s.execute("wall", &json!({"points": [[0, 0], [3000, 0]], "height": 2000, "type": "Edged"})).unwrap();
+            let scene = Scene::new(&s.model);
+            let cam = scene.fit_in(-90.0, 0.0, 800, 600, &Look::default());
+            scene.render_in(&cam, &[], &Look::of_3d(&s.model)).rgba
+        };
+        assert_ne!(front("mitre"), front("butt"));
     }
 
     /// Where a card puts `d` (from the mesh's origin) in clip space, in f64: as `to_clip` in the shader.

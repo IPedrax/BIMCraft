@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Luminaria de techo"
 
-#: crates/core/src/render.rs:3099
+#: crates/core/src/render.rs:3116
 msgid "Ceiling Plan"
 msgstr "Plano de cielo raso"
 
@@ -96,7 +96,7 @@ msgstr "Recuento"
 msgid "Crosshatch"
 msgstr "Sombreado cruzado"
 
-#: crates/core/src/render.rs:3691
+#: crates/core/src/render.rs:3708
 msgid "DN"
 msgstr "BAJA"
 
@@ -176,15 +176,15 @@ msgstr "Este"
 msgid "Elbow 90"
 msgstr "Codo 90"
 
-#: crates/core/src/graphics.rs:939
+#: crates/core/src/graphics.rs:941
 msgid "Electrical Ceiling"
 msgstr "Cielo raso eléctrico"
 
-#: crates/core/src/graphics.rs:938
+#: crates/core/src/graphics.rs:940
 msgid "Electrical Lighting"
 msgstr "Iluminación eléctrica"
 
-#: crates/core/src/graphics.rs:937
+#: crates/core/src/graphics.rs:939
 msgid "Electrical Power"
 msgstr "Fuerza eléctrica"
 
@@ -242,7 +242,7 @@ msgid "Gate Valve"
 msgstr "Válvula de compuerta"
 
 #: crates/core/src/family.rs:1959
-#: crates/core/src/view3d.rs:1040
+#: crates/core/src/view3d.rs:1137
 msgid "Glass"
 msgstr "Vidrio"
 
@@ -355,7 +355,7 @@ msgstr "Metal"
 msgid "Mounting Height"
 msgstr "Altura de montaje"
 
-#: crates/core/src/render.rs:2930
+#: crates/core/src/render.rs:2947
 msgid "NOT ENCLOSED"
 msgstr "NO DELIMITADA"
 
@@ -423,7 +423,7 @@ msgstr "Porcelana"
 msgid "Project"
 msgstr "Proyecto"
 
-#: crates/core/src/render.rs:2930
+#: crates/core/src/render.rs:2947
 msgid "REDUNDANT"
 msgstr "REDUNDANTE"
 
@@ -592,7 +592,7 @@ msgstr "Huella"
 msgid "Type"
 msgstr "Tipo"
 
-#: crates/core/src/render.rs:3691
+#: crates/core/src/render.rs:3708
 msgid "UP"
 msgstr "SUBE"
 

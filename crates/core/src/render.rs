@@ -784,7 +784,7 @@ fn cut_unions(look: &Look, outlines: impl Iterator<Item = (Id, Vec<P2>)>) -> Vec
 /// A curtain wall in a plan: the mullions the cut plane passes through filled and inked, the panels it passes through thin
 /// (at coarse detail, a line down their middle), and what stands under it as seen from above, each place once however many
 /// parts stand there.
-fn curtain_plan(d: &mut Drawing, m: &Model, id: Id, w: &crate::model::Wall, range: &PlanRange, up: bool, fill: Rgb) {
+fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, id: Id, w: &crate::model::Wall, range: &PlanRange, up: bool) {
     use crate::curtain::{self, PartKind};
     let (base, top) = (m.own_base(w), m.own_top(w));
     if !(range.depth < top && base <= range.cut) {
@@ -799,18 +799,27 @@ fn curtain_plan(d: &mut Drawing, m: &Model, id: Id, w: &crate::model::Wall, rang
         vec![axis.at(along - da, c - dc), axis.at(along + da, c - dc), axis.at(along + da, c + dc), axis.at(along - da, c + dc)]
     };
     let coarse = d.detail == Detail::Coarse;
-    let style = |kind: PartKind| m.object_style(if kind == PartKind::Mullion { "mullion" } else { "curtainpanel" });
-    let panel_cut = style(PartKind::Panel).cut;
+    let style = |kind: PartKind| m.object_style(crate::graphics::part_row(kind));
+    // A line in the part's row's pen, colour and dash, where the view's row gives them.
+    let ink = |d: &mut Drawing, pts: &[P2], kind: PartKind, cut: bool, closed: bool| {
+        let row = look.part(kind);
+        let (own, pen) = if cut { (&row.cut, style(kind).cut) } else { (&row.projection, style(kind).projection) };
+        let color = own.color.map_or(INK, |[r, g, b]| Rgb(r, g, b));
+        d.line(pts, own.weight.unwrap_or(pen), if row.halftone { crate::graphics::halftoned(color) } else { color }, closed);
+        if let (Some(k), Some(Prim::Line { dash, .. })) = (own.dash, d.prims.last_mut()) {
+            *dash = k.pattern();
+        }
+    };
     d.owner = Some(id);
     let mut seen = std::collections::HashSet::new();
     d.part(Part::Projection);
     for p in l.parts.iter().filter(|_| !up) {
-        let Some(s) = l.shapes.get(p.shape as usize) else { continue };
+        let Some(s) = l.shapes.get(p.shape as usize).filter(|s| look.shows_part(s.kind)) else { continue };
         if p.centre[1] + s.size[1] / 2.0 <= cut {
             let r = ring(p, s);
             let key = (s.kind, r.iter().map(|q| ((q.0 * 10.0) as i64, (q.1 * 10.0) as i64)).collect::<Vec<_>>());
             if seen.insert(key) {
-                d.line(&r, style(s.kind).projection, INK, true);
+                ink(d, &r, s.kind, false, true);
             }
         }
     }
@@ -818,20 +827,28 @@ fn curtain_plan(d: &mut Drawing, m: &Model, id: Id, w: &crate::model::Wall, rang
     let crossing = |p: &curtain::Part, s: &curtain::Shape| (p.centre[1] - s.size[1] / 2.0 <= cut) && (cut < p.centre[1] + s.size[1] / 2.0);
     // The panels first, for the mullions to stand over where they touch.
     for p in &l.parts {
-        let Some(s) = l.shapes.get(p.shape as usize).filter(|s| s.kind == PartKind::Panel && crossing(p, s)) else { continue };
+        let Some(s) = l.shapes.get(p.shape as usize).filter(|s| s.kind == PartKind::Panel && look.shows_part(s.kind) && crossing(p, s))
+        else {
+            continue;
+        };
         if coarse {
             let [along, _, across] = p.centre;
             let c = plane + across;
-            d.line(&[axis.at(along - s.size[0] / 2.0, c), axis.at(along + s.size[0] / 2.0, c)], panel_cut, INK, false);
+            ink(d, &[axis.at(along - s.size[0] / 2.0, c), axis.at(along + s.size[0] / 2.0, c)], PartKind::Panel, true, false);
         } else {
-            d.line(&ring(p, s), panel_cut, INK, true);
+            ink(d, &ring(p, s), PartKind::Panel, true, true);
         }
     }
     for p in &l.parts {
-        let Some(s) = l.shapes.get(p.shape as usize).filter(|s| s.kind == PartKind::Mullion && crossing(p, s)) else { continue };
+        let Some(s) = l.shapes.get(p.shape as usize).filter(|s| s.kind == PartKind::Mullion && look.shows_part(s.kind) && crossing(p, s))
+        else {
+            continue;
+        };
         let r = ring(p, s);
-        d.fill(std::slice::from_ref(&r), fill);
-        d.line(&r, style(PartKind::Mullion).cut, INK, true);
+        let own = look.part(PartKind::Mullion);
+        let filled = own.cut.fill.map_or_else(|| look.cut_fill(id, POCHE), |[r, g, b]| Rgb(r, g, b));
+        d.fill(std::slice::from_ref(&r), if own.halftone { crate::graphics::halftoned(filled) } else { filled });
+        ink(d, &r, PartKind::Mullion, true, true);
     }
 }
 
@@ -1596,7 +1613,7 @@ impl SectionWork {
 
     /// The solids `look` shows, but the components'.
     fn shown<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = &'a view3d::Solid> + 'a {
-        self.solids.iter().filter(|s| look.shows(s.owner()))
+        self.solids.iter().filter(|s| s.seen_in(look))
     }
 
     /// The lowest and highest of each element `look` shows: its box's, which are its points'.
@@ -2845,7 +2862,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         if let Element::Wall(w) = e
             && crate::curtain::pattern(m, w).is_some()
         {
-            curtain_plan(&mut d, m, id, w, &range, up, look.cut_fill(id, POCHE));
+            curtain_plan(&mut d, m, &look, id, w, &range, up);
         }
     }
     // A compound wall's layers: each its material's cut pattern where it's wide enough to hold it,

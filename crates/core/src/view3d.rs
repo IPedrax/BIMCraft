@@ -135,14 +135,29 @@ struct Tri {
     p: [P3; 3],
     owner: Id,
     color: Rgb,
-    /// The skin of its material ([`skin`]): in the low 24 bits the texture over its colour, one more than where the material
-    /// is in the library, 0 for none; in the high 8, how see-through the material is, percent.
+    /// The skin of its material ([`skin`]): in the low 22 bits the texture over its colour, one more than where the material
+    /// is in the library, 0 for none; in the next 2 the part of a curtain wall it is of ([`part_of`]), 0 for none; in the high
+    /// 8, how see-through the material is, percent.
     tex: u32,
     curve: Option<(Id, usize)>,
 }
 
 /// The bits of a skin that hold the texture.
-const TEXTURE: u32 = 0x00ff_ffff;
+const TEXTURE: u32 = 0x003f_ffff;
+/// The bits of a skin that say which part of a curtain wall it is on, so a view hides and paints panels and mullions apart
+/// though the triangle's owner is their wall, at no cost to a triangle's size.
+const PART: u32 = 0x00c0_0000;
+const PANEL: u32 = 0x0040_0000;
+const MULLION: u32 = 0x0080_0000;
+
+/// The part of a curtain wall a skin is on, if any.
+fn part_of(tex: u32) -> Option<crate::curtain::PartKind> {
+    match tex & PART {
+        PANEL => Some(crate::curtain::PartKind::Panel),
+        MULLION => Some(crate::curtain::PartKind::Mullion),
+        _ => None,
+    }
+}
 
 impl Tri {
     /// The texture over its colour, 0 for none.
@@ -158,8 +173,28 @@ impl Tri {
     /// How see-through it is in `look`: as much as its material, or the view makes it, whichever is more. A view's own
     /// override counts only where it changes the picture.
     pub(crate) fn alpha(&self, look: &Look) -> u8 {
-        let view = if look.is_plain() { 0 } else { look.transparency(self.owner) };
+        let view = if look.is_plain() { 0 } else { look.transparency_of(self.part(), self.owner) };
         self.clearness().max(view)
+    }
+
+    /// The part of a curtain wall it is of, if any.
+    fn part(&self) -> Option<crate::curtain::PartKind> {
+        part_of(self.tex)
+    }
+
+    /// Whether `look` draws it: its element, and if it's a curtain wall's part, that part.
+    fn seen_in(&self, look: &Look) -> bool {
+        look.shows(self.owner) && self.part().is_none_or(|k| look.shows_part(k))
+    }
+
+    /// The colour `look` shades it in.
+    fn surface(&self, look: &Look) -> Rgb {
+        look.surface_of(self.part(), self.owner, self.color)
+    }
+
+    /// The colour of its edges in `look`.
+    fn edge(&self, look: &Look, base: Rgb) -> Rgb {
+        look.edge_of(self.part(), self.owner, base)
     }
 }
 
@@ -304,6 +339,12 @@ impl Solid {
         match self {
             Solid::Box { owner, .. } | Solid::Slab { owner, .. } | Solid::Prism { owner, .. } | Solid::Mesh { owner, .. } => *owner,
         }
+    }
+
+    /// Whether `look` draws it: its element, and if it's a curtain wall's part, that part.
+    pub(crate) fn seen_in(&self, look: &Look) -> bool {
+        let (Solid::Box { tex, .. } | Solid::Slab { tex, .. } | Solid::Prism { tex, .. } | Solid::Mesh { tex, .. }) = self;
+        look.shows(self.owner()) && part_of(*tex).is_none_or(|k| look.shows_part(k))
     }
 
     #[cfg(test)]
@@ -827,19 +868,16 @@ pub(crate) fn lazy_points(m: &Model, id: Id, e: &Element, components: &mut crate
 
 /// A curtain wall as its panels and mullions, each in its type's material.
 fn curtain_solids(out: &mut Vec<Solid>, m: &Model, id: Id, w: &crate::model::Wall) {
-    use crate::curtain::{self, PartKind};
+    use crate::curtain;
     let l = curtain::layout(m, w);
     let looks: Vec<(Rgb, u32)> = l
         .shapes
         .iter()
         .map(|s| {
-            let material = match s.kind {
-                PartKind::Panel => m.types.curtain_panel.get(&s.type_name).map(|t| t.material.as_str()),
-                PartKind::Mullion => m.types.mullion.get(&s.type_name).map(|t| t.material.as_str()),
-            }
-            .unwrap_or("");
+            let material = curtain_material(m, s);
             let color = m.materials.get(material).map_or(WALL, |x| Rgb(x.color[0], x.color[1], x.color[2]));
-            (color, skin(m, material))
+            let part = if s.kind == curtain::PartKind::Panel { PANEL } else { MULLION };
+            (color, skin(m, material) | part)
         })
         .collect();
     let u = (w.end - w.start).unit();
@@ -858,16 +896,75 @@ fn curtain_solids(out: &mut Vec<Solid>, m: &Model, id: Id, w: &crate::model::Wal
             out.push(Solid::Mesh { owner: id, color, tex, tris, caps: 0, round: false, cut: true });
             continue;
         }
+        // Round its own centre, which is what makes its triangles a shape placed, to the last bit: see `curtain_copies`.
+        let o = frame.o + frame.u * along + frame.n * (plane + across);
         out.push(Solid::Box {
             owner: id,
             color,
             tex,
-            frame,
-            a: (along - da, along + da),
-            c: (plane + across - dc, plane + across + dc),
+            frame: Frame { o, ..frame },
+            a: (-da, da),
+            c: (-dc, dc),
             z: (base + up - dz, base + up + dz),
         });
     }
+}
+
+/// The material of a curtain wall's part of this shape; none is empty.
+fn curtain_material<'a>(m: &'a Model, s: &crate::curtain::Shape) -> &'a str {
+    use crate::curtain::PartKind;
+    match s.kind {
+        PartKind::Panel => m.types.curtain_panel.get(&s.type_name).map(|t| t.material.as_str()),
+        PartKind::Mullion => m.types.mullion.get(&s.type_name).map(|t| t.material.as_str()),
+    }
+    .unwrap_or("")
+}
+
+/// A curtain wall's box parts as copies of shapes shared by every wall, each with where its first triangle is among the wall's:
+/// a box of one size in one material is one shape, whichever way its wall runs. A mitred bar is drawn from its own triangles.
+fn curtain_copies(
+    m: &Model,
+    id: Id,
+    w: &crate::model::Wall,
+    keys: &mut HashMap<ShapeKey, usize>,
+    shapes: &mut Vec<Vec<[P3; 3]>>,
+) -> Vec<(usize, crate::component_geometry::ComponentInstance)> {
+    use crate::curtain;
+    let l = curtain::layout(m, w);
+    let u = (w.end - w.start).unit();
+    let n = u.perp();
+    let (base, plane) = (m.own_base(w), curtain::grid_plane(m, w));
+    let mut out = Vec::with_capacity(l.parts.len());
+    let mut first = 0;
+    for p in &l.parts {
+        let Some(s) = l.shapes.get(p.shape as usize) else { continue };
+        if s.face.is_some() {
+            first += s.tris().len();
+            continue;
+        }
+        let key = ShapeKey::Part(curtain_material(m, s).to_string(), s.size.map(f64::to_bits));
+        let shape = *keys.entry(key).or_insert_with(|| {
+            let [da, dz, dc] = s.size.map(|x| x / 2.0);
+            let mut tris = Vec::with_capacity(12);
+            let local = Frame { o: P2(0.0, 0.0), u: P2(1.0, 0.0), n: P2(0.0, 1.0) };
+            local.cuboid(&mut tris, id, (WALL, 0), (-da, da), (-dc, dc), (-dz, dz));
+            shapes.push(tris.into_iter().map(|t| t.p).collect());
+            shapes.len() - 1
+        });
+        let [along, up, across] = p.centre;
+        let o = w.start + u * along + n * (plane + across);
+        let copy = crate::component_geometry::ComponentInstance {
+            owner: id,
+            shape,
+            at: [o.0, o.1, base + up],
+            axes: [[u.0, u.1, 0.0], [n.0, n.1, 0.0], [0.0, 0.0, 1.0]],
+        };
+        if copy.solid() {
+            out.push((first, copy));
+        }
+        first += 12;
+    }
+    out
 }
 
 fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index>) -> Vec<Solid> {
@@ -1091,11 +1188,32 @@ struct PlaneTable {
     curves: HashMap<(Id, usize), usize>,
     /// The next number to give.
     next: usize,
+    /// The last triangle of a curtain wall's part, and its plane's number.
+    part: Option<([P3; 3], usize)>,
 }
 
 impl PlaneTable {
     /// The number of `t`'s plane: that of a plane found before within the tolerance, else a new one.
     fn assign(&mut self, t: &Tri) -> usize {
+        // A curtain wall's parts are each their own: the joint between two in one plane shows, as a mitre from a butt. A
+        // part's triangles come together, so a triangle goes with the one before if it lies on it and shares an edge.
+        if t.part().is_some() {
+            let same = self.part.filter(|(before, _)| {
+                let n = cross(sub(before[1], before[0]), sub(before[2], before[0]));
+                let shared = t.p.iter().filter(|p| before.contains(p)).count() >= 2;
+                let length = dot(n, n).sqrt();
+                shared && length > 0.0 && t.p.iter().all(|p| (dot(n, sub(*p, before[0])) / length).abs() <= 1e-6)
+            });
+            let number = same.map_or_else(
+                || {
+                    self.next += 1;
+                    self.next - 1
+                },
+                |(_, number)| number,
+            );
+            self.part = Some((t.p, number));
+            return number;
+        }
         if let Some(c) = t.curve {
             let next = &mut self.next;
             return *self.curves.entry(c).or_insert_with(|| {
@@ -1157,7 +1275,7 @@ fn local_curves(tris: &mut [Tri]) {
 fn skin(m: &Model, name: &str) -> u32 {
     let Some((i, x)) = m.materials.iter().enumerate().find_map(|(i, (k, x))| (k == name).then_some((i, x))) else { return 0 };
     let texture = if x.texture.is_some() { i as u32 + 1 } else { 0 };
-    texture | u32::from(x.transparency.min(100)) << 24
+    (texture & TEXTURE) | u32::from(x.transparency.min(100)) << 24
 }
 
 /// A layer's skin, or its element's where the layer has none.
@@ -1271,7 +1389,7 @@ fn painted(m: &Model, tris: &mut [Tri], faces: &[&'static str]) {
     for (t, face) in tris.iter_mut().zip(faces) {
         let Some(name) = paints.get(&t.owner).and_then(|p| p.get(*face)).and_then(|v| v.as_str()) else { continue };
         if let Some(x) = m.materials.get(name) {
-            (t.color, t.tex) = (Rgb(x.color[0], x.color[1], x.color[2]), skin(m, name));
+            (t.color, t.tex) = (Rgb(x.color[0], x.color[1], x.color[2]), skin(m, name) | (t.tex & PART));
         }
     }
 }
@@ -1321,6 +1439,8 @@ struct Span {
 enum ShapeKey {
     Family(crate::component_geometry::Key),
     Tube(String),
+    /// A curtain wall's box part: its material, and its size to the last bit.
+    Part(String, [u64; 3]),
 }
 
 /// Each element's run of `tris`, in their order: an element's triangles are made together.
@@ -1610,7 +1730,7 @@ impl Scene {
         .into_iter()
         .flatten()
         .collect();
-        let own = |id: Id, at: &std::ops::Range<usize>| solids.painted(at.clone()).filter(move |s| s.owner() == id);
+        let own = |id: Id, at: &std::ops::Range<usize>| solids.painted(at.clone()).filter(move |s| s.owner() == id && s.seen_in(look));
         // The occluders drawn, as the picture draws them.
         let (w, h) = (cam.width.clamp(1, MAX_SIDE) as usize, cam.height.clamp(1, MAX_SIDE) as usize);
         let hides = |id: Id| {
@@ -1787,9 +1907,17 @@ fn placements(
     // Each round run a copy of one tube, a tube for each material, so a copy takes its shape's colour and texture.
     let tube = crate::runs::unit_tube().0;
     let mut tubes: HashMap<&str, usize> = HashMap::new();
+    // A curtain wall is many copies, each with where it starts among the wall's triangles.
+    let mut curtains: HashMap<Id, Vec<(usize, crate::component_geometry::ComponentInstance)>> = HashMap::new();
     for (n, (id, e)) in m.elements.iter().enumerate() {
         if n % 4096 == 0 && cancelled() {
             return None;
+        }
+        if let Element::Wall(w) = e
+            && crate::curtain::pattern(m, w).is_some()
+        {
+            curtains.insert(*id, curtain_copies(m, *id, w, &mut keys, &mut shapes));
+            continue;
         }
         let (Some(t), Some(g)) = (m.run_type(e), m.run_geom(e)) else { continue };
         if !g.round {
@@ -1822,6 +1950,14 @@ fn placements(
             && local.iter().zip(&tris[i..end]).all(|(l, t)| l.map(|q| copy.place(q)) == t.p)
         {
             out.push((i, *copy));
+        }
+        for (first, copy) in curtains.get(&owner).into_iter().flatten() {
+            let (at, len) = (i + first, shapes.get(copy.shape).map_or(0, Vec::len));
+            if let (Some(local), Some(own)) = (shapes.get(copy.shape), tris.get(at..at + len).filter(|_| at + len <= end))
+                && update::placed(local, copy, own)
+            {
+                out.push((at, *copy));
+            }
         }
         i = end;
     }
@@ -1999,14 +2135,14 @@ impl Scene {
     /// How many triangles `look` shows: the number [`facets`](Self::facets) yields.
     pub(crate) fn shown(&self, look: &Look) -> usize {
         let plain = look.is_plain();
-        self.tris.iter().filter(|t| plain || look.shows(t.owner)).count()
+        self.tris.iter().filter(|t| plain || t.seen_in(look)).count()
     }
 
     /// The triangles `look` shows, in the scene's order and as a picture shades them, for a file to hold: what the card's mesh
     /// is made of, less the textures and the edges.
     pub(crate) fn facets<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = Facet> + 'a {
         let plain = look.is_plain();
-        self.tris.iter().enumerate().filter(move |(_, t)| plain || look.shows(t.owner)).map(move |(i, t)| {
+        self.tris.iter().enumerate().filter(move |(_, t)| plain || t.seen_in(look)).map(move |(i, t)| {
             let face = unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
             let curve = self.smooth.get(i).and_then(Option::as_deref);
             // A curve's corners shade across their facets; one that comes out to nothing takes the triangle's own.
@@ -2014,7 +2150,7 @@ impl Scene {
                 let n = curve.map_or(face, |n| unit(n[k]));
                 if dot(n, n) > 0.5 { n } else { face }
             });
-            Facet { owner: t.owner, corners: t.p, normals, color: look.surface(t.owner, t.color), clearness: t.alpha(look).min(100) }
+            Facet { owner: t.owner, corners: t.p, normals, color: t.surface(look), clearness: t.alpha(look).min(100) }
         })
     }
 
@@ -2037,7 +2173,7 @@ impl Scene {
         let cam = Camera { lens: Some(lens), ..fitted };
         let Some(f) = cam.focal() else { return cam };
         // All of it within a ball round the target, and the ball within the narrower side of the picture.
-        let solids = self.tris.iter().filter(|t| look.shows(t.owner)).flat_map(|t| t.p);
+        let solids = self.tris.iter().filter(|t| t.seen_in(look)).flat_map(|t| t.p);
         let levels = self.levels.iter().filter(|(id, ..)| look.shows(*id)).flat_map(|(.., c)| *c);
         let scans = self.scans.iter().filter(|s| look.shows(s.owner)).flat_map(|s| s.corners);
         let reach = solids.chain(levels).chain(scans).map(|p| dot(sub(p, cam.target), sub(p, cam.target)).sqrt()).fold(0.0, f64::max);
@@ -2050,7 +2186,7 @@ impl Scene {
         let (width, height) = (cam.width, cam.height);
         let mut cam = Camera { elevation: cam.elevation.clamp(-89.0, 89.0), scale: 1.0, target: [0.0; 3], ..cam };
         let room = |px: u32| (f64::from(px) - 2.0 * MARGIN).max(1.0);
-        let solids = self.tris.iter().filter(|t| look.shows(t.owner)).flat_map(|t| t.p);
+        let solids = self.tris.iter().filter(|t| t.seen_in(look)).flat_map(|t| t.p);
         let levels = self.levels.iter().filter(|(id, ..)| look.shows(*id)).flat_map(|(.., c)| *c);
         let scans = self.scans.iter().filter(|s| look.shows(s.owner)).flat_map(|s| s.corners);
         let mut pts: Vec<P3> = solids.chain(levels).chain(scans).collect();
@@ -2092,7 +2228,7 @@ impl Scene {
         };
         // Each element: whether all of it is inside, and whether any of it is.
         let mut seen: BTreeMap<Id, (bool, bool)> = BTreeMap::new();
-        for t in self.tris.iter().filter(|t| look.shows(t.owner) && !crate::link::is_linked(t.owner)) {
+        for t in self.tris.iter().filter(|t| t.seen_in(look) && !crate::link::is_linked(t.owner)) {
             let on = t.p.map(|p| {
                 let (x, y, _) = cam.project(p);
                 P2(x, y)
@@ -2110,7 +2246,7 @@ impl Scene {
     /// nothing is, or only what the section box cuts away.
     fn hit(&self, cam: &Camera, at: (f64, f64), look: &Look) -> Option<(f64, usize)> {
         let mut best: Option<(f64, usize)> = None;
-        for (i, t) in self.tris.iter().enumerate().filter(|(_, t)| look.shows(t.owner) && !crate::link::is_linked(t.owner)) {
+        for (i, t) in self.tris.iter().enumerate().filter(|(_, t)| t.seen_in(look) && !crate::link::is_linked(t.owner)) {
             let [a, b, c] = t.p.map(|p| cam.project(p));
             let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
             if area.is_nan() || area.abs() <= 1e-12 {
@@ -2150,7 +2286,7 @@ impl Scene {
         let mut near: Vec<(f64, P3)> = self
             .tris
             .iter()
-            .filter(|t| look.shows(t.owner) && !crate::link::is_linked(t.owner))
+            .filter(|t| t.seen_in(look) && !crate::link::is_linked(t.owner))
             .flat_map(|t| t.p)
             .filter_map(|p| {
                 let (x, y, _) = cam.project(p);
@@ -2174,7 +2310,7 @@ impl Scene {
         let mut near: Vec<(f64, [P3; 2], P3)> = self
             .edges()
             .iter()
-            .filter(|(i, _)| self.tris.get(*i).is_some_and(|t| look.shows(t.owner) && !crate::link::is_linked(t.owner)))
+            .filter(|(i, _)| self.tris.get(*i).is_some_and(|t| t.seen_in(look) && !crate::link::is_linked(t.owner)))
             .filter_map(|&(_, [a, b])| {
                 let [a, b] = cam.in_front(a, b)?;
                 let ((ax, ay, _), (bx, by, _)) = (cam.project(a), cam.project(b));
@@ -2470,10 +2606,10 @@ impl Scene {
         let mut hit = vec![u32::MAX; w * h];
         for tinted in [false, true] {
             for &(i, [a, b]) in self.edges() {
-                let Some(owner) = self.tris.get(i).map(|t| t.owner).filter(|o| look.shows(*o) && tints.contains_key(o) == tinted) else {
+                let Some(t) = self.tris.get(i).filter(|t| t.seen_in(look) && tints.contains_key(&t.owner) == tinted) else {
                     continue;
                 };
-                let Rgb(r, g, bl) = tints.get(&owner).copied().unwrap_or_else(|| look.edge(owner, EDGE));
+                let Rgb(r, g, bl) = tints.get(&t.owner).copied().unwrap_or_else(|| t.edge(look, EDGE));
                 let Some((p, q)) = wire_line(cam, look.section_box(), [a, b], (w, h)) else { continue };
                 for (x, y) in wire_pixels(p, q) {
                     for (dx, dy) in (-2..=2).flat_map(|dx| (-2..=2).map(move |dy| (dx, dy))) {
@@ -2588,7 +2724,7 @@ impl Scene {
             Rgb(c(color.0), c(color.1), c(color.2))
         };
         // The colour a surface is shaded in: the view's, unless it gives none.
-        let colour = |t: &Tri| if plain { t.color } else { look.surface(t.owner, t.color) };
+        let colour = |t: &Tri| if plain { t.color } else { t.surface(look) };
         // A curve's corners are lit by their own normals, and its pixels take the blend of the three;
         // the faces of a section are paper.
         let smooth: &[Option<Arc<[P3; 3]>>] = if flat { &[] } else { &self.smooth };
@@ -2601,7 +2737,7 @@ impl Scene {
         // What the view sees through is drawn over what lies behind it, after the opaque surfaces: the
         // nearest of them at each pixel, where nothing opaque is nearer. (Not in a section's hidden line.)
         let see_through = |t: &Tri| !flat && t.alpha(look) > 0;
-        let shown = |t: &Tri| (plain || look.shows(t.owner)) && !(clip.is_some() && self.masses.contains(&t.owner));
+        let shown = |t: &Tri| (plain || t.seen_in(look)) && !(clip.is_some() && self.masses.contains(&t.owner));
         let mut depth = vec![f32::NEG_INFINITY; w * h];
         let mut hit = vec![u32::MAX; w * h];
         let mut curve_lit = vec![0.0; w * h];
@@ -2695,7 +2831,8 @@ impl Scene {
             let owner_at = |k: usize| tri(k).and_then(|t| self.tris.get(t)).map(|t| t.owner);
             let tint = owner_at(k).and_then(|o| tints.get(&o));
             // An edge is drawn in the colour the view gives the edges of what it bounds.
-            let edge_of = || [k, k + 1, k + w].into_iter().find_map(owner_at).map_or(EDGE, |o| look.edge(o, EDGE));
+            let edge_of =
+                || [k, k + 1, k + w].into_iter().find_map(|k| tri(k).and_then(|t| self.tris.get(t))).map_or(EDGE, |t| t.edge(look, EDGE));
             let c = match (edge, dot(k), tri(k).and_then(|t| shaded(t, k, &curve_lit, &depth))) {
                 (_, Some((owner, c)), _) => tints.get(&owner).map_or(c, |t| mix(c, *t)),
                 (true, ..) => tint.copied().unwrap_or_else(edge_of),

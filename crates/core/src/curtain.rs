@@ -156,10 +156,9 @@ pub(crate) fn check_element(m: &Model, id: u64, e: &Element, taken: &mut BTreeSe
             }
             check_panel_wall(m, id, w, taken)
         }
-        Element::Door(o) | Element::Window(o) if m.wall(o.host).is_some_and(|w| pattern(m, w).is_some()) => Err(format!(
-            "{} {id} is in a curtain wall: replace a panel with a wall first, and put it in that wall",
-            e.category()
-        )),
+        Element::Door(o) | Element::Window(o) if m.wall(o.host).is_some_and(|w| pattern(m, w).is_some()) => {
+            Err(format!("{} {id} is in a curtain wall: replace a panel with a wall first, and put it in that wall", e.category()))
+        }
         _ => Ok(()),
     }
 }
@@ -1088,6 +1087,13 @@ pub fn face_ring(m: &Model, w: &Wall, at: Address) -> Option<[[f64; 3]; 4]> {
         [q.0, q.1, base + up]
     };
     Some([c(u0, v0), c(u1, v0), c(u1, v1), c(u0, v1)])
+}
+
+impl Address {
+    /// The kind of part at this place.
+    pub fn kind(self) -> PartKind {
+        if matches!(self, Address::Cell { .. }) { PartKind::Panel } else { PartKind::Mullion }
+    }
 }
 
 impl Layout {

@@ -1044,6 +1044,10 @@ impl BimApp {
             && let Some((along, up)) = bimcraft_core::curtain::on_plane(&model, w, cam.point_at(px(at), 0.0), cam.point_at(px(at), 1000.0))
         {
             let list = bimcraft_core::curtain::layout(&model, w).at(along, up, crate::curtain::REACH);
+            let list = match model.default_3d() {
+                Some(view) => crate::curtain::shown_parts(&model, view, list),
+                None => list,
+            };
             self.curtain_part = crate::curtain::next_part(self.curtain_part, id, &list);
         }
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.

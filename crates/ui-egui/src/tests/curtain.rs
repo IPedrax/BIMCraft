@@ -309,3 +309,64 @@ fn tab_in_3d_reaches_a_part_above_the_plans_cut_plane() {
     key(&mut h, Key::Tab);
     assert_eq!(h.state().curtain_part, Some((id, Cell { column: 0, row: 1 })), "the upper row");
 }
+
+#[test]
+fn the_pattern_s_preview_says_what_to_do_in_it() {
+    let mut h = app(LOOSE);
+    h.state_mut().open_curtain_editor("Loose CW");
+    h.run();
+    let hint = h.get_by_label("Select members in the preview panel to edit them.").rect();
+    // What comes after the preview is under it, not over it.
+    let module = h.get_by_label_contains("Module").rect();
+    assert!(module.top() > hint.bottom() + 200.0, "{module:?} under {hint:?}");
+}
+
+#[test]
+fn visibility_graphics_lists_panels_and_mullions_under_walls_and_tab_skips_what_a_view_hides() {
+    use bimcraft_core::curtain::Address::Cell;
+    let mut h = app(TALL);
+    let id = tall_wall(&h);
+    let level = h.state().session.model.levels()[0].0;
+    let hidden = |h: &Harness<BimApp>, c: &str| bimcraft_core::graphics::graphics_of(&h.state().session.model, level).unwrap().hides(c);
+    assert!(!hidden(&h, "mullion"));
+    h.state_mut().session.execute("graphics", &serde_json::json!({"view": level, "categories": {"mullion": {"hidden": true}}})).unwrap();
+    assert!(hidden(&h, "mullion") && !hidden(&h, "curtainpanel"));
+    h.run();
+    // Beside a grid line, where the mullion would come first, Tab goes to the panel.
+    h.state_mut().selection = vec![id];
+    let w = walls(&h).into_iter().find(|x| x.0 == id).unwrap().1;
+    let plane = bimcraft_core::curtain::grid_plane(&h.state().session.model, &w);
+    let at = h.state().screen(bimcraft_core::walls::Axis::of(&w).at(1960.0, plane));
+    h.hover_at(at);
+    h.run();
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().curtain_part, Some((id, Cell { column: 0, row: 0 })));
+}
+
+#[test]
+fn tab_in_a_section_reaches_a_part_of_the_wall_it_looks_at() {
+    use bimcraft_core::curtain::Address::Cell;
+    let script = format!("{TALL}\nsection {{\"start\": [-1000, -3000], \"end\": [9000, -3000]}}");
+    let mut h = app(&script);
+    let id = tall_wall(&h);
+    let view = {
+        let m = &h.state().session.model;
+        m.elements.iter().find_map(|(k, e)| matches!(e, Element::Section(_)).then_some(*k)).unwrap()
+    };
+    h.state_mut().open_sheet(Sheet::Section(view));
+    h.run();
+    h.state_mut().selection = vec![id];
+    h.run();
+    let (m, w) = (&h.state().session.model, walls(&h).into_iter().find(|x| x.0 == id).unwrap().1);
+    let plane = bimcraft_core::curtain::grid_plane(m, &w);
+    let q = bimcraft_core::walls::Axis::of(&w).at(1000.0, plane);
+    let shown = h.state().canvas.view(view).unwrap();
+    let (cam, _) = bimcraft_core::render::section_camera(m, view, shown).unwrap();
+    let (x, y, _) = cam.project([q.0, q.1, 4500.0]);
+    let at = h.state().canvas.rect.min + egui::vec2(x as f32, y as f32);
+    h.hover_at(at);
+    h.run();
+    h.run();
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().curtain_part, Some((id, Cell { column: 0, row: 1 })), "the upper row");
+}

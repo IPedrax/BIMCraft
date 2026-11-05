@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Plafondarmatuur"
 
-#: crates/core/src/render.rs:3099
+#: crates/core/src/render.rs:3116
 msgid "Ceiling Plan"
 msgstr "Plafondplan"
 
@@ -96,7 +96,7 @@ msgstr "Aantal"
 msgid "Crosshatch"
 msgstr "Kruisarcering"
 
-#: crates/core/src/render.rs:3691
+#: crates/core/src/render.rs:3708
 msgid "DN"
 msgstr "DN"
 
@@ -176,15 +176,15 @@ msgstr "Oost"
 msgid "Elbow 90"
 msgstr "Bocht 90"
 
-#: crates/core/src/graphics.rs:939
+#: crates/core/src/graphics.rs:941
 msgid "Electrical Ceiling"
 msgstr "Elektrisch plafond"
 
-#: crates/core/src/graphics.rs:938
+#: crates/core/src/graphics.rs:940
 msgid "Electrical Lighting"
 msgstr "Elektrische verlichting"
 
-#: crates/core/src/graphics.rs:937
+#: crates/core/src/graphics.rs:939
 msgid "Electrical Power"
 msgstr "Elektrische voeding"
 
@@ -242,7 +242,7 @@ msgid "Gate Valve"
 msgstr "Schuifafsluiter"
 
 #: crates/core/src/family.rs:1959
-#: crates/core/src/view3d.rs:1040
+#: crates/core/src/view3d.rs:1137
 msgid "Glass"
 msgstr "Glas"
 
@@ -355,7 +355,7 @@ msgstr "Metaal"
 msgid "Mounting Height"
 msgstr "Montagehoogte"
 
-#: crates/core/src/render.rs:2930
+#: crates/core/src/render.rs:2947
 msgid "NOT ENCLOSED"
 msgstr "NIET OMSLOTEN"
 
@@ -423,7 +423,7 @@ msgstr "Porselein"
 msgid "Project"
 msgstr "Project"
 
-#: crates/core/src/render.rs:2930
+#: crates/core/src/render.rs:2947
 msgid "REDUNDANT"
 msgstr "OVERBODIG"
 
@@ -592,7 +592,7 @@ msgstr "Aantrede"
 msgid "Type"
 msgstr "Type"
 
-#: crates/core/src/render.rs:3691
+#: crates/core/src/render.rs:3708
 msgid "UP"
 msgstr "OMHOOG"
 

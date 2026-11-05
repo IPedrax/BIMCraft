@@ -41,8 +41,15 @@ which is its name as the wall changes; a part's `Address` is made of those. `lay
 ## Drawn once
 
 `Layout::shapes` holds each distinct part once (kind, type, size) and `Layout::parts` places them. These shapes are silent: no list or
-file shows them. They are what lets identical parts share geometry when the 3D instancing of PR #188 arrives; today each part is
-still one `Solid::Box` (`view3d::curtain_solids`), and sections and elevations read those solids.
+file shows them. Each part is one `Solid::Box` round its own centre (`view3d::curtain_solids`), which sections and elevations read.
+
+On the graphics card, a box of one size in one material is one shape, shared by every wall whichever way it runs, and each part a copy
+of it (`view3d::curtain_copies`, `ShapeKey::Part`), as a component is of its family's shape: a wall of 20,000 parts holds 396 vertices
+of shapes, and each copy keeps only its place and its faces' plane numbers. A box round its centre is what makes a copy's triangles its
+shape's placed to the last bit, which `placements` and `Scene::update` hold it to. An element may be many copies, so both walk a wall's
+parts by where each starts among its triangles. A mitred bar, or a part painted or overridden unlike its shape's first, is drawn from
+its own triangles. The scene still makes and keeps every part's triangles for the processor and picking, so this saves the card's
+memory and draw work, not the scene's.
 
 An unedited part has no id of its own, only its `Address`: an agreed exception to the id rule, since a tower's façades would use up
 the six-digit ids and every change of length would rewrite them.
@@ -74,8 +81,8 @@ a closed `IfcTriangulatedFaceSet`, while a plan draws what bounds it. A bar too 
 A plain wall takes no mitre from a curtain wall (`Arm::butts` in `walls.rs`). Ending where one ends, it ends square at the curtain
 wall's far face; ending on one's side, it stops at the near face as on any wall. Rooms still close, as `centre_line` keeps every arm.
 
-The 3D view merges coplanar faces wherever they meet, so a joint between two mullions of one material shows no line: butt and mitre
-look alike from the front. That is the view's rule for all elements, left for the 3D work of PR #188.
+The 3D view merges coplanar faces wherever they meet, but each part of a curtain wall keeps its own (`PlaneTable::assign`), so a joint
+between two parts in one plane shows a line, and butt and mitre look different from the front.
 
 ## One part of one wall
 
@@ -93,7 +100,8 @@ A cell that leaves the wall removes an empty wall, with a `warning` in the reply
 
 On the desktop, Tab on the selected curtain wall under the cursor steps through its mullions there, its cell, and back to the whole wall
 (`parts_under`, `next_part`). A plan looks at its cut plane; the 3D view casts the cursor's ray on the grid plane (`on_plane`), which
-reaches every row. Sections and elevations don't offer it yet. Properties then shows the part's type, As in the Pattern and Replace with
+reaches every row, and a section or an elevation casts its camera's ray the same way (`curtain::parts_on_ray`); a wall seen edge-on offers
+none. Tab skips what the view hides (`shown_parts`). Properties then shows the part's type, As in the Pattern and Replace with
 Wall, and Delete takes the part, never the wall.
 
 ## The desktop
@@ -101,7 +109,8 @@ Wall, and Delete takes the part, never the wall.
 - **Curtain Wall tool:** the Wall tool drawing the first curtain type, in the Build panel's list and the Tools palette (the ribbon has no
   width to spare); the Wall tool's Type Selector offers the same types. The Options Bar's Location Line is kept where it is a face.
 - **Type Properties:** a curtain wall type shows Layout [Edit…] and its thickness, which can't be typed. Duplicate keeps the pattern.
-- **Edit Pattern** (`crates/ui-egui/src/curtain.rs`): segments each way, fit, justification, borders, and one module to scale. Click a
+- **Edit Pattern** (`crates/ui-egui/src/curtain.rs`): segments each way, fit, justification, borders, and one module to scale, on a
+  sheet of the canvas's own ground with a short hint in it. Click a
   panel or a mullion, Shift to add to the selection, and pick its type, none or how it joins. Each piece is a widget named as tests
   and screen readers find it: `Panel B1`, `Vertical B1`, `Horizontal B1`.
 - **Project Browser:** Families > Curtain Panels > Generic Panel and Mullions > Rectangular Mullion; a type's right-click has Edit Type.
@@ -115,8 +124,20 @@ Wall, and Delete takes the part, never the wall.
 `curtainpanel` and `mullion` are schedule categories with a row per part (`schedule::curtain_parts`): type, sizes, area or length, and the
 `Wall` it is in, which is what its row selects, as a part has no id of its own. Grouped by type and size they count identical parts.
 
-`object_styles` has a row each (`graphics::CURTAIN_PARTS`), which plans draw panels and mullions in. Visibility/Graphics has none yet:
-hiding them apart wants the 3D scene to know a part from its wall, and it knows owners. Sections and the 3D view draw a wall's pens.
+`object_styles` has a row each (`graphics::CURTAIN_PARTS`), which plans draw panels and mullions in. Sections and the 3D view draw a wall's
+pens.
+
+## Visibility/Graphics
+
+`curtainpanel` and `mullion` are subcategories of `wall` (`graphics::SUBCATEGORIES`), so hiding Walls hides both, and `graphics` takes them
+as it takes any category. A triangle's owner stays its wall, for picking and selection; which part it is goes in two bits of its skin
+(`view3d::PART`), so a triangle grows by nothing and a mesh's copies stay shapes. `Look::part` holds the two rows, and `Tri::seen_in`,
+`Tri::surface`, `Tri::edge` and `Tri::alpha` ask them wherever the scene asked its owner.
+
+A part's row goes over its wall's in the 3D view: hidden, surface colour, edge colour, transparency, halftone. A plan takes a row's hidden,
+line colour, weight, dash and halftone, and a cut mullion's fill; a wall's own line override is laid on after, so there it wins. Sections
+and elevations take a row's hidden, and in the part of the picture beyond the line, its edge colour. Not taken yet: a row's fill patterns,
+and a section's cut lines, which go by the wall.
 
 ## What it can't be yet
 

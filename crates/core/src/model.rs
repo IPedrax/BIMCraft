@@ -6230,7 +6230,19 @@ impl Model {
 
     /// What [`Model::check`] asks of element `id`, `e`, keeping in `t` what it must hold in common with the others.
     fn check_element<'a>(&'a self, id: Id, e: &'a Element, t: &mut Tally<'a>) -> Result<(), String> {
-        let Tally { level_names, grid_names, link_names, view_names, twins, sheet_numbers, placed, spans, members_placed, shapes, panel_cells } = t;
+        let Tally {
+            level_names,
+            grid_names,
+            link_names,
+            view_names,
+            twins,
+            sheet_numbers,
+            placed,
+            spans,
+            members_placed,
+            shapes,
+            panel_cells,
+        } = t;
         let who = format!("{} {id}", e.category());
         crate::curtain::check_element(self, id, e, panel_cells)?;
         let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));

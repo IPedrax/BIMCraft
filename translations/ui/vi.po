@@ -185,7 +185,7 @@ msgstr "Khung nhìn luôn có một tỷ lệ"
 msgid "A view template is named {} already: give the set another name"
 msgstr "Đã có một mẫu khung nhìn tên là {}: hãy đặt tên khác cho bộ này"
 
-#: crates/ui-egui/src/curtain.rs:417
+#: crates/ui-egui/src/curtain.rs:442
 msgid "A wall stands here: select it, or delete it to have the panel back."
 msgstr ""
 
@@ -284,7 +284,7 @@ msgstr "Thêm cung"
 msgid "Add Box"
 msgstr "Thêm hộp"
 
-#: crates/ui-egui/src/curtain.rs:325
+#: crates/ui-egui/src/curtain.rs:335
 msgid "Add Column"
 msgstr ""
 
@@ -329,7 +329,7 @@ msgstr "Thêm điểm: nhấp trên mặt trên để nâng hoặc hạ nó tạ
 msgid "Add Revolve"
 msgstr "Thêm khối tròn xoay"
 
-#: crates/ui-egui/src/curtain.rs:325
+#: crates/ui-egui/src/curtain.rs:335
 msgid "Add Row"
 msgstr ""
 
@@ -692,7 +692,7 @@ msgstr "Chiều rộng tay"
 msgid "Arrow"
 msgstr "Mũi tên"
 
-#: crates/ui-egui/src/curtain.rs:438
+#: crates/ui-egui/src/curtain.rs:463
 msgid "As in the Pattern"
 msgstr ""
 
@@ -980,11 +980,11 @@ msgstr "Đậm"
 msgid "Bold (Ctrl+B)"
 msgstr "Đậm (Ctrl+B)"
 
-#: crates/ui-egui/src/curtain.rs:351
+#: crates/ui-egui/src/curtain.rs:361
 msgid "Border Bottom"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:349
+#: crates/ui-egui/src/curtain.rs:359
 msgid "Border Left"
 msgstr ""
 
@@ -992,15 +992,15 @@ msgstr ""
 msgid "Border Line Weight"
 msgstr "Độ dày nét viền"
 
-#: crates/ui-egui/src/curtain.rs:350
+#: crates/ui-egui/src/curtain.rs:360
 msgid "Border Right"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:352
+#: crates/ui-egui/src/curtain.rs:362
 msgid "Border Top"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:526
+#: crates/ui-egui/src/curtain.rs:551
 msgid "Borders"
 msgstr ""
 
@@ -1062,7 +1062,7 @@ msgstr ""
 msgid "Building information modelling, open and free."
 msgstr "Mô hình hóa thông tin công trình, mở và miễn phí."
 
-#: crates/ui-egui/src/curtain.rs:297
+#: crates/ui-egui/src/curtain.rs:307
 msgid "Butt"
 msgstr ""
 
@@ -1257,13 +1257,13 @@ msgid "Centimetres"
 msgstr "Xentimét"
 
 #: crates/core/src/lines.rs:182
-#: crates/ui-egui/src/curtain.rs:336
+#: crates/ui-egui/src/curtain.rs:346
 #: crates/ui-egui/src/editor.rs:887
 #: crates/ui-egui/src/editor.rs:914
 msgid "Centre"
 msgstr "Tâm"
 
-#: crates/ui-egui/src/curtain.rs:337
+#: crates/ui-egui/src/curtain.rs:347
 msgid "Centre Line"
 msgstr ""
 
@@ -1414,7 +1414,7 @@ msgstr "Nhấp một đường, tường hoặc lưới trục để vẽ dọc 
 msgid "Click a painted face to take its paint off."
 msgstr "Nhấp một mặt đã sơn để bỏ lớp sơn."
 
-#: crates/ui-egui/src/curtain.rs:553
+#: crates/ui-egui/src/curtain.rs:578
 msgid "Click a panel or a mullion to set its type; Shift adds to the selection."
 msgstr ""
 
@@ -1902,7 +1902,7 @@ msgstr "Đóng mọi khung nhìn trừ khung nhìn này"
 msgid "Close {}"
 msgstr "Đóng {}"
 
-#: crates/core/src/graphics.rs:234
+#: crates/core/src/graphics.rs:236
 msgid "Coarse"
 msgstr "Thô"
 
@@ -1925,7 +1925,7 @@ msgid "Colour on plans"
 msgstr "Màu trên mặt bằng"
 
 #: crates/core/src/commands.rs:543
-#: crates/ui-egui/src/curtain.rs:311
+#: crates/ui-egui/src/curtain.rs:321
 msgid "Column"
 msgstr "Cột"
 
@@ -1933,11 +1933,11 @@ msgstr "Cột"
 msgid "Column (CL): click where it stands"
 msgstr "Cột (CL): nhấp vào chỗ đặt cột"
 
-#: crates/ui-egui/src/curtain.rs:311
+#: crates/ui-egui/src/curtain.rs:321
 msgid "Column Fit"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:311
+#: crates/ui-egui/src/curtain.rs:321
 msgid "Column Justification"
 msgstr ""
 
@@ -2271,6 +2271,10 @@ msgstr "Gạch chéo lưới"
 msgid "Current view only"
 msgstr "Chỉ khung nhìn hiện tại"
 
+#: crates/core/src/graphics.rs:131
+msgid "Curtain Panels"
+msgstr ""
+
 #: crates/core/src/commands.rs:379
 msgid "Curtain Part"
 msgstr ""
@@ -2279,7 +2283,7 @@ msgstr ""
 msgid "Curtain Parts"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:606
+#: crates/ui-egui/src/curtain.rs:631
 #: crates/ui-egui/src/lib.rs:1145
 msgid "Curtain Wall"
 msgstr ""
@@ -2328,7 +2332,7 @@ msgstr "Mặt phẳng cắt"
 msgid "Cylinder"
 msgstr "Hình trụ"
 
-#: crates/core/src/render.rs:3691
+#: crates/core/src/render.rs:3708
 msgid "DN"
 msgstr "XUỐNG"
 
@@ -2808,7 +2812,7 @@ msgstr "Đang vẽ…"
 msgid "Duct"
 msgstr "Ống gió"
 
-#: crates/core/src/curtain.rs:471
+#: crates/core/src/curtain.rs:470
 msgid "Due to the defined wall length the last grid segment draws a malformed panel"
 msgstr ""
 
@@ -2928,7 +2932,7 @@ msgstr "Sửa phương án"
 msgid "Edit Option: new elements are made in this option, and the view on screen shows it"
 msgstr "Sửa phương án: cấu kiện mới được tạo trong phương án này, và khung nhìn trên màn hình hiển thị nó"
 
-#: crates/ui-egui/src/curtain.rs:501
+#: crates/ui-egui/src/curtain.rs:526
 msgid "Edit Pattern"
 msgstr ""
 
@@ -2971,7 +2975,7 @@ msgstr "Cút 90"
 msgid "Electrical"
 msgstr "Điện"
 
-#: crates/core/src/graphics.rs:939
+#: crates/core/src/graphics.rs:941
 msgid "Electrical Ceiling"
 msgstr "Điện trần"
 
@@ -2983,11 +2987,11 @@ msgstr "Thiết bị điện"
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "Thiết bị điện (EE): một tủ điện phân phối, tại chỗ bạn nhấp trên tường; Space để xoay"
 
-#: crates/core/src/graphics.rs:938
+#: crates/core/src/graphics.rs:940
 msgid "Electrical Lighting"
 msgstr "Điện chiếu sáng"
 
-#: crates/core/src/graphics.rs:937
+#: crates/core/src/graphics.rs:939
 msgid "Electrical Power"
 msgstr "Điện động lực"
 
@@ -3046,7 +3050,7 @@ msgstr "Elip"
 msgid "Ellipse: click its centre, the end of one axis, then how far the other reaches"
 msgstr "Elip: nhấp tâm, đầu mút một trục, rồi khoảng vươn của trục còn lại"
 
-#: crates/ui-egui/src/curtain.rs:338
+#: crates/ui-egui/src/curtain.rs:348
 #: crates/ui-egui/src/properties.rs:141
 #: crates/ui-egui/src/reinforce.rs:93
 msgid "End"
@@ -3347,7 +3351,7 @@ msgstr "Tìm {}."
 msgid "Finds {}; nothing has these: {}"
 msgstr "Tìm {}; không có đối tượng nào có: {}"
 
-#: crates/core/src/graphics.rs:236
+#: crates/core/src/graphics.rs:238
 msgid "Fine"
 msgstr "Chi tiết"
 
@@ -3389,7 +3393,7 @@ msgstr "Hãy hoàn tất hoặc hủy phác thảo trước: các đường củ
 msgid "Fixed"
 msgstr "Cố định"
 
-#: crates/ui-egui/src/curtain.rs:329
+#: crates/ui-egui/src/curtain.rs:339
 msgid "Fixed Grid"
 msgstr ""
 
@@ -3811,7 +3815,7 @@ msgstr "Bị giữ bởi kích thước"
 msgid "Hidden"
 msgstr "Nét khuất"
 
-#: crates/core/src/graphics.rs:264
+#: crates/core/src/graphics.rs:266
 msgid "Hidden Line"
 msgstr "Ẩn nét"
 
@@ -3867,7 +3871,7 @@ msgstr "Tô sáng đối tượng dưới con trỏ"
 msgid "Home"
 msgstr "Trang chủ"
 
-#: crates/ui-egui/src/orbit.rs:1598
+#: crates/ui-egui/src/orbit.rs:1602
 msgid "Home View"
 msgstr "Khung nhìn mặc định"
 
@@ -3890,15 +3894,15 @@ msgstr "Móc"
 msgid "Horizontal"
 msgstr "Ngang"
 
-#: crates/ui-egui/src/curtain.rs:516
+#: crates/ui-egui/src/curtain.rs:541
 msgid "Horizontal Grid"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:412
+#: crates/ui-egui/src/curtain.rs:437
 msgid "Horizontal Mullion"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:533
+#: crates/ui-egui/src/curtain.rs:558
 msgid "Horizontal Mullions"
 msgstr ""
 
@@ -3922,7 +3926,7 @@ msgstr "Số thanh, đường kính và khoảng cách là do bạn quyết đ�
 msgid "How many phases and wires each system has (the line conductors and the neutral), the voltages it supplies, and how it is earthed."
 msgstr "Mỗi hệ thống có bao nhiêu pha và dây (các dây pha và dây trung tính), điện áp nó cung cấp, và cách nối đất."
 
-#: crates/ui-egui/src/curtain.rs:614
+#: crates/ui-egui/src/curtain.rs:639
 msgid "I will fix it myself"
 msgstr ""
 
@@ -4170,7 +4174,7 @@ msgstr "Tiêu chuẩn nét JIS Z 8310 / JIS A 0150:"
 msgid "Jog"
 msgstr "Đoạn bẻ"
 
-#: crates/ui-egui/src/curtain.rs:297
+#: crates/ui-egui/src/curtain.rs:307
 msgid "Join"
 msgstr ""
 
@@ -4222,7 +4226,7 @@ msgstr "Nhãn:"
 msgid "Language"
 msgstr "Ngôn ngữ"
 
-#: crates/ui-egui/src/curtain.rs:329
+#: crates/ui-egui/src/curtain.rs:339
 msgid "Last Grid Flexible"
 msgstr ""
 
@@ -4759,7 +4763,7 @@ msgstr "Đo"
 msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
 msgstr "Đo (ME): nhấp hai điểm; chiều dài và góc giữa chúng hiện bên cạnh thước đo"
 
-#: crates/core/src/graphics.rs:235
+#: crates/core/src/graphics.rs:237
 msgid "Medium"
 msgstr "Trung bình"
 
@@ -4849,7 +4853,7 @@ msgstr "Đối xứng, chọn trục (MM): chọn một tường hoặc lưới 
 msgid "Mirrored"
 msgstr "Đối xứng"
 
-#: crates/ui-egui/src/curtain.rs:297
+#: crates/ui-egui/src/curtain.rs:307
 msgid "Mitre"
 msgstr ""
 
@@ -4905,7 +4909,7 @@ msgstr "Sửa thành phần con: chọn một điểm, một góc hoặc một c
 msgid "Modify Wall"
 msgstr "Sửa đổi tường"
 
-#: crates/ui-egui/src/curtain.rs:548
+#: crates/ui-egui/src/curtain.rs:573
 msgid "Module {} x {}, thickness {}"
 msgstr ""
 
@@ -4931,8 +4935,12 @@ msgstr "Chuyển xuống"
 msgid "Move Up"
 msgstr "Chuyển lên"
 
-#: crates/ui-egui/src/curtain.rs:287
+#: crates/ui-egui/src/curtain.rs:297
 msgid "Mullion Type"
+msgstr ""
+
+#: crates/core/src/graphics.rs:132
+msgid "Mullions"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:1476
@@ -4980,7 +4988,7 @@ msgstr "NBR 17068: kéo dài 2 đến 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: dấu tâm trên mặt bằng (±0.00), tam giác đều trên mặt cắt"
 
-#: crates/core/src/render.rs:2930
+#: crates/core/src/render.rs:2947
 msgid "NOT ENCLOSED"
 msgstr "KHÔNG KHÉP KÍN"
 
@@ -5182,9 +5190,9 @@ msgstr "Danh định"
 msgid "Nominal Text Height:"
 msgstr "Chiều cao chữ danh định:"
 
-#: crates/ui-egui/src/curtain.rs:267
-#: crates/ui-egui/src/curtain.rs:345
-#: crates/ui-egui/src/curtain.rs:422
+#: crates/ui-egui/src/curtain.rs:277
+#: crates/ui-egui/src/curtain.rs:355
+#: crates/ui-egui/src/curtain.rs:447
 #: crates/ui-egui/src/dimtypes.rs:122
 #: crates/ui-egui/src/properties.rs:2324
 #: crates/ui-egui/src/properties.rs:2326
@@ -5307,7 +5315,7 @@ msgstr "Kiểu đối tượng: bút mà mỗi danh mục dùng để vẽ, khi 
 msgid "Object Styles…"
 msgstr "Kiểu đối tượng…"
 
-#: crates/ui-egui/src/curtain.rs:531
+#: crates/ui-egui/src/curtain.rs:556
 msgid "Of One Size, Runs Through"
 msgstr ""
 
@@ -5546,11 +5554,11 @@ msgid "Palettes"
 msgstr "Bảng công cụ"
 
 #: crates/ui-egui/src/curtain.rs:167
-#: crates/ui-egui/src/curtain.rs:410
+#: crates/ui-egui/src/curtain.rs:435
 msgid "Panel"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:271
+#: crates/ui-egui/src/curtain.rs:281
 msgid "Panel Type"
 msgstr ""
 
@@ -6418,7 +6426,7 @@ msgstr "Đặt một khung nhìn lên bản vẽ này: một khung nhìn chưa n
 msgid "Quadrant"
 msgstr "Góc phần tư"
 
-#: crates/core/src/render.rs:2930
+#: crates/core/src/render.rs:2947
 msgid "REDUNDANT"
 msgstr "THỪA"
 
@@ -6612,7 +6620,7 @@ msgstr "Gỡ bỏ"
 msgid "Remove Bars"
 msgstr "Gỡ bỏ thanh thép"
 
-#: crates/ui-egui/src/curtain.rs:325
+#: crates/ui-egui/src/curtain.rs:335
 msgid "Remove Column"
 msgstr ""
 
@@ -6624,7 +6632,7 @@ msgstr "Gỡ sơn"
 msgid "Remove Paint: take the paint off the face you click in the 3D view"
 msgstr "Gỡ sơn: bỏ lớp sơn khỏi mặt bạn nhấp trong khung nhìn 3D"
 
-#: crates/ui-egui/src/curtain.rs:325
+#: crates/ui-egui/src/curtain.rs:335
 msgid "Remove Row"
 msgstr ""
 
@@ -6632,8 +6640,8 @@ msgstr ""
 msgid "Remove from List"
 msgstr "Gỡ khỏi danh sách"
 
-#: crates/ui-egui/src/curtain.rs:613
-#: crates/ui-egui/src/curtain.rs:631
+#: crates/ui-egui/src/curtain.rs:638
+#: crates/ui-egui/src/curtain.rs:656
 msgid "Remove last interior grid"
 msgstr ""
 
@@ -6696,7 +6704,7 @@ msgstr "Thay bằng văn bản:"
 msgid "Replace imported by same name"
 msgstr "Thay thế mục đã nhập cùng tên"
 
-#: crates/ui-egui/src/curtain.rs:439
+#: crates/ui-egui/src/curtain.rs:464
 msgid "Replace with Wall"
 msgstr ""
 
@@ -6910,15 +6918,15 @@ msgstr "Góc xoay (°)"
 msgid "Round"
 msgstr "Tròn"
 
-#: crates/ui-egui/src/curtain.rs:313
+#: crates/ui-egui/src/curtain.rs:323
 msgid "Row"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:313
+#: crates/ui-egui/src/curtain.rs:323
 msgid "Row Fit"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:313
+#: crates/ui-egui/src/curtain.rs:323
 msgid "Row Justification"
 msgstr ""
 
@@ -7180,6 +7188,10 @@ msgstr "Hãy chọn các cấu kiện cùng một loại: tất cả dầm, tấ
 msgid "Select fill pattern lines then press Enter"
 msgstr "Chọn các đường của mẫu tô rồi nhấn Enter"
 
+#: crates/ui-egui/src/curtain.rs:199
+msgid "Select members in the preview panel to edit them."
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:810
 msgid "Select the detail lines the pattern is made of, then press Enter."
 msgstr "Chọn các đường chi tiết tạo nên mẫu, rồi nhấn Enter."
@@ -7221,7 +7233,7 @@ msgstr "Cài đặt"
 msgid "Settings…"
 msgstr "Cài đặt…"
 
-#: crates/core/src/graphics.rs:263
+#: crates/core/src/graphics.rs:265
 msgid "Shaded"
 msgstr "Tô bóng"
 
@@ -7501,7 +7513,7 @@ msgstr "Độ dốc:"
 msgid "Slope: a number of degrees from 0 to {}, or blank for the roof's"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:536
+#: crates/ui-egui/src/curtain.rs:561
 msgid "Smallest Panel"
 msgstr ""
 
@@ -7716,7 +7728,7 @@ msgstr "Tam giác ký hiệu cao độ tiêu chuẩn"
 msgid "Standards Included in this Preset:"
 msgstr "Các tiêu chuẩn có trong thiết lập sẵn này:"
 
-#: crates/ui-egui/src/curtain.rs:335
+#: crates/ui-egui/src/curtain.rs:345
 #: crates/ui-egui/src/properties.rs:140
 #: crates/ui-egui/src/reinforce.rs:93
 msgid "Start"
@@ -8159,7 +8171,7 @@ msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "Chân đường vuông góc từ điểm cuối cùng tới một tường hoặc lưới trục"
 
 #: crates/ui-egui/src/orbit.rs:1006
-#: crates/ui-egui/src/orbit.rs:1073
+#: crates/ui-egui/src/orbit.rs:1077
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "Card đồ họa không thể vẽ khung nhìn 3D ({}): khung nhìn được vẽ bằng bộ xử lý"
 
@@ -8624,7 +8636,7 @@ msgstr "Kiểu:"
 msgid "Types"
 msgstr "Kiểu"
 
-#: crates/core/src/render.rs:3691
+#: crates/core/src/render.rs:3708
 msgid "UP"
 msgstr "LÊN"
 
@@ -8811,15 +8823,15 @@ msgstr "Phiên bản {}"
 msgid "Vertical"
 msgstr "Đứng"
 
-#: crates/ui-egui/src/curtain.rs:506
+#: crates/ui-egui/src/curtain.rs:531
 msgid "Vertical Grid"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:411
+#: crates/ui-egui/src/curtain.rs:436
 msgid "Vertical Mullion"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:533
+#: crates/ui-egui/src/curtain.rs:558
 msgid "Vertical Mullions"
 msgstr ""
 
@@ -9202,7 +9214,7 @@ msgstr "Tên loại dây"
 msgid "Wire type:"
 msgstr "Loại dây:"
 
-#: crates/core/src/graphics.rs:265
+#: crates/core/src/graphics.rs:267
 msgid "Wireframe"
 msgstr "Khung dây"
 
@@ -9313,7 +9325,7 @@ msgid "Zoom Out"
 msgstr "Thu nhỏ"
 
 #: crates/ui-egui/src/canvas.rs:1873
-#: crates/ui-egui/src/orbit.rs:1601
+#: crates/ui-egui/src/orbit.rs:1605
 msgid "Zoom to Fit"
 msgstr "Thu phóng vừa khít"
 
@@ -9451,7 +9463,7 @@ msgstr "đường tròn"
 msgid "click its line's end"
 msgstr "nhấp điểm cuối của đường"
 
-#: crates/ui-egui/src/orbit.rs:1504
+#: crates/ui-egui/src/orbit.rs:1508
 msgid "click on the floor's top"
 msgstr "nhấp trên mặt trên của sàn"
 
@@ -9790,9 +9802,9 @@ msgstr "không có mặt nào để sơn ở đó"
 msgid "there's no folder to keep favorites in here"
 msgstr "không có thư mục nào để lưu mục yêu thích ở đây"
 
-#: crates/ui-egui/src/orbit.rs:1421
+#: crates/ui-egui/src/orbit.rs:1425
 #: crates/ui-egui/src/paper.rs:158
-#: crates/ui-egui/src/section.rs:409
+#: crates/ui-egui/src/section.rs:437
 msgid "this tool works in plan views: open one from the Project Browser"
 msgstr "công cụ này hoạt động trong khung nhìn mặt bằng: hãy mở một mặt bằng từ trình duyệt dự án"
 
@@ -9808,11 +9820,11 @@ msgstr "có hai kiểu cùng tên `{}`"
 msgid "type the elevation first"
 msgstr "hãy nhập cao độ trước"
 
-#: crates/core/src/graphics.rs:962
+#: crates/core/src/graphics.rs:964
 msgid "view filter"
 msgstr "bộ lọc khung nhìn"
 
-#: crates/core/src/graphics.rs:966
+#: crates/core/src/graphics.rs:968
 msgid "view template"
 msgstr "mẫu khung nhìn"
 
@@ -9958,7 +9970,7 @@ msgstr "{} trên {} bậc đứng"
 
 #: crates/ui-egui/src/canvas.rs:1475
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-#: crates/ui-egui/src/orbit.rs:1260
+#: crates/ui-egui/src/orbit.rs:1264
 msgid "{} of {} {}"
 msgstr "{} của {} {}"
 
@@ -10002,7 +10014,7 @@ msgstr "{} tam giác, từ một tệp"
 msgid "{} up"
 msgstr "lên {}"
 
-#: crates/ui-egui/src/curtain.rs:609
+#: crates/ui-egui/src/curtain.rs:634
 msgid "{} walls"
 msgstr ""
 
@@ -10077,7 +10089,7 @@ msgstr "{}: `{}` không phải là số"
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` không phải là số"
 
-#: crates/ui-egui/src/curtain.rs:414
+#: crates/ui-egui/src/curtain.rs:439
 msgid "{}: column {}, row {}"
 msgstr ""
 

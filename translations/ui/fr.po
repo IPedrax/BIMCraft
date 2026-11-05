@@ -185,7 +185,7 @@ msgstr "Une vue a toujours une échelle"
 msgid "A view template is named {} already: give the set another name"
 msgstr "Un modèle de vue s'appelle déjà {}: donner un autre nom au jeu"
 
-#: crates/ui-egui/src/curtain.rs:417
+#: crates/ui-egui/src/curtain.rs:442
 msgid "A wall stands here: select it, or delete it to have the panel back."
 msgstr ""
 
@@ -284,7 +284,7 @@ msgstr "Ajouter un arc"
 msgid "Add Box"
 msgstr "Ajouter une boîte"
 
-#: crates/ui-egui/src/curtain.rs:325
+#: crates/ui-egui/src/curtain.rs:335
 msgid "Add Column"
 msgstr ""
 
@@ -329,7 +329,7 @@ msgstr "Ajouter un point: cliquer sur le dessus pour le monter ou le descendre �
 msgid "Add Revolve"
 msgstr "Ajouter une révolution"
 
-#: crates/ui-egui/src/curtain.rs:325
+#: crates/ui-egui/src/curtain.rs:335
 msgid "Add Row"
 msgstr ""
 
@@ -692,7 +692,7 @@ msgstr "Largeur du bras"
 msgid "Arrow"
 msgstr "Flèche"
 
-#: crates/ui-egui/src/curtain.rs:438
+#: crates/ui-egui/src/curtain.rs:463
 msgid "As in the Pattern"
 msgstr ""
 
@@ -980,11 +980,11 @@ msgstr "Gras"
 msgid "Bold (Ctrl+B)"
 msgstr "Gras (Ctrl+B)"
 
-#: crates/ui-egui/src/curtain.rs:351
+#: crates/ui-egui/src/curtain.rs:361
 msgid "Border Bottom"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:349
+#: crates/ui-egui/src/curtain.rs:359
 msgid "Border Left"
 msgstr ""
 
@@ -992,15 +992,15 @@ msgstr ""
 msgid "Border Line Weight"
 msgstr "Épaisseur de ligne de bordure"
 
-#: crates/ui-egui/src/curtain.rs:350
+#: crates/ui-egui/src/curtain.rs:360
 msgid "Border Right"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:352
+#: crates/ui-egui/src/curtain.rs:362
 msgid "Border Top"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:526
+#: crates/ui-egui/src/curtain.rs:551
 msgid "Borders"
 msgstr ""
 
@@ -1062,7 +1062,7 @@ msgstr ""
 msgid "Building information modelling, open and free."
 msgstr "Modélisation des informations du bâtiment, ouverte et gratuite."
 
-#: crates/ui-egui/src/curtain.rs:297
+#: crates/ui-egui/src/curtain.rs:307
 msgid "Butt"
 msgstr ""
 
@@ -1257,13 +1257,13 @@ msgid "Centimetres"
 msgstr "Centimètres"
 
 #: crates/core/src/lines.rs:182
-#: crates/ui-egui/src/curtain.rs:336
+#: crates/ui-egui/src/curtain.rs:346
 #: crates/ui-egui/src/editor.rs:887
 #: crates/ui-egui/src/editor.rs:914
 msgid "Centre"
 msgstr "Axe"
 
-#: crates/ui-egui/src/curtain.rs:337
+#: crates/ui-egui/src/curtain.rs:347
 msgid "Centre Line"
 msgstr ""
 
@@ -1414,7 +1414,7 @@ msgstr "Cliquer sur une ligne, un mur ou un quadrillage pour dessiner le long de
 msgid "Click a painted face to take its paint off."
 msgstr "Cliquer sur une face peinte pour retirer sa peinture."
 
-#: crates/ui-egui/src/curtain.rs:553
+#: crates/ui-egui/src/curtain.rs:578
 msgid "Click a panel or a mullion to set its type; Shift adds to the selection."
 msgstr ""
 
@@ -1902,7 +1902,7 @@ msgstr "Fermer toutes les vues sauf celle-ci"
 msgid "Close {}"
 msgstr "Fermer {}"
 
-#: crates/core/src/graphics.rs:234
+#: crates/core/src/graphics.rs:236
 msgid "Coarse"
 msgstr "Grossier"
 
@@ -1925,7 +1925,7 @@ msgid "Colour on plans"
 msgstr "Couleur sur les plans"
 
 #: crates/core/src/commands.rs:543
-#: crates/ui-egui/src/curtain.rs:311
+#: crates/ui-egui/src/curtain.rs:321
 msgid "Column"
 msgstr "Colonne"
 
@@ -1933,11 +1933,11 @@ msgstr "Colonne"
 msgid "Column (CL): click where it stands"
 msgstr "Colonne (CL): cliquer à l'endroit où elle se dresse"
 
-#: crates/ui-egui/src/curtain.rs:311
+#: crates/ui-egui/src/curtain.rs:321
 msgid "Column Fit"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:311
+#: crates/ui-egui/src/curtain.rs:321
 msgid "Column Justification"
 msgstr ""
 
@@ -2271,6 +2271,10 @@ msgstr "Hachures croisées"
 msgid "Current view only"
 msgstr "Vue actuelle uniquement"
 
+#: crates/core/src/graphics.rs:131
+msgid "Curtain Panels"
+msgstr ""
+
 #: crates/core/src/commands.rs:379
 msgid "Curtain Part"
 msgstr ""
@@ -2279,7 +2283,7 @@ msgstr ""
 msgid "Curtain Parts"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:606
+#: crates/ui-egui/src/curtain.rs:631
 #: crates/ui-egui/src/lib.rs:1145
 msgid "Curtain Wall"
 msgstr ""
@@ -2328,7 +2332,7 @@ msgstr "Plan de coupe"
 msgid "Cylinder"
 msgstr "Cylindre"
 
-#: crates/core/src/render.rs:3691
+#: crates/core/src/render.rs:3708
 msgid "DN"
 msgstr "DN"
 
@@ -2808,7 +2812,7 @@ msgstr "Dessin…"
 msgid "Duct"
 msgstr "Gaine"
 
-#: crates/core/src/curtain.rs:471
+#: crates/core/src/curtain.rs:470
 msgid "Due to the defined wall length the last grid segment draws a malformed panel"
 msgstr ""
 
@@ -2928,7 +2932,7 @@ msgstr "Modifier l'option"
 msgid "Edit Option: new elements are made in this option, and the view on screen shows it"
 msgstr "Modifier l'option: les nouveaux éléments sont créés dans cette option, et la vue affichée la montre"
 
-#: crates/ui-egui/src/curtain.rs:501
+#: crates/ui-egui/src/curtain.rs:526
 msgid "Edit Pattern"
 msgstr ""
 
@@ -2971,7 +2975,7 @@ msgstr "Coude 90"
 msgid "Electrical"
 msgstr "Électricité"
 
-#: crates/core/src/graphics.rs:939
+#: crates/core/src/graphics.rs:941
 msgid "Electrical Ceiling"
 msgstr ""
 
@@ -2983,11 +2987,11 @@ msgstr "Équipement électrique"
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "Équipement électrique (EE): un tableau de distribution, à l'endroit cliqué sur le mur; la barre d'espace le fait pivoter"
 
-#: crates/core/src/graphics.rs:938
+#: crates/core/src/graphics.rs:940
 msgid "Electrical Lighting"
 msgstr ""
 
-#: crates/core/src/graphics.rs:937
+#: crates/core/src/graphics.rs:939
 msgid "Electrical Power"
 msgstr ""
 
@@ -3046,7 +3050,7 @@ msgstr "Ellipse"
 msgid "Ellipse: click its centre, the end of one axis, then how far the other reaches"
 msgstr "Ellipse: cliquer sur son centre, l'extrémité d'un axe, puis la portée de l'autre"
 
-#: crates/ui-egui/src/curtain.rs:338
+#: crates/ui-egui/src/curtain.rs:348
 #: crates/ui-egui/src/properties.rs:141
 #: crates/ui-egui/src/reinforce.rs:93
 msgid "End"
@@ -3347,7 +3351,7 @@ msgstr "Trouve {}."
 msgid "Finds {}; nothing has these: {}"
 msgstr "Trouve {}; aucun élément n'a ceux-ci: {}"
 
-#: crates/core/src/graphics.rs:236
+#: crates/core/src/graphics.rs:238
 msgid "Fine"
 msgstr "Élevée"
 
@@ -3389,7 +3393,7 @@ msgstr "Terminez ou annulez d'abord l'esquisse : les lignes d'un motif se choisi
 msgid "Fixed"
 msgstr "Fixe"
 
-#: crates/ui-egui/src/curtain.rs:329
+#: crates/ui-egui/src/curtain.rs:339
 msgid "Fixed Grid"
 msgstr ""
 
@@ -3811,7 +3815,7 @@ msgstr "Maintenu par des cotes"
 msgid "Hidden"
 msgstr "Masqué"
 
-#: crates/core/src/graphics.rs:264
+#: crates/core/src/graphics.rs:266
 msgid "Hidden Line"
 msgstr "Lignes cachées"
 
@@ -3867,7 +3871,7 @@ msgstr "Mettre en surbrillance ce qui est sous le curseur"
 msgid "Home"
 msgstr "Accueil"
 
-#: crates/ui-egui/src/orbit.rs:1598
+#: crates/ui-egui/src/orbit.rs:1602
 msgid "Home View"
 msgstr "Vue d'accueil"
 
@@ -3890,15 +3894,15 @@ msgstr "Crochet"
 msgid "Horizontal"
 msgstr "Horizontal"
 
-#: crates/ui-egui/src/curtain.rs:516
+#: crates/ui-egui/src/curtain.rs:541
 msgid "Horizontal Grid"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:412
+#: crates/ui-egui/src/curtain.rs:437
 msgid "Horizontal Mullion"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:533
+#: crates/ui-egui/src/curtain.rs:558
 msgid "Horizontal Mullions"
 msgstr ""
 
@@ -3922,7 +3926,7 @@ msgstr "Le nombre de barres, leur diamètre et leur écartement sont à définir
 msgid "How many phases and wires each system has (the line conductors and the neutral), the voltages it supplies, and how it is earthed."
 msgstr "Le nombre de phases et de câbles de chaque système (les conducteurs de phase et le neutre), les tensions qu'il fournit et sa mise à la terre."
 
-#: crates/ui-egui/src/curtain.rs:614
+#: crates/ui-egui/src/curtain.rs:639
 msgid "I will fix it myself"
 msgstr ""
 
@@ -4170,7 +4174,7 @@ msgstr "Normes de lignes JIS Z 8310 / JIS A 0150:"
 msgid "Jog"
 msgstr "Décalage"
 
-#: crates/ui-egui/src/curtain.rs:297
+#: crates/ui-egui/src/curtain.rs:307
 msgid "Join"
 msgstr ""
 
@@ -4222,7 +4226,7 @@ msgstr "Étiquette:"
 msgid "Language"
 msgstr "Langue"
 
-#: crates/ui-egui/src/curtain.rs:329
+#: crates/ui-egui/src/curtain.rs:339
 msgid "Last Grid Flexible"
 msgstr ""
 
@@ -4759,7 +4763,7 @@ msgstr "Mesurer"
 msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
 msgstr "Mesurer (ME): cliquer deux points; leur longueur et leur angle s'affichent près de la règle entre eux"
 
-#: crates/core/src/graphics.rs:235
+#: crates/core/src/graphics.rs:237
 msgid "Medium"
 msgstr "Moyen"
 
@@ -4849,7 +4853,7 @@ msgstr "Symétrie, sélectionner l'axe (MM): sélectionner un mur ou un quadrill
 msgid "Mirrored"
 msgstr "Symétrisé"
 
-#: crates/ui-egui/src/curtain.rs:297
+#: crates/ui-egui/src/curtain.rs:307
 msgid "Mitre"
 msgstr ""
 
@@ -4905,7 +4909,7 @@ msgstr "Modifier les sous-éléments: sélectionner un point, un coin ou une ar�
 msgid "Modify Wall"
 msgstr "Modifier le mur"
 
-#: crates/ui-egui/src/curtain.rs:548
+#: crates/ui-egui/src/curtain.rs:573
 msgid "Module {} x {}, thickness {}"
 msgstr ""
 
@@ -4931,8 +4935,12 @@ msgstr "Descendre"
 msgid "Move Up"
 msgstr "Monter"
 
-#: crates/ui-egui/src/curtain.rs:287
+#: crates/ui-egui/src/curtain.rs:297
 msgid "Mullion Type"
+msgstr ""
+
+#: crates/core/src/graphics.rs:132
+msgid "Mullions"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:1476
@@ -4980,7 +4988,7 @@ msgstr "NBR 17068: prolongement de 2 à 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: cible en plan (±0,00), triangle équilatéral en coupe"
 
-#: crates/core/src/render.rs:2930
+#: crates/core/src/render.rs:2947
 msgid "NOT ENCLOSED"
 msgstr "NON DÉLIMITÉE"
 
@@ -5182,9 +5190,9 @@ msgstr "Nominale"
 msgid "Nominal Text Height:"
 msgstr "Hauteur nominale du texte:"
 
-#: crates/ui-egui/src/curtain.rs:267
-#: crates/ui-egui/src/curtain.rs:345
-#: crates/ui-egui/src/curtain.rs:422
+#: crates/ui-egui/src/curtain.rs:277
+#: crates/ui-egui/src/curtain.rs:355
+#: crates/ui-egui/src/curtain.rs:447
 #: crates/ui-egui/src/dimtypes.rs:122
 #: crates/ui-egui/src/properties.rs:2324
 #: crates/ui-egui/src/properties.rs:2326
@@ -5307,7 +5315,7 @@ msgstr "Styles d'objet: la plume de chaque catégorie, en projection et en coupe
 msgid "Object Styles…"
 msgstr "Styles d'objet…"
 
-#: crates/ui-egui/src/curtain.rs:531
+#: crates/ui-egui/src/curtain.rs:556
 msgid "Of One Size, Runs Through"
 msgstr ""
 
@@ -5546,11 +5554,11 @@ msgid "Palettes"
 msgstr "Palettes"
 
 #: crates/ui-egui/src/curtain.rs:167
-#: crates/ui-egui/src/curtain.rs:410
+#: crates/ui-egui/src/curtain.rs:435
 msgid "Panel"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:271
+#: crates/ui-egui/src/curtain.rs:281
 msgid "Panel Type"
 msgstr ""
 
@@ -6418,7 +6426,7 @@ msgstr "Placer sur cette feuille une vue qui n'est pas encore sur une feuille"
 msgid "Quadrant"
 msgstr "Quadrant"
 
-#: crates/core/src/render.rs:2930
+#: crates/core/src/render.rs:2947
 msgid "REDUNDANT"
 msgstr "REDONDANTE"
 
@@ -6612,7 +6620,7 @@ msgstr "Retirer"
 msgid "Remove Bars"
 msgstr "Retirer les armatures"
 
-#: crates/ui-egui/src/curtain.rs:325
+#: crates/ui-egui/src/curtain.rs:335
 msgid "Remove Column"
 msgstr ""
 
@@ -6624,7 +6632,7 @@ msgstr "Retirer la peinture"
 msgid "Remove Paint: take the paint off the face you click in the 3D view"
 msgstr "Retirer la peinture: enlever la peinture de la face cliquée dans la vue 3D"
 
-#: crates/ui-egui/src/curtain.rs:325
+#: crates/ui-egui/src/curtain.rs:335
 msgid "Remove Row"
 msgstr ""
 
@@ -6632,8 +6640,8 @@ msgstr ""
 msgid "Remove from List"
 msgstr "Retirer de la liste"
 
-#: crates/ui-egui/src/curtain.rs:613
-#: crates/ui-egui/src/curtain.rs:631
+#: crates/ui-egui/src/curtain.rs:638
+#: crates/ui-egui/src/curtain.rs:656
 msgid "Remove last interior grid"
 msgstr ""
 
@@ -6696,7 +6704,7 @@ msgstr "Remplacer par du texte:"
 msgid "Replace imported by same name"
 msgstr "Remplacer les importés de même nom"
 
-#: crates/ui-egui/src/curtain.rs:439
+#: crates/ui-egui/src/curtain.rs:464
 msgid "Replace with Wall"
 msgstr ""
 
@@ -6910,15 +6918,15 @@ msgstr "Rotation (°)"
 msgid "Round"
 msgstr "Rond"
 
-#: crates/ui-egui/src/curtain.rs:313
+#: crates/ui-egui/src/curtain.rs:323
 msgid "Row"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:313
+#: crates/ui-egui/src/curtain.rs:323
 msgid "Row Fit"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:313
+#: crates/ui-egui/src/curtain.rs:323
 msgid "Row Justification"
 msgstr ""
 
@@ -7180,6 +7188,10 @@ msgstr "Sélectionner des éléments d'une seule sorte: toutes les poutres, tous
 msgid "Select fill pattern lines then press Enter"
 msgstr "Sélectionnez les lignes du motif de remplissage puis appuyez sur Entrée"
 
+#: crates/ui-egui/src/curtain.rs:199
+msgid "Select members in the preview panel to edit them."
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:810
 msgid "Select the detail lines the pattern is made of, then press Enter."
 msgstr "Sélectionnez les lignes de détail dont le motif est fait, puis appuyez sur Entrée."
@@ -7221,7 +7233,7 @@ msgstr "Paramètres"
 msgid "Settings…"
 msgstr "Paramètres…"
 
-#: crates/core/src/graphics.rs:263
+#: crates/core/src/graphics.rs:265
 msgid "Shaded"
 msgstr "Ombré"
 
@@ -7501,7 +7513,7 @@ msgstr "Pente:"
 msgid "Slope: a number of degrees from 0 to {}, or blank for the roof's"
 msgstr "Pente: un nombre de degrés de 0 à {}, ou vide pour celle du toit"
 
-#: crates/ui-egui/src/curtain.rs:536
+#: crates/ui-egui/src/curtain.rs:561
 msgid "Smallest Panel"
 msgstr ""
 
@@ -7716,7 +7728,7 @@ msgstr "Triangle de repère d'élévation standard"
 msgid "Standards Included in this Preset:"
 msgstr "Normes incluses dans ce préréglage:"
 
-#: crates/ui-egui/src/curtain.rs:335
+#: crates/ui-egui/src/curtain.rs:345
 #: crates/ui-egui/src/properties.rs:140
 #: crates/ui-egui/src/reinforce.rs:93
 msgid "Start"
@@ -8159,7 +8171,7 @@ msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "Le pied de la perpendiculaire du dernier point à un mur ou un quadrillage"
 
 #: crates/ui-egui/src/orbit.rs:1006
-#: crates/ui-egui/src/orbit.rs:1073
+#: crates/ui-egui/src/orbit.rs:1077
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "La carte graphique n'a pas pu dessiner la vue 3D ({}): elle est dessinée sur le processeur"
 
@@ -8624,7 +8636,7 @@ msgstr "Type:"
 msgid "Types"
 msgstr "Types"
 
-#: crates/core/src/render.rs:3691
+#: crates/core/src/render.rs:3708
 msgid "UP"
 msgstr "HAUT"
 
@@ -8811,15 +8823,15 @@ msgstr "Version {}"
 msgid "Vertical"
 msgstr "Vertical"
 
-#: crates/ui-egui/src/curtain.rs:506
+#: crates/ui-egui/src/curtain.rs:531
 msgid "Vertical Grid"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:411
+#: crates/ui-egui/src/curtain.rs:436
 msgid "Vertical Mullion"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:533
+#: crates/ui-egui/src/curtain.rs:558
 msgid "Vertical Mullions"
 msgstr ""
 
@@ -9202,7 +9214,7 @@ msgstr "Nom du type de câble"
 msgid "Wire type:"
 msgstr "Type de câble:"
 
-#: crates/core/src/graphics.rs:265
+#: crates/core/src/graphics.rs:267
 msgid "Wireframe"
 msgstr "Filaire"
 
@@ -9313,7 +9325,7 @@ msgid "Zoom Out"
 msgstr "Zoom arrière"
 
 #: crates/ui-egui/src/canvas.rs:1873
-#: crates/ui-egui/src/orbit.rs:1601
+#: crates/ui-egui/src/orbit.rs:1605
 msgid "Zoom to Fit"
 msgstr "Zoom adapté"
 
@@ -9451,7 +9463,7 @@ msgstr "cercle"
 msgid "click its line's end"
 msgstr "cliquer sur l'extrémité de sa ligne"
 
-#: crates/ui-egui/src/orbit.rs:1504
+#: crates/ui-egui/src/orbit.rs:1508
 msgid "click on the floor's top"
 msgstr "cliquer sur le dessus du sol"
 
@@ -9790,9 +9802,9 @@ msgstr "aucune face à peindre à cet endroit"
 msgid "there's no folder to keep favorites in here"
 msgstr "aucun dossier pour conserver les favoris ici"
 
-#: crates/ui-egui/src/orbit.rs:1421
+#: crates/ui-egui/src/orbit.rs:1425
 #: crates/ui-egui/src/paper.rs:158
-#: crates/ui-egui/src/section.rs:409
+#: crates/ui-egui/src/section.rs:437
 msgid "this tool works in plan views: open one from the Project Browser"
 msgstr "cet outil fonctionne dans les vues en plan: en ouvrir une depuis le navigateur de projet"
 
@@ -9808,11 +9820,11 @@ msgstr "deux types portent le nom `{}`"
 msgid "type the elevation first"
 msgstr "saisir d'abord l'altitude"
 
-#: crates/core/src/graphics.rs:962
+#: crates/core/src/graphics.rs:964
 msgid "view filter"
 msgstr "filtre de vue"
 
-#: crates/core/src/graphics.rs:966
+#: crates/core/src/graphics.rs:968
 msgid "view template"
 msgstr "modèle de vue"
 
@@ -9958,7 +9970,7 @@ msgstr "{} sur {} contremarches"
 
 #: crates/ui-egui/src/canvas.rs:1475
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-#: crates/ui-egui/src/orbit.rs:1260
+#: crates/ui-egui/src/orbit.rs:1264
 msgid "{} of {} {}"
 msgstr "{} de {} {}"
 
@@ -10002,7 +10014,7 @@ msgstr "{} triangles, depuis un fichier"
 msgid "{} up"
 msgstr "{} de montée"
 
-#: crates/ui-egui/src/curtain.rs:609
+#: crates/ui-egui/src/curtain.rs:634
 msgid "{} walls"
 msgstr ""
 
@@ -10077,7 +10089,7 @@ msgstr "{}: `{}` n'est pas un nombre"
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` n'est pas un nombre"
 
-#: crates/ui-egui/src/curtain.rs:414
+#: crates/ui-egui/src/curtain.rs:439
 msgid "{}: column {}, row {}"
 msgstr ""
 

@@ -301,6 +301,24 @@ impl BimApp {
                 .or_else(|| cut.image.as_ref().filter(|_| displaying)?.pick(f64::from(x) * source_ppp[0], f64::from(y) * source_ppp[1]))
         };
         let hovered = local.filter(|_| matches!(self.tool, Tool::Modify | Tool::Demolish)).and_then(|q| pick(&self.cut, &d, q));
+        // On the selected curtain wall under the cursor, Tab goes through its parts there, on the plane the view looks at.
+        let tab = ui.input(|i| i.key_pressed(egui::Key::Tab)) && local.is_some();
+        if tab {
+            ui.ctx().memory_mut(|m| {
+                if let Some(f) = m.focused() {
+                    m.surrender_focus(f);
+                }
+            });
+        }
+        if (std::mem::take(&mut self.tab_cycle) || tab)
+            && let (Some(q), Some(wall)) = (local, hovered)
+            && self.selection.as_slice() == [wall]
+            && let Some((cam, _)) = render::section_camera(&model, id, view)
+            && let at = (f64::from(q.0), f64::from(q.1))
+            && let Some(list) = crate::curtain::parts_on_ray(&model, id, wall, cam.point_at(at, 0.0), cam.point_at(at, 1000.0))
+        {
+            self.curtain_part = crate::curtain::next_part(self.curtain_part, wall, &list);
+        }
         let tints: Vec<(Id, Rgb)> = self
             .selection
             .iter()
@@ -346,6 +364,16 @@ impl BimApp {
             p.image(t.id(), image_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
         paint(&p, place, &d, &self.selection, hovered, self.thin, &[]);
+        if let Some((part_of, part)) = self.curtain_part
+            && let Some(ring) = model.wall(part_of).and_then(|w| bimcraft_core::curtain::face_ring(&model, w, part))
+            && let Some((cam, _)) = render::section_camera(&model, id, view)
+        {
+            let screen = |c: [f64; 3]| {
+                let (x, y, _) = cam.project(c);
+                rect.min + egui::vec2(x as f32, y as f32)
+            };
+            p.add(egui::Shape::closed_line(ring.iter().map(|c| screen(*c)).collect(), egui::Stroke::new(2.0, canvas_pal().accent)));
+        }
         // While a note is written here, the pointer is its editor's.
         if self.writing_in(id) {
             p.extend(crop);

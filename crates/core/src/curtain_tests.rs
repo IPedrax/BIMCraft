@@ -1473,3 +1473,78 @@ fn panels_and_mullions_have_object_styles_of_their_own_which_plans_draw_in() {
     assert_ne!(s.model.object_style("wall").cut.0, 14);
     assert!(fails(&mut s, "object_styles", json!({"categories": {"mullion": {"cut": 17}}})).contains("0 (a hairline)"));
 }
+
+// ---------- panels and mullions apart in a view ----------
+
+#[test]
+fn panels_and_mullions_are_rows_under_walls_that_a_view_hides() {
+    let sub = crate::graphics::sub("mullion").unwrap();
+    assert_eq!(sub.parent, "wall");
+    assert_eq!(crate::graphics::sub("curtainpanel").unwrap().parent, "wall");
+    assert!(crate::graphics::subcategories("wall").count() == 2);
+    let mut s = session();
+    let level = s.model.levels()[0].0;
+    run(&mut s, "graphics", json!({"view": level, "categories": {"mullion": {"hidden": true}}}));
+    let g = crate::graphics::graphics_of(&s.model, level).unwrap();
+    assert!(g.hides("mullion") && !g.hides("curtainpanel") && !g.hides("wall"));
+    run(&mut s, "graphics", json!({"view": level, "categories": {"mullion": {"hidden": false}, "wall": {"hidden": true}}}));
+    let g = crate::graphics::graphics_of(&s.model, level).unwrap();
+    assert!(g.hides("mullion") && g.hides("curtainpanel"), "with their category");
+}
+
+#[test]
+fn a_plan_hides_panels_and_mullions_apart_and_draws_a_mullion_in_its_row_s_pens() {
+    use crate::geom::P2;
+    let mut s = session();
+    grid(&mut s, "CW", &[2000.0], &[3000.0], json!({}));
+    let id = wall(&mut s, "CW", 6000.0, 3000.0);
+    let plane = curtain::grid_plane(&s.model, wall_of(&s, id));
+    let level = s.model.levels()[0].0;
+    let dark = |c: (u8, u8, u8)| c.0 < 200 && c.1 < 200 && c.2 < 200;
+    let lines = |s: &Session| crate::render::plan(&s.model, level, 1600, 400).prims.len();
+    let all = lines(&s);
+    run(&mut s, "graphics", json!({"view": level, "categories": {"mullion": {"hidden": true}}}));
+    assert!(!dark(plan_pixel(&s, P2(2000.0, plane))), "no mullion");
+    let without = lines(&s);
+    assert!(without < all, "{without} of {all}");
+    let d = crate::render::plan(&s.model, level, 1600, 400);
+    assert_eq!(d.pick(d.view.px(P2(1000.0, plane)), 4.0), Some(id), "the panels still pick the wall");
+    run(&mut s, "graphics", json!({"view": level, "categories": {"mullion": {"hidden": false}, "curtainpanel": {"hidden": true}}}));
+    assert!(dark(plan_pixel(&s, P2(2000.0, plane))), "the mullion is back");
+    let d = crate::render::plan(&s.model, level, 1600, 400);
+    assert_ne!(d.pick(d.view.px(P2(1000.0, plane)), 1.0), Some(id), "no panel there");
+    // A row's own fill, then its lines.
+    let row = json!({"hidden": false, "cut": {"fill": [0, 200, 0]}});
+    run(&mut s, "graphics", json!({"view": level, "categories": {"curtainpanel": {"hidden": false}, "mullion": row}}));
+    let c = plan_pixel(&s, P2(2000.0, plane));
+    assert!(c.1 > c.0 && c.1 > c.2, "its fill: {c:?}");
+    let row = json!({"cut": {"color": [0, 0, 220], "weight": 13}});
+    run(&mut s, "graphics", json!({"view": level, "categories": {"mullion": row}}));
+    let d = crate::render::plan(&s.model, level, 1600, 400);
+    assert!(d.pens.iter().flatten().any(|p| p.0 == 13), "its weight");
+    assert_eq!(plan_pixel(&s, P2(2000.0, plane)), (0, 0, 220), "its line colour, as wide as that pen draws");
+}
+
+#[test]
+fn a_section_and_an_elevation_hide_panels_and_mullions_apart() {
+    let mut s = session();
+    grid(&mut s, "CW", &[2000.0], &[3000.0], json!({}));
+    wall(&mut s, "CW", 6000.0, 3000.0);
+    // One line that cuts the wall square, looking along it, and one that sees its whole face.
+    let across = run(&mut s, "section", json!({"start": [1000, -2000], "end": [1000, 2000]}))["id"].as_u64().unwrap() as crate::model::Id;
+    let front = run(&mut s, "section", json!({"start": [-500, -2000], "end": [6500, -2000]}))["id"].as_u64().unwrap() as crate::model::Id;
+    let inked = |s: &Session, id: crate::model::Id| {
+        let view = crate::render::section_fit(&s.model, id, 800, 500);
+        let d = crate::render::section(&s.model, id, view);
+        let image = crate::render::section_picture(&s.model, id, view, &[]).unwrap();
+        let dark = image.rgba.chunks(4).filter(|p| p[0] < 128).count();
+        (dark, d.prims.len())
+    };
+    let (face, cut) = (inked(&s, front), inked(&s, across));
+    assert!(face.0 > 0 && cut.1 > 0, "{face:?} {cut:?}");
+    let categories = json!({"curtainpanel": {"hidden": true}});
+    run(&mut s, "graphics", json!({"view": across, "categories": categories}));
+    assert!(inked(&s, across).1 < cut.1, "the panel cut no more: {:?} of {cut:?}", inked(&s, across));
+    run(&mut s, "graphics", json!({"view": front, "categories": {"mullion": {"hidden": true}}}));
+    assert!(inked(&s, front).0 < face.0, "fewer lines with the mullions gone");
+}
