@@ -454,7 +454,7 @@ fn type_sections(names: &[String], curtain: impl Fn(&str) -> bool) -> Vec<(Optio
 
 /// What share of a wall type's thickness each of its layers takes, in its material's colour, from one face to the other. One
 /// band, its colour unknown, for a type with no layers or thickness.
-fn layer_bands(model: &Model, name: &str) -> Vec<(f32, Option<[u8; 3]>)> {
+pub(crate) fn layer_bands(model: &Model, name: &str) -> Vec<(f32, Option<[u8; 3]>)> {
     let layers = model.types.wall.get(name).map_or(&[][..], |t| t.layers.as_slice());
     let total: f64 = layers.iter().map(|l| l.thickness).sum();
     if layers.is_empty() || total.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {

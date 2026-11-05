@@ -2459,6 +2459,7 @@ impl BimApp {
         }
         if !matches!(tool, Tool::Measure(_)) {
             self.measured = None;
+            (self.orbit.ruler_start, self.orbit.ruler) = (None, None);
         }
         self.snap_once = None;
         self.tool = tool;
@@ -2668,7 +2669,8 @@ impl BimApp {
             Tool::Round(k, picked) if !picked.is_empty() => Tool::Round(k, Vec::new()),
             Tool::Section(Some(_)) => Tool::Section(None),
             Tool::Measure(Some(_)) => Tool::Measure(None),
-            // The ruler laid goes first, then the tool.
+            // The ruler begun or laid goes first, then the tool, in a plan and in the 3D view alike.
+            Tool::Measure(None) if self.orbit.ruler_start.take().is_some() || self.orbit.ruler.take().is_some() => Tool::Measure(None),
             Tool::Measure(None) if self.measured.take().is_some() => Tool::Measure(None),
             Tool::Stair(pts) if !pts.is_empty() => Tool::Stair(Vec::new()),
             Tool::Ramp(pts) if !pts.is_empty() => Tool::Ramp(Vec::new()),
@@ -3764,7 +3766,7 @@ impl BimApp {
             &[(
                 Icon::Measure,
                 "Measure",
-                msg!("Measure (ME): click two points; their length and angle read beside the ruler between them"),
+                msg!("Measure (ME): click two points; their length and angle read beside the ruler between them. In the 3D view, any two points of the model, whatever the work plane"),
                 Tool::Measure(None),
             )],
         );
