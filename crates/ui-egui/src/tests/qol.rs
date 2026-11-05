@@ -115,3 +115,91 @@ fn over_nothing_the_measure_tool_says_what_it_needs() {
     assert!(h.state().orbit.ruler_start.is_none());
     assert!(h.state().status.error, "{}", h.state().status.text);
 }
+
+fn all(h: &Harness<BimApp>, category: &str) -> Vec<Id> {
+    let m = &h.state().session.model;
+    m.elements.iter().filter(|(_, e)| e.category() == category).map(|(id, _)| *id).collect()
+}
+
+/// A level above, a wall to it, a column to it, and a roof over them: to drag and attach in the 3D view.
+const STOREY: &str = r#"level {"name": "Upper", "elevation": 3000}
+wall {"points": [[0, 0], [8000, 0]], "level": "Level 1", "top_level": "Upper"}
+column {"at": [4000, 3000], "level": "Level 1", "top_level": "Upper"}
+roof {"points": [[-500, -500], [8500, -500], [8500, 6500], [-500, 6500]], "level": "Upper", "slope": 20}"#;
+
+fn handle_of(h: &Harness<BimApp>, id: Id, which: bimcraft_core::handles::Handle) -> Pos2 {
+    let (_, q) = bimcraft_core::handles::of(&h.state().session.model, id).into_iter().find(|(k, _)| *k == which).expect("that handle");
+    h.state().screen3(q)
+}
+
+#[test]
+fn in_3d_a_wall_s_top_arrow_and_end_grip_drag_without_turning_the_view_or_losing_the_selection() {
+    use bimcraft_core::handles::Handle;
+    let mut h = three_d(STOREY);
+    let wall = all(&h, "wall")[0];
+    h.state_mut().selection = vec![wall];
+    h.run();
+    let before = h.state().orbit.camera;
+    let was = h.state().session.model.wall(wall).cloned().unwrap();
+    let top = handle_of(&h, wall, Handle::Top);
+    drag_screen(&mut h, top, top + vec2(0.0, -40.0), PointerButton::Primary);
+    let w = h.state().session.model.wall(wall).cloned().unwrap();
+    assert!(w.top_offset > 0.0, "raised: {} ({})", w.top_offset, h.state().status.text);
+    assert_eq!(h.state().orbit.camera, before, "the handle took the drag");
+    assert_eq!(h.state().selection, [wall]);
+    let end = handle_of(&h, wall, Handle::End);
+    drag_screen(&mut h, end, end + vec2(60.0, 0.0), PointerButton::Primary);
+    let w = h.state().session.model.wall(wall).cloned().unwrap();
+    assert_ne!(w.end, was.end, "its end went with the hand");
+    assert_eq!(w.start, was.start, "its start stayed");
+    // A click on a handle picks nothing behind it.
+    let top = handle_of(&h, wall, Handle::Top);
+    click_at(&mut h, top);
+    assert_eq!(h.state().selection, [wall]);
+}
+
+#[test]
+fn in_3d_attach_top_takes_the_roof_clicked_for_a_wall_and_for_a_column_which_loses_its_arrow() {
+    use bimcraft_core::handles::Handle;
+    for category in ["wall", "column"] {
+        let mut h = three_d(STOREY);
+        let id = all(&h, category)[0];
+        h.state_mut().selection = vec![id];
+        h.run();
+        press(&mut h, "Attach Top/Base");
+        assert_eq!(h.state().tool, Tool::Attach, "{}", h.state().status.text);
+        // Up through the roof's middle, as a hand looks for it: a click on what isn't a roof or a floor takes nothing.
+        for k in 0..60 {
+            let at = h.state().screen3([4000.0, 3000.0, 3000.0 + f64::from(k) * 100.0]);
+            click_at(&mut h, at);
+            if h.state().tool == Tool::Modify {
+                break;
+            }
+        }
+        let v = element_json(&h.state().session.model, id);
+        assert!(!v["attach_top"].is_null(), "{category}: {v}");
+        assert_eq!(h.state().tool, Tool::Modify);
+        let kinds: Vec<Handle> = bimcraft_core::handles::of(&h.state().session.model, id).into_iter().map(|x| x.0).collect();
+        assert!(!kinds.contains(&Handle::Top), "{category}: {kinds:?}");
+        press(&mut h, "Detach Top/Base");
+        let v = element_json(&h.state().session.model, id);
+        assert!(v["attach_top"].is_null(), "{category}: {v}");
+    }
+}
+
+#[test]
+fn in_3d_a_column_s_top_arrow_and_place_drag_as_a_wall_s_do() {
+    use bimcraft_core::handles::Handle;
+    let mut h = three_d(STOREY);
+    let column = all(&h, "column")[0];
+    h.state_mut().selection = vec![column];
+    h.run();
+    let span = |h: &Harness<BimApp>| h.state().session.model.elements.get(column).map(|e| h.state().session.model.column_span(e)).unwrap();
+    let top = handle_of(&h, column, Handle::Top);
+    drag_screen(&mut h, top, top + vec2(0.0, -40.0), PointerButton::Primary);
+    assert!(span(&h).1 > 3000.0, "raised: {:?} ({})", span(&h), h.state().status.text);
+    let place = handle_of(&h, column, Handle::Place);
+    drag_screen(&mut h, place, place + vec2(50.0, 0.0), PointerButton::Primary);
+    let at = h.state().session.model.elements.get(column).and_then(Element::column).map(|c| c.at).unwrap();
+    assert_ne!(at, P2(4000.0, 3000.0), "it went with the hand");
+}

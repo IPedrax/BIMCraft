@@ -313,8 +313,11 @@ fn rows(category: &str) -> &'static [Row] {
         "column" | "structuralcolumn" => &[
             ("Constraints", "level", msg!("Base Level"), Level),
             ("Constraints", "base_offset", "Base Offset", Length),
+            ("Constraints", "attach_base", "Base is Attached", Attached),
             ("Constraints", "top_level", msg!("Top Level"), TopLevel),
+            ("Constraints", "top_offset", "Top Offset", Length),
             ("Constraints", "height", "Unconnected Height", Height),
+            ("Constraints", "attach_top", "Top is Attached", Attached),
             ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),

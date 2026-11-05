@@ -23,6 +23,7 @@ use std::sync::Arc;
 
 use bimcraft_i18n::msg;
 
+use bimcraft_core::handles::{self, Handle};
 use bimcraft_core::dims3d;
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::graphics::{Look, VisualStyle};
@@ -354,6 +355,10 @@ pub struct Orbit {
     slot: u64,
     /// What its processor picture's texture is called.
     name: &'static str,
+    /// The handle of the selected wall or column being dragged: the element, which, its place and where the drag began.
+    pub(crate) handle: Option<(Id, Handle, P3, Pos2)>,
+    /// The handle under the pointer.
+    pub(crate) hot_handle: Option<Handle>,
     /// The Measure tool in the 3D view: its first point, once clicked; then the ruler laid.
     pub(crate) ruler_start: Option<P3>,
     pub(crate) ruler: Option<(P3, P3)>,
@@ -409,6 +414,8 @@ impl Default for Orbit {
             fitted: None,
             slot: NEXT_SLOT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             name: "view3d",
+            handle: None,
+            hot_handle: None,
             ruler_start: None,
             ruler: None,
         }
@@ -459,6 +466,35 @@ fn dim_ref(scene: &Scene, cam: &Camera, at: (f64, f64), under: Option<Surface>, 
         return Some(Ref3 { at: q.map(f64::round), edge: Some([micron(a), micron(b)]) });
     }
     under.map(|s| Ref3 { at: s.at.map(f64::round), edge: None })
+}
+
+/// Whether Attach Top/Base takes element `id`: a roof or a floor.
+fn attach_target(m: &Model, id: Id) -> bool {
+    matches!(m.elements.get(id), Some(bimcraft_core::model::Element::Roof(_) | bimcraft_core::model::Element::Floor(_)))
+}
+
+/// A handle of the wall or column selected, as a section box's are drawn: an arrow up or down the screen for its top or base, a
+/// square for its ends or place. In the accent while held, in the hover colour under the pointer.
+fn draw_handle(p: &egui::Painter, cam: &Camera, h: Handle, q: P3, held: Option<Handle>, hot: Option<Handle>, screen: impl Fn(P3) -> Pos2) {
+    let at = screen(q);
+    if !at.is_finite() {
+        return;
+    }
+    let (k, held, hot) = (0, (held == Some(h)).then_some(0), (hot == Some(h)).then_some(0));
+    let (fill, outline) = crate::section_box::grip_colours(k, held, hot);
+    let stroke = Stroke::new(1.5, outline);
+    if h.vertical() {
+        let mut out = q;
+        out[2] += if h == Handle::Top { 1.0 } else { -1.0 } / cam.scale.max(1e-12);
+        let d = screen(out) - at;
+        if d.length() >= 0.25 {
+            crate::section_box::arrow(p, at, d.normalized(), fill, stroke);
+            return;
+        }
+    }
+    let r = Rect::from_center_size(at, vec2(9.0, 9.0));
+    p.rect_filled(r, 1.0, fill);
+    p.rect_stroke(r, 1.0, stroke, StrokeKind::Middle);
 }
 
 /// Where the Measure tool lands at pixel `at`: what a dimension would pick there, or the middle of the edge when the cursor is
@@ -1290,6 +1326,7 @@ impl BimApp {
             (self.tool == Tool::Modify && self.sketch.is_none() && !picking).then(|| self.work_plane_ring(last, rect, ppp)).flatten();
         let (modify, demolish, selection) = (self.tool == Tool::Modify, self.tool == Tool::Demolish, self.selection.clone());
         let (paint, unpaint) = (self.tool == Tool::Paint, self.tool == Tool::Unpaint);
+        let attaching = self.tool == Tool::Attach;
         // The floor being shaped, with Shape Editing's tools: its points and corners where its top is, which Modify Sub
         // Elements' grips drag up or down; Add Point and Add Split Line click on its top.
         let shaping = self.shaping().and_then(|id| model.shapeable(id).ok());
@@ -1447,6 +1484,58 @@ impl BimApp {
         o.hot_grip = boxed
             .filter(|_| modify && o.grip.is_none() && o.boxing.is_none() && o.drag.is_none())
             .and_then(|b| crate::section_box::grip_at(b, hover?, |p| on_screen(&cam, rect, ppp, p)));
+        // The wall or column selected alone has handles: its ends or its place, and arrows on its top and under its base. A drag
+        // from one changes that, and the command runs when the drag ends (`handles.rs`).
+        let single = match selection.as_slice() {
+            &[id] if modify && !lifting && sketch_z.is_none() => Some(id),
+            _ => None,
+        };
+        let own_handles = single.map(|id| handles::of(&model, id)).unwrap_or_default();
+        let handle_at = |cam: &Camera, at: Pos2| {
+            own_handles.iter().find(|(_, q)| on_screen(cam, rect, ppp, *q).distance(at) <= crate::section_box::GRIP + 2.0).copied()
+        };
+        if let Some(id) = single
+            && o.grip.is_none()
+            && o.boxing.is_none()
+            && !held
+            && response.drag_started_by(PointerButton::Primary)
+            && let Some(origin) = ui.input(|i| i.pointer.press_origin())
+            && let Some((h, q)) = handle_at(&cam, origin)
+        {
+            o.handle = Some((id, h, q, origin));
+        }
+        if !o.handle.is_some_and(|(id, ..)| Some(id) == single) {
+            o.handle = None;
+        }
+        // Where the held handle is now: an arrow at its height, up or down its plumb line and on a level within a few pixels; the
+        // rest over its level's plane under the pointer, snapped as a plan snaps.
+        let held_to = match (o.handle, latest) {
+            (Some((_, h, q, from)), Some(now)) if h.vertical() => cam.along(2, q, px(from), px(now)).map(|by| {
+                let reach = f64::from(crate::section_box::GRIP) / cam.scale.max(1e-9);
+                (P2(q[0], q[1]), handles::settled(&model, (q[2] + by).round(), reach))
+            }),
+            (Some((id, _, q, _)), Some(now)) => cam.on_plane(px(now), q[2]).map(|at| {
+                let level = model.elements.get(id).and_then(|e| model.level_of(e)).and_then(|g| model.elements.id(g));
+                let landed = level.map(|level| {
+                    let plane = CursorPlane { on: id, level, offset: 0.0, z: q[2] };
+                    snap3d(&model, &cam, px(now), ppp, at, plane, &[], shift, &snaps).at
+                });
+                (landed.unwrap_or(P2(at[0], at[1])), q[2])
+            }),
+            _ => None,
+        };
+        let mut handled = None;
+        if response.drag_stopped()
+            && let (Some((id, h, ..)), Some((to, z))) = (o.handle.take(), held_to)
+            && !self.canvas.quick()
+        {
+            handled = handles::command(&model, id, h, to, z);
+        }
+        o.hot_handle = if o.grip.is_none() && o.boxing.is_none() && o.drag.is_none() && o.handle.is_none() {
+            hover.and_then(|at| handle_at(&cam, at)).map(|(h, _)| h)
+        } else {
+            None
+        };
         // A drag from a grip of the floor being shaped raises or lowers that point or corner, to the millimetre; the command
         // runs when the drag ends.
         if lifting
@@ -1496,7 +1585,7 @@ impl BimApp {
         let still = o.lift.is_some();
         // The hand's drag turns or pans the view (Shift and the middle button, the middle button), unless a grip or the sketch
         // holds it; the primary button boxes, in Modify (the sketch's lines while sketching). A click on the triad's end turns it too.
-        let grabbed = o.grip.is_some() || o.boxing.is_some() || held || o.lift.is_some();
+        let grabbed = o.grip.is_some() || o.boxing.is_some() || o.handle.is_some() || held || o.lift.is_some();
         let Nav { cam, settled, selected_box } =
             o.navigate(ui, &response, &input, cam, grabbed, modify, self.canvas.quick(), fresh.then_some(scene));
         // A box let go: what it picks, as the picture is now.
@@ -1528,11 +1617,17 @@ impl BimApp {
         let lit_dim = hover.filter(|_| modify && o.drag.is_none() && sketch_z.is_none() && !picking).and_then(dim_at);
         let hovered = hover
             .filter(|_| {
-                (modify || demolish || paint || unpaint) && o.drag.is_none() && o.hot_grip.is_none() && sketch_z.is_none() && !picking
+                (modify || demolish || paint || unpaint || attaching)
+                    && o.drag.is_none()
+                    && o.hot_grip.is_none()
+                    && o.hot_handle.is_none()
+                    && sketch_z.is_none()
+                    && !picking
             })
             .filter(|_| lit_dim.is_none())
             .and_then(|at| pick(&o.picker, at))
-            .map(|h| h.id);
+            .map(|h| h.id)
+            .filter(|id| !attaching || attach_target(&model, *id));
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let tints: Vec<(Id, Rgb)> = selection
             .iter()
@@ -1691,6 +1786,20 @@ impl BimApp {
         }
         // The others in a Co-Work session: what they selected, and where they look from.
         crate::cowork::paint_3d(&p, &self.cowork, &mut self.cowork_seen, &model, scene, &|q: P3| on_screen(&cam, rect, ppp, q));
+        // The held handle's element as it would stand, and its height beside the arrow; then the handles, where they are now.
+        if let (Some((id, h, ..)), Some((to, z))) = (o.handle, held_to) {
+            for ring in handles::preview(&model, id, h, to, z) {
+                let ring: Vec<Pos2> = ring.into_iter().map(&screen).filter(|q| q.is_finite()).collect();
+                p.add(egui::Shape::closed_line(ring, Stroke::new(1.5, pal().accent)));
+            }
+            let at = screen([to.0, to.1, z]);
+            if h.vertical() && at.is_finite() {
+                crate::canvas::tag(&p, at + vec2(14.0, -8.0), egui::Align2::LEFT_BOTTOM, model.units.with_unit(z));
+            }
+        }
+        for (h, q) in &own_handles {
+            draw_handle(&p, &cam, *h, *q, o.handle.map(|(_, held, ..)| held), o.hot_handle, &screen);
+        }
         // The drawing tools take their points on the face under the cursor (`workplane`), snapped as its level's plan snaps:
         // a wall chain under way on the plane its first point found, a run's end on the face it is clicked on (where there is
         // none, the plane of its start). The point is shown as a plan shows a snap, and the wall or run from the point before.
@@ -1854,6 +1963,7 @@ impl BimApp {
         // A click on a grip picks nothing behind it.
         let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
         let click = click.filter(|at| !boxed.is_some_and(|b| modify && crate::section_box::grip_at(b, *at, screen).is_some()));
+        let click = click.filter(|at| handle_at(&cam, *at).is_none());
         let patched = click.is_some_and(|at| on_patch(&o.picker, at));
         let click = click.filter(|_| !patched);
         // Shape Editing's clicks are the floor's, not the picture's; one on a height label is the label's.
@@ -1898,6 +2008,8 @@ impl BimApp {
                 None => self.status = Status { text: self.needs_face(), error: true },
             },
             Some(_) if dimming || measuring => {}
+            Some(Some(id)) if attaching && attach_target(&model, id) => self.attach_to(id),
+            Some(_) if attaching => {}
             Some(_) => {
                 self.status =
                     Status { text: crate::lang::t("this tool works in plan views: open one from the Project Browser").into(), error: true }
@@ -1968,6 +2080,9 @@ impl BimApp {
         }
         if let Some((lo, hi)) = boxed_to {
             self.run("section_box", json!({"min": lo, "max": hi}));
+        }
+        if let Some((command, params)) = handled {
+            self.run(command, params);
         }
         // This view's drag's preview, while it lasts; a plan's is its own.
         if lift_held {

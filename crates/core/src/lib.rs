@@ -99,6 +99,7 @@ pub mod glue;
 mod glue_tests;
 pub mod graphics;
 pub mod groups;
+pub mod handles;
 #[cfg(test)]
 mod host_void_tests;
 pub mod hosting;

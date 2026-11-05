@@ -1149,13 +1149,19 @@ fn solids_in_with(
         match e {
             Element::Wall(_) => out.extend(wall_solids(m, id, index)),
             Element::Floor(_) | Element::Ceiling(_) | Element::Roof(_) => out.extend(host_slab_solids(m, id, e)),
-            Element::Column(col) => {
-                out.push(slab(id, WALL, &m.column_outline(e), m.span(col.level, col.base_offset, col.top_level, col.height)))
-            }
-            // A steel section's: its outline up its height, or a tube's pieces round its hole.
-            Element::StructuralColumn(col) | Element::Footing(col) => {
-                let span = m.span(col.level, col.base_offset, col.top_level, col.height);
-                out.extend(m.column_pieces(e).iter().map(|ring| slab(id, STRUCTURE, ring, span)));
+            Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => {
+                let color = if matches!(e, Element::Column(_)) { WALL } else { STRUCTURE };
+                // Attached, its top follows what's over it, however that slopes: prisms, as a wall's.
+                let parts = walls::column_prisms(m, e);
+                if parts.is_empty() {
+                    let span = m.column_span(e);
+                    // A steel section's: its outline up its height, or a tube's pieces round its hole.
+                    match e {
+                        Element::Column(_) => out.push(slab(id, color, &m.column_outline(e), span)),
+                        _ => out.extend(m.column_pieces(e).iter().map(|ring| slab(id, color, ring, span))),
+                    }
+                }
+                out.extend(parts.into_iter().map(|p| Solid::Prism { owner: id, color, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: None }));
             }
             // A rectangular run is a prism of its outline — mitred where it joins, as the plan fills it — which a
             // section cuts; a round one a tube, its ends cut by the same planes, shown beyond its line; a steel

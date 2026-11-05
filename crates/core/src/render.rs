@@ -619,8 +619,8 @@ fn cut_outlines(m: &Model, elements: &[(Id, &Element)], z: f64, look: &Look, ind
 /// heights it reaches: its outline, its bottom and its top. A run's outline is its joined one, through `index`, as a
 /// wall's is in a plan.
 fn stands(m: &Model, id: Id, e: &Element, index: Option<&walls::Index>) -> Option<(Vec<P2>, f64, f64)> {
-    if let Some(col) = e.column() {
-        let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
+    if e.column().is_some() {
+        let (bottom, top) = m.column_span(e);
         return Some((m.column_outline(e), bottom, top));
     }
     let g = m.run_geom(e)?;
