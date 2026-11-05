@@ -1060,7 +1060,7 @@ fn curtain_parts<'a>(m: &'a Model, cat: &str) -> Vec<(Id, &'a Element, Value)> {
                     "area_m2": crate::commands::m2(along * up),
                 }),
                 PartKind::Mullion => {
-                    let length = if matches!(p.address, Address::Vertical { .. }) { up } else { along };
+                    let length = if matches!(p.address, Address::Vertical { .. } | Address::Corner { .. }) { up } else { along };
                     serde_json::json!({"id": id, "host": id, "type": s.type_name, "length": length})
                 }
             };

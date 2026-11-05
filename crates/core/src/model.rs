@@ -70,7 +70,8 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 18: a curtain wall, which a build that reads up to
+/// The version of the project file this build writes, and the newest it reads. 19: corner mullions and a curtain wall's manual
+/// grids, which 18 would leave out and lay out otherwise; a file of 18 gets the starter corner mullions. 18: a curtain wall, which a build that reads up to
 /// 17 would read as a solid wall; a file of 17 gets the starter panels and mullions. 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
@@ -109,7 +110,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 18;
+pub const FORMAT: u32 = 19;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -2561,6 +2562,9 @@ pub struct Types {
     /// The types of the mullion system families, what runs along a curtain wall's grid lines.
     #[serde(default)]
     pub mullion: BTreeMap<String, crate::curtain::MullionType>,
+    /// The types of the Corner Mullion system family, what stands where two curtain walls meet.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub corner_mullion: BTreeMap<String, crate::curtain::MullionType>,
 }
 
 /// What a project parameter holds: text, a number, a length (mm), or yes or no.
@@ -3362,6 +3366,10 @@ impl Model {
         if self.format < 18 {
             crate::curtain::starter_types(self);
         }
+        // 18 to 19: corner mullions and manual grids. A file of 18 gets the starter corner mullions; its patterns name none.
+        if self.format < 19 {
+            crate::curtain::corner_types(self);
+        }
         self.format = FORMAT;
     }
 
@@ -3935,6 +3943,7 @@ impl Model {
             "railing" => names(&self.types.railing),
             "curtainpanel" => names(&self.types.curtain_panel),
             "mullion" => names(&self.types.mullion),
+            "cornermullion" => names(&self.types.corner_mullion),
             run if RUN_CATEGORIES.contains(&run) => self.types.runs.get(run).map(names).unwrap_or_default(),
             _ => Vec::new(),
         }
@@ -3955,6 +3964,7 @@ impl Model {
             "railing" => "Railing - 1000mm",
             "curtainpanel" => crate::curtain::GLAZED,
             "mullion" => crate::curtain::RECTANGULAR_MULLION,
+            "cornermullion" => crate::curtain::RECTANGULAR_CORNER,
             "structuralcolumn" => "Concrete 300 x 300",
             "footing" => "Footing 1200 x 1200",
             "beam" => "Beam 200 x 500",

@@ -183,6 +183,9 @@ icon_names! {
     PickLines,
     JoinPolyline,
     ExplodePolyline,
+    CurtainGridVertical,
+    CurtainGridHorizontal,
+    CurtainSegment,
     TrimSingle,
     TrimMultiple,
     Insulation,
@@ -1569,6 +1572,34 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             if !compact {
                 g.line(&[(5.0, 4.0), (8.0, 6.5)]);
                 g.line(&[(19.0, 4.0), (16.0, 6.5)]);
+            }
+        }
+        Icon::CurtainGridVertical => {
+            // A panel of a curtain wall, a new line up through it.
+            g.closed(&[(4.0, 3.0), (20.0, 3.0), (20.0, 21.0), (4.0, 21.0)]);
+            g.line(&[(12.0, 3.0), (12.0, 21.0)]);
+            if !compact {
+                g.line(&[(8.0, 12.0), (10.5, 12.0)]);
+                g.line(&[(13.5, 12.0), (16.0, 12.0)]);
+            }
+        }
+        Icon::CurtainGridHorizontal => {
+            // A panel of a curtain wall, a new line across it.
+            g.closed(&[(4.0, 3.0), (20.0, 3.0), (20.0, 21.0), (4.0, 21.0)]);
+            g.line(&[(4.0, 12.0), (20.0, 12.0)]);
+            if !compact {
+                g.line(&[(12.0, 6.5), (12.0, 10.5)]);
+                g.line(&[(12.0, 13.5), (12.0, 17.5)]);
+            }
+        }
+        Icon::CurtainSegment => {
+            // A panel of a curtain wall, a stretch gone from the line up through it.
+            g.closed(&[(4.0, 3.0), (20.0, 3.0), (20.0, 21.0), (4.0, 21.0)]);
+            g.line(&[(12.0, 3.0), (12.0, 8.0)]);
+            g.line(&[(12.0, 16.0), (12.0, 21.0)]);
+            if !compact {
+                g.line(&[(9.5, 10.0), (14.5, 14.0)]);
+                g.line(&[(14.5, 10.0), (9.5, 14.0)]);
             }
         }
         Icon::ExplodePolyline => {

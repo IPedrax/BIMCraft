@@ -134,6 +134,19 @@ fn edit_pattern_adds_segments_and_sets_each_panel_and_mullion() {
 }
 
 #[test]
+fn edit_pattern_fits_evenly_and_anchors_rows_to_levels() {
+    let mut h = app(LOOSE);
+    h.state_mut().open_curtain_editor("Loose CW");
+    h.run();
+    choose(&mut h, "Column Fit", "Fit Evenly");
+    pick(&mut h, egui::accesskit::Role::CheckBox, "Restart pattern at levels crossing");
+    press(&mut h, "OK");
+    let l = h.state().session.model.types.wall["Loose CW"].curtain.clone().unwrap();
+    assert_eq!(l.columns.fit, bimcraft_core::curtain::Fit::Evenly);
+    assert!(l.anchor_rows);
+}
+
+#[test]
 fn cancel_leaves_the_pattern_as_it_was() {
     let mut h = app(LOOSE);
     let before = h.state().session.model.types.wall["Loose CW"].clone();
@@ -229,6 +242,7 @@ fn tab_goes_from_a_selected_curtain_wall_to_the_parts_under_the_cursor_and_back(
     let mut h = app(TALL);
     tab_to(&mut h, 2000.0, 1);
     assert_eq!(h.state().curtain_part, Some((id, Vertical { column: 1, row: 0 })));
+    key(&mut h, Key::Tab);
     key(&mut h, Key::Tab);
     assert_eq!(h.state().curtain_part, Some((id, Cell { column: 1, row: 0 })));
     // Selecting something else lets it go.
@@ -339,6 +353,9 @@ fn visibility_graphics_lists_panels_and_mullions_under_walls_and_tab_skips_what_
     let at = h.state().screen(bimcraft_core::walls::Axis::of(&w).at(1960.0, plane));
     h.hover_at(at);
     h.run();
+    // The mullion is hidden: its grid, which is no part to hide, and the panel.
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().curtain_part, Some((id, bimcraft_core::curtain::Address::VerticalGrid { column: 1, row: 0 })));
     key(&mut h, Key::Tab);
     assert_eq!(h.state().curtain_part, Some((id, Cell { column: 0, row: 0 })));
 }
@@ -369,4 +386,363 @@ fn tab_in_a_section_reaches_a_part_of_the_wall_it_looks_at() {
     h.run();
     key(&mut h, Key::Tab);
     assert_eq!(h.state().curtain_part, Some((id, Cell { column: 0, row: 1 })), "the upper row");
+}
+
+// ---------- grids by hand, and parts by Tab ----------
+
+fn manual_lines(h: &Harness<BimApp>, id: Id) -> Vec<f64> {
+    let m = &h.state().session.model;
+    let w = m.wall(id).unwrap();
+    bimcraft_core::curtain::layout(m, w).columns.iter().filter(|c| c.manual).map(|c| c.from).collect()
+}
+
+/// The tall wall selected and the Modify tab's panel on it.
+fn select_tall(h: &mut Harness<BimApp>) -> Id {
+    let id = tall_wall(h);
+    h.state_mut().selection = vec![id];
+    h.state_mut().tab = crate::Tab::Modify;
+    h.run();
+    id
+}
+
+#[test]
+fn a_selected_curtain_wall_offers_grids_and_a_click_on_it_places_one_with_its_mullion() {
+    use bimcraft_core::curtain::{Address, GridWay};
+    let mut h = app(TALL);
+    assert!(h.query_by_label(crate::lang::t("Add Vertical Grid")).is_none(), "only with a curtain wall selected");
+    let id = select_tall(&mut h);
+    press(&mut h, "Add Vertical Grid");
+    assert_eq!(h.state().tool, crate::Tool::CurtainGrid { wall: id, way: GridWay::Vertical });
+    assert_eq!(h.state().selection, [id], "the wall stays selected");
+    let at = h.state().screen(P2(1500.0, 0.0));
+    h.hover_at(at);
+    h.run();
+    h.run();
+    assert!(h.state().curtain_grid_hover().is_some_and(|(_, x, _)| (x - 1500.0).abs() < 30.0), "the place lights up");
+    click(&mut h, P2(1500.0, 0.0));
+    let lines = manual_lines(&h, id);
+    assert_eq!(lines.len(), 1, "one manual grid");
+    assert!((lines[0] - 1500.0).abs() < 30.0, "{lines:?}");
+    let m = &h.state().session.model;
+    let l = bimcraft_core::curtain::layout(m, m.wall(id).unwrap());
+    let c = l.columns.iter().find(|c| c.manual).unwrap().index;
+    assert!(l.parts.iter().any(|p| matches!(p.address, Address::Vertical { column, .. } if column == c)), "with mullions");
+    // It goes on placing until Esc, the wall still selected.
+    click(&mut h, P2(3500.0, 0.0));
+    assert_eq!(manual_lines(&h, id).len(), 2);
+    key(&mut h, Key::Escape);
+    assert_eq!(h.state().tool, crate::Tool::Modify);
+    assert_eq!(h.state().selection, [id]);
+}
+
+#[test]
+fn horizontal_grids_are_placed_on_a_section_not_a_plan() {
+    use bimcraft_core::curtain::GridWay;
+    let script = format!("{TALL}\nsection {{\"start\": [-1000, -3000], \"end\": [9000, -3000]}}");
+    let mut h = app(&script);
+    let id = select_tall(&mut h);
+    press(&mut h, "Add Horizontal Grid");
+    assert_eq!(h.state().tool, crate::Tool::CurtainGrid { wall: id, way: GridWay::Horizontal });
+    click(&mut h, P2(1500.0, 0.0));
+    let rows = |h: &Harness<BimApp>| {
+        let m = &h.state().session.model;
+        bimcraft_core::curtain::layout(m, m.wall(id).unwrap()).rows.iter().filter(|r| r.manual).count()
+    };
+    assert_eq!(rows(&h), 0, "a plan can't say how high");
+    assert!(h.state().status.error, "and says where to do it");
+    let view = {
+        let m = &h.state().session.model;
+        m.elements.iter().find_map(|(k, e)| matches!(e, Element::Section(_)).then_some(*k)).unwrap()
+    };
+    h.state_mut().open_sheet(Sheet::Section(view));
+    h.run();
+    let (m, w) = (&h.state().session.model, walls(&h).into_iter().find(|x| x.0 == id).unwrap().1);
+    let q = bimcraft_core::walls::Axis::of(&w).at(1000.0, bimcraft_core::curtain::grid_plane(m, &w));
+    let shown = h.state().canvas.view(view).unwrap();
+    let (cam, _) = bimcraft_core::render::section_camera(m, view, shown).unwrap();
+    let (x, y, _) = cam.project([q.0, q.1, 4500.0]);
+    let at = h.state().canvas.rect.min + egui::vec2(x as f32, y as f32);
+    h.hover_at(at);
+    h.run();
+    h.run();
+    click_at(&mut h, at);
+    h.run();
+    assert_eq!(rows(&h), 1, "a click on the section places it: {:?} {:?}", h.state().status.text, h.state().tool);
+}
+
+#[test]
+fn tab_goes_through_the_mullion_the_grid_and_the_panel() {
+    use bimcraft_core::curtain::Address::{Cell, Vertical, VerticalGrid};
+    let mut h = app(TALL);
+    let id = tall_wall(&h);
+    tab_to(&mut h, 2000.0, 1);
+    assert_eq!(h.state().curtain_part, Some((id, Vertical { column: 1, row: 0 })));
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().curtain_part, Some((id, VerticalGrid { column: 1, row: 0 })));
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().curtain_part, Some((id, Cell { column: 1, row: 0 })));
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().curtain_part, None);
+}
+
+#[test]
+fn tab_on_a_curtain_wall_not_selected_yet_selects_it_and_its_part() {
+    use bimcraft_core::curtain::Address::Cell;
+    let mut h = app(TALL);
+    let id = tall_wall(&h);
+    assert!(h.state().selection.is_empty());
+    let at = h.state().screen(P2(1000.0, 0.0));
+    h.hover_at(at);
+    h.run();
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().selection, [id]);
+    assert_eq!(h.state().curtain_part, Some((id, Cell { column: 0, row: 0 })));
+}
+
+#[test]
+fn right_click_on_a_mullion_selects_all_along_its_grid_and_they_change_type_together() {
+    use crate::context::Action;
+    let mut h = app(TALL);
+    let id = tall_wall(&h);
+    let offered =
+        |h: &Harness<BimApp>| h.state().context_items().iter().flatten().any(|i| i.action == Action::SelectAlongGrid && i.enabled);
+    tab_to(&mut h, 2000.0, 1);
+    assert!(offered(&h), "a mullion offers it");
+    h.state_mut().act(Action::SelectAlongGrid);
+    h.run();
+    let m = &h.state().session.model;
+    let rows = bimcraft_core::curtain::layout(m, m.wall(id).unwrap()).rows.len();
+    assert_eq!(h.state().curtain_parts_picked().len(), rows, "every row's");
+    let (first, more) = (h.state().curtain_part, h.state().curtain_parts_picked());
+    assert!(first.is_some());
+    assert!(more.iter().all(|a| matches!(a, bimcraft_core::curtain::Address::Vertical { column: 1, .. })));
+    h.state_mut().session.execute("type", &serde_json::json!({"category": "mullion", "name": "Fat", "width": 80, "depth": 150})).unwrap();
+    h.state_mut().set_curtain_part_type(Some("Fat".into()));
+    h.run();
+    let m = &h.state().session.model;
+    let l = bimcraft_core::curtain::layout(m, m.wall(id).unwrap());
+    let fat = l.parts.iter().filter(|p| l.shapes[p.shape as usize].type_name == "Fat").count();
+    assert_eq!(fat, rows);
+    // A panel doesn't offer it.
+    key(&mut h, Key::Escape);
+    let mut h = app(TALL);
+    tab_to(&mut h, 1000.0, 1);
+    assert!(!offered(&h));
+}
+
+#[test]
+fn a_grid_picked_by_tab_moves_with_the_move_tool_and_becomes_manual() {
+    use bimcraft_core::curtain::Address::VerticalGrid;
+    let mut h = app(TALL);
+    let id = tall_wall(&h);
+    tab_to(&mut h, 2000.0, 2);
+    assert_eq!(h.state().curtain_part, Some((id, VerticalGrid { column: 1, row: 0 })));
+    assert_eq!(manual_lines(&h, id).len(), 0);
+    h.state_mut().set_tool(crate::Tool::Move(None));
+    h.run();
+    click(&mut h, P2(2000.0, 0.0));
+    click(&mut h, P2(2300.0, 0.0));
+    let lines = manual_lines(&h, id);
+    assert_eq!(lines.len(), 1, "moved, it's manual");
+    assert!((lines[0] - 2300.0).abs() < 1.0, "{lines:?}");
+    let w = walls(&h).into_iter().find(|x| x.0 == id).unwrap().1;
+    assert_eq!((w.start, w.end), (P2(0.0, 0.0), P2(4000.0, 0.0)), "the wall stayed where it is");
+    let part = h.state().curtain_part;
+    assert!(matches!(part, Some((_, VerticalGrid { .. }))), "and it stays picked: {part:?}");
+    // Del on a manual grid takes it off, and the pattern's comes back.
+    let picked = part.unwrap().1;
+    h.state_mut().delete_curtain_part(id, picked);
+    h.run();
+    assert!(manual_lines(&h, id).is_empty());
+}
+
+#[test]
+fn properties_says_whether_a_grid_is_auto_or_manual() {
+    let mut h = app(TALL);
+    let id = tall_wall(&h);
+    tab_to(&mut h, 2000.0, 2);
+    h.run();
+    assert!(h.query_by_label("Grid Kind: Auto").is_some(), "from the pattern");
+    h.state_mut().set_curtain_grid_manual(true);
+    h.run();
+    h.run();
+    assert_eq!(manual_lines(&h, id).len(), 1, "made manual where it stands");
+    assert!(h.query_by_label("Grid Kind: Manual").is_some());
+}
+
+#[test]
+fn the_browser_lists_the_corner_mullion_family_and_its_rotation_is_typed_in_degrees() {
+    let h = app(TALL);
+    let d = crate::properties::TypeDialog::new(
+        &h.state().session.model,
+        "cornermullion",
+        bimcraft_core::curtain::RECTANGULAR_CORNER.to_string(),
+        Vec::new(),
+    );
+    let rotation = d.field_text("rotation").unwrap();
+    assert_eq!(rotation.trim_end_matches('°').trim(), "45");
+    assert!(h.state().session.model.type_names("cornermullion").len() == 2);
+}
+
+#[test]
+fn a_horizontal_grid_picked_in_a_section_moves_with_the_move_tool() {
+    use bimcraft_core::curtain::Address::HorizontalGrid;
+    let script = format!("{TALL}\nsection {{\"start\": [-1000, -3000], \"end\": [9000, -3000]}}");
+    let mut h = app(&script);
+    let id = tall_wall(&h);
+    let view = {
+        let m = &h.state().session.model;
+        m.elements.iter().find_map(|(k, e)| matches!(e, Element::Section(_)).then_some(*k)).unwrap()
+    };
+    h.state_mut().open_sheet(Sheet::Section(view));
+    h.run();
+    h.state_mut().selection = vec![id];
+    h.state_mut().curtain_part = Some((id, HorizontalGrid { column: 0, row: 1 }));
+    h.run();
+    h.state_mut().set_tool(crate::Tool::Move(None));
+    h.run();
+    let (m, w) = (&h.state().session.model, walls(&h).into_iter().find(|x| x.0 == id).unwrap().1);
+    let q = bimcraft_core::walls::Axis::of(&w).at(1000.0, bimcraft_core::curtain::grid_plane(m, &w));
+    let shown = h.state().canvas.view(view).unwrap();
+    let (cam, _) = bimcraft_core::render::section_camera(m, view, shown).unwrap();
+    let on = |z: f64| {
+        let (x, y, _) = cam.project([q.0, q.1, z]);
+        h.state().canvas.rect.min + egui::vec2(x as f32, y as f32)
+    };
+    let (from, to) = (on(3000.0), on(3600.0));
+    click_at(&mut h, from);
+    h.run();
+    click_at(&mut h, to);
+    h.run();
+    let m = &h.state().session.model;
+    let l = bimcraft_core::curtain::layout(m, m.wall(id).unwrap());
+    let moved: Vec<f64> = l.rows.iter().filter(|r| r.manual).map(|r| r.from).collect();
+    assert_eq!(moved.len(), 1, "{:?}", h.state().status.text);
+    assert!((moved[0] - 3600.0).abs() < 60.0, "{moved:?}");
+}
+
+#[test]
+fn with_nothing_to_snap_to_a_click_lands_where_it_is_with_no_10_mm_grid() {
+    let mut h = app("");
+    h.state_mut().grid_snapping = false;
+    h.state_mut().set_tool(crate::Tool::Wall(Vec::new()));
+    h.run();
+    click(&mut h, P2(1003.0, 2007.0));
+    click(&mut h, P2(5003.0, 2007.0));
+    let w = walls(&h).into_iter().next().map(|x| x.1).expect("a wall");
+    assert!(w.start.dist(P2(1003.0, 2007.0)) < 0.5, "{:?}", w.start);
+    assert!(w.end.dist(P2(5003.0, 2007.0)) < 0.5, "{:?}", w.end);
+}
+
+#[test]
+fn a_curtain_grid_lands_where_it_is_clicked_with_no_10_mm_grid() {
+    let mut h = app(TALL);
+    let id = select_tall(&mut h);
+    press(&mut h, "Add Vertical Grid");
+    click(&mut h, P2(1503.0, 0.0));
+    let lines = manual_lines(&h, id);
+    assert!((lines[0] - 1503.0).abs() < 0.5, "{lines:?}");
+}
+
+#[test]
+fn type_properties_of_a_corner_mullion_has_an_auto_rotation_box() {
+    let mut h = app("");
+    let d = crate::properties::TypeDialog::new(
+        &h.state().session.model,
+        "cornermullion",
+        bimcraft_core::curtain::SQUARE_CORNER.to_string(),
+        Vec::new(),
+    );
+    h.state_mut().type_dialog = Some(d);
+    h.run();
+    assert!(!h.state().session.model.types.corner_mullion[bimcraft_core::curtain::SQUARE_CORNER].auto_rotation);
+    press(&mut h, "Auto Rotation");
+    press(&mut h, "OK");
+    assert!(h.state().session.model.types.corner_mullion[bimcraft_core::curtain::SQUARE_CORNER].auto_rotation);
+}
+
+#[test]
+fn a_curtain_wall_selected_isnt_tinted_and_tab_marks_the_part_in_a_lighter_blue_than_the_hover() {
+    let mut h = app(TALL);
+    let id = tall_wall(&h);
+    let m = &h.state().session.model;
+    assert_eq!(crate::curtain::tinted_selection(m, &[id]), Vec::<u64>::new(), "its parts stay as they are drawn");
+    assert_eq!(crate::curtain::tinted_hover(m, &[id], Some(id)), None);
+    assert_eq!(crate::curtain::tinted_hover(m, &[], Some(id)), Some(id), "until it's selected, hovering it lights it");
+    // Lighter than the hover, in each look: more of each channel.
+    let (picked, hover) = (crate::curtain::picked_part_color(), crate::style::canvas_pal().accent);
+    assert!(picked.r() > hover.r() && picked.g() > hover.g(), "{picked:?} {hover:?}");
+    // Under the cursor, what Tab would go to shows; Tab goes there and the next shows.
+    tab_to(&mut h, 2000.0, 1);
+    let picked = h.state().curtain_part;
+    assert!(picked.is_some());
+    h.run();
+    assert!(h.state().curtain_aim.is_some(), "the next one is lit");
+    assert_ne!(h.state().curtain_aim, picked);
+}
+
+#[test]
+fn tab_reaches_a_grid_line_in_a_section_far_zoomed_out() {
+    use bimcraft_core::curtain::Address::VerticalGrid;
+    let m_id = |h: &Harness<BimApp>| {
+        let m = &h.state().session.model;
+        m.elements.iter().find_map(|(k, e)| matches!(e, Element::Section(_)).then_some(*k)).unwrap()
+    };
+    let script = format!("{TALL}\nsection {{\"start\": [-1000, -3000], \"end\": [9000, -3000]}}");
+    let mut h = app(&script);
+    let id = select_tall(&mut h);
+    let view = m_id(&h);
+    let m = h.state().session.model.clone();
+    let w = m.wall(id).unwrap();
+    // 40 px a metre: a mullion is two pixels, and six pixels off the line is 150 mm.
+    let list = crate::curtain::parts_on_ray(&m, view, id, ray(w, 2000.0 + 140.0).0, ray(w, 2000.0 + 140.0).1, 25.0).unwrap();
+    assert!(list.iter().any(|a| matches!(a, VerticalGrid { .. })), "{list:?}");
+    let near = crate::curtain::parts_on_ray(&m, view, id, ray(w, 2000.0 + 140.0).0, ray(w, 2000.0 + 140.0).1, 1.0).unwrap();
+    assert!(!near.iter().any(|a| matches!(a, VerticalGrid { .. })), "close in it's only 60 mm: {near:?}");
+}
+
+/// A ray straight through a wall along x at `along`, 1500 mm up.
+fn ray(w: &bimcraft_core::model::Wall, along: f64) -> ([f64; 3], [f64; 3]) {
+    let q = bimcraft_core::walls::Axis::of(w).at(along, 0.0);
+    ([q.0, q.1 - 1000.0, 1500.0], [q.0, q.1 + 1000.0, 1500.0])
+}
+
+#[test]
+fn add_remove_segments_clicked_in_a_section_merges_the_panels_and_a_second_click_splits_them() {
+    let script = format!("{TALL}\nsection {{\"start\": [-1000, -3000], \"end\": [9000, -3000]}}");
+    let mut h = app(&script);
+    let id = select_tall(&mut h);
+    press(&mut h, "Add/Remove Segments");
+    assert_eq!(h.state().tool, crate::Tool::CurtainSegment { wall: id });
+    assert_eq!(h.state().selection, [id], "the wall stays selected");
+    click(&mut h, P2(1500.0, 0.0));
+    assert!(h.state().status.error, "a plan says where to do it");
+    let view = {
+        let m = &h.state().session.model;
+        m.elements.iter().find_map(|(k, e)| matches!(e, Element::Section(_)).then_some(*k)).unwrap()
+    };
+    h.state_mut().open_sheet(Sheet::Section(view));
+    h.run();
+    assert_eq!(h.state().tool, crate::Tool::CurtainSegment { wall: id }, "it stays on in a section");
+    let line = bimcraft_core::curtain::layout(&h.state().session.model, h.state().session.model.wall(id).unwrap()).columns[1].from;
+    let (m, w) = (&h.state().session.model, walls(&h).into_iter().find(|x| x.0 == id).unwrap().1);
+    let q = bimcraft_core::walls::Axis::of(&w).at(line + 20.0, bimcraft_core::curtain::grid_plane(m, &w));
+    let shown = h.state().canvas.view(view).unwrap();
+    let (cam, _) = bimcraft_core::render::section_camera(m, view, shown).unwrap();
+    let (x, y, _) = cam.project([q.0, q.1, 500.0]);
+    let at = h.state().canvas.rect.min + egui::vec2(x as f32, y as f32);
+    let removed = |h: &Harness<BimApp>| h.state().session.model.wall(id).unwrap().curtain.as_ref().map_or(0, |e| e.removed.len());
+    h.hover_at(at);
+    h.run();
+    h.run();
+    assert!(h.state().curtain_segment_hover.is_some(), "the stretch lights up");
+    click_at(&mut h, at);
+    h.run();
+    assert_eq!(removed(&h), 1, "{:?}", h.state().status.text);
+    click_at(&mut h, at);
+    h.run();
+    assert_eq!(removed(&h), 0, "and back: {:?}", h.state().status.text);
+    key(&mut h, Key::Escape);
+    assert_eq!(h.state().tool, crate::Tool::Modify);
+    assert_eq!(h.state().selection, [id]);
 }

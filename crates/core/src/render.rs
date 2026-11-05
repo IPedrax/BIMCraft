@@ -781,18 +781,35 @@ fn cut_unions(look: &Look, outlines: impl Iterator<Item = (Id, Vec<P2>)>) -> Vec
     unions
 }
 
-/// A curtain wall in a plan: the mullions the cut plane passes through filled and inked, the panels it passes through thin
-/// (at coarse detail, a line down their middle), and what stands under it as seen from above, each place once however many
-/// parts stand there.
-fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, id: Id, w: &crate::model::Wall, range: &PlanRange, up: bool) {
+/// A curtain wall a plan draws, with its layout.
+type CurtainInPlan<'a> = (Id, &'a crate::model::Wall, crate::curtain::Layout);
+
+/// The curtain walls among `shown` the view's range reaches.
+fn curtains_in_plan<'a>(m: &'a Model, range: &PlanRange, shown: impl Fn(Id) -> bool) -> Vec<CurtainInPlan<'a>> {
+    let reached = |w: &crate::model::Wall| range.depth < m.own_top(w) && m.own_base(w) <= range.cut;
+    m.elements
+        .iter()
+        .filter_map(|(&id, e)| match e {
+            Element::Wall(w) if shown(id) && crate::curtain::pattern(m, w).is_some() && reached(w) => {
+                Some((id, w, crate::curtain::layout(m, w)))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// A curtain wall in a plan, in two passes, as the rest of a plan is. With `seen`, what stands under the cut plane as seen from
+/// above, each place once however many parts stand there: every wall's goes before any wall's cut, so what the plan cuts hides it,
+/// whichever wall holds either (a corner mullion stands on one of its two walls, over the mitre of both). Without, the mullions the
+/// cut plane passes through filled and inked, and the panels it passes through thin (at coarse detail, a line down their middle).
+fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, wall: &CurtainInPlan, range: &PlanRange, seen: bool) {
     use crate::curtain::{self, PartKind};
-    let (base, top) = (m.own_base(w), m.own_top(w));
-    if !(range.depth < top && base <= range.cut) {
-        return;
-    }
-    let l = curtain::layout(m, w);
-    let (axis, plane, cut) = (walls::Axis::of(w), curtain::grid_plane(m, w), range.cut - base);
+    let (id, w, l) = (wall.0, wall.1, &wall.2);
+    let (axis, plane, cut) = (walls::Axis::of(w), curtain::grid_plane(m, w), range.cut - m.own_base(w));
     let ring = |p: &curtain::Part, s: &curtain::Shape| -> Vec<P2> {
+        if p.turn != 0.0 || s.plan.is_some() {
+            return p.corners(s).iter().map(|q| axis.at(q[0], plane + q[1])).collect();
+        }
         let [along, _, across] = p.centre;
         let [da, _, dc] = s.size.map(|x| x / 2.0);
         let c = plane + across;
@@ -811,17 +828,23 @@ fn curtain_plan(d: &mut Drawing, m: &Model, look: &Look, id: Id, w: &crate::mode
         }
     };
     d.owner = Some(id);
-    let mut seen = std::collections::HashSet::new();
-    d.part(Part::Projection);
-    for p in l.parts.iter().filter(|_| !up) {
-        let Some(s) = l.shapes.get(p.shape as usize).filter(|s| look.shows_part(s.kind)) else { continue };
-        if p.centre[1] + s.size[1] / 2.0 <= cut {
-            let r = ring(p, s);
-            let key = (s.kind, r.iter().map(|q| ((q.0 * 10.0) as i64, (q.1 * 10.0) as i64)).collect::<Vec<_>>());
-            if seen.insert(key) {
-                ink(d, &r, s.kind, false, true);
+    if seen {
+        let mut places = std::collections::HashSet::new();
+        d.part(Part::Projection);
+        for piece in l.pieces() {
+            let Some(p) = l.parts.get(piece.first) else { continue };
+            let Some(s) = l.shapes.get(p.shape as usize).filter(|s| look.shows_part(s.kind)) else { continue };
+            if piece.centre[1] + piece.size[1] / 2.0 <= cut {
+                // One piece, however many parts: no joint where a mullion runs on.
+                let whole = curtain::Part { centre: piece.centre, ..*p };
+                let r = if s.plan.is_some() { ring(p, s) } else { ring(&whole, &curtain::Shape { size: piece.size, ..s.clone() }) };
+                let key = (s.kind, r.iter().map(|q| ((q.0 * 10.0) as i64, (q.1 * 10.0) as i64)).collect::<Vec<_>>());
+                if places.insert(key) {
+                    ink(d, &r, s.kind, false, true);
+                }
             }
         }
+        return;
     }
     d.part(Part::Cut);
     let crossing = |p: &curtain::Part, s: &curtain::Shape| (p.centre[1] - s.size[1] / 2.0 <= cut) && (cut < p.centre[1] + s.size[1] / 2.0);
@@ -2828,6 +2851,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             }
         }
     }
+    let curtains = curtains_in_plan(m, &range, shown);
+    for wall in curtains.iter().filter(|_| !up) {
+        curtain_plan(&mut d, m, &look, wall, &range, true);
+    }
     d.part(Part::Cut);
     let outlines = cut_outlines(m, &elements, range.cut, &look, index);
     // Poché first, then the outlines over it, but for where walls meet at their joins: only the edge
@@ -2858,12 +2885,8 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             ink_cut(&mut d, &run);
         }
     }
-    for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
-        if let Element::Wall(w) = e
-            && crate::curtain::pattern(m, w).is_some()
-        {
-            curtain_plan(&mut d, m, &look, id, w, &range, up);
-        }
+    for wall in &curtains {
+        curtain_plan(&mut d, m, &look, wall, &range, false);
     }
     // A compound wall's layers: each its material's cut pattern where it's wide enough to hold it,
     // else lighter where it isn't the wall's structure; a thin line between each two. A column the plan cuts stands in the wall's

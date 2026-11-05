@@ -378,15 +378,38 @@ pub static ALL: &[Command] = &[
         "curtain_part",
         ui_msg!("Curtain Part"),
         &[],
-        "{wall, part: panel|vertical|horizontal, column, row, type: name|null | reset: true} gives one part of a curtain wall \
-         another type, or with null none at all, or with `reset` what its pattern says. `curtain_parts` lists where they are. \
-         Returns the edit's `id`",
+        "{wall, part: panel|vertical|horizontal|corner, column, row | parts: [{part, column, row}, …], type: name|null | reset: true} \
+         gives one part of a curtain wall, or several in one step, another type, or with null none at all, or with `reset` what its \
+         pattern says. A `corner` is the corner mullion at the wall's start (column 0) or end (1), row 0, on the wall that holds it; \
+         with none, the walls take their borders there. `curtain_parts` lists where they are. Returns the edit's `id`",
         curtain_part,
+    ),
+    edit(
+        "curtain_grid",
+        ui_msg!("Curtain Grid"),
+        &[],
+        "{wall, way: vertical|horizontal, at | line, at | line, reset: true} adds a grid line to one curtain wall, `at` mm along it \
+         from its start or up from its base; with the mullion of the pattern's A1. Or moves `line`, a grid's column or row as \
+         `curtain_parts` lists it, to `at`. A grid added or moved is `manual`, and stays when the pattern changes, which moves all the \
+         `auto` ones. `reset` takes a manual grid off: one moved goes back to its pattern's place. Returns its `line`, `id` and `guid`",
+        curtain_grid,
+    ),
+    edit(
+        "curtain_segment",
+        ui_msg!("Add/Remove Segments"),
+        &[],
+        "{wall, parts: [{part: vertical|horizontal, column, row}, …] | part, column, row, restore?: true} takes segments of a curtain \
+         wall's grid lines off, as Revit's Add/Remove Segments: a segment is the stretch of a line beside one cell, named as `curtain_parts` \
+         names the mullion on it. The cells either side make one panel, of the first cell's type, and its mullion goes. A merge must be a \
+         rectangle, and what's left inside one goes too; a border can't go, nor a line beside a wall standing in a cell. `restore` puts \
+         back the whole line through the merged panel, leaving two. Returns the wall's `removed`",
+        curtain_segment,
     ),
     other(
         "curtain_parts",
         ui_msg!("Curtain Parts"),
-        "{wall} a curtain wall's parts (part, column, row, type, size, centre), its `edits` and the `walls` in its cells",
+        "{wall} a curtain wall's parts (part, column, row, type, size, centre, turn), its `grids` (way, line, at, kind: auto|manual), \
+         its `edits`, the `walls` in its cells and the segments `removed` from its grid lines",
         curtain_parts,
     ),
     edit(
@@ -949,10 +972,12 @@ pub static ALL: &[Command] = &[
         "Edit Type",
         &[],
         "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|beam|stripfooting|pipe|duct|conduit|\
-         cabletray|wire|downconductor|groundconductor|cable|curtainpanel|mullion, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
+         cabletray|wire|downconductor|groundconductor|cable|curtainpanel|mullion|cornermullion, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
          material? | height?, spacing?} creates the type, or changes it everywhere it's used. A curtain panel's type is a `thickness`, a \
          `material` and an `offset` from the grid's plane toward the exterior. A mullion's is a `width` along the wall's face, a `depth` \
-         across it, a `material`, and `offset_x` along the face and `offset_y` toward the exterior, both from its centre. A column's, a structural column's or \
+         across it, a `material`, and `offset_x` along the face and `offset_y` toward the exterior, both from its centre. A corner mullion's \
+         is the same with `rotation`, degrees from the wall that holds it toward the other, `auto_rotation` to add half the corner's turn to it, \
+         which keeps a rotation of 0 square to the corner's diagonal at any angle, and its offsets from the two walls' grid planes. A column's, a structural column's or \
          a footing's type is a `width` by `depth`, or `round` (`width` across); a run's (a beam's, a pipe's, a cable tray's…) too, \
          made of a `material` of the library. A wall type may have `layers` [{function?: structure|\
          substrate|thermal|membrane|finish, material?, thickness}, …] from its exterior side in: it's as thick as they are, \
@@ -6759,52 +6784,206 @@ fn whole(c: &str, p: &Value, key: &str) -> Result<i64, String> {
     p.get(key).and_then(Value::as_i64).ok_or_else(|| bad(c, format!("`{key}` is a whole number, as `curtain_parts` lists")))
 }
 
+/// The places a `curtain_part` names: its `parts`, or the one its `part`, `column` and `row` say.
+fn part_places(c: &str, p: &Value) -> Result<Vec<crate::curtain::Address>, String> {
+    const MAX_PLACES: usize = 100_000;
+    let one = |x: &Value| {
+        let part = string(c, x, "part")?.ok_or_else(|| bad(c, "`part` is required: panel, vertical, horizontal or corner"))?;
+        crate::curtain::address(&part, whole(c, x, "column")?, whole(c, x, "row")?)
+            .ok_or_else(|| bad(c, format!("`part` is panel, vertical, horizontal or corner, not `{part}`")))
+    };
+    match p.get("parts") {
+        None => Ok(vec![one(p)?]),
+        Some(Value::Array(list)) if !list.is_empty() && list.len() <= MAX_PLACES => list.iter().map(one).collect(),
+        Some(v) => Err(bad(c, format!("`parts` is a list of up to {MAX_PLACES} {{part, column, row}}, got {v}"))),
+    }
+}
+
 fn curtain_part(s: &mut Session, p: &Value) -> R {
+    use crate::curtain::Address;
     let c = "curtain_part";
     let m = &s.model;
     let id = curtain_host(c, m, p)?;
-    let part = string(c, p, "part")?.ok_or_else(|| bad(c, "`part` is required: panel, vertical or horizontal"))?;
-    let (column, row) = (whole(c, p, "column")?, whole(c, p, "row")?);
-    let at = crate::curtain::address(&part, column, row)
-        .ok_or_else(|| bad(c, format!("`part` is panel, vertical or horizontal, not `{part}`")))?;
+    let places = part_places(c, p)?;
     let reset = flag(c, p, "reset")?;
     let given = match p.get("type") {
         _ if reset => None,
         None => return Err(bad(c, "`type` (a name, or null for none) or `reset: true` is required")),
         Some(Value::Null) => None,
-        Some(Value::String(n)) => {
-            let (known, family) = if part == "panel" {
-                (m.types.curtain_panel.contains_key(n), "curtain panel")
-            } else {
-                (m.types.mullion.contains_key(n), "mullion")
+        Some(Value::String(n)) => Some(n.clone()),
+        Some(v) => return Err(bad(c, format!("`type` is a name or null, got {v}"))),
+    };
+    let host = m.wall(id).ok_or_else(|| bad(c, format!("no wall {id}")))?;
+    let laid = crate::curtain::layout(m, host);
+    for at in &places {
+        if let Some(n) = &given {
+            let (known, family) = match at {
+                Address::Cell { .. } => (m.types.curtain_panel.contains_key(n), "curtain panel"),
+                Address::Corner { .. } => (m.types.corner_mullion.contains_key(n), "corner mullion"),
+                _ => (m.types.mullion.contains_key(n), "mullion"),
             };
             if !known {
                 return Err(bad(c, format!("`{n}` isn't a {family} type")));
             }
-            Some(n.clone())
         }
-        Some(v) => return Err(bad(c, format!("`type` is a name or null, got {v}"))),
-    };
-    let host = m.wall(id).ok_or_else(|| bad(c, format!("no wall {id}")))?;
-    if !reset && !crate::curtain::layout(m, host).has(at) {
-        return Err(bad(c, format!("no such {part} on wall {id} at column {column}, row {row}; `curtain_parts` lists them")));
+        if !reset && !laid.has(*at) {
+            return Err(bad(c, format!("no such part on wall {id} at {at:?}; `curtain_parts` lists them")));
+        }
     }
     let model = s.model_mut();
     let Some(Element::Wall(w)) = model.elements.get_mut(id) else { return Err(bad(c, format!("no wall {id}"))) };
     let mut edits = w.curtain.take().unwrap_or_default();
-    if reset {
-        edits.parts.retain(|e| e.at != at);
-    } else if let Some(e) = edits.parts.iter_mut().find(|e| e.at == at) {
-        e.type_name = given;
-    } else {
-        edits.parts.push(crate::curtain::PartEdit { at, type_name: given, ..Default::default() });
+    for at in &places {
+        if reset {
+            edits.parts.retain(|e| e.at != *at);
+        } else if let Some(e) = edits.parts.iter_mut().find(|e| e.at == *at) {
+            e.type_name = given.clone();
+        } else {
+            edits.parts.push(crate::curtain::PartEdit { at: *at, type_name: given.clone(), ..Default::default() });
+        }
     }
     w.curtain = (edits != Default::default()).then_some(edits);
     // It has its id and GUID at once, to answer with.
     model.sync_library();
     let Some(Element::Wall(w)) = model.elements.get(id) else { return Err(bad(c, format!("no wall {id}"))) };
-    let edit = w.curtain.iter().flat_map(|e| &e.parts).find(|e| e.at == at);
+    let edit = w.curtain.iter().flat_map(|e| &e.parts).find(|e| places.first() == Some(&e.at));
     Ok(json!({"wall": id, "id": edit.map(|e| e.id), "guid": edit.map(|e| e.guid)}))
+}
+
+fn curtain_grid(s: &mut Session, p: &Value) -> R {
+    use crate::curtain::{Grid, GridWay, MANUAL_LINE};
+    let c = "curtain_grid";
+    let m = &s.model;
+    let id = curtain_host(c, m, p)?;
+    let way = match string(c, p, "way")?.as_deref() {
+        Some("vertical") => GridWay::Vertical,
+        Some("horizontal") => GridWay::Horizontal,
+        other => return Err(bad(c, format!("`way` is vertical or horizontal, not {other:?}"))),
+    };
+    let w = m.wall(id).ok_or_else(|| bad(c, format!("no wall {id}")))?;
+    let laid = crate::curtain::layout(m, w);
+    let spans = if way == GridWay::Vertical { &laid.columns } else { &laid.rows };
+    let line = match p.get("line") {
+        None | Some(Value::Null) => None,
+        Some(_) => Some(whole(c, p, "line")?),
+    };
+    if let Some(l) = line
+        && !spans.iter().skip(1).any(|x| x.index == l)
+    {
+        return Err(bad(c, format!("no grid line {l} that way on wall {id}; `curtain_parts` lists its `grids`")));
+    }
+    let is_mine = |g: &&Grid, l: i64| g.way == way && MANUAL_LINE.saturating_add(g.number) == l;
+    let grids = w.curtain.as_ref().map_or(&[][..], |e| &e.grids[..]);
+    let reset = flag(c, p, "reset")?;
+    if reset {
+        let l = line.ok_or_else(|| bad(c, "`reset` needs the `line` to take off"))?;
+        let Some(g) = grids.iter().find(|g| is_mine(g, l)).cloned() else {
+            return Err(bad(c, format!("grid line {l} is the pattern's own: change the pattern, or move it to make it manual")));
+        };
+        let number = g.number;
+        let model = s.model_mut();
+        let Some(Element::Wall(w)) = model.elements.get_mut(id) else { return Err(bad(c, format!("no wall {id}"))) };
+        let mut e = w.curtain.take().unwrap_or_default();
+        e.grids.retain(|x| !(x.way == way && x.number == number));
+        if g.moved.is_none() {
+            e.removed.retain(|a| match (*a, way) {
+                (crate::curtain::Address::Vertical { column, .. }, GridWay::Vertical) => column != l,
+                (crate::curtain::Address::Horizontal { row, .. }, GridWay::Horizontal) => row != l,
+                _ => true,
+            });
+        }
+        if let Some(back) = g.moved {
+            e.renamed(way, l, back);
+            rename_panel_walls(model, id, way, l, back);
+        }
+        let Some(Element::Wall(w)) = model.elements.get_mut(id) else { return Err(bad(c, format!("no wall {id}"))) };
+        w.curtain = (e != Default::default()).then_some(e);
+        return Ok(json!({"wall": id, "line": back_line(g.moved), "manual": false}));
+    }
+    let at = num(c, p, "at")?.ok_or_else(|| bad(c, "`at` is required: mm along the wall from its start, or up from its base"))?;
+    let (from, to) = (spans.first().map_or(0.0, |x| x.from), spans.last().map_or(0.0, |x| x.to));
+    if !(at.is_finite() && at > from && at < to) {
+        return Err(bad(c, format!("`at` {at} mm isn't along the wall: it is between {from} and {to} mm")));
+    }
+    let keep_clear = crate::curtain::pattern(m, w).map_or(crate::curtain::MIN_PANEL, |l| l.min_panel);
+    let ends = at - from <= keep_clear || to - at <= keep_clear;
+    if ends || laid.line_near(way, at, keep_clear, line) {
+        return Err(bad(c, format!("`at` {at} mm is too close to another grid line: leave more than {keep_clear} mm for a panel")));
+    }
+    let mine = line.and_then(|l| grids.iter().find(|g| is_mine(g, l)).cloned());
+    let number = match &mine {
+        Some(g) => g.number,
+        None => grids.iter().filter(|g| g.way == way).map(|g| g.number + 1).max().unwrap_or(0),
+    };
+    let new_line = MANUAL_LINE.saturating_add(number);
+    let seg = line.filter(|_| mine.is_none()).and_then(|l| spans.iter().find(|x| x.index == l)).map(|x| x.seg);
+    let moved = line.filter(|_| mine.is_none());
+    let model = s.model_mut();
+    let Some(Element::Wall(w)) = model.elements.get_mut(id) else { return Err(bad(c, format!("no wall {id}"))) };
+    let mut e = w.curtain.take().unwrap_or_default();
+    if let Some(g) = e.grids.iter_mut().find(|g| g.way == way && g.number == number && mine.is_some()) {
+        g.at = at;
+    } else {
+        e.grids.push(Grid { way, at, number, moved, seg, ..Default::default() });
+        if let Some(old) = moved {
+            e.renamed(way, old, new_line);
+        }
+    }
+    w.curtain = Some(e);
+    if let Some(old) = moved {
+        rename_panel_walls(model, id, way, old, new_line);
+    }
+    model.sync_library();
+    let Some(Element::Wall(w)) = model.elements.get(id) else { return Err(bad(c, format!("no wall {id}"))) };
+    let g = w.curtain.iter().flat_map(|e| &e.grids).find(|g| g.way == way && g.number == number);
+    Ok(json!({"wall": id, "line": new_line, "at": at, "manual": true, "id": g.map(|g| g.id), "guid": g.map(|g| g.guid)}))
+}
+
+/// Revit's Add/Remove Segments: the segments of a wall's grid lines taken off, or put back.
+fn curtain_segment(s: &mut Session, p: &Value) -> R {
+    let c = "curtain_segment";
+    let m = &s.model;
+    let id = curtain_host(c, m, p)?;
+    let given = part_places(c, p)?;
+    let restore = flag(c, p, "restore")?;
+    let w = m.wall(id).ok_or_else(|| bad(c, format!("no wall {id}")))?;
+    let laid = crate::curtain::layout(m, w);
+    let (held, walled) = w.curtain.as_ref().map_or((&[][..], &[][..]), |e| (&e.removed[..], &e.walled[..]));
+    let removed = crate::curtain::segments_after(&laid, held, &given, restore, walled).map_err(|e| bad(c, e))?;
+    let Some(Element::Wall(w)) = s.model_mut().elements.get_mut(id) else { return Err(bad(c, format!("no wall {id}"))) };
+    let mut e = w.curtain.take().unwrap_or_default();
+    e.removed = removed;
+    let answer = json!({"wall": id, "removed": e.removed});
+    w.curtain = (e != Default::default()).then_some(e);
+    Ok(answer)
+}
+
+/// What a grid taken off answers with: the pattern's line it went back to, if any.
+fn back_line(moved: Option<i64>) -> Value {
+    moved.map_or(Value::Null, |l| json!(l))
+}
+
+/// The walls standing in curtain wall `id`'s cells, those on column or row `from` of `way` now on `to`.
+fn rename_panel_walls(m: &mut Model, id: Id, way: crate::curtain::GridWay, from: i64, to: i64) {
+    let host = m.guid(id);
+    let held: Vec<Id> = m
+        .elements
+        .iter()
+        .filter_map(|(x, e)| match e {
+            Element::Wall(o) if o.panel_of.is_some_and(|q| q.host == host) => Some(*x),
+            _ => None,
+        })
+        .collect();
+    for x in held {
+        if let Some(Element::Wall(o)) = m.elements.get_mut(x)
+            && let Some(q) = &mut o.panel_of
+        {
+            let index = if way == crate::curtain::GridWay::Vertical { &mut q.column } else { &mut q.row };
+            if *index == from {
+                *index = to;
+            }
+        }
+    }
 }
 
 fn curtain_parts(s: &mut Session, p: &Value) -> R {
@@ -6822,6 +7001,9 @@ fn curtain_parts(s: &mut Session, p: &Value) -> R {
             v["type"] = json!(shape.type_name);
             v["size"] = json!(shape.size);
             v["centre"] = json!(x.centre);
+            if x.turn != 0.0 {
+                v["turn"] = json!(x.turn.to_degrees());
+            }
             Some(v)
         })
         .collect();
@@ -6847,7 +7029,14 @@ fn curtain_parts(s: &mut Session, p: &Value) -> R {
             _ => None,
         })
         .collect();
-    Ok(json!({"wall": id, "parts": parts, "edits": edits, "walls": walls}))
+    let grid = |way: &str, spans: &[crate::curtain::Span]| -> Vec<Value> {
+        let kind = |x: &crate::curtain::Span| if x.manual { "manual" } else { "auto" };
+        spans.iter().skip(1).map(|x| json!({"way": way, "line": x.index, "at": x.from, "kind": kind(x)})).collect()
+    };
+    let mut grids = grid("vertical", &laid.columns);
+    grids.extend(grid("horizontal", &laid.rows));
+    let removed = w.curtain.as_ref().map_or(&[][..], |e| &e.removed[..]);
+    Ok(json!({"wall": id, "parts": parts, "grids": grids, "edits": edits, "walls": walls, "removed": removed}))
 }
 
 fn curtain_panel_wall(s: &mut Session, p: &Value) -> R {
@@ -6867,6 +7056,9 @@ fn curtain_panel_wall(s: &mut Session, p: &Value) -> R {
         None => return Err(bad(c, format!("no wall type `{type_name}`"))),
         Some(t) if t.curtain.is_some() => return Err(bad(c, format!("`{type_name}` is a curtain wall: a cell takes a plain wall"))),
         Some(_) => {}
+    }
+    if crate::curtain::layout(m, &host).merged.contains_key(&(column, row)) {
+        return Err(bad(c, format!("column {column}, row {row} is merged with its neighbour: put its segments back first")));
     }
     let guid = m.guid(id);
     let panel_of = Some(crate::curtain::PanelOf { host: guid, column, row });
@@ -10092,8 +10284,9 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
             m.types.curtain_panel.insert(name.clone(), t.clone());
             json!(t)
         }
-        "mullion" => {
-            let old = m.types.mullion.get(&name).cloned();
+        "mullion" | "cornermullion" => {
+            let corner = cat == "cornermullion";
+            let old = if corner { m.types.corner_mullion.get(&name).cloned() } else { m.types.mullion.get(&name).cloned() };
             let t = crate::curtain::MullionType {
                 profile: crate::curtain::MullionProfile::Rectangular {
                     width: width.or(old.as_ref().map(|t| t.width())).ok_or_else(|| need("width"))?,
@@ -10102,8 +10295,15 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
                 offset_x: num(c, p, "offset_x")?.or(old.as_ref().map(|t| t.offset_x)).unwrap_or(0.0),
                 offset_y: num(c, p, "offset_y")?.or(old.as_ref().map(|t| t.offset_y)).unwrap_or(0.0),
                 material: string(c, p, "material")?.or(old.as_ref().map(|t| t.material.clone())).unwrap_or_default(),
+                rotation: num(c, p, "rotation")?.or(old.as_ref().map(|t| t.rotation)).unwrap_or(0.0),
+                auto_rotation: if absent(p.get("auto_rotation")) {
+                    old.as_ref().is_some_and(|t| t.auto_rotation)
+                } else {
+                    flag(c, p, "auto_rotation")?
+                },
             };
-            m.types.mullion.insert(name.clone(), t.clone());
+            let family = if corner { &mut m.types.corner_mullion } else { &mut m.types.mullion };
+            family.insert(name.clone(), t.clone());
             json!(t)
         }
         "ceiling" => {
@@ -10119,7 +10319,7 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
                 format!(
                     "`{other}` has no types; use wall, floor, ceiling, door, window, column, structural column, footing, beam, \
                      strip footing, pipe, conduit, cable tray, wire, down conductor, earthing conductor, cable, roof, railing, \
-                     curtain panel or mullion"
+                     curtain panel, mullion or corner mullion"
                 ),
             ));
         }

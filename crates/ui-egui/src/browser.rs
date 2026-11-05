@@ -548,8 +548,9 @@ impl BimApp {
             (!names.is_empty()).then(|| Node::group(&crate::lang::category(category, true), false, leaves))
         });
         // Panels and mullions are system families with a family's level of their own: `Generic Panel` holds `Glazed`.
-        let curtain =
-            [("curtainpanel", t("Generic Panel")), ("mullion", t("Rectangular Mullion"))].into_iter().filter_map(|(category, family)| {
+        let curtain = [("curtainpanel", t("Generic Panel")), ("mullion", t("Rectangular Mullion")), ("cornermullion", t("Corner Mullion"))]
+            .into_iter()
+            .filter_map(|(category, family)| {
                 let names = m.type_names(category);
                 let leaves = names
                     .iter()

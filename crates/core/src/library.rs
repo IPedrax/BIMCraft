@@ -621,6 +621,7 @@ impl Model {
                 "railing" => self.types.railing.remove(name).is_some(),
                 "curtainpanel" => self.types.curtain_panel.remove(name).is_some(),
                 "mullion" => self.types.mullion.remove(name).is_some(),
+                "cornermullion" => self.types.corner_mullion.remove(name).is_some(),
                 "structuralcolumn" => self.types.structural_column.remove(name).is_some(),
                 "footing" => self.types.footing.remove(name).is_some(),
                 run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| t.remove(name).is_some()),
@@ -663,6 +664,7 @@ impl Model {
                 "railing" => mv(&mut self.types.railing, from, to),
                 "curtainpanel" => mv(&mut self.types.curtain_panel, from, to),
                 "mullion" => mv(&mut self.types.mullion, from, to),
+                "cornermullion" => mv(&mut self.types.corner_mullion, from, to),
                 "structuralcolumn" => mv(&mut self.types.structural_column, from, to),
                 "footing" => mv(&mut self.types.footing, from, to),
                 run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| mv(t, from, to)),
@@ -756,6 +758,7 @@ impl Model {
         add(Kind::Type("railing".into()), &mut t.railing.keys());
         add(Kind::Type("curtainpanel".into()), &mut t.curtain_panel.keys());
         add(Kind::Type("mullion".into()), &mut t.mullion.keys());
+        add(Kind::Type("cornermullion".into()), &mut t.corner_mullion.keys());
         add(Kind::Type("structuralcolumn".into()), &mut t.structural_column.keys());
         add(Kind::Type("footing".into()), &mut t.footing.keys());
         for (cat, types) in &t.runs {
@@ -1248,6 +1251,7 @@ impl Model {
                 && let Some(c) = &mut w.curtain
             {
                 c.parts.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+                c.grids.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             }
             if let Some(lines) = e.sketch_mut() {
                 lines.iter_mut().for_each(|l| (l.id, l.guid) = (0, Guid::default()));
@@ -1476,7 +1480,8 @@ impl Model {
         for l in t.wall.values_mut().filter_map(|x| x.curtain.as_mut()) {
             l.names_mut(f);
         }
-        for material in t.curtain_panel.values_mut().map(|x| &mut x.material).chain(t.mullion.values_mut().map(|x| &mut x.material)) {
+        let mullions = t.mullion.values_mut().chain(t.corner_mullion.values_mut()).map(|x| &mut x.material);
+        for material in t.curtain_panel.values_mut().map(|x| &mut x.material).chain(mullions) {
             if !material.is_empty() {
                 f(&Kind::Material, material);
             }
@@ -1605,7 +1610,7 @@ impl Model {
 }
 
 /// The kinds of part an element holds, as [`element_parts`] names them.
-const ELEMENT_PARTS: [&str; 4] = ["sketch line", "shape point", "split line", "curtain part"];
+const ELEMENT_PARTS: [&str; 5] = ["sketch line", "shape point", "split line", "curtain part", "curtain grid"];
 
 /// An element's own parts, in the order [`Model::parts_now`] walks them: its sketch lines, then a floor's or a roof's shape's
 /// points and its split lines, then a curtain wall's edited parts, each with what it is, its place in its list, its id and its
@@ -1621,6 +1626,7 @@ fn element_parts(e: &Element) -> Vec<(&'static str, usize, Id, Guid)> {
     }
     if let Element::Wall(Wall { curtain: Some(c), .. }) = e {
         out.extend(c.parts.iter().enumerate().map(|(k, x)| ("curtain part", k, x.id, x.guid)));
+        out.extend(c.grids.iter().enumerate().map(|(k, x)| ("curtain grid", k, x.id, x.guid)));
     }
     out
 }
@@ -1636,6 +1642,7 @@ fn element_parts_mut(e: &mut Element, f: &mut dyn FnMut(&mut Id, &mut Guid)) {
     }
     if let Element::Wall(Wall { curtain: Some(c), .. }) = e {
         c.parts.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
+        c.grids.iter_mut().for_each(|x| f(&mut x.id, &mut x.guid));
     }
 }
 

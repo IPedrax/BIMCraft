@@ -223,6 +223,11 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                 {
                     here(&Kind::Material, &mut x.material);
                 }
+                if c == "cornermullion"
+                    && let Some(x) = t.corner_mullion.get_mut(&name)
+                {
+                    here(&Kind::Material, &mut x.material);
+                }
             }
             _ => {}
         }
@@ -250,6 +255,7 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
             "railing" => one(&mut t.railing, Some(&f.railing), name),
             "curtainpanel" => one(&mut t.curtain_panel, Some(&f.curtain_panel), name),
             "mullion" => one(&mut t.mullion, Some(&f.mullion), name),
+            "cornermullion" => one(&mut t.corner_mullion, Some(&f.corner_mullion), name),
             run => one(t.runs.entry(run.to_string()).or_default(), f.runs.get(run), name),
         },
         Kind::Material => one(&mut to.materials, Some(&from.materials), name),

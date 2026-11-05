@@ -1,7 +1,7 @@
 //! Snapping: where a point picked near the cursor lands. It snaps to what the plan has there (the
 //! ends, middles and centres of what's drawn, where two lines cross, the foot of the perpendicular
 //! from the last point picked), to a guide through the last point picked at an angle (from east,
-//! and from the line before it), to a wall's centre line, or to the nearest 10 mm. The ruler's
+//! and from the line before it), to a wall's centre line, or stays where it is. The ruler's
 //! numbers and graduations are here too, so every front end reads them alike.
 
 use bimcraft_i18n::ui_msg;
@@ -15,8 +15,9 @@ use crate::walls::Axis;
 /// How far off a guide, degrees, a direction may be and still snap to it (less where guides lie
 /// closer together than that).
 const TOLERANCE: f64 = 4.0;
-/// Points with nothing to snap to round to this, mm.
-const STEP: f64 = 10.0;
+/// What a point with nothing to snap to is tidied to, mm: too little to see, only so a pixel's float noise stays out of the model.
+/// It is no grid: a grid is what the view's own background grid is, and only when it's on.
+const STEP: f64 = 0.01;
 /// The most lines near the cursor that are tried against each other.
 const MAX_NEAR: usize = 64;
 /// The most walls' outlines, floors' and ceilings' edges a sketch is snapped to: the nearest. A wall's outline joins it to
@@ -50,7 +51,7 @@ pub enum Kind {
     Anchor,
     /// A point on an angle guide.
     Angle,
-    /// Nothing to snap to: the nearest 10 mm.
+    /// Nothing to snap to: where it is.
     Free,
 }
 
@@ -648,7 +649,7 @@ fn rank(k: Kind) -> u8 {
 
 /// Where a point picked at `p` lands on `level`'s plan: what the plan has there, the foot of the
 /// perpendicular from the last of `from` (the points this pick follows), a guide through that
-/// point at an angle, a wall's centre line, else the nearest 10 mm. `square` keeps the step from
+/// point at an angle, a wall's centre line, else where it is. `square` keeps the step from
 /// the last of `from` horizontal or vertical.
 pub fn snap(m: &Model, level: Id, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps) -> Found {
     let look = Look::of(m, level);
@@ -840,7 +841,7 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
                 .filter_map(|&(a, b, of)| Some((ray_hit(l, u, a, b)?, of)))
                 .filter(|(q, _)| q.dist(p) <= reach.point)
                 .min_by(|x, y| by_distance(&x.0, &y.0));
-            // Else the grid point that lies on it, if one does, else as long as the nearest 10 mm.
+            // Else as long as it is.
             let grid = round(p);
             let on_grid = u.cross(grid - l).abs() <= 1e-3 && u.dot(grid - l) > 0.0;
             return match cross {
@@ -871,7 +872,7 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
         }
     }
 
-    // A wall's centre line, to the nearest 10 mm along it from its start, else the nearest 10 mm.
+    // A wall's centre line, as far along it as the cursor, else where the cursor is.
     if o.nearest {
         let on = scene
             .walls
@@ -981,7 +982,7 @@ mod tests {
         let f = at(P2(3523.0, 1020.0), &[], Snaps::only(Kind::Nearest));
         assert_eq!((f.kind, f.at), (Kind::Nearest, P2(3523.0, 1000.0)));
         let f = at(P2(3523.0, 1023.0), &[], Snaps::none());
-        assert_eq!((f.kind, f.at), (Kind::Free, P2(3520.0, 1020.0)));
+        assert_eq!((f.kind, f.at), (Kind::Free, P2(3523.0, 1023.0)), "where the cursor is, on no grid of any size");
     }
 
     #[test]
@@ -1040,11 +1041,11 @@ mod tests {
         assert_eq!((f.at, f.kind), (P2(2000.0, 5000.0), Kind::Centre));
         let f = at(&m, P2(2030.0, 3020.0), &[], &o);
         assert_eq!((f.kind, (f.at.dist(P2(2000.0, 5000.0)) * 1e3).round() / 1e3), (Kind::Midpoint, 2000.0));
-        // Beyond their reach, a wall's centre line, then the nearest 10 mm.
+        // Beyond their reach, a wall's centre line, then where the cursor is.
         let f = at(&m, P2(1234.0, 40.0), &[], &o);
-        assert_eq!((f.at, f.kind), (P2(1230.0, 0.0), Kind::Nearest));
+        assert_eq!((f.at, f.kind), (P2(1234.0, 0.0), Kind::Nearest));
         let f = at(&m, P2(1234.0, 900.0), &[], &o);
-        assert_eq!((f.at, f.kind), (P2(1230.0, 900.0), Kind::Free));
+        assert_eq!((f.at, f.kind), (P2(1234.0, 900.0), Kind::Free));
     }
 
     /// A project with a 300 x 300 column centred at 2000, 1000 (its left edge at x = 1850), as issue #88 draws one.
@@ -1173,11 +1174,12 @@ mod tests {
     fn directions_snap_to_the_angle_from_east_and_from_the_line_before() {
         let m = model("");
         let o = Snaps::default();
-        // 30.2° from the first point: onto 30°, its length to the nearest 10 mm.
+        // 30.2° from the first point: onto 30°, as far along it as the cursor.
         let f = at(&m, P2(3470.0, 2020.0), &[P2(0.0, 0.0)], &o);
         assert_eq!(f.kind, Kind::Angle);
         assert!((degrees(P2(0.0, 0.0), f.at) - 30.0).abs() < 1e-4, "{:?}", f.at);
-        assert!((f.at.length() / 10.0 - (f.at.length() / 10.0).round()).abs() < 1e-3, "{}", f.at.length());
+        let along = P2(3470.0, 2020.0).dot(P2(30f64.to_radians().cos(), 30f64.to_radians().sin()));
+        assert!((f.at.length() - along).abs() < 0.01, "{} against {along}", f.at.length());
         let g = f.guide.unwrap();
         assert_eq!((g.from, g.angle.round(), g.corner), (P2(0.0, 0.0), 30.0, None));
         // 22.5° is between guides: free.
@@ -1196,16 +1198,17 @@ mod tests {
     }
 
     #[test]
-    fn a_point_on_the_grid_that_lies_on_the_guide_stays_where_it_is() {
+    fn a_point_on_a_guide_stays_as_far_along_it_as_the_cursor() {
         let m = model("");
-        // 225° from (4000, 0) runs through (2000, -2000), a whole 2828.4 mm out: not rounded to 2830.
+        // 225° from (4000, 0) runs through (2000, -2000), 2828.4 mm out: it stays there.
         let f = at(&m, P2(2000.0, -2000.0), &[P2(4000.0, 0.0)], &Snaps::default());
         assert_eq!((f.at, f.kind), (P2(2000.0, -2000.0), Kind::Angle));
-        // Near it, the same; where no grid point lies on the guide, its length goes to the nearest 10 mm.
+        // A cursor a little off the guide comes square onto it, and a little further along is further along.
         let f = at(&m, P2(2003.0, -2003.0), &[P2(4000.0, 0.0)], &Snaps::default());
-        assert_eq!((f.at, f.kind), (P2(2000.0, -2000.0), Kind::Angle));
-        let f = at(&m, P2(3470.0, 2020.0), &[P2(0.0, 0.0)], &Snaps::default());
-        assert!((f.at.length() % 10.0).min(10.0 - f.at.length() % 10.0) < 1e-3, "{:?}", f.at);
+        assert!(f.at.dist(P2(2000.0, -2000.0)) < 0.01, "{:?}", f.at);
+        let f = at(&m, P2(1990.0, -2000.0), &[P2(4000.0, 0.0)], &Snaps::default());
+        assert_eq!(f.kind, Kind::Angle);
+        assert!(f.at.dist(P2(1995.0, -2005.0)) < 0.01, "{:?}", f.at);
     }
 
     #[test]
@@ -1252,7 +1255,7 @@ mod tests {
         assert_eq!(at(&m, P2(30.0, -20.0), &[], &Snaps { endpoint: false, ..o }).kind, Kind::Nearest);
         assert_eq!(at(&m, P2(3040.0, 30.0), &[], &Snaps { midpoint: false, ..o }).kind, Kind::Nearest);
         let none = Snaps { nearest: false, ..Snaps { endpoint: false, ..o } };
-        assert_eq!(at(&m, P2(34.0, -20.0), &[], &none).at, P2(30.0, -20.0));
+        assert_eq!(at(&m, P2(34.0, -20.0), &[], &none).at, P2(34.0, -20.0));
     }
 
     #[test]
@@ -1286,7 +1289,7 @@ mod tests {
                wall {"points": [[0,30000],[10000,30000]], "arc": 180}"#,
         );
         let f = at(&m, P2(31234.0, 40.0), &[], &Snaps::default());
-        assert_eq!((f.at, f.kind), (P2(31230.0, 0.0), Kind::Nearest));
+        assert_eq!((f.at, f.kind), (P2(31234.0, 0.0), Kind::Nearest));
         // Out where the arc bulges, 5000 mm from its chord: past the reach and the thickest wall.
         let want = m
             .elements

@@ -41,7 +41,7 @@ which is its name as the wall changes; a part's `Address` is made of those. `lay
 ## Drawn once
 
 `Layout::shapes` holds each distinct part once (kind, type, size) and `Layout::parts` places them. These shapes are silent: no list or
-file shows them. Each part is one `Solid::Box` round its own centre (`view3d::curtain_solids`), which sections and elevations read.
+file shows them. Each piece (see What's drawn and what's picked) is one `Solid::Box` round its own centre (`view3d::curtain_solids`), which sections and elevations read.
 
 On the graphics card, a box of one size in one material is one shape, shared by every wall whichever way it runs, and each part a copy
 of it (`view3d::curtain_copies`, `ShapeKey::Part`), as a component is of its family's shape: a wall of 20,000 parts holds 396 vertices
@@ -62,7 +62,18 @@ closes it. A height set directly snaps too; one a top level sets can't, and the 
 tool and an end's grip snap the same way (`BimApp::fixed_end`), and background grid snapping stays out of the way while a wall of a
 Fixed Grid is drawn (`drawing_fixed_curtain`). `Fit::Flexible` keeps the length given.
 
-Fit doesn't change what `layout` does with a length: at any length, what's left past the last whole segment is a cut segment.
+Neither changes what `layout` does with a length: at any length, what's left past the last whole segment is a cut segment.
+
+`Fit::Evenly` (Fit Evenly) cuts nothing: `divide` takes the whole number of modules nearest the length, at least one, and stretches or
+shrinks each to fill it, its segments in proportion (`evenly`). Justification has nothing left to place, and the length is kept. A shrunk
+segment isn't `whole`, so one too small for its panel is reported as a malformed cut one is, and not as a fault of the pattern.
+
+`anchor_rows` (Restart pattern at levels crossing) starts the rows' pattern again at each level a wall passes, a grid line on the level, whatever the
+fit: with Fit Evenly, each storey fills with whole rows (`rows_of`). A wall holds where those levels stand (`CurtainEdits::levels`, kept by
+`sync` after each command, as `walled` is), so a layout doesn't look through the model and any cache of the wall knows when a level moves. A
+storey's rows are numbered `STOREY_ROWS` apart. A short row at the top of a storey is malformed; Remove Last Interior Grid gives it to the row
+below, as it does at the wall's end. A level added within a wall renumbers the storeys above it, so a part edited on those rows sleeps
+until its row number comes back.
 
 `Justify` lays the pattern from the start, from the end, with whole modules centred (`Centre`) or with a grid line on the middle
 (`CentreLine`). What an end leaves over is the cut segment at that end.
@@ -98,11 +109,88 @@ have the panel back; deleting or copying its host takes it along, and its doors.
 A cell that leaves the wall removes an empty wall, with a `warning` in the reply. If the wall holds anything the command is refused, by
 `check_panel_wall`. A door is 2100 mm high, so a row must leave at least that clear.
 
-On the desktop, Tab on the selected curtain wall under the cursor steps through its mullions there, its cell, and back to the whole wall
-(`parts_under`, `next_part`). A plan looks at its cut plane; the 3D view casts the cursor's ray on the grid plane (`on_plane`), which
+On the desktop, Tab on a curtain wall under the cursor, selected or not (`tab_wall`; only with Modify in hand if it isn't yet), steps
+through its corner mullion there, its mullions there each followed by its grid, its cell, and back to the whole wall (`parts_under`,
+`next_part`). A plan looks at its cut plane; the 3D view casts the cursor's ray on the grid plane (`on_plane`), which
 reaches every row, and a section or an elevation casts its camera's ray the same way (`curtain::parts_on_ray`); a wall seen edge-on offers
-none. Tab skips what the view hides (`shown_parts`). Properties then shows the part's type, As in the Pattern and Replace with
-Wall, and Delete takes the part, never the wall.
+none. Tab skips what the view hides (`shown_parts`), though not a grid, which is no part to hide. Properties then shows the part's type,
+As in the Pattern and Replace with Wall, and Delete takes the part, never the wall. A mullion's right-click has Select Along Grid
+(`Layout::along_grid`, `BimApp::curtain_more`): the mullions along its line picked together, which take a type or are deleted in one
+step (`curtain_part {parts: […]}`).
+
+## Corner mullions
+
+The Corner Mullion family (`Types::corner_mullion`, `Kind::Type("cornermullion")`) holds a `MullionType` as the plain family does, plus a
+`rotation`, which only it may have: `50 x 150 45°` and `150 x 150` to start with. `CurtainLayout.corner` names the type a wall of that
+pattern takes; a project of file format 18 gets the starter types, and its patterns name none until told to. `type {curtain: {corner}}`
+fills in the project's first when it isn't given, and null means none.
+
+`meeting` finds where one belongs: exactly two walls ending at the point, both curtain walls, straight, of heights that overlap, and at
+an angle. A third wall there, or one running through it, means none. One of the two holds it (`Meeting::holds`): the one ending there, or
+of two alike, by their far ends, so no ids are read. It is that wall's part, `Address::Corner {column: 0 at its start, 1 at its end}`,
+which an edit on it can retype or take away. Taken away, both walls have their borders again.
+
+`post_at` places it, in the terms of whichever wall asks: Y is from the holder's grid plane and X from the other's, so with both at the
+starter's 50 it stands where the two walls' mullions' centre lines meet, whichever way the corner turns. `rotation` turns it from the
+holder's run toward the other wall, so at a corner that isn't 90° the 45° type is off the corner's diagonal. `auto_rotation` (Auto Rotation in
+Type Properties) adds half the corner's turn to `rotation`: with a rotation of 0, a mullion square to the diagonal at any angle, 30° with 120°
+between the walls and 45° at a right angle, whichever wall holds it. What's given is added to that. It stands as high as the two walls reach together.
+
+Each wall loses its border there and any line it would run into, and its panels and cell walls stop square against
+it (`Post::reach`, the furthest of it within their depth across the wall), on either side of the wall's own end: glass is never mitred. A
+`Part` has a `turn`, radians in plan, which plans, the 3D scene, its card copies and IFC all take. A layout looks at the neighbouring wall,
+which `Scene::update` already remakes as what an edit touches. The holder's `Layout::corners` says the place is there even with no mullion in it.
+
+At any angle nothing of the two walls overlaps: where they'd still cross with each stopped at the mullion, which a corner sharper than
+about 75° can bring, each also stops clear of the other's glass or mullions (`Post::clear`, `stopped`, `rings_cross`), square, leaving a wedge
+between them. From 90° outward the glass closes right up to the mullion. Below 90° on a corner whose exteriors face out, the offsets carry
+the mullion away from where the glass meets, and glass stops short of it: about 10 mm at 75°, 37 at 60, 79 at 45, 160 at 30.
+
+Horizontal mullions meet in a mitre round the corner (`Mitre`, `mitre_at`), with or without a corner mullion, which stands through them and hides the cut below it in a plan (every wall's seen parts are drawn before any wall's cut): each
+is cut on the line through where the two walls' faces cross, a `Shape` with a `plan`, its outline from above, so a mesh in the 3D scene and
+IFC and shared as other shapes are. It takes one of the same size at the same height and offset on the other wall's end (with a manual grid or
+an edit taken into account), and at least 30° between the walls (`MIN_MITRE`), past which it would throw a spike beyond the corner. Otherwise
+it stops square as above.
+
+## Grids
+
+A pattern's lines are `auto`: `divide` puts them there, and a change of pattern moves them. A wall can have `manual` ones too
+(`CurtainEdits.grids`, each a `Grid` with an id and a GUID, `HasPart`), `at` mm from its start or base, which no change of pattern moves. One
+past the wall's end sleeps and comes back. `by_hand` lays them over `divide`'s spans: a span's `index` is `MANUAL_LINE` plus its grid's
+`number`, so a manual line and what's past it have stable names like the rest, and `past_line`, a border's name, doesn't count them.
+
+`curtain_grid {wall, way, at}` adds one, with the mullion of the pattern's A1 that way (`first_pick`; with none there, the first it has)
+for as long as A1 says so; the cell it splits keeps its segment, so both halves hold what it held. `curtain_grid {wall, way, line, at}` moves
+one. Moved, an auto line becomes manual: its pattern's line stays away (`Grid.moved`), what lay past it stays what it was (`Grid.seg`), and
+its edits and the walls in its cells go with it (`CurtainEdits::renamed`). `reset` takes a manual grid off, and one that was moved goes back
+to its pattern's place, taking those with it. It's refused within `min_panel` of another line or an end; a later change of pattern that
+brings a line that close leaves no panel there, with the malformed message. `curtain_parts` lists `grids` (way, line, at, kind).
+
+On the desktop, the Modify tab has a Curtain Grid panel with a curtain wall alone selected: Add Vertical Grid and Add Horizontal Grid
+(`Tool::CurtainGrid`), which keep the wall selected. Hovering over the wall lights up the place; each click places one; Esc
+ends. A plan can place only vertical ones, as it can't say how high, and says so; the tool stays on when a section or the 3D view is opened.
+Tab picks a grid (`Address::VerticalGrid`, `HorizontalGrid`). Properties shows `Grid Kind: Auto` or `Manual`, with a button to change it; Move
+moves it along its wall, a horizontal one in a section or the 3D view only; Delete takes a manual one off.
+
+A stretch of a line can go by itself, as Revit's Add/Remove Segments: `curtain_segment {wall, parts: [{part, column, row}…], restore?}`. A segment
+is named as the mullion on it, and `CurtainEdits.removed` holds those taken off. Its mullion goes and the cells either side make one panel
+(`Merged`, worked out in `build`), named and typed by its first cell; a part edited on a covered cell sleeps. A merge must be a rectangle with
+nothing left inside it: the command refuses any other shape, or a cell a wall stands in, and takes off what's left inside one. `restore` puts
+back the whole line through the panel, so what's left is always rectangles. What a later change of pattern or grid leaves otherwise isn't
+merged at all until it's a rectangle again, and a line added through a merged panel divides it. On the desktop, the Curtain Grid panel's
+Add/Remove Segments (`Tool::CurtainSegment`) works in a section, an elevation or the 3D view: hovering lights the nearest inner edge of the
+cell under the cursor (`Layout::segment_near`), and a click takes it off or puts it back.
+
+## What's drawn and what's picked
+
+The parts are what's picked, typed and scheduled, a stretch of mullion each. What's drawn is `Layout::pieces`: mullions of one line, type and
+section that touch end to end are one piece, so a mullion running through its crossings shows no joint in any view (the 3D scene, the card,
+sections, and what a plan sees below its cut). A horizontal stopping at a vertical keeps the line there: that's a real joint. A mitred bar stays
+a piece by itself, so a joint still shows beside one.
+
+A curtain wall selected isn't tinted, in any view (`curtain::tinted_selection`, `tinted_hover`): only its outline shows, so the part Tab picks can
+be seen. Under the cursor, what Tab would go to next is marked in the darker blue (`curtain_aim`), and what's picked in a lighter one
+(`picked_part_color`), both filled so a panel shows. A grid line isn't drawn until Tab reaches it. Tab reaches as far as `PICK` pixels at the view's scale, or 60 mm close in.
 
 ## The desktop
 
@@ -142,4 +230,4 @@ and a section's cut lines, which go by the wall.
 ## What it can't be yet
 
 `curtain::check` refuses a curved curtain wall, an attached top or base, a location line other than the exterior or interior face, a
-wall by face, a wall of over `MAX_CELLS` cells, and a door or window hosted directly in one. Corner mullions are held for their own discussion.
+wall by face, a wall of over `MAX_CELLS` cells, and a door or window hosted directly in one.

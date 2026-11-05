@@ -144,6 +144,15 @@ pub enum Tool {
     Grid(Option<P2>),
     /// Move the selection: its base point, once clicked.
     Move(Option<P2>),
+    /// Place grid lines on a curtain wall: hover to see where, click to place, Esc to stop.
+    CurtainGrid {
+        wall: Id,
+        way: bimcraft_core::curtain::GridWay,
+    },
+    /// Take stretches of a curtain wall's grid lines off, or put them back: hover to see which, click, Esc to stop.
+    CurtainSegment {
+        wall: Id,
+    },
     /// Copy the selection: its base point, once clicked.
     Copy(Option<P2>),
     /// Rotate the selection about `centre`: the start of the angle, once clicked; with `place`, the
@@ -629,6 +638,14 @@ pub struct BimApp {
     curtain_editor: Option<curtain::CurtainEditor>,
     /// The one part of the selected curtain wall Tab has gone to: what Properties and Delete then act on.
     curtain_part: Option<(Id, bimcraft_core::curtain::Address)>,
+    /// With a mullion's whole grid picked, the other places on it.
+    curtain_more: Vec<bimcraft_core::curtain::Address>,
+    /// Where the Curtain Grid tool would place a line: the wall, how far, and the way.
+    curtain_hover: Option<(Id, f64, bimcraft_core::curtain::GridWay)>,
+    /// The part of the selected curtain wall a Tab would go to next, under the cursor.
+    curtain_aim: Option<(Id, bimcraft_core::curtain::Address)>,
+    /// The stretch of a grid line Add/Remove Segments would take off or put back.
+    curtain_segment_hover: Option<(Id, bimcraft_core::curtain::Address)>,
     /// The model the malformed curtain walls were last looked for in, those it had, and those being asked about.
     curtain_seen: Option<Arc<Model>>,
     curtain_known: std::collections::BTreeSet<Id>,
@@ -1268,6 +1285,10 @@ impl BimApp {
             dimension_type_dialog: None,
             curtain_editor: None,
             curtain_part: None,
+            curtain_more: Vec::new(),
+            curtain_hover: None,
+            curtain_aim: None,
+            curtain_segment_hover: None,
             curtain_seen: None,
             curtain_known: Default::default(),
             curtain_asking: Default::default(),
@@ -1427,6 +1448,8 @@ impl BimApp {
             | Tool::SketchLine(_)
             | Tool::SketchPick
             | Tool::PatternCorner(_) => None,
+            Tool::CurtainGrid { .. } => Some(msg!("Place Curtain Grid")),
+            Tool::CurtainSegment { .. } => Some(msg!("Add/Remove Segments")),
             Tool::Wall(_) => Some(msg!("Place Wall")),
             Tool::Paint => Some("Paint"),
             Tool::Unpaint => Some("Remove Paint"),
@@ -1779,6 +1802,13 @@ impl BimApp {
         let selected = self.selection.as_slice();
         self.curtain_part =
             self.curtain_part.filter(|(id, at)| selected == [*id] && m.wall(*id).is_some_and(|w| curtain::part_is_there(m, w, *at)));
+        if self.curtain_part.is_none() {
+            self.curtain_more.clear();
+        }
+        if matches!(self.tool, Tool::CurtainGrid { wall, .. } | Tool::CurtainSegment { wall } if !m.wall(wall).is_some_and(|w| bimcraft_core::curtain::pattern(m, w).is_some()))
+        {
+            self.tool = Tool::Modify;
+        }
         self.active_option = self.active_option.take().filter(|o| bimcraft_core::phasing::option_exists(m, o));
         let exists = |s: &Sheet| match s {
             Sheet::Plan(key) | Sheet::Ceiling(key) => m.plan_level(*key).is_some(),
@@ -2453,7 +2483,8 @@ impl BimApp {
             self.new_level = (self.session.model.units.length(top + 3000.0), String::new());
         }
         let shaping = matches!(tool, Tool::SlopeArrow(_) | Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_));
-        if tool != Tool::Modify && tool != Tool::Attach && tool != Tool::GableEdge && !shaping && !edits {
+        let placing_grid = matches!(tool, Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. });
+        if tool != Tool::Modify && tool != Tool::Attach && tool != Tool::GableEdge && !shaping && !edits && !placing_grid {
             self.selection.clear();
         }
         if tool != Tool::Modify && !picks {
@@ -2804,8 +2835,12 @@ impl BimApp {
         // Elevation in sections, Demolish in sections and 3D); any other view takes clicks to select.
         let works = match sheet {
             Sheet::Plan(_) | Sheet::Ceiling(_) => true,
-            Sheet::Section(_) => matches!(self.tool, Tool::Text | Tool::Spot | Tool::Demolish),
-            Sheet::View3D => matches!(self.tool, Tool::Demolish | Tool::Paint | Tool::Unpaint),
+            Sheet::Section(_) => {
+                matches!(self.tool, Tool::Text | Tool::Spot | Tool::Demolish | Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. })
+            }
+            Sheet::View3D => {
+                matches!(self.tool, Tool::Demolish | Tool::Paint | Tool::Unpaint | Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. })
+            }
             Sheet::Paper(_) => self.tool == Tool::Text,
             _ => false,
         };
@@ -4404,6 +4439,7 @@ impl BimApp {
                 self.vertex_buttons(ui);
             });
         }
+        self.curtain_grid_panel(ui);
         // Walls selected: Revit's Modify Wall panel.
         let walls = self.selected_walls();
         if !walls.is_empty() && matches!(self.tool, Tool::Modify | Tool::Attach) {
@@ -4852,6 +4888,15 @@ impl BimApp {
             Tool::Level => "Type the new level's elevation in the Options Bar, then Create.",
             Tool::Grid(None) => msg!("Click to enter the grid's start point."),
             Tool::Grid(Some(_)) => msg!("Click to enter the grid's end point."),
+            Tool::CurtainGrid { way: bimcraft_core::curtain::GridWay::Vertical, .. } => {
+                msg!("Click on the curtain wall to place a vertical grid. Esc ends.")
+            }
+            Tool::CurtainGrid { .. } => {
+                msg!("Click on the curtain wall in a section, an elevation or the 3D view to place a horizontal grid. Esc ends.")
+            }
+            Tool::CurtainSegment { .. } => {
+                msg!("Click a stretch of a grid line in a section, an elevation or the 3D view to take it off or put it back. Esc ends.")
+            }
             Tool::Move(None) | Tool::Copy(None) => msg!("Click a base point to measure from."),
             Tool::Move(Some(_)) => msg!("Click where the base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Copy(Some(_)) => msg!("Click where the copy's base point goes, or type a distance and press Enter. Esc cancels."),

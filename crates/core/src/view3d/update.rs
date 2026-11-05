@@ -534,6 +534,21 @@ mod tests {
     }
 
     #[test]
+    fn a_level_moved_brings_anchored_curtain_rows_up_to_date_as_made_whole() {
+        let mut s = Session::new();
+        s.script(
+            r#"level {"elevation": 3500}
+               type {"category": "wall", "name": "Facade", "curtain": {"columns": {"segments": [1500]}, "rows": {"segments": [1000]}, "anchor_rows": true}}
+               wall {"points": [[0,0],[9000,0]], "type": "Facade", "height": 8000}"#,
+        )
+        .unwrap();
+        let mut scene = Scene::new(&s.model);
+        let level = s.model.levels()[1].0;
+        scene = held(&mut s, scene, "modify", &json!({"id": level, "elevation": 4200}));
+        held(&mut s, scene, "level", &json!({"elevation": 6500}));
+    }
+
+    #[test]
     fn a_curtain_wall_s_copies_are_brought_up_to_date_as_made_whole() {
         let mut s = Session::new();
         s.script(

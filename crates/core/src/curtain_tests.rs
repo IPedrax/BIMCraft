@@ -1274,15 +1274,18 @@ fn removing_the_last_interior_grid_keeps_a_walls_edits() {
 
 #[test]
 fn what_is_at_a_point_is_its_mullions_then_its_cell() {
-    use curtain::Address::{Cell, Horizontal, Vertical};
+    use curtain::Address::{Cell, Horizontal, HorizontalGrid, Vertical, VerticalGrid};
     let mut s = session();
     let id = gridded(&mut s);
     let l = layout_of(&s, id);
     assert_eq!(l.at(1000.0, 500.0, 50.0), [Cell { column: 0, row: 0 }]);
-    assert_eq!(l.at(2000.0, 500.0, 50.0), [Vertical { column: 1, row: 0 }, Cell { column: 1, row: 0 }]);
-    assert_eq!(l.at(1000.0, 1000.0, 50.0), [Horizontal { column: 0, row: 1 }, Cell { column: 0, row: 1 }]);
-    // At a crossing, both; at the wall's far end, the border past the last column; off the wall, nothing.
-    assert_eq!(l.at(2000.0, 1000.0, 50.0).len(), 3);
+    assert_eq!(l.at(2000.0, 500.0, 50.0), [Vertical { column: 1, row: 0 }, VerticalGrid { column: 1, row: 0 }, Cell { column: 1, row: 0 }]);
+    assert_eq!(
+        l.at(1000.0, 1000.0, 50.0),
+        [Horizontal { column: 0, row: 1 }, HorizontalGrid { column: 0, row: 1 }, Cell { column: 0, row: 1 }]
+    );
+    // At a crossing, both with their grids; at the wall's far end, the border past the last column; off the wall, nothing.
+    assert_eq!(l.at(2000.0, 1000.0, 50.0).len(), 5);
     assert_eq!(l.at(3990.0, 500.0, 50.0), [Vertical { column: 2, row: 0 }, Cell { column: 1, row: 0 }]);
     assert!(l.at(5000.0, 500.0, 50.0).is_empty());
     // A place with nothing in it can still be picked, to give it a part again.
@@ -1547,4 +1550,155 @@ fn a_section_and_an_elevation_hide_panels_and_mullions_apart() {
     assert!(inked(&s, across).1 < cut.1, "the panel cut no more: {:?} of {cut:?}", inked(&s, across));
     run(&mut s, "graphics", json!({"view": front, "categories": {"mullion": {"hidden": true}}}));
     assert!(inked(&s, front).0 < face.0, "fewer lines with the mullions gone");
+}
+
+// ---------- Fit Evenly ----------
+
+#[test]
+fn fit_evenly_shares_the_length_among_whole_modules_in_their_proportions() {
+    let d = |segments: Vec<f64>, justify| curtain::Direction { segments, fit: Fit::Evenly, justify };
+    // 4300 is nearest four modules of 1000: each takes 1075, and nothing is cut.
+    let spans = curtain::divide(&d(vec![1000.0], Justify::Start), 4300.0);
+    assert_eq!(
+        spans.iter().map(|s| (s.from, s.to)).collect::<Vec<_>>(),
+        [(0.0, 1075.0), (1075.0, 2150.0), (2150.0, 3225.0), (3225.0, 4300.0)]
+    );
+    assert!(spans.iter().all(|s| s.whole));
+    // 7000 is nearest five of 1500: 1400 each, shared 900 to 600.
+    let spans = curtain::divide(&d(vec![900.0, 600.0], Justify::Start), 7000.0);
+    assert_eq!(spans.len(), 10);
+    for (i, s) in spans.iter().enumerate() {
+        let want = if i % 2 == 0 { 840.0 } else { 560.0 };
+        assert!((s.to - s.from - want).abs() < 1e-6, "{i}: {} wide", s.to - s.from);
+        assert_eq!(s.seg, i % 2);
+        assert_eq!(s.index, i as i64);
+    }
+    assert_eq!(spans.last().unwrap().to, 7000.0, "it ends on the wall's end exactly");
+    // Whichever way it's justified: there's nothing over to place.
+    for justify in [Justify::Centre, Justify::CentreLine, Justify::End] {
+        assert_eq!(
+            curtain::divide(&d(vec![900.0, 600.0], justify), 7000.0),
+            curtain::divide(&d(vec![900.0, 600.0], Justify::Start), 7000.0)
+        );
+    }
+    // Shorter than half a module, one module is all it can be.
+    let spans = curtain::divide(&d(vec![1000.0], Justify::Start), 300.0);
+    assert_eq!(spans.iter().map(|s| (s.from, s.to)).collect::<Vec<_>>(), [(0.0, 300.0)]);
+}
+
+#[test]
+fn a_wall_fit_evenly_keeps_its_length_and_moves_its_lines_as_it_changes() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "type",
+        json!({"category": "wall", "name": "Even", "curtain": {"columns": {"segments": [1000], "fit": "evenly"}, "rows": {"segments": [1000]}}}),
+    );
+    let made = run(&mut s, "wall", json!({"points": [[0, 0], [4300, 0]], "type": "Even", "height": 3000}));
+    let id = made["ids"][0].as_u64().unwrap();
+    assert!(made.get("adjusted").is_none(), "the length stands: {made}");
+    assert!(made.get("warning").is_none(), "nothing is malformed: {made}");
+    let widths = |s: &Session| {
+        let Some(Element::Wall(w)) = s.model.elements.get(id) else { panic!("no wall") };
+        curtain::layout(&s.model, w).columns.iter().map(|c| c.to - c.from).collect::<Vec<_>>()
+    };
+    assert_eq!(widths(&s), [1075.0; 4]);
+    run(&mut s, "modify", json!({"id": id, "end": [5000, 0]}));
+    assert_eq!(widths(&s), [1000.0; 5]);
+}
+
+#[test]
+fn a_segment_fit_evenly_too_small_for_a_panel_says_so_as_a_cut_one_does() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "type",
+        json!({"category": "wall", "name": "Even", "curtain": {"columns": {"segments": [1000, 200], "fit": "evenly"}, "rows": {"segments": [1000]}}}),
+    );
+    let made = run(&mut s, "wall", json!({"points": [[0, 0], [400, 0]], "type": "Even", "height": 3000}));
+    let id = made["ids"][0].as_u64().unwrap();
+    let Some(Element::Wall(w)) = s.model.elements.get(id) else { panic!("no wall") };
+    assert!(!curtain::layout(&s.model, w).malformed.is_empty());
+}
+
+// ---------- rows anchored to levels ----------
+
+fn row_lines(s: &Session, id: u64) -> Vec<f64> {
+    layout_of(s, id).rows.iter().skip(1).map(|r| (r.from * 1000.0).round() / 1000.0).collect()
+}
+
+fn anchored(s: &mut Session, rows: Value) -> u64 {
+    let curtain = json!({"columns": {"segments": [1000]}, "rows": rows, "anchor_rows": true});
+    run(s, "type", json!({"category": "wall", "name": "Floors", "curtain": curtain}));
+    wall(s, "Floors", 3000.0, 8000.0)
+}
+
+#[test]
+fn anchored_rows_start_their_pattern_again_at_each_level_the_wall_passes() {
+    let mut s = Session::new();
+    let level = run(&mut s, "level", json!({"elevation": 3500}))["id"].as_u64().unwrap();
+    let id = anchored(&mut s, json!({"segments": [1000]}));
+    assert_eq!(row_lines(&s, id), [1000.0, 2000.0, 3000.0, 3500.0, 4500.0, 5500.0, 6500.0, 7500.0]);
+    // Each row has an index of its own, for what's edited on it.
+    let rows: Vec<i64> = layout_of(&s, id).rows.iter().map(|r| r.index).collect();
+    assert_eq!(rows.iter().collect::<std::collections::HashSet<_>>().len(), rows.len());
+    // A level moved takes its line with it, and undo brings it back.
+    run(&mut s, "modify", json!({"id": level, "elevation": 4000}));
+    assert!(row_lines(&s, id).contains(&4000.0) && !row_lines(&s, id).contains(&3500.0));
+    s.execute("undo", &json!({})).unwrap();
+    assert!(row_lines(&s, id).contains(&3500.0));
+    // A level above the wall, or at its top, is none of its business.
+    run(&mut s, "level", json!({"elevation": 8000}));
+    run(&mut s, "level", json!({"elevation": 9000}));
+    assert_eq!(row_lines(&s, id), [1000.0, 2000.0, 3000.0, 3500.0, 4500.0, 5500.0, 6500.0, 7500.0]);
+    // One more within it is.
+    run(&mut s, "level", json!({"elevation": 6000}));
+    assert_eq!(row_lines(&s, id), [1000.0, 2000.0, 3000.0, 3500.0, 4500.0, 5500.0, 6000.0, 7000.0]);
+}
+
+#[test]
+fn rows_fit_evenly_between_levels_fill_each_storey() {
+    let mut s = Session::new();
+    // A new project has its Level 2: moved up, it's the only one the wall passes.
+    let level = s.model.levels()[1].0;
+    run(&mut s, "modify", json!({"id": level, "elevation": 3600}));
+    let id = anchored(&mut s, json!({"segments": [1000], "fit": "evenly"}));
+    // 3600 in four rows of 900; 4400 in four of 1100.
+    assert_eq!(row_lines(&s, id), [900.0, 1800.0, 2700.0, 3600.0, 4700.0, 5800.0, 6900.0]);
+    assert!(layout_of(&s, id).malformed.is_empty());
+}
+
+#[test]
+fn turning_the_anchor_off_gives_the_plain_rows_back_and_a_plain_type_ignores_levels() {
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"elevation": 3500}));
+    let id = anchored(&mut s, json!({"segments": [1000]}));
+    let plain = |s: &Session| (1..8).map(|k| f64::from(k) * 1000.0).eq(row_lines(s, id));
+    assert!(!plain(&s));
+    let curtain = json!({"columns": {"segments": [1000]}, "rows": {"segments": [1000]}});
+    run(&mut s, "type", json!({"category": "wall", "name": "Floors", "curtain": curtain}));
+    assert!(plain(&s), "{:?}", row_lines(&s, id));
+    assert!(wall_of(&s, id).curtain.is_none(), "it holds nothing it doesn't need");
+}
+
+#[test]
+fn a_storey_s_short_last_row_is_malformed_and_taken_in_by_the_row_below_it() {
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"elevation": 3100}));
+    let id = anchored(&mut s, json!({"segments": [1000]}));
+    assert!(!layout_of(&s, id).malformed.is_empty(), "100 between the mullions holds no panel");
+    run(&mut s, "modify", json!({"id": id, "curtain": {"absorb_rows": true}}));
+    assert!(layout_of(&s, id).malformed.is_empty());
+    let lines = row_lines(&s, id);
+    assert!(!lines.contains(&3000.0) && lines.contains(&3100.0), "{lines:?}");
+}
+
+#[test]
+fn anchored_rows_go_through_a_file() {
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"elevation": 3500}));
+    let id = anchored(&mut s, json!({"segments": [1000]}));
+    let (back, _) = Model::read(&s.model.to_json().unwrap()).unwrap();
+    let Some(Element::Wall(w)) = back.elements.get(id) else { panic!("no wall") };
+    assert_eq!(curtain::layout(&back, w).rows.len(), layout_of(&s, id).rows.len());
 }

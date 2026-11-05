@@ -22,7 +22,7 @@ fn background_grid_menu_and_instance_editor_change_only_the_active_view() {
     let empty_view = h.state();
     let level = empty_view.plan_key().unwrap();
     let found = empty_view.snap(&empty_view.session.model, level, &view, view.px(P2(1234.0, -674.0)), &[], false);
-    assert_eq!(found.at, P2(1230.0, -670.0), "a view without enabled grids does not grid-snap");
+    assert_eq!(found.at, P2(1234.0, -674.0), "a view without enabled grids does not grid-snap, to any size of grid");
     topmost(&mut h, "Level 1");
     assert_eq!(h.state().background_grid(), kept);
     // Properties is a short palette: scroll its instance parameters to Graphics.

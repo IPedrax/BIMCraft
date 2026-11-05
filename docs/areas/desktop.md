@@ -146,7 +146,7 @@ line from the last point touches a circle or an arc (`tangents`), else a scan's 
 ([point clouds](point-clouds.md)), the foot of the perpendicular from the last point
 to one, a guide through that point at
 a multiple of `Snaps::angle` from east or from the line before it (where the guide crosses a wall or grid it lands there, and a
-grid point lying on it beats a rounded length), a wall's centre line or the nearest point of a detail line, else the nearest 10 mm.
+grid point lying on it beats a rounded length), a wall's centre line or the nearest point of a detail line, else where the cursor is (no grid of any size: only the view's background grid, when it's on, rounds a point).
 Annotation adds its anchors (`Kind::Anchor`, switched by `Snaps::annotation`): a note's insertion point and leader, a tag's head
 and, with a leader, its host's anchor, a dimension's line and stations, a spot elevation, section and elevation marks, detail
 groups and repeating details. A camera's mark is not a symbol to snap to: its body, lens and name all land on its eye, its target

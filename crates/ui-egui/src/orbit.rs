@@ -837,10 +837,10 @@ impl BimApp {
         if !level.is_some_and(|(id, ..)| o.grip.is_some_and(|(g, _)| g == id)) {
             o.grip = None;
         }
-        // Where the held grip's edge is now: over the level's plane, under the pointer, to 10 mm.
+        // Where the held grip's edge is now: over the level's plane, under the pointer, tidied of float noise.
         let regripped = match (level, o.grip, latest) {
             (Some((_, z, extent)), Some((_, k)), Some(now)) => cam.on_plane(px(now), z).map(|p| {
-                let round = |v: f64| (v / 10.0).round() * 10.0;
+                let round = |v: f64| (v * 100.0).round() / 100.0;
                 geom::move_edge(extent, k, P2(round(p[0]), round(p[1])))
             }),
             _ => None,
@@ -1039,19 +1039,25 @@ impl BimApp {
         let tab = ui.input(|i| i.key_pressed(egui::Key::Tab));
         if (std::mem::take(&mut self.tab_cycle) || tab)
             && let (Some(at), Some(id)) = (hover, hovered)
-            && selection.as_slice() == [id]
+            && crate::curtain::tab_wall(&model, &selection, &[id], Some(id), self.tool == Tool::Modify) == Some(id)
             && let Some(w) = model.wall(id)
             && let Some((along, up)) = bimcraft_core::curtain::on_plane(&model, w, cam.point_at(px(at), 0.0), cam.point_at(px(at), 1000.0))
         {
-            let list = bimcraft_core::curtain::layout(&model, w).at(along, up, crate::curtain::REACH);
+            let reach = crate::curtain::REACH.max(f64::from(crate::canvas::PICK) * wall_mm_per_pixel(&cam, &model, w, along, up));
+            let list = bimcraft_core::curtain::layout(&model, w).at(along, up, reach);
             let list = match model.default_3d() {
                 Some(view) => crate::curtain::shown_parts(&model, view, list),
                 None => list,
             };
             self.curtain_part = crate::curtain::next_part(self.curtain_part, id, &list);
+            self.curtain_more.clear();
+            if self.curtain_part.is_some() {
+                self.selection = vec![id];
+            }
         }
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
-        let tints: Vec<(Id, Rgb)> = selection
+        let tinted = crate::curtain::tinted_selection(&model, &selection);
+        let tints: Vec<(Id, Rgb)> = tinted
             .iter()
             .filter(|id| Some(**id) != shaped)
             .map(|id| (*id, rgb(canvas_pal().accent)))
@@ -1218,10 +1224,66 @@ impl BimApp {
         }
         // The section box's frame, as the held grip would leave it.
         let screen = |p: P3| on_screen(&cam, rect, ppp, p);
-        if let Some((id, part)) = self.curtain_part
-            && let Some(ring) = model.wall(id).and_then(|w| bimcraft_core::curtain::face_ring(&model, w, part))
-        {
-            p.add(egui::Shape::closed_line(ring.iter().map(|q| screen(*q)).collect(), egui::Stroke::new(2.0, pal().accent)));
+        // A curtain wall selected shows by its outline, and the part Tab has picked, and the one it would go to, on it.
+        if self.curtain_part.is_none() {
+            for w in selection.iter().filter_map(|i| model.wall(*i).filter(|_| crate::curtain::is_curtain(&model, *i))) {
+                let ring = bimcraft_core::curtain::outline_on_face(&model, w).iter().map(|q| screen(*q)).collect();
+                crate::curtain::mark_wall(&p, ring);
+            }
+        }
+        let under_cursor = crate::curtain::wall_to_tab(&model, &self.selection, &self.tool).zip(hover).and_then(|(id, at)| {
+            let w = model.wall(id)?;
+            let (along, up) = bimcraft_core::curtain::on_plane(&model, w, cam.point_at(px(at), 0.0), cam.point_at(px(at), 1000.0))?;
+            let reach = crate::curtain::REACH.max(f64::from(crate::canvas::PICK) * wall_mm_per_pixel(&cam, &model, w, along, up));
+            let list = bimcraft_core::curtain::layout(&model, w).at(along, up, reach);
+            Some((
+                id,
+                match model.default_3d() {
+                    Some(view) => crate::curtain::shown_parts(&model, view, list),
+                    None => list,
+                },
+            ))
+        });
+        self.curtain_aim = under_cursor.and_then(|(id, list)| crate::curtain::next_part(self.curtain_part, id, &list));
+        if let Some((id, part)) = self.curtain_aim {
+            for ring in model.wall(id).map_or_else(Vec::new, |w| bimcraft_core::curtain::face_rings(&model, w, part)) {
+                crate::curtain::mark_part(&p, ring.iter().map(|q| screen(*q)).collect(), false);
+            }
+        }
+        if let Some((id, first)) = self.curtain_part {
+            for part in std::iter::once(first).chain(self.curtain_more.iter().copied().filter(|a| *a != first)) {
+                for ring in model.wall(id).map_or_else(Vec::new, |w| bimcraft_core::curtain::face_rings(&model, w, part)) {
+                    crate::curtain::mark_part(&p, ring.iter().map(|q| screen(*q)).collect(), true);
+                }
+            }
+        }
+        // The Curtain Grid tool: where the cursor would place a line on the wall's plane.
+        let face_wall = match self.tool {
+            Tool::CurtainGrid { wall, .. } | Tool::CurtainSegment { wall } => Some(wall),
+            Tool::Move(_) => self.curtain_part.filter(|(_, at)| at.is_grid()).map(|(id, _)| id),
+            _ => None,
+        };
+        let face_at = |at: Pos2| {
+            bimcraft_core::curtain::on_plane(&model, model.wall(face_wall?)?, cam.point_at(px(at), 0.0), cam.point_at(px(at), 1000.0))
+        };
+        if matches!(self.tool, Tool::CurtainGrid { .. }) {
+            let aim = hover.and_then(face_at);
+            self.curtain_hover = crate::curtain::grid_aim(&model, &self.tool, aim);
+            if let Some((id, at, way)) = self.curtain_hover
+                && let Some(w) = model.wall(id)
+            {
+                let [a, b] = bimcraft_core::curtain::line_on_face(&model, w, way, at);
+                p.line_segment([screen(a), screen(b)], egui::Stroke::new(2.0, pal().accent));
+            }
+        }
+        if matches!(self.tool, Tool::CurtainSegment { .. }) {
+            let aim = hover.and_then(face_at);
+            self.curtain_segment_hover = crate::curtain::segment_aim(&model, &self.tool, aim);
+            if let Some((id, at)) = self.curtain_segment_hover
+                && let Some([a, b]) = model.wall(id).and_then(|w| bimcraft_core::curtain::segment_on_face(&model, w, at))
+            {
+                p.line_segment([screen(a), screen(b)], egui::Stroke::new(3.0, pal().accent));
+            }
         }
         if let Some(b) = reboxed.or(boxed) {
             crate::section_box::draw(&p, &cam, b, modify, (o.boxing.map(|(k, _)| k), o.hot_grip), screen);
@@ -1410,6 +1472,10 @@ impl BimApp {
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
         let target = click.filter(|_| drawing).and_then(|at| aimed(&o.picker, at));
         match clicked {
+            Some(_) if self.curtain_face_tool() => {
+                let on = click.and_then(face_at);
+                self.curtain_face_click(on);
+            }
             Some(found) if modify => self.pick_up(found.into_iter().collect(), click_modifiers(ui)),
             Some(Some(id)) if demolish => self.demolish(id),
             Some(Some(id)) if paint || unpaint => self.paint_face(id, face, unpaint),
@@ -1614,6 +1680,26 @@ impl BimApp {
             }
         });
     }
+}
+
+/// How many mm of wall `w`'s face, near `along` and `up` on it, one pixel of a 3D view covers: for reaching a thin line from afar.
+fn wall_mm_per_pixel(
+    cam: &bimcraft_core::view3d::Camera,
+    m: &bimcraft_core::model::Model,
+    w: &bimcraft_core::model::Wall,
+    along: f64,
+    up: f64,
+) -> f64 {
+    let axis = bimcraft_core::walls::Axis::of(w);
+    let (plane, base) = (bimcraft_core::curtain::grid_plane(m, w), m.own_base(w));
+    let point = |a: f64| {
+        let q = axis.at(a, plane);
+        [q.0, q.1, base + up]
+    };
+    let (x0, y0, _) = cam.project(point(along));
+    let (x1, y1, _) = cam.project(point(along + 100.0));
+    let pixels = (x1 - x0).hypot(y1 - y0);
+    if pixels.is_finite() && pixels > 1e-6 { 100.0 / pixels } else { 1.0 }
 }
 
 #[cfg(test)]

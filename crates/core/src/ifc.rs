@@ -155,22 +155,18 @@ fn curtain_wall(w: &mut Step, m: &Model, id: Id, wl: &crate::model::Wall, storey
     w.typed("IFCCURTAINWALLTYPE", ".NOTDEFINED.", &wl.type_name, ent);
     let l = curtain::layout(m, wl);
     let plane = curtain::grid_plane(m, wl);
-    let material_of = |kind: PartKind, name: &str| match kind {
-        PartKind::Panel => m.types.curtain_panel.get(name).map(|t| t.material.clone()),
-        PartKind::Mullion => m.types.mullion.get(name).map(|t| t.material.clone()),
-    };
     let mut shapes: Vec<Option<u64>> = vec![None; l.shapes.len()];
     let mut parts = Vec::with_capacity(l.parts.len());
     let mut by_material: BTreeMap<String, Vec<u64>> = BTreeMap::new();
     for p in &l.parts {
         let Some(shape) = l.shapes.get(p.shape as usize) else { continue };
-        let material = material_of(shape.kind, &shape.type_name).unwrap_or_default();
+        let material = shape.material_in(m).unwrap_or_default().to_string();
         let body = match shapes.get(p.shape as usize).copied().flatten() {
             Some(body) => body,
             None => {
                 let [da, dz, dc] = shape.size.map(|x| x / 2.0);
                 let style = (!material.is_empty()).then(|| w.material_style(m, &material).1).flatten();
-                let body = if shape.face.is_some() {
+                let body = if shape.is_cut() {
                     let set = w.faceset(&shape.tris());
                     if let Some(style) = style {
                         w.add(format!("IFCSTYLEDITEM(#{set},(#{style}),$)"));
@@ -187,12 +183,15 @@ fn curtain_wall(w: &mut Step, m: &Model, id: Id, wl: &crate::model::Wall, storey
             }
         };
         let [along, up, across] = p.centre;
-        let place = w.place(Some(at), (along, plane + across, up), None);
+        let turned = (p.turn != 0.0).then(|| P2(p.turn.cos(), p.turn.sin()));
+        let place = w.place(Some(at), (along, plane + across, up), turned);
         // The address's three parts in one number: which kind of place, and its column and row.
         let (kind, column, row) = match p.address {
             Address::Cell { column, row } => (0u64, column, row),
             Address::Vertical { column, row } => (1, column, row),
             Address::Horizontal { column, row } => (2, column, row),
+            Address::Corner { column, row } => (3, column, row),
+            Address::VerticalGrid { column, row } | Address::HorizontalGrid { column, row } => (4, column, row),
         };
         let key = (kind << 60) ^ ((column as u32 as u64) << 30) ^ (row as u32 as u64);
         let global = s(&guid(w.uid, CURTAIN_PART, w.part(id, key as usize)));

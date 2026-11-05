@@ -883,11 +883,12 @@ fn curtain_solids(out: &mut Vec<Solid>, m: &Model, id: Id, w: &crate::model::Wal
     let u = (w.end - w.start).unit();
     let frame = Frame { o: w.start, u, n: u.perp() };
     let (base, plane) = (m.own_base(w), curtain::grid_plane(m, w));
-    for p in &l.parts {
+    for piece in l.pieces() {
+        let Some(p) = l.parts.get(piece.first) else { continue };
         let (Some(s), Some(&(color, tex))) = (l.shapes.get(p.shape as usize), looks.get(p.shape as usize)) else { continue };
-        let [along, up, across] = p.centre;
-        let [da, dz, dc] = s.size.map(|x| x / 2.0);
-        if s.face.is_some() {
+        let [along, up, across] = piece.centre;
+        let [da, dz, dc] = piece.size.map(|x| x / 2.0);
+        if s.is_cut() {
             let world = |c: [f64; 3]| {
                 let q = frame.o + frame.u * (along + c[0]) + frame.n * (plane + across + c[1]);
                 [q.0, q.1, base + up + c[2]]
@@ -898,11 +899,12 @@ fn curtain_solids(out: &mut Vec<Solid>, m: &Model, id: Id, w: &crate::model::Wal
         }
         // Round its own centre, which is what makes its triangles a shape placed, to the last bit: see `curtain_copies`.
         let o = frame.o + frame.u * along + frame.n * (plane + across);
+        let (ux, nx) = turned(frame.u, p.turn);
         out.push(Solid::Box {
             owner: id,
             color,
             tex,
-            frame: Frame { o, ..frame },
+            frame: Frame { o, u: ux, n: nx },
             a: (-da, da),
             c: (-dc, dc),
             z: (base + up - dz, base + up + dz),
@@ -910,14 +912,19 @@ fn curtain_solids(out: &mut Vec<Solid>, m: &Model, id: Id, w: &crate::model::Wal
     }
 }
 
+/// A wall's run `u` turned `turn` radians in plan, and its left: a part's own axes.
+fn turned(u: P2, turn: f64) -> (P2, P2) {
+    if turn == 0.0 {
+        return (u, u.perp());
+    }
+    let (cos, sin) = (turn.cos(), turn.sin());
+    let v = P2(u.0 * cos - u.1 * sin, u.0 * sin + u.1 * cos);
+    (v, v.perp())
+}
+
 /// The material of a curtain wall's part of this shape; none is empty.
 fn curtain_material<'a>(m: &'a Model, s: &crate::curtain::Shape) -> &'a str {
-    use crate::curtain::PartKind;
-    match s.kind {
-        PartKind::Panel => m.types.curtain_panel.get(&s.type_name).map(|t| t.material.as_str()),
-        PartKind::Mullion => m.types.mullion.get(&s.type_name).map(|t| t.material.as_str()),
-    }
-    .unwrap_or("")
+    s.material_in(m).unwrap_or("")
 }
 
 /// A curtain wall's box parts as copies of shapes shared by every wall, each with where its first triangle is among the wall's:
@@ -936,28 +943,30 @@ fn curtain_copies(
     let (base, plane) = (m.own_base(w), curtain::grid_plane(m, w));
     let mut out = Vec::with_capacity(l.parts.len());
     let mut first = 0;
-    for p in &l.parts {
+    for piece in l.pieces() {
+        let Some(p) = l.parts.get(piece.first) else { continue };
         let Some(s) = l.shapes.get(p.shape as usize) else { continue };
-        if s.face.is_some() {
+        if s.is_cut() {
             first += s.tris().len();
             continue;
         }
-        let key = ShapeKey::Part(curtain_material(m, s).to_string(), s.size.map(f64::to_bits));
+        let key = ShapeKey::Part(curtain_material(m, s).to_string(), piece.size.map(f64::to_bits));
         let shape = *keys.entry(key).or_insert_with(|| {
-            let [da, dz, dc] = s.size.map(|x| x / 2.0);
+            let [da, dz, dc] = piece.size.map(|x| x / 2.0);
             let mut tris = Vec::with_capacity(12);
             let local = Frame { o: P2(0.0, 0.0), u: P2(1.0, 0.0), n: P2(0.0, 1.0) };
             local.cuboid(&mut tris, id, (WALL, 0), (-da, da), (-dc, dc), (-dz, dz));
             shapes.push(tris.into_iter().map(|t| t.p).collect());
             shapes.len() - 1
         });
-        let [along, up, across] = p.centre;
+        let [along, up, across] = piece.centre;
         let o = w.start + u * along + n * (plane + across);
+        let (ux, nx) = turned(u, p.turn);
         let copy = crate::component_geometry::ComponentInstance {
             owner: id,
             shape,
             at: [o.0, o.1, base + up],
-            axes: [[u.0, u.1, 0.0], [n.0, n.1, 0.0], [0.0, 0.0, 1.0]],
+            axes: [[ux.0, ux.1, 0.0], [nx.0, nx.1, 0.0], [0.0, 0.0, 1.0]],
         };
         if copy.solid() {
             out.push((first, copy));
@@ -1195,8 +1204,8 @@ struct PlaneTable {
 impl PlaneTable {
     /// The number of `t`'s plane: that of a plane found before within the tolerance, else a new one.
     fn assign(&mut self, t: &Tri) -> usize {
-        // A curtain wall's parts are each their own: the joint between two in one plane shows, as a mitre from a butt. A
-        // part's triangles come together, so a triangle goes with the one before if it lies on it and shares an edge.
+        // A curtain wall's pieces are each their own: the joint between two in one plane shows, as a mitre from a butt. A
+        // piece's triangles come together, so a triangle goes with the one before if it lies on it and shares an edge.
         if t.part().is_some() {
             let same = self.part.filter(|(before, _)| {
                 let n = cross(sub(before[1], before[0]), sub(before[2], before[0]));

@@ -1736,16 +1736,16 @@ mod tests {
             .iter()
             .filter_map(|(id, e)| match e {
                 crate::model::Element::Wall(w) if crate::curtain::pattern(&s.model, w).is_some() => {
-                    Some((*id, crate::curtain::layout(&s.model, w).parts.len()))
+                    Some((*id, crate::curtain::layout(&s.model, w).pieces().len()))
                 }
                 _ => None,
             })
             .collect();
         assert_eq!(walls.len(), 2);
         for (id, parts) in &walls {
-            assert!(*parts > 100, "{parts} parts");
+            assert!(*parts > 50, "{parts} pieces");
             let copies = mesh.instances.iter().filter(|i| mesh.owners[i.owner as usize - 1].id == *id).count();
-            assert_eq!(copies, *parts, "every part of wall {id} a copy");
+            assert_eq!(copies, *parts, "every piece of wall {id} a copy");
         }
         // The two walls' whole panels and mullions are one set of shapes, whichever way each wall runs.
         let parts: usize = walls.iter().map(|(_, n)| n).sum();
@@ -1784,7 +1784,7 @@ mod tests {
         let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
         let (mesh, flat) = (Mesh::new(&scene, &look).unwrap(), Mesh::flat(&scene, &look).unwrap());
         let copies = mesh.instances.iter().filter(|i| mesh.owners[i.owner as usize - 1].id == id).count();
-        assert_eq!(copies, l.parts.len() - mitred);
+        assert_eq!(copies, l.pieces().len() - mitred);
         assert_eq!(mesh.triangles(), flat.triangles());
         picks_as_the_picture(&s);
     }
@@ -1830,8 +1830,8 @@ mod tests {
         for w in s.model.elements.values().filter_map(|e| if let crate::model::Element::Wall(w) = e { Some(w) } else { None }) {
             if crate::curtain::pattern(&s.model, w).is_some() {
                 let l = crate::curtain::layout(&s.model, w);
-                for p in &l.parts {
-                    match l.shapes[p.shape as usize].kind {
+                for piece in l.pieces() {
+                    match l.shapes[l.parts[piece.first].shape as usize].kind {
                         crate::curtain::PartKind::Panel => counts.0 += 1,
                         crate::curtain::PartKind::Mullion => counts.1 += 1,
                     }

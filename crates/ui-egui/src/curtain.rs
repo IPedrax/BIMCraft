@@ -4,7 +4,9 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use bimcraft_core::curtain::{self, Address, Continuous, CurtainEdits, CurtainLayout, Direction, Fit, Join, Justify, MullionPick, Way};
+use bimcraft_core::curtain::{
+    self, Address, Continuous, CurtainEdits, CurtainLayout, Direction, Fit, GridWay, Join, Justify, MullionPick, Way,
+};
 use bimcraft_core::geom::P2;
 use bimcraft_core::model::{Element, Id, Model};
 use bimcraft_core::units::Units;
@@ -13,11 +15,12 @@ use bimcraft_i18n::msg;
 use egui::{Button, Color32, Context, Id as UiId, Rect, Sense, Stroke, TextEdit, Ui, WidgetInfo, WidgetType, pos2, vec2};
 use serde_json::json;
 
-use crate::BimApp;
+use crate::icons::Icon;
 use crate::lang::{t, tf};
 use crate::popup::Modal;
 use crate::style::{canvas_pal, pal};
 use crate::typeprops;
+use crate::{BimApp, Status, Tool};
 
 /// A place on the pattern that holds a type or nothing: `row` and `column` of its segments.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -336,7 +339,12 @@ impl CurtainEditor {
                 (ui.add(Button::new(add)).clicked(), ui.add_enabled(typed.len() > 1, Button::new(remove)).clicked())
             })
             .inner;
-        choice(ui, fit_label, &mut d.fit, &[(Fit::Flexible, msg!("Last Grid Flexible")), (Fit::Fixed, msg!("Fixed Grid"))]);
+        choice(
+            ui,
+            fit_label,
+            &mut d.fit,
+            &[(Fit::Flexible, msg!("Last Grid Flexible")), (Fit::Fixed, msg!("Fixed Grid")), (Fit::Evenly, msg!("Fit Evenly"))],
+        );
         choice(
             ui,
             justify_label,
@@ -367,6 +375,12 @@ impl CurtainEditor {
                 *border = (name != none).then_some(MullionPick { type_name: name, join });
             }
         }
+        let corners: Vec<String> =
+            std::iter::once(none.clone()).chain(m.type_names("cornermullion").into_iter().map(String::from)).collect();
+        let now = self.l.corner.clone().unwrap_or_else(|| none.clone());
+        if let Some(name) = row(ui, t("Corner Mullion"), &now, &corners) {
+            self.l.corner = (name != none).then_some(name);
+        }
     }
 }
 
@@ -392,10 +406,20 @@ pub(crate) fn part_is_there(m: &Model, w: &bimcraft_core::model::Wall, at: Addre
     curtain::pattern(m, w).is_some() && curtain::layout(m, w).has(at)
 }
 
-/// The curtain wall alone in `selection`, if it's in `under`, and what's at the plan's cut plane under `at`.
-pub(crate) fn parts_under(m: &Model, view: Id, selection: &[Id], under: &[Id], at: P2, scale: f64) -> Option<(Id, Vec<Address>)> {
-    let &[id] = selection else { return None };
-    let w = m.wall(id).filter(|w| curtain::pattern(m, w).is_some() && under.contains(&id))?;
+/// Which curtain wall Tab goes into the parts of: the one alone in `selection` if it's in `under`, else, when `free` lets it, the
+/// one the cursor is on.
+pub(crate) fn tab_wall(m: &Model, selection: &[Id], under: &[Id], hovered: Option<Id>, free: bool) -> Option<Id> {
+    let is_curtain = |id: Id| m.wall(id).is_some_and(|w| curtain::pattern(m, w).is_some());
+    match selection {
+        [id] if under.contains(id) && is_curtain(*id) => Some(*id),
+        _ if free && !hovered.is_some_and(|h| selection.contains(&h)) => hovered.filter(|h| is_curtain(*h)),
+        _ => None,
+    }
+}
+
+/// The curtain wall `id`, and what's at the plan's cut plane under `at`.
+pub(crate) fn parts_under(m: &Model, view: Id, id: Id, at: P2, scale: f64) -> Option<(Id, Vec<Address>)> {
+    let w = m.wall(id).filter(|w| curtain::pattern(m, w).is_some())?;
     let axis = walls::Axis::of(w);
     let (along, _) = axis.project(at);
     let up = m.plan_range(view).cut - m.own_base(w);
@@ -406,16 +430,92 @@ pub(crate) fn parts_under(m: &Model, view: Id, selection: &[Id], under: &[Id], a
 /// Of the parts in `list`, those view `view` draws: Tab goes only through what can be seen.
 pub(crate) fn shown_parts(m: &Model, view: Id, mut list: Vec<Address>) -> Vec<Address> {
     let look = bimcraft_core::graphics::Look::of(m, view);
-    list.retain(|a| look.shows_part(a.kind()));
+    // A grid is no part to hide.
+    list.retain(|a| a.is_grid() || look.shows_part(a.kind()));
     list
 }
 
 /// Under the cursor in a section or an elevation, or a 3D view's camera: the selected curtain wall `id`'s parts on the ray
-/// `from` to `to`, as view `view` draws them.
-pub(crate) fn parts_on_ray(m: &Model, view: Id, id: Id, from: [f64; 3], to: [f64; 3]) -> Option<Vec<Address>> {
+/// `from` to `to`, as view `view` draws them. `mm_per_pixel`: how much of the wall a pixel of the view covers there, so a grid line
+/// and a thin mullion can be reached however far out the view is.
+pub(crate) fn parts_on_ray(m: &Model, view: Id, id: Id, from: [f64; 3], to: [f64; 3], mm_per_pixel: f64) -> Option<Vec<Address>> {
     let w = m.wall(id).filter(|w| curtain::pattern(m, w).is_some())?;
     let (along, up) = curtain::on_plane(m, w, from, to)?;
-    Some(shown_parts(m, view, curtain::layout(m, w).at(along, up, REACH)))
+    let reach = REACH.max(f64::from(crate::canvas::PICK) * mm_per_pixel);
+    Some(shown_parts(m, view, curtain::layout(m, w).at(along, up, reach)))
+}
+
+/// The curtain wall alone selected, if Tab can go through its parts now.
+pub(crate) fn wall_to_tab(m: &Model, selection: &[Id], tool: &Tool) -> Option<Id> {
+    match (selection, tool) {
+        (&[id], Tool::Modify) if is_curtain(m, id) => Some(id),
+        _ => None,
+    }
+}
+
+/// The stretch of a grid line `tool`, if it's Add/Remove Segments, has its cursor on.
+pub(crate) fn segment_aim(m: &Model, tool: &Tool, on_wall: Option<(f64, f64)>) -> Option<(Id, Address)> {
+    let &Tool::CurtainSegment { wall } = tool else { return None };
+    let (along, up) = on_wall?;
+    curtain::layout(m, m.wall(wall)?).segment_near(along, up).map(|a| (wall, a))
+}
+
+/// The selection as a view tints it: a curtain wall stays as it is drawn, for the part Tab picks to be seen on it, and shows
+/// selected by its outline. What a view is shaping or marking besides goes in after this.
+pub(crate) fn tinted_selection(m: &Model, selection: &[Id]) -> Vec<Id> {
+    selection.iter().copied().filter(|id| !is_curtain(m, *id)).collect()
+}
+
+/// Whether `id` is a curtain wall.
+pub(crate) fn is_curtain(m: &Model, id: Id) -> bool {
+    m.wall(id).is_some_and(|w| curtain::pattern(m, w).is_some())
+}
+
+/// What's hovered as a view tints it: not a curtain wall already selected, whose parts light up instead.
+pub(crate) fn tinted_hover(m: &Model, selection: &[Id], hovered: Option<Id>) -> Option<Id> {
+    hovered.filter(|id| !(selection.contains(id) && is_curtain(m, *id)))
+}
+
+/// The part Tab has picked: a lighter blue than the one it would go to next.
+pub(crate) fn picked_part_color() -> egui::Color32 {
+    crate::style::canvas_pal().hover.lerp_to_gamma(egui::Color32::WHITE, 0.3)
+}
+
+/// Marks a part on a view: filled so a whole panel shows, picked or only under the cursor, with `ring` its outline on the screen.
+pub(crate) fn mark_part(p: &egui::Painter, ring: Vec<egui::Pos2>, picked: bool) {
+    let color = if picked { picked_part_color() } else { crate::style::canvas_pal().accent };
+    let fill = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 70);
+    p.add(egui::Shape::convex_polygon(ring, fill, egui::Stroke::new(if picked { 3.0 } else { 2.0 }, color)));
+}
+
+/// A curtain wall shown selected: its outline, on the screen.
+pub(crate) fn mark_wall(p: &egui::Painter, ring: Vec<egui::Pos2>) {
+    p.add(egui::Shape::closed_line(ring, egui::Stroke::new(2.0, crate::style::canvas_pal().accent)));
+}
+
+/// Where `tool`, if it's the Curtain Grid tool, would place a line with its cursor `on_wall`, tidied of float noise.
+pub(crate) fn grid_aim(m: &Model, tool: &Tool, on_wall: Option<(f64, f64)>) -> Option<(Id, f64, GridWay)> {
+    let &Tool::CurtainGrid { wall, way } = tool else { return None };
+    let (along, up) = on_wall?;
+    let at = curtain::grid_place(m, m.wall(wall)?, way, along, up)?;
+    Some((wall, (at * 100.0).round() / 100.0, way))
+}
+
+/// A grid place's way and the column or row its command calls it by.
+fn grid_line(at: Address) -> (GridWay, i64) {
+    match at {
+        Address::VerticalGrid { column, .. } => (GridWay::Vertical, column),
+        Address::HorizontalGrid { row, .. } => (GridWay::Horizontal, row),
+        Address::Cell { column, .. }
+        | Address::Vertical { column, .. }
+        | Address::Horizontal { column, .. }
+        | Address::Corner { column, .. } => (GridWay::Vertical, column),
+    }
+}
+
+/// What a command calls a way.
+fn way_word(way: GridWay) -> &'static str {
+    if way == GridWay::Vertical { "vertical" } else { "horizontal" }
 }
 
 /// The part after `now` in `list`, then none: the whole wall again.
@@ -431,12 +531,24 @@ impl BimApp {
         let Some((id, at)) = self.curtain_part else { return };
         let Some(w) = model.wall(id) else { return };
         let l = curtain::layout(model, w);
+        if at.is_grid() {
+            self.curtain_grid_properties(ui, &l, at);
+            ui.separator();
+            return;
+        }
         let (word, column, row, names) = match at {
             Address::Cell { column, row } => (t("Panel"), column, row, model.type_names("curtainpanel")),
             Address::Vertical { column, row } => (t("Vertical Mullion"), column, row, model.type_names("mullion")),
             Address::Horizontal { column, row } => (t("Horizontal Mullion"), column, row, model.type_names("mullion")),
+            Address::Corner { column, row } => (t("Corner Mullion"), column, row, model.type_names("cornermullion")),
+            Address::VerticalGrid { .. } | Address::HorizontalGrid { .. } => return,
         };
-        ui.label(egui::RichText::new(tf("{}: column {}, row {}", &[word, &column.to_string(), &row.to_string()])).strong());
+        let picked = self.curtain_parts_picked().len();
+        if picked > 1 {
+            ui.label(egui::RichText::new(tf("{}: {} along the grid", &[word, &picked.to_string()])).strong());
+        } else {
+            ui.label(egui::RichText::new(tf("{}: column {}, row {}", &[word, &column.to_string(), &row.to_string()])).strong());
+        }
         let walled = matches!(at, Address::Cell { column, row } if l.walls.iter().any(|h| (h.column, h.row) == (column, row)));
         if walled {
             ui.label(t("A wall stands here: select it, or delete it to have the panel back."));
@@ -459,17 +571,15 @@ impl BimApp {
                 }
             },
         );
-        let edited = w.curtain.as_ref().is_some_and(|e| e.parts.iter().any(|x| x.at == at));
+        let picks = self.curtain_parts_picked();
+        let edited = w.curtain.as_ref().is_some_and(|e| e.parts.iter().any(|x| picks.contains(&x.at)));
         let reset = edited && ui.button(t("As in the Pattern")).clicked();
         let replace = matches!(at, Address::Cell { .. }) && ui.button(t("Replace with Wall")).clicked();
         ui.separator();
-        let mut params = serde_json::to_value(at).unwrap_or_default();
-        params["wall"] = json!(id);
         if let Some(name) = pick {
-            params["type"] = json!(name);
-            self.run("curtain_part", params);
+            self.set_curtain_part_type(name);
         } else if reset {
-            params["reset"] = json!(true);
+            let params = json!({"wall": id, "parts": picks, "reset": true});
             self.run("curtain_part", params);
         } else if replace && let Address::Cell { column, row } = at {
             let made = self.run("curtain_panel_wall", json!({"wall": id, "column": column, "row": row}));
@@ -480,12 +590,231 @@ impl BimApp {
         }
     }
 
-    /// Delete with a part picked: that part, and never the wall.
+    /// Delete with a part picked: that part and those along the grid with it, and never the wall. A grid: a manual one comes off.
     pub(crate) fn delete_curtain_part(&mut self, id: Id, at: Address) {
-        let mut params = serde_json::to_value(at).unwrap_or_default();
-        params["wall"] = json!(id);
-        params["type"] = serde_json::Value::Null;
-        self.run("curtain_part", params);
+        if at.is_grid() {
+            let (way, line) = grid_line(at);
+            if self.run("curtain_grid", json!({"wall": id, "way": way_word(way), "line": line, "reset": true})).is_some() {
+                self.curtain_part = None;
+            }
+            return;
+        }
+        let picks = self.curtain_parts_picked();
+        self.run("curtain_part", json!({"wall": id, "parts": picks, "type": null}));
+    }
+
+    /// Every place picked of the curtain wall's: the one Tab went to, and those along its grid.
+    pub(crate) fn curtain_parts_picked(&self) -> Vec<Address> {
+        let first = self.curtain_part.map(|(_, at)| at);
+        first.into_iter().chain(self.curtain_more.iter().copied().filter(|a| Some(*a) != first)).collect()
+    }
+
+    /// Give what's picked of the curtain wall a type, or none, in one step.
+    pub(crate) fn set_curtain_part_type(&mut self, name: Option<String>) {
+        let Some((id, _)) = self.curtain_part else { return };
+        let picks = self.curtain_parts_picked();
+        self.run("curtain_part", json!({"wall": id, "parts": picks, "type": name}));
+    }
+
+    /// Whether a mullion on a grid line is picked, not a border's or a corner's.
+    pub(crate) fn curtain_mullion_picked(&self) -> bool {
+        let Some((id, at)) = self.curtain_part else { return false };
+        let m = &self.session.model;
+        matches!(at, Address::Vertical { .. } | Address::Horizontal { .. })
+            && m.wall(id).is_some_and(|w| !curtain::layout(m, w).along_grid(at).is_empty())
+    }
+
+    /// Right click's Select Along Grid: every mullion along the line of the one picked.
+    pub(crate) fn select_along_grid(&mut self) {
+        let Some((id, at)) = self.curtain_part else { return };
+        let m = &self.session.model;
+        let Some(w) = m.wall(id) else { return };
+        let laid = curtain::layout(m, w);
+        self.curtain_more = laid.along_grid(at).into_iter().filter(|a| *a != at && laid.parts.iter().any(|p| p.address == *a)).collect();
+    }
+
+    /// The part a Tab would go to next, of those under the cursor, for a view to mark.
+    pub(crate) fn curtain_part_aim(&mut self, under: Option<(Id, Vec<Address>)>) {
+        self.curtain_aim = under.and_then(|(id, list)| next_part(self.curtain_part, id, &list));
+    }
+
+    /// A click with Add/Remove Segments, where it's aiming: taken off if it's there, put back if it isn't.
+    pub(crate) fn curtain_segment_click(&mut self) {
+        let Some((wall, at)) = self.curtain_segment_hover else {
+            self.status = Status { text: t("click on a grid line of the curtain wall").into(), error: true };
+            return;
+        };
+        let m = &self.session.model;
+        let Some(w) = m.wall(wall) else { return };
+        let restore = curtain::layout(m, w).gone.contains(&at);
+        let part = match at {
+            Address::Vertical { column, row } => json!({"part": "vertical", "column": column, "row": row}),
+            Address::Horizontal { column, row } => json!({"part": "horizontal", "column": column, "row": row}),
+            _ => return,
+        };
+        self.run("curtain_segment", json!({"wall": wall, "parts": [part], "restore": restore}));
+    }
+
+    /// Add/Remove Segments' cursor, at `along` and `up` on its wall (or off it, with none).
+    pub(crate) fn curtain_segment_aim(&mut self, on_wall: Option<(f64, f64)>) {
+        self.curtain_segment_hover = segment_aim(&self.session.model, &self.tool, on_wall);
+    }
+
+    /// Modify's panel with a curtain wall alone selected: add grids to it.
+    pub(crate) fn curtain_grid_panel(&mut self, ui: &mut Ui) {
+        let m = &self.session.model;
+        let wall = match (self.selection.as_slice(), &self.tool) {
+            (&[id], Tool::Modify | Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. }) => {
+                m.wall(id).filter(|w| curtain::pattern(m, w).is_some()).map(|_| id)
+            }
+            _ => None,
+        };
+        let Some(wall) = wall else { return };
+        let on = |tool: &Tool, way: GridWay| matches!(tool, Tool::CurtainGrid { way: w, .. } if *w == way);
+        let (vertical, horizontal) = (on(&self.tool, GridWay::Vertical), on(&self.tool, GridWay::Horizontal));
+        crate::ribbon::panel(ui, msg!("Curtain Grid"), |ui| {
+            let tip = msg!(
+                "Add Vertical Grid: hover over the curtain wall to see where, click to place it with its mullions. A grid added stays when the pattern changes"
+            );
+            if crate::big_button(ui, Icon::CurtainGridVertical, msg!("Add Vertical Grid"), vertical, tip).clicked() {
+                self.set_tool(Tool::CurtainGrid { wall, way: GridWay::Vertical });
+            }
+            let tip = msg!(
+                "Add Horizontal Grid: in a section, an elevation or the 3D view, hover over the curtain wall to see where, click to place it with its mullions. A grid added stays when the pattern changes"
+            );
+            if crate::big_button(ui, Icon::CurtainGridHorizontal, msg!("Add Horizontal Grid"), horizontal, tip).clicked() {
+                self.set_tool(Tool::CurtainGrid { wall, way: GridWay::Horizontal });
+            }
+            let tip = msg!(
+                "Add/Remove Segments: in a section, an elevation or the 3D view, click a stretch of a grid line to take it off and merge the panels either side, or click where one was to put it back"
+            );
+            let segments = matches!(self.tool, Tool::CurtainSegment { .. });
+            if crate::big_button(ui, Icon::CurtainSegment, msg!("Add/Remove Segments"), segments, tip).clicked() {
+                self.set_tool(Tool::CurtainSegment { wall });
+            }
+        });
+    }
+
+    /// Where the Curtain Grid tool would place a line now.
+    pub(crate) fn curtain_grid_hover(&self) -> Option<(Id, f64, GridWay)> {
+        self.curtain_hover.filter(|_| matches!(self.tool, Tool::CurtainGrid { .. }))
+    }
+
+    /// The Curtain Grid tool's cursor, at `along` and `up` on its wall (or off it, with none).
+    pub(crate) fn curtain_grid_aim(&mut self, on_wall: Option<(f64, f64)>) {
+        self.curtain_hover = grid_aim(&self.session.model, &self.tool, on_wall);
+    }
+
+    /// A click with the Curtain Grid tool, where it's aiming; a plan can't say how high, so it says where to go.
+    pub(crate) fn curtain_grid_click(&mut self) {
+        match self.curtain_grid_hover() {
+            Some((wall, at, way)) => {
+                self.run("curtain_grid", json!({"wall": wall, "way": way_word(way), "at": at}));
+            }
+            None => self.status = Status { text: t("click on the curtain wall").into(), error: true },
+        }
+    }
+
+    /// Whether the tool's clicks in a section or the 3D view are on a curtain wall's face: placing a grid, or moving one.
+    pub(crate) fn curtain_face_tool(&self) -> bool {
+        matches!(self.tool, Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. }) || self.curtain_grid_moving().is_some()
+    }
+
+    /// A click in a section or the 3D view, on the plane of the curtain wall, with what `curtain_face_tool` says.
+    pub(crate) fn curtain_face_click(&mut self, on_wall: Option<(f64, f64)>) {
+        if matches!(self.tool, Tool::CurtainGrid { .. }) {
+            self.curtain_grid_aim(on_wall);
+            self.curtain_grid_click();
+            return;
+        }
+        if matches!(self.tool, Tool::CurtainSegment { .. }) {
+            self.curtain_segment_aim(on_wall);
+            self.curtain_segment_click();
+            return;
+        }
+        let Some((along, up)) = on_wall else { return };
+        match self.tool {
+            Tool::Move(None) => self.tool = Tool::Move(Some(P2(along, up))),
+            Tool::Move(Some(base)) => self.move_grid_by(along - base.0, up - base.1),
+            _ => {}
+        }
+    }
+
+    /// The curtain wall and grid line the Move tool has in hand.
+    pub(crate) fn curtain_grid_moving(&self) -> Option<(Id, Address)> {
+        self.curtain_part.filter(|(_, at)| at.is_grid() && matches!(self.tool, Tool::Move(_)))
+    }
+
+    /// The Move tool's second point on a plan, the grid picked moved along its wall. A plan can't move a horizontal one.
+    pub(crate) fn move_grid_on_plan(&mut self, from: P2, to: P2) {
+        let Some((id, at)) = self.curtain_grid_moving() else { return };
+        if matches!(at, Address::HorizontalGrid { .. }) {
+            self.status = Status { text: t("a horizontal grid moves in a section, an elevation or the 3D view").into(), error: true };
+            return;
+        }
+        let Some(w) = self.session.model.wall(id) else { return };
+        let u = (w.end - w.start).unit();
+        self.move_grid_by((to - from).dot(u), 0.0);
+    }
+
+    /// The grid picked moved by so far along its wall or up it: as its way goes, it's manual now, and stays picked.
+    fn move_grid_by(&mut self, along: f64, up: f64) {
+        let Some((id, at)) = self.curtain_grid_moving() else { return };
+        let m = &self.session.model;
+        let Some(place) = m.wall(id).and_then(|w| curtain::layout(m, w).grid_at(at)) else { return };
+        let (way, line) = grid_line(at);
+        let delta = if way == GridWay::Vertical { along } else { up };
+        let params = json!({"wall": id, "way": way_word(way), "line": line, "at": place + delta});
+        match self.run("curtain_grid", params).and_then(|v| v["line"].as_i64()) {
+            Some(line) => {
+                let moved = if way == GridWay::Vertical {
+                    Address::VerticalGrid { column: line, row: 0 }
+                } else {
+                    Address::HorizontalGrid { column: 0, row: line }
+                };
+                self.curtain_part = Some((id, moved));
+                self.tool = Tool::Modify;
+            }
+            None => self.tool = Tool::Move(None),
+        }
+    }
+
+    /// Properties on a grid line: which way, where, and Auto or Manual: manual stays when the pattern changes.
+    fn curtain_grid_properties(&mut self, ui: &mut Ui, l: &curtain::Layout, at: Address) {
+        let word = if matches!(at, Address::VerticalGrid { .. }) { t("Vertical Grid") } else { t("Horizontal Grid") };
+        ui.label(egui::RichText::new(word).strong());
+        if let Some(place) = l.grid_at(at) {
+            ui.label(self.session.model.units.length(place));
+        }
+        let manual = l.grid_is_manual(at);
+        ui.label(tf("Grid Kind: {}", &[if manual { t("Manual") } else { t("Auto") }]));
+        if ui.button(if manual { t("Back to Auto") } else { t("Make Manual") }).clicked() {
+            self.set_curtain_grid_manual(!manual);
+        }
+    }
+
+    /// The grid picked made manual where it stands, or back to auto, which takes it off (one moved goes back to its pattern's place).
+    pub(crate) fn set_curtain_grid_manual(&mut self, manual: bool) {
+        let Some((id, at)) = self.curtain_part.filter(|(_, at)| at.is_grid()) else { return };
+        let m = &self.session.model;
+        let Some(place) = m.wall(id).and_then(|w| curtain::layout(m, w).grid_at(at)) else { return };
+        let (way, line) = grid_line(at);
+        let (word, params) = (way_word(way), if manual { json!({"at": place}) } else { json!({"reset": true}) });
+        let mut all = json!({"wall": id, "way": word, "line": line});
+        if let (Some(a), Some(b)) = (all.as_object_mut(), params.as_object()) {
+            a.extend(b.clone());
+        }
+        let done = self.run("curtain_grid", all);
+        self.curtain_part = done.and_then(|v| v["line"].as_i64()).map(|line| {
+            (
+                id,
+                if way == GridWay::Vertical {
+                    Address::VerticalGrid { column: line, row: 0 }
+                } else {
+                    Address::HorizontalGrid { column: 0, row: line }
+                },
+            )
+        });
     }
 
     /// Edit Pattern on wall type `name`, if it's a curtain wall's.
@@ -557,6 +886,7 @@ impl BimApp {
                             &mut d.l.continuous,
                             &[(Continuous::Vertical, msg!("Vertical Mullions")), (Continuous::Horizontal, msg!("Horizontal Mullions"))],
                         );
+                        ui.checkbox(&mut d.l.anchor_rows, t("Restart pattern at levels crossing"));
                         ui.horizontal(|ui| {
                             let name = ui.add_sized(vec2(130.0, 20.0), egui::Label::new(t("Smallest Panel")));
                             ui.add(TextEdit::singleline(&mut d.smallest).desired_width(90.0)).labelled_by(name.id);
