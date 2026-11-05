@@ -169,13 +169,11 @@ mod tests {
             .unwrap_or_default();
         let column =
             run(&mut s, "column", json!({"at": [4000, 3000], "level": ground, "top_level": upper}))["id"].as_u64().unwrap_or_default();
-        let roof = run(
-            &mut s,
-            "roof",
-            json!({"points": [[-500, -500], [8500, -500], [8500, 6500], [-500, 6500]], "level": upper, "slope": 20}),
-        )["id"]
-            .as_u64()
-            .unwrap_or_default();
+        let roof =
+            run(&mut s, "roof", json!({"boundary": [[-500, -500], [8500, -500], [8500, 6500], [-500, 6500]], "level": upper, "slope": 20}))
+                ["id"]
+                .as_u64()
+                .unwrap_or_default();
         (s, wall, column, roof)
     }
 

@@ -1814,7 +1814,7 @@ impl BimApp {
             .map(|q| self.snap(&model, level, &view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at);
         self.line_grip_overlay(&ui.painter_at(rect), rect, &view, cursor);
         self.shape_overlay(ui, &model, &view, rect, level);
-        self.temporary_dimension(ui, &model, &view, rect, key);
+        self.temporary_dimension(ui, &model, &view, rect, key, &d);
         self.locks(ui, &model, &view, rect, key);
         self.context_menu(&response);
         self.nav_bar(ui, rect, key);
@@ -3267,11 +3267,12 @@ impl BimApp {
 
     /// The numbers of the dimensions in the plan `key` that measure to `on`, the element selected, as Revit offers them: typing
     /// one moves or turns that element, whichever end of the segment it's at.
-    fn element_dimensions(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, on: Option<Id>, key: Id) {
+    #[allow(clippy::too_many_arguments)]
+    fn element_dimensions(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, on: Option<Id>, key: Id, drawn: &Drawing) {
         let Some(on) = on else { return };
         for id in m.dimensions_on(on, key) {
             if let Some(Element::Dimension(d)) = m.elements.get(id) {
-                self.dimension_numbers(ui, m, v, rect, id, d, Some(on));
+                self.dimension_numbers(ui, m, v, rect, (id, d), Some(on), drawn);
             }
         }
     }
@@ -3314,7 +3315,16 @@ impl BimApp {
     /// (`dimension_value`), `moves` where the window has an element selected, as a temporary dimension's does. Of an aligned or
     /// a linear one, each segment's touching `moves`, in a continuous string; of an angular one, its angle.
     #[allow(clippy::too_many_arguments)]
-    fn dimension_numbers(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, id: Id, d: &Dimension, moves: Option<Id>) {
+    fn dimension_numbers(
+        &mut self,
+        ui: &mut Ui,
+        m: &Model,
+        v: &View,
+        rect: Rect,
+        (id, d): (Id, &Dimension),
+        moves: Option<Id>,
+        drawn: &Drawing,
+    ) {
         if d.alignment {
             return;
         }
@@ -3322,33 +3332,37 @@ impl BimApp {
         let p = ui.painter_at(rect);
         let labels = m.dimension_labels(d);
         let on_it = moves.map(|e| m.guid(e));
-        let numbers: Vec<(usize, Pos2)> = match d.kind {
-            DimKind::Angular => {
-                let Some((o, from, sweep)) = m.angle_sector(d) else { return };
-                let mid = from + sweep / 2.0;
-                let at = o + P2(mid.cos(), mid.sin()) * d.at.dist(o);
-                let out = (screen(at) - screen(o)).normalized();
-                vec![(0, screen(at) + out * 12.0)]
-            }
-            DimKind::Aligned | DimKind::Linear if m.dimension_type(d).string == bimcraft_core::dims::DimString::Continuous => {
-                let (n, st) = m.stations(d);
-                let side = (screen(d.at - n.perp()) - screen(d.at)).normalized();
-                st.windows(2)
-                    .enumerate()
-                    .filter_map(|(i, pair)| {
-                        let [(s0, _, r0), (s1, _, r1)] = pair else { return None };
-                        let touches = on_it.is_none_or(|g| (r0.id == g) != (r1.id == g));
-                        touches.then(|| (i, screen(d.at + n * ((s0 + s1) / 2.0)) - side * 12.0))
-                    })
-                    .collect()
-            }
-            _ => Vec::new(),
+        // Which segments: those touching `moves`.
+        let (_, st) = m.stations(d);
+        let touches = |i: usize| {
+            d.kind == DimKind::Angular
+                || on_it.is_none_or(|g| {
+                    let at = |k: usize| st.get(k).is_some_and(|(_, _, r)| r.id == g);
+                    at(i) != at(i + 1)
+                })
         };
-        for (i, middle) in numbers {
+        // Over the number the drawing letters, covering it however large it's drawn; on its side along a line up the screen.
+        let upright = matches!(d.kind, DimKind::Aligned | DimKind::Linear) && {
+            let n = m.crossings(d).0;
+            (screen(d.at + n) - screen(d.at)).x.abs() < (screen(d.at + n) - screen(d.at)).y.abs()
+        };
+        for (i, place, tall) in drawn.dimension_number_places(m, d).into_iter().filter(|(i, ..)| touches(*i)) {
             let Some(label) = labels.get(i) else { continue };
-            let size = p.layout_no_wrap(label.clone(), FontId::proportional(12.0), pal().accent).size() + vec2(10.0, 4.0);
-            let at = Rect::from_center_size(middle, size);
-            let Some(Some(typed)) = self.number_field(ui, at, (id, i), label, bimcraft_i18n::msg!("Dimension {}")) else { continue };
+            let small = p.layout_no_wrap(label.clone(), FontId::proportional(12.0), pal().accent).size();
+            let high = (tall * v.scale) as f32;
+            let wide = small.x * (high / 12.0).max(1.0);
+            let size = if upright { vec2(high.max(small.y), wide) } else { vec2(wide, high.max(small.y)) } + vec2(10.0, 4.0);
+            let at = Rect::from_center_size(screen(place), size);
+            let typed = self.number_field(ui, at, (id, i), label, bimcraft_i18n::msg!("Dimension {}"));
+            // A double click on the number is Dimension Text's, as on the drawing under it.
+            if ui.input(|inp| inp.pointer.button_double_clicked(egui::PointerButton::Primary))
+                && ui.input(|inp| inp.pointer.interact_pos()).is_some_and(|q| at.expand2(vec2(18.0, 2.0)).contains(q))
+            {
+                self.dim_edit = None;
+                self.dimension_text_dialog = Some(crate::dimtypes::DimensionTextDialog::new(m, id, i));
+                continue;
+            }
+            let Some(Some(typed)) = typed else { continue };
             let value = if d.kind == DimKind::Angular { number(typed.trim().trim_end_matches('°')) } else { m.units.parse(&typed) };
             let Some(value) = value else {
                 let wrong = if d.kind == DimKind::Angular { "`{}` is not an angle" } else { "`{}` is not a length" };
@@ -3366,9 +3380,10 @@ impl BimApp {
     /// A selected aligned or linear dimension's constraints, as Revit shows them: a padlock under each segment, which a
     /// click locks at its length or unlocks, and past its end, over a string of two segments or more, EQ, which a click
     /// makes equal or not (crossed out while it isn't).
-    fn dimension_constraints(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, id: Id, d: &Dimension) {
+    #[allow(clippy::too_many_arguments)]
+    fn dimension_constraints(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, id: Id, d: &Dimension, drawn: &Drawing) {
         // Its numbers, whatever else it shows: the angle of an angular one, which has no padlocks.
-        self.dimension_numbers(ui, m, v, rect, id, d, None);
+        self.dimension_numbers(ui, m, v, rect, (id, d), None, drawn);
         if !matches!(d.kind, DimKind::Aligned | DimKind::Linear) {
             return;
         }
@@ -3492,27 +3507,28 @@ impl BimApp {
     /// The selected wall's length as a temporary dimension beside it, as Revit shows one; a door's or a window's two,
     /// to the ends of its wall. A click on a number types a new length: a wall's end moves (the walls joined there
     /// follow), an opening slides along its wall.
-    fn temporary_dimension(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, key: Id) {
+    #[allow(clippy::too_many_arguments)]
+    fn temporary_dimension(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, key: Id, drawn: &Drawing) {
         let on = self.dimensioned();
         let &[id] = self.selection.as_slice() else {
             if on.is_none() {
                 self.dim_edit = None;
             }
             if self.tool == Tool::Modify && self.canvas.drag.is_none() {
-                self.element_dimensions(ui, m, v, rect, on, key);
+                self.element_dimensions(ui, m, v, rect, on, key, drawn);
             }
             return;
         };
         if self.tool != Tool::Modify || self.canvas.drag.is_some() || self.canvas.grip.is_some() || self.drawing.grip.is_some() {
             return;
         }
-        self.element_dimensions(ui, m, v, rect, on, key);
+        self.element_dimensions(ui, m, v, rect, on, key, drawn);
         match m.elements.get(id) {
             Some(Element::Door(o) | Element::Window(o)) => return self.opening_dimension(ui, m, v, rect, id, o),
             Some(e @ (Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) | Element::Component(_))) => {
                 return self.standing_dimension(ui, m, v, rect, id, e);
             }
-            Some(Element::Dimension(d)) => return self.dimension_constraints(ui, m, v, rect, id, d),
+            Some(Element::Dimension(d)) => return self.dimension_constraints(ui, m, v, rect, id, d, drawn),
             _ => {}
         }
         let Some(w) = m.wall(id) else { return };

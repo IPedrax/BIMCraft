@@ -3159,6 +3159,8 @@ impl BimApp {
                 if icon_button(ui, Icon::Settings, "Settings").clicked() {
                     self.settings_page = Some(settings::Page::Interface);
                 }
+                // Close beside the gear, and the Find field narrower for it: the title's room stays as it was.
+                ui.add_space(-6.0);
                 self.agents_toggle(ui);
                 // Find and the project's scale, in both profiles: BIMCraft's Find a field's width, Rev's an icon among the others.
                 ui.separator();
@@ -4774,7 +4776,7 @@ impl BimApp {
                     "Click a point, a corner or an edge to select it (Shift adds), then type its height or drag its arrows; Delete removes it."
                 );
             }
-            (Sheet::View3D, Tool::AddPoint | Tool::AddSplitLine(_)) => {}
+            (Sheet::View3D, Tool::AddPoint | Tool::AddSplitLine(_) | Tool::Measure(_) | Tool::Attach) => {}
             (Sheet::View3D | Sheet::Section(_) | Sheet::Paper(_), _) => {
                 return msg!("This tool works in plan views: open one from the Project Browser.");
             }

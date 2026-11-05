@@ -23,6 +23,40 @@ pub(super) fn dimension(d: &mut Drawing, m: &Model, dim: &Dimension) {
     }
 }
 
+impl Drawing {
+    /// Where dimension `dim` letters its numbers in this drawing: each number's index, the model point at its middle, and how
+    /// tall its lettering stands, model mm. Of a continuous string and of an angular dimension, which are what's typed into.
+    pub fn dimension_number_places(&self, m: &Model, dim: &Dimension) -> Vec<(usize, P2, f64)> {
+        let t = m.dimension_type(dim);
+        let mm = f64::from(self.k) / self.view.scale * sheet::DENSITY;
+        let (size, off) = (t.text_size * mm, t.text_offset * mm);
+        match dim.kind {
+            DimKind::Aligned | DimKind::Linear if t.string == DimString::Continuous => {
+                let (n, cross) = m.crossings(dim);
+                let u = n.perp();
+                cross
+                    .windows(2)
+                    .enumerate()
+                    .filter_map(|(i, pair)| {
+                        let [(s0, _), (s1, _)] = pair else { return None };
+                        Some((i, dim.at + n * ((s0 + s1) / 2.0) + u * (off + size / 2.0), size))
+                    })
+                    .collect()
+            }
+            DimKind::Angular => {
+                let Some((o, from, sweep)) = m.angle_sector(dim) else { return Vec::new() };
+                let t_mid = from + sweep / 2.0;
+                let mid = P2(t_mid.cos(), t_mid.sin());
+                // As `angular` letters it: along the arc's middle, outside it.
+                let along = if mid.perp().0 < 0.0 { mid.perp() * -1.0 } else { mid.perp() };
+                let up = if mid.dot(along.perp()) >= 0.0 { along.perp() } else { along.perp() * -1.0 };
+                vec![(0, o + mid * dim.at.dist(o) + up * (off + size / 2.0), size)]
+            }
+            _ => Vec::new(),
+        }
+    }
+}
+
 /// What a dimension draws with: its type, its colour, and how many model mm a mm of paper is in this view.
 struct Ink {
     t: DimensionType,
