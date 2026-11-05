@@ -3674,17 +3674,18 @@ fn walls_attached_to_a_roof_follow_its_underside() {
     let ids = house(&mut s);
     // Gabled over the 8 x 6 m box: its slopes face south and north, the ridge runs east and west.
     let roof = run(&mut s, "roof", json!({"gable": true}))["id"].as_u64().unwrap();
-    // A window above the walls' tops doesn't fit the east wall, until it rises into the gable.
-    assert!(s.execute("window", &json!({"at": [8000, 3000], "sill": 2000})).unwrap_err().contains("fit"));
+    // A window whose sill is over the walls' tops isn't in the east wall, until it rises into the gable (one only reaching
+    // past the top is: issue #215).
+    assert!(s.execute("window", &json!({"at": [8000, 3000], "sill": 3200})).unwrap_err().contains("over the top"));
     run(&mut s, "modify", json!({"ids": ids, "attach_top": roof}));
     let tan = 30f64.to_radians().tan();
     let top = |s: &Session, id: u64, p: P2| crate::view3d::tops_at(&s.model, p)[&id];
     assert!((top(&s, ids[1], P2(8000.0, 3000.0)) - (3000.0 + 3100.0 * tan)).abs() < 1.0, "the east wall reaches the ridge");
     assert!((top(&s, ids[0], P2(4000.0, 0.0)) - (3000.0 + 100.0 * tan)).abs() < 1.0, "the south wall keeps under its slope");
-    run(&mut s, "window", json!({"at": [8000, 3000], "sill": 2000}));
+    run(&mut s, "window", json!({"at": [8000, 3000], "sill": 3200}));
     assert!((element(&mut s, ids[1])["height"].as_f64().unwrap() - (3000.0 + 3100.0 * tan)).abs() < 1.0);
     // Detached, the wall wouldn't hold the window.
-    assert!(s.execute("modify", &json!({"id": ids[1], "attach_top": null})).unwrap_err().contains("fit"));
+    assert!(s.execute("modify", &json!({"id": ids[1], "attach_top": null})).unwrap_err().contains("over the top"));
     // A wall attached to a floor stops under it; its base attached to one stands on it.
     let floor =
         run(&mut s, "floor", json!({"level": 100001, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}))["id"].as_u64().unwrap();

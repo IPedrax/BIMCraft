@@ -514,6 +514,39 @@ mod tests {
         }
     }
 
+    /// A window rising past its wall's top (issue #215) notches the wall: each edit of the window, of the wall's height or of
+    /// what its top follows brings the notch up to date, as the scene made whole has it.
+    #[test]
+    fn a_window_past_its_walls_top_keeps_its_notch_up_to_date_through_edits() {
+        let mut s = Session::new();
+        s.script(
+            r#"type {"category": "window", "name": "Tall", "width": 1200, "height": 1100, "sill": 30}
+               wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true, "height": 1060}
+               window {"wall": 100002, "offset": 4000, "type": "Tall"}
+               roof {"boundary": [[-600, -600], [8600, -600], [8600, 6600], [-600, 6600]], "gable": true}"#,
+        )
+        .unwrap();
+        let mut scene = Scene::new(&s.model);
+        let (walls, window, roof) = (of(&s, "wall"), of(&s, "window")[0], of(&s, "roof")[0]);
+        let edits = [
+            ("modify", json!({"id": walls[0], "height": 900})),
+            ("modify", json!({"id": window, "sill": 500})),
+            ("modify", json!({"id": walls[0], "height": 2000})),
+            ("modify", json!({"id": walls[0], "height": 1060})),
+            ("move", json!({"ids": [window], "by": [1500, 0]})),
+            ("modify", json!({"ids": walls, "attach_top": roof})),
+            ("modify", json!({"ids": walls, "attach_top": null})),
+            ("copy", json!({"ids": [walls[0]], "by": [0, -3000]})),
+            ("delete", json!({"ids": [window]})),
+        ];
+        let steps = s.history().len();
+        for (cmd, p) in &edits {
+            scene = held(&mut s, scene, cmd, p);
+        }
+        assert_eq!(s.history().len(), steps + edits.len(), "every edit is made: {:?}", &s.history()[steps..]);
+        assert!(s.model.elements.values().filter(|e| matches!(e, crate::model::Element::Window(_))).count() == 1, "the copy's");
+    }
+
     #[test]
     fn random_edits_of_a_tower_bring_its_scene_up_to_date_as_made_whole() {
         let model = crate::sample::tower::tower_on(crate::sample::tower::Plate::SMALL, 1).unwrap();
