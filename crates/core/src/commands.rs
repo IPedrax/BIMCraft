@@ -1874,6 +1874,28 @@ pub static ALL: &[Command] = &[
         dr_check,
     ),
     other(
+        "dps_check",
+        "Check Surge Protection",
+        "{region: AQ1|AQ2|AQ3, overhead?, accepted_risk?, risk_to_people?, purpose?: line|direct|both, earthing?: TT|TN-S|TN-C|IT, \
+         uo?, before_dr?, system?: 120/208|127/220|220/380|230/400|277/480|400/690, neutral?, phases?: 1|3, existing?, signal_lines?: [telephone|data|video|tv|antenna|interconnection]} surge protection (DPS) of \
+         a power line as NBR 5410:2004 asks. It is required where the line is `overhead` (wholly or partly, or the installation has an \
+         overhead line itself) and the `region` is AQ2 (more than 25 days of thunderstorms a year), or in any AQ3 region (5.4.2.1.1); \
+         `accepted_risk` is the project taking a calculated risk the standard allows, never where the omission may put people at risk \
+         (`risk_to_people`), and `exempt` says it was taken. When it is required the reply gives where it stands by its `purpose` \
+         (line, the default: surges the line carries and switching surges, at the entry or the main board; direct: lightning on the \
+         building, at the entry; both; `existing` adds the meter box of an existing individual unit), with `earthing` (and whether the \
+         line has a `neutral`, yes by default) the connection scheme or schemes of Figure 13, with `phases` (3 by default) the least \
+         nominal discharge current (5 kA for each mode; 20 kA three-phase or 10 kA single-phase between the neutral and the PE of \
+         scheme 3) and impulse current (12.5 kA; 50 or 25 kA there), and the connecting conductors (4 mm² copper at least, 16 mm² \
+         against direct lightning, 0.5 m in all). With `earthing`, `uc_min` is the least continuous operating voltage Uc of Tabela 49 for \
+         each pair of points the device connects (1.1 Uo; Uo between the neutral and the PE; √3 Uo phase to PE in IT; U in IT without a \
+         neutral), in volts when `uo`, the phase-to-neutral voltage, is given. `signal_lines` are the external signal lines, each protected at the entry. Not \
+         covered: the overcurrent device of the DPS (6.3.5.2.5) and coordination (`not_covered`). `before_dr` is for a DPS upstream of \
+         a DR, which in TT takes scheme 3 only (6.3.5.2.6 b); with `earthing` the reply also gives the follow current between neutral \
+         and PE and the short-circuit the DPS must withstand (6.3.5.2.4 e). It has no shortcut: Revit has no tool for it. It changes nothing",
+        dps_check,
+    ),
+    other(
         "water_size",
         "Size Cold Water Pipes",
         "{fixtures?: {wc, lav, sink, shower, laundry: count}, flow?, method?: weights|sum, dn?, length?, fittings?: {elbow90, elbow45, \
@@ -4866,6 +4888,159 @@ fn vent_size(_: &mut Session, p: &Value) -> R {
         out.insert("trap_to_vent_mm".into(), json!(mm));
     }
     Ok(Value::Object(out))
+}
+
+fn dps_check(_: &mut Session, p: &Value) -> R {
+    use crate::dps::{self, EARTHINGS, Earthing, PURPOSES, Purpose, REGIONS, Region, SIGNALS};
+    let c = "dps_check";
+    if !p.is_object() {
+        return Err(bad(c, "params must be an object"));
+    }
+    only(
+        c,
+        p,
+        &[
+            "region",
+            "overhead",
+            "accepted_risk",
+            "risk_to_people",
+            "purpose",
+            "earthing",
+            "neutral",
+            "phases",
+            "existing",
+            "signal_lines",
+            "uo",
+            "system",
+            "before_dr",
+        ],
+    )?;
+    let Some(region) = Region::parse(choice(c, p, "region", REGIONS, "")?) else {
+        return Err(bad(c, format!("`region` is required: {}", REGIONS.join(", "))));
+    };
+    let line = dps::Line {
+        overhead: flag(c, p, "overhead")?,
+        region,
+        accepted_risk: flag(c, p, "accepted_risk")?,
+        risk_to_people: flag(c, p, "risk_to_people")?,
+    };
+    let purpose = Purpose::parse(choice(c, p, "purpose", PURPOSES, "line")?).unwrap_or(Purpose::Line);
+    let earthing = match choice(c, p, "earthing", EARTHINGS, "")? {
+        "" => None,
+        name => Earthing::parse(name),
+    };
+    let neutral = if absent(p.get("neutral")) { true } else { flag(c, p, "neutral")? };
+    let phases = match p.get("phases").filter(|v| !v.is_null()) {
+        None => 3,
+        Some(v) => match v.as_u64() {
+            Some(n @ (1 | 3)) => n as u32,
+            _ => return Err(bad(c, format!("`phases` is 1 or 3, got {v}"))),
+        },
+    };
+    let existing = flag(c, p, "existing")?;
+    let before_dr = flag(c, p, "before_dr")?;
+    let system = match p.get("system").filter(|v| !v.is_null()) {
+        None => None,
+        Some(v) => match v.as_str().filter(|x| dps::withstand(x).is_some()) {
+            Some(x) => Some(x.to_string()),
+            None => return Err(bad(c, format!("`system` is one of {}, got {v}", dps::SYSTEMS.join(", ")))),
+        },
+    };
+    let uo = match p.get("uo").filter(|v| !v.is_null()) {
+        None => None,
+        Some(_) => Some(within(c, p, "uo", 0.0, 1.0, 1.0e5)?),
+    };
+    let mut signals = Vec::new();
+    match p.get("signal_lines").filter(|v| !v.is_null()) {
+        None => {}
+        Some(Value::Array(a)) if a.len() <= 1000 => {
+            for v in a {
+                let kind = v.as_str().filter(|k| dps::signal_required(k).is_some());
+                let Some(kind) = kind else {
+                    return Err(bad(c, format!("`signal_lines` holds {}, got {v}", SIGNALS.join(", "))));
+                };
+                signals.push(json!({
+                    "kind": kind,
+                    "required": true,
+                    "why": dps::signal_required(kind),
+                    "where": "at the building's entry or exit",
+                    "min_impulse_withstand_kv": dps::SIGNAL_ENTRY_WITHSTAND_KV,
+                }));
+            }
+        }
+        Some(v) => return Err(bad(c, format!("`signal_lines` is a list of {}, got {v}", SIGNALS.join(", ")))),
+    }
+    let v = dps::required(&line);
+    let mut power = Map::new();
+    power.insert("required".into(), json!(v.required));
+    power.insert("exempt".into(), json!(v.exempt));
+    power.insert("reasons".into(), json!(v.reasons));
+    if v.required {
+        power.insert("purpose".into(), json!(PURPOSES[purpose as usize]));
+        power.insert("where".into(), json!(dps::place(purpose, existing)));
+        power.insert(
+            "short_circuit".into(),
+            json!("the DPS withstands the short-circuit current presumed where it is installed, with the overcurrent device that goes with it, and a DPS with spark gaps interrupts the follow current of that point (6.3.5.2.4 e)"),
+        );
+        if let Some(w) = system.as_deref().and_then(|x| dps::withstand(x).map(|w| (x, w))) {
+            power.insert(
+                "up".into(),
+                json!({
+                    "system": w.0,
+                    "withstand_kv": {"IV": w.1[0], "III": w.1[1], "II": w.1[2], "I": w.1[3]},
+                    "max_up_kv": w.1[2],
+                    "why": "the protection level Up must stay under what the equipment of use (category II of Tabela 31) withstands",
+                }),
+            );
+        }
+        let mut three = false;
+        if let Some(e) = earthing {
+            let list = if before_dr { dps::schemes_before_dr(e, neutral) } else { dps::schemes(e, neutral) };
+            three = list.contains(&3);
+            let text: Vec<Value> = list.iter().map(|s| json!({"scheme": s, "connects": dps::scheme_text(*s, e)})).collect();
+            let modes: Vec<Value> = dps::uc_min(e, neutral, uo.unwrap_or(1.0))
+                .iter()
+                .map(|u| match uo {
+                    Some(_) => json!({"between": u.between, "formula": u.formula, "volts": (u.volts * 100.0).round() / 100.0}),
+                    None => json!({"between": u.between, "formula": u.formula}),
+                })
+                .collect();
+            power.insert("uc_min".into(), json!({"uo_v": uo, "modes": modes}));
+            match dps::subsequent_current(e) {
+                Some(dps::Subsequent::AtLeastA(a)) => {
+                    power.insert("subsequent_current".into(), json!({"neutral_pe_min_a": a}));
+                }
+                Some(dps::Subsequent::LikePhaseNeutral) => {
+                    power.insert("subsequent_current".into(), json!({"neutral_pe": "the same as the DPS between phase and neutral"}));
+                }
+                None => {}
+            }
+            power.insert(
+                "connection".into(),
+                json!({"earthing": EARTHINGS[e as usize], "neutral": neutral, "schemes": list, "connects": text}),
+            );
+        }
+        let extra = |each: f64, special: f64| {
+            let mut o = Map::new();
+            o.insert("each_mode".into(), json!(each));
+            if three {
+                o.insert("neutral_to_pe_in_scheme_3".into(), json!(special));
+            }
+            Value::Object(o)
+        };
+        if purpose != Purpose::Direct {
+            power.insert("discharge_ka".into(), extra(dps::discharge(purpose, false, phases), dps::discharge(purpose, true, phases)));
+        }
+        if purpose != Purpose::Line {
+            power.insert("impulse_ka".into(), extra(dps::impulse(false, phases), dps::impulse(true, phases)));
+        }
+        power.insert("conductor".into(), json!({"section_mm2": dps::conductor_section(purpose), "max_length_m": dps::CONDUCTOR_LENGTH}));
+    }
+    Ok(json!({
+        "power": power,
+        "signal": signals,
+        "not_covered": "the overcurrent device of the DPS and where it stands (6.3.5.2.5), and the coordination between DPS",
+    }))
 }
 
 fn load_points(s: &mut Session, p: &Value) -> R {
