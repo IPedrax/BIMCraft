@@ -2021,11 +2021,7 @@ impl BimApp {
         }
         match measure_click {
             Some(Some(r)) => match self.orbit.ruler_start.take() {
-                Some(start) => {
-                    let (long, _) = dims3d::reading(start, r.at);
-                    self.orbit.ruler = Some((start, r.at));
-                    self.status = Status { text: tf("Measured: {}", &[&model.units.with_unit(long)]), error: false };
-                }
+                Some(start) => self.orbit.ruler = Some((start, r.at)),
                 None => {
                     self.orbit.ruler = None;
                     self.orbit.ruler_start = Some(r.at);

@@ -2195,7 +2195,7 @@ fn the_camera_tool_makes_a_perspective_3d_view_from_an_eye_and_a_target() {
     // Orbiting writes the camera's eye and target back, so leaving and returning stands it where it was left.
     let before = field(&h, made[0], "camera");
     let mid = h.state().orbit.rect.center();
-    drag_screen(&mut h, mid, mid + vec2(90.0, 0.0), PointerButton::Primary);
+    orbit_screen(&mut h, mid, mid + vec2(90.0, 0.0));
     h.run();
     let after = field(&h, made[0], "camera");
     assert_ne!(after, before, "the orbit moved the camera's eye and target");

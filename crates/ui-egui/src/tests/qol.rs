@@ -97,7 +97,6 @@ fn the_measure_tool_in_3d_reads_between_two_corners_at_different_heights_whateve
     assert_eq!(p, first);
     let long = bimcraft_core::dims3d::reading(p, q).0;
     assert!((long - 8200.0f64.hypot(3000.0)).abs() < 1.0, "{long} from {p:?} to {q:?}");
-    assert!(h.state().status.text.contains("Measured"), "{}", h.state().status.text);
     // Esc takes the ruler away, then the tool; the camera stayed.
     key(&mut h, Key::Escape);
     assert!(h.state().orbit.ruler.is_none() && matches!(h.state().tool, Tool::Measure(_)));
@@ -125,7 +124,7 @@ fn all(h: &Harness<BimApp>, category: &str) -> Vec<Id> {
 const STOREY: &str = r#"level {"name": "Upper", "elevation": 3000}
 wall {"points": [[0, 0], [8000, 0]], "level": "Level 1", "top_level": "Upper"}
 column {"at": [4000, 3000], "level": "Level 1", "top_level": "Upper"}
-roof {"points": [[-500, -500], [8500, -500], [8500, 6500], [-500, 6500]], "level": "Upper", "slope": 20}"#;
+roof {"boundary": [[-500, -500], [8500, -500], [8500, 6500], [-500, 6500]], "level": "Upper", "slope": 20}"#;
 
 fn handle_of(h: &Harness<BimApp>, id: Id, which: bimcraft_core::handles::Handle) -> Pos2 {
     let (_, q) = bimcraft_core::handles::of(&h.state().session.model, id).into_iter().find(|(k, _)| *k == which).expect("that handle");
@@ -166,6 +165,7 @@ fn in_3d_attach_top_takes_the_roof_clicked_for_a_wall_and_for_a_column_which_los
         let id = all(&h, category)[0];
         h.state_mut().selection = vec![id];
         h.run();
+        press(&mut h, if category == "wall" { "Modify | Walls" } else { "Modify | Columns" });
         press(&mut h, "Attach Top/Base");
         assert_eq!(h.state().tool, Tool::Attach, "{}", h.state().status.text);
         // Up through the roof's middle, as a hand looks for it: a click on what isn't a roof or a floor takes nothing.

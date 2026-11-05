@@ -1593,7 +1593,7 @@ impl BimApp {
                                 wall_type_sample(ui, swatch, model, n);
                                 clicked |= sample.clicked();
                             }
-                            let row = egui::Button::selectable(current.as_ref() == Some(n), n.as_str()).truncate();
+                            let row = egui::Button::selectable(current.as_ref() == Some(n), (n.as_str(), egui::Atom::grow())).truncate();
                             let wide = ui.available_width();
                             clicked |= ui.add_sized(vec2(wide, 22.0), row).on_hover_text(n.as_str()).clicked();
                             if clicked {
