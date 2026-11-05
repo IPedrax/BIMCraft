@@ -2446,7 +2446,7 @@ impl Scene {
         // boxes them, the far edges of each plane and its head.
         let shown = |id: Id| look.shows(id).then_some((Rgb(0, 0, 0), false));
         for marks in level_marks(&self.levels, cam, &shown) {
-            let head = marks.head.iter().map(|p| *p);
+            let head = marks.head.iter().copied();
             let ends = marks.lines.iter().filter(|(_, w)| *w == 2).flat_map(|([a, b], _)| [*a, *b]);
             let on: Vec<P2> = head
                 .chain(ends)
