@@ -291,7 +291,8 @@ fn in_3d_a_column_s_top_arrow_and_place_drag_as_a_wall_s_do() {
 fn l_door(up: bool, door_first: bool) -> String {
     let walls =
         if up { r#"wall {"points": [[0, -9000], [0, 0], [-6000, 0]]}"# } else { r#"wall {"points": [[-6000, 0], [0, 0], [0, -9000]]}"# };
-    let refs = if door_first { "[[0, -7000], [-3000, 0]]" } else { "[[-3000, 0], [0, -7000]]" };
+    // Door first, picked a little off its wall's centre line, which runs through the door's own centre too.
+    let refs = if door_first { "[[30, -7000], [-3000, 0]]" } else { "[[-3000, 0], [0, -7000]]" };
     format!("{walls}\ndoor {{\"at\": [0, -7000]}}\ndimension {{\"refs\": {refs}, \"at\": [4000, -3000]}}")
 }
 
