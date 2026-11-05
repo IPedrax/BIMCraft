@@ -61,7 +61,7 @@ fn a_wall_type_s_sample_shows_each_of_its_layers_by_its_share() {
     h.state_mut().run(
         "type",
         json!({"category": "wall", "name": "Layered", "thickness": 200.0, "layers": [
-            {"function": "finish1", "material": "", "thickness": 50.0},
+            {"function": "finish", "material": "", "thickness": 50.0},
             {"function": "structure", "material": "", "thickness": 150.0}
         ]}),
     );
@@ -114,4 +114,70 @@ fn over_nothing_the_measure_tool_says_what_it_needs() {
     click_at(&mut h, corner);
     assert!(h.state().orbit.ruler_start.is_none());
     assert!(h.state().status.error, "{}", h.state().status.text);
+}
+
+const TWO_WALLS: &str = r#"wall {"points": [[0, 0], [0, 4000]]}
+wall {"points": [[2000, 0], [2000, 4000]]}
+dimension {"refs": [[0, 2000], [2000, 2000]], "at": [1000, -1000]}"#;
+
+fn type_in(h: &mut Harness<BimApp>, label: &str, value: &str) {
+    h.get_by_label(label).click();
+    h.run();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.event(Event::Text(value.into()));
+    h.run();
+    key(h, Key::Enter);
+}
+
+fn all(h: &Harness<BimApp>, category: &str) -> Vec<Id> {
+    let m = &h.state().session.model;
+    m.elements.iter().filter(|(_, e)| e.category() == category).map(|(id, _)| *id).collect()
+}
+
+#[test]
+fn with_the_near_wall_selected_its_dimension_s_number_moves_that_wall() {
+    let mut h = app(TWO_WALLS);
+    let walls = all(&h, "wall");
+    h.state_mut().selection = vec![walls[0]];
+    h.run();
+    type_in(&mut h, "Dimension 2000", "1500");
+    let m = &h.state().session.model;
+    assert_eq!(m.wall(walls[0]).unwrap().start, P2(500.0, 0.0), "{}", h.state().status.text);
+    assert_eq!(m.wall(walls[1]).unwrap().start, P2(2000.0, 0.0), "the other stays");
+}
+
+#[test]
+fn with_the_dimension_and_the_far_wall_selected_its_number_moves_that_wall() {
+    let mut h = app(TWO_WALLS);
+    let (walls, dim) = (all(&h, "wall"), all(&h, "dimension")[0]);
+    h.state_mut().selection = vec![dim, walls[1]];
+    h.run();
+    type_in(&mut h, "Dimension 2000", "3000");
+    assert_eq!(h.state().session.model.wall(walls[1]).unwrap().start, P2(3000.0, 0.0), "{}", h.state().status.text);
+}
+
+#[test]
+fn a_selected_angular_dimension_s_number_turns_its_second_line() {
+    let mut h = app(r#"wall {"points": [[0, 0], [4000, 0]]}
+wall {"points": [[0, 0], [0, 4000]]}"#);
+    let walls = all(&h, "wall");
+    let made = h.state_mut().run("dimension", json!({"kind": "angular", "refs": [{"id": walls[0]}, {"id": walls[1]}], "at": [1000, 1000]}));
+    let dim = made.unwrap()["id"].as_u64().unwrap();
+    h.state_mut().selection = vec![dim];
+    h.run();
+    type_in(&mut h, "Dimension 90°", "60");
+    let Some(Element::Dimension(d)) = h.state().session.model.elements.get(dim) else { panic!("the dimension") };
+    let now = h.state().session.model.dimension_values(d)[0];
+    assert!((now - 60.0).abs() < 1e-3, "{now}: {}", h.state().status.text);
+}
+
+#[test]
+fn a_selected_wall_s_temporary_dimension_across_it_moves_it_from_its_neighbour() {
+    let mut h = app(r#"wall {"points": [[0, 0], [0, 4000]]}
+wall {"points": [[2000, 0], [2000, 4000]]}"#);
+    let walls = all(&h, "wall");
+    h.state_mut().selection = vec![walls[1]];
+    h.run();
+    type_in(&mut h, "Temporary dimension 2000", "3000");
+    assert_eq!(h.state().session.model.wall(walls[1]).unwrap().start, P2(3000.0, 0.0), "{}", h.state().status.text);
 }

@@ -307,4 +307,44 @@ mod tests {
         run(&mut s, "dimension_constraint", json!({"id": d, "equal": false}));
         assert_eq!(held(&s, g), none);
     }
+
+    #[test]
+    fn a_value_moves_the_element_it_is_told_to_at_either_end_of_the_segment() {
+        let mut s = Session::new();
+        let a = one(&mut s, json!({"points": [[0, 0], [0, 4000]]}));
+        let b = one(&mut s, json!({"points": [[2000, 0], [2000, 4000]]}));
+        let d = run(&mut s, "dimension", json!({"refs": [{"id": a}, {"id": b}], "at": [1000, -1000]}))["id"].as_u64().unwrap();
+        run(&mut s, "dimension_value", json!({"id": d, "value": 3000, "moves": b}));
+        assert_eq!((start_x(&s, a), start_x(&s, b)), (0.0, 3000.0), "the far wall on");
+        run(&mut s, "dimension_value", json!({"id": d, "value": 2500, "moves": a}));
+        assert_eq!((start_x(&s, a), start_x(&s, b)), (500.0, 3000.0), "the near wall toward it");
+        let other = one(&mut s, json!({"points": [[9000, 0], [9000, 4000]]}));
+        assert!(s.execute("dimension_value", &json!({"id": d, "value": 1000, "moves": other})).is_err(), "not at the segment");
+        assert_eq!((start_x(&s, a), start_x(&s, b)), (500.0, 3000.0));
+    }
+
+    #[test]
+    fn an_angle_turns_either_line_about_where_they_cross_and_the_arc_stays_in_it() {
+        for second in [true, false] {
+            let mut s = Session::new();
+            let a = one(&mut s, json!({"points": [[0, 0], [4000, 0]]}));
+            let b = one(&mut s, json!({"points": [[0, 0], [0, 4000]]}));
+            let d = run(&mut s, "dimension", json!({"kind": "angular", "refs": [{"id": a}, {"id": b}], "at": [1000, 1000]}))["id"].as_u64().unwrap();
+            let value = |s: &Session| match s.model.elements.get(d) {
+                Some(Element::Dimension(dm)) => s.model.dimension_values(dm)[0],
+                _ => f64::NAN,
+            };
+            assert!((value(&s) - 90.0).abs() < 1e-6);
+            let moves = if second { b } else { a };
+            let out = run(&mut s, "dimension_value", json!({"id": d, "value": 60, "moves": moves}));
+            assert_eq!(out["moved"], json!(moves));
+            assert!((value(&s) - 60.0).abs() < 1e-3, "{} moving {moves}", value(&s));
+            let still = if second { a } else { b };
+            let line = s.model.wall(still).unwrap();
+            assert!(line.start.0.abs() < 1e-6 && (line.start.1).abs() < 1e-6, "the other stays where it was: {line:?}");
+            for bad in [0.0, 180.0, -10.0, f64::MAX] {
+                assert!(s.execute("dimension_value", &json!({"id": d, "value": bad})).is_err(), "{bad}");
+            }
+        }
+    }
 }

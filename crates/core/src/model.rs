@@ -5219,6 +5219,62 @@ impl Model {
         })
     }
 
+    /// How far straight wall `w` stands from the nearest parallel wall centre line or grid on each of its sides (left of the way
+    /// it runs, then right), measured from its middle where they run past it, on the plan of its level: the temporary
+    /// dimensions of a selected wall. A curved wall has none, and neither has a side with nothing parallel within [`REACH`].
+    pub fn wall_clearances(&self, id: impl Key) -> [Option<Clearance>; 2] {
+        let Some(w) = self.wall(id).filter(|w| w.arc == 0.0) else { return [None, None] };
+        let own = self.guid(id);
+        let (axis, (ext, int)) = (walls::Axis::of(w), walls::faces(self, w));
+        let mid_off = (ext + int) / 2.0;
+        let (a, b) = (axis.at(0.0, mid_off), axis.at(axis.length(), mid_off));
+        let at = (a + b) * 0.5;
+        const REACH: f64 = 50_000.0;
+        let lookup = self.lookup();
+        let box_ = [a.0.min(b.0), a.1.min(b.1), a.0.max(b.0), a.1.max(b.1)];
+        let lines: Vec<(Reference, Line)> = lookup
+            .walls_near(box_, REACH)
+            .into_iter()
+            .chain(lookup.grids())
+            .filter(|i| self.guid(*i) != own)
+            .filter_map(|i| match self.elements.get(i)? {
+                Element::Grid(g) => Some((Reference::line(self.guid(i), Face::Centre), (g.start, g.end))),
+                Element::Wall(o) if o.arc == 0.0 && self.cut_by(o, w.level) => {
+                    let (axis, (ext, int)) = (walls::Axis::of(o), walls::faces(self, o));
+                    let mid = (ext + int) / 2.0;
+                    Some((Reference::line(self.guid(i), Face::Centre), (axis.at(0.0, mid), axis.at(axis.length(), mid))))
+                }
+                _ => None,
+            })
+            .filter(|(_, (p, q))| geom::parallel(a, b, *p, *q))
+            .collect();
+        let left = (b - a).unit().perp();
+        [left, left * -1.0].map(|toward| {
+            lines
+                .iter()
+                .filter_map(|&(to, (p, q))| {
+                    let hit = geom::line_intersection(at, at + toward, p, q)?;
+                    let distance = (hit - at).dot(toward);
+                    (distance > TOL && distance <= REACH && geom::dist_to_segment(hit, p, q) <= 1e-6).then_some(Clearance { toward, distance, to })
+                })
+                .min_by(|x, y| x.distance.total_cmp(&y.distance))
+        })
+    }
+
+    /// The dimensions in the plan `key` that measure to element `of`, found in the lookup: what lights up, and what its number
+    /// moves, while it's selected.
+    pub fn dimensions_on(&self, of: impl Key, key: impl Key + Copy) -> Vec<Id> {
+        let Some(g) = self.elements.guid(of) else { return Vec::new() };
+        let lookup = self.lookup();
+        lookup
+            .referrers(&g)
+            .filter(|id| match self.elements.get(*id) {
+                Some(e @ Element::Dimension(d)) => !d.alignment && d.refs.iter().any(|r| r.id == g) && self.annotation_in(e, key),
+                _ => false,
+            })
+            .collect()
+    }
+
     /// The stretch of its wall's location line a door or window stands in, as distances along it: from the nearest face,
     /// on either side of its middle, of a wall that meets its wall (crossing it, or joined to it from either side) on the
     /// plan of its wall's level, else from the wall's start and to its end. What its temporary dimensions measure to, as
