@@ -718,6 +718,11 @@ fn bounds(m: &Model, w: &Wall) -> (Bound, Bound) {
     (Bound::of(m, w.attach_base, true, m.own_base(w)), Bound::of(m, w.attach_top, false, m.own_top(w)))
 }
 
+/// A wall's base under the point `s` mm along its centre line.
+pub fn base_at(m: &Model, w: &Wall, s: f64) -> f64 {
+    bounds(m, w).0.at(Axis::of(w).at(s, centre(m, w)))
+}
+
 /// A wall's top over the point `s` mm along its centre line.
 pub fn top_at(m: &Model, w: &Wall, s: f64) -> f64 {
     bounds(m, w).1.at(Axis::of(w).at(s, centre(m, w)))

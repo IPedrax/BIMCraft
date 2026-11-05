@@ -900,10 +900,11 @@ fn dimension_line(p: &Painter, a: Pos2, b: Pos2, n: Vec2, off: f32) -> Pos2 {
     a + along / 2.0 + n * (off + 11.0)
 }
 
-/// A padlock at `at` in `ink`: its body, and its shackle, shut when `locked`, swung up and open when not.
+/// A padlock at `at` in `ink`: locked, its body filled and its shackle shut; open, its body hollow and its shackle swung up and
+/// out about the foot it keeps on the body, so it can't be read as locked.
 fn padlock(p: &Painter, at: Pos2, locked: bool, ink: Color32) {
     let body = Rect::from_center_size(at + vec2(0.0, 3.0), vec2(10.0, 8.0));
-    p.rect_filled(body, 1.5, pal().surface);
+    p.rect_filled(body, 1.5, if locked { ink } else { pal().surface });
     p.rect_stroke(body, 1.5, Stroke::new(1.5, ink), StrokeKind::Middle);
     let top = body.top();
     let mut shackle: Vec<Pos2> = (0..=8)
@@ -2319,14 +2320,7 @@ impl BimApp {
                 (Some(r), Some((draw::Picked::Element(id), line, false))) => self.align(r, id, line),
                 _ => {}
             },
-            &Tool::Trim(first) => match (first, hovered) {
-                (None, Some(a)) => self.tool = Tool::Trim(Some((a, v.mm(at)))),
-                (Some((a, keep)), Some(b)) if b != a => {
-                    self.run("corner", json!({"ids": [a, b], "keep": [point(keep), point(v.mm(at))]}));
-                    self.tool = Tool::Trim(None);
-                }
-                _ => {}
-            },
+            Tool::Trim(_) | Tool::TrimTo { .. } => self.trim_click(hovered, v.mm(at)),
             Tool::Split => {
                 if let Some(id) = hovered {
                     self.run("split", json!({"id": id, "at": point(self.snap(m, level, v, at, &[], false).at)}));
@@ -2350,16 +2344,6 @@ impl BimApp {
                 let p = self.snap(m, level, v, at, &[], false).at;
                 self.vertex_click(hovered, if delete { v.mm(at) } else { p }, f64::from(PICK) / v.scale, delete);
             }
-            &Tool::TrimTo { boundary, many } => match (boundary, hovered) {
-                (None, Some(b)) => self.tool = Tool::TrimTo { boundary: Some(b), many },
-                (Some(b), Some(id)) if id != b => {
-                    self.run("trim_extend", json!({"boundary": b, "ids": [id], "keep": [point(v.mm(at))]}));
-                    if !many {
-                        self.tool = Tool::TrimTo { boundary: None, many };
-                    }
-                }
-                _ => {}
-            },
             Tool::Demolish => {
                 if let Some(id) = hovered {
                     self.demolish(id);
@@ -3636,6 +3620,11 @@ impl BimApp {
                 pal().muted
             };
             padlock(&p, at, locked, ink);
+            let r = r.on_hover_text(if locked {
+                tf("Segment {} is locked at its length: what it measures to moves together. Click to unlock it", &[&(i + 1).to_string()])
+            } else {
+                tf("Lock segment {} at its length, so what it measures to moves together", &[&(i + 1).to_string()])
+            });
             if r.clicked() {
                 let mut segments: Vec<usize> = d.locked.iter().map(|l| l.segment).filter(|&s| s != i).collect();
                 if !locked {

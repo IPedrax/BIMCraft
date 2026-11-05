@@ -1392,8 +1392,17 @@ fn line_rows(ui: &mut Ui, section: &str, s: &mut Style, weight: Pen) {
     if let Some(k) = &mut s.dash {
         let name = format!("{}: {}", t(section), t("Line dash"));
         let c = ComboBox::from_id_salt(("vg-dash", section)).selected_text(t(dash_name(*k))).width(110.0).show_ui(ui, |ui| {
+            let ink = ui.visuals().text_color();
             for each in [Dash::Solid, Dash::Dashed, Dash::Dotted] {
-                ui.selectable_value(k, each, t(dash_name(each)));
+                // As the drawing dashes it: on and off, in mm of paper for the sample.
+                let segments: &[bimcraft_core::lines::Segment] = match each {
+                    Dash::Solid => &[],
+                    Dash::Dashed => &[bimcraft_core::lines::Segment::Dash(3.0), bimcraft_core::lines::Segment::Space(1.5)],
+                    Dash::Dotted => &[bimcraft_core::lines::Segment::Dot, bimcraft_core::lines::Segment::Space(1.2)],
+                };
+                if crate::linestyles::sample_row(ui, Some((segments, ink)), *k == each, t(dash_name(each))) {
+                    *k = each;
+                }
             }
         });
         c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, name.clone()));

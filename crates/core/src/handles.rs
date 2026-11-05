@@ -49,7 +49,12 @@ fn wall_handles(m: &Model, w: &Wall) -> Vec<(Handle, P3)> {
         let q = axis.at(s, mid);
         [q.0, q.1, z]
     };
-    let mut out = vec![(Handle::Start, on(0.0, walls::top_at(m, w, 0.0))), (Handle::End, on(long, walls::top_at(m, w, long)))];
+    // Its ends where Revit has them, at its base on its location line.
+    let end = |s: f64| {
+        let q = axis.at(s, 0.0);
+        [q.0, q.1, walls::base_at(m, w, s)]
+    };
+    let mut out = vec![(Handle::Start, end(0.0)), (Handle::End, end(long))];
     if w.attach_top.is_none() {
         out.push((Handle::Top, on(long / 2.0, m.own_top(w))));
     }
@@ -70,6 +75,23 @@ fn column_handles(m: &Model, e: &Element, c: &Column) -> Vec<(Handle, P3)> {
         out.push((Handle::Base, on(bottom)));
     }
     out
+}
+
+/// A selected wall's location line in a 3D view, as a plan shows it: along its base, from its start to its end; on a curved
+/// wall, along its arc. None for what isn't a wall.
+pub fn location_line(m: &Model, id: Id) -> Vec<P3> {
+    let Some(w) = m.wall(id) else { return Vec::new() };
+    let axis = Axis::of(w);
+    let long = axis.length();
+    // Sampled, so a curved one's arc and a base that follows a sloping floor show as they are.
+    let n = if axis.centre().is_some() || w.attach_base.is_some() { 32 } else { 1 };
+    (0..=n)
+        .map(|i| {
+            let s = long * f64::from(i) / f64::from(n);
+            let q = axis.at(s, 0.0);
+            [q.0, q.1, walls::base_at(m, w, s)]
+        })
+        .collect()
 }
 
 /// Height `z`, or the level within `reach` mm of it, nearest first: where a dragged top or base lands.
@@ -187,6 +209,10 @@ mod tests {
         let (mut s, wall, _, roof) = house();
         let kinds = |s: &Session| of(&s.model, wall).iter().map(|h| h.0).collect::<Vec<_>>();
         assert_eq!(kinds(&s), [Handle::Start, Handle::End, Handle::Top, Handle::Base]);
+        // Its ends at its base, on its location line, as Revit has them; and that line, drawn along its base.
+        let ends: Vec<P3> = of(&s.model, wall).into_iter().filter(|h| !h.0.vertical()).map(|h| h.1).collect();
+        assert_eq!(ends, [[0.0, 0.0, 0.0], [8000.0, 0.0, 0.0]]);
+        assert_eq!(location_line(&s.model, wall), [[0.0, 0.0, 0.0], [8000.0, 0.0, 0.0]]);
         run(&mut s, "modify", json!({"id": wall, "attach_top": roof}));
         assert_eq!(kinds(&s), [Handle::Start, Handle::End, Handle::Base]);
     }

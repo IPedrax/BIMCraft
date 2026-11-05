@@ -203,3 +203,36 @@ fn in_3d_a_column_s_top_arrow_and_place_drag_as_a_wall_s_do() {
     let at = h.state().session.model.elements.get(column).and_then(Element::column).map(|c| c.at).unwrap();
     assert_ne!(at, P2(4000.0, 3000.0), "it went with the hand");
 }
+
+#[test]
+fn a_box_in_3d_takes_the_levels_it_takes_in_as_it_does_walls() {
+    let mut h = three_d(BOX);
+    let levels = all(&h, "level");
+    let rect = h.state().orbit.rect;
+    // Round the whole view, from the left: every level whole inside, the walls too.
+    drag_screen(&mut h, rect.min + vec2(2.0, 2.0), rect.max - vec2(2.0, 2.0), PointerButton::Primary);
+    let picked = h.state().selection.clone();
+    assert!(levels.iter().all(|l| picked.contains(l)), "{levels:?} in {picked:?}");
+    assert!(all(&h, "wall").iter().all(|w| picked.contains(w)));
+}
+
+#[test]
+fn trim_to_a_corner_works_in_the_3d_view_as_in_a_plan() {
+    // Two walls that cross, one each way: trimmed to a corner, the parts clicked are kept.
+    let mut h = three_d(
+        r#"wall {"points": [[0, 0], [8000, 0]]}
+wall {"points": [[6000, -2000], [6000, 4000]]}"#,
+    );
+    let walls = all(&h, "wall");
+    h.state_mut().set_tool(Tool::Trim(None));
+    h.run();
+    let a = h.state().screen3([2000.0, -100.0, 1500.0]);
+    click_at(&mut h, a);
+    assert!(matches!(h.state().tool, Tool::Trim(Some(_))), "{}", h.state().status.text);
+    let b = h.state().screen3([6000.0, 2000.0, 1500.0]);
+    click_at(&mut h, b);
+    let m = &h.state().session.model;
+    let (w0, w1) = (m.wall(walls[0]).unwrap(), m.wall(walls[1]).unwrap());
+    assert_eq!(w0.end, P2(6000.0, 0.0), "{}: {w0:?}", h.state().status.text);
+    assert_eq!(w1.start, P2(6000.0, 0.0), "{w1:?}");
+}
