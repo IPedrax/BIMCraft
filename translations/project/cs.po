@@ -36,7 +36,7 @@ msgstr "Cihla"
 msgid "Brick 225 x 75"
 msgstr "Cihla 225 x 75"
 
-#: crates/core/src/commands.rs:4053
+#: crates/core/src/commands.rs:4054
 msgid "Camera"
 msgstr "Kamera"
 
@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Stropní svítidlo"
 
-#: crates/core/src/render.rs:3025
+#: crates/core/src/render.rs:3032
 msgid "Ceiling Plan"
 msgstr "Půdorys podhledu"
 
@@ -84,7 +84,7 @@ msgstr "Betonová tvárnice"
 msgid "Copper"
 msgstr "Měď"
 
-#: crates/core/src/commands.rs:1140
+#: crates/core/src/commands.rs:1141
 msgid "Copy"
 msgstr "Kopie"
 
@@ -96,7 +96,7 @@ msgstr "Počet"
 msgid "Crosshatch"
 msgstr "Křížové šrafování"
 
-#: crates/core/src/render.rs:3617
+#: crates/core/src/render.rs:3624
 msgid "DN"
 msgstr "DOLŮ"
 
@@ -355,7 +355,7 @@ msgstr "Kov"
 msgid "Mounting Height"
 msgstr "Montážní výška"
 
-#: crates/core/src/render.rs:2856
+#: crates/core/src/render.rs:2863
 msgid "NOT ENCLOSED"
 msgstr "NEUZAVŘENÝ OBVOD"
 
@@ -419,11 +419,11 @@ msgstr "Omítka"
 msgid "Porcelain"
 msgstr "Porcelán"
 
-#: crates/core/src/commands.rs:2744
+#: crates/core/src/commands.rs:2745
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/render.rs:2856
+#: crates/core/src/render.rs:2863
 msgid "REDUNDANT"
 msgstr "NADBYTEČNÁ"
 
@@ -592,7 +592,7 @@ msgstr "Šířka stupně"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:3617
+#: crates/core/src/render.rs:3624
 msgid "UP"
 msgstr "NAHORU"
 

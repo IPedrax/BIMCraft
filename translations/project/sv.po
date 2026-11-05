@@ -36,7 +36,7 @@ msgstr "Tegel"
 msgid "Brick 225 x 75"
 msgstr "Tegel 225 x 75"
 
-#: crates/core/src/commands.rs:4053
+#: crates/core/src/commands.rs:4054
 msgid "Camera"
 msgstr "Kamera"
 
@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Takarmatur"
 
-#: crates/core/src/render.rs:3025
+#: crates/core/src/render.rs:3032
 msgid "Ceiling Plan"
 msgstr "Undertaksplan"
 
@@ -84,7 +84,7 @@ msgstr "Betongblock"
 msgid "Copper"
 msgstr "Koppar"
 
-#: crates/core/src/commands.rs:1140
+#: crates/core/src/commands.rs:1141
 msgid "Copy"
 msgstr "Kopiera"
 
@@ -96,7 +96,7 @@ msgstr "Antal"
 msgid "Crosshatch"
 msgstr "Korsskraffering"
 
-#: crates/core/src/render.rs:3617
+#: crates/core/src/render.rs:3624
 msgid "DN"
 msgstr "NED"
 
@@ -355,7 +355,7 @@ msgstr "Metall"
 msgid "Mounting Height"
 msgstr "Montagehöjd"
 
-#: crates/core/src/render.rs:2856
+#: crates/core/src/render.rs:2863
 msgid "NOT ENCLOSED"
 msgstr "EJ OMSLUTET"
 
@@ -419,11 +419,11 @@ msgstr "Puts"
 msgid "Porcelain"
 msgstr "Porslin"
 
-#: crates/core/src/commands.rs:2744
+#: crates/core/src/commands.rs:2745
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/render.rs:2856
+#: crates/core/src/render.rs:2863
 msgid "REDUNDANT"
 msgstr "ÖVERFLÖDIGT"
 
@@ -592,7 +592,7 @@ msgstr "Plansteg"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:3617
+#: crates/core/src/render.rs:3624
 msgid "UP"
 msgstr "UPP"
 
