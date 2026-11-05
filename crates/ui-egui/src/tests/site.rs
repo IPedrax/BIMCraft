@@ -588,6 +588,30 @@ fn visibility_graphics_lists_aerial_imagery_with_the_model_categories_and_hides_
 }
 
 #[test]
+fn the_3d_view_letters_the_credit_of_the_photograph_on_its_terrain_and_the_plan_draws_it_too() {
+    let mut h = ghent(Arc::new(Fake::new()));
+    press(&mut h, "Site");
+    press(&mut h, "Aerial Imagery");
+    fetch(&mut h);
+    until_fetched(&mut h);
+    press(&mut h, "Close");
+    // The plan's drawing letters it (pen strokes, not a label): it has more in it than without the photograph.
+    let level = h.state().session.model.levels()[0].0;
+    let view = bimcraft_core::render::View { scale: 0.06, cx: 150_000.0, cy: 100_000.0, width: 800, height: 800 };
+    let lettered = |h: &Harness<BimApp>| bimcraft_core::render::draw(&h.state().session.model, level, view).prims.len();
+    let with = lettered(&h);
+    h.state_mut().session.execute("graphics", &json!({"view": "Level 1", "categories": {"aerialimagery": {"hidden": true}}})).unwrap();
+    assert!(with > lettered(&h) + 8, "the plate and the lettering go with the photograph");
+    // The 3D view has it as a label over its corner.
+    press(&mut h, "Default 3D View");
+    assert!(h.query_by_label_contains("Digitaal Vlaanderen").is_some(), "Flanders made the picture over Ghent, and its credit is lettered");
+    // Hide the terrain in the 3D view and what was owed for it goes.
+    h.state_mut().session.execute("graphics", &json!({"view": "{3D}", "hide": ["toposurface"]})).unwrap();
+    h.run();
+    assert!(h.query_by_label_contains("Digitaal Vlaanderen").is_none());
+}
+
+#[test]
 fn a_pad_is_drawn_by_clicks_and_cut_fill_and_place_on_terrain_work_on_what_is_selected() {
     let mut h = located(Arc::new(Fake::new()));
     // A tilted ground, plainly: the fake's, 1 m rise each 100 m east, 2 m each 100 m north, from 0 at the origin.

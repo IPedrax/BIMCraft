@@ -363,6 +363,22 @@ impl BimApp {
         if let Some(id) = shown {
             p.image(id, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
+        // What the photograph on its terrain is owed, at the bottom right, whichever painter drew the view.
+        let credits = bimcraft_core::imagery::credits(&model, &Look::of_3d(&model));
+        if !credits.is_empty() {
+            let canvas = canvas_pal();
+            ui.scope_builder(UiBuilder::new().max_rect(rect.shrink(6.0)).layout(Layout::bottom_up(Align::Max)), |ui| {
+                for credit in &credits {
+                    egui::Frame::new()
+                        .fill(canvas.surface.gamma_multiply(0.85))
+                        .corner_radius(2.0)
+                        .inner_margin(egui::Margin::symmetric(4, 2))
+                        .show(ui, |ui| {
+                            ui.add(egui::Label::new(egui::RichText::new(credit).size(11.0).color(canvas.text)).wrap());
+                        });
+                }
+            });
+        }
         // The selected level's grips, and its plane as the held one would leave it.
         if let Some((_, z, extent)) = level {
             let shown = if o.grip.is_some() { regripped.unwrap_or(extent) } else { extent };

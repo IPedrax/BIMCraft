@@ -8,6 +8,9 @@ pub use crate::commands::{ImageryAsk, imagery_ask};
 use crate::geo::{Bbox, tile_xy};
 use crate::geom::P2;
 use crate::georef::Grid;
+use crate::graphics::Look;
+use crate::model::{Element, Model, Toposurface};
+use crate::texture::Kind;
 
 /// The side of a tile, px. Every service in the table gives 256 px tiles.
 pub const TILE: usize = 256;
@@ -49,6 +52,36 @@ pub struct Source {
     pub credit: &'static str,
     /// Where the terms of use are.
     pub terms: &'static str,
+}
+
+/// The parameter of a toposurface that holds the credit its photograph is owed (set by `fetch_imagery` from the table).
+pub const CREDIT_PARAMETER: &str = "Imagery Credit";
+/// The most characters of one credit a view letters, and the most credits it letters.
+pub const MAX_CREDIT: usize = 300;
+pub const MAX_CREDITS: usize = 4;
+
+/// The credit toposurface `t`'s photograph is owed, as one line: what its `Imagery Credit` says, with white space made one space and
+/// control characters taken out, cut at [`MAX_CREDIT`]; none if it wears no photograph (a planar image texture), or the parameter is
+/// not text or says nothing. The user may have written anything in it.
+pub(crate) fn credit_of(m: &Model, t: &Toposurface) -> Option<String> {
+    m.materials.get(&t.material)?.texture.as_ref().filter(|x| x.kind == Kind::Image && x.planar)?;
+    let text: String = t.params.get(CREDIT_PARAMETER)?.as_str()?.chars().filter(|c| !c.is_control() || c.is_whitespace()).collect();
+    let line: String = text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(MAX_CREDIT).collect();
+    (!line.is_empty()).then_some(line)
+}
+
+/// The credits of the photographs the view `look` shows: those of the toposurfaces it shows that wear one, once each, in order, no
+/// more than [`MAX_CREDITS`]. Whatever draws the photograph letters them with it.
+pub fn credits(m: &Model, look: &Look) -> Vec<String> {
+    let all: std::collections::BTreeSet<String> = m
+        .elements
+        .iter()
+        .filter_map(|(&id, e)| match e {
+            Element::Toposurface(t) if look.shows(id) => credit_of(m, t),
+            _ => None,
+        })
+        .collect();
+    all.into_iter().take(MAX_CREDITS).collect()
 }
 
 /// The most characters of a fetcher's reason for not bringing imagery that a reply or a message carries.

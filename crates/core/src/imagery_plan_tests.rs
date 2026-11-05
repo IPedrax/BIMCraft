@@ -256,3 +256,202 @@ fn a_window_full_of_photograph_is_drawn_in_a_moment() {
         assert!(spent < std::time::Duration::from_secs(2), "{name}: {spent:?}");
     }
 }
+
+// ---- The credit the photograph is owed, lettered wherever it is shown ----
+
+/// Gives the terrain's photograph the credit text: the project parameter `Imagery Credit`, and its value on every toposurface.
+fn credited(s: &mut Session, credit: &str) {
+    run(s, "parameter", json!({"name": "Imagery Credit", "kind": "text", "categories": ["toposurface"]}));
+    // Written into the model as a file could hold it (the command would refuse a text this long, or with control characters in it).
+    for e in s.model_mut().elements.values_mut() {
+        if let crate::model::Element::Toposurface(t) = e {
+            t.params.insert("Imagery Credit".into(), json!(credit));
+        }
+    }
+}
+
+/// The same project with and without a credit: two sessions wearing the same picture.
+fn with_and_without(name: &str, credit: &str) -> (Session, Session) {
+    let path = picture(name, 8, 8, quadrants);
+    let plain = terrained(&path, square(), 0.0);
+    let mut s = terrained(&path, square(), 0.0);
+    credited(&mut s, credit);
+    (s, plain)
+}
+
+fn window() -> View {
+    View { scale: 0.06, cx: 5000.0, cy: 5000.0, width: 800, height: 800 }
+}
+
+/// What `with` draws after everything `without` draws: the credit, which is pushed last.
+fn extra<'a>(with: &'a Drawing, without: &Drawing) -> (&'a [Prim], &'a [Option<crate::ids::Id>]) {
+    (with.prims.get(without.prims.len()..).unwrap_or_default(), with.owners.get(without.owners.len()..).unwrap_or_default())
+}
+
+#[test]
+fn a_plan_letters_the_credit_of_its_photograph_at_its_bottom_right_on_a_plate_and_nobody_owns_it() {
+    let (s, plain) = with_and_without("credit", "(c) Test Credit");
+    let (with, without) = (render::draw(&s.model, level(&s), window()), render::draw(&plain.model, level(&plain), window()));
+    let (made, owners) = extra(&with, &without);
+    assert!(made.iter().any(|p| matches!(p, Prim::Fill { .. })), "a plate for it to read on");
+    assert!(made.iter().filter(|p| matches!(p, Prim::Line { .. })).count() > 8, "and its lettering");
+    for p in made {
+        for (x, y) in p.points() {
+            assert!((0.0..=800.0).contains(&x) && (0.0..=800.0).contains(&y), "inside the window: {x}, {y}");
+            assert!(x > 400.0 && y > 700.0, "in its bottom right corner: {x}, {y}");
+        }
+    }
+    assert!(owners.iter().all(Option::is_none), "nobody's: never picked");
+    assert!(with.in_box((400.0, 700.0), (800.0, 800.0), true).is_empty(), "nor boxed");
+    // It is on the page whichever way the plan is written out.
+    assert!(render::svg(&with).len() > render::svg(&without).len());
+    // Over a photograph that fills the window, the corner is the plate's paper and not the photograph, past the end of the lettering.
+    let filled = View { scale: 0.12, ..window() };
+    let (over, bare) = (render::draw(&s.model, level(&s), filled), render::draw(&plain.model, level(&plain), filled));
+    let (laid, _) = extra(&over, &bare);
+    let Some(Prim::Fill { rings, .. }) = laid.iter().find(|p| matches!(p, Prim::Fill { .. })) else { panic!("no plate") };
+    let corner = rings.iter().flatten().fold((0f32, 0f32), |(x, y), q| (x.max(q.0), y.max(q.1)));
+    let inside = (corner.0 - 1.5, corner.1 - 1.5);
+    assert_eq!(pixel(&render::png(&bare).unwrap(), inside), (255, 255, 0), "the photograph's south east corner, without a credit");
+    assert_eq!(pixel(&render::png(&over).unwrap(), inside), (255, 255, 255), "the plate's paper, past the end of the lettering");
+    // And on a sheet, a viewport is drawn at paper size, which has it too.
+    let (on_sheet, bare) =
+        (render::draw_at(&s.model, level(&s), window(), 1.0), render::draw_at(&plain.model, level(&plain), window(), 1.0));
+    assert!(on_sheet.prims.len() > bare.prims.len());
+}
+
+#[test]
+fn there_is_no_credit_without_the_photograph_in_the_window_the_category_or_a_plan_that_looks_up() {
+    let (mut s, mut plain) = with_and_without("no-credit", "(c) Test Credit");
+    let level = (level(&s), level(&plain));
+    let count = |s: &Session, level, view| render::draw(&s.model, level, view).prims.len();
+    assert!(count(&s, level.0, window()) > count(&plain, level.1, window()), "to begin with it has one");
+    // A window the terrain is not in shows no photograph and so no credit; the same for a window of nothing.
+    for far in [View { cx: 1e6, ..window() }, View { width: 0, height: 0, ..window() }, View { scale: f64::NAN, ..window() }] {
+        assert_eq!(count(&s, level.0, far), count(&plain, level.1, far), "{far:?}");
+    }
+    // A view that hides the photograph, or the terrain, hides what is owed for it; a ceiling plan has neither.
+    for both in [json!({"categories": {"aerialimagery": {"hidden": true}}}), json!({"categories": {"toposurface": {"hidden": true}}})] {
+        let mut p = json!({"view": "Level 1"});
+        p.as_object_mut().unwrap().extend(both.as_object().unwrap().clone());
+        run(&mut s, "graphics", p.clone());
+        run(&mut plain, "graphics", p);
+        assert_eq!(count(&s, level.0, window()), count(&plain, level.1, window()));
+        run(&mut s, "graphics", json!({"view": "Level 1", "reset": true}));
+        run(&mut plain, "graphics", json!({"view": "Level 1", "reset": true}));
+    }
+    let up = |s: &Session, level| render::draw_ceiling(&s.model, level, window()).prims.len();
+    assert_eq!(up(&s, level.0), up(&plain, level.1));
+}
+
+#[test]
+fn a_long_credit_wraps_inside_a_narrow_window_and_a_word_wider_than_it_is_cut() {
+    let words = "Orthophotos supplied by an imagery service under the terms of its licence, with thanks. ".repeat(3);
+    for (what, credit) in [("words", words.as_str()), ("one word", &"W".repeat(300))] {
+        let (s, plain) = with_and_without("wrap", credit);
+        let narrow = View { width: 160, height: 160, ..window() };
+        let (with, without) = (render::draw(&s.model, level(&s), narrow), render::draw(&plain.model, level(&plain), narrow));
+        let (made, _) = extra(&with, &without);
+        assert!(!made.is_empty(), "{what}");
+        for p in made {
+            for (x, y) in p.points() {
+                assert!((0.0..=160.0).contains(&x) && (0.0..=160.0).contains(&y), "{what}: inside a window of 160 px: {x}, {y}");
+            }
+        }
+        // More than one line: the lettering sits at more than one height.
+        let tops: std::collections::BTreeSet<i32> =
+            made.iter().filter(|p| matches!(p, Prim::Fill { .. })).flat_map(Prim::points).map(|(_, y)| y.round() as i32).collect();
+        assert!(tops.len() > 2, "{what}: lines: {tops:?}");
+    }
+}
+
+#[test]
+fn a_section_letters_the_credit_too() {
+    let (mut s, mut plain) = with_and_without("section-credit", "(c) Test Credit");
+    let at = json!({"start": [-1000, 5000], "end": [11000, 5000], "name": "S"});
+    let (a, b) = (run(&mut s, "section", at.clone())["id"].as_u64().unwrap(), run(&mut plain, "section", at)["id"].as_u64().unwrap());
+    let view = View { scale: 0.06, cx: 5000.0, cy: 0.0, width: 800, height: 400 };
+    let (with, without) = (render::section(&s.model, a, view), render::section(&plain.model, b, view));
+    let (made, owners) = extra(&with, &without);
+    assert!(!made.is_empty() && owners.iter().all(Option::is_none), "a plate and lettering, nobody's");
+    for p in made {
+        for (x, y) in p.points() {
+            assert!(x > 400.0 && y > 300.0 && x <= 800.0 && y <= 400.0, "bottom right: {x}, {y}");
+        }
+    }
+}
+
+#[test]
+fn the_credits_of_a_view_are_those_of_the_photographs_it_shows_once_each_and_cut_to_a_line() {
+    use crate::graphics::Look;
+    let (mut s, plain) = with_and_without("credits", "(c) Test Credit");
+    let credits = |s: &Session| crate::imagery::credits(&s.model, &Look::of(&s.model, level(s)));
+    assert_eq!(credits(&s), ["(c) Test Credit"]);
+    assert!(credits(&plain).is_empty(), "no credit written");
+    // The terrain hidden, its photograph is not shown.
+    let terrain = *s.model.elements.iter().find(|(_, e)| e.category() == "toposurface").unwrap().0;
+    run(&mut s, "graphics", json!({"view": "Level 1", "hide_elements": [terrain]}));
+    assert!(credits(&s).is_empty());
+    run(&mut s, "graphics", json!({"view": "Level 1", "reset": true}));
+    // The same credit on two toposurfaces is given once; others, sorted, and no more than four.
+    for (name, credit) in
+        [("B", "(c) Test Credit"), ("C", "(c) Another"), ("D", "(c) Zed"), ("E", "(c) Yankee"), ("F", "(c) X-ray"), ("G", "(c) Whisky")]
+    {
+        let points: Vec<_> = (0..4).map(|i| json!([i * 1000, 0, 0])).chain([json!([0, 1000, 0])]).collect();
+        let id = run(&mut s, "toposurface", json!({"points": points, "material": "Aerial", "name": name}))["id"].as_u64().unwrap();
+        run(&mut s, "modify", json!({"id": id, "params": {"Imagery Credit": credit}}));
+    }
+    let all = credits(&s);
+    assert_eq!(all.len(), crate::imagery::MAX_CREDITS, "{all:?}");
+    assert!(all.windows(2).all(|w| w[0] < w[1]), "sorted, none twice: {all:?}");
+    // A credit is one line of text, cut to a length: the user may have written anything in the parameter.
+    credited(&mut s, "line one\n\tline\u{7}  two ");
+    assert_eq!(credits(&s), ["line one line two"]);
+    credited(&mut s, &"long ".repeat(200));
+    assert!(credits(&s)[0].chars().count() <= crate::imagery::MAX_CREDIT);
+    // Something that is not text is no credit and no trouble.
+    for e in s.model_mut().elements.values_mut() {
+        if let crate::model::Element::Toposurface(t) = e {
+            t.params.insert("Imagery Credit".into(), json!(5));
+        }
+    }
+    assert!(credits(&s).is_empty());
+}
+
+#[test]
+fn a_3d_picture_is_stamped_with_the_credit_in_its_corner_and_only_there() {
+    use crate::graphics::Look;
+    use crate::view3d::Scene;
+    let (s, plain) = with_and_without("stamp", "(c) Test Credit");
+    let (w, h) = (400u32, 300u32);
+    let make = |s: &Session, stamp: bool| {
+        let look = Look::of_3d(&s.model);
+        let scene = Scene::new(&s.model);
+        let cam = scene.fit_in(30.0, 30.0, w, h, &look);
+        let mut img = scene.render_in(&cam, &[], &look);
+        if stamp {
+            render::stamp_credits(&s.model, &look, &mut img);
+        }
+        img
+    };
+    let (bare, stamped) = (make(&s, false), make(&s, true));
+    let differing: Vec<usize> = (0..(w * h) as usize).filter(|k| bare.rgba[k * 4..k * 4 + 4] != stamped.rgba[k * 4..k * 4 + 4]).collect();
+    assert!(differing.len() > 60, "lettering and a plate: {} pixels", differing.len());
+    assert!(differing.iter().all(|k| (*k as u32 % w) > w / 2 && (*k as u32 / w) > h * 2 / 3), "only in the bottom right corner");
+    // Without a credit it changes nothing.
+    let (bare, unmarked) = (make(&plain, false), make(&plain, true));
+    assert_eq!(bare.rgba, unmarked.rgba);
+}
+
+#[test]
+fn the_render_command_stamps_the_credit_on_its_3d_picture() {
+    let (mut s, mut plain) = with_and_without("render-credit", "(c) Test Credit");
+    let png = |s: &mut Session| {
+        let r = run(s, "render", json!({"view": "{3D}", "width": 400, "height": 300}));
+        crate::texture::unbase64(r["pngBase64"].as_str().unwrap()).unwrap()
+    };
+    let (a, b) = (png(&mut s), png(&mut plain));
+    let (pa, pb) = (tiny_skia::Pixmap::decode_png(&a).unwrap(), tiny_skia::Pixmap::decode_png(&b).unwrap());
+    let differing = pa.data().chunks_exact(4).zip(pb.data().chunks_exact(4)).filter(|(x, y)| x != y).count();
+    assert!(differing > 60, "{differing} pixels differ");
+}

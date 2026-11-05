@@ -2831,7 +2831,9 @@ fn render_view(s: &mut Session, p: &Value) -> R {
             (Some(_), None) => return Err(bad(c, "a parallel 3D view has no eye to raise: turn it to perspective first (`perspective`)")),
             (None, _) => fitted,
         };
-        let png = scene.render_in(&cam, &[], &look).png().map_err(|e| bad(c, e))?;
+        let mut picture = scene.render_in(&cam, &[], &look);
+        render::stamp_credits(m, &look, &mut picture);
+        let png = picture.png().map_err(|e| bad(c, e))?;
         return png_reply(
             c,
             p,

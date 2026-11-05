@@ -1377,6 +1377,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
     d.weigh(|o| annotates(m, o));
     let at = (24.0 + font::width(&v.name, 16.0) / 2.0, view.height as f32 - 26.0);
     d.text_turned(&v.name, at, 16.0, 0.0, INK);
+    credit_plate(&mut d, &crate::imagery::credits(m, &look));
     d
 }
 
@@ -1455,12 +1456,13 @@ const MAX_BANDS: usize = 8;
 /// the window's pixels made with the same lookup the 3D view uses (the mip level a pixel covers, blended between pixels), cut to the
 /// terrain's boundary, clear where the picture lets nothing through, and toned down as the view's "Aerial Imagery" says. It is
 /// nobody's (never picked or boxed), and all its work is bounded by the window whatever the zoom.
-fn aerial_imagery(d: &mut Drawing, m: &Model, look: &Look) {
+fn aerial_imagery(d: &mut Drawing, m: &Model, look: &Look) -> Vec<String> {
     use crate::texture::{Kind, Sampler};
-    let Some(paint) = look.imagery() else { return };
+    let mut credits = std::collections::BTreeSet::new();
+    let Some(paint) = look.imagery() else { return Vec::new() };
     let (w, h, scale) = (d.view.width, d.view.height, d.view.scale);
     if w == 0 || h == 0 || !scale.is_finite() || scale <= 0.0 {
-        return;
+        return Vec::new();
     }
     let opacity = 1.0 - f64::from(paint.transparency.min(100)) / 100.0;
     let foot = 1.0 / scale;
@@ -1539,6 +1541,88 @@ fn aerial_imagery(d: &mut Drawing, m: &Model, look: &Look) {
         }
         d.own(None);
         d.push(Prim::Image { at: (left as f32, top as f32), width: pw as u32, height: ph as u32, rgba, ink: false });
+        // What is owed for it, unless it is let all the way through.
+        if opacity > 0.0 {
+            credits.extend(crate::imagery::credit_of(m, t));
+        }
+    }
+    credits.into_iter().take(crate::imagery::MAX_CREDITS).collect()
+}
+
+/// The most lines of credit a view letters.
+const MAX_CREDIT_LINES: usize = 8;
+
+/// `text` broken on its spaces into lines no wider than `room` px lettered `height` px tall; a word wider than that is cut where it
+/// fills a line.
+fn wrap_credit(text: &str, room: f32, height: f32) -> Vec<String> {
+    let (mut lines, mut line) = (Vec::new(), String::new());
+    for word in text.split_whitespace() {
+        let mut word = word.to_string();
+        while !word.is_empty() {
+            let joined = if line.is_empty() { word.clone() } else { format!("{line} {word}") };
+            if font::width(&joined, height) <= room {
+                line = joined;
+                break;
+            }
+            if !line.is_empty() {
+                lines.push(std::mem::take(&mut line));
+                continue;
+            }
+            // Alone and still too wide: as much as fits, at least a letter.
+            let fits =
+                (1..=word.chars().count()).take_while(|n| font::width(&word.chars().take(*n).collect::<String>(), height) <= room).count();
+            let head: String = word.chars().take(fits.max(1)).collect();
+            word = word.chars().skip(fits.max(1)).collect();
+            lines.push(head);
+        }
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    lines
+}
+
+/// The credits a photograph is owed, lettered at the bottom right of the window `d` draws, right-aligned and stacked upward, each line
+/// over a plate of paper so it reads over the photograph. Nobody's (never picked or boxed), and as much as fits the window: wrapped on
+/// spaces to its width, and as many lines as its height has room for.
+fn credit_plate(d: &mut Drawing, credits: &[String]) {
+    let (width, height) = (d.view.width as f32, d.view.height as f32);
+    let (text, margin) = (d.px(8.0), d.px(6.0));
+    if credits.is_empty() || ![width, height, text, margin].iter().all(|v| v.is_finite() && *v > 0.0) {
+        return;
+    }
+    let step = text * 1.6;
+    let room = (width - 2.0 * margin).max(text);
+    let fits = (((height - margin) / step) as usize).min(MAX_CREDIT_LINES);
+    let mut lines: Vec<String> = credits.iter().flat_map(|c| wrap_credit(c, room, text)).collect();
+    lines.truncate(fits);
+    d.own(None);
+    let mut y = height - margin - text / 2.0;
+    for line in lines.iter().rev() {
+        let w = font::width(line, text);
+        let x = width - margin - w / 2.0;
+        let pad = text * 0.4;
+        let (left, right, top, bottom) = (x - w / 2.0 - pad, x + w / 2.0 + pad, y - text / 2.0 - pad, y + text / 2.0 + pad);
+        d.push(Prim::Fill { rings: vec![vec![(left, top), (right, top), (right, bottom), (left, bottom)]], color: PAPER });
+        d.text(line, (x, y), text, INK);
+        y -= step;
+    }
+}
+
+/// Letters the credits of the photographs view `look` shows into the corner of `image`, a picture of the 3D view made by the core
+/// (the `render` command's, a sheet's), as a plan letters them: the pixels under the plate are the plate's, nothing else changes.
+pub fn stamp_credits(m: &Model, look: &Look, image: &mut Image) {
+    let credits = crate::imagery::credits(m, look);
+    if credits.is_empty() {
+        return;
+    }
+    let view = View { scale: 1.0, cx: 0.0, cy: 0.0, width: image.width, height: image.height };
+    let mut d = Drawing::new(view);
+    credit_plate(&mut d, &credits);
+    let Some(size) = IntSize::from_wh(image.width, image.height) else { return };
+    if let Some(mut pixmap) = Pixmap::from_vec(std::mem::take(&mut image.rgba), size) {
+        paint(&mut pixmap, &d);
+        image.rgba = pixmap.take();
     }
 }
 
@@ -1704,8 +1788,9 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         range.top = range.top.max(range.cut);
     }
     // The photograph under its terrain, under all the rest; then the scans it sees; then its CAD drawings.
+    let mut credits = Vec::new();
     if !up {
-        aerial_imagery(&mut d, m, &look);
+        credits = aerial_imagery(&mut d, m, &look);
         scans(&mut d, m, &range, &look);
         cad_imports(&mut d, m, key, level, &look);
     }
@@ -2043,6 +2128,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         linework(&mut d, m, &g.linework);
     }
     d.weigh(|o| annotates(m, o));
+    credit_plate(&mut d, &credits);
     if titled {
         let mut title = m.view_name(key).map_or_else(String::new, str::to_string);
         if up {

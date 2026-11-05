@@ -74,7 +74,7 @@ it covers and `offset` its west and north corner, so the picture lies on the gro
 (the processor looks it up by east and north in `view3d::GROUND`, the card in `gpu.wgsl` by its spare word). Fetched again, from the
 same source or another, it replaces the picture and the material, and one undo takes it back. The source, its credit and where its
 terms are stay with the toposurface as the parameters Imagery Source, Imagery Credit and Imagery Terms. The 3D view lays the picture over white where it has
-no imagery (its levels are over white, as every picture's are); **a plan leaves it clear** (below). The Site tab's Aerial Imagery button runs it ([the desktop](desktop.md#the-site-tab)). Not yet: the credit drawn in the views, a nudge, and imagery
+no imagery (its levels are over white, as every picture's are); **a plan leaves it clear** (below). The Site tab's Aerial Imagery button runs it ([the desktop](desktop.md#the-site-tab)). Not yet: a nudge, and imagery
 in the 3D view that lets the terrain's colour through where there is none.
 
 ### The photograph in plans
@@ -96,6 +96,19 @@ categories; `graphics::IMAGERY`, `Look::imagery`): hidden, or by **halftone** (h
 let through), so a plan can have it faint under its linework, or none on the upper floors; a view template that controls Categories
 controls it too. Nothing else of an override applies to it. A dark canvas dims a plan's pictures, the photograph with them; a sheet and a
 PDF carry it as it is.
+
+**The credit is drawn with the photograph, wherever it is shown.** A service's terms ask for its credit (EOX's make it mandatory), and
+it travels with the data: the toposurface's `Imagery Credit` parameter, set by `fetch_imagery` from the table. `imagery::credits(model,
+look)` is the credits of the photographs a view shows (the toposurfaces it shows that wear one, once each, sorted, at most
+`MAX_CREDITS`, each one line cut at `MAX_CREDIT` characters: the parameter may hold anything). A plan letters them at its bottom right
+(`render::credit_plate`: right-aligned, stacked upward, wrapped to the window's width, each line over a plate of paper so it reads over
+the photograph, nobody's, last drawn), only when its photograph reached the window (so not in a ceiling plan, not where the view hides
+the Aerial Imagery category or the terrain, not for a window the terrain is not in, not when transparency lets all of it through); a
+section or elevation letters those of its look, as it draws the ground; a sheet's viewport letters them at paper size
+(`draw_at`), and the PNG, the SVG and the PDF carry them because they carry the `Drawing`. The 3D view shows them as a label at its bottom
+right in the window (whichever painter drew the view), and the two pictures the core makes of a 3D view, the `render` command's and a sheet's
+3D viewport, are stamped with the same plate (`render::stamp_credits`). Not in the file or the IFC export, and the text only: the
+address of a service's terms is the toposurface's `Imagery Terms` and the Site tab's result box.
 
 ## Not yet
 
