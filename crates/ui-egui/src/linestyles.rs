@@ -143,6 +143,29 @@ fn sample(ui: &mut Ui, segments: &[Segment], width: f32, k: f32) {
     creator::paint(ui, segments, rect, k, false);
 }
 
+/// A row of a Line Style list: a short line as the style draws it, and its `name`. `style` is none for what draws nothing
+/// (Invisible) or by something else (By Category), which has a blank where the sample goes.
+pub(crate) fn style_row(ui: &mut Ui, m: &Model, style: Option<&LineStyle>, current: bool, name: &str) -> bool {
+    ui.horizontal(|ui| {
+        let (rect, sample) = ui.allocate_exact_size(vec2(SAMPLE.0, SAMPLE.1), Sense::click());
+        if let Some(s) = style {
+            let segments = s.pattern.as_ref().and_then(|p| m.line_patterns.get(p)).map_or(&[][..], |p| p.0.as_slice());
+            // A style's own colour, but black, which is the paper's ink in whichever theme.
+            let ink = match s.color {
+                [0, 0, 0] => ui.visuals().text_color(),
+                [r, g, b] => egui::Color32::from_rgb(r, g, b),
+            };
+            creator::paint_in(ui, segments, rect, 3.0, ink);
+        }
+        // The sample is part of the row: a click on it picks too.
+        ui.selectable_label(current, name).clicked() || sample.clicked()
+    })
+    .inner
+}
+
+/// How wide and tall a Line Style list's sample is.
+const SAMPLE: (f32, f32) = (56.0, 16.0);
+
 /// The styles: a row each, its name, pen, colour and pattern, and its Delete; then New Style. The rows scroll in what the window
 /// has left over `below`, the dialog's own notes and buttons.
 fn styles_tab(ui: &mut Ui, d: &mut LineStylesDialog, below: f32) {
@@ -364,7 +387,9 @@ impl BimApp {
         let l = ui.label(t("Line Style:"));
         let c = ComboBox::from_id_salt("linework-style").selected_text(t(&self.linework_style)).width(160.0).show_ui(ui, |ui| {
             for n in &options {
-                ui.selectable_value(&mut self.linework_style, n.clone(), t(n));
+                if style_row(ui, m, m.line_styles.get(n), self.linework_style == *n, t(n)) {
+                    self.linework_style.clone_from(n);
+                }
             }
         });
         c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, t("Line Style")));
@@ -379,8 +404,10 @@ impl BimApp {
         }
         let l = ui.label(t("Line Style:"));
         let c = ComboBox::from_id_salt("detail-line-style").selected_text(&self.line_style).width(160.0).show_ui(ui, |ui| {
-            for n in m.line_styles.keys() {
-                ui.selectable_value(&mut self.line_style, n.clone(), n);
+            for (n, style) in &m.line_styles {
+                if style_row(ui, m, Some(style), self.line_style == *n, n) {
+                    self.line_style.clone_from(n);
+                }
             }
         });
         c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, t("Line Style")));

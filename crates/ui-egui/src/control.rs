@@ -326,6 +326,33 @@ impl BimApp {
         self.agents.failed.clone().map_or(Ok(()), Err)
     }
 
+    /// Lets agents work on this project, or stops them: Settings' checkbox and the app bar's AI button, kept in the settings.
+    pub(crate) fn set_agents(&mut self, on: bool) {
+        self.agents.listen = on;
+        if on {
+            self.open_control();
+        } else {
+            self.close_control();
+        }
+    }
+
+    /// The app bar's AI button, beside Settings: a click turns Let agents work on this project on or off. What stops it is
+    /// said in the status bar, as Settings is shut.
+    pub(crate) fn agents_toggle(&mut self, ui: &mut egui::Ui) {
+        let on = self.control.is_some();
+        let tip = crate::lang::t(if on {
+            bimcraft_i18n::msg!("Let agents work on this project: on. Click to stop them")
+        } else {
+            bimcraft_i18n::msg!("Let agents work on this project: off. Click to let them")
+        });
+        if crate::toggle_button(ui, crate::icons::Icon::Ai, crate::lang::t("AI agents"), on, tip).clicked() {
+            self.set_agents(!on);
+            if let Some(why) = self.agents.failed.clone() {
+                self.status = crate::Status { text: why, error: true };
+            }
+        }
+    }
+
     /// Opens the port on the one Settings says, in place of one that is open; what stops it is kept in `agents.failed`.
     pub(crate) fn open_control(&mut self) {
         let port = self.agents.port;

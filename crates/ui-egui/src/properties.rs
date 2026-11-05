@@ -428,6 +428,67 @@ const PLAN_DEPENDENT: &[Row] = &[
 ];
 
 /// Type `name` of `category` as the project's JSON holds it: `types` is the project's `Types` as JSON.
+/// How wide and tall a wall type's sample is in the Type Selector's list.
+const LAYERS: egui::Vec2 = vec2(40.0, 16.0);
+
+/// Whether wall type `name` is a curtain wall's: a pattern of panels and mullions, not layers. Read from what the type
+/// writes, a `curtain` pattern, so it needs nothing but that key.
+fn curtain_type(model: &Model, name: &str) -> bool {
+    model.types.wall.get(name).and_then(|t| serde_json::to_value(t).ok()).is_some_and(|v| is_curtain_json(&v))
+}
+
+/// Whether a wall type as JSON holds a curtain wall's pattern.
+fn is_curtain_json(v: &Value) -> bool {
+    !v.get("curtain").is_none_or(Value::is_null)
+}
+
+/// The Type Selector's list of wall types, `names` kept in their order: curtain walls under a heading of their own so they
+/// don't mix with the rest, and only then a heading on the rest.
+fn type_sections(names: &[String], curtain: impl Fn(&str) -> bool) -> Vec<(Option<&'static str>, Vec<String>)> {
+    let (curtains, walls): (Vec<String>, Vec<String>) = names.iter().cloned().partition(|n| curtain(n));
+    if curtains.is_empty() {
+        return vec![(None, walls)];
+    }
+    vec![(Some(msg!("Walls")), walls), (Some(msg!("Curtain Walls")), curtains)]
+}
+
+/// What share of a wall type's thickness each of its layers takes, in its material's colour, from one face to the other. One
+/// band, its colour unknown, for a type with no layers or thickness.
+fn layer_bands(model: &Model, name: &str) -> Vec<(f32, Option<[u8; 3]>)> {
+    let layers = model.types.wall.get(name).map_or(&[][..], |t| t.layers.as_slice());
+    let total: f64 = layers.iter().map(|l| l.thickness).sum();
+    if layers.is_empty() || total.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater) {
+        return vec![(1.0, None)];
+    }
+    layers.iter().map(|l| ((l.thickness / total) as f32, model.materials.get(&l.material).map(|m| m.color))).collect()
+}
+
+/// Wall type `name` as its section shows it, in `rect`: its layers side by side; a curtain wall's panels between mullions.
+fn wall_type_sample(ui: &Ui, rect: Rect, model: &Model, name: &str) {
+    let p = ui.painter();
+    let line = Stroke::new(1.0, pal().muted);
+    if curtain_type(model, name) {
+        p.rect_filled(rect, 0.0, pal().select_fill);
+        for f in [1.0 / 3.0, 2.0 / 3.0] {
+            let x = rect.left() + rect.width() * f;
+            p.line_segment([egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())], line);
+        }
+    } else {
+        let mut x = rect.left();
+        for (share, colour) in layer_bands(model, name) {
+            let wide = share * rect.width();
+            let fill = colour.map_or(pal().control, |[r, g, b]| egui::Color32::from_rgb(r, g, b));
+            let band = Rect::from_min_size(egui::pos2(x, rect.top()), vec2(wide, rect.height()));
+            p.rect_filled(band, 0.0, fill);
+            if x > rect.left() {
+                p.line_segment([band.left_top(), band.left_bottom()], line);
+            }
+            x += wide;
+        }
+    }
+    p.rect_stroke(rect, 0.0, line, StrokeKind::Inside);
+}
+
 fn type_json<'a>(types: &'a Value, category: &str, name: &str) -> &'a Value {
     let of = match category {
         "structuralcolumn" => &types["structural_column"],
@@ -1462,11 +1523,34 @@ impl BimApp {
         // the room on the selector's roomier side.
         let window = ui.ctx().content_rect();
         let room = (window.bottom() - rect.bottom()).max(rect.top() - window.top()) - 16.0;
-        Popup::menu(&r).width(rect.width()).show(|ui| {
-            egui::ScrollArea::vertical().max_height(room.max(100.0)).show(ui, |ui| {
-                for n in &names {
-                    if ui.selectable_label(current.as_ref() == Some(n), n).clicked() {
-                        picked = Some(n.clone());
+        // As wide as the selector, frame and all: what the list's width sets is the inside of its frame, and a long name is cut
+        // short rather than widen it.
+        let margin = ui.style().spacing.menu_margin.sum().x;
+        let inside = rect.width() - margin;
+        Popup::menu(&r).width(inside).show(|ui| {
+            ui.set_max_width(inside);
+            let walls = category == "wall";
+            let sections = if walls { type_sections(&names, |n| curtain_type(model, n)) } else { vec![(None, names.clone())] };
+            egui::ScrollArea::vertical().max_height(room.max(100.0)).auto_shrink([false, true]).show(ui, |ui| {
+                for (heading, names) in &sections {
+                    if let Some(h) = heading {
+                        ui.label(RichText::new(t(h)).small().strong().color(pal().muted));
+                    }
+                    for n in names {
+                        ui.horizontal(|ui| {
+                            let mut clicked = false;
+                            if walls {
+                                let (swatch, sample) = ui.allocate_exact_size(LAYERS, Sense::click());
+                                wall_type_sample(ui, swatch, model, n);
+                                clicked |= sample.clicked();
+                            }
+                            let row = egui::Button::selectable(current.as_ref() == Some(n), n.as_str()).truncate();
+                            let wide = ui.available_width();
+                            clicked |= ui.add_sized(vec2(wide, 22.0), row).on_hover_text(n.as_str()).clicked();
+                            if clicked {
+                                picked = Some(n.clone());
+                            }
+                        });
                     }
                 }
             });
@@ -3279,5 +3363,36 @@ impl BimApp {
         if !(close || r.should_close()) {
             self.schedule_dialog = Some(d);
         }
+    }
+}
+
+#[cfg(test)]
+mod type_list {
+    use super::*;
+
+    #[test]
+    fn curtain_walls_go_in_a_section_of_their_own_and_the_rest_keep_their_order() {
+        let names: Vec<String> = ["Generic", "Glazed", "Exterior", "Storefront"].map(String::from).to_vec();
+        let sections = type_sections(&names, |n| matches!(n, "Glazed" | "Storefront"));
+        assert_eq!(
+            sections,
+            vec![
+                (Some("Walls"), vec!["Generic".to_string(), "Exterior".to_string()]),
+                (Some("Curtain Walls"), vec!["Glazed".to_string(), "Storefront".to_string()]),
+            ]
+        );
+    }
+
+    #[test]
+    fn with_no_curtain_wall_the_list_has_no_headings() {
+        let names: Vec<String> = ["Generic", "Exterior"].map(String::from).to_vec();
+        assert_eq!(type_sections(&names, |_| false), vec![(None, names.clone())]);
+    }
+
+    #[test]
+    fn a_wall_type_is_a_curtain_wall_s_when_it_writes_a_pattern() {
+        assert!(!is_curtain_json(&json!({"thickness": 200.0})));
+        assert!(!is_curtain_json(&json!({"thickness": 200.0, "curtain": null})));
+        assert!(is_curtain_json(&json!({"thickness": 200.0, "curtain": {"horizontal": {}}})));
     }
 }
