@@ -115,6 +115,7 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 - `hydrant.rs`: the `hydrant_size` command, hydrants and hose reels by IT 22/2025 (Tabelas 1 to 3, Hazen-Williams).
 - `loads.rs`: the `load_points` command, a dwelling's lighting and outlets by room by NBR 5410 item 9.5.2.
 - `dr.rs`: the `dr_check` command, which circuits NBR 5410 asks a 30 mA residual-current device for.
+- `demand.rs`: the `demand` command, an installation's demand and service category by a utility's own standard (CPFL's GED 13; Enel's ET 1569 by installed load).
 - `dps.rs`: the `dps_check` command, surge protection of a power line by NBR 5410 (when, where, connection, currents).
 - `water.rs`, `reservoir.rs`: `water_size`, cold water by NBR 5626, and `reservoir_size`, its reservation.
 - `storm.rs`: the `storm_size` command, storm drains by NBR 10844 (Manning, the downpipe abacuses).

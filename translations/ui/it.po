@@ -2414,7 +2414,7 @@ msgstr "Demolito"
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:9161
+#: crates/core/src/commands.rs:9556
 msgid "Dependent"
 msgstr "Dipendente"
 
@@ -2919,7 +2919,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:1994
+#: crates/core/src/commands.rs:2024
 msgid "Elements"
 msgstr "Elementi"
 
@@ -8531,7 +8531,7 @@ msgstr "Formato unità"
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:9302
+#: crates/core/src/commands.rs:9697
 msgid "Unnamed"
 msgstr "Senza nome"
 

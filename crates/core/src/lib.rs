@@ -25,6 +25,7 @@ mod constraints;
 pub mod crosscheck;
 mod csg;
 pub mod curves;
+pub mod demand;
 pub mod derived;
 pub mod dims;
 pub mod dims3d;
