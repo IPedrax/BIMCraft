@@ -59,7 +59,13 @@ pub static ALL: &[Command] = &[
          Nível 2 in Portuguese; Nivel 1, Nivel 2 in Spanish; Nivå 1, Nivå 2 in Swedish; Niveau 1, Niveau 2 in Dutch)",
         new,
     ),
-    other("open", "Open", "{path} a .bimcraft project", open),
+    other(
+        "open",
+        "Open",
+        "{path} a .bimcraft project, or an .ifc read into a new one (its `elements` by category, `generic` the components of \
+         IFC classes BIMCraft has no element for, `skipped` what was left out and why)",
+        open,
+    ),
     other("highrise", "Synthetic Highrise", "{storeys?: 20} replace the project with an original 1–80 storey performance sample", highrise),
     other(
         "tower",
@@ -1002,6 +1008,8 @@ pub static ALL: &[Command] = &[
          operation?: swing|double-swing|sliding|double-sliding|folding|fixed (a door's or window's, for IFC and schedules), \
          kind?: which fixture or fitting it is, for IFC's predefined type (plumbing: wc|lav|sink|laundry|shower|bath|bidet|urinal; \
          drain: floor_drain|floor_waste|roof_drain; pipefitting: bend|tee|cross|transition|coupling; \"\" clears it), \
+         ifc?: {class, predefined?, object_type?} | null (the IFC class a generic family's components go out as, which one \
+         opened from IFC remembers: `IFCPLATE`, `CURTAIN_PANEL`; one IFC4 lacks goes out as a proxy that names it), \
          connectors?: [{kind: power|switch, system: power-balanced|power-unbalanced|switch, poles?: 1-3, voltage?, load_va?, \
          power_factor?, classification?}], rename?, delete?: true, dry_run?, path?, save?} a family of \
          the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .json file at `path` (a \
@@ -2737,8 +2745,15 @@ fn open_file(s: &mut Session, p: &Value) -> R {
         for e in i.model.elements.values() {
             *counts.entry(e.category()).or_default() += 1;
         }
-        let reply =
-            json!({"path": path, "name": i.model.name, "format": i.schema, "elements": counts, "skipped": i.skipped, "moved": i.moved});
+        // What came in as generic components, of the IFC classes BIMCraft has no element for.
+        let generic = i
+            .model
+            .elements
+            .values()
+            .filter(|e| matches!(e, Element::Component(c) if i.model.families.get(&c.family).is_some_and(|f| f.remembered().is_some())))
+            .count();
+        let reply = json!({"path": path, "name": i.model.name, "format": i.schema, "elements": counts, "generic": generic,
+            "skipped": i.skipped, "moved": i.moved});
         s.reset(i.model, None);
         return Ok(reply);
     }
@@ -9657,10 +9672,11 @@ fn family(s: &mut Session, p: &Value) -> R {
         let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let name = p.get("name").filter(|v| !v.is_null()).cloned().or_else(|| fields.remove("name")).unwrap_or(json!(stem));
         // Only the family it holds: what a file says to rename or delete isn't for it to say.
-        let mut family: Map<String, Value> = ["category", "kind", "parameters", "types", "forms", "symbols", "operation", "connectors"]
-            .into_iter()
-            .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
-            .collect();
+        let mut family: Map<String, Value> =
+            ["category", "kind", "ifc", "parameters", "types", "forms", "symbols", "operation", "connectors"]
+                .into_iter()
+                .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
+                .collect();
         family.insert("name".into(), name);
         // `dry_run` is the caller's, not the file's: a dry run of a file loads nothing.
         if let Some(dry) = p.get("dry_run") {
@@ -9723,6 +9739,7 @@ fn family(s: &mut Session, p: &Value) -> R {
     let keys = [
         "category",
         "kind",
+        "ifc",
         "parameters",
         "forms",
         "symbols",
@@ -9811,6 +9828,15 @@ fn family(s: &mut Session, p: &Value) -> R {
     if let Some(kind) = string(c, &p, "kind")? {
         let kind = kind.trim();
         f.kind = (!kind.is_empty()).then(|| kind.to_string());
+    }
+    // The IFC class its components go out as, written as IFC writes it; `null` forgets it.
+    match p.get("ifc") {
+        None => {}
+        Some(Value::Null) => f.ifc = None,
+        Some(v) => {
+            let class: crate::family::IfcClass = serde_json::from_value(v.clone()).map_err(|e| field("ifc", e))?;
+            f.ifc = Some(class.written());
+        }
     }
     if let Some(v) = p.get("types").filter(|v| !v.is_null()) {
         let mut types = serde_json::to_value(&f.types).map_err(|e| bad(c, e))?;

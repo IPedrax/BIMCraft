@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use bimcraft_core::engine::Session;
 use bimcraft_core::family::{
-    Align as LabelAlign, Category, Circle, Connector, Curve, Expr, Family, Form, Kind as Holds, Label, Parameter, Plane, Symbol,
+    Align as LabelAlign, Category, Circle, Connector, Curve, Expr, Family, Form, IfcClass, Kind as Holds, Label, Parameter, Plane, Symbol,
 };
 use bimcraft_core::model::{Model, Operation};
 use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
@@ -349,6 +349,8 @@ pub(crate) struct FamilyEditor {
     connectors: Vec<Connector>,
     /// Which fixture or fitting it is, as the family has it: set with the `family` command, kept as it is here.
     kind: Option<String>,
+    /// The IFC class a generic family from IFC remembers: set with the `family` command or by the import, kept as it is here.
+    ifc: Option<IfcClass>,
     /// How a door's or a window's leaves open; none, not said.
     operation: Option<Operation>,
     tab: Tab,
@@ -389,6 +391,7 @@ impl FamilyEditor {
             symbols: f.symbols.iter().map(SymbolText::of).collect(),
             connectors: f.connectors.clone(),
             kind: f.kind.clone(),
+            ifc: f.ifc.clone(),
             operation: f.operation,
             tab: Tab::Parameters,
             picked: 0,
@@ -446,6 +449,7 @@ impl FamilyEditor {
             category: self.category,
             // A kind the category it now is has no row for goes with the change of category.
             kind: self.kind.clone().filter(|k| self.category.kinds().iter().any(|(n, _)| n == k)),
+            ifc: self.ifc.clone(),
             parameters,
             types,
             forms,
@@ -1188,7 +1192,13 @@ mod tests {
                 _ => (a != b).then(|| format!("{path}: {a} against {b}")),
             }
         }
-        let m = Model::new("x");
+        let mut m = Model::new("x");
+        // And one from IFC, which remembers the class it came in as.
+        let mut panel = m.families["Table"].clone();
+        panel.category = Category::Generic;
+        panel.ifc =
+            Some(IfcClass { class: "IFCPLATE".into(), predefined: Some("CURTAIN_PANEL".into()), object_type: Some("Glass".into()) });
+        m.families.insert("System Panel".into(), panel);
         for (name, f) in &m.families {
             let back = FamilyEditor::of(name, f).family().unwrap_or_else(|e| panic!("{name}: {e}"));
             let (back, was) = (alike(serde_json::to_value(&back).unwrap()), alike(serde_json::to_value(f).unwrap()));

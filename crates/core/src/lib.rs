@@ -52,6 +52,8 @@ pub mod groups;
 pub mod hydrant;
 pub mod ids;
 pub mod ifc;
+#[cfg(test)]
+mod ifc_generic_tests;
 pub mod import;
 pub mod inquiry;
 pub mod insert;
