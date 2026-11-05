@@ -2117,7 +2117,7 @@ msgid "Offset"
 msgstr "Przesunięcie"
 
 #: crates/ui-egui/src/lib.rs:4956
-msgn "Open"
+msgid "Open"
 msgstr "Otwórz"
 
 #: crates/ui-egui/src/lib.rs:4957
