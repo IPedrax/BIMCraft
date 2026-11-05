@@ -37,9 +37,9 @@ pub(crate) fn button(ui: &mut egui::Ui) -> egui::Response {
     r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, name));
     let p = ui.painter();
     let (ink, ground) = crate::style::icon_inks();
-    p.rect_filled(rect, crate::style::corner(6.0), if r.hovered() { ground } else { pal().app_bar_hover.gamma_multiply(0.6) });
+    p.rect_filled(rect, 6.0, if r.hovered() { ground } else { pal().app_bar_hover.gamma_multiply(0.6) });
     if r.has_focus() {
-        p.rect_stroke(rect, crate::style::corner(6.0), crate::style::focus_ring(), egui::StrokeKind::Inside);
+        p.rect_stroke(rect, 6.0, crate::style::focus_ring(), egui::StrokeKind::Inside);
     }
     let icon = egui::Rect::from_center_size(rect.left_center() + vec2(14.0, 0.0), vec2(15.0, 15.0));
     crate::icons::paint(p, crate::icons::Icon::Search, icon, ink);
@@ -92,7 +92,7 @@ impl BimApp {
                     let (rect, row) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::click());
                     row.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
                     if row.hovered() {
-                        ui.painter().rect_filled(rect, crate::style::corner(4.0), pal().hover_fill);
+                        ui.painter().rect_filled(rect, 4.0, pal().hover_fill);
                     }
                     let font = egui::FontId::proportional(13.0);
                     ui.painter().text(rect.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER, label, font.clone(), pal().text);

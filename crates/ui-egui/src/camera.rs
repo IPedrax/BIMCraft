@@ -66,7 +66,7 @@ impl BimApp {
                 if let Some(typed) = self.field(ui, widget, "name", name, label.id, "") {
                     renamed = Some(typed);
                 }
-                crate::properties::end_row(ui);
+                ui.end_row();
             }
             if is_default {
                 let label = ui.label(t("Projection")).on_hover_text(t(TIP));
@@ -75,7 +75,7 @@ impl BimApp {
                 if let Some(picked) = crate::properties::combo(ui, (widget, "camera.projection"), label.id, current, &options) {
                     set = Some(json!({"on": picked == options[1]}));
                 }
-                crate::properties::end_row(ui);
+                ui.end_row();
             }
             // Focal Length: the lens it is seen through (its angle of view). The default view's own (`perspective`) or,
             // for a camera view, its camera's, set with the eye and target it keeps.
@@ -92,7 +92,7 @@ impl BimApp {
                         }
                     }
                 }
-                crate::properties::end_row(ui);
+                ui.end_row();
             }
             if is_default {
                 let label = ui.label(t("Eye Elevation"));
@@ -103,7 +103,7 @@ impl BimApp {
                         None => self.status = crate::Status { text: crate::lang::tf("`{}` is not a length", &[typed.trim()]), error: true },
                     }
                 }
-                crate::properties::end_row(ui);
+                ui.end_row();
             }
             // A camera view: where its eye stands and what it looks at, each `x, y, z`.
             if let Some(cam) = camera {
@@ -113,12 +113,12 @@ impl BimApp {
                 if let Some(s) = self.field(ui, widget, "camera.eye_point", as_text(cam.eye), label.id, "") {
                     typed.0 = Some(s);
                 }
-                crate::properties::end_row(ui);
+                ui.end_row();
                 let label = ui.label(t("Target"));
                 if let Some(s) = self.field(ui, widget, "camera.target_point", as_text(cam.target), label.id, "") {
                     typed.1 = Some(s);
                 }
-                crate::properties::end_row(ui);
+                ui.end_row();
                 if typed.0.is_some() || typed.1.is_some() {
                     // A point typed must read; one left alone keeps the camera's.
                     let eye = match typed.0.as_deref() {

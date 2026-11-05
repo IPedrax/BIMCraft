@@ -74,7 +74,7 @@ impl BimApp {
             if r.labelled_by(label.id).on_hover_text(t(TIP)).changed() {
                 set = Some(json!({"on": on}));
             }
-            crate::properties::end_row(ui);
+            ui.end_row();
             let Some(b) = b.filter(|b| b.on) else { return };
             for (k, face) in FACES.into_iter().enumerate() {
                 let (axis, max) = (k / 2, !k.is_multiple_of(2));
@@ -94,7 +94,7 @@ impl BimApp {
                         None => self.status = crate::Status { text: crate::lang::tf("`{}` is not a length", &[typed.trim()]), error: true },
                     }
                 }
-                crate::properties::end_row(ui);
+                ui.end_row();
             }
         });
         if let Some(p) = set {

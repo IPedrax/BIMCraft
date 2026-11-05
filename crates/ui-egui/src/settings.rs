@@ -467,11 +467,8 @@ impl BimApp {
         let before = self.profile;
         ui.horizontal(|ui| {
             for (profile, tip) in [
-                (Profile::BimCraft, msg!("BIMCraft's own look: a dark title bar, and the ribbon, the palettes and the bars laid out as Layout says")),
-                (
-                    Profile::Rev,
-                    msg!("Flat and square, the title bar in the ribbon's greys: the File tab leads the ribbon's tabs and the Options Bar is docked under the ribbon"),
-                ),
+                (Profile::BimCraft, msg!("BIMCraft's own: the tools in a palette, the Inspector and the Navigator on the right")),
+                (Profile::Rev, msg!("The ribbon over the view, Properties and the Project Browser on the left")),
             ] {
                 ui.radio_value(&mut self.profile, profile, profile.name()).on_hover_text(t(tip));
             }
@@ -535,14 +532,11 @@ impl BimApp {
             ui.label(RichText::new(why).color(now.muted));
         }
         heading(ui, msg!("Layout"));
-        // Rev has one layout, flush: the choice is BIMCraft's, and kept for it.
-        ui.add_enabled_ui(self.profile == Profile::BimCraft, |ui| {
-            ui.horizontal(|ui| {
-                let tip = msg!("The ribbon, the palettes and the bars as cards floating over the view");
-                ui.radio_value(&mut self.compact, false, t("Floating")).on_hover_text(t(tip));
-                let tip = msg!("The ribbon, the palettes and the bars flush to the window's edges");
-                ui.radio_value(&mut self.compact, true, t("Compact")).on_hover_text(t(tip));
-            });
+        ui.horizontal(|ui| {
+            let tip = msg!("The ribbon, the palettes and the bars as cards floating over the view");
+            ui.radio_value(&mut self.compact, false, t("Floating")).on_hover_text(t(tip));
+            let tip = msg!("The ribbon, the palettes and the bars flush to the window's edges");
+            ui.radio_value(&mut self.compact, true, t("Compact")).on_hover_text(t(tip));
         });
         heading(ui, "Language");
         ComboBox::from_id_salt("settings-language").selected_text(self.lang.label()).width(200.0).show_ui(ui, |ui| {
