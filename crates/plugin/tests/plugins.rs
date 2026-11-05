@@ -92,6 +92,28 @@ fn a_reply_that_is_not_json_is_an_error() {
 }
 
 #[test]
+fn a_table_grown_past_the_limit_is_an_error_not_a_bigger_table() {
+    let rt = runtime("table_grow.wat");
+    let mut s = Session::new();
+    // The call may stop at the growth itself or at the table check after it: either way it is the call's error,
+    // and the host is up with its session untouched.
+    let e = invoke(&rt, &mut s, false, level("Roof")).unwrap_err();
+    assert!(e.contains("table") || e.contains("limit") || e.contains("failed"), "{e}");
+    assert_eq!(levels(&s), 2, "nothing changed");
+    s.execute("level", &json!({"elevation": 900})).unwrap();
+    assert_eq!(levels(&s), 3);
+}
+
+#[test]
+fn a_declared_table_past_the_limit_is_refused() {
+    let rt = runtime("huge_table.wat");
+    let mut s = Session::new();
+    let e = invoke(&rt, &mut s, false, level("Roof")).unwrap_err();
+    assert!(e.contains("table") || e.contains("limit"), "{e}");
+    assert_eq!(levels(&s), 2);
+}
+
+#[test]
 fn more_memory_than_the_limit_is_an_error() {
     let rt = runtime("huge_memory.wat");
     let mut s = Session::new();
@@ -114,6 +136,53 @@ fn the_files_permission_is_checked_before_the_command_runs() {
     let reply = invoke(&rt, &mut s, true, request).unwrap();
     assert_eq!(reply["ok"], json!(true), "{reply}");
     assert!(path.exists());
+}
+
+#[test]
+fn the_commands_that_reach_the_disk_are_refused_without_the_files_permission() {
+    let rt = runtime("forward.wat");
+    let folder = tempfile::tempdir().unwrap();
+    let mut s = Session::new();
+    let dir = folder.path().to_string_lossy().into_owned();
+    // The recipe commands the old hand-kept list missed, and the material's texture: each refused before it reads
+    // or writes anything.
+    let calls = [
+        json!({"command": "schedule", "params": {"name": "Rooms", "category": "room", "path": format!("{dir}/rooms.csv")}}),
+        json!({"command": "export_fill_patterns", "params": {"path": format!("{dir}/patterns.pat")}}),
+        json!({"command": "export_crosscheck", "params": {"path": format!("{dir}/check.json")}}),
+        json!({"command": "import_fill_patterns", "params": {"path": format!("{dir}/patterns.pat")}}),
+        json!({"command": "compare_crosscheck", "params": {"path": format!("{dir}/theirs.txt")}}),
+        json!({"command": "material", "params": {"name": "Oak", "texture": {"kind": "image", "path": format!("{dir}/oak.png")}}}),
+    ];
+    for request in calls {
+        let reply = invoke(&rt, &mut s, false, request.clone()).unwrap();
+        let command = request["command"].as_str().unwrap();
+        assert_eq!(reply["ok"], json!(false), "`{command}` without the permission: {reply}");
+        assert!(reply["error"].as_str().unwrap_or_default().contains("files"), "`{command}`: {reply}");
+    }
+    let written: Vec<_> = std::fs::read_dir(folder.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+    assert!(written.is_empty(), "nothing reached the disk: {written:?}");
+}
+
+/// The interpreter's session goes back to the caller's slot when a call ends any way it can, a trap included: what
+/// the store held for the call must not take the session's path, its commands or its history with it.
+#[test]
+fn a_session_keeps_its_path_and_commands_through_a_call_that_traps() {
+    let rt = runtime("after_call_trap.wat");
+    let root = tempfile::tempdir().unwrap();
+    write_plugin(root.path(), "other", "forward.wat", functions(), json!([]));
+    let folder = Plugins::load_from(Some(root.path()));
+    let mut s = Session::new();
+    folder.register(&mut s);
+    let path = root.path().join("project.bimcraft");
+    s.path = Some(path.clone());
+    let before = s.history().len();
+    let e = invoke(&rt, &mut s, false, level("Roof")).unwrap_err();
+    assert!(e.contains("failed"), "{e}");
+    assert_eq!(s.path, Some(path), "the session's path is where it was");
+    assert!(s.external_command("plugin:other:run").is_some(), "and its plugins' commands are still registered");
+    assert_eq!(s.history().len(), before + 1, "the command the plugin ran is an undo step, as one call");
+    assert_eq!(levels(&s), 3, "the step it made stands: the call ran a command, then trapped");
 }
 
 #[test]
@@ -160,6 +229,76 @@ fn folder() -> tempfile::TempDir {
     let root = tempfile::tempdir().unwrap();
     write_plugin(root.path(), "good", "forward.wat", functions(), json!([]));
     root
+}
+
+/// Writes a save into the plugin's own folder: the one call that tells whether the permission reaches the plugin.
+/// The host's refusal comes back as the plugin's own error: `{"ok": false, "error": …}`.
+fn saves(s: &mut Session, plugins: &Plugins) -> Value {
+    plugins.register(s);
+    s.execute("plugin:good:run", &json!({"command": "save", "params": {"path": "saved.bimcraft"}})).unwrap()
+}
+
+fn refusal(reply: &Value) -> String {
+    assert_eq!(reply["ok"], json!(false), "{reply}");
+    reply["error"].as_str().unwrap_or_default().to_string()
+}
+
+#[test]
+fn a_files_requesting_plugin_gets_no_files_until_the_user_grants_it() {
+    let root = tempfile::tempdir().unwrap();
+    write_plugin(root.path(), "good", "forward.wat", functions(), json!(["files"]));
+    let mut plugins = Plugins::load_from(Some(root.path()));
+    let mut s = Session::new();
+    s.path = Some(root.path().join("project.bimcraft"));
+    // The manifest asks; nobody granted it yet, so the call is refused before it writes anything.
+    assert!(!plugins.permission_granted("good", "files"), "no grant until the user gives one");
+    let e = refusal(&saves(&mut s, &plugins));
+    assert!(e.contains("files permission"), "{e}");
+    assert!(!root.path().join("saved.bimcraft").exists(), "nothing was written");
+
+    // The user's grant, kept in the folder's state file, is what lets it through.
+    plugins.set_permission("good", "files", true).unwrap();
+    assert!(root.path().join("state.json").is_file(), "the grant is kept beside the folder's plugins");
+    let reply = saves(&mut s, &plugins);
+    assert_eq!(reply["ok"], json!(true), "{reply}");
+    assert_eq!(reply["result"]["format"], json!("bimcraft"), "{reply}");
+    // `save` without a path writes the session's own file, named as the session's path names it.
+    let own = Path::new(env!("CARGO_MANIFEST_DIR")).join("saved.bimcraft");
+    let wrote = own.is_file();
+    let _ = std::fs::remove_file(&own);
+    assert!(wrote, "the granted call wrote the project, at the session's own path");
+
+    // It stays granted when the folder is read again; and the user can take it back.
+    let again = Plugins::load_from(Some(root.path()));
+    assert!(again.permission_granted("good", "files"));
+    plugins.set_permission("good", "files", false).unwrap();
+    let e = refusal(&saves(&mut s, &plugins));
+    assert!(e.contains("files permission"), "{e}");
+}
+
+#[test]
+fn a_plugin_that_does_not_ask_cannot_be_granted_the_files_permission() {
+    let root = folder();
+    let mut plugins = Plugins::load_from(Some(root.path()));
+    let e = plugins.set_permission("good", "files", true).unwrap_err();
+    assert!(e.contains("doesn't ask"), "{e}");
+    assert!(!plugins.permission_granted("good", "files"));
+}
+
+#[test]
+fn a_folder_of_an_older_version_keeps_its_switched_off_plugins() {
+    let root = folder();
+    // What the older version wrote: the switched-off list alone, in disabled.json.
+    std::fs::write(root.path().join("disabled.json"), r#"{"disabled": ["good"]}"#).unwrap();
+    let plugins = Plugins::load_from(Some(root.path()));
+    assert_eq!(plugins.plugins[0].status, Status::Disabled, "the old file's list still switches a plugin off");
+    assert!(!root.path().join("state.json").exists(), "reading it changes nothing");
+    // The first change is written to the new file; the old one is left as it was.
+    let mut plugins = plugins;
+    plugins.set_enabled("good", true).unwrap();
+    assert!(root.path().join("state.json").is_file());
+    assert!(root.path().join("disabled.json").is_file(), "the older file is left in place");
+    assert_eq!(Plugins::load_from(Some(root.path())).plugins[0].status, Status::Loaded);
 }
 
 #[test]
