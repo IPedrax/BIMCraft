@@ -1,8 +1,8 @@
 //! The 3D view: the core's picture of the model (`view3d::Scene`), orbited, panned and zoomed as
-//! in Revit. Shift and the middle button orbit, and so does a drag with the primary button (for a hand without a middle
-//! button), round the point under the pointer where the drag began; the middle button pans; the wheel zooms toward the
-//! point under the cursor. Shift and a primary drag in Modify are a selection box, as in a plan (`Scene::in_box`: from the
-//! left what lies wholly inside, from the right what it touches; the sketch's lines while sketching). A
+//! in Revit. Shift and the middle button orbit, round the point under the pointer where the drag began; the middle button
+//! pans; the wheel zooms toward the point under the cursor. A primary drag in Modify is a selection box, as in a plan, and
+//! never turns the view (`Scene::in_box`: from the left what lies wholly inside, from the right what it touches; the sketch's
+//! lines while sketching); with Shift held it adds to the selection. A
 //! click picks the element the picture shows there, and so does a press let go quickly, however
 //! far the hand went with it (`Canvas::quick_press`): the camera it turned goes back. A level
 //! selected alone has a grip at the middle of each edge of its plane, which a drag moves over it. A section box is drawn
@@ -933,9 +933,9 @@ impl BimApp {
             raise = lifted_by.map(|by| (qs, by));
         }
         let still = o.lift.is_some();
-        // The primary button, or Shift and the middle button, orbit, 0.4° a point, round the point under the pointer where
-        // the drag began (the target, where nothing is); the middle button alone pans. Shift and the primary button box, in
-        // Modify (the sketch's lines while sketching).
+        // Shift and the middle button orbit, 0.4° a point, round the point under the pointer where the drag began (the target,
+        // where nothing is); the middle button alone pans. The primary button boxes, in Modify (the sketch's lines while
+        // sketching), and only that: in no tool does it move the camera.
         if response.drag_started()
             && o.grip.is_none()
             && o.boxing.is_none()
@@ -943,11 +943,12 @@ impl BimApp {
             && o.lift.is_none()
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
         {
-            let primary = response.dragged_by(PointerButton::Primary);
-            if primary && modify && shift {
-                o.select = Some(origin);
-            } else if primary || response.dragged_by(PointerButton::Middle) {
-                let orbit = primary || shift;
+            if response.dragged_by(PointerButton::Primary) {
+                if modify {
+                    o.select = Some(origin);
+                }
+            } else if response.dragged_by(PointerButton::Middle) {
+                let orbit = shift;
                 let pivot = orbit.then(|| surface(&o.picker, &cam, origin)).flatten().map(|s| s.at);
                 o.drag = Some((orbit, origin, pivot));
                 o.before = Some(cam);
