@@ -69,7 +69,6 @@ fn finish_names_what_is_wrong_on_the_lines_and_cancel_leaves_the_floor_as_it_was
 fn a_floor_is_sketched_line_by_line_closed_on_its_first_point_and_ctrl_z_takes_back_a_line() {
     let mut h = app(BOX);
     press(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     assert!(h.query_by_label("Modify | Create Floor Boundary").is_some());
     for p in [P2(1000.0, 1000.0), P2(5000.0, 1000.0), P2(5000.0, 4000.0), P2(1000.0, 4000.0), P2(1000.0, 1000.0)] {
         click(&mut h, p);
@@ -109,7 +108,6 @@ fn line_of(h: &Harness<BimApp>, a: P2, b: P2) -> Option<usize> {
 fn a_finished_sketchs_lines_have_ids_that_edit_boundary_brings_back() {
     let mut h = app(BOX);
     press(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     press(&mut h, "Rectangle");
     click(&mut h, P2(1000.0, 1000.0));
     click(&mut h, P2(5000.0, 4000.0));
@@ -136,7 +134,6 @@ fn a_finished_sketchs_lines_have_ids_that_edit_boundary_brings_back() {
 fn intersecting_lines_say_so_first() {
     let mut h = app(BOX);
     press(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     // A bow tie.
     for p in [P2(1000.0, 1000.0), P2(5000.0, 4000.0), P2(5000.0, 1000.0), P2(1000.0, 4000.0), P2(1000.0, 1000.0)] {
         click(&mut h, p);
@@ -189,7 +186,6 @@ fn a_picked_lines_end_is_a_grip_that_takes_the_lines_joined_there_with_it() {
 fn arcs_and_picked_walls_close_loops_too() {
     let mut h = app(BOX);
     press(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     click(&mut h, P2(1000.0, 1000.0));
     click(&mut h, P2(5000.0, 1000.0));
     press(&mut h, "Start-End-Radius Arc");
@@ -206,7 +202,6 @@ fn arcs_and_picked_walls_close_loops_too() {
     // Pick Walls: a line along each wall clicked.
     press(&mut h, "Architecture");
     press(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     press(&mut h, "Pick Walls");
     for p in [P2(4000.0, 0.0), P2(8000.0, 3000.0), P2(4000.0, 6000.0), P2(0.0, 3000.0)] {
         click(&mut h, p);
@@ -220,7 +215,6 @@ fn arcs_and_picked_walls_close_loops_too() {
 fn a_line_snaps_to_the_middle_of_a_sketch_line() {
     let mut h = app(BOX);
     press(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     click(&mut h, P2(1000.0, 1000.0));
     click(&mut h, P2(5000.0, 1000.0));
     key(&mut h, Key::Escape);
@@ -326,4 +320,78 @@ fn a_project_put_in_the_sessions_place_under_a_sketch_or_a_dialog_takes_both_wit
     assert!(h.query_by_label("Finish Edit Mode").is_none());
     assert_eq!(h.state().tool, Tool::Modify);
     assert!(ids(&h, "region").is_empty());
+}
+
+#[test]
+fn a_sketch_line_picked_alone_has_a_palette_of_what_can_be_done_to_it() {
+    let (mut h, _) = floored();
+    press(&mut h, "Edit Boundary");
+    key(&mut h, Key::Escape);
+    assert!(h.query_by_label("Add Vertex").is_none(), "nothing picked, no palette");
+    click(&mut h, P2(4000.0, 6000.0));
+    assert_eq!(picked(&h).len(), 1);
+    press(&mut h, "Add Vertex");
+    assert!(matches!(h.state().tool, Tool::Vertex { delete: false }));
+}
+
+/// A roof over the box's footprint, its east and west edges at 45° and the others at the roof's 30°.
+const SLOPED: &str = r#"roof {"boundary": [[0,0],[8000,0],[8000,6000],[0,6000]], "slope": 30, "slopes": [0, 45, 0, 45]}"#;
+
+#[test]
+fn a_picked_line_of_a_roofs_sketch_shows_its_slope_in_properties_and_sets_it_in_both_profiles() {
+    for rev in [false, true] {
+        let script = format!("{BOX}\n{SLOPED}");
+        let mut h = if rev { app(&script) } else { bimcraft(&script) };
+        let roof = ids(&h, "roof")[0];
+        h.state_mut().selection = vec![roof];
+        h.run();
+        h.state_mut().edit_boundary();
+        h.run();
+        key(&mut h, Key::Escape);
+        assert!(h.query_by_role_and_label(Role::TextInput, "Slope").is_none(), "rev {rev}: no line picked, no slope");
+        let slope = |h: &Harness<BimApp>| h.get_by_role_and_label(Role::TextInput, "Slope").value().unwrap_or_default();
+        // The east line, which the roof's edge there rises along at 45°; the south one has the roof's, blank.
+        click(&mut h, P2(8000.0, 3000.0));
+        assert_eq!(slope(&h), "45", "rev {rev}");
+        click(&mut h, P2(4000.0, 0.0));
+        assert_eq!(slope(&h), "", "rev {rev}");
+        // The south line given 20°, which Finish sends with the lines: the roof's south edge, number 0, rises at 20°.
+        type_into(&mut h, "Slope", "20");
+        key(&mut h, Key::Enter);
+        assert_eq!(slope(&h), "20", "rev {rev}");
+        assert_eq!(field(&h, roof, "slopes").as_array().map(Vec::len), Some(4), "nothing is the roof's until Finish");
+        assert_eq!(field(&h, roof, "slopes"), json!([0.0, 45.0, 0.0, 45.0]), "rev {rev}");
+        // Blank is the roof's again, and a number out of range is refused, saying so, the line keeping the slope it had.
+        type_into(&mut h, "Slope", "90");
+        key(&mut h, Key::Enter);
+        assert!(h.state().status.error && h.state().status.text.contains("from 0 to 75"), "rev {rev}: {}", h.state().status.text);
+        assert_eq!(slope(&h), "20", "rev {rev}");
+        press(&mut h, "Finish Edit Mode");
+        assert!(h.state().sketch.is_none(), "rev {rev}: {}", h.state().status.text);
+        assert_eq!(field(&h, roof, "slopes"), json!([20.0, 45.0, 0.0, 45.0]), "rev {rev}");
+        assert_eq!(h.state().session.history().last(), Some(&"Edit Boundary"), "rev {rev}");
+        // Edit Boundary again hands the lines back with the slopes the edges have; one set blank is the roof's, not the edge's old slope.
+        h.state_mut().edit_boundary();
+        h.run();
+        key(&mut h, Key::Escape);
+        click(&mut h, P2(8000.0, 3000.0));
+        assert_eq!(slope(&h), "45", "rev {rev}");
+        type_into(&mut h, "Slope", "");
+        key(&mut h, Key::Backspace);
+        key(&mut h, Key::Enter);
+        assert_eq!(slope(&h), "", "rev {rev}");
+        press(&mut h, "Finish Edit Mode");
+        assert_eq!(field(&h, roof, "slopes"), json!([20.0, 0.0, 0.0, 45.0]), "rev {rev}");
+        // A floor's sketch has no slope to give.
+        let floor = format!("{BOX}\nfloor {{}}");
+        let mut f = if rev { app(&floor) } else { bimcraft(&floor) };
+        let id = ids(&f, "floor")[0];
+        f.state_mut().selection = vec![id];
+        f.run();
+        f.state_mut().edit_boundary();
+        f.run();
+        key(&mut f, Key::Escape);
+        click(&mut f, P2(4000.0, 6000.0));
+        assert!(f.query_by_role_and_label(Role::TextInput, "Slope").is_none(), "rev {rev}");
+    }
 }

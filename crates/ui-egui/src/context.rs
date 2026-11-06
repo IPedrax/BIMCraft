@@ -18,6 +18,8 @@ pub(crate) enum Action {
     Cancel,
     /// Enter: a spline or a polyline made of the points clicked so far.
     Finish,
+    /// Enter: the detail lines selected are a custom fill pattern's (Fill Patterns' New Pattern > Custom).
+    FinishPick,
     ZoomToFit,
     ZoomIn,
     ZoomOut,
@@ -33,6 +35,10 @@ pub(crate) enum Action {
     Delete,
     /// The linked CAD drawings selected, read again from their files.
     ReloadCad,
+    /// The camera selected in a plan: open its 3D view.
+    OpenView,
+    /// The 3D view's Work Plane dialog.
+    WorkPlane,
 }
 
 impl Action {
@@ -41,6 +47,7 @@ impl Action {
         match self {
             Action::Cancel => "Cancel",
             Action::Finish => msg!("Finish Drawing"),
+            Action::FinishPick => "Finish",
             Action::ZoomToFit => "Zoom to Fit",
             Action::ZoomIn => "Zoom In",
             Action::ZoomOut => "Zoom Out",
@@ -54,6 +61,8 @@ impl Action {
             Action::Ungroup => msg!("Ungroup"),
             Action::Delete => "Delete",
             Action::ReloadCad => msg!("Reload CAD"),
+            Action::OpenView => msg!("Open Camera View"),
+            Action::WorkPlane => msg!("Set Work Plane…"),
         }
     }
 
@@ -61,7 +70,7 @@ impl Action {
     pub(crate) fn shortcut(self) -> Option<&'static str> {
         match self {
             Action::Cancel => Some("Esc"),
-            Action::Finish => Some("Enter"),
+            Action::Finish | Action::FinishPick => Some("Enter"),
             Action::ZoomToFit => Some("ZF"),
             Action::SelectAllInstances => Some("SA"),
             Action::HideElement => Some("EH"),
@@ -118,24 +127,34 @@ impl BimApp {
         if self.finishable() {
             first.insert(0, Item::new(Action::Finish, true));
         }
+        if self.picking_pattern_lines() {
+            first.insert(0, Item::new(Action::FinishPick, true));
+        }
         let mut groups = vec![first];
         if some {
-            groups.push(vec![
-                Item::new(Action::EditType, self.type_subject().is_some()),
-                Item::new(Action::SelectAllInstances, true),
-                Item::new(Action::Delete, true),
-            ]);
-            // Detail lines, regions and notes group; a group comes apart.
             let m = &self.session.model;
-            let groupable = self.selection.iter().all(|id| m.elements.get(*id).is_some_and(bimcraft_core::groups::holds));
-            if groupable || self.group_selected() {
-                groups.push(vec![Item::new(Action::CreateGroup, groupable), Item::new(Action::Ungroup, self.group_selected())]);
+            // A camera picked in a plan: open its 3D view, or delete it.
+            let camera =
+                matches!(self.selection.as_slice(), [id] if matches!(m.elements.get(id), Some(bimcraft_core::model::Element::View3D(_))));
+            if camera {
+                groups.push(vec![Item::new(Action::OpenView, true), Item::new(Action::Delete, true)]);
+            } else {
+                groups.push(vec![
+                    Item::new(Action::EditType, self.type_subject().is_some()),
+                    Item::new(Action::SelectAllInstances, true),
+                    Item::new(Action::Delete, true),
+                ]);
+                // Detail lines, regions and notes group; a group comes apart.
+                let groupable = self.selection.iter().all(|id| m.elements.get(*id).is_some_and(bimcraft_core::groups::holds));
+                if groupable || self.group_selected() {
+                    groups.push(vec![Item::new(Action::CreateGroup, groupable), Item::new(Action::Ungroup, self.group_selected())]);
+                }
             }
             if !self.linked_cads().is_empty() {
                 groups.push(vec![Item::new(Action::ReloadCad, true)]);
             }
             // What the view on screen hides and paints.
-            if self.graphic_view().is_some() {
+            if self.graphic_view().is_some() && !camera {
                 groups.push(vec![
                     Item::new(Action::HideElement, true),
                     Item::new(Action::HideCategory, true),
@@ -146,7 +165,10 @@ impl BimApp {
         let zoom = vec![Item::new(Action::ZoomToFit, true), Item::new(Action::ZoomIn, true), Item::new(Action::ZoomOut, true)];
         match self.sheet {
             Sheet::Plan(_) | Sheet::Ceiling(_) | Sheet::Section(_) | Sheet::Paper(_) => groups.push(zoom),
-            Sheet::View3D => groups.push([vec![Item::new(Action::HomeView, true)], zoom].concat()),
+            Sheet::View3D => {
+                groups.push(vec![Item::new(Action::WorkPlane, self.sketch.is_none())]);
+                groups.push([vec![Item::new(Action::HomeView, true)], zoom].concat());
+            }
             Sheet::Schedule(_) | Sheet::Table(_) => {}
         }
         groups
@@ -157,10 +179,11 @@ impl BimApp {
         match action {
             Action::Cancel => self.escape(),
             Action::Finish => self.finish_open_shape(),
+            Action::FinishPick => self.finish_pattern_lines(),
             Action::ZoomToFit => self.fit(),
             Action::ZoomIn => self.zoom_view(1.25),
             Action::ZoomOut => self.zoom_view(0.8),
-            Action::HomeView => self.orbit.camera = None,
+            Action::HomeView => self.home3d(),
             Action::EditType => self.edit_type(),
             Action::SelectAllInstances => self.select_all_instances(),
             Action::HideElement => self.hide_selection(false),
@@ -169,9 +192,15 @@ impl BimApp {
             Action::CreateGroup => self.create_group(),
             Action::Ungroup => self.ungroup(),
             Action::Delete => self.delete(),
+            Action::WorkPlane => self.open_work_plane(),
             Action::ReloadCad => {
                 for cad in self.linked_cads() {
                     self.run("reload_cad", serde_json::json!({"cad": cad}));
+                }
+            }
+            Action::OpenView => {
+                if let Some(&id) = self.selection.first() {
+                    self.open_3d(Some(id));
                 }
             }
         }

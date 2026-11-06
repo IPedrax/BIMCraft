@@ -128,3 +128,51 @@ fn the_footer_says_whether_an_update_is_out() {
     h.run();
     h.get_by_label("BIMCraft 0.4.0 is up to date");
 }
+
+/// The ids of every element a model holds, to compare two models by what they are made of.
+fn element_ids(m: &bimcraft_core::model::Model) -> Vec<Id> {
+    m.elements.iter().map(|(id, _)| *id).collect()
+}
+
+/// The sample house, built the way `bimcraft --sample` builds it.
+fn sample_model() -> bimcraft_core::model::Model {
+    let mut s = Session::new();
+    s.script(SAMPLE).unwrap();
+    (*s.model).clone()
+}
+
+/// Pressing "Sample Project" on the start page opens the sample house as a project nobody has saved.
+fn opens_the_sample(mut h: Harness<'static, BimApp>) {
+    h.state_mut().show_start_page();
+    h.run();
+    press(&mut h, "Sample Project");
+    assert!(!h.state().home.shown, "the page gives way to the project");
+    let want = sample_model();
+    assert_eq!(element_ids(&h.state().session.model), element_ids(&want), "the sample's elements");
+    assert_eq!(h.state().session.model.name, "Sample House");
+    assert!(h.state().session.path.is_none(), "unsaved: Save asks where to put it");
+    assert!(h.state().session.history().is_empty(), "building the sample is not a stack of undo steps");
+    assert!(!h.state().dirty(), "nothing has been changed since it opened");
+}
+
+#[test]
+fn the_start_page_opens_the_sample_house_in_rev() {
+    opens_the_sample(app(""));
+}
+
+#[test]
+fn the_start_page_opens_the_sample_house_in_bimcraft() {
+    opens_the_sample(bimcraft(""));
+}
+
+#[test]
+fn the_sample_button_asks_before_it_drops_unsaved_changes() {
+    let mut h = app("");
+    h.state_mut().run("wall", json!({"points": [[0, 0], [3000, 0]]}));
+    h.state_mut().show_start_page();
+    h.run();
+    press(&mut h, "Sample Project");
+    assert!(h.state().home.shown, "the unsaved wall is asked about first");
+    assert_eq!(walls(&h).len(), 1);
+    assert!(h.state().pending.is_some());
+}

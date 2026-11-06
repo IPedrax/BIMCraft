@@ -266,12 +266,12 @@ fn where_there_is_no_imagery_the_picture_is_clear() {
     let alpha = |u: u32, v: u32| raster.rgba[(v as usize * raster.width as usize + u as usize) * 4 + 3];
     assert_eq!(alpha(0, 0), 0, "the corner in the empty tile is clear");
     assert_eq!(alpha(raster.width / 2, raster.height / 2), 255, "the middle is imagery");
-    assert!(raster.rgba.chunks_exact(4).any(|p| p[3] == 0) && raster.rgba.chunks_exact(4).any(|p| p[3] == 255));
+    assert!(raster.rgba.as_chunks::<4>().0.iter().any(|p| p[3] == 0) && raster.rgba.as_chunks::<4>().0.iter().any(|p| p[3] == 255));
     // The same mosaic over an extent a kilometre wider than it is partly clear.
     let big = [-500_000.0, -500_000.0, 500_000.0, 500_000.0];
     let raster = warp(&mosaic, big, 64, 64, &|p| projector.lonlat(p)).unwrap();
     assert_eq!(raster.rgba[3], 0);
-    assert!(raster.rgba.chunks_exact(4).filter(|p| p[3] == 255).count() < 64 * 64 / 4, "the site is a small part of it");
+    assert!(raster.rgba.as_chunks::<4>().0.iter().filter(|p| p[3] == 255).count() < 64 * 64 / 4, "the site is a small part of it");
 }
 
 #[test]

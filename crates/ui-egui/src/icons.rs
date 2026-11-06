@@ -28,8 +28,10 @@ icon_names! {
     Door,
     Window,
     Room,
+    RoomSeparator,
     Level,
     Grid,
+    BackgroundGrid,
     Undo,
     Redo,
     Open,
@@ -62,6 +64,7 @@ icon_names! {
     View3D,
     Section,
     Elevation,
+    Camera,
     Sheet,
     PlaceView,
     Column,
@@ -94,6 +97,8 @@ icon_names! {
     Theme,
     Text,
     Spot,
+    SpotSlope,
+    ConvertLines,
     Angular,
     Radial,
     Linear,
@@ -107,10 +112,15 @@ icon_names! {
     Attach,
     Detach,
     Floor,
+    WorkPlane,
     Ceiling,
     Shaft,
     Mass,
     SlopeArrow,
+    ModifySubElements,
+    AddPoint,
+    AddSplitLine,
+    ResetShape,
     Ramp,
     Railing,
     ExtrusionRoof,
@@ -157,6 +167,8 @@ icon_names! {
     FilledRegion,
     MaskingRegion,
     FillPatterns,
+    AnnotationSettings,
+    LinePatterns,
     Circle,
     Inscribed,
     Circumscribed,
@@ -246,10 +258,26 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(8.0, 10.0), (16.0, 10.0)]);
             g.line(&[(10.0, 14.0), (14.0, 14.0)]);
         }
+        Icon::RoomSeparator => {
+            // Two rooms' corners, and the separation line between them, dashed.
+            g.line(&[(4.0, 4.0), (20.0, 4.0)]);
+            g.line(&[(4.0, 20.0), (20.0, 20.0)]);
+            g.line(&[(4.0, 4.0), (4.0, 20.0)]);
+            g.line(&[(20.0, 4.0), (20.0, 20.0)]);
+            for (a, b) in [(4.5, 7.5), (10.5, 13.5), (16.5, 19.5)] {
+                g.line(&[(12.0, a), (12.0, b)]);
+            }
+        }
         Icon::Level => {
             // The level head is clear of the datum until its tip, with a balanced line.
             g.line(&[(3.0, 16.0), (21.0, 16.0)]);
             g.closed(&[(12.0, 7.0), (20.0, 7.0), (16.0, 16.0)]);
+        }
+        Icon::BackgroundGrid => {
+            for at in [4.0, 12.0, 20.0] {
+                g.line(&[(at, 4.0), (at, 20.0)]);
+                g.line(&[(4.0, at), (20.0, at)]);
+            }
         }
         Icon::Grid => {
             // A centered grid bubble on its datum axis.
@@ -585,6 +613,12 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(7.0, 10.0), (12.0, 3.0), (17.0, 10.0)]);
             g.circle((12.0, 16.0), 5.0);
         }
+        Icon::Camera => {
+            // A camera body with its lens, and the viewfinder hump on top.
+            g.closed(&[(3.0, 8.0), (7.5, 8.0), (9.5, 4.5), (14.5, 4.5), (16.5, 8.0), (21.0, 8.0), (21.0, 19.0), (3.0, 19.0)]);
+            g.circle((12.0, 13.75), 3.6);
+            g.circle((12.0, 13.75), 1.6);
+        }
         Icon::Sheet => {
             // A drawing sheet and title block; shared edges are drawn once.
             g.closed(&[(3.0, 5.0), (21.0, 5.0), (21.0, 19.0), (3.0, 19.0)]);
@@ -861,6 +895,22 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(15.0, 7.0), (21.0, 7.0)]);
             g.line(&[(15.0, 11.0), (19.0, 11.0)]);
         }
+        Icon::ConvertLines => {
+            // As Add Split Line's: a slab's top, a crease across it, dashed where it's a folding line, solid where it's
+            // become a split line, its end ringed.
+            g.closed(&[(3.0, 5.0), (21.0, 5.0), (21.0, 19.0), (3.0, 19.0)]);
+            g.line(&[(5.0, 17.0), (7.0, 15.6)]);
+            g.line(&[(9.0, 14.2), (11.0, 12.8)]);
+            g.line(&[(13.0, 11.4), (19.0, 7.0)]);
+            g.circle((19.0, 7.0), 1.6);
+        }
+        Icon::SpotSlope => {
+            // A falling top, an arrow down it, and its fall written over.
+            g.line(&[(3.0, 13.0), (21.0, 19.0)]);
+            g.line(&[(6.0, 9.0), (18.0, 13.0)]);
+            g.line(&[(14.0, 9.5), (18.0, 13.0), (13.5, 14.0)]);
+            g.line(&[(4.0, 4.0), (9.0, 4.0)]);
+        }
         Icon::Angular => {
             // Two rays and their shared-center angular dimension arc.
             g.line(&[(4.0, 20.0), (21.0, 20.0)]);
@@ -953,6 +1003,14 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(3.0, 11.0), (3.0, 14.0), (11.0, 18.0), (21.0, 13.0), (21.0, 10.0)]);
             g.line(&[(11.0, 15.0), (11.0, 18.0)]);
         }
+        Icon::WorkPlane => {
+            // A plane seen at an angle, ruled once each way, and the arrow square to it.
+            g.closed(&[(2.0, 16.0), (8.0, 10.0), (22.0, 10.0), (16.0, 16.0)]);
+            g.line(&[(5.0, 13.0), (19.0, 13.0)]);
+            g.line(&[(12.0, 10.0), (9.0, 16.0)]);
+            g.line(&[(12.0, 13.0), (12.0, 3.0)]);
+            g.line(&[(9.5, 5.5), (12.0, 3.0), (14.5, 5.5)]);
+        }
         Icon::Ceiling => {
             // A suspended tiled ceiling above a separate floor datum; not a floating pair of bars.
             if compact {
@@ -1043,6 +1101,31 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(3.0, 16.0), (21.0, 7.0), (21.0, 11.0), (3.0, 20.0)]);
             g.line(&[(5.0, 11.0), (15.0, 6.0)]);
             g.line(&[(11.5, 5.0), (15.0, 6.0), (13.7, 9.4)]);
+        }
+        Icon::ModifySubElements => {
+            // A slab's folded top, a pointer on its point.
+            g.line(&[(3.0, 9.0), (12.0, 13.0), (21.0, 9.0)]);
+            g.line(&[(3.0, 9.0), (3.0, 19.0), (21.0, 19.0), (21.0, 9.0)]);
+            g.closed(&[(12.0, 13.0), (12.0, 4.0), (15.0, 7.0), (18.0, 6.0)]);
+        }
+        Icon::AddPoint => {
+            // A slab's top folded down to a point, the point ringed.
+            g.line(&[(3.0, 9.0), (12.0, 14.0), (21.0, 9.0)]);
+            g.line(&[(3.0, 9.0), (3.0, 19.0), (21.0, 19.0), (21.0, 9.0)]);
+            g.circle((12.0, 14.0), 2.0);
+        }
+        Icon::AddSplitLine => {
+            // A slab's top in plan, a crease across it from corner to corner, its ends ringed.
+            g.closed(&[(3.0, 5.0), (21.0, 5.0), (21.0, 19.0), (3.0, 19.0)]);
+            g.line(&[(5.0, 17.0), (19.0, 7.0)]);
+            g.circle((5.0, 17.0), 1.6);
+            g.circle((19.0, 7.0), 1.6);
+        }
+        Icon::ResetShape => {
+            // A flat slab, and over it an arrow turning back.
+            g.closed(&[(3.0, 14.0), (21.0, 14.0), (21.0, 19.0), (3.0, 19.0)]);
+            g.line(&[(8.0, 10.0), (8.0, 6.0), (16.0, 6.0), (16.0, 10.0)]);
+            g.line(&[(5.5, 8.0), (8.0, 10.5), (10.5, 8.0)]);
         }
         Icon::Ramp => {
             g.closed(&[(3.0, 19.0), (21.0, 19.0), (21.0, 10.0)]);
@@ -1420,6 +1503,27 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(3.0, 13.0), (21.0, 13.0), (21.0, 21.0), (3.0, 21.0)]);
             if !compact {
                 g.line(&[(3.0, 17.0), (21.0, 17.0)]);
+            }
+        }
+        Icon::AnnotationSettings => {
+            // A pencil leaning back from its tip, the line it has drawn along the bottom ending there.
+            g.closed(&[(20.0, 20.0), (18.5, 15.5), (8.5, 5.5), (5.5, 8.5), (15.5, 18.5)]);
+            g.line(&[(18.5, 15.5), (15.5, 18.5)]);
+            if !compact {
+                g.line(&[(11.0, 8.0), (8.0, 11.0)]);
+            }
+            g.line(&[(3.0, 20.0), (20.0, 20.0)]);
+        }
+        Icon::LinePatterns => {
+            // Three lines, dashed, dash-dot and dotted.
+            for (a, b) in [(3.0, 8.0), (11.0, 16.0), (19.0, 21.0)] {
+                g.line(&[(a, 6.0), (b, 6.0)]);
+            }
+            g.line(&[(3.0, 12.0), (10.0, 12.0)]);
+            g.line(&[(12.5, 12.0), (13.5, 12.0)]);
+            g.line(&[(16.0, 12.0), (21.0, 12.0)]);
+            for x in [3.5, 7.75, 12.0, 16.25, 20.5] {
+                g.line(&[(x - 0.5, 18.0), (x + 0.5, 18.0)]);
             }
         }
         Icon::Circle => {

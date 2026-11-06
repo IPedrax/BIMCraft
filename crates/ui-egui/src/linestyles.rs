@@ -78,6 +78,11 @@ impl LineStylesDialog {
         LineStylesDialog { tab: 0, styles, patterns, gone, creator: None, error: None, held }
     }
 
+    /// Open on the Patterns tab, as Manage > Annotation Settings > Line Patterns does.
+    pub(crate) fn patterns(m: &Model) -> LineStylesDialog {
+        LineStylesDialog { tab: 1, ..Self::new(m) }
+    }
+
     /// What stops the draft being applied: a project that changed since it was opened (an agent's command, say), or a name
     /// left blank or used twice, which the commands would take for a listing or for an edit of the entry of that name.
     fn check(&self, m: &Model) -> Result<(), String> {

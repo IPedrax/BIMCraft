@@ -519,7 +519,7 @@ fn warp(args: &[String]) -> Result<(), String> {
         let grid = location.grid()?;
         let [a, d, b, e, c, f] = imagery::world_file(&grid, extent, raster.width, raster.height);
         let world = save(".pgw", format!("{a:.10}\n{d:.10}\n{b:.10}\n{e:.10}\n{c:.4}\n{f:.4}\n").as_bytes())?;
-        let clear = raster.rgba.chunks_exact(4).filter(|p| p[3] == 0).count();
+        let clear = raster.rgba.as_chunks::<4>().0.iter().filter(|p| p[3] == 0).count();
         let note = format!(
             "source: {} ({})\ncredit: {}\nterms: {}\nfetched from the cache: {}\nzoom {}, tiles of {:.3} m a pixel, {} x {} tiles\npicture: {} x {} px over {width_m} x {height_m} m, {:.1}% without imagery\nproject: origin at {latitude}, {longitude}, true north {true_north} degrees\ngrid of the world file: EPSG:{} ({}); the file has no CRS of its own, name it when opening\nextent in the project's plane, mm: west {}, south {}, east {}, north {}\n",
             source.name,

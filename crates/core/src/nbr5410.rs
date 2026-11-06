@@ -12,7 +12,7 @@
 mod tables;
 
 use tables::*;
-pub use tables::{BREAKERS, SECTIONS};
+pub use tables::{BREAKERS, CU_EPR, CU_PVC, SECTIONS};
 
 /// A conductor's reactance in a conduit, ohm/km: with it the drop agrees with the makers' V/A.km tables within about 3 %.
 pub const REACTANCE: f64 = 0.1;

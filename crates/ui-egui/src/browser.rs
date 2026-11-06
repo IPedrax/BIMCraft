@@ -73,6 +73,8 @@ enum Act {
     /// A group: it folds.
     Group,
     Open(Sheet),
+    /// A 3D view: open it in the 3D tab, none for the default `{3D}`.
+    Open3D(Option<Id>),
     /// A family's type: the Component tool places it.
     Place(String, String),
     /// A plan's right-click menu: a duplicate of it, in a mode of the command's.
@@ -181,9 +183,10 @@ pub fn words(find: &str) -> Vec<String> {
 }
 
 impl BimApp {
-    /// The Project Browser's palette: its tabs and its search over the tree, which scrolls under them.
+    /// The Project Browser's palette: the minimap of the view, its tabs and its search over the tree, which scrolls under them.
     pub(crate) fn browser_palette(&mut self, ui: &mut Ui) {
         egui::Frame::new().inner_margin(egui::Margin { left: 8, right: 8, top: 6, bottom: 4 }).show(ui, |ui| {
+            self.minimap(ui);
             self.browser_tabs(ui);
             ui.add_space(4.0);
             self.browser_search(ui);
@@ -291,6 +294,7 @@ impl BimApp {
         }
         match act {
             Some(Act::Open(sheet)) => self.open_sheet(sheet),
+            Some(Act::Open3D(id)) => self.open_3d(id),
             Some(Act::Place(family, ty)) => {
                 self.component = Some((family, ty));
                 self.set_tool(Tool::Component);
@@ -383,6 +387,26 @@ impl BimApp {
         out
     }
 
+    /// Every view the browser opens (plans, 3D views, sections, schedules, sheets), in its order, as Find lists them.
+    pub(crate) fn openable(&self) -> Vec<(String, crate::find::Found)> {
+        use crate::find::Found;
+        fn walk(app: &BimApp, nodes: &[Node], out: &mut Vec<(String, Found)>) {
+            for n in nodes {
+                match &n.act {
+                    Act::Open(sheet) => out.push((app.view_title(*sheet), Found::View(*sheet))),
+                    Act::Open3D(id) => out.push((format!("{}: {}", t("3D View"), n.label), Found::View3D(*id))),
+                    _ => {}
+                }
+                walk(app, &n.kids, out);
+            }
+        }
+        let sheets = self.sheets().into_iter().map(|(id, name)| self.view_leaf(&name, Sheet::Paper(id)));
+        let nodes: Vec<Node> = [self.views_node(), self.schedules_node()].into_iter().chain(sheets).collect();
+        let mut out = Vec::new();
+        walk(self, &nodes, &mut out);
+        out
+    }
+
     fn view_leaf(&self, name: &str, sheet: Sheet) -> Node {
         Node::leaf(name, Act::Open(sheet), self.sheet == sheet)
     }
@@ -393,12 +417,7 @@ impl BimApp {
         let levels: Vec<(Id, String)> = m.levels().iter().map(|(id, l)| (*id, l.name.clone())).collect();
         // Sections and elevations, by name.
         let views = |category: &str| {
-            let mut v: Vec<(Id, String)> = m
-                .elements
-                .iter()
-                .filter(|(_, e)| e.category() == category)
-                .filter_map(|(id, _)| Some((*id, m.section(*id)?.name.clone())))
-                .collect();
+            let mut v: Vec<(Id, String)> = m.rare(category).into_iter().filter_map(|id| Some((id, m.section(id)?.name.clone()))).collect();
             v.sort_by(|a, b| a.1.cmp(&b.1));
             v
         };
@@ -426,7 +445,23 @@ impl BimApp {
         let mut kids = vec![
             Node::group(t("Floor Plans"), true, plans),
             Node::group(t("Ceiling Plans"), true, ceilings),
-            Node::group(t("3D Views"), true, vec![self.view_leaf("{3D}", Sheet::View3D)]),
+            Node::group(t("3D Views"), true, {
+                // Every 3D view: the default `{3D}` (made when first changed; shown even before it exists), then each
+                // camera view. Opening one stands the 3D tab where its camera looks from.
+                let active = self.active_3d();
+                let mut three: Vec<Node> = vec![match m.default_3d() {
+                    Some(id) => Node::leaf("{3D}", Act::Open3D(Some(id)), active == Some(id)),
+                    None => Node::leaf("{3D}", Act::Open3D(None), active.is_none()),
+                }];
+                three.extend(m.elements.iter().filter_map(|(id, e)| match e {
+                    Element::View3D(v) if v.name != "{3D}" => {
+                        let leaf = Node::leaf(&v.name, Act::Open3D(Some(*id)), active == Some(*id));
+                        Some(leaf.with_menu(vec![("Delete", Act::Delete(vec![*id]))]))
+                    }
+                    _ => None,
+                }));
+                three
+            }),
         ];
         for (group, category) in [(msg!("Elevations (Building Elevation)"), "elevation"), (msg!("Sections (Building Section)"), "section")]
         {
@@ -451,7 +486,12 @@ impl BimApp {
                 self.view_leaf(&name, Sheet::Schedule(cat))
             })
             .collect();
-        kids.extend(self.schedules().into_iter().map(|(id, name)| self.view_leaf(name, Sheet::Table(id))));
+        // The project's own have a right-click Delete; the six every project has stay.
+        kids.extend(
+            self.schedules()
+                .into_iter()
+                .map(|(id, name)| self.view_leaf(name, Sheet::Table(id)).with_menu(vec![("Delete", Act::Delete(vec![id]))])),
+        );
         Node::group(t("Schedules/Quantities (all)"), true, kids)
     }
 
@@ -459,13 +499,13 @@ impl BimApp {
     fn links_node(&self) -> Option<Node> {
         let m = &self.session.model;
         let kids: Vec<Node> = m
-            .elements
-            .iter()
-            .filter_map(|(id, e)| match e {
-                Element::Link(l) => {
+            .rare("link")
+            .into_iter()
+            .filter_map(|id| match m.elements.get(id) {
+                Some(Element::Link(l)) => {
                     let label = if m.loaded.contains_key(&l.path) { l.name.clone() } else { tf("{} (not loaded)", &[&l.name]) };
-                    let menu = vec![(msg!("Reload"), Act::Do("reload", serde_json::json!({"id": id}))), ("Remove", Act::Delete(vec![*id]))];
-                    Some(Node::leaf(&label, Act::Select(*id), self.selection == [*id]).with_menu(menu))
+                    let menu = vec![(msg!("Reload"), Act::Do("reload", serde_json::json!({"id": id}))), ("Remove", Act::Delete(vec![id]))];
+                    Some(Node::leaf(&label, Act::Select(id), self.selection == [id]).with_menu(menu))
                 }
                 _ => None,
             })
@@ -479,7 +519,7 @@ impl BimApp {
     fn sheets(&self) -> Vec<(Id, String)> {
         let m = &self.session.model;
         let mut sheets: Vec<(Id, String)> =
-            m.elements.keys().filter_map(|id| m.sheet(*id).map(|s| (*id, format!("{} - {}", s.number, s.name)))).collect();
+            m.rare("sheet").into_iter().filter_map(|id| m.sheet(id).map(|s| (id, format!("{} - {}", s.number, s.name)))).collect();
         sheets.sort_by(|a, b| a.1.cmp(&b.1));
         sheets
     }

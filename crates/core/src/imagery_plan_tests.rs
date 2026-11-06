@@ -452,7 +452,7 @@ fn the_render_command_stamps_the_credit_on_its_3d_picture() {
     };
     let (a, b) = (png(&mut s), png(&mut plain));
     let (pa, pb) = (tiny_skia::Pixmap::decode_png(&a).unwrap(), tiny_skia::Pixmap::decode_png(&b).unwrap());
-    let differing = pa.data().chunks_exact(4).zip(pb.data().chunks_exact(4)).filter(|(x, y)| x != y).count();
+    let differing = pa.data().as_chunks::<4>().0.iter().zip(pb.data().as_chunks::<4>().0.iter()).filter(|(x, y)| x != y).count();
     assert!(differing > 60, "{differing} pixels differ");
 }
 

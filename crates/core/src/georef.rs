@@ -331,6 +331,48 @@ impl Location {
         Ok(Mapping { epsg, name, forward, back, easting, northing, rotation, scale, convergence: -grid_azimuth.to_degrees() })
     }
 
+    /// The map conversion this place makes, as the project keeps it (`Model::georeference`): its grid's CRS and where the
+    /// project's origin is in it, how it is turned, and the scale on the ground there.
+    pub fn georeference(&self) -> Result<crate::model::Georeference, String> {
+        let g = self.grid()?;
+        let datum = g.name.split(" / ").next().unwrap_or(&g.name);
+        let zone = g.name.split("UTM zone ").nth(1).and_then(|z| z.split_whitespace().next());
+        Ok(crate::model::Georeference {
+            crs: format!("EPSG:{}", g.epsg),
+            description: Some(g.name.clone()),
+            geodetic_datum: Some(if datum == "WGS 84" { "WGS84" } else { datum }.to_string()),
+            vertical_datum: None,
+            map_projection: zone.map(|_| "UTM".to_string()),
+            map_zone: zone.map(str::to_string),
+            eastings: g.easting * 1000.0,
+            northings: g.northing * 1000.0,
+            height: self.elevation,
+            rotation: g.rotation,
+            scale: g.scale,
+        })
+    }
+
+    /// The place a map conversion puts the project at, where its CRS is an EPSG code this can project (the map in metres):
+    /// the latitude and longitude of its origin, and the true north that turns the project as the conversion does.
+    pub fn of_georeference(g: &crate::model::Georeference) -> Result<Location, String> {
+        let code = g
+            .crs
+            .trim()
+            .to_ascii_uppercase()
+            .strip_prefix("EPSG:")
+            .and_then(|c| c.trim().parse::<u32>().ok())
+            .ok_or_else(|| format!("`{}` isn't an EPSG code", g.crs))?;
+        let (longitude, latitude) = lonlat_of_grid(code, g.eastings / 1000.0, g.northings / 1000.0)?;
+        let crs = Some(code).filter(|c| *c != utm_epsg(longitude, latitude));
+        let mut place = Location { latitude, longitude, elevation: g.height, true_north: 0.0, crs };
+        if let Some(why) = place.problem() {
+            return Err(why);
+        }
+        place.true_north = crate::ifc_georef::wrap(place.grid()?.rotation - g.rotation);
+        place.grid()?;
+        Ok(place)
+    }
+
     /// The grid, or why this place can't be mapped to it.
     pub fn grid(&self) -> Result<Grid, String> {
         let m = self.mapping()?;

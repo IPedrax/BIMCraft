@@ -16,6 +16,7 @@ serde_json = { workspace = true }
 tiny-skia = { workspace = true }
 flate2 = { workspace = true }
 zune-jpeg = { workspace = true }
+encoding_rs = { workspace = true }
 getrandom = { workspace = true }
 tempfile = { workspace = true }
 rayon = { workspace = true }

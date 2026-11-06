@@ -1,6 +1,6 @@
 //! The view control bar under a view, as Revit's has it: the view's Scale and Detail Level, or the 3D view's Visual Style, which
 //! the project keeps (the `scale`, `detail` and `visual_style` commands), then Temporary Hide/Isolate and Reveal Hidden Elements. What is hidden or revealed here is
-//! the window's, per view: it isn't in the project, saved or undone. The view draws a copy of the model with its graphics
+//! the window's, per view: it isn't in the project, saved or undone. Last on the bar, the control port's state (`control.rs`). The view draws a copy of the model with its graphics
 //! changed ([`BimApp::view_model`]), made once for each model and each setting, through the same `graphics` command the
 //! project's own changes go through; Apply to View makes the same change for good.
 
@@ -11,10 +11,10 @@ use std::sync::Arc;
 
 use bimcraft_core::engine::Session;
 use bimcraft_core::graphics::{self, ANNOTATION, Detail, Group, MODEL, VisualStyle};
-use bimcraft_core::model::{Id, Model};
+use bimcraft_core::model::{Element, Id, Model};
 use egui::{
-    Align, Color32, FontId, Frame, Key, Layout, Margin, Popup, Response, RichText, Sense, Shape, Stroke, StrokeKind, TextEdit, Ui,
-    UiBuilder, WidgetInfo, WidgetType, pos2, vec2,
+    Color32, FontId, Frame, Key, Margin, Popup, Rect, Response, RichText, Sense, Shape, Stroke, StrokeKind, TextEdit, Ui, UiBuilder,
+    WidgetInfo, WidgetType, pos2, vec2,
 };
 use serde_json::{Value, json};
 
@@ -34,6 +34,8 @@ pub(crate) struct Temp {
     categories: BTreeSet<String>,
     /// What the view hides for good is drawn instead, in magenta.
     reveal: bool,
+    /// The 3D view's section box for now, Linked 3D View's: what the plan it follows shows (`section_box.rs`).
+    pub(crate) section_box: Option<([f64; 3], [f64; 3])>,
 }
 
 impl Temp {
@@ -50,15 +52,18 @@ pub(crate) struct Shadow {
     model: Arc<Model>,
 }
 
-/// A button of the bar that opens a menu: named `label` for screen readers, and showing `shown`, the setting it holds. Greyed
-/// out, and saying so, when view template `set_by` sets it.
-fn menu_button(ui: &mut Ui, label: &str, shown: &str, tip: &str, set_by: Option<&str>) -> Response {
-    let (label, tip) = (t(label), t(tip));
-    let galley = ui.painter().layout_no_wrap(t(shown).to_string(), FontId::proportional(12.0), pal().text);
+/// A button of the bar that opens a menu: named `label` for screen readers, and showing `shown`, the setting it holds, which
+/// they read as its value. Greyed out, and saying so, when view template `set_by` sets it.
+pub(crate) fn menu_button(ui: &mut Ui, label: &str, shown: &str, tip: &str, set_by: Option<&str>) -> Response {
+    let (label, tip, shown) = (t(label), t(tip), t(shown));
+    let galley = ui.painter().layout_no_wrap(shown.to_string(), FontId::proportional(12.0), pal().text);
     ui.add_enabled_ui(set_by.is_none(), |ui| {
         let (rect, r) = ui.allocate_exact_size(vec2(galley.size().x + 28.0, 25.0), Sense::click());
         let enabled = ui.is_enabled();
-        r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+        r.widget_info(|| WidgetInfo {
+            current_text_value: Some(shown.to_string()),
+            ..WidgetInfo::labeled(WidgetType::Button, enabled, label)
+        });
         let p = ui.painter();
         if r.hovered() {
             p.rect_filled(rect, 4.0, pal().hover_fill);
@@ -85,8 +90,9 @@ const REVEALED: &str = "#FF00FF";
 /// on white paper and on the dark canvas, and apart from the model's black lines.
 pub(crate) const HIGH_CONTRAST: [u8; 3] = [220, 20, 60];
 
-/// `base` with the graphics of the view `sheet` changed as `temp` says.
-fn shadowed(base: &Arc<Model>, sheet: Sheet, temp: &Temp) -> Result<Arc<Model>, String> {
+/// `base` with the graphics of the view `sheet` changed as `temp` says. `three_d` is the 3D view on screen (a camera view
+/// by id, or none for the default `{3D}`).
+fn shadowed(base: &Arc<Model>, sheet: Sheet, three_d: Option<Id>, temp: &Temp) -> Result<Arc<Model>, String> {
     let (view, id) = match sheet {
         // A dependent view hides what its parent does.
         Sheet::Plan(l) | Sheet::Ceiling(l) => {
@@ -94,7 +100,7 @@ fn shadowed(base: &Arc<Model>, sheet: Sheet, temp: &Temp) -> Result<Arc<Model>, 
             (json!(source), Some(source))
         }
         Sheet::Section(s) => (json!(s), Some(s)),
-        Sheet::View3D => (json!("{3D}"), base.default_3d()),
+        Sheet::View3D => (three_d.map_or_else(|| json!("{3D}"), |id| json!(id)), three_d.or_else(|| base.default_3d())),
         Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) => return Ok(Arc::clone(base)),
     };
     let drawn = |id: &Id| base.elements.get(id).is_some_and(|e| graphics::drawn(e.category()));
@@ -115,7 +121,12 @@ fn shadowed(base: &Arc<Model>, sheet: Sheet, temp: &Temp) -> Result<Arc<Model>, 
             g.elements.iter().filter(|(_, o)| o.hidden).filter_map(|(g, _)| base.elements.id(g)).filter(|i| drawn(i)).collect();
         // Each of them, and each element of a category hidden, in magenta.
         let paint = json!({"projection": {"color": REVEALED}, "cut": {"color": REVEALED}});
-        let by_category = base.elements.iter().filter(|(_, e)| cats.contains(&e.category())).map(|(i, _)| *i);
+        // Hidden with its own category, or with `component`, which an older project may say of all of them.
+        let hidden_whole = |e: &Element| {
+            let c = graphics::category_of(base, e);
+            cats.contains(&c) || (graphics::COMPONENTS.contains(&c) && cats.contains(&graphics::COMPONENT))
+        };
+        let by_category = base.elements.iter().filter(|(_, e)| hidden_whole(e)).map(|(i, _)| *i);
         if !cats.is_empty() {
             p["show"] = json!(cats);
         }
@@ -125,7 +136,12 @@ fn shadowed(base: &Arc<Model>, sheet: Sheet, temp: &Temp) -> Result<Arc<Model>, 
     }
     let mut s = Session::new();
     s.reset((**base).clone(), None);
-    s.execute("graphics", &p)?;
+    if temp.hides() || temp.reveal {
+        s.execute("graphics", &p)?;
+    }
+    if let Some((min, max)) = temp.section_box {
+        s.execute("section_box", &json!({"view": p["view"], "min": min, "max": max}))?;
+    }
     Ok(s.model)
 }
 
@@ -139,7 +155,7 @@ impl BimApp {
     /// graphics refuse (categories that follow a view template) ends it, and says why.
     pub(crate) fn view_model(&mut self) -> Arc<Model> {
         let base = self.linked_model();
-        let Some(temp) = self.temporary().filter(|t| t.hides() || t.reveal).cloned() else { return base };
+        let Some(temp) = self.temporary().filter(|t| t.hides() || t.reveal || t.section_box.is_some()).cloned() else { return base };
         if let Some(s) = &self.shadow
             && s.sheet == self.sheet
             && s.temp == temp
@@ -147,7 +163,7 @@ impl BimApp {
         {
             return Arc::clone(&s.model);
         }
-        match shadowed(&base, self.sheet, &temp) {
+        match shadowed(&base, self.sheet, self.active_3d(), &temp) {
             Ok(model) => {
                 self.shadow = Some(Shadow { base, sheet: self.sheet, temp, model: Arc::clone(&model) });
                 model
@@ -216,7 +232,7 @@ impl BimApp {
             self.status = Status { text: t("select what to hide or isolate first").into(), error: true };
             return None;
         }
-        let categories = elements.iter().filter_map(|id| m.elements.get(id)).map(|e| e.category()).collect();
+        let categories = elements.iter().filter_map(|id| m.elements.get(id)).map(|e| graphics::category_of(&m, e)).collect();
         Some((elements, categories))
     }
 
@@ -316,7 +332,8 @@ impl BimApp {
     /// Visual Style (WF, HL, SD): how the 3D view draws its surfaces; in another view, says there is none to set.
     pub(crate) fn set_visual_style(&mut self, style: VisualStyle) {
         if self.sheet == Sheet::View3D {
-            self.run("visual_style", json!({"style": style.name()}));
+            let view = self.active_3d().map_or_else(|| json!("{3D}"), |id| json!(id));
+            self.run("visual_style", json!({"view": view, "style": style.name()}));
         } else {
             self.status = Status { text: t("visual styles are for the 3D view: open it from the Project Browser").into(), error: true };
         }
@@ -324,6 +341,7 @@ impl BimApp {
 
     /// The bar, when the view has one: a plan, a ceiling plan, a section or an elevation, the 3D view.
     pub(crate) fn view_control_bar(&mut self, ui: &mut Ui) {
+        self.follow_plan(ui);
         if self.graphic_view().is_none() {
             return;
         }
@@ -337,9 +355,11 @@ impl BimApp {
             false => (Frame::NONE, card),
         };
         let (id, over) = (egui::Id::new(("view-control", self.sheet)), self.view_rect);
+        // How tall the card is: a row, or more where the view is narrower than the bar.
         let mut controls = |ui: &mut Ui| {
             card.show(ui, |ui| {
-                ui.horizontal(|ui| {
+                // Onto a second row where the view is narrower than the bar, never under the palettes beside it.
+                ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     match (self.graphic_view(), self.sheet == Sheet::View3D) {
                         (Some(view), false) => self.scale_and_detail(ui, &view),
@@ -355,10 +375,26 @@ impl BimApp {
                                         self.set_visual_style(v);
                                     }
                                 }
+                                ui.separator();
+                                if ui.button(t("Graphic Display Options...")).clicked() {
+                                    self.open_display();
+                                }
                             });
+                            self.work_plane_button(ui);
                             ui.separator();
                         }
                         _ => {}
+                    }
+                    self.renovation_menu(ui);
+                    self.visibility_sets(ui);
+                    if matches!(self.sheet, Sheet::Plan(_)) {
+                        let tip = msg!(
+                            "Linked 3D View: the 3D view beside this plan, cut to its level and to what it shows as it pans or changes \
+                             level; again to put the 3D view back as it was"
+                        );
+                        if small_button(ui, Icon::View3D, "Linked 3D View", self.linked_3d.is_some(), tip).clicked() {
+                            self.toggle_linked_3d();
+                        }
                     }
                     let tip = msg!(
                         "Temporary Hide/Isolate: hide or isolate what is selected, or its categories, in this view until you reset it"
@@ -389,6 +425,39 @@ impl BimApp {
                             self.temp_reset();
                         }
                     });
+                    if let Some(view) = self.grid_view() {
+                        let mut grid = self.background_grid();
+                        let before = grid;
+                        let controlled = self.grid_controlled(view);
+                        let r = small_button(
+                            ui,
+                            Icon::BackgroundGrid,
+                            "Background Grids",
+                            grid.shown() || self.grid_snapping,
+                            msg!("Show background grids, change their settings, or toggle grid snapping"),
+                        );
+                        Popup::menu(&r).show(|ui| {
+                            if let Some(note) = &controlled {
+                                ui.label(note);
+                            }
+                            ui.add_enabled_ui(controlled.is_none(), |ui| {
+                                ui.checkbox(&mut grid.visible, t("Show grids"));
+                                ui.checkbox(&mut grid.main.enabled, t("Main grid"));
+                                ui.checkbox(&mut grid.sub.enabled, t("Subgrid"));
+                                if ui.button(t("Grid settings…")).clicked() {
+                                    self.open_background_grid();
+                                    ui.close();
+                                }
+                            });
+                            ui.separator();
+                            ui.checkbox(&mut self.grid_snapping, t("Grid snapping")).on_hover_text(t(
+                                "Applies to all views; snaps to the active view's enabled main grid or subgrid, even when hidden",
+                            ));
+                        });
+                        if grid != before {
+                            self.set_background_grid(grid);
+                        }
+                    }
                     let tip = msg!("Reveal Hidden Elements (RH): draw what this view hides in magenta; again to hide it");
                     if small_button(ui, Icon::Reveal, "Reveal Hidden Elements", temp.reveal, tip).clicked() {
                         self.temp_reveal();
@@ -425,15 +494,35 @@ impl BimApp {
                         let note = if temp.reveal && !temp.hides() { msg!("Revealing hidden elements") } else { "Temporary Hide/Isolate" };
                         ui.label(RichText::new(tf("{} (HR resets)", &[t(note)])).color(FRAME));
                     }
+                    // The control port: off, listening, the agents connected, read-only.
+                    ui.separator();
+                    self.agents_indicator(ui);
                 })
-            });
+            })
+            .response
+            .rect
+            .height()
         };
         if compact {
             egui::Panel::bottom(id).frame(panel).show_separator_line(false).show(ui, controls);
         } else {
-            // A child that takes no room of the view's: over it, not after it.
-            controls(&mut ui.new_child(UiBuilder::new().id_salt(id).max_rect(over).layout(Layout::bottom_up(Align::Min))));
+            // A child that takes no room of the view's: over it, not after it, its foot on the view's foot. Its rows run down,
+            // so it starts as high as it was tall last frame.
+            let tall = ui.ctx().data(|d| d.get_temp::<f32>(id.with("tall"))).unwrap_or(crate::FLOATING_CARD);
+            let rect = Rect::from_min_max(pos2(over.left(), over.bottom() - tall), over.max);
+            let tall = controls(&mut ui.new_child(UiBuilder::new().id_salt(id).max_rect(rect)));
+            ui.ctx().data_mut(|d| d.insert_temp(id.with("tall"), tall));
         }
+    }
+
+    /// How much of the view's foot the view control bar covers, in points: its card and the gap under it where it floats over the
+    /// view (as tall as it was drawn last, a row at first), nothing where (Compact) it is a bar under the view.
+    pub(crate) fn bar_cover(&self, ctx: &egui::Context) -> f32 {
+        if crate::style::compact() || self.graphic_view().is_none() {
+            return 0.0;
+        }
+        let tall = ctx.data(|d| d.get_temp::<f32>(egui::Id::new(("view-control", self.sheet)).with("tall")));
+        tall.unwrap_or(crate::FLOATING_CARD) + f32::from(crate::style::gap())
     }
 
     /// The cyan frame round a view that hides, isolates or reveals for now, as Revit draws.

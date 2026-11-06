@@ -5,7 +5,7 @@ Revit among them, but it shares no content or text with any of them, and reads R
 principle 5. This roadmap is based on what the
 code does today: what is missing, and the order that makes sense to build it in. What works now is in the
 [README](README.md), and the rules every change follows are in [CLAUDE.md](CLAUDE.md). Ideas not scheduled yet, from
-other BIM tools and users' wishes, are pooled in [IDEAS.md](IDEAS.md).
+other BIM tools and users' wishes, are discussed in [Discussions](https://github.com/IPedrax/BIMCraft/discussions/categories/ideas).
 
 Sizes are rough effort for one developer working with agents: **S** a few days, **M** one to two weeks, **L** a month,
 **XL** several months. There are no calendar dates. A release ships when its exit criteria are met.
@@ -90,7 +90,7 @@ The goal is the editing tools a working architect reaches for every hour.
 | Join and cut geometry (wall to floor, column to wall cleanups in plan and section) | M |
 | Wall openings (rectangular cuts) and wall profile editing (an elevation sketch) | M |
 | Wall sweeps and reveals as profiles along a wall | M |
-| ~~Room separation lines~~; room bounding on and off per element | S | Room separation lines done (`room_separator`, an `IfcVirtualElement` in IFC) |
+| ~~Room separation lines~~; ~~room bounding on and off per wall~~ | S | Room separation lines done (`room_separator`, an `IfcVirtualElement` in IFC); a wall's `room_bounding` turns off. Columns don't bound rooms yet |
 | **Curtain walls**: grid lines, mullion types, panel types (glass, solid, door panel); curtain systems on faces later | XL |
 
 Not scheduled yet: stacked walls as a type, in-place elements, and floor and roof shape editing by sub-element.
@@ -112,7 +112,7 @@ The goal is a printable, coordinated drawing set.
 | Draw tools, from trying them: done (typed numbers for shapes with Tab, Show Centre, Fillet and Offset previews, picks lit, Trim/Extend to Corner on the selection, double click and right-click Finish Drawing, the Offset bugs in sketches, icons) | S |
 | Fill patterns: `.pat` import and export, an editor for patterns of many line families, and model patterns aligned and rotated on regions and floors (Align, Pattern Angle): done; left: aligning them on walls' faces in sections and elevations; a `.pat` file is read up to 2,000 patterns and the reply names 100 of those left out | M |
 | Detail annotation: done (insulation along any curve; Linework in plans; Detail Groups, placed, turned, mirrored and ungrouped; repeating details along a line); left: Edit Group in place, model groups, group types renamed, deleted or edited on the desktop (the `group_type` command does), groups placed outside plans | M |
-| Better than Revit: line patterns and fill patterns made from lines drawn on a plan (select them, then Create Line Pattern or Create Fill Pattern), as Archicad and pyRevit's pattern maker do | M |
+| Better than Revit: line patterns and fill patterns made from lines drawn on a plan, as Archicad and pyRevit's pattern maker do: fill patterns done (Fill Patterns > New Pattern > Custom, `make_fill_pattern`); left: line patterns | M |
 | Drafting views, detail components (2D families), legends | L |
 | Annotation types: tag styles (text types and dimension types are done); room tags with fields and tag families that look like Revit's (`tag` names any element with a field of its schedule, drawn as plain text, a door's in a box and a window's in a hexagon) | M |
 | Area plans, area schemes (gross, rentable) and colour-fill legends by parameter | L |
@@ -175,7 +175,7 @@ The goal is that someone could run a real small project on it.
 |---|---|
 | GPU renderer (wgpu) for 3D: shaded views draw on the card since 0.7 (opt-in), and surfaces seen through; still to come there are hidden line and wireframe, and then plans, a section box, walkthroughs, shadows and sun, silhouettes | L |
 | A navigation gizmo, steering and orbit around the selection; tiled windows (views already float in windows of their own, and palettes dock and float). Not Revit's ViewCube, which is Autodesk's trademark and design: an original one in the manner of Blender's open-source navigation gizmo (axis balls to click to look along an axis, drag to orbit), drawn in code | M |
-| Editable keyboard shortcuts; project templates of BIMCraft's own on the start page | S |
+| Project templates of BIMCraft's own on the start page; shortcuts: export a set to a file, single keys | S |
 | Accessibility: keyboard reach for every dialog and screen-reader labels (egui's AccessKit) | M |
 | A file-format stability promise, with 1.x files opening in every later 1.x | S |
 | Signed installers on all three operating systems (macOS signing is wired up and waits for a Developer ID) | M |
@@ -233,7 +233,7 @@ incremental validation (0.5), and links (0.9).
 | **Structure** | First slice done: beams, structural columns, isolated and wall footings, structural floors, with types, schedules, IFC and the Structure tab ([design](docs/disciplines.md)). Left: braces (a sloped run, `IfcMember`), joins and framing types, slab foundations, beam systems, an analytical model exported to open formats | L |
 | **Site** | Toposolids from points or contours (and imported DXF or LandXML), pads, property lines with bearings, cut and fill quantities | L |
 | **Massing** | Extruded and lofted masses (a top outline, or a lean for a sloped one), mass floors you can run again, gross floor area, Show Mass, and walls, floors and roofs by face that follow the mass on Update to Face are in. Left: blends between outlines of different corner counts, revolved masses, curtain systems by face, and elements that follow the mass by themselves | M |
-| **MEP** | First slice done: the Plumbing, Electrical, SPDA (lightning protection) and Data tabs, designed with Structure's in [docs/disciplines.md](docs/disciplines.md): pipes, conduits, cable trays, wires, conductors and cabling as runs in systems (`IfcSystem`), fixtures, fittings, boards, devices, terminals, outlets and racks as family categories with starter families of their own drawing, schedules, IFC out and back. Left: fittings and connectors (a pipe network that knows where it ends), auto-routing, sizing, circuits and panel schedules, a family kind for IFC predefined types (a basin from a WC), Visibility/Graphics by fixture category | XL+ |
+| **MEP** | First slice done: the Plumbing, Electrical, SPDA (lightning protection) and Data tabs, designed with Structure's in [docs/disciplines.md](docs/disciplines.md): pipes, conduits, cable trays, wires, conductors and cabling as runs in systems (`IfcSystem`), fixtures, fittings, boards, devices, terminals, outlets and racks as family categories with starter families of their own drawing, schedules, IFC out and back. Electrical devices carry connectors (voltage, poles, load and power factor for each type). A family says which fixture or fitting it is (`kind`), which IFC writes as its predefined type and reads back. Left: fittings and pipe connectors (a pipe network that knows where it ends), auto-routing, sizing, circuits and panel schedules, Visibility/Graphics by fixture category | XL+ |
 
 Structure and site come before MEP: they are smaller, they reuse the existing solids and hosting, and architects need
 them sooner.

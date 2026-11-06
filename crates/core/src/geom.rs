@@ -76,9 +76,44 @@ pub fn ring_edges(ring: &[P2]) -> impl Iterator<Item = (P2, P2)> + '_ {
     ring.iter().copied().zip(ring.iter().copied().cycle().skip(1))
 }
 
+/// Where the ray from `p` along `dir` first meets one of `edges`, past `p`: none when it meets none.
+pub fn ray_hit(p: P2, dir: P2, edges: impl Iterator<Item = (P2, P2)>) -> Option<P2> {
+    edges
+        .filter_map(|(a, b)| {
+            let e = b - a;
+            let den = dir.cross(e);
+            if den.abs() < 1e-12 {
+                return None;
+            }
+            // p + dir t = a + e u
+            let t = (a - p).cross(e) / den;
+            let u = (a - p).cross(dir) / den;
+            (t > 1e-9 && (-1e-9..=1.0 + 1e-9).contains(&u)).then_some(t)
+        })
+        .min_by(f64::total_cmp)
+        .map(|t| p + dir * t)
+}
+
 /// Signed area of a ring (counter-clockwise positive).
 pub fn area(ring: &[P2]) -> f64 {
     ring_edges(ring).map(|(a, b)| a.cross(b)).sum::<f64>() / 2.0
+}
+
+/// The centre of a ring's area; its corners' average when it has none.
+pub fn centroid(ring: &[P2]) -> P2 {
+    let a = area(ring);
+    if a.abs() < 1e-9 {
+        let n = ring.len().max(1) as f64;
+        return P2(ring.iter().map(|p| p.0).sum::<f64>() / n, ring.iter().map(|p| p.1).sum::<f64>() / n);
+    }
+    // About the first corner, so far-off coordinates keep their precision.
+    let o = ring.first().copied().unwrap_or_default();
+    let (x, y) = ring_edges(ring).fold((0.0, 0.0), |(x, y), (p, q)| {
+        let (p, q) = (p - o, q - o);
+        let c = p.cross(q);
+        (x + (p.0 + q.0) * c, y + (p.1 + q.1) * c)
+    });
+    P2(o.0 + x / (6.0 * a), o.1 + y / (6.0 * a))
 }
 
 pub fn perimeter(ring: &[P2]) -> f64 {
@@ -196,6 +231,95 @@ pub fn clip(ring: &[P2], f: impl Fn(P2) -> f64) -> Vec<P2> {
     kept
 }
 
+/// The half-planes of a convex ring, as (point, edge) pairs for which the ring lies to the left, whichever way round it was given.
+fn convex_sides(hole: &[P2]) -> Vec<(P2, P2)> {
+    let turned: Vec<P2>;
+    let hole = if area(hole) < 0.0 {
+        turned = hole.iter().rev().copied().collect();
+        &turned
+    } else {
+        hole
+    };
+    ring_edges(hole).filter(|(a, b)| a.dist(*b) > 0.0).map(|(a, b)| (a, b - a)).collect()
+}
+
+/// `ring` less the convex ring `hole`, as convex pieces if `ring` is, side by side (each clipped to outside one of the hole's edges
+/// and inside those before it): none when the hole covers it, itself when the hole misses it.
+pub fn subtract_convex(ring: &[P2], hole: &[P2]) -> Vec<Vec<P2>> {
+    let sides = convex_sides(hole);
+    let mut pieces = Vec::new();
+    // What lies inside the sides before this one, narrowing as the sides go.
+    let mut inside = ring.to_vec();
+    for (a, d) in &sides {
+        let left = |q: P2| d.cross(q - *a);
+        let out = clip(&inside, |q| -left(q));
+        if out.len() >= 3 && area(&out).abs() > 0.0 {
+            pieces.push(out);
+        }
+        inside = clip(&inside, left);
+        if inside.len() < 3 {
+            break;
+        }
+    }
+    // A hole that misses the ring cut nothing out of it: the first side took it all as outside, or the pieces are the ring in two.
+    if inside.len() < 3 || area(&inside).abs() <= 0.0 {
+        return vec![ring.to_vec()];
+    }
+    pieces
+}
+
+/// The parts of the polyline `line` outside the convex ring `hole`, each a polyline: a line the hole cuts is two, one it
+/// misses is itself, one inside it is none.
+pub fn line_outside_convex(line: &[P2], hole: &[P2]) -> Vec<Vec<P2>> {
+    let sides = convex_sides(hole);
+    let mut out: Vec<Vec<P2>> = Vec::new();
+    let mut now: Vec<P2> = Vec::new();
+    for w in line.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        // The stretch of a→b inside the hole, as fractions of its length: where it is on the left of every side.
+        let (mut t0, mut t1) = (0.0f64, 1.0f64);
+        for (p, d) in &sides {
+            let (fa, fb) = (d.cross(a - *p), d.cross(b - *p));
+            if fa < 0.0 && fb < 0.0 {
+                (t0, t1) = (1.0, 0.0);
+                break;
+            }
+            if fa < 0.0 {
+                t0 = t0.max(fa / (fa - fb));
+            } else if fb < 0.0 {
+                t1 = t1.min(fa / (fa - fb));
+            }
+        }
+        let missed = t0 >= t1;
+        let push = |now: &mut Vec<P2>, q: P2| {
+            if now.last() != Some(&q) {
+                now.push(q);
+            }
+        };
+        if missed {
+            push(&mut now, a);
+            push(&mut now, b);
+            continue;
+        }
+        if t0 > 0.0 {
+            push(&mut now, a);
+            push(&mut now, a + (b - a) * t0);
+        }
+        if now.len() >= 2 {
+            out.push(std::mem::take(&mut now));
+        }
+        now.clear();
+        if t1 < 1.0 {
+            push(&mut now, a + (b - a) * t1);
+            push(&mut now, b);
+        }
+    }
+    if now.len() >= 2 {
+        out.push(now);
+    }
+    out
+}
+
 /// How far along `a`→`b` the point nearest `p` lies, from 0 at `a` to 1 at `b`.
 pub fn param_on_segment(p: P2, a: P2, b: P2) -> f64 {
     let d = b - a;
@@ -232,10 +356,17 @@ pub(crate) fn crossing(a: P2, b: P2, c: P2, d: P2) -> Option<f64> {
 
 /// The segments cut wherever another one crosses them or ends on them.
 fn split(segs: &[(P2, P2)], tol: f64) -> Vec<(P2, P2)> {
+    let grid = SegGrid::new(segs, tol);
+    split_among(segs, tol, |i| grid.near(i))
+}
+
+/// [`split`] with each segment's others those `others` gives (in any order, each once: the cuts are sorted).
+fn split_among(segs: &[(P2, P2)], tol: f64, others: impl Fn(usize) -> Vec<usize>) -> Vec<(P2, P2)> {
     let mut out = Vec::new();
     for (i, &(a, b)) in segs.iter().enumerate() {
         let mut ts = vec![0.0, 1.0];
-        for (j, &(c, d)) in segs.iter().enumerate() {
+        for j in others(i) {
+            let Some(&(c, d)) = segs.get(j) else { continue };
             if i == j {
                 continue;
             }
@@ -257,21 +388,106 @@ fn split(segs: &[(P2, P2)], tol: f64) -> Vec<(P2, P2)> {
     out
 }
 
+/// Segments' boxes, grown by a tolerance, in a grid of cells: a segment's others that may touch it are those that share
+/// a cell with it. One whose box isn't in finite numbers, or spans too many cells, is with every other.
+struct SegGrid {
+    cells: std::collections::HashMap<(i64, i64), Vec<usize>>,
+    boxes: Vec<Option<[i64; 4]>>,
+    wide: Vec<usize>,
+    all: usize,
+}
+
+impl SegGrid {
+    const MAX_CELLS: i64 = 1024;
+
+    fn new(segs: &[(P2, P2)], tol: f64) -> SegGrid {
+        // Cells about as big as a segment is long, on average, so each holds a few.
+        let grow = tol.abs() + 1e-9;
+        let finite: Vec<&(P2, P2)> = segs.iter().filter(|(a, b)| a.is_finite() && b.is_finite()).collect();
+        let mean = finite.iter().map(|(a, b)| a.dist(*b)).sum::<f64>() / finite.len().max(1) as f64;
+        let cell = (mean.max(grow * 4.0)).max(1e-6);
+        let mut g = SegGrid { cells: Default::default(), boxes: Vec::with_capacity(segs.len()), wide: Vec::new(), all: segs.len() };
+        for (k, (a, b)) in segs.iter().enumerate() {
+            let c = [a.0.min(b.0) - grow, a.1.min(b.1) - grow, a.0.max(b.0) + grow, a.1.max(b.1) + grow].map(|v| (v / cell).floor());
+            let ok = c.iter().all(|v| v.is_finite() && v.abs() < 1e15);
+            let c = c.map(|v| v as i64);
+            let b = (ok && (c[2] - c[0] + 1).saturating_mul(c[3] - c[1] + 1) <= Self::MAX_CELLS).then_some(c);
+            match b {
+                Some([x0, y0, x1, y1]) => {
+                    for x in x0..=x1 {
+                        for y in y0..=y1 {
+                            g.cells.entry((x, y)).or_default().push(k);
+                        }
+                    }
+                }
+                None => g.wide.push(k),
+            }
+            g.boxes.push(b);
+        }
+        g
+    }
+
+    /// Segment `i`'s others that may touch it.
+    fn near(&self, i: usize) -> Vec<usize> {
+        let Some(Some([x0, y0, x1, y1])) = self.boxes.get(i) else { return (0..self.all).collect() };
+        let mut out = self.wide.clone();
+        for x in *x0..=*x1 {
+            for y in *y0..=*y1 {
+                out.extend(self.cells.get(&(x, y)).into_iter().flatten());
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+}
+
 /// Every face of the planar graph the segments make, with ends closer than `tol` joined: each
 /// bounded face counter-clockwise (positive area), and the outline of each connected piece
 /// clockwise (negative area).
 pub fn faces(segs: &[(P2, P2)], tol: f64) -> Vec<Vec<P2>> {
-    // ponytail: O(n²) splitting and node matching; a spatial grid once plans reach thousands of walls.
+    faces_of(split(segs, tol), tol)
+}
+
+/// [`faces`], the segments cut by every other: its twin, which tests hold it to.
+#[cfg(test)]
+pub(crate) fn faces_everywhere(segs: &[(P2, P2)], tol: f64) -> Vec<Vec<P2>> {
+    faces_of(split_among(segs, tol, |_| (0..segs.len()).collect()), tol)
+}
+
+/// The faces of the graph of `split` segments, ends closer than `tol` one node: the first node within `tol` of an end, in
+/// the order they were met, found among those of the grid cells round it.
+fn faces_of(split: Vec<(P2, P2)>, tol: f64) -> Vec<Vec<P2>> {
     let mut nodes: Vec<P2> = Vec::new();
-    let mut node = |p: P2| match nodes.iter().position(|q| q.dist(p) <= tol) {
-        Some(i) => i,
-        None => {
-            nodes.push(p);
-            nodes.len() - 1
+    let cell = if tol > 0.0 { tol } else { 0.0 };
+    let key = |p: P2| ((p.0 / cell).floor() as i64, (p.1 / cell).floor() as i64);
+    let mut grid: std::collections::HashMap<(i64, i64), Vec<usize>> = std::collections::HashMap::new();
+    let mut node = |p: P2| {
+        let found = if cell > 0.0 && p.is_finite() {
+            let (x, y) = key(p);
+            (x - 1..=x + 1)
+                .flat_map(|x| (y - 1..=y + 1).map(move |y| (x, y)))
+                .filter_map(|k| grid.get(&k))
+                .flatten()
+                .copied()
+                .filter(|&i| nodes.get(i).is_some_and(|q| q.dist(p) <= tol))
+                .min()
+        } else {
+            nodes.iter().position(|q| q.dist(p) <= tol)
+        };
+        match found {
+            Some(i) => i,
+            None => {
+                nodes.push(p);
+                if cell > 0.0 && p.is_finite() {
+                    grid.entry(key(p)).or_default().push(nodes.len() - 1);
+                }
+                nodes.len() - 1
+            }
         }
     };
     let mut edges = std::collections::BTreeSet::new();
-    for (a, b) in split(segs, tol) {
+    for (a, b) in split {
         let (i, j) = (node(a), node(b));
         if i != j {
             edges.insert((i.min(j), i.max(j)));
@@ -313,7 +529,8 @@ pub fn faces(segs: &[(P2, P2)], tol: f64) -> Vec<Vec<P2>> {
 }
 
 /// A room-shaped region: an outer ring (counter-clockwise) and the islands standing inside it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Region {
     pub outer: Vec<P2>,
     pub holes: Vec<Vec<P2>>,
@@ -395,7 +612,7 @@ pub fn split_holes(outer: &[P2], holes: &[Vec<P2>]) -> Option<Vec<Piece>> {
         if across.len() % 2 == 1 {
             return None;
         }
-        for pair in across.chunks_exact(2) {
+        for pair in across.as_chunks::<2>().0 {
             let (lo, hi) = (pair[0], pair[1]);
             let mut ring = vec![P2(x0, y_at(lo, x0)), P2(x1, y_at(lo, x1)), P2(x1, y_at(hi, x1)), P2(x0, y_at(hi, x0))];
             ring.dedup_by(|a, b| a.dist(*b) < EPS);
@@ -474,6 +691,36 @@ pub fn split_holes(outer: &[P2], holes: &[Vec<P2>]) -> Option<Vec<Piece>> {
 mod tests {
     use super::*;
 
+    /// The faces of segments cut through a grid of their boxes are those of segments each cut by every other: random lines
+    /// on a 1 m lattice and off it, crossing, meeting end to end, ending on one another, overlapping and just missing.
+    #[test]
+    fn faces_found_through_a_grid_are_those_found_among_every_segment() {
+        let mut seed = 0x9e37_79b9_u64;
+        let mut next = |n: u64| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed % n
+        };
+        for round in 0..40 {
+            let mut segs = Vec::new();
+            for _ in 0..(20 + round * 5) {
+                let p = P2(next(20) as f64 * 1000.0, next(20) as f64 * 1000.0);
+                let q = if next(3) == 0 {
+                    p + P2(next(9000) as f64 - 4500.0, next(9000) as f64 - 4500.0)
+                } else {
+                    p + if next(2) == 0 { P2(next(8) as f64 * 1000.0, 0.0) } else { P2(0.0, next(8) as f64 * 1000.0) }
+                };
+                segs.push((p, q));
+                // Now and then one a hair off another's end.
+                if next(10) == 0 {
+                    segs.push((q + P2(0.0005, 0.0), q + P2(1500.0, 700.0)));
+                }
+            }
+            assert_eq!(faces(&segs, 1e-3), faces_everywhere(&segs, 1e-3), "round {round}");
+        }
+    }
+
     #[test]
     fn rings_grow_outward_at_every_edge() {
         let l = [P2(0.0, 0.0), P2(4000.0, 0.0), P2(4000.0, 2000.0), P2(2000.0, 2000.0), P2(2000.0, 5000.0), P2(0.0, 5000.0)];
@@ -491,6 +738,43 @@ mod tests {
         assert_eq!(area(&left), 4.0);
         assert!(clip(&sq, |p| -1.0 - p.0).is_empty());
         assert_eq!(clip(&sq, |p| 9.0 - p.0), sq);
+    }
+
+    #[test]
+    fn a_convex_hole_is_cut_out_of_a_ring_in_pieces_that_never_overlap_it() {
+        let square = |lo: f64, hi: f64| vec![P2(lo, lo), P2(hi, lo), P2(hi, hi), P2(lo, hi)];
+        let (ring, hole) = (square(0.0, 4.0), square(1.0, 3.0));
+        let pieces = subtract_convex(&ring, &hole);
+        assert!((pieces.iter().map(|p| area(p)).sum::<f64>() - 12.0).abs() < 1e-9, "16 less the hole's 4");
+        // Nothing of any piece lies inside the hole, and the rest of the ring is covered.
+        for (x, y) in [(2.0, 2.0), (1.5, 2.5), (2.9, 1.1)] {
+            assert!(!pieces.iter().any(|p| contains(p, P2(x, y))), "({x}, {y}) is in the hole");
+        }
+        for (x, y) in [(0.5, 0.5), (3.5, 3.5), (2.0, 0.5), (0.5, 2.0), (3.5, 2.0), (2.0, 3.5)] {
+            assert!(pieces.iter().any(|p| contains(p, P2(x, y))), "({x}, {y}) is lost");
+        }
+        // A hole turned the other way round cuts the same; one that is not there, or covers the ring, is nothing or everything.
+        let turned: Vec<P2> = hole.iter().rev().copied().collect();
+        assert!((subtract_convex(&ring, &turned).iter().map(|p| area(p)).sum::<f64>() - 12.0).abs() < 1e-9);
+        assert_eq!(subtract_convex(&ring, &square(10.0, 12.0)), vec![ring.clone()]);
+        assert!(subtract_convex(&ring, &square(-1.0, 5.0)).is_empty());
+        // Half over the edge: what is left is the other half.
+        let edge = vec![P2(2.0, -1.0), P2(6.0, -1.0), P2(6.0, 5.0), P2(2.0, 5.0)];
+        assert!((subtract_convex(&ring, &edge).iter().map(|p| area(p)).sum::<f64>() - 8.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_line_through_a_convex_hole_keeps_the_parts_outside_it() {
+        let hole = [P2(1.0, 1.0), P2(3.0, 1.0), P2(3.0, 3.0), P2(1.0, 3.0)];
+        let line = [P2(-2.0, 2.0), P2(6.0, 2.0)];
+        assert_eq!(line_outside_convex(&line, &hole), vec![vec![P2(-2.0, 2.0), P2(1.0, 2.0)], vec![P2(3.0, 2.0), P2(6.0, 2.0)]]);
+        // A line that misses it stays whole; one inside it is gone; a bend outside stays one line.
+        assert_eq!(line_outside_convex(&[P2(-2.0, 5.0), P2(6.0, 5.0)], &hole), vec![vec![P2(-2.0, 5.0), P2(6.0, 5.0)]]);
+        assert!(line_outside_convex(&[P2(1.5, 2.0), P2(2.5, 2.0)], &hole).is_empty());
+        let bent = [P2(0.0, 0.0), P2(0.0, 5.0), P2(5.0, 5.0)];
+        assert_eq!(line_outside_convex(&bent, &hole), vec![bent.to_vec()]);
+        // One that ends inside the hole stops at its edge.
+        assert_eq!(line_outside_convex(&[P2(-2.0, 2.0), P2(2.0, 2.0)], &hole), vec![vec![P2(-2.0, 2.0), P2(1.0, 2.0)]]);
     }
 
     #[test]

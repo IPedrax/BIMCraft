@@ -126,7 +126,7 @@ fn north_of_context(f: &File) -> Option<f64> {
 }
 
 /// An angle in degrees, in (-180, 180].
-fn wrap(degrees: f64) -> f64 {
+pub(crate) fn wrap(degrees: f64) -> f64 {
     let d = degrees.rem_euclid(360.0);
     if d > 180.0 { d - 360.0 } else { d }
 }

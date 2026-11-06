@@ -20,3 +20,4 @@ bimcraft-core = { workspace = true }
 cfb = { workspace = true }
 flate2 = { workspace = true }
 memchr = { workspace = true }
+serde_json = { workspace = true }

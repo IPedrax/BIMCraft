@@ -309,3 +309,60 @@ fn a_round_column_a_floors_hooks_and_a_ties_tails_have_their_fields() {
     assert_eq!(low.len(), 21);
     assert!(low.iter().all(|id| field(&h, *id, "path").as_array().map(Vec::len) == Some(4)));
 }
+
+#[test]
+fn the_dialog_bends_some_bottom_bars_up_and_steps_a_columns_bars_in() {
+    let mut h = app(&format!("{BOX}\n{BEAM}\nstructural_column {{\"at\": [2000, 2000], \"height\": 3000}}"));
+    let beam = ids(&h, "beam")[0];
+    select(&mut h, beam);
+    shortcut(&mut h, "RF");
+    fill(
+        &mut h,
+        &[
+            ("Cover", "25"),
+            ("Bottom bars: Count", "4"),
+            ("Bottom bars: Diameter", "16"),
+            ("Bent-up bars: Count", "2"),
+            ("Bent-up bars: Along the top", "500"),
+            ("Stirrups: Diameter", "5"),
+            ("Stirrups: Spacing", "150"),
+        ],
+    );
+    press(&mut h, "OK");
+    let layers = |h: &Harness<BimApp>| -> Vec<String> {
+        let mut v: Vec<String> = bars(h).iter().map(|id| field(h, *id, "layer").as_str().unwrap_or("").to_string()).collect();
+        v.sort();
+        v.dedup();
+        v
+    };
+    assert_eq!(layers(&h), ["bent", "bottom", "stirrup"]);
+    assert_eq!(bars(&h).iter().filter(|id| field(&h, **id, "layer") == "bent").count(), 2);
+    let col = ids(&h, "structuralcolumn")[0];
+    select(&mut h, col);
+    shortcut(&mut h, "RF");
+    fill(&mut h, &[("Cover", "25"), ("Bars: Diameter", "16"), ("Jog: Step in", "30"), ("Jog: Starts below the top", "400")]);
+    press(&mut h, "OK");
+    assert!(h.state().reinforce_dialog.is_none(), "{:?}", h.state().reinforce_dialog.as_ref().map(|d| &d.error));
+    // A jog gives each bar four points: straight, the step, straight on.
+    let jogged = bars(&h).into_iter().filter(|id| field(&h, *id, "layer") == "bars").count();
+    assert_eq!(jogged, 4);
+}
+
+#[test]
+fn a_check_keeps_its_notes_in_the_dialog_while_the_bars_are_made() {
+    let mut h = app(&format!("{BOX}\n{BEAM}"));
+    let beam = ids(&h, "beam")[0];
+    select(&mut h, beam);
+    shortcut(&mut h, "RF");
+    fill(&mut h, &[("Cover", "25"), ("Bottom bars: Count", "3"), ("Bottom bars: Diameter", "16")]);
+    choose(&mut h, "Standard", "NBR 6118");
+    type_into(&mut h, "Check: Aggressiveness class", "2");
+    press(&mut h, "OK");
+    // Made all the same, and the dialog stays with what the standard says: a 25 mm cover is under class II's 30.
+    assert_eq!(bars(&h).len(), 3);
+    let d = h.state().reinforce_dialog.as_ref().expect("notes keep the dialog open");
+    assert!(d.error.is_empty() && d.notes.iter().any(|n| n.contains("7.4.7.2")), "{:?}", d.notes);
+    // Remove Bars takes away the bars just made, and closes the dialog.
+    press(&mut h, "Remove Bars");
+    assert!(bars(&h).is_empty() && h.state().reinforce_dialog.is_none());
+}

@@ -49,10 +49,10 @@ pub fn decode(bytes: &[u8]) -> Result<Tile, String> {
     let rgba: Vec<u8> = match (frame.color_type, frame.bit_depth) {
         (png::ColorType::Rgba, png::BitDepth::Eight) if data.len() == pixels * 4 => data.to_vec(),
         (png::ColorType::Rgb, png::BitDepth::Eight) if data.len() == pixels * 3 => {
-            data.chunks_exact(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect()
+            data.as_chunks::<3>().0.iter().flat_map(|p| [p[0], p[1], p[2], 255]).collect()
         }
         (png::ColorType::GrayscaleAlpha, png::BitDepth::Eight) if data.len() == pixels * 2 => {
-            data.chunks_exact(2).flat_map(|p| [p[0], p[0], p[0], p[1]]).collect()
+            data.as_chunks::<2>().0.iter().flat_map(|p| [p[0], p[0], p[0], p[1]]).collect()
         }
         (png::ColorType::Grayscale, png::BitDepth::Eight) if data.len() == pixels => data.iter().flat_map(|g| [*g, *g, *g, 255]).collect(),
         (c, d) => return Err(format!("a tile is an 8-bit colour picture of {SIDE} x {SIDE}, not {c:?} at {d:?} in {} bytes", data.len())),

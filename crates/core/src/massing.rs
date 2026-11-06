@@ -148,6 +148,32 @@ pub fn detach(params: &mut BTreeMap<String, Value>) {
 
 /// The marks that name a mass in `gone` taken off, since it's deleted: what was made from it is ordinary from then on.
 pub fn forget(m: &mut Model, gone: &BTreeSet<Guid>) {
+    let lookup = m.lookup();
+    let candidates: BTreeSet<Id> = gone.iter().flat_map(|g| lookup.referrers(g)).collect();
+    let affected: Vec<Id> = candidates
+        .into_iter()
+        .filter(|id| {
+            m.elements.get(*id).and_then(Element::params).is_some_and(|params| {
+                [FLOOR, FACE].iter().any(|key| {
+                    params.get(*key).and_then(Value::as_object).and_then(|o| mark(o, "mass")).is_some_and(|mass| gone.contains(&mass))
+                })
+            })
+        })
+        .collect();
+    for id in affected {
+        if let Some(params) = m.elements.get_mut(id).and_then(Element::params_mut) {
+            for key in [FLOOR, FACE] {
+                if params.get(key).and_then(Value::as_object).and_then(|o| mark(o, "mass")).is_some_and(|mass| gone.contains(&mass)) {
+                    params.remove(key);
+                }
+            }
+        }
+    }
+}
+
+/// Original whole-model cleanup, retained as the deletion oracle.
+#[cfg(test)]
+pub(crate) fn forget_from_scratch(m: &mut Model, gone: &BTreeSet<Guid>) {
     for params in m.elements.values_mut().filter_map(Element::params_mut) {
         for key in [FLOOR, FACE] {
             if params.get(key).and_then(Value::as_object).and_then(|o| mark(o, "mass")).is_some_and(|mass| gone.contains(&mass)) {

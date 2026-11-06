@@ -108,6 +108,59 @@ fn the_levels_of_real_files_come_in_as_the_storeys_of_rvt_rss_ifc_export() {
 }
 
 #[test]
+fn the_categories_the_importer_has_no_reader_for_are_listed_with_how_many_the_file_holds() {
+    for release in [2018, 2024] {
+        let mut p = super::walls::base(release);
+        for id in 300..303 {
+            p.recs.push(Rec::new(id, -2_009_000)); // rebar, which has no reader
+        }
+        p.recs.push(Rec { placed: false, ..Rec::new(304, -2_009_000) }); // a rebar type's symbol is no element
+        p.recs.push(Rec::new(310, -2_003_200)); // an area, which has no body
+        // A category the table has no name for is read by its id, as a box: it is not listed as unread.
+        p.recs.push(Rec::new(320, -2_009_999));
+        let i = import(&p);
+        let left: Vec<&str> = i.skipped.iter().map(String::as_str).filter(|s| s.contains("no reader")).collect();
+        assert_eq!(
+            left,
+            [
+                "3 Structural Rebar left out, the importer has no reader for this category (ids 300, 301, 302)",
+                "1 Areas left out, the importer has no reader for this category (ids 310)",
+            ],
+            "Revit {release}"
+        );
+        // The most first, then by category id; they count for the desktop's status line.
+        assert_eq!(left.iter().filter_map(|n| counted(n)).sum::<usize>(), 4);
+    }
+}
+
+/// How many elements a note says were left out, as the desktop reads it (`N things left out, why`).
+fn counted(note: &str) -> Option<usize> {
+    let (head, _) = note.split_once(", ")?;
+    let (n, what) = head.split_once(' ')?;
+    what.ends_with(" left out").then(|| n.parse().ok())?
+}
+
+#[test]
+fn autodesks_2018_samples_come_in_through_the_readers_made_for_2023() {
+    // Not workshared: the levels, walls, floors and columns of the structural sample, the levels and walls of the architectural one.
+    for path in super::samples_of("rst_basic_sample_project.rvt") {
+        let i = crate::import_path(&path, "x").unwrap();
+        let count = |category: &str| i.model.elements.values().filter(|e| e.category() == category).count();
+        assert_eq!([count("level"), count("wall"), count("floor"), count("structuralcolumn")], [9, 9, 4, 30], "{}", path.display());
+    }
+    for path in super::samples_of("rac_basic_sample_project.rvt") {
+        let i = crate::import_path(&path, "x").unwrap();
+        let count = |category: &str| i.model.elements.values().filter(|e| e.category() == category).count();
+        assert_eq!([count("level"), count("wall")], [6, 56], "{}", path.display());
+    }
+    for path in super::samples_of("rac_advanced_sample_project.rvt") {
+        let i = crate::import_path(&path, "x").unwrap();
+        let count = |category: &str| i.model.elements.values().filter(|e| e.category() == category).count();
+        assert_eq!([count("level"), count("wall")], [5, 180], "{}", path.display());
+    }
+}
+
+#[test]
 fn a_note_lists_the_first_eight_ids_and_says_there_are_more_only_when_there_are() {
     let said = |count: u32| {
         let mut p = base(2024);

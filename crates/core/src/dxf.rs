@@ -316,10 +316,12 @@ pub fn read(bytes: &[u8]) -> Result<Dxf, String> {
         return Err("it's a binary DXF; save it as an ASCII DXF (any version) and bring that in".into());
     }
     let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
-    // A file before 2007 is in a code page; Latin-1 reads the West's as it should and never fails.
+    // A file of 2007 and later is UTF-8. One before is in the code page its header names in $DWGCODEPAGE: the header is ASCII
+    // in every page, so the bytes are scanned for it before any decoding. A page this doesn't know, and a file that names none,
+    // read as Latin-1, as the West's always have and never fail.
     let text: Cow<str> = match std::str::from_utf8(bytes) {
         Ok(t) => Cow::Borrowed(t),
-        Err(_) => Cow::Owned(bytes.iter().map(|&b| char::from(b)).collect()),
+        Err(_) => Cow::Owned(codepage(bytes).map_or_else(|| latin1(bytes), |e| e.decode(bytes).0.into_owned())),
     };
     read_text(&text)
 }
@@ -328,6 +330,63 @@ pub fn read(bytes: &[u8]) -> Result<Dxf, String> {
 pub fn read_text(text: &str) -> Result<Dxf, String> {
     Reader { p: Pairs::new(text), header: HashMap::new(), layers: Vec::new(), linetypes: Vec::new(), blocks: HashMap::new(), ents: None }
         .read()
+}
+
+/// The text as Latin-1, byte for byte.
+fn latin1(bytes: &[u8]) -> String {
+    bytes.iter().map(|&b| char::from(b)).collect()
+}
+
+/// The encoding the file's `$DWGCODEPAGE` names, looked for in the first 64 KiB: the header is there, and it is ASCII in every
+/// page, so the bytes scan line by line without any decoding.
+fn codepage(bytes: &[u8]) -> Option<&'static encoding_rs::Encoding> {
+    let head = &bytes[..bytes.len().min(65_536)];
+    let mut lines = head.split(|&b| b == b'\n').map(|l| std::str::from_utf8(l).ok().map(str::trim).unwrap_or(""));
+    while let Some(line) = lines.next() {
+        if line != "$DWGCODEPAGE" {
+            continue;
+        }
+        // The variable's name (9), the value's code (3), then the page: anything else is not a header this reads the page from.
+        let Some(3) = lines.next().and_then(|l| l.trim().parse::<i32>().ok()) else { return None };
+        return lines.next().map(str::trim).and_then(page);
+    }
+    None
+}
+
+/// The encoding a code page's name says, where a decoder here has one: the East Asian pages, the Windows ones and the few
+/// others. The DOS pages (437, 850, …) have no decoder here and keep the Latin-1 they always had.
+fn page(name: &str) -> Option<&'static encoding_rs::Encoding> {
+    use encoding_rs::*;
+    Some(match name.to_ascii_uppercase().as_str() {
+        "ANSI_874" => WINDOWS_874,
+        "ANSI_932" => SHIFT_JIS,
+        "ANSI_936" => GBK,
+        "ANSI_949" => EUC_KR,
+        "ANSI_950" => BIG5,
+        "ANSI_1250" => WINDOWS_1250,
+        "ANSI_1251" => WINDOWS_1251,
+        "ANSI_1252" => WINDOWS_1252,
+        "ANSI_1253" => WINDOWS_1253,
+        "ANSI_1254" => WINDOWS_1254,
+        "ANSI_1255" => WINDOWS_1255,
+        "ANSI_1256" => WINDOWS_1256,
+        "ANSI_1257" => WINDOWS_1257,
+        "ANSI_1258" => WINDOWS_1258,
+        "ANSI_8859_2" => ISO_8859_2,
+        "ANSI_8859_3" => ISO_8859_3,
+        "ANSI_8859_4" => ISO_8859_4,
+        "ANSI_8859_5" => ISO_8859_5,
+        "ANSI_8859_6" => ISO_8859_6,
+        "ANSI_8859_7" => ISO_8859_7,
+        "ANSI_8859_8" => ISO_8859_8,
+        // Latin-5's bytes are the Windows Turkish ones', so the decoder here has no ISO_8859_9 of its own.
+        "ANSI_8859_9" => WINDOWS_1254,
+        "DOS866" => IBM866,
+        "KOI8_R" => KOI8_R,
+        "MACINTOSH" => MACINTOSH,
+        "ANSI_65001" => UTF_8,
+        _ => return None,
+    })
 }
 
 // ---------- the pairs of a file ----------
@@ -1851,6 +1910,38 @@ mod tests {
             ]
         );
         assert_eq!(d.left_out.get("empty"), Some(&1), "blank text");
+    }
+
+    /// A file whose text is in a code page, as bytes: the header names the page, one TEXT holds the words as the page's bytes.
+    fn codepage_file(page: &str, words: &[u8]) -> Vec<u8> {
+        let mut f = format!(
+            "0\nSECTION\n2\nHEADER\n9\n$DWGCODEPAGE\n3\n{page}\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nTEXT\n10\n0\n20\n0\n40\n2.5\n1\n"
+        )
+        .into_bytes();
+        f.extend_from_slice(words);
+        f.extend_from_slice(b"\n0\nENDSEC\n0\nEOF\n");
+        f
+    }
+
+    fn is_the_words(words: &str) -> impl Fn(&Entity) -> bool + '_ {
+        move |e| matches!(&e.shape, Shape::Text { text, align: Align { h: Horizontal::Left, v: Vertical::Baseline }, .. } if text == words)
+    }
+
+    #[test]
+    fn a_file_in_the_korean_code_page_reads_its_hangul() {
+        // "제1층", a floor's name as the issue shows it, in the bytes EUC-KR holds.
+        let d = read(&codepage_file("ANSI_949", &[0xC1, 0xA6, b'1', 0xC3, 0xFE])).unwrap();
+        assert!(d.entities.iter().any(is_the_words("제1층")), "{d:?}");
+    }
+
+    #[test]
+    fn a_page_this_does_not_know_reads_latin1_and_a_utf8_file_its_own_words_whatever_the_header_says() {
+        // A page without a decoder here keeps the Latin-1 it always had.
+        let d = read(&codepage_file("DOS437", &[0xC1])).unwrap();
+        assert!(d.entities.iter().any(is_the_words("Á")), "{d:?}");
+        // A file of 2007 and later is UTF-8 even when its header names a page.
+        let d = read(&codepage_file("ANSI_949", "제1층".as_bytes())).unwrap();
+        assert!(d.entities.iter().any(is_the_words("제1층")), "{d:?}");
     }
 
     #[test]

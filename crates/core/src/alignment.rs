@@ -69,6 +69,8 @@ pub struct AlignmentResult {
     pub axis: AlignmentAxis,
     /// The type of reference point.
     pub kind: ReferenceType,
+    /// The wall the reference point is on, when it is a wall's: what the window names as why the point lined up.
+    pub wall_id: Option<Id>,
 }
 
 /// Configuration for alignment guide detection.
@@ -422,6 +424,7 @@ impl AlignmentGuideService {
                         reference_point: rx.point,
                         axis: AlignmentAxis::X,
                         kind: rx.kind,
+                        wall_id: rx.wall_id,
                     },
                     AlignmentResult {
                         snapped_point,
@@ -429,6 +432,7 @@ impl AlignmentGuideService {
                         reference_point: ry.point,
                         axis: AlignmentAxis::Y,
                         kind: ry.kind,
+                        wall_id: ry.wall_id,
                     },
                 ]
             }
@@ -440,6 +444,7 @@ impl AlignmentGuideService {
                     reference_point: rx.point,
                     axis: AlignmentAxis::X,
                     kind: rx.kind,
+                    wall_id: rx.wall_id,
                 }]
             }
             (None, Some((ry, _, _))) => {
@@ -450,6 +455,7 @@ impl AlignmentGuideService {
                     reference_point: ry.point,
                     axis: AlignmentAxis::Y,
                     kind: ry.kind,
+                    wall_id: ry.wall_id,
                 }]
             }
             (None, None) => {
@@ -515,6 +521,7 @@ impl AlignmentGuideService {
                 reference_point: r.point,
                 axis,
                 kind: r.kind,
+                wall_id: r.wall_id,
             }]
         } else {
             Vec::new()
@@ -680,5 +687,32 @@ mod tests {
             let cursor = P2((i as f64 * 150.0) % 150000.0, (i as f64 * 150.0) % 60000.0);
             let _ = service.find_alignments(cursor, Some(P2(0.0, 0.0)), 50.0);
         }
+    }
+}
+
+#[cfg(test)]
+mod why_tests {
+    use super::*;
+    use crate::engine::Session;
+
+    /// An alignment says which wall it lines up with, so the window can say why a point snapped.
+    #[test]
+    fn an_alignment_names_the_wall_it_lines_up_with() {
+        let mut s = Session::new();
+        s.script(r#"wall {"points": [[0, 0], [5000, 0]]}"#).unwrap();
+        let wall = s.model.elements.iter().find(|(_, e)| e.category() == "wall").map(|(id, _)| *id).unwrap();
+        let level = s.model.levels()[0].0;
+        let config = AlignmentConfig {
+            enabled: true,
+            tolerance: 50.0,
+            endpoints: true,
+            midpoints: true,
+            faces: true,
+            intersections: true,
+            angles: false,
+        };
+        let service = AlignmentGuideService::from_model(&s.model, level, config);
+        let found = service.find_alignments(P2(5005.0, 3000.0), Some(P2(0.0, 3000.0)), 50.0);
+        assert!(found.first().is_some_and(|a| a.wall_id == Some(wall)), "{found:?}");
     }
 }

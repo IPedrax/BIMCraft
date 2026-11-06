@@ -59,12 +59,14 @@ const CHAIN_HEADER: usize = 16;
 const CHAIN_TRAILER: usize = 16;
 
 /// 32-bit form (up to 2023), as offsets back from the marker.
-const ID_BEFORE_MARKER: usize = 52;
 pub(crate) const CATEGORY_BEFORE_MARKER: usize = 38;
 const CONTAINER_BEFORE_MARKER: usize = 22;
 const KIND_BEFORE_MARKER: usize = 14;
 const CLASS_BEFORE_MARKER: usize = 6;
 pub(crate) const HEADER_TAG_AFTER_ID: usize = 8;
+/// The most items the list after a 32-bit record's header tag may hold, and the bytes of one.
+const MAX_ITEMS: usize = 1024;
+const ITEM_LEN: usize = 14;
 
 pub(crate) fn u16_at(buf: &[u8], at: usize) -> Option<u16> {
     let b = buf.get(at..at.checked_add(2)?)?;
@@ -214,6 +216,17 @@ pub(crate) fn declared(ids: &[u32], id: u32) -> bool {
     id != 0 && ids.binary_search(&id).is_ok()
 }
 
+/// The ElementId of the 32-bit record whose category starts at `category_at`, and where the record starts. A record is a `u32`
+/// id, a `u32` size, the header tag, a `u32` count and that many items of 14 bytes, and then the category: the count is 0 in a
+/// file that is not workshared, so the id sits 14 bytes before the category, and 14 more for each item.
+pub(crate) fn id_before(buf: &[u8], category_at: usize, header: u16, ids: &[u32]) -> Option<(u32, usize)> {
+    (0..=MAX_ITEMS).find_map(|n| {
+        let id_at = category_at.checked_sub(14 + ITEM_LEN * n)?;
+        let framed = u16_at(buf, id_at + HEADER_TAG_AFTER_ID) == Some(header) && u32_at(buf, id_at + 10) == Some(n as u32);
+        u32_at(buf, id_at).filter(|&id| framed && declared(ids, id)).map(|id| (id, id_at))
+    })
+}
+
 /// A record in a partition's chain: where it starts and ends, and its ElementId.
 pub(crate) struct Span {
     pub start: usize,
@@ -351,12 +364,9 @@ pub(crate) fn records_64(buf: &[u8], tags: &Tags, ids: &[u32], partition: u32, k
 /// The records of a partition up to 2023.
 pub(crate) fn records_32(buf: &[u8], tags: &Tags, ids: &[u32], partition: u32, keep: &mut dyn FnMut(Record)) {
     for hit in memchr::memmem::find_iter(buf, &tags.marker()) {
-        let Some(id_at) = hit.checked_sub(ID_BEFORE_MARKER) else { continue };
-        let Some(id) = u32_at(buf, id_at).filter(|&id| declared(ids, id)) else { continue };
-        if u16_at(buf, id_at + HEADER_TAG_AFTER_ID) != Some(tags.header) {
-            continue;
-        }
-        let Some(category) = u64_at(buf, hit - CATEGORY_BEFORE_MARKER).map(|v| v as i64).filter(|&c| in_band(c)) else {
+        let Some(category_at) = hit.checked_sub(CATEGORY_BEFORE_MARKER) else { continue };
+        let Some((id, id_at)) = id_before(buf, category_at, tags.header, ids) else { continue };
+        let Some(category) = u64_at(buf, category_at).map(|v| v as i64).filter(|&c| in_band(c)) else {
             continue;
         };
         let Some(bbox) = finite_box(buf, hit + 8) else { continue };
@@ -421,11 +431,7 @@ pub(crate) fn types_32(buf: &[u8], tags: &Tags, ids: &[u32], partition: u32, kee
     let marker = tags.marker();
     for hit in memchr::memmem::find_iter(buf, &marker[2..]) {
         let Some(category_at) = hit.checked_sub(CATEGORY_BEFORE_MARKER) else { continue };
-        let Some(id_at) = category_at.checked_sub(14) else { continue };
-        let Some(id) = u32_at(buf, id_at).filter(|&id| declared(ids, id)) else { continue };
-        if u16_at(buf, id_at + HEADER_TAG_AFTER_ID) != Some(tags.header) {
-            continue;
-        }
+        let Some((id, _)) = id_before(buf, category_at, tags.header, ids) else { continue };
         let Some(category) = u64_at(buf, category_at).map(|v| v as i64).filter(|&c| in_band(c)) else { continue };
         let container = u32_at(buf, category_at + 16);
         let Some(kind) = u32_at(buf, category_at + 24) else { continue };
