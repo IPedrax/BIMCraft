@@ -6,8 +6,12 @@ A family (`Model::families`, `family.rs`) is parameters, types that set them and
 component's angle, y to its left, z up from its base; a form is a profile in a sketch plane (`xy` swept up, `xz` along y,
 `yz` along x), its sizes numbers or formulas, or triangles as a file brings them. A component places a type;
 `Model::component_pieces` are its forms where it stands. Plans draw them from above, a form's edges hidden under a higher
-form of the same component; sections show them beyond their line and never cut them (a `Solid::Mesh` is cut only where its `cut`
-says, as a round run's tube is); the
+form of the same component. A section cuts the forms of a family whose category is built into the building (`Category::cut`:
+door, window, casework, generic, equipment, rack, pipe fittings and accessories), poché in their own shape where its plane passes
+through them (`view3d::slice`: each triangle crossed, the crossings joined by place into loops, since `csg` leaves an edge split on
+one side and not the other, and a loop inside another a hole); furniture, fixtures, devices and light fittings it shows beyond
+the line and never cuts, as Revit does. The section's work holds no component's triangles: it makes those of a component it
+cuts when the line's plane crosses its box, as it does a round run's. The
 3D view takes a form's triangles that share an edge and turn under 20° there as one curved surface, so a curve draws no
 edge between its facets (`view3d::facets`) and shades smoothly across them, each corner lit by the angle-weighted mean of
 its own surface's normals there, so a crease keeps its step (`corner_normals`); IFC writes each form as a closed face set,
@@ -22,7 +26,7 @@ the opening's axes (x along the wall from the middle of the opening, y across it
 exterior, z up from the sill) and its formulas read `Wall Thickness`; its `symbols` also draw in plan (a door's swing). Its `connectors` say what an electrical device draws ([structure and MEP](structure-and-mep.md)); a family file keeps them. An
 `Opening` holds a `family`, or none (one of the project's own types): `Model::opening_dims` gives its size either way
 (`opening_type` returns it by value), its flips are mirrors (`opening_local`), and `Element::family()` is the one way to ask what
-family a component or an opening is of. Sections show a family opening's forms beyond their line and never cut them.
+family a component or an opening is of. A section cuts a family opening's forms where its line passes through them.
 How a door or a window opens is its family's `operation` (`model::Operation`: swing, double-swing, sliding, double-sliding,
 folding, fixed), or for one of the project's own types the type's (`OpeningType::operation`); none, a door swings. IFC writes
 it as the door's `OperationType` (`Operation::ifc_door`, its side from `flip_hand`: `SLIDING_TO_RIGHT`) and a window's

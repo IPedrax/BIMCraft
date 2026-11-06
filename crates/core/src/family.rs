@@ -86,6 +86,23 @@ impl Category {
         Category::Rack,
     ];
 
+    /// Whether a section cuts a family of it, poché where its plane passes through a form: what is built into the
+    /// building (a door, a window, casework, equipment, a generic model) is; what stands in a room or on a wall (furniture,
+    /// fixtures, devices, light fittings) is shown beyond the line and never cut.
+    pub fn cut(self) -> bool {
+        matches!(
+            self,
+            Category::Door
+                | Category::Window
+                | Category::Casework
+                | Category::Generic
+                | Category::Equipment
+                | Category::Rack
+                | Category::PipeFitting
+                | Category::PipeAccessory
+        )
+    }
+
     /// How IFC writes a component of it: the product's class, its predefined type, and the object type a proxy carries where
     /// the class has no home for it (IFC4 has no lightning protection).
     pub fn ifc(self) -> (&'static str, &'static str, Option<&'static str>) {

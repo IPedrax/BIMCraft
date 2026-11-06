@@ -409,7 +409,7 @@ impl Solid {
             }
             Solid::Slab { face, .. } => crossings(&plan(face), p, u),
             Solid::Prism { ring, .. } => crossings(ring, p, u),
-            // Shown beyond a section's line, as Revit shows furniture, and never cut.
+            // Not as stretches of the line: one a section cuts, `cuts` slices; one it doesn't is shown beyond it.
             Solid::Mesh { .. } => Vec::new(),
         }
     }
@@ -418,6 +418,12 @@ impl Solid {
     /// line, level or along a sloped face; a convex mesh that `cut` allows is cut by the plane through the line, where its
     /// edges cross it (a tube across is its ring, an ellipse if it is oblique).
     pub(crate) fn cuts(&self, p: P2, u: P2, len: f64) -> Vec<Vec<P2>> {
+        // A closed mesh, cut where it is: a form that isn't convex (a frame, a chair) as it is, a hole in it a hole.
+        if let Solid::Mesh { tris, cut: true, .. } = self
+            && let Some(rings) = slice(tris, p, u, len)
+        {
+            return rings;
+        }
         if let Solid::Mesh { tris, cut: true, .. } = self {
             let side = |q: P3| (P2(q[0], q[1]) - p).dot(u.perp());
             let at = |q: P3| P2((P2(q[0], q[1]) - p).dot(u), q[2]);
@@ -487,6 +493,109 @@ impl Solid {
             }
         }
     }
+}
+
+/// Where the upright plane through the line from `p` along unit `u` cuts closed mesh `tris`, `len` along it, as rings of
+/// (along, up) in mm, each counter-clockwise: each loop the plane cuts the mesh's skin in, those inside one taken out of it
+/// (a frame cut across its face is a ring round its opening). None where no loop closes, which only an open mesh
+/// leaves: the caller then falls back on its hull.
+pub(crate) fn slice(tris: &[[P3; 3]], p: P2, u: P2, len: f64) -> Option<Vec<Vec<P2>>> {
+    // On the plane counts as in front of it, so a corner on it doesn't leave the loop through it twice.
+    let side = |q: &P3| (P2(q[0], q[1]) - p).dot(u.perp());
+    let at = |q: &P3| P2((P2(q[0], q[1]) - p).dot(u), q[2]);
+    // Each point a crossing makes, by its place: a mesh whose edge is split on one side and not the other (as `csg` leaves
+    // them) crosses the plane at the same place on both, so places, not edges, join the pieces into loops.
+    const NEAR: f64 = 1e-3;
+    let cell = |q: P2| ((q.0 / NEAR).floor() as i64, (q.1 / NEAR).floor() as i64);
+    let mut points: Vec<P2> = Vec::new();
+    let mut grid: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    let mut point = |q: P2| -> usize {
+        let (cx, cy) = cell(q);
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                if let Some(&i) = grid.get(&(cx + dx, cy + dy)).and_then(|v| v.iter().find(|&&i| points[i].dist(q) < NEAR)) {
+                    return i;
+                }
+            }
+        }
+        points.push(q);
+        grid.entry((cx, cy)).or_default().push(points.len() - 1);
+        points.len() - 1
+    };
+    let mut segments: Vec<(usize, usize)> = Vec::new();
+    for tri in tris {
+        let s = tri.map(|q| side(&q));
+        let crossed: Vec<usize> = (0..3)
+            .filter_map(|i| {
+                let (a, b, sa, sb) = (tri[i], tri[(i + 1) % 3], s[i], s[(i + 1) % 3]);
+                ((sa >= 0.0) != (sb >= 0.0)).then(|| point(at(&a) + (at(&b) - at(&a)) * (sa / (sa - sb))))
+            })
+            .collect();
+        if let [x, y] = crossed.as_slice()
+            && x != y
+        {
+            segments.push((*x, *y));
+        }
+    }
+    if segments.is_empty() {
+        return Some(Vec::new());
+    }
+    // Each loop, walked from a piece not yet taken along those not yet taken; a walk that comes to an end before it comes
+    // back is a hole in the skin, and left out.
+    let mut by_point: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (k, (a, b)) in segments.iter().enumerate() {
+        by_point.entry(*a).or_default().push(k);
+        by_point.entry(*b).or_default().push(k);
+    }
+    let mut taken = vec![false; segments.len()];
+    let mut loops: Vec<Vec<P2>> = Vec::new();
+    let mut open = false;
+    for first in 0..segments.len() {
+        if taken[first] {
+            continue;
+        }
+        taken[first] = true;
+        let (from, mut here) = segments[first];
+        let mut ring = vec![points[from]];
+        let closed = loop {
+            if here == from {
+                break true;
+            }
+            ring.push(points[here]);
+            let Some(&k) = by_point.get(&here).and_then(|ks| ks.iter().find(|&&k| !taken[k])) else { break false };
+            taken[k] = true;
+            let (a, b) = segments[k];
+            here = if a == here { b } else { a };
+        };
+        if !closed {
+            open = true;
+            continue;
+        }
+        if ring.len() >= 3 && geom::area(&ring).abs() > 1e-6 {
+            loops.push(if geom::area(&ring) < 0.0 { ring.into_iter().rev().collect() } else { ring });
+        }
+    }
+    if open && loops.is_empty() {
+        return None;
+    }
+    // How many loops hold each: an even count is solid, an odd one a hole in the loop just round it.
+    let depth: Vec<usize> = loops
+        .iter()
+        .enumerate()
+        .map(|(i, r)| loops.iter().enumerate().filter(|(j, o)| *j != i && geom::contains(o, r[0])).count())
+        .collect();
+    let mut out = Vec::new();
+    for (i, outer) in loops.iter().enumerate().filter(|(i, _)| depth[*i].is_multiple_of(2)) {
+        let holes = loops.iter().enumerate().filter(|(j, h)| depth[*j] == depth[i] + 1 && geom::contains(outer, h[0]));
+        let pieces = holes.fold(vec![outer.clone()], |pieces, (_, h)| walls::minus(&pieces, h));
+        for piece in pieces {
+            let piece = geom::clip(&geom::clip(&piece, |q| q.0), |q| len - q.0);
+            if piece.len() >= 3 && geom::area(&piece).abs() > 1e-6 {
+                out.push(piece);
+            }
+        }
+    }
+    Some(out)
 }
 
 /// How far, in degrees, two triangles may turn at the edge they share and still be one surface:
@@ -666,7 +775,7 @@ pub(crate) fn extremes(points: impl Iterator<Item = P3>) -> Vec<P3> {
 
 /// [`solids`] but the components', and each element's [`extremes`] (a component's from
 /// [`crate::component_geometry::Components::extremes`], placed): the points that may be farthest any way. What a section's
-/// frame and cut ask of the model, without the components' triangles (a section never cuts one).
+/// frame and cut ask of the model, without the components' triangles (a section that cuts one makes its pieces then).
 pub(crate) fn solids_and_extremes(m: &Model) -> Made {
     solids_and_extremes_cancellable(m, &|| false).unwrap_or_default()
 }
@@ -903,6 +1012,7 @@ fn solids_in_with(
             Element::Mass(ms) => out.push(slab(id, MASS, &ms.footprint(), m.span(ms.level, ms.base_offset, ms.top_level, ms.height))),
             // Each form in its material's colour; a curved one's facets one surface, as a curved wall's are.
             Element::Component(c) => {
+                let cut = m.families.get(&c.family).is_some_and(|f| f.category.cut());
                 for piece in components.pieces(c) {
                     let color = m.materials.get(&piece.material).map_or(COMPONENT, |x| Rgb(x.color[0], x.color[1], x.color[2]));
                     out.push(Solid::Mesh {
@@ -912,7 +1022,7 @@ fn solids_in_with(
                         tris: piece.tris,
                         caps: piece.caps,
                         round: piece.round,
-                        cut: false,
+                        cut,
                     });
                 }
             }
@@ -972,8 +1082,7 @@ fn solids_in_with(
                     slabs(&mut out, m, id, ROOF, face, rise);
                 }
             }
-            // Of a family: each form in its material's colour, shown beyond a section's line and never cut, as a
-            // component's are. Else a door's leaf or a window's glass: a 50 mm panel in the middle of the wall, square to it.
+            // Of a family: each form in its material's colour, cut where a section's line passes through it. Else a door's leaf or a window's glass: a 50 mm panel in the middle of the wall, square to it.
             Element::Door(o) | Element::Window(o) => {
                 if o.family.is_some() {
                     let fallback = if matches!(e, Element::Door(_)) { DOOR } else { GLASS };
@@ -986,7 +1095,7 @@ fn solids_in_with(
                             tris: piece.tris,
                             caps: piece.caps,
                             round: piece.round,
-                            cut: false,
+                            cut: true,
                         });
                     }
                 } else if let (Some(t), Some(w)) = (m.opening_type(e), m.wall(o.host)) {

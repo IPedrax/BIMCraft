@@ -2060,13 +2060,20 @@ fn section_base_cancellable(
             if bar { dots.push((s.owner(), ring)) } else { cuts.entry(s.owner()).or_default().push(ring) }
         }
     }
-    // The round runs not made yet: only those whose boxes the line's plane crosses.
+    // The round runs not made yet, and the components a section cuts (the work holds none of theirs): only those whose
+    // boxes the line's plane crosses.
     let mut lazy = crate::component_geometry::Components::new(m);
+    let cut_component = |e: &Element| match e {
+        Element::Component(c) => m.families.get(&c.family).is_some_and(|f| f.category.cut()),
+        _ => false,
+    };
     for (at, (id, _)) in work.placed.iter().enumerate() {
-        if work.cell(at).is_none() || !look.shows(*id) {
+        if !look.shows(*id) {
             continue;
         }
-        let Some(e) = m.elements.get(*id).filter(|e| e.run().is_some()) else { continue };
+        let Some(e) = m.elements.get(*id).filter(|e| (e.run().is_some() && work.cell(at).is_some()) || cut_component(e)) else {
+            continue;
+        };
         if cfg!(not(test)) && one_side(*id) {
             continue;
         }
