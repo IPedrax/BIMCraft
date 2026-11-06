@@ -74,6 +74,7 @@ pub const MODEL: [&str; 46] = [
     "ramp",
     "railing",
     "roof",
+    "site",
 ];
 /// What every family component is, named as a whole: an override, a view filter, a view template or a schedule that names
 /// `component` means every one of [`COMPONENTS`], as it did when they were one row. It is no row of Visibility/Graphics or
@@ -131,6 +132,10 @@ pub const SUBCATEGORIES: &[Sub] = &[
     // of the project's own type's swing.
     Sub { key: "dooropening", parent: "door", name: ui_msg!("Opening"), off: false },
     Sub { key: "windowopening", parent: "window", name: ui_msg!("Opening"), off: false },
+    // The three origins, as Revit's Site has them: hidden unless a view shows them.
+    Sub { key: "internalorigin", parent: "site", name: ui_msg!("Internal Origin"), off: true },
+    Sub { key: "projectbasepoint", parent: "site", name: ui_msg!("Project Base Point"), off: true },
+    Sub { key: "surveypoint", parent: "site", name: ui_msg!("Survey Point"), off: true },
 ];
 
 /// The subcategory `key` is, if it is one.

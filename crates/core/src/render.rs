@@ -246,6 +246,8 @@ pub struct Drawing {
     /// How much of what the view cuts it draws.
     detail: Detail,
     pattern_styles: std::collections::BTreeMap<Id, [crate::graphics::Style; 2]>,
+    /// What a pick takes before anything under it: Site's points, which stand on walls' corners and the like.
+    pub(crate) on_top: Vec<Id>,
 }
 
 impl Drawing {
@@ -268,6 +270,7 @@ impl Drawing {
             paper: 1.0,
             detail: Detail::Fine,
             pattern_styles: std::collections::BTreeMap::new(),
+            on_top: Vec::new(),
         }
     }
     /// Finish the model layer before view-specific regions and annotation are drawn.
@@ -580,7 +583,8 @@ impl Drawing {
             }
         }
         let mut found: Vec<(Id, (f64, usize))> = near.into_iter().collect();
-        found.sort_by(|a, b| a.1.0.total_cmp(&b.1.0).then(b.1.1.cmp(&a.1.1)));
+        let top = |id: &Id| !self.on_top.contains(id);
+        found.sort_by(|a, b| top(&a.0).cmp(&top(&b.0)).then(a.1.0.total_cmp(&b.1.0)).then(b.1.1.cmp(&a.1.1)));
         found.into_iter().map(|(id, _)| id).collect()
     }
 
@@ -2183,6 +2187,7 @@ impl SectionOverlay {
             paper: b.paper,
             detail: b.detail,
             pattern_styles: b.pattern_styles.clone(),
+            on_top: b.on_top.clone(),
         };
         if let Some(image) = picture {
             d.picture(m, self.id, image);
@@ -2823,6 +2828,10 @@ fn section_finish_cancellable(m: &Model, id: Id, mut d: Drawing, cancelled: &(dy
             _ => {}
         }
     }
+    // Site's three points, where the view's graphics show them: along the line from its start, and up.
+    let graphics = crate::graphics::graphics_of(m, id).map_or_else(Default::default, |g| g.resolved(m).into_owned());
+    let u = (v.end - v.start).unit();
+    origin_marks(&mut d, m, |c| !graphics.hides(c), |q: [f64; 3]| Some(P2((P2(q[0], q[1]) - v.start).dot(u), q[2])));
     d.owner = None;
     d.by_category(|o, sub| style_of(m, o, sub));
     look.dress(&mut d);
@@ -3370,7 +3379,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         }
     }
     d.part(Part::Projection);
-    // Rooms > Reference: off unless the view shows it.
+    // Rooms > Reference and Site's three origins: off unless the view shows them.
     let reference = !graphics.hides("roomreference");
     // Bars seen from above that lie where another was drawn (a column's stirrups, up its height) are drawn once.
     let mut bars_seen: std::collections::HashSet<Vec<(i64, i64)>> = std::collections::HashSet::new();
@@ -3530,6 +3539,8 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             filled_region(&mut d, m, r);
         }
     }
+    // Site's three origins, where the view shows them.
+    origin_marks(&mut d, m, |c| !graphics.hides(c), |q: [f64; 3]| Some(P2(q[0], q[1])).filter(|p| inside(*p)));
     // Annotation last, over the model; sections and elevations show on every plan. A floor plan's
     // annotation is its own.
     for (&id, e) in all().filter(|(id, _)| shown(**id)) {
@@ -5252,6 +5263,70 @@ fn grid(d: &mut Drawing, start: P2, end: P2, name: &str) {
         d.text(name, c, 10.0, GRID);
         d.grow(from, (x, y));
     }
+}
+
+/// Site's three origins where `shows` says a view shows them, and `inside` its crop: the Internal Origin as two arrows along
+/// the project's x and y, the Project Base Point as a circle with a cross in it, the Survey Point as a circle with a
+/// triangle in it, as Revit draws them. Annotation-sized, and no element's, so never picked.
+pub(crate) fn origin_marks(d: &mut Drawing, m: &Model, shows: impl Fn(&str) -> bool, to: impl Fn([f64; 3]) -> Option<P2>) {
+    const R: f32 = 9.0;
+    const BLUE: Rgb = Rgb(40, 80, 170);
+    let ring = |c: (f32, f32)| -> Vec<(f32, f32)> {
+        (0..40)
+            .map(|i| {
+                let t = f64::from(i) * PI / 20.0;
+                (c.0 + R * t.cos() as f32, c.1 + R * t.sin() as f32)
+            })
+            .collect()
+    };
+    let co = &m.coordinates;
+    use crate::coordinates::Point;
+    d.owner = Point::Internal.id(m);
+    if shows("internalorigin")
+        && let Some(at) = to([0.0; 3])
+    {
+        let (x, y) = d.view.px(at);
+        let from = d.prims.len();
+        for (ink, (dx, dy)) in [(Rgb(200, 40, 40), (1.0, 0.0)), (Rgb(30, 150, 60), (0.0, -1.0))] {
+            let tip = (x + dx * 24.0, y + dy * 24.0);
+            d.stroke(vec![(x, y), tip], Pen::PROJECTION, ink, None, false);
+            let (px, py) = (-dy, dx);
+            let head = vec![
+                (tip.0 - dx * 6.0 + px * 3.5, tip.1 - dy * 6.0 + py * 3.5),
+                tip,
+                (tip.0 - dx * 6.0 - px * 3.5, tip.1 - dy * 6.0 - py * 3.5),
+            ];
+            d.stroke(head, Pen::PROJECTION, ink, None, false);
+        }
+        d.grow(from, (x, y));
+        d.on_top.extend(d.owner);
+    }
+    d.owner = Point::Base.id(m);
+    if shows("projectbasepoint")
+        && let Some(at) = to(co.base)
+    {
+        let c = d.view.px(at);
+        let from = d.prims.len();
+        d.stroke(ring(c), Pen::PROJECTION, BLUE, None, true);
+        let k = R * std::f32::consts::FRAC_1_SQRT_2;
+        d.stroke(vec![(c.0 - k, c.1 - k), (c.0 + k, c.1 + k)], Pen::PROJECTION, BLUE, None, false);
+        d.stroke(vec![(c.0 - k, c.1 + k), (c.0 + k, c.1 - k)], Pen::PROJECTION, BLUE, None, false);
+        d.grow(from, c);
+        d.on_top.extend(d.owner);
+    }
+    d.owner = Point::Survey.id(m);
+    if shows("surveypoint")
+        && let Some(at) = to(co.survey)
+    {
+        let c = d.view.px(at);
+        let from = d.prims.len();
+        d.stroke(ring(c), Pen::PROJECTION, BLUE, None, true);
+        let h = R * 0.8;
+        d.stroke(vec![(c.0, c.1 - h), (c.0 + h * 0.87, c.1 + h * 0.5), (c.0 - h * 0.87, c.1 + h * 0.5)], Pen::PROJECTION, BLUE, None, true);
+        d.grow(from, c);
+        d.on_top.extend(d.owner);
+    }
+    d.owner = None;
 }
 
 /// A camera's symbol in plan, at its eye: a little body pointing the way it looks, a line to what it looks at, and its name

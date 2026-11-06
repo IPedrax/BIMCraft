@@ -9370,6 +9370,24 @@ fn location(s: &mut Session, p: &Value) -> R {
     Ok(json!({"name": name, "location": g.location(survey), "georeference": g, "active": active, "id": id, "guid": guid}))
 }
 
+/// The `coordinates` report, with each location's and each point's id and GUID, as the library holds them.
+fn coordinates_report(m: &Model) -> Value {
+    use crate::coordinates::{BASE_POINT, INTERNAL_ORIGIN, SURVEY_POINT};
+    let mut r = m.coordinates.report();
+    let ids = |kind: &LibKind, name: &str| (m.library.id(kind, name), m.library.guid(kind, name));
+    for name in m.coordinates.locations.keys() {
+        let (id, guid) = ids(&LibKind::Location, name);
+        r["locations"][name]["id"] = json!(id);
+        r["locations"][name]["guid"] = json!(guid);
+    }
+    for (key, name) in [("internal_origin", INTERNAL_ORIGIN), ("base", BASE_POINT), ("survey", SURVEY_POINT)] {
+        let (id, guid) = ids(&LibKind::CoordinatePoint, name);
+        r[key]["id"] = json!(id);
+        r[key]["guid"] = json!(guid);
+    }
+    r
+}
+
 fn rotate_project_north(s: &mut Session, p: &Value) -> R {
     let c = "rotate_project_north";
     only(c, p, &["angle", "true_north", "about"])?;

@@ -72,6 +72,15 @@ impl Point {
         }
     }
 
+    /// Its subcategory of Site, in Visibility/Graphics.
+    pub fn subcategory(self) -> &'static str {
+        match self {
+            Point::Internal => "internalorigin",
+            Point::Base => "projectbasepoint",
+            Point::Survey => "surveypoint",
+        }
+    }
+
     /// Where it is, internal mm.
     pub fn at(self, co: &Coordinates) -> P3 {
         match self {
