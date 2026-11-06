@@ -1012,7 +1012,7 @@ pub static ALL: &[Command] = &[
          ifc?: {class, predefined?, object_type?} | null (the IFC class a generic family's components go out as, which one \
          opened from IFC remembers: `IFCPLATE`, `CURTAIN_PANEL`; one IFC4 lacks goes out as a proxy that names it), \
          connectors?: [{kind: power|switch, system: power-balanced|power-unbalanced|switch, poles?: 1-3, voltage?, load_va?, \
-         power_factor?, classification?}], rename?, delete?: true, dry_run?, path?, save?} a family of \
+         power_factor?, classification?}], rename?, delete?: true, dry_run?, path?, save?, overwrite?: no|version|version_and_values} a family of \
          the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .json file at `path` (a \
          family as `inspect` shows it, with its `name`). Without `name` it lists the project's families, each its category and \
          how many types, forms and symbols it has; with only a `name` it reads one — its definition, each of its types' \
@@ -1023,7 +1023,10 @@ pub static ALL: &[Command] = &[
          a field away; its place, its id and its GUID stay), `delete_form` takes those forms away; `symbol` and `delete_symbol` \
          do the same for symbols — where `forms` and `symbols` still replace whole lists. Every reply carries `warnings`: what's \
          worth knowing and doesn't stop the change (a void cutting no solid, a form outside the opening or thicker than its \
-         wall, a door's or window's plan with no symbols). Its forms are profiles drawn in its own axes (x along a component's \
+         wall, a door's or window's plan with no symbols). On `path`, `overwrite` chooses `no` (keep the project family), \
+         `version` (replace its definition, keeping compatible project values), or `version_and_values` (also use incoming \
+         values). Omitted: legacy merge. Explicit reloads retain project-only types and instance overrides; formulas come \
+         from the file. Its forms are profiles drawn in its own axes (x along a component's \
          angle, y to its left, z up from its base) and swept: `xy` up from `from` to `to`, `xz` along y, `yz` along x. With an \
          `axis`, a line in that plane, the profile is turned about it instead, `from` to `to` degrees (up to 360, right-handed \
          from the axis' first point toward its second; it can't cross the axis): a pipe, a bowl, a lamp shade. A `void` is no \
@@ -10085,12 +10088,62 @@ struct Patches {
     symbols_deleted: Vec<Id>,
 }
 
+/// Explicit reloads retain part identities and project-only types. Instance overrides stay on their elements.
+fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Family, keep_values: bool) -> crate::family::Family {
+    let compatible = |p: &crate::family::Parameter| {
+        old.parameters
+            .iter()
+            .find(|q| q.name == p.name && q.kind == p.kind && q.instance == p.instance && q.formula.is_none() && p.formula.is_none())
+    };
+    // Keep incoming defaults on new types before replacing the family's defaults.
+    if keep_values {
+        for (name, values) in &mut incoming.types {
+            if !old.types.contains_key(name) {
+                for p in incoming.parameters.iter().filter(|p| !p.instance && p.formula.is_none()) {
+                    values.entry(p.name.clone()).or_insert_with(|| p.value.clone());
+                }
+            }
+        }
+    }
+    for (name, values) in &old.types {
+        let only_in_project = !incoming.types.contains_key(name);
+        let target = incoming.types.entry(name.clone()).or_default();
+        if keep_values || only_in_project {
+            for p in incoming.parameters.iter().filter(|p| !p.instance) {
+                if let Some(q) = compatible(p) {
+                    target.insert(p.name.clone(), values.get(&p.name).unwrap_or(&q.value).clone());
+                }
+            }
+        }
+    }
+    if keep_values {
+        for p in &mut incoming.parameters {
+            if let Some(q) = compatible(p) {
+                p.value.clone_from(&q.value);
+            }
+        }
+    }
+    let mut old = old.clone();
+    crate::library::keep_parts(&mut old.forms, &mut incoming.forms);
+    crate::library::keep_parts(&mut old.symbols, &mut incoming.symbols);
+    crate::library::keep_parts(&mut old.connectors, &mut incoming.connectors);
+    incoming
+}
+
 /// A project's families: read one (`family {name}` alone costs no undo step), change one, make one
 /// or take one away. The whole change is worked out and checked before the model is touched, so
 /// reading and `dry_run` leave the project as they found it, and a family [`Model::check`] would
 /// refuse is never put in it: every error it has comes back at once, its warnings with them.
 fn family(s: &mut Session, p: &Value) -> R {
     let c = "family";
+    let overwrite = match p.get("overwrite") {
+        None => None,
+        Some(Value::String(v)) if matches!(v.as_str(), "no" | "version" | "version_and_values") => Some(v.clone()),
+        Some(_) => return Err(bad(c, "`overwrite` must be no, version, or version_and_values")),
+    };
+    if overwrite.is_some() && string(c, p, "path")?.is_none() {
+        return Err(bad(c, "`overwrite` is only for loading a family with `path`"));
+    }
     // From a file: its fields under the name given, else its own, else the file's.
     let mut p = p.clone();
     if let Some(path) = string(c, &p, "path")? {
@@ -10112,6 +10165,27 @@ fn family(s: &mut Session, p: &Value) -> R {
                 .into_iter()
                 .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
                 .collect();
+        if let Some(policy) = &overwrite {
+            let name =
+                name.as_str().map(str::trim).filter(|n| !n.is_empty()).ok_or_else(|| bad(c, "`name` must be a nonempty family name"))?;
+            if let Some(old) = s.model.families.get(name) {
+                let incoming =
+                    if policy == "no" { old.clone() } else { serde_json::from_value(Value::Object(family)).map_err(|e| bad(c, e))? };
+                if policy == "no" || incoming == *old {
+                    let (_, warnings) = old.problems(&|m| s.model.materials.contains_key(m));
+                    let mut reply = family_reply(name, old, &warnings);
+                    reply["overwritten"] = json!(false);
+                    if flag(c, &p, "dry_run")? {
+                        reply["dry_run"] = json!(true);
+                        reply["ok"] = json!(true);
+                        reply["changes"] = family_changes(Some(old), old, &Patches::default(), None);
+                    }
+                    return Ok(reply);
+                }
+                let reloaded = family_reload(incoming, old, policy == "version");
+                family = serde_json::from_value(serde_json::to_value(reloaded).map_err(|e| bad(c, e))?).map_err(|e| bad(c, e))?;
+            }
+        }
         family.insert("name".into(), name);
         // `dry_run` is the caller's, not the file's: a dry run of a file loads nothing.
         if let Some(dry) = p.get("dry_run") {
@@ -10199,7 +10273,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         return Ok(reply);
     }
     let was = s.model.families.get(&name).cloned();
-    let mut f = was.clone().unwrap_or_default();
+    let mut f = if overwrite.is_some() { Default::default() } else { was.clone().unwrap_or_default() };
     let field = |key: &str, e: serde_json::Error| bad(c, format!("`{key}`: {e}"));
     let mut patches = Patches::default();
     if let Some(v) = p.get("category").filter(|v| !v.is_null()) {
@@ -10303,6 +10377,12 @@ fn family(s: &mut Session, p: &Value) -> R {
         return Err(said.join("\n"));
     }
     if dry {
+        if overwrite.is_some() {
+            let mut preview = (*s.model).clone();
+            preview.families.insert(to.clone(), f.clone());
+            preview.sync_library();
+            preview.check().map_err(|e| bad(c, e))?;
+        }
         let mut reply = family_reply(&to, &f, &warnings);
         reply["dry_run"] = json!(true);
         reply["ok"] = json!(true);

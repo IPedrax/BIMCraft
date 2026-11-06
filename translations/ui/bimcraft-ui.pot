@@ -460,7 +460,7 @@ msgstr ""
 msgid "Air Terminals"
 msgstr ""
 
-#: crates/core/src/commands.rs:1111
+#: crates/core/src/commands.rs:1114
 #: crates/ui-egui/src/editor.rs:915
 #: crates/ui-egui/src/lib.rs:349
 #: crates/ui-egui/src/sketch.rs:709
@@ -1080,7 +1080,7 @@ msgstr ""
 msgid "Came in: {}"
 msgstr ""
 
-#: crates/core/src/commands.rs:1673
+#: crates/core/src/commands.rs:1676
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3848
 #: crates/ui-egui/src/properties.rs:265
@@ -1916,7 +1916,7 @@ msgstr ""
 msgid "Comparison"
 msgstr ""
 
-#: crates/core/src/commands.rs:1073
+#: crates/core/src/commands.rs:1076
 msgid "Component"
 msgstr ""
 
@@ -2021,7 +2021,7 @@ msgstr ""
 msgid "Copper"
 msgstr ""
 
-#: crates/core/src/commands.rs:1141
+#: crates/core/src/commands.rs:1144
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4568
 #: crates/ui-egui/src/lib.rs:4618
@@ -2414,7 +2414,7 @@ msgstr ""
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9573
 msgid "Dependent"
 msgstr ""
 
@@ -2560,7 +2560,7 @@ msgstr ""
 msgid "Dimension Text Placement:"
 msgstr ""
 
-#: crates/core/src/commands.rs:1123
+#: crates/core/src/commands.rs:1126
 msgid "Dimension Value"
 msgstr ""
 
@@ -2919,7 +2919,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:2039
+#: crates/core/src/commands.rs:2042
 msgid "Elements"
 msgstr ""
 
@@ -3194,7 +3194,7 @@ msgstr ""
 msgid "Filled region"
 msgstr ""
 
-#: crates/core/src/commands.rs:1210
+#: crates/core/src/commands.rs:1213
 msgid "Fillet Arc"
 msgstr ""
 
@@ -4573,7 +4573,7 @@ msgstr ""
 msgid "Massing"
 msgstr ""
 
-#: crates/core/src/commands.rs:1103
+#: crates/core/src/commands.rs:1106
 msgid "Match Properties"
 msgstr ""
 
@@ -4634,7 +4634,7 @@ msgstr ""
 msgid "Maximum Riser Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:1783
+#: crates/core/src/commands.rs:1786
 msgid "Measure"
 msgstr ""
 
@@ -4788,7 +4788,7 @@ msgstr ""
 msgid "Mounting Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:1133
+#: crates/core/src/commands.rs:1136
 msgid "Move"
 msgstr ""
 
@@ -6724,7 +6724,7 @@ msgstr ""
 msgid "Rose"
 msgstr ""
 
-#: crates/core/src/commands.rs:1148
+#: crates/core/src/commands.rs:1151
 msgid "Rotate"
 msgstr ""
 
@@ -6836,7 +6836,7 @@ msgstr ""
 msgid "Scan"
 msgstr ""
 
-#: crates/core/src/commands.rs:1578
+#: crates/core/src/commands.rs:1581
 msgid "Schedule"
 msgstr ""
 
@@ -7457,7 +7457,7 @@ msgstr ""
 msgid "Spline: click its control points; Enter finishes it"
 msgstr ""
 
-#: crates/core/src/commands.rs:1190
+#: crates/core/src/commands.rs:1193
 msgid "Split"
 msgstr ""
 
@@ -8347,7 +8347,7 @@ msgstr ""
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr ""
 
-#: crates/core/src/commands.rs:1164
+#: crates/core/src/commands.rs:1167
 #: crates/ui-egui/src/sketch.rs:712
 #: crates/ui-egui/src/sketch.rs:964
 msgid "Trim/Extend to Corner"
@@ -8531,7 +8531,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9714
 msgid "Unnamed"
 msgstr ""
 
