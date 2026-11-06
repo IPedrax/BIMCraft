@@ -17,6 +17,7 @@ mod canvas;
 mod clouds;
 mod context;
 pub mod control;
+mod coordinates;
 mod dialog;
 mod dimtypes;
 mod display;
@@ -749,6 +750,8 @@ pub struct BimApp {
     standards_dialog: Option<standards::StandardsDialog>,
     /// Manage > Electrical Settings, while open.
     electrical_dialog: Option<electrical::ElectricalDialog>,
+    /// Manage > Coordinates, while it is open.
+    coordinates_dialog: Option<coordinates::CoordinatesDialog>,
     options_dialog: Option<phasing::OptionsDialog>,
     purge_dialog: Option<purge::PurgeDialog>,
     /// Manage > Select by ID and IDs of Selection, while open.
@@ -1305,6 +1308,7 @@ impl BimApp {
             mode_width: 0.0,
             standards_dialog: None,
             electrical_dialog: None,
+            coordinates_dialog: None,
             options_dialog: None,
             purge_dialog: None,
             select_by_id: None,
@@ -1796,6 +1800,7 @@ impl BimApp {
             || self.reinforce_dialog.is_some()
             || self.line_weights_dialog.is_some()
             || self.electrical_dialog.is_some()
+            || self.coordinates_dialog.is_some()
             || self.object_styles_dialog.is_some()
             || self.line_styles_dialog.is_some()
             || self.fill_patterns_dialog.as_ref().is_some_and(|d| d.picking.is_none())
@@ -4065,6 +4070,38 @@ impl BimApp {
                 }
             });
         });
+        panel(ui, msg!("Project Location"), |ui| {
+            let tip = msg!(
+                "Coordinates: where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, and conversions"
+            );
+            if big_button(ui, Icon::Coordinates, "Coordinates", self.coordinates_dialog.is_some(), tip).clicked() {
+                self.coordinates_dialog = Some(coordinates::CoordinatesDialog::new(&self.session.model));
+            }
+            let angle = self.session.model.coordinates.location().angle;
+            let tip = msg!("Rotate Project North: turn the model and its project north, keeping it where it is in the world");
+            let r = big_button(ui, Icon::ProjectNorth, "Rotate Project North", false, tip);
+            ribbon::choices(ui, &r, false, |ui| {
+                ui.set_width(260.0);
+                let align = tf("Align with True North ({}°)", &[&format!("{angle:.3}")]);
+                if ui.add_enabled(angle.abs() > 1e-9, egui::Button::new(align)).clicked() {
+                    self.rotate_project_north(None);
+                    ui.close();
+                }
+                ui.separator();
+                let id = egui::Id::new("rotate-project-north-angle");
+                let mut by = ui.data(|d| d.get_temp::<f64>(id)).unwrap_or(90.0);
+                ui.horizontal(|ui| {
+                    let l = ui.label(t("By"));
+                    ui.add(egui::DragValue::new(&mut by).range(-360.0..=360.0).speed(0.5).suffix("°")).labelled_by(l.id);
+                    if ui.add_enabled(by != 0.0, egui::Button::new(t("Rotate"))).clicked() {
+                        self.rotate_project_north(Some(by));
+                        ui.close();
+                    }
+                });
+                ui.data_mut(|d| d.insert_temp(id, by));
+                ui.label(egui::RichText::new(t("Counter-clockwise, about the Project Base Point")).color(style::pal().muted).size(11.0));
+            });
+        });
         panel(ui, msg!("Links"), |ui| {
             let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";
             if big_button(ui, Icon::Link, "Link Model", false, tip).clicked() {
@@ -5096,6 +5133,7 @@ impl BimApp {
         self.dimension_text_window(ctx);
         self.standards_window(ctx);
         self.electrical_window(ctx);
+        self.coordinates_window(ctx);
         self.options_window(ctx);
         self.purge_window(ctx);
         if std::mem::take(&mut self.link_dialog) {

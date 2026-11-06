@@ -120,6 +120,35 @@ location's angle goes back by as much (wrapped to -180..180), and a link placed 
 moves in the world, only the project's axes. Levels, sheets, schedules, 3D views and links by shared coordinates stay (the
 last follow the locations). Plan crops stay as they are.
 
+## The desktop: Manage > Project Location
+
+`crates/ui-egui/src/coordinates.rs`. The panel has **Coordinates**, which opens the window, and **Rotate Project North**,
+whose list has Align with True North (the active angle, in its name) and a turn by an angle typed.
+
+The window is designed to answer "where is this building?" at a glance, and to remove Revit's traps:
+
+- **The summary**, always in sight above the tabs: a dial with project north straight up and true north as the accent's
+  arrow at the active angle; the active location, switched in place; the Survey Point's shared East, North and Elevation in
+  large monospace figures in the map's own unit; the angle; the map system as a chip (`EPSG:31983`) with its name; and,
+  with one, the latitude and longitude.
+- **Locations**: every location in a striped table, typed into (Revit's can only be made by moving things): an Active
+  radio, the name, East, North and Elevation in the grid's unit, the angle and the scale. Add Location copies the active
+  one. Delete is off for the active one and for the last one. **Shift every location** adds the same amounts to all of
+  them, the "+5 m from the survey" case.
+- **Points**: the Internal Origin, the Project Base Point and the Survey Point. Each shows its internal X, Y and Z, typed in
+  the project's units, and its shared coordinates beside them, worked out live. Revit's two ways of moving the Survey Point
+  (clipped and unclipped) are two named choices, each saying what it does to the building. Under them is **Specify
+  Coordinates at a Point**.
+- **Map System**: the current system as a card (with Clear), and a search of EPSG's projected systems by code or name as
+  you type, as a list of code, name and unit. **Place by latitude and longitude** puts the Survey Point on the globe.
+- **Convert**: a point between the internal, base, shared and WGS84 frames, with Swap and Copy.
+
+It is a draft (`CoordinatesDialog`), worked out with the core's own `Coordinates`, and OK or Apply runs it as one undo step
+named "Coordinates": `crs`, then the location renames (`renames::plan`), then `coordinates` with `move: system` (the draft
+has already worked out what moving the point did to the locations), then each location changed, then `activate`, then the
+deletes. A refusal stays in the window and says why. It looks the same in the three looks: only the theme's tokens
+(`pal()`, `card`). Tests: `crates/ui-egui/src/tests/coordinates.rs`.
+
 ## Commands
 
 - `coordinates`: reports everything (the internal origin and both points, internal and shared, the active location and every
@@ -135,4 +164,5 @@ last follow the locations). Plan crops stay as they are.
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
 
-Not yet (the plan's later stages): plans turned to true north, and the desktop.
+Not yet (the plan's later stages): plans turned to true north, the north arrow and the markers, and the points' grips and
+Properties on the canvas.

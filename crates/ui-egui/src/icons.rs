@@ -97,6 +97,8 @@ icon_names! {
     Theme,
     Text,
     Spot,
+    Coordinates,
+    ProjectNorth,
     SpotSlope,
     ConvertLines,
     Angular,
@@ -879,6 +881,22 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
         Icon::Text => {
             g.line(&[(4.0, 20.0), (12.0, 4.0), (20.0, 20.0)]);
             g.line(&[(7.0, 14.0), (17.0, 14.0)]);
+        }
+        Icon::Coordinates => {
+            // A survey mark: a ring on cross hairs, and the north it reads from at its top.
+            g.circle((12.0, 13.0), 5.5);
+            g.line(&[(12.0, 9.5), (12.0, 21.0)]);
+            g.line(&[(3.0, 13.0), (21.0, 13.0)]);
+            g.closed(&[(12.0, 2.0), (14.5, 6.0), (9.5, 6.0)]);
+        }
+        Icon::ProjectNorth => {
+            // A north arrow, and the turn about it that Rotate Project North makes.
+            g.line(&[(12.0, 21.0), (12.0, 4.0)]);
+            g.line(&[(8.5, 7.5), (12.0, 4.0), (15.5, 7.5)]);
+            g.arc((12.0, 13.0), 7.5, 200.0, 340.0);
+            if !compact {
+                g.line(&[(18.0, 7.0), (19.2, 10.4), (15.8, 10.8)]);
+            }
         }
         Icon::Spot => {
             g.line(&[(3.0, 16.0), (21.0, 16.0)]);

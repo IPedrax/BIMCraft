@@ -928,7 +928,7 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
 fn manage_tab_opens_keyboard_shortcuts_dialog() {
     let mut h = app(BOX);
     press(&mut h, "Manage");
-    press(&mut h, "Shortcuts");
+    from_list(&mut h, "Settings", "Shortcuts");
     assert!(h.state().show_shortcuts);
     assert!(h.query_by_label("Load File...").is_some());
     assert!(h.query_by_label("Add Shortcut").is_some());
@@ -5817,6 +5817,7 @@ mod cad;
 mod chinese;
 mod clouds;
 mod control;
+mod coordinates;
 mod dialog;
 mod dimensions;
 mod dims3d;
