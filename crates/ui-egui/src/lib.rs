@@ -160,6 +160,9 @@ pub enum Tool {
         start: Option<P2>,
         place: bool,
     },
+    /// Specify Coordinates at a Point: the point the shared coordinates typed in the Coordinates window are at, picked in the
+    /// view (snapped) while the window steps aside.
+    SpecifyPoint,
     /// Mirror the selection across a line picked, or with `draw`, a line drawn from `start`.
     Mirror {
         draw: bool,
@@ -1401,7 +1404,8 @@ impl BimApp {
             | Tool::AddSplitLine(_)
             | Tool::SketchLine(_)
             | Tool::SketchPick
-            | Tool::PatternCorner(_) => None,
+            | Tool::PatternCorner(_)
+            | Tool::SpecifyPoint => None,
             Tool::Wall(_) => Some(msg!("Place Wall")),
             Tool::Paint => Some("Paint"),
             Tool::Unpaint => Some("Remove Paint"),
@@ -1808,7 +1812,7 @@ impl BimApp {
             || self.reinforce_dialog.is_some()
             || self.line_weights_dialog.is_some()
             || self.electrical_dialog.is_some()
-            || self.coordinates_dialog.is_some()
+            || self.coordinates_dialog.as_ref().is_some_and(|d| !d.picking())
             || self.object_styles_dialog.is_some()
             || self.line_styles_dialog.is_some()
             || self.fill_patterns_dialog.as_ref().is_some_and(|d| d.picking.is_none())
@@ -1878,6 +1882,17 @@ impl BimApp {
         if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() {
             self.escape();
         }
+        // Enter turns Rotate by the angle typed over the view.
+        if pressed(Modifiers::NONE, Key::Enter)
+            && let Some(angle) = self.typed_angle()
+        {
+            self.typed_length.clear();
+            match self.tool {
+                Tool::Rotate { centre, .. } => self.turn(centre, angle),
+                Tool::RotateNorth { centre, .. } => self.rotate_project_north(Some(angle), Some(centre)),
+                _ => {}
+            }
+        }
         // Enter places a typed length, else builds the wall chain.
         if pressed(Modifiers::NONE, Key::Enter)
             && let Some(level) = self.plan_level()
@@ -1929,8 +1944,9 @@ impl BimApp {
         // one are shortcuts.
         let mut shortcut = String::new();
         for ch in typed.chars() {
-            let listening = self.base().is_some() || self.filleting();
-            if listening && (ch.is_ascii_digit() || ch == '.' || !self.typed_length.is_empty()) {
+            let listening = self.base().is_some() || self.filleting() || self.rotating();
+            let sign = ch == '-' && self.rotating() && self.typed_length.is_empty();
+            if listening && (ch.is_ascii_digit() || ch == '.' || sign || !self.typed_length.is_empty()) {
                 self.typed_length.push(ch);
             } else {
                 shortcut.push(ch);
@@ -2590,6 +2606,17 @@ impl BimApp {
     }
 
     /// The point the tool measures its next one from, while it has one.
+    /// Rotate or Rotate Project North waiting for its angle (not its centre): digits typed over the view are the angle.
+    pub(crate) fn rotating(&self) -> bool {
+        matches!(self.tool, Tool::Rotate { place: false, .. } | Tool::RotateNorth { place: false, .. })
+    }
+
+    /// The angle typed over the view while rotating, degrees counter-clockwise, if it reads as one.
+    pub(crate) fn typed_angle(&self) -> Option<f64> {
+        let t = self.typed_length.trim().trim_end_matches('°');
+        self.rotating().then(|| t.parse::<f64>().ok()).flatten().filter(|a| a.is_finite() && a.abs() <= 360.0)
+    }
+
     fn base(&self) -> Option<P2> {
         match &self.tool {
             Tool::Wall(chain) => chain.last().copied(),
@@ -2624,8 +2651,8 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
-        // Pick in View goes back to its dialog.
-        if self.stop_work_plane_pick() {
+        // Pick in View goes back to its dialog, and so does Specify Coordinates' pick.
+        if self.stop_work_plane_pick() || self.stop_specify_pick() {
             return;
         }
         self.typed.clear();
@@ -4596,6 +4623,11 @@ impl BimApp {
                 }
                 Tool::Rotate { .. } => self.rotate_options(ui),
                 Tool::RotateNorth { .. } => self.rotate_north_options(ui),
+                Tool::SpecifyPoint => {
+                    if ui.button(t("Back to Coordinates")).clicked() {
+                        self.stop_specify_pick();
+                    }
+                }
                 Tool::Mirror { .. } => {
                     ui.checkbox(&mut self.mirror_copy, t("Copy"));
                 }
@@ -4804,11 +4836,16 @@ impl BimApp {
             Tool::Move(Some(_)) => msg!("Click where the base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Copy(Some(_)) => msg!("Click where the copy's base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Rotate { place: true, .. } => msg!("Click the centre of rotation."),
-            Tool::Rotate { start: None, .. } => msg!("Click the start of the angle, or type an angle in the Options Bar."),
+            Tool::Rotate { start: None, .. } => msg!("Click the start of the angle, or type an angle and press Enter."),
             Tool::Rotate { start: Some(_), .. } => msg!("Click the end of the angle. Esc cancels."),
             Tool::RotateNorth { place: true, .. } => msg!("Click the centre the model turns about."),
+            Tool::SpecifyPoint => {
+                msg!(
+                    "Click the point the shared coordinates typed are at: it snaps, and a wall's corner is its bottom, a slab's its top. Esc goes back."
+                )
+            }
             Tool::RotateNorth { start: None, .. } => {
-                msg!("Rotate Project North: click the start of the angle, or type an angle in the Options Bar. It turns the whole model.")
+                msg!("Rotate Project North: click the start of the angle, or type an angle and press Enter. It turns the whole model.")
             }
             Tool::RotateNorth { start: Some(_), .. } => {
                 msg!("Click the end of the angle: the model turns, and true north with it, so nothing moves in the world. Esc cancels.")

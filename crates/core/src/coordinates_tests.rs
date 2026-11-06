@@ -150,6 +150,31 @@ fn shift_moves_every_location_at_once() {
 }
 
 #[test]
+fn a_point_picked_in_plan_stands_at_a_wall_s_bottom_and_a_floor_s_top() {
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"elevation": 0.0, "name": "L1"}));
+    run(&mut s, "level", json!({"elevation": 3000.0, "name": "L2"}));
+    let wall = run(&mut s, "wall", json!({"points": [[0, 0], [8000, 0]], "level": "L2", "base_offset": 200.0}))["ids"][0].clone();
+    let floor =
+        run(&mut s, "floor", json!({"boundary": [[0, 2000], [4000, 2000], [4000, 6000], [0, 6000]], "level": "L2", "offset": 150.0}))["id"]
+            .clone();
+    let shared = |s: &mut Session, at: [f64; 3]| convert(s, "internal", "shared", at);
+    // A wall's corner: its bottom.
+    run(&mut s, "specify_coordinates", json!({"at": [8000.0, 0.0], "on": wall, "east": 1000.0, "north": 2000.0, "elevation": 50000.0}));
+    assert!(close(&shared(&mut s, [8000.0, 0.0, 3200.0]), [1000.0, 2000.0, 50000.0]), "the wall's base, L2 + 200");
+    // A floor's corner: its top.
+    run(&mut s, "specify_coordinates", json!({"at": [4000.0, 6000.0], "on": floor, "east": 1.0, "north": 2.0, "elevation": 7.0}));
+    assert!(close(&shared(&mut s, [4000.0, 6000.0, 3150.0]), [1.0, 2.0, 7.0]), "the floor's top, L2 + 150");
+    // Nothing named: the top of what stands on the level there, else the level.
+    run(&mut s, "specify_coordinates", json!({"at": [1000.0, 3000.0], "level": "L2", "east": 0.0, "north": 0.0, "elevation": 0.0}));
+    assert!(close(&shared(&mut s, [1000.0, 3000.0, 3150.0]), [0.0, 0.0, 0.0]), "on the floor");
+    run(&mut s, "specify_coordinates", json!({"at": [6000.0, 5000.0], "level": "L2", "east": 0.0, "north": 0.0, "elevation": 0.0}));
+    assert!(close(&shared(&mut s, [6000.0, 5000.0, 3000.0]), [0.0, 0.0, 0.0]), "on the level");
+    let e = fails(&mut s, "specify_coordinates", json!({"at": [0.0, 0.0, 0.0], "on": wall, "east": 0.0, "north": 0.0, "elevation": 0.0}));
+    assert!(e.contains("`on`"), "a height given and one to work out: {e}");
+}
+
+#[test]
 fn specify_coordinates_solves_the_active_location() {
     let mut s = Session::new();
     run(&mut s, "location", json!({"name": "Internal", "angle": 30.0}));
@@ -314,6 +339,20 @@ fn crs_search_finds_a_city_and_pairs_it_with_its_country_s_systems() {
     assert_eq!((r["places"][0]["country"].as_str(), codes(&r["places"][0]).first()), (Some("United Kingdom"), Some(&27700)), "{r}");
     let r = run(&mut s, "crs", json!({"search": "Sydney"}));
     assert_eq!(codes(&r["places"][0]).first(), Some(&7856), "GDA2020 / MGA zone 56: {r}");
+}
+
+#[test]
+fn dubai_finds_its_local_transverse_mercator_by_place_and_by_words_of_its_name() {
+    let mut s = Session::new();
+    let r = run(&mut s, "crs", json!({"search": "Dubai"}));
+    assert_eq!(r["places"][0]["name"], "Dubai", "{r}");
+    assert_eq!(codes(&r["places"][0]).first(), Some(&3997), "WGS 84 / Dubai Local TM, the emirate's own: {r}");
+    // EPSG names it "Dubai Local TM": TM is transverse Mercator, as people call it.
+    for text in ["dubai local mercator", "dubai local transverse mercator", "DLTM"] {
+        let r = run(&mut s, "crs", json!({"search": text}));
+        let found: Vec<u64> = r["found"].as_array().unwrap().iter().filter_map(|x| x["code"].as_u64()).collect();
+        assert!(found.contains(&3997), "{text}: {r}");
+    }
 }
 
 #[test]

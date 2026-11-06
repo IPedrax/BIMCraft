@@ -36,7 +36,7 @@ msgstr "Baksteen"
 msgid "Brick 225 x 75"
 msgstr "Baksteen 225 x 75"
 
-#: crates/core/src/commands.rs:4182
+#: crates/core/src/commands.rs:4185
 msgid "Camera"
 msgstr "Camera"
 
@@ -84,7 +84,7 @@ msgstr "Betonblok"
 msgid "Copper"
 msgstr "Koper"
 
-#: crates/core/src/commands.rs:1232
+#: crates/core/src/commands.rs:1235
 msgid "Copy"
 msgstr "Kopie"
 
@@ -112,7 +112,7 @@ msgstr "Streep-punt"
 msgid "Data Outlet"
 msgstr "Data-aansluiting"
 
-#: crates/core/src/commands.rs:10112
+#: crates/core/src/commands.rs:10135
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -188,8 +188,8 @@ msgstr "Elektrische verlichting"
 msgid "Electrical Power"
 msgstr "Elektrische voeding"
 
-#: crates/core/src/commands.rs:9896
-#: crates/core/src/commands.rs:11905
+#: crates/core/src/commands.rs:9919
+#: crates/core/src/commands.rs:11928
 msgid "Elevation"
 msgstr "Gevel"
 
@@ -310,7 +310,7 @@ msgstr "Breedte poot"
 msgid "Length"
 msgstr "Lengte"
 
-#: crates/core/src/commands.rs:6234
+#: crates/core/src/commands.rs:6237
 #: crates/core/src/model.rs:3021
 msgid "Level"
 msgstr "Niveau"
@@ -335,7 +335,7 @@ msgstr "Merkteken"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:7875
+#: crates/core/src/commands.rs:7898
 msgid "Mass"
 msgstr "Massa"
 
@@ -423,7 +423,7 @@ msgstr "Pleister"
 msgid "Porcelain"
 msgstr "Porselein"
 
-#: crates/core/src/commands.rs:2845
+#: crates/core/src/commands.rs:2848
 msgid "Project"
 msgstr "Project"
 
@@ -451,7 +451,7 @@ msgstr "Optreden"
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
-#: crates/core/src/commands.rs:8100
+#: crates/core/src/commands.rs:8123
 msgid "Room"
 msgstr "Ruimte"
 
@@ -479,8 +479,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Zithoogte"
 
-#: crates/core/src/commands.rs:9873
-#: crates/core/src/commands.rs:11904
+#: crates/core/src/commands.rs:9896
+#: crates/core/src/commands.rs:11927
 msgid "Section"
 msgstr "Doorsnede"
 
@@ -616,7 +616,7 @@ msgstr "OMHOOG"
 msgid "Unbounded Height"
 msgstr "Onbegrensde hoogte"
 
-#: crates/core/src/commands.rs:10253
+#: crates/core/src/commands.rs:10276
 msgid "Unnamed"
 msgstr "Naamloos"
 

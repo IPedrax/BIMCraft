@@ -564,8 +564,11 @@ pub static ALL: &[Command] = &[
         "specify_coordinates",
         "Specify Coordinates at a Point",
         &[],
-        "{at: [x,y,z], east, north, elevation, angle?} sets the active location so that internal point `at` has the shared \
-         coordinates given (mm), turned to `angle` (degrees from project north to true north, east positive) when given",
+        "{at: [x,y,z] | [x,y], on?, level?, east, north, elevation, angle?} sets the active location so that internal point \
+         `at` has the shared coordinates given (mm), turned to `angle` (degrees from project north to true north, east \
+         positive) when given. A point picked in plan, `at: [x, y]`, takes its height from `on`, the element picked: a \
+         wall's bottom, a floor's, roof's or ceiling's top there; else from `level` (the lowest by default): the top of what \
+         stands on it there, else the level",
         specify_coordinates,
     ),
     edit(
@@ -7481,8 +7484,28 @@ fn rotate_project_north(s: &mut Session, p: &Value) -> R {
 
 fn specify_coordinates(s: &mut Session, p: &Value) -> R {
     let c = "specify_coordinates";
-    only(c, p, &["at", "east", "north", "elevation", "angle"])?;
-    let at = point3_req(c, p, "at")?;
+    only(c, p, &["at", "east", "north", "elevation", "angle", "on", "level"])?;
+    let picked = !absent(p.get("on")) || !absent(p.get("level"));
+    let at = match p.get("at").and_then(Value::as_array).map(Vec::len) {
+        Some(2) => {
+            let q = point_req(c, p, "at")?;
+            let on = match p.get("on") {
+                v if absent(v) => None,
+                Some(v) => Some(element_id(c, &s.model, v)?),
+                None => None,
+            };
+            let level = match (on.and_then(|id| s.model.elements.get(id)).and_then(|e| s.model.level_of(e)), absent(p.get("level"))) {
+                (Some(l), true) => l,
+                _ => level_param(c, &s.model, p, "level")?,
+            };
+            let z = crate::coordinates::picked_z(&s.model, level, q, on);
+            [q.0, q.1, z]
+        }
+        _ if picked => {
+            return Err(bad(c, "`on` and `level` work out the height of a point picked in plan: give `at` as [x, y] with them"));
+        }
+        _ => point3_req(c, p, "at")?,
+    };
     let need = |key: &str| shared1(c, p, key)?.ok_or_else(|| bad(c, format!("`{key}` (mm) is required")));
     let shared = [need("east")?, need("north")?, need("elevation")?];
     let angle = north_angle(c, p, "angle")?;

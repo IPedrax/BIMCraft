@@ -357,6 +357,28 @@ impl Coordinates {
     }
 }
 
+/// The height of a point picked in the plan of `level` at `at`, by what it was picked on (`on`, the element its snap came
+/// from): a wall's bottom, as a wall's corner is set out; a floor's, a roof's or a ceiling's top there, as a slab's is;
+/// anything else, or nothing, the top of what stands on the level there, else the level itself.
+pub fn picked_z(m: &crate::model::Model, level: impl crate::ids::Key, at: crate::geom::P2, on: Option<crate::model::Id>) -> f64 {
+    use crate::model::Element;
+    // A corner is on its solid's edge: what's over a hair inside it counts too.
+    let top_of = |id: crate::model::Id| {
+        [(0.0, 0.0), (0.5, 0.5), (-0.5, 0.5), (0.5, -0.5), (-0.5, -0.5)]
+            .iter()
+            .filter_map(|(dx, dy)| crate::view3d::tops_at(m, crate::geom::P2(at.0 + dx, at.1 + dy)).get(&id).copied())
+            .reduce(f64::max)
+    };
+    let element = on.and_then(|id| m.elements.get(id).map(|e| (id, e)));
+    let picked = match element {
+        Some((_, Element::Wall(w))) => Some(m.base_z(w)),
+        Some((_, Element::Floor(f))) => Some(m.floor_top(f).at(at)),
+        Some((id, Element::Roof(_) | Element::Ceiling(_))) => top_of(id),
+        _ => None,
+    };
+    picked.or_else(|| m.spot_host(level, at).and_then(top_of)).unwrap_or_else(|| m.elevation(level))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

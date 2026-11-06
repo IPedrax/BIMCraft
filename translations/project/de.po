@@ -35,7 +35,7 @@ msgstr "Ziegel"
 msgid "Brick 225 x 75"
 msgstr "Ziegel 225 x 75"
 
-#: crates/core/src/commands.rs:4182
+#: crates/core/src/commands.rs:4185
 msgid "Camera"
 msgstr "Kamera"
 
@@ -83,7 +83,7 @@ msgstr "Betonblock"
 msgid "Copper"
 msgstr "Kupfer"
 
-#: crates/core/src/commands.rs:1232
+#: crates/core/src/commands.rs:1235
 msgid "Copy"
 msgstr "Kopie"
 
@@ -111,7 +111,7 @@ msgstr "Strich-Punkt"
 msgid "Data Outlet"
 msgstr "Datenanschluss"
 
-#: crates/core/src/commands.rs:10112
+#: crates/core/src/commands.rs:10135
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -187,8 +187,8 @@ msgstr "Elektro Beleuchtung"
 msgid "Electrical Power"
 msgstr "Elektro Energie"
 
-#: crates/core/src/commands.rs:9896
-#: crates/core/src/commands.rs:11905
+#: crates/core/src/commands.rs:9919
+#: crates/core/src/commands.rs:11928
 msgid "Elevation"
 msgstr "Ansicht"
 
@@ -309,7 +309,7 @@ msgstr "Beinbreite"
 msgid "Length"
 msgstr "Länge"
 
-#: crates/core/src/commands.rs:6234
+#: crates/core/src/commands.rs:6237
 #: crates/core/src/model.rs:3021
 msgid "Level"
 msgstr "Geschoss"
@@ -334,7 +334,7 @@ msgstr "Marke"
 msgid "Masking"
 msgstr "Maskierung"
 
-#: crates/core/src/commands.rs:7875
+#: crates/core/src/commands.rs:7898
 msgid "Mass"
 msgstr "Volumenkörper"
 
@@ -422,7 +422,7 @@ msgstr "Putz"
 msgid "Porcelain"
 msgstr "Porzellan"
 
-#: crates/core/src/commands.rs:2845
+#: crates/core/src/commands.rs:2848
 msgid "Project"
 msgstr "Projekt"
 
@@ -450,7 +450,7 @@ msgstr "Steigungen"
 msgid "Roof tiles"
 msgstr "Dachziegel"
 
-#: crates/core/src/commands.rs:8100
+#: crates/core/src/commands.rs:8123
 msgid "Room"
 msgstr "Raum"
 
@@ -478,8 +478,8 @@ msgstr "Estrich"
 msgid "Seat Height"
 msgstr "Sitzhöhe"
 
-#: crates/core/src/commands.rs:9873
-#: crates/core/src/commands.rs:11904
+#: crates/core/src/commands.rs:9896
+#: crates/core/src/commands.rs:11927
 msgid "Section"
 msgstr "Schnitt"
 
@@ -615,7 +615,7 @@ msgstr "AUF"
 msgid "Unbounded Height"
 msgstr "Unbegrenzte Höhe"
 
-#: crates/core/src/commands.rs:10253
+#: crates/core/src/commands.rs:10276
 msgid "Unnamed"
 msgstr "Unbenannt"
 

@@ -89,7 +89,7 @@ pub fn search(text: &str, limit: usize) -> Vec<Info> {
         if Some(u32::from(c)) == code || !d.wkt.starts_with("PROJCS") {
             continue;
         }
-        let name = fold(&name_of(&d));
+        let name = aliased(fold(&name_of(&d)));
         let has = |w: &&str| name.split_whitespace().any(|n| n == *w || (w.len() > 2 && n.starts_with(*w)));
         if words.iter().all(has)
             && let Ok(info) = lookup(u32::from(c))
@@ -99,6 +99,24 @@ pub fn search(text: &str, limit: usize) -> Vec<Info> {
     }
     out.truncate(limit);
     out
+}
+
+/// A folded name with the words people search it by too: EPSG writes "TM" and "UTM" where people say transverse Mercator,
+/// and a few grids go by their initials ("DLTM", Dubai Local Transverse Mercator).
+fn aliased(name: String) -> String {
+    let mut extra = String::new();
+    for w in name.split_whitespace() {
+        match w {
+            "tm" => extra.push_str(" transverse mercator"),
+            "utm" => extra.push_str(" universal transverse mercator"),
+            "mga" => extra.push_str(" map grid of australia transverse mercator"),
+            _ => {}
+        }
+    }
+    if name.contains("dubai local tm") {
+        extra.push_str(" dltm");
+    }
+    name + &extra
 }
 
 fn projs(code: u32) -> Result<(Proj, Proj), String> {

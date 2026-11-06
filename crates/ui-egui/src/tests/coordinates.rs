@@ -119,6 +119,66 @@ fn rotate_project_north_aligns_with_true_north_from_the_ribbon() {
 }
 
 #[test]
+fn specify_coordinates_steps_aside_for_a_point_picked_on_the_plan_and_comes_back_to_review() {
+    let mut h = app(BOX);
+    open(&mut h);
+    press(&mut h, "Points");
+    assert!(h.query_by_label("Specify at x").is_none(), "shared coordinates only: the internal point is picked");
+    // Without a map system, shared values are typed in metres.
+    type_role(&mut h, Role::SpinButton, "Specify east", "1000");
+    type_role(&mut h, Role::SpinButton, "Specify north", "2000");
+    type_role(&mut h, Role::SpinButton, "Specify elevation", "50");
+    h.get_by_label("Pick Point and Specify").scroll_to_me();
+    h.run();
+    press(&mut h, "Pick Point and Specify");
+    assert_eq!(h.state().tool, Tool::SpecifyPoint);
+    assert!(h.query_by_label("Pick Point and Specify").is_none(), "the window steps aside");
+    // Near the wall's corner: it snaps there, at the wall's bottom.
+    click(&mut h, P2(8030.0, 25.0));
+    assert_eq!(h.state().tool, Tool::Modify);
+    assert!(h.query_by_label("Pick Point and Specify").is_some(), "the window is back, to review");
+    assert_eq!(h.state().session.model.coordinates.location().east, 0.0, "nothing is the project's until OK");
+    press(&mut h, "OK");
+    assert!(h.state().coordinates_dialog.is_none(), "{:?}", said(&h));
+    let co = &h.state().session.model.coordinates;
+    let q = co.to_shared([8000.0, 0.0, 0.0]);
+    assert!((q[0] - 1_000_000.0).abs() < 1e-3 && (q[1] - 2_000_000.0).abs() < 1e-3 && (q[2] - 50_000.0).abs() < 1e-3, "{q:?}");
+}
+
+#[test]
+fn in_the_3d_view_the_point_is_the_corner_picked_top_or_bottom_as_seen() {
+    let mut h = app(BOX);
+    shortcut(&mut h, "3D");
+    open(&mut h);
+    press(&mut h, "Points");
+    type_role(&mut h, Role::SpinButton, "Specify elevation", "100");
+    h.get_by_label("Pick Point and Specify").scroll_to_me();
+    h.run();
+    press(&mut h, "Pick Point and Specify");
+    // The south wall's outer top corner, snapped to.
+    let at = h.state().screen3([8100.0, -100.0, 3000.0]) + egui::vec2(1.0, 0.5);
+    click_at(&mut h, at);
+    assert!(h.query_by_label("Pick Point and Specify").is_some(), "the window is back: {}", h.state().status.text);
+    press(&mut h, "OK");
+    let q = h.state().session.model.coordinates.to_shared([8100.0, -100.0, 3000.0]);
+    assert!((q[2] - 100_000.0).abs() < 1e-3, "{q:?}");
+}
+
+#[test]
+fn esc_while_picking_the_point_brings_the_window_back_unchanged() {
+    let mut h = app(BOX);
+    open(&mut h);
+    press(&mut h, "Points");
+    h.get_by_label("Pick Point and Specify").scroll_to_me();
+    h.run();
+    press(&mut h, "Pick Point and Specify");
+    h.key_press(Key::Escape);
+    h.run();
+    assert_eq!(h.state().tool, Tool::Modify);
+    assert!(h.query_by_label("Pick Point and Specify").is_some(), "the window is back");
+}
+
+#[test]
 fn rotate_project_north_is_a_tool_on_the_plan_that_turns_the_whole_model_about_the_base_point() {
     let mut h = app(BOX);
     h.state_mut().session.execute("coordinates", &json!({"base": [8000.0, 0.0, 0.0]})).unwrap();

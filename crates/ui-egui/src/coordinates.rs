@@ -91,6 +91,8 @@ pub(crate) struct CoordinatesDialog {
     /// The world map's view: the longitude and latitude at its middle, and pixels per degree (0 until it is first fitted).
     map_at: (f32, f32),
     map_zoom: f32,
+    /// Specify Coordinates at a Point is picking its point in the view: the window steps aside until it's picked.
+    picking: bool,
     error: Option<String>,
 }
 
@@ -134,8 +136,21 @@ impl CoordinatesDialog {
             point: [0.0; 3],
             map_at: (lat_lon[1] as f32, lat_lon[0] as f32),
             map_zoom: 0.0,
+            picking: false,
             error: None,
         }
+    }
+
+    /// Whether the window has stepped aside for a point to be picked in the view.
+    pub(crate) fn picking(&self) -> bool {
+        self.picking
+    }
+
+    /// The shared coordinates a point picked will get, as the cursor's label says them.
+    pub(crate) fn pick_label(&self) -> String {
+        let grid = self.grid();
+        let [e, n, z] = self.specify_shared;
+        format!("E {}  N {}  Elev {}", shown(e, &grid), shown(n, &grid), shown(z, &grid))
     }
 
     /// The latitude and longitude Place would put the Survey Point at.
@@ -659,13 +674,13 @@ fn points_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
         }
     });
     section(ui, msg!("Specify Coordinates at a Point"), |ui| {
-        note(ui, msg!("Give an internal point the shared coordinates the survey gives it: the active location is worked out to match."));
+        note(
+            ui,
+            msg!(
+                "Type the shared coordinates the survey gives a point, then pick that point in the view: the window steps aside while you pick (it snaps; a wall's corner is its bottom, a floor's, roof's or ceiling's its top) and comes back to review before OK or Apply."
+            ),
+        );
         Grid::new("coordinates-specify").spacing([10.0, 5.0]).show(ui, |ui| {
-            ui.label(t("Internal point"));
-            for (k, axis) in ["x", "y", "z"].iter().enumerate() {
-                length_field(ui, &mut d.specify_at[k], units, tf("Specify at {}", &[axis]));
-            }
-            ui.end_row();
             ui.label(t("Shared coordinates"));
             for (k, axis) in ["east", "north", "elevation"].iter().enumerate() {
                 grid_field(ui, &mut d.specify_shared[k], &grid, tf("Specify {}", &[axis]));
@@ -684,9 +699,16 @@ fn points_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
             ui.end_row();
         });
         ui.add_space(4.0);
-        if ui.button(t("Specify")).clicked() {
-            d.specify();
-        }
+        ui.horizontal(|ui| {
+            if ui.button(t("Pick Point and Specify")).clicked() {
+                d.picking = true;
+            }
+            if d.specify_at != d.survey {
+                let [x, y, z] = d.specify_at;
+                let at = format!("{}, {}, {}", units.length(x), units.length(y), units.length(z));
+                ui.label(RichText::new(tf("Last specified at the internal point {}", &[&at])).color(pal().muted));
+            }
+        });
     });
 }
 
@@ -1065,6 +1087,14 @@ impl BimApp {
     /// The Coordinates window, while it's open.
     pub(crate) fn coordinates_window(&mut self, ctx: &Context) {
         let Some(mut d) = self.coordinates_dialog.take() else { return };
+        if d.picking {
+            // Stepped aside: the view has the point to pick. Another tool taken meanwhile brings the window back.
+            if self.tool != crate::Tool::SpecifyPoint {
+                d.picking = false;
+            }
+            self.coordinates_dialog = Some(d);
+            return;
+        }
         let units = self.session.model.units;
         let (mut ok, mut apply, mut cancel) = (false, false, false);
         let r = Modal::new(UiId::new("coordinates"), t("Coordinates")).width(980.0).min_height(560.0).show(ctx, |ui| {
@@ -1099,6 +1129,11 @@ impl BimApp {
                 });
             });
         });
+        if d.picking {
+            self.coordinates_dialog = Some(d);
+            self.set_tool(crate::Tool::SpecifyPoint);
+            return;
+        }
         let failed = (ok || apply) && !self.apply_coordinates(&mut d, apply);
         if failed || !(ok || cancel || r.should_close()) {
             self.coordinates_dialog = Some(d);
@@ -1126,6 +1161,31 @@ impl BimApp {
             d.tab = tab;
         }
         true
+    }
+
+    /// Specify Coordinates at a Point: the point picked in the view, internal mm, takes the shared coordinates typed; the
+    /// window comes back with the draft worked out, to review.
+    pub(crate) fn specify_at(&mut self, at: [f64; 3]) {
+        if let Some(d) = &mut self.coordinates_dialog {
+            d.specify_at = at;
+            d.specify();
+            d.picking = false;
+        }
+        self.tool = crate::Tool::Modify;
+        self.status = Status::default();
+    }
+
+    /// Esc while Specify Coordinates picks: back to the window, nothing changed.
+    pub(crate) fn stop_specify_pick(&mut self) -> bool {
+        match &mut self.coordinates_dialog {
+            Some(d) if d.picking => {
+                d.picking = false;
+                self.tool = crate::Tool::Modify;
+                self.status = Status::default();
+                true
+            }
+            _ => false,
+        }
     }
 
     /// Rotate Project North, the tool's end: by `angle` (or the active location's, Align with True North), about `about`

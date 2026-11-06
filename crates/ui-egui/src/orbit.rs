@@ -1130,6 +1130,18 @@ impl BimApp {
             o.dim3.clear();
         }
         let dim_pick = |at: Pos2| dim_ref(scene, &cam, px(at), surface(&o.picker, &cam, at), ppp, &look3);
+        // Specify Coordinates at a Point: the corner, edge or face a click would take, as a dimension's end snaps.
+        let specifying = self.tool == Tool::SpecifyPoint && sketch_z.is_none() && !picking;
+        if let Some(r) = hover.filter(|_| specifying && o.drag.is_none()).and_then(dim_pick) {
+            let q = on_screen(&cam, rect, ppp, r.at);
+            if let Some([a, b]) = r.edge {
+                p.line_segment([on_screen(&cam, rect, ppp, a), on_screen(&cam, rect, ppp, b)], Stroke::new(3.0, pal().accent));
+            }
+            p.circle_stroke(q, 5.0, Stroke::new(1.5, pal().accent));
+            if let Some(d) = &self.coordinates_dialog {
+                crate::canvas::tag(&p, q + vec2(10.0, -10.0), egui::Align2::LEFT_BOTTOM, d.pick_label());
+            }
+        }
         if let Some(at) = hover.filter(|_| dimming && o.drag.is_none()) {
             let accent = Stroke::new(1.5, pal().accent);
             let screen = |q: P3| on_screen(&cam, rect, ppp, q);
@@ -1386,6 +1398,7 @@ impl BimApp {
             .filter(|_| sketch_z.is_none() && !picking)
             .map(|at| dim_at(at).filter(|_| modify).or_else(|| pick(&o.picker, at).map(|h| h.id)));
         let dim_click = click.filter(|_| dimming).map(|at| (px(at), dim_pick(at)));
+        let specify_click = click.filter(|_| specifying).and_then(dim_pick);
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
         let target = click.filter(|_| drawing).and_then(|at| aimed(&o.picker, at));
@@ -1399,12 +1412,15 @@ impl BimApp {
                 Some((q, plane, _)) => self.draw3d(q, plane),
                 None => self.status = Status { text: self.needs_face(), error: true },
             },
-            Some(_) if dimming => {}
+            Some(_) if dimming || specifying => {}
             Some(_) => {
                 self.status =
                     Status { text: crate::lang::t("this tool works in plan views: open one from the Project Browser").into(), error: true }
             }
             None => {}
+        }
+        if let Some(r) = specify_click {
+            self.specify_at(r.at);
         }
         if let Some((at, r)) = dim_click {
             self.dim3_click(&cam, at, r);

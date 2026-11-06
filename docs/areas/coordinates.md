@@ -174,7 +174,14 @@ The window is designed to answer "where is this building?" at a glance, and to r
 - **Points**: the Internal Origin, the Project Base Point and the Survey Point. Each shows its internal X, Y and Z, typed in
   the project's units, and its shared coordinates beside them, worked out live. Revit's two ways of moving the Survey Point
   (clipped and unclipped) are two named choices, each saying what it does to the building. Under them is **Specify
-  Coordinates at a Point**.
+  Coordinates at a Point**: shared coordinates only (east, north, elevation, and the angle if it's set too), typed, then
+  **Pick Point and Specify**: the window steps aside (`CoordinatesDialog::picking`, `Tool::SpecifyPoint`) and the point is
+  picked in the active view, snapped, with the shared coordinates it will get at the cursor. In a plan its height is
+  `coordinates::picked_z`'s, by what the snap came from: a wall's bottom (a wall's corner is set out at its base), a floor's,
+  roof's or ceiling's top there, else the top of what stands on the level there, else the level. In the 3D view it is the
+  corner, edge or face picked, as a 3D dimension's end snaps: a wall's top corner is its top. The window comes back with the
+  draft worked out, to review before OK or Apply; Esc (or Back to Coordinates in the Options Bar, or another tool) brings it
+  back unchanged. Agents do the same with `specify_coordinates {at: [x, y], on | level}`.
 - **Map System**: an offline **world map** (`world.rs`: Natural Earth's 1:110m coastlines and borders, public domain, 34 KB
   in `assets/map/world.bin`), a placeholder until stage 8's tiles: a plain latitude and longitude grid, dragged to pan and
   scrolled to zoom about the cursor, every location a pin (the active one in the accent), the latitude and longitude typed as
@@ -185,6 +192,8 @@ The window is designed to answer "where is this building?" at a glance, and to r
   matches. A system picked under a place also takes the place's latitude and longitude for Place and flies the map there
   (a country wide, a city close); the Survey Point waits for Place, since a city's middle is rarely the site. Clear beside
   it takes the map system away. **Place by latitude and longitude** puts the Survey Point on the globe.
+- Dubai's grid is EPSG:3997, `WGS 84 / Dubai Local TM` (DLTM): the search reads EPSG's "TM" and "UTM" as transverse
+  Mercator and knows "DLTM", and a place in the emirate offers it first (`places::local`).
 - **Convert**: a calculator, changing nothing: a point between the internal, base, shared and WGS84 frames, with Swap and
   Copy.
 

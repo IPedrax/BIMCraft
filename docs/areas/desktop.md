@@ -151,7 +151,10 @@ Annotation adds its anchors (`Kind::Anchor`, switched by `Snaps::annotation`): a
 and, with a leader, its host's anchor, a dimension's line and stations, a spot elevation, section and elevation marks, detail
 groups and repeating details. A camera's mark is not a symbol to snap to: its body, lens and name all land on its eye, its target
 is an endpoint, and its sight line gives no nearest point. Rotate's Place Centre runs its preview through `found` and
-`show_snap`, so its cross and marker stand on the point a click takes.
+`show_snap`, so its cross and marker stand on the point a click takes; so do the angle's start and end (with the angle guides
+running from the centre), and the angle is the exact one between the snapped points. Digits typed over the view while Rotate
+(or Rotate Project North) waits for its angle are the angle (`BimApp::typed_angle`, a leading minus turns clockwise), shown
+on the ghost as "45° (Enter)", and Enter turns by it.
 Revit's Quadrants (SQ) and Tangents (ST) are snaps of their own, in Manage > Snaps with the rest. The desktop's `BimApp::snap` gives
 it the reach in px (`SNAP`, `PICK`) and the snaps in force (Manage > Snaps, kept while the window is open, or for one point
 a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and

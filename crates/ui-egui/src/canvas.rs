@@ -2104,16 +2104,30 @@ impl BimApp {
             &Tool::Rotate { centre, start, place } => {
                 self.tool = match (place, start) {
                     (true, _) => Tool::Rotate { centre: self.snap_point(m, level, v, at, &[], false), start: None, place: false },
-                    (false, None) => Tool::Rotate { centre, start: Some(v.mm(at)), place: false },
-                    (false, Some(from)) => return self.turn(centre, angle_between(centre, from, v.mm(at), self.snaps.angle)),
+                    // The angle's rays snap as any point does, with the angle guides running from the centre.
+                    (false, None) => Tool::Rotate { centre, start: Some(self.snap_point(m, level, v, at, &[centre], false)), place: false },
+                    (false, Some(from)) => {
+                        let to = self.snap_point(m, level, v, at, &[centre], false);
+                        return self.turn(centre, angle_between(centre, from, to, 0.0));
+                    }
                 };
+            }
+            Tool::SpecifyPoint => {
+                // Snapped as any point; its height by what it snapped to.
+                let f = self.snap(m, level, v, at, &[], false);
+                let p = self.alignments_for(m, level, v, &f, &[]).first().map_or(f.at, |a| a.snapped_point);
+                let z = bimcraft_core::coordinates::picked_z(m, level, p, f.source);
+                self.specify_at([p.0, p.1, z]);
             }
             &Tool::RotateNorth { centre, start, place } => {
                 self.tool = match (place, start) {
                     (true, _) => Tool::RotateNorth { centre: self.snap_point(m, level, v, at, &[], false), start: None, place: false },
-                    (false, None) => Tool::RotateNorth { centre, start: Some(v.mm(at)), place: false },
+                    (false, None) => {
+                        Tool::RotateNorth { centre, start: Some(self.snap_point(m, level, v, at, &[centre], false)), place: false }
+                    }
                     (false, Some(from)) => {
-                        let angle = angle_between(centre, from, v.mm(at), self.snaps.angle);
+                        let to = self.snap_point(m, level, v, at, &[centre], false);
+                        let angle = angle_between(centre, from, to, 0.0);
                         return self.rotate_project_north(Some(angle), Some(centre));
                     }
                 };
@@ -3733,12 +3747,32 @@ impl BimApp {
                 p.circle_stroke(c, 5.0, stroke);
                 p.line_segment([c - vec2(8.0, 0.0), c + vec2(8.0, 0.0)], thin);
                 p.line_segment([c - vec2(0.0, 8.0), c + vec2(0.0, 8.0)], thin);
-                if let (Some(from), false) = (start, place) {
-                    let angle = angle_between(centre, from, v.mm(q), self.snaps.angle);
-                    p.line_segment([c, sc.screen(from)], thin);
-                    p.line_segment([c, cursor], stroke);
-                    ghost(&turned(c, angle));
-                    label(cursor, format!("{}°", (angle * 100.0).round() / 100.0));
+                if place {
+                    return;
+                }
+                // The ray a click would take, snapped, with its marker; or the angle typed.
+                let to = self.found(sc, q, &[centre], false);
+                let typed = self.typed_angle();
+                match (start, typed) {
+                    (_, Some(angle)) => {
+                        ghost(&turned(c, angle));
+                        label(cursor, format!("{}° (Enter)", self.typed_length.trim()));
+                    }
+                    (Some(from), None) => {
+                        let angle = angle_between(centre, from, to, 0.0);
+                        p.line_segment([c, sc.screen(from)], thin);
+                        p.line_segment([c, sc.screen(to)], stroke);
+                        ghost(&turned(c, angle));
+                        label(cursor, format!("{}°", (angle * 100.0).round() / 100.0));
+                    }
+                    (None, None) => {}
+                }
+                return;
+            }
+            Tool::SpecifyPoint => {
+                let at = self.found(sc, q, &[], false);
+                if let Some(d) = &self.coordinates_dialog {
+                    label(sc.screen(at), d.pick_label());
                 }
                 return;
             }
@@ -3763,17 +3797,24 @@ impl BimApp {
                     ));
                     tag(p, tip + dir * 14.0, Align2::CENTER_CENTER, label);
                 };
-                let turning = start.filter(|_| !place).map(|from| angle_between(centre, from, v.mm(q), self.snaps.angle));
+                let turning = match (place, self.typed_angle()) {
+                    (true, _) => None,
+                    (false, Some(a)) => Some(a),
+                    (false, None) => start.map(|from| angle_between(centre, from, self.found(sc, q, &[centre], false), 0.0)),
+                };
                 match turning {
                     Some(angle) => {
                         // As it will be: the model turned, true north turned back; project north stays up.
                         north(0.0, pal().muted, t("Project North"), p);
                         north(true_north - angle, pal().accent, t("True North"), p);
-                        p.line_segment([c, sc.screen(start.unwrap_or(centre))], thin);
-                        p.line_segment([c, cursor], stroke);
+                        if let Some(from) = start {
+                            p.line_segment([c, sc.screen(from)], thin);
+                            p.line_segment([c, cursor], stroke);
+                        }
                         let everything: Vec<Id> = sc.d.owners.iter().flatten().copied().collect::<HashSet<_>>().into_iter().collect();
                         ghost_of(&everything, &turned(c, angle));
-                        label(cursor, format!("{}°", (angle * 100.0).round() / 100.0));
+                        let typed = if self.typed_length.is_empty() { String::new() } else { " (Enter)".into() };
+                        label(cursor, format!("{}°{typed}", (angle * 100.0).round() / 100.0));
                     }
                     None => {
                         north(0.0, pal().muted, t("Project North"), p);

@@ -277,6 +277,7 @@ const NATIONAL: &str = ui_msg!("National grid");
 const DATUM: &str = ui_msg!("UTM zone on the national datum");
 const BAND: &str = ui_msg!("Zone on the national datum");
 const WORLD: &str = ui_msg!("UTM zone on WGS 84");
+const LOCAL: &str = ui_msg!("Local grid");
 
 /// A country's national grids, by EPSG code.
 fn grids(iso: &str) -> &'static [u32] {
@@ -308,6 +309,16 @@ fn grids(iso: &str) -> &'static [u32] {
     }
 }
 
+/// A grid of a part of a country, for a place there: Dubai's own transverse Mercator (DLTM), first in the emirate, and
+/// after the UTM zone elsewhere in the Emirates.
+fn local(iso: &str, region: &str) -> (&'static [u32], bool) {
+    match (iso, fold(region).as_str()) {
+        ("AE", "dubai" | "dubay") => (&[3997], true),
+        ("AE", _) => (&[3997], false),
+        _ => (&[], false),
+    }
+}
+
 /// A country's datum's UTM zones (or bands), named as EPSG names them, `{z}` the zone and `{h}` N or S; and the systems
 /// after them (Brazil's polyconic).
 fn zones(iso: &str) -> (&'static [&'static str], &'static [u32]) {
@@ -334,7 +345,7 @@ fn zones(iso: &str) -> (&'static [&'static str], &'static [u32]) {
 
 /// The map systems surveys at `lon`, `lat` in country `iso` are in, the one to pick first: the national grid; the place's
 /// zone on the country's datum; then the zone on WGS 84. Those this version doesn't know are left out.
-pub fn systems_at(iso: &str, lon: f64, lat: f64) -> Vec<Suggestion> {
+pub fn systems_at(iso: &str, region: &str, lon: f64, lat: f64) -> Vec<Suggestion> {
     let z = (((lon + 180.0) / 6.0).floor() as i64 + 1).clamp(1, 60);
     let h = if lat >= 0.0 { "N" } else { "S" };
     let cm = ((lon / 3.0).round() as i64 * 3).clamp(75, 135);
@@ -356,6 +367,12 @@ pub fn systems_at(iso: &str, lon: f64, lat: f64) -> Vec<Suggestion> {
             out.push(Suggestion { info, why });
         }
     };
+    let (local, first) = local(iso, region);
+    if first {
+        for c in local {
+            add(Some(*c), LOCAL);
+        }
+    }
     for c in grids(iso) {
         add(Some(*c), NATIONAL);
     }
@@ -367,12 +384,15 @@ pub fn systems_at(iso: &str, lon: f64, lat: f64) -> Vec<Suggestion> {
         add(Some(*c), NATIONAL);
     }
     add(by_name().get(&fill("WGS 84 / UTM zone {z}{h}")).copied(), WORLD);
+    for c in local {
+        add(Some(*c), LOCAL);
+    }
     out
 }
 
 /// The map systems for a place.
 pub fn systems(p: &Place) -> Vec<Suggestion> {
-    systems_at(&p.iso, p.lon, p.lat)
+    systems_at(&p.iso, &p.region, p.lon, p.lat)
 }
 
 #[cfg(test)]
@@ -409,7 +429,7 @@ mod tests {
             ("DE", 13.4, 52.5, "ETRS89 / UTM zone 33N"),
             ("GB", -0.1, 51.5, "OSGB 1936 / British National Grid"),
         ] {
-            let s = systems_at(iso, lon, lat);
+            let s = systems_at(iso, "", lon, lat);
             assert_eq!(s.first().map(|s| s.info.name.as_str()), Some(first), "{iso}: {s:?}");
             assert!(s.last().is_some_and(|s| s.info.name.starts_with("WGS 84 / UTM zone")), "{iso}: {s:?}");
         }
