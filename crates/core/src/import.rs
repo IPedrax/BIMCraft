@@ -21,10 +21,10 @@ use crate::family::{Category, Expr, Family, Form, IfcClass, MAX_TRIANGLES, Param
 use crate::geom::{self, P2};
 use crate::library::Kind;
 use crate::model::{
-    Ceiling, CeilingType, Column, ColumnType, Component, Element, Extrusion, FIRST_ID, Floor, FloorType, Function, Grid, Guid, Id, Justify,
-    Landing, Layer, Level, MAX_COORD, MAX_LAYERS, MAX_POINTS, MAX_PROJECT_PARAMETERS, MAX_TEXT, Mass, Model, Opening, OpeningType,
-    PARAMETER_CATEGORIES, ParameterKind, ProjectParameter, Railing, RailingType, Ramp, Rebar, Roof, RoofType, Room, RoomSeparator, Run,
-    RunType, Shaft, Side, Stair, TOL, Wall, WallType, culprit, heading,
+    Ceiling, CeilingType, Classification, Column, ColumnType, Component, Element, Extrusion, FIRST_ID, Floor, FloorType, Function, Grid,
+    Guid, Id, Justify, Landing, Layer, Level, MAX_COORD, MAX_LAYERS, MAX_POINTS, MAX_PROJECT_PARAMETERS, MAX_TEXT, Mass, Model, Opening,
+    OpeningType, PARAMETER_CATEGORIES, ParameterKind, ProjectParameter, Railing, RailingType, Ramp, Rebar, Roof, RoofType, Room,
+    RoomSeparator, Run, RunType, Shaft, Side, Stair, TOL, Wall, WallType, culprit, heading,
 };
 use crate::phasing;
 use crate::stairs;
@@ -167,6 +167,15 @@ fn clip(text: &str) -> String {
 const MARKED: [&str; 6] = ["beam", "column", "structuralcolumn", "footing", "stripfooting", "floor"];
 
 /// A property's name as a project parameter's: what a formula can say, each character it can't made a space.
+/// How a value read from a file comes in as a project parameter's: the property set it came in (none: the project's own), the
+/// classification system it is a code of, and whether it is a type's, which its occurrences' own values of the name win over.
+#[derive(Clone, Copy, Default)]
+struct How<'a> {
+    set: Option<&'a str>,
+    classification: Option<&'a Classification>,
+    weak: bool,
+}
+
 fn parameter_name(raw: &str) -> Option<String> {
     let spaced: String = raw.chars().map(|c| if c.is_alphanumeric() || c == '_' { c } else { ' ' }).collect();
     Some(spaced.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|n| crate::family::nameable(n))
@@ -3258,43 +3267,65 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     // its first value's, for the categories of the elements holding one; up to as many as a project holds, and as many values
     // as `MAX_VALUES`.
     let (mut over, mut clash, mut values) = (BTreeSet::new(), BTreeSet::new(), 0);
-    // Puts `value` as `name` on the elements the products `on` made; false once a project can hold no more values.
-    let mut put = |m: &mut Model, skipped: &mut Vec<String>, on: &[u64], name: &str, kind: ParameterKind, value: &serde_json::Value| {
-        for id in on.iter().filter_map(|x| elements_from.get(x)).flatten() {
-            let Some(el) = m.elements.get(id) else { continue };
-            let cat = el.category();
-            // A component's parameter may not be one a family of the project has, whichever family it is: `Model::check` refuses it.
-            if cat == "component" && m.families.values().any(|f| f.parameters.iter().any(|p| p.name == name)) {
-                clash.insert(name.to_string());
-                continue;
+    // The set each parameter's values came in, by category (none: the project's own): a category's values of a name come in
+    // one set, the first; the others' are left out, said in `elsewhere`.
+    let (mut came_in, mut elsewhere) = (HashMap::<(String, String), Option<String>>::new(), BTreeSet::new());
+    // Puts `value` as `name` on the elements the products `on` made, as `how` says; false once a project can hold no more values.
+    let mut put =
+        |m: &mut Model, skipped: &mut Vec<String>, on: &[u64], name: &str, kind: ParameterKind, value: &serde_json::Value, how: &How| {
+            for id in on.iter().filter_map(|x| elements_from.get(x)).flatten() {
+                let Some(el) = m.elements.get(id) else { continue };
+                let cat = el.category();
+                // A component's parameter may not be one a family of the project has, whichever family it is: `Model::check` refuses it.
+                if cat == "component" && m.families.values().any(|f| f.parameters.iter().any(|p| p.name == name)) {
+                    clash.insert(name.to_string());
+                    continue;
+                }
+                // What a type says, its occurrences say unless they say otherwise.
+                if how.weak && el.params().is_some_and(|p| p.contains_key(name)) {
+                    continue;
+                }
+                let fits = PARAMETER_CATEGORIES.contains(&cat)
+                    && !crate::schedule::own_field(cat, name)
+                    && m.parameters.get(name).is_none_or(|p| p.kind == kind && p.classification.as_ref() == how.classification);
+                let p = ProjectParameter {
+                    kind,
+                    categories: vec![cat.to_string()],
+                    classification: how.classification.cloned(),
+                    ..ProjectParameter::default()
+                };
+                if !fits || !p.holds(value) {
+                    continue;
+                }
+                let set = how.set.filter(|s| crate::ifc::foreign_set(s) && !crate::ifc::own_property(s, name));
+                let first = came_in.entry((name.to_string(), cat.to_string())).or_insert_with(|| set.map(String::from));
+                if first.as_deref() != set {
+                    elsewhere.insert(format!("{name} of {cat}s in {}", set.unwrap_or(crate::ifc::PARAMETERS)));
+                    continue;
+                }
+                if !m.parameters.contains_key(name) && m.parameters.len() >= MAX_PROJECT_PARAMETERS {
+                    over.insert(name.to_string());
+                    continue;
+                }
+                if values >= MAX_VALUES {
+                    skipped.push(format!("project parameter values past the {MAX_VALUES} BIMCraft reads"));
+                    return false;
+                }
+                values += 1;
+                let p = m.parameters.entry(name.to_string()).or_insert(p);
+                if !p.categories.iter().any(|c| c == cat) {
+                    p.categories.push(cat.to_string());
+                    p.categories.sort();
+                }
+                if let Some(set) = set {
+                    p.sets.insert(cat.to_string(), set.to_string());
+                }
+                if let Some(params) = m.elements.get_mut(id).and_then(Element::params_mut) {
+                    params.insert(name.to_string(), value.clone());
+                }
             }
-            let fits = PARAMETER_CATEGORIES.contains(&cat)
-                && !crate::schedule::own_field(cat, name)
-                && m.parameters.get(name).is_none_or(|p| p.kind == kind);
-            let p = ProjectParameter { kind, categories: vec![cat.to_string()] };
-            if !fits || !p.holds(value) {
-                continue;
-            }
-            if !m.parameters.contains_key(name) && m.parameters.len() >= MAX_PROJECT_PARAMETERS {
-                over.insert(name.to_string());
-                continue;
-            }
-            if values >= MAX_VALUES {
-                skipped.push(format!("project parameter values past the {MAX_VALUES} BIMCraft reads"));
-                return false;
-            }
-            values += 1;
-            let p = m.parameters.entry(name.to_string()).or_insert(p);
-            if !p.categories.iter().any(|c| c == cat) {
-                p.categories.push(cat.to_string());
-                p.categories.sort();
-            }
-            if let Some(params) = m.elements.get_mut(id).and_then(Element::params_mut) {
-                params.insert(name.to_string(), value.clone());
-            }
-        }
-        true
-    };
+            true
+        };
     // Eberick names a beam V1 and a column P1, and BIMCraft names a product by its type (and says so as its object type too).
     for &pid in &ids {
         let Some(x) = e(pid) else { continue };
@@ -3304,19 +3335,36 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let marked =
             elements_from.get(&pid).into_iter().flatten().any(|id| m.elements.get(id).is_some_and(|el| MARKED.contains(&el.category())));
         if let (Some(mark), true) = (mark, marked)
-            && !put(&mut m, &mut skipped, &[pid], "Mark", ParameterKind::Text, &json!(mark))
+            && !put(&mut m, &mut skipped, &[pid], "Mark", ParameterKind::Text, &json!(mark), &How::default())
         {
             break;
         }
     }
-    'sets: for rel in named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e) {
-        let Some(set) = reference(rel.args.get(5)).and_then(e).filter(|x| x.name == "IFCPROPERTYSET") else { continue };
+    // The property sets: each product's own, then those its type object holds (`HasPropertySets`), for its occurrences.
+    let mut occurrences: BTreeMap<u64, Vec<u64>> = BTreeMap::new();
+    for (&occurrence, &ty) in &l.typed {
+        occurrences.entry(ty).or_default().push(occurrence);
+    }
+    occurrences.values_mut().for_each(|o| o.sort_unstable());
+    let own = named(&["IFCRELDEFINESBYPROPERTIES"])
+        .into_iter()
+        .filter_map(e)
+        .filter_map(|rel| Some((reference(rel.args.get(5))?, refs(rel.args.get(4)), false)));
+    let held =
+        occurrences.iter().filter_map(|(&ty, on)| Some(refs(e(ty)?.args.get(5)).into_iter().map(move |set| (set, on.clone(), true))));
+    'sets: for (set, on, weak) in own.chain(held.flatten()) {
+        let Some(set) = e(set).filter(|x| x.name == "IFCPROPERTYSET") else { continue };
         // What BIMCraft writes in sets of its own, other than the parameters, it reads into fields.
         let called = text(set.args.get(2)).unwrap_or("");
         let ours = called == crate::ifc::PARAMETERS;
-        if !ours && (called.starts_with("BIMCraft_") || called == crate::ifc::SEPARATION) {
+        if !ours && !crate::ifc::foreign_set(called) {
             continue;
         }
+        let how = How {
+            set: Some(called).filter(|c| !ours && c.chars().count() <= MAX_TEXT && c.trim() == *c && !c.is_empty()),
+            weak,
+            ..How::default()
+        };
         for prop in refs(set.args.get(4)).into_iter().filter_map(e).filter(|x| x.name == "IFCPROPERTYSINGLEVALUE") {
             let Some(raw) = text(prop.args.first()) else { continue };
             // `LoadBearing` is what makes a column or a floor structural, read above.
@@ -3338,14 +3386,60 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                 },
                 _ => continue,
             };
-            if !put(&mut m, &mut skipped, &refs(rel.args.get(4)), &name, kind, &value) {
+            // A property renamed to be a parameter's name goes back out by that name: it keeps a set only by its own.
+            let how = How { set: how.set.filter(|_| name == raw), ..how };
+            if !put(&mut m, &mut skipped, &on, &name, kind, &value, &how) {
                 break 'sets;
+            }
+        }
+    }
+    // Classification references: each system's codes, a text parameter of it, named for the system. A reference within a
+    // reference is of the system at the top; a type's, its occurrences' unless they have their own.
+    let mut systems: BTreeMap<u64, Option<Classification>> = BTreeMap::new();
+    'classified: for rel in named(&["IFCRELASSOCIATESCLASSIFICATION"]).into_iter().filter_map(e) {
+        let Some(item) = reference(rel.args.get(5)).and_then(e).filter(|x| x.name == "IFCCLASSIFICATIONREFERENCE") else { continue };
+        // IFC4's `Identification`, IFC2x3's `ItemReference`; else its name.
+        let Some(code) = text(item.args.get(1)).or_else(|| text(item.args.get(2))).map(clip).filter(|c| !c.trim().is_empty()) else {
+            continue;
+        };
+        // Its `ReferencedSource`, up to the system.
+        let (mut at, mut system) = (item, None);
+        for _ in 0..MAX_DEPTH {
+            let Some(up) = reference(at.args.get(3)) else { break };
+            match e(up) {
+                Some(x) if x.name == "IFCCLASSIFICATION" => {
+                    system = Some((up, x));
+                    break;
+                }
+                Some(x) if x.name == "IFCCLASSIFICATIONREFERENCE" => at = x,
+                _ => break,
+            }
+        }
+        let Some((sid, system)) = system else { continue };
+        let c = systems.entry(sid).or_insert_with(|| {
+            let said = |i: usize| text(system.args.get(i)).map(str::trim).filter(|n| !n.is_empty() && n.chars().count() <= MAX_TEXT);
+            Some(Classification { system: said(3)?.to_string(), edition: said(1).map(String::from) })
+        });
+        let Some(c) = c.clone() else { continue };
+        let Some(name) = parameter_name(&c.system) else { continue };
+        // A type's code is its occurrences', unless they have their own: the associations with the occurrences first.
+        let related = refs(rel.args.get(4));
+        let (types, products): (Vec<u64>, Vec<u64>) = related.into_iter().partition(|x| occurrences.contains_key(x));
+        let on_types: Vec<u64> = types.iter().filter_map(|t| occurrences.get(t)).flatten().copied().collect();
+        for (on, weak) in [(products, false), (on_types, true)] {
+            let how = How { classification: Some(&c), weak, ..How::default() };
+            if !on.is_empty() && !put(&mut m, &mut skipped, &on, &name, ParameterKind::Text, &json!(code), &how) {
+                break 'classified;
             }
         }
     }
 
     if !over.is_empty() {
         skipped.push(format!("{} project parameters: past the {MAX_PROJECT_PARAMETERS} a project holds", over.len()));
+    }
+    if !elsewhere.is_empty() {
+        let names: Vec<&str> = elsewhere.iter().map(String::as_str).collect();
+        skipped.push(format!("{}: their values of that name came in another set first", names.join(", ")));
     }
     if !clash.is_empty() {
         let names: Vec<&str> = clash.iter().map(String::as_str).collect();
