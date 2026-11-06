@@ -79,6 +79,19 @@ model is moved by; without one, the context's `TrueNorth` and that shift make a 
 coordinates comes back keeping them. Tests: `coordinates_io_tests.rs` (`one_map_conversion_is_placed_at_the_files_origin`,
 and the round trip from every origin), `georef_tests.rs`.
 
+## Elevations, spots and schedules
+
+`Origin` (base, survey) says what a reading measures from: `Coordinates::elevation` turns an internal height into one from
+the Project Base Point (`z - base.z`) or the Survey Point (the location's elevation plus `z - survey.z`), and
+`Coordinates::plan` a plan point into east and north from the base point, along the project's axes, or in shared
+coordinates. A `Spot` has an `origin` (`Model::spot_reads`, what its text and the `elements` and `spot` replies say;
+`spot_value` stays the internal height, which sections place it by) and, with `coordinate`, is a spot coordinate: in a plan
+only, its north over its east beside a cross (`Model::spot_coordinate`, `render::coordinate_mark`), with no host. A
+`Level` has an `elevation_base`; its head in sections and elevations and the level schedule's Elevation show
+`Model::level_shown`, and `elements` gives `elevation_shown` beside the internal `elevation` commands take. Columns, structural
+columns, footings and components give `shared_east`, `shared_north` and `shared_elevation` (their point at their base), which
+their schedules offer as Shared East, Shared North and Shared Elevation.
+
 ## Commands
 
 - `georeference`: the active site as IFC has it, at the internal origin; any field makes one, `clear` takes it away.

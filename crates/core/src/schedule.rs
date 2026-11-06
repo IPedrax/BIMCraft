@@ -218,6 +218,10 @@ const WEIGHT: Own = (msg!("Weight"), Kind::Number, From::Key("weight_kg"));
 const ROOM_NUMBER: Own = (msg!("Room Number"), Kind::Text, From::Key("room_number"));
 const ROOM_NAME: Own = (msg!("Room Name"), Kind::Text, From::Key("room_name"));
 const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
+/// Where it stands in the active location's shared coordinates: its point, at its base.
+const SHARED_EAST: Own = (msg!("Shared East"), Kind::Length, From::Key("shared_east"));
+const SHARED_NORTH: Own = (msg!("Shared North"), Kind::Length, From::Key("shared_north"));
+const SHARED_ELEVATION: Own = (msg!("Shared Elevation"), Kind::Length, From::Key("shared_elevation"));
 
 /// A multi-category schedule's category: a row for each element of the categories it lists (`Schedule::categories`),
 /// or of every built one (`built`) where it lists none.
@@ -338,6 +342,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
     (
@@ -358,6 +365,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SECTION_AREA,
             WEIGHT_PER_METRE,
             WEIGHT,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
     (
@@ -374,6 +384,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
     (
@@ -521,6 +534,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
             ("Mains", Kind::Number, From::Key("mains")),
             ("Max #1 Pole Breakers", Kind::Number, From::Key("slots")),
             ("Supply From", Kind::Number, From::Ref("supply_from")),
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
     (
@@ -584,7 +600,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
         5,
         &[("Mass", Kind::Text, From::Key("mass")), LEVEL, AREA, ("Perimeter", Kind::Length, From::Metres("perimeter_m")), VOLUME, COUNT],
     ),
-    ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation")), NAME, COUNT]),
+    ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation_shown")), NAME, COUNT]),
     ("sheet", 2, &[("Number", Kind::Text, From::Key("number")), NAME]),
 ];
 

@@ -363,3 +363,81 @@ fn a_project_with_no_georeference_keeps_none_when_its_site_is_switched_back() {
     assert_eq!(s.model.georeference, None, "the internal coordinates as they are");
     assert_eq!(s.model.coordinates.sites["Plot 2"].eastings, 500.0);
 }
+
+// ---------- elevations and spots ----------
+
+fn element(s: &mut Session, id: u64) -> Value {
+    let all = run(s, "elements", json!({}));
+    all["elements"].as_array().and_then(|es| es.iter().find(|e| e["id"] == id).cloned()).unwrap_or(Value::Null)
+}
+
+/// A project whose Survey Point is at 760 m on the map, and whose Project Base Point stands 300 mm up.
+fn surveyed() -> Session {
+    let mut s = Session::new();
+    run(&mut s, "location", json!({"name": "Internal", "elevation": 760_000.0, "east": 333_000_000.0, "north": 7_394_000_000.0}));
+    run(&mut s, "coordinates", json!({"base": [1000.0, 2000.0, 300.0]}));
+    s
+}
+
+#[test]
+fn spot_elevations_measure_from_the_base_point_or_the_survey_point() {
+    let mut s = surveyed();
+    let section = run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["id"].as_u64().unwrap();
+    let base = run(&mut s, "spot", json!({"at": [1000, 2700], "view": section}));
+    assert_eq!(base["elevation"], 2400.0, "from the Project Base Point, 300 up: {base}");
+    let survey = run(&mut s, "spot", json!({"at": [1000, 2700], "view": section, "origin": "survey"}));
+    assert_eq!(survey["elevation"], 762_700.0, "{survey}");
+    assert_eq!(element(&mut s, survey["id"].as_u64().unwrap())["elevation"], 762_700.0);
+    // The survey moves it, the base point too; the spot follows.
+    run(&mut s, "location", json!({"shift": [0, 0, 5000]}));
+    assert_eq!(element(&mut s, survey["id"].as_u64().unwrap())["elevation"], 767_700.0);
+    run(&mut s, "modify", json!({"id": base["id"], "origin": "survey"}));
+    assert_eq!(element(&mut s, base["id"].as_u64().unwrap())["elevation"], 767_700.0);
+    let e = fails(&mut s, "spot", json!({"at": [1000, 2700], "view": section, "origin": "moon"}));
+    assert!(e.contains("base") && e.contains("survey"), "{e}");
+}
+
+#[test]
+fn a_level_shows_its_elevation_from_its_elevation_base() {
+    let mut s = surveyed();
+    let l2 = s.model.levels().into_iter().nth(1).map(|(id, _)| id).unwrap();
+    assert_eq!(element(&mut s, l2)["elevation_shown"], 2700.0, "3000 from a base point 300 up");
+    run(&mut s, "modify", json!({"id": l2, "elevation_base": "survey"}));
+    assert_eq!(element(&mut s, l2)["elevation_shown"], 763_000.0);
+    assert_eq!(element(&mut s, l2)["elevation"], 3000.0, "the level itself stays where it is");
+    let l3 = run(&mut s, "level", json!({"elevation": 6000, "elevation_base": "survey"}))["id"].as_u64().unwrap();
+    assert_eq!(element(&mut s, l3)["elevation_shown"], 766_000.0);
+}
+
+#[test]
+fn spot_coordinates_read_north_and_east_from_either_point() {
+    let mut s = surveyed();
+    let base = run(&mut s, "spot_coordinate", json!({"at": [4000, 6000]}));
+    assert_eq!((base["east"].as_f64(), base["north"].as_f64()), (Some(3000.0), Some(4000.0)), "{base}");
+    let survey = run(&mut s, "spot_coordinate", json!({"at": [4000, 6000], "origin": "survey"}));
+    assert_eq!((survey["east"].as_f64(), survey["north"].as_f64()), (Some(333_004_000.0), Some(7_394_006_000.0)), "{survey}");
+    // True north turned: the map's numbers turn, the base point's don't.
+    run(&mut s, "location", json!({"name": "Internal", "angle": 90}));
+    let e = element(&mut s, survey["id"].as_u64().unwrap());
+    assert!((e["east"].as_f64().unwrap() - (333_000_000.0 - 6000.0)).abs() < 0.01, "{e}");
+    assert!((e["north"].as_f64().unwrap() - (7_394_000_000.0 + 4000.0)).abs() < 0.01, "{e}");
+    assert_eq!(element(&mut s, base["id"].as_u64().unwrap())["east"], 3000.0);
+    run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}));
+    let e = fails(&mut s, "spot_coordinate", json!({"at": [0, 0], "view": "Section 1"}));
+    assert!(e.contains("plan"), "{e}");
+}
+
+#[test]
+fn schedules_list_where_columns_stand_in_shared_coordinates() {
+    let mut s = surveyed();
+    run(&mut s, "column", json!({"at": [4000, 6000]}));
+    let r = run(
+        &mut s,
+        "schedule",
+        json!({"name": "Setting out", "category": "columns", "fields": ["Shared East", "Shared North", "Shared Elevation"]}),
+    );
+    assert_eq!(r["rows"][0], json!([333_004_000.0, 7_394_006_000.0, 760_000.0]), "{r}");
+    // A level schedule's elevation is what its head shows.
+    let r = run(&mut s, "schedule", json!({"name": "Levels", "category": "levels"}));
+    assert!(r["rows"].to_string().contains("2700"), "{r}");
+}

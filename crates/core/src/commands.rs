@@ -207,9 +207,10 @@ other_files(
         "level",
         ui_msg!("Level"),
         &["LL"],
-        "{elevation, name?, extent?: [[x,y],[x,y]]} a level at an elevation in mm; `extent`, the rectangle in plan its \
-         plane stretches over (south-west corner, then north-east), where sections, elevations and the 3D view show it \
-         (without one, the model's, a metre past it)",
+        "{elevation, name?, extent?: [[x,y],[x,y]], elevation_base?: base|survey} a level at an elevation in mm (internal); \
+         `extent`, the rectangle in plan its plane stretches over (south-west corner, then north-east), where sections, \
+         elevations and the 3D view show it (without one, the model's, a metre past it); `elevation_base`, what its head shows \
+         its elevation from: the Project Base Point (the default) or the Survey Point, the shared coordinates",
         level,
     )
     .menu("Architecture > Level"),
@@ -1056,10 +1057,20 @@ other_files(
         "spot",
         ui_msg!("Spot Elevation"),
         &["EL"],
-        "{at: [x, y], view?, host?} a spot elevation: in a level's plan (the lowest by default), the height of the top of \
-         what stands on the level at `at` (or of `host`), following it; in a section or an elevation, of its point `at`, \
-         along and up",
+        "{at: [x, y], view?, host?, origin?: base|survey} a spot elevation: in a level's plan (the lowest by default), the \
+         height of the top of what stands on the level at `at` (or of `host`), following it; in a section or an elevation, \
+         of its point `at`, along and up. It reads from `origin`: the Project Base Point (the default) or the Survey Point, \
+         the shared elevation",
         spot,
+    ),
+    edit(
+        "spot_coordinate",
+        "Spot Coordinate",
+        &[],
+        "{at: [x, y], view?, origin?: base|survey} a spot coordinate in a level's plan (the lowest by default): the north and \
+         east of `at`, from the Project Base Point along the project's axes (the default) or, with `origin: survey`, in the \
+         shared coordinates of the active location. The reply gives `north` and `east`, mm",
+        spot_coordinate,
     ),
     edit(
         "spot_slope",
@@ -3354,10 +3365,12 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             if let Some(h) = cp.host {
                 extra.insert("host_element".into(), json!(h.host.guid()));
             }
+            shared_at(m, &mut extra, cp.at, base);
         }
         Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => {
             let (bottom, top) = m.column_span(e);
             extra.insert("height".into(), json!(top - bottom));
+            shared_at(m, &mut extra, col.at, bottom);
             if let Some(t) = m.column_type(e) {
                 extra.insert("width".into(), json!(t.width));
                 extra.insert("depth".into(), json!(t.depth));
@@ -3533,8 +3546,14 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("toward".into(), json!(read.and_then(|(_, d)| d).map(|d| [hundredth(d.0), hundredth(d.1)])));
             extra.insert("level".into(), json!(m.level_of(e)));
         }
+        Element::Spot(sp) if sp.coordinate => {
+            let read = m.spot_coordinate(sp);
+            extra.insert("east".into(), json!(read.map(|(e, _)| hundredth(e))));
+            extra.insert("north".into(), json!(read.map(|(_, n)| hundredth(n))));
+            extra.insert("level".into(), json!(m.level_of(e)));
+        }
         Element::Spot(sp) => {
-            extra.insert("elevation".into(), json!(m.spot_value(sp).map(hundredth)));
+            extra.insert("elevation".into(), json!(m.spot_reads(sp).map(hundredth)));
             extra.insert("level".into(), json!(m.level_of(e)));
         }
         Element::Link(l) => {
@@ -3544,6 +3563,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         // Its Computation Height, which its JSON leaves out at the usual 1200 mm.
         Element::Level(l) => {
             extra.insert("computation_height".into(), json!(l.computation_height));
+            extra.insert("elevation_shown".into(), json!(hundredth(m.level_shown(l))));
         }
         Element::Dimension3D(d) => {
             extra.insert("length".into(), json!(hundredth(crate::dims3d::length(d))));
@@ -7546,7 +7566,8 @@ fn level(s: &mut Session, p: &Value) -> R {
             _ => return Err(bad(c, "`extent` is two corners, [[x, y], [x, y]]: south-west, then north-east")),
         },
     };
-    let id = s.model_mut().insert(Element::Level(Level { extent, ..Level::new(name.clone(), elevation) }));
+    let elevation_base = origin_param(c, p)?;
+    let id = s.model_mut().insert(Element::Level(Level { extent, elevation_base, ..Level::new(name.clone(), elevation) }));
     Ok(json!({"id": id, "name": name}))
 }
 
@@ -10570,11 +10591,46 @@ fn spot(s: &mut Session, p: &Value) -> R {
         })?)),
         (None, None) => None,
     };
-    let sp = Spot { view: m.guid(view), at, host, slope: false };
-    let elevation = m.spot_value(&sp).map(hundredth);
+    let sp = Spot { view: m.guid(view), at, host, slope: false, coordinate: false, origin: origin_param(c, p)? };
+    let elevation = m.spot_reads(&sp).map(hundredth);
     let host = host.and_then(|h| m.elements.id(h));
     let id = s.model_mut().insert(Element::Spot(sp));
     Ok(json!({"id": id, "elevation": elevation, "host": host}))
+}
+
+/// Where point `at`, at height `z`, stands in the active location's shared coordinates, as `shared_east`, `shared_north` and
+/// `shared_elevation`.
+fn shared_at(m: &Model, extra: &mut Map<String, Value>, at: P2, z: f64) {
+    let q = m.coordinates.to_shared([at.0, at.1, z]);
+    for (k, v) in ["shared_east", "shared_north", "shared_elevation"].into_iter().zip(q) {
+        extra.insert(k.into(), json!(hundredth(v)));
+    }
+}
+
+/// What `origin` names: the Project Base Point unless it says the Survey Point.
+fn origin_param(c: &str, p: &Value) -> Result<crate::coordinates::Origin, String> {
+    use crate::coordinates::Origin;
+    let key = if p.get("elevation_base").is_some() { "elevation_base" } else { "origin" };
+    match string(c, p, key)? {
+        None => Ok(Origin::Base),
+        Some(t) => Origin::parse(&t).ok_or_else(|| bad(c, format!("`{key}` is {}, not `{t}`", Origin::NAMES))),
+    }
+}
+
+/// A spot coordinate: in a plan, the north and east of a point.
+fn spot_coordinate(s: &mut Session, p: &Value) -> R {
+    let c = "spot_coordinate";
+    only(c, p, &["at", "view", "origin"])?;
+    let m = &s.model;
+    let at = point_req(c, p, "at")?;
+    let view = view_param(c, m, p, false)?;
+    if m.plan_level(view).is_none() {
+        return Err(bad(c, "a spot coordinate reads north and east: place it in a plan"));
+    }
+    let sp = Spot { view: m.guid(view), at, host: None, slope: false, coordinate: true, origin: origin_param(c, p)? };
+    let read = m.spot_coordinate(&sp);
+    let id = s.model_mut().insert(Element::Spot(sp));
+    Ok(json!({"id": id, "east": read.map(|(e, _)| hundredth(e)), "north": read.map(|(_, n)| hundredth(n))}))
 }
 
 /// A spot slope: in a plan, how steeply the top of the floor or roof at `at` (or `host`) falls there, and which way.
@@ -10593,7 +10649,7 @@ fn spot_slope(s: &mut Session, p: &Value) -> R {
         let place = format!("[{}, {}] on {}", at.0, at.1, level_name(m, level));
         bad(c, format!("no slope to read at {place}; place it on a floor or a roof"))
     })?;
-    let sp = Spot { view: m.guid(view), at, host: Some(m.guid(host)), slope: true };
+    let sp = Spot { view: m.guid(view), at, host: Some(m.guid(host)), slope: true, coordinate: false, origin: Default::default() };
     let read = m.spot_slope(&sp);
     let id = s.model_mut().insert(Element::Spot(sp));
     Ok(

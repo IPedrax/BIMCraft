@@ -279,6 +279,25 @@ impl Coordinates {
         *self == Coordinates::default()
     }
 
+    /// Internal height `z` as measured from `from`.
+    pub fn elevation(&self, z: f64, from: Origin) -> f64 {
+        match from {
+            Origin::Base => z - self.base[2],
+            Origin::Survey => self.location().elevation + z - self.survey[2],
+        }
+    }
+
+    /// Internal plan point `x`, `y` as measured from `from`: east and north.
+    pub fn plan(&self, x: f64, y: f64, from: Origin) -> (f64, f64) {
+        match from {
+            Origin::Base => (x - self.base[0], y - self.base[1]),
+            Origin::Survey => {
+                let q = self.to_shared([x, y, 0.0]);
+                (q[0], q[1])
+            }
+        }
+    }
+
     /// Whether it is whole and within bounds; else what to fix.
     pub fn check(&self) -> Result<(), String> {
         for (name, p) in [(BASE_POINT, self.base), (SURVEY_POINT, self.survey)] {
