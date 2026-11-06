@@ -192,4 +192,5 @@ their cold and hot water (in, DN 20); the starter elbow, tee and gate valve have
 with no domain, which a pipe fitting's or accessory's alone may leave out: it takes the domain of the pipe it joins, as Revit's
 fitting takes its pipe's system. IFC writes the electrical device's set from an electrical connector only, so a fixture with
 pipe connectors is no electrical device; IFC ports (`IfcDistributionPort`) come with the network. A file
-from before reads as it did, and an older version leaves the new keys out (`lenient.rs`), which loses nothing it could use.
+from before reads as it did; file format 18 is the one that has these connectors, so a build that reads up to 17 refuses a
+project saved by this one, saying it is from a newer BIMCraft, instead of failing on a `pipe` connector it doesn't know.

@@ -1364,9 +1364,12 @@ impl Family {
             if placed.into_iter().any(long) {
                 return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
             }
+            if c.kind != ConnectorKind::Pipe && c.domain.is_some() {
+                return Err(format!("{who}: a `domain` is a pipe connector's: cold, hot, waste, vent, storm or gas"));
+            }
             if c.kind.electrical() {
-                if c.domain.is_some() {
-                    return Err(format!("{who}: a `domain` is a pipe connector's: water, waste, vent, storm or gas"));
+                if c.flow != Flow::Both {
+                    return Err(format!("{who}: a `flow` is a pipe's, data's or earthing's connector's, not an electrical device's"));
                 }
                 if c.size.is_some() {
                     return Err(format!("{who}: a `size` is a pipe's, data's or earthing's connector's, not an electrical device's"));

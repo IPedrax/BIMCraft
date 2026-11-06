@@ -111,7 +111,7 @@ fn an_unsound_connector_is_refused_and_says_what_to_fix() {
     }
     // An electrical device's connector takes no domain and no size; it may have a place.
     let power = json!({"kind": "power", "system": "power-balanced", "voltage": 127, "load_va": 10});
-    for (k, v) in [("domain", json!("cold")), ("size", json!(20))] {
+    for (k, v) in [("domain", json!("cold")), ("size", json!(20)), ("flow", json!("in"))] {
         let mut c = power.clone();
         c[k] = v;
         let e = fails(&mut s, "family", json!({"name": "Bad", "category": "outlet", "types": {"A": {}}, "connectors": [c]}));
@@ -129,6 +129,12 @@ fn an_unsound_connector_is_refused_and_says_what_to_fix() {
     // A data or an earthing connector needs its place, and nothing more.
     let e = fails(&mut s, "family", json!({"name": "Bad", "types": {"A": {}}, "connectors": [{"kind": "data"}]}));
     assert!(e.contains("`at`"), "{e}");
+    let e = fails(
+        &mut s,
+        "family",
+        json!({"name": "Bad", "types": {"A": {}}, "connectors": [{"kind": "data", "at": [0, 0, 0], "domain": "cold"}]}),
+    );
+    assert!(e.contains("domain"), "{e}");
     run(&mut s, "family", json!({"name": "Jack", "types": {"A": {}}, "connectors": [{"kind": "data", "at": [0, 0, 300]}]}));
 }
 
