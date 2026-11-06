@@ -152,7 +152,8 @@ fn a_view_being_made_keeps_the_last_picture_quietly_then_faded_with_its_bar_and_
     // An edit, its scene being made.
     h.state_mut().orbit.hold_build = true;
     h.state_mut().run("wall", json!({"points": [[0, 9000], [3000, 9000]]}));
-    h.run();
+    // The quiet preview requests a repaint for the fade. Sample a frame while the build is held.
+    h.step();
     assert!(matches!(h.state().orbit.waiting, Some(Waiting::Quiet | Waiting::Faded)), "the last picture stays");
     let moment = std::time::Duration::from_millis(50);
     let long = std::time::Duration::from_secs(1);
@@ -163,7 +164,7 @@ fn a_view_being_made_keeps_the_last_picture_quietly_then_faded_with_its_bar_and_
     assert!(h.query_by_label("Zoom to Fit").is_some(), "its bar stays");
     // Longer: faded, and it says so.
     h.state_mut().orbit.waiting_since = std::time::Instant::now().checked_sub(long);
-    h.run();
+    h.step();
     assert_eq!(h.state().orbit.waiting, Some(Waiting::Faded));
     assert!(h.query_by_label("Zoom to Fit").is_some());
     // Made: back, and picking.
