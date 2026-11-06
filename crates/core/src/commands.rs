@@ -858,8 +858,8 @@ pub static ALL: &[Command] = &[
         "sheet",
         "Sheet",
         &[],
-        "{number?, name?, size?: A0|A1|A2|A3|A4} a sheet of paper, landscape (A3 by default), with a title block; numbers \
-         run A101, A102…",
+        "{number?, name?, size?: ISO A0–A4|ISO B1–B4|ARCH A–E|ARCH E1–E3|ANSI A–E|SUPER B} a sheet of paper, landscape \
+         (A3 by default), with a title block; numbers run A101, A102…",
         new_sheet,
     ),
     edit(

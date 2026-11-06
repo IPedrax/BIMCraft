@@ -130,7 +130,7 @@ fn left(d: &mut Drawing, text: &str, at: P2, height: f64) {
 
 /// Draw standard folding marks (marcas de dobramento) as specified in NBR 17067.
 fn draw_folding_marks(d: &mut Drawing, paper: P2, size: &str, margins: crate::standards::SheetMargins) {
-    let s = size.trim().to_ascii_uppercase();
+    let s = crate::model::paper_name(size);
     let x_folds: &[f64] = match s.as_str() {
         "A3" => &[210.0],
         "A2" => &[210.0, 402.0],

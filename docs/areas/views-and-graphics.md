@@ -53,6 +53,17 @@ would: a compound element's layer lines, an opening's jambs and glass, a stair's
 holds only the categories set apart from `styles::default_of` (which draws as before: cut pen 10, seen pen 4). What's next on this
 foundation: annotation categories' object styles and subcategories, viewports as windows onto their views, and printing.
 
+The `sheet` command takes a named `size` (A3 by default), landscape: ISO A0–A4 and B1–B4, ARCH A–E and E1–E3, ANSI A–E and Super B
+(13 × 19 in). ISO, ARCH and ANSI accept a space or none (`ISO A4`, `ISOA4`, `ARCH E2`, `ARCHE2`); ISO also accepts the bare name
+(`A4`, `B1`). ANSI A also accepts `LETTER`, ANSI B `TABLOID` or `LEDGER`. Super B accepts `SUPER B`, `SUPERB` or `SUPER-B`. Names
+are case-insensitive and ignore surrounding spaces; ISO aliases have the same margins and folding marks as their bare names. The
+size string is kept in the project file.
+
+The additional Revit dimensions follow the numerical sizes in the [Revit 2026 ExportPaperFormat
+reference](https://help.autodesk.com/cloudhelp/2026/ENU/Revit-API-MainReference/files/html/9ad6f7ad-a4d2-e471-e8f3-5f5d3c4f7405.htm):
+ARCH E2 26 × 38 in, ARCH E3 27 × 39 in; ISO B1 707 × 1000, B2 500 × 707, B3 353 × 500 and B4 250 × 353 mm. Super B is separate from
+that list.
+
 Family components are split by category. A component is of its family's category (`graphics::category_of`; `component_category` names
 each `family::Category`: `furniture`, `casework`, `plumbing`, `drain`, `pipefitting`, `pipeaccessory`, `equipment`, `outlet`, `switch`,
 `airterminal`, `earthing`, `inspectionbox`, `lighting`, `generic`, `dataoutlet`, `voiceoutlet`, `patchpanel`, `rack`; `graphics::COMPONENTS`),

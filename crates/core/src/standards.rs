@@ -293,7 +293,7 @@ impl TechnicalStandard {
 
     /// Sheet margins and title block constraints for `size`.
     pub fn sheet_margins(self, size: &str) -> SheetMargins {
-        let size_upper = size.trim().to_ascii_uppercase();
+        let size_upper = crate::model::paper_name(size);
         match self {
             TechnicalStandard::Nbr => {
                 // NBR 16752: Margem esquerda de 25 mm em todos os formatos.
