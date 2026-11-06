@@ -451,3 +451,33 @@ are those printed in its Dutch and French versions (`name_nl`, `name_fr` in the 
 symbols are drawn at about 30 mm per drawing point, so a socket is about 25 cm wide on a plan. `names` (`en`, `nl`, `fr`) picks
 the language of the family names; as given none, a French project gets the French wording, a Dutch project the Dutch
 and every other language the English.
+
+
+## Reloading a family
+
+`family {path, name?, overwrite?}` can choose how to load over a family already in the project:
+
+- `no` keeps the project definition and adds no undo step (`overwritten: false` in the reply).
+- `version` replaces the definition but keeps compatible project parameter defaults and existing type values.
+- `version_and_values` replaces the definition and takes its defaults and matching type values from the file.
+
+Compatibility means the same case-sensitive parameter name, kind and Type/Instance setting, with neither version driven by
+a formula. Incoming formulas always belong to the new definition. Project-only types remain, keeping compatible values;
+new parameters and types use the incoming values. Explicit instance overrides are never rewritten by a family reload.
+Optional definition fields omitted from an explicit replacement are reset, rather than retained from the old definition.
+Parts keep identities through the existing `keep_parts` rule. Model validation refuses an incompatible reload atomically;
+the normal undo restores a successful reload. `dry_run` previews the change without writing it.
+
+An explicit reload of an identical definition is skipped with `overwritten: false`, without adding an undo step.
+
+The option is only accepted with `path`, and is the caller's decision: a field named `overwrite` inside a family file cannot
+choose the policy. With no option the original merge behaviour is preserved, including partial definitions. A family not
+yet in the project is loaded normally under all three policies. This changes commands, not the saved file format.
+
+The overwrite dialogs and nested shared-family decisions are separate UI work. Dimension references to family forms and
+reference planes are not supported yet; reload does not silently delete project dimensions.
+
+Load matches family and type names exactly, including case. The caller's `name` overrides the file's name. A new family name
+creates a separate library definition; imported part identities are reconciled by the normal library sync and do not rename
+or replace an existing family by GUID. A renamed type is added while the old type and its placed instances remain. Switching
+instances to the new family or type is a separate explicit edit.
