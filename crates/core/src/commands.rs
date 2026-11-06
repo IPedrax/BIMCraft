@@ -1509,7 +1509,8 @@ pub static ALL: &[Command] = &[
          them. A category given keeps the pen it isn't given. The rest of an element's lines keep their own: a compound \
          wall's layers, a door's jambs, a stair's walk line. `reset` goes back to what a project starts with (cut pen 10 and \
          seen pen 4; a door's and a window's cut 6, a railing seen 6, a mass 4 both). Without either, it says each model \
-         category's, `own` whether the project has set it apart",
+         category's, `own` whether the project has set it apart. A door's and a window's subcategory `dooropening` and \
+         `windowopening` (the swing, the opening lines) are rows too, drawing in their category's pens until given their own",
         object_styles,
     )
     .menu("Manage > Object Styles"),
@@ -1629,7 +1630,8 @@ pub static ALL: &[Command] = &[
          In a 3D view rooms are hidden unless shown (`show: [rooms]`), every new 3D view so; shown, each is a \
          see-through solid. Subcategories are hidden and shown as categories are, and go with their category: under rooms, `roomreference` (the \
          cross at each room's point, hidden unless shown, as Revit's Rooms > Reference) and `roomseparator` (room separation \
-         lines). An \
+         lines); under doors and windows, `dooropening` and `windowopening` (a door's swing, a window's opening lines: the \
+         family symbols that name the subcategory `Opening`). An \
          override is {hidden?, projection?: style, cut?: style, halftone?, transparency?}, a style {color?, weight? (a pen, \
          0 to 16: 0 a hairline, the thinnest line the screen or printer draws at any scale; 1 to 16 widths on paper from 0.10 to \
          4 mm, 4 being 0.18 mm and 10 0.35 mm, a cut wall's outline), dash? (solid, dashed, dotted), fill?, foreground?, background?}, a colour [r, g, b] or \"#rrggbb\". \
@@ -13496,9 +13498,11 @@ fn object_styles(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let all: Vec<Value> = crate::graphics::MODEL
         .iter()
+        .copied()
+        .chain(crate::styles::model_subs())
         .map(|cat| {
             let st = m.object_style(cat);
-            json!({"category": cat, "projection": st.projection, "cut": st.cut, "own": m.object_styles.contains_key(*cat)})
+            json!({"category": cat, "projection": st.projection, "cut": st.cut, "own": m.object_styles.contains_key(cat)})
         })
         .collect();
     Ok(json!({"categories": all}))

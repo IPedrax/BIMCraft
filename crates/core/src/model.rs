@@ -70,7 +70,12 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 19: a family's parameters may be text, whole
+/// The version of the project file this build writes, and the newest it reads. 21 (provisional: 20 is another branch's, the
+/// two settled when they merge): a view's graphics, a view template and the object styles may name the subcategories
+/// `dooropening` and `windowopening` (Doors > Opening, Windows > Opening), and a family's symbol the subcategory it is drawn in
+/// (`subcategory`); nothing in a file of 19 changes, but a build that reads up to 19 would refuse such graphics or object
+/// styles on opening ("isn't a category views draw", as 14 says), not say "saved by a newer BIMCraft"; a symbol's
+/// subcategory alone it would leave out as a field it doesn't know, drawing the swing in the category. 19: a family's parameters may be text, whole
 /// numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a GUID) or reporting (`reporting`),
 /// and a family type parameter names its category (`of`); nothing in a file of 17 changes, but a build that reads up to 17
 /// would refuse a new kind ("unknown variant") and leave the rest out as fields it doesn't know, a shared parameter becoming
@@ -113,7 +118,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 19;
+pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3465,6 +3470,8 @@ impl Model {
         // 17 to 19 (a family's parameters: new kinds, groups, shared GUIDs, reporting, a family type's category) has none:
         // the new fields default, to a family parameter grouped by its kind, which is what a file of 17 holds. (18 is
         // another branch's number.)
+        // 19 to 21 (Doors > Opening and Windows > Opening, which a view's graphics, a template and the object styles may name,
+        // and a symbol's `subcategory`) has none: a file of 19 names neither. (20 is another branch's number.)
         self.format = FORMAT;
     }
 
@@ -4141,11 +4148,11 @@ impl Model {
     /// A door's or window's family's solids and the lines its plan draws, in the family's own axes, turned out with
     /// the opening's flips as mirror images (its hinge on the other jamb, its swing to the wall's other side);
     /// none for one that isn't of a family, or doesn't build.
-    pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Mark>)> {
+    pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Tagged>)> {
         let (Element::Door(o) | Element::Window(o)) = e else { return None };
         let f = self.families.get(o.family.as_ref()?)?;
         let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
-        let (pieces, marks) = (f.pieces(&values).ok()?, f.marks(&values).ok()?);
+        let (pieces, marks) = (f.pieces(&values).ok()?, f.marks_tagged(&values).ok()?);
         let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
         let mirrored = fx * fy < 0.0;
         let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
@@ -4158,7 +4165,7 @@ impl Model {
                 Piece { tris: tris.collect(), outline: if mirrored { outline.into_iter().rev().collect() } else { outline }, ..pc }
             })
             .collect();
-        let marks = marks.iter().map(|k| k.map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0))).collect();
+        let marks = marks.iter().map(|(k, sub)| (k.map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)), *sub)).collect();
         Some((pieces, marks))
     }
 
@@ -4183,11 +4190,12 @@ impl Model {
             .collect()
     }
 
-    /// The marks a door's or window's family draws in plan, where it stands.
-    pub fn opening_marks(&self, e: &Element) -> Vec<crate::family::Mark> {
+    /// The marks a door's or window's family draws in plan, where it stands, each with the subcategory it is drawn in
+    /// (`dooropening`; none, its category).
+    pub fn opening_marks(&self, e: &Element) -> Vec<crate::family::Tagged> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
         let (Some((_, marks)), Some((at, u, _))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
-        marks.iter().map(|k| k.map(|q| at + u * q.0 + u.perp() * q.1)).collect()
+        marks.iter().map(|(k, sub)| (k.map(|q| at + u * q.0 + u.perp() * q.1), *sub)).collect()
     }
 
     /// The level an element stands on: a door's or window's is its wall's, a tag's its door's or

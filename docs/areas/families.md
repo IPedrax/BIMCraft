@@ -141,6 +141,11 @@ tall, `at` the middle of the line, started, centred or ended there (`Align`); `{
 sets the horizontal anchor. A `dot` is a `Circle`, drawn solid in ink. Everything
 numeric is checked finite and within `MAX_COORD`; a label's height and a dot's radius must be above zero.
 
+A symbol may name the subcategory of its family's category it is drawn in (`subcategory`, by its English name, any case:
+`Opening` for a door or a window; `Family::check` refuses a name its category has none of, saying which it has); a view hides and
+restyles it apart from the rest (Doors > Opening, [views and graphics](views-and-graphics.md)). The starter doors' swings and the
+windows' opening lines are in Opening. The Family Editor's Symbols tab picks it from the category's subcategories.
+
 `Model::component_marks` places a component's marks (mirrored, then turned and moved) and `Model::opening_marks` an opening's,
 and `render::marks` draws them: lines in the category's pen (`BY_CATEGORY`, so Object Styles and Visibility/Graphics apply), dots
 as filled discs. Coarse detail leaves them out. A label's anchor is placed with the component (turned, mirrored, moved) but its

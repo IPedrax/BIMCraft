@@ -80,6 +80,8 @@ pub mod massing;
 pub mod model;
 pub mod nbr5410;
 #[cfg(test)]
+mod opening_subcategory_tests;
+#[cfg(test)]
 mod openings_past_top_tests;
 #[cfg(test)]
 mod oracle_tests;
