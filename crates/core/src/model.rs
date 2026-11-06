@@ -5702,6 +5702,13 @@ impl Model {
 
     /// A room's boundary measured at `at`: the walls' centre lines (Revit's "At wall centerline") or their faces ("At wall
     /// finish": the area inside the walls, which Brazilian codes call área útil).
+    /// The room component `id` stands in, by its point on its level ([`Rooms::room_at`](crate::rooms::Rooms::room_at)); `None`
+    /// for one outside every room, or for an element that isn't a component.
+    pub fn room_of(&self, id: impl crate::ids::Key) -> Option<Id> {
+        let Some(Element::Component(c)) = self.elements.id(id).and_then(|id| self.elements.get(id)) else { return None };
+        crate::rooms::Rooms::new(self).room_at(c.level, c.at)
+    }
+
     pub fn room_region_at(&self, r: &Room, at: RoomArea) -> Option<Region> {
         self.room_bound(r, at).ok()
     }
