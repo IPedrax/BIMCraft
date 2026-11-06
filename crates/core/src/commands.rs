@@ -2623,6 +2623,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("outline".into(), json!(outline.into_iter().map(micron).collect::<Vec<_>>()));
         }
         Element::Sheet(sh) => {
+            extra.insert("title_block".into(), json!(sh.title_block));
             extra.insert("paper".into(), json!(paper(&sh.size)));
             // What its title block's fields say, filled in; and which of them are its own to give.
             extra.insert("title_values".into(), json!(sheet::title_values(m, id)));

@@ -1,4 +1,4 @@
-//! Sheets: paper with a title block, and views placed on it at a scale. A sheet is drawn once,
+//! Sheets: paper with an optional title block, and views placed on it at a scale. A sheet is drawn once,
 //! at [`DENSITY`] px per paper mm, as a display list in paper pixels: what the PNG, the PDF and the
 //! desktop's sheet view show. Each view on it is drawn as its own view draws it, moved onto the
 //! paper and made the viewport's to pick, and titled under it; a section's picture of what lies

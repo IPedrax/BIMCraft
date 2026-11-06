@@ -1897,7 +1897,7 @@ impl Facing {
     }
 }
 
-/// A sheet: paper of an ISO size (A0 to A4, landscape), with a title block, and the views placed
+/// A sheet: paper of an ISO size (A0 to A4, landscape), with an optional title block, and the views placed
 /// on it.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
