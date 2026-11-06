@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr ""
 
-#: crates/core/src/render.rs:3038
+#: crates/core/src/render.rs:3047
 msgid "Ceiling Plan"
 msgstr ""
 
@@ -96,7 +96,7 @@ msgstr ""
 msgid "Crosshatch"
 msgstr ""
 
-#: crates/core/src/render.rs:3630
+#: crates/core/src/render.rs:3639
 msgid "DN"
 msgstr ""
 
@@ -359,7 +359,7 @@ msgstr ""
 msgid "Mounting Height"
 msgstr ""
 
-#: crates/core/src/render.rs:2864
+#: crates/core/src/render.rs:2873
 msgid "NOT ENCLOSED"
 msgstr ""
 
@@ -427,7 +427,7 @@ msgstr ""
 msgid "Project"
 msgstr ""
 
-#: crates/core/src/render.rs:2864
+#: crates/core/src/render.rs:2873
 msgid "REDUNDANT"
 msgstr ""
 
@@ -608,7 +608,7 @@ msgstr ""
 msgid "Type"
 msgstr ""
 
-#: crates/core/src/render.rs:3630
+#: crates/core/src/render.rs:3639
 msgid "UP"
 msgstr ""
 

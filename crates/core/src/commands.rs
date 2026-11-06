@@ -7421,7 +7421,7 @@ fn crs(s: &mut Session, p: &Value) -> R {
 
 /// The `coordinates` report, with each location's and each point's id and GUID, as the library holds them.
 fn coordinates_report(m: &Model) -> Value {
-    use crate::coordinates::{BASE_POINT, SURVEY_POINT};
+    use crate::coordinates::{BASE_POINT, INTERNAL_ORIGIN, SURVEY_POINT};
     let mut r = m.coordinates.report();
     let ids = |kind: &LibKind, name: &str| (m.library.id(kind, name), m.library.guid(kind, name));
     for name in m.coordinates.locations.keys() {
@@ -7429,7 +7429,7 @@ fn coordinates_report(m: &Model) -> Value {
         r["locations"][name]["id"] = json!(id);
         r["locations"][name]["guid"] = json!(guid);
     }
-    for (key, name) in [("base", BASE_POINT), ("survey", SURVEY_POINT)] {
+    for (key, name) in [("internal_origin", INTERNAL_ORIGIN), ("base", BASE_POINT), ("survey", SURVEY_POINT)] {
         let (id, guid) = ids(&LibKind::CoordinatePoint, name);
         r[key]["id"] = json!(id);
         r[key]["guid"] = json!(guid);

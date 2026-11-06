@@ -34,8 +34,6 @@ use crate::{BimApp, Sheet, Status, Tool, icon_button, top_params};
 pub(crate) const PICK: f32 = 6.0;
 /// How near the cursor a click snaps to a wall's end or a point of the chain, in px.
 pub(crate) const SNAP: f64 = 10.0;
-/// How long the arms of the origin marker are, in points.
-pub(crate) const ORIGIN_ARM: f32 = 34.0;
 /// Zoom limits, px per mm: from 1000 km to 2 cm across 1000 px.
 const SCALE: (f64, f64) = (1e-6, 50.0);
 /// How long a press may last and still be a click, wherever the hand went meanwhile, in seconds: a
@@ -826,30 +824,6 @@ pub(crate) fn tag(p: &Painter, at: Pos2, align: Align2, text: impl Into<String>)
     let rect = align.anchor_size(at, galley.size());
     p.rect_filled(rect.expand2(vec2(3.0, 1.0)), 2.0, pal().surface.gamma_multiply(0.85));
     p.galley(rect.min, galley, pal().accent);
-}
-
-/// The origin marker at the screen point `at`, the project's 0, 0: an arrow east for x in the canvas's red and one north (up the
-/// screen) for y in its green, each lettered at its tip. Its arrows keep their size at any zoom. Not in the drawing: a PNG, a sheet
-/// or a printout is made without it.
-fn origin_marker(p: &Painter, at: Pos2) {
-    // Not drawn where neither it nor its arms are on the screen: the plan may be anywhere.
-    if !p.clip_rect().expand(2.0).intersects(Rect::from_min_max(at - vec2(4.0, ORIGIN_ARM + 16.0), at + vec2(ORIGIN_ARM + 16.0, 4.0))) {
-        return;
-    }
-    let colours = canvas_pal();
-    for (arm, colour, letter, align, off) in [
-        (vec2(ORIGIN_ARM, 0.0), colours.error, "X", Align2::LEFT_CENTER, vec2(4.0, 0.0)),
-        (vec2(0.0, -ORIGIN_ARM), colours.context, "Y", Align2::CENTER_BOTTOM, vec2(0.0, -4.0)),
-    ] {
-        let (stroke, tip) = (Stroke::new(1.5, colour), at + arm);
-        let (along, across) = (arm / ORIGIN_ARM, vec2(-arm.y, arm.x) / ORIGIN_ARM);
-        p.line_segment([at, tip], stroke);
-        for side in [-1.0, 1.0] {
-            p.line_segment([tip, tip - along * 7.0 + across * (3.5 * side)], stroke);
-        }
-        p.text(tip + off, align, letter, FontId::proportional(11.0), colour);
-    }
-    p.circle_filled(at, 2.5, colours.text);
 }
 
 impl BimApp {
@@ -1645,7 +1619,7 @@ impl BimApp {
             match drag {
                 Drag::Move(from) => {
                     let by = self.dragged(&model, &view, from, view.mm(q));
-                    if by.length() > 0.0 {
+                    if by.length() > 0.0 && !self.move_point(by) {
                         self.run("move", json!({"ids": self.selection, "by": point(by)}));
                     }
                 }
@@ -1722,11 +1696,8 @@ impl BimApp {
         if !kept {
             paint(&p, place, &d, &marked, painted_hover, self.thin, &pictures);
         }
-        // The working aids: where the project's 0, 0 is, and which view this is. On the screen only; no drawing is made of them.
-        if self.show_origin {
-            let (x, y) = view.px(P2(0.0, 0.0));
-            origin_marker(&p, pos(rect.min, (x, y)));
-        }
+        // The working aid: which view this is. On the screen only; no drawing is made of it. (Where the project's 0, 0 is, is
+        // the Internal Origin's mark, Site's in Visibility/Graphics.)
         if self.show_view_name {
             let name = model.view_name(key).unwrap_or_default();
             let name = if up { format!("{name} ({})", t("Ceiling Plan")) } else { name.to_string() };
@@ -2973,6 +2944,10 @@ impl BimApp {
             self.tool = again;
             return;
         }
+        if !copy && self.move_point(to - from) {
+            self.tool = Tool::Modify;
+            return;
+        }
         let params = json!({"ids": self.selection, "by": point(to - from)});
         match self.run(if copy { "copy" } else { "move" }, params) {
             None => self.tool = again,
@@ -3797,10 +3772,12 @@ impl BimApp {
                     ));
                     tag(p, tip + dir * 14.0, Align2::CENTER_CENTER, label);
                 };
+                // The point a click would take, snapped, with its marker, whatever the click is for.
+                let to = (!place).then(|| self.found(sc, q, &[centre], false));
                 let turning = match (place, self.typed_angle()) {
                     (true, _) => None,
                     (false, Some(a)) => Some(a),
-                    (false, None) => start.map(|from| angle_between(centre, from, self.found(sc, q, &[centre], false), 0.0)),
+                    (false, None) => start.zip(to).map(|(from, to)| angle_between(centre, from, to, 0.0)),
                 };
                 match turning {
                     Some(angle) => {

@@ -595,3 +595,51 @@ fn every_location_and_both_points_report_their_id_and_guid_and_a_rename_keeps_th
     let r = run(&mut s, "coordinates", json!({}));
     assert_eq!((r["locations"]["North Lot"]["id"].as_u64(), r["locations"]["North Lot"]["guid"].as_str()), (Some(id), Some(guid.as_str())));
 }
+
+#[test]
+fn each_point_is_picked_by_its_library_id_where_a_view_shows_it() {
+    use crate::coordinates::Point;
+    use crate::render::{View, draw};
+    let mut s = Session::new();
+    run(&mut s, "coordinates", json!({"base": [4000, 3000, 0], "survey": [-5000, 2000, 0]}));
+    run(&mut s, "graphics", json!({"view": 100000, "show": ["internalorigin", "projectbasepoint", "surveypoint"]}));
+    let view = View { scale: 0.05, cx: 0.0, cy: 0.0, width: 800, height: 600 };
+    let d = draw(&s.model, 100000, view);
+    for (point, at) in [(Point::Internal, (0.0, 0.0)), (Point::Base, (4000.0, 3000.0)), (Point::Survey, (-5000.0, 2000.0))] {
+        let id = point.id(&s.model).unwrap_or_else(|| panic!("{point:?} has a library id"));
+        assert_eq!(Point::of(&s.model, id), Some(point));
+        assert_eq!(d.pick(view.px(crate::geom::P2(at.0, at.1)), 6.0), Some(id), "{point:?} picked at its mark");
+    }
+    assert_eq!(Point::of(&s.model, 100000), None, "a level is no point");
+}
+
+#[test]
+fn a_section_shows_the_points_where_its_graphics_show_them_and_picks_them() {
+    use crate::coordinates::Point;
+    use crate::render::{View, png, section};
+    let mut s = Session::new();
+    run(&mut s, "wall", json!({"points": [[0, 3000], [8000, 3000]]}));
+    run(&mut s, "coordinates", json!({"base": [4000, 0, 1000], "survey": [6000, 0, -500]}));
+    // Looking north along y = -2000, from x = -2000 to 10000.
+    let id = run(&mut s, "section", json!({"start": [-2000, -2000], "end": [10000, -2000]}))["id"].as_u64().unwrap();
+    let view = View { scale: 0.05, cx: 4000.0, cy: 0.0, width: 800, height: 400 };
+    // Along the line from its start, and up.
+    let points = [(Point::Internal, (2000.0, 0.0)), (Point::Base, (6000.0, 1000.0)), (Point::Survey, (8000.0, -500.0))];
+    let ink = |s: &Session, at: (f64, f64)| {
+        let img = tiny_skia::Pixmap::decode_png(&png(&section(&s.model, id, view)).unwrap()).unwrap();
+        let (x, y) = view.px(crate::geom::P2(at.0, at.1));
+        let (x, y) = (x as i64, y as i64);
+        (x - 10..=x + 10)
+            .flat_map(|i| (y - 10..=y + 10).map(move |j| (i, j)))
+            .filter_map(|(i, j)| img.pixel(u32::try_from(i).ok()?, u32::try_from(j).ok()?))
+            .map(|c| u32::from(c.red()) + u32::from(c.green()) + u32::from(c.blue()))
+            .sum::<u32>()
+    };
+    let hidden: Vec<u32> = points.iter().map(|(_, at)| ink(&s, *at)).collect();
+    run(&mut s, "graphics", json!({"view": id, "show": ["internalorigin", "projectbasepoint", "surveypoint"]}));
+    let d = section(&s.model, id, view);
+    for ((p, at), before) in points.iter().zip(hidden) {
+        assert!(ink(&s, *at) + 2000 < before, "{p:?} drawn at {at:?}: darker than without it");
+        assert_eq!(d.pick(view.px(crate::geom::P2(at.0, at.1)), 6.0), p.id(&s.model), "{p:?} picked");
+    }
+}

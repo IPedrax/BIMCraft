@@ -7,8 +7,9 @@
 //! the `crs`, `location` and `coordinates` commands as one undo step.
 
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
-use bimcraft_core::coordinates::{Coordinates, Frame, Location, MAX_LOCATIONS, Move};
+use bimcraft_core::coordinates::{Coordinates, Frame, Location, MAX_LOCATIONS, Move, Point};
 use bimcraft_core::crs::{self, Info};
 use bimcraft_core::engine::Session;
 use bimcraft_core::geom::P2;
@@ -40,10 +41,10 @@ const PLACES: usize = 6;
 
 /// The frames the converter goes between, and what each is called.
 const FRAMES: [(Frame, &str); 4] = [
-    (Frame::Internal, msg!("Internal")),
+    (Frame::Internal, msg!("Internal (the model's own)")),
     (Frame::Base, msg!("From the Project Base Point")),
-    (Frame::Shared, msg!("Shared (the map's)")),
-    (Frame::Wgs84, msg!("WGS84 (longitude, latitude)")),
+    (Frame::Shared, msg!("Shared (the survey's, the site's)")),
+    (Frame::Wgs84, msg!("GPS (WGS84 longitude, latitude)")),
 ];
 
 /// A location as the window holds it: what it was called when the window opened (none, a new one), what it is called now,
@@ -1022,7 +1023,12 @@ fn world_map(ui: &mut Ui, d: &mut CoordinatesDialog) {
 
 /// The converter: a point from one frame to another, through the draft.
 fn convert_tab(ui: &mut Ui, d: &mut CoordinatesDialog) {
-    note(ui, msg!("A point in one frame, in another: the file's own, from the Project Base Point, shared, or WGS84. Lengths in mm."));
+    note(
+        ui,
+        msg!(
+            "A calculator for coordinates: type a point as one system gives it and read it in another. Use it to check a survey point against the model, to give a contractor or a consultant the site coordinates of a point you know in the model, or to find where a GPS reading falls in the building. It only calculates: nothing in the project changes. Lengths are in mm; latitude and longitude in degrees."
+        ),
+    );
     let combo = |ui: &mut Ui, salt: &str, label: &str, value: &mut Frame| {
         let l = ui.label(t(label));
         let shown = FRAMES.iter().find(|(f, _)| f == value).map_or("", |(_, n)| t(n));
@@ -1163,6 +1169,141 @@ impl BimApp {
         true
     }
 
+    /// The status bar's read out of plan point `p` in shared coordinates, in the map system's unit (metres without one):
+    /// none while shared coordinates are the file's own there.
+    pub(crate) fn shared_readout(&self, p: P2) -> Option<String> {
+        let co = &self.session.model.coordinates;
+        let q = co.to_shared([p.0, p.1, 0.0]);
+        if (q[0] - p.0).abs() < 0.5 && (q[1] - p.1).abs() < 0.5 && co.crs.is_none() {
+            return None;
+        }
+        let grid = match co.crs.and_then(|c| crs::lookup(c).ok()) {
+            Some(i) => (i.mm(), unit_symbol(&i.unit)),
+            None => (1000.0, "m".into()),
+        };
+        Some(format!("E {}  N {}", shown(q[0], &grid), shown(q[1], &grid)))
+    }
+
+    /// Site's points the 3D view shows (as its Visibility/Graphics says), and where each is.
+    pub(crate) fn points_in_3d(&self) -> Vec<(Point, [f64; 3])> {
+        let m = &self.session.model;
+        let Some(v) = m.default_3d() else { return Vec::new() };
+        let Some(g) = bimcraft_core::graphics::graphics_of(m, v) else { return Vec::new() };
+        let g = g.resolved(m);
+        Point::ALL.into_iter().filter(|p| !g.hides(p.subcategory())).map(|p| (p, p.at(&m.coordinates))).collect()
+    }
+
+    /// The point selected alone, if the selection is one of the three (by its library id, as a view picks it).
+    pub(crate) fn selected_point(&self) -> Option<Point> {
+        match self.selection.as_slice() {
+            [id] => Point::of(&self.session.model, *id),
+            _ => None,
+        }
+    }
+
+    /// The selected point moved by `by` (dragged, or the Move tool): the Project Base Point alone, nothing else moving; the
+    /// Survey Point as its clip says (`survey_moves`); the Internal Origin never. Whether the selection was a point.
+    pub(crate) fn move_point(&mut self, by: P2) -> bool {
+        let Some(p) = self.selected_point() else { return false };
+        let at = p.at(&self.session.model.coordinates);
+        self.place_point(p, [at[0] + by.0, at[1] + by.1, at[2]]);
+        true
+    }
+
+    /// Point `p` put at internal `to`, mm, by the `coordinates` command.
+    pub(crate) fn place_point(&mut self, p: Point, to: [f64; 3]) {
+        let how = if self.survey_moves == Move::System { "system" } else { "point" };
+        match p {
+            Point::Internal => {
+                self.status = Status {
+                    text: t(
+                        "The Internal Origin is the file's own 0, 0, 0: it never moves. Move the Project Base Point or the Survey Point.",
+                    )
+                    .into(),
+                    error: true,
+                }
+            }
+            Point::Base => {
+                self.run("coordinates", json!({"base": to}));
+            }
+            Point::Survey => {
+                self.run("coordinates", json!({"survey": to, "move": how}));
+            }
+        }
+    }
+
+    /// Properties for a point picked in a view: its name; where it is, internal (typed, it moves; the Internal Origin's
+    /// fixed) and shared (in the map's unit); the angle to true north at the Project Base Point; the Survey Point's clip.
+    pub(crate) fn point_properties(&mut self, ui: &mut Ui, p: Point) {
+        let m = Arc::clone(&self.session.model);
+        let co = &m.coordinates;
+        let units = m.units;
+        let at = p.at(co);
+        ui.horizontal(|ui| {
+            let (rect, _) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::hover());
+            crate::icons::paint(ui.painter(), crate::icons::Icon::Coordinates, rect, pal().icon);
+            ui.label(RichText::new(t(p.name())).strong().size(14.0));
+        });
+        if let Some(id) = p.id(&m) {
+            ui.label(RichText::new(tf("ID {}", &[&id.to_string()])).color(pal().muted).size(11.5));
+        }
+        ui.add_space(6.0);
+        let mut to = at;
+        let mut moved = false;
+        Grid::new("point-properties").num_columns(2).spacing([10.0, 4.0]).striped(true).show(ui, |ui| {
+            ui.label(RichText::new(t("Internal")).strong());
+            ui.end_row();
+            for (k, axis) in ["X", "Y", "Z"].iter().enumerate() {
+                ui.label(*axis);
+                if p == Point::Internal {
+                    ui.label(units.length(at[k]));
+                } else {
+                    moved |= length_field(ui, &mut to[k], units, tf("Point {}", &[axis]));
+                }
+                ui.end_row();
+            }
+            let grid = match co.crs.and_then(|c| crs::lookup(c).ok()) {
+                Some(i) => (i.mm(), unit_symbol(&i.unit)),
+                None => (1000.0, "m".into()),
+            };
+            let shared = co.to_shared(at);
+            ui.label(RichText::new(t("Shared")).strong());
+            ui.end_row();
+            for (k, label) in [msg!("E/W"), msg!("N/S"), msg!("Elev")].iter().enumerate() {
+                ui.label(t(label));
+                ui.label(RichText::new(shown(shared[k], &grid)).monospace());
+                ui.end_row();
+            }
+            if let Some(code) = co.crs
+                && let Ok((lon, lat)) = crs::to_wgs84(code, shared[0], shared[1])
+            {
+                ui.label(t("Latitude, longitude"));
+                ui.label(RichText::new(format!("{lat:.6}°, {lon:.6}°")).monospace());
+                ui.end_row();
+            }
+            if p == Point::Base {
+                ui.label(t("Angle to True North"));
+                let mut a = co.location().angle;
+                if angle_field(ui, &mut a, t("Point angle to true north").to_string()) {
+                    self.run("location", json!({"name": co.active, "angle": a}));
+                }
+                ui.end_row();
+            }
+        });
+        if p == Point::Survey {
+            ui.add_space(6.0);
+            ui.label(RichText::new(t("When it moves")).strong());
+            for (how, label) in [(Move::Point, msg!("Move the point only")), (Move::System, msg!("Move the shared coordinates with it"))] {
+                if ui.radio(self.survey_moves == how, t(label)).clicked() {
+                    self.survey_moves = how;
+                }
+            }
+        }
+        if moved && to.iter().all(|v| v.is_finite()) {
+            self.place_point(p, to);
+        }
+    }
+
     /// Specify Coordinates at a Point: the point picked in the view, internal mm, takes the shared coordinates typed; the
     /// window comes back with the draft worked out, to review.
     pub(crate) fn specify_at(&mut self, at: [f64; 3]) {
@@ -1200,6 +1341,38 @@ impl BimApp {
         }
         if self.run("rotate_project_north", p).is_some() {
             self.set_tool(crate::Tool::Modify);
+        }
+    }
+}
+
+/// A point's mark on the screen at `c`, as plans draw it: the Internal Origin's red x and green y arrows, the Project Base
+/// Point's circled cross, the Survey Point's circled triangle; in the selection's colour when `lit`.
+pub(crate) fn paint_point(p: &egui::Painter, c: egui::Pos2, point: Point, lit: bool) {
+    let blue = if lit { crate::style::canvas_pal().accent } else { egui::Color32::from_rgb(40, 80, 170) };
+    let s = Stroke::new(if lit { 2.0 } else { 1.5 }, blue);
+    match point {
+        Point::Internal => {
+            for (ink, d) in
+                [(egui::Color32::from_rgb(200, 40, 40), vec2(1.0, 0.0)), (egui::Color32::from_rgb(30, 150, 60), vec2(0.0, -1.0))]
+            {
+                let ink = if lit { blue } else { ink };
+                let tip = c + d * 24.0;
+                let across = vec2(-d.y, d.x);
+                p.line_segment([c, tip], Stroke::new(1.5, ink));
+                p.line_segment([tip, tip - d * 6.0 + across * 3.5], Stroke::new(1.5, ink));
+                p.line_segment([tip, tip - d * 6.0 - across * 3.5], Stroke::new(1.5, ink));
+            }
+        }
+        Point::Base => {
+            p.circle_stroke(c, 9.0, s);
+            let k = 9.0 * std::f32::consts::FRAC_1_SQRT_2;
+            p.line_segment([c + vec2(-k, -k), c + vec2(k, k)], s);
+            p.line_segment([c + vec2(-k, k), c + vec2(k, -k)], s);
+        }
+        Point::Survey => {
+            p.circle_stroke(c, 9.0, s);
+            let h = 7.2;
+            p.add(egui::Shape::closed_line(vec![c + vec2(0.0, -h), c + vec2(h * 0.87, h * 0.5), c + vec2(-h * 0.87, h * 0.5)], s));
         }
     }
 }

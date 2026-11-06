@@ -114,7 +114,8 @@ pub struct Settings {
     pub high_contrast: [u8; 3],
     /// Grid snapping applies to every view, using the active view's enabled lattice.
     pub grid_snapping: bool,
-    /// The plans' origin marker, and the view's name in their corner: working aids on the screen.
+    /// The plans' old origin marker (now the Internal Origin, Site's in Visibility/Graphics: kept so a settings file reads
+    /// back as it was written), and the view's name in their corner, a working aid on the screen.
     pub origin_marker: bool,
     pub view_name: bool,
     /// The shortcuts the user made (Keyboard Shortcuts): two-character key to the English name of an action.
@@ -563,10 +564,6 @@ impl BimApp {
         heading(ui, msg!("Palettes"));
         self.palette_switches(ui);
         heading(ui, msg!("Plans"));
-        ui.checkbox(&mut self.show_origin, t("Show the origin marker in plans")).on_hover_text(t(
-            "A small marker at the project's 0, 0 with the directions of x (east) and y (north). It is drawn on the screen only: \
-             never in a printed drawing, a sheet or an export",
-        ));
         ui.checkbox(&mut self.show_view_name, t("Show the view's name in the corner of plans")).on_hover_text(t(
             "The name of the floor plan or ceiling plan in its bottom left corner. It is drawn on the screen only, and the view's tab \
              names it too",

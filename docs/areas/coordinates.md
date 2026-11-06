@@ -131,10 +131,33 @@ Tests: the link tests in `coordinates_io_tests.rs`.
 
 Visibility/Graphics has a **Site** model category with three subcategories, `internalorigin`, `projectbasepoint` and
 `surveypoint` (`graphics::SUBCATEGORIES`), hidden unless a view shows them, as Revit's are: `graphics {"view": …, "show":
-["projectbasepoint"]}`, or their rows under Site in the dialog. A plan draws them (`render::origin_marks`), annotation-sized
-and owned by no element, so never picked: the Internal Origin as a red x arrow and a green y arrow, the Project Base Point as
-a circle with a cross in it, the Survey Point as a circle with a triangle in it. Hiding Site hides all three. Sections and the
-3D view don't draw them yet.
+["projectbasepoint"]}`, or their rows under Site in the dialog. Plans, sections and elevations draw them
+(`render::origin_marks`, through a projection from a model point to the drawing: a plan's x and y, a section's distance along
+its line and height), annotation-sized: the Internal Origin as a red x arrow and a green y arrow, the Project Base Point as
+a circle with a cross in it, the Survey Point as a circle with a triangle in it. The 3D view draws the same marks over its
+picture, at their points (`coordinates::paint_point`, `BimApp::points_in_3d`, by the 3D view's own graphics). Hiding Site
+hides all three.
+
+They are picked as elements are, by the library ids of their entries (`coordinates::Point`, `Point::of`, `Point::id`):
+each mark's primitives are owned by its point, and a pick takes a point before what's under it (`Drawing::on_top`; the
+Internal Origin stands on walls' corners), in a plan, a section or the 3D view. The selection keeps them as it keeps elements.
+Selected, Properties shows the point (`BimApp::point_properties`): its name and id, where it is internal (X, Y, Z typed move
+it, the Internal Origin's fixed) and shared, in the map's unit (with latitude and longitude under a map system), the angle to
+true north at the Project Base Point (typed, the active location's), and for the Survey Point its clip, Revit's paperclip:
+**Move the point only** (the default; the world stays) or **Move the shared coordinates with it** (`BimApp::survey_moves`).
+Dragged, or moved with Move, a point runs `coordinates` with `base` or `survey` (and `move` as the clip says), never `move`
+(`BimApp::move_point`); the Internal Origin refuses, saying it is the file's own 0, 0, 0.
+
+The status bar reads the cursor out in shared coordinates beside its x and y, in the map's unit (`BimApp::shared_readout`),
+once they are not the file's own.
+
+Link Model asks how to position the file, as Revit's link dialog does (`links::LinkBox`): Origin to Origin, Project Base
+Point to Project Base Point, or By Shared Coordinates (with which of its locations, its active one by default), as `link`'s
+`by` and `location`. Import CAD, Link CAD and Point Cloud have By Shared Coordinates beside Center to Center and Origin to
+Origin, with **Acquire coordinates from it** (`acquire: true`).
+
+Still to come of the plan's stage 6: a plan turned to true north (`orientation`), which wants `render::View` turned, and
+everything that converts through it with it; and the north arrow annotation.
 
 ## Ids
 

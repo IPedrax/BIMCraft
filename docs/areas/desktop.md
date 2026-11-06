@@ -14,14 +14,14 @@ ids inside a view are per view (`push_id`), so two views on screen never clash. 
 they hand it a file): what it keeps is `Settings`, written when it changes, between drags; a setting still to come goes on
 its page greyed out (`later`).
 
-Two working aids are drawn over a plan's or a ceiling plan's canvas, in `canvas()` right after the drawing: the origin marker
-(`origin_marker`: an arrow east for x in the canvas's red and one north for y in its green, lettered, at the screen point of the
-project's 0, 0, `ORIGIN_ARM` points long at any zoom, left out when the origin is far off the screen) and the view's name in the
+A working aid is drawn over a plan's or a ceiling plan's canvas, in `canvas()` right after the drawing: the view's name in the
 bottom left corner (`BimApp::corner_name`, over the view control bar where that floats over the corner, `bar_cover`; a ceiling plan's
-reads `Level 1 (Ceiling Plan)`, as an image's does). They are the window's alone: `render::draw` has neither, so no PNG, sheet or
-printout does. File > Settings > User Interface > Plans has a box for each (`BimApp::show_origin`, `show_view_name`; kept in
-`settings.json` as `origin_marker` and `view_name`, on when the file doesn't say), and New and Open keep them. The 3D view, sections
-and sheets have neither. Tests: `tests/origin.rs`, in both profiles.
+reads `Level 1 (Ceiling Plan)`, as an image's does). It is the window's alone: `render::draw` hasn't it, so no PNG, sheet or
+printout does. File > Settings > User Interface > Plans has a box for it (`BimApp::show_view_name`; kept in `settings.json` as
+`view_name`, on when the file doesn't say), and New and Open keep it. The screen-only origin marker it once had beside it is gone:
+where the project's 0, 0 is, is the Internal Origin's mark, Site's in Visibility/Graphics ([coordinates](coordinates.md)), so the
+view's graphics alone say whether it shows (`settings.json`'s `origin_marker` is still read and written, and does nothing). Tests:
+`tests/origin.rs`, in both profiles.
 
 The minimap (`minimap.rs`, the same in both profiles) is at the top of the Navigator, Rev's Project Browser, under a header that folds
 it away: folded at first, so the tree keeps its room (the tests that click the tree's entries where they are drawn rely on it), and

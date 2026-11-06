@@ -796,7 +796,7 @@ impl Model {
         add(Kind::DistributionSystem, &mut self.distribution_systems.keys());
         add(Kind::WireType, &mut self.wire_types.keys());
         add(Kind::Location, &mut self.coordinates.locations.keys());
-        let points = [crate::coordinates::BASE_POINT.to_string(), crate::coordinates::SURVEY_POINT.to_string()];
+        let points = crate::coordinates::Point::ALL.map(|p| p.name().to_string());
         add(Kind::CoordinatePoint, &mut points.iter());
         out
     }

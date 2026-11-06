@@ -1007,6 +1007,11 @@ impl BimApp {
         if self.palette_filter.as_ref().is_some_and(|(_, picked_for)| *picked_for != self.selection) {
             self.palette_filter = None;
         }
+        // Site's points, picked in a view, are no elements: their own Properties.
+        if let Some(p) = self.selected_point() {
+            self.point_properties(ui, p);
+            return;
+        }
         let model = Arc::clone(&self.session.model);
         let subject = self.subject();
         // A camera view picked on a plan: its Properties are its camera's, the same panel the 3D tab shows for it.

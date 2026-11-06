@@ -24,6 +24,59 @@ pub const INTERNAL: &str = bimcraft_i18n::msg!("Internal");
 /// The two points' names, as the library lists them.
 pub const BASE_POINT: &str = "Project Base Point";
 pub const SURVEY_POINT: &str = "Survey Point";
+pub const INTERNAL_ORIGIN: &str = "Internal Origin";
+
+/// One of the three points a project is set out from, as a view shows and picks it: by its library entry
+/// (`library::Kind::CoordinatePoint`), whose id the selection holds, as an element's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Point {
+    /// The file's own 0, 0, 0: shown, never moved.
+    Internal,
+    Base,
+    Survey,
+}
+
+impl Point {
+    pub const ALL: [Point; 3] = [Point::Internal, Point::Base, Point::Survey];
+
+    /// Its name, as the library and the interface call it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Point::Internal => INTERNAL_ORIGIN,
+            Point::Base => BASE_POINT,
+            Point::Survey => SURVEY_POINT,
+        }
+    }
+
+    /// Its subcategory of Site, in Visibility/Graphics.
+    pub fn subcategory(self) -> &'static str {
+        match self {
+            Point::Internal => "internalorigin",
+            Point::Base => "projectbasepoint",
+            Point::Survey => "surveypoint",
+        }
+    }
+
+    /// Where it is, internal mm.
+    pub fn at(self, co: &Coordinates) -> P3 {
+        match self {
+            Point::Internal => [0.0; 3],
+            Point::Base => co.base,
+            Point::Survey => co.survey,
+        }
+    }
+
+    /// Its library id.
+    pub fn id(self, m: &crate::model::Model) -> Option<crate::model::Id> {
+        m.library.id(&crate::library::Kind::CoordinatePoint, self.name())
+    }
+
+    /// The point library id `id` is, if it is one.
+    pub fn of(m: &crate::model::Model, id: crate::model::Id) -> Option<Point> {
+        let e = m.library.get(id).filter(|e| e.kind == crate::library::Kind::CoordinatePoint)?;
+        Point::ALL.into_iter().find(|p| p.name() == e.name)
+    }
+}
 /// How far a location's shared coordinates may lie from their origin, mm: 100,000 km, past any map grid's false
 /// eastings and northings.
 pub const MAX_SHARED: f64 = 1e11;

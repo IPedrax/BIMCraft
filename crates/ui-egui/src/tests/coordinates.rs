@@ -203,6 +203,32 @@ fn rotate_project_north_is_a_tool_on_the_plan_that_turns_the_whole_model_about_t
 }
 
 #[test]
+fn rotate_project_north_snaps_its_rays_and_space_moves_its_centre() {
+    let mut h = app(BOX);
+    press(&mut h, "Manage");
+    from_list(&mut h, "Project Location", "Rotate Project North");
+    // Space: the next click is the centre, snapped.
+    h.key_press(Key::Space);
+    h.run();
+    assert!(matches!(h.state().tool, Tool::RotateNorth { place: true, .. }), "{:?}", h.state().tool);
+    click(&mut h, P2(30.0, 25.0));
+    assert!(matches!(h.state().tool, Tool::RotateNorth { centre, place: false, .. } if centre == P2(0.0, 0.0)), "{:?}", h.state().tool);
+    // The angle's start near a corner: on the corner.
+    click(&mut h, P2(8030.0, 25.0));
+    assert!(matches!(h.state().tool, Tool::RotateNorth { start: Some(s), .. } if s == P2(8000.0, 0.0)), "{:?}", h.state().tool);
+}
+
+#[test]
+fn space_moves_rotate_s_centre_too() {
+    let mut h = app(BOX);
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Rotate");
+    h.key_press(Key::Space);
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Rotate { place: true, .. }), "{:?}", h.state().tool);
+}
+
+#[test]
 fn rotate_project_north_takes_an_angle_typed_in_the_options_bar() {
     let mut h = app(BOX);
     press(&mut h, "Manage");
@@ -249,4 +275,80 @@ fn a_click_on_the_world_map_picks_the_latitude_and_longitude_to_place_by() {
     press(&mut h, "OK");
     let l = h.state().session.model.coordinates.location();
     assert!(l.east > 333_317_911.0 + 50_000_000.0, "the Survey Point placed further east: {l:?}");
+}
+
+/// The plan with Site's three points shown, the Project Base Point at (2000, 1000) and the Survey Point at (6000, 4000).
+fn points_shown() -> Harness<'static, BimApp> {
+    let mut h = app(BOX);
+    h.state_mut().run("coordinates", json!({"base": [2000.0, 1000.0, 0.0], "survey": [6000.0, 4000.0, 0.0]}));
+    h.state_mut().run("graphics", json!({"view": "Level 1", "show": ["internalorigin", "projectbasepoint", "surveypoint"]}));
+    h.run();
+    h
+}
+
+fn point_id(h: &Harness<BimApp>, p: bimcraft_core::coordinates::Point) -> Id {
+    p.id(&h.state().session.model).unwrap()
+}
+
+#[test]
+fn a_point_is_picked_on_the_plan_and_its_properties_say_where_it_is_and_move_it() {
+    use bimcraft_core::coordinates::Point;
+    let mut h = points_shown();
+    click(&mut h, P2(2000.0, 1000.0));
+    assert_eq!(h.state().selection, [point_id(&h, Point::Base)], "picked by its mark");
+    assert!(h.query_by_label("Project Base Point").is_some(), "Properties names it");
+    type_role(&mut h, Role::SpinButton, "Point X", "2500");
+    assert_eq!(h.state().session.model.coordinates.base, [2500.0, 1000.0, 0.0], "typed, it moves");
+    // The Internal Origin is shown and never moves.
+    click(&mut h, P2(0.0, 0.0));
+    assert_eq!(h.state().selection, [point_id(&h, Point::Internal)]);
+    assert!(h.query_by_label("Internal Origin").is_some());
+}
+
+#[test]
+fn a_point_dragged_moves_and_the_survey_point_moves_as_its_clip_says() {
+    use bimcraft_core::coordinates::Point;
+    let mut h = points_shown();
+    let before = h.state().session.model.coordinates.to_shared([0.0; 3]);
+    click(&mut h, P2(6000.0, 4000.0));
+    assert_eq!(h.state().selection, [point_id(&h, Point::Survey)]);
+    // Clipped (the default): the point alone; the world stays.
+    drag(&mut h, P2(6000.0, 4000.0), P2(7000.0, 4000.0));
+    let co = &h.state().session.model.coordinates;
+    assert_eq!(co.survey, [7000.0, 4000.0, 0.0]);
+    assert_eq!(co.to_shared([0.0; 3]), before, "the building stays where it is in the world");
+    // Unclipped: the shared coordinates go with it.
+    h.get_by_role_and_label(Role::RadioButton, "Move the shared coordinates with it").scroll_to_me();
+    h.run();
+    pick(&mut h, Role::RadioButton, "Move the shared coordinates with it");
+    drag(&mut h, P2(7000.0, 4000.0), P2(7000.0, 5000.0));
+    let co = &h.state().session.model.coordinates;
+    assert_eq!(co.survey, [7000.0, 5000.0, 0.0]);
+    assert!((co.to_shared([0.0; 3])[1] - before[1]).abs() > 1.0, "the world moved with it");
+}
+
+#[test]
+fn the_3d_view_shows_the_points_its_graphics_show_and_a_click_picks_one() {
+    use bimcraft_core::coordinates::Point;
+    let mut h = app(BOX);
+    h.state_mut().run("coordinates", json!({"base": [2000.0, 1000.0, 0.0]}));
+    shortcut(&mut h, "3D");
+    assert!(h.state().points_in_3d().is_empty(), "hidden until the view's graphics show them");
+    h.state_mut().run("graphics", json!({"view": "{3D}", "show": ["projectbasepoint"]}));
+    h.run();
+    assert_eq!(h.state().points_in_3d().iter().map(|(p, _)| *p).collect::<Vec<_>>(), [Point::Base]);
+    let at = h.state().screen3([2000.0, 1000.0, 0.0]);
+    click_at(&mut h, at);
+    assert_eq!(h.state().selection, [point_id(&h, Point::Base)]);
+}
+
+#[test]
+fn the_status_bar_reads_the_cursor_out_in_shared_coordinates_once_they_are_not_the_file_s_own() {
+    let mut h = app(BOX);
+    assert_eq!(h.state().shared_readout(P2(1000.0, 2000.0)), None, "the same numbers: nothing more to say");
+    h.state_mut().run("location", json!({"name": "Internal", "east": 333_000_000.0, "north": 7_394_000_000.0}));
+    assert_eq!(h.state().shared_readout(P2(1000.0, 2000.0)).as_deref(), Some("E 333001.000 m  N 7394002.000 m"));
+    h.state_mut().run("crs", json!({"code": 2263}));
+    let s = h.state().shared_readout(P2(0.0, 0.0)).unwrap();
+    assert!(s.ends_with("US ft"), "in the map system's unit: {s}");
 }

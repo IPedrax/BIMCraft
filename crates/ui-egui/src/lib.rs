@@ -670,6 +670,8 @@ pub struct BimApp {
     cad_dialog: Option<bool>,
     /// Bringing a CAD drawing in: the box, while it's open.
     cad_box: Option<cad::CadBox>,
+    /// Link Model's box (its positioning), while it's open.
+    pub(crate) link_box: Option<links::LinkBox>,
     /// A selected element's temporary dimension being typed: the element, which of its dimensions (a wall has one, a
     /// door or window two: from its wall's start, from its end), the length so far.
     dim_edit: Option<(Id, usize, String)>,
@@ -762,6 +764,9 @@ pub struct BimApp {
     electrical_dialog: Option<electrical::ElectricalDialog>,
     /// Manage > Coordinates, while it is open.
     coordinates_dialog: Option<coordinates::CoordinatesDialog>,
+    /// How the Survey Point goes when it's dragged, moved or typed in Properties: clipped (the point alone, the world staying)
+    /// or unclipped (the shared coordinates with it), as Revit's clip says.
+    pub(crate) survey_moves: bimcraft_core::coordinates::Move,
     options_dialog: Option<phasing::OptionsDialog>,
     purge_dialog: Option<purge::PurgeDialog>,
     /// Manage > Select by ID and IDs of Selection, while open.
@@ -1268,6 +1273,7 @@ impl BimApp {
             cloud_box: None,
             cad_dialog: None,
             cad_box: None,
+            link_box: None,
             tab_cycle: false,
             held: Vec::new(),
             show_shortcuts: false,
@@ -1319,6 +1325,7 @@ impl BimApp {
             standards_dialog: None,
             electrical_dialog: None,
             coordinates_dialog: None,
+            survey_moves: bimcraft_core::coordinates::Move::Point,
             options_dialog: None,
             purge_dialog: None,
             select_by_id: None,
@@ -1749,7 +1756,8 @@ impl BimApp {
             self.units = to;
         }
         let m = &self.session.model;
-        self.selection.retain(|id| m.elements.contains_key(id));
+        // What's selected is the model's elements, and Site's points (by their library ids).
+        self.selection.retain(|id| m.elements.contains_key(id) || bimcraft_core::coordinates::Point::of(m, *id).is_some());
         self.active_option = self.active_option.take().filter(|o| bimcraft_core::phasing::option_exists(m, o));
         let exists = |s: &Sheet| match s {
             Sheet::Plan(key) | Sheet::Ceiling(key) => m.plan_level(*key).is_some(),
@@ -1914,6 +1922,13 @@ impl BimApp {
         }
         if self.tool == Tool::Modify && pressed(Modifiers::NONE, Key::Space) {
             self.flip();
+        }
+        // Space while rotating: the next click places the centre, as Revit's Space does.
+        if let Tool::Rotate { place, start, .. } | Tool::RotateNorth { place, start, .. } = &mut self.tool
+            && pressed(Modifiers::NONE, Key::Space)
+        {
+            *place = true;
+            *start = None;
         }
         // Space steps the Dimension tool's lay: Auto, Aligned, Horizontal, Vertical.
         if let Tool::Dimension(mode, _) = &mut self.tool
@@ -4968,6 +4983,12 @@ impl BimApp {
                 }
                 if let Some(p) = self.canvas.cursor {
                     let u = self.session.model.units;
+                    // Where the cursor is in the world too, once the project's shared coordinates aren't its own.
+                    if let Some(shared) = self.shared_readout(p) {
+                        ui.monospace(RichText::new(shared).color(pal().accent_ink)).on_hover_text(t(
+                            "The cursor in shared coordinates: the active location's east and north, in the map system's unit",
+                        ));
+                    }
                     ui.monospace(format!("x {}  y {}", u.with_unit(p.0), u.with_unit(p.1)));
                 }
                 if let Some(note) = self.snap_note() {
@@ -5208,6 +5229,7 @@ impl BimApp {
             self.import_cad_dialog(ctx, link);
         }
         self.import_cad_window(ctx);
+        self.link_window(ctx);
         self.select_by_id_window(ctx);
         self.work_plane_window(ctx);
         self.ids_of_selection_window(ctx);
