@@ -1005,10 +1005,15 @@ pub static ALL: &[Command] = &[
          integer|angle|area|volume|yesno|material|text|url|familytype, instance?, value?, formula?, group?: constraints|\
          construction|dimensions|graphics|identity-data|materials-and-finishes|text|visibility|electrical|mechanical|plumbing|\
          structural|data|other, shared?: guid, reporting?, of?: category}], parameter?: {name, rename?, …a parameter's \
-         fields}, delete_parameter?: [name, …], types?: {type: {parameter: value}}, forms?: [{plane?: xy|xz|yz, \
-         profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, \
+         fields}, delete_parameter?: [name, …], types?: {type: {parameter: value}}, forms?: [{host?: {plane: guid} | {line: guid, face: \
+         horizontal|vertical|start|end}, plane?: xy|xz|yz, profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, \
          void?}], symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to} | text?: {at: [x, y], height, value, align?: left|center|right} | dot?: {centre: [x, y], radius}, visible?}], form?: {id | guid, …a \
          form's fields}, symbol?: {id | guid, …a symbol's fields}, delete_form?: [id | guid, …], delete_symbol?: [id | guid, …], \
+         ref_planes?: [{guid?, name?, start: [x, y, z], end: [x, y, z], up: [x, y, z], reference?: not_a_reference|strong|weak|\
+         left|center_left_right|right|front|center_front_back|back|bottom|center_elevation|top, defines_origin?, subcategory?}], \
+         ref_plane?: {id | guid, …a plane's fields}, delete_ref_plane?: [id | guid, …], ref_lines?: [{guid?, start: [x, y, z], \
+         end: [x, y, z], host?: {plane: guid} | {line: guid, face}, reference?, subcategory?}], ref_line?: {id | guid, …}, \
+         delete_ref_line?: [id | guid, …], \
          operation?: swing|double-swing|sliding|double-sliding|folding|fixed (a door's or window's, for IFC and schedules), \
          kind?: which fixture or fitting it is, for IFC's predefined type (plumbing: wc|lav|sink|laundry|shower|bath|bidet|urinal; \
          drain: floor_drain|floor_waste|roof_drain; pipefitting: bend|tee|cross|transition|coupling; \"\" clears it), \
@@ -1039,7 +1044,20 @@ pub static ALL: &[Command] = &[
          it, and until labelled dimensions exist it holds its `value`. Every reply carries `warnings`: what's \
          worth knowing and doesn't stop the change (a void cutting no solid, a form outside the opening or thicker than its \
          wall, a door's or window's plan with no symbols). Its forms are profiles drawn in its own axes (x along a component's \
-         angle, y to its left, z up from its base) and swept: `xy` up from `from` to `to`, `xz` along y, `yz` along x. With an \
+         angle, y to its left, z up from its base): each is drawn on its `host`, a plane of the family, in that plane's own \
+         axes, and swept along its normal from `from` to `to`. Every family has three datums, pinned, with the same GUIDs in \
+         every family: Ref. Level (9e3c0a10-1f0b-4d8c-8a5e-0000000000a1, its xy, normal +z), Center (Front/Back) \
+         (…00a2, its xz: x along +x, y up, normal -y) and Center (Left/Right) (…00a3, its yz: x along +y, y up, normal +x); \
+         no host is Ref. Level. `plane` is the old shorthand for them, read as it always was: `xy` up, `xz` along +y (stored \
+         on Center (Front/Back) with `from` and `to` negated), `yz` along x. `ref_planes` adds planes of its own: the line \
+         `start` to `end` it is drawn as and `up`, its other direction (normal (end - start) × up; its axes x along the line, y \
+         up made square to it, its origin the point of it nearest the family's origin); names are unique, each of left \
+         through top is one plane's or line's, and `defines_origin` (one plane square to each of x, y and z; the datums \
+         until another takes it) is kept but doesn't move the origin yet. `ref_lines` are reference lines drawn on a `host` \
+         (lying on it), each with four planes a form may be drawn on: `horizontal` (its host's, through it), `vertical` \
+         (square to that through it), `start` and `end` (square to it at each end), their origin its start (`end`'s its \
+         end). Give a new plane or line a `guid` of your own to host forms on it in the same command; a plane or line a \
+         form or line is drawn on can't be deleted, and the datums can't be moved, changed or deleted. With an \
          `axis`, a line in that plane, the profile is turned about it instead, `from` to `to` degrees (up to 360, right-handed \
          from the axis' first point toward its second; it can't cross the axis): a pipe, a bowl, a lamp shade. A `void` is no \
          solid: it cuts the solid forms listed before it that it passes through, a hole, a notch, a sink's bowl, and is never \
@@ -10098,6 +10116,12 @@ struct Patches {
     symbols_replaced: usize,
     symbols_patched: Vec<Id>,
     symbols_deleted: Vec<Id>,
+    planes_replaced: usize,
+    planes_patched: Vec<Id>,
+    planes_deleted: Vec<String>,
+    lines_replaced: usize,
+    lines_patched: Vec<Id>,
+    lines_deleted: Vec<String>,
     /// Parameters `parameter` renamed, from and to.
     params_renamed: Vec<(String, String)>,
     /// What changes the components of the family: values moved onto them or off them, renamed, taken away.
@@ -10338,6 +10362,12 @@ fn family(s: &mut Session, p: &Value) -> R {
                 .into_iter()
                 .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
                 .collect();
+        // Its planes and lines, as the command takes them.
+        for (k, key) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
+            if let Some(v) = fields.remove(k) {
+                family.insert(key.into(), v);
+            }
+        }
         family.insert("name".into(), name);
         // `dry_run` is the caller's, not the file's: a dry run of a file loads nothing.
         if let Some(dry) = p.get("dry_run") {
@@ -10414,6 +10444,12 @@ fn family(s: &mut Session, p: &Value) -> R {
         "delete_symbol",
         "parameter",
         "delete_parameter",
+        "ref_planes",
+        "ref_lines",
+        "ref_plane",
+        "ref_line",
+        "delete_ref_plane",
+        "delete_ref_line",
     ];
     if !keys.iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null())) {
         let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}`")))?;
@@ -10464,6 +10500,36 @@ fn family(s: &mut Session, p: &Value) -> R {
             ));
         }
     }
+    // Its reference planes and lines, before the forms that may be drawn on them: whole lists replaced (the datums, pinned,
+    // stay first and as they are) or one patched by its id or GUID.
+    if let Some(v) = p.get("ref_planes").filter(|v| !v.is_null()) {
+        let given: Vec<crate::family::RefPlane> = serde_json::from_value(v.clone()).map_err(|e| field("ref_planes", e))?;
+        let mut own = Vec::new();
+        for plane in given {
+            if !plane.datum() {
+                own.push(plane);
+            } else if !plane.as_datum() {
+                return Err(bad(c, format!("`ref_planes`: {} is a datum, pinned: it can't be moved or changed", plane.name)));
+            }
+        }
+        crate::library::keep_parts(f.planes.get_mut(3..).unwrap_or_default(), &mut own);
+        patches.planes_replaced = own.len();
+        f.planes.truncate(3);
+        f.planes.extend(own);
+    }
+    if let Some(v) = p.get("ref_plane").filter(|v| !v.is_null()) {
+        not_datum(c, v.get("guid").or_else(|| v.get("id")))?;
+        patches.planes_patched.push(patch_part(c, &name, f.planes.get_mut(3..).unwrap_or_default(), v, "ref_plane")?);
+    }
+    if let Some(v) = p.get("ref_lines").filter(|v| !v.is_null()) {
+        let mut lines: Vec<crate::family::RefLine> = serde_json::from_value(v.clone()).map_err(|e| field("ref_lines", e))?;
+        crate::library::keep_parts(&mut f.lines, &mut lines);
+        patches.lines_replaced = lines.len();
+        f.lines = lines;
+    }
+    if let Some(v) = p.get("ref_line").filter(|v| !v.is_null()) {
+        patches.lines_patched.push(patch_part(c, &name, &mut f.lines, v, "ref_line")?);
+    }
     if let Some(v) = p.get("forms").filter(|v| !v.is_null()) {
         let mut forms: Vec<crate::family::Form> = serde_json::from_value(v.clone()).map_err(|e| field("forms", e))?;
         crate::library::keep_parts(&mut f.forms, &mut forms);
@@ -10495,6 +10561,39 @@ fn family(s: &mut Session, p: &Value) -> R {
             patches.symbols_deleted.push(take_part(c, &name, &mut f.symbols, v, "symbol")?);
         }
     }
+    // A plane or a line taken away, refused while a form or a line is drawn on it; after the forms, so one command can move
+    // them off it first.
+    for (key, planes) in [("delete_ref_line", false), ("delete_ref_plane", true)] {
+        match p.get(key) {
+            None | Some(Value::Null) => {}
+            Some(Value::Array(list)) => {
+                for v in list {
+                    let gone = if planes {
+                        not_datum(c, Some(v))?;
+                        let at = part_at(c, f.planes.get_mut(3..).unwrap_or_default(), v, "ref_plane", &name)? + 3;
+                        f.planes.remove(at).guid
+                    } else {
+                        let at = part_at(c, &mut f.lines, v, "ref_line", &name)?;
+                        f.lines.remove(at).guid
+                    };
+                    let what = if planes { "plane" } else { "line" };
+                    let on = f.hosted_on(gone);
+                    if !on.is_empty() {
+                        return Err(bad(c, format!("{what} {} hosts {}; move them to another plane first", shown(v), on.join(", "))));
+                    }
+                    if planes {
+                        patches.planes_deleted.push(shown(v));
+                    } else {
+                        patches.lines_deleted.push(shown(v));
+                    }
+                }
+            }
+            Some(v) => return Err(bad(c, format!("`{key}` is a list of ids or GUIDs, not {v}"))),
+        }
+    }
+    // Hosts named by id are given by GUID; which plane defines the origin in each direction settled.
+    f.resolve_hosts();
+    f.settle_planes();
     if let Some(v) = p.get("connectors").filter(|v| !v.is_null()) {
         let mut connectors: Vec<crate::family::Connector> = serde_json::from_value(v.clone()).map_err(|e| field("connectors", e))?;
         crate::library::keep_parts(&mut f.connectors, &mut connectors);
@@ -10622,6 +10721,8 @@ fn family_changes(was: Option<&crate::family::Family>, now: &crate::family::Fami
         "types": types,
         "forms": {"replaced": patches.forms_replaced, "patched": patches.forms_patched, "deleted": patches.forms_deleted},
         "symbols": {"replaced": patches.symbols_replaced, "patched": patches.symbols_patched, "deleted": patches.symbols_deleted},
+        "ref_planes": {"replaced": patches.planes_replaced, "patched": patches.planes_patched, "deleted": patches.planes_deleted},
+        "ref_lines": {"replaced": patches.lines_replaced, "patched": patches.lines_patched, "deleted": patches.lines_deleted},
         "rename": rename,
         "parameters_renamed": patches.params_renamed.iter().map(|(a, b)| json!({"from": a, "to": b})).collect::<Vec<_>>(),
         "component_values_changed": patches.component_ops.len(),
@@ -10650,6 +10751,12 @@ where
     if let Some(map) = patch.as_object_mut() {
         map.remove("id");
         map.remove("guid");
+    }
+    // A form given the `plane` shorthand is drawn on that datum, whatever host it had.
+    if patch.get("plane").is_some_and(|v| !v.is_null())
+        && let Some(map) = whole.as_object_mut()
+    {
+        map.remove("host");
     }
     merge(&mut whole, &patch);
     parts[at] = serde_json::from_value(whole).map_err(|e| bad(c, format!("{what} {} of family \"{family}\": {e}", shown(key))))?;
@@ -10682,6 +10789,15 @@ fn part_at<T: crate::library::HasPart>(c: &str, parts: &mut [T], key: &Value, wh
             *guid == wanted || wanted.pending() == Some(*id)
         })
         .ok_or_else(|| bad(c, format!("{what} {} is not of family \"{family}\"", shown(key))))
+}
+
+/// Refused where `key` names one of the datums every family holds, which are pinned.
+fn not_datum(c: &str, key: Option<&Value>) -> Result<(), String> {
+    let g = key.and_then(|k| serde_json::from_value::<Guid>(k.clone()).ok());
+    match crate::family::datums().into_iter().find(|d| Some(d.guid) == g) {
+        Some(d) => Err(bad(c, format!("{} is a datum, pinned: it can't be moved, changed or deleted", d.name))),
+        None => Ok(()),
+    }
 }
 
 /// What a form or a symbol was named by, in a message: the id, or the GUID, as it was given.

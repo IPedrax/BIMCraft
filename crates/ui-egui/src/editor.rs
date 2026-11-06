@@ -12,7 +12,8 @@ use std::sync::Arc;
 
 use bimcraft_core::engine::Session;
 use bimcraft_core::family::{
-    Align as LabelAlign, Category, Circle, Connector, Curve, Expr, Family, Form, IfcClass, Kind as Holds, Label, Parameter, Plane, Symbol,
+    Align as LabelAlign, CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, Category, Circle, Connector, Curve, Expr, Family, Form, IfcClass,
+    Kind as Holds, Label, Parameter, PlaneRef, REF_LEVEL, RefLine, RefPlane, Symbol,
 };
 use bimcraft_core::model::{Model, Operation};
 use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
@@ -96,7 +97,8 @@ struct FormText {
     /// What it was: what the editor doesn't edit (a mesh's triangles) stays as it was.
     original: Form,
     shape: Shape,
-    plane: Plane,
+    /// The plane it is drawn on, kept as it was unless a datum is picked.
+    host: PlaneRef,
     profile: String,
     circle: [String; 3],
     revolve: bool,
@@ -119,7 +121,7 @@ impl FormText {
         FormText {
             original: f.clone(),
             shape: if f.circle.is_some() { Shape::Circle } else { Shape::Profile },
-            plane: f.plane,
+            host: f.host,
             profile: profile_text(&f.profile),
             circle,
             revolve: f.axis.is_some(),
@@ -164,7 +166,7 @@ impl FormText {
         if self.mesh() {
             return Ok(f);
         }
-        (f.plane, f.from, f.to) = (self.plane, text_expr(&self.from), text_expr(&self.to));
+        (f.host, f.from, f.to) = (self.host, text_expr(&self.from), text_expr(&self.to));
         (f.profile, f.circle) = (Vec::new(), None);
         match self.shape {
             Shape::Profile => f.profile = text_profile(&self.profile)?,
@@ -379,6 +381,9 @@ pub(crate) struct FamilyEditor {
     symbols: Vec<SymbolText>,
     /// Its connectors, as the family has them: the editor has no tab for them yet, and keeps them as they are.
     connectors: Vec<Connector>,
+    /// Its reference planes and lines, as the family has them: the editor has no tab for them yet, and keeps them as they are.
+    planes: Vec<RefPlane>,
+    lines: Vec<RefLine>,
     /// Which fixture or fitting it is, as the family has it: set with the `family` command, kept as it is here.
     kind: Option<String>,
     /// The IFC class a generic family from IFC remembers: set with the `family` command or by the import, kept as it is here.
@@ -422,6 +427,8 @@ impl FamilyEditor {
             forms: f.forms.iter().map(FormText::of).collect(),
             symbols: f.symbols.iter().map(SymbolText::of).collect(),
             connectors: f.connectors.clone(),
+            planes: f.planes.clone(),
+            lines: f.lines.clone(),
             kind: f.kind.clone(),
             ifc: f.ifc.clone(),
             operation: f.operation,
@@ -488,6 +495,8 @@ impl FamilyEditor {
             symbols,
             operation,
             connectors: self.connectors.clone(),
+            planes: self.planes.clone(),
+            lines: self.lines.clone(),
         })
     }
 
@@ -500,6 +509,13 @@ impl FamilyEditor {
         let mut p = serde_json::to_value(&family).map_err(|e| e.to_string())?;
         // Said or not, so one taken off goes from the family too.
         p["operation"] = json!(family.operation.map_or("", Operation::name));
+        // Its planes and lines as the command takes them, so the forms drawn on them keep their hosts.
+        if let Some(map) = p.as_object_mut() {
+            for (k, key) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
+                let v = map.remove(k).unwrap_or_else(|| json!([]));
+                map.insert(key.into(), v);
+            }
+        }
         match &self.original {
             Some(was) => {
                 p["name"] = json!(was);
@@ -783,7 +799,12 @@ fn types_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
 /// One form's fields.
 fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String]) {
     let n = i + 1;
-    let planes = [(Plane::Xy, msg!("Plane XY")), (Plane::Xz, msg!("Plane XZ")), (Plane::Yz, msg!("Plane YZ"))];
+    // The datums, by the planes they are; a form on a plane of the family's own keeps it until a datum is picked.
+    let planes = [
+        (PlaneRef::Plane(REF_LEVEL), msg!("Plane XY")),
+        (PlaneRef::Plane(CENTER_FRONT_BACK), msg!("Plane XZ")),
+        (PlaneRef::Plane(CENTER_LEFT_RIGHT), msg!("Plane YZ")),
+    ];
     Grid::new(("fe-form-grid", i)).num_columns(2).spacing(vec2(12.0, 5.0)).show(ui, |ui| {
         if f.mesh() {
             ui.label(t("Mesh"));
@@ -792,11 +813,11 @@ fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String]) {
         } else {
             ui.label(t("Plane"));
             ComboBox::from_id_salt(("fe-plane", i))
-                .selected_text(t(planes.iter().find(|(p, _)| *p == f.plane).map_or("Plane XY", |(_, l)| l)))
+                .selected_text(planes.iter().find(|(p, _)| *p == f.host).map_or_else(|| "…".to_string(), |(_, l)| t(l).to_string()))
                 .width(110.0)
                 .show_ui(ui, |ui| {
                     for (p, label) in planes {
-                        ui.selectable_value(&mut f.plane, p, t(label));
+                        ui.selectable_value(&mut f.host, p, t(label));
                     }
                 });
             ui.end_row();
@@ -899,7 +920,13 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
         }
         if ui.button(t("Add Revolve")).clicked() {
             let profile = "100, 0\n300, 0\n300, 500\n100, 500".to_string();
-            ed.forms.push(FormText { plane: Plane::Xz, profile, revolve: true, to: "360".into(), ..FormText::blank() });
+            ed.forms.push(FormText {
+                host: PlaneRef::Plane(CENTER_FRONT_BACK),
+                profile,
+                revolve: true,
+                to: "360".into(),
+                ..FormText::blank()
+            });
         }
         if ui.button(t("Add Void")).clicked() {
             ed.forms.push(FormText { void: true, ..FormText::blank() });
@@ -1276,6 +1303,32 @@ mod tests {
     }
 
     #[test]
+    fn a_form_on_a_plane_of_the_familys_own_keeps_it_through_the_editor() {
+        let mut s = Session::new();
+        let shelf = "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8";
+        let line = "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809";
+        s.execute(
+            "family",
+            &json!({"name": "Shelf", "types": {"A": {}},
+                "ref_planes": [{"guid": shelf, "name": "Top", "start": [0, 0, 500], "end": [1000, 0, 500], "up": [0, 1, 0]}],
+                "ref_lines": [{"guid": line, "start": [0, 0, 500], "end": [100, 0, 500], "host": {"plane": shelf}}],
+                "forms": [{"host": {"plane": shelf}, "profile": [[0, 0], [100, 0], [100, 50]], "to": 20},
+                          {"host": {"line": line, "face": "start"}, "profile": [[0, 0], [100, 0], [100, 50]], "to": 20},
+                          {"plane": "xz", "profile": [[0, 0], [100, 0], [100, 50]], "to": 20}]}),
+        )
+        .unwrap();
+        let was = s.model.families["Shelf"].clone();
+        let mut ed = FamilyEditor::of("Shelf", &was);
+        assert_eq!(ed.forms[0].host, was.forms[0].host);
+        let p = ed.command(&s.model).unwrap();
+        s.execute("family", &p).unwrap();
+        assert_eq!(s.model.families["Shelf"], was, "its planes, lines and hosts as they were");
+        // The Plane list picks a datum.
+        ed.forms[0].host = PlaneRef::Plane(REF_LEVEL);
+        assert_eq!(ed.family().unwrap().forms[0].host, PlaneRef::Plane(REF_LEVEL));
+    }
+
+    #[test]
     fn a_form_as_typed_keeps_what_the_editor_doesnt_edit_and_a_revolve_and_a_void_survive() {
         let tri = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
         let mesh = Form { mesh: Arc::new(vec![tri]), material: "Timber".into(), ..Form::default() };
@@ -1286,9 +1339,9 @@ mod tests {
         assert_eq!((back.mesh.len(), back.visible, back.void), (1, Some(Expr::Formula("Legs".into())), true));
         assert_eq!(text.describe(), "Mesh (void)");
         let mut text = FormText::blank();
-        (text.revolve, text.plane, text.to) = (true, Plane::Xz, "360".into());
+        (text.revolve, text.host, text.to) = (true, PlaneRef::Plane(CENTER_FRONT_BACK), "360".into());
         let f = text.form().unwrap();
-        assert!(f.axis.is_some() && f.plane == Plane::Xz && f.to == Expr::Number(360.0) && f.profile.len() == 4);
+        assert!(f.axis.is_some() && f.host == PlaneRef::Plane(CENTER_FRONT_BACK) && f.to == Expr::Number(360.0) && f.profile.len() == 4);
         assert_eq!(FormText::of(&f).describe(), "Revolve");
         text.shape = Shape::Circle;
         text.circle = ["0".into(), "0".into(), "R".into()];

@@ -113,7 +113,12 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 19;
+///
+/// 20: a family has reference planes (its three datums and its own, `planes`) and reference lines (`lines`), and a form is
+/// drawn on a `host` (one of them) where it named `plane` (xy, xz or yz); a form of 19 on `xz` swept along +y, and its host,
+/// Center (Front/Back), has its normal toward -y, so 19 read by 20 has its `from` and `to` negated (and swapped). A build
+/// of 19 would refuse `host`. (18 is the adaptive families' branch's number, 19 is the family parameters'.)
+pub const FORMAT: u32 = 20;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3465,6 +3470,14 @@ impl Model {
         // 17 to 19 (a family's parameters: new kinds, groups, shared GUIDs, reporting, a family type's category) has none:
         // the new fields default, to a family parameter grouped by its kind, which is what a file of 17 holds. (18 is
         // another branch's number.)
+        // 19 to 20: a form's `plane` becomes its `host`, a datum: `xy` Ref. Level and `yz` Center (Left/Right) as they
+        // were; `xz` Center (Front/Back), its `from` and `to` negated and swapped (a formula wrapped as `-(…)`), since it
+        // swept along +y and the datum's normal is -y, a revolve's angles as they were. Reading the file does it, as it
+        // reads a command's shorthand (`Form`'s `FormIn`), and a family read without its datums is given them
+        // (`Family::planes`); here every family's datums are put first and the origin settled, whatever the file held.
+        if self.format < 20 {
+            self.families.values_mut().for_each(crate::family::Family::settle_planes);
+        }
         self.format = FORMAT;
     }
 

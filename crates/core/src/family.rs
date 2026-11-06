@@ -19,7 +19,13 @@ use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
 
 mod bounds;
+mod planes;
 mod validate;
+
+pub use planes::{
+    CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, DATUMS, Face, Frame, MAX_LINES, MAX_PLANES, PlaneRef, REF_LEVEL, RefLine, RefPlane, Reference,
+    datums,
+};
 
 /// What a family is: how IFC names its components; a door or a window is hosted in a wall, which
 /// its `Width` and `Height` open.
@@ -413,8 +419,10 @@ impl Default for Expr {
     }
 }
 
-/// Where a form's profile is drawn: across the family's x and y, swept up; or upright, across x
-/// and z, swept along y; or across y and z, swept along x.
+/// The shorthand a form (and a file of 19 or before) names its sketch plane by, from before reference planes: across the
+/// family's x and y, swept up (Ref. Level); upright, across x and z, swept along +y (Center (Front/Back), whose normal is
+/// -y, so its `from` and `to` are negated and swap places, a formula wrapped as `-(…)`; a revolve's angles stay as they
+/// are); or across y and z, swept along x (Center (Left/Right)).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Plane {
@@ -422,6 +430,28 @@ pub enum Plane {
     Xy,
     Xz,
     Yz,
+}
+
+impl Plane {
+    /// The datum it stands for.
+    pub fn host(self) -> PlaneRef {
+        PlaneRef::Plane(match self {
+            Plane::Xy => REF_LEVEL,
+            Plane::Xz => CENTER_FRONT_BACK,
+            Plane::Yz => CENTER_LEFT_RIGHT,
+        })
+    }
+}
+
+impl Expr {
+    /// Its negative: a number's, or the formula wrapped as `-(…)`.
+    pub fn negated(&self) -> Expr {
+        match self {
+            Expr::Number(x) if *x == 0.0 => Expr::Number(0.0),
+            Expr::Number(x) => Expr::Number(-x),
+            Expr::Formula(f) => Expr::Formula(format!("-({f})")),
+        }
+    }
 }
 
 /// A round profile.
@@ -551,6 +581,8 @@ impl Default for Load {
 }
 
 /// Where a family joins a system, as Revit's connector does: what an electrical device draws, what a switch controls.
+/// It has no place yet: upstream #269 gives it `at` and `direction`, and then it takes an optional `host` ([`PlaneRef`]),
+/// `at` read in that plane's axes and `direction` its normal by default.
 /// `voltage`, `load_va` and `power_factor` are numbers or formulas over the family's parameters, so a type or a
 /// component can set them.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -603,21 +635,23 @@ pub struct ConnectorValues {
 }
 
 /// A solid of a family, in its own axes (x along the component's angle, y to its left, z up from
-/// its base): a profile drawn in `plane` and swept across it from `from` to `to`; or, with an
+/// its base): a profile drawn on `host` and swept along its normal from `from` to `to`; or, with an
 /// `axis`, turned about it from `from` to `to` degrees; or triangles, as a file brings them. A
 /// material's name, or a material parameter's, says what it's made of; `visible` (a yes/no
 /// parameter, or a formula) whether it's there. A `void` is no solid: it cuts the solid forms listed
 /// before it that it passes through, and is never seen itself.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, try_from = "FormIn")]
 pub struct Form {
     /// Its id and GUID, as an element's: given when it's made, kept while it stays where it is in its list.
     #[serde(default, skip_serializing_if = "crate::ids::unset")]
     pub id: crate::ids::Id,
     #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
     pub guid: crate::ids::Guid,
+    /// The plane its profile is drawn on, in that plane's axes, and swept along its normal from `from` to `to`
+    /// (Revit's Extrusion Start and End); a revolve turns in it. Ref. Level unless said.
     #[serde(default)]
-    pub plane: Plane,
+    pub host: PlaneRef,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub profile: Vec<[Expr; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -645,9 +679,69 @@ fn no_mesh(mesh: &Arc<Vec<[P3; 3]>>) -> bool {
     mesh.is_empty()
 }
 
+/// A form as a command or a file gives it: `host`, or `plane`, the shorthand from before reference planes ([`Plane`]).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FormIn {
+    #[serde(default)]
+    id: crate::ids::Id,
+    #[serde(default)]
+    guid: crate::ids::Guid,
+    #[serde(default)]
+    host: Option<PlaneRef>,
+    #[serde(default)]
+    plane: Option<Plane>,
+    #[serde(default)]
+    profile: Vec<[Expr; 2]>,
+    #[serde(default)]
+    circle: Option<Circle>,
+    #[serde(default)]
+    from: Expr,
+    #[serde(default)]
+    to: Expr,
+    #[serde(default)]
+    axis: Option<[[Expr; 2]; 2]>,
+    #[serde(default)]
+    void: bool,
+    #[serde(default)]
+    material: String,
+    #[serde(default)]
+    visible: Option<Expr>,
+    #[serde(default)]
+    mesh: Arc<Vec<[P3; 3]>>,
+}
+
+impl TryFrom<FormIn> for Form {
+    type Error = String;
+    fn try_from(f: FormIn) -> Result<Form, String> {
+        let (host, from, to) = match (f.host, f.plane) {
+            (Some(_), Some(_)) => return Err("a form takes `host` or `plane` (the shorthand for a datum), not both".into()),
+            (Some(host), None) => (host, f.from, f.to),
+            (None, None) => (PlaneRef::default(), f.from, f.to),
+            // Across x and z it swept along +y; Center (Front/Back)'s normal is -y.
+            (None, Some(Plane::Xz)) if f.axis.is_none() => (Plane::Xz.host(), f.to.negated(), f.from.negated()),
+            (None, Some(plane)) => (plane.host(), f.from, f.to),
+        };
+        Ok(Form {
+            id: f.id,
+            guid: f.guid,
+            host,
+            profile: f.profile,
+            circle: f.circle,
+            from,
+            to,
+            axis: f.axis,
+            void: f.void,
+            material: f.material,
+            visible: f.visible,
+            mesh: f.mesh,
+        })
+    }
+}
+
 /// A family: its parameters, its types (each its type parameters' values where they aren't the
-/// parameters' own) and its forms.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+/// parameters' own), its reference planes and lines, and its forms.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Family {
     #[serde(default)]
@@ -663,6 +757,13 @@ pub struct Family {
     pub parameters: Vec<Parameter>,
     #[serde(default)]
     pub types: BTreeMap<String, BTreeMap<String, Value>>,
+    /// Its reference planes: its three datums first ([`datums`], pinned), then its own. A family read without the datums
+    /// gets them.
+    #[serde(default = "datums", deserialize_with = "planes::with_datums")]
+    pub planes: Vec<RefPlane>,
+    /// Its reference lines, each with four planes a form may be drawn on.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lines: Vec<RefLine>,
     #[serde(default)]
     pub forms: Vec<Form>,
     /// What its plan draws besides its forms: lines, arcs, labels and dots of its own, in any category.
@@ -674,6 +775,24 @@ pub struct Family {
     /// Where it joins a system: an electrical device's load, a switch. At most one is `power`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub connectors: Vec<Connector>,
+}
+
+impl Default for Family {
+    fn default() -> Family {
+        Family {
+            category: Category::default(),
+            kind: None,
+            ifc: None,
+            parameters: Vec::new(),
+            types: BTreeMap::new(),
+            planes: datums(),
+            lines: Vec::new(),
+            forms: Vec::new(),
+            symbols: Vec::new(),
+            operation: None,
+            connectors: Vec::new(),
+        }
+    }
 }
 
 /// The IFC class a product came in as, which a generic family remembers (BIMCraft has no element for it): the class as STEP
@@ -801,7 +920,7 @@ pub const MAX_TYPES: usize = 1000;
 pub const MAX_FORMULA: usize = 1024;
 
 /// A formula, read.
-enum Node {
+pub(crate) enum Node {
     Number(f64),
     Name(String),
     Minus(Box<Node>),
@@ -1476,6 +1595,7 @@ impl Family {
         if let Some(m) = &self.ifc {
             m.check()?;
         }
+        self.check_planes()?;
         if self.category.hosted() {
             for name in [WIDTH, HEIGHT] {
                 if !self.parameters.iter().any(|p| p.name == name && p.kind == Kind::Length && !p.reporting) {
@@ -1552,6 +1672,9 @@ impl Family {
             }
             if form.axis.is_some() && !form.mesh.is_empty() {
                 return Err(format!("{who}: a `mesh` is as it is; an `axis` turns a `profile` or a `circle`"));
+            }
+            if form.mesh.is_empty() {
+                self.frame(&form.host).map_err(|e| format!("{who}: its host: {e}"))?;
             }
             if !self.parameters.iter().any(|p| p.name == form.material && p.kind == Kind::Material) {
                 material_ok(&who, &form.material)?;
@@ -1822,7 +1945,7 @@ impl Family {
 
     /// Form `i`'s own solid, sized by `values`, before any void cuts it: `None` where its `visible`
     /// says it isn't there. `read`, its formulas as read already.
-    fn solid<'a>(
+    pub(crate) fn solid<'a>(
         &'a self,
         i: usize,
         values: &BTreeMap<String, Val>,
@@ -1865,6 +1988,7 @@ impl Family {
                 return Err(format!("sweeps nothing: from {from} to {to}{unit}"));
             }
             let ring = if crate::geom::area(&ring) < 0.0 { ring.into_iter().rev().collect() } else { ring };
+            let frame = self.frame(&form.host).map_err(|e| format!("its host: {e}"))?;
             match &form.axis {
                 Some([p, q]) => {
                     if to - from > 360.0 {
@@ -1872,22 +1996,22 @@ impl Family {
                     }
                     let mut corner = |c: &'a [Expr; 2]| -> Result<P2, String> { Ok(P2(num(&c[0])?, num(&c[1])?)) };
                     let axis = [corner(p)?, corner(q)?];
-                    let (tris, outline) = revolve(&ring, axis, (from, to), form.plane)?;
+                    let (tris, outline) = revolve(&ring, axis, (from, to), &frame)?;
                     let (bottom, top) = heights(&tris);
                     Piece { caps: tris.len(), tris, outline, bottom, top, material, round: false }
                 }
                 None => {
-                    let (tris, caps) = sweep(&ring, from, to, form.plane)?;
-                    let span = |k: usize| {
-                        ring.iter()
-                            .map(|p| if k == 0 { p.0 } else { p.1 })
-                            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), x| (lo.min(x), hi.max(x)))
-                    };
-                    let ((a0, a1), (b0, b1)) = (span(0), span(1));
-                    let (outline, bottom, top) = match form.plane {
-                        Plane::Xy => (ring.clone(), from, to),
-                        Plane::Xz => (vec![P2(a0, from), P2(a1, from), P2(a1, to), P2(a0, to)], b0, b1),
-                        Plane::Yz => (vec![P2(from, a0), P2(to, a0), P2(to, a1), P2(from, a1)], b0, b1),
+                    let (tris, caps) = sweep(&ring, from, to, &frame)?;
+                    let (bottom, top) = heights(&tris);
+                    // Seen from above: on a level plane, the profile where it lies; else the hull of what it sweeps.
+                    let outline = if frame.z[0].abs() < 1e-12 && frame.z[1].abs() < 1e-12 {
+                        let mut ring: Vec<P2> = ring.iter().map(|p| frame.point(*p, 0.0)).map(|q| P2(q[0], q[1])).collect();
+                        if crate::geom::area(&ring) < 0.0 {
+                            ring.reverse();
+                        }
+                        ring
+                    } else {
+                        crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect())
                     };
                     Piece { tris, caps, outline, bottom, top, material, round: form.circle.is_some() }
                 }
@@ -2018,16 +2142,6 @@ fn heights(tris: &[[P3; 3]]) -> (f64, f64) {
     tris.iter().flatten().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[2]), hi.max(p[2])))
 }
 
-/// The point of a plane's sketch at `p`, `t` along the way it's swept; with `t` zero, the direction
-/// `p` is in the family's axes.
-fn embed(plane: Plane, p: P2, t: f64) -> P3 {
-    match plane {
-        Plane::Xy => [p.0, p.1, t],
-        Plane::Xz => [p.0, t, p.1],
-        Plane::Yz => [t, p.0, p.1],
-    }
-}
-
 /// The triangles that cap a profile `ring`, counter-clockwise; or why it can't be capped: it crosses itself.
 fn cap(ring: &[P2]) -> Result<Vec<[usize; 3]>, String> {
     let pt = |i: usize| ring.get(i).copied().unwrap_or_default();
@@ -2040,10 +2154,14 @@ fn cap(ring: &[P2]) -> Result<Vec<[usize; 3]>, String> {
     Ok(caps)
 }
 
-/// `ring`, counter-clockwise in `plane`, swept across it from `from` to `to`: its caps, then its
-/// sides, every triangle turned out; and how many the caps take.
-fn sweep(ring: &[P2], from: f64, to: f64, plane: Plane) -> Result<(Vec<[P3; 3]>, usize), String> {
-    let at = |p: P2, t: f64| embed(plane, p, t);
+/// `ring`, counter-clockwise in `frame`'s plane, swept along its normal from `from` to `to`: its caps,
+/// then its sides, every triangle turned out; and how many the caps take.
+fn sweep(ring: &[P2], from: f64, to: f64, frame: &Frame) -> Result<(Vec<[P3; 3]>, usize), String> {
+    // A normal that points down the family's axis it lies most along (Center (Front/Back)'s, -y) is swept the axis' own way,
+    // in the frame mirrored: the same solid, its triangles as they were when such a form named `xz`.
+    let k = (1..3).fold(0, |k, i| if frame.z[i].abs() > frame.z[k].abs() { i } else { k });
+    let (frame, from, to) = if frame.z[k] < 0.0 { (Frame { z: frame.z.map(|x| -x), ..*frame }, -to, -from) } else { (*frame, from, to) };
+    let at = |p: P2, t: f64| frame.point(p, t);
     let pt = |i: usize| ring.get(i).copied().unwrap_or_default();
     let caps = cap(ring)?;
     let mut tris = Vec::with_capacity(caps.len() * 2 + ring.len() * 2);
@@ -2056,18 +2174,17 @@ fn sweep(ring: &[P2], from: f64, to: f64, plane: Plane) -> Result<(Vec<[P3; 3]>,
         tris.push([a0, b0, b1]);
         tris.push([a0, b1, a1]);
     }
-    // Across x and z the sweep runs along y: a mirror image of the others' axes, so its triangles
-    // turn the other way to face out.
-    if plane == Plane::Xz {
+    // A mirrored frame (its normal not x × y) turns its triangles the other way to face out.
+    if !frame.right_handed() {
         tris.iter_mut().for_each(|t| t.swap(1, 2));
     }
     Ok((tris, caps.len() * 2))
 }
 
-/// `ring`, counter-clockwise in `plane`, turned about the line through `axis` (in `plane`) from `from` to
-/// `to` degrees, right-handed from the axis' first point toward its second: its triangles, every one turned
-/// out, a full turn's sides only and a part-turn's with its two ends capped; and its outline seen from above.
-fn revolve(ring: &[P2], [p0, p1]: [P2; 2], (from, to): (f64, f64), plane: Plane) -> Result<(Vec<[P3; 3]>, Vec<P2>), String> {
+/// `ring`, counter-clockwise in `frame`'s plane, turned about the line through `axis` (in that plane) from
+/// `from` to `to` degrees, right-handed from the axis' first point toward its second: its triangles, every one
+/// turned out, a full turn's sides only and a part-turn's with its two ends capped; and its outline seen from above.
+fn revolve(ring: &[P2], [p0, p1]: [P2; 2], (from, to): (f64, f64), frame: &Frame) -> Result<(Vec<[P3; 3]>, Vec<P2>), String> {
     if p0.dist(p1) < 1e-6 {
         return Err("its axis starts and ends at one point: it needs a direction".into());
     }
@@ -2085,7 +2202,7 @@ fn revolve(ring: &[P2], [p0, p1]: [P2; 2], (from, to): (f64, f64), plane: Plane)
     }
     // In 3D: along the axis (`u`), out from it (`n`), and the way a corner out to its left turns (`w`). One out to
     // the right turns the other way, which turns its triangles inside out.
-    let (o, u, n) = (embed(plane, p0, 0.0), embed(plane, along, 0.0), embed(plane, left, 0.0));
+    let (o, u, n) = (frame.point(p0, 0.0), frame.dir(along), frame.dir(left));
     let w = cross(u, n);
     let turn = to - from;
     let full = turn > 360.0 - 1e-9;
