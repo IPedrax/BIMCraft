@@ -154,7 +154,12 @@ last follow the locations). Plan crops stay as they are.
 ## The desktop: Manage > Project Location
 
 `crates/ui-egui/src/coordinates.rs`. The panel has **Coordinates**, which opens the window, and **Rotate Project North**,
-whose list has Align with True North (the active angle, in its name) and a turn by an angle typed.
+a tool on the plan that works as Rotate does (`Tool::RotateNorth`, in `canvas.rs` beside `Tool::Rotate`): it starts on
+the Project Base Point (Place Centre moves the centre), a click is the angle's start and the next its end, and between them
+the whole plan turns as a ghost, with project north (up, muted) and true north (in the accent, as it will be once turned)
+drawn from the centre and the angle at the cursor. The Options Bar takes an angle typed (Enter) and has **Align with True
+North** (the active angle, in its name). It runs `rotate_project_north` with `about` the centre, one undo step, and goes
+back to Modify. Its icon is a north arrowhead in a counter-clockwise turn arrow.
 
 The window is designed to answer "where is this building?" at a glance, and to remove Revit's traps:
 

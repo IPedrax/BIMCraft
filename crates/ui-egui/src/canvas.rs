@@ -2108,6 +2108,16 @@ impl BimApp {
                     (false, Some(from)) => return self.turn(centre, angle_between(centre, from, v.mm(at), self.snaps.angle)),
                 };
             }
+            &Tool::RotateNorth { centre, start, place } => {
+                self.tool = match (place, start) {
+                    (true, _) => Tool::RotateNorth { centre: self.snap_point(m, level, v, at, &[], false), start: None, place: false },
+                    (false, None) => Tool::RotateNorth { centre, start: Some(v.mm(at)), place: false },
+                    (false, Some(from)) => {
+                        let angle = angle_between(centre, from, v.mm(at), self.snaps.angle);
+                        return self.rotate_project_north(Some(angle), Some(centre));
+                    }
+                };
+            }
             // A ruler: its start, then its end, which stays on show until Esc or another start.
             &Tool::Measure(first) => {
                 let p = self.snap_point(m, level, v, at, first.as_slice(), mods.shift);
@@ -3585,7 +3595,8 @@ impl BimApp {
         // What a dimension or a tag made here says it is in: the plan view, when the plan on screen is one.
         let in_view = || m.plan_view(key).map(|_| m.guid(key));
         let sketched = |e: &Element| ghost(p, Place::at(origin), &render::sketch(m, *v, m.next_id, e), &[m.next_id], &|pt| pt);
-        let ghost = |f: &dyn Fn(Pos2) -> Pos2| ghost(p, sc.place, sc.d, &self.selection, f);
+        let ghost_of = |ids: &[Id], f: &dyn Fn(Pos2) -> Pos2| ghost(p, sc.place, sc.d, ids, f);
+        let ghost = |f: &dyn Fn(Pos2) -> Pos2| ghost_of(&self.selection, f);
         let chain = match &self.tool {
             Tool::Wall(chain) | Tool::Railing(chain) | Tool::Mass(chain) | Tool::DetailLine(chain) | Tool::SketchLine(chain) => {
                 chain.as_slice()
@@ -3728,6 +3739,46 @@ impl BimApp {
                     p.line_segment([c, cursor], stroke);
                     ghost(&turned(c, angle));
                     label(cursor, format!("{}°", (angle * 100.0).round() / 100.0));
+                }
+                return;
+            }
+            &Tool::RotateNorth { centre, start, place } => {
+                let at = if place { self.found(sc, q, &[], false) } else { centre };
+                let c = sc.screen(at);
+                p.circle_stroke(c, 5.0, stroke);
+                p.line_segment([c - vec2(8.0, 0.0), c + vec2(8.0, 0.0)], thin);
+                p.line_segment([c - vec2(0.0, 8.0), c + vec2(0.0, 8.0)], thin);
+                // Project north (up the plan) and true north (the active location's angle), as long arrows from the centre.
+                let true_north = m.coordinates.location().angle;
+                let north = |deg: f64, ink: Color32, label: &str, p: &Painter| {
+                    let (sn, cs) = (deg.to_radians() as f32).sin_cos();
+                    let dir = vec2(sn, -cs);
+                    let tip = c + dir * 96.0;
+                    p.line_segment([c, tip], Stroke::new(1.5, ink));
+                    let side = vec2(-dir.y, dir.x);
+                    p.add(Shape::convex_polygon(
+                        vec![tip + dir * 3.0, tip - dir * 8.0 + side * 4.0, tip - dir * 8.0 - side * 4.0],
+                        ink,
+                        Stroke::NONE,
+                    ));
+                    tag(p, tip + dir * 14.0, Align2::CENTER_CENTER, label);
+                };
+                let turning = start.filter(|_| !place).map(|from| angle_between(centre, from, v.mm(q), self.snaps.angle));
+                match turning {
+                    Some(angle) => {
+                        // As it will be: the model turned, true north turned back; project north stays up.
+                        north(0.0, pal().muted, t("Project North"), p);
+                        north(true_north - angle, pal().accent, t("True North"), p);
+                        p.line_segment([c, sc.screen(start.unwrap_or(centre))], thin);
+                        p.line_segment([c, cursor], stroke);
+                        let everything: Vec<Id> = sc.d.owners.iter().flatten().copied().collect::<HashSet<_>>().into_iter().collect();
+                        ghost_of(&everything, &turned(c, angle));
+                        label(cursor, format!("{}°", (angle * 100.0).round() / 100.0));
+                    }
+                    None => {
+                        north(0.0, pal().muted, t("Project North"), p);
+                        north(true_north, pal().accent, t("True North"), p);
+                    }
                 }
                 return;
             }

@@ -153,6 +153,13 @@ pub enum Tool {
         start: Option<P2>,
         place: bool,
     },
+    /// Rotate Project North: the whole model about `centre` (the Project Base Point at first), as Rotate turns a
+    /// selection, and every location's angle back by as much, so nothing moves in the world.
+    RotateNorth {
+        centre: P2,
+        start: Option<P2>,
+        place: bool,
+    },
     /// Mirror the selection across a line picked, or with `draw`, a line drawn from `start`.
     Mirror {
         draw: bool,
@@ -1376,6 +1383,7 @@ impl BimApp {
             | Tool::Move(_)
             | Tool::Copy(_)
             | Tool::Rotate { .. }
+            | Tool::RotateNorth { .. }
             | Tool::Mirror { .. }
             | Tool::Align(_)
             | Tool::Trim(_)
@@ -2405,6 +2413,10 @@ impl BimApp {
             && let Some(middle) = self.middle()
         {
             *centre = middle;
+        }
+        if let Tool::RotateNorth { centre, .. } = &mut tool {
+            let b = self.session.model.coordinates.base;
+            *centre = P2(b[0], b[1]);
         }
         if tool == Tool::Level {
             let top = self.session.model.levels().last().map_or(0.0, |(_, l)| l.elevation);
@@ -4077,30 +4089,12 @@ impl BimApp {
             if big_button(ui, Icon::Coordinates, "Coordinates", self.coordinates_dialog.is_some(), tip).clicked() {
                 self.coordinates_dialog = Some(coordinates::CoordinatesDialog::new(&self.session.model));
             }
-            let angle = self.session.model.coordinates.location().angle;
-            let tip = msg!("Rotate Project North: turn the model and its project north, keeping it where it is in the world");
-            let r = big_button(ui, Icon::ProjectNorth, "Rotate Project North", false, tip);
-            ribbon::choices(ui, &r, false, |ui| {
-                ui.set_width(260.0);
-                let align = tf("Align with True North ({}°)", &[&format!("{angle:.3}")]);
-                if ui.add_enabled(angle.abs() > 1e-9, egui::Button::new(align)).clicked() {
-                    self.rotate_project_north(None);
-                    ui.close();
-                }
-                ui.separator();
-                let id = egui::Id::new("rotate-project-north-angle");
-                let mut by = ui.data(|d| d.get_temp::<f64>(id)).unwrap_or(90.0);
-                ui.horizontal(|ui| {
-                    let l = ui.label(t("By"));
-                    ui.add(egui::DragValue::new(&mut by).range(-360.0..=360.0).speed(0.5).suffix("°")).labelled_by(l.id);
-                    if ui.add_enabled(by != 0.0, egui::Button::new(t("Rotate"))).clicked() {
-                        self.rotate_project_north(Some(by));
-                        ui.close();
-                    }
-                });
-                ui.data_mut(|d| d.insert_temp(id, by));
-                ui.label(egui::RichText::new(t("Counter-clockwise, about the Project Base Point")).color(style::pal().muted).size(11.0));
-            });
+            let tip = msg!(
+                "Rotate Project North: turn the whole model on the plan, as Rotate does, about the Project Base Point; true north turns back as much, so nothing moves in the world"
+            );
+            if big_button(ui, Icon::ProjectNorth, "Rotate Project North", matches!(self.tool, Tool::RotateNorth { .. }), tip).clicked() {
+                self.set_tool(Tool::RotateNorth { centre: P2(0.0, 0.0), start: None, place: false });
+            }
         });
         panel(ui, msg!("Links"), |ui| {
             let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";
@@ -4601,6 +4595,7 @@ impl BimApp {
                     ui.checkbox(&mut self.multiple, t("Multiple"));
                 }
                 Tool::Rotate { .. } => self.rotate_options(ui),
+                Tool::RotateNorth { .. } => self.rotate_north_options(ui),
                 Tool::Mirror { .. } => {
                     ui.checkbox(&mut self.mirror_copy, t("Copy"));
                 }
@@ -4690,6 +4685,31 @@ impl BimApp {
             *place = true;
         }
         ui.checkbox(&mut self.rotate_copy, t("Copy"));
+    }
+
+    /// Rotate Project North's Options Bar: an angle to type (Enter turns by it), Align with True North (by the active
+    /// location's angle), and Place Centre.
+    fn rotate_north_options(&mut self, ui: &mut Ui) {
+        let l = ui.label(t("Angle:"));
+        let r = ui.add(TextEdit::singleline(&mut self.angle).desired_width(60.0).hint_text("°")).labelled_by(l.id);
+        if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+            match (self.angle.trim().parse::<f64>(), &self.tool) {
+                (Ok(a), &Tool::RotateNorth { centre, .. }) if a.is_finite() => self.rotate_project_north(Some(a), Some(centre)),
+                _ => self.status = Status { text: tf("rotate: `{}` is not an angle in degrees", &[&self.angle]), error: true },
+            }
+        }
+        let angle = self.session.model.coordinates.location().angle;
+        let align = tf("Align with True North ({}°)", &[&format!("{angle:.3}")]);
+        if ui.add_enabled(angle.abs() > 1e-9, egui::Button::new(align)).clicked()
+            && let &Tool::RotateNorth { centre, .. } = &self.tool
+        {
+            self.rotate_project_north(None, Some(centre));
+        }
+        if ui.button(t("Place Centre")).clicked()
+            && let Tool::RotateNorth { place, .. } = &mut self.tool
+        {
+            *place = true;
+        }
     }
 
     fn level_options(&mut self, ui: &mut Ui) {
@@ -4786,6 +4806,13 @@ impl BimApp {
             Tool::Rotate { place: true, .. } => msg!("Click the centre of rotation."),
             Tool::Rotate { start: None, .. } => msg!("Click the start of the angle, or type an angle in the Options Bar."),
             Tool::Rotate { start: Some(_), .. } => msg!("Click the end of the angle. Esc cancels."),
+            Tool::RotateNorth { place: true, .. } => msg!("Click the centre the model turns about."),
+            Tool::RotateNorth { start: None, .. } => {
+                msg!("Rotate Project North: click the start of the angle, or type an angle in the Options Bar. It turns the whole model.")
+            }
+            Tool::RotateNorth { start: Some(_), .. } => {
+                msg!("Click the end of the angle: the model turns, and true north with it, so nothing moves in the world. Esc cancels.")
+            }
             Tool::Mirror { draw: false, .. } => msg!("Pick a wall or grid to mirror across."),
             Tool::Mirror { draw: true, start: None } => msg!("Click the start of the mirror axis."),
             Tool::Mirror { draw: true, start: Some(_) } => msg!("Click the end of the mirror axis."),

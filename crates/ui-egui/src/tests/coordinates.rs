@@ -119,6 +119,42 @@ fn rotate_project_north_aligns_with_true_north_from_the_ribbon() {
 }
 
 #[test]
+fn rotate_project_north_is_a_tool_on_the_plan_that_turns_the_whole_model_about_the_base_point() {
+    let mut h = app(BOX);
+    h.state_mut().session.execute("coordinates", &json!({"base": [8000.0, 0.0, 0.0]})).unwrap();
+    let wall = ids(&h, "wall")[0];
+    press(&mut h, "Manage");
+    from_list(&mut h, "Project Location", "Rotate Project North");
+    assert!(
+        matches!(h.state().tool, Tool::RotateNorth { centre, start: None, place: false } if centre == P2(8000.0, 0.0)),
+        "it starts on the Project Base Point: {:?}",
+        h.state().tool
+    );
+    assert_eq!(h.state().session.model.coordinates.location().angle, 0.0, "nothing turns until the angle's end");
+    // The angle's start north of the base point, its end west of it: 90° counter-clockwise.
+    click(&mut h, P2(8000.0, 4000.0));
+    click(&mut h, P2(3000.0, 0.0));
+    let m = &h.state().session.model;
+    assert_eq!(m.coordinates.location().angle, -90.0, "true north turned back as much: the building stays in the world");
+    let Some(Element::Wall(w)) = m.elements.get(wall) else { panic!() };
+    assert!(w.start.dist(P2(8000.0, -8000.0)) < 1e-6, "the whole model turned, about the base point: {:?}", w.start);
+    assert_eq!(h.state().session.history().last(), Some(&"Rotate Project North"));
+    assert_eq!(h.state().tool, Tool::Modify);
+}
+
+#[test]
+fn rotate_project_north_takes_an_angle_typed_in_the_options_bar() {
+    let mut h = app(BOX);
+    press(&mut h, "Manage");
+    from_list(&mut h, "Project Location", "Rotate Project North");
+    type_into(&mut h, "Angle:", "30");
+    h.key_press(Key::Enter);
+    h.run();
+    assert_eq!(h.state().session.model.coordinates.location().angle, -30.0);
+    assert_eq!(h.state().tool, Tool::Modify);
+}
+
+#[test]
 fn each_location_shows_its_id_and_a_new_one_has_none_until_applied() {
     let mut h = app(BOX);
     let id = h.state().session.model.library.id(&bimcraft_core::library::Kind::Location, "Internal").unwrap().to_string();

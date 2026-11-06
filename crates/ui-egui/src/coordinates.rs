@@ -11,6 +11,7 @@ use std::collections::BTreeSet;
 use bimcraft_core::coordinates::{Coordinates, Frame, Location, MAX_LOCATIONS, Move};
 use bimcraft_core::crs::{self, Info};
 use bimcraft_core::engine::Session;
+use bimcraft_core::geom::P2;
 use bimcraft_core::library::Kind;
 use bimcraft_core::model::Model;
 use bimcraft_core::places::{self, Kind as PlaceKind, Place, Suggestion};
@@ -1127,12 +1128,18 @@ impl BimApp {
         true
     }
 
-    /// Rotate Project North, from the ribbon: by the active location's angle (Align with True North), or by `angle`.
-    pub(crate) fn rotate_project_north(&mut self, angle: Option<f64>) {
-        let p = match angle {
+    /// Rotate Project North, the tool's end: by `angle` (or the active location's, Align with True North), about `about`
+    /// (else the Project Base Point); then back to Modify.
+    pub(crate) fn rotate_project_north(&mut self, angle: Option<f64>, about: Option<P2>) {
+        let mut p = match angle {
             Some(a) => json!({"angle": a}),
             None => json!({"true_north": true}),
         };
-        self.run("rotate_project_north", p);
+        if let Some(c) = about {
+            p["about"] = json!([c.0, c.1]);
+        }
+        if self.run("rotate_project_north", p).is_some() {
+            self.set_tool(crate::Tool::Modify);
+        }
     }
 }

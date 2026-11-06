@@ -890,13 +890,11 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(12.0, 2.0), (14.5, 6.0), (9.5, 6.0)]);
         }
         Icon::ProjectNorth => {
-            // A north arrow, and the turn about it that Rotate Project North makes.
-            g.line(&[(12.0, 21.0), (12.0, 4.0)]);
-            g.line(&[(8.5, 7.5), (12.0, 4.0), (15.5, 7.5)]);
-            g.arc((12.0, 13.0), 7.5, 200.0, 340.0);
-            if !compact {
-                g.line(&[(18.0, 7.0), (19.2, 10.4), (15.8, 10.8)]);
-            }
+            // A north arrowhead inside a turn arrow open at the top, turning counter-clockwise, as Rotate Project North
+            // turns the model.
+            g.arc((12.0, 12.0), 9.5, -58.0, 238.0);
+            g.line(&[(17.03, 3.94), (21.4, 3.37), (18.43, 8.12)]);
+            g.closed(&[(12.0, 1.5), (15.5, 13.0), (12.0, 10.5), (8.5, 13.0)]);
         }
         Icon::Spot => {
             g.line(&[(3.0, 16.0), (21.0, 16.0)]);
