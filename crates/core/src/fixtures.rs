@@ -200,8 +200,8 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
     out
 }
 
-/// Pipe fittings and a valve, centred on the pipe they join (its centre line at their z = 0, along x, and a branch toward +y):
-/// they are components until fittings have connectors.
+/// Pipe fittings and a valve, centred on the pipe they join (its centre line at their z = 0, along x, and a branch toward +y),
+/// with a connector at each end, of their diameter and the domain of the pipe they join.
 pub fn pipework(language: Language) -> Vec<(String, Value)> {
     let w = |s: &str| language.word(s).to_string();
     let (diameter, mat) = (w(msg!("Diameter")), w("Material"));
@@ -222,6 +222,9 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
             .into()
     };
     let neg = |e: &str| format!("-({e})");
+    // An end of it: where its pipe goes in, the way it leaves, its diameter, any domain.
+    let end = |at: [Value; 3], direction: [f64; 3]| json!({"kind": "pipe", "at": at, "direction": direction, "size": diameter});
+    let zero = || json!(0);
     vec![
         (
             w(msg!("Elbow 90")),
@@ -230,7 +233,8 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
                 "kind": "bend",
                 "parameters": [size(&diameter, 50.0), material(&mat, &pvc)],
                 "types": sizes(&["25", "50", "110"]),
-                "forms": [along_x(&neg(&hub), &r, &mat), along_y(&neg(&r), &hub, &mat)]
+                "forms": [along_x(&neg(&hub), &r, &mat), along_y(&neg(&r), &hub, &mat)],
+                "connectors": [end([f(neg(&hub)), zero(), zero()], [-1.0, 0.0, 0.0]), end([zero(), f(hub.clone()), zero()], [0.0, 1.0, 0.0])]
             }),
         ),
         (
@@ -240,7 +244,12 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
                 "kind": "tee",
                 "parameters": [size(&diameter, 50.0), material(&mat, &pvc)],
                 "types": sizes(&["25", "50", "110"]),
-                "forms": [along_x(&neg(&hub), &hub, &mat), along_y("0", &hub, &mat)]
+                "forms": [along_x(&neg(&hub), &hub, &mat), along_y("0", &hub, &mat)],
+                "connectors": [
+                    end([f(neg(&hub)), zero(), zero()], [-1.0, 0.0, 0.0]),
+                    end([f(hub.clone()), zero(), zero()], [1.0, 0.0, 0.0]),
+                    end([zero(), f(hub.clone()), zero()], [0.0, 1.0, 0.0])
+                ]
             }),
         ),
         (
@@ -254,7 +263,8 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
                     post(json!(0), json!(0), f(format!("{diameter} * 0.7")), f(neg(&r)), f(format!("{diameter} * 0.7")), &mat),
                     post(json!(0), json!(0), f(format!("{diameter} * 0.25")), f(format!("{diameter} * 0.7")), f(format!("{diameter} * 1.6")), &mat),
                     post(json!(0), json!(0), f(format!("{diameter} * 0.8")), f(format!("{diameter} * 1.6")), f(format!("{diameter} * 1.7")), &mat)
-                ]
+                ],
+                "connectors": [end([f(neg(&hub)), zero(), zero()], [-1.0, 0.0, 0.0]), end([f(hub.clone()), zero(), zero()], [1.0, 0.0, 0.0])]
             }),
         ),
     ]

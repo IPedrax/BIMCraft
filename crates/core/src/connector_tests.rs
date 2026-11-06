@@ -201,3 +201,37 @@ fn a_family_with_pipe_connectors_saves_and_opens_as_it_was() {
     let outlet = &back.families[Language::English.word("Outlet")].connectors[0];
     assert_eq!(serde_json::to_value(outlet.system).unwrap(), json!("power-balanced"));
 }
+
+#[test]
+fn a_fitting_has_a_connector_at_each_end_of_its_diameter_and_takes_its_pipes_domain() {
+    // (family, its ends' directions)
+    let cases: [(&str, &[[f64; 3]]); 3] = [
+        ("Elbow 90", &[[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]),
+        ("Tee", &[[-1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]),
+        ("Gate Valve", &[[-1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]),
+    ];
+    for l in Language::ALL {
+        let m = Model::new_in("x", l);
+        for (family, ends) in cases {
+            let f = &m.families[l.word(family)];
+            for t in f.types.keys() {
+                let dn: f64 = t.parse().unwrap();
+                let c = f.connector_values(t, &Default::default()).unwrap();
+                assert_eq!(c.iter().map(|c| c.direction.unwrap()).collect::<Vec<_>>(), ends.to_vec(), "{l:?} {family} {t}");
+                for c in &c {
+                    assert_eq!((c.size, c.domain), (Some(dn), None), "{l:?} {family} {t}");
+                    // Each end is where its pipe goes in: a diameter and a half and 30 mm out from the middle.
+                    let at = c.at.unwrap();
+                    let out = at[0].abs().max(at[1].abs());
+                    assert!((out - (dn * 1.5 + 30.0)).abs() < 1e-9 && at[2] == 0.0, "{l:?} {family} {t}: {at:?}");
+                }
+            }
+        }
+    }
+    // Only a fitting's or an accessory's pipe connector may leave its domain to the pipe.
+    let mut s = Session::new();
+    let open = json!({"kind": "pipe", "at": [0, 0, 0], "direction": [1, 0, 0], "size": 50});
+    let e = fails(&mut s, "family", json!({"name": "Bad", "category": "plumbing", "types": {"A": {}}, "connectors": [open]}));
+    assert!(e.contains("domain") && e.contains("fitting"), "{e}");
+    run(&mut s, "family", json!({"name": "Union", "category": "pipefitting", "types": {"A": {}}, "connectors": [open]}));
+}

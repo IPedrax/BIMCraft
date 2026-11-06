@@ -188,6 +188,8 @@ pipe leaves it, any length but none; worked out as a unit vector) and `size` (it
 parameters, and `name` says which it is for people. `Model::component_connectors` places them where a component stands
 (mirrored, turned and raised with it), and `element_json` gives `at` and `direction` in the model. The starter WC, washbasin,
 bathtub, kitchen sink, shower and floor drain carry their waste (out, DN 100 for the WC, 50 for the sink, 40 for the rest) and
-their cold and hot water (in, DN 20). IFC writes the electrical device's set from an electrical connector only, so a fixture with
-pipe connectors is no electrical device; IFC ports (`IfcDistributionPort`) and fittings' connectors come with the network. A file
+their cold and hot water (in, DN 20); the starter elbow, tee and gate valve have a connector at each end, of their diameter and
+with no domain, which a pipe fitting's or accessory's alone may leave out: it takes the domain of the pipe it joins, as Revit's
+fitting takes its pipe's system. IFC writes the electrical device's set from an electrical connector only, so a fixture with
+pipe connectors is no electrical device; IFC ports (`IfcDistributionPort`) come with the network. A file
 from before reads as it did, and an older version leaves the new keys out (`lenient.rs`), which loses nothing it could use.

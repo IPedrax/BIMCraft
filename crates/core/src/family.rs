@@ -33,7 +33,7 @@ pub enum Category {
     Plumbing,
     /// A floor drain.
     Drain,
-    /// An elbow, a tee: what joins pipes, carried by a component until fittings have connectors.
+    /// An elbow, a tee: what joins pipes, a component with a connector at each end.
     PipeFitting,
     /// A valve, a cleanout.
     PipeAccessory,
@@ -440,7 +440,7 @@ pub struct Connector {
     /// How a `power` connector shares its load, or `switch`; the other kinds have none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system: Option<ConnectorSystem>,
-    /// What a `pipe` connector carries.
+    /// What a `pipe` connector carries; none on a pipe fitting or accessory, which takes its pipe's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain: Option<Domain>,
     #[serde(default, skip_serializing_if = "Flow::is_both")]
@@ -1383,8 +1383,11 @@ impl Family {
                 }
             }
             if c.kind == ConnectorKind::Pipe {
-                if c.domain.is_none() {
-                    return Err(format!("{who}: a pipe connector needs its `domain`: cold, hot, waste, vent, storm or gas"));
+                // A fitting's or a valve's takes the domain of the pipe it joins, as its system is the pipe's.
+                if c.domain.is_none() && !matches!(self.category, Category::PipeFitting | Category::PipeAccessory) {
+                    return Err(format!(
+                        "{who}: a pipe connector needs its `domain`: cold, hot, waste, vent, storm or gas (only a pipe fitting's or accessory's takes its pipe's)"
+                    ));
                 }
                 if c.direction.is_none() || c.size.is_none() {
                     return Err(format!(
