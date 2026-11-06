@@ -1026,7 +1026,7 @@ msgstr "Línea de contorno: dibujar la huella de la cubierta, en el nivel superi
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Línea de contorno: dibujar el contorno del hueco de patinillo"
 
-#: crates/core/src/model.rs:2855
+#: crates/core/src/model.rs:2939
 msgid "Brick"
 msgstr "Ladrillo"
 
@@ -1096,7 +1096,7 @@ msgstr "Valor calculado…"
 msgid "Came in: {}"
 msgstr "Importados: {}"
 
-#: crates/core/src/commands.rs:1701
+#: crates/core/src/commands.rs:1715
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3983
 #: crates/ui-egui/src/properties.rs:265
@@ -1246,7 +1246,7 @@ msgstr "Centro"
 msgid "Centre Lines"
 msgstr "Líneas de eje"
 
-#: crates/core/src/model.rs:2863
+#: crates/core/src/model.rs:2947
 msgid "Ceramic tile"
 msgstr "Baldosa cerámica"
 
@@ -1954,7 +1954,7 @@ msgstr "Masa conceptual"
 msgid "Concrete"
 msgstr "Hormigón"
 
-#: crates/core/src/model.rs:2857
+#: crates/core/src/model.rs:2941
 msgid "Concrete block"
 msgstr "Bloque de hormigón"
 
@@ -2036,7 +2036,7 @@ msgstr "{} GlobalId IFC copiados."
 msgid "Copied {} rows, tab-separated."
 msgstr "{} filas copiadas, separadas por tabulación."
 
-#: crates/core/src/model.rs:2871
+#: crates/core/src/model.rs:2955
 msgid "Copper"
 msgstr "Cobre"
 
@@ -2438,7 +2438,7 @@ msgstr "Demolido"
 msgid "Demolition"
 msgstr "Demolición"
 
-#: crates/core/src/commands.rs:9599
+#: crates/core/src/commands.rs:9613
 msgid "Dependent"
 msgstr "Dependiente"
 
@@ -2951,7 +2951,7 @@ msgstr "Configuración eléctrica"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Configuración eléctrica: las tensiones, los sistemas de distribución y los tipos de cable a los que se refieren los circuitos y los cuadros; secciones en mm²"
 
-#: crates/core/src/commands.rs:2068
+#: crates/core/src/commands.rs:2082
 msgid "Elements"
 msgstr "Elementos"
 
@@ -3310,7 +3310,7 @@ msgstr "Encuentra {}; nada tiene estos: {}"
 msgid "Fine"
 msgstr "Alto"
 
-#: crates/core/src/import.rs:1217
+#: crates/core/src/import.rs:1365
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:718
 msgid "Finish"
@@ -3706,7 +3706,7 @@ msgstr "Grupo"
 msgid "Group:"
 msgstr "Grupo:"
 
-#: crates/core/src/model.rs:2862
+#: crates/core/src/model.rs:2946
 msgid "Gypsum board"
 msgstr "Placa de yeso"
 
@@ -4021,7 +4021,7 @@ msgstr "Instalando BIMCraft {}…"
 msgid "Instance"
 msgstr "Instancia"
 
-#: crates/core/src/import.rs:1216
+#: crates/core/src/import.rs:1364
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Aislamiento"
@@ -4685,7 +4685,7 @@ msgstr "Máximo"
 msgid "Maximum Riser Height"
 msgstr "Altura máxima de contrahuella"
 
-#: crates/core/src/commands.rs:1811
+#: crates/core/src/commands.rs:1825
 msgid "Measure"
 msgstr "Medir"
 
@@ -4701,7 +4701,7 @@ msgstr "Medio"
 msgid "Medium Lines"
 msgstr "Líneas medias"
 
-#: crates/core/src/import.rs:1219
+#: crates/core/src/import.rs:1367
 #: crates/ui-egui/src/properties.rs:717
 msgid "Membrane"
 msgstr "Membrana"
@@ -5632,7 +5632,7 @@ msgstr "Fase de demolición"
 msgid "Phase Filter"
 msgstr "Filtro de fase"
 
-#: crates/core/src/ifc.rs:1632
+#: crates/core/src/ifc.rs:1657
 msgid "Phase Filters"
 msgstr "Filtros de fase"
 
@@ -6757,7 +6757,7 @@ msgstr "Cubierta por cara (RB): una cubierta en la cara superior de las masas se
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Cubierta por perímetro: haz clic dentro de los muros para cubrirlos, en el nivel superior"
 
-#: crates/core/src/model.rs:2864
+#: crates/core/src/model.rs:2948
 msgid "Roof tiles"
 msgstr "Tejas"
 
@@ -6922,7 +6922,7 @@ msgstr "Escala: el papel que esta vista representa, 1 : n del modelo: su anotaci
 msgid "Scan"
 msgstr "Escaneo"
 
-#: crates/core/src/commands.rs:1605
+#: crates/core/src/commands.rs:1619
 msgid "Schedule"
 msgstr "Tabla"
 
@@ -6952,7 +6952,7 @@ msgstr "Tablas"
 msgid "Schedules/Quantities (all)"
 msgstr "Tablas/cantidades (todas)"
 
-#: crates/core/src/model.rs:2860
+#: crates/core/src/model.rs:2944
 msgid "Screed"
 msgstr "Recrecido"
 
@@ -7722,7 +7722,7 @@ msgstr "Divisiones de la subcuadrícula Y"
 msgid "Subgrid pen"
 msgstr "Plumilla de la subcuadrícula"
 
-#: crates/core/src/import.rs:1218
+#: crates/core/src/import.rs:1366
 #: crates/ui-egui/src/properties.rs:715
 msgid "Substrate"
 msgstr "Sustrato"
@@ -8633,7 +8633,7 @@ msgstr "Formato de unidades"
 msgid "Unlock alignment"
 msgstr "Desbloquear alineación"
 
-#: crates/core/src/commands.rs:9740
+#: crates/core/src/commands.rs:9754
 msgid "Unnamed"
 msgstr "Sin nombre"
 

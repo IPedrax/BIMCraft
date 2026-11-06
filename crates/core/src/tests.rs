@@ -2008,6 +2008,8 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"view": 100000, "show": ["roomreference"], "categories": {"roomreference": {"shown": 5}}}),
         json!({"elevation": "high"}),
         json!({"elevation": 1e300}),
+        json!({"crs": "EPSG:31983", "eastings": 1e300, "rotation": "x", "scale": -1, "clear": "yes", "map_zone": 5}),
+        json!({"crs": "EPSG:31983", "northings": 1e12, "height": -1e12, "rotation": 359, "scale": 1e-300, "description": "a\nb"}),
         json!({"category": "wall", "name": "", "thickness": -5}),
         json!({"category": "window", "name": "W", "width": 1e12, "height": 1}),
         json!({"boundary": [[0, 0], [1, 0], [0, 0]]}),

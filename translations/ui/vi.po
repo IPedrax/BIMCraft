@@ -1026,7 +1026,7 @@ msgstr "Đường biên: phác thảo hình chiếu bằng của mái, trên t�
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Đường biên: phác thảo đường bao của lỗ mở thông tầng"
 
-#: crates/core/src/model.rs:2855
+#: crates/core/src/model.rs:2939
 msgid "Brick"
 msgstr "Gạch"
 
@@ -1096,7 +1096,7 @@ msgstr "Giá trị tính toán…"
 msgid "Came in: {}"
 msgstr "Đã nhập vào: {}"
 
-#: crates/core/src/commands.rs:1701
+#: crates/core/src/commands.rs:1715
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3983
 #: crates/ui-egui/src/properties.rs:265
@@ -1246,7 +1246,7 @@ msgstr "Tâm"
 msgid "Centre Lines"
 msgstr "Đường tâm"
 
-#: crates/core/src/model.rs:2863
+#: crates/core/src/model.rs:2947
 msgid "Ceramic tile"
 msgstr "Gạch men"
 
@@ -1954,7 +1954,7 @@ msgstr "Khối ý tưởng"
 msgid "Concrete"
 msgstr "Bê tông"
 
-#: crates/core/src/model.rs:2857
+#: crates/core/src/model.rs:2941
 msgid "Concrete block"
 msgstr "Gạch block bê tông"
 
@@ -2036,7 +2036,7 @@ msgstr "Đã sao chép {} IFC GlobalId."
 msgid "Copied {} rows, tab-separated."
 msgstr "Đã sao chép {} hàng, phân tách bằng tab."
 
-#: crates/core/src/model.rs:2871
+#: crates/core/src/model.rs:2955
 msgid "Copper"
 msgstr "Đồng"
 
@@ -2438,7 +2438,7 @@ msgstr "Đã phá dỡ"
 msgid "Demolition"
 msgstr "Phá dỡ"
 
-#: crates/core/src/commands.rs:9599
+#: crates/core/src/commands.rs:9613
 msgid "Dependent"
 msgstr "Phụ thuộc"
 
@@ -2951,7 +2951,7 @@ msgstr "Cài đặt điện"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Cài đặt điện: các điện áp, hệ thống phân phối và loại dây mà mạch điện và tủ điện tham chiếu; tiết diện tính bằng mm²"
 
-#: crates/core/src/commands.rs:2068
+#: crates/core/src/commands.rs:2082
 msgid "Elements"
 msgstr "Cấu kiện"
 
@@ -3310,7 +3310,7 @@ msgstr "Tìm {}; không có đối tượng nào có: {}"
 msgid "Fine"
 msgstr "Chi tiết"
 
-#: crates/core/src/import.rs:1217
+#: crates/core/src/import.rs:1365
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:718
 msgid "Finish"
@@ -3706,7 +3706,7 @@ msgstr "Nhóm"
 msgid "Group:"
 msgstr "Nhóm:"
 
-#: crates/core/src/model.rs:2862
+#: crates/core/src/model.rs:2946
 msgid "Gypsum board"
 msgstr "Tấm thạch cao"
 
@@ -4021,7 +4021,7 @@ msgstr "Đang cài đặt BIMCraft {}…"
 msgid "Instance"
 msgstr "Đối tượng"
 
-#: crates/core/src/import.rs:1216
+#: crates/core/src/import.rs:1364
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Lớp cách nhiệt"
@@ -4685,7 +4685,7 @@ msgstr "Tối đa"
 msgid "Maximum Riser Height"
 msgstr "Chiều cao bậc đứng tối đa"
 
-#: crates/core/src/commands.rs:1811
+#: crates/core/src/commands.rs:1825
 msgid "Measure"
 msgstr "Đo"
 
@@ -4701,7 +4701,7 @@ msgstr "Trung bình"
 msgid "Medium Lines"
 msgstr "Nét trung bình"
 
-#: crates/core/src/import.rs:1219
+#: crates/core/src/import.rs:1367
 #: crates/ui-egui/src/properties.rs:717
 msgid "Membrane"
 msgstr "Màng"
@@ -5632,7 +5632,7 @@ msgstr "Giai đoạn phá dỡ"
 msgid "Phase Filter"
 msgstr "Bộ lọc giai đoạn"
 
-#: crates/core/src/ifc.rs:1632
+#: crates/core/src/ifc.rs:1657
 msgid "Phase Filters"
 msgstr "Bộ lọc giai đoạn"
 
@@ -6757,7 +6757,7 @@ msgstr "Mái theo mặt (RB): một mái trên mặt trên của các khối đ�
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Mái theo hình chiếu bằng: nhấp vào trong các tường để lợp mái, trên tầng phía trên"
 
-#: crates/core/src/model.rs:2864
+#: crates/core/src/model.rs:2948
 msgid "Roof tiles"
 msgstr "Ngói"
 
@@ -6922,7 +6922,7 @@ msgstr "Tỷ lệ: tờ giấy mà khung nhìn này đại diện, 1 : n của m
 msgid "Scan"
 msgstr "Bản quét"
 
-#: crates/core/src/commands.rs:1605
+#: crates/core/src/commands.rs:1619
 msgid "Schedule"
 msgstr "Bảng thống kê"
 
@@ -6952,7 +6952,7 @@ msgstr "Bảng thống kê"
 msgid "Schedules/Quantities (all)"
 msgstr "Bảng thống kê/Khối lượng (tất cả)"
 
-#: crates/core/src/model.rs:2860
+#: crates/core/src/model.rs:2944
 msgid "Screed"
 msgstr "Lớp vữa láng"
 
@@ -7722,7 +7722,7 @@ msgstr "Số ô lưới phụ Y"
 msgid "Subgrid pen"
 msgstr "Bút lưới phụ"
 
-#: crates/core/src/import.rs:1218
+#: crates/core/src/import.rs:1366
 #: crates/ui-egui/src/properties.rs:715
 msgid "Substrate"
 msgstr "Lớp nền"
@@ -8633,7 +8633,7 @@ msgstr "Định dạng đơn vị"
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:9740
+#: crates/core/src/commands.rs:9754
 msgid "Unnamed"
 msgstr "Chưa đặt tên"
 

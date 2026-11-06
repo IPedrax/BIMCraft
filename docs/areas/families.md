@@ -31,7 +31,7 @@ it as the door's `OperationType` (`Operation::ifc_door`, its side from `flip_han
 window's panel operation (`IfcWindowPanelProperties`, a sliding sash) needs an `IfcWindowType`, which the export doesn't write yet.
 What BIMCraft has no element for comes in from IFC as a component of a generic family that remembers the class it came in as
 (`Family::ifc`, an `IfcClass`: `{"class": "IFCPLATE", "predefined": "CURTAIN_PANEL"}`): a covering that is no ceiling, a curtain
-wall's panels and mullions, members, plates, duct fittings, terrain (`IfcGeographicElement`), a lift, anything the file builds
+wall's panels and mullions, members that don't frame as a beam ([IFC import](ifc-import.md)), plates, duct fittings, terrain (`IfcGeographicElement`), a lift, anything the file builds
 that has a body BIMCraft can read. The import reads it, after every element of BIMCraft's own, through the same path as
 furniture (`import::ifc`'s `component`, families settled by `settle`): its predefined type is its own, else its type object's,
 `NOTDEFINED` left out; its object type is remembered where it says what it is (the predefined type is `USERDEFINED`, or it isn't

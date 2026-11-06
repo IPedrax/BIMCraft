@@ -1025,7 +1025,7 @@ msgstr "Čára hranice: načrtněte půdorysnou stopu střechy na podlaží vý�
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Čára hranice: načrtněte obrys šachtového otvoru"
 
-#: crates/core/src/model.rs:2855
+#: crates/core/src/model.rs:2939
 msgid "Brick"
 msgstr "Cihla"
 
@@ -1095,7 +1095,7 @@ msgstr "Vypočítaná hodnota…"
 msgid "Came in: {}"
 msgstr "Importováno: {}"
 
-#: crates/core/src/commands.rs:1701
+#: crates/core/src/commands.rs:1715
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3983
 #: crates/ui-egui/src/properties.rs:265
@@ -1245,7 +1245,7 @@ msgstr "Osa"
 msgid "Centre Lines"
 msgstr "Osové čáry"
 
-#: crates/core/src/model.rs:2863
+#: crates/core/src/model.rs:2947
 msgid "Ceramic tile"
 msgstr "Keramická dlažba"
 
@@ -1953,7 +1953,7 @@ msgstr "Koncepční objem"
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:2857
+#: crates/core/src/model.rs:2941
 msgid "Concrete block"
 msgstr "Betonová tvárnice"
 
@@ -2035,7 +2035,7 @@ msgstr "Zkopírováno {} globálních ID IFC."
 msgid "Copied {} rows, tab-separated."
 msgstr "Zkopírováno {} řádků oddělených tabulátory."
 
-#: crates/core/src/model.rs:2871
+#: crates/core/src/model.rs:2955
 msgid "Copper"
 msgstr "Měď"
 
@@ -2437,7 +2437,7 @@ msgstr "Zbourané"
 msgid "Demolition"
 msgstr "Demolice"
 
-#: crates/core/src/commands.rs:9599
+#: crates/core/src/commands.rs:9613
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -2950,7 +2950,7 @@ msgstr "Elektrotechnická nastavení"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrotechnická nastavení: napětí, rozvodné soustavy a typy vodičů, na které se odkazují obvody a rozváděče; průřezy v mm²"
 
-#: crates/core/src/commands.rs:2068
+#: crates/core/src/commands.rs:2082
 msgid "Elements"
 msgstr "Prvky"
 
@@ -3309,7 +3309,7 @@ msgstr "Najde {}; žádný prvek nemá tyto vlastnosti: {}"
 msgid "Fine"
 msgstr "Jemná"
 
-#: crates/core/src/import.rs:1217
+#: crates/core/src/import.rs:1365
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:718
 msgid "Finish"
@@ -3705,7 +3705,7 @@ msgstr "Skupina"
 msgid "Group:"
 msgstr "Skupina:"
 
-#: crates/core/src/model.rs:2862
+#: crates/core/src/model.rs:2946
 msgid "Gypsum board"
 msgstr "Sádrokarton"
 
@@ -4020,7 +4020,7 @@ msgstr "Instalace aplikace BIMCraft {}…"
 msgid "Instance"
 msgstr "Instance"
 
-#: crates/core/src/import.rs:1216
+#: crates/core/src/import.rs:1364
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Tepelná izolace"
@@ -4684,7 +4684,7 @@ msgstr "Maximum"
 msgid "Maximum Riser Height"
 msgstr "Maximální výška stupně"
 
-#: crates/core/src/commands.rs:1811
+#: crates/core/src/commands.rs:1825
 msgid "Measure"
 msgstr "Změřit"
 
@@ -4700,7 +4700,7 @@ msgstr "Střední"
 msgid "Medium Lines"
 msgstr "Střední čáry"
 
-#: crates/core/src/import.rs:1219
+#: crates/core/src/import.rs:1367
 #: crates/ui-egui/src/properties.rs:717
 msgid "Membrane"
 msgstr "Hydroizolační fólie"
@@ -5631,7 +5631,7 @@ msgstr "Fáze demolice"
 msgid "Phase Filter"
 msgstr "Filtr fází"
 
-#: crates/core/src/ifc.rs:1632
+#: crates/core/src/ifc.rs:1657
 msgid "Phase Filters"
 msgstr "Filtry fází"
 
@@ -6756,7 +6756,7 @@ msgstr "Střecha podle plochy (RB): střecha na horních plochách vybraných ob
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Střecha půdorysem: klikněte uvnitř stěn pro jejich zastřešení v podlaží nad nimi"
 
-#: crates/core/src/model.rs:2864
+#: crates/core/src/model.rs:2948
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
@@ -6921,7 +6921,7 @@ msgstr "Měřítko: velikost papíru odpovídající tomuto pohledu, 1 : n model
 msgid "Scan"
 msgstr "Sken"
 
-#: crates/core/src/commands.rs:1605
+#: crates/core/src/commands.rs:1619
 msgid "Schedule"
 msgstr "Výkaz"
 
@@ -6951,7 +6951,7 @@ msgstr "Výkazy"
 msgid "Schedules/Quantities (all)"
 msgstr "Výkazy/množství (vše)"
 
-#: crates/core/src/model.rs:2860
+#: crates/core/src/model.rs:2944
 msgid "Screed"
 msgstr "Potěr"
 
@@ -7721,7 +7721,7 @@ msgstr "Dělení podmřížky Y"
 msgid "Subgrid pen"
 msgstr "Pero podmřížky"
 
-#: crates/core/src/import.rs:1218
+#: crates/core/src/import.rs:1366
 #: crates/ui-egui/src/properties.rs:715
 msgid "Substrate"
 msgstr "Podkladní vrstva"
@@ -8632,7 +8632,7 @@ msgstr "Formát jednotek"
 msgid "Unlock alignment"
 msgstr "Odemknout zarovnání"
 
-#: crates/core/src/commands.rs:9740
+#: crates/core/src/commands.rs:9754
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
