@@ -96,10 +96,27 @@ Tests: `coordinates_io_tests.rs`. Checked with IfcOpenShell 0.9 (`ifcopenshell.u
 project in SIRGAS 2000 / UTM 23S reads back as EPSG:31983 in metres, its x axis turned 10°, scale 0.9996, true north
 agreeing, the site at -23.55, -46.633, and `local2global` puts the wall on the map coordinates the project gives it.
 
+## Links
+
+A link (`model::Link`) is placed `by` (`link::By`): `manual`, at `at` turned `angle` (origin to origin, as before); `base`,
+its Project Base Point on this project's, turned `angle` about it and raised to it; or `shared`, where its shared
+coordinates say: its active location (or the one `location` names), carried to this project's active location. Its
+origin's map coordinates go through this project's `to_internal`, its turn is the two angles' difference, and its levels
+are raised by the difference in elevation. `link::placement` works this out each time the link is drawn (`bring`), so a
+change to either project's location moves it, and nothing is written into the linked file. A link has no scale: where the
+two locations' scales differ, `link` says so in a `warning` and places it by origin and turn alone. `link` replies with
+where it stands (`at`, `angle`, `raised`). A link placed by `base` or `shared` isn't moved or turned by hand: `move` and
+`rotate` refuse it and say to `modify` it with `by: manual` first.
+
+`coordinates {acquire: <link id>}` is Revit's Acquire Coordinates: this project's active location is solved, angle and
+scale from the link's location, so that the link's origin, where it stands now, has the link's map coordinates here.
+Tests: the link tests in `coordinates_io_tests.rs`.
+
 ## Commands
 
 - `coordinates`: reports everything (the internal origin and both points, internal and shared, the active location and every
-  location); `base` and `survey` move the points, `move: point|system` how the Survey Point goes.
+  location); `base` and `survey` move the points, `move: point|system` how the Survey Point goes; `acquire` takes a link's.
+- `link`: `by: manual|base|shared` and `location`.
 - `location`: makes (a copy of the active one), edits, renames, activates and deletes a location; `shift` adds to one, or to
   every location when no `name` is given (the survey says +5 m: one command).
 - `specify_coordinates`: the active location solved for a point.
@@ -109,5 +126,4 @@ agreeing, the site at -23.55, -46.633, and `local2global` puts the wall on the m
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
 
-Not yet (the plan's later stages): links by shared coordinates, plans turned to true north, and the
-desktop.
+Not yet (the plan's later stages): plans turned to true north, and the desktop.

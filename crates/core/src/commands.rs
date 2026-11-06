@@ -109,12 +109,16 @@ pub static ALL: &[Command] = &[
         "link",
         "Link Model",
         &["LK"],
-        "{path, name?, at?: [x, y], angle?: degrees} another project (.bimcraft or .ifc) shown in this one as a reference that \
+        "{path, name?, at?: [x, y], angle?: degrees, by?: manual|base|shared, location?} another project (.bimcraft or .ifc) \
+         shown in this one as a reference that \
          can't be edited, as Revit's Link Revit: its walls, floors, roofs, columns, stairs and the rest of what it builds are \
          drawn in the plans, sections and 3D views, halftone, and snapped to; nothing of it is selected, scheduled, checked or \
          exported. It stands with its origin at `at` (default [0, 0]) turned `angle` about it; its levels stand at their own \
          elevations, on this project's levels at the same height. `path` is read now and again by `reload`, and kept as given: \
-         a relative one is relative to this project's file. `name` defaults to the file's. Returns `id`, `name`, `elements`",
+         a relative one is relative to this project's file. `name` defaults to the file's. `by: base` puts its Project Base Point \
+         on this project's (turned `angle` about it, and raised to it); `by: shared` stands it where its shared coordinates say \
+         (its active location, or `location`), by this project's active location: worked out each time it is drawn, never \
+         written into its file. Returns `id`, `name`, `elements`, and where it stands: `at`, `angle`, `raised`",
         link_model,
     )
     .menu("Manage > Link Model"),
@@ -532,7 +536,9 @@ pub static ALL: &[Command] = &[
         "coordinates",
         "Coordinates",
         &[],
-        "{base?: [x,y,z], survey?: [x,y,z], move?: point|system} the project's coordinates. Without parameters, reports them: the \
+        "{base?: [x,y,z], survey?: [x,y,z], move?: point|system, acquire?: link} the project's coordinates. `acquire` takes \
+         the shared coordinates of a link (its id) where it stands now, as Revit's Acquire Coordinates: this project's active \
+         location is solved so that the link's origin has the link's map coordinates here and its true north agrees. Without parameters, reports them: the \
          internal origin, the Project Base Point and the Survey Point, each `internal` (the file's own mm, where geometry is) and \
          `shared` (the active location's map coordinates, mm), the `active` location and every location. `base` moves the Project \
          Base Point, the reference elevations and spot coordinates measure from; it moves no geometry. `survey` moves the Survey \
@@ -3093,11 +3099,33 @@ fn link_model(s: &mut Session, p: &Value) -> R {
     };
     let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
     let angle = num(c, p, "angle")?.unwrap_or(0.0);
+    let by = match string(c, p, "by")? {
+        None => crate::link::By::Manual,
+        Some(b) => crate::link::By::parse(&b).ok_or_else(|| bad(c, format!("`by` is {}, not `{b}`", crate::link::By::NAMES)))?,
+    };
+    let location = name_param(c, p, "location")?;
+    if let Some(l) = &location
+        && !other.coordinates.locations.contains_key(l)
+    {
+        let names: Vec<&str> = other.coordinates.locations.keys().map(String::as_str).collect();
+        return Err(bad(c, format!("the linked project has no location `{l}`; it has {}", names.join(", "))));
+    }
     let elements = other.elements.len();
+    let link = crate::model::Link { name: name.clone(), path: path.clone(), at, angle, by, location };
+    let (placed, turned, raised) = crate::link::placement(&s.model, &link, &other);
+    let mut reply = json!({"name": name, "elements": elements, "at": placed, "angle": turned, "raised": raised});
+    let scales = (s.model.coordinates.location().scale, other.coordinates.location().scale);
+    if by == crate::link::By::Shared && (scales.0 - scales.1).abs() > 1e-9 {
+        reply["warning"] = json!(format!(
+            "its location's scale ({}) isn't this project's ({}): a link isn't scaled, so it stands by its origin and turn alone",
+            scales.1, scales.0
+        ));
+    }
     let m = s.model_mut();
-    let id = m.insert(Element::Link(crate::model::Link { name: name.clone(), path: path.clone(), at, angle }));
+    let id = m.insert(Element::Link(link));
     m.loaded.insert(path, other);
-    Ok(json!({"id": id, "name": name, "elements": elements}))
+    reply["id"] = json!(id);
+    Ok(reply)
 }
 
 fn reload(s: &mut Session, p: &Value) -> R {
@@ -7191,7 +7219,28 @@ fn north_angle(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
 fn coordinates(s: &mut Session, p: &Value) -> R {
     use crate::coordinates::Move;
     let c = "coordinates";
-    only(c, p, &["base", "survey", "move"])?;
+    only(c, p, &["base", "survey", "move", "acquire"])?;
+    if let Some(link) = id_opt(c, p, "acquire")? {
+        let m = &s.model;
+        let Some(Element::Link(l)) = m.elements.get(link) else {
+            return Err(bad(c, format!("`acquire` takes a link, and element {} isn't one", link)));
+        };
+        let other = m.loaded.get(&l.path).ok_or_else(|| bad(c, format!("link `{}` isn't loaded: `reload` it first", l.name)))?;
+        // Where its origin stands here, its shared coordinates are this project's from now on.
+        let (at, angle, dz) = crate::link::placement(m, l, other);
+        let theirs =
+            l.location.as_ref().and_then(|n| other.coordinates.locations.get(n)).cloned().unwrap_or_else(|| other.coordinates.location());
+        let q = theirs.to_shared(other.coordinates.survey, [0.0; 3]);
+        let mut co = m.coordinates.clone();
+        let active = co.active.clone();
+        if let Some(here) = co.locations.get_mut(&active) {
+            here.angle = theirs.angle - angle;
+            here.scale = theirs.scale;
+        }
+        co.specify([at.0, at.1, dz], q, None);
+        s.model_mut().coordinates = co;
+        return Ok(s.model.coordinates.report());
+    }
     let base = match p.get("base") {
         v if absent(v) => None,
         Some(v) => Some(point3(v).ok_or_else(|| bad(c, format!("`base` must be [x, y, z] in mm, got {v}")))?),
@@ -11415,6 +11464,17 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             r.mirrored ^= mo.mirror;
         }
         // A link is moved and turned as a whole; its file stays as it is.
+        // Placed by base points or shared coordinates, where it stands is worked out, never moved by hand.
+        Element::Link(l) if !l.by.is_default() => {
+            return Err(bad(
+                c,
+                format!(
+                    "link `{}` stands by {}, worked out each time: `modify` it with `by: manual` (and `at`, `angle`) to place it by hand",
+                    l.name,
+                    if l.by == crate::link::By::Shared { "shared coordinates" } else { "base points" }
+                ),
+            ));
+        }
         Element::Link(l) => (l.at, l.angle) = turned(f, l.at, l.angle),
         Element::Viewport(v) => v.at = f(v.at),
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => (col.at, col.angle) = turned(f, col.at, col.angle),

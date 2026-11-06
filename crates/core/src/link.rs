@@ -53,6 +53,57 @@ fn built(e: &Element) -> bool {
     )
 }
 
+/// How a link is placed, as Revit's positioning: by hand, its Project Base Point on this project's, or by shared
+/// coordinates, its active location's (or a named one's) map coordinates where this project's active location puts them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum By {
+    #[default]
+    Manual,
+    Base,
+    Shared,
+}
+
+impl By {
+    pub const NAMES: &str =
+        "manual (at `at`, turned `angle`), base (its Project Base Point on this project's) or shared (by shared coordinates)";
+
+    pub fn parse(s: &str) -> Option<By> {
+        Some(match s {
+            "manual" | "origin" => By::Manual,
+            "base" => By::Base,
+            "shared" => By::Shared,
+            _ => return None,
+        })
+    }
+
+    pub fn is_default(&self) -> bool {
+        *self == By::Manual
+    }
+}
+
+/// Where link `l` of project `to`, reading `from`, stands: its origin in plan, its turn about it (degrees, counter-clockwise)
+/// and how far it is raised. By hand, as it says; base point on base point, turned `angle` about it; by shared coordinates,
+/// the link's location carried to this project's active one (a link has no scale: the two locations' scales are taken as one).
+pub fn placement(to: &Model, l: &crate::model::Link, from: &Model) -> (P2, f64, f64) {
+    match l.by {
+        By::Manual => (l.at, l.angle, 0.0),
+        By::Base => {
+            let (hb, lb) = (to.coordinates.base, from.coordinates.base);
+            let (sin, cos) = l.angle.to_radians().sin_cos();
+            let turned = P2(lb[0] * cos - lb[1] * sin, lb[0] * sin + lb[1] * cos);
+            (P2(hb[0] - turned.0, hb[1] - turned.1), l.angle, hb[2] - lb[2])
+        }
+        By::Shared => {
+            let theirs =
+                l.location.as_ref().and_then(|n| from.coordinates.locations.get(n)).cloned().unwrap_or_else(|| from.coordinates.location());
+            let q = theirs.to_shared(from.coordinates.survey, [0.0; 3]);
+            let here = to.coordinates.to_internal(q);
+            (P2(here[0], here[1]), theirs.angle - to.coordinates.location().angle, here[2])
+        }
+    }
+}
+
 /// The model the views draw: `m`, with what each of its loaded links builds. The model itself where it links nothing.
 /// A link that can't be brought in is left out.
 pub fn seen(m: &Arc<Model>) -> Arc<Model> {
@@ -81,9 +132,10 @@ fn bring(to: &mut Model, l: &crate::model::Link, from: &Model) -> Result<(), Str
     let mut other = from.clone();
     other.elements.retain(|_, e| matches!(e, Element::Level(_)) || built(e));
     let all: BTreeSet<Id> = other.elements.keys().copied().collect();
-    // Turned about its origin, then moved to where it stands.
-    let (sin, cos) = l.angle.to_radians().sin_cos();
-    let map = |p: P2| P2(p.0 * cos - p.1 * sin + l.at.0, p.0 * sin + p.1 * cos + l.at.1);
+    // Turned about its origin, then moved to where it stands, and raised.
+    let (at, angle, dz) = placement(to, l, from);
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let map = |p: P2| P2(p.0 * cos - p.1 * sin + at.0, p.0 * sin + p.1 * cos + at.1);
     let motion = Motion { map: &map, slide: None, mirror: false };
     for id in &all {
         if matches!(other.elements.get(*id), Some(Element::Level(_))) {
@@ -96,6 +148,7 @@ fn bring(to: &mut Model, l: &crate::model::Link, from: &Model) -> Result<(), Str
     let mut matched = BTreeSet::new();
     for id in &all {
         let Some(Element::Level(lv)) = other.elements.get_mut(*id) else { continue };
+        lv.elevation += dz;
         let here = to.levels().into_iter().find(|(_, t)| (t.elevation - lv.elevation).abs() < SAME_LEVEL);
         match here {
             Some((_, t)) => {

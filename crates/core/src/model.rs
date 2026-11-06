@@ -1325,10 +1325,16 @@ pub struct Link {
     /// The `.bimcraft` or `.ifc` it reads, as it was given: a relative one is relative to this project's file.
     pub path: String,
     /// Where its origin stands in this project, and how far it is turned about it, degrees. Its levels stand at their own
-    /// elevations.
+    /// elevations. By base points or shared coordinates, both are worked out each time it is drawn (`link::placement`).
     pub at: P2,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub angle: f64,
+    /// How it is placed: by hand (`at`, `angle`), base point on base point, or by shared coordinates.
+    #[serde(default, skip_serializing_if = "crate::link::By::is_default")]
+    pub by: crate::link::By,
+    /// By shared coordinates, which of its locations it stands at: its active one where none is named.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
 }
 
 /// A schedule view: the elements of category `of` in rows, as the `schedule` command lists them:
