@@ -560,13 +560,21 @@ fn fonts() -> FontDefinitions {
     fonts
 }
 
-/// The fonts and the theme's preference, once: the widgets' look follows the profile ([`follow`]).
+/// The fonts, the theme's preference and how shapes are tessellated, once: the widgets' look follows the profile ([`follow`]).
 pub fn apply(ctx: &Context) {
     ctx.set_fonts(fonts());
     ctx.options_mut(|o| {
         o.theme_preference = ThemePreference::System;
         o.fallback_theme = Theme::Light;
+        tessellation(o);
     });
+}
+
+/// egui's coarse culling measures a stroke thinner than a pixel by half its width, though its soft edge reaches a pixel past it, so
+/// lettering just past a view's edge lost the edge it shows there, which the kept triangles draw. The canvas leaves out what is
+/// outside itself with room to spare.
+pub(crate) fn tessellation(o: &mut egui::Options) {
+    o.tessellation_options.coarse_tessellation_culling = false;
 }
 
 /// The lettering's sizes, the spacing and the widgets' colours and corners, in both themes, for `look`.

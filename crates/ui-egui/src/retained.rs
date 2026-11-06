@@ -562,6 +562,7 @@ mod tests {
         mut draw: impl FnMut(&Painter, &Context),
     ) -> Vec<u8> {
         let ctx = Context::default();
+        ctx.options_mut(crate::style::tessellation);
         let mut raw = RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(SIDE[0] as f32, SIDE[1] as f32) / ppp)),
             ..RawInput::default()
@@ -718,6 +719,47 @@ mod tests {
             }
         }
         crate::style::set_canvas(false, None);
+    }
+
+    /// Lettering a third of a pixel below the clip: its outline, a stroke thinner than a pixel, is drawn with a soft edge a pixel
+    /// wide, which reaches the clip's last row. egui's coarse culling measured it by half its width and left it out, so the kept
+    /// triangles, made for more than the clip, drew a row egui didn't (a fallback font on Linux ARM put a room tag there).
+    #[test]
+    fn lettering_just_past_the_clip_shows_its_soft_edge_as_egui_draws_it() {
+        let Some(card) = card() else {
+            eprintln!("no card: the comparison needs one");
+            return;
+        };
+        let (m, level, view, _) = drawing();
+        let clip = Rect::from_min_max(pos2(37.0, 21.0), pos2(611.0, 503.0));
+        let mut d = render::draw(&m, level, view);
+        // In the drawing's pixels, which the canvas puts at the clip's corner.
+        let (left, top) = (400.0, clip.max.y - clip.min.y + 0.3);
+        d.prims.push(render::Prim::Fill {
+            rings: vec![vec![(left, top), (left + 10.0, top), (left + 10.0, top + 10.0), (left, top + 10.0)]],
+            color: render::Rgb(0, 0, 0),
+        });
+        d.owners.push(None);
+        d.parts.push(render::Part::Text);
+        d.pens.push(None);
+        let d = Arc::new(d);
+        let at = Place::at(clip.min);
+        crate::style::set_canvas(false, None);
+        for format in [wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureFormat::Rgba8UnormSrgb] {
+            let pipeline = Arc::new(Pipeline::new(&card.0, &card.1, format));
+            let today = frame(&card, format, 1.0, clip, |p, _| canvas::paint(p, at, &d, &[], None, false, &[]));
+            let mut retained = Retained::default();
+            let kept = frame(&card, format, 1.0, clip, |p, ctx| {
+                retained.paint(ctx, &pipeline, p, at, at.origin, &d, &[], None, false);
+            });
+            let last = |v: &[u8]| {
+                let row = (clip.max.y as usize - 1) * SIDE[0] as usize * 4;
+                v[row + (clip.min.x + left) as usize * 4..row + (clip.min.x + left + 10.0) as usize * 4].to_vec()
+            };
+            assert!(last(&today).chunks(4).any(|px| px[0] < 250), "{format:?}: the soft edge shows on the clip's last row");
+            let differs = today.chunks(4).zip(kept.chunks(4)).filter(|(a, b)| a != b).count();
+            assert_eq!(differs, 0, "{format:?}: {differs} pixels differ from egui's");
+        }
     }
 
     /// The whole app's window on a plan, with a wall selected: `card` given or not.

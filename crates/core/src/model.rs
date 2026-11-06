@@ -2648,6 +2648,85 @@ impl RoomArea {
     }
 }
 
+/// The farthest a map point of the project's origin may be from the map's own, mm: ten million kilometres, past any projected
+/// coordinate reference system's.
+pub const MAX_MAP: f64 = 1.0e13;
+
+/// Where the project lies on a map, as IFC's `IfcMapConversion` to a projected coordinate reference system: a point of the
+/// project at (x, y, z) mm is on the map at `eastings + scale * (x cos r - y sin r)`, `northings + scale * (x sin r + y cos r)`,
+/// `height + scale * z`, r the `rotation`. A file keeps it as it is; the drawings and the model's own coordinates don't move.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Georeference {
+    /// The map's coordinate reference system by its name, as IFC's `IfcProjectedCRS` names it (an EPSG code: `EPSG:31983`).
+    pub crs: String,
+    /// What else IFC says of it, where the file did: a description, its geodetic and vertical datums, map projection and zone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geodetic_datum: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vertical_datum: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map_projection: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map_zone: Option<String>,
+    /// The map point of the project's origin, mm: its eastings, northings and height.
+    #[serde(default)]
+    pub eastings: f64,
+    #[serde(default)]
+    pub northings: f64,
+    #[serde(default)]
+    pub height: f64,
+    /// How far the project's x axis is turned from the map's east, degrees counterclockwise.
+    #[serde(default)]
+    pub rotation: f64,
+    /// A distance on the map over the same distance in the project, both in mm: 1, or the grid's scale factor.
+    #[serde(default = "one")]
+    pub scale: f64,
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+impl Georeference {
+    /// What's wrong with it, if anything: its texts too long or its name empty, a number not finite or out of range.
+    pub fn check(&self) -> Result<(), String> {
+        if self.crs.trim().is_empty() {
+            return Err("its coordinate reference system needs a name (`crs`: an EPSG code, `EPSG:31983`)".into());
+        }
+        let texts = [
+            ("crs", Some(&self.crs)),
+            ("description", self.description.as_ref()),
+            ("geodetic_datum", self.geodetic_datum.as_ref()),
+            ("vertical_datum", self.vertical_datum.as_ref()),
+            ("map_projection", self.map_projection.as_ref()),
+            ("map_zone", self.map_zone.as_ref()),
+        ];
+        for (what, t) in texts {
+            if t.is_some_and(|t| t.chars().count() > MAX_TEXT || t.contains(['\n', '\r'])) {
+                return Err(format!("`{what}` is one line of up to {MAX_TEXT} characters"));
+            }
+        }
+        for (what, v) in [("eastings", self.eastings), ("northings", self.northings), ("height", self.height)] {
+            if !(v.is_finite() && v.abs() <= MAX_MAP) {
+                return Err(format!("`{what}` must be a finite length within {MAX_MAP} mm of the map's origin, not {v}"));
+            }
+        }
+        if !(self.rotation.is_finite() && self.rotation.abs() <= 360.0) {
+            return Err(format!("`rotation` is degrees, -360 to 360, not {}", self.rotation));
+        }
+        if !(self.scale.is_finite() && (1e-6..=1e6).contains(&self.scale)) {
+            return Err(format!(
+                "`scale` is a distance on the map over the same in the project, above zero (1e-6 to 1e6), not {}",
+                self.scale
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Model {
@@ -2749,6 +2828,10 @@ pub struct Model {
     /// Its wire types, by name: material, insulation, temperature and the ampacity of each section, mm².
     #[serde(default = "crate::electrical::wire_types")]
     pub wire_types: BTreeMap<String, crate::electrical::WireType>,
+    /// Where it lies on a map, where a file or the `georeference` command says: an older BIMCraft leaves it out of a file and
+    /// opens the rest, so it took no `FORMAT` step.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub georeference: Option<Georeference>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -2845,6 +2928,7 @@ impl Model {
             voltages: crate::electrical::voltages(),
             distribution_systems: crate::electrical::distribution_systems(),
             wire_types: crate::electrical::wire_types(),
+            georeference: None,
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -5862,6 +5946,9 @@ impl Model {
             t.check(n)?;
         }
         crate::electrical::check(self)?;
+        if let Some(g) = &self.georeference {
+            g.check().map_err(|e| format!("the project's georeference: {e}"))?;
+        }
         for (n, x) in &self.materials {
             for p in [&x.cut_pattern, &x.surface_pattern].into_iter().flatten() {
                 if !self.fill_patterns.contains_key(p) {
@@ -7167,6 +7254,7 @@ impl Model {
             voltages,
             distribution_systems,
             wire_types,
+            georeference,
             elements: _,
             library,
             loaded,
@@ -7205,6 +7293,7 @@ impl Model {
             && *voltages == o.voltages
             && *distribution_systems == o.distribution_systems
             && *wire_types == o.wire_types
+            && *georeference == o.georeference
             && *library == o.library
             && loaded.len() == o.loaded.len()
             && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))

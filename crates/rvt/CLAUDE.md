@@ -5,14 +5,14 @@ the crate is Apache-2.0 only, ported in part from rvt-rs and fenced by [docs/rvt
 (what may be read from where, and what is never copied). Autodesk's files are never committed: tests build synthetic ones
 (`fixture.rs`, `project_fixture.rs`) and the real samples are read only where `BIMCRAFT_RVT_SAMPLES` names a folder of them.
 
-- **Read only what a record says, and say what is not.** Anything the reader cannot decode (stairs, groups, families, a skylight,
+- **Read only what a record says, and say what is not.** Anything the reader cannot decode (groups, families, rebar, a skylight,
   a room no walls enclose) is left out and listed in the import's `skipped` as `N kinds left out, why`, which the desktop adds up;
   a rule of the model (`Model::check`) a made element breaks leaves that element out with the rule. Where the record's own box
   gives a stand-in (a curtain wall as the plane of its box, a sloped slab level, a sketch that closes nothing as the footprint of
-  its box) the element comes in as that stand-in and a note says what was not read: that is an approximation, never counted as
+  its box, a beam along its box, a stair's run as its box) the element comes in as that stand-in and a note says what was not read: that is an approximation, never counted as
   read whole, and never a way to bring the "left out" count down.
 - **A module for each part of a file** (`container`, `gzip`, `records`, `schema`, `inventory`, `elem_table`, `atom`...) and **for
-  each element kind** it imports (`walls`, `floors`, `roofs`, `columns`, `openings`, `rooms`, `pipes`, `ducts`, `generic`), joined by `import.rs`. A new kind
+  each element kind** it imports (`walls`, `floors`, `roofs`, `columns`, `openings`, `rooms`, `pipes`, `ducts`, `framing`, `generic`), joined by `import.rs`. A new kind
   is a module with its own tests, a line in `import.rs`, and its place in the write-up
   [Revit files and the Revit import](../../docs/areas/revit-import.md).
 - Lengths and counts a file claims are bounded before anything is allocated (`Limits`), and the sweep of hostile files is part of
