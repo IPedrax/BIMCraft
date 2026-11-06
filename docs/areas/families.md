@@ -129,6 +129,45 @@ components agree on, refused naming the components where they don't. `delete_par
 values; whatever still names one is `Family::problems`'s to refuse. A file of 17 reads unchanged (every parameter the family's,
 grouped by its kind); FORMAT 19 says an older build can't read the new kinds and fields (18 is another branch's number).
 
+## Shared parameters file
+
+A shared parameters file (`shared_parameters.rs`, the `shared_parameters` command, Manage > Shared Parameters) is a plain-text
+file of the user's own, outside any project or family, as Revit keeps one: groups, and in them parameters, each a GUID, a name,
+a data type, a description, whether it is visible and whether the user may change it. The command takes the file's `path` on
+every call (Revit keeps it per user, never in the project; an agent says which file it means, and a front end remembers its
+own), and only `load` changes the project. The layout is Revit's tab-separated one, from what is publicly documented and
+commonly seen: `#` comments, a `*META`/`*GROUP`/`*PARAM` header naming the columns of the `META`/`GROUP`/`PARAM` lines after
+it, read by column name so version 1 (no `DESCRIPTION`, `USERMODIFIABLE`) and version 2 (with them and `HIDEWHENNOVALUE`) both
+read, and a column this version doesn't know passed over; a reader must be at least `MINVERSION`, so a file asking for more
+than 2 is refused. It is written as version 2, UTF-8 with a byte order mark and Windows line ends, groups and their
+parameters in order and our own comment line; it reads UTF-8, UTF-16 either way (by its mark, or by a first character with
+a zero byte) and, failing UTF-8, Latin-1. The file is hostile: at most 4 MiB (`MAX_FILE`), 100,000 lines, 64 fields a line,
+names of `MAX_TEXT`, descriptions of 1024 characters, no control characters, whole numbers in range, flags 1 or 0, GUIDs that
+parse (never an id, never nil), one GUID a parameter, one id and one name a group, every parameter in a group it has; each
+refusal names its line, and a file that doesn't read is never written over.
+
+`DATATYPE` maps to a family parameter's kind (`kind_of`): `TEXT`, `INTEGER`, `NUMBER`, `LENGTH`, `AREA`, `VOLUME`, `ANGLE`,
+`YESNO`, `URL`, `MATERIAL` and `FAMILYTYPE`, and the newer spec ids for the same (`autodesk.spec.aec:length-2.0.0`, the
+version left out). A family type's `DATACATEGORY` is Revit's built-in category number (`-2000080` furniture), known for the
+categories BIMCraft has an equivalent of (`CATEGORY_IDS`); one it doesn't know reads as a family type with no category, which
+`load` takes `of` for, and a family type of a category with no number (a rack) can't be written. A type BIMCraft has no kind
+for (`CURRENCY`, the HVAC ones) is listed with `kind: null` and its `line`, kept as written when the file is written again,
+and refused, naming its line, only when it is loaded into a family: a real file holds many such, and refusing the whole
+file would make it useless.
+
+`load` adds one of the file's parameters (by `name`, or `guid` where the name is there twice) to a family through the
+`family` command's Edit Parameter: `shared` its GUID, name and kind the file's (which the family then keeps from changing),
+`instance` and `under` (the heading) the caller's. It refuses, before `Model::check` would, saying which family holds what:
+a family with a parameter of that name or that GUID already; the project sharing the GUID under another name or kind; the
+project sharing the name as another GUID. `export` writes a family's (or every family's) shared parameters to the file,
+creating it, new ones in `group` (by default the family's name): an entry of that GUID is kept as the file has it, its
+description too, and one the file holds as another name or kind, or the name as another GUID, is refused naming its line.
+
+The description, visibility and user-modifiable flag stay in the file: a family's `Parameter` has no field for them, since
+nothing in BIMCraft reads them yet (no tooltip, no hidden parameters, no read-only values), so no `FORMAT` step was needed.
+An export of a parameter the file doesn't have writes it visible, modifiable and with no description. When BIMCraft enforces
+user-modifiable values, the flag becomes a `Parameter` field and FORMAT 21 (20 is another branch's).
+
 ## Plan symbols
 
 A family's `symbols`, of any category, are what its plan draws besides its forms, in its own axes: each is exactly one of a
