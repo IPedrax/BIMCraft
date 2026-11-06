@@ -2104,6 +2104,8 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"name": "Outlet", "parameter": {"name": "Height", "rename": "1 bad", "kind": "url", "value": "a\nb"}, "delete_parameter": ["Nope", 5]}),
         json!({"name": "Outlet", "parameter": "x", "delete_parameter": "x"}),
         json!({"path": "/nonexistent/family.json"}),
+        json!({"path": "/nonexistent/shared.txt", "action": "load", "family": "Outlet", "name": "X", "guid": "x", "under": 5}),
+        json!({"path": "/nonexistent/shared.txt", "action": "export", "group": "\u{0}", "kind": "familytype", "of": "rack"}),
         json!({"name": "P", "kind": "length", "categories": ["wall", "wall", "clouds"], "rename": "Q"}),
         json!({"name": "P", "kind": "yesno", "categories": ["door", "component"], "rename": "1 bad"}),
         json!({"name": "Count", "categories": ["room"]}),
@@ -2268,7 +2270,9 @@ fn hostile_params_never_panic_or_break_the_model() {
     let _ = base.execute("mass", &json!({"boundary": block(), "height": 9000, "lean": [1500, 500]}));
     // Detailing, one of each (detail lines, regions, a group, a repeating detail, a sketch floor, Linework), and the payloads
     // that name them: some for every command, some for the one they are for.
-    let (detailing, targeted) = crate::detail_tests::sweep_payloads(&mut base);
+    let (detailing, mut targeted) = crate::detail_tests::sweep_payloads(&mut base);
+    // A shared parameters file's actions, on files of the sweep's own (`shared_parameter_tests::sweep_payloads`).
+    targeted.extend(crate::shared_parameter_tests::sweep_payloads());
     // A section and an elevation of it, after those, so that no id the payloads name moves: their views are drawn too.
     let _ = base.execute("section", &json!({"start": [-1000, 3000], "end": [9000, 3000]}));
     let _ = base.execute("elevation", &json!({"facing": "south"}));

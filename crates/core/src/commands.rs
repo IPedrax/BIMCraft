@@ -976,6 +976,35 @@ pub static ALL: &[Command] = &[
     )
     .menu("Manage > Favorites"),
     edit(
+        "shared_parameters",
+        "Shared Parameters",
+        &[],
+        "{path, action?: list|create|add_group|add|load|export, group?, name?, guid?, kind?: length|number|integer|angle|area|\
+         volume|yesno|material|text|url|familytype, of?: category, description?, visible?, modifiable?, family?, instance?, \
+         under?: constraints|construction|dimensions|graphics|identity-data|materials-and-finishes|text|visibility|electrical|\
+         mechanical|plumbing|structural|data|other, replace?} a shared parameters file, as Revit's Manage > Shared Parameters \
+         keeps one: a plain-text file of the user's own at `path` (given on every call; it is never part of the project), in \
+         Revit's tab-separated layout (versions 2 and 1 read, 2 written), listing groups and in them parameters, each a GUID, a \
+         name, a data type, a description, whether it is `visible` and whether the user may change it (`modifiable`). `list` \
+         (the default) reads it: its `version`, its groups (`id`, `name`) and each one's `parameters` (`guid`, `name`, `kind` — \
+         null for a data type BIMCraft has no kind for, which is listed and kept but can't be loaded — `datatype` as written, `of` \
+         for a family type, `description`, `visible`, `modifiable`, the `line` it is on, and the project's `families` holding \
+         it). `create` writes an empty file (refused over one there unless `replace`). `add_group` adds a `group`, named. `add` \
+         adds parameter `name` of `kind` to an existing `group`, with a new GUID unless `guid` is given, a family type with `of`, \
+         `description` one line, `visible` and `modifiable` true unless false. `load` adds a parameter of the file, by `name` or \
+         `guid`, to `family`, as Revit's Add Parameter > Shared Parameter does: its GUID becomes the parameter's `shared`, its \
+         name and kind are the file's (and can't be changed in the family), `instance` and `under` (the heading it is listed \
+         under; none, its kind's) are the caller's, and a family type whose category the file can't say takes `of`; refused \
+         where the family has a parameter of that name, or the project shares that GUID under another name or kind, or that \
+         name as another GUID. `export` writes `family`'s shared parameters (none named, every family's) into the file, \
+         creating it if there is none, new ones under `group` (by default the family's name, else `Exported Parameters`): what \
+         the file has by that GUID is kept as the file says it, and one the file holds as another name or kind, or a name it \
+         holds as another GUID, is refused naming its line. A file that isn't one is refused naming its line, and is never \
+         written over; files are capped at 4 MiB and 100,000 lines. Only `load` changes the project, one undo step",
+        shared_parameters,
+    )
+    .menu("Manage > Shared Parameters"),
+    edit(
         "paint",
         "Paint",
         &["PT"],
@@ -10750,6 +10779,332 @@ fn component(s: &mut Session, p: &Value) -> R {
 /// The project's pictures, each its name and its size in pixels.
 fn images(m: &Model) -> Value {
     Value::Object(m.images.iter().map(|(id, p)| (id.clone(), json!({"name": p.name(), "size": [p.size().0, p.size().1]}))).collect())
+}
+
+/// A shared parameters file at `path` (`shared_parameters.rs`): read and listed, made, given a group or a parameter, a parameter
+/// of it added to a family, or a family's shared parameters written to it. Only adding one to a family changes the project.
+fn shared_parameters(s: &mut Session, p: &Value) -> R {
+    use crate::shared_parameters::{Definition, SharedFile};
+    let c = "shared_parameters";
+    const KEYS: &[&str] = &[
+        "path",
+        "action",
+        "group",
+        "name",
+        "guid",
+        "kind",
+        "of",
+        "description",
+        "visible",
+        "modifiable",
+        "family",
+        "instance",
+        "under",
+        "replace",
+    ];
+    only(c, p, KEYS)?;
+    let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required: the shared parameters file"))?);
+    let action = string(c, p, "action")?.unwrap_or_else(|| "list".into());
+    let read = |path: &Path| SharedFile::read(path).map_err(|e| bad(c, e));
+    let guid_param = || -> Result<Option<Guid>, String> {
+        match string(c, p, "guid")? {
+            None => Ok(None),
+            Some(g) => Guid::parse(&g)
+                .filter(|g| g.pending().is_none() && !g.is_nil())
+                .map(Some)
+                .ok_or_else(|| bad(c, format!("`guid` is a GUID, xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, not `{g}`"))),
+        }
+    };
+    let category = || -> Result<Option<crate::family::Category>, String> {
+        match p.get("of") {
+            v if absent(v) => Ok(None),
+            Some(v) => serde_json::from_value(v.clone()).map(Some).map_err(|_| bad(c, format!("`of` is a family category, not {v}"))),
+            None => Ok(None),
+        }
+    };
+    // Which families of the project share each GUID.
+    let holders = |m: &Model, g: Guid| -> Vec<String> {
+        m.families.iter().filter(|(_, f)| f.parameters.iter().any(|q| q.shared == Some(g))).map(|(n, _)| n.clone()).collect()
+    };
+    match action.as_str() {
+        "list" => {
+            let file = read(&path)?;
+            let groups: Vec<Value> = file
+                .groups
+                .iter()
+                .map(|g| {
+                    let parameters: Vec<Value> = file
+                        .parameters
+                        .iter()
+                        .filter(|q| q.group == g.id)
+                        .map(|q| {
+                            let (kind, of) = q.kind().map_or((Value::Null, Value::Null), |(k, of)| (json!(k), json!(of)));
+                            let mut v = json!({"guid": q.guid, "name": q.name, "kind": kind, "datatype": q.datatype,
+                                "description": q.description, "visible": q.visible, "modifiable": q.modifiable, "line": q.line,
+                                "families": holders(&s.model, q.guid)});
+                            if !of.is_null() {
+                                v["of"] = of;
+                            }
+                            v
+                        })
+                        .collect();
+                    json!({"id": g.id, "name": g.name, "parameters": parameters})
+                })
+                .collect();
+            Ok(json!({"path": path, "version": file.version, "groups": groups}))
+        }
+        "create" => {
+            if path.exists() && !flag(c, p, "replace")? {
+                return Err(bad(c, format!("{} is there already: `replace` it, or add to it", path.display())));
+            }
+            SharedFile::default().write(&path).map_err(|e| bad(c, e))?;
+            Ok(json!({"created": path}))
+        }
+        "add_group" => {
+            let group = string(c, p, "group")?.ok_or_else(|| bad(c, "`group` is required: the new group's name"))?;
+            let mut file = read(&path)?;
+            let id = file.add_group(&group).map_err(|e| bad(c, e))?;
+            file.write(&path).map_err(|e| bad(c, e))?;
+            Ok(json!({"group": group, "id": id, "path": path}))
+        }
+        "add" => {
+            let group = string(c, p, "group")?.ok_or_else(|| bad(c, "`group` is required: the file's group it goes in"))?;
+            let name = string(c, p, "name")?.ok_or_else(|| bad(c, "`name` is required: the parameter's"))?;
+            let kind: crate::family::Kind = match p.get("kind") {
+                v if absent(v) => return Err(bad(c, "`kind` is required: what the parameter holds")),
+                Some(v) => serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`kind` is none BIMCraft has: {v}")))?,
+                None => return Err(bad(c, "`kind` is required")),
+            };
+            let of = category()?;
+            if of.is_some() && kind != crate::family::Kind::FamilyType {
+                return Err(bad(c, "`of` is for a family type parameter; leave it out"));
+            }
+            let description = string(c, p, "description")?.unwrap_or_default();
+            let flag_or = |key: &str| match p.get(key) {
+                v if absent(v) => Ok(true),
+                Some(Value::Bool(b)) => Ok(*b),
+                Some(v) => Err(bad(c, format!("`{key}` must be true or false, got {v}"))),
+                None => Ok(true),
+            };
+            let (visible, modifiable) = (flag_or("visible")?, flag_or("modifiable")?);
+            let guid = guid_param()?.unwrap_or_else(Guid::new);
+            let (datatype, data_category) = crate::shared_parameters::datatype(kind, of).map_err(|e| bad(c, format!("`{name}`: {e}")))?;
+            let mut file = read(&path)?;
+            let g = file
+                .group(&group)
+                .map(|g| g.id)
+                .ok_or_else(|| bad(c, format!("the file has no group `{group}`: make it with `add_group`")))?;
+            let def = Definition {
+                guid,
+                name: name.clone(),
+                datatype,
+                category: data_category,
+                group: g,
+                visible,
+                description,
+                modifiable,
+                hide_when_no_value: false,
+                line: 0,
+            };
+            file.add(def).map_err(|e| bad(c, e))?;
+            file.write(&path).map_err(|e| bad(c, e))?;
+            Ok(json!({"name": name, "guid": guid, "group": group, "kind": kind, "path": path}))
+        }
+        "load" => {
+            let to = string(c, p, "family")?.ok_or_else(|| bad(c, "`family` is required: the family it goes into"))?;
+            let guid = guid_param()?;
+            let name = string(c, p, "name")?;
+            let instance = flag(c, p, "instance")?;
+            let under = match p.get("under") {
+                v if absent(v) => None,
+                Some(v) => Some(serde_json::from_value::<crate::family::Group>(v.clone()).map_err(|_| {
+                    let groups: Vec<String> =
+                        crate::family::Group::ALL.iter().map(|g| json!(g).as_str().unwrap_or_default().to_string()).collect();
+                    bad(c, format!("`under` is one of {}, not {v}", groups.join(", ")))
+                })?),
+                None => None,
+            };
+            let of = category()?;
+            let file = read(&path)?;
+            let def = match (guid, &name) {
+                (Some(g), _) => {
+                    file.parameters.iter().find(|q| q.guid == g).ok_or_else(|| bad(c, format!("the file has no parameter {g}")))?
+                }
+                (None, Some(n)) => {
+                    let named: Vec<&Definition> = file.parameters.iter().filter(|q| q.name == *n).collect();
+                    match named.as_slice() {
+                        [one] => *one,
+                        [] => return Err(bad(c, format!("the file has no parameter `{n}`"))),
+                        many => {
+                            let guids: Vec<String> = many.iter().map(|q| format!("{} (line {})", q.guid, q.line)).collect();
+                            return Err(bad(
+                                c,
+                                format!("the file has `{n}` {} times: give its `guid`, one of {}", many.len(), guids.join(", ")),
+                            ));
+                        }
+                    }
+                }
+                (None, None) => return Err(bad(c, "`name` or `guid` is required: the file's parameter to load")),
+            };
+            let (kind, file_of) = def.kind().map_err(|e| bad(c, e))?;
+            let of = match (kind, file_of, of) {
+                (crate::family::Kind::FamilyType, Some(f), _) => Some(f),
+                (crate::family::Kind::FamilyType, None, Some(o)) => Some(o),
+                (crate::family::Kind::FamilyType, None, None) => {
+                    return Err(bad(
+                        c,
+                        format!(
+                            "{}shared parameter `{}` is a family type of a category the file doesn't say one BIMCraft knows (`{}`): \
+                             give `of`",
+                            def.at(),
+                            def.name,
+                            def.category
+                        ),
+                    ));
+                }
+                (_, _, Some(_)) => return Err(bad(c, format!("`of` is for a family type parameter; `{}` is {}", def.name, kind.said()))),
+                _ => None,
+            };
+            let f = s.model.families.get(&to).ok_or_else(|| bad(c, format!("there's no family `{to}`")))?;
+            let said = format!("shared parameter `{}` ({}, line {} of {})", def.name, def.guid, def.line, path.display());
+            if let Some(q) = f.parameters.iter().find(|q| q.name == def.name || q.shared == Some(def.guid)) {
+                return Err(bad(
+                    c,
+                    match q.shared {
+                        Some(g) if g == def.guid => format!("family `{to}` has {said} already, as `{}`", q.name),
+                        _ => format!("family `{to}` has a parameter `{}` already; {said} can't be added beside it", q.name),
+                    },
+                ));
+            }
+            // What the project holds already: one GUID is one name and one kind, one name one GUID.
+            for (n, other) in s.model.families.iter() {
+                for q in other.parameters.iter() {
+                    let Some(g) = q.shared else { continue };
+                    if g == def.guid && q.name != def.name {
+                        return Err(bad(
+                            c,
+                            format!("{said}: family `{n}` shares {g} as `{}`; one GUID is one name across the project", q.name),
+                        ));
+                    }
+                    if g == def.guid && q.kind != kind {
+                        return Err(bad(
+                            c,
+                            format!(
+                                "{said} is {}: family `{n}` shares {g} as {}; one GUID is one kind across the project",
+                                kind.said(),
+                                q.kind.said()
+                            ),
+                        ));
+                    }
+                    if g != def.guid && q.name == def.name {
+                        return Err(bad(
+                            c,
+                            format!("{said}: family `{n}` shares `{}` as {g}; one name is one GUID across the project", q.name),
+                        ));
+                    }
+                }
+            }
+            let mut parameter = json!({"name": def.name, "kind": kind, "shared": def.guid, "instance": instance});
+            if let Some(g) = under {
+                parameter["group"] = json!(g);
+            }
+            if let Some(o) = of {
+                parameter["of"] = json!(o);
+            }
+            let (name, guid) = (def.name.clone(), def.guid);
+            let r = family(s, &json!({"name": to, "parameter": parameter}))?;
+            Ok(json!({"family": to, "parameter": name, "guid": guid, "kind": kind, "instance": instance, "warnings": r["warnings"]}))
+        }
+        "export" => {
+            let named = string(c, p, "family")?;
+            let shared: Vec<(String, crate::family::Parameter)> = match &named {
+                Some(n) => {
+                    let f = s.model.families.get(n).ok_or_else(|| bad(c, format!("there's no family `{n}`")))?;
+                    f.parameters.iter().filter(|q| q.shared.is_some()).map(|q| (n.clone(), q.clone())).collect()
+                }
+                None => s
+                    .model
+                    .families
+                    .iter()
+                    .flat_map(|(n, f)| f.parameters.iter().filter(|q| q.shared.is_some()).map(move |q| (n.clone(), q.clone())))
+                    .collect(),
+            };
+            if shared.is_empty() {
+                let whose = named.as_ref().map_or("the project's families have".to_string(), |n| format!("family `{n}` has"));
+                return Err(bad(c, format!("{whose} no shared parameters to export")));
+            }
+            let group = string(c, p, "group")?.unwrap_or_else(|| named.clone().unwrap_or_else(|| "Exported Parameters".into()));
+            let mut file = if path.exists() { read(&path)? } else { SharedFile::default() };
+            let (mut added, mut kept) = (Vec::new(), Vec::new());
+            let mut group_id = file.group(&group).map(|g| g.id);
+            for (fam, q) in &shared {
+                let Some(g) = q.shared else { continue };
+                if added.contains(&q.name) {
+                    continue;
+                }
+                if let Some(d) = file.parameters.iter().find(|d| d.guid == g) {
+                    let same = d.name == q.name && d.kind().is_ok_and(|(k, _)| k == q.kind);
+                    if !same {
+                        return Err(bad(
+                            c,
+                            format!(
+                                "{}the file holds {g} as `{}` ({}), which family `{fam}` holds as `{}` ({}): one GUID is one name and one kind",
+                                d.at(),
+                                d.name,
+                                d.datatype,
+                                q.name,
+                                q.kind.said()
+                            ),
+                        ));
+                    }
+                    kept.push(q.name.clone());
+                    continue;
+                }
+                if let Some(d) = file.parameters.iter().find(|d| d.name == q.name) {
+                    return Err(bad(
+                        c,
+                        format!(
+                            "{}the file holds `{}` as {}, which family `{fam}` shares as {g}: one name is one GUID",
+                            d.at(),
+                            d.name,
+                            d.guid
+                        ),
+                    ));
+                }
+                let (datatype, data_category) = crate::shared_parameters::datatype(q.kind, q.of)
+                    .map_err(|e| bad(c, format!("family `{fam}`: parameter `{}`: {e}", q.name)))?;
+                let id = match group_id {
+                    Some(id) => id,
+                    None => {
+                        let id = file.add_group(&group).map_err(|e| bad(c, e))?;
+                        group_id = Some(id);
+                        id
+                    }
+                };
+                file.add(Definition {
+                    guid: g,
+                    name: q.name.clone(),
+                    datatype,
+                    category: data_category,
+                    group: id,
+                    visible: true,
+                    description: String::new(),
+                    modifiable: true,
+                    hide_when_no_value: false,
+                    line: 0,
+                })
+                .map_err(|e| bad(c, format!("family `{fam}`: {e}")))?;
+                added.push(q.name.clone());
+            }
+            kept.sort();
+            kept.dedup();
+            if !added.is_empty() || !path.exists() {
+                file.write(&path).map_err(|e| bad(c, e))?;
+            }
+            Ok(json!({"path": path, "group": group, "added": added, "kept": kept}))
+        }
+        other => Err(bad(c, format!("`action` is list, create, add_group, add, load or export, not `{other}`"))),
+    }
 }
 
 fn favorite(s: &mut Session, p: &Value) -> R {
