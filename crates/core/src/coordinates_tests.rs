@@ -291,6 +291,45 @@ fn crs_search_finds_by_name_and_code() {
     assert_eq!(r["found"].as_array().map(Vec::len), Some(3));
 }
 
+fn codes(place: &Value) -> Vec<u64> {
+    place["systems"].as_array().map_or_else(Vec::new, |a| a.iter().filter_map(|x| x["code"].as_u64()).collect())
+}
+
+#[test]
+fn crs_search_finds_a_city_and_pairs_it_with_its_country_s_systems() {
+    let mut s = Session::new();
+    let r = run(&mut s, "crs", json!({"search": "São Paulo"}));
+    let p = &r["places"][0];
+    assert_eq!((p["kind"].as_str(), p["name"].as_str(), p["country"].as_str()), (Some("city"), Some("São Paulo"), Some("Brazil")), "{r}");
+    assert!((p["latitude"].as_f64().unwrap() + 23.56).abs() < 0.1 && (p["longitude"].as_f64().unwrap() + 46.63).abs() < 0.1, "{p}");
+    let c = codes(p);
+    assert_eq!(c.first(), Some(&31983), "SIRGAS 2000 / UTM zone 23S first, Brazil's: {p}");
+    assert!(c.contains(&5880) && c.contains(&32723), "Brazil Polyconic, and WGS 84's zone: {p}");
+    assert!(p["systems"][0]["why"].as_str().is_some_and(|w| !w.is_empty()), "{p}");
+    // Without its accents, with the country in Portuguese.
+    let r = run(&mut s, "crs", json!({"search": "sao paulo brasil"}));
+    assert_eq!(r["places"][0]["name"], "São Paulo", "{r}");
+    // A national grid comes before the UTM zone.
+    let r = run(&mut s, "crs", json!({"search": "London"}));
+    assert_eq!((r["places"][0]["country"].as_str(), codes(&r["places"][0]).first()), (Some("United Kingdom"), Some(&27700)), "{r}");
+    let r = run(&mut s, "crs", json!({"search": "Sydney"}));
+    assert_eq!(codes(&r["places"][0]).first(), Some(&7856), "GDA2020 / MGA zone 56: {r}");
+}
+
+#[test]
+fn crs_search_finds_a_country_by_any_of_its_names() {
+    let mut s = Session::new();
+    let r = run(&mut s, "crs", json!({"search": "Alemania"}));
+    let p = &r["places"][0];
+    assert_eq!((p["kind"].as_str(), p["name"].as_str()), (Some("country"), Some("Germany")), "{r}");
+    assert_eq!(codes(p).first(), Some(&25832), "ETRS89 / UTM zone 32N at Germany's middle: {p}");
+    // A name that is no place lists none, and a code still finds its system.
+    let r = run(&mut s, "crs", json!({"search": "31983"}));
+    assert_eq!((r["found"][0]["code"].as_u64(), r["places"].as_array().map(Vec::len)), (Some(31983), Some(0)), "{r}");
+    let r = run(&mut s, "crs", json!({"search": "Brazil", "limit": 2}));
+    assert!(r["places"].as_array().is_some_and(|a| a.len() <= 2 && a[0]["kind"] == "country"), "the country before its cities: {r}");
+}
+
 #[test]
 fn only_a_known_projected_crs_is_taken() {
     let mut s = Session::new();

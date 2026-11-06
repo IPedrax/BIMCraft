@@ -181,3 +181,7 @@ from Natural Earth's 1:110m land polygons and land borders, packed smaller and
 rounded to hundredths of a degree. Made with Natural Earth. Free vector and
 raster map data @ naturalearthdata.com. Natural Earth is in the public domain.
   https://github.com/nvkelso/natural-earth-vector
+
+The places a map system is found by (assets/map/places.tsv) are Natural Earth's
+1:50m countries (with their names in several languages) and 1:10m populated
+places, their names and positions only. Made with Natural Earth.

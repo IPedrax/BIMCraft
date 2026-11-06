@@ -82,6 +82,7 @@ pub mod pat;
 pub mod pdf;
 pub mod pen;
 pub mod phasing;
+pub mod places;
 #[cfg(test)]
 mod read_only_tests;
 pub mod rebar;

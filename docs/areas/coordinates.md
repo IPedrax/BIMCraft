@@ -53,6 +53,21 @@ definition's Helmert shift, so within centimetres of PROJ on a UTM or Lambert gr
 shift. That is what WGS84 is for here, the map and the sun; survey numbers never go through it. `search` scans every code
 (a match, fast) for a code or all words of a name. EPSG's terms ask for the attribution in `NOTICE`.
 
+### Finding a system by place
+
+People know where the site is, not which EPSG code its survey is in. `places.rs` finds countries and cities by name offline
+(Natural Earth's countries, with their names in English, Portuguese, Spanish, French, German and Italian, and its ~7,300
+populated places, biggest first: `assets/map/places.tsv`, 318 KB, written by `places.py`), accents aside (`fold`: "sao
+paulo"), and later words may name the state or country ("paulo brasil"). Each place is paired with the systems surveys
+there use, the one to pick first: the country's national grid (`grids`: British National Grid, Lambert-93, RD New, LV95…),
+the place's UTM zone (or Gauss-Krüger band, MGA zone, Lo zone) on the country's datum (`zones`: SIRGAS 2000, ETRS89,
+NAD83(2011), NAD83(CSRS), GDA2020, JGD2011, CGCS2000, POSGAR 2007, Hartebeesthoek94, Mexico ITRF2008), then the zone on
+WGS 84, which is anywhere's. Zones are named as EPSG names them and looked up by that name, so one this version lacks is left
+out, never invented; `every_country_s_systems_are_known` holds each pattern to the dataset. Which systems a country uses is
+ours, a starting list: a country not in it gets the WGS 84 zone, and the name search finds the rest. `crs {search}` returns
+the places beside the systems found by name: `places: [{kind, name, region, country, iso, longitude, latitude, systems:
+[{code, name, unit, why}]}]`.
+
 `Frame::Wgs84` is [longitude, latitude, elevation mm]; `convert` returns an error without a CRS. `report` adds each
 point's `wgs84` and the `crs`. `location` takes `latitude` and `longitude` for the Survey Point's east and north.
 
@@ -158,9 +173,15 @@ The window is designed to answer "where is this building?" at a glance, and to r
 - **Map System**: an offline **world map** (`world.rs`: Natural Earth's 1:110m coastlines and borders, public domain, 34 KB
   in `assets/map/world.bin`), a placeholder until stage 8's tiles: a plain latitude and longitude grid, dragged to pan and
   scrolled to zoom about the cursor, every location a pin (the active one in the accent), the latitude and longitude typed as
-  a cross, and a click picks them for Place. Then the current system as a card (with Clear), and a search of EPSG's projected systems by code or name as
-  you type, as a list of code, name and unit. **Place by latitude and longitude** puts the Survey Point on the globe.
-- **Convert**: a point between the internal, base, shared and WGS84 frames, with Swap and Copy.
+  a cross, and a click picks them for Place. Above it the map system is a dropdown: the button shows the one picked (its code as a chip, its name and unit) or
+  none, and opens a search of places and systems as you type. **Places** lists each country or city found (a pin, its
+  state and country, its latitude and longitude) with its systems under it, the first tagged Recommended and each saying
+  why (national grid, the national datum's zone, WGS 84's); **Systems** lists EPSG's projected systems whose code or name
+  matches. A system picked under a place also takes the place's latitude and longitude for Place and flies the map there
+  (a country wide, a city close); the Survey Point waits for Place, since a city's middle is rarely the site. Clear beside
+  it takes the map system away. **Place by latitude and longitude** puts the Survey Point on the globe.
+- **Convert**: a calculator, changing nothing: a point between the internal, base, shared and WGS84 frames, with Swap and
+  Copy.
 
 It is a draft (`CoordinatesDialog`), worked out with the core's own `Coordinates`, and OK or Apply runs it as one undo step
 named "Coordinates": `crs`, then the location renames (`renames::plan`), then `coordinates` with `move: system` (the draft
@@ -176,7 +197,7 @@ deletes. A refusal stays in the window and says why. It looks the same in the th
 - `location`: makes (a copy of the active one), edits, renames, activates and deletes a location; `shift` adds to one, or to
   every location when no `name` is given (the survey says +5 m: one command).
 - `specify_coordinates`: the active location solved for a point.
-- `crs`: sets, clears or searches the CRS.
+- `crs`: sets, clears or searches the CRS; a search also finds countries and cities, each with its systems.
 - `spot_coordinate`, and `origin` on `spot` and `elevation_base` on `level` (and `modify`).
 - `rotate_project_north`: the model turned, the world kept.
 - `convert_coordinates`: points between `internal`, `base`, `shared` and `wgs84`, of the active location or the one named.

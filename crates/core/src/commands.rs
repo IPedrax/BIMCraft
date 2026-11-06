@@ -587,7 +587,10 @@ pub static ALL: &[Command] = &[
          coordinates are in: a projected CRS of EPSG's dataset (a UTM zone, a State Plane zone, a national grid), whose grid \
          unit (metre, foot, US survey foot) shared coordinates are converted from, mm always in commands. With it, \
          `convert_coordinates` reaches `wgs84` and `location` takes `latitude` and `longitude`. `search` lists the CRSs whose \
-         code it is or whose name has all its words (up to `limit`, 20 by default), changing nothing. Without parameters, says \
+         code it is or whose name has all its words as `found`, and the countries and cities it names as `places` (\"São \
+         Paulo\", \"paulo brasil\", \"Alemania\"; accents aside), each with its `longitude`, `latitude` and the `systems` its \
+         surveys use, the one to pick first: the national grid, the place's zone on the country's datum, the zone on WGS 84, \
+         each with `why` (up to `limit` of each, 20 by default), changing nothing. Without parameters, says \
          the project's",
         crs,
     ),
@@ -7387,7 +7390,8 @@ fn crs(s: &mut Session, p: &Value) -> R {
             None => 20,
         };
         let found: Vec<Value> = crate::crs::search(&text, limit).iter().map(crate::crs::Info::json).collect();
-        return Ok(json!({"found": found}));
+        let places: Vec<Value> = crate::places::find(&text, limit).iter().map(crate::places::Place::json).collect();
+        return Ok(json!({"found": found, "places": places}));
     }
     let code = match p.get("code") {
         v if absent(v) => None,

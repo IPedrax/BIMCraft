@@ -117,6 +117,10 @@ msgstr "Um valor em branco é o da própria família, como a aba Parâmetros o t
 msgid "A circle's, an ellipse's or an arc's points along its axes: east, north, west and south"
 msgstr "Os pontos de um círculo, elipse ou arco ao longo de seus eixos: leste, norte, oeste e sul"
 
+#: crates/ui-egui/src/coordinates.rs:842
+msgid "A city, a country, an EPSG code or words of a name: São Paulo, Germany, 31983, UTM 23S"
+msgstr "Uma cidade, um país, um código EPSG ou palavras do nome: São Paulo, Alemanha, 31983, UTM 23S"
+
 #: crates/ui-egui/src/electrical.rs:394
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
 msgstr "O material, o isolamento e a temperatura de serviço de um condutor, e a capacidade de corrente de cada seção, em mm²."
@@ -145,7 +149,7 @@ msgstr "Uma linha é curta demais: as pontas estão a 1 mm ou menos."
 msgid "A line isn't one that can be drawn: two of its points lie on each other."
 msgstr "Uma linha não pode ser desenhada: dois de seus pontos estão um sobre o outro."
 
-#: crates/ui-egui/src/coordinates.rs:251
+#: crates/ui-egui/src/coordinates.rs:274
 msgid "A location needs a name."
 msgstr "Um local precisa de um nome."
 
@@ -157,7 +161,7 @@ msgstr "Um contorno não encerra área."
 msgid "A loop needs three lines: click a point that isn't the start."
 msgstr "Um contorno precisa de três linhas: clique em um ponto que não seja o início."
 
-#: crates/ui-egui/src/coordinates.rs:544
+#: crates/ui-egui/src/coordinates.rs:567
 msgid "A new location, a copy of the active one"
 msgstr "Um novo local, cópia do ativo"
 
@@ -169,7 +173,7 @@ msgstr "Uma nova folha, com carimbo"
 msgid "A phase filter draws a status this way where it says Overridden."
 msgstr "Um filtro de fase desenha um estado deste modo onde diz Com substituição."
 
-#: crates/ui-egui/src/coordinates.rs:864
+#: crates/ui-egui/src/coordinates.rs:997
 msgid "A point in one frame, in another: the file's own, from the Project Base Point, shared, or WGS84. Lengths in mm."
 msgstr "Um ponto de um sistema em outro: o do próprio arquivo, a partir do Ponto Base do Projeto, compartilhado ou WGS84. Comprimentos em mm."
 
@@ -247,7 +251,7 @@ msgstr "Aceitar a principal"
 msgid "Accept Primary: the primary option's elements stay in the model; the others' elements and the set go"
 msgstr "Aceitar a principal: os elementos da opção principal ficam no modelo; os das outras e o conjunto saem"
 
-#: crates/ui-egui/src/coordinates.rs:502
+#: crates/ui-egui/src/coordinates.rs:525
 msgid "Active"
 msgstr "Ativo"
 
@@ -259,7 +263,7 @@ msgstr "Ativas (NBR 17067: dobra em módulo A4 com orelha)"
 msgid "Active design option:"
 msgstr "Opção de projeto ativa:"
 
-#: crates/ui-egui/src/coordinates.rs:436
+#: crates/ui-egui/src/coordinates.rs:459
 msgid "Active location"
 msgstr "Local ativo"
 
@@ -325,7 +329,7 @@ msgstr "Adicionar filtro"
 msgid "Add Line"
 msgstr "Adicionar linha"
 
-#: crates/ui-egui/src/coordinates.rs:543
+#: crates/ui-egui/src/coordinates.rs:566
 msgid "Add Location"
 msgstr "Adicionar Local"
 
@@ -484,7 +488,7 @@ msgstr "Captor (AT): um captor, onde você clicar na cobertura; Espaço gira"
 msgid "Air Terminals"
 msgstr "Captores"
 
-#: crates/core/src/commands.rs:1199
+#: crates/core/src/commands.rs:1202
 #: crates/ui-egui/src/editor.rs:915
 #: crates/ui-egui/src/lib.rs:350
 #: crates/ui-egui/src/sketch.rs:709
@@ -509,7 +513,7 @@ msgstr "Alinhar com o Norte Verdadeiro ({}°)"
 msgid "Aligned"
 msgstr "Alinhada"
 
-#: crates/core/src/commands.rs:788
+#: crates/core/src/commands.rs:791
 msgid "Aligned Dimension"
 msgstr "Cota alinhada"
 
@@ -517,7 +521,7 @@ msgstr "Cota alinhada"
 msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, or endpoints, then click where the dimension line goes"
 msgstr "Cota alinhada (DI): escolha faces de parede paralelas, extremidades de parede, portas, janelas ou grades, ou extremidades, e clique onde fica a linha de cota"
 
-#: crates/core/src/commands.rs:808
+#: crates/core/src/commands.rs:811
 msgid "Aligned Dimension in 3D"
 msgstr "Cota alinhada em 3D"
 
@@ -572,10 +576,6 @@ msgstr "Capacidade de corrente"
 msgid "Amplitude"
 msgstr "Amplitude"
 
-#: crates/ui-egui/src/coordinates.rs:706
-msgid "An EPSG code or words of a name: 31983, UTM 23S, British National Grid"
-msgstr "Um código EPSG ou palavras do nome: 31983, UTM 23S, SIRGAS 2000"
-
 #: crates/ui-egui/src/control.rs:307
 msgid "An agent can work on this project: bimcraft-cli mcp --connect {}"
 msgstr "Um agente pode trabalhar neste projeto: bimcraft-cli mcp --connect {}"
@@ -599,7 +599,7 @@ msgid "And:"
 msgstr "E:"
 
 #: crates/core/src/snap.rs:71
-#: crates/ui-egui/src/coordinates.rs:508
+#: crates/ui-egui/src/coordinates.rs:531
 #: crates/ui-egui/src/reinforce.rs:83
 msgid "Angle"
 msgstr "Ângulo"
@@ -608,8 +608,8 @@ msgstr "Ângulo"
 msgid "Angle steps"
 msgstr "Passos de ângulo"
 
-#: crates/ui-egui/src/coordinates.rs:467
-#: crates/ui-egui/src/coordinates.rs:650
+#: crates/ui-egui/src/coordinates.rs:490
+#: crates/ui-egui/src/coordinates.rs:673
 msgid "Angle to true north"
 msgstr "Ângulo ao norte verdadeiro"
 
@@ -667,7 +667,7 @@ msgid "Applies to all views; snaps to the active view's enabled main grid or sub
 msgstr "Vale para todas as vistas; faz snap na grade principal ou na subgrade ativada da vista ativa, mesmo quando oculta"
 
 #: crates/ui-egui/src/background_grid.rs:112
-#: crates/ui-egui/src/coordinates.rs:957
+#: crates/ui-egui/src/coordinates.rs:1090
 #: crates/ui-egui/src/display.rs:80
 #: crates/ui-egui/src/editor.rs:1087
 #: crates/ui-egui/src/electrical.rs:501
@@ -960,7 +960,7 @@ msgstr "Espaçamento da linha de base"
 msgid "Bathtub"
 msgstr "Banheira"
 
-#: crates/core/src/commands.rs:630
+#: crates/core/src/commands.rs:633
 msgid "Beam"
 msgstr "Viga"
 
@@ -1089,7 +1089,7 @@ msgstr "desenho CAD"
 msgid "CAD drawings (DWG, DXF)"
 msgstr "Desenhos CAD (DWG, DXF)"
 
-#: crates/core/src/commands.rs:678
+#: crates/core/src/commands.rs:681
 msgid "Cable Tray"
 msgstr "Eletrocalha"
 
@@ -1097,7 +1097,7 @@ msgstr "Eletrocalha"
 msgid "Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step"
 msgstr "Eletrocalha (CT): clique no início e no fim; uma sequência de cliques faz uma eletrocalha para cada trecho"
 
-#: crates/core/src/commands.rs:712
+#: crates/core/src/commands.rs:715
 msgid "Cabling"
 msgstr "Cabeamento"
 
@@ -1123,7 +1123,7 @@ msgstr "Valor calculado…"
 msgid "Came in: {}"
 msgstr "Importados: {}"
 
-#: crates/core/src/commands.rs:1747
+#: crates/core/src/commands.rs:1750
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3853
 #: crates/ui-egui/src/properties.rs:265
@@ -1137,7 +1137,7 @@ msgstr "Câmera: clique onde fica o olho e depois no ponto para onde ela olha: u
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:131
 #: crates/ui-egui/src/clouds.rs:87
-#: crates/ui-egui/src/coordinates.rs:958
+#: crates/ui-egui/src/coordinates.rs:1091
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
 #: crates/ui-egui/src/editor.rs:1086
@@ -1332,6 +1332,10 @@ msgstr "Verificação: fck"
 msgid "Checking for updates…"
 msgstr "Procurando atualizações…"
 
+#: crates/ui-egui/src/coordinates.rs:788
+msgid "Choose a map system"
+msgstr "Escolher um sistema do mapa"
+
 #: crates/ui-egui/src/lib.rs:3801
 msgid "Choose a theme, including a dark interface with a light canvas"
 msgstr "Escolha um tema, incluindo uma interface escura com uma tela clara"
@@ -1361,7 +1365,7 @@ msgstr "Polígono circunscrito"
 msgid "Circumscribed Polygon: click its centre, then the middle of a side; Sides on the Options Bar"
 msgstr "Polígono circunscrito: clique no centro e depois no meio de um lado; Lados na Barra de Opções"
 
-#: crates/ui-egui/src/coordinates.rs:686
+#: crates/ui-egui/src/coordinates.rs:822
 msgid "Clear"
 msgstr "Limpar"
 
@@ -1927,7 +1931,7 @@ msgstr "Cor"
 msgid "Colour on plans"
 msgstr "Cor nas plantas"
 
-#: crates/core/src/commands.rs:604
+#: crates/core/src/commands.rs:607
 msgid "Column"
 msgstr "Pilar"
 
@@ -1964,7 +1968,7 @@ msgstr "Compacta"
 msgid "Comparison"
 msgstr "Comparação"
 
-#: crates/core/src/commands.rs:1161
+#: crates/core/src/commands.rs:1164
 msgid "Component"
 msgstr "Componente"
 
@@ -1988,7 +1992,7 @@ msgstr "Concreto"
 msgid "Concrete block"
 msgstr "Bloco de concreto"
 
-#: crates/core/src/commands.rs:670
+#: crates/core/src/commands.rs:673
 msgid "Conduit"
 msgstr "Eletroduto"
 
@@ -2025,7 +2029,7 @@ msgstr "Contínua"
 msgid "Control port"
 msgstr "Porta de controle"
 
-#: crates/ui-egui/src/coordinates.rs:31
+#: crates/ui-egui/src/coordinates.rs:32
 msgid "Convert"
 msgstr "Converter"
 
@@ -2045,7 +2049,7 @@ msgstr "Converter spline"
 msgid "Convert Spline: a spline through points becomes the same curve by its control points, or one by its control points a spline through points"
 msgstr "Converter spline: uma spline por pontos vira a mesma curva por pontos de controle, ou uma por pontos de controle vira spline por pontos"
 
-#: crates/ui-egui/src/coordinates.rs:931
+#: crates/ui-egui/src/coordinates.rs:1064
 #: crates/ui-egui/src/lib.rs:4077
 msgid "Coordinates"
 msgstr "Coordenadas"
@@ -2082,8 +2086,8 @@ msgstr "{} linhas copiadas, separadas por tabulação."
 msgid "Copper"
 msgstr "Cobre"
 
-#: crates/core/src/commands.rs:1229
-#: crates/ui-egui/src/coordinates.rs:912
+#: crates/core/src/commands.rs:1232
+#: crates/ui-egui/src/coordinates.rs:1045
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4605
 #: crates/ui-egui/src/lib.rs:4655
@@ -2180,6 +2184,10 @@ msgstr "Contagem"
 #: crates/ui-egui/src/lib.rs:4102
 msgid "Counter-clockwise, about the Project Base Point"
 msgstr "Anti-horário, em torno do Ponto Base do Projeto"
+
+#: crates/ui-egui/src/coordinates.rs:772
+msgid "Country"
+msgstr "País"
 
 #: crates/ui-egui/src/reinforce.rs:182
 #: crates/ui-egui/src/reinforce.rs:339
@@ -2391,7 +2399,7 @@ msgstr "Altura padrão do peitoril"
 msgid "Default Thickness"
 msgstr "Espessura padrão"
 
-#: crates/ui-egui/src/coordinates.rs:531
+#: crates/ui-egui/src/coordinates.rs:554
 #: crates/ui-egui/src/editor.rs:663
 #: crates/ui-egui/src/editor.rs:836
 #: crates/ui-egui/src/editor.rs:930
@@ -2448,7 +2456,7 @@ msgstr "Excluir vértice: clique num vértice de polilinha ou ponto de spline pa
 msgid "Delete Wire Type"
 msgstr "Excluir tipo de fio"
 
-#: crates/ui-egui/src/coordinates.rs:532
+#: crates/ui-egui/src/coordinates.rs:555
 msgid "Delete location {}"
 msgstr "Excluir local {}"
 
@@ -2485,7 +2493,7 @@ msgstr "Demolido"
 msgid "Demolition"
 msgstr "Demolição"
 
-#: crates/core/src/commands.rs:10108
+#: crates/core/src/commands.rs:10112
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -2631,7 +2639,7 @@ msgstr "Texto da cota"
 msgid "Dimension Text Placement:"
 msgstr "Posicionamento do texto de cota:"
 
-#: crates/core/src/commands.rs:1211
+#: crates/core/src/commands.rs:1214
 msgid "Dimension Value"
 msgstr "Valor da cota"
 
@@ -2711,7 +2719,7 @@ msgstr "Porta (DR): clique numa parede"
 msgid "Door Schedule"
 msgstr "Tabela de portas"
 
-#: crates/core/src/commands.rs:777
+#: crates/core/src/commands.rs:780
 msgid "Dormer"
 msgstr "Água-furtada"
 
@@ -2750,7 +2758,7 @@ msgstr "Um clique duplo no nome de uma aba faz o mesmo; um clique numa aba mostr
 msgid "Down"
 msgstr "Para baixo"
 
-#: crates/core/src/commands.rs:694
+#: crates/core/src/commands.rs:697
 msgid "Down Conductor"
 msgstr "Condutor de descida"
 
@@ -2803,7 +2811,7 @@ msgstr "Desenho"
 msgid "Drawing…"
 msgstr "Desenhando…"
 
-#: crates/core/src/commands.rs:659
+#: crates/core/src/commands.rs:662
 msgid "Duct"
 msgstr "Duto"
 
@@ -2848,7 +2856,7 @@ msgstr "Cada campo é um comprimento, e Superior pode ficar vazio para o nível 
 msgid "Each line's angle, origin and spacing"
 msgstr "O ângulo, a origem e o espaçamento de cada linha"
 
-#: crates/ui-egui/src/coordinates.rs:491
+#: crates/ui-egui/src/coordinates.rs:514
 msgid "Each location gives the Survey Point's shared coordinates and the angle to true north, so one building can stand on several sites. Type any value; the model never moves."
 msgstr "Cada local dá as coordenadas compartilhadas do Ponto de Levantamento e o ângulo ao norte verdadeiro, para que um edifício possa estar em vários terrenos. Digite qualquer valor; o modelo nunca se move."
 
@@ -2865,7 +2873,7 @@ msgstr "A largura de cada pena no papel, em mm, nas vistas em cada escala: uma v
 msgid "Earthing"
 msgstr "Aterramento"
 
-#: crates/core/src/commands.rs:703
+#: crates/core/src/commands.rs:706
 msgid "Earthing Conductor"
 msgstr "Condutor de aterramento"
 
@@ -2886,13 +2894,13 @@ msgid "Earthing Electrodes"
 msgstr "Hastes de aterramento"
 
 #: crates/core/src/model.rs:1891
-#: crates/ui-egui/src/coordinates.rs:459
-#: crates/ui-egui/src/coordinates.rs:551
+#: crates/ui-egui/src/coordinates.rs:482
+#: crates/ui-egui/src/coordinates.rs:574
 msgid "East"
 msgstr "Leste"
 
-#: crates/ui-egui/src/coordinates.rs:505
-#: crates/ui-egui/src/coordinates.rs:582
+#: crates/ui-egui/src/coordinates.rs:528
+#: crates/ui-egui/src/coordinates.rs:605
 msgid "East ({})"
 msgstr "Leste ({})"
 
@@ -3001,20 +3009,20 @@ msgstr "Configurações elétricas"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Configurações elétricas: as tensões, os sistemas de distribuição e os tipos de fio a que circuitos e quadros se referem; seções em mm²"
 
-#: crates/core/src/commands.rs:2113
+#: crates/core/src/commands.rs:2116
 msgid "Elements"
 msgstr "Elementos"
 
-#: crates/ui-egui/src/coordinates.rs:459
-#: crates/ui-egui/src/coordinates.rs:551
-#: crates/ui-egui/src/coordinates.rs:886
+#: crates/ui-egui/src/coordinates.rs:482
+#: crates/ui-egui/src/coordinates.rs:574
+#: crates/ui-egui/src/coordinates.rs:1019
 #: crates/ui-egui/src/lib.rs:3849
 #: crates/ui-egui/src/lib.rs:4696
 msgid "Elevation"
 msgstr "Elevação"
 
-#: crates/ui-egui/src/coordinates.rs:507
-#: crates/ui-egui/src/coordinates.rs:584
+#: crates/ui-egui/src/coordinates.rs:530
+#: crates/ui-egui/src/coordinates.rs:607
 msgid "Elevation ({})"
 msgstr "Elevação ({})"
 
@@ -3284,7 +3292,7 @@ msgstr "Região preenchida (FR): desenhe uma área preenchida com um padrão, ne
 msgid "Filled region"
 msgstr "Região preenchida"
 
-#: crates/core/src/commands.rs:1298
+#: crates/core/src/commands.rs:1301
 msgid "Fillet Arc"
 msgstr "Arco de concordância"
 
@@ -3334,13 +3342,9 @@ msgstr "Filtros (FT): regras que escolhem elementos para uma vista ocultar ou de
 msgid "Find"
 msgstr "Buscar"
 
-#: crates/ui-egui/src/coordinates.rs:709
+#: crates/ui-egui/src/coordinates.rs:845
 msgid "Find a map system"
 msgstr "Buscar um sistema do mapa"
-
-#: crates/ui-egui/src/coordinates.rs:703
-msgid "Find a system"
-msgstr "Buscar um sistema"
 
 #: crates/ui-egui/src/find.rs:80
 msgid "Find a tool, a view or a setting"
@@ -3616,7 +3620,7 @@ msgstr "Largura do batente"
 msgid "Frequency (cycles per segment)"
 msgstr "Frequência (ciclos por segmento)"
 
-#: crates/ui-egui/src/coordinates.rs:876
+#: crates/ui-egui/src/coordinates.rs:1009
 #: crates/ui-egui/src/editor.rs:797
 msgid "From"
 msgstr "De"
@@ -3625,7 +3629,7 @@ msgstr "De"
 msgid "From (degrees)"
 msgstr "De (graus)"
 
-#: crates/ui-egui/src/coordinates.rs:39
+#: crates/ui-egui/src/coordinates.rs:43
 msgid "From the Project Base Point"
 msgstr "A partir do Ponto Base do Projeto"
 
@@ -3686,7 +3690,7 @@ msgstr "Genérico"
 msgid "Geometry"
 msgstr "Geometria"
 
-#: crates/ui-egui/src/coordinates.rs:638
+#: crates/ui-egui/src/coordinates.rs:661
 msgid "Give an internal point the shared coordinates the survey gives it: the active location is worked out to match."
 msgstr "Dê a um ponto interno as coordenadas compartilhadas que o levantamento lhe dá: o local ativo é calculado para coincidir."
 
@@ -3921,7 +3925,7 @@ msgstr "Quantas barras, de que diâmetro e a que distância é você quem diz; u
 msgid "How many phases and wires each system has (the line conductors and the neutral), the voltages it supplies, and how it is earthed."
 msgstr "Quantas fases e quantos fios cada sistema tem (os condutores fase e o neutro), as tensões que fornece e como é aterrado."
 
-#: crates/ui-egui/src/coordinates.rs:503
+#: crates/ui-egui/src/coordinates.rs:526
 #: crates/ui-egui/src/inquiry.rs:165
 msgid "ID"
 msgstr "ID"
@@ -4105,20 +4109,20 @@ msgid "Interface scale"
 msgstr "Escala da interface"
 
 #: crates/core/src/coordinates.rs:23
-#: crates/ui-egui/src/coordinates.rs:38
+#: crates/ui-egui/src/coordinates.rs:42
 msgid "Internal"
 msgstr "Interno"
 
 #: crates/core/src/graphics.rs:130
-#: crates/ui-egui/src/coordinates.rs:593
+#: crates/ui-egui/src/coordinates.rs:616
 msgid "Internal Origin"
 msgstr "Origem Interna"
 
-#: crates/ui-egui/src/coordinates.rs:568
+#: crates/ui-egui/src/coordinates.rs:591
 msgid "Internal coordinates are the file's own, where the geometry is. The Project Base Point is a reference that elevations, spot coordinates and links measure from: moving it moves nothing else."
 msgstr "As coordenadas internas são as do próprio arquivo, onde está a geometria. O Ponto Base do Projeto é uma referência de onde medem as elevações, as coordenadas de ponto e os vínculos: movê-lo não move mais nada."
 
-#: crates/ui-egui/src/coordinates.rs:640
+#: crates/ui-egui/src/coordinates.rs:663
 msgid "Internal point"
 msgstr "Ponto interno"
 
@@ -4138,7 +4142,7 @@ msgstr "Isolar Categoria (IC)"
 msgid "Isolate Element (HI)"
 msgstr "Isolar Elemento (HI)"
 
-#: crates/core/src/commands.rs:622
+#: crates/core/src/commands.rs:625
 msgid "Isolated Footing"
 msgstr "Sapata isolada"
 
@@ -4163,7 +4167,7 @@ msgstr "Itálico (Ctrl+I)"
 msgid "Itemize every instance"
 msgstr "Detalhar cada instância"
 
-#: crates/ui-egui/src/coordinates.rs:522
+#: crates/ui-egui/src/coordinates.rs:545
 msgid "Its id in the project, as every element and library entry has"
 msgstr "Seu id no projeto, como todo elemento e entrada da biblioteca tem"
 
@@ -4175,7 +4179,7 @@ msgstr "Seu centro na origem do projeto"
 msgid "Its middle on the project's origin and its foot on the level"
 msgstr "O meio dele na origem do projeto e a base dele no nível"
 
-#: crates/ui-egui/src/coordinates.rs:625
+#: crates/ui-egui/src/coordinates.rs:648
 msgid "Its numbers stay, and the building moves in the world, as the point does."
 msgstr "Seus números ficam, e o edifício se move no mundo, junto com o ponto."
 
@@ -4245,12 +4249,12 @@ msgstr "Idioma"
 msgid "Later"
 msgstr "Depois"
 
-#: crates/ui-egui/src/coordinates.rs:735
-#: crates/ui-egui/src/coordinates.rs:886
+#: crates/ui-egui/src/coordinates.rs:709
+#: crates/ui-egui/src/coordinates.rs:1019
 msgid "Latitude"
 msgstr "Latitude"
 
-#: crates/ui-egui/src/coordinates.rs:475
+#: crates/ui-egui/src/coordinates.rs:498
 msgid "Latitude, longitude"
 msgstr "Latitude, longitude"
 
@@ -4617,35 +4621,35 @@ msgstr "Linha de localização:"
 msgid "Location line: {}"
 msgstr "Linha de localização: {}"
 
-#: crates/ui-egui/src/coordinates.rs:516
+#: crates/ui-egui/src/coordinates.rs:539
 msgid "Location {} active"
 msgstr "Local {} ativo"
 
-#: crates/ui-egui/src/coordinates.rs:528
+#: crates/ui-egui/src/coordinates.rs:551
 msgid "Location {} angle"
 msgstr "Local {} ângulo"
 
-#: crates/ui-egui/src/coordinates.rs:525
+#: crates/ui-egui/src/coordinates.rs:548
 msgid "Location {} east"
 msgstr "Local {} leste"
 
-#: crates/ui-egui/src/coordinates.rs:527
+#: crates/ui-egui/src/coordinates.rs:550
 msgid "Location {} elevation"
 msgstr "Local {} elevação"
 
-#: crates/ui-egui/src/coordinates.rs:524
+#: crates/ui-egui/src/coordinates.rs:547
 msgid "Location {} name"
 msgstr "Local {} nome"
 
-#: crates/ui-egui/src/coordinates.rs:526
+#: crates/ui-egui/src/coordinates.rs:549
 msgid "Location {} north"
 msgstr "Local {} norte"
 
-#: crates/ui-egui/src/coordinates.rs:530
+#: crates/ui-egui/src/coordinates.rs:553
 msgid "Location {} scale"
 msgstr "Local {} escala"
 
-#: crates/ui-egui/src/coordinates.rs:31
+#: crates/ui-egui/src/coordinates.rs:32
 msgid "Locations"
 msgstr "Locais"
 
@@ -4665,8 +4669,8 @@ msgstr "Segmento {} bloqueado"
 msgid "Long Dash"
 msgstr "Traço longo"
 
-#: crates/ui-egui/src/coordinates.rs:735
-#: crates/ui-egui/src/coordinates.rs:886
+#: crates/ui-egui/src/coordinates.rs:709
+#: crates/ui-egui/src/coordinates.rs:1019
 msgid "Longitude"
 msgstr "Longitude"
 
@@ -4716,9 +4720,13 @@ msgstr "Gerenciar"
 msgid "Manage Presets…"
 msgstr "Gerenciar modelos…"
 
-#: crates/ui-egui/src/coordinates.rs:31
+#: crates/ui-egui/src/coordinates.rs:32
 msgid "Map System"
 msgstr "Sistema do Mapa"
+
+#: crates/ui-egui/src/coordinates.rs:700
+msgid "Map system"
+msgstr "Sistema do mapa"
 
 #: crates/core/src/model.rs:1502
 msgid "Mark"
@@ -4757,7 +4765,7 @@ msgstr "Pisos de massa (MF): um piso em cada nível que as massas selecionadas a
 msgid "Massing"
 msgstr "Volumetria"
 
-#: crates/core/src/commands.rs:1191
+#: crates/core/src/commands.rs:1194
 msgid "Match Properties"
 msgstr "Igualar propriedades"
 
@@ -4818,7 +4826,7 @@ msgstr "Máximo"
 msgid "Maximum Riser Height"
 msgstr "Altura máxima do espelho"
 
-#: crates/core/src/commands.rs:1857
+#: crates/core/src/commands.rs:1860
 msgid "Measure"
 msgstr "Medir"
 
@@ -4972,7 +4980,7 @@ msgstr "Modificar parede"
 msgid "Mounting Height"
 msgstr "Altura de instalação"
 
-#: crates/core/src/commands.rs:1221
+#: crates/core/src/commands.rs:1224
 msgid "Move"
 msgstr "Mover"
 
@@ -4990,11 +4998,11 @@ msgstr "Mover para baixo"
 msgid "Move Up"
 msgstr "Mover para cima"
 
-#: crates/ui-egui/src/coordinates.rs:619
+#: crates/ui-egui/src/coordinates.rs:642
 msgid "Move the point only"
 msgstr "Mover só o ponto"
 
-#: crates/ui-egui/src/coordinates.rs:624
+#: crates/ui-egui/src/coordinates.rs:647
 msgid "Move the shared coordinates with it"
 msgstr "Mover as coordenadas compartilhadas com ele"
 
@@ -5050,7 +5058,7 @@ msgstr "NÃO DELIMITADO"
 #: crates/core/src/model.rs:1503
 #: crates/ui-egui/src/cad.rs:85
 #: crates/ui-egui/src/clouds.rs:59
-#: crates/ui-egui/src/coordinates.rs:504
+#: crates/ui-egui/src/coordinates.rs:527
 #: crates/ui-egui/src/electrical.rs:298
 #: crates/ui-egui/src/electrical.rs:344
 #: crates/ui-egui/src/lib.rs:4698
@@ -5069,6 +5077,10 @@ msgstr "Nome"
 #: crates/ui-egui/src/typeprops.rs:101
 msgid "Name:"
 msgstr "Nome:"
+
+#: crates/core/src/places.rs:276
+msgid "National grid"
+msgstr "Sistema nacional"
 
 #: crates/ui-egui/src/dock.rs:52
 msgid "Navigator"
@@ -5105,7 +5117,7 @@ msgstr "Nova família: comece uma família sua, de uma categoria, para editar se
 msgid "New Filter"
 msgstr "Novo filtro"
 
-#: crates/ui-egui/src/coordinates.rs:185
+#: crates/ui-egui/src/coordinates.rs:192
 msgid "New Location"
 msgstr "Novo Local"
 
@@ -5214,25 +5226,21 @@ msgstr "Ainda não há filtros: Novo cria um."
 msgid "No font with Chinese characters was found on this system: install one (such as Noto Sans CJK) and choose Chinese again."
 msgstr "Nenhuma fonte com caracteres chineses foi encontrada neste sistema: instale uma (como a Noto Sans CJK) e escolha o chinês de novo."
 
-#: crates/ui-egui/src/coordinates.rs:454
+#: crates/ui-egui/src/coordinates.rs:477
 msgid "No map system"
 msgstr "Sem sistema do mapa"
 
-#: crates/ui-egui/src/coordinates.rs:699
-msgid "No map system yet: shared coordinates are in metres, and there's no latitude or longitude."
-msgstr "Ainda sem sistema do mapa: as coordenadas compartilhadas estão em metros, e não há latitude nem longitude."
-
-#: crates/ui-egui/src/coordinates.rs:687
+#: crates/ui-egui/src/coordinates.rs:823
 msgid "No map system: shared coordinates in metres, and no latitude or longitude"
 msgstr "Sem sistema do mapa: coordenadas compartilhadas em metros, sem latitude nem longitude"
+
+#: crates/ui-egui/src/coordinates.rs:856
+msgid "No place, and no projected system of EPSG's, matches."
+msgstr "Nenhum lugar, e nenhum sistema projetado da EPSG, corresponde."
 
 #: crates/ui-egui/src/properties.rs:2940
 msgid "No project parameters yet: New makes one."
 msgstr "Ainda não há parâmetros do projeto: Novo cria um."
-
-#: crates/ui-egui/src/coordinates.rs:712
-msgid "No projected system of EPSG's matches."
-msgstr "Nenhum sistema projetado da EPSG corresponde."
 
 #: crates/ui-egui/src/start.rs:338
 msgid "No recent projects yet"
@@ -5274,14 +5282,18 @@ msgstr "Altura nominal do texto:"
 msgid "None"
 msgstr "Nenhum"
 
+#: crates/ui-egui/src/coordinates.rs:807
+msgid "None: shared coordinates in metres, and no latitude or longitude. Choose one…"
+msgstr "Nenhum: coordenadas compartilhadas em metros, sem latitude nem longitude. Escolha um…"
+
 #: crates/core/src/model.rs:1889
-#: crates/ui-egui/src/coordinates.rs:459
-#: crates/ui-egui/src/coordinates.rs:551
+#: crates/ui-egui/src/coordinates.rs:482
+#: crates/ui-egui/src/coordinates.rs:574
 msgid "North"
 msgstr "Norte"
 
-#: crates/ui-egui/src/coordinates.rs:506
-#: crates/ui-egui/src/coordinates.rs:583
+#: crates/ui-egui/src/coordinates.rs:529
+#: crates/ui-egui/src/coordinates.rs:606
 msgid "North ({})"
 msgstr "Norte ({})"
 
@@ -5358,7 +5370,7 @@ msgstr "Número"
 #: crates/ui-egui/src/background_grid.rs:113
 #: crates/ui-egui/src/cad.rs:132
 #: crates/ui-egui/src/clouds.rs:88
-#: crates/ui-egui/src/coordinates.rs:959
+#: crates/ui-egui/src/coordinates.rs:1092
 #: crates/ui-egui/src/dimtypes.rs:318
 #: crates/ui-egui/src/display.rs:82
 #: crates/ui-egui/src/editor.rs:1085
@@ -5878,7 +5890,7 @@ msgstr "Escolha uma parede curva ou um arco."
 msgid "Pick a highlighted model edge or sketch line as the alignment reference."
 msgstr "Escolha uma aresta do modelo ou uma linha do esboço destacada como referência do alinhamento."
 
-#: crates/ui-egui/src/coordinates.rs:228
+#: crates/ui-egui/src/coordinates.rs:235
 msgid "Pick a map system first: latitude and longitude reach the grid through it."
 msgstr "Escolha antes um sistema do mapa: latitude e longitude chegam à grade por ele."
 
@@ -6010,7 +6022,7 @@ msgstr "Imagens"
 msgid "Picture…"
 msgstr "Imagem…"
 
-#: crates/core/src/commands.rs:648
+#: crates/core/src/commands.rs:651
 msgid "Pipe"
 msgstr "Tubulação"
 
@@ -6034,7 +6046,7 @@ msgstr "Conexão de tubulação"
 msgid "Pipe Fitting (PF): an elbow or a tee, where you click on a pipe's height; Space turns it"
 msgstr "Conexão de tubulação (PF): joelho ou tê, onde você clicar, na altura da tubulação; Espaço gira"
 
-#: crates/ui-egui/src/coordinates.rs:741
+#: crates/ui-egui/src/coordinates.rs:715
 msgid "Place"
 msgstr "Posicionar"
 
@@ -6217,13 +6229,17 @@ msgstr "Inserir janela"
 msgid "Place Wire"
 msgstr "Inserir fio"
 
-#: crates/ui-egui/src/coordinates.rs:727
+#: crates/ui-egui/src/coordinates.rs:701
 msgid "Place by latitude and longitude"
 msgstr "Posicionar por latitude e longitude"
 
 #: crates/ui-egui/src/lib.rs:4616
 msgid "Place:"
 msgstr "Colocar:"
+
+#: crates/ui-egui/src/coordinates.rs:859
+msgid "Places"
+msgstr "Lugares"
 
 #: crates/ui-egui/src/settings.rs:653
 #: crates/ui-egui/src/settings.rs:654
@@ -6286,7 +6302,7 @@ msgstr "Peça sanitária (PX): lavatório, vaso, pia, chuveiro ou ralo, onde voc
 msgid "Plumbing Fixtures"
 msgstr "Peças sanitárias"
 
-#: crates/ui-egui/src/coordinates.rs:578
+#: crates/ui-egui/src/coordinates.rs:601
 msgid "Point"
 msgstr "Ponto"
 
@@ -6311,7 +6327,7 @@ msgstr "Altura do ponto {}"
 msgid "Point to a wall or a line: the offset goes to the cursor's side. Click to place it."
 msgstr "Aponte para uma parede ou linha: o deslocamento vai para o lado do cursor. Clique para colocá-lo."
 
-#: crates/ui-egui/src/coordinates.rs:31
+#: crates/ui-egui/src/coordinates.rs:32
 #: crates/ui-egui/src/editor.rs:886
 msgid "Points"
 msgstr "Pontos"
@@ -6403,11 +6419,11 @@ msgid "Project"
 msgstr "Projeto"
 
 #: crates/core/src/graphics.rs:131
-#: crates/ui-egui/src/coordinates.rs:599
+#: crates/ui-egui/src/coordinates.rs:622
 msgid "Project Base Point"
 msgstr "Ponto Base do Projeto"
 
-#: crates/ui-egui/src/coordinates.rs:601
+#: crates/ui-egui/src/coordinates.rs:624
 msgid "Project Base Point {}"
 msgstr "Ponto Base do Projeto {}"
 
@@ -6561,7 +6577,7 @@ msgstr "Símbolo de raio"
 msgid "Radius:"
 msgstr "Raio:"
 
-#: crates/core/src/commands.rs:745
+#: crates/core/src/commands.rs:748
 msgid "Railing"
 msgstr "Guarda-corpo"
 
@@ -6574,7 +6590,7 @@ msgstr "Guarda-corpo: clique numa escada ou rampa para um em cada lado, ou cliqu
 msgid "Railings"
 msgstr "Guarda-corpos"
 
-#: crates/core/src/commands.rs:734
+#: crates/core/src/commands.rs:737
 msgid "Ramp"
 msgstr "Rampa"
 
@@ -6593,6 +6609,10 @@ msgstr "Recentes"
 #: crates/core/src/fixtures.rs:296
 msgid "Recessed Luminaire"
 msgstr "Luminária embutida"
+
+#: crates/ui-egui/src/coordinates.rs:741
+msgid "Recommended"
+msgstr "Recomendado"
 
 #: crates/ui-egui/src/autosave.rs:306
 msgid "Recover"
@@ -6902,7 +6922,7 @@ msgstr "Altura do espelho"
 msgid "Risers"
 msgstr "Espelhos"
 
-#: crates/core/src/commands.rs:756
+#: crates/core/src/commands.rs:759
 msgid "Roof"
 msgstr "Telhado"
 
@@ -6975,7 +6995,7 @@ msgstr "Separador de ambientes: linhas que delimitam ambientes como as paredes, 
 msgid "Rose"
 msgstr "Rosa"
 
-#: crates/core/src/commands.rs:1236
+#: crates/core/src/commands.rs:1239
 #: crates/ui-egui/src/lib.rs:4096
 msgid "Rotate"
 msgstr "Rotacionar"
@@ -7080,7 +7100,7 @@ msgstr "Guardar nos Favoritos"
 msgid "Saved {} to your Favorites"
 msgstr "{} guardado nos seus Favoritos"
 
-#: crates/ui-egui/src/coordinates.rs:509
+#: crates/ui-egui/src/coordinates.rs:532
 #: crates/ui-egui/src/footer.rs:291
 msgid "Scale"
 msgstr "Escala"
@@ -7097,7 +7117,7 @@ msgstr "Escala: o papel que esta vista representa, 1 : n do modelo: sua anotaç�
 msgid "Scan"
 msgstr "Escaneamento"
 
-#: crates/core/src/commands.rs:1652
+#: crates/core/src/commands.rs:1655
 msgid "Schedule"
 msgstr "Tabela"
 
@@ -7291,7 +7311,7 @@ msgstr "Definir plano de trabalho…"
 msgid "Set by view template {}: change the template, or stop following it."
 msgstr "Definido pelo modelo de vista {}: mude o modelo, ou deixe de segui-lo."
 
-#: crates/ui-egui/src/coordinates.rs:653
+#: crates/ui-egui/src/coordinates.rs:676
 msgid "Set it too"
 msgstr "Definir também"
 
@@ -7328,7 +7348,7 @@ msgstr "Contorno"
 msgid "Shape Editing"
 msgstr "Edição de forma"
 
-#: crates/ui-egui/src/coordinates.rs:40
+#: crates/ui-egui/src/coordinates.rs:44
 msgid "Shared (the map's)"
 msgstr "Compartilhadas (do mapa)"
 
@@ -7344,7 +7364,7 @@ msgstr "Elevação (compartilhada)"
 msgid "Shared North"
 msgstr "Norte (compartilhado)"
 
-#: crates/ui-egui/src/coordinates.rs:645
+#: crates/ui-egui/src/coordinates.rs:668
 msgid "Shared coordinates"
 msgstr "Coordenadas compartilhadas"
 
@@ -7380,15 +7400,15 @@ msgstr "Folhas (todas)"
 msgid "Sheets as PDF…"
 msgstr "Folhas como PDF…"
 
-#: crates/ui-egui/src/coordinates.rs:556
+#: crates/ui-egui/src/coordinates.rs:579
 msgid "Shift All"
 msgstr "Deslocar Todos"
 
-#: crates/ui-egui/src/coordinates.rs:547
+#: crates/ui-egui/src/coordinates.rs:570
 msgid "Shift every location"
 msgstr "Deslocar todos os locais"
 
-#: crates/ui-egui/src/coordinates.rs:553
+#: crates/ui-egui/src/coordinates.rs:576
 msgid "Shift {}"
 msgstr "Deslocar {}"
 
@@ -7738,23 +7758,23 @@ msgstr "Espaçamento (mm)"
 msgid "Spacing:"
 msgstr "Espaçamento:"
 
-#: crates/ui-egui/src/coordinates.rs:663
+#: crates/ui-egui/src/coordinates.rs:686
 msgid "Specify"
 msgstr "Especificar"
 
-#: crates/ui-egui/src/coordinates.rs:637
+#: crates/ui-egui/src/coordinates.rs:660
 msgid "Specify Coordinates at a Point"
 msgstr "Especificar Coordenadas em um Ponto"
 
-#: crates/ui-egui/src/coordinates.rs:656
+#: crates/ui-egui/src/coordinates.rs:679
 msgid "Specify angle"
 msgstr "Especificar ângulo"
 
-#: crates/ui-egui/src/coordinates.rs:642
+#: crates/ui-egui/src/coordinates.rs:665
 msgid "Specify at {}"
 msgstr "Especificar em {}"
 
-#: crates/ui-egui/src/coordinates.rs:647
+#: crates/ui-egui/src/coordinates.rs:670
 msgid "Specify {}"
 msgstr "Especificar {}"
 
@@ -7774,7 +7794,7 @@ msgstr "Spline por pontos: clique nos pontos por onde ela passa; Enter conclui"
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Spline: clique nos pontos de controle; Enter conclui"
 
-#: crates/core/src/commands.rs:1278
+#: crates/core/src/commands.rs:1281
 msgid "Split"
 msgstr "Dividir"
 
@@ -7793,7 +7813,7 @@ msgstr "Dividir elemento (SL): clique numa parede ou linha onde dividi-la"
 msgid "Split between the line's ends."
 msgstr "Divida entre as extremidades da linha."
 
-#: crates/core/src/commands.rs:891
+#: crates/core/src/commands.rs:894
 msgid "Spot Elevation"
 msgstr "Elevação de ponto"
 
@@ -7801,7 +7821,7 @@ msgstr "Elevação de ponto"
 msgid "Spot Elevation (EL): click a floor, a roof or a stair; in a section, a point"
 msgstr "Elevação de ponto (EL): clique num piso, num telhado ou numa escada; num corte, num ponto"
 
-#: crates/core/src/commands.rs:910
+#: crates/core/src/commands.rs:913
 #: crates/ui-egui/src/lib.rs:1414
 #: crates/ui-egui/src/lib.rs:3696
 msgid "Spot Slope"
@@ -7815,7 +7835,7 @@ msgstr "Inclinação de ponto: clique num piso ou num telhado em uma planta; uma
 msgid "Square Grid"
 msgstr "Quadriculado"
 
-#: crates/core/src/commands.rs:721
+#: crates/core/src/commands.rs:724
 msgid "Stair"
 msgstr "Escada"
 
@@ -7907,7 +7927,7 @@ msgstr "Reto"
 msgid "Structural"
 msgstr "Estrutural"
 
-#: crates/core/src/commands.rs:613
+#: crates/core/src/commands.rs:616
 msgid "Structural Column"
 msgstr "Pilar estrutural"
 
@@ -7983,15 +8003,15 @@ msgid "Surface, {}°"
 msgstr "Superfície, {}°"
 
 #: crates/core/src/graphics.rs:132
-#: crates/ui-egui/src/coordinates.rs:605
+#: crates/ui-egui/src/coordinates.rs:628
 msgid "Survey Point"
 msgstr "Ponto de Levantamento"
 
-#: crates/ui-egui/src/coordinates.rs:607
+#: crates/ui-egui/src/coordinates.rs:630
 msgid "Survey Point {}"
 msgstr "Ponto de Levantamento {}"
 
-#: crates/ui-egui/src/coordinates.rs:878
+#: crates/ui-egui/src/coordinates.rs:1011
 msgid "Swap"
 msgstr "Inverter"
 
@@ -8086,6 +8106,10 @@ msgstr "Fases do sistema {}"
 #: crates/ui-egui/src/electrical.rs:365
 msgid "System {} wires"
 msgstr "Fios do sistema {}"
+
+#: crates/ui-egui/src/coordinates.rs:871
+msgid "Systems"
+msgstr "Sistemas"
 
 #: crates/ui-egui/src/dock.rs:785
 msgid "Tab with {}"
@@ -8208,7 +8232,7 @@ msgstr "Isolar Elemento Temporariamente"
 msgid "Temporary dimension {}"
 msgstr "Cota temporária {}"
 
-#: crates/core/src/commands.rs:820
+#: crates/core/src/commands.rs:823
 #: crates/ui-egui/src/editor.rs:879
 #: crates/ui-egui/src/editor.rs:912
 #: crates/ui-egui/src/notes.rs:503
@@ -8281,7 +8305,7 @@ msgstr "Isso é grande demais para ser um arquivo de atalhos."
 msgid "The 3D view is drawn on the processor: {}"
 msgstr "A vista 3D é desenhada no processador: {}"
 
-#: crates/ui-egui/src/coordinates.rs:480
+#: crates/ui-egui/src/coordinates.rs:503
 msgid "The Survey Point's shared coordinates, in the active location."
 msgstr "As coordenadas compartilhadas do Ponto de Levantamento, no local ativo."
 
@@ -8289,7 +8313,7 @@ msgstr "As coordenadas compartilhadas do Ponto de Levantamento, no local ativo."
 msgid "The arc doesn't fit: pick two straight lines that meet at an angle, long enough for it."
 msgstr "O arco não cabe: escolha duas linhas retas que se encontram num ângulo, longas o bastante."
 
-#: crates/ui-egui/src/coordinates.rs:620
+#: crates/ui-egui/src/coordinates.rs:643
 msgid "The building stays where it is in the world: every location's numbers are worked out again."
 msgstr "O edifício fica onde está no mundo: os números de cada local são recalculados."
 
@@ -8382,7 +8406,7 @@ msgstr "O projeto não tem filtro de fase que mostre isto: crie um em Gerenciar 
 msgid "The project stays as you left it."
 msgstr "O projeto fica como você o deixou."
 
-#: crates/ui-egui/src/coordinates.rs:674
+#: crates/ui-egui/src/coordinates.rs:697
 msgid "The projected coordinate system the shared coordinates are a grid of: a UTM zone, a State Plane zone, a national grid. It shows them in its unit, and takes them to latitude and longitude for the map and the sun."
 msgstr "O sistema de coordenadas projetado do qual as coordenadas compartilhadas são uma grade: um fuso UTM, uma zona State Plane, uma grade nacional. Ele as mostra em sua unidade e as leva a latitude e longitude para o mapa e o sol."
 
@@ -8415,7 +8439,7 @@ msgstr "O atalho '{}' já existe para '{}'."
 msgid "The sketch has too many lines."
 msgstr "O esboço tem linhas demais."
 
-#: crates/ui-egui/src/coordinates.rs:548
+#: crates/ui-egui/src/coordinates.rs:571
 msgid "The survey moved the site? Add the same amounts to every location at once, say +5 m of elevation."
 msgstr "O levantamento moveu o terreno? Some os mesmos valores a todos os locais de uma vez, por exemplo +5 m de elevação."
 
@@ -8588,7 +8612,7 @@ msgstr "Largura da legenda / carimbo:"
 msgid "Title bar"
 msgstr "Barra de título"
 
-#: crates/ui-egui/src/coordinates.rs:882
+#: crates/ui-egui/src/coordinates.rs:1015
 #: crates/ui-egui/src/editor.rs:800
 msgid "To"
 msgstr "Até"
@@ -8694,7 +8718,7 @@ msgstr "Aparar/Estender elemento único"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Aparar/Estender elemento único: escolha a linha-limite e depois a linha a mudar, na parte a manter"
 
-#: crates/core/src/commands.rs:1252
+#: crates/core/src/commands.rs:1255
 #: crates/ui-egui/src/sketch.rs:712
 #: crates/ui-egui/src/sketch.rs:964
 msgid "Trim/Extend to Corner"
@@ -8705,7 +8729,7 @@ msgstr "Aparar/estender para canto"
 msgid "Trim/Extend to Corner (TR): pick two walls or two lines, on the parts to keep"
 msgstr "Aparar/Estender para canto (TR): escolha duas paredes ou duas linhas, nas partes a manter"
 
-#: crates/ui-egui/src/coordinates.rs:410
+#: crates/ui-egui/src/coordinates.rs:433
 msgid "True north is {}° from project north, clockwise"
 msgstr "O norte verdadeiro está a {}° do norte do projeto, no sentido horário"
 
@@ -8717,7 +8741,7 @@ msgstr "Cancelar a exceção de snap"
 msgid "Turn the wall about its {}: {}"
 msgstr "Girar a parede em torno do seu {}: {}"
 
-#: crates/ui-egui/src/coordinates.rs:254
+#: crates/ui-egui/src/coordinates.rs:277
 msgid "Two locations are called {}."
 msgstr "Dois locais se chamam {}."
 
@@ -8785,6 +8809,10 @@ msgstr "Digite a nota na Barra de opções e clique onde ela vai: seu canto supe
 msgid "Type the note: Shift+Enter breaks the line, Enter or a click outside it finishes."
 msgstr "Digite a nota: Shift+Enter quebra a linha; Enter ou um clique fora dela a conclui."
 
+#: crates/ui-egui/src/coordinates.rs:854
+msgid "Type where the project is, or the system's name or code."
+msgstr "Digite onde fica o projeto, ou o nome ou código do sistema."
+
 #: crates/ui-egui/src/notes.rs:422
 #: crates/ui-egui/src/typeprops.rs:83
 msgid "Type:"
@@ -8797,6 +8825,14 @@ msgstr "Tipos"
 #: crates/core/src/render.rs:3630
 msgid "UP"
 msgstr "SOBE"
+
+#: crates/core/src/places.rs:279
+msgid "UTM zone on WGS 84"
+msgstr "Fuso UTM no WGS 84"
+
+#: crates/core/src/places.rs:277
+msgid "UTM zone on the national datum"
+msgstr "Fuso UTM no datum nacional"
 
 #: crates/core/src/schedule.rs:258
 #: crates/ui-egui/src/properties.rs:166
@@ -8874,7 +8910,7 @@ msgstr "Reexibir elemento (EU): traz de volta os elementos selecionados que esta
 msgid "Unhide Elements"
 msgstr "Reexibir elementos"
 
-#: crates/ui-egui/src/coordinates.rs:692
+#: crates/ui-egui/src/coordinates.rs:803
 msgid "Unit: {}"
 msgstr "Unidade: {}"
 
@@ -8890,7 +8926,7 @@ msgstr "Formato de unidades"
 msgid "Unlock alignment"
 msgstr "Desbloquear alinhamento"
 
-#: crates/core/src/commands.rs:10249
+#: crates/core/src/commands.rs:10253
 msgid "Unnamed"
 msgstr "Sem nome"
 
@@ -9159,7 +9195,7 @@ msgstr "Volume (m³)"
 msgid "WC"
 msgstr "Vaso sanitário"
 
-#: crates/ui-egui/src/coordinates.rs:41
+#: crates/ui-egui/src/coordinates.rs:45
 msgid "WGS84 (longitude, latitude)"
 msgstr "WGS84 (longitude, latitude)"
 
@@ -9175,7 +9211,7 @@ msgstr "Parede (WA): cada clique constrói uma parede; Enter ou Esc termina a ca
 msgid "Wall Centreline"
 msgstr "Linha de centro da parede"
 
-#: crates/core/src/commands.rs:640
+#: crates/core/src/commands.rs:643
 msgid "Wall Footing"
 msgstr "Sapata corrida"
 
@@ -9267,7 +9303,7 @@ msgstr "O que a obra constrói, sobre o que existia antes"
 msgid "What's new"
 msgstr "O que há de novo"
 
-#: crates/ui-egui/src/coordinates.rs:615
+#: crates/ui-egui/src/coordinates.rs:638
 msgid "When the Survey Point moves"
 msgstr "Quando o Ponto de Levantamento se move"
 
@@ -9283,7 +9319,7 @@ msgstr ""
 msgid "Where its file's coordinates put it, as the survey placed it"
 msgstr "Onde as coordenadas do arquivo o colocam, como o levantamento o posicionou"
 
-#: crates/ui-egui/src/coordinates.rs:730
+#: crates/ui-egui/src/coordinates.rs:704
 msgid "Where the Survey Point is on the globe, in WGS84 degrees: the active location's east and north are worked out from it."
 msgstr "Onde o Ponto de Levantamento está no globo, em graus WGS84: o leste e o norte do local ativo são calculados a partir disso."
 
@@ -9338,7 +9374,7 @@ msgstr "Tabela de janelas"
 msgid "Windows"
 msgstr "Janelas"
 
-#: crates/core/src/commands.rs:686
+#: crates/core/src/commands.rs:689
 msgid "Wire"
 msgstr "Fio"
 
@@ -9432,7 +9468,7 @@ msgstr "Plano de trabalho perpendicular ao eixo {}"
 msgid "Worktop"
 msgstr "Bancada"
 
-#: crates/ui-egui/src/coordinates.rs:772
+#: crates/ui-egui/src/coordinates.rs:902
 msgid "World map"
 msgstr "Mapa-múndi"
 
@@ -9440,7 +9476,7 @@ msgstr "Mapa-múndi"
 msgid "X"
 msgstr "X"
 
-#: crates/ui-egui/src/coordinates.rs:888
+#: crates/ui-egui/src/coordinates.rs:1021
 msgid "X / East"
 msgstr "X / Leste"
 
@@ -9448,7 +9484,7 @@ msgstr "X / Leste"
 msgid "Y"
 msgstr "Y"
 
-#: crates/ui-egui/src/coordinates.rs:888
+#: crates/ui-egui/src/coordinates.rs:1021
 msgid "Y / North"
 msgstr "Y / Norte"
 
@@ -9468,7 +9504,7 @@ msgstr "Ontem"
 msgid "Your text colour was too close to the panels: it is made darker or lighter to read at 4.5:1"
 msgstr "A cor do seu texto estava próxima demais da dos painéis: ela é escurecida ou clareada para ser legível a 4,5:1"
 
-#: crates/ui-egui/src/coordinates.rs:888
+#: crates/ui-egui/src/coordinates.rs:1021
 msgid "Z / Elevation"
 msgstr "Z / Elevação"
 
@@ -9479,6 +9515,10 @@ msgstr "Alinhamento em Z"
 #: crates/ui-egui/src/linestyles/creator.rs:76
 msgid "Zig Zag"
 msgstr "Zigue-zague"
+
+#: crates/core/src/places.rs:278
+msgid "Zone on the national datum"
+msgstr "Fuso no datum nacional"
 
 #: crates/ui-egui/src/linestyles/creator.rs:110
 msgid "Zoom"
@@ -11242,3 +11282,15 @@ msgstr "Superior"
 #: crates/ui-egui/src/settings.rs:473
 #~ msgid "Flat and square, the title bar in the ribbon's greys: the File tab leads the ribbon's tabs and the Options Bar is docked under the ribbon"
 #~ msgstr "Plano e quadrado, a barra de título nos cinzas da faixa de opções: a guia Arquivo abre as guias da faixa e a Barra de Opções fica fixa sob a faixa"
+#: crates/ui-egui/src/coordinates.rs:706
+#~ msgid "An EPSG code or words of a name: 31983, UTM 23S, British National Grid"
+#~ msgstr "Um código EPSG ou palavras do nome: 31983, UTM 23S, SIRGAS 2000"
+#: crates/ui-egui/src/coordinates.rs:703
+#~ msgid "Find a system"
+#~ msgstr "Buscar um sistema"
+#: crates/ui-egui/src/coordinates.rs:699
+#~ msgid "No map system yet: shared coordinates are in metres, and there's no latitude or longitude."
+#~ msgstr "Ainda sem sistema do mapa: as coordenadas compartilhadas estão em metros, e não há latitude nem longitude."
+#: crates/ui-egui/src/coordinates.rs:712
+#~ msgid "No projected system of EPSG's matches."
+#~ msgstr "Nenhum sistema projetado da EPSG corresponde."

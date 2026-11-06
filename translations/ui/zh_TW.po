@@ -117,6 +117,10 @@ msgstr "留空的值表示使用族自身的值，如“參數”選項卡中所
 msgid "A circle's, an ellipse's or an arc's points along its axes: east, north, west and south"
 msgstr "圓、橢圓或圓弧沿其軸線的點：東、北、西、南"
 
+#: crates/ui-egui/src/coordinates.rs:842
+msgid "A city, a country, an EPSG code or words of a name: São Paulo, Germany, 31983, UTM 23S"
+msgstr ""
+
 #: crates/ui-egui/src/electrical.rs:394
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
 msgstr "導線的材質、絕緣和工作溫度，以及各截面積的載流量；截面積以 mm² 計。"
@@ -145,7 +149,7 @@ msgstr "有一條線太短：其兩端相距 1 毫米或更少。"
 msgid "A line isn't one that can be drawn: two of its points lie on each other."
 msgstr "有一條線無法繪製：它的兩個點重合。"
 
-#: crates/ui-egui/src/coordinates.rs:251
+#: crates/ui-egui/src/coordinates.rs:274
 msgid "A location needs a name."
 msgstr ""
 
@@ -157,7 +161,7 @@ msgstr "有一個環不圍合任何面積。"
 msgid "A loop needs three lines: click a point that isn't the start."
 msgstr "閉合輪廓至少需要三條線：請單擊起點以外的點。"
 
-#: crates/ui-egui/src/coordinates.rs:544
+#: crates/ui-egui/src/coordinates.rs:567
 msgid "A new location, a copy of the active one"
 msgstr ""
 
@@ -169,7 +173,7 @@ msgstr "帶標題欄的新圖紙"
 msgid "A phase filter draws a status this way where it says Overridden."
 msgstr "階段過濾器在標明“已替換”之處以此方式繪製該狀態。"
 
-#: crates/ui-egui/src/coordinates.rs:864
+#: crates/ui-egui/src/coordinates.rs:997
 msgid "A point in one frame, in another: the file's own, from the Project Base Point, shared, or WGS84. Lengths in mm."
 msgstr ""
 
@@ -247,7 +251,7 @@ msgstr "接受主選項"
 msgid "Accept Primary: the primary option's elements stay in the model; the others' elements and the set go"
 msgstr "接受主選項：主選項的圖元保留在模型中；其他選項的圖元及選項集被刪除"
 
-#: crates/ui-egui/src/coordinates.rs:502
+#: crates/ui-egui/src/coordinates.rs:525
 msgid "Active"
 msgstr ""
 
@@ -259,7 +263,7 @@ msgstr "啟用 (NBR 17067: 帶裝訂折角的 A4 模數折疊)"
 msgid "Active design option:"
 msgstr "目前設計選項："
 
-#: crates/ui-egui/src/coordinates.rs:436
+#: crates/ui-egui/src/coordinates.rs:459
 msgid "Active location"
 msgstr ""
 
@@ -325,7 +329,7 @@ msgstr "添加過濾器"
 msgid "Add Line"
 msgstr "添加線"
 
-#: crates/ui-egui/src/coordinates.rs:543
+#: crates/ui-egui/src/coordinates.rs:566
 msgid "Add Location"
 msgstr ""
 
@@ -484,7 +488,7 @@ msgstr "接閃器 (AT)：在屋頂上單擊處放置接閃器；按空格鍵旋�
 msgid "Air Terminals"
 msgstr "接閃器"
 
-#: crates/core/src/commands.rs:1199
+#: crates/core/src/commands.rs:1202
 #: crates/ui-egui/src/editor.rs:915
 #: crates/ui-egui/src/lib.rs:350
 #: crates/ui-egui/src/sketch.rs:709
@@ -509,7 +513,7 @@ msgstr ""
 msgid "Aligned"
 msgstr "對齊"
 
-#: crates/core/src/commands.rs:788
+#: crates/core/src/commands.rs:791
 msgid "Aligned Dimension"
 msgstr "對齊尺寸標注"
 
@@ -517,7 +521,7 @@ msgstr "對齊尺寸標注"
 msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, or endpoints, then click where the dimension line goes"
 msgstr "對齊尺寸標注 (DI)：拾取平行的牆面、牆端、門、窗、軸網或端點，然後單擊尺寸線所在位置"
 
-#: crates/core/src/commands.rs:808
+#: crates/core/src/commands.rs:811
 msgid "Aligned Dimension in 3D"
 msgstr "3D對齊尺寸標注"
 
@@ -572,10 +576,6 @@ msgstr "載流量"
 msgid "Amplitude"
 msgstr "振幅"
 
-#: crates/ui-egui/src/coordinates.rs:706
-msgid "An EPSG code or words of a name: 31983, UTM 23S, British National Grid"
-msgstr ""
-
 #: crates/ui-egui/src/control.rs:307
 msgid "An agent can work on this project: bimcraft-cli mcp --connect {}"
 msgstr "智能體可以在此項目上工作：bimcraft-cli mcp --connect {}"
@@ -599,7 +599,7 @@ msgid "And:"
 msgstr "並且："
 
 #: crates/core/src/snap.rs:71
-#: crates/ui-egui/src/coordinates.rs:508
+#: crates/ui-egui/src/coordinates.rs:531
 #: crates/ui-egui/src/reinforce.rs:83
 msgid "Angle"
 msgstr "角度"
@@ -608,8 +608,8 @@ msgstr "角度"
 msgid "Angle steps"
 msgstr "角度步長"
 
-#: crates/ui-egui/src/coordinates.rs:467
-#: crates/ui-egui/src/coordinates.rs:650
+#: crates/ui-egui/src/coordinates.rs:490
+#: crates/ui-egui/src/coordinates.rs:673
 msgid "Angle to true north"
 msgstr ""
 
@@ -667,7 +667,7 @@ msgid "Applies to all views; snaps to the active view's enabled main grid or sub
 msgstr "適用於所有視圖；捕捉到活動視圖中已啟用的主網格或子網格，即使已隱藏"
 
 #: crates/ui-egui/src/background_grid.rs:112
-#: crates/ui-egui/src/coordinates.rs:957
+#: crates/ui-egui/src/coordinates.rs:1090
 #: crates/ui-egui/src/display.rs:80
 #: crates/ui-egui/src/editor.rs:1087
 #: crates/ui-egui/src/electrical.rs:501
@@ -960,7 +960,7 @@ msgstr "基線間距"
 msgid "Bathtub"
 msgstr "浴缸"
 
-#: crates/core/src/commands.rs:630
+#: crates/core/src/commands.rs:633
 msgid "Beam"
 msgstr "梁"
 
@@ -1089,7 +1089,7 @@ msgstr "CAD 圖紙"
 msgid "CAD drawings (DWG, DXF)"
 msgstr "CAD 圖紙（DWG、DXF）"
 
-#: crates/core/src/commands.rs:678
+#: crates/core/src/commands.rs:681
 msgid "Cable Tray"
 msgstr "電纜橋架"
 
@@ -1097,7 +1097,7 @@ msgstr "電纜橋架"
 msgid "Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step"
 msgstr "電纜橋架 (CT)：單擊起點和終點；連續單擊可為每一段創建一段橋架"
 
-#: crates/core/src/commands.rs:712
+#: crates/core/src/commands.rs:715
 msgid "Cabling"
 msgstr "布線"
 
@@ -1123,7 +1123,7 @@ msgstr "計算值…"
 msgid "Came in: {}"
 msgstr "已導入：{}"
 
-#: crates/core/src/commands.rs:1747
+#: crates/core/src/commands.rs:1750
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3853
 #: crates/ui-egui/src/properties.rs:265
@@ -1137,7 +1137,7 @@ msgstr "相機：單擊視點所在位置，再單擊其注視的目標：由該
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:131
 #: crates/ui-egui/src/clouds.rs:87
-#: crates/ui-egui/src/coordinates.rs:958
+#: crates/ui-egui/src/coordinates.rs:1091
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
 #: crates/ui-egui/src/editor.rs:1086
@@ -1332,6 +1332,10 @@ msgstr "檢核：fck"
 msgid "Checking for updates…"
 msgstr "正在檢查更新…"
 
+#: crates/ui-egui/src/coordinates.rs:788
+msgid "Choose a map system"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3801
 msgid "Choose a theme, including a dark interface with a light canvas"
 msgstr "選擇主題，包括深色界面和淺色畫布"
@@ -1361,7 +1365,7 @@ msgstr "外接多邊形"
 msgid "Circumscribed Polygon: click its centre, then the middle of a side; Sides on the Options Bar"
 msgstr "外接多邊形：單擊中心，然後單擊一條邊的中點；邊數在選項欄中設置"
 
-#: crates/ui-egui/src/coordinates.rs:686
+#: crates/ui-egui/src/coordinates.rs:822
 msgid "Clear"
 msgstr ""
 
@@ -1927,7 +1931,7 @@ msgstr "顏色"
 msgid "Colour on plans"
 msgstr "平面上的顏色"
 
-#: crates/core/src/commands.rs:604
+#: crates/core/src/commands.rs:607
 msgid "Column"
 msgstr "柱"
 
@@ -1964,7 +1968,7 @@ msgstr "緊湊"
 msgid "Comparison"
 msgstr "比較"
 
-#: crates/core/src/commands.rs:1161
+#: crates/core/src/commands.rs:1164
 msgid "Component"
 msgstr "構件"
 
@@ -1988,7 +1992,7 @@ msgstr "混凝土"
 msgid "Concrete block"
 msgstr "混凝土砌塊"
 
-#: crates/core/src/commands.rs:670
+#: crates/core/src/commands.rs:673
 msgid "Conduit"
 msgstr "線管"
 
@@ -2025,7 +2029,7 @@ msgstr "連續"
 msgid "Control port"
 msgstr "控制連接埠"
 
-#: crates/ui-egui/src/coordinates.rs:31
+#: crates/ui-egui/src/coordinates.rs:32
 msgid "Convert"
 msgstr ""
 
@@ -2045,7 +2049,7 @@ msgstr "轉換樣條曲線"
 msgid "Convert Spline: a spline through points becomes the same curve by its control points, or one by its control points a spline through points"
 msgstr "轉換樣條曲線：通過點的樣條曲線變為相同的控制點樣條曲線，或控制點樣條曲線變為通過點的樣條曲線"
 
-#: crates/ui-egui/src/coordinates.rs:931
+#: crates/ui-egui/src/coordinates.rs:1064
 #: crates/ui-egui/src/lib.rs:4077
 msgid "Coordinates"
 msgstr ""
@@ -2082,8 +2086,8 @@ msgstr "已複製 {} 行，以製表符分隔。"
 msgid "Copper"
 msgstr "銅"
 
-#: crates/core/src/commands.rs:1229
-#: crates/ui-egui/src/coordinates.rs:912
+#: crates/core/src/commands.rs:1232
+#: crates/ui-egui/src/coordinates.rs:1045
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4605
 #: crates/ui-egui/src/lib.rs:4655
@@ -2179,6 +2183,10 @@ msgstr "數量"
 
 #: crates/ui-egui/src/lib.rs:4102
 msgid "Counter-clockwise, about the Project Base Point"
+msgstr ""
+
+#: crates/ui-egui/src/coordinates.rs:772
+msgid "Country"
 msgstr ""
 
 #: crates/ui-egui/src/reinforce.rs:182
@@ -2391,7 +2399,7 @@ msgstr "預設窗台高度"
 msgid "Default Thickness"
 msgstr "預設厚度"
 
-#: crates/ui-egui/src/coordinates.rs:531
+#: crates/ui-egui/src/coordinates.rs:554
 #: crates/ui-egui/src/editor.rs:663
 #: crates/ui-egui/src/editor.rs:836
 #: crates/ui-egui/src/editor.rs:930
@@ -2448,7 +2456,7 @@ msgstr "刪除頂點：單擊多段線的角點或樣條曲線的點將其刪除
 msgid "Delete Wire Type"
 msgstr "刪除導線類型"
 
-#: crates/ui-egui/src/coordinates.rs:532
+#: crates/ui-egui/src/coordinates.rs:555
 msgid "Delete location {}"
 msgstr ""
 
@@ -2485,7 +2493,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:10108
+#: crates/core/src/commands.rs:10112
 msgid "Dependent"
 msgstr "相關"
 
@@ -2631,7 +2639,7 @@ msgstr "尺寸標注文字"
 msgid "Dimension Text Placement:"
 msgstr "尺寸文字對齊:"
 
-#: crates/core/src/commands.rs:1211
+#: crates/core/src/commands.rs:1214
 msgid "Dimension Value"
 msgstr "尺寸標注值"
 
@@ -2711,7 +2719,7 @@ msgstr "門 (DR)：單擊一面牆"
 msgid "Door Schedule"
 msgstr "門明細表"
 
-#: crates/core/src/commands.rs:777
+#: crates/core/src/commands.rs:780
 msgid "Dormer"
 msgstr "老虎窗"
 
@@ -2750,7 +2758,7 @@ msgstr "雙擊選項卡名稱也有同樣效果；之後單擊選項卡會顯示
 msgid "Down"
 msgstr "下移"
 
-#: crates/core/src/commands.rs:694
+#: crates/core/src/commands.rs:697
 msgid "Down Conductor"
 msgstr "引下線"
 
@@ -2803,7 +2811,7 @@ msgstr "圖紙"
 msgid "Drawing…"
 msgstr "繪製中…"
 
-#: crates/core/src/commands.rs:659
+#: crates/core/src/commands.rs:662
 msgid "Duct"
 msgstr "風管"
 
@@ -2848,7 +2856,7 @@ msgstr "每項都是長度，“頂部”可留空，表示上一標高。"
 msgid "Each line's angle, origin and spacing"
 msgstr "每條線的角度、原點和間距"
 
-#: crates/ui-egui/src/coordinates.rs:491
+#: crates/ui-egui/src/coordinates.rs:514
 msgid "Each location gives the Survey Point's shared coordinates and the angle to true north, so one building can stand on several sites. Type any value; the model never moves."
 msgstr ""
 
@@ -2865,7 +2873,7 @@ msgstr "每支筆在各比例視圖中於圖紙上的寬度（毫米）：介於
 msgid "Earthing"
 msgstr "接地"
 
-#: crates/core/src/commands.rs:703
+#: crates/core/src/commands.rs:706
 msgid "Earthing Conductor"
 msgstr "接地線"
 
@@ -2886,13 +2894,13 @@ msgid "Earthing Electrodes"
 msgstr "接地極"
 
 #: crates/core/src/model.rs:1891
-#: crates/ui-egui/src/coordinates.rs:459
-#: crates/ui-egui/src/coordinates.rs:551
+#: crates/ui-egui/src/coordinates.rs:482
+#: crates/ui-egui/src/coordinates.rs:574
 msgid "East"
 msgstr "東"
 
-#: crates/ui-egui/src/coordinates.rs:505
-#: crates/ui-egui/src/coordinates.rs:582
+#: crates/ui-egui/src/coordinates.rs:528
+#: crates/ui-egui/src/coordinates.rs:605
 msgid "East ({})"
 msgstr ""
 
@@ -3001,20 +3009,20 @@ msgstr "電氣設置"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "電氣設置：迴路和配電箱所引用的電壓、配電系統和導線類型；截面積以 mm² 計"
 
-#: crates/core/src/commands.rs:2113
+#: crates/core/src/commands.rs:2116
 msgid "Elements"
 msgstr "圖元"
 
-#: crates/ui-egui/src/coordinates.rs:459
-#: crates/ui-egui/src/coordinates.rs:551
-#: crates/ui-egui/src/coordinates.rs:886
+#: crates/ui-egui/src/coordinates.rs:482
+#: crates/ui-egui/src/coordinates.rs:574
+#: crates/ui-egui/src/coordinates.rs:1019
 #: crates/ui-egui/src/lib.rs:3849
 #: crates/ui-egui/src/lib.rs:4696
 msgid "Elevation"
 msgstr "立面"
 
-#: crates/ui-egui/src/coordinates.rs:507
-#: crates/ui-egui/src/coordinates.rs:584
+#: crates/ui-egui/src/coordinates.rs:530
+#: crates/ui-egui/src/coordinates.rs:607
 msgid "Elevation ({})"
 msgstr ""
 
@@ -3284,7 +3292,7 @@ msgstr "填充區域 (FR)：在此視圖中繪製以圖案填充的區域"
 msgid "Filled region"
 msgstr "填充區域"
 
-#: crates/core/src/commands.rs:1298
+#: crates/core/src/commands.rs:1301
 msgid "Fillet Arc"
 msgstr "圓角弧"
 
@@ -3334,12 +3342,8 @@ msgstr "過濾器 (FT)：挑出圖元的規則，供視圖隱藏或以其他方�
 msgid "Find"
 msgstr "尋找"
 
-#: crates/ui-egui/src/coordinates.rs:709
+#: crates/ui-egui/src/coordinates.rs:845
 msgid "Find a map system"
-msgstr ""
-
-#: crates/ui-egui/src/coordinates.rs:703
-msgid "Find a system"
 msgstr ""
 
 #: crates/ui-egui/src/find.rs:80
@@ -3616,7 +3620,7 @@ msgstr "門窗框寬度"
 msgid "Frequency (cycles per segment)"
 msgstr "頻率（每段週期數）"
 
-#: crates/ui-egui/src/coordinates.rs:876
+#: crates/ui-egui/src/coordinates.rs:1009
 #: crates/ui-egui/src/editor.rs:797
 msgid "From"
 msgstr "從"
@@ -3625,7 +3629,7 @@ msgstr "從"
 msgid "From (degrees)"
 msgstr "起始角（度）"
 
-#: crates/ui-egui/src/coordinates.rs:39
+#: crates/ui-egui/src/coordinates.rs:43
 msgid "From the Project Base Point"
 msgstr ""
 
@@ -3686,7 +3690,7 @@ msgstr "常規"
 msgid "Geometry"
 msgstr "幾何圖形"
 
-#: crates/ui-egui/src/coordinates.rs:638
+#: crates/ui-egui/src/coordinates.rs:661
 msgid "Give an internal point the shared coordinates the survey gives it: the active location is worked out to match."
 msgstr ""
 
@@ -3921,7 +3925,7 @@ msgstr "根數、直徑和間距由您決定；留空的項不使用。間距為
 msgid "How many phases and wires each system has (the line conductors and the neutral), the voltages it supplies, and how it is earthed."
 msgstr "每個系統的相數和導線數（相線與中性線）、所供應的電壓，以及接地方式。"
 
-#: crates/ui-egui/src/coordinates.rs:503
+#: crates/ui-egui/src/coordinates.rs:526
 #: crates/ui-egui/src/inquiry.rs:165
 msgid "ID"
 msgstr "ID"
@@ -4105,20 +4109,20 @@ msgid "Interface scale"
 msgstr "界面縮放"
 
 #: crates/core/src/coordinates.rs:23
-#: crates/ui-egui/src/coordinates.rs:38
+#: crates/ui-egui/src/coordinates.rs:42
 msgid "Internal"
 msgstr ""
 
 #: crates/core/src/graphics.rs:130
-#: crates/ui-egui/src/coordinates.rs:593
+#: crates/ui-egui/src/coordinates.rs:616
 msgid "Internal Origin"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:568
+#: crates/ui-egui/src/coordinates.rs:591
 msgid "Internal coordinates are the file's own, where the geometry is. The Project Base Point is a reference that elevations, spot coordinates and links measure from: moving it moves nothing else."
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:640
+#: crates/ui-egui/src/coordinates.rs:663
 msgid "Internal point"
 msgstr ""
 
@@ -4138,7 +4142,7 @@ msgstr "隔離類別 (IC)"
 msgid "Isolate Element (HI)"
 msgstr "隔離圖元 (HI)"
 
-#: crates/core/src/commands.rs:622
+#: crates/core/src/commands.rs:625
 msgid "Isolated Footing"
 msgstr "獨立基礎"
 
@@ -4163,7 +4167,7 @@ msgstr "斜體 (Ctrl+I)"
 msgid "Itemize every instance"
 msgstr "逐項列舉每個實例"
 
-#: crates/ui-egui/src/coordinates.rs:522
+#: crates/ui-egui/src/coordinates.rs:545
 msgid "Its id in the project, as every element and library entry has"
 msgstr ""
 
@@ -4175,7 +4179,7 @@ msgstr "其中心位於項目原點"
 msgid "Its middle on the project's origin and its foot on the level"
 msgstr "其中心位於項目原點，底部位於標高上"
 
-#: crates/ui-egui/src/coordinates.rs:625
+#: crates/ui-egui/src/coordinates.rs:648
 msgid "Its numbers stay, and the building moves in the world, as the point does."
 msgstr ""
 
@@ -4245,12 +4249,12 @@ msgstr "語言"
 msgid "Later"
 msgstr "稍後"
 
-#: crates/ui-egui/src/coordinates.rs:735
-#: crates/ui-egui/src/coordinates.rs:886
+#: crates/ui-egui/src/coordinates.rs:709
+#: crates/ui-egui/src/coordinates.rs:1019
 msgid "Latitude"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:475
+#: crates/ui-egui/src/coordinates.rs:498
 msgid "Latitude, longitude"
 msgstr ""
 
@@ -4617,35 +4621,35 @@ msgstr "定位線："
 msgid "Location line: {}"
 msgstr "定位線：{}"
 
-#: crates/ui-egui/src/coordinates.rs:516
+#: crates/ui-egui/src/coordinates.rs:539
 msgid "Location {} active"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:528
+#: crates/ui-egui/src/coordinates.rs:551
 msgid "Location {} angle"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:525
+#: crates/ui-egui/src/coordinates.rs:548
 msgid "Location {} east"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:527
+#: crates/ui-egui/src/coordinates.rs:550
 msgid "Location {} elevation"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:524
+#: crates/ui-egui/src/coordinates.rs:547
 msgid "Location {} name"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:526
+#: crates/ui-egui/src/coordinates.rs:549
 msgid "Location {} north"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:530
+#: crates/ui-egui/src/coordinates.rs:553
 msgid "Location {} scale"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:31
+#: crates/ui-egui/src/coordinates.rs:32
 msgid "Locations"
 msgstr ""
 
@@ -4665,8 +4669,8 @@ msgstr "已鎖定第 {} 段"
 msgid "Long Dash"
 msgstr "長劃線"
 
-#: crates/ui-egui/src/coordinates.rs:735
-#: crates/ui-egui/src/coordinates.rs:886
+#: crates/ui-egui/src/coordinates.rs:709
+#: crates/ui-egui/src/coordinates.rs:1019
 msgid "Longitude"
 msgstr ""
 
@@ -4716,8 +4720,12 @@ msgstr "管理"
 msgid "Manage Presets…"
 msgstr "管理模板…"
 
-#: crates/ui-egui/src/coordinates.rs:31
+#: crates/ui-egui/src/coordinates.rs:32
 msgid "Map System"
+msgstr ""
+
+#: crates/ui-egui/src/coordinates.rs:700
+msgid "Map system"
 msgstr ""
 
 #: crates/core/src/model.rs:1502
@@ -4757,7 +4765,7 @@ msgstr "體量樓層 (MF)：在所選體量穿過的每個標高處創建一個�
 msgid "Massing"
 msgstr "體量建模"
 
-#: crates/core/src/commands.rs:1191
+#: crates/core/src/commands.rs:1194
 msgid "Match Properties"
 msgstr "符合屬性"
 
@@ -4818,7 +4826,7 @@ msgstr "最大值"
 msgid "Maximum Riser Height"
 msgstr "最大踢面高度"
 
-#: crates/core/src/commands.rs:1857
+#: crates/core/src/commands.rs:1860
 msgid "Measure"
 msgstr "測量"
 
@@ -4972,7 +4980,7 @@ msgstr "修改牆"
 msgid "Mounting Height"
 msgstr "安裝高度"
 
-#: crates/core/src/commands.rs:1221
+#: crates/core/src/commands.rs:1224
 msgid "Move"
 msgstr "移動"
 
@@ -4990,11 +4998,11 @@ msgstr "下移"
 msgid "Move Up"
 msgstr "上移"
 
-#: crates/ui-egui/src/coordinates.rs:619
+#: crates/ui-egui/src/coordinates.rs:642
 msgid "Move the point only"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:624
+#: crates/ui-egui/src/coordinates.rs:647
 msgid "Move the shared coordinates with it"
 msgstr ""
 
@@ -5050,7 +5058,7 @@ msgstr "未封閉"
 #: crates/core/src/model.rs:1503
 #: crates/ui-egui/src/cad.rs:85
 #: crates/ui-egui/src/clouds.rs:59
-#: crates/ui-egui/src/coordinates.rs:504
+#: crates/ui-egui/src/coordinates.rs:527
 #: crates/ui-egui/src/electrical.rs:298
 #: crates/ui-egui/src/electrical.rs:344
 #: crates/ui-egui/src/lib.rs:4698
@@ -5069,6 +5077,10 @@ msgstr "名稱"
 #: crates/ui-egui/src/typeprops.rs:101
 msgid "Name:"
 msgstr "名稱："
+
+#: crates/core/src/places.rs:276
+msgid "National grid"
+msgstr ""
 
 #: crates/ui-egui/src/dock.rs:52
 msgid "Navigator"
@@ -5105,7 +5117,7 @@ msgstr "新建族：創建您自己的某個類別的族，以編輯其參數、
 msgid "New Filter"
 msgstr "新建過濾器"
 
-#: crates/ui-egui/src/coordinates.rs:185
+#: crates/ui-egui/src/coordinates.rs:192
 msgid "New Location"
 msgstr ""
 
@@ -5214,25 +5226,21 @@ msgstr "尚無過濾器：點擊“新建”創建一個。"
 msgid "No font with Chinese characters was found on this system: install one (such as Noto Sans CJK) and choose Chinese again."
 msgstr "此系統中未找到含中文字符的字體：請安裝一款（如 Noto Sans CJK），然後重新選擇中文。"
 
-#: crates/ui-egui/src/coordinates.rs:454
+#: crates/ui-egui/src/coordinates.rs:477
 msgid "No map system"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:699
-msgid "No map system yet: shared coordinates are in metres, and there's no latitude or longitude."
+#: crates/ui-egui/src/coordinates.rs:823
+msgid "No map system: shared coordinates in metres, and no latitude or longitude"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:687
-msgid "No map system: shared coordinates in metres, and no latitude or longitude"
+#: crates/ui-egui/src/coordinates.rs:856
+msgid "No place, and no projected system of EPSG's, matches."
 msgstr ""
 
 #: crates/ui-egui/src/properties.rs:2940
 msgid "No project parameters yet: New makes one."
 msgstr "尚無項目參數：點擊“新建”創建一個。"
-
-#: crates/ui-egui/src/coordinates.rs:712
-msgid "No projected system of EPSG's matches."
-msgstr ""
 
 #: crates/ui-egui/src/start.rs:338
 msgid "No recent projects yet"
@@ -5274,14 +5282,18 @@ msgstr "標稱文字高度:"
 msgid "None"
 msgstr "無"
 
+#: crates/ui-egui/src/coordinates.rs:807
+msgid "None: shared coordinates in metres, and no latitude or longitude. Choose one…"
+msgstr ""
+
 #: crates/core/src/model.rs:1889
-#: crates/ui-egui/src/coordinates.rs:459
-#: crates/ui-egui/src/coordinates.rs:551
+#: crates/ui-egui/src/coordinates.rs:482
+#: crates/ui-egui/src/coordinates.rs:574
 msgid "North"
 msgstr "北"
 
-#: crates/ui-egui/src/coordinates.rs:506
-#: crates/ui-egui/src/coordinates.rs:583
+#: crates/ui-egui/src/coordinates.rs:529
+#: crates/ui-egui/src/coordinates.rs:606
 msgid "North ({})"
 msgstr ""
 
@@ -5358,7 +5370,7 @@ msgstr "編號"
 #: crates/ui-egui/src/background_grid.rs:113
 #: crates/ui-egui/src/cad.rs:132
 #: crates/ui-egui/src/clouds.rs:88
-#: crates/ui-egui/src/coordinates.rs:959
+#: crates/ui-egui/src/coordinates.rs:1092
 #: crates/ui-egui/src/dimtypes.rs:318
 #: crates/ui-egui/src/display.rs:82
 #: crates/ui-egui/src/editor.rs:1085
@@ -5878,7 +5890,7 @@ msgstr "拾取一面弧形牆或一段圓弧。"
 msgid "Pick a highlighted model edge or sketch line as the alignment reference."
 msgstr "拾取高亮顯示的模型邊或草圖線作為對齊參照。"
 
-#: crates/ui-egui/src/coordinates.rs:228
+#: crates/ui-egui/src/coordinates.rs:235
 msgid "Pick a map system first: latitude and longitude reach the grid through it."
 msgstr ""
 
@@ -6010,7 +6022,7 @@ msgstr "圖片"
 msgid "Picture…"
 msgstr "圖片…"
 
-#: crates/core/src/commands.rs:648
+#: crates/core/src/commands.rs:651
 msgid "Pipe"
 msgstr "管道"
 
@@ -6034,7 +6046,7 @@ msgstr "管件"
 msgid "Pipe Fitting (PF): an elbow or a tee, where you click on a pipe's height; Space turns it"
 msgstr "管件 (PF)：在單擊處、管道的高度放置彎頭或三通；按空格鍵旋轉"
 
-#: crates/ui-egui/src/coordinates.rs:741
+#: crates/ui-egui/src/coordinates.rs:715
 msgid "Place"
 msgstr ""
 
@@ -6217,13 +6229,17 @@ msgstr "放置窗"
 msgid "Place Wire"
 msgstr "放置導線"
 
-#: crates/ui-egui/src/coordinates.rs:727
+#: crates/ui-egui/src/coordinates.rs:701
 msgid "Place by latitude and longitude"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:4616
 msgid "Place:"
 msgstr "放置："
+
+#: crates/ui-egui/src/coordinates.rs:859
+msgid "Places"
+msgstr ""
 
 #: crates/ui-egui/src/settings.rs:653
 #: crates/ui-egui/src/settings.rs:654
@@ -6286,7 +6302,7 @@ msgstr "衛浴裝置 (PX)：在單擊處放置洗手盆、坐便器、水槽、�
 msgid "Plumbing Fixtures"
 msgstr "衛浴裝置"
 
-#: crates/ui-egui/src/coordinates.rs:578
+#: crates/ui-egui/src/coordinates.rs:601
 msgid "Point"
 msgstr ""
 
@@ -6311,7 +6327,7 @@ msgstr "點高度 {}"
 msgid "Point to a wall or a line: the offset goes to the cursor's side. Click to place it."
 msgstr "指向一面牆或一條線：偏移在游標所在的一側。單擊放置。"
 
-#: crates/ui-egui/src/coordinates.rs:31
+#: crates/ui-egui/src/coordinates.rs:32
 #: crates/ui-egui/src/editor.rs:886
 msgid "Points"
 msgstr "點"
@@ -6403,11 +6419,11 @@ msgid "Project"
 msgstr "項目"
 
 #: crates/core/src/graphics.rs:131
-#: crates/ui-egui/src/coordinates.rs:599
+#: crates/ui-egui/src/coordinates.rs:622
 msgid "Project Base Point"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:601
+#: crates/ui-egui/src/coordinates.rs:624
 msgid "Project Base Point {}"
 msgstr ""
 
@@ -6561,7 +6577,7 @@ msgstr "半徑符號"
 msgid "Radius:"
 msgstr "半徑："
 
-#: crates/core/src/commands.rs:745
+#: crates/core/src/commands.rs:748
 msgid "Railing"
 msgstr "欄杆扶手"
 
@@ -6574,7 +6590,7 @@ msgstr "欄杆扶手：單擊樓梯或坡道，在兩側各創建一道；或單
 msgid "Railings"
 msgstr "欄杆扶手"
 
-#: crates/core/src/commands.rs:734
+#: crates/core/src/commands.rs:737
 msgid "Ramp"
 msgstr "坡道"
 
@@ -6593,6 +6609,10 @@ msgstr "最近"
 #: crates/core/src/fixtures.rs:296
 msgid "Recessed Luminaire"
 msgstr "嵌入式燈具"
+
+#: crates/ui-egui/src/coordinates.rs:741
+msgid "Recommended"
+msgstr ""
 
 #: crates/ui-egui/src/autosave.rs:306
 msgid "Recover"
@@ -6902,7 +6922,7 @@ msgstr "踢面高度"
 msgid "Risers"
 msgstr "踢面"
 
-#: crates/core/src/commands.rs:756
+#: crates/core/src/commands.rs:759
 msgid "Roof"
 msgstr "屋頂"
 
@@ -6975,7 +6995,7 @@ msgstr "房間分隔線：像牆一樣圍合房間的線，用於分隔開放空
 msgid "Rose"
 msgstr "玫瑰色"
 
-#: crates/core/src/commands.rs:1236
+#: crates/core/src/commands.rs:1239
 #: crates/ui-egui/src/lib.rs:4096
 msgid "Rotate"
 msgstr "旋轉"
@@ -7080,7 +7100,7 @@ msgstr "儲存到收藏夾"
 msgid "Saved {} to your Favorites"
 msgstr "已將 {} 儲存到您的收藏夾"
 
-#: crates/ui-egui/src/coordinates.rs:509
+#: crates/ui-egui/src/coordinates.rs:532
 #: crates/ui-egui/src/footer.rs:291
 msgid "Scale"
 msgstr "比例"
@@ -7097,7 +7117,7 @@ msgstr "比例：此視圖所代表的圖紙，為模型的 1 : n；其註釋和
 msgid "Scan"
 msgstr "掃瞄"
 
-#: crates/core/src/commands.rs:1652
+#: crates/core/src/commands.rs:1655
 msgid "Schedule"
 msgstr "明細表"
 
@@ -7291,7 +7311,7 @@ msgstr "設置工作平面…"
 msgid "Set by view template {}: change the template, or stop following it."
 msgstr "由視圖樣板 {} 設定：請修改樣板，或取消跟隨。"
 
-#: crates/ui-egui/src/coordinates.rs:653
+#: crates/ui-egui/src/coordinates.rs:676
 msgid "Set it too"
 msgstr ""
 
@@ -7328,7 +7348,7 @@ msgstr "形狀"
 msgid "Shape Editing"
 msgstr "形狀編輯"
 
-#: crates/ui-egui/src/coordinates.rs:40
+#: crates/ui-egui/src/coordinates.rs:44
 msgid "Shared (the map's)"
 msgstr ""
 
@@ -7344,7 +7364,7 @@ msgstr ""
 msgid "Shared North"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:645
+#: crates/ui-egui/src/coordinates.rs:668
 msgid "Shared coordinates"
 msgstr ""
 
@@ -7380,15 +7400,15 @@ msgstr "圖紙（全部）"
 msgid "Sheets as PDF…"
 msgstr "將圖紙導出為 PDF…"
 
-#: crates/ui-egui/src/coordinates.rs:556
+#: crates/ui-egui/src/coordinates.rs:579
 msgid "Shift All"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:547
+#: crates/ui-egui/src/coordinates.rs:570
 msgid "Shift every location"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:553
+#: crates/ui-egui/src/coordinates.rs:576
 msgid "Shift {}"
 msgstr ""
 
@@ -7738,23 +7758,23 @@ msgstr "間距（毫米）"
 msgid "Spacing:"
 msgstr "間距："
 
-#: crates/ui-egui/src/coordinates.rs:663
+#: crates/ui-egui/src/coordinates.rs:686
 msgid "Specify"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:637
+#: crates/ui-egui/src/coordinates.rs:660
 msgid "Specify Coordinates at a Point"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:656
+#: crates/ui-egui/src/coordinates.rs:679
 msgid "Specify angle"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:642
+#: crates/ui-egui/src/coordinates.rs:665
 msgid "Specify at {}"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:647
+#: crates/ui-egui/src/coordinates.rs:670
 msgid "Specify {}"
 msgstr ""
 
@@ -7774,7 +7794,7 @@ msgstr "通過點的樣條曲線：單擊它經過的點；按 Enter 完成"
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "樣條曲線：單擊其控制點；按 Enter 完成"
 
-#: crates/core/src/commands.rs:1278
+#: crates/core/src/commands.rs:1281
 msgid "Split"
 msgstr "拆分"
 
@@ -7793,7 +7813,7 @@ msgstr "拆分圖元 (SL)：在牆或線上單擊要拆分的位置"
 msgid "Split between the line's ends."
 msgstr "請在線的兩端之間拆分。"
 
-#: crates/core/src/commands.rs:891
+#: crates/core/src/commands.rs:894
 msgid "Spot Elevation"
 msgstr "高程點"
 
@@ -7801,7 +7821,7 @@ msgstr "高程點"
 msgid "Spot Elevation (EL): click a floor, a roof or a stair; in a section, a point"
 msgstr "高程點 (EL)：單擊樓板、屋頂或樓梯；在剖面中則單擊一個點"
 
-#: crates/core/src/commands.rs:910
+#: crates/core/src/commands.rs:913
 #: crates/ui-egui/src/lib.rs:1414
 #: crates/ui-egui/src/lib.rs:3696
 msgid "Spot Slope"
@@ -7815,7 +7835,7 @@ msgstr "高程點坡度：在平面中單擊樓板或屋頂；箭頭指向下坡
 msgid "Square Grid"
 msgstr "方格"
 
-#: crates/core/src/commands.rs:721
+#: crates/core/src/commands.rs:724
 msgid "Stair"
 msgstr "樓梯"
 
@@ -7907,7 +7927,7 @@ msgstr "直線"
 msgid "Structural"
 msgstr "結構"
 
-#: crates/core/src/commands.rs:613
+#: crates/core/src/commands.rs:616
 msgid "Structural Column"
 msgstr "結構柱"
 
@@ -7983,15 +8003,15 @@ msgid "Surface, {}°"
 msgstr "表面，{}°"
 
 #: crates/core/src/graphics.rs:132
-#: crates/ui-egui/src/coordinates.rs:605
+#: crates/ui-egui/src/coordinates.rs:628
 msgid "Survey Point"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:607
+#: crates/ui-egui/src/coordinates.rs:630
 msgid "Survey Point {}"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:878
+#: crates/ui-egui/src/coordinates.rs:1011
 msgid "Swap"
 msgstr ""
 
@@ -8086,6 +8106,10 @@ msgstr "系統 {} 相數"
 #: crates/ui-egui/src/electrical.rs:365
 msgid "System {} wires"
 msgstr "系統 {} 導線數"
+
+#: crates/ui-egui/src/coordinates.rs:871
+msgid "Systems"
+msgstr ""
 
 #: crates/ui-egui/src/dock.rs:785
 msgid "Tab with {}"
@@ -8208,7 +8232,7 @@ msgstr "臨時隔離圖元"
 msgid "Temporary dimension {}"
 msgstr "臨時尺寸標注 {}"
 
-#: crates/core/src/commands.rs:820
+#: crates/core/src/commands.rs:823
 #: crates/ui-egui/src/editor.rs:879
 #: crates/ui-egui/src/editor.rs:912
 #: crates/ui-egui/src/notes.rs:503
@@ -8281,7 +8305,7 @@ msgstr "這個檔案太大，不是快速鍵檔案。"
 msgid "The 3D view is drawn on the processor: {}"
 msgstr "3D視圖由處理器繪製：{}"
 
-#: crates/ui-egui/src/coordinates.rs:480
+#: crates/ui-egui/src/coordinates.rs:503
 msgid "The Survey Point's shared coordinates, in the active location."
 msgstr ""
 
@@ -8289,7 +8313,7 @@ msgstr ""
 msgid "The arc doesn't fit: pick two straight lines that meet at an angle, long enough for it."
 msgstr "圓弧放不下：請拾取兩條以一定角度相交、且足夠長的直線。"
 
-#: crates/ui-egui/src/coordinates.rs:620
+#: crates/ui-egui/src/coordinates.rs:643
 msgid "The building stays where it is in the world: every location's numbers are worked out again."
 msgstr ""
 
@@ -8382,7 +8406,7 @@ msgstr "項目中沒有能顯示此內容的階段過濾器：請在“管理”
 msgid "The project stays as you left it."
 msgstr "項目保持您離開時的狀態。"
 
-#: crates/ui-egui/src/coordinates.rs:674
+#: crates/ui-egui/src/coordinates.rs:697
 msgid "The projected coordinate system the shared coordinates are a grid of: a UTM zone, a State Plane zone, a national grid. It shows them in its unit, and takes them to latitude and longitude for the map and the sun."
 msgstr ""
 
@@ -8415,7 +8439,7 @@ msgstr "快速鍵 '{}' 已存在用於 '{}'。"
 msgid "The sketch has too many lines."
 msgstr "草圖中的線太多。"
 
-#: crates/ui-egui/src/coordinates.rs:548
+#: crates/ui-egui/src/coordinates.rs:571
 msgid "The survey moved the site? Add the same amounts to every location at once, say +5 m of elevation."
 msgstr ""
 
@@ -8588,7 +8612,7 @@ msgstr "標題欄寬度:"
 msgid "Title bar"
 msgstr "標題欄"
 
-#: crates/ui-egui/src/coordinates.rs:882
+#: crates/ui-egui/src/coordinates.rs:1015
 #: crates/ui-egui/src/editor.rs:800
 msgid "To"
 msgstr "到"
@@ -8694,7 +8718,7 @@ msgstr "修剪/延伸單個圖元"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "修剪/延伸單個圖元：拾取邊界線，然後在要保留的部分上拾取要更改的線"
 
-#: crates/core/src/commands.rs:1252
+#: crates/core/src/commands.rs:1255
 #: crates/ui-egui/src/sketch.rs:712
 #: crates/ui-egui/src/sketch.rs:964
 msgid "Trim/Extend to Corner"
@@ -8705,7 +8729,7 @@ msgstr "修剪/延伸為角"
 msgid "Trim/Extend to Corner (TR): pick two walls or two lines, on the parts to keep"
 msgstr "修剪/延伸為角 (TR)：拾取兩面牆或兩條線，在要保留的部分上"
 
-#: crates/ui-egui/src/coordinates.rs:410
+#: crates/ui-egui/src/coordinates.rs:433
 msgid "True north is {}° from project north, clockwise"
 msgstr ""
 
@@ -8717,7 +8741,7 @@ msgstr "關閉捕捉替換"
 msgid "Turn the wall about its {}: {}"
 msgstr "繞牆的{}旋轉牆：{}"
 
-#: crates/ui-egui/src/coordinates.rs:254
+#: crates/ui-egui/src/coordinates.rs:277
 msgid "Two locations are called {}."
 msgstr ""
 
@@ -8785,6 +8809,10 @@ msgstr "在選項欄中輸入註釋內容，然後單擊放置位置：即其左
 msgid "Type the note: Shift+Enter breaks the line, Enter or a click outside it finishes."
 msgstr "輸入註釋：Shift+Enter 換行，按 Enter 或在其外單擊完成。"
 
+#: crates/ui-egui/src/coordinates.rs:854
+msgid "Type where the project is, or the system's name or code."
+msgstr ""
+
 #: crates/ui-egui/src/notes.rs:422
 #: crates/ui-egui/src/typeprops.rs:83
 msgid "Type:"
@@ -8797,6 +8825,14 @@ msgstr "類型"
 #: crates/core/src/render.rs:3630
 msgid "UP"
 msgstr "上"
+
+#: crates/core/src/places.rs:279
+msgid "UTM zone on WGS 84"
+msgstr ""
+
+#: crates/core/src/places.rs:277
+msgid "UTM zone on the national datum"
+msgstr ""
 
 #: crates/core/src/schedule.rs:258
 #: crates/ui-egui/src/properties.rs:166
@@ -8874,7 +8910,7 @@ msgstr "取消隱藏圖元 (EU)：恢復此視圖中隱藏的所選圖元"
 msgid "Unhide Elements"
 msgstr "取消隱藏圖元"
 
-#: crates/ui-egui/src/coordinates.rs:692
+#: crates/ui-egui/src/coordinates.rs:803
 msgid "Unit: {}"
 msgstr ""
 
@@ -8890,7 +8926,7 @@ msgstr "單位格式"
 msgid "Unlock alignment"
 msgstr "解鎖對齊"
 
-#: crates/core/src/commands.rs:10249
+#: crates/core/src/commands.rs:10253
 msgid "Unnamed"
 msgstr "未命名"
 
@@ -9159,7 +9195,7 @@ msgstr "體積 (m³)"
 msgid "WC"
 msgstr "坐便器"
 
-#: crates/ui-egui/src/coordinates.rs:41
+#: crates/ui-egui/src/coordinates.rs:45
 msgid "WGS84 (longitude, latitude)"
 msgstr ""
 
@@ -9175,7 +9211,7 @@ msgstr "牆 (WA)：每次單擊創建一段牆；按 Enter 或 Esc 結束連續�
 msgid "Wall Centreline"
 msgstr "牆中心線"
 
-#: crates/core/src/commands.rs:640
+#: crates/core/src/commands.rs:643
 msgid "Wall Footing"
 msgstr "條形基礎"
 
@@ -9267,7 +9303,7 @@ msgstr "施工新建的內容，疊在原有內容之上"
 msgid "What's new"
 msgstr "新功能"
 
-#: crates/ui-egui/src/coordinates.rs:615
+#: crates/ui-egui/src/coordinates.rs:638
 msgid "When the Survey Point moves"
 msgstr ""
 
@@ -9283,7 +9319,7 @@ msgstr ""
 msgid "Where its file's coordinates put it, as the survey placed it"
 msgstr "按檔案座標放置，與測量時的位置一致"
 
-#: crates/ui-egui/src/coordinates.rs:730
+#: crates/ui-egui/src/coordinates.rs:704
 msgid "Where the Survey Point is on the globe, in WGS84 degrees: the active location's east and north are worked out from it."
 msgstr ""
 
@@ -9338,7 +9374,7 @@ msgstr "窗明細表"
 msgid "Windows"
 msgstr "視窗"
 
-#: crates/core/src/commands.rs:686
+#: crates/core/src/commands.rs:689
 msgid "Wire"
 msgstr "導線"
 
@@ -9432,7 +9468,7 @@ msgstr "工作平面垂直於 {} 軸"
 msgid "Worktop"
 msgstr "檯面"
 
-#: crates/ui-egui/src/coordinates.rs:772
+#: crates/ui-egui/src/coordinates.rs:902
 msgid "World map"
 msgstr ""
 
@@ -9440,7 +9476,7 @@ msgstr ""
 msgid "X"
 msgstr "X"
 
-#: crates/ui-egui/src/coordinates.rs:888
+#: crates/ui-egui/src/coordinates.rs:1021
 msgid "X / East"
 msgstr ""
 
@@ -9448,7 +9484,7 @@ msgstr ""
 msgid "Y"
 msgstr "Y"
 
-#: crates/ui-egui/src/coordinates.rs:888
+#: crates/ui-egui/src/coordinates.rs:1021
 msgid "Y / North"
 msgstr ""
 
@@ -9468,7 +9504,7 @@ msgstr "昨天"
 msgid "Your text colour was too close to the panels: it is made darker or lighter to read at 4.5:1"
 msgstr "您的文字顏色與面板過於接近：已調深或調淺，使對比度達到 4.5:1"
 
-#: crates/ui-egui/src/coordinates.rs:888
+#: crates/ui-egui/src/coordinates.rs:1021
 msgid "Z / Elevation"
 msgstr ""
 
@@ -9479,6 +9515,10 @@ msgstr "Z 軸對正"
 #: crates/ui-egui/src/linestyles/creator.rs:76
 msgid "Zig Zag"
 msgstr "鋸齒"
+
+#: crates/core/src/places.rs:278
+msgid "Zone on the national datum"
+msgstr ""
 
 #: crates/ui-egui/src/linestyles/creator.rs:110
 msgid "Zoom"
@@ -11299,3 +11339,15 @@ msgstr "上"
 #: crates/ui-egui/src/settings.rs:473
 #~ msgid "Flat and square, the title bar in the ribbon's greys: the File tab leads the ribbon's tabs and the Options Bar is docked under the ribbon"
 #~ msgstr "扁平方正的外觀，標題欄採用功能區的灰色：“檔案”選項卡位於功能區選項卡之首，選項欄停靠在功能區下方"
+#: crates/ui-egui/src/coordinates.rs:706
+#~ msgid "An EPSG code or words of a name: 31983, UTM 23S, British National Grid"
+#~ msgstr ""
+#: crates/ui-egui/src/coordinates.rs:703
+#~ msgid "Find a system"
+#~ msgstr ""
+#: crates/ui-egui/src/coordinates.rs:699
+#~ msgid "No map system yet: shared coordinates are in metres, and there's no latitude or longitude."
+#~ msgstr ""
+#: crates/ui-egui/src/coordinates.rs:712
+#~ msgid "No projected system of EPSG's matches."
+#~ msgstr ""

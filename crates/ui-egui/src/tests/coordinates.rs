@@ -78,11 +78,33 @@ fn a_map_system_is_found_by_its_code_and_picked() {
     let mut h = app(BOX);
     open(&mut h);
     press(&mut h, "Map System");
+    // A dropdown: its search shows once it's open.
+    assert!(h.query_by_label("Find a map system").is_none());
+    press(&mut h, "Choose a map system");
     type_into(&mut h, "Find a map system", "31983");
     press(&mut h, "EPSG:31983 SIRGAS 2000 / UTM zone 23S, metre");
+    assert!(h.query_by_label("Find a map system").is_none(), "a pick closes it");
     press(&mut h, "OK");
     assert!(h.state().coordinates_dialog.is_none(), "{:?}", said(&h));
     assert_eq!(h.state().session.model.coordinates.crs, Some(31983));
+}
+
+#[test]
+fn a_city_is_found_by_name_and_its_country_s_system_picked_with_it() {
+    let mut h = app(BOX);
+    open(&mut h);
+    press(&mut h, "Map System");
+    press(&mut h, "Choose a map system");
+    type_into(&mut h, "Find a map system", "sao paulo");
+    assert!(h.query_by_label("São Paulo, Brazil").is_some(), "the city, by its name without accents");
+    // Its systems under it, Brazil's datum first.
+    press(&mut h, "São Paulo: EPSG:31983 SIRGAS 2000 / UTM zone 23S, metre");
+    let at = h.state().coordinates_dialog.as_ref().unwrap().lat_lon();
+    assert!((at[0] + 23.557).abs() < 0.01 && (at[1] + 46.627).abs() < 0.01, "the place to Place the Survey Point at: {at:?}");
+    press(&mut h, "OK");
+    assert!(h.state().coordinates_dialog.is_none(), "{:?}", said(&h));
+    assert_eq!(h.state().session.model.coordinates.crs, Some(31983));
+    assert_eq!(h.state().session.model.coordinates.location().east, 0.0, "the Survey Point stays until Place");
 }
 
 #[test]

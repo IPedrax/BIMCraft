@@ -13,6 +13,7 @@ use bimcraft_core::crs::{self, Info};
 use bimcraft_core::engine::Session;
 use bimcraft_core::library::Kind;
 use bimcraft_core::model::Model;
+use bimcraft_core::places::{self, Kind as PlaceKind, Place, Suggestion};
 use bimcraft_core::units::Units;
 use bimcraft_i18n::msg;
 use egui::{
@@ -32,6 +33,9 @@ const TABS: [&str; 4] = [msg!("Locations"), msg!("Points"), msg!("Map System"), 
 
 /// How many systems a search lists.
 const FOUND: usize = 40;
+
+/// How many places a search lists, each with its systems.
+const PLACES: usize = 6;
 
 /// The frames the converter goes between, and what each is called.
 const FRAMES: [(Frame, &str); 4] = [
@@ -74,6 +78,8 @@ pub(crate) struct CoordinatesDialog {
     /// The map system's search: what is typed, what it found, for the text it found it for.
     search: String,
     found: Vec<Info>,
+    /// The countries and cities it names, each with the systems its surveys use.
+    places: Vec<(Place, Vec<Suggestion>)>,
     searched: String,
     /// Place by latitude and longitude.
     lat_lon: [f64; 2],
@@ -119,6 +125,7 @@ impl CoordinatesDialog {
             specify_angle: None,
             search: String::new(),
             found: Vec::new(),
+            places: Vec::new(),
             searched: String::new(),
             lat_lon,
             from: Frame::Internal,
@@ -233,11 +240,27 @@ impl CoordinatesDialog {
         Ok(())
     }
 
+    /// A system picked from under a place: the map system, and the place as the latitude and longitude to Place by, the map
+    /// gone to it. The Survey Point itself waits for Place: a city's middle is rarely the site.
+    fn pick_for(&mut self, code: u32, place: &Place) {
+        self.crs = Some(code);
+        self.lat_lon = [place.lat, place.lon];
+        self.map_at = (place.lon as f32, place.lat as f32);
+        // Fitted again when the map is drawn: a country wide, a city close.
+        self.map_zoom = if place.kind == PlaceKind::City { -8.0 } else { -40.0 };
+    }
+
     /// The search's results, worked out again only when what is typed changes.
     fn find(&mut self) {
         let text = self.search.trim().to_string();
         if text != self.searched {
-            self.found = if text.chars().count() < 2 && text.parse::<u32>().is_err() { Vec::new() } else { crs::search(&text, FOUND) };
+            let short = text.chars().count() < 2 && text.parse::<u32>().is_err();
+            self.found = if short { Vec::new() } else { crs::search(&text, FOUND) };
+            self.places = if short {
+                Vec::new()
+            } else {
+                places::find(&text, PLACES).into_iter().map(|p| (places::systems(&p), p)).map(|(s, p)| (p, s)).collect()
+            };
             self.searched = text;
         }
     }
@@ -674,56 +697,7 @@ fn map_tab(ui: &mut Ui, d: &mut CoordinatesDialog) {
             "The projected coordinate system the shared coordinates are a grid of: a UTM zone, a State Plane zone, a national grid. It shows them in its unit, and takes them to latitude and longitude for the map and the sun."
         ),
     );
-    match d.info() {
-        Some(i) => {
-            crate::style::card([false; 4]).inner_margin(Margin::same(10)).show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    chip(ui, &format!("EPSG:{}", i.code), true);
-                    ui.label(RichText::new(&i.name).strong().size(15.0));
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui
-                            .button(t("Clear"))
-                            .on_hover_text(t("No map system: shared coordinates in metres, and no latitude or longitude"))
-                            .clicked()
-                        {
-                            d.crs = None;
-                        }
-                        ui.label(RichText::new(tf("Unit: {}", &[&i.unit])).color(pal().muted));
-                    });
-                });
-            });
-        }
-        None => {
-            ui.label(
-                RichText::new(t("No map system yet: shared coordinates are in metres, and there's no latitude or longitude.")).italics(),
-            );
-        }
-    }
-    section(ui, msg!("Find a system"), |ui| {
-        let r = ui.add(
-            TextEdit::singleline(&mut d.search)
-                .hint_text(t("An EPSG code or words of a name: 31983, UTM 23S, British National Grid"))
-                .desired_width(f32::INFINITY),
-        );
-        r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, t("Find a map system")));
-        d.find();
-        if !d.searched.is_empty() && d.found.is_empty() {
-            ui.label(RichText::new(t("No projected system of EPSG's matches.")).color(pal().muted));
-        }
-        let mut pick = None;
-        ScrollArea::vertical().id_salt("coordinates-found").max_height(220.0).auto_shrink([false, true]).show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = 1.0;
-            for i in &d.found {
-                if found_row(ui, i, d.crs == Some(i.code)) {
-                    pick = Some(i.code);
-                }
-            }
-        });
-        if let Some(code) = pick {
-            d.crs = Some(code);
-        }
-    });
+    section(ui, msg!("Map system"), |ui| system_picker(ui, d));
     section(ui, msg!("Place by latitude and longitude"), |ui| {
         note(
             ui,
@@ -745,22 +719,183 @@ fn map_tab(ui: &mut Ui, d: &mut CoordinatesDialog) {
     });
 }
 
-/// A system the search found, as a row of the list: its code, its name and its unit, in columns; picked by a click.
-fn found_row(ui: &mut Ui, i: &Info, on: bool) -> bool {
+/// A system the search found, as a row of the list: its code, its name, and its unit (or why it's offered), in columns;
+/// picked by a click. Under a place, `place` names it for screen readers and it sits indented.
+fn found_row(ui: &mut Ui, i: &Info, on: bool, place: Option<&str>, why: Option<&str>, first: bool) -> bool {
     let (rect, r) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::click());
     let label = format!("EPSG:{} {}, {}", i.code, i.name, i.unit);
+    let label = place.map_or_else(|| label.clone(), |p| format!("{p}: {label}"));
     r.widget_info(|| WidgetInfo::selected(WidgetType::SelectableLabel, true, on, label.clone()));
     let p = ui.painter();
     if on || r.hovered() {
         p.rect_filled(rect, 4.0, if on { pal().select_fill } else { pal().hover_fill });
     }
     let y = rect.center().y;
+    let left = rect.left() + if place.is_some() { 26.0 } else { 8.0 };
     let font = egui::FontId::proportional(13.0);
     let code = if on { pal().accent_ink } else { pal().accent };
-    p.text(pos2(rect.left() + 8.0, y), egui::Align2::LEFT_CENTER, format!("EPSG:{}", i.code), egui::FontId::monospace(12.5), code);
-    p.text(pos2(rect.left() + 104.0, y), egui::Align2::LEFT_CENTER, &i.name, font.clone(), pal().text);
-    p.text(pos2(rect.right() - 8.0, y), egui::Align2::RIGHT_CENTER, unit_symbol(&i.unit), font, pal().muted);
+    p.text(pos2(left, y), egui::Align2::LEFT_CENTER, format!("EPSG:{}", i.code), egui::FontId::monospace(12.5), code);
+    let name = p.text(pos2(left + 96.0, y), egui::Align2::LEFT_CENTER, &i.name, font.clone(), pal().text);
+    if first {
+        // The one to pick: a small tag after its name.
+        let tag = p.layout_no_wrap(t("Recommended").to_string(), egui::FontId::proportional(11.0), pal().accent_ink);
+        let at = egui::Rect::from_min_size(pos2(name.right() + 8.0, y - tag.size().y / 2.0 - 1.0), tag.size() + vec2(12.0, 2.0));
+        p.rect_filled(at, 8.0, pal().select_fill);
+        p.galley(at.min + vec2(6.0, 1.0), tag, pal().accent_ink);
+    }
+    let right = match why {
+        Some(w) => format!("{} · {}", t(w), unit_symbol(&i.unit)),
+        None => unit_symbol(&i.unit),
+    };
+    p.text(pos2(rect.right() - 8.0, y), egui::Align2::RIGHT_CENTER, right, font, pal().muted);
     r.on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
+}
+
+/// A place the search found, as a heading over its systems: a pin, its name, where it is.
+fn place_row(ui: &mut Ui, p: &Place) {
+    let (rect, r) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::hover());
+    let label = p.label();
+    r.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, label.clone()));
+    let painter = ui.painter();
+    let y = rect.center().y + 1.0;
+    // A pin: a dot with a ring, as on the map.
+    let c = pos2(rect.left() + 13.0, y);
+    painter.circle(c, 4.5, pal().accent, Stroke::new(1.5, pal().surface));
+    let name = painter.text(pos2(rect.left() + 26.0, y), egui::Align2::LEFT_CENTER, &p.name, egui::FontId::proportional(13.5), pal().text);
+    let mut rest: Vec<&str> = Vec::new();
+    if p.kind == PlaceKind::City {
+        if !p.region.is_empty() && p.region != p.name {
+            rest.push(&p.region);
+        }
+        rest.push(&p.country);
+    }
+    let rest = if p.kind == PlaceKind::Country { t("Country").to_string() } else { rest.join(", ") };
+    painter.text(pos2(name.right() + 8.0, y), egui::Align2::LEFT_CENTER, rest, egui::FontId::proportional(12.0), pal().muted);
+    let deg = format!("{:.3}°, {:.3}°", p.lat, p.lon);
+    painter.text(pos2(rect.right() - 8.0, y), egui::Align2::RIGHT_CENTER, deg, egui::FontId::monospace(11.0), pal().muted);
+}
+
+/// The map system as a dropdown: the one picked (or none) on a button, which opens a search of places and of EPSG's
+/// systems. A place lists the systems its surveys use under it, the one to pick first tagged; a system picked under a place
+/// takes the place too, for Place. Clear beside it takes the map system away.
+fn system_picker(ui: &mut Ui, d: &mut CoordinatesDialog) {
+    let info = d.info();
+    let mut button = egui::Rect::NOTHING;
+    let r = ui.horizontal(|ui| {
+        let clear = 70.0;
+        let (rect, r) = ui.allocate_exact_size(vec2((ui.available_width() - clear).max(200.0), 40.0), Sense::click());
+        button = rect;
+        r.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, t("Choose a map system")));
+        let open = egui::Popup::is_id_open(ui.ctx(), UiId::new("coordinates-system-list"));
+        let p = ui.painter();
+        let fill = if r.hovered() || open { pal().hover_fill } else { pal().surface };
+        p.rect_filled(rect, 6.0, fill);
+        p.rect_stroke(rect, 6.0, Stroke::new(1.0, if open { pal().accent } else { pal().border }), egui::StrokeKind::Inside);
+        let y = rect.center().y;
+        match &info {
+            Some(i) => {
+                let code = p.layout_no_wrap(format!("EPSG:{}", i.code), egui::FontId::proportional(12.0), pal().accent_ink);
+                let chip = egui::Rect::from_min_size(pos2(rect.left() + 10.0, y - 10.0), vec2(code.size().x + 16.0, 20.0));
+                p.rect_filled(chip, 9.0, pal().select_fill);
+                p.galley(pos2(chip.left() + 8.0, y - code.size().y / 2.0), code, pal().accent_ink);
+                let name =
+                    p.text(pos2(chip.right() + 10.0, y), egui::Align2::LEFT_CENTER, &i.name, egui::FontId::proportional(15.0), pal().text);
+                let unit = tf("Unit: {}", &[&i.unit]);
+                p.text(pos2(name.right() + 12.0, y), egui::Align2::LEFT_CENTER, unit, egui::FontId::proportional(12.5), pal().muted);
+            }
+            None => {
+                let none = t("None: shared coordinates in metres, and no latitude or longitude. Choose one…");
+                p.text(pos2(rect.left() + 12.0, y), egui::Align2::LEFT_CENTER, none, egui::FontId::proportional(13.0), pal().muted);
+            }
+        }
+        let c = pos2(rect.right() - 16.0, y);
+        let caret = if open {
+            [c + vec2(-4.0, 2.0), c + vec2(4.0, 2.0), c + vec2(0.0, -3.0)]
+        } else {
+            [c + vec2(-4.0, -2.0), c + vec2(4.0, -2.0), c + vec2(0.0, 3.0)]
+        };
+        p.add(egui::Shape::convex_polygon(caret.to_vec(), pal().icon, Stroke::NONE));
+        if r.has_focus() {
+            p.rect_stroke(rect, 6.0, crate::style::focus_ring(), egui::StrokeKind::Inside);
+        }
+        if ui
+            .add_enabled(info.is_some(), Button::new(t("Clear")))
+            .on_hover_text(t("No map system: shared coordinates in metres, and no latitude or longitude"))
+            .clicked()
+        {
+            d.crs = None;
+        }
+        r.on_hover_cursor(egui::CursorIcon::PointingHand)
+    });
+    let r = r.inner;
+    let id = UiId::new("coordinates-system-list");
+    let opened = r.clicked() && !egui::Popup::is_id_open(ui.ctx(), id);
+    let mut picked: Option<(u32, Option<Place>)> = None;
+    egui::Popup::from_toggle_button_response(&r)
+        .id(id)
+        .width(button.width())
+        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+        .show(|ui| {
+            ui.set_width(button.width() - 16.0);
+            let s = ui.add(
+                TextEdit::singleline(&mut d.search)
+                    .hint_text(t("A city, a country, an EPSG code or words of a name: São Paulo, Germany, 31983, UTM 23S"))
+                    .desired_width(f32::INFINITY),
+            );
+            s.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, t("Find a map system")));
+            if opened {
+                s.request_focus();
+            }
+            d.find();
+            ui.add_space(4.0);
+            ScrollArea::vertical()
+                .id_salt("coordinates-found")
+                .max_height(360.0)
+                .min_scrolled_height(360.0)
+                .auto_shrink([false, true])
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 1.0;
+                    if d.searched.is_empty() {
+                        ui.label(RichText::new(t("Type where the project is, or the system's name or code.")).color(pal().muted));
+                    } else if d.found.is_empty() && d.places.is_empty() {
+                        ui.label(RichText::new(t("No place, and no projected system of EPSG's, matches.")).color(pal().muted));
+                    }
+                    if !d.places.is_empty() {
+                        group_head(ui, msg!("Places"));
+                        for (place, systems) in &d.places {
+                            ui.add_space(2.0);
+                            place_row(ui, place);
+                            for (k, s) in systems.iter().enumerate() {
+                                if found_row(ui, &s.info, d.crs == Some(s.info.code), Some(&place.name), Some(s.why), k == 0) {
+                                    picked = Some((s.info.code, Some(place.clone())));
+                                }
+                            }
+                        }
+                    }
+                    if !d.found.is_empty() {
+                        group_head(ui, msg!("Systems"));
+                        for i in &d.found {
+                            if found_row(ui, i, d.crs == Some(i.code), None, None, false) {
+                                picked = Some((i.code, None));
+                            }
+                        }
+                    }
+                });
+        });
+    if let Some((code, place)) = picked {
+        match place {
+            Some(p) => d.pick_for(code, &p),
+            None => d.crs = Some(code),
+        }
+        egui::Popup::close_id(ui.ctx(), id);
+    }
+}
+
+/// A heading in the dropdown's list: Places, Systems.
+fn group_head(ui: &mut Ui, title: &str) {
+    ui.add_space(6.0);
+    ui.label(RichText::new(t(title).to_uppercase()).size(11.0).strong().color(pal().muted));
+    ui.add_space(2.0);
 }
 
 /// The world map, offline: Natural Earth's coastlines and borders on a plain latitude-longitude grid, every location a pin
@@ -770,7 +905,10 @@ fn world_map(ui: &mut Ui, d: &mut CoordinatesDialog) {
     let size = vec2(ui.available_width(), 300.0);
     let (rect, r) = ui.allocate_exact_size(size, Sense::click_and_drag());
     r.widget_info(|| WidgetInfo::labeled(WidgetType::Other, true, t("World map")));
-    if d.map_zoom <= 0.0 {
+    if d.map_zoom < 0.0 {
+        // A place picked: so many degrees across.
+        d.map_zoom = rect.width() / -d.map_zoom;
+    } else if d.map_zoom == 0.0 {
         // Fitted to show the whole world, or a continent round a place already set.
         d.map_zoom = if d.crs.is_some() { rect.width() / 60.0 } else { rect.width() / 360.0 };
     }
