@@ -138,6 +138,33 @@ impl Default for Coordinates {
     }
 }
 
+/// What an elevation or a spot coordinate measures from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Origin {
+    /// The Project Base Point, along the project's axes.
+    #[default]
+    Base,
+    /// The Survey Point: the active location's shared coordinates.
+    Survey,
+}
+
+impl Origin {
+    pub const NAMES: &str = "base (the Project Base Point) or survey (the shared coordinates)";
+
+    pub fn parse(s: &str) -> Option<Origin> {
+        match s {
+            "base" => Some(Origin::Base),
+            "survey" | "shared" => Some(Origin::Survey),
+            _ => None,
+        }
+    }
+
+    pub fn is_default(&self) -> bool {
+        *self == Origin::Base
+    }
+}
+
 /// How the Survey Point moves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Move {
@@ -227,6 +254,25 @@ impl Coordinates {
                 [lon, lat, q[2]]
             }
         })
+    }
+
+    /// Internal height `z` as measured from `from`.
+    pub fn elevation(&self, z: f64, from: Origin) -> f64 {
+        match from {
+            Origin::Base => z - self.base[2],
+            Origin::Survey => self.location().elevation + z - self.survey[2],
+        }
+    }
+
+    /// Internal plan point `x`, `y` as measured from `from`: east and north.
+    pub fn plan(&self, x: f64, y: f64, from: Origin) -> (f64, f64) {
+        match from {
+            Origin::Base => (x - self.base[0], y - self.base[1]),
+            Origin::Survey => {
+                let q = self.to_shared([x, y, 0.0]);
+                (q[0], q[1])
+            }
+        }
     }
 
     /// The Survey Point moved to `to`, as `how` says.

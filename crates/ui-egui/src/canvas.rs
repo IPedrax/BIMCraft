@@ -3874,12 +3874,26 @@ impl BimApp {
             }
             Tool::Spot => {
                 let at = round(v.mm(q));
-                sketched(&Element::Spot(Spot { view: m.guid(key), at, host: m.spot_host(level, at).map(|h| m.guid(h)), slope: false }));
+                sketched(&Element::Spot(Spot {
+                    view: m.guid(key),
+                    at,
+                    host: m.spot_host(level, at).map(|h| m.guid(h)),
+                    slope: false,
+                    coordinate: false,
+                    origin: Default::default(),
+                }));
                 return;
             }
             Tool::SpotSlope => {
                 let at = round(v.mm(q));
-                sketched(&Element::Spot(Spot { view: m.guid(key), at, host: m.spot_host(level, at).map(|h| m.guid(h)), slope: true }));
+                sketched(&Element::Spot(Spot {
+                    view: m.guid(key),
+                    at,
+                    host: m.spot_host(level, at).map(|h| m.guid(h)),
+                    slope: true,
+                    coordinate: false,
+                    origin: Default::default(),
+                }));
                 return;
             }
             // The door or window a click would put in the wall, as the command makes it, and how far it stands from

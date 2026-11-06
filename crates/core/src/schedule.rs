@@ -208,6 +208,10 @@ const PHASE_CREATED: Own = ("Phase Created", Kind::Text, From::Param);
 const PHASE_DEMOLISHED: Own = ("Phase Demolished", Kind::Text, From::Param);
 const DESIGN_OPTION: Own = ("Design Option", Kind::Text, From::Param);
 const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
+/// Where it stands in the active location's shared coordinates: its point, at its base.
+const SHARED_EAST: Own = (msg!("Shared East"), Kind::Length, From::Key("shared_east"));
+const SHARED_NORTH: Own = (msg!("Shared North"), Kind::Length, From::Key("shared_north"));
+const SHARED_ELEVATION: Own = (msg!("Shared Elevation"), Kind::Length, From::Key("shared_elevation"));
 
 /// A multi-category schedule's category: a row for each element of the categories it lists (`Schedule::categories`),
 /// or of every built one (`built`) where it lists none.
@@ -327,9 +331,30 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
-    ("structuralcolumn", 6, &[ID, TYPE, LEVEL, WIDTH, DEPTH, HEIGHT, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "structuralcolumn",
+        6,
+        &[
+            ID,
+            TYPE,
+            LEVEL,
+            WIDTH,
+            DEPTH,
+            HEIGHT,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
+        ],
+    ),
     (
         "footing",
         6,
@@ -344,6 +369,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
     ("beam", 6, &[ID, TYPE, LEVEL, LENGTH, WIDTH, DEPTH, SYSTEM, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
@@ -431,7 +459,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("component", 4, &[FAMILY, TYPE, LEVEL, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "component",
+        4,
+        &[FAMILY, TYPE, LEVEL, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION, SHARED_EAST, SHARED_NORTH, SHARED_ELEVATION],
+    ),
     (
         "stair",
         7,
@@ -493,7 +525,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
         5,
         &[("Mass", Kind::Text, From::Key("mass")), LEVEL, AREA, ("Perimeter", Kind::Length, From::Metres("perimeter_m")), VOLUME, COUNT],
     ),
-    ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation")), NAME, COUNT]),
+    ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation_shown")), NAME, COUNT]),
 ];
 
 /// The fields of what schedules aren't of: annotation, views and sheets, what Filter on a selection goes by

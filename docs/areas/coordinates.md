@@ -56,6 +56,19 @@ shift. That is what WGS84 is for here, the map and the sun; survey numbers never
 `Frame::Wgs84` is [longitude, latitude, elevation mm]; `convert` returns an error without a CRS. `report` adds each
 point's `wgs84` and the `crs`. `location` takes `latitude` and `longitude` for the Survey Point's east and north.
 
+## Elevations, spots and schedules
+
+`Origin` (base, survey) says what a reading measures from: `Coordinates::elevation` turns an internal height into one from
+the Project Base Point (`z - base.z`) or the Survey Point (the location's elevation plus `z - survey.z`), and
+`Coordinates::plan` a plan point into east and north from the base point, along the project's axes, or in shared
+coordinates. A `Spot` has an `origin` (`Model::spot_reads`, what its text and the `elements` and `spot` replies say;
+`spot_value` stays the internal height, which sections place it by) and, with `coordinate`, is a spot coordinate: in a plan
+only, its north over its east beside a cross (`Model::spot_coordinate`, `render::coordinate_mark`), with no host. A
+`Level` has an `elevation_base`; its head in sections and elevations and the level schedule's Elevation show
+`Model::level_shown`, and `elements` gives `elevation_shown` beside the internal `elevation` commands take. Columns, structural
+columns, footings and components give `shared_east`, `shared_north` and `shared_elevation` (their point at their base), which
+their schedules offer as Shared East, Shared North and Shared Elevation.
+
 ## Commands
 
 - `coordinates`: reports everything (the internal origin and both points, internal and shared, the active location and every
@@ -64,10 +77,11 @@ point's `wgs84` and the `crs`. `location` takes `latitude` and `longitude` for t
   every location when no `name` is given (the survey says +5 m: one command).
 - `specify_coordinates`: the active location solved for a point.
 - `crs`: sets, clears or searches the CRS.
+- `spot_coordinate`, and `origin` on `spot` and `elevation_base` on `level` (and `modify`).
 - `convert_coordinates`: points between `internal`, `base`, `shared` and `wgs84`, of the active location or the one named.
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
 
-Not yet (the plan's later stages): levels' and spots' elevation base and spot coordinates, imports and
+Not yet (the plan's later stages): imports and
 exports through the transform (IFC's `IfcMapConversion`), links by shared coordinates, plans turned to true north, and the
 desktop.

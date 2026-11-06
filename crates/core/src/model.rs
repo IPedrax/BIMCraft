@@ -139,6 +139,9 @@ pub struct Level {
     /// bound them whatever it is.
     #[serde(default = "computation_height", skip_serializing_if = "is_computation_height")]
     pub computation_height: f64,
+    /// What its elevation is shown from: the Project Base Point or the Survey Point. It is stored internal.
+    #[serde(default, skip_serializing_if = "crate::coordinates::Origin::is_default")]
+    pub elevation_base: crate::coordinates::Origin,
 }
 
 fn computation_height() -> f64 {
@@ -160,6 +163,7 @@ impl Level {
             graphics: Graphics::default(),
             section_box: false,
             computation_height: CUT_HEIGHT,
+            elevation_base: Default::default(),
         }
     }
 }
@@ -1304,6 +1308,12 @@ pub struct Spot {
     pub host: Option<Guid>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub slope: bool,
+    /// A spot coordinate: in a plan, the north and east of `at`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub coordinate: bool,
+    /// What it measures from: the Project Base Point or the Survey Point.
+    #[serde(default, skip_serializing_if = "crate::coordinates::Origin::is_default")]
+    pub origin: crate::coordinates::Origin,
 }
 
 /// Another project shown in this one, a reference that can't be edited: Revit's linked model. The file stays where it is;
@@ -5520,6 +5530,22 @@ impl Model {
         }
     }
 
+    /// What a spot elevation shows: its height from its origin, the Project Base Point or the Survey Point.
+    pub fn spot_reads(&self, sp: &Spot) -> Option<f64> {
+        self.spot_value(sp).map(|z| self.coordinates.elevation(z, sp.origin))
+    }
+
+    /// What a spot coordinate shows: in a plan, the east and north of its point from its origin.
+    pub fn spot_coordinate(&self, sp: &Spot) -> Option<(f64, f64)> {
+        matches!(self.elements.get(sp.view)?, Element::Level(_) | Element::PlanView(_))
+            .then(|| self.coordinates.plan(sp.at.0, sp.at.1, sp.origin))
+    }
+
+    /// A level's elevation as it is shown: from its elevation base.
+    pub fn level_shown(&self, l: &Level) -> f64 {
+        self.coordinates.elevation(l.elevation, l.elevation_base)
+    }
+
     /// What a spot slope reads: in a plan, how steeply its host's top falls at its point, %, and which way, a unit vector
     /// downhill in plan (none on the level). None while its host isn't a floor or a roof there, or out of a plan.
     pub fn spot_slope(&self, sp: &Spot) -> Option<(f64, Option<P2>)> {
@@ -6726,7 +6752,10 @@ impl Model {
                 view_ok(sp.view, false)?;
                 point(&who, sp.at)?;
                 match (self.plan_level(sp.view), sp.host) {
-                    (Some(_), None) => return Err(format!("{who}: a spot elevation in a plan reads an element's top; give `host`")),
+                    (None, _) if sp.coordinate => return Err(format!("{who}: a spot coordinate reads north and east: place it in a plan")),
+                    (Some(_), None) if !sp.coordinate => {
+                        return Err(format!("{who}: a spot elevation in a plan reads an element's top; give `host`"));
+                    }
                     (_, Some(h)) if !self.elements.contains_key(h) => return Err(format!("{who}: element {h} doesn't exist")),
                     _ => {}
                 }
