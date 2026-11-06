@@ -112,6 +112,14 @@ where it stands (`at`, `angle`, `raised`). A link placed by `base` or `shared` i
 scale from the link's location, so that the link's origin, where it stands now, has the link's map coordinates here.
 Tests: the link tests in `coordinates_io_tests.rs`.
 
+## Rotate Project North
+
+`rotate_project_north` (`angle`, or `true_north: true` for the active location's angle; about `about`, else the Project
+Base Point) turns every element with a place in plan, through `relocate` as `rotate` does, and both points; every
+location's angle goes back by as much (wrapped to -180..180), and a link placed by base points turns with it, so nothing
+moves in the world, only the project's axes. Levels, sheets, schedules, 3D views and links by shared coordinates stay (the
+last follow the locations). Plan crops stay as they are.
+
 ## Commands
 
 - `coordinates`: reports everything (the internal origin and both points, internal and shared, the active location and every
@@ -122,6 +130,7 @@ Tests: the link tests in `coordinates_io_tests.rs`.
 - `specify_coordinates`: the active location solved for a point.
 - `crs`: sets, clears or searches the CRS.
 - `spot_coordinate`, and `origin` on `spot` and `elevation_base` on `level` (and `modify`).
+- `rotate_project_north`: the model turned, the world kept.
 - `convert_coordinates`: points between `internal`, `base`, `shared` and `wgs84`, of the active location or the one named.
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.

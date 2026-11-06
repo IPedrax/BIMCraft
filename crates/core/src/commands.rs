@@ -569,6 +569,17 @@ pub static ALL: &[Command] = &[
         specify_coordinates,
     ),
     edit(
+        "rotate_project_north",
+        "Rotate Project North",
+        &[],
+        "{angle?: degrees, true_north?: true, about?: [x, y]} turns the whole model `angle` degrees counter-clockwise about \
+         `about` (default the Project Base Point), as Revit's Rotate Project North: every element that has a place in plan, \
+         the Project Base Point and the Survey Point, and links placed by hand or by base points; and turns every location's \
+         angle back by as much, so nothing moves in the world, only the project's axes. `true_north: true` turns it by the \
+         active location's angle, so project north is true north. Returns the `angle` turned and the elements `rotated`",
+        rotate_project_north,
+    ),
+    edit(
         "crs",
         "Coordinate System",
         &[],
@@ -7396,6 +7407,51 @@ fn crs(s: &mut Session, p: &Value) -> R {
         s.model_mut().coordinates.crs = None;
     }
     Ok(json!({"crs": s.model.coordinates.crs.and_then(|code| crate::crs::lookup(code).ok()).map(|i| i.json())}))
+}
+
+fn rotate_project_north(s: &mut Session, p: &Value) -> R {
+    let c = "rotate_project_north";
+    only(c, p, &["angle", "true_north", "about"])?;
+    let angle = match (num(c, p, "angle")?, flag(c, p, "true_north")?) {
+        (Some(a), false) if a.abs() <= 360.0 => a,
+        (Some(a), false) => return Err(bad(c, format!("`angle` is degrees from -360 to 360, not {a}"))),
+        (None, true) => s.model.coordinates.location().angle,
+        (Some(_), true) => return Err(bad(c, "give `angle` or `true_north`, not both")),
+        (None, false) => return Err(bad(c, "give `angle` (degrees, counter-clockwise) or `true_north: true`")),
+    };
+    let base = s.model.coordinates.base;
+    let about = point_opt(c, p, "about")?.unwrap_or(P2(base[0], base[1]));
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let turn = move |q: P2| {
+        let d = q - about;
+        about + P2(d.0 * cos - d.1 * sin, d.0 * sin + d.1 * cos)
+    };
+    let micro = |q: P2| micron(turn(q));
+    let mo = Motion { map: &micro, slide: None, mirror: false };
+    // What has a place in plan turns; what hasn't (levels, sheets, links worked out from the points) stays.
+    let m = &s.model;
+    let all: BTreeSet<Id> = m.elements.keys().copied().collect();
+    let ids: Vec<Id> = all.iter().copied().filter(|id| transformed(c, m, *id, &mo, &all).is_ok()).collect();
+    relocate(c, s, &ids, &mo, None)?;
+    let m = s.model_mut();
+    let co = &mut m.coordinates;
+    for pt in [&mut co.base, &mut co.survey] {
+        let q = turn(P2(pt[0], pt[1]));
+        (pt[0], pt[1]) = (q.0, q.1);
+    }
+    let wrap = |a: f64| {
+        let a = (a + 180.0).rem_euclid(360.0) - 180.0;
+        if a.abs() < 1e-9 { 0.0 } else { a }
+    };
+    co.locations.values_mut().for_each(|l| l.angle = wrap(l.angle - angle));
+    for e in m.elements.values_mut() {
+        if let Element::Link(l) = e
+            && l.by == crate::link::By::Base
+        {
+            l.angle = wrap(l.angle + angle);
+        }
+    }
+    Ok(json!({"angle": angle, "rotated": ids}))
 }
 
 fn specify_coordinates(s: &mut Session, p: &Value) -> R {
