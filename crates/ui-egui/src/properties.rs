@@ -273,6 +273,7 @@ fn rows(category: &str) -> &'static [Row] {
         "sheet" => &[
             ("Identity Data", "number", msg!("Sheet Number"), Text),
             ("Identity Data", "name", msg!("Sheet Name"), Text),
+            ("Graphics", "title_block", msg!("Title Block"), Flag),
             ("Other", "size", msg!("Size"), Text),
         ],
         "viewport" => &[

@@ -858,8 +858,8 @@ pub static ALL: &[Command] = &[
         "sheet",
         "Sheet",
         &[],
-        "{number?, name?, size?: A0|A1|A2|A3|A4} a sheet of paper, landscape (A3 by default), with a title block; numbers \
-         run A101, A102…",
+        "{number?, name?, size?: A0|A1|A2|A3|A4, title_block?: bool} a sheet of paper, landscape (A3 by default), with a \
+         title block unless `title_block` is false (for one drawn on the sheet itself); numbers run A101, A102…",
         new_sheet,
     ),
     edit(
@@ -2593,6 +2593,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("outline".into(), json!(outline.into_iter().map(micron).collect::<Vec<_>>()));
         }
         Element::Sheet(sh) => {
+            extra.insert("title_block".into(), json!(sh.title_block));
             extra.insert("paper".into(), json!(paper(&sh.size)));
             let on: Vec<Id> =
                 m.elements.iter().filter(|(_, e)| matches!(e, Element::Viewport(v) if m.same(v.sheet, id))).map(|(id, _)| *id).collect();
@@ -9710,7 +9711,8 @@ fn new_sheet(s: &mut Session, p: &Value) -> R {
     };
     let name = string(c, p, "name")?.unwrap_or_else(|| m.language.word(msg!("Unnamed")).into());
     let size = string(c, p, "size")?.map_or_else(|| "A3".into(), |z| z.trim().to_ascii_uppercase());
-    let id = s.model_mut().insert(Element::Sheet(Sheet { number: number.clone(), name, size }));
+    let title_block = if absent(p.get("title_block")) { true } else { flag(c, p, "title_block")? };
+    let id = s.model_mut().insert(Element::Sheet(Sheet { number: number.clone(), name, size, title_block }));
     Ok(json!({"id": id, "number": number}))
 }
 
