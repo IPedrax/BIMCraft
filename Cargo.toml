@@ -9,6 +9,9 @@ license = "MIT OR Apache-2.0"
 rust-version = "1.90"
 
 [workspace.dependencies]
+# Map projections (pure Rust PROJ.4) and EPSG's definitions, for coordinates' WGS84.
+proj4rs = { version = "0.3", default-features = false }
+crs-definitions = "0.6"
 # GUIDs: the system's random numbers.
 getrandom = "0.3"
 tempfile = "3"

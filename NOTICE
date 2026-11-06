@@ -154,3 +154,20 @@ beside this file (in the Linux packages under /usr/share/doc/bimcraft, in the ma
 BIMCraft does not change the fonts: it picks a weight of the variable font when it draws, and that is all. "Plex" is a
 Reserved Font Name, so the fonts keep it. "IBM Plex" is a trademark of IBM Corp, registered in many jurisdictions worldwide.
 The place the two files were obtained from was not recorded when they were added.
+
+==============================================================================
+Map coordinate systems: EPSG, crs-definitions and proj4rs
+==============================================================================
+
+The core (bimcraft-core) converts a project's shared coordinates to WGS84
+through two crates, unmodified:
+
+  crs-definitions  CC0-1.0            EPSG's CRS definitions as proj strings
+    https://crates.io/crates/crs-definitions/0.6.0
+  proj4rs          MIT OR Apache-2.0  map projections, a Rust PROJ.4
+    https://crates.io/crates/proj4rs/0.3.0
+
+The definitions come from the EPSG Geodetic Parameter Dataset, maintained by
+the International Association of Oil & Gas Producers (IOGP), https://epsg.org,
+used under its terms of use. BIMCraft names each system by its EPSG code and
+name as the dataset gives them; it does not change the dataset's data.

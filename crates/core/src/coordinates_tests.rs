@@ -226,3 +226,90 @@ fn a_project_in_portuguese_starts_with_its_location_named_in_it() {
     assert_eq!(s.model.coordinates.active, "Interno");
     assert_eq!(s.model.check(), Ok(()));
 }
+
+// ---------- a map's coordinate reference system, and WGS84 ----------
+
+/// A location whose Survey Point, at the internal origin, has grid coordinates `e`, `n` in the CRS's own unit, `unit` mm.
+fn at_grid(s: &mut Session, code: u32, e: f64, n: f64, unit: f64) {
+    run(s, "crs", json!({"code": code}));
+    run(s, "location", json!({"name": "Internal", "east": e * unit, "north": n * unit}));
+}
+
+fn wgs84(s: &mut Session) -> (f64, f64) {
+    let p = convert(s, "internal", "wgs84", [0.0, 0.0, 0.0]);
+    (p[0].as_f64().unwrap(), p[1].as_f64().unwrap())
+}
+
+/// Reference values from PROJ 9's cs2cs, EPSG:4326 to each CRS. WGS84 is for the map and the sun, so a few centimetres
+/// (proj4rs's Lambert, against PROJ's) or metres (a Helmert shift where PROJ may use a grid) are within what it is for.
+#[test]
+fn shared_coordinates_reach_wgs84_through_the_crs() {
+    // (code, grid east, grid north, mm per unit, longitude, latitude, tolerance in degrees)
+    let us_foot = 1_200_000.0 / 3937.0;
+    for (code, e, n, unit, lon, lat, tol) in [
+        (31983, 333_317.911_294, 7_394_644.036_688, 1000.0, -46.633, -23.55, 1e-8),
+        (31982, 673_648.491_098, 7_186_491.014_442, 1000.0, -49.2733, -25.4284, 1e-8),
+        (32633, 602_065.207_411, 5_340_353.594_304, 1000.0, 16.3738, 48.2082, 1e-8),
+        (2263, 988_212.166_662, 211_939.490_081, us_foot, -73.9857, 40.7484, 2e-6),
+        (27700, 530_268.167_252, 179_640.532_249, 1000.0, -0.1246, 51.5007, 5e-5),
+    ] {
+        let mut s = Session::new();
+        at_grid(&mut s, code, e, n, unit);
+        let (x, y) = wgs84(&mut s);
+        assert!((x - lon).abs() < tol && (y - lat).abs() < tol, "EPSG:{code}: {x}, {y}, not {lon}, {lat}");
+        // And back where it was, to the millimetre.
+        let back = convert(&mut s, "wgs84", "shared", [x, y, 0.0]);
+        let b: Vec<f64> = back.as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect();
+        assert!((b[0] - e * unit).abs() < 1.0 && (b[1] - n * unit).abs() < 1.0, "EPSG:{code}: back to {back}");
+    }
+}
+
+#[test]
+fn the_crs_says_its_name_and_unit() {
+    let mut s = Session::new();
+    run(&mut s, "crs", json!({"code": "EPSG:2263"}));
+    let r = run(&mut s, "coordinates", json!({}));
+    assert_eq!(r["crs"]["code"], 2263, "{r}");
+    assert!(r["crs"]["name"].as_str().is_some_and(|n| n.contains("New York")), "{r}");
+    assert_eq!(r["crs"]["unit"], "US survey foot", "{r}");
+    assert!(r["survey"]["wgs84"].is_array(), "{r}");
+    run(&mut s, "crs", json!({"clear": true}));
+    assert_eq!(s.model.coordinates.crs, None);
+    let r = run(&mut s, "coordinates", json!({}));
+    assert!(r["survey"].get("wgs84").is_none(), "{r}");
+}
+
+#[test]
+fn crs_search_finds_by_name_and_code() {
+    let mut s = Session::new();
+    let r = run(&mut s, "crs", json!({"search": "sirgas 2000 utm 23s"}));
+    let found: Vec<u64> = r["found"].as_array().unwrap().iter().filter_map(|x| x["code"].as_u64()).collect();
+    assert!(found.contains(&31983), "{r}");
+    let r = run(&mut s, "crs", json!({"search": "27700"}));
+    assert_eq!(r["found"][0]["code"], 27700, "{r}");
+    let r = run(&mut s, "crs", json!({"search": "utm", "limit": 3}));
+    assert_eq!(r["found"].as_array().map(Vec::len), Some(3));
+}
+
+#[test]
+fn only_a_known_projected_crs_is_taken() {
+    let mut s = Session::new();
+    let e = fails(&mut s, "crs", json!({"code": 4326}));
+    assert!(e.contains("projected"), "{e}");
+    let e = fails(&mut s, "crs", json!({"code": 1}));
+    assert!(e.contains("EPSG:1"), "{e}");
+    let e = fails(&mut s, "convert_coordinates", json!({"points": [[0, 0, 0]], "from": "internal", "to": "wgs84"}));
+    assert!(e.contains("crs"), "{e}");
+}
+
+#[test]
+fn a_location_is_placed_by_latitude_and_longitude() {
+    let mut s = Session::new();
+    run(&mut s, "crs", json!({"code": 31983}));
+    run(&mut s, "location", json!({"name": "Internal", "longitude": -46.633, "latitude": -23.55, "elevation": 760_000.0}));
+    let l = &s.model.coordinates.locations["Internal"];
+    assert!((l.east - 333_317_911.294).abs() < 1.0 && (l.north - 7_394_644_036.688).abs() < 1.0, "{l:?}");
+    assert_eq!(l.elevation, 760_000.0);
+    let e = fails(&mut s, "location", json!({"name": "Internal", "latitude": 95.0, "longitude": 0.0}));
+    assert!(e.contains("latitude"), "{e}");
+}

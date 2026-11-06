@@ -127,6 +127,9 @@ pub struct Coordinates {
     pub active: String,
     /// Its locations, by name.
     pub locations: BTreeMap<String, Location>,
+    /// The map's coordinate reference system the shared coordinates are in, by EPSG code: none, a local grid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crs: Option<u32>,
 }
 
 impl Default for Coordinates {
@@ -153,16 +156,19 @@ pub enum Frame {
     Base,
     /// The active location's shared coordinates.
     Shared,
+    /// WGS84 through the CRS: longitude and latitude, degrees, and the elevation, mm.
+    Wgs84,
 }
 
 impl Frame {
-    pub const NAMES: &str = "internal, base, shared";
+    pub const NAMES: &str = "internal, base, shared, wgs84";
 
     pub fn parse(s: &str) -> Option<Frame> {
         match s {
             "internal" => Some(Frame::Internal),
             "base" => Some(Frame::Base),
             "shared" | "survey" => Some(Frame::Shared),
+            "wgs84" => Some(Frame::Wgs84),
             _ => None,
         }
     }
@@ -176,6 +182,7 @@ impl Coordinates {
             survey: [0.0; 3],
             active: name.to_string(),
             locations: BTreeMap::from([(name.to_string(), Location::default())]),
+            crs: None,
         }
     }
 
@@ -198,18 +205,28 @@ impl Coordinates {
         self.location().to_internal(self.survey, q)
     }
 
-    /// `p` from frame `from` to frame `to`.
-    pub fn convert(&self, p: P3, from: Frame, to: Frame) -> P3 {
+    /// `p` from frame `from` to frame `to`; WGS84 needs a CRS.
+    pub fn convert(&self, p: P3, from: Frame, to: Frame) -> Result<P3, String> {
+        let crs = || self.crs.ok_or("WGS84 needs the project's map grid: set one with `crs`");
         let internal = match from {
             Frame::Internal => p,
             Frame::Base => [p[0] + self.base[0], p[1] + self.base[1], p[2] + self.base[2]],
             Frame::Shared => self.to_internal(p),
+            Frame::Wgs84 => {
+                let (e, n) = crate::crs::from_wgs84(crs()?, p[0], p[1])?;
+                self.to_internal([e, n, p[2]])
+            }
         };
-        match to {
+        Ok(match to {
             Frame::Internal => internal,
             Frame::Base => [internal[0] - self.base[0], internal[1] - self.base[1], internal[2] - self.base[2]],
             Frame::Shared => self.to_shared(internal),
-        }
+            Frame::Wgs84 => {
+                let q = self.to_shared(internal);
+                let (lon, lat) = crate::crs::to_wgs84(crs()?, q[0], q[1])?;
+                [lon, lat, q[2]]
+            }
+        })
     }
 
     /// The Survey Point moved to `to`, as `how` says.
@@ -259,12 +276,21 @@ impl Coordinates {
             }
             l.check(name)?;
         }
+        if let Some(code) = self.crs {
+            crate::crs::lookup(code)?;
+        }
         Ok(())
     }
 
     /// Everything about it, as the `coordinates` command reports it.
     pub fn report(&self) -> serde_json::Value {
-        let point = |p: P3| serde_json::json!({"internal": p, "shared": self.to_shared(p)});
+        let point = |p: P3| {
+            let mut v = serde_json::json!({"internal": p, "shared": self.to_shared(p)});
+            if let Ok(w) = self.convert(p, Frame::Internal, Frame::Wgs84) {
+                v["wgs84"] = serde_json::json!(w);
+            }
+            v
+        };
         serde_json::json!({
             "internal_origin": point([0.0; 3]),
             "base": point(self.base),
@@ -272,6 +298,7 @@ impl Coordinates {
             "active": self.active,
             "location": self.location(),
             "locations": self.locations,
+            "crs": self.crs.and_then(|c| crate::crs::lookup(c).ok()).map(|i| i.json()),
         })
     }
 }

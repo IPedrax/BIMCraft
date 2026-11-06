@@ -26,6 +26,7 @@ pub mod coordinates;
 #[cfg(test)]
 mod coordinates_tests;
 pub mod crosscheck;
+pub mod crs;
 mod csg;
 pub mod curves;
 pub mod demand;

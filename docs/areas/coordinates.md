@@ -43,6 +43,19 @@ file holds its GUID and a rename follows.
 name that isn't one, and a location out of bounds (`Location::check`: finite, within `MAX_SHARED`, an angle from -360 to 360,
 a scale in `SCALE`, 0.9 to 1.1).
 
+## A map's CRS and WGS84
+
+`Coordinates::crs` is an EPSG code: a projected CRS the shared coordinates are a grid of. `crs.rs` looks it up in
+`crs-definitions` (EPSG's definitions as proj strings, CC0; `lookup` refuses a code it lacks and a geographic one), names
+it by its WKT's name, and gives its grid unit (metre, foot, US survey foot: shared coordinates stay mm, and the grid's own
+numbers are the mm over `Info::mm`). `to_wgs84` and `from_wgs84` go through `proj4rs`, pure Rust PROJ.4: 2D, with the
+definition's Helmert shift, so within centimetres of PROJ on a UTM or Lambert grid and metres where PROJ would use a grid
+shift. That is what WGS84 is for here, the map and the sun; survey numbers never go through it. `search` scans every code
+(a match, fast) for a code or all words of a name. EPSG's terms ask for the attribution in `NOTICE`.
+
+`Frame::Wgs84` is [longitude, latitude, elevation mm]; `convert` returns an error without a CRS. `report` adds each
+point's `wgs84` and the `crs`. `location` takes `latitude` and `longitude` for the Survey Point's east and north.
+
 ## Commands
 
 - `coordinates`: reports everything (the internal origin and both points, internal and shared, the active location and every
@@ -50,10 +63,11 @@ a scale in `SCALE`, 0.9 to 1.1).
 - `location`: makes (a copy of the active one), edits, renames, activates and deletes a location; `shift` adds to one, or to
   every location when no `name` is given (the survey says +5 m: one command).
 - `specify_coordinates`: the active location solved for a point.
-- `convert_coordinates`: points between `internal`, `base` and `shared`, of the active location or the one named.
+- `crs`: sets, clears or searches the CRS.
+- `convert_coordinates`: points between `internal`, `base`, `shared` and `wgs84`, of the active location or the one named.
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
 
-Not yet (the plan's later stages): a CRS and WGS84, levels' and spots' elevation base and spot coordinates, imports and
+Not yet (the plan's later stages): levels' and spots' elevation base and spot coordinates, imports and
 exports through the transform (IFC's `IfcMapConversion`), links by shared coordinates, plans turned to true north, and the
 desktop.

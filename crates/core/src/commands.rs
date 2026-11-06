@@ -555,6 +555,18 @@ pub static ALL: &[Command] = &[
          coordinates given (mm), turned to `angle` (degrees from project north to true north, east positive) when given",
         specify_coordinates,
     ),
+    edit(
+        "crs",
+        "Coordinate System",
+        &[],
+        "{code?: 31983|\"EPSG:31983\", clear?: true, search?, limit?} the map's coordinate reference system the shared \
+         coordinates are in: a projected CRS of EPSG's dataset (a UTM zone, a State Plane zone, a national grid), whose grid \
+         unit (metre, foot, US survey foot) shared coordinates are converted from, mm always in commands. With it, \
+         `convert_coordinates` reaches `wgs84` and `location` takes `latitude` and `longitude`. `search` lists the CRSs whose \
+         code it is or whose name has all its words (up to `limit`, 20 by default), changing nothing. Without parameters, says \
+         the project's",
+        crs,
+    ),
     other(
         "convert_coordinates",
         "Convert Coordinates",
@@ -7132,7 +7144,11 @@ fn coordinates(s: &mut Session, p: &Value) -> R {
 fn location(s: &mut Session, p: &Value) -> R {
     use crate::coordinates::{Location, MAX_LOCATIONS};
     let c = "location";
-    only(c, p, &["name", "east", "north", "elevation", "angle", "scale", "rename", "activate", "delete", "shift"])?;
+    only(
+        c,
+        p,
+        &["name", "east", "north", "elevation", "angle", "scale", "rename", "activate", "delete", "shift", "latitude", "longitude"],
+    )?;
     let name = name_param(c, p, "name")?;
     let shift = shared3(c, p, "shift")?;
     let shifted = |l: &mut Location, d: [f64; 3]| {
@@ -7176,6 +7192,15 @@ fn location(s: &mut Session, p: &Value) -> R {
     if let Some(x) = shared1(c, p, "elevation")? {
         l.elevation = x;
     }
+    match (amount(c, p, "longitude", "degrees")?, amount(c, p, "latitude", "degrees")?) {
+        (None, None) => {}
+        (Some(lon), Some(lat)) => {
+            let code =
+                m.coordinates.crs.ok_or_else(|| bad(c, "`latitude` and `longitude` need the project's map grid: set one with `crs`"))?;
+            (l.east, l.north) = crate::crs::from_wgs84(code, lon, lat).map_err(|e| bad(c, e))?;
+        }
+        _ => return Err(bad(c, "`latitude` and `longitude` go together")),
+    }
     if let Some(a) = north_angle(c, p, "angle")? {
         l.angle = a;
     }
@@ -7205,6 +7230,43 @@ fn location(s: &mut Session, p: &Value) -> R {
         m.coordinates.active = name.clone();
     }
     Ok(json!({"name": name, "location": l, "active": m.coordinates.active}))
+}
+
+fn crs(s: &mut Session, p: &Value) -> R {
+    let c = "crs";
+    only(c, p, &["code", "clear", "search", "limit"])?;
+    if let Some(text) = string(c, p, "search")? {
+        let limit = match p.get("limit") {
+            v if absent(v) => 20,
+            Some(v) => {
+                v.as_u64().filter(|n| (1..=500).contains(n)).ok_or_else(|| bad(c, format!("`limit` must be 1 to 500, got {v}")))? as usize
+            }
+            None => 20,
+        };
+        let found: Vec<Value> = crate::crs::search(&text, limit).iter().map(crate::crs::Info::json).collect();
+        return Ok(json!({"found": found}));
+    }
+    let code = match p.get("code") {
+        v if absent(v) => None,
+        Some(Value::String(t)) => {
+            let digits = t.trim().trim_start_matches("EPSG:").trim_start_matches("epsg:");
+            Some(digits.parse::<u32>().map_err(|_| bad(c, format!("`code` is an EPSG code, 31983 or \"EPSG:31983\", not `{t}`")))?)
+        }
+        Some(v) => Some(
+            v.as_u64()
+                .and_then(|n| u32::try_from(n).ok())
+                .ok_or_else(|| bad(c, format!("`code` is an EPSG code, 31983 or \"EPSG:31983\", not {v}")))?,
+        ),
+        None => None,
+    };
+    let clear = flag(c, p, "clear")?;
+    if let Some(code) = code {
+        crate::crs::lookup(code).map_err(|e| bad(c, e))?;
+        s.model_mut().coordinates.crs = Some(code);
+    } else if clear {
+        s.model_mut().coordinates.crs = None;
+    }
+    Ok(json!({"crs": s.model.coordinates.crs.and_then(|code| crate::crs::lookup(code).ok()).map(|i| i.json())}))
 }
 
 fn specify_coordinates(s: &mut Session, p: &Value) -> R {
@@ -7246,7 +7308,7 @@ fn convert_coordinates(s: &mut Session, p: &Value) -> R {
         }
         co.active = name;
     }
-    let out: Vec<[f64; 3]> = pts.into_iter().map(|q| co.convert(q, from, to)).collect();
+    let out: Vec<[f64; 3]> = pts.into_iter().map(|q| co.convert(q, from, to)).collect::<Result<_, _>>().map_err(|e| bad(c, e))?;
     if out.iter().flatten().any(|x| !x.is_finite() || x.abs() > MAX_SHARED) {
         return Err(bad(c, "a point lands past the coordinates' bounds"));
     }
