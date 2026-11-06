@@ -1520,6 +1520,20 @@ pub static ALL: &[Command] = &[
     )
     .menu("Manage > Room Area Computation"),
     edit(
+        "georeference",
+        "Project Location",
+        &[],
+        "{crs?, eastings?, northings?, height?, rotation?, scale?, description?, geodetic_datum?, vertical_datum?, map_projection?, \
+         map_zone?, clear?: true} where the project lies on a map, as IFC's map conversion to a projected coordinate reference \
+         system: the CRS by name (an EPSG code, `EPSG:31983`) and what else is known of it, the map point of the project's origin \
+         (`eastings`, `northings`, `height`, mm), how far the project's x axis is turned from the map's east (`rotation`, degrees \
+         counterclockwise) and a distance on the map over the same in the project (`scale`, 1 as it starts). A project with none \
+         takes one with `crs`; what isn't given keeps its value. `clear` takes it away. With nothing, it says it (null for none). \
+         IFC import keeps the file's (moved with the model where the import brings it near the origin) and export writes it back as \
+         IfcMapConversion to an IfcProjectedCRS in metres; the model's own coordinates and drawings don't move",
+        georeference,
+    ),
+    edit(
         "language",
         "Project Language",
         &[],
@@ -12479,6 +12493,58 @@ fn room_area(s: &mut Session, p: &Value) -> R {
         }
     }
     Ok(json!({"at": s.model.room_area.name()}))
+}
+
+fn georeference(s: &mut Session, p: &Value) -> R {
+    let c = "georeference";
+    const TEXTS: [&str; 5] = ["description", "geodetic_datum", "vertical_datum", "map_projection", "map_zone"];
+    const NUMBERS: [&str; 5] = ["eastings", "northings", "height", "rotation", "scale"];
+    let keys: Vec<&str> = ["crs", "clear"].into_iter().chain(TEXTS).chain(NUMBERS).collect();
+    only(c, p, &keys)?;
+    let given = keys.iter().filter(|k| **k != "clear").any(|k| !absent(p.get(*k)));
+    match p.get("clear") {
+        None | Some(Value::Null) => {}
+        Some(Value::Bool(true)) if !given => {
+            if s.model.georeference.is_some() {
+                s.model_mut().georeference = None;
+            }
+            return Ok(json!({"georeference": null}));
+        }
+        Some(Value::Bool(true)) => return Err(bad(c, "`clear` takes the georeference away, and nothing else with it")),
+        Some(Value::Bool(false)) => {}
+        Some(_) => return Err(bad(c, "`clear` is true or false")),
+    }
+    if given {
+        let crs = string(c, p, "crs")?;
+        let mut g = match (&s.model.georeference, &crs) {
+            (Some(g), _) => g.clone(),
+            (None, Some(_)) => crate::model::Georeference { scale: 1.0, ..Default::default() },
+            (None, None) => {
+                return Err(bad(c, "the project has no georeference yet: give its coordinate reference system's name, `crs` (EPSG:31983)"));
+            }
+        };
+        if let Some(crs) = crs {
+            g.crs = crs;
+        }
+        let mut texts = [&mut g.description, &mut g.geodetic_datum, &mut g.vertical_datum, &mut g.map_projection, &mut g.map_zone];
+        for (key, field) in TEXTS.into_iter().zip(texts.iter_mut()) {
+            if let Some(t) = string(c, p, key)? {
+                **field = Some(t).filter(|t| !t.trim().is_empty());
+            }
+        }
+        // Map coordinates run past the model's own (`num`'s `MAX_COORD`): `Georeference::check` bounds them.
+        let mut numbers = [&mut g.eastings, &mut g.northings, &mut g.height, &mut g.rotation, &mut g.scale];
+        for (key, field) in NUMBERS.into_iter().zip(numbers.iter_mut()) {
+            if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
+                **field = v.as_f64().filter(|x| x.is_finite()).ok_or_else(|| bad(c, format!("`{key}` must be a number, got {v}")))?;
+            }
+        }
+        g.check().map_err(|e| bad(c, e))?;
+        if s.model.georeference.as_ref() != Some(&g) {
+            s.model_mut().georeference = Some(g);
+        }
+    }
+    Ok(json!({"georeference": s.model.georeference}))
 }
 
 /// `kind` `from` is called `to` now: its library entry, and everything that names it.

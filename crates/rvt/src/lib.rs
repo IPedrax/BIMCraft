@@ -16,6 +16,7 @@ mod error;
 #[cfg(any(test, feature = "testing"))]
 pub mod fixture;
 mod floors;
+mod framing;
 mod generic;
 pub mod gzip;
 mod import;
