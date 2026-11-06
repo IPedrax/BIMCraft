@@ -1866,7 +1866,10 @@ pub static ALL: &[Command] = &[
         "{rooms?: [{name, area, perimeter, kind?: bath|kitchen|service|dry|veranda|other, points?}], alternative?} the lighting and the \
          general-use outlets (TUG) of a dwelling's rooms as NBR 5410:2004 item 9.5.2 asks. The rooms are `rooms` (`area` in m², \
          `perimeter` in millimetres, `points` the outlets the room has, the least it needs when absent) or, without it, the rooms of the \
-         model, measured inside the walls' finish. A room's kind is known by its name (Portuguese or English: banheiro, cozinha, copa, \
+         model, measured inside the walls' finish, with the power outlets and the luminaires that stand in each (the room a \
+         component's point is in, at the walls' centre lines; standing in the last phase, primary design options): `tug_points` and \
+         `lighting_points` are those drawn, and a room with no luminaire is not `ok`. Where the model draws no outlet, or no \
+         luminaire, at all, that count is the least instead (`counted` says which were drawn). A room's kind is known by its name (Portuguese or English: banheiro, cozinha, copa, \
          área de serviço, lavanderia, sala, dormitório, varanda…) unless `kind` gives it; a name that says none is `other`. Lighting: 1 \
          ceiling point of 100 VA up to 6 m² and 60 VA more for each whole 4 m² above. Outlets: a bathroom 1; kitchen, pantry, service \
          area, laundry one for each 3.5 m of perimeter; room, bedroom one for each 5 m; veranda 1; the others 1 up to 6 m² and one \
@@ -2459,6 +2462,15 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert(key.into(), json!(g));
         }
     });
+    // The room a component stands in, as Revit's Room parameter: by GUID, with its number and name for schedules and tags.
+    if let Element::Component(c) = e
+        && let Some(id) = rooms.room_at(c.level, c.at)
+        && let Some(Element::Room(r)) = m.elements.get(id)
+    {
+        extra.insert("room".into(), json!(m.guid(id)));
+        extra.insert("room_number".into(), json!(r.number));
+        extra.insert("room_name".into(), json!(r.name));
+    }
     match e {
         Element::CadImport(ci) => {
             if let Some(cad) = m.cads.get(&ci.cad) {
@@ -5504,14 +5516,25 @@ fn load_points(s: &mut Session, p: &Value) -> R {
     let round = |x: f64| (x * 100.0).round() / 100.0 + 0.0;
     // (name, kind, area m2, perimeter m, points, kind given)
     let mut input: Vec<(String, Kind, f64, f64, Option<u32>, bool)> = Vec::new();
+    // The lighting points each room has, where the model draws any.
+    let mut lit: Vec<Option<u32>> = Vec::new();
     let mut skipped = Vec::new();
+    let mut counted = (false, false);
     match p.get("rooms").filter(|v| !absent(Some(v))) {
         None => {
             let m = &s.model;
+            let rooms = crate::rooms::Rooms::new(m);
+            let (outlets, lights) = drawn_points(m, &rooms);
+            counted = (outlets.is_some(), lights.is_some());
+            let count = |by: &Option<BTreeMap<Id, u32>>, id: Id| by.as_ref().map(|by| by.get(&id).copied().unwrap_or(0));
             for (id, e) in m.elements.iter() {
                 let Element::Room(r) = e else { continue };
-                match m.room_region_at(r, RoomArea::Finish) {
-                    Some(g) => input.push((r.name.clone(), loads::kind_of(&r.name), g.area() / 1.0e6, g.perimeter() / 1000.0, None, false)),
+                match rooms.region_at(r, RoomArea::Finish) {
+                    Some(g) => {
+                        let area = g.area() / 1.0e6;
+                        input.push((r.name.clone(), loads::kind_of(&r.name), area, g.perimeter() / 1000.0, count(&outlets, *id), false));
+                        lit.push(count(&lights, *id));
+                    }
                     None => skipped.push(json!({"id": id, "name": r.name, "why": "not enclosed by walls"})),
                 }
             }
@@ -5553,13 +5576,15 @@ fn load_points(s: &mut Session, p: &Value) -> R {
         input.iter().map(|r| loads::Room { name: &r.0, kind: r.1, area: r.2, perimeter: r.3, provided: r.4 }).collect();
     let t = loads::total(&rooms, alternative);
     let mut list = Vec::new();
-    for (r, sh) in input.iter().zip(&t.rooms) {
+    let mut all_ok = true;
+    for (i, (r, sh)) in input.iter().zip(&t.rooms).enumerate() {
         let mut o = Map::new();
         o.insert("name".into(), json!(r.0));
         o.insert("kind".into(), json!(r.1.key()));
         o.insert("area_m2".into(), json!(round(r.2)));
         o.insert("perimeter_m".into(), json!(round(r.3)));
-        o.insert("lighting_points".into(), json!(1));
+        let lights = lit.get(i).copied().flatten();
+        o.insert("lighting_points".into(), json!(lights.unwrap_or(1)));
         o.insert("lighting_va".into(), json!(sh.lighting_va));
         o.insert("tug_minimum".into(), json!(sh.minimum));
         o.insert("tug_points".into(), json!(sh.points));
@@ -5567,7 +5592,9 @@ fn load_points(s: &mut Session, p: &Value) -> R {
         if sh.counter_outlets > 0 {
             o.insert("counter_outlets".into(), json!(sh.counter_outlets));
         }
-        o.insert("ok".into(), json!(sh.points >= sh.minimum));
+        let ok = sh.points >= sh.minimum && lights.is_none_or(|n| n >= 1);
+        all_ok &= ok;
+        o.insert("ok".into(), json!(ok));
         if r.1 == Kind::Other && !r.5 {
             o.insert("note".into(), json!("the name says no kind of room: treated as `other`; give `kind`"));
         }
@@ -5582,9 +5609,39 @@ fn load_points(s: &mut Session, p: &Value) -> R {
         "wet_points": t.wet_points,
         "alternative_possible": t.alternative_possible,
         "alternative_applied": t.alternative_applied,
-        "ok": t.rooms.iter().all(|sh| sh.points >= sh.minimum),
+        "ok": all_ok,
+        "counted": {"outlets": counted.0, "lighting": counted.1},
         "not_covered": "the exceptions to the lighting point and to a veranda's outlet, the placement of the outlets (near the lavatory, over a counter, up to 0.80 m outside the door of a room of 2.25 m² or less) and the TUE",
     }))
+}
+
+/// How many of something stand in each room, by the room's id.
+type PerRoom = BTreeMap<Id, u32>;
+
+/// The power outlets and the luminaires standing in each room of `m` (in the last phase, of the primary design options), by
+/// the room's id: `None` for a category of which the model has none standing anywhere, so a model that draws no outlets is
+/// taken to have the least, as `rooms` without `points` is. Every outlet counts, a specific-use one too.
+fn drawn_points(m: &Model, rooms: &crate::rooms::Rooms) -> (Option<PerRoom>, Option<PerRoom>) {
+    use crate::phasing::{self, Status};
+    let last = m.phases.len().saturating_sub(1);
+    let shown = crate::graphics::Graphics::default();
+    let (mut outlets, mut lights): (Option<PerRoom>, Option<PerRoom>) = (None, None);
+    for e in m.elements.values() {
+        let Element::Component(c) = e else { continue };
+        let by = match m.families.get(&c.family).map(|f| f.category) {
+            Some(crate::family::Category::Outlet) => &mut outlets,
+            Some(crate::family::Category::Lighting) => &mut lights,
+            _ => continue,
+        };
+        if !matches!(phasing::status(m, e, last), Some(Status::New | Status::Existing)) || !phasing::option_shown(m, &shown, e) {
+            continue;
+        }
+        let by = by.get_or_insert_with(BTreeMap::new);
+        if let Some(room) = rooms.room_at(c.level, c.at) {
+            *by.entry(room).or_insert(0) += 1;
+        }
+    }
+    (outlets, lights)
 }
 
 fn dr_check(_: &mut Session, p: &Value) -> R {
