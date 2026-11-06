@@ -194,3 +194,16 @@ fitting takes its pipe's system. IFC writes the electrical device's set from an 
 pipe connectors is no electrical device; IFC ports (`IfcDistributionPort`) come with the network. A file
 from before reads as it did; file format 18 is the one that has these connectors, so a build that reads up to 17 refuses a
 project saved by this one, saying it is from a newer BIMCraft, instead of failing on a `pipe` connector it doesn't know.
+
+**The pipe network** (`network.rs`, the `network` command; piece 3 of #169) is worked out from the model each time it is asked
+for and never stored, as wall joins are, so it can't go stale and changes no file. Pipes' centre-line ends and the components'
+pipe connectors within `tolerance` (1 mm by default) are one node; a node on another pipe's length, away from its ends, splits
+that pipe into two edges without splitting the element. A pipe fitting's or accessory's connectors are joined through it (as a
+fitting's linked connectors carry a system through it in Revit); a fixture's are not, since its waste and its water are networks of
+their own. The reply has the nodes (what meets at each), the edges, the groups of joined elements with their pipes' systems and
+their connectors' domains, the open ends (an end or a connector meeting nothing, as Revit's Show Disconnects marks) and warnings
+that never refuse the model, since a drawing in progress has open ends: two pipe systems in one network, two connector domains in
+one, a pipe met along its length with no fitting, and, in a network with a waste connector, a pipe leaving a node downhill narrower
+than one coming down to it. IFC's ports say the same with `IfcRelConnectsPorts` between two `IfcDistributionPort`s; writing them is
+piece 8. A pipe's `width` is its outside diameter and a connector's `size` its DN, so they aren't compared. Conduits and the other
+electrical runs are not in it yet: their routes are piece 6.

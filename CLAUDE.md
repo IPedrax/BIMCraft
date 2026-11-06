@@ -106,6 +106,7 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 - `water.rs`, `reservoir.rs`: `water_size`, cold water by NBR 5626, and `reservoir_size`, its reservation.
 - `storm.rs`: the `storm_size` command, storm drains by NBR 10844 (Manning, the downpipe abacuses).
 - `drainage.rs`: the `drain_size` and `vent_size` commands, sanitary drains and vents by NBR 8160's tables.
+- `network.rs`: the `network` command, the pipe network worked out from pipes' ends and pipe connectors, never stored (nodes, edges, open ends, warnings).
 - `conduit.rs`: the `conduit_fill` command, a conduit's fill by NBR 5410 (makers' catalogues in `conduit/tables.rs`).
 - `electrical.rs`: the electrical settings, the project's voltages, distribution systems and wire types (the `voltage`, `distribution_system` and `wire_type` commands; starter set in `data/electrical.json`; [structure and MEP](docs/areas/structure-and-mep.md)).
 - `nbr5410.rs`: the `circuit` command's sizing of a circuit by NBR 5410 (tables in `nbr5410/tables.rs`; [structure and MEP](docs/areas/structure-and-mep.md)).

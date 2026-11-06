@@ -75,6 +75,7 @@ pub mod loads;
 pub mod massing;
 pub mod model;
 pub mod nbr5410;
+pub mod network;
 #[cfg(test)]
 mod openings_past_top_tests;
 #[cfg(test)]
@@ -151,6 +152,8 @@ mod dimension_tests;
 mod line_tests;
 #[cfg(test)]
 mod mep_tests;
+#[cfg(test)]
+mod network_tests;
 #[cfg(test)]
 mod plan_view_tests;
 #[cfg(test)]

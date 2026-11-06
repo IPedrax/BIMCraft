@@ -1924,6 +1924,7 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"boundary": [[0, 0], [1, 0], [0, 0]]}),
         json!({"start": [0, 0], "end": [0, 0]}),
         json!({"level": "nowhere"}),
+        json!({"system": 5, "level": [], "tolerance": 1e300}),
         json!({"path": 5}),
         json!({"path": "/nonexistent/scan.las", "units": "furlong", "spacing": -1}),
         json!({"cloud": "nope", "origin": "file", "at": [1e300, 0]}),
