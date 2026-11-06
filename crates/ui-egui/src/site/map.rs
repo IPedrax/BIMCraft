@@ -238,8 +238,9 @@ impl BimApp {
         match (b.pick, b.place, b.area) {
             (Pick::Place, Some((lon, lat)), _) => {
                 if let Some(l) = self.site.location.as_mut() {
-                    (l.latitude, l.longitude, l.coordinates, l.coordinates_note, l.error) =
-                        (degrees(lat), degrees(lon), String::new(), None, None);
+                    let (latitude, longitude) = (degrees(lat), degrees(lon));
+                    (l.coordinates, l.coordinates_note, l.error) = (format!("{latitude}, {longitude}"), None, None);
+                    (l.latitude, l.longitude) = (latitude, longitude);
                 }
             }
             (Pick::Area, _, Some(x)) => {
@@ -332,7 +333,8 @@ fn controls(ui: &mut Ui, b: &mut MapBox) {
         if b.pick == Pick::Area {
             ui.separator();
             ui.radio_value(&mut b.drawing, true, t("Draw box")).on_hover_text(t("A drag draws the box to fetch"));
-            ui.radio_value(&mut b.drawing, false, t("Move map")).on_hover_text(t("A drag moves the map (so does the right button)"));
+            ui.radio_value(&mut b.drawing, false, t("Move map"))
+                .on_hover_text(t("A drag moves the map (so does the wheel pressed, or the right button)"));
         }
         ui.separator();
         let l = ui.label(t("Go to"));

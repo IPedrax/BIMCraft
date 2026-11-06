@@ -879,6 +879,64 @@ fn dragging_moves_the_map_and_the_wheel_zooms_about_the_pointer() {
 }
 
 #[test]
+fn the_wheel_pressed_moves_the_map_as_the_left_button_does_and_draws_no_box() {
+    let mut h = place_map(Arc::new(Fake::new()), "51.2254809, 6.7700762");
+    let before = h.state().map().unwrap().view();
+    let from = h.state().map().unwrap().canvas_centre();
+    drag_screen(&mut h, from, from + vec2(120.0, 0.0), PointerButton::Middle);
+    let after = h.state().map().unwrap().view();
+    assert!(after.lon < before.lon, "dragged east, so what was west of the middle comes in: {} {}", before.lon, after.lon);
+    assert_eq!(h.state().map().unwrap().place(), Some((6.7700762, 51.2254809)), "a drag is not a click");
+    // In an area map, where the left button draws the box, the wheel pressed still moves the map and draws nothing.
+    let mut h = located(Arc::new(Fake::new()));
+    press(&mut h, "Site");
+    press(&mut h, "Import from OpenStreetMap");
+    press(&mut h, "Pick on Map…");
+    let before = h.state().map().unwrap().view();
+    let from = h.state().map().unwrap().canvas_centre();
+    drag_screen(&mut h, from, from + vec2(0.0, 90.0), PointerButton::Middle);
+    let m = h.state().map().unwrap();
+    assert!(m.view().lat > before.lat, "dragged south, so what was north of the middle comes in: {} {}", before.lat, m.view().lat);
+    assert!(m.area().is_none(), "no box was drawn");
+}
+
+#[test]
+fn a_place_picked_on_the_map_is_the_coordinates_row_too() {
+    let mut h = place_map(Arc::new(Fake::new()), "51.2254809, 6.7700762");
+    until_tiles(&mut h);
+    let at = h.state().map().unwrap().screen_of(6.7700762, 51.2254809).unwrap() + vec2(100.0, -40.0);
+    click_at(&mut h, at);
+    press(&mut h, "Use This Place");
+    let shown = |h: &Harness<BimApp>, label: &str| h.get_by_role_and_label(Role::TextInput, label).value().unwrap_or_default();
+    let (lat, lon) = (shown(&h, "Latitude (°)"), shown(&h, "Longitude (°)"));
+    assert_ne!(lat, "51.2254809", "the pick moved it");
+    assert_eq!(shown(&h, "Coordinates"), format!("{lat}, {lon}"), "the pair you could copy to a map");
+}
+
+#[test]
+fn a_box_drawn_on_the_map_is_the_one_fetched_though_the_area_box_was_on_a_distance() {
+    let fake = Arc::new(Fake::new());
+    let mut h = located(fake.clone());
+    press(&mut h, "Site");
+    press(&mut h, "Import from OpenStreetMap");
+    // The area box opens on "A distance round the project's origin": the box drawn takes its place.
+    press(&mut h, "Pick on Map…");
+    until_tiles(&mut h);
+    let m = h.state().map().unwrap();
+    let v = m.view();
+    let (a, b) = (m.screen_of(v.lon, v.lat).unwrap() + vec2(-80.0, -60.0), m.screen_of(v.lon, v.lat).unwrap() + vec2(90.0, 70.0));
+    drag_screen(&mut h, a, b, PointerButton::Primary);
+    let drawn = h.state().map().unwrap().area().expect("a box");
+    press(&mut h, "Use This Box");
+    let shown = |h: &Harness<BimApp>, label: &str| h.get_by_role_and_label(Role::TextInput, label).value().unwrap_or_default();
+    assert!((shown(&h, "South (°)").parse::<f64>().unwrap() - drawn.south).abs() < 1e-6, "the four degrees are the box's");
+    fetch(&mut h);
+    until_fetched(&mut h);
+    let query = query_shown(&h);
+    assert!(query.contains(&format!("{}", drawn.south)) || query.contains(&format!("{:.5}", drawn.south)), "{query}");
+}
+
+#[test]
 fn go_to_takes_a_pair_pasted_from_a_map_and_says_when_it_is_not_one() {
     let mut h = place_map(Arc::new(Fake::new()), "-23.5505, -46.6333");
     type_into(&mut h, "Go to", "52.5200, 13.4050");
@@ -1112,6 +1170,22 @@ fn a_project_with_no_place_starts_the_box_at_the_last_one_and_a_name_is_kept() {
     let l = other.state().session.model.location.expect("placed at once");
     assert_eq!((l.latitude, l.longitude), (51.2254809, 6.7700762));
     assert_eq!(other.state().places[0].name, "Bell tower", "the name came with the place");
+}
+
+#[test]
+fn choosing_a_recent_place_puts_its_pair_in_the_coordinates_row() {
+    let mut h = app(BOX);
+    place_at(&mut h, "51.2254809, 6.7700762");
+    place_at(&mut h, "10.5, 20.25");
+    press(&mut h, "Location");
+    let shown = |h: &Harness<BimApp>, label: &str| h.get_by_role_and_label(Role::TextInput, label).value().unwrap_or_default();
+    assert_eq!(shown(&h, "Coordinates"), "10.5, 20.25", "the box opens on the place the project is at");
+    // The older place, from the list: its pair replaces the row's.
+    let older = h.state().places[1].clone();
+    h.get_all_by_label_contains("51.225481").next().expect("the older place in the list").click();
+    h.run();
+    assert_eq!(shown(&h, "Latitude (°)"), older.latitude.to_string());
+    assert_eq!(shown(&h, "Coordinates"), "51.2254809, 6.7700762");
 }
 
 #[test]

@@ -206,6 +206,14 @@ fn typed(text: &str, what: &str) -> Result<f64, String> {
     number(text).ok_or_else(|| tf("{}: `{}` is not a number", &[t(what), text.trim()]))
 }
 
+/// The pair a map takes, `latitude, longitude`, of what two fields hold: blank until both are numbers.
+fn pair(latitude: &str, longitude: &str) -> String {
+    match (latitude.trim().parse::<f64>(), longitude.trim().parse::<f64>()) {
+        (Ok(lat), Ok(lon)) if lat.is_finite() && lon.is_finite() => format!("{lat}, {lon}"),
+        _ => String::new(),
+    }
+}
+
 impl BimApp {
     /// Whether a fetch is running.
     pub fn fetching(&self) -> bool {
@@ -285,7 +293,7 @@ impl BimApp {
         let units = self.session.model.units;
         let b = match self.session.model.location {
             Some(l) => LocationBox {
-                coordinates: String::new(),
+                coordinates: pair(&l.latitude.to_string(), &l.longitude.to_string()),
                 coordinates_note: None,
                 latitude: l.latitude.to_string(),
                 longitude: l.longitude.to_string(),
@@ -299,7 +307,7 @@ impl BimApp {
             // A project with no place starts at the last one set.
             None => match self.places.first() {
                 Some(p) => LocationBox {
-                    coordinates: String::new(),
+                    coordinates: pair(&p.latitude.to_string(), &p.longitude.to_string()),
                     coordinates_note: None,
                     latitude: p.latitude.to_string(),
                     longitude: p.longitude.to_string(),
@@ -357,6 +365,9 @@ impl BimApp {
                         if let Ok((latitude, longitude)) = both {
                             (b.latitude, b.longitude) = (latitude.to_string(), longitude.to_string());
                         }
+                        // The Coordinates row says the pair the two fields hold, as it does after a pick.
+                        b.coordinates = pair(&b.latitude, &b.longitude);
+                        b.coordinates_note = None;
                     }
                     text_field(ui, "Ground height", &mut b.elevation, unit);
                     text_field(ui, "True north (°)", &mut b.true_north, "0");
@@ -407,7 +418,8 @@ impl BimApp {
             && let Some(p) = self.places.get(i)
         {
             (b.latitude, b.longitude, b.true_north) = (p.latitude.to_string(), p.longitude.to_string(), p.true_north.to_string());
-            (b.crs, b.name, b.coordinates, b.coordinates_note, b.error) = (p.crs.clone(), p.name.clone(), String::new(), None, None);
+            (b.crs, b.name, b.coordinates, b.coordinates_note, b.error) =
+                (p.crs.clone(), p.name.clone(), pair(&b.latitude, &b.longitude), None, None);
         }
         if ok {
             self.apply_location();

@@ -73,3 +73,12 @@ pyproj to under a millimetre over a kilometre.
 
 A survey point and project base point as distinct from the origin; vertical datums and geoid heights (`elevation` is as given); a
 CRS in feet; grid-based datum shifts; the Location dialog in the desktop. Terrain ([terrain](terrain.md)) and OpenStreetMap import ([OSM import](osm-import.md)) build on this.
+
+## The place and the georeference
+
+A project keeps two things that say where it is: its place (`Model::location`: latitude, longitude, true north, a grid) and its
+georeference (`Model::georeference`: IFC's map conversion, a CRS by name with eastings, northings, rotation and scale). They are
+kept in step: `geolocate` (and `fetch_terrain`, which sets the ground height) sets the georeference the place makes; `georeference`
+moves the place to where the conversion puts the project when its CRS is an EPSG code that can be projected, and leaves the place
+alone for any other CRS. IFC export writes the georeference where there is one, and the place's own conversion where there is only
+a place (a file from before the two were joined). Import reads each from the file: the site's position and the conversion.
