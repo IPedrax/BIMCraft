@@ -42,6 +42,8 @@ mod electrical_tests;
 pub mod engine;
 pub mod falls;
 pub mod family;
+#[cfg(test)]
+mod family_section_tests;
 pub mod favorites;
 pub mod fills;
 mod fixtures;
