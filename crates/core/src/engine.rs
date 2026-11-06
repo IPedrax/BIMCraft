@@ -394,6 +394,75 @@ impl Session {
         self.transaction("Script", |s| s.script(text))
     }
 
+    /// [`Session::script_atomic`] tried and taken back: what the script would make, change and take away, element by element,
+    /// whether it would change anything else (the library, the phases, the settings), and the warnings the model would then
+    /// have, with each line's result. The project, its history, the phase and option things are made in and its file are left
+    /// as they were, and the next id with them. A dry run touches no file and keeps the history: a line that would open, write
+    /// or name a file (a `path` or `save`), start or replace the project, save, undo or redo is refused before any line runs.
+    /// It only reads the project, so a session that may only read ([`Session::read_only`]) may try a script too.
+    pub fn script_dry_run(&mut self, text: &str) -> Result<Value, String> {
+        for (n, line) in text.lines().map(str::trim).enumerate() {
+            let Some(id) = line.split_whitespace().next().filter(|id| !id.starts_with('#')) else { continue };
+            let Some(cmd) = find(id) else { continue };
+            let rest = line[id.len()..].trim();
+            let params: Value = if rest.is_empty() { json!({}) } else { serde_json::from_str(rest).unwrap_or(Value::Null) };
+            let files = ["path", "save"].into_iter().find(|key| params.get(key).is_some_and(|v| !v.is_null()));
+            let what = if REPLACES.contains(&cmd.id) {
+                Some("replace the project".to_string())
+            } else if matches!(cmd.id, "save" | "autosave" | "undo" | "redo") {
+                Some(format!("{} the project", if cmd.id == "autosave" { "save" } else { cmd.id }))
+            } else {
+                files.map(|key| format!("name a file (`{key}`)"))
+            };
+            if let Some(what) = what {
+                return Err(format!(
+                    "line {} ({id}): `{}` would {what}, and a dry run touches no file and keeps the history: run the script \
+                     without `dry_run`",
+                    n + 1,
+                    cmd.id
+                ));
+            }
+        }
+        let kept = Kept::of(self);
+        let read_only = self.read_only.take();
+        let result = self.script_atomic(text);
+        let after = Arc::clone(&self.model);
+        self.read_only = read_only;
+        // The project as it was, whatever the script did to it; what a dry run says is only what it would do.
+        let _ = kept.keep(self);
+        let results = result?;
+        let before = &self.model;
+        let (mut made, mut changed, mut removed) = (Vec::new(), Vec::new(), Vec::new());
+        let ids: Vec<Id> = match after.elements.changed_since(&before.elements) {
+            crate::ids::Changed::Ids(ids) => ids.into_iter().collect(),
+            crate::ids::Changed::All => {
+                let mut all: Vec<Id> = before.elements.iter().map(|(id, _)| *id).chain(after.elements.iter().map(|(id, _)| *id)).collect();
+                all.sort_unstable();
+                all.dedup();
+                all
+            }
+        };
+        for id in ids {
+            match (before.elements.get(id), after.elements.get(id)) {
+                (None, Some(e)) => made.push(json!({"id": id, "category": e.category()})),
+                (Some(a), Some(b)) if a != b || before.elements.guid(id) != after.elements.guid(id) => {
+                    changed.push(json!({"id": id, "guid": before.elements.guid(id), "category": b.category()}))
+                }
+                (Some(a), None) => removed.push(json!({"id": id, "guid": before.elements.guid(id), "category": a.category()})),
+                _ => {}
+            }
+        }
+        let other = {
+            let mut rest = (*after).clone();
+            (rest.elements, rest.next_id) = (before.elements.clone(), before.next_id);
+            rest != **before
+        };
+        Ok(json!({
+            "dry_run": true, "results": results, "made": made, "changed": changed, "removed": removed, "other_changes": other,
+            "warnings": after.warnings(),
+        }))
+    }
+
     /// Run `f` as one undo step named `label`, all or nothing: when it fails, the model, the path, the session's phase
     /// and option and the undo and redo history are as they were before it. Inside, undo reaches back no further than
     /// its start. Files a command wrote meanwhile (`save`, `export`) stay written, and one that replaced the project (`new`,

@@ -93,6 +93,10 @@ user's own commands are never read-only. An agent may ask to only read as well (
 `mcp --connect --read-only` sends). The view control bar ends with the port's state, in both profiles (`agents_indicator`): Agents:
 off, Agents: port N, or Agents: N connected (a connection counts once it has said a request with the token), with read-only when edits
 are off; a click opens Settings at Agents.
+A script request may ask for a dry run (`"dry_run": true`, `Session::script_dry_run`): the window runs it all or nothing, takes it
+back and replies with what it would make, change and remove and the warnings the model would have, so the user's project and
+undo history are as they were. It only reads, so it answers where agents may only read too, and a line that names a file or
+would save, undo, redo or replace the project is refused.
 
 The interface's language is `lang::Lang`: a project's language, or Simplified Chinese (issue 38), which only the window speaks
 (a drawing's lettering, `font.rs`, is drawn in code and has no hanzi, so a project is never in Chinese and `Lang::project()` gives

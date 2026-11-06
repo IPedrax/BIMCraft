@@ -321,7 +321,10 @@ roof {}
 ```
 
 A script stops at its first failing line and names it. Through MCP, `script {"text": …, "atomic": true}` runs it all or nothing:
-a line that fails takes back the lines before it, and one that goes through is a single undo step.
+a line that fails takes back the lines before it, and one that goes through is a single undo step. With `"dry_run": true` it
+is tried that way and taken back: the reply lists what it would make, change and remove, whether it would change anything else,
+and the warnings the model would have, and the project and its history stay as they were. A dry run touches no file, so it
+refuses a line that names one or would save, undo, redo or replace the project; it only reads, so a read-only agent may use it.
 
 ```sh
 bimcraft-cli run --script house.txt --save house.ifc
@@ -438,7 +441,7 @@ or to any MCP client's configuration:
 | Tool | What it does |
 |---|---|
 | `execute {command, params}` | Any command with JSON parameters |
-| `script {text, atomic?}` | Several commands, one per line; `atomic`: all or nothing, one undo step |
+| `script {text, atomic?, dry_run?}` | Several commands, one per line; `atomic`: all or nothing, one undo step; `dry_run`: what it would do, nothing kept |
 | `list_commands {filter?}` | The catalog, with parameters and shortcuts |
 | `inspect_model` | Levels, counts, types, warnings and undo history |
 | `query_elements {category?, level?}` | Elements with derived values: wall length and height, room area, door position |
