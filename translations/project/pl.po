@@ -102,7 +102,7 @@ msgstr "W DÓŁ"
 
 #: crates/core/src/lines.rs:177
 msgid "Dash"
-msgstr "Kreskowa"
+msgstr "Kreska"
 
 #: crates/core/src/lines.rs:180
 msgid "Dash Dot"
@@ -126,7 +126,7 @@ msgstr "Biurko"
 
 #: crates/core/src/fills.rs:408
 msgid "Diagonal Crosshatch"
-msgstr "Kreskowanie diagonalne krzyżowe"
+msgstr "Kreskowanie krzyżowe ukośne"
 
 #: crates/core/src/fills.rs:407
 msgid "Diagonal Down"
@@ -158,11 +158,11 @@ msgstr "Drzwi dwuskrzydłowe"
 
 #: crates/core/src/model.rs:2472
 msgid "Double Sliding"
-msgstr "Podwójne przesuwne"
+msgstr "Przesuwne dwuskrzydłowe"
 
 #: crates/core/src/model.rs:2470
 msgid "Double Swing"
-msgstr "Podwójne rozwierane"
+msgstr "Rozwierane dwuskrzydłowe"
 
 #: crates/core/src/fixtures.rs:382
 msgid "Earthing Electrode"
@@ -256,7 +256,7 @@ msgstr "Płyta gipsowo-kartonowa"
 
 #: crates/core/src/lines.rs:202
 msgid "Hairline"
-msgstr "Linia włosowa"
+msgstr "Linia bardzo cienka"
 
 #: crates/core/src/family.rs:1895
 msgid "Headboard Height"
