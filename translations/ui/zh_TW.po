@@ -1081,7 +1081,7 @@ msgstr "邊界線：在上一標高繪製屋頂的跡線及其中的天井"
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "邊界線：繪製豎井洞口的輪廓"
 
-#: crates/core/src/model.rs:2876
+#: crates/core/src/model.rs:2960
 msgid "Brick"
 msgstr "磚"
 
@@ -1155,7 +1155,7 @@ msgstr "計算值…"
 msgid "Came in: {}"
 msgstr "已導入：{}"
 
-#: crates/core/src/commands.rs:1710
+#: crates/core/src/commands.rs:1724
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3935
 #: crates/ui-egui/src/properties.rs:265
@@ -1310,7 +1310,7 @@ msgstr ""
 msgid "Centre Lines"
 msgstr "中心線"
 
-#: crates/core/src/model.rs:2884
+#: crates/core/src/model.rs:2968
 msgid "Ceramic tile"
 msgstr "瓷磚"
 
@@ -2041,7 +2041,7 @@ msgstr "概念體量"
 msgid "Concrete"
 msgstr "混凝土"
 
-#: crates/core/src/model.rs:2878
+#: crates/core/src/model.rs:2962
 msgid "Concrete block"
 msgstr "混凝土砌塊"
 
@@ -2122,7 +2122,7 @@ msgstr "已複製 {} 個 IFC GlobalId。"
 msgid "Copied {} rows, tab-separated."
 msgstr "已複製 {} 行，以製表符分隔。"
 
-#: crates/core/src/model.rs:2892
+#: crates/core/src/model.rs:2976
 msgid "Copper"
 msgstr "銅"
 
@@ -2551,7 +2551,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:9946
+#: crates/core/src/commands.rs:9960
 msgid "Dependent"
 msgstr "相關"
 
@@ -3067,7 +3067,7 @@ msgstr "電氣設置"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "電氣設置：迴路和配電箱所引用的電壓、配電系統和導線類型；截面積以 mm² 計"
 
-#: crates/core/src/commands.rs:2076
+#: crates/core/src/commands.rs:2090
 msgid "Elements"
 msgstr "圖元"
 
@@ -3417,7 +3417,7 @@ msgstr "找到 {}；以下沒有對應的圖元：{}"
 msgid "Fine"
 msgstr "精細"
 
-#: crates/core/src/import.rs:1217
+#: crates/core/src/import.rs:1365
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:734
 msgid "Finish"
@@ -3825,7 +3825,7 @@ msgstr "組"
 msgid "Group:"
 msgstr "組："
 
-#: crates/core/src/model.rs:2883
+#: crates/core/src/model.rs:2967
 msgid "Gypsum board"
 msgstr "石膏板"
 
@@ -4158,7 +4158,7 @@ msgstr "正在安裝 BIMCraft {}…"
 msgid "Instance"
 msgstr "實例"
 
-#: crates/core/src/import.rs:1216
+#: crates/core/src/import.rs:1364
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "保溫層"
@@ -4834,7 +4834,7 @@ msgstr "最大值"
 msgid "Maximum Riser Height"
 msgstr "最大踢面高度"
 
-#: crates/core/src/commands.rs:1820
+#: crates/core/src/commands.rs:1834
 msgid "Measure"
 msgstr "測量"
 
@@ -4850,7 +4850,7 @@ msgstr "中等"
 msgid "Medium Lines"
 msgstr "中粗線"
 
-#: crates/core/src/import.rs:1219
+#: crates/core/src/import.rs:1367
 #: crates/ui-egui/src/properties.rs:733
 msgid "Membrane"
 msgstr "薄膜層"
@@ -5801,7 +5801,7 @@ msgstr "拆除的階段"
 msgid "Phase Filter"
 msgstr "階段過濾器"
 
-#: crates/core/src/ifc.rs:1726
+#: crates/core/src/ifc.rs:1751
 msgid "Phase Filters"
 msgstr "階段過濾器列表"
 
@@ -6941,7 +6941,7 @@ msgstr "面屋頂 (RB)：在所選體量的頂面上創建屋頂"
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "跡線屋頂：單擊牆內部，在上一標高為其創建屋頂"
 
-#: crates/core/src/model.rs:2885
+#: crates/core/src/model.rs:2969
 msgid "Roof tiles"
 msgstr "屋面瓦"
 
@@ -7118,7 +7118,7 @@ msgstr "比例：此視圖所代表的圖紙，為模型的 1 : n；其註釋和
 msgid "Scan"
 msgstr "掃瞄"
 
-#: crates/core/src/commands.rs:1615
+#: crates/core/src/commands.rs:1629
 msgid "Schedule"
 msgstr "明細表"
 
@@ -7148,7 +7148,7 @@ msgstr "明細表"
 msgid "Schedules/Quantities (all)"
 msgstr "明細表/數量（全部）"
 
-#: crates/core/src/model.rs:2881
+#: crates/core/src/model.rs:2965
 msgid "Screed"
 msgstr "找平層"
 
@@ -7931,7 +7931,7 @@ msgstr "子網格分割數 Y"
 msgid "Subgrid pen"
 msgstr "子網格筆"
 
-#: crates/core/src/import.rs:1218
+#: crates/core/src/import.rs:1366
 #: crates/ui-egui/src/properties.rs:731
 msgid "Substrate"
 msgstr "基層"
@@ -8828,7 +8828,7 @@ msgstr "單位格式"
 msgid "Unlock alignment"
 msgstr "解鎖對齊"
 
-#: crates/core/src/commands.rs:10087
+#: crates/core/src/commands.rs:10101
 msgid "Unnamed"
 msgstr "未命名"
 

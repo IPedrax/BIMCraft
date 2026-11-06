@@ -1081,7 +1081,7 @@ msgstr ""
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr ""
 
-#: crates/core/src/model.rs:2876
+#: crates/core/src/model.rs:2960
 msgid "Brick"
 msgstr ""
 
@@ -1155,7 +1155,7 @@ msgstr ""
 msgid "Came in: {}"
 msgstr ""
 
-#: crates/core/src/commands.rs:1710
+#: crates/core/src/commands.rs:1724
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3935
 #: crates/ui-egui/src/properties.rs:265
@@ -1310,7 +1310,7 @@ msgstr ""
 msgid "Centre Lines"
 msgstr ""
 
-#: crates/core/src/model.rs:2884
+#: crates/core/src/model.rs:2968
 msgid "Ceramic tile"
 msgstr ""
 
@@ -2041,7 +2041,7 @@ msgstr ""
 msgid "Concrete"
 msgstr ""
 
-#: crates/core/src/model.rs:2878
+#: crates/core/src/model.rs:2962
 msgid "Concrete block"
 msgstr ""
 
@@ -2122,7 +2122,7 @@ msgstr ""
 msgid "Copied {} rows, tab-separated."
 msgstr ""
 
-#: crates/core/src/model.rs:2892
+#: crates/core/src/model.rs:2976
 msgid "Copper"
 msgstr ""
 
@@ -2551,7 +2551,7 @@ msgstr ""
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:9946
+#: crates/core/src/commands.rs:9960
 msgid "Dependent"
 msgstr ""
 
@@ -3067,7 +3067,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:2076
+#: crates/core/src/commands.rs:2090
 msgid "Elements"
 msgstr ""
 
@@ -3417,7 +3417,7 @@ msgstr ""
 msgid "Fine"
 msgstr ""
 
-#: crates/core/src/import.rs:1217
+#: crates/core/src/import.rs:1365
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:734
 msgid "Finish"
@@ -3825,7 +3825,7 @@ msgstr ""
 msgid "Group:"
 msgstr ""
 
-#: crates/core/src/model.rs:2883
+#: crates/core/src/model.rs:2967
 msgid "Gypsum board"
 msgstr ""
 
@@ -4158,7 +4158,7 @@ msgstr ""
 msgid "Instance"
 msgstr ""
 
-#: crates/core/src/import.rs:1216
+#: crates/core/src/import.rs:1364
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr ""
@@ -4834,7 +4834,7 @@ msgstr ""
 msgid "Maximum Riser Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:1820
+#: crates/core/src/commands.rs:1834
 msgid "Measure"
 msgstr ""
 
@@ -4850,7 +4850,7 @@ msgstr ""
 msgid "Medium Lines"
 msgstr ""
 
-#: crates/core/src/import.rs:1219
+#: crates/core/src/import.rs:1367
 #: crates/ui-egui/src/properties.rs:733
 msgid "Membrane"
 msgstr ""
@@ -5801,7 +5801,7 @@ msgstr ""
 msgid "Phase Filter"
 msgstr ""
 
-#: crates/core/src/ifc.rs:1726
+#: crates/core/src/ifc.rs:1751
 msgid "Phase Filters"
 msgstr ""
 
@@ -6941,7 +6941,7 @@ msgstr ""
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr ""
 
-#: crates/core/src/model.rs:2885
+#: crates/core/src/model.rs:2969
 msgid "Roof tiles"
 msgstr ""
 
@@ -7118,7 +7118,7 @@ msgstr ""
 msgid "Scan"
 msgstr ""
 
-#: crates/core/src/commands.rs:1615
+#: crates/core/src/commands.rs:1629
 msgid "Schedule"
 msgstr ""
 
@@ -7148,7 +7148,7 @@ msgstr ""
 msgid "Schedules/Quantities (all)"
 msgstr ""
 
-#: crates/core/src/model.rs:2881
+#: crates/core/src/model.rs:2965
 msgid "Screed"
 msgstr ""
 
@@ -7931,7 +7931,7 @@ msgstr ""
 msgid "Subgrid pen"
 msgstr ""
 
-#: crates/core/src/import.rs:1218
+#: crates/core/src/import.rs:1366
 #: crates/ui-egui/src/properties.rs:731
 msgid "Substrate"
 msgstr ""
@@ -8828,7 +8828,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:10087
+#: crates/core/src/commands.rs:10101
 msgid "Unnamed"
 msgstr ""
 
