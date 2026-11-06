@@ -152,8 +152,9 @@ fn a_view_being_made_keeps_the_last_picture_quietly_then_faded_with_its_bar_and_
     // An edit, its scene being made.
     h.state_mut().orbit.hold_build = true;
     h.state_mut().run("wall", json!({"points": [[0, 9000], [3000, 9000]]}));
-    // One frame: a wait quiet at first asks for a repaint after a moment, so run() would chase it to its step limit.
-    h.step();
+    // Not `run`: the step (0.25 s) makes the quiet wait's repaint (200 ms) immediate, so `run` would go on until 200 ms of
+    // real time had passed, which 32 frames on a fast machine don't take.
+    h.run_steps(2);
     assert!(matches!(h.state().orbit.waiting, Some(Waiting::Quiet | Waiting::Faded)), "the last picture stays");
     let moment = std::time::Duration::from_millis(50);
     let long = std::time::Duration::from_secs(1);
