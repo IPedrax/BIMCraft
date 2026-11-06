@@ -36,7 +36,7 @@ msgstr "Baksteen"
 msgid "Brick 225 x 75"
 msgstr "Baksteen 225 x 75"
 
-#: crates/core/src/commands.rs:4068
+#: crates/core/src/commands.rs:4071
 msgid "Camera"
 msgstr "Camera"
 
@@ -112,7 +112,7 @@ msgstr "Streep-punt"
 msgid "Data Outlet"
 msgstr "Data-aansluiting"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9580
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -188,8 +188,8 @@ msgstr "Elektrische verlichting"
 msgid "Electrical Power"
 msgstr "Elektrische voeding"
 
-#: crates/core/src/commands.rs:9354
-#: crates/core/src/commands.rs:11352
+#: crates/core/src/commands.rs:9364
+#: crates/core/src/commands.rs:11362
 msgid "Elevation"
 msgstr "Gevel"
 
@@ -306,7 +306,7 @@ msgstr "Breedte poot"
 msgid "Length"
 msgstr "Lengte"
 
-#: crates/core/src/commands.rs:6120
+#: crates/core/src/commands.rs:6130
 #: crates/core/src/model.rs:3085
 msgid "Level"
 msgstr "Niveau"
@@ -331,7 +331,7 @@ msgstr "Merkteken"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:7378
+#: crates/core/src/commands.rs:7388
 msgid "Mass"
 msgstr "Massa"
 
@@ -419,7 +419,7 @@ msgstr "Pleister"
 msgid "Porcelain"
 msgstr "Porselein"
 
-#: crates/core/src/commands.rs:2759
+#: crates/core/src/commands.rs:2762
 msgid "Project"
 msgstr "Project"
 
@@ -447,7 +447,7 @@ msgstr "Optreden"
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
-#: crates/core/src/commands.rs:7603
+#: crates/core/src/commands.rs:7613
 msgid "Room"
 msgstr "Ruimte"
 
@@ -475,8 +475,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Zithoogte"
 
-#: crates/core/src/commands.rs:9331
-#: crates/core/src/commands.rs:11351
+#: crates/core/src/commands.rs:9341
+#: crates/core/src/commands.rs:11361
 msgid "Section"
 msgstr "Doorsnede"
 
@@ -600,7 +600,7 @@ msgstr "OMHOOG"
 msgid "Unbounded Height"
 msgstr "Onbegrensde hoogte"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9721
 msgid "Unnamed"
 msgstr "Naamloos"
 
@@ -664,15 +664,15 @@ msgstr "Werkblad"
 msgid "Yes"
 msgstr "Ja"
 
-#: crates/core/src/loads.rs:78
+#: crates/core/src/loads.rs:79
 msgid "bath"
 msgstr "bath"
 
-#: crates/core/src/loads.rs:78
+#: crates/core/src/loads.rs:79
 msgid "bwc"
 msgstr "bwc"
 
-#: crates/core/src/loads.rs:78
+#: crates/core/src/loads.rs:79
 msgid "wc"
 msgstr "wc"
 

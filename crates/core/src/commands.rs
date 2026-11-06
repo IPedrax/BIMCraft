@@ -1863,8 +1863,11 @@ pub static ALL: &[Command] = &[
     other(
         "load_points",
         "Residential Load Points",
-        "{rooms?: [{name, area, perimeter, kind?: bath|kitchen|service|dry|veranda|other, points?}], alternative?} the lighting and the \
-         general-use outlets (TUG) of a dwelling's rooms as NBR 5410:2004 item 9.5.2 asks. The rooms are `rooms` (`area` in m², \
+        "{rooms?: [{name, area, perimeter, kind?: bath|kitchen|service|dry|veranda|other, points?}], alternative?, standard?} the lighting \
+         and the general-use outlets (TUG) of a dwelling's rooms as NBR 5410:2004 item 9.5.2 asks. The numbers are data \
+         (`data/load-points.json`, one rule set for each standard, every row naming its source): `standard` names the set, \
+         `NBR 5410:2004` the default and only one so far, and the answer gives `standard`, `standard_source`, `lighting_source` and \
+         each room's `source`. The rooms are `rooms` (`area` in m², \
          `perimeter` in millimetres, `points` the outlets the room has, the least it needs when absent) or, without it, the rooms of the \
          model, measured inside the walls' finish. A room's kind is known by its name (Portuguese or English: banheiro, cozinha, copa, \
          área de serviço, lavanderia, sala, dormitório, varanda…) unless `kind` gives it; a name that says none is `other`. Lighting: 1 \
@@ -5499,8 +5502,11 @@ fn load_points(s: &mut Session, p: &Value) -> R {
     if !p.is_object() {
         return Err(bad(c, "params must be an object"));
     }
-    only(c, p, &["rooms", "alternative"])?;
+    only(c, p, &["rooms", "alternative", "standard"])?;
     let alternative = flag(c, p, "alternative")?;
+    let names: Vec<&str> = loads::rule_sets().iter().map(|r| r.standard.as_str()).collect();
+    let standard = choice(c, p, "standard", &names, loads::DEFAULT)?;
+    let set = loads::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/load-points.json")))?;
     let round = |x: f64| (x * 100.0).round() / 100.0 + 0.0;
     // (name, kind, area m2, perimeter m, points, kind given)
     let mut input: Vec<(String, Kind, f64, f64, Option<u32>, bool)> = Vec::new();
@@ -5551,7 +5557,7 @@ fn load_points(s: &mut Session, p: &Value) -> R {
     }
     let rooms: Vec<loads::Room> =
         input.iter().map(|r| loads::Room { name: &r.0, kind: r.1, area: r.2, perimeter: r.3, provided: r.4 }).collect();
-    let t = loads::total(&rooms, alternative);
+    let t = set.total(&rooms, alternative);
     let mut list = Vec::new();
     for (r, sh) in input.iter().zip(&t.rooms) {
         let mut o = Map::new();
@@ -5568,12 +5574,16 @@ fn load_points(s: &mut Session, p: &Value) -> R {
             o.insert("counter_outlets".into(), json!(sh.counter_outlets));
         }
         o.insert("ok".into(), json!(sh.points >= sh.minimum));
+        o.insert("source".into(), json!(set.room(r.1).source));
         if r.1 == Kind::Other && !r.5 {
             o.insert("note".into(), json!("the name says no kind of room: treated as `other`; give `kind`"));
         }
         list.push(Value::Object(o));
     }
     Ok(json!({
+        "standard": set.standard,
+        "standard_source": set.source,
+        "lighting_source": set.lighting.source,
         "rooms": list,
         "skipped": skipped,
         "lighting_va": t.lighting_va,
