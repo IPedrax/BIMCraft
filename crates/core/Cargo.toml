@@ -21,6 +21,8 @@ getrandom = { workspace = true }
 tempfile = { workspace = true }
 rayon = { workspace = true }
 ttf-parser = { workspace = true }
+proj4rs = { workspace = true }
+crs-definitions = { workspace = true }
 
 [build-dependencies]
 bimcraft-i18n = { workspace = true, features = ["catalog"] }

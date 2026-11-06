@@ -35,6 +35,7 @@ pub mod cowork;
 #[cfg(test)]
 mod cowork_tests;
 pub mod crosscheck;
+pub mod crs;
 mod csg;
 pub mod curves;
 pub mod demand;
@@ -150,6 +151,7 @@ pub mod pat;
 pub mod pdf;
 pub mod pen;
 pub mod phasing;
+pub mod places;
 pub mod plumbing;
 pub mod project_info;
 #[cfg(test)]
@@ -232,6 +234,7 @@ mod work_plane_tests;
 pub mod workplane;
 #[cfg(test)]
 mod workplane_tests;
+pub mod world;
 pub mod xlsx;
 
 pub use commands::{
