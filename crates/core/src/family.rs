@@ -225,9 +225,109 @@ pub enum Kind {
     Angle,
     YesNo,
     Material,
+    /// Words, up to [`MAX_TEXT`] characters: no formula reads them, and none works them out.
+    Text,
+    /// A whole number; a formula's result is rounded half away from zero.
+    Integer,
+    /// Square millimetres, as a formula over lengths in mm works it out; schedules and labels show m².
+    Area,
+    /// Cubic millimetres; schedules and labels show m³.
+    Volume,
+    /// A web address, up to [`MAX_URL`] characters on one line: text, as [`Kind::Text`] is.
+    Url,
+    /// A type of a family of the category its parameter's `of` names, for nested families: none is chosen yet.
+    FamilyType,
 }
 
-/// A parameter: a type's (each type its own value) or, `instance`, each component's.
+impl Kind {
+    /// Whether its values are words (a material's name, text, a URL, a family type), which no formula reads or works out.
+    pub fn text(self) -> bool {
+        matches!(self, Kind::Material | Kind::Text | Kind::Url | Kind::FamilyType)
+    }
+
+    /// What it holds, as messages say: `a length`, `text`.
+    pub fn said(self) -> &'static str {
+        match self {
+            Kind::Length => "a length",
+            Kind::Number => "a number",
+            Kind::Angle => "an angle",
+            Kind::YesNo => "yes or no",
+            Kind::Material => "a material",
+            Kind::Text => "text",
+            Kind::Integer => "a whole number",
+            Kind::Area => "an area",
+            Kind::Volume => "a volume",
+            Kind::Url => "a URL",
+            Kind::FamilyType => "a family type",
+        }
+    }
+}
+
+/// The heading a parameter is listed under, as Revit's "group parameter under" sets it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Group {
+    Constraints,
+    Construction,
+    Dimensions,
+    Graphics,
+    IdentityData,
+    MaterialsAndFinishes,
+    Text,
+    Visibility,
+    Electrical,
+    Mechanical,
+    Plumbing,
+    Structural,
+    Data,
+    Other,
+}
+
+impl Group {
+    /// Every group, in the order a palette lists them.
+    pub const ALL: [Group; 14] = [
+        Group::Constraints,
+        Group::Construction,
+        Group::Graphics,
+        Group::MaterialsAndFinishes,
+        Group::Dimensions,
+        Group::IdentityData,
+        Group::Text,
+        Group::Visibility,
+        Group::Electrical,
+        Group::Mechanical,
+        Group::Plumbing,
+        Group::Structural,
+        Group::Data,
+        Group::Other,
+    ];
+
+    /// Its heading, in English: an interface translates it.
+    pub fn label(self) -> &'static str {
+        match self {
+            Group::Constraints => ui_msg!("Constraints"),
+            Group::Construction => ui_msg!("Construction"),
+            Group::Dimensions => ui_msg!("Dimensions"),
+            Group::Graphics => ui_msg!("Graphics"),
+            Group::IdentityData => ui_msg!("Identity Data"),
+            Group::MaterialsAndFinishes => ui_msg!("Materials and Finishes"),
+            Group::Text => ui_msg!("Text"),
+            Group::Visibility => ui_msg!("Visibility"),
+            Group::Electrical => ui_msg!("Electrical"),
+            Group::Mechanical => ui_msg!("Mechanical"),
+            Group::Plumbing => ui_msg!("Plumbing"),
+            Group::Structural => ui_msg!("Structural"),
+            Group::Data => ui_msg!("Data"),
+            Group::Other => ui_msg!("Other"),
+        }
+    }
+}
+
+/// The longest URL a parameter holds, in characters.
+pub const MAX_URL: usize = 2048;
+
+/// A parameter: a type's (each type its own value) or, `instance`, each component's. A family parameter is the family's
+/// own; with `shared`, it is a shared parameter, the same one in every family and project that holds that GUID.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Parameter {
@@ -242,6 +342,61 @@ pub struct Parameter {
     /// Computed from the others, as Revit's formulas are.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub formula: Option<String>,
+    /// The heading it is listed under; none, its kind's ([`Parameter::group`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<Group>,
+    /// A shared parameter's GUID, which is the same wherever it is used: none, a family parameter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared: Option<crate::ids::Guid>,
+    /// Reads a dimension and never drives one: a length or an angle that no type or component sets. Until labelled
+    /// dimensions exist it holds its `value`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reporting: bool,
+    /// A family type parameter's: the category of the families whose types it picks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub of: Option<Category>,
+}
+
+impl Parameter {
+    /// The heading it is listed under: its own, else its kind's (lengths, areas, volumes and angles under Dimensions,
+    /// materials under Materials and Finishes, the rest under Other).
+    pub fn group(&self) -> Group {
+        self.group.unwrap_or(match self.kind {
+            Kind::Length | Kind::Area | Kind::Volume | Kind::Angle => Group::Dimensions,
+            Kind::Material => Group::MaterialsAndFinishes,
+            _ => Group::Other,
+        })
+    }
+
+    /// What it may be on its own, `who` saying which it is: a family type parameter names its category and holds no value,
+    /// nothing else names one; a reporting parameter is a length or an angle worked out by no formula; a shared one's GUID
+    /// is a GUID.
+    pub fn check_own(&self, who: &str) -> Result<(), String> {
+        match (self.kind, self.of) {
+            (Kind::FamilyType, None) => {
+                return Err(format!("{who}: a family type parameter needs `of`, the category of the families whose types it picks"));
+            }
+            (Kind::FamilyType, Some(_)) if !self.value.is_null() => {
+                return Err(format!("{who}: a family type parameter holds no value until nested families exist; leave `value` out"));
+            }
+            (k, Some(_)) if k != Kind::FamilyType => return Err(format!("{who}: `of` is for a family type parameter; leave it out")),
+            _ => {}
+        }
+        if self.reporting {
+            if !matches!(self.kind, Kind::Length | Kind::Angle) {
+                return Err(format!("{who}: a reporting parameter reads a dimension, so it is a length or an angle"));
+            }
+            if self.formula.is_some() {
+                return Err(format!("{who}: a reporting parameter takes no formula: its dimension says what it is"));
+            }
+        }
+        if let Some(g) = self.shared
+            && g.pending().is_some()
+        {
+            return Err(format!("{who}: `shared` is a GUID, xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, not {g}"));
+        }
+        Ok(())
+    }
 }
 
 /// A number, or a formula over the family's parameters.
@@ -994,11 +1149,98 @@ pub(crate) fn read(p: &Parameter, v: &Value) -> Result<Val, String> {
             Value::Null => Ok(Val::Number(0.0)),
             v => v.as_f64().filter(|x| x.is_finite()).map(|x| Val::Number(truth(x != 0.0))).ok_or_else(|| bad("yes or no")),
         },
-        Kind::Length | Kind::Number | Kind::Angle => match v {
+        Kind::Length | Kind::Number | Kind::Angle | Kind::Area | Kind::Volume => match v {
             Value::Null => Ok(Val::Number(0.0)),
             v => v.as_f64().filter(|x| x.is_finite()).map(Val::Number).ok_or_else(|| bad("a number")),
         },
+        Kind::Integer => match v {
+            Value::Null => Ok(Val::Number(0.0)),
+            v => v
+                .as_f64()
+                .filter(|x| x.is_finite() && x.fract() == 0.0 && x.abs() <= MAX_INTEGER)
+                .map(Val::Number)
+                .ok_or_else(|| bad("a whole number")),
+        },
+        Kind::Text | Kind::Url => {
+            let (most, what) = if p.kind == Kind::Url { (MAX_URL, "a URL") } else { (MAX_TEXT, "text") };
+            match v {
+                Value::Null => Ok(Val::Text(String::new())),
+                Value::String(t) if t.chars().count() <= most && !t.chars().any(char::is_control) => Ok(Val::Text(t.clone())),
+                _ => Err(format!("parameter `{}` holds {what} on one line, up to {most} characters, not {v}", p.name)),
+            }
+        }
+        // None is chosen until nested families exist.
+        Kind::FamilyType => match v {
+            Value::Null => Ok(Val::Text(String::new())),
+            _ => {
+                Err(format!("parameter `{}` is a family type parameter, which holds no value until nested families exist, not {v}", p.name))
+            }
+        },
     }
+}
+
+/// The largest whole number an integer parameter holds: past it, a float no longer counts every one.
+pub const MAX_INTEGER: f64 = 9_007_199_254_740_992.0;
+
+/// `formula` with every name in it that is `from` said `to` instead: names as the formula reader reads them (a name may hold
+/// spaces, so `Door Width` is not `Width`), and never a function's.
+pub fn renamed_in_formula(formula: &str, from: &str, to: &str) -> String {
+    let chars: Vec<char> = formula.chars().collect();
+    let mut out = String::with_capacity(formula.len());
+    let mut at = 0;
+    while let Some(&c) = chars.get(at) {
+        if c.is_ascii_digit() || c == '.' {
+            // A number, with its exponent: `1e6` holds no name `e6`.
+            let start = at;
+            while chars.get(at).is_some_and(|c| c.is_ascii_digit() || *c == '.') {
+                at += 1;
+            }
+            if chars.get(at).is_some_and(|c| matches!(c, 'e' | 'E')) {
+                let sign = usize::from(chars.get(at + 1).is_some_and(|c| matches!(c, '+' | '-')));
+                if chars.get(at + 1 + sign).is_some_and(char::is_ascii_digit) {
+                    at += 1 + sign;
+                    while chars.get(at).is_some_and(char::is_ascii_digit) {
+                        at += 1;
+                    }
+                }
+            }
+            out.extend(&chars[start..at]);
+        } else if c.is_alphabetic() || c == '_' {
+            let start = at;
+            while chars.get(at).is_some_and(|c| c.is_alphanumeric() || *c == '_' || *c == ' ') {
+                at += 1;
+            }
+            let run: String = chars[start..at].iter().collect();
+            let name = run.trim_end();
+            let call = chars[at..].iter().find(|c| !c.is_whitespace()) == Some(&'(');
+            if name == from && !call {
+                out.push_str(to);
+                out.push_str(&run[name.len()..]);
+            } else {
+                out.push_str(&run);
+            }
+        } else {
+            out.push(c);
+            at += 1;
+        }
+    }
+    out
+}
+
+/// A label's `value` with each `{from}` said `{to}`.
+fn renamed_in_label(value: &str, from: &str, to: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(open) = rest.find('{') {
+        let Some(close) = rest[open..].find('}').map(|c| c + open) else { break };
+        out.push_str(&rest[..=open]);
+        let inner = &rest[open + 1..close];
+        out.push_str(if inner.trim() == from { to } else { inner });
+        out.push('}');
+        rest = &rest[close + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 impl Family {
@@ -1021,6 +1263,65 @@ impl Family {
         }
         for form in self.forms.iter_mut().filter(|x| !x.material.is_empty() && !params.contains(&x.material)) {
             f(&mut form.material);
+        }
+    }
+
+    /// Parameter `old` named `new` everywhere the family names it: the parameter itself, its types' values, and every
+    /// formula and reference to it (the parameters' formulas, the forms' sizes, materials and `visible`, the symbols' sizes,
+    /// `visible` and `{label}` text, the connectors' values). Every part of a family that holds a formula or names a
+    /// parameter must be walked here, so a rename never leaves one behind: a new such part adds its arm. The library
+    /// entry (its GUID) and the components' values are the model's to follow (`Library::renamed`).
+    pub fn rename_parameter(&mut self, old: &str, new: &str) {
+        let mut expr = |e: &mut Expr| {
+            if let Expr::Formula(f) = e {
+                *f = renamed_in_formula(f, old, new);
+            }
+        };
+        for p in &mut self.parameters {
+            if p.name == old {
+                p.name = new.to_string();
+            }
+            if let Some(f) = &mut p.formula {
+                *f = renamed_in_formula(f, old, new);
+            }
+        }
+        for values in self.types.values_mut() {
+            if let Some(v) = values.remove(old) {
+                values.insert(new.to_string(), v);
+            }
+        }
+        for form in &mut self.forms {
+            form.profile.iter_mut().flatten().for_each(&mut expr);
+            if let Some(c) = &mut form.circle {
+                c.centre.iter_mut().chain([&mut c.radius]).for_each(&mut expr);
+            }
+            [&mut form.from, &mut form.to].into_iter().for_each(&mut expr);
+            form.axis.iter_mut().flatten().flatten().for_each(&mut expr);
+            form.visible.iter_mut().for_each(&mut expr);
+            if form.material == old {
+                form.material = new.to_string();
+            }
+        }
+        for sym in &mut self.symbols {
+            sym.line.iter_mut().flatten().for_each(&mut expr);
+            if let Some(a) = &mut sym.arc {
+                a.centre.iter_mut().chain([&mut a.radius, &mut a.from, &mut a.to]).for_each(&mut expr);
+            }
+            if let Some(l) = &mut sym.text {
+                l.at.iter_mut().chain([&mut l.height]).for_each(&mut expr);
+                l.value = renamed_in_label(&l.value, old, new);
+            }
+            if let Some(d) = &mut sym.dot {
+                d.centre.iter_mut().chain([&mut d.radius]).for_each(&mut expr);
+            }
+            sym.visible.iter_mut().for_each(&mut expr);
+        }
+        for c in &mut self.connectors {
+            [&mut c.voltage, &mut c.power_factor].into_iter().for_each(&mut expr);
+            match &mut c.load_va {
+                Load::One(e) => expr(e),
+                Load::PerPhase(es) => es.iter_mut().for_each(&mut expr),
+            }
         }
     }
 
@@ -1101,10 +1402,15 @@ impl Family {
                 path.push(name.to_string());
                 let x = eval(f, &mut |n: &str| match self.resolve(n, set, instance, done, path)? {
                     Val::Number(x) => Ok(x),
-                    Val::Text(_) => Err(format!("`{n}` is a material, not a number")),
+                    Val::Text(_) => {
+                        let kind = self.parameters.iter().find(|q| q.name == n).map_or(Kind::Material, |q| q.kind);
+                        Err(format!("`{n}` is {}, not a number", kind.said()))
+                    }
                 });
                 path.pop();
-                Val::Number(x.map_err(|e| format!("parameter `{name}`: {e}"))?)
+                let x = x.map_err(|e| format!("parameter `{name}`: {e}"))?;
+                // A whole number's formula rounds half away from zero, as Revit's does.
+                Val::Number(if p.kind == Kind::Integer { x.round() } else { x })
             }
             None => read(p, if p.instance { instance.get(name) } else { set.get(name) }.unwrap_or(&p.value))?,
         };
@@ -1172,7 +1478,7 @@ impl Family {
         }
         if self.category.hosted() {
             for name in [WIDTH, HEIGHT] {
-                if !self.parameters.iter().any(|p| p.name == name && p.kind == Kind::Length) {
+                if !self.parameters.iter().any(|p| p.name == name && p.kind == Kind::Length && !p.reporting) {
                     return Err(format!("a door or window family needs a length parameter `{name}`: the size of the opening it makes"));
                 }
             }
@@ -1199,11 +1505,22 @@ impl Family {
             }
             match (&p.formula, p.kind) {
                 (Some(_), Kind::Material) => return Err(format!("{who}: a material takes no formula")),
+                (Some(_), k) if k.text() => return Err(format!("{who}: {} takes no formula", k.said())),
                 (Some(f), _) if long(f) => return Err(format!("{who}: its formula is longer than {MAX_FORMULA} characters")),
                 _ => {}
             }
-            if let Val::Text(m) = read(p, &p.value)? {
+            p.check_own(&who)?;
+            if let (Kind::Material, Val::Text(m)) = (p.kind, read(p, &p.value)?) {
                 material_ok(&who, &m)?;
+            }
+        }
+        // A shared parameter's GUID is one parameter: two of one family never hold it.
+        for (i, p) in self.parameters.iter().enumerate() {
+            if let Some(q) = p.shared.and_then(|g| self.parameters[..i].iter().find(|q| q.shared == Some(g))) {
+                return Err(format!(
+                    "parameters `{}` and `{}` are shared with one GUID; a shared parameter is one of them",
+                    q.name, p.name
+                ));
             }
         }
         for (t, set) in &self.types {
@@ -1219,7 +1536,10 @@ impl Family {
                 if p.formula.is_some() {
                     return Err(format!("{who}: `{k}` is worked out by its formula"));
                 }
-                if let Val::Text(m) = read(p, v)? {
+                if p.reporting {
+                    return Err(format!("{who}: `{k}` is a reporting parameter: its dimension says what it is, and nothing sets it"));
+                }
+                if let (Kind::Material, Val::Text(m)) = (p.kind, read(p, v)?) {
                     material_ok(&who, &m)?;
                 }
             }
@@ -1431,7 +1751,7 @@ impl Family {
                 if height <= 0.0 {
                     return Err(said(format!("its text has height {height}; it needs a height above zero")));
                 }
-                let text = said_text(&l.value, values).map_err(said)?;
+                let text = said_text(&l.value, values, &self.parameters).map_err(said)?;
                 out.push(Mark::Label { at, height, text, align: l.align });
                 continue;
             }
@@ -1623,9 +1943,9 @@ fn fields(value: &str) -> Result<Vec<&str>, String> {
     Ok(out)
 }
 
-/// A label's `value` with each `{Parameter}` replaced by that parameter's value: a number as plainly as it reads (3, 2.5), a
-/// material by its name.
-fn said_text(value: &str, values: &BTreeMap<String, Val>) -> Result<String, String> {
+/// A label's `value` with each `{Parameter}` replaced by that parameter's value: a number as plainly as it reads (3, 2.5), an
+/// area in m² and a volume in m³, words (a material's name, text) as they are.
+fn said_text(value: &str, values: &BTreeMap<String, Val>, parameters: &[Parameter]) -> Result<String, String> {
     let mut out = String::new();
     let mut rest = value;
     for name in fields(value)? {
@@ -1635,6 +1955,12 @@ fn said_text(value: &str, values: &BTreeMap<String, Val>) -> Result<String, Stri
         rest = &rest[close + 1..];
         match values.get(name) {
             Some(Val::Number(x)) => {
+                // An area or a volume in m² or m³, as schedules show them.
+                let x = match parameters.iter().find(|p| p.name == name).map(|p| p.kind) {
+                    Some(Kind::Area) => x / 1e6,
+                    Some(Kind::Volume) => x / 1e9,
+                    _ => *x,
+                };
                 let plain = format!("{x:.3}");
                 out.push_str(plain.trim_end_matches('0').trim_end_matches('.'));
             }
@@ -1678,7 +2004,7 @@ fn number<'a>(e: &'a Expr, values: &BTreeMap<String, Val>, read: &mut HashMap<&'
         Expr::Formula(f) => match read.entry(f.as_str()).or_insert_with(|| parse(f)) {
             Ok(node) => worked(f, node, &mut |n: &str| match values.get(n) {
                 Some(Val::Number(x)) => Ok(*x),
-                Some(Val::Text(_)) => Err(format!("`{n}` is a material, not a number")),
+                Some(Val::Text(_)) => Err(format!("`{n}` is words (a material, text, a URL), not a number")),
                 None => Err(format!("`{n}` isn't one of its parameters")),
             })?,
             Err(e) => return Err(e.clone()),

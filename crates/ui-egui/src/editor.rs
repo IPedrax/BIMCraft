@@ -182,6 +182,8 @@ impl FormText {
 /// A parameter as typed.
 #[derive(Clone)]
 struct ParamText {
+    /// What it was, whose group, shared GUID, reporting and `of` the editor keeps as they are.
+    original: Parameter,
     name: String,
     kind: Holds,
     instance: bool,
@@ -197,8 +199,29 @@ fn kind_name(k: Holds) -> &'static str {
         Holds::Angle => "Angle",
         Holds::YesNo => msg!("Yes/No"),
         Holds::Material => "Material",
+        Holds::Text => msg!("Text"),
+        Holds::Integer => msg!("Integer"),
+        Holds::Area => msg!("Area"),
+        Holds::Volume => msg!("Volume"),
+        Holds::Url => msg!("URL"),
+        Holds::FamilyType => msg!("Family Type"),
     }
 }
+
+/// Every kind a parameter may be, in the order the editor offers them.
+const KINDS: [Holds; 11] = [
+    Holds::Length,
+    Holds::Number,
+    Holds::Integer,
+    Holds::Angle,
+    Holds::Area,
+    Holds::Volume,
+    Holds::YesNo,
+    Holds::Text,
+    Holds::Url,
+    Holds::Material,
+    Holds::FamilyType,
+];
 
 /// A stored value, as typed for a parameter of `kind`.
 fn value_text(kind: Holds, v: &Value) -> String {
@@ -217,9 +240,9 @@ fn text_value(kind: Holds, s: &str, who: &str) -> Result<Option<Value>, String> 
         return Ok(None);
     }
     Ok(Some(match kind {
-        Holds::Material => json!(s),
+        Holds::Material | Holds::Text | Holds::Url | Holds::FamilyType => json!(s),
         Holds::YesNo => json!(matches!(s, "1" | "true" | "yes" | "Yes")),
-        Holds::Length | Holds::Number | Holds::Angle => {
+        Holds::Length | Holds::Number | Holds::Angle | Holds::Integer | Holds::Area | Holds::Volume => {
             json!(s.parse::<f64>().ok().filter(|x| x.is_finite()).ok_or_else(|| tf("{}: `{}` isn't a number", &[who, s]))?)
         }
     }))
@@ -228,6 +251,7 @@ fn text_value(kind: Holds, s: &str, who: &str) -> Result<Option<Value>, String> 
 impl ParamText {
     fn of(p: &Parameter) -> ParamText {
         ParamText {
+            original: p.clone(),
             name: p.name.clone(),
             kind: p.kind,
             instance: p.instance,
@@ -238,12 +262,20 @@ impl ParamText {
 
     fn parameter(&self) -> Result<Parameter, String> {
         let value = text_value(self.kind, &self.value, &self.name)?.unwrap_or(match self.kind {
-            Holds::Material => json!(""),
+            Holds::Material | Holds::Text | Holds::Url => json!(""),
+            Holds::FamilyType => Value::Null,
             Holds::YesNo => json!(false),
             _ => json!(0.0),
         });
         let formula = Some(self.formula.trim().to_string()).filter(|f| !f.is_empty());
-        Ok(Parameter { name: self.name.trim().to_string(), kind: self.kind, instance: self.instance, value, formula })
+        Ok(Parameter {
+            name: self.name.trim().to_string(),
+            kind: self.kind,
+            instance: self.instance,
+            value,
+            formula,
+            ..self.original.clone()
+        })
     }
 }
 
@@ -635,9 +667,8 @@ fn parameters_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
         for (i, p) in ed.params.iter_mut().enumerate() {
             let n = i + 1;
             field(ui, format!("{} {n}", t("Parameter Name")), &mut p.name, 130.0);
-            let kinds = [Holds::Length, Holds::Number, Holds::Angle, Holds::YesNo, Holds::Material];
             ComboBox::from_id_salt(("fe-param-kind", i)).selected_text(t(kind_name(p.kind))).width(84.0).show_ui(ui, |ui| {
-                for k in kinds {
+                for k in KINDS {
                     ui.selectable_value(&mut p.kind, k, t(kind_name(k)));
                 }
             });
@@ -671,7 +702,14 @@ fn parameters_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     }
     if ui.button(t("Add Parameter")).clicked() {
         let name = (1..).map(|k| format!("{} {k}", t("Parameter"))).find(|n| !ed.params.iter().any(|p| p.name == *n)).unwrap_or_default();
-        ed.params.push(ParamText { name, kind: Holds::Length, instance: false, value: "0".into(), formula: String::new() });
+        ed.params.push(ParamText {
+            original: Parameter::default(),
+            name,
+            kind: Holds::Length,
+            instance: false,
+            value: "0".into(),
+            formula: String::new(),
+        });
     }
 }
 
@@ -701,8 +739,12 @@ fn types_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
             ed.types.remove(ed.picked);
         }
     });
-    let own: Vec<(String, Holds)> =
-        ed.params.iter().filter(|p| !p.instance && p.formula.trim().is_empty()).map(|p| (p.name.clone(), p.kind)).collect();
+    let own: Vec<(String, Holds)> = ed
+        .params
+        .iter()
+        .filter(|p| !p.instance && !p.original.reporting && p.formula.trim().is_empty())
+        .map(|p| (p.name.clone(), p.kind))
+        .collect();
     let Some((name, set)) = ed.types.get_mut(ed.picked) else { return };
     ui.add_space(4.0);
     Grid::new("fe-type").num_columns(2).spacing(vec2(12.0, 5.0)).show(ui, |ui| {
@@ -1292,7 +1334,7 @@ mod tests {
         for part in [Part::Line, Part::Arc, Part::Text, Part::Dot] {
             assert_eq!(SymbolText::of(&SymbolText::blank(part).symbol().unwrap()).part, part);
         }
-        let p = Parameter { name: "Legs".into(), kind: Holds::YesNo, instance: true, value: json!(true), formula: None };
+        let p = Parameter { name: "Legs".into(), kind: Holds::YesNo, instance: true, value: json!(true), ..Parameter::default() };
         assert_eq!(ParamText::of(&p).parameter().unwrap(), p);
         let area = Parameter {
             name: "Area".into(),
@@ -1300,8 +1342,24 @@ mod tests {
             instance: false,
             value: json!(0.0),
             formula: Some("Width * Depth".into()),
+            ..Parameter::default()
         };
         assert_eq!(ParamText::of(&area).parameter().unwrap(), area);
+        // What the editor shows no field for yet stays as the family has it.
+        let shared = Parameter {
+            name: "Fire Rating".into(),
+            kind: Holds::Text,
+            value: json!("EI 60"),
+            group: Some(bimcraft_core::family::Group::IdentityData),
+            shared: bimcraft_core::model::Guid::parse("6f1c2a3b-4d5e-4f60-8a71-92b3c4d5e6f7"),
+            ..Parameter::default()
+        };
+        assert_eq!(ParamText::of(&shared).parameter().unwrap(), shared);
+        let reach = Parameter { name: "Reach".into(), reporting: true, value: json!(450.0), ..Parameter::default() };
+        assert_eq!(ParamText::of(&reach).parameter().unwrap(), reach);
+        for k in KINDS {
+            assert!(!kind_name(k).is_empty());
+        }
         assert_eq!(kind_name(Holds::YesNo), "Yes/No");
         // The rest of an editor's tabs list: all of them there.
         let tabs: BTreeSet<&str> = ["Parameters", "Types", "Forms", "Symbols"].into_iter().collect();

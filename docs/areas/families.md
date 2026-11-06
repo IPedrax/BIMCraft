@@ -101,6 +101,34 @@ in it, then `render_view` on that model — `3d`, `plan` (what its symbols draw)
 element and no undo step from it, the way the Family Editor's own preview already worked (`editor.rs::scratch`).
 
 
+## Parameters
+
+A family's `Parameter` (`family.rs`) is, as Revit's Parameter Properties describe one, a kind, a group, Type or Instance,
+Family or Shared, and maybe reporting. Its `kind` is a length (mm), a number, an `integer` (a whole number, refused
+otherwise; its formula rounds half away from zero), an angle, an `area` (mm²) or a `volume` (mm³), so a formula over
+lengths in mm needs no conversion (`Width * Depth` is an area), schedules and `{label}` text showing them in m² and m³;
+yes or no; or words: a material, `text`, a `url` (`MAX_URL`, one line) or a `familytype`. Words take no formula and no formula
+reads them (`Kind::text`; `family/validate.rs` refuses the formula, a material still where it is worked out). A family type
+parameter names the category of the families whose types it picks (`of`) and holds no value until nested families exist.
+`group` is the heading it is listed under (`Group`, 14 of them); none, its kind's (`Parameter::group`: Dimensions for lengths,
+areas, volumes and angles, Materials and Finishes for materials, else Other). `shared` is a shared parameter's GUID, the
+same wherever it is used and distinct from the parameter's library-entry GUID (which is per project and per family): two
+families' parameters of one shared GUID are one name and one kind, and one name shared is one GUID
+(`Model::check_shared_parameters`); without it, it is the family's own. Schedules list every family parameter by name either
+way, as they always have. A `reporting` parameter, a length or an angle, reads a dimension and never drives one: no formula,
+type or component sets it (`Parameter::check_own`, `Family::check`, `Model::family_values_ok`) and, until labelled dimensions
+exist, it holds its `value`, with a warning saying so. Discipline is implied by the kind (all Common), so there is no field.
+
+`family {parameter: {name, rename?, …}}` is Edit Parameter: the fields merged over the one named (added if there's none), a
+shared parameter's name and kind kept. `rename` goes through `Family::rename_parameter`, the one place that walks every part
+of a family naming a parameter (formulas, forms' sizes, materials and `visible`, symbols' sizes and `{label}` text, connectors'
+values: a new part that holds a formula adds its arm there), with `Library::renamed` keeping its GUID and the components'
+values following. `instance` switched moves values, not loses them (`patch_parameter` in `commands.rs`): to instance, each
+component takes its type's value (a type with nothing placed loses it, as Revit's does); to type, each type takes the value its
+components agree on, refused naming the components where they don't. `delete_parameter` takes parameters away with their
+values; whatever still names one is `Family::problems`'s to refuse. A file of 17 reads unchanged (every parameter the family's,
+grouped by its kind); FORMAT 19 says an older build can't read the new kinds and fields (18 is another branch's number).
+
 ## Plan symbols
 
 A family's `symbols`, of any category, are what its plan draws besides its forms, in its own axes: each is exactly one of a

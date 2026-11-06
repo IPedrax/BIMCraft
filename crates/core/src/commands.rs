@@ -1002,7 +1002,10 @@ pub static ALL: &[Command] = &[
         "Load Family",
         &[],
         "{name?, category?: furniture|casework|plumbing|lighting|generic|door|window, parameters?: [{name, kind?: length|number|\
-         angle|yesno|material, instance?, value?, formula?}], types?: {type: {parameter: value}}, forms?: [{plane?: xy|xz|yz, \
+         integer|angle|area|volume|yesno|material|text|url|familytype, instance?, value?, formula?, group?: constraints|\
+         construction|dimensions|graphics|identity-data|materials-and-finishes|text|visibility|electrical|mechanical|plumbing|\
+         structural|data|other, shared?: guid, reporting?, of?: category}], parameter?: {name, rename?, …a parameter's \
+         fields}, delete_parameter?: [name, …], types?: {type: {parameter: value}}, forms?: [{plane?: xy|xz|yz, \
          profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, \
          void?}], symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to} | text?: {at: [x, y], height, value, align?: left|center|right} | dot?: {centre: [x, y], radius}, visible?}], form?: {id | guid, …a \
          form's fields}, symbol?: {id | guid, …a symbol's fields}, delete_form?: [id | guid, …], delete_symbol?: [id | guid, …], \
@@ -1021,7 +1024,19 @@ pub static ALL: &[Command] = &[
          and symbols replaced, patched and deleted by id, the `rename`) instead of doing it; a change that's refused comes back \
          as an error, as it would without it. `form` merges its fields over the one form of that `id` or `guid` (a `null` takes \
          a field away; its place, its id and its GUID stay), `delete_form` takes those forms away; `symbol` and `delete_symbol` \
-         do the same for symbols — where `forms` and `symbols` still replace whole lists. Every reply carries `warnings`: what's \
+         do the same for symbols — where `forms` and `symbols` still replace whole lists. `parameter` edits the one parameter \
+         named (or adds it), as Revit's Edit Parameter: its fields merged over it (`null` takes one away), `rename` keeping its \
+         GUID with every formula, form, label and component value following it, and `instance` switched with what its types \
+         and components hold moved onto them, not lost (to instance, each component takes its type's value; to type, each type \
+         takes what its components agree on, refused where they don't). `delete_parameter` takes parameters away, with their \
+         values, refused while a formula, form or label names one. A parameter's `kind`: lengths in mm, areas in mm² and \
+         volumes in mm³ (schedules and labels show m² and m³), an `integer` whole (its formula rounds), `text` and `url` words \
+         that no formula reads or works out, `familytype` a type of a family of category `of`, for nested families, holding no \
+         value yet. `group` is the heading it is listed under (by default its kind's: Dimensions for lengths, areas, volumes and \
+         angles, Materials and Finishes for materials, else Other). `shared` makes it a shared parameter, by a GUID that is one \
+         name and one kind across the project's families (its name and kind can't change while shared); without it, it is the \
+         family's own. `reporting`, a length or an angle, reads a dimension and drives none: no formula, type or component sets \
+         it, and until labelled dimensions exist it holds its `value`. Every reply carries `warnings`: what's \
          worth knowing and doesn't stop the change (a void cutting no solid, a form outside the opening or thicker than its \
          wall, a door's or window's plan with no symbols). Its forms are profiles drawn in its own axes (x along a component's \
          angle, y to its left, z up from its base) and swept: `xy` up from `from` to `to`, `xz` along y, `yz` along x. With an \
@@ -10083,6 +10098,217 @@ struct Patches {
     symbols_replaced: usize,
     symbols_patched: Vec<Id>,
     symbols_deleted: Vec<Id>,
+    /// Parameters `parameter` renamed, from and to.
+    params_renamed: Vec<(String, String)>,
+    /// What changes the components of the family: values moved onto them or off them, renamed, taken away.
+    component_ops: Vec<ComponentOp>,
+}
+
+/// A change to one component's (or family door's or window's) own values, which an edit of its family's parameters makes.
+enum ComponentOp {
+    Set(Id, String, Value),
+    Remove(Id, String),
+    Rename(Id, String, String),
+}
+
+impl ComponentOp {
+    fn apply(&self, m: &mut Model) {
+        let id = match self {
+            ComponentOp::Set(id, ..) | ComponentOp::Remove(id, _) | ComponentOp::Rename(id, ..) => *id,
+        };
+        let Some(ps) = m.elements.get_mut(id).and_then(Element::params_mut) else { return };
+        match self {
+            ComponentOp::Set(_, k, v) => {
+                ps.insert(k.clone(), v.clone());
+            }
+            ComponentOp::Remove(_, k) => {
+                ps.remove(k);
+            }
+            ComponentOp::Rename(_, from, to) => {
+                if let Some(v) = ps.remove(from) {
+                    ps.insert(to.clone(), v);
+                }
+            }
+        }
+    }
+}
+
+/// An element of a family: its id, its type and its own values.
+type FamilyUser<'a> = (Id, &'a str, Option<&'a BTreeMap<String, Value>>);
+
+/// Each element of family `family`, with its type and its own values.
+fn family_users<'a>(m: &'a Model, family: &str) -> Vec<FamilyUser<'a>> {
+    m.elements.iter().filter_map(|(id, e)| e.family().filter(|(f, _)| *f == family).map(|(_, t)| (*id, t, e.params()))).collect()
+}
+
+/// One parameter of family `f` (`family` in `m`) edited as Revit's Edit Parameter does, or added: `patch` merged over what
+/// it holds (`null` taking a field away), then renamed (`rename`, keeping its GUID, every formula and reference following
+/// it) and switched between type and instance with what its types and components hold moved, not lost: type to instance,
+/// each component takes its type's value (a type with none placed loses it); instance to type, each type takes the value
+/// its components agree on, refused where they don't. A shared parameter's name and kind are its definition's.
+fn patch_parameter(
+    c: &str,
+    family: &str,
+    f: &mut crate::family::Family,
+    m: &Model,
+    patch: &Value,
+    patches: &mut Patches,
+) -> Result<(), String> {
+    let Value::Object(map) = patch else {
+        return Err(bad(c, format!("`parameter` must be {{name, …the parameter's fields}}, not {patch}")));
+    };
+    let name = map.get("name").and_then(Value::as_str).map(str::trim).filter(|n| !n.is_empty());
+    let name = name.ok_or_else(|| bad(c, "`parameter` needs the parameter's `name`"))?.to_string();
+    let mut fields = map.clone();
+    fields.remove("name");
+    let rename = match fields.remove("rename") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(to)) if !to.trim().is_empty() => Some(to.trim().to_string()),
+        Some(v) => return Err(bad(c, format!("`parameter`: `rename` is the parameter's new name, not {v}"))),
+    };
+    if let Some(g) = fields.get("group").filter(|g| !g.is_null())
+        && serde_json::from_value::<crate::family::Group>(g.clone()).is_err()
+    {
+        let groups: Vec<String> = crate::family::Group::ALL.iter().map(|g| json!(g).as_str().unwrap_or_default().to_string()).collect();
+        return Err(bad(c, format!("parameter `{name}`: `group` is one of {}, not {g}", groups.join(", "))));
+    }
+    let at = f.parameters.iter().position(|q| q.name == name);
+    let was = at.and_then(|i| f.parameters.get(i).cloned());
+    let mut whole = match &was {
+        Some(q) => serde_json::to_value(q).map_err(|e| bad(c, e))?,
+        None => json!({}),
+    };
+    merge(&mut whole, &Value::Object(fields));
+    whole["name"] = json!(name);
+    let now: crate::family::Parameter =
+        serde_json::from_value(whole).map_err(|e| bad(c, format!("parameter `{name}` of family \"{family}\": {e}")))?;
+    if let Some(q) = &was
+        && q.shared.is_some()
+        && q.shared == now.shared
+    {
+        if q.kind != now.kind {
+            return Err(bad(
+                c,
+                format!("parameter `{name}` is shared: its kind is its shared definition's; take `shared` off to change it"),
+            ));
+        }
+        if rename.is_some() {
+            return Err(bad(
+                c,
+                format!("parameter `{name}` is shared: its name is its shared definition's; take `shared` off to rename it"),
+            ));
+        }
+    }
+    let switched = was.as_ref().is_some_and(|q| q.instance != now.instance);
+    match at {
+        Some(i) => f.parameters[i] = now.clone(),
+        None => f.parameters.push(now.clone()),
+    }
+    let users = family_users(m, family);
+    if switched && now.instance {
+        // Type to instance: each component takes its type's value as its own, unless it holds one.
+        for (id, ty, own) in &users {
+            if own.is_some_and(|o| o.contains_key(&name)) {
+                continue;
+            }
+            if let Some(v) = f.types.get(*ty).and_then(|t| t.get(&name)) {
+                patches.component_ops.push(ComponentOp::Set(*id, name.clone(), v.clone()));
+            }
+        }
+        f.types.values_mut().for_each(|t| {
+            t.remove(&name);
+        });
+    } else if switched {
+        // Instance to type: each type takes what its components hold, the family's value where they hold none of their own.
+        let default = was.as_ref().map(|q| q.value.clone()).unwrap_or_default();
+        let read = |v: &Value| crate::family::read(&now, v).map_err(|e| bad(c, e));
+        let mut by_type: BTreeMap<&str, Vec<(Id, Value)>> = BTreeMap::new();
+        for (id, ty, own) in &users {
+            let v = own.and_then(|o| o.get(&name)).cloned().unwrap_or_else(|| default.clone());
+            by_type.entry(ty).or_default().push((*id, v));
+        }
+        for (ty, held) in by_type {
+            let Some((_, first)) = held.first() else { continue };
+            let first_val = read(first)?;
+            let mut said = Vec::new();
+            for (_, v) in &held {
+                let x = read(v)?;
+                if !said.contains(&x) {
+                    said.push(x);
+                }
+            }
+            if said.len() > 1 {
+                let ids: Vec<String> = held.iter().map(|(id, _)| id.to_string()).collect();
+                let vals: Vec<String> = said
+                    .iter()
+                    .map(|v| match v {
+                        crate::family::Val::Number(x) => x.to_string(),
+                        crate::family::Val::Text(t) => format!("`{t}`"),
+                    })
+                    .collect();
+                return Err(bad(
+                    c,
+                    format!(
+                        "parameter `{name}`: components {} of type `{ty}` hold {}; make them agree, or put them in types of their \
+                         own, before it is a type parameter",
+                        ids.join(", "),
+                        vals.join(" and ")
+                    ),
+                ));
+            }
+            if first_val != read(&default)?
+                && let Some(t) = f.types.get_mut(ty)
+            {
+                t.insert(name.clone(), first.clone());
+            }
+        }
+        for (id, _, own) in &users {
+            if own.is_some_and(|o| o.contains_key(&name)) {
+                patches.component_ops.push(ComponentOp::Remove(*id, name.clone()));
+            }
+        }
+    }
+    if let Some(to) = rename
+        && to != name
+    {
+        if f.parameters.iter().any(|q| q.name == to) {
+            return Err(bad(c, format!("family \"{family}\" has a parameter `{to}` already")));
+        }
+        f.rename_parameter(&name, &to);
+        for (id, _, _) in &users {
+            patches.component_ops.push(ComponentOp::Rename(*id, name.clone(), to.clone()));
+        }
+        patches.params_renamed.push((name, to));
+    }
+    Ok(())
+}
+
+/// Parameter `name` of family `f` taken away, with its types' and its components' values of it; what still names it is
+/// [`crate::family::Family::problems`]'s to refuse.
+fn delete_parameter(
+    c: &str,
+    family: &str,
+    f: &mut crate::family::Family,
+    m: &Model,
+    name: &Value,
+    patches: &mut Patches,
+) -> Result<(), String> {
+    let Some(name) = name.as_str() else {
+        return Err(bad(c, format!("`delete_parameter` lists parameters' names, not {name}")));
+    };
+    let Some(at) = f.parameters.iter().position(|q| q.name == name) else {
+        return Err(bad(c, format!("family \"{family}\" has no parameter `{name}` to delete")));
+    };
+    f.parameters.remove(at);
+    f.types.values_mut().for_each(|t| {
+        t.remove(name);
+    });
+    for (id, _, own) in family_users(m, family) {
+        if own.is_some_and(|o| o.contains_key(name)) {
+            patches.component_ops.push(ComponentOp::Remove(id, name.to_string()));
+        }
+    }
+    Ok(())
 }
 
 /// A project's families: read one (`family {name}` alone costs no undo step), change one, make one
@@ -10186,6 +10412,8 @@ fn family(s: &mut Session, p: &Value) -> R {
         "symbol",
         "delete_form",
         "delete_symbol",
+        "parameter",
+        "delete_parameter",
     ];
     if !keys.iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null())) {
         let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}`")))?;
@@ -10207,6 +10435,22 @@ fn family(s: &mut Session, p: &Value) -> R {
     }
     if let Some(v) = p.get("parameters").filter(|v| !v.is_null()) {
         f.parameters = serde_json::from_value(v.clone()).map_err(|e| field("parameters", e))?;
+    }
+    // One parameter edited, renamed or switched between type and instance, and parameters taken away.
+    if let Some(v) = p.get("parameter").filter(|v| !v.is_null()) {
+        patch_parameter(c, &name, &mut f, &s.model, v, &mut patches)?;
+    }
+    match p.get("delete_parameter") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(list)) => {
+            for v in list {
+                delete_parameter(c, &name, &mut f, &s.model, v, &mut patches)?;
+            }
+        }
+        Some(v) => return Err(bad(c, format!("`delete_parameter` is a list of parameters' names, not {v}"))),
+    }
+    // The names elements hold something else under, whichever way a parameter came by its name.
+    if ["parameters", "parameter"].iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null())) {
         if let Some(q) = f.parameters.iter().find(|q| paint::reserved(&q.name)) {
             return Err(bad(c, format!("parameter `{}`: an element holds its paint under that name; name it otherwise", q.name)));
         }
@@ -10310,6 +10554,12 @@ fn family(s: &mut Session, p: &Value) -> R {
         return Ok(reply);
     }
     let m = s.model_mut();
+    for (from, to) in &patches.params_renamed {
+        m.library.renamed(&LibKind::FamilyParameter, &format!("{name}: {from}"), &format!("{name}: {to}"));
+    }
+    for op in &patches.component_ops {
+        op.apply(m);
+    }
     if let Some(to) = rename {
         m.families.remove(&name);
         m.library.family_renamed(&name, &to);
@@ -10373,6 +10623,8 @@ fn family_changes(was: Option<&crate::family::Family>, now: &crate::family::Fami
         "forms": {"replaced": patches.forms_replaced, "patched": patches.forms_patched, "deleted": patches.forms_deleted},
         "symbols": {"replaced": patches.symbols_replaced, "patched": patches.symbols_patched, "deleted": patches.symbols_deleted},
         "rename": rename,
+        "parameters_renamed": patches.params_renamed.iter().map(|(a, b)| json!({"from": a, "to": b})).collect::<Vec<_>>(),
+        "component_values_changed": patches.component_ops.len(),
         "deleted": false,
     })
 }

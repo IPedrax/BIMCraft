@@ -43,6 +43,8 @@ pub mod engine;
 pub mod falls;
 pub mod family;
 #[cfg(test)]
+mod family_parameter_tests;
+#[cfg(test)]
 mod family_section_tests;
 pub mod favorites;
 pub mod fills;

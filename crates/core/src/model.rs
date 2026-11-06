@@ -70,7 +70,12 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 17: a schedule may list several categories
+/// The version of the project file this build writes, and the newest it reads. 19: a family's parameters may be text, whole
+/// numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a GUID) or reporting (`reporting`),
+/// and a family type parameter names its category (`of`); nothing in a file of 17 changes, but a build that reads up to 17
+/// would refuse a new kind ("unknown variant") and leave the rest out as fields it doesn't know, a shared parameter becoming
+/// the family's own and a reporting one one it sets, not say "saved by a newer BIMCraft". 18 is another branch's (adaptive
+/// families), so this one skips it; a file of 18 has nothing of this. 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -108,7 +113,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 17;
+pub const FORMAT: u32 = 19;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3147,6 +3152,35 @@ impl Model {
         self.elements.iter().find(|(_, e)| self.component_materials(e).contains(&name)).map(|(id, _)| format!("component {id}"))
     }
 
+    /// Whether the families' shared parameters agree: a shared GUID is one name and one kind wherever a family holds it, and
+    /// a name is one shared GUID, so a schedule's column of it is one parameter.
+    fn check_shared_parameters(&self) -> Result<(), String> {
+        let mut by_guid: BTreeMap<Guid, (&str, &crate::family::Parameter)> = BTreeMap::new();
+        let mut by_name: BTreeMap<&str, (&str, Guid)> = BTreeMap::new();
+        for (n, f) in &self.families {
+            for p in &f.parameters {
+                let Some(g) = p.shared else { continue };
+                let who = format!("family `{n}`: parameter `{}` is shared as {g}", p.name);
+                if let Some((other, q)) = by_guid.get(&g) {
+                    if q.name != p.name {
+                        return Err(format!("{who}, which family `{other}` calls `{}`; a shared parameter has one name", q.name));
+                    }
+                    if q.kind != p.kind {
+                        return Err(format!("{who}, which family `{other}` holds as {}, not {}", q.kind.said(), p.kind.said()));
+                    }
+                }
+                if let Some((other, h)) = by_name.get(p.name.as_str())
+                    && *h != g
+                {
+                    return Err(format!("{who}, but family `{other}` shares `{}` as {h}: one name is one shared parameter", p.name));
+                }
+                by_guid.entry(g).or_insert((n, p));
+                by_name.entry(p.name.as_str()).or_insert((n, g));
+            }
+        }
+        Ok(())
+    }
+
     /// Whether the values `params` give an element of family `name` are its instance parameters' own: what the
     /// element sets of the family are instance parameters, none worked out by a formula, materials in the library.
     fn family_values_ok(&self, who: &str, name: &str, f: &Family, params: &BTreeMap<String, serde_json::Value>) -> Result<(), String> {
@@ -3158,7 +3192,11 @@ impl Model {
             if p.formula.is_some() {
                 return Err(format!("{who}: `{k}` is worked out by its formula"));
             }
+            if p.reporting {
+                return Err(format!("{who}: `{k}` is a reporting parameter: its dimension says what it is, and nothing sets it"));
+            }
             if let crate::family::Val::Text(m) = crate::family::read(p, v).map_err(|e| format!("{who}: {e}"))?
+                && p.kind == crate::family::Kind::Material
                 && !m.is_empty()
                 && !self.materials.contains_key(&m)
             {
@@ -3424,6 +3462,9 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
+        // 17 to 19 (a family's parameters: new kinds, groups, shared GUIDs, reporting, a family type's category) has none:
+        // the new fields default, to a family parameter grouped by its kind, which is what a file of 17 holds. (18 is
+        // another branch's number.)
         self.format = FORMAT;
     }
 
@@ -6028,6 +6069,7 @@ impl Model {
             }
             f.check(&|m| self.materials.contains_key(m)).map_err(|e| format!("family `{n}`: {e}"))?;
         }
+        self.check_shared_parameters()?;
         if self.parameters.len() > MAX_PROJECT_PARAMETERS {
             return Err(format!("the project has {} parameters; it holds up to {MAX_PROJECT_PARAMETERS}", self.parameters.len()));
         }

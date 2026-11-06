@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use bimcraft_core::element_json;
-use bimcraft_core::family::{Kind as Holds, Val};
+use bimcraft_core::family::{Group, Kind as Holds, Val};
 use bimcraft_core::model::{Element, Function, Guid, Id, Layer, Location, Model, PARAMETER_CATEGORIES, ParameterKind, Pattern};
 use bimcraft_core::schedule::{self, Field, Filter, Op, Sort};
 use bimcraft_core::snap::Kind as Snap;
@@ -1822,12 +1822,9 @@ impl BimApp {
         };
         let (units, materials): (Units, Vec<String>) = (model.units, model.materials.keys().cloned().collect());
         let mut change: Option<(String, Result<Value, String>)> = None;
-        for (group, kinds) in [
-            ("Dimensions", &[Holds::Length, Holds::Number, Holds::Angle][..]),
-            (msg!("Materials and Finishes"), &[Holds::Material][..]),
-            ("Other", &[Holds::YesNo][..]),
-        ] {
-            let params: Vec<_> = f.parameters.iter().filter(|p| p.instance && kinds.contains(&p.kind)).collect();
+        for g in Group::ALL {
+            let group = g.label();
+            let params: Vec<_> = f.parameters.iter().filter(|p| p.instance && p.group() == g).collect();
             if params.is_empty() {
                 continue;
             }
@@ -1845,8 +1842,18 @@ impl BimApp {
                         let name = ui.label(&p.name);
                         let kind = if p.kind == Holds::Length { Length } else { Number };
                         match p.kind {
-                            _ if p.formula.is_some() => {
+                            // What a formula works out, or a reporting parameter reads: shown, not typed.
+                            _ if p.formula.is_some() || p.reporting => {
                                 ui.label(RichText::new(shown(kind, &val, units)).color(pal().muted));
+                            }
+                            Holds::FamilyType => {
+                                ui.label(RichText::new(val.as_str().unwrap_or_default()).color(pal().muted));
+                            }
+                            Holds::Text | Holds::Url => {
+                                if let Some(typed) = self.field(ui, id, &p.name, val.as_str().unwrap_or_default().to_string(), name.id, "")
+                                {
+                                    change = Some((p.name.clone(), Ok(json!(typed))));
+                                }
                             }
                             Holds::YesNo => {
                                 let mut on = val.as_f64().is_some_and(|x| x != 0.0);
@@ -1861,7 +1868,7 @@ impl BimApp {
                                     change = Some((p.name.clone(), Ok(json!(m))));
                                 }
                             }
-                            Holds::Length | Holds::Number | Holds::Angle => {
+                            Holds::Length | Holds::Number | Holds::Angle | Holds::Integer | Holds::Area | Holds::Volume => {
                                 if let Some(typed) = self.field(ui, id, &p.name, shown(kind, &val, units), name.id, "") {
                                     change = Some((p.name.clone(), parse(kind, &typed, units)));
                                 }
@@ -2432,7 +2439,7 @@ pub(crate) struct FamilyDialog {
     /// The components that were on the type when the dialog opened; OK puts them on the type shown.
     elements: Vec<Id>,
     /// Each type parameter: its name, what it holds, as typed, and whether a formula works it out.
-    fields: Vec<(String, Holds, String, bool)>,
+    fields: Vec<(String, Holds, String, bool, Group)>,
     /// A new name being typed, for a duplicate or a rename.
     naming: Naming,
     /// What stopped OK, Apply, Duplicate or Rename.
@@ -2453,7 +2460,11 @@ impl FamilyDialog {
                     Some(Val::Text(t)) => t.clone(),
                     None => String::new(),
                 };
-                f.parameters.iter().filter(|p| !p.instance).map(|p| (p.name.clone(), p.kind, typed(p), p.formula.is_some())).collect()
+                f.parameters
+                    .iter()
+                    .filter(|p| !p.instance)
+                    .map(|p| (p.name.clone(), p.kind, typed(p), p.formula.is_some() || p.reporting, p.group()))
+                    .collect()
             })
             .unwrap_or_default();
         FamilyDialog { family, name, elements, fields, naming: Naming::None, error: None }
@@ -2468,12 +2479,14 @@ impl FamilyDialog {
     /// aren't what they hold.
     fn params(&self, name: &str, units: Units) -> Result<Value, String> {
         let mut set = serde_json::Map::new();
-        for (key, kind, typed, _) in self.fields.iter().filter(|f| !f.3) {
+        for (key, kind, typed, ..) in self.fields.iter().filter(|f| !f.3 && f.1 != Holds::FamilyType) {
             let v = match kind {
                 Holds::Length => json!(units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[key, typed]))?),
-                Holds::Number | Holds::Angle => json!(number(typed).ok_or_else(|| tf("{}: `{}` is not a number", &[key, typed]))?),
+                Holds::Number | Holds::Angle | Holds::Integer | Holds::Area | Holds::Volume => {
+                    json!(number(typed).ok_or_else(|| tf("{}: `{}` is not a number", &[key, typed]))?)
+                }
                 Holds::YesNo => json!(typed == "1"),
-                Holds::Material => json!(typed),
+                Holds::Material | Holds::Text | Holds::Url | Holds::FamilyType => json!(typed),
             };
             set.insert(key.clone(), v);
         }
@@ -2493,23 +2506,12 @@ impl BimApp {
             crate::popup::body(ui, |ui| {
                 asked = typeprops::head(ui, "family-type", &d.family, &names, &d.name, &mut d.naming, true);
                 let below = typeprops::foot_height(ui, d.error.is_some());
-                // Each parameter under the group Revit gives what it holds: lengths and angles are dimensions.
-                let group = |kind: &Holds| match kind {
-                    Holds::Length | Holds::Angle => "Dimensions",
-                    Holds::Material => msg!("Materials and Finishes"),
-                    Holds::Number | Holds::YesNo => "Other",
-                };
-                let mut groups: Vec<&str> = Vec::new();
-                for (_, kind, ..) in &d.fields {
-                    if !groups.contains(&group(kind)) {
-                        groups.push(group(kind));
-                    }
-                }
-                groups.sort_by_key(|g| ["Materials and Finishes", "Dimensions", "Other"].iter().position(|x| x == g));
+                // Each parameter under its group: its own, else the one its kind goes under.
+                let groups: Vec<Group> = Group::ALL.into_iter().filter(|g| d.fields.iter().any(|f| f.4 == *g)).collect();
                 typeprops::table(ui, "family-type", below, |tb| {
                     for g in groups {
-                        tb.group(g);
-                        for (key, kind, typed, computed) in d.fields.iter_mut().filter(|f| group(&f.1) == g) {
+                        tb.group(g.label());
+                        for (key, kind, typed, computed, _) in d.fields.iter_mut().filter(|f| f.4 == g) {
                             match kind {
                                 // What a formula works out, shown as Revit greys it.
                                 _ if *computed => tb.shown(key, typed),
@@ -2521,7 +2523,10 @@ impl BimApp {
                                 Holds::Material => tb.pick(key, typed, &materials),
                                 Holds::Length => tb.text(key, typed, model.units.name()),
                                 Holds::Angle => tb.text(key, typed, "°"),
-                                Holds::Number => tb.text(key, typed, ""),
+                                Holds::Area => tb.text(key, typed, "mm²"),
+                                Holds::Volume => tb.text(key, typed, "mm³"),
+                                Holds::FamilyType => tb.shown(key, typed),
+                                Holds::Number | Holds::Integer | Holds::Text | Holds::Url => tb.text(key, typed, ""),
                             }
                         }
                     }
