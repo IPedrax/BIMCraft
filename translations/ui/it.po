@@ -11,12 +11,12 @@ msgstr " Esclusi: {}{}."
 msgid " Moved {}, {} mm to bring it near the origin."
 msgstr " Spostato di {}, {} mm per portarlo vicino all'origine."
 
-#: crates/ui-egui/src/editor.rs:612
-#: crates/ui-egui/src/editor.rs:615
-#: crates/ui-egui/src/editor.rs:1005
-#: crates/ui-egui/src/editor.rs:1007
+#: crates/ui-egui/src/editor.rs:644
+#: crates/ui-egui/src/editor.rs:647
+#: crates/ui-egui/src/editor.rs:1047
+#: crates/ui-egui/src/editor.rs:1049
 #: crates/ui-egui/src/filter.rs:35
-#: crates/ui-egui/src/properties.rs:2372
+#: crates/ui-egui/src/properties.rs:2379
 msgid "(none)"
 msgstr "(nessuno)"
 
@@ -109,11 +109,11 @@ msgstr "Un progetto BIMCraft o un file IFC."
 msgid "A BIMCraft project, an IFC or a Revit file."
 msgstr "Un progetto BIMCraft, un file IFC o Revit."
 
-#: crates/ui-egui/src/editor.rs:738
+#: crates/ui-egui/src/editor.rs:780
 msgid "A blank value is the family's own, as the Parameters tab has it."
 msgstr "Un valore vuoto è quello dell'oggetto stesso, come nella scheda Parametri."
 
-#: crates/ui-egui/src/properties.rs:2610
+#: crates/ui-egui/src/properties.rs:2615
 msgid "A circle's, an ellipse's or an arc's points along its axes: east, north, west and south"
 msgstr "I punti di un cerchio, di un'ellisse o di un arco lungo i suoi assi: est, nord, ovest e sud"
 
@@ -121,11 +121,11 @@ msgstr "I punti di un cerchio, di un'ellisse o di un arco lungo i suoi assi: est
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
 msgstr ""
 
-#: crates/ui-egui/src/properties.rs:2630
+#: crates/ui-egui/src/properties.rs:2635
 msgid "A direction from the last point sticks to multiples of this angle, from east and from the line before; a dashed guide shows it"
 msgstr "Una direzione dall'ultimo punto si blocca sui multipli di questo angolo, a partire da est e dalla linea precedente; lo mostra una guida tratteggiata"
 
-#: crates/ui-egui/src/editor.rs:626
+#: crates/ui-egui/src/editor.rs:658
 msgid "A door or a window needs lengths named Width and Height; its formulas can read Wall Thickness, the wall's."
 msgstr "Una porta o una finestra ha bisogno di lunghezze chiamate Width e Height; le sue formule possono leggere Wall Thickness, lo spessore del muro."
 
@@ -165,7 +165,7 @@ msgstr "Un filtro delle fasi disegna uno stato in questo modo dove indica Sostit
 msgid "A preset needs a name, of at most 64 letters"
 msgstr ""
 
-#: crates/ui-egui/src/properties.rs:2614
+#: crates/ui-egui/src/properties.rs:2619
 msgid "A scan's points where the plan's cut plane cuts it, to trace what was measured"
 msgstr "I punti di una scansione dove li taglia il piano di taglio della pianta, per ricalcare ciò che è stato rilevato"
 
@@ -185,7 +185,7 @@ msgstr "Una vista ha sempre una scala"
 msgid "A view template is named {} already: give the set another name"
 msgstr ""
 
-#: crates/ui-egui/src/properties.rs:2612
+#: crates/ui-egui/src/properties.rs:2617
 msgid "A wall's centre line, so a wall drawn on it meets it"
 msgstr "L'asse di un muro, così un muro disegnato su di esso lo incontra"
 
@@ -271,20 +271,20 @@ msgstr "Adatta stili oggetto"
 msgid "Adapt Project Units"
 msgstr "Adatta unità di progetto"
 
-#: crates/ui-egui/src/properties.rs:3079
+#: crates/ui-egui/src/properties.rs:3084
 #: crates/ui-egui/src/shortcuts.rs:439
 msgid "Add"
 msgstr "Aggiungi"
 
-#: crates/ui-egui/src/editor.rs:940
+#: crates/ui-egui/src/editor.rs:982
 msgid "Add Arc"
 msgstr "Aggiungi arco"
 
-#: crates/ui-egui/src/editor.rs:851
+#: crates/ui-egui/src/editor.rs:893
 msgid "Add Box"
 msgstr "Aggiungi parallelepipedo"
 
-#: crates/ui-egui/src/editor.rs:854
+#: crates/ui-egui/src/editor.rs:896
 msgid "Add Cylinder"
 msgstr "Aggiungi cilindro"
 
@@ -292,15 +292,15 @@ msgstr "Aggiungi cilindro"
 msgid "Add Distribution System"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:940
+#: crates/ui-egui/src/editor.rs:982
 msgid "Add Dot"
 msgstr ""
 
-#: crates/ui-egui/src/properties.rs:2755
+#: crates/ui-egui/src/properties.rs:2760
 msgid "Add Filter"
 msgstr "Aggiungi filtro"
 
-#: crates/ui-egui/src/editor.rs:940
+#: crates/ui-egui/src/editor.rs:982
 #: crates/ui-egui/src/fillpatterns.rs:410
 msgid "Add Line"
 msgstr "Aggiungi linea"
@@ -309,7 +309,7 @@ msgstr "Aggiungi linea"
 msgid "Add Option"
 msgstr "Aggiungi opzione"
 
-#: crates/ui-egui/src/editor.rs:672
+#: crates/ui-egui/src/editor.rs:703
 msgid "Add Parameter"
 msgstr "Aggiungi parametro"
 
@@ -321,7 +321,7 @@ msgstr ""
 msgid "Add Point: click on the top to raise or lower it there to the Options Bar's elevation"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:858
+#: crates/ui-egui/src/editor.rs:900
 msgid "Add Revolve"
 msgstr "Aggiungi rivoluzione"
 
@@ -346,7 +346,7 @@ msgstr "Aggiungi scorciatoia"
 msgid "Add Size"
 msgstr ""
 
-#: crates/ui-egui/src/properties.rs:3251
+#: crates/ui-egui/src/properties.rs:3256
 msgid "Add Sort"
 msgstr "Aggiungi ordinamento"
 
@@ -358,11 +358,11 @@ msgstr ""
 msgid "Add Split Line: click two points; the top folds along the line between them"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:940
+#: crates/ui-egui/src/editor.rs:982
 msgid "Add Text"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:688
+#: crates/ui-egui/src/editor.rs:726
 msgid "Add Type"
 msgstr "Aggiungi tipo"
 
@@ -375,7 +375,7 @@ msgstr "Aggiungi vertice"
 msgid "Add Vertex: click a polyline or a spline where a vertex goes; a spline keeps its shape"
 msgstr "Aggiungi vertice: clicca una polilinea o una spline dove va un vertice; una spline mantiene la sua forma"
 
-#: crates/ui-egui/src/editor.rs:862
+#: crates/ui-egui/src/editor.rs:904
 msgid "Add Void"
 msgstr "Aggiungi vuoto"
 
@@ -395,7 +395,7 @@ msgstr "Aggiungi alla fine"
 msgid "Add filter:"
 msgstr "Aggiungi filtro:"
 
-#: crates/ui-egui/src/editor.rs:1083
+#: crates/ui-egui/src/editor.rs:1125
 msgid "Add to Favorites"
 msgstr "Aggiungi ai preferiti"
 
@@ -456,12 +456,12 @@ msgstr "Bocchetta aria"
 msgid "Air Terminal (AT): a captor, where you click on the roof; Space turns it"
 msgstr "Bocchetta aria (AT): un captatore, dove clicchi sulla copertura; Spazio lo ruota"
 
-#: crates/ui-egui/src/editor.rs:587
+#: crates/ui-egui/src/editor.rs:619
 msgid "Air Terminals"
 msgstr "Bocchette aria"
 
-#: crates/core/src/commands.rs:1111
-#: crates/ui-egui/src/editor.rs:915
+#: crates/core/src/commands.rs:1126
+#: crates/ui-egui/src/editor.rs:957
 #: crates/ui-egui/src/lib.rs:349
 #: crates/ui-egui/src/sketch.rs:709
 msgid "Align"
@@ -498,7 +498,7 @@ msgid "Aligned dimension: {}"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:361
-#: crates/ui-egui/src/properties.rs:2636
+#: crates/ui-egui/src/properties.rs:2641
 msgid "Alignment Guides"
 msgstr "Guide di allineamento"
 
@@ -562,7 +562,7 @@ msgstr ""
 msgid "Anchor"
 msgstr "Ancoraggio"
 
-#: crates/ui-egui/src/properties.rs:2679
+#: crates/ui-egui/src/properties.rs:2684
 msgid "And:"
 msgstr "E:"
 
@@ -571,7 +571,7 @@ msgstr "E:"
 msgid "Angle"
 msgstr "Angolo"
 
-#: crates/ui-egui/src/properties.rs:2621
+#: crates/ui-egui/src/properties.rs:2626
 msgid "Angle steps"
 msgstr "Passi angolari"
 
@@ -624,13 +624,13 @@ msgid "Another colour"
 msgstr ""
 
 #: crates/ui-egui/src/footer.rs:454
-#: crates/ui-egui/src/properties.rs:2647
+#: crates/ui-egui/src/properties.rs:2652
 msgid "Applies to all views; snaps to the active view's enabled main grid or subgrid, even when hidden"
 msgstr ""
 
 #: crates/ui-egui/src/background_grid.rs:112
 #: crates/ui-egui/src/display.rs:80
-#: crates/ui-egui/src/editor.rs:1087
+#: crates/ui-egui/src/editor.rs:1129
 #: crates/ui-egui/src/electrical.rs:501
 #: crates/ui-egui/src/graphics.rs:390
 #: crates/ui-egui/src/linestyles.rs:306
@@ -650,7 +650,7 @@ msgstr "Applica Nascondi/Isola alla vista"
 msgid "Apply Overrides"
 msgstr "Applica sostituzioni"
 
-#: crates/ui-egui/src/editor.rs:878
+#: crates/ui-egui/src/editor.rs:920
 msgid "Arc"
 msgstr "Arco"
 
@@ -673,10 +673,11 @@ msgstr "Architettura"
 
 #: crates/core/src/schedule.rs:194
 #: crates/core/src/schedule.rs:230
+#: crates/ui-egui/src/editor.rs:204
 msgid "Area"
 msgstr "Superficie"
 
-#: crates/core/src/family.rs:1917
+#: crates/core/src/family.rs:2243
 msgid "Arm Width"
 msgstr "Larghezza bracciolo"
 
@@ -696,7 +697,7 @@ msgstr "Come il sistema"
 msgid "As the units show"
 msgstr "Come mostrano le unità"
 
-#: crates/ui-egui/src/properties.rs:3231
+#: crates/ui-egui/src/properties.rs:3236
 msgid "Ascending"
 msgstr "Crescente"
 
@@ -712,11 +713,11 @@ msgstr ""
 msgid "Associated Level"
 msgstr "Piano associato"
 
-#: crates/core/src/model.rs:2641
+#: crates/core/src/model.rs:2646
 msgid "At wall centre line"
 msgstr "Sull'asse del muro"
 
-#: crates/core/src/model.rs:2642
+#: crates/core/src/model.rs:2647
 msgid "At wall finish"
 msgstr "Sulla finitura del muro"
 
@@ -762,11 +763,11 @@ msgstr "Salvataggio automatico"
 msgid "Autosave in the background"
 msgstr "Salvataggio automatico in background"
 
-#: crates/ui-egui/src/properties.rs:3063
+#: crates/ui-egui/src/properties.rs:3068
 msgid "Available fields:"
 msgstr "Campi disponibili:"
 
-#: crates/ui-egui/src/editor.rs:787
+#: crates/ui-egui/src/editor.rs:829
 msgid "Axis"
 msgstr "Asse"
 
@@ -782,8 +783,8 @@ msgstr "Azimut (°)"
 msgid "BIMCraft couldn't start"
 msgstr "Impossibile avviare BIMCraft"
 
-#: crates/ui-egui/src/editor.rs:1093
-#: crates/ui-egui/src/editor.rs:1123
+#: crates/ui-egui/src/editor.rs:1135
+#: crates/ui-egui/src/editor.rs:1165
 #: crates/ui-egui/src/lib.rs:4275
 msgid "BIMCraft family"
 msgstr "Oggetto BIMCraft"
@@ -889,7 +890,7 @@ msgstr "Barre"
 msgid "Base"
 msgstr "Base"
 
-#: crates/core/src/family.rs:1961
+#: crates/core/src/family.rs:2287
 msgid "Base Cabinet"
 msgstr "Mobile base"
 
@@ -917,7 +918,7 @@ msgstr "Linea di base"
 msgid "Baseline Spacing"
 msgstr "Interasse linee di base"
 
-#: crates/core/src/family.rs:2005
+#: crates/core/src/family.rs:2331
 msgid "Bathtub"
 msgstr "Vasca da bagno"
 
@@ -929,7 +930,7 @@ msgstr "Trave"
 msgid "Beam (BM): click its start and its end; a chain of clicks makes a beam for each step"
 msgstr "Trave (BM): clicca l'inizio e la fine; una serie di clic crea una trave per ogni tratto"
 
-#: crates/core/src/family.rs:1902
+#: crates/core/src/family.rs:2228
 msgid "Bed"
 msgstr "Letto"
 
@@ -1010,7 +1011,7 @@ msgstr "Linea di contorno: disegna l'impronta della copertura, sul piano superio
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Linea di contorno: disegna il contorno del cavedio"
 
-#: crates/core/src/model.rs:2939
+#: crates/core/src/model.rs:2944
 msgid "Brick"
 msgstr "Mattone"
 
@@ -1062,16 +1063,16 @@ msgstr "Cablaggio"
 msgid "Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"
 msgstr "Cablaggio (CB): clicca l'inizio e la fine; una serie di clic crea un cavo per ogni tratto"
 
-#: crates/ui-egui/src/properties.rs:3147
-#: crates/ui-egui/src/properties.rs:3150
+#: crates/ui-egui/src/properties.rs:3152
+#: crates/ui-egui/src/properties.rs:3155
 msgid "Calculate totals"
 msgstr "Calcola i totali"
 
-#: crates/ui-egui/src/properties.rs:3171
+#: crates/ui-egui/src/properties.rs:3176
 msgid "Calculated Value"
 msgstr "Valore calcolato"
 
-#: crates/ui-egui/src/properties.rs:3097
+#: crates/ui-egui/src/properties.rs:3102
 msgid "Calculated Value…"
 msgstr "Valore calcolato…"
 
@@ -1080,7 +1081,7 @@ msgstr "Valore calcolato…"
 msgid "Came in: {}"
 msgstr "Importato: {}"
 
-#: crates/core/src/commands.rs:1673
+#: crates/core/src/commands.rs:1688
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3848
 #: crates/ui-egui/src/properties.rs:265
@@ -1096,7 +1097,7 @@ msgstr ""
 #: crates/ui-egui/src/clouds.rs:87
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
-#: crates/ui-egui/src/editor.rs:1086
+#: crates/ui-egui/src/editor.rs:1128
 #: crates/ui-egui/src/electrical.rs:502
 #: crates/ui-egui/src/filter.rs:115
 #: crates/ui-egui/src/graphics.rs:391
@@ -1105,8 +1106,8 @@ msgstr ""
 #: crates/ui-egui/src/linestyles.rs:307
 #: crates/ui-egui/src/lineweights.rs:151
 #: crates/ui-egui/src/objectstyles.rs:79
-#: crates/ui-egui/src/properties.rs:2996
-#: crates/ui-egui/src/properties.rs:3191
+#: crates/ui-egui/src/properties.rs:3001
+#: crates/ui-egui/src/properties.rs:3196
 #: crates/ui-egui/src/purge.rs:77
 #: crates/ui-egui/src/reinforce.rs:536
 #: crates/ui-egui/src/shortcuts.rs:402
@@ -1142,16 +1143,16 @@ msgstr "Captazione e calate"
 msgid "Card: {}"
 msgstr "Scheda: {}"
 
-#: crates/core/src/family.rs:2184
+#: crates/core/src/family.rs:2510
 msgid "Casement Window"
 msgstr "Finestra a battente"
 
-#: crates/ui-egui/src/editor.rs:579
+#: crates/ui-egui/src/editor.rs:611
 msgid "Casework"
 msgstr "Arredo fisso"
 
 #: crates/ui-egui/src/graphics.rs:467
-#: crates/ui-egui/src/properties.rs:2922
+#: crates/ui-egui/src/properties.rs:2927
 msgid "Categories"
 msgstr "Categorie"
 
@@ -1160,9 +1161,9 @@ msgid "Categories not overridden are drawn as Object Styles sets them."
 msgstr "Le categorie non sostituite sono disegnate come indicato negli Stili oggetto."
 
 #: crates/core/src/schedule.rs:221
-#: crates/ui-egui/src/editor.rs:992
+#: crates/ui-egui/src/editor.rs:1034
 #: crates/ui-egui/src/objectstyles.rs:55
-#: crates/ui-egui/src/properties.rs:1981
+#: crates/ui-egui/src/properties.rs:1988
 #: crates/ui-egui/src/standards.rs:193
 msgid "Category"
 msgstr "Categoria"
@@ -1171,7 +1172,7 @@ msgstr "Categoria"
 msgid "Category name search:"
 msgstr "Cerca nome categoria:"
 
-#: crates/ui-egui/src/properties.rs:2972
+#: crates/ui-egui/src/properties.rs:2977
 msgid "Category:"
 msgstr "Categoria:"
 
@@ -1221,8 +1222,8 @@ msgid "Centimetres"
 msgstr "Centimetri"
 
 #: crates/core/src/lines.rs:182
-#: crates/ui-egui/src/editor.rs:891
-#: crates/ui-egui/src/editor.rs:918
+#: crates/ui-egui/src/editor.rs:933
+#: crates/ui-egui/src/editor.rs:960
 msgid "Centre"
 msgstr "Centro"
 
@@ -1230,7 +1231,7 @@ msgstr "Centro"
 msgid "Centre Lines"
 msgstr "Linee d'asse"
 
-#: crates/core/src/model.rs:2947
+#: crates/core/src/model.rs:2952
 msgid "Ceramic tile"
 msgstr "Piastrella ceramica"
 
@@ -1240,7 +1241,7 @@ msgstr "Piastrella ceramica"
 msgid "Chain"
 msgstr "Concatena"
 
-#: crates/core/src/family.rs:1887
+#: crates/core/src/family.rs:2213
 msgid "Chair"
 msgstr "Sedia"
 
@@ -1292,12 +1293,12 @@ msgstr "Controllo aggiornamenti…"
 msgid "Choose a theme, including a dark interface with a light canvas"
 msgstr "Scegli un tema, anche con interfaccia scura e area di disegno chiara"
 
-#: crates/ui-egui/src/editor.rs:763
-#: crates/ui-egui/src/editor.rs:767
+#: crates/ui-egui/src/editor.rs:805
+#: crates/ui-egui/src/editor.rs:809
 msgid "Circle"
 msgstr "Cerchio"
 
-#: crates/ui-egui/src/editor.rs:775
+#: crates/ui-egui/src/editor.rs:817
 msgid "Circle centre and radius"
 msgstr "Cerchio da centro e raggio"
 
@@ -1829,10 +1830,10 @@ msgstr "Clicca dove va la rampa successiva dal pianerottolo: dritta, a sinistra,
 #: crates/ui-egui/src/phasing.rs:278
 #: crates/ui-egui/src/phasing.rs:400
 #: crates/ui-egui/src/popup.rs:90
-#: crates/ui-egui/src/properties.rs:2305
-#: crates/ui-egui/src/properties.rs:2650
-#: crates/ui-egui/src/properties.rs:2945
-#: crates/ui-egui/src/properties.rs:3269
+#: crates/ui-egui/src/properties.rs:2312
+#: crates/ui-egui/src/properties.rs:2655
+#: crates/ui-egui/src/properties.rs:2950
+#: crates/ui-egui/src/properties.rs:3274
 #: crates/ui-egui/src/revit.rs:259
 #: crates/ui-egui/src/settings.rs:407
 #: crates/ui-egui/src/shortcuts.rs:568
@@ -1863,7 +1864,7 @@ msgstr "Basso"
 
 #: crates/ui-egui/src/dimtypes.rs:140
 #: crates/ui-egui/src/notes.rs:508
-#: crates/ui-egui/src/properties.rs:2184
+#: crates/ui-egui/src/properties.rs:2191
 msgid "Color"
 msgstr "Colore"
 
@@ -1912,11 +1913,11 @@ msgstr "Comando / Strumento:"
 msgid "Compact"
 msgstr "Compatto"
 
-#: crates/ui-egui/src/properties.rs:2706
+#: crates/ui-egui/src/properties.rs:2711
 msgid "Comparison"
 msgstr "Confronto"
 
-#: crates/core/src/commands.rs:1073
+#: crates/core/src/commands.rs:1088
 msgid "Component"
 msgstr "Componente"
 
@@ -1932,11 +1933,11 @@ msgstr ""
 msgid "Conceptual Mass"
 msgstr "Volume concettuale"
 
-#: crates/core/src/family.rs:1826
+#: crates/core/src/family.rs:2152
 msgid "Concrete"
 msgstr "Calcestruzzo"
 
-#: crates/core/src/model.rs:2941
+#: crates/core/src/model.rs:2946
 msgid "Concrete block"
 msgstr "Blocco in calcestruzzo"
 
@@ -1961,10 +1962,12 @@ msgstr "Configura le norme nazionali e internazionali del disegno tecnico (NBR, 
 msgid "Constrain"
 msgstr "Vincola"
 
+#: crates/core/src/family.rs:291
 #: crates/ui-egui/src/properties.rs:129
 msgid "Constraints"
 msgstr "Vincoli"
 
+#: crates/core/src/family.rs:292
 #: crates/ui-egui/src/properties.rs:442
 msgid "Construction"
 msgstr ""
@@ -2017,11 +2020,11 @@ msgstr "Copiati {} IFC GlobalId."
 msgid "Copied {} rows, tab-separated."
 msgstr "Copiate {} righe, separate da tabulazione."
 
-#: crates/core/src/model.rs:2955
+#: crates/core/src/model.rs:2960
 msgid "Copper"
 msgstr "Rame"
 
-#: crates/core/src/commands.rs:1141
+#: crates/core/src/commands.rs:1156
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4568
 #: crates/ui-egui/src/lib.rs:4618
@@ -2057,19 +2060,19 @@ msgstr "Copia rapporto"
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "Copia ID, GUID e IFC GlobalId"
 
-#: crates/core/src/model.rs:377
+#: crates/core/src/model.rs:382
 msgid "Core Centreline"
 msgstr "Asse del nucleo"
 
-#: crates/core/src/model.rs:380
+#: crates/core/src/model.rs:385
 msgid "Core Face: Exterior"
 msgstr "Faccia del nucleo: esterna"
 
-#: crates/core/src/model.rs:381
+#: crates/core/src/model.rs:386
 msgid "Core Face: Interior"
 msgstr "Faccia del nucleo: interna"
 
-#: crates/ui-egui/src/editor.rs:771
+#: crates/ui-egui/src/editor.rs:813
 msgid "Corners"
 msgstr "Angoli"
 
@@ -2236,7 +2239,7 @@ msgstr "Taglio"
 msgid "Cut Lines"
 msgstr "Linee in sezione"
 
-#: crates/ui-egui/src/properties.rs:2201
+#: crates/ui-egui/src/properties.rs:2208
 msgid "Cut Pattern"
 msgstr "Retino in sezione"
 
@@ -2285,6 +2288,7 @@ msgstr "Tratto punto"
 msgid "Dashed"
 msgstr "Tratteggiata"
 
+#: crates/core/src/family.rs:303
 #: crates/ui-egui/src/lib.rs:1087
 msgid "Data"
 msgstr "Dati"
@@ -2297,7 +2301,7 @@ msgstr "Presa dati"
 msgid "Data Outlet (DT): a data point, where you click on the wall; Space turns it"
 msgstr "Presa dati (DT): un punto dati, dove clicchi sul muro; Spazio lo ruota"
 
-#: crates/ui-egui/src/editor.rs:590
+#: crates/ui-egui/src/editor.rs:622
 msgid "Data Outlets"
 msgstr "Prese dati"
 
@@ -2325,9 +2329,9 @@ msgstr "Altezza davanzale predefinita"
 msgid "Default Thickness"
 msgstr "Spessore predefinito"
 
-#: crates/ui-egui/src/editor.rs:663
-#: crates/ui-egui/src/editor.rs:836
-#: crates/ui-egui/src/editor.rs:930
+#: crates/ui-egui/src/editor.rs:694
+#: crates/ui-egui/src/editor.rs:878
+#: crates/ui-egui/src/editor.rs:972
 #: crates/ui-egui/src/electrical.rs:279
 #: crates/ui-egui/src/fillpatterns.rs:398
 #: crates/ui-egui/src/fillpatterns.rs:581
@@ -2338,9 +2342,9 @@ msgstr "Spessore predefinito"
 #: crates/ui-egui/src/lineweights.rs:55
 #: crates/ui-egui/src/phasing.rs:587
 #: crates/ui-egui/src/presets.rs:204
-#: crates/ui-egui/src/properties.rs:2167
-#: crates/ui-egui/src/properties.rs:2399
-#: crates/ui-egui/src/properties.rs:2891
+#: crates/ui-egui/src/properties.rs:2174
+#: crates/ui-egui/src/properties.rs:2406
+#: crates/ui-egui/src/properties.rs:2896
 #: crates/ui-egui/src/templates.rs:477
 msgid "Delete"
 msgstr "Elimina"
@@ -2365,7 +2369,7 @@ msgstr "Elimina gruppo di opzioni"
 msgid "Delete Set: the set goes, and every element in its options"
 msgstr "Elimina gruppo di opzioni: si eliminano il gruppo e tutti gli elementi delle sue opzioni"
 
-#: crates/ui-egui/src/editor.rs:700
+#: crates/ui-egui/src/editor.rs:738
 msgid "Delete Type"
 msgstr "Elimina tipo"
 
@@ -2414,17 +2418,17 @@ msgstr "Demolito"
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9585
 msgid "Dependent"
 msgstr "Dipendente"
 
-#: crates/core/src/family.rs:1824
+#: crates/core/src/family.rs:2150
 #: crates/ui-egui/src/properties.rs:449
 #: crates/ui-egui/src/properties.rs:450
 msgid "Depth"
 msgstr "Profondità"
 
-#: crates/ui-egui/src/properties.rs:3231
+#: crates/ui-egui/src/properties.rs:3236
 msgid "Descending"
 msgstr "Decrescente"
 
@@ -2442,7 +2446,7 @@ msgstr "Opzioni di progetto"
 msgid "Design Options (DO): sets of options for a part of the design, and the one new elements are made in"
 msgstr "Opzioni di progetto (DO): gruppi di opzioni per una parte del progetto, e quella in cui si creano i nuovi elementi"
 
-#: crates/core/src/family.rs:1933
+#: crates/core/src/family.rs:2259
 msgid "Desk"
 msgstr "Scrivania"
 
@@ -2560,7 +2564,7 @@ msgstr "Testo di quota"
 msgid "Dimension Text Placement:"
 msgstr "Posizione del testo di quota:"
 
-#: crates/core/src/commands.rs:1123
+#: crates/core/src/commands.rs:1138
 msgid "Dimension Value"
 msgstr ""
 
@@ -2572,6 +2576,7 @@ msgstr "Linee di quota, linee di richiamo, terminali, posizione del testo e simb
 msgid "Dimension {}"
 msgstr ""
 
+#: crates/core/src/family.rs:293
 #: crates/ui-egui/src/lang.rs:32
 #: crates/ui-egui/src/properties.rs:443
 msgid "Dimensions"
@@ -2650,7 +2655,7 @@ msgstr "Abbaino: clicca la falda della copertura dove va il muro frontale; la co
 
 #: crates/core/src/lines.rs:179
 #: crates/ui-egui/src/dimtypes.rs:121
-#: crates/ui-egui/src/editor.rs:880
+#: crates/ui-egui/src/editor.rs:922
 msgid "Dot"
 msgstr "Punto"
 
@@ -2658,15 +2663,15 @@ msgstr "Punto"
 msgid "Dotted"
 msgstr "Punteggiata"
 
-#: crates/core/src/family.rs:2093
+#: crates/core/src/family.rs:2419
 msgid "Double Door"
 msgstr "Porta a due battenti"
 
-#: crates/core/src/model.rs:2472
+#: crates/core/src/model.rs:2477
 msgid "Double Sliding"
 msgstr "Scorrevole doppia"
 
-#: crates/core/src/model.rs:2470
+#: crates/core/src/model.rs:2475
 msgid "Double Swing"
 msgstr "Doppio battente"
 
@@ -2704,7 +2709,7 @@ msgstr "Scarica e verifica l'aggiornamento; poi BIMCraft si chiude, si aggiorna 
 msgid "Drafting"
 msgstr "Disegno 2D"
 
-#: crates/ui-egui/src/editor.rs:1062
+#: crates/ui-egui/src/editor.rs:1104
 msgid "Drag the picture to turn it."
 msgstr "Trascina l'immagine per ruotarla."
 
@@ -2740,7 +2745,7 @@ msgstr ""
 msgid "Duplicate"
 msgstr "Duplica"
 
-#: crates/ui-egui/src/editor.rs:693
+#: crates/ui-egui/src/editor.rs:731
 msgid "Duplicate Type"
 msgstr "Duplica tipo"
 
@@ -2806,11 +2811,11 @@ msgstr "Dispersore"
 msgid "Earthing Electrode (EG): a rod driven down from the level, where you click; Space turns it"
 msgstr "Dispersore (EG): un picchetto infisso dal piano, dove clicchi; Spazio lo ruota"
 
-#: crates/ui-egui/src/editor.rs:588
+#: crates/ui-egui/src/editor.rs:620
 msgid "Earthing Electrodes"
 msgstr "Dispersori"
 
-#: crates/core/src/model.rs:1875
+#: crates/core/src/model.rs:1880
 msgid "East"
 msgstr "Est"
 
@@ -2866,7 +2871,7 @@ msgid "Edit the type"
 msgstr "Modifica il tipo"
 
 #: crates/ui-egui/src/graphics.rs:621
-#: crates/ui-egui/src/properties.rs:1988
+#: crates/ui-egui/src/properties.rs:1995
 #: crates/ui-egui/src/templates.rs:657
 msgid "Edit {}"
 msgstr "Modifica {}"
@@ -2877,7 +2882,7 @@ msgstr ""
 
 #: crates/ui-egui/src/graphics.rs:598
 #: crates/ui-egui/src/graphics.rs:620
-#: crates/ui-egui/src/properties.rs:1986
+#: crates/ui-egui/src/properties.rs:1993
 #: crates/ui-egui/src/templates.rs:659
 msgid "Edit…"
 msgstr "Modifica…"
@@ -2886,6 +2891,7 @@ msgstr "Modifica…"
 msgid "Elbow 90"
 msgstr "Curva 90°"
 
+#: crates/core/src/family.rs:299
 #: crates/ui-egui/src/lib.rs:1085
 msgid "Electrical"
 msgstr "Elettrico"
@@ -2894,7 +2900,7 @@ msgstr "Elettrico"
 msgid "Electrical Ceiling"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:584
+#: crates/ui-egui/src/editor.rs:616
 msgid "Electrical Equipment"
 msgstr "Apparecchiature elettriche"
 
@@ -2919,7 +2925,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:2039
+#: crates/core/src/commands.rs:2054
 msgid "Elements"
 msgstr "Elementi"
 
@@ -3083,7 +3089,7 @@ msgstr "Quota dell'occhio"
 msgid "Eye Height:"
 msgstr ""
 
-#: crates/core/src/family.rs:1826
+#: crates/core/src/family.rs:2152
 msgid "Fabric"
 msgstr "Tessuto"
 
@@ -3104,11 +3110,15 @@ msgstr "Famiglie di linee parallele: quelle di disegno in mm sulla carta, uguali
 msgid "Family"
 msgstr "Oggetto"
 
-#: crates/ui-egui/src/editor.rs:986
+#: crates/ui-egui/src/editor.rs:1028
 msgid "Family Editor"
 msgstr "Editor oggetti"
 
-#: crates/ui-egui/src/editor.rs:990
+#: crates/ui-egui/src/editor.rs:207
+msgid "Family Type"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:1032
 msgid "Family name"
 msgstr "Nome oggetto"
 
@@ -3133,7 +3143,7 @@ msgstr "Preferiti"
 msgid "Favorites: the materials and families you keep for every project; add one to this project with a click"
 msgstr "Preferiti: i materiali e gli oggetti che conservi per tutti i progetti; aggiungine uno a questo progetto con un clic"
 
-#: crates/ui-egui/src/properties.rs:2297
+#: crates/ui-egui/src/properties.rs:2304
 msgid "Favorites…"
 msgstr "Preferiti…"
 
@@ -3145,7 +3155,7 @@ msgstr "Piedi"
 msgid "Feet and inches"
 msgstr "Piedi e pollici"
 
-#: crates/ui-egui/src/properties.rs:2791
+#: crates/ui-egui/src/properties.rs:2796
 msgid "Fields"
 msgstr "Campi"
 
@@ -3194,7 +3204,7 @@ msgstr "Retino (FR): disegna un'area riempita con un motivo, in questa vista"
 msgid "Filled region"
 msgstr "Retino"
 
-#: crates/core/src/commands.rs:1210
+#: crates/core/src/commands.rs:1225
 msgid "Fillet Arc"
 msgstr "Raccordo ad arco"
 
@@ -3218,7 +3228,7 @@ msgid "Filter Selection"
 msgstr "Filtra selezione"
 
 #: crates/ui-egui/src/filter.rs:72
-#: crates/ui-egui/src/properties.rs:2679
+#: crates/ui-egui/src/properties.rs:2684
 msgid "Filter by:"
 msgstr "Filtra per:"
 
@@ -3286,11 +3296,11 @@ msgstr "Termina modalità modifica"
 msgid "Finish Edit Mode: the lines, closed into loops, become the outline and its holes"
 msgstr "Termina modalità modifica: le linee, chiuse in contorni, diventano il contorno e i suoi fori"
 
-#: crates/core/src/model.rs:378
+#: crates/core/src/model.rs:383
 msgid "Finish Face: Exterior"
 msgstr "Faccia di finitura: esterna"
 
-#: crates/core/src/model.rs:379
+#: crates/core/src/model.rs:384
 msgid "Finish Face: Interior"
 msgstr "Faccia di finitura: interna"
 
@@ -3302,11 +3312,11 @@ msgstr "Termina o annulla lo schizzo prima di lasciare la sua pianta."
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr ""
 
-#: crates/core/src/model.rs:2474
+#: crates/core/src/model.rs:2479
 msgid "Fixed"
 msgstr "Fisso"
 
-#: crates/core/src/family.rs:2161
+#: crates/core/src/family.rs:2487
 msgid "Fixed Window"
 msgstr "Finestra fissa"
 
@@ -3421,7 +3431,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr "Cartella per i nuovi progetti"
 
-#: crates/core/src/model.rs:2473
+#: crates/core/src/model.rs:2478
 msgid "Folding"
 msgstr "Pieghevole"
 
@@ -3437,64 +3447,64 @@ msgstr "Colore in primo piano"
 msgid "Foreground Pattern"
 msgstr "Motivo in primo piano"
 
-#: crates/ui-egui/src/editor.rs:790
+#: crates/ui-egui/src/editor.rs:832
 msgid "Form Axis X1"
 msgstr "Asse forma X1"
 
-#: crates/ui-egui/src/editor.rs:790
+#: crates/ui-egui/src/editor.rs:832
 msgid "Form Axis X2"
 msgstr "Asse forma X2"
 
-#: crates/ui-egui/src/editor.rs:790
+#: crates/ui-egui/src/editor.rs:832
 msgid "Form Axis Y1"
 msgstr "Asse forma Y1"
 
-#: crates/ui-egui/src/editor.rs:790
+#: crates/ui-egui/src/editor.rs:832
 msgid "Form Axis Y2"
 msgstr "Asse forma Y2"
 
-#: crates/ui-egui/src/editor.rs:777
+#: crates/ui-egui/src/editor.rs:819
 msgid "Form Circle Radius"
 msgstr "Raggio cerchio forma"
 
-#: crates/ui-egui/src/editor.rs:777
+#: crates/ui-egui/src/editor.rs:819
 msgid "Form Circle X"
 msgstr "X cerchio forma"
 
-#: crates/ui-egui/src/editor.rs:777
+#: crates/ui-egui/src/editor.rs:819
 msgid "Form Circle Y"
 msgstr "Y cerchio forma"
 
-#: crates/ui-egui/src/editor.rs:773
+#: crates/ui-egui/src/editor.rs:815
 msgid "Form Corners"
 msgstr "Angoli forma"
 
-#: crates/ui-egui/src/editor.rs:798
+#: crates/ui-egui/src/editor.rs:840
 msgid "Form From"
 msgstr "Forma da"
 
-#: crates/ui-egui/src/editor.rs:805
+#: crates/ui-egui/src/editor.rs:847
 msgid "Form Material"
 msgstr "Materiale forma"
 
-#: crates/ui-egui/src/editor.rs:801
+#: crates/ui-egui/src/editor.rs:843
 msgid "Form To"
 msgstr "Forma a"
 
-#: crates/ui-egui/src/editor.rs:810
+#: crates/ui-egui/src/editor.rs:852
 msgid "Form Visible"
 msgstr "Forma visibile"
 
-#: crates/ui-egui/src/editor.rs:814
+#: crates/ui-egui/src/editor.rs:856
 msgid "Form Void"
 msgstr "Forma vuota"
 
-#: crates/ui-egui/src/editor.rs:1030
+#: crates/ui-egui/src/editor.rs:1072
 msgid "Forms"
 msgstr "Forme"
 
-#: crates/ui-egui/src/properties.rs:3158
-#: crates/ui-egui/src/properties.rs:3185
+#: crates/ui-egui/src/properties.rs:3163
+#: crates/ui-egui/src/properties.rs:3190
 msgid "Formula"
 msgstr "Formula"
 
@@ -3502,15 +3512,15 @@ msgstr "Formula"
 msgid "Foundation"
 msgstr "Fondazioni"
 
-#: crates/core/src/family.rs:2033
+#: crates/core/src/family.rs:2359
 msgid "Frame Depth"
 msgstr "Profondità telaio"
 
-#: crates/core/src/family.rs:2035
+#: crates/core/src/family.rs:2361
 msgid "Frame Material"
 msgstr "Materiale telaio"
 
-#: crates/core/src/family.rs:2033
+#: crates/core/src/family.rs:2359
 msgid "Frame Width"
 msgstr "Larghezza telaio"
 
@@ -3518,11 +3528,11 @@ msgstr "Larghezza telaio"
 msgid "Frequency (cycles per segment)"
 msgstr "Frequenza (cicli per segmento)"
 
-#: crates/ui-egui/src/editor.rs:797
+#: crates/ui-egui/src/editor.rs:839
 msgid "From"
 msgstr "Da"
 
-#: crates/ui-egui/src/editor.rs:797
+#: crates/ui-egui/src/editor.rs:839
 msgid "From (degrees)"
 msgstr "Da (gradi)"
 
@@ -3535,11 +3545,11 @@ msgstr ""
 msgid "Full"
 msgstr "Completo"
 
-#: crates/ui-egui/src/properties.rs:2354
+#: crates/ui-egui/src/properties.rs:2361
 msgid "Function"
 msgstr "Funzione"
 
-#: crates/ui-egui/src/editor.rs:578
+#: crates/ui-egui/src/editor.rs:610
 msgid "Furniture"
 msgstr "Arredi"
 
@@ -3575,7 +3585,7 @@ msgstr "Distanza dall'elemento"
 msgid "Gate Valve"
 msgstr "Saracinesca"
 
-#: crates/ui-egui/src/editor.rs:595
+#: crates/ui-egui/src/editor.rs:627
 msgid "Generic"
 msgstr "Generico"
 
@@ -3583,7 +3593,7 @@ msgstr "Generico"
 msgid "Geometry"
 msgstr "Geometria"
 
-#: crates/core/src/family.rs:2035
+#: crates/core/src/family.rs:2361
 msgid "Glass"
 msgstr "Vetro"
 
@@ -3611,6 +3621,7 @@ msgstr "Sostituzioni grafiche"
 msgid "Graphic segments in mm on paper, repeating along the centerline."
 msgstr "Segmenti grafici in mm sulla carta, ripetuti lungo l'asse."
 
+#: crates/core/src/family.rs:294
 #: crates/ui-egui/src/graphics.rs:537
 msgid "Graphics"
 msgstr "Grafica"
@@ -3640,7 +3651,7 @@ msgid "Grid settings…"
 msgstr ""
 
 #: crates/ui-egui/src/footer.rs:453
-#: crates/ui-egui/src/properties.rs:2646
+#: crates/ui-egui/src/properties.rs:2651
 msgid "Grid snapping"
 msgstr ""
 
@@ -3660,7 +3671,7 @@ msgstr "Gruppo"
 msgid "Group:"
 msgstr "Gruppo:"
 
-#: crates/core/src/model.rs:2946
+#: crates/core/src/model.rs:2951
 msgid "Gypsum board"
 msgstr "Cartongesso"
 
@@ -3679,16 +3690,16 @@ msgstr "Metà"
 msgid "Halftone"
 msgstr "Mezzatinta"
 
-#: crates/core/src/family.rs:1895
+#: crates/core/src/family.rs:2221
 msgid "Headboard Height"
 msgstr "Altezza testiera"
 
-#: crates/ui-egui/src/properties.rs:3138
+#: crates/ui-egui/src/properties.rs:3143
 msgid "Heading"
 msgstr "Intestazione"
 
 #: crates/core/src/family.rs:198
-#: crates/ui-egui/src/editor.rs:898
+#: crates/ui-egui/src/editor.rs:940
 #: crates/ui-egui/src/properties.rs:447
 #: crates/ui-egui/src/properties.rs:448
 #: crates/ui-egui/src/properties.rs:453
@@ -3859,6 +3870,7 @@ msgstr "ISO 5457: margine di archiviazione 20 mm"
 msgid "ISO 7200: 180 mm"
 msgstr "ISO 7200: 180 mm"
 
+#: crates/core/src/family.rs:295
 #: crates/ui-egui/src/properties.rs:145
 msgid "Identity Data"
 msgstr "Dati identificativi"
@@ -3899,7 +3911,7 @@ msgstr "Categorie importate"
 msgid "Imported {}: {}."
 msgstr "Importato {}: {}."
 
-#: crates/ui-egui/src/properties.rs:2052
+#: crates/ui-egui/src/properties.rs:2059
 msgid "In"
 msgstr "Interno"
 
@@ -3947,7 +3959,7 @@ msgstr "Inserisci dopo"
 msgid "Insert Before"
 msgstr "Inserisci prima"
 
-#: crates/ui-egui/src/properties.rs:2421
+#: crates/ui-egui/src/properties.rs:2428
 msgid "Insert Layer"
 msgstr "Inserisci strato"
 
@@ -3959,7 +3971,7 @@ msgstr "Pozzetto di ispezione"
 msgid "Inspection Box (IB): over an electrode, flush with the level, where you click; Space turns it"
 msgstr "Pozzetto di ispezione (IB): sopra un dispersore, a filo del piano, dove clicchi; Spazio lo ruota"
 
-#: crates/ui-egui/src/editor.rs:589
+#: crates/ui-egui/src/editor.rs:621
 msgid "Inspection Boxes"
 msgstr "Pozzetti di ispezione"
 
@@ -3971,7 +3983,7 @@ msgstr ""
 msgid "Installing BIMCraft {}…"
 msgstr "Installazione di BIMCraft {}…"
 
-#: crates/ui-egui/src/editor.rs:631
+#: crates/ui-egui/src/editor.rs:663
 msgid "Instance"
 msgstr "Istanza"
 
@@ -3991,6 +4003,10 @@ msgstr ""
 #: crates/ui-egui/src/draw.rs:663
 msgid "Insulation: batt insulation drawn along each line, its width on the Options Bar"
 msgstr "Isolante: isolante in materassini disegnato lungo ogni linea, con lo spessore indicato nella barra opzioni"
+
+#: crates/ui-egui/src/editor.rs:203
+msgid "Integer"
+msgstr ""
 
 #: crates/ui-egui/src/settings.rs:577
 msgid "Interface scale"
@@ -4033,7 +4049,7 @@ msgstr "Corsivo"
 msgid "Italic (Ctrl+I)"
 msgstr "Corsivo (Ctrl+I)"
 
-#: crates/ui-egui/src/properties.rs:3262
+#: crates/ui-egui/src/properties.rs:3267
 msgid "Itemize every instance"
 msgstr "Elenca ogni istanza"
 
@@ -4086,7 +4102,7 @@ msgstr "Scorciatoie da tastiera"
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "Scorciatoie da tastiera (KS): personalizza, modifica e carica le scorciatoie"
 
-#: crates/ui-egui/src/editor.rs:631
+#: crates/ui-egui/src/editor.rs:663
 msgid "Kind"
 msgstr "Tipologia"
 
@@ -4111,7 +4127,7 @@ msgstr "Lingua"
 msgid "Later"
 msgstr "Più tardi"
 
-#: crates/ui-egui/src/properties.rs:2350
+#: crates/ui-egui/src/properties.rs:2357
 msgid "Layers"
 msgstr "Strati"
 
@@ -4139,15 +4155,15 @@ msgstr "Linea di richiamo"
 msgid "Leader/Border Offset"
 msgstr "Scostamento richiamo/bordo"
 
-#: crates/core/src/family.rs:2035
+#: crates/core/src/family.rs:2361
 msgid "Leaf Material"
 msgstr "Materiale anta"
 
-#: crates/core/src/family.rs:2033
+#: crates/core/src/family.rs:2359
 msgid "Leaf Thickness"
 msgstr "Spessore anta"
 
-#: crates/ui-egui/src/editor.rs:918
+#: crates/ui-egui/src/editor.rs:960
 msgid "Left"
 msgstr ""
 
@@ -4164,7 +4180,7 @@ msgstr ""
 msgid "Left out: {}"
 msgstr "Esclusi: {}"
 
-#: crates/core/src/family.rs:1825
+#: crates/core/src/family.rs:2151
 msgid "Leg Width"
 msgstr "Larghezza gamba"
 
@@ -4176,7 +4192,7 @@ msgstr "Legende"
 msgid "Legends are coming in a later version."
 msgstr "Le legende arriveranno in una versione successiva."
 
-#: crates/core/src/family.rs:1824
+#: crates/core/src/family.rs:2150
 #: crates/ui-egui/src/linestyles/creator.rs:136
 msgid "Length"
 msgstr "Lunghezza"
@@ -4224,7 +4240,7 @@ msgstr "Abaco piani"
 msgid "Light"
 msgstr "Chiaro"
 
-#: crates/ui-egui/src/editor.rs:594
+#: crates/ui-egui/src/editor.rs:626
 msgid "Lighting"
 msgstr "Illuminazione"
 
@@ -4248,7 +4264,7 @@ msgstr ""
 msgid "Limit Offset"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:877
+#: crates/ui-egui/src/editor.rs:919
 msgid "Line"
 msgstr "Linea"
 
@@ -4438,7 +4454,7 @@ msgstr "Carica oggetto"
 msgid "Load Family: a family saved as a .json file, BIMCraft's own"
 msgstr "Carica oggetto: un oggetto salvato come file .json, il formato di BIMCraft"
 
-#: crates/ui-egui/src/editor.rs:1081
+#: crates/ui-egui/src/editor.rs:1123
 msgid "Load Family…"
 msgstr "Carica oggetto…"
 
@@ -4536,7 +4552,7 @@ msgstr "Gestisci"
 msgid "Manage Presets…"
 msgstr ""
 
-#: crates/core/src/model.rs:1486
+#: crates/core/src/model.rs:1491
 msgid "Mark"
 msgstr "ID"
 
@@ -4573,7 +4589,7 @@ msgstr "Solai del volume (MF): un solaio a ogni piano attraversato dai volumi se
 msgid "Massing"
 msgstr "Volumi"
 
-#: crates/core/src/commands.rs:1103
+#: crates/core/src/commands.rs:1118
 msgid "Match Properties"
 msgstr "Copia proprietà"
 
@@ -4586,27 +4602,26 @@ msgid "Matched properties: applied type '{}' to {} element(s)"
 msgstr "Proprietà copiate: tipo '{}' applicato a {} elemento/i"
 
 #: crates/core/src/schedule.rs:231
-#: crates/ui-egui/src/editor.rs:804
-#: crates/ui-egui/src/properties.rs:2048
-#: crates/ui-egui/src/properties.rs:2163
-#: crates/ui-egui/src/properties.rs:2355
+#: crates/ui-egui/src/editor.rs:846
+#: crates/ui-egui/src/properties.rs:2055
+#: crates/ui-egui/src/properties.rs:2170
+#: crates/ui-egui/src/properties.rs:2362
 msgid "Material"
 msgstr "Materiale"
 
 #: crates/ui-egui/src/electrical.rs:420
 #: crates/ui-egui/src/lib.rs:4452
-#: crates/ui-egui/src/properties.rs:2151
+#: crates/ui-egui/src/properties.rs:2158
 msgid "Material:"
 msgstr "Materiale:"
 
 #: crates/ui-egui/src/lib.rs:3963
-#: crates/ui-egui/src/properties.rs:2147
+#: crates/ui-egui/src/properties.rs:2154
 msgid "Materials"
 msgstr "Materiali"
 
-#: crates/ui-egui/src/properties.rs:1827
-#: crates/ui-egui/src/properties.rs:2030
-#: crates/ui-egui/src/properties.rs:2499
+#: crates/core/src/family.rs:296
+#: crates/ui-egui/src/properties.rs:2037
 msgid "Materials and Finishes"
 msgstr "Materiali e finiture"
 
@@ -4634,13 +4649,17 @@ msgstr ""
 msgid "Maximum Riser Height"
 msgstr "Altezza massima alzata"
 
-#: crates/core/src/commands.rs:1783
+#: crates/core/src/commands.rs:1798
 msgid "Measure"
 msgstr "Misura"
 
 #: crates/ui-egui/src/lib.rs:3734
 msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
 msgstr "Misura (ME): clicca due punti; lunghezza e angolo compaiono accanto al righello tra i due"
+
+#: crates/core/src/family.rs:300
+msgid "Mechanical"
+msgstr ""
 
 #: crates/core/src/graphics.rs:232
 msgid "Medium"
@@ -4656,7 +4675,7 @@ msgid "Membrane"
 msgstr "Membrana"
 
 #: crates/ui-egui/src/editor.rs:150
-#: crates/ui-egui/src/editor.rs:747
+#: crates/ui-egui/src/editor.rs:789
 msgid "Mesh"
 msgstr "Rete"
 
@@ -4668,7 +4687,7 @@ msgstr "Rete lungo la profondità"
 msgid "Mesh along width"
 msgstr "Rete lungo la larghezza"
 
-#: crates/core/src/family.rs:2035
+#: crates/core/src/family.rs:2361
 msgid "Metal"
 msgstr "Metallo"
 
@@ -4676,7 +4695,7 @@ msgstr "Metallo"
 msgid "Metres"
 msgstr "Metri"
 
-#: crates/ui-egui/src/editor.rs:891
+#: crates/ui-egui/src/editor.rs:933
 msgid "Middle of the text"
 msgstr ""
 
@@ -4788,7 +4807,7 @@ msgstr "Modifica muro"
 msgid "Mounting Height"
 msgstr "Altezza di installazione"
 
-#: crates/core/src/commands.rs:1133
+#: crates/core/src/commands.rs:1148
 msgid "Move"
 msgstr "Sposta"
 
@@ -4796,13 +4815,13 @@ msgstr "Sposta"
 msgid "Move (MV): click a base point, then where it goes"
 msgstr "Sposta (MV): clicca un punto base, poi dove va"
 
-#: crates/ui-egui/src/editor.rs:833
-#: crates/ui-egui/src/properties.rs:3123
+#: crates/ui-egui/src/editor.rs:875
+#: crates/ui-egui/src/properties.rs:3128
 msgid "Move Down"
 msgstr "Sposta giù"
 
-#: crates/ui-egui/src/editor.rs:830
-#: crates/ui-egui/src/properties.rs:3116
+#: crates/ui-egui/src/editor.rs:872
+#: crates/ui-egui/src/properties.rs:3121
 msgid "Move Up"
 msgstr "Sposta su"
 
@@ -4855,22 +4874,22 @@ msgstr "NBR 6492: bersaglio in pianta (±0,00), triangolo equilatero in sezione"
 msgid "NOT ENCLOSED"
 msgstr "NON CHIUSA"
 
-#: crates/core/src/model.rs:1487
+#: crates/core/src/model.rs:1492
 #: crates/ui-egui/src/cad.rs:85
 #: crates/ui-egui/src/clouds.rs:59
 #: crates/ui-egui/src/electrical.rs:298
 #: crates/ui-egui/src/electrical.rs:344
 #: crates/ui-egui/src/lib.rs:4661
-#: crates/ui-egui/src/properties.rs:2177
-#: crates/ui-egui/src/properties.rs:2902
-#: crates/ui-egui/src/properties.rs:3173
+#: crates/ui-egui/src/properties.rs:2184
+#: crates/ui-egui/src/properties.rs:2907
+#: crates/ui-egui/src/properties.rs:3178
 msgid "Name"
 msgstr "Nome"
 
 #: crates/ui-egui/src/electrical.rs:417
 #: crates/ui-egui/src/phasing.rs:350
 #: crates/ui-egui/src/phasing.rs:536
-#: crates/ui-egui/src/properties.rs:2991
+#: crates/ui-egui/src/properties.rs:2996
 #: crates/ui-egui/src/templates.rs:503
 #: crates/ui-egui/src/typeprops.rs:100
 #: crates/ui-egui/src/typeprops.rs:101
@@ -4886,8 +4905,8 @@ msgid "Nearest"
 msgstr "Più vicino"
 
 #: crates/ui-egui/src/graphics.rs:453
-#: crates/ui-egui/src/properties.rs:2161
-#: crates/ui-egui/src/properties.rs:2883
+#: crates/ui-egui/src/properties.rs:2168
+#: crates/ui-egui/src/properties.rs:2888
 msgid "New"
 msgstr "Nuovo"
 
@@ -4899,7 +4918,7 @@ msgstr "Nuova costruzione"
 msgid "New Distribution System"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:420
+#: crates/ui-egui/src/editor.rs:452
 #: crates/ui-egui/src/lib.rs:4076
 msgid "New Family"
 msgstr "Nuovo oggetto"
@@ -4921,7 +4940,7 @@ msgstr "Nuovo motivo"
 msgid "New Project"
 msgstr "Nuovo progetto"
 
-#: crates/ui-egui/src/properties.rs:2969
+#: crates/ui-egui/src/properties.rs:2974
 msgid "New Schedule"
 msgstr "Nuovo abaco"
 
@@ -4973,7 +4992,7 @@ msgstr "Nuovo tipo"
 msgid "New {}"
 msgstr "Nuovo {}"
 
-#: crates/core/src/schedule.rs:1188
+#: crates/core/src/schedule.rs:1192
 msgid "No"
 msgstr "No"
 
@@ -5017,7 +5036,7 @@ msgstr "Nessun filtro: Nuovo ne crea uno."
 msgid "No font with Chinese characters was found on this system: install one (such as Noto Sans CJK) and choose Chinese again."
 msgstr "Su questo sistema non è stato trovato un carattere con ideogrammi cinesi: installane uno (ad esempio Noto Sans CJK) e scegli di nuovo il cinese."
 
-#: crates/ui-egui/src/properties.rs:2940
+#: crates/ui-egui/src/properties.rs:2945
 msgid "No project parameters yet: New makes one."
 msgstr "Nessun parametro di progetto: Nuovo ne crea uno."
 
@@ -5054,14 +5073,14 @@ msgid "Nominal Text Height:"
 msgstr "Altezza nominale del testo:"
 
 #: crates/ui-egui/src/dimtypes.rs:122
-#: crates/ui-egui/src/properties.rs:2227
-#: crates/ui-egui/src/properties.rs:2229
+#: crates/ui-egui/src/properties.rs:2234
+#: crates/ui-egui/src/properties.rs:2236
 #: crates/ui-egui/src/reinforce.rs:504
 #: crates/ui-egui/src/reinforce.rs:506
 msgid "None"
 msgstr "Nessuno"
 
-#: crates/core/src/model.rs:1873
+#: crates/core/src/model.rs:1878
 msgid "North"
 msgstr "Nord"
 
@@ -5140,7 +5159,7 @@ msgstr "Numero"
 #: crates/ui-egui/src/clouds.rs:88
 #: crates/ui-egui/src/dimtypes.rs:318
 #: crates/ui-egui/src/display.rs:82
-#: crates/ui-egui/src/editor.rs:1085
+#: crates/ui-egui/src/editor.rs:1127
 #: crates/ui-egui/src/electrical.rs:503
 #: crates/ui-egui/src/filter.rs:116
 #: crates/ui-egui/src/graphics.rs:392
@@ -5149,8 +5168,8 @@ msgstr "Numero"
 #: crates/ui-egui/src/linestyles.rs:308
 #: crates/ui-egui/src/lineweights.rs:152
 #: crates/ui-egui/src/objectstyles.rs:80
-#: crates/ui-egui/src/properties.rs:2997
-#: crates/ui-egui/src/properties.rs:3190
+#: crates/ui-egui/src/properties.rs:3002
+#: crates/ui-egui/src/properties.rs:3195
 #: crates/ui-egui/src/reinforce.rs:537
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/templates.rs:758
@@ -5159,7 +5178,7 @@ msgstr "Numero"
 msgid "OK"
 msgstr "OK"
 
-#: crates/ui-egui/src/properties.rs:2602
+#: crates/ui-egui/src/properties.rs:2607
 msgid "Object Snaps"
 msgstr "Agganci agli oggetti"
 
@@ -5175,8 +5194,8 @@ msgstr "Stili oggetto: la penna con cui si disegna ogni categoria, in vista e in
 msgid "Object Styles…"
 msgstr "Stili oggetto…"
 
-#: crates/ui-egui/src/properties.rs:2622
-#: crates/ui-egui/src/properties.rs:2625
+#: crates/ui-egui/src/properties.rs:2627
+#: crates/ui-egui/src/properties.rs:2630
 msgid "Off"
 msgstr "Disattivato"
 
@@ -5295,7 +5314,7 @@ msgid "Open…"
 msgstr "Apri…"
 
 #: crates/core/src/schedule.rs:203
-#: crates/ui-egui/src/editor.rs:1004
+#: crates/ui-egui/src/editor.rs:1046
 msgid "Operation"
 msgstr "Apertura"
 
@@ -5311,7 +5330,7 @@ msgstr "Gruppo di opzioni:"
 msgid "Options:"
 msgstr "Opzioni:"
 
-#: crates/ui-egui/src/properties.rs:3240
+#: crates/ui-egui/src/properties.rs:3245
 msgid "Order"
 msgstr "Ordine"
 
@@ -5331,6 +5350,7 @@ msgstr "Origine"
 msgid "Orthogonal Guides"
 msgstr "Guide ortogonali"
 
+#: crates/core/src/family.rs:304
 #: crates/ui-egui/src/properties.rs:140
 msgid "Other"
 msgstr "Altro"
@@ -5339,7 +5359,7 @@ msgstr "Altro"
 msgid "Other Borders (Top, Right, Bottom):"
 msgstr "Altri margini (superiore, destro, inferiore):"
 
-#: crates/ui-egui/src/properties.rs:2052
+#: crates/ui-egui/src/properties.rs:2059
 msgid "Out"
 msgstr "Esterno"
 
@@ -5347,7 +5367,7 @@ msgstr "Esterno"
 msgid "Outlet"
 msgstr "Presa"
 
-#: crates/ui-egui/src/editor.rs:585
+#: crates/ui-egui/src/editor.rs:617
 msgid "Outlets"
 msgstr "Prese"
 
@@ -5421,36 +5441,36 @@ msgstr "Formati della carta, margini dei layout, margini di archiviazione, carti
 msgid "Parallel lines at an angle and a spacing, crosshatched or not"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:673
-#: crates/ui-egui/src/properties.rs:2885
+#: crates/ui-egui/src/editor.rs:704
+#: crates/ui-egui/src/properties.rs:2890
 #: crates/ui-egui/src/templates.rs:567
 #: crates/ui-egui/src/typeprops.rs:164
 msgid "Parameter"
 msgstr "Parametro"
 
-#: crates/ui-egui/src/editor.rs:662
+#: crates/ui-egui/src/editor.rs:693
 msgid "Parameter Formula"
 msgstr "Formula del parametro"
 
-#: crates/ui-egui/src/editor.rs:645
+#: crates/ui-egui/src/editor.rs:676
 msgid "Parameter Instance"
 msgstr "Parametro di istanza"
 
-#: crates/ui-egui/src/editor.rs:637
+#: crates/ui-egui/src/editor.rs:669
 msgid "Parameter Name"
 msgstr "Nome del parametro"
 
-#: crates/ui-egui/src/editor.rs:650
-#: crates/ui-egui/src/editor.rs:656
-#: crates/ui-egui/src/editor.rs:660
+#: crates/ui-egui/src/editor.rs:681
+#: crates/ui-egui/src/editor.rs:687
+#: crates/ui-egui/src/editor.rs:691
 msgid "Parameter Value"
 msgstr "Valore del parametro"
 
-#: crates/ui-egui/src/properties.rs:2873
+#: crates/ui-egui/src/properties.rs:2878
 msgid "Parameter:"
 msgstr "Parametro:"
 
-#: crates/ui-egui/src/editor.rs:1028
+#: crates/ui-egui/src/editor.rs:1070
 msgid "Parameters"
 msgstr "Parametri"
 
@@ -5474,7 +5494,7 @@ msgstr "Pannello di permutazione"
 msgid "Patch Panel (PN): a panel on the wall, where you click; Space turns it"
 msgstr "Pannello di permutazione (PN): un pannello a muro, dove clicchi; Spazio lo ruota"
 
-#: crates/ui-egui/src/editor.rs:592
+#: crates/ui-egui/src/editor.rs:624
 msgid "Patch Panels"
 msgstr "Pannelli di permutazione"
 
@@ -5777,11 +5797,11 @@ msgstr ""
 msgid "Picture"
 msgstr "Immagine"
 
-#: crates/ui-egui/src/properties.rs:2325
+#: crates/ui-egui/src/properties.rs:2332
 msgid "Pictures"
 msgstr "Immagini"
 
-#: crates/ui-egui/src/properties.rs:2237
+#: crates/ui-egui/src/properties.rs:2244
 msgid "Picture…"
 msgstr "Immagine…"
 
@@ -6009,19 +6029,19 @@ msgstr "Superficie in pianta"
 msgid "Plan as SVG…"
 msgstr "Pianta come SVG…"
 
-#: crates/ui-egui/src/editor.rs:751
+#: crates/ui-egui/src/editor.rs:793
 msgid "Plane"
 msgstr "Piano di lavoro"
 
-#: crates/ui-egui/src/editor.rs:744
+#: crates/ui-egui/src/editor.rs:786
 msgid "Plane XY"
 msgstr "Piano XY"
 
-#: crates/ui-egui/src/editor.rs:744
+#: crates/ui-egui/src/editor.rs:786
 msgid "Plane XZ"
 msgstr "Piano XZ"
 
-#: crates/ui-egui/src/editor.rs:744
+#: crates/ui-egui/src/editor.rs:786
 msgid "Plane YZ"
 msgstr "Piano YZ"
 
@@ -6033,6 +6053,7 @@ msgstr ""
 msgid "Plaster"
 msgstr "Intonaco"
 
+#: crates/core/src/family.rs:301
 #: crates/ui-egui/src/lib.rs:1084
 msgid "Plumbing"
 msgstr "Idraulico"
@@ -6049,7 +6070,7 @@ msgstr "Sanitario"
 msgid "Plumbing Fixture (PX): a basin, a WC, a sink, a shower or a drain, where you click; Space turns it"
 msgstr "Sanitario (PX): un lavabo, un WC, un lavello, una doccia o una piletta, dove clicchi; Spazio lo ruota"
 
-#: crates/ui-egui/src/editor.rs:580
+#: crates/ui-egui/src/editor.rs:612
 msgid "Plumbing Fixtures"
 msgstr "Sanitari"
 
@@ -6074,7 +6095,7 @@ msgstr ""
 msgid "Point to a wall or a line: the offset goes to the cursor's side. Click to place it."
 msgstr "Punta un muro o una linea: l'offset va dal lato del cursore. Clicca per inserirlo."
 
-#: crates/ui-egui/src/editor.rs:886
+#: crates/ui-egui/src/editor.rs:928
 msgid "Points"
 msgstr "Punti"
 
@@ -6086,7 +6107,7 @@ msgstr "Polilinea"
 msgid "Polyline: one line through every point clicked; Enter finishes it, the first point again closes it"
 msgstr "Polilinea: un'unica linea per tutti i punti cliccati; Invio termina, cliccando di nuovo il primo punto si chiude"
 
-#: crates/core/src/family.rs:1826
+#: crates/core/src/family.rs:2152
 msgid "Porcelain"
 msgstr "Porcellana"
 
@@ -6136,17 +6157,17 @@ msgstr "Preimpostazione: Nome"
 msgid "Presets"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:1052
+#: crates/ui-egui/src/editor.rs:1094
 #: crates/ui-egui/src/graphics.rs:1432
 #: crates/ui-egui/src/linestyles/creator.rs:104
 msgid "Preview"
 msgstr "Anteprima"
 
-#: crates/ui-egui/src/editor.rs:1067
+#: crates/ui-egui/src/editor.rs:1109
 msgid "Preview Type"
 msgstr "Tipo di anteprima"
 
-#: crates/ui-egui/src/editor.rs:1066
+#: crates/ui-egui/src/editor.rs:1108
 msgid "Previewing"
 msgstr "Anteprima in corso"
 
@@ -6154,8 +6175,8 @@ msgstr "Anteprima in corso"
 msgid "Primary ({})"
 msgstr "Principale ({})"
 
-#: crates/ui-egui/src/editor.rs:763
-#: crates/ui-egui/src/editor.rs:766
+#: crates/ui-egui/src/editor.rs:805
+#: crates/ui-egui/src/editor.rs:808
 #: crates/ui-egui/src/settings.rs:466
 msgid "Profile"
 msgstr "Profilo"
@@ -6177,7 +6198,7 @@ msgid "Project Language: what the drawings say and how new things are named; now
 msgstr "Lingua del progetto: la lingua dei disegni e dei nomi dei nuovi elementi; ora {}"
 
 #: crates/ui-egui/src/lib.rs:3971
-#: crates/ui-egui/src/properties.rs:2869
+#: crates/ui-egui/src/properties.rs:2874
 msgid "Project Parameters"
 msgstr "Parametri di progetto"
 
@@ -6285,7 +6306,7 @@ msgstr "Armadio rack"
 msgid "Rack (RK): a floor rack, where you click; Space turns it"
 msgstr "Armadio rack (RK): un armadio a pavimento dove clicchi; Spazio lo ruota"
 
-#: crates/ui-egui/src/editor.rs:593
+#: crates/ui-egui/src/editor.rs:625
 msgid "Racks"
 msgstr "Armadi rack"
 
@@ -6298,7 +6319,7 @@ msgid "Radial Dimension: pick a round column, a curved wall, a circle or an arc,
 msgstr "Quota radiale: scegli un pilastro circolare, un muro curvo, un cerchio o un arco, poi clicca dove va il raggio"
 
 #: crates/ui-egui/src/draw.rs:342
-#: crates/ui-egui/src/editor.rs:898
+#: crates/ui-egui/src/editor.rs:940
 msgid "Radius"
 msgstr "Raggio"
 
@@ -6453,9 +6474,9 @@ msgstr "Ricarica CAD"
 #: crates/ui-egui/src/favorites.rs:165
 #: crates/ui-egui/src/graphics.rs:1144
 #: crates/ui-egui/src/graphics.rs:1199
-#: crates/ui-egui/src/properties.rs:2745
-#: crates/ui-egui/src/properties.rs:3088
-#: crates/ui-egui/src/properties.rs:3241
+#: crates/ui-egui/src/properties.rs:2750
+#: crates/ui-egui/src/properties.rs:3093
+#: crates/ui-egui/src/properties.rs:3246
 msgid "Remove"
 msgstr "Rimuovi"
 
@@ -6627,7 +6648,7 @@ msgid "Revit import report"
 msgstr "Rapporto di importazione Revit"
 
 #: crates/ui-egui/src/editor.rs:153
-#: crates/ui-egui/src/editor.rs:783
+#: crates/ui-egui/src/editor.rs:825
 msgid "Revolve"
 msgstr "Rivoluzione"
 
@@ -6639,7 +6660,7 @@ msgstr "Cerchio di rivoluzione"
 msgid "Ribbon"
 msgstr "Barra multifunzione"
 
-#: crates/ui-egui/src/editor.rs:918
+#: crates/ui-egui/src/editor.rs:960
 msgid "Right"
 msgstr ""
 
@@ -6675,7 +6696,7 @@ msgstr "Copertura da faccia (RB): una copertura sulle facce superiori dei volumi
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Copertura da impronta: clicca dentro i muri per coprirli, sul piano superiore"
 
-#: crates/core/src/model.rs:2948
+#: crates/core/src/model.rs:2953
 msgid "Roof tiles"
 msgstr "Tegole"
 
@@ -6724,7 +6745,7 @@ msgstr ""
 msgid "Rose"
 msgstr ""
 
-#: crates/core/src/commands.rs:1148
+#: crates/core/src/commands.rs:1163
 msgid "Rotate"
 msgstr "Ruota"
 
@@ -6736,7 +6757,7 @@ msgstr "Ruota (RO): clicca l'inizio dell'angolo, poi la fine"
 msgid "Rotation (°)"
 msgstr "Rotazione (°)"
 
-#: crates/ui-egui/src/properties.rs:2047
+#: crates/ui-egui/src/properties.rs:2054
 msgid "Round"
 msgstr "Circolare"
 
@@ -6782,7 +6803,7 @@ msgstr "Salva"
 msgid "Save As…"
 msgstr "Salva con nome…"
 
-#: crates/ui-egui/src/editor.rs:1082
+#: crates/ui-egui/src/editor.rs:1124
 msgid "Save Family…"
 msgstr "Salva oggetto…"
 
@@ -6811,12 +6832,12 @@ msgstr "Salva come:"
 msgid "Save changes to {}?"
 msgstr "Salvare le modifiche a {}?"
 
-#: crates/ui-egui/src/properties.rs:2294
+#: crates/ui-egui/src/properties.rs:2301
 msgid "Save to Favorites"
 msgstr "Salva nei preferiti"
 
-#: crates/ui-egui/src/editor.rs:1132
-#: crates/ui-egui/src/properties.rs:2315
+#: crates/ui-egui/src/editor.rs:1174
+#: crates/ui-egui/src/properties.rs:2322
 msgid "Saved {} to your Favorites"
 msgstr "{} salvato nei preferiti"
 
@@ -6836,11 +6857,11 @@ msgstr "Scala: la carta che questa vista rappresenta, 1 : n del modello; annotaz
 msgid "Scan"
 msgstr "Scansione"
 
-#: crates/core/src/commands.rs:1578
+#: crates/core/src/commands.rs:1593
 msgid "Schedule"
 msgstr "Abaco"
 
-#: crates/ui-egui/src/properties.rs:3045
+#: crates/ui-egui/src/properties.rs:3050
 msgid "Schedule Properties: {}"
 msgstr "Proprietà abaco: {}"
 
@@ -6854,7 +6875,7 @@ msgstr "Abachi/Quantità…"
 msgid "Schedule: {}"
 msgstr "Abaco: {}"
 
-#: crates/ui-egui/src/properties.rs:3103
+#: crates/ui-egui/src/properties.rs:3108
 msgid "Scheduled fields (in order):"
 msgstr "Campi dell'abaco (in ordine):"
 
@@ -6866,7 +6887,7 @@ msgstr "Abachi"
 msgid "Schedules/Quantities (all)"
 msgstr "Abachi/Quantità (tutti)"
 
-#: crates/core/src/model.rs:2944
+#: crates/core/src/model.rs:2949
 msgid "Screed"
 msgstr "Massetto"
 
@@ -6884,7 +6905,7 @@ msgstr "Cerca nel navigatore di progetto"
 msgid "Search…"
 msgstr "Cerca…"
 
-#: crates/core/src/family.rs:1825
+#: crates/core/src/family.rs:2151
 msgid "Seat Height"
 msgstr "Altezza seduta"
 
@@ -7055,7 +7076,7 @@ msgstr "Cavedio"
 msgid "Shaft Opening: click two opposite corners; it cuts the floors, ceilings and roofs it passes through"
 msgstr "Cavedio: clicca due angoli opposti; taglia i solai, i controsoffitti e le coperture che attraversa"
 
-#: crates/ui-egui/src/editor.rs:761
+#: crates/ui-egui/src/editor.rs:803
 msgid "Shape"
 msgstr "Forma"
 
@@ -7181,7 +7202,7 @@ msgstr "Mostra o nascondi le palette e scegli la lingua dell'interfaccia"
 msgid "Show shortcut keys in tooltips"
 msgstr "Mostra le scorciatoie nei suggerimenti"
 
-#: crates/ui-egui/src/properties.rs:2637
+#: crates/ui-egui/src/properties.rs:2642
 msgid "Show temporary alignment guides (smart snapping) when drawing"
 msgstr "Mostra guide di allineamento temporanee (aggancio intelligente) durante il disegno"
 
@@ -7229,7 +7250,7 @@ msgstr "Altezza davanzale"
 msgid "Simple Lines"
 msgstr ""
 
-#: crates/core/src/family.rs:2071
+#: crates/core/src/family.rs:2397
 msgid "Single Door"
 msgstr "Porta a un battente"
 
@@ -7275,15 +7296,15 @@ msgstr "Salta questa versione"
 msgid "Sky"
 msgstr "Cielo"
 
-#: crates/core/src/model.rs:2471
+#: crates/core/src/model.rs:2476
 msgid "Sliding"
 msgstr "Scorrevole"
 
-#: crates/core/src/family.rs:2120
+#: crates/core/src/family.rs:2446
 msgid "Sliding Door"
 msgstr "Porta scorrevole"
 
-#: crates/core/src/family.rs:2215
+#: crates/core/src/family.rs:2541
 msgid "Sliding Window"
 msgstr "Finestra scorrevole"
 
@@ -7355,7 +7376,7 @@ msgstr "Aggancia ai quadranti"
 msgid "Snap to Tangents"
 msgstr "Aggancia alle tangenti"
 
-#: crates/ui-egui/src/properties.rs:2641
+#: crates/ui-egui/src/properties.rs:2646
 msgid "Snap tolerance"
 msgstr "Tolleranza di aggancio"
 
@@ -7363,7 +7384,7 @@ msgstr "Tolleranza di aggancio"
 msgid "Snap: {} (next point)"
 msgstr "Aggancio: {} (punto successivo)"
 
-#: crates/ui-egui/src/properties.rs:2599
+#: crates/ui-egui/src/properties.rs:2604
 msgid "Snaps"
 msgstr "Agganci"
 
@@ -7379,7 +7400,7 @@ msgstr "Aggancio disattivato (punto successivo)"
 msgid "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none"
 msgstr "Agganci: a cosa si aggancia un punto scelto (estremi, punti medi, intersezioni, centri, perpendicolari) e gli angoli a passi; SE, SM, SI, SC, SP e SN ne attivano uno solo per il punto successivo, SO nessuno"
 
-#: crates/core/src/family.rs:1919
+#: crates/core/src/family.rs:2245
 msgid "Sofa"
 msgstr "Divano"
 
@@ -7404,11 +7425,11 @@ msgstr "Riempimento pieno"
 msgid "Solid fill"
 msgstr "Riempimento pieno"
 
-#: crates/ui-egui/src/properties.rs:3220
+#: crates/ui-egui/src/properties.rs:3225
 msgid "Sort by:"
 msgstr "Ordina per:"
 
-#: crates/ui-egui/src/properties.rs:2791
+#: crates/ui-egui/src/properties.rs:2796
 msgid "Sorting/Grouping"
 msgstr "Ordinamento/Raggruppamento"
 
@@ -7416,7 +7437,7 @@ msgstr "Ordinamento/Raggruppamento"
 msgid "Source code on GitHub"
 msgstr "Codice sorgente su GitHub"
 
-#: crates/core/src/model.rs:1874
+#: crates/core/src/model.rs:1879
 msgid "South"
 msgstr "Sud"
 
@@ -7457,7 +7478,7 @@ msgstr "Spline per punti: clicca i punti per cui passa; Invio termina"
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Spline: clicca i punti di controllo; Invio la termina"
 
-#: crates/core/src/commands.rs:1190
+#: crates/core/src/commands.rs:1205
 msgid "Split"
 msgstr "Dividi"
 
@@ -7586,6 +7607,7 @@ msgstr "Staffe"
 msgid "Straight"
 msgstr "Dritto"
 
+#: crates/core/src/family.rs:302
 #: crates/core/src/schedule.rs:293
 msgid "Structural"
 msgstr "Strutturale"
@@ -7653,7 +7675,7 @@ msgstr "Suffisso:"
 msgid "Suggested Units:"
 msgstr "Unità consigliate:"
 
-#: crates/ui-egui/src/properties.rs:2202
+#: crates/ui-egui/src/properties.rs:2209
 msgid "Surface Pattern"
 msgstr "Retino di superficie"
 
@@ -7665,7 +7687,7 @@ msgstr "Trasparenza superficie"
 msgid "Surface, {}°"
 msgstr ""
 
-#: crates/core/src/model.rs:2469
+#: crates/core/src/model.rs:2474
 msgid "Swing"
 msgstr "Battente"
 
@@ -7673,48 +7695,48 @@ msgstr "Battente"
 msgid "Switch"
 msgstr "Interruttore"
 
-#: crates/ui-egui/src/editor.rs:586
+#: crates/ui-egui/src/editor.rs:618
 msgid "Switches"
 msgstr "Interruttori"
 
-#: crates/ui-egui/src/editor.rs:893
+#: crates/ui-egui/src/editor.rs:935
 msgid "Symbol Centre X"
 msgstr "Centro simbolo X"
 
-#: crates/ui-egui/src/editor.rs:893
+#: crates/ui-egui/src/editor.rs:935
 msgid "Symbol Centre Y"
 msgstr "Centro simbolo Y"
 
-#: crates/ui-egui/src/editor.rs:904
+#: crates/ui-egui/src/editor.rs:946
 msgid "Symbol From"
 msgstr "Simbolo da"
 
-#: crates/ui-egui/src/editor.rs:888
+#: crates/ui-egui/src/editor.rs:930
 msgid "Symbol Points"
 msgstr "Punti del simbolo"
 
-#: crates/ui-egui/src/editor.rs:900
+#: crates/ui-egui/src/editor.rs:942
 msgid "Symbol Radius"
 msgstr "Raggio del simbolo"
 
-#: crates/ui-egui/src/editor.rs:913
+#: crates/ui-egui/src/editor.rs:955
 msgid "Symbol Text"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:904
+#: crates/ui-egui/src/editor.rs:946
 msgid "Symbol To"
 msgstr "Simbolo a"
 
-#: crates/ui-egui/src/editor.rs:927
+#: crates/ui-egui/src/editor.rs:969
 msgid "Symbol Visible"
 msgstr "Simbolo visibile"
 
-#: crates/ui-egui/src/editor.rs:1031
+#: crates/ui-egui/src/editor.rs:1073
 #: crates/ui-egui/src/mep.rs:189
 msgid "Symbols"
 msgstr "Simboli"
 
-#: crates/ui-egui/src/editor.rs:870
+#: crates/ui-egui/src/editor.rs:912
 msgid "Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."
 msgstr ""
 
@@ -7725,7 +7747,7 @@ msgstr "Sistema"
 #: crates/ui-egui/src/dimtypes.rs:94
 #: crates/ui-egui/src/fillpatterns.rs:431
 #: crates/ui-egui/src/notes.rs:503
-#: crates/ui-egui/src/properties.rs:2021
+#: crates/ui-egui/src/properties.rs:2028
 msgid "System Family: {}"
 msgstr "Oggetto di sistema: {}"
 
@@ -7761,7 +7783,7 @@ msgstr ""
 msgid "Tab with {}"
 msgstr "Scheda con {}"
 
-#: crates/core/src/family.rs:1866
+#: crates/core/src/family.rs:2192
 msgid "Table"
 msgstr "Tavolo"
 
@@ -7797,7 +7819,7 @@ msgstr "Togli le barre create da questo comando per l'elemento: le barre disegna
 msgid "Takes out what nothing in the project uses. Each category keeps a type; Undo brings it back."
 msgstr "Elimina ciò che nessun elemento del progetto usa. Ogni categoria conserva un tipo; Annulla lo ripristina."
 
-#: crates/ui-egui/src/properties.rs:2387
+#: crates/ui-egui/src/properties.rs:2394
 msgid "Takes up a shaped top's falls: one layer at most"
 msgstr ""
 
@@ -7879,8 +7901,10 @@ msgid "Temporary dimension {}"
 msgstr "Quota temporanea {}"
 
 #: crates/core/src/commands.rs:742
-#: crates/ui-egui/src/editor.rs:879
-#: crates/ui-egui/src/editor.rs:912
+#: crates/core/src/family.rs:297
+#: crates/ui-egui/src/editor.rs:202
+#: crates/ui-egui/src/editor.rs:921
+#: crates/ui-egui/src/editor.rs:954
 #: crates/ui-egui/src/notes.rs:503
 msgid "Text"
 msgstr "Testo"
@@ -7919,19 +7943,19 @@ msgstr "Testo:"
 msgid "Text: IBM Plex Sans (bundled). Text scales down to fit its segment."
 msgstr "Testo: IBM Plex Sans (incluso). Il testo si riduce per stare nel suo segmento."
 
-#: crates/ui-egui/src/properties.rs:2225
+#: crates/ui-egui/src/properties.rs:2232
 msgid "Texture"
 msgstr "Texture"
 
-#: crates/ui-egui/src/properties.rs:2259
+#: crates/ui-egui/src/properties.rs:2266
 msgid "Texture Angle"
 msgstr "Angolo texture"
 
-#: crates/ui-egui/src/properties.rs:2260
+#: crates/ui-egui/src/properties.rs:2267
 msgid "Texture Offset Across"
 msgstr "Scostamento texture orizzontale"
 
-#: crates/ui-egui/src/properties.rs:2261
+#: crates/ui-egui/src/properties.rs:2268
 msgid "Texture Offset Up"
 msgstr "Scostamento texture verticale"
 
@@ -7955,7 +7979,7 @@ msgstr "La vista 3D è disegnata dal processore: {}"
 msgid "The arc doesn't fit: pick two straight lines that meet at an angle, long enough for it."
 msgstr "L'arco non ci sta: scegli due linee rette che si incontrano ad angolo, abbastanza lunghe."
 
-#: crates/ui-egui/src/properties.rs:2608
+#: crates/ui-egui/src/properties.rs:2613
 msgid "The centre of a curved wall, a column or a component"
 msgstr "Il centro di un muro curvo, di un pilastro o di un componente"
 
@@ -7963,11 +7987,11 @@ msgstr "Il centro di un muro curvo, di un pilastro o di un componente"
 msgid "The control port, through which an agent works on this project (bimcraft-cli mcp --connect): whether it is open, how many agents are connected, and whether they may only read. Click for File > Settings > Agents"
 msgstr ""
 
-#: crates/ui-egui/src/properties.rs:2605
+#: crates/ui-egui/src/properties.rs:2610
 msgid "The ends of walls, grids and what else is drawn, and the points picked so far"
 msgstr "Gli estremi di muri, griglie e altri elementi disegnati, e i punti scelti finora"
 
-#: crates/ui-egui/src/properties.rs:2609
+#: crates/ui-egui/src/properties.rs:2614
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "Il piede della perpendicolare dall'ultimo punto a un muro o a una griglia"
 
@@ -8000,7 +8024,7 @@ msgstr ""
 msgid "The loop is open: {} line ends don't meet another line."
 msgstr "Il contorno è aperto: {} estremi di linea non incontrano un'altra linea."
 
-#: crates/ui-egui/src/properties.rs:2606
+#: crates/ui-egui/src/properties.rs:2611
 msgid "The middle of a wall, along its arc"
 msgstr "Il punto medio di un muro, lungo il suo arco"
 
@@ -8105,7 +8129,7 @@ msgstr ""
 msgid "Theme"
 msgstr "Tema"
 
-#: crates/ui-egui/src/properties.rs:3220
+#: crates/ui-egui/src/properties.rs:3225
 msgid "Then by:"
 msgstr "Poi per:"
 
@@ -8121,11 +8145,11 @@ msgstr "Termico"
 msgid "These patterns to a PAT file, but the solid ones"
 msgstr "Questi motivi in un file PAT, tranne quelli pieni"
 
-#: crates/core/src/family.rs:1825
+#: crates/core/src/family.rs:2151
 #: crates/ui-egui/src/properties.rs:451
 #: crates/ui-egui/src/properties.rs:452
 #: crates/ui-egui/src/properties.rs:786
-#: crates/ui-egui/src/properties.rs:2356
+#: crates/ui-egui/src/properties.rs:2363
 msgid "Thickness"
 msgstr "Spessore"
 
@@ -8214,7 +8238,7 @@ msgstr "Piastrella"
 msgid "Tile 300"
 msgstr "Piastrella 300"
 
-#: crates/ui-egui/src/properties.rs:2258
+#: crates/ui-egui/src/properties.rs:2265
 msgid "Tile Height"
 msgstr "Altezza piastrella"
 
@@ -8222,11 +8246,11 @@ msgstr "Altezza piastrella"
 msgid "Tile Size"
 msgstr "Dimensione piastrella"
 
-#: crates/ui-egui/src/properties.rs:2257
+#: crates/ui-egui/src/properties.rs:2264
 msgid "Tile Width"
 msgstr "Larghezza piastrella"
 
-#: crates/core/src/family.rs:1826
+#: crates/core/src/family.rs:2152
 msgid "Timber"
 msgstr "Legno"
 
@@ -8242,11 +8266,11 @@ msgstr "Larghezza del cartiglio:"
 msgid "Title bar"
 msgstr "Barra del titolo"
 
-#: crates/ui-egui/src/editor.rs:800
+#: crates/ui-egui/src/editor.rs:842
 msgid "To"
 msgstr "A"
 
-#: crates/ui-egui/src/editor.rs:800
+#: crates/ui-egui/src/editor.rs:842
 msgid "To (degrees)"
 msgstr "A (gradi)"
 
@@ -8315,7 +8339,7 @@ msgstr "Totale elementi selezionati: {}"
 
 #: crates/ui-egui/src/graphics.rs:981
 #: crates/ui-egui/src/graphics.rs:1302
-#: crates/ui-egui/src/properties.rs:2192
+#: crates/ui-egui/src/properties.rs:2199
 msgid "Transparency"
 msgstr "Trasparenza"
 
@@ -8347,7 +8371,7 @@ msgstr "Taglia/Estendi singolo elemento"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Taglia/Estendi singolo elemento: scegli la linea limite, poi la linea da modificare, sulla parte da tenere"
 
-#: crates/core/src/commands.rs:1164
+#: crates/core/src/commands.rs:1179
 #: crates/ui-egui/src/sketch.rs:712
 #: crates/ui-egui/src/sketch.rs:964
 msgid "Trim/Extend to Corner"
@@ -8370,15 +8394,15 @@ msgstr "Ruota il muro attorno al suo {}: {}"
 msgid "Two {} are called {}."
 msgstr ""
 
-#: crates/core/src/model.rs:1488
-#: crates/ui-egui/src/editor.rs:683
-#: crates/ui-egui/src/editor.rs:689
-#: crates/ui-egui/src/properties.rs:3176
+#: crates/core/src/model.rs:1493
+#: crates/ui-egui/src/editor.rs:721
+#: crates/ui-egui/src/editor.rs:727
+#: crates/ui-egui/src/properties.rs:3181
 msgid "Type"
 msgstr "Tipo"
 
-#: crates/ui-egui/src/editor.rs:709
-#: crates/ui-egui/src/editor.rs:710
+#: crates/ui-egui/src/editor.rs:751
+#: crates/ui-egui/src/editor.rs:752
 msgid "Type Name"
 msgstr "Nome del tipo"
 
@@ -8389,8 +8413,8 @@ msgstr "Parametri del tipo"
 #: crates/ui-egui/src/dimtypes.rs:89
 #: crates/ui-egui/src/lib.rs:4138
 #: crates/ui-egui/src/notes.rs:501
-#: crates/ui-egui/src/properties.rs:2019
-#: crates/ui-egui/src/properties.rs:2492
+#: crates/ui-egui/src/properties.rs:2026
+#: crates/ui-egui/src/properties.rs:2505
 msgid "Type Properties"
 msgstr "Proprietà del tipo"
 
@@ -8398,7 +8422,7 @@ msgstr "Proprietà del tipo"
 msgid "Type Selector"
 msgstr "Selettore del tipo"
 
-#: crates/ui-egui/src/editor.rs:715
+#: crates/ui-egui/src/editor.rs:757
 msgid "Type Value"
 msgstr "Valore del tipo"
 
@@ -8406,7 +8430,7 @@ msgstr "Valore del tipo"
 msgid "Type a name for the preset first."
 msgstr "Scrivi prima un nome per la preimpostazione."
 
-#: crates/ui-egui/src/properties.rs:2909
+#: crates/ui-egui/src/properties.rs:2914
 msgid "Type of Parameter"
 msgstr "Tipo di parametro"
 
@@ -8435,13 +8459,17 @@ msgstr "Scrivi la nota: Maiusc+Invio va a capo, Invio o un clic fuori la termina
 msgid "Type:"
 msgstr "Tipo:"
 
-#: crates/ui-egui/src/editor.rs:1029
+#: crates/ui-egui/src/editor.rs:1071
 msgid "Types"
 msgstr "Tipi"
 
 #: crates/core/src/render.rs:3624
 msgid "UP"
 msgstr "SU"
+
+#: crates/ui-egui/src/editor.rs:206
+msgid "URL"
+msgstr ""
 
 #: crates/core/src/schedule.rs:254
 #: crates/ui-egui/src/properties.rs:166
@@ -8531,7 +8559,7 @@ msgstr "Formato unità"
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9726
 msgid "Unnamed"
 msgstr "Senza nome"
 
@@ -8610,8 +8638,8 @@ msgstr ""
 msgid "Value"
 msgstr "Valore"
 
-#: crates/ui-egui/src/properties.rs:2358
-#: crates/ui-egui/src/properties.rs:2387
+#: crates/ui-egui/src/properties.rs:2365
+#: crates/ui-egui/src/properties.rs:2394
 msgid "Variable"
 msgstr ""
 
@@ -8639,7 +8667,7 @@ msgid "View Filters"
 msgstr "Filtri di vista"
 
 #: crates/ui-egui/src/camera.rs:65
-#: crates/ui-egui/src/properties.rs:1966
+#: crates/ui-egui/src/properties.rs:1973
 msgid "View Name"
 msgstr "Nome vista"
 
@@ -8700,6 +8728,7 @@ msgstr "Viste (tutte)"
 msgid "Views following it: {}"
 msgstr ""
 
+#: crates/core/src/family.rs:298
 #: crates/ui-egui/src/graphics.rs:802
 msgid "Visibility"
 msgstr "Visibilità"
@@ -8734,8 +8763,8 @@ msgstr "Sostituzioni di visibilità/grafica per {}"
 msgid "Visible"
 msgstr "Visibile"
 
-#: crates/ui-egui/src/editor.rs:809
-#: crates/ui-egui/src/editor.rs:926
+#: crates/ui-egui/src/editor.rs:851
+#: crates/ui-egui/src/editor.rs:968
 msgid "Visible when"
 msgstr "Visibile quando"
 
@@ -8756,11 +8785,11 @@ msgstr "Presa telefonica"
 msgid "Voice Outlet (VO): a telephone point, where you click on the wall; Space turns it"
 msgstr "Presa telefonica (VO): un punto telefonico, dove clicchi sul muro; Spazio lo ruota"
 
-#: crates/ui-egui/src/editor.rs:591
+#: crates/ui-egui/src/editor.rs:623
 msgid "Voice Outlets"
 msgstr "Prese telefoniche"
 
-#: crates/ui-egui/src/editor.rs:812
+#: crates/ui-egui/src/editor.rs:854
 msgid "Void"
 msgstr "Vuoto"
 
@@ -8789,6 +8818,7 @@ msgid "Voltages"
 msgstr ""
 
 #: crates/core/src/schedule.rs:210
+#: crates/ui-egui/src/editor.rs:205
 msgid "Volume"
 msgstr "Volume"
 
@@ -8796,7 +8826,7 @@ msgstr "Volume"
 msgid "Volume (m³)"
 msgstr "Volume (m³)"
 
-#: crates/core/src/family.rs:1975
+#: crates/core/src/family.rs:2301
 msgid "WC"
 msgstr "WC"
 
@@ -8808,7 +8838,7 @@ msgstr "Muro"
 msgid "Wall (WA): each click builds a wall; Enter or Esc ends the chain"
 msgstr "Muro (WA): ogni clic costruisce un muro; Invio o Esc chiude la catena"
 
-#: crates/core/src/model.rs:376
+#: crates/core/src/model.rs:381
 msgid "Wall Centreline"
 msgstr "Asse del muro"
 
@@ -8848,11 +8878,11 @@ msgstr ""
 msgid "Walls' Outline: the outline the level's walls enclose, along their centre lines, as sketch lines to edit"
 msgstr ""
 
-#: crates/core/src/family.rs:1947
+#: crates/core/src/family.rs:2273
 msgid "Wardrobe"
 msgstr "Armadio"
 
-#: crates/core/src/family.rs:1989
+#: crates/core/src/family.rs:2315
 msgid "Washbasin"
 msgstr "Lavabo"
 
@@ -8864,7 +8894,7 @@ msgstr "Onda"
 msgid "Weight"
 msgstr "Peso"
 
-#: crates/core/src/model.rs:1876
+#: crates/core/src/model.rs:1881
 msgid "West"
 msgstr "Ovest"
 
@@ -8904,11 +8934,11 @@ msgstr ""
 msgid "What's new"
 msgstr "Novità"
 
-#: crates/ui-egui/src/properties.rs:2611
+#: crates/ui-egui/src/properties.rs:2616
 msgid "Where a line from the last point touches a circle or an arc"
 msgstr "Dove una linea dall'ultimo punto è tangente a un cerchio o a un arco"
 
-#: crates/ui-egui/src/properties.rs:2613
+#: crates/ui-egui/src/properties.rs:2618
 msgid "Where a note, dimension, tag, spot elevation, section or elevation mark, detail group or repeating detail is placed"
 msgstr ""
 
@@ -8916,7 +8946,7 @@ msgstr ""
 msgid "Where its file's coordinates put it, as the survey placed it"
 msgstr "Dove lo pongono le coordinate del file, come da rilievo"
 
-#: crates/ui-egui/src/properties.rs:2607
+#: crates/ui-egui/src/properties.rs:2612
 msgid "Where two walls or grids cross"
 msgstr "Dove due muri o due griglie si incrociano"
 
@@ -9057,7 +9087,7 @@ msgstr ""
 msgid "Work plane square to the {} axis"
 msgstr ""
 
-#: crates/core/src/family.rs:1959
+#: crates/core/src/family.rs:2285
 msgid "Worktop"
 msgstr "Piano di lavoro cucina"
 
@@ -9069,11 +9099,11 @@ msgstr "X"
 msgid "Y"
 msgstr "Y"
 
-#: crates/core/src/schedule.rs:1188
+#: crates/core/src/schedule.rs:1192
 msgid "Yes"
 msgstr "Sì"
 
-#: crates/ui-egui/src/editor.rs:198
+#: crates/ui-egui/src/editor.rs:200
 msgid "Yes/No"
 msgstr "Sì/No"
 
@@ -9127,7 +9157,7 @@ msgstr "`{}` non è un'altezza"
 #: crates/ui-egui/src/draw.rs:273
 #: crates/ui-egui/src/draw.rs:808
 #: crates/ui-egui/src/properties.rs:548
-#: crates/ui-egui/src/properties.rs:2844
+#: crates/ui-egui/src/properties.rs:2849
 #: crates/ui-egui/src/section_box.rs:94
 #: crates/ui-egui/src/workplane.rs:278
 msgid "`{}` is not a length"
@@ -9135,8 +9165,8 @@ msgstr "`{}` non è una lunghezza"
 
 #: crates/ui-egui/src/clouds.rs:113
 #: crates/ui-egui/src/properties.rs:550
-#: crates/ui-egui/src/properties.rs:2847
-#: crates/ui-egui/src/properties.rs:2849
+#: crates/ui-egui/src/properties.rs:2852
+#: crates/ui-egui/src/properties.rs:2854
 msgid "`{}` is not a number"
 msgstr "`{}` non è un numero"
 
@@ -9157,7 +9187,7 @@ msgstr "`{}` non è un punto; scrivi x, y in mm"
 msgid "`{}` is not a scale"
 msgstr "`{}` non è una scala"
 
-#: crates/ui-egui/src/properties.rs:2277
+#: crates/ui-egui/src/properties.rs:2284
 msgid "`{}` is not a size, an angle or an offset"
 msgstr "`{}` non è una dimensione, un angolo o uno scostamento"
 
@@ -9170,11 +9200,11 @@ msgstr "`{}` non è un interasse"
 msgid "`{}` is not an angle"
 msgstr "`{}` non è un angolo"
 
-#: crates/ui-egui/src/editor.rs:465
+#: crates/ui-egui/src/editor.rs:497
 msgid "a family needs a name"
 msgstr "un oggetto deve avere un nome"
 
-#: crates/ui-egui/src/editor.rs:490
+#: crates/ui-egui/src/editor.rs:522
 msgid "a family needs a type"
 msgstr "un oggetto deve avere un tipo"
 
@@ -9226,7 +9256,7 @@ msgstr ""
 msgid "arc"
 msgstr "arco"
 
-#: crates/ui-egui/src/properties.rs:2821
+#: crates/ui-egui/src/properties.rs:2826
 msgid "begins with"
 msgstr "inizia con"
 
@@ -9254,7 +9284,7 @@ msgstr "clicca dove finisce la rampa"
 msgid "column: {}"
 msgstr "pilastro: {}"
 
-#: crates/ui-egui/src/properties.rs:2819
+#: crates/ui-egui/src/properties.rs:2824
 msgid "contains"
 msgstr "contiene"
 
@@ -9266,7 +9296,7 @@ msgstr ""
 msgid "corner {}: each corner is `x, y`"
 msgstr "angolo {}: ogni angolo è `x, y`"
 
-#: crates/ui-egui/src/editor.rs:813
+#: crates/ui-egui/src/editor.rs:855
 msgid "cuts the forms listed above it"
 msgstr "taglia le forme elencate sopra"
 
@@ -9286,19 +9316,19 @@ msgstr ""
 msgid "distribution systems"
 msgstr ""
 
-#: crates/ui-egui/src/properties.rs:2822
+#: crates/ui-egui/src/properties.rs:2827
 msgid "does not begin with"
 msgstr "non inizia con"
 
-#: crates/ui-egui/src/properties.rs:2820
+#: crates/ui-egui/src/properties.rs:2825
 msgid "does not contain"
 msgstr "non contiene"
 
-#: crates/ui-egui/src/properties.rs:2824
+#: crates/ui-egui/src/properties.rs:2829
 msgid "does not end with"
 msgstr "non finisce con"
 
-#: crates/ui-egui/src/properties.rs:2814
+#: crates/ui-egui/src/properties.rs:2819
 msgid "does not equal"
 msgstr "è diverso da"
 
@@ -9318,11 +9348,11 @@ msgstr "ellisse"
 msgid "end"
 msgstr "fine"
 
-#: crates/ui-egui/src/properties.rs:2823
+#: crates/ui-egui/src/properties.rs:2828
 msgid "ends with"
 msgstr "finisce con"
 
-#: crates/ui-egui/src/properties.rs:2689
+#: crates/ui-egui/src/properties.rs:2694
 msgid "equals"
 msgstr "è uguale a"
 
@@ -9358,27 +9388,27 @@ msgstr ""
 msgid "graphic display options are for the 3D view: open it from the Project Browser"
 msgstr ""
 
-#: crates/ui-egui/src/properties.rs:2825
+#: crates/ui-egui/src/properties.rs:2830
 msgid "has a value"
 msgstr "ha un valore"
 
-#: crates/ui-egui/src/properties.rs:2826
+#: crates/ui-egui/src/properties.rs:2831
 msgid "has no value"
 msgstr "non ha valore"
 
-#: crates/ui-egui/src/properties.rs:2815
+#: crates/ui-egui/src/properties.rs:2820
 msgid "is greater than"
 msgstr "è maggiore di"
 
-#: crates/ui-egui/src/properties.rs:2816
+#: crates/ui-egui/src/properties.rs:2821
 msgid "is greater than or equal to"
 msgstr "è maggiore o uguale a"
 
-#: crates/ui-egui/src/properties.rs:2817
+#: crates/ui-egui/src/properties.rs:2822
 msgid "is less than"
 msgstr "è minore di"
 
-#: crates/ui-egui/src/properties.rs:2818
+#: crates/ui-egui/src/properties.rs:2823
 msgid "is less than or equal to"
 msgstr "è minore o uguale a"
 
@@ -9587,11 +9617,11 @@ msgstr "qui non c'è una cartella in cui conservare i preferiti"
 msgid "this tool works in plan views: open one from the Project Browser"
 msgstr "questo strumento funziona nelle piante: aprine una dal Navigatore di progetto"
 
-#: crates/ui-egui/src/editor.rs:784
+#: crates/ui-egui/src/editor.rs:826
 msgid "turned about an axis"
 msgstr "ruotato attorno a un asse"
 
-#: crates/ui-egui/src/editor.rs:433
+#: crates/ui-egui/src/editor.rs:465
 msgid "two types are named `{}`"
 msgstr "due tipi si chiamano `{}`"
 
@@ -9659,11 +9689,11 @@ msgstr "{} (non caricato)"
 msgid "{} (primary)"
 msgstr "{} (principale)"
 
-#: crates/core/src/schedule.rs:1178
+#: crates/core/src/schedule.rs:1182
 msgid "{} ({})"
 msgstr "{} ({})"
 
-#: crates/ui-egui/src/properties.rs:2979
+#: crates/ui-egui/src/properties.rs:2984
 msgid "{} Schedule"
 msgstr "Abaco {}"
 
@@ -9785,7 +9815,7 @@ msgstr ""
 msgid "{} selected."
 msgstr "{} selezionati."
 
-#: crates/ui-egui/src/editor.rs:748
+#: crates/ui-egui/src/editor.rs:790
 msgid "{} triangles, from a file"
 msgstr "{} triangoli, da un file"
 
@@ -9852,15 +9882,15 @@ msgstr "{}: `{}` non è un'altezza"
 
 #: crates/ui-egui/src/properties.rs:786
 #: crates/ui-egui/src/properties.rs:799
-#: crates/ui-egui/src/properties.rs:2473
+#: crates/ui-egui/src/properties.rs:2484
 msgid "{}: `{}` is not a length"
 msgstr "{}: `{}` non è una lunghezza"
 
-#: crates/ui-egui/src/properties.rs:2474
+#: crates/ui-egui/src/properties.rs:2486
 msgid "{}: `{}` is not a number"
 msgstr "{}: `{}` non è un numero"
 
-#: crates/ui-egui/src/editor.rs:223
+#: crates/ui-egui/src/editor.rs:246
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` non è un numero"
 

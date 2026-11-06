@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::{DEFAULT_WALL, Expr, Family, HEIGHT, MAX_FORMULA, Val, WALL, WIDTH, names};
+use super::{DEFAULT_WALL, Expr, Family, HEIGHT, Kind, MAX_FORMULA, Val, WALL, WIDTH, names};
 
 /// `f`'s errors, which a change may not go ahead with, and its warnings, which don't stop it: its
 /// formulas read over its own parameters, [`Family::check`]'s own findings (a family that builds,
@@ -19,6 +19,10 @@ pub(crate) fn problems(f: &Family, has_material: &dyn Fn(&str) -> bool) -> (Vec<
     }
     let mut warnings = Vec::new();
     geometry(f, &mut warnings);
+    // Labelled dimensions don't exist yet, so a reporting parameter holds what it was given.
+    warnings.extend(
+        f.parameters.iter().filter(|p| p.reporting).map(|p| format!("parameter `{}` reports no dimension yet: it holds its value", p.name)),
+    );
     (errors, warnings)
 }
 
@@ -34,12 +38,16 @@ fn formulas(f: &Family, out: &mut Vec<String>) {
         }
         match names(formula) {
             Err(e) => out.push(format!("{who}: {e}")),
-            Ok(found) => out.extend(
-                found
-                    .into_iter()
-                    .filter(|n| !given.contains(n.as_str()) && !(f.category.hosted() && n == WALL))
-                    .map(|n| format!("{who}: formula `{formula}` reads `{n}`, which isn't one of its parameters")),
-            ),
+            Ok(found) => {
+                for n in found {
+                    if !given.contains(n.as_str()) && !(f.category.hosted() && n == WALL) {
+                        out.push(format!("{who}: formula `{formula}` reads `{n}`, which isn't one of its parameters"));
+                    } else if let Some(p) = f.parameters.iter().find(|p| p.name == n && p.kind.text() && p.kind != Kind::Material) {
+                        // Words a formula can't read; a material's name is refused where it is worked out, as it always was.
+                        out.push(format!("{who}: formula `{formula}` reads `{n}`, which is {}: a formula reads numbers", p.kind.said()));
+                    }
+                }
+            }
         }
     };
     for p in &f.parameters {
