@@ -23,11 +23,11 @@ use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
-    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, Id, Key, Landing, Layer, Level, Line, Location, MAX_COORD,
-    MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind, Pattern,
-    Perspective, PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Rebar, Ref3, Reference,
-    Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, TREAD,
-    Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, Id, Key, Landing, Layer, Level, Line, Location, MAX_BREAKLINES,
+    MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TERRAIN_POINTS, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES,
+    Pad, ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType,
+    Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet,
+    Side, Spot, Stair, TOL, TREAD, Tag, Toposurface, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -292,6 +292,136 @@ pub static ALL: &[Command] = &[
          crosses itself is found as two that cross are",
         edit_boundary,
     ),
+    other(
+        "cut_fill",
+        "Cut and Fill",
+        "{pads?: [ids], terrain?} or {existing, proposed, cell?} the earth building pads take out of the terrain and put in, in m³ (cut where the \
+         ground is above a pad's top, fill where below; `net_m3` is fill less cut, so positive means earth to bring in): each pad's and \
+         the total, exact, against `terrain` (a toposurface's id) or the one each pad lies over; every pad by default. With `existing` \
+         and `proposed`, the ids of two toposurfaces, the earth between them over where both are, by cells of `cell` mm (as fine as \
+         keeps them to about 250,000 by default)",
+        cut_fill,
+    ),
+    edit(
+        "place_on_terrain",
+        "Place on Terrain",
+        &[],
+        "{ids: [ids], terrain?, offset?} stands masses, columns, footings, components and walls on the ground: each at the lowest ground \
+         under its footprint (a wall along its axis), `offset` mm above it (below, if negative: an embedment), whatever level it is on. \
+         `terrain` is a toposurface's id, by default the project's only one. What is not over the terrain is left, and said",
+        place_on_terrain,
+    ),
+    edit(
+        "pad",
+        "Building Pad",
+        &[],
+        "{boundary: [[x,y],…], level?, offset?, thickness?, name?} a building pad, Revit's: ground made level where a building stands. \
+         Its `boundary` is flat at `offset` mm above `level` (0 by default, the lowest level), a slab `thickness` mm thick (300) under \
+         that top. Where terrain is over it the earth is cut, where the terrain is below it, filled: the reply and the listing say \
+         how much (`cut_m3`, `fill_m3`), and `cut_fill` totals them. It moves, turns and mirrors in plan",
+        pad,
+    ),
+    edit(
+        "toposurface",
+        "Toposurface",
+        &[],
+        "{points: [[x,y,z],…], breaklines?: [[[x,y,z],…],…], boundary?: [[x,y],…], name?, material?, interval?} terrain, Revit's \
+         toposurface: a surface through surveyed points (mm, z in project coordinates as a level's elevation is: 0 is the height of the \
+         project's origin), triangulated (Delaunay) so that its triangles follow \
+         the `breaklines` (ridges, valleys, kerbs; one that crosses an earlier one is skipped) and none lie outside `boundary`. \
+         `interval` is the mm between the contours plans draw (1000 by default; 0, none). Reports its triangles, plan area and \
+         heights. Ask it with `height_at` and `contours`; it moves, turns and mirrors in plan, and its heights stay",
+        toposurface,
+    ),
+    other(
+        "height_at",
+        "Height at",
+        "{points: [[x,y],…], id?} the terrain's height (mm) over each point, or null where there is none; `id` names the toposurface \
+         when the project has several",
+        height_at,
+    ),
+    other(
+        "contours",
+        "Contours",
+        "{interval?, base?, id?} a toposurface's contour lines, lowest first, each {z, closed, points}: every `interval` mm of \
+         height (its own by default) counted from `base` (0)",
+        contours,
+    ),
+    edit(
+        "fetch_osm",
+        "Fetch OpenStreetMap",
+        &[],
+        "{bbox? | radius?, level?, level_height?, default_height?, parts?, terrain?, detail?, replace?} fetches the buildings of an \
+         area from OpenStreetMap (Overpass) and makes them as `import_osm` does: `bbox` [south, west, north, east] degrees, or \
+         `radius` metres each way round the project's origin (1000 by default); at most 25 km². The project must be placed \
+         (`geolocate`). Needs a build with network access (the desktop app has it); without one, fetch the Overpass JSON elsewhere and \
+         give it to `import_osm` as `data`. The reply is `import_osm`'s, with `fetched` (the box, its area, the bytes, and whether they \
+         came from the cache) and the credit OpenStreetMap's licence asks for",
+        fetch_osm,
+    ),
+    edit(
+        "fetch_terrain",
+        "Fetch Terrain",
+        &[],
+        "{bbox? | radius?, spacing?, source?, name?, set_elevation?, interval?, stand_buildings?} fetches the ground of an area and makes \
+         a toposurface of it: `bbox` [south, west, north, east] degrees, or `radius` metres each way round the project's origin (1000 by default); at \
+         most 25 km². A node every `spacing` metres (by default as fine as keeps it under 50,000 points, at least 10 m), from `source` \
+         (`terrarium` or `copernicus`; by default the best there is). The terrain is clipped to the box. Heights are made project \
+         heights: if the project has no height above the sea yet and `set_elevation` is true (by default) the ground at the origin \
+         becomes it, so z = 0 is there; otherwise the project's own is taken off. Needs a build with network access (the desktop app \
+         has it); without one, bring terrain in with `toposurface`. The buildings `import_osm` made (the masses with an `OSM Id`) are \
+         stood on the new ground, each at the lowest ground under its footprint, and what was made from them by face (their walls, \
+         floors and roof) follows, unless `stand_buildings` is false; one that is not over the new ground stays where it is, and one \
+         whose shell cannot follow stands while its shell is left, named. Reports the toposurface, the source, whether it came from the \
+         cache, `stood` ({moved, off_terrain, shells_updated, shells_left}) and the credit its data asks for",
+        fetch_terrain,
+    ),
+    edit(
+        "fetch_imagery",
+        "Fetch Aerial Imagery",
+        &[],
+        "{id?, source?, max_side?} fetches aerial imagery of the ground a toposurface covers and lays it over it: the picture is a \
+         texture of the terrain's material, laid by where it is (`planar`), so the 3D view and the plans can show the ground as it \
+         is. `id` is the toposurface (needed only when the project has several); `source` is `auto` (the default: the first source \
+         of the table that has the place, finest and most local first) or a source's id: flanders (Flemish orthophotos), pdok \
+         (Dutch aerial photographs), usgs (US imagery, to about 2 m a pixel) or eox2016 (Sentinel-2 cloudless 2016, about 6 m \
+         worldwide); `max_side` is the pixels along the picture's long side, 64 to 1024 (1024 by default), and the tiles are as \
+         fine as that allows within what the source has. The project must be placed (`geolocate`). Needs a build with network \
+         access (the desktop app has it). The picture replaces any earlier one of the terrain. Its source, credit and terms are kept \
+         with the toposurface as the parameters Imagery Source, Imagery Credit and Imagery Terms; the reply has them too, with \
+         the zoom, the metres a pixel stands for, the picture's size and how much of it is without imagery",
+        fetch_imagery,
+    ),
+    edit(
+        "shift_imagery",
+        "Shift Aerial Imagery",
+        &[],
+        "{id?, east?, north?, reset?} moves the aerial imagery a toposurface wears, to line it up with the map or the survey (a photograph \
+         and a map differ by metres): `east` and `north` are mm from where the fetch put it, not from where it is now (the same twice is \
+         the same, not twice as far; one alone keeps the other), or `reset` puts it back. Up to 1 km. `id` is the toposurface (needed \
+         only when the project has several). It is the material's texture offset that moves, so the 3D view and the plans show it at \
+         once; a material that several toposurfaces wear moves them all. A photograph fetched again starts where the ground is. \
+         Replies {id, material, east, north}",
+        shift_imagery,
+    ),
+    edit(
+        "import_osm",
+        "Import OpenStreetMap",
+        &[],
+        "{path | data, bbox?, level?, level_height?, default_height?, parts?, terrain?, detail?, replace?} brings the buildings of an \
+         OpenStreetMap file in as masses on the ground: `path` (relative to the project's folder) or `data` (the text, or Overpass's \
+         JSON itself) of Overpass JSON (`[out:json]`, with `out geom;` or with `out body; >; out skel qt;`) or OSM XML. The project \
+         must be placed first (`geolocate`). A mass for each closed way and multipolygon tagged `building`, from `height` (\"12\", \
+         \"12 m\", \"40 ft\"), else `building:levels` times `level_height` (3000 mm), else `default_height` (6000 mm); `min_height` \
+         or `building:min_level` lifts it off the ground; `parts` includes `building:part`. `bbox` [south, west, north, east] \
+         degrees keeps only buildings with a corner in it. Each stands at the lowest ground under it of `terrain` (a toposurface's \
+         id; the project's only one by default), else at `level`'s elevation. Masses cannot have courtyards: they are filled, and \
+         counted. Each keeps its `OSM Id` (way/123), `OSM Building`, `OSM Name` and `OSM Levels` as parameters; with `replace` (by \
+         default) importing again updates a mass in place, keeping its id, and what you added to it. `detail` [\"way/123\", …] (up \
+         to 50) also makes walls, a floor and a roof of those masses. Reports what was made, updated and skipped, and why. Data \
+         (c) OpenStreetMap contributors, under the ODbL",
+        import_osm,
+    ),
     edit(
         "edit_shape",
         "Modify Sub Elements",
@@ -396,6 +526,22 @@ pub static ALL: &[Command] = &[
         "{mass, type?, slope?, overhang?} a roof on the mass's top face, flat unless it has a `slope` (degrees), over the mass's \
          top level or `height` over its base. An ordinary roof from then on",
         roof_by_face,
+    ),
+    edit(
+        "building_shell",
+        ui_msg!("Building Shell"),
+        &[],
+        "{ids: [mass, …], storeys?, storey_height?, walls?, floors?, roof?, shape?, angle?, height?, orientation?} the outer \
+         walls, the floors at each storey and the roof of each mass, as OpenStreetMap's Simple 3D Buildings describe a \
+         building: a wall on each plumb edge of the footprint; a floor at the base and over each storey (`storeys` of them, \
+         else the mass's `OSM Levels`, else its height over `storey_height`, 3000 mm; they are spaced `storey_height` apart, \
+         else the facade's height over their number); and a roof on top of the walls, `shape` flat, hipped, pyramidal or gabled \
+         (else the mass's `OSM Roof Shape`; other shapes are made flat and said in `notes`), its slope `angle` degrees, else \
+         what makes it `height` mm tall (else `OSM Roof Angle`, `OSM Roof Height`), else 30; a gabled one has its ridge along \
+         the footprint's longer side, or across it with `orientation: \"across\"`. `walls`, `floors`, `roof` (all true) leave \
+         one out. Up to 200 masses at a time, in one step; one that has walls, floors or a roof made by face already is \
+         skipped (`update_by_face` makes them follow the mass). Ordinary elements from then on, marked as the by-face ones are",
+        building_shell,
     ),
     edit(
         "update_by_face",
@@ -948,7 +1094,7 @@ pub static ALL: &[Command] = &[
         "Materials",
         &[],
         "{name, color?: \"#rrggbb\" | [r, g, b], transparency?: 0-100, cut?, surface?, texture?: {kind?, size?: [w, h], angle?, offset?: [x, y], path?, \
-         image?} | null, rename?, delete?: true} a material of the project's library, created or changed: its colour in shaded 3D \
+         image?, planar?} | null, rename?, delete?: true} a material of the project's library, created or changed: its colour in shaded 3D \
          views, its `transparency` there (percent of what lies behind it that shows through, 0 opaque; the starter Glass has 70), \
          the pattern its cut shows in plans and sections (where a layer is wide enough to hold it), and the one its \
          surfaces show at its size in the building (a floor's top in plan, a ceiling's underside in its ceiling plan). Patterns: \
@@ -957,8 +1103,9 @@ pub static ALL: &[Command] = &[
          surfaces look like in the 3D view, over its colour, a tile of it `size` mm across and up, turned `angle` degrees and \
          moved `offset` mm: a pattern drawn in code, `kind` brick, block, boards, concrete, plaster, tile, roof, fabric, metal \
          or insulation (at its natural size unless `size` says); or `image`, a picture: the PNG or JPEG file at `path`, taken \
-         into the project (up to 1024 px a side, 24 pictures), or one the project holds (`image`, its id from `inspect`); null \
-         takes the texture away. `rename` renames it, the layers using it following; `delete` takes it away, while no layer \
+         into the project (up to 1024 px a side, 24 pictures), or one the project holds (`image`, its id from `inspect`); with \
+         `planar` true a picture is laid over the ground by where it is, once: `size` is the ground it covers and `offset` its west and \
+         north corner (a point beyond shows its edge), as the terrain's aerial imagery is; null takes the texture away. `rename` renames it, the layers using it following; `delete` takes it away, while no layer \
          uses it. `inspect` lists the library and the pictures",
         material,
     )
@@ -1543,6 +1690,20 @@ pub static ALL: &[Command] = &[
         language,
     )
     .menu("Manage > Project Language"),
+    edit(
+        "geolocate",
+        "Location",
+        &[],
+        "{latitude?, longitude?, elevation?, true_north?, crs?, clear?, point?, lonlat?} places the project on Earth (Revit's Manage > Location): \
+         its origin (0, 0) is at `latitude` and `longitude` (degrees, WGS 84), `elevation` mm above sea level, and true north is `true_north` \
+         degrees counter-clockwise from the project's +y (0, +y is north; 90, north is -x). `crs` is the EPSG code of the metre grid the \
+         project maps to (31983 is SIRGAS 2000 / UTM zone 23S; 'utm', or leaving it out, is WGS 84's UTM zone of the place). \
+         Both `latitude` and `longitude` are needed the first time; after that any one changes. `clear` removes the location. \
+         `point` [x, y] mm answers with its `lonlat`; `lonlat` [longitude, latitude] answers with its `point` in the project. \
+         Reports the location, with the grid's easting and northing at the origin, its convergence and its scale. IFC carries it as \
+         IfcSite's position and IfcMapConversion. Accurate over a site of some kilometres",
+        geolocate,
+    ),
     edit(
         "standard",
         "Technical Standards",
@@ -2648,6 +2809,46 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("gross_floor_area_m2".into(), json!(m2(gross)));
             extra.insert("levels".into(), json!(m.mass_slices(ms).iter().map(|(l, _, _)| *l).collect::<Vec<Id>>()));
         }
+        Element::Pad(pd) => {
+            let top = m.elevation(pd.level) + pd.offset;
+            extra.insert("area_m2".into(), json!(m2(geom::area(&pd.boundary).abs())));
+            extra.insert("top".into(), json!(top));
+            extra.insert("bottom".into(), json!(top - pd.thickness));
+            // What it takes out of the ground it stands in, and what it puts in: none to say where there is no ground.
+            let cubic = |mm3: f64| (mm3 / 1e9 * 1000.0).round() / 1000.0;
+            match pad_cut_fill(m, pd) {
+                Some(r) => {
+                    extra.insert("cut_m3".into(), json!(cubic(r.cut)));
+                    extra.insert("fill_m3".into(), json!(cubic(r.fill)));
+                    extra.insert("net_m3".into(), json!(cubic(r.fill - r.cut)));
+                }
+                None => {
+                    for k in ["cut_m3", "fill_m3", "net_m3"] {
+                        extra.insert(k.into(), Value::Null);
+                    }
+                }
+            }
+        }
+        // Counts, not the points: a terrain of thousands would fill every listing.
+        Element::Toposurface(t) => {
+            extra.insert("points".into(), json!(t.points.len()));
+            extra.insert("breaklines".into(), json!(t.breaklines.len()));
+            let lo_hi = |i: usize| t.points.iter().map(|p| p[i]).fold((f64::MAX, f64::MIN), |(lo, hi), v| (lo.min(v), hi.max(v)));
+            extra.insert("bounds".into(), json!([[lo_hi(0).0, lo_hi(1).0], [lo_hi(0).1, lo_hi(1).1]]));
+            match t.tin() {
+                Ok(tin) => {
+                    extra.insert("triangles".into(), json!(tin.triangles().len()));
+                    extra.insert("area_m2".into(), json!(m2(tin.plan_area())));
+                    extra.insert("surface_area_m2".into(), json!(m2(tin.surface_area())));
+                    let (lo, hi) = tin.z_range().unwrap_or((0.0, 0.0));
+                    extra.insert("z_min".into(), json!(lo));
+                    extra.insert("z_max".into(), json!(hi));
+                }
+                Err(why) => {
+                    extra.insert("problem".into(), json!(why));
+                }
+            }
+        }
         Element::Room(r) => {
             let bound = rooms.bound(r, m.room_area);
             if let Err(Unbound::Shared(other)) = bound {
@@ -3330,12 +3531,13 @@ fn render_view(s: &mut Session, p: &Value) -> R {
             (Some(_), None) => return Err(bad(c, "a parallel 3D view has no eye to raise: turn it to perspective first (`perspective`)")),
             (None, _) => fitted,
         };
-        let mut image = scene.render_in(&cam, &[], &look);
+        let mut picture = scene.render_in(&cam, &[], &look);
         // Its dimensions, over the picture.
         if let Some(v) = three {
-            crate::dims3d::paint(&mut image, &crate::dims3d::marks(m, v, &cam, &look, crate::dims3d::SCREEN));
+            crate::dims3d::paint(&mut picture, &crate::dims3d::marks(m, v, &cam, &look, crate::dims3d::SCREEN));
         }
-        let png = image.png().map_err(|e| bad(c, e))?;
+        render::stamp_credits(m, &look, &mut picture);
+        let png = picture.png().map_err(|e| bad(c, e))?;
         return png_reply(
             c,
             p,
@@ -3530,6 +3732,7 @@ fn drawn_category(c: &str, given: &str) -> Result<String, String> {
                     .chain(&graphics::ANNOTATION)
                     .chain(&graphics::SCANS)
                     .chain(&graphics::IMPORTED)
+                    .chain(&graphics::IMAGERY)
                     .copied()
                     .chain([graphics::COMPONENT])
                     .chain(graphics::SUBCATEGORIES.iter().map(|s| s.key))
@@ -7391,6 +7594,1244 @@ fn mass(s: &mut Session, p: &Value) -> R {
     Ok(json!({"id": id, "area_m2": area, "height": height, "volume_m3": volume}))
 }
 
+/// The box a fetch is for: `bbox`, or `radius` metres each way round the project's origin (`DEFAULT_FETCH_RADIUS_M` when neither is
+/// given), and small enough. The project must be placed, as what is fetched is placed in it.
+fn fetch_bbox(c: &str, p: &Value, m: &Model) -> Result<crate::geo::Bbox, String> {
+    use crate::geo::{Bbox, DEFAULT_FETCH_RADIUS_M};
+    let Some(location) = m.location else {
+        return Err(bad(c, "the project has no location yet: place it with `geolocate` (latitude and longitude) first"));
+    };
+    let bbox = match (p.get("bbox").filter(|v| !v.is_null()), p.get("radius").filter(|v| !v.is_null())) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `bbox` or `radius`, not both")),
+        (Some(v), None) => {
+            let b: Option<Vec<f64>> = v.as_array().filter(|a| a.len() == 4).and_then(|a| a.iter().map(Value::as_f64).collect());
+            match b.as_deref() {
+                Some(&[south, west, north, east]) => Bbox::new(south, west, north, east).map_err(|why| bad(c, why))?,
+                _ => return Err(bad(c, format!("`bbox` is [south, west, north, east] in degrees, got {v}"))),
+            }
+        }
+        (None, radius) => {
+            let r = match radius {
+                None => DEFAULT_FETCH_RADIUS_M,
+                Some(v) => v.as_f64().ok_or_else(|| bad(c, format!("`radius` is a distance in metres, got {v}")))?,
+            };
+            Bbox::around(location.longitude, location.latitude, r).map_err(|why| bad(c, why))?
+        }
+    };
+    bbox.check_area().map_err(|why| bad(c, why))?;
+    Ok(bbox)
+}
+
+fn fetch_osm(s: &mut Session, p: &Value) -> R {
+    let c = "fetch_osm";
+    only(c, p, &["bbox", "radius", "level", "level_height", "default_height", "parts", "entrances", "terrain", "detail", "replace"])?;
+    let Some(geo) = s.geo.clone() else {
+        return Err(bad(
+            c,
+            "this BIMCraft has no network access built in: fetch the Overpass JSON elsewhere (Overpass Turbo, or the desktop app) and \
+             give it to `import_osm` as `data`",
+        ));
+    };
+    // What goes on to the import, checked now, by importing nothing: a refusal should not cost a fetch.
+    let mut forward = serde_json::Map::new();
+    for key in ["level", "level_height", "default_height", "parts", "entrances", "terrain", "detail", "replace"] {
+        if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
+            forward.insert(key.into(), v.clone());
+        }
+    }
+    let mut check = forward.clone();
+    check.insert("data".into(), json!({"elements": []}));
+    import_osm(s, &Value::Object(check)).map_err(|why| why.replacen("import_osm", c, 1))?;
+    let bbox = fetch_bbox(c, p, &s.model)?;
+    let layers = crate::geo::Layers { parts: flag_or(c, p, "parts", true)?, entrances: flag_or(c, p, "entrances", true)? };
+    let query = crate::geo::overpass_query(&bbox, layers);
+    let reply = geo.overpass(&bbox, &query).map_err(|why| bad(c, why))?;
+    if reply.text.len() as u64 > MAX_FILE {
+        return Err(bad(c, format!("the reply is too large ({} bytes)", reply.text.len())));
+    }
+    let bytes = reply.text.len();
+    forward.insert("data".into(), json!(reply.text));
+    let mut out = import_osm(s, &Value::Object(forward)).map_err(|why| why.replacen("import_osm", c, 1))?;
+    out["fetched"] = json!({"bbox": bbox.as_array(), "area_km2": bbox.area_km2(), "bytes": bytes, "cached": reply.cached, "query": query});
+    out["attribution"] = json!(geo.attribution("osm"));
+    Ok(out)
+}
+
+fn fetch_terrain(s: &mut Session, p: &Value) -> R {
+    let c = "fetch_terrain";
+    only(c, p, &["bbox", "radius", "spacing", "source", "name", "set_elevation", "interval", "stand_buildings"])?;
+    let Some(geo) = s.geo.clone() else {
+        return Err(bad(c, "this BIMCraft has no network access built in: bring terrain in with `toposurface`, from points you have"));
+    };
+    let stand = match p.get("stand_buildings") {
+        v if absent(v) => true,
+        Some(Value::Bool(b)) => *b,
+        Some(v) => return Err(bad(c, format!("`stand_buildings` must be true or false, got {v}"))),
+        None => true,
+    };
+    let bbox = fetch_bbox(c, p, &s.model)?;
+    let Some(location) = s.model.location else { return Err(bad(c, "the project has no location yet")) };
+    let spacing = match num(c, p, "spacing")? {
+        Some(x) => x,
+        None => crate::geo::default_spacing(&bbox),
+    };
+    let setting = match p.get("set_elevation") {
+        v if absent(v) => true,
+        Some(Value::Bool(b)) => *b,
+        Some(v) => return Err(bad(c, format!("`set_elevation` must be true or false, got {v}"))),
+        None => true,
+    };
+    let interval = num(c, p, "interval")?;
+    if interval.is_some_and(|x| x != 0.0 && x < crate::model::MIN_CONTOUR_INTERVAL) {
+        return Err(bad(c, format!("`interval` is 0 (none) or at least {} mm", crate::model::MIN_CONTOUR_INTERVAL)));
+    }
+    let name = string(c, p, "name")?;
+    let source = match string(c, p, "source")? {
+        Some(t) if t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') && t.len() <= 32 && !t.is_empty() => Some(t),
+        Some(t) => return Err(bad(c, format!("`source` is a name such as terrarium or copernicus, not `{t}`"))),
+        None => None,
+    };
+    // Where the nodes would be, before anyone is asked: a spacing that makes too many is refused here.
+    let grid = crate::geo::nodes(&bbox, spacing, crate::model::MAX_TERRAIN_POINTS).map_err(|why| bad(c, why))?;
+    let got = geo.elevation(&bbox, spacing, source.as_deref()).map_err(|why| bad(c, why))?;
+    got.grid.check().map_err(|why| bad(c, why))?;
+    let projector = location.projector().map_err(|why| bad(c, why))?;
+    let origin = got.grid.sample(location.longitude, location.latitude).filter(|z| z.is_finite());
+    // The height project z = 0 is at, mm above the sea: the project's own, or the ground at the origin.
+    let (base, set) = if setting && location.elevation == 0.0 {
+        match origin {
+            Some(z) if (z * 1000.0).abs() <= MAX_COORD => (z * 1000.0, true),
+            _ => {
+                return Err(bad(
+                    c,
+                    "the elevation data has no height at the project's origin, so it cannot become the project's height: give \
+                     `set_elevation` false, or a box that covers the origin",
+                ));
+            }
+        }
+    } else {
+        (location.elevation, false)
+    };
+    let mut points = Vec::with_capacity(grid.at.len());
+    for (lon, lat) in &grid.at {
+        let Some(z) = got.grid.sample(*lon, *lat).filter(|z| z.is_finite()) else { continue };
+        let q = projector.point(*lon, *lat).map_err(|why| bad(c, why))?;
+        points.push(json!([q.0, q.1, z * 1000.0 - base]));
+    }
+    if points.len() < 3 {
+        return Err(bad(
+            c,
+            format!("the elevation data has no heights over this box ({} of {} nodes have one)", points.len(), grid.at.len()),
+        ));
+    }
+    let corners = [(bbox.west, bbox.south), (bbox.east, bbox.south), (bbox.east, bbox.north), (bbox.west, bbox.north)];
+    let boundary: Vec<Value> = corners
+        .iter()
+        .map(|(lon, lat)| projector.point(*lon, *lat).map(|q| json!([q.0, q.1])))
+        .collect::<Result<_, _>>()
+        .map_err(|why| bad(c, why))?;
+    if set {
+        let place = crate::georef::Location { elevation: base, ..location };
+        let conversion = place.georeference().ok();
+        let m = s.model_mut();
+        m.location = Some(place);
+        if conversion.is_some() {
+            m.georeference = conversion;
+        }
+    }
+    let n = points.len();
+    let mut q = json!({"points": points, "boundary": boundary});
+    if let Some(name) = name {
+        q["name"] = json!(name);
+    }
+    if let Some(x) = interval {
+        q["interval"] = json!(x);
+    }
+    let mut out = toposurface(s, &q).map_err(|why| why.replacen("toposurface", c, 1))?;
+    out["points"] = json!(n);
+    out["spacing"] = json!(spacing);
+    out["source"] = json!(got.source);
+    out["cached"] = json!(got.cached);
+    out["elevation_set"] = if set { json!(base) } else { Value::Null };
+    out["attribution"] = json!(geo.attribution(&got.source));
+    // The buildings the import made stand on this ground, whichever came first.
+    if stand && let Some(id) = out["id"].as_u64() {
+        out["stood"] = stand_buildings(s, c, id)?;
+    }
+    Ok(out)
+}
+
+/// The ground a toposurface covers, as west, south, east, north in the project's plane (mm): the box of its boundary, else of its
+/// points. None if it covers none.
+pub(crate) fn terrain_extent(t: &Toposurface) -> Option<[f64; 4]> {
+    let xy: Vec<(f64, f64)> = if t.boundary.len() >= 3 {
+        t.boundary.iter().map(|q| (q.0, q.1)).collect()
+    } else {
+        t.points.iter().map(|q| (q[0], q[1])).collect()
+    };
+    let (mut low, mut high) = ((f64::MAX, f64::MAX), (f64::MIN, f64::MIN));
+    for (x, y) in &xy {
+        low = (low.0.min(*x), low.1.min(*y));
+        high = (high.0.max(*x), high.1.max(*y));
+    }
+    let extent = [low.0, low.1, high.0, high.1];
+    (xy.len() >= 3 && extent.iter().all(|v| v.is_finite()) && low.0 < high.0 && low.1 < high.1).then_some(extent)
+}
+
+/// What `fetch_imagery` asks the fetcher for, worked out from its parameters and the model: the toposurface, the ground it covers
+/// (west, south, east, north, mm), the box of degrees round that, and for each source to try in turn its plan. The desktop's thread
+/// works out the same before it fetches, so that the command, run over what it brought, plans the same.
+pub struct ImageryAsk {
+    pub id: Id,
+    pub extent: [f64; 4],
+    pub envelope: crate::geo::Bbox,
+    pub tries: Vec<(&'static crate::imagery::Source, crate::imagery::Plan)>,
+    /// Why there is nothing to try, when there is not: the last reason a source was left out.
+    pub reason: String,
+}
+
+/// The parameters of `fetch_imagery` (`id`, `source`, `max_side`) over `m`, checked, and what they ask for.
+pub fn imagery_ask(c: &str, m: &Model, p: &Value) -> Result<ImageryAsk, String> {
+    use crate::imagery;
+    only(c, p, &["id", "source", "max_side"])?;
+    let (id, terrain) = terrain_of(c, m, p)?;
+    let Some(location) = m.location else {
+        return Err(bad(c, "the project has no location yet: place it with `geolocate` (latitude and longitude) first"));
+    };
+    let side = num(c, p, "max_side")?.unwrap_or(f64::from(imagery::DEFAULT_SIDE));
+    let most = texture::MAX_SIDE as f64;
+    if side.fract() != 0.0 || !(f64::from(imagery::MIN_SIDE)..=most).contains(&side) {
+        return Err(bad(
+            c,
+            format!(
+                "`max_side` is the pixels along the picture's long side, a whole number from {} to {} (a project keeps a picture at most that across), not {side}",
+                imagery::MIN_SIDE,
+                texture::MAX_SIDE
+            ),
+        ));
+    }
+    let max_side = side as u32;
+    let wanted = string(c, p, "source")?;
+    if let Some(name) = wanted.as_deref().filter(|n| *n != "auto")
+        && imagery::source(name).is_none()
+    {
+        let names: Vec<&str> = imagery::SOURCES.iter().map(|x| x.id).collect();
+        return Err(bad(c, format!("there is no imagery source `{name}`: `auto` or one of {}", names.join(", "))));
+    }
+    let extent = terrain_extent(&terrain).ok_or_else(|| bad(c, "the toposurface covers no ground"))?;
+    let projector = location.projector().map_err(|why| bad(c, why))?;
+    let envelope = imagery::envelope(extent, &|q| projector.lonlat(q)).map_err(|why| bad(c, why))?;
+    let (width_m, height_m) = ((extent[2] - extent[0]) / 1000.0, (extent[3] - extent[1]) / 1000.0);
+    let sources: Vec<&imagery::Source> = match wanted.as_deref() {
+        None | Some("auto") => imagery::candidates(&envelope),
+        Some(name) => imagery::source(name).into_iter().collect(),
+    };
+    let mut reason = "no source of the table has this place: the project may be where none has imagery".to_string();
+    let mut tries = Vec::new();
+    for source in sources {
+        match imagery::plan(source, &envelope, width_m, height_m, max_side) {
+            Ok(plan) => tries.push((source, plan)),
+            Err(why) => reason = why,
+        }
+    }
+    Ok(ImageryAsk { id, extent, envelope, tries, reason })
+}
+
+fn fetch_imagery(s: &mut Session, p: &Value) -> R {
+    use crate::imagery;
+    let c = "fetch_imagery";
+    only(c, p, &["id", "source", "max_side"])?;
+    let Some(geo) = s.geo.clone() else {
+        return Err(bad(
+            c,
+            "this BIMCraft has no network access built in (the desktop app has it): the terrain has no aerial imagery to lay over it",
+        ));
+    };
+    let ImageryAsk { id, extent, tries, reason, .. } = imagery_ask(c, &s.model, p)?;
+    let Some(location) = s.model.location else { return Err(bad(c, "the project has no location yet")) };
+    let projector = location.projector().map_err(|why| bad(c, why))?;
+    let lonlat = |q: P2| projector.lonlat(q);
+    // The first source that brings imagery wins. Each one passed over is said with why (what a fetcher says is cut: it is hostile), and
+    // every reason is the answer if none brings it.
+    let mut found = None;
+    let mut skipped = Vec::new();
+    for (source, plan) in tries {
+        match geo.imagery(source.id, &plan) {
+            Ok(got) => {
+                found = Some((source, plan, got));
+                break;
+            }
+            Err(why) => skipped.push((source, imagery::short_reason(&why))),
+        }
+    }
+    let Some((source, plan, got)) = found else {
+        let reasons: Vec<&str> = skipped.iter().map(|(_, why)| why.as_str()).collect();
+        return Err(bad(c, if reasons.is_empty() { reason } else { reasons.join("; ") }));
+    };
+    // What the fetcher brought is hostile, as a file is.
+    if got.source != source.id || got.plan != plan {
+        return Err(bad(c, "the fetcher answered for another source or another plan than it was asked for"));
+    }
+    got.mosaic.check().map_err(|why| bad(c, why))?;
+    let m = &got.mosaic;
+    if (m.zoom, m.x0, m.y0, m.cols, m.rows) != (plan.zoom, plan.x0, plan.y0, plan.cols, plan.rows) {
+        return Err(bad(c, "the tiles the fetcher brought are not the ones of the plan"));
+    }
+    let raster = imagery::warp(&got.mosaic, extent, plan.width, plan.height, &lonlat).map_err(|why| bad(c, why))?;
+    let (clear, all) = (raster.rgba.as_chunks::<4>().0.iter().filter(|px| px[3] == 0).count(), raster.rgba.len() / 4);
+    if clear == all {
+        return Err(bad(c, format!("{} has no imagery over this toposurface", source.name)));
+    }
+    let size = tiny_skia::IntSize::from_wh(raster.width, raster.height).ok_or_else(|| bad(c, "the picture has no size"))?;
+    let png = tiny_skia::Pixmap::from_vec(raster.rgba, size)
+        .ok_or_else(|| bad(c, "the picture has no pixels"))?
+        .encode_png()
+        .map_err(|e| bad(c, e.to_string()))?;
+    let picture = Picture::import(&format!("Aerial imagery: {}", source.name), &png).map_err(|e| bad(c, e))?;
+    let (picture_id, name) = (picture.id(), format!("Aerial imagery ({id})"));
+    let m = s.model_mut();
+    for parameter in ["Imagery Source", "Imagery Credit", "Imagery Terms"] {
+        declare_text(m, parameter, "toposurface").map_err(|why| bad(c, why))?;
+    }
+    m.images.insert(picture_id.clone(), picture);
+    let texture = Texture {
+        kind: Kind::Image,
+        size: [extent[2] - extent[0], extent[3] - extent[1]],
+        angle: 0.0,
+        offset: [extent[0], extent[3]],
+        image: picture_id,
+        planar: true,
+    };
+    texture.check(&m.images).map_err(|why| bad(c, format!("texture: {why}")))?;
+    // The same name each time, so a picture fetched again replaces the one before, which goes with its material.
+    m.materials.insert(name.clone(), crate::model::Material { color: [128, 128, 128], texture: Some(texture), ..Default::default() });
+    if let Some(Element::Toposurface(t)) = m.elements.get_mut(id) {
+        t.material = name.clone();
+        t.params.insert("Imagery Source".into(), json!(source.name));
+        t.params.insert("Imagery Credit".into(), json!(source.credit));
+        t.params.insert("Imagery Terms".into(), json!(source.terms));
+    }
+    prune_images(m);
+    if m.images.len() > texture::MAX_IMAGES {
+        return Err(bad(
+            c,
+            format!("the project holds {} pictures; at most {}: take a texture of one away first", m.images.len(), texture::MAX_IMAGES),
+        ));
+    }
+    Ok(json!({
+        "id": id,
+        "material": name,
+        "source": source.id,
+        "name": source.name,
+        "credit": source.credit,
+        "terms": source.terms,
+        "attribution": geo.attribution(source.id),
+        "zoom": plan.zoom,
+        "metres_per_pixel": plan.metres_per_pixel,
+        "tiles": [plan.cols, plan.rows],
+        "picture": [plan.width, plan.height],
+        "extent": extent,
+        "cached": got.cached,
+        "without_imagery_percent": 100.0 * clear as f64 / all as f64,
+        "skipped": skipped.iter().map(|(source, why)| json!({"source": source.id, "name": source.name, "why": why})).collect::<Vec<_>>(),
+    }))
+}
+
+/// The farthest `shift_imagery` moves a photograph from where the fetch put it, mm: a kilometre.
+const MAX_SHIFT: f64 = 1_000_000.0;
+
+fn shift_imagery(s: &mut Session, p: &Value) -> R {
+    let c = "shift_imagery";
+    only(c, p, &["id", "east", "north", "reset"])?;
+    let reset = match p.get("reset") {
+        v if absent(v) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(v) => return Err(bad(c, format!("`reset` must be true or false, got {v}"))),
+        None => false,
+    };
+    let (east, north) = (num(c, p, "east")?, num(c, p, "north")?);
+    if reset && (east.is_some() || north.is_some()) {
+        return Err(bad(c, "`reset` puts the photograph back where the fetch put it: give it alone, not with `east` or `north`"));
+    }
+    if !reset && east.is_none() && north.is_none() {
+        return Err(bad(c, "give `east` and `north` (mm from where the fetch put the photograph; one alone keeps the other), or `reset`"));
+    }
+    for (what, value) in [("east", east), ("north", north)] {
+        if let Some(x) = value
+            && !(x.is_finite() && x.abs() <= MAX_SHIFT)
+        {
+            return Err(bad(c, format!("`{what}` {x} mm is beyond the {} m a photograph may be shifted", MAX_SHIFT / 1000.0)));
+        }
+    }
+    let (id, terrain) = terrain_of(c, &s.model, p)?;
+    let Some(extent) = terrain_extent(&terrain) else { return Err(bad(c, "the toposurface covers no ground")) };
+    let name = terrain.material;
+    let wears = s.model.materials.get(&name).and_then(|m| m.texture.as_ref()).is_some_and(|t| t.kind == Kind::Image && t.planar);
+    if !wears {
+        return Err(bad(c, format!("toposurface {id} wears no aerial imagery: lay some over it with `fetch_imagery`")));
+    }
+    let Some(texture) = s.model_mut().materials.get_mut(&name).and_then(|m| m.texture.as_mut()) else {
+        return Err(bad(c, format!("toposurface {id} wears no aerial imagery")));
+    };
+    // From the terrain's west and north corner, where the fetch laid it.
+    let (was_east, was_north) = (texture.offset[0] - extent[0], texture.offset[1] - extent[3]);
+    let (e, n) = if reset { (0.0, 0.0) } else { (east.unwrap_or(was_east), north.unwrap_or(was_north)) };
+    texture.offset = [extent[0] + e, extent[3] + n];
+    Ok(json!({"id": id, "material": name, "east": e, "north": n}))
+}
+
+/// The most buildings `import_osm` makes walls, floors and roofs of at once.
+const MAX_DETAIL: usize = MAX_SHELL;
+/// The most mass ids `import_osm` lists in its reply.
+const MAX_LISTED: usize = 1000;
+/// The parameters `import_osm` keeps what it knew of a building in.
+const OSM_PARAMETERS: [&str; 15] = [
+    "OSM Id",
+    "OSM Building",
+    "OSM Name",
+    "OSM Levels",
+    "OSM Roof Shape",
+    "OSM Roof Height",
+    "OSM Roof Angle",
+    "OSM Roof Orientation",
+    "OSM Roof Direction",
+    "OSM Colour",
+    "OSM Material",
+    "OSM Roof Colour",
+    "OSM Roof Material",
+    "OSM Cut Edges",
+    "OSM Entrances",
+];
+/// How far from a building's edge an entrance may lie to be its, mm.
+const ENTRANCE_REACH: f64 = 1500.0;
+/// The most corners (outline and courtyards together) of a building that is cut into pieces round its courtyards.
+const MAX_SPLIT_CORNERS: usize = 200;
+/// The parameter that says which outline a building part belongs to.
+const OSM_PART_OF: &str = "OSM Part Of";
+
+/// The text of the file `path` names (relative to the project's folder), up to [`MAX_FILE`].
+fn read_text_file(s: &Session, c: &str, path: &str) -> Result<String, String> {
+    let full = beside(s, path);
+    let len = std::fs::metadata(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))?.len();
+    if len > MAX_FILE {
+        return Err(bad(c, format!("{} is too large ({len} bytes)", full.display())));
+    }
+    std::fs::read_to_string(&full).map_err(|e| bad(c, format!("{}: {e}", full.display())))
+}
+
+fn import_osm(s: &mut Session, p: &Value) -> R {
+    let c = "import_osm";
+    only(c, p, &["path", "data", "bbox", "level", "level_height", "default_height", "parts", "entrances", "terrain", "detail", "replace"])?;
+    let text = match (p.get("path").filter(|v| !v.is_null()), p.get("data").filter(|v| !v.is_null())) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `path` or `data`, not both")),
+        (None, None) => return Err(bad(c, "`path`, an OpenStreetMap file, or `data`, its text or Overpass's JSON, is required")),
+        (Some(path), None) => match path.as_str() {
+            Some(path) => Some(path),
+            None => return Err(bad(c, format!("`path` must be text, got {path}"))),
+        }
+        .map(|path| read_text_file(s, c, path))
+        .transpose()?,
+        (None, Some(Value::String(t))) if (t.len() as u64) <= MAX_FILE => Some(t.clone()),
+        (None, Some(v @ Value::Object(_))) => Some(v.to_string()),
+        (None, Some(v)) => {
+            let shown: String = v.to_string().chars().take(60).collect();
+            return Err(bad(c, format!("`data` is the text of an OSM file, or Overpass's JSON, got {shown}")));
+        }
+    };
+    let Some(text) = text else { return Err(bad(c, "`path` or `data` is required")) };
+    let bbox = match p.get("bbox") {
+        v if absent(v) => None,
+        Some(v) => {
+            let b: Option<Vec<f64>> = v.as_array().filter(|a| a.len() == 4).and_then(|a| a.iter().map(Value::as_f64).collect());
+            match b.as_deref() {
+                Some(&[south, west, north, east])
+                    if [south, west, north, east].iter().all(|x| x.is_finite())
+                        && -90.0 <= south
+                        && south < north
+                        && north <= 90.0
+                        && -180.0 <= west
+                        && west < east
+                        && east <= 180.0 =>
+                {
+                    Some([south, west, north, east])
+                }
+                _ => {
+                    return Err(bad(
+                        c,
+                        format!("`bbox` is [south, west, north, east] in degrees, south below north and west below east, got {v}"),
+                    ));
+                }
+            }
+        }
+        None => None,
+    };
+    let ranged = |key: &str, least: f64, most: f64, default: f64| -> Result<f64, String> {
+        match num(c, p, key)? {
+            None => Ok(default),
+            Some(x) if (least..=most).contains(&x) => Ok(x),
+            Some(x) => Err(bad(c, format!("`{key}` is {least} to {most} mm, not {x}"))),
+        }
+    };
+    let options = crate::osm::Options {
+        parts: flag_or(c, p, "parts", true)?,
+        entrances: flag_or(c, p, "entrances", true)?,
+        level_height: ranged("level_height", 1000.0, 10_000.0, 3000.0)?,
+        default_height: ranged("default_height", 1000.0, 1_000_000.0, 6000.0)?,
+        bbox,
+    };
+    let replace = match p.get("replace") {
+        v if absent(v) => true,
+        Some(Value::Bool(b)) => *b,
+        Some(v) => return Err(bad(c, format!("`replace` must be true or false, got {v}"))),
+        None => true,
+    };
+    let detail: Vec<String> = match p.get("detail") {
+        v if absent(v) => Vec::new(),
+        Some(Value::Array(a)) if a.len() <= MAX_DETAIL && a.iter().all(Value::is_string) => {
+            a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()
+        }
+        Some(v) => return Err(bad(c, format!("`detail` is a list of up to {MAX_DETAIL} OSM ids like \"way/123\", got {v}"))),
+        None => Vec::new(),
+    };
+    let m = &s.model;
+    let Some(location) = m.location else {
+        return Err(bad(c, "the project has no location yet: place it with `geolocate` (latitude and longitude) first"));
+    };
+    let level = level_param(c, m, p, "level")?;
+    let level_z = m.elevation(level);
+    let tin = terrain_tin(c, m, p, "terrain")?;
+    let osm = crate::osm::parse(&text).map_err(|why| bad(c, why))?;
+    let found = crate::osm::buildings(&osm, &options);
+    let projector = location.projector().map_err(|why| bad(c, why))?;
+
+    // The parameters a building keeps what OSM said of it in, declared for masses.
+    if !found.buildings.is_empty() {
+        let m = s.model_mut();
+        for name in OSM_PARAMETERS.iter().copied().chain([OSM_PART_OF]) {
+            match m.parameters.get_mut(name) {
+                Some(existing) if existing.kind != ParameterKind::Text => {
+                    return Err(bad(c, format!("the project parameter `{name}` exists and is not text")));
+                }
+                Some(existing) => {
+                    if !existing.categories.iter().any(|k| k == "mass") {
+                        existing.categories.push("mass".into());
+                    }
+                }
+                None => {
+                    if m.parameters.len() >= crate::model::MAX_PROJECT_PARAMETERS {
+                        return Err(bad(c, "the project has as many parameters as it holds"));
+                    }
+                    m.parameters.insert(name.into(), ProjectParameter { kind: ParameterKind::Text, categories: vec!["mass".into()] });
+                }
+            }
+        }
+    }
+    // The masses it made before, by what OSM called them.
+    let mut known: std::collections::HashMap<String, Id> = std::collections::HashMap::new();
+    // And by the building they are of: a building cut into pieces is `way/1~1`, `way/1~2`, ..., all of `way/1`.
+    let mut known_of: std::collections::HashMap<String, Vec<(String, Id)>> = std::collections::HashMap::new();
+    for (id, e) in &s.model.elements {
+        if let Element::Mass(ms) = e
+            && let Some(Value::String(osm_id)) = ms.params.get("OSM Id")
+        {
+            known.entry(osm_id.clone()).or_insert(*id);
+            known_of.entry(osm_id.split('~').next().unwrap_or(osm_id).to_string()).or_default().push((osm_id.clone(), *id));
+        }
+    }
+    let (mut made, mut updated, mut courtyards, mut off_terrain, mut pieces_made, mut cut_buildings) =
+        (0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
+    let mut skipped: Vec<(String, String)> = found.skipped.iter().map(|k| (k.osm_id.clone(), k.why.clone())).collect();
+    let mut ids: Vec<Id> = Vec::new();
+    let mut by_osm: std::collections::HashMap<String, Vec<Id>> = std::collections::HashMap::new();
+    // What was made, for the entrances: the mass, its footprint, whether a wall can stand on it, and its area.
+    let mut placed: Vec<(Id, Vec<P2>, bool, f64)> = Vec::new();
+    // A ring in longitude and latitude as project points, corners a millimetre apart or less taken for one.
+    let project_ring = |lonlat: &[(f64, f64)]| -> Result<Vec<P2>, String> {
+        let mut ring: Vec<P2> = Vec::with_capacity(lonlat.len());
+        for (lon, lat) in lonlat {
+            match projector.point(*lon, *lat) {
+                Ok(q) if q.0.abs() <= MAX_COORD && q.1.abs() <= MAX_COORD => {
+                    if ring.last().is_none_or(|l| l.dist(q) > 1.0) {
+                        ring.push(q);
+                    }
+                }
+                _ => return Err("it is too far from the project's origin to be placed".to_string()),
+            }
+        }
+        if ring.len() > 1 && ring.first().is_some_and(|f| ring.last().is_some_and(|l| f.dist(*l) <= 1.0)) {
+            ring.pop();
+        }
+        Ok(ring)
+    };
+    for b in &found.buildings {
+        let column = b.kind == "column";
+        let mut ring = match project_ring(&b.outer) {
+            Ok(r) => r,
+            Err(why) => {
+                skipped.push((b.osm_id.clone(), why));
+                continue;
+            }
+        };
+        // Down to a tenth of a square metre; a column is allowed ten square centimetres.
+        if ring.len() < 3 || geom::area(&ring).abs() < if column { 1e3 } else { 1e5 } {
+            let why = if column { "it is smaller than ten square centimetres" } else { "it is smaller than a tenth of a square metre" };
+            skipped.push((b.osm_id.clone(), why.to_string()));
+            continue;
+        }
+        if geom::area(&ring) < 0.0 {
+            ring.reverse();
+        }
+        // A mass cannot hold a courtyard: a building with some is cut into masses that leave them open, or, if it is too complicated
+        // for that, filled.
+        let mut outlines: Vec<(String, Vec<P2>, Vec<usize>)> = Vec::new();
+        if b.holes.is_empty() {
+            outlines.push((b.osm_id.clone(), ring, Vec::new()));
+        } else {
+            let holes: Vec<Vec<P2>> = b.holes.iter().filter_map(|h| project_ring(h).ok()).filter(|h| h.len() >= 3).collect();
+            let corners = ring.len() + holes.iter().map(Vec::len).sum::<usize>();
+            let cut = if holes.len() == b.holes.len() && corners <= MAX_SPLIT_CORNERS { geom::split_holes(&ring, &holes) } else { None };
+            match cut {
+                Some(pieces) => {
+                    pieces_made += pieces.len();
+                    cut_buildings += 1;
+                    for (k, piece) in pieces.into_iter().enumerate() {
+                        outlines.push((format!("{}~{}", b.osm_id, k + 1), piece.ring, piece.cut));
+                    }
+                }
+                None => {
+                    courtyards += b.holes.len();
+                    outlines.push((b.osm_id.clone(), ring, Vec::new()));
+                }
+            }
+        }
+        for (osm_id, piece, cut_edges) in outlines.iter().cloned() {
+            let ground = match &tin {
+                Some(tin) => lowest_ground(tin, &piece).unwrap_or_else(|| {
+                    off_terrain += 1;
+                    level_z
+                }),
+                None => level_z,
+            };
+            let cut = |t: &str| -> String { t.chars().take(MAX_TEXT.min(256)).collect() };
+            let mut params: BTreeMap<String, Value> = BTreeMap::new();
+            params.insert("OSM Id".into(), json!(osm_id));
+            let number = |x: f64| if x.fract() == 0.0 { format!("{x:.0}") } else { x.to_string() };
+            let (roof_height, roof_angle) = (Some(b.roof_height).filter(|h| *h > 0.0).map(number), b.roof_angle.map(number));
+            let cut_list = cut_edges.iter().map(usize::to_string).collect::<Vec<_>>().join(",");
+            for (key, value) in [
+                ("OSM Building", &b.kind),
+                ("OSM Name", &b.name),
+                ("OSM Levels", &b.levels),
+                ("OSM Roof Shape", &b.roof_shape),
+                ("OSM Roof Height", &roof_height.unwrap_or_default()),
+                ("OSM Roof Angle", &roof_angle.unwrap_or_default()),
+                ("OSM Roof Orientation", &b.roof_orientation),
+                ("OSM Roof Direction", &b.roof_direction),
+                ("OSM Colour", &b.colour),
+                ("OSM Material", &b.material),
+                ("OSM Roof Colour", &b.roof_colour),
+                ("OSM Roof Material", &b.roof_material),
+                ("OSM Cut Edges", &cut_list),
+                (OSM_PART_OF, &b.part_of),
+            ] {
+                if !value.is_empty() {
+                    params.insert(key.into(), json!(cut(value)));
+                }
+            }
+            placed.push((0, piece.clone(), !column && b.kind != "roof", geom::area(&piece).abs()));
+            let mass = Mass {
+                name: if b.name.is_empty() { cut(&b.osm_id) } else { cut(&b.name) },
+                level,
+                boundary: piece,
+                top_level: None,
+                height: b.height - b.min_height,
+                base_offset: ground - level_z + b.min_height,
+                top: None,
+                params,
+            };
+            let existing = if replace { known.get(&osm_id).copied() } else { None };
+            let id = match existing {
+                Some(id) => {
+                    if let Some(Element::Mass(old)) = s.model_mut().elements.get_mut(id) {
+                        // What it already holds that OSM did not put there stays, except the cut it had.
+                        let mut kept = std::mem::take(&mut old.params);
+                        kept.remove("OSM Cut Edges");
+                        kept.extend(mass.params.clone());
+                        *old = Mass { params: kept, ..mass };
+                    }
+                    updated += 1;
+                    id
+                }
+                None => {
+                    made += 1;
+                    s.model_mut().insert(Element::Mass(mass))
+                }
+            };
+            by_osm.entry(b.osm_id.clone()).or_default().push(id);
+            ids.push(id);
+            if let Some(last) = placed.last_mut() {
+                last.0 = id;
+            }
+        }
+        // Pieces of an earlier import that this one does not make (it needs fewer, or none) are taken away.
+        if replace {
+            let stale: Vec<Id> = known_of
+                .get(&b.osm_id)
+                .into_iter()
+                .flatten()
+                .filter(|(full, _)| !outlines.iter().any(|(now, _, _)| now == full))
+                .map(|(_, id)| *id)
+                .collect();
+            if !stale.is_empty() {
+                delete_elements(s, &stale)?;
+            }
+        }
+    }
+    // The entrances: each goes to the mass whose edge is nearest, within reach, kept in its `OSM Entrances` for the shell to cut doors by.
+    let (mut entrances_placed, mut entrances_dropped) = (0usize, 0usize);
+    let mut entrances_unplaced: Vec<String> = Vec::new();
+    let mut by_kind: BTreeMap<String, usize> = BTreeMap::new();
+    if !found.entrances.is_empty() || options.entrances {
+        // What an import knew of its masses' entrances is replaced, not added to.
+        for (mass, ..) in &placed {
+            if let Some(Element::Mass(ms)) = s.model_mut().elements.get_mut(*mass) {
+                ms.params.remove("OSM Entrances");
+            }
+        }
+        // A grid of cells 5 m across over the footprints, so an entrance meets only those near it.
+        const CELL: f64 = 5000.0;
+        let cell = |v: f64| (v / CELL).floor() as i64;
+        let mut grid: std::collections::HashMap<(i64, i64), Vec<usize>> = std::collections::HashMap::new();
+        let mut big: Vec<usize> = Vec::new();
+        for (i, (_, ring, walls, _)) in placed.iter().enumerate().filter(|(_, p)| p.2) {
+            let _ = walls;
+            let (x0, x1) = ring.iter().fold((f64::MAX, f64::MIN), |(lo, hi), q| (lo.min(q.0), hi.max(q.0)));
+            let (y0, y1) = ring.iter().fold((f64::MAX, f64::MIN), |(lo, hi), q| (lo.min(q.1), hi.max(q.1)));
+            let (cx0, cx1, cy0, cy1) =
+                (cell(x0 - ENTRANCE_REACH), cell(x1 + ENTRANCE_REACH), cell(y0 - ENTRANCE_REACH), cell(y1 + ENTRANCE_REACH));
+            if (cx1 - cx0 + 1) * (cy1 - cy0 + 1) > 400 {
+                big.push(i);
+                continue;
+            }
+            for cx in cx0..=cx1 {
+                for cy in cy0..=cy1 {
+                    grid.entry((cx, cy)).or_default().push(i);
+                }
+            }
+        }
+        let mut held: std::collections::BTreeMap<Id, Vec<String>> = std::collections::BTreeMap::new();
+        for e in &found.entrances {
+            let Ok(at) = projector.point(e.at.0, e.at.1) else { continue };
+            if at.0.abs() > MAX_COORD || at.1.abs() > MAX_COORD {
+                continue;
+            }
+            let near = grid.get(&(cell(at.0), cell(at.1))).into_iter().flatten().chain(big.iter());
+            let mut best: Option<(f64, f64, usize)> = None;
+            for &i in near {
+                let (_, ring, _, area) = &placed[i];
+                let d = geom::ring_edges(ring).map(|(a, b)| geom::dist_to_segment(at, a, b)).fold(f64::MAX, f64::min);
+                // The nearest edge; between two as near (a part on its outline's own edge), the smaller building.
+                if d <= ENTRANCE_REACH && best.is_none_or(|(bd, ba, _)| d < bd - 1.0 || ((d - bd).abs() <= 1.0 && *area < ba)) {
+                    best = Some((d, *area, i));
+                }
+            }
+            match best {
+                Some((_, _, i)) => {
+                    let num = |x: Option<f64>| x.map_or(String::new(), |v| format!("{v:.0}"));
+                    let entry = format!("{:.0},{:.0},{},{},{},{}", at.0, at.1, e.kind, num(e.width), num(e.height), e.door);
+                    held.entry(placed[i].0).or_default().push(entry);
+                    *by_kind.entry(e.kind.clone()).or_default() += 1;
+                    entrances_placed += 1;
+                }
+                None => entrances_unplaced.push(e.osm_id.clone()),
+            }
+        }
+        // As many as the parameter holds (256 characters, whole entries).
+        for (mass, entries) in held {
+            let (mut text, mut kept) = (String::new(), 0usize);
+            for entry in &entries {
+                let next = if text.is_empty() { entry.clone() } else { format!("{text};{entry}") };
+                if next.chars().count() > MAX_TEXT.min(256) {
+                    break;
+                }
+                text = next;
+                kept += 1;
+            }
+            entrances_dropped += entries.len() - kept;
+            entrances_placed -= entries.len() - kept;
+            if let Some(Element::Mass(ms)) = s.model_mut().elements.get_mut(mass) {
+                ms.params.insert("OSM Entrances".into(), json!(text));
+            }
+        }
+    }
+    // The shell of the masses asked for (outer walls, a floor at each storey and a roof by the tags), by `building_shell`.
+    let mut detail_report = None;
+    if !detail.is_empty() {
+        let (mut chosen, mut missing) = (Vec::new(), Vec::new());
+        for wanted in &detail {
+            match by_osm.get(wanted) {
+                Some(masses) => {
+                    for m in masses {
+                        if !chosen.contains(m) {
+                            chosen.push(*m);
+                        }
+                    }
+                }
+                None => missing.push(wanted.clone()),
+            }
+        }
+        let mut report = json!({"detailed": [], "not_found": missing, "errors": [], "skipped": [], "notes": []});
+        if !chosen.is_empty() {
+            let shell = building_shell(s, &json!({ "ids": chosen })).map_err(|why| why.replacen("building_shell", c, 1))?;
+            let skipped: Vec<u64> = shell["skipped"].as_array().into_iter().flatten().filter_map(|v| v["mass"].as_u64()).collect();
+            let osm_of = |mass: u64| by_osm.iter().find(|(_, ids)| ids.contains(&mass)).map(|(osm, _)| osm.clone());
+            let mut detailed: Vec<String> = chosen.iter().filter(|m| !skipped.contains(m)).filter_map(|m| osm_of(*m)).collect();
+            detailed.dedup();
+            let mut left: Vec<String> = skipped.iter().filter_map(|m| osm_of(*m)).collect();
+            left.dedup();
+            report["detailed"] = json!(detailed);
+            report["skipped"] = json!(left);
+            for key in ["walls", "floors", "roofs", "notes"] {
+                report[key] = shell[key].clone();
+            }
+        }
+        detail_report = Some(report);
+    }
+    let mut reasons: BTreeMap<String, usize> = BTreeMap::new();
+    for (_, why) in &skipped {
+        *reasons.entry(why.split(" (").next().unwrap_or(why).to_string()).or_default() += 1;
+    }
+    let listed: Vec<Value> = skipped.iter().take(20).map(|(id, why)| json!({"id": id, "why": why})).collect();
+    let truncated = ids.len() > MAX_LISTED;
+    ids.truncate(MAX_LISTED);
+    let mut out = json!({
+        "made": made, "updated": updated, "skipped": skipped.len(), "skipped_by_reason": reasons, "skipped_list": listed,
+        "courtyards_filled": courtyards, "off_terrain": off_terrain, "defaulted_height": found.defaulted,
+        "outlines_replaced": found.replaced, "outlines_kept": found.kept, "pieces": pieces_made, "pieces_of": cut_buildings,
+        "entrances": entrances_placed, "entrances_by_kind": by_kind, "entrances_unplaced": entrances_unplaced.len(),
+        "entrances_unplaced_list": entrances_unplaced.iter().take(20).collect::<Vec<_>>(), "entrances_dropped": entrances_dropped,
+        "ids": ids, "ids_truncated": truncated,
+        "attribution": "Data (c) OpenStreetMap contributors, under the Open Database Licence (ODbL): https://www.openstreetmap.org/copyright",
+    });
+    if let Some(d) = detail_report {
+        out["detail"] = d;
+    }
+    Ok(out)
+}
+
+/// What the pad cuts and fills in the terrain under it: the first toposurface it lies over (by id); where it lies over none, the first
+/// one, and nothing; where there is no terrain at all, none.
+fn pad_cut_fill(m: &Model, pd: &Pad) -> Option<crate::topo::CutFill> {
+    let top = m.elevation(pd.level) + pd.offset;
+    let ring = pd.footprint();
+    let mut first = None;
+    for e in m.elements.values() {
+        let Element::Toposurface(t) = e else { continue };
+        let Ok(tin) = t.tin() else { continue };
+        let Ok(r) = tin.cut_fill(&ring, top) else { continue };
+        if r.covered > 0.0 {
+            return Some(r);
+        }
+        first.get_or_insert(r);
+    }
+    first
+}
+
+/// The terrain a command stands things on or compares with: the toposurface `key` names, else the project's only one; none where there
+/// is none, and an error where there are several and none is named.
+fn terrain_tin(c: &str, m: &Model, p: &Value, key: &str) -> Result<Option<std::sync::Arc<crate::topo::Tin>>, String> {
+    let chosen = match id_opt(c, p, key)? {
+        Some(g) => Some(toposurface_named(c, m, g)?),
+        None => {
+            let all: Vec<&Toposurface> =
+                m.elements.values().filter_map(|e| if let Element::Toposurface(t) = e { Some(t) } else { None }).collect();
+            match all.as_slice() {
+                [] => None,
+                [one] => Some((*one).clone()),
+                many => {
+                    return Err(bad(c, format!("the project has {} toposurfaces: give the `{key}` id of the one to use", many.len())));
+                }
+            }
+        }
+    };
+    chosen.map(|t| t.tin().map_err(|why| bad(c, why))).transpose()
+}
+
+/// The toposurface `g` names.
+fn toposurface_named(c: &str, m: &Model, g: Guid) -> Result<Toposurface, String> {
+    match m.elements.get(g) {
+        Some(Element::Toposurface(t)) => Ok(t.clone()),
+        _ => Err(bad(c, format!("{g} isn't a toposurface"))),
+    }
+}
+
+/// The lowest ground under a footprint: at its corners and its middle; none where none of them is over the surface.
+fn lowest_ground(tin: &crate::topo::Tin, ring: &[P2]) -> Option<f64> {
+    if ring.is_empty() {
+        return None;
+    }
+    let n = ring.len() as f64;
+    let middle = P2(ring.iter().map(|q| q.0).sum::<f64>() / n, ring.iter().map(|q| q.1).sum::<f64>() / n);
+    let low = ring.iter().chain([&middle]).filter_map(|q| tin.height_at(q.0, q.1)).fold(f64::MAX, f64::min);
+    (low != f64::MAX).then_some(low)
+}
+
+/// m³ from mm³, to the litre.
+fn cubic_metres(mm3: f64) -> f64 {
+    (mm3 / 1e9 * 1000.0).round() / 1000.0
+}
+
+fn cut_fill(s: &mut Session, p: &Value) -> R {
+    let c = "cut_fill";
+    only(c, p, &["pads", "terrain", "existing", "proposed", "cell"])?;
+    let m = &s.model;
+    let cell = num(c, p, "cell")?;
+    if cell.is_some_and(|x| x <= 0.0) {
+        return Err(bad(c, "`cell` is a size in mm above 0"));
+    }
+    let surfaces = !absent(p.get("existing")) || !absent(p.get("proposed"));
+    if surfaces && (!absent(p.get("pads")) || !absent(p.get("terrain"))) {
+        return Err(bad(c, "give `pads` (and `terrain`) or `existing` and `proposed`, not both"));
+    }
+    if surfaces {
+        let (Some(e), Some(q)) = (id_opt(c, p, "existing")?, id_opt(c, p, "proposed")?) else {
+            return Err(bad(c, "`existing` and `proposed`, the ids of two toposurfaces, are both needed"));
+        };
+        let (first, second) = (toposurface_named(c, m, e)?, toposurface_named(c, m, q)?);
+        let (first, second) = (first.tin().map_err(|why| bad(c, why))?, second.tin().map_err(|why| bad(c, why))?);
+        // As fine as keeps the cells to about 250,000, and no finer than 10 mm.
+        let cell = cell.unwrap_or_else(|| {
+            let (lo, hi) = (first.bounds().0, first.bounds().1);
+            let area = (hi[0] - lo[0]).max(1.0) * (hi[1] - lo[1]).max(1.0);
+            (area / 250_000.0).sqrt().max(10.0)
+        });
+        let r = crate::topo::between(&first, &second, cell, 4_000_000).map_err(|why| bad(c, why))?;
+        return Ok(json!({
+            "method": "grid", "existing": e, "proposed": q, "cell": r.cell, "cells": r.cells, "area_m2": m2(r.area),
+            "cut_m3": cubic_metres(r.cut), "fill_m3": cubic_metres(r.fill), "net_m3": cubic_metres(r.fill - r.cut),
+        }));
+    }
+    let pads: Vec<(Id, Pad)> = match p.get("pads") {
+        v if absent(v) => {
+            m.elements.iter().filter_map(|(id, e)| if let Element::Pad(pd) = e { Some((*id, pd.clone())) } else { None }).collect()
+        }
+        Some(Value::Array(a)) if a.len() <= MAX_POINTS => {
+            let mut out = Vec::new();
+            for v in a {
+                let g: Guid = serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`pads` is a list of pad ids, not {v}")))?;
+                match (m.elements.id(g), m.elements.get(g)) {
+                    (Some(id), Some(Element::Pad(pd))) => out.push((id, pd.clone())),
+                    _ => return Err(bad(c, format!("{g} isn't a pad"))),
+                }
+            }
+            out
+        }
+        Some(v) => return Err(bad(c, format!("`pads` is a list of pad ids, not {v}"))),
+        None => Vec::new(),
+    };
+    if pads.is_empty() {
+        return Err(bad(c, "no pad; make one with `pad`"));
+    }
+    let chosen = terrain_tin(c, m, p, "terrain")?;
+    if chosen.is_none() && !m.elements.values().any(|e| matches!(e, Element::Toposurface(_))) {
+        return Err(bad(c, "no terrain to cut and fill: make one with `toposurface` or `fetch_terrain`"));
+    }
+    let (mut cut, mut fill) = (0.0, 0.0);
+    let mut listed = Vec::new();
+    for (id, pd) in &pads {
+        let top = m.elevation(pd.level) + pd.offset;
+        let r = match (&chosen, !absent(p.get("terrain"))) {
+            (Some(tin), true) => tin.cut_fill(&pd.footprint(), top).ok(),
+            _ => pad_cut_fill(m, pd),
+        };
+        let r = r.unwrap_or_default();
+        cut += r.cut;
+        fill += r.fill;
+        listed.push(json!({
+            "id": id, "name": pd.name, "top": top, "area_m2": m2(r.pad_area), "covered_m2": m2(r.covered),
+            "cut_m3": cubic_metres(r.cut), "fill_m3": cubic_metres(r.fill), "net_m3": cubic_metres(r.fill - r.cut),
+        }));
+    }
+    Ok(json!({
+        "method": "pads", "pads": listed,
+        "totals": {"cut_m3": cubic_metres(cut), "fill_m3": cubic_metres(fill), "net_m3": cubic_metres(fill - cut)},
+    }))
+}
+
+/// The field of an element that holds its height when it stands on the ground: a base offset from its level, or (a component's) an
+/// offset.
+#[derive(Clone, Copy)]
+enum Field {
+    Base,
+    Offset,
+}
+
+/// What `e` stands on the ground by: the points of its footprint, the level it is held to, the field that holds its height and what that
+/// holds now. Err: its category, when it is not something that stands on the ground.
+fn stands_by(m: &Model, e: &Element) -> Result<(Vec<P2>, Guid, Field, f64), &'static str> {
+    Ok(match e {
+        Element::Mass(ms) => (ms.footprint(), ms.level, Field::Base, ms.base_offset),
+        Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
+            let mut pts = m.column_outline(e);
+            pts.push(col.at);
+            (pts, col.level, Field::Base, col.base_offset)
+        }
+        Element::Component(comp) => (vec![comp.at], comp.level, Field::Offset, comp.offset),
+        Element::Wall(w) => {
+            // Along its axis, as a straight line from end to end: an arc's belly is not looked at.
+            let pts = (0..=10).map(|i| w.start + (w.end - w.start) * (f64::from(i) / 10.0)).collect();
+            (pts, w.level, Field::Base, w.base_offset)
+        }
+        other => return Err(other.category()),
+    })
+}
+
+/// Sets the height `field` holds of element `id` to `now`.
+fn set_stand(model: &mut Model, id: Id, field: Field, now: f64) {
+    match (model.elements.get_mut(id), field) {
+        (Some(Element::Mass(ms)), _) => ms.base_offset = now,
+        (Some(Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col)), _) => col.base_offset = now,
+        (Some(Element::Wall(w)), _) => w.base_offset = now,
+        (Some(Element::Component(comp)), Field::Offset) => comp.offset = now,
+        _ => {}
+    }
+}
+
+/// The buildings OpenStreetMap's import made: the masses that hold an `OSM Id`.
+fn imported_buildings(m: &Model) -> Vec<Id> {
+    m.elements
+        .iter()
+        .filter_map(|(id, e)| match e {
+            Element::Mass(ms) if ms.params.get("OSM Id").and_then(Value::as_str).is_some_and(|t| !t.is_empty()) => Some(*id),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Stands the imported buildings on toposurface `terrain`, each at the lowest ground under its footprint (as `place_on_terrain` does),
+/// and re-places what was made from each by face (its walls, floors and roof) on the new base. A building not over the terrain stays
+/// where it is, and is counted; a building whose shell cannot follow it (a face is gone) stands all the same and its shell is left as
+/// it was, whole, and named. What it did, as the reply of `fetch_terrain` gives it.
+fn stand_buildings(s: &mut Session, c: &str, terrain: Id) -> Result<Value, String> {
+    let m = &s.model;
+    let Some(Element::Toposurface(t)) = m.elements.get(terrain) else { return Err(bad(c, format!("{terrain} isn't a toposurface"))) };
+    let tin = t.tin().map_err(|why| bad(c, why))?;
+    let (mut changes, mut off_terrain) = (Vec::new(), 0usize);
+    for id in imported_buildings(m) {
+        let Some((points, level, field, _)) = m.elements.get(id).and_then(|e| stands_by(m, e).ok()) else { continue };
+        match lowest_ground(&tin, &points) {
+            Some(ground) => changes.push((id, field, ground - m.elevation(level))),
+            None => off_terrain += 1,
+        }
+    }
+    let stood: Vec<Id> = changes.iter().map(|(id, ..)| *id).collect();
+    let model = s.model_mut();
+    for (id, field, now) in changes {
+        set_stand(model, id, field, now);
+    }
+    // What was made from each, by face, re-placed on the base it has now: a mass's shell follows whole or not at all.
+    let m = &s.model;
+    let (mut followed, mut left) = (Vec::new(), Vec::new());
+    for mass in &stood {
+        let made: Vec<Id> =
+            m.elements.iter().filter_map(|(id, e)| massing::face_of(e).filter(|(of, _)| m.same(*of, *mass)).map(|_| *id)).collect();
+        let (mut now, mut why) = (Vec::new(), Vec::new());
+        for id in made {
+            match follow_one(m, id) {
+                Some(Ok((e, true))) => now.push((id, e)),
+                Some(Err(reason)) => why.push(reason),
+                _ => {}
+            }
+        }
+        if why.is_empty() {
+            followed.extend(now);
+        } else {
+            left.push(json!({"id": mass, "why": why.join("; ")}));
+        }
+    }
+    let shells_updated = followed.len();
+    for (id, e) in followed {
+        s.model_mut().elements.insert(id, e);
+    }
+    left.truncate(MAX_LISTED);
+    Ok(json!({"moved": stood.len(), "off_terrain": off_terrain, "shells_updated": shells_updated, "shells_left": left}))
+}
+
+fn place_on_terrain(s: &mut Session, p: &Value) -> R {
+    let c = "place_on_terrain";
+    only(c, p, &["ids", "terrain", "offset"])?;
+    let wanted: Vec<Guid> = match p.get("ids") {
+        Some(Value::Array(a)) if !a.is_empty() && a.len() <= MAX_POINTS => a
+            .iter()
+            .map(|v| serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`ids` is a list of element ids, not {v}"))))
+            .collect::<Result<_, _>>()?,
+        other => {
+            return Err(bad(
+                c,
+                format!(
+                    "`ids`, a list of the ids of what to stand on the terrain, is required, not {}",
+                    other.map_or("nothing".into(), Value::to_string)
+                ),
+            ));
+        }
+    };
+    let offset = num(c, p, "offset")?.unwrap_or(0.0);
+    let m = &s.model;
+    let Some(tin) = terrain_tin(c, m, p, "terrain")? else {
+        return Err(bad(c, "no terrain to stand them on: make one with `toposurface` or `fetch_terrain`"));
+    };
+    let (mut moved, mut skipped, mut changes) = (Vec::new(), Vec::new(), Vec::new());
+    for g in wanted {
+        let Some(id) = m.elements.id(g) else { return Err(bad(c, format!("{g} isn't an element"))) };
+        let Some(e) = m.elements.get(id) else { return Err(bad(c, format!("{g} isn't an element"))) };
+        let (points, level, field, was) = stands_by(m, e).map_err(|category| {
+            bad(
+                c,
+                format!("{id} is a {category}, which can't be stood on the terrain: masses, columns, footings, components and walls can"),
+            )
+        })?;
+        let Some(ground) = lowest_ground(&tin, &points) else {
+            skipped.push(json!({"id": id, "why": "it is not over the terrain"}));
+            continue;
+        };
+        let now = ground - m.elevation(level) + offset;
+        changes.push((id, field, now));
+        moved.push(json!({"id": id, "was": was, "now": now}));
+    }
+    if moved.is_empty() {
+        return Err(bad(c, "none of them is over the terrain: move them over it, or the terrain under them"));
+    }
+    let model = s.model_mut();
+    for (id, field, now) in changes {
+        set_stand(model, id, field, now);
+    }
+    Ok(json!({"moved": moved, "skipped": skipped}))
+}
+
+fn pad(s: &mut Session, p: &Value) -> R {
+    let c = "pad";
+    only(c, p, &["boundary", "level", "offset", "thickness", "name"])?;
+    let m = &s.model;
+    let level = level_param(c, m, p, "level")?;
+    let boundary = points(c, p, "boundary")?;
+    let offset = num(c, p, "offset")?.unwrap_or(0.0);
+    let thickness = num(c, p, "thickness")?.unwrap_or(crate::model::DEFAULT_PAD_THICKNESS);
+    let name = string(c, p, "name")?.unwrap_or_else(|| m.language.word("Pad").into());
+    let top = m.elevation(level) + offset;
+    let area = geom::area(&boundary).abs();
+    let id = s.model_mut().insert(Element::Pad(Pad { name, level, boundary, offset, thickness, params: Default::default() }));
+    Ok(json!({"id": id, "area_m2": m2(area), "top": top, "thickness": thickness}))
+}
+
+/// `[[x, y, z], …]` for terrain: up to [`MAX_TERRAIN_POINTS`] of them.
+fn terrain_points(c: &str, v: &Value, key: &str, least: usize) -> Result<Vec<[f64; 3]>, String> {
+    let a = v.as_array().ok_or_else(|| bad(c, format!("`{key}` must be a list of points [x, y, z] in mm")))?;
+    if a.len() < least || a.len() > MAX_TERRAIN_POINTS {
+        return Err(bad(c, format!("`{key}` needs {least} to {MAX_TERRAIN_POINTS} points [x, y, z], not {}", a.len())));
+    }
+    a.iter().map(|p| point3(p).ok_or_else(|| bad(c, format!("`{key}`: {p} is not a point [x, y, z] in mm")))).collect()
+}
+
+fn toposurface(s: &mut Session, p: &Value) -> R {
+    let c = "toposurface";
+    only(c, p, &["points", "breaklines", "boundary", "name", "material", "interval"])?;
+    let samples = terrain_points(c, p.get("points").ok_or_else(|| bad(c, "`points`, [[x, y, z], …], is required"))?, "points", 3)?;
+    let breaklines = match p.get("breaklines") {
+        v if absent(v) => Vec::new(),
+        Some(Value::Array(lines)) if lines.len() <= MAX_BREAKLINES => {
+            lines.iter().map(|l| terrain_points(c, l, "breaklines", 2)).collect::<Result<Vec<_>, _>>()?
+        }
+        Some(v) => {
+            return Err(bad(
+                c,
+                format!("`breaklines` must be a list of at most {MAX_BREAKLINES} breaklines, each a list of points [x, y, z], got {v}"),
+            ));
+        }
+        None => Vec::new(),
+    };
+    let boundary = if absent(p.get("boundary")) { Vec::new() } else { points(c, p, "boundary")? };
+    let m = &s.model;
+    let t = Toposurface {
+        name: string(c, p, "name")?.unwrap_or_else(|| m.language.word("Toposurface").into()),
+        points: samples,
+        breaklines,
+        boundary,
+        material: string(c, p, "material")?.unwrap_or_default(),
+        interval: num(c, p, "interval")?.unwrap_or(crate::model::DEFAULT_CONTOUR_INTERVAL),
+        params: Default::default(),
+    };
+    // Whether it makes a surface is known now, not when something draws it.
+    let tin = t.tin().map_err(|why| bad(c, why))?;
+    let (lo, hi) = tin.z_range().unwrap_or((0.0, 0.0));
+    let report = json!({"triangles": tin.triangles().len(), "area_m2": m2(tin.plan_area()), "z_min": lo, "z_max": hi});
+    let id = s.model_mut().insert(Element::Toposurface(t));
+    let mut out = report;
+    out["id"] = json!(id);
+    Ok(out)
+}
+
+/// The toposurface `id` names, or the project's only one.
+fn terrain_of(c: &str, m: &Model, p: &Value) -> Result<(Id, Toposurface), String> {
+    match id_opt(c, p, "id")? {
+        Some(g) => match (m.elements.id(g), m.elements.get(g)) {
+            (Some(id), Some(Element::Toposurface(t))) => Ok((id, t.clone())),
+            _ => Err(bad(c, format!("{g} isn't a toposurface"))),
+        },
+        None => {
+            let all: Vec<(Id, &Toposurface)> =
+                m.elements.iter().filter_map(|(id, e)| if let Element::Toposurface(t) = e { Some((*id, t)) } else { None }).collect();
+            match all.as_slice() {
+                [(id, t)] => Ok((*id, (*t).clone())),
+                [] => Err(bad(c, "no toposurface; make one with `toposurface`")),
+                many => {
+                    let ids: Vec<String> = many.iter().map(|(id, t)| format!("{id} ({})", t.name)).collect();
+                    Err(bad(c, format!("the project has {} toposurfaces: give the `id` of one: {}", many.len(), ids.join(", "))))
+                }
+            }
+        }
+    }
+}
+
+fn height_at(s: &mut Session, p: &Value) -> R {
+    let c = "height_at";
+    only(c, p, &["points", "id"])?;
+    let at = points(c, p, "points")?;
+    let (_, t) = terrain_of(c, &s.model, p)?;
+    let tin = t.tin().map_err(|why| bad(c, why))?;
+    let heights: Vec<Value> = at.iter().map(|q| tin.height_at(q.0, q.1).map_or(Value::Null, |z| json!(z))).collect();
+    Ok(json!({"heights": heights}))
+}
+
+/// The most points `contours` answers with.
+const MAX_CONTOUR_POINTS: usize = 20_000;
+
+fn contours(s: &mut Session, p: &Value) -> R {
+    let c = "contours";
+    only(c, p, &["interval", "base", "id"])?;
+    let (_, t) = terrain_of(c, &s.model, p)?;
+    let interval = match p.get("interval") {
+        v if absent(v) => t.interval,
+        Some(v) => v.as_f64().ok_or_else(|| bad(c, format!("`interval` must be a number of mm, got {v}")))?,
+        None => t.interval,
+    };
+    let base = num(c, p, "base")?.unwrap_or(0.0);
+    if interval == 0.0 {
+        return Ok(json!({"interval": interval, "base": base, "contours": [], "truncated": false}));
+    }
+    let tin = t.tin().map_err(|why| bad(c, why))?;
+    let lines = tin.contours_shared(interval, base).map_err(|why| bad(c, why))?;
+    let (mut out, mut sent, mut truncated) = (Vec::new(), 0, false);
+    for l in lines.iter() {
+        if sent + l.points.len() > MAX_CONTOUR_POINTS {
+            truncated = true;
+            break;
+        }
+        sent += l.points.len();
+        out.push(json!({"z": l.z, "closed": l.closed, "points": l.points}));
+    }
+    Ok(json!({"interval": interval, "base": base, "contours": out, "truncated": truncated}))
+}
+
 /// The mass `mass` names.
 fn mass_of(c: &str, m: &Model, p: &Value) -> Result<(Id, Mass), String> {
     let mass = id_opt(c, p, "mass")?.ok_or_else(|| bad(c, "`mass`, the id of a mass, is required"))?;
@@ -7547,6 +8988,352 @@ fn roof_by_face(s: &mut Session, p: &Value) -> R {
     Ok(made)
 }
 
+/// The most masses one `building_shell` makes a shell for: a shell is about eleven elements, and every pitched roof is laid out
+/// again by each check after it.
+pub(crate) const MAX_SHELL: usize = 200;
+
+/// `key`, a yes or no, or `default` when it is not given.
+fn flag_or(c: &str, p: &Value, key: &str, default: bool) -> Result<bool, String> {
+    if absent(p.get(key)) { Ok(default) } else { flag(c, p, key) }
+}
+
+/// The number the text of a mass's parameter `key` holds, if it holds one.
+fn param_number(ms: &Mass, key: &str) -> Option<f64> {
+    ms.params.get(key)?.as_str()?.trim().replace(',', ".").parse::<f64>().ok().filter(|x| x.is_finite())
+}
+
+/// How high a roof peaks over its base: its highest point less its base.
+fn roof_peak(m: &Model, r: &Roof) -> Result<f64, String> {
+    let base = m.elevation(r.level) + r.offset;
+    let top = m.roof_faces(r)?.iter().flat_map(|(loops, plane)| loops.iter().flatten().map(move |q| plane.at(*q))).fold(f64::MIN, f64::max);
+    if top.is_finite() { Ok(top - base) } else { Err("it has no slopes".into()) }
+}
+
+/// A text project parameter for `category`, declared if the project has none of the name.
+fn declare_text(m: &mut Model, name: &str, category: &str) -> Result<(), String> {
+    let full = m.parameters.len() >= crate::model::MAX_PROJECT_PARAMETERS;
+    match m.parameters.get_mut(name) {
+        Some(existing) if existing.kind != ParameterKind::Text => Err(format!("the project parameter `{name}` exists and is not text")),
+        Some(existing) => {
+            if !existing.categories.iter().any(|k| k == category) {
+                existing.categories.push(category.into());
+            }
+            Ok(())
+        }
+        None if full => Err("the project has as many parameters as it holds".into()),
+        None => {
+            m.parameters.insert(name.into(), ProjectParameter { kind: ParameterKind::Text, categories: vec![category.into()] });
+            Ok(())
+        }
+    }
+}
+
+/// The door type of this size and way of opening: one the project has, else a new one named for it.
+fn door_type_for(m: &mut Model, width: f64, height: f64, operation: Option<crate::model::Operation>) -> String {
+    if let Some((name, _)) =
+        m.types.door.iter().find(|(_, t)| (t.width - width).abs() < 1.0 && (t.height - height).abs() < 1.0 && t.operation == operation)
+    {
+        return name.clone();
+    }
+    let name = format!("OSM {width:.0} x {height:.0}{}", if operation.is_some() { " sliding" } else { "" });
+    m.types.door.entry(name.clone()).or_insert(crate::model::OpeningType { width, height, sill: 0.0, operation });
+    name
+}
+
+/// A door cut into the wall nearest each entrance a mass holds (`OSM Entrances`, `x,y,kind,width,height,door;...`), in the walls
+/// `wall_ids` just made on it, its facade `facade` mm tall: how many were made, and a note for each that could not be.
+fn shell_doors(s: &mut Session, ms: &Mass, wall_ids: &[Id], facade: f64) -> (usize, Vec<String>) {
+    const REACH: f64 = 400.0;
+    const MAX_TYPES: usize = 64;
+    let Some(text) = ms.params.get("OSM Entrances").and_then(Value::as_str) else { return (0, Vec::new()) };
+    let (mut made, mut notes) = (0usize, Vec::new());
+    let mut on_wall: Vec<(Id, f64, f64)> = Vec::new();
+    for entry in text.split(';').filter(|e| !e.trim().is_empty()) {
+        let f: Vec<&str> = entry.split(',').collect();
+        let number = |i: usize| f.get(i).and_then(|t| t.trim().parse::<f64>().ok()).filter(|x| x.is_finite());
+        let (Some(x), Some(y)) = (number(0), number(1)) else {
+            notes.push(format!("an entrance (`{}`) has no place: no door", entry.chars().take(40).collect::<String>()));
+            continue;
+        };
+        if x.abs() > MAX_COORD || y.abs() > MAX_COORD {
+            continue;
+        }
+        let kind = f.get(2).map(|k| k.trim()).filter(|k| !k.is_empty()).unwrap_or("yes");
+        let opening = f.get(5).map(|d| d.trim()).unwrap_or("");
+        let height = number(4).filter(|h| (1800.0..=3500.0).contains(h)).unwrap_or(2100.0);
+        let width = number(3).filter(|w| (600.0..=4000.0).contains(w)).unwrap_or(if kind == "main" { 1000.0 } else { 900.0 });
+        if facade < height + 100.0 {
+            notes.push(format!("the entrance at ({x:.0}, {y:.0}) has no door: the facade is lower than a door of {height:.0} mm"));
+            continue;
+        }
+        // The wall nearest it, within reach.
+        let at = P2(x, y);
+        let nearest = wall_ids
+            .iter()
+            .filter_map(|id| match s.model.elements.get(*id) {
+                Some(Element::Wall(w)) => Some((*id, w.start, w.end, geom::dist_to_segment(at, w.start, w.end))),
+                _ => None,
+            })
+            .filter(|(.., d)| *d <= REACH)
+            .min_by(|a, b| a.3.total_cmp(&b.3));
+        let Some((wall_id, start, end, _)) = nearest else {
+            notes.push(format!("the entrance at ({x:.0}, {y:.0}) has no door: no wall near it"));
+            continue;
+        };
+        let length = start.dist(end);
+        if length < width + 100.0 {
+            notes.push(format!("the entrance at ({x:.0}, {y:.0}) has no door: its wall is shorter than the door"));
+            continue;
+        }
+        let along = (at - start).dot((end - start).unit()).clamp(width / 2.0 + 50.0, length - width / 2.0 - 50.0);
+        if on_wall.iter().any(|(id, o, w)| *id == wall_id && (o - along).abs() < (w + width) / 2.0) {
+            notes.push(format!("the entrance at ({x:.0}, {y:.0}) has no door: it overlaps another on its wall"));
+            continue;
+        }
+        let operation = (opening == "sliding").then_some(crate::model::Operation::Sliding);
+        if s.model.types.door.len() >= MAX_TYPES + 8 {
+            notes.push("the project has as many door types as a shell makes: no more doors".into());
+            break;
+        }
+        if declare_text(s.model_mut(), "OSM Entrance", "door").and_then(|_| declare_text(s.model_mut(), "OSM Door", "door")).is_err() {
+            notes.push("the project's parameters `OSM Entrance` and `OSM Door` are not text: no doors".into());
+            break;
+        }
+        let type_name = door_type_for(s.model_mut(), width, height, operation);
+        match door(s, &json!({"wall": wall_id, "offset": along, "type": type_name, "mark": kind})) {
+            Ok(v) => {
+                if let Some(Element::Door(d)) = v["id"].as_u64().and_then(|id| s.model_mut().elements.get_mut(id)) {
+                    d.params.insert("OSM Entrance".into(), json!(kind));
+                    if !opening.is_empty() {
+                        d.params.insert("OSM Door".into(), json!(opening.chars().take(64).collect::<String>()));
+                    }
+                }
+                on_wall.push((wall_id, along, width));
+                made += 1;
+            }
+            Err(why) => notes.push(format!("the entrance at ({x:.0}, {y:.0}) has no door: {why}")),
+        }
+    }
+    (made, notes)
+}
+
+fn building_shell(s: &mut Session, p: &Value) -> R {
+    let c = "building_shell";
+    only(c, p, &["ids", "id", "storeys", "storey_height", "walls", "floors", "roof", "doors", "shape", "angle", "height", "orientation"])?;
+    let ids = ids_param(c, &s.model, p)?;
+    if ids.is_empty() {
+        return Err(bad(c, "`ids` [id, …] is required: the masses to build a shell for"));
+    }
+    if ids.len() > MAX_SHELL {
+        return Err(bad(c, format!("{} masses is more than the {MAX_SHELL} one command makes shells for: give fewer `ids`", ids.len())));
+    }
+    if let Some(not) = ids.iter().find(|id| !matches!(s.model.elements.get(id), Some(Element::Mass(_)))) {
+        return Err(bad(c, format!("{not} isn't a mass")));
+    }
+    let (walls, floors, roof) = (flag_or(c, p, "walls", true)?, flag_or(c, p, "floors", true)?, flag_or(c, p, "roof", true)?);
+    let doors = flag_or(c, p, "doors", true)?;
+    let storeys = match num(c, p, "storeys")? {
+        None => None,
+        Some(n) if n.fract() == 0.0 && (1.0..=massing::MAX_STOREYS as f64).contains(&n) => Some(n as usize),
+        Some(n) => return Err(bad(c, format!("`storeys` is a whole number from 1 to {}, not {n}", massing::MAX_STOREYS))),
+    };
+    let above_zero = |key: &str, what: &str| -> Result<Option<f64>, String> {
+        match num(c, p, key)? {
+            Some(x) if x <= 0.0 => Err(bad(c, format!("`{key}` is {what} above 0, not {x}"))),
+            other => Ok(other),
+        }
+    };
+    let storey_height = above_zero("storey_height", "a height in mm")?;
+    let height = above_zero("height", "a height in mm")?;
+    let angle = match num(c, p, "angle")? {
+        Some(a) if !(a > 0.0 && a < 90.0) => return Err(bad(c, format!("`angle` is a slope in degrees above 0 and below 90, not {a}"))),
+        other => other,
+    };
+    let orientation = match string(c, p, "orientation")? {
+        Some(o) if o != "along" && o != "across" => return Err(bad(c, format!("`orientation` is \"along\" or \"across\", not \"{o}\""))),
+        other => other,
+    };
+    let shape = string(c, p, "shape")?;
+    // The masses that have walls, floors or a roof made by face already.
+    let held: BTreeSet<Guid> = s.model.elements.values().filter_map(|e| massing::face_of(e).map(|(mass, _)| mass)).collect();
+    let (mut made, mut skipped, mut notes) = (Vec::new(), Vec::new(), Vec::new());
+    let (mut wall_count, mut floor_count, mut roof_count, mut door_count) = (0, 0, 0, 0);
+    for id in ids {
+        if held.contains(&s.model.guid(id)) {
+            skipped.push(
+                json!({"mass": id, "why": "it has walls, floors or a roof made by face already: `update_by_face` makes them follow it"}),
+            );
+            continue;
+        }
+        let (mass, ms) = mass_of(c, &s.model, &json!({"mass": id}))?;
+        let (bottom, top) = s.model.span(ms.level, ms.base_offset, ms.top_level, ms.height);
+        let facade = top - bottom;
+        let mut mine: Vec<String> = Vec::new();
+        let mut report = json!({"mass": id});
+        let mut wall_ids: Vec<Id> = Vec::new();
+        if walls {
+            // Where the cut of a building with courtyards was made there is no wall: the piece goes on into the next.
+            let cut: Vec<usize> = ms
+                .params
+                .get("OSM Cut Edges")
+                .and_then(Value::as_str)
+                .map(|t| t.split(',').filter_map(|n| n.trim().parse().ok()).collect())
+                .unwrap_or_default();
+            let mut q = json!({"mass": mass});
+            if !cut.is_empty() {
+                let (ring, crown) = (ms.footprint(), ms.top_ring());
+                let faces: Vec<usize> = (0..ring.len()).filter(|f| !cut.contains(f) && massing::plumb(&ring, &crown, *f)).collect();
+                q["faces"] = json!(faces);
+            }
+            match wall_by_face(s, &q) {
+                Ok(v) => {
+                    let n = v["ids"].as_array().map_or(0, Vec::len);
+                    wall_count += n;
+                    report["walls"] = json!(n);
+                    wall_ids = v["ids"].as_array().into_iter().flatten().filter_map(Value::as_u64).collect();
+                    if doors {
+                        let made = shell_doors(s, &ms, &wall_ids, facade);
+                        door_count += made.0;
+                        report["doors"] = json!(made.0);
+                        mine.extend(made.1);
+                    }
+                }
+                Err(why) => mine.push(why.replacen("wall_by_face", "walls", 1)),
+            }
+        }
+        if floors {
+            // The storeys: as told, else the levels OSM gave, else the height over a storey; spaced as told, else evenly.
+            let tagged = param_number(&ms, "OSM Levels").map(f64::round).filter(|n| (1.0..=massing::MAX_STOREYS as f64).contains(n));
+            let (n, rise) = match (storeys, tagged.map(|n| n as usize)) {
+                (Some(n), _) | (None, Some(n)) => (n, storey_height.unwrap_or(facade / n as f64)),
+                (None, None) => {
+                    let rise = storey_height.unwrap_or(3000.0);
+                    (((facade / rise).round() as usize).max(1), rise)
+                }
+            };
+            if n > massing::MAX_STOREYS || !(rise.is_finite() && rise > 0.0 && rise <= MAX_COORD) {
+                return Err(bad(c, format!("mass {id}: {n} storeys {rise} mm apart: raise `storey_height` or give `storeys`")));
+            }
+            for k in 0..n {
+                let q = json!({"boundary": ms.footprint(), "level": ms.level, "offset": ms.base_offset + k as f64 * rise});
+                let made_floor = floor(s, &q)?;
+                mark(s, &made_floor["id"], massing::FACE, json!({"mass": mass, "face": {"storey": k, "rise": rise}}));
+            }
+            floor_count += n;
+            report["floors"] = json!(n);
+            report["rise"] = json!(rise);
+        }
+        if roof {
+            let (level, offset) = ms.top_face();
+            let ring = ms.top_ring();
+            let tag =
+                shape.clone().or_else(|| ms.params.get("OSM Roof Shape").and_then(Value::as_str).map(str::to_string)).unwrap_or_default();
+            let across = orientation.clone().or_else(|| ms.params.get("OSM Roof Orientation").and_then(Value::as_str).map(str::to_string));
+            let mut plan = crate::shell::plan(&ring, &tag, across.as_deref().unwrap_or(""));
+            if plan.shape != crate::shell::Shape::Flat && ring.len() > crate::model::MAX_ROOF_POINTS {
+                plan.notes.push(format!(
+                    "its footprint has {} corners, more than the {} a pitched roof holds: a flat roof",
+                    ring.len(),
+                    crate::model::MAX_ROOF_POINTS
+                ));
+                plan = crate::shell::Plan { shape: crate::shell::Shape::Flat, gables: Vec::new(), notes: plan.notes };
+            }
+            let trial = |slope: f64, gables: &[usize]| Roof {
+                type_name: String::new(),
+                level,
+                boundary: ring.clone(),
+                courtyards: Vec::new(),
+                slope,
+                overhang: 0.0,
+                gable: false,
+                gables: gables.to_vec(),
+                slopes: Vec::new(),
+                offset,
+                openings: Vec::new(),
+                join: None,
+                extrusion: None,
+                sketch: Vec::new(),
+                params: Default::default(),
+                shape: Default::default(),
+            };
+            let mut slope = 0.0;
+            if plan.shape != crate::shell::Shape::Flat {
+                let wanted_angle = angle.or_else(|| param_number(&ms, "OSM Roof Angle")).filter(|a| *a > 0.0 && *a < 90.0);
+                let wanted_height = height.or_else(|| param_number(&ms, "OSM Roof Height")).filter(|h| *h > 0.0);
+                // Laid out once at 45 degrees: it shows whether the footprint takes the roof, and how high it peaks (in proportion to the slope's tangent).
+                match roof_peak(&s.model, &trial(45.0, &plan.gables)) {
+                    Ok(peak45) => {
+                        slope = match (wanted_angle, wanted_height) {
+                            (Some(a), _) => a,
+                            (None, Some(h)) if peak45 > 1e-6 => (h / peak45).atan().to_degrees(),
+                            _ => crate::shell::DEFAULT_SLOPE,
+                        };
+                        if slope > crate::model::MAX_SLOPE {
+                            plan.notes
+                                .push(format!("a roof of that height needs a slope of {slope:.0}°: cut to {}°", crate::model::MAX_SLOPE));
+                            slope = crate::model::MAX_SLOPE;
+                        }
+                    }
+                    Err(why) => plan.notes.push(format!("a pitched roof does not fit this footprint ({why}): a flat roof")),
+                }
+            }
+            let gables = if slope > 0.0 { plan.gables.clone() } else { Vec::new() };
+            let mut q = json!({"boundary": ring, "level": level, "offset": offset, "slope": slope, "overhang": 0});
+            if !gables.is_empty() {
+                q["gables"] = json!(gables);
+            }
+            let made_roof = self::roof(s, &q)?;
+            mark(s, &made_roof["id"], massing::FACE, json!({"mass": mass, "face": "top"}));
+            // The walls at a gabled roof's upright ends rise into its gable: their tops follow the roof's underside.
+            if !gables.is_empty()
+                && let Some(roof_id) = made_roof["id"].as_u64()
+            {
+                let roof_guid = s.model.guid(roof_id);
+                for id in &wall_ids {
+                    let on_gable = matches!(s.model.elements.get(*id).and_then(massing::face_of), Some((_, massing::Face::Edge(f))) if gables.contains(&f));
+                    if on_gable && let Some(Element::Wall(w)) = s.model_mut().elements.get_mut(*id) {
+                        w.attach_top = Some(roof_guid);
+                    }
+                }
+            }
+            roof_count += 1;
+            report["roof"] = made_roof["id"].clone();
+            report["slope"] = json!(slope);
+            report["shape"] = json!(if slope == 0.0 {
+                "flat"
+            } else if gables.is_empty() {
+                "hipped"
+            } else {
+                "gabled"
+            });
+            mine.extend(plan.notes);
+        }
+        notes.extend(mine.iter().map(|n| format!("mass {id}: {n}")));
+        report["notes"] = json!(mine);
+        made.push(report);
+    }
+    Ok(
+        json!({"shells": made, "walls": wall_count, "floors": floor_count, "roofs": roof_count, "doors": door_count, "skipped": skipped, "notes": notes}),
+    )
+}
+
+/// Element `id`, made by face from a mass, as that mass has it now: what it becomes and whether that is any change; or why it cannot
+/// follow (its face is gone, or the mass). None when it was not made by face.
+fn follow_one(m: &Model, id: Id) -> Option<Result<(Element, bool), String>> {
+    let (e, (mass, face)) = m.elements.get(id).and_then(|e| Some((e, massing::face_of(e)?)))?;
+    let mut now = e.clone();
+    Some(match m.elements.get(mass) {
+        Some(Element::Mass(ms)) => match massing::follow(&mut now, ms, m.elements.id(mass).unwrap_or_default(), face) {
+            Ok(()) => {
+                let changed = now != *e;
+                Ok((now, changed))
+            }
+            Err(why) => Err(format!("{} {id} {why}", e.category())),
+        },
+        _ => Err(format!("{} {id} was made from mass {mass}, which isn't there", e.category())),
+    })
+}
+
 fn update_by_face(s: &mut Session, p: &Value) -> R {
     let c = "update_by_face";
     let m = &s.model;
@@ -7574,15 +9361,11 @@ fn update_by_face(s: &mut Session, p: &Value) -> R {
     }
     let (mut changed, mut same, mut gone) = (Vec::new(), Vec::new(), Vec::new());
     for id in ids {
-        let Some((e, (mass, face))) = m.elements.get(id).and_then(|e| Some((e, massing::face_of(e)?))) else { continue };
-        let mut now = e.clone();
-        match m.elements.get(mass) {
-            Some(Element::Mass(ms)) => match massing::follow(&mut now, ms, m.elements.id(mass).unwrap_or_default(), face) {
-                Ok(()) if now == *e => same.push(id),
-                Ok(()) => changed.push((id, now)),
-                Err(why) => gone.push(format!("{} {id} {why}", e.category())),
-            },
-            _ => gone.push(format!("{} {id} was made from mass {mass}, which isn't there", e.category())),
+        match follow_one(m, id) {
+            Some(Ok((_, false))) => same.push(id),
+            Some(Ok((now, true))) => changed.push((id, now)),
+            Some(Err(why)) => gone.push(why),
+            None => {}
         }
     }
     if !gone.is_empty() {
@@ -9856,8 +11639,8 @@ fn pair(c: &str, key: &str, v: &Value) -> Result<[f64; 2], String> {
 /// A material's texture as the JSON `p` says over its `old` one: kind, size, angle, offset, and for a picture the file to take
 /// into the project (`path`) or the project's own picture (`image`).
 fn texture_param(c: &str, m: &mut Model, p: &Map<String, Value>, old: Option<Texture>) -> Result<Texture, String> {
-    if let Some(k) = p.keys().find(|k| !["kind", "size", "angle", "offset", "path", "image"].contains(&k.as_str())) {
-        return Err(bad(c, format!("texture: `{k}` isn't one of kind, size, angle, offset, path, image")));
+    if let Some(k) = p.keys().find(|k| !["kind", "size", "angle", "offset", "path", "image", "planar"].contains(&k.as_str())) {
+        return Err(bad(c, format!("texture: `{k}` isn't one of kind, size, angle, offset, path, image, planar")));
     }
     let kinds: Vec<&str> = Kind::ALL.iter().map(|k| k.name()).collect();
     let kind = match p.get("kind").filter(|v| !v.is_null()) {
@@ -9875,6 +11658,9 @@ fn texture_param(c: &str, m: &mut Model, p: &Map<String, Value>, old: Option<Tex
     }
     if let Some(v) = p.get("angle").filter(|v| !v.is_null()) {
         t.angle = v.as_f64().ok_or_else(|| bad(c, format!("texture `angle` is a number of degrees, not {v}")))?;
+    }
+    if let Some(v) = p.get("planar").filter(|v| !v.is_null()) {
+        t.planar = v.as_bool().ok_or_else(|| bad(c, format!("texture `planar` is true or false, not {v}")))?;
     }
     match (kind, p.get("path").filter(|v| !v.is_null()), p.get("image").filter(|v| !v.is_null())) {
         (Kind::Image, Some(path), _) => {
@@ -11084,6 +12870,23 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
                 if mo.mirror {
                     ring.reverse();
                 }
+            }
+        }
+        Element::Pad(Pad { boundary, .. }) => {
+            boundary.iter_mut().for_each(|q| *q = f(*q));
+            if mo.mirror {
+                boundary.reverse();
+            }
+        }
+        // Its heights stay: the terrain moves, turns and mirrors in plan.
+        Element::Toposurface(t) => {
+            for p in t.points.iter_mut().chain(t.breaklines.iter_mut().flatten()) {
+                let q = f(P2(p[0], p[1]));
+                (p[0], p[1]) = (q.0, q.1);
+            }
+            t.boundary.iter_mut().for_each(|q| *q = f(*q));
+            if mo.mirror {
+                t.boundary.reverse();
             }
         }
         // A frozen room's boundary goes with it.
@@ -12398,6 +14201,94 @@ fn units(s: &mut Session, p: &Value) -> R {
     Ok(json!({"length": s.model.units.name()}))
 }
 
+fn geolocate(s: &mut Session, p: &Value) -> R {
+    let c = "geolocate";
+    only(c, p, &["latitude", "longitude", "elevation", "true_north", "crs", "clear", "point", "lonlat"])?;
+    let (latitude, longitude, elevation, true_north) =
+        (num(c, p, "latitude")?, num(c, p, "longitude")?, num(c, p, "elevation")?, num(c, p, "true_north")?);
+    // None, not said; Some(None), the place's UTM zone; Some(Some(code)), that CRS.
+    let crs: Option<Option<u32>> = match p.get("crs") {
+        v if absent(v) => None,
+        Some(Value::String(t)) if t.trim().eq_ignore_ascii_case("utm") => Some(None),
+        Some(v) => {
+            let code = match v {
+                Value::Number(n) => n.as_u64(),
+                Value::String(t) => {
+                    let t = t.trim();
+                    t.strip_prefix("EPSG:").or_else(|| t.strip_prefix("epsg:")).unwrap_or(t).parse::<u64>().ok()
+                }
+                _ => None,
+            };
+            let code = code
+                .and_then(|n| u32::try_from(n).ok())
+                .ok_or_else(|| bad(c, format!("`crs` is an EPSG code such as 31983, or utm, not {v}")))?;
+            Some(Some(code))
+        }
+        None => None,
+    };
+    let to_geo = point_opt(c, p, "point")?;
+    let to_project = match p.get("lonlat") {
+        v if absent(v) => None,
+        Some(v) => match v.as_array().map(Vec::as_slice) {
+            Some([lo, la]) => match (lo.as_f64(), la.as_f64()) {
+                (Some(lo), Some(la)) if lo.is_finite() && la.is_finite() => Some((lo, la)),
+                _ => return Err(bad(c, format!("`lonlat` is [longitude, latitude] in degrees, not {v}"))),
+            },
+            _ => return Err(bad(c, format!("`lonlat` is [longitude, latitude] in degrees, not {v}"))),
+        },
+        None => None,
+    };
+    if flag(c, p, "clear")? {
+        if s.model.location.is_some() || s.model.georeference.is_some() {
+            let m = s.model_mut();
+            m.location = None;
+            m.georeference = None;
+        }
+    } else if latitude.is_some() || longitude.is_some() || elevation.is_some() || true_north.is_some() || crs.is_some() {
+        if s.model.location.is_none() && (latitude.is_none() || longitude.is_none()) {
+            return Err(bad(c, "`latitude` and `longitude` (degrees) are both needed to place the project"));
+        }
+        let mut l = s.model.location.unwrap_or_default();
+        l.latitude = latitude.unwrap_or(l.latitude);
+        l.longitude = longitude.unwrap_or(l.longitude);
+        l.elevation = elevation.unwrap_or(l.elevation);
+        l.true_north = true_north.unwrap_or(l.true_north);
+        if let Some(code) = crs {
+            l.crs = code;
+        }
+        // The map conversion follows the place, so a file is written from one thing.
+        let conversion = l.georeference().map_err(|why| bad(c, why))?;
+        if s.model.location != Some(l) || s.model.georeference.as_ref() != Some(&conversion) {
+            let m = s.model_mut();
+            m.location = Some(l);
+            m.georeference = Some(conversion);
+        }
+    }
+    let Some(l) = s.model.location else {
+        if to_geo.is_some() || to_project.is_some() {
+            return Err(bad(c, "the project has no location yet: give `latitude` and `longitude` first"));
+        }
+        return Ok(json!({"located": false}));
+    };
+    let g = l.grid().map_err(|why| bad(c, why))?;
+    let mut out = json!({
+        "located": true, "latitude": l.latitude, "longitude": l.longitude, "elevation": l.elevation, "true_north": l.true_north,
+        "crs": {
+            "epsg": g.epsg, "name": g.name, "easting": g.easting, "northing": g.northing,
+            "convergence": g.convergence, "scale": g.scale, "rotation": g.rotation,
+        },
+    });
+    if let Some(q) = to_geo {
+        let (lon, lat) = l.to_lonlat(q).map_err(|why| bad(c, why))?;
+        out["lonlat"] = json!([lon, lat]);
+    }
+    if let Some((lon, lat)) = to_project {
+        let q = l.from_lonlat(lon, lat).map_err(|why| bad(c, why))?;
+        out["point"] = json!([q.0, q.1]);
+    }
+    Ok(out)
+}
+
 fn room_area(s: &mut Session, p: &Value) -> R {
     let c = "room_area";
     only(c, p, &["at"])?;
@@ -12459,7 +14350,14 @@ fn georeference(s: &mut Session, p: &Value) -> R {
         }
         g.check().map_err(|e| bad(c, e))?;
         if s.model.georeference.as_ref() != Some(&g) {
-            s.model_mut().georeference = Some(g);
+            // Where the CRS is an EPSG code that can be projected, the project's place (latitude, longitude, true north) is the
+            // one the conversion puts it at; any other CRS leaves the place as it was.
+            let place = crate::georef::Location::of_georeference(&g).ok();
+            let m = s.model_mut();
+            m.georeference = Some(g);
+            if place.is_some() {
+                m.location = place;
+            }
         }
     }
     Ok(json!({"georeference": s.model.georeference}))
@@ -13261,7 +15159,7 @@ fn inspect(s: &mut Session, _: &Value) -> R {
     let levels: Vec<Value> = m.levels().iter().map(|(id, l)| json!({"id": id, "name": l.name, "elevation": l.elevation})).collect();
     let warnings = m.warnings();
     Ok(json!({
-        "name": m.name, "units": "mm", "project_units": m.units.name(), "room_area": m.room_area.name(), "language": m.language.code(), "standard": m.standard().code(), "path": s.path, "levels": levels,
+        "name": m.name, "units": "mm", "project_units": m.units.name(), "room_area": m.room_area.name(), "language": m.language.code(), "standard": m.standard().code(), "location": m.location, "path": s.path, "levels": levels,
         "counts": counts,
         "types": m.types, "materials": m.materials, "images": images(m), "families": families(m), "parameters": m.parameters,
         "view_filters": m.view_filters, "view_templates": m.view_templates, "phases": m.phases, "phase_filters": m.phase_filters,

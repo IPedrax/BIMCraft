@@ -16,6 +16,9 @@ placed with no scale takes the view's. The units name the scales and list the on
 1" = 200'-0"), and 1 : n for any other. The Scale menu, Properties, templates and sheets' titles name them so, and a scale is typed
 as n, 1 : n, or two lengths (`1/4" = 1'-0"`).
 
+A plan draws the aerial photograph of its terrain first of all, under the scans and the CAD imports, and a view hides it or tones it down by
+its category `aerialimagery` (Aerial Imagery in Visibility/Graphics; hidden, halftone, transparency: [terrain](terrain.md#the-photograph-in-plans)). What the photograph is owed is lettered at the view's bottom right, last (`render::credit_plate`).
+
 Background grids are view-owned graphics (`Graphics::background_grid`), controlled by a view template through the
 `background_grid` group. `graphics` and `template` accept a grid patch (spacing in millimetres, divisions, rotation, two
 styles and visibility), or null to reset it. `Graphics::resolved` supplies the effective grid, and both the
@@ -352,7 +355,7 @@ view, writes nothing.
 The 3D view is drawn on the graphics card where there is one ([where this is going](../3d-acceleration-plan.md): no limit on size) (File > Settings > Performance turns it off: `BimApp::card`, `settings.json`'s
 `gpu_3d`). `view3d::gpu::Mesh` is the triangles a view shows as f32 vertices relative to the middle of what is drawn (millimetres far
 from the origin would overflow f32), each with its colour, normal, face normal, plane, element and texture; the textures' mip levels as
-words (`Skin`; `Mesh::lookups` gives the level a zoom looks up, as `Sampler::level_for` does); and a bounding volume hierarchy built on
+words (`Skin`; `Mesh::lookups` gives the level a zoom looks up, as `Sampler::level_for` does, and in the first spare word whether the texture is laid over the ground, `planar`, which `gpu.wgsl` looks up by east and north and holds at its edge; `gpu::tests::the_shader_is_valid_wgsl_without_a_card` parses and validates the shader without a card); and a bounding volume hierarchy built on
 the view worker before the first pick. The first card upload runs on a worker too; the view waits with progress until the scene and
 upload are both ready. Zoom to Fit and Home fit on a worker. Surfaces seen through come after the opaque ones (`Mesh::clear_from`), each element's transparency in its `Owner` (an element whose layers differ in transparency has an `Owner` for each).
 A component is held once for each shape and placed for each copy (`Mesh::shapes`, `shape_vertices`, `instances`): the scene notes which

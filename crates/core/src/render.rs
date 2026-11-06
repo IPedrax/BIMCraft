@@ -24,7 +24,7 @@ use crate::graphics::{Detail, Look, scale_of};
 use crate::model::Guid;
 use crate::model::{
     CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Id, Key, Layer, Model, Note, Opening,
-    Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
+    Pad, Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
 };
 use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
@@ -51,6 +51,10 @@ const FAINT: Rgb = Rgb(120, 120, 120);
 const GRID: Rgb = Rgb(60, 100, 150);
 /// A mass's outline, dashed.
 const MASS: Rgb = Rgb(88, 112, 168);
+/// Terrain's contours.
+const TERRAIN: Rgb = Rgb(140, 100, 60);
+/// A building pad's outline.
+const PAD: Rgb = Rgb(110, 110, 100);
 /// Room for grid bubbles and the view title around the drawing, px.
 const MARGIN: f64 = 70.0;
 const BUBBLE: f32 = 11.0;
@@ -1103,12 +1107,14 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
             Element::Floor(Floor { level: l, boundary, .. })
             | Element::Ceiling(Ceiling { level: l, boundary, .. })
             | Element::Shaft(Shaft { level: l, boundary, .. })
+            | Element::Pad(Pad { level: l, boundary, .. })
                 if *l == level =>
             {
                 extent.extend(boundary)
             }
             Element::Room(r) if r.level == level => extent.push(r.point),
             Element::Mass(ms) if m.mass_cut_by(ms, r.cut) => extent.extend(m.mass_outline(ms, r.cut)),
+            Element::Toposurface(t) => extent.extend(terrain_box(t)),
             Element::Component(c) if c.level == level => {
                 extent.extend(components.outlines(c));
                 for mark in m.component_marks(c) {
@@ -1195,6 +1201,8 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::RoomSeparator(rs) => d.line(&[rs.start, rs.end], Pen::PROJECTION, INK, false),
         Element::Roof(r) => roof(&mut d, m, r),
         Element::Mass(ms) => d.dashed(&ms.boundary, Pen::MEDIUM, MASS, true),
+        Element::Toposurface(t) => terrain(&mut d, t),
+        Element::Pad(pd) => d.line(&pd.footprint(), Pen::MEDIUM, PAD, true),
         _ => {}
     }
     let annotation = on.is_some() || matches!(e, Element::Section(_) | Element::Elevation(_));
@@ -1202,6 +1210,28 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
     d.by_category(|_| style);
     d.weigh(|_| annotation);
     d
+}
+
+/// Terrain seen from above: its contours, every fifth from sea level heavier.
+fn terrain(d: &mut Drawing, t: &crate::model::Toposurface) {
+    if t.interval <= 0.0 {
+        return;
+    }
+    let Ok(tin) = t.tin() else { return };
+    let Ok(lines) = tin.contours_shared(t.interval, 0.0) else { return };
+    for c in lines.iter() {
+        let index = (c.z / t.interval).round().rem_euclid(5.0) == 0.0;
+        d.line(&c.points, if index { Pen::MEDIUM } else { BY_CATEGORY }, TERRAIN, c.closed);
+    }
+}
+
+/// The corners of the box round terrain's boundary, or its points: what a plan fits to.
+fn terrain_box(t: &crate::model::Toposurface) -> Vec<P2> {
+    let pts: Vec<P2> = if t.boundary.len() >= 3 { t.boundary.clone() } else { t.points.iter().map(|p| P2(p[0], p[1])).collect() };
+    let (lo, hi) = pts.iter().fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), p| {
+        (P2(lo.0.min(p.0), lo.1.min(p.1)), P2(hi.0.max(p.0), hi.1.max(p.1)))
+    });
+    if pts.is_empty() { Vec::new() } else { vec![lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)] }
 }
 
 /// A reinforcing bar seen from above: its line, with each point once after another, thin; a bar that stands, a dot as thick as it
@@ -2367,6 +2397,7 @@ fn section_finish_cancellable(m: &Model, id: Id, mut d: Drawing, cancelled: &(dy
     d.weigh(|o| annotates(m, o));
     let at = (24.0 + font::width(&v.name, 16.0) / 2.0, view.height as f32 - 26.0);
     d.text_turned(&v.name, at, 16.0, 0.0, INK);
+    credit_plate(&mut d, &crate::imagery::credits(m, &look));
     (!cancelled()).then_some(d)
 }
 
@@ -2435,6 +2466,185 @@ fn detail_of(m: &Model, id: impl Key) -> Detail {
 /// Plan `level` as `draw` draws it, its annotation `k` times the size it is laid out at: a sheet's, at paper size.
 pub fn draw_at(m: &Model, level: impl Key, view: View, k: f32) -> Drawing {
     draw_plan(m, level, view, false, k, f64::from(k) * sheet::DENSITY / view.scale, false)
+}
+
+/// The smallest picture, pixels, that a plan's photograph is made on more than one thread, and the most threads it takes.
+const BAND_PIXELS: usize = 200_000;
+const MAX_BANDS: usize = 8;
+
+/// The aerial photograph a toposurface wears, under all the rest of a plan: for each toposurface the view shows whose material is
+/// a picture laid over the ground by where it is (a planar image texture, not turned), the part of it the window shows, one picture of
+/// the window's pixels made with the same lookup the 3D view uses (the mip level a pixel covers, blended between pixels), cut to the
+/// terrain's boundary, clear where the picture lets nothing through, and toned down as the view's "Aerial Imagery" says. It is
+/// nobody's (never picked or boxed), and all its work is bounded by the window whatever the zoom.
+fn aerial_imagery(d: &mut Drawing, m: &Model, look: &Look) -> Vec<String> {
+    use crate::texture::{Kind, Sampler};
+    let mut credits = std::collections::BTreeSet::new();
+    let Some(paint) = look.imagery() else { return Vec::new() };
+    let (w, h, scale) = (d.view.width, d.view.height, d.view.scale);
+    if w == 0 || h == 0 || !scale.is_finite() || scale <= 0.0 {
+        return Vec::new();
+    }
+    let opacity = 1.0 - f64::from(paint.transparency.min(100)) / 100.0;
+    let foot = 1.0 / scale;
+    for (&id, e) in &m.elements {
+        let Element::Toposurface(t) = e else { continue };
+        let Some(material) = m.materials.get(&t.material).filter(|_| look.shows(id)) else { continue };
+        let Some(texture) = material.texture.as_ref().filter(|x| x.kind == Kind::Image && x.planar && x.angle == 0.0) else { continue };
+        let Some(sampler) = Sampler::new(texture, material.color, &m.images) else { continue };
+        // The ground it covers: west and north at its offset, `size` across and down.
+        let (west, east, north, south) =
+            (texture.offset[0], texture.offset[0] + texture.size[0], texture.offset[1], texture.offset[1] - texture.size[1]);
+        let (corner, far) = (d.view.px(P2(west, north)), d.view.px(P2(east, south)));
+        if ![corner.0, corner.1, far.0, far.1].iter().all(|v| v.is_finite()) {
+            continue;
+        }
+        // Its pixels that the window has.
+        let (left, top) = (corner.0.max(0.0).floor() as i64, corner.1.max(0.0).floor() as i64);
+        let (right, bottom) = (far.0.min(w as f32).ceil() as i64, far.1.min(h as f32).ceil() as i64);
+        let (pw, ph) = ((right - left).max(0) as usize, (bottom - top).max(0) as usize);
+        if pw == 0 || ph == 0 {
+            continue;
+        }
+        // Where the terrain is, if it is not the whole rectangle: its boundary, in these pixels.
+        let ring: Vec<(f32, f32)> = t
+            .boundary
+            .iter()
+            .map(|q| {
+                let (x, y) = d.view.px(*q);
+                (x - left as f32, y - top as f32)
+            })
+            .collect();
+        let cut = (ring.len() >= 3)
+            .then(|| {
+                let mut mask = tiny_skia::Mask::new(pw as u32, ph as u32)?;
+                mask.fill_path(&path(&[ring.as_slice()], true)?, FillRule::Winding, true, Transform::identity());
+                Some(mask)
+            })
+            .flatten();
+        // A row at a time: its points are a pixel apart along x, and the picture's two rows they blend are found once. The rows are
+        // nobody's but their own, so a big window is made in bands, a thread to each.
+        let view = d.view;
+        let fill = |first: usize, rows: &mut [u8]| {
+            let mut line = vec![[0u8; 4]; pw];
+            for (i, out) in rows.chunks_exact_mut(pw * 4).enumerate() {
+                let r = first + i;
+                let P2(from, y) = view.mm((left as f32 + 0.5, (top + r as i64) as f32 + 0.5));
+                if !(south..=north).contains(&y) {
+                    continue;
+                }
+                sampler.row(from, foot, y, foot, &mut line);
+                for (c, (&[red, green, blue, there], px)) in line.iter().zip(out.as_chunks_mut::<4>().0.iter_mut()).enumerate() {
+                    if !(west..=east).contains(&(from + c as f64 * foot)) {
+                        continue;
+                    }
+                    let kept = cut.as_ref().map_or(1.0, |m| f64::from(m.data().get(r * pw + c).copied().unwrap_or(0)) / 255.0);
+                    let alpha = (f64::from(there) * opacity * kept).round().clamp(0.0, 255.0) as u8;
+                    if alpha > 0 {
+                        let tone = |v: u8| if paint.halftone { v + (255 - v) / 2 } else { v };
+                        px.copy_from_slice(&[tone(red), tone(green), tone(blue), alpha]);
+                    }
+                }
+            }
+        };
+        let mut rgba = vec![0u8; pw * ph * 4];
+        let threads = if pw * ph >= BAND_PIXELS { std::thread::available_parallelism().map_or(1, |n| n.get()).min(MAX_BANDS) } else { 1 };
+        if threads <= 1 {
+            fill(0, &mut rgba);
+        } else {
+            let per = ph.div_ceil(threads);
+            std::thread::scope(|scope| {
+                for (n, rows) in rgba.chunks_mut(per * pw * 4).enumerate() {
+                    let fill = &fill;
+                    scope.spawn(move || fill(n * per, rows));
+                }
+            });
+        }
+        d.own(None);
+        d.push(Prim::Image { at: (left as f32, top as f32), width: pw as u32, height: ph as u32, rgba, ink: false });
+        // What is owed for it, unless it is let all the way through.
+        if opacity > 0.0 {
+            credits.extend(crate::imagery::credit_of(m, t));
+        }
+    }
+    credits.into_iter().take(crate::imagery::MAX_CREDITS).collect()
+}
+
+/// The most lines of credit a view letters.
+const MAX_CREDIT_LINES: usize = 8;
+
+/// `text` broken on its spaces into lines no wider than `room` px lettered `height` px tall; a word wider than that is cut where it
+/// fills a line.
+fn wrap_credit(text: &str, room: f32, height: f32) -> Vec<String> {
+    let (mut lines, mut line) = (Vec::new(), String::new());
+    for word in text.split_whitespace() {
+        let mut word = word.to_string();
+        while !word.is_empty() {
+            let joined = if line.is_empty() { word.clone() } else { format!("{line} {word}") };
+            if font::width(&joined, height) <= room {
+                line = joined;
+                break;
+            }
+            if !line.is_empty() {
+                lines.push(std::mem::take(&mut line));
+                continue;
+            }
+            // Alone and still too wide: as much as fits, at least a letter.
+            let fits =
+                (1..=word.chars().count()).take_while(|n| font::width(&word.chars().take(*n).collect::<String>(), height) <= room).count();
+            let head: String = word.chars().take(fits.max(1)).collect();
+            word = word.chars().skip(fits.max(1)).collect();
+            lines.push(head);
+        }
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    lines
+}
+
+/// The credits a photograph is owed, lettered at the bottom right of the window `d` draws, right-aligned and stacked upward, each line
+/// over a plate of paper so it reads over the photograph. Nobody's (never picked or boxed), and as much as fits the window: wrapped on
+/// spaces to its width, and as many lines as its height has room for.
+fn credit_plate(d: &mut Drawing, credits: &[String]) {
+    let (width, height) = (d.view.width as f32, d.view.height as f32);
+    let (text, margin) = (d.px(8.0), d.px(6.0));
+    if credits.is_empty() || ![width, height, text, margin].iter().all(|v| v.is_finite() && *v > 0.0) {
+        return;
+    }
+    let step = text * 1.6;
+    let room = (width - 2.0 * margin).max(text);
+    let fits = (((height - margin) / step) as usize).min(MAX_CREDIT_LINES);
+    let mut lines: Vec<String> = credits.iter().flat_map(|c| wrap_credit(c, room, text)).collect();
+    lines.truncate(fits);
+    d.own(None);
+    let mut y = height - margin - text / 2.0;
+    for line in lines.iter().rev() {
+        let w = font::width(line, text);
+        let x = width - margin - w / 2.0;
+        let pad = text * 0.4;
+        let (left, right, top, bottom) = (x - w / 2.0 - pad, x + w / 2.0 + pad, y - text / 2.0 - pad, y + text / 2.0 + pad);
+        d.push(Prim::Fill { rings: vec![vec![(left, top), (right, top), (right, bottom), (left, bottom)]], color: PAPER });
+        d.text(line, (x, y), text, INK);
+        y -= step;
+    }
+}
+
+/// Letters the credits of the photographs view `look` shows into the corner of `image`, a picture of the 3D view made by the core
+/// (the `render` command's, a sheet's), as a plan letters them: the pixels under the plate are the plate's, nothing else changes.
+pub fn stamp_credits(m: &Model, look: &Look, image: &mut Image) {
+    let credits = crate::imagery::credits(m, look);
+    if credits.is_empty() {
+        return;
+    }
+    let view = View { scale: 1.0, cx: 0.0, cy: 0.0, width: image.width, height: image.height };
+    let mut d = Drawing::new(view);
+    credit_plate(&mut d, &credits);
+    let Some(size) = IntSize::from_wh(image.width, image.height) else { return };
+    if let Some(mut pixmap) = Pixmap::from_vec(std::mem::take(&mut image.rgba), size) {
+        paint(&mut pixmap, &d);
+        image.rgba = pixmap.take();
+    }
 }
 
 /// The points of the scans a plan sees, from its cut plane down to its view depth, as Revit draws a point cloud in plan: from
@@ -2626,8 +2836,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     let elements: Vec<(Id, &Element)> =
         if among { plan_elements(m, key, level, &range, up, &mut components) } else { m.elements.iter().map(|(id, e)| (*id, e)).collect() };
     let all = || elements.iter().map(|(id, e)| (id, *e));
-    // The scans it sees, under all the rest; then its CAD drawings.
+    // The photograph under its terrain, under all the rest; then the scans it sees; then its CAD drawings.
+    let mut credits = Vec::new();
     if !up {
+        credits = aerial_imagery(&mut d, m, &look);
         scans(&mut d, m, &range, &look);
         cad_imports(&mut d, m, key, level, &look);
     }
@@ -2906,6 +3118,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 }
             }
             _ if up => {}
+            // Terrain, on every level: its contours.
+            Element::Toposurface(t) => terrain(&mut d, t),
+            // A pad, on its own level's plan: its outline.
+            Element::Pad(pd) if pd.level == level => d.line(&pd.footprint(), BY_CATEGORY, PAD, true),
             // A mass the plane passes through: its outline, dashed.
             Element::Mass(ms) if m.mass_cut_by(ms, range.cut) => d.dashed(&m.mass_outline(ms, range.cut), BY_CATEGORY, MASS, true),
             Element::Stair(st) => stair(&mut d, m, st, level),
@@ -3026,6 +3242,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         linework(&mut d, m, &g.linework);
     }
     d.weigh(|o| annotates(m, o));
+    credit_plate(&mut d, &credits);
     if titled {
         let mut title = m.view_name(key).map_or_else(String::new, str::to_string);
         if up {

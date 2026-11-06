@@ -33,7 +33,7 @@ for a floor or a roof. A wall stands plumb, so only on a face whose top edge is 
 and a roof lie on the top outline. `update_by_face` (UF; Revit's Update to Face has no default shortcut) rebuilds the geometry of the
 ones asked for, a mass's, or all of them (`massing::follow`: a wall's ends, level, offset and height or top level; a floor's or roof's
 boundary, level and offset; the type, a roof's slope and the rest stay) and refuses the lot, naming each, when a face is gone. A mass
-mirrored in place runs its outline round the other way, so `relocate` renumbers the faces its walls hold (`massing::mirrored`). Nothing
+mirrored in place runs its outline round the other way, so `relocate` renumbers the faces its walls hold (`massing::mirrored`). `fetch_terrain` runs the same step for the buildings it stands on new ground, mass by mass (a shell whose face is gone is left whole and named). Nothing
 else ties them to the mass, and IFC carries no mark: what comes back from a file is ordinary. `commands::category` reads `mass` and
 `masses` as `mass` (it trims every trailing `s`, which would make `ma`). IFC writes a mass as an `IFCBUILDINGELEMENTPROXY` of object type
 `Mass`, its footprint swept up; a lofted one is a closed `IFCTRIANGULATEDFACESET` with a `BIMCraft_Mass` property set (`ifc::LOFT`) whose
@@ -43,3 +43,28 @@ outline changes from base to top with no such set is left out and listed. The de
 corners clicked, Enter or the first corner again finishes, `finish_mass`), Show Mass (the button is pressed while the view shows
 masses) and, for each selected mass, the Model by Face buttons, which run the face commands, and Update to Face; a mass's Properties
 hold its levels and offsets and `Top Outline`, its corners as `x, y` parted by `;`, blank for none.
+
+Masses also come from OpenStreetMap: `import_osm` makes one for each building of a file, on the terrain, and keeps its `OSM Id` as a
+parameter so importing again updates it in place ([OSM import](osm-import.md)).
+
+## Building shell
+
+`building_shell {ids, storeys?, storey_height?, walls?, floors?, roof?, shape?, angle?, height?, orientation?}` (`commands.rs`, the pure
+roof planning in `shell.rs`) makes, for each mass chosen (up to 200 a command, one check, one undo step): a wall on each plumb edge
+(`wall_by_face`); **a floor at the base and over each storey** on the mass's own level at `base_offset + k x rise` (the storeys: `storeys`,
+else the mass's `OSM Levels`, else its height over `storey_height`, 3000; `rise` is `storey_height`, else the facade's height over their
+number), each marked `Mass Face` = `{mass, face: {storey: k, rise}}` so `update_by_face` re-places it (`massing::Face::Storey`); and a
+**roof** on top of the walls: `shape` (else `OSM Roof Shape`) flat, hipped, pyramidal (a hip on a square) or gabled; any other value is a
+flat roof and is said in the reply's `notes`. The slope is `angle` (else `OSM Roof Angle`), else what makes the roof `height` mm tall
+(`OSM Roof Height`: the roof is laid out once at 45 degrees and its peak, proportional to the slope's tangent, gives the slope; cut to 75
+degrees, said), else 30. A gabled roof stands the footprint's two edges across its ridge upright (the ridge runs along the smallest
+enclosing rectangle's longer side, or across it with `orientation: "across"`); a footprint that is not near a rectangle (under 80% of
+its rectangle) or has no edge across the ridge at each end gets a hipped roof, said. A footprint of more than 256 corners gets a flat
+roof. **A gabled roof's upright ends** reach into its gable: the walls on the edges it stands upright get `attach_top` to that roof, so
+their tops follow its underside to the ridge. **Doors** (`doors`, true, with walls): each entry of the mass's `OSM Entrances`
+([OSM import](osm-import.md#entrances-doors-and-exits)) is cut into the wall nearest it (within 300 mm) with `door {wall, offset}`, of
+the project's door type nearest the entrance's `width` (else 900, main 1000; a note when it is over 100 mm off, and a sliding type for
+`door=sliding` or `revolving` when the project has one), its `Mark` the kind (`main`, `exit`, `emergency`, `service`), and the project
+parameters `OSM Entrance` and `OSM Door`. None where the facade is lower than the door, where no wall is near (a cut edge, a part with no
+walls) or where a door stands already: each is a note. The reply's `doors` counts them. A mass that has walls, floors or a roof made by face already is skipped (`skipped` in the reply), so a second run never doubles.
+

@@ -25,6 +25,8 @@ mod constraints;
 pub mod crosscheck;
 mod csg;
 pub mod curves;
+#[cfg(test)]
+mod cutfill_tests;
 pub mod demand;
 pub mod derived;
 pub mod dims;
@@ -46,9 +48,15 @@ pub mod favorites;
 pub mod fills;
 mod fixtures;
 mod font;
+pub mod geo;
+#[cfg(test)]
+mod geo_tests;
 pub mod geom;
+pub mod georef;
 #[cfg(test)]
 mod georef_tests;
+#[cfg(test)]
+mod georeference_tests;
 pub mod gltf;
 pub mod graphics;
 pub mod groups;
@@ -61,8 +69,16 @@ mod ifc_colour_tests;
 mod ifc_generic_tests;
 #[cfg(test)]
 mod ifc_geometry_tests;
+mod ifc_georef;
+#[cfg(test)]
+mod ifc_georef_tests;
 #[cfg(test)]
 mod ifc_member_tests;
+pub mod imagery;
+#[cfg(test)]
+mod imagery_plan_tests;
+#[cfg(test)]
+mod imagery_tests;
 pub mod import;
 pub mod inquiry;
 pub mod insert;
@@ -72,6 +88,7 @@ pub mod library;
 pub mod lines;
 pub mod link;
 pub mod loads;
+pub mod map;
 pub mod massing;
 pub mod model;
 pub mod nbr5410;
@@ -79,6 +96,11 @@ pub mod nbr5410;
 mod openings_past_top_tests;
 #[cfg(test)]
 mod oracle_tests;
+pub mod osm;
+#[cfg(test)]
+mod osm_import_tests;
+#[cfg(test)]
+mod pad_tests;
 pub mod paint;
 pub mod pat;
 pub mod pdf;
@@ -115,6 +137,9 @@ pub mod selection;
 mod shape_tests;
 pub mod shared;
 pub mod sheet;
+pub mod shell;
+#[cfg(test)]
+mod shell_tests;
 pub mod skeleton;
 pub mod sketch;
 pub mod snap;
@@ -126,6 +151,9 @@ pub mod styles;
 pub mod symbol_set;
 pub mod text;
 pub mod texture;
+pub mod topo;
+#[cfg(test)]
+mod topo_tests;
 pub mod triad;
 pub mod triangulation;
 pub mod units;

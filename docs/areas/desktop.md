@@ -392,7 +392,7 @@ Floor goes into sketch mode at once, in a plan as in 3D, as Revit's does (`set_t
 (`walls_outline_panel`), which puts the outline the level's walls enclose, and its courtyards, in the sketch as lines to edit
 (`floor_outline`): what the tool's one click inside the walls made before.
 
-Unhide. Only Reveal Hidden Elements lets what a view hides be picked, so the Modify tab's View panel offers Unhide Element and Unhide Category (EU, VU) for a selection
+Unhide. The terrain is locked to a click, a box and a drag unless Ctrl+Alt is held or the view control bar's Select Terrain is ticked ([terrain](terrain.md#the-terrain-is-locked); `BimApp::terrain_unlocked`, `Canvas::terrain_only`). Only Reveal Hidden Elements lets what a view hides be picked, so the Modify tab's View panel offers Unhide Element and Unhide Category (EU, VU) for a selection
 `BimApp::hidden_selection` finds the active view hiding: the elements hidden one by one, and the categories hidden whole. They run `graphics` with `show_elements` or `show`
 (`unhide_selection`), the selection stays, and with nothing of it hidden EU opens the Elements tab as before and VU says so.
 
@@ -546,6 +546,35 @@ Dimension Type Properties (`dimtypes.rs`), and Properties edits its prefix, suff
 A double click on one of its numbers opens Dimension Text for that segment (`DimensionTextDialog`). Selected, an aligned or linear one shows
 a padlock under each segment and, over a string of two or more, EQ past its end (`dimension_constraints`): a click locks or unlocks, or makes
 it equal or not.
+
+## The Site tab
+
+`site.rs` (`Tab::Site`, between Massing and View). **Project Location**: Location opens a box (latitude, longitude, ground height in the
+project's units, true north, grid: `utm` or an EPSG code) that runs `geolocate`, and a pair copied from a map (`51.2254809, 6.7700762`) pasted into its Coordinates row, or into either field, fills Latitude and Longitude ([georeferencing](georeferencing.md)); a refusal stays in the box. **Terrain**: Terrain from
+Elevation Data and Import from OpenStreetMap open the area box (a distance round the origin, or a box of degrees; its km² and the 25 km²
+cap live; the options each command takes) and fetch on a thread (see [geofetch](geofetch.md#the-site-tab)), then a box says what was made
+and the credit the data is owed (ODbL, the elevation source). Import from OpenStreetMap (parts and columns always come in; the result box counts pieces, outlines replaced and kept, and the entrances placed and not) shows the Overpass query it will ask (live: it follows the area and Parts of buildings; selectable, with Copy), the busy box shows it while the fetch runs, and the box that says what was made keeps it as "Query used" (`fetched.query` of the command). Pad is `Tool::Pad(points)`, the Mass tool's way (click the corners, Enter or
+the first corner again finishes, Esc cancels; its Options Bar has the offset and thickness) and runs `pad`. Place on Terrain runs
+`place_on_terrain` on the selection; Cut/Fill runs `cut_fill` on the selected pads (every pad when none is) and lists each pad's cut and
+fill and the totals in a box. Properties has rows for pads (level, offset, thickness, area, cut/fill/net) and toposurfaces (contour
+interval, material, points, areas), edited through `modify`. The Terrain from Elevation Data box has a check box, on, "Stand the imported buildings on the new ground" (`stand_buildings`): the buildings fetched before the ground follow it, with their walls, floors and roof, in the same undo step, and the result box says how many, how many are off the ground, and any shell that could not follow. While a fetch runs the window's keys and agents wait, as for a Revit file. **Aerial Imagery** (in the Terrain panel) opens a box with the source (Automatic, the finest that has the place, or one of the core's table) and the picture's size in pixels. The box works out, with the command's own `imagery_ask` (the selected toposurface, else the only one), what Fetch would ask for and says it before anything is asked: a line for each source in the order it is tried (metres a pixel, tiles and about how many MB, the picture's pixels), a note when the first is coarser than `imagery::COARSE_METRES` (3 m: buildings cannot be told), and, when nothing can be asked (no toposurface, no source has the place, a size that is not a number), why, with Fetch off. Fetch asks the sources in turn on a thread, with a bar that counts tiles (`GeoSource::imagery_progress`, read from the real fetcher while the thread runs), and runs `fetch_imagery` over what came, naming the source that won, so it is one undo step; a box then says whose the photographs are, how fine, how much of the picture has no imagery, whether the tiles were kept from an earlier fetch, which sources were passed over and why, and where the terms are ([terrain](terrain.md#aerial-imagery)). The photograph then shows under every floor plan that shows the terrain, and Visibility/Graphics lists **Aerial Imagery** with the model's categories (hide it, or tone it down by halftone and transparency, in one view or a view template; `Graphics` row in `graphics.rs`). **Align Imagery** (Terrain panel; off while no terrain wears a photograph) shifts the photograph east and north of where the fetch laid it (`shift_imagery`; two fields in the project's units, Apply, Reset, Close; the box stays open). The credit it is owed is lettered at the bottom right of the plan, and the 3D view shows it as a label at its bottom right (`orbit.rs`).
+**Recent places**: Location's OK keeps where the project was put (latitude, longitude, true north, grid and an optional Name) in
+`settings.json` (`recent_places`, the ten newest, the same place to a millionth of a degree moves up instead of repeating; a damaged or
+hostile file is read kindly, places off the Earth dropped). The box lists them under its fields (a click fills them, ✕ forgets one), and
+for a project with no place starts at the newest, so the map picker opens on it too.
+**Pick on Map** (`site/map.rs`), a button in the Location box and in the area box's box of degrees, opens a window with OpenStreetMap's map
+(`GeoSource::tile`, two loader threads, only the tiles in view; the credit in the corner; [geofetch](geofetch.md#the-map-the-picker-is-drawn-on)):
+drag to move (the right or middle button always does), wheel or double click to zoom about the pointer, + and -, Go to (a pair pasted
+from a map). In the Location box a click picks the place and Use This Place fills Latitude and Longitude; in the area box a drag draws
+the box (Move map turns the drag back into a move), its km² shown against the 25 km² cap, red and unusable over it, and Use This Box
+fills the four degrees. The project's origin is marked. With no fetcher, or no tile, the map is a plain ground with its lines of
+latitude and longitude and the place can still be picked. What the map shows is `bimcraft_core::map`'s, so the widget only draws and
+passes the pointer in; the tests (`tests/site.rs`) read its state (`BimApp::map`) since a texture's pixels are not in the harness.
+**Build Shell** (`site/shell.rs`, the Context panel) acts on the selected masses: a box with Storey height (blank: from each building's
+`OSM Levels`, else 3 m) and the checks Outer walls, Floors at each storey, Roof (the shape the OpenStreetMap tags give, else flat) and Doors at the entrances runs
+`building_shell`, and a box says what was made, what already had a shell and the notes ([masses](massing.md#building-shell)). Not yet: a toposurface drawn by clicking points, a right-click item for Place on Terrain. The tests (`tests/site.rs`)
+give the session a fake fetcher and step frames until the thread answers (a spinner asks for frames forever: `step`, never `run`).
+The sandbox that built this has no graphics adapter, so the tab and its boxes were not looked at in the three looks: do that first.
 
 ## Background grids
 

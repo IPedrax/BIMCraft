@@ -68,9 +68,17 @@ pub const MAX_POINTS: usize = 10_000;
 pub const CEILING_CUT: f64 = 2300.0;
 /// Height of a ceiling's underside above its level, unless told otherwise.
 pub const CEILING_HEIGHT: f64 = 2600.0;
+/// The most points (x, y, z) one toposurface may be made of: a survey or a grid of a terrain model, not a hand-drawn outline.
+pub const MAX_TERRAIN_POINTS: usize = 50_000;
+/// The most breaklines one toposurface may have.
+pub const MAX_BREAKLINES: usize = 1_000;
+/// The finest contour interval of a toposurface, mm.
+pub const MIN_CONTOUR_INTERVAL: f64 = 10.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 17: a schedule may list several categories
+/// The version of the project file this build writes, and the newest it reads. 18: a project holds terrain (the element
+/// `toposurface`) and building pads (`pad`); nothing in a file of 17 changes, but a build that reads up to 17 would answer one
+/// of 18 with a serde error ("unknown variant"), not "saved by a newer BIMCraft". 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -108,7 +116,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 17;
+pub const FORMAT: u32 = 18;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -797,6 +805,82 @@ impl Mass {
     }
 
     /// Its footprint, counter-clockwise whichever way round `boundary` was given.
+    pub fn footprint(&self) -> Vec<P2> {
+        let mut ring = self.boundary.clone();
+        if geom::area(&ring) < 0.0 {
+            ring.reverse();
+        }
+        ring
+    }
+}
+
+/// Terrain, Revit's toposurface: surveyed `points` (x, y, z in mm, z in project coordinates, as a level's elevation is: 0 is the
+/// height of the project's origin, which `Location::elevation` puts above sea level; not over a level), `breaklines` that its
+/// triangles follow (ridges, valleys, kerbs), and a `boundary` that cuts away what is outside it. Plans draw its contours every
+/// `interval` mm (none, if 0), the 3D view its triangles in `material`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Toposurface {
+    #[serde(default)]
+    pub name: String,
+    pub points: Vec<[f64; 3]>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub breaklines: Vec<Vec<[f64; 3]>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub boundary: Vec<P2>,
+    /// A material of the project's, by name; none, the terrain's own colour.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub material: String,
+    #[serde(default = "default_interval")]
+    pub interval: f64,
+    /// Its values of the project's parameters, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, serde_json::Value>,
+}
+
+/// A toposurface's contour interval until it is given another, mm.
+pub const DEFAULT_CONTOUR_INTERVAL: f64 = 1000.0;
+
+fn default_interval() -> f64 {
+    DEFAULT_CONTOUR_INTERVAL
+}
+
+impl Toposurface {
+    /// Its triangles, built once for as long as its points stay as they are.
+    pub fn tin(&self) -> Result<std::sync::Arc<crate::topo::Tin>, String> {
+        crate::topo::cached(&self.points, &self.breaklines, &self.boundary)
+    }
+}
+
+/// The thickness a pad has until it is given another, mm.
+pub const DEFAULT_PAD_THICKNESS: f64 = 300.0;
+/// The thickest a pad may be, mm.
+pub const MAX_PAD_THICKNESS: f64 = 10_000.0;
+
+/// A building pad, Revit's: ground made level where a building stands. Its `boundary` is flat at `offset` mm above `level`, a slab
+/// `thickness` mm thick under that top. What it takes out of the terrain, and what it puts in, is cut and fill (`cut_fill`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pad {
+    #[serde(default)]
+    pub name: String,
+    pub level: Guid,
+    pub boundary: Vec<P2>,
+    #[serde(default)]
+    pub offset: f64,
+    #[serde(default = "default_pad_thickness")]
+    pub thickness: f64,
+    /// Its values of the project's parameters, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, serde_json::Value>,
+}
+
+fn default_pad_thickness() -> f64 {
+    DEFAULT_PAD_THICKNESS
+}
+
+impl Pad {
+    /// Its outline, counter-clockwise whichever way round `boundary` was given.
     pub fn footprint(&self) -> Vec<P2> {
         let mut ring = self.boundary.clone();
         if geom::area(&ring) < 0.0 {
@@ -1971,7 +2055,7 @@ macro_rules! visit_refs {
                     f(g)
                 }
             }
-            Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
+            Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) | Element::Toposurface(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
@@ -1987,6 +2071,7 @@ macro_rules! visit_refs {
                 f(level);
                 if let Some(g) = top_level { f(g) }
             }
+            Element::Pad(Pad { level, .. }) => f(level),
             Element::Shaft(Shaft { level, top_level, .. })
             | Element::Mass(Mass { level, top_level, .. })
             | Element::Column(Column { level, top_level, .. })
@@ -2057,6 +2142,8 @@ pub enum Element {
     Ceiling(Ceiling),
     Shaft(Shaft),
     Mass(Mass),
+    Toposurface(Toposurface),
+    Pad(Pad),
     Door(Opening),
     Window(Opening),
     Room(Room),
@@ -2126,6 +2213,8 @@ impl Element {
             | Element::Ceiling(Ceiling { params, .. })
             | Element::Roof(Roof { params, .. })
             | Element::Mass(Mass { params, .. })
+            | Element::Toposurface(Toposurface { params, .. })
+            | Element::Pad(Pad { params, .. })
             | Element::Door(Opening { params, .. })
             | Element::Window(Opening { params, .. })
             | Element::Room(Room { params, .. })
@@ -2149,6 +2238,8 @@ impl Element {
             | Element::Ceiling(Ceiling { params, .. })
             | Element::Roof(Roof { params, .. })
             | Element::Mass(Mass { params, .. })
+            | Element::Toposurface(Toposurface { params, .. })
+            | Element::Pad(Pad { params, .. })
             | Element::Door(Opening { params, .. })
             | Element::Window(Opening { params, .. })
             | Element::Room(Room { params, .. })
@@ -2304,6 +2395,8 @@ impl Element {
             Element::Ceiling(_) => "ceiling",
             Element::Shaft(_) => "shaft",
             Element::Mass(_) => "mass",
+            Element::Toposurface(_) => "toposurface",
+            Element::Pad(_) => "pad",
             Element::Door(_) => "door",
             Element::Window(_) => "window",
             Element::Room(_) => "room",
@@ -2571,7 +2664,7 @@ pub struct ProjectParameter {
 pub const MAX_PROJECT_PARAMETERS: usize = 256;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 25] = [
+pub const PARAMETER_CATEGORIES: [&str; 27] = [
     "wall",
     "floor",
     "ceiling",
@@ -2597,6 +2690,8 @@ pub const PARAMETER_CATEGORIES: [&str; 25] = [
     "downconductor",
     "groundconductor",
     "cable",
+    "toposurface",
+    "pad",
 ];
 
 impl ProjectParameter {
@@ -2745,6 +2840,9 @@ pub struct Model {
     /// Where room areas are measured: at the walls' centre lines, or at their finish faces.
     #[serde(default, skip_serializing_if = "RoomArea::is_default")]
     pub room_area: RoomArea,
+    /// Where on Earth its origin is, and which way is true north (Manage > Location), once set; a project that isn't placed has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<crate::georef::Location>,
     pub next_id: Id,
     pub types: Shared<Types>,
     /// What layers are made of, by name.
@@ -2900,6 +2998,7 @@ impl Model {
             units: Units::default(),
             language,
             room_area: RoomArea::default(),
+            location: None,
             next_id: FIRST_ID,
             types: Types::default().into(),
             materials: BTreeMap::new().into(),
@@ -3550,6 +3649,12 @@ impl Model {
         self.elements.id(a).is_some_and(|a| self.elements.id(b) == Some(a))
     }
 
+    /// Whether a click or a box in a view may take element `k`: it is there, and it is not [locked](crate::graphics::locked) unless
+    /// `unlocked` (Ctrl+Alt held, or the view's Select Terrain ticked).
+    pub fn pickable(&self, k: impl Key, unlocked: bool) -> bool {
+        self.elements.get(k).is_some_and(|e| unlocked || !crate::graphics::locked(e.category()))
+    }
+
     /// The elements that point at element `k`, by id, as [`Element::refs`] gives what each points at: the doors and windows
     /// in a wall, the walls attached to a roof or a floor, the dimensions and tags on it.
     pub fn referring(&self, k: impl Key) -> Vec<Id> {
@@ -4160,6 +4265,7 @@ impl Model {
             Element::Floor(f) => Some(f.level),
             Element::Ceiling(c) => Some(c.level),
             Element::Shaft(sh) => Some(sh.level),
+            Element::Pad(p) => Some(p.level),
             Element::Mass(ms) => Some(ms.level),
             Element::Room(r) => Some(r.level),
             Element::RoomSeparator(rs) => Some(rs.level),
@@ -4193,7 +4299,8 @@ impl Model {
             | Element::Schedule(_)
             | Element::Link(_)
             | Element::Dimension3D(_)
-            | Element::View3D(_) => None,
+            | Element::View3D(_)
+            | Element::Toposurface(_) => None,
         }
     }
 
@@ -5907,6 +6014,9 @@ impl Model {
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
+        if let Some(why) = self.location.as_ref().and_then(|l| l.problem()) {
+            return Err(format!("location: {why}"));
+        }
         if let Some(lw) = &self.line_weights {
             lw.check()?;
         }
@@ -6502,6 +6612,54 @@ impl Model {
                     if let Some(why) = crate::massing::loft_problem(&ms.boundary, crown) {
                         return Err(format!("{who}: {why}"));
                     }
+                }
+            }
+            Element::Pad(pd) => {
+                level_ok(pd.level)?;
+                boundary(&who, &pd.boundary)?;
+                text(&who, "name", &pd.name)?;
+                coord(&format!("{who} offset"), pd.offset)?;
+                if !pd.thickness.is_finite() || pd.thickness <= 0.0 || pd.thickness > MAX_PAD_THICKNESS {
+                    return Err(format!("{who}: its thickness is above 0 and at most {MAX_PAD_THICKNESS} mm, not {}", pd.thickness));
+                }
+            }
+            Element::Toposurface(t) => {
+                text(&who, "name", &t.name)?;
+                if t.points.len() < 3 || t.points.len() > MAX_TERRAIN_POINTS {
+                    return Err(format!("{who}: a toposurface needs 3 to {MAX_TERRAIN_POINTS} points"));
+                }
+                for p in &t.points {
+                    for v in p {
+                        coord(&format!("{who} point"), *v)?;
+                    }
+                }
+                if t.breaklines.len() > MAX_BREAKLINES {
+                    return Err(format!("{who}: more than {MAX_BREAKLINES} breaklines"));
+                }
+                let mut vertices = t.points.len();
+                for l in &t.breaklines {
+                    if l.len() < 2 || l.len() > MAX_POINTS {
+                        return Err(format!("{who}: a breakline needs 2 to {MAX_POINTS} points"));
+                    }
+                    vertices += l.len();
+                    for v in l.iter().flatten() {
+                        coord(&format!("{who} breakline"), *v)?;
+                    }
+                }
+                if vertices > MAX_TERRAIN_POINTS * 2 {
+                    return Err(format!("{who}: its points and breaklines come to more than {} vertices", MAX_TERRAIN_POINTS * 2));
+                }
+                if !t.boundary.is_empty() {
+                    boundary(&who, &t.boundary)?;
+                }
+                if !t.interval.is_finite() || t.interval < 0.0 || (t.interval > 0.0 && t.interval < MIN_CONTOUR_INTERVAL) {
+                    return Err(format!(
+                        "{who}: its contour interval is 0 (none) or at least {MIN_CONTOUR_INTERVAL} mm, not {}",
+                        t.interval
+                    ));
+                }
+                if !t.material.is_empty() && !self.materials.contains_key(&t.material) {
+                    return Err(format!("{who}: material `{}` isn't in the library; add it with `material`", t.material));
                 }
             }
             Element::Door(o) | Element::Window(o) => {
@@ -7255,6 +7413,7 @@ impl Model {
             distribution_systems,
             wire_types,
             georeference,
+            location,
             elements: _,
             library,
             loaded,
@@ -7294,6 +7453,7 @@ impl Model {
             && *distribution_systems == o.distribution_systems
             && *wire_types == o.wire_types
             && *georeference == o.georeference
+            && *location == o.location
             && *library == o.library
             && loaded.len() == o.loaded.len()
             && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))

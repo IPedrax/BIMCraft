@@ -54,7 +54,7 @@ a project and opens it, its components going out as proxies, so the field took n
 A material's `texture` (`texture.rs`) is a pattern drawn in code or a picture of `Model::images` (a PNG or JPEG comes in, is kept
 as a PNG of at most 1024 px, its header checked before the decoder makes room for it), laid on a face at its `size` in mm by the
 face's own axes (`view3d::basis`: across is level, up goes up it, east and north where it lies flat), sampled per pixel from the
-depth buffer, in the 3D view alone, from a mip chain. A triangle carries a skin (`view3d::skin`): in its low 24 bits a texture id (one more than its material's place in the
+depth buffer, in the 3D view alone, from a mip chain. A picture with `planar` is not repeated and not laid by a face's axes: `size` is the ground it covers, `offset` its west and north corner, it is looked up by east and north (`view3d::GROUND`) and holds its edge beyond (terrain's aerial imagery, [terrain](terrain.md)). A triangle carries a skin (`view3d::skin`): in its low 24 bits a texture id (one more than its material's place in the
 library), in its high 8 its material's `transparency`; `Scene::new` resolves the textures. A material's `transparency` (percent,
 0 to 100, 0 opaque and not written, the starter Glass 70) is how see-through the 3D view draws what is made of it, with no view
 override: a layer's skin wins over its element's, paint gives a face its own, and a family-less window's glass takes the Glass

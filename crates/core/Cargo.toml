@@ -20,6 +20,9 @@ encoding_rs = { workspace = true }
 getrandom = { workspace = true }
 tempfile = { workspace = true }
 rayon = { workspace = true }
+proj-core = { workspace = true }
+spade = { workspace = true }
+roxmltree = { workspace = true }
 ttf-parser = { workspace = true }
 
 [build-dependencies]

@@ -26,6 +26,8 @@ sys-locale = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 egui_kittest = { workspace = true }
+naga = { workspace = true }
+png = { workspace = true }
 bimcraft-update = { workspace = true, features = ["testing"] }
 
 [build-dependencies]

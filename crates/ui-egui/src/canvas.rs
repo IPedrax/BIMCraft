@@ -321,6 +321,8 @@ pub struct Canvas {
     drag: Option<Drag>,
     /// What's under the cursor, as `Drawing::pick_all` orders it, and how far Tab has gone.
     under: Vec<Id>,
+    /// Whether what is under the cursor is terrain and only terrain, which is locked (see `graphics::locked`).
+    terrain_only: bool,
     cycle: usize,
     /// A crop region's grip being dragged: the view, and which edge (see [`grips`]).
     crop_drag: Option<(Id, usize)>,
@@ -357,6 +359,7 @@ impl Default for Canvas {
             grab: None,
             drag: None,
             under: Vec::new(),
+            terrain_only: false,
             cycle: 0,
             crop_drag: None,
             grip: None,
@@ -1490,6 +1493,8 @@ impl BimApp {
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, key, fit) else { return };
         let mods = ui.input(|i| i.modifiers);
         let shape = self.shape();
+        let unlocked_pick = self.terrain_unlocked(click_modifiers(ui));
+        let mut terrain_only = false;
         let pipeline = self.card.canvas();
         let look = crate::retained::Look::now(ui.ctx(), &ui.painter_at(rect), rect.min, self.writing(), self.thin);
         let c = &mut self.canvas;
@@ -1504,9 +1509,16 @@ impl BimApp {
         // tests, egui moved the keyboard to a widget on that Tab: give it back.)
         let sketching = self.sketch.is_some();
         let under = match (&self.tool, local) {
-            (Tool::Modify, Some(q)) if !sketching => d.pick_all(q, PICK),
+            (Tool::Modify, Some(q)) if !sketching => {
+                let all = d.pick_all(q, PICK);
+                let under: Vec<Id> = all.iter().copied().filter(|id| model.pickable(*id, unlocked_pick)).collect();
+                // Only terrain here, and it is locked: a click says how to pick it.
+                terrain_only = under.is_empty() && !all.is_empty();
+                under
+            }
             _ => Vec::new(),
         };
+        c.terrain_only = terrain_only;
         if under != c.under {
             (c.under, c.cycle) = (under, 0);
         }
@@ -1534,9 +1546,10 @@ impl BimApp {
         // the press for a click, which the hand may have left by the time the button came up.
         // (Modify, here, is what is drawn nearest; Tab cycles through what is under the cursor.)
         let tool = self.tool.clone();
+        let unlocked_now = unlocked_pick;
         let under_at = |q: (f32, f32)| match &tool {
             Tool::Modify if sketching => None,
-            Tool::Modify => d.pick(q, PICK),
+            Tool::Modify => d.pick_all(q, PICK).into_iter().find(|id| model.pickable(*id, unlocked_now)),
             Tool::SketchPick => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
             // A line to draw along, or to round.
             Tool::DetailLine(_) | Tool::Wall(_) | Tool::SketchLine(_) if shape == draw::Shape::PickLines => {
@@ -1629,7 +1642,8 @@ impl BimApp {
         {
             let o = (o.x - rect.min.x, o.y - rect.min.y);
             self.canvas.prior = None;
-            self.canvas.drag = Some(match d.pick(o, PICK) {
+            let unlocked = self.terrain_unlocked(click_modifiers(ui));
+            self.canvas.drag = Some(match d.pick_all(o, PICK).into_iter().find(|id| model.pickable(*id, unlocked)) {
                 Some(id) => {
                     self.grab(id);
                     Drag::Move(view.mm(o))
@@ -1649,7 +1663,12 @@ impl BimApp {
                         self.run("move", json!({"ids": self.selection, "by": point(by)}));
                     }
                 }
-                Drag::Box(from) => self.pick_up(d.in_box(from, q, q.0 < from.0), click_modifiers(ui)),
+                Drag::Box(from) => {
+                    let mods = click_modifiers(ui);
+                    let unlocked = self.terrain_unlocked(mods);
+                    let found = d.in_box(from, q, q.0 < from.0).into_iter().filter(|id| model.pickable(*id, unlocked)).collect();
+                    self.pick_up(found, mods);
+                }
             }
         }
         // A double click on a section's or an elevation's mark opens its view, as in Revit; on a note, writes in it.
@@ -1973,6 +1992,8 @@ impl BimApp {
 
     /// Add `found` to the selection with Ctrl, take it away with Shift, else select just it.
     pub(crate) fn pick_up(&mut self, found: Vec<Id>, mods: Modifiers) {
+        // Ctrl+Alt is the chord that picks the terrain, not Ctrl's "add".
+        let mods = if mods.ctrl && mods.alt { Modifiers { ctrl: false, command: false, alt: false, ..mods } } else { mods };
         if mods.shift {
             self.selection.retain(|id| !found.contains(id));
         } else if mods.command {
@@ -2036,7 +2057,12 @@ impl BimApp {
             }
             // A sketch tool with the sketch gone: nothing to draw into.
             Tool::SketchLine(_) | Tool::SketchPick => self.tool = Tool::Modify,
-            Tool::Modify => self.pick_up(hovered.into_iter().collect(), mods),
+            Tool::Modify => {
+                if hovered.is_none() && self.canvas.terrain_only {
+                    self.hint_terrain();
+                }
+                self.pick_up(hovered.into_iter().collect(), mods)
+            }
             Tool::Door | Tool::Window => {
                 let door = matches!(self.tool, Tool::Door);
                 let cat = if door { "door" } else { "window" };
@@ -2384,6 +2410,17 @@ impl BimApp {
                 if path.len() >= 3 && path.first().is_some_and(|f| f.dist(p) <= TOL) {
                     self.finish_mass(level);
                 } else if let Tool::Mass(path) = &mut self.tool
+                    && path.last().is_none_or(|l| l.dist(p) > TOL)
+                {
+                    path.push(p);
+                }
+            }
+            // A pad's next corner; back on the first, it's done.
+            Tool::Pad(path) => {
+                let p = self.snap_point(m, level, v, at, path, mods.shift);
+                if path.len() >= 3 && path.first().is_some_and(|f| f.dist(p) <= TOL) {
+                    self.finish_pad(level);
+                } else if let Tool::Pad(path) = &mut self.tool
                     && path.last().is_none_or(|l| l.dist(p) > TOL)
                 {
                     path.push(p);
@@ -3587,9 +3624,12 @@ impl BimApp {
         let sketched = |e: &Element| ghost(p, Place::at(origin), &render::sketch(m, *v, m.next_id, e), &[m.next_id], &|pt| pt);
         let ghost = |f: &dyn Fn(Pos2) -> Pos2| ghost(p, sc.place, sc.d, &self.selection, f);
         let chain = match &self.tool {
-            Tool::Wall(chain) | Tool::Railing(chain) | Tool::Mass(chain) | Tool::DetailLine(chain) | Tool::SketchLine(chain) => {
-                chain.as_slice()
-            }
+            Tool::Wall(chain)
+            | Tool::Railing(chain)
+            | Tool::Mass(chain)
+            | Tool::Pad(chain)
+            | Tool::DetailLine(chain)
+            | Tool::SketchLine(chain) => chain.as_slice(),
             Tool::SketchPick => &[],
             // The group a click would place.
             Tool::DetailGroup => {
@@ -4077,6 +4117,14 @@ impl BimApp {
                 base_offset: 0.0,
                 params: Default::default(),
             }));
+            let (area, unit) = m.units.area(geom::area(&ring).abs());
+            let middle = ring.iter().fold(P2(0.0, 0.0), |a, q| a + *q * (1.0 / ring.len() as f64));
+            label(sc.screen(middle), format!("{area:.2} {unit}"));
+        }
+        // The pad a click would close, as the plan draws it, and its area.
+        if let (Tool::Pad(_), true) = (&self.tool, chain.len() >= 2) {
+            let ring: Vec<P2> = chain.iter().copied().chain([next]).collect();
+            sketched(&Element::Pad(crate::site::pad_sketch(m, level, &ring)));
             let (area, unit) = m.units.area(geom::area(&ring).abs());
             let middle = ring.iter().fold(P2(0.0, 0.0), |a, q| a + *q * (1.0 / ring.len() as f64));
             label(sc.screen(middle), format!("{area:.2} {unit}"));

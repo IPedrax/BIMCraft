@@ -57,6 +57,9 @@ changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID a
 | Families, forms, materials, textures, paint, favorites | [families](../../docs/areas/families.md) |
 | Beams, columns, footings, pipes, conduits, fixtures | [structure and MEP](../../docs/areas/structure-and-mep.md), [disciplines](../../docs/disciplines.md) |
 | IFC export or import | [looking at the result](../../docs/areas/looking-at-results.md): the IfcOpenShell checks |
+| Project location, true north, CRS, IFC map conversion | [georeferencing](../../docs/areas/georeferencing.md) |
+| Terrain (toposurface, contours, heights) | [terrain](../../docs/areas/terrain.md) |
+| OpenStreetMap buildings | [OSM import](../../docs/areas/osm-import.md) |
 | Autosave and recovery | [autosave](../../docs/autosave.md) |
 
 ## Testing

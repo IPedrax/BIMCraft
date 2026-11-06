@@ -321,7 +321,8 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
             Some(Element::View3D(v)) => {
                 let look = Look::of(m, vp.view);
                 let cam = view3d::camera_of(m, v, view.scale, ROOM * DENSITY, &look);
-                let img = scene.get_or_insert_with(|| view3d::Scene::new(m)).render_in(&cam, &[], &look);
+                let mut img = scene.get_or_insert_with(|| view3d::Scene::new(m)).render_in(&cam, &[], &look);
+                render::stamp_credits(m, &look, &mut img);
                 d.push(Prim::Image { at: (ox, oy), width: img.width, height: img.height, rgba: img.rgba, ink: false });
                 // Its dimensions, over the picture: lines of the sheet's, at paper size.
                 let mut inner = Drawing::new(view);

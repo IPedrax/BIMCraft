@@ -49,6 +49,10 @@ const GLASS: Rgb = Rgb(166, 200, 228);
 const ROOF: Rgb = Rgb(176, 118, 96);
 const CEILING: Rgb = Rgb(244, 242, 236);
 const MASS: Rgb = Rgb(158, 190, 224);
+/// Terrain without a material of its own.
+const TERRAIN: Rgb = Rgb(150, 128, 92);
+/// A building pad.
+const PAD: Rgb = Rgb(150, 150, 140);
 const RAIL: Rgb = Rgb(120, 122, 128);
 /// A beam, a footing, a structural column made of nothing the library has.
 const STRUCTURE: Rgb = Rgb(182, 184, 190);
@@ -901,6 +905,26 @@ fn solids_in_with(
                 out.push(Solid::Mesh { owner: id, color: MASS, tex: 0, tris, caps: 0, round: false, cut: false });
             }
             Element::Mass(ms) => out.push(slab(id, MASS, &ms.footprint(), m.span(ms.level, ms.base_offset, ms.top_level, ms.height))),
+            // A pad: a slab under its top.
+            Element::Pad(pd) => {
+                let top = m.elevation(pd.level) + pd.offset;
+                out.push(slab(id, PAD, &pd.footprint(), (top - pd.thickness, top)));
+            }
+            // Terrain: the triangles of its surface, in its material's colour. One that makes no surface shows nothing.
+            Element::Toposurface(t) => {
+                if let Ok(tin) = t.tin() {
+                    let color = m.materials.get(&t.material).map_or(TERRAIN, |x| Rgb(x.color[0], x.color[1], x.color[2]));
+                    out.push(Solid::Mesh {
+                        owner: id,
+                        color,
+                        tex: skin(m, &t.material),
+                        tris: tin.triangles().to_vec(),
+                        caps: 0,
+                        round: false,
+                        cut: false,
+                    });
+                }
+            }
             // Each form in its material's colour; a curved one's facets one surface, as a curved wall's are.
             Element::Component(c) => {
                 for piece in components.pieces(c) {
@@ -1401,6 +1425,9 @@ impl Rule {
         }
     }
 }
+
+/// What a planar texture lies across and up: east and north, whatever the slope under it.
+const GROUND: [P3; 2] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
 
 /// Two unit vectors across a triangle's plane, the way a texture's across and up lie on it: across is level (to the
 /// right of someone looking at the face from outside, east where it lies flat), up goes up it (north where it lies flat).
@@ -2635,7 +2662,7 @@ impl Scene {
             if !plain && colour(tri) != tri.color {
                 return None;
             }
-            let [across, up] = basis(tri);
+            let [across, up] = if sampler.planar() { GROUND } else { basis(tri) };
             let (x, y) = ((k % w) as f64 + 0.5, (k / w) as f64 + 0.5);
             let at = cam.point_at((x, y), f64::from(z));
             Some(sampler.at(dot(at, across), dot(at, up), foot))
@@ -4404,6 +4431,85 @@ mod tests {
         let path = std::env::temp_dir().join(format!("bimcraft-{name}-{}.png", std::process::id()));
         std::fs::write(&path, png).unwrap();
         path.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn a_picture_laid_over_the_ground_follows_the_ground_on_a_slope_not_the_slope() {
+        // A tilted plane of terrain, 10 m each way, rising 2 m from west to east, with a picture over it: red in the west half, blue
+        // in the east. Laid by where it is, the colour follows x whatever the slope; laid across the tilted face, it would run along y.
+        let mut s = Session::new();
+        let path = halves("terrain");
+        s.script(&format!(
+            r##"material {{"name": "Aerial", "color": "#808080", "texture": {{"kind": "image", "path": {path:?}, "size": [10000, 10000], "offset": [0, 10000], "planar": true}}}}
+               toposurface {{"points": [[0, 0, 0], [10000, 0, 2000], [10000, 10000, 2000], [0, 10000, 0]], "material": "Aerial"}}"##
+        ))
+        .unwrap();
+        let (scene, close) = closeup(&s, [5000.0, 5000.0, 1000.0], 0.1);
+        let img = scene.render(&close, &[]);
+        let colour = |x: f64, y: f64| {
+            let (px, py) = at(&close, [x, y, x / 5.0]);
+            img.color(px, py)
+        };
+        let (red, blue) = (|c: Rgb| i32::from(c.0) - i32::from(c.2), |c: Rgb| i32::from(c.2) - i32::from(c.0));
+        for y in [2000.0, 5000.0, 8000.0] {
+            for x in [1500.0, 2500.0, 3500.0, 4500.0] {
+                let c = colour(x, y);
+                assert!(red(c) > 80, "({x}, {y}) is in the west half, red: {c:?}");
+            }
+            for x in [5500.0, 6500.0, 7500.0, 8500.0] {
+                let c = colour(x, y);
+                assert!(blue(c) > 80, "({x}, {y}) is in the east half, blue: {c:?}");
+            }
+        }
+        // Moved west by 4 m, the colours go with it: x = 2500 is now over the picture's middle, and blue.
+        s.execute("material", &serde_json::json!({"name": "Aerial", "texture": {"offset": [-4000, 10000]}})).unwrap();
+        let (scene, close) = closeup(&s, [5000.0, 5000.0, 1000.0], 0.1);
+        let img = scene.render(&close, &[]);
+        let (px, py) = at(&close, [2500.0, 5000.0, 500.0]);
+        assert!(blue(img.color(px, py)) > 80, "{:?}", img.color(px, py));
+        // And beyond the picture its edge goes on: x = 9500 is 4 m past its east edge, and still blue; nothing wraps to red.
+        let (px, py) = at(&close, [9500.0, 5000.0, 1900.0]);
+        assert!(blue(img.color(px, py)) > 80, "{:?}", img.color(px, py));
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn where_a_picture_lets_the_ground_through_3d_shows_the_materials_own_colour_not_white() {
+        // The east half of the picture is clear: there the terrain is what it is without a picture, the material's colour; the west
+        // half is the photograph.
+        let (w, h) = (64u32, 8u32);
+        let rgba: Vec<u8> = (0..w * h).flat_map(|k| if k % w < w / 2 { [255, 0, 0, 255] } else { [0, 0, 0, 0] }).collect();
+        let png = tiny_skia::Pixmap::from_vec(rgba, tiny_skia::IntSize::from_wh(w, h).unwrap()).unwrap().encode_png().unwrap();
+        let path = std::env::temp_dir().join(format!("bimcraft-clear-{}.png", std::process::id()));
+        std::fs::write(&path, png).unwrap();
+        let mut s = Session::new();
+        s.script(&format!(
+            r##"material {{"name": "Aerial", "color": "#306090", "texture": {{"kind": "image", "path": {:?}, "size": [10000, 10000], "offset": [0, 10000], "planar": true}}}}
+               toposurface {{"points": [[0, 0, 0], [10000, 0, 2000], [10000, 10000, 2000], [0, 10000, 0]], "material": "Aerial"}}"##,
+            path.to_string_lossy()
+        ))
+        .unwrap();
+        let sample = |s: &Session| {
+            let (scene, close) = closeup(s, [5000.0, 5000.0, 1000.0], 0.1);
+            let img = scene.render(&close, &[]);
+            [(2500.0, 5000.0), (7500.0, 5000.0), (6000.0, 2000.0)].map(|(x, y)| {
+                let (px, py) = at(&close, [x, y, x / 5.0]);
+                img.color(px, py)
+            })
+        };
+        let with = sample(&s);
+        assert!(with[0].0 > 150 && with[0].2 < 80, "the photograph in the west: {:?}", with[0]);
+        s.execute("material", &serde_json::json!({"name": "Aerial", "texture": null})).unwrap();
+        let plain = sample(&s);
+        for k in [1, 2] {
+            let (a, b) = (with[k], plain[k]);
+            assert!(
+                a.0.abs_diff(b.0) <= 2 && a.1.abs_diff(b.1) <= 2 && a.2.abs_diff(b.2) <= 2,
+                "the east is the plain material: {a:?} against {b:?}"
+            );
+            assert!(a.2 > a.0, "bluish, never white: {a:?}");
+        }
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]

@@ -21,6 +21,7 @@ dwg = ["dep:bimcraft-dwg"]
 [dependencies]
 bimcraft-i18n = { workspace = true }
 bimcraft-core = { workspace = true }
+bimcraft-geofetch = { workspace = true }
 bimcraft-rvt = { workspace = true, optional = true }
 bimcraft-dwg = { workspace = true, optional = true }
 bimcraft-ui-egui = { workspace = true }

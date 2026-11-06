@@ -109,6 +109,9 @@ pub struct Session {
     resets: usize,
     /// What reads a DWG drawing, when the app has one (`cad::DwgReader`); none says to save it as DXF.
     pub dwg: Option<crate::cad::DwgReader>,
+    /// What fetches OpenStreetMap and elevation data, when the app has one (`geo::GeoSource`); none says to fetch it elsewhere and
+    /// bring it in as a file.
+    pub geo: Option<crate::geo::Fetcher>,
     /// Whether the session may only read its project, and if so what would let it edit, which each refusal ends with: an agent's,
     /// when the user lets agents only read (the window's File > Settings > Agents, `bimcraft-cli mcp --read-only`). Then a command
     /// that would replace the project, undo or redo, or write over its own file is refused before it runs, and one that changed the
@@ -155,6 +158,7 @@ impl Session {
             checks: 0,
             resets: 0,
             dwg: None,
+            geo: None,
             read_only: None,
             verified: None,
         }

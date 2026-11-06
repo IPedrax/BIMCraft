@@ -195,6 +195,15 @@ icon_names! {
     AddVertex,
     DeleteVertex,
     ConvertSpline,
+    Site,
+    Terrain,
+    Pad,
+    CutFill,
+    PlaceOnTerrain,
+    Location,
+    FromMap,
+    Aerial,
+    Shell,
 }
 
 /// A single unfilled contour in grid coordinates, shared by egui and the catalog.
@@ -1024,6 +1033,62 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(4.0, 4.0), (20.0, 4.0), (20.0, 20.0), (4.0, 20.0)]);
             g.line(&[(4.0, 4.0), (20.0, 20.0)]);
             g.line(&[(20.0, 4.0), (4.0, 20.0)]);
+        }
+        Icon::Site => {
+            // A parcel seen from above: its boundary, with a corner marked.
+            g.closed(&[(4.0, 7.0), (20.0, 5.0), (21.0, 17.0), (5.0, 20.0)]);
+            g.circle((12.0, 12.5), 2.5);
+        }
+        Icon::Terrain => {
+            // Contour lines round a hill.
+            g.closed(&[(3.0, 20.0), (7.0, 12.0), (12.0, 7.0), (17.0, 12.0), (21.0, 20.0)]);
+            g.line(&[(8.5, 17.5), (12.0, 12.0), (15.5, 17.5)]);
+            g.line(&[(12.0, 3.0), (12.0, 5.0)]);
+        }
+        Icon::Pad => {
+            // A level slab cut into a sloping ground line.
+            g.line(&[(3.0, 8.0), (9.0, 12.0)]);
+            g.closed(&[(9.0, 12.0), (16.0, 12.0), (16.0, 15.0), (9.0, 15.0)]);
+            g.line(&[(16.0, 12.0), (21.0, 16.0)]);
+            g.line(&[(3.0, 19.0), (21.0, 19.0)]);
+        }
+        Icon::CutFill => {
+            // The ground, the pad's level across it, and the arrows: out where it is high, in where it is low.
+            g.line(&[(3.0, 8.0), (9.0, 14.0), (15.0, 8.0), (21.0, 14.0)]);
+            g.line(&[(3.0, 12.0), (21.0, 12.0)]);
+            g.line(&[(9.0, 17.0), (9.0, 21.0)]);
+            g.line(&[(7.0, 19.0), (9.0, 21.0), (11.0, 19.0)]);
+            g.line(&[(15.0, 5.0), (15.0, 1.5)]);
+            g.line(&[(13.0, 3.5), (15.0, 1.5), (17.0, 3.5)]);
+        }
+        Icon::PlaceOnTerrain => {
+            // A box standing on a sloping ground line.
+            g.line(&[(3.0, 18.0), (21.0, 12.0)]);
+            g.closed(&[(8.0, 8.0), (15.0, 8.0), (15.0, 15.7), (8.0, 14.7)]);
+        }
+        Icon::Location => {
+            // A pin: its head and the point it stands on.
+            g.arc((12.0, 9.0), 5.5, 0.0, std::f32::consts::TAU);
+            g.line(&[(8.0, 13.0), (12.0, 21.0), (16.0, 13.0)]);
+            g.circle((12.0, 9.0), 1.8);
+        }
+        Icon::Shell => {
+            // A house: walls, a floor across them and a hipped roof.
+            g.closed(&[(4.0, 12.0), (4.0, 20.0), (20.0, 20.0), (20.0, 12.0)]);
+            g.line(&[(2.0, 12.0), (12.0, 4.0), (22.0, 12.0)]);
+            g.line(&[(4.0, 16.0), (20.0, 16.0)]);
+        }
+        Icon::Aerial => {
+            // A photograph: its frame, a ridge of hills in it and the sun over them.
+            g.closed(&[(3.0, 5.0), (21.0, 5.0), (21.0, 19.0), (3.0, 19.0)]);
+            g.line(&[(3.0, 16.0), (9.0, 10.0), (13.0, 14.0), (16.0, 11.0), (21.0, 16.0)]);
+            g.circle((17.0, 8.5), 1.6);
+        }
+        Icon::FromMap => {
+            // Buildings, as a map of them: three blocks of different heights.
+            g.closed(&[(3.0, 21.0), (3.0, 12.0), (9.0, 12.0), (9.0, 21.0)]);
+            g.closed(&[(9.0, 21.0), (9.0, 5.0), (15.0, 5.0), (15.0, 21.0)]);
+            g.closed(&[(15.0, 21.0), (15.0, 14.0), (21.0, 14.0), (21.0, 21.0)]);
         }
         Icon::Mass => {
             // A rectangular volume with parallel receding edges.

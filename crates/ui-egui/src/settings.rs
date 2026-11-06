@@ -125,6 +125,56 @@ pub struct Settings {
     pub agents_listen: bool,
     pub agents_port: u16,
     pub agents_edit: bool,
+    /// The places the Location box has set, newest first.
+    pub places: Vec<Place>,
+}
+
+/// The most places kept.
+pub const MAX_PLACES: usize = 10;
+
+/// A place the project was put at: where, how the grid is turned and named, and what the user called it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Place {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub true_north: f64,
+    /// `utm` or an EPSG code, as the Location box takes it.
+    pub crs: String,
+    pub name: String,
+}
+
+impl Place {
+    fn to_json(&self) -> Value {
+        json!({"latitude": self.latitude, "longitude": self.longitude, "true_north": self.true_north, "crs": self.crs, "name": self.name})
+    }
+
+    /// A place read from a file: none unless its coordinates are numbers on Earth. The rest is cut or made kind.
+    fn from_json(v: &Value) -> Option<Place> {
+        let latitude = v["latitude"].as_f64().filter(|x| x.is_finite() && x.abs() <= 90.0)?;
+        let longitude = v["longitude"].as_f64().filter(|x| x.is_finite() && x.abs() <= 180.0)?;
+        let true_north = v["true_north"].as_f64().filter(|x| x.is_finite() && x.abs() <= 360.0).unwrap_or(0.0);
+        let text = |k: &str, max: usize| v[k].as_str().map(|s| s.trim().chars().take(max).collect::<String>()).unwrap_or_default();
+        let crs = Some(text("crs", 16)).filter(|c| !c.is_empty()).unwrap_or_else(|| "utm".to_string());
+        Some(Place { latitude, longitude, true_north, crs, name: text("name", 80) })
+    }
+
+    /// Whether `other` is the same place: to a millionth of a degree (about 0.1 m).
+    pub fn same_as(&self, other: &Place) -> bool {
+        (self.latitude - other.latitude).abs() < 1e-6 && (self.longitude - other.longitude).abs() < 1e-6
+    }
+}
+
+/// Puts `place` first in `places`: the same place already there moves up (and takes the new name, if it has one), the list stays at
+/// most [`MAX_PLACES`] long.
+pub fn remember(places: &mut Vec<Place>, mut place: Place) {
+    if let Some(i) = places.iter().position(|p| p.same_as(&place)) {
+        let old = places.remove(i);
+        if place.name.is_empty() {
+            place.name = old.name;
+        }
+    }
+    places.insert(0, place);
+    places.truncate(MAX_PLACES);
 }
 
 impl Settings {
@@ -159,6 +209,7 @@ impl Settings {
             "view_name": self.view_name,
             "shortcuts": self.shortcuts,
             "system_title_bar": self.system_title_bar,
+            "recent_places": self.places.iter().map(Place::to_json).collect::<Vec<_>>(),
             "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
         })
     }
@@ -203,6 +254,18 @@ impl Settings {
             view_name: v["view_name"].as_bool().unwrap_or(base.view_name),
             shortcuts: shortcuts_from(&v["shortcuts"], base.shortcuts),
             system_title_bar: v["system_title_bar"].as_bool().unwrap_or(base.system_title_bar),
+            places: match v["recent_places"].as_array() {
+                Some(list) => {
+                    let mut kept: Vec<Place> = Vec::new();
+                    for p in list.iter().take(4 * MAX_PLACES).filter_map(Place::from_json) {
+                        if !kept.iter().any(|k| k.same_as(&p)) && kept.len() < MAX_PLACES {
+                            kept.push(p);
+                        }
+                    }
+                    kept
+                }
+                None => base.places,
+            },
             agents_listen: v["agents"]["listen"].as_bool().unwrap_or(base.agents_listen),
             agents_port: v["agents"]["port"].as_u64().and_then(|p| u16::try_from(p).ok()).unwrap_or(base.agents_port),
             agents_edit: v["agents"]["edit"].as_bool().unwrap_or(base.agents_edit),
@@ -315,6 +378,7 @@ impl BimApp {
         (self.show_origin, self.show_view_name) = (kept.origin_marker, kept.view_name);
         self.custom_shortcuts = kept.shortcuts.clone();
         self.system_title_bar = kept.system_title_bar;
+        self.places = kept.places.clone();
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
         self.settings_kept = Some(kept);
         self.settings_path = Some(path);
@@ -351,6 +415,7 @@ impl BimApp {
             view_name: self.show_view_name,
             shortcuts: self.custom_shortcuts.clone(),
             system_title_bar: self.system_title_bar,
+            places: self.places.clone(),
             agents_listen: self.agents.listen,
             agents_port: self.agents.port,
             agents_edit: self.agents.edit,

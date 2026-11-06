@@ -62,6 +62,7 @@ mod section_worker;
 pub mod settings;
 mod shape;
 pub mod shortcuts;
+mod site;
 mod sketch;
 mod sketch3d;
 mod standards;
@@ -252,6 +253,8 @@ pub enum Tool {
     Shaft(Option<P2>),
     /// A mass: the corners of its footprint, as clicked so far.
     Mass(Vec<P2>),
+    /// A building pad: the corners of its outline, as clicked so far.
+    Pad(Vec<P2>),
     /// A detail line in the Options Bar's line style: its points, as clicked so far.
     DetailLine(Vec<P2>),
     /// The selected floor's slope arrow: its tail, once clicked.
@@ -298,6 +301,7 @@ enum Tab {
     Insert,
     Annotate,
     Massing,
+    Site,
     View,
     Manage,
     Modify,
@@ -480,6 +484,11 @@ pub struct BimApp {
     ribbon_peek: bool,
     /// What High Contrast Point Clouds fills a view's scans with: the user's (Settings > Graphics), crimson at first.
     scan_contrast: [u8; 3],
+    /// Select Terrain, ticked in the view control bar: plans and the 3D view pick the terrain as any element, with no Ctrl+Alt held. This
+    /// window's, not the project's: it is not in a file, and a new project keeps it.
+    pub(crate) select_terrain: bool,
+    /// Whether the status line has said, this session, that Ctrl+Alt picks the terrain.
+    terrain_hint_given: bool,
     background_grid_dialog: Option<background_grid::GridDialog>,
     /// Global grid snapping preference, independent of view graphics and templates.
     grid_snapping: bool,
@@ -517,6 +526,8 @@ pub struct BimApp {
     preset_note: Option<String>,
     settings_path: Option<PathBuf>,
     settings_kept: Option<settings::Settings>,
+    /// The places the Location box has set, newest first: kept in the settings file.
+    places: Vec<settings::Place>,
     /// The window's size, kept and brought within its screen (`window.rs`).
     window: window::Tracker,
     theme_wanted: Option<egui::ThemePreference>,
@@ -592,6 +603,11 @@ pub struct BimApp {
     /// The Mass tool's top, as the Shaft tool's.
     mass_top: Option<Option<Id>>,
     mass_height: String,
+    /// The Pad tool's offset above its level and its thickness, as typed.
+    pad_offset: String,
+    pad_thickness: String,
+    /// The Site tab's dialogs and the fetch running for one.
+    site: site::Site,
     /// The Camera tool's eye and target heights over the plan's level, and its lens, as typed.
     camera_eye_height: String,
     camera_target_height: String,
@@ -1078,7 +1094,7 @@ fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sen
 const FLOATING_CARD: f32 = 30.0;
 
 /// The ribbon's tabs, in order, with the icon the Tools palette's rail gives each (the contextual tab comes after them).
-const TABS: [(Tab, &str, Icon); 12] = [
+const TABS: [(Tab, &str, Icon); 13] = [
     (Tab::Architecture, msg!("Architecture"), Icon::Wall),
     (Tab::Structure, msg!("Structure"), Icon::Beam),
     (Tab::Plumbing, msg!("Plumbing"), Icon::Pipe),
@@ -1088,6 +1104,7 @@ const TABS: [(Tab, &str, Icon); 12] = [
     (Tab::Insert, msg!("Insert"), Icon::ImportCad),
     (Tab::Annotate, msg!("Annotate"), Icon::Dimension),
     (Tab::Massing, msg!("Massing"), Icon::Mass),
+    (Tab::Site, msg!("Site"), Icon::Site),
     (Tab::View, msg!("View"), Icon::View3D),
     (Tab::Manage, msg!("Manage"), Icon::Settings),
     (Tab::Modify, "Modify", Icon::Modify),
@@ -1152,6 +1169,8 @@ impl BimApp {
             palette_filter: None,
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
+            select_terrain: false,
+            terrain_hint_given: false,
             background_grid_dialog: None,
             grid_snapping: false,
             show_origin: true,
@@ -1167,6 +1186,7 @@ impl BimApp {
             preset_note: None,
             settings_path: None,
             settings_kept: None,
+            places: Vec::new(),
             window: window::Tracker::default(),
             theme_wanted: None,
             light_canvas: false,
@@ -1214,6 +1234,9 @@ impl BimApp {
             shaft_height: units.length(3000.0),
             mass_top: None,
             mass_height: units.length(3000.0),
+            pad_offset: units.length(0.0),
+            pad_thickness: units.length(300.0),
+            site: site::Site::default(),
             camera_eye_height: units.length(1600.0),
             camera_target_height: units.length(1200.0),
             camera_lens: "35".into(),
@@ -1427,6 +1450,7 @@ impl BimApp {
             Tool::Ceiling => Some(msg!("Place Ceiling")),
             Tool::Shaft(_) => Some(msg!("Create Shaft Opening")),
             Tool::Mass(_) => Some(msg!("Create Mass")),
+            Tool::Pad(_) => Some(msg!("Create Pad")),
         };
         if let Some(what) = place {
             return Some(format!("{} | {}", t("Modify"), t(what)));
@@ -1528,6 +1552,7 @@ impl BimApp {
         self.tidy();
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
+        self.poll_site(&ctx);
         self.poll_autosave(&ctx);
         self.keys(&ctx);
         self.os_requests(&ctx);
@@ -1700,6 +1725,19 @@ impl BimApp {
         self.show_palette(p, !self.docking.shown(p));
     }
 
+    /// Whether a click or a box taken with `mods` may take locked elements, the terrain: Ctrl+Alt held, or Select Terrain ticked.
+    pub(crate) fn terrain_unlocked(&self, mods: Modifiers) -> bool {
+        self.select_terrain || (mods.ctrl && mods.alt)
+    }
+
+    /// Says once, when a click lands on the terrain and nothing else, how to pick it.
+    pub(crate) fn hint_terrain(&mut self) {
+        if !std::mem::replace(&mut self.terrain_hint_given, true) {
+            self.status =
+                Status { text: t("Terrain is locked: hold Ctrl+Alt to select it, or tick Select Terrain").to_string(), error: false };
+        }
+    }
+
     /// Toggle temporary alignment guides (smart snapping) on or off.
     pub(crate) fn toggle_alignment_guides(&mut self) {
         self.snaps.alignment_guides = !self.snaps.alignment_guides;
@@ -1814,6 +1852,7 @@ impl BimApp {
             || self.autosave.show_recovery
             || self.installing()
             || self.importing()
+            || self.fetching()
             || self.report_open()
             // An open menu takes the keys: Esc closes it, not the tool.
             || egui::Popup::is_any_open(ctx)
@@ -1873,6 +1912,7 @@ impl BimApp {
                 _ if self.picking_pattern_lines() => self.finish_pattern_lines(),
                 (Tool::Railing(_), true) => self.finish_railing(level),
                 (Tool::Mass(_), true) => self.finish_mass(level),
+                (Tool::Pad(_), true) => self.finish_pad(level),
                 (Tool::DetailLine(_), true) => self.finish_detail_line(level),
                 (Tool::SketchLine(_), true) if self.shape().open_ended() => self.finish_open_shape(),
                 (_, true) => self.finish_wall(),
@@ -2584,9 +2624,13 @@ impl BimApp {
             | Tool::Section(start)
             | Tool::SlopeArrow(start)
             | Tool::AddSplitLine(start) => *start,
-            Tool::Stair(pts) | Tool::Ramp(pts) | Tool::Railing(pts) | Tool::Mass(pts) | Tool::DetailLine(pts) | Tool::SketchLine(pts) => {
-                pts.last().copied()
-            }
+            Tool::Stair(pts)
+            | Tool::Ramp(pts)
+            | Tool::Railing(pts)
+            | Tool::Mass(pts)
+            | Tool::Pad(pts)
+            | Tool::DetailLine(pts)
+            | Tool::SketchLine(pts) => pts.last().copied(),
             _ => None,
         }
     }
@@ -2642,6 +2686,7 @@ impl BimApp {
             Tool::Ramp(pts) if !pts.is_empty() => Tool::Ramp(Vec::new()),
             Tool::Railing(pts) if !pts.is_empty() => Tool::Railing(Vec::new()),
             Tool::Mass(pts) if !pts.is_empty() => Tool::Mass(Vec::new()),
+            Tool::Pad(pts) if !pts.is_empty() => Tool::Pad(Vec::new()),
             Tool::DetailLine(pts) if !pts.is_empty() => Tool::DetailLine(Vec::new()),
             Tool::Shaft(Some(_)) => Tool::Shaft(None),
             Tool::SlopeArrow(Some(_)) => Tool::SlopeArrow(None),
@@ -2772,6 +2817,7 @@ impl BimApp {
             | Tool::Railing(pts)
             | Tool::ExtrusionRoof(pts)
             | Tool::Mass(pts)
+            | Tool::Pad(pts)
             | Tool::DetailLine(pts) => pts.clear(),
             Tool::Move(_)
             | Tool::Copy(_)
@@ -2982,6 +3028,8 @@ impl BimApp {
         (fresh.tools_hidden, fresh.presets) = (std::mem::take(&mut self.tools_hidden), std::mem::take(&mut self.presets));
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
+        fresh.select_terrain = self.select_terrain;
+        fresh.terrain_hint_given = self.terrain_hint_given;
         fresh.grid_snapping = self.grid_snapping;
         (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
         fresh.custom_shortcuts = std::mem::take(&mut self.custom_shortcuts);
@@ -2991,6 +3039,7 @@ impl BimApp {
         fresh.theme_wanted = self.theme_wanted.take();
         fresh.docking = std::mem::take(&mut self.docking);
         (fresh.settings_path, fresh.settings_kept) = (self.settings_path.take(), self.settings_kept.take());
+        fresh.places = std::mem::take(&mut self.places);
         fresh.window = std::mem::take(&mut self.window);
         (fresh.updates, fresh.revit) = (self.updates.take(), self.revit.take());
         fresh.control = self.control.take();
@@ -3311,6 +3360,7 @@ impl BimApp {
             Tab::Insert => self.insert_tab(ui),
             Tab::Annotate => self.annotate_tab(ui),
             Tab::Massing => self.massing_tab(ui),
+            Tab::Site => self.site_tab(ui),
             Tab::View => self.view_tab(ui),
             Tab::Manage => self.manage_tab(ui),
             Tab::Modify | Tab::Context => self.modify_tab(ui),
@@ -4473,6 +4523,7 @@ impl BimApp {
                         height_options(ui, &self.session.model, level, &mut self.mass_top, &mut self.mass_height, "mass-top");
                     }
                 }
+                Tool::Pad(_) => self.pad_options(ui),
                 Tool::Ceiling => {
                     let l = ui.label(t("Height Offset:"));
                     let hint = self.session.model.units.name();
@@ -4836,6 +4887,9 @@ impl BimApp {
             Tool::Mass(pts) if pts.is_empty() => msg!("Click the first corner of the mass's footprint."),
             Tool::Mass(pts) if pts.len() < 3 => msg!("Click the footprint's next corner. Esc cancels."),
             Tool::Mass(_) => msg!("Click the next corner; Enter, or the first corner again, finishes the mass. Esc cancels."),
+            Tool::Pad(pts) if pts.is_empty() => msg!("Click the first corner of the pad's outline."),
+            Tool::Pad(pts) if pts.len() < 3 => msg!("Click the outline's next corner. Esc cancels."),
+            Tool::Pad(_) => msg!("Click the next corner; Enter, or the first corner again, finishes the pad. Esc cancels."),
             Tool::DetailLine(pts) if pts.is_empty() => msg!("Click where the detail line starts."),
             Tool::DetailLine(_) => "Click its next point; Enter finishes it, the first point again closes it. Esc cancels.",
             Tool::SlopeArrow(None) => msg!("Click the slope arrow's tail: where the floor's top stays at its height offset."),
@@ -5118,6 +5172,7 @@ impl BimApp {
         self.background_grid_window(ctx);
         self.installing_box(ctx);
         self.importing_box(ctx);
+        self.site_windows(ctx);
         self.report_window(ctx);
         if self.pending.is_none() {
             self.recovery_window(ctx);

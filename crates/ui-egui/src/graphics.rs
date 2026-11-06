@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use bimcraft_core::graphics::{
-    ANNOTATION, Applied, Dash, Detail, Graphics, Group, IMPORTED, MODEL, Override, PatternFill, SCANS, Style, VisualStyle,
+    ANNOTATION, Applied, Dash, Detail, Graphics, Group, IMAGERY, IMPORTED, MODEL, Override, PatternFill, SCANS, Style, VisualStyle,
 };
 use bimcraft_core::model::{Element, Guid, Id, Model};
 use bimcraft_core::pen::{MAX_PEN, Pen};
@@ -366,9 +366,13 @@ impl BimApp {
                     shown.split_component();
                     match d.tab {
                         0 | 1 => {
-                            // A view's point clouds with its model's categories: Revit gives them a tab of their own.
-                            let names: Vec<&str> =
-                                if d.tab == 0 { MODEL.iter().chain(&SCANS).copied().collect() } else { ANNOTATION.to_vec() };
+                            // A view's point clouds, and the aerial photograph under its terrain, with its model's categories: Revit gives
+                            // the clouds a tab of their own.
+                            let names: Vec<&str> = if d.tab == 0 {
+                                MODEL.iter().chain(&SCANS).chain(&IMAGERY).copied().collect()
+                            } else {
+                                ANNOTATION.to_vec()
+                            };
                             styles = categories(ui, &mut d, &model, &shown, &names, !followed.contains(&Group::Categories));
                         }
                         2 => {

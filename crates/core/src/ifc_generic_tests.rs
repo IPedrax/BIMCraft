@@ -169,15 +169,16 @@ fn what_has_no_element_comes_in_as_a_generic_component_of_its_class_and_goes_bac
     let _ = std::fs::remove_file(&path);
     // The duct is a duct, as ever; the rest of what has a body comes in as generic components, and the reply counts them.
     assert_eq!(r["elements"]["duct"], 1, "{r}");
-    assert_eq!(r["elements"]["component"], 7, "{r}");
-    assert_eq!(r["generic"], 7, "{r}");
+    // The terrain is a toposurface, not a generic component.
+    assert_eq!(r["elements"]["component"], 6, "{r}");
+    assert_eq!(r["elements"]["toposurface"], 1, "{r}");
+    assert_eq!(r["generic"], 6, "{r}");
     let classes = |c: &str, p: &str| json!({"class": c, "predefined": p});
     let want = BTreeMap::from([
         ("Cladding:Stone".to_string(), classes("IFCCOVERING", "CLADDING")),
         ("Elbow:90".to_string(), classes("IFCDUCTFITTING", "BEND")),
         ("System Panel:Glazed".to_string(), classes("IFCPLATE", "CURTAIN_PANEL")),
         ("Mullion:50 x 150".to_string(), classes("IFCMEMBER", "MULLION")),
-        ("Terrain:Terrain".to_string(), classes("IFCGEOGRAPHICELEMENT", "TERRAIN")),
         // A product of its own type, as its object type says, remembers it.
         ("Sun fin:Sun fin".to_string(), json!({"class": "IFCMEMBER", "predefined": "USERDEFINED", "object_type": "Sun fin"})),
     ]);
@@ -213,7 +214,6 @@ fn what_has_no_element_comes_in_as_a_generic_component_of_its_class_and_goes_bac
         ("IFCPLATE", ".CURTAIN_PANEL.", 1),
         ("IFCMEMBER", ".MULLION.", 2),
         ("IFCMEMBER", ".USERDEFINED.", 1),
-        ("IFCGEOGRAPHICELEMENT", ".TERRAIN.", 1),
     ] {
         let found: Vec<(u64, String)> = of(class).into_iter().filter(|(_, a)| a.ends_with(predefined)).collect();
         assert_eq!(found.len(), n, "{class} {predefined}: {step}");
@@ -222,6 +222,8 @@ fn what_has_no_element_comes_in_as_a_generic_component_of_its_class_and_goes_bac
             assert!(contained.contains(&id), "#{id} {class} is in the storey");
         }
     }
+    // The terrain goes back out as the terrain it is.
+    assert_eq!(of("IFCGEOGRAPHICELEMENT").iter().filter(|(_, a)| a.ends_with(".TERRAIN.")).count(), 1, "{step}");
     // The type objects carry the predefined type, but the one a product of its own makes, which IFC asks to say what it is.
     let member_types: Vec<String> = of("IFCMEMBERTYPE").into_iter().map(|(_, a)| a.rsplit(',').next().unwrap().to_string()).collect();
     assert_eq!(member_types.iter().filter(|k| *k == ".MULLION.").count(), 1, "{member_types:?}");
@@ -233,7 +235,7 @@ fn what_has_no_element_comes_in_as_a_generic_component_of_its_class_and_goes_bac
     let again = run(&mut s, "open", json!({"path": out}));
     let _ = std::fs::remove_file(&out);
     assert_eq!(again["elements"], r["elements"], "{again}");
-    assert_eq!(again["generic"], 7, "{again}");
+    assert_eq!(again["generic"], 6, "{again}");
     assert_eq!(generics(&mut s), want);
 }
 

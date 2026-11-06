@@ -2025,6 +2025,69 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"code": 5}),
         json!({"code": "klingon"}),
         json!({"language": "xx", "name": ""}),
+        json!({"points": [[0, 0, 0], [1000, 0, 5], [0, 1000, 9]], "breaklines": [[[0, 0, 0], [1000, 1000, 9]]], "interval": 100}),
+        json!({"points": [[0, 0, 0], [1000, 0, 0], [2000, 0, 0]], "breaklines": "x", "boundary": [[0, 0]]}),
+        json!({"points": [[0, 0, 1e300], [1e300, 0, 0], [0, 1e300, f64::MAX]], "interval": -1e300}),
+        json!({"points": [[0, 0, 0], [0, 0, 0], [0, 0, 0]], "breaklines": [[[0, 0, 0], [0, 0, 0]]], "material": 5}),
+        json!({"points": [[0, 0, 0], [1000, 0, 0], [0, 1000, 0]], "breaklines": [[[0, 0, 0], [1000, 0, 0]], [[0, 0, 0], [0, 1000, 0]], [[1, 1, 1]]]}),
+        json!({"points": [[0, 0, 0], [4000, 0, 3], [0, 4000, 6], [4000, 4000, 9]], "boundary": [[0, 0], [1, 0], [0, 1]], "interval": 10}),
+        json!({"interval": 1e-300, "base": 1e300, "id": 100001}),
+        json!({"interval": 0, "base": "x", "id": u64::MAX}),
+        json!({"data": r#"{"elements":[{"type":"way","id":1,"geometry":[{"lat":-23.55,"lon":-46.63},{"lat":-23.55,"lon":-46.629},{"lat":-23.549,"lon":-46.629},{"lat":-23.55,"lon":-46.63}],"tags":{"building":"yes","height":"9"}}]}"#, "detail": ["way/1", "way/1", "way/9"]}),
+        json!({"data": r#"{"elements":[{"type":"way","id":2,"geometry":[{"lat":80,"lon":170},{"lat":80,"lon":171},{"lat":81,"lon":171},{"lat":80,"lon":170}],"tags":{"building":"yes"}}]}"#}),
+        json!({"data": r#"<osm><node id="1" lat="-23.55" lon="-46.63"/><node id="2" lat="-23.55" lon="-46.62"/><node id="3" lat="-23.54" lon="-46.62"/><way id="1"><nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="1"/><tag k="building" v="yes"/></way></osm>"#, "bbox": [-24, -47, -23, -46]}),
+        json!({"data": "<osm><way id=\"1\"/></osm>", "bbox": [1e300, 0, 0, 0]}),
+        json!({"data": {"elements": 5}, "parts": "x"}),
+        json!({"data": "{\"elements\":[]}", "level_height": 1e300, "default_height": "x", "terrain": u64::MAX}),
+        json!({"path": 5, "data": 5}),
+        json!({"data": "<!DOCTYPE osm [<!ENTITY a \"x\">]><osm/>", "replace": "x", "detail": "all"}),
+        json!({"boundary": [[0, 0], [4000, 0], [4000, 3000], [0, 3000]], "offset": 500, "thickness": 200, "name": "Pad"}),
+        json!({"boundary": [[0, 0], [1e300, 0], [0, 1e300]], "offset": 1e300, "thickness": 1e300}),
+        json!({"boundary": [[0, 0], [4000, 4000], [4000, 0], [0, 4000]], "thickness": -1, "level": 100001}),
+        json!({"boundary": [[0, 0], [1000, 0], [2000, 0]], "thickness": "x", "level": [], "offset": f64::MAX}),
+        json!({"pads": "all", "terrain": 100000, "existing": 100000, "proposed": 100000, "cell": 1e-300}),
+        json!({"ids": [100006], "storeys": 3, "storey_height": 2800, "shape": "gabled", "height": 2000, "orientation": "across"}),
+        json!({"ids": [100006], "doors": "yes", "walls": true}),
+        json!({"ids": [100006, 100007], "doors": false, "floors": false, "roof": false}),
+        json!({"data": r#"{"elements":[{"type":"way","id":1,"geometry":[{"lat":0.0,"lon":0.0},{"lat":0.0,"lon":0.0002},{"lat":0.0002,"lon":0.0002},{"lat":0.0002,"lon":0.0}],"tags":{"building":"yes","height":"9"}},{"type":"node","id":2,"lat":0.0,"lon":0.0001,"tags":{"entrance":"main","width":"1e999","height":"-4","door":"sliding"}},{"type":"node","id":3,"lat":0.0,"lon":0.00012,"tags":{"entrance":"exit","width":"0.1"}},{"type":"node","id":4,"lat":"x","lon":1,"tags":{"door":"hinged"}},{"type":"node","id":5,"tags":{"entrance":"yes"}}]}"#, "detail": ["way/1"]}),
+        json!({"data": r#"{"elements":[]}"#, "entrances": 5}),
+        json!({"data": "{\"elements\": [{\"type\": \"relation\", \"id\": 1, \"members\": [{\"type\": \"way\", \"ref\": 11, \"role\": \"outer\", \"geometry\": [{\"lat\": 0, \"lon\": 0}, {\"lat\": 0, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0}, {\"lat\": 0, \"lon\": 0}]}, {\"type\": \"way\", \"ref\": 12, \"role\": \"inner\", \"geometry\": [{\"lat\": 0.0003, \"lon\": 0.0003}, {\"lat\": 0.0003, \"lon\": 0.0006}, {\"lat\": 0.0006, \"lon\": 0.0006}, {\"lat\": 0.0006, \"lon\": 0.0003}, {\"lat\": 0.0003, \"lon\": 0.0003}]}], \"tags\": {\"type\": \"multipolygon\", \"building\": \"yes\", \"height\": \"9\"}}]}", "detail": ["relation/1", "way/4"]}),
+        json!({"data": "{\"elements\": [{\"type\": \"relation\", \"id\": 2, \"members\": [{\"type\": \"way\", \"ref\": 21, \"role\": \"outer\", \"geometry\": [{\"lat\": 0, \"lon\": 0}, {\"lat\": 0, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0}, {\"lat\": 0, \"lon\": 0}]}, {\"type\": \"way\", \"ref\": 22, \"role\": \"inner\", \"geometry\": [{\"lat\": 0, \"lon\": 0}, {\"lat\": 0, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0}, {\"lat\": 0, \"lon\": 0}]}], \"tags\": {\"type\": \"multipolygon\", \"building\": \"yes\"}}]}", "detail": ["relation/1", "way/4"]}),
+        json!({"data": "{\"elements\": [{\"type\": \"relation\", \"id\": 3, \"members\": [{\"type\": \"way\", \"ref\": 31, \"role\": \"outer\", \"geometry\": [{\"lat\": 0, \"lon\": 0}, {\"lat\": 0, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0.0004}, {\"lat\": 0.0004, \"lon\": 0}, {\"lat\": 0, \"lon\": 0}]}, {\"type\": \"way\", \"ref\": 32, \"role\": \"inner\", \"geometry\": [{\"lat\": 5e-05, \"lon\": 5e-05}, {\"lat\": 5e-05, \"lon\": 0.00035}, {\"lat\": 0.00035, \"lon\": 0.00035}, {\"lat\": 0.00035, \"lon\": 5e-05}, {\"lat\": 5e-05, \"lon\": 5e-05}]}, {\"type\": \"way\", \"ref\": 33, \"role\": \"inner\", \"geometry\": [{\"lat\": 0.0001, \"lon\": 0.0001}, {\"lat\": 0.0001, \"lon\": 0.0002}, {\"lat\": 0.0002, \"lon\": 0.0002}, {\"lat\": 0.0002, \"lon\": 0.0001}, {\"lat\": 0.0001, \"lon\": 0.0001}]}], \"tags\": {\"type\": \"multipolygon\", \"building:part\": \"roof\", \"height\": \"9\", \"min_height\": \"8\"}}]}", "detail": ["relation/1", "way/4"]}),
+        json!({"data": "{\"elements\": [{\"type\": \"way\", \"id\": 4, \"geometry\": [{\"lat\": 0, \"lon\": 0}, {\"lat\": 0, \"lon\": 1e-06}, {\"lat\": 1e-06, \"lon\": 1e-06}, {\"lat\": 1e-06, \"lon\": 0}, {\"lat\": 0, \"lon\": 0}], \"tags\": {\"man_made\": \"column\", \"height\": \"1e300\", \"min_height\": \"-5\"}}]}", "detail": ["relation/1", "way/4"]}),
+        json!({"ids": [100006, 100007], "shape": "hipped", "angle": 89.9}),
+        json!({"ids": [100006], "storeys": 1e300, "storey_height": 1e-300, "angle": 1e300, "height": 1e300}),
+        json!({"ids": [100002], "walls": "yes", "floors": 5, "roof": null}),
+        json!({"ids": u64::MAX, "shape": 5, "orientation": []}),
+        json!({"id": 100006, "shape": "skillion", "walls": false}),
+        json!({"ids": [100006], "storeys": 500, "storey_height": 1}),
+        json!({"ids": [100007], "shape": "gabled", "height": 1e-9}),
+        json!({"data": r#"{"elements":[{"type":"way","id":1,"geometry":[{"lat":0.0,"lon":0.0},{"lat":0.0,"lon":0.0002},{"lat":0.0002,"lon":0.0002},{"lat":0.0002,"lon":0.0}],"tags":{"building:part":"yes","roof:shape":"gabled","roof:height":"1e999","roof:angle":"nan","roof:orientation":"x","height":"9"}}]}"#, "parts": true, "detail": ["way/1"]}),
+        json!({"ids": [100002], "terrain": 100000, "offset": 1e300, "embed": -1e300}),
+        json!({"radius": 500, "spacing": 25, "source": "copernicus", "set_elevation": true, "interval": 100}),
+        json!({"radius": 500, "spacing": 25, "stand_buildings": true}),
+        json!({"radius": 500, "spacing": 25, "stand_buildings": false, "set_elevation": false}),
+        json!({"radius": 500, "stand_buildings": "x"}),
+        json!({"radius": 500, "stand_buildings": [1e300], "set_elevation": null}),
+        json!({"bbox": [-23.56, -46.64, -23.54, -46.62], "spacing": 1e-300}),
+        json!({"bbox": [-23.56, -46.64, -23.54, -46.62], "spacing": f64::MAX, "name": ""}),
+        json!({"radius": 1e300}),
+        json!({"radius": 0.0001, "spacing": 5e-324}),
+        json!({"bbox": [90, 180, 90, 180]}),
+        json!({"bbox": [-90, -180, 90, 180], "radius": 5}),
+        json!({"radius": 500, "source": "../../etc/passwd", "name": "n".repeat(2000)}),
+        json!({"bbox": [-23.56, -46.64, -23.54, -46.62], "parts": "x", "detail": ["way/1", "way/1"], "terrain": 100000, "replace": 3}),
+        json!({"radius": 300, "parts": true, "detail": ["way/1", "way/2"], "level_height": 1e300, "default_height": -1}),
+        json!({"latitude": 91, "longitude": 0}),
+        json!({"latitude": 1e300, "longitude": -1e300, "elevation": 1e300, "true_north": 1e300}),
+        json!({"latitude": -23.5, "longitude": -46.6, "crs": 4326}),
+        json!({"latitude": -23.5, "longitude": -46.6, "crs": 99_999_999_999_u64, "true_north": 1e300}),
+        json!({"latitude": 0, "longitude": 180, "crs": "EPSG:32660", "lonlat": [1e300, 0]}),
+        json!({"latitude": 84, "longitude": 0, "point": [1e9, 1e9]}),
+        json!({"latitude": 84, "longitude": 0, "crs": 2263, "point": [0, 0]}),
+        json!({"lonlat": [0, 0], "crs": "utm"}),
+        json!({"lonlat": "x", "point": "y", "clear": "z"}),
+        json!({"clear": true}),
         json!({"points": [[0, 0], [1000, 0]], "arc": 359.9999}),
         json!({"points": [[0, 0], [1000, 0]], "arc": -1e300, "location": 5}),
         json!({"points": [[0, 0], [1000, 0]], "attach_top": 100002, "attach_base": u64::MAX}),
@@ -2119,6 +2182,9 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"view": 100000, "categories": {"walls": 5, "doors": {"cut": {"weight": 1e300, "dash": 5}}}}),
         json!({"view": 100000, "categories": {"walls": {"cut": {"color": "red"}, "projection": {"fill": [1, 2]}, "transparency": 300}}}),
         json!({"view": 100000, "categories": {"walls": {"cut": {"weight": -1}, "halftone": "yes"}}}),
+        json!({"view": 100000, "categories": {"aerialimagery": {"transparency": 1e300, "halftone": "yes", "hidden": 5}}}),
+        json!({"view": 100000, "categories": {"aerialimagery": {"transparency": 250, "halftone": true}, "aerialimageries": {"hidden": true}}}),
+        json!({"view": 100000, "categories": {"aerialimagery": {"transparency": -1}}}),
         json!({"view": 100000, "elements": {"100002": 5, "-1": {}, "x": {"halftone": true}, "99999": {"halftone": true}}}),
         json!({"view": 100000, "elements": {"100002": {"cut": {"weight": f64::MAX}}}}),
         json!({"view": 100000, "filters": 5}),
@@ -2264,7 +2330,7 @@ fn hostile_params_never_panic_or_break_the_model() {
     let _ = base.execute("mass", &json!({"boundary": block(), "height": 9000, "lean": [1500, 500]}));
     // Detailing, one of each (detail lines, regions, a group, a repeating detail, a sketch floor, Linework), and the payloads
     // that name them: some for every command, some for the one they are for.
-    let (detailing, targeted) = crate::detail_tests::sweep_payloads(&mut base);
+    let (detailing, mut targeted) = crate::detail_tests::sweep_payloads(&mut base);
     // A section and an elevation of it, after those, so that no id the payloads name moves: their views are drawn too.
     let _ = base.execute("section", &json!({"start": [-1000, 3000], "end": [9000, 3000]}));
     let _ = base.execute("elevation", &json!({"facing": "south"}));
@@ -2272,6 +2338,38 @@ fn hostile_params_never_panic_or_break_the_model() {
         m.elements.values().filter(|e| matches!(e, crate::model::Element::Section(_) | crate::model::Element::Elevation(_))).count()
     };
     assert_eq!(views(&base.model), 2, "the sweep's base has a section and an elevation to draw");
+    // Terrain, last too, for height_at, contours and what draws it.
+    // The project is placed, for import_osm, and has a fake fetcher, for fetch_osm and fetch_terrain.
+    let _ = base.execute("geolocate", &json!({"latitude": -23.5505, "longitude": -46.6333}));
+    base.geo = Some(crate::geo_tests::sweep_fetcher());
+    let _ = base.execute(
+        "toposurface",
+        &json!({"points": [[-2000, -2000, 0], [12000, -2000, 400], [12000, 9000, 900], [-2000, 9000, 300], [5000, 3000, 1500]], "interval": 100}),
+    );
+    // A pad on that terrain, for cut_fill and place_on_terrain, and what draws it.
+    let _ = base.execute("pad", &json!({"boundary": [[1000, 1000], [6000, 1000], [6000, 5000], [1000, 5000]], "offset": 300}));
+    // Aerial imagery over that terrain: the fake fetcher answers, so the warp, the picture and the material are made and drawn.
+    // The base wears one, for the commands that draw or move it.
+    let _ = base.execute("fetch_imagery", &json!({"source": "pdok"}));
+    targeted.extend([
+        ("shift_imagery", json!({"east": 2000, "north": -1000})),
+        ("shift_imagery", json!({"reset": true})),
+        ("shift_imagery", json!({})),
+        ("shift_imagery", json!({"east": 1e300})),
+        ("shift_imagery", json!({"east": "x", "north": []})),
+        ("shift_imagery", json!({"reset": "yes", "east": 1})),
+        ("shift_imagery", json!({"id": 999_999, "east": 1})),
+        ("shift_imagery", json!({"east": -999_999.9, "north": 999_999.9})),
+        ("fetch_imagery", json!({})),
+        ("fetch_imagery", json!({"source": "auto"})),
+        ("fetch_imagery", json!({"source": "pdok", "max_side": 64})),
+        ("fetch_imagery", json!({"source": "eox2016", "max_side": 1024})),
+        ("fetch_imagery", json!({"source": "usgs", "max_side": 100})),
+        ("fetch_imagery", json!({"source": "flanders", "id": 999_999})),
+        ("fetch_imagery", json!({"max_side": 1e300})),
+        ("fetch_imagery", json!({"max_side": -1})),
+        ("fetch_imagery", json!({"source": "../../etc/passwd"})),
+    ]);
     // The default 3D view's silhouettes and ambient shadows on, last so that no id moves: every picture of it draws them.
     let _ = base.execute("graphic_display_options", &json!({"edges": false, "silhouette": 4, "ambient_shadows": true}));
     // A roof over a rectangle with a slope of its own on each edge, last so that no id moves, and the
@@ -2428,6 +2526,44 @@ fn draw_plans(m: &Model) {
     for (id, _) in m.elements.iter().filter(|(_, e)| matches!(e, crate::model::Element::Section(_) | crate::model::Element::Elevation(_))) {
         let _ = crate::render::section(m, *id, crate::render::section_fit(m, *id, 16, 16));
     }
+}
+
+#[test]
+fn a_materials_texture_can_be_a_picture_laid_over_the_ground() {
+    let mut s = Session::new();
+    let file = temp("planar.png");
+    let png = tiny_skia::Pixmap::from_vec(vec![255, 0, 0, 255, 0, 0, 255, 255], tiny_skia::IntSize::from_wh(2, 1).unwrap())
+        .unwrap()
+        .encode_png()
+        .unwrap();
+    std::fs::write(&file, png).unwrap();
+    let r = run(
+        &mut s,
+        "material",
+        json!({"name": "Ground", "texture": {"kind": "image", "path": file.to_string_lossy(), "size": [10000, 6000], "offset": [-500, 6000], "planar": true}}),
+    );
+    assert_eq!(r["material"]["texture"]["planar"], json!(true), "{r}");
+    assert_eq!(
+        (&r["material"]["texture"]["size"], &r["material"]["texture"]["offset"]),
+        (&json!([10000.0, 6000.0]), &json!([-500.0, 6000.0]))
+    );
+    // It is kept: a change of the size leaves it, and `false` takes it off, after which it is written no more.
+    let r = run(&mut s, "material", json!({"name": "Ground", "texture": {"size": [12000, 6000]}}));
+    assert_eq!(r["material"]["texture"]["planar"], json!(true));
+    let r = run(&mut s, "material", json!({"name": "Ground", "texture": {"planar": false}}));
+    assert!(r["material"]["texture"].get("planar").is_none(), "{r}");
+    run(&mut s, "material", json!({"name": "Ground", "texture": {"planar": true}}));
+    // A pattern drawn in code cannot be laid over the ground, and the flag is a flag.
+    for (texture, says) in [
+        (json!({"kind": "brick", "planar": true}), "picture"),
+        (json!({"planar": "yes"}), "planar"),
+        (json!({"planar": 1}), "planar"),
+        (json!({"planar": true, "size": [1e12, 1e12]}), "mm"),
+    ] {
+        let why = s.execute("material", &json!({"name": "Ground", "texture": texture})).unwrap_err();
+        assert!(why.contains(says), "{texture}: {why}");
+    }
+    std::fs::remove_file(file).unwrap();
 }
 
 fn temp(name: &str) -> std::path::PathBuf {

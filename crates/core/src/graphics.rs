@@ -27,12 +27,14 @@ mod fill_tests;
 /// The categories a plan, a section or a 3D view draws, and so may hide and override: those of the
 /// model, then those of the annotation. A family component is of its family's category (see [`COMPONENTS`]); `component`, which
 /// names them all, is no row of its own (see [`COMPONENT`]).
-pub const MODEL: [&str; 45] = [
+pub const MODEL: [&str; 47] = [
     "wall",
     "floor",
     "ceiling",
     "shaft",
     "mass",
+    "toposurface",
+    "pad",
     "door",
     "window",
     "room",
@@ -106,6 +108,16 @@ pub const ANNOTATION: [&str; 10] = ["dimension", "tag", "text", "line", "region"
 pub const SCANS: [&str; 1] = ["pointcloud"];
 /// The CAD imports, which views hide and override on a tab of their own too, as Revit's Imported Categories.
 pub const IMPORTED: [&str; 1] = ["cadimport"];
+/// The aerial photograph a plan draws under a toposurface that wears one: not an element, so a view hides it by this name, tones it
+/// down by its halftone and transparency, and nothing else of an override applies to it.
+pub const IMAGERY: [&str; 1] = ["aerialimagery"];
+
+/// The categories a plan or the 3D view will not pick, box or drag by accident, as Revit pins an element: the ground under a project does
+/// not move because the pointer went across it. The window picks them only with Ctrl+Alt held or its Select Terrain box ticked;
+/// commands, agents, Select All, filters and the Project Browser are not held back (see [`Model::pickable`]).
+pub fn locked(category: &str) -> bool {
+    category == "toposurface"
+}
 
 /// A subcategory: a part of a category a view hides, shows and overrides apart from the rest, as Revit's (Rooms >
 /// Reference). It is held in a view's graphics by its `key`, as a category is; `off` ones are hidden unless the view shows
@@ -195,6 +207,7 @@ pub fn drawn(category: &str) -> bool {
         || ANNOTATION.contains(&category)
         || SCANS.contains(&category)
         || IMPORTED.contains(&category)
+        || IMAGERY.contains(&category)
         || sub(category).is_some()
 }
 
@@ -671,6 +684,7 @@ impl Graphics {
                         .chain(&ANNOTATION)
                         .chain(&SCANS)
                         .chain(&IMPORTED)
+                        .chain(&IMAGERY)
                         .chain(&[COMPONENT])
                         .copied()
                         .collect::<Vec<_>>()
@@ -1041,6 +1055,16 @@ pub struct Look {
     section: Option<([f64; 3], [f64; 3])>,
     /// A 3D view's Graphic Display Options: its edges, silhouettes and ambient shadows.
     display: crate::view3d::DisplayOptions,
+    /// How it draws the aerial photograph under a plan: hidden, and the halftone and transparency (percent) it tones it down by.
+    imagery: ImageryLook,
+}
+
+/// How a view draws the aerial photograph a plan has under its terrain.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ImageryLook {
+    pub hidden: bool,
+    pub halftone: bool,
+    pub transparency: u8,
 }
 
 /// `c` halfway to the paper.
@@ -1101,7 +1125,12 @@ impl Look {
     /// (a room's area) makes redraws slow.
     pub fn with(m: &Model, own: &Graphics) -> Look {
         let g = own.resolved(m);
-        let mut look = Look { style: g.style, layers: own.layers.clone(), ..Look::default() };
+        let imagery = g.categories.get(IMAGERY[0]).map_or_else(ImageryLook::default, |o| ImageryLook {
+            hidden: o.hidden,
+            halftone: o.halftone,
+            transparency: o.transparency.min(100),
+        });
+        let mut look = Look { style: g.style, layers: own.layers.clone(), imagery, ..Look::default() };
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
         let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));
         if own.draws_as_is() && !linked && !crate::phasing::any(m) && m.rare("mass").is_empty() {
@@ -1175,6 +1204,11 @@ impl Look {
     /// How the view draws surfaces in 3D.
     pub fn style(&self) -> VisualStyle {
         self.style
+    }
+
+    /// How the view draws the aerial photograph under a plan's terrain, or none if it hides it.
+    pub fn imagery(&self) -> Option<ImageryLook> {
+        (!self.imagery.hidden).then_some(self.imagery)
     }
 
     /// The layers of the CAD drawing `cad` the view hides.
@@ -1360,6 +1394,24 @@ pub(crate) mod testing {
 #[cfg(test)]
 mod tests {
     use serde_json::{Value, json};
+
+    #[test]
+    fn terrain_is_locked_and_nothing_else_is_and_a_held_key_unlocks_it() {
+        use crate::graphics::locked;
+        assert!(locked("toposurface"));
+        for other in ["wall", "floor", "mass", "pad", "pointcloud", "aerialimagery", ""] {
+            assert!(!locked(other), "{other}");
+        }
+        let mut s = Session::new();
+        s.execute("toposurface", &json!({"points": [[0, 0, 0], [10000, 0, 0], [10000, 10000, 0], [0, 10000, 0]]})).unwrap();
+        s.execute("level", &json!({"name": "Roof", "elevation": 3000})).unwrap();
+        let id = |cat: &str| s.model.elements.iter().find(|(_, e)| e.category() == cat).map(|(id, _)| *id).unwrap();
+        let (terrain, level) = (id("toposurface"), id("level"));
+        assert!(!s.model.pickable(terrain, false), "terrain is not picked by accident");
+        assert!(s.model.pickable(terrain, true), "but a held key picks it");
+        assert!(s.model.pickable(level, false) && s.model.pickable(level, true));
+        assert!(!s.model.pickable(987_654, false), "and what is not there is not pickable");
+    }
 
     use crate::engine::Session;
     use crate::geom::P2;

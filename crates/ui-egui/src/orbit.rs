@@ -722,6 +722,7 @@ impl BimApp {
             (self.tool == Tool::Modify && self.sketch.is_none() && !picking).then(|| self.work_plane_ring(last, rect, ppp)).flatten();
         let (modify, demolish, selection) = (self.tool == Tool::Modify, self.tool == Tool::Demolish, self.selection.clone());
         let (paint, unpaint) = (self.tool == Tool::Paint, self.tool == Tool::Unpaint);
+        let unlocked = self.terrain_unlocked(crate::canvas::click_modifiers(ui));
         // The floor being shaped, with Shape Editing's tools: its points and corners where its top is, which Modify Sub
         // Elements' grips drag up or down; Add Point and Add Split Line click on its top.
         let shaping = self.shaping().and_then(|id| model.shapeable(id).ok());
@@ -1018,10 +1019,13 @@ impl BimApp {
                 self.card.note = why;
             }
         }
-        let pick = |picker: &Option<Picker>, at: Pos2| {
+        // The terrain is locked (see `graphics::locked`): a pixel of it picks nothing, unless Ctrl+Alt is held or Select Terrain is ticked.
+        // (The picture has one id for a pixel, so there is nothing behind it to find; what stands in front of terrain is its own hit.)
+        let seen = |picker: &Option<Picker>, at: Pos2| {
             let (x, y) = px(at);
             picker.as_ref().and_then(|p| p.at(&cam, x, y))
         };
+        let pick = |picker: &Option<Picker>, at: Pos2| seen(picker, at).filter(|h| model.pickable(h.id, unlocked));
         // The view's dimensions, as the core draws them through this camera: over the picture, whichever painter drew it, and
         // picked where they are drawn.
         let look3 = Look::of_3d(&model);
@@ -1185,6 +1189,22 @@ impl BimApp {
                 });
                 room_solid(&p, solid, selected.contains(id), &|q: P3| on_screen(&cam, rect, ppp, q));
             }
+        }
+        // What the photograph on its terrain is owed, at the bottom right, whichever painter drew the view.
+        let credits = bimcraft_core::imagery::credits(&model, &Look::of_3d(&model));
+        if !credits.is_empty() {
+            let canvas = canvas_pal();
+            ui.scope_builder(UiBuilder::new().max_rect(rect.shrink(6.0)).layout(Layout::bottom_up(Align::Max)), |ui| {
+                for credit in &credits {
+                    egui::Frame::new()
+                        .fill(canvas.surface.gamma_multiply(0.85))
+                        .corner_radius(2.0)
+                        .inner_margin(egui::Margin::symmetric(4, 2))
+                        .show(ui, |ui| {
+                            ui.add(egui::Label::new(egui::RichText::new(credit).size(11.0).color(canvas.text)).wrap());
+                        });
+                }
+            });
         }
         // The selected level's grips, and its plane as the held one would leave it.
         if let Some((_, z, extent)) = level {
@@ -1386,11 +1406,18 @@ impl BimApp {
             .filter(|_| sketch_z.is_none() && !picking)
             .map(|at| dim_at(at).filter(|_| modify).or_else(|| pick(&o.picker, at).map(|h| h.id)));
         let dim_click = click.filter(|_| dimming).map(|at| (px(at), dim_pick(at)));
+        // A click on locked terrain and nothing else says how to pick it.
+        let terrain_clicked = modify && clicked == Some(None) && click.is_some_and(|at| seen(&o.picker, at).is_some());
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
         let target = click.filter(|_| drawing).and_then(|at| aimed(&o.picker, at));
         match clicked {
-            Some(found) if modify => self.pick_up(found.into_iter().collect(), click_modifiers(ui)),
+            Some(found) if modify => {
+                if terrain_clicked {
+                    self.hint_terrain();
+                }
+                self.pick_up(found.into_iter().collect(), click_modifiers(ui))
+            }
             Some(Some(id)) if demolish => self.demolish(id),
             Some(Some(id)) if paint || unpaint => self.paint_face(id, face, unpaint),
             // Nothing under the cursor: nothing to take down, or to paint.
