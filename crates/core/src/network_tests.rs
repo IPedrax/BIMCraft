@@ -180,3 +180,18 @@ fn what_it_cant_use_is_refused_and_changes_nothing() {
         assert_eq!(*s.model, *before);
     }
 }
+
+#[test]
+fn a_stack_standing_upright_joins_the_drain_at_its_foot() {
+    let mut s = Session::new();
+    // A stack from 2500 down to the floor (the same point twice, two heights), then a drain on from its foot.
+    let stack = pipe(&mut s, json!([[0, 0], [0, 0]]), json!({"offset": 2500, "end_offset": 0, "type": "PVC 110"}))[0];
+    let drain = pipe(&mut s, json!([[0, 0], [3000, 0]]), json!({"offset": 0, "end_offset": -60, "type": "PVC 110"}))[0];
+    let n = net(&mut s, json!({}));
+    assert_eq!(n["groups"].as_array().unwrap().len(), 1, "{n}");
+    let foot = n["nodes"].as_array().unwrap().iter().find(|x| x["joins"].as_array().unwrap().len() == 2).unwrap();
+    assert_eq!(foot["at"], json!([0.0, 0.0, 0.0]));
+    let pipes: Vec<&Value> = foot["joins"].as_array().unwrap().iter().map(|j| &j["pipe"]).collect();
+    assert!(pipes.contains(&&json!(stack)) && pipes.contains(&&json!(drain)), "{foot}");
+    assert_eq!(n["edges"][0]["length"], 2500.0, "a standing pipe's length is its height");
+}
