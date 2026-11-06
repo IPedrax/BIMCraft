@@ -2422,7 +2422,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:9577
+#: crates/core/src/commands.rs:9628
 msgid "Dependent"
 msgstr "相关"
 
@@ -2927,7 +2927,7 @@ msgstr "电气设置"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "电气设置：电路和配电箱所引用的电压、配电系统和导线类型；截面积单位为 mm²"
 
-#: crates/core/src/commands.rs:2046
+#: crates/core/src/commands.rs:2063
 msgid "Elements"
 msgstr "图元"
 
@@ -8544,7 +8544,7 @@ msgstr "单位格式"
 msgid "Unlock alignment"
 msgstr "解锁对齐"
 
-#: crates/core/src/commands.rs:9718
+#: crates/core/src/commands.rs:9769
 msgid "Unnamed"
 msgstr "未命名"
 

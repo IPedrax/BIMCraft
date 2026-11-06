@@ -2422,7 +2422,7 @@ msgstr "Gesloopt"
 msgid "Demolition"
 msgstr "Sloop"
 
-#: crates/core/src/commands.rs:9577
+#: crates/core/src/commands.rs:9628
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -2927,7 +2927,7 @@ msgstr "Elektrische instellingen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrische instellingen: de spanningen, distributiesystemen en draadtypes waarnaar kringen en verdeelborden verwijzen; doorsneden in mm²"
 
-#: crates/core/src/commands.rs:2046
+#: crates/core/src/commands.rs:2063
 msgid "Elements"
 msgstr "Elementen"
 
@@ -8544,7 +8544,7 @@ msgstr "Eenhedenformaat"
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
-#: crates/core/src/commands.rs:9718
+#: crates/core/src/commands.rs:9769
 msgid "Unnamed"
 msgstr "Naamloos"
 
