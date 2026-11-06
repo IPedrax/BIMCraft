@@ -2764,6 +2764,45 @@ mod tests {
     }
 
     #[test]
+    fn where_a_picture_lets_the_ground_through_3d_shows_the_materials_own_colour_not_white() {
+        // The east half of the picture is clear: there the terrain is what it is without a picture, the material's colour; the west
+        // half is the photograph.
+        let (w, h) = (64u32, 8u32);
+        let rgba: Vec<u8> = (0..w * h).flat_map(|k| if k % w < w / 2 { [255, 0, 0, 255] } else { [0, 0, 0, 0] }).collect();
+        let png = tiny_skia::Pixmap::from_vec(rgba, tiny_skia::IntSize::from_wh(w, h).unwrap()).unwrap().encode_png().unwrap();
+        let path = std::env::temp_dir().join(format!("bimcraft-clear-{}.png", std::process::id()));
+        std::fs::write(&path, png).unwrap();
+        let mut s = Session::new();
+        s.script(&format!(
+            r##"material {{"name": "Aerial", "color": "#306090", "texture": {{"kind": "image", "path": {:?}, "size": [10000, 10000], "offset": [0, 10000], "planar": true}}}}
+               toposurface {{"points": [[0, 0, 0], [10000, 0, 2000], [10000, 10000, 2000], [0, 10000, 0]], "material": "Aerial"}}"##,
+            path.to_string_lossy()
+        ))
+        .unwrap();
+        let sample = |s: &Session| {
+            let (scene, close) = closeup(s, [5000.0, 5000.0, 1000.0], 0.1);
+            let img = scene.render(&close, &[]);
+            [(2500.0, 5000.0), (7500.0, 5000.0), (6000.0, 2000.0)].map(|(x, y)| {
+                let (px, py) = at(&close, [x, y, x / 5.0]);
+                img.color(px, py)
+            })
+        };
+        let with = sample(&s);
+        assert!(with[0].0 > 150 && with[0].2 < 80, "the photograph in the west: {:?}", with[0]);
+        s.execute("material", &serde_json::json!({"name": "Aerial", "texture": null})).unwrap();
+        let plain = sample(&s);
+        for k in [1, 2] {
+            let (a, b) = (with[k], plain[k]);
+            assert!(
+                a.0.abs_diff(b.0) <= 2 && a.1.abs_diff(b.1) <= 2 && a.2.abs_diff(b.2) <= 2,
+                "the east is the plain material: {a:?} against {b:?}"
+            );
+            assert!(a.2 > a.0, "bluish, never white: {a:?}");
+        }
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn a_picture_made_a_texture_lies_on_the_floor_as_laid_and_paint_gives_a_face_its_own_material() {
         let mut s = house();
         let path = halves("floor");

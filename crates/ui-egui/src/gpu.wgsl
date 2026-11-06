@@ -85,11 +85,12 @@ fn lit(n: vec3<f32>) -> f32 {
     return 0.62 + 0.38 * max(dot(v, normalize(vec3<f32>(-0.35, 0.55, 0.75))), 0.0);
 }
 
-fn texel(s: Skin, x: i32, y: i32) -> vec3<f32> {
+// rgb: the colour over white; w: how much of the picture is there, 0 to 255 (the top byte).
+fn texel(s: Skin, x: i32, y: i32) -> vec4<f32> {
     let w = i32(s.level.y);
     let h = i32(s.level.z);
     let t = texels[s.level.x + u32(((y % h) + h) % h * w + ((x % w) + w) % w)];
-    return vec3<f32>(f32(t & 255u), f32((t >> 8u) & 255u), f32((t >> 16u) & 255u));
+    return vec4<f32>(f32(t & 255u), f32((t >> 8u) & 255u), f32((t >> 16u) & 255u), f32(t >> 24u));
 }
 
 // What `Sampler::at` gives: the texture laid over the face's plane at the point `world` (from the mesh's origin), across
@@ -142,7 +143,11 @@ fn skin_color(id: u32, world: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     let c = texel(s, ix, iy + 1);
     let d = texel(s, ix + 1, iy + 1);
     let mixed = (a * (1.0 - tx) + b * tx) * (1.0 - ty) + (c * (1.0 - tx) + d * tx) * ty;
-    return floor(clamp(mixed, vec3<f32>(0.0), vec3<f32>(255.0)));
+    // Over white it is `c * a + 255 * (1 - a)`: over the material's colour (spare.y, a byte each), that less `(1 - a) * (255 - m)`.
+    let m = bitcast<u32>(s.spare.y);
+    let color = vec3<f32>(f32(m & 255u), f32((m >> 8u) & 255u), f32((m >> 16u) & 255u));
+    let clear = 1.0 - clamp(mixed.w / 255.0, 0.0, 1.0);
+    return floor(clamp(mixed.xyz - clear * (vec3<f32>(255.0) - color), vec3<f32>(0.0), vec3<f32>(255.0)));
 }
 
 // The normals come as 16-bit signed fractions.

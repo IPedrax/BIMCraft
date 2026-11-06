@@ -51,6 +51,8 @@ pub struct Skin {
     pub planar: bool,
     /// Millimetres a pixel of the finest level covers.
     texel: f64,
+    /// The material's colour, which shows where a level's top byte says the picture is not there.
+    pub color: [u8; 3],
 }
 
 /// What a pick finds: the element, and which of its faces (as paint names them; empty where it is on none).
@@ -214,11 +216,13 @@ impl Mesh {
             let Some(Some(sampler)) = scene.skins.get(id as usize) else { continue };
             let plan = sampler.plan();
             let mut levels = Vec::new();
-            for (w, h, rgb) in &plan.levels {
+            for (w, h, rgb, alpha) in &plan.levels {
                 levels.push((mesh.texels.len() as u32, *w as u32, *h as u32));
-                mesh.texels.extend(
-                    rgb.as_chunks::<3>().0.iter().map(|p| u32::from(p[0]) | u32::from(p[1]) << 8 | u32::from(p[2]) << 16 | 0xff << 24),
-                );
+                // The top byte is how much of the picture is there (255 where a level lets nothing through).
+                mesh.texels.extend(rgb.as_chunks::<3>().0.iter().enumerate().map(|(k, p)| {
+                    let a = alpha.and_then(|plane| plane.get(k)).copied().unwrap_or(255);
+                    u32::from(p[0]) | u32::from(p[1]) << 8 | u32::from(p[2]) << 16 | u32::from(a) << 24
+                }));
             }
             if mesh.texels.len() * 4 > MAX_TEXELS {
                 return Err("textures bigger than the card is given".into());
@@ -231,6 +235,7 @@ impl Mesh {
                 levels,
                 planar: plan.planar,
                 texel: plan.texel,
+                color: plan.color,
             };
         }
         Ok(mesh)
@@ -238,7 +243,8 @@ impl Mesh {
 
     /// Each skin as a card reads it for pictures of `cam`: its size, turn and offset, then (as words) where in
     /// [`texels`](Self::texels) the level a pixel looks up in starts, its width and its height, and a spare; the first of the two
-    /// words after the offset is 1 for a picture laid over the ground and 0 for a texture that repeats.
+    /// words after the offset is 1 for a picture laid over the ground and 0 for a texture that repeats, the second the material's
+    /// colour (red, green and blue, a byte each) that shows where the top byte of a texel says the picture is not there.
     pub fn lookups(&self, cam: &Camera) -> Vec<[u32; 12]> {
         let foot = 1.0 / cam.scale.max(1e-9);
         self.skins
@@ -255,7 +261,7 @@ impl Mesh {
                     f(s.offset[0]),
                     f(s.offset[1]),
                     f(if s.planar { 1.0 } else { 0.0 }),
-                    0,
+                    u32::from(s.color[0]) | u32::from(s.color[1]) << 8 | u32::from(s.color[2]) << 16,
                     start,
                     w,
                     h,
@@ -498,6 +504,34 @@ mod tests {
         s.execute("material", &material(false)).unwrap();
         let (skin, word) = words(&s);
         assert!(!skin.planar && word[6] == 0.0f32.to_bits(), "a texture that repeats leaves it clear");
+        std::fs::remove_file(file).unwrap();
+    }
+
+    #[test]
+    fn a_picture_that_lets_the_ground_through_gives_the_card_its_alpha_and_the_materials_colour() {
+        let mut s = Session::new();
+        let file = std::env::temp_dir().join(format!("bimcraft-gpu-clear-{}.png", std::process::id()));
+        let png = tiny_skia::Pixmap::from_vec(vec![255, 0, 0, 255, 0, 0, 0, 0], tiny_skia::IntSize::from_wh(2, 1).unwrap())
+            .unwrap()
+            .encode_png()
+            .unwrap();
+        std::fs::write(&file, png).unwrap();
+        s.execute(
+            "material",
+            &json!({"name": "Aerial", "color": "#102030", "texture": {"kind": "image", "path": file.to_string_lossy(), "size": [10000, 10000], "offset": [0, 10000], "planar": true}}),
+        )
+        .unwrap();
+        s.execute("toposurface", &json!({"points": [[0, 0, 0], [10000, 0, 0], [10000, 10000, 0], [0, 10000, 0]], "material": "Aerial"}))
+            .unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Mesh::new(&scene, &look).unwrap();
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let word = mesh.lookups(&cam).into_iter().find(|w| w[9] > 0).unwrap();
+        assert_eq!(word[7], 0x10 | 0x20 << 8 | 0x30 << 16, "the material's colour, a byte each");
+        let skin = mesh.skins.iter().find(|k| !k.levels.is_empty()).unwrap();
+        let (start, w, _) = skin.levels[0];
+        let tops: Vec<u32> = (0..w).map(|k| mesh.texels[(start + k) as usize] >> 24).collect();
+        assert_eq!(tops, vec![255, 0], "the top byte is how much is there");
         std::fs::remove_file(file).unwrap();
     }
 

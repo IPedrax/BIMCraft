@@ -73,9 +73,9 @@ named `Aerial imagery (<id>)` that the toposurface wears. The texture is `planar
 it covers and `offset` its west and north corner, so the picture lies on the ground whatever the slope and its edge goes on beyond it
 (the processor looks it up by east and north in `view3d::GROUND`, the card in `gpu.wgsl` by its spare word). Fetched again, from the
 same source or another, it replaces the picture and the material, and one undo takes it back. The source, its credit and where its
-terms are stay with the toposurface as the parameters Imagery Source, Imagery Credit and Imagery Terms. The 3D view lays the picture over white where it has
-no imagery (its levels are over white, as every picture's are); **a plan leaves it clear** (below). The Site tab's Aerial Imagery button runs it ([the desktop](desktop.md#the-site-tab)). Not yet: imagery
-in the 3D view that lets the terrain's colour through where there is none.
+terms are stay with the toposurface as the parameters Imagery Source, Imagery Credit and Imagery Terms. The 3D view shows the material's own colour where the picture has
+no imagery (every mip level keeps its own alpha, `Level::alpha`, averaged as the colours are; `Sampler::at` takes the level's colour over white
+less `(1 - a) * (255 - material)`, and the card's texels carry the alpha in their top byte and the material's colour in `lookups` word 7); **a plan leaves it clear** (below). The Site tab's Aerial Imagery button runs it ([the desktop](desktop.md#the-site-tab)). Not yet: imagery in the IFC export.
 
 ### Lining the photograph up with the map
 
@@ -97,7 +97,7 @@ window of 1.5 megapixels, a plan being rebuilt on each step of a pan or a zoom; 
 `a_window_full_of_photograph_is_drawn_in_a_moment`). It is cut to the terrain's boundary (an L-shaped terrain leaves its notch clear)
 and **clear where the picture lets nothing through**: `Picture` keeps what a PNG lets through (`Picture::alpha`, a plane of one byte for
 each pixel; `Sampler::coverage`) when it needs no shrinking, so a place with no imagery is paper in the plan, the PNG, the SVG and, masked,
-the PDF; the 3D view reads the same picture over white as before, and a file written before or after is the same PNG it always was (no
+the PDF; the 3D view reads the same picture, over the material's colour where it is clear, and a file written before or after is the same PNG it always was (no
 `FORMAT` bump). It is nobody's (`owner` none): never picked, boxed, or snapped to. A plan that looks up (a ceiling plan) has none.
 
 A view hides it, or tones it down, by its own category **Aerial Imagery** (`aerialimagery`, in Visibility/Graphics beside the model's
