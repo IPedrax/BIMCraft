@@ -33,6 +33,8 @@ pub mod dps;
 pub mod dr;
 pub mod drainage;
 pub mod draw;
+#[cfg(test)]
+mod dry_run_tests;
 pub mod dxf;
 #[cfg(test)]
 mod eberick_tests;
