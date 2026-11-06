@@ -137,11 +137,7 @@ impl BimApp {
             Some(Found::View3D(id)) => self.open_3d(id),
             Some(Found::Plugin(id)) => {
                 let label = self.plugins.owners().get(id.as_str()).cloned().unwrap_or_else(|| id.clone());
-                if let Some(value) = self.run(&id, serde_json::json!({}))
-                    && let Some(report) = value.get("report").and_then(|v| v.as_str())
-                {
-                    self.open_plugin_report(label, report);
-                }
+                self.run_plugin_function(&id, label, ctx);
             }
             None if !close => self.find = Some(query),
             None => {}

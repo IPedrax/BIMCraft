@@ -349,7 +349,8 @@ impl Plugins {
     /// Reads the folder again, keeping the log.
     pub fn refresh(&mut self) {
         let log = Arc::clone(&self.log);
-        *self = Plugins::load_into(self.folder.as_deref(), log);
+        let folder = self.folder.clone();
+        *self = Plugins::load_into(folder.as_deref(), log);
     }
 
     /// Switches a plugin on or off, keeps it in the folder's state file, and reads the folder again.

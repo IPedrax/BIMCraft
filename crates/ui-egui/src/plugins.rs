@@ -21,6 +21,11 @@ use crate::{
     style::pal,
 };
 
+/// What a click on a plugin's function says when it needs files and the user hasn't allowed them: the plugin's name
+/// fills both `{}`.
+const FILE_ACCESS_ASK: &str =
+    "{} isn't allowed to open files. Allow it in Manage > Plugins: the \"Allow file access\" button in the {} row.";
+
 /// What the window asks for when a row or the footer is clicked; done after it has drawn, when it no longer borrows the app.
 enum Asked {
     Refresh,
@@ -153,11 +158,8 @@ impl BimApp {
             crate::ribbon::panel(ui, &panel.name, |ui| {
                 for command in &commands {
                     let tip = msg!("Runs the plugin's command");
-                    if crate::plugin_button(ui, &command.label, tip).clicked()
-                        && let Some(value) = self.run(&command.id, serde_json::json!({}))
-                        && let Some(report) = value.get("report").and_then(|v| v.as_str())
-                    {
-                        self.open_plugin_report(command.label.clone(), report);
+                    if crate::plugin_button(ui, &command.label, tip).clicked() {
+                        self.run_plugin_function(&command.id, command.label.clone(), ui.ctx());
                     }
                 }
             });
@@ -168,6 +170,66 @@ impl BimApp {
     /// [`plugin_report_window`](Self::plugin_report_window) to draw on the next frame.
     pub(crate) fn open_plugin_report(&mut self, title: String, text: &str) {
         self.plugin_report = Some(PluginReport { title, text: text.to_string(), copied: false });
+    }
+
+    /// Runs a plugin's function as its ribbon button and Find do: one click, no parameters typed. A function whose
+    /// manifest makes `path` required asks the user for the file in the system's dialog first — that is what the plugin
+    /// gets the `files` permission for — and runs with the chosen path; with nothing chosen, nothing runs.
+    ///
+    /// A function that needs a file needs the permission too, so the check comes before the dialog: a plugin without it
+    /// says what to do in the status bar and the system's dialog never opens.
+    pub(crate) fn run_plugin_function(&mut self, id: &str, label: String, ctx: &Context) {
+        if let Some(field) = self.missing_path(id) {
+            if let Some(name) = self.plugin_without_files(id) {
+                let text = self.file_access_ask(&name);
+                self.status = crate::Status { text, error: true };
+                return;
+            }
+            let dialog = rfd::AsyncFileDialog::new().set_title(label.clone());
+            self.plugin_pick = Some((id.to_string(), serde_json::Map::new()));
+            self.ask_file(ctx, dialog, false, move |app, path| {
+                let Some((command, mut params)) = app.plugin_pick.take() else { return };
+                params.insert(field, serde_json::Value::String(path.to_string_lossy().into_owned()));
+                app.finish_plugin_function(&command, label, params);
+            });
+            return;
+        }
+        self.finish_plugin_function(id, label, serde_json::Map::new());
+    }
+
+    /// The plugin's name, when its function needs a file and the manifest asks for the `files` permission but the user
+    /// hasn't allowed it: the call would be refused, and the file dialog must not open first.
+    fn plugin_without_files(&self, id: &str) -> Option<String> {
+        let (plugin, _) = id.strip_prefix("plugin:")?.split_once(':')?;
+        let p = self.plugins.plugins.iter().find(|p| p.manifest.id == plugin)?;
+        let asks = p.manifest.asks_for_files();
+        let granted = self.plugins.permission_granted(plugin, "files");
+        (asks && !granted).then(|| p.manifest.name.clone())
+    }
+
+    /// What a click on a function that needs files says when the manifest asks for the permission and the user hasn't
+    /// allowed it: the file dialog opens only after the permission is given.
+    fn file_access_ask(&self, plugin: &str) -> String {
+        tf(FILE_ACCESS_ASK, &[plugin, plugin])
+    }
+
+    /// Whether the function's manifest needs a file it wasn't given: a required `path` (or `file`) that a click on its
+    /// button has no way to fill. It answers with that parameter's name.
+    fn missing_path(&self, id: &str) -> Option<String> {
+        let (plugin, function) = id.strip_prefix("plugin:")?.split_once(':')?;
+        let p = self.plugins.plugins.iter().find(|p| p.manifest.id == plugin && p.status.is_loaded())?;
+        let f = p.manifest.functions.iter().find(|f| f.id == function)?;
+        let required = f.params.get("required")?.as_array()?;
+        ["path", "file"].into_iter().find(|key| required.iter().any(|r| r.as_str() == Some(key))).map(str::to_string)
+    }
+
+    /// Runs the function with `params` and opens its `report`, as the button says what it found.
+    fn finish_plugin_function(&mut self, id: &str, label: String, params: serde_json::Map<String, serde_json::Value>) {
+        if let Some(value) = self.run(id, serde_json::Value::Object(params))
+            && let Some(report) = value.get("report").and_then(|v| v.as_str())
+        {
+            self.open_plugin_report(label, report);
+        }
     }
 
     /// A plugin function's report, while it is open: the text it wrote, a line a row in the font a report is read in,

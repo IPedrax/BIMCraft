@@ -36,6 +36,20 @@ fn window_with_plugins(path: &Path) -> Option<Harness<'static, BimApp>> {
     Some(app_with_plugins(path))
 }
 
+/// What the Plugins window's row and a ribbon button call, without the drawing: the grant (as `permit_plugin` keeps it)
+/// and a function run as its button runs it. The window itself is what the tests above draw.
+impl BimApp {
+    fn set_permission_for_test(&mut self, id: &str, permission: &str, granted: bool) {
+        self.plugins.set_permission(id, permission, granted).unwrap();
+        self.plugins.register(&mut self.session);
+        self.plugin_tabs = self.plugins.tabs();
+    }
+
+    fn run_plugin_for_test(&mut self, id: &str, label: &str, ctx: &egui::Context) {
+        self.run_plugin_function(id, label.to_string(), ctx);
+    }
+}
+
 fn app_with_plugins(path: &Path) -> Harness<'static, BimApp> {
     let plugins = Plugins::load_from(Some(path));
     assert!(plugins.plugins[0].status.is_loaded(), "{:?}", plugins.plugins[0].status);
@@ -96,6 +110,48 @@ fn find_lists_a_plugin_s_function_and_runs_it_as_its_button_does() {
     h.run();
     assert!(!h.state().status.error, "{}", h.state().status.text);
     assert!(h.state().find.is_none(), "and Find closes");
+}
+
+#[test]
+fn a_plugin_function_that_needs_a_file_asks_for_it_in_the_system_dialog() {
+    let dir = tempfile::tempdir().unwrap();
+    folder(dir.path());
+    // The same as the plugin's own `open_file`: a function whose manifest makes `path` required.
+    let manifest = dir.path().join("sample").join("plugin.json");
+    let mut value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+    value["permissions"] = json!(["files"]);
+    value["functions"].as_array_mut().unwrap().push(json!({
+        "id": "open_file", "label": "Open File", "tab": "Areas", "panel": "Rooms", "order": 3,
+        "params": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}
+    }));
+    std::fs::write(&manifest, serde_json::to_string_pretty(&value).unwrap()).unwrap();
+    let Some(mut h) = window_with_plugins(dir.path()) else { return };
+    let project = dir.path().join("Other.bimcraft");
+    std::fs::write(&project, h.state().session.model.to_json().unwrap()).unwrap();
+
+    // Without the permission the click says what to allow and begins no dialog at all: a folder the plugin may not
+    // read is not put in front of the user.
+    let ctx = h.ctx.clone();
+    let status = {
+        let app = h.state_mut();
+        app.run_plugin_for_test("plugin:sample:open_file", "Open File", &ctx);
+        app.status.text.clone()
+    };
+    assert!(crate::dialog::BEGUN.with(|b| b.borrow_mut().pop()).is_none(), "no file dialog without the permission");
+    assert!(status.contains("Allow file access"), "the window says what to do: {status}");
+    assert!(status.contains("Sample"), "and names the plugin: {status}");
+    assert!(h.state().plugin_pick.is_none(), "nothing waits for a file");
+
+    // Allowed, the click asks for the file and runs the function with it.
+    h.state_mut().set_permission_for_test("sample", "files", true);
+    let ctx = h.ctx.clone();
+    h.state_mut().run_plugin_for_test("plugin:sample:open_file", "Open File", &ctx);
+    let tx = crate::dialog::BEGUN.with(|b| b.borrow_mut().pop()).expect("the click begins a file dialog");
+    tx.send(Some(vec![project.clone()])).unwrap();
+    h.run();
+    h.run();
+    assert!(!h.state().status.error, "{}", h.state().status.text);
+    assert!(h.state().session.path.as_deref() == Some(project.as_path()), "the project is the file the dialog gave");
 }
 
 #[test]

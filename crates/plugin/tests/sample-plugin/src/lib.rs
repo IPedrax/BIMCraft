@@ -47,6 +47,15 @@ bimcraft_plugin_sdk::export! {
     "summary" => summary,
     "write_note" => write_note,
     "fail" => fail,
+    "open_file" => open_file,
+}
+
+/// `open_file`: opens the project at `path` in place of this one, which is what a plugin does with the `files`
+/// permission. The window asks for the file when its manifest makes `path` required.
+fn open_file(params: &Value) -> Result<Value, String> {
+    let path = params.get("path").and_then(Value::as_str).filter(|p| !p.is_empty()).ok_or("`path` is required")?;
+    let reply = execute("open", &json!({"path": path}))?;
+    Ok(json!({"report": format!("OPENED {path}"), "open": reply}))
 }
 
 /// `fail`: changes the model, then fails, which is how a call's transaction is tested: nothing may stay.

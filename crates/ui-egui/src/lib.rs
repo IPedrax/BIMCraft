@@ -776,6 +776,10 @@ pub struct BimApp {
     pub(crate) plugins_dialog: bool,
     /// A report a plugin's function asked the window to show, while it is open.
     pub(crate) plugin_report: Option<plugins::PluginReport>,
+    /// A plugin's function whose path the user is choosing in the system's dialog: its command, and the parameters with
+    /// the path left to set. Running a function is one click on the ribbon, and a function that needs a file asks for
+    /// it there.
+    pub(crate) plugin_pick: Option<(String, serde_json::Map<String, serde_json::Value>)>,
     /// The folder being read on a thread of its own, so the first frame isn't kept waiting by it.
     plugins_job: Option<std::sync::mpsc::Receiver<bimcraft_plugin::Plugins>>,
     /// Manage > Electrical Settings, while open.
@@ -1402,6 +1406,7 @@ impl BimApp {
             plugin_tabs: Vec::new(),
             plugins_dialog: false,
             plugin_report: None,
+            plugin_pick: None,
             plugins_job: None,
             electrical_dialog: None,
             options_dialog: None,
