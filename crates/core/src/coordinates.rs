@@ -275,6 +275,14 @@ impl Coordinates {
         }
     }
 
+    /// The active location solved, keeping its angle and scale, so that the internal origin stands at shared point `q`, each
+    /// coordinate rounded to the metre: what a drawing or a scan far off acquires, so it lands near the origin and the shown
+    /// numbers stay round.
+    pub fn acquire(&mut self, q: P3) {
+        let metre = |x: f64| (x / 1000.0).round() * 1000.0;
+        self.specify([0.0; 3], [metre(q[0]), metre(q[1]), metre(q[2])], None);
+    }
+
     /// The Survey Point moved to `to`, as `how` says.
     pub fn move_survey(&mut self, to: P3, how: Move) {
         if how == Move::Point {

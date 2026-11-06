@@ -69,6 +69,33 @@ only, its north over its east beside a cross (`Model::spot_coordinate`, `render:
 columns, footings and components give `shared_east`, `shared_north` and `shared_elevation` (their point at their base), which
 their schedules offer as Shared East, Shared North and Shared Elevation.
 
+## Far coordinates at import and export (the bias)
+
+Geometry stays near the internal origin; what comes in at map coordinates goes through the active location.
+
+- **CAD** (`import_cad`, `position: shared`): the drawing's coordinates are the map's, in its units. Its middle goes where
+  `to_internal` puts it, turned `-angle` and scaled `scale / location.scale`, so every point of it is where the transform
+  says. Past `MAX_COORD` it is refused with a message naming `acquire`; `acquire: true` first solves the active location
+  (`Coordinates::acquire`, angle and scale kept) so the drawing's middle, rounded to the metre, is the internal origin.
+- **Point clouds** (`point_cloud`, `origin: shared`): the scan's middle by `to_internal`, its height too, turned `-angle`;
+  a scan has no scale, so a location's scale isn't applied to it. `acquire` takes the middle in plan and the lowest point's
+  height, to the metre, so it stands on 0.
+- **IFC export** (`save` to .ifc, `ifc_origin`: internal, base, survey, shared; `ifc::export_at`): the site's placement puts
+  the file's origin at that internal point, or (shared) the map's own coordinates, turned to true north. Where the project has
+  a CRS or its location isn't zero, `IfcMapConversion` from the file's coordinates to `IfcProjectedCRS` (named `EPSG:<code>`
+  and described by its name, or named after the location without one), in the CRS's unit (metre, foot, US survey foot as a
+  conversion-based unit): eastings, northings and height of the file's origin, the x axis (cos, sin of the angle) and the
+  scale; for `shared` the conversion is the identity, so nothing is turned twice. The context's `TrueNorth` agrees with it,
+  and with a CRS the site has `RefLatitude`, `RefLongitude` (compound degrees) and `RefElevation`.
+- **IFC import** (`import::georeference`): `IfcMapConversion` (its map unit, else the project's), else the context's
+  `TrueNorth`, becomes the active location, composed with the shift a far model is moved by; a target named `EPSG:<code>`
+  this version knows becomes the CRS. So what went out comes back where it was in the world, from every origin, and a model
+  at map coordinates keeps them instead of losing the shift. IFC2x3's `ePSet_MapConversion` isn't read yet.
+
+Tests: `coordinates_io_tests.rs`. Checked with IfcOpenShell 0.9 (`ifcopenshell.util.geolocation`): an export of a
+project in SIRGAS 2000 / UTM 23S reads back as EPSG:31983 in metres, its x axis turned 10°, scale 0.9996, true north
+agreeing, the site at -23.55, -46.633, and `local2global` puts the wall on the map coordinates the project gives it.
+
 ## Commands
 
 - `coordinates`: reports everything (the internal origin and both points, internal and shared, the active location and every
@@ -82,6 +109,5 @@ their schedules offer as Shared East, Shared North and Shared Elevation.
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
 
-Not yet (the plan's later stages): imports and
-exports through the transform (IFC's `IfcMapConversion`), links by shared coordinates, plans turned to true north, and the
+Not yet (the plan's later stages): links by shared coordinates, plans turned to true north, and the
 desktop.

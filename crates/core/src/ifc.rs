@@ -135,7 +135,7 @@ fn real(x: f64) -> String {
 }
 
 /// A direction's ratio: as a real, to twelve places, so a turn reads back to the millionth of a degree.
-fn ratio(x: f64) -> String {
+pub(crate) fn ratio(x: f64) -> String {
     let x = if x.is_finite() && x != 0.0 { x } else { 0.0 };
     format!("{x:.12}").trim_end_matches('0').to_string()
 }
@@ -741,7 +741,49 @@ fn wall_quantities(m: &Model, wl: &crate::model::Wall, holes: &[(f64, f64, f64)]
     values
 }
 
+/// Where an IFC file's coordinates have their origin: the internal origin (geometry as the model holds it), the Project Base
+/// Point, the Survey Point, or the shared coordinates themselves (map coordinates in the file, turned to true north).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Origin {
+    #[default]
+    Internal,
+    Base,
+    Survey,
+    Shared,
+}
+
+impl Origin {
+    pub const NAMES: &str = "internal, base, survey or shared";
+
+    pub fn parse(s: &str) -> Option<Origin> {
+        Some(match s {
+            "internal" => Origin::Internal,
+            "base" => Origin::Base,
+            "survey" => Origin::Survey,
+            "shared" => Origin::Shared,
+            _ => return None,
+        })
+    }
+}
+
+/// The model as IFC4, its coordinates the internal ones.
 pub fn export(m: &Model) -> String {
+    export_at(m, Origin::Internal)
+}
+
+/// A plane angle as IFC's compound measure: degrees, minutes, seconds and millionths of a second, all of its sign.
+fn compound(deg: f64) -> String {
+    let micro = (deg.abs() * 3_600_000_000.0).round() as i64;
+    let sign = if deg < 0.0 { -1 } else { 1 };
+    let (d, rest) = (micro / 3_600_000_000, micro % 3_600_000_000);
+    let (min, rest) = (rest / 60_000_000, rest % 60_000_000);
+    let (sec, millionths) = (rest / 1_000_000, rest % 1_000_000);
+    format!("({},{},{},{})", sign * d, sign * min, sign * sec, sign * millionths)
+}
+
+/// The model as IFC4, its coordinates' origin at `origin`, with the map conversion of its active location (`IfcMapConversion`,
+/// `IfcProjectedCRS`), true north and its site's latitude and longitude where it has a CRS.
+pub fn export_at(m: &Model, at: Origin) -> String {
     let rooms = crate::rooms::Rooms::new(m);
     let own = m.elements.with_guids().map(|(id, g, _)| (id, g)).collect();
     let mut w = Step {
@@ -761,7 +803,22 @@ pub fn export(m: &Model) -> String {
     let origin = w.add("IFCCARTESIANPOINT((0.,0.,0.))");
     w.z = w.add("IFCDIRECTION((0.,0.,1.))");
     w.world = w.add(format!("IFCAXIS2PLACEMENT3D(#{origin},$,$)"));
-    let ctx = w.add(format!("IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#{},$)", w.world));
+    let co = &m.coordinates;
+    let loc = co.location();
+    let (turn_c, turn_s) = (loc.angle.to_radians().cos(), loc.angle.to_radians().sin());
+    // The file's origin, as an internal point (none: the shared coordinates' own).
+    let from = match at {
+        Origin::Internal => Some([0.0; 3]),
+        Origin::Base => Some(co.base),
+        Origin::Survey => Some(co.survey),
+        Origin::Shared => None,
+    };
+    // True north in the file's axes: turned from project north in the model's, straight up in the map's.
+    let north = match from {
+        Some(_) => w.add(format!("IFCDIRECTION(({},{}))", ratio(turn_s), ratio(turn_c))),
+        None => w.add("IFCDIRECTION((0.,1.))"),
+    };
+    let ctx = w.add(format!("IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#{},#{north})", w.world));
     w.context = ctx;
     w.body = w.add(format!("IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#{ctx},$,.MODEL_VIEW.,$)"));
     let axis = w.add(format!("IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Axis','Model',*,*,*,*,#{ctx},$,.GRAPH_VIEW.,$)"));
@@ -774,8 +831,57 @@ pub fn export(m: &Model) -> String {
     .map(|u| w.add(u));
     let units = w.add(format!("IFCUNITASSIGNMENT(({}))", refs(&units)));
     let project = w.add(format!("IFCPROJECT({},$,{},$,$,$,$,(#{ctx}),#{units})", w.guid(PROJECT, 0), s(&m.name)));
-    let site_at = w.place(None, (0.0, 0.0, 0.0), None);
-    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},$,$,.ELEMENT.,$,$,$,$,$)", w.guid(SITE, 0)));
+    let site_at = match from {
+        Some(o) => w.place(None, (-o[0], -o[1], -o[2]), None),
+        None => {
+            let q = co.to_shared([0.0; 3]);
+            w.place(None, (q[0], q[1], q[2]), Some(P2(turn_c, turn_s)))
+        }
+    };
+    let crs = co.crs.and_then(|c| crate::crs::lookup(c).ok());
+    // The site's latitude, longitude and elevation: of the file's origin, or of the internal one in map coordinates.
+    let geo = crs
+        .as_ref()
+        .and_then(|_| co.convert(from.unwrap_or([0.0; 3]), crate::coordinates::Frame::Internal, crate::coordinates::Frame::Wgs84).ok());
+    let (lat, lon, elevation) = match (geo, from) {
+        (Some(g), Some(o)) => (compound(g[1]), compound(g[0]), real(co.to_shared(o)[2])),
+        (Some(g), None) => (compound(g[1]), compound(g[0]), real(0.0)),
+        (None, _) => ("$".into(), "$".into(), "$".into()),
+    };
+    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},$,$,.ELEMENT.,{lat},{lon},{elevation},$,$)", w.guid(SITE, 0)));
+    // The map conversion, where the project has a CRS or its location isn't the internal coordinates: from the file's
+    // coordinates to the map's, in the CRS's unit (metres without one).
+    if crs.is_some() || loc != crate::coordinates::Location::default() {
+        let to_meter = crs.as_ref().map_or(1.0, |i| i.to_meter);
+        let metre = w.add("IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)");
+        let unit = if (to_meter - 1.0).abs() < 1e-12 {
+            metre
+        } else {
+            let dims = w.add("IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0)");
+            let measure = w.add(format!("IFCMEASUREWITHUNIT(IFCLENGTHMEASURE({}),#{metre})", ratio(to_meter)));
+            let name = if crs.as_ref().is_some_and(|i| i.unit == "US survey foot") { "US SURVEY FOOT" } else { "FOOT" };
+            w.add(format!("IFCCONVERSIONBASEDUNIT(#{dims},.LENGTHUNIT.,'{name}',#{measure})"))
+        };
+        let (name, description) = match &crs {
+            Some(i) => (format!("EPSG:{}", i.code), s(&i.name)),
+            None => (co.active.clone(), "$".into()),
+        };
+        let target = w.add(format!("IFCPROJECTEDCRS({},{description},$,$,$,$,#{unit})", s(&name)));
+        let mm = to_meter * 1000.0;
+        let (q, axis, scale) = match from {
+            Some(o) => (co.to_shared(o), (turn_c, turn_s), loc.scale),
+            None => ([0.0; 3], (1.0, 0.0), 1.0),
+        };
+        w.add(format!(
+            "IFCMAPCONVERSION(#{ctx},#{target},{},{},{},{},{},{})",
+            real(q[0] / mm),
+            real(q[1] / mm),
+            real(q[2] / mm),
+            ratio(axis.0),
+            ratio(axis.1),
+            ratio(scale)
+        ));
+    }
     let building_at = w.place(Some(site_at), (0.0, 0.0, 0.0), None);
     let building = w.add(format!("IFCBUILDING({},$,{},$,$,#{building_at},$,$,.ELEMENT.,$,$,$)", w.guid(BUILDING, 0), s(&m.name)));
     w.add(format!("IFCRELAGGREGATES({},$,$,$,#{project},(#{site}))", w.guid(AGGREGATES, PROJECT)));

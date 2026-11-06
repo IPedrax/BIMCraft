@@ -128,7 +128,10 @@ pub static ALL: &[Command] = &[
     other(
         "save",
         "Save",
-        "{path?} .bimcraft saves the project (Save As with a path); .ifc exports IFC4; .glb exports the default 3D view's scene as \
+        "{path?, ifc_origin?} .bimcraft saves the project (Save As with a path); .ifc exports IFC4, its coordinates' origin at \
+         `ifc_origin`: internal (the default), base (the Project Base Point), survey (the Survey Point) or shared (the map's \
+         coordinates themselves), with the active location's IfcMapConversion and IfcProjectedCRS, true north, and the site's \
+         latitude and longitude where the project has a CRS; .glb exports the default 3D view's scene as \
          glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns `elements` and \
          `triangles`); .svg or .png exports the lowest level's plan; .pdf prints every sheet, a page each",
         save,
@@ -151,11 +154,12 @@ pub static ALL: &[Command] = &[
         "point_cloud",
         "Point Cloud",
         &[],
-        "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?} brings in a laser scan (`path`: \
+        "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?, acquire?} brings in a laser scan (`path`: \
          PTS, XYZ, PLY, LAS or E57 (each of its scans placed by its pose), or a list of the files of one scan's stations, brought in as one; `units` of its coordinates mm, \
          cm, m (the default), in or ft; one point kept in each cube `spacing` mm wide) or places one the project holds again \
          (`cloud`, its name), as an element: its middle on `at` (the origin) and its foot on the level, or with `origin: file` \
-         where its file's coordinates put it; `offset` raises its middle over the level, `angle` turns it. Returns its id, the \
+         where its file's coordinates put it, or with `origin: shared` where they put it as the map's, by the active location \
+         (`acquire: true` first sets the location from the scan, so its middle lands at the origin and its foot on 0); `offset` raises its middle over the level, `angle` turns it. Returns its id, the \
          scan's name, the points kept and read, and where its middle was in the file",
         point_cloud,
     ),
@@ -163,11 +167,13 @@ pub static ALL: &[Command] = &[
         "import_cad",
         "Import CAD",
         &[],
-        "{path | cad, name?, level?, view?, at?: [x, y], position?, units?, scale?, angle?, layers?, colors?, link?} brings in a \
+        "{path | cad, name?, level?, view?, at?: [x, y], position?, acquire?, units?, scale?, angle?, layers?, colors?, link?} brings in a \
          DXF drawing (`path`: an ASCII DXF of any version, or a DWG, which the desktop and the command line read as DXF) or places one the project holds again (`cad`, \
          its name), as an element in every plan of `level`, or with `view` (a plan) in that view only. `units` of the drawing: \
          auto (the default: what its file says, else mm), mm, cm, m, in or ft; or `scale`, mm to each of its units. `position`: \
-         center (the default: the middle of the drawing on `at`, the origin unless given) or origin (its origin on `at`); \
+         center (the default: the middle of the drawing on `at`, the origin unless given), origin (its origin on `at`) or \
+         shared (where its coordinates, the map's, put it by the active location, turned and scaled to match; `acquire: true` \
+         first sets the location from the drawing, so its middle lands at the origin); \
          `angle` turns it about `at`, degrees. `layers`: visible (the default: those its file has on and thawed), all, or a list \
          of those to show. `colors`: preserve (the default), invert or black. `link: true` remembers the file, so `reload_cad` \
          and opening the project read it again. Returns its id, the drawing's name, its unit, entities and layers, its extents \
@@ -3132,8 +3138,14 @@ fn save(s: &mut Session, p: &Value) -> R {
         None => s.path.clone().ok_or_else(|| bad(c, "`path` is required: this project hasn't been saved yet"))?,
     };
     let format = ext(&path);
+    let ifc_origin = match string(c, p, "ifc_origin")? {
+        None => crate::ifc::Origin::Internal,
+        Some(o) => {
+            crate::ifc::Origin::parse(&o).ok_or_else(|| bad(c, format!("`ifc_origin` is {}, not `{o}`", crate::ifc::Origin::NAMES)))?
+        }
+    };
     if format == "ifc" {
-        std::fs::write(&path, crate::ifc::export(&s.model)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        std::fs::write(&path, crate::ifc::export_at(&s.model, ifc_origin)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         return Ok(json!({"path": path, "format": "IFC4"}));
     }
     if format == "glb" {
@@ -6293,8 +6305,24 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
     };
     let (lo, _) = scan.bounds();
     let origin = scan.origin();
+    let mut coordinates = m.coordinates.clone();
+    let mut acquired = None;
+    let mut angle = 0.0;
     let (mut at, mut offset) = match string(c, p, "origin")?.as_deref() {
         None | Some("centre" | "center") => (P2(0.0, 0.0), -lo[2]),
+        Some("shared") => {
+            // Its file's coordinates are the map's: its middle goes where the active location puts it, turned to match.
+            if flag(c, p, "acquire")? {
+                coordinates.acquire([origin[0], origin[1], origin[2] + lo[2]]);
+                acquired = Some(coordinates.location());
+            }
+            let here = coordinates.to_internal(origin);
+            if !here.iter().all(|x| x.abs() <= MAX_COORD) {
+                return Err(bad(c, far_message(here)));
+            }
+            angle = -coordinates.location().angle;
+            (P2(here[0], here[1]), here[2] - m.elevation(level))
+        }
         Some("file") => {
             let z = origin[2] - m.elevation(level);
             if !(origin[0].abs() <= MAX_COORD && origin[1].abs() <= MAX_COORD && z.abs() <= MAX_COORD) {
@@ -6310,7 +6338,10 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
         Some(o) => {
             return Err(bad(
                 c,
-                format!("`origin` is centre (its middle on `at`, its foot on the level) or file (where its file puts it), not {o}"),
+                format!(
+                    "`origin` is centre (its middle on `at`, its foot on the level), file (where its file puts it) or shared (where \
+                     its coordinates, the map's, put it by the active location), not {o}"
+                ),
             ));
         }
     };
@@ -6320,14 +6351,17 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
     if let Some(o) = num(c, p, "offset")? {
         offset = o;
     }
-    let angle = num(c, p, "angle")?.unwrap_or(0.0);
+    if let Some(a) = num(c, p, "angle")? {
+        angle = a;
+    }
     let (points, read) = (scan.len(), scan.read());
     let m = s.model_mut();
     if new {
         m.clouds.insert(name.clone(), scan);
     }
+    m.coordinates = coordinates;
     let id = m.insert(Element::PointCloud(PointCloud { cloud: name.clone(), level, at, offset, angle }));
-    Ok(json!({"id": id, "cloud": name, "points": points, "read": read, "origin": origin}))
+    Ok(json!({"id": id, "cloud": name, "points": points, "read": read, "origin": origin, "acquired": acquired}))
 }
 
 // ---------- CAD drawings ----------
@@ -6497,18 +6531,39 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
         (Some(u), None) => cloud::unit(u).ok_or_else(|| bad(c, format!("`units` is auto, mm, cm, m, in or ft, not {u}")))?,
     };
     let bulk = cad.bulk().unwrap_or_default();
-    let origin = match string(c, p, "position")?.as_deref() {
-        None | Some("center" | "centre") => (bulk[0] + bulk[1]) * 0.5,
-        Some("origin") => P2(0.0, 0.0),
+    let middle = (bulk[0] + bulk[1]) * 0.5;
+    let acquire = flag(c, p, "acquire")?;
+    let mut coordinates = s.model.coordinates.clone();
+    let mut acquired = None;
+    let (origin, at, angle, scale) = match string(c, p, "position")?.as_deref() {
+        None | Some("center" | "centre") => {
+            (middle, point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0)), num(c, p, "angle")?.unwrap_or(0.0), scale)
+        }
+        Some("origin") => (P2(0.0, 0.0), point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0)), num(c, p, "angle")?.unwrap_or(0.0), scale),
+        Some("shared") => {
+            // Its file's coordinates are the map's: its middle goes where the active location puts it, turned and scaled to match.
+            let q = [middle.0 * scale, middle.1 * scale, 0.0];
+            if acquire {
+                coordinates.acquire(q);
+                acquired = Some(coordinates.location());
+            }
+            let l = coordinates.location();
+            let here = coordinates.to_internal(q);
+            if !(here[0].abs() <= MAX_COORD && here[1].abs() <= MAX_COORD) {
+                return Err(bad(c, far_message(here)));
+            }
+            (middle, P2(here[0], here[1]), -l.angle, scale / l.scale)
+        }
         Some(o) => {
             return Err(bad(
                 c,
-                format!("`position` is center (the middle of the drawing on `at`) or origin (its origin on `at`), not {o}"),
+                format!(
+                    "`position` is center (the middle of the drawing on `at`), origin (its origin on `at`) or shared (where its \
+                     coordinates, the map's, put it by the active location), not {o}"
+                ),
             ));
         }
     };
-    let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
-    let angle = num(c, p, "angle")?.unwrap_or(0.0);
     let hidden: BTreeSet<String> = match p.get("layers") {
         None | Some(Value::Null) => off_layers(&cad),
         Some(Value::String(w)) if w == "visible" => off_layers(&cad),
@@ -6541,6 +6596,7 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
     if new {
         m.cads.insert(name.clone(), cad);
     }
+    m.coordinates = coordinates;
     let id = m.insert(Element::CadImport(CadImport { cad: name.clone(), level, at, origin, scale, angle, view, hidden, colors }));
     let extents = m.cad_box(id);
     let mut reply = json!({
@@ -6549,6 +6605,9 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
     });
     if !notes.is_empty() {
         reply["notes"] = json!(notes);
+    }
+    if let Some(l) = acquired {
+        reply["acquired"] = json!(l);
     }
     if far > 0 {
         reply["warning"] = json!(format!(
@@ -8592,6 +8651,16 @@ fn shared_at(m: &Model, extra: &mut Map<String, Value>, at: P2, z: f64) {
     for (k, v) in ["shared_east", "shared_north", "shared_elevation"].into_iter().zip(q) {
         extra.insert(k.into(), json!(hundredth(v)));
     }
+}
+
+/// Why something far off can't come in where its coordinates put it, and what to do.
+fn far_message(here: [f64; 3]) -> String {
+    format!(
+        "where its coordinates put it, by the active location, is {:.0}, {:.0} mm from the internal origin, past the {MAX_COORD} mm \
+         a model reaches: set the location (`location`, `specify_coordinates`) or give `acquire: true`, which sets it from the \
+         file so it lands at the origin",
+        here[0], here[1]
+    )
 }
 
 /// What `origin` names: the Project Base Point unless it says the Survey Point.

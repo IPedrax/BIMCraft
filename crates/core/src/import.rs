@@ -991,46 +991,92 @@ impl<'a> Reader<'a> {
 }
 
 /// The project's length unit in mm, and its plane angle unit in radians.
-fn units(f: &File) -> Result<(f64, f64), String> {
-    fn si(prefix: Option<&str>) -> f64 {
-        match prefix {
-            Some("EXA") => 1e18,
-            Some("PETA") => 1e15,
-            Some("TERA") => 1e12,
-            Some("GIGA") => 1e9,
-            Some("MEGA") => 1e6,
-            Some("KILO") => 1e3,
-            Some("HECTO") => 1e2,
-            Some("DECA") => 1e1,
-            Some("DECI") => 1e-1,
-            Some("CENTI") => 1e-2,
-            Some("MILLI") => 1e-3,
-            Some("MICRO") => 1e-6,
-            Some("NANO") => 1e-9,
-            _ => 1.0,
-        }
+fn si(prefix: Option<&str>) -> f64 {
+    match prefix {
+        Some("EXA") => 1e18,
+        Some("PETA") => 1e15,
+        Some("TERA") => 1e12,
+        Some("GIGA") => 1e9,
+        Some("MEGA") => 1e6,
+        Some("KILO") => 1e3,
+        Some("HECTO") => 1e2,
+        Some("DECA") => 1e1,
+        Some("DECI") => 1e-1,
+        Some("CENTI") => 1e-2,
+        Some("MILLI") => 1e-3,
+        Some("MICRO") => 1e-6,
+        Some("NANO") => 1e-9,
+        _ => 1.0,
     }
-    // A unit's kind, and its size in SI base units (metres, radians).
-    fn unit(f: &File, id: Option<u64>, depth: usize) -> Option<(String, f64)> {
-        let e = f.entities.get(&id?)?;
-        let kind = enumeration(e.args.get(1)).unwrap_or("").to_string();
-        match e.name.as_str() {
-            "IFCSIUNIT" => Some((kind, si(enumeration(e.args.get(2))))),
-            "IFCCONVERSIONBASEDUNIT" | "IFCCONVERSIONBASEDUNITWITHOFFSET" if depth < 8 => {
-                let measure = f.entities.get(&reference(e.args.get(3))?)?;
-                let (_, base) = unit(f, reference(measure.args.get(1)), depth + 1)?;
-                Some((kind, real(measure.args.first())? * base))
+}
+// A unit's kind, and its size in SI base units (metres, radians).
+fn unit_of(f: &File, id: Option<u64>, depth: usize) -> Option<(String, f64)> {
+    let e = f.entities.get(&id?)?;
+    let kind = enumeration(e.args.get(1)).unwrap_or("").to_string();
+    match e.name.as_str() {
+        "IFCSIUNIT" => Some((kind, si(enumeration(e.args.get(2))))),
+        "IFCCONVERSIONBASEDUNIT" | "IFCCONVERSIONBASEDUNITWITHOFFSET" if depth < 8 => {
+            let measure = f.entities.get(&reference(e.args.get(3))?)?;
+            let (_, base) = unit_of(f, reference(measure.args.get(1)), depth + 1)?;
+            Some((kind, real(measure.args.first())? * base))
+        }
+        _ => None,
+    }
+}
+
+/// Where a file stands in the world, as the location of a model read from it whose internal coordinates are the file's less
+/// `shift` (mm): its `IfcMapConversion` (to its `IfcProjectedCRS`, in its map unit, else the project's), else its context's true
+/// north; and the CRS, where the target's name is an EPSG code this version knows. None where it says nothing and wasn't moved.
+fn georeference(f: &File, mm: f64, shift: P2) -> Option<(crate::coordinates::Location, Option<u32>)> {
+    use crate::coordinates::Location;
+    let first = |name: &str| f.entities.iter().filter(|(_, e)| e.name == name).min_by_key(|(id, _)| **id).map(|(_, e)| e);
+    let conversion = first("IFCMAPCONVERSION");
+    let (mut l, crs) = match conversion {
+        Some(c) => {
+            let target = reference(c.args.get(1)).and_then(|t| f.entities.get(&t));
+            let unit = target.and_then(|t| unit_of(f, reference(t.args.get(6)), 0)).map_or(mm, |(_, size)| size * 1000.0);
+            let crs = target
+                .and_then(|t| text(t.args.first()))
+                .and_then(|n| n.trim().strip_prefix("EPSG:").or_else(|| n.trim().strip_prefix("epsg:")))
+                .and_then(|code| code.trim().parse::<u32>().ok())
+                .filter(|code| crate::crs::lookup(*code).is_ok());
+            let (xa, xo) = (real(c.args.get(5)).unwrap_or(1.0), real(c.args.get(6)).unwrap_or(0.0));
+            let angle = if xa.hypot(xo) > 1e-12 { xo.atan2(xa).to_degrees() } else { 0.0 };
+            let scale = real(c.args.get(7)).filter(|k| crate::coordinates::SCALE.contains(k)).unwrap_or(1.0);
+            let at = |k: usize| real(c.args.get(k)).unwrap_or(0.0) * unit;
+            (Location { east: at(2), north: at(3), elevation: at(4), angle, scale }, crs)
+        }
+        None => {
+            // True north alone: turned from the file's y, the model's project north.
+            let ctx = first("IFCGEOMETRICREPRESENTATIONCONTEXT");
+            let dir = ctx.and_then(|c| reference(c.args.get(5))).and_then(|d| f.entities.get(&d));
+            let ratios: Vec<f64> = dir.map(|d| list(d.args.first()).iter().filter_map(|v| real(Some(v))).collect()).unwrap_or_default();
+            let angle = match ratios.as_slice() {
+                [x, y, ..] if x.hypot(*y) > 1e-12 => x.atan2(*y).to_degrees(),
+                _ => 0.0,
+            };
+            if angle.abs() < 1e-9 && shift == P2(0.0, 0.0) {
+                return None;
             }
-            _ => None,
+            (Location { angle, ..Location::default() }, None)
         }
-    }
+    };
+    // The model's origin is the file's `shift`: its map coordinates are the conversion's of that point.
+    let (c, s) = (l.angle.to_radians().cos(), l.angle.to_radians().sin());
+    l.east += l.scale * (shift.0 * c - shift.1 * s);
+    l.north += l.scale * (shift.0 * s + shift.1 * c);
+    let ok = [l.east, l.north, l.elevation].iter().all(|x| x.is_finite() && x.abs() <= crate::coordinates::MAX_SHARED);
+    ok.then_some((l, crs))
+}
+
+fn units(f: &File) -> Result<(f64, f64), String> {
     // The first project, the one the name comes from.
     let projects = f.entities.iter().filter(|(_, e)| e.name == "IFCPROJECT");
     let (_, project) = projects.min_by_key(|(id, _)| **id).ok_or("it has no IfcProject")?;
     let assignment = reference(project.args.get(8)).and_then(|a| f.entities.get(&a));
     let (mut mm, mut rad) = (1.0, 1.0);
     for u in refs(assignment.and_then(|a| a.args.first())) {
-        match unit(f, Some(u), 0) {
+        match unit_of(f, Some(u), 0) {
             Some((kind, size)) if kind == "LENGTHUNIT" => mm = size * 1000.0,
             Some((kind, size)) if kind == "PLANEANGLEUNIT" => rad = size,
             _ => {}
@@ -3296,6 +3342,11 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         format!("{n} {name}: {why}")
     }));
     let moved = (r.shift != P2(0.0, 0.0)).then_some(r.shift * -1.0);
+    if let Some((l, crs)) = georeference(&file, mm, r.shift) {
+        let active = m.coordinates.active.clone();
+        m.coordinates.locations.insert(active, l);
+        m.coordinates.crs = crs;
+    }
     Ok(Imported { model: m, schema: file.schema.clone(), skipped, moved })
 }
 
