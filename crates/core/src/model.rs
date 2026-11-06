@@ -3364,6 +3364,9 @@ pub struct Model {
     /// its panel schedule on top of each circuit's own; a classification with none counts whole.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub demand_factors: BTreeMap<String, f64>,
+    /// Where it stands in the world: its Project Base Point, its Survey Point and its locations.
+    #[serde(default, skip_serializing_if = "crate::coordinates::Coordinates::is_default")]
+    pub coordinates: crate::coordinates::Coordinates,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -3467,6 +3470,7 @@ impl Model {
             wire_types: crate::electrical::wire_types(),
             georeference: None,
             demand_factors: BTreeMap::new(),
+            coordinates: crate::coordinates::Coordinates::named(language.word(crate::coordinates::INTERNAL)),
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -6992,6 +6996,7 @@ impl Model {
         if let Some(g) = &self.georeference {
             g.check().map_err(|e| format!("the project's georeference: {e}"))?;
         }
+        self.coordinates.check()?;
         for (n, x) in &self.materials {
             for p in [&x.cut_pattern, &x.surface_pattern].into_iter().flatten() {
                 if !self.fill_patterns.contains_key(p) {
@@ -8624,6 +8629,7 @@ impl Model {
             georeference,
             pinned,
             demand_factors,
+            coordinates,
             elements: _,
             library,
             loaded,
@@ -8669,6 +8675,7 @@ impl Model {
             && *georeference == o.georeference
             && *pinned == o.pinned
             && *demand_factors == o.demand_factors
+            && *coordinates == o.coordinates
             && *library == o.library
             && loaded.len() == o.loaded.len()
             && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))

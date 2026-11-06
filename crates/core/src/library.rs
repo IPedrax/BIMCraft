@@ -66,6 +66,10 @@ pub enum Kind {
     TitleBlock,
     /// A dictionary project parameters came from.
     Dictionary,
+    /// A location: one position of the building in the shared coordinates.
+    Location,
+    /// The Project Base Point or the Survey Point.
+    CoordinatePoint,
 }
 
 impl Kind {
@@ -100,6 +104,8 @@ impl Kind {
             Kind::WireType => "wire type".into(),
             Kind::TitleBlock => "title block".into(),
             Kind::Dictionary => "parameter dictionary".into(),
+            Kind::Location => ui_msg!("location").into(),
+            Kind::CoordinatePoint => "coordinate point".into(),
         }
     }
 
@@ -132,6 +138,8 @@ impl Kind {
             "distribution-system" => Kind::DistributionSystem,
             "wire-type" => Kind::WireType,
             "title-block" => Kind::TitleBlock,
+            "location" => Kind::Location,
+            "coordinate-point" => Kind::CoordinatePoint,
             _ => Kind::Type(s.strip_prefix("type:")?.to_string()),
         })
     }
@@ -168,6 +176,8 @@ impl fmt::Display for Kind {
             Kind::WireType => f.write_str("wire-type"),
             Kind::TitleBlock => f.write_str("title-block"),
             Kind::Dictionary => f.write_str("dictionary"),
+            Kind::Location => f.write_str("location"),
+            Kind::CoordinatePoint => f.write_str("coordinate-point"),
         }
     }
 }
@@ -832,6 +842,9 @@ impl Model {
         add(Kind::DistributionSystem, &mut self.distribution_systems.keys());
         add(Kind::WireType, &mut self.wire_types.keys());
         add(Kind::TitleBlock, &mut self.title_blocks.keys());
+        add(Kind::Location, &mut self.coordinates.locations.keys());
+        let points = [crate::coordinates::BASE_POINT.to_string(), crate::coordinates::SURVEY_POINT.to_string()];
+        add(Kind::CoordinatePoint, &mut points.iter());
         out
     }
 
@@ -1619,6 +1632,7 @@ impl Model {
                 f(&Kind::FillPattern, p);
             }
         }
+        f(&Kind::Location, &mut self.coordinates.active);
         for d in self.distribution_systems.values_mut() {
             for v in d.voltages_mut() {
                 f(&Kind::Voltage, v);

@@ -698,6 +698,48 @@ other_files(
         panel,
     ),
     edit(
+        "coordinates",
+        "Coordinates",
+        &[],
+        "{base?: [x,y,z], survey?: [x,y,z], move?: point|system} the project's coordinates. Without parameters, reports them: the \
+         internal origin, the Project Base Point and the Survey Point, each `internal` (the file's own mm, where geometry is) and \
+         `shared` (the active location's map coordinates, mm), the `active` location and every location. `base` moves the Project \
+         Base Point, the reference elevations and spot coordinates measure from; it moves no geometry. `survey` moves the Survey \
+         Point: `move: point` (the default) moves it alone, so the building stays where it is in the world and the point's shared \
+         coordinates change; `move: system` carries the shared system with it, so it keeps its shared coordinates and the building \
+         moves in the world",
+        coordinates,
+    ),
+    edit(
+        "location",
+        "Location",
+        &[],
+        "{name?, east?, north?, elevation?, angle?, scale?, rename?, activate?: true, delete?: true, shift?: [de, dn, dz]} a \
+         location of the project, one position of the building in the shared coordinates (Revit's named site): the Survey Point's \
+         shared `east`, `north` and `elevation` (mm), the `angle` from project north to true north (degrees, east positive) and \
+         the `scale` from ground to grid (1 unless a map projection's; heights are not scaled). A new one starts as a copy of the \
+         active one. `activate` makes it the one the shared coordinates are in. `shift` adds to its east, north and elevation, or \
+         to every location's when no `name` is given (the survey says the site is 5 m higher: shift [0, 0, 5000]). The active \
+         location can't be deleted. Without `name` or `shift`, lists them",
+        location,
+    ),
+    edit(
+        "specify_coordinates",
+        "Specify Coordinates at a Point",
+        &[],
+        "{at: [x,y,z], east, north, elevation, angle?} sets the active location so that internal point `at` has the shared \
+         coordinates given (mm), turned to `angle` (degrees from project north to true north, east positive) when given",
+        specify_coordinates,
+    ),
+    other(
+        "convert_coordinates",
+        "Convert Coordinates",
+        "{points: [[x,y,z], …], from: internal|base|shared, to: internal|base|shared, location?} each point from one frame to \
+         another, mm: `internal`, the file's own, where geometry is; `base`, from the Project Base Point; `shared`, the map \
+         coordinates of the active location (or of `location`). Returns points",
+        convert_coordinates,
+    ),
+    edit(
         "column",
         ui_msg!("Column"),
         &["CL"],
@@ -8880,6 +8922,203 @@ fn board_json(m: &Model, id: Id) -> Value {
         "installed_va": totals.as_ref().map(|t| t.installed_va), "demand_va": totals.as_ref().map(|t| t.demand_va),
         "current_a": totals.as_ref().and_then(|t| t.current_a),
     })
+}
+
+/// `[x, y, z]` under `key`, mm, within the shared coordinates' bounds.
+fn shared3(c: &str, p: &Value, key: &str) -> Result<Option<[f64; 3]>, String> {
+    use crate::coordinates::MAX_SHARED;
+    match p.get(key) {
+        v if absent(v) => Ok(None),
+        Some(v) => v
+            .as_array()
+            .and_then(|a| match a.as_slice() {
+                [x, y, z] => Some([x.as_f64()?, y.as_f64()?, z.as_f64()?]),
+                _ => None,
+            })
+            .filter(|q| q.iter().all(|x| x.is_finite() && x.abs() <= MAX_SHARED))
+            .map(Some)
+            .ok_or_else(|| bad(c, format!("`{key}` must be [x, y, z] in mm, each within ±{MAX_SHARED:e}, got {v}"))),
+        None => Ok(None),
+    }
+}
+
+/// A shared coordinate under `key`, mm.
+fn shared1(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
+    use crate::coordinates::MAX_SHARED;
+    match p.get(key) {
+        v if absent(v) => Ok(None),
+        Some(v) => v
+            .as_f64()
+            .filter(|x| x.is_finite() && x.abs() <= MAX_SHARED)
+            .map(Some)
+            .ok_or_else(|| bad(c, format!("`{key}` must be a number of mm within ±{MAX_SHARED:e}, got {v}"))),
+        None => Ok(None),
+    }
+}
+
+/// An angle to true north under `key`, degrees.
+fn north_angle(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
+    match amount(c, p, key, "degrees")? {
+        Some(a) if a.abs() > 360.0 => Err(bad(c, format!("`{key}` must be degrees from -360 to 360, got {a}"))),
+        a => Ok(a),
+    }
+}
+
+fn coordinates(s: &mut Session, p: &Value) -> R {
+    use crate::coordinates::Move;
+    let c = "coordinates";
+    only(c, p, &["base", "survey", "move"])?;
+    let base = match p.get("base") {
+        v if absent(v) => None,
+        Some(v) => Some(point3(v).ok_or_else(|| bad(c, format!("`base` must be [x, y, z] in mm, got {v}")))?),
+        None => None,
+    };
+    let survey = match p.get("survey") {
+        v if absent(v) => None,
+        Some(v) => Some(point3(v).ok_or_else(|| bad(c, format!("`survey` must be [x, y, z] in mm, got {v}")))?),
+        None => None,
+    };
+    let how = match string(c, p, "move")?.as_deref() {
+        None | Some("point") => Move::Point,
+        Some("system") => Move::System,
+        Some(other) => {
+            return Err(bad(c, format!("`move` is point (the point alone) or system (the shared system with it), not `{other}`")));
+        }
+    };
+    if base.is_some() || survey.is_some() {
+        let m = s.model_mut();
+        if let Some(b) = base {
+            m.coordinates.base = b;
+        }
+        if let Some(sv) = survey {
+            m.coordinates.move_survey(sv, how);
+        }
+    }
+    Ok(s.model.coordinates.report())
+}
+
+fn location(s: &mut Session, p: &Value) -> R {
+    use crate::coordinates::{Location, MAX_LOCATIONS};
+    let c = "location";
+    only(c, p, &["name", "east", "north", "elevation", "angle", "scale", "rename", "activate", "delete", "shift"])?;
+    let name = name_param(c, p, "name")?;
+    let shift = shared3(c, p, "shift")?;
+    let shifted = |l: &mut Location, d: [f64; 3]| {
+        l.east += d[0];
+        l.north += d[1];
+        l.elevation += d[2];
+    };
+    let Some(name) = name else {
+        if let Some(d) = shift {
+            let m = s.model_mut();
+            for l in m.coordinates.locations.values_mut() {
+                shifted(l, d);
+            }
+            return Ok(json!({"locations": m.coordinates.locations}));
+        }
+        return Ok(json!({"active": s.model.coordinates.active, "locations": s.model.coordinates.locations}));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if !m.coordinates.locations.contains_key(&name) {
+            return Err(bad(c, format!("there's no location `{name}`")));
+        }
+        if m.coordinates.active == name {
+            return Err(bad(c, format!("`{name}` is the active location; activate another first")));
+        }
+        m.coordinates.locations.remove(&name);
+        return Ok(json!({"deleted": name}));
+    }
+    let was = m.coordinates.locations.get(&name).cloned();
+    let rename = name_param(c, p, "rename")?;
+    if was.is_none() && rename.is_some() {
+        return Err(bad(c, format!("there's no location `{name}` to rename")));
+    }
+    let mut l = was.clone().unwrap_or_else(|| m.coordinates.location());
+    if let Some(x) = shared1(c, p, "east")? {
+        l.east = x;
+    }
+    if let Some(x) = shared1(c, p, "north")? {
+        l.north = x;
+    }
+    if let Some(x) = shared1(c, p, "elevation")? {
+        l.elevation = x;
+    }
+    if let Some(a) = north_angle(c, p, "angle")? {
+        l.angle = a;
+    }
+    if let Some(x) = amount(c, p, "scale", "grid over ground")? {
+        l.scale = x;
+    }
+    if let Some(d) = shift {
+        shifted(&mut l, d);
+    }
+    let name = match rename {
+        Some(to) if to != name => {
+            if m.coordinates.locations.contains_key(&to) {
+                return Err(bad(c, format!("there's already a location `{to}`")));
+            }
+            m.coordinates.locations.remove(&name);
+            rename_entry(m, &LibKind::Location, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    l.check(&name).map_err(|e| bad(c, e))?;
+    if !m.coordinates.locations.contains_key(&name) && m.coordinates.locations.len() >= MAX_LOCATIONS {
+        return Err(bad(c, format!("the project holds up to {MAX_LOCATIONS} locations")));
+    }
+    m.coordinates.locations.insert(name.clone(), l.clone());
+    if flag(c, p, "activate")? {
+        m.coordinates.active = name.clone();
+    }
+    Ok(json!({"name": name, "location": l, "active": m.coordinates.active}))
+}
+
+fn specify_coordinates(s: &mut Session, p: &Value) -> R {
+    let c = "specify_coordinates";
+    only(c, p, &["at", "east", "north", "elevation", "angle"])?;
+    let at = point3_req(c, p, "at")?;
+    let need = |key: &str| shared1(c, p, key)?.ok_or_else(|| bad(c, format!("`{key}` (mm) is required")));
+    let shared = [need("east")?, need("north")?, need("elevation")?];
+    let angle = north_angle(c, p, "angle")?;
+    let m = s.model_mut();
+    m.coordinates.specify(at, shared, angle);
+    let l = m.coordinates.location();
+    l.check(&m.coordinates.active).map_err(|e| bad(c, e))?;
+    Ok(json!({"active": m.coordinates.active, "location": l}))
+}
+
+fn convert_coordinates(s: &mut Session, p: &Value) -> R {
+    use crate::coordinates::{Frame, MAX_SHARED};
+    let c = "convert_coordinates";
+    only(c, p, &["points", "from", "to", "location"])?;
+    let frame = |key: &str| -> Result<Frame, String> {
+        let f = string(c, p, key)?.ok_or_else(|| bad(c, format!("`{key}` ({}) is required", Frame::NAMES)))?;
+        Frame::parse(&f).ok_or_else(|| bad(c, format!("`{key}` is one of {}, not `{f}`", Frame::NAMES)))
+    };
+    let (from, to) = (frame("from")?, frame("to")?);
+    let a = p.get("points").and_then(Value::as_array).ok_or_else(|| bad(c, "`points` [[x, y, z], …] is required"))?;
+    if a.len() > MAX_POINTS {
+        return Err(bad(c, format!("`points` has more than {MAX_POINTS} points")));
+    }
+    let pts = a
+        .iter()
+        .map(|v| shared3(c, &json!({"p": v}), "p")?.ok_or_else(|| bad(c, format!("`points`: {v} is not a point [x, y, z] in mm"))))
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut co = s.model.coordinates.clone();
+    if let Some(name) = name_param(c, p, "location")? {
+        if !co.locations.contains_key(&name) {
+            let names: Vec<&str> = co.locations.keys().map(String::as_str).collect();
+            return Err(bad(c, format!("there's no location `{name}`; the project has {}", names.join(", "))));
+        }
+        co.active = name;
+    }
+    let out: Vec<[f64; 3]> = pts.into_iter().map(|q| co.convert(q, from, to)).collect();
+    if out.iter().flatten().any(|x| !x.is_finite() || x.abs() > MAX_SHARED) {
+        return Err(bad(c, "a point lands past the coordinates' bounds"));
+    }
+    Ok(json!({"points": out, "from": string(c, p, "from")?, "to": string(c, p, "to")?, "location": co.active}))
 }
 
 fn wall(s: &mut Session, p: &Value) -> R {

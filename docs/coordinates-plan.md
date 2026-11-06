@@ -18,7 +18,7 @@ complaints, is in [coordinates-research.md](coordinates-research.md). This plan 
    exported goes through the active location's transform. See "The bias" below.
 5. **No Publish for now.** Something better comes later.
 6. **Views turn between Project North and True North**, as Revit's do.
-7. **Agents first.** Every fact and action is a command, and `info` reports it.
+7. **Agents first.** Every fact and action is a command; `coordinates` reports them all.
 
 ## The bias: does it work, and is there something better?
 
@@ -80,8 +80,9 @@ Keeping geometry near zero fixes all of these at once.
   The transform is `shared(p) = R(angle) * (p - survey) * scale + location.shared`.
 - **CRS.** One per project (`Option<Crs>`: EPSG code, name, unit). Every location is in it. The CRS's unit is shown and
   typed: metres, feet, and US survey feet as exactly 1200/3937 m, which Revit can't.
-- **File format.** It goes from 17 to 18. `migrate` gives an older file the two points at the origin, an "Internal"
-  location, and no CRS.
+- **File format.** No bump: a file without `coordinates` reads with both points at the origin and an "Internal"
+  location, and an older version reading a newer file leaves them out and lists them (`left_out`), as with the electrical
+  settings. The stage that makes geometry depend on them (imports through the bias) bumps it.
 
 **Map and sun only.** WGS84 is used only for the map and the sun. `crs-definitions` (CC0, EPSG's definitions as proj
 strings) and `proj4rs` (MIT OR Apache-2.0, pure Rust) do shared → geographic. Their datum shifts are good to about a
@@ -123,8 +124,7 @@ Each stage is test-first through commands, and gets its own commit. Targeted tes
 a push.
 
 1. **Core.** The model above, `coordinates.rs`, the commands `coordinates`, `location`, `specify_coordinates` and
-   `convert_coordinates` (without WGS84), the check rules, format 18 and migrate, and `info`. Also the hostile-params
-   sweep.
+   `convert_coordinates` (without WGS84), the check rules, and the hostile-params sweep. `coordinates` with no parameters is the report.
 2. **CRS and WGS84.** `crs`, the definitions and the transform, CRS units including US survey feet, and
    `convert_coordinates` to and from WGS84. Tested against published control points: SIRGAS 2000 / UTM 23S, a UTM zone
    in the north, a US State Plane zone in US feet, and a British National Grid point. Where available, crosscheck with

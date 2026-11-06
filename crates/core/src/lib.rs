@@ -29,6 +29,9 @@ mod constraints;
 pub mod cowork;
 #[cfg(test)]
 mod cowork_tests;
+pub mod coordinates;
+#[cfg(test)]
+mod coordinates_tests;
 pub mod crosscheck;
 mod csg;
 pub mod curves;
