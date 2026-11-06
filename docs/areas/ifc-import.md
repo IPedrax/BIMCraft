@@ -82,3 +82,26 @@ class where it hasn't ([families](families.md)); a class is never forced into an
   own would also need its place in Visibility/Graphics, Object Styles, the schedules' `OWN` table, the Family Editor's list, the
   discipline tabs, `lenient` and the translations; worth doing when BIMCraft has tools for those systems, not as an import's
   side effect.
+
+## Georeference
+
+Where a project lies on a map is `Model::georeference` (`model::Georeference`): a projected coordinate reference system by its
+name (an EPSG code) and what else IFC says of it (a description, geodetic and vertical datums, map projection and zone), the map
+point of the project's origin in mm (eastings, northings, height), the angle from the map's east to the project's x axis in
+degrees, counterclockwise, and the scale, a distance on the map over the same in the project (1, or a grid's scale factor). The
+model's own coordinates and drawings don't move with it.
+
+- **Import** (`import::georeference`): the file's first `IfcMapConversion` (or IFC4X3's `IfcMapConversionScaled`, by its x
+  factor) to an `IfcProjectedCRS` that has a name. Eastings, northings and height are in the CRS's map unit, else the project's
+  length unit; the file's `Scale` takes the project's length unit to the map's, as IFC4 and IfcOpenShell's `geolocation` read it
+  (a file in millimetres on a map in metres writes 0.001), so a millimetre project in metres keeps a scale of 1. Where the import
+  brings a model at map coordinates near the origin (`Imported::moved`), the map point of the new origin is moved by the same,
+  turned and scaled, so the georeference still puts every element where the file did. One that breaks `Georeference::check` is
+  left out with a note, and the project opens without one. IFC2x3's `ePSet_MapConversion` is not read.
+- **Export** (`ifc::export`): an `IfcProjectedCRS` in metres (`IfcSIUnit` METRE as its map unit) and an `IfcMapConversion` from
+  the model context, eastings, northings and height in metres, the x axis as its cosine and sine, the scale times 0.001.
+- **The command** `georeference` says it, sets it (a project with none takes one with `crs`; what isn't given keeps its value) and
+  clears it; `Georeference::check` bounds it (`MAX_MAP`, 1e13 mm; a scale of 1e-6 to 1e6; one-line texts of `MAX_TEXT`), as
+  `Model::check` does for a file.
+- **The file**: an older BIMCraft leaves `georeference` out of a project and opens the rest (`lenient`), so it took no `FORMAT`
+  step. The desktop doesn't show it yet.

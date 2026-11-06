@@ -47,6 +47,8 @@ pub mod fills;
 mod fixtures;
 mod font;
 pub mod geom;
+#[cfg(test)]
+mod georef_tests;
 pub mod gltf;
 pub mod graphics;
 pub mod groups;

@@ -1096,47 +1096,89 @@ impl<'a> Reader<'a> {
     }
 }
 
+fn si(prefix: Option<&str>) -> f64 {
+    match prefix {
+        Some("EXA") => 1e18,
+        Some("PETA") => 1e15,
+        Some("TERA") => 1e12,
+        Some("GIGA") => 1e9,
+        Some("MEGA") => 1e6,
+        Some("KILO") => 1e3,
+        Some("HECTO") => 1e2,
+        Some("DECA") => 1e1,
+        Some("DECI") => 1e-1,
+        Some("CENTI") => 1e-2,
+        Some("MILLI") => 1e-3,
+        Some("MICRO") => 1e-6,
+        Some("NANO") => 1e-9,
+        _ => 1.0,
+    }
+}
+
+/// A unit's kind, and its size in SI base units (metres, radians).
+fn unit_of(f: &File, id: Option<u64>, depth: usize) -> Option<(String, f64)> {
+    let e = f.entities.get(&id?)?;
+    let kind = enumeration(e.args.get(1)).unwrap_or("").to_string();
+    match e.name.as_str() {
+        "IFCSIUNIT" => Some((kind, si(enumeration(e.args.get(2))))),
+        "IFCCONVERSIONBASEDUNIT" | "IFCCONVERSIONBASEDUNITWITHOFFSET" if depth < 8 => {
+            let measure = f.entities.get(&reference(e.args.get(3))?)?;
+            let (_, base) = unit_of(f, reference(measure.args.get(1)), depth + 1)?;
+            Some((kind, real(measure.args.first())? * base))
+        }
+        _ => None,
+    }
+}
+
+/// Where the file puts the project on a map: its first map conversion (IFC4's `IfcMapConversion`, IFC4X3's scaled one by its x
+/// factor) to a projected coordinate reference system that has a name. Its eastings, northings and height in mm of the map, which
+/// is the CRS's map unit, else the project's length unit; its scale a distance on the map over the same in the project (the file's
+/// scale takes the project's length unit to the map's, as IFC4 and IfcOpenShell read it). The model is moved near the origin by
+/// `r.shift`, so the map point of its origin is the one the file's origin put that far along.
+fn georeference(r: &Reader, ids: &[u64]) -> Option<crate::model::Georeference> {
+    let named = |e: &&Entity| r.at(e.args.get(1)).is_some_and(|c| c.name == "IFCPROJECTEDCRS" && text(c.args.first()).is_some());
+    let conversion = ids
+        .iter()
+        .filter_map(|id| r.get(*id))
+        .filter(|e| matches!(e.name.as_str(), "IFCMAPCONVERSION" | "IFCMAPCONVERSIONSCALED"))
+        .find(named)?;
+    let crs = r.at(conversion.args.get(1))?;
+    let a = |i: usize| conversion.args.get(i);
+    let map = reference(crs.args.get(6))
+        .and_then(|u| unit_of(r.f, Some(u), 0))
+        .filter(|(kind, size)| kind == "LENGTHUNIT" && size.is_finite() && *size > 0.0)
+        .map_or(r.mm, |(_, metres)| metres * 1000.0);
+    let (abscissa, ordinate) = (real(a(5)).unwrap_or(1.0), real(a(6)).unwrap_or(0.0));
+    let rotation = if abscissa.hypot(ordinate) > 1e-12 { ordinate.atan2(abscissa).to_degrees() } else { 0.0 };
+    let factor = if conversion.name == "IFCMAPCONVERSIONSCALED" { real(a(8)).unwrap_or(1.0) } else { 1.0 };
+    let scale = real(a(7)).unwrap_or(1.0) * factor * map / r.mm;
+    let label = |i: usize| text(crs.args.get(i)).map(clip);
+    let (sin, cos) = rotation.to_radians().sin_cos();
+    let (dx, dy) = (r.shift.0, r.shift.1);
+    Some(crate::model::Georeference {
+        crs: clip(text(crs.args.first())?),
+        description: label(1),
+        geodetic_datum: label(2),
+        vertical_datum: label(3),
+        map_projection: label(4),
+        map_zone: label(5),
+        eastings: real(a(2))? * map + scale * (cos * dx - sin * dy),
+        northings: real(a(3))? * map + scale * (sin * dx + cos * dy),
+        height: real(a(4)).unwrap_or(0.0) * map,
+        rotation,
+        scale,
+    })
+}
+
 /// The project's length unit in mm, and its plane angle unit in radians.
 fn units(f: &File) -> Result<(f64, f64), String> {
-    fn si(prefix: Option<&str>) -> f64 {
-        match prefix {
-            Some("EXA") => 1e18,
-            Some("PETA") => 1e15,
-            Some("TERA") => 1e12,
-            Some("GIGA") => 1e9,
-            Some("MEGA") => 1e6,
-            Some("KILO") => 1e3,
-            Some("HECTO") => 1e2,
-            Some("DECA") => 1e1,
-            Some("DECI") => 1e-1,
-            Some("CENTI") => 1e-2,
-            Some("MILLI") => 1e-3,
-            Some("MICRO") => 1e-6,
-            Some("NANO") => 1e-9,
-            _ => 1.0,
-        }
-    }
-    // A unit's kind, and its size in SI base units (metres, radians).
-    fn unit(f: &File, id: Option<u64>, depth: usize) -> Option<(String, f64)> {
-        let e = f.entities.get(&id?)?;
-        let kind = enumeration(e.args.get(1)).unwrap_or("").to_string();
-        match e.name.as_str() {
-            "IFCSIUNIT" => Some((kind, si(enumeration(e.args.get(2))))),
-            "IFCCONVERSIONBASEDUNIT" | "IFCCONVERSIONBASEDUNITWITHOFFSET" if depth < 8 => {
-                let measure = f.entities.get(&reference(e.args.get(3))?)?;
-                let (_, base) = unit(f, reference(measure.args.get(1)), depth + 1)?;
-                Some((kind, real(measure.args.first())? * base))
-            }
-            _ => None,
-        }
-    }
     // The first project, the one the name comes from.
     let projects = f.entities.iter().filter(|(_, e)| e.name == "IFCPROJECT");
     let (_, project) = projects.min_by_key(|(id, _)| **id).ok_or("it has no IfcProject")?;
     let assignment = reference(project.args.get(8)).and_then(|a| f.entities.get(&a));
     let (mut mm, mut rad) = (1.0, 1.0);
     for u in refs(assignment.and_then(|a| a.args.first())) {
-        match unit(f, Some(u), 0) {
+        match unit_of(f, Some(u), 0) {
             Some((kind, size)) if kind == "LENGTHUNIT" => mm = size * 1000.0,
             Some((kind, size)) if kind == "PLANEANGLEUNIT" => rad = size,
             _ => {}
@@ -3398,6 +3440,13 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         if let Some(x) = m.materials.get_mut(&name) {
             x.color = colour;
             x.transparency = clear;
+        }
+    }
+    // Where it lies on a map, where the file says and the project can keep it.
+    if let Some(g) = georeference(&r, &ids) {
+        match g.check() {
+            Ok(()) => m.georeference = Some(g),
+            Err(why) => skipped.push(format!("its map conversion: {why}; the project has no georeference")),
         }
     }
     // And those named for a colour, in it.
