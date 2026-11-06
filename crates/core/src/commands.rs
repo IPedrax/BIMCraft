@@ -1011,8 +1011,9 @@ pub static ALL: &[Command] = &[
          drain: floor_drain|floor_waste|roof_drain; pipefitting: bend|tee|cross|transition|coupling; \"\" clears it), \
          ifc?: {class, predefined?, object_type?} | null (the IFC class a generic family's components go out as, which one \
          opened from IFC remembers: `IFCPLATE`, `CURTAIN_PANEL`; one IFC4 lacks goes out as a proxy that names it), \
-         connectors?: [{kind: power|switch, system: power-balanced|power-unbalanced|switch, poles?: 1-3, voltage?, load_va?, \
-         power_factor?, classification?}], rename?, delete?: true, dry_run?, path?, save?} a family of \
+         connectors?: [{kind: power|switch|pipe|data|earthing, name?, system?: power-balanced|power-unbalanced|switch, \
+         domain?: cold|hot|waste|vent|storm|gas, flow?: in|out|both, at?: [x, y, z], direction?: [x, y, z], size?, poles?: 1-3, \
+         voltage?, load_va?, power_factor?, classification?}], rename?, delete?: true, dry_run?, path?, save?} a family of \
          the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .json file at `path` (a \
          family as `inspect` shows it, with its `name`). Without `name` it lists the project's families, each its category and \
          how many types, forms and symbols it has; with only a `name` it reads one — its definition, each of its types' \
@@ -1040,7 +1041,13 @@ pub static ALL: &[Command] = &[
          `inspect` lists the families. A device's `connectors` say what it draws: one `power` connector at most (a second is \
          refused), `voltage` in volts, `load_va` in VA (a number or a formula over its parameters, so each type has its load; \
          `power-unbalanced` may take a list, one load for each pole), `power_factor` over 0 up to 1, and its `classification` \
-         (`lighting`…); a `switch` connector carries no load. A component reports them as `connectors` in `elements`; a \
+         (`lighting`…); a `switch` connector carries no load; both have a `system`. A `pipe` connector is where a pipe \
+         meets the family: its `domain` (cold or hot water, waste, vent, storm, gas), its `flow` (`in` as water into a basin, `out` as \
+         waste from a WC, `both` the default), `at` (where it is, mm, in the family's axes: x along it, y to its left, z up from its \
+         base), `direction` (the way the pipe leaves it, any length but none) and `size` (its DN, mm); a `data` or `earthing` \
+         connector has `at` and may have `direction` and `size`; an electrical one may have `at` and `direction`. Each of `at`, \
+         `direction` and `size` is a number or a formula over the family's parameters. A component reports them as \
+         `connectors` in `elements`, with `at` and `direction` in the model, where it stands; a \
          lighting, outlet or switch family without one counts as zero load, which `inspect` warns of; `connectors` replace \
          their own, as `parameters`, `forms` and `symbols` do. The `symbols` of a family of any category are what its plan \
          draws besides its forms, in its own axes, turned and moved (and mirrored) with the component or opening and hidden at \
@@ -2529,10 +2536,10 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             if let Some(v) = m.families.get(&cp.family).and_then(|f| f.values(&cp.type_name, &cp.params).ok()) {
                 extra.insert("values".into(), values_json(v));
             }
-            // What it draws, as its family's connectors say, for its type: none for a family with none.
-            if let Some(cs) = m.families.get(&cp.family).and_then(|f| f.connector_values(&cp.type_name, &cp.params).ok())
-                && !cs.is_empty()
-            {
+            // What it draws and where it joins a system, as its family's connectors say for its type, placed where it
+            // stands: none for a family with none.
+            let cs = m.component_connectors(cp);
+            if !cs.is_empty() {
                 extra.insert("connectors".into(), Value::Array(cs.iter().map(connector_json).collect()));
             }
             let base = m.elevation(cp.level) + cp.offset;
@@ -10586,13 +10593,42 @@ fn favorite(s: &mut Session, p: &Value) -> R {
 }
 
 /// The families, each its category, its types and its parameters' names.
-/// A connector, worked out, as JSON: its load in VA in all and in each phase.
-fn connector_json(c: &crate::family::ConnectorValues) -> Value {
-    json!({
-        "id": c.id, "guid": c.guid, "kind": c.kind, "system": c.system, "poles": c.poles, "voltage": c.voltage,
-        "load_va": c.load_va, "load_va_by_phase": c.load_va_by_phase, "power_factor": c.power_factor,
-        "classification": c.classification,
-    })
+/// A connector, worked out, as JSON: an electrical one's load in VA in all and in each phase; a pipe one's domain, flow and
+/// size; and, placed, where it is and the way it faces in the model.
+fn connector_json((c, at, direction): &crate::family::PlacedConnector) -> Value {
+    let mut o = json!({"id": c.id, "guid": c.guid, "kind": c.kind});
+    if !c.name.is_empty() {
+        o["name"] = json!(c.name);
+    }
+    if c.kind.electrical() {
+        for (k, v) in [
+            ("system", json!(c.system)),
+            ("poles", json!(c.poles)),
+            ("voltage", json!(c.voltage)),
+            ("load_va", json!(c.load_va)),
+            ("load_va_by_phase", json!(c.load_va_by_phase)),
+            ("power_factor", json!(c.power_factor)),
+            ("classification", json!(c.classification)),
+        ] {
+            o[k] = v;
+        }
+    }
+    if let Some(d) = c.domain {
+        o["domain"] = json!(d);
+    }
+    if c.kind == crate::family::ConnectorKind::Pipe || c.flow != crate::family::Flow::Both {
+        o["flow"] = json!(c.flow);
+    }
+    if let Some(x) = c.size {
+        o["size"] = json!(x);
+    }
+    if let Some(p) = at {
+        o["at"] = json!(p);
+    }
+    if let Some(d) = direction {
+        o["direction"] = json!(d);
+    }
+    o
 }
 
 fn families(m: &Model) -> Value {
@@ -10605,7 +10641,13 @@ fn families(m: &Model) -> Value {
                 n.clone(),
                 json!({
                     "category": f.category, "types": f.types.keys().collect::<Vec<_>>(), "parameters": parameters,
-                    "connectors": f.connectors.iter().map(|c| json!({"kind": c.kind, "system": c.system})).collect::<Vec<_>>(),
+                    "connectors": f.connectors.iter().map(|c| {
+                        let mut o = json!({"kind": c.kind});
+                        if let Some(x) = c.system { o["system"] = json!(x); }
+                        if let Some(x) = c.domain { o["domain"] = json!(x); }
+                        if !c.name.is_empty() { o["name"] = json!(c.name); }
+                        o
+                    }).collect::<Vec<_>>(),
                 }),
             )
         })

@@ -172,8 +172,25 @@ type sets its load (the starter luminaires' `Load` parameter) and an instance pa
 or load out of range for any type, and a load on a switch. A connector is a part (`HasPart`: an id and a GUID, kept by place
 while the family is edited), and a family without any reads and places as it always did. A component's `element_json` carries
 `connectors` worked out for its type (`Family::connector_values`: `load_va` in all, `load_va_by_phase`), which a circuit will sum;
-there are no circuits, panels or fitting-to-pipe joins yet, and the connector holds no position. `Model::warnings` (shown by
+there are no circuits, panels or fitting-to-pipe joins yet. `Model::warnings` (shown by
 `inspect`; `Model::check` stays an error only) says which lighting, outlet or switch family in use holds no connector, so its devices
 count as zero load. IFC writes each device with a connector `Pset_ElectricalDeviceCommon` (`NumberOfPoles`, and for a power
 connector `PowerFactor` and `RatedVoltage`) and `BIMCraft_Connector` (`System`, `Classification`, `LoadVA`, `LoadVAPhase1`…); IFC
 import doesn't read them back.
+
+**Connectors with a place** are where a pipe, a data cable or an earthing conductor meets a family, the first piece of the MEP
+network (#169). Besides `power` and `switch`, a connector's `kind` is `pipe`, `data` or `earthing`; `system` is only a power or a
+switch connector's. A `pipe` connector has a `domain` (`cold`, `hot`, `waste`, `vent`, `storm`, `gas`), a `flow` (`in`, `out`,
+`both` the default), `at` (mm, in the family's axes: x along it, y to its left, z up from its base), `direction` (the way its
+pipe leaves it, any length but none; worked out as a unit vector) and `size` (its DN, mm, up to `MAX_CONNECTOR_SIZE`); a `data` or
+`earthing` connector has `at` and may have the other two; an electrical one may have `at` and `direction`, never a `domain` or a
+`size`, and only a `power` one carries a load. Each of `at`, `direction` and `size` is a number or a formula over the family's
+parameters, and `name` says which it is for people. `Model::component_connectors` places them where a component stands
+(mirrored, turned and raised with it), and `element_json` gives `at` and `direction` in the model. The starter WC, washbasin,
+bathtub, kitchen sink, shower and floor drain carry their waste (out, DN 100 for the WC, 50 for the sink, 40 for the rest) and
+their cold and hot water (in, DN 20); the starter elbow, tee and gate valve have a connector at each end, of their diameter and
+with no domain, which a pipe fitting's or accessory's alone may leave out: it takes the domain of the pipe it joins, as Revit's
+fitting takes its pipe's system. IFC writes the electrical device's set from an electrical connector only, so a fixture with
+pipe connectors is no electrical device; IFC ports (`IfcDistributionPort`) come with the network. A file
+from before reads as it did; file format 18 is the one that has these connectors, so a build that reads up to 17 refuses a
+project saved by this one, saying it is from a newer BIMCraft, instead of failing on a `pipe` connector it doesn't know.
