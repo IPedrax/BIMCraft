@@ -415,6 +415,11 @@ impl BimApp {
                             self.toggle_scan_contrast();
                         }
                     }
+                    // Only where there is terrain to lock. Ticked, plans and the 3D view pick it as any element (Ctrl+Alt does it for a click).
+                    if self.session.model.elements.values().any(|e| bimcraft_core::graphics::locked(e.category())) {
+                        let tip = t("Select Terrain: pick, box and drag the terrain as any element. Off, it is locked; Ctrl+Alt picks it for one click.");
+                        ui.checkbox(&mut self.select_terrain, t("Select Terrain")).on_hover_text(tip);
+                    }
                     if temp.hides() || temp.reveal {
                         ui.add_space(8.0);
                         let note = if temp.reveal && !temp.hides() { msg!("Revealing hidden elements") } else { "Temporary Hide/Isolate" };

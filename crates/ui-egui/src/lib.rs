@@ -450,6 +450,11 @@ pub struct BimApp {
     ribbon_peek: bool,
     /// What High Contrast Point Clouds fills a view's scans with: the user's (Settings > Graphics), crimson at first.
     scan_contrast: [u8; 3],
+    /// Select Terrain, ticked in the view control bar: plans and the 3D view pick the terrain as any element, with no Ctrl+Alt held. This
+    /// window's, not the project's: it is not in a file, and a new project keeps it.
+    pub(crate) select_terrain: bool,
+    /// Whether the status line has said, this session, that Ctrl+Alt picks the terrain.
+    terrain_hint_given: bool,
     ribbon_bottom: Pos2,
     /// The Compact layout (File > Settings): the bars and palettes flush to the edges, not floating cards.
     compact: bool,
@@ -969,6 +974,8 @@ impl BimApp {
             compact: false,
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
+            select_terrain: false,
+            terrain_hint_given: false,
             ribbon_bottom: Pos2::ZERO,
             settings_page: None,
             settings_path: None,
@@ -1455,6 +1462,19 @@ impl BimApp {
     fn toggle_properties(&mut self) {
         let p = dock::Palette::Properties;
         self.show_palette(p, !self.docking.shown(p));
+    }
+
+    /// Whether a click or a box taken with `mods` may take locked elements, the terrain: Ctrl+Alt held, or Select Terrain ticked.
+    pub(crate) fn terrain_unlocked(&self, mods: Modifiers) -> bool {
+        self.select_terrain || (mods.ctrl && mods.alt)
+    }
+
+    /// Says once, when a click lands on the terrain and nothing else, how to pick it.
+    pub(crate) fn hint_terrain(&mut self) {
+        if !std::mem::replace(&mut self.terrain_hint_given, true) {
+            self.status =
+                Status { text: t("Terrain is locked: hold Ctrl+Alt to select it, or tick Select Terrain").to_string(), error: false };
+        }
     }
 
     /// Toggle temporary alignment guides (smart snapping) on or off.
@@ -2576,6 +2596,8 @@ impl BimApp {
         fresh.compact = self.compact;
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
+        fresh.select_terrain = self.select_terrain;
+        fresh.terrain_hint_given = self.terrain_hint_given;
         fresh.light_canvas = self.light_canvas;
         fresh.styled = self.styled;
         fresh.theme_wanted = self.theme_wanted.take();

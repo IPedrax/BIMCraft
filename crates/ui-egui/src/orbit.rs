@@ -182,6 +182,7 @@ impl BimApp {
         let model = self.view_model();
         let (modify, demolish, selection) = (self.tool == Tool::Modify, self.tool == Tool::Demolish, self.selection.clone());
         let (paint, unpaint) = (self.tool == Tool::Paint, self.tool == Tool::Unpaint);
+        let unlocked = self.terrain_unlocked(crate::canvas::click_modifiers(ui));
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
         let scene = scene_of(&mut o.scene, &model);
@@ -298,10 +299,13 @@ impl BimApp {
                 self.card.note = why;
             }
         }
-        let pick = |picker: &Option<Picker>, at: Pos2| {
+        // The terrain is locked (see `graphics::locked`): a pixel of it picks nothing, unless Ctrl+Alt is held or Select Terrain is ticked.
+        // (The picture has one id for a pixel, so there is nothing behind it to find; what stands in front of terrain is its own hit.)
+        let seen = |picker: &Option<Picker>, at: Pos2| {
             let (x, y) = px(at);
             picker.as_ref().and_then(|p| p.at(&cam, x, y))
         };
+        let pick = |picker: &Option<Picker>, at: Pos2| seen(picker, at).filter(|h| model.pickable(h.id, unlocked));
         let hovered =
             hover.filter(|_| (modify || demolish || paint || unpaint) && o.drag.is_none()).and_then(|at| pick(&o.picker, at)).map(|h| h.id);
         let tints: Vec<(Id, Rgb)> = selection
@@ -403,10 +407,17 @@ impl BimApp {
         let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
         let click = click.filter(|at| !boxed.is_some_and(|b| modify && crate::section_box::grip_at(b, *at, screen).is_some()));
         let clicked = click.map(|at| pick(&o.picker, at).map(|h| h.id));
+        // A click on locked terrain and nothing else says how to pick it.
+        let terrain_clicked = modify && clicked == Some(None) && click.is_some_and(|at| seen(&o.picker, at).is_some());
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
         match clicked {
-            Some(found) if modify => self.pick_up(found.into_iter().collect(), click_modifiers(ui)),
+            Some(found) if modify => {
+                if terrain_clicked {
+                    self.hint_terrain();
+                }
+                self.pick_up(found.into_iter().collect(), click_modifiers(ui))
+            }
             Some(Some(id)) if demolish => self.demolish(id),
             Some(Some(id)) if paint || unpaint => self.paint_face(id, face, unpaint),
             // Nothing under the cursor: nothing to take down, or to paint.

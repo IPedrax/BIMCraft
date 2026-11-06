@@ -63,6 +63,16 @@ from the element's own level. What is not over the terrain is left and said. `im
 A level's elevation and a terrain's z are both project coordinates, so a building at terrain height 3 m is 3 m over Level 1 whatever the
 site's height above sea level; data in metres above sea level (a DEM) must have the project origin's `elevation` taken off first.
 
+## The terrain is locked
+
+Terrain is the one category plans and the 3D view will not pick, box or drag by accident (`graphics::locked`, `Model::pickable`), as Revit's pinned
+elements are not: a click, a Tab step, a box (crossing or inside) and the start of a drag skip it, and in 3D a pixel of it picks nothing. Hold
+**Ctrl+Alt** for a click (it replaces the selection; it is not Ctrl's add), or tick **Select Terrain** in the view control bar (shown only when the
+project has terrain; `BimApp::select_terrain`, this window's and not the project's, so a file holds nothing of it and a new project keeps it) for
+no key chord at all, as some Linux desktops take Alt+click. A click on terrain alone says how to pick it, once a session. It is a rule of the
+windows' picking only: commands and agents name terrain by id as ever, Select All, Filter, Select by ID and the Project Browser reach it, and a
+selection that holds it still moves and deletes. Only a plan's Modify tool is held back (Door, Dimension and the others look for other things).
+
 ## Aerial imagery
 
 `fetch_imagery` lays aerial photographs over a toposurface ([geofetch](geofetch.md) has the sources, their terms and how a fetch goes). Its reply says which source made the picture and lists, as `skipped`, the sources tried before it with why they brought none.

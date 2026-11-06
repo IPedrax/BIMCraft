@@ -5291,6 +5291,7 @@ mod sketch;
 mod smallest;
 mod standards;
 mod start;
+mod terrain_lock;
 mod titlebar;
 mod tools;
 mod trim;

@@ -178,7 +178,7 @@ for a face square to the screen); a primary drag from one (`section_box::grip_at
 runs `section_box` when the drag ends. The grip takes the drag, not the camera, and a click on a grip picks nothing behind it. A
 plan's (and a plan view's) Properties have Section Box under Extents too, a `Flag` row: ticked, the plan shows what the box keeps.
 
-Unhide. Only Reveal Hidden Elements lets what a view hides be picked, so the Modify tab's View panel offers Unhide Element and Unhide Category (EU, VU) for a selection
+Unhide. The terrain is locked to a click, a box and a drag unless Ctrl+Alt is held or the view control bar's Select Terrain is ticked ([terrain](terrain.md#the-terrain-is-locked); `BimApp::terrain_unlocked`, `Canvas::terrain_only`). Only Reveal Hidden Elements lets what a view hides be picked, so the Modify tab's View panel offers Unhide Element and Unhide Category (EU, VU) for a selection
 `BimApp::hidden_selection` finds the active view hiding: the elements hidden one by one, and the categories hidden whole. They run `graphics` with `show_elements` or `show`
 (`unhide_selection`), the selection stays, and with nothing of it hidden EU opens the Elements tab as before and VU says so.
 

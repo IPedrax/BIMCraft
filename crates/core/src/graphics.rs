@@ -64,6 +64,13 @@ pub const IMPORTED: [&str; 1] = ["cadimport"];
 /// down by its halftone and transparency, and nothing else of an override applies to it.
 pub const IMAGERY: [&str; 1] = ["aerialimagery"];
 
+/// The categories a plan or the 3D view will not pick, box or drag by accident, as Revit pins an element: the ground under a project does
+/// not move because the pointer went across it. The window picks them only with Ctrl+Alt held or its Select Terrain box ticked;
+/// commands, agents, Select All, filters and the Project Browser are not held back (see [`Model::pickable`]).
+pub fn locked(category: &str) -> bool {
+    category == "toposurface"
+}
+
 /// Whether views draw elements of `category`.
 pub fn drawn(category: &str) -> bool {
     MODEL.contains(&category)
@@ -1090,6 +1097,24 @@ pub(crate) mod testing {
 #[cfg(test)]
 mod tests {
     use serde_json::{Value, json};
+
+    #[test]
+    fn terrain_is_locked_and_nothing_else_is_and_a_held_key_unlocks_it() {
+        use crate::graphics::locked;
+        assert!(locked("toposurface"));
+        for other in ["wall", "floor", "mass", "pad", "pointcloud", "aerialimagery", ""] {
+            assert!(!locked(other), "{other}");
+        }
+        let mut s = Session::new();
+        s.execute("toposurface", &json!({"points": [[0, 0, 0], [10000, 0, 0], [10000, 10000, 0], [0, 10000, 0]]})).unwrap();
+        s.execute("level", &json!({"name": "Roof", "elevation": 3000})).unwrap();
+        let id = |cat: &str| s.model.elements.iter().find(|(_, e)| e.category() == cat).map(|(id, _)| *id).unwrap();
+        let (terrain, level) = (id("toposurface"), id("level"));
+        assert!(!s.model.pickable(terrain, false), "terrain is not picked by accident");
+        assert!(s.model.pickable(terrain, true), "but a held key picks it");
+        assert!(s.model.pickable(level, false) && s.model.pickable(level, true));
+        assert!(!s.model.pickable(987_654, false), "and what is not there is not pickable");
+    }
 
     use crate::engine::Session;
     use crate::geom::P2;

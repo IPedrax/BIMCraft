@@ -3019,6 +3019,12 @@ impl Model {
         self.elements.id(a).is_some_and(|a| self.elements.id(b) == Some(a))
     }
 
+    /// Whether a click or a box in a view may take element `k`: it is there, and it is not [locked](crate::graphics::locked) unless
+    /// `unlocked` (Ctrl+Alt held, or the view's Select Terrain ticked).
+    pub fn pickable(&self, k: impl Key, unlocked: bool) -> bool {
+        self.elements.get(k).is_some_and(|e| unlocked || !crate::graphics::locked(e.category()))
+    }
+
     /// The GUID of the element `k` finds; the nil GUID, which is no element's, when there's none.
     pub fn guid(&self, k: impl Key) -> Guid {
         self.elements.guid(k).unwrap_or_default()
