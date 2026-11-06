@@ -7250,7 +7250,7 @@ fn coordinates(s: &mut Session, p: &Value) -> R {
         }
         co.specify([at.0, at.1, dz], q, None);
         s.model_mut().coordinates = co;
-        return Ok(s.model.coordinates.report());
+        return Ok(coordinates_report(&s.model));
     }
     let base = match p.get("base") {
         v if absent(v) => None,
@@ -7278,7 +7278,7 @@ fn coordinates(s: &mut Session, p: &Value) -> R {
             m.coordinates.move_survey(sv, how);
         }
     }
-    Ok(s.model.coordinates.report())
+    Ok(coordinates_report(&s.model))
 }
 
 fn location(s: &mut Session, p: &Value) -> R {
@@ -7369,7 +7369,10 @@ fn location(s: &mut Session, p: &Value) -> R {
     if flag(c, p, "activate")? {
         m.coordinates.active = name.clone();
     }
-    Ok(json!({"name": name, "location": l, "active": m.coordinates.active}))
+    let active = m.coordinates.active.clone();
+    m.sync_library();
+    let (id, guid) = (m.library.id(&LibKind::Location, &name), m.library.guid(&LibKind::Location, &name));
+    Ok(json!({"name": name, "location": l, "active": active, "id": id, "guid": guid}))
 }
 
 fn crs(s: &mut Session, p: &Value) -> R {
@@ -7407,6 +7410,24 @@ fn crs(s: &mut Session, p: &Value) -> R {
         s.model_mut().coordinates.crs = None;
     }
     Ok(json!({"crs": s.model.coordinates.crs.and_then(|code| crate::crs::lookup(code).ok()).map(|i| i.json())}))
+}
+
+/// The `coordinates` report, with each location's and each point's id and GUID, as the library holds them.
+fn coordinates_report(m: &Model) -> Value {
+    use crate::coordinates::{BASE_POINT, SURVEY_POINT};
+    let mut r = m.coordinates.report();
+    let ids = |kind: &LibKind, name: &str| (m.library.id(kind, name), m.library.guid(kind, name));
+    for name in m.coordinates.locations.keys() {
+        let (id, guid) = ids(&LibKind::Location, name);
+        r["locations"][name]["id"] = json!(id);
+        r["locations"][name]["guid"] = json!(guid);
+    }
+    for (key, name) in [("base", BASE_POINT), ("survey", SURVEY_POINT)] {
+        let (id, guid) = ids(&LibKind::CoordinatePoint, name);
+        r[key]["id"] = json!(id);
+        r[key]["guid"] = json!(guid);
+    }
+    r
 }
 
 fn rotate_project_north(s: &mut Session, p: &Value) -> R {

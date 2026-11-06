@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Stropní svítidlo"
 
-#: crates/core/src/render.rs:3036
+#: crates/core/src/render.rs:3038
 msgid "Ceiling Plan"
 msgstr "Půdorys podhledu"
 
@@ -96,7 +96,7 @@ msgstr "Počet"
 msgid "Crosshatch"
 msgstr "Křížové šrafování"
 
-#: crates/core/src/render.rs:3628
+#: crates/core/src/render.rs:3630
 msgid "DN"
 msgstr "DOLŮ"
 
@@ -112,7 +112,7 @@ msgstr "Čerchovaná"
 msgid "Data Outlet"
 msgstr "Datová zásuvka"
 
-#: crates/core/src/commands.rs:10087
+#: crates/core/src/commands.rs:10108
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -176,20 +176,20 @@ msgstr "Východ"
 msgid "Elbow 90"
 msgstr "Koleno 90°"
 
-#: crates/core/src/graphics.rs:936
+#: crates/core/src/graphics.rs:941
 msgid "Electrical Ceiling"
 msgstr "Elektroinstalace – podhled"
 
-#: crates/core/src/graphics.rs:935
+#: crates/core/src/graphics.rs:940
 msgid "Electrical Lighting"
 msgstr "Elektroinstalace – osvětlení"
 
-#: crates/core/src/graphics.rs:934
+#: crates/core/src/graphics.rs:939
 msgid "Electrical Power"
 msgstr "Elektroinstalace – napájení"
 
-#: crates/core/src/commands.rs:9871
-#: crates/core/src/commands.rs:11880
+#: crates/core/src/commands.rs:9892
+#: crates/core/src/commands.rs:11901
 msgid "Elevation"
 msgstr "Pohled"
 
@@ -335,7 +335,7 @@ msgstr "Označení"
 msgid "Masking"
 msgstr "Maskovací"
 
-#: crates/core/src/commands.rs:7850
+#: crates/core/src/commands.rs:7871
 msgid "Mass"
 msgstr "Objem"
 
@@ -451,7 +451,7 @@ msgstr "Počet stupňů"
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
-#: crates/core/src/commands.rs:8075
+#: crates/core/src/commands.rs:8096
 msgid "Room"
 msgstr "Místnost"
 
@@ -479,8 +479,8 @@ msgstr "Potěr"
 msgid "Seat Height"
 msgstr "Výška sedáku"
 
-#: crates/core/src/commands.rs:9848
-#: crates/core/src/commands.rs:11879
+#: crates/core/src/commands.rs:9869
+#: crates/core/src/commands.rs:11900
 msgid "Section"
 msgstr "Řez"
 
@@ -608,7 +608,7 @@ msgstr "Šířka stupně"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:3628
+#: crates/core/src/render.rs:3630
 msgid "UP"
 msgstr "NAHORU"
 
@@ -616,7 +616,7 @@ msgstr "NAHORU"
 msgid "Unbounded Height"
 msgstr "Neohraničená výška"
 
-#: crates/core/src/commands.rs:10228
+#: crates/core/src/commands.rs:10249
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 

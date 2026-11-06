@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Takarmatur"
 
-#: crates/core/src/render.rs:3036
+#: crates/core/src/render.rs:3038
 msgid "Ceiling Plan"
 msgstr "Undertaksplan"
 
@@ -96,7 +96,7 @@ msgstr "Antal"
 msgid "Crosshatch"
 msgstr "Korsskraffering"
 
-#: crates/core/src/render.rs:3628
+#: crates/core/src/render.rs:3630
 msgid "DN"
 msgstr "NED"
 
@@ -112,7 +112,7 @@ msgstr "Streckpunkt"
 msgid "Data Outlet"
 msgstr "Datauttag"
 
-#: crates/core/src/commands.rs:10087
+#: crates/core/src/commands.rs:10108
 msgid "Dependent"
 msgstr "Beroende"
 
@@ -176,20 +176,20 @@ msgstr "Öster"
 msgid "Elbow 90"
 msgstr "Böj 90"
 
-#: crates/core/src/graphics.rs:936
+#: crates/core/src/graphics.rs:941
 msgid "Electrical Ceiling"
 msgstr "El i undertak"
 
-#: crates/core/src/graphics.rs:935
+#: crates/core/src/graphics.rs:940
 msgid "Electrical Lighting"
 msgstr "Elbelysning"
 
-#: crates/core/src/graphics.rs:934
+#: crates/core/src/graphics.rs:939
 msgid "Electrical Power"
 msgstr "Elkraft"
 
-#: crates/core/src/commands.rs:9871
-#: crates/core/src/commands.rs:11880
+#: crates/core/src/commands.rs:9892
+#: crates/core/src/commands.rs:11901
 msgid "Elevation"
 msgstr "Fasad"
 
@@ -335,7 +335,7 @@ msgstr "Beteckning"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:7850
+#: crates/core/src/commands.rs:7871
 msgid "Mass"
 msgstr "Volymmodell"
 
@@ -451,7 +451,7 @@ msgstr "Sättsteg"
 msgid "Roof tiles"
 msgstr "Takpannor"
 
-#: crates/core/src/commands.rs:8075
+#: crates/core/src/commands.rs:8096
 msgid "Room"
 msgstr "Rum"
 
@@ -479,8 +479,8 @@ msgstr "Avjämningsmassa"
 msgid "Seat Height"
 msgstr "Sitthöjd"
 
-#: crates/core/src/commands.rs:9848
-#: crates/core/src/commands.rs:11879
+#: crates/core/src/commands.rs:9869
+#: crates/core/src/commands.rs:11900
 msgid "Section"
 msgstr "Sektion"
 
@@ -608,7 +608,7 @@ msgstr "Plansteg"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:3628
+#: crates/core/src/render.rs:3630
 msgid "UP"
 msgstr "UPP"
 
@@ -616,7 +616,7 @@ msgstr "UPP"
 msgid "Unbounded Height"
 msgstr "Obegränsad höjd"
 
-#: crates/core/src/commands.rs:10228
+#: crates/core/src/commands.rs:10249
 msgid "Unnamed"
 msgstr "Namnlös"
 

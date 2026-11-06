@@ -11,6 +11,7 @@ use std::collections::BTreeSet;
 use bimcraft_core::coordinates::{Coordinates, Frame, Location, MAX_LOCATIONS, Move};
 use bimcraft_core::crs::{self, Info};
 use bimcraft_core::engine::Session;
+use bimcraft_core::library::Kind;
 use bimcraft_core::model::Model;
 use bimcraft_core::units::Units;
 use bimcraft_i18n::msg;
@@ -44,6 +45,8 @@ const FRAMES: [(Frame, &str); 4] = [
 /// and its numbers, mm and degrees, as the core keeps them.
 #[derive(Clone, Debug, PartialEq)]
 struct Row {
+    /// Its id in the project's library (`Kind::Location`), shown; none until a new one is applied.
+    id: Option<String>,
     was: Option<String>,
     name: String,
     at: Location,
@@ -78,6 +81,9 @@ pub(crate) struct CoordinatesDialog {
     from: Frame,
     to: Frame,
     point: [f64; 3],
+    /// The world map's view: the longitude and latitude at its middle, and pixels per degree (0 until it is first fitted).
+    map_at: (f32, f32),
+    map_zoom: f32,
     error: Option<String>,
 }
 
@@ -85,7 +91,16 @@ impl CoordinatesDialog {
     /// Open on the project's coordinates.
     pub(crate) fn new(m: &Model) -> CoordinatesDialog {
         let co = &m.coordinates;
-        let rows: Vec<Row> = co.locations.iter().map(|(n, l)| Row { was: Some(n.clone()), name: n.clone(), at: l.clone() }).collect();
+        let rows: Vec<Row> = co
+            .locations
+            .iter()
+            .map(|(n, l)| Row {
+                id: m.library.id(&Kind::Location, n).map(|i| i.to_string()),
+                was: Some(n.clone()),
+                name: n.clone(),
+                at: l.clone(),
+            })
+            .collect();
         let active = rows.iter().position(|r| r.name == co.active).unwrap_or(0);
         let lat_lon =
             co.crs.and_then(|c| crs::to_wgs84(c, co.location().east, co.location().north).ok()).map_or([0.0; 2], |(lon, lat)| [lat, lon]);
@@ -109,8 +124,16 @@ impl CoordinatesDialog {
             from: Frame::Internal,
             to: Frame::Shared,
             point: [0.0; 3],
+            map_at: (lat_lon[1] as f32, lat_lon[0] as f32),
+            map_zoom: 0.0,
             error: None,
         }
+    }
+
+    /// The latitude and longitude Place would put the Survey Point at.
+    #[cfg(test)]
+    pub(crate) fn lat_lon(&self) -> [f64; 2] {
+        self.lat_lon
     }
 
     /// What stopped OK or Apply, if anything did.
@@ -161,7 +184,7 @@ impl CoordinatesDialog {
         let names: Vec<&str> = self.rows.iter().map(|r| r.name.as_str()).collect();
         let name = spare(&names, t("New Location"));
         let at = self.active_location();
-        self.rows.push(Row { was: None, name, at });
+        self.rows.push(Row { id: None, was: None, name, at });
     }
 
     fn delete(&mut self, i: usize) {
@@ -477,6 +500,7 @@ fn locations_tab(ui: &mut Ui, d: &mut CoordinatesDialog) {
             ui,
             &[
                 t("Active").into(),
+                t("ID").into(),
                 t("Name").into(),
                 tf("East ({})", &[unit]),
                 tf("North ({})", &[unit]),
@@ -493,6 +517,9 @@ fn locations_tab(ui: &mut Ui, d: &mut CoordinatesDialog) {
             if radio.clicked() {
                 d.active = i;
             }
+            let id = r.id.clone().unwrap_or_else(|| "—".into());
+            ui.label(RichText::new(id).monospace().color(pal().muted))
+                .on_hover_text(t("Its id in the project, as every element and library entry has"));
             let name = ui.add_sized([170.0, 22.0], TextEdit::singleline(&mut r.name));
             name.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, tf("Location {} name", &[&n])));
             grid_field(ui, &mut r.at.east, &grid, tf("Location {} east", &[&n]));
@@ -702,6 +729,8 @@ fn map_tab(ui: &mut Ui, d: &mut CoordinatesDialog) {
             ui,
             msg!("Where the Survey Point is on the globe, in WGS84 degrees: the active location's east and north are worked out from it."),
         );
+        world_map(ui, d);
+        ui.add_space(6.0);
         ui.horizontal(|ui| {
             for (k, label, range) in [(0, msg!("Latitude"), 90.0), (1, msg!("Longitude"), 180.0)] {
                 let l = ui.label(t(label));
@@ -732,6 +761,102 @@ fn found_row(ui: &mut Ui, i: &Info, on: bool) -> bool {
     p.text(pos2(rect.left() + 104.0, y), egui::Align2::LEFT_CENTER, &i.name, font.clone(), pal().text);
     p.text(pos2(rect.right() - 8.0, y), egui::Align2::RIGHT_CENTER, unit_symbol(&i.unit), font, pal().muted);
     r.on_hover_cursor(egui::CursorIcon::PointingHand).clicked()
+}
+
+/// The world map, offline: Natural Earth's coastlines and borders on a plain latitude-longitude grid, every location a pin
+/// (the active one in the accent), and the latitude and longitude typed as a cross. Dragged to pan, scrolled to zoom, and a
+/// click puts the latitude and longitude there, for Place. A placeholder until a tile map.
+fn world_map(ui: &mut Ui, d: &mut CoordinatesDialog) {
+    let size = vec2(ui.available_width(), 300.0);
+    let (rect, r) = ui.allocate_exact_size(size, Sense::click_and_drag());
+    r.widget_info(|| WidgetInfo::labeled(WidgetType::Other, true, t("World map")));
+    if d.map_zoom <= 0.0 {
+        // Fitted to show the whole world, or a continent round a place already set.
+        d.map_zoom = if d.crs.is_some() { rect.width() / 60.0 } else { rect.width() / 360.0 };
+    }
+    let fit = rect.width() / 360.0;
+    if r.dragged() {
+        let dv = r.drag_delta() / d.map_zoom;
+        d.map_at = ((d.map_at.0 - dv.x).clamp(-180.0, 180.0), (d.map_at.1 + dv.y).clamp(-90.0, 90.0));
+    }
+    let to_px = |at: (f32, f32), zoom: f32, (lon, lat): (f32, f32)| {
+        pos2(rect.center().x + (lon - at.0) * zoom, rect.center().y - (lat - at.1) * zoom)
+    };
+    let from_px = |at: (f32, f32), zoom: f32, p: egui::Pos2| (at.0 + (p.x - rect.center().x) / zoom, at.1 - (p.y - rect.center().y) / zoom);
+    if let Some(hover) = r.hover_pos() {
+        let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+        if scroll != 0.0 {
+            // Zoomed about the cursor: the place under it stays under it.
+            let under = from_px(d.map_at, d.map_zoom, hover);
+            let zoom = (d.map_zoom * (scroll / 200.0).exp()).clamp(fit, fit * 400.0);
+            d.map_at = (under.0 - (hover.x - rect.center().x) / zoom, under.1 + (hover.y - rect.center().y) / zoom);
+            d.map_zoom = zoom;
+        }
+    }
+    let (at, zoom) = (d.map_at, d.map_zoom);
+    let p = ui.painter_at(rect);
+    let sea = if crate::style::dark() { pal().surface.gamma_multiply(0.9) } else { egui::Color32::from_rgb(0xEE, 0xF4, 0xFA) };
+    p.rect_filled(rect, CornerRadius::same(6), sea);
+    // The graticule: every 30°, the equator a little darker.
+    for k in -6..=6 {
+        let deg = k as f32 * 30.0;
+        let ink = Stroke::new(if k == 0 { 1.0 } else { 0.5 }, pal().border);
+        let x = to_px(at, zoom, (deg, 0.0)).x;
+        p.line_segment([pos2(x, rect.top()), pos2(x, rect.bottom())], ink);
+        if deg.abs() <= 90.0 {
+            let y = to_px(at, zoom, (0.0, deg)).y;
+            p.line_segment([pos2(rect.left(), y), pos2(rect.right(), y)], ink);
+        }
+    }
+    let (coast, border) = (Stroke::new(1.1, pal().muted), Stroke::new(0.6, pal().border));
+    for l in bimcraft_core::world::lines() {
+        let pts: Vec<egui::Pos2> = l.points.iter().map(|q| to_px(at, zoom, *q)).collect();
+        let bounds = egui::Rect::from_points(&pts);
+        if !bounds.intersects(rect) {
+            continue;
+        }
+        let stroke = if l.land { coast } else { border };
+        if l.land {
+            p.add(egui::Shape::closed_line(pts, stroke));
+        } else {
+            p.add(egui::Shape::line(pts, stroke));
+        }
+    }
+    // The locations, as pins.
+    if let Some(code) = d.crs {
+        for (i, row) in d.rows.iter().enumerate() {
+            let Ok((lon, lat)) = crs::to_wgs84(code, row.at.east, row.at.north) else { continue };
+            let c = to_px(at, zoom, (lon as f32, lat as f32));
+            if !rect.contains(c) {
+                continue;
+            }
+            let ink = if i == d.active { pal().accent } else { pal().muted };
+            p.circle(c, 5.5, ink, Stroke::new(1.5, pal().surface));
+            p.text(c + vec2(8.0, -1.0), egui::Align2::LEFT_CENTER, &row.name, egui::FontId::proportional(11.5), pal().text);
+        }
+    }
+    // The latitude and longitude typed: a cross.
+    let typed = to_px(at, zoom, (d.lat_lon[1] as f32, d.lat_lon[0] as f32));
+    if rect.contains(typed) {
+        let s = Stroke::new(1.5, pal().error);
+        p.line_segment([typed - vec2(6.0, 0.0), typed + vec2(6.0, 0.0)], s);
+        p.line_segment([typed - vec2(0.0, 6.0), typed + vec2(0.0, 6.0)], s);
+    }
+    p.rect_stroke(rect, CornerRadius::same(6), Stroke::new(1.0, pal().border), egui::StrokeKind::Inside);
+    // What a click would set, and whose map it is.
+    let credit = "Natural Earth";
+    p.text(rect.right_bottom() - vec2(6.0, 4.0), egui::Align2::RIGHT_BOTTOM, credit, egui::FontId::proportional(10.0), pal().muted);
+    if let Some(hover) = r.hover_pos() {
+        let (lon, lat) = from_px(at, zoom, hover);
+        let text = format!("{lat:.4}°, {lon:.4}°");
+        p.text(rect.left_bottom() + vec2(6.0, -4.0), egui::Align2::LEFT_BOTTOM, text, egui::FontId::monospace(11.0), pal().text);
+    }
+    if r.clicked()
+        && let Some(click) = r.interact_pointer_pos()
+    {
+        let (lon, lat) = from_px(at, zoom, click);
+        d.lat_lon = [f64::from(lat.clamp(-90.0, 90.0)), f64::from(lon.clamp(-180.0, 180.0))];
+    }
 }
 
 /// The converter: a point from one frame to another, through the draft.

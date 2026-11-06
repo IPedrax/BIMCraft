@@ -95,3 +95,40 @@ fn rotate_project_north_aligns_with_true_north_from_the_ribbon() {
     assert_eq!(h.state().session.model.coordinates.location().angle, 0.0);
     assert_eq!(h.state().session.history().last(), Some(&"Rotate Project North"));
 }
+
+#[test]
+fn each_location_shows_its_id_and_a_new_one_has_none_until_applied() {
+    let mut h = app(BOX);
+    let id = h.state().session.model.library.id(&bimcraft_core::library::Kind::Location, "Internal").unwrap().to_string();
+    open(&mut h);
+    assert!(h.query_by_label(&id).is_some(), "the active location's id, {id}, in its row");
+    press(&mut h, "Add Location");
+    assert!(h.query_by_label("—").is_some(), "a new one has no id yet");
+    press(&mut h, "OK");
+    let new = h.state().session.model.library.id(&bimcraft_core::library::Kind::Location, "New Location").unwrap().to_string();
+    open(&mut h);
+    assert!(h.query_by_label(&new).is_some(), "{new}");
+}
+
+#[test]
+fn a_click_on_the_world_map_picks_the_latitude_and_longitude_to_place_by() {
+    let mut h = app(BOX);
+    h.state_mut().session.execute("crs", &json!({"code": 31983})).unwrap();
+    h.state_mut().session.execute("location", &json!({"name": "Internal", "east": 333_317_911.0, "north": 7_394_644_037.0})).unwrap();
+    open(&mut h);
+    press(&mut h, "Map System");
+    let before = h.state().coordinates_dialog.as_ref().unwrap().lat_lon();
+    // The map opens on the place: its middle is the Survey Point's latitude and longitude.
+    let map = h.get_by_label("World map").rect();
+    let east = map.center() + egui::vec2(40.0, 0.0);
+    click_at(&mut h, east);
+    let after = h.state().coordinates_dialog.as_ref().unwrap().lat_lon();
+    assert!((after[0] - before[0]).abs() < 0.1 && after[1] > before[1] + 0.5, "east of it: {before:?} then {after:?}");
+    // Under the map, scrolled to as a user would.
+    h.get_by_label("Place").scroll_to_me();
+    h.run();
+    press(&mut h, "Place");
+    press(&mut h, "OK");
+    let l = h.state().session.model.coordinates.location();
+    assert!(l.east > 333_317_911.0 + 50_000_000.0, "the Survey Point placed further east: {l:?}");
+}

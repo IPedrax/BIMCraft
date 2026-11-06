@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Luminaire de plafond"
 
-#: crates/core/src/render.rs:3036
+#: crates/core/src/render.rs:3038
 msgid "Ceiling Plan"
 msgstr "Plan de plafond"
 
@@ -96,7 +96,7 @@ msgstr "Nombre"
 msgid "Crosshatch"
 msgstr "Hachures croisées"
 
-#: crates/core/src/render.rs:3628
+#: crates/core/src/render.rs:3630
 msgid "DN"
 msgstr "DESCEND"
 
@@ -112,7 +112,7 @@ msgstr "Tiret point"
 msgid "Data Outlet"
 msgstr "Prise de données"
 
-#: crates/core/src/commands.rs:10087
+#: crates/core/src/commands.rs:10108
 msgid "Dependent"
 msgstr "Dépendant"
 
@@ -176,20 +176,20 @@ msgstr "Est"
 msgid "Elbow 90"
 msgstr "Coude 90"
 
-#: crates/core/src/graphics.rs:936
+#: crates/core/src/graphics.rs:941
 msgid "Electrical Ceiling"
 msgstr "Plafond électrique"
 
-#: crates/core/src/graphics.rs:935
+#: crates/core/src/graphics.rs:940
 msgid "Electrical Lighting"
 msgstr "Éclairage électrique"
 
-#: crates/core/src/graphics.rs:934
+#: crates/core/src/graphics.rs:939
 msgid "Electrical Power"
 msgstr "Alimentation électrique"
 
-#: crates/core/src/commands.rs:9871
-#: crates/core/src/commands.rs:11880
+#: crates/core/src/commands.rs:9892
+#: crates/core/src/commands.rs:11901
 msgid "Elevation"
 msgstr "Élévation"
 
@@ -335,7 +335,7 @@ msgstr "Repère"
 msgid "Masking"
 msgstr "Masque"
 
-#: crates/core/src/commands.rs:7850
+#: crates/core/src/commands.rs:7871
 msgid "Mass"
 msgstr "Volume"
 
@@ -451,7 +451,7 @@ msgstr "Contremarches"
 msgid "Roof tiles"
 msgstr "Tuiles"
 
-#: crates/core/src/commands.rs:8075
+#: crates/core/src/commands.rs:8096
 msgid "Room"
 msgstr "Pièce"
 
@@ -479,8 +479,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Hauteur assise"
 
-#: crates/core/src/commands.rs:9848
-#: crates/core/src/commands.rs:11879
+#: crates/core/src/commands.rs:9869
+#: crates/core/src/commands.rs:11900
 msgid "Section"
 msgstr "Coupe"
 
@@ -608,7 +608,7 @@ msgstr "Giron"
 msgid "Type"
 msgstr "Type"
 
-#: crates/core/src/render.rs:3628
+#: crates/core/src/render.rs:3630
 msgid "UP"
 msgstr "MONTE"
 
@@ -616,7 +616,7 @@ msgstr "MONTE"
 msgid "Unbounded Height"
 msgstr "Hauteur non délimitée"
 
-#: crates/core/src/commands.rs:10228
+#: crates/core/src/commands.rs:10249
 msgid "Unnamed"
 msgstr "Sans nom"
 

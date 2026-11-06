@@ -51,7 +51,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Deckenleuchte"
 
-#: crates/core/src/render.rs:3036
+#: crates/core/src/render.rs:3038
 msgid "Ceiling Plan"
 msgstr "Deckenspiegel"
 
@@ -95,7 +95,7 @@ msgstr "Anzahl"
 msgid "Crosshatch"
 msgstr "Schraffur"
 
-#: crates/core/src/render.rs:3628
+#: crates/core/src/render.rs:3630
 msgid "DN"
 msgstr "AB"
 
@@ -111,7 +111,7 @@ msgstr "Strich-Punkt"
 msgid "Data Outlet"
 msgstr "Datenanschluss"
 
-#: crates/core/src/commands.rs:10087
+#: crates/core/src/commands.rs:10108
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -175,20 +175,20 @@ msgstr "Osten"
 msgid "Elbow 90"
 msgstr "Bogen 90"
 
-#: crates/core/src/graphics.rs:936
+#: crates/core/src/graphics.rs:941
 msgid "Electrical Ceiling"
 msgstr "Elektro Decke"
 
-#: crates/core/src/graphics.rs:935
+#: crates/core/src/graphics.rs:940
 msgid "Electrical Lighting"
 msgstr "Elektro Beleuchtung"
 
-#: crates/core/src/graphics.rs:934
+#: crates/core/src/graphics.rs:939
 msgid "Electrical Power"
 msgstr "Elektro Energie"
 
-#: crates/core/src/commands.rs:9871
-#: crates/core/src/commands.rs:11880
+#: crates/core/src/commands.rs:9892
+#: crates/core/src/commands.rs:11901
 msgid "Elevation"
 msgstr "Ansicht"
 
@@ -334,7 +334,7 @@ msgstr "Marke"
 msgid "Masking"
 msgstr "Maskierung"
 
-#: crates/core/src/commands.rs:7850
+#: crates/core/src/commands.rs:7871
 msgid "Mass"
 msgstr "Volumenkörper"
 
@@ -450,7 +450,7 @@ msgstr "Steigungen"
 msgid "Roof tiles"
 msgstr "Dachziegel"
 
-#: crates/core/src/commands.rs:8075
+#: crates/core/src/commands.rs:8096
 msgid "Room"
 msgstr "Raum"
 
@@ -478,8 +478,8 @@ msgstr "Estrich"
 msgid "Seat Height"
 msgstr "Sitzhöhe"
 
-#: crates/core/src/commands.rs:9848
-#: crates/core/src/commands.rs:11879
+#: crates/core/src/commands.rs:9869
+#: crates/core/src/commands.rs:11900
 msgid "Section"
 msgstr "Schnitt"
 
@@ -607,7 +607,7 @@ msgstr "Auftritt"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:3628
+#: crates/core/src/render.rs:3630
 msgid "UP"
 msgstr "AUF"
 
@@ -615,7 +615,7 @@ msgstr "AUF"
 msgid "Unbounded Height"
 msgstr "Unbegrenzte Höhe"
 
-#: crates/core/src/commands.rs:10228
+#: crates/core/src/commands.rs:10249
 msgid "Unnamed"
 msgstr "Unbenannt"
 

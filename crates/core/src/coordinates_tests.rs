@@ -460,3 +460,60 @@ fn rotate_project_north_turns_the_whole_sample_house() {
     assert_eq!(turned + fixed, before, "{turned} turned, {fixed} fixed");
     run(&mut s, "rotate_project_north", json!({"angle": -23.5}));
 }
+
+// ---------- views: the three origins, under Site in Visibility/Graphics ----------
+
+/// How many pixels of the plan of level 100000 aren't paper within 12 px of model point `at`.
+fn ink_near(s: &Session, at: (f64, f64)) -> usize {
+    use crate::render::{View, draw, png};
+    let view = View { scale: 0.05, cx: 0.0, cy: 0.0, width: 800, height: 600 };
+    let img = tiny_skia::Pixmap::decode_png(&png(&draw(&s.model, 100000, view)).unwrap()).unwrap();
+    let (x, y) = view.px(crate::geom::P2(at.0, at.1));
+    let (x, y) = (x as i64, y as i64);
+    (x - 12..=x + 12)
+        .flat_map(|i| (y - 12..=y + 12).map(move |j| (i, j)))
+        .filter_map(|(i, j)| img.pixel(u32::try_from(i).ok()?, u32::try_from(j).ok()?))
+        .filter(|c| c.red() < 200 || c.green() < 200 || c.blue() < 200)
+        .count()
+}
+
+#[test]
+fn the_three_origins_are_site_subcategories_hidden_until_a_view_shows_them() {
+    let mut s = Session::new();
+    run(&mut s, "coordinates", json!({"base": [4000, 3000, 0], "survey": [-5000, 2000, 0]}));
+    let points = [("internalorigin", (0.0, 0.0)), ("projectbasepoint", (4000.0, 3000.0)), ("surveypoint", (-5000.0, 2000.0))];
+    for (_, at) in points {
+        assert_eq!(ink_near(&s, at), 0, "hidden by default: nothing at {at:?}");
+    }
+    for (i, (key, at)) in points.iter().enumerate() {
+        let r = run(&mut s, "graphics", json!({"view": 100000, "show": [key]}));
+        assert_eq!(r["categories"][key]["shown"], true, "{r}");
+        assert!(ink_near(&s, *at) > 20, "{key} drawn at {at:?}");
+        // Only that one.
+        for (other, at) in &points[i + 1..] {
+            assert_eq!(ink_near(&s, *at), 0, "{other} still hidden");
+        }
+    }
+    // Hiding the Site category hides all three.
+    run(&mut s, "graphics", json!({"view": 100000, "hide": ["site"]}));
+    for (_, at) in points {
+        assert_eq!(ink_near(&s, at), 0);
+    }
+    let subs: Vec<&str> = crate::graphics::subcategories("site").map(|s| s.key).collect();
+    assert_eq!(subs, ["internalorigin", "projectbasepoint", "surveypoint"]);
+}
+
+#[test]
+fn every_location_and_both_points_report_their_id_and_guid_and_a_rename_keeps_them() {
+    let mut s = Session::new();
+    let made = run(&mut s, "location", json!({"name": "Lot B", "east": 1000.0}));
+    let (id, guid) = (made["id"].as_u64().unwrap(), made["guid"].as_str().unwrap().to_string());
+    assert!(id >= 900_000, "a library id: {made}");
+    let r = run(&mut s, "coordinates", json!({}));
+    assert_eq!(r["locations"]["Lot B"]["id"], id, "{r}");
+    assert!(r["locations"]["Internal"]["id"].as_u64().is_some());
+    assert!(r["base"]["id"].as_u64().is_some() && r["survey"]["guid"].as_str().is_some(), "{r}");
+    run(&mut s, "location", json!({"name": "Lot B", "rename": "North Lot"}));
+    let r = run(&mut s, "coordinates", json!({}));
+    assert_eq!((r["locations"]["North Lot"]["id"].as_u64(), r["locations"]["North Lot"]["guid"].as_str()), (Some(id), Some(guid.as_str())));
+}

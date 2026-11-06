@@ -2831,9 +2831,9 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     let inside = |p: P2| crop.is_none_or(|[lo, hi]| (lo.0..=hi.0).contains(&p.0) && (lo.1..=hi.1).contains(&p.1));
     // Every room of the level is found among the same lines, which take each wall's joins and heights to find: once.
     let rooms = crate::rooms::Rooms::new(m);
-    // Rooms > Reference: off unless the view shows it.
-    let reference =
-        !crate::graphics::graphics_of(m, key).map_or_else(Default::default, |g| g.resolved(m).into_owned()).hides("roomreference");
+    // Rooms > Reference and Site's three origins: off unless the view shows them.
+    let graphics = crate::graphics::graphics_of(m, key).map_or_else(Default::default, |g| g.resolved(m).into_owned());
+    let reference = !graphics.hides("roomreference");
     // Bars seen from above that lie where another was drawn (a column's stirrups, up its height) are drawn once.
     let mut bars_seen: std::collections::HashSet<Vec<(i64, i64)>> = std::collections::HashSet::new();
     for (&id, e) in all().filter(|(id, _)| shown(**id)) {
@@ -2965,6 +2965,8 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             filled_region(&mut d, m, r);
         }
     }
+    // Site's three origins, where the view shows them.
+    origin_marks(&mut d, m, |c| !graphics.hides(c), inside);
     // Annotation last, over the model; sections and elevations show on every plan. A floor plan's
     // annotation is its own.
     for (&id, e) in all().filter(|(id, _)| shown(**id)) {
@@ -4308,6 +4310,59 @@ fn grid(d: &mut Drawing, start: P2, end: P2, name: &str) {
         d.stroke(ring.collect(), Pen::BUBBLE, GRID, None, true);
         d.text(name, c, 10.0, GRID);
         d.grow(from, (x, y));
+    }
+}
+
+/// Site's three origins where `shows` says a view shows them, and `inside` its crop: the Internal Origin as two arrows along
+/// the project's x and y, the Project Base Point as a circle with a cross in it, the Survey Point as a circle with a
+/// triangle in it, as Revit draws them. Annotation-sized, and no element's, so never picked.
+pub(crate) fn origin_marks(d: &mut Drawing, m: &Model, shows: impl Fn(&str) -> bool, inside: impl Fn(P2) -> bool) {
+    const R: f32 = 9.0;
+    const BLUE: Rgb = Rgb(40, 80, 170);
+    let ring = |c: (f32, f32)| -> Vec<(f32, f32)> {
+        (0..40)
+            .map(|i| {
+                let t = f64::from(i) * PI / 20.0;
+                (c.0 + R * t.cos() as f32, c.1 + R * t.sin() as f32)
+            })
+            .collect()
+    };
+    let co = &m.coordinates;
+    d.owner = None;
+    if shows("internalorigin") && inside(P2(0.0, 0.0)) {
+        let (x, y) = d.view.px(P2(0.0, 0.0));
+        let from = d.prims.len();
+        for (ink, (dx, dy)) in [(Rgb(200, 40, 40), (1.0, 0.0)), (Rgb(30, 150, 60), (0.0, -1.0))] {
+            let tip = (x + dx * 24.0, y + dy * 24.0);
+            d.stroke(vec![(x, y), tip], Pen::PROJECTION, ink, None, false);
+            let (px, py) = (-dy, dx);
+            let head = vec![
+                (tip.0 - dx * 6.0 + px * 3.5, tip.1 - dy * 6.0 + py * 3.5),
+                tip,
+                (tip.0 - dx * 6.0 - px * 3.5, tip.1 - dy * 6.0 - py * 3.5),
+            ];
+            d.stroke(head, Pen::PROJECTION, ink, None, false);
+        }
+        d.grow(from, (x, y));
+    }
+    let base = P2(co.base[0], co.base[1]);
+    if shows("projectbasepoint") && inside(base) {
+        let c = d.view.px(base);
+        let from = d.prims.len();
+        d.stroke(ring(c), Pen::PROJECTION, BLUE, None, true);
+        let k = R * std::f32::consts::FRAC_1_SQRT_2;
+        d.stroke(vec![(c.0 - k, c.1 - k), (c.0 + k, c.1 + k)], Pen::PROJECTION, BLUE, None, false);
+        d.stroke(vec![(c.0 - k, c.1 + k), (c.0 + k, c.1 - k)], Pen::PROJECTION, BLUE, None, false);
+        d.grow(from, c);
+    }
+    let survey = P2(co.survey[0], co.survey[1]);
+    if shows("surveypoint") && inside(survey) {
+        let c = d.view.px(survey);
+        let from = d.prims.len();
+        d.stroke(ring(c), Pen::PROJECTION, BLUE, None, true);
+        let h = R * 0.8;
+        d.stroke(vec![(c.0, c.1 - h), (c.0 + h * 0.87, c.1 + h * 0.5), (c.0 - h * 0.87, c.1 + h * 0.5)], Pen::PROJECTION, BLUE, None, true);
+        d.grow(from, c);
     }
 }
 

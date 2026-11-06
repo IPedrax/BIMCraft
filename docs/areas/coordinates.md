@@ -112,6 +112,22 @@ where it stands (`at`, `angle`, `raised`). A link placed by `base` or `shared` i
 scale from the link's location, so that the link's origin, where it stands now, has the link's map coordinates here.
 Tests: the link tests in `coordinates_io_tests.rs`.
 
+## Site's three origins
+
+Visibility/Graphics has a **Site** model category with three subcategories, `internalorigin`, `projectbasepoint` and
+`surveypoint` (`graphics::SUBCATEGORIES`), hidden unless a view shows them, as Revit's are: `graphics {"view": …, "show":
+["projectbasepoint"]}`, or their rows under Site in the dialog. A plan draws them (`render::origin_marks`), annotation-sized
+and owned by no element, so never picked: the Internal Origin as a red x arrow and a green y arrow, the Project Base Point as
+a circle with a cross in it, the Survey Point as a circle with a triangle in it. Hiding Site hides all three. Sections and the
+3D view don't draw them yet.
+
+## Ids
+
+Every location is a library entry (`Kind::Location`), with an id and a GUID as every element and entry has, and so are the
+two points (`Kind::CoordinatePoint`). The `coordinates` report gives `id` and `guid` for each location and for `base` and
+`survey`, and `location` replies with the one it made or changed; a rename keeps both. The window's Locations table shows
+the id (a new row has none until it is applied).
+
 ## Rotate Project North
 
 `rotate_project_north` (`angle`, or `true_north: true` for the active location's angle; about `about`, else the Project
@@ -139,7 +155,10 @@ The window is designed to answer "where is this building?" at a glance, and to r
   the project's units, and its shared coordinates beside them, worked out live. Revit's two ways of moving the Survey Point
   (clipped and unclipped) are two named choices, each saying what it does to the building. Under them is **Specify
   Coordinates at a Point**.
-- **Map System**: the current system as a card (with Clear), and a search of EPSG's projected systems by code or name as
+- **Map System**: an offline **world map** (`world.rs`: Natural Earth's 1:110m coastlines and borders, public domain, 34 KB
+  in `assets/map/world.bin`), a placeholder until stage 8's tiles: a plain latitude and longitude grid, dragged to pan and
+  scrolled to zoom about the cursor, every location a pin (the active one in the accent), the latitude and longitude typed as
+  a cross, and a click picks them for Place. Then the current system as a card (with Clear), and a search of EPSG's projected systems by code or name as
   you type, as a list of code, name and unit. **Place by latitude and longitude** puts the Survey Point on the globe.
 - **Convert**: a point between the internal, base, shared and WGS84 frames, with Swap and Copy.
 

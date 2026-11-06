@@ -278,6 +278,7 @@ pub fn category(category: &str, several: bool) -> String {
         "voiceoutlet" => (msg!("category", "Voice Outlet"), msg!("category-plural", "Voice Outlets")),
         "patchpanel" => (msg!("category", "Patch Panel"), msg!("category-plural", "Patch Panels")),
         "rack" => (msg!("category", "Rack"), msg!("category-plural", "Racks")),
+        "site" => (msg!("category", "Site"), msg!("category-plural", "Site")),
         "stair" => (msg!("category", "Stair"), msg!("category-plural", "Stairs")),
         "roof" => (msg!("category", "Roof"), msg!("category-plural", "Roofs")),
         "ceiling" => (msg!("category", "Ceiling"), msg!("category-plural", "Ceilings")),

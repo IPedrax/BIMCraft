@@ -52,7 +52,7 @@ room has its space. Its reference, a cross from the point it was placed at out a
 Rooms, off unless shown (`graphics {show: ["roomreference"]}`), beside `roomseparator`, the separation lines.
 Subcategories are general (`graphics::SUBCATEGORIES`: a key, its category, a name, whether it is off unless shown):
 a view holds them as categories, with `Override::shown` for the ones off unless shown, `Graphics::hides` answers for
-them (a category hidden hides its subcategories), and Visibility/Graphics folds them under their category. In a 3D
+them (a category hidden hides its subcategories; Site's three origins are subcategories too, see [coordinates](coordinates.md)), and Visibility/Graphics folds them under their category. In a 3D
 view rooms are off until shown (`graphics::OFF_IN_3D`, `Graphics::shows_in_3d`; `graphics {view: "{3D}", show: [rooms]}`,
 or ticked in its Visibility/Graphics), every new 3D view so; shown, each is drawn as below, fainter than a selected one,
 and a selected room is seen whatever the view says: a see-through solid in the selection's colour from its bottom to its top

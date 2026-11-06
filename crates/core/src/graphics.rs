@@ -27,7 +27,7 @@ mod fill_tests;
 /// The categories a plan, a section or a 3D view draws, and so may hide and override: those of the
 /// model, then those of the annotation. A family component is of its family's category (see [`COMPONENTS`]); `component`, which
 /// names them all, is no row of its own (see [`COMPONENT`]).
-pub const MODEL: [&str; 45] = [
+pub const MODEL: [&str; 46] = [
     "wall",
     "floor",
     "ceiling",
@@ -73,6 +73,7 @@ pub const MODEL: [&str; 45] = [
     "ramp",
     "railing",
     "roof",
+    "site",
 ];
 /// What every family component is, named as a whole: an override, a view filter, a view template or a schedule that names
 /// `component` means every one of [`COMPONENTS`], as it did when they were one row. It is no row of Visibility/Graphics or
@@ -125,6 +126,10 @@ pub struct Sub {
 pub const SUBCATEGORIES: &[Sub] = &[
     Sub { key: "roomreference", parent: "room", name: ui_msg!("Reference"), off: true },
     Sub { key: "roomseparator", parent: "room", name: ui_msg!("Room Separation Lines"), off: false },
+    // The three origins, as Revit's Site has them: hidden unless a view shows them.
+    Sub { key: "internalorigin", parent: "site", name: ui_msg!("Internal Origin"), off: true },
+    Sub { key: "projectbasepoint", parent: "site", name: ui_msg!("Project Base Point"), off: true },
+    Sub { key: "surveypoint", parent: "site", name: ui_msg!("Survey Point"), off: true },
 ];
 
 /// The subcategory `key` is, if it is one.
