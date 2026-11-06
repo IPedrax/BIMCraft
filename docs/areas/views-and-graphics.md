@@ -16,6 +16,14 @@ placed with no scale takes the view's. The units name the scales and list the on
 1" = 200'-0"), and 1 : n for any other. The Scale menu, Properties, templates and sheets' titles name them so, and a scale is typed
 as n, 1 : n, or two lengths (`1/4" = 1'-0"`).
 
+Background grids are view-owned graphics (`Graphics::background_grid`), controlled by a view template through the
+`background_grid` group. `graphics` and `template` accept a grid patch (spacing in millimetres, divisions, rotation, two
+styles and visibility), or null to reset it. `Graphics::resolved` supplies the effective grid, and both the
+commands and `check_followed` protect template-controlled values. Instance Properties and the bottom view control bar
+open the view's grid editor; View Templates edits the template's grid. The controls are disabled in a follower, with the
+template named on hover. Grid snapping is a separate global preference in Manage > Snaps and the bottom grid menu,
+and is never controlled by a view template. Details: [background grids](desktop.md#background-grids).
+
 The view control bar's High Contrast Point Clouds (`footer.rs`, wherever the project or a link holds a scan, in a plan, a section, an elevation
 and the 3D view) fills the view's `pointcloud` category with one colour, the user's, in one `graphics` command; how it behaves is in
 [point clouds](point-clouds.md).
@@ -33,7 +41,7 @@ and at 1 : 100 the pens' own widths, `Pen::mm`). A drawing keeps each line's pen
 (`Look::dress`), and the last step of drawing a plan, a section, a sketch or a sheet's own lines sizes each line (`Drawing::weigh`),
 as annotation where its owner is a dimension, tag, text, spot elevation, grid, level, room or mark (`annotates`), else as the model;
 a view on a sheet takes the line weights at its viewport's scale. Cut outlines are inked over the poché: `cut_edges` keeps of each
-outline what isn't against another's on its outer side, so joins stay clean. Where two runs meet (two walls at a corner), `turn_corners` carries each a pixel on round the corner into the other, so the corner is a join inside a line, mitred square, not two ends with a notch between them; an outline nothing lies against is one closed line (`ink_cut`), no corner of it an end. PNG, SVG and PDF join a pen's lines mitred and lettering's round (`Part::mitred`), so a V's point doesn't stick out. A pen is as wide as on the paper however far the view is zoomed (`paper_of`, not clamped as lettering's size is), and a tool's preview draws its pens as the plan it is in does. The desktop draws a line its pixels at the zoom, at least one (`canvas::on_screen`); Thin Lines draws every line one. A
+outline what isn't against another's on its outer side, so joins stay clean. Where two runs meet (two walls at a corner), `turn_corners` carries each a pixel on round the corner into the other, so the corner is a join inside a line, mitred square, not two ends with a notch between them; an outline nothing lies against is one closed line (`ink_cut`), no corner of it an end. A column the plan cuts is solid poché: a compound wall's layers (their fills and patterns, and the lines between them) are cut back to outside its outline (`outside_columns`, `geom::subtract_convex` and `geom::line_outside_convex`, for outlines are convex), so a wall that runs into or through a column shows nothing of itself inside it. PNG, SVG and PDF join a pen's lines mitred and lettering's round (`Part::mitred`), so a V's point doesn't stick out. A pen is as wide as on the paper however far the view is zoomed (`paper_of`, not clamped as lettering's size is), and a tool's preview draws its pens as the plan it is in does. The desktop draws a line its pixels at the zoom, at least one (`canvas::on_screen`); Thin Lines draws every line one. A
 file from before pens (format 3) held weights in pixels of a sheet's drawing, and opens with each the nearest pen (`pens_from_pixels`).
 Which pen each kind of line draws with is named once, in `pen.rs` (`Pen::CUT`, `Pen::PROJECTION`, `Pen::HEAVY` and the rest), never a number at the draw site: a cut is `Pen::CUT` in plan and in section alike. A category's own lines are its Object Styles'
 (`styles.rs`, `Model::object_styles`, the `object_styles` command, Manage > Object Styles in the desktop, `objectstyles.rs`): the
@@ -44,6 +52,24 @@ door's or window's family forms and symbols, a door's leaf and swing. The rest k
 would: a compound element's layer lines, an opening's jambs and glass, a stair's cut line and walk line, a floor's holes. A project
 holds only the categories set apart from `styles::default_of` (which draws as before: cut pen 10, seen pen 4). What's next on this
 foundation: annotation categories' object styles and subcategories, viewports as windows onto their views, and printing.
+
+Family components are split by category. A component is of its family's category (`graphics::category_of`; `component_category` names
+each `family::Category`: `furniture`, `casework`, `plumbing`, `drain`, `pipefitting`, `pipeaccessory`, `equipment`, `outlet`, `switch`,
+`airterminal`, `earthing`, `inspectionbox`, `lighting`, `generic`, `dataoutlet`, `voiceoutlet`, `patchpanel`, `rack`; `graphics::COMPONENTS`),
+and each is a row of `graphics::MODEL`, so of Visibility/Graphics, Object Styles and `object_styles`: a power plan hides the luminaires
+and a lighting plan the outlets. A door's or a window's family is placed in a wall as a door or a window and has no row. `component`
+(`graphics::COMPONENT`) is no row but still a name, for every one of them: `drawn` and `styles::known` accept it, `Graphics::hides` takes
+a family category as hidden when it is, and `Look::with` lays a category's own override over the one `component` says (hidden if
+either is), as `styles::inherited` lays an object style over it, so a project from before (a view, a template or Object Styles that
+names `component`) opens and draws as it did. A view filter and a schedule still name `component`; both pick every family component.
+The desktop splits `component` into its rows in a dialog's draft (`Graphics::split_component`), so the rows show what the view does and a
+click shows one again. A new `family::Category` is a compile error in `component_category` until it has its row; the key is the name it
+goes by in a file (a test compares them), and a new one goes in `MODEL` and `COMPONENTS`, and a name in the desktop's `lang::category`.
+A new project starts with three plan templates for the electrical disciplines that control the categories alone
+(`graphics::starter_templates`, named by the project's language through `Language::word`): Electrical Power (luminaires in halftone),
+Electrical Lighting (outlets hidden) and Electrical Ceiling (the devices that stand on the floor or the wall hidden, luminaires and cable
+trays kept). A project from before has none. File format 13 is the one that has these rows: a build that reads up to 12 refuses it on
+opening, with an error about a category, not "saved by a newer BIMCraft".
 
 Detail lines and their line styles (`lines.rs`): a `LinePattern` is a freely ordered sequence of 1–32 graphic segments, each length mm
 on paper, so it reads the same at any scale (`Solid` is none, a name no pattern takes); a `LineStyle` is a pen, a colour and a
@@ -217,12 +243,28 @@ view to what it hides and how it paints the rest; the drawing code asks `look.sh
 sections, `cut_outlines`, `seen_below`, `view3d::Scene::picture`) and `look.dress` recolours the finished `Drawing` by owner and
 by `Part` (`Drawing::part` marks what is drawn as projection, cut, lettering or hatching (and the lines between layers), so a
 new drawing of what a view cuts sets `Part::Cut`; a hidden door's opening is drawn owned by none, the wall's; the cut walls' union fill has no owner and takes its colour at the draw site, `cut_unions`). A view template
-(`Model::view_templates`) controls groups of the views that follow it (categories, filters, a plan's view range through
+(`Model::view_templates`), for a kind of view (`ViewKind`: plans, elevations and sections, or 3D views; `from` sets it, none is any),
+controls groups of the views that follow it (categories, filters, a plan's view range through
 `Model::view_range_of`, a phase with its phase filter, design options, scale, detail level, visual style), and they can't change those
 (`graphics`, `scale`, `detail`, `visual_style` and `modify` refuse). Snaps, Tag All, the desktop's Select All
 Instances and the framing of sections and 3D views take what `Look` shows too. A level's ceiling plan is its plan's view;
 transparency shows in 3D only. A surface is seen through as much as the greater of its material's `transparency` (`Tri::alpha`, in
 plain views too) and the view's override for its element (not in a plain view); both painters take it from `Tri::alpha`.
+
+A 3D view sketches on its work plane (`workplane.rs`), as Revit's Work Plane > Set and more: `View3D::work_plane`, a `WorkPlane` on a
+`level` (a GUID, in `visit_refs!`), through three `points`, or on a `surface` picked on the model (a point and a normal), each moved
+`offset` mm along its normal; with none, the lowest level (`Model::work_plane`). `WorkPlane::resolve` gives it as a `workplane::Frame`,
+a point and a unit normal, at any angle, upright too: three points along a line are refused (`workplane::through`, facing up unless
+upright), and `Model::check` resolves it. `Frame::over_plan` is it as a `walls::Plane` over the plan, as a floor's top is, for a sketch
+that stays plan lines raised onto it (none for an upright one); `Frame::axes` are its level and up directions. The `work_plane` command
+sets it (making the default 3D view, as `section_box` does), moves the plane as it is given only `offset`, or, given nothing, clears it;
+deleting its level clears it too. `workplane::host` is the level what is made on it stands on: the highest at or below the plane, else
+the lowest; a floor, a ceiling, a roof or a shaft is made only on a level one (`workplane::is_level`, the desktop's check). The scene
+says what a work plane is picked from: `Scene::face_at`, the face under a pixel (where, which way toward the camera, and the element's
+triangles in its plane), and `Scene::corner_near`, the corner within so many pixels that nothing nearer hides, both of what the view's
+look shows and inside its section box.
+`Camera::on_slope` finds the point of such a plane under a pixel, `Camera::at_depth` a pixel's point at a depth, and the 3D pictures
+say what point of the model a pixel shows (`Image::point`, from the depth the processor's picture now keeps; `gpu::Mesh::point`).
 
 A 3D view may be cut to a section box (fork issue 1), as Revit's Section Box: `View3D::section_box`, a `SectionBox` of six planes
 square to the axes from `min` to `max`, `on` or off (off, it keeps its extents), set by the `section_box` command (which makes the
@@ -233,8 +275,9 @@ is square on, so `Boxed` turns a pixel and its depth into a model point with one
 is in the box (a triangle wholly past one plane is passed over first), `dots` a scan's point only where it is, and the wireframe each
 edge as far as it runs inside (`within`, Liang and Barsky's clipping). What it cuts away isn't drawn, so it isn't picked; the edge
 where a cut face meets paper is drawn as any edge is, and cut faces aren't capped yet. A level whose plane is above or below the box is
-left out, and the rest are cut to its sides. A section's picture has its own clip and ignores the box. The card doesn't cut yet:
-`Mesh::new` refuses a boxed view, and the processor draws it. Its grips are the core's: `box_grips` (the middle of each face: west,
+left out, and the rest are cut to its sides. A section's picture has its own clip and ignores the box. The card cuts to it too: the mesh holds all it would hold without a box
+(`Mesh::section_box`), a pixel outside it is discarded by the point it shows (`fs_scene_cut`, `fs_clear`), `Mesh::visible_cut` leaves out what lies wholly past a side,
+and a pick asks `Boxed` as the picture does. So a face being dragged is a uniform (`Gpu::draw_cut`), and builds nothing. Its grips are the core's: `box_grips` (the middle of each face: west,
 east, south, north, bottom, top), `box_edges`, `move_box_face` (a face moved along its axis to 10 mm, stopping short of the face across
 from it) and `Camera::along` (how far, mm, a drag on the picture moves a point along an axis; none for an axis pointing at the camera).
 A plan may follow the box (`section_box` on a `Level` or a `PlanView`, set by `modify`; a dependent view follows its parent's,
@@ -276,12 +319,79 @@ precise far off as near), with the same `NEAR` cut by the card's clipping; `Mesh
 `the_card_draws_in_perspective_what_the_processor_does_from_afar_and_from_among_the_walls` compare them, from outside and with the eye
 inside the house (`view3d::inside`).
 
-The 3D view can be drawn on the graphics card (File > Settings > Performance; off until asked for: `BimApp::card`, `settings.json`'s
+A 3D view may have a **camera of its own**, as Revit's Camera tool makes one: `View3D::camera`, a `ViewCamera` holding the model
+point its `eye` stands at and the `target` it looks at (both `[x, y, z]` mm), with the view's `perspective` on. The `camera` command
+makes a new named view from an eye and a target (the eye never on the target, checked in `Model::check`), gives one to an existing
+view (the default `{3D}` among them, made by name as `perspective` makes it), or, with a `view` and none of `eye`, `target` or
+`lens`, reads one back (`null` eye and target for a view with no camera yet — reading makes nothing). A view that already has a
+camera keeps the point a change leaves out, so `lens` alone or one point alone changes just that; a view without one needs both.
+`view3d::Camera::at` builds the render camera from the
+eye, target and lens, its azimuth and elevation the direction from the eye to the target and `scale` the focal length over the
+distance, so `Camera::eye` is exactly the eye given; `view3d::camera_of` does the same for a view and a scale, for a sheet's 3D
+viewport. On the desktop the Camera tool (View tab) clicks an eye then a target in a plan, each at a height over it from the Options
+Bar, and opens the new view: `BimApp::active_3d` is the 3D view the 3D tab shows (a camera view by id, or none for the default),
+`BimApp::open_3d` sets it (and resets the on-screen camera, so the view stands from its own camera), the Project Browser lists every
+3D view under 3D Views. Properties (`camera.rs`, `BimApp::camera_properties`) is one panel bound to a view: the 3D tab passes the
+view it shows, and a camera view picked on a plan passes the picked one, so both show the same Name, Eye, Target and Focal Length
+and edit it the same way (`camera` for the camera, `modify` for the name). Graphics, phasing and the section box stay with the view
+on screen (`graphic_view`), not with a camera view picked on a plan: its mark shows its camera, its project parameters and its
+phase. A camera view shows no Azimuth or Elevation: those
+(`View3D::azimuth`, `View3D::elevation`) only frame a 3D view **without** a camera on a sheet (`sheet::framing`, `camera_of`), so a
+view on a sheet whose view has a camera shows its name alone. A camera edit while its view is on screen drops the on-screen
+camera (`Orbit::camera`), so the next frame stands the view from the model and the settled hand has nothing old to write back. A
+camera view's mark is drawn on its level's plan
+(`render::camera_mark`, the level from `Model::camera_level`): a symbol at its eye, a dashed line to what it looks at, pickable so a right
+click opens the view (`Action::OpenView`) or a double click does. Orbiting, panning or zooming a camera view writes its eye and target back
+once the hand and the wheel have let it be (`view3d` reads the on-screen `Camera::eye` back into the view), so leaving it and returning comes
+back to where it was left. A camera moved elsewhere — its mark dragged on a plan, a command, undo — moves the view already showing
+it: `Orbit::built` holds the camera the picture was built from, and a difference with the model's means the picture stands from the
+model anew instead of its old camera being written back over the move; a floating window, drawn while the hand works in another
+view, writes nothing.
+
+
+The 3D view is drawn on the graphics card where there is one ([where this is going](../3d-acceleration-plan.md): no limit on size) (File > Settings > Performance turns it off: `BimApp::card`, `settings.json`'s
 `gpu_3d`). `view3d::gpu::Mesh` is the triangles a view shows as f32 vertices relative to the middle of what is drawn (millimetres far
 from the origin would overflow f32), each with its colour, normal, face normal, plane, element and texture; the textures' mip levels as
 words (`Skin`; `Mesh::lookups` gives the level a zoom looks up, as `Sampler::level_for` does); and a bounding volume hierarchy built on
-the first pick. Surfaces seen through come after the opaque ones (`Mesh::clear_from`), each element's transparency in its `Owner` (an element whose layers differ in transparency has an `Owner` for each).
-`Mesh::new` refuses, with a reason, what the card doesn't draw (hidden line, wireframe, more than `MAX_TRIS`), and the processor draws those as before, and sections and sheets always. `Mesh::pick` is `Image::pick` without a picture: the
+the view worker before the first pick. The first card upload runs on a worker too; the view waits with progress until the scene and
+upload are both ready. Zoom to Fit and Home fit on a worker. Surfaces seen through come after the opaque ones (`Mesh::clear_from`), each element's transparency in its `Owner` (an element whose layers differ in transparency has an `Owner` for each).
+A component is held once for each shape and placed for each copy (`Mesh::shapes`, `shape_vertices`, `instances`): the scene notes which
+runs of its triangles are a family shape placed to the last bit (`Scene::placements`, from `component_geometry::SharedComponents`), and the
+mesh draws a copy from its shape when every triangle has the colour, texture, face, curved normals and transparency that the shape's first
+copy has. A round run (a pipe, a conduit) is a copy too: `runs::Geom::tube` is `runs::unit_tube` placed by `Geom::tube_place`, its line
+along the tube's x and its radius along y and z, so one tube for each material serves every round run. A copy's place is a point and three
+axes square to each other (`ComponentInstance`: a component's turned, a tube's stretched), and a normal goes along each axis by its share
+over the axis's length squared, which keeps it square to a stretched surface. A painted copy, or one the view colours or makes see-through
+on its own, is drawn from its own triangles. Each copy's plane numbers
+are the scene's (`instance_planes`, read by `vs_instanced`), because the scene numbers planes across the whole model and an edge is
+drawn where the number changes. A shape's opaque triangles come first and those seen through after (`Shape::clear_from`, drawn by
+`vs_instanced_clear` with the copy's `clear_owner`). A pick goes through a hierarchy of triangles and copies, then the copy's shape's own,
+each box placed as the copy is, and it tests the triangles the scene holds, so ties go to the first in the scene as before. `Mesh::flat` is
+the mesh with no shapes, and `copies_placed_draw_the_pixels_of_their_own_triangles_and_tubes_of_their_runs` holds the two pictures equal, byte for byte.
+A frame draws only what can reach its picture (`Mesh::visible`). The triangles drawn of their own come in runs (`Mesh::groups`: at most
+1,024 triangles and a sixteenth of the mesh's width, never across `clear_from`), and each copy stands on its own. Each is tested as a sphere
+against the six sides of the clip volume, padded for the card's f32, after a coarse grid of cells has settled what lies wholly in view or
+wholly out. What is left out lies past one side, so it can't reach a pixel; what is drawn keeps its order, since a tie between touching
+faces goes to the first drawn. So the picture is the same to the pixel. The card draws the runs of triangles (joined across gaps of up to
+2,048, which draw nothing in view) and gathers the copies a view sees, in their order, into one buffer (`Uploaded::seen`), one draw a shape.
+`groups_hold_what_is_drawn_in_order_and_a_view_leaves_out_only_what_it_cannot_see` (core) and
+`leaving_out_what_the_view_cannot_see_draws_the_same_pixels` (the card, byte for byte against drawing all of it) hold it.
+A frame draws at most a budget of triangles (`FRAME_TRIANGLES`, `Mesh::cost`). Past it, while the camera moves, it draws the nearest within
+the budget (`Mesh::nearest_first`) and a grey box for each of the rest; when the camera stops, the next frames draw the exact picture a part at
+a time into the same targets, and the post pass runs only when it is whole, so the settled picture is the one drawn in one go. `Gpu::draw`
+says whether it drew the exact picture, and the 3D view asks for frames until it has
+(`past_a_frame_s_budget_the_view_stands_in_while_moving_and_settles_on_the_exact_picture`).
+After an edit the 3D view's worker brings the last scene up to date (`Scene::update`, `view3d/update.rs`) instead of making it whole: the
+triangles of what the edit touched are made again, with what points at it either way, what touches it (its box grown a little) and, for a
+wall, the walls whose location lines come within the thickest wall of it, round after round from each element that came out otherwise;
+every other element's run of triangles (`Scene::spans`), planes, faces and normals is kept. A plane is numbered against the planes the
+scene found before (`PlaneTable`), a curve by its element alone (`local_curves`), a copy by the shape its key names (`ShapeKey`). An edit
+of the library or the project's settings, or one that touches a quarter of the elements, is the whole scene again. `Scene::new` stays the
+whole computation, and `a_scene_brought_up_to_date_by_an_edit_is_the_scene_made_whole` and
+`random_edits_of_a_tower_bring_its_scene_up_to_date_as_made_whole` hold the update to it: the same triangles, planes shared alike, the
+same copies and the same picture.
+`Mesh::new` refuses only what the machine can't hold, with a reason, never for what a view shows or its size (a scan's points are `Mesh::dots`, in the opaque surfaces' targets and depth under their own plane number, which the post pass draws no edge at; hidden line is the same passes, surfaces and ground paper: `Mesh::lines`, `Gpu::swapped_ink`; wireframe has no surfaces, only `Mesh::wires`, each a line whose pixels `fs_wire` finds by the steps `wire_pixels` takes, and `Mesh::pick` finds the last drawn within two pixels, tinted ones last): `Gpu::upload` puts it in as many buffers as it takes (`limits_for` asks for the adapter's own limits; a card that runs out holds fewer of its triangles of their own, a wireframe's lines and a scan's points at once, letting go and bringing back as views want them: `Gpu::card_bytes`, `Uploaded::bring_in`, [the 3D plan](../3d-acceleration-plan.md); a change of the section box alone keeps the mesh, and so does one of what neither the scene nor the mesh reads, a camera view's
+camera written back or a 3D dimension: `Orbit::keep_for_a_new_box`, `view3d::scene_kept`), and the processor draws those as before, and sections and sheets always. `Mesh::pick` is `Image::pick` without a picture: the
 same projection and barycentric test for triangles (the nearest seen through where it is nearer than the nearest opaque one), and for levels the same `LevelMarks` that `Scene::picture` draws (`level_marks`: one
 definition of a level's lines and head). The desktop's `gpu.rs` and `gpu.wgsl` draw it in passes into a texture egui shows like the
 processor's picture: the opaque surfaces (lit as `picture` lights them, textured as `Sampler::at` looks up), those seen through (the
@@ -295,6 +405,74 @@ the processor shades, draws an edge or marks a level goes in the shader too: `th
 The card is made the first time it is wanted (`Card::ready`: compiling its shaders is not a start's cost), and one that can't be made says why on the Performance page.
 A device error is caught
 in the card's own error scopes, never left to wgpu's handler (which ends the program), and hands the view to the processor for good.
+
+A 3D view's **Graphic Display Options** (Revit's GD) are `View3D::display`, a `view3d::DisplayOptions`: `edges` (on unless turned
+off; only Shaded leaves them out, as Hidden Line and Wireframe always draw them), `silhouette` (an outline that many px wide, 0 to
+`MAX_SILHOUETTE`, 10, checked in `Model::check`; 0 for none) and `ambient_shadows` (off unless turned on), set by the
+`graphic_display_options` command (GD; it makes the default 3D view as `section_box` does, keeps what is left out, and with
+nothing given reads them back). `Look::of` carries them (`Look::display`), so the desktop, a sheet's 3D viewport and `render`
+draw them alike; a section's picture ignores them. Both come off the opaque depth the rasterizer already has, before a scan's
+dots are in it, in nearness as `Camera::project` gives it, measured in pixels' worth (`Camera::slack`), so they read the
+same parallel and in perspective. Ambient shadows (`view3d::ambient`) are a screen-space pass: for each pixel, the pixels
+across from each other at eight offsets (`AMBIENT`, 4 to 12 px, four lines at two reaches); over a plane the depth runs
+straight, so their mean is the pixel's own, and only where the surfaces round it rise toward the eye on both sides (a corner,
+the foot of a wall on a floor) does it darken, by `AMBIENT_DARK` of its light at most; a neighbour more than `AMBIENT_REACH`
+pixels' worth a pixel off in depth is something else, in front or behind, and counts for nothing, so nothing casts a halo. A
+silhouette (`view3d::outlines`) is wherever two neighbouring pixels are one on a surface and one on nothing, or on different
+planes `OUTLINE_GAP` (4) pixels' worth apart in depth: each pixel whose square `width + 1` across (from `width / 2` before it)
+holds such a pair is drawn in the edge's colour, so a straight outline is exactly `width` px wide. The card does the same in
+`fs_post` (`ambient`, `outlined`, `worth` in `gpu.wgsl`, the options in the globals' ninth vector, from `Mesh::display`), so
+no pass is added: `the_card_draws_edges_silhouettes_and_ambient_shadows_as_the_processor_does` compares them. The card draws a
+scan's points in the same pass as the surfaces, so a pixel a point covers is asked of no neighbour for a silhouette and counts as
+nothing for ambient shadows, as the processor, which finds both before its points are drawn, has it: the two can differ only under
+a point. Hidden Line on the card draws its edges whatever `edges` says, as the processor's does. Cast shadows
+from a sun are not drawn yet. The desktop's dialog (`display.rs`) opens by GD and from the view control bar's Visual Style
+menu, alike in both looks of the window, and runs the command on the 3D view on screen.
+
+The 3D scene can be exported as glTF 2.0 binary, for Blender and other viewers (`gltf.rs`: `save` to a `.glb`, which the CLI's `--save` and
+`convert` and the MCP server reach too, and File > Export > 3D Scene as glTF in both profiles). It writes the triangles of `Scene::facets`,
+the ones the processor's picture and the card's mesh are made of, as the default 3D view shows them (`Look::of_3d`): its phase and phase
+filter, its design options, what Visibility/Graphics hides, and the colours and transparency it paints, linked models included
+(`extras.linked`). A section box on that view is not applied, the whole of each element shown is written, and neither are textures, edges,
+levels, point clouds or the camera. There is a node and a mesh for each element, the node named by the element's id with its `id`, `guid`
+and `category` in `extras`, and a primitive in the mesh for each colour the element is shaded in (a compound wall has one for each layer).
+A primitive's material is the scene's sRGB colour in linear light, as glTF's base colour is, blended with alpha `1 - clearness` where the view
+sees through the surface (a mass is, by default), and always double sided, as the scene draws both sides of every surface. Positions are in
+metres, turned and not mirrored: east stays x, up becomes y and north becomes -z, so the winding is kept. Curved surfaces keep their smooth
+normals, vertices that agree in position and normal are shared within a primitive, and a triangle with no area is left out. A scene past
+`gltf::MAX_TRIS` (the card's limit) is refused with how many triangles there are, and an empty one with what to show. The tests read the
+chunks back (header, lengths, alignment, the JSON, a box's bounds and volume); the Khronos validator (`npm i gltf-validator`, then
+`validateBytes`) reports no errors, warnings or hints on the sample house and on the 20-storey tower of `run --highrise`.
+
+The 3D view works round what is under the cursor, on both painters. What a pick finds has a point: `view3d::Surface` is the
+element, the model point where the line of sight through the pixel meets the surface the picture shows there, and its normal turned
+toward the camera. The processor's picture finds it from the triangle its pixel holds (`Scene::surface_in`), the card's mesh from
+the triangle its pick finds (`Mesh::surface`), and on a level's mark it is the level's plane; `orbit.rs`'s `Picker::surface` asks
+whichever drew the picture on screen. A drag orbits round the surface's point under the pointer where it began
+(`Camera::orbit_about` turns the whole camera about it, so the point keeps its pixel, in perspective too), round the target where
+nothing is; the wheel zooms toward it (`Camera::zoom_about` closes the target and the eye in on it), and with nothing under the
+cursor zooms about the cursor as before. `the_surface_under_a_pixel_is_the_same_through_the_mesh_as_the_picture_and_an_orbit_or_a_zoom_about_it_keeps_it_there`
+checks the two painters agree, and `tests/working3d.rs` drives it in both profiles, on the card where the machine has one.
+
+The 3D view's tools draw on a **work plane**, as Revit's (`workplane.rs`): `work_plane` takes the surface under the cursor and,
+for a face that is level and turned up (a floor's top, a flat roof's, a level's plane), gives the level its points go on (the face's
+element's own level, a level's plane that level, else the highest level at or below it) and the offset over it, to the micron;
+with nothing under the cursor, the lowest level's plane, the ground. A face that isn't level, or is turned down, gives none, and
+the status line says what the tool draws on. Every drawing tool takes its points so in the 3D view (`orbit.rs`'s `aim`), and each
+point snaps as its level's plan snaps (`snap3d`: `snap::snap` on the plane's level, from the points the tool has picked, Shift squaring
+the step, within the snap's points as the plane is foreshortened there; else the nearest 10 mm). The Wall tool (WA): the first
+point's plane holds for the rest of the chain, whatever the cursor passes over, and each wall goes through `place` as in a plan, with
+`base_offset` from `Orbit::wall_base`, which `wall_params` reads while the 3D view places a point. A run's tool (beams, wall footings,
+pipes, ducts, conduits, cable trays, wires, conductors, cabling) takes each end on the face it is clicked on, so a run from a floor's
+top to a wall's or a column's top climbs (`place_run_lifted`: `offset` and `end_offset` over the start's level, the Options Bar's
+offset over each): that is a brace; where nothing is under the cursor, its end stays on its start's plane. Column (CL), Structural
+Column and Isolated Footing stand on the face (`place_column`, `place_stand_lifted`: `base_offset`, or a footing's top `offset`, its
+height over the level), and Component (CM) and the MEP fixtures run `component` with that level and offset. `Orbit::plane` keeps the
+last point clicked and its plane, which a chain or a run's end takes only while it is the tool's own point before. The point under the
+cursor is drawn as a plan's snap, naming what it snapped to (a free point: Nearest, of the element whose face it is), with the wall
+or run from the point before and its length. Where neither a level face nor the ground meets the line of sight, the tool says what
+it needs (`needs_face`, by the tool's title). Floor and Ceiling sketch on the view's work plane (below), which may be set on a level
+face picked on the model.
 
 A level's own plan is the level (its `view_range`, `crop` and `graphics` are the level's); every other plan of it is an `Element::PlanView`
 (Revit's Duplicate View: `duplicate_view`, which only plans take). A plan has a key: the level's id, or a plan view's. `Model::plan_level` says
@@ -328,9 +506,26 @@ its view (`Model::annotation_plan`, so a duplicated plan has its own) and its sk
 when drawn, any number of outlines; Edit Boundary edits it as any other. Patterns and region types are library entries,
 renamed with their references (a type follows its patterns, a region its type and line style) and refused deleted while
 used. The desktop has Annotate > Region (Filled Region, FR, and Masking Region, sketch mode with the type and the line style
-in the Options Bar), Properties (the Type Selector above the instance fields, Line Style with invisible lines), and Manage > Fill Patterns (`fillpatterns.rs`:
-region types and patterns as one draft, a simple pattern edited as an angle, a spacing and crosshatched or not, any pattern's
-families one by one with Edit Lines, and Import and Export of PAT files). `pat.rs` reads and writes PAT files (`;%UNITS`,
+in the Options Bar), Properties (the Type Selector above the instance fields, Line Style with invisible lines), and Manage >
+Annotation Settings > Fill Patterns (`fillpatterns.rs`: the patterns as one draft, each a name, drafting or model and a
+swatch; one of whole lines (Simple Lines, `FillPattern::whole_lines`) edited line by line with Edit Lines (an angle, an origin
+and a spacing each: a shift only staggers dashes, and dashed patterns are drawn and made with Custom), one made of lines
+redefined from lines (Redefine, as wide as Edit Lines), any other (dashed, imported or a starter's) kept as it came, and Import and Export of PAT files at the right, Replace imported by same name saying what an import does
+with a name the list has; region types are edited from a region with Edit Type, on the same draft).
+
+A custom pattern is made of lines drawn, as pyRevit's Make Pattern makes one (`fills::make`, the `make_fill_pattern` command):
+the detail lines picked, all of one view, cut to the rectangle between two corners (the tile), each a family that runs on into the
+next tiles' copies of itself. A line repeats only at a slope `(i W, j H)` of whole tiles (`i`, `j` at most `MAX_STEPS`, 48), so one
+drawn at another is turned to the simplest such slope within `TURN` (0.25°), else the nearest; its family's dashes are its length
+and a space to the repeat `L = |(i W, j H)|`, its lines `W H / L` apart, each shifted along by the lattice's other vector
+`(c W, d H)`, `i d - j c = 1` (Euclid's). A line on the tile's edge and its copy on the opposite one are one family; curves go as
+their drawn points' chords. A model pattern is as drawn; a drafting one is the drawing on paper at the view's scale, which the
+pattern keeps (`FillPattern::drawn`, saved with it): turned from one to the other (the dialog's Type, or `fill_pattern`'s `target`
+without `lines`), it is rescaled (`retargeted`), and the dialog offers Redefine for it where a simple one has Edit Lines, which
+picks the lines and corners again and keeps its name and type. A pattern holds at most `MAX_FAMILIES`
+(256) families. In the desktop, New Pattern > Custom hides the dialog while the lines are picked as anything is (Enter, or the
+right-click menu's Finish), then the corners (`Tool::PatternCorner`), and brings it back with the pattern previewed: OK, Pick
+Again, Cancel. Esc, another tool or another view brings the dialog back. `pat.rs` reads and writes PAT files (`;%UNITS`,
 `;%TYPE`, a negative offset stepping the other way; a pattern that can't be one left out with why) for the dialog and for the
 `import_fill_patterns` and `export_fill_patterns` commands. A PAT file is hostile input: `read` stops after `MAX_PATTERNS`
 (2,000) patterns and counts the rest, `Read::left_out` names the first `MAX_LEFT_OUT` (100) with `left_out_count` for all, a line
@@ -380,7 +575,9 @@ what lies under it (Revit has no regions on sheets).
 
 Sketch snapping (`snap::in_sketch`) combines the visible model's wall faces and slab edges, detail lines and existing
 region boundaries in the active view, and the draft's own lines. It supports endpoints, midpoints (of each segment of a
-polyline), intersections (where two walls meet is one too), perpendiculars, nearest points and angle guides, honoring Manage > Snaps
+polyline), intersections (where two walls meet is one too), perpendiculars, nearest points and angle guides, the anchors of
+annotation (a note's insertion point and leader, a tag's head, a dimension's stations, a spot elevation, section and elevation
+marks, detail groups and repeating details), and a camera's eye and target rather than its mark's body or name, honoring Manage > Snaps
 and one-point overrides. An element being edited is omitted as a model snap target; its draft supplies the boundary instead.
 Rectangle and arc previews use the same origin points and Shift constraint as a click. Annotation in another independent view,
 or hidden by Visibility/Graphics, is excluded. A plan view cuts where its own view range says (`plan_range` of the view, not of its
@@ -454,5 +651,32 @@ two stations rigidly and equality tying all its segments to one length (a locked
 reference dragged goes back); a run of tied stations stays where what the command moved puts it, else where its first is. What has to move is
 moved by `commands::move_by`, as `move` moves it, and the dimensions are solved again (`PASSES`) until all hold; where they can't (locked
 lengths that differ made equal, one element pulled two ways), the command is refused, saying which dimension, and nothing changes.
+A length typed for a segment (`dimension_value`; in the window, a click on the selected dimension's number, as a temporary
+dimension's takes one) moves what the segment ends at, its second station's reference, along the dimension by the difference
+(`move_by`), and a locked segment is locked at it; the other locks then hold or the command is refused. Align with `lock` (Revit's
+padlock: in the window, the open padlock Align offers on the line it moved) leaves a lock: a dimension of the aligned line's reference
+and the reference's (`to`, else whatever has a line along it), its one segment locked at 0 and `alignment` set, which
+`constraints::keep` holds as it holds the others, so the two lines stay on one line whatever either is moved by; one that can't hold
+with the other locks is refused, and the project is as it was. A lock is drawn by a front end, never on paper (`render/dimensions.rs`
+draws nothing of it): the window shows each locked segment's shut padlock whether its dimension is selected or not, and each alignment
+lock's padlock beside where its lines meet, which a click unlocks (deletes). Format 15 holds them; 14 would read one as a dimension of
+nothing.
 `render/dimensions.rs` draws them all as the type says (`Ink`: its lines, ticks and witness lines, and its numbers laid out by `crate::text`
 over the paper where the background is opaque).
+
+A 3D view has dimensions of its own (`Element::Dimension3D`, the `dimension_3d` command; `dims3d.rs`), as Revit's aligned dimension in a 3D
+view: two references (`Ref3`), each a point of the model or a point on an edge (its two ends with it), and a point its line passes through,
+kept by the view (`view`, a GUID: deleting the view takes them with it) and of a dimension type as a plan's are. Between two points it measures
+straight from one to the other; to an edge, square to the edge's line, so between two parallel edges it is how far apart they are
+(`dims3d::ends`). They hold places in space, not references to elements: moving an element leaves them, and `move`, `rotate` and `mirror`
+take them in plan when they are moved themselves. They draw as marks (`dims3d::marks`, `Mark`: a polyline in the picture's pixels, its width
+and colour), through any camera and at any paper size (`SCREEN` pixels a paper millimetre on screen, `sheet::DENSITY` on a sheet): a
+witness line from each end of what it measures to its line, its line, a tick at each end and its number lettered along it in our strokes
+(`font.rs`), reading from the left, on the side away from what it measures; nothing hides them. `dims3d::paint` paints marks into the
+processor's picture, which the `render` command does for a 3D view; a sheet draws them as its own lines over the view's picture, so they print
+in its PDF; the window draws them over the picture on either painter (the card's too) with the theme's ink, the selection's colour when
+picked. Visibility/Graphics hides them with Dimensions (`category_of`). In the window the Aligned Dimension tool (DI) in the 3D view picks a
+corner seen within the snap's reach (`Scene::corner_near`), else an edge within a pick's (`Scene::edge_near`, the point of it nearest the
+cursor), else the point of the face there; after two, a click places the line where it meets the plane through the two that faces the
+camera most (`dims3d::line_through`), and the status line says how long it is. In Modify a click on a dimension's lines picks it before what
+the picture shows under them (`dims3d::pick`).

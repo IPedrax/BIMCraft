@@ -1,6 +1,7 @@
 //! BIMCraft's MCP server: JSON-RPC 2.0 over stdio, one message per line (MCP's stdio transport).
 //! Its tools run the same commands as the CLI and scripts, on a headless session, or, with `--connect`, on the session of a window
-//! (`window.rs`): the project the user has open.
+//! (`window.rs`): the project the user has open. With `--read-only` the agent may only read the project: the headless session is
+//! read-only (`Session::read_only`), and a window is asked to run each request read-only.
 
 use std::io::{BufRead, Write};
 
@@ -22,14 +23,23 @@ the model starts with Level 1 (0) and Level 2 (3000). Model with execute: wall {
 closed: true}, door {at: [2000, 0]}, window {at: [8000, 3000]}, room {point: [4000, 3000], name: \"Living\"}, floor {} (open \
 over a loop of walls standing free inside), \
 roof {} (on Level 2, over the walls below, hipped, open over a loop of them standing free inside; gables: [1, 3] stands \
-those edges upright; courtyards: [[[x,y],…]] slopes it round holes in it too), dormer {host: <roof id>, \
+those edges upright; slopes: [30, 45, 30, 45] gives each edge its own slope; courtyards: [[[x,y],…]] slopes it round holes in it too), dormer {host: <roof id>, \
 at: [4000, 800]} (on its slope), column {at: [4000, 3000]}, stair {start: [1000, 1000], end: [1000, 2000], \
 railings: true} (with landings: [{at: 8, turn: -90}], it turns right after 8 risers), ramp {start: [-5000, 0], height: 600}, \
 dimension {refs: [[0, 3000], [8000, 3000]], at: [4000, -1000]} (between the walls under those points), tag {} (every door and \
 window); or send several at once with script, one `command {json}` per line. list_commands shows every command and its \
-parameters. Check your work with inspect_model and query_elements, look at it with render (a PNG of a level's plan, with \
-ceiling: true its reflected ceiling plan, of a section or elevation by name, or of the 3D view with view \"{3D}\"), and save \
+parameters, and the menu it sits in. Check your work with inspect_model and query_elements, look at it with render (a PNG of a level's plan, with \
+ceiling: true its reflected ceiling plan, of a section or elevation by name, or of the 3D view with view \"{3D}\"; or a family \
+alone with family, type and mode \"3d\", \"plan\" or \"elevation\" — which draws in no project of yours), and save \
 to .bimcraft or .ifc.";
+
+/// What a refusal of a read-only server says lets the agent edit.
+const READ_ONLY_HOW: &str = "this MCP server was started with --read-only: start it without to edit";
+
+/// What a read-only server's instructions add.
+const READ_ONLY_NOTE: &str = " The project is read-only for you: inspect it, query it, read and export its schedules, render it \
+and save it to a new file (.ifc, .pdf of its sheets, .png, a copy), but every command that would change it, step through its \
+undo history, replace it or write over its file is refused.";
 
 /// Where the tools run: on a session of the server's own, or on a window's.
 enum Backend {
@@ -59,9 +69,10 @@ impl Backend {
     fn own(&mut self) -> Result<&mut Session, String> {
         match self {
             Backend::Own(s) => Ok(s),
-            Backend::Window(_) => {
-                Err("this is the window's project, which is the user's: start or open another in the window, not from here".into())
-            }
+            Backend::Window(_) => Err("that would replace the project the window has open, which is the user's: an agent never starts \
+                 or opens a project in a window; the user does, with File > New and File > Open (or run `bimcraft-cli mcp` without \
+                 --connect for a project of the agent's own)"
+                .into()),
         }
     }
 }
@@ -96,21 +107,21 @@ fn tools() -> Value {
         {"name": "script", "description": "Run several commands, one per line: `wall {\"points\": [[0,0],[4000,0]]}`. Stops at the first failing line and names it; the lines before it stay done, each its own undo step. \
             With `atomic`, all or nothing: a failing line takes back the lines before it, and a script that goes through is one undo step.",
          "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "atomic": {"type": "boolean"}}, "required": ["text"]}},
-        {"name": "list_commands", "description": "Every command with its id, label, Revit-style shortcut and parameters. `filter` matches part of an id, label or shortcut.",
+        {"name": "list_commands", "description": "Every command with its id, label, Revit-style shortcut, parameters and the menu it sits in (`menu`, null when the interface has no place for it). `filter` matches part of an id, label or shortcut.",
          "inputSchema": {"type": "object", "properties": {"filter": {"type": "string"}}}},
         {"name": "inspect_model", "description": "The model at a glance: levels, element counts, types, warnings (such as rooms no longer enclosed) and undo history.",
          "inputSchema": {"type": "object", "properties": {}}},
         {"name": "query_elements", "description": "Elements with their six-digit `id` and their `guid` (never changes), fields and derived values (wall length and height, room area_m2 and enclosed, door position `at`); what an element points at (level, host, view) is a GUID, and commands take an element by id or GUID. Filter by category and level; page with limit and offset.",
          "inputSchema": {"type": "object", "properties": {"category": {"type": "string"}, "level": {"type": ["string", "integer"]}, "limit": {"type": "integer"}, "offset": {"type": "integer"}}}},
-        {"name": "schedule", "description": "A schedule's columns, rows and totals, and the fields it could show (`available`). `category` alone reads that category's own: rooms (number, name, level, area, perimeter), doors, windows, walls, floors, levels; ceilings, roofs, columns, components, stairs, ramps and railings too. `name` and `category` make a new one. `fields` (names, or {name, formula, kind, heading, total}: a calculated one such as Area * 120, lengths in mm and areas in m²), `filters` ([{field, op: equals, greater, contains, has-value…, value}]), `sort` ([field or {field, descending}]) and `grouped` change it, each list replacing the last.",
-         "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}, "category": {"type": "string"}, "fields": {"type": "array"}, "filters": {"type": "array"}, "sort": {"type": "array"}, "grouped": {"type": "boolean"}}}},
-        {"name": "render", "description": "Look at the model as a PNG: a level's floor plan (walls and columns with poché, doors with swings, windows, stairs, ramps and railings, roofs, room tags with areas, grids, dimensions, door and window tags), or with ceiling true its reflected ceiling plan, a section or elevation by name (the cut in poché, what's beyond, levels and grids), a sheet by number (its title block and the views on it), or with view \"{3D}\" the 3D view, seen from azimuth degrees round from east (counter-clockwise) and elevation degrees up; by default from the south-east, 30° up.",
-         "inputSchema": {"type": "object", "properties": {"view": {"type": ["string", "integer"]}, "ceiling": {"type": "boolean"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "azimuth": {"type": "number"}, "elevation": {"type": "number"}}}},
+        {"name": "schedule", "description": "A schedule's columns, rows and totals, and the fields it could show (`available`). `category` alone reads that category's own: rooms (number, name, level, area, perimeter), doors, windows, walls, floors, levels; ceilings, roofs, columns, components, stairs, ramps and railings too. `name` and `category` make a new one; category `multicategory` lists the elements of several categories at once, as Revit's Multi-Category Schedule (`categories`: [\"walls\", \"doors\"…], none for every built one), with the fields they share: Category, Family, Type, Level, Count, Width, Height, Length, Thickness, Area, Material. `fields` (names, or {name, formula, kind, heading, total}: a calculated one such as Area * 120, lengths in mm and areas in m²), `filters` ([{field, op: equals, greater, contains, has-value…, value}]), `sort` ([field or {field, descending}]) and `grouped` change it, each list replacing the last.",
+         "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}, "category": {"type": "string"}, "categories": {"type": "array", "items": {"type": "string"}}, "fields": {"type": "array"}, "filters": {"type": "array"}, "sort": {"type": "array"}, "grouped": {"type": "boolean"}}}},
+        {"name": "render", "description": "Look at the model as a PNG: a level's floor plan (walls and columns with poché, doors with swings, windows, stairs, ramps and railings, roofs, room tags with areas, grids, dimensions, door and window tags), or with ceiling true its reflected ceiling plan, a section or elevation by name (the cut in poché, what's beyond, levels and grids), a sheet by number (its title block and the views on it), or with view \"{3D}\" the 3D view, seen from azimuth degrees round from east (counter-clockwise) and elevation degrees up; by default from the south-east, 30° up. With `family`, that family alone instead of the model: its `type` (the first by default) in a model of its own — in a wall `wall_thickness` mm thick (200) if it's a door's or a window's, on a floor of its own footprint if it isn't — mode \"3d\" (default), \"plan\" (what its symbols draw) or \"elevation\" (front-on); the project is touched by none of it and keeps no elements and no undo steps from it. `path` writes a .png there instead of sending it back.",
+         "inputSchema": {"type": "object", "properties": {"view": {"type": ["string", "integer"]}, "family": {"type": "string"}, "type": {"type": "string"}, "mode": {"type": "string", "enum": ["3d", "plan", "elevation"]}, "wall_thickness": {"type": "number"}, "ceiling": {"type": "boolean"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "azimuth": {"type": "number"}, "elevation": {"type": "number"}, "path": {"type": "string"}}}},
         {"name": "new_model", "description": "Start an empty project with Level 1 and Level 2.",
          "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}}},
         {"name": "open", "description": "Open a .bimcraft project, import a Revit .rvt file (read directly, no Revit needed: its levels, walls, floors, ceilings, doors and windows, columns, rooms and flat roofs come in, and the reply lists what was left out and why), or import an .ifc file (IFC2x3 or IFC4, from Revit or any BIM tool): its storeys, straight and curved walls with their doors and windows, floors (level or sloped) and ceilings, with their holes, rooms, columns, grids, stairs and ramps of straight runs with landings, railings, shafts and roofs (flat, sloping all round over any footprint with gable ends, courtyards and openings, or one profile swept across) come in measured from their geometry; the reply lists what was left out and why.",
          "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
-        {"name": "save", "description": "Save to .bimcraft (the project), or export by extension: .ifc (IFC4 for other BIM tools), .svg or .png (the lowest level's plan), .pdf (every sheet, a page each).",
+        {"name": "save", "description": "Save to .bimcraft (the project), or export by extension: .ifc (IFC4 for other BIM tools), .glb (the default 3D view's scene as glTF 2.0, for Blender and viewers: metres, y up, a node for each element named by its id), .svg or .png (the lowest level's plan), .pdf (every sheet, a page each).",
          "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}}}
     ])
 }
@@ -125,6 +136,28 @@ impl Server {
     /// A server whose tools work on the project `window` has open.
     pub fn attached(window: Window) -> Self {
         Server { backend: Backend::Window(window) }
+    }
+
+    /// Opens `path` as the server's own project (before it answers: `bimcraft-cli mcp FILE`), a Revit file as `open` imports one.
+    pub fn open(&mut self, path: &str) -> Result<Value, String> {
+        let s = self.backend.own()?;
+        if crate::revit::is_revit(path) { crate::revit::open(s, path) } else { s.execute("open", &json!({ "path": path })) }
+    }
+
+    /// From now on the agent may only read the project: its own session is read-only, or each request asks the window to be.
+    pub fn read_only(&mut self) {
+        match &mut self.backend {
+            Backend::Own(s) => s.read_only = Some(READ_ONLY_HOW),
+            Backend::Window(w) => w.read_only = true,
+        }
+    }
+
+    /// Whether the agent may only read: asked for here, or the window lets its agents only read.
+    fn reads_only(&self) -> bool {
+        match &self.backend {
+            Backend::Own(s) => s.read_only.is_some(),
+            Backend::Window(w) => w.read_only || w.window_read_only,
+        }
     }
 
     /// Serve until `input` closes. Logs go to stderr: stdout carries only protocol messages.
@@ -179,14 +212,20 @@ impl Server {
             "initialize" => {
                 let asked = params.get("protocolVersion").and_then(Value::as_str).unwrap_or(PROTOCOL_VERSION);
                 let version = if SUPPORTED.contains(&asked) { asked } else { PROTOCOL_VERSION };
+                let mut instructions = match self.backend {
+                    Backend::Own(_) => INSTRUCTIONS.to_string(),
+                    Backend::Window(_) => format!(
+                        "{INSTRUCTIONS} You are attached to the window the user has open: what you make is in their project, to see and to undo. new_model and open are not available; the user starts and opens projects in the window."
+                    ),
+                };
+                if self.reads_only() {
+                    instructions.push_str(READ_ONLY_NOTE);
+                }
                 Ok(json!({
                     "protocolVersion": version,
                     "capabilities": {"tools": {"listChanged": false}},
                     "serverInfo": {"name": "bimcraft", "title": "BIMCraft", "version": env!("CARGO_PKG_VERSION")},
-                    "instructions": match self.backend {
-                        Backend::Own(_) => INSTRUCTIONS.to_string(),
-                        Backend::Window(_) => format!("{INSTRUCTIONS} You are attached to the window the user has open: what you make is in their project, to see and to undo. new_model and open are not available; the user starts and opens projects in the window."),
-                    },
+                    "instructions": instructions,
                 }))
             }
             "ping" => Ok(json!({})),
@@ -256,7 +295,8 @@ impl Server {
             "open" => b.own().and_then(|s| s.execute("open", &args)),
             "save" => b.execute("save", &args),
             "render" => {
-                let keys = ["view", "ceiling", "width", "height", "azimuth", "elevation"];
+                let keys =
+                    ["family", "type", "mode", "wall_thickness", "view", "ceiling", "width", "height", "azimuth", "elevation", "path"];
                 let view: serde_json::Map<String, Value> = keys.iter().map(|k| (k.to_string(), args[*k].clone())).collect();
                 return Ok(match b.execute("render", &Value::Object(view)) {
                     Ok(v) => {
@@ -269,10 +309,19 @@ impl Server {
                             Some(kind) => format!("{name} ({kind})"),
                             None => name.to_string(),
                         };
-                        json!({"content": [
-                            {"type": "image", "data": v["pngBase64"], "mimeType": "image/png"},
-                            {"type": "text", "text": format!("{what}, {} x {} px", v["width"], v["height"])},
-                        ]})
+                        // With a `path` the picture is written to it, and there is no picture to send back.
+                        let mut text = match (v["width"].as_u64(), v["height"].as_u64()) {
+                            (Some(w), Some(h)) => format!("{what}, {w} x {h} px"),
+                            _ => what,
+                        };
+                        if let Some(path) = v["path"].as_str() {
+                            text.push_str(&format!(", written to {path}"));
+                        }
+                        let mut content = vec![json!({"type": "text", "text": text})];
+                        if v["pngBase64"].is_string() {
+                            content.insert(0, json!({"type": "image", "data": v["pngBase64"], "mimeType": "image/png"}));
+                        }
+                        json!({"content": content})
                     }
                     Err(e) => tool_error(&e),
                 });
@@ -319,6 +368,23 @@ mod tests {
         assert_eq!(old["result"]["protocolVersion"], PROTOCOL_VERSION);
     }
 
+    /// `list_commands` says where each command sits in the ribbon (task 6 of ТЗ-003), and leaves
+    /// `null` where the interface has no place for it.
+    #[test]
+    fn list_commands_says_where_the_command_sits_in_the_interface() {
+        let mut s = Server::new();
+        let list = tool(&mut s, "list_commands", json!({}));
+        let by = |id: &str| {
+            list.as_array().and_then(|a| a.iter().find(|c| c["id"] == id)).unwrap_or_else(|| panic!("no `{id}` in the catalog")).clone()
+        };
+        assert_eq!(by("family")["menu"], json!("Manage > Family Editor"), "the button the agent looked for");
+        assert_eq!(by("door")["menu"], json!("Architecture > Door"));
+        assert_eq!(by("purge")["menu"], json!("Manage > Purge Unused"));
+        assert_eq!(by("undo")["menu"], json!(null), "a shortcut with no place in the ribbon");
+        let filtered = tool(&mut s, "list_commands", json!({"filter": "family"}));
+        assert!(filtered.as_array().is_some_and(|a| a.iter().any(|c| c["menu"] == json!("Manage > Family Editor"))), "{filtered}");
+    }
+
     #[test]
     fn an_agent_models_a_house_and_checks_it_through_mcp_only() {
         let mut s = Server::new();
@@ -348,6 +414,63 @@ mod tests {
         tool(&mut s, "save", json!({ "path": path }));
         assert!(std::fs::read_to_string(&path).unwrap().contains("IFCSPACE("));
         let _ = std::fs::remove_file(path);
+    }
+
+    /// The render card offers a family's preview, and a preview through MCP leaves nothing in the project.
+    #[test]
+    fn render_draws_a_family_on_its_own_and_the_project_keeps_nothing_of_it() {
+        let mut s = Server::new();
+        tool(&mut s, "new_model", json!({ "name": "Preview" }));
+        tool(
+            &mut s,
+            "execute",
+            json!({"command": "family", "params": {
+                "name": "Stool", "parameters": [{"name": "Height", "value": 450}],
+                "types": {"A": {}, "B": {"Height": 460}},
+                "forms": [
+                    {"profile": [[0, 0], [320, 0], [320, 320], [0, 320]], "from": 420, "to": 450, "material": "Timber"},
+                    {"profile": [[20, 20], [60, 20], [60, 60], [20, 60]], "to": 420, "material": "Timber"}
+                ]
+            }}),
+        );
+        let before = tool(&mut s, "inspect_model", json!({}));
+        for mode in ["3d", "plan", "elevation"] {
+            let r = call(
+                &mut s,
+                7,
+                "tools/call",
+                json!({"name": "render", "arguments": {"family": "Stool", "type": "A", "mode": mode, "width": 300, "height": 240}}),
+            );
+            let content = &r["result"]["content"];
+            assert_eq!(content[0]["type"], json!("image"), "{mode}: {r}");
+            assert_eq!(content[0]["mimeType"], json!("image/png"), "{mode}: {r}");
+            assert_eq!(content[1]["text"], json!("Stool (family 3d preview), 300 x 240 px".replace("3d", mode)), "{mode}: {r}");
+        }
+        // The render card says what a family's preview takes, so an agent asks for one.
+        let tools = call(&mut s, 2, "tools/list", json!({}));
+        let render = tools["result"]["tools"].as_array().unwrap().iter().find(|t| t["name"] == "render").unwrap();
+        assert_eq!(render["inputSchema"]["properties"]["mode"]["enum"], json!(["3d", "plan", "elevation"]));
+        for key in ["family", "type", "wall_thickness"] {
+            assert!(render["inputSchema"]["properties"].get(key).is_some(), "{key} in the render card");
+        }
+        assert!(render["description"].as_str().unwrap().contains("family"), "the card says what it draws");
+        // Nothing of it stood in the project: no element, no undo step.
+        let after = tool(&mut s, "inspect_model", json!({}));
+        assert_eq!(after["counts"], before["counts"], "a preview makes no element");
+        assert_eq!(after["history"], before["history"], "a preview makes no undo step");
+        // A family's preview written to a path, and a family that isn't there, is a tool error naming it.
+        let path = std::env::temp_dir().join(format!("bimcraft-mcp-family-{}.png", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let r = call(&mut s, 8, "tools/call", json!({"name": "render", "arguments": {"family": "Stool", "mode": "plan", "path": path}}));
+        assert_eq!(r["result"]["content"].as_array().map(|c| c.len()), Some(1), "{r}");
+        assert!(r["result"]["content"][0]["text"].as_str().unwrap().contains("written to"), "{r}");
+        assert_eq!(&std::fs::read(&path).unwrap()[..8], &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]);
+        let _ = std::fs::remove_file(&path);
+        let r = call(&mut s, 9, "tools/call", json!({"name": "render", "arguments": {"family": "Nowhere"}}));
+        assert!(
+            r["result"]["isError"] == true && r["result"]["content"][0]["text"].as_str().unwrap().contains("there's no family `Nowhere`"),
+            "{r}"
+        );
     }
 
     #[cfg(feature = "rvt")]
@@ -464,6 +587,71 @@ mod tests {
             "{r}"
         );
         assert_eq!(call(&mut s, 3, "ping", json!({}))["result"], json!({}), "the server answers still");
+    }
+
+    /// A tool's error text, which must be one.
+    fn refused(s: &mut Server, name: &str, args: Value) -> String {
+        let r = call(s, 7, "tools/call", json!({"name": name, "arguments": args}));
+        assert_eq!(r["result"]["isError"], json!(true), "{name} {r}");
+        r["result"]["content"][0]["text"].as_str().unwrap_or_default().to_string()
+    }
+
+    #[test]
+    fn a_read_only_server_reads_the_project_it_opened_and_changes_nothing_of_it() {
+        let dir = std::env::temp_dir().join(format!("bimcraft-mcp-read-only-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("house.bimcraft");
+        let mut made = Session::new();
+        made.script("wall {\"points\": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], \"closed\": true}\ndoor {\"at\": [2000, 0]}").unwrap();
+        made.execute("save", &json!({"path": file})).unwrap();
+        let saved = std::fs::read(&file).unwrap();
+        // `bimcraft-cli mcp --read-only house.bimcraft`: the file is opened, then the server only reads.
+        let mut s = Server::new();
+        s.open(file.to_str().unwrap()).unwrap();
+        s.read_only();
+        let init = call(&mut s, 1, "initialize", json!({"protocolVersion": "2025-06-18"}));
+        assert!(init["result"]["instructions"].as_str().unwrap().contains("read-only"), "{init}");
+        assert_eq!(tool(&mut s, "inspect_model", json!({}))["counts"]["door"], 1);
+        assert_eq!(tool(&mut s, "schedule", json!({"category": "doors"}))["rows"].as_array().map(Vec::len), Some(1));
+        let ifc = dir.join("house.ifc");
+        tool(&mut s, "save", json!({"path": ifc}));
+        assert!(std::fs::read_to_string(&ifc).unwrap().contains("IFCDOOR("), "an export to a new file is written");
+        for (name, args) in [
+            ("execute", json!({"command": "wall", "params": {"points": [[0, 9000], [4000, 9000]]}})),
+            ("execute", json!({"command": "undo"})),
+            ("script", json!({"text": "inspect\ndelete {\"ids\": [100002]}", "atomic": true})),
+            ("save", json!({})),
+            ("save", json!({"path": file})),
+            ("open", json!({"path": file})),
+            ("new_model", json!({})),
+        ] {
+            let e = refused(&mut s, name, args.clone());
+            assert!(e.contains("read-only for agents") && e.contains("--read-only"), "{name} {args}: {e}");
+        }
+        assert_eq!(tool(&mut s, "inspect_model", json!({}))["counts"]["wall"], 4);
+        assert_eq!(std::fs::read(&file).unwrap(), saved, "the project's file is as it was");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_server_attached_read_only_asks_the_window_to_only_read_and_says_so_when_the_window_does() {
+        // `mcp --connect --read-only`: the agent's own side asks, whatever the window lets.
+        let entry = crate::window::tests::stand_in(usize::MAX);
+        let mut s = Server::attached(Window::connect_to(&entry).unwrap());
+        s.read_only();
+        let init = call(&mut s, 1, "initialize", json!({"protocolVersion": "2025-06-18"}));
+        assert!(init["result"]["instructions"].as_str().unwrap().contains("read-only"), "{init}");
+        let e = refused(&mut s, "execute", json!({"command": "wall", "params": {"points": [[0, 0], [4000, 0]]}}));
+        assert!(e.contains("read-only for agents") && e.contains("--read-only"), "{e}");
+        assert_eq!(tool(&mut s, "inspect_model", json!({}))["counts"]["wall"].as_u64().unwrap_or(0), 0, "nothing made");
+        // A window whose user lets agents only read says so in its hello, and its refusals name the Settings box.
+        let entry = crate::window::tests::stand_in_with(usize::MAX, bimcraft_core::bridge::Access::Read);
+        let mut s = Server::attached(Window::connect_to(&entry).unwrap());
+        let init = call(&mut s, 1, "initialize", json!({"protocolVersion": "2025-06-18"}));
+        assert!(init["result"]["instructions"].as_str().unwrap().contains("read-only"), "{init}");
+        let e = refused(&mut s, "script", json!({"text": "wall {\"points\": [[0, 0], [4000, 0]]}"}));
+        assert!(e.contains("File > Settings > Agents"), "{e}");
+        assert!(tool(&mut s, "schedule", json!({"category": "walls"}))["rows"].is_array());
     }
 
     #[test]

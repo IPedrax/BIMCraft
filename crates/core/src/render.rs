@@ -21,14 +21,16 @@ use tiny_skia::{Color, FillRule, IntSize, LineCap, LineJoin, Paint, PathBuilder,
 
 use crate::geom::{self, P2};
 use crate::graphics::{Detail, Look, scale_of};
+use crate::model::Guid;
 use crate::model::{
     CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Id, Key, Layer, Model, Note, Opening,
-    Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, Wall,
+    Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
 };
 use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
 use crate::units::Units;
 use crate::view3d::{self, Camera, Clip, Image, Scene};
+pub use crate::view3d::{FragmentStats, SectionCache};
 use crate::walls::{self, Axis};
 use crate::{font, massing, sheet, stairs};
 
@@ -563,12 +565,12 @@ fn drawn_near(p: P2, (at, width, height): ((f32, f32), u32, u32), rgba: &[u8], t
 }
 
 /// The outlines of the walls and columns a plan cutting at height `z` cuts, but for those `look` hides.
-fn cut_outlines(m: &Model, z: f64, look: &Look, index: &walls::Index) -> Vec<(Id, Vec<P2>)> {
-    m.elements
+fn cut_outlines(m: &Model, elements: &[(Id, &Element)], z: f64, look: &Look, index: Option<&walls::Index>) -> Vec<(Id, Vec<P2>)> {
+    elements
         .iter()
-        .filter(|(id, _)| look.shows(**id))
-        .filter_map(|(&id, e)| match e {
-            Element::Wall(w) if m.spans(w, z) => Some((id, walls::outline_in(m, id, Some(index)))),
+        .filter(|(id, _)| look.shows(*id))
+        .filter_map(|&(id, e)| match e {
+            Element::Wall(w) if m.spans(w, z) => Some((id, walls::outline_in(m, id, index))),
             _ => stands(m, e).filter(|(_, bottom, top)| *bottom <= z && z < *top).map(|(outline, ..)| (id, outline)),
         })
         .collect()
@@ -588,11 +590,11 @@ fn stands(m: &Model, e: &Element) -> Option<(Vec<P2>, f64, f64)> {
 
 /// The walls and columns a plan sees below its cut plane, down to its view depth: their outlines,
 /// and their tops; but for those `look` hides.
-fn seen_below(m: &Model, r: &PlanRange, look: &Look, index: &walls::Index) -> Vec<(Id, Vec<P2>, f64)> {
-    m.elements
+fn seen_below(m: &Model, elements: &[(Id, &Element)], r: &PlanRange, look: &Look, index: Option<&walls::Index>) -> Vec<(Id, Vec<P2>, f64)> {
+    elements
         .iter()
-        .filter(|(id, _)| look.shows(**id))
-        .filter_map(|(&id, e)| {
+        .filter(|(id, _)| look.shows(*id))
+        .filter_map(|&(id, e)| {
             let (outline, top) = match e {
                 Element::Wall(w) => {
                     let top = m.top_z(w);
@@ -601,7 +603,7 @@ fn seen_below(m: &Model, r: &PlanRange, look: &Look, index: &walls::Index) -> Ve
                     if !(r.depth < top && top <= r.cut) {
                         return None;
                     }
-                    (walls::outline_in(m, id, Some(index)), top)
+                    (walls::outline_in(m, id, index), top)
                 }
                 _ => {
                     let (outline, _, top) = stands(m, e)?;
@@ -611,6 +613,153 @@ fn seen_below(m: &Model, r: &PlanRange, look: &Look, index: &walls::Index) -> Ve
             // A footing or a run hangs under the level it is drawn on, its top flush with the view's bottom: that is seen.
             let flush = if matches!(e, Element::Footing(_) | crate::model::run_arm!(_)) { TOL } else { 0.0 };
             (r.depth - flush < top && top <= r.cut).then_some((id, outline, top))
+        })
+        .collect()
+}
+
+/// What a floor plan's passes look at, in order of id: every element but those of the kinds below that can't show in it,
+/// by what each pass asks of them (a superset of what the passes draw, which is all their filters need): walls, columns
+/// and runs that don't reach from its view depth up to its cut plane (runs: its top), doors and windows in walls it doesn't
+/// cut, components it doesn't see, rooms, room separators and bars of other levels, ceilings, and other views' annotation.
+/// A ceiling plan (`up`) looks at every element.
+fn plan_elements<'a>(
+    m: &'a Model,
+    key: Guid,
+    level: Guid,
+    r: &PlanRange,
+    up: bool,
+    components: &mut crate::component_geometry::Components<'a>,
+) -> Vec<(Id, &'a Element)> {
+    if up {
+        return m.elements.iter().map(|(id, e)| (*id, e)).collect();
+    }
+    let found = plan_candidates(m, key, level, r, components);
+    let candidates = found.iter().filter_map(|id| Some((*id, m.elements.get(*id)?)));
+    let shown: Vec<(Id, &Element)> = plan_filter(m, key, level, r, components, candidates);
+    // Its twin, which tests hold it to: every element of the model, each asked the same.
+    #[cfg(test)]
+    {
+        let every = plan_filter(m, key, level, r, components, m.elements.iter().map(|(id, e)| (*id, e)));
+        assert!(
+            every.iter().map(|(id, _)| id).eq(shown.iter().map(|(id, _)| id)),
+            "a plan's elements found from the lookup aren't every element that shows in it"
+        );
+    }
+    shown
+}
+
+/// The elements that may show in plan `key` of `level`, range `r`, by id: every one that does, and others. From the
+/// lookup: the walls whose heights reach the range, the doors and windows in them, the components and runs whose own
+/// heights reach it once their group's geometry is added, the annotation in the plan (and in its parent's), the level's
+/// rooms, the columns, and the rest of the kinds a plan finds among all of them.
+fn plan_candidates<'a>(
+    m: &'a Model,
+    key: Guid,
+    level: Guid,
+    r: &PlanRange,
+    components: &mut crate::component_geometry::Components<'a>,
+) -> std::collections::BTreeSet<Id> {
+    let lookup = m.lookup();
+    // Every height a plan asks of an element, a hair over and under.
+    let lo = r.depth.min(r.cut).min(r.top) - TOL - 1.0;
+    let hi = r.cut.max(r.top).max(r.depth) + 1.0;
+    let mut out: std::collections::BTreeSet<Id> = lookup.other().collect();
+    for wall in lookup.walls_between(lo, hi) {
+        out.insert(wall);
+        let g = m.guid(wall);
+        out.extend(lookup.referrers(&g).filter(|id| matches!(m.elements.get(*id), Some(Element::Door(_) | Element::Window(_)))));
+    }
+    for (group, one) in lookup.groups() {
+        let found = match (group, m.elements.get(one)) {
+            (crate::derived::Group::Component { .. }, Some(Element::Component(c))) => {
+                let (under, over) = components.local_heights(c);
+                if under > over {
+                    // No geometry: none of them shows.
+                    continue;
+                }
+                lookup.group_between(group, lo - over - 1.0, hi - under + 1.0)
+            }
+            (crate::derived::Group::Run { .. }, Some(e)) => match m.run_type(e) {
+                Some(t) => {
+                    let grow = 2.0 * t.width.abs().max(t.depth.abs()) + 1.0;
+                    lookup.group_between(group, lo - grow, hi + grow)
+                }
+                None => lookup.group_between(group, f64::NAN, f64::NAN),
+            },
+            _ => lookup.group_between(group, f64::NAN, f64::NAN),
+        };
+        out.extend(found);
+    }
+    out.extend(lookup.referrers(&key));
+    if let Some(Element::PlanView(crate::model::PlanView { parent: Some(p), .. })) = m.elements.get(key) {
+        out.extend(lookup.referrers(p));
+    }
+    out.extend(lookup.referrers(&level));
+    out.extend(tags_of_level(m, &lookup, level));
+    out.extend(lookup.rare("column"));
+    out.extend(lookup.rare("structuralcolumn"));
+    out
+}
+
+/// The tags that may be in plan `key` of `level` with no view of their own, by id: those of what is of the level
+/// (`Model::level_of`), what points at it, the doors and windows in its walls, the railings on its stairs and ramps, and
+/// the annotation in its plan views.
+fn tags_of_level(m: &Model, lookup: &crate::derived::Lookup, level: Guid) -> std::collections::BTreeSet<Id> {
+    let mut hosts: Vec<Id> = lookup.referrers(&level).collect();
+    let mut more = Vec::new();
+    for &id in &hosts {
+        if matches!(m.elements.get(id), Some(Element::Wall(_) | Element::Stair(_) | Element::Ramp(_) | Element::PlanView(_))) {
+            more.extend(lookup.referrers(&m.guid(id)));
+        }
+    }
+    hosts.extend(more);
+    hosts
+        .into_iter()
+        .flat_map(|h| lookup.referrers(&m.guid(h)).collect::<Vec<_>>())
+        .filter(|id| matches!(m.elements.get(*id), Some(Element::Tag(t)) if t.view.is_none()))
+        .collect()
+}
+
+/// Of `candidates`, those that may show in plan `key` of `level`, range `r`.
+fn plan_filter<'a>(
+    m: &'a Model,
+    key: Guid,
+    level: Guid,
+    r: &PlanRange,
+    components: &mut crate::component_geometry::Components<'a>,
+    candidates: impl Iterator<Item = (Id, &'a Element)>,
+) -> Vec<(Id, &'a Element)> {
+    // What reaches from the view depth (and a hair under it: a footing's or a run's top flush with it) to the range's top.
+    let reaches = |bottom: f64, top: f64| bottom <= r.top && top > r.depth - TOL;
+    candidates
+        .filter(|(_, e)| match e {
+            Element::Wall(w) => m.base_z(w) <= r.cut && m.top_z(w) > r.depth - TOL,
+            Element::Door(o) | Element::Window(o) => m.wall(o.host).is_some_and(|w| m.spans(w, r.cut)),
+            Element::Component(c) => {
+                let (bottom, top) = components.heights_of(c);
+                // Its plan symbols are annotation of its level, whatever height its forms reach.
+                bottom < r.cut && top > r.depth || c.level == level && m.families.get(&c.family).is_some_and(|f| !f.symbols.is_empty())
+            }
+            Element::Room(x) => x.level == level,
+            Element::RoomSeparator(x) => x.level == level,
+            Element::Rebar(_) => m.level_of(e) == Some(level),
+            Element::Ceiling(_) => false,
+            // A 3D view's own dimension shows in no plan.
+            Element::Dimension3D(_) => false,
+            Element::Text(_)
+            | Element::DetailLine(_)
+            | Element::FilledRegion(_)
+            | Element::Dimension(_)
+            | Element::Tag(_)
+            | Element::Spot(_)
+            | Element::DetailGroup(_)
+            | Element::RepeatingDetail(_) => m.annotation_in(e, key),
+            _ if e.column().is_some() => stands(m, e).is_none_or(|(_, bottom, top)| reaches(bottom, top)),
+            _ if e.run().is_some() => m.run_geom(e).is_none_or(|g| {
+                let (bottom, top) = g.z_span();
+                reaches(bottom, top)
+            }),
+            _ => true,
         })
         .collect()
 }
@@ -631,7 +780,7 @@ fn cut_unions(look: &Look, outlines: impl Iterator<Item = (Id, Vec<P2>)>) -> Vec
 
 /// The object style of `owner`'s category; with no owner, what a project's categories start with.
 fn style_of(m: &Model, owner: Option<Id>) -> ObjectStyle {
-    m.object_style(owner.and_then(|id| m.elements.get(id)).map_or("", Element::category))
+    owner.and_then(|id| m.elements.get(id)).map_or_else(|| m.object_style(""), |e| m.object_style_of(e))
 }
 
 /// Whether what `owner` is draws in the annotation's pens: a dimension, a tag, text, a spot elevation, a grid, a level, a
@@ -656,6 +805,85 @@ fn annotates(m: &Model, owner: Option<Id>) -> bool {
 /// What of each cut outline is the edge of what the view cuts, as runs of points: its edges, but for the stretches
 /// another outline lies against on their outer side, where two walls meet at a join or one runs into another; where two
 /// runs meet, each carried on `reach` mm round the corner ([`turn_corners`]).
+/// Boxes `(lo, hi)` by cells of a grid, to find those within `past` of one another without asking each of every other.
+struct BoxGrid<'a> {
+    boxes: &'a [(P2, P2)],
+    past: f64,
+    side: f64,
+    cells: std::collections::HashMap<(i64, i64), Vec<usize>>,
+    /// The boxes too big (or not finite) for cells: near anything.
+    big: Vec<usize>,
+}
+
+impl<'a> BoxGrid<'a> {
+    /// The most cells one box goes in.
+    const MAX_CELLS: i64 = 256;
+
+    fn new(boxes: &'a [(P2, P2)], past: f64) -> BoxGrid<'a> {
+        // Cells about as big as a box is, by the median of their larger sides.
+        let mut sides: Vec<f64> =
+            boxes.iter().map(|(lo, hi)| (hi.0 - lo.0).max(hi.1 - lo.1)).filter(|s| s.is_finite() && *s >= 0.0).collect();
+        sides.sort_by(f64::total_cmp);
+        let side = sides.get(sides.len() / 2).copied().unwrap_or(1.0).max(1.0) + 2.0 * past;
+        let mut grid = BoxGrid { boxes, past, side, cells: std::collections::HashMap::new(), big: Vec::new() };
+        for (i, b) in boxes.iter().enumerate() {
+            match grid.cells_of(b) {
+                Some([x0, y0, x1, y1]) => {
+                    for x in x0..=x1 {
+                        for y in y0..=y1 {
+                            grid.cells.entry((x, y)).or_default().push(i);
+                        }
+                    }
+                }
+                None => grid.big.push(i),
+            }
+        }
+        grid
+    }
+
+    /// The cells box `b`, grown by `past`, reaches; none when it is too big for them.
+    fn cells_of(&self, (lo, hi): &(P2, P2)) -> Option<[i64; 4]> {
+        let cell = |v: f64| (v / self.side).floor();
+        let c = [cell(lo.0 - self.past), cell(lo.1 - self.past), cell(hi.0 + self.past), cell(hi.1 + self.past)];
+        if !c.iter().all(|v| v.is_finite() && v.abs() < 1e15) {
+            return None;
+        }
+        let [x0, y0, x1, y1] = c.map(|v| v as i64);
+        ((x1 - x0 + 1).saturating_mul(y1 - y0 + 1) <= Self::MAX_CELLS).then_some([x0, y0, x1, y1])
+    }
+
+    /// The boxes but `i` within `past` of box `i`, and perhaps others near, in order: those in a cell it reaches, and the
+    /// big ones (with box `i` big, every one).
+    fn near(&self, i: usize) -> Vec<usize> {
+        let Some(b) = self.boxes.get(i) else { return Vec::new() };
+        let mut found: Vec<usize> = match self.cells_of(b) {
+            Some([x0, y0, x1, y1]) => {
+                let mut v: Vec<usize> = self.big.clone();
+                for x in x0..=x1 {
+                    for y in y0..=y1 {
+                        v.extend(self.cells.get(&(x, y)).into_iter().flatten().copied());
+                    }
+                }
+                v
+            }
+            None => (0..self.boxes.len()).collect(),
+        };
+        found.sort_unstable();
+        found.dedup();
+        let ((a, b), past) = (*b, self.past);
+        found
+            .into_iter()
+            .filter(|&j| {
+                j != i
+                    && self
+                        .boxes
+                        .get(j)
+                        .is_some_and(|(c, d)| a.0 <= d.0 + past && c.0 <= b.0 + past && a.1 <= d.1 + past && c.1 <= b.1 + past)
+            })
+            .collect()
+    }
+}
+
 fn cut_edges(outlines: &[(Id, Vec<P2>)], reach: f64) -> Vec<(Id, Vec<Vec<P2>>)> {
     // How far past an edge, outward, a point is looked for in another outline: mm.
     const PAST: f64 = 1.0;
@@ -671,9 +899,14 @@ fn cut_edges(outlines: &[(Id, Vec<P2>)], reach: f64) -> Vec<(Id, Vec<Vec<P2>>)> 
         let ((a, b), (c, d)) = (boxes[i], boxes[j]);
         i != j && a.0 <= d.0 + PAST && c.0 <= b.0 + PAST && a.1 <= d.1 + PAST && c.1 <= b.1 + PAST
     };
+    let grid = BoxGrid::new(&boxes, PAST);
     let mut out = Vec::with_capacity(outlines.len());
     for (i, (id, o)) in outlines.iter().enumerate() {
-        let others: Vec<&[P2]> = (0..outlines.len()).filter(|&j| near(i, j)).map(|j| outlines[j].1.as_slice()).collect();
+        let found = grid.near(i);
+        // Its twin, which tests hold it to: every outline asked.
+        #[cfg(test)]
+        assert_eq!(found, (0..outlines.len()).filter(|&j| near(i, j)).collect::<Vec<_>>(), "the outlines near outline {i}");
+        let others: Vec<&[P2]> = found.into_iter().filter(|&j| near(i, j)).map(|j| outlines[j].1.as_slice()).collect();
         if others.is_empty() {
             let mut ring = o.clone();
             ring.extend(o.first().copied());
@@ -751,8 +984,33 @@ fn turn_corners(runs: &mut [(Id, Vec<Vec<P2>>)], reach: f64) {
             [(r[0], r[1]), (r[n - 1], r[n - 2])]
         })
         .collect();
+    // The ends by cell of a micron (a match is within a millionth of a millimetre, in its cell or the next); the ends
+    // that aren't finite numbers are asked every time.
+    const CELL: f64 = 1e-3;
+    let key = |p: P2| ((p.0 / CELL).floor(), (p.1 / CELL).floor());
+    let fits = |(x, y): (f64, f64)| x.is_finite() && y.is_finite() && x.abs() < 1e15 && y.abs() < 1e15;
+    let mut cells: std::collections::HashMap<(i64, i64), Vec<usize>> = std::collections::HashMap::new();
+    let mut loose = Vec::new();
+    for (i, (p, _)) in ends.iter().enumerate() {
+        match key(*p) {
+            k if fits(k) => cells.entry((k.0 as i64, k.1 as i64)).or_default().push(i),
+            _ => loose.push(i),
+        }
+    }
     let on = |at: P2, from: P2| {
-        ends.iter().find(|(p, q)| p.dist(at) < 1e-6 && q.dist(from) > 1e-9).map(|(p, q)| {
+        let matches = |i: &usize| ends.get(*i).is_some_and(|(p, q)| p.dist(at) < 1e-6 && q.dist(from) > 1e-9);
+        // The first that matches, as a search of every end in order would find.
+        let first = match key(at) {
+            k if fits(k) => {
+                let (x, y) = (k.0 as i64, k.1 as i64);
+                let near = (x - 1..=x + 1).flat_map(|x| (y - 1..=y + 1).map(move |y| (x, y)));
+                near.filter_map(|c| cells.get(&c)).flatten().chain(&loose).copied().filter(matches).min()
+            }
+            _ => (0..ends.len()).find(matches),
+        };
+        #[cfg(test)]
+        assert_eq!(first, (0..ends.len()).find(|i| matches(i)), "the end a run carries on along");
+        first.and_then(|i| ends.get(i)).map(|(p, q)| {
             let len = p.dist(*q);
             *p + (*q - *p) * (reach.min(len) / len)
         })
@@ -784,8 +1042,9 @@ pub(crate) fn plan_extent(m: &Model, level: impl Key) -> Vec<P2> {
     match m.shown_crop(level) {
         None => plan_shows(m, level),
         Some([lo, hi]) => {
-            let grids = m.elements.values().filter_map(|e| match e {
-                Element::Grid(g) => clip(g.start, g.end, lo, hi),
+            let lookup = m.lookup();
+            let grids = lookup.grids().filter_map(|id| match m.elements.get(id) {
+                Some(Element::Grid(g)) => clip(g.start, g.end, lo, hi),
                 _ => None,
             });
             [lo, hi].into_iter().chain(grids.flat_map(|(a, b)| [a, b])).collect()
@@ -796,15 +1055,47 @@ pub(crate) fn plan_extent(m: &Model, level: impl Key) -> Vec<P2> {
 /// Everything a plan of `level` shows, uncropped: its walls, floors, rooms, dimensions, tags,
 /// notes and spot elevations, the grids, the marks of the sections and elevations, and its CAD imports.
 pub(crate) fn plan_shows(m: &Model, plan: impl Key) -> Vec<P2> {
-    // The plan's own guid says what it is: its graphics, range and annotation; its level is what it shows of the model.
     let key = m.guid(plan);
+    let shows = plan_shows_among(m, key, true);
+    // Its twin, which tests hold it to, as [`draw_plan`]'s.
+    #[cfg(test)]
+    assert!(
+        shows == regions::uncounted(|| plan_shows_among(m, key, false)),
+        "a plan shows other things among the elements that may show in it"
+    );
+    shows
+}
+
+fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
+    // The plan's own guid says what it is: its graphics, range and annotation; its level is what it shows of the model.
     let level = m.plan_level(key).map_or(key, |l| m.guid(l));
     let r = m.shown_range(key);
     let look = Look::of(m, key);
-    let index = walls::Index::new(m);
-    let mut extent: Vec<P2> = cut_outlines(m, r.cut, &look, &index).into_iter().flat_map(|(_, o)| o).collect();
-    extent.extend(seen_below(m, &r, &look, &index).into_iter().flat_map(|(_, o, _)| o));
-    for (id, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
+    let index = match m.derived.made(&m.elements) {
+        Some(_) if among => None,
+        _ => Some(walls::Index::new(m)),
+    };
+    let index = index.as_ref();
+    let mut components = crate::component_geometry::Components::new(m);
+    let elements: Vec<(Id, &Element)> =
+        if among { plan_elements(m, key, level, &r, false, &mut components) } else { m.elements.iter().map(|(id, e)| (*id, e)).collect() };
+    let mut extent: Vec<P2> = cut_outlines(m, &elements, r.cut, &look, index).into_iter().flat_map(|(_, o)| o).collect();
+    extent.extend(seen_below(m, &elements, &r, &look, index).into_iter().flat_map(|(_, o, _)| o));
+    // What it shows besides what is cut and seen: of its level, in it, or of the kinds a plan looks for among all.
+    let rest: Vec<(Id, &Element)> = if among {
+        let lookup = m.lookup();
+        let mut ids: std::collections::BTreeSet<Id> = lookup.other().collect();
+        ids.extend(lookup.referrers(&level));
+        ids.extend(tags_of_level(m, &lookup, level));
+        ids.extend(lookup.referrers(&key));
+        if let Some(Element::PlanView(crate::model::PlanView { parent: Some(p), .. })) = m.elements.get(key) {
+            ids.extend(lookup.referrers(p));
+        }
+        ids.into_iter().filter_map(|id| Some((id, m.elements.get(id)?))).collect()
+    } else {
+        m.elements.iter().map(|(id, e)| (*id, e)).collect()
+    };
+    for (id, e) in rest.iter().filter(|(id, _)| look.shows(*id)) {
         match e {
             Element::CadImport(ci) if ci.level == level && ci.view.is_none_or(|v| v == key) => {
                 extent.extend(m.cad_box(*id).into_iter().flatten())
@@ -818,7 +1109,16 @@ pub(crate) fn plan_shows(m: &Model, plan: impl Key) -> Vec<P2> {
             }
             Element::Room(r) if r.level == level => extent.push(r.point),
             Element::Mass(ms) if m.mass_cut_by(ms, r.cut) => extent.extend(m.mass_outline(ms, r.cut)),
-            Element::Component(c) if c.level == level => extent.extend(m.component_pieces(c).into_iter().flat_map(|p| p.outline)),
+            Element::Component(c) if c.level == level => {
+                extent.extend(components.outlines(c));
+                for mark in m.component_marks(c) {
+                    match mark {
+                        crate::family::Mark::Line(pts) => extent.extend(pts),
+                        crate::family::Mark::Dot { centre, .. } => extent.push(centre),
+                        crate::family::Mark::Label { at, .. } => extent.push(at),
+                    }
+                }
+            }
             Element::Grid(g) => extent.extend([g.start, g.end]),
             Element::RoomSeparator(rs) if rs.level == level => extent.extend([rs.start, rs.end]),
             Element::Dimension(dm) if m.annotation_in(e, key) => extent.push(dm.at),
@@ -861,12 +1161,13 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
     (d.weights, d.paper) = (m.line_weights().at(n), paper_of(n, view.scale));
     match e {
         Element::Dimension(dm) => dimension(&mut d, m, dm),
-        Element::Tag(t) => tag(&mut d, m, t),
+        Element::Tag(t) => tag(&mut d, m, t, &crate::rooms::Rooms::new(m)),
         Element::Text(n) => note(&mut d, m, n),
         Element::DetailLine(l) => detail_line(&mut d, m, l),
         Element::FilledRegion(r) => filled_region(&mut d, m, r),
         Element::DetailGroup(g) => detail_group(&mut d, m, g),
         Element::RepeatingDetail(r) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
+        Element::Spot(sp) if sp.slope => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
         Element::Spot(sp) => spot_mark(&mut d, view.px(sp.at), m.spot_value(sp), m.units),
         Element::Section(v) => section_mark(&mut d, v),
         Element::Elevation(v) => elevation_mark(&mut d, v),
@@ -876,7 +1177,12 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
                 d.line(&g.footprint(), Pen::HEAVY, INK, true)
             }
         }
-        Element::Component(c) => component(&mut d, m, &m.component_pieces(c)),
+        Element::Component(c) => {
+            component(&mut d, m, &m.component_pieces(c));
+            if d.detail != Detail::Coarse {
+                marks(&mut d, &m.component_marks(c));
+            }
+        }
         // Drawn at its sill, where the cut plane would pass through it whatever the plan's cut is.
         Element::Door(o) | Element::Window(o) => {
             if let Some(w) = m.wall(o.host) {
@@ -892,7 +1198,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         _ => {}
     }
     let annotation = on.is_some() || matches!(e, Element::Section(_) | Element::Elevation(_));
-    let style = m.object_style(e.category());
+    let style = m.object_style_of(e);
     d.by_category(|_| style);
     d.weigh(|_| annotation);
     d
@@ -928,14 +1234,383 @@ fn bar_in_plan(d: &mut Drawing, rb: &crate::model::Rebar, dashed: bool, seen: &m
 const GRID_PAST: f64 = 600.0;
 
 /// From the lowest level or solid `look` shows to the highest.
-fn heights(m: &Model, look: &Look) -> (f64, f64) {
-    let solids: Vec<_> = view3d::solids(m).into_iter().filter(|s| look.shows(s.owner())).collect();
-    let zs = m.levels().into_iter().map(|(_, l)| l.elevation).chain(solids.iter().flat_map(|s| {
-        let (a, b) = s.heights();
-        [a, b]
-    }));
-    let (lo, hi) = zs.fold((f64::MAX, f64::MIN), |(lo, hi), z| (lo.min(z), hi.max(z)));
-    if lo <= hi { (lo, hi) } else { (0.0, 3000.0) }
+/// The walls whose layers section or elevation `v` may cut between `first` and `last` along its line, by id: those near
+/// the line in the lookup's tiles, by as much as a wall is thick, twice (its joins carry its layers past its ends).
+fn section_walls<'a>(
+    m: &'a Model,
+    lookup: &crate::derived::Lookup,
+    v: &Section,
+    first: f64,
+    last: f64,
+) -> Vec<(Id, &'a crate::model::Wall)> {
+    let u = (v.end - v.start).unit();
+    let (a, b) = (v.start + u * first, v.start + u * last);
+    let grow = 2.0 * m.types.wall.values().map(|t| t.thickness.abs()).fold(0.0, f64::max) + 10.0;
+    let near = lookup.walls_near([a.0.min(b.0), a.1.min(b.1), a.0.max(b.0), a.1.max(b.1)], grow);
+    let walls: Vec<(Id, &crate::model::Wall)> = near.into_iter().filter_map(|id| Some((id, m.wall(id)?))).collect();
+    // Its twin, which tests hold it to: no other wall's layer lines cross the line there.
+    #[cfg(test)]
+    for (&id, e) in &m.elements {
+        if let Element::Wall(_) = e
+            && !walls.iter().any(|(w, _)| *w == id)
+        {
+            for line in walls::layer_lines(m, id) {
+                for seg in line.windows(2) {
+                    let &[p, q] = seg else { continue };
+                    let crosses = geom::line_intersection(v.start, v.end, p, q)
+                        .filter(|x| geom::dist_to_segment(*x, p, q) < 1e-6)
+                        .is_some_and(|x| (first - 1e-6..=last + 1e-6).contains(&(x - v.start).dot(u)));
+                    assert!(!crosses, "wall {id}'s layers cross the section's line, and it isn't among the walls near it");
+                }
+            }
+        }
+    }
+    walls
+}
+
+/// Bounds of external data used by cached level/model extents. Names and floating
+/// point bits suffice: no scan points, drawing entities or old models are retained.
+struct ExtentSources {
+    clouds: Vec<(String, [[u64; 3]; 2])>,
+    cads: Vec<(String, Option<[[u64; 2]; 2]>)>,
+}
+
+impl ExtentSources {
+    fn cloud(cloud: &crate::cloud::Cloud) -> [[u64; 3]; 2] {
+        let (lo, hi) = cloud.bounds();
+        [lo.map(f64::to_bits), hi.map(f64::to_bits)]
+    }
+
+    fn cad(cad: &crate::cad::Cad) -> Option<[[u64; 2]; 2]> {
+        cad.bulk().map(|bounds| bounds.map(|p| [p.0.to_bits(), p.1.to_bits()]))
+    }
+
+    fn of(m: &Model) -> Self {
+        Self {
+            clouds: m.clouds.iter().map(|(name, cloud)| (name.clone(), Self::cloud(cloud))).collect(),
+            cads: m.cads.iter().map(|(name, cad)| (name.clone(), Self::cad(cad))).collect(),
+        }
+    }
+
+    fn is_of(&self, m: &Model) -> bool {
+        self.clouds.len() == m.clouds.len()
+            && self.cads.len() == m.cads.len()
+            && self.clouds.iter().zip(&m.clouds).all(|((name, bounds), (current, cloud))| name == current && *bounds == Self::cloud(cloud))
+            && self.cads.iter().zip(&m.cads).all(|((name, bounds), (current, cad))| name == current && *bounds == Self::cad(cad))
+    }
+}
+
+/// Geometry inputs, without holding a model snapshot or old library data.
+/// Weak allocation identities also detach on in-place library edits.
+struct GeometryKey {
+    elements: (u64, u64),
+    types: crate::shared::Identity<crate::model::Types>,
+    materials: crate::shared::Identity<std::collections::BTreeMap<String, crate::model::Material>>,
+    families: crate::shared::Identity<std::collections::BTreeMap<String, crate::family::Family>>,
+    language: crate::language::Language,
+    extents: ExtentSources,
+}
+
+impl GeometryKey {
+    fn of(m: &Model) -> Self {
+        Self {
+            elements: m.elements.state(),
+            types: m.types.identity(),
+            materials: m.materials.identity(),
+            families: m.families.identity(),
+            language: m.language,
+            extents: ExtentSources::of(m),
+        }
+    }
+    fn is_of(&self, m: &Model) -> bool {
+        self.elements == m.elements.state()
+            && self.types.is_of(&m.types)
+            && self.materials.is_of(&m.materials)
+            && self.families.is_of(&m.families)
+            && self.language == m.language
+            && self.extents.is_of(m)
+    }
+}
+
+/// Structural counts for opt-in component-extrema preparation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PreparationStats {
+    pub deferred_components: usize,
+    /// Round runs whose tubes are made only for a view that needs them.
+    pub deferred_runs: usize,
+    pub resolved_components: usize,
+}
+
+/// A snapshot's section/elevation geometry, component extrema or deferred envelopes,
+/// and exact model extent. `new` prepares the full oracle; `new_deferred` can resolve
+/// supported component extrema lazily when fitting or datum queries need them.
+pub struct SectionWork {
+    /// Elements and geometry-definition identities; stale work is rebuilt even after a library-only edit.
+    of: GeometryKey,
+    solids: view3d::PreparedSolids,
+    ranges: std::collections::HashMap<Id, std::ops::Range<usize>>,
+    placed: Vec<(Id, Vec<[f64; 3]>)>,
+    /// Each element's box (as `placed` lists them, by id).
+    boxes: Vec<Option<[[f64; 3]; 2]>>,
+    extent: std::sync::OnceLock<[P2; 2]>,
+    /// Beside `placed`, by place, not by id: a framing query asks of every element, and a hash each would cost more than
+    /// the components' points it saves. Empty when nothing is deferred.
+    deferred: Vec<Option<std::sync::OnceLock<Vec<[f64; 3]>>>>,
+    deferred_components: usize,
+    deferred_runs: usize,
+    resolved: std::sync::atomic::AtomicUsize,
+}
+
+impl SectionWork {
+    pub fn new(m: &Model) -> Self {
+        let (solids, placed, boxes) = view3d::solids_and_extremes(m);
+        let solids = view3d::PreparedSolids::Owned(solids);
+        // Each element's solids lie together, in the order of the elements.
+        let mut ranges: std::collections::HashMap<Id, std::ops::Range<usize>> = std::collections::HashMap::new();
+        for (i, s) in solids.iter().enumerate() {
+            ranges.entry(s.owner()).and_modify(|r| r.end = i + 1).or_insert(i..i + 1);
+        }
+        SectionWork {
+            of: GeometryKey::of(m),
+            solids,
+            ranges,
+            placed,
+            boxes,
+            extent: std::sync::OnceLock::new(),
+            deferred: Default::default(),
+            deferred_components: 0,
+            deferred_runs: 0,
+            resolved: Default::default(),
+        }
+    }
+
+    /// Cooperative geometry preparation. No partial work is returned.
+    pub fn new_cancellable(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Self> {
+        let (solids, placed, boxes) = view3d::solids_and_extremes_cancellable(m, cancelled)?;
+        Self::assembled_cancellable(m, view3d::PreparedSolids::Owned(solids), placed, boxes, cancelled)
+    }
+
+    /// Opt-in envelope preparation. Exact extrema are resolved only when a fitting
+    /// or datum query needs them; `new` remains the full-computation oracle.
+    pub fn new_deferred(m: &Model) -> Self {
+        Self::new_deferred_cancellable(m, &|| false).unwrap_or_else(|| Self::new(m))
+    }
+
+    /// Cooperative [`Self::new_deferred`]. The lazy queries are cancellable too
+    /// ([`section_fit_cancellable`], [`SectionOverlay::new_cancellable`]): a cancelled one
+    /// leaves each component's extrema whole or unresolved, and the model's extent unset.
+    pub fn new_deferred_cancellable(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Self> {
+        let ((solids, placed, boxes), deferred) = view3d::solids_and_extremes_deferred(m, cancelled)?;
+        let mut work = Self::assembled_cancellable(m, view3d::PreparedSolids::Owned(solids), placed, boxes, cancelled)?;
+        for ((id, _), d) in work.placed.iter().zip(&deferred) {
+            match m.elements.get(*id) {
+                Some(Element::Component(_)) if *d => work.deferred_components += 1,
+                _ if *d => work.deferred_runs += 1,
+                _ => {}
+            }
+        }
+        if work.deferred_components + work.deferred_runs > 0 {
+            work.deferred = deferred.into_iter().map(|d| d.then(std::sync::OnceLock::new)).collect();
+        }
+        (!cancelled()).then_some(work)
+    }
+
+    pub fn preparation_stats(&self) -> PreparationStats {
+        PreparationStats {
+            deferred_components: self.deferred_components,
+            deferred_runs: self.deferred_runs,
+            resolved_components: self.resolved.load(std::sync::atomic::Ordering::Relaxed),
+        }
+    }
+
+    pub(crate) fn from_prepared_cancellable(
+        m: &Model,
+        (solids, placed, boxes): view3d::PreparedMade,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Option<Self> {
+        Self::assembled_cancellable(m, view3d::PreparedSolids::Cached(solids), placed, boxes, cancelled)
+    }
+
+    fn assembled_cancellable(
+        m: &Model,
+        solids: view3d::PreparedSolids,
+        placed: Vec<(Id, Vec<[f64; 3]>)>,
+        boxes: Vec<Option<[[f64; 3]; 2]>>,
+        cancelled: &(dyn Fn() -> bool + Sync),
+    ) -> Option<Self> {
+        if cancelled() {
+            return None;
+        }
+        let mut ranges: std::collections::HashMap<Id, std::ops::Range<usize>> = std::collections::HashMap::new();
+        for (i, s) in solids.iter().enumerate() {
+            if i % 256 == 0 && cancelled() {
+                return None;
+            }
+            ranges.entry(s.owner()).and_modify(|r| r.end = i + 1).or_insert(i..i + 1);
+        }
+        Some(SectionWork {
+            of: GeometryKey::of(m),
+            solids,
+            ranges,
+            placed,
+            boxes,
+            extent: std::sync::OnceLock::new(),
+            deferred: Default::default(),
+            deferred_components: 0,
+            deferred_runs: 0,
+            resolved: Default::default(),
+        })
+    }
+
+    /// The box of element `id`: `placed` lists elements as the model does, by id. None tells a caller nothing of where it is.
+    fn box_of(&self, id: Id) -> Option<&[[f64; 3]; 2]> {
+        let at = self.placed.binary_search_by_key(&id, |(id, _)| *id).ok()?;
+        self.boxes.get(at)?.as_ref()
+    }
+
+    /// The cell of what `placed` holds at `at`, if its points are deferred.
+    fn cell(&self, at: usize) -> Option<&std::sync::OnceLock<Vec<[f64; 3]>>> {
+        self.deferred.get(at)?.as_ref()
+    }
+
+    fn known_points<'s>(&'s self, at: usize, points: &'s Vec<[f64; 3]>) -> Option<&'s Vec<[f64; 3]>> {
+        match self.cell(at) {
+            Some(cell) => cell.get(),
+            None => Some(points),
+        }
+    }
+
+    fn points<'s, 'm>(
+        &'s self,
+        m: &'m Model,
+        (at, id): (usize, Id),
+        points: &'s Vec<[f64; 3]>,
+        components: &mut crate::component_geometry::Components<'m>,
+    ) -> &'s Vec<[f64; 3]> {
+        let Some(cell) = self.cell(at) else { return points };
+        cell.get_or_init(|| {
+            let points = m.elements.get(id).map_or_else(Vec::new, |e| view3d::lazy_points(m, id, e, components));
+            self.resolved.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            points
+        })
+    }
+
+    fn deferred_heights(&self, m: &Model, look: &Look, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<(f64, f64)> {
+        let mut out = m.levels().iter().map(|(_, level)| level.elevation).fold((f64::MAX, f64::MIN), |(lo, hi), z| (lo.min(z), hi.max(z)));
+        for (i, ((id, _), bounds)) in self.placed.iter().zip(&self.boxes).enumerate() {
+            if i % 256 == 0 && cancelled() {
+                return None;
+            }
+            if self.cell(i).is_none()
+                && look.shows(*id)
+                && let Some([lo, hi]) = bounds
+            {
+                out = (out.0.min(lo[2]), out.1.max(hi[2]));
+            }
+        }
+        let mut components = crate::component_geometry::Components::new(m);
+        for (at, ((id, points), bounds)) in self.placed.iter().zip(&self.boxes).enumerate() {
+            if self.cell(at).is_some() && bounds.is_none_or(|[lo, hi]| lo[2] < out.0 || hi[2] > out.1) && look.shows(*id) {
+                if cancelled() {
+                    return None;
+                }
+                for p in self.points(m, (at, *id), points, &mut components) {
+                    out = (out.0.min(p[2]), out.1.max(p[2]));
+                }
+            }
+        }
+        Some(if out.0 <= out.1 { out } else { (0.0, 3000.0) })
+    }
+
+    /// Whether every geometry source still belongs to the same immutable definitions.
+    fn is_of(&self, m: &Model) -> bool {
+        self.of.is_of(m)
+    }
+
+    /// The solids `look` shows, but the components'.
+    fn shown<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = &'a view3d::Solid> + 'a {
+        self.solids.iter().filter(|s| look.shows(s.owner()))
+    }
+
+    /// The lowest and highest of each element `look` shows: its box's, which are its points'.
+    fn heights<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = (f64, f64)> + 'a {
+        self.placed.iter().zip(&self.boxes).filter(|((id, _), _)| look.shows(*id)).filter_map(|(_, b)| b.map(|[lo, hi]| (lo[2], hi[2])))
+    }
+
+    /// The least and the most of `along` (a measure linear in plan, as far along a line) over the points of every element
+    /// `look` shows: of the elements whose boxes reach past what another surely reaches, their points. Of a box, `along` is
+    /// the most at one of its corners, which no point inside it passes, its sums rounded as they are.
+    fn along_range(&self, m: &Model, look: &Look, along: impl Fn(P2) -> f64, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<(f64, f64)> {
+        #[allow(clippy::type_complexity)]
+        let mut shown: Vec<(usize, Id, &Vec<[f64; 3]>, (f64, f64))> = Vec::new();
+        for (i, ((id, p), b)) in self.placed.iter().zip(&self.boxes).enumerate() {
+            if i % 256 == 0 && cancelled() {
+                return None;
+            }
+            if !look.shows(*id) {
+                continue;
+            }
+            let reach = b.map_or((f64::NEG_INFINITY, f64::INFINITY), |[lo, hi]| {
+                let xs = [P2(lo[0], lo[1]), P2(hi[0], lo[1]), P2(hi[0], hi[1]), P2(lo[0], hi[1])].map(&along);
+                let (a, z) = xs.iter().fold((f64::MAX, f64::MIN), |(a, z), x| (a.min(*x), z.max(*x)));
+                // Not finite numbers: asked of its points.
+                if a.is_finite() && z.is_finite() { (a, z) } else { (f64::NEG_INFINITY, f64::INFINITY) }
+            });
+            shown.push((i, *id, p, reach));
+        }
+        // What some point surely reaches: each element's first point.
+        let first = |at, p| self.known_points(at, p).and_then(|p| p.first()).map(|q| along(P2(q[0], q[1]))).filter(|x| !x.is_nan());
+        let (least, most) =
+            shown.iter().filter_map(|(at, _, p, _)| first(*at, p)).fold((f64::MAX, f64::MIN), |(a, z), x| (a.min(x), z.max(x)));
+        let mut out = (f64::MAX, f64::MIN);
+        let mut components = crate::component_geometry::Components::new(m);
+        for (at, id, p, (a, z)) in &shown {
+            if *a <= least || *z >= most {
+                if cancelled() {
+                    return None;
+                }
+                for q in self.points(m, (*at, *id), p, &mut components) {
+                    let x = along(P2(q[0], q[1]));
+                    out = (out.0.min(x), out.1.max(x));
+                }
+            }
+        }
+        Some(out)
+    }
+
+    /// [`Model::model_extent`] of `m`, the model it was made of.
+    /// Kept only when it is whole: a query cancelled part of the way sets nothing.
+    fn extent(&self, m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<[P2; 2]> {
+        if let Some(extent) = self.extent.get() {
+            return Some(*extent);
+        }
+        // Each box's lowest and highest corners in plan: the least and most of its points either way.
+        let extent = if self.deferred.is_empty() {
+            m.model_extent_of(self.boxes.iter().flatten().flat_map(|[lo, hi]| [P2(lo[0], lo[1]), P2(hi[0], hi[1])]))
+        } else {
+            let look = Look::default();
+            let (x0, x1) = self.along_range(m, &look, |p| p.0, cancelled)?;
+            let (y0, y1) = self.along_range(m, &look, |p| p.1, cancelled)?;
+            m.model_extent_of([P2(x0, y0), P2(x1, y1)].into_iter().filter(|_| x0 <= x1 && y0 <= y1))
+        };
+        // Its twin, which tests hold it to: of every solid's corners.
+        #[cfg(test)]
+        assert_eq!(extent, m.model_extent(), "the model's extent from the components' farthest points");
+        Some(*self.extent.get_or_init(|| extent))
+    }
+}
+
+fn heights(m: &Model, w: &SectionWork, look: &Look, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<(f64, f64)> {
+    let of = |solids: &mut dyn Iterator<Item = (f64, f64)>| {
+        let zs = m.levels().into_iter().map(|(_, l)| l.elevation).chain(solids.flat_map(|(a, b)| [a, b]));
+        let (lo, hi) = zs.fold((f64::MAX, f64::MIN), |(lo, hi), z| (lo.min(z), hi.max(z)));
+        if lo <= hi { (lo, hi) } else { (0.0, 3000.0) }
+    };
+    let found = if w.deferred.is_empty() { of(&mut w.heights(look)) } else { w.deferred_heights(m, look, cancelled)? };
+    // Its twin, which tests hold it to: of every solid the look shows.
+    #[cfg(test)]
+    assert_eq!(found, of(&mut view3d::solids(m).iter().filter(|s| look.shows(s.owner())).map(|s| s.heights())), "a view's heights");
+    Some(found)
 }
 
 /// The crop region of view `id` as it shows: a cropped plan's corners; a cropped section's or
@@ -953,27 +1628,38 @@ pub fn crop_region(m: &Model, id: impl Key) -> Option<[P2; 2]> {
 /// The heights section or elevation `id` would crop to: all of the model's, as far as its grids
 /// reach past them.
 pub(crate) fn section_heights(m: &Model, id: impl Key) -> [f64; 2] {
-    let (lo, hi) = heights(m, &Look::of(m, id));
+    let (lo, hi) = heights(m, &SectionWork::new(m), &Look::of(m, id), &|| false).unwrap_or((0.0, 3000.0));
     [lo - GRID_PAST, hi + GRID_PAST]
 }
 
 /// How far along its line, from its start, section or elevation `v` shows: cropped, from its start
 /// to its end; else as far as anything it shows reaches (what lies beyond its line, its levels and
 /// its grids), and its line.
-fn span(m: &Model, v: &Section, look: &Look) -> (f64, f64) {
+fn span(m: &Model, w: &SectionWork, v: &Section, look: &Look, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<(f64, f64)> {
     let len = v.start.dist(v.end);
     if v.crop.is_some() {
-        return (0.0, len);
+        return Some((0.0, len));
     }
     let u = (v.end - v.start).unit();
     let along = |q: P2| (q - v.start).dot(u);
-    let solids = view3d::solids(m).into_iter().filter(|s| look.shows(s.owner())).flat_map(|s| s.corners()).map(|p| along(P2(p[0], p[1])));
-    let levels = level_spans(m, v, look).into_iter().flat_map(|(_, a, b)| [a, b]);
-    let grids = m.elements.iter().filter(|(id, _)| look.shows(**id)).filter_map(|(_, e)| match e {
-        Element::Grid(g) => geom::line_intersection(v.start, v.end, g.start, g.end).map(along),
+    let (least, most) = w.along_range(m, look, along, cancelled)?;
+    // Nothing shown, nothing found: no reach of its own.
+    let solids = [least, most].into_iter().filter(|_| least <= most);
+    // Its twin, which tests hold it to: every corner of every solid the look shows, as far along the line.
+    #[cfg(test)]
+    {
+        let fold = |xs: &mut dyn Iterator<Item = f64>| xs.fold((f64::MAX, f64::MIN), |(lo, hi), x| (lo.min(x), hi.max(x)));
+        let every = view3d::solids(m);
+        let all = fold(&mut every.iter().filter(|s| look.shows(s.owner())).flat_map(|s| s.corners()).map(|p| along(P2(p[0], p[1]))));
+        assert_eq!((least, most), all, "how far along its line a view's solids reach");
+    }
+    let levels = level_spans(m, w, v, look, cancelled)?.into_iter().flat_map(|(_, a, b)| [a, b]);
+    let lookup = m.lookup();
+    let grids = lookup.grids().filter(|id| look.shows(*id)).filter_map(|id| match m.elements.get(id) {
+        Some(Element::Grid(g)) => geom::line_intersection(v.start, v.end, g.start, g.end).map(along),
         _ => None,
     });
-    solids.chain(levels).chain(grids).fold((0.0, len), |(lo, hi), x| (lo.min(x), hi.max(x)))
+    Some(solids.chain(levels).chain(grids).fold((0.0, len), |(lo, hi), x| (lo.min(x), hi.max(x))))
 }
 
 /// Where level `level` ends in section or elevation `view`, along its line from its start: its near
@@ -981,64 +1667,116 @@ fn span(m: &Model, v: &Section, look: &Look) -> (f64, f64) {
 pub fn level_ends(m: &Model, level: impl Key, view: impl Key) -> Option<(f64, f64)> {
     let v = m.section(view)?;
     let look = Look::of(m, view);
-    let (first, last) = span(m, v, &look);
+    let w = SectionWork::new(m);
+    let (first, last) = span(m, &w, v, &look, &|| false)?;
     let level = m.elements.id(level)?;
-    let (_, a, b) = level_spans(m, v, &look).into_iter().find(|(id, ..)| *id == level)?;
+    let (_, a, b) = level_spans(m, &w, v, &look, &|| false)?.into_iter().find(|(id, ..)| *id == level)?;
     let (a, b) = (a.max(first), b.min(last));
     (a < b).then_some((a, b))
 }
 
+fn section_level_ends(
+    m: &Model,
+    work: &SectionWork,
+    id: Id,
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<std::collections::BTreeMap<Id, (f64, f64)>> {
+    let Some(v) = m.section(id) else { return Some(Default::default()) };
+    let look = Look::of(m, id);
+    let (first, last) = span(m, work, v, &look, cancelled)?;
+    let spans = level_spans(m, work, v, &look, cancelled)?;
+    Some(
+        spans
+            .into_iter()
+            .filter_map(|(level, a, b)| {
+                let (a, b) = (a.max(first), b.min(last));
+                (a < b).then_some((level, (a, b)))
+            })
+            .collect(),
+    )
+}
+
 /// The levels section or elevation `v` sees, each from how far along its line to how far: where
 /// its extent lies, past its line (within its depth).
-fn level_spans(m: &Model, v: &Section, look: &Look) -> Vec<(Id, f64, f64)> {
+fn level_spans(m: &Model, w: &SectionWork, v: &Section, look: &Look, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Vec<(Id, f64, f64)>> {
     let u = (v.end - v.start).unit();
     let past = |q: P2| (q - v.start).dot(v.looking());
-    let default = std::cell::OnceCell::new();
-    m.levels()
-        .into_iter()
-        .filter(|(id, _)| look.shows(*id))
-        .filter_map(|(id, l)| {
-            let [lo, hi] = l.extent.unwrap_or_else(|| *default.get_or_init(|| m.model_extent()));
-            let corners = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)];
-            let (near, far) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min(past(*q)), b.max(past(*q))));
-            if far < -TOL || v.depth.is_some_and(|d| near > d) {
-                return None;
-            }
-            let (a, b) =
-                corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min((*q - v.start).dot(u)), b.max((*q - v.start).dot(u))));
-            Some((id, a, b))
-        })
-        .collect()
+    let mut spans = Vec::new();
+    for (id, l) in m.levels().into_iter().filter(|(id, _)| look.shows(*id)) {
+        let [lo, hi] = match l.extent {
+            Some(extent) => extent,
+            None => w.extent(m, cancelled)?,
+        };
+        let corners = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)];
+        let (near, far) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min(past(*q)), b.max(past(*q))));
+        if far < -TOL || v.depth.is_some_and(|d| near > d) {
+            continue;
+        }
+        let (a, b) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), q| (a.min((*q - v.start).dot(u)), b.max((*q - v.start).dot(u))));
+        spans.push((id, a, b));
+    }
+    Some(spans)
 }
 
 /// The heights a section or elevation shows: its crop's, else all of the model's.
-fn shown_heights(m: &Model, v: &Section, look: &Look) -> (f64, f64) {
-    v.crop.map_or_else(|| heights(m, look), |[bottom, top]| (bottom, top))
+fn shown_heights(m: &Model, w: &SectionWork, v: &Section, look: &Look, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<(f64, f64)> {
+    match v.crop {
+        Some([bottom, top]) => Some((bottom, top)),
+        None => heights(m, w, look, cancelled),
+    }
 }
 
 /// The view section or elevation `id` fits into `width` x `height` px: along its line from its
 /// start, and up, with room for its levels' names and its grids' bubbles, which are as big as its
 /// scale makes them.
 pub fn section_fit(m: &Model, id: impl Key, width: u32, height: u32) -> View {
-    let Some([lo, hi]) = section_bare(m, id) else { return fit(&[], width, height, m.units.default_scale()) };
+    section_fit_with(m, &SectionWork::new(m), id, width, height)
+}
+
+/// Fit a section using work retained with the same immutable model snapshot.
+pub fn section_fit_with(m: &Model, work: &SectionWork, id: impl Key, width: u32, height: u32) -> View {
+    section_fit_cancellable(m, work, id, width, height, &|| false).unwrap_or_else(|| fit(&[], width, height, m.units.default_scale()))
+}
+
+/// [`section_fit_with`] on a worker: None only when cancelled, between components' extrema. What isn't a section still has
+/// its empty frame.
+pub fn section_fit_cancellable(
+    m: &Model,
+    work: &SectionWork,
+    id: impl Key,
+    width: u32,
+    height: u32,
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<View> {
+    if cancelled() {
+        return None;
+    }
+    if !work.is_of(m) {
+        let fresh = SectionWork::new_cancellable(m, cancelled)?;
+        return section_fit_cancellable(m, &fresh, id, width, height, cancelled);
+    }
+    if m.section(id).is_none() {
+        return Some(fit(&[], width, height, m.units.default_scale()));
+    }
+    let [lo, hi] = section_bare(m, work, id, cancelled)?;
     let (n, names) = (scale_of(m, id), level_names(m));
-    fit_by(|scale| [lo, P2(hi.0 + f64::from(annotation_of(n, scale) * names) / scale, hi.1)], width, height, n)
+    Some(fit_by(|scale| [lo, P2(hi.0 + f64::from(annotation_of(n, scale) * names) / scale, hi.1)], width, height, n))
 }
 
 /// What section or elevation `id` shows, along its line and up, at `scale` px per mm, its annotation `k` times the size it is
 /// laid out at: from its start to its end, past its lowest and highest heights, with room past the end for the widest
 /// level name.
-pub(crate) fn section_extent(m: &Model, id: impl Key, scale: f64, k: f32) -> Option<[P2; 2]> {
-    let [lo, hi] = section_bare(m, id)?;
+pub(crate) fn section_extent(m: &Model, w: &SectionWork, id: impl Key, scale: f64, k: f32) -> Option<[P2; 2]> {
+    let [lo, hi] = section_bare(m, w, id, &|| false)?;
     Some([lo, P2(hi.0 + f64::from(k * level_names(m)) / scale, hi.1)])
 }
 
 /// Section or elevation `id` along its line, past its lowest and highest heights: all it shows but the names of its levels.
 /// Cropped, from its start to its end; else as far as anything it shows reaches.
-fn section_bare(m: &Model, id: impl Key) -> Option<[P2; 2]> {
+fn section_bare(m: &Model, w: &SectionWork, id: impl Key, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<[P2; 2]> {
     let v = m.section(id)?;
     let look = Look::of(m, id);
-    let ((lo, hi), (first, last)) = (shown_heights(m, v, &look), span(m, v, &look));
+    let ((lo, hi), (first, last)) = (shown_heights(m, w, v, &look, cancelled)?, span(m, w, v, &look, cancelled)?);
     Some([P2(first, lo - GRID_PAST), P2(last, hi + GRID_PAST)])
 }
 
@@ -1079,48 +1817,242 @@ pub fn section_image(m: &Model, scene: &Scene, id: impl Key, view: View, tints: 
     Some(scene.cut_in(&cam, &clip, tints, &Look::of(m, id)))
 }
 
+/// What section or elevation `id` sees past its line through `view`, in hidden line, as [`section_image`] draws it from
+/// the whole scene: drawn from a scene of only what can show in it ([`Scene::section`]), the same to the pixel.
+pub fn section_picture(m: &Model, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
+    section_picture_in(m, &SectionWork::new(m), id, view, tints)
+}
+
+/// [`section_picture`] and the drawing over it, [`section_over`], through `view`, the picture `pixels` (its view at the
+/// screen's pixels): the whole model's work done once for both.
+pub fn section_picture_and_over(m: &Model, id: Id, view: View, pixels: View, tints: &[(Id, Rgb)]) -> (Option<Image>, Drawing) {
+    section_picture_and_over_with(m, &SectionWork::new(m), id, view, pixels, tints)
+}
+
+/// [`section_picture_and_over`] of `work`, which a front end keeps with model `m` (made again here if it is of another).
+pub fn section_picture_and_over_with(
+    m: &Model,
+    work: &SectionWork,
+    id: Id,
+    view: View,
+    pixels: View,
+    tints: &[(Id, Rgb)],
+) -> (Option<Image>, Drawing) {
+    let fresh;
+    let w = if work.is_of(m) {
+        work
+    } else {
+        fresh = SectionWork::new(m);
+        &fresh
+    };
+    let picture = section_picture_in(m, w, id, pixels, tints);
+    let drawing = section_in(m, w, id, view, annotation(m, id, view), scale_of(m, id), picture.as_ref());
+    (picture, drawing)
+}
+
+/// A section picture using work retained with the supplied model snapshot.
+pub fn section_picture_with(m: &Model, work: &SectionWork, id: Id, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
+    if work.is_of(m) { section_picture_in(m, work, id, view, tints) } else { section_picture(m, id, view, tints) }
+}
+
+/// Render on a worker, checking cancellation between geometry/raster chunks.
+/// `work` must belong to this exact immutable model snapshot.
+pub fn section_picture_cancellable(
+    m: &Model,
+    work: &SectionWork,
+    id: Id,
+    view: View,
+    tints: &[(Id, Rgb)],
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<Image> {
+    if cancelled() {
+        return None;
+    }
+    if !work.is_of(m) {
+        let fresh = SectionWork::new_cancellable(m, cancelled)?;
+        return section_picture_cancellable(m, &fresh, id, view, tints, cancelled);
+    }
+    let (cam, clip) = section_camera(m, id, view)?;
+    let look = Look::of(m, id);
+    let scene = Scene::section_cancellable(m, (&work.solids, &work.ranges, &work.placed, &work.boxes), &cam, &clip, &look, cancelled)?;
+    let image = scene.picture_cancellable(&cam, Some(&clip), tints, &look, cancelled);
+    (!cancelled()).then_some(image)
+}
+
+/// [`section_picture`], of `w`'s solids and points.
+pub(crate) fn section_picture_in(m: &Model, w: &SectionWork, id: impl Key, view: View, tints: &[(Id, Rgb)]) -> Option<Image> {
+    let (cam, clip) = section_camera(m, id, view)?;
+    let look = Look::of(m, id);
+    let picture = Scene::section(m, (&w.solids, &w.ranges, &w.placed, &w.boxes), &cam, &clip, &look).cut_in(&cam, &clip, tints, &look);
+    // Its twin, which tests hold it to: the picture of the whole scene.
+    #[cfg(test)]
+    if let Err(e) = picture.same_as(&Scene::new(m).cut_in(&cam, &clip, tints, &look)) {
+        panic!("a section's picture from what can show in it isn't the whole scene's: {e}");
+    }
+    Some(picture)
+}
+
 /// What section or elevation `id` draws over its picture through `view`: where its line cuts
 /// the solids, in poché; its levels, named past its end; the grids it crosses; its notes and spot
 /// elevations; and its name. Cropped, only what lies between its crop's heights.
 pub fn section(m: &Model, id: impl Key, view: View) -> Drawing {
-    section_in(m, id, view, annotation(m, id, view), scale_of(m, id), None)
+    section_in(m, &SectionWork::new(m), id, view, annotation(m, id, view), scale_of(m, id), None)
 }
 
 /// [`section`], over `picture`, which [`section_image`] drew (at `view`'s size or a multiple of it): what its regions keep of
 /// the picture's ink comes from there, instead of from a picture drawn again, which costs as much as the picture does.
 pub fn section_over(m: &Model, id: impl Key, view: View, picture: &Image) -> Drawing {
-    section_in(m, id, view, annotation(m, id, view), scale_of(m, id), Some(picture))
+    section_in(m, &SectionWork::new(m), id, view, annotation(m, id, view), scale_of(m, id), Some(picture))
 }
 
 /// Section or elevation `id` as `section` draws it, its annotation `k` times the size it is laid out at: a sheet's, at
 /// paper size. Its pens are the line weights' at the scale `k` and `view` make, a viewport's.
 pub fn section_at(m: &Model, id: impl Key, view: View, k: f32) -> Drawing {
-    section_in(m, id, view, k, f64::from(k) * sheet::DENSITY / view.scale, None)
+    section_in(m, &SectionWork::new(m), id, view, k, f64::from(k) * sheet::DENSITY / view.scale, None)
 }
 
 /// [`section_at`], over `picture` as [`section_over`] is.
 pub fn section_at_over(m: &Model, id: impl Key, view: View, k: f32, picture: &Image) -> Drawing {
-    section_in(m, id, view, k, f64::from(k) * sheet::DENSITY / view.scale, Some(picture))
+    section_at_over_in(m, &SectionWork::new(m), id, view, k, picture)
+}
+
+/// [`section_at_over`], of `w`'s solids and points.
+pub(crate) fn section_at_over_in(m: &Model, w: &SectionWork, id: impl Key, view: View, k: f32, picture: &Image) -> Drawing {
+    section_in(m, w, id, view, k, f64::from(k) * sheet::DENSITY / view.scale, Some(picture))
+}
+
+/// The model cut and datums for one immutable snapshot and framing. Repainting
+/// view annotations/region ink reads this base without constructing or cutting solids.
+/// Keep it with the exact model snapshot supplied to `new`.
+pub struct SectionOverlay {
+    id: Id,
+    base: Drawing,
+    levels: std::collections::BTreeMap<Id, (f64, f64)>,
+}
+
+impl SectionOverlay {
+    pub fn new(m: &Model, work: &SectionWork, id: Id, view: View) -> Self {
+        if !work.is_of(m) {
+            return Self::new(m, &SectionWork::new(m), id, view);
+        }
+        Self {
+            id,
+            base: section_base(m, work, id, view, annotation(m, id, view), scale_of(m, id)),
+            levels: section_level_ends(m, work, id, &|| false).unwrap_or_default(),
+        }
+    }
+
+    /// Cached datum endpoints for lightweight grips; never rebuild geometry on hover/selection.
+    pub fn levels(&self) -> &std::collections::BTreeMap<Id, (f64, f64)> {
+        &self.levels
+    }
+
+    pub fn new_cancellable(m: &Model, work: &SectionWork, id: Id, view: View, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Self> {
+        if !work.is_of(m) {
+            let fresh = SectionWork::new_cancellable(m, cancelled)?;
+            return Self::new_cancellable(m, &fresh, id, view, cancelled);
+        }
+        let base = section_base_cancellable(m, work, id, view, annotation(m, id, view), scale_of(m, id), cancelled)?;
+        if cancelled() {
+            return None;
+        }
+        let levels = section_level_ends(m, work, id, cancelled)?;
+        (!cancelled()).then_some(Self { id, base, levels })
+    }
+
+    pub fn draw(&self, m: &Model, picture: Option<&Image>) -> Drawing {
+        self.draw_cancellable(m, picture, &|| false).unwrap_or_else(|| Drawing::new(self.base.view))
+    }
+
+    pub fn draw_cancellable(&self, m: &Model, picture: Option<&Image>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Drawing> {
+        if cancelled() {
+            return None;
+        }
+        let b = &self.base;
+        let mut d = Drawing {
+            view: b.view,
+            prims: b.prims.clone(),
+            owners: b.owners.clone(),
+            parts: b.parts.clone(),
+            pens: b.pens.clone(),
+            regions: regions::Layers::new(b.regions.end(), Some(self.id)),
+            notes: b.notes.clone(),
+            weights: b.weights,
+            owner: None,
+            part: b.part,
+            k: b.k,
+            paper: b.paper,
+            detail: b.detail,
+            pattern_styles: b.pattern_styles.clone(),
+        };
+        if let Some(image) = picture {
+            d.picture(m, self.id, image);
+        }
+        section_finish_cancellable(m, self.id, d, cancelled)
+    }
 }
 
 /// [`section_at`], its pens the line weights' at 1 : `n`.
-fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Option<&Image>) -> Drawing {
+fn section_in(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n: f64, picture: Option<&Image>) -> Drawing {
+    let mut d = section_base(m, work, id, view, k, n);
+    let Some(id) = m.elements.id(id) else { return d };
+    if let Some(image) = picture {
+        d.picture(m, id, image);
+    }
+    section_finish(m, id, d)
+}
+
+fn section_base(m: &Model, work: &SectionWork, id: impl Key, view: View, k: f32, n: f64) -> Drawing {
+    section_base_cancellable(m, work, id, view, k, n, &|| false).unwrap_or_else(|| Drawing::new(view))
+}
+
+fn section_base_cancellable(
+    m: &Model,
+    work: &SectionWork,
+    id: impl Key,
+    view: View,
+    k: f32,
+    n: f64,
+    cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<Drawing> {
+    if cancelled() {
+        return None;
+    }
     let mut d = Drawing::new(view);
     (d.k, d.paper, d.detail, d.weights) = (k, paper_of(n, view.scale), detail_of(m, id), m.line_weights().at(n));
-    let Some(v) = m.section(id) else { return d };
+    let Some(v) = m.section(id) else { return Some(d) };
     let look = Look::of(m, id);
     d.pattern_styles = look.pattern_styles();
     let u = (v.end - v.start).unit();
-    let (first, last) = span(m, v, &look);
+    let (first, last) = span(m, work, v, &look, cancelled)?;
     // Each element's cut pieces, filled as one so where they meet (a roof's slopes at its ridge)
     // leaves no seam.
     let mut cuts: std::collections::BTreeMap<Id, Vec<Vec<P2>>> = std::collections::BTreeMap::new();
-    let solids: Vec<_> = view3d::solids(m).into_iter().filter(|s| look.shows(s.owner())).collect();
+    let solids: Vec<&view3d::Solid> = work.shown(&look).collect();
     d.part(Part::Cut);
     // A bar lies inside the concrete it reinforces, so its cuts are dots over that poché, not pieces of it.
     let mut dots: Vec<(Id, Vec<P2>)> = Vec::new();
     // A mass is outlined where the line cuts it, below, not filled.
-    for s in solids.iter().filter(|s| !matches!(m.elements.get(s.owner()), Some(Element::Mass(_)))) {
+    // What lies all on one side of the line's upright plane is cut by none of it, whatever it is made of.
+    let side = |q: P2| (q - v.start).dot(u.perp());
+    let one_side = |id: Id| {
+        work.box_of(id).is_some_and(|[lo, hi]| {
+            let s = [P2(lo[0], lo[1]), P2(hi[0], lo[1]), P2(hi[0], hi[1]), P2(lo[0], hi[1])].map(side);
+            s.iter().all(|x| *x > 1e-3) || s.iter().all(|x| *x < -1e-3)
+        })
+    };
+    // Its twin, which tests hold it to: what is left out cuts nothing.
+    #[cfg(test)]
+    for s in solids.iter().filter(|s| one_side(s.owner())) {
+        if cancelled() {
+            return None;
+        }
+        assert!(s.cuts(v.start + u * first, u, last - first).is_empty(), "{} is cut by a line it lies all on one side of", s.owner());
+    }
+    for s in solids.iter().filter(|s| !matches!(m.elements.get(s.owner()), Some(Element::Mass(_))) && !one_side(s.owner())) {
+        if cancelled() {
+            return None;
+        }
         let bar = matches!(m.elements.get(s.owner()), Some(Element::Rebar(_)));
         // Cut from where the view begins, then back along the line from its start.
         for ring in s.cuts(v.start + u * first, u, last - first) {
@@ -1128,11 +2060,37 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
             if bar { dots.push((s.owner(), ring)) } else { cuts.entry(s.owner()).or_default().push(ring) }
         }
     }
+    // The round runs not made yet: only those whose boxes the line's plane crosses.
+    let mut lazy = crate::component_geometry::Components::new(m);
+    for (at, (id, _)) in work.placed.iter().enumerate() {
+        if work.cell(at).is_none() || !look.shows(*id) {
+            continue;
+        }
+        let Some(e) = m.elements.get(*id).filter(|e| e.run().is_some()) else { continue };
+        if cfg!(not(test)) && one_side(*id) {
+            continue;
+        }
+        if cancelled() {
+            return None;
+        }
+        for s in view3d::lazy_solids(m, *id, e, &mut lazy) {
+            let rings = s.cuts(v.start + u * first, u, last - first);
+            // Its twin, which tests hold it to: what is left out cuts nothing.
+            #[cfg(test)]
+            assert!(!one_side(*id) || rings.is_empty(), "{id} is cut by a line it lies all on one side of");
+            for ring in rings {
+                cuts.entry(*id).or_default().push(ring.into_iter().map(|q| P2(q.0 + first, q.1)).collect());
+            }
+        }
+    }
     // Poché, then the edge of what is cut over it: joined walls show their union, as in plan, filled
     // as one first so no seam shows where pieces meet.
     d.owner = None;
     let mut unions: Vec<(Rgb, Vec<Vec<P2>>)> = Vec::new();
     for (owner, rings) in &cuts {
+        if cancelled() {
+            return None;
+        }
         let color = look.cut_fill(*owner, POCHE);
         match unions.iter_mut().find(|(c, _)| *c == color) {
             Some((_, all)) => all.extend(rings.iter().cloned()),
@@ -1140,9 +2098,15 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
         }
     }
     for (color, rings) in unions {
+        if cancelled() {
+            return None;
+        }
         d.fill(&rings, color);
     }
     for (owner, rings) in &cuts {
+        if cancelled() {
+            return None;
+        }
         d.owner = Some(*owner);
         if pattern_style(&d, true).is_some() {
             d.fill(rings, PAPER);
@@ -1153,12 +2117,18 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
     }
     let pieces: Vec<(Id, Vec<P2>)> = cuts.iter().flat_map(|(owner, rings)| rings.iter().map(|r| (*owner, r.clone()))).collect();
     for (owner, runs) in cut_edges(&pieces, 1.0 / d.view.scale) {
+        if cancelled() {
+            return None;
+        }
         d.owner = Some(owner);
         for run in runs {
             ink_cut(&mut d, &run);
         }
     }
     for (owner, ring) in dots {
+        if cancelled() {
+            return None;
+        }
         d.owner = Some(owner);
         d.fill(std::slice::from_ref(&ring), INK);
         ink_cut(&mut d, &ring);
@@ -1166,8 +2136,11 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
     // A compound wall's layers where the line cuts it: each its material's cut pattern, between where
     // the line crosses its boundaries; a thin line up each boundary between two, as high as the wall
     // stands there, around its openings.
-    for (&wall, e) in &m.elements {
-        let Element::Wall(w) = e else { continue };
+    let lookup = m.lookup();
+    for (wall, w) in section_walls(m, &lookup, v, first, last) {
+        if cancelled() {
+            return None;
+        }
         let layers = m.type_layers("wall", &w.type_name);
         if layers.is_empty() || !look.shows(wall) || d.detail == Detail::Coarse {
             continue;
@@ -1218,7 +2191,8 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
                 if !(first..=last).contains(&along) {
                     continue;
                 }
-                for s in solids.iter().filter(|s| s.owner() == wall && s.over(x)) {
+                let own = work.solids.in_range(work.ranges.get(&wall).cloned().unwrap_or(0..0));
+                for s in own.filter(|s| s.owner() == wall && s.over(x)) {
                     let (z0, z1) = s.z_at(x);
                     d.part(Part::Pattern);
                     d.line(&[P2(along, z0), P2(along, z1)], Pen::PROJECTION, INK, false);
@@ -1231,6 +2205,9 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
     // line between each two, parallel to its faces.
     let coarse = d.detail == Detail::Coarse;
     for (&owner, rings) in cuts.iter().filter(|_| !coarse) {
+        if cancelled() {
+            return None;
+        }
         let layers = match m.elements.get(owner) {
             Some(Element::Floor(f)) => m.type_layers("floor", &f.type_name),
             Some(Element::Roof(r)) => m.type_layers("roof", &r.type_name),
@@ -1241,26 +2218,39 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
         if total <= 0.0 {
             continue;
         }
+        // A shaped floor's or roof's over a level underside: the layers above its variable one from the top, those below it
+        // from the bottom, the variable one between; any other's in proportion to their thicknesses.
+        let variable = m.variable_under(owner);
         d.owner = Some(owner);
         for r in rings {
             let &[a0, b0, b1, a1] = r.as_slice() else { continue };
-            // The line a fraction of the way down from its top to its bottom.
-            let at = |f: f64| (a1 + (a0 - a1) * f, b1 + (b0 - b1) * f);
-            let mut above = 0.0;
+            // Where each layer starts down from the top at each end.
+            let down = |top: P2, bottom: P2| {
+                let depth = top.1 - bottom.1;
+                crate::model::Variable::bounds(variable, layers, depth)
+                    .into_iter()
+                    .map(|x| if depth.abs() > 1e-9 { top + (bottom - top) * (x / depth) } else { top })
+                    .collect::<Vec<P2>>()
+            };
+            let (at_a, at_b) = (down(a1, a0), down(b1, b0));
             for (k, layer) in layers.iter().enumerate() {
-                let ((p, q), (p2, q2)) = (at(above / total), at((above + layer.thickness) / total));
-                let room = (p.1 - p2.1).abs() * d.view.scale;
+                let (Some(&p), Some(&q), Some(&p2), Some(&q2)) = (at_a.get(k), at_b.get(k), at_a.get(k + 1), at_b.get(k + 1)) else {
+                    continue;
+                };
+                let room = (p.1 - p2.1).abs().min((q.1 - q2.1).abs()) * d.view.scale;
                 cut_layer(&mut d, m, layer, &[p2, q2, q, p], (q - p).unit(), room);
                 if k > 0 {
                     d.part(Part::Pattern);
                     d.line(&[p, q], Pen::PROJECTION, INK, false);
                     d.part(Part::Cut);
                 }
-                above += layer.thickness;
             }
         }
     }
-    for (&mid, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
+    for (mid, e) in lookup.rare("mass").filter(|id| look.shows(*id)).filter_map(|id| Some((id, m.elements.get(id)?))) {
+        if cancelled() {
+            return None;
+        }
         let Element::Mass(ms) = e else { continue };
         let (z0, z1) = m.span(ms.level, ms.base_offset, ms.top_level, ms.height);
         d.owner = Some(mid);
@@ -1283,17 +2273,17 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
     }
     d.owner = None;
     d.part(Part::Projection);
-    let (lo, hi) = shown_heights(m, v, &look);
+    let (lo, hi) = shown_heights(m, work, v, &look, cancelled)?;
     if v.crop.is_some() {
         let (a, b) = (d.view.px(P2(first, hi)), d.view.px(P2(last, lo)));
         d.crop(a, b, |_| false);
     }
     d.model_under_regions(m.elements.id(id));
-    if let (Some(image), Some(section)) = (picture, m.elements.id(id)) {
-        d.picture(m, section, image);
-    }
     // Each level over as much of its extent as the view sees, named past its end.
-    for (level, from, to) in level_spans(m, v, &look) {
+    for (level, from, to) in level_spans(m, work, v, &look, cancelled)? {
+        if cancelled() {
+            return None;
+        }
         let (from, to) = (from.max(first), to.min(last));
         let Some(l) = m.level(level).filter(|l| from < to && ((lo..=hi).contains(&l.elevation) || v.crop.is_none())) else { continue };
         d.owner = Some(level);
@@ -1306,7 +2296,10 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
     }
     // Grids running into what it sees: across its line, reaching past it (within its depth).
     let past = |q: P2| (q - v.start).dot(v.looking());
-    for (&grid_id, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
+    for (grid_id, e) in lookup.grids().filter(|id| look.shows(*id)).filter_map(|id| Some((id, m.elements.get(id)?))) {
+        if cancelled() {
+            return None;
+        }
         if let Element::Grid(g) = e
             && let Some(x) = geom::line_intersection(v.start, v.end, g.start, g.end)
             && past(g.start).max(past(g.end)) >= -TOL
@@ -1318,8 +2311,31 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
             grid(&mut d, P2(along, lo - GRID_PAST), P2(along, hi + GRID_PAST), &g.name);
         }
     }
+    if cancelled() {
+        return None;
+    }
+    Some(d)
+}
+
+fn section_finish(m: &Model, id: Id, d: Drawing) -> Drawing {
+    let view = d.view;
+    section_finish_cancellable(m, id, d, &|| false).unwrap_or_else(|| Drawing::new(view))
+}
+
+fn section_finish_cancellable(m: &Model, id: Id, mut d: Drawing, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Drawing> {
+    if cancelled() {
+        return None;
+    }
+    let Some(v) = m.section(id) else { return Some(d) };
+    let (lookup, look, view) = (m.lookup(), Look::of(m, id), d.view);
+    // What is drawn in it, from what points at it: its regions, notes, details and spot elevations.
+    let own: Vec<(Id, &Element)> =
+        lookup.referrers(&m.guid(id)).filter(|id| look.shows(*id)).filter_map(|id| Some((id, m.elements.get(id)?))).collect();
     // Filled regions over the model, under the annotation.
-    for (&nid, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
+    for &(nid, e) in &own {
+        if cancelled() {
+            return None;
+        }
         if let Element::FilledRegion(r) = e
             && m.same(r.view, id)
         {
@@ -1327,14 +2343,18 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
             filled_region(&mut d, m, r);
         }
     }
-    for (&nid, e) in m.elements.iter().filter(|(id, _)| look.shows(**id)) {
+    for &(nid, e) in &own {
+        if cancelled() {
+            return None;
+        }
         d.owner = Some(nid);
         match e {
             Element::Text(n) if m.same(n.view, id) => note(&mut d, m, n),
             Element::DetailLine(l) if m.same(l.view, id) => detail_line(&mut d, m, l),
             Element::DetailGroup(g) if m.same(g.view, id) => detail_group(&mut d, m, g),
             Element::RepeatingDetail(r) if m.same(r.view, id) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
-            Element::Spot(sp) if m.same(sp.view, id) => {
+            // A spot slope reads a plan's floor or roof; a section has none to show.
+            Element::Spot(sp) if m.same(sp.view, id) && !sp.slope => {
                 let z = m.spot_value(sp).unwrap_or(sp.at.1);
                 spot_mark(&mut d, view.px(P2(sp.at.0, z)), Some(z), m.units);
             }
@@ -1347,7 +2367,7 @@ fn section_in(m: &Model, id: impl Key, view: View, k: f32, n: f64, picture: Opti
     d.weigh(|o| annotates(m, o));
     let at = (24.0 + font::width(&v.name, 16.0) / 2.0, view.height as f32 - 26.0);
     d.text_turned(&v.name, at, 16.0, 0.0, INK);
-    d
+    (!cancelled()).then_some(d)
 }
 
 /// Section or elevation `id` through `view`, as a PNG: its picture, and its drawing over it.
@@ -1357,9 +2377,10 @@ pub fn section_png(m: &Model, id: impl Key, view: View) -> Result<Vec<u8>, Strin
 
 /// [`section_png`], and what its drawing could not draw as asked ([`Drawing::notes`]).
 pub fn section_png_noted(m: &Model, id: impl Key, view: View) -> Result<(Vec<u8>, Vec<String>), String> {
-    let image = section_image(m, &Scene::new(m), id, view, &[]).ok_or_else(|| format!("{id} is not a section or an elevation"))?;
+    let w = SectionWork::new(m);
+    let image = section_picture_in(m, &w, id, view, &[]).ok_or_else(|| format!("{id} is not a section or an elevation"))?;
     let size = tiny_skia::IntSize::from_wh(image.width, image.height).ok_or("the image size is out of range")?;
-    let drawing = section_over(m, id, view, &image);
+    let drawing = section_in(m, &w, id, view, annotation(m, id, view), scale_of(m, id), Some(&image));
     let mut pm = Pixmap::from_vec(image.rgba, size).ok_or("the image size is out of range")?;
     paint(&mut pm, &drawing);
     Ok((pm.encode_png().map_err(|e| e.to_string())?, drawing.notes))
@@ -1422,9 +2443,10 @@ pub fn draw_at(m: &Model, level: impl Key, view: View, k: f32) -> Drawing {
 /// it picks where its points are.
 fn scans(d: &mut Drawing, m: &Model, range: &PlanRange, look: &Look) {
     let placed: Vec<(Id, &crate::model::PointCloud, &crate::cloud::Cloud)> = m
-        .elements
-        .iter()
-        .filter_map(|(&id, e)| match e {
+        .rare("pointcloud")
+        .into_iter()
+        .filter_map(|id| Some((id, m.elements.get(id)?)))
+        .filter_map(|(id, e)| match e {
             Element::PointCloud(pc) if look.shows(id) => Some((id, pc, m.clouds.get(&pc.cloud)?)),
             _ => None,
         })
@@ -1489,7 +2511,7 @@ fn cad_imports(d: &mut Drawing, m: &Model, key: crate::ids::Guid, level: crate::
     // The view in model mm, to leave out what lies outside it.
     let (w, h) = (d.view.width as f32, d.view.height as f32);
     let view = [d.view.mm((0.0, 0.0)), d.view.mm((w, 0.0)), d.view.mm((w, h)), d.view.mm((0.0, h))];
-    for (&id, e) in &m.elements {
+    for (id, e) in m.rare("cadimport").into_iter().filter_map(|id| Some((id, m.elements.get(id)?))) {
         let Element::CadImport(ci) = e else { continue };
         if ci.level != level || ci.view.is_some_and(|v| v != key) || !look.shows(id) {
             continue;
@@ -1559,13 +2581,36 @@ fn pale(v: u8) -> u8 {
 }
 
 /// A floor plan of `plan`, or `up`, its reflected ceiling plan; `titled`, with its name lettered at its bottom left (an image of
-/// it has it; a window shows the name in the view's tab, and a sheet under its viewport). Its annotation `k` times the size it
+/// it has it; a window letters it itself over the canvas, and shows it in the view's tab, and a sheet has it under its viewport). Its annotation `k` times the size it
 /// is laid out at, its pens the line weights' at 1 : `n`.
 fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, titled: bool) -> Drawing {
-    // The plan's own guid says what it is: its graphics, range, crop and annotation; its level is what it shows of the model.
     let key = m.guid(plan);
+    let d = draw_plan_among(m, key, view, up, k, n, titled, true);
+    // Its twin, which tests hold it to: every element looked at, the walls joined through an index of every wall.
+    #[cfg(test)]
+    {
+        let every = regions::uncounted(|| draw_plan_among(m, key, view, up, k, n, titled, false));
+        let same = d.prims.len() == every.prims.len()
+            && d.owners == every.owners
+            && d.parts == every.parts
+            && d.prims.iter().zip(&every.prims).all(|(a, b)| a.points() == b.points());
+        assert!(same, "a plan drawn among the elements that may show in it isn't the plan drawn among every element");
+    }
+    d
+}
+
+/// [`draw_plan`] of plan `key`: with `among`, its passes look only at the elements that may show in it
+/// ([`plan_elements`]), its walls joined through the model's lookup when it is made; else at every element, through an
+/// index of every wall.
+#[allow(clippy::too_many_arguments)]
+fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, titled: bool, among: bool) -> Drawing {
+    // The plan's own guid says what it is: its graphics, range, crop and annotation; its level is what it shows of the model.
     let level = m.plan_level(key).map_or(key, |l| m.guid(l));
-    let index = walls::Index::new(m);
+    let index = match m.derived.made(&m.elements) {
+        Some(_) if among => None,
+        _ => Some(walls::Index::new(m)),
+    };
+    let index = index.as_ref();
     let mut d = Drawing::new(view);
     (d.k, d.paper, d.detail, d.weights) = (k, paper_of(n, view.scale), detail_of(m, key), m.line_weights().at(n));
     let look = Look::of(m, key);
@@ -1577,6 +2622,10 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         range.cut = m.elevation(level) + CEILING_CUT;
         range.top = range.top.max(range.cut);
     }
+    let mut components = crate::component_geometry::Components::new(m);
+    let elements: Vec<(Id, &Element)> =
+        if among { plan_elements(m, key, level, &range, up, &mut components) } else { m.elements.iter().map(|(id, e)| (*id, e)).collect() };
+    let all = || elements.iter().map(|(id, e)| (id, *e));
     // The scans it sees, under all the rest; then its CAD drawings.
     if !up {
         scans(&mut d, m, &range, &look);
@@ -1584,7 +2633,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     }
     // Floors whose tops it sees, from the cut plane down to the view depth: their outlines and their
     // openings', the holes shafts cut in them, and a sloped one's slope arrow.
-    for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+    for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
         let Element::Floor(f) = e else { continue };
         let top = m.floor_top(f);
         let (lo, hi) = f.boundary.iter().map(|q| top.at(*q)).fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
@@ -1618,30 +2667,44 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         for ring in std::iter::once(&f.boundary).chain(&f.openings) {
             d.line(ring, BY_CATEGORY, FAINT, true);
         }
+        // A shaped one's creases: the edges of each of its planes, as thin as its outline.
+        if !f.shape.is_empty() {
+            for (loops, _) in m.shape_planes(f).unwrap_or_default() {
+                for ring in &loops {
+                    d.line(ring, BY_CATEGORY, FAINT, true);
+                }
+            }
+        }
         holes(&mut d, m, &m.floor_slabs(f));
         if let Some([tail, head]) = f.arrow.filter(|_| f.slope != 0.0) {
             slope_arrow(&mut d, tail, head, f.slope);
         }
     }
     // Components it sees, in projection, as Revit draws furniture: whole while any of one is under
-    // the cut plane and over the view depth.
-    let mut components = crate::component_geometry::Components::new(m);
-    for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+    // the cut plane and over the view depth; and the symbols of those on its level.
+    for (&id, e) in all().filter(|(id, _)| shown(**id)) {
         let Element::Component(c) = e else { continue };
-        let (bottom, top) = components.heights(c);
-        if bottom < range.cut && top > range.depth {
-            d.owner = Some(id);
-            component(&mut d, m, &components.pieces(c));
+        let pieces = components.pieces(c);
+        d.owner = Some(id);
+        if !up && !pieces.is_empty() {
+            let (bottom, top) = components.heights(c);
+            if bottom < range.cut && top > range.depth {
+                component(&mut d, m, &pieces);
+            }
+        }
+        // Its symbols are annotation of its level: in that level's plan and ceiling plan, whatever height its forms reach.
+        if c.level == level && d.detail != Detail::Coarse {
+            marks(&mut d, &m.component_marks(c));
         }
     }
     // Walls and columns below the cut plane, as seen from it; past the bottom, faint.
-    for (id, o, top) in seen_below(m, &range, &look, &index).into_iter().filter(|_| !up) {
+    for (id, o, top) in seen_below(m, &elements, &range, &look, index).into_iter().filter(|_| !up) {
         d.owner = Some(id);
         override_patterns(&mut d, m, std::slice::from_ref(&o), false, (P2(0.0, 0.0), 0.0));
         d.line(&o, BY_CATEGORY, if top > range.bottom - TOL { INK } else { FAINT }, true);
     }
     // A run's centre line, faint and dashed, where it is seen but not cut: Revit's mark of a beam, and where to pick it.
-    for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+    for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
         let Some(g) = m.run_geom(e).filter(|g| !g.vertical()) else { continue };
         let (lo, hi) = g.z_span();
         let seen = range.depth - TOL < hi && hi <= range.cut;
@@ -1655,9 +2718,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     // Looking up from its cut, a reflected ceiling plan sees the beams and columns over it, up to the ceilings: their outlines,
     // in projection. One over a ceiling it lies above is hidden by that ceiling.
     if up {
-        let ceilings: Vec<(f64, &Ceiling)> = m
-            .elements
-            .iter()
+        let ceilings: Vec<(f64, &Ceiling)> = all()
             .filter(|(id, _)| shown(**id))
             .filter_map(|(_, e)| match e {
                 Element::Ceiling(c) => Some((m.elevation(c.level) + c.offset, c)),
@@ -1665,7 +2726,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
             })
             .filter(|(z, _)| range.cut < *z && *z <= range.top)
             .collect();
-        for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
+        for (&id, e) in all().filter(|(id, _)| shown(**id)) {
             if !matches!(e, Element::Beam(_)) && e.column().is_none() {
                 continue;
             }
@@ -1684,7 +2745,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         }
     }
     d.part(Part::Cut);
-    let outlines = cut_outlines(m, range.cut, &look, &index);
+    let outlines = cut_outlines(m, &elements, range.cut, &look, index);
     // Poché first, then the outlines over it, but for where walls meet at their joins: only the edge
     // of their union is inked (`cut_edges`). The union is filled first, as one for each colour the
     // view fills them in, so no seam shows where two fills meet.
@@ -1714,30 +2775,37 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         }
     }
     // A compound wall's layers: each its material's cut pattern where it's wide enough to hold it,
-    // else lighter where it isn't the wall's structure; a thin line between each two.
-    for (&id, e) in &m.elements {
+    // else lighter where it isn't the wall's structure; a thin line between each two. A column the plan cuts stands in the wall's
+    // way: its poche is solid, so the layers stop at its outline.
+    let columns: Vec<&[P2]> =
+        outlines.iter().filter(|(id, _)| m.elements.get(*id).is_some_and(|e| e.column().is_some())).map(|(_, o)| o.as_slice()).collect();
+    for (&id, e) in all() {
         let Element::Wall(w) = e else { continue };
         let layers = m.type_layers("wall", &w.type_name);
         if layers.is_empty() || !m.spans(w, range.cut) || !shown(id) || d.detail == Detail::Coarse {
             continue;
         }
         d.owner = Some(id);
-        let lines = walls::layer_lines_in(m, id, Some(&index));
+        let lines = walls::layer_lines_in(m, id, index);
         let along = (w.end - w.start).unit();
         for (k, layer) in layers.iter().enumerate() {
             let (Some(a), Some(b)) = (lines.get(k), lines.get(k + 1)) else { continue };
             let ring: Vec<P2> = a.iter().chain(b.iter().rev()).copied().collect();
             let room = layer.thickness * d.view.scale;
-            cut_layer(&mut d, m, layer, &ring, along, room);
+            for piece in outside_columns(vec![ring], &columns) {
+                cut_layer(&mut d, m, layer, &piece, along, room);
+            }
         }
         // The lines between the layers are detail, as the hatching is: a cut's weight is its outline's.
         d.part(Part::Pattern);
         for line in lines.iter().skip(1).take(lines.len().saturating_sub(2)) {
-            d.line(line, Pen::PROJECTION, INK, false);
+            for part in lines_outside_columns(line, &columns) {
+                d.line(&part, Pen::PROJECTION, INK, false);
+            }
         }
         d.part(Part::Cut);
     }
-    for (&id, e) in &m.elements {
+    for (&id, e) in all() {
         // The opening is the wall's: with neither the wall nor the opening shown, there is nothing to leave a gap in.
         if let Element::Door(o) | Element::Window(o) = e
             && let Some(w) = m.wall(o.host)
@@ -1753,11 +2821,14 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     let crop = m.shown_crop(key).filter(|_| !up);
     // Cropped, annotation shows whole while its anchor is inside the crop, and not at all outside it.
     let inside = |p: P2| crop.is_none_or(|[lo, hi]| (lo.0..=hi.0).contains(&p.0) && (lo.1..=hi.1).contains(&p.1));
-    // Every room of the level is found among the same lines, which take each wall's joins and heights to find.
-    let bounding = std::cell::OnceCell::new();
+    // Every room of the level is found among the same lines, which take each wall's joins and heights to find: once.
+    let rooms = crate::rooms::Rooms::new(m);
+    // Rooms > Reference: off unless the view shows it.
+    let reference =
+        !crate::graphics::graphics_of(m, key).map_or_else(Default::default, |g| g.resolved(m).into_owned()).hides("roomreference");
     // Bars seen from above that lie where another was drawn (a column's stirrups, up its height) are drawn once.
     let mut bars_seen: std::collections::HashSet<Vec<(i64, i64)>> = std::collections::HashSet::new();
-    for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
+    for (&id, e) in all().filter(|(id, _)| shown(**id)) {
         d.owner = Some(id);
         match e {
             // Cropped, a grid stops at the crop's edge, with its bubbles there.
@@ -1767,14 +2838,45 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
                 }
             }
             Element::Room(r) if r.level == level && inside(r.point) && !up => {
-                let lines = bounding.get_or_init(|| m.room_lines(level, m.room_area));
-                let area = geom::region_at(lines, r.point, TOL).map_or_else(
-                    || m.language.word(msg!("NOT ENCLOSED")).to_string(),
+                // A frozen room has its boundary: the level's lines are found only for those that don't.
+                let (region, redundant) = match &r.kept {
+                    Some(k) => (k.at(m.room_area).cloned(), false),
+                    // Two rooms can't share a space: the one placed later is left unbounded, Revit's redundant room.
+                    None => match rooms.loop_at(r.level, m.room_area, r.point) {
+                        Some(g) if rooms.before(r, &g).is_some() => (None, true),
+                        g => (g, false),
+                    },
+                };
+                // Its colour, a fill of its region under its name.
+                if let (Some([red, green, blue]), Some(g)) = (r.colour, &region) {
+                    let rings: Vec<Vec<P2>> = std::iter::once(g.outer.clone()).chain(g.holes.iter().cloned()).collect();
+                    d.fill(&rings, Rgb(red, green, blue));
+                }
+                let area = region.as_ref().map_or_else(
+                    || m.language.word(if redundant { msg!("REDUNDANT") } else { msg!("NOT ENCLOSED") }).to_string(),
                     |g| {
                         let (area, unit) = m.units.area(g.area());
                         format!("{area:.2} {unit}")
                     },
                 );
+                // Its reference, as Revit's: a cross from the point it was placed at, out along the diagonals to its boundary
+                // (the square an unbounded room covers), the room's own lines, so a click on it picks the room.
+                if reference {
+                    let square;
+                    let (outer, holes): (&[P2], &[Vec<P2>]) = match &region {
+                        Some(g) => (&g.outer, &g.holes),
+                        None => {
+                            square = crate::model::unbounded_square(r.point);
+                            (&square, &[])
+                        }
+                    };
+                    let edges = || geom::ring_edges(outer).chain(holes.iter().flat_map(|h| geom::ring_edges(h)));
+                    for dir in [P2(1.0, 1.0), P2(-1.0, 1.0), P2(-1.0, -1.0), P2(1.0, -1.0)] {
+                        if let Some(end) = geom::ray_hit(r.point, dir, edges()) {
+                            d.stroke(vec![d.view.px(r.point), d.view.px(end)], BY_CATEGORY, INK, None, false);
+                        }
+                    }
+                }
                 let (x, y) = d.view.px(r.point);
                 let from = d.prims.len();
                 d.text(&r.name, (x, y - 16.0), 13.0, INK);
@@ -1847,7 +2949,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     }
     d.model_under_regions(None);
     // Regions replace model backgrounds; non-masking ones retain the visible model foreground.
-    for (&id, e) in m.elements.iter().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+    for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
         if let Element::FilledRegion(r) = e
             && m.annotation_in(e, key)
         {
@@ -1857,7 +2959,7 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
     }
     // Annotation last, over the model; sections and elevations show on every plan. A floor plan's
     // annotation is its own.
-    for (&id, e) in m.elements.iter().filter(|(id, _)| shown(**id)) {
+    for (&id, e) in all().filter(|(id, _)| shown(**id)) {
         d.owner = Some(id);
         match e {
             Element::Dimension(_)
@@ -1874,16 +2976,21 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
                     && m.elements.id(t.host).is_some_and(shown)
                     && m.anchor(t.host).is_some_and(|a| inside(a + t.offset)) =>
             {
-                tag(&mut d, m, t)
+                tag(&mut d, m, t, &rooms)
             }
             Element::Text(n) if m.annotation_in(e, key) && inside(n.at) => note(&mut d, m, n),
             Element::DetailLine(l) if m.annotation_in(e, key) => detail_line(&mut d, m, l),
             Element::DetailGroup(g) if m.annotation_in(e, key) => detail_group(&mut d, m, g),
             Element::RepeatingDetail(r) if m.annotation_in(e, key) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
+            Element::Spot(sp) if sp.slope && m.annotation_in(e, key) && inside(sp.at) => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
             Element::Spot(sp) if m.annotation_in(e, key) && inside(sp.at) => spot_mark(&mut d, view.px(sp.at), m.spot_value(sp), m.units),
             // A section's line is cropped as a line is.
             Element::Section(v) => section_mark(&mut d, v),
             Element::Elevation(v) if inside(v.start + (v.end - v.start) * 0.5) => elevation_mark(&mut d, v),
+            // A camera stands on its level's plan: a symbol at its eye, and a line to what it looks at.
+            Element::View3D(v) if !up && v.camera.is_some_and(|c| m.camera_level(c.eye[2]) == m.elements.id(level)) => {
+                camera_mark(&mut d, v)
+            }
             _ => {}
         }
     }
@@ -1921,6 +3028,31 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
         d.text_turned(&title, at, 16.0, 0.0, INK);
     }
     d
+}
+
+/// A family's plan marks, in the model's axes: its lines and lettering in the category's pen, its dots solid ink.
+fn marks(d: &mut Drawing, marks: &[crate::family::Mark]) {
+    use crate::family::Mark;
+    for mark in marks {
+        match mark {
+            Mark::Line(pts) => d.line(pts, BY_CATEGORY, INK, false),
+            Mark::Label { at, height, text, align } => {
+                for line in crate::family::lettering(text, *at, *height, *align) {
+                    d.line(&line, BY_CATEGORY, INK, false);
+                }
+            }
+            Mark::Dot { centre, radius } => {
+                const SIDES: usize = 24;
+                let ring = (0..SIDES)
+                    .map(|k| {
+                        let (s, c) = (std::f64::consts::TAU * k as f64 / SIDES as f64).sin_cos();
+                        P2(centre.0 + radius * c, centre.1 + radius * s)
+                    })
+                    .collect::<Vec<_>>();
+                d.fill(&[ring], INK);
+            }
+        }
+    }
 }
 
 /// A component seen from above: each of its forms' outlines, but where a higher form covers it (a
@@ -2004,6 +3136,32 @@ const GAP: f64 = 6.0;
 const MODULE: f64 = 100.0;
 /// How wide a layer is to be, px, to show its pattern: narrower, it's filled instead.
 const PATTERN_ROOM: f64 = 10.0;
+
+/// Whether the boxes round two sets of points overlap: the quick test before the exact one.
+fn boxes_meet(a: &[P2], b: &[P2]) -> bool {
+    let bounds = |pts: &[P2]| {
+        pts.iter().fold((P2(f64::INFINITY, f64::INFINITY), P2(f64::NEG_INFINITY, f64::NEG_INFINITY)), |(lo, hi), q| {
+            (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1)))
+        })
+    };
+    let ((alo, ahi), (blo, bhi)) = (bounds(a), bounds(b));
+    alo.0 <= bhi.0 && blo.0 <= ahi.0 && alo.1 <= bhi.1 && blo.1 <= ahi.1
+}
+
+/// `rings` less the outlines of the columns the plan cuts (convex, a rectangle or a round one's polygon): what of a wall's layer
+/// is not inside one.
+fn outside_columns(rings: Vec<Vec<P2>>, columns: &[&[P2]]) -> Vec<Vec<P2>> {
+    columns.iter().fold(rings, |rings, hole| {
+        rings.into_iter().flat_map(|r| if boxes_meet(&r, hole) { geom::subtract_convex(&r, hole) } else { vec![r] }).collect()
+    })
+}
+
+/// The parts of `line` outside the columns' outlines.
+fn lines_outside_columns(line: &[P2], columns: &[&[P2]]) -> Vec<Vec<P2>> {
+    columns.iter().fold(vec![line.to_vec()], |lines, hole| {
+        lines.into_iter().flat_map(|l| if boxes_meet(&l, hole) { geom::line_outside_convex(&l, hole) } else { vec![l] }).collect()
+    })
+}
 
 /// A layer where it's cut, along `ring`: where it's `room` px wide or more, its material's cut
 /// pattern over the paper, its courses along unit `u`; else, unless it's its element's structure
@@ -2332,9 +3490,7 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
             d.line(&piece.outline, BY_CATEGORY, INK, true);
         }
         d.part(Part::Projection);
-        for stroke in m.opening_strokes(e) {
-            d.line(&stroke, BY_CATEGORY, INK, false);
-        }
+        marks(d, &m.opening_marks(e));
         d.part(Part::Cut);
         return;
     }
@@ -2484,9 +3640,16 @@ fn arrow(d: &mut Drawing, a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
 // ponytail: openings aren't drawn; a dormer's roof covers its own. Draw them for skylights.
 fn roof(d: &mut Drawing, m: &Model, r: &Roof) {
     let faces = m.roof_faces(r).map_or_else(|_| vec![m.roof_outline(r)], |f| f.into_iter().flat_map(|(loops, _)| loops).collect());
+    // A shaped one's creases thin, as a shaped floor's are, its outline and courtyards as any roof's.
+    let shaped = !r.shape.is_empty();
     for f in faces {
         override_patterns(d, m, std::slice::from_ref(&f), false, (P2(0.0, 0.0), 0.0));
-        d.line(&f, BY_CATEGORY, INK, true);
+        d.line(&f, BY_CATEGORY, if shaped { FAINT } else { INK }, true);
+    }
+    if shaped {
+        for ring in std::iter::once(&r.boundary).chain(&r.courtyards) {
+            d.line(ring, BY_CATEGORY, INK, true);
+        }
     }
 }
 
@@ -2981,6 +4144,36 @@ fn spot_mark(d: &mut Drawing, (x, y): (f32, f32), z: Option<f64>, units: Units) 
     d.grow(from, (x, y));
 }
 
+/// A spot slope: from its point an arrow 24 px long pointing downhill, and the fall over it, as `1.5%`; on the level, `0%`
+/// alone; `?` while its host has no top there.
+fn slope_mark(d: &mut Drawing, at: P2, read: Option<(f64, Option<P2>)>) {
+    let from = d.prims.len();
+    let (x, y) = d.view.px(at);
+    let text = read.map_or_else(|| "?".into(), |(f, _)| format!("{}%", figure(f)));
+    let w = font::width(&text, 10.0);
+    match read.and_then(|(_, way)| way) {
+        Some(way) => {
+            // Downhill on paper: the way in plan, as the view turns it, 24 px long.
+            let (fx, fy) = d.view.px(at + way * 1000.0);
+            let (dx, dy) = (fx - x, fy - y);
+            let n = dx.hypot(dy).max(1e-6);
+            let (ux, uy) = (dx / n, dy / n);
+            let tip = (x + ux * 24.0, y + uy * 24.0);
+            d.stroke(vec![(x, y), tip], Pen::PROJECTION, INK, None, false);
+            let back = (tip.0 - ux * 6.0, tip.1 - uy * 6.0);
+            let side = (-uy * 3.0, ux * 3.0);
+            d.push(Prim::Fill {
+                rings: vec![vec![tip, (back.0 + side.0, back.1 + side.1), (back.0 - side.0, back.1 - side.1)]],
+                color: INK,
+            });
+            // Its fall beside the arrow's middle, upright.
+            d.text(&text, (x + ux * 12.0 + w / 2.0 + 4.0 * uy.abs(), y + uy * 12.0 - 8.0), 10.0, INK);
+        }
+        None => d.text(&text, (x + w / 2.0 + 4.0, y - 8.0), 10.0, INK),
+    }
+    d.grow(from, (x, y));
+}
+
 /// A height as a spot elevation reads it, signed: ±0, +3000, -600, +9'-10 1/8".
 fn height(units: Units, z: f64) -> String {
     let shown = units.length(z);
@@ -2994,13 +4187,13 @@ fn height(units: Units, z: f64) -> String {
 
 /// A tag: a door's mark in a box, a window's in a hexagon, over a paper fill; any other element's label as plain
 /// text over a paper fill; with a leader, a line to the point it names.
-fn tag(d: &mut Drawing, m: &Model, t: &Tag) {
+fn tag(d: &mut Drawing, m: &Model, t: &Tag, rooms: &crate::rooms::Rooms) {
     let Some(anchor) = m.anchor(t.host) else { return };
     let head = anchor + t.offset;
     if t.leader {
         d.line(&[anchor, head], Pen::PROJECTION, INK, false);
     }
-    let text = m.tag_text(t);
+    let text = m.tag_text_with(t, rooms);
     let (x, y) = d.view.px(head);
     let from = d.prims.len();
     let (w, h) = ((font::width(&text, 10.0) / 2.0 + 5.0).max(8.0), 8.0);
@@ -3082,6 +4275,100 @@ fn grid(d: &mut Drawing, start: P2, end: P2, name: &str) {
         d.text(name, c, 10.0, GRID);
         d.grow(from, (x, y));
     }
+}
+
+/// A camera's symbol in plan, at its eye: a little body pointing the way it looks, a line to what it looks at, and its name
+/// behind it. Drawn as a section's or an elevation's mark is (the symbol grows with the view's annotation).
+fn camera_mark(d: &mut Drawing, v: &View3D) {
+    let Some(cam) = v.camera else { return };
+    let a = d.view.px(P2(cam.eye[0], cam.eye[1]));
+    let b = d.view.px(P2(cam.target[0], cam.target[1]));
+    // The line to what it looks at, dashed, at the model's size.
+    d.stroke(vec![a, b], Pen::PROJECTION, INK, Some(vec![12.0, 6.0]), false);
+    // The symbol, drawn at its own size then grown as the view's annotation is.
+    let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
+    let (ux, uy) = ((b.0 - a.0) / len, (b.1 - a.1) / len);
+    let (px, py) = (-uy, ux);
+    let from = d.prims.len();
+    // The body: a small box square to the line, centred a little behind the eye.
+    let (back, half, depth) = (-7.0f32, 9.0f32, 8.0f32);
+    let c = (a.0 + ux * back, a.1 + uy * back);
+    let body = vec![
+        (c.0 - ux * depth + px * half, c.1 - uy * depth + py * half),
+        (c.0 + ux * depth + px * half, c.1 + uy * depth + py * half),
+        (c.0 + ux * depth - px * half, c.1 + uy * depth - py * half),
+        (c.0 - ux * depth - px * half, c.1 - uy * depth - py * half),
+    ];
+    d.push(Prim::Fill { rings: vec![body.clone()], color: PAPER });
+    d.stroke(body, Pen::BUBBLE, INK, None, true);
+    // The lens: a small dark circle at the front, toward the target.
+    let lc = (c.0 + ux * (depth + 3.0), c.1 + uy * (depth + 3.0));
+    let ring: Vec<(f32, f32)> = (0..16)
+        .map(|i| (lc.0 + 3.5 * (f64::from(i) * PI / 8.0).cos() as f32, lc.1 + 3.5 * (f64::from(i) * PI / 8.0).sin() as f32))
+        .collect();
+    d.push(Prim::Fill { rings: vec![ring], color: INK });
+    // Its name behind the eye, against the way it looks.
+    let name_at = (a.0 - ux * (14.0 + font::width(&v.name, 10.0) / 2.0), a.1 - uy * (14.0 + font::width(&v.name, 10.0) / 2.0));
+    d.text(&v.name, name_at, 10.0, INK);
+    d.grow(from, a);
+}
+
+/// The eye of the nearest camera whose mark (body, lens or name) the cursor at pixel `at` is over, so that a click on
+/// the mark lands on the camera's eye, never on a corner of its symbol. None off a camera's mark. The body, lens and
+/// name sizes are those `render::camera_mark` draws with.
+pub fn camera_at(m: &Model, level: Id, v: &View, at: (f32, f32)) -> Option<(Id, P2)> {
+    let (x, y) = at;
+    let plan = m.plan_level(level).unwrap_or(level);
+    m.elements
+        .iter()
+        .filter_map(|(&id, e)| {
+            let Element::View3D(view) = e else { return None };
+            let c = view.camera?;
+            if m.camera_level(c.eye[2]) != Some(plan) {
+                return None;
+            }
+            let eye = P2(c.eye[0], c.eye[1]);
+            let target = P2(c.target[0], c.target[1]);
+            let a = v.px(eye);
+            let b = v.px(target);
+            let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+            let len = (dx * dx + dy * dy).sqrt();
+            let (ux, uy) = if len > 1e-6 { (dx / len, dy / len) } else { (1.0, 0.0) };
+            let (px, py) = (-uy, ux);
+            let (back, half, depth) = (-7.0, 9.0, 8.0);
+            let c = (a.0 + ux * back, a.1 + uy * back);
+            let body = [
+                (c.0 - ux * depth + px * half, c.1 - uy * depth + py * half),
+                (c.0 + ux * depth + px * half, c.1 + uy * depth + py * half),
+                (c.0 + ux * depth - px * half, c.1 + uy * depth - py * half),
+                (c.0 - ux * depth - px * half, c.1 - uy * depth - py * half),
+            ];
+            let lens = (c.0 + ux * (depth + 3.0), c.1 + uy * (depth + 3.0));
+            let w = font::width(&view.name, 10.0);
+            let name = (a.0 - ux * (14.0 + w / 2.0), a.1 - uy * (14.0 + w / 2.0));
+            let on_body = inside_polygon((x, y), &body);
+            let on_lens = (x - lens.0).powi(2) + (y - lens.1).powi(2) <= 5.5f32.powi(2);
+            let on_name = (x - name.0).abs() <= w / 2.0 + 2.0 && (y - name.1).abs() <= 7.0;
+            (on_body || on_lens || on_name).then_some(((x - a.0).powi(2) + (y - a.1).powi(2), id, eye))
+        })
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, id, eye)| (id, eye))
+}
+
+/// Whether `p` lies inside `polygon`, by the even-odd rule. A camera's mark is a turned box, so its corners are not
+/// axis-aligned.
+fn inside_polygon(p: (f32, f32), polygon: &[(f32, f32)]) -> bool {
+    let mut inside = false;
+    let mut j = polygon.len().saturating_sub(1);
+    for i in 0..polygon.len() {
+        let (xi, yi) = polygon[i];
+        let (xj, yj) = polygon[j];
+        if (yi > p.1) != (yj > p.1) && p.0 < (xj - xi) * (p.1 - yi) / (yj - yi) + xi {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
 }
 
 fn hex(c: Rgb) -> String {
@@ -3216,6 +4503,23 @@ mod tests {
     use super::*;
     use crate::engine::Session;
 
+    /// A room's colour fills its region on the plan, under its name, and a project file keeps it.
+    #[test]
+    fn a_rooms_colour_fills_its_region_on_the_plan_and_the_file_keeps_it() {
+        let mut s = house();
+        let room = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Room(_))).map(|(id, _)| *id).unwrap();
+        let level = s.model.levels()[0].0;
+        let view = View { scale: 0.05, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
+        let fills = |m: &Model| {
+            draw(m, level, view).prims.iter().filter(|p| matches!(p, Prim::Fill { color, .. } if *color == Rgb(200, 120, 40))).count()
+        };
+        assert_eq!(fills(&s.model), 0);
+        s.execute("modify", &serde_json::json!({"ids": [room], "colour": [200, 120, 40]})).unwrap();
+        assert_eq!(fills(&s.model), 1, "its region, in its colour");
+        let (back, left_out) = Model::read(&s.model.to_json().unwrap()).unwrap();
+        assert!(left_out.is_empty() && fills(&back) == 1, "{left_out:?}");
+    }
+
     fn house() -> Session {
         let mut s = Session::new();
         s.script(
@@ -3233,6 +4537,104 @@ mod tests {
         let pm = tiny_skia::Pixmap::decode_png(png).unwrap();
         let c = pm.pixel(x as u32, y as u32).unwrap();
         (c.red(), c.green(), c.blue())
+    }
+
+    /// Without its lookup a model finds its levels and hosts by going through every element, for each element it prepares:
+    /// 116 s for the 100-storey tower, not 2 s. Every way of making a work builds it first.
+    #[test]
+    fn a_works_elements_are_in_id_order_and_each_finds_its_box() {
+        let m = crate::sample::tower::drawn(crate::sample::tower::Plate::SMALL, 2, Default::default()).unwrap();
+        for work in [SectionWork::new(&m), SectionWork::new_deferred(&m), SectionCache::default().work(&m)] {
+            assert!(work.placed.windows(2).all(|w| w[0].0 < w[1].0), "by id, as a box is searched for");
+            for ((id, _), b) in work.placed.iter().zip(&work.boxes) {
+                assert_eq!(work.box_of(*id), b.as_ref());
+            }
+        }
+    }
+
+    #[test]
+    fn every_section_work_prepares_on_a_built_lookup() {
+        let s = house();
+        let never = || false;
+        type Maker<'a> = (&'a str, &'a dyn Fn(&Model));
+        let makers: [Maker; 5] = [
+            ("new", &|m| drop(SectionWork::new(m))),
+            ("new_cancellable", &|m| drop(SectionWork::new_cancellable(m, &never))),
+            ("new_deferred", &|m| drop(SectionWork::new_deferred(m))),
+            ("new_deferred_cancellable", &|m| drop(SectionWork::new_deferred_cancellable(m, &never))),
+            ("SectionCache::work", &|m| drop(SectionCache::default().work(m))),
+        ];
+        for (name, make) in makers {
+            let bare = (*s.model).clone();
+            assert!(bare.derived.made(&bare.elements).is_none(), "a copy starts without its lookup");
+            make(&bare);
+            assert!(bare.derived.made(&bare.elements).is_some(), "{name} prepared without the model's lookup");
+        }
+    }
+
+    #[test]
+    fn deferred_component_queries_keep_the_full_geometry_oracles() {
+        let mut s = house();
+        s.execute("component", &serde_json::json!({"family":"Desk","type":"1400 x 700","at":[4000,3000],"offset":300})).unwrap();
+        let id = s.execute("section", &serde_json::json!({"start":[-1000,-1000],"end":[9000,-1000]})).unwrap()["id"].as_u64().unwrap();
+        let work = SectionWork::new_deferred(&s.model);
+        let view = section_fit_with(&s.model, &work, id, 400, 300);
+        let overlay = SectionOverlay::new(&s.model, &work, id, view);
+        let picture = section_picture_with(&s.model, &work, id, view, &[]).unwrap();
+        assert!(!png(&overlay.draw(&s.model, Some(&picture))).unwrap().is_empty());
+        assert_eq!(work.preparation_stats().resolved_components, 0);
+    }
+
+    #[test]
+    fn cancelled_section_stages_do_not_publish_partial_geometry_or_pictures() {
+        let mut s = house();
+        let id = s.execute("section", &serde_json::json!({"start": [-1000,3000], "end": [9000,3000]})).unwrap()["id"].as_u64().unwrap();
+        assert!(SectionWork::new_cancellable(&s.model, &|| true).is_none());
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        assert!(SectionWork::new_cancellable(&s.model, &|| calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= 3).is_none());
+        assert!(calls.load(std::sync::atomic::Ordering::Relaxed) <= 6, "geometry must stop within a few cancellation checkpoints");
+        let work = SectionWork::new(&s.model);
+        let view = section_fit(&s.model, id, 400, 300);
+        assert!(SectionOverlay::new_cancellable(&s.model, &work, id, view, &|| true).is_none());
+        assert!(section_picture_cancellable(&s.model, &work, id, view, &[], &|| true).is_none());
+        let picture = section_picture_cancellable(&s.model, &work, id, view, &[], &|| false).unwrap();
+        picture.same_as(&section_picture(&s.model, id, view, &[]).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn retained_section_tints_match_fresh_pictures_and_region_ink() {
+        let mut s = house();
+        let id = s.execute("section", &serde_json::json!({"start": [-1000,3000], "end": [9000,3000]})).unwrap()["id"].as_u64().unwrap();
+        s.execute(
+            "filled_region",
+            &serde_json::json!({"view": id, "type": "Crosshatch", "sketch": [
+                [[0,0],[10000,0]], [[10000,0],[10000,4000]], [[10000,4000],[0,4000]], [[0,4000],[0,0]]
+            ]}),
+        )
+        .unwrap();
+        let view = section_fit(&s.model, id, 400, 300);
+        let work = SectionWork::new(&s.model);
+        let overlay = SectionOverlay::new(&s.model, &work, id, view);
+        for (level, ends) in overlay.levels() {
+            assert_eq!(Some(*ends), level_ends(&s.model, *level, id));
+        }
+        let mut image = section_picture(&s.model, id, view, &[]).unwrap();
+        let original = image.rgba.clone();
+        let visible: Vec<_> = image.shows().into_iter().collect();
+        assert!(!visible.is_empty());
+        let mut paints: Vec<_> = visible.iter().map(|id| vec![(*id, Rgb(37, 99, 235))]).collect();
+        paints.push(visible.iter().map(|id| (*id, Rgb(220, 40, 60))).collect());
+        paints.push(vec![]);
+        for tints in paints {
+            assert!(image.retint_section(&tints));
+            if !tints.is_empty() {
+                assert_ne!(image.rgba, original, "the fixture must exercise tinted pixels");
+            }
+            let fresh = section_picture(&s.model, id, view, &tints).unwrap();
+            image.same_as(&fresh).unwrap();
+            assert_eq!(png(&overlay.draw(&s.model, Some(&image))).unwrap(), png(&section_over(&s.model, id, view, &fresh)).unwrap());
+        }
+        assert_eq!(image.rgba, original, "clearing selection restores the original paint");
     }
 
     #[test]
@@ -3253,6 +4655,58 @@ mod tests {
         // Where the top and right walls overlap, and the square their ends stretch over, inside their outline.
         assert_eq!(pixel(&png, d.view.px(P2(8000.0, 6000.0))), (POCHE.0, POCHE.1, POCHE.2));
         assert_eq!(pixel(&png, d.view.px(P2(8020.0, 6020.0))), (POCHE.0, POCHE.1, POCHE.2));
+    }
+
+    /// Every pixel of the plan inside `outline` (`MARGIN` mm in from its edge, where its own inked edge ends) is poche: nothing is
+    /// drawn inside a column.
+    fn solid_inside(d: &Drawing, png: &[u8], outline: &[P2], what: &str) {
+        let (lo, hi) = outline.iter().fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), q| {
+            (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1)))
+        });
+        // Decoded once: `pixel` would decode the picture for each point.
+        let pm = tiny_skia::Pixmap::decode_png(png).unwrap();
+        let (mut x, mut seen) = (lo.0 + MARGIN, 0);
+        while x < hi.0 - MARGIN {
+            let mut y = lo.1 + MARGIN;
+            while y < hi.1 - MARGIN {
+                if geom::contains(outline, P2(x, y)) {
+                    let (px, py) = d.view.px(P2(x, y));
+                    let c = pm.pixel(px as u32, py as u32).unwrap();
+                    assert_eq!((c.red(), c.green(), c.blue()), (POCHE.0, POCHE.1, POCHE.2), "{what}: ({x}, {y}) is inked");
+                    seen += 1;
+                }
+                y += 10.0;
+            }
+            x += 10.0;
+        }
+        assert!(seen > 100, "{what}: only {seen} points were looked at");
+    }
+
+    #[test]
+    fn a_wall_that_meets_a_column_leaves_the_column_solid_and_unlined() {
+        let mut s = Session::new();
+        // A 300 x 300 column at 3000, 0. A plain wall runs into it from the west, ending at its centre; a layered one (a finish layer
+        // and a structure layer, 150 mm each, which draw a line between them) starts at its right edge's middle, flush with it, and runs east;
+        // a third runs right through it, north to south.
+        s.script(
+            r#"type {"category": "wall", "name": "Cavity", "layers": [{"function": "finish", "thickness": 150}, {"function": "structure", "thickness": 150}]}
+               type {"category": "column", "name": "Square 300", "width": 300, "depth": 300}
+               column {"at": [3000, 0], "type": "Square 300"}
+               wall {"points": [[0, 0], [3000, 0]], "type": "Generic - 200mm"}
+               wall {"points": [[3150, 0], [6000, 0]], "type": "Cavity"}
+               wall {"points": [[3000, -2000], [3000, 2000]], "type": "Cavity"}"#,
+        )
+        .unwrap();
+        let column = s.model.elements.values().find(|e| e.column().is_some()).unwrap();
+        let outline = s.model.column_outline(column);
+        let d = plan(&s.model, 100000, 1600, 500);
+        let png = png(&d).unwrap();
+        solid_inside(&d, &png, &outline, "the column");
+        // And where the flush wall's end meets the column's edge there is no seam either, on its structure side (the finish side is
+        // the layer's own tint, and the line between the layers, at 0, starts there).
+        for (x, y) in [(3140.0, -100.0), (3140.0, -50.0), (3150.0, -100.0), (3150.0, -50.0)] {
+            assert_eq!(pixel(&png, d.view.px(P2(x, y))), (POCHE.0, POCHE.1, POCHE.2), "no seam at {x}, {y}");
+        }
     }
 
     #[test]
@@ -3917,7 +5371,7 @@ mod tests {
     fn a_tools_sketch_of_annotation_is_the_size_its_view_would_draw_it() {
         let mut s = house();
         let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
-        let spot = Element::Spot(crate::model::Spot { view: s.model.guid(100000), at: P2(4000.0, 3000.0), host: None });
+        let spot = Element::Spot(crate::model::Spot { view: s.model.guid(100000), at: P2(4000.0, 3000.0), host: None, slope: false });
         let text = |s: &Session| lettering(&sketch(&s.model, view, 99, &spot), 99);
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 50})).unwrap();
         let none = text(&s);

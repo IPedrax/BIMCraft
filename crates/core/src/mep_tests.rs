@@ -40,6 +40,17 @@ const CASES: &[Case] = &[
         predefined: ".RIGIDSEGMENT.",
     },
     Case {
+        category: "duct",
+        command: "duct",
+        alias: "DU",
+        default_type: "Rectangular 400 x 300",
+        round: false,
+        columns: &["System", "Length", "Width", "Depth"],
+        alone: true,
+        class: "IFCDUCTSEGMENT",
+        predefined: ".RIGIDSEGMENT.",
+    },
+    Case {
         category: "conduit",
         command: "conduit",
         alias: "CN",
@@ -558,6 +569,8 @@ struct Fixture {
     predefined: &'static str,
     /// The object type a proxy carries, if the class has no home for it.
     object_type: Option<&'static str>,
+    /// Which fixture or fitting of its category it is, which writes its predefined type.
+    kind: Option<&'static str>,
     base: (f64, f64),
     top: (f64, f64),
 }
@@ -567,8 +580,9 @@ const FIXTURES: &[Fixture] = &[
         family: "WC",
         category: Category::Plumbing,
         class: "IFCSANITARYTERMINAL",
-        predefined: ".NOTDEFINED.",
+        predefined: ".TOILETPAN.",
         object_type: None,
+        kind: Some("wc"),
         base: (0.0, 0.0),
         top: (700.0, 900.0),
     },
@@ -576,8 +590,9 @@ const FIXTURES: &[Fixture] = &[
         family: "Washbasin",
         category: Category::Plumbing,
         class: "IFCSANITARYTERMINAL",
-        predefined: ".NOTDEFINED.",
+        predefined: ".WASHHANDBASIN.",
         object_type: None,
+        kind: Some("lav"),
         base: (0.0, 0.0),
         top: (800.0, 900.0),
     },
@@ -585,8 +600,9 @@ const FIXTURES: &[Fixture] = &[
         family: "Kitchen Sink",
         category: Category::Plumbing,
         class: "IFCSANITARYTERMINAL",
-        predefined: ".NOTDEFINED.",
+        predefined: ".SINK.",
         object_type: None,
+        kind: Some("sink"),
         base: (0.0, 0.0),
         top: (850.0, 1300.0),
     },
@@ -594,8 +610,9 @@ const FIXTURES: &[Fixture] = &[
         family: "Shower",
         category: Category::Plumbing,
         class: "IFCSANITARYTERMINAL",
-        predefined: ".NOTDEFINED.",
+        predefined: ".SHOWER.",
         object_type: None,
+        kind: Some("shower"),
         base: (0.0, 0.0),
         top: (2000.0, 2200.0),
     },
@@ -605,6 +622,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCWASTETERMINAL",
         predefined: ".FLOORTRAP.",
         object_type: None,
+        kind: Some("floor_drain"),
         base: (-100.0, 0.0),
         top: (0.0, 0.0),
     },
@@ -612,8 +630,9 @@ const FIXTURES: &[Fixture] = &[
         family: "Elbow 90",
         category: Category::PipeFitting,
         class: "IFCPIPEFITTING",
-        predefined: ".NOTDEFINED.",
+        predefined: ".BEND.",
         object_type: None,
+        kind: Some("bend"),
         base: (-100.0, -10.0),
         top: (10.0, 100.0),
     },
@@ -621,8 +640,9 @@ const FIXTURES: &[Fixture] = &[
         family: "Tee",
         category: Category::PipeFitting,
         class: "IFCPIPEFITTING",
-        predefined: ".NOTDEFINED.",
+        predefined: ".JUNCTION.",
         object_type: None,
+        kind: Some("tee"),
         base: (-100.0, -10.0),
         top: (10.0, 100.0),
     },
@@ -632,6 +652,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCVALVE",
         predefined: ".NOTDEFINED.",
         object_type: None,
+        kind: None,
         base: (-100.0, -10.0),
         top: (40.0, 300.0),
     },
@@ -641,6 +662,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCELECTRICDISTRIBUTIONBOARD",
         predefined: ".DISTRIBUTIONBOARD.",
         object_type: None,
+        kind: None,
         base: (1200.0, 1400.0),
         top: (1700.0, 2300.0),
     },
@@ -650,6 +672,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCLIGHTFIXTURE",
         predefined: ".NOTDEFINED.",
         object_type: None,
+        kind: None,
         base: (2900.0, 3000.0),
         top: (2950.0, 3050.0),
     },
@@ -659,6 +682,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCLIGHTFIXTURE",
         predefined: ".NOTDEFINED.",
         object_type: None,
+        kind: None,
         base: (2900.0, 3000.0),
         top: (2950.0, 3050.0),
     },
@@ -668,6 +692,17 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCOUTLET",
         predefined: ".POWEROUTLET.",
         object_type: None,
+        kind: None,
+        base: (200.0, 2100.0),
+        top: (300.0, 2200.0),
+    },
+    Fixture {
+        family: "Three-Phase Outlet",
+        category: Category::Outlet,
+        class: "IFCOUTLET",
+        predefined: ".POWEROUTLET.",
+        object_type: None,
+        kind: None,
         base: (200.0, 2100.0),
         top: (300.0, 2200.0),
     },
@@ -677,6 +712,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCSWITCHINGDEVICE",
         predefined: ".TOGGLESWITCH.",
         object_type: None,
+        kind: None,
         base: (200.0, 1200.0),
         top: (300.0, 1300.0),
     },
@@ -686,6 +722,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCBUILDINGELEMENTPROXY",
         predefined: ".USERDEFINED.",
         object_type: Some("LightningTerminal"),
+        kind: None,
         base: (-1.0, 1.0),
         top: (400.0, 2100.0),
     },
@@ -695,6 +732,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCBUILDINGELEMENTPROXY",
         predefined: ".USERDEFINED.",
         object_type: Some("EarthingRod"),
+        kind: None,
         base: (-3100.0, -2300.0),
         top: (0.0, 0.0),
     },
@@ -704,6 +742,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCBUILDINGELEMENTPROXY",
         predefined: ".USERDEFINED.",
         object_type: Some("InspectionBox"),
+        kind: None,
         base: (-350.0, -200.0),
         top: (0.0, 0.0),
     },
@@ -713,6 +752,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCOUTLET",
         predefined: ".DATAOUTLET.",
         object_type: None,
+        kind: None,
         base: (200.0, 1200.0),
         top: (300.0, 1300.0),
     },
@@ -722,6 +762,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCOUTLET",
         predefined: ".TELEPHONEOUTLET.",
         object_type: None,
+        kind: None,
         base: (200.0, 1200.0),
         top: (300.0, 1300.0),
     },
@@ -731,6 +772,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCCOMMUNICATIONSAPPLIANCE",
         predefined: ".NETWORKAPPLIANCE.",
         object_type: None,
+        kind: None,
         base: (1400.0, 1600.0),
         top: (1500.0, 1700.0),
     },
@@ -740,6 +782,7 @@ const FIXTURES: &[Fixture] = &[
         class: "IFCBUILDINGELEMENTPROXY",
         predefined: ".USERDEFINED.",
         object_type: Some("Rack"),
+        kind: None,
         base: (-1.0, 1.0),
         top: (1900.0, 2100.0),
     },
@@ -754,6 +797,7 @@ fn a_new_project_has_the_starter_fixtures_of_its_tabs_in_every_language_and_each
             let name = l.word(f.family);
             let family = m.families.get(name).unwrap_or_else(|| panic!("{l:?}: no family `{name}`"));
             assert_eq!(family.category, f.category, "{l:?} {name}");
+            assert_eq!(family.kind.as_deref(), f.kind, "{l:?} {name}");
             assert!(!family.types.is_empty(), "{l:?} {name}");
         }
     }
@@ -780,8 +824,13 @@ fn a_starter_fixture_stands_as_it_is_and_every_type_of_it_has_a_body() {
 #[test]
 fn a_category_of_family_is_written_as_its_ifc_class_and_read_back_as_the_same_category() {
     for f in FIXTURES {
-        assert_eq!(f.category.ifc(), (f.class, f.predefined, f.object_type), "{}", f.family);
+        let (class, predefined, object) = f.category.ifc();
+        assert_eq!((class, object), (f.class, f.object_type), "{}", f.family);
+        // A kind writes its own predefined type; without one, the category's.
+        let own = f.kind.and_then(|k| f.category.kinds().iter().find(|(n, _)| *n == k)).map_or(predefined, |(_, t)| *t);
+        assert_eq!(own, f.predefined, "{}", f.family);
         assert_eq!(Category::from_ifc(f.class, Some(f.predefined.trim_matches('.')), f.object_type), Some(f.category), "{}", f.family);
+        assert_eq!(f.category.kind_of(Some(f.predefined.trim_matches('.'))), f.kind, "{}", f.family);
     }
     // A class BIMCraft makes no family of, or a proxy that says nothing, is the generic one's, or none.
     assert_eq!(Category::from_ifc("IFCBEAM", None, None), None);
@@ -820,6 +869,7 @@ fn fixtures_are_ifc_products_of_their_class_and_come_back_in_a_family_of_their_c
     for f in FIXTURES {
         let family = t.model.families.get(f.family).unwrap_or_else(|| panic!("{} came back", f.family));
         assert_eq!(family.category, f.category, "{}", f.family);
+        assert_eq!(family.kind.as_deref(), f.kind, "{}: its kind comes back from its predefined type", f.family);
     }
     assert_eq!(t.model.elements.values().filter(|e| e.category() == "component").count(), FIXTURES.len());
     // Each in the family it was of: the library's of the same name would stand in for one the import named wrongly.
@@ -832,6 +882,45 @@ fn fixtures_are_ifc_products_of_their_class_and_come_back_in_a_family_of_their_c
         .collect();
     let wanted: std::collections::BTreeSet<String> = FIXTURES.iter().map(|f| f.family.to_string()).collect();
     assert_eq!(named, wanted);
+}
+
+#[test]
+fn a_family_says_which_fixture_it_is_and_ifc_writes_that_predefined_type() {
+    let mut s = Session::new();
+    // A laundry tub (a tanque) made of the kitchen sink's shape: a sink to IFC, a laundry to the sizing tables.
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Basin", "category": "plumbing", "types": {"A": {}}, "forms": [
+        {"profile": [[-200, -200], [200, -200], [200, 200], [-200, 200]], "to": 800}]}),
+    );
+    assert_eq!(s.model.families["Basin"].kind, None);
+    run(&mut s, "family", json!({"name": "Basin", "kind": "laundry"}));
+    assert_eq!(s.model.families["Basin"].kind.as_deref(), Some("laundry"));
+    assert_eq!(s.model.families["Basin"].ifc(), ("IFCSANITARYTERMINAL", ".SINK.", None));
+    // A kind its category has no row for is refused, naming the ones it has; one for a category with none, too.
+    let e = fails(&mut s, "family", json!({"name": "Basin", "kind": "bend"}));
+    assert!(e.contains("wc, lav, sink, laundry, shower, bath, bidet, urinal") && e.contains("`bend`"), "{e}");
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Lamp", "category": "lighting", "types": {"A": {}}, "forms": [
+        {"profile": [[-100, -100], [100, -100], [100, 100], [-100, 100]], "to": 100}]}),
+    );
+    let e = fails(&mut s, "family", json!({"name": "Lamp", "kind": "wc"}));
+    assert!(e.contains("has no kinds"), "{e}");
+    // Changing the category leaves a kind it doesn't have: refused until the kind goes with it.
+    let e = fails(&mut s, "family", json!({"name": "Basin", "category": "drain"}));
+    assert!(e.contains("floor_drain") && e.contains("`laundry`"), "{e}");
+    run(&mut s, "family", json!({"name": "Basin", "category": "drain", "kind": "floor_drain"}));
+    assert_eq!(s.model.families["Basin"].ifc().1, ".FLOORTRAP.");
+    // An empty kind takes it away: the category's own predefined type again.
+    run(&mut s, "family", json!({"name": "Basin", "category": "plumbing", "kind": ""}));
+    assert_eq!(s.model.families["Basin"].kind, None);
+    assert_eq!(s.model.families["Basin"].ifc().1, ".NOTDEFINED.");
+    // A file without `kind` reads as it did, and a family without one writes none.
+    let saved = serde_json::to_value(&s.model.families["Basin"]).unwrap();
+    assert!(saved.get("kind").is_none(), "{saved}");
 }
 
 #[test]
@@ -848,5 +937,225 @@ fn an_upright_run_comes_back_running_up_whichever_end_it_was_drawn_from() {
         let id = t.model.elements.iter().find(|(_, e)| e.category() == c.category).map(|(id, _)| *id).unwrap();
         let e = element_json(&t.model, id);
         assert_eq!((e["offset"].as_f64(), e["end_offset"].as_f64()), (Some(500.0), Some(3000.0)), "{}: {e}", c.category);
+    }
+}
+
+// ---------- connectors ----------
+
+use crate::ids::FIRST_ID;
+use crate::model::Model;
+
+fn warnings(s: &mut Session) -> Vec<String> {
+    run(s, "inspect", json!({}))["warnings"].as_array().unwrap().iter().map(|w| w.as_str().unwrap().to_string()).collect()
+}
+
+fn connectors(s: &Session, id: u64) -> Vec<Value> {
+    element_json(&s.model, id)["connectors"].as_array().cloned().unwrap_or_default()
+}
+
+#[test]
+fn the_starter_devices_carry_connectors_in_every_language_and_a_switch_carries_no_load() {
+    for l in Language::ALL {
+        let m = Model::new_in("x", l);
+        assert_eq!(m.check(), Ok(()), "{l:?}");
+        for (family, system, poles, voltage) in [
+            ("Ceiling Luminaire", "power-balanced", 1, 127.0),
+            ("Recessed Luminaire", "power-balanced", 1, 127.0),
+            ("Outlet", "power-balanced", 1, 127.0),
+            ("Three-Phase Outlet", "power-unbalanced", 3, 220.0),
+        ] {
+            let f = &m.families[l.word(family)];
+            assert_eq!(f.connectors.len(), 1, "{l:?} {family}");
+            let c = &f.connectors[0];
+            assert_eq!((serde_json::to_value(c.system).unwrap(), c.poles), (json!(system), poles), "{l:?} {family}");
+            for t in f.types.keys() {
+                let v = &f.connector_values(t, &Default::default()).unwrap()[0];
+                assert_eq!((v.voltage, v.power_factor > 0.0, v.load_va > 0.0), (voltage, true, true), "{l:?} {family} {t}");
+            }
+        }
+        let switch = &m.families[l.word("Switch")];
+        assert_eq!(switch.connectors.len(), 1, "{l:?}");
+        let v = &switch.connector_values("Medium 1100", &Default::default()).unwrap()[0];
+        assert_eq!((v.kind, v.load_va, v.load_va_by_phase.is_empty()), (crate::family::ConnectorKind::Switch, 0.0, true), "{l:?}");
+        // A board is where the loads end up, not a load; the data and voice outlets are a tab of their own.
+        assert!(m.families[l.word("Distribution Board")].connectors.is_empty(), "{l:?}");
+    }
+}
+
+#[test]
+fn a_placed_device_reports_its_load_and_classification_and_the_type_sets_the_load() {
+    let mut s = Session::new();
+    let small = made(&mut s, "component", json!({"family": "Ceiling Luminaire", "type": "300", "at": [1000, 1000]}));
+    let large = made(&mut s, "component", json!({"family": "Ceiling Luminaire", "type": "400", "at": [2000, 1000]}));
+    let (a, b) = (&connectors(&s, small)[0], &connectors(&s, large)[0]);
+    assert_eq!((a["load_va"].as_f64(), b["load_va"].as_f64()), (Some(12.0), Some(18.0)));
+    assert_eq!(
+        (a["classification"].as_str(), a["kind"].as_str(), a["system"].as_str()),
+        (Some("lighting"), Some("power"), Some("power-balanced"))
+    );
+    assert_eq!((a["poles"].as_u64(), a["voltage"].as_f64()), (Some(1), Some(127.0)));
+    assert_eq!(a["load_va_by_phase"], json!([12.0]));
+    assert!(a["guid"].is_string() && a["id"].as_u64().unwrap() >= FIRST_ID, "a connector has an id and a GUID: {a}");
+    // The switch reports its connector, with no load.
+    let switch = made(&mut s, "component", json!({"family": "Switch", "at": [3000, 1000]}));
+    let c = &connectors(&s, switch)[0];
+    assert_eq!((c["kind"].as_str(), c["load_va"].as_f64(), c["load_va_by_phase"].clone()), (Some("switch"), Some(0.0), json!([])));
+    // A device of a family without any has no `connectors` to report.
+    let board = made(&mut s, "component", json!({"family": "Distribution Board", "at": [4000, 1000]}));
+    assert!(element_json(&s.model, board).get("connectors").is_none());
+}
+
+#[test]
+fn an_unbalanced_device_may_load_each_phase_differently() {
+    let mut s = Session::new();
+    let even = made(&mut s, "component", json!({"family": "Three-Phase Outlet", "type": "Balanced 1100", "at": [1000, 1000]}));
+    let uneven = made(&mut s, "component", json!({"family": "Three-Phase Outlet", "type": "Unbalanced 1100", "at": [2000, 1000]}));
+    let (a, b) = (&connectors(&s, even)[0], &connectors(&s, uneven)[0]);
+    assert_eq!(a["load_va_by_phase"], json!([2000.0, 2000.0, 2000.0]));
+    assert_eq!(b["load_va_by_phase"], json!([3000.0, 2000.0, 1000.0]));
+    assert_eq!((a["load_va"].as_f64(), b["load_va"].as_f64()), (Some(6000.0), Some(6000.0)));
+    // A component sets the load of a phase of its own too, when the family makes that parameter its instance's.
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Spot", "category": "outlet", "types": {"A": {}},
+        "parameters": [{"name": "L1", "kind": "number", "instance": true, "value": 100}],
+        "connectors": [{"kind": "power", "system": "power-unbalanced", "poles": 2, "voltage": 220, "load_va": ["L1", 50]}]}),
+    );
+    let spot = made(&mut s, "component", json!({"family": "Spot", "at": [0, 0], "params": {"L1": 700}}));
+    assert_eq!(connectors(&s, spot)[0]["load_va_by_phase"], json!([700.0, 50.0]));
+}
+
+#[test]
+fn a_family_with_two_power_connectors_is_refused_and_nothing_changes() {
+    let mut s = Session::new();
+    let power = json!({"kind": "power", "system": "power-balanced", "voltage": 127, "load_va": 10});
+    let e = fails(&mut s, "family", json!({"name": "Twin", "category": "lighting", "types": {"A": {}}, "connectors": [power, power]}));
+    assert!(e.contains("two power connectors") && e.contains("keep one"), "{e}");
+    assert!(!s.model.families.contains_key("Twin"));
+    // A misspelled key of a connector is an error, as it is in every command.
+    let e = fails(
+        &mut s,
+        "family",
+        json!({"name": "Twin", "types": {"A": {}}, "connectors": [{"kind": "power", "system": "power-balanced", "load": 5}]}),
+    );
+    assert!(e.contains("connectors") && e.contains("load"), "{e}");
+}
+
+#[test]
+fn a_device_without_a_connector_is_warned_of_not_refused_and_old_families_still_place() {
+    let mut s = Session::new();
+    run(&mut s, "family", json!({"name": "Bare", "category": "lighting", "types": {"A": {}}}));
+    assert_eq!(warnings(&mut s), Vec::<String>::new(), "a family nothing is placed of says nothing");
+    made(&mut s, "component", json!({"family": "Bare", "at": [0, 0]}));
+    made(&mut s, "component", json!({"family": "Bare", "at": [500, 0]}));
+    made(&mut s, "component", json!({"family": "Outlet", "at": [1000, 0]}));
+    let w = warnings(&mut s);
+    assert_eq!(w.len(), 1, "{w:?}");
+    assert!(w[0].contains("`Bare`") && w[0].contains("2 placed devices") && w[0].contains("zero"), "{w:?}");
+    assert_eq!(s.model.check(), Ok(()), "a warning is no error");
+    assert_eq!(s.model.warnings(), w);
+    // A furniture family is no electrical device.
+    run(&mut s, "family", json!({"name": "Stool", "category": "furniture", "types": {"A": {}}}));
+    made(&mut s, "component", json!({"family": "Stool", "at": [0, 500]}));
+    assert_eq!(warnings(&mut s), w);
+    // Giving it a connector answers the warning.
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Bare", "connectors": [{"kind": "power", "system": "power-balanced", "voltage": 127, "load_va": 9}]}),
+    );
+    assert_eq!(warnings(&mut s), Vec::<String>::new());
+}
+
+#[test]
+fn a_file_from_before_connectors_opens_and_its_devices_place() {
+    let mut s = Session::new();
+    made(&mut s, "component", json!({"family": "Outlet", "at": [0, 0]}));
+    let mut v: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    assert_eq!(v["format"], json!(crate::model::FORMAT));
+    v["format"] = json!(11);
+    for f in v["families"].as_object_mut().unwrap().values_mut() {
+        f.as_object_mut().unwrap().remove("connectors");
+    }
+    let (m, left_out) = Model::read(&v.to_string()).unwrap();
+    assert_eq!((m.format, left_out.len()), (crate::model::FORMAT, 0));
+    assert!(m.families.values().all(|f| f.connectors.is_empty()));
+    assert_eq!(m.check(), Ok(()));
+    let mut t = Session::new();
+    *t.model_mut() = m;
+    made(&mut t, "component", json!({"family": "Outlet", "at": [500, 0]}));
+    // It is a family of lights and outlets without a load now, which is said, not refused.
+    assert!(warnings(&mut t).iter().any(|w| w.contains("`Outlet`") && w.contains("2 placed devices")));
+    // And a build of the next format is refused, as ever.
+    v["format"] = json!(crate::model::FORMAT + 1);
+    assert!(Model::read(&v.to_string()).is_err());
+}
+
+#[test]
+fn a_connector_keeps_its_id_and_guid_while_the_family_is_edited_and_a_family_file_keeps_connectors() {
+    let mut s = Session::new();
+    let power = json!({"kind": "power", "system": "power-balanced", "voltage": 127, "load_va": 9, "classification": "lighting"});
+    run(&mut s, "family", json!({"name": "Lamp", "category": "lighting", "types": {"A": {}}, "connectors": [power]}));
+    let first = s.model.families["Lamp"].connectors[0].clone();
+    assert!(first.id >= FIRST_ID && !first.guid.is_nil(), "a part is given an id and a GUID");
+    let mut again = power.clone();
+    again["load_va"] = json!(12);
+    run(&mut s, "family", json!({"name": "Lamp", "connectors": [again]}));
+    let second = &s.model.families["Lamp"].connectors[0];
+    assert_eq!((second.id, second.guid), (first.id, first.guid), "the one at its place stays itself");
+    // The file a family is saved to holds them, and loading it brings them back.
+    let path = std::env::temp_dir().join(format!("bimcraft-test-{}-lamp.json", std::process::id()));
+    run(&mut s, "family", json!({"name": "Lamp", "save": path}));
+    let mut t = Session::new();
+    run(&mut t, "family", json!({"path": path}));
+    let _ = std::fs::remove_file(&path);
+    let loaded = &t.model.families["Lamp"].connectors;
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(
+        (loaded[0].classification.as_str(), loaded[0].load_va.clone()),
+        ("lighting", crate::family::Load::One(crate::family::Expr::Number(12.0)))
+    );
+    // Saved with the project and opened, they are the same connectors, by GUID.
+    let project = std::env::temp_dir().join(format!("bimcraft-test-{}-lamp.bimcraft", std::process::id()));
+    run(&mut s, "save", json!({"path": project}));
+    let mut u = Session::new();
+    run(&mut u, "open", json!({"path": project}));
+    let _ = std::fs::remove_file(&project);
+    assert_eq!(u.model.families["Lamp"].connectors[0].guid, first.guid);
+}
+
+#[test]
+fn a_placed_device_is_written_to_ifc_with_the_electrical_device_property_set() {
+    let mut s = Session::new();
+    made(&mut s, "component", json!({"family": "Ceiling Luminaire", "type": "400", "at": [0, 0]}));
+    made(&mut s, "component", json!({"family": "Three-Phase Outlet", "type": "Unbalanced 1100", "at": [1000, 0]}));
+    made(&mut s, "component", json!({"family": "Distribution Board", "at": [2000, 0]}));
+    let file = ifc(&mut s);
+    let sets =
+        |name: &str| entities(&file, "IFCPROPERTYSET").into_iter().filter(|l| l.contains(&format!(",'{name}',"))).collect::<Vec<_>>();
+    // A device holding a connector, not the board, and not a set for each connector twice.
+    assert_eq!(sets("Pset_ElectricalDeviceCommon").len(), 2, "{file}");
+    assert_eq!(sets("BIMCraft_Connector").len(), 2, "{file}");
+    // What each holds, by the property it names: a single value is one line of the file.
+    let has = |text: &str| file.contains(text);
+    for what in [
+        "'NumberOfPoles',$,IFCINTEGER(1)",
+        "'NumberOfPoles',$,IFCINTEGER(3)",
+        "'PowerFactor',$,IFCNORMALISEDRATIOMEASURE(0.95)",
+        "'RatedVoltage',$,$,$,$,IFCELECTRICVOLTAGEMEASURE(127.)",
+    ] {
+        assert!(has(what), "{what}: {file}");
+    }
+    // The values are the type's own: 18 VA for the larger luminaire; 3000, 2000 and 1000 for the phases.
+    for what in [
+        "'LoadVA',$,IFCREAL(18.)",
+        "'LoadVA',$,IFCREAL(6000.)",
+        "'LoadVAPhase1',$,IFCREAL(3000.)",
+        "'LoadVAPhase3',$,IFCREAL(1000.)",
+        "'Classification',$,IFCTEXT('lighting')",
+        "'System',$,IFCTEXT('power-unbalanced')",
+    ] {
+        assert!(has(what), "{what}: {file}");
     }
 }

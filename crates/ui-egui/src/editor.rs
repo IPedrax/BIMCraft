@@ -13,7 +13,9 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
 use bimcraft_core::engine::Session;
-use bimcraft_core::family::{Category, Circle, Curve, Expr, Family, Form, Kind as Holds, Parameter, Plane, Symbol};
+use bimcraft_core::family::{
+    Align as LabelAlign, Category, Circle, Connector, Curve, Expr, Family, Form, Kind as Holds, Label, Parameter, Plane, Symbol,
+};
 use bimcraft_core::model::{Model, Operation};
 use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
 use egui::{
@@ -247,52 +249,89 @@ impl ParamText {
     }
 }
 
-/// A symbol as typed.
+/// Which part a symbol is.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Part {
+    Line,
+    Arc,
+    Text,
+    Dot,
+}
+
+/// A symbol as typed. `centre` is an arc's or a dot's centre or a label's point; `radius` an arc's or a dot's radius or a
+/// label's height.
 #[derive(Clone)]
 struct SymbolText {
     /// Its id and GUID, which it keeps wherever it's moved to in the list.
     ident: (bimcraft_core::model::Id, bimcraft_core::model::Guid),
-    arc: bool,
+    part: Part,
     line: String,
     centre: [String; 2],
     radius: String,
     from: String,
     to: String,
+    value: String,
+    align: LabelAlign,
     visible: String,
 }
 
 impl SymbolText {
-    fn of(y: &Symbol) -> SymbolText {
-        let (centre, radius, from, to) = y.arc.as_ref().map_or_else(
-            || (Default::default(), String::new(), String::new(), String::new()),
-            |c| ([expr_text(&c.centre[0]), expr_text(&c.centre[1])], expr_text(&c.radius), expr_text(&c.from), expr_text(&c.to)),
-        );
-        SymbolText {
-            ident: (y.id, y.guid),
-            arc: y.arc.is_some(),
-            line: profile_text(&y.line),
-            centre,
-            radius,
-            from,
-            to,
-            visible: y.visible.as_ref().map(expr_text).unwrap_or_default(),
+    fn blank(part: Part) -> SymbolText {
+        let s = |x: &str| x.to_string();
+        let base = SymbolText {
+            ident: Default::default(),
+            part,
+            line: String::new(),
+            centre: Default::default(),
+            radius: String::new(),
+            from: String::new(),
+            to: String::new(),
+            value: String::new(),
+            align: LabelAlign::Left,
+            visible: String::new(),
+        };
+        match part {
+            Part::Line => SymbolText { line: s("0, 0\n0, 900"), ..base },
+            Part::Arc => SymbolText { centre: [s("0"), s("0")], radius: s("900"), from: s("0"), to: s("90"), ..base },
+            Part::Text => SymbolText { centre: [s("0"), s("0")], radius: s("100"), value: s("A"), ..base },
+            Part::Dot => SymbolText { centre: [s("0"), s("0")], radius: s("20"), ..base },
         }
+    }
+
+    fn of(y: &Symbol) -> SymbolText {
+        let ex = |e: &Expr| expr_text(e);
+        let mut t = SymbolText::blank(Part::Line);
+        t.ident = (y.id, y.guid);
+        t.line = profile_text(&y.line);
+        t.visible = y.visible.as_ref().map(expr_text).unwrap_or_default();
+        if let Some(c) = &y.arc {
+            (t.part, t.centre, t.radius, t.from, t.to) =
+                (Part::Arc, [ex(&c.centre[0]), ex(&c.centre[1])], ex(&c.radius), ex(&c.from), ex(&c.to));
+        } else if let Some(l) = &y.text {
+            (t.part, t.centre, t.radius, t.value, t.align) =
+                (Part::Text, [ex(&l.at[0]), ex(&l.at[1])], ex(&l.height), l.value.clone(), l.align);
+        } else if let Some(c) = &y.dot {
+            (t.part, t.centre, t.radius) = (Part::Dot, [ex(&c.centre[0]), ex(&c.centre[1])], ex(&c.radius));
+        }
+        t
     }
 
     fn symbol(&self) -> Result<Symbol, String> {
         let visible = (!self.visible.trim().is_empty()).then(|| text_expr(&self.visible));
         let (id, guid) = self.ident;
-        Ok(if self.arc {
-            let centre = [text_expr(&self.centre[0]), text_expr(&self.centre[1])];
-            Symbol {
+        let centre = [text_expr(&self.centre[0]), text_expr(&self.centre[1])];
+        let base = Symbol { visible, id, guid, ..Symbol::default() };
+        Ok(match self.part {
+            Part::Arc => Symbol {
                 arc: Some(Curve { centre, radius: text_expr(&self.radius), from: text_expr(&self.from), to: text_expr(&self.to) }),
-                visible,
-                id,
-                guid,
-                ..Symbol::default()
-            }
-        } else {
-            Symbol { line: text_profile(&self.line)?, visible, id, guid, ..Symbol::default() }
+                ..base
+            },
+            Part::Text => Symbol {
+                text: Some(Label { at: centre, height: text_expr(&self.radius), value: self.value.clone(), align: self.align }),
+                ..base
+            },
+            Part::Dot => Symbol { dot: Some(Circle { centre, radius: text_expr(&self.radius) }), ..base },
+            Part::Line => Symbol { line: text_profile(&self.line)?, ..base },
         })
     }
 }
@@ -315,6 +354,10 @@ pub(crate) struct FamilyEditor {
     /// Associate Family Parameter, open on a row of Properties its "=" was pressed on.
     pub(crate) associating: Option<crate::adaptive_editor::Associating>,
     symbols: Vec<SymbolText>,
+    /// Its connectors, as the family has them: the editor has no tab for them yet, and keeps them as they are.
+    connectors: Vec<Connector>,
+    /// Which fixture or fitting it is, as the family has it: set with the `family` command, kept as it is here.
+    kind: Option<String>,
     /// How a door's or a window's leaves open; none, not said.
     operation: Option<Operation>,
     pub(crate) tab: Tab,
@@ -408,6 +451,8 @@ impl FamilyEditor {
             preview_params: BTreeMap::new(),
             associating: None,
             symbols: f.symbols.iter().map(SymbolText::of).collect(),
+            connectors: f.connectors.clone(),
+            kind: f.kind.clone(),
             operation: f.operation,
             tab: Tab::Parameters,
             picked: 0,
@@ -513,7 +558,18 @@ impl FamilyEditor {
         let forms = self.forms.iter().map(FormText::form).collect::<Result<_, _>>()?;
         let symbols = self.symbols.iter().map(SymbolText::symbol).collect::<Result<_, _>>()?;
         let operation = self.operation.filter(|_| self.category.hosted());
-        Ok(Family { category: self.category, parameters, types, forms, symbols, operation, adaptive: self.adaptive.clone() })
+        Ok(Family {
+            category: self.category,
+            // A kind the category it now is has no row for goes with the change of category.
+            kind: self.kind.clone().filter(|k| self.category.kinds().iter().any(|(n, _)| n == k)),
+            parameters,
+            types,
+            forms,
+            symbols,
+            operation,
+            connectors: self.connectors.clone(),
+            adaptive: self.adaptive.clone(),
+        })
     }
 
     /// The `family` command's parameters making the project's family what's typed: its name, its own and the type it drops.
@@ -972,38 +1028,62 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
 }
 
 fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
-    if !ed.category.hosted() {
-        ui.label(RichText::new(t("Symbols are the lines a door's or a window's plan draws; this family isn't one.")).color(pal().muted));
-        return;
-    }
+    ui.label(
+        RichText::new(t("Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."))
+            .color(pal().muted),
+    );
     let mut remove = None;
     for (i, y) in ed.symbols.iter_mut().enumerate() {
         let n = i + 1;
-        let heading = format!("{n}. {}", if y.arc { t("Arc") } else { t("Line") });
+        let kind = match y.part {
+            Part::Line => t("Line"),
+            Part::Arc => t("Arc"),
+            Part::Text => t("Text"),
+            Part::Dot => t("Dot"),
+        };
+        let heading = format!("{n}. {kind}");
         CollapsingHeader::new(heading).id_salt(("fe-symbol", i)).default_open(true).show(ui, |ui| {
             Grid::new(("fe-symbol-grid", i)).num_columns(2).spacing(vec2(12.0, 5.0)).show(ui, |ui| {
-                if y.arc {
-                    ui.label(t("Centre"));
+                if y.part == Part::Line {
+                    ui.label(t("Points"));
+                    let r = ui.add(TextEdit::multiline(&mut y.line).desired_rows(3).desired_width(300.0).id_salt(("fe-symbol-line", i)));
+                    r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, format!("{} {n}", t("Symbol Points"))));
+                    ui.end_row();
+                } else {
+                    ui.label(t(if y.part == Part::Text { msg!("Middle of the text") } else { msg!("Centre") }));
                     ui.horizontal(|ui| {
                         for (k, what) in [msg!("Symbol Centre X"), msg!("Symbol Centre Y")].into_iter().enumerate() {
                             field(ui, format!("{} {n}", t(what)), &mut y.centre[k], 170.0);
                         }
                     });
                     ui.end_row();
-                    for (label, what, text) in [
-                        (msg!("Radius"), msg!("Symbol Radius"), &mut y.radius),
-                        ("From (degrees)", msg!("Symbol From"), &mut y.from),
-                        ("To (degrees)", msg!("Symbol To"), &mut y.to),
-                    ] {
-                        ui.label(t(label));
-                        field(ui, format!("{} {n}", t(what)), text, 200.0);
+                    let size = if y.part == Part::Text { msg!("Height") } else { msg!("Radius") };
+                    ui.label(t(size));
+                    field(ui, format!("{} {n}", t(msg!("Symbol Radius"))), &mut y.radius, 200.0);
+                    ui.end_row();
+                    if y.part == Part::Arc {
+                        for (label, what, text) in
+                            [("From (degrees)", msg!("Symbol From"), &mut y.from), ("To (degrees)", msg!("Symbol To"), &mut y.to)]
+                        {
+                            ui.label(t(label));
+                            field(ui, format!("{} {n}", t(what)), text, 200.0);
+                            ui.end_row();
+                        }
+                    }
+                    if y.part == Part::Text {
+                        ui.label(t("Text"));
+                        field(ui, format!("{} {n}", t("Symbol Text")), &mut y.value, 300.0);
+                        ui.end_row();
+                        ui.label(t("Align"));
+                        ui.horizontal(|ui| {
+                            for (a, label) in
+                                [(LabelAlign::Left, msg!("Left")), (LabelAlign::Center, msg!("Centre")), (LabelAlign::Right, msg!("Right"))]
+                            {
+                                ui.selectable_value(&mut y.align, a, t(label));
+                            }
+                        });
                         ui.end_row();
                     }
-                } else {
-                    ui.label(t("Points"));
-                    let r = ui.add(TextEdit::multiline(&mut y.line).desired_rows(3).desired_width(300.0).id_salt(("fe-symbol-line", i)));
-                    r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, format!("{} {n}", t("Symbol Points"))));
-                    ui.end_row();
                 }
                 ui.label(t("Visible when"));
                 field(ui, format!("{} {n}", t("Symbol Visible")), &mut y.visible, 200.0);
@@ -1018,29 +1098,12 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
         ed.symbols.remove(i);
     }
     ui.horizontal(|ui| {
-        if ui.button(t("Add Line")).clicked() {
-            ed.symbols.push(SymbolText {
-                ident: Default::default(),
-                arc: false,
-                line: "0, 0\n0, 900".into(),
-                centre: Default::default(),
-                radius: String::new(),
-                from: String::new(),
-                to: String::new(),
-                visible: String::new(),
-            });
-        }
-        if ui.button(t("Add Arc")).clicked() {
-            ed.symbols.push(SymbolText {
-                ident: Default::default(),
-                arc: true,
-                line: String::new(),
-                centre: ["0".into(), "0".into()],
-                radius: "900".into(),
-                from: "0".into(),
-                to: "90".into(),
-                visible: String::new(),
-            });
+        for (part, label) in
+            [(Part::Line, msg!("Add Line")), (Part::Arc, msg!("Add Arc")), (Part::Text, msg!("Add Text")), (Part::Dot, msg!("Add Dot"))]
+        {
+            if ui.button(t(label)).clicked() {
+                ed.symbols.push(SymbolText::blank(part));
+            }
         }
     });
 }
@@ -1512,6 +1575,26 @@ mod tests {
             ..Symbol::default()
         };
         assert_eq!(SymbolText::of(&line).symbol().unwrap(), line);
+        // A label and a dot come back as they were typed, and a new one of each is one the family takes.
+        let label = Symbol {
+            text: Some(Label {
+                at: [Expr::Number(0.0), Expr::Number(-150.0)],
+                height: Expr::Number(60.0),
+                value: "C{Circuit}".into(),
+                align: LabelAlign::Center,
+            }),
+            visible: Some(Expr::Formula("Show".into())),
+            ..Symbol::default()
+        };
+        assert_eq!(SymbolText::of(&label).symbol().unwrap(), label);
+        let dot = Symbol {
+            dot: Some(Circle { centre: [Expr::Number(2.0), Expr::Number(3.0)], radius: Expr::Number(20.0) }),
+            ..Symbol::default()
+        };
+        assert_eq!(SymbolText::of(&dot).symbol().unwrap(), dot);
+        for part in [Part::Line, Part::Arc, Part::Text, Part::Dot] {
+            assert_eq!(SymbolText::of(&SymbolText::blank(part).symbol().unwrap()).part, part);
+        }
         let p = Parameter { name: "Legs".into(), kind: Holds::YesNo, instance: true, value: json!(true), formula: None };
         assert_eq!(ParamText::of(&p).parameter().unwrap(), p);
         let area = Parameter {

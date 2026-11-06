@@ -332,10 +332,12 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 top_level,
                 height: mm(r.bbox[5] - r.bbox[2]),
                 base_offset: micron(mm(r.bbox[2]) - mm(elevation)),
+                top_offset: 0.0,
                 arc,
                 location: Location::Centre,
                 attach_top: None,
                 attach_base: None,
+                room_bounding: true,
             };
             let note = if tid == 0 {
                 "no_type".to_string()

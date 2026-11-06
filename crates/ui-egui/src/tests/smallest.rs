@@ -5,6 +5,7 @@ use egui::{Rect, Shape, pos2, vec2};
 
 use super::titlebar::own;
 use super::*;
+use crate::style::Profile;
 use crate::window::MIN_SIZE;
 
 fn least() -> egui::Vec2 {
@@ -20,7 +21,7 @@ fn window(size: egui::Vec2) -> Rect {
 fn cards(h: &Harness<BimApp>) -> Vec<Rect> {
     fn walk(s: &Shape, out: &mut Vec<Rect>) {
         match s {
-            Shape::Rect(r) if r.fill == crate::style::pal().panel && r.rect.width() >= 250.0 && r.rect.height() >= 24.0 => out.push(r.rect),
+            Shape::Rect(r) if r.fill == crate::style::pal().panel && r.rect.width() >= 200.0 && r.rect.height() >= 24.0 => out.push(r.rect),
             Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
             _ => {}
         }
@@ -30,10 +31,14 @@ fn cards(h: &Harness<BimApp>) -> Vec<Rect> {
     out
 }
 
+/// The looks the window is laid out in: each profile in the Floating and Compact layouts.
+const LOOKS: [(bool, Profile); 4] = [(false, Profile::BimCraft), (true, Profile::BimCraft), (false, Profile::Rev), (true, Profile::Rev)];
+
 /// The window brought down to the least a window can be: from the start, or from a bigger one the palettes were sized in.
-fn at_the_least(compact: bool, from_bigger: bool) -> Harness<'static, BimApp> {
+fn at_the_least((compact, profile): (bool, Profile), from_bigger: bool) -> Harness<'static, BimApp> {
     let mut h = own(BOX);
     h.state_mut().compact = compact;
+    h.state_mut().profile = profile;
     if from_bigger {
         h.run();
     } else {
@@ -47,19 +52,19 @@ fn at_the_least(compact: bool, from_bigger: bool) -> Harness<'static, BimApp> {
 
 #[test]
 fn no_card_runs_under_another_or_off_the_window_at_the_least_a_window_can_be() {
-    for compact in [false, true] {
+    for look in LOOKS {
         for from_bigger in [false, true] {
-            let h = at_the_least(compact, from_bigger);
+            let h = at_the_least(look, from_bigger);
             let cards = cards(&h);
-            assert!(cards.len() >= 4, "the ribbon, two palettes and the status bar (compact={compact}): {cards:?}");
+            assert!(cards.len() >= 4, "the ribbon or the Tools palette, two palettes and the status bar ({look:?}): {cards:?}");
             let w = window(least());
             for (i, a) in cards.iter().enumerate() {
-                assert!(w.expand(0.5).contains_rect(*a), "{a:?} is off the window (compact={compact}, from_bigger={from_bigger})");
+                assert!(w.expand(0.5).contains_rect(*a), "{a:?} is off the window ({look:?}, from_bigger={from_bigger})");
                 for b in &cards[i + 1..] {
                     let both = a.intersect(*b);
                     assert!(
                         !(both.is_positive() && both.width() > 1.0 && both.height() > 1.0),
-                        "{a:?} runs under {b:?} (compact={compact}, from_bigger={from_bigger})"
+                        "{a:?} runs under {b:?} ({look:?}, from_bigger={from_bigger})"
                     );
                 }
             }
@@ -107,55 +112,63 @@ fn the_title_stays_between_the_quick_access_and_the_caption_buttons_whatever_the
 
 #[test]
 fn the_tab_just_picked_is_in_view_though_the_tabs_run_past_the_window() {
-    let mut h = own(BOX);
-    h.set_size(least());
-    h.run();
-    let in_view = |h: &Harness<BimApp>, label: &str| {
-        let (tab, fold) = (h.get_by_label(label).rect(), h.get_by_label("Minimize the Ribbon").rect());
-        assert!(
-            tab.left() >= 0.0 && tab.right() <= fold.left(),
-            "`{label}` {tab:?} is in the tabs, which end where the fold button {fold:?} starts"
-        );
-    };
-    // A tab far along the row.
-    h.state_mut().tab = crate::Tab::Manage;
-    h.run();
-    h.run();
-    in_view(&h, "Manage");
-    // And a tool's contextual tab, which comes after them all.
-    h.state_mut().tab = crate::Tab::Architecture;
-    h.run();
-    tool(&mut h, "Wall");
-    h.run();
-    in_view(&h, "Modify | Place Wall");
+    // The ribbon's tabs: BIMCraft has none.
+    {
+        let profile = Profile::Rev;
+        let mut h = own(BOX);
+        h.state_mut().profile = profile;
+        h.set_size(least());
+        h.run();
+        let in_view = |h: &Harness<BimApp>, label: &str| {
+            let (tab, fold) = (h.get_by_label(label).rect(), h.get_by_label("Minimize the Ribbon").rect());
+            assert!(
+                tab.left() >= 0.0 && tab.right() <= fold.left(),
+                "`{label}` {tab:?} is in the tabs, which run to where the fold button {fold:?} starts ({profile:?})"
+            );
+        };
+        // A tab far along the row.
+        h.state_mut().tab = crate::Tab::Manage;
+        h.run();
+        h.run();
+        in_view(&h, "Manage");
+        // And a tool's contextual tab, which comes after them all.
+        h.state_mut().tab = crate::Tab::Architecture;
+        h.run();
+        tool(&mut h, "Wall");
+        h.run();
+        in_view(&h, "Modify | Place Wall");
+    }
 }
 
 #[test]
 fn the_options_bar_stays_clear_of_the_zoom_buttons_and_inside_the_window_at_the_least_a_window_can_be() {
-    let mut h = own(BOX);
-    h.set_size(least());
-    h.run();
-    tool(&mut h, "Wall");
-    h.run();
-    // The bar itself, and each of its fields, are in the window; none of the view's zoom buttons is under any of them.
-    let bar = h.state().options_rect;
-    let w = window(least());
-    assert!(w.contains_rect(bar), "the bar {bar:?} is off the window");
-    for (label, role) in [("Height:", Role::Label), ("Location Line:", Role::Label), ("Chain", Role::CheckBox)] {
-        let r = h.get_by_role_and_label(role, label).rect();
-        assert!(bar.contains_rect(r), "`{label}` {r:?} is out of the bar {bar:?}");
-    }
-    for label in ["Zoom to Fit", "Zoom In", "Zoom Out"] {
-        let button = h.get_by_label(label).rect();
-        assert!(!button.intersect(bar).is_positive(), "`{label}` {button:?} is under the Options Bar {bar:?}");
-        assert!(w.contains_rect(button), "`{label}` {button:?} is off the window");
+    for profile in [Profile::BimCraft, Profile::Rev] {
+        let mut h = own(BOX);
+        h.state_mut().profile = profile;
+        h.set_size(least());
+        h.run();
+        tool(&mut h, "Wall");
+        h.run();
+        // The bar itself, and each of its fields, are in the window; none of the view's zoom buttons is under any of them.
+        let bar = h.state().options_rect;
+        let w = window(least());
+        assert!(w.contains_rect(bar), "the bar {bar:?} is off the window ({profile:?})");
+        for (label, role) in [("Height:", Role::Label), ("Location Line:", Role::Label), ("Chain", Role::CheckBox)] {
+            let r = h.get_by_role_and_label(role, label).rect();
+            assert!(bar.contains_rect(r), "`{label}` {r:?} is out of the bar {bar:?} ({profile:?})");
+        }
+        for label in ["Zoom to Fit", "Zoom In", "Zoom Out"] {
+            let button = h.get_by_label(label).rect();
+            assert!(!button.intersect(bar).is_positive(), "`{label}` {button:?} is under the Options Bar {bar:?} ({profile:?})");
+            assert!(w.contains_rect(button), "`{label}` {button:?} is off the window ({profile:?})");
+        }
     }
 }
 
 /// A project with forty fill patterns, forty region types, forty line patterns and forty line styles, on the window at the least
 /// a window can be.
 fn crowded() -> Harness<'static, BimApp> {
-    let mut h = at_the_least(false, false);
+    let mut h = at_the_least(LOOKS[0], false);
     let s = &mut h.state_mut().session;
     for i in 0..40 {
         let angle = f64::from(i) * 4.0;
@@ -201,28 +214,22 @@ fn dialog_fits(h: &Harness<BimApp>, modal: &str, labels: &[&str], said: &str) {
 #[test]
 fn fill_patterns_and_edit_type_with_forty_patterns_and_a_long_note_stay_inside_the_least_window_with_their_buttons_in_reach() {
     let buttons = ["OK", "Cancel", "Apply"];
-    // Each tab of Manage's table.
+    // Manage's dialog: the patterns.
     let mut h = crowded();
     let model = h.state().session.model.clone();
     h.state_mut().fill_patterns_dialog = Some(crate::fillpatterns::FillPatternsDialog::new(&model));
     h.run();
-    let types = [&["Fill Patterns", "Region Types", "Patterns", "New Type"][..], &buttons].concat();
-    dialog_fits(&h, "fill-patterns", &types, "Region Types");
-    press(&mut h, "Patterns");
+    let patterns = [&["Fill Patterns", "New Pattern", "Import...", "Export..."][..], &buttons].concat();
+    dialog_fits(&h, "fill-patterns", &patterns, "Patterns");
     long_note(&mut h);
-    let patterns = [&["Fill Patterns", "Patterns", "New Pattern", "Import...", "Export..."][..], &buttons].concat();
     dialog_fits(&h, "fill-patterns", &patterns, "Patterns with a long note");
     // A pattern's families open under the list, twenty of them: the list and they share what the window has.
     press(&mut h, "Hatch 00: Edit Lines");
     for _ in 0..20 {
-        press(&mut h, "Add Family");
+        press(&mut h, "Add Line");
     }
-    dialog_fits(&h, "fill-patterns", &[&["Add Family", "Done", "New Pattern"][..], &buttons].concat(), "Patterns with its families open");
+    dialog_fits(&h, "fill-patterns", &[&["Add Line", "Done", "New Pattern"][..], &buttons].concat(), "Patterns with its families open");
     press(&mut h, "Done");
-    // The note is told on this tab alone, and holds to its height.
-    press(&mut h, "Region Types");
-    assert!(h.query_by_label_contains("left out:").is_none(), "the import note belongs to the Patterns tab");
-    dialog_fits(&h, "fill-patterns", &types, "Region Types after an import");
     // Edit Type: the region's own type and, on its Patterns tab, the same list.
     let mut h = crowded();
     let model = h.state().session.model.clone();

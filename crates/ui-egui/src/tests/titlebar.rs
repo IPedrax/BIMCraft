@@ -93,17 +93,19 @@ fn minimize_maximize_and_close_sit_in_the_windows_corner_and_ask_the_system() {
 fn the_app_bars_empty_space_moves_the_window_and_a_double_click_maximizes_it() {
     let mut h = own(BOX);
     let close = caption(&h, "Close");
-    // Between the project's name, in the middle, and the caption buttons.
-    let empty = pos2(close.left() - 120.0, close.center().y);
+    // Between the project's name, in the middle, and the Palettes button by the caption buttons.
+    let palettes = h.get_by_label("Palettes").rect();
+    let empty = pos2(palettes.left() - 40.0, close.center().y);
     let moved = gesture(&mut h, &[empty, empty + vec2(12.0, 4.0), empty + vec2(30.0, 8.0)]);
     assert_eq!(moved.iter().filter(|c| matches!(c, ViewportCommand::StartDrag)).count(), 1, "{moved:?}");
     let mut twice = gesture(&mut h, &[empty]);
     twice.extend(gesture(&mut h, &[empty]));
     assert!(twice.contains(&ViewportCommand::Maximized(true)), "{twice:?}");
-    // The bar's buttons keep their presses: dragging from Undo doesn't move the window.
-    let undo = h.get_by_label("Undo").rect().center();
-    let from_undo = gesture(&mut h, &[undo, undo + vec2(12.0, 4.0), undo + vec2(30.0, 8.0)]);
-    assert!(!from_undo.iter().any(|c| matches!(c, ViewportCommand::StartDrag)), "{from_undo:?}");
+    // The bar's buttons keep their presses: dragging from Undo, or from Palettes, doesn't move the window.
+    for button in [h.get_by_label("Undo").rect().center(), palettes.center()] {
+        let from = gesture(&mut h, &[button, button + vec2(12.0, 4.0), button + vec2(30.0, 8.0)]);
+        assert!(!from.iter().any(|c| matches!(c, ViewportCommand::StartDrag)), "{button:?}: {from:?}");
+    }
 }
 
 #[test]
@@ -212,7 +214,8 @@ fn settings_can_ask_for_the_systems_title_bar_and_keep_it() {
     h.state_mut().use_settings(file.clone());
     assert!(!crate::settings::system_title_bar_in(&file), "nothing kept yet: the window's own bar");
     press(&mut h, "Settings");
-    h.get_by_role_and_label(Role::CheckBox, "Use the system's title bar").click();
+    // Below the page's fold, so it is pressed as a screen reader does.
+    h.get_by_role_and_label(Role::CheckBox, "Use the system's title bar").click_accesskit();
     let now = asked(&mut h);
     assert!(now.contains(&ViewportCommand::Decorations(true)), "the system's bar comes back at once: {now:?}");
     press(&mut h, "Close");
@@ -220,7 +223,7 @@ fn settings_can_ask_for_the_systems_title_bar_and_keep_it() {
     assert!(crate::settings::system_title_bar_in(&file), "kept for the next start");
     // Off again: the window's own.
     press(&mut h, "Settings");
-    h.get_by_role_and_label(Role::CheckBox, "Use the system's title bar").click();
+    h.get_by_role_and_label(Role::CheckBox, "Use the system's title bar").click_accesskit();
     assert!(asked(&mut h).contains(&ViewportCommand::Decorations(false)));
     assert!(!crate::settings::system_title_bar_in(&file));
     // A file that says something else keeps the window's own.

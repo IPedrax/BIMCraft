@@ -1,0 +1,945 @@
+{
+ "unit": "mm",
+ "mm_per_pt": 30.0,
+ "symbols": {
+ "Switch, general symbol": {
+  "layer": "switch",
+  "name_nl": "Schakelaar, algemeen symbool",
+  "name_fr": "Interrupteur, symbole général",
+  "symbols": [
+   {"arc": {"centre": [0.0, -0.2], "radius": 150.0, "from": 270.0, "to": 630.0}},
+   {"line": [[75.0, 129.7], [300.0, 519.4]]}
+  ]
+ },
+ "Switch, single-pole": {
+  "layer": "switch",
+  "name_nl": "Eenpolige schakelaar",
+  "name_fr": "Interrupteur unipolaire",
+  "symbols": [
+   {"arc": {"centre": [-0.1, -0.2], "radius": 150.0, "from": 270.0, "to": 630.0}},
+   {"line": [[74.9, 129.7], [299.9, 519.5], [429.0, 443.2]]}
+  ]
+ },
+ "Switch, two-pole": {
+  "layer": "switch",
+  "name_nl": "Tweepolige schakelaar",
+  "name_fr": "Interrupteur bipolaire",
+  "symbols": [
+   {"arc": {"centre": [-0.1, -0.2], "radius": 150.0, "from": 270.0, "to": 630.0}},
+   {"line": [[74.9, 129.7], [299.9, 519.5], [429.0, 443.2]]},
+   {"line": [[268.1, 464.4], [398.0, 389.4]]}
+  ]
+ },
+ "Switch, single-pole changeover": {
+  "layer": "switch",
+  "name_nl": "Eenpolige omschakelaar",
+  "name_fr": "Commutateur unipolaire",
+  "symbols": [
+   {"arc": {"centre": [-0.1, -0.2], "radius": 150.0, "from": 270.0, "to": 630.0}},
+   {"line": [[74.9, 129.7], [299.9, 519.5], [429.0, 443.2]]},
+   {"line": [[-75.1, 129.7], [-300.1, 519.5], [-429.3, 443.2]]}
+  ]
+ },
+ "Intermediate switch": {
+  "layer": "switch",
+  "name_nl": "Kruisschakelaar",
+  "name_fr": "Commutateur intermédiaire pour va-et-vient",
+  "symbols": [
+   {"arc": {"centre": [-0.1, -0.2], "radius": 150.0, "from": 270.0, "to": 630.0}},
+   {"line": [[74.9, 129.7], [299.9, 519.5], [429.0, 443.2]]},
+   {"line": [[-75.1, 129.7], [-300.1, 519.5], [-429.3, 443.2]]},
+   {"line": [[74.9, -130.1], [299.9, -519.8], [429.0, -443.5]]},
+   {"line": [[-75.1, -130.1], [-300.1, -519.8], [-429.3, -443.5]]}
+  ]
+ },
+ "Two-way switch, single-pole": {
+  "layer": "switch",
+  "name_nl": "Eenpolige wisselschakelaar",
+  "name_fr": "Interrupteur unipolaire va-et-vient",
+  "symbols": [
+   {"arc": {"centre": [-0.0, -0.2], "radius": 150.0, "from": 270.0, "to": 630.0}},
+   {"line": [[75.0, 129.7], [300.0, 519.5], [429.2, 443.2]]},
+   {"line": [[-75.0, -130.1], [-300.0, -519.8], [-429.2, -443.5]]}
+  ]
+ },
+ "Two-way switch, two-pole": {
+  "layer": "switch",
+  "name_nl": "Tweepolige wisselschakelaar",
+  "name_fr": "Interrupteur bipolaire va-et-vient",
+  "symbols": [
+   {"arc": {"centre": [-0.0, -0.2], "radius": 150.0, "from": 270.0, "to": 630.0}},
+   {"line": [[75.0, 129.7], [300.0, 519.5], [429.2, 443.2]]},
+   {"line": [[-75.0, -130.1], [-300.0, -519.8], [-429.2, -443.5]]},
+   {"line": [[268.2, 464.4], [398.1, 389.4]]},
+   {"line": [[-268.2, -464.7], [-398.1, -389.7]]}
+  ]
+ },
+ "Switch with locator lamp": {
+  "layer": "switch",
+  "name_nl": "Schakelaar met verklikkerlamp",
+  "name_fr": "Interrupteur à lampe témoin",
+  "symbols": [
+   {"arc": {"centre": [-0.1, -0.2], "radius": 150.0, "from": 270.0, "to": 630.0}},
+   {"line": [[74.9, 129.7], [299.9, 519.5], [429.0, 443.2]]},
+   {"line": [[-106.2, 105.9], [105.9, -106.2]]},
+   {"line": [[-106.2, -106.2], [105.9, 105.9]]}
+  ]
+ },
+ "Switch with signal lamp": {
+  "layer": "switch",
+  "name_nl": "Eenpolige schakelaar met signalisatielamp",
+  "name_fr": "Interrupteur unipolaire à lampe de signalisation",
+  "symbols": [
+   {"arc": {"centre": [-0.1, -0.2], "radius": 150.0, "from": 270.0, "to": 630.0}},
+   {"line": [[74.9, 129.7], [299.9, 519.5], [429.0, 443.2]]},
+   {"arc": {"centre": [-375.1, -0.2], "radius": 150.0, "from": 270.0, "to": 630.0}},
+   {"line": [[-481.2, 105.9], [-269.1, -106.2]]},
+   {"line": [[-481.2, -106.2], [-269.1, 105.9]]},
+   {"line": [[-225.1, -0.0], [-150.1, -0.0]]}
+  ]
+ },
+ "Switch, single-pole, pull cord": {
+  "layer": "switch",
+  "name_nl": "Eenpolige trekschakelaar",
+  "name_fr": "Interrupteur unipolaire à tirette",
+  "symbols": [
+   {"arc": {"centre": [-0.1, -0.2], "radius": 150.0, "from": 270.0, "to": 630.0}},
+   {"line": [[74.9, 129.7], [299.9, 519.5], [429.0, 443.2]]},
+   {"line": [[299.9, 519.5], [299.9, 243.8]]},
+   {"line": [[299.9, 139.8], [326.7, 243.8], [273.0, 243.8], [299.9, 139.8]]}
+  ]
+ },
+ "Push button": {
+  "layer": "switch",
+  "name_nl": "Drukknop",
+  "name_fr": "Bouton-poussoir",
+  "symbols": [
+   {"arc": {"centre": [-0.0, 0.0], "radius": 222.3, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [-0.0, 0.0], "radius": 58.5, "from": 269.99, "to": 629.99}}
+  ]
+ },
+ "Push button with locator lamp": {
+  "layer": "switch",
+  "name_nl": "Drukknop met verklikkerlamp",
+  "name_fr": "Bouton-poussoir à lampe témoin",
+  "symbols": [
+   {"arc": {"centre": [-0.0, 0.0], "radius": 222.3, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [-0.0, 0.0], "radius": 78.0, "from": 269.99, "to": 629.99}},
+   {"line": [[-55.2, 55.2], [55.2, -55.2]]},
+   {"line": [[-55.2, -55.2], [55.2, 55.2]]}
+  ]
+ },
+ "Push button, protected (break glass)": {
+  "layer": "switch",
+  "name_nl": "Drukknop met afgeschermde toegang (te breken ruit)",
+  "name_fr": "Bouton-poussoir à accès protégé (glace à briser)",
+  "symbols": [
+   {"arc": {"centre": [-0.0, 0.0], "radius": 195.0, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [-0.0, 0.0], "radius": 62.4, "from": 269.99, "to": 629.99}},
+   {"line": [[136.5, 323.7], [136.5, 226.2], [245.7, 226.2], [245.7, -226.2], [136.5, -226.2], [136.5, -323.7]]}
+  ]
+ },
+ "Time switch": {
+  "layer": "switch",
+  "name_nl": "Schakelklok, tijdschakelaar",
+  "name_fr": "Interrupteur horaire",
+  "symbols": [
+   {"line": [[-460.2, 117.0], [460.2, 117.0], [460.2, -117.0], [-460.2, -117.0], [-460.2, 117.0]]},
+   {"arc": {"centre": [-234.0, 0.0], "radius": 78.0, "from": 269.99, "to": 629.99}},
+   {"line": [[-234.0, -0.0], [-234.0, 58.5]]},
+   {"line": [[-234.0, -0.0], [-187.2, -0.0]]},
+   {"line": [[-46.8, -31.2], [50.7, -31.2], [156.0, 31.2]]},
+   {"line": [[156.0, -35.1], [304.2, -35.1]]}
+  ]
+ },
+ "Impulse switch": {
+  "layer": "switch",
+  "name_nl": "Impulsschakelaar",
+  "name_fr": "Télérupteur",
+  "symbols": [
+   {"line": [[-460.2, 117.0], [460.2, 117.0], [460.2, -117.0], [-460.2, -117.0], [-460.2, 117.0]]},
+   {"line": [[-280.8, -11.7], [-175.5, -11.7], [-175.5, 46.8]]},
+   {"line": [[144.3, 46.8], [144.3, -11.7], [253.5, -11.7]]}
+  ]
+ },
+ "Thermostat": {
+  "layer": "switch",
+  "name_nl": "Thermostaat",
+  "name_fr": "Thermostat",
+  "symbols": [
+   {"line": [[-475.8, 117.0], [475.8, 117.0], [475.8, -117.0], [-475.8, -117.0], [-475.8, 117.0]]},
+   {"arc": {"centre": [-0.0, 0.0], "radius": 85.8, "from": 269.99, "to": 629.99}},
+   {"line": [[-101.4, -0.0], [101.4, -0.0]]}
+  ]
+ },
+ "Motion sensor": {
+  "layer": "switch",
+  "name_nl": "Bewegingssensor",
+  "name_fr": "Détecteur de mouvement",
+  "symbols": [
+   {"line": [[-245.7, 347.1], [245.7, 347.1], [245.7, -347.1], [-245.7, -347.1], [-245.7, 347.1]]},
+   {"line": [[-245.7, -140.4], [245.7, -140.4]]},
+   {"arc": {"centre": [-70.2, 113.1], "radius": 58.5, "from": 306.87, "to": 413.13}},
+   {"arc": {"centre": [-23.4, 113.1], "radius": 58.5, "from": 306.87, "to": 413.13}}
+  ]
+ },
+ "Switch installed in a switchboard": {
+  "layer": "switch",
+  "name_nl": "Schakelaar geïnstalleerd in een schakel- en verdeelbord",
+  "name_fr": "Interrupteur installé dans un tableau de répartition et de manoeuvre",
+  "symbols": [
+   {"line": [[-292.5, 282.8], [292.5, 282.8], [292.5, -282.8], [-292.5, -282.8], [-292.5, 282.8]]},
+   {"line": [[-292.5, -333.5], [292.5, -333.5]]},
+   {"arc": {"centre": [-27.3, -134.5], "radius": 42.9, "from": 269.99, "to": 629.99}},
+   {"line": [[-5.9, -97.4], [58.5, 14.1], [95.7, -7.4]]}
+  ]
+ },
+ "Socket, general symbol": {
+  "layer": "socket",
+  "name_nl": "Contactdoos, algemeen symbool",
+  "name_fr": "Socle de prise de courant, symbole général",
+  "symbols": [
+   {"line": [[0.0, 241.8], [0.0, -0.0]]},
+   {"arc": {"centre": [-0.0, -120.9], "radius": 120.9, "from": 0.0, "to": 180.0}}
+  ]
+ },
+ "Socket, multiple (shown for three)": {
+  "layer": "socket",
+  "name_nl": "Meervoudige contactdoos (voor drie contactdozen)",
+  "name_fr": "Socle pour plusieurs prises de courant (figuré pour trois)",
+  "symbols": [
+   {"line": [[0.0, 198.9], [0.0, -273.0]]},
+   {"arc": {"centre": [-0.0, -105.3], "radius": 105.3, "from": 0.0, "to": 180.0}},
+   {"arc": {"centre": [-0.0, -241.8], "radius": 105.3, "from": 0.0, "to": 180.0}},
+   {"arc": {"centre": [-0.0, -378.3], "radius": 105.3, "from": 0.0, "to": 180.0}}
+  ]
+ },
+ "Socket, protective contact": {
+  "layer": "socket",
+  "name_nl": "Contactdoos met contact voor beschermingsgeleider",
+  "name_fr": "Socle de prise de courant avec contact pour conducteur de protection",
+  "symbols": [
+   {"line": [[0.0, 253.5], [0.0, -0.0]]},
+   {"line": [[-124.8, -0.0], [124.8, -0.0]]},
+   {"arc": {"centre": [-0.0, -109.2], "radius": 109.2, "from": 0.0, "to": 180.0}}
+  ]
+ },
+ "Socket, child protection": {
+  "layer": "socket",
+  "name_nl": "Contactdoos met kinderbescherming",
+  "name_fr": "Socle de prise de courant avec protection « enfant »",
+  "symbols": [
+   {"line": [[0.0, 226.2], [0.0, -0.0]]},
+   {"arc": {"centre": [-0.0, -117.0], "radius": 117.0, "from": 0.0, "to": 180.0}},
+   {"line": [[-175.5, -117.0], [-117.0, -117.0]]},
+   {"line": [[117.0, -117.0], [175.5, -117.0]]}
+  ]
+ },
+ "Socket, protective contact and child protection": {
+  "layer": "socket",
+  "name_nl": "Contactdoos met contact voor beschermingsgeleider en met kinderbescherming",
+  "name_fr": "Socle de prise de courant avec contact pour conducteur de protection et avec protection « enfant »",
+  "symbols": [
+   {"line": [[0.0, 241.8], [0.0, -0.0]]},
+   {"line": [[-128.7, -0.0], [124.8, -0.0]]},
+   {"arc": {"centre": [-0.0, -124.8], "radius": 124.8, "from": 0.0, "to": 180.0}},
+   {"line": [[-171.6, -124.8], [-124.8, -124.8]]},
+   {"line": [[124.8, -124.8], [171.6, -124.8]]}
+  ]
+ },
+ "Socket with two-pole switch": {
+  "layer": "socket",
+  "name_nl": "Contactdoos met tweepolige schakelaar",
+  "name_fr": "Socle de prise de courant avec interrupteur bipolaire",
+  "symbols": [
+   {"line": [[0.0, 261.3], [0.0, -0.0]]},
+   {"arc": {"centre": [-0.0, -124.8], "radius": 124.8, "from": 0.0, "to": 180.0}},
+   {"line": [[0.0, -0.0], [202.8, 261.3], [276.9, 230.1]]},
+   {"line": [[163.4, 210.6], [237.5, 179.4]]}
+  ]
+ },
+ "Socket with isolating transformer": {
+  "layer": "socket",
+  "name_nl": "Contactdoos met beschermingstransformator",
+  "name_fr": "Socle de prise de courant avec transformateur de séparation des circuits",
+  "symbols": [
+   {"line": [[0.0, 163.8], [0.0, -0.0]]},
+   {"arc": {"centre": [-0.0, -105.3], "radius": 105.3, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [-0.0, -253.5], "radius": 105.3, "from": 269.99, "to": 629.99}}
+  ]
+ },
+ "Data socket": {
+  "layer": "socket",
+  "name_nl": "Datacontactdoos",
+  "name_fr": "Socle de prise data",
+  "symbols": [
+   {"line": [[-280.8, -0.0], [0.0, -0.0]]},
+   {"line": [[187.2, 175.5], [0.0, 175.5], [0.0, -163.8], [187.2, -163.8]]}
+  ]
+ },
+ "Socket with single-pole switch, installed in a switchboard": {
+  "layer": "socket",
+  "name_nl": "Contactdoos met enkelpolige schakelaar geïnstalleerd in een schakel- en verdeelbord",
+  "name_fr": "Socle de prise de courant avec interrupteur unipolaire installé dans un tableau de répartition et de manoeuvre",
+  "symbols": [
+   {"line": [[-300.3, 378.3], [273.0, 378.3], [273.0, -245.7], [-300.3, -245.7], [-300.3, 378.3]]},
+   {"line": [[-300.3, -292.5], [273.0, -292.5]]},
+   {"line": [[0.0, 339.3], [0.0, -0.0]]},
+   {"line": [[-138.5, -0.0], [126.7, -0.0]]},
+   {"arc": {"centre": [-0.0, -128.7], "radius": 128.7, "from": 0.0, "to": 180.0}},
+   {"line": [[-185.3, -128.7], [-128.7, -128.7]]},
+   {"line": [[128.7, -128.7], [187.2, -128.7]]},
+   {"line": [[0.0, -0.0], [117.0, 269.1], [228.1, 210.6]]}
+  ]
+ },
+ "Light point": {
+  "layer": "light",
+  "name_nl": "Lichtpunt",
+  "name_fr": "Point lumineux",
+  "symbols": [
+   {"line": [[-409.5, -0.0], [409.5, -0.0]]},
+   {"line": [[261.3, 148.2], [557.7, -148.2]]},
+   {"line": [[261.3, -148.2], [557.7, 148.2]]}
+  ]
+ },
+ "Wall luminaire connection point": {
+  "layer": "light",
+  "name_nl": "Aansluitpunt voor wandverlichtingstoestel",
+  "name_fr": "Point d’attente d’appareil d’éclairage en applique murale",
+  "symbols": [
+   {"line": [[-296.4, 140.4], [-15.6, -140.4]]},
+   {"line": [[-296.4, -140.4], [-15.6, 140.4]]},
+   {"line": [[156.0, 273.0], [156.0, -273.0]]}
+  ]
+ },
+ "Fluorescent luminaire, general symbol": {
+  "layer": "light",
+  "name_nl": "Fluorescentieverlichtingstoestel, algemeen symbool",
+  "name_fr": "Appareil d’éclairage à fluorescence, symbole général",
+  "symbols": [
+   {"line": [[-462.2, -0.0], [462.2, -0.0]]},
+   {"line": [[-462.2, 163.8], [-462.2, -148.2]]},
+   {"line": [[462.2, 163.8], [462.2, -148.2]]}
+  ]
+ },
+ "Floodlight, general symbol": {
+  "layer": "light",
+  "name_nl": "Projector, algemeen symbool",
+  "name_fr": "Projecteur, symbole général",
+  "symbols": [
+   {"arc": {"centre": [-0.0, 0.0], "radius": 156.0, "from": 269.99, "to": 629.99}},
+   {"line": [[-110.3, 110.3], [110.3, -110.3]]},
+   {"line": [[-110.3, -110.3], [110.3, 110.3]]},
+   {"arc": {"centre": [-0.0, 0.0], "radius": 226.2, "from": 100.0, "to": 260.0}}
+  ]
+ },
+ "Luminaire with built-in single-pole switch": {
+  "layer": "light",
+  "name_nl": "Verlichtingstoestel met ingebouwde eenpolige schakelaar",
+  "name_fr": "Luminaire avec interrupteur unipolaire incorporé",
+  "symbols": [
+   {"line": [[-214.5, 241.8], [214.5, -241.8]]},
+   {"line": [[-214.5, -241.8], [214.5, 241.8], [319.8, 171.6]]}
+  ]
+ },
+ "Ballast for discharge lamp": {
+  "layer": "appliance",
+  "name_nl": "Voorschakeltoestel voor ontladingslamp",
+  "name_fr": "Appareil auxiliaire pour lampe à décharge",
+  "symbols": [
+   {"line": [[-481.7, 156.0], [481.7, 156.0], [481.7, -156.0], [-481.7, -156.0], [-481.7, 156.0]]},
+   {"line": [[-331.5, 74.1], [331.5, 74.1], [331.5, -74.1], [-331.5, -74.1], [-331.5, 74.1]]}
+  ]
+ },
+ "Bell": {
+  "layer": "appliance",
+  "name_nl": "Bel",
+  "name_fr": "Sonnerie",
+  "symbols": [
+   {"line": [[-585.0, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 226.2], [29.1, 224.1], [57.0, 218.1], [83.5, 208.4], [108.3, 195.3], [131.1, 179.1], [151.7, 159.9], [169.8, 138.2], [185.2, 114.2], [197.6, 88.0], [206.8, 60.1], [212.5, 30.7], [214.5, -0.0], [212.5, -30.7], [206.8, -60.1], [197.6, -88.0], [185.2, -114.2], [169.8, -138.2], [151.7, -159.9], [131.1, -179.1], [108.3, -195.3], [83.5, -208.4], [57.0, -218.1], [29.1, -224.1], [0.0, -226.2], [0.0, 226.2]]}
+  ]
+ },
+ "Buzzer": {
+  "layer": "appliance",
+  "name_nl": "Zoemer",
+  "name_fr": "Vibreur, trembleur",
+  "symbols": [
+   {"line": [[-585.0, -0.0], [0.0, -0.0]]},
+   {"line": [[195.0, 206.7], [168.5, 204.8], [143.2, 199.3], [119.1, 190.5], [96.6, 178.5], [75.8, 163.6], [57.1, 146.2], [40.6, 126.3], [26.6, 104.3], [15.3, 80.5], [7.0, 55.0], [1.8, 28.0], [0.0, -0.0], [1.8, -28.0], [7.0, -55.0], [15.3, -80.5], [26.6, -104.3], [40.6, -126.3], [57.1, -146.2], [75.8, -163.6], [96.6, -178.5], [119.1, -190.5], [143.2, -199.3], [168.5, -204.8], [195.0, -206.7], [195.0, 206.7]]}
+  ]
+ },
+ "Horn": {
+  "layer": "appliance",
+  "name_nl": "Hoorn",
+  "name_fr": "Trompe, corne",
+  "symbols": [
+   {"line": [[-585.0, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 171.6], [296.4, 171.6], [296.4, -171.6], [0.0, -171.6], [0.0, 171.6]]},
+   {"line": [[308.1, -23.4], [588.9, 101.4], [588.9, -54.6], [308.1, -23.4]]}
+  ]
+ },
+ "Siren": {
+  "layer": "appliance",
+  "name_nl": "Sirene",
+  "name_fr": "Sirène",
+  "symbols": [
+   {"line": [[-585.0, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 175.5], [300.3, -3.9], [0.0, -179.4], [0.0, 175.5]]}
+  ]
+ },
+ "Clock": {
+  "layer": "appliance",
+  "name_nl": "Horloge",
+  "name_fr": "Horloge",
+  "symbols": [
+   {"arc": {"centre": [-0.0, 0.0], "radius": 265.2, "from": 269.99, "to": 629.99}},
+   {"line": [[0.0, -0.0], [0.0, 218.4]]},
+   {"line": [[0.0, -0.0], [-210.6, -0.0]]},
+   {"dot": {"centre": [0.0, 0.0], "radius": 31.2}}
+  ]
+ },
+ "Master clock": {
+  "layer": "appliance",
+  "name_nl": "Moederklok",
+  "name_fr": "Horloge mère",
+  "symbols": [
+   {"arc": {"centre": [-0.0, 0.0], "radius": 284.7, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [-0.0, 0.0], "radius": 249.6, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [-0.0, 0.0], "radius": 183.3, "from": 269.99, "to": 629.99}},
+   {"line": [[0.0, -0.0], [0.0, 163.8]]},
+   {"line": [[0.0, -0.0], [-132.6, -0.0]]},
+   {"dot": {"centre": [0.0, 0.0], "radius": 31.2}}
+  ]
+ },
+ "Electric door lock": {
+  "layer": "appliance",
+  "name_nl": "Elektrisch (deur)slot",
+  "name_fr": "Gâche électrique (ouverture et fermeture de porte)",
+  "symbols": [
+   {"line": [[-452.4, 175.5], [183.3, 175.5], [183.3, -292.5], [-452.4, -292.5], [-452.4, 175.5]]},
+   {"line": [[183.3, 175.5], [456.3, -292.5], [183.3, -292.5], [183.3, 175.5]]},
+   {"line": [[-117.0, 292.5], [-117.0, 175.5]]},
+   {"line": [[-452.4, -50.7], [-323.7, -50.7]]},
+   {"arc": {"centre": [-269.1, -50.7], "radius": 52.6, "from": 0.0, "to": 180.0}},
+   {"arc": {"centre": [-163.8, -50.7], "radius": 52.6, "from": 0.0, "to": 180.0}},
+   {"arc": {"centre": [-58.5, -50.7], "radius": 52.6, "from": 0.0, "to": 180.0}},
+   {"arc": {"centre": [46.8, -50.7], "radius": 52.6, "from": 0.0, "to": 180.0}},
+   {"line": [[97.5, -50.7], [183.3, -50.7]]}
+  ]
+ },
+ "Fan": {
+  "layer": "appliance",
+  "name_nl": "Ventilator",
+  "name_fr": "Ventilateur",
+  "symbols": [
+   {"line": [[-585.0, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 226.2], [452.4, 226.2], [452.4, -226.2], [0.0, -226.2], [0.0, 226.2]]},
+   {"arc": {"centre": [136.5, 0.0], "radius": 85.8, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [315.9, 0.0], "radius": 85.8, "from": 269.99, "to": 629.99}}
+  ]
+ },
+ "Heater": {
+  "layer": "appliance",
+  "name_nl": "Verwarmingstoestel",
+  "name_fr": "Appareil de chauffage",
+  "symbols": [
+   {"line": [[-585.0, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 202.8], [444.6, 202.8], [444.6, -210.6], [0.0, -210.6], [0.0, 202.8]]},
+   {"line": [[55.6, 202.8], [55.6, -210.6]]},
+   {"line": [[111.1, 202.8], [111.1, -210.6]]},
+   {"line": [[166.7, 202.8], [166.7, -210.6]]},
+   {"line": [[222.3, 202.8], [222.3, -210.6]]},
+   {"line": [[277.9, 202.8], [277.9, -210.6]]},
+   {"line": [[333.5, 202.8], [333.5, -210.6]]},
+   {"line": [[389.0, 202.8], [389.0, -210.6]]}
+  ]
+ },
+ "Heater, storage": {
+  "layer": "appliance",
+  "name_nl": "Verwarmingstoestel met accumulatie",
+  "name_fr": "Appareil de chauffage à accumulation",
+  "symbols": [
+   {"line": [[-585.0, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 210.6], [585.0, 210.6], [585.0, -198.9], [0.0, -198.9], [0.0, 210.6]]},
+   {"line": [[89.7, 167.7], [499.2, 167.7], [499.2, -152.1], [89.7, -152.1], [89.7, 167.7]]},
+   {"line": [[144.3, 167.7], [144.3, -152.1]]},
+   {"line": [[195.0, 167.7], [195.0, -152.1]]},
+   {"line": [[245.7, 167.7], [245.7, -152.1]]},
+   {"line": [[296.4, 167.7], [296.4, -152.1]]},
+   {"line": [[347.1, 167.7], [347.1, -152.1]]},
+   {"line": [[397.8, 167.7], [397.8, -152.1]]},
+   {"line": [[448.5, 167.7], [448.5, -152.1]]}
+  ]
+ },
+ "Heater, storage, with built-in fan": {
+  "layer": "appliance",
+  "name_nl": "Verwarmingstoestel met accumulatie en ingebouwde ventilator",
+  "name_fr": "Appareil de chauffage à accumulation avec ventilateur incorporé",
+  "symbols": [
+   {"line": [[-585.0, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 202.8], [612.3, 202.8], [612.3, -198.9], [0.0, -198.9], [0.0, 202.8]]},
+   {"line": [[50.7, 85.8], [292.5, 85.8], [292.5, -101.4], [50.7, -101.4], [50.7, 85.8]]},
+   {"line": [[101.4, 85.8], [101.4, -101.4]]},
+   {"line": [[148.2, 85.8], [148.2, -101.4]]},
+   {"line": [[195.0, 85.8], [195.0, -101.4]]},
+   {"line": [[241.8, 85.8], [241.8, -101.4]]},
+   {"arc": {"centre": [409.5, 7.8], "radius": 39.0, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [479.7, 7.8], "radius": 39.0, "from": 269.99, "to": 629.99}}
+  ]
+ },
+ "Water heater": {
+  "layer": "appliance",
+  "name_nl": "Boiler",
+  "name_fr": "Chauffe-eau électrique",
+  "symbols": [
+   {"arc": {"centre": [-0.0, 0.0], "radius": 288.6, "from": 269.99, "to": 629.99}},
+   {"line": [[-226.2, 179.2], [-226.2, -179.2]]},
+   {"line": [[-150.8, 246.1], [-150.8, -246.1]]},
+   {"line": [[-75.4, 278.6], [-75.4, -278.6]]},
+   {"line": [[-0.0, 288.6], [-0.0, -288.6]]},
+   {"line": [[75.3, 278.6], [75.3, -278.6]]},
+   {"line": [[150.7, 246.1], [150.7, -246.1]]},
+   {"line": [[226.1, 179.3], [226.1, -179.3]]}
+  ]
+ },
+ "Water heater, storage": {
+  "layer": "appliance",
+  "name_nl": "Boiler met accumulatie",
+  "name_fr": "Chauffe-eau à accumulation",
+  "symbols": [
+   {"arc": {"centre": [-0.0, 0.0], "radius": 300.3, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [-0.0, 0.0], "radius": 210.6, "from": 269.99, "to": 629.99}},
+   {"line": [[-140.4, 157.0], [-140.4, -157.0]]},
+   {"line": [[-70.2, 198.6], [-70.2, -198.6]]},
+   {"line": [[0.0, 210.6], [0.0, -210.6]]},
+   {"line": [[70.2, 198.6], [70.2, -198.6]]},
+   {"line": [[140.4, 157.0], [140.4, -157.0]]}
+  ]
+ },
+ "Fixed appliance, general symbol": {
+  "layer": "consumer",
+  "name_nl": "Vast elektrisch huishoudtoestel, algemeen symbool",
+  "name_fr": "Appareil électrodomestique fixe, symbole général",
+  "symbols": [
+   {"line": [[-526.5, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 214.5], [425.1, 214.5], [425.1, -214.5], [0.0, -214.5], [0.0, 214.5]]}
+  ]
+ },
+ "Cooker": {
+  "layer": "consumer",
+  "name_nl": "Elektrisch fornuis, elektrische kookplaat",
+  "name_fr": "Cuisinière électrique, taque de cuisson électrique",
+  "symbols": [
+   {"line": [[-526.5, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 214.5], [432.9, 214.5], [432.9, -214.5], [0.0, -214.5], [0.0, 214.5]]},
+   {"dot": {"centre": [101.4, 113.1], "radius": 54.6}},
+   {"dot": {"centre": [308.1, 113.1], "radius": 54.6}},
+   {"dot": {"centre": [308.1, -105.3], "radius": 54.6}}
+  ]
+ },
+ "Microwave oven": {
+  "layer": "consumer",
+  "name_nl": "Microgolven",
+  "name_fr": "Four à micro-ondes",
+  "symbols": [
+   {"line": [[-526.5, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 214.5], [444.6, 214.5], [444.6, -214.5], [0.0, -214.5], [0.0, 214.5]]},
+   {"line": [[113.1, 78.0], [126.7, 91.4], [140.4, 102.8], [154.1, 110.4], [167.7, 113.1], [181.4, 110.4], [195.0, 102.8], [208.6, 91.4], [222.3, 78.0], [235.9, 64.6], [249.6, 53.2], [263.3, 45.6], [276.9, 42.9], [290.6, 45.6], [304.2, 53.2], [317.8, 64.6], [331.5, 78.0]]},
+   {"line": [[113.1, -78.0], [126.7, -64.6], [140.4, -53.2], [154.1, -45.6], [167.7, -42.9], [181.4, -45.6], [195.0, -53.2], [208.6, -64.6], [222.3, -78.0], [235.9, -91.4], [249.6, -102.8], [263.3, -110.4], [276.9, -113.1], [290.6, -110.4], [304.2, -102.8], [317.8, -91.4], [331.5, -78.0]]}
+  ]
+ },
+ "Electric oven": {
+  "layer": "consumer",
+  "name_nl": "Elektrische oven",
+  "name_fr": "Four électrique",
+  "symbols": [
+   {"line": [[-526.5, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 198.9], [413.4, 198.9], [413.4, -198.9], [0.0, -198.9], [0.0, 198.9]]},
+   {"line": [[0.0, 132.6], [413.4, 132.6]]},
+   {"dot": {"centre": [206.7, -85.8], "radius": 54.6}}
+  ]
+ },
+ "Washing machine": {
+  "layer": "consumer",
+  "name_nl": "Wasmachine",
+  "name_fr": "Lave-linge",
+  "symbols": [
+   {"line": [[-526.5, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 210.6], [421.2, 210.6], [421.2, -210.6], [0.0, -210.6], [0.0, 210.6]]},
+   {"arc": {"centre": [210.6, 0.0], "radius": 179.4, "from": 269.99, "to": 629.99}},
+   {"dot": {"centre": [210.6, 0.0], "radius": 50.7}}
+  ]
+ },
+ "Tumble dryer": {
+  "layer": "consumer",
+  "name_nl": "Droogkast",
+  "name_fr": "Sèche-linge",
+  "symbols": [
+   {"line": [[-526.5, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 193.0], [401.7, 193.0], [401.7, -193.0], [0.0, -193.0], [0.0, 193.0]]},
+   {"arc": {"centre": [148.2, 117.0], "radius": 46.8, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [241.8, 117.0], "radius": 46.8, "from": 269.99, "to": 629.99}},
+   {"dot": {"centre": [202.8, -70.2], "radius": 46.8}}
+  ]
+ },
+ "Dishwasher": {
+  "layer": "consumer",
+  "name_nl": "Afwasmachine",
+  "name_fr": "Lave-vaisselle",
+  "symbols": [
+   {"line": [[-526.5, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 234.0], [421.2, 234.0], [421.2, -234.0], [0.0, -234.0], [0.0, 234.0]]},
+   {"arc": {"centre": [210.6, 0.0], "radius": 85.8, "from": 269.99, "to": 629.99}},
+   {"line": [[0.0, 234.0], [153.2, 63.8]]},
+   {"line": [[421.2, 234.0], [268.0, 63.8]]},
+   {"line": [[0.0, -234.0], [153.2, -63.8]]},
+   {"line": [[421.2, -234.0], [268.0, -63.8]]}
+  ]
+ },
+ "Refrigerator": {
+  "layer": "consumer",
+  "name_nl": "Koelkast",
+  "name_fr": "Frigo",
+  "symbols": [
+   {"line": [[-526.5, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 237.9], [448.5, 237.9], [448.5, -237.9], [0.0, -237.9], [0.0, 237.9]]},
+   {"line": [[222.3, -163.8], [222.3, 163.8]]},
+   {"line": [[222.3, 98.3], [279.0, 131.0]]},
+   {"line": [[222.3, 98.3], [165.6, 131.0]]},
+   {"line": [[222.3, -98.3], [165.6, -131.0]]},
+   {"line": [[222.3, -98.3], [279.0, -131.0]]},
+   {"line": [[364.2, -81.9], [80.4, 81.9]]},
+   {"line": [[137.2, 49.1], [137.2, 114.7]]},
+   {"line": [[137.2, 49.1], [80.4, 16.4]]},
+   {"line": [[307.4, -49.1], [307.4, -114.7]]},
+   {"line": [[307.4, -49.1], [364.2, -16.4]]},
+   {"line": [[364.2, 81.9], [80.4, -81.9]]},
+   {"line": [[137.2, -49.1], [80.4, -16.4]]},
+   {"line": [[137.2, -49.1], [137.2, -114.7]]},
+   {"line": [[307.4, 49.1], [364.2, 16.4]]},
+   {"line": [[307.4, 49.1], [307.4, 114.7]]}
+  ]
+ },
+ "Freezer": {
+  "layer": "consumer",
+  "name_nl": "Diepvriezer",
+  "name_fr": "Congélateur, surgélateur",
+  "symbols": [
+   {"line": [[-526.5, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 218.4], [585.0, 218.4], [585.0, -218.4], [0.0, -218.4], [0.0, 218.4]]},
+   {"line": [[93.6, -70.2], [93.6, 70.2]]},
+   {"line": [[93.6, 42.1], [117.9, 56.2]]},
+   {"line": [[93.6, 42.1], [69.3, 56.2]]},
+   {"line": [[93.6, -42.1], [69.3, -56.2]]},
+   {"line": [[93.6, -42.1], [117.9, -56.2]]},
+   {"line": [[154.4, -35.1], [32.8, 35.1]]},
+   {"line": [[57.1, 21.1], [57.1, 49.1]]},
+   {"line": [[57.1, 21.1], [32.8, 7.0]]},
+   {"line": [[130.1, -21.1], [130.1, -49.1]]},
+   {"line": [[130.1, -21.1], [154.4, -7.0]]},
+   {"line": [[154.4, 35.1], [32.8, -35.1]]},
+   {"line": [[57.1, -21.1], [32.8, -7.0]]},
+   {"line": [[57.1, -21.1], [57.1, -49.1]]},
+   {"line": [[130.1, 21.1], [154.4, 7.0]]},
+   {"line": [[130.1, 21.1], [130.1, 49.1]]},
+   {"line": [[292.5, -70.2], [292.5, 70.2]]},
+   {"line": [[292.5, 42.1], [316.8, 56.2]]},
+   {"line": [[292.5, 42.1], [268.2, 56.2]]},
+   {"line": [[292.5, -42.1], [268.2, -56.2]]},
+   {"line": [[292.5, -42.1], [316.8, -56.2]]},
+   {"line": [[353.3, -35.1], [231.7, 35.1]]},
+   {"line": [[256.0, 21.1], [256.0, 49.1]]},
+   {"line": [[256.0, 21.1], [231.7, 7.0]]},
+   {"line": [[329.0, -21.1], [329.0, -49.1]]},
+   {"line": [[329.0, -21.1], [353.3, -7.0]]},
+   {"line": [[353.3, 35.1], [231.7, -35.1]]},
+   {"line": [[256.0, -21.1], [231.7, -7.0]]},
+   {"line": [[256.0, -21.1], [256.0, -49.1]]},
+   {"line": [[329.0, 21.1], [353.3, 7.0]]},
+   {"line": [[329.0, 21.1], [329.0, 49.1]]},
+   {"line": [[491.4, -70.2], [491.4, 70.2]]},
+   {"line": [[491.4, 42.1], [515.7, 56.2]]},
+   {"line": [[491.4, 42.1], [467.1, 56.2]]},
+   {"line": [[491.4, -42.1], [467.1, -56.2]]},
+   {"line": [[491.4, -42.1], [515.7, -56.2]]},
+   {"line": [[552.2, -35.1], [430.6, 35.1]]},
+   {"line": [[454.9, 21.1], [454.9, 49.1]]},
+   {"line": [[454.9, 21.1], [430.6, 7.0]]},
+   {"line": [[527.9, -21.1], [527.9, -49.1]]},
+   {"line": [[527.9, -21.1], [552.2, -7.0]]},
+   {"line": [[552.2, 35.1], [430.6, -35.1]]},
+   {"line": [[454.9, -21.1], [430.6, -7.0]]},
+   {"line": [[454.9, -21.1], [454.9, -49.1]]},
+   {"line": [[527.9, 21.1], [552.2, 7.0]]},
+   {"line": [[527.9, 21.1], [527.9, 49.1]]}
+  ]
+ },
+ "Motor": {
+  "layer": "consumer",
+  "name_nl": "Motor",
+  "name_fr": "Moteur",
+  "symbols": [
+   {"line": [[-526.5, -0.0], [0.0, -0.0]]},
+   {"arc": {"centre": [257.4, 0.0], "radius": 257.4, "from": 269.99, "to": 629.99}},
+   {"text": {"at": [257.4, 0.0], "height": 156.0, "value": "M", "align": "center"}}
+  ]
+ },
+ "EV charger": {
+  "layer": "consumer",
+  "name_nl": "Laadinrichting voor elektrische wegvoertuigen",
+  "name_fr": "Borne de charge pour véhicules électriques routiers",
+  "symbols": [
+   {"line": [[-218.4, 421.2], [218.4, 421.2], [218.4, -339.3], [-218.4, -339.3], [-218.4, 421.2]]},
+   {"line": [[-152.1, 351.0], [152.1, 351.0], [152.1, 257.4], [-152.1, 257.4], [-152.1, 351.0]]},
+   {"line": [[-280.8, -331.5], [280.8, -331.5], [280.8, -421.2], [-280.8, -421.2], [-280.8, -331.5]]},
+   {"line": [[7.8, 156.0], [7.8, -261.3]]},
+   {"line": [[319.8, 409.5], [366.6, 409.5], [366.6, 323.7], [319.8, 323.7], [319.8, 409.5]]},
+   {"line": [[343.2, 323.7], [343.2, -261.3], [288.6, -261.3], [288.6, 179.4], [218.4, 179.4]]},
+   {"text": {"at": [-81.9, 62.4], "height": 93.6, "value": "V", "align": "center"}},
+   {"text": {"at": [81.9, 62.4], "height": 93.6, "value": "E", "align": "center"}},
+   {"text": {"at": [-81.9, -105.3], "height": 93.6, "value": "E", "align": "center"}},
+   {"text": {"at": [81.9, -105.3], "height": 93.6, "value": "V", "align": "center"}}
+  ]
+ },
+ "kWh meter": {
+  "layer": "consumer",
+  "name_nl": "kWh-teller",
+  "name_fr": "Compteur kWh",
+  "symbols": [
+   {"line": [[-526.5, -0.0], [0.0, -0.0]]},
+   {"line": [[0.0, 200.9], [397.8, 200.9], [397.8, -200.9], [0.0, -200.9], [0.0, 200.9]]},
+   {"line": [[0.0, 140.4], [397.8, 140.4]]},
+   {"text": {"at": [198.9, -31.2], "height": 117.0, "value": "kWh", "align": "center"}}
+  ]
+ },
+ "Transformer": {
+  "layer": "source",
+  "name_nl": "Transformator",
+  "name_fr": "Transformateur",
+  "symbols": [
+   {"line": [[-483.6, -0.0], [-347.1, -0.0]]},
+   {"arc": {"centre": [-132.6, 0.0], "radius": 214.5, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [132.6, 0.0], "radius": 214.5, "from": 269.99, "to": 629.99}},
+   {"line": [[347.1, -0.0], [483.6, -0.0]]}
+  ]
+ },
+ "PV panel": {
+  "layer": "source",
+  "name_nl": "Fotovoltaïsch paneel",
+  "name_fr": "Panneau solaire",
+  "symbols": [
+   {"line": [[-245.7, 245.7], [245.7, 245.7], [245.7, -245.7], [-245.7, -245.7], [-245.7, 245.7]]},
+   {"line": [[-245.7, -0.0], [245.7, -0.0]]},
+   {"line": [[85.8, 202.8], [28.5, 145.5]]},
+   {"line": [[-15.6, 101.4], [12.0, 162.1], [45.1, 129.0], [-15.6, 101.4]]},
+   {"line": [[23.4, 234.0], [-33.9, 176.7]]},
+   {"line": [[-78.0, 132.6], [-50.4, 193.3], [-17.3, 160.2], [-78.0, 132.6]]}
+  ]
+ },
+ "PV panel, element": {
+  "layer": "source",
+  "name_nl": "Fotovoltaïsch paneel (paneel)",
+  "name_fr": "Panneau solaire (panneau)",
+  "symbols": [
+   {"line": [[-210.6, 273.0], [210.6, 273.0], [210.6, -273.0], [-210.6, -273.0], [-210.6, 273.0]]},
+   {"line": [[-195.0, 273.0], [0.0, -31.2], [195.0, 273.0]]}
+  ]
+ },
+ "Rectifier / inverter AC-DC": {
+  "layer": "source",
+  "name_nl": "Gelijkrichter/Omvormer AC <-> DC",
+  "name_fr": "Redresseur/Onduleur AC <-> DC",
+  "symbols": [
+   {"line": [[-261.3, 234.0], [261.3, 234.0], [261.3, -234.0], [-261.3, -234.0], [-261.3, 234.0]]},
+   {"line": [[-261.3, -234.0], [261.3, 234.0]]},
+   {"line": [[-222.3, 128.7], [-210.4, 146.6], [-198.4, 161.8], [-186.5, 171.9], [-174.5, 175.5], [-162.6, 171.9], [-150.6, 161.8], [-138.7, 146.6], [-126.7, 128.7], [-114.8, 110.8], [-102.9, 95.6], [-90.9, 85.5], [-79.0, 81.9], [-67.0, 85.5], [-55.1, 95.6], [-43.1, 110.8], [-31.2, 128.7]]},
+   {"line": [[31.2, -93.6], [222.3, -93.6]]},
+   {"line": [[31.2, -140.4], [93.6, -140.4]]},
+   {"line": [[124.8, -140.4], [187.2, -140.4]]},
+   {"line": [[218.4, -140.4], [222.3, -140.4]]},
+   {"line": [[-136.5, -202.8], [97.5, -202.8]]},
+   {"line": [[-136.5, -202.8], [-81.9, -175.5]]},
+   {"line": [[-136.5, -202.8], [-81.9, -230.1]]},
+   {"line": [[97.5, -202.8], [42.9, -175.5]]},
+   {"line": [[97.5, -202.8], [42.9, -230.1]]}
+  ]
+ },
+ "Inverter DC-AC": {
+  "layer": "source",
+  "name_nl": "Omvormer DC -> AC",
+  "name_fr": "Onduleur DC -> AC",
+  "symbols": [
+   {"line": [[-261.3, 234.0], [261.3, 234.0], [261.3, -234.0], [-261.3, -234.0], [-261.3, 234.0]]},
+   {"line": [[-261.3, -234.0], [261.3, 234.0]]},
+   {"line": [[-222.3, 152.1], [-31.2, 152.1]]},
+   {"line": [[-222.3, 105.3], [-159.9, 105.3]]},
+   {"line": [[-128.7, 105.3], [-66.3, 105.3]]},
+   {"line": [[-35.1, 105.3], [-31.2, 105.3]]},
+   {"line": [[31.2, -117.0], [43.1, -99.1], [55.1, -83.9], [67.0, -73.8], [79.0, -70.2], [90.9, -73.8], [102.9, -83.9], [114.8, -99.1], [126.7, -117.0], [138.7, -134.9], [150.6, -150.1], [162.6, -160.2], [174.5, -163.8], [186.5, -160.2], [198.4, -150.1], [210.4, -134.9], [222.3, -117.0]]}
+  ]
+ },
+ "Chopper DC-DC": {
+  "layer": "source",
+  "name_nl": "Hakker DC -> DC",
+  "name_fr": "Hacheur DC -> DC",
+  "symbols": [
+   {"line": [[-261.3, 234.0], [261.3, 234.0], [261.3, -234.0], [-261.3, -234.0], [-261.3, 234.0]]},
+   {"line": [[-261.3, -234.0], [261.3, 234.0]]},
+   {"line": [[-222.3, 152.1], [-31.2, 152.1]]},
+   {"line": [[-222.3, 105.3], [-159.9, 105.3]]},
+   {"line": [[-128.7, 105.3], [-66.3, 105.3]]},
+   {"line": [[-35.1, 105.3], [-31.2, 105.3]]},
+   {"line": [[31.2, -93.6], [222.3, -93.6]]},
+   {"line": [[31.2, -140.4], [93.6, -140.4]]},
+   {"line": [[124.8, -140.4], [187.2, -140.4]]},
+   {"line": [[218.4, -140.4], [222.3, -140.4]]}
+  ]
+ },
+ "Control type, local push button": {
+  "layer": "domotics",
+  "name_nl": "Lokale sturing door drukknop",
+  "name_fr": "Commande locale par bouton poussoir",
+  "symbols": [
+   {"arc": {"centre": [-0.0, 0.0], "radius": 93.6, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [-0.0, 0.0], "radius": 46.8, "from": 269.99, "to": 629.99}}
+  ]
+ },
+ "Control type, wireless": {
+  "layer": "domotics",
+  "name_nl": "Draadloze sturing",
+  "name_fr": "Commande sans fil",
+  "symbols": [
+   {"arc": {"centre": [-46.8, 0.0], "radius": 11.7, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [-35.1, -0.0], "radius": 58.5, "from": 306.87, "to": 413.13}},
+   {"arc": {"centre": [19.5, -0.0], "radius": 58.5, "from": 306.87, "to": 413.13}}
+  ]
+ },
+ "Control type, programmed": {
+  "layer": "domotics",
+  "name_nl": "Geprogrammeerde sturing",
+  "name_fr": "Commande programmée",
+  "symbols": [
+   {"arc": {"centre": [-0.0, 0.0], "radius": 93.6, "from": 269.99, "to": 629.99}},
+   {"line": [[0.0, -0.0], [0.0, 56.2]]},
+   {"line": [[0.0, -0.0], [-56.2, -0.0]]}
+  ]
+ },
+ "Control type, extension by push button": {
+  "layer": "domotics",
+  "name_nl": "Uitbreiding van de sturing door drukknop",
+  "name_fr": "Extension de commande par bouton poussoir",
+  "symbols": [
+   {"line": [[-234.0, -0.0], [-93.6, -0.0]]},
+   {"arc": {"centre": [-0.0, 0.0], "radius": 93.6, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [-0.0, 0.0], "radius": 46.8, "from": 269.99, "to": 629.99}}
+  ]
+ },
+ "Control type, detection": {
+  "layer": "domotics",
+  "name_nl": "Sturing door detectie",
+  "name_fr": "Commande par détection",
+  "symbols": [
+   {"arc": {"centre": [-65.5, -0.0], "radius": 70.2, "from": 306.87, "to": 413.13}},
+   {"arc": {"centre": [-10.9, -0.0], "radius": 70.2, "from": 306.87, "to": 413.13}}
+  ]
+ },
+ "Control unit, example with switch": {
+  "layer": "domotics",
+  "name_nl": "Sturingseenheid (voorbeeld met schakelaar)",
+  "name_fr": "Unité de commande (exemple avec interrupteur)",
+  "symbols": [
+   {"line": [[-288.6, 429.0], [288.6, 429.0], [288.6, -429.0], [-288.6, -429.0], [-288.6, 429.0]]},
+   {"line": [[-288.6, 156.0], [288.6, 156.0]]},
+   {"arc": {"centre": [-257.8, 292.5], "radius": 52.6, "from": 306.87, "to": 413.13}},
+   {"arc": {"centre": [-203.2, 292.5], "radius": 52.7, "from": 306.87, "to": 413.13}},
+   {"arc": {"centre": [136.5, 292.5], "radius": 93.6, "from": 269.99, "to": 629.99}},
+   {"line": [[136.5, 292.5], [136.5, 348.7]]},
+   {"line": [[136.5, 292.5], [80.3, 292.5]]},
+   {"line": [[288.6, 292.5], [487.5, 292.5]]},
+   {"arc": {"centre": [581.1, 292.5], "radius": 93.6, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [581.1, 292.5], "radius": 42.9, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [-74.1, -234.0], "radius": 93.6, "from": 269.99, "to": 629.99}},
+   {"line": [[-14.0, -163.8], [179.4, 15.6]]},
+   {"line": [[179.4, 15.6], [261.3, -31.2]]}
+  ]
+ },
+ "Control unit, example with transistor": {
+  "layer": "domotics",
+  "name_nl": "Sturingseenheid (voorbeeld met transistor)",
+  "name_fr": "Unité de commande (exemple avec transistor)",
+  "symbols": [
+   {"line": [[-280.8, 448.5], [280.8, 448.5], [280.8, -448.5], [-280.8, -448.5], [-280.8, 448.5]]},
+   {"line": [[-280.8, 273.0], [280.8, 273.0]]},
+   {"arc": {"centre": [-159.9, 358.8], "radius": 66.3, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [-159.9, 358.8], "radius": 35.1, "from": 269.99, "to": 629.99}},
+   {"arc": {"centre": [-0.0, 358.8], "radius": 66.3, "from": 269.99, "to": 629.99}},
+   {"line": [[0.0, 358.8], [0.0, 398.6]]},
+   {"line": [[0.0, 358.8], [-39.8, 358.8]]},
+   {"arc": {"centre": [154.8, 358.8], "radius": 40.9, "from": 306.87, "to": 413.13}},
+   {"arc": {"centre": [193.8, 358.8], "radius": 41.0, "from": 306.87, "to": 413.13}},
+   {"line": [[-167.7, -120.9], [62.4, -120.9]]},
+   {"line": [[62.4, -0.0], [62.4, -241.8]]},
+   {"line": [[-105.3, 42.9], [-11.7, -93.6]]},
+   {"line": [[163.8, 113.1], [163.8, 23.4], [62.4, -46.8]]},
+   {"line": [[62.4, -195.0], [163.8, -265.2], [163.8, -362.7]]}
+  ]
+ },
+ "Circuit breaker, 20 A curve C": {
+  "layer": "protection",
+  "name_nl": "Kleine vermogensschakelaar met een nominale stroomsterkte van 20A curve C",
+  "name_fr": "Petit disjoncteur d’une intensité nominale de 20A courbe C",
+  "symbols": [
+   {"line": [[0.0, 261.3], [0.0, 109.2]]},
+   {"line": [[0.0, -101.4], [0.0, -261.3]]},
+   {"line": [[0.0, -101.4], [-93.6, 62.4]]},
+   {"dot": {"centre": [-93.6, 62.4], "radius": 27.3}},
+   {"text": {"at": [85.8, 0.0], "height": 117.0, "value": "C20", "align": "left"}}
+  ]
+ },
+ "Earth electrode": {
+  "layer": "protection",
+  "name_nl": "Aardelektrode, aarding",
+  "name_fr": "Prise de terre, mise à la terre",
+  "symbols": [
+   {"line": [[0.0, -0.0], [0.0, -292.5]]},
+   {"line": [[-269.1, -292.5], [269.1, -292.5]]},
+   {"line": [[-191.1, -366.6], [191.1, -366.6]]},
+   {"line": [[-85.8, -436.8], [85.8, -436.8]]}
+  ]
+ },
+ "Switch, single-pole, delayed opening": {
+  "layer": "switch",
+  "name_nl": "Eenpolige schakelaar met vertraagde opening",
+  "name_fr": "Interrupteur unipolaire à ouverture retardée",
+  "symbols": [
+   {"arc": {"centre": [-0.0, 0.0], "radius": 148.2, "from": 269.99, "to": 629.99}},
+   {"line": [[74.1, 128.7], [300.3, 518.7]]},
+   {"line": [[300.3, 518.7], [429.0, 444.6]]},
+   {"text": {"at": [276.9, 249.6], "height": 117.0, "value": "t", "align": "center"}}
+  ]
+ },
+ "Switch, three-pole": {
+  "layer": "switch",
+  "name_nl": "Driepolige schakelaar",
+  "name_fr": "Interrupteur tripolaire",
+  "symbols": [
+   {"arc": {"centre": [-0.0, 0.0], "radius": 148.2, "from": 269.99, "to": 629.99}},
+   {"line": [[74.1, 128.7], [300.3, 518.7]]},
+   {"line": [[300.3, 518.7], [429.0, 444.6]]},
+   {"line": [[268.6, 464.1], [397.3, 390.0]]},
+   {"line": [[237.0, 409.5], [365.7, 335.4]]}
+  ]
+ },
+ "Dimmer": {
+  "layer": "switch",
+  "name_nl": "Dimmer",
+  "name_fr": "Gradateur",
+  "symbols": [
+   {"arc": {"centre": [-0.0, 0.0], "radius": 148.2, "from": 269.99, "to": 629.99}},
+   {"line": [[74.1, 128.7], [300.3, 518.7]]},
+   {"line": [[214.5, 370.5], [436.8, 421.2], [436.8, 319.8], [214.5, 370.5]]}
+  ]
+ }
+ }
+}

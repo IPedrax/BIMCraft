@@ -7,7 +7,7 @@
 
 use bimcraft_i18n::{msg, ui_msg};
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::f64::consts::{PI, TAU};
 use std::sync::Arc;
 
@@ -25,11 +25,12 @@ use crate::language::Language;
 pub use crate::lines::DetailLine;
 use crate::lines::{self, LinePattern, LineStyle};
 use crate::phasing::{self, OptionSet, PhaseFilter, Status};
+use crate::shared::Shared;
 use crate::texture::{Kind, MAX_IMAGES, Picture, Texture};
 use crate::units::Units;
 use crate::walls;
 
-pub use crate::ids::{Elements, FIRST_ID, Guid, Id, Key};
+pub use crate::ids::{Changed, Elements, FIRST_ID, Guid, Id, Key};
 
 /// A line in plan, through two points.
 pub type Line = (P2, P2);
@@ -69,8 +70,30 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 12: adaptive family definitions and
-/// per-instance frames; older builds would discard them and lose geometry. Defaults migrate existing families unchanged. 11: a project's language may be Swedish,
+/// The version of the project file this build writes, and the newest it reads. 18: a family may be adaptive (`adaptive`: its
+/// points, lines and forms) and a component may hold the frames of its adaptive points (`adaptive`); nothing in a file of 17
+/// changes, but a build that reads up to 17 would leave both out as fields it doesn't know and draw such a family without its
+/// forms, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
+/// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
+/// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
+/// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
+/// `dimension3d` category), which a build that reads up to 15 doesn't know and would refuse, and Align may leave a lock,
+/// which it would read as a dimension of nothing; nothing in a file of 15 changes. 15: a roof may have a slope for each edge of its
+/// footprint (`slopes`) and a wall a top offset from its top constraint (`top_offset`); nothing in a file of 14 changes, but a
+/// build that reads up to 14 would leave either out as a field it doesn't know, drawing the roof at one slope and the wall short
+/// of its offset, not "saved by a newer BIMCraft". 14: a view's graphics, a view template and the
+/// object styles may name the categories of family components (`lighting`, `outlet`, `switch`…, `graphics::COMPONENTS`) as well as
+/// `component`, which names them all, and a new project starts with three view templates (Electrical Power, Lighting and Ceiling)
+/// that do; nothing in a file of 13 changes, but a build that reads up to 13 would refuse one of 14 on opening ("isn't a category
+/// views draw"), not say "saved by a newer BIMCraft". 13: a floor or a flat roof may have a shape
+/// (`shape`: points and split lines on its top, parts), a floor's or roof's type a `variable` layer, and a spot a `slope`;
+/// nothing in a file of 12 changes, but a build that reads up to 12 would answer a spot slope or a variable layer with a
+/// serde error and leave a shape out as a field it doesn't know, drawing the floor flat, not "saved by a newer BIMCraft".
+/// 12: a project's language may be German (`de`) or
+/// Dutch (`nl`), a wall may bound no rooms (`room_bounding: false`, written only then) and a family holds `connectors` (an
+/// electrical device's load, a switch); nothing in a file of 11 changes, but a build that reads up to 11 would answer one of 12
+/// with a serde error ("unknown variant") or, for such a wall, leave the setting out and bound rooms by it again, and for such a
+/// family drop the connectors and place the device as a load of zero, not "saved by a newer BIMCraft". 11: a project's language may be Swedish,
 /// Czech or French (`sv`, `cs`, `fr`); nothing in a file of 10 changes, but a build that reads up to 10 would answer one of
 /// 11 with a serde error ("unknown variant"), not "saved by a newer BIMCraft". 8: text types (`text_types`, library
 /// entries of kind `text-type`); a note names its type, which holds its size, and may override parts of its formatting
@@ -88,7 +111,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 12;
+pub const FORMAT: u32 = 18;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -115,6 +138,18 @@ pub struct Level {
     /// range and its sides as its crop.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub section_box: bool,
+    /// Revit's Computation Height: how far above it (mm) its rooms find the walls that bound them. Room separation lines
+    /// bound them whatever it is.
+    #[serde(default = "computation_height", skip_serializing_if = "is_computation_height")]
+    pub computation_height: f64,
+}
+
+fn computation_height() -> f64 {
+    CUT_HEIGHT
+}
+
+fn is_computation_height(x: &f64) -> bool {
+    *x == CUT_HEIGHT
 }
 
 impl Level {
@@ -127,6 +162,7 @@ impl Level {
             extent: None,
             graphics: Graphics::default(),
             section_box: false,
+            computation_height: CUT_HEIGHT,
         }
     }
 }
@@ -219,6 +255,10 @@ pub struct Wall {
     pub height: f64,
     #[serde(default)]
     pub base_offset: f64,
+    /// Revit's Top Offset: with a `top_level`, its top is that level plus this many mm (below it, negative). An unconnected wall
+    /// has none: it stands `height` tall.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub top_offset: f64,
     /// How far it turns from its start to its end, degrees counter-clockwise: 0 straight, 180 a
     /// half circle bulging to its right.
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -231,9 +271,52 @@ pub struct Wall {
     pub attach_top: Option<Guid>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub attach_base: Option<Guid>,
+    /// Whether it bounds rooms (Revit's Room Bounding): on unless turned off, as for a low wall or a balustrade a room
+    /// runs past.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub room_bounding: bool,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+}
+
+/// A room's Limit Offset unless it says: its top 2500 mm over its own level.
+pub const ROOM_LIMIT_OFFSET: f64 = 2500.0;
+/// Where the level above bounds a new room: its top this far over it (under it, being negative).
+pub const ROOM_BELOW_ABOVE: f64 = -300.0;
+/// The side of the square an unbounded room covers round its point, mm.
+pub const UNBOUNDED_ROOM: f64 = 1000.0;
+
+/// Why a room has no boundary: no loop of walls and separation lines closes round its point, or a room placed before it
+/// (this one) has the space it is in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Unbound {
+    NotEnclosed,
+    Shared(Id),
+}
+
+/// The square an unbounded room covers round its point `p`, [`UNBOUNDED_ROOM`] mm a side, counter-clockwise.
+pub fn unbounded_square(p: P2) -> Vec<P2> {
+    let h = UNBOUNDED_ROOM / 2.0;
+    let P2(x, y) = p;
+    vec![P2(x - h, y - h), P2(x + h, y - h), P2(x + h, y + h), P2(x - h, y + h)]
+}
+
+/// Whether `p` lies in region `g`: inside its outer ring, in none of its islands.
+pub fn region_holds(g: &Region, p: P2) -> bool {
+    geom::contains(&g.outer, p) && !g.holes.iter().any(|h| geom::contains(h, p))
+}
+
+fn room_limit_offset() -> f64 {
+    ROOM_LIMIT_OFFSET
+}
+
+fn is_room_limit_offset(x: &f64) -> bool {
+    *x == ROOM_LIMIT_OFFSET
+}
+
+fn is_yes(b: &bool) -> bool {
+    *b
 }
 
 fn is_zero(x: &f64) -> bool {
@@ -336,6 +419,52 @@ pub struct Layer {
     #[serde(default)]
     pub material: String,
     pub thickness: f64,
+    /// A floor's or a roof's layer that takes up a shaped top's falls (IDEAS MOD-16): its `thickness` where the top is
+    /// where it would be without its shape, more or less elsewhere, the layers above it following the top and those below
+    /// it the level underside. One a type at most.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub variable: bool,
+}
+
+/// Where a layer of a type is variable: its index, and how thick the layers above it and below it are, mm.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Variable {
+    pub index: usize,
+    pub above: f64,
+    pub thickness: f64,
+    pub below: f64,
+}
+
+impl Variable {
+    /// The variable layer of `layers`, if one is.
+    pub fn of(layers: &[Layer]) -> Option<Variable> {
+        let index = layers.iter().position(|l| l.variable)?;
+        let sum = |ls: &[Layer]| ls.iter().map(|l| l.thickness).sum::<f64>();
+        Some(Variable {
+            index,
+            above: sum(layers.get(..index)?),
+            thickness: layers.get(index)?.thickness,
+            below: sum(layers.get(index + 1..)?),
+        })
+    }
+
+    /// From the top down, mm, where each layer of `layers` starts and the last ends, through `depth` there: the layers
+    /// above the variable one from the top, those below it from the bottom, the variable one between.
+    pub fn bounds(v: Option<Variable>, layers: &[Layer], depth: f64) -> Vec<f64> {
+        let total: f64 = layers.iter().map(|l| l.thickness).sum();
+        let mut out = Vec::with_capacity(layers.len() + 1);
+        let mut above = 0.0;
+        for (k, l) in layers.iter().enumerate() {
+            out.push(match v {
+                Some(v) if k > v.index => depth - (total - above),
+                _ if total > 0.0 && v.is_none() => depth * above / total,
+                _ => above,
+            });
+            above += l.thickness;
+        }
+        out.push(depth);
+        out
+    }
 }
 
 /// Layers a type may have.
@@ -450,10 +579,139 @@ pub struct Floor {
     /// was made another way (over the walls, from a file); Edit Boundary then starts from its outline.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sketch: Vec<crate::sketch::SketchLine>,
+    /// Points and split lines on its top, which fold it into planes (falls to a drain, a ridge, a valley); none, it's flat
+    /// or one slope.
+    #[serde(default, skip_serializing_if = "Shape::is_empty")]
+    pub shape: Shape,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
 }
+
+/// A floor's top folded into planes: points raised or lowered on it, and split lines it folds along. Between them it's
+/// triangles (`triangulation::constrained`), its outline's and its openings' corners at their height unless a point is
+/// there, and neighbours in one plane are one piece (`Model::floor_faces`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Shape {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub points: Vec<ShapePoint>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lines: Vec<SplitLine>,
+}
+
+impl Shape {
+    pub fn is_empty(&self) -> bool {
+        self.points.is_empty() && self.lines.is_empty()
+    }
+
+    /// The nearest of its points within `reach` of `q`, where a grip takes hold of one.
+    pub fn point_near(&self, q: P2, reach: f64) -> Option<P2> {
+        self.points.iter().map(|p| p.at).filter(|p| p.dist(q) <= reach).min_by(|a, b| a.dist(q).total_cmp(&b.dist(q)))
+    }
+
+    /// It with its point at `from` dragged to `to`, at the same height, the split lines ending there going with it; the
+    /// same shape when no point is at `from`.
+    pub fn moved(&self, from: P2, to: P2) -> Shape {
+        let mut s = self.clone();
+        if !s.points.iter().any(|p| p.at.dist(from) <= TOL) {
+            return s;
+        }
+        let near = |q: P2| q.dist(from) <= TOL;
+        for p in s.points.iter_mut().filter(|p| near(p.at)) {
+            p.at = to;
+        }
+        for l in &mut s.lines {
+            for end in [&mut l.a, &mut l.b] {
+                if near(*end) {
+                    *end = to;
+                }
+            }
+        }
+        s
+    }
+
+    /// It with its point at `at` given height `z`, or with a corner there, a new point at that height.
+    pub fn raised(&self, at: P2, z: f64) -> Shape {
+        let mut s = self.clone();
+        match s.points.iter_mut().find(|p| p.at.dist(at) <= TOL) {
+            Some(p) => p.z = z,
+            None => s.points.push(ShapePoint { at, z, ..Default::default() }),
+        }
+        s
+    }
+}
+
+impl Floor {
+    /// What of its shape lies within `reach` of `q`, as Modify Sub Elements picks it: the nearest of its shape's points and
+    /// its outline's and openings' corners; else both ends of the nearest edge, a split line's, the outline's or an
+    /// opening's; else nothing.
+    pub fn shape_pick(&self, q: P2, reach: f64) -> Vec<P2> {
+        let rings = || std::iter::once(&self.boundary).chain(&self.openings);
+        let corners = self.shape.points.iter().map(|p| p.at).chain(rings().flatten().copied());
+        if let Some(c) = corners.filter(|c| c.dist(q) <= reach).min_by(|a, b| a.dist(q).total_cmp(&b.dist(q))) {
+            return vec![c];
+        }
+        let edges = self.shape.lines.iter().map(|l| (l.a, l.b)).chain(rings().flat_map(|r| geom::ring_edges(r)));
+        let off = |(a, b): &(P2, P2)| geom::dist_to_segment(q, *a, *b);
+        edges.filter(|e| off(e) <= reach).min_by(|x, y| off(x).total_cmp(&off(y))).map_or_else(Vec::new, |(a, b)| vec![a, b])
+    }
+}
+
+/// A point on a floor's top, `z` mm above (negative, below) where the top would be without its shape. A part, with an id
+/// and a GUID of its own.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ShapePoint {
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: crate::ids::Id,
+    #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
+    pub guid: crate::ids::Guid,
+    pub at: P2,
+    pub z: f64,
+}
+
+/// A line a floor's top folds along, from `a` to `b`, each end one of its shape's points or a corner of its outline or an
+/// opening. A part, with an id and a GUID of its own.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SplitLine {
+    #[serde(default, skip_serializing_if = "crate::ids::unset")]
+    pub id: crate::ids::Id,
+    #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
+    pub guid: crate::ids::Guid,
+    pub a: P2,
+    pub b: P2,
+}
+
+/// A closed solid: its corners, and each face as loops of indices into them, its outline first and then its holes,
+/// counter-clockwise seen from outside.
+pub type Polyhedron = (Vec<[f64; 3]>, Vec<Vec<Vec<usize>>>);
+
+/// How much a closed solid holds, mm³: by the divergence theorem, each face's loops fanned into triangles, each with the
+/// origin a tetrahedron, signed by the way it turns.
+pub fn volume((corners, faces): &Polyhedron) -> f64 {
+    let at = |i: &usize| corners.get(*i).copied().unwrap_or_default();
+    let det = |a: [f64; 3], b: [f64; 3], c: [f64; 3]| {
+        a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])
+    };
+    let six: f64 = faces
+        .iter()
+        .flatten()
+        .filter_map(|l| {
+            let first = at(l.first()?);
+            Some(l.windows(2).skip(1).map(|w| det(first, at(&w[0]), at(&w[1]))).sum::<f64>())
+        })
+        .sum();
+    six / 6.0
+}
+
+/// A shaped floor's top triangulated: the triangles, each corner lifted to its height, and each triangle's plane.
+type ShapeMesh = (crate::triangulation::Triangulation, Vec<[f64; 3]>, Vec<walls::Plane>);
+
+/// The most points a shape has, and the most split lines.
+pub const MAX_SHAPE_POINTS: usize = 2_000;
+pub const MAX_SPLIT_LINES: usize = 2_000;
 
 /// A ceiling along `boundary` (counter-clockwise), open through its `openings` (holes inside it,
 /// apart), its underside `offset` mm above its level, its type's thickness over that.
@@ -588,9 +846,83 @@ pub struct Room {
     pub point: P2,
     pub name: String,
     pub number: String,
+    /// What it is filled with on plans, red, green and blue: none, no fill.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<[u8; 3]>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// Revit's Base Offset: its bottom, this far above its level (mm).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub base_offset: f64,
+    /// Revit's Upper Limit: the level its top is measured from; none, its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_level: Option<Guid>,
+    /// Revit's Limit Offset: its top, this far above its upper limit (mm).
+    #[serde(default = "room_limit_offset", skip_serializing_if = "is_room_limit_offset")]
+    pub limit_offset: f64,
+    /// Frozen, it keeps the boundary it had when frozen (`kept`) and the walls are never searched for it again: it keeps its
+    /// size whatever the walls do, and a project of many rooms is drawn and scheduled without finding each one.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub frozen: bool,
+    /// What a frozen room keeps, given it after the command that froze it (`Model::keep_rooms`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kept: Option<Kept>,
+}
+
+impl Room {
+    /// A room at `point` on `level`, its height Revit's unless it says (up to [`ROOM_LIMIT_OFFSET`] over its level), not
+    /// frozen.
+    pub fn new(level: Guid, point: P2, name: impl Into<String>, number: impl Into<String>) -> Room {
+        Room {
+            level,
+            point,
+            name: name.into(),
+            number: number.into(),
+            colour: None,
+            params: BTreeMap::new(),
+            base_offset: 0.0,
+            top_level: None,
+            limit_offset: ROOM_LIMIT_OFFSET,
+            frozen: false,
+            kept: None,
+        }
+    }
+}
+
+/// A frozen room's boundary, measured both ways the project may measure rooms (`room_area`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Kept {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub centre: Option<Region>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish: Option<Region>,
+}
+
+impl Kept {
+    pub fn at(&self, at: RoomArea) -> Option<&Region> {
+        match at {
+            RoomArea::Centre => self.centre.as_ref(),
+            RoomArea::Finish => self.finish.as_ref(),
+        }
+    }
+
+    /// Each of its rings moved by `f`; a mirror image turned back counter-clockwise, its holes clockwise.
+    pub fn map(&mut self, f: impl Fn(P2) -> P2) {
+        for g in self.centre.iter_mut().chain(self.finish.iter_mut()) {
+            g.outer.iter_mut().for_each(|q| *q = f(*q));
+            if geom::area(&g.outer) < 0.0 {
+                g.outer.reverse();
+            }
+            for h in &mut g.holes {
+                h.iter_mut().for_each(|q| *q = f(*q));
+                if geom::area(h) > 0.0 {
+                    h.reverse();
+                }
+            }
+        }
+    }
 }
 
 /// Which of an element's lines a dimension measures to: a wall's centre line, its face on the
@@ -739,6 +1071,36 @@ pub struct Dimension {
     /// Its segments locked at a length: what it measures to moves together to keep them so.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub locked: Vec<Lock>,
+    /// The lock Align left: two references kept on one line (its one segment locked at 0), drawn on screen as a padlock where
+    /// they meet and never on paper.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub alignment: bool,
+}
+
+/// A dimension in a 3D view, as Revit's aligned dimension there: the distance between two points of the model, or square
+/// from one to an edge (between two parallel edges, how far apart they are), its line through `at` (what it measures moved
+/// square off it), drawn in `view` and on a sheet that holds the view (`crate::dims3d`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Dimension3D {
+    /// The 3D view that holds it.
+    pub view: Guid,
+    pub refs: [Ref3; 2],
+    /// A point its line passes through, [x, y, z] mm.
+    pub at: [f64; 3],
+    /// Its dimension type (`crate::dims`), as a plan's dimensions have: how it draws and letters its number.
+    #[serde(rename = "type", default)]
+    pub type_name: String,
+}
+
+/// What a dimension in a 3D view measures to: a point of the model, [x, y, z] mm; on an edge, the edge's two ends too, which
+/// it measures square to.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Ref3 {
+    pub at: [f64; 3],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge: Option<[[f64; 3]; 2]>,
 }
 
 /// A dimension's segment `segment` (counted as its values are) kept at `length` mm, Revit's padlock.
@@ -934,7 +1296,8 @@ pub const MAX_HIDDEN: usize = 10_000;
 pub const CAD_SCALE: std::ops::RangeInclusive<f64> = 1e-6..=1e7;
 
 /// A spot elevation in a view: in a level's plan, the height of the top of `host` at `at`; in a
-/// section or an elevation, of its point `at`, along and up.
+/// section or an elevation, of its point `at`, along and up. With `slope`, a spot slope: in a plan, how steeply the top of
+/// `host` (a floor or a roof) falls at `at`, and which way.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Spot {
@@ -942,6 +1305,8 @@ pub struct Spot {
     pub at: P2,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<Guid>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub slope: bool,
 }
 
 /// Another project shown in this one, a reference that can't be edited: Revit's linked model. The file stays where it is;
@@ -967,6 +1332,9 @@ pub struct Link {
 pub struct Schedule {
     pub name: String,
     pub of: String,
+    /// A multi-category schedule's categories (`schedule::MULTI`): none, every built one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub categories: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<crate::schedule::Field>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1025,6 +1393,27 @@ pub struct View3D {
     /// Seen in perspective, as through a camera, rather than parallel (axonometric): kept, with its lens, when it's turned off.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub perspective: Option<Perspective>,
+    /// Where the view's camera stands and what it looks at, when it was placed as Revit's Camera tool does (an eye and a
+    /// target in the model). None for a view that is fitted over the model rather than through a camera of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub camera: Option<ViewCamera>,
+    /// Its Graphic Display Options: edges, silhouettes and ambient shadows.
+    #[serde(default, skip_serializing_if = "crate::view3d::DisplayOptions::is_default")]
+    pub display: crate::view3d::DisplayOptions,
+    /// What it sketches on (`workplane.rs`): the lowest level when it has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_plane: Option<crate::workplane::WorkPlane>,
+}
+
+/// A 3D view's camera: the model point its eye stands at, and the model point it looks at, in mm. The view is seen in
+/// perspective through its lens, from `eye` toward `target`.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ViewCamera {
+    /// Where the camera's eye stands, [x, y, z] mm.
+    pub eye: [f64; 3],
+    /// What the camera looks at, [x, y, z] mm; never the eye itself.
+    pub target: [f64; 3],
 }
 
 /// A 3D view's perspective: the focal length of the lens it is seen through, mm on a 35 mm camera (whose film is the
@@ -1052,6 +1441,9 @@ impl View3D {
             graphics: Graphics::default(),
             section_box: None,
             perspective: None,
+            camera: None,
+            display: Default::default(),
+            work_plane: None,
         }
     }
 }
@@ -1121,6 +1513,10 @@ pub struct Column {
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// Revit's Room Bounding: whether it bounds rooms (where it stands at its level's Computation Height). Off, rooms
+    /// run through it.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub room_bounding: bool,
 }
 
 /// Which line of a run's section its heights are: the top of it, its middle, or its bottom.
@@ -1295,9 +1691,10 @@ pub struct Railing {
 
 /// A roof on `level`, its base `offset` mm above it. By its footprint: its eaves along `boundary`
 /// and round its `courtyards` (holes in it), reaching its base `overhang` mm in from them; flat at
-/// `slope` 0, else each edge sloping up at `slope` degrees, hips and valleys where slopes meet, but
-/// the edges in `gables` (edge i from point i to the next, the courtyards' numbered on after the
-/// boundary's), left upright; `gable` leaves a rectangle's two short ends upright. Or by its
+/// `slope` 0, else each edge sloping up at `slope` degrees, or at its own in `slopes` (edge i from point i to the next, the
+/// courtyards' numbered on after the boundary's, as `gables` numbers them; 0, or none listed, for the roof's), hips and valleys
+/// where slopes meet, but the edges in `gables` left upright whatever their slopes; `gable` leaves a rectangle's two short
+/// ends upright. Or by its
 /// `extrusion`. Holed through by `openings` in plan, and where it runs into the roof it `join`s,
 /// it ends at that one's top.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -1312,6 +1709,10 @@ pub struct Roof {
     pub courtyards: Vec<Vec<P2>>,
     #[serde(default)]
     pub slope: f64,
+    /// Degrees for each edge of its footprint, numbered as `gables` numbers them: 0 for an edge that takes the roof's `slope`.
+    /// Empty: every edge does. Only a pitched roof by footprint uses them (a flat one keeps them, as it keeps its gables).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slopes: Vec<f64>,
     #[serde(default)]
     pub overhang: f64,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -1330,6 +1731,10 @@ pub struct Roof {
     /// was made another way (over the walls, from a file); Edit Boundary then starts from its outline.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sketch: Vec<crate::sketch::SketchLine>,
+    /// Points and split lines on its top, as a floor's (`Floor::shape`): only a flat roof by footprint has them, its
+    /// underside following its top.
+    #[serde(default, skip_serializing_if = "Shape::is_empty")]
+    pub shape: Shape,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -1348,6 +1753,23 @@ impl Element {
         }
     }
 
+    /// Its shape, when it's of a kind that has one: a floor's or a roof's.
+    pub fn shape(&self) -> Option<&Shape> {
+        match self {
+            Element::Floor(f) => Some(&f.shape),
+            Element::Roof(r) => Some(&r.shape),
+            _ => None,
+        }
+    }
+
+    pub fn shape_mut(&mut self) -> Option<&mut Shape> {
+        match self {
+            Element::Floor(f) => Some(&mut f.shape),
+            Element::Roof(r) => Some(&mut r.shape),
+            _ => None,
+        }
+    }
+
     pub fn sketch_mut(&mut self) -> Option<&mut Vec<crate::sketch::SketchLine>> {
         match self {
             Element::Floor(f) => Some(&mut f.sketch),
@@ -1361,9 +1783,30 @@ impl Element {
 }
 
 impl Roof {
+    /// Why it can't take a shape: only a flat roof by footprint, joining none, has its top folded by points and split
+    /// lines. None when it can.
+    pub fn unshapeable(&self) -> Option<&'static str> {
+        if self.extrusion.is_some() {
+            Some("an extruded roof takes its shape from its profile: only a flat roof by footprint takes points and split lines")
+        } else if self.slope != 0.0 {
+            Some(
+                "a pitched roof's slopes come from its `slope`: only a flat roof takes points and split lines: `modify` its `slope` to 0, or `reset_shape`",
+            )
+        } else if self.join.is_some() {
+            Some("a roof joining another ends at that one's top: only a flat roof joining none takes points and split lines")
+        } else {
+            None
+        }
+    }
+
     /// Its footprint's edges as `gables` numbers them: its boundary's, then each courtyard's.
     pub fn edges(&self) -> impl Iterator<Item = (P2, P2)> + '_ {
         geom::ring_edges(&self.boundary).chain(self.courtyards.iter().flat_map(|c| geom::ring_edges(c)))
+    }
+
+    /// The slope of each edge of its footprint, degrees, as `edges` numbers them: its own in `slopes`, else the roof's.
+    pub fn edge_slopes(&self) -> Vec<f64> {
+        (0..self.edges().count()).map(|i| self.slopes.get(i).copied().filter(|s| *s > 0.0).unwrap_or(self.slope)).collect()
     }
 }
 
@@ -1509,6 +1952,7 @@ macro_rules! run_arm {
         Element::Beam($r)
             | Element::StripFooting($r)
             | Element::Pipe($r)
+            | Element::Duct($r)
             | Element::Conduit($r)
             | Element::CableTray($r)
             | Element::Wire($r)
@@ -1525,7 +1969,14 @@ macro_rules! visit_refs {
         let f: &mut dyn FnMut(& $($m)? Guid) = $f;
         match $e {
             // A view's graphics, as `views_graphics` gives them.
-            Element::Level(_) | Element::Section(_) | Element::Elevation(_) | Element::View3D(_) => {}
+            Element::Level(_) | Element::Section(_) | Element::Elevation(_) => {}
+            Element::View3D(v) => {
+                if let Some(wp) = & $($m)? v.work_plane
+                    && let Some(g) = & $($m)? wp.level
+                {
+                    f(g)
+                }
+            }
             Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
@@ -1537,7 +1988,11 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? w.attach_top { f(g) }
                 if let Some(g) = & $($m)? w.attach_base { f(g) }
             }
-            Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) | Element::Room(Room { level, .. }) => f(level),
+            Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) => f(level),
+            Element::Room(Room { level, top_level, .. }) => {
+                f(level);
+                if let Some(g) = top_level { f(g) }
+            }
             Element::Shaft(Shaft { level, top_level, .. })
             | Element::Mass(Mass { level, top_level, .. })
             | Element::Column(Column { level, top_level, .. })
@@ -1560,6 +2015,7 @@ macro_rules! visit_refs {
                 f(& $($m)? t.host);
                 if let Some(g) = & $($m)? t.view { f(g) }
             }
+            Element::Dimension3D(d) => f(& $($m)? d.view),
             Element::Viewport(v) => {
                 f(& $($m)? v.sheet);
                 f(& $($m)? v.view);
@@ -1614,6 +2070,8 @@ pub enum Element {
     #[serde(rename = "roomseparator")]
     RoomSeparator(RoomSeparator),
     Dimension(Dimension),
+    /// A dimension in a 3D view, between points or edges of the model.
+    Dimension3D(Dimension3D),
     Tag(Tag),
     Section(Section),
     Elevation(Section),
@@ -1627,6 +2085,7 @@ pub enum Element {
     Beam(Run),
     StripFooting(Run),
     Pipe(Run),
+    Duct(Run),
     Conduit(Run),
     CableTray(Run),
     Wire(Run),
@@ -1745,6 +2204,15 @@ impl Element {
         out
     }
 
+    /// Whether it points at any element of `set`: [`Element::refs`] without making the list.
+    pub fn refers_to(&self, set: &BTreeSet<Guid>) -> bool {
+        let mut hit = false;
+        let mut f = |g: &Guid| hit = hit || set.contains(g);
+        visit_refs!(self, &mut f,);
+        hit || self.params().is_some_and(|p| crate::massing::refs(p).iter().any(|g| set.contains(g)))
+            || graphics::graphics_of_element(self).is_some_and(|g| g.elements.keys().any(|k| set.contains(k)))
+    }
+
     /// The family a component or a family's door or window is of, and its type.
     pub fn family(&self) -> Option<(&str, &str)> {
         match self {
@@ -1768,6 +2236,7 @@ impl Element {
             "beam" => Some(Element::Beam(r)),
             "stripfooting" => Some(Element::StripFooting(r)),
             "pipe" => Some(Element::Pipe(r)),
+            "duct" => Some(Element::Duct(r)),
             "conduit" => Some(Element::Conduit(r)),
             "cabletray" => Some(Element::CableTray(r)),
             "wire" => Some(Element::Wire(r)),
@@ -1847,6 +2316,7 @@ impl Element {
             Element::RoomSeparator(_) => "roomseparator",
             Element::Rebar(_) => "rebar",
             Element::Dimension(_) => "dimension",
+            Element::Dimension3D(_) => "dimension3d",
             Element::Tag(_) => "tag",
             Element::Section(_) => "section",
             Element::Elevation(_) => "elevation",
@@ -1858,6 +2328,7 @@ impl Element {
             Element::Beam(_) => "beam",
             Element::StripFooting(_) => "stripfooting",
             Element::Pipe(_) => "pipe",
+            Element::Duct(_) => "duct",
             Element::Conduit(_) => "conduit",
             Element::CableTray(_) => "cabletray",
             Element::Wire(_) => "wire",
@@ -1938,8 +2409,8 @@ pub struct RunType {
 }
 
 /// The categories whose elements are runs, as `Element::run` returns them.
-pub const RUN_CATEGORIES: [&str; 9] =
-    ["beam", "stripfooting", "pipe", "conduit", "cabletray", "wire", "downconductor", "groundconductor", "cable"];
+pub const RUN_CATEGORIES: [&str; 10] =
+    ["beam", "stripfooting", "pipe", "duct", "conduit", "cabletray", "wire", "downconductor", "groundconductor", "cable"];
 
 /// A roof type: how thick its roofs are across their slope and, a compound one, its layers from
 /// the top down.
@@ -2106,7 +2577,7 @@ pub struct ProjectParameter {
 pub const MAX_PROJECT_PARAMETERS: usize = 256;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 24] = [
+pub const PARAMETER_CATEGORIES: [&str; 25] = [
     "wall",
     "floor",
     "ceiling",
@@ -2125,6 +2596,7 @@ pub const PARAMETER_CATEGORIES: [&str; 24] = [
     "beam",
     "stripfooting",
     "pipe",
+    "duct",
     "conduit",
     "cabletray",
     "wire",
@@ -2201,10 +2673,10 @@ pub struct Model {
     #[serde(default, skip_serializing_if = "RoomArea::is_default")]
     pub room_area: RoomArea,
     pub next_id: Id,
-    pub types: Types,
+    pub types: Shared<Types>,
     /// What layers are made of, by name.
     #[serde(default)]
-    pub materials: BTreeMap<String, Material>,
+    pub materials: Shared<BTreeMap<String, Material>>,
     /// The pictures its materials' textures are made of, by id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub images: BTreeMap<String, Picture>,
@@ -2216,7 +2688,7 @@ pub struct Model {
     pub cads: BTreeMap<String, Cad>,
     /// Its families, by name: what components place.
     #[serde(default)]
-    pub families: BTreeMap<String, Family>,
+    pub families: Shared<BTreeMap<String, Family>>,
     /// Its project parameters, by name: values each element of their categories may have.
     #[serde(default)]
     pub parameters: BTreeMap<String, ProjectParameter>,
@@ -2274,6 +2746,15 @@ pub struct Model {
     /// Its reinforcement presets, by name: the parameters `reinforce` takes for a kind of host, kept to arm others alike.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub reinforcement: BTreeMap<String, crate::reinforce::Preset>,
+    /// Its electrical voltages, by name, each with the band a device may read within.
+    #[serde(default = "crate::electrical::voltages")]
+    pub voltages: BTreeMap<String, crate::electrical::Voltage>,
+    /// Its distribution systems, by name: phases, wires and the voltages each supplies.
+    #[serde(default = "crate::electrical::distribution_systems")]
+    pub distribution_systems: BTreeMap<String, crate::electrical::DistributionSystem>,
+    /// Its wire types, by name: material, insulation, temperature and the ampacity of each section, mm².
+    #[serde(default = "crate::electrical::wire_types")]
+    pub wire_types: BTreeMap<String, crate::electrical::WireType>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -2283,6 +2764,9 @@ pub struct Model {
     /// not loaded, and draws nothing.
     #[serde(skip)]
     pub loaded: BTreeMap<String, Arc<Model>>,
+    /// What its elements point at, looked up the other way (`Model::lookup`): no part of the model, never in a file.
+    #[serde(skip)]
+    pub derived: crate::derived::Derived,
 }
 
 impl Model {
@@ -2340,15 +2824,15 @@ impl Model {
             language,
             room_area: RoomArea::default(),
             next_id: FIRST_ID,
-            types: Types::default(),
-            materials: BTreeMap::new(),
+            types: Types::default().into(),
+            materials: BTreeMap::new().into(),
             images: BTreeMap::new(),
             clouds: BTreeMap::new(),
             cads: BTreeMap::new(),
-            families: BTreeMap::new(),
+            families: BTreeMap::new().into(),
             parameters: BTreeMap::new(),
             view_filters: BTreeMap::new(),
-            view_templates: BTreeMap::new(),
+            view_templates: graphics::starter_templates(language),
             phases: phasing::phases(language),
             phase_filters: phasing::filters(language),
             phase_overrides: phasing::overrides(),
@@ -2364,9 +2848,13 @@ impl Model {
             dimension_types: crate::dims::types(),
             detail_groups: BTreeMap::new(),
             reinforcement: BTreeMap::new(),
+            voltages: crate::electrical::voltages(),
+            distribution_systems: crate::electrical::distribution_systems(),
+            wire_types: crate::electrical::wire_types(),
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
+            derived: Default::default(),
         };
         // A library to start from: each material its colour, its cut's pattern and its surface's, and the texture it has.
         for (name, color, cut, surface, texture) in [
@@ -2393,7 +2881,7 @@ impl Model {
             let transparency = if name == "Glass" { GLASS_TRANSPARENCY } else { 0 };
             m.materials.insert(language.word(name).into(), Material { color, cut, surface, texture, transparency, ..Material::default() });
         }
-        m.families = crate::family::library(language);
+        m.families = crate::family::library(language).into();
         for (n, t) in [("Generic - 200mm", 200.0), ("Interior - 100mm", 100.0)] {
             m.types.wall.insert(n.into(), WallType { thickness: t, layers: Vec::new() });
         }
@@ -2461,6 +2949,12 @@ impl Model {
             ("Perforated 300 x 100", run(300.0, 100.0, false, "Metal")),
         ];
         m.types.runs.insert("cabletray".into(), trays.into_iter().map(|(n, t)| (n.to_string(), t)).collect());
+        let ducts = [
+            ("Rectangular 400 x 300", run(400.0, 300.0, false, "Metal")),
+            ("Rectangular 600 x 400", run(600.0, 400.0, false, "Metal")),
+            ("Round 300", run(300.0, 300.0, true, "Metal")),
+        ];
+        m.types.runs.insert("duct".into(), ducts.into_iter().map(|(n, t)| (n.to_string(), t)).collect());
         let wires = [
             ("Wire 2.5", run(4.0, 4.0, true, "Copper")),
             ("Wire 4", run(5.0, 5.0, true, "Copper")),
@@ -2494,6 +2988,12 @@ impl Model {
             ("Perforated 300 x 100", run(300.0, 100.0, false, "Metal")),
         ];
         m.types.runs.insert("cabletray".into(), trays.into_iter().map(|(n, t)| (n.to_string(), t)).collect());
+        let ducts = [
+            ("Rectangular 400 x 300", run(400.0, 300.0, false, "Metal")),
+            ("Rectangular 600 x 400", run(600.0, 400.0, false, "Metal")),
+            ("Round 300", run(300.0, 300.0, true, "Metal")),
+        ];
+        m.types.runs.insert("duct".into(), ducts.into_iter().map(|(n, t)| (n.to_string(), t)).collect());
         let wires = [
             ("Wire 2.5", run(4.0, 4.0, true, "Copper")),
             ("Wire 4", run(5.0, 5.0, true, "Copper")),
@@ -2529,7 +3029,7 @@ impl Model {
 
     /// Every type's layers, to change.
     pub fn layers_mut(&mut self) -> impl Iterator<Item = &mut Layer> {
-        let Types { wall, floor, roof, ceiling, .. } = &mut self.types;
+        let Types { wall, floor, roof, ceiling, .. } = &mut *self.types;
         (wall.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(floor.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(roof.values_mut().flat_map(|t| t.layers.iter_mut()))
@@ -2663,6 +3163,19 @@ impl Model {
             .collect()
     }
 
+    /// Component `c`'s plan marks in the model: its family's symbols in its own axes, mirrored if it is, turned and moved to
+    /// where it stands. A label is lettered upright in the family's axes, so it turns (and mirrors) with the component.
+    pub fn component_marks(&self, c: &Component) -> Vec<crate::family::Mark> {
+        let Some(f) = self.families.get(&c.family) else { return Vec::new() };
+        if f.symbols.is_empty() {
+            return Vec::new();
+        }
+        let Ok(marks) = f.values(&c.type_name, &c.params).and_then(|v| f.marks(&v)) else { return Vec::new() };
+        let (sin, cos) = c.angle.to_radians().sin_cos();
+        let flip = if c.mirrored { -1.0 } else { 1.0 };
+        marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
+    }
+
     /// Component `c`'s solids in the model: its own, turned and moved to where it stands.
     pub fn component_pieces(&self, c: &Component) -> Vec<Piece> {
         let base = self.elevation(c.level) + c.offset;
@@ -2691,7 +3204,13 @@ impl Model {
     /// Every element's id has six digits or more, and what an element points at is an element of the project, by its GUID.
     /// The library's ids and GUIDs are those of what it has, no name is a GUID, and no id or GUID is two things'.
     fn check_ids(&self) -> Result<(), String> {
-        if !self.library_in_step() {
+        self.check_ids_of(self.elements.iter().map(|(id, e)| (*id, e)), self.library_in_step())
+    }
+
+    /// The library's ids and GUIDs as [`Model::check_ids`] asks, whether it is `in_step`, and of the elements, those of
+    /// `elements`.
+    fn check_ids_of<'a>(&self, elements: impl Iterator<Item = (Id, &'a Element)>, in_step: bool) -> Result<(), String> {
+        if !in_step {
             return Err("the library's ids and GUIDs are not those of what it has".into());
         }
         for (id, e) in self.library.entries() {
@@ -2708,8 +3227,8 @@ impl Model {
                 return Err(format!("{} `{}`: a name isn't a GUID; name it otherwise", e.kind.label(), e.name));
             }
         }
-        for (id, e) in self.elements.iter() {
-            if *id < FIRST_ID {
+        for (id, e) in elements {
+            if id < FIRST_ID {
                 return Err(format!("element {id}: ids start at {FIRST_ID}"));
             }
             for g in e.refs() {
@@ -2843,6 +3362,18 @@ impl Model {
         // dimension type; one of 10 read by 9 would measure its points as lines. A dimension of 9 gets its kind's type.
         self.typed_dimensions();
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
+        // 11 to 12 (German and Dutch as a project's language, a wall that bounds no rooms, a family's connectors) has no step either: a
+        // file of 11 holds none. The electrical settings (voltages, distribution systems, wire types) have none within 11 or 12: a file
+        // without them reads with the starter set, and one that has them is read by an older version with them left out.
+        // 12 to 13 (a floor's or flat roof's shape, a variable layer, a spot slope) has none either: a file of 12 holds none.
+        // 13 to 14 (the categories of family components, and the starter view templates) has no step: a file of 13 names
+        // `component` for them all, which still does, and has the templates it was given: none, unless the user made them.
+        // 14 to 15 (a roof's slope for each edge, a wall's top offset) has no step: the new fields default, to every edge at the
+        // roof's `slope` and to a top at its level, which is what a file of 14 holds.
+        // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
+        // read as dimensions of nothing) has no step: a file of 15 holds none.
+        // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
+        // 17 to 18 (adaptive families and components' adaptive frames) has none: a file of 17 holds neither, and both default.
         self.format = FORMAT;
     }
 
@@ -2894,8 +3425,28 @@ impl Model {
     /// What points at an element by its id (as a command gives a reference, or a file from before GUIDs held it) points at
     /// its GUID. An id no element has is left as it is, for [`Model::check`] to name.
     pub fn resolve(&mut self) {
+        self.resolve_in(None);
+    }
+
+    /// [`Model::resolve`] of a model made from `before`, which passed [`Model::check`], so held no id for a GUID: only what
+    /// changed since (what a command changed, what an undo brought back) can hold one.
+    pub(crate) fn resolve_changed(&mut self, before: &Model) {
+        let among = match self.elements.touched() {
+            Some(touched) => Some(touched),
+            None => match self.changed_since(before) {
+                Changed::Ids(ids) => Some(ids),
+                Changed::All => None,
+            },
+        };
+        self.resolve_in(among);
+    }
+
+    fn resolve_in(&mut self, among: Option<BTreeSet<Id>>) {
         let pending = |e: &Element| e.refs().iter().any(|g| g.pending().is_some());
-        let ids: Vec<Id> = self.elements.iter().filter(|(_, e)| pending(e)).map(|(id, _)| *id).collect();
+        let ids: Vec<Id> = match among {
+            Some(touched) => touched.into_iter().filter(|id| self.elements.get(*id).is_some_and(pending)).collect(),
+            None => self.elements.iter().filter(|(_, e)| pending(e)).map(|(id, _)| *id).collect(),
+        };
         for id in ids {
             let Some(mut e) = self.elements.get(id).cloned() else { continue };
             e.refs_mut(&mut |g| {
@@ -2949,6 +3500,21 @@ impl Model {
         self.elements.id(a).is_some_and(|a| self.elements.id(b) == Some(a))
     }
 
+    /// The elements that point at element `k`, by id, as [`Element::refs`] gives what each points at: the doors and windows
+    /// in a wall, the walls attached to a roof or a floor, the dimensions and tags on it.
+    pub fn referring(&self, k: impl Key) -> Vec<Id> {
+        let Some(g) = self.elements.guid(k) else { return Vec::new() };
+        // What points at it, as the lookup keeps it, in the order of their ids.
+        let found: Vec<Id> = self.lookup().referrers(&g).collect();
+        #[cfg(test)]
+        assert_eq!(
+            found,
+            self.elements.iter().filter(|(_, e)| e.refs().contains(&g)).map(|(id, _)| *id).collect::<Vec<_>>(),
+            "what points at an element, from the lookup, isn't every element that does"
+        );
+        found
+    }
+
     /// The GUID of the element `k` finds; the nil GUID, which is no element's, when there's none.
     pub fn guid(&self, k: impl Key) -> Guid {
         self.elements.guid(k).unwrap_or_default()
@@ -2988,21 +3554,31 @@ impl Model {
     /// What a level stretches over without an extent of its own: every solid and grid in plan,
     /// [`LEVEL_PAST`] past them (10 m each way of the origin in an empty project).
     pub fn model_extent(&self) -> [P2; 2] {
-        let pts = crate::view3d::solids(self)
-            .iter()
-            .flat_map(|s| s.corners())
-            .map(|p| P2(p[0], p[1]))
-            .chain(self.elements.iter().flat_map(|(id, e)| match e {
-                Element::Grid(g) => vec![g.start, g.end],
-                Element::PointCloud(_) => self.cloud_box(*id).map_or(Vec::new(), |(lo, hi)| vec![P2(lo[0], lo[1]), P2(hi[0], hi[1])]),
-                Element::CadImport(_) => self.cad_box(*id).map_or(Vec::new(), |b| b.to_vec()),
-                _ => Vec::new(),
-            }))
-            .collect::<Vec<_>>();
-        match pts.first() {
-            Some(&first) => {
-                let (lo, hi) =
-                    pts.iter().fold((first, first), |(lo, hi), q| (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1))));
+        self.model_extent_of(crate::view3d::solids(self).iter().flat_map(|s| s.corners()).map(|p| P2(p[0], p[1])))
+    }
+
+    /// [`Model::model_extent`], of `corners`, in plan: those of [`crate::view3d::solids`] of this model, or the points
+    /// that may be farthest among them.
+    pub(crate) fn model_extent_of(&self, corners: impl Iterator<Item = P2>) -> [P2; 2] {
+        // The grids, scans and drawings, in the order of their ids, from the lookup.
+        let lookup = self.lookup();
+        let others: BTreeSet<Id> = lookup.grids().chain(lookup.rare("pointcloud")).chain(lookup.rare("cadimport")).collect();
+        let pts = corners.chain(others.into_iter().flat_map(|id| match self.elements.get(id) {
+            Some(Element::Grid(g)) => vec![g.start, g.end],
+            Some(Element::PointCloud(_)) => self.cloud_box(id).map_or(Vec::new(), |(lo, hi)| vec![P2(lo[0], lo[1]), P2(hi[0], hi[1])]),
+            Some(Element::CadImport(_)) => self.cad_box(id).map_or(Vec::new(), |b| b.to_vec()),
+            _ => Vec::new(),
+        }));
+        // Folded as they come, the first the start: no list of every corner of every mesh.
+        let mut bounds: Option<(P2, P2)> = None;
+        for q in pts {
+            bounds = Some(match bounds {
+                None => (q, q),
+                Some((lo, hi)) => (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1))),
+            });
+        }
+        match bounds {
+            Some((lo, hi)) => {
                 [crate::commands::micron(lo - P2(LEVEL_PAST, LEVEL_PAST)), crate::commands::micron(hi + P2(LEVEL_PAST, LEVEL_PAST))]
             }
             None => [P2(-10_000.0, -10_000.0), P2(10_000.0, 10_000.0)],
@@ -3041,15 +3617,24 @@ impl Model {
     }
 
     /// Levels from lowest to highest.
+    /// The levels, lowest first (of one height, by id). From the lookup when it is made for the elements as they are,
+    /// else from every element.
     pub fn levels(&self) -> Vec<(Id, &Level)> {
-        let mut v: Vec<(Id, &Level)> = self
-            .elements
-            .iter()
-            .filter_map(|(&id, e)| match e {
-                Element::Level(l) => Some((id, l)),
-                _ => None,
-            })
-            .collect();
+        let level = |id: Id| match self.elements.get(id) {
+            Some(Element::Level(l)) => Some((id, l)),
+            _ => None,
+        };
+        let mut v: Vec<(Id, &Level)> = match self.derived.made(&self.elements) {
+            Some(look) => look.levels().filter_map(level).collect(),
+            None => self
+                .elements
+                .iter()
+                .filter_map(|(&id, e)| match e {
+                    Element::Level(l) => Some((id, l)),
+                    _ => None,
+                })
+                .collect(),
+        };
         v.sort_by(|a, b| a.1.elevation.total_cmp(&b.1.elevation));
         v
     }
@@ -3143,10 +3728,11 @@ impl Model {
         self.elevation(w.level) + w.base_offset
     }
 
-    /// Its top by its top constraint, whatever it's attached to.
+    /// Its top by its top constraint, whatever it's attached to: its top level and its top offset above that, or its base and its
+    /// height. Everything that reads a wall's top, its 3D solid, sections, IFC and what is attached to it, comes here.
     pub fn own_top(&self, w: &Wall) -> f64 {
         match w.top_level {
-            Some(t) => self.elevation(t),
+            Some(t) => self.elevation(t) + w.top_offset,
             None => self.own_base(w) + w.height,
         }
     }
@@ -3166,10 +3752,38 @@ impl Model {
         self.spans(w, self.plan_range(level).cut)
     }
 
-    /// Whether the wall bounds the rooms of `level`: it spans the height rooms are found at,
-    /// [`CUT_HEIGHT`] above the level, whatever the level's plan cuts at.
+    /// Whether the wall bounds the rooms of `level`: it spans the height rooms are found at, the level's Computation Height
+    /// ([`CUT_HEIGHT`] unless set) above it, whatever the level's plan cuts at.
     pub fn bounding(&self, w: &Wall, level: impl Key) -> bool {
-        self.spans(w, self.elevation(level) + CUT_HEIGHT)
+        let up = self.level(level).map_or(CUT_HEIGHT, |l| l.computation_height);
+        self.spans(w, self.elevation(level) + up)
+    }
+
+    /// Whether the wall bounds the rooms of `level`: [`Model::bounding`], and its Room Bounding on.
+    pub fn room_bounding(&self, w: &Wall, level: impl Key) -> bool {
+        w.room_bounding && self.bounding(w, level)
+    }
+
+    /// The outlines of the columns (and structural columns) that bound the rooms of `level`: Room Bounding on, standing at
+    /// the level's Computation Height.
+    pub fn bounding_columns(&self, level: impl Key) -> Vec<Vec<P2>> {
+        let level = self.guid(level);
+        let z = self.elevation(level) + self.level(level).map_or(CUT_HEIGHT, |l| l.computation_height);
+        // In order of id, the columns and the structural ones: from the lookup when it is made.
+        let mut ids = self.rare("column");
+        ids.extend(self.rare("structuralcolumn"));
+        ids.sort_unstable();
+        ids.into_iter()
+            .filter_map(|id| self.elements.get(id))
+            .filter(|e| {
+                matches!(e, Element::Column(c) | Element::StructuralColumn(c) if c.room_bounding && {
+                    let (bottom, top) = self.span(c.level, c.base_offset, c.top_level, c.height);
+                    bottom <= z && z < top
+                })
+            })
+            .map(|e| self.column_outline(e))
+            .filter(|o| o.len() >= 3)
+            .collect()
     }
 
     /// Whether the wall spans height `z`.
@@ -3263,10 +3877,10 @@ impl Model {
 
     /// The plan views of `level`, in element order.
     pub fn plan_views(&self, level: impl Key) -> Vec<(Id, &PlanView)> {
-        self.elements
-            .iter()
-            .filter_map(|(id, e)| match e {
-                Element::PlanView(v) if self.same(v.level, level) => Some((*id, v)),
+        self.rare("planview")
+            .into_iter()
+            .filter_map(|id| match self.elements.get(id) {
+                Some(Element::PlanView(v)) if self.same(v.level, level) => Some((id, v)),
                 _ => None,
             })
             .collect()
@@ -3354,6 +3968,7 @@ impl Model {
             "beam" => "Beam 200 x 500",
             "stripfooting" => "Strip 600 x 300",
             "pipe" => "PVC 50",
+            "duct" => "Rectangular 400 x 300",
             "conduit" => "PVC 25",
             "cabletray" => "Perforated 100 x 50",
             "wire" => "Wire 2.5",
@@ -3435,11 +4050,11 @@ impl Model {
     /// A door's or window's family's solids and the lines its plan draws, in the family's own axes, turned out with
     /// the opening's flips as mirror images (its hinge on the other jamb, its swing to the wall's other side);
     /// none for one that isn't of a family, or doesn't build.
-    pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<Vec<P2>>)> {
+    pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Mark>)> {
         let (Element::Door(o) | Element::Window(o)) = e else { return None };
         let f = self.families.get(o.family.as_ref()?)?;
         let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
-        let (pieces, strokes) = (f.pieces(&values).ok()?, f.strokes(&values).ok()?);
+        let (pieces, marks) = (f.pieces(&values).ok()?, f.marks(&values).ok()?);
         let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
         let mirrored = fx * fy < 0.0;
         let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
@@ -3452,8 +4067,8 @@ impl Model {
                 Piece { tris: tris.collect(), outline: if mirrored { outline.into_iter().rev().collect() } else { outline }, ..pc }
             })
             .collect();
-        let strokes = strokes.into_iter().map(|l| l.into_iter().map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)).collect()).collect();
-        Some((pieces, strokes))
+        let marks = marks.iter().map(|k| k.map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0))).collect();
+        Some((pieces, marks))
     }
 
     /// A door's or window's family's solids where it stands, in the model's own axes: each form's triangles, its
@@ -3477,11 +4092,11 @@ impl Model {
             .collect()
     }
 
-    /// The lines a door's or window's family draws in plan, where it stands.
-    pub fn opening_strokes(&self, e: &Element) -> Vec<Vec<P2>> {
+    /// The marks a door's or window's family draws in plan, where it stands.
+    pub fn opening_marks(&self, e: &Element) -> Vec<crate::family::Mark> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let (Some((_, strokes)), Some((at, u, _))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
-        strokes.into_iter().map(|l| l.into_iter().map(|q| at + u * q.0 + u.perp() * q.1).collect()).collect()
+        let (Some((_, marks)), Some((at, u, _))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
+        marks.iter().map(|k| k.map(|q| at + u * q.0 + u.perp() * q.1)).collect()
     }
 
     /// The level an element stands on: a door's or window's is its wall's, a tag's its door's or
@@ -3527,6 +4142,7 @@ impl Model {
             | Element::Viewport(_)
             | Element::Schedule(_)
             | Element::Link(_)
+            | Element::Dimension3D(_)
             | Element::View3D(_) => None,
         }
     }
@@ -3594,9 +4210,45 @@ impl Model {
         }
     }
 
-    /// How far a roof's top lies over its underside where that's in `plane`: its type's thickness, plumb.
+    /// How far a roof's top lies over its underside where that's in `plane`: its type's thickness, square to the plane; a
+    /// shaped roof's, plumb, so its planes meet underneath as they do on top.
     pub fn roof_rise(&self, r: &Roof, plane: &walls::Plane) -> f64 {
-        self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness) * plane.g.dot(plane.g).sqrt().hypot(1.0)
+        let thickness = self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness);
+        if r.shape.is_empty() { thickness * plane.g.dot(plane.g).sqrt().hypot(1.0) } else { thickness }
+    }
+
+    /// A flat roof's top as shape editing sees it: a floor over its footprint, its courtyards and openings as openings, at
+    /// its top (its type's thickness over its base), with its shape. Its points' heights, picks, labels and checks are then
+    /// a floor's; `roof_faces` lays its underside the thickness below.
+    pub fn roof_as_floor(&self, r: &Roof) -> Floor {
+        Floor {
+            type_name: String::new(),
+            level: r.level,
+            boundary: ccw(&r.boundary),
+            openings: r.courtyards.iter().chain(&r.openings).cloned().collect(),
+            offset: r.offset + self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness),
+            slope: 0.0,
+            arrow: None,
+            structural: false,
+            pattern_origin: P2::default(),
+            pattern_angle: 0.0,
+            sketch: Vec::new(),
+            shape: r.shape.clone(),
+            params: BTreeMap::new(),
+        }
+    }
+
+    /// Element `id` as shape editing works on it: a floor as it is, or a flat roof by footprint as `roof_as_floor` sees it.
+    /// None for anything else, or with why for a roof that can't take a shape.
+    pub fn shapeable(&self, id: impl Key) -> Result<Floor, String> {
+        match self.elements.get(id) {
+            Some(Element::Floor(f)) => Ok(f.clone()),
+            Some(Element::Roof(r)) => match r.unshapeable() {
+                Some(why) => Err(why.into()),
+                None => Ok(self.roof_as_floor(r)),
+            },
+            _ => Err("only floors and flat roofs have shapes".into()),
+        }
     }
 
     /// A roof's slopes. Over its footprint, flat at its base, or each edge but its gables sloping
@@ -3621,6 +4273,14 @@ impl Model {
                     })
                     .collect()
             }
+            // A shaped one's top in planes (as a floor's, through `roof_as_floor`), its underside its thickness below.
+            None if r.slope == 0.0
+                && !r.shape.is_empty()
+                && let Ok(planes) = self.shape_planes(&self.roof_as_floor(r)) =>
+            {
+                let thickness = self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness);
+                planes.into_iter().map(|(loops, plane)| (loops, walls::Plane { z: plane.z - thickness, ..plane })).collect()
+            }
             None if r.slope == 0.0 => {
                 let courtyards = r.courtyards.iter().map(|c| ccw(c).into_iter().rev().collect());
                 vec![(std::iter::once(ccw(&r.boundary)).chain(courtyards).collect(), walls::Plane::flat(base))]
@@ -3629,27 +4289,49 @@ impl Model {
                 // Its outline counter-clockwise and its courtyards clockwise, the roof to the left of
                 // every edge; its edges left upright, counted the other way round on a ring turned round.
                 let up = self.roof_uprights(r)?;
-                let (mut rings, mut speeds) = (Vec::new(), Vec::new());
+                let own = r.edge_slopes();
+                // Each edge's number as the footprint gives it, and how steeply it rises: tan of its slope.
+                let (mut rings, mut numbers) = (Vec::new(), Vec::new());
                 for (k, given) in std::iter::once(&r.boundary).chain(&r.courtyards).enumerate() {
-                    let (n, first) = (given.len(), speeds.len());
+                    let (n, first) = (given.len(), numbers.len());
                     let turn = (geom::area(given) < 0.0) == (k == 0);
                     rings.push(if turn { given.iter().rev().copied().collect() } else { given.clone() });
-                    speeds.extend(
-                        (0..n).map(|i| if up.get(first + if turn { (2 * n - 2 - i) % n } else { i }) == Some(&true) { 0.0 } else { 1.0 }),
-                    );
+                    numbers.extend((0..n).map(|i| first + if turn { (2 * n - 2 - i) % n } else { i }));
                 }
-                if !(3..=MAX_ROOF_POINTS).contains(&speeds.len()) {
-                    let n = speeds.len();
+                if !(3..=MAX_ROOF_POINTS).contains(&numbers.len()) {
+                    let n = numbers.len();
                     return Err(format!("a pitched roof's footprint has 3 to {MAX_ROOF_POINTS} points, courtyards and all, not {n}"));
                 }
-                let tan = r.slope.to_radians().tan();
-                let eave = base - r.overhang * tan;
+                let tans: Vec<f64> = numbers.iter().map(|k| own.get(*k).copied().unwrap_or(r.slope).to_radians().tan()).collect();
+                // An edge moves in as fast as its slope is shallow, run over rise, scaled so the shallowest is 1: each moves as far
+                // as it takes to rise as high as the others, and the eaves are level. Edges all at the roof's slope move at 1.
+                let runs: Vec<f64> = tans.iter().map(|t| 1.0 / t).collect();
+                let peak = runs.iter().copied().fold(0.0, f64::max);
+                let alike = r.slopes.iter().all(|s| *s <= 0.0);
+                if !alike && !(peak.is_finite() && peak > 0.0) {
+                    return Err("a slope of an edge is too shallow to work out where the slopes meet".into());
+                }
+                let speeds: Vec<f64> = numbers
+                    .iter()
+                    .zip(&runs)
+                    .map(|(k, run)| {
+                        if up.get(*k) == Some(&true) {
+                            0.0
+                        } else if alike {
+                            1.0
+                        } else {
+                            run / peak
+                        }
+                    })
+                    .collect();
+                let eave = base - r.overhang * r.slope.to_radians().tan();
                 let skeleton = crate::skeleton::faces(&rings, &speeds)?;
                 rings
                     .iter()
                     .flat_map(|ring| geom::ring_edges(ring))
                     .zip(skeleton)
-                    .filter_map(|((a, b), face)| {
+                    .zip(tans)
+                    .filter_map(|(((a, b), face), tan)| {
                         let inward = (b - a).unit().perp();
                         let plane = walls::Plane { z: eave - tan * a.dot(inward), g: inward * tan };
                         let loops: Vec<Vec<P2>> = face.into_iter().map(|l| l.into_iter().map(|(p, _)| p).collect()).collect();
@@ -3749,9 +4431,61 @@ impl Model {
             .map(|(_, id, i)| (id, i))
     }
 
-    /// A roof's slabs: each piece's underside in space, and how far its top lies over it.
+    /// A roof's slabs: each piece's underside in space, and how far its top lies over it (at most, over a level underside).
     pub fn roof_slabs(&self, r: &Roof) -> Vec<(Vec<[f64; 3]>, f64)> {
-        self.roof_pieces(r).unwrap_or_default().into_iter().map(|(ring, p)| (p.lift(&ring), self.roof_rise(r, &p))).collect()
+        self.roof_prisms(r)
+            .into_iter()
+            .map(|(ring, bottom, top)| {
+                let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+                (bottom.lift(&ring), rise)
+            })
+            .collect()
+    }
+
+    /// A roof's slabs as prisms: each of its pieces (`roof_pieces`) in plan, from its underside's plane up to its top's,
+    /// `roof_rise` over it; a shaped one's underside level at its base under a variable layer (`roof_under`).
+    pub fn roof_prisms(&self, r: &Roof) -> Vec<(Vec<P2>, walls::Plane, walls::Plane)> {
+        let under = self.roof_under(r).map(|(p, _)| p);
+        self.roof_pieces(r)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(ring, p)| {
+                let top = walls::Plane { z: p.z + self.roof_rise(r, &p), ..p };
+                (ring, under.unwrap_or(p), top)
+            })
+            .collect()
+    }
+
+    /// A shaped flat roof's underside, level at its base, when its type has a variable layer, and that layer: the layers
+    /// over it follow its top, those under it stay level, as a shaped floor's do (`floor_under`). None otherwise: its
+    /// underside follows its top.
+    pub fn roof_under(&self, r: &Roof) -> Option<(walls::Plane, Variable)> {
+        if r.shape.is_empty() || r.unshapeable().is_some() {
+            return None;
+        }
+        let v = Variable::of(self.type_layers("roof", &r.type_name))?;
+        Some((walls::Plane::flat(self.elevation(r.level) + r.offset), v))
+    }
+
+    /// The variable layer element `id` keeps its underside level under: a shaped floor's (`floor_under`) or a shaped flat
+    /// roof's (`roof_under`).
+    pub fn variable_under(&self, id: impl Key) -> Option<Variable> {
+        match self.elements.get(id) {
+            Some(Element::Floor(f)) => self.floor_under(f).map(|(_, v)| v),
+            Some(Element::Roof(r)) => self.roof_under(r).map(|(_, v)| v),
+            _ => None,
+        }
+    }
+
+    /// A shaped flat roof's slab as one closed solid, as a shaped floor's (`shape_solid`): its top's planes, its underside
+    /// its thickness under them or level under a variable layer, and plumb sides. None unshaped.
+    pub fn roof_solid(&self, r: &Roof) -> Option<Polyhedron> {
+        if r.shape.is_empty() || r.unshapeable().is_some() {
+            return None;
+        }
+        let f = self.roof_as_floor(r);
+        let thickness = self.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness);
+        self.shaped_solid(&f, &f.openings, thickness, self.roof_under(r).map(|(p, _)| p))
     }
 
     /// A roof's slopes less the holes in them and its openings, in convex pieces where a hole cuts one.
@@ -3776,17 +4510,226 @@ impl Model {
         }
     }
 
-    /// How far a floor's underside lies below its top, plumb: its type's thickness across its slope.
+    /// The plane an element's sketch lies on in a model view, where Edit Boundary draws its lines in 3D: a floor's top (a
+    /// sloped one's slope with it), a ceiling's underside, a roof's base, a shaft's bottom. None for anything else: a filled
+    /// region is a view's, and an extruded roof is sketched in elevation.
+    pub fn sketch_plane(&self, id: impl Key) -> Option<walls::Plane> {
+        let p = match self.elements.get(id)? {
+            Element::Floor(f) => self.floor_top(f),
+            Element::Ceiling(c) => walls::Plane::flat(self.elevation(c.level) + c.offset),
+            Element::Roof(r) if r.extrusion.is_none() => walls::Plane::flat(self.elevation(r.level) + r.offset),
+            Element::Shaft(s) => walls::Plane::flat(self.elevation(s.level) + s.base_offset),
+            _ => return None,
+        };
+        (p.z.is_finite() && p.g.0.is_finite() && p.g.1.is_finite()).then_some(p)
+    }
+
+    /// How far a floor's underside lies below its top, plumb: its type's thickness across its slope. A shaped floor has
+    /// no slope, so it's its type's thickness plumb, and its planes meet underneath as they do on top.
     pub fn floor_depth(&self, f: &Floor) -> f64 {
         self.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness) / f.slope.to_radians().cos()
+    }
+
+    /// A shaped floor's underside, level, when its type has a variable layer: its type's thickness under where its top would
+    /// be without its shape (`floor_top`, level for a shaped floor), and that layer. None otherwise: its underside follows
+    /// its top.
+    pub fn floor_under(&self, f: &Floor) -> Option<(walls::Plane, Variable)> {
+        if f.shape.is_empty() {
+            return None;
+        }
+        let v = Variable::of(self.type_layers("floor", &f.type_name))?;
+        let top = self.floor_top(f);
+        Some((walls::Plane { z: top.z - self.floor_depth(f), ..top }, v))
+    }
+
+    /// A floor's top in pieces, less its openings, each counter-clockwise with the plane it lies in: its outline over
+    /// `floor_top` (in convex pieces once an opening cuts it), or a shaped floor's planes (`shape_planes`), each in convex
+    /// pieces. A shape that doesn't triangulate (a file's; a command's is checked) leaves the floor as it would be without.
+    pub fn floor_faces(&self, f: &Floor) -> Vec<(Vec<P2>, walls::Plane)> {
+        if !f.shape.is_empty()
+            && let Ok(planes) = self.shape_planes(f)
+        {
+            return planes.into_iter().flat_map(|(loops, plane)| solid(&loops, &[]).into_iter().map(move |r| (r, plane))).collect();
+        }
+        let top = self.floor_top(f);
+        solid(&[ccw(&f.boundary)], &f.openings).into_iter().map(|ring| (ring, top)).collect()
+    }
+
+    /// A shaped floor's planes: its top triangulated (`shape_mesh`), and neighbouring triangles in one plane (within
+    /// 0.01 mm) made one. Each plane is the loops round it, its outline counter-clockwise first and then its holes
+    /// clockwise; a plane whose edges don't make such loops (it touches itself at a corner) stays its triangles.
+    pub fn shape_planes(&self, f: &Floor) -> Result<Vec<Slope>, String> {
+        let (t, lifted, planes) = self.shape_mesh(f, &f.openings)?;
+        let at = |i: usize| lifted.get(i).copied().unwrap_or_default();
+        Ok(crate::triangulation::merge(&t, &planes, &|plane: &walls::Plane, i: usize| {
+            (plane.at(P2(at(i)[0], at(i)[1])) - at(i)[2]).abs() <= 0.01
+        }))
+    }
+
+    /// A shaped floor's slab as one closed solid: its top's planes (`shape_planes`), under them the same planes
+    /// `floor_depth` down or its level underside (`floor_under`), and plumb sides round its outline and its openings, each edge between two of the triangulation's corners. Its
+    /// corners, and each face as loops of indices into them, its outline first and then its holes, counter-clockwise seen
+    /// from outside. None without a shape, or for one that doesn't triangulate.
+    pub fn shape_solid(&self, f: &Floor) -> Option<Polyhedron> {
+        self.shape_solid_over(f, &f.openings)
+    }
+
+    /// [`shape_solid`](Self::shape_solid), open through `openings` only: none for its whole outline.
+    pub fn shape_solid_over(&self, f: &Floor, openings: &[Vec<P2>]) -> Option<Polyhedron> {
+        self.shaped_solid(f, openings, self.floor_depth(f), self.floor_under(f).map(|(p, _)| p))
+    }
+
+    /// A shaped top's slab as one closed solid (`shape_solid_over`), `depth` under its top, plumb, or down to `under`.
+    fn shaped_solid(&self, f: &Floor, openings: &[Vec<P2>], depth: f64, under: Option<walls::Plane>) -> Option<Polyhedron> {
+        if f.shape.is_empty() {
+            return None;
+        }
+        let (t, lifted, planes) = self.shape_mesh(f, openings).ok()?;
+        let n = lifted.len();
+        let down = |p: &[f64; 3]| [p[0], p[1], under.map_or(p[2] - depth, |u| u.at(P2(p[0], p[1])))];
+        let corners: Vec<[f64; 3]> = lifted.iter().copied().chain(lifted.iter().map(down)).collect();
+        let index: BTreeMap<(u64, u64), usize> = t.points.iter().enumerate().map(|(i, q)| ((q.0.to_bits(), q.1.to_bits()), i)).collect();
+        let at = |i: usize| lifted.get(i).copied().unwrap_or_default();
+        let pieces = crate::triangulation::merge(&t, &planes, &|plane: &walls::Plane, i: usize| {
+            (plane.at(P2(at(i)[0], at(i)[1])) - at(i)[2]).abs() <= 0.01
+        });
+        let mut faces = Vec::new();
+        for (loops, _) in pieces {
+            let top: Option<Vec<Vec<usize>>> =
+                loops.iter().map(|l| l.iter().map(|q| index.get(&(q.0.to_bits(), q.1.to_bits())).copied()).collect()).collect();
+            let top = top?;
+            let bottom = top.iter().map(|l| l.iter().rev().map(|i| i + n).collect()).collect();
+            faces.push(top);
+            faces.push(bottom);
+        }
+        // An edge only one triangle runs along, counter-clockwise round it, is on the outline or an opening's: a side there.
+        let sides: BTreeSet<(usize, usize)> = t.triangles.iter().flat_map(|k| [(k[0], k[1]), (k[1], k[2]), (k[2], k[0])]).collect();
+        let edges = sides.iter().filter(|(a, b)| !sides.contains(&(*b, *a)));
+        faces.extend(edges.map(|&(a, b)| vec![vec![a + n, b + n, b, a]]));
+        Some((corners, faces))
+    }
+
+    /// A shaped floor's top over its whole outline, its openings as if closed, as triangles in plan with their planes:
+    /// what a wall attached to it follows, as a slope arrow's plane runs on over an opening. None for a shape that doesn't
+    /// triangulate.
+    pub fn shape_triangles(&self, f: &Floor) -> Vec<(Vec<P2>, walls::Plane)> {
+        let Ok((t, _, planes)) = self.shape_mesh(f, &[]) else { return Vec::new() };
+        let corner = |i: usize| t.points.get(i).copied().unwrap_or_default();
+        t.triangles.iter().zip(planes).map(|(k, plane)| (k.map(corner).to_vec(), plane)).collect()
+    }
+
+    /// A shaped floor's top triangulated (`triangulation::constrained`: its outline and `openings`, its points as corners
+    /// and its split lines as edges), each corner lifted to `floor_top` plus the height of the point there (within `TOL`; a
+    /// corner with none, 0), and each triangle's plane.
+    fn shape_mesh(&self, f: &Floor, openings: &[Vec<P2>]) -> Result<ShapeMesh, String> {
+        let points: Vec<P2> = f.shape.points.iter().map(|p| p.at).collect();
+        let lines: Vec<(P2, P2)> = f.shape.lines.iter().map(|l| (l.a, l.b)).collect();
+        let t = crate::triangulation::constrained(&f.boundary, openings, &points, &lines)?;
+        let top = self.floor_top(f);
+        let height = |q: P2| {
+            f.shape.points.iter().filter(|p| p.at.dist(q) <= TOL).min_by(|a, b| a.at.dist(q).total_cmp(&b.at.dist(q))).map_or(0.0, |p| p.z)
+        };
+        let lifted: Vec<[f64; 3]> = t.points.iter().map(|&q| [q.0, q.1, top.at(q) + height(q)]).collect();
+        let at = |i: usize| lifted.get(i).copied().unwrap_or_default();
+        let planes: Vec<walls::Plane> =
+            t.triangles.iter().map(|k| walls::Plane::of(&k.map(at)).unwrap_or_else(|| walls::Plane::flat(at(k[0])[2]))).collect();
+        Ok((t, lifted, planes))
+    }
+
+    /// A shaped floor's creases: each edge of its top's planes (`shape_planes`) once, its ends where the top is, the outline's
+    /// edges among them. What a drag of its shape previews, given the floor with the shape it would have. None without a
+    /// shape, or for one that doesn't triangulate.
+    pub fn shape_creases(&self, f: &Floor) -> Vec<[[f64; 3]; 2]> {
+        if f.shape.is_empty() {
+            return Vec::new();
+        }
+        let key = |p: [f64; 3]| [p[0], p[1], p[2]].map(|v| (v * 100.0).round() as i64);
+        let mut seen = BTreeSet::new();
+        let mut creases = Vec::new();
+        for (loops, plane) in self.shape_planes(f).unwrap_or_default() {
+            for ring in &loops {
+                for (a, b) in geom::ring_edges(ring) {
+                    let (a, b) = ([a.0, a.1, plane.at(a)], [b.0, b.1, plane.at(b)]);
+                    let k = if key(a) <= key(b) { (key(a), key(b)) } else { (key(b), key(a)) };
+                    if seen.insert(k) {
+                        creases.push([a, b]);
+                    }
+                }
+            }
+        }
+        creases
+    }
+
+    /// A shaped floor's folding lines, as Revit calls them: the creases between its planes (`shape_creases`) that no split
+    /// line makes and that aren't its outline's or an opening's edges, in plan. What Convert Lines makes split lines.
+    pub fn shape_folds(&self, f: &Floor) -> Vec<(P2, P2)> {
+        let rings: Vec<(P2, P2)> = std::iter::once(&f.boundary).chain(&f.openings).flat_map(|r| geom::ring_edges(r)).collect();
+        let lines: Vec<(P2, P2)> = f.shape.lines.iter().map(|l| (l.a, l.b)).collect();
+        let on = |segs: &[(P2, P2)], q: P2| segs.iter().any(|&(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+        self.shape_creases(f)
+            .into_iter()
+            .map(|[a, b]| (P2(a[0], a[1]), P2(b[0], b[1])))
+            .filter(|&(a, b)| !on(&rings, (a + b) * 0.5) && !on(&lines, (a + b) * 0.5))
+            .collect()
+    }
+
+    /// How far a floor's top lies above where it would be without its shape at `q`, mm: by the piece of its top over `q`,
+    /// or within `TOL` of one's edge; 0 off it, or without a shape.
+    pub fn shape_height(&self, f: &Floor, q: P2) -> f64 {
+        if f.shape.is_empty() {
+            return 0.0;
+        }
+        let top = self.floor_top(f);
+        let near = |r: &[P2]| geom::contains(r, q) || geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+        self.floor_faces(f).iter().find(|(r, _)| near(r)).map_or(0.0, |(_, plane)| plane.at(q) - top.at(q))
+    }
+
+    /// A shaped floor's points with the heights shape editing labels them with in plan: each above (negative, below) the
+    /// top as it would be without the shape, or with `absolute`, above the floor's level, as the Options Bar's Elevation
+    /// reads.
+    pub fn shape_labels(&self, f: &Floor, absolute: bool) -> Vec<(P2, f64)> {
+        let top = self.floor_top(f);
+        let level = self.elevation(f.level);
+        f.shape.points.iter().map(|p| (p.at, if absolute { p.z + top.at(p.at) - level } else { p.z })).collect()
     }
 
     /// A floor's slabs: its underside less its openings (in convex pieces once one cuts it), each a
     /// flat polygon in space, counter-clockwise; and how far its top lies above that.
     pub fn floor_slabs(&self, f: &Floor) -> Vec<(Vec<[f64; 3]>, f64)> {
-        let (top, depth) = (self.floor_top(f), self.floor_depth(f));
-        let under = walls::Plane { z: top.z - depth, ..top };
-        solid(&[ccw(&f.boundary)], &f.openings).into_iter().map(|ring| (under.lift(&ring), depth)).collect()
+        self.floor_prisms(f)
+            .into_iter()
+            .map(|(ring, bottom, top)| {
+                let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+                (bottom.lift(&ring), rise)
+            })
+            .collect()
+    }
+
+    /// A floor's slabs as prisms: each piece of its top (`floor_faces`) in plan, from its underside's plane up to its
+    /// top's. The underside is the top `floor_depth` down, or level under a variable layer (`floor_under`).
+    pub fn floor_prisms(&self, f: &Floor) -> Vec<(Vec<P2>, walls::Plane, walls::Plane)> {
+        let depth = self.floor_depth(f);
+        let under = self.floor_under(f).map(|(p, _)| p);
+        self.floor_faces(f).into_iter().map(|(ring, top)| (ring, under.unwrap_or(walls::Plane { z: top.z - depth, ..top }), top)).collect()
+    }
+
+    /// How much a floor holds, mm³: each of its prisms (`floor_prisms`), less the shafts through it, its plan through how
+    /// far its top lies over its underside at its middle, as both are planes.
+    pub fn floor_volume(&self, f: &Floor) -> f64 {
+        self.floor_prisms(f)
+            .into_iter()
+            .map(|(ring, bottom, top)| {
+                let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+                self.less_shafts(&bottom.lift(&ring), rise)
+                    .0
+                    .iter()
+                    .map(|piece| {
+                        let (a, c) = (geom::area(piece).abs(), geom::centroid(piece));
+                        a * (top.at(c) - bottom.at(c))
+                    })
+                    .sum::<f64>()
+            })
+            .sum()
     }
 
     /// A ceiling's slabs: its underside less its openings (in convex pieces once one cuts it), each
@@ -3805,22 +4748,64 @@ impl Model {
         let ring: Vec<P2> = face.iter().map(|p| P2(p[0], p[1])).collect();
         let Some(plane) = walls::Plane::of(face) else { return (vec![ring], Vec::new()) };
         let area = |rings: &[Vec<P2>]| rings.iter().map(|r| geom::area(r).abs()).sum::<f64>();
+        let reach = ring.iter().fold([f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY], |[x0, y0, x1, y1], q| {
+            [x0.min(q.0), y0.min(q.1), x1.max(q.0), y1.max(q.1)]
+        });
         let (mut pieces, mut cut) = (vec![ring], Vec::new());
-        for (&id, e) in &self.elements {
-            let Element::Shaft(sh) = e else { continue };
-            let (bottom, top) = self.span(sh.level, sh.base_offset, sh.top_level, sh.height);
+        // Each shaft's span and plan box once a model: a slab's cost is the shafts that may reach it, not the project's.
+        let shafts = self.derived.shafts(&self.elements, || self.shaft_table());
+        for sh in shafts.iter() {
+            // All of it to one side in plan takes nothing off.
+            if sh.plan[2] < reach[0] || sh.plan[0] > reach[2] || sh.plan[3] < reach[1] || sh.plan[1] > reach[3] {
+                continue;
+            }
             let zs = sh.boundary.iter().map(|q| plane.at(*q));
             let (lo, hi) = zs.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
-            if !(lo < top - TOL && hi + rise > bottom + TOL) {
+            if !(lo < sh.top - TOL && hi + rise > sh.bottom + TOL) {
                 continue;
             }
             let left = walls::minus(&pieces, &sh.boundary);
             if area(&left) < area(&pieces) - 1.0 {
                 pieces = left;
-                cut.push(id);
+                cut.push(sh.id);
             }
         }
+        // Its twin, which tests hold it to: every shaft asked of the geometry.
+        #[cfg(test)]
+        {
+            let (mut all, mut through) = (vec![face.iter().map(|p| P2(p[0], p[1])).collect::<Vec<P2>>()], Vec::new());
+            for id in self.rare("shaft") {
+                let Some(Element::Shaft(sh)) = self.elements.get(id) else { continue };
+                let (bottom, top) = self.span(sh.level, sh.base_offset, sh.top_level, sh.height);
+                let zs = sh.boundary.iter().map(|q| plane.at(*q));
+                let (lo, hi) = zs.fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
+                if !(lo < top - TOL && hi + rise > bottom + TOL) {
+                    continue;
+                }
+                let left = walls::minus(&all, &sh.boundary);
+                if area(&left) < area(&all) - 1.0 {
+                    all = left;
+                    through.push(id);
+                }
+            }
+            assert_eq!((&pieces, &cut), (&all, &through), "a slab less the shafts found by their boxes");
+        }
         (pieces, cut)
+    }
+
+    /// Every shaft's span and plan box, as [`Model::less_shafts`] asks of them, by id.
+    pub(crate) fn shaft_table(&self) -> Vec<crate::derived::ShaftReach> {
+        let mut table = Vec::new();
+        for id in self.rare("shaft") {
+            let Some(Element::Shaft(sh)) = self.elements.get(id) else { continue };
+            let (bottom, top) = self.span(sh.level, sh.base_offset, sh.top_level, sh.height);
+            let plan =
+                sh.boundary.iter().fold([f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY], |[x0, y0, x1, y1], q| {
+                    [x0.min(q.0), y0.min(q.1), x1.max(q.0), y1.max(q.1)]
+                });
+            table.push(crate::derived::ShaftReach { id, bottom, top, plan, boundary: sh.boundary.clone() });
+        }
+        table
     }
 
     /// The type of a column, a structural column or a footing.
@@ -3871,9 +4856,28 @@ impl Model {
         }
     }
 
+    /// What 3D view `view` sketches on: its own work plane, else the lowest level's (none in a project without levels).
+    pub fn work_plane(&self, view: Option<Id>) -> crate::workplane::WorkPlane {
+        let own = view.and_then(|v| match self.elements.get(v) {
+            Some(Element::View3D(v3)) => v3.work_plane.clone(),
+            _ => None,
+        });
+        own.unwrap_or_else(|| {
+            let lowest = self.levels().first().map(|(id, _)| self.guid(*id));
+            crate::workplane::WorkPlane { level: lowest, ..Default::default() }
+        })
+    }
+
     /// The default 3D view, `{3D}`: the 3D view of that name, once something has made it.
     pub fn default_3d(&self) -> Option<Id> {
         self.elements.iter().find_map(|(id, e)| matches!(e, Element::View3D(v) if v.name == "{3D}").then_some(*id))
+    }
+
+    /// The level a point at height `z` stands on: the highest level at or below it, else the lowest. A camera stands on the
+    /// plan of that level.
+    pub fn camera_level(&self, z: f64) -> Option<Id> {
+        let levels = self.levels();
+        levels.iter().rev().find(|(_, l)| l.elevation <= z + TOL).or_else(|| levels.first()).map(|(id, _)| *id)
     }
 
     /// The name of view `id`: a level's plan, a section, an elevation, a schedule or a 3D view;
@@ -3887,6 +4891,43 @@ impl Model {
             Some(Element::PlanView(v)) => Some(&v.name),
             _ => None,
         }
+    }
+
+    /// The views, by id: the levels' plans, the plan views, sections, elevations, schedules and 3D views. From the lookup.
+    pub fn views(&self) -> BTreeSet<Id> {
+        let lookup = self.lookup();
+        let mut ids: BTreeSet<Id> = lookup.levels().collect();
+        for cat in ["planview", "section", "elevation", "schedule", "view3d"] {
+            ids.extend(lookup.rare(cat));
+        }
+        ids
+    }
+
+    /// The view named `name` (the first, by id, were two so named).
+    pub fn view_named(&self, name: &str) -> Option<Id> {
+        self.views().into_iter().find(|id| self.view_name(*id) == Some(name))
+    }
+
+    /// The sheets, by id.
+    pub fn sheets(&self) -> Vec<Id> {
+        self.lookup().rare("sheet").collect()
+    }
+
+    /// The sheet numbered `n`, or else named `n` (the first, by id).
+    pub fn sheet_numbered(&self, n: &str) -> Option<Id> {
+        self.sheets().into_iter().find(|id| self.sheet(*id).is_some_and(|sh| sh.number == n || sh.name == n))
+    }
+
+    /// What is on sheet `sheet`, by id: its viewports, and the notes, lines, regions and details drawn on it.
+    pub fn on_sheet(&self, sheet: impl Key) -> Vec<Id> {
+        let g = self.guid(sheet);
+        let ids: Vec<Id> = self.lookup().referrers(&g).collect();
+        #[cfg(test)]
+        {
+            let every: Vec<Id> = self.elements.iter().filter(|(_, e)| e.refs().contains(&g)).map(|(id, _)| *id).collect();
+            assert_eq!(ids, every, "what is on sheet {g}");
+        }
+        ids
     }
 
     /// Section or elevation `id`.
@@ -3991,8 +5032,16 @@ impl Model {
     /// What a tag shows: the field of its host it names (as a schedule shows it, in the project's units), `?` while that has no
     /// value (a door's mark before it has one).
     pub fn tag_text(&self, t: &Tag) -> String {
+        self.tag_text_with(t, &crate::rooms::Rooms::new(self))
+    }
+
+    /// [`Model::tag_text`], a room's boundary found among `rooms`.
+    pub fn tag_text_with(&self, t: &Tag, rooms: &crate::rooms::Rooms) -> String {
         let field = t.label.clone().or_else(|| self.elements.get(t.host).map(|e| Tag::usual(e.category()).to_string()));
-        field.and_then(|f| crate::schedule::field_text(self, t.host, &f)).filter(|s| !s.trim().is_empty()).unwrap_or_else(|| "?".into())
+        field
+            .and_then(|f| crate::schedule::field_text_with(self, t.host, &f, rooms))
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or_else(|| "?".into())
     }
 
     /// The line `r` measures to, or why there is none. A straight wall's lines reach as far as its
@@ -4501,11 +5550,37 @@ impl Model {
         }
     }
 
+    /// What a spot slope reads: in a plan, how steeply its host's top falls at its point, %, and which way, a unit vector
+    /// downhill in plan (none on the level). None while its host isn't a floor or a roof there, or out of a plan.
+    pub fn spot_slope(&self, sp: &Spot) -> Option<(f64, Option<P2>)> {
+        if !matches!(self.elements.get(sp.view)?, Element::Level(_) | Element::PlanView(_)) {
+            return None;
+        }
+        let plane = self.top_plane_at(sp.host?, sp.at)?;
+        let fall = plane.g.length();
+        Some((fall * 100.0, (fall > 1e-9).then(|| plane.g * (-1.0 / fall))))
+    }
+
+    /// The plane of floor or roof `id`'s top over plan point `q`: of the piece over it, or within a millimetre of one.
+    pub fn top_plane_at(&self, id: impl Key, q: P2) -> Option<walls::Plane> {
+        let near = |r: &[P2]| geom::contains(r, q) || geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+        match self.elements.get(id)? {
+            Element::Floor(f) => self.floor_faces(f).into_iter().find(|(r, _)| near(r)).map(|(_, p)| p),
+            Element::Roof(r) => self.roof_prisms(r).into_iter().find(|(ring, ..)| near(ring)).map(|(_, _, top)| top),
+            _ => None,
+        }
+    }
+
     /// What bounds the rooms of `level`: the centre lines of its walls, arcs as chords, and its room separation lines. A
     /// separation line drawn to a wall's face, as one drawn on a plan usually is, runs on to the wall's centre line, so it
     /// splits rooms measured there too.
     pub fn bounding_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
-        let walls = self.wall_segments(level);
+        self.bounding_lines_in(level, Some(&walls::Index::new(self)))
+    }
+
+    /// [`Model::bounding_lines`], the walls' joins found through `index`, or among every wall without one.
+    pub(crate) fn bounding_lines_in(&self, level: impl Key, index: Option<&walls::Index>) -> Vec<(P2, P2)> {
+        let walls = self.wall_segments(&level, index, true);
         let mut lines: Vec<(P2, P2)> = walls.iter().map(|&(a, b, _)| (a, b)).collect();
         lines.extend(self.separators(level).into_iter().map(|(a, b)| (to_centre(b, a, &walls), to_centre(a, b, &walls))));
         lines
@@ -4513,19 +5588,27 @@ impl Model {
 
     /// Centre lines of the walls that bound the rooms of `level`, arcs as chords.
     pub fn wall_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
-        self.wall_segments(level).into_iter().map(|(a, b, _)| (a, b)).collect()
+        self.wall_segments(&level, Some(&walls::Index::new(self)), false).into_iter().map(|(a, b, _)| (a, b)).collect()
+    }
+
+    /// The walls that bound the rooms of `level` (with `rooms`, those whose Room Bounding is on), by id.
+    /// (Those whose heights reach the rooms' height, from the lookup when it is made; else among every element.)
+    pub(crate) fn bounding_walls<'a>(&'a self, level: &'a impl Key, rooms: bool) -> impl Iterator<Item = Id> + 'a {
+        let up = self.level(level).map_or(CUT_HEIGHT, |l| l.computation_height);
+        let candidates: Box<dyn Iterator<Item = Id> + 'a> = match self.derived.made(&self.elements) {
+            Some(look) => Box::new(look.walls_at(self.elevation(level) + up).into_iter()),
+            None => Box::new(self.elements.iter().filter(|(_, e)| matches!(e, Element::Wall(_))).map(|(&id, _)| id)),
+        };
+        candidates.filter(move |&id| self.wall(id).is_some_and(|w| self.bounding(w, level) && (!rooms || w.room_bounding)))
     }
 
     /// The segments of [`Model::wall_lines`], each with half its wall's thickness.
-    fn wall_segments(&self, level: impl Key) -> Vec<(P2, P2, f64)> {
-        self.elements
-            .iter()
-            .filter_map(|(&id, e)| match e {
-                Element::Wall(w) if self.bounding(w, level) => Some((id, self.thickness(w) / 2.0)),
-                _ => None,
-            })
+    /// With `rooms`, of the walls whose Room Bounding is on.
+    fn wall_segments(&self, level: &impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<(P2, P2, f64)> {
+        self.bounding_walls(level, rooms)
+            .filter_map(|id| Some((id, self.thickness(self.wall(id)?) / 2.0)))
             .flat_map(|(id, half)| {
-                let line = walls::centre_line(self, id);
+                let line = walls::centre_line_in(self, id, index);
                 line.windows(2).filter_map(|s| s.first().zip(s.get(1)).map(|(a, b)| (*a, *b, half))).collect::<Vec<_>>()
             })
             .collect()
@@ -4534,26 +5617,35 @@ impl Model {
     /// The faces of the walls that bound the rooms of `level`: the edges of their outlines. Room separation lines
     /// aren't among them: a floor or a ceiling picked inside the walls runs past them.
     pub fn face_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
-        self.elements
-            .iter()
-            .filter(|(_, e)| matches!(e, Element::Wall(w) if self.bounding(w, level)))
-            .flat_map(|(&id, _)| geom::ring_edges(&walls::outline(self, id)).collect::<Vec<_>>())
+        self.face_lines_in(level, Some(&walls::Index::new(self)), false)
+    }
+
+    /// [`Model::face_lines`] (with `rooms`, of the walls whose Room Bounding is on), the walls' joins found through `index`.
+    pub(crate) fn face_lines_in(&self, level: impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<(P2, P2)> {
+        self.bounding_walls(&level, rooms)
+            .flat_map(|id| geom::ring_edges(&walls::outline_in(self, id, index)).collect::<Vec<_>>())
             .collect()
     }
 
     /// The room separation lines on `level`.
     pub fn separators(&self, level: impl Key) -> Vec<(P2, P2)> {
-        self.elements
-            .values()
-            .filter_map(|e| match e {
-                Element::RoomSeparator(rs) if self.same(rs.level, level) => Some((rs.start, rs.end)),
-                _ => None,
-            })
-            .collect()
+        let level = self.guid(level);
+        let line = |e: &Element| match e {
+            Element::RoomSeparator(rs) if self.same(rs.level, level) => Some((rs.start, rs.end)),
+            _ => None,
+        };
+        // What points at the level, from the lookup when it is made: in order of id, as among every element.
+        match self.derived.made(&self.elements) {
+            Some(look) => {
+                let ids: BTreeSet<Id> = look.referrers(&level).collect();
+                ids.into_iter().filter_map(|id| line(self.elements.get(id)?)).collect()
+            }
+            None => self.elements.values().filter_map(line).collect(),
+        }
     }
 
     /// A room's boundary, from the walls around its point, where the project measures rooms (`room_area`). `None` when it
-    /// isn't enclosed.
+    /// isn't enclosed. To ask about many rooms, ask one [`Rooms`](crate::rooms::Rooms): it finds each level's once.
     pub fn room_region(&self, r: &Room) -> Option<Region> {
         self.room_region_at(r, self.room_area)
     }
@@ -4561,36 +5653,92 @@ impl Model {
     /// A room's boundary measured at `at`: the walls' centre lines (Revit's "At wall centerline") or their faces ("At wall
     /// finish": the area inside the walls, which Brazilian codes call área útil).
     pub fn room_region_at(&self, r: &Room, at: RoomArea) -> Option<Region> {
-        if self.wall_holding(r, at).is_some() {
-            return None;
-        }
-        geom::region_at(&self.room_lines(r.level, at), r.point, TOL)
+        self.room_bound(r, at).ok()
+    }
+
+    /// A room's boundary measured at `at`, or why it has none. A frozen room's is the one it keeps, found from nothing; else
+    /// the loop round its point, unless a room placed before it already has its point in that loop: two rooms can't share a
+    /// space, so the later is left unbounded, as Revit's redundant room. To ask about many rooms, ask one
+    /// [`Rooms`](crate::rooms::Rooms).
+    pub fn room_bound(&self, r: &Room, at: RoomArea) -> Result<Region, Unbound> {
+        crate::rooms::Rooms::new(self).bound(r, at)
+    }
+
+    /// The room on `r`'s level, placed before it (of a lower id; any, for a room not yet in the model), whose point lies in
+    /// `g`: the room that has the space `g` is.
+    pub fn room_before(&self, r: &Room, g: &Region) -> Option<Id> {
+        crate::rooms::Rooms::new(self).before(r, g)
+    }
+
+    /// What a room covers in plan: its boundary's outer ring where the project measures rooms, or, unbounded, a square
+    /// [`UNBOUNDED_ROOM`] mm a side round its point, as Revit shows a room in no enclosed region. Whether it is bounded.
+    pub fn room_outline(&self, r: &Room) -> (Vec<P2>, bool) {
+        crate::rooms::Rooms::new(self).outline(r)
     }
 
     /// The room-bounding wall whose body a room's point lies in, when rooms are measured at `at` the finish faces. There the
     /// faces of a wall close its body into a loop of its own, so a point inside a wall would make a room of the wall. At the
     /// centre lines nothing closes a wall's body, so there is nothing to refuse.
     pub fn wall_holding(&self, r: &Room, at: RoomArea) -> Option<Id> {
-        if at != RoomArea::Finish {
-            return None;
-        }
-        self.elements
+        crate::rooms::Rooms::new(self).holding(r, at)
+    }
+
+    /// A room's bottom and top: its level's elevation plus its base offset, and its upper limit's (its level's, when it
+    /// has none) plus its limit offset.
+    pub fn room_span(&self, r: &Room) -> (f64, f64) {
+        (self.elevation(r.level) + r.base_offset, self.elevation(r.top_level.unwrap_or(r.level)) + r.limit_offset)
+    }
+
+    /// A room's Unbounded Height: from its bottom up to its top (`room_span`).
+    pub fn room_height(&self, r: &Room) -> f64 {
+        let (bottom, top) = self.room_span(r);
+        top - bottom
+    }
+
+    /// Frozen rooms that keep no boundary yet are given the one they have now; rooms no longer frozen let theirs go. The
+    /// engine calls it after every command, so freezing is a field like any other (`modify {frozen: true}`).
+    pub fn keep_rooms(&mut self) {
+        let changed: Vec<(Id, Option<Kept>)> = self
+            .elements
             .iter()
-            .filter(|(_, e)| matches!(e, Element::Wall(w) if self.bounding(w, r.level)))
-            .find(|&(&id, _)| geom::contains(&walls::outline(self, id), r.point))
-            .map(|(&id, _)| id)
+            .filter_map(|(&id, e)| match e {
+                Element::Room(r) if r.frozen && r.kept.is_none() => Some((
+                    id,
+                    Some(Kept { centre: self.room_region_at(r, RoomArea::Centre), finish: self.room_region_at(r, RoomArea::Finish) }),
+                )),
+                Element::Room(r) if !r.frozen && r.kept.is_some() => Some((id, None)),
+                _ => None,
+            })
+            .collect();
+        for (id, kept) in changed {
+            if let Some(Element::Room(r)) = self.elements.get_mut(id) {
+                r.kept = kept;
+            }
+        }
     }
 
     /// The lines rooms on `level` are found among, measured at `at`.
+    /// Room-bounding walls (their centre lines, or their faces) and separation lines, and the faces of room-bounding
+    /// columns either way, a column having no centre line to measure to.
     pub fn room_lines(&self, level: impl Key, at: RoomArea) -> Vec<(P2, P2)> {
-        match at {
-            RoomArea::Centre => self.bounding_lines(level),
+        self.room_lines_in(level, at, Some(&walls::Index::new(self)))
+    }
+
+    /// [`Model::room_lines`], the walls' joins found through `index`, or among every wall without one.
+    pub(crate) fn room_lines_in(&self, level: impl Key, at: RoomArea, index: Option<&walls::Index>) -> Vec<(P2, P2)> {
+        let level = self.guid(level);
+        let mut lines = match at {
+            RoomArea::Centre => self.bounding_lines_in(level, index),
             RoomArea::Finish => {
-                let mut lines = self.face_lines(level);
+                let mut lines = self.face_lines_in(level, index, true);
                 lines.extend(self.separators(level));
                 lines
             }
+        };
+        for o in self.bounding_columns(level) {
+            lines.extend(geom::ring_edges(&o));
         }
+        lines
     }
 
     /// What a detail line, a filled region or a text note must be, wherever it is: in a view or in a detail group.
@@ -4659,6 +5807,53 @@ impl Model {
         Ok(())
     }
 
+    /// What is amiss in the model but doesn't make it wrong: soft issues, said so they can be fixed. `check` refuses a model;
+    /// these it accepts. A room the walls no longer close; a family of lighting, outlets or switches in use that holds no
+    /// connector, so its devices count as a load of zero (a family of plan symbols alone, a symbol set's, is no device).
+    pub fn warnings(&self) -> Vec<String> {
+        let rooms = crate::rooms::Rooms::new(self);
+        let mut out: Vec<String> = self
+            .elements
+            .iter()
+            .filter_map(|(id, e)| match e {
+                Element::Room(r) => match rooms.bound(r, self.room_area) {
+                    Ok(_) => None,
+                    Err(Unbound::NotEnclosed) => {
+                        Some(format!("room {id} ({} {}) is not enclosed: the walls around it no longer close", r.number, r.name))
+                    }
+                    Err(Unbound::Shared(other)) => Some(format!(
+                        "room {id} ({} {}) is in the space room {} has; two rooms can't share one, so it is unbounded: delete one, \
+                         or part them with a room separation line",
+                        r.number,
+                        r.name,
+                        self.shown(other)
+                    )),
+                },
+                _ => None,
+            })
+            .collect();
+        let mut bare: BTreeMap<&str, usize> = BTreeMap::new();
+        for e in self.elements.values() {
+            if let Element::Component(c) = e
+                && let Some(f) = self.families.get(&c.family)
+                && f.category.electrical_device()
+                && f.connectors.is_empty()
+                // A family of plan symbols alone (a symbol set's) is notation, not a device that draws a load.
+                && !(f.forms.is_empty() && !f.symbols.is_empty())
+            {
+                *bare.entry(c.family.as_str()).or_default() += 1;
+            }
+        }
+        out.extend(bare.into_iter().map(|(n, k)| {
+            format!(
+                "family `{n}` has no connector, so its {k} placed device{} count{} as a load of zero: give it one with `family` `connectors`",
+                if k == 1 { "" } else { "s" },
+                if k == 1 { "s" } else { "" }
+            )
+        }));
+        out
+    }
+
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
@@ -4700,6 +5895,7 @@ impl Model {
         for (n, t) in &self.dimension_types {
             t.check(n)?;
         }
+        crate::electrical::check(self)?;
         for (n, x) in &self.materials {
             for p in [&x.cut_pattern, &x.surface_pattern].into_iter().flatten() {
                 if !self.fill_patterns.contains_key(p) {
@@ -4826,6 +6022,14 @@ impl Model {
                     _ => size(&format!("{what} thickness"), l.thickness)?,
                 }
             }
+            match layers.iter().filter(|l| l.variable).count() {
+                0 => {}
+                _ if matches!(cat, "wall" | "ceiling") => {
+                    return Err(format!("{who}: only a floor's or a roof's layer can be variable, to take up a shaped top's falls"));
+                }
+                1 => {}
+                n => return Err(format!("{who}: {n} variable layers; a type has one variable layer at most")),
+            }
             let sum: f64 = layers.iter().map(|l| l.thickness).sum();
             if !layers.is_empty() && (sum - thickness).abs() > 1e-6 {
                 return Err(format!("{who}: its layers add up to {sum} mm, not its thickness, {thickness} mm"));
@@ -4868,851 +6072,21 @@ impl Model {
                 return Err(format!("ceiling type `{n}`: grid {} mm; its tiles are 100 mm or wider, or 0 for none", t.grid));
             }
         }
-        let mut level_names = BTreeSet::new();
-        let mut grid_names = BTreeSet::new();
-        let mut link_names = BTreeSet::new();
-        let mut view_names = BTreeSet::new();
-        // The schedules every project has that the project has made its own: one each.
-        let mut twins = BTreeSet::new();
-        let mut sheet_numbers = BTreeSet::new();
-        // Each view on a sheet: the sheet.
-        let mut placed: BTreeMap<Guid, Guid> = BTreeMap::new();
-        // Openings by host wall, in the order they start along it.
-        let mut spans: BTreeMap<Guid, Vec<OpeningSpan>> = BTreeMap::new();
-        // The members each view's detail groups and repeating details place.
-        let mut members_placed: BTreeMap<Guid, usize> = BTreeMap::new();
+        let mut t = Tally::default();
         for (&id, e) in &self.elements {
-            let who = format!("{} {id}", e.category());
-            let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
-            // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
-            let view_ok = |v: Guid, sheets: bool| match self.elements.get(v) {
-                Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_)) => Ok(()),
-                Some(Element::Sheet(_)) if sheets => Ok(()),
-                Some(other) => Err(format!(
-                    "{who}: {} {} isn't a plan, a section, an elevation{}",
-                    other.category(),
-                    self.shown(v),
-                    if sheets { " or a sheet" } else { "" }
-                )),
-                None => Err(format!("{who}: view {v} doesn't exist")),
-            };
-            // Its values of the project's parameters, each one of its category's, of its kind; a
-            // component's family's are its family's to check.
-            for (k, v) in e.params().into_iter().flatten() {
-                // Its phases and its design option are values it holds under names no parameter may take.
-                if let Some(checked) = phasing::check_value(self, &who, k, v) {
-                    checked?;
-                    continue;
-                }
-                if let Some(checked) = crate::paint::check_value(self, &who, k, v, e) {
-                    checked?;
-                    continue;
-                }
-                if let Some(checked) = crate::massing::check_value(self, &who, k, v, e) {
-                    checked?;
-                    continue;
-                }
-                if e.family().and_then(|(f, _)| self.families.get(f)).is_some_and(|f| f.parameters.iter().any(|p| p.name == *k)) {
-                    continue;
-                }
-                let p = self
-                    .parameters
-                    .get(k)
-                    .filter(|p| p.categories.iter().any(|c| c == e.category()))
-                    .ok_or_else(|| format!("{who}: `{k}` isn't a parameter of {}s; add it with `parameter`", e.category()))?;
-                if !p.holds(v) {
-                    let what = match p.kind {
-                        ParameterKind::Text => "text",
-                        ParameterKind::Number => "a number",
-                        ParameterKind::Length => "a length",
-                        ParameterKind::YesNo => "yes or no",
-                    };
-                    return Err(format!("{who}: `{k}` holds {what}, not {v}"));
-                }
-            }
-            phasing::check_order(self, &who, e)?;
-            match e {
-                Element::Level(l) => {
-                    text(&who, "name", &l.name)?;
-                    coord(&format!("{who} elevation"), l.elevation)?;
-                    if !level_names.insert(l.name.as_str()) {
-                        return Err(format!("{who}: another level is already named `{}`", l.name));
-                    }
-                    range_ok(&who, &l.view_range)?;
-                    if let Some([a, b]) = l.crop {
-                        crop(&who, a, b)?;
-                    }
-                    if let Some([a, b]) = l.extent {
-                        point(&format!("{who} extent"), a)?;
-                        point(&format!("{who} extent"), b)?;
-                        if !(a.0 < b.0 - TOL && a.1 < b.1 - TOL) {
-                            return Err(format!("{who}: its extent runs from its south-west corner to its north-east one"));
-                        }
-                    }
-                    l.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
-                }
-                Element::Grid(g) => {
-                    text(&who, "name", &g.name)?;
-                    line(&who, g.start, g.end)?;
-                    if !grid_names.insert(g.name.as_str()) {
-                        return Err(format!("{who}: another grid is already named `{}`", g.name));
-                    }
-                }
-                Element::RoomSeparator(rs) => {
-                    level_ok(rs.level)?;
-                    line(&who, rs.start, rs.end)?;
-                }
-                Element::Rebar(rb) => {
-                    level_ok(rb.level)?;
-                    text(&who, "grade", &rb.grade)?;
-                    text(&who, "layer", &rb.layer)?;
-                    if rb.grade.trim().is_empty() {
-                        return Err(format!("{who}: a bar needs a steel grade"));
-                    }
-                    let (thin, thick) = crate::rebar::DIAMETERS;
-                    if !(thin..=thick).contains(&rb.diameter) {
-                        return Err(format!("{who}: diameter {} mm isn't between {thin} and {thick} mm", rb.diameter));
-                    }
-                    if !(2..=MAX_POINTS).contains(&rb.path.len()) {
-                        return Err(format!("{who}: a path needs 2 to {MAX_POINTS} points"));
-                    }
-                    if rb.path.iter().flatten().any(|c| !(c.is_finite() && c.abs() <= MAX_COORD)) {
-                        return Err(format!("{who}: a point of its path is not finite or reaches past {MAX_COORD} mm"));
-                    }
-                    if crate::rebar::length(&rb.path) <= TOL {
-                        return Err(format!("{who}: its path has no length"));
-                    }
-                    if let Some(h) = rb.host {
-                        match self.elements.get(h) {
-                            Some(
-                                Element::Beam(_)
-                                | Element::StripFooting(_)
-                                | Element::Column(_)
-                                | Element::StructuralColumn(_)
-                                | Element::Footing(_)
-                                | Element::Floor(_),
-                            ) => {}
-                            Some(other) => {
-                                return Err(format!(
-                                    "{who}: {} {} is no host for bars; a beam, a column, a footing or a floor is",
-                                    other.category(),
-                                    self.shown(h)
-                                ));
-                            }
-                            None => return Err(format!("{who}: host {h} doesn't exist")),
-                        }
-                    }
-                }
-                Element::Wall(w) => {
-                    known(&who, &w.type_name, &self.types.wall)?;
-                    level_ok(w.level)?;
-                    line(&who, w.start, w.end)?;
-                    coord(&format!("{who} base_offset"), w.base_offset)?;
-                    // An arc within reach: all of its circle inside the model's limits.
-                    let axis = walls::Axis::of(w);
-                    let reach = axis.centre().zip(axis.radius()).is_none_or(|(c, r)| c.0.abs().max(c.1.abs()) + r <= MAX_COORD);
-                    if !(w.arc.is_finite() && w.arc.abs() < 360.0 && reach) {
-                        return Err(format!("{who}: arc {}° isn't between -360° and 360°, reaching no farther than 1000 km", w.arc));
-                    }
-                    for (what, at) in [("attach_top", w.attach_top), ("attach_base", w.attach_base)] {
-                        if let Some(a) = at
-                            && !matches!(self.elements.get(a), Some(Element::Roof(_) | Element::Floor(_)))
-                        {
-                            return Err(format!("{who}: {what} {} isn't a roof or a floor", self.shown(a)));
-                        }
-                    }
-                    match w.top_level {
-                        Some(t) => level_ok(t)?,
-                        None => size(&format!("{who} height"), w.height)?,
-                    }
-                    if self.top_z(w) <= self.base_z(w) + TOL {
-                        return Err(format!("{who}: its top must be above its base"));
-                    }
-                }
-                Element::Floor(f) => {
-                    point(&format!("{who} pattern origin"), f.pattern_origin)?;
-                    coord(&format!("{who} pattern angle"), f.pattern_angle)?;
-                    known(&who, &f.type_name, &self.types.floor)?;
-                    level_ok(f.level)?;
-                    boundary(&who, &f.boundary)?;
-                    openings(&who, &f.boundary, &f.openings)?;
-                    crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
-                    coord(&format!("{who} offset"), f.offset)?;
-                    if !(f.slope.is_finite() && f.slope.abs() <= MAX_SLOPE) {
-                        return Err(format!("{who}: slope {}° isn't between -{MAX_SLOPE}° and {MAX_SLOPE}°", f.slope));
-                    }
-                    match f.arrow {
-                        Some([tail, head]) => line(&format!("{who} arrow"), tail, head)?,
-                        None if f.slope != 0.0 => {
-                            return Err(format!(
-                                "{who}: a sloped floor needs a slope arrow, from where its top is at its offset toward where it rises"
-                            ));
-                        }
-                        None => {}
-                    }
-                }
-                Element::Ceiling(c) => {
-                    known(&who, &c.type_name, &self.types.ceiling)?;
-                    level_ok(c.level)?;
-                    boundary(&who, &c.boundary)?;
-                    openings(&who, &c.boundary, &c.openings)?;
-                    crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
-                    coord(&format!("{who} offset"), c.offset)?;
-                }
-                Element::Shaft(sh) => {
-                    level_ok(sh.level)?;
-                    boundary(&who, &sh.boundary)?;
-                    coord(&format!("{who} base_offset"), sh.base_offset)?;
-                    crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
-                    match sh.top_level {
-                        Some(t) => level_ok(t)?,
-                        None => size(&format!("{who} height"), sh.height)?,
-                    }
-                    let (bottom, top) = self.span(sh.level, sh.base_offset, sh.top_level, sh.height);
-                    if top <= bottom + TOL {
-                        return Err(format!("{who}: its top must be above its base"));
-                    }
-                }
-                Element::Mass(ms) => {
-                    level_ok(ms.level)?;
-                    boundary(&who, &ms.boundary)?;
-                    text(&who, "name", &ms.name)?;
-                    coord(&format!("{who} base_offset"), ms.base_offset)?;
-                    match ms.top_level {
-                        Some(t) => level_ok(t)?,
-                        None => size(&format!("{who} height"), ms.height)?,
-                    }
-                    let (bottom, top) = self.span(ms.level, ms.base_offset, ms.top_level, ms.height);
-                    if top <= bottom + TOL {
-                        return Err(format!("{who}: its top must be above its base"));
-                    }
-                    if let Some(crown) = &ms.top {
-                        // Its points first: past that, the rings pair up and the cross sections can be worked out.
-                        if crown.len() == ms.boundary.len() {
-                            boundary(&format!("{who} top"), crown)?;
-                        }
-                        if let Some(why) = crate::massing::loft_problem(&ms.boundary, crown) {
-                            return Err(format!("{who}: {why}"));
-                        }
-                    }
-                }
-                Element::Door(o) | Element::Window(o) => {
-                    let w = self.wall(o.host).ok_or(format!("{who}: host wall {} doesn't exist", self.shown(o.host)))?;
-                    let t = self.opening_dims(e).map_err(|e| format!("{who}: {e}"))?;
-                    if let Some(f) = o.family.as_ref().and_then(|n| self.families.get(n)) {
-                        self.family_values_ok(&who, o.family.as_deref().unwrap_or_default(), f, &o.params)?;
-                        let values = f.values_in(&o.type_name, &o.params, self.thickness(w)).map_err(|e| format!("{who}: {e}"))?;
-                        f.pieces(&values).and_then(|_| f.strokes(&values)).map_err(|e| format!("{who}: {e}"))?;
-                        size(&format!("{who} width"), t.width)?;
-                        size(&format!("{who} height"), t.height)?;
-                    }
-                    coord(&format!("{who} offset"), o.offset)?;
-                    coord(&format!("{who} sill"), o.sill)?;
-                    text(&who, "mark", &o.mark)?;
-                    let (a, b) = (o.offset - t.width / 2.0, o.offset + t.width / 2.0);
-                    let length = crate::walls::Axis::of(w).length();
-                    if a < -TOL || b > length + TOL {
-                        return Err(format!(
-                            "{who}: {} mm wide at offset {} doesn't fit wall {}, {length} mm long",
-                            t.width,
-                            o.offset,
-                            self.shown(o.host)
-                        ));
-                    }
-                    // Up to the wall's top over it, which a roof it's attached to may raise.
-                    let top = [a, o.offset, b].map(|s| crate::walls::top_at(self, w, s)).into_iter().fold(f64::INFINITY, f64::min);
-                    if o.sill < 0.0 || self.own_base(w) + o.sill + t.height > top + TOL {
-                        return Err(format!(
-                            "{who}: sill {} + height {} doesn't fit wall {}'s height",
-                            o.sill,
-                            t.height,
-                            self.shown(o.host)
-                        ));
-                    }
-                    let span = OpeningSpan { start: a, end: b, sill: o.sill, head: o.sill + t.height, id };
-                    let list = spans.entry(o.host).or_default();
-                    let at = list.partition_point(|held| held.start <= a);
-                    list.insert(at, span);
-                }
-                Element::Room(r) => {
-                    level_ok(r.level)?;
-                    point(&who, r.point)?;
-                    text(&who, "name", &r.name)?;
-                    text(&who, "number", &r.number)?;
-                }
-                Element::Dimension(d) => {
-                    level_ok(d.level)?;
-                    if let Some(v) = d.view {
-                        self.plan_view_of(v, d.level)
-                            .ok_or_else(|| format!("{who}: view {} isn't a plan view of its level", self.shown(v)))?;
-                    }
-                    point(&who, d.at)?;
-                    if !self.dimension_types.contains_key(&d.type_name) {
-                        let there: Vec<&str> = self.dimension_types.keys().map(String::as_str).collect();
-                        return Err(format!("{who}: there's no dimension type `{}` (there are: {})", d.type_name, there.join(", ")));
-                    }
-                    for (what, t) in
-                        [("prefix", &d.prefix), ("suffix", &d.suffix), ("above", &d.above), ("below", &d.below), ("replace", &d.replace)]
-                    {
-                        crate::dims::dim_text(&who, what, t)?;
-                    }
-                    if d.equal && !(matches!(d.kind, DimKind::Aligned | DimKind::Linear) && d.refs.len() > 2) {
-                        return Err(format!("{who}: only an aligned or a linear dimension of two segments or more is kept equal"));
-                    }
-                    if !d.locked.is_empty() && !matches!(d.kind, DimKind::Aligned | DimKind::Linear) {
-                        return Err(format!("{who}: only an aligned or a linear dimension's segments are locked"));
-                    }
-                    let mut locks = BTreeSet::new();
-                    for l in &d.locked {
-                        if l.segment >= MAX_POINTS || !locks.insert(l.segment) || !(l.length.is_finite() && l.length.abs() <= MAX_COORD) {
-                            return Err(format!("{who}: segment {} is locked twice, at no length, or isn't a segment", l.segment));
-                        }
-                    }
-                    let mut segments = BTreeSet::new();
-                    for st in &d.texts {
-                        if st.segment >= MAX_POINTS || !segments.insert(st.segment) {
-                            return Err(format!("{who}: segment {}'s text is given twice, or there's no such segment", st.segment));
-                        }
-                        for (what, t) in st.fields() {
-                            crate::dims::dim_text(&format!("{who} segment {}", st.segment), what, t)?;
-                        }
-                    }
-                    match (d.kind, d.refs.len()) {
-                        (DimKind::Aligned | DimKind::Linear, 2..=MAX_POINTS)
-                        | (DimKind::Angular, 2)
-                        | (DimKind::Radial | DimKind::Diameter | DimKind::ArcLength, 1) => {}
-                        (DimKind::Aligned | DimKind::Linear, _) => {
-                            return Err(format!("{who}: a dimension measures between 2 to {MAX_POINTS} references"));
-                        }
-                        (DimKind::Angular, _) => return Err(format!("{who}: an angular dimension measures between two lines")),
-                        (DimKind::Radial, _) => return Err(format!("{who}: a radial dimension measures one round element")),
-                        (DimKind::Diameter, _) => return Err(format!("{who}: a diameter dimension measures one round element")),
-                        (DimKind::ArcLength, 3) => {}
-                        (DimKind::ArcLength, _) => {
-                            return Err(format!(
-                                "{who}: an arc length dimension measures along one arc, all of it or between two points on it"
-                            ));
-                        }
-                    }
-                    match (d.kind, d.orient) {
-                        (DimKind::Linear, None) => {
-                            return Err(format!("{who}: a linear dimension runs horizontal or vertical: give it an `orient`"));
-                        }
-                        (DimKind::Linear, Some(_)) | (_, None) => {}
-                        (_, Some(_)) => return Err(format!("{who}: only a linear dimension has an `orient`; this one is {:?}", d.kind)),
-                    }
-                    let linear = d.kind == DimKind::Linear;
-                    let along = self.measured_along(d);
-                    let mut seen = BTreeSet::new();
-                    let mut first: Option<(Reference, Line)> = None;
-                    for r in &d.refs {
-                        match d.kind {
-                            DimKind::Radial => {
-                                self.reference_arc(r).map_err(|e| format!("{who}: {e}"))?;
-                                continue;
-                            }
-                            DimKind::Diameter => {
-                                self.reference_arc(r).map_err(|e| format!("{who}: {}", e.replace("a radial", "a diameter")))?;
-                                continue;
-                            }
-                            DimKind::ArcLength => {
-                                self.arc_span(d).map_err(|e| format!("{who}: {e}"))?;
-                                break;
-                            }
-                            _ => {}
-                        }
-                        let what = format!("{} {}", self.cat(r.id), self.shown(r.id));
-                        if r.point.is_some() && d.kind == DimKind::Angular {
-                            return Err(format!("{who}: it measures to an end of {what}; an angle is between two lines"));
-                        }
-                        let line = self.reference_geometry(r).map_err(|e| format!("{who}: {e}"))?;
-                        if !seen.insert((r.id, r.face, r.point)) {
-                            let at = match r.point {
-                                Some(End::Start) => "start of its ",
-                                Some(End::End) => "end of its ",
-                                None => "",
-                            };
-                            return Err(format!("{who}: it measures to {what}'s {at}{} twice", r.face.name()));
-                        }
-                        if r.point.is_some() {
-                            continue;
-                        }
-                        if let (true, Some(n)) = (linear, along)
-                            && !geom::parallel(line.0, line.1, P2(0.0, 0.0), n.perp())
-                        {
-                            let way = if d.orient == Some(Orient::Horizontal) { "horizontal" } else { "vertical" };
-                            return Err(format!(
-                                "{who}: {what} isn't square to a {way} dimension; measure to its ends, or make the dimension aligned"
-                            ));
-                        }
-                        match first {
-                            None => first = Some((*r, line)),
-                            Some((f, (a, b))) => {
-                                let parallel = geom::parallel(a, b, line.0, line.1);
-                                let other = format!("{} {}", self.cat(f.id), self.shown(f.id));
-                                if d.kind == DimKind::Aligned && !parallel {
-                                    return Err(format!(
-                                        "{who}: {what} isn't parallel to {other}; a dimension measures between parallel walls and grids"
-                                    ));
-                                }
-                                if d.kind == DimKind::Angular && parallel {
-                                    return Err(format!("{who}: {what} is parallel to {other}; an angle is between lines that meet"));
-                                }
-                            }
-                        }
-                    }
-                    if matches!(d.kind, DimKind::Aligned | DimKind::Linear) && along.is_none() {
-                        return Err(format!("{who}: its points are all in one place, so it has no way to run"));
-                    }
-                }
-                Element::Text(Note { view, .. })
-                | Element::DetailLine(DetailLine { view, .. })
-                | Element::FilledRegion(FilledRegion { view, .. }) => {
-                    view_ok(*view, true)?;
-                    self.annotation_ok(&who, e)?;
-                }
-                Element::DetailGroup(g) => {
-                    view_ok(g.view, true)?;
-                    point(&who, g.at)?;
-                    coord(&format!("{who} angle"), g.angle)?;
-                    let Some(t) = self.detail_groups.get(&g.type_name) else {
-                        let there: Vec<&str> = self.detail_groups.keys().map(String::as_str).collect();
-                        return Err(format!("{who}: there's no detail group `{}` (there are: {})", g.type_name, there.join(", ")));
-                    };
-                    placing(&who, &mut members_placed, g.view, t.members.len())?;
-                }
-                Element::RepeatingDetail(r) => {
-                    view_ok(r.view, true)?;
-                    point(&who, r.start)?;
-                    point(&who, r.end)?;
-                    if !(r.spacing.is_finite() && r.spacing >= 1.0 && r.spacing <= MAX_COORD) {
-                        return Err(format!("{who}: spacing {} mm isn't from 1 mm to {MAX_COORD}", r.spacing));
-                    }
-                    if r.places().is_none() {
-                        return Err(format!(
-                            "{who}: it would repeat more than {} times; space it wider or draw it shorter",
-                            crate::groups::MAX_REPEATS
-                        ));
-                    }
-                    let Some(t) = self.detail_groups.get(&r.type_name) else {
-                        let there: Vec<&str> = self.detail_groups.keys().map(String::as_str).collect();
-                        return Err(format!("{who}: there's no detail group `{}` (there are: {})", r.type_name, there.join(", ")));
-                    };
-                    placing(&who, &mut members_placed, r.view, t.members.len().saturating_mul(r.count()))?;
-                }
-                Element::PointCloud(pc) => {
-                    if !self.clouds.contains_key(&pc.cloud) {
-                        return Err(format!("{who}: the project holds no scan named `{}`", pc.cloud));
-                    }
-                    level_ok(pc.level)?;
-                    point(&format!("{who} at"), pc.at)?;
-                    coord(&format!("{who} offset"), pc.offset)?;
-                    coord(&format!("{who} angle"), pc.angle)?;
-                }
-                Element::CadImport(ci) => {
-                    if !self.cads.contains_key(&ci.cad) {
-                        return Err(format!("{who}: the project holds no CAD drawing named `{}`", ci.cad));
-                    }
-                    level_ok(ci.level)?;
-                    point(&format!("{who} at"), ci.at)?;
-                    coord(&format!("{who} angle"), ci.angle)?;
-                    if !(ci.origin.is_finite()
-                        && ci.origin.0.abs() <= crate::dxf::MAX_FILE_COORD
-                        && ci.origin.1.abs() <= crate::dxf::MAX_FILE_COORD)
-                    {
-                        return Err(format!("{who}: origin {:?} is past what a drawing holds", ci.origin));
-                    }
-                    if !CAD_SCALE.contains(&ci.scale) {
-                        return Err(format!(
-                            "{who}: a scale of {} mm to the drawing's unit isn't one; give one from {} to {}",
-                            ci.scale,
-                            CAD_SCALE.start(),
-                            CAD_SCALE.end()
-                        ));
-                    }
-                    if let Some(v) = ci.view
-                        && !(matches!(self.elements.get(v), Some(Element::Level(_) | Element::PlanView(_)))
-                            && self.plan_level(v).map(|l| self.guid(l)) == Some(ci.level))
-                    {
-                        return Err(format!(
-                            "{who}: view {} isn't a plan of its level; an import shows in one of its level's plans",
-                            self.shown(v)
-                        ));
-                    }
-                    if ci.hidden.len() > MAX_HIDDEN {
-                        return Err(format!("{who}: it hides {} layers; up to {MAX_HIDDEN}", ci.hidden.len()));
-                    }
-                    for layer in &ci.hidden {
-                        text(&format!("{who} hidden layer"), "name", layer)?;
-                    }
-                    if let Some(b) = self.cad_box(id) {
-                        for p in b {
-                            point(&format!("{who}: the drawing, placed,"), p)
-                                .map_err(|e| format!("{e}; place it nearer the origin (`position`: center), or at another `scale`"))?;
-                        }
-                    }
-                }
-                Element::Spot(sp) => {
-                    view_ok(sp.view, false)?;
-                    point(&who, sp.at)?;
-                    match (self.plan_level(sp.view), sp.host) {
-                        (Some(_), None) => return Err(format!("{who}: a spot elevation in a plan reads an element's top; give `host`")),
-                        (_, Some(h)) if !self.elements.contains_key(h) => return Err(format!("{who}: element {h} doesn't exist")),
-                        _ => {}
-                    }
-                }
-                Element::Schedule(sc) => {
-                    text(&who, "name", &sc.name)?;
-                    if sc.name.trim().is_empty() {
-                        return Err(format!("{who}: a view needs a name"));
-                    }
-                    crate::schedule::check(self, sc).map_err(|e| format!("{who} (`{}`): {e}", sc.name))?;
-                    if let Some((of, name)) = crate::schedule::builtin(Some(&sc.name), None)
-                        && !twins.insert(of)
-                    {
-                        return Err(format!(
-                            "{who} (`{}`): another schedule is already the {of}s' {name}; call it something else",
-                            sc.name
-                        ));
-                    }
-                    if !view_names.insert(sc.name.as_str()) {
-                        return Err(format!("{who}: another view is already named `{}`", sc.name));
-                    }
-                }
-                Element::PlanView(v) => {
-                    text(&who, "name", &v.name)?;
-                    if v.name.trim().is_empty() {
-                        return Err(format!("{who}: a view needs a name"));
-                    }
-                    level_ok(v.level)?;
-                    range_ok(&who, &v.view_range)?;
-                    if let Some([a, b]) = v.crop {
-                        crop(&who, a, b)?;
-                    }
-                    v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
-                    // A level's name is its own plan's; a view of it takes another.
-                    if self.levels().iter().any(|(_, l)| l.name == v.name) {
-                        return Err(format!("{who}: a level is already named `{}`; a plan view of it needs another name", v.name));
-                    }
-                    if let Some(p) = v.parent {
-                        // Of a level's own plan, or of a plan view that is no dependent itself, on the same level.
-                        let primary = match self.elements.get(p) {
-                            Some(Element::Level(_)) => p == v.level,
-                            Some(Element::PlanView(o)) => o.parent.is_none() && o.level == v.level,
-                            _ => false,
-                        };
-                        if !primary {
-                            return Err(format!(
-                                "{who}: a dependent view hangs from a plan of its own level that is no dependent itself, not {}",
-                                self.shown(p)
-                            ));
-                        }
-                    }
-                    if !view_names.insert(v.name.as_str()) {
-                        return Err(format!("{who}: another view is already named `{}`", v.name));
-                    }
-                }
-                Element::Link(l) => {
-                    text(&who, "name", &l.name)?;
-                    if l.name.trim().is_empty() || l.path.trim().is_empty() || l.path.chars().count() > MAX_TEXT {
-                        return Err(format!("{who}: a link needs a name and the path of a file, up to {MAX_TEXT} characters"));
-                    }
-                    point(&format!("{who} at"), l.at)?;
-                    if !(l.angle.is_finite() && l.angle.abs() <= 360.0) {
-                        return Err(format!("{who}: its angle {}° isn't between -360° and 360°", l.angle));
-                    }
-                    if !link_names.insert(l.name.as_str()) {
-                        return Err(format!("{who}: another link is already named `{}`", l.name));
-                    }
-                }
-                Element::View3D(v) => {
-                    text(&who, "name", &v.name)?;
-                    if v.name.trim().is_empty() {
-                        return Err(format!("{who}: a view needs a name"));
-                    }
-                    coord(&format!("{who} azimuth"), v.azimuth)?;
-                    if !(-89.0..=89.0).contains(&v.elevation) {
-                        return Err(format!("{who}: elevation {}° isn't between -89° and 89°", v.elevation));
-                    }
-                    v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
-                    if let Some(b) = &v.section_box {
-                        section_box_ok(&who, b)?;
-                    }
-                    if let Some(p) = &v.perspective
-                        && !(crate::view3d::MIN_LENS..=crate::view3d::MAX_LENS).contains(&p.lens)
-                    {
-                        let (lo, hi) = (crate::view3d::MIN_LENS, crate::view3d::MAX_LENS);
-                        return Err(format!("{who}: a {} mm lens is no camera's; a perspective's lens is {lo} to {hi} mm", p.lens));
-                    }
-                    if !view_names.insert(v.name.as_str()) {
-                        return Err(format!("{who}: another view is already named `{}`", v.name));
-                    }
-                }
-                Element::Section(v) | Element::Elevation(v) => {
-                    text(&who, "name", &v.name)?;
-                    if v.name.trim().is_empty() {
-                        return Err(format!("{who}: a view needs a name"));
-                    }
-                    line(&who, v.start, v.end)?;
-                    if let Some(d) = v.depth {
-                        size(&format!("{who} depth"), d)?;
-                    }
-                    if let Some([bottom, top]) = v.crop {
-                        coord(&format!("{who} crop"), bottom)?;
-                        coord(&format!("{who} crop"), top)?;
-                        if bottom >= top - TOL {
-                            return Err(format!("{who}: its crop runs from a bottom up to a top above it, not from {bottom} to {top}"));
-                        }
-                    }
-                    v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
-                    if !view_names.insert(v.name.as_str()) {
-                        return Err(format!("{who}: another view is already named `{}`", v.name));
-                    }
-                }
-                Element::Component(c) => {
-                    let f = self.families.get(&c.family).ok_or_else(|| {
-                        let names: Vec<&str> = self.families.keys().map(String::as_str).collect();
-                        format!("{who}: family `{}` doesn't exist (there are: {})", c.family, names.join(", "))
-                    })?;
-                    if f.category.hosted() {
-                        return Err(format!(
-                            "{who}: family `{}` is a door's or a window's: it stands in a wall, placed with `door` or `window`",
-                            c.family
-                        ));
-                    }
-                    level_ok(c.level)?;
-                    point(&who, c.at)?;
-                    coord(&format!("{who} angle"), c.angle)?;
-                    coord(&format!("{who} offset"), c.offset)?;
-                    self.family_values_ok(&who, &c.family, f, &c.params)?;
-                    if let Some(placement) = &c.adaptive {
-                        if f.adaptive.is_none() {
-                            return Err(format!("{who}: adaptive placement requires an adaptive family"));
-                        }
-                        placement.check().map_err(|e| format!("{who}: {e}"))?;
-                    }
-                    f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v)).map_err(|e| format!("{who}: {e}"))?;
-                }
-                Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
-                    let types = match e {
-                        Element::StructuralColumn(_) => &self.types.structural_column,
-                        Element::Footing(_) => &self.types.footing,
-                        _ => &self.types.column,
-                    };
-                    known(&who, &col.type_name, types)?;
-                    level_ok(col.level)?;
-                    point(&who, col.at)?;
-                    coord(&format!("{who} angle"), col.angle)?;
-                    coord(&format!("{who} base_offset"), col.base_offset)?;
-                    match col.top_level {
-                        Some(t) => level_ok(t)?,
-                        None => size(&format!("{who} height"), col.height)?,
-                    }
-                    let (bottom, top) = self.span(col.level, col.base_offset, col.top_level, col.height);
-                    if top <= bottom + TOL {
-                        return Err(format!("{who}: its top must be above its base"));
-                    }
-                }
-                run_arm!(r) => {
-                    let (category, none) = (e.category(), BTreeMap::new());
-                    let t = known(&who, &r.type_name, self.types.runs.get(category).unwrap_or(&none))?;
-                    level_ok(r.level)?;
-                    point(&format!("{who} start"), r.start)?;
-                    point(&format!("{who} end"), r.end)?;
-                    coord(&format!("{who} offset"), r.offset)?;
-                    if let Some(o) = r.end_offset {
-                        coord(&format!("{who} end_offset"), o)?;
-                    }
-                    text(&who, "system", &r.system)?;
-                    crate::runs::check(&who, category, &crate::runs::Geom::of(self, r, t))?;
-                }
-                Element::Stair(st) => {
-                    level_ok(st.level)?;
-                    point(&who, st.start)?;
-                    coord(&format!("{who} angle"), st.angle)?;
-                    match st.top_level {
-                        Some(t) => level_ok(t)?,
-                        None => size(&format!("{who} height"), st.height)?,
-                    }
-                    for (what, v) in [("width", st.width), ("riser", st.riser), ("tread", st.tread)] {
-                        size(&format!("{who} {what}"), v)?;
-                    }
-                    let (n, _, _) = self.flight(st);
-                    if !(2..=200).contains(&n) {
-                        return Err(format!(
-                            "{who}: {n} risers; a stair takes 2 to 200, so check its height and its riser ({} mm)",
-                            st.riser
-                        ));
-                    }
-                    landings(&who, &st.landings, Some(f64::from(n)))?;
-                }
-                Element::Ramp(r) => {
-                    level_ok(r.level)?;
-                    point(&who, r.start)?;
-                    coord(&format!("{who} angle"), r.angle)?;
-                    match r.top_level {
-                        Some(t) => level_ok(t)?,
-                        None => size(&format!("{who} height"), r.height)?,
-                    }
-                    size(&format!("{who} width"), r.width)?;
-                    if !(1.0..=50.0).contains(&r.slope) {
-                        return Err(format!("{who}: slope {}% isn't from 1% to 50%", r.slope));
-                    }
-                    let (bottom, top) = self.span(r.level, 0.0, r.top_level, r.height);
-                    if top <= bottom + TOL {
-                        return Err(format!("{who}: its top must be above its base"));
-                    }
-                    coord(&format!("{who} length"), (top - bottom) / r.slope * 100.0)?;
-                    landings(&who, &r.landings, None)?;
-                    if let Some(l) = r.landings.last().filter(|l| l.at >= top - bottom - TOL) {
-                        return Err(format!("{who}: a landing {} mm up isn't below its top, {} mm up", l.at, top - bottom));
-                    }
-                }
-                Element::Railing(rl) => {
-                    let t = known(&who, &rl.type_name, &self.types.railing)?;
-                    level_ok(rl.level)?;
-                    coord(&format!("{who} base_offset"), rl.base_offset)?;
-                    match (rl.host, rl.side) {
-                        (Some(h), Some(_)) => {
-                            if !matches!(self.elements.get(h), Some(Element::Stair(_) | Element::Ramp(_))) {
-                                return Err(format!("{who}: host {} isn't a stair or a ramp", self.shown(h)));
-                            }
-                        }
-                        (Some(_), None) => {
-                            return Err(format!("{who}: a railing on a stair or a ramp runs along its left or its right side"));
-                        }
-                        (None, _) => {
-                            if rl.path.len() < 2 || rl.path.len() > MAX_POINTS {
-                                return Err(format!("{who}: a path needs 2 to {MAX_POINTS} points"));
-                            }
-                            for p in &rl.path {
-                                point(&who, *p)?;
-                            }
-                        }
-                    }
-                    let line = crate::stairs::railing(self, rl);
-                    let length: f64 = line.windows(2).map(|w| w.first().zip(w.get(1)).map_or(0.0, |(a, b)| a.0.dist(b.0))).sum();
-                    if length <= TOL {
-                        return Err(format!("{who}: its path has no length"));
-                    }
-                    if t.spacing > 0.0 && length / t.spacing > MAX_BALUSTERS {
-                        return Err(format!("{who}: {:.0} balusters, more than {MAX_BALUSTERS}; space them wider", length / t.spacing));
-                    }
-                }
-                Element::Roof(r) => {
-                    known(&who, &r.type_name, &self.types.roof)?;
-                    level_ok(r.level)?;
-                    coord(&format!("{who} overhang"), r.overhang)?;
-                    coord(&format!("{who} offset"), r.offset)?;
-                    match &r.extrusion {
-                        Some(x) => {
-                            line(&who, x.line[0], x.line[1])?;
-                            if !(2..=MAX_POINTS).contains(&x.profile.len()) {
-                                return Err(format!("{who}: an extrusion's profile needs 2 to {MAX_POINTS} points"));
-                            }
-                            for p in &x.profile {
-                                point(&who, *p)?;
-                            }
-                            if x.profile.windows(2).any(|w| w.first().zip(w.get(1)).is_none_or(|(a, b)| b.0 - a.0 <= TOL)) {
-                                return Err(format!("{who}: its profile runs along its line one way, each point past the one before"));
-                            }
-                            coord(&format!("{who} from"), x.from)?;
-                            coord(&format!("{who} to"), x.to)?;
-                            if x.to - x.from <= TOL {
-                                return Err(format!("{who}: it's swept across its line from `from` to `to`, further to the left"));
-                            }
-                        }
-                        None => {
-                            boundary(&who, &r.boundary)?;
-                            if !(0.0..=MAX_SLOPE).contains(&r.slope) {
-                                return Err(format!("{who}: slope {}° isn't from 0° (flat) to {MAX_SLOPE}°", r.slope));
-                            }
-                        }
-                    }
-                    if r.openings.len() > MAX_ROOF_POINTS {
-                        return Err(format!("{who}: {} openings, more than {MAX_ROOF_POINTS}", r.openings.len()));
-                    }
-                    for o in &r.openings {
-                        boundary(&format!("{who} opening"), o)?;
-                    }
-                    if r.extrusion.is_some() && !r.courtyards.is_empty() {
-                        return Err(format!("{who}: courtyards are holes in a roof's footprint; cut an extrusion roof with `openings`"));
-                    }
-                    if r.courtyards.iter().map(Vec::len).sum::<usize>() > MAX_ROOF_POINTS {
-                        return Err(format!("{who}: its courtyards have more than {MAX_ROOF_POINTS} points between them"));
-                    }
-                    for (i, c) in r.courtyards.iter().enumerate() {
-                        boundary(&format!("{who} courtyard {i}"), c)?;
-                    }
-                    holes(&who, "courtyard", &r.boundary, &r.courtyards)?;
-                    crate::sketch::check(&who, &r.sketch)?;
-                    self.roof_pieces(r).map_err(|e| format!("{who}: {e}"))?;
-                }
-                Element::Sheet(sh) => {
-                    text(&who, "number", &sh.number)?;
-                    text(&who, "name", &sh.name)?;
-                    if sh.number.trim().is_empty() {
-                        return Err(format!("{who}: a sheet needs a number"));
-                    }
-                    if !sheet_numbers.insert(sh.number.as_str()) {
-                        return Err(format!("{who}: another sheet is already numbered `{}`", sh.number));
-                    }
-                    if paper(&sh.size).is_none() {
-                        return Err(format!("{who}: size `{}` isn't A0, A1, A2, A3 or A4, or an Arch / ANSI size", sh.size));
-                    }
-                }
-                Element::Viewport(v) => {
-                    if self.sheet(v.sheet).is_none() {
-                        return Err(format!("{who}: {} {} isn't a sheet", self.cat(v.sheet), self.shown(v.sheet)));
-                    }
-                    let name = self.view_name(v.view).ok_or(format!(
-                        "{who}: {} {} isn't a plan, a section, an elevation, a schedule or a 3D view",
-                        self.cat(v.view),
-                        self.shown(v.view)
-                    ))?;
-                    point(&who, v.at)?;
-                    if !(v.scale.is_finite() && (1.0..=100_000.0).contains(&v.scale)) {
-                        return Err(format!("{who}: scale 1 : {} isn't between 1 : 1 and 1 : 100000", v.scale));
-                    }
-                    if let Some(other) = placed.insert(v.view, v.sheet) {
-                        let number = self.sheet(other).map_or("", |s| s.number.as_str());
-                        return Err(format!("{who}: {name} is on sheet {number} already; a view goes on one sheet"));
-                    }
-                }
-                Element::Tag(t) => {
-                    let Some(host) = self.elements.get(t.host) else {
-                        return Err(format!("{who}: element {} doesn't exist", t.host));
-                    };
-                    if let Some(v) = t.view {
-                        let level = self.level_of(e);
-                        level
-                            .and_then(|l| self.plan_view_of(v, l))
-                            .ok_or_else(|| format!("{who}: view {} isn't a plan view of its host's level", self.shown(v)))?;
-                    }
-                    // A door or window whose wall is gone is the wall's to complain of; anything else needs a place in a plan.
-                    if !matches!(host, Element::Door(_) | Element::Window(_)) && self.anchor(t.host).is_none() {
-                        return Err(format!(
-                            "{who}: tags name what has a place in a plan (doors, windows, walls, columns, floors, rooms and the like), not {} {}",
-                            host.category(),
-                            t.host
-                        ));
-                    }
-                    if let Some(label) = &t.label {
-                        let cat = host.category();
-                        let fields = crate::schedule::fields(self, cat);
-                        if !fields.iter().any(|(name, _)| name == label) {
-                            let names: Vec<String> = fields.into_iter().map(|(name, _)| name).collect();
-                            return Err(format!("{who}: {cat} {} has no field `{label}`; its fields are: {}", t.host, names.join(", ")));
-                        }
-                    }
-                    point(&format!("{who} offset"), t.offset)?;
-                }
-            }
+            self.check_element(id, e, &mut t)?;
         }
-        if let Some(n) = view_names.intersection(&level_names).next() {
+        self.check_shared(&t)?;
+        // Last, so what a rule above says of a reference comes first.
+        self.check_ids()
+    }
+
+    /// What [`Model::check`] asks of what the elements it went through hold in common.
+    fn check_shared(&self, t: &Tally) -> Result<(), String> {
+        if let Some(n) = t.view_names.intersection(&t.level_names).next() {
             return Err(format!("a view is named `{n}`, as a level is; name it otherwise"));
         }
-        for (host, v) in spans {
+        for (host, v) in &t.spans {
             // Openings share a wall's place only where they share its height too: one over the other is not an overlap, and a
             // storefront wall with a window a storey is a wall whose windows overlap in plan alone.
             for (i, a) in v.iter().enumerate() {
@@ -5726,8 +6100,1142 @@ impl Model {
                 }
             }
         }
-        // Last, so what a rule above says of a reference comes first.
-        self.check_ids()
+        Ok(())
+    }
+
+    /// [`Model::check`] of this model, which a command made of `before`, a model that passed it: the elements the command
+    /// added, changed or removed are checked again, with the walls they might join, what points at any of those (and what
+    /// points at that, on), and the other openings in the walls their openings are in. The rest are as they were. The same
+    /// answer as `check`, which it is where what changed reaches what the whole project shares (a level, a grid, a link, a
+    /// name every element of a kind keeps apart, a setting or a type) or isn't known. A view, a sheet or a viewport is
+    /// checked with the whole drawing set.
+    pub fn check_changed(&self, before: &Model) -> Result<(), String> {
+        let Changed::Ids(changed) = self.changed_since(before) else { return self.check_all() };
+        let shared = |e: &Element| {
+            matches!(
+                e,
+                Element::Level(_)
+                    | Element::Grid(_)
+                    | Element::Link(_)
+                    | Element::DetailGroup(_)
+                    | Element::RepeatingDetail(_)
+                    | Element::Mass(_)
+                    | Element::PointCloud(_)
+                    | Element::CadImport(_)
+            )
+        };
+        // What changed, as GUIDs, and the plan boxes the walls among it took up, before and now.
+        let mut frontier: BTreeSet<Guid> = BTreeSet::new();
+        // Each with the heights it spans: walls join only walls they overlap in height (`walls::stacked`).
+        let mut boxes: Vec<([f64; 4], f64, f64)> = Vec::new();
+        for &id in &changed {
+            for m in [self, before] {
+                let Some(e) = m.elements.get(id) else { continue };
+                if shared(e) {
+                    return self.check_all();
+                }
+                frontier.extend(m.elements.guid(id));
+                // A wall of no usable extent may meet any: the check says what is wrong with it.
+                if let Element::Wall(w) = e {
+                    let Some(b) = walls::reach(m, w) else { return self.check_all() };
+                    boxes.push((b, m.base_z(w), m.top_z(w)));
+                }
+            }
+        }
+        let meet = |a: &[f64; 4], b: &[f64; 4]| a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3];
+        let mut affected: BTreeSet<Id> = changed.iter().copied().filter(|id| self.elements.contains_key(*id)).collect();
+        let lookup = self.lookup();
+        // The walls they might join, and what points at what changed, on until nothing more does.
+        if !boxes.is_empty() {
+            // A wall's body lies within its type's thickness of its location line: the walls whose lines come that near.
+            let grow = self.types.wall.values().map(|t| t.thickness.abs()).fold(0.0, f64::max) + 2.0 * TOL;
+            let near = lookup.walls_near_at(&boxes, grow);
+            for id in near {
+                if let Some(w) = self.wall(id)
+                    && match walls::reach(self, w) {
+                        None => true,
+                        Some(b) => {
+                            let near: Vec<_> = boxes.iter().filter(|(c, _, _)| meet(&b, c)).collect();
+                            !near.is_empty() && {
+                                let (bottom, top) = (self.base_z(w), self.top_z(w));
+                                near.iter().any(|(_, lo, hi)| bottom < *hi && *lo < top)
+                            }
+                        }
+                    }
+                    && affected.insert(id)
+                {
+                    frontier.extend(self.elements.guid(id));
+                }
+            }
+        }
+        while !frontier.is_empty() {
+            let mut next = BTreeSet::new();
+            for g in &frontier {
+                for id in lookup.referrers(g) {
+                    if affected.insert(id) {
+                        next.extend(self.elements.guid(id));
+                    }
+                }
+            }
+            frontier = next;
+        }
+        // The openings in the walls their openings are in: they're kept apart along a wall.
+        let hosts: BTreeSet<Guid> = affected
+            .iter()
+            .filter_map(|id| match self.elements.get(*id) {
+                Some(Element::Door(o) | Element::Window(o)) => Some(o.host),
+                _ => None,
+            })
+            .collect();
+        for host in &hosts {
+            for id in lookup.referrers(host) {
+                if matches!(self.elements.get(id), Some(Element::Door(o) | Element::Window(o)) if o.host == *host) {
+                    affected.insert(id);
+                }
+            }
+        }
+        // A view, a sheet or a viewport: the drawing set's names, numbers and places are kept apart, so all of it is
+        // checked, with the levels whose names the views' keep apart from theirs.
+        let drawing_set = |e: &Element| crate::derived::DRAWING_SET.contains(&e.category());
+        let mut t = Tally::default();
+        if changed.iter().any(|id| [self, before].iter().any(|m| m.elements.get(*id).is_some_and(drawing_set))) {
+            for cat in crate::derived::DRAWING_SET {
+                affected.extend(lookup.rare(cat));
+            }
+            // The levels are as they were (a changed one checks everything): their names, which no view's may be.
+            for id in lookup.levels() {
+                if let Some(Element::Level(l)) = self.elements.get(id) {
+                    t.level_names.insert(l.name.as_str());
+                }
+            }
+        }
+        for &id in &affected {
+            let Some(e) = self.elements.get(id) else { continue };
+            if shared(e) {
+                return self.check_all();
+            }
+            self.check_element(id, e, &mut t)?;
+        }
+        self.check_shared(&t)?;
+        self.check_ids_of(affected.iter().filter_map(|id| Some((*id, self.elements.get(*id)?))), self.library_in_step_since(before))
+    }
+
+    /// [`Model::check`], where [`Model::check_changed`] can't tell what an edit reaches; tests count how often.
+    fn check_all(&self) -> Result<(), String> {
+        #[cfg(test)]
+        FALLBACKS.with(|n| n.set(n.get() + 1));
+        self.check()
+    }
+
+    /// What [`Model::check`] asks of element `id`, `e`, keeping in `t` what it must hold in common with the others.
+    fn check_element<'a>(&'a self, id: Id, e: &'a Element, t: &mut Tally<'a>) -> Result<(), String> {
+        let Tally { level_names, grid_names, link_names, view_names, twins, sheet_numbers, placed, spans, members_placed, shapes } = t;
+        let who = format!("{} {id}", e.category());
+        let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
+        // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
+        let view_ok = |v: Guid, sheets: bool| match self.elements.get(v) {
+            Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_)) => Ok(()),
+            Some(Element::Sheet(_)) if sheets => Ok(()),
+            Some(other) => Err(format!(
+                "{who}: {} {} isn't a plan, a section, an elevation{}",
+                other.category(),
+                self.shown(v),
+                if sheets { " or a sheet" } else { "" }
+            )),
+            None => Err(format!("{who}: view {v} doesn't exist")),
+        };
+        // Its values of the project's parameters, each one of its category's, of its kind; a
+        // component's family's are its family's to check.
+        for (k, v) in e.params().into_iter().flatten() {
+            // Its phases and its design option are values it holds under names no parameter may take.
+            if let Some(checked) = phasing::check_value(self, &who, k, v) {
+                checked?;
+                continue;
+            }
+            if let Some(checked) = crate::paint::check_value(self, &who, k, v, e) {
+                checked?;
+                continue;
+            }
+            if let Some(checked) = crate::massing::check_value(self, &who, k, v, e) {
+                checked?;
+                continue;
+            }
+            if e.family().and_then(|(f, _)| self.families.get(f)).is_some_and(|f| f.parameters.iter().any(|p| p.name == *k)) {
+                continue;
+            }
+            let p = self
+                .parameters
+                .get(k)
+                .filter(|p| p.categories.iter().any(|c| c == e.category()))
+                .ok_or_else(|| format!("{who}: `{k}` isn't a parameter of {}s; add it with `parameter`", e.category()))?;
+            if !p.holds(v) {
+                let what = match p.kind {
+                    ParameterKind::Text => "text",
+                    ParameterKind::Number => "a number",
+                    ParameterKind::Length => "a length",
+                    ParameterKind::YesNo => "yes or no",
+                };
+                return Err(format!("{who}: `{k}` holds {what}, not {v}"));
+            }
+        }
+        phasing::check_order(self, &who, e)?;
+        match e {
+            Element::Level(l) => {
+                text(&who, "name", &l.name)?;
+                coord(&format!("{who} elevation"), l.elevation)?;
+                coord(&format!("{who} computation height"), l.computation_height)?;
+                if !level_names.insert(l.name.as_str()) {
+                    return Err(format!("{who}: another level is already named `{}`", l.name));
+                }
+                range_ok(&who, &l.view_range)?;
+                if let Some([a, b]) = l.crop {
+                    crop(&who, a, b)?;
+                }
+                if let Some([a, b]) = l.extent {
+                    point(&format!("{who} extent"), a)?;
+                    point(&format!("{who} extent"), b)?;
+                    if !(a.0 < b.0 - TOL && a.1 < b.1 - TOL) {
+                        return Err(format!("{who}: its extent runs from its south-west corner to its north-east one"));
+                    }
+                }
+                l.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
+            }
+            Element::Grid(g) => {
+                text(&who, "name", &g.name)?;
+                line(&who, g.start, g.end)?;
+                if !grid_names.insert(g.name.as_str()) {
+                    return Err(format!("{who}: another grid is already named `{}`", g.name));
+                }
+            }
+            Element::RoomSeparator(rs) => {
+                level_ok(rs.level)?;
+                line(&who, rs.start, rs.end)?;
+            }
+            Element::Rebar(rb) => {
+                level_ok(rb.level)?;
+                text(&who, "grade", &rb.grade)?;
+                text(&who, "layer", &rb.layer)?;
+                if rb.grade.trim().is_empty() {
+                    return Err(format!("{who}: a bar needs a steel grade"));
+                }
+                let (thin, thick) = crate::rebar::DIAMETERS;
+                if !(thin..=thick).contains(&rb.diameter) {
+                    return Err(format!("{who}: diameter {} mm isn't between {thin} and {thick} mm", rb.diameter));
+                }
+                if !(2..=MAX_POINTS).contains(&rb.path.len()) {
+                    return Err(format!("{who}: a path needs 2 to {MAX_POINTS} points"));
+                }
+                if rb.path.iter().flatten().any(|c| !(c.is_finite() && c.abs() <= MAX_COORD)) {
+                    return Err(format!("{who}: a point of its path is not finite or reaches past {MAX_COORD} mm"));
+                }
+                if crate::rebar::length(&rb.path) <= TOL {
+                    return Err(format!("{who}: its path has no length"));
+                }
+                if let Some(h) = rb.host {
+                    match self.elements.get(h) {
+                        Some(
+                            Element::Beam(_)
+                            | Element::StripFooting(_)
+                            | Element::Column(_)
+                            | Element::StructuralColumn(_)
+                            | Element::Footing(_)
+                            | Element::Floor(_),
+                        ) => {}
+                        Some(other) => {
+                            return Err(format!(
+                                "{who}: {} {} is no host for bars; a beam, a column, a footing or a floor is",
+                                other.category(),
+                                self.shown(h)
+                            ));
+                        }
+                        None => return Err(format!("{who}: host {h} doesn't exist")),
+                    }
+                }
+            }
+            Element::Wall(w) => {
+                known(&who, &w.type_name, &self.types.wall)?;
+                level_ok(w.level)?;
+                line(&who, w.start, w.end)?;
+                coord(&format!("{who} base_offset"), w.base_offset)?;
+                // An arc within reach: all of its circle inside the model's limits.
+                let axis = walls::Axis::of(w);
+                let reach = axis.centre().zip(axis.radius()).is_none_or(|(c, r)| c.0.abs().max(c.1.abs()) + r <= MAX_COORD);
+                if !(w.arc.is_finite() && w.arc.abs() < 360.0 && reach) {
+                    return Err(format!("{who}: arc {}° isn't between -360° and 360°, reaching no farther than 1000 km", w.arc));
+                }
+                for (what, at) in [("attach_top", w.attach_top), ("attach_base", w.attach_base)] {
+                    if let Some(a) = at
+                        && !matches!(self.elements.get(a), Some(Element::Roof(_) | Element::Floor(_)))
+                    {
+                        return Err(format!("{who}: {what} {} isn't a roof or a floor", self.shown(a)));
+                    }
+                }
+                match w.top_level {
+                    Some(t) => level_ok(t)?,
+                    None => size(&format!("{who} height"), w.height)?,
+                }
+                coord(&format!("{who} top offset"), w.top_offset)?;
+                let (base, top) = (self.base_z(w), self.top_z(w));
+                if top <= base + TOL {
+                    let (tall, short) = ((top - base).round() + 0.0, (base - top).round() + 0.0);
+                    return Err(format!(
+                        "{who}: its top ({top:.0} mm) must be above its base ({base:.0} mm); it comes out {tall} mm tall, so raise its top constraint, top offset or height by more than {short} mm"
+                    ));
+                }
+            }
+            Element::Floor(f) => {
+                point(&format!("{who} pattern origin"), f.pattern_origin)?;
+                coord(&format!("{who} pattern angle"), f.pattern_angle)?;
+                known(&who, &f.type_name, &self.types.floor)?;
+                level_ok(f.level)?;
+                boundary(&who, &f.boundary)?;
+                openings(&who, &f.boundary, &f.openings)?;
+                crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
+                coord(&format!("{who} offset"), f.offset)?;
+                if !(f.slope.is_finite() && f.slope.abs() <= MAX_SLOPE) {
+                    return Err(format!("{who}: slope {}° isn't between -{MAX_SLOPE}° and {MAX_SLOPE}°", f.slope));
+                }
+                match f.arrow {
+                    Some([tail, head]) => line(&format!("{who} arrow"), tail, head)?,
+                    None if f.slope != 0.0 => {
+                        return Err(format!(
+                            "{who}: a sloped floor needs a slope arrow, from where its top is at its offset toward where it rises"
+                        ));
+                    }
+                    None => {}
+                }
+                shape_ok(&who, f, Variable::of(self.type_layers("floor", &f.type_name)))?;
+            }
+            Element::Ceiling(c) => {
+                known(&who, &c.type_name, &self.types.ceiling)?;
+                level_ok(c.level)?;
+                boundary(&who, &c.boundary)?;
+                openings(&who, &c.boundary, &c.openings)?;
+                crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
+                coord(&format!("{who} offset"), c.offset)?;
+            }
+            Element::Shaft(sh) => {
+                level_ok(sh.level)?;
+                boundary(&who, &sh.boundary)?;
+                coord(&format!("{who} base_offset"), sh.base_offset)?;
+                crate::sketch::check(&who, e.sketch().map_or(&[][..], Vec::as_slice))?;
+                match sh.top_level {
+                    Some(t) => level_ok(t)?,
+                    None => size(&format!("{who} height"), sh.height)?,
+                }
+                let (bottom, top) = self.span(sh.level, sh.base_offset, sh.top_level, sh.height);
+                if top <= bottom + TOL {
+                    return Err(format!("{who}: its top must be above its base"));
+                }
+            }
+            Element::Mass(ms) => {
+                level_ok(ms.level)?;
+                boundary(&who, &ms.boundary)?;
+                text(&who, "name", &ms.name)?;
+                coord(&format!("{who} base_offset"), ms.base_offset)?;
+                match ms.top_level {
+                    Some(t) => level_ok(t)?,
+                    None => size(&format!("{who} height"), ms.height)?,
+                }
+                let (bottom, top) = self.span(ms.level, ms.base_offset, ms.top_level, ms.height);
+                if top <= bottom + TOL {
+                    return Err(format!("{who}: its top must be above its base"));
+                }
+                if let Some(crown) = &ms.top {
+                    // Its points first: past that, the rings pair up and the cross sections can be worked out.
+                    if crown.len() == ms.boundary.len() {
+                        boundary(&format!("{who} top"), crown)?;
+                    }
+                    if let Some(why) = crate::massing::loft_problem(&ms.boundary, crown) {
+                        return Err(format!("{who}: {why}"));
+                    }
+                }
+            }
+            Element::Door(o) | Element::Window(o) => {
+                let w = self.wall(o.host).ok_or(format!("{who}: host wall {} doesn't exist", self.shown(o.host)))?;
+                let t = self.opening_dims(e).map_err(|e| format!("{who}: {e}"))?;
+                if let Some(f) = o.family.as_ref().and_then(|n| self.families.get(n)) {
+                    self.family_values_ok(&who, o.family.as_deref().unwrap_or_default(), f, &o.params)?;
+                    let values = f.values_in(&o.type_name, &o.params, self.thickness(w)).map_err(|e| format!("{who}: {e}"))?;
+                    f.pieces(&values).and_then(|_| f.marks(&values)).map_err(|e| format!("{who}: {e}"))?;
+                    size(&format!("{who} width"), t.width)?;
+                    size(&format!("{who} height"), t.height)?;
+                }
+                coord(&format!("{who} offset"), o.offset)?;
+                coord(&format!("{who} sill"), o.sill)?;
+                text(&who, "mark", &o.mark)?;
+                let (a, b) = (o.offset - t.width / 2.0, o.offset + t.width / 2.0);
+                let length = crate::walls::Axis::of(w).length();
+                if a < -TOL || b > length + TOL {
+                    return Err(format!(
+                        "{who}: {} mm wide at offset {} doesn't fit wall {}, {length} mm long",
+                        t.width,
+                        o.offset,
+                        self.shown(o.host)
+                    ));
+                }
+                // Up to the wall's top over it, which a roof it's attached to may raise.
+                let top = [a, o.offset, b].map(|s| crate::walls::top_at(self, w, s)).into_iter().fold(f64::INFINITY, f64::min);
+                if o.sill < 0.0 || self.own_base(w) + o.sill + t.height > top + TOL {
+                    return Err(format!("{who}: sill {} + height {} doesn't fit wall {}'s height", o.sill, t.height, self.shown(o.host)));
+                }
+                let span = OpeningSpan { start: a, end: b, sill: o.sill, head: o.sill + t.height, id };
+                let list = spans.entry(o.host).or_default();
+                let at = list.partition_point(|held| held.start <= a);
+                list.insert(at, span);
+            }
+            Element::Room(r) => {
+                level_ok(r.level)?;
+                point(&who, r.point)?;
+                text(&who, "name", &r.name)?;
+                text(&who, "number", &r.number)?;
+                kept(&who, r)?;
+                if let Some(t) = r.top_level {
+                    level_ok(t)?;
+                }
+                coord(&format!("{who} base offset"), r.base_offset)?;
+                coord(&format!("{who} limit offset"), r.limit_offset)?;
+                let (bottom, top) = self.room_span(r);
+                if top <= bottom + TOL {
+                    return Err(format!(
+                        "{who}: the room's top (its upper limit {} + limit offset {}) must be above its bottom (its level {} + \
+                         base offset {}); raise the limit offset or lower the base offset",
+                        self.elevation(r.top_level.unwrap_or(r.level)),
+                        r.limit_offset,
+                        self.elevation(r.level),
+                        r.base_offset
+                    ));
+                }
+            }
+            Element::Dimension3D(d) => {
+                if !matches!(self.elements.get(d.view), Some(Element::View3D(_))) {
+                    return Err(format!("{who}: view {} isn't a 3D view", self.shown(d.view)));
+                }
+                for q in std::iter::once(d.at).chain(d.refs.iter().flat_map(|r| std::iter::once(r.at).chain(r.edge.into_iter().flatten())))
+                {
+                    for v in q {
+                        coord(&format!("{who} point"), v)?;
+                    }
+                }
+                if d.refs.iter().any(|r| r.edge.is_some_and(|[a, b]| (0..3).map(|i| (a[i] - b[i]).powi(2)).sum::<f64>().sqrt() <= TOL)) {
+                    return Err(format!("{who}: an edge it measures to has its two ends in one place"));
+                }
+                if crate::dims3d::length(d) <= TOL {
+                    return Err(format!("{who}: it measures nothing: its references are in one place, or one lies on the other's edge"));
+                }
+                if !self.dimension_types.contains_key(&d.type_name) {
+                    let there: Vec<&str> = self.dimension_types.keys().map(String::as_str).collect();
+                    return Err(format!("{who}: there's no dimension type `{}` (there are: {})", d.type_name, there.join(", ")));
+                }
+            }
+            Element::Dimension(d) => {
+                level_ok(d.level)?;
+                if let Some(v) = d.view {
+                    self.plan_view_of(v, d.level).ok_or_else(|| format!("{who}: view {} isn't a plan view of its level", self.shown(v)))?;
+                }
+                point(&who, d.at)?;
+                if !self.dimension_types.contains_key(&d.type_name) {
+                    let there: Vec<&str> = self.dimension_types.keys().map(String::as_str).collect();
+                    return Err(format!("{who}: there's no dimension type `{}` (there are: {})", d.type_name, there.join(", ")));
+                }
+                for (what, t) in
+                    [("prefix", &d.prefix), ("suffix", &d.suffix), ("above", &d.above), ("below", &d.below), ("replace", &d.replace)]
+                {
+                    crate::dims::dim_text(&who, what, t)?;
+                }
+                if d.equal && !(matches!(d.kind, DimKind::Aligned | DimKind::Linear) && d.refs.len() > 2) {
+                    return Err(format!("{who}: only an aligned or a linear dimension of two segments or more is kept equal"));
+                }
+                if !d.locked.is_empty() && !matches!(d.kind, DimKind::Aligned | DimKind::Linear) {
+                    return Err(format!("{who}: only an aligned or a linear dimension's segments are locked"));
+                }
+                let mut locks = BTreeSet::new();
+                for l in &d.locked {
+                    if l.segment >= MAX_POINTS || !locks.insert(l.segment) || !(l.length.is_finite() && l.length.abs() <= MAX_COORD) {
+                        return Err(format!("{who}: segment {} is locked twice, at no length, or isn't a segment", l.segment));
+                    }
+                }
+                let mut segments = BTreeSet::new();
+                for st in &d.texts {
+                    if st.segment >= MAX_POINTS || !segments.insert(st.segment) {
+                        return Err(format!("{who}: segment {}'s text is given twice, or there's no such segment", st.segment));
+                    }
+                    for (what, t) in st.fields() {
+                        crate::dims::dim_text(&format!("{who} segment {}", st.segment), what, t)?;
+                    }
+                }
+                match (d.kind, d.refs.len()) {
+                    (DimKind::Aligned | DimKind::Linear, 2..=MAX_POINTS)
+                    | (DimKind::Angular, 2)
+                    | (DimKind::Radial | DimKind::Diameter | DimKind::ArcLength, 1) => {}
+                    (DimKind::Aligned | DimKind::Linear, _) => {
+                        return Err(format!("{who}: a dimension measures between 2 to {MAX_POINTS} references"));
+                    }
+                    (DimKind::Angular, _) => return Err(format!("{who}: an angular dimension measures between two lines")),
+                    (DimKind::Radial, _) => return Err(format!("{who}: a radial dimension measures one round element")),
+                    (DimKind::Diameter, _) => return Err(format!("{who}: a diameter dimension measures one round element")),
+                    (DimKind::ArcLength, 3) => {}
+                    (DimKind::ArcLength, _) => {
+                        return Err(format!(
+                            "{who}: an arc length dimension measures along one arc, all of it or between two points on it"
+                        ));
+                    }
+                }
+                match (d.kind, d.orient) {
+                    (DimKind::Linear, None) => {
+                        return Err(format!("{who}: a linear dimension runs horizontal or vertical: give it an `orient`"));
+                    }
+                    (DimKind::Linear, Some(_)) | (_, None) => {}
+                    (_, Some(_)) => return Err(format!("{who}: only a linear dimension has an `orient`; this one is {:?}", d.kind)),
+                }
+                let linear = d.kind == DimKind::Linear;
+                let along = self.measured_along(d);
+                let mut seen = BTreeSet::new();
+                let mut first: Option<(Reference, Line)> = None;
+                for r in &d.refs {
+                    match d.kind {
+                        DimKind::Radial => {
+                            self.reference_arc(r).map_err(|e| format!("{who}: {e}"))?;
+                            continue;
+                        }
+                        DimKind::Diameter => {
+                            self.reference_arc(r).map_err(|e| format!("{who}: {}", e.replace("a radial", "a diameter")))?;
+                            continue;
+                        }
+                        DimKind::ArcLength => {
+                            self.arc_span(d).map_err(|e| format!("{who}: {e}"))?;
+                            break;
+                        }
+                        _ => {}
+                    }
+                    let what = format!("{} {}", self.cat(r.id), self.shown(r.id));
+                    if r.point.is_some() && d.kind == DimKind::Angular {
+                        return Err(format!("{who}: it measures to an end of {what}; an angle is between two lines"));
+                    }
+                    let line = self.reference_geometry(r).map_err(|e| format!("{who}: {e}"))?;
+                    if !seen.insert((r.id, r.face, r.point)) {
+                        let at = match r.point {
+                            Some(End::Start) => "start of its ",
+                            Some(End::End) => "end of its ",
+                            None => "",
+                        };
+                        return Err(format!("{who}: it measures to {what}'s {at}{} twice", r.face.name()));
+                    }
+                    if r.point.is_some() {
+                        continue;
+                    }
+                    if let (true, Some(n)) = (linear, along)
+                        && !geom::parallel(line.0, line.1, P2(0.0, 0.0), n.perp())
+                    {
+                        let way = if d.orient == Some(Orient::Horizontal) { "horizontal" } else { "vertical" };
+                        return Err(format!(
+                            "{who}: {what} isn't square to a {way} dimension; measure to its ends, or make the dimension aligned"
+                        ));
+                    }
+                    match first {
+                        None => first = Some((*r, line)),
+                        Some((f, (a, b))) => {
+                            let parallel = geom::parallel(a, b, line.0, line.1);
+                            let other = format!("{} {}", self.cat(f.id), self.shown(f.id));
+                            if d.kind == DimKind::Aligned && !parallel {
+                                return Err(format!(
+                                    "{who}: {what} isn't parallel to {other}; a dimension measures between parallel walls and grids"
+                                ));
+                            }
+                            if d.kind == DimKind::Angular && parallel {
+                                return Err(format!("{who}: {what} is parallel to {other}; an angle is between lines that meet"));
+                            }
+                        }
+                    }
+                }
+                if matches!(d.kind, DimKind::Aligned | DimKind::Linear) && along.is_none() {
+                    return Err(format!("{who}: its points are all in one place, so it has no way to run"));
+                }
+            }
+            Element::Text(Note { view, .. })
+            | Element::DetailLine(DetailLine { view, .. })
+            | Element::FilledRegion(FilledRegion { view, .. }) => {
+                view_ok(*view, true)?;
+                self.annotation_ok(&who, e)?;
+            }
+            Element::DetailGroup(g) => {
+                view_ok(g.view, true)?;
+                point(&who, g.at)?;
+                coord(&format!("{who} angle"), g.angle)?;
+                let Some(t) = self.detail_groups.get(&g.type_name) else {
+                    let there: Vec<&str> = self.detail_groups.keys().map(String::as_str).collect();
+                    return Err(format!("{who}: there's no detail group `{}` (there are: {})", g.type_name, there.join(", ")));
+                };
+                placing(&who, members_placed, g.view, t.members.len())?;
+            }
+            Element::RepeatingDetail(r) => {
+                view_ok(r.view, true)?;
+                point(&who, r.start)?;
+                point(&who, r.end)?;
+                if !(r.spacing.is_finite() && r.spacing >= 1.0 && r.spacing <= MAX_COORD) {
+                    return Err(format!("{who}: spacing {} mm isn't from 1 mm to {MAX_COORD}", r.spacing));
+                }
+                if r.places().is_none() {
+                    return Err(format!(
+                        "{who}: it would repeat more than {} times; space it wider or draw it shorter",
+                        crate::groups::MAX_REPEATS
+                    ));
+                }
+                let Some(t) = self.detail_groups.get(&r.type_name) else {
+                    let there: Vec<&str> = self.detail_groups.keys().map(String::as_str).collect();
+                    return Err(format!("{who}: there's no detail group `{}` (there are: {})", r.type_name, there.join(", ")));
+                };
+                placing(&who, members_placed, r.view, t.members.len().saturating_mul(r.count()))?;
+            }
+            Element::PointCloud(pc) => {
+                if !self.clouds.contains_key(&pc.cloud) {
+                    return Err(format!("{who}: the project holds no scan named `{}`", pc.cloud));
+                }
+                level_ok(pc.level)?;
+                point(&format!("{who} at"), pc.at)?;
+                coord(&format!("{who} offset"), pc.offset)?;
+                coord(&format!("{who} angle"), pc.angle)?;
+            }
+            Element::CadImport(ci) => {
+                if !self.cads.contains_key(&ci.cad) {
+                    return Err(format!("{who}: the project holds no CAD drawing named `{}`", ci.cad));
+                }
+                level_ok(ci.level)?;
+                point(&format!("{who} at"), ci.at)?;
+                coord(&format!("{who} angle"), ci.angle)?;
+                if !(ci.origin.is_finite()
+                    && ci.origin.0.abs() <= crate::dxf::MAX_FILE_COORD
+                    && ci.origin.1.abs() <= crate::dxf::MAX_FILE_COORD)
+                {
+                    return Err(format!("{who}: origin {:?} is past what a drawing holds", ci.origin));
+                }
+                if !CAD_SCALE.contains(&ci.scale) {
+                    return Err(format!(
+                        "{who}: a scale of {} mm to the drawing's unit isn't one; give one from {} to {}",
+                        ci.scale,
+                        CAD_SCALE.start(),
+                        CAD_SCALE.end()
+                    ));
+                }
+                if let Some(v) = ci.view
+                    && !(matches!(self.elements.get(v), Some(Element::Level(_) | Element::PlanView(_)))
+                        && self.plan_level(v).map(|l| self.guid(l)) == Some(ci.level))
+                {
+                    return Err(format!(
+                        "{who}: view {} isn't a plan of its level; an import shows in one of its level's plans",
+                        self.shown(v)
+                    ));
+                }
+                if ci.hidden.len() > MAX_HIDDEN {
+                    return Err(format!("{who}: it hides {} layers; up to {MAX_HIDDEN}", ci.hidden.len()));
+                }
+                for layer in &ci.hidden {
+                    text(&format!("{who} hidden layer"), "name", layer)?;
+                }
+                if let Some(b) = self.cad_box(id) {
+                    for p in b {
+                        point(&format!("{who}: the drawing, placed,"), p)
+                            .map_err(|e| format!("{e}; place it nearer the origin (`position`: center), or at another `scale`"))?;
+                    }
+                }
+            }
+            Element::Spot(sp) => {
+                view_ok(sp.view, false)?;
+                point(&who, sp.at)?;
+                match (self.plan_level(sp.view), sp.host) {
+                    (Some(_), None) => return Err(format!("{who}: a spot elevation in a plan reads an element's top; give `host`")),
+                    (_, Some(h)) if !self.elements.contains_key(h) => return Err(format!("{who}: element {h} doesn't exist")),
+                    _ => {}
+                }
+            }
+            Element::Schedule(sc) => {
+                text(&who, "name", &sc.name)?;
+                if sc.name.trim().is_empty() {
+                    return Err(format!("{who}: a view needs a name"));
+                }
+                crate::schedule::check(self, sc).map_err(|e| format!("{who} (`{}`): {e}", sc.name))?;
+                if let Some((of, name)) = crate::schedule::builtin(Some(&sc.name), None)
+                    && !twins.insert(of)
+                {
+                    return Err(format!("{who} (`{}`): another schedule is already the {of}s' {name}; call it something else", sc.name));
+                }
+                if !view_names.insert(sc.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", sc.name));
+                }
+            }
+            Element::PlanView(v) => {
+                text(&who, "name", &v.name)?;
+                if v.name.trim().is_empty() {
+                    return Err(format!("{who}: a view needs a name"));
+                }
+                level_ok(v.level)?;
+                range_ok(&who, &v.view_range)?;
+                if let Some([a, b]) = v.crop {
+                    crop(&who, a, b)?;
+                }
+                v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
+                // A level's name is its own plan's; a view of it takes another.
+                if self.levels().iter().any(|(_, l)| l.name == v.name) {
+                    return Err(format!("{who}: a level is already named `{}`; a plan view of it needs another name", v.name));
+                }
+                if let Some(p) = v.parent {
+                    // Of a level's own plan, or of a plan view that is no dependent itself, on the same level.
+                    let primary = match self.elements.get(p) {
+                        Some(Element::Level(_)) => p == v.level,
+                        Some(Element::PlanView(o)) => o.parent.is_none() && o.level == v.level,
+                        _ => false,
+                    };
+                    if !primary {
+                        return Err(format!(
+                            "{who}: a dependent view hangs from a plan of its own level that is no dependent itself, not {}",
+                            self.shown(p)
+                        ));
+                    }
+                }
+                if !view_names.insert(v.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", v.name));
+                }
+            }
+            Element::Link(l) => {
+                text(&who, "name", &l.name)?;
+                if l.name.trim().is_empty() || l.path.trim().is_empty() || l.path.chars().count() > MAX_TEXT {
+                    return Err(format!("{who}: a link needs a name and the path of a file, up to {MAX_TEXT} characters"));
+                }
+                point(&format!("{who} at"), l.at)?;
+                if !(l.angle.is_finite() && l.angle.abs() <= 360.0) {
+                    return Err(format!("{who}: its angle {}° isn't between -360° and 360°", l.angle));
+                }
+                if !link_names.insert(l.name.as_str()) {
+                    return Err(format!("{who}: another link is already named `{}`", l.name));
+                }
+            }
+            Element::View3D(v) => {
+                text(&who, "name", &v.name)?;
+                if v.name.trim().is_empty() {
+                    return Err(format!("{who}: a view needs a name"));
+                }
+                coord(&format!("{who} azimuth"), v.azimuth)?;
+                if !(-89.0..=89.0).contains(&v.elevation) {
+                    return Err(format!("{who}: elevation {}° isn't between -89° and 89°", v.elevation));
+                }
+                v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
+                if let Some(b) = &v.section_box {
+                    section_box_ok(&who, b)?;
+                }
+                if let Some(p) = &v.perspective
+                    && !(crate::view3d::MIN_LENS..=crate::view3d::MAX_LENS).contains(&p.lens)
+                {
+                    let (lo, hi) = (crate::view3d::MIN_LENS, crate::view3d::MAX_LENS);
+                    return Err(format!("{who}: a {} mm lens is no camera's; a perspective's lens is {lo} to {hi} mm", p.lens));
+                }
+                if let Some(cam) = &v.camera {
+                    camera_ok(&who, cam)?;
+                }
+                if v.display.silhouette > crate::view3d::MAX_SILHOUETTE {
+                    let most = crate::view3d::MAX_SILHOUETTE;
+                    return Err(format!("{who}: a silhouette {} px wide is wider than the {most} px one may be", v.display.silhouette));
+                }
+                if let Some(wp) = &v.work_plane {
+                    if !wp.offset.is_finite() || wp.offset.abs() > MAX_COORD {
+                        return Err(format!("{who}: its work plane's offset {} isn't a length", wp.offset));
+                    }
+                    wp.resolve(self).map_err(|e| format!("{who}: {e}"))?;
+                }
+                if !view_names.insert(v.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", v.name));
+                }
+            }
+            Element::Section(v) | Element::Elevation(v) => {
+                text(&who, "name", &v.name)?;
+                if v.name.trim().is_empty() {
+                    return Err(format!("{who}: a view needs a name"));
+                }
+                line(&who, v.start, v.end)?;
+                if let Some(d) = v.depth {
+                    size(&format!("{who} depth"), d)?;
+                }
+                if let Some([bottom, top]) = v.crop {
+                    coord(&format!("{who} crop"), bottom)?;
+                    coord(&format!("{who} crop"), top)?;
+                    if bottom >= top - TOL {
+                        return Err(format!("{who}: its crop runs from a bottom up to a top above it, not from {bottom} to {top}"));
+                    }
+                }
+                v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
+                if !view_names.insert(v.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", v.name));
+                }
+            }
+            Element::Component(c) => {
+                let f = self.families.get(&c.family).ok_or_else(|| {
+                    let names: Vec<&str> = self.families.keys().map(String::as_str).collect();
+                    format!("{who}: family `{}` doesn't exist (there are: {})", c.family, names.join(", "))
+                })?;
+                if f.category.hosted() {
+                    return Err(format!(
+                        "{who}: family `{}` is a door's or a window's: it stands in a wall, placed with `door` or `window`",
+                        c.family
+                    ));
+                }
+                level_ok(c.level)?;
+                point(&who, c.at)?;
+                coord(&format!("{who} angle"), c.angle)?;
+                coord(&format!("{who} offset"), c.offset)?;
+                self.family_values_ok(&who, &c.family, f, &c.params)?;
+                if let Some(placement) = &c.adaptive {
+                    if f.adaptive.is_none() {
+                        return Err(format!("{who}: adaptive placement requires an adaptive family"));
+                    }
+                    placement.check().map_err(|e| format!("{who}: {e}"))?;
+                }
+                // Its shape, built once for each family, type and values the project's components have.
+                let build = || f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v).and(f.marks(&v))).map(|_| ());
+                let built = match serde_json::to_string(&c.params) {
+                    Ok(values) => shapes.entry((c.family.as_str(), c.type_name.as_str(), values)).or_insert_with(build).clone(),
+                    Err(_) => build(),
+                };
+                built.map_err(|e| format!("{who}: {e}"))?;
+            }
+            Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
+                let types = match e {
+                    Element::StructuralColumn(_) => &self.types.structural_column,
+                    Element::Footing(_) => &self.types.footing,
+                    _ => &self.types.column,
+                };
+                known(&who, &col.type_name, types)?;
+                level_ok(col.level)?;
+                point(&who, col.at)?;
+                coord(&format!("{who} angle"), col.angle)?;
+                coord(&format!("{who} base_offset"), col.base_offset)?;
+                match col.top_level {
+                    Some(t) => level_ok(t)?,
+                    None => size(&format!("{who} height"), col.height)?,
+                }
+                let (bottom, top) = self.span(col.level, col.base_offset, col.top_level, col.height);
+                if top <= bottom + TOL {
+                    return Err(format!("{who}: its top must be above its base"));
+                }
+            }
+            run_arm!(r) => {
+                let (category, none) = (e.category(), BTreeMap::new());
+                let t = known(&who, &r.type_name, self.types.runs.get(category).unwrap_or(&none))?;
+                level_ok(r.level)?;
+                point(&format!("{who} start"), r.start)?;
+                point(&format!("{who} end"), r.end)?;
+                coord(&format!("{who} offset"), r.offset)?;
+                if let Some(o) = r.end_offset {
+                    coord(&format!("{who} end_offset"), o)?;
+                }
+                text(&who, "system", &r.system)?;
+                crate::runs::check(&who, category, &crate::runs::Geom::of(self, r, t))?;
+            }
+            Element::Stair(st) => {
+                level_ok(st.level)?;
+                point(&who, st.start)?;
+                coord(&format!("{who} angle"), st.angle)?;
+                match st.top_level {
+                    Some(t) => level_ok(t)?,
+                    None => size(&format!("{who} height"), st.height)?,
+                }
+                for (what, v) in [("width", st.width), ("riser", st.riser), ("tread", st.tread)] {
+                    size(&format!("{who} {what}"), v)?;
+                }
+                let (n, _, _) = self.flight(st);
+                if !(2..=200).contains(&n) {
+                    return Err(format!("{who}: {n} risers; a stair takes 2 to 200, so check its height and its riser ({} mm)", st.riser));
+                }
+                landings(&who, &st.landings, Some(f64::from(n)))?;
+            }
+            Element::Ramp(r) => {
+                level_ok(r.level)?;
+                point(&who, r.start)?;
+                coord(&format!("{who} angle"), r.angle)?;
+                match r.top_level {
+                    Some(t) => level_ok(t)?,
+                    None => size(&format!("{who} height"), r.height)?,
+                }
+                size(&format!("{who} width"), r.width)?;
+                if !(1.0..=50.0).contains(&r.slope) {
+                    return Err(format!("{who}: slope {}% isn't from 1% to 50%", r.slope));
+                }
+                let (bottom, top) = self.span(r.level, 0.0, r.top_level, r.height);
+                if top <= bottom + TOL {
+                    return Err(format!("{who}: its top must be above its base"));
+                }
+                coord(&format!("{who} length"), (top - bottom) / r.slope * 100.0)?;
+                landings(&who, &r.landings, None)?;
+                if let Some(l) = r.landings.last().filter(|l| l.at >= top - bottom - TOL) {
+                    return Err(format!("{who}: a landing {} mm up isn't below its top, {} mm up", l.at, top - bottom));
+                }
+            }
+            Element::Railing(rl) => {
+                let t = known(&who, &rl.type_name, &self.types.railing)?;
+                level_ok(rl.level)?;
+                coord(&format!("{who} base_offset"), rl.base_offset)?;
+                match (rl.host, rl.side) {
+                    (Some(h), Some(_)) => {
+                        if !matches!(self.elements.get(h), Some(Element::Stair(_) | Element::Ramp(_))) {
+                            return Err(format!("{who}: host {} isn't a stair or a ramp", self.shown(h)));
+                        }
+                    }
+                    (Some(_), None) => {
+                        return Err(format!("{who}: a railing on a stair or a ramp runs along its left or its right side"));
+                    }
+                    (None, _) => {
+                        if rl.path.len() < 2 || rl.path.len() > MAX_POINTS {
+                            return Err(format!("{who}: a path needs 2 to {MAX_POINTS} points"));
+                        }
+                        for p in &rl.path {
+                            point(&who, *p)?;
+                        }
+                    }
+                }
+                let line = crate::stairs::railing(self, rl);
+                let length: f64 = line.windows(2).map(|w| w.first().zip(w.get(1)).map_or(0.0, |(a, b)| a.0.dist(b.0))).sum();
+                if length <= TOL {
+                    return Err(format!("{who}: its path has no length"));
+                }
+                if t.spacing > 0.0 && length / t.spacing > MAX_BALUSTERS {
+                    return Err(format!("{who}: {:.0} balusters, more than {MAX_BALUSTERS}; space them wider", length / t.spacing));
+                }
+            }
+            Element::Roof(r) => {
+                known(&who, &r.type_name, &self.types.roof)?;
+                level_ok(r.level)?;
+                coord(&format!("{who} overhang"), r.overhang)?;
+                coord(&format!("{who} offset"), r.offset)?;
+                match &r.extrusion {
+                    Some(x) => {
+                        line(&who, x.line[0], x.line[1])?;
+                        if !(2..=MAX_POINTS).contains(&x.profile.len()) {
+                            return Err(format!("{who}: an extrusion's profile needs 2 to {MAX_POINTS} points"));
+                        }
+                        for p in &x.profile {
+                            point(&who, *p)?;
+                        }
+                        if x.profile.windows(2).any(|w| w.first().zip(w.get(1)).is_none_or(|(a, b)| b.0 - a.0 <= TOL)) {
+                            return Err(format!("{who}: its profile runs along its line one way, each point past the one before"));
+                        }
+                        coord(&format!("{who} from"), x.from)?;
+                        coord(&format!("{who} to"), x.to)?;
+                        if x.to - x.from <= TOL {
+                            return Err(format!("{who}: it's swept across its line from `from` to `to`, further to the left"));
+                        }
+                    }
+                    None => {
+                        boundary(&who, &r.boundary)?;
+                        if !(0.0..=MAX_SLOPE).contains(&r.slope) {
+                            return Err(format!("{who}: slope {}° isn't from 0° (flat) to {MAX_SLOPE}°", r.slope));
+                        }
+                    }
+                }
+                if r.openings.len() > MAX_ROOF_POINTS {
+                    return Err(format!("{who}: {} openings, more than {MAX_ROOF_POINTS}", r.openings.len()));
+                }
+                for o in &r.openings {
+                    boundary(&format!("{who} opening"), o)?;
+                }
+                if r.extrusion.is_some() && !r.courtyards.is_empty() {
+                    return Err(format!("{who}: courtyards are holes in a roof's footprint; cut an extrusion roof with `openings`"));
+                }
+                if r.courtyards.iter().map(Vec::len).sum::<usize>() > MAX_ROOF_POINTS {
+                    return Err(format!("{who}: its courtyards have more than {MAX_ROOF_POINTS} points between them"));
+                }
+                for (i, c) in r.courtyards.iter().enumerate() {
+                    boundary(&format!("{who} courtyard {i}"), c)?;
+                }
+                holes(&who, "courtyard", &r.boundary, &r.courtyards)?;
+                if !r.slopes.is_empty() {
+                    let n = r.edges().count();
+                    if r.extrusion.is_some() {
+                        return Err(format!("{who}: an extrusion roof has no footprint edges to give `slopes`; leave it empty"));
+                    }
+                    if r.slopes.len() != n {
+                        return Err(format!(
+                            "{who}: `slopes` has {} numbers for its {n} edges (one for each, the courtyards' after the boundary's; 0 for the roof's slope), or leave it empty",
+                            r.slopes.len()
+                        ));
+                    }
+                    if let Some((i, s)) = r.slopes.iter().enumerate().find(|(_, s)| !(0.0..=MAX_SLOPE).contains(*s)) {
+                        return Err(format!("{who}: edge {i}'s slope {s}° isn't from 0° (the roof's slope) to {MAX_SLOPE}°"));
+                    }
+                }
+                crate::sketch::check(&who, &r.sketch)?;
+                if !r.shape.is_empty() {
+                    if let Some(why) = r.unshapeable() {
+                        return Err(format!("{who}: {why}"));
+                    }
+                    shape_ok(&who, &self.roof_as_floor(r), Variable::of(self.type_layers("roof", &r.type_name)))?;
+                }
+                self.roof_pieces(r).map_err(|e| format!("{who}: {e}"))?;
+            }
+            Element::Sheet(sh) => {
+                text(&who, "number", &sh.number)?;
+                text(&who, "name", &sh.name)?;
+                if sh.number.trim().is_empty() {
+                    return Err(format!("{who}: a sheet needs a number"));
+                }
+                if !sheet_numbers.insert(sh.number.as_str()) {
+                    return Err(format!("{who}: another sheet is already numbered `{}`", sh.number));
+                }
+                if paper(&sh.size).is_none() {
+                    return Err(format!("{who}: size `{}` isn't A0, A1, A2, A3 or A4, or an Arch / ANSI size", sh.size));
+                }
+            }
+            Element::Viewport(v) => {
+                if self.sheet(v.sheet).is_none() {
+                    return Err(format!("{who}: {} {} isn't a sheet", self.cat(v.sheet), self.shown(v.sheet)));
+                }
+                let name = self.view_name(v.view).ok_or(format!(
+                    "{who}: {} {} isn't a plan, a section, an elevation, a schedule or a 3D view",
+                    self.cat(v.view),
+                    self.shown(v.view)
+                ))?;
+                point(&who, v.at)?;
+                if !(v.scale.is_finite() && (1.0..=100_000.0).contains(&v.scale)) {
+                    return Err(format!("{who}: scale 1 : {} isn't between 1 : 1 and 1 : 100000", v.scale));
+                }
+                if let Some(other) = placed.insert(v.view, v.sheet) {
+                    let number = self.sheet(other).map_or("", |s| s.number.as_str());
+                    return Err(format!("{who}: {name} is on sheet {number} already; a view goes on one sheet"));
+                }
+            }
+            Element::Tag(t) => {
+                let Some(host) = self.elements.get(t.host) else {
+                    return Err(format!("{who}: element {} doesn't exist", t.host));
+                };
+                if let Some(v) = t.view {
+                    let level = self.level_of(e);
+                    level
+                        .and_then(|l| self.plan_view_of(v, l))
+                        .ok_or_else(|| format!("{who}: view {} isn't a plan view of its host's level", self.shown(v)))?;
+                }
+                // A door or window whose wall is gone is the wall's to complain of; anything else needs a place in a plan.
+                if !matches!(host, Element::Door(_) | Element::Window(_)) && self.anchor(t.host).is_none() {
+                    return Err(format!(
+                        "{who}: tags name what has a place in a plan (doors, windows, walls, columns, floors, rooms and the like), not {} {}",
+                        host.category(),
+                        t.host
+                    ));
+                }
+                if let Some(label) = &t.label {
+                    let cat = host.category();
+                    let fields = crate::schedule::fields(self, cat);
+                    if !fields.iter().any(|(name, _)| name == label) {
+                        let names: Vec<String> = fields.into_iter().map(|(name, _)| name).collect();
+                        return Err(format!("{who}: {cat} {} has no field `{label}`; its fields are: {}", t.host, names.join(", ")));
+                    }
+                }
+                point(&format!("{who} offset"), t.offset)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The elements of category `cat`, one of [`crate::derived::RARE`], in order of id: from the lookup when it is made,
+    /// else from among every element.
+    pub fn rare(&self, cat: &str) -> Vec<Id> {
+        match self.derived.made(&self.elements) {
+            Some(look) if crate::derived::RARE.contains(&cat) => look.rare(cat).collect(),
+            _ => self.elements.iter().filter(|(_, e)| e.category() == cat).map(|(id, _)| *id).collect(),
+        }
+    }
+
+    /// What its elements point at, looked up the other way, and its walls: kept with it, and brought up to date from the
+    /// model it was copied from by what changed.
+    pub fn lookup(&self) -> Arc<crate::derived::Lookup> {
+        self.derived.lookup(&self.elements)
+    }
+
+    /// What changed from `before` to this model: the elements a command added, changed or removed, when it changed nothing
+    /// else (no type, material, family, setting or other entry of the project), and this model is the one it made of
+    /// `before`; else everything.
+    pub fn changed_since(&self, before: &Model) -> Changed {
+        if !self.same_settings(before) {
+            return Changed::All;
+        }
+        self.elements.changed_since(&before.elements)
+    }
+
+    /// Whether everything but the elements and the ids still to give is the same in both. Every field is named, so a new
+    /// one must say how it compares.
+    fn same_settings(&self, o: &Model) -> bool {
+        let Model {
+            format,
+            name,
+            uid,
+            units,
+            language,
+            room_area,
+            next_id: _,
+            types,
+            materials,
+            images,
+            clouds,
+            cads,
+            families,
+            parameters,
+            view_filters,
+            view_templates,
+            phases,
+            phase_filters,
+            phase_overrides,
+            option_sets,
+            line_weights,
+            standard,
+            object_styles,
+            line_patterns,
+            line_styles,
+            fill_patterns,
+            region_types,
+            text_types,
+            dimension_types,
+            detail_groups,
+            reinforcement,
+            voltages,
+            distribution_systems,
+            wire_types,
+            elements: _,
+            library,
+            loaded,
+            derived: _,
+        } = self;
+        *format == o.format
+            && *name == o.name
+            && *uid == o.uid
+            && *units == o.units
+            && *language == o.language
+            && *room_area == o.room_area
+            && *types == o.types
+            && *materials == o.materials
+            && *images == o.images
+            && *clouds == o.clouds
+            && *cads == o.cads
+            && *families == o.families
+            && *parameters == o.parameters
+            && *view_filters == o.view_filters
+            && *view_templates == o.view_templates
+            && *phases == o.phases
+            && *phase_filters == o.phase_filters
+            && *phase_overrides == o.phase_overrides
+            && *option_sets == o.option_sets
+            && *line_weights == o.line_weights
+            && *standard == o.standard
+            && *object_styles == o.object_styles
+            && *line_patterns == o.line_patterns
+            && *line_styles == o.line_styles
+            && *fill_patterns == o.fill_patterns
+            && *region_types == o.region_types
+            && *text_types == o.text_types
+            && *dimension_types == o.dimension_types
+            && *detail_groups == o.detail_groups
+            && *reinforcement == o.reinforcement
+            && *voltages == o.voltages
+            && *distribution_systems == o.distribution_systems
+            && *wire_types == o.wire_types
+            && *library == o.library
+            && loaded.len() == o.loaded.len()
+            && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))
     }
 
     fn cat(&self, id: impl Key) -> &'static str {
@@ -5741,6 +7249,32 @@ pub fn culprit(error: &str) -> Option<Id> {
     let mut words = error.split_whitespace();
     words.next()?;
     words.next()?.trim_end_matches(':').parse().ok()
+}
+
+#[cfg(test)]
+thread_local! {
+    /// How many times this thread's [`Model::check_changed`] checked the whole model.
+    pub(crate) static FALLBACKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// What [`Model::check`] holds in common between elements while it goes through them.
+#[derive(Default)]
+struct Tally<'a> {
+    level_names: BTreeSet<&'a str>,
+    grid_names: BTreeSet<&'a str>,
+    link_names: BTreeSet<&'a str>,
+    view_names: BTreeSet<&'a str>,
+    /// The schedules every project has that the project has made its own: one each.
+    twins: BTreeSet<&'a str>,
+    sheet_numbers: BTreeSet<&'a str>,
+    /// Each view on a sheet: the sheet.
+    placed: BTreeMap<Guid, Guid>,
+    /// Openings by host wall, in the order they start along it.
+    spans: BTreeMap<Guid, Vec<OpeningSpan>>,
+    /// The members each view's detail groups and repeating details place.
+    members_placed: BTreeMap<Guid, usize>,
+    /// Whether components' shapes build, by family, type and values (as JSON).
+    shapes: HashMap<(&'a str, &'a str, String), Result<(), String>>,
 }
 
 fn coord(what: &str, v: f64) -> Result<(), String> {
@@ -5757,6 +7291,21 @@ fn section_box_ok(who: &str, b: &SectionBox) -> Result<(), String> {
                 "{who}: its section box runs from {lo} to {hi} mm in {axis}; its max is at least {MIN_SECTION_BOX} mm past its min on each axis"
             ));
         }
+    }
+    Ok(())
+}
+
+/// Whether `cam` is a camera a view can stand at: an eye and a target that are usable numbers, apart, so the view has a
+/// direction to look in.
+fn camera_ok(who: &str, cam: &ViewCamera) -> Result<(), String> {
+    for (what, p) in [("eye", cam.eye), ("target", cam.target)] {
+        for (axis, v) in ["x", "y", "z"].into_iter().zip(p) {
+            coord(&format!("{who} camera {what} {axis}"), v)?;
+        }
+    }
+    let across = |a: [f64; 3], b: [f64; 3]| (0..3).map(|k| a[k] - b[k]).fold(0.0, |s, d| s + d * d).sqrt();
+    if across(cam.eye, cam.target) <= TOL {
+        return Err(format!("{who}: its camera's eye is on its target, so it has nothing to look at; give them two points a little apart"));
     }
     Ok(())
 }
@@ -5863,7 +7412,102 @@ fn solid(loops: &[Vec<P2>], holes: &[Vec<P2>]) -> Vec<Vec<P2>> {
     inner.iter().chain(holes).fold(vec![outline.clone()], |parts, hole| walls::minus(&parts, hole))
 }
 
+/// A floor's shape: no more points and lines than it may have, each point finite and in range, inside the outline and in
+/// no opening, none within a millimetre of another, each line's ends points or corners, no slope arrow, and the whole
+/// triangulating (no line crossing another, an opening or the outline).
+fn shape_ok(who: &str, f: &Floor, variable: Option<Variable>) -> Result<(), String> {
+    let sh = &f.shape;
+    if sh.is_empty() {
+        return Ok(());
+    }
+    if sh.points.len() > MAX_SHAPE_POINTS || sh.lines.len() > MAX_SPLIT_LINES {
+        return Err(format!("{who}: a shape has at most {MAX_SHAPE_POINTS} points and {MAX_SPLIT_LINES} split lines"));
+    }
+    if f.slope != 0.0 {
+        return Err(format!(
+            "{who}: a shaped floor takes its falls from its points, not a slope arrow too: `modify` its `slope` to 0, or `reset_shape`"
+        ));
+    }
+    let at = |p: P2| format!("({:.0}, {:.0})", p.0, p.1);
+    let near = |r: &[P2], q: P2| geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= TOL);
+    for x in &sh.points {
+        point(&format!("{who} shape point"), x.at)?;
+        if !(x.z.is_finite() && x.z.abs() <= MAX_COORD) {
+            return Err(format!("{who}: the shape point at {} has a height `z` of {}: it must be a number in mm", at(x.at), x.z));
+        }
+        if !geom::contains(&f.boundary, x.at) && !near(&f.boundary, x.at) {
+            return Err(format!("{who}: the shape point at {} is outside its outline", at(x.at)));
+        }
+        if f.openings.iter().any(|o| geom::contains(o, x.at) && !near(o, x.at)) {
+            return Err(format!("{who}: the shape point at {} is in an opening", at(x.at)));
+        }
+        // The top is flat between its corners, so the variable layer is thinnest at one of them.
+        if let Some(v) = variable
+            && v.thickness + x.z < -0.01
+        {
+            let left = ((v.thickness + x.z) * 10.0).round() / 10.0;
+            return Err(format!(
+                "{who}: at the shape point at {} the variable layer would be {left} mm: raise the point by {} mm, or thicken the \
+                 variable layer",
+                at(x.at),
+                -left
+            ));
+        }
+    }
+    for (k, x) in sh.points.iter().enumerate() {
+        if let Some(y) = sh.points.iter().skip(k + 1).find(|y| y.at.dist(x.at) <= TOL) {
+            return Err(format!(
+                "{who}: the shape points at {} and {} are within a millimetre of each other: one is enough",
+                at(x.at),
+                at(y.at)
+            ));
+        }
+    }
+    let corners: Vec<P2> = f.boundary.iter().chain(f.openings.iter().flatten()).copied().collect();
+    for l in &sh.lines {
+        line(&format!("{who} split line"), l.a, l.b)?;
+        let known = |q: P2| sh.points.iter().any(|x| x.at.dist(q) <= TOL) || corners.iter().any(|c| c.dist(q) <= TOL);
+        if let Some(end) = [l.a, l.b].into_iter().find(|q| !known(*q)) {
+            return Err(format!(
+                "{who}: the split line from {} to {} ends at {}, which is no point of its shape and no corner: add a point there",
+                at(l.a),
+                at(l.b),
+                at(end)
+            ));
+        }
+    }
+    let points: Vec<P2> = sh.points.iter().map(|x| x.at).collect();
+    let lines: Vec<(P2, P2)> = sh.lines.iter().map(|l| (l.a, l.b)).collect();
+    crate::triangulation::constrained(&f.boundary, &f.openings, &points, &lines).map(|_| ()).map_err(|why| {
+        let why = why.replace("the line", "the split line").replace("of a hole", "of an opening").replace("a hole", "an opening");
+        format!("{who}: {why}")
+    })
+}
+
 /// An outline: 3 to [`MAX_POINTS`] points around some area.
+/// A frozen room's kept boundary: rings of usable points, and some boundary to keep.
+fn kept(who: &str, r: &Room) -> Result<(), String> {
+    let Some(k) = &r.kept else { return Ok(()) };
+    if k.centre.is_none() && k.finish.is_none() {
+        return Err(format!(
+            "{who}: the room is frozen but unbounded (not enclosed, or in a space another room has); a room is frozen with \
+             the boundary it has, so give it one first (walls or room separation lines round it, the other room deleted or \
+             parted from it), or leave it unfrozen"
+        ));
+    }
+    for (at, g) in [("centre", &k.centre), ("finish", &k.finish)] {
+        let Some(g) = g else { continue };
+        if g.holes.iter().map(Vec::len).sum::<usize>().saturating_add(g.outer.len()) > MAX_POINTS {
+            return Err(format!("{who}: its kept {at} boundary has more than {MAX_POINTS} points"));
+        }
+        boundary(&format!("{who} (room) kept {at} boundary"), &g.outer)?;
+        for h in &g.holes {
+            boundary(&format!("{who} (room) kept {at} island"), h)?;
+        }
+    }
+    Ok(())
+}
+
 fn boundary(who: &str, ring: &[P2]) -> Result<(), String> {
     if ring.len() < 3 || ring.len() > MAX_POINTS {
         return Err(format!("{who}: a boundary needs 3 to {MAX_POINTS} points"));
@@ -6003,10 +7647,12 @@ mod tests {
             top_level: None,
             height: 3000.0,
             base_offset: 0.0,
+            top_offset: 0.0,
             arc: 0.0,
             location: Location::Centre,
             attach_top: None,
             attach_base: None,
+            room_bounding: true,
         })
     }
 
@@ -6083,11 +7729,44 @@ mod tests {
     }
 
     #[test]
+    fn components_sharing_a_shape_are_each_checked_and_the_first_that_fails_is_named() {
+        use serde_json::json;
+        let mut s = crate::engine::Session::new();
+        let width = json!({"name": "Width", "instance": true, "value": 500});
+        let form = json!({"profile": [[0, 0], ["Width", 0], ["Width", 100], [0, 100]], "to": 100});
+        s.execute("family", &json!({"name": "Slab", "parameters": [width], "forms": [form], "types": {"A": {}}})).unwrap();
+        for _ in 0..3 {
+            s.execute("component", &json!({"family": "Slab", "at": [0, 0]})).unwrap();
+        }
+        s.model.check().unwrap();
+        // Two with a width no profile has, the same one: each its own error, the first named.
+        let ids: Vec<Id> = s.model.elements.iter().filter(|(_, e)| matches!(e, Element::Component(_))).map(|(id, _)| *id).collect();
+        let m = s.model_mut();
+        for id in &ids[1..] {
+            if let Some(Element::Component(c)) = m.elements.get_mut(*id) {
+                c.params.insert("Width".into(), json!(-1e300));
+            }
+        }
+        let first = m.check().unwrap_err();
+        assert!(first.starts_with(&format!("component {}:", ids[1])), "{first}");
+        m.elements.remove(ids[1]);
+        let second = m.check().unwrap_err();
+        assert!(second.starts_with(&format!("component {}:", ids[2])), "{second}");
+        assert_eq!(first.split_once(':').map(|p| p.1), second.split_once(':').map(|p| p.1));
+    }
+
+    #[test]
     fn rooms_are_bounded_by_the_walls_their_level_cuts() {
         let mut m = Model::new("t");
         boxed(&mut m);
-        let room =
-            Room { params: Default::default(), level: m.guid(100000), point: P2(3000.0, 2000.0), name: "Hall".into(), number: "1".into() };
+        let room = Room {
+            params: Default::default(),
+            level: m.guid(100000),
+            point: P2(3000.0, 2000.0),
+            name: "Hall".into(),
+            number: "1".into(),
+            ..Room::new(m.guid(100000), P2(0.0, 0.0), "", "")
+        };
         assert_eq!(m.room_region(&room).map(|r| r.area()), Some(24e6));
         let upstairs = Room { level: m.guid(100001), ..room };
         assert_eq!(m.room_region(&upstairs), None, "Level 2 has no walls");

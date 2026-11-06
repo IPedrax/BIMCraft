@@ -19,7 +19,9 @@ out, aligned as the file says), SOLID and TRACE, and HATCH (its boundary loops, 
 pale fill of its colour, since its pattern isn't kept). An INSERT places its block's entities, scaled, turned and arrayed, up to
 `MAX_DEPTH` blocks deep; an entity on layer 0 of a block takes the insert's layer, and one by block its colour. DIMENSION draws
 its anonymous block. What the reader doesn't know (3DFACE, a viewport, an image, a proxy) is counted by kind in
-`Dxf::left_out`, and the command lists it.
+`Dxf::left_out`, and the command lists it. The text itself is read as UTF-8 where it is, and else by the code page the header names in
+`$DWGCODEPAGE`: the East Asian pages and the Windows ones decode through `encoding_rs`, and a page without a decoder here (the DOS
+ones) reads as Latin-1, as it always has.
 
 A file is hostile: `MAX_BYTES` caps its size, `MAX_PAIRS` its pairs, `MAX_SHAPES` the shapes, `MAX_WORK` the points the blocks
 may multiply into, and every coordinate is a finite number within `MAX_FILE_COORD` (one past that is left out as "past what a

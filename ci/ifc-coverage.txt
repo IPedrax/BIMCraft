@@ -16,8 +16,8 @@ floor {"boundary": [[0, 12000], [4000, 12000], [4000, 15000], [0, 15000]], "slop
 # a column with ties, a footing with its ends turned up, a floor with two meshes, a round column and a sloped floor with hooks.
 reinforce {"host": 100010, "cover": 25, "bars": {"diameter": 16, "count": 8, "hook": {"below": 100}}, "stirrup": {"diameter": 5, "spacing": 150, "hook": 50}}
 reinforce {"host": 100011, "cover": 20, "bottom": {"x": {"diameter": 8, "spacing": 150}, "y": {"diameter": 8, "spacing": 200}, "hook": 80}, "top": {"x": {"diameter": 8, "spacing": 200}}}
-reinforce {"host": 100002, "cover": 25, "bottom": {"count": 3, "diameter": 16, "hook": 150}, "top": {"count": 2, "diameter": 12.5, "hook": {"start": 100}}, "stirrup": {"diameter": 5, "spacing": 150, "ends": {"length": 600, "spacing": 100}, "hook": 50}, "skin": {"diameter": 8, "spacing": 150}}
-reinforce {"host": 100007, "cover": 25, "bars": {"diameter": 16, "x": 3, "y": 3, "hook": {"below": 200}}, "stirrup": {"diameter": 5, "spacing": 150, "hook": 50}, "ties": {"diameter": 5, "hook": 50}, "anchor": {"below": 300}}
+reinforce {"host": 100002, "cover": 25, "bottom": {"count": 3, "diameter": 16, "hook": 150, "bent": {"count": 1, "angle": 45}}, "top": {"count": 2, "diameter": 12.5, "hook": {"start": 100}}, "stirrup": {"diameter": 5, "spacing": 150, "ends": {"length": 600, "spacing": 100}, "hook": 50}, "skin": {"diameter": 8, "spacing": 150}}
+reinforce {"host": 100007, "cover": 25, "bars": {"diameter": 16, "x": 3, "y": 3, "hook": {"below": 200}, "jog": {"by": 30, "from_top": 400}}, "stirrup": {"diameter": 5, "spacing": 150, "hook": 50}, "ties": {"diameter": 5, "hook": 50}, "anchor": {"below": 300}}
 reinforce {"host": 100004, "cover": 50, "mesh": {"x": {"diameter": 10, "spacing": 150}, "y": {"diameter": 10, "spacing": 150}, "hook": 100}}
 reinforce {"host": 100009, "cover": 20, "bottom": {"x": {"diameter": 8, "spacing": 150}, "y": {"diameter": 8, "spacing": 200}}, "top": {"x": {"diameter": 8, "spacing": 200}}}
 # Reinforcement: a layer of bars along a beam and a hoop, in a level (the host is another element's id).
@@ -43,3 +43,30 @@ phase {"now": "Stage 2"}
 option {"set": "Entrance", "options": ["Glass", "Brick"]}
 option {"now": "Entrance: Brick"}
 wall {"points": [[0,-5000],[6000,-5000]]}
+# A shaped floor (MOD-16): a drain 30 mm down and a split line to a corner, round an opening; one closed faceted Brep.
+floor {"boundary": [[30000,0],[38000,0],[38000,6000],[30000,6000]], "openings": [[[31000,1000],[32000,1000],[32000,2000],[31000,2000]]]}
+edit_shape {"id": 100341, "points": [{"at": [35000,3000], "z": -30}], "lines": [{"a": [35000,3000], "b": [38000,6000]}]}
+# The same over a variable layer: a level underside, the screed taking up the fall.
+type {"category": "floor", "name": "Terrace", "layers": [{"function": "finish", "thickness": 10}, {"function": "substrate", "thickness": 60, "variable": true}, {"function": "structure", "thickness": 200}]}
+floor {"boundary": [[40000,0],[48000,0],[48000,6000],[40000,6000]], "type": "Terrace"}
+edit_shape {"id": 100342, "points": [{"at": [44000,3000], "z": -30}]}
+# A shaped flat roof (MOD-16, phase 4): two drains 40 mm down; each plane a slab, its underside following.
+roof {"level": 100001, "slope": 0, "boundary": [[50000,0],[58000,0],[58000,6000],[50000,6000]]}
+edit_shape {"id": 100343, "points": [{"at": [52000,3000], "z": -40}, {"at": [56000,3000], "z": -40}]}
+# The same over a variable layer: a level underside, the insulation taking up the fall; one closed faceted Brep.
+type {"category": "roof", "name": "Terrace Roof", "layers": [{"function": "finish", "thickness": 10}, {"function": "substrate", "thickness": 100, "variable": true}, {"function": "structure", "thickness": 200}]}
+roof {"level": 100001, "slope": 0, "type": "Terrace Roof", "boundary": [[60000,0],[68000,0],[68000,6000],[60000,6000]]}
+edit_shape {"id": 100344, "points": [{"at": [64000,3000], "z": -40}]}
+# Runs whose IFC types (IfcDuctSegmentType, IfcCableSegmentType) the export writes; last, so the ids above stay put.
+duct {"points": [[0,8000],[6000,8000]], "offset": 2500, "system": "Supply air"}
+cabling {"points": [[0,8500],[6000,8500]], "offset": 2500, "system": "Network"}
+# Beam types hold their section as a material profile set (3.6b), each beam a usage of it by the line it is placed by: a bottom, a
+# centre and a top justified beam of a 150 x 600 type in concrete, a round one in metal, and one with no material; last, so the ids
+# above stay put.
+type {"category": "beam", "name": "B 150x600", "width": 150, "depth": 600, "material": "Concrete"}
+type {"category": "beam", "name": "B 120x300", "width": 120, "depth": 300}
+beam {"points": [[0,9000],[6000,9000]], "offset": 3000, "type": "B 150x600", "justify": "bottom"}
+beam {"points": [[0,9500],[6000,9500]], "offset": 3000, "type": "B 150x600", "justify": "centre"}
+beam {"points": [[0,10000],[6000,10000]], "offset": 3000, "type": "B 150x600"}
+beam {"points": [[0,10500],[6000,10500]], "offset": 3000, "end_offset": 3500, "type": "Steel Tube 150", "justify": "centre"}
+beam {"points": [[0,11000],[6000,11000]], "offset": 3000, "type": "B 120x300"}

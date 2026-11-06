@@ -2,7 +2,7 @@
 //! Every user-visible action is a [`Command`]; the CLI, scripts and MCP all reach the same ones.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde_json::{Value, json};
@@ -22,6 +22,25 @@ pub struct Command {
     pub run: Run,
     /// Whether a change it makes is an undo step.
     pub undoable: bool,
+    /// Where the command sits in the ribbon: `"Manage > Family Editor"`. `None` for what has no
+    /// place in the interface (a shortcut, or a command no menu reaches) — the field is always
+    /// read, filled in as the catalog learns the interface.
+    pub menu: Option<&'static str>,
+}
+
+impl Command {
+    /// The same command, reached from a menu: `edit("family", …).menu("Manage > Family Editor")`.
+    pub const fn menu(self, menu: &'static str) -> Command {
+        Command {
+            id: self.id,
+            label: self.label,
+            aliases: self.aliases,
+            params: self.params,
+            run: self.run,
+            undoable: self.undoable,
+            menu: Some(menu),
+        }
+    }
 }
 
 pub const UNDO_LIMIT: usize = 200;
@@ -33,6 +52,8 @@ pub struct Step {
     pub label: &'static str,
     pub made: Vec<(&'static str, usize)>,
     pub removed: Vec<(&'static str, usize)>,
+    /// Whether the model the step goes back to passed [`Model::check`]: going back to it needs no check.
+    checked: bool,
 }
 
 impl Step {
@@ -57,9 +78,15 @@ impl Step {
         } else {
             Vec::new()
         };
-        Step { label, made, removed }
+        Step { label, made, removed, checked: false }
     }
 }
+
+/// The commands that put another project in the session's place: a session that may only read, and a window's agent, never runs them.
+pub const REPLACES: &[&str] = &["new", "open", "recover", "highrise", "tower"];
+
+/// What a refusal of a session that may only read says, after what the command would do and before what would let it edit.
+pub const READ_ONLY: &str = "which is read-only for agents";
 
 /// The commands that copy what stands: a copy is made in the session's phase and isn't taken down with its original.
 const COPIES: [&str; 3] = ["copy", "mirror", "rotate"];
@@ -75,10 +102,24 @@ pub struct Session {
     pub option: Option<String>,
     undo: Vec<(Step, Arc<Model>)>,
     redo: Vec<(Step, Arc<Model>)>,
+    /// How many times a command's model was checked, for tests that it was or wasn't.
+    #[cfg(test)]
+    pub(crate) checks: usize,
     /// How many times the project was replaced, so a transaction knows its history went with it.
     resets: usize,
     /// What reads a DWG drawing, when the app has one (`cad::DwgReader`); none says to save it as DXF.
     pub dwg: Option<crate::cad::DwgReader>,
+    /// Whether the session may only read its project, and if so what would let it edit, which each refusal ends with: an agent's,
+    /// when the user lets agents only read (the window's File > Settings > Agents, `bimcraft-cli mcp --read-only`). Then a command
+    /// that would replace the project, undo or redo, or write over its own file is refused before it runs, and one that changed the
+    /// project, its history or the phase and option the session makes things in is taken back and refused ([`Session::execute`]).
+    /// What reads it (inspect, schedules, render, exports to new files, the sheets to PDF) answers; a copy saved as another file
+    /// leaves the session with its own.
+    pub read_only: Option<&'static str>,
+    /// The last model a command left that passed [`Model::check`]. Held here, it is never changed in place: a change
+    /// outside a command copies it first, so a model still this one is one that passed, and the next command need only
+    /// check what it changes ([`Model::check_changed`]).
+    verified: Option<Arc<Model>>,
 }
 
 impl Default for Session {
@@ -98,7 +139,7 @@ pub fn find(name: &str) -> Option<&'static Command> {
 
 /// The command catalog as agents read it.
 pub fn catalog() -> Value {
-    commands().iter().map(|c| json!({"id": c.id, "label": c.label, "aliases": c.aliases, "params": c.params})).collect()
+    commands().iter().map(|c| json!({"id": c.id, "label": c.label, "aliases": c.aliases, "params": c.params, "menu": c.menu})).collect()
 }
 
 impl Session {
@@ -110,8 +151,12 @@ impl Session {
             option: None,
             undo: Vec::new(),
             redo: Vec::new(),
+            #[cfg(test)]
+            checks: 0,
             resets: 0,
             dwg: None,
+            read_only: None,
+            verified: None,
         }
     }
 
@@ -142,18 +187,57 @@ impl Session {
     }
 
     /// Run a command by id or alias with JSON parameters. A command that fails, panics, or leaves
-    /// the model failing [`Model::check`] changes nothing.
+    /// the model failing [`Model::check`] changes nothing. In a session that may only read ([`Session::read_only`]), one that would
+    /// change the project is refused, and changes nothing either.
     pub fn execute(&mut self, name: &str, params: &Value) -> Result<Value, String> {
         let cmd = find(name).ok_or_else(|| format!("unknown command `{name}`; list_commands shows them"))?;
+        let Some(how) = self.read_only else { return self.perform(cmd, params) };
+        self.may_read(cmd, params).map_err(|what| format!("`{}` would {what}, {READ_ONLY}: {how}", cmd.id))?;
+        let kept = Kept::of(self);
+        let result = self.perform(cmd, params);
+        kept.keep(self).map_err(|()| format!("`{}` would change the project, {READ_ONLY}: {how}", cmd.id)).and(result)
+    }
+
+    /// What a session that may only read refuses `cmd` before it runs, by what it would do: replace the project, step through its
+    /// history, or write over its own file (`save` with no path saves there, and no command is given it as its `path` or `save`).
+    fn may_read(&self, cmd: &Command, params: &Value) -> Result<(), String> {
+        if REPLACES.contains(&cmd.id) {
+            return Err("replace the project".into());
+        }
+        if matches!(cmd.id, "undo" | "redo") {
+            return Err("change the project".into());
+        }
+        let Some(own) = self.path.as_deref() else { return Ok(()) };
+        if cmd.id == "save" && params.get("path").is_none_or(Value::is_null) {
+            return Err("write over the project's own file".into());
+        }
+        let given =
+            ["path", "save"].into_iter().find(|key| params.get(key).and_then(Value::as_str).is_some_and(|p| same_file(own, Path::new(p))));
+        match given {
+            Some(_) if cmd.id == "save" => Err("write over the project's own file".into()),
+            Some(key) => Err(format!("use the project's own file (`{key}`)")),
+            None => Ok(()),
+        }
+    }
+
+    /// [`Session::execute`] of a command found, as any session runs it.
+    fn perform(&mut self, cmd: &'static Command, params: &Value) -> Result<Value, String> {
         // A library entry's GUID, wherever a command takes a name, is that name.
         let named = named(&self.model, params);
         let params = named.as_ref().unwrap_or(params);
         let before = Arc::clone(&self.model);
+        let verified = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &before));
         let (run, first_new, session) = (cmd.run, self.model.next_id, (self.phase.clone(), self.option.clone()));
         let result = catch_unwind(AssertUnwindSafe(|| run(self, params)))
             .unwrap_or_else(|p| Err(format!("internal error in `{}`: {}", cmd.id, panic_text(p.as_ref()))))
             .and_then(|v| {
                 if Arc::ptr_eq(&before, &self.model) {
+                    return Ok(v);
+                }
+                // Back to a model that passed (undo, redo): it is as it was then.
+                if self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &self.model)) {
+                    #[cfg(test)]
+                    assert_eq!(self.model.check(), Ok(()), "`{}` went back to a model that doesn't pass", cmd.id);
                     return Ok(v);
                 }
                 // A command that splits what stands keeps its phase; one that makes something makes it in the session's;
@@ -179,8 +263,45 @@ impl Session {
                     m.forget_cad_layers(&unplaced);
                 }
                 // What a command was given by id points at the element's GUID; what it put in the library has an id and a GUID.
-                self.model_mut().resolve();
-                self.model_mut().sync_library();
+                if verified {
+                    self.model_mut().resolve_changed(&before);
+                } else {
+                    self.model_mut().resolve();
+                }
+                // A library in step needs nothing; after a verified model, what the command changed says whether it is.
+                let in_step = if verified { self.model.library_in_step_since(&before) } else { self.model.library_in_step() };
+                #[cfg(test)]
+                if verified {
+                    assert_eq!(in_step, self.model.library_in_step(), "library_in_step_since differs after `{}` {params}", cmd.id);
+                }
+                if !in_step {
+                    // After a verified model, what the command changed is synced; else (or when more than elements
+                    // changed) the whole library.
+                    #[cfg(test)]
+                    let oracle = verified.then(|| sync_oracle(&self.model, &before));
+                    if !(verified && self.model_mut().sync_since(&before)) {
+                        self.model_mut().sync_library();
+                    }
+                    #[cfg(test)]
+                    if let Some(Some((incremental, whole))) = oracle {
+                        assert!(
+                            incremental.elements.iter().eq(whole.elements.iter()) && incremental.library.parts().eq(whole.library.parts()),
+                            "the library synced by what `{}` changed isn't as the whole sync makes it",
+                            cmd.id
+                        );
+                        assert!(self.model.library_in_step(), "the library isn't in step after `{}`", cmd.id);
+                    }
+                }
+                // A room frozen keeps the boundary it has now; one thawed lets it go. After a verified model, only a room the
+                // command changed can be either.
+                let unsettled = |e: &Element| matches!(e, Element::Room(r) if r.frozen != r.kept.is_some());
+                let unsettled = match (verified, self.model.changed_since(&before)) {
+                    (true, crate::ids::Changed::Ids(ids)) => ids.iter().any(|id| self.model.elements.get(*id).is_some_and(unsettled)),
+                    _ => self.model.elements.values().any(unsettled),
+                };
+                if unsettled {
+                    self.model_mut().keep_rooms();
+                }
                 // Locked and equal dimensions moved what they measure to as the command moved it.
                 if cmd.undoable {
                     crate::constraints::keep(self, &before)?;
@@ -189,7 +310,22 @@ impl Session {
                 // from before may break; Insert from File brings in what it finds.
                 // (Before the check, which would name a bow tie of no area by that, not by what to redraw.)
                 let edited = if cmd.undoable && cmd.id != "insert" { self.model.check_edits(&before, cmd.id, params) } else { Ok(()) };
-                edited.and_then(|()| self.model.check()).map(|()| v)
+                edited
+                    .and_then(|()| {
+                        #[cfg(test)]
+                        {
+                            self.checks += 1;
+                        }
+                        let checked = if verified { self.model.check_changed(&before) } else { self.model.check() };
+                        // Tests hold the two to the same answer after every command they run.
+                        #[cfg(test)]
+                        if verified {
+                            let full = self.model.check();
+                            assert_eq!(checked, full, "check_changed differs from check after `{}` {params}", cmd.id);
+                        }
+                        checked
+                    })
+                    .map(|()| v)
             });
         match result {
             Err(e) => {
@@ -199,8 +335,10 @@ impl Session {
                 Err(e)
             }
             Ok(v) => {
+                self.verified = Some(Arc::clone(&self.model));
                 if cmd.undoable && !Arc::ptr_eq(&before, &self.model) {
-                    self.undo.push((Step::new(cmd.label, &before, &self.model), before));
+                    let step = Step { checked: verified, ..Step::new(cmd.label, &before, &self.model) };
+                    self.undo.push((step, before));
                     if self.undo.len() > UNDO_LIMIT {
                         self.undo.remove(0);
                     }
@@ -209,6 +347,25 @@ impl Session {
                 Ok(v)
             }
         }
+    }
+
+    /// Whether the model now is the one the last command left that passed the check, so the next checks only what it changes.
+    #[cfg(test)]
+    pub(crate) fn verified_now(&self) -> bool {
+        self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &self.model))
+    }
+
+    /// Runs `f` as a session that may only read ([`Session::read_only`]), `how` saying what would let it edit, unless the
+    /// session already says; then gives the session back as it was. What `f` changed of the project, however it got at it, is
+    /// taken back and refused too.
+    pub fn reading<T>(&mut self, how: &'static str, f: impl FnOnce(&mut Session) -> Result<T, String>) -> Result<T, String> {
+        let was = self.read_only;
+        let how = *self.read_only.get_or_insert(how);
+        let kept = Kept::of(self);
+        let result = catch_unwind(AssertUnwindSafe(|| f(self)))
+            .unwrap_or_else(|p| Err(format!("internal error while reading: {}", panic_text(p.as_ref()))));
+        self.read_only = was;
+        kept.keep(self).map_err(|()| format!("that would change the project, {READ_ONLY}: {how}")).and(result)
     }
 
     /// Run a script: one command per line, `id` or `id {json params}`; `#` starts a comment.
@@ -243,6 +400,7 @@ impl Session {
     /// `open`) left the history it began, so what came after it stays the steps it was.
     pub fn transaction<T>(&mut self, label: &'static str, f: impl FnOnce(&mut Session) -> Result<T, String>) -> Result<T, String> {
         let before = Arc::clone(&self.model);
+        let checked = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &before));
         let (path, phase, option) = (self.path.clone(), self.phase.clone(), self.option.clone());
         let (mut undo, redo, resets) = (std::mem::take(&mut self.undo), std::mem::take(&mut self.redo), self.resets);
         let result = catch_unwind(AssertUnwindSafe(|| f(self)))
@@ -259,7 +417,7 @@ impl Session {
                 if self.undo.is_empty() {
                     self.redo = redo;
                 } else {
-                    undo.push((Step::new(label, &before, &self.model), before));
+                    undo.push((Step { checked, ..Step::new(label, &before, &self.model) }, before));
                     if undo.len() > UNDO_LIMIT {
                         undo.remove(0);
                     }
@@ -317,12 +475,67 @@ impl Session {
             return Err(format!("`count` must be from 1 to {}, the steps there are to {what}", from.len()));
         }
         let mut label = "";
+        // Whether the model now passed: the step that comes back to it says so.
+        let mut checked = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &self.model));
         for _ in 0..count {
-            let Some((step, model)) = from.pop() else { break };
+            let Some((mut step, model)) = from.pop() else { break };
             label = step.label;
+            std::mem::swap(&mut step.checked, &mut checked);
             to.push((step, std::mem::replace(&mut self.model, model)));
         }
+        if checked {
+            self.verified = Some(Arc::clone(&self.model));
+        }
         Ok(json!({ key: label, "count": count }))
+    }
+}
+
+/// What a session that may only read keeps through a command: its project, its history, its file, the phase and option it makes
+/// things in, and how many times it was replaced.
+struct Kept {
+    model: Arc<Model>,
+    /// The model the last command left that passed the check, as it was: put back with the model, the next command checks
+    /// only what it changes.
+    verified: Option<Arc<Model>>,
+    path: Option<PathBuf>,
+    phase: Option<String>,
+    option: Option<String>,
+    undo: Vec<(Step, Arc<Model>)>,
+    redo: Vec<(Step, Arc<Model>)>,
+    resets: usize,
+}
+
+impl Kept {
+    fn of(s: &Session) -> Kept {
+        Kept {
+            model: Arc::clone(&s.model),
+            verified: s.verified.clone(),
+            path: s.path.clone(),
+            phase: s.phase.clone(),
+            option: s.option.clone(),
+            undo: s.undo.clone(),
+            redo: s.redo.clone(),
+            resets: s.resets,
+        }
+    }
+
+    /// Puts the session back as it was kept, and says whether anything had changed but its file: a copy saved as another file
+    /// leaves the session with its own, and is no change.
+    fn keep(self, s: &mut Session) -> Result<(), ()> {
+        let same = (Arc::ptr_eq(&self.model, &s.model) || *self.model == *s.model)
+            && (s.phase == self.phase && s.option == self.option && s.resets == self.resets)
+            && (s.undo.len() == self.undo.len() && s.redo.len() == self.redo.len());
+        (s.model, s.verified, s.path, s.phase, s.option) = (self.model, self.verified, self.path, self.phase, self.option);
+        (s.undo, s.redo, s.resets) = (self.undo, self.redo, self.resets);
+        if same { Ok(()) } else { Err(()) }
+    }
+}
+
+/// Whether two paths name the same file: as the system resolves them where both are there, else as they are written.
+fn same_file(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
     }
 }
 
@@ -350,4 +563,24 @@ fn named(m: &Model, params: &Value) -> Option<Value> {
 
 fn panic_text(p: &(dyn std::any::Any + Send)) -> String {
     p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_else(|| "panic".into())
+}
+
+/// The library synced both ways, by what changed since `before` and whole, each new GUID made the same way in order:
+/// what the engine holds the incremental sync to in tests. None where the incremental one can't say.
+#[cfg(test)]
+fn sync_oracle(m: &Model, before: &Model) -> Option<(Model, Model)> {
+    let counter = || {
+        let mut n = 0u64;
+        move |_: &Model, _: Option<&crate::library::Kind>, _: &str| {
+            n += 1;
+            crate::ids::Guid::seeded(0x5eed, n)
+        }
+    };
+    let mut incremental = m.clone();
+    if !incremental.sync_since_with(before, &mut counter()) {
+        return None;
+    }
+    let mut whole = m.clone();
+    whole.sync_library_with(&mut counter());
+    Some((incremental, whole))
 }

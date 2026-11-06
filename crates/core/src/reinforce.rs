@@ -12,6 +12,9 @@ use crate::rebar::{DIAMETERS, GRADE, MAX_BARS};
 use crate::view3d::{P3, add, mul, sub, unit};
 use crate::walls::Plane;
 
+mod norm;
+use norm::Norm;
+
 /// A bar to make: on `layer` of its host's, `diameter` mm thick, of steel `grade`, along `path` (mm, over the host's level).
 pub struct Bar {
     pub layer: &'static str,
@@ -65,6 +68,18 @@ struct Row {
     count: usize,
     diameter: f64,
     hook: Option<Value>,
+    /// Some of a bottom row's bars, bent up at each end.
+    bent: Option<Bent>,
+}
+
+/// `count` of a bottom row's inner bars, bent up at each end: they run `top` mm along the top face from the end of the beam
+/// (a fifth of its length unless told), slope down `angle` degrees (45 unless told) to the bottom and run along it.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Bent {
+    count: usize,
+    angle: Option<f64>,
+    top: Option<f64>,
 }
 
 /// Bars `diameter` mm thick no further apart than `spacing` mm.
@@ -112,6 +127,17 @@ struct ColumnBars {
     /// For a round column: how many, evenly round its circle.
     count: Option<usize>,
     hook: Option<Value>,
+    jog: Option<Jog>,
+}
+
+/// Bars that step `by` mm in toward the axis near the top, to leave room for the bars of the column above: the step starts
+/// `from_top` mm below the top and runs `slope` mm along the column for each mm across it (6, the usual 1 in 6, unless told).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Jog {
+    by: f64,
+    from_top: f64,
+    slope: Option<f64>,
 }
 
 /// How far a column's bars run past its base and its top, mm: flush when 0, a cover short when not told.
@@ -353,8 +379,37 @@ impl Out {
     }
 }
 
-/// What a command makes for `host`: the bars, in the host's level.
-pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Vec<Bar>, String> {
+/// What a command makes for `host`: the bars, in the host's level, and the notes of the standard it was told to check against.
+pub struct Made {
+    pub bars: Vec<Bar>,
+    pub notes: Vec<String>,
+}
+
+/// The standard a `check` names, with what it is told: only NBR 6118.
+fn norm(a: &mut Args) -> Result<Option<Norm>, String> {
+    let check = a.take::<String>("check")?;
+    let class = a.take::<u8>("aggressiveness")?;
+    let fck = a.take::<f64>("fck")?;
+    let Some(name) = check else {
+        return match (class, fck) {
+            (None, None) => Ok(None),
+            _ => Err("reinforce: `aggressiveness` and `fck` go with `check`: give `check` \"NBR 6118\"".into()),
+        };
+    };
+    let key: String = name.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
+    if !key.starts_with("nbr6118") {
+        return Err(format!("reinforce: `check` {name:?} isn't one this knows: it is \"NBR 6118\""));
+    }
+    if class.is_some_and(|c| !(1..=4).contains(&c)) {
+        return Err("reinforce: `aggressiveness` is the class 1 to 4 (I to IV)".into());
+    }
+    if fck.is_some_and(|c| !(10.0..=100.0).contains(&c)) {
+        return Err("reinforce: `fck` is the concrete's strength in MPa, 10 to 100".into());
+    }
+    Ok(Some(Norm { class, fck }))
+}
+
+pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Made, String> {
     let mut a = Args::new(p)?;
     let own = host.params().and_then(|v| ["Cobrimento", "ConcreteCover"].iter().find_map(|k| v.get(*k))).and_then(Value::as_f64);
     let grade = a.take::<String>("grade")?.unwrap_or_else(|| GRADE.into());
@@ -366,9 +421,10 @@ pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Vec<Bar>, String> {
         Some(x) => Some(length("clearance", x)?),
         None => None,
     };
+    let check = norm(&mut a)?;
     let cv = cover(a.take("cover")?, own)?;
     let x = Common { cover: cv, grade, grade_stirrup, clearance };
-    let bars = match host {
+    let (bars, notes) = match host {
         Element::Beam(_) => {
             let g = m.run_geom(host).ok_or("reinforce: the beam has no type")?;
             if g.round {
@@ -379,7 +435,9 @@ pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Vec<Bar>, String> {
             let up = crate::view3d::cross(along, across);
             let level = m.level_of(host).map_or(0.0, |l| m.elevation(l));
             let f = Frame { o: [g.a[0], g.a[1], g.a[2] - level], a: along, b: across, c: up };
-            beam(&f, g.length(), (g.width, g.depth), &x, a)?
+            let bars = beam(&f, g.length(), (g.width, g.depth), &x, a)?;
+            let notes = check.map(|n| n.beam((g.width, g.depth), &x.cover, &f, &bars)).unwrap_or_default();
+            (bars, notes)
         }
         Element::Column(col) | Element::StructuralColumn(col) => {
             let t = m.column_type(host).ok_or("reinforce: the column has no type")?;
@@ -391,7 +449,9 @@ pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Vec<Bar>, String> {
                 b: [u.0, u.1, 0.0],
                 c: [-u.1, u.0, 0.0],
             };
-            column(&f, top - bottom, (t.width, t.depth), t.round, &x, a)?
+            let bars = column(&f, top - bottom, (t.width, t.depth), t.round, &x, a)?;
+            let notes = check.map(|n| n.column((t.width, t.depth), t.round, &x.cover, &f, &bars)).unwrap_or_default();
+            (bars, notes)
         }
         Element::Footing(col) => {
             let t = m.column_type(host).ok_or("reinforce: the footing has no type")?;
@@ -403,19 +463,39 @@ pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Vec<Bar>, String> {
                 b: [-u.1, u.0, 0.0],
                 c: [0.0, 0.0, 1.0],
             };
-            footing(&f, top - bottom, (t.width, t.depth), t.round, &x, a)?
+            let bars = footing(&f, top - bottom, (t.width, t.depth), t.round, &x, a)?;
+            (bars, check.map(|n| n.footing(&x.cover)).unwrap_or_default())
         }
         Element::Floor(fl) => {
+            // A shaped floor's structure is level under a variable layer above it: its bars keep to it, between the
+            // underside and the layers over it. Without one, or with one under its structure, the structure follows the top.
+            if !fl.shape.is_empty() {
+                let layers = m.type_layers("floor", &fl.type_name);
+                let flat = m.floor_under(fl).filter(|(_, v)| {
+                    !layers.iter().enumerate().any(|(k, l)| k <= v.index && l.function == crate::model::Function::Structure)
+                });
+                let Some((under, v)) = flat else {
+                    return Err("reinforce: a shaped floor's structure isn't level: give its type a variable layer over its \
+                         structure (`type` with `variable: true` on its screed), or `reset_shape` it"
+                        .into());
+                };
+                let top = Plane { z: under.z + v.below, ..under };
+                let bars = slab(fl, &top, m.elevation(fl.level), v.below, &x, a)?;
+                let notes = check.map(|n| n.floor(v.below, &x.cover, &bars)).unwrap_or_default();
+                return Ok(Made { bars, notes });
+            }
             // Its thickness is square to its top, which may slope; the cover and the bars are measured from it.
             let thick = m.types.floor.get(&fl.type_name).map_or(0.0, |t| t.thickness);
             if thick <= TOL {
                 return Err("reinforce: the floor's type has no thickness".into());
             }
-            slab(fl, &m.floor_top(fl), m.elevation(fl.level), thick, &x, a)?
+            let bars = slab(fl, &m.floor_top(fl), m.elevation(fl.level), thick, &x, a)?;
+            let notes = check.map(|n| n.floor(thick, &x.cover, &bars)).unwrap_or_default();
+            (bars, notes)
         }
         other => return Err(format!("reinforce: a {} can't be armed: a beam, a column, a footing or a floor can", other.category())),
     };
-    Ok(bars)
+    Ok(Made { bars, notes })
 }
 
 fn beam(f: &Frame, len: f64, (w, h): (f64, f64), x: &Common, mut a: Args) -> Result<Vec<Bar>, String> {
@@ -444,6 +524,8 @@ fn beam(f: &Frame, len: f64, (w, h): (f64, f64), x: &Common, mut a: Args) -> Res
     let gap = |d: f64, other: f64| x.clearance.unwrap_or_else(|| d.max(other).max(20.0));
     let mut out = Out { bars: Vec::new() };
     let mut levels = Vec::new();
+    // Where the bent-up bars and the top bars stand across the section at the top, (b, c, diameter), to keep them apart.
+    let (mut bent_spots, mut top_spots) = (Vec::new(), Vec::new());
     let (mut c_bottom, mut c_top) = (c_lo, c_hi);
     for (layer, rows, at) in [("bottom", &bottom, c_lo), ("top", &top, c_hi)] {
         let Some(r) = rows else { continue };
@@ -470,9 +552,36 @@ fn beam(f: &Frame, len: f64, (w, h): (f64, f64), x: &Common, mut a: Args) -> Res
                 ));
             }
         }
-        for b in row(half_w - d / 2.0, n, d, gap(d, 0.0), layer)? {
+        let lift = match (&r.bent, layer) {
+            (Some(_), "top") => return Err("reinforce: only bottom bars are bent up: put `bent` in `bottom`".into()),
+            (Some(bt), _) => Some(bent_up(bt, n, d, (c, c_hi - d / 2.0), s1 - s0)?),
+            _ => None,
+        };
+        for (i, b) in row(half_w - d / 2.0, n, d, gap(d, 0.0), layer)?.into_iter().enumerate() {
+            if let Some((_, run, top)) = lift.as_ref().filter(|l| l.0.contains(&i)) {
+                // Along the top for `top` from the end, down the slope for `run`, then along the bottom, and the same at the other end.
+                let ct = c_hi - d / 2.0;
+                let path = [(s0, ct), (s0 + top, ct), (s0 + top + run, c), (s1 - top - run, c), (s1 - top, ct), (s1, ct)];
+                out.push("bent", d, &x.grade, path.iter().map(|&(a, cc)| f.at(a, b, cc)).collect())?;
+                bent_spots.push((b, ct, d));
+                continue;
+            }
+            if layer == "top" {
+                top_spots.push((b, c, d));
+            }
             let leg = |at: f64, leg: f64| (leg > TOL).then(|| f.at(at, b, c + turn * leg));
             out.push(layer, d, &x.grade, with_legs(leg(s0, h0), f.at(s0, b, c), f.at(s1, b, c), leg(s1, h1)))?;
+        }
+    }
+    for &(bb, cb, db) in &bent_spots {
+        for &(bt, ct, dt) in &top_spots {
+            let clear = (bb - bt).hypot(cb - ct) - (db + dt) / 2.0;
+            if clear < gap(db, dt) - TOL {
+                return Err(format!(
+                    "reinforce: a bent-up bar meets a top bar: {clear:.1} mm between them, less than the {} mm clearance: bend up other bars or use fewer top bars",
+                    gap(db, dt)
+                ));
+            }
         }
     }
     if let [(low, dl), (high, dh)] = *levels.as_slice() {
@@ -522,6 +631,83 @@ fn beam(f: &Frame, len: f64, (w, h): (f64, f64), x: &Common, mut a: Args) -> Res
     Ok(out.bars)
 }
 
+/// How far `p` is from the frame's origin along `axis`.
+fn along(f: &Frame, axis: P3, p: P3) -> f64 {
+    let v = sub(p, f.o);
+    v[0] * axis[0] + v[1] * axis[1] + v[2] * axis[2]
+}
+
+/// A column bar's jog: how far it steps in, where up the bars the step starts and how far it runs.
+fn step(j: &Jog, len: f64, (a0, a1): (f64, f64)) -> Result<(f64, f64, f64), String> {
+    let (by, from_top) = (length("jog by", j.by)?, length("jog from_top", j.from_top)?);
+    let slope = j.slope.unwrap_or(6.0);
+    if !(1.0..=50.0).contains(&slope) {
+        return Err(format!("reinforce: `jog` slope {slope} isn't between 1 and 50 mm along the column for each mm across"));
+    }
+    let (start, run) = (len - from_top, by * slope);
+    if start <= a0 + TOL || start + run >= a1 - TOL {
+        return Err(format!(
+            "reinforce: the jog doesn't fit the bars: it starts {from_top} mm below the top and runs {run:.0} mm up, and the bars run from {a0:.0} to {a1:.0} mm"
+        ));
+    }
+    Ok((by, start, run))
+}
+
+/// `path` with the bar stepped by `shift` over the `run` that starts at `at` up the frame: the points above it move with it.
+fn stepped(f: &Frame, path: &[P3], (at, run): (f64, f64), shift: P3) -> Vec<P3> {
+    let put = |p: P3| add(p, mul(shift, ((along(f, f.a, p) - at) / run).clamp(0.0, 1.0)));
+    let mut out = Vec::with_capacity(path.len() + 2);
+    for (i, &p) in path.iter().enumerate() {
+        if let Some(&q) = i.checked_sub(1).and_then(|j| path.get(j)) {
+            let (u, v) = (along(f, f.a, q), along(f, f.a, p));
+            for cut in [at, at + run] {
+                if u + TOL < cut && cut < v - TOL {
+                    out.push(put(add(q, mul(sub(p, q), (cut - u) / (v - u)))));
+                }
+            }
+        }
+        out.push(put(p));
+    }
+    out
+}
+
+/// Which of `n` bottom bars of `d` mm bend up and how: `bt.count` of the inner ones (the two at the corners hold the stirrups), spread
+/// evenly among them, rising from the bottom centre `c.0` to the top one `c.1` over a run along the beam. Returns their places in the
+/// row, the run of each slope and the length along the top at each end.
+fn bent_up(bt: &Bent, n: usize, d: f64, c: (f64, f64), len: f64) -> Result<(Vec<usize>, f64, f64), String> {
+    let (k, inner) = (bt.count, n.saturating_sub(2));
+    if k == 0 || k > inner {
+        return Err(format!(
+            "reinforce: `bent` count {k} must be 1 to {inner}: the two bars at the corners stay straight to hold the stirrups, and the bottom row has {n}"
+        ));
+    }
+    let angle = bt.angle.unwrap_or(45.0);
+    if !(15.0..=75.0).contains(&angle) {
+        return Err(format!("reinforce: `bent` angle {angle} degrees isn't between 15 and 75"));
+    }
+    let rise = c.1 - c.0;
+    if rise <= TOL {
+        return Err(format!(
+            "reinforce: there's no room to bend a bar of {d} mm up: it can't rise from the bottom to the top inside the stirrup"
+        ));
+    }
+    let run = rise / angle.to_radians().tan();
+    let top = match bt.top {
+        Some(t) => length("bent top", t)?,
+        None => len / 5.0,
+    };
+    if 2.0 * (top + run) >= len - TOL {
+        return Err(format!(
+            "reinforce: the bent bars meet in the middle: each end takes {:.0} mm of the {len:.0} mm: give a shorter `top` or a steeper `angle`",
+            top + run
+        ));
+    }
+    let places = (0..k)
+        .map(|i| 1 + if k == 1 { (inner - 1) / 2 } else { (i as f64 * (inner - 1) as f64 / (k - 1) as f64).round() as usize })
+        .collect();
+    Ok((places, run, top))
+}
+
 fn column(f: &Frame, len: f64, (w, d): (f64, f64), round: bool, x: &Common, mut a: Args) -> Result<Vec<Bar>, String> {
     let bars = a.take::<ColumnBars>("bars")?;
     let stir = a.take::<Stirrup>("stirrup")?;
@@ -554,6 +740,16 @@ fn column(f: &Frame, len: f64, (w, d): (f64, f64), round: bool, x: &Common, mut 
         let dia = diameter("bars", r.diameter)?;
         let gap = x.clearance.unwrap_or_else(|| dia.max(20.0));
         let (h0, h1) = legs("bars hook", r.hook.as_ref(), ["below", "above"])?;
+        let jog = r.jog.as_ref().map(|j| step(j, len, (a0, a1))).transpose()?;
+        // Where the bars end up in the section, (b, c), to keep them apart after a jog.
+        let mut spots: Vec<(f64, f64)> = Vec::new();
+        // A bar at (b, c) turned `inward` (a direction across the section, 0 or 1 or -1 each way) when it jogs.
+        let mut put = |out: &mut Out, (b, c): (f64, f64), inward: (f64, f64), path: Vec<P3>| -> Result<(), String> {
+            let Some((by, at, run)) = jog else { return out.push("bars", dia, &x.grade, path) };
+            spots.push((b + by * inward.0, c + by * inward.1));
+            let shift = add(mul(f.b, by * inward.0), mul(f.c, by * inward.1));
+            out.push("bars", dia, &x.grade, stepped(f, &path, (at, run), shift))
+        };
         if round {
             if r.x.is_some() || r.y.is_some() {
                 return Err("reinforce: a round column takes `count` bars round its circle, not `x` and `y`".into());
@@ -585,7 +781,7 @@ fn column(f: &Frame, len: f64, (w, d): (f64, f64), round: bool, x: &Common, mut 
                 let (b, c) = (rb * angle.cos(), rb * angle.sin());
                 // A leg runs straight toward the middle.
                 let leg = |at: f64, leg: f64| (leg > TOL).then(|| f.at(at, b * (rb - leg) / rb, c * (rb - leg) / rb));
-                out.push("bars", dia, &x.grade, with_legs(leg(a0, h0), f.at(a0, b, c), f.at(a1, b, c), leg(a1, h1)))?;
+                put(&mut out, (b, c), (-b / rb, -c / rb), with_legs(leg(a0, h0), f.at(a0, b, c), f.at(a1, b, c), leg(a1, h1)))?;
             }
         } else {
             if r.count.is_some() {
@@ -611,13 +807,15 @@ fn column(f: &Frame, len: f64, (w, d): (f64, f64), round: bool, x: &Common, mut 
             for c in [-cc, cc] {
                 for &b in &xs {
                     let leg = |at: f64, leg: f64| (leg > TOL).then(|| f.at(at, b, c - c.signum() * leg));
-                    out.push("bars", dia, &x.grade, with_legs(leg(a0, h0), f.at(a0, b, c), f.at(a1, b, c), leg(a1, h1)))?;
+                    // A corner bar steps in along both faces, the others only away from their own.
+                    let inward = (if b.abs() >= bb - TOL { -b.signum() } else { 0.0 }, -c.signum());
+                    put(&mut out, (b, c), inward, with_legs(leg(a0, h0), f.at(a0, b, c), f.at(a1, b, c), leg(a1, h1)))?;
                 }
             }
             for b in [-bb, bb] {
                 for &c in ys.iter().skip(1).take(ny.saturating_sub(2)) {
                     let leg = |at: f64, leg: f64| (leg > TOL).then(|| f.at(at, b - b.signum() * leg, c));
-                    out.push("bars", dia, &x.grade, with_legs(leg(a0, h0), f.at(a0, b, c), f.at(a1, b, c), leg(a1, h1)))?;
+                    put(&mut out, (b, c), (-b.signum(), 0.0), with_legs(leg(a0, h0), f.at(a0, b, c), f.at(a1, b, c), leg(a1, h1)))?;
                 }
             }
             across = (
@@ -626,6 +824,16 @@ fn column(f: &Frame, len: f64, (w, d): (f64, f64), round: bool, x: &Common, mut 
                 bb + dia / 2.0,
                 cc + dia / 2.0,
             );
+        }
+        for (i, p) in spots.iter().enumerate() {
+            for q in spots.iter().skip(i + 1) {
+                let clear = (p.0 - q.0).hypot(p.1 - q.1) - dia;
+                if clear < gap - TOL {
+                    return Err(format!(
+                        "reinforce: after the jog two bars are {clear:.1} mm apart, less than the {gap} mm clearance: give a smaller `by`, or fewer bars"
+                    ));
+                }
+            }
         }
     }
     if let Some(st) = stir {

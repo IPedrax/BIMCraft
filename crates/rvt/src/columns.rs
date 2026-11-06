@@ -89,6 +89,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 );
                 Ok((
                     Column {
+                        room_bounding: true,
                         type_name,
                         level,
                         at,

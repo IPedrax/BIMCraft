@@ -35,6 +35,7 @@ pub const ACTIONS: &[&str] = &[
     "Ramp",
     "Railing",
     "Room",
+    "Room Separator",
     "Column",
     "Structural Column",
     "Beam",
@@ -140,7 +141,7 @@ pub struct ShortcutsDialog {
 }
 
 /// A shortcut key: two letters or digits, which is all the typed buffer holds.
-fn is_key(k: &str) -> bool {
+pub(crate) fn is_key(k: &str) -> bool {
     k.len() == 2 && k.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
@@ -255,12 +256,13 @@ impl BimApp {
     pub(crate) fn execute_shortcut_action(&mut self, action: &str) -> bool {
         match action {
             "Modify" => self.set_tool(Tool::Modify),
-            "3D View" => self.open_sheet(crate::Sheet::View3D),
+            "3D View" => self.open_3d(None),
             "Wall" => self.set_tool(Tool::Wall(Vec::new())),
             "Door" => self.set_tool(Tool::Door),
             "Window" => self.set_tool(Tool::Window),
             "Component" => self.set_tool(Tool::Component),
             "Room" => self.set_tool(Tool::Room),
+            "Room Separator" => self.set_tool(Tool::RoomSeparator(None)),
             "Level" => self.set_tool(Tool::Level),
             "Grid" => self.set_tool(Tool::Grid(None)),
             "Column" => self.set_tool(Tool::Column),
@@ -278,6 +280,7 @@ impl BimApp {
             "Aligned Dimension" => self.set_tool(Tool::Dimension(crate::DimMode::Aligned, Vec::new())),
             "Text" => self.set_tool(Tool::Text),
             "Spot Elevation" => self.set_tool(Tool::Spot),
+            "Spot Slope" => self.set_tool(Tool::SpotSlope),
             "Tag by Category" => self.set_tool(Tool::Tag),
             "Section" => self.set_tool(Tool::Section(None)),
             "Elevation" => self.set_tool(Tool::Elevation),
@@ -322,7 +325,7 @@ impl BimApp {
             "Link Model" => self.link_dialog = true,
             "Duplicate View" => self.duplicate_plan("duplicate"),
             "Filters" => self.filters_dialog = Some(graphics::FiltersDialog::default()),
-            "View Templates" => self.templates_dialog = Some(graphics::TemplatesDialog::default()),
+            "View Templates" => self.open_templates(),
             "Phasing" => self.phasing_dialog = Some(phasing::PhasingDialog::default()),
             "Design Options" => self.options_dialog = Some(phasing::OptionsDialog::default()),
             "Wireframe" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::Wireframe),
@@ -351,6 +354,7 @@ impl BimApp {
             "Match Properties" => self.match_properties(),
             "Beam" => self.set_tool(Tool::Run("beam", None)),
             "Pipe" => self.set_tool(Tool::Run("pipe", None)),
+            "Duct" => self.set_tool(Tool::Run("duct", None)),
             "Conduit" => self.set_tool(Tool::Run("conduit", None)),
             "Cable Tray" => self.set_tool(Tool::Run("cabletray", None)),
             "Wire" => self.set_tool(Tool::Run("wire", None)),
@@ -601,9 +605,12 @@ mod tests {
             assert_eq!(resolve_action(desc), Some(action), "{desc}");
         }
         // What a substring match took for a tool: a word inside a longer one, or a sentence that mentions one.
-        for desc in ["ou", "Patch", "Filter", "the wall of the house", "Walls and doors", "", "x"] {
+        // "Filter" is not among them: German names Filters "Filter", its plural being the same word, so that is a
+        // name the action answers to, not a part of one.
+        for desc in ["ou", "Patch", "Filte", "the wall of the house", "Walls and doors", "", "x"] {
             assert_eq!(resolve_action(desc), None, "{desc}");
         }
+        assert_eq!(resolve_action("Filter"), Some("Filters"), "as German names it");
     }
 
     #[test]

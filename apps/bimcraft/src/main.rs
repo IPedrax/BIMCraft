@@ -18,12 +18,14 @@ use serde_json::json;
 
 mod startup;
 
-const USAGE: &str = "USAGE: bimcraft [FILE] [--sample | --highrise] [--control PORT]
+const USAGE: &str = "USAGE: bimcraft [FILE] [--sample | --highrise | --tower] [--control PORT]
   FILE       a .bimcraft project to open, or an .ifc or .rvt (Revit) file to import
   --sample   start on the sample house
   --highrise start on the original 20-storey performance sample
+  --tower    start on the 100-storey reference tower with its annotation (1.2 million elements)
   --control  let an agent work on this window's project: `bimcraft-cli mcp --connect PORT` (0: any free port). Only this
-             machine can reach it, and the port and a token are in bridge.json beside the favorites
+             machine can reach it, and the port and a token are in bridge.json beside the favorites. File > Settings >
+             Agents opens it too, and may let agents only read the project
   --version  the release
 
 It looks for a newer version when it starts (File > Check for updates at startup switches that off).
@@ -87,6 +89,7 @@ fn main() -> ExitCode {
             }
             "--sample" => session.script(SAMPLE).map(|_| ()),
             "--highrise" => session.execute("highrise", &json!({})).map(|_| ()),
+            "--tower" => session.execute("tower", &json!({"annotation": true})).map(|_| ()),
             flag if flag.starts_with('-') => {
                 eprintln!("bimcraft: unknown option `{flag}`\n\n{USAGE}");
                 return ExitCode::FAILURE;
@@ -137,7 +140,9 @@ fn main() -> ExitCode {
             app.note_recent(file);
         }
     }
-    // An agent can work on the window's project through the control port, when it was started with one.
+    // An agent can work on the window's project through the control port, when it was started with one, or else when Settings >
+    // Agents keeps it open; the bridge file, with its port and token, sits beside the favorites either way.
+    app.use_bridge_file(bimcraft_core::bridge::entry_path());
     if let Some(port) = control {
         match Control::start(port, bimcraft_core::bridge::entry_path()) {
             Ok(control) => {
@@ -146,6 +151,8 @@ fn main() -> ExitCode {
             }
             Err(e) => problem = Some(format!("couldn't listen on port {port} for an agent: {e}")),
         }
+    } else if let Err(e) = app.listen_as_kept() {
+        problem = Some(e);
     }
     if let Some(text) = problem {
         app.status = Status { text, error: true };
@@ -165,11 +172,18 @@ fn main() -> ExitCode {
         viewport = viewport.with_icon(icon);
     }
     let mut options = eframe::NativeOptions { viewport, centered: true, ..Default::default() };
+    let mut setup = eframe::egui_wgpu::WgpuSetupCreateNew::without_display_handle();
     if let Some(backends) = graphics.backends() {
-        let mut setup = eframe::egui_wgpu::WgpuSetupCreateNew::without_display_handle();
         setup.instance_descriptor.backends = backends;
-        options.wgpu_options.wgpu_setup = eframe::egui_wgpu::WgpuSetup::CreateNew(setup);
     }
+    // The buffers as big as the card has them, not the defaults: the 3D view draws models of any size.
+    let asked = std::sync::Arc::clone(&setup.device_descriptor);
+    setup.device_descriptor = std::sync::Arc::new(move |adapter| {
+        let mut descriptor = asked(adapter);
+        descriptor.required_limits = bimcraft_ui_egui::limits_for(adapter, descriptor.required_limits);
+        descriptor
+    });
+    options.wgpu_options.wgpu_setup = eframe::egui_wgpu::WgpuSetup::CreateNew(setup);
     let up_files = files.clone();
     // Registered before the window opens, to catch the event that launched the app from Finder, and
     // held until it closes.

@@ -12,7 +12,7 @@ fn weights(h: &Harness<BimApp>) -> bimcraft_core::pen::LineWeights {
 fn line_weights_are_edited_by_scale_and_applied_as_one_step() {
     let mut h = app(BOX);
     press(&mut h, "Manage");
-    press(&mut h, "Line Weights");
+    annotation(&mut h, "Line Weights");
     assert!(h.state().line_weights_dialog.is_some());
     // A column for each scale, the project's units naming it.
     assert!(h.query_by_label("Delete 1 : 10").is_some() && h.query_by_label("Delete 1 : 500").is_some());
@@ -35,11 +35,11 @@ fn line_weights_are_edited_by_scale_and_applied_as_one_step() {
     assert_eq!(h.state().session.history().len(), steps + 1, "one undo step");
     assert_eq!(h.state().session.history().last(), Some(&"Line Weights"));
     // Reset, applied, is the project's start again; Cancel drops what was edited.
-    press(&mut h, "Line Weights");
+    annotation(&mut h, "Line Weights");
     press(&mut h, "Reset");
     press(&mut h, "OK");
     assert_eq!(h.state().session.model.line_weights, None);
-    press(&mut h, "Line Weights");
+    annotation(&mut h, "Line Weights");
     pick(&mut h, Role::Button, "Delete 1 : 10");
     press(&mut h, "Cancel");
     assert_eq!(h.state().session.model.line_weights, None);
@@ -49,7 +49,23 @@ fn line_weights_are_edited_by_scale_and_applied_as_one_step() {
 fn a_project_in_feet_and_inches_lists_its_line_weights_by_the_architects_scales() {
     let mut h = app(&format!("{BOX}\nunits {{\"length\": \"ft-in\"}}"));
     press(&mut h, "Manage");
-    press(&mut h, "Line Weights");
+    annotation(&mut h, "Line Weights");
     assert!(h.query_by_label("Delete 1/8\" = 1'-0\"").is_some());
     assert!(h.query_by_label("Pen 3 at 1/4\" = 1'-0\"").is_some());
+}
+
+#[test]
+fn annotation_settings_lists_the_line_and_fill_dialogs_and_line_patterns_opens_on_the_patterns() {
+    let mut h = app(BOX);
+    press(&mut h, "Manage");
+    press(&mut h, "Annotation Settings");
+    for item in ["Line Weights", "Line Styles", "Line Patterns", "Fill Patterns"] {
+        assert!(h.query_by_label(item).is_some(), "{item} is in the list");
+    }
+    press(&mut h, "Line Patterns");
+    assert!(h.state().line_styles_dialog.is_some());
+    assert!(h.query_by_label("New Pattern").is_some() && h.query_by_label("New Style").is_none(), "on the patterns");
+    press(&mut h, "Cancel");
+    annotation(&mut h, "Line Styles");
+    assert!(h.query_by_label("New Style").is_some(), "Line Styles opens on the styles");
 }

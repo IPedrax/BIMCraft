@@ -50,6 +50,19 @@ fn f(e: impl Into<String>) -> Value {
     Value::String(e.into())
 }
 
+/// A load parameter, in volt-amperes: a number, which each type may set.
+fn load(name: &str, value: f64) -> Value {
+    json!({"name": name, "kind": "number", "value": value})
+}
+
+/// A one-pole power connector of 127 V that draws the load `load_va` names (a parameter, or a number), as `classification`.
+fn power(load_va: Value, power_factor: f64, classification: &str) -> Value {
+    json!({
+        "kind": "power", "system": "power-balanced", "poles": 1, "voltage": 127, "load_va": load_va, "power_factor": power_factor,
+        "classification": classification
+    })
+}
+
 /// Sanitary fixtures: a kitchen sink, a shower, a floor drain (the WC, the washbasin and the bathtub are in the furniture's
 /// library).
 fn plumbing(language: Language) -> Vec<(String, Value)> {
@@ -115,6 +128,7 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
         w(msg!("Kitchen Sink")),
         json!({
             "category": "plumbing",
+            "kind": "sink",
             "parameters": [size(&width, 1200.0), size(&depth, 550.0), size(&height, 900.0), material(&mat, &metal)],
             "types": {"1200 x 550": {}, "800 x 500": {&width: 800, &depth: 500}},
             "forms": forms
@@ -132,6 +146,7 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
         w(msg!("Shower")),
         json!({
             "category": "plumbing",
+            "kind": "shower",
             "parameters": [size(&width, 900.0), size(&depth, 900.0)],
             "types": {"900 x 900": {}, "800 x 800": {&width: 800, &depth: 800}},
             "forms": [
@@ -154,6 +169,7 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
         w(msg!("Floor Drain")),
         json!({
             "category": "drain",
+            "kind": "floor_drain",
             "parameters": [size(&width, 150.0)],
             "types": {"150 x 150": {}, "100 x 100": {&width: 100}},
             "forms": [
@@ -193,6 +209,7 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
             w(msg!("Elbow 90")),
             json!({
                 "category": "pipefitting",
+                "kind": "bend",
                 "parameters": [size(&diameter, 50.0), material(&mat, &pvc)],
                 "types": sizes(&["25", "50", "110"]),
                 "forms": [along_x(&neg(&hub), &r, &mat), along_y(&neg(&r), &hub, &mat)]
@@ -202,6 +219,7 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
             w(msg!("Tee")),
             json!({
                 "category": "pipefitting",
+                "kind": "tee",
                 "parameters": [size(&diameter, 50.0), material(&mat, &pvc)],
                 "types": sizes(&["25", "50", "110"]),
                 "forms": [along_x(&neg(&hub), &hub, &mat), along_y("0", &hub, &mat)]
@@ -231,6 +249,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
     let w = |s: &str| language.word(s).to_string();
     let (width, depth, height, mounting) = (w("Width"), w("Depth"), w("Height"), w(msg!("Mounting Height")));
     let (diameter, mat, metal, plaster, glass) = (w("Diameter"), w("Material"), w("Metal"), w(msg!("Plaster")), w("Glass"));
+    let load_name = w(msg!("Load"));
     let n = |x: f64| json!(x);
     let (half_w, minus_half_w) = (format!("{width} / 2"), format!("-({width}) / 2"));
     // The mounting height, and `d` mm over it.
@@ -262,8 +281,9 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
         w(msg!("Ceiling Luminaire")),
         json!({
             "category": "lighting",
-            "parameters": [size(&diameter, 300.0), size(&mounting, 3000.0)],
-            "types": {"300": {}, "400": {&diameter: 400}},
+            "parameters": [size(&diameter, 300.0), size(&mounting, 3000.0), load(&load_name, 12.0)],
+            "types": {"300": {}, "400": {&diameter: 400, &load_name: 18}},
+            "connectors": [power(f(load_name.clone()), 0.95, "lighting")],
             "forms": [
                 post(n(0.0), n(0.0), f(r.clone()), up(-40.0), f(mounting.clone()), &plaster),
                 post(n(0.0), n(0.0), f(format!("{r} * 0.9")), up(-60.0), up(-40.0), &glass)
@@ -276,8 +296,9 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
         w(msg!("Recessed Luminaire")),
         json!({
             "category": "lighting",
-            "parameters": [size(&width, 600.0), size(&depth, 600.0), size(&mounting, 3000.0)],
-            "types": {"600 x 600": {}, "1200 x 300": {&width: 1200, &depth: 300}},
+            "parameters": [size(&width, 600.0), size(&depth, 600.0), size(&mounting, 3000.0), load(&load_name, 36.0)],
+            "types": {"600 x 600": {}, "1200 x 300": {&width: 1200, &depth: 300, &load_name: 40}},
+            "connectors": [power(f(load_name.clone()), 0.95, "lighting")],
             "forms": [
                 block([f(minus_half_w.clone()), f(format!("-({depth}) / 2")), f(half_w.clone()), f(format!("{depth} / 2"))], up(-30.0), f(mounting.clone()), &metal),
                 block(
@@ -298,8 +319,24 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
         w(msg!("Outlet")),
         json!({
             "category": "outlet",
-            "parameters": [size(&mounting, 300.0)],
+            "parameters": [size(&mounting, 300.0), load(&load_name, 100.0)],
             "types": {"Low 300": {}, "Medium 1100": {&mounting: 1100}, "High 2100": {&mounting: 2100}},
+            "connectors": [power(f(load_name.clone()), 0.8, "receptacle")],
+            "forms": [plate.clone(), socket.clone()]
+        }),
+    ));
+    // A three-phase outlet, 220 V between phases: each phase may draw its own load, as its type says.
+    let phases = [format!("{load_name} L1"), format!("{load_name} L2"), format!("{load_name} L3")];
+    out.push((
+        w(msg!("Three-Phase Outlet")),
+        json!({
+            "category": "outlet",
+            "parameters": [size(&mounting, 1100.0), load(&phases[0], 2000.0), load(&phases[1], 2000.0), load(&phases[2], 2000.0)],
+            "types": {"Balanced 1100": {}, "Unbalanced 1100": {&phases[0]: 3000, &phases[1]: 2000, &phases[2]: 1000}},
+            "connectors": [{
+                "kind": "power", "system": "power-unbalanced", "poles": 3, "voltage": 220, "power_factor": 0.8,
+                "load_va": phases.iter().map(|p| f(p.clone())).collect::<Vec<_>>(), "classification": "receptacle"
+            }],
             "forms": [plate.clone(), socket]
         }),
     ));
@@ -309,6 +346,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
             "category": "switch",
             "parameters": [size(&mounting, 1100.0)],
             "types": {"Medium 1100": {}, "Low 300": {&mounting: 300}},
+            "connectors": [{"kind": "switch", "system": "switch", "classification": "switching"}],
             "forms": [plate, block([n(-12.0), n(-18.0), n(12.0), n(-12.0)], up(-30.0), up(30.0), &plaster)]
         }),
     ));
