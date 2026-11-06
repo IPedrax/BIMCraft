@@ -63,6 +63,12 @@ fn power(load_va: Value, power_factor: f64, classification: &str) -> Value {
     })
 }
 
+/// A pipe connector of `domain` (`cold`, `hot`, `waste`…) and `flow`, at `at` in the family's axes, facing `direction` (the way
+/// its pipe leaves it), of nominal diameter `dn` mm.
+pub(crate) fn pipe(domain: &str, flow: &str, at: [Value; 3], direction: [f64; 3], dn: f64) -> Value {
+    json!({"kind": "pipe", "domain": domain, "flow": flow, "at": at, "direction": direction, "size": dn})
+}
+
 /// Sanitary fixtures: a kitchen sink, a shower, a floor drain (the WC, the washbasin and the bathtub are in the furniture's
 /// library).
 fn plumbing(language: Language) -> Vec<(String, Value)> {
@@ -131,7 +137,12 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
             "kind": "sink",
             "parameters": [size(&width, 1200.0), size(&depth, 550.0), size(&height, 900.0), material(&mat, &metal)],
             "types": {"1200 x 550": {}, "800 x 500": {&width: 800, &depth: 500}},
-            "forms": forms
+            "forms": forms,
+            // Its waste under the bowl and its cold water beside it, both in the wall behind.
+            "connectors": [
+                pipe("waste", "out", [n(tap_x), n(0.0), f(format!("{height} - 400"))], [0.0, 1.0, 0.0], 50.0),
+                pipe("cold", "in", [n(tap_x - 150.0), n(0.0), f(format!("{height} - 300"))], [0.0, 1.0, 0.0], 20.0)
+            ]
         }),
     ));
 
@@ -155,6 +166,12 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
                 post(n(0.0), n(-60.0), n(12.0), n(50.0), n(2100.0), &metal),
                 block([n(-12.0), n(-300.0), n(12.0), n(-48.0)], n(2070.0), n(2100.0), &metal),
                 post(n(0.0), n(-300.0), n(90.0), n(2040.0), n(2070.0), &metal)
+            ],
+            // Its waste in the middle of the tray, and the mixer's cold and hot water in the wall.
+            "connectors": [
+                pipe("waste", "out", [n(0.0), f(format!("-({depth}) / 2")), n(0.0)], [0.0, 0.0, -1.0], 40.0),
+                pipe("cold", "in", [n(-100.0), n(0.0), n(1100.0)], [0.0, 1.0, 0.0], 20.0),
+                pipe("hot", "in", [n(100.0), n(0.0), n(1100.0)], [0.0, 1.0, 0.0], 20.0)
             ]
         }),
     ));
@@ -176,7 +193,8 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
                 block([f(format!("-({side}) / 2")), f(format!("-({side}) / 2")), f(format!("{side} / 2")), f(format!("{side} / 2"))], n(-50.0), n(0.0), &metal),
                 opening,
                 slat(-20.0), slat(0.0), slat(20.0)
-            ]
+            ],
+            "connectors": [pipe("waste", "out", [n(0.0), n(0.0), n(-50.0)], [0.0, 0.0, -1.0], 40.0)]
         }),
     ));
     out

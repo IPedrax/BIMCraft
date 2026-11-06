@@ -35,7 +35,8 @@ Run { type, level, start, end, offset, end_offset?, justify, system, params }
   round, `width` across. It is square to the run's axis, as a pipe's or a member's is.
 - **Chains.** The command takes `points` and makes one run for each segment, as `wall` does. A fitting, an elbow or a
   tee is not a run: runs that meet butt against each other until the MEP slice joins them (ROADMAP 2.x). A family has
-  connectors (`Family::connectors`) for what an electrical device draws; a run and a fitting have none yet.
+  connectors (`Family::connectors`) for what an electrical device draws and where a pipe meets a fixture; a run and a
+  fitting have none yet.
 - **System.** `system` is a name ("Água fria", "Circuito 3", "SPDA 1"). Nothing else about a system is stored: a
   schedule groups and filters by it like any field, and a fixture carries its system as a project parameter named
   `System`, which exists already. Systems are a name, not a registry, because a registry would need rules for renaming,
@@ -139,8 +140,8 @@ no Autodesk shortcut, and take free letters.
 
 ## Not in this design, on purpose
 
-Pipe connectors and fittings, auto-routing, sizing, flow and load calculations, circuits and panel schedules (a family's electrical
-connectors are in, and give a device its load, and so are the settings: voltages, distribution systems and wire types), analytical
+Fittings' connectors and the network they join, auto-routing, sizing, flow and load calculations, circuits and panel schedules (a family's electrical
+connectors and the plumbing fixtures' pipe connectors are in, and give a device its load, and so are the settings: voltages, distribution systems and wire types), analytical
 models, rebar, beam systems and trusses. Each is large, none changes the model above, and they come after the five
 tabs can draw and schedule their systems (ROADMAP 2.x).
 

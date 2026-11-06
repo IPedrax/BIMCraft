@@ -3227,6 +3227,29 @@ impl Model {
         marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
     }
 
+    /// Component `c`'s connectors, worked out for its type and values, with their place and the way they face in the
+    /// model: mirrored if it is, turned and moved to where it stands (a connector without a place has neither). None for a
+    /// component whose family has none or doesn't work out.
+    pub fn component_connectors(&self, c: &Component) -> Vec<crate::family::PlacedConnector> {
+        let Some(f) = self.families.get(&c.family) else { return Vec::new() };
+        let Ok(connectors) = f.connector_values(&c.type_name, &c.params) else { return Vec::new() };
+        let base = self.elevation(c.level) + c.offset;
+        let (sin, cos) = c.angle.to_radians().sin_cos();
+        let flip = if c.mirrored { -1.0 } else { 1.0 };
+        let turn = |p: [f64; 3]| [p[0] * cos - flip * p[1] * sin, p[0] * sin + flip * p[1] * cos, p[2]];
+        connectors
+            .into_iter()
+            .map(|k| {
+                let at = k.at.map(|p| {
+                    let q = turn(p);
+                    [c.at.0 + q[0], c.at.1 + q[1], base + q[2]]
+                });
+                let dir = k.direction.map(turn);
+                (k, at, dir)
+            })
+            .collect()
+    }
+
     /// Component `c`'s solids in the model: its own, turned and moved to where it stands.
     pub fn component_pieces(&self, c: &Component) -> Vec<Piece> {
         let base = self.elevation(c.level) + c.offset;
