@@ -1018,7 +1018,7 @@ msgstr "Randlijn: schets de projectie van het dak, op het niveau erboven, en eve
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Randlijn: schets de omtrek van de schachtopening"
 
-#: crates/core/src/model.rs:2867
+#: crates/core/src/model.rs:2951
 msgid "Brick"
 msgstr "Baksteen"
 
@@ -1088,7 +1088,7 @@ msgstr "Berekende waarde…"
 msgid "Came in: {}"
 msgstr "Binnengekomen: {}"
 
-#: crates/core/src/commands.rs:1661
+#: crates/core/src/commands.rs:1675
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3935
 #: crates/ui-egui/src/properties.rs:265
@@ -1230,7 +1230,7 @@ msgstr "Hartlijn"
 msgid "Centre Lines"
 msgstr "Hartlijnen"
 
-#: crates/core/src/model.rs:2875
+#: crates/core/src/model.rs:2959
 msgid "Ceramic tile"
 msgstr "Keramische tegel"
 
@@ -1940,7 +1940,7 @@ msgstr "Conceptuele massa"
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:2869
+#: crates/core/src/model.rs:2953
 msgid "Concrete block"
 msgstr "Betonblok"
 
@@ -2021,7 +2021,7 @@ msgstr "{} IFC-GlobalId's gekopieerd."
 msgid "Copied {} rows, tab-separated."
 msgstr "{} rijen gekopieerd, gescheiden door tabs."
 
-#: crates/core/src/model.rs:2883
+#: crates/core/src/model.rs:2967
 msgid "Copper"
 msgstr "Koper"
 
@@ -2422,7 +2422,7 @@ msgstr "Gesloopt"
 msgid "Demolition"
 msgstr "Sloop"
 
-#: crates/core/src/commands.rs:9564
+#: crates/core/src/commands.rs:9578
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -2927,7 +2927,7 @@ msgstr "Elektrische instellingen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrische instellingen: de spanningen, distributiesystemen en draadtypes waarnaar kringen en verdeelborden verwijzen; doorsneden in mm²"
 
-#: crates/core/src/commands.rs:2027
+#: crates/core/src/commands.rs:2041
 msgid "Elements"
 msgstr "Elementen"
 
@@ -3276,7 +3276,7 @@ msgstr "Vindt {}; niets heeft deze: {}"
 msgid "Fine"
 msgstr "Fijn"
 
-#: crates/core/src/import.rs:1217
+#: crates/core/src/import.rs:1365
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:797
 msgid "Finish"
@@ -3664,7 +3664,7 @@ msgstr "Groep"
 msgid "Group:"
 msgstr "Groep:"
 
-#: crates/core/src/model.rs:2874
+#: crates/core/src/model.rs:2958
 msgid "Gypsum board"
 msgstr "Gipsplaat"
 
@@ -3979,7 +3979,7 @@ msgstr "BIMCraft {} installeren…"
 msgid "Instance"
 msgstr "Instantie"
 
-#: crates/core/src/import.rs:1216
+#: crates/core/src/import.rs:1364
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Isolatie"
@@ -4650,7 +4650,7 @@ msgstr "Maximum"
 msgid "Maximum Riser Height"
 msgstr "Maximale hoogte optrede"
 
-#: crates/core/src/commands.rs:1771
+#: crates/core/src/commands.rs:1785
 msgid "Measure"
 msgstr "Meten"
 
@@ -4666,7 +4666,7 @@ msgstr "Gemiddeld"
 msgid "Medium Lines"
 msgstr "Middeldikke lijnen"
 
-#: crates/core/src/import.rs:1219
+#: crates/core/src/import.rs:1367
 #: crates/ui-egui/src/properties.rs:796
 msgid "Membrane"
 msgstr "Membraan"
@@ -5592,7 +5592,7 @@ msgstr "Fase van sloop"
 msgid "Phase Filter"
 msgstr "Fasefilter"
 
-#: crates/core/src/ifc.rs:1632
+#: crates/core/src/ifc.rs:1657
 msgid "Phase Filters"
 msgstr "Fasefilters"
 
@@ -6703,7 +6703,7 @@ msgstr "Dak op vlak (RB): een dak op de bovenvlakken van de geselecteerde massa'
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Dak door voetafdruk: klik binnen de muren om ze te voorzien van een dak, op het niveau erboven"
 
-#: crates/core/src/model.rs:2876
+#: crates/core/src/model.rs:2960
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
@@ -6864,7 +6864,7 @@ msgstr "Schaal: het papier dat deze weergave voorstelt, 1 : n van het model: haa
 msgid "Scan"
 msgstr "Scan"
 
-#: crates/core/src/commands.rs:1566
+#: crates/core/src/commands.rs:1580
 msgid "Schedule"
 msgstr "Lijst"
 
@@ -6894,7 +6894,7 @@ msgstr "Lijsten"
 msgid "Schedules/Quantities (all)"
 msgstr "Lijsten/hoeveelheden (alle)"
 
-#: crates/core/src/model.rs:2872
+#: crates/core/src/model.rs:2956
 msgid "Screed"
 msgstr "Chape"
 
@@ -7668,7 +7668,7 @@ msgstr "Onderverdelingen van het subraster Y"
 msgid "Subgrid pen"
 msgstr "Pen van het subraster"
 
-#: crates/core/src/import.rs:1218
+#: crates/core/src/import.rs:1366
 #: crates/ui-egui/src/properties.rs:794
 msgid "Substrate"
 msgstr "Ondergrond"
@@ -8567,7 +8567,7 @@ msgstr "Eenhedenformaat"
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
-#: crates/core/src/commands.rs:9705
+#: crates/core/src/commands.rs:9719
 msgid "Unnamed"
 msgstr "Naamloos"
 
@@ -10818,3 +10818,30 @@ msgstr "Boven"
 #: crates/ui-egui/src/orbit.rs:1588
 #~ msgid "Measured: {}"
 #~ msgstr ""
+#: crates/ui-egui/src/lib.rs:4310
+#~ msgid "Attach Top/Base: pick a roof or a floor for the walls' tops, or bases, to follow"
+#~ msgstr "Boven-/onderkant vasthechten: kies een dak of een vloer die de bovenkant of de onderkant van de muren volgt"
+#: crates/ui-egui/src/sketch.rs:767
+#~ msgid "Cancel Edit Mode"
+#~ msgstr "Bewerkmodus annuleren"
+#: crates/ui-egui/src/sketch.rs:767
+#~ msgid "Cancel Edit Mode: drop the lines, keep it as it was"
+#~ msgstr "Bewerkmodus annuleren: de lijnen vallen weg, het blijft zoals het was"
+#: crates/ui-egui/src/lib.rs:4314
+#~ msgid "Detach Top/Base: the walls' tops and bases their own again"
+#~ msgstr "Boven-/onderkant loskoppelen: de boven- en onderkanten van de muren zijn weer hun eigen"
+#: crates/ui-egui/src/sketch.rs:764
+#~ msgid "Finish Edit Mode"
+#~ msgstr "Bewerkmodus voltooien"
+#: crates/ui-egui/src/lib.rs:3734
+#~ msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
+#~ msgstr "Meten (ME): klik op twee punten; hun lengte en hoek staan naast de liniaal ertussen"
+#: crates/ui-egui/src/lib.rs:4736
+#~ msgid "Pick a roof or a floor: the selected walls' bases stand on it."
+#~ msgstr "Kies een dak of een vloer: de onderkanten van de geselecteerde muren staan erop."
+#: crates/ui-egui/src/lib.rs:4737
+#~ msgid "Pick a roof or a floor: the selected walls' tops follow its underside."
+#~ msgstr "Kies een dak of een vloer: de bovenkanten van de geselecteerde muren volgen zijn onderkant."
+#: crates/ui-egui/src/lib.rs:2383
+#~ msgid "select the walls to attach first"
+#~ msgstr "selecteer eerst de muren om vast te hechten"

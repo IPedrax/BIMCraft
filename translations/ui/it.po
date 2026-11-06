@@ -1018,7 +1018,7 @@ msgstr "Linea di contorno: disegna l'impronta della copertura, sul piano superio
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Linea di contorno: disegna il contorno del cavedio"
 
-#: crates/core/src/model.rs:2867
+#: crates/core/src/model.rs:2951
 msgid "Brick"
 msgstr "Mattone"
 
@@ -1088,7 +1088,7 @@ msgstr "Valore calcolato…"
 msgid "Came in: {}"
 msgstr "Importato: {}"
 
-#: crates/core/src/commands.rs:1661
+#: crates/core/src/commands.rs:1675
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3935
 #: crates/ui-egui/src/properties.rs:265
@@ -1230,7 +1230,7 @@ msgstr "Centro"
 msgid "Centre Lines"
 msgstr "Linee d'asse"
 
-#: crates/core/src/model.rs:2875
+#: crates/core/src/model.rs:2959
 msgid "Ceramic tile"
 msgstr "Piastrella ceramica"
 
@@ -1940,7 +1940,7 @@ msgstr "Volume concettuale"
 msgid "Concrete"
 msgstr "Calcestruzzo"
 
-#: crates/core/src/model.rs:2869
+#: crates/core/src/model.rs:2953
 msgid "Concrete block"
 msgstr "Blocco in calcestruzzo"
 
@@ -2021,7 +2021,7 @@ msgstr "Copiati {} IFC GlobalId."
 msgid "Copied {} rows, tab-separated."
 msgstr "Copiate {} righe, separate da tabulazione."
 
-#: crates/core/src/model.rs:2883
+#: crates/core/src/model.rs:2967
 msgid "Copper"
 msgstr "Rame"
 
@@ -2422,7 +2422,7 @@ msgstr "Demolito"
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:9564
+#: crates/core/src/commands.rs:9578
 msgid "Dependent"
 msgstr "Dipendente"
 
@@ -2927,7 +2927,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:2027
+#: crates/core/src/commands.rs:2041
 msgid "Elements"
 msgstr "Elementi"
 
@@ -3276,7 +3276,7 @@ msgstr "Trova {}; nessun elemento ha questi: {}"
 msgid "Fine"
 msgstr "Alto"
 
-#: crates/core/src/import.rs:1217
+#: crates/core/src/import.rs:1365
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:797
 msgid "Finish"
@@ -3664,7 +3664,7 @@ msgstr "Gruppo"
 msgid "Group:"
 msgstr "Gruppo:"
 
-#: crates/core/src/model.rs:2874
+#: crates/core/src/model.rs:2958
 msgid "Gypsum board"
 msgstr "Cartongesso"
 
@@ -3979,7 +3979,7 @@ msgstr "Installazione di BIMCraft {}…"
 msgid "Instance"
 msgstr "Istanza"
 
-#: crates/core/src/import.rs:1216
+#: crates/core/src/import.rs:1364
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Isolante"
@@ -4650,7 +4650,7 @@ msgstr ""
 msgid "Maximum Riser Height"
 msgstr "Altezza massima alzata"
 
-#: crates/core/src/commands.rs:1771
+#: crates/core/src/commands.rs:1785
 msgid "Measure"
 msgstr "Misura"
 
@@ -4666,7 +4666,7 @@ msgstr "Medio"
 msgid "Medium Lines"
 msgstr "Linee medie"
 
-#: crates/core/src/import.rs:1219
+#: crates/core/src/import.rs:1367
 #: crates/ui-egui/src/properties.rs:796
 msgid "Membrane"
 msgstr "Membrana"
@@ -5592,7 +5592,7 @@ msgstr "Fase di demolizione"
 msgid "Phase Filter"
 msgstr "Filtro delle fasi"
 
-#: crates/core/src/ifc.rs:1632
+#: crates/core/src/ifc.rs:1657
 msgid "Phase Filters"
 msgstr "Filtri delle fasi"
 
@@ -6703,7 +6703,7 @@ msgstr "Copertura da faccia (RB): una copertura sulle facce superiori dei volumi
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Copertura da impronta: clicca dentro i muri per coprirli, sul piano superiore"
 
-#: crates/core/src/model.rs:2876
+#: crates/core/src/model.rs:2960
 msgid "Roof tiles"
 msgstr "Tegole"
 
@@ -6864,7 +6864,7 @@ msgstr "Scala: la carta che questa vista rappresenta, 1 : n del modello; annotaz
 msgid "Scan"
 msgstr "Scansione"
 
-#: crates/core/src/commands.rs:1566
+#: crates/core/src/commands.rs:1580
 msgid "Schedule"
 msgstr "Abaco"
 
@@ -6894,7 +6894,7 @@ msgstr "Abachi"
 msgid "Schedules/Quantities (all)"
 msgstr "Abachi/Quantità (tutti)"
 
-#: crates/core/src/model.rs:2872
+#: crates/core/src/model.rs:2956
 msgid "Screed"
 msgstr "Massetto"
 
@@ -7668,7 +7668,7 @@ msgstr ""
 msgid "Subgrid pen"
 msgstr ""
 
-#: crates/core/src/import.rs:1218
+#: crates/core/src/import.rs:1366
 #: crates/ui-egui/src/properties.rs:794
 msgid "Substrate"
 msgstr "Supporto"
@@ -8567,7 +8567,7 @@ msgstr "Formato unità"
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:9705
+#: crates/core/src/commands.rs:9719
 msgid "Unnamed"
 msgstr "Senza nome"
 
@@ -10825,3 +10825,30 @@ msgstr ""
 #: crates/ui-egui/src/orbit.rs:1588
 #~ msgid "Measured: {}"
 #~ msgstr ""
+#: crates/ui-egui/src/lib.rs:4310
+#~ msgid "Attach Top/Base: pick a roof or a floor for the walls' tops, or bases, to follow"
+#~ msgstr "Collega sommità/base: scegli una copertura o un solaio che le sommità o le basi dei muri devono seguire"
+#: crates/ui-egui/src/sketch.rs:767
+#~ msgid "Cancel Edit Mode"
+#~ msgstr "Annulla modalità modifica"
+#: crates/ui-egui/src/sketch.rs:767
+#~ msgid "Cancel Edit Mode: drop the lines, keep it as it was"
+#~ msgstr "Annulla modalità modifica: scarta le linee e lascia com'era"
+#: crates/ui-egui/src/lib.rs:4314
+#~ msgid "Detach Top/Base: the walls' tops and bases their own again"
+#~ msgstr "Scollega sommità/base: sommità e base dei muri tornano indipendenti"
+#: crates/ui-egui/src/sketch.rs:764
+#~ msgid "Finish Edit Mode"
+#~ msgstr "Termina modalità modifica"
+#: crates/ui-egui/src/lib.rs:3734
+#~ msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
+#~ msgstr "Misura (ME): clicca due punti; lunghezza e angolo compaiono accanto al righello tra i due"
+#: crates/ui-egui/src/lib.rs:4736
+#~ msgid "Pick a roof or a floor: the selected walls' bases stand on it."
+#~ msgstr "Scegli una copertura o un solaio: le basi dei muri selezionati si appoggiano su di esso."
+#: crates/ui-egui/src/lib.rs:4737
+#~ msgid "Pick a roof or a floor: the selected walls' tops follow its underside."
+#~ msgstr "Scegli una copertura o un solaio: le sommità dei muri selezionati ne seguono l'intradosso."
+#: crates/ui-egui/src/lib.rs:2383
+#~ msgid "select the walls to attach first"
+#~ msgstr "seleziona prima i muri da collegare"

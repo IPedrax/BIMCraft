@@ -1018,7 +1018,7 @@ msgstr "Ligne de limite: esquisser l'emprise du toit, au niveau supérieur, et s
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Ligne de limite: esquisser le contour de l'ouverture de la trémie"
 
-#: crates/core/src/model.rs:2867
+#: crates/core/src/model.rs:2951
 msgid "Brick"
 msgstr "Brique"
 
@@ -1088,7 +1088,7 @@ msgstr "Valeur calculée…"
 msgid "Came in: {}"
 msgstr "Importé: {}"
 
-#: crates/core/src/commands.rs:1661
+#: crates/core/src/commands.rs:1675
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3935
 #: crates/ui-egui/src/properties.rs:265
@@ -1230,7 +1230,7 @@ msgstr "Axe"
 msgid "Centre Lines"
 msgstr "Lignes d'axe"
 
-#: crates/core/src/model.rs:2875
+#: crates/core/src/model.rs:2959
 msgid "Ceramic tile"
 msgstr "Carrelage en céramique"
 
@@ -1940,7 +1940,7 @@ msgstr "Volume conceptuel"
 msgid "Concrete"
 msgstr "Béton"
 
-#: crates/core/src/model.rs:2869
+#: crates/core/src/model.rs:2953
 msgid "Concrete block"
 msgstr "Bloc de béton"
 
@@ -2021,7 +2021,7 @@ msgstr "{} GlobalId IFC copiés."
 msgid "Copied {} rows, tab-separated."
 msgstr "{} lignes copiées, séparées par des tabulations."
 
-#: crates/core/src/model.rs:2883
+#: crates/core/src/model.rs:2967
 msgid "Copper"
 msgstr "Cuivre"
 
@@ -2422,7 +2422,7 @@ msgstr "Démoli"
 msgid "Demolition"
 msgstr "Démolition"
 
-#: crates/core/src/commands.rs:9564
+#: crates/core/src/commands.rs:9578
 msgid "Dependent"
 msgstr "Dépendante"
 
@@ -2927,7 +2927,7 @@ msgstr "Paramètres électriques"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Paramètres électriques: les tensions, systèmes de distribution et types de câbles auxquels renvoient les circuits et les tableaux; sections en mm²"
 
-#: crates/core/src/commands.rs:2027
+#: crates/core/src/commands.rs:2041
 msgid "Elements"
 msgstr "Éléments"
 
@@ -3276,7 +3276,7 @@ msgstr "Trouve {}; aucun élément n'a ceux-ci: {}"
 msgid "Fine"
 msgstr "Élevée"
 
-#: crates/core/src/import.rs:1217
+#: crates/core/src/import.rs:1365
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:797
 msgid "Finish"
@@ -3664,7 +3664,7 @@ msgstr "Groupe"
 msgid "Group:"
 msgstr "Groupe:"
 
-#: crates/core/src/model.rs:2874
+#: crates/core/src/model.rs:2958
 msgid "Gypsum board"
 msgstr "Plaque de plâtre"
 
@@ -3979,7 +3979,7 @@ msgstr "Installation de BIMCraft {}…"
 msgid "Instance"
 msgstr "Instance"
 
-#: crates/core/src/import.rs:1216
+#: crates/core/src/import.rs:1364
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Isolant"
@@ -4650,7 +4650,7 @@ msgstr "Maximale"
 msgid "Maximum Riser Height"
 msgstr "Hauteur maximale de contremarche"
 
-#: crates/core/src/commands.rs:1771
+#: crates/core/src/commands.rs:1785
 msgid "Measure"
 msgstr "Mesurer"
 
@@ -4666,7 +4666,7 @@ msgstr "Moyen"
 msgid "Medium Lines"
 msgstr "Lignes moyennes"
 
-#: crates/core/src/import.rs:1219
+#: crates/core/src/import.rs:1367
 #: crates/ui-egui/src/properties.rs:796
 msgid "Membrane"
 msgstr "Membrane"
@@ -5592,7 +5592,7 @@ msgstr "Phase de démolition"
 msgid "Phase Filter"
 msgstr "Filtre de phase"
 
-#: crates/core/src/ifc.rs:1632
+#: crates/core/src/ifc.rs:1657
 msgid "Phase Filters"
 msgstr "Filtres de phase"
 
@@ -6703,7 +6703,7 @@ msgstr "Toit par face (RB): un toit sur les faces supérieures des volumes séle
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Toit par tracé: cliquer à l'intérieur des murs pour les couvrir, au niveau au-dessus"
 
-#: crates/core/src/model.rs:2876
+#: crates/core/src/model.rs:2960
 msgid "Roof tiles"
 msgstr "Tuiles"
 
@@ -6864,7 +6864,7 @@ msgstr "Échelle: le papier que cette vue représente, 1 : n du modèle: ses ann
 msgid "Scan"
 msgstr "Numérisation"
 
-#: crates/core/src/commands.rs:1566
+#: crates/core/src/commands.rs:1580
 msgid "Schedule"
 msgstr "Nomenclature"
 
@@ -6894,7 +6894,7 @@ msgstr "Nomenclatures"
 msgid "Schedules/Quantities (all)"
 msgstr "Nomenclatures/Quantités (toutes)"
 
-#: crates/core/src/model.rs:2872
+#: crates/core/src/model.rs:2956
 msgid "Screed"
 msgstr "Chape"
 
@@ -7668,7 +7668,7 @@ msgstr "Divisions de la sous-grille Y"
 msgid "Subgrid pen"
 msgstr "Plume de la sous-grille"
 
-#: crates/core/src/import.rs:1218
+#: crates/core/src/import.rs:1366
 #: crates/ui-egui/src/properties.rs:794
 msgid "Substrate"
 msgstr "Substrat"
@@ -8567,7 +8567,7 @@ msgstr "Format des unités"
 msgid "Unlock alignment"
 msgstr "Déverrouiller l'alignement"
 
-#: crates/core/src/commands.rs:9705
+#: crates/core/src/commands.rs:9719
 msgid "Unnamed"
 msgstr "Sans nom"
 
@@ -10815,3 +10815,30 @@ msgstr "Dessus"
 #: crates/ui-egui/src/orbit.rs:1588
 #~ msgid "Measured: {}"
 #~ msgstr ""
+#: crates/ui-egui/src/lib.rs:4310
+#~ msgid "Attach Top/Base: pick a roof or a floor for the walls' tops, or bases, to follow"
+#~ msgstr "Attacher haut/base: choisir un toit ou un sol que le haut ou la base des murs doit suivre"
+#: crates/ui-egui/src/sketch.rs:767
+#~ msgid "Cancel Edit Mode"
+#~ msgstr "Annuler le mode d'édition"
+#: crates/ui-egui/src/sketch.rs:767
+#~ msgid "Cancel Edit Mode: drop the lines, keep it as it was"
+#~ msgstr "Annuler le mode d'édition: abandonner les lignes, conserver l'élément tel qu'il était"
+#: crates/ui-egui/src/lib.rs:4314
+#~ msgid "Detach Top/Base: the walls' tops and bases their own again"
+#~ msgstr "Détacher haut/base: les hauts et les bases des murs redeviennent indépendants"
+#: crates/ui-egui/src/sketch.rs:764
+#~ msgid "Finish Edit Mode"
+#~ msgstr "Terminer le mode de modification"
+#: crates/ui-egui/src/lib.rs:3734
+#~ msgid "Measure (ME): click two points; their length and angle read beside the ruler between them"
+#~ msgstr "Mesurer (ME): cliquer deux points; leur longueur et leur angle s'affichent près de la règle entre eux"
+#: crates/ui-egui/src/lib.rs:4736
+#~ msgid "Pick a roof or a floor: the selected walls' bases stand on it."
+#~ msgstr "Sélectionner un toit ou un sol: les bases des murs sélectionnés reposent dessus."
+#: crates/ui-egui/src/lib.rs:4737
+#~ msgid "Pick a roof or a floor: the selected walls' tops follow its underside."
+#~ msgstr "Sélectionner un toit ou un sol: les sommets des murs sélectionnés suivent sa face inférieure."
+#: crates/ui-egui/src/lib.rs:2383
+#~ msgid "select the walls to attach first"
+#~ msgstr "sélectionner d'abord les murs à joindre"
