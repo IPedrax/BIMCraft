@@ -441,3 +441,72 @@ fn schedules_list_where_columns_stand_in_shared_coordinates() {
     let r = run(&mut s, "schedule", json!({"name": "Levels", "category": "levels"}));
     assert!(r["rows"].to_string().contains("2700"), "{r}");
 }
+
+// ---------- views: Rotate Project North ----------
+
+fn wall_ends(s: &Session) -> Vec<[f64; 3]> {
+    let co = &s.model.coordinates;
+    s.model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            crate::model::Element::Wall(w) => Some([co.to_shared([w.start.0, w.start.1, 0.0]), co.to_shared([w.end.0, w.end.1, 0.0])]),
+            _ => None,
+        })
+        .flatten()
+        .collect()
+}
+
+fn same_place(a: &[[f64; 3]], b: &[[f64; 3]]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(p, q)| p.iter().zip(q).all(|(x, y)| (x - y).abs() < 0.01))
+}
+
+#[test]
+fn rotate_project_north_turns_the_model_and_keeps_it_where_it_is_in_the_world() {
+    let mut s = Session::new();
+    run(&mut s, "location", json!({"name": "Internal", "east": 1_000_000.0, "north": 2_000_000.0, "angle": 30.0}));
+    run(&mut s, "location", json!({"name": "North Lot", "east": 5_000_000.0, "north": 2_000_000.0, "angle": -20.0}));
+    run(&mut s, "coordinates", json!({"base": [1000, 0, 0], "survey": [2000, 1000, 500]}));
+    run(&mut s, "wall", json!({"points": [[0, 0], [8000, 0], [8000, 6000]]}));
+    let (walls, base) = (wall_ends(&s), s.model.coordinates.to_shared(s.model.coordinates.base));
+    // Aligned with true north: project north is true north now, and the walls run along the map's axes.
+    let r = run(&mut s, "rotate_project_north", json!({"true_north": true}));
+    assert!((r["angle"].as_f64().unwrap() - 30.0).abs() < 1e-9, "{r}");
+    let co = &s.model.coordinates;
+    assert!(co.location().angle.abs() < 1e-9, "{:?}", co.location());
+    assert!((co.locations["North Lot"].angle + 50.0).abs() < 1e-9);
+    assert!(same_place(&wall_ends(&s), &walls), "{:?} {walls:?}", wall_ends(&s));
+    assert!(same_place(&[co.to_shared(co.base)], &[base]));
+    assert_eq!(co.survey[2], 500.0, "heights stay");
+    // By an angle about a point, and back: one undo step each.
+    run(&mut s, "rotate_project_north", json!({"angle": 15, "about": [3000, 3000]}));
+    assert!((s.model.coordinates.location().angle + 15.0).abs() < 1e-9);
+    assert!(same_place(&wall_ends(&s), &walls));
+    run(&mut s, "undo", json!({}));
+    assert!(s.model.coordinates.location().angle.abs() < 1e-9);
+}
+
+#[test]
+fn rotate_project_north_needs_an_angle_or_true_north() {
+    let mut s = Session::new();
+    let e = fails(&mut s, "rotate_project_north", json!({}));
+    assert!(e.contains("angle") && e.contains("true_north"), "{e}");
+    fails(&mut s, "rotate_project_north", json!({"angle": f64::NAN}));
+    fails(&mut s, "rotate_project_north", json!({"angle": 10, "true_north": true}));
+}
+
+#[test]
+fn rotate_project_north_turns_the_whole_sample_house() {
+    let mut s = Session::new();
+    s.script(crate::sample::SAMPLE).unwrap();
+    run(&mut s, "location", json!({"name": "Internal", "angle": 23.5}));
+    let before = s.model.elements.len();
+    let r = run(&mut s, "rotate_project_north", json!({"true_north": true}));
+    let turned = r["rotated"].as_array().unwrap().len();
+    assert_eq!(s.model.elements.len(), before);
+    // All but the levels, sheets, schedules and 3D views, which have no place in plan of their own.
+    use crate::model::Element as E;
+    let fixed = s.model.elements.values().filter(|e| matches!(e, E::Level(_) | E::Sheet(_) | E::Schedule(_) | E::View3D(_))).count();
+    assert_eq!(turned + fixed, before, "{turned} turned, {fixed} fixed");
+    run(&mut s, "rotate_project_north", json!({"angle": -23.5}));
+}

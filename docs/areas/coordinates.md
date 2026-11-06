@@ -165,6 +165,14 @@ remembers where it stands (`Link::placed`, kept up after every command while its
 a reset pins one whose file is gone where it last stood; one never loaded is refused.
 Tests: the link tests in `coordinates_io_tests.rs`.
 
+## Rotate Project North
+
+`rotate_project_north` (`angle`, or `true_north: true` for the active location's angle; about `about`, else the Project
+Base Point) turns every element with a place in plan, through `relocate` as `rotate` does, and both points; every
+location's angle goes back by as much (wrapped to -180..180), and a link placed by base points turns with it, so nothing
+moves in the world, only the project's axes. Levels, sheets, schedules, 3D views and links by shared coordinates stay (the
+last follow the locations). Plan crops stay as they are.
+
 ## Commands
 
 - `georeference`: the active site as IFC has it, at the internal origin; any field makes one, `clear` takes it away.
@@ -180,6 +188,7 @@ Tests: the link tests in `coordinates_io_tests.rs`.
   (`origin: shared`, `acquire`).
 - `spot_coordinate` (`type`, `end`, `leader`, `shoulder`, `host`, `origin`) and `spot_coordinate_type`; `origin` on `spot`
   and `elevation_base` on `level` (and `modify`).
+- `rotate_project_north`: the model turned, the world kept.
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
 
