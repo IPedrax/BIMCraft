@@ -1882,22 +1882,19 @@ impl BimApp {
         if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() {
             self.escape();
         }
-        // Enter turns Rotate by the angle typed over the view.
-        if pressed(Modifiers::NONE, Key::Enter)
-            && let Some(angle) = self.typed_angle()
-        {
-            self.typed_length.clear();
-            match self.tool {
-                Tool::Rotate { centre, .. } => self.turn(centre, angle),
-                Tool::RotateNorth { centre, .. } => self.rotate_project_north(Some(angle), Some(centre)),
-                _ => {}
-            }
-        }
-        // Enter places a typed length, else builds the wall chain.
+        // Enter places a typed length, else builds the wall chain; while rotating, turns by the angle typed over the view.
         if pressed(Modifiers::NONE, Key::Enter)
             && let Some(level) = self.plan_level()
         {
             match (&self.tool, self.typed_length.is_empty() && self.drawing.other.is_empty()) {
+                (&Tool::Rotate { centre, .. }, false) if let Some(angle) = self.typed_angle() => {
+                    self.typed_length.clear();
+                    self.turn(centre, angle);
+                }
+                (&Tool::RotateNorth { centre, .. }, false) if let Some(angle) = self.typed_angle() => {
+                    self.typed_length.clear();
+                    self.rotate_project_north(Some(angle), Some(centre));
+                }
                 _ if self.picking_pattern_lines() => self.finish_pattern_lines(),
                 (Tool::Railing(_), true) => self.finish_railing(level),
                 (Tool::Mass(_), true) => self.finish_mass(level),
