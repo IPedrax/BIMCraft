@@ -69,9 +69,33 @@ const CONNECTOR: u64 = 55;
 const CONNECTOR_DEFINES: u64 = 56;
 const TYPE_MATERIALS: u64 = 57;
 const USAGE_MATERIALS: u64 = 58;
+const CLASSIFIED: u64 = 59;
 
-/// The property set an element's values of the project's parameters go in.
+/// The property set an element's values of the project's parameters go in, less those whose parameter names another set for
+/// its category.
 pub const PARAMETERS: &str = "Project Parameters";
+
+/// The set an element's `Pset_ElectricalDeviceCommon`'s values go in, of a device's power connector.
+const DEVICE_SET: &str = "Pset_ElectricalDeviceCommon";
+
+/// Whether a project parameter's values may go in IFC in property set `name`: not one BIMCraft reads into fields of its own, nor
+/// its project parameters' own set, which is where a parameter naming no set goes.
+pub fn foreign_set(name: &str) -> bool {
+    name != PARAMETERS && name != SEPARATION && !name.starts_with("BIMCraft_")
+}
+
+/// Whether the export writes property `name` of set `set` itself, from what an element is: its `LoadBearing` and `Status` in
+/// its `Pset_*Common`, a device's poles, power factor and voltage. A value of a parameter of that name there is the export's.
+pub fn own_property(set: &str, name: &str) -> bool {
+    let common = set.starts_with("Pset_") && set.ends_with("Common");
+    (common && matches!(name, "LoadBearing" | "Status"))
+        || (set == DEVICE_SET && matches!(name, "NumberOfPoles" | "PowerFactor" | "RatedVoltage"))
+}
+
+/// A number for `text`, the same each time: what keys a GlobalId made for a name.
+fn key_of(text: &str) -> u64 {
+    text.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3))
+}
 
 /// The property set a run's justification and category go in (its system is an IfcSystem it is assigned to).
 pub const RUN: &str = "BIMCraft_Run";
@@ -210,6 +234,9 @@ struct Step {
     materials: BTreeMap<String, (u64, Option<u64>)>,
     /// What goes in each element's `Pset_*Common`: its entity, the set's name and its properties, written once at the end.
     common: BTreeMap<Id, (u64, &'static str, Vec<u64>)>,
+    /// The values of the project's parameters that go in a set of another name than its own, by entity and set: written in that
+    /// set where the export writes one of the name for the entity, else in a set of their own at the end.
+    sets: BTreeMap<(u64, String), (Id, Vec<u64>)>,
     /// The occurrences of each type object, by its key (see `TypeKey`). Written once at the end.
     typed: BTreeMap<TypeKey, TypeBuild>,
     /// The profile definition of each section written, shared by the material profile set of the type that has it and the bodies of
@@ -297,9 +324,14 @@ impl Step {
         self.add(format!("IFCPROPERTYSINGLEVALUE({},{note},IFCTEXT({}),$)", s(name), s(value)))
     }
 
-    /// A property set `name` of `props` for `ent`; its GlobalIds from `(set, relation)` and `key`.
+    /// A property set `name` of `props` for `ent`, and the project parameters' values that go in it; its GlobalIds from
+    /// `(set, relation)` and `key`.
     fn define(&mut self, ent: u64, name: &str, props: &[u64], (set, relation): (u64, u64), key: u64) {
-        let set = self.add(format!("IFCPROPERTYSET({},$,{},$,({}))", self.guid(set, key), s(name), refs(props)));
+        let props = match self.sets.remove(&(ent, name.to_string())) {
+            Some((_, more)) => [props, &more].concat(),
+            None => props.to_vec(),
+        };
+        let set = self.add(format!("IFCPROPERTYSET({},$,{},$,({}))", self.guid(set, key), s(name), refs(&props)));
         self.add(format!("IFCRELDEFINESBYPROPERTIES({},$,$,$,(#{ent}),#{set})", self.guid(relation, key)));
     }
 
@@ -755,6 +787,7 @@ pub fn export(m: &Model) -> String {
         body: 0,
         materials: BTreeMap::new(),
         common: BTreeMap::new(),
+        sets: BTreeMap::new(),
         typed: BTreeMap::new(),
         sections: BTreeMap::new(),
     };
@@ -1538,7 +1571,7 @@ pub fn export(m: &Model) -> String {
     }
     // A system is an IfcSystem its runs are assigned to; its GlobalIds follow its name, so they stay when another is added.
     for (name, members) in &systems {
-        let key = name.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
+        let key = key_of(name);
         let system = w.add(format!("IFCSYSTEM({},$,{},$,$)", w.guid(SYSTEMS, key), s(name)));
         w.add(format!("IFCRELASSIGNSTOGROUP({},$,$,$,({}),$,#{system})", w.guid(SYSTEM_MEMBERS, key), refs(members)));
     }
@@ -1558,29 +1591,64 @@ pub fn export(m: &Model) -> String {
             ));
         }
     }
-    // Each element's values of the project's parameters: a property set of its own, `Project
-    // Parameters`, lengths in the file's millimetres.
+    // Each element's values of the project's parameters: in the set its parameter names for its category, else a property set
+    // of its own, `Project Parameters`; lengths in the file's millimetres. A classification's codes go as references, below.
+    let mut classified: BTreeMap<(&str, &str), Vec<u64>> = BTreeMap::new();
     for (&id, &ent) in &products {
         let Some(e) = m.elements.get(id) else { continue };
         let Some(params) = e.params() else { continue };
-        let props: Vec<u64> = params
-            .iter()
-            .filter_map(|(name, v)| {
-                // The project's parameters for its category: a component's family's values are its family's.
-                let p = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == e.category()))?;
-                let value = match (p.kind, v) {
-                    (ParameterKind::Text, Value::String(t)) => format!("IFCTEXT({})", s(t)),
-                    (ParameterKind::Number, v) => format!("IFCREAL({})", real(v.as_f64()?)),
-                    (ParameterKind::Length, v) => format!("IFCLENGTHMEASURE({})", real(v.as_f64()?)),
-                    (ParameterKind::YesNo, Value::Bool(b)) => format!("IFCBOOLEAN({})", if *b { ".T." } else { ".F." }),
-                    _ => return None,
-                };
-                Some(w.add(format!("IFCPROPERTYSINGLEVALUE({},$,{value},$)", s(name))))
-            })
-            .collect();
-        if !props.is_empty() {
-            w.define(ent, PARAMETERS, &props, (PROPERTIES, DEFINES), id);
+        let mut sets: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
+        for (name, v) in params {
+            // The project's parameters for its category: a component's family's values are its family's.
+            let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == e.category())) else { continue };
+            if p.classification.is_some() {
+                if let Some(code) = v.as_str().filter(|c| !c.trim().is_empty()) {
+                    classified.entry((name.as_str(), code)).or_default().push(ent);
+                }
+                continue;
+            }
+            let set = p.sets.get(e.category()).map_or(PARAMETERS, String::as_str);
+            if own_property(set, name) {
+                continue;
+            }
+            let value = match (p.kind, v, v.as_f64()) {
+                (ParameterKind::Text, Value::String(t), _) => format!("IFCTEXT({})", s(t)),
+                (ParameterKind::Number, _, Some(x)) => format!("IFCREAL({})", real(x)),
+                (ParameterKind::Length, _, Some(x)) => format!("IFCLENGTHMEASURE({})", real(x)),
+                (ParameterKind::YesNo, Value::Bool(b), _) => format!("IFCBOOLEAN({})", if *b { ".T." } else { ".F." }),
+                _ => continue,
+            };
+            sets.entry(set).or_default().push(w.add(format!("IFCPROPERTYSINGLEVALUE({},$,{value},$)", s(name))));
         }
+        let common = common_pset(e);
+        for (set, props) in sets {
+            if set == PARAMETERS {
+                w.define(ent, PARAMETERS, &props, (PROPERTIES, DEFINES), id);
+            } else if let Some(c) = common.filter(|c| *c == set) {
+                // The element's `Pset_*Common` is written once, with what the export says in it.
+                w.common.entry(id).or_insert((ent, c, Vec::new())).2.extend(props);
+            } else {
+                w.sets.entry((ent, set.to_string())).or_insert((id, Vec::new())).1.extend(props);
+            }
+        }
+    }
+    // Each classification system the project's parameters hold codes of, an `IfcClassification`; each code in it a reference,
+    // associated with the elements holding it.
+    let mut systems: BTreeMap<&str, u64> = BTreeMap::new();
+    for ((name, code), ents) in &classified {
+        let Some(c) = m.parameters.get(*name).and_then(|p| p.classification.as_ref()) else { continue };
+        let system = match systems.get(name) {
+            Some(&system) => system,
+            None => {
+                let edition = c.edition.as_deref().map_or_else(|| "$".to_string(), s);
+                let system = w.add(format!("IFCCLASSIFICATION($,{edition},$,{},$,$,$)", s(&c.system)));
+                systems.insert(name, system);
+                system
+            }
+        };
+        let reference = w.add(format!("IFCCLASSIFICATIONREFERENCE($,{},$,#{system},$,$)", s(code)));
+        let key = key_of(&format!("{name}\u{0}{code}"));
+        w.add(format!("IFCRELASSOCIATESCLASSIFICATION({},$,$,$,({}),#{reference})", w.guid(CLASSIFIED, key), refs(ents)));
     }
     // A placed device's connector (the power one, else the first): `Pset_ElectricalDeviceCommon`, with the poles, and for a power
     // connector the power factor and the voltage (IFC4's types: a ratio, and a bounded value with its set point), and `BIMCraft_Connector` with what IFC has no property for.
@@ -1596,7 +1664,7 @@ pub fn export(m: &Model) -> String {
             device.push(w.add(format!("IFCPROPERTYSINGLEVALUE('PowerFactor',$,IFCNORMALISEDRATIOMEASURE({}),$)", real(c.power_factor))));
             device.push(w.add(format!("IFCPROPERTYBOUNDEDVALUE('RatedVoltage',$,$,$,$,IFCELECTRICVOLTAGEMEASURE({}))", real(c.voltage))));
         }
-        w.define(ent, "Pset_ElectricalDeviceCommon", &device, (DEVICE, DEVICE_DEFINES), id);
+        w.define(ent, DEVICE_SET, &device, (DEVICE, DEVICE_DEFINES), id);
         let system = serde_json::to_value(c.system).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default();
         let mut own = vec![w.text_property("System", None, &system)];
         if !c.classification.is_empty() {
@@ -1624,6 +1692,11 @@ pub fn export(m: &Model) -> String {
     }
     for (id, (ent, pset, props)) in std::mem::take(&mut w.common) {
         w.define(ent, pset, &props, (COMMON, COMMON_DEFINES), id);
+    }
+    // The project parameters' values in sets of other programs': a set of each name an element.
+    for ((ent, set), (id, props)) in std::mem::take(&mut w.sets) {
+        let role = key_of(&set) | 1 << 63;
+        w.define(ent, &set, &props, (role, role ^ 1), id);
     }
     w.write_types(m);
     // Each element's phase and design option, in a property set of its own. The first phase is no value in a
