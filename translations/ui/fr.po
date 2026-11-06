@@ -672,7 +672,7 @@ msgid "Architecture"
 msgstr "Architecture"
 
 #: crates/core/src/schedule.rs:194
-#: crates/core/src/schedule.rs:230
+#: crates/core/src/schedule.rs:233
 msgid "Area"
 msgstr "Surface"
 
@@ -1159,7 +1159,7 @@ msgstr "Catégories"
 msgid "Categories not overridden are drawn as Object Styles sets them."
 msgstr "Les catégories sans remplacement sont dessinées comme le définissent les styles d'objet."
 
-#: crates/core/src/schedule.rs:221
+#: crates/core/src/schedule.rs:224
 #: crates/ui-egui/src/editor.rs:992
 #: crates/ui-egui/src/objectstyles.rs:55
 #: crates/ui-egui/src/properties.rs:1981
@@ -2414,7 +2414,7 @@ msgstr "Démoli"
 msgid "Demolition"
 msgstr "Démolition"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9627
 msgid "Dependent"
 msgstr "Dépendante"
 
@@ -2919,7 +2919,7 @@ msgstr "Paramètres électriques"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Paramètres électriques: les tensions, systèmes de distribution et types de câbles auxquels renvoient les circuits et les tableaux; sections en mm²"
 
-#: crates/core/src/commands.rs:2039
+#: crates/core/src/commands.rs:2042
 msgid "Elements"
 msgstr "Éléments"
 
@@ -3648,7 +3648,7 @@ msgstr "Accrochage à la grille"
 msgid "Grids start at 0, 0 in each view and rotate together."
 msgstr "Les grilles partent de 0, 0 dans chaque vue et pivotent ensemble."
 
-#: crates/core/src/schedule.rs:483
+#: crates/core/src/schedule.rs:486
 msgid "Gross Floor Area"
 msgstr "Surface de plancher brute"
 
@@ -4585,7 +4585,7 @@ msgstr "Reproduire les propriétés: type source '{}' sélectionné. Sélectionn
 msgid "Matched properties: applied type '{}' to {} element(s)"
 msgstr "Propriétés reproduites: type '{}' appliqué à {} élément(s)"
 
-#: crates/core/src/schedule.rs:231
+#: crates/core/src/schedule.rs:234
 #: crates/ui-egui/src/editor.rs:804
 #: crates/ui-egui/src/properties.rs:2048
 #: crates/ui-egui/src/properties.rs:2163
@@ -4973,7 +4973,7 @@ msgstr "Nouveau type"
 msgid "New {}"
 msgstr "Placer: {}"
 
-#: crates/core/src/schedule.rs:1188
+#: crates/core/src/schedule.rs:1191
 msgid "No"
 msgstr "Non"
 
@@ -5131,7 +5131,7 @@ msgstr "Aucun élément sélectionné n'est masqué dans cette vue. Afficher les
 msgid "Nothing was left out."
 msgstr "Rien n'a été omis."
 
-#: crates/core/src/schedule.rs:248
+#: crates/core/src/schedule.rs:251
 msgid "Number"
 msgstr "Numéro"
 
@@ -5534,7 +5534,7 @@ msgstr "Plume {} à {}"
 msgid "Performance"
 msgstr "Performances"
 
-#: crates/core/src/schedule.rs:252
+#: crates/core/src/schedule.rs:255
 msgid "Perimeter"
 msgstr "Périmètre"
 
@@ -6001,7 +6001,7 @@ msgstr "Simple"
 msgid "Plan"
 msgstr "Plan"
 
-#: crates/core/src/schedule.rs:308
+#: crates/core/src/schedule.rs:311
 msgid "Plan Area"
 msgstr "Surface en plan"
 
@@ -6643,11 +6643,11 @@ msgstr "Ruban"
 msgid "Right"
 msgstr "Droite"
 
-#: crates/core/src/schedule.rs:444
+#: crates/core/src/schedule.rs:447
 msgid "Riser Height"
 msgstr "Hauteur de contremarche"
 
-#: crates/core/src/schedule.rs:443
+#: crates/core/src/schedule.rs:446
 msgid "Risers"
 msgstr "Contremarches"
 
@@ -6707,6 +6707,14 @@ msgstr "Calcul de la surface des pièces: où la surface des pièces est mesuré
 #: crates/ui-egui/src/properties.rs:294
 msgid "Room Bounding"
 msgstr "Délimitation de pièce"
+
+#: crates/core/src/schedule.rs:212
+msgid "Room Name"
+msgstr ""
+
+#: crates/core/src/schedule.rs:211
+msgid "Room Number"
+msgstr ""
 
 #: crates/core/src/schedule.rs:118
 msgid "Room Schedule"
@@ -7217,7 +7225,7 @@ msgstr "Côtés:"
 msgid "Silhouettes"
 msgstr "Silhouettes"
 
-#: crates/core/src/schedule.rs:270
+#: crates/core/src/schedule.rs:273
 msgid "Sill"
 msgstr "Allège"
 
@@ -7287,7 +7295,7 @@ msgstr "Porte coulissante"
 msgid "Sliding Window"
 msgstr "Fenêtre coulissante"
 
-#: crates/core/src/schedule.rs:307
+#: crates/core/src/schedule.rs:310
 #: crates/ui-egui/src/properties.rs:1285
 #: crates/ui-egui/src/properties.rs:1347
 #: crates/ui-egui/src/reinforce.rs:111
@@ -7586,7 +7594,7 @@ msgstr "Étriers"
 msgid "Straight"
 msgstr "Droit"
 
-#: crates/core/src/schedule.rs:293
+#: crates/core/src/schedule.rs:296
 msgid "Structural"
 msgstr "Structurel"
 
@@ -8230,7 +8238,7 @@ msgstr "Largeur du carreau"
 msgid "Timber"
 msgstr "Bois"
 
-#: crates/core/src/schedule.rs:513
+#: crates/core/src/schedule.rs:516
 msgid "Title"
 msgstr "Titre"
 
@@ -8323,7 +8331,7 @@ msgstr "Transparence"
 msgid "Transparent"
 msgstr "Transparent"
 
-#: crates/core/src/schedule.rs:445
+#: crates/core/src/schedule.rs:448
 msgid "Tread"
 msgstr "Giron"
 
@@ -8443,7 +8451,7 @@ msgstr "Types"
 msgid "UP"
 msgstr "HAUT"
 
-#: crates/core/src/schedule.rs:254
+#: crates/core/src/schedule.rs:257
 #: crates/ui-egui/src/properties.rs:166
 msgid "Unbounded Height"
 msgstr "Hauteur non délimitée"
@@ -8531,7 +8539,7 @@ msgstr "Format des unités"
 msgid "Unlock alignment"
 msgstr "Déverrouiller l'alignement"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9768
 msgid "Unnamed"
 msgstr "Sans nom"
 
@@ -8788,7 +8796,7 @@ msgstr "Valeur nominale de la tension {}"
 msgid "Voltages"
 msgstr "Tensions"
 
-#: crates/core/src/schedule.rs:210
+#: crates/core/src/schedule.rs:213
 msgid "Volume"
 msgstr "Volume"
 
@@ -8860,7 +8868,7 @@ msgstr "Lavabo"
 msgid "Wave"
 msgstr "Onde"
 
-#: crates/core/src/schedule.rs:360
+#: crates/core/src/schedule.rs:363
 msgid "Weight"
 msgstr "Poids"
 
@@ -9069,7 +9077,7 @@ msgstr "X"
 msgid "Y"
 msgstr "Y"
 
-#: crates/core/src/schedule.rs:1188
+#: crates/core/src/schedule.rs:1191
 msgid "Yes"
 msgstr "Oui"
 
@@ -9659,7 +9667,7 @@ msgstr "{} (non chargé)"
 msgid "{} (primary)"
 msgstr "{} (principale)"
 
-#: crates/core/src/schedule.rs:1178
+#: crates/core/src/schedule.rs:1181
 msgid "{} ({})"
 msgstr "{} ({})"
 

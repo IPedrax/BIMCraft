@@ -672,7 +672,7 @@ msgid "Architecture"
 msgstr "建築"
 
 #: crates/core/src/schedule.rs:194
-#: crates/core/src/schedule.rs:230
+#: crates/core/src/schedule.rs:233
 msgid "Area"
 msgstr "面積"
 
@@ -1159,7 +1159,7 @@ msgstr "類別"
 msgid "Categories not overridden are drawn as Object Styles sets them."
 msgstr "未替換的類別按對像樣式的設定繪製。"
 
-#: crates/core/src/schedule.rs:221
+#: crates/core/src/schedule.rs:224
 #: crates/ui-egui/src/editor.rs:992
 #: crates/ui-egui/src/objectstyles.rs:55
 #: crates/ui-egui/src/properties.rs:1981
@@ -2414,7 +2414,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9627
 msgid "Dependent"
 msgstr "相關"
 
@@ -2919,7 +2919,7 @@ msgstr "電氣設置"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "電氣設置：迴路和配電箱所引用的電壓、配電系統和導線類型；截面積以 mm² 計"
 
-#: crates/core/src/commands.rs:2039
+#: crates/core/src/commands.rs:2042
 msgid "Elements"
 msgstr "圖元"
 
@@ -3648,7 +3648,7 @@ msgstr "網格捕捉"
 msgid "Grids start at 0, 0 in each view and rotate together."
 msgstr "網格在每個視圖中都從 0, 0 開始，並一起旋轉。"
 
-#: crates/core/src/schedule.rs:483
+#: crates/core/src/schedule.rs:486
 msgid "Gross Floor Area"
 msgstr "建築面積"
 
@@ -4585,7 +4585,7 @@ msgstr "符合屬性：已選擇源類型“{}”。選擇目標元素並再次�
 msgid "Matched properties: applied type '{}' to {} element(s)"
 msgstr "已符合屬性：將類型“{}”應用於 {} 個元素"
 
-#: crates/core/src/schedule.rs:231
+#: crates/core/src/schedule.rs:234
 #: crates/ui-egui/src/editor.rs:804
 #: crates/ui-egui/src/properties.rs:2048
 #: crates/ui-egui/src/properties.rs:2163
@@ -4973,7 +4973,7 @@ msgstr "新類型"
 msgid "New {}"
 msgstr "新建{}"
 
-#: crates/core/src/schedule.rs:1188
+#: crates/core/src/schedule.rs:1191
 msgid "No"
 msgstr "否"
 
@@ -5131,7 +5131,7 @@ msgstr "所選內容在此視圖中均未隱藏。“顯示隱藏的圖元”(RH
 msgid "Nothing was left out."
 msgstr "沒有未導入的內容。"
 
-#: crates/core/src/schedule.rs:248
+#: crates/core/src/schedule.rs:251
 msgid "Number"
 msgstr "編號"
 
@@ -5534,7 +5534,7 @@ msgstr "筆 {}，比例 {}"
 msgid "Performance"
 msgstr "性能"
 
-#: crates/core/src/schedule.rs:252
+#: crates/core/src/schedule.rs:255
 msgid "Perimeter"
 msgstr "周長"
 
@@ -6001,7 +6001,7 @@ msgstr "純色"
 msgid "Plan"
 msgstr "平面"
 
-#: crates/core/src/schedule.rs:308
+#: crates/core/src/schedule.rs:311
 msgid "Plan Area"
 msgstr "平面面積"
 
@@ -6643,11 +6643,11 @@ msgstr "功能區"
 msgid "Right"
 msgstr "靠右"
 
-#: crates/core/src/schedule.rs:444
+#: crates/core/src/schedule.rs:447
 msgid "Riser Height"
 msgstr "踢面高度"
 
-#: crates/core/src/schedule.rs:443
+#: crates/core/src/schedule.rs:446
 msgid "Risers"
 msgstr "踢面"
 
@@ -6707,6 +6707,14 @@ msgstr "房間面積計算：測量房間面積的位置；目前為{}"
 #: crates/ui-egui/src/properties.rs:294
 msgid "Room Bounding"
 msgstr "房間邊界"
+
+#: crates/core/src/schedule.rs:212
+msgid "Room Name"
+msgstr ""
+
+#: crates/core/src/schedule.rs:211
+msgid "Room Number"
+msgstr ""
 
 #: crates/core/src/schedule.rs:118
 msgid "Room Schedule"
@@ -7217,7 +7225,7 @@ msgstr "邊數："
 msgid "Silhouettes"
 msgstr "輪廓線"
 
-#: crates/core/src/schedule.rs:270
+#: crates/core/src/schedule.rs:273
 msgid "Sill"
 msgstr "窗台"
 
@@ -7287,7 +7295,7 @@ msgstr "推拉門"
 msgid "Sliding Window"
 msgstr "推拉窗"
 
-#: crates/core/src/schedule.rs:307
+#: crates/core/src/schedule.rs:310
 #: crates/ui-egui/src/properties.rs:1285
 #: crates/ui-egui/src/properties.rs:1347
 #: crates/ui-egui/src/reinforce.rs:111
@@ -7586,7 +7594,7 @@ msgstr "箍筋"
 msgid "Straight"
 msgstr "直線"
 
-#: crates/core/src/schedule.rs:293
+#: crates/core/src/schedule.rs:296
 msgid "Structural"
 msgstr "結構"
 
@@ -8230,7 +8238,7 @@ msgstr "圖塊寬度"
 msgid "Timber"
 msgstr "木材"
 
-#: crates/core/src/schedule.rs:513
+#: crates/core/src/schedule.rs:516
 msgid "Title"
 msgstr "標題"
 
@@ -8323,7 +8331,7 @@ msgstr "透明度"
 msgid "Transparent"
 msgstr "透明"
 
-#: crates/core/src/schedule.rs:445
+#: crates/core/src/schedule.rs:448
 msgid "Tread"
 msgstr "踏板"
 
@@ -8443,7 +8451,7 @@ msgstr "類型"
 msgid "UP"
 msgstr "上"
 
-#: crates/core/src/schedule.rs:254
+#: crates/core/src/schedule.rs:257
 #: crates/ui-egui/src/properties.rs:166
 msgid "Unbounded Height"
 msgstr "無界限高度"
@@ -8531,7 +8539,7 @@ msgstr "單位格式"
 msgid "Unlock alignment"
 msgstr "解鎖對齊"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9768
 msgid "Unnamed"
 msgstr "未命名"
 
@@ -8788,7 +8796,7 @@ msgstr "電壓 {} 標稱值"
 msgid "Voltages"
 msgstr "電壓"
 
-#: crates/core/src/schedule.rs:210
+#: crates/core/src/schedule.rs:213
 msgid "Volume"
 msgstr "體積"
 
@@ -8860,7 +8868,7 @@ msgstr "洗手盆"
 msgid "Wave"
 msgstr "波浪"
 
-#: crates/core/src/schedule.rs:360
+#: crates/core/src/schedule.rs:363
 msgid "Weight"
 msgstr "重量"
 
@@ -9069,7 +9077,7 @@ msgstr "X"
 msgid "Y"
 msgstr "Y"
 
-#: crates/core/src/schedule.rs:1188
+#: crates/core/src/schedule.rs:1191
 msgid "Yes"
 msgstr "是"
 
@@ -9659,7 +9667,7 @@ msgstr "{}（未載入）"
 msgid "{} (primary)"
 msgstr "{}（主選項）"
 
-#: crates/core/src/schedule.rs:1178
+#: crates/core/src/schedule.rs:1181
 msgid "{} ({})"
 msgstr "{}（{}）"
 

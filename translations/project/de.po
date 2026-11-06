@@ -7,7 +7,7 @@ msgid "Air Terminal"
 msgstr "Luftauslass"
 
 #: crates/core/src/schedule.rs:194
-#: crates/core/src/schedule.rs:230
+#: crates/core/src/schedule.rs:233
 msgid "Area"
 msgstr "Fläche"
 
@@ -35,7 +35,7 @@ msgstr "Ziegel"
 msgid "Brick 225 x 75"
 msgstr "Ziegel 225 x 75"
 
-#: crates/core/src/commands.rs:4068
+#: crates/core/src/commands.rs:4080
 msgid "Camera"
 msgstr "Kamera"
 
@@ -43,7 +43,7 @@ msgstr "Kamera"
 msgid "Casement Window"
 msgstr "Drehflügelfenster"
 
-#: crates/core/src/schedule.rs:221
+#: crates/core/src/schedule.rs:224
 msgid "Category"
 msgstr ""
 
@@ -111,7 +111,7 @@ msgstr "Strich-Punkt"
 msgid "Data Outlet"
 msgstr "Datenanschluss"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9627
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -187,8 +187,8 @@ msgstr "Elektro Beleuchtung"
 msgid "Electrical Power"
 msgstr "Elektro Energie"
 
-#: crates/core/src/commands.rs:9354
-#: crates/core/src/commands.rs:11352
+#: crates/core/src/commands.rs:9411
+#: crates/core/src/commands.rs:11409
 msgid "Elevation"
 msgstr "Ansicht"
 
@@ -245,7 +245,7 @@ msgstr "Absperrventil"
 msgid "Glass"
 msgstr "Glas"
 
-#: crates/core/src/schedule.rs:483
+#: crates/core/src/schedule.rs:486
 msgid "Gross Floor Area"
 msgstr "Bruttogrundfläche"
 
@@ -305,7 +305,7 @@ msgstr "Beinbreite"
 msgid "Length"
 msgstr "Länge"
 
-#: crates/core/src/commands.rs:6120
+#: crates/core/src/commands.rs:6177
 #: crates/core/src/model.rs:3085
 msgid "Level"
 msgstr "Geschoss"
@@ -330,11 +330,11 @@ msgstr "Marke"
 msgid "Masking"
 msgstr "Maskierung"
 
-#: crates/core/src/commands.rs:7378
+#: crates/core/src/commands.rs:7435
 msgid "Mass"
 msgstr "Volumenkörper"
 
-#: crates/core/src/schedule.rs:231
+#: crates/core/src/schedule.rs:234
 msgid "Material"
 msgstr ""
 
@@ -366,7 +366,7 @@ msgstr "Name"
 msgid "New Construction"
 msgstr "Neubau"
 
-#: crates/core/src/schedule.rs:1188
+#: crates/core/src/schedule.rs:1191
 msgid "No"
 msgstr "Nein"
 
@@ -374,7 +374,7 @@ msgstr "Nein"
 msgid "North"
 msgstr "Norden"
 
-#: crates/core/src/schedule.rs:248
+#: crates/core/src/schedule.rs:251
 msgid "Number"
 msgstr "Nummer"
 
@@ -402,11 +402,11 @@ msgstr "PVC"
 msgid "Patch Panel"
 msgstr "Patchpanel"
 
-#: crates/core/src/schedule.rs:252
+#: crates/core/src/schedule.rs:255
 msgid "Perimeter"
 msgstr "Umfang"
 
-#: crates/core/src/schedule.rs:308
+#: crates/core/src/schedule.rs:311
 msgid "Plan Area"
 msgstr "Grundfläche"
 
@@ -418,7 +418,7 @@ msgstr "Putz"
 msgid "Porcelain"
 msgstr "Porzellan"
 
-#: crates/core/src/commands.rs:2759
+#: crates/core/src/commands.rs:2771
 msgid "Project"
 msgstr "Projekt"
 
@@ -434,11 +434,11 @@ msgstr "Regal"
 msgid "Recessed Luminaire"
 msgstr "Einbauleuchte"
 
-#: crates/core/src/schedule.rs:444
+#: crates/core/src/schedule.rs:447
 msgid "Riser Height"
 msgstr "Steigungshöhe"
 
-#: crates/core/src/schedule.rs:443
+#: crates/core/src/schedule.rs:446
 msgid "Risers"
 msgstr "Steigungen"
 
@@ -446,9 +446,17 @@ msgstr "Steigungen"
 msgid "Roof tiles"
 msgstr "Dachziegel"
 
-#: crates/core/src/commands.rs:7603
+#: crates/core/src/commands.rs:7660
 msgid "Room"
 msgstr "Raum"
+
+#: crates/core/src/schedule.rs:212
+msgid "Room Name"
+msgstr ""
+
+#: crates/core/src/schedule.rs:211
+msgid "Room Number"
+msgstr ""
 
 #: crates/core/src/schedule.rs:118
 msgid "Room Schedule"
@@ -474,8 +482,8 @@ msgstr "Estrich"
 msgid "Seat Height"
 msgstr "Sitzhöhe"
 
-#: crates/core/src/commands.rs:9331
-#: crates/core/src/commands.rs:11351
+#: crates/core/src/commands.rs:9388
+#: crates/core/src/commands.rs:11408
 msgid "Section"
 msgstr "Schnitt"
 
@@ -503,7 +511,7 @@ msgstr "Bestand + Neu anzeigen"
 msgid "Shower"
 msgstr "Dusche"
 
-#: crates/core/src/schedule.rs:270
+#: crates/core/src/schedule.rs:273
 msgid "Sill"
 msgstr "Brüstung"
 
@@ -523,7 +531,7 @@ msgstr "Schiebetür"
 msgid "Sliding Window"
 msgstr "Schiebefenster"
 
-#: crates/core/src/schedule.rs:307
+#: crates/core/src/schedule.rs:310
 msgid "Slope"
 msgstr "Neigung"
 
@@ -583,7 +591,7 @@ msgstr "Holz"
 msgid "Total"
 msgstr "Gesamt"
 
-#: crates/core/src/schedule.rs:445
+#: crates/core/src/schedule.rs:448
 msgid "Tread"
 msgstr "Auftritt"
 
@@ -595,11 +603,11 @@ msgstr "Typ"
 msgid "UP"
 msgstr "AUF"
 
-#: crates/core/src/schedule.rs:254
+#: crates/core/src/schedule.rs:257
 msgid "Unbounded Height"
 msgstr "Unbegrenzte Höhe"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9768
 msgid "Unnamed"
 msgstr "Unbenannt"
 
@@ -611,7 +619,7 @@ msgstr "Vertikal"
 msgid "Voice Outlet"
 msgstr "Telefonanschluss"
 
-#: crates/core/src/schedule.rs:210
+#: crates/core/src/schedule.rs:213
 msgid "Volume"
 msgstr "Volumen"
 
@@ -635,7 +643,7 @@ msgstr "Schrank"
 msgid "Washbasin"
 msgstr "Waschbecken"
 
-#: crates/core/src/schedule.rs:360
+#: crates/core/src/schedule.rs:363
 msgid "Weight"
 msgstr "Gewicht"
 
@@ -659,7 +667,7 @@ msgstr "Fenstertabelle"
 msgid "Worktop"
 msgstr "Arbeitsplatte"
 
-#: crates/core/src/schedule.rs:1188
+#: crates/core/src/schedule.rs:1191
 msgid "Yes"
 msgstr "Ja"
 

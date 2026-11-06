@@ -672,7 +672,7 @@ msgid "Architecture"
 msgstr "Architectuur"
 
 #: crates/core/src/schedule.rs:194
-#: crates/core/src/schedule.rs:230
+#: crates/core/src/schedule.rs:233
 msgid "Area"
 msgstr "Oppervlakte"
 
@@ -1159,7 +1159,7 @@ msgstr "Categorieën"
 msgid "Categories not overridden are drawn as Object Styles sets them."
 msgstr "Categorieën zonder overschrijving worden getekend zoals de objectstijlen bepalen."
 
-#: crates/core/src/schedule.rs:221
+#: crates/core/src/schedule.rs:224
 #: crates/ui-egui/src/editor.rs:992
 #: crates/ui-egui/src/objectstyles.rs:55
 #: crates/ui-egui/src/properties.rs:1981
@@ -2414,7 +2414,7 @@ msgstr "Gesloopt"
 msgid "Demolition"
 msgstr "Sloop"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9627
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -2919,7 +2919,7 @@ msgstr "Elektrische instellingen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrische instellingen: de spanningen, distributiesystemen en draadtypes waarnaar kringen en verdeelborden verwijzen; doorsneden in mm²"
 
-#: crates/core/src/commands.rs:2039
+#: crates/core/src/commands.rs:2042
 msgid "Elements"
 msgstr "Elementen"
 
@@ -3648,7 +3648,7 @@ msgstr "Snappen op raster"
 msgid "Grids start at 0, 0 in each view and rotate together."
 msgstr "Rasters beginnen in elke weergave bij 0, 0 en draaien samen."
 
-#: crates/core/src/schedule.rs:483
+#: crates/core/src/schedule.rs:486
 msgid "Gross Floor Area"
 msgstr "Bruto vloeroppervlakte"
 
@@ -4585,7 +4585,7 @@ msgstr "Eigenschappen overnemen: brontype '{}' geselecteerd. Selecteer doeleleme
 msgid "Matched properties: applied type '{}' to {} element(s)"
 msgstr "Eigenschappen overgenomen: type '{}' toegepast op {} element(en)"
 
-#: crates/core/src/schedule.rs:231
+#: crates/core/src/schedule.rs:234
 #: crates/ui-egui/src/editor.rs:804
 #: crates/ui-egui/src/properties.rs:2048
 #: crates/ui-egui/src/properties.rs:2163
@@ -4973,7 +4973,7 @@ msgstr "Nieuw type"
 msgid "New {}"
 msgstr "Nieuw: {}"
 
-#: crates/core/src/schedule.rs:1188
+#: crates/core/src/schedule.rs:1191
 msgid "No"
 msgstr "Neen"
 
@@ -5131,7 +5131,7 @@ msgstr "Niets van wat geselecteerd is, is verborgen in deze weergave. Verborgen 
 msgid "Nothing was left out."
 msgstr "Er werd niets weggelaten."
 
-#: crates/core/src/schedule.rs:248
+#: crates/core/src/schedule.rs:251
 msgid "Number"
 msgstr "Nummer"
 
@@ -5534,7 +5534,7 @@ msgstr "Pen {} bij {}"
 msgid "Performance"
 msgstr "Prestaties"
 
-#: crates/core/src/schedule.rs:252
+#: crates/core/src/schedule.rs:255
 msgid "Perimeter"
 msgstr "Omtrek"
 
@@ -6001,7 +6001,7 @@ msgstr "Gewoon"
 msgid "Plan"
 msgstr "Plattegrond"
 
-#: crates/core/src/schedule.rs:308
+#: crates/core/src/schedule.rs:311
 msgid "Plan Area"
 msgstr "Oppervlakte in plattegrond"
 
@@ -6643,11 +6643,11 @@ msgstr "Lint"
 msgid "Right"
 msgstr "Rechts"
 
-#: crates/core/src/schedule.rs:444
+#: crates/core/src/schedule.rs:447
 msgid "Riser Height"
 msgstr "Hoogte optrede"
 
-#: crates/core/src/schedule.rs:443
+#: crates/core/src/schedule.rs:446
 msgid "Risers"
 msgstr "Optreden"
 
@@ -6707,6 +6707,14 @@ msgstr "Berekening van de ruimteoppervlakte: waar ruimteoppervlaktes gemeten wor
 #: crates/ui-egui/src/properties.rs:294
 msgid "Room Bounding"
 msgstr "Ruimtebegrenzing"
+
+#: crates/core/src/schedule.rs:212
+msgid "Room Name"
+msgstr ""
+
+#: crates/core/src/schedule.rs:211
+msgid "Room Number"
+msgstr ""
 
 #: crates/core/src/schedule.rs:118
 msgid "Room Schedule"
@@ -7217,7 +7225,7 @@ msgstr "Zijden:"
 msgid "Silhouettes"
 msgstr "Silhouetten"
 
-#: crates/core/src/schedule.rs:270
+#: crates/core/src/schedule.rs:273
 msgid "Sill"
 msgstr "Borstwering"
 
@@ -7287,7 +7295,7 @@ msgstr "Schuifdeur"
 msgid "Sliding Window"
 msgstr "Schuifraam"
 
-#: crates/core/src/schedule.rs:307
+#: crates/core/src/schedule.rs:310
 #: crates/ui-egui/src/properties.rs:1285
 #: crates/ui-egui/src/properties.rs:1347
 #: crates/ui-egui/src/reinforce.rs:111
@@ -7586,7 +7594,7 @@ msgstr "Beugels"
 msgid "Straight"
 msgstr "Recht"
 
-#: crates/core/src/schedule.rs:293
+#: crates/core/src/schedule.rs:296
 msgid "Structural"
 msgstr "Dragend"
 
@@ -8230,7 +8238,7 @@ msgstr "Breedte van de tegel"
 msgid "Timber"
 msgstr "Hout"
 
-#: crates/core/src/schedule.rs:513
+#: crates/core/src/schedule.rs:516
 msgid "Title"
 msgstr "Titel"
 
@@ -8323,7 +8331,7 @@ msgstr "Transparantie"
 msgid "Transparent"
 msgstr "Transparant"
 
-#: crates/core/src/schedule.rs:445
+#: crates/core/src/schedule.rs:448
 msgid "Tread"
 msgstr "Aantrede"
 
@@ -8443,7 +8451,7 @@ msgstr "Types"
 msgid "UP"
 msgstr "OMHOOG"
 
-#: crates/core/src/schedule.rs:254
+#: crates/core/src/schedule.rs:257
 #: crates/ui-egui/src/properties.rs:166
 msgid "Unbounded Height"
 msgstr "Onbegrensde hoogte"
@@ -8531,7 +8539,7 @@ msgstr "Eenhedenformaat"
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9768
 msgid "Unnamed"
 msgstr "Naamloos"
 
@@ -8788,7 +8796,7 @@ msgstr "Nominale waarde van spanning {}"
 msgid "Voltages"
 msgstr "Spanningen"
 
-#: crates/core/src/schedule.rs:210
+#: crates/core/src/schedule.rs:213
 msgid "Volume"
 msgstr "Volume"
 
@@ -8860,7 +8868,7 @@ msgstr "Wastafel"
 msgid "Wave"
 msgstr "Golf"
 
-#: crates/core/src/schedule.rs:360
+#: crates/core/src/schedule.rs:363
 msgid "Weight"
 msgstr "Gewicht"
 
@@ -9069,7 +9077,7 @@ msgstr "X"
 msgid "Y"
 msgstr "Y"
 
-#: crates/core/src/schedule.rs:1188
+#: crates/core/src/schedule.rs:1191
 msgid "Yes"
 msgstr "Ja"
 
@@ -9659,7 +9667,7 @@ msgstr "{} (niet geladen)"
 msgid "{} (primary)"
 msgstr "{} (primair)"
 
-#: crates/core/src/schedule.rs:1178
+#: crates/core/src/schedule.rs:1181
 msgid "{} ({})"
 msgstr "{} ({})"
 
