@@ -2749,6 +2749,9 @@ pub struct Model {
     /// Its wire types, by name: material, insulation, temperature and the ampacity of each section, mm².
     #[serde(default = "crate::electrical::wire_types")]
     pub wire_types: BTreeMap<String, crate::electrical::WireType>,
+    /// Where it stands in the world: its Project Base Point, its Survey Point and its locations.
+    #[serde(default, skip_serializing_if = "crate::coordinates::Coordinates::is_default")]
+    pub coordinates: crate::coordinates::Coordinates,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -2845,6 +2848,7 @@ impl Model {
             voltages: crate::electrical::voltages(),
             distribution_systems: crate::electrical::distribution_systems(),
             wire_types: crate::electrical::wire_types(),
+            coordinates: crate::coordinates::Coordinates::named(language.word(crate::coordinates::INTERNAL)),
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -5862,6 +5866,7 @@ impl Model {
             t.check(n)?;
         }
         crate::electrical::check(self)?;
+        self.coordinates.check()?;
         for (n, x) in &self.materials {
             for p in [&x.cut_pattern, &x.surface_pattern].into_iter().flatten() {
                 if !self.fill_patterns.contains_key(p) {
@@ -7167,6 +7172,7 @@ impl Model {
             voltages,
             distribution_systems,
             wire_types,
+            coordinates,
             elements: _,
             library,
             loaded,
@@ -7205,6 +7211,7 @@ impl Model {
             && *voltages == o.voltages
             && *distribution_systems == o.distribution_systems
             && *wire_types == o.wire_types
+            && *coordinates == o.coordinates
             && *library == o.library
             && loaded.len() == o.loaded.len()
             && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))
