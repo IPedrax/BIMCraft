@@ -2413,7 +2413,7 @@ msgstr "Zbourané"
 msgid "Demolition"
 msgstr "Demolice"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9574
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -8530,7 +8530,7 @@ msgstr "Formát jednotek"
 msgid "Unlock alignment"
 msgstr "Odemknout zarovnání"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9715
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
