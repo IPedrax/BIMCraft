@@ -3396,11 +3396,11 @@ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:496
 #: crates/ui-egui/src/editor/document.rs:938
 msgid "Family Types"
-msgstr ""
+msgstr "Tipos de família"
 
 #: crates/ui-egui/src/editor/document.rs:495
 msgid "Family Types: the family's parameters, their formulas, and its types"
-msgstr ""
+msgstr "Tipos de família: os parâmetros da família, suas fórmulas e seus tipos"
 
 #: crates/ui-egui/src/editor/document.rs:948
 #: crates/ui-egui/src/editor/document.rs:1111
