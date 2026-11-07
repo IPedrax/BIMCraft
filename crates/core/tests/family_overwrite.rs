@@ -335,3 +335,68 @@ fn reload_preserves_reference_planes_lines_and_form_hosts() {
     restored.check().unwrap();
     assert_eq!(restored.families["Hosted reload"], *after);
 }
+
+#[test]
+fn reload_replaces_all_family_options_and_resets_omitted_defaults() {
+    use bimcraft_core::family::{Expr, Family};
+    let old_options = json!({"work_plane_based":true,"always_vertical":false,"cut_with_voids_when_loaded":true,"shared":true,
+        "room_calculation_point":["Width / 2",0,0],"cut_in_views":false,"omniclass":{"number":"23.30","title":"Original"}});
+    for policy in [None, Some("no"), Some("version"), Some("version_and_values")] {
+        let mut s = Session::new();
+        run(
+            &mut s,
+            json!({"name":"Options reload","parameters":[{"name":"Width","value":100}],"types":{"A":{}},
+            "forms":[{"profile":[[0,0],[10,0],[10,10],[0,10]],"to":20}],"options":old_options}),
+        );
+        let before = s.model.families["Options reload"].clone();
+        let mut incoming = before.clone();
+        incoming.merge_options(&Family::default().options_json()).unwrap();
+        incoming.forms[0].to = Expr::Number(40.);
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("options.json");
+        let mut value = serde_json::to_value(&incoming).unwrap();
+        value["name"] = json!("Options reload");
+        std::fs::write(&file, value.to_string()).unwrap();
+        let mut p = json!({"path":file});
+        if let Some(policy) = policy {
+            p["overwrite"] = json!(policy);
+        }
+        run(&mut s, p);
+        let f = &s.model.families["Options reload"];
+        if matches!(policy, Some("version" | "version_and_values")) {
+            assert_eq!(f.options_json(), Family::default().options_json());
+            assert_eq!(f.forms[0].to, Expr::Number(40.));
+        } else {
+            assert_eq!(f.options_json(), before.options_json());
+        }
+    }
+}
+
+#[test]
+fn loading_and_reloading_a_file_keeps_nondefault_family_options() {
+    use bimcraft_core::family::{Expr, Family};
+    let mut f = Family::default();
+    f.types.insert("A".into(), Default::default());
+    let options = json!({"work_plane_based":true,"always_vertical":false,"cut_with_voids_when_loaded":true,"shared":true,
+        "room_calculation_point":[10,20,30],"cut_in_views":false,"omniclass":{"number":"23.30","title":"Incoming"}});
+    f.merge_options(&options).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("incoming.json");
+    let mut value = serde_json::to_value(&f).unwrap();
+    value["name"] = json!("Incoming options");
+    std::fs::write(&file, value.to_string()).unwrap();
+    let mut s = Session::new();
+    run(&mut s, json!({"path":file}));
+    assert_eq!(s.model.families["Incoming options"].options_json(), f.options_json());
+    run(&mut s, json!({"name":"Incoming options","save":file}));
+    let mut value: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    assert!(value.get("options").is_none());
+    assert_eq!(value["omniclass"]["title"], "Incoming");
+    value["room_calculation_point"] = json!([11, 22, 33]);
+    std::fs::write(&file, value.to_string()).unwrap();
+    run(&mut s, json!({"path":file,"overwrite":"version"}));
+    let after = &s.model.families["Incoming options"];
+    assert_eq!(after.room_calculation_point, Some([Expr::Number(11.), Expr::Number(22.), Expr::Number(33.)]));
+    assert_eq!(after.omniclass, f.omniclass);
+    assert!(after.shared && after.work_plane_based && !after.always_vertical);
+}

@@ -10580,9 +10580,11 @@ fn family(s: &mut Session, p: &Value) -> R {
         .into_iter()
         .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
         .collect();
-        // Its options, flat fields in a file, as the command takes them.
-        if let Some(options) = crate::family::Family::options_from_fields(&mut fields) {
-            family.insert("options".into(), options);
+        // Keep file fields canonical until its replacement policy has built the incoming definition.
+        for key in crate::family::OPTION_KEYS {
+            if let Some(value) = fields.remove(key) {
+                family.insert(key.into(), value);
+            }
         }
         if let Some(policy) = &overwrite {
             let name =
@@ -10606,6 +10608,9 @@ fn family(s: &mut Session, p: &Value) -> R {
             }
         }
         // A file holds the definition's names; translate only after applying its reload policy.
+        if let Some(options) = crate::family::Family::options_from_fields(&mut family) {
+            family.insert("options".into(), options);
+        }
         for (field, command) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
             if let Some(value) = family.remove(field) {
                 family.insert(command.into(), value);
