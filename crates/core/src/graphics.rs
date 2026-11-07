@@ -289,12 +289,12 @@ pub enum Dash {
 }
 
 impl Dash {
-    /// The on and off lengths a line is drawn with, px.
-    fn pattern(self) -> Option<Vec<f32>> {
+    /// The on and off lengths a line is drawn with, px, on paper `k` times [`crate::sheet::DENSITY`] pixels to the mm.
+    fn pattern(self, k: f32) -> Option<Vec<f32>> {
         match self {
             Dash::Solid => None,
-            Dash::Dashed => Some(vec![10.0, 5.0]),
-            Dash::Dotted => Some(vec![2.0, 4.0]),
+            Dash::Dashed => crate::render::on_paper(&crate::render::DASHED, k),
+            Dash::Dotted => crate::render::on_paper(&[2.0, 4.0], k),
         }
     }
 }
@@ -1257,6 +1257,7 @@ impl Look {
         if self.paint.is_empty() {
             return;
         }
+        let paper = d.paper();
         for (((prim, owner), part), pen) in d.prims.iter_mut().zip(&d.owners).zip(&d.parts).zip(d.pens.iter_mut()) {
             let Some(over) = owner.and_then(|id| self.paint.get(&id)) else { continue };
             let style = if *part == Part::Cut { &over.cut } else { &over.projection };
@@ -1272,7 +1273,7 @@ impl Look {
                             *pen = Some(p);
                         }
                         if let Some(k) = style.dash {
-                            *dash = k.pattern();
+                            *dash = k.pattern(paper);
                         }
                     }
                     if over.halftone {
@@ -1336,10 +1337,14 @@ pub(crate) mod testing {
     }
 
     /// Pen, colour and dash of the lines `id` owns: `u8::MAX` for a line no pen draws (lettering's).
+    /// Each line element `id` draws: its pen, its colour and its dashes, px of a sheet's drawing (on the paper, whatever the zoom).
     pub(crate) fn lines(d: &Drawing, id: u64) -> Vec<(u8, Rgb, Option<Vec<f32>>)> {
+        let paper = |x: &f32| (x / d.paper() * 100.0).round() / 100.0;
         (d.prims.iter().zip(&d.owners).zip(&d.pens))
             .filter_map(|((p, o), pen)| match p {
-                Prim::Line { color, dash, .. } if *o == Some(id) => Some((pen.map_or(u8::MAX, |p| p.0), *color, dash.clone())),
+                Prim::Line { color, dash, .. } if *o == Some(id) => {
+                    Some((pen.map_or(u8::MAX, |p| p.0), *color, dash.as_ref().map(|v| v.iter().map(paper).collect())))
+                }
                 _ => None,
             })
             .collect()
