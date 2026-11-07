@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::family::{Expr, Frame, PlaneRef};
-use crate::model::{HostRef, Hosted, ReferencePlane};
+use crate::model::{FaceRole, HostRef, Hosted, ReferencePlane};
 use crate::view3d::{P3, dot, sub};
 
 /// `[x, y]` (at `z`) or `[x, y, z]` under `key`, mm within [`MAX_COORD`]: which of the two it was given as, and the point.
@@ -38,10 +38,12 @@ pub(super) fn reference_plane(s: &mut Session, p: &Value) -> R {
     Ok(json!({"id": id, "name": name}))
 }
 
-/// What a command's `host` names: a level, or a reference plane of the project (by name, id or GUID).
+/// What a command's `host` names: a level, a reference plane of the project (by name, id or GUID), or a face of a wall, a
+/// floor, a ceiling or a roof.
 pub(super) enum Given {
     Level(Guid),
     Plane(Guid),
+    Face(Guid, FaceRole),
 }
 
 /// `host`, `{"level": …}` or `{"plane": …}`, if given.
@@ -51,10 +53,41 @@ pub(super) fn host_param(c: &str, m: &Model, p: &Value) -> Result<Option<Given>,
         Some(v) => v,
         None => return Ok(None),
     };
-    let wrong = || bad(c, format!("`host` is {{\"level\": name | id}} or {{\"plane\": name | id | GUID}} (a reference plane), not {v}"));
+    let wrong = || {
+        bad(
+            c,
+            format!(
+                "`host` is {{\"level\": name | id}}, {{\"plane\": name | id | GUID}} (a reference plane) or {{\"face\": {{\"element\": \
+                 id | GUID, \"face\": exterior | interior | top | bottom}}}} (a face of a wall, a floor, a ceiling or a roof), not {v}"
+            ),
+        )
+    };
     let Some(o) = v.as_object().filter(|o| o.len() == 1) else { return Err(wrong()) };
     if o.contains_key("level") {
         return Ok(Some(Given::Level(level_param(c, m, v, "level")?)));
+    }
+    if let Some(f) = o.get("face") {
+        let Some(f) = f.as_object().filter(|f| f.len() == 2 && f.contains_key("element") && f.contains_key("face")) else {
+            return Err(wrong());
+        };
+        let id = element_id(c, m, &f["element"])?;
+        let face: FaceRole = serde_json::from_value(f["face"].clone())
+            .map_err(|_| bad(c, format!("`host` `face` is exterior, interior, top or bottom, not {}", f["face"])))?;
+        let e = m.elements.get(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
+        if !matches!(e.category(), "wall" | "floor" | "ceiling" | "roof") {
+            return Err(bad(
+                c,
+                format!(
+                    "`host`: {} {id} has no faces to host on: a component goes on a face of a wall, a floor, a ceiling or a roof",
+                    e.category()
+                ),
+            ));
+        }
+        if !face.of(e.category()) {
+            let has = if e.category() == "wall" { "exterior and interior" } else { "top and bottom" };
+            return Err(bad(c, format!("`host`: {} {id} has no face `{}`; its faces are {has}", e.category(), face.name())));
+        }
+        return Ok(Some(Given::Face(m.guid(id), face)));
     }
     let Some(plane) = o.get("plane") else { return Err(wrong()) };
     let id = match plane {
@@ -91,6 +124,16 @@ fn on_plane(c: &str, frame: &Frame, given: (bool, P3)) -> Result<[f64; 2], Strin
         return Err(bad(c, "the reference plane is upright: give `at` as a point in space, [x, y, z], to put on it"));
     }
     Ok(Model::hosted_uv(frame, w, 0.0))
+}
+
+/// A component's place on face `face` of `element` from a point given: on a wall's side `[x, y, z]`, its nearest point
+/// there (a plan point alone has no height on it); on a floor's, a ceiling's or a roof's, the point in plan.
+fn on_face(c: &str, m: &Model, element: Guid, face: FaceRole, given: (bool, P3)) -> Result<[f64; 2], String> {
+    let (spatial, w) = given;
+    if !spatial && matches!(face, FaceRole::Exterior | FaceRole::Interior) {
+        return Err(bad(c, "a wall's side is upright: give `at` as a point in space, [x, y, z], to put on it"));
+    }
+    m.face_uv(element, face, w).ok_or_else(|| bad(c, "`host`: no such face"))
 }
 
 /// The `component` command: a family's type placed on a level, or on a reference plane (`host`).
@@ -144,6 +187,28 @@ pub(super) fn component(s: &mut Session, p: &Value) -> R {
                 host: Some(hosted),
             }
         }
+        Some(Given::Face(element, face)) => {
+            let given = point2or3(c, p, "at", 0.0)?.ok_or_else(|| bad(c, "`at` [x, y] or [x, y, z] is required"))?;
+            let host = HostRef::Face { element, face };
+            let hosted = Hosted { host, uv: on_face(c, m, element, face, given)?, offset: offset.unwrap_or(0.0) };
+            let w = m.host_at(&hosted).ok_or_else(|| bad(c, "`host`: no such face"))?.lifted(hosted.offset);
+            let level = match p.get("level") {
+                v if absent(v) => level_under(m, w[2]).ok_or_else(|| bad(c, "the model has no levels"))?,
+                _ => level_param(c, m, p, "level")?,
+            };
+            Component {
+                adaptive,
+                family,
+                type_name,
+                level,
+                at: P2(w[0], w[1]),
+                angle,
+                offset: w[2] - m.elevation(level),
+                mirrored,
+                params,
+                host: Some(hosted),
+            }
+        }
         given => {
             let level = match given {
                 Some(Given::Level(l)) => l,
@@ -176,7 +241,7 @@ fn components_work_plane(s: &mut Session, p: &Value) -> R {
     only(c, p, &["ids", "id", "host"])?;
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
-    let given = host_param(c, m, p)?.ok_or_else(|| bad(c, "`host` {\"level\": …} or {\"plane\": …} is required"))?;
+    let given = host_param(c, m, p)?.ok_or_else(|| bad(c, "`host` {\"level\": …}, {\"plane\": …} or {\"face\": …} is required"))?;
     let mut changed = Vec::new();
     for id in ids {
         let Some(Element::Component(old)) = m.elements.get(id) else {
@@ -197,6 +262,15 @@ fn components_work_plane(s: &mut Session, p: &Value) -> R {
                 let uv = Model::hosted_uv(&frame, if upright { w } else { [w[0], w[1], 0.0] }, if upright { offset } else { 0.0 });
                 let hosted = Hosted { host, uv, offset };
                 let at = Model::hosted_point(&frame, uv, offset);
+                (cp.at, cp.offset, cp.host) = (P2(at[0], at[1]), at[2] - m.elevation(cp.level), Some(hosted));
+            }
+            Given::Face(element, face) => {
+                // Taken onto the face (on a wall's side, its nearest point), its Offset from Host kept from a plane or a face.
+                let offset = old.host.map_or(0.0, |h| h.offset);
+                let probe = Hosted { host: HostRef::Face { element, face }, uv: [0.0, 0.0], offset };
+                let uv = m.host_uv(&probe, w).ok_or_else(|| bad(c, "`host`: no such face"))?;
+                let hosted = Hosted { uv, ..probe };
+                let at = m.host_at(&hosted).ok_or_else(|| bad(c, "`host`: no such face"))?.lifted(offset);
                 (cp.at, cp.offset, cp.host) = (P2(at[0], at[1]), at[2] - m.elevation(cp.level), Some(hosted));
             }
         }

@@ -136,7 +136,7 @@ and the content.
 |---|---|
 | Family editor sketch mode: sketches drawn on screen, sweeps along a path and blends (revolve and void forms are done; reference planes and reference lines, with forms drawn on them, are in the model and the `family` command; left: drawing them in views, dimensions and labels that drive them, and a work plane picked per form in the editor) | XL |
 | 2D sketch constraint solver (dimensions bound to parameters, equal, aligned, locked) | L |
-| Hosted families on floors, ceilings and faces, with cuts in the host (doors and windows host on walls today, their voids cutting the wall in their own shape) | L |
+| Hosted families on floors, ceilings and faces: Place on Face (T16) done, on the sides of walls and the tops and bottoms of floors, ceilings and roofs; left: their voids cutting the host (T16b; doors and windows host on walls today, their voids cutting the wall in their own shape) | L |
 | Nested and shared families; type catalogs (CSV) | M |
 | Shared parameters file (Manage > Shared Parameters): done in the core (`shared_parameters` command: Revit's tab-separated layout read and written, parameters loaded into families by GUID and exported from them); left: the desktop dialog, and shared parameters as project parameters and in schedules by GUID | S |
 | Visibility per view direction and detail level for a family's forms and symbols | M |
