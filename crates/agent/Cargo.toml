@@ -15,3 +15,8 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+
+# Stopping an agent stops what it started: its process group, signalled directly (safe, no `kill` program, whose arguments
+# Ubuntu's procps and util-linux read differently: one of them killed the caller's own group, CI runner and all).
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["process"] }

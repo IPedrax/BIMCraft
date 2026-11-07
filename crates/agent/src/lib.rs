@@ -413,9 +413,11 @@ fn detach(_: &mut Command) {}
 
 /// The child stopped, and on Unix its group with it.
 fn stop(child: &mut std::process::Child) {
+    // The group the child leads (`detach` made it), and only that: never through a `kill` program, which may read `-<pgid>`
+    // as something else and signal the caller's own group.
     #[cfg(unix)]
-    {
-        let _ = Command::new("kill").args(["-KILL", &format!("-{}", child.id())]).stdout(Stdio::null()).stderr(Stdio::null()).status();
+    if let Some(group) = i32::try_from(child.id()).ok().filter(|&p| p > 1).and_then(rustix::process::Pid::from_raw) {
+        let _ = rustix::process::kill_process_group(group, rustix::process::Signal::KILL);
     }
     #[cfg(windows)]
     {

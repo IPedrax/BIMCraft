@@ -141,3 +141,31 @@ fn claudes_error_result_is_an_error() {
     assert_eq!(unwrap_claude(r#"{"result":"{\"rows\":[]}"}"#).unwrap(), r#"{"rows":[]}"#);
     assert_eq!(unwrap_claude("plain").unwrap(), "plain");
 }
+
+/// Cancelled, an agent's whole group stops, what it started too, and nothing else: the test running it is still here to say so.
+#[cfg(target_os = "linux")]
+#[test]
+fn cancelling_stops_what_the_agent_started_and_nothing_else() {
+    let dir = tempfile::tempdir().unwrap();
+    let pid_file = dir.path().join("child.pid");
+    let agent = fake(dir.path(), &format!("sleep 60 & echo $! > {}; wait", pid_file.display()));
+    let s = Settings { preset: Preset::Custom, command: agent, ..Settings::default() };
+    let call = prepare(&s, &job(), dir.path()).unwrap();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let c2 = Arc::clone(&cancel);
+    let file = pid_file.clone();
+    std::thread::spawn(move || {
+        while !file.exists() {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        std::thread::sleep(Duration::from_millis(100));
+        c2.store(true, Ordering::Relaxed);
+    });
+    assert_eq!(run(&call, &cancel).unwrap_err(), "cancelled");
+    let pid = std::fs::read_to_string(&pid_file).unwrap().trim().to_string();
+    // Gone, or a zombie nobody has reaped yet: not running.
+    std::thread::sleep(Duration::from_millis(200));
+    let state = std::fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
+    let running = state.rsplit(')').next().map(str::trim).is_some_and(|s| s.starts_with('S') || s.starts_with('R'));
+    assert!(!running, "the agent's own child is stopped too: {state}");
+}
