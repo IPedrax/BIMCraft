@@ -21,6 +21,7 @@ use crate::fills::{self, FillPattern, FilledRegionType};
 use crate::geom::{self, P2, Region};
 use crate::graphics::{self, Graphics, ViewFilter, ViewTemplate};
 pub use crate::groups::{DetailGroup, RepeatingDetail};
+pub use crate::hosting::{HostRef, Hosted, ReferencePlane};
 use crate::language::Language;
 pub use crate::lines::DetailLine;
 use crate::lines::{self, LinePattern, LineStyle};
@@ -122,7 +123,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// drawn on a `host` (one of them) where it named `plane` (xy, xz or yz); a form of 19 on `xz` swept along +y, and its host,
 /// Center (Front/Back), has its normal toward -y, so 19 read by 20 has its `from` and `to` negated (and swapped). A build
 /// of 19 would refuse `host`. (18 is the adaptive families' branch's number, 19 is the family parameters'.)
-pub const FORMAT: u32 = 21;
+///
+/// 22: the project has reference planes (`refplane`), and a work plane-based component may be hosted on one (`host`), its
+/// `at` and `offset` following the plane and its family's axes tilted with it; a build of 21 would leave both out and stand
+/// the component upright where it was, no longer moving with its plane.
+pub const FORMAT: u32 = 22;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -1591,7 +1596,8 @@ pub struct Run {
 
 /// A family's type placed: at `at` on `level`, `offset` mm up from it, turned `angle` degrees
 /// (counter-clockwise from east) and, `mirrored`, flipped across its own x axis; `params`, its
-/// instance parameters' values where they aren't the family's.
+/// instance parameters' values where they aren't the family's. Hosted on a reference plane (`host`), `level` is its
+/// Schedule Level, `at` and `offset` follow the plane, and it may tilt with it (`Model::component_placement`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Component {
@@ -1608,6 +1614,10 @@ pub struct Component {
     pub mirrored: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// What a work plane-based component stands on, where that isn't its level: its place on a reference plane, which its
+    /// `at` and `offset` are worked out from (`crate::hosting`). None, it is on `level`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<Hosted>,
 }
 
 /// A stair from `level` up to `top_level` (or `height` mm), climbing from the middle of its first
@@ -1985,7 +1995,7 @@ macro_rules! visit_refs {
                     f(g)
                 }
             }
-            Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
+            Element::Grid(_) | Element::RefPlane(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
@@ -2029,7 +2039,10 @@ macro_rules! visit_refs {
                 f(& $($m)? v.view);
             }
             run_arm!(r) => f(& $($m)? r.level),
-            Element::Component(c) => f(& $($m)? c.level),
+            Element::Component(c) => {
+                f(& $($m)? c.level);
+                if let Some(Hosted { host: HostRef::Plane(g), .. }) = & $($m)? c.host { f(g) }
+            }
             Element::Railing(r) => {
                 f(& $($m)? r.level);
                 if let Some(g) = & $($m)? r.host { f(g) }
@@ -2066,6 +2079,9 @@ macro_rules! visit_refs {
 pub enum Element {
     Level(Level),
     Grid(Grid),
+    /// A reference plane of the project, which work plane-based components are hosted on.
+    #[serde(rename = "refplane")]
+    RefPlane(ReferencePlane),
     Wall(Wall),
     Floor(Floor),
     Ceiling(Ceiling),
@@ -2313,6 +2329,7 @@ impl Element {
             Element::PlanView(_) => "planview",
             Element::Level(_) => "level",
             Element::Grid(_) => "grid",
+            Element::RefPlane(_) => "refplane",
             Element::Wall(_) => "wall",
             Element::Floor(_) => "floor",
             Element::Ceiling(_) => "ceiling",
@@ -3268,6 +3285,10 @@ impl Model {
         if f.symbols.is_empty() {
             return Vec::new();
         }
+        // Tilted with its plane, it has no plan of its own to draw its symbols in.
+        if !self.component_placement(c).upright {
+            return Vec::new();
+        }
         let Ok(marks) = f.values(&c.type_name, &c.params).and_then(|v| f.marks(&v)) else { return Vec::new() };
         let (sin, cos) = c.angle.to_radians().sin_cos();
         let flip = if c.mirrored { -1.0 } else { 1.0 };
@@ -3278,30 +3299,17 @@ impl Model {
     /// moved with it to where it stands (x, y and the height over the project's origin); its insertion point where its family
     /// has none, or the point doesn't work out.
     pub fn component_room_point(&self, c: &Component) -> [f64; 3] {
-        let base = self.elevation(c.level) + c.offset;
+        let placed = self.component_placement(c);
         let local =
             self.families.get(&c.family).and_then(|f| f.values(&c.type_name, &c.params).ok().and_then(|v| f.room_point(&v).ok().flatten()));
-        let Some([x, y, z]) = local else { return [c.at.0, c.at.1, base] };
-        let y = if c.mirrored { -y } else { y };
-        let (sin, cos) = c.angle.to_radians().sin_cos();
-        [c.at.0 + x * cos - y * sin, c.at.1 + x * sin + y * cos, base + z]
+        let Some([x, y, z]) = local else { return placed.origin };
+        placed.place([x, if c.mirrored { -y } else { y }, z])
     }
 
-    /// Component `c`'s solids in the model: its own, turned and moved to where it stands.
+    /// Component `c`'s solids in the model: its own, placed where it stands ([`Model::component_placement`]).
     pub fn component_pieces(&self, c: &Component) -> Vec<Piece> {
-        let base = self.elevation(c.level) + c.offset;
-        let (sin, cos) = c.angle.to_radians().sin_cos();
-        let place = |p: [f64; 3]| [c.at.0 + p[0] * cos - p[1] * sin, c.at.1 + p[0] * sin + p[1] * cos, base + p[2]];
-        self.component_local_pieces(c)
-            .into_iter()
-            .map(|pc| Piece {
-                tris: pc.tris.iter().map(|t| t.map(place)).collect(),
-                outline: pc.outline.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect(),
-                bottom: base + pc.bottom,
-                top: base + pc.top,
-                ..pc
-            })
-            .collect()
+        let placed = self.component_placement(c);
+        self.component_local_pieces(c).iter().map(|pc| placed.piece(pc)).collect()
     }
 
     /// Adds an element unchecked; the engine runs [`Model::check`] after every command.
@@ -3497,6 +3505,9 @@ impl Model {
         }
         // 20 to 21 (Doors > Opening and Windows > Opening, which a view's graphics, a template and the object styles may name,
         // and a symbol's `subcategory`) has none: a file of 20 names neither.
+        // 21 to 22 (the project's reference planes, components hosted on them) has none: a file of 21 holds neither. A hosted
+        // component's `at` and `offset` are worked out from its host, whatever the file says of them.
+        self.settle_hosts(None);
         self.format = FORMAT;
     }
 
@@ -4295,6 +4306,7 @@ impl Model {
             Element::PlanView(v) => Some(v.level),
             Element::Level(_)
             | Element::Grid(_)
+            | Element::RefPlane(_)
             | Element::Section(_)
             | Element::Elevation(_)
             | Element::Sheet(_)
@@ -6443,6 +6455,21 @@ impl Model {
         }
         phasing::check_order(self, &who, e)?;
         match e {
+            Element::RefPlane(p) => {
+                p.check(&who)?;
+                // A name is one plane's: there are few planes, so the others are looked at here.
+                if !p.name.is_empty() {
+                    let lookup = self.lookup();
+                    let twin = lookup
+                        .rare("refplane")
+                        .find(|other| *other != id && matches!(self.elements.get(*other), Some(Element::RefPlane(o)) if o.name == p.name));
+                    if let Some(other) = twin {
+                        // Named by both, the same whichever is checked first.
+                        let (a, b) = (id.min(other), id.max(other));
+                        return Err(format!("reference planes {a} and {b} are both named `{}`; a name is one plane's", p.name));
+                    }
+                }
+            }
             Element::Level(l) => {
                 text(&who, "name", &l.name)?;
                 coord(&format!("{who} elevation"), l.elevation)?;
@@ -7056,6 +7083,32 @@ impl Model {
                 point(&who, c.at)?;
                 coord(&format!("{who} angle"), c.angle)?;
                 coord(&format!("{who} offset"), c.offset)?;
+                // On a reference plane, only a work plane-based family's component. (An adaptive component, when the
+                // adaptive branch's `adaptive` merges, is placed by its own points: a `host` on one is refused here too.)
+                if let Some(h) = &c.host {
+                    match self.elements.get(h.host.guid()) {
+                        Some(Element::RefPlane(_)) => {}
+                        Some(other) => {
+                            return Err(format!(
+                                "{who}: its host, {} {}, isn't a reference plane",
+                                other.category(),
+                                self.shown(h.host.guid())
+                            ));
+                        }
+                        None => return Err(format!("{who}: its host, reference plane {}, doesn't exist", self.shown(h.host.guid()))),
+                    }
+                    if !f.work_plane_based {
+                        return Err(format!(
+                            "{who}: it is hosted on {}, and family `{}` isn't work plane-based: turn its `work_plane_based` \
+                             option on, or put the component on a level (`edit_work_plane` with `host` `level`)",
+                            self.work_plane_name(c),
+                            c.family
+                        ));
+                    }
+                    coord(&format!("{who} host uv"), h.uv[0])?;
+                    coord(&format!("{who} host uv"), h.uv[1])?;
+                    coord(&format!("{who} offset from host"), h.offset)?;
+                }
                 self.family_values_ok(&who, &c.family, f, &c.params)?;
                 // Its shape, built once for each family, type and values the project's components have.
                 let build = || f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v).and(f.marks(&v))).map(|_| ());

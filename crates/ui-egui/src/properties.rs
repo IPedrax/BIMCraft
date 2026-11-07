@@ -123,6 +123,15 @@ fn nested(key: &str, val: Value) -> Value {
     key.rsplit('.').fold(val, |v, k| json!({ k: v }))
 }
 
+/// The rows only a work plane-based family's components show, and those only the others' do.
+const WORK_PLANE_ROWS: [&str; 4] = ["Schedule Level", "Elevation from Level", "Work Plane", "Offset from Host"];
+const LEVEL_ROWS: [&str; 2] = ["Level", "Height Offset From Level"];
+
+/// Whether row `label` shows for components that are (`based`) or aren't of work plane-based families.
+fn work_plane_row(label: &str, based: bool) -> bool {
+    if based { !LEVEL_ROWS.contains(&label) } else { !WORK_PLANE_ROWS.contains(&label) }
+}
+
 fn rows(category: &str) -> &'static [Row] {
     match category {
         "wall" => &[
@@ -280,9 +289,16 @@ fn rows(category: &str) -> &'static [Row] {
             ("Graphics", "scale", msg!("View Scale (1 : n)"), Number),
             ("Other", "at", "Location", PaperPoint),
         ],
+        // A work plane-based family's: its level is its Schedule Level, its height over it its Elevation from Level (read
+        // only on a plane, which it follows), what it is on and how far off it; another's, its level and height as before
+        // (`work_plane_rows`).
         "component" => &[
             ("Constraints", "level", "Level", Level),
             ("Constraints", "offset", "Height Offset From Level", Length),
+            ("Constraints", "level", "Schedule Level", Level),
+            ("Constraints", "offset", "Elevation from Level", Length),
+            ("Constraints", "work_plane", "Work Plane", Shown),
+            ("Constraints", "offset_from_host", "Offset from Host", Length),
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
         ],
@@ -1517,7 +1533,7 @@ impl BimApp {
         let v: serde_json::Map<String, Value> = rows
             .iter()
             .map(|r| (r.1, r.3))
-            .chain([("top_level", Shown), ("enclosed", Shown)])
+            .chain([("top_level", Shown), ("enclosed", Shown), ("host", Shown)])
             .map(|(k, kind)| {
                 let one = field_of(&first, k, kind);
                 let shared = all.iter().all(|e| field_of(e, k, kind) == one);
@@ -1529,6 +1545,11 @@ impl BimApp {
         // What an element points at is in its JSON as a GUID, or as an id for the one beside it.
         let id_of = |v: &Value| v.as_u64().or_else(|| v.as_str().and_then(Guid::parse).and_then(|g| model.elements.id(g)));
         let level_name = |v: &Value| id_of(v).and_then(|l| model.level(l)).map_or_else(String::new, |l| l.name.clone());
+        // Components all of work plane-based families show where they are on their work planes.
+        let based = ids.iter().all(|id| match model.elements.get(*id) {
+            Some(Element::Component(c)) => model.families.get(&c.family).is_some_and(|f| f.work_plane_based),
+            _ => false,
+        });
         let mut groups: Vec<&'static str> = Vec::new();
         for (g, ..) in rows {
             if !groups.contains(g) {
@@ -1554,6 +1575,9 @@ impl BimApp {
             }
             grid(ui, ("properties", id, group), |ui| {
                 for &(_, key, label, kind) in rows.iter().filter(|r| r.0 == group) {
+                    if !work_plane_row(label, based) {
+                        continue;
+                    }
                     let val = &v[key];
                     // A length one element hasn't got (a straight wall's radius): no row.
                     if ids.len() == 1 && matches!(kind, LengthShown | LengthIf) && val.is_null() {
@@ -1564,12 +1588,19 @@ impl BimApp {
                     }
                     let kind = match kind {
                         Height if !v["top_level"].is_null() => LengthShown,
+                        Length if key == "offset" && !v["host"].is_null() => LengthShown,
                         Point if paper => PaperPoint,
                         kind => kind,
                     };
                     let label = t(label);
                     let name = ui.label(label);
                     match kind {
+                        // A component's Work Plane, `Level : Level 1`: what it is on in the interface's words, its name as it is.
+                        Shown if key == "work_plane" => {
+                            let said = text(val);
+                            let said = said.split_once(" : ").map_or(said.clone(), |(what, name)| format!("{} : {name}", t(what)));
+                            ui.label(RichText::new(said).color(pal().muted));
+                        }
                         Shown => {
                             let said = text(val);
                             ui.label(RichText::new(t(&said)).color(pal().muted));

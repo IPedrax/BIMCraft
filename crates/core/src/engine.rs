@@ -302,6 +302,11 @@ impl Session {
                 if unsettled {
                     self.model_mut().keep_rooms();
                 }
+                // A hosted component goes where its plane is, or onto its plane where the command moved it.
+                let unsettled = self.model.unsettled(Some(&before));
+                if !unsettled.is_empty() {
+                    self.model_mut().settle(unsettled);
+                }
                 // Locked and equal dimensions moved what they measure to as the command moved it.
                 if cmd.undoable {
                     crate::constraints::keep(self, &before)?;

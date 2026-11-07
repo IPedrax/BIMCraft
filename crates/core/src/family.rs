@@ -796,12 +796,17 @@ pub struct Family {
     /// Where it joins a system: an electrical device's load, a switch. At most one is `power`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub connectors: Vec<Connector>,
-    /// Revit's Work Plane-Based: kept for placing on a work plane (not read yet).
+    /// Revit's Work Plane-Based: its components may be hosted on a reference plane (`Component::host`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub work_plane_based: bool,
-    /// Revit's Always Vertical, on by default: kept for placing on a sloped plane (not read yet).
+    /// Revit's Always Vertical, on by default: a component hosted on a sloped plane stays upright, turning about z only;
+    /// off, it tilts with the plane (`Model::component_placement`).
     #[serde(default = "options::yes", skip_serializing_if = "options::is_yes")]
     pub always_vertical: bool,
+    /// Revit's Default Elevation, mm: the height over its level a component of a family that isn't work plane-based is
+    /// placed at when it is given none.
+    #[serde(default, skip_serializing_if = "options::is_zero")]
+    pub default_elevation: f64,
     /// Revit's Cut with Voids When Loaded: kept for a project's voids cutting it (not read yet).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cut_with_voids_when_loaded: bool,
@@ -836,6 +841,7 @@ impl Default for Family {
             connectors: Vec::new(),
             work_plane_based: false,
             always_vertical: true,
+            default_elevation: 0.0,
             cut_with_voids_when_loaded: false,
             shared: false,
             room_calculation_point: None,
