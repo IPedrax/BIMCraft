@@ -275,3 +275,63 @@ fn family_type_reload_keeps_values_null_and_uses_incoming_category() {
         assert!(f.types.values().all(|t| t.get("Part").is_none_or(Value::is_null)));
     }
 }
+
+#[test]
+fn reload_preserves_reference_planes_lines_and_form_hosts() {
+    use bimcraft_core::family::{Expr, Family, Form};
+    use bimcraft_core::family::{Face, PlaneRef, RefLine, Reference};
+    use bimcraft_core::ids::Guid;
+    use bimcraft_core::model::Model;
+    let plane_guid = Guid::from_u128(0xcccccccc_cccc_4ccc_8ccc_cccccccccc11);
+    let line_guid = Guid::from_u128(0xcccccccc_cccc_4ccc_8ccc_cccccccccc12);
+    let mut f = Family::default();
+    f.types.insert("A".into(), Default::default());
+    let mut plane = f.planes[0].clone();
+    plane.guid = plane_guid;
+    plane.name = "Offset plane".into();
+    plane.start = [0., 0., 100.];
+    plane.end = [100., 0., 100.];
+    plane.up = [0., 1., 0.];
+    plane.level = false;
+    plane.defines_origin = false;
+    plane.reference = Reference::Weak;
+    f.planes.push(plane);
+    f.lines.push(RefLine {
+        guid: line_guid,
+        start: [0., 0., 100.],
+        end: [100., 0., 100.],
+        host: PlaneRef::Plane(plane_guid),
+        ..Default::default()
+    });
+    f.forms.push(Form {
+        host: PlaneRef::Line(line_guid, Face::Vertical),
+        profile: vec![[0., 0.], [10., 0.], [10., 10.], [0., 10.]].into_iter().map(|p| p.map(Expr::Number)).collect(),
+        to: Expr::Number(20.),
+        ..Default::default()
+    });
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("hosted.json");
+    let mut source = serde_json::to_value(&f).unwrap();
+    source["name"] = json!("Hosted reload");
+    std::fs::write(&file, source.to_string()).unwrap();
+    let mut s = Session::new();
+    run(&mut s, json!({"path":file}));
+    let before = s.model.families["Hosted reload"].clone();
+    let old_pieces = before.pieces(&before.values("A", &Default::default()).unwrap()).unwrap();
+    run(&mut s, json!({"name":"Hosted reload","save":file}));
+    let mut source: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    source["forms"][0]["to"] = json!(40);
+    std::fs::write(&file, source.to_string()).unwrap();
+    run(&mut s, json!({"path":file,"overwrite":"version"}));
+    let after = &s.model.families["Hosted reload"];
+    assert_eq!(after.planes, before.planes);
+    assert_eq!(after.lines, before.lines);
+    assert_eq!(after.forms[0].host, before.forms[0].host);
+    let new_pieces = after.pieces(&after.values("A", &Default::default()).unwrap()).unwrap();
+    assert!(!new_pieces.is_empty());
+    assert_ne!(old_pieces, new_pieces);
+    let (restored, left_out) = Model::read(&s.model.to_json().unwrap()).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    restored.check().unwrap();
+    assert_eq!(restored.families["Hosted reload"], *after);
+}

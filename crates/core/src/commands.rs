@@ -10528,6 +10528,8 @@ fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Famil
     crate::library::keep_parts(&mut old.forms, &mut incoming.forms);
     crate::library::keep_parts(&mut old.symbols, &mut incoming.symbols);
     crate::library::keep_parts(&mut old.connectors, &mut incoming.connectors);
+    crate::library::keep_parts(&mut old.planes, &mut incoming.planes);
+    crate::library::keep_parts(&mut old.lines, &mut incoming.lines);
     incoming
 }
 
@@ -10561,11 +10563,23 @@ fn family(s: &mut Session, p: &Value) -> R {
         let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let name = p.get("name").filter(|v| !v.is_null()).cloned().or_else(|| fields.remove("name")).unwrap_or(json!(stem));
         // Only the family it holds: what a file says to rename or delete isn't for it to say.
-        let mut family: Map<String, Value> =
-            ["category", "kind", "ifc", "parameters", "types", "forms", "symbols", "operation", "connectors", "adaptive"]
-                .into_iter()
-                .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
-                .collect();
+        let mut family: Map<String, Value> = [
+            "category",
+            "kind",
+            "ifc",
+            "parameters",
+            "types",
+            "forms",
+            "symbols",
+            "operation",
+            "connectors",
+            "adaptive",
+            "planes",
+            "lines",
+        ]
+        .into_iter()
+        .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
+        .collect();
         // Its options, flat fields in a file, as the command takes them.
         if let Some(options) = crate::family::Family::options_from_fields(&mut fields) {
             family.insert("options".into(), options);
@@ -10591,10 +10605,10 @@ fn family(s: &mut Session, p: &Value) -> R {
                 family = serde_json::from_value(serde_json::to_value(reloaded).map_err(|e| bad(c, e))?).map_err(|e| bad(c, e))?;
             }
         }
-        // Its planes and lines, as the command takes them.
-        for (k, key) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
-            if let Some(v) = fields.remove(k) {
-                family.insert(key.into(), v);
+        // A file holds the definition's names; translate only after applying its reload policy.
+        for (field, command) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
+            if let Some(value) = family.remove(field) {
+                family.insert(command.into(), value);
             }
         }
         family.insert("name".into(), name);
