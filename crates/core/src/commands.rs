@@ -177,8 +177,8 @@ pub static ALL: &[Command] = &[
     edit("grid", ui_msg!("Grid"), &["GR"], "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", grid).menu("Architecture > Grid"),
     edit(
         "reference_plane",
-        "Reference Plane",
-        &[],
+        ui_msg!("Reference Plane"),
+        &["RP"],
         "{start, end, up?: [x,y,z], name?, level?} a reference plane of the project: drawn along the line from `start` to `end` \
          ([x, y] on `level`, the lowest by default, or [x, y, z]), its other direction `up` (the vertical by default, so a line \
          drawn in plan makes an upright plane; tilt `up` for a sloped one). Work plane-based components are placed on it \

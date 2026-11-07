@@ -113,6 +113,7 @@ icon_names! {
     Detach,
     Floor,
     WorkPlane,
+    RefPlane,
     Ceiling,
     Shaft,
     Mass,
@@ -1007,6 +1008,14 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(12.0, 10.0), (9.0, 16.0)]);
             g.line(&[(12.0, 13.0), (12.0, 3.0)]);
             g.line(&[(9.5, 5.5), (12.0, 3.0), (14.5, 5.5)]);
+        }
+        Icon::RefPlane => {
+            // A reference plane seen edge on, as a plan draws it: a dashed line, and a grip at its end.
+            let dashes: &[(f32, f32)] = if compact { &[(0.0, 5.0), (7.5, 13.0)] } else { &[(0.0, 3.0), (5.0, 8.0), (10.0, 13.0)] };
+            for &(a, b) in dashes {
+                g.line(&[(3.0 + a, 21.0 - a), (3.0 + b, 21.0 - b)]);
+            }
+            g.closed(&[(17.5, 2.5), (21.5, 2.5), (21.5, 6.5), (17.5, 6.5)]);
         }
         Icon::Ceiling => {
             // A suspended tiled ceiling above a separate floor datum; not a floating pair of bars.
