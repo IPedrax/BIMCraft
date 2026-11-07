@@ -134,7 +134,7 @@ and the content.
 
 | Item | Size |
 |---|---|
-| Family editor sketch mode: reference planes, sketches drawn on screen, sweeps along a path and blends (revolve and void forms are done) | XL |
+| Family editor sketch mode: sketches drawn on screen, sweeps along a path and blends (revolve and void forms are done; reference planes and reference lines, with forms drawn on them, are in the model and the `family` command; left: drawing them in views, dimensions and labels that drive them, and a work plane picked per form in the editor) | XL |
 | 2D sketch constraint solver (dimensions bound to parameters, equal, aligned, locked) | L |
 | Hosted families on floors, ceilings and faces, with cuts in the host (doors and windows host on walls today, their voids cutting the wall in their own shape) | L |
 | Nested and shared families; type catalogs (CSV) | M |

@@ -3,8 +3,9 @@
 Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the map, and this file is read when the area is touched.
 
 A family (`Model::families`, `family.rs`) is parameters, types that set them and forms in its own axes: x along a
-component's angle, y to its left, z up from its base; a form is a profile in a sketch plane (`xy` swept up, `xz` along y,
-`yz` along x), its sizes numbers or formulas, or triangles as a file brings them. A component places a type;
+component's angle, y to its left, z up from its base; a form is a profile drawn on one of its reference planes or a reference
+line's plane (its `host`, below) and swept along that plane's normal, its sizes numbers or formulas, or triangles as a file
+brings them. A component places a type;
 `Model::component_pieces` are its forms where it stands. Plans draw them from above, a form's edges hidden under a higher
 form of the same component. A section cuts the forms of a family whose category is built into the building (`Category::cut`:
 door, window, casework, generic, equipment, rack, pipe fittings and accessories), poché in their own shape where its plane passes
@@ -182,7 +183,46 @@ description too, and one the file holds as another name or kind, or the name as 
 The description, visibility and user-modifiable flag stay in the file: a family's `Parameter` has no field for them, since
 nothing in BIMCraft reads them yet (no tooltip, no hidden parameters, no read-only values), so no `FORMAT` step was needed.
 An export of a parameter the file doesn't have writes it visible, modifiable and with no description. When BIMCraft enforces
-user-modifiable values, the flag becomes a `Parameter` field and FORMAT 21 (20 is another branch's).
+user-modifiable values, the flag becomes a `Parameter` field and a FORMAT of its own.
+
+## Reference planes
+
+A family's `planes` (`family/planes.rs`) are Revit's reference planes, each a `RefPlane`: the line it was drawn as (`start`,
+`end`, in the family's axes) and `up`, its other direction, so its normal is `(end - start) × up`; its own axes are x along the
+line, y `up` made square to it and z the normal, its origin the point of it nearest the family's origin (a profile on a plane
+parallel to a datum sits where it would on the datum, moved along the normal). Every family holds the three datums first,
+with the same GUIDs in every family (`REF_LEVEL`, `CENTER_FRONT_BACK`, `CENTER_LEFT_RIGHT`): Ref. Level (the family's xy,
+normal +z, a `level`, its reference `bottom`), Center (Front/Back) (xz: x along +x, y up, normal -y; `center_front_back`) and
+Center (Left/Right) (yz: x along +y, y up, normal +x; `center_left_right`). They are pinned: a file that leaves them out or
+moves them gets them as they are (`planes::with_datums`, `Family::settle_planes`), and the command refuses moving, changing
+or deleting them. Being in every family, they are no parts of the library and have no id; a plane of the family's own is a
+part (`HasPart`, `parts_now`), with an id and a GUID. Each has a `reference` (T1; Revit's Is Reference: `not_a_reference`,
+`strong`, `weak` by default, and `left`, `center_left_right`, `right`, `front`, `center_front_back`, `back`, `bottom`,
+`center_elevation`, `top`, each of these one plane's or line's in the family), a `subcategory` and `defines_origin`.
+`Family::check_planes` says what's wrong: a name used twice, a named reference taken twice, numbers past `MAX_COORD`, a line
+with one point, an `up` along the line, the origin defined twice in a direction, or by a plane square to none of x, y and z.
+The datums define the origin until a plane of the family's own in their direction takes it; moving the origin there (and
+correcting placed components' `at` so they stay put) is not done yet: the flag is kept and checked only.
+
+A family's `lines` are its reference lines (T18), each `start` to `end` drawn on a `host` it lies on, with four planes: its
+host's through it (`horizontal`), square to that through it (`vertical`), and square to it at each end (`start`, `end`), their
+origin the line's start (`end`'s its end), so what is drawn on one will turn with it once the angle that turns a line exists
+(F7, with dimensions and labels). A line may be drawn on an earlier line's plane, never a later one's.
+
+A form's `host` is a `PlaneRef`, `{"plane": guid}` or `{"line": guid, "face": …}`, Ref. Level when none: its profile is
+drawn in the host's axes and `from` and `to` run along its normal (Revit's Extrusion Start and End); a revolve turns in it
+(`Family::frame`, `sweep`, `revolve`, whose triangles turn round where a frame is mirrored). `plane` (`xy`, `xz`, `yz`) is the
+shorthand from before (`family::Plane`), read as it always was by the command and by a file of 19 (`FormIn`): `xy` and `yz`
+are Ref. Level and Center (Left/Right) as they were; `xz` swept along +y and Center (Front/Back)'s normal is -y, so its
+`from` and `to` are negated and swap places (a formula wrapped as `-(…)`), a revolve's angles kept. The starter families
+still say `plane`, and build the same triangles (`family_plane_tests`); FORMAT 20 is this change. The `family` command
+replaces the lists with `ref_planes` and `ref_lines` (datums given back as they are are kept), patches one with `ref_plane`
+and `ref_line` and deletes with `delete_ref_plane` and `delete_ref_line` by id or GUID, as forms; deleting one a form or a
+line is drawn on is refused, naming them. A new plane or line may carry a GUID of its own, so forms are drawn on it in the
+same command; a host given as an id is resolved to that plane's GUID (`Family::resolve_hosts`). A plane or line whose GUID
+the sync gives anew (a family loaded twice) takes what is drawn on it along (`Family::rehost`). The Family Editor keeps the
+planes, lines and hosts as they are; its Plane list picks a datum. A connector has no place yet: when it gets `at` and
+`direction` (upstream #269) it takes an optional host too. IFC is unchanged: it writes the forms' triangles.
 
 ## Plan symbols
 

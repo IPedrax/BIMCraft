@@ -70,8 +70,7 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 21 (provisional: 20 is another branch's, the
-/// two settled when they merge): a view's graphics, a view template and the object styles may name the subcategories
+/// The version of the project file this build writes, and the newest it reads. 21 (provisional): a view's graphics, a view template and the object styles may name the subcategories
 /// `dooropening` and `windowopening` (Doors > Opening, Windows > Opening), and a family's symbol the subcategory it is drawn in
 /// (`subcategory`); nothing in a file of 19 changes, but a build that reads up to 19 would refuse such graphics or object
 /// styles on opening ("isn't a category views draw", as 14 says), not say "saved by a newer BIMCraft"; a symbol's
@@ -118,6 +117,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
+///
+/// 20: a family has reference planes (its three datums and its own, `planes`) and reference lines (`lines`), and a form is
+/// drawn on a `host` (one of them) where it named `plane` (xy, xz or yz); a form of 19 on `xz` swept along +y, and its host,
+/// Center (Front/Back), has its normal toward -y, so 19 read by 20 has its `from` and `to` negated (and swapped). A build
+/// of 19 would refuse `host`. (18 is the adaptive families' branch's number, 19 is the family parameters'.)
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -3470,8 +3474,16 @@ impl Model {
         // 17 to 19 (a family's parameters: new kinds, groups, shared GUIDs, reporting, a family type's category) has none:
         // the new fields default, to a family parameter grouped by its kind, which is what a file of 17 holds. (18 is
         // another branch's number.)
-        // 19 to 21 (Doors > Opening and Windows > Opening, which a view's graphics, a template and the object styles may name,
-        // and a symbol's `subcategory`) has none: a file of 19 names neither. (20 is another branch's number.)
+        // 19 to 20: a form's `plane` becomes its `host`, a datum: `xy` Ref. Level and `yz` Center (Left/Right) as they
+        // were; `xz` Center (Front/Back), its `from` and `to` negated and swapped (a formula wrapped as `-(…)`), since it
+        // swept along +y and the datum's normal is -y, a revolve's angles as they were. Reading the file does it, as it
+        // reads a command's shorthand (`Form`'s `FormIn`), and a family read without its datums is given them
+        // (`Family::planes`); here every family's datums are put first and the origin settled, whatever the file held.
+        if self.format < 20 {
+            self.families.values_mut().for_each(crate::family::Family::settle_planes);
+        }
+        // 20 to 21 (Doors > Opening and Windows > Opening, which a view's graphics, a template and the object styles may name,
+        // and a symbol's `subcategory`) has none: a file of 20 names neither.
         self.format = FORMAT;
     }
 

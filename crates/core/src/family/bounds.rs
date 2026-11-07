@@ -63,9 +63,10 @@ impl Family {
             if to <= from {
                 return None;
             }
+            let frame = self.frame(&form.host).ok()?;
             for p in profile {
-                include(&mut out, embed(form.plane, p, from))?;
-                include(&mut out, embed(form.plane, p, to))?;
+                include(&mut out, frame.point(p, from))?;
+                include(&mut out, frame.point(p, to))?;
             }
         }
         match crate::bounds::padded(out?.into_iter()) {
@@ -95,7 +96,14 @@ mod tests {
         for plane in [Plane::Xy, Plane::Xz, Plane::Yz] {
             for circle in [None, Some(Circle { centre: [n(-20.0), n(17.0)], radius: n(80.0) })] {
                 let f = Family {
-                    forms: vec![Form { plane, profile: ring.clone(), circle, from: n(-25.0), to: n(900.0), ..Default::default() }],
+                    forms: vec![Form {
+                        host: plane.host(),
+                        profile: ring.clone(),
+                        circle,
+                        from: n(-25.0),
+                        to: n(900.0),
+                        ..Default::default()
+                    }],
                     ..Default::default()
                 };
                 encloses(&f, &BTreeMap::new());
