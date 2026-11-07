@@ -3089,11 +3089,11 @@ msgstr "编辑类型"
 
 #: crates/ui-egui/src/editor/extrusion.rs:222
 msgid "Edit Work Plane"
-msgstr ""
+msgstr "编辑工作平面"
 
 #: crates/ui-egui/src/editor/extrusion.rs:221
 msgid "Edit Work Plane: the form onto another of the family's planes, moving with it"
-msgstr ""
+msgstr "编辑工作平面：将形状移到族的另一个平面上，并随该平面移动"
 
 #: crates/ui-egui/src/lib.rs:4218
 msgid "Edit the type"
@@ -3374,7 +3374,7 @@ msgstr "族"
 
 #: crates/ui-egui/src/editor/exists.rs:311
 msgid "Family Already Exists"
-msgstr ""
+msgstr "族已存在"
 
 #: crates/ui-egui/src/editor/document.rs:490
 #: crates/ui-egui/src/editor/document.rs:939
@@ -5964,15 +5964,15 @@ msgstr "替换…"
 
 #: crates/ui-egui/src/editor/exists.rs:316
 msgid "Overwrite it with the version in this family"
-msgstr ""
+msgstr "用此族中的版本覆盖"
 
 #: crates/ui-egui/src/editor/exists.rs:312
 msgid "Overwrite the existing version"
-msgstr ""
+msgstr "覆盖现有版本"
 
 #: crates/ui-egui/src/editor/exists.rs:313
 msgid "Overwrite the existing version and its parameter values"
-msgstr ""
+msgstr "覆盖现有版本及其参数值"
 
 #: crates/ui-egui/src/lib.rs:3492
 msgid "PNG image"
@@ -6806,7 +6806,7 @@ msgstr "预览"
 
 #: crates/ui-egui/src/editor/document.rs:1023
 msgid "Preview Visibility"
-msgstr ""
+msgstr "预览可见性"
 
 #: crates/ui-egui/src/graphics.rs:1249
 msgid "Primary ({})"
@@ -7876,7 +7876,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/exists.rs:314
 msgid "Shared Family Already Loaded"
-msgstr ""
+msgstr "共享族已载入"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:508
 #: crates/ui-egui/src/editor/types_dialog.rs:521
@@ -8872,7 +8872,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/exists.rs:235
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
-msgstr ""
+msgstr "您正在载入的族 {} 已存在于此项目中，但定义不同。您想要执行什么操作？"
 
 #: crates/ui-egui/src/properties.rs:2645
 msgid "The foot of the perpendicular from the last point to a wall or grid"
@@ -8977,7 +8977,7 @@ msgstr "所选元素没有可匹配的类型"
 
 #: crates/ui-egui/src/editor/exists.rs:243
 msgid "The shared family {} nested in this family is already loaded in the project. Which version should the project use?"
-msgstr ""
+msgstr "嵌套在此族中的共享族 {} 已载入到项目中。项目应使用哪个版本？"
 
 #: crates/ui-egui/src/shortcuts.rs:453
 #: crates/ui-egui/src/shortcuts.rs:556
@@ -9528,7 +9528,7 @@ msgstr "使用项目设置"
 
 #: crates/ui-egui/src/editor/exists.rs:315
 msgid "Use the project's version"
-msgstr ""
+msgstr "使用项目中的版本"
 
 #: crates/ui-egui/src/settings.rs:556
 msgid "Use the system's title bar"
@@ -10547,7 +10547,7 @@ msgstr "起点"
 
 #: crates/ui-egui/src/editor/extrusion.rs:43
 msgid "the family has no form {}"
-msgstr ""
+msgstr "族中没有形状 {}"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:648
 msgid "the family has no parameter `{}`"

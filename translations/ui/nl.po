@@ -3089,11 +3089,11 @@ msgstr "Type bewerken"
 
 #: crates/ui-egui/src/editor/extrusion.rs:222
 msgid "Edit Work Plane"
-msgstr ""
+msgstr "Werkvlak bewerken"
 
 #: crates/ui-egui/src/editor/extrusion.rs:221
 msgid "Edit Work Plane: the form onto another of the family's planes, moving with it"
-msgstr ""
+msgstr "Werkvlak bewerken: zet de vorm op een ander vlak van de familie, waarmee de vorm dan meebeweegt"
 
 #: crates/ui-egui/src/lib.rs:4218
 msgid "Edit the type"
@@ -3374,7 +3374,7 @@ msgstr "Familie"
 
 #: crates/ui-egui/src/editor/exists.rs:311
 msgid "Family Already Exists"
-msgstr ""
+msgstr "Familie bestaat al"
 
 #: crates/ui-egui/src/editor/document.rs:490
 #: crates/ui-egui/src/editor/document.rs:939
@@ -5964,15 +5964,15 @@ msgstr "Overschrijven…"
 
 #: crates/ui-egui/src/editor/exists.rs:316
 msgid "Overwrite it with the version in this family"
-msgstr ""
+msgstr "Overschrijven met de versie uit deze familie"
 
 #: crates/ui-egui/src/editor/exists.rs:312
 msgid "Overwrite the existing version"
-msgstr ""
+msgstr "Bestaande versie overschrijven"
 
 #: crates/ui-egui/src/editor/exists.rs:313
 msgid "Overwrite the existing version and its parameter values"
-msgstr ""
+msgstr "Bestaande versie en haar parameterwaarden overschrijven"
 
 #: crates/ui-egui/src/lib.rs:3492
 msgid "PNG image"
@@ -6806,7 +6806,7 @@ msgstr "Voorbeeld"
 
 #: crates/ui-egui/src/editor/document.rs:1023
 msgid "Preview Visibility"
-msgstr ""
+msgstr "Voorbeeld van zichtbaarheid"
 
 #: crates/ui-egui/src/graphics.rs:1249
 msgid "Primary ({})"
@@ -7876,7 +7876,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/exists.rs:314
 msgid "Shared Family Already Loaded"
-msgstr ""
+msgstr "Gedeelde familie al geladen"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:508
 #: crates/ui-egui/src/editor/types_dialog.rs:521
@@ -8872,7 +8872,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/exists.rs:235
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
-msgstr ""
+msgstr "De familie {} die je laadt, staat al in dit project, maar is anders gedefinieerd. Wat wil je doen?"
 
 #: crates/ui-egui/src/properties.rs:2645
 msgid "The foot of the perpendicular from the last point to a wall or grid"
@@ -8977,7 +8977,7 @@ msgstr "Het geselecteerde element heeft geen type om over te nemen"
 
 #: crates/ui-egui/src/editor/exists.rs:243
 msgid "The shared family {} nested in this family is already loaded in the project. Which version should the project use?"
-msgstr ""
+msgstr "De gedeelde familie {} die in deze familie is genest, is al in het project geladen. Welke versie moet het project gebruiken?"
 
 #: crates/ui-egui/src/shortcuts.rs:453
 #: crates/ui-egui/src/shortcuts.rs:556
@@ -9528,7 +9528,7 @@ msgstr "Projectinstellingen gebruiken"
 
 #: crates/ui-egui/src/editor/exists.rs:315
 msgid "Use the project's version"
-msgstr ""
+msgstr "De versie van het project gebruiken"
 
 #: crates/ui-egui/src/settings.rs:556
 msgid "Use the system's title bar"
@@ -10547,7 +10547,7 @@ msgstr "begin"
 
 #: crates/ui-egui/src/editor/extrusion.rs:43
 msgid "the family has no form {}"
-msgstr ""
+msgstr "de familie heeft geen vorm {}"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:648
 msgid "the family has no parameter `{}`"

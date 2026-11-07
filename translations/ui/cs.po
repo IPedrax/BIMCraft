@@ -3088,11 +3088,11 @@ msgstr "Upravit typ"
 
 #: crates/ui-egui/src/editor/extrusion.rs:222
 msgid "Edit Work Plane"
-msgstr ""
+msgstr "Upravit pracovní rovinu"
 
 #: crates/ui-egui/src/editor/extrusion.rs:221
 msgid "Edit Work Plane: the form onto another of the family's planes, moving with it"
-msgstr ""
+msgstr "Upravit pracovní rovinu: přesune tvar na jinou rovinu rodiny, se kterou se pak pohybuje"
 
 #: crates/ui-egui/src/lib.rs:4218
 msgid "Edit the type"
@@ -3373,7 +3373,7 @@ msgstr "Rodina"
 
 #: crates/ui-egui/src/editor/exists.rs:311
 msgid "Family Already Exists"
-msgstr ""
+msgstr "Rodina již existuje"
 
 #: crates/ui-egui/src/editor/document.rs:490
 #: crates/ui-egui/src/editor/document.rs:939
@@ -5963,15 +5963,15 @@ msgstr "Přepsat…"
 
 #: crates/ui-egui/src/editor/exists.rs:316
 msgid "Overwrite it with the version in this family"
-msgstr ""
+msgstr "Přepsat ji verzí z této rodiny"
 
 #: crates/ui-egui/src/editor/exists.rs:312
 msgid "Overwrite the existing version"
-msgstr ""
+msgstr "Přepsat existující verzi"
 
 #: crates/ui-egui/src/editor/exists.rs:313
 msgid "Overwrite the existing version and its parameter values"
-msgstr ""
+msgstr "Přepsat existující verzi a hodnoty jejích parametrů"
 
 #: crates/ui-egui/src/lib.rs:3492
 msgid "PNG image"
@@ -6805,7 +6805,7 @@ msgstr "Náhled"
 
 #: crates/ui-egui/src/editor/document.rs:1023
 msgid "Preview Visibility"
-msgstr ""
+msgstr "Náhled viditelnosti"
 
 #: crates/ui-egui/src/graphics.rs:1249
 msgid "Primary ({})"
@@ -7875,7 +7875,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/exists.rs:314
 msgid "Shared Family Already Loaded"
-msgstr ""
+msgstr "Sdílená rodina je již načtena"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:508
 #: crates/ui-egui/src/editor/types_dialog.rs:521
@@ -8871,7 +8871,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/exists.rs:235
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
-msgstr ""
+msgstr "Rodina {}, kterou načítáte, už v tomto projektu existuje, ale je definována jinak. Co chcete udělat?"
 
 #: crates/ui-egui/src/properties.rs:2645
 msgid "The foot of the perpendicular from the last point to a wall or grid"
@@ -8976,7 +8976,7 @@ msgstr "Vybraný prvek nemá žádný odpovídající typ"
 
 #: crates/ui-egui/src/editor/exists.rs:243
 msgid "The shared family {} nested in this family is already loaded in the project. Which version should the project use?"
-msgstr ""
+msgstr "Sdílená rodina {} vnořená do této rodiny je již v projektu načtena. Kterou verzi má projekt použít?"
 
 #: crates/ui-egui/src/shortcuts.rs:453
 #: crates/ui-egui/src/shortcuts.rs:556
@@ -9527,7 +9527,7 @@ msgstr "Použít nastavení projektu"
 
 #: crates/ui-egui/src/editor/exists.rs:315
 msgid "Use the project's version"
-msgstr ""
+msgstr "Použít verzi projektu"
 
 #: crates/ui-egui/src/settings.rs:556
 msgid "Use the system's title bar"
@@ -10546,7 +10546,7 @@ msgstr "začátek"
 
 #: crates/ui-egui/src/editor/extrusion.rs:43
 msgid "the family has no form {}"
-msgstr ""
+msgstr "rodina nemá tvar {}"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:648
 msgid "the family has no parameter `{}`"
