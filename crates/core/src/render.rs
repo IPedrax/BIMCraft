@@ -398,7 +398,22 @@ impl Drawing {
     /// [`Drawing::line`], dashed.
     pub(crate) fn dashed(&mut self, pts: &[P2], pen: Pen, color: Rgb, closed: bool) {
         let pts = pts.iter().map(|p| self.view.px(*p)).collect();
-        self.stroke(pts, pen, color, Some(vec![10.0, 5.0]), closed);
+        let dash = self.dash(&DASHED);
+        self.stroke(pts, pen, color, dash, closed);
+    }
+    /// A model line's dashes, `pattern` its on and off lengths in pixels of a sheet's drawing, on the paper this view stands
+    /// for: they zoom with it, as its pens do ([`on_paper`]).
+    pub(crate) fn dash(&self, pattern: &[f32]) -> Option<Vec<f32>> {
+        on_paper(pattern, self.paper)
+    }
+    /// An annotation line's dashes (a grid's, a level's, a section's mark), as big as its lettering ([`Drawing::k`]).
+    fn note_dash(&self, pattern: &[f32]) -> Option<Vec<f32>> {
+        on_paper(pattern, self.k)
+    }
+    /// How many times [`sheet::DENSITY`] pixels a mm of the paper this view stands for is: what its pens, dashes and
+    /// drafting patterns are sized by.
+    pub(crate) fn paper(&self) -> f32 {
+        self.paper
     }
     /// How many pixels wide `pen` draws here as the model: 0 for a hairline, which every painter draws as thin as it
     /// can. [`Drawing::weigh`] sizes annotation's at the end.
@@ -1226,7 +1241,10 @@ fn bar_in_plan(d: &mut Drawing, rb: &crate::model::Rebar, dashed: bool, seen: &m
             let ring: Vec<P2> = (0..12).map(|i| *at + crate::model::heading(f64::from(i) * 30.0) * r).collect();
             d.fill(&[ring], INK);
         }
-        _ => d.stroke(px, BY_CATEGORY, INK, dashed.then(|| vec![10.0, 5.0]), false),
+        _ => {
+            let dash = if dashed { d.dash(&DASHED) } else { None };
+            d.stroke(px, BY_CATEGORY, INK, dash, false)
+        }
     }
 }
 
@@ -2288,7 +2306,8 @@ fn section_base_cancellable(
         let Some(l) = m.level(level).filter(|l| from < to && ((lo..=hi).contains(&l.elevation) || v.crop.is_none())) else { continue };
         d.owner = Some(level);
         let (a, b) = (d.view.px(P2(from, l.elevation)), d.view.px(P2(to, l.elevation)));
-        d.stroke(vec![a, b], Pen::PROJECTION, INK, Some(vec![12.0, 4.0]), false);
+        let dash = d.note_dash(&[12.0, 4.0]);
+        d.stroke(vec![a, b], Pen::PROJECTION, INK, dash, false);
         for (text, dy) in [(l.name.clone(), -8.0), (m.units.length(l.elevation), 8.0)] {
             let h = d.px(10.0);
             d.text(&text, (b.0 + d.px(8.0) + font::width(&text, h) / 2.0, b.1 + d.px(dy)), h, INK);
@@ -2418,6 +2437,17 @@ pub fn annotation(m: &Model, id: impl Key, view: View) -> f32 {
 /// [`annotation`] for a view at scale 1 : `n` shown at `scale` pixels to the mm.
 fn annotation_of(n: f64, scale: f64) -> f32 {
     (n * scale / sheet::DENSITY).clamp(0.1, 10.0) as f32
+}
+
+/// A dash, 2 mm on and 1 mm off on the paper.
+pub(crate) const DASHED: [f32; 2] = [10.0, 5.0];
+
+/// `pattern`'s on and off lengths, pixels of a sheet's drawing, at `k` times them: none, so a solid line, where a repeat would be
+/// under two pixels or isn't a number, as a line pattern's is.
+pub(crate) fn on_paper(pattern: &[f32], k: f32) -> Option<Vec<f32>> {
+    let dash: Vec<f32> = pattern.iter().map(|x| x * k).collect();
+    let repeat: f32 = dash.iter().sum();
+    (repeat.is_finite() && repeat >= 2.0 && dash.iter().all(|x| *x >= 0.0)).then_some(dash)
 }
 
 /// [`annotation_of`] unclamped, what sizes the pens: but for a hostile scale or zoom, 0 (a hairline) when it isn't a
@@ -2719,7 +2749,8 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         if seen || over {
             d.owner = Some(id);
             let pts = [P2(g.a[0], g.a[1]), P2(g.b[0], g.b[1])].iter().map(|p| d.view.px(*p)).collect();
-            d.stroke(pts, BY_CATEGORY, FAINT, Some(vec![14.0, 5.0]), false);
+            let dash = d.dash(&[14.0, 5.0]);
+            d.stroke(pts, BY_CATEGORY, FAINT, dash, false);
         }
     }
     // Looking up from its cut, a reflected ceiling plan sees the beams and columns over it, up to the ceilings: their outlines,
@@ -2929,7 +2960,8 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 if range.cut < eave && eave <= range.top {
                     for ring in std::iter::once(&m.roof_outline(r)).chain(&r.courtyards) {
                         let pts = ring.iter().map(|p| d.view.px(*p)).collect();
-                        d.stroke(pts, BY_CATEGORY, INK, Some(vec![10.0, 5.0]), true);
+                        let dash = d.dash(&DASHED);
+                        d.stroke(pts, BY_CATEGORY, INK, dash, true);
                     }
                 }
             }
@@ -2948,7 +2980,8 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             crate::model::run_arm!(_) => {
                 if let Some(g) = m.run_geom(e).filter(|g| range.cut < g.z_span().0 && g.z_span().0 <= range.top) {
                     let pts = g.footprint().iter().map(|p| d.view.px(*p)).collect();
-                    d.stroke(pts, BY_CATEGORY, INK, Some(vec![10.0, 5.0]), true);
+                    let dash = d.dash(&DASHED);
+                    d.stroke(pts, BY_CATEGORY, INK, dash, true);
                 }
             }
             _ => {}
@@ -3135,14 +3168,15 @@ fn shaft(d: &mut Drawing, ring: &[P2]) {
     }
 }
 
-/// How far apart a cut pattern's lines are, px: a drafting pattern, the same on screen and on
-/// paper whatever the scale.
+/// How far apart a cut pattern's lines are, px of a sheet's drawing: a drafting pattern, 1.2 mm on the paper whatever the
+/// scale, and zoomed as the paper is.
 const GAP: f64 = 6.0;
 /// How far apart a surface pattern's lines are, mm: a model pattern, its tiles and courses their
 /// size in the building (a tile 200 mm square, a brick 250 by 100).
 const MODULE: f64 = 100.0;
-/// How wide a layer is to be, px, to show its pattern: narrower, it's filled instead.
-const PATTERN_ROOM: f64 = 10.0;
+/// How wide a layer is to be, px of a sheet's drawing, to show its pattern: 0.8 mm on the paper (an 80 mm layer at 1 : 100),
+/// whatever the zoom; narrower, it's filled instead.
+const PATTERN_ROOM: f64 = 4.0;
 
 /// Whether the boxes round two sets of points overlap: the quick test before the exact one.
 fn boxes_meet(a: &[P2], b: &[P2]) -> bool {
@@ -3175,6 +3209,10 @@ fn lines_outside_columns(line: &[P2], columns: &[&[P2]]) -> Vec<Vec<P2>> {
 /// (which stays poché), lighter.
 fn cut_layer(d: &mut Drawing, m: &Model, layer: &Layer, ring: &[P2], u: P2, room: f64) {
     let over = pattern_style(d, true);
+    // The paper's pixels: the layer as wide on it, and the pattern's lines as far apart, however near the view is.
+    let paper = f64::from(d.paper);
+    let room = if paper > 0.0 { room / paper } else { 0.0 };
+    let gap = GAP * paper;
     if over.as_ref().is_some_and(|s| s.foreground.is_some()) {
         return;
     }
@@ -3187,12 +3225,11 @@ fn cut_layer(d: &mut Drawing, m: &Model, layer: &Layer, ring: &[P2], u: P2, room
             d.fill(&[ring.to_vec()], PAPER);
         }
         fill_pattern(d, p, &[ring.to_vec()], &[ring.to_vec()], INK, (P2(0.0, 0.0), u.1.atan2(u.0).to_degrees()));
-    } else if pattern != Pattern::None && room >= PATTERN_ROOM && d.detail == Detail::Fine {
+    } else if pattern != Pattern::None && room >= PATTERN_ROOM && gap >= 2.0 && d.detail == Detail::Fine {
         if over.is_none() {
             d.fill(&[ring.to_vec()], PAPER);
         }
-        let gap = GAP / d.view.scale;
-        hatch(d, ring, pattern, u, INK, gap);
+        hatch(d, ring, pattern, u, INK, gap / d.view.scale);
     } else if layer.function != Function::Structure && over.is_none() {
         d.fill(&[ring.to_vec()], LIGHT_POCHE);
     }
@@ -4228,7 +4265,8 @@ fn looking_px(v: &Section) -> (f32, f32) {
 /// looks, its name behind it) and a tick at its end.
 fn section_mark(d: &mut Drawing, v: &Section) {
     let (a, b) = (d.view.px(v.start), d.view.px(v.end));
-    d.stroke(vec![a, b], Pen::MEDIUM, INK, Some(vec![18.0, 5.0]), false);
+    let dash = d.note_dash(&[18.0, 5.0]);
+    d.stroke(vec![a, b], Pen::MEDIUM, INK, dash, false);
     let (lx, ly) = looking_px(v);
     let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
     let (ux, uy) = ((b.0 - a.0) / len, (b.1 - a.1) / len);
@@ -4268,7 +4306,8 @@ fn elevation_mark(d: &mut Drawing, v: &Section) {
 /// A grid line, dashed, with a bubble holding its name beyond each end.
 fn grid(d: &mut Drawing, start: P2, end: P2, name: &str) {
     let (a, b) = (d.view.px(start), d.view.px(end));
-    d.stroke(vec![a, b], Pen::PROJECTION, GRID, Some(vec![14.0, 4.0]), false);
+    let dash = d.note_dash(&[14.0, 4.0]);
+    d.stroke(vec![a, b], Pen::PROJECTION, GRID, dash, false);
     let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
     let dir = ((b.0 - a.0) / len, (b.1 - a.1) / len);
     for ((x, y), k) in [(a, -BUBBLE), (b, BUBBLE)] {
@@ -4291,7 +4330,8 @@ fn camera_mark(d: &mut Drawing, v: &View3D) {
     let a = d.view.px(P2(cam.eye[0], cam.eye[1]));
     let b = d.view.px(P2(cam.target[0], cam.target[1]));
     // The line to what it looks at, dashed, at the model's size.
-    d.stroke(vec![a, b], Pen::PROJECTION, INK, Some(vec![12.0, 6.0]), false);
+    let dash = d.dash(&[12.0, 6.0]);
+    d.stroke(vec![a, b], Pen::PROJECTION, INK, dash, false);
     // The symbol, drawn at its own size then grown as the view's annotation is.
     let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
     let (ux, uy) = ((b.0 - a.0) / len, (b.1 - a.1) / len);
@@ -5438,6 +5478,44 @@ mod tests {
         // A weight overridden is a pen too.
         s.execute("graphics", &serde_json::json!({"view": 100000, "categories": {"walls": {"cut": {"weight": 13}}}})).unwrap();
         assert!((widest(&s, view, wall) - 0.7 * 5.0 * 2.0).abs() < 1e-4, "pen 13, 0.7 mm: {}", widest(&s, view, wall));
+    }
+
+    #[test]
+    fn cut_hatches_and_dashes_are_on_the_paper_and_zoom_with_it() {
+        let mut s = Session::new();
+        s.script(
+            r#"material {"name": "Hatched", "cut": "diagonal"}
+               type {"category": "wall", "name": "Hatched Wall", "layers": [{"material": "Hatched", "thickness": 500}]}
+               wall {"points": [[0, 0], [4000, 0]], "type": "Hatched Wall"}
+               beam {"points": [[0, 2000], [4000, 2000]], "offset": 300, "justify": "bottom"}"#,
+        )
+        .unwrap();
+        let wall = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).unwrap();
+        let beam = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Beam(_)).then_some(*id)).unwrap();
+        let level = s.model.levels()[0].0;
+        let at = |m: &Model, zoom: f64| draw(m, level, View { scale: zoom, cx: 2000.0, cy: 1000.0, width: 2000, height: 1600 });
+        let hatch = |d: &Drawing| {
+            (d.prims.iter().zip(&d.owners).zip(&d.parts))
+                .filter(|((p, o), part)| **o == Some(wall) && **part == Part::Pattern && matches!(p, Prim::Line { .. }))
+                .count()
+        };
+        let dash = |d: &Drawing| {
+            (d.prims.iter().zip(&d.owners)).find_map(|(p, o)| match p {
+                Prim::Line { dash: Some(dash), .. } if *o == Some(beam) => Some(dash.clone()),
+                _ => None,
+            })
+        };
+        let (near, far) = (at(&s.model, 0.2), at(&s.model, 0.1));
+        // The paper zooms: as many hatch lines across the wall however near, each dash twice as long twice as near.
+        assert!(hatch(&far) > 0);
+        assert_eq!(hatch(&near), hatch(&far));
+        let (dn, df) = (dash(&near).unwrap(), dash(&far).unwrap());
+        assert!(dn.iter().zip(&df).all(|(n, f)| (n - 2.0 * f).abs() < 1e-3), "{dn:?} {df:?}");
+        // An override's dash too.
+        s.execute("graphics", &serde_json::json!({"view": level, "elements": {beam.to_string(): {"projection": {"dash": "dotted"}}}}))
+            .unwrap();
+        let (dn, df) = (dash(&at(&s.model, 0.2)).unwrap(), dash(&at(&s.model, 0.1)).unwrap());
+        assert!(dn.iter().zip(&df).all(|(n, f)| (n - 2.0 * f).abs() < 1e-3), "{dn:?} {df:?}");
     }
 
     #[test]

@@ -4240,8 +4240,8 @@ fn cut_patterns_show_where_a_layer_is_wide_enough_to_hold_them() {
     let mut s = Session::new();
     cavity(&mut s);
     let w = run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]], "type": "Cavity 300"}))["ids"][0].as_u64().unwrap();
-    // Close in, 2 px a millimetre: its brick (100 mm, to its left, north) holds a brick pattern's lines.
-    let lines = |scale: f64| {
+    // Its brick, 100 mm, to its left (north): at 1 : 100, 1 mm on the paper, wide enough for a brick pattern's lines.
+    let lines = |s: &Session, scale: f64| {
         let view = crate::render::View { scale, cx: 3000.0, cy: 0.0, width: 1200, height: 800 };
         let d = crate::render::draw(&s.model, 100000, view);
         let (north, south) = (view.px(P2(3000.0, 150.0)).1, view.px(P2(3000.0, 50.0)).1);
@@ -4255,9 +4255,14 @@ fn cut_patterns_show_where_a_layer_is_wide_enough_to_hold_them() {
             })
             .count()
     };
-    assert!(lines(2.0) > 20, "close in: {}", lines(2.0));
-    // Far out, too thin for them: the layer is filled as before.
-    assert_eq!(lines(0.02), 0);
+    // The paper decides, not the zoom: near or far, the same lines across as many bricks.
+    let (near, far) = (lines(&s, 2.0), lines(&s, 0.05));
+    assert!(near > 0 && far > 0, "near {near}, far {far}");
+    // So far out its lines would run together: filled.
+    assert_eq!(lines(&s, 0.005), 0);
+    // At 1 : 500 the brick is 0.2 mm on the paper, too thin for them however near.
+    run(&mut s, "scale", json!({"view": 100000, "scale": 500}));
+    assert_eq!(lines(&s, 2.0), 0);
 }
 
 #[test]
