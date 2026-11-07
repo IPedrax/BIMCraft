@@ -465,6 +465,31 @@ fn moving_one_end_of_a_wall_stretches_it_and_the_walls_joined_there() {
     assert!(e.contains("one wall"), "{e}");
 }
 
+/// The ends of a run, as `elements` shows them.
+fn run_ends(s: &mut Session, id: u64) -> (Value, Value) {
+    let all = run(s, "elements", json!({}));
+    let e = all["elements"].as_array().unwrap().iter().find(|e| e["id"] == id).cloned().unwrap();
+    (e["start"].clone(), e["end"].clone())
+}
+
+#[test]
+fn moving_one_end_of_a_run_stretches_it_and_leaves_the_other_end_put() {
+    let mut s = Session::new();
+    let beam = run(&mut s, "beam", json!({"points": [[0, 0], [4000, 0]], "offset": 2800}))["ids"][0].as_u64().unwrap();
+    run(&mut s, "move", json!({"ids": [beam], "by": [1000, 500], "end": "start"}));
+    assert_eq!(run_ends(&mut s, beam), (json!([1000.0, 500.0]), json!([4000.0, 0.0])), "only the start went");
+    run(&mut s, "move", json!({"ids": [beam], "by": [0, -500], "end": "end"}));
+    assert_eq!(run_ends(&mut s, beam), (json!([1000.0, 500.0]), json!([4000.0, -500.0])), "only the end went");
+    assert_eq!(s.model.check(), Ok(()), "the run is still sound");
+    // `end` refuses two elements, and an element that is neither a wall nor a run.
+    let other = run(&mut s, "beam", json!({"points": [[0, 2000], [4000, 2000]], "offset": 2800}))["ids"][0].as_u64().unwrap();
+    let e = s.execute("move", &json!({"ids": [beam, other], "by": [10, 0], "end": "start"})).unwrap_err();
+    assert!(e.contains("one wall or one run"), "{e}");
+    let grid = run(&mut s, "grid", json!({"start": [0, -1000], "end": [0, 7000]}))["id"].as_u64().unwrap();
+    let e = s.execute("move", &json!({"ids": [grid], "by": [10, 0], "end": "start"})).unwrap_err();
+    assert!(e.contains("one wall or one run"), "{e}");
+}
+
 #[test]
 fn doors_move_along_their_walls_and_copies_bring_their_doors() {
     let mut s = Session::new();

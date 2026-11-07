@@ -1092,6 +1092,8 @@ pub static ALL: &[Command] = &[
         "Modify",
         &[],
         "{id | ids: [id,…], …fields} change fields as `elements` shows them, of one element or several; `level` and `top_level` may be names. \
+         `join: false` on a wall or a run turns off its joins: its ends stay square and it neither stretches with its neighbours nor pulls \
+         them (Revit's Disallow Join). \
          A filled region's or a floor's model pattern is set by `pattern_origin` [x, y], plan mm, where its lines start, and \
          `pattern_angle`, degrees counter-clockwise (both shown by `elements`); to put a pattern line of one on a reference \
          line, Model::align_pattern gives the `pattern_origin` that does. A floor's, a ceiling's, a roof's or a shaft's \
@@ -1133,7 +1135,7 @@ pub static ALL: &[Command] = &[
         ui_msg!("Move"),
         &["MV"],
         "{ids: [id,…], by: [dx, dy], end?: start|end} moves elements in plan; walls joined to a moved wall stretch to stay \
-         joined, and doors and windows slide along their walls. With `end`, only that end of one wall moves",
+         joined, and doors and windows slide along their walls. With `end`, only that end of one wall or one run moves",
         move_elements,
     ),
     edit(
@@ -11163,7 +11165,7 @@ fn place_tag(m: &mut Model, id: Id, head: P2) {
 
 /// Take elements by `mo`, keeping walls joined: walls joined to a taken wall stretch to stay
 /// joined, and doors and windows in walls that changed keep their place or go with their wall.
-/// With `end` (`Some(true)` the start, `Some(false)` the end), only that end of one wall goes.
+/// With `end` (`Some(true)` the start, `Some(false)` the end), only that end of one wall or one run goes.
 fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>) -> Result<(), String> {
     let m = &s.model;
     // The walls, and what points at each: found among those, not every element.
@@ -11187,7 +11189,13 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                 walls.insert(id, w);
             }
             Element::Door(o) | Element::Window(o) if moving_guids.contains(&o.host) => {}
-            e => others.push((id, e)),
+            // Moving one end of a run: the other end stays where it was, as a wall's does.
+            mut e => {
+                if let (Some(at_start), Some(me), Some(old)) = (end, e.run_mut(), m.run_of(id)) {
+                    if at_start { me.end = old.end } else { me.start = old.start }
+                }
+                others.push((id, e));
+            }
         }
     }
     let old = |id: &Id| m.wall(*id);
@@ -11535,8 +11543,8 @@ fn move_elements(s: &mut Session, p: &Value) -> R {
         Some("end") => Some(false),
         Some(other) => return Err(bad(c, format!("`end` is `start` or `end`, not `{other}`"))),
     };
-    if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some()) {
-        return Err(bad(c, "`end` moves an end of one wall; give `ids` one wall"));
+    if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some() || s.model.run_of(*one).is_some()) {
+        return Err(bad(c, "`end` moves an end of one wall or one run; give `ids` one wall or one run"));
     }
     relocate(c, s, &ids, &Motion { map: &|q| q + by, slide: Some(by), mirror: false }, end)?;
     Ok(json!({"moved": ids}))

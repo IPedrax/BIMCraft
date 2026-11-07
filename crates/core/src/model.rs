@@ -3597,6 +3597,11 @@ impl Model {
         }
     }
 
+    /// The run `k` finds: a beam, a strip footing, a pipe... whatever its category.
+    pub fn run_of(&self, k: impl Key) -> Option<&Run> {
+        self.elements.get(k)?.run()
+    }
+
     /// The rectangle level `id` stretches over in plan, south-west corner then north-east: its
     /// extent, else [`Model::model_extent`].
     pub fn level_extent(&self, id: impl Key) -> Option<[P2; 2]> {
