@@ -191,6 +191,9 @@ impl Family {
                 }
                 Expr::Formula(f) => {
                     for n in names(f).map_err(|e| format!("{who}: {e}"))? {
+                        if !self.parameters.iter().any(|p| p.name == n) && !(self.category.hosted() && n == WALL) {
+                            return Err(format!("{who}: formula `{f}`: {}", super::not_a_parameter(&n, &self.parameters)));
+                        }
                         let length = self.parameters.iter().any(|p| p.name == n && p.kind == Kind::Length);
                         if !length && !(self.category.hosted() && n == WALL) {
                             return Err(format!(

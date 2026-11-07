@@ -5832,6 +5832,7 @@ mod display;
 mod dock;
 mod draw;
 mod electrical;
+mod family_formulas;
 mod fills;
 mod filter;
 mod fonts;

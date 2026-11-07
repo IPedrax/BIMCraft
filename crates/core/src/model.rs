@@ -3226,8 +3226,10 @@ impl Model {
             if !p.instance {
                 return Err(format!("{who}: `{k}` is a type parameter of `{name}`; change it in its type, with `family`"));
             }
-            if p.formula.is_some() {
-                return Err(format!("{who}: `{k}` is worked out by its formula"));
+            if let Some(f) = p.driven() {
+                return Err(format!(
+                    "{who}: `{k}` is worked out by its formula `{f}`; change the formula in family `{name}`, or take it away to set `{k}`"
+                ));
             }
             if p.reporting {
                 return Err(format!("{who}: `{k}` is a reporting parameter: its dimension says what it is, and nothing sets it"));
