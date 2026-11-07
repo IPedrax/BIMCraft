@@ -3070,11 +3070,11 @@ msgstr "Sửa kiểu"
 
 #: crates/ui-egui/src/editor/extrusion.rs:222
 msgid "Edit Work Plane"
-msgstr ""
+msgstr "Sửa mặt phẳng làm việc"
 
 #: crates/ui-egui/src/editor/extrusion.rs:221
 msgid "Edit Work Plane: the form onto another of the family's planes, moving with it"
-msgstr ""
+msgstr "Sửa mặt phẳng làm việc: chuyển khối sang một mặt phẳng khác của họ, khối sẽ di chuyển theo mặt phẳng đó"
 
 #: crates/ui-egui/src/lib.rs:4218
 msgid "Edit the type"
@@ -3355,7 +3355,7 @@ msgstr "Họ"
 
 #: crates/ui-egui/src/editor/exists.rs:311
 msgid "Family Already Exists"
-msgstr ""
+msgstr "Họ đã tồn tại"
 
 #: crates/ui-egui/src/editor/document.rs:487
 #: crates/ui-egui/src/editor/document.rs:922
@@ -5913,15 +5913,15 @@ msgstr "Ghi đè…"
 
 #: crates/ui-egui/src/editor/exists.rs:316
 msgid "Overwrite it with the version in this family"
-msgstr ""
+msgstr "Ghi đè bằng phiên bản trong họ này"
 
 #: crates/ui-egui/src/editor/exists.rs:312
 msgid "Overwrite the existing version"
-msgstr ""
+msgstr "Ghi đè phiên bản hiện có"
 
 #: crates/ui-egui/src/editor/exists.rs:313
 msgid "Overwrite the existing version and its parameter values"
-msgstr ""
+msgstr "Ghi đè phiên bản hiện có và các giá trị tham số của nó"
 
 #: crates/ui-egui/src/lib.rs:3492
 msgid "PNG image"
@@ -6764,7 +6764,7 @@ msgstr "Xem trước"
 
 #: crates/ui-egui/src/editor/document.rs:1006
 msgid "Preview Visibility"
-msgstr ""
+msgstr "Xem trước hiển thị"
 
 #: crates/ui-egui/src/graphics.rs:1249
 msgid "Primary ({})"
@@ -7816,7 +7816,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/exists.rs:314
 msgid "Shared Family Already Loaded"
-msgstr ""
+msgstr "Họ dùng chung đã được nạp"
 
 #: crates/ui-egui/src/lib.rs:4637
 msgid "Shed"
@@ -8787,7 +8787,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/exists.rs:235
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
-msgstr ""
+msgstr "Họ {} bạn đang nạp đã có trong dự án này nhưng được định nghĩa khác. Bạn muốn làm gì?"
 
 #: crates/ui-egui/src/properties.rs:2645
 msgid "The foot of the perpendicular from the last point to a wall or grid"
@@ -8888,7 +8888,7 @@ msgstr "Cấu kiện đã chọn không có kiểu để sao chép"
 
 #: crates/ui-egui/src/editor/exists.rs:243
 msgid "The shared family {} nested in this family is already loaded in the project. Which version should the project use?"
-msgstr ""
+msgstr "Họ dùng chung {} lồng trong họ này đã được nạp vào dự án. Dự án nên dùng phiên bản nào?"
 
 #: crates/ui-egui/src/shortcuts.rs:453
 #: crates/ui-egui/src/shortcuts.rs:556
@@ -9444,7 +9444,7 @@ msgstr "Dùng cài đặt dự án"
 
 #: crates/ui-egui/src/editor/exists.rs:315
 msgid "Use the project's version"
-msgstr ""
+msgstr "Dùng phiên bản của dự án"
 
 #: crates/ui-egui/src/settings.rs:556
 msgid "Use the system's title bar"
@@ -10461,7 +10461,7 @@ msgstr "điểm đầu"
 
 #: crates/ui-egui/src/editor/extrusion.rs:43
 msgid "the family has no form {}"
-msgstr ""
+msgstr "họ không có khối {}"
 
 #: crates/ui-egui/src/workplane.rs:368
 msgid "the model has no levels"
