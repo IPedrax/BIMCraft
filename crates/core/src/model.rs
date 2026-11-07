@@ -1597,7 +1597,9 @@ pub struct Run {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Component {
-    /// Frames in component-local coordinates; None uses the definition test placement.
+    /// Frames in component-local coordinates; None uses the definition test placement. A component whose frame comes from
+    /// its own adaptive points, as this one's does when it is set, can't take a host: `Model::check` is to refuse one once
+    /// components have hosts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adaptive: Option<crate::adaptive::Placement>,
     pub family: String,
@@ -3514,6 +3516,13 @@ impl Model {
         if self.format < 20 {
             self.families.values_mut().for_each(crate::family::Family::settle_planes);
         }
+        // The adaptive arm of 18 to 20: an adaptive family's three datums of its own (18, the definition's `Datum`) are the
+        // family's datum planes. A point drawn on one held `"datum": "level" | "front_back" | "left_right"` in its `world`
+        // host; it now names the plane, `"plane": {"plane": guid}` (Ref. Level, Center (Front/Back), Center (Left/Right)),
+        // or a reference line's face. Reading the file does it (`Host::World`'s `plane_or_datum`), so nothing is left to do
+        // here: the point keeps its frame, and each datum plane's frame is the one the datum had, so nothing moves. It takes
+        // no FORMAT of its own: it finishes 18 to 20 on a branch whose files already say 21, which a build of 18 or 19, which
+        // would misread `plane`, refuses as newer.
         // 20 to 21 (Doors > Opening and Windows > Opening, which a view's graphics, a template and the object styles may name,
         // and a symbol's `subcategory`) has none: a file of 20 names neither.
         self.format = FORMAT;

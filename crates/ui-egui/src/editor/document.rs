@@ -10,7 +10,7 @@ use crate::icons::Icon;
 use crate::properties::group_header;
 use crate::ribbon;
 use crate::{big_button, icon_button, tab_button};
-use bimcraft_core::adaptive::{Datum, Evaluated, Plane, PointType, WorkPlane};
+use bimcraft_core::adaptive::{Evaluated, Plane, PointType, WorkPlane};
 use egui::{Align2, FontId, Frame, Margin, UiBuilder};
 
 /// The contextual tab for what the family document has in hand: the tool, else what is selected, as Revit names them.
@@ -392,7 +392,8 @@ impl BimApp {
             let mut delete = Vec::new();
             for id in &selected {
                 ui.push_id(id, |ui| {
-                    if let Some(a) = crate::adaptive_editor::point_properties(ui, d, id, &values, &params) {
+                    let planes = bimcraft_core::family::Planes { planes: &ed.planes, lines: &ed.lines };
+                    if let Some(a) = crate::adaptive_editor::point_properties(ui, d, planes, id, &values, &params) {
                         ed.associating = Some(a);
                     }
                     if let Some(node) = d.nodes.iter_mut().find(|n| &n.id == id) {
@@ -473,7 +474,8 @@ impl BimApp {
         let values = ed.values();
         if let Some(d) = ed.adaptive.as_mut() {
             ui.scope_builder(UiBuilder::new().max_rect(pane), |ui| {
-                adaptive_view::show(ui, d, &mut ed.modeller, &values, pane.size());
+                let planes = bimcraft_core::family::Planes { planes: &ed.planes, lines: &ed.lines };
+                adaptive_view::show(ui, d, planes, &mut ed.modeller, &values, pane.size());
             });
             // What a tool in the view could not do, in the status bar.
             if let Some(e) = ui.ctx().data_mut(|w| w.remove_temp::<String>(UiId::new("adaptive-view-problem"))) {
@@ -513,7 +515,7 @@ impl BimApp {
         let values = ed.values();
         let lines = ed.adaptive.as_ref().is_some_and(|d| !adaptive_view::selected(d, &ed.modeller, &values).1.is_empty());
         let drawing = !matches!(ed.modeller.tool, Draw::Modify);
-        let planes = ed.adaptive.as_ref().map(work_planes).unwrap_or_default();
+        let planes = ed.adaptive.as_ref().map(|d| work_planes(d, ed.plane_set())).unwrap_or_default();
         ui.horizontal(|ui| {
             ui.set_min_height(24.0);
             ui.label(t(name));
@@ -648,9 +650,11 @@ impl BimApp {
 /// Placement Plane's first entry: a plane picked in the view.
 const PICK: &str = msg!("Pick…");
 
-/// The work planes a family offers, as Placement Plane lists them: its datums, then each point's three planes.
-pub(crate) fn work_planes(d: &bimcraft_core::adaptive::Definition) -> Vec<(WorkPlane, String)> {
-    let mut out: Vec<(WorkPlane, String)> = Datum::ALL.iter().map(|d| (WorkPlane::Datum(*d), t(d.label()).to_string())).collect();
+/// The work planes a family offers, as Placement Plane lists them: the family's planes (its datums, its named planes, its
+/// reference lines' faces: `Planes::listed`), then each point's three planes.
+pub(crate) fn work_planes(d: &bimcraft_core::adaptive::Definition, planes: bimcraft_core::family::Planes) -> Vec<(WorkPlane, String)> {
+    let mut out: Vec<(WorkPlane, String)> =
+        planes.listed().into_iter().map(|(r, label)| (WorkPlane::Plane(r), t(&label).to_string())).collect();
     for n in d.nodes.iter().filter(|n| matches!(n.operation, bimcraft_core::adaptive::Operation::Point { .. })) {
         for (plane, name) in [(Plane::Xy, "XY"), (Plane::Xz, "XZ"), (Plane::Yz, "YZ")] {
             let label = tf("{} : {} plane", &[if n.name.is_empty() { &n.id } else { &n.name }, name]);

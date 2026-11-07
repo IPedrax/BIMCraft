@@ -1,7 +1,12 @@
 //! The adaptive point as Revit has it (docs/adaptive-revit-parity.md §1.2 to §1.5): point types with shape handles, numbering,
 //! Orients to as it was measured in Revit 2025, and Revit's measurement types on a line.
 use super::*;
-use crate::family::Expr;
+use crate::family::{CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, Expr, PlaneRef, Planes, REF_LEVEL};
+
+/// One of the family's datum planes, as a work plane.
+fn datum(guid: crate::ids::Guid) -> WorkPlane {
+    WorkPlane::Plane(PlaneRef::Plane(guid))
+}
 
 fn near(a: P3, b: P3) -> bool {
     (0..3).all(|i| (a[i] - b[i]).abs() < 1e-6)
@@ -263,21 +268,21 @@ fn a_point_drawn_on_a_work_plane_lies_on_it_hosted_with_the_planes_axes() {
     let mut d = panel(OrientsTo::Instance);
     let r = d.evaluate(&BTreeMap::new(), &d.preview);
     // Ref. Level, the template's default: on it, the family's own axes.
-    let on_level = d.add_point_on(&WorkPlane::Datum(Datum::Level), [100., 200., 300.], &r).expect("placed");
+    let on_level = d.add_point_on(&datum(REF_LEVEL), [100., 200., 300.], &r, Planes::default()).expect("placed");
     let f = frame_of(&d, &on_level);
     assert!(near(f.origin, [100., 200., 0.]) && near(f.z, [0., 0., 1.]), "{f:?}");
-    assert_eq!(d.work_plane(&on_level), Some(WorkPlane::Datum(Datum::Level)));
+    assert_eq!(d.work_plane(&on_level), Some(datum(REF_LEVEL)));
     // Center (Front/Back): y = 0, its Z square to the plane, its Y up.
-    let front = d.add_point_on(&WorkPlane::Datum(Datum::FrontBack), [500., 30., 700.], &r).expect("placed");
+    let front = d.add_point_on(&datum(CENTER_FRONT_BACK), [500., 30., 700.], &r, Planes::default()).expect("placed");
     let f = frame_of(&d, &front);
     assert!(near(f.origin, [500., 0., 700.]) && near(f.z, [0., -1., 0.]) && near(f.y, [0., 0., 1.]), "{f:?}");
     // Center (Left/Right): x = 0.
-    let side = d.add_point_on(&WorkPlane::Datum(Datum::LeftRight), [40., 600., 700.], &r).expect("placed");
+    let side = d.add_point_on(&datum(CENTER_LEFT_RIGHT), [40., 600., 700.], &r, Planes::default()).expect("placed");
     assert!(near(frame_of(&d, &side).origin, [0., 600., 700.]));
     // On point 1's XZ plane: hosted on it, so it follows point 1.
     let p1 = adaptive(&d, 1).id.clone();
     let on_point = WorkPlane::Point { point: p1.clone(), plane: Plane::Xz };
-    let b = d.add_point_on(&on_point, [200., 50., 300.], &r).expect("placed");
+    let b = d.add_point_on(&on_point, [200., 50., 300.], &r, Planes::default()).expect("placed");
     assert!(near(frame_of(&d, &b).origin, [200., 0., 300.]));
     assert_eq!(d.work_plane(&b), Some(on_point));
     if let Some(Node { operation: Operation::Point { host: Host::Adaptive { frame, .. }, .. }, .. }) =
@@ -287,7 +292,7 @@ fn a_point_drawn_on_a_work_plane_lies_on_it_hosted_with_the_planes_axes() {
     }
     assert!(near(frame_of(&d, &b).origin, [200., 1000., 300.]), "it moved with its host");
     // A plane of something that is not a point is no work plane.
-    assert!(d.add_point_on(&WorkPlane::Point { point: "nothing".into(), plane: Plane::Xy }, [0.; 3], &r).is_err());
+    assert!(d.add_point_on(&WorkPlane::Point { point: "nothing".into(), plane: Plane::Xy }, [0.; 3], &r, Planes::default()).is_err());
 }
 
 #[test]
@@ -323,14 +328,14 @@ fn pick_finds_the_plane_under_the_pointer_a_points_or_a_datums() {
     let room = ([-300., -300., -300.], [2300., 1300., 1300.]);
     let pick = |at: P3| {
         let (x, y, _) = cam.project(at);
-        r.pick_plane(&|o, n| cam.on((x, y), o, n), &|p| cam.project(p).2, 70., room)
+        r.pick_plane(Planes::default(), &|o, n| cam.on((x, y), o, n), &|p| cam.project(p).2, 70., room)
     };
     // Near point 1, a little up from it: one of point 1's planes standing towards the eye.
     let p1 = adaptive(&d, 1).id.clone();
     let near_p1 = pick([30., 0., 40.]);
     assert!(matches!(&near_p1, Some(WorkPlane::Point { point, .. }) if *point == p1), "{near_p1:?}");
     // Up and away from every point, over Center (Front/Back): that plane.
-    assert_eq!(pick([1000., 0., 1000.]), Some(WorkPlane::Datum(Datum::FrontBack)));
+    assert_eq!(pick([1000., 0., 1000.]), Some(datum(CENTER_FRONT_BACK)));
     // Outside every datum's rectangle and every point's planes: nothing.
     assert_eq!(pick([5000., 0., 5000.]), None);
 }
@@ -380,7 +385,8 @@ fn two_points_a_line_and_a_child() -> (Definition, String, String, String, Strin
     let b = d.add_point([1000., 0., 0.]);
     let line = d.add_chain(&[a.clone(), b.clone()], false).expect("a line");
     let r = d.evaluate(&BTreeMap::new(), &d.preview);
-    let child = d.add_point_on(&WorkPlane::Point { point: a.clone(), plane: Plane::Xy }, [200., 300., 0.], &r).expect("a child");
+    let child =
+        d.add_point_on(&WorkPlane::Point { point: a.clone(), plane: Plane::Xy }, [200., 300., 0.], &r, Planes::default()).expect("a child");
     (d, a, b, line, child)
 }
 

@@ -225,6 +225,11 @@ the sync gives anew (a family loaded twice) takes what is drawn on it along (`Fa
 planes, lines and hosts as they are; its Plane list picks a datum. A connector has no place yet: when it gets `at` and
 `direction` (upstream #269) it takes an optional host too. IFC is unchanged: it writes the forms' triangles.
 
+An adaptive family's work planes are these planes too: a reference point is drawn on a datum, a named plane of the family's own
+or a reference line's face, and keeps it as its Work Plane by `PlaneRef`; the three datums an adaptive definition had of its own
+before are the datum planes, read from an older file by name ([adaptive families](adaptive-families.md)). `Family::hosted_on`,
+`rehost` and `resolve_hosts` follow its points as they follow forms and lines.
+
 ## Plan symbols
 
 A family's `symbols`, of any category, are what its plan draws besides its forms, in its own axes: each is exactly one of a

@@ -4,10 +4,10 @@
 //! canonical [`Definition`]; nothing here keeps state of its own.
 use super::frame::norm;
 use super::{
-    Appearance, CurveLocation, Datum, Definition, Evaluated, Evaluation, Frame, Host, Measurement, Node, Operation, OrientsTo, Placement,
-    Plane, PointType, Transform, WorkPlane, plane_of,
+    Appearance, CurveLocation, Definition, Evaluated, Evaluation, Frame, Host, Measurement, Node, Operation, OrientsTo, Placement, Plane,
+    PointType, Transform, WorkPlane, plane_of,
 };
-use crate::family::Expr;
+use crate::family::{Expr, PlaneRef, Planes, REF_LEVEL};
 use crate::view3d::{P3, add, dot, mul, sub};
 use std::collections::BTreeSet;
 
@@ -103,12 +103,14 @@ impl Evaluation {
     }
 
     /// The work plane under the pointer, for Placement Plane's Pick: of each point's three planes (squares `half` mm from it
-    /// each way), the one nearest the eye where the pointer's ray meets it; with none under it, of the datums (as far as box
-    /// `room` reaches), the nearest. A point's planes come first, as in Revit: the datums fill the room, so one in front of a
+    /// each way), the one nearest the eye where the pointer's ray meets it; with none under it, of the family's planes that
+    /// Placement Plane lists (`planes`: the datums, its named planes, its reference lines' faces; as far as box `room`
+    /// reaches), the nearest. A point's planes come first, as in Revit: the family's fill the room, so one in front of a
     /// point would hide them. `hit` gives where the ray meets the plane through a point square to a direction, `depth` how
     /// near the eye a point is (larger is nearer).
     pub fn pick_plane(
         &self,
+        planes: Planes,
         hit: &dyn Fn(P3, P3) -> Option<P3>,
         depth: &dyn Fn(P3) -> f64,
         half: f64,
@@ -138,12 +140,12 @@ impl Evaluation {
             return best.map(|(_, plane)| plane);
         }
         let (lo, hi) = room;
-        for datum in Datum::ALL {
-            let f = datum.frame();
+        for (r, _) in planes.listed() {
+            let Ok(f) = planes.frame(&r) else { continue };
             if let Some(p) = hit(f.origin, f.z)
                 && (0..3).all(|i| p[i] >= lo[i] - 1e-6 && p[i] <= hi[i] + 1e-6)
             {
-                consider(&mut best, p, WorkPlane::Datum(datum));
+                consider(&mut best, p, WorkPlane::Plane(r));
             }
         }
         best.map(|(_, plane)| plane)
@@ -230,23 +232,24 @@ impl Definition {
     /// A reference point at `at`, its axes the family's (Revit's Point Element on Ref. Level, its default work plane, for a
     /// point at height 0); its id.
     pub fn add_point(&mut self, at: P3) -> String {
-        let datum = (at[2] == 0.).then_some(Datum::Level);
-        let host = Host::World { frame: Frame::at(at), datum };
+        let plane = (at[2] == 0.).then_some(PlaneRef::Plane(REF_LEVEL));
+        let host = Host::World { frame: Frame::at(at), plane };
         self.push("point", "Reference point", Operation::Point { host, transform: Transform::default() })
     }
 
-    /// A reference point drawn on work plane `plane` where `at` falls square onto it, as `evaluation` has the plane: on a
-    /// datum, with the datum's axes; on a point's plane, hosted on it (so it follows that point), at an offset in it. Its id.
-    pub fn add_point_on(&mut self, plane: &WorkPlane, at: P3, evaluation: &Evaluation) -> Result<String, String> {
+    /// A reference point drawn on work plane `plane` where `at` falls square onto it, as `evaluation` has the points and
+    /// `planes` the family's planes: on one of the family's planes, with its axes; on a point's plane, hosted on it (so it
+    /// follows that point), at an offset in it. Its id.
+    pub fn add_point_on(&mut self, plane: &WorkPlane, at: P3, evaluation: &Evaluation, planes: Planes) -> Result<String, String> {
         if !at.iter().all(|v| v.is_finite() && v.abs() <= 1e9) {
             return Err("The point would be out of range".into());
         }
         match plane {
-            WorkPlane::Datum(datum) => {
-                let f = datum.frame();
+            WorkPlane::Plane(r) => {
+                let f = Frame::from(planes.frame(r)?);
                 let local = f.inverse_point(at);
                 let frame = Frame { origin: f.point([local[0], local[1], 0.]), ..f };
-                let host = Host::World { frame, datum: Some(*datum) };
+                let host = Host::World { frame, plane: Some(*r) };
                 Ok(self.push("point", "Reference point", Operation::Point { host, transform: Transform::default() }))
             }
             WorkPlane::Point { point, plane } => {
@@ -264,7 +267,7 @@ impl Definition {
     /// The work plane point `id` was drawn on, Revit's Work Plane, if it has one.
     pub fn work_plane(&self, id: &str) -> Option<WorkPlane> {
         match &self.nodes.iter().find(|n| n.id == id)?.operation {
-            Operation::Point { host: Host::World { datum: Some(d), .. }, .. } => Some(WorkPlane::Datum(*d)),
+            Operation::Point { host: Host::World { plane: Some(r), .. }, .. } => Some(WorkPlane::Plane(*r)),
             Operation::Point { host: Host::Plane { point, plane }, .. } => Some(WorkPlane::Point { point: point.clone(), plane: *plane }),
             _ => None,
         }
@@ -327,7 +330,7 @@ impl Definition {
         let node = self.nodes.iter_mut().find(|n| n.id == id).ok_or_else(|| format!("No element `{id}`"))?;
         let Operation::Point { host, .. } = &mut node.operation else { return Err(format!("`{id}` is not a point")) };
         if let Host::Adaptive { frame, .. } | Host::Handle { frame, .. } = *host {
-            *host = Host::World { frame, datum: None };
+            *host = Host::World { frame, plane: None };
             node.name = "Reference point".into();
         }
         if number.is_none() {

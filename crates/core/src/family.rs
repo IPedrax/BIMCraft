@@ -23,8 +23,8 @@ mod planes;
 mod validate;
 
 pub use planes::{
-    CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, DATUMS, Face, Frame, MAX_LINES, MAX_PLANES, PlaneRef, REF_LEVEL, RefLine, RefPlane, Reference,
-    datums,
+    CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, DATUMS, Face, Frame, MAX_LINES, MAX_PLANES, PlaneRef, Planes, REF_LEVEL, RefLine, RefPlane,
+    Reference, datums,
 };
 
 /// What a family is: how IFC names its components; a door or a window is hosted in a wall, which
@@ -1429,10 +1429,17 @@ impl Family {
 
     /// Parameter `old` named `new` everywhere the family names it: the parameter itself, its types' values, and every
     /// formula and reference to it (the parameters' formulas, the forms' sizes, materials and `visible`, the symbols' sizes,
-    /// `visible` and `{label}` text, the connectors' values). Every part of a family that holds a formula or names a
+    /// `visible` and `{label}` text, the connectors' values, and the adaptive definition's formulas and forms' materials:
+    /// [`crate::adaptive::Definition::rename_parameter`]). Every part of a family that holds a formula or names a
     /// parameter must be walked here, so a rename never leaves one behind: a new such part adds its arm. The library
     /// entry (its GUID) and the components' values are the model's to follow (`Library::renamed`).
     pub fn rename_parameter(&mut self, old: &str, new: &str) {
+        // Adaptive: every formula of its points and forms (what "=" ties to a parameter), and its forms made of a material
+        // parameter.
+        let material = self.material_parameter(old);
+        if let Some(d) = &mut self.adaptive {
+            d.rename_parameter(old, new, material, &|f| renamed_in_formula(f, old, new));
+        }
         let mut expr = |e: &mut Expr| {
             if let Expr::Formula(f) = e {
                 *f = renamed_in_formula(f, old, new);

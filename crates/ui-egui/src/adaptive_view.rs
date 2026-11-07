@@ -7,10 +7,8 @@
 //! project's.
 use crate::lang::t;
 use crate::style::pal;
-use bimcraft_core::adaptive::{
-    Datum, Definition, Evaluated, Evaluation, Host, Operation, Picked, Plane, PointType, Show, WorkPlane, gizmo_end,
-};
-use bimcraft_core::family::Val;
+use bimcraft_core::adaptive::{Definition, Evaluated, Evaluation, Host, Operation, Picked, Plane, PointType, Show, WorkPlane, gizmo_end};
+use bimcraft_core::family::{CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, PlaneRef, Planes, REF_LEVEL, Val};
 use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, P3};
 use bimcraft_i18n::msg;
 use egui::{Color32, Key, Modifiers, PointerButton, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Ui, vec2};
@@ -349,7 +347,7 @@ fn transform_click(d: &mut Definition, m: &mut Modeller, r: &Evaluation, p: P3, 
 }
 
 /// The modelling view, `size` points, over definition `d` evaluated with `values`.
-pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &BTreeMap<String, Val>, size: egui::Vec2) {
+pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Modeller, values: &BTreeMap<String, Val>, size: egui::Vec2) {
     if m.depth <= 0. {
         m.depth = 300.;
     }
@@ -477,7 +475,7 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
     // Placement Plane's Pick: the plane under the pointer lights up, and a click makes it the work plane; Escape gives up.
     let plane_at = |at: Pos2| {
         let half = PLANE_REACH / cam.scale.max(1e-9);
-        r.pick_plane(&|o, n| cam.on(px(at), o, n), &|p| cam.project(p).2, half, room(&r))
+        r.pick_plane(planes, &|o, n| cam.on(px(at), o, n), &|p| cam.project(p).2, half, room(&r))
     };
     let lit = if m.picking_plane { hover.and_then(plane_at) } else { None };
     // The ViewCube: a face clicked looks at the family from that side; the house, Revit's default 3D view.
@@ -506,7 +504,7 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
         let mods = crate::canvas::click_modifiers(ui);
         let picked = r.pick(&|p| screen_of(&cam, p), px(at));
         // Where the click falls on the work plane (Ref. Level when the one chosen has gone).
-        let plane = m.work_plane.frame(&r).unwrap_or_default();
+        let plane = m.work_plane.frame(&r, planes).unwrap_or_default();
         let on_plane = cam.on(px(at), plane.origin, plane.z);
         let work_plane = m.work_plane.clone();
         // Move, Copy and Rotate take clicks on points exactly, else on the work plane.
@@ -540,8 +538,8 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
                         Some(Picked::Curve(curve, t)) => d.add_hosted_point(&curve, t).ok(),
                         // Snapped onto the point under the pointer: exactly where it falls on the work plane (on that point's own
                         // plane, on it, at no offset).
-                        Some(Picked::Point(snap)) => r.origin(&snap).and_then(|o| d.add_point_on(&work_plane, o, &r).ok()),
-                        _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r).ok()),
+                        Some(Picked::Point(snap)) => r.origin(&snap).and_then(|o| d.add_point_on(&work_plane, o, &r, planes).ok()),
+                        _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r, planes).ok()),
                     };
                     if let Some(id) = made {
                         m.history.push(before);
@@ -552,7 +550,7 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
                     let before = d.clone();
                     let point = match picked {
                         Some(Picked::Point(id)) => Some(id),
-                        _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r).ok()),
+                        _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r, planes).ok()),
                     };
                     if let Some(id) = point {
                         let closes = chain.len() >= 3 && chain.first() == Some(&id);
@@ -610,7 +608,7 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, m: &mut Modeller, values: &B
     }
     m.selection.retain(|id| d.nodes.iter().any(|n| &n.id == id));
     let r = d.evaluate(values, &d.preview);
-    draw(ui, rect, &cam, d, &r, m, hovered.as_ref().map(Picked::id), hover, lit.as_ref());
+    draw(ui, rect, &cam, d, planes, &r, m, hovered.as_ref().map(Picked::id), hover, lit.as_ref());
 }
 
 /// What the view shows: the work plane, the forms shaded, the lines, the points with the adaptive ones numbered, the
@@ -621,6 +619,7 @@ fn draw(
     rect: Rect,
     cam: &Camera,
     d: &Definition,
+    planes: Planes,
     r: &Evaluation,
     m: &Modeller,
     hovered: Option<&str>,
@@ -660,7 +659,7 @@ fn draw(
     // The work plane Point Element and Line draw on, when Work Plane > Show shows it: a blue tint over it and a grid on it, a
     // line each metre over what the family takes up there.
     let (lo, hi) = extent(r).unwrap_or(([-1000.; 3], [1000.; 3]));
-    let plane = m.work_plane.frame(r).unwrap_or_default();
+    let plane = m.work_plane.frame(r, planes).unwrap_or_default();
     let corners: Vec<P3> =
         (0..8).map(|k| plane.inverse_point([[lo, hi][k & 1][0], [lo, hi][(k >> 1) & 1][1], [lo, hi][k >> 2][2]])).collect();
     let span = |i: usize| {
@@ -694,14 +693,15 @@ fn draw(
     // drawn heavier, the one Pick is over in the hover's colour.
     let (a, b) = room(r);
     let green = if crate::style::canvas_dark() { Color32::from_rgb(90, 200, 110) } else { Color32::from_rgb(20, 140, 40) };
-    for (datum, quad) in [
-        (Datum::Level, [[a[0], a[1], 0.], [b[0], a[1], 0.], [b[0], b[1], 0.], [a[0], b[1], 0.]]),
-        (Datum::FrontBack, [[a[0], 0., a[2]], [b[0], 0., a[2]], [b[0], 0., b[2]], [a[0], 0., b[2]]]),
-        (Datum::LeftRight, [[0., a[1], a[2]], [0., b[1], a[2]], [0., b[1], b[2]], [0., a[1], b[2]]]),
+    for (datum, name, quad) in [
+        (REF_LEVEL, "Ref. Level", [[a[0], a[1], 0.], [b[0], a[1], 0.], [b[0], b[1], 0.], [a[0], b[1], 0.]]),
+        (CENTER_FRONT_BACK, "Center (Front/Back)", [[a[0], 0., a[2]], [b[0], 0., a[2]], [b[0], 0., b[2]], [a[0], 0., b[2]]]),
+        (CENTER_LEFT_RIGHT, "Center (Left/Right)", [[0., a[1], a[2]], [0., b[1], a[2]], [0., b[1], b[2]], [0., a[1], b[2]]]),
     ] {
-        let active = m.work_plane == WorkPlane::Datum(datum);
-        let picked = lit == Some(&WorkPlane::Datum(datum));
-        let own = if datum == Datum::Level { ink.gamma_multiply(0.85) } else { green };
+        let plane = WorkPlane::Plane(PlaneRef::Plane(datum));
+        let active = m.work_plane == plane;
+        let picked = lit == Some(&plane);
+        let own = if datum == REF_LEVEL { ink.gamma_multiply(0.85) } else { green };
         let ink = if picked { cp.hover } else { own };
         let stroke = Stroke::new(
             if picked {
@@ -715,17 +715,39 @@ fn draw(
         );
         let mut outline: Vec<Pos2> = quad.iter().map(|q| at(*q)).collect();
         outline.push(outline[0]);
-        if datum == Datum::Level {
+        if datum == REF_LEVEL {
             p.extend(Shape::dashed_line_with_offset(&outline, stroke, &[14.0, 2.0], &[4.0, 4.0], 0.0));
         } else {
             p.extend(Shape::dashed_line(&outline, stroke, 7.0, 5.0));
         }
-        let name = match datum {
-            Datum::Level => "Ref. Level",
-            Datum::FrontBack => "Center (Front/Back)",
-            Datum::LeftRight => "Center (Left/Right)",
-        };
         p.text(at(quad[3]) + vec2(4.0, 2.0), egui::Align2::LEFT_TOP, t(name), egui::FontId::proportional(11.0), ink);
+    }
+    // The family's own named reference planes, which Placement Plane lists and Pick picks: dashed green as the Center ones,
+    // over as much of each as the room's box spans in it, named at a corner.
+    for (own, label) in planes.listed().into_iter().skip(3).filter(|(own, _)| matches!(own, PlaneRef::Plane(_))) {
+        let Ok(f) = planes.frame(&own) else { continue };
+        let f = bimcraft_core::adaptive::Frame::from(f);
+        let plane = WorkPlane::Plane(own);
+        let corners: Vec<P3> = (0..8).map(|k| f.inverse_point([[a, b][k & 1][0], [a, b][(k >> 1) & 1][1], [a, b][k >> 2][2]])).collect();
+        let span = |i: usize| {
+            (corners.iter().map(|c| c[i]).fold(f64::INFINITY, f64::min), corners.iter().map(|c| c[i]).fold(f64::NEG_INFINITY, f64::max))
+        };
+        let ((u0, u1), (v0, v1)) = (span(0), span(1));
+        let quad = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]].map(|[u, v]| f.point([u, v, 0.]));
+        let picked = lit == Some(&plane);
+        let ink = if picked { cp.hover } else { green };
+        let width = if picked {
+            2.5
+        } else if m.work_plane == plane {
+            1.6
+        } else {
+            1.0
+        };
+        let mut outline: Vec<Pos2> = quad.iter().map(|q| at(*q)).collect();
+        outline.push(outline[0]);
+        p.extend(Shape::dashed_line(&outline, Stroke::new(width, ink), 7.0, 5.0));
+        let name = label.split_once(" : ").map_or(label.as_str(), |(_, n)| n);
+        p.text(at(quad[3]) + vec2(4.0, 2.0), egui::Align2::LEFT_TOP, name, egui::FontId::proportional(11.0), ink);
     }
     // The forms, far triangles first, each shaded by how squarely it faces a light over the viewer's left shoulder.
     let light = {

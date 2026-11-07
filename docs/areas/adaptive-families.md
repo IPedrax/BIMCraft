@@ -101,17 +101,35 @@ reference planes dashed green, forms light grey with their edges where their fac
 placement numbers in blue; and Revit's **ViewCube** at the top right (a face clicked looks from that side, `cube_faces`; the house
 over it is the default view; a drag on it orbits). It opens framing the family and its datums, and is orbited by Shift and the middle button (as Revit's), panned with the middle button, zoomed with the wheel; a drag on
 empty space draws a selection box, as Revit's: left to right it takes what lies wholly inside it (a solid outline), right to
-left what it touches (dashed), Ctrl adding to the selection and Shift taking away (`Evaluation::in_box`). It draws the template's
-datums (`Datum`): Ref. Level and the reference planes Center (Front/Back) and Center (Left/Right), each the outline of a rectangle
-round what the family takes up, named; and, with Work Plane > Show, a grid a metre apart on the work plane Point Element and
-Line draw on. That is Revit's
-**Placement Plane**, in the Options Bar while drawing (`WorkPlane`, `Modeller::work_plane`): one of the datums (Ref. Level to
-begin with) or one of a point's three planes, or **Pick…**, first in the list as in Revit: the next click picks the plane under
+left what it touches (dashed), Ctrl adding to the selection and Shift taking away (`Evaluation::in_box`). It draws the family's
+datums: Ref. Level and the reference planes Center (Front/Back) and Center (Left/Right), each the outline of a rectangle
+round what the family takes up, named, and the family's own named reference planes the same way, dashed green; and, with Work
+Plane > Show, a grid a metre apart on the work plane Point Element and Line draw on. That is Revit's
+**Placement Plane**, in the Options Bar while drawing (`WorkPlane`, `Modeller::work_plane`): one of the family's planes (Ref.
+Level to begin with) or one of a point's three planes, or **Pick…**, first in the list as in Revit: the next click picks the plane under
 the pointer, lit as the pointer passes over it (`Evaluation::pick_plane`: a point's plane under the pointer first, the nearest the
-eye, and only where there is none a datum, since the datums fill the room and one in front of a point would hide its planes;
-Escape gives up). The datums reach 300 mm beyond what the family takes up, and at least 1.5 m from its origin. A point drawn on a datum has the datum's axes and keeps it as its Work Plane
-(`Host::World`'s `datum`); one drawn on a point's plane is hosted on it, at an offset in it, and follows that point
-(`Definition::add_point_on`). Properties shows it under Constraints as **Work Plane**. Its tools:
+eye, and only where there is none one of the family's, since those fill the room and one in front of a point would hide its planes;
+Escape gives up). The family's planes reach 300 mm beyond what the family takes up, and at least 1.5 m from its origin. A point
+drawn on one has its axes and keeps it as its Work Plane (`Host::World`'s `plane`); one drawn on a point's plane is hosted on it,
+at an offset in it, and follows that point (`Definition::add_point_on`). Properties shows it under Constraints as **Work Plane**.
+
+**Work planes are the family's planes.** An adaptive family has no datums of its own: its work planes are the family's
+reference planes (`Family::planes`, [families](families.md#reference-planes)) and its reference lines' four faces, named by a
+`PlaneRef` as a form's `host` is (`WorkPlane::Plane`; `WorkPlane::Point` is still a point's own three planes). Placement Plane
+and Pick list them as `Planes::listed` does: the datums first, named as Revit names them (`Level : Ref. Level`, `Reference
+Plane : Center (Front/Back)`, `Reference Plane : Center (Left/Right)`), then each named plane of the family's own (`Reference
+Plane : name`; an unnamed one is not listed, as in Revit), then each reference line's faces (`Reference Line 1 : Horizontal`,
+Vertical, Start, End). Working out where one is takes the family's planes and lines (`Planes`, `Family::plane_set`; the
+Family Editor keeps them beside the definition it edits); `Planes::default()` knows the three datums. A world point's `plane`
+is `{"plane": guid}` or `{"line": guid, "face": …}`; it keeps its own `frame`, so the plane only says where it was drawn. A
+file from before (FORMAT 18 and 19) held `"datum": "level" | "front_back" | "left_right"`, which reads as Ref. Level, Center
+(Front/Back) and Center (Left/Right) (`plane_or_datum`), whose frames are the ones those datums had, so nothing moves. A plane
+a point is drawn on is one of the family's (`Family::check_planes` says which point names one it hasn't), can't be deleted
+while the point is on it (`Family::hosted_on`), and takes the point along when the sync gives it a new GUID (`Family::rehost`).
+Renaming a family parameter renames it in every formula of the definition, which is where "=" ties a value to one, and in the
+forms made of a material parameter (`Definition::rename_parameter`, called by `Family::rename_parameter`).
+
+Its tools:
 
 - **Point Element**: a click on the work plane places a reference point on it (`Definition::add_point_on`); a click on a line
   places a point hosted on it, at the parameter clicked (`add_hosted_point`); a click within 8 px of a point snaps onto it,

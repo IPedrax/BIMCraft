@@ -396,8 +396,8 @@ pub(crate) struct FamilyEditor {
     /// Its connectors, as the family has them: the editor has no tab for them yet, and keeps them as they are.
     connectors: Vec<Connector>,
     /// Its reference planes and lines, as the family has them: the editor has no tab for them yet, and keeps them as they are.
-    planes: Vec<RefPlane>,
-    lines: Vec<RefLine>,
+    pub(crate) planes: Vec<RefPlane>,
+    pub(crate) lines: Vec<RefLine>,
     /// Which fixture or fitting it is, as the family has it: set with the `family` command, kept as it is here.
     kind: Option<String>,
     /// The IFC class a generic family from IFC remembers: set with the `family` command or by the import, kept as it is here.
@@ -474,6 +474,11 @@ pub(crate) enum Tab {
 }
 
 impl FamilyEditor {
+    /// Its reference planes and lines, as the family has them: what an adaptive point's work plane is worked out from.
+    pub(crate) fn plane_set(&self) -> bimcraft_core::family::Planes<'_> {
+        bimcraft_core::family::Planes { planes: &self.planes, lines: &self.lines }
+    }
+
     /// The editor of family `name` as the project has it.
     pub(crate) fn of(name: &str, f: &Family) -> FamilyEditor {
         let own: Vec<&Parameter> = f.parameters.iter().filter(|p| !p.instance && p.formula.is_none()).collect();
@@ -736,7 +741,8 @@ fn adaptive_side(ui: &mut Ui, ed: &mut FamilyEditor, values: &BTreeMap<String, b
     for id in &selected {
         ui.push_id(id, |ui| {
             egui::Frame::group(ui.style()).show(ui, |ui| {
-                if let Some(a) = crate::adaptive_editor::point_properties(ui, d, id, values, &params) {
+                let planes = bimcraft_core::family::Planes { planes: &ed.planes, lines: &ed.lines };
+                if let Some(a) = crate::adaptive_editor::point_properties(ui, d, planes, id, values, &params) {
                     ed.associating = Some(a);
                 }
                 if let Some(node) = d.nodes.iter_mut().find(|n| &n.id == id) {
@@ -1368,7 +1374,8 @@ impl BimApp {
                                 ui.vertical(|ui| {
                                     ui.set_width(view.x);
                                     if let Some(d) = ed.adaptive.as_mut() {
-                                        crate::adaptive_view::show(ui, d, &mut ed.modeller, &values, view);
+                                        let planes = bimcraft_core::family::Planes { planes: &ed.planes, lines: &ed.lines };
+                                        crate::adaptive_view::show(ui, d, planes, &mut ed.modeller, &values, view);
                                     }
                                 });
                                 ui.vertical(|ui| {

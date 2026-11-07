@@ -352,11 +352,39 @@ fn a_point_drawn_on_the_placement_plane_chosen_lies_on_it_as_in_revit() {
     let id = d.nodes.last().map(|n| n.id.clone()).expect("a point made");
     let at = d.evaluate(&Default::default(), &d.preview).origin(&id).expect("it evaluates");
     assert!(at[1].abs() < 1e-6 && (at[0] - 800.).abs() < 20. && (at[2] - 600.).abs() < 20., "on the plane y = 0: {at:?}");
-    assert_eq!(d.work_plane(&id), Some(bimcraft_core::adaptive::WorkPlane::Datum(bimcraft_core::adaptive::Datum::FrontBack)));
+    assert_eq!(
+        d.work_plane(&id),
+        Some(bimcraft_core::adaptive::WorkPlane::Plane(bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK)))
+    );
     // Properties says so, as Revit's Work Plane.
     tool(&mut h, "Modify");
     assert!(h.query_by_label("Work Plane").is_some());
     assert!(h.query_all_by_label("Reference Plane : Center (Front/Back)").count() >= 1);
+}
+
+#[test]
+fn placement_plane_lists_the_familys_own_named_planes_and_a_point_drawn_on_one_lies_on_it() {
+    let mut h = modelling();
+    // A reference plane of the family's own, 400 mm in front of Center (Front/Back).
+    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+        ed.planes.push(
+            serde_json::from_value(serde_json::json!({"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "name": "Face",
+                "start": [-1000, -400, 0], "end": [1000, -400, 0], "up": [0, 0, 1]}))
+            .expect("a plane"),
+        );
+    }
+    h.run();
+    tool(&mut h, "Point");
+    choose(&mut h, "Placement Plane", "Reference Plane : Face");
+    click_model(&mut h, [800., -400., 600.], Modifiers::NONE);
+    let d = definition(&h);
+    let id = d.nodes.last().map(|n| n.id.clone()).expect("a point made");
+    let at = d.evaluate(&Default::default(), &d.preview).origin(&id).expect("it evaluates");
+    assert!((at[1] + 400.).abs() < 1e-6 && (at[0] - 800.).abs() < 20. && (at[2] - 600.).abs() < 20., "on the plane y = -400: {at:?}");
+    let face = bimcraft_core::family::PlaneRef::Plane(bimcraft_core::ids::Guid::parse("1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8").unwrap());
+    assert_eq!(d.work_plane(&id), Some(bimcraft_core::adaptive::WorkPlane::Plane(face)));
+    tool(&mut h, "Modify");
+    assert!(h.query_all_by_label("Reference Plane : Face").count() >= 1, "Properties names it as its Work Plane");
 }
 
 #[test]
@@ -369,7 +397,10 @@ fn pick_in_placement_plane_takes_the_plane_clicked_in_the_view_as_in_revit() {
     click_model(&mut h, [800., 0., 600.], Modifiers::NONE);
     let ed = h.state().family_editor.as_ref().unwrap();
     assert!(!ed.modeller.picking_plane, "picked");
-    assert_eq!(ed.modeller.work_plane, bimcraft_core::adaptive::WorkPlane::Datum(bimcraft_core::adaptive::Datum::FrontBack));
+    assert_eq!(
+        ed.modeller.work_plane,
+        bimcraft_core::adaptive::WorkPlane::Plane(bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK))
+    );
     assert!(definition(&h).nodes.is_empty(), "a pick places nothing");
     assert_eq!(combo_value(&h, "Placement Plane"), "Reference Plane : Center (Front/Back)");
 }
@@ -589,5 +620,8 @@ fn pick_takes_a_points_plane_even_with_a_reference_plane_in_front_of_it_as_in_re
     choose(&mut h, "Placement Plane", "Pick…");
     click_model(&mut h, [800., 0., 600.], Modifiers::NONE);
     let ed = h.state().family_editor.as_ref().unwrap();
-    assert_eq!(ed.modeller.work_plane, bimcraft_core::adaptive::WorkPlane::Datum(bimcraft_core::adaptive::Datum::FrontBack));
+    assert_eq!(
+        ed.modeller.work_plane,
+        bimcraft_core::adaptive::WorkPlane::Plane(bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK))
+    );
 }

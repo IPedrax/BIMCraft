@@ -489,6 +489,7 @@ fn measured(m: adaptive::Measurement) -> (&'static str, Holds) {
 pub(crate) fn point_properties(
     ui: &mut Ui,
     d: &mut Definition,
+    planes: bimcraft_core::family::Planes,
     id: &str,
     values: &BTreeMap<String, Val>,
     params: &[(String, Holds)],
@@ -526,8 +527,9 @@ pub(crate) fn point_properties(
         Some(Evaluated::Point { frame }) => Some(frame.rotations()),
         _ => None,
     };
-    let work_plane =
-        d.work_plane(id).and_then(|w| crate::editor::document::work_planes(d).into_iter().find(|(p, _)| *p == w).map(|(_, label)| label));
+    let work_plane = d
+        .work_plane(id)
+        .and_then(|w| crate::editor::document::work_planes(d, planes).into_iter().find(|(p, _)| *p == w).map(|(_, label)| label));
     if let Some(node) = d.nodes.iter_mut().find(|n| n.id == id) {
         group(ui, msg!("Constraints"), |ui| {
             if let Some(label) = &work_plane {
@@ -810,9 +812,12 @@ pub(crate) fn node_properties(
         if let Some(map) = v.as_object_mut() {
             map.remove("transform");
         }
+        // A world point's `plane` is its Work Plane, shown by point_properties; a hosted point's `plane` (xy, xz, yz) is its
+        // host's own, picked here.
+        let world = v["host"]["type"] == "world";
         if let Some(map) = v["host"].as_object_mut() {
             hosted_frame = map.remove("frame");
-            for key in ["orients", "constrained", "datum"] {
+            for key in ["orients", "constrained", if world { "plane" } else { "" }] {
                 if let Some(v) = map.remove(key) {
                     revit_fields.push((key, v));
                 }

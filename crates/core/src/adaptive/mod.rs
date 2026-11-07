@@ -9,11 +9,13 @@ mod sample;
 pub use sample::four_point_panel;
 mod geometry;
 #[cfg(test)]
+mod plane_tests;
+#[cfg(test)]
 mod revit_tests;
 #[cfg(test)]
 mod tests;
 
-use crate::family::{Expr, Piece, Val};
+use crate::family::{Expr, Piece, PlaneRef, Planes, Val};
 use crate::view3d::{P3, add, dot, mul, sub};
 pub use frame::Frame;
 use frame::{EPS, norm, unit};
@@ -60,56 +62,37 @@ pub enum Plane {
     Xz,
     Yz,
 }
-/// The datums a Generic Model Adaptive family starts with, as Revit's template has them: the level Ref. Level and the reference
-/// planes Center (Front/Back) and Center (Left/Right), all through the family's origin.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Datum {
-    Level,
-    FrontBack,
-    LeftRight,
-}
-impl Datum {
-    pub const ALL: [Datum; 3] = [Datum::Level, Datum::FrontBack, Datum::LeftRight];
-    /// The plane's axes at the origin, its Z square to it: Ref. Level the family's own; Center (Front/Back) seen from the front,
-    /// Y up; Center (Left/Right) seen from the right, Y up.
-    pub fn frame(self) -> Frame {
-        match self {
-            Datum::Level => Frame::default(),
-            Datum::FrontBack => Frame { origin: [0.; 3], x: [1., 0., 0.], y: [0., 0., 1.], z: [0., -1., 0.] },
-            Datum::LeftRight => Frame { origin: [0.; 3], x: [0., 1., 0.], y: [0., 0., 1.], z: [1., 0., 0.] },
-        }
-    }
-    /// What Revit's Work Plane and Placement Plane call it.
-    pub fn label(self) -> &'static str {
-        match self {
-            Datum::Level => "Level : Ref. Level",
-            Datum::FrontBack => "Reference Plane : Center (Front/Back)",
-            Datum::LeftRight => "Reference Plane : Center (Left/Right)",
-        }
-    }
-}
-/// Where a point or a line is drawn: a datum, or one of a point's three planes (Revit's work plane, its Placement Plane).
+/// Where a point or a line is drawn: one of the family's planes (`Family::planes`, the three datums among them, or a face of one
+/// of its reference lines), or one of a point's three planes (Revit's work plane, its Placement Plane). A family's planes are
+/// the family's, not the definition's, so working out where one is takes them ([`Planes`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WorkPlane {
-    Datum(Datum),
+    Plane(PlaneRef),
     Point { point: String, plane: Plane },
 }
 impl Default for WorkPlane {
+    /// Ref. Level, as Revit's template begins.
     fn default() -> Self {
-        WorkPlane::Datum(Datum::Level)
+        WorkPlane::Plane(PlaneRef::Plane(crate::family::REF_LEVEL))
     }
 }
 impl WorkPlane {
-    /// Its axes, as `evaluation` has them, its Z square to it; none for a point that did not evaluate.
-    pub fn frame(&self, evaluation: &Evaluation) -> Option<Frame> {
+    /// Its axes, as `evaluation` has the points and `planes` the family's planes, its Z square to it; none for a point that did
+    /// not evaluate, or a plane the family has not.
+    pub fn frame(&self, evaluation: &Evaluation, planes: Planes) -> Option<Frame> {
         match self {
-            WorkPlane::Datum(d) => Some(d.frame()),
+            WorkPlane::Plane(r) => planes.frame(r).ok().map(Frame::from),
             WorkPlane::Point { point, plane } => match evaluation.values.get(point.as_str()) {
                 Some(Evaluated::Point { frame }) => Some(plane_of(*frame, *plane)),
                 _ => None,
             },
         }
+    }
+}
+impl From<crate::family::Frame> for Frame {
+    /// A family plane's axes as an adaptive frame: the same origin and axes.
+    fn from(f: crate::family::Frame) -> Frame {
+        Frame { origin: f.origin, x: f.x, y: f.y, z: f.z }
     }
 }
 /// Plane `plane` of a point at `f`, as a frame whose XY it is: XZ is (X, Z, -Y), YZ is (Y, Z, X).
@@ -173,6 +156,33 @@ pub enum OrientsTo {
 fn host_orients() -> OrientsTo {
     OrientsTo::Host
 }
+/// The datums a file of 18 or 19 drew a point on, the definition's own then: now the family's datum planes, whose frames are
+/// the ones these had (Ref. Level the family's xy; Center (Front/Back) x along +x, y up, normal -y; Center (Left/Right) x along
+/// +y, y up, normal +x).
+#[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum OldDatum {
+    Level,
+    FrontBack,
+    LeftRight,
+}
+/// A World point's work plane as a file gives it: a plane (`{"plane": guid}`, `{"line": guid, "face": …}`), or a datum's name
+/// from before the family had planes (the adaptive arm of FORMAT 18 to 20).
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum PlaneIn {
+    Plane(PlaneRef),
+    Datum(OldDatum),
+}
+fn plane_or_datum<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<PlaneRef>, D::Error> {
+    use crate::family::{CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, REF_LEVEL};
+    Ok(Option::<PlaneIn>::deserialize(d)?.map(|p| match p {
+        PlaneIn::Plane(r) => r,
+        PlaneIn::Datum(OldDatum::Level) => PlaneRef::Plane(REF_LEVEL),
+        PlaneIn::Datum(OldDatum::FrontBack) => PlaneRef::Plane(CENTER_FRONT_BACK),
+        PlaneIn::Datum(OldDatum::LeftRight) => PlaneRef::Plane(CENTER_LEFT_RIGHT),
+    }))
+}
 /// What a shape handle may be dragged along: Revit's Constrained, a plane or an axis of the point's own.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -226,9 +236,12 @@ pub enum Host {
     World {
         #[serde(default)]
         frame: Frame,
-        /// The datum it was drawn on, its Work Plane; none from before work planes.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        datum: Option<Datum>,
+        /// The family's plane it was drawn on, its Work Plane (none from before work planes): `{"plane": guid}` or
+        /// `{"line": guid, "face": …}`, as a form's `host`. A file of 18 or 19 named one of three datums of the definition's
+        /// own, `"datum": "level" | "front_back" | "left_right"`, which reads as the family's datum plane of the same frame
+        /// (`plane_or_datum`).
+        #[serde(default, alias = "datum", deserialize_with = "plane_or_datum", skip_serializing_if = "Option::is_none")]
+        plane: Option<PlaneRef>,
     },
     /// A placement point: clicked `number`th when the family is placed; `frame` is where the family has it.
     Adaptive {
@@ -696,6 +709,63 @@ fn read3(expr: &[Expr; 3], values: &BTreeMap<String, Val>) -> Result<P3, String>
     Ok([read(&expr[0], values)?, read(&expr[1], values)?, read(&expr[2], values)?])
 }
 impl Definition {
+    /// Each point drawn on one of the family's planes, and that plane: its Work Plane.
+    pub fn work_plane_refs(&self) -> Vec<(&str, PlaneRef)> {
+        self.nodes
+            .iter()
+            .filter_map(|n| match &n.operation {
+                Operation::Point { host: Host::World { plane: Some(r), .. }, .. } => Some((n.id.as_str(), *r)),
+                _ => None,
+            })
+            .collect()
+    }
+    /// The points drawn on the family's plane or reference line `guid`.
+    pub fn drawn_on(&self, guid: crate::ids::Guid) -> Vec<&str> {
+        self.work_plane_refs().into_iter().filter(|(_, r)| r.guid() == guid).map(|(id, _)| id).collect()
+    }
+    /// Each family plane a point is drawn on, given to `f`, which may name another (a plane given a new GUID).
+    pub fn work_planes_mut(&mut self, f: &mut dyn FnMut(&mut PlaneRef)) {
+        for n in &mut self.nodes {
+            if let Operation::Point { host: Host::World { plane: Some(r), .. }, .. } = &mut n.operation {
+                f(r);
+            }
+        }
+    }
+    /// Each expression of it, given to `f`: a point's offset and rotation, where it is along a line or an edge and on a face,
+    /// an extrusion's distance, and whether an element shows. These are where Associate Family Parameter ties a value to a
+    /// family parameter, by naming it in a formula.
+    pub fn exprs_mut(&mut self, f: &mut dyn FnMut(&mut Expr)) {
+        for n in &mut self.nodes {
+            match &mut n.operation {
+                Operation::Point { host, transform } => {
+                    transform.offset.iter_mut().chain(&mut transform.rotation).for_each(&mut *f);
+                    match host {
+                        Host::Curve { location, .. } => f(&mut location.value),
+                        Host::Face { barycentric, .. } => barycentric.iter_mut().for_each(&mut *f),
+                        Host::Edge { parameter, .. } => f(parameter),
+                        _ => {}
+                    }
+                }
+                Operation::Extrude { distance, .. } => f(distance),
+                _ => {}
+            }
+            n.appearance.visible.iter_mut().for_each(&mut *f);
+        }
+    }
+    /// Family parameter `old` named `new` wherever it names it: its formulas (`renamed` gives a formula's new text) and, when
+    /// `old` is a material parameter (`material`), the forms made of it.
+    pub fn rename_parameter(&mut self, old: &str, new: &str, material: bool, renamed: &dyn Fn(&str) -> String) {
+        self.exprs_mut(&mut |e| {
+            if let Expr::Formula(text) = e {
+                *text = renamed(text);
+            }
+        });
+        if material {
+            for n in self.nodes.iter_mut().filter(|n| n.appearance.material == old) {
+                n.appearance.material = new.to_string();
+            }
+        }
+    }
     /// `placement` with a frame for every adaptive point: its own, else the one the point has in this definition.
     pub fn completed(&self, placement: &Placement) -> Placement {
         let mut out = placement.clone();
