@@ -1,4 +1,4 @@
-//! Sheets: paper with a title block, and views placed on it at a scale. A sheet is drawn once,
+//! Sheets: paper with an optional title block, and views placed on it at a scale. A sheet is drawn once,
 //! at [`DENSITY`] px per paper mm, as a display list in paper pixels: what the PNG, the PDF and the
 //! desktop's sheet view show. Each view on it is drawn as its own view draws it, moved onto the
 //! paper and made the viewport's to pick, and titled under it; a section's picture of what lies
@@ -289,7 +289,9 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
     // Schedules keep their own size: no scale of theirs.
     let scaled: Vec<&Viewport> =
         views.iter().filter(|(_, v)| !matches!(m.elements.get(v.view), Some(Element::Schedule(_)))).map(|(_, v)| *v).collect();
-    title_block(&mut d, &m.name, sheet, paper, &scale_note(&scaled, m.language, m.units), m.standard());
+    if sheet.title_block {
+        title_block(&mut d, &m.name, sheet, paper, &scale_note(&scaled, m.language, m.units), m.standard());
+    }
     let mut scene = None;
     let work = Work::new();
     for (vid, vp) in views {
