@@ -13,7 +13,7 @@ msgstr " Spostato di {}, {} mm per portarlo vicino all'origine."
 
 #: crates/ui-egui/src/editor/types_dialog.rs:298
 msgid "(default)"
-msgstr ""
+msgstr "(predefinito)"
 
 #: crates/ui-egui/src/editor/document.rs:966
 #: crates/ui-egui/src/editor/document.rs:968
@@ -142,7 +142,7 @@ msgstr "Una porta o una finestra ha bisogno di lunghezze chiamate Width e Height
 
 #: crates/ui-egui/src/editor/types_dialog.rs:625
 msgid "A family type parameter needs the category of the families whose types it picks."
-msgstr ""
+msgstr "Un parametro Tipo di oggetto deve avere la categoria degli oggetti di cui sceglie i tipi."
 
 #: crates/ui-egui/src/editor/document.rs:696
 msgid "A family's plans and elevations come with its work planes"
@@ -178,11 +178,11 @@ msgstr "Un nuovo layout, con cartiglio"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:228
 msgid "A new type, a copy of the type shown"
-msgstr ""
+msgstr "Un nuovo tipo, copia del tipo mostrato"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:619
 msgid "A parameter needs a name."
-msgstr ""
+msgstr "Un parametro deve avere un nome."
 
 #: crates/ui-egui/src/phasing.rs:634
 msgid "A phase filter draws a status this way where it says Overridden."
@@ -206,7 +206,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/types_dialog.rs:472
 msgid "A type needs a name."
-msgstr ""
+msgstr "Un tipo deve avere un nome."
 
 #: crates/ui-egui/src/graphics.rs:568
 msgid "A view always has a scale"
@@ -2565,7 +2565,7 @@ msgstr "Elimina opzione"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:410
 msgid "Delete Parameter"
-msgstr ""
+msgstr "Elimina parametro"
 
 #: crates/ui-egui/src/reinforce.rs:469
 msgid "Delete Preset"
@@ -3076,7 +3076,7 @@ msgstr "Modifica opzione: i nuovi elementi si creano in questa opzione, e la vis
 
 #: crates/ui-egui/src/editor/types_dialog.rs:391
 msgid "Edit Parameter"
-msgstr ""
+msgstr "Modifica parametro"
 
 #: crates/ui-egui/src/lib.rs:3418
 #: crates/ui-egui/src/presets.rs:176
@@ -3409,7 +3409,7 @@ msgstr "Nome oggetto"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:507
 msgid "Family parameter"
-msgstr ""
+msgstr "Parametro dell'oggetto"
 
 #: crates/ui-egui/src/adaptive_editor.rs:723
 msgid "Family parameter: {}"
@@ -3991,7 +3991,7 @@ msgstr "Gruppo"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:583
 msgid "Group parameter under:"
-msgstr ""
+msgstr "Raggruppa parametro in:"
 
 #: crates/ui-egui/src/groups.rs:65
 msgid "Group:"
@@ -4879,7 +4879,7 @@ msgstr ""
 #: crates/ui-egui/src/editor/types_dialog.rs:252
 #: crates/ui-egui/src/editor/types_dialog.rs:352
 msgid "Lock"
-msgstr ""
+msgstr "Blocca"
 
 #: crates/ui-egui/src/canvas.rs:3399
 msgid "Lock alignment"
@@ -4895,7 +4895,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/types_dialog.rs:22
 msgid "Locking a parameter's value comes with labelled dimensions: not yet in BIMCraft."
-msgstr ""
+msgstr "Il blocco del valore di un parametro arriva con le quote con etichetta: non ancora in BIMCraft."
 
 #: crates/core/src/lines.rs:178
 msgid "Long Dash"
@@ -5421,7 +5421,7 @@ msgstr "Nuovo filtro"
 #: crates/ui-egui/src/adaptive_editor.rs:738
 #: crates/ui-egui/src/editor/types_dialog.rs:374
 msgid "New Parameter"
-msgstr ""
+msgstr "Nuovo parametro"
 
 #: crates/ui-egui/src/fillpatterns.rs:608
 #: crates/ui-egui/src/linestyles.rs:224
@@ -6021,7 +6021,7 @@ msgstr "Formula del parametro"
 #: crates/ui-egui/src/adaptive_editor.rs:700
 #: crates/ui-egui/src/editor/types_dialog.rs:503
 msgid "Parameter Properties"
-msgstr ""
+msgstr "Proprietà del parametro"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:301
 msgid "Parameter Value"
@@ -6255,7 +6255,7 @@ msgstr "Scegli uno spigolo del modello o una linea dello schizzo evidenziati com
 
 #: crates/ui-egui/src/editor/types_dialog.rs:622
 msgid "Pick a parameter of the shared parameters file."
-msgstr ""
+msgstr "Scegli un parametro del file di parametri condivisi."
 
 #: crates/ui-egui/src/adaptive_view.rs:271
 msgid "Pick a plane: one of a point's planes, the level or a reference plane; Escape gives up."
@@ -7003,7 +7003,7 @@ msgstr "Verso di lettura"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:548
 msgid "Reads a dimension and never drives one: a length or an angle"
-msgstr ""
+msgstr "Legge una quota e non la pilota mai: una lunghezza o un angolo"
 
 #: crates/ui-egui/src/start.rs:331
 msgid "Recent"
@@ -7202,7 +7202,7 @@ msgstr "Rinomina gruppo di opzioni"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:232
 msgid "Rename Type"
-msgstr ""
+msgstr "Rinomina tipo"
 
 #: crates/ui-egui/src/templates.rs:473
 #: crates/ui-egui/src/typeprops.rs:133
@@ -7255,7 +7255,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/types_dialog.rs:547
 msgid "Reporting Parameter"
-msgstr ""
+msgstr "Parametro di report"
 
 #: crates/ui-egui/src/graphics.rs:1308
 #: crates/ui-egui/src/lineweights.rs:146
@@ -7661,7 +7661,7 @@ msgstr "Cerca caratteri"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:194
 msgid "Search parameters"
-msgstr ""
+msgstr "Cerca parametri"
 
 #: crates/ui-egui/src/browser.rs:271
 msgid "Search the Project Browser"
@@ -7881,11 +7881,11 @@ msgstr "Oggetto condiviso già caricato"
 #: crates/ui-egui/src/editor/types_dialog.rs:508
 #: crates/ui-egui/src/editor/types_dialog.rs:521
 msgid "Shared parameter"
-msgstr ""
+msgstr "Parametro condiviso"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:512
 msgid "Shared parameters file:"
-msgstr ""
+msgstr "File di parametri condivisi:"
 
 #: crates/ui-egui/src/lib.rs:4637
 msgid "Shed"
@@ -8264,11 +8264,11 @@ msgstr "Ordina per:"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:428
 msgid "Sort each group's parameters by name, A to Z"
-msgstr ""
+msgstr "Ordina i parametri di ogni gruppo per nome, dalla A alla Z"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:431
 msgid "Sort each group's parameters by name, Z to A"
-msgstr ""
+msgstr "Ordina i parametri di ogni gruppo per nome, dalla Z alla A"
 
 #: crates/ui-egui/src/properties.rs:2827
 msgid "Sorting/Grouping"
@@ -8864,11 +8864,11 @@ msgstr "Gli estremi di muri, griglie e altri elementi disegnati, e i punti scelt
 #: crates/ui-egui/src/adaptive_editor.rs:720
 #: crates/ui-egui/src/editor/types_dialog.rs:628
 msgid "The family has a parameter named {} already."
-msgstr ""
+msgstr "L'oggetto ha già un parametro chiamato {}."
 
 #: crates/ui-egui/src/editor/types_dialog.rs:474
 msgid "The family has a type named {} already."
-msgstr ""
+msgstr "L'oggetto ha già un tipo chiamato {}."
 
 #: crates/ui-egui/src/editor/exists.rs:235
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
@@ -8893,7 +8893,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/types_dialog.rs:237
 msgid "The last type can't be deleted: a family needs a type to place."
-msgstr ""
+msgstr "L'ultimo tipo non si può eliminare: un oggetto ha bisogno di un tipo da posizionare."
 
 #: crates/ui-egui/src/sketch.rs:290
 msgid "The lines are shown in red."
@@ -9336,7 +9336,7 @@ msgstr "Scrivi prima un nome per la preimpostazione."
 
 #: crates/ui-egui/src/editor/types_dialog.rs:219
 msgid "Type name:"
-msgstr ""
+msgstr "Nome tipo:"
 
 #: crates/ui-egui/src/properties.rs:2945
 msgid "Type of Parameter"
@@ -9345,7 +9345,7 @@ msgstr "Tipo di parametro"
 #: crates/ui-egui/src/adaptive_editor.rs:714
 #: crates/ui-egui/src/editor/types_dialog.rs:552
 msgid "Type of Parameter:"
-msgstr ""
+msgstr "Tipo di parametro:"
 
 #: crates/ui-egui/src/inquiry.rs:88
 msgid "Type or paste an ID, a GUID or an IFC GlobalId."
@@ -10551,7 +10551,7 @@ msgstr "l'oggetto non ha la forma {}"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:648
 msgid "the family has no parameter `{}`"
-msgstr ""
+msgstr "l'oggetto non ha il parametro `{}`"
 
 #: crates/ui-egui/src/workplane.rs:368
 msgid "the model has no levels"
@@ -10687,7 +10687,7 @@ msgstr "{} a x {}, y {}"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:418
 msgid "{} can't be deleted: {}"
-msgstr ""
+msgstr "Impossibile eliminare {}: {}"
 
 #: crates/ui-egui/src/start.rs:122
 msgid "{} days ago"
