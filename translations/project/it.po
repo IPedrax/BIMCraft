@@ -36,7 +36,7 @@ msgstr "Mattone"
 msgid "Brick 225 x 75"
 msgstr "Mattone 225 x 75"
 
-#: crates/core/src/commands.rs:4085
+#: crates/core/src/commands.rs:4114
 msgid "Camera"
 msgstr ""
 
@@ -84,7 +84,7 @@ msgstr "Blocco in calcestruzzo"
 msgid "Copper"
 msgstr "Rame"
 
-#: crates/core/src/commands.rs:1156
+#: crates/core/src/commands.rs:1185
 msgid "Copy"
 msgstr "Copia"
 
@@ -112,7 +112,7 @@ msgstr "Tratto punto"
 msgid "Data Outlet"
 msgstr "Presa dati"
 
-#: crates/core/src/commands.rs:9587
+#: crates/core/src/commands.rs:9616
 msgid "Dependent"
 msgstr "Dipendente"
 
@@ -188,8 +188,8 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:9371
-#: crates/core/src/commands.rs:11606
+#: crates/core/src/commands.rs:9400
+#: crates/core/src/commands.rs:11961
 msgid "Elevation"
 msgstr "Prospetto"
 
@@ -306,7 +306,7 @@ msgstr "Larghezza gamba"
 msgid "Length"
 msgstr "Lunghezza"
 
-#: crates/core/src/commands.rs:6137
+#: crates/core/src/commands.rs:6166
 #: crates/core/src/model.rs:3095
 msgid "Level"
 msgstr "Piano"
@@ -331,7 +331,7 @@ msgstr "ID"
 msgid "Masking"
 msgstr "Mascheramento"
 
-#: crates/core/src/commands.rs:7395
+#: crates/core/src/commands.rs:7424
 msgid "Mass"
 msgstr "Volume"
 
@@ -419,7 +419,7 @@ msgstr "Intonaco"
 msgid "Porcelain"
 msgstr "Porcellana"
 
-#: crates/core/src/commands.rs:2776
+#: crates/core/src/commands.rs:2805
 msgid "Project"
 msgstr "Progetto"
 
@@ -447,7 +447,7 @@ msgstr "Alzate"
 msgid "Roof tiles"
 msgstr "Tegole"
 
-#: crates/core/src/commands.rs:7620
+#: crates/core/src/commands.rs:7649
 msgid "Room"
 msgstr "Zona"
 
@@ -475,8 +475,8 @@ msgstr "Massetto"
 msgid "Seat Height"
 msgstr "Altezza seduta"
 
-#: crates/core/src/commands.rs:9348
-#: crates/core/src/commands.rs:11605
+#: crates/core/src/commands.rs:9377
+#: crates/core/src/commands.rs:11960
 msgid "Section"
 msgstr "Sezione"
 
@@ -600,7 +600,7 @@ msgstr "SU"
 msgid "Unbounded Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:9728
+#: crates/core/src/commands.rs:9757
 msgid "Unnamed"
 msgstr "Senza nome"
 

@@ -460,7 +460,7 @@ msgstr "Bocchetta aria (AT): un captatore, dove clicchi sulla copertura; Spazio 
 msgid "Air Terminals"
 msgstr "Bocchette aria"
 
-#: crates/core/src/commands.rs:1126
+#: crates/core/src/commands.rs:1155
 #: crates/ui-egui/src/editor.rs:964
 #: crates/ui-egui/src/lib.rs:349
 #: crates/ui-egui/src/sketch.rs:709
@@ -1081,7 +1081,7 @@ msgstr "Valore calcolato…"
 msgid "Came in: {}"
 msgstr "Importato: {}"
 
-#: crates/core/src/commands.rs:1690
+#: crates/core/src/commands.rs:1719
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3848
 #: crates/ui-egui/src/properties.rs:265
@@ -1917,7 +1917,7 @@ msgstr "Compatto"
 msgid "Comparison"
 msgstr "Confronto"
 
-#: crates/core/src/commands.rs:1088
+#: crates/core/src/commands.rs:1117
 msgid "Component"
 msgstr "Componente"
 
@@ -2024,7 +2024,7 @@ msgstr "Copiate {} righe, separate da tabulazione."
 msgid "Copper"
 msgstr "Rame"
 
-#: crates/core/src/commands.rs:1156
+#: crates/core/src/commands.rs:1185
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4568
 #: crates/ui-egui/src/lib.rs:4618
@@ -2418,7 +2418,7 @@ msgstr "Demolito"
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:9587
+#: crates/core/src/commands.rs:9616
 msgid "Dependent"
 msgstr "Dipendente"
 
@@ -2564,7 +2564,7 @@ msgstr "Testo di quota"
 msgid "Dimension Text Placement:"
 msgstr "Posizione del testo di quota:"
 
-#: crates/core/src/commands.rs:1138
+#: crates/core/src/commands.rs:1167
 msgid "Dimension Value"
 msgstr ""
 
@@ -2925,7 +2925,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:2056
+#: crates/core/src/commands.rs:2085
 msgid "Elements"
 msgstr "Elementi"
 
@@ -3204,7 +3204,7 @@ msgstr "Retino (FR): disegna un'area riempita con un motivo, in questa vista"
 msgid "Filled region"
 msgstr "Retino"
 
-#: crates/core/src/commands.rs:1225
+#: crates/core/src/commands.rs:1254
 msgid "Fillet Arc"
 msgstr "Raccordo ad arco"
 
@@ -4589,7 +4589,7 @@ msgstr "Solai del volume (MF): un solaio a ogni piano attraversato dai volumi se
 msgid "Massing"
 msgstr "Volumi"
 
-#: crates/core/src/commands.rs:1118
+#: crates/core/src/commands.rs:1147
 msgid "Match Properties"
 msgstr "Copia proprietà"
 
@@ -4649,7 +4649,7 @@ msgstr ""
 msgid "Maximum Riser Height"
 msgstr "Altezza massima alzata"
 
-#: crates/core/src/commands.rs:1800
+#: crates/core/src/commands.rs:1829
 msgid "Measure"
 msgstr "Misura"
 
@@ -4807,7 +4807,7 @@ msgstr "Modifica muro"
 msgid "Mounting Height"
 msgstr "Altezza di installazione"
 
-#: crates/core/src/commands.rs:1148
+#: crates/core/src/commands.rs:1177
 msgid "Move"
 msgstr "Sposta"
 
@@ -6749,7 +6749,7 @@ msgstr ""
 msgid "Rose"
 msgstr ""
 
-#: crates/core/src/commands.rs:1163
+#: crates/core/src/commands.rs:1192
 msgid "Rotate"
 msgstr "Ruota"
 
@@ -6861,7 +6861,7 @@ msgstr "Scala: la carta che questa vista rappresenta, 1 : n del modello; annotaz
 msgid "Scan"
 msgstr "Scansione"
 
-#: crates/core/src/commands.rs:1594
+#: crates/core/src/commands.rs:1623
 msgid "Schedule"
 msgstr "Abaco"
 
@@ -7482,7 +7482,7 @@ msgstr "Spline per punti: clicca i punti per cui passa; Invio termina"
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Spline: clicca i punti di controllo; Invio la termina"
 
-#: crates/core/src/commands.rs:1205
+#: crates/core/src/commands.rs:1234
 msgid "Split"
 msgstr "Dividi"
 
@@ -8383,7 +8383,7 @@ msgstr "Taglia/Estendi singolo elemento"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Taglia/Estendi singolo elemento: scegli la linea limite, poi la linea da modificare, sulla parte da tenere"
 
-#: crates/core/src/commands.rs:1179
+#: crates/core/src/commands.rs:1208
 #: crates/ui-egui/src/sketch.rs:712
 #: crates/ui-egui/src/sketch.rs:964
 msgid "Trim/Extend to Corner"
@@ -8571,7 +8571,7 @@ msgstr "Formato unità"
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:9728
+#: crates/core/src/commands.rs:9757
 msgid "Unnamed"
 msgstr "Senza nome"
 

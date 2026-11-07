@@ -460,7 +460,7 @@ msgstr "Kim thu sét (AT): một kim thu, tại chỗ bạn nhấp trên mái; S
 msgid "Air Terminals"
 msgstr "Kim thu sét"
 
-#: crates/core/src/commands.rs:1126
+#: crates/core/src/commands.rs:1155
 #: crates/ui-egui/src/editor.rs:964
 #: crates/ui-egui/src/lib.rs:349
 #: crates/ui-egui/src/sketch.rs:709
@@ -1081,7 +1081,7 @@ msgstr "Giá trị tính toán…"
 msgid "Came in: {}"
 msgstr "Đã nhập vào: {}"
 
-#: crates/core/src/commands.rs:1690
+#: crates/core/src/commands.rs:1719
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3848
 #: crates/ui-egui/src/properties.rs:265
@@ -1917,7 +1917,7 @@ msgstr "Thu gọn"
 msgid "Comparison"
 msgstr "So sánh"
 
-#: crates/core/src/commands.rs:1088
+#: crates/core/src/commands.rs:1117
 msgid "Component"
 msgstr "Thành phần"
 
@@ -2024,7 +2024,7 @@ msgstr "Đã sao chép {} hàng, phân tách bằng tab."
 msgid "Copper"
 msgstr "Đồng"
 
-#: crates/core/src/commands.rs:1156
+#: crates/core/src/commands.rs:1185
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4568
 #: crates/ui-egui/src/lib.rs:4618
@@ -2418,7 +2418,7 @@ msgstr "Đã phá dỡ"
 msgid "Demolition"
 msgstr "Phá dỡ"
 
-#: crates/core/src/commands.rs:9587
+#: crates/core/src/commands.rs:9616
 msgid "Dependent"
 msgstr "Phụ thuộc"
 
@@ -2564,7 +2564,7 @@ msgstr "Chữ kích thước"
 msgid "Dimension Text Placement:"
 msgstr "Vị trí chữ kích thước:"
 
-#: crates/core/src/commands.rs:1138
+#: crates/core/src/commands.rs:1167
 msgid "Dimension Value"
 msgstr ""
 
@@ -2925,7 +2925,7 @@ msgstr "Cài đặt điện"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Cài đặt điện: các điện áp, hệ thống phân phối và loại dây mà mạch điện và tủ điện tham chiếu; tiết diện tính bằng mm²"
 
-#: crates/core/src/commands.rs:2056
+#: crates/core/src/commands.rs:2085
 msgid "Elements"
 msgstr "Cấu kiện"
 
@@ -3204,7 +3204,7 @@ msgstr "Vùng tô (FR): phác thảo một vùng tô bằng mẫu, trong khung n
 msgid "Filled region"
 msgstr "Vùng tô"
 
-#: crates/core/src/commands.rs:1225
+#: crates/core/src/commands.rs:1254
 msgid "Fillet Arc"
 msgstr "Cung bo góc"
 
@@ -4589,7 +4589,7 @@ msgstr "Sàn khối (MF): một sàn tại mỗi tầng mà các khối đã ch�
 msgid "Massing"
 msgstr "Khối tích"
 
-#: crates/core/src/commands.rs:1118
+#: crates/core/src/commands.rs:1147
 msgid "Match Properties"
 msgstr "Sao chép thuộc tính"
 
@@ -4649,7 +4649,7 @@ msgstr "Tối đa"
 msgid "Maximum Riser Height"
 msgstr "Chiều cao bậc đứng tối đa"
 
-#: crates/core/src/commands.rs:1800
+#: crates/core/src/commands.rs:1829
 msgid "Measure"
 msgstr "Đo"
 
@@ -4807,7 +4807,7 @@ msgstr "Sửa đổi tường"
 msgid "Mounting Height"
 msgstr "Chiều cao lắp đặt"
 
-#: crates/core/src/commands.rs:1148
+#: crates/core/src/commands.rs:1177
 msgid "Move"
 msgstr "Di chuyển"
 
@@ -6749,7 +6749,7 @@ msgstr "Đường phân chia phòng: các đường bao phòng giống như tư�
 msgid "Rose"
 msgstr "Hồng"
 
-#: crates/core/src/commands.rs:1163
+#: crates/core/src/commands.rs:1192
 msgid "Rotate"
 msgstr "Xoay"
 
@@ -6861,7 +6861,7 @@ msgstr "Tỷ lệ: tờ giấy mà khung nhìn này đại diện, 1 : n của m
 msgid "Scan"
 msgstr "Bản quét"
 
-#: crates/core/src/commands.rs:1594
+#: crates/core/src/commands.rs:1623
 msgid "Schedule"
 msgstr "Bảng thống kê"
 
@@ -7482,7 +7482,7 @@ msgstr "Spline qua các điểm: nhấp các điểm mà nó đi qua; Enter đ�
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Spline: nhấp các điểm điều khiển; Enter để kết thúc"
 
-#: crates/core/src/commands.rs:1205
+#: crates/core/src/commands.rs:1234
 msgid "Split"
 msgstr "Chia"
 
@@ -8383,7 +8383,7 @@ msgstr "Cắt/Kéo dài một cấu kiện"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Cắt/Kéo dài một cấu kiện: chọn đường cần cắt hoặc kéo dài tới, rồi đường cần thay đổi, trên phần cần giữ"
 
-#: crates/core/src/commands.rs:1179
+#: crates/core/src/commands.rs:1208
 #: crates/ui-egui/src/sketch.rs:712
 #: crates/ui-egui/src/sketch.rs:964
 msgid "Trim/Extend to Corner"
@@ -8571,7 +8571,7 @@ msgstr "Định dạng đơn vị"
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:9728
+#: crates/core/src/commands.rs:9757
 msgid "Unnamed"
 msgstr "Chưa đặt tên"
 
