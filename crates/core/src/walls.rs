@@ -7,6 +7,7 @@
 
 use std::f64::consts::{PI, TAU};
 
+mod compound;
 mod index;
 pub(crate) use index::{Index, reach};
 
@@ -208,7 +209,8 @@ pub fn stacked(m: &Model, a: &Wall, b: &Wall) -> bool {
 /// are there (each running that way): the face on the counter-clockwise side of that way, the one
 /// on the clockwise side.
 struct Arm {
-    mine: bool,
+    id: Id,
+    at_end: bool,
     way: P2,
     ccw: P2,
     cw: P2,
@@ -217,14 +219,14 @@ struct Arm {
 }
 
 /// Wall `w` leaving the node at its start, or with `at_end`, at its end.
-fn arm(m: &Model, w: &Wall, at_end: bool, mine: bool) -> Arm {
+fn arm(m: &Model, id: Id, w: &Wall, at_end: bool) -> Arm {
     let axis = Axis::of(w);
     let (ext, int) = faces(m, w);
     let s = if at_end { axis.length() } else { 0.0 };
     let t = axis.tangent(s);
     // Leaving from its end, it goes back: its interior face is on the counter-clockwise side.
     let (way, ccw, cw) = if at_end { (t * -1.0, int, ext) } else { (t, ext, int) };
-    Arm { mine, way, ccw: axis.at(s, ccw), cw: axis.at(s, cw), centre: axis.at(s, (ext + int) / 2.0), thick: ext - int }
+    Arm { id, at_end, way, ccw: axis.at(s, ccw), cw: axis.at(s, cw), centre: axis.at(s, (ext + int) / 2.0), thick: ext - int }
 }
 
 /// The walls at wall `id`'s start (or `at_end`, its end), round the node counter-clockwise, its own
@@ -233,7 +235,7 @@ fn arm(m: &Model, w: &Wall, at_end: bool, mine: bool) -> Arm {
 fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bool) {
     let Some(w) = m.wall(id) else { return (Vec::new(), false) };
     let node = if at_end { w.end } else { w.start };
-    let mut arms = vec![arm(m, w, at_end, true)];
+    let mut arms = vec![arm(m, id, w, at_end)];
     let mut through = false;
     let candidates: Box<dyn Iterator<Item = (Id, &Wall)> + '_> = match index {
         Some(index) => Box::new(index.neighbours_at(id, node).into_iter().filter_map(|id| Some((id, m.wall(id)?)))),
@@ -254,11 +256,11 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bo
         }
         if o.start.dist(node) <= TOL {
             if stacked(m, w, o) {
-                arms.push(arm(m, o, false, false));
+                arms.push(arm(m, other, o, false));
             }
         } else if o.end.dist(node) <= TOL {
             if stacked(m, w, o) {
-                arms.push(arm(m, o, true, false));
+                arms.push(arm(m, other, o, true));
             }
         } else {
             // A wall it ends on: the node within its thickness, between its ends.
@@ -272,8 +274,8 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bo
                 && stacked(m, w, o)
             {
                 let (t, (e, i), c) = (ax.tangent(s), (ax.at(s, ext), ax.at(s, int)), ax.at(s, (ext + int) / 2.0));
-                arms.push(Arm { mine: false, way: t, ccw: e, cw: i, centre: c, thick: ext - int });
-                arms.push(Arm { mine: false, way: t * -1.0, ccw: i, cw: e, centre: c, thick: ext - int });
+                arms.push(Arm { id: other, at_end: false, way: t, ccw: e, cw: i, centre: c, thick: ext - int });
+                arms.push(Arm { id: other, at_end: false, way: t * -1.0, ccw: i, cw: e, centre: c, thick: ext - int });
                 through = true;
             }
         }
@@ -286,20 +288,42 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bo
 /// clockwise side of the way it leaves the node round to the other. Walls ending where it ends meet
 /// it at any angle, their faces running on until they cross (no farther from the node than the
 /// thickest is thick, either way: past that, the end is square); a wall it ends on stops it at its
-/// face. Where
-/// three or more walls meet, the node itself fills between them.
+/// face. At a square compound Butt the shared cap follows the structure around the corner.
+/// Where three or more walls meet, the node itself fills between them.
 pub fn cap(m: &Model, id: Id, at_end: bool) -> Vec<P2> {
     cap_in(m, id, at_end, None)
 }
 
 fn cap_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Vec<P2> {
-    let Some(w) = m.wall(id) else { return Vec::new() };
+    end_geometry(m, id, at_end, index).outline
+}
+
+#[derive(Default)]
+struct WallEnd {
+    outline: Vec<P2>,
+    butt: Option<compound::Butt>,
+}
+
+impl WallEnd {
+    fn plain(outline: Vec<P2>) -> Self {
+        Self { outline, butt: None }
+    }
+}
+
+fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> WallEnd {
+    let Some(w) = m.wall(id) else { return WallEnd::default() };
     let (arms, through) = arms(m, id, at_end, index);
     let n = arms.len();
-    let Some(i) = arms.iter().position(|a| a.mine) else { return Vec::new() };
+    let Some(i) = arms.iter().position(|a| a.id == id) else { return WallEnd::default() };
     let (prev, me, next) = (&arms[(i + n - 1) % n], &arms[i], &arms[(i + 1) % n]);
     if n < 2 {
-        return vec![me.cw, me.ccw];
+        return WallEnd::plain(vec![me.cw, me.ccw]);
+    }
+    if n == 2
+        && !through
+        && let Some(end) = compound::corner(m, me, next)
+    {
+        return end;
     }
     let node = if at_end { w.end } else { w.start };
     let limit = arms.iter().map(|a| a.thick).fold(0.0, f64::max);
@@ -311,7 +335,7 @@ fn cap_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Vec<P2> {
             .unwrap_or(face)
     };
     let (cw, ccw) = (meet(me.cw, prev.ccw, prev.way), meet(me.ccw, next.cw, next.way));
-    if through { vec![cw, ccw] } else { vec![cw, node, ccw] }
+    WallEnd::plain(if through { vec![cw, ccw] } else { vec![cw, node, ccw] })
 }
 
 /// Wall `id`'s centre line, an arc as chords: each end it joins others at run on (or back) to the
@@ -327,11 +351,11 @@ pub(crate) fn centre_line_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<P2
     let mut line = axis.points(0.0, axis.length(), centre(m, w));
     for at_end in [false, true] {
         let (arms, _) = arms(m, id, at_end, index);
-        let Some(me) = arms.iter().find(|a| a.mine) else { continue };
+        let Some(me) = arms.iter().find(|a| a.id == id) else { continue };
         let reach = 2.0 * arms.iter().map(|a| a.thick).fold(1.0, f64::max);
         let crossing = arms
             .iter()
-            .filter(|a| !a.mine)
+            .filter(|a| a.id != id)
             .filter_map(|a| geom::line_intersection(me.centre, me.centre + me.way, a.centre, a.centre + a.way))
             .min_by(|a, b| a.dist(me.centre).total_cmp(&b.dist(me.centre)));
         let end = if at_end { line.last_mut() } else { line.first_mut() };
@@ -385,23 +409,68 @@ pub fn layer_lines(m: &Model, id: Id) -> Vec<Vec<P2>> {
 }
 
 pub(crate) fn layer_lines_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<Vec<P2>> {
-    let Some(w) = m.wall(id) else { return Vec::new() };
+    layer_geometry(m, id, index).lines
+}
+
+#[derive(Default)]
+pub(crate) struct LayerGeometry {
+    pub(crate) lines: Vec<Vec<P2>>,
+    // A core can reach beyond the finish beside it at either end.
+    butt: [Option<compound::Butt>; 2],
+}
+
+impl LayerGeometry {
+    pub(crate) fn joined(&self) -> bool {
+        self.butt.iter().any(Option::is_some)
+    }
+
+    pub(crate) fn band(&self, k: usize) -> Vec<P2> {
+        let a = &self.lines[k];
+        let b = &self.lines[k + 1];
+        let mut ring: Vec<_> = a.iter().chain(b.iter().rev()).copied().collect();
+        if k == 1 {
+            let n = ring.len();
+            if let Some(start) = &self.butt[0] {
+                [ring[0], ring[n - 1]] = start.core;
+            }
+            if let Some(end) = &self.butt[1] {
+                [ring[a.len() - 1], ring[a.len()]] = end.core;
+            }
+        }
+        ring
+    }
+
+    pub(crate) fn interfaces(&self) -> impl Iterator<Item = &[P2]> {
+        self.lines
+            .iter()
+            .skip(1)
+            .take(self.lines.len().saturating_sub(2))
+            .map(Vec::as_slice)
+            .chain(self.butt.iter().flatten().filter(|b| b.draw_seam).map(|b| b.core.as_slice()))
+    }
+}
+
+pub(crate) fn layer_geometry(m: &Model, id: Id, index: Option<&Index>) -> LayerGeometry {
+    let Some(w) = m.wall(id) else { return LayerGeometry::default() };
     let axis = Axis::of(w);
     let len = axis.length();
-    let (start, end) = (cap_in(m, id, false, index), cap_in(m, id, true, index));
-    boundaries(m, w)
+    let ends = [end_geometry(m, id, false, index), end_geometry(m, id, true, index)];
+    let lines = boundaries(m, w)
         .into_iter()
-        .map(|off| {
+        .enumerate()
+        .map(|(k, off)| {
             let mut line = axis.points(0.0, len, off);
-            if let Some(first) = line.first_mut() {
-                *first = on_cap(&axis, &start, false, off);
-            }
-            if let Some(last) = line.last_mut() {
-                *last = on_cap(&axis, &end, true, off);
+            for (i, end) in ends.iter().enumerate() {
+                let last = line.len() - 1;
+                line[if i == 0 { 0 } else { last }] = match &end.butt {
+                    Some(b) => b.turns[k],
+                    None => on_cap(&axis, &end.outline, i == 1, off),
+                };
             }
             line
         })
-        .collect()
+        .collect();
+    LayerGeometry { lines, butt: ends.map(|e| e.butt) }
 }
 
 /// A plane over the plan: its height at `q` is `z + g.0 · q.0 + g.1 · q.1`.

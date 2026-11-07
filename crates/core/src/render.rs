@@ -2146,31 +2146,39 @@ fn section_base_cancellable(
             continue;
         }
         d.owner = Some(wall);
-        let lines = walls::layer_lines(m, wall);
-        // Where the line crosses each boundary, along it: a curved wall it cuts twice, twice.
-        let crossings: Vec<Vec<f64>> = lines
-            .iter()
-            .map(|line| {
-                let mut xs: Vec<f64> = line
-                    .windows(2)
-                    .filter_map(|seg| {
-                        let &[p, q] = seg else { return None };
-                        let x = geom::line_intersection(v.start, v.end, p, q).filter(|x| geom::dist_to_segment(*x, p, q) < 1e-6)?;
-                        Some((x - v.start).dot(u))
-                    })
-                    .collect();
-                xs.sort_by(f64::total_cmp);
-                xs.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
-                xs
-            })
-            .collect();
-        for (k, layer) in layers.iter().enumerate() {
-            let (Some(a), Some(b)) = (crossings.get(k), crossings.get(k + 1)) else { continue };
-            // ponytail: a boundary the line only grazes leaves the layer in poché.
-            if a.len() != b.len() {
-                continue;
-            }
-            for (&s0, &s1) in a.iter().zip(b) {
+        let geometry = walls::layer_geometry(m, wall, None);
+        let intervals = if geometry.joined() {
+            // At a butt the core and its neighbouring finish can end at different stations.
+            // A section can also run lengthwise into the return and cross only its cap.
+            (0..layers.len()).map(|k| view3d::crossings(&geometry.band(k), v.start, u)).collect::<Vec<_>>()
+        } else {
+            let crossings: Vec<Vec<f64>> = geometry
+                .lines
+                .iter()
+                .map(|line| {
+                    let mut xs: Vec<f64> = line
+                        .windows(2)
+                        .filter_map(|seg| {
+                            let &[p, q] = seg else { return None };
+                            let x = geom::line_intersection(v.start, v.end, p, q).filter(|x| geom::dist_to_segment(*x, p, q) < 1e-6)?;
+                            Some((x - v.start).dot(u))
+                        })
+                        .collect();
+                    xs.sort_by(f64::total_cmp);
+                    xs.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+                    xs
+                })
+                .collect();
+            crossings
+                .windows(2)
+                .map(|pair| {
+                    let (a, b) = (&pair[0], &pair[1]);
+                    if a.len() == b.len() { a.iter().copied().zip(b.iter().copied()).collect() } else { Vec::new() }
+                })
+                .collect()
+        };
+        for (layer, spans) in layers.iter().zip(intervals) {
+            for (s0, s1) in spans {
                 let (s0, s1) = (s0.min(s1).max(first), s0.max(s1).min(last));
                 for r in cuts.get(&wall).into_iter().flatten() {
                     let part = geom::clip(&geom::clip(r, |q| q.0 - s0), |q| s1 - q.0);
@@ -2181,7 +2189,7 @@ fn section_base_cancellable(
                 }
             }
         }
-        for line in lines.iter().skip(1).take(lines.len().saturating_sub(2)) {
+        for line in geometry.interfaces() {
             for seg in line.windows(2) {
                 let &[p, q] = seg else { continue };
                 let Some(x) = geom::line_intersection(v.start, v.end, p, q).filter(|x| geom::dist_to_segment(*x, p, q) < 1e-6) else {
@@ -2192,7 +2200,9 @@ fn section_base_cancellable(
                     continue;
                 }
                 let own = work.solids.in_range(work.ranges.get(&wall).cloned().unwrap_or(0..0));
-                for s in own.filter(|s| s.owner() == wall && s.over(x)) {
+                // A butt interface can lie on the body edge; test either side of that edge.
+                let n = (q - p).unit().perp() * 1e-6;
+                for s in own.filter(|s| s.owner() == wall && (s.over(x) || geometry.joined() && (s.over(x + n) || s.over(x - n)))) {
                     let (z0, z1) = s.z_at(x);
                     d.part(Part::Pattern);
                     d.line(&[P2(along, z0), P2(along, z1)], Pen::PROJECTION, INK, false);
@@ -2793,11 +2803,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             continue;
         }
         d.owner = Some(id);
-        let lines = walls::layer_lines_in(m, id, index);
+        let geometry = walls::layer_geometry(m, id, index);
         let along = (w.end - w.start).unit();
         for (k, layer) in layers.iter().enumerate() {
-            let (Some(a), Some(b)) = (lines.get(k), lines.get(k + 1)) else { continue };
-            let ring: Vec<P2> = a.iter().chain(b.iter().rev()).copied().collect();
+            let ring = geometry.band(k);
             let room = layer.thickness * d.view.scale;
             for piece in outside_columns(vec![ring], &columns) {
                 cut_layer(&mut d, m, layer, &piece, along, room);
@@ -2805,7 +2814,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         }
         // The lines between the layers are detail, as the hatching is: a cut's weight is its outline's.
         d.part(Part::Pattern);
-        for line in lines.iter().skip(1).take(lines.len().saturating_sub(2)) {
+        for line in geometry.interfaces() {
             for part in lines_outside_columns(line, &columns) {
                 d.line(&part, Pen::PROJECTION, INK, false);
             }
