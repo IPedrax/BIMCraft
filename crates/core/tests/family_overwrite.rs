@@ -565,3 +565,39 @@ fn reload_refuses_formulas_naming_what_the_incoming_family_lacks() {
         }
     }
 }
+
+/// `definition` loads a family as its file holds it, given inline: the same policies, read strictly, and never with `path`.
+#[test]
+fn a_definition_loads_as_its_file_would_under_every_policy() {
+    let (mut s, _dir, file) = setup();
+    let definition: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let before = s.model.to_json().unwrap();
+    let reply = run(&mut s, json!({"definition":definition,"overwrite":"no"}));
+    assert_eq!(reply["overwritten"], false);
+    assert!(s.model.to_json().unwrap() == before, "`no` keeps the project's");
+    run(&mut s, json!({"definition":definition,"overwrite":"version"}));
+    assert_eq!(s.model.families["Reload"].types["A"]["Width"], json!(150));
+    assert_eq!(s.model.families["Reload"].types["New type"]["Width"], json!(300));
+    s.execute("undo", &json!({})).unwrap();
+    run(&mut s, json!({"definition":definition,"overwrite":"version_and_values"}));
+    assert_eq!(s.model.families["Reload"].types["A"]["Width"], json!(250));
+    // The caller's name wins over the definition's; a new family loads whatever the policy.
+    run(&mut s, json!({"definition":definition,"name":"Inline","overwrite":"version"}));
+    assert_eq!(s.model.families["Inline"].types["A"]["Width"], json!(250));
+    // Loaded again as the project holds it, it is the same: skipped.
+    let same = serde_json::to_value(&s.model.families["Inline"]).unwrap();
+    let reply = run(&mut s, json!({"definition":same,"name":"Inline","overwrite":"version_and_values"}));
+    assert_eq!(reply["overwritten"], false);
+    let before = s.model.to_json().unwrap();
+    let mut typo = definition.clone();
+    typo["paramters"] = json!([]);
+    for bad in [
+        json!({"definition":typo,"overwrite":"version"}),
+        json!({"definition":definition,"path":file,"overwrite":"version"}),
+        json!({"definition":[1, 2],"overwrite":"version"}),
+        json!({"definition":{"types":{}},"overwrite":"version"}),
+    ] {
+        assert!(s.execute("family", &bad).is_err(), "{bad}");
+        assert!(s.model.to_json().unwrap() == before, "the project snapshot changed");
+    }
+}
