@@ -87,6 +87,8 @@ enum Act {
     Pick(&'static str, String),
     /// A link: it is the selection, for Properties.
     Select(Id),
+    /// A curtain panel's or a mullion's type: Type Properties on it.
+    EditType(&'static str, String),
 }
 
 /// An entry of the tree, or a group of them.
@@ -310,6 +312,9 @@ impl BimApp {
                 self.types.insert(category, name);
             }
             Some(Act::Select(id)) => self.selection = vec![id],
+            Some(Act::EditType(category, name)) => {
+                self.type_dialog = Some(crate::properties::TypeDialog::new(&self.session.model, category, name, Vec::new()));
+            }
             _ => {}
         }
     }
@@ -542,6 +547,24 @@ impl BimApp {
                 .collect();
             (!names.is_empty()).then(|| Node::group(&crate::lang::category(category, true), false, leaves))
         });
+        // Panels and mullions are system families with a family's level of their own: `Generic Panel` holds `Glazed`.
+        let curtain = [("curtainpanel", t("Generic Panel")), ("mullion", t("Rectangular Mullion")), ("cornermullion", t("Corner Mullion"))]
+            .into_iter()
+            .filter_map(|(category, family)| {
+                let names = m.type_names(category);
+                let leaves = names
+                    .iter()
+                    .map(|ty| {
+                        let on = self.types.get(category).is_some_and(|t| t == ty);
+                        Node::leaf(ty, Act::Pick(category, ty.to_string()), on).with_menu(vec![
+                            ("Edit Type", Act::EditType(category, ty.to_string())),
+                            ("Delete", Act::Do("delete_type", serde_json::json!({"category": category, "type": ty}))),
+                        ])
+                    })
+                    .collect();
+                (!names.is_empty())
+                    .then(|| Node::group(&crate::lang::category(category, true), false, vec![Node::group(family, false, leaves)]))
+            });
         let components = m.families.iter().map(|(name, f)| {
             let types = f
                 .types
@@ -554,7 +577,7 @@ impl BimApp {
                 .collect();
             Node::group(name, false, types).with_menu(delete(serde_json::json!({"family": name})))
         });
-        Node::group(t("Families"), open, system.chain(components).collect())
+        Node::group(t("Families"), open, system.chain(curtain).chain(components).collect())
     }
 }
 

@@ -145,7 +145,6 @@ impl Scene {
         };
         let mut keys = self.shape_keys.clone();
         let mut shapes = self.shapes.clone();
-        let copies: HashMap<usize, &ComponentInstance> = self.placements.iter().map(|(at, c)| (*at, c)).collect();
         for (n, (id, e)) in after.elements.iter().enumerate() {
             if n % 4096 == 0 && cancelled() {
                 return None;
@@ -158,10 +157,13 @@ impl Scene {
                 out.faces.extend(faces);
                 out.tris.extend(own);
                 let own = out.tris.get(start..).unwrap_or_default();
-                if let Some(copy) = copy_of(after, *id, e, &mut keys, &mut shapes)
-                    && shapes.get(copy.shape).is_some_and(|local| placed(local, &copy, own))
-                {
-                    out.placements.push((start, copy));
+                for (first, copy) in copies_of(after, *id, e, &mut keys, &mut shapes) {
+                    let len = shapes.get(copy.shape).map_or(0, Vec::len);
+                    if let (Some(local), Some(own)) = (shapes.get(copy.shape), own.get(first..first + len))
+                        && placed(local, &copy, own)
+                    {
+                        out.placements.push((start + first, copy));
+                    }
                 }
             } else if let Some(span) = self.span(*id) {
                 let at = span.at.clone();
@@ -169,8 +171,10 @@ impl Scene {
                 out.planes.extend_from_slice(self.planes.get(at.clone())?);
                 out.smooth.extend_from_slice(self.smooth.get(at.clone())?);
                 out.faces.extend_from_slice(self.faces.get(at.clone())?);
-                if let Some(copy) = copies.get(&at.start) {
-                    out.placements.push((start, **copy));
+                // In the scene's order, so an element's copies are together however many it has.
+                let from = self.placements.partition_point(|(first, _)| *first < at.start);
+                for (first, copy) in self.placements.get(from..).unwrap_or_default().iter().take_while(|(first, _)| *first < at.end) {
+                    out.placements.push((first - at.start + start, *copy));
                 }
                 out.spans.push(Span { id: *id, at: start..out.tris.len(), bounds: span.bounds });
                 continue;
@@ -349,8 +353,23 @@ fn element_tris(m: &Model, elements: &[(Id, &Element)], index: &crate::walls::In
     out
 }
 
-/// The copy element `id` is of a shape, as the whole scene finds it: a component's of its family's, a round run's of its
-/// material's tube; a shape it is the first of is added.
+/// The copies of shapes element `id` is, as the whole scene finds them, each with where it starts among the element's
+/// triangles: a component's of its family's, a round run's of its material's tube, a curtain wall's parts; a shape one is the
+/// first of is added.
+fn copies_of(
+    m: &Model,
+    id: Id,
+    e: &Element,
+    keys: &mut HashMap<ShapeKey, usize>,
+    shapes: &mut Vec<Vec<[P3; 3]>>,
+) -> Vec<(usize, ComponentInstance)> {
+    if let Element::Wall(w) = e {
+        return if crate::curtain::pattern(m, w).is_some() { super::curtain_copies(m, id, w, keys, shapes) } else { Vec::new() };
+    }
+    copy_of(m, id, e, keys, shapes).map(|copy| (0, copy)).into_iter().collect()
+}
+
+/// The one copy a component or a round run is.
 fn copy_of(
     m: &Model,
     id: Id,
@@ -392,7 +411,7 @@ fn copy_of(
 }
 
 /// Whether `own` is `local` placed by `copy`, to the last bit.
-fn placed(local: &[[P3; 3]], copy: &ComponentInstance, own: &[Tri]) -> bool {
+pub(super) fn placed(local: &[[P3; 3]], copy: &ComponentInstance, own: &[Tri]) -> bool {
     !local.is_empty() && local.len() == own.len() && local.iter().zip(own).all(|(l, t)| l.map(|q| copy.place(q)) == t.p)
 }
 
@@ -545,6 +564,54 @@ mod tests {
         }
         assert_eq!(s.history().len(), steps + edits.len(), "every edit is made: {:?}", &s.history()[steps..]);
         assert!(s.model.elements.values().filter(|e| matches!(e, crate::model::Element::Window(_))).count() == 1, "the copy's");
+    }
+
+    #[test]
+    fn a_level_moved_brings_anchored_curtain_rows_up_to_date_as_made_whole() {
+        let mut s = Session::new();
+        s.script(
+            r#"level {"elevation": 3500}
+               type {"category": "wall", "name": "Facade", "curtain": {"columns": {"segments": [1500]}, "rows": {"segments": [1000]}, "anchor_rows": true}}
+               wall {"points": [[0,0],[9000,0]], "type": "Facade", "height": 8000}"#,
+        )
+        .unwrap();
+        let mut scene = Scene::new(&s.model);
+        let level = s.model.levels()[1].0;
+        scene = held(&mut s, scene, "modify", &json!({"id": level, "elevation": 4200}));
+        held(&mut s, scene, "level", &json!({"elevation": 6500}));
+    }
+
+    #[test]
+    fn a_curtain_wall_s_copies_are_brought_up_to_date_as_made_whole() {
+        let mut s = Session::new();
+        s.script(
+            r#"type {"category": "wall", "name": "Facade", "curtain": {"columns": {"segments": [1500]}, "rows": {"segments": [1000]}}}
+               wall {"points": [[0,0],[9000,0]], "type": "Facade"}
+               wall {"points": [[0,5000],[6000,9000]], "type": "Facade"}
+               component {"family": "Table", "type": "1600 x 900", "at": [2000, 3000]}"#,
+        )
+        .unwrap();
+        let mut scene = Scene::new(&s.model);
+        assert!(scene.placements.len() > 50, "{} copies", scene.placements.len());
+        let walls = of(&s, "wall");
+        let edits = [
+            ("move", json!({"ids": [walls[0]], "by": [500, 700]})),
+            ("modify", json!({"id": walls[1], "height": 4000})),
+            ("move", json!({"ids": [of(&s, "component")[0]], "by": [100, 0]})),
+            ("copy", json!({"ids": [walls[1]], "by": [0, 6000]})),
+            ("wall", json!({"points": [[0,-3000],[4500,-3000]], "type": "Facade"})),
+            ("delete", json!({"ids": [walls[0]]})),
+        ];
+        for (cmd, p) in &edits {
+            scene = held(&mut s, scene, cmd, p);
+        }
+        for step in ["undo", "redo", "undo"] {
+            let before = Arc::clone(&s.model);
+            s.execute(step, &json!({})).unwrap();
+            let up = scene.update(&before, &s.model);
+            same(&up, &Scene::new(&s.model), step);
+            scene = up;
+        }
     }
 
     #[test]

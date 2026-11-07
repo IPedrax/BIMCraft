@@ -308,7 +308,7 @@ pub struct Canvas {
     pub(crate) drawing: PlanCache,
     cams: BTreeMap<Id, Camera>,
     /// Where the plan was last shown, in points.
-    rect: Rect,
+    pub(crate) rect: Rect,
     /// How much of its height the cards floating over the view (its tabs at the top, its view control bar at the foot) take
     /// between them, points: a view is fitted into the rest.
     pub(crate) room: f32,
@@ -1092,9 +1092,9 @@ fn mirrored(a: Pos2, b: Pos2) -> impl Fn(Pos2) -> Pos2 {
     }
 }
 
-/// `p` to the nearest 10 mm.
+/// `p` tidied of a pixel's float noise, to 0.01 mm: too little to see, and no grid. A grid is the view's background grid.
 fn round(p: P2) -> P2 {
-    P2((p.0 / 10.0).round() * 10.0, (p.1 / 10.0).round() * 10.0)
+    P2((p.0 * 100.0).round() / 100.0, (p.1 * 100.0).round() / 100.0)
 }
 
 fn point(p: P2) -> Value {
@@ -1260,6 +1260,8 @@ impl BimApp {
             && !square
             && self.snap_once.is_none()
             && self.grid_snapping
+            // A wall of a Fixed Grid has its pattern's lengths: a background grid would fight them.
+            && self.drawing_fixed_curtain().is_none()
             && let Some(at) = self.background_grid().nearest(v.mm(at))
         {
             return Found { at, kind: Kind::Intersection, guide: None, source: None };
@@ -1519,7 +1521,20 @@ impl BimApp {
             });
         }
         let tabbed = std::mem::take(&mut self.tab_cycle) || tab;
-        if tabbed && !c.under.is_empty() {
+        // On a curtain wall that's selected and under the cursor, Tab goes through its parts there; else through what's under it.
+        let free = self.tool == Tool::Modify;
+        let on_cursor = c.under.get(c.cycle % c.under.len().max(1)).copied();
+        let parts = local.filter(|_| tabbed).and_then(|q| {
+            let id = crate::curtain::tab_wall(&model, &self.selection, &c.under, on_cursor, free)?;
+            crate::curtain::parts_under(&model, key, id, view.mm(q), view.scale)
+        });
+        if let Some((id, list)) = parts {
+            self.curtain_part = crate::curtain::next_part(self.curtain_part, id, &list);
+            self.curtain_more.clear();
+            if self.curtain_part.is_some() {
+                self.selection = vec![id];
+            }
+        } else if tabbed && !c.under.is_empty() {
             c.cycle = (c.cycle + 1) % c.under.len();
         }
         // While a rectangle is drawn, Tab moves between its width and its height; a line's or a wall's, its length and its angle.
@@ -1703,7 +1718,8 @@ impl BimApp {
         self.paint_background_grid(&p, rect, view);
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let shaped = self.shaping();
-        let mut marked: Vec<Id> = self.selection.iter().copied().filter(|id| Some(*id) != shaped).collect();
+        let mut marked: Vec<Id> =
+            crate::curtain::tinted_selection(&model, &self.selection).into_iter().filter(|id| Some(*id) != shaped).collect();
         if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } = self.tool {
             marked.push(first);
         }
@@ -1714,13 +1730,58 @@ impl BimApp {
             draw::Picked::Sketch(_) => None,
         }));
         let sketch_trim = self.sketch.is_some() && matches!(self.tool, Tool::Trim(_) | Tool::TrimTo { .. });
-        let painted_hover = if matches!(self.tool, Tool::Align(_)) || sketch_trim { None } else { hovered };
+        let painted_hover = if matches!(self.tool, Tool::Align(_)) || sketch_trim {
+            None
+        } else {
+            crate::curtain::tinted_hover(&model, &self.selection, hovered)
+        };
         let place = Place { hide: self.writing(), ..d.place };
         let kept = pipeline.as_ref().is_some_and(|pipeline| {
             self.canvas.drawing.retained.paint(ui.ctx(), pipeline, &p, place, rect.min, &d.drawing, &marked, painted_hover, self.thin)
         });
         if !kept {
             paint(&p, place, &d, &marked, painted_hover, self.thin, &pictures);
+        }
+        // A curtain wall selected shows by its outline, and the part Tab has picked, and the one it would go to, on it.
+        if self.curtain_part.is_none() {
+            for w in self.selection.iter().filter_map(|id| model.wall(*id).filter(|_| crate::curtain::is_curtain(&model, *id))) {
+                let ring = bimcraft_core::curtain::outline_on_plan(&model, w).iter().map(|q| pos(rect.min, view.px(*q))).collect();
+                crate::curtain::mark_wall(&p, ring);
+            }
+        }
+        let under_cursor = crate::curtain::wall_to_tab(&model, &self.selection, &self.tool)
+            .zip(self.canvas.cursor)
+            .and_then(|(id, q)| crate::curtain::parts_under(&model, key, id, q, view.scale));
+        self.curtain_part_aim(under_cursor);
+        let plan_mark = |p: &egui::Painter, id: Id, at, picked: bool| {
+            if let Some(ring) = model.wall(id).and_then(|w| bimcraft_core::curtain::plan_ring(&model, w, at)) {
+                crate::curtain::mark_part(p, ring.iter().map(|q| pos(rect.min, view.px(*q))).collect(), picked);
+            }
+        };
+        if let Some((id, at)) = self.curtain_aim {
+            plan_mark(&p, id, at, false);
+        }
+        if let Some((id, _)) = self.curtain_part {
+            for at in self.curtain_parts_picked() {
+                plan_mark(&p, id, at, true);
+            }
+        }
+        // The Curtain Grid tool: where the cursor would place a line.
+        if let Tool::CurtainGrid { wall, way } = self.tool {
+            let aim = self.canvas.cursor.zip(model.wall(wall)).and_then(|(q, w)| {
+                let (along, off) = bimcraft_core::walls::Axis::of(w).project(q);
+                let (ext, int) = bimcraft_core::walls::faces(&model, w);
+                let reach = f64::from(PICK) / view.scale;
+                let near = off >= int - reach && off <= ext + reach && way == bimcraft_core::curtain::GridWay::Vertical;
+                near.then_some((along, 0.0))
+            });
+            self.curtain_hover = crate::curtain::grid_aim(&model, &self.tool, aim);
+            if let Some((id, at, _)) = self.curtain_grid_hover()
+                && let Some(w) = model.wall(id)
+            {
+                let ends = bimcraft_core::curtain::line_on_plan(&model, w, at).map(|q| pos(rect.min, view.px(q)));
+                p.line_segment(ends, Stroke::new(2.0, pal().accent));
+            }
         }
         // The working aids: where the project's 0, 0 is, and which view this is. On the screen only; no drawing is made of them.
         if self.show_origin {
@@ -2019,6 +2080,19 @@ impl BimApp {
     }
 
     fn click(&mut self, m: &Model, (level, key): (Id, Id), v: &View, at: (f32, f32), hovered: Option<Id>, mods: Modifiers) {
+        if let Tool::CurtainSegment { .. } = self.tool {
+            self.status = Status { text: t("a segment is picked in a section, an elevation or the 3D view").into(), error: true };
+            return;
+        }
+        if let Tool::CurtainGrid { way, .. } = self.tool {
+            if way == bimcraft_core::curtain::GridWay::Horizontal {
+                self.status =
+                    Status { text: t("a horizontal grid is placed in a section, an elevation or the 3D view").into(), error: true };
+            } else {
+                self.curtain_grid_click();
+            }
+            return;
+        }
         match &self.tool {
             &Tool::Vertex { delete } if self.sketch.is_some() => self.vertex_click(None, v.mm(at), f64::from(PICK) / v.scale, delete),
             Tool::Split | Tool::Trim(_) | Tool::TrimTo { .. } | Tool::Offset if self.sketch.is_some() => {
@@ -2036,6 +2110,7 @@ impl BimApp {
             }
             // A sketch tool with the sketch gone: nothing to draw into.
             Tool::SketchLine(_) | Tool::SketchPick => self.tool = Tool::Modify,
+            Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. } => {}
             Tool::Modify => self.pick_up(hovered.into_iter().collect(), mods),
             Tool::Door | Tool::Window => {
                 let door = matches!(self.tool, Tool::Door);
@@ -2878,6 +2953,9 @@ impl BimApp {
                     if self.options_refused() {
                         return;
                     }
+                    // A Fixed Grid ends the wall at its pattern's nearest length, and the chain goes on from there.
+                    let fixed = self.drawing_fixed_curtain().cloned();
+                    let p = self.fixed_end(fixed.as_ref(), last, p);
                     if self.build_walls(level, &draw::offset_line(last, p, self.draw_options().offset), false, 0.0) {
                         let Tool::Wall(chain) = &mut self.tool else { return };
                         // Back on its start, the chain closes; without Chain, every wall stands alone.
@@ -2943,6 +3021,10 @@ impl BimApp {
     /// The Move and Copy tools' second point: the selection moved or copied by `to - from`. A copy
     /// is selected afterwards; with Multiple, the tool goes on copying from the same base point.
     fn shift_selection(&mut self, from: P2, to: P2) {
+        if self.curtain_grid_moving().is_some() {
+            self.move_grid_on_plan(from, to);
+            return;
+        }
         let copy = matches!(self.tool, Tool::Copy(_));
         let again = if copy { Tool::Copy(Some(from)) } else { Tool::Move(Some(from)) };
         if from.dist(to) <= TOL {
@@ -3025,6 +3107,16 @@ impl BimApp {
         });
         if let Some(t) = self.types.get("wall") {
             p["type"] = json!(t);
+            // A curtain wall stands on its exterior or interior face: the command puts it on one unless one is asked for.
+            let curtain = self.session.model.types.wall.get(t).is_some_and(|w| w.curtain.is_some());
+            if curtain
+                && !matches!(
+                    self.wall_location,
+                    bimcraft_core::model::Location::ExteriorFinish | bimcraft_core::model::Location::InteriorFinish
+                )
+            {
+                p.as_object_mut().map(|o| o.remove("location"));
+            }
         }
         // Drawn in the 3D view, on the face their base stands on.
         if let Some(offset) = self.orbit.wall_base {
@@ -3061,6 +3153,9 @@ impl BimApp {
         } else {
             found.at
         };
+        // A wall of a Fixed Grid stays in its pattern's lengths.
+        let pattern = m.types.wall.get(&w.type_name).and_then(|t| t.curtain.as_ref()).map(|l| &l.columns);
+        let at = self.fixed_end(pattern.filter(|d| d.fit == bimcraft_core::curtain::Fit::Fixed), fixed, at);
         (found, at)
     }
 

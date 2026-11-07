@@ -292,6 +292,14 @@ impl Session {
                         assert!(self.model.library_in_step(), "the library isn't in step after `{}`", cmd.id);
                     }
                 }
+                // A curtain wall's thickness and the walls in its cells follow what this changed.
+                let lost = if verified && !crate::curtain::may_be_out_of_date(&self.model, &before) {
+                    Vec::new()
+                } else if crate::curtain::out_of_date(&self.model) {
+                    crate::curtain::sync(self.model_mut())
+                } else {
+                    Vec::new()
+                };
                 // A room frozen keeps the boundary it has now; one thawed lets it go. After a verified model, only a room the
                 // command changed can be either.
                 let unsettled = |e: &Element| matches!(e, Element::Room(r) if r.frozen != r.kept.is_some());
@@ -325,7 +333,7 @@ impl Session {
                         }
                         checked
                     })
-                    .map(|()| v)
+                    .map(|()| crate::curtain::warn_of_lost(v, &lost))
             });
         match result {
             Err(e) => {

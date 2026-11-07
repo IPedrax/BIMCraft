@@ -315,7 +315,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                         &mut cx.model.types.wall,
                         &base,
                         |k| (k.thickness - typ.thickness).abs() < 0.05 && k.layers == typ.layers,
-                        WallType { thickness: typ.thickness, layers: typ.layers.clone() },
+                        WallType { thickness: typ.thickness, layers: typ.layers.clone(), curtain: None },
                     );
                     made.insert(key, n.clone());
                     n
@@ -338,6 +338,8 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 attach_top: None,
                 attach_base: None,
                 room_bounding: true,
+                curtain: None,
+                panel_of: None,
             };
             let note = if tid == 0 {
                 "no_type".to_string()

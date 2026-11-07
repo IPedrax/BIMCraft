@@ -69,6 +69,8 @@ const CONNECTOR: u64 = 55;
 const CONNECTOR_DEFINES: u64 = 56;
 const TYPE_MATERIALS: u64 = 57;
 const USAGE_MATERIALS: u64 = 58;
+const CURTAIN_PART: u64 = 59;
+const CURTAIN_MATERIALS: u64 = 60;
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
@@ -142,6 +144,90 @@ fn ratio(x: f64) -> String {
 
 /// The digits of an IFC GlobalId, in order.
 const DIGITS: &[u8; 64] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
+
+/// A curtain wall: no body of its own, the sum of its mullions (`IfcMember`) and panels (`IfcPlate`), placed from it. Parts of
+/// the same shape share one `IfcProductDefinitionShape`, so identical parts are written once. A part's GlobalId is made from
+/// the wall's GUID and its address on the pattern, so it stays through every export while the wall does. Returns the wall.
+fn curtain_wall(w: &mut Step, m: &Model, id: Id, wl: &crate::model::Wall, storey: u64) -> u64 {
+    use crate::curtain::{self, Address, PartKind};
+    let u = Axis::of(wl).tangent(0.0);
+    let at = w.place(Some(storey), (wl.start.0, wl.start.1, wl.base_offset), Some(u));
+    let ent =
+        w.add(format!("IFCCURTAINWALL({},$,{},$,{},#{at},$,'{id}',.NOTDEFINED.)", w.guid(ELEMENT, id), s(&wl.type_name), s(&wl.type_name)));
+    w.typed("IFCCURTAINWALLTYPE", ".NOTDEFINED.", &wl.type_name, ent);
+    let l = curtain::layout(m, wl);
+    let plane = curtain::grid_plane(m, wl);
+    let mut shapes: Vec<Option<u64>> = vec![None; l.shapes.len()];
+    let mut parts = Vec::with_capacity(l.parts.len());
+    let mut by_material: BTreeMap<String, Vec<u64>> = BTreeMap::new();
+    for p in &l.parts {
+        let Some(shape) = l.shapes.get(p.shape as usize) else { continue };
+        let material = shape.material_in(m).unwrap_or_default().to_string();
+        let body = match shapes.get(p.shape as usize).copied().flatten() {
+            Some(body) => body,
+            None => {
+                let [da, dz, dc] = shape.size.map(|x| x / 2.0);
+                let style = (!material.is_empty()).then(|| w.material_style(m, &material).1).flatten();
+                let body = if shape.is_cut() {
+                    let set = w.faceset(&shape.tris());
+                    if let Some(style) = style {
+                        w.add(format!("IFCSTYLEDITEM(#{set},(#{style}),$)"));
+                    }
+                    w.tessellated(&[set])
+                } else {
+                    let profile = w.profile(&[P2(-da, -dc), P2(da, -dc), P2(da, dc), P2(-da, dc)], &[]);
+                    w.bodies(&[(profile, -dz, shape.size[1])], &[], style)
+                };
+                if let Some(x) = shapes.get_mut(p.shape as usize) {
+                    *x = Some(body);
+                }
+                body
+            }
+        };
+        let [along, up, across] = p.centre;
+        let turned = (p.turn != 0.0).then(|| P2(p.turn.cos(), p.turn.sin()));
+        let place = w.place(Some(at), (along, plane + across, up), turned);
+        // The address's three parts in one number: which kind of place, and its column and row.
+        let (kind, column, row) = match p.address {
+            Address::Cell { column, row } => (0u64, column, row),
+            Address::Vertical { column, row } => (1, column, row),
+            Address::Horizontal { column, row } => (2, column, row),
+            Address::Corner { column, row } => (3, column, row),
+            Address::VerticalGrid { column, row } | Address::HorizontalGrid { column, row } => (4, column, row),
+        };
+        let key = (kind << 60) ^ ((column as u32 as u64) << 30) ^ (row as u32 as u64);
+        let global = s(&guid(w.uid, CURTAIN_PART, w.part(id, key as usize)));
+        let name = s(&shape.type_name);
+        let part = match shape.kind {
+            PartKind::Panel => {
+                let part = w.add(format!("IFCPLATE({global},$,{name},$,{name},#{place},#{body},$,.CURTAIN_PANEL.)"));
+                w.typed("IFCPLATETYPE", ".CURTAIN_PANEL.", &shape.type_name, part);
+                part
+            }
+            PartKind::Mullion => {
+                let part = w.add(format!("IFCMEMBER({global},$,{name},$,{name},#{place},#{body},$,.MULLION.)"));
+                w.typed("IFCMEMBERTYPE", ".MULLION.", &shape.type_name, part);
+                part
+            }
+        };
+        parts.push(part);
+        if !material.is_empty() {
+            by_material.entry(material).or_default().push(part);
+        }
+    }
+    for (i, (name, parts)) in by_material.iter().enumerate() {
+        let material = w.material(m, name);
+        w.add(format!(
+            "IFCRELASSOCIATESMATERIAL({},$,$,$,({}),#{material})",
+            s(&guid(w.uid, CURTAIN_MATERIALS, w.part(id, i))),
+            refs(parts)
+        ));
+    }
+    if !parts.is_empty() {
+        w.add(format!("IFCRELAGGREGATES({},$,$,$,#{ent},({}))", w.guid(PARTS, id), refs(&parts)));
+    }
+    ent
+}
 
 /// A 22-character IFC GlobalId, the same for the same model, role and element on every export.
 fn guid(uid: u64, role: u64, id: u64) -> String {
@@ -843,6 +929,12 @@ pub fn export(m: &Model) -> String {
     }
     for (&id, e) in &m.elements {
         match e {
+            Element::Wall(wl) if crate::curtain::pattern(m, wl).is_some() => {
+                let Some(&(_, storey)) = storeys.get(&wl.level) else { continue };
+                let ent = curtain_wall(&mut w, m, id, wl, storey);
+                contained.entry(wl.level).or_default().push(ent);
+                products.insert(id, ent);
+            }
             Element::Wall(wl) => {
                 let Some(&(_, storey)) = storeys.get(&wl.level) else { continue };
                 let (path, base) = (Axis::of(wl), m.own_base(wl));
@@ -1617,6 +1709,8 @@ pub fn export(m: &Model) -> String {
         for (&id, &ent) in &products {
             let Some(e) = m.elements.get(id) else { continue };
             let Some(pset) = common_pset(e) else { continue };
+            let curtain = matches!(e, Element::Wall(wl) if crate::curtain::pattern(m, wl).is_some());
+            let pset = if curtain { "Pset_CurtainWallCommon" } else { pset };
             let Some(status) = ifc_status(m, e) else { continue };
             let p = w.add(format!("IFCPROPERTYENUMERATEDVALUE('Status',$,(IFCLABEL('{status}')),$)"));
             w.common.entry(id).or_insert((ent, pset, Vec::new())).2.push(p);

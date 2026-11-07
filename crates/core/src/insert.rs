@@ -210,6 +210,24 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                 if let Some(r) = t.runs.get_mut(&c).and_then(|r| r.get_mut(&name)) {
                     here(&Kind::Material, &mut r.material);
                 }
+                if let Some(l) = t.wall.get_mut(&name).filter(|_| c == "wall").and_then(|x| x.curtain.as_mut()) {
+                    l.names_mut(&mut |k, n| here(k, n));
+                }
+                if c == "curtainpanel"
+                    && let Some(x) = t.curtain_panel.get_mut(&name)
+                {
+                    here(&Kind::Material, &mut x.material);
+                }
+                if c == "mullion"
+                    && let Some(x) = t.mullion.get_mut(&name)
+                {
+                    here(&Kind::Material, &mut x.material);
+                }
+                if c == "cornermullion"
+                    && let Some(x) = t.corner_mullion.get_mut(&name)
+                {
+                    here(&Kind::Material, &mut x.material);
+                }
             }
             _ => {}
         }
@@ -235,6 +253,9 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
             "structuralcolumn" => one(&mut t.structural_column, Some(&f.structural_column), name),
             "footing" => one(&mut t.footing, Some(&f.footing), name),
             "railing" => one(&mut t.railing, Some(&f.railing), name),
+            "curtainpanel" => one(&mut t.curtain_panel, Some(&f.curtain_panel), name),
+            "mullion" => one(&mut t.mullion, Some(&f.mullion), name),
+            "cornermullion" => one(&mut t.corner_mullion, Some(&f.corner_mullion), name),
             run => one(t.runs.entry(run.to_string()).or_default(), f.runs.get(run), name),
         },
         Kind::Material => one(&mut to.materials, Some(&from.materials), name),

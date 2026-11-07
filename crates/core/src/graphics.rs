@@ -107,6 +107,9 @@ pub const SCANS: [&str; 1] = ["pointcloud"];
 /// The CAD imports, which views hide and override on a tab of their own too, as Revit's Imported Categories.
 pub const IMPORTED: [&str; 1] = ["cadimport"];
 
+/// The parts of a curtain wall, which Object Styles has a row each for, as Revit's Curtain Panels and Curtain Wall Mullions.
+pub const CURTAIN_PARTS: [&str; 2] = ["curtainpanel", "mullion"];
+
 /// A subcategory: a part of a category a view hides, shows and overrides apart from the rest, as Revit's (Rooms >
 /// Reference). It is held in a view's graphics by its `key`, as a category is; `off` ones are hidden unless the view shows
 /// them. A category hidden hides its subcategories. Some are a kind of element of their own (`roomseparator`), others a
@@ -125,6 +128,8 @@ pub struct Sub {
 pub const SUBCATEGORIES: &[Sub] = &[
     Sub { key: "roomreference", parent: "room", name: ui_msg!("Reference"), off: true },
     Sub { key: "roomseparator", parent: "room", name: ui_msg!("Room Separation Lines"), off: false },
+    Sub { key: "curtainpanel", parent: "wall", name: ui_msg!("Curtain Panels"), off: false },
+    Sub { key: "mullion", parent: "wall", name: ui_msg!("Mullions"), off: false },
 ];
 
 /// The subcategory `key` is, if it is one.
@@ -284,7 +289,7 @@ pub enum Dash {
 
 impl Dash {
     /// The on and off lengths a line is drawn with, px.
-    fn pattern(self) -> Option<Vec<f32>> {
+    pub(crate) fn pattern(self) -> Option<Vec<f32>> {
         match self {
             Dash::Solid => None,
             Dash::Dashed => Some(vec![10.0, 5.0]),
@@ -1041,12 +1046,27 @@ pub struct Look {
     section: Option<([f64; 3], [f64; 3])>,
     /// A 3D view's Graphic Display Options: its edges, silhouettes and ambient shadows.
     display: crate::view3d::DisplayOptions,
+    /// What the view's rows for a curtain wall's panels and its mullions say.
+    parts: [Override; 2],
+}
+
+/// The key of the row in Visibility/Graphics and Object Styles a part of a curtain wall is under.
+pub(crate) fn part_row(kind: crate::curtain::PartKind) -> &'static str {
+    match kind {
+        crate::curtain::PartKind::Panel => CURTAIN_PARTS[0],
+        crate::curtain::PartKind::Mullion => CURTAIN_PARTS[1],
+    }
 }
 
 /// `c` halfway to the paper.
 fn halftone(c: Rgb) -> Rgb {
     let half = |v: u8| v + (255 - v) / 2;
     Rgb(half(c.0), half(c.1), half(c.2))
+}
+
+/// `c` as a view's halftone draws it.
+pub(crate) fn halftoned(c: Rgb) -> Rgb {
+    halftone(c)
 }
 
 impl Look {
@@ -1102,6 +1122,7 @@ impl Look {
     pub fn with(m: &Model, own: &Graphics) -> Look {
         let g = own.resolved(m);
         let mut look = Look { style: g.style, layers: own.layers.clone(), ..Look::default() };
+        look.parts = CURTAIN_PARTS.map(|c| g.categories.get(c).cloned().unwrap_or_default());
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
         let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));
         if own.draws_as_is() && !linked && !crate::phasing::any(m) && m.rare("mass").is_empty() {
@@ -1223,7 +1244,45 @@ impl Look {
 
     /// Whether it changes anything.
     pub fn is_plain(&self) -> bool {
-        self.hidden.is_empty() && self.paint.is_empty()
+        self.hidden.is_empty() && self.paint.is_empty() && self.parts.iter().all(Override::is_empty)
+    }
+
+    /// What the view's row says of a part of a curtain wall.
+    pub(crate) fn part(&self, kind: crate::curtain::PartKind) -> &Override {
+        &self.parts[kind as usize]
+    }
+
+    /// Whether the view draws this part of a curtain wall, its wall being drawn.
+    pub fn shows_part(&self, kind: crate::curtain::PartKind) -> bool {
+        !self.part(kind).hidden
+    }
+
+    /// Whether the view hides panels or mullions of a curtain wall.
+    pub(crate) fn hides_parts(&self) -> bool {
+        self.parts.iter().any(|o| o.hidden)
+    }
+
+    /// `base`, or the colour `pick` finds in what the view says of a part (`kind`) or else of its element, lighter if either is
+    /// in halftone. A part's row goes over its wall's.
+    fn coloured(&self, kind: Option<crate::curtain::PartKind>, id: Id, base: Rgb, pick: impl Fn(&Override) -> Option<[u8; 3]>) -> Rgb {
+        let (part, own) = (kind.map(|k| self.part(k)), self.paint.get(&id));
+        let c = part.and_then(&pick).or_else(|| own.and_then(&pick)).map_or(base, |[r, g, b]| Rgb(r, g, b));
+        if part.is_some_and(|o| o.halftone) || own.is_some_and(|o| o.halftone) { halftone(c) } else { c }
+    }
+
+    /// [`Look::surface`], for what may be a part of a curtain wall.
+    pub(crate) fn surface_of(&self, kind: Option<crate::curtain::PartKind>, id: Id, base: Rgb) -> Rgb {
+        self.coloured(kind, id, base, |o| o.projection.fill)
+    }
+
+    /// [`Look::edge`], for what may be a part of a curtain wall.
+    pub(crate) fn edge_of(&self, kind: Option<crate::curtain::PartKind>, id: Id, base: Rgb) -> Rgb {
+        self.coloured(kind, id, base, |o| o.projection.color)
+    }
+
+    /// [`Look::transparency`], for what may be a part of a curtain wall: its row's, else its element's.
+    pub(crate) fn transparency_of(&self, kind: Option<crate::curtain::PartKind>, id: Id) -> u8 {
+        kind.map(|k| self.part(k).transparency).filter(|t| *t > 0).unwrap_or_else(|| self.transparency(id))
     }
 
     /// `d` with its primitives drawn as the view says: the colours, weights and dashes of each

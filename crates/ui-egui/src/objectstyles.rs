@@ -5,7 +5,7 @@ use crate::popup::Modal;
 
 use std::collections::BTreeMap;
 
-use bimcraft_core::graphics::MODEL;
+use bimcraft_core::graphics::{CURTAIN_PARTS, MODEL};
 use bimcraft_core::model::Model;
 use bimcraft_core::pen::{MAX_PEN, Pen};
 use bimcraft_core::styles::{ObjectStyle, default_of};
@@ -24,7 +24,7 @@ pub(crate) struct ObjectStylesDialog {
 impl ObjectStylesDialog {
     /// Open on the project's object styles.
     pub(crate) fn new(m: &Model) -> ObjectStylesDialog {
-        ObjectStylesDialog { draft: MODEL.iter().map(|c| (*c, m.object_style(c))).collect() }
+        ObjectStylesDialog { draft: MODEL.iter().chain(&CURTAIN_PARTS).map(|c| (*c, m.object_style(c))).collect() }
     }
 }
 

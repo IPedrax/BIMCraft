@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::graphics::{COMPONENT, COMPONENTS, MODEL};
+use crate::graphics::{COMPONENT, COMPONENTS, CURTAIN_PARTS, MODEL};
 use crate::model::{Element, Model};
 use crate::pen::{MAX_PEN, Pen};
 
@@ -33,6 +33,8 @@ pub fn default_of(category: &str) -> ObjectStyle {
         "mass" => ObjectStyle { projection: Pen::PROJECTION, cut: Pen::PROJECTION },
         "door" | "window" => ObjectStyle { projection: Pen::PROJECTION, cut: Pen::MEDIUM },
         "railing" => ObjectStyle { projection: Pen::MEDIUM, cut: Pen::CUT },
+        // Glass cut is drawn thin: it's what a mullion stands out from.
+        "curtainpanel" => ObjectStyle { projection: Pen::PROJECTION, cut: Pen::PROJECTION },
         _ => ObjectStyle { projection: Pen::PROJECTION, cut: Pen::CUT },
     }
 }
@@ -52,7 +54,7 @@ impl ObjectStyle {
 /// An error saying what to fix, unless `category` is one Object Styles has: a model category views draw, or `component`, which
 /// stands for every family category that has none of its own.
 pub fn known(category: &str) -> Result<(), String> {
-    if MODEL.contains(&category) || category == COMPONENT {
+    if MODEL.contains(&category) || CURTAIN_PARTS.contains(&category) || category == COMPONENT {
         Ok(())
     } else {
         Err(format!(
@@ -105,7 +107,7 @@ mod tests {
         let mut s = Session::new();
         // Asking says each model category's, and changes nothing.
         let r = s.execute("object_styles", &json!({})).unwrap();
-        assert_eq!(r["categories"].as_array().map(Vec::len), Some(MODEL.len()));
+        assert_eq!(r["categories"].as_array().map(Vec::len), Some(MODEL.len() + CURTAIN_PARTS.len()));
         assert_eq!(r["categories"][0], json!({"category": "wall", "projection": 4, "cut": 10, "own": false}));
         assert!(s.history().is_empty());
         // Given, by category, a pen or both, in one undo step.
