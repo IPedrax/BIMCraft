@@ -733,8 +733,9 @@ pub fn plan(ask: &Ask) -> Result<Plan, String> {
     for t in wanted {
         let scope = ask.scopes.get(t.key).copied().unwrap_or(t.scope);
         let cats = categories_for(t.key, scope, t.categories)?;
-        if scope == Scope::Type && t.categories.iter().any(|k| TYPELESS.contains(k)) {
-            out.notes.push(format!("{}: stairs and ramps have no types here, so a type parameter leaves them out", sys.table_name(t)));
+        let note = "Stairs and ramps have no types here, so the tables classified by type leave them out.";
+        if scope == Scope::Type && cats.len() < t.categories.len() && !out.notes.iter().any(|n| n == note) {
+            out.notes.push(note.to_string());
         }
         let (number, title) = sys.parameters_of(t);
         let group = format!("{} {}", sys.name, t.name);
@@ -1188,7 +1189,7 @@ pub struct Brief {
 }
 
 /// What a brief is made of.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BriefAsk {
     /// The tables to classify by (each by its name); all bound and loaded, when empty.
@@ -1266,11 +1267,21 @@ fn push_unique(list: &mut Vec<String>, v: Option<String>) {
     }
 }
 
+/// The model with every type in the library, so each has its GUID: itself when it is (after any command it is), else a copy.
+fn synced(m: &Model) -> std::borrow::Cow<'_, Model> {
+    if m.library_in_step() {
+        std::borrow::Cow::Borrowed(m)
+    } else {
+        let mut c = m.clone();
+        c.sync_library();
+        std::borrow::Cow::Owned(c)
+    }
+}
+
 /// The brief `ask` makes of the model.
 pub fn brief(m: &Model, ask: &BriefAsk) -> Result<Brief, String> {
-    let mut m2 = m.clone();
-    m2.sync_library();
-    let m = &m2;
+    let m2 = synced(m);
+    let m = m2.as_ref();
     let bindings: Vec<&Binding> = m
         .classification
         .bindings
@@ -1605,9 +1616,8 @@ pub fn json_in(text: &str) -> Option<Value> {
 /// An agent's answer checked against the model: each row's key a known element or type, its table loaded and bound, its
 /// code in the table. What fails is listed and left out, never applied.
 pub fn read_answer(m: &Model, answer: &Value) -> Answer {
-    let mut m2 = m.clone();
-    m2.sync_library();
-    let m = &m2;
+    let m2 = synced(m);
+    let m = m2.as_ref();
     let mut out = Answer::default();
     let rows = answer.get("rows").and_then(Value::as_array).or_else(|| answer.as_array());
     let Some(rows) = rows else {
@@ -1713,8 +1723,8 @@ pub(crate) fn check_command(s: &mut Session, p: &Value) -> R {
     let c = "classification_check";
     only(c, p, &["table"])?;
     let only_table = string(c, p, "table")?;
-    let mut m = (*s.model).clone();
-    m.sync_library();
+    let m2 = synced(&s.model);
+    let m = m2.as_ref();
     let mut out = Vec::new();
     for b in m.classification.bindings.iter().filter(|b| only_table.as_ref().is_none_or(|t| *t == b.table)) {
         let Some(q) = m.parameters.get(&b.parameter) else {
@@ -1723,9 +1733,9 @@ pub(crate) fn check_command(s: &mut Session, p: &Value) -> R {
         };
         let table = m.classification.tables.get(&b.table);
         let mut owners: BTreeMap<String, (Target, Vec<Id>)> = BTreeMap::new();
-        for (id, e) in elements_for(&m, b) {
+        for (id, e) in elements_for(m, b) {
             let (k, t) = match q.scope {
-                Scope::Type => match parameters::type_guid(&m, e) {
+                Scope::Type => match parameters::type_guid(m, e) {
                     Some(g) => (g.to_string(), Target::Type(g)),
                     None => continue,
                 },
@@ -1735,10 +1745,10 @@ pub(crate) fn check_command(s: &mut Session, p: &Value) -> R {
         }
         let (mut done, mut missing, mut unknown) = (0usize, Vec::new(), Vec::new());
         for (t, ids) in owners.values() {
-            match current(&m, b, t) {
+            match current(m, b, t) {
                 Some(code) if table.is_none_or(|tb| tb.find(code).is_some()) => done += 1,
-                Some(code) => unknown.push(json!({"owner": owner_json(&m, t), "code": code, "elements": ids.len()})),
-                None => missing.push(json!({"owner": owner_json(&m, t), "elements": ids.len()})),
+                Some(code) => unknown.push(json!({"owner": owner_json(m, t), "code": code, "elements": ids.len()})),
+                None => missing.push(json!({"owner": owner_json(m, t), "elements": ids.len()})),
             }
         }
         out.push(json!({
@@ -1801,4 +1811,25 @@ pub fn handover(m: &Model, brief: &Brief, files: bool) -> Handover {
     }
     let inline = if files { String::new() } else { serde_json::to_string(brief).unwrap_or_default() };
     Handover { instructions: instructions(brief, files), files: out, inline }
+}
+
+/// How many of what a table's parameter is for have a code from it: types, or elements for a table of each element's.
+pub fn coverage(m: &Model, table: &str) -> Option<(usize, usize)> {
+    let b = m.classification.bindings.iter().find(|b| b.table == table && m.parameters.contains_key(&b.parameter))?;
+    let q = m.parameters.get(&b.parameter)?;
+    let mut owners: BTreeMap<String, Target> = BTreeMap::new();
+    for (id, e) in elements_for(m, b) {
+        match q.scope {
+            Scope::Type => {
+                if let Some(g) = parameters::type_guid(m, e) {
+                    owners.entry(g.to_string()).or_insert(Target::Type(g));
+                }
+            }
+            Scope::Instance => {
+                owners.insert(id.to_string(), Target::Element(id));
+            }
+        }
+    }
+    let done = owners.values().filter(|t| current(m, b, t).is_some()).count();
+    Some((done, owners.len()))
 }

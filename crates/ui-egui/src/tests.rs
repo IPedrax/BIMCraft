@@ -6270,6 +6270,7 @@ mod autosave;
 mod browser;
 mod cad;
 mod chinese;
+mod classification;
 mod clouds;
 mod control;
 mod coordinates;
