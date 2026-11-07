@@ -176,6 +176,17 @@ parameter a formula takes away what its types and its components held of it, as 
 greyed and taking no typing, as what it comes to: the Family Editor's Parameters and Types tabs (for the type previewed, or the
 type picked), the project's Properties and Type Properties.
 
+### Visibility
+
+A form's `visible` is a yes/no parameter (`group: "visibility"` lists it under Visibility, as Revit's) or a formula; worked out
+as zero, the form is left out of what the family builds for that type or component (`Family::solid`), so a plan, the 3D view,
+a section and IFC leave it out alike, and a change of type, of the type's tick or of the component's own value follows. The
+Family Editor's Forms tab shows it as Revit's Properties do: a Visible tick with "=" at its end (Associate Family Parameter,
+the same dialog an adaptive element's rows open, through `adaptive_editor::Tied`), which ties it to a yes/no parameter or, with
+<None>, unties it keeping what it came to; tied, or given a formula, the tick is greyed, showing what the type previewed comes
+to, the formula beside it. Revit's "Preview Visibility" (forms hidden in a type drawn greyed in the family's own views) is left
+out: the editor's preview shows each type as it builds.
+
 ## Shared parameters file
 
 A shared parameters file (`shared_parameters.rs`, the `shared_parameters` command, Manage > Shared Parameters) is a plain-text

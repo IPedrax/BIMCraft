@@ -1,4 +1,4 @@
-//! Formulas as Revit's behave (T9).
+//! Formulas as Revit's behave (T9) and a form's visibility driven by a yes/no parameter (T10).
 //!
 //! - A formula that names a parameter the family doesn't have is refused when the family is checked by a command, wherever
 //!   the formula lives (a parameter's, a form's sizes and `visible`, a symbol's, a connector's, the room calculation point, an
@@ -6,6 +6,8 @@
 //!   sensitive. A project file that holds one still opens, saying so.
 //! - A number in a formula takes a unit: `90°`, `52.6 mm`, `1.2 m`, in a comparison or a result.
 //! - A parameter a formula works out is set by nothing: a type or a component that sets it is refused, naming the formula.
+//! - A yes/no parameter tied to a form's `visible` keeps the form or leaves it out of each type: in plan, in 3D, in a section
+//!   and in IFC.
 //!
 //! Driven through `Session::execute`, as every front end drives it.
 
@@ -13,7 +15,9 @@ use serde_json::{Value, json};
 
 use crate::engine::Session;
 use crate::family::Expr;
+use crate::geom::P2;
 use crate::model::Id;
+use crate::render::{self, PAPER, Rgb, View};
 
 fn run(s: &mut Session, id: &str, p: Value) -> Value {
     s.execute(id, &p).unwrap_or_else(|e| panic!("{id} {p}: {e}"))
@@ -244,4 +248,137 @@ fn a_parameter_a_formula_works_out_is_set_by_no_type_nor_component_and_the_refus
     run(&mut s, "family", json!({"name": "Box", "parameter": {"name": "Height", "formula": "Width * 0.3"}}));
     let read = run(&mut s, "family", json!({"name": "Box"}));
     assert_eq!(read["values"]["A"]["Height"], json!(300.0), "{read}");
+}
+
+/// A cabinet: a base box at x 0…1000 always, and a top box at x 2000…3000 that shows when `Show Top`, a yes/no parameter
+/// under Visibility, is ticked; type `On` ticks it, `Off` doesn't. A project with one cabinet of type `ty` at (0, 0), and it.
+fn cabinet(ty: &str) -> (Session, Id) {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "family",
+        json!({
+            "name": "Cabinet",
+            "category": "generic",
+            "parameters": [{"name": "Show Top", "kind": "yesno", "group": "visibility", "value": true}],
+            "types": {"On": {"Show Top": true}, "Off": {"Show Top": false}},
+            "forms": [
+                {"profile": [[0, 0], [1000, 0], [1000, 500], [0, 500]], "to": 600},
+                {"profile": [[2000, 0], [3000, 0], [3000, 500], [2000, 500]], "to": 600, "visible": "Show Top"}
+            ]
+        }),
+    );
+    let id = id_of(&run(&mut s, "component", json!({"family": "Cabinet", "type": ty, "at": [0, 0]})));
+    (s, id)
+}
+
+/// Level 1's plan round the cabinet: 0.25 px a mm.
+fn plan_view() -> View {
+    View { scale: 0.25, cx: 1500.0, cy: 250.0, width: 1200, height: 600 }
+}
+
+/// The pixels of Level 1's plan that aren't paper within the box `x0…x1`, `y0…y1` mm.
+fn ink(s: &Session, (x0, x1): (f64, f64), (y0, y1): (f64, f64)) -> usize {
+    let view = plan_view();
+    let pm = tiny_skia::Pixmap::decode_png(&render::png(&render::draw(&s.model, 100000, view)).unwrap_or_default()).unwrap();
+    let ((ax, ay), (bx, by)) = (view.px(P2(x0, y1)), view.px(P2(x1, y0)));
+    let mut n = 0;
+    for x in ax as u32..=bx as u32 {
+        for y in ay as u32..=by as u32 {
+            n += pm.pixel(x, y).is_some_and(|c| Rgb(c.red(), c.green(), c.blue()) != PAPER) as usize;
+        }
+    }
+    n
+}
+
+/// Element `id`'s triangles in the 3D scene.
+fn triangles(s: &Session, id: Id) -> usize {
+    crate::view3d::solids(&s.model)
+        .iter()
+        .filter(|x| x.owner() == id)
+        .map(|x| match x {
+            crate::view3d::Solid::Mesh { tris, .. } => tris.len(),
+            _ => 0,
+        })
+        .sum()
+}
+
+/// The pixels of a section across the cabinet, looking north, that aren't paper; the section made for it, then undone.
+fn section_ink(s: &mut Session) -> usize {
+    let sec = id_of(&run(s, "section", json!({"start": [-500, 250], "end": [3500, 250]})));
+    // Along the line from its start and up from Level 1, mm: the same picture of either project, whatever it holds.
+    let view = View { scale: 0.25, cx: 2000.0, cy: 300.0, width: 1200, height: 600 };
+    let png = render::section_png(&s.model, sec, view).unwrap_or_default();
+    let pm = tiny_skia::Pixmap::decode_png(&png).unwrap();
+    let n = pm.pixels().iter().filter(|c| Rgb(c.red(), c.green(), c.blue()) != PAPER).count();
+    // The section taken back, so the plan shows no line of it.
+    run(s, "undo", json!({}));
+    n
+}
+
+/// How many of each IFC entity the project writes, and their total.
+fn ifc_entities(s: &Session) -> (usize, std::collections::BTreeMap<String, usize>) {
+    let file = crate::ifc::export(&s.model);
+    let mut by = std::collections::BTreeMap::new();
+    for line in file.lines().filter(|l| l.starts_with('#')) {
+        if let Some(name) = line.split_once('=').map(|(_, r)| r.trim_start().split('(').next().unwrap_or_default().to_string()) {
+            *by.entry(name).or_insert(0) += 1;
+        }
+    }
+    (by.values().sum(), by)
+}
+
+#[test]
+fn a_yes_no_parameter_tied_to_a_forms_visible_shows_or_hides_it_in_each_type_in_plan_3d_sections_and_ifc() {
+    let (mut on, on_id) = cabinet("On");
+    let (mut off, off_id) = cabinet("Off");
+    // Plan: the base in both; the top in `On` only.
+    let (base, top) = (((-20.0, 1020.0), (-20.0, 520.0)), ((1980.0, 3020.0), (-20.0, 520.0)));
+    assert!(ink(&on, base.0, base.1) > 0 && ink(&off, base.0, base.1) > 0, "the base, in both");
+    assert!(ink(&on, top.0, top.1) > 0, "the top, ticked");
+    assert_eq!(ink(&off, top.0, top.1), 0, "no top, not ticked");
+    // 3D: the top's triangles in `On`, none in `Off`.
+    let (t_on, t_off) = (triangles(&on, on_id), triangles(&off, off_id));
+    assert!(t_off > 0 && t_on > t_off, "triangles: on {t_on}, off {t_off}");
+    assert_eq!(t_on, 2 * t_off, "the top is a box as the base is");
+    // A section across both: more cut in `On`.
+    let (s_on, s_off) = (section_ink(&mut on), section_ink(&mut off));
+    assert!(s_on > s_off, "section ink: on {s_on}, off {s_off}");
+    // IFC: the top's geometry goes out in `On` only.
+    let ((n_on, by_on), (n_off, by_off)) = (ifc_entities(&on), ifc_entities(&off));
+    assert!(n_on > n_off, "IFC entities: on {n_on}, off {n_off}");
+    let faces = |by: &std::collections::BTreeMap<String, usize>| by.get("IFCTRIANGULATEDFACESET").copied().unwrap_or(0);
+    assert_eq!((faces(&by_on), faces(&by_off)), (2, 1), "a face set a form: {by_on:?}\n{by_off:?}");
+    // The component's type changed, it follows: `On` made `Off` is as `Off`, and back.
+    run(&mut on, "modify", json!({"id": on_id, "type": "Off"}));
+    assert_eq!(triangles(&on, on_id), t_off);
+    assert_eq!(ink(&on, top.0, top.1), 0);
+    run(&mut on, "modify", json!({"id": on_id, "type": "On"}));
+    assert_eq!(triangles(&on, on_id), t_on);
+    // The type's tick changed in the family, the components of it follow.
+    run(&mut off, "family", json!({"name": "Cabinet", "types": {"On": {"Show Top": true}, "Off": {"Show Top": true}}}));
+    assert_eq!(triangles(&off, off_id), t_on);
+    assert!(ink(&off, top.0, top.1) > 0);
+}
+
+#[test]
+fn an_instance_yes_no_tied_to_visible_hides_the_form_of_that_component_alone() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "family",
+        json!({
+            "name": "Cabinet",
+            "parameters": [{"name": "Show Top", "kind": "yesno", "group": "visibility", "instance": true, "value": true}],
+            "types": {"A": {}},
+            "forms": [
+                {"profile": [[0, 0], [1000, 0], [1000, 500], [0, 500]], "to": 600},
+                {"profile": [[2000, 0], [3000, 0], [3000, 500], [2000, 500]], "to": 600, "visible": "Show Top"}
+            ]
+        }),
+    );
+    let a = id_of(&run(&mut s, "component", json!({"family": "Cabinet", "at": [0, 0]})));
+    let b = id_of(&run(&mut s, "component", json!({"family": "Cabinet", "at": [0, 5000]})));
+    run(&mut s, "modify", json!({"id": b, "params": {"Show Top": false}}));
+    assert_eq!(triangles(&s, a), 2 * triangles(&s, b));
 }

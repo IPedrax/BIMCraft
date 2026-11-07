@@ -1,4 +1,5 @@
-//! The Family Editor's Family Types greys what a formula works out, showing what the type previewed comes to.
+//! The Family Editor's Family Types greys what a formula works out, showing what the type previewed comes to, and a form's
+//! Visible is a tick with Revit's "=" at its end: tied to a yes/no parameter, the tick is greyed, showing the association.
 
 use super::*;
 use egui_kittest::kittest::NodeT;
@@ -12,6 +13,10 @@ fn disabled(h: &Harness<BimApp>, label: &str) -> bool {
 
 fn value(h: &Harness<BimApp>, label: &str) -> Option<String> {
     h.get_by_label(label).accesskit_node().value().map(|v| v.to_string())
+}
+
+fn ticked(h: &Harness<BimApp>, label: &str) -> bool {
+    h.get_by_label(label).accesskit_node().toggled() == Some(egui::accesskit::Toggled::True)
 }
 
 #[test]
@@ -39,4 +44,37 @@ fn family_types_greys_a_value_a_formula_works_out_showing_what_the_type_comes_to
     let f = &h.state().session.model.families["Cabinet"];
     assert!(f.types.values().all(|t| !t.contains_key("Height")), "{:?}", f.types);
     assert_eq!(f.parameters[1].driven(), Some("Width / 2"));
+}
+
+#[test]
+fn a_forms_visible_tied_to_a_yes_no_parameter_through_equals_greys_its_tick() {
+    let mut h = app(&format!("{BOX}\n{CABINET}"));
+    h.set_size(vec2(1800.0, 900.0));
+    h.state_mut().edit_family("Cabinet");
+    h.run();
+    press_near(&mut h, "Forms", "Parameter Name 1");
+    press(&mut h, "2. Extrusion");
+    // Tied to Show Top: greyed, ticked as type A has it.
+    assert!(disabled(&h, "Form Visible 2"), "tied, the tick takes no clicks");
+    assert!(ticked(&h, "Form Visible 2"));
+    let equals = "Associate Family Parameter: Visible";
+    // "=", <None>, OK: untied, it keeps what it came to and takes clicks.
+    press(&mut h, equals);
+    press(&mut h, "<None>");
+    press_near(&mut h, "OK", "<None>");
+    assert!(!disabled(&h, "Form Visible 2") && ticked(&h, "Form Visible 2"));
+    // A click hides it in every type.
+    press(&mut h, "Form Visible 2");
+    assert!(!ticked(&h, "Form Visible 2"));
+    // "=" again, Show Top, OK: tied once more, greyed.
+    press(&mut h, equals);
+    press_near(&mut h, "Show Top", "<None>");
+    press_near(&mut h, "OK", "<None>");
+    assert!(disabled(&h, "Form Visible 2") && ticked(&h, "Form Visible 2"));
+    press_near(&mut h, "Apply", "Cancel");
+    let f = &h.state().session.model.families["Cabinet"];
+    assert_eq!(f.forms[1].visible, Some(bimcraft_core::family::Expr::Formula("Show Top".into())));
+    // Each type's tick: B's is clear, so the family worked out for B leaves the top out.
+    let values = h.state().session.model.families["Cabinet"].values("B", &Default::default()).unwrap();
+    assert_eq!(values.get("Show Top"), Some(&bimcraft_core::family::Val::Number(0.0)));
 }
