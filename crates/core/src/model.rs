@@ -1893,8 +1893,7 @@ impl Facing {
     }
 }
 
-/// A sheet: paper of an ISO size (A0 to A4, landscape), with a title block, and the views placed
-/// on it.
+/// A sheet: named landscape paper or custom width by height in mm, with a title block and views on it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Sheet {
@@ -1903,14 +1902,30 @@ pub struct Sheet {
     pub size: String,
 }
 
-/// The paper a standard size names, landscape: width and height in mm.
+/// Minimum custom paper side in mm: keeps the border and title-block frame on the paper.
+pub const MIN_PAPER: f64 = 100.0;
+/// Maximum custom paper side in mm: the longest named side (ARCH E, 48 in).
+pub const MAX_PAPER: f64 = 1219.2;
+
+/// The ISO aliases also name their bare format in margins and folding marks.
+pub(crate) fn paper_name(size: &str) -> String {
+    let upper = size.trim().to_ascii_uppercase();
+    let iso = upper.strip_prefix("ISO").map(str::trim_start).unwrap_or(&upper);
+    if matches!(iso, "A0" | "A1" | "A2" | "A3" | "A4" | "B1" | "B2" | "B3" | "B4") { iso.into() } else { upper }
+}
+
+/// Paper width and height in mm: named sizes are landscape; custom `widthxheight` keeps its order.
 pub fn paper(size: &str) -> Option<P2> {
-    match size.trim().to_ascii_uppercase().as_str() {
+    match paper_name(size).as_str() {
         "A0" => Some(P2(1189.0, 841.0)),
         "A1" => Some(P2(841.0, 594.0)),
         "A2" => Some(P2(594.0, 420.0)),
         "A3" => Some(P2(420.0, 297.0)),
         "A4" => Some(P2(297.0, 210.0)),
+        "B1" => Some(P2(1000.0, 707.0)),
+        "B2" => Some(P2(707.0, 500.0)),
+        "B3" => Some(P2(500.0, 353.0)),
+        "B4" => Some(P2(353.0, 250.0)),
         // US Architectural sizes (landscape, mm)
         "ARCH A" | "ARCHA" => Some(P2(304.8, 228.6)),
         "ARCH B" | "ARCHB" => Some(P2(457.2, 304.8)),
@@ -1918,13 +1933,21 @@ pub fn paper(size: &str) -> Option<P2> {
         "ARCH D" | "ARCHD" => Some(P2(914.4, 609.6)),
         "ARCH E" | "ARCHE" => Some(P2(1219.2, 914.4)),
         "ARCH E1" | "ARCHE1" => Some(P2(1066.8, 762.0)),
+        "ARCH E2" | "ARCHE2" => Some(P2(965.2, 660.4)),
+        "ARCH E3" | "ARCHE3" => Some(P2(990.6, 685.8)),
         // ANSI Engineering sizes (landscape, mm)
         "ANSI A" | "ANSIA" | "LETTER" => Some(P2(279.4, 215.9)),
         "ANSI B" | "ANSIB" | "TABLOID" | "LEDGER" => Some(P2(431.8, 279.4)),
         "ANSI C" | "ANSIC" => Some(P2(558.8, 431.8)),
         "ANSI D" | "ANSID" => Some(P2(863.6, 558.8)),
         "ANSI E" | "ANSIE" => Some(P2(1117.6, 863.6)),
-        _ => None,
+        "SUPER B" | "SUPERB" | "SUPER-B" => Some(P2(482.6, 330.2)),
+        custom => {
+            let (width, height) = custom.split_once(['X', '×'])?;
+            let width: f64 = width.trim().parse().ok()?;
+            let height: f64 = height.trim().parse().ok()?;
+            ((MIN_PAPER..=MAX_PAPER).contains(&width) && (MIN_PAPER..=MAX_PAPER).contains(&height)).then_some(P2(width, height))
+        }
     }
 }
 
@@ -7138,7 +7161,10 @@ impl Model {
                     return Err(format!("{who}: another sheet is already numbered `{}`", sh.number));
                 }
                 if paper(&sh.size).is_none() {
-                    return Err(format!("{who}: size `{}` isn't A0, A1, A2, A3 or A4, or an Arch / ANSI size", sh.size));
+                    return Err(format!(
+                        "{who}: size `{}` isn't a paper size: ISO A0–A4 or B1–B4, ARCH A–E or E1–E3, ANSI A–E, SUPER B, or width x height in mm, {MIN_PAPER} to {MAX_PAPER} a side",
+                        sh.size
+                    ));
                 }
             }
             Element::Viewport(v) => {
