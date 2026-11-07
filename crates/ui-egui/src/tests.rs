@@ -6813,5 +6813,6 @@ mod background_grid;
 mod extrusion_properties;
 mod family_already_exists;
 mod family_document;
+mod family_temporary_hide;
 mod family_types_dialog;
 mod preview_visibility;

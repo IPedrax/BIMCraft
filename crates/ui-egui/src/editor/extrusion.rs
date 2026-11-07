@@ -46,7 +46,7 @@ impl FamilyEditor {
         let mut back = form(&s).ok_or_else(gone)?;
         let Some(was) = self.forms.get_mut(i) else { return Err(gone()) };
         (back.id, back.guid) = (was.original.id, was.original.guid);
-        *was = FormText::of(&back);
+        *was = FormText { tag: was.tag, ..FormText::of(&back) };
         Ok(())
     }
 }

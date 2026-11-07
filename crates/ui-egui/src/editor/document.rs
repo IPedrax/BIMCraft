@@ -36,6 +36,8 @@ pub(crate) struct State {
     /// Revit's Preview Visibility: the preview shows the family as placed, the forms its type hides left out, rather than
     /// ghosted. The view's own: no part of the draft, so neither saved nor a step of its history.
     pub(super) preview_visibility: bool,
+    /// Temporary Hide/Isolate: what the view hides for now (`temp_hide.rs`). The view's own, as Preview Visibility.
+    pub(super) temp: super::temp_hide::Temp,
     /// Load into Project and Close went in: the document closes once the frame's work is done.
     pub(super) loaded_to_close: bool,
     /// The shared families nested in this one that the project already has, defined otherwise, which "Shared Family Already
@@ -55,6 +57,7 @@ impl Default for State {
             refused: None,
             clean: None,
             preview_visibility: false,
+            temp: Default::default(),
             loaded_to_close: false,
             shared_nested: Vec::new(),
         }
@@ -726,10 +729,11 @@ impl BimApp {
         self.view_rect = pane;
         self.pane = pane;
         let values = ed.values();
+        let hidden = ed.adaptive.as_ref().map(|d| ed.temp_hidden(d)).unwrap_or_default();
         if let Some(d) = ed.adaptive.as_mut() {
             ui.scope_builder(UiBuilder::new().max_rect(pane), |ui| {
                 let planes = bimcraft_core::family::Planes { planes: &ed.planes, lines: &ed.lines };
-                adaptive_view::show(ui, d, planes, &mut ed.modeller, &values, pane.size());
+                adaptive_view::show(ui, d, planes, &mut ed.modeller, &values, pane.size(), &hidden);
             });
             // What a tool in the view could not do, in the status bar.
             if let Some(e) = ui.ctx().data_mut(|w| w.remove_temp::<String>(UiId::new("adaptive-view-problem"))) {
@@ -781,12 +785,20 @@ impl BimApp {
                         ed.document.preview_visibility = !on;
                     }
                 }
+                self.family_temp_menu(ui, &mut ed);
             });
         });
         self.work = pane.with_min_y(pane.top().max(self.tabs_foot));
-        // While it is on, a frame round the view and its name over it, as Revit marks a view showing what is placed.
+        // While it hides anything for now, the project's cyan frame round the view, as Revit draws.
+        let hiding = ed.temporary().hides();
+        if hiding {
+            ui.painter().rect_stroke(pane.shrink(1.5), 0.0, Stroke::new(3.0, crate::footer::FRAME), StrokeKind::Inside);
+        }
+        // While it is on, a frame round the view and its name over it, as Revit marks a view showing what is placed: inside the
+        // cyan one when both are, so each shows.
         if ed.adaptive.is_none() && ed.preview_visibility() {
-            ui.painter().rect_stroke(pane.shrink(1.5), 0.0, Stroke::new(3.0, super::PREVIEW_FRAME), StrokeKind::Inside);
+            let inset = if hiding { 4.5 } else { 1.5 };
+            ui.painter().rect_stroke(pane.shrink(inset), 0.0, Stroke::new(3.0, super::PREVIEW_FRAME), StrokeKind::Inside);
             let text = t(PREVIEW_VISIBILITY);
             let font = FontId::proportional(13.0);
             let size = ui.painter().layout_no_wrap(text.to_string(), font.clone(), Color32::WHITE).size() + vec2(20.0, 6.0);
@@ -885,13 +897,18 @@ impl BimApp {
         }
     }
 
-    /// The family document's keys: Ctrl+Z undoes a step of its own, Ctrl+Y and Ctrl+Shift+Z redo one, unless a field being typed
-    /// in (whose own they are) or a dialog has them.
+    /// The family document's keys: Ctrl+Z undoes a step of its own, Ctrl+Y and Ctrl+Shift+Z redo one, and the two letters of
+    /// Temporary Hide/Isolate (`temp_hide.rs`), unless a field being typed in (whose own they are) or a dialog has them.
     pub(crate) fn family_keys(&mut self, ctx: &Context) {
-        let Some(ed) = self.family_editor.as_mut() else { return };
+        let Some(ed) = self.family_editor.as_ref() else { return };
         if ed.modal() || ctx.text_edit_focused() {
             return;
         }
+        // Letters typed, but not while a menu has the keys.
+        if !egui::Popup::is_any_open(ctx) {
+            self.family_typed(ctx);
+        }
+        let Some(ed) = self.family_editor.as_mut() else { return };
         // Escape lets a selected form go, though a button clicked has the keyboard (the window's own Escape does it otherwise).
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             ed.let_form_go();
