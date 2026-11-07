@@ -204,6 +204,16 @@ impl Category {
     pub fn hosted(self) -> bool {
         matches!(self, Category::Door | Category::Window)
     }
+
+    /// The category views and Object Styles know a family of it by: `door` and `window` for the hosted ones, else its
+    /// components' ([`crate::graphics::component_category`]).
+    pub fn graphics_category(self) -> &'static str {
+        match self {
+            Category::Door => "door",
+            Category::Window => "window",
+            other => crate::graphics::component_category(other).unwrap_or(crate::graphics::COMPONENT),
+        }
+    }
 }
 
 /// What a hosted family reads of its wall: the thickness, mm, in formulas.
@@ -481,6 +491,9 @@ pub enum Mark {
     Label { at: P2, height: f64, text: String, align: Align },
 }
 
+/// A mark and the subcategory key it is drawn in (`dooropening`); none, its family's category.
+pub type Tagged = (Mark, Option<&'static str>);
+
 impl Mark {
     /// The same mark with every point taken through `f`.
     pub fn map(&self, f: impl Fn(P2) -> P2) -> Mark {
@@ -513,6 +526,11 @@ pub struct Symbol {
     pub dot: Option<Circle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visible: Option<Expr>,
+    /// The subcategory of its family's category it is drawn in, by its English name (`Opening`: a door's swing, a window's
+    /// opening lines), which a view hides and restyles apart from the rest ([`crate::graphics::SUBCATEGORIES`]); none, the
+    /// category itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subcategory: Option<String>,
 }
 
 /// What a connector joins: `power` carries a load, `switch` only switches one.
@@ -760,6 +778,19 @@ pub struct Shape {
 }
 
 impl Shape {
+    /// The box round `tris`, form `index`'s; none for no triangles.
+    fn of(index: usize, void: bool, tris: &[[P3; 3]]) -> Option<Shape> {
+        let mut min = [f64::INFINITY; 3];
+        let mut max = [f64::NEG_INFINITY; 3];
+        for p in tris.iter().flatten() {
+            for k in 0..3 {
+                min[k] = min[k].min(p[k]);
+                max[k] = max[k].max(p[k]);
+            }
+        }
+        (min[0].is_finite() && max[0].is_finite()).then_some(Shape { index, void, min, max })
+    }
+
     /// Whether it and `other` overlap where all three of them have substance: strictly, a face
     /// touching another's is no overlap, so a void grazing a form cuts nothing.
     pub fn over(&self, other: &Shape) -> bool {
@@ -1577,6 +1608,19 @@ impl Family {
                 }
             }
         }
+        for (i, y) in self.symbols.iter().enumerate() {
+            let Some(name) = &y.subcategory else { continue };
+            if self.subcategory_key(name).is_none() {
+                let parent = self.category.graphics_category();
+                let has: Vec<&str> = crate::graphics::subcategories(parent).map(|s| s.name).collect();
+                let shown: String = name.chars().take(40).collect();
+                return Err(format!(
+                    "symbol {}: its subcategory `{shown}` isn't one of its category's ({}); leave it out to draw it in the category",
+                    i + 1,
+                    if has.is_empty() { "it has none".to_string() } else { has.join(", ") }
+                ));
+            }
+        }
         let symbol_exprs = self.symbols.iter().flat_map(|y| {
             let label = y.text.iter().flat_map(|l| l.at.iter().chain([&l.height]));
             let dot = y.dot.iter().flat_map(|c| c.centre.iter().chain([&c.radius]));
@@ -1720,7 +1764,19 @@ impl Family {
 
     /// The marks of its visible symbols, sized by `values`, in its own axes: an arc as a polyline of short chords, a label
     /// a label as its anchor (lettered by [`lettering`] where it is placed), a dot as it is.
-    pub fn marks<'a>(&'a self, values: &BTreeMap<String, Val>) -> Result<Vec<Mark>, String> {
+    pub fn marks(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Mark>, String> {
+        Ok(self.marks_tagged(values)?.into_iter().map(|(m, _)| m).collect())
+    }
+
+    /// The subcategory key (`dooropening`) a symbol naming `name` is drawn in: the one of its category's subcategories that
+    /// is called so, in any case; none for a name its category has none of.
+    pub fn subcategory_key(&self, name: &str) -> Option<&'static str> {
+        let parent = self.category.graphics_category();
+        crate::graphics::subcategories(parent).find(|s| s.name.eq_ignore_ascii_case(name.trim())).map(|s| s.key)
+    }
+
+    /// [`Family::marks`], each with the subcategory key it is drawn in (none, its category).
+    pub fn marks_tagged<'a>(&'a self, values: &BTreeMap<String, Val>) -> Result<Vec<Tagged>, String> {
         let mut read = HashMap::new();
         let mut out = Vec::new();
         for (i, sym) in self.symbols.iter().enumerate() {
@@ -1737,13 +1793,14 @@ impl Family {
             {
                 continue;
             }
+            let sub = sym.subcategory.as_deref().and_then(|n| self.subcategory_key(n));
             let mut n = |e: &'a Expr| number(e, values, &mut read).map_err(said);
             if let Some(c) = &sym.dot {
                 let (centre, r) = (P2(n(&c.centre[0])?, n(&c.centre[1])?), n(&c.radius)?);
                 if r <= 0.0 {
                     return Err(said(format!("its dot has radius {r}; it needs a radius above zero")));
                 }
-                out.push(Mark::Dot { centre, radius: r });
+                out.push((Mark::Dot { centre, radius: r }, sub));
                 continue;
             }
             if let Some(l) = &sym.text {
@@ -1752,7 +1809,7 @@ impl Family {
                     return Err(said(format!("its text has height {height}; it needs a height above zero")));
                 }
                 let text = said_text(&l.value, values, &self.parameters).map_err(said)?;
-                out.push(Mark::Label { at, height, text, align: l.align });
+                out.push((Mark::Label { at, height, text, align: l.align }, sub));
                 continue;
             }
             let mut pts = Vec::new();
@@ -1772,7 +1829,7 @@ impl Family {
                     P2(centre.0 + r * c, centre.1 + r * s)
                 }));
             }
-            out.push(Mark::Line(pts));
+            out.push((Mark::Line(pts), sub));
         }
         Ok(out)
     }
@@ -1907,19 +1964,39 @@ impl Family {
             let Some(piece) = self.solid(i, values, &mut read).ok().flatten() else {
                 continue;
             };
-            let mut min = [f64::INFINITY; 3];
-            let mut max = [f64::NEG_INFINITY; 3];
-            for p in piece.tris.iter().flatten() {
-                for k in 0..3 {
-                    min[k] = min[k].min(p[k]);
-                    max[k] = max[k].max(p[k]);
-                }
-            }
-            if min[0].is_finite() && max[0].is_finite() {
-                out.push(Shape { index: i, void: self.forms[i].void, min, max });
-            }
+            out.extend(Shape::of(i, self.forms[i].void, &piece.tris));
         }
         out
+    }
+
+    /// The voids a door's or a window's family cuts its wall with, sized by `values`, in its own axes: each void that reaches
+    /// across into the wall (its `Wall Thickness` about y = 0) and cuts none of its forms, by their boxes (none listed before it that it reaches, as [`Shape::over`] says, the test a warning
+    /// of a void that cuts nothing makes), so one listed before them all. They are the opening's shape in the wall, in place
+    /// of the rectangle of its `Width` and `Height`; none, of another category, or of a family with none, and the
+    /// rectangle stands. A void that cuts a form (a sash's light) cuts only that form, as before.
+    pub fn host_voids(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Vec<[P3; 3]>>, String> {
+        if !self.category.hosted() || !self.forms.iter().any(|f| f.void) {
+            return Ok(Vec::new());
+        }
+        // Across the wall it stands in: one that doesn't reach the wall cuts nothing, and leaves the rectangle.
+        let wall = match values.get(WALL) {
+            Some(Val::Number(t)) => *t,
+            _ => DEFAULT_WALL,
+        };
+        let mut read = HashMap::new();
+        let (mut solids, mut out): (Vec<Shape>, Vec<Vec<[P3; 3]>>) = (Vec::new(), Vec::new());
+        for i in 0..self.forms.len() {
+            let Some(piece) = self.solid(i, values, &mut read).map_err(|e| format!("form {}: {e}", i + 1))? else {
+                continue;
+            };
+            let Some(shape) = Shape::of(i, self.forms[i].void, &piece.tris) else { continue };
+            if !shape.void {
+                solids.push(shape);
+            } else if !solids.iter().any(|solid| shape.over(solid)) && shape.max[1] > -wall / 2.0 && shape.min[1] < wall / 2.0 {
+                out.push(piece.tris);
+            }
+        }
+        Ok(out)
     }
 
     /// What's wrong with it, which a change may not go ahead with, and what's worth knowing, which
@@ -2372,6 +2449,8 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
 /// `Wall Thickness`, as theirs.
 fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
     use serde_json::json;
+    // The subcategory a door's swing and a window's opening lines are drawn in, as Revit's: its English name, as `Width` is.
+    const OPENING: &str = "Opening";
     let w = |s: &str| language.word(s).to_string();
     let (frame, depth, leaf) = (w(msg!("Frame Width")), w(msg!("Frame Depth")), w(msg!("Leaf Thickness")));
     let (frame_mat, leaf_mat, glass, metal, timber) =
@@ -2419,8 +2498,8 @@ fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
             "types": sizes(&[("900 x 2100", 900.0, 2100.0), ("800 x 2100", 800.0, 2100.0), ("1000 x 2100", 1000.0, 2100.0)]),
             "forms": forms,
             "symbols": [
-                {"line": [[&left, &half_t], [&left, &format!("{wall} / 2 + {run}")]]},
-                {"arc": {"centre": [&left, &half_t], "radius": &run, "from": 0, "to": 90}}
+                {"line": [[&left, &half_t], [&left, &format!("{wall} / 2 + {run}")]], "subcategory": OPENING},
+                {"arc": {"centre": [&left, &half_t], "radius": &run, "from": 0, "to": 90}, "subcategory": OPENING}
             ]
         }),
     ));
@@ -2441,10 +2520,10 @@ fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
             "types": sizes(&[("1500 x 2100", 1500.0, 2100.0), ("1200 x 2100", 1200.0, 2100.0), ("1800 x 2100", 1800.0, 2100.0)]),
             "forms": forms,
             "symbols": [
-                {"line": [[&left, &half_t], [&left, &format!("{wall} / 2 + {each}")]]},
-                {"arc": {"centre": [&left, &half_t], "radius": &each, "from": 0, "to": 90}},
-                {"line": [[&right, &half_t], [&right, &format!("{wall} / 2 + {each}")]]},
-                {"arc": {"centre": [&right, &half_t], "radius": &each, "from": 90, "to": 180}}
+                {"line": [[&left, &half_t], [&left, &format!("{wall} / 2 + {each}")]], "subcategory": OPENING},
+                {"arc": {"centre": [&left, &half_t], "radius": &each, "from": 0, "to": 90}, "subcategory": OPENING},
+                {"line": [[&right, &half_t], [&right, &format!("{wall} / 2 + {each}")]], "subcategory": OPENING},
+                {"arc": {"centre": [&right, &half_t], "radius": &each, "from": 90, "to": 180}, "subcategory": OPENING}
             ]
         }),
     ));
@@ -2468,8 +2547,8 @@ fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
             "types": sizes(&[("2000 x 2100", 2000.0, 2100.0), ("1500 x 2100", 1500.0, 2100.0), ("2400 x 2100", 2400.0, 2100.0)]),
             "forms": forms,
             "symbols": [
-                {"line": [[&left, &inner_y], [past_l, &inner_y]]},
-                {"line": [[past_r, &outer_y], [&right, &outer_y]]}
+                {"line": [[&left, &inner_y], [past_l, &inner_y]], "subcategory": OPENING},
+                {"line": [[past_r, &outer_y], [&right, &outer_y]], "subcategory": OPENING}
             ]
         }),
     ));
@@ -2563,8 +2642,8 @@ fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
             "types": types,
             "forms": forms,
             "symbols": [
-                {"line": [[&inner_l, &in_y], ["20", &in_y]]},
-                {"line": [["-20", &out_y], [&inner_r, &out_y]]}
+                {"line": [[&inner_l, &in_y], ["20", &in_y]], "subcategory": OPENING},
+                {"line": [["-20", &out_y], [&inner_r, &out_y]], "subcategory": OPENING}
             ]
         }),
     ));

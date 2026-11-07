@@ -934,6 +934,50 @@ pub(crate) fn lazy_points(m: &Model, id: Id, e: &Element, components: &mut crate
     }
 }
 
+/// Wall `id`'s solids: its prisms, round the rectangles of its doors and windows; where the family of one cuts it with voids
+/// of its own ([`walls::host_voids_in`]), each prism they reach as triangles less them, a mesh a section cuts in its own
+/// shape. Should cutting fail (too many faces), every opening cuts its rectangle.
+fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
+    let prism =
+        |p: walls::Prism| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve };
+    let voids = walls::host_voids_in(m, id, index);
+    if voids.is_empty() {
+        return walls::prisms_in(m, id, true, index).into_iter().map(prism).collect();
+    }
+    let boxes: Vec<(P3, P3)> = voids.iter().map(|v| tri_box(v)).collect();
+    let mut meter = crate::csg::Meter::default();
+    let mut out = Vec::new();
+    for p in walls::prisms_in(m, id, true, index) {
+        let solid = prism(p);
+        let mut made = Vec::new();
+        solid.tris(&mut made);
+        let mut tris: Vec<[P3; 3]> = made.into_iter().map(|t| t.p).collect();
+        let (lo, hi) = tri_box(&tris);
+        let reached: Vec<usize> = (0..voids.len()).filter(|&k| (0..3).all(|c| boxes[k].0[c] < hi[c] && lo[c] < boxes[k].1[c])).collect();
+        if reached.is_empty() {
+            out.push(solid);
+            continue;
+        }
+        for k in reached {
+            match crate::csg::subtract(&tris, &voids[k], &mut meter) {
+                Ok(left) => tris = left,
+                Err(_) => return walls::prisms_rect_in(m, id, index).into_iter().map(prism).collect(),
+            }
+        }
+        if !tris.is_empty() {
+            out.push(Solid::Mesh { owner: id, color: WALL, tex: 0, caps: 0, round: false, cut: true, tris });
+        }
+    }
+    out
+}
+
+/// The corners of the box round `tris`.
+fn tri_box(tris: &[[P3; 3]]) -> (P3, P3) {
+    tris.iter().flatten().fold(([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]), |(lo, hi), p| {
+        (std::array::from_fn(|k| lo[k].min(p[k])), std::array::from_fn(|k| hi[k].max(p[k])))
+    })
+}
+
 fn solids_in(m: &Model, elements: &[(Id, &Element)], index: Option<&walls::Index>) -> Vec<Solid> {
     solids_in_with(m, elements, index, &mut crate::component_geometry::Components::new(m))
 }
@@ -948,15 +992,7 @@ fn solids_in_with(
     let mut out = Vec::new();
     for &(id, e) in elements {
         match e {
-            Element::Wall(_) => out.extend(walls::prisms_in(m, id, true, index).into_iter().map(|p| Solid::Prism {
-                owner: id,
-                color: WALL,
-                tex: 0,
-                ring: p.ring,
-                bottom: p.bottom,
-                top: p.top,
-                curve: p.curve,
-            })),
+            Element::Wall(_) => out.extend(wall_solids(m, id, index)),
             // Under a variable layer, a shaped floor's underside is level: each piece a prism from it up to its top.
             Element::Floor(f) if m.floor_under(f).is_some() => {
                 for (ring, bottom, top) in m.floor_prisms(f) {
@@ -1286,6 +1322,36 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
                     curve: None,
                 })
                 .collect()
+        }
+        // A wall's piece a door's or a window's voids cut: each layer the part of it between two of the wall's boundaries
+        // in plan, as a prism's are. Should cutting fail, the piece in one.
+        Solid::Mesh { owner, color, tex, tris, caps, round, cut } if matches!(m.elements.get(owner), Some(Element::Wall(_))) => {
+            let lines = walls::layer_lines(m, owner);
+            let (lo, hi) = tri_box(&tris);
+            let mut meter = crate::csg::Meter::default();
+            let mut out = Vec::new();
+            for (k, l) in layers.iter().enumerate().filter(|(_, l)| l.thickness > 1e-9) {
+                let (Some(a), Some(b)) = (lines.get(k), lines.get(k + 1)) else { continue };
+                let ring: Vec<P2> = a.iter().chain(b.iter().rev()).copied().collect();
+                if ring.len() < 3 || geom::area(&ring).abs() < 1e-6 {
+                    continue;
+                }
+                let mut slab = Vec::new();
+                Solid::Prism { owner, color, tex, ring, bottom: Plane::flat(lo[2] - 1.0), top: Plane::flat(hi[2] + 1.0), curve: None }
+                    .tris(&mut slab);
+                let slab: Vec<[P3; 3]> = slab.into_iter().map(|t| t.p).collect();
+                let inside = crate::csg::subtract(&tris, &slab, &mut meter).and_then(|outside| {
+                    if outside.is_empty() { Ok(tris.clone()) } else { crate::csg::subtract(&tris, &outside, &mut meter) }
+                });
+                let Ok(inside) = inside else {
+                    return vec![Solid::Mesh { owner, color, tex, tris, caps, round, cut }];
+                };
+                if !inside.is_empty() {
+                    let (color, tex) = (colour(l, color), over(skin(m, &l.material), tex));
+                    out.push(Solid::Mesh { owner, color, tex, tris: inside, caps: 0, round: false, cut });
+                }
+            }
+            out
         }
         // Across the wall from its exterior face in, each layer between two of its boundaries; the
         // outermost and innermost reach whatever lies past them.

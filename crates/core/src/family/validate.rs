@@ -86,7 +86,8 @@ fn formulas(f: &Family, out: &mut Vec<String>) {
     }
 }
 
-/// What the forms' boxes say, over every type: a void that reaches no solid before it, a door's or
+/// What the forms' boxes say, over every type: a void that reaches no solid before it (but a door's or a window's, which
+/// cuts its wall), a door's or
 /// a window's form wholly outside the opening it stands in, one thicker than the wall it's in, and
 /// a plan with nothing drawn on it. A fault every type has is one warning naming all of them.
 fn geometry(f: &Family, out: &mut Vec<String>) {
@@ -104,11 +105,15 @@ fn geometry(f: &Family, out: &mut Vec<String>) {
             continue;
         };
         let shapes = f.shapes(&values);
+        let wall = number(&values, WALL).unwrap_or(DEFAULT_WALL);
         for void in shapes.iter().filter(|s| s.void) {
             let cut = shapes.iter().any(|solid| !solid.void && solid.index < void.index && void.over(solid));
-            if !cut {
+            // A door's or a window's that cuts none of its forms cuts its wall ([`Family::host_voids`]), where it reaches it.
+            let host = f.category.hosted();
+            if !cut && (!host || void.max[1] <= -wall / 2.0 || void.min[1] >= wall / 2.0) {
+                let what = if host { "no solid form listed before it, nor its wall" } else { "no solid form listed before it" };
                 faults
-                    .entry(format!("form {}: its void passes through no solid form listed before it; it cuts nothing", void.index + 1))
+                    .entry(format!("form {}: its void passes through {what}; it cuts nothing", void.index + 1))
                     .or_default()
                     .insert(ty.clone());
             }
@@ -117,7 +122,6 @@ fn geometry(f: &Family, out: &mut Vec<String>) {
             continue;
         }
         let (width, height) = (number(&values, WIDTH), number(&values, HEIGHT));
-        let wall = number(&values, WALL).unwrap_or(DEFAULT_WALL);
         for solid in shapes.iter().filter(|s| !s.void) {
             if let (Some(w), Some(h)) = (width, height)
                 && w > 0.0

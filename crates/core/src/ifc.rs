@@ -1383,9 +1383,18 @@ pub fn export(m: &Model) -> String {
             let inner = r - m.thickness(wl) / 2.0 - walls::centre(m, wl).abs();
             if inner > t.width / 2.0 { inner - (inner * inner - t.width * t.width / 4.0).sqrt() } else { t.width }
         });
-        let profile = w.rectangle(P2(t.width / 2.0, 0.0), P2(t.width, m.thickness(wl) + 20.0 + 2.0 * bow));
-        let shape = w.body(profile, 0.0, t.height, &[]);
-        let opening = w.add(format!("IFCOPENINGELEMENT({},$,'Opening',$,$,#{at},#{shape},$,.OPENING.)", w.guid(OPENING, id)));
+        // Of a family whose voids cut the wall, those voids, closed face sets standing at the middle of the opening as its
+        // forms do; else the rectangle of its width and height.
+        let voids = m.opening_voids_local(e);
+        let (opening_at, shape) = if voids.is_empty() {
+            let profile = w.rectangle(P2(t.width / 2.0, 0.0), P2(t.width, m.thickness(wl) + 20.0 + 2.0 * bow));
+            (at, w.body(profile, 0.0, t.height, &[]))
+        } else {
+            let items: Vec<u64> = voids.iter().map(|v| w.faceset(v)).collect();
+            let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body','Tessellation',({}))", w.body, refs(&items)));
+            (w.place(Some(at), (t.width / 2.0, 0.0, 0.0), None), w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
+        };
+        let opening = w.add(format!("IFCOPENINGELEMENT({},$,'Opening',$,$,#{opening_at},#{shape},$,.OPENING.)", w.guid(OPENING, id)));
         w.add(format!("IFCRELVOIDSELEMENT({},$,$,$,#{wall},#{opening})", w.guid(VOIDS, id)));
         // The door or window itself: a 50 mm panel centred in the wall; of a family, its forms as a component's are,
         // closed face sets in their materials' colours, standing at the middle of the opening.

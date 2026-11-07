@@ -303,6 +303,8 @@ struct SymbolText {
     value: String,
     align: LabelAlign,
     visible: String,
+    /// The subcategory it is drawn in, by its English name (`Opening`); blank, its category.
+    subcategory: String,
 }
 
 impl SymbolText {
@@ -319,6 +321,7 @@ impl SymbolText {
             value: String::new(),
             align: LabelAlign::Left,
             visible: String::new(),
+            subcategory: String::new(),
         };
         match part {
             Part::Line => SymbolText { line: s("0, 0\n0, 900"), ..base },
@@ -334,6 +337,7 @@ impl SymbolText {
         t.ident = (y.id, y.guid);
         t.line = profile_text(&y.line);
         t.visible = y.visible.as_ref().map(expr_text).unwrap_or_default();
+        t.subcategory = y.subcategory.clone().unwrap_or_default();
         if let Some(c) = &y.arc {
             (t.part, t.centre, t.radius, t.from, t.to) =
                 (Part::Arc, [ex(&c.centre[0]), ex(&c.centre[1])], ex(&c.radius), ex(&c.from), ex(&c.to));
@@ -350,7 +354,8 @@ impl SymbolText {
         let visible = (!self.visible.trim().is_empty()).then(|| text_expr(&self.visible));
         let (id, guid) = self.ident;
         let centre = [text_expr(&self.centre[0]), text_expr(&self.centre[1])];
-        let base = Symbol { visible, id, guid, ..Symbol::default() };
+        let subcategory = (!self.subcategory.trim().is_empty()).then(|| self.subcategory.clone());
+        let base = Symbol { visible, id, guid, subcategory, ..Symbol::default() };
         Ok(match self.part {
             Part::Arc => Symbol {
                 arc: Some(Curve { centre, radius: text_expr(&self.radius), from: text_expr(&self.from), to: text_expr(&self.to) }),
@@ -913,6 +918,8 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
             .color(pal().muted),
     );
     let mut remove = None;
+    // The subcategories a symbol may be drawn in: its family's category's (a door's and a window's Opening).
+    let subs: Vec<&'static str> = bimcraft_core::graphics::subcategories(ed.category.graphics_category()).map(|s| s.name).collect();
     for (i, y) in ed.symbols.iter_mut().enumerate() {
         let n = i + 1;
         let kind = match y.part {
@@ -968,6 +975,19 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                 ui.label(t("Visible when"));
                 field(ui, format!("{} {n}", t("Symbol Visible")), &mut y.visible, 200.0);
                 ui.end_row();
+                // Drawn in a subcategory a view hides or restyles apart (a door's swing in Doors > Opening), or the category.
+                if !subs.is_empty() || !y.subcategory.is_empty() {
+                    ui.label(t("Subcategory"));
+                    let shown = if y.subcategory.is_empty() { t("None").to_string() } else { t(&y.subcategory).to_string() };
+                    let c = ComboBox::from_id_salt(("fe-symbol-sub", i)).selected_text(shown).width(200.0).show_ui(ui, |ui| {
+                        ui.selectable_value(&mut y.subcategory, String::new(), t("None"));
+                        for name in &subs {
+                            ui.selectable_value(&mut y.subcategory, name.to_string(), t(name));
+                        }
+                    });
+                    c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, format!("{} {n}", t("Symbol Subcategory"))));
+                    ui.end_row();
+                }
             });
             if ui.button(t("Delete")).clicked() {
                 remove = Some(i);

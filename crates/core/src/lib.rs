@@ -56,6 +56,8 @@ mod georef_tests;
 pub mod gltf;
 pub mod graphics;
 pub mod groups;
+#[cfg(test)]
+mod host_void_tests;
 pub mod hydrant;
 pub mod ids;
 pub mod ifc;
@@ -79,6 +81,8 @@ pub mod loads;
 pub mod massing;
 pub mod model;
 pub mod nbr5410;
+#[cfg(test)]
+mod opening_subcategory_tests;
 #[cfg(test)]
 mod openings_past_top_tests;
 #[cfg(test)]
