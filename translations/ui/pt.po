@@ -36,15 +36,15 @@ msgstr "0: qualquer porta livre"
 msgid "1 element"
 msgstr "1 elemento"
 
-#: crates/ui-egui/src/classification.rs:343
+#: crates/ui-egui/src/classification.rs:348
 msgid "1. Load the tables you hold, from their .csv or .xlsx. BIMCraft ships none."
 msgstr "1. Carregue as tabelas que você tem, do .csv ou .xlsx. O BIMCraft não traz nenhuma."
 
-#: crates/ui-egui/src/classification.rs:412
+#: crates/ui-egui/src/classification.rs:417
 msgid "2. Make its parameters in the project."
 msgstr "2. Crie os parâmetros dele no projeto."
 
-#: crates/ui-egui/src/classification.rs:428
+#: crates/ui-egui/src/classification.rs:433
 msgid "3. Classify: by hand, or with your AI agent."
 msgstr "3. Classifique: à mão ou com o seu agente de IA."
 
@@ -213,11 +213,11 @@ msgstr "O eixo central de uma parede, para que uma parede desenhada nele se enco
 msgid "A {} needs a name."
 msgstr "O nome não pode ficar vazio ({})."
 
-#: crates/ui-egui/src/classification.rs:297
+#: crates/ui-egui/src/classification.rs:302
 msgid "AI Agent"
 msgstr "Agente de IA"
 
-#: crates/ui-egui/src/classification.rs:982
+#: crates/ui-egui/src/classification.rs:991
 msgid "AI agent for classification"
 msgstr "Agente de IA para classificação"
 
@@ -263,7 +263,7 @@ msgstr "Aceitar a principal"
 msgid "Accept Primary: the primary option's elements stay in the model; the others' elements and the set go"
 msgstr "Aceitar a principal: os elementos da opção principal ficam no modelo; os das outras e o conjunto saem"
 
-#: crates/ui-egui/src/classification.rs:722
+#: crates/ui-egui/src/classification.rs:733
 msgid "Accept from confidence"
 msgstr "Aceitar a partir da confiança"
 
@@ -459,15 +459,15 @@ msgstr "Adicionar à seleção"
 msgid "Added {} to the project"
 msgstr "{} adicionado ao projeto"
 
-#: crates/ui-egui/src/classification.rs:992
+#: crates/ui-egui/src/classification.rs:1001
 msgid "Agent"
 msgstr "Agente"
 
-#: crates/ui-egui/src/classification.rs:623
+#: crates/ui-egui/src/classification.rs:629
 msgid "Agent Settings…"
 msgstr "Configurações do agente…"
 
-#: crates/ui-egui/src/classification.rs:622
+#: crates/ui-egui/src/classification.rs:628
 msgid "Agent: {} ({})"
 msgstr "Agente: {} ({})"
 
@@ -694,7 +694,7 @@ msgid "Applies to all views; snaps to the active view's enabled main grid or sub
 msgstr "Vale para todas as vistas; faz snap na grade principal ou na subgrade ativada da vista ativa, mesmo quando oculta"
 
 #: crates/ui-egui/src/background_grid.rs:112
-#: crates/ui-egui/src/classification.rs:753
+#: crates/ui-egui/src/classification.rs:760
 #: crates/ui-egui/src/display.rs:80
 #: crates/ui-egui/src/editor.rs:1109
 #: crates/ui-egui/src/electrical.rs:501
@@ -726,7 +726,7 @@ msgstr "Aplicar copia o valor de {} de cada tipo para os seus elementos."
 msgid "Apply wipes the values {} elements have of {}."
 msgstr "Aplicar apaga os valores que {} elementos têm de {}."
 
-#: crates/ui-egui/src/classification.rs:731
+#: crates/ui-egui/src/classification.rs:742
 msgid "Apply {}"
 msgstr "Aplicar {}"
 
@@ -785,7 +785,7 @@ msgstr "Como as unidades mostram"
 msgid "Ascending"
 msgstr "Crescente"
 
-#: crates/ui-egui/src/classification.rs:662
+#: crates/ui-egui/src/classification.rs:668
 msgid "Ask the Agent"
 msgstr "Perguntar ao agente"
 
@@ -889,7 +889,7 @@ msgstr "Projeto BIMCraft ou IFC"
 msgid "BIMCraft project, IFC or Revit"
 msgstr "Projeto BIMCraft, IFC ou Revit"
 
-#: crates/ui-egui/src/classification.rs:985
+#: crates/ui-egui/src/classification.rs:994
 msgid "BIMCraft runs the command line of an agent you have installed and signed in to. It opens no connection itself: the agent sends what it's given to its own provider."
 msgstr "O BIMCraft executa a linha de comando de um agente que você instalou e no qual entrou. Ele mesmo não abre conexão: o agente envia o que recebe ao seu próprio provedor."
 
@@ -1015,6 +1015,14 @@ msgstr "Espaçamento da linha de base"
 msgid "Batch Actions"
 msgstr "Ações em lote"
 
+#: crates/ui-egui/src/classification.rs:708
+msgid "Batch {} of {} · handing it over…"
+msgstr "Lote {} de {} · entregando…"
+
+#: crates/ui-egui/src/classification.rs:706
+msgid "Batch {} of {} · waiting for the answer… {} s"
+msgstr "Lote {} de {} · aguardando a resposta… {} s"
+
 #: crates/core/src/family.rs:2023
 msgid "Bathtub"
 msgstr "Banheira"
@@ -1132,7 +1140,7 @@ msgstr "Modelagem da informação da construção, aberta e livre."
 msgid "By Category"
 msgstr "Por categoria"
 
-#: crates/ui-egui/src/classification.rs:297
+#: crates/ui-egui/src/classification.rs:302
 msgid "By Hand"
 msgstr "À mão"
 
@@ -1148,7 +1156,7 @@ msgstr "desenho CAD"
 msgid "CAD drawings (DWG, DXF)"
 msgstr "Desenhos CAD (DWG, DXF)"
 
-#: crates/ui-egui/src/classification.rs:383
+#: crates/ui-egui/src/classification.rs:388
 msgid "COBie's Category fields take another system's codes: pick the tables, loaded under that system."
 msgstr "Os campos Category do COBie usam códigos de outro sistema: escolha as tabelas, carregadas sob esse sistema."
 
@@ -1204,7 +1212,7 @@ msgstr "Câmera: clique onde fica o olho e depois no ponto para onde ela olha: u
 
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:131
-#: crates/ui-egui/src/classification.rs:702
+#: crates/ui-egui/src/classification.rs:713
 #: crates/ui-egui/src/clouds.rs:87
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
@@ -1496,7 +1504,7 @@ msgstr "Polígono circunscrito"
 msgid "Circumscribed Polygon: click its centre, then the middle of a side; Sides on the Options Bar"
 msgstr "Polígono circunscrito: clique no centro e depois no meio de um lado; Lados na Barra de Opções"
 
-#: crates/ui-egui/src/classification.rs:289
+#: crates/ui-egui/src/classification.rs:294
 #: crates/ui-egui/src/lib.rs:3993
 msgid "Classification Manager"
 msgstr "Gerenciador de classificação"
@@ -1505,11 +1513,11 @@ msgstr "Gerenciador de classificação"
 msgid "Classification Manager: a classification system's tables and parameters, codes picked by hand for the selection, or proposed by your AI agent"
 msgstr "Gerenciador de classificação: as tabelas e os parâmetros de um sistema de classificação, códigos escolhidos à mão para a seleção ou propostos pelo seu agente de IA"
 
-#: crates/ui-egui/src/classification.rs:325
+#: crates/ui-egui/src/classification.rs:330
 msgid "Classification system"
 msgstr "Sistema de classificação"
 
-#: crates/ui-egui/src/classification.rs:640
+#: crates/ui-egui/src/classification.rs:646
 msgid "Classify"
 msgstr "Classificar"
 
@@ -2105,7 +2113,7 @@ msgstr "Combinar: o que foi feito, demolido e mostrado nesta fase passa para a v
 msgid "Coming in a later version"
 msgstr "Em uma versão futura"
 
-#: crates/ui-egui/src/classification.rs:999
+#: crates/ui-egui/src/classification.rs:1008
 msgid "Command"
 msgstr "Comando"
 
@@ -2113,7 +2121,7 @@ msgstr "Comando"
 msgid "Command / Tool:"
 msgstr "Comando / Ferramenta:"
 
-#: crates/ui-egui/src/classification.rs:999
+#: crates/ui-egui/src/classification.rs:1008
 msgid "Command line"
 msgstr "Linha de comando"
 
@@ -2161,7 +2169,7 @@ msgstr "Eletrodutos e fios"
 msgid "Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"
 msgstr "Eletroduto (CN): clique no início e no fim; uma sequência de cliques faz um eletroduto para cada trecho"
 
-#: crates/ui-egui/src/classification.rs:759
+#: crates/ui-egui/src/classification.rs:766
 msgid "Confidence"
 msgstr "Confiança"
 
@@ -2255,7 +2263,7 @@ msgstr "Copiar (CO): clique num ponto base e depois onde vai a cópia"
 msgid "Copy All"
 msgstr "Copiar tudo"
 
-#: crates/ui-egui/src/classification.rs:666
+#: crates/ui-egui/src/classification.rs:672
 msgid "Copy Brief"
 msgstr "Copiar briefing"
 
@@ -2855,7 +2863,7 @@ msgid "Dimensions"
 msgstr "Dimensões"
 
 #: crates/ui-egui/src/autosave.rs:306
-#: crates/ui-egui/src/classification.rs:732
+#: crates/ui-egui/src/classification.rs:743
 msgid "Discard"
 msgstr "Descartar"
 
@@ -3056,7 +3064,7 @@ msgstr "Duplicar com detalhamento"
 msgid "Duplicate…"
 msgstr "Duplicar…"
 
-#: crates/ui-egui/src/classification.rs:221
+#: crates/ui-egui/src/classification.rs:226
 msgid "Each element"
 msgstr "Cada elemento"
 
@@ -3076,7 +3084,7 @@ msgstr "A largura de cada pena no papel, em mm, para cotas, etiquetas, textos, e
 msgid "Each pen's width on paper, mm, in views at each scale: a view between two takes the nearer one's. Pen 0 is always a hairline."
 msgstr "A largura de cada pena no papel, em mm, nas vistas em cada escala: uma vista entre duas usa a da mais próxima. A pena 0 é sempre uma linha capilar."
 
-#: crates/ui-egui/src/classification.rs:222
+#: crates/ui-egui/src/classification.rs:227
 msgid "Each type"
 msgstr "Cada tipo"
 
@@ -3176,7 +3184,7 @@ msgstr "Editável"
 msgid "Editing"
 msgstr "Edição"
 
-#: crates/ui-egui/src/classification.rs:335
+#: crates/ui-egui/src/classification.rs:340
 msgid "Edition"
 msgstr "Edição"
 
@@ -3332,7 +3340,7 @@ msgstr "Todas as vistas estão em folhas."
 msgid "Everything the project has, as its categories draw it"
 msgstr "Tudo o que o projeto tem, como suas categorias o desenham"
 
-#: crates/ui-egui/src/classification.rs:500
+#: crates/ui-egui/src/classification.rs:505
 msgid "Everything this table is for has a code."
 msgstr "Tudo a que esta tabela se aplica já tem código."
 
@@ -3769,7 +3777,7 @@ msgstr "Camarão"
 msgid "Folding Marks:"
 msgstr "Marcas de dobramento:"
 
-#: crates/ui-egui/src/classification.rs:667
+#: crates/ui-egui/src/classification.rs:673
 msgid "For an agent with no command line (a chat window): copy the instructions and the brief, then paste its answer below"
 msgstr "Para um agente sem linha de comando (uma janela de chat): copie as instruções e o briefing e cole a resposta abaixo"
 
@@ -3941,7 +3949,7 @@ msgstr "Genérico"
 msgid "Geometry"
 msgstr "Geometria"
 
-#: crates/ui-egui/src/classification.rs:578
+#: crates/ui-egui/src/classification.rs:584
 msgid "Give the selection this code"
 msgstr "Dar este código à seleção"
 
@@ -4200,7 +4208,7 @@ msgstr "Quantas barras, de que diâmetro e a que distância é você quem diz; u
 msgid "How many phases and wires each system has (the line conductors and the neutral), the voltages it supplies, and how it is earthed."
 msgstr "Quantas fases e quantos fios cada sistema tem (os condutores fase e o neutro), as tensões que fornece e como é aterrado."
 
-#: crates/ui-egui/src/classification.rs:635
+#: crates/ui-egui/src/classification.rs:641
 msgid "I understand; let the agent see this project's types"
 msgstr "Entendo; deixar o agente ver os tipos deste projeto"
 
@@ -4651,7 +4659,7 @@ msgstr "Lente:"
 msgid "Let agents work on this project"
 msgstr "Deixar os agentes trabalharem neste projeto"
 
-#: crates/ui-egui/src/classification.rs:1061
+#: crates/ui-egui/src/classification.rs:1070
 msgid "Let the agent see the project's types when I ask it to classify"
 msgstr "Deixar o agente ver os tipos do projeto quando eu pedir para classificar"
 
@@ -4908,20 +4916,20 @@ msgstr "Carregar família…"
 msgid "Load File..."
 msgstr "Carregar arquivo..."
 
-#: crates/ui-egui/src/classification.rs:414
+#: crates/ui-egui/src/classification.rs:419
 msgid "Load Parameters"
 msgstr "Carregar parâmetros"
 
-#: crates/ui-egui/src/classification.rs:370
+#: crates/ui-egui/src/classification.rs:375
 msgid "Load Table…"
 msgstr "Carregar tabela…"
 
-#: crates/ui-egui/src/classification.rs:478
-#: crates/ui-egui/src/classification.rs:616
+#: crates/ui-egui/src/classification.rs:483
+#: crates/ui-egui/src/classification.rs:622
 msgid "Load a system's table and its parameters first, on the System tab."
 msgstr "Carregue antes a tabela de um sistema e os parâmetros dele, na aba Sistema."
 
-#: crates/ui-egui/src/classification.rs:345
+#: crates/ui-egui/src/classification.rs:350
 #: crates/ui-egui/src/properties.rs:386
 msgid "Loaded"
 msgstr "Carregado"
@@ -5250,7 +5258,7 @@ msgstr "Espelhado"
 msgid "Mode"
 msgstr "Modo"
 
-#: crates/ui-egui/src/classification.rs:1003
+#: crates/ui-egui/src/classification.rs:1012
 #: crates/ui-egui/src/fillpatterns.rs:548
 msgid "Model"
 msgstr "Modelo"
@@ -5300,7 +5308,7 @@ msgstr "Modificar subelementos: selecione um ponto, um vértice ou uma aresta do
 msgid "Modify Wall"
 msgstr "Modificar parede"
 
-#: crates/ui-egui/src/classification.rs:1011
+#: crates/ui-egui/src/classification.rs:1020
 msgid "More arguments"
 msgstr "Mais argumentos"
 
@@ -5505,7 +5513,7 @@ msgstr "Novo tipo"
 msgid "New {}"
 msgstr "Inserir: {}"
 
-#: crates/ui-egui/src/classification.rs:492
+#: crates/ui-egui/src/classification.rs:497
 msgid "Next Unclassified"
 msgstr "Próximo sem classificação"
 
@@ -5663,7 +5671,7 @@ msgstr "Nada tem esse ID ou GUID: {}"
 msgid "Nothing here yet."
 msgstr "Nada aqui ainda."
 
-#: crates/ui-egui/src/classification.rs:849
+#: crates/ui-egui/src/classification.rs:855
 msgid "Nothing is selected."
 msgstr "Nada está selecionado."
 
@@ -5679,7 +5687,7 @@ msgstr "Nada corresponde à pesquisa."
 msgid "Nothing selected is hidden in this view. Reveal Hidden Elements (RH) draws what is, to select it."
 msgstr "Nada do que está selecionado está oculto nesta vista. Revelar elementos ocultos (RH) desenha o que está, para selecioná-lo."
 
-#: crates/ui-egui/src/classification.rs:860
+#: crates/ui-egui/src/classification.rs:866
 msgid "Nothing to classify: everything asked for has a code."
 msgstr "Nada a classificar: tudo o que foi pedido já tem código."
 
@@ -5688,7 +5696,7 @@ msgstr "Nada a classificar: tudo o que foi pedido já tem código."
 msgid "Nothing was left out."
 msgstr "Nada foi deixado de fora."
 
-#: crates/ui-egui/src/classification.rs:756
+#: crates/ui-egui/src/classification.rs:763
 msgid "Now"
 msgstr "Agora"
 
@@ -5878,7 +5886,7 @@ msgstr "Conjunto de opções:"
 msgid "Options:"
 msgstr "Opções:"
 
-#: crates/ui-egui/src/classification.rs:674
+#: crates/ui-egui/src/classification.rs:680
 msgid "Or paste an answer:"
 msgstr "Ou cole uma resposta:"
 
@@ -6830,7 +6838,7 @@ msgstr "Propriedades (PP): mostrar ou ocultar a paleta"
 msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Propriedades sobre o Navegador de projeto, à esquerda, como no início"
 
-#: crates/ui-egui/src/classification.rs:757
+#: crates/ui-egui/src/classification.rs:764
 msgid "Proposed"
 msgstr "Proposto"
 
@@ -6918,7 +6926,7 @@ msgstr "Rampa"
 msgid "Ramp: click where it starts, then where its run ends; a landing turns it"
 msgstr "Rampa: clique onde ela começa e depois onde o lance termina; um patamar a faz virar"
 
-#: crates/ui-egui/src/classification.rs:676
+#: crates/ui-egui/src/classification.rs:682
 msgid "Read Answer"
 msgstr "Ler resposta"
 
@@ -7040,7 +7048,7 @@ msgstr "Recarregar todos"
 msgid "Reload CAD"
 msgstr "Recarregar CAD"
 
-#: crates/ui-egui/src/classification.rs:375
+#: crates/ui-egui/src/classification.rs:380
 #: crates/ui-egui/src/favorites.rs:142
 #: crates/ui-egui/src/favorites.rs:165
 #: crates/ui-egui/src/graphics.rs:1144
@@ -7364,11 +7372,11 @@ msgstr "Rotação (°)"
 msgid "Round"
 msgstr "Redonda"
 
-#: crates/ui-egui/src/classification.rs:1017
+#: crates/ui-egui/src/classification.rs:1026
 msgid "Rows a call"
 msgstr "Linhas por chamada"
 
-#: crates/ui-egui/src/classification.rs:1035
+#: crates/ui-egui/src/classification.rs:1044
 msgid "Run the agent's --version to see it's there"
 msgstr "Executa o --version do agente para ver se ele está lá"
 
@@ -7510,7 +7518,7 @@ msgstr "Tabelas/quantitativos (todas)"
 msgid "Screed"
 msgstr "Contrapiso"
 
-#: crates/ui-egui/src/classification.rs:532
+#: crates/ui-egui/src/classification.rs:537
 #: crates/ui-egui/src/parameters.rs:782
 msgid "Search"
 msgstr "Pesquisar"
@@ -7615,7 +7623,7 @@ msgstr "Segmento {}: Subir"
 msgid "Select"
 msgstr "Selecionar"
 
-#: crates/ui-egui/src/classification.rs:746
+#: crates/ui-egui/src/classification.rs:753
 msgid "Select All"
 msgstr "Selecionar tudo"
 
@@ -7656,7 +7664,7 @@ msgstr "Selecione elementos de um só tipo: só vigas, só pilares, só sapatas 
 msgid "Select fill pattern lines then press Enter"
 msgstr "Selecione as linhas do padrão de preenchimento e pressione Enter"
 
-#: crates/ui-egui/src/classification.rs:767
+#: crates/ui-egui/src/classification.rs:774
 msgid "Select its elements"
 msgstr "Selecionar os elementos"
 
@@ -7664,11 +7672,11 @@ msgstr "Selecionar os elementos"
 msgid "Select the detail lines the pattern is made of, then press Enter."
 msgstr "Selecione as linhas de detalhe de que o padrão é feito e pressione Enter."
 
-#: crates/ui-egui/src/classification.rs:493
+#: crates/ui-egui/src/classification.rs:498
 msgid "Select the elements of the next type (or element) with no code"
 msgstr "Seleciona os elementos do próximo tipo (ou elemento) sem código"
 
-#: crates/ui-egui/src/classification.rs:515
+#: crates/ui-egui/src/classification.rs:520
 msgid "Select what to classify: its category's codes come up here."
 msgstr "Selecione o que classificar: os códigos da categoria aparecem aqui."
 
@@ -8124,7 +8132,7 @@ msgstr "Código-fonte no GitHub"
 msgid "South"
 msgstr "Sul"
 
-#: crates/ui-egui/src/classification.rs:387
+#: crates/ui-egui/src/classification.rs:392
 msgid "Space Category from"
 msgstr "Category do espaço de"
 
@@ -8435,7 +8443,7 @@ msgid "Symbols are what the plan draws of the family besides its forms: lines, a
 msgstr "Os símbolos são o que a planta desenha da família além das suas formas: linhas, arcos, rótulos e pontos."
 
 #: crates/core/src/schedule.rs:200
-#: crates/ui-egui/src/classification.rs:297
+#: crates/ui-egui/src/classification.rs:302
 msgid "System"
 msgstr "Sistema"
 
@@ -8479,13 +8487,13 @@ msgid "Tab with {}"
 msgstr "Aba com {}"
 
 #: crates/core/src/family.rs:1884
-#: crates/ui-egui/src/classification.rs:345
-#: crates/ui-egui/src/classification.rs:485
-#: crates/ui-egui/src/classification.rs:755
+#: crates/ui-egui/src/classification.rs:350
+#: crates/ui-egui/src/classification.rs:490
+#: crates/ui-egui/src/classification.rs:762
 msgid "Table"
 msgstr "Mesa"
 
-#: crates/ui-egui/src/classification.rs:372
+#: crates/ui-egui/src/classification.rs:377
 msgid "Tables"
 msgstr "Tabelas"
 
@@ -8606,7 +8614,7 @@ msgstr "Isolar Elemento Temporariamente"
 msgid "Temporary dimension {}"
 msgstr "Cota temporária {}"
 
-#: crates/ui-egui/src/classification.rs:1035
+#: crates/ui-egui/src/classification.rs:1044
 msgid "Test"
 msgstr "Testar"
 
@@ -8674,7 +8682,7 @@ msgstr "Deslocamento vertical da textura"
 msgid "That can't be drawn: an arc's radius is at least half the distance between its ends, and a centre-ends arc turns less than 180°."
 msgstr "Isso não pode ser desenhado: o raio de um arco é pelo menos metade da distância entre suas extremidades, e um arco centro-extremidades gira menos de 180°."
 
-#: crates/ui-egui/src/classification.rs:686
+#: crates/ui-egui/src/classification.rs:692
 msgid "That holds no JSON answer."
 msgstr "Isso não contém uma resposta JSON."
 
@@ -8695,11 +8703,11 @@ msgstr "A vista 3D é desenhada no processador: {}"
 msgid "The Same Parameter"
 msgstr "O mesmo parâmetro"
 
-#: crates/ui-egui/src/classification.rs:946
+#: crates/ui-egui/src/classification.rs:955
 msgid "The agent gave no answer."
 msgstr "O agente não deu resposta."
 
-#: crates/ui-egui/src/classification.rs:631
+#: crates/ui-egui/src/classification.rs:637
 msgid "The agent you set is run on this computer and sends what it's given to its provider: each type's category, family, type name, materials, levels and hosts, and the tables' codes. BIMCraft itself sends nothing."
 msgstr "O agente configurado roda neste computador e envia o que recebe ao seu provedor: a categoria, a família, o nome, os materiais, os níveis e os hospedeiros de cada tipo, e os códigos das tabelas. O BIMCraft em si não envia nada."
 
@@ -8963,11 +8971,11 @@ msgstr "Espessura de linha da marca de cota"
 msgid "Tick Mark Size"
 msgstr "Tamanho da marca de cota"
 
-#: crates/ui-egui/src/classification.rs:724
+#: crates/ui-egui/src/classification.rs:735
 msgid "Tick by Confidence"
 msgstr "Marcar pela confiança"
 
-#: crates/ui-egui/src/classification.rs:746
+#: crates/ui-egui/src/classification.rs:753
 msgid "Tick every proposal that has a code"
 msgstr "Marcar toda proposta que tem código"
 
@@ -9008,7 +9016,7 @@ msgid "Timber"
 msgstr "Madeira"
 
 #: crates/core/src/schedule.rs:513
-#: crates/ui-egui/src/classification.rs:758
+#: crates/ui-egui/src/classification.rs:765
 msgid "Title"
 msgstr "Título"
 
@@ -9185,7 +9193,7 @@ msgstr "Nome repetido em {}: {}."
 msgid "Type"
 msgstr "Tipo"
 
-#: crates/ui-egui/src/classification.rs:387
+#: crates/ui-egui/src/classification.rs:392
 msgid "Type Category from"
 msgstr "Category do tipo de"
 
@@ -9232,7 +9240,7 @@ msgstr "Tipo de parâmetro"
 msgid "Type of {}"
 msgstr "Tipo de {}"
 
-#: crates/ui-egui/src/classification.rs:754
+#: crates/ui-egui/src/classification.rs:761
 msgid "Type or element"
 msgstr "Tipo ou elemento"
 
@@ -9641,7 +9649,7 @@ msgstr "Volume (m³)"
 msgid "WC"
 msgstr "Vaso sanitário"
 
-#: crates/ui-egui/src/classification.rs:1014
+#: crates/ui-egui/src/classification.rs:1023
 msgid "Wait up to"
 msgstr "Esperar até"
 
@@ -9765,15 +9773,15 @@ msgstr "Onde as coordenadas do arquivo o colocam, como o levantamento o posicion
 msgid "Where two walls or grids cross"
 msgstr "Onde duas paredes ou eixos se cruzam"
 
-#: crates/ui-egui/src/classification.rs:534
+#: crates/ui-egui/src/classification.rs:539
 msgid "Whole table"
 msgstr "Tabela inteira"
 
-#: crates/ui-egui/src/classification.rs:345
+#: crates/ui-egui/src/classification.rs:350
 msgid "Whose code"
 msgstr "De quem é o código"
 
-#: crates/ui-egui/src/classification.rs:760
+#: crates/ui-egui/src/classification.rs:767
 msgid "Why"
 msgstr "Por quê"
 
@@ -10083,7 +10091,7 @@ msgstr "ao longo de sua normal: para cima a partir de um nível, para fora a par
 msgid "aluminium"
 msgstr "alumínio"
 
-#: crates/ui-egui/src/classification.rs:529
+#: crates/ui-egui/src/classification.rs:534
 msgid "and {} more"
 msgstr "e mais {}"
 
@@ -10091,15 +10099,11 @@ msgstr "e mais {}"
 msgid "arc"
 msgstr "arco"
 
-#: crates/ui-egui/src/classification.rs:700
-msgid "batch {} of {}"
-msgstr "lote {} de {}"
-
 #: crates/ui-egui/src/properties.rs:3035
 msgid "begins with"
 msgstr "começa com"
 
-#: crates/ui-egui/src/classification.rs:646
+#: crates/ui-egui/src/classification.rs:652
 msgid "by"
 msgstr "por"
 
@@ -10123,7 +10127,7 @@ msgstr "clique no topo do piso"
 msgid "click where its run ends"
 msgstr "clique onde o lance termina"
 
-#: crates/ui-egui/src/classification.rs:533
+#: crates/ui-egui/src/classification.rs:538
 msgid "code or title"
 msgstr "código ou título"
 
@@ -10207,7 +10211,7 @@ msgstr "termina com"
 msgid "equals"
 msgstr "é igual a"
 
-#: crates/ui-egui/src/classification.rs:642
+#: crates/ui-egui/src/classification.rs:648
 msgid "everything"
 msgstr "tudo"
 
@@ -10287,12 +10291,12 @@ msgstr "material"
 msgid "modify sub elements: `{}` is not an elevation"
 msgstr "modificar subelementos: `{}` não é uma elevação"
 
-#: crates/ui-egui/src/classification.rs:525
+#: crates/ui-egui/src/classification.rs:530
 msgid "no code"
 msgstr "sem código"
 
-#: crates/ui-egui/src/classification.rs:391
-#: crates/ui-egui/src/classification.rs:393
+#: crates/ui-egui/src/classification.rs:396
+#: crates/ui-egui/src/classification.rs:398
 msgid "none"
 msgstr "nenhuma"
 
@@ -10313,7 +10317,7 @@ msgstr "nordeste"
 msgid "north-west"
 msgstr "noroeste"
 
-#: crates/ui-egui/src/classification.rs:368
+#: crates/ui-egui/src/classification.rs:373
 msgid "not loaded"
 msgstr "não carregada"
 
@@ -10466,7 +10470,7 @@ msgstr "o próximo nome livre"
 msgid "the opening has to stay on its wall"
 msgstr "a abertura tem de ficar na parede"
 
-#: crates/ui-egui/src/classification.rs:643
+#: crates/ui-egui/src/classification.rs:649
 msgid "the selection"
 msgstr "a seleção"
 
@@ -10533,7 +10537,7 @@ msgstr "parede: {}"
 msgid "west"
 msgstr "oeste"
 
-#: crates/ui-egui/src/classification.rs:641
+#: crates/ui-egui/src/classification.rs:647
 msgid "what has no code"
 msgstr "o que não tem código"
 
@@ -10549,7 +10553,7 @@ msgstr "tipo de fio"
 msgid "wire types"
 msgstr "tipos de fio"
 
-#: crates/ui-egui/src/classification.rs:1027
+#: crates/ui-egui/src/classification.rs:1036
 msgid "{prompt_file} is the instructions, {schema_file} the answer's JSON Schema, {answer_file} where to write the answer (or print it), {dir} the task's folder and {model} the model. The prompt also comes on standard input."
 msgstr "{prompt_file} são as instruções, {schema_file} o JSON Schema da resposta, {answer_file} onde escrever a resposta (ou imprima-a), {dir} a pasta da tarefa e {model} o modelo. O prompt também vem pela entrada padrão."
 
@@ -10594,7 +10598,7 @@ msgstr "{} adicionados, {} ignorados: seus nomes já existem."
 msgid "{} already exists: save under a name ending in .pat to replace it."
 msgstr "{} já existe: salve com um nome terminado em .pat para substituí-lo."
 
-#: crates/ui-egui/src/classification.rs:789
+#: crates/ui-egui/src/classification.rs:795
 msgid "{} answers left out"
 msgstr "{} respostas deixadas de fora"
 
@@ -10606,15 +10610,15 @@ msgstr "{} em x {}, y {}"
 msgid "{} can't be read. Open Dictionary finds it again where it is now."
 msgstr "{} não pode ser lido. Abrir Dicionário o encontra novamente onde está agora."
 
-#: crates/ui-egui/src/classification.rs:245
+#: crates/ui-egui/src/classification.rs:250
 msgid "{} codes loaded into {}."
 msgstr "{} códigos carregados em {}."
 
-#: crates/ui-egui/src/classification.rs:814
+#: crates/ui-egui/src/classification.rs:820
 msgid "{} codes written; Undo takes them back."
 msgstr "{} códigos escritos; Desfazer os retira."
 
-#: crates/ui-egui/src/classification.rs:365
+#: crates/ui-egui/src/classification.rs:370
 msgid "{} codes, {}"
 msgstr "{} códigos, {}"
 
@@ -10643,7 +10647,7 @@ msgstr "{} seguem o modelo de vista {}: altere-os lá."
 msgid "{} follows its wall, which comes down in {}: take the wall back instead"
 msgstr "{} acompanha a parede, que é demolida em {}: desfaça a demolição da parede"
 
-#: crates/ui-egui/src/classification.rs:607
+#: crates/ui-egui/src/classification.rs:613
 msgid "{} given {}."
 msgstr "{} receberam {}."
 
@@ -10687,11 +10691,11 @@ msgstr "{} mm para A2-A4"
 msgid "{} months ago"
 msgstr "há {} meses"
 
-#: crates/ui-egui/src/classification.rs:506
+#: crates/ui-egui/src/classification.rs:511
 msgid "{} of {} classified"
 msgstr "{} de {} classificados"
 
-#: crates/ui-egui/src/classification.rs:425
+#: crates/ui-egui/src/classification.rs:430
 msgid "{} of {} in the project"
 msgstr "{} de {} no projeto"
 
@@ -10709,7 +10713,7 @@ msgstr "{} de {} {}"
 msgid "{} opened without {} fields this version doesn't know; saving it leaves them out."
 msgstr "{} foi aberto sem {} campos que esta versão não conhece; ao salvar, eles ficam de fora."
 
-#: crates/ui-egui/src/classification.rs:273
+#: crates/ui-egui/src/classification.rs:278
 msgid "{} parameters are in the project."
 msgstr "{} parâmetros estão no projeto."
 
@@ -10746,7 +10750,7 @@ msgstr "{} padrões importados."
 msgid "{} patterns imported; left out: {}"
 msgstr "{} padrões importados; deixados de fora: {}"
 
-#: crates/ui-egui/src/classification.rs:721
+#: crates/ui-egui/src/classification.rs:732
 msgid "{} proposals"
 msgstr "{} propostas"
 
@@ -10758,11 +10762,11 @@ msgstr "{} px"
 msgid "{} redefined from lines"
 msgstr "{} redefinido a partir de linhas"
 
-#: crates/ui-egui/src/classification.rs:833
+#: crates/ui-egui/src/classification.rs:839
 msgid "{} rows copied: paste them into your agent, and its answer here."
 msgstr "{} linhas copiadas: cole-as no seu agente, e a resposta dele aqui."
 
-#: crates/ui-egui/src/classification.rs:246
+#: crates/ui-egui/src/classification.rs:251
 msgid "{} rows left out."
 msgstr "{} linhas deixadas de fora."
 
@@ -10786,7 +10790,7 @@ msgstr "{} valores, {} tabelas, {} filtros, {} identificadores, {} fórmulas"
 msgid "{} years ago"
 msgstr "há {} anos"
 
-#: crates/ui-egui/src/classification.rs:524
+#: crates/ui-egui/src/classification.rs:529
 msgid "{} {} ({} elements): {}"
 msgstr "{} {} ({} elementos): {}"
 
@@ -10880,7 +10884,7 @@ msgstr "{}: esta versão do BIMCraft foi feita sem suporte ao Revit (`--no-defau
 msgid "{}: {}"
 msgstr "{}: {}"
 
-#: crates/ui-egui/src/classification.rs:408
+#: crates/ui-egui/src/classification.rs:413
 msgid "{}: {} fields, {}"
 msgstr "{}: {} campos, {}"
 
@@ -11857,3 +11861,6 @@ msgstr "Superior"
 #: crates/ui-egui/src/lib.rs:3970
 #~ msgid "Project Parameters: values of your own each element of their categories holds, for schedules and IFC"
 #~ msgstr "Parâmetros do projeto: valores próprios que cada elemento das suas categorias guarda, para tabelas e IFC"
+#: crates/ui-egui/src/classification.rs:700
+#~ msgid "batch {} of {}"
+#~ msgstr "lote {} de {}"

@@ -36,15 +36,15 @@ msgstr "0: cổng trống bất kỳ"
 msgid "1 element"
 msgstr "1 cấu kiện"
 
-#: crates/ui-egui/src/classification.rs:343
+#: crates/ui-egui/src/classification.rs:348
 msgid "1. Load the tables you hold, from their .csv or .xlsx. BIMCraft ships none."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:412
+#: crates/ui-egui/src/classification.rs:417
 msgid "2. Make its parameters in the project."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:428
+#: crates/ui-egui/src/classification.rs:433
 msgid "3. Classify: by hand, or with your AI agent."
 msgstr ""
 
@@ -213,11 +213,11 @@ msgstr "Đường tim của tường, để tường vẽ trên đó gặp nó"
 msgid "A {} needs a name."
 msgstr "{} cần một tên."
 
-#: crates/ui-egui/src/classification.rs:297
+#: crates/ui-egui/src/classification.rs:302
 msgid "AI Agent"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:982
+#: crates/ui-egui/src/classification.rs:991
 msgid "AI agent for classification"
 msgstr ""
 
@@ -263,7 +263,7 @@ msgstr "Chấp nhận phương án chính"
 msgid "Accept Primary: the primary option's elements stay in the model; the others' elements and the set go"
 msgstr "Chấp nhận phương án chính: các cấu kiện của phương án chính ở lại trong mô hình; cấu kiện của các phương án khác và bộ phương án bị xóa"
 
-#: crates/ui-egui/src/classification.rs:722
+#: crates/ui-egui/src/classification.rs:733
 msgid "Accept from confidence"
 msgstr ""
 
@@ -459,15 +459,15 @@ msgstr "Thêm vào vùng chọn"
 msgid "Added {} to the project"
 msgstr "Đã thêm {} vào dự án"
 
-#: crates/ui-egui/src/classification.rs:992
+#: crates/ui-egui/src/classification.rs:1001
 msgid "Agent"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:623
+#: crates/ui-egui/src/classification.rs:629
 msgid "Agent Settings…"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:622
+#: crates/ui-egui/src/classification.rs:628
 msgid "Agent: {} ({})"
 msgstr ""
 
@@ -694,7 +694,7 @@ msgid "Applies to all views; snaps to the active view's enabled main grid or sub
 msgstr "Áp dụng cho mọi khung nhìn; bắt điểm vào lưới chính hoặc lưới phụ đang bật của khung nhìn hiện hành, kể cả khi bị ẩn"
 
 #: crates/ui-egui/src/background_grid.rs:112
-#: crates/ui-egui/src/classification.rs:753
+#: crates/ui-egui/src/classification.rs:760
 #: crates/ui-egui/src/display.rs:80
 #: crates/ui-egui/src/editor.rs:1109
 #: crates/ui-egui/src/electrical.rs:501
@@ -726,7 +726,7 @@ msgstr ""
 msgid "Apply wipes the values {} elements have of {}."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:731
+#: crates/ui-egui/src/classification.rs:742
 msgid "Apply {}"
 msgstr ""
 
@@ -785,7 +785,7 @@ msgstr "Theo đơn vị hiển thị"
 msgid "Ascending"
 msgstr "Tăng dần"
 
-#: crates/ui-egui/src/classification.rs:662
+#: crates/ui-egui/src/classification.rs:668
 msgid "Ask the Agent"
 msgstr ""
 
@@ -889,7 +889,7 @@ msgstr "Dự án BIMCraft hoặc IFC"
 msgid "BIMCraft project, IFC or Revit"
 msgstr "Dự án BIMCraft, IFC hoặc Revit"
 
-#: crates/ui-egui/src/classification.rs:985
+#: crates/ui-egui/src/classification.rs:994
 msgid "BIMCraft runs the command line of an agent you have installed and signed in to. It opens no connection itself: the agent sends what it's given to its own provider."
 msgstr ""
 
@@ -1015,6 +1015,14 @@ msgstr "Khoảng cách đường cơ sở"
 msgid "Batch Actions"
 msgstr ""
 
+#: crates/ui-egui/src/classification.rs:708
+msgid "Batch {} of {} · handing it over…"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:706
+msgid "Batch {} of {} · waiting for the answer… {} s"
+msgstr ""
+
 #: crates/core/src/family.rs:2023
 msgid "Bathtub"
 msgstr "Bồn tắm"
@@ -1132,7 +1140,7 @@ msgstr "Mô hình hóa thông tin công trình, mở và miễn phí."
 msgid "By Category"
 msgstr "Theo danh mục"
 
-#: crates/ui-egui/src/classification.rs:297
+#: crates/ui-egui/src/classification.rs:302
 msgid "By Hand"
 msgstr ""
 
@@ -1148,7 +1156,7 @@ msgstr "Bản vẽ CAD"
 msgid "CAD drawings (DWG, DXF)"
 msgstr "Bản vẽ CAD (DWG, DXF)"
 
-#: crates/ui-egui/src/classification.rs:383
+#: crates/ui-egui/src/classification.rs:388
 msgid "COBie's Category fields take another system's codes: pick the tables, loaded under that system."
 msgstr ""
 
@@ -1204,7 +1212,7 @@ msgstr "Camera: nhấp chỗ đặt mắt nhìn, rồi chỗ nó nhìn tới: m�
 
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:131
-#: crates/ui-egui/src/classification.rs:702
+#: crates/ui-egui/src/classification.rs:713
 #: crates/ui-egui/src/clouds.rs:87
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
@@ -1496,7 +1504,7 @@ msgstr "Đa giác ngoại tiếp"
 msgid "Circumscribed Polygon: click its centre, then the middle of a side; Sides on the Options Bar"
 msgstr "Đa giác ngoại tiếp: nhấp tâm, rồi điểm giữa một cạnh; số cạnh trên thanh tùy chọn"
 
-#: crates/ui-egui/src/classification.rs:289
+#: crates/ui-egui/src/classification.rs:294
 #: crates/ui-egui/src/lib.rs:3993
 msgid "Classification Manager"
 msgstr ""
@@ -1505,11 +1513,11 @@ msgstr ""
 msgid "Classification Manager: a classification system's tables and parameters, codes picked by hand for the selection, or proposed by your AI agent"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:325
+#: crates/ui-egui/src/classification.rs:330
 msgid "Classification system"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:640
+#: crates/ui-egui/src/classification.rs:646
 msgid "Classify"
 msgstr ""
 
@@ -2105,7 +2113,7 @@ msgstr "Gộp: những gì được tạo, phá dỡ và hiển thị trong giai
 msgid "Coming in a later version"
 msgstr "Sẽ có trong phiên bản sau"
 
-#: crates/ui-egui/src/classification.rs:999
+#: crates/ui-egui/src/classification.rs:1008
 msgid "Command"
 msgstr ""
 
@@ -2113,7 +2121,7 @@ msgstr ""
 msgid "Command / Tool:"
 msgstr "Lệnh / Công cụ:"
 
-#: crates/ui-egui/src/classification.rs:999
+#: crates/ui-egui/src/classification.rs:1008
 msgid "Command line"
 msgstr ""
 
@@ -2161,7 +2169,7 @@ msgstr "Ống luồn và dây dẫn"
 msgid "Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"
 msgstr "Ống luồn dây (CN): nhấp điểm đầu và điểm cuối; một chuỗi lần nhấp tạo một ống luồn cho mỗi bước"
 
-#: crates/ui-egui/src/classification.rs:759
+#: crates/ui-egui/src/classification.rs:766
 msgid "Confidence"
 msgstr ""
 
@@ -2255,7 +2263,7 @@ msgstr "Sao chép (CO): nhấp một điểm gốc, rồi chỗ đặt bản sao
 msgid "Copy All"
 msgstr "Sao chép tất cả"
 
-#: crates/ui-egui/src/classification.rs:666
+#: crates/ui-egui/src/classification.rs:672
 msgid "Copy Brief"
 msgstr ""
 
@@ -2855,7 +2863,7 @@ msgid "Dimensions"
 msgstr "Kích thước"
 
 #: crates/ui-egui/src/autosave.rs:306
-#: crates/ui-egui/src/classification.rs:732
+#: crates/ui-egui/src/classification.rs:743
 msgid "Discard"
 msgstr "Loại bỏ"
 
@@ -3056,7 +3064,7 @@ msgstr "Nhân bản kèm chi tiết"
 msgid "Duplicate…"
 msgstr "Nhân bản…"
 
-#: crates/ui-egui/src/classification.rs:221
+#: crates/ui-egui/src/classification.rs:226
 msgid "Each element"
 msgstr ""
 
@@ -3076,7 +3084,7 @@ msgstr "Bề rộng mỗi bút trên giấy, tính bằng mm, cho kích thước
 msgid "Each pen's width on paper, mm, in views at each scale: a view between two takes the nearer one's. Pen 0 is always a hairline."
 msgstr "Bề rộng mỗi bút trên giấy, tính bằng mm, trong khung nhìn ở từng tỷ lệ: khung nhìn nằm giữa hai tỷ lệ lấy theo tỷ lệ gần hơn. Bút 0 luôn là nét mảnh nhất."
 
-#: crates/ui-egui/src/classification.rs:222
+#: crates/ui-egui/src/classification.rs:227
 msgid "Each type"
 msgstr ""
 
@@ -3176,7 +3184,7 @@ msgstr ""
 msgid "Editing"
 msgstr "Chỉnh sửa"
 
-#: crates/ui-egui/src/classification.rs:335
+#: crates/ui-egui/src/classification.rs:340
 msgid "Edition"
 msgstr ""
 
@@ -3332,7 +3340,7 @@ msgstr "Mọi khung nhìn đều đã nằm trên bản vẽ."
 msgid "Everything the project has, as its categories draw it"
 msgstr "Mọi thứ dự án có, theo cách các danh mục của nó vẽ"
 
-#: crates/ui-egui/src/classification.rs:500
+#: crates/ui-egui/src/classification.rs:505
 msgid "Everything this table is for has a code."
 msgstr ""
 
@@ -3769,7 +3777,7 @@ msgstr "Gấp"
 msgid "Folding Marks:"
 msgstr "Dấu gấp:"
 
-#: crates/ui-egui/src/classification.rs:667
+#: crates/ui-egui/src/classification.rs:673
 msgid "For an agent with no command line (a chat window): copy the instructions and the brief, then paste its answer below"
 msgstr ""
 
@@ -3941,7 +3949,7 @@ msgstr "Chung"
 msgid "Geometry"
 msgstr "Hình học"
 
-#: crates/ui-egui/src/classification.rs:578
+#: crates/ui-egui/src/classification.rs:584
 msgid "Give the selection this code"
 msgstr ""
 
@@ -4200,7 +4208,7 @@ msgstr "Số thanh, đường kính và khoảng cách là do bạn quyết đ�
 msgid "How many phases and wires each system has (the line conductors and the neutral), the voltages it supplies, and how it is earthed."
 msgstr "Mỗi hệ thống có bao nhiêu pha và dây (các dây pha và dây trung tính), điện áp nó cung cấp, và cách nối đất."
 
-#: crates/ui-egui/src/classification.rs:635
+#: crates/ui-egui/src/classification.rs:641
 msgid "I understand; let the agent see this project's types"
 msgstr ""
 
@@ -4651,7 +4659,7 @@ msgstr "Ống kính:"
 msgid "Let agents work on this project"
 msgstr "Để tác nhân làm việc trên dự án này"
 
-#: crates/ui-egui/src/classification.rs:1061
+#: crates/ui-egui/src/classification.rs:1070
 msgid "Let the agent see the project's types when I ask it to classify"
 msgstr ""
 
@@ -4908,20 +4916,20 @@ msgstr "Nạp họ…"
 msgid "Load File..."
 msgstr "Nạp tệp..."
 
-#: crates/ui-egui/src/classification.rs:414
+#: crates/ui-egui/src/classification.rs:419
 msgid "Load Parameters"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:370
+#: crates/ui-egui/src/classification.rs:375
 msgid "Load Table…"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:478
-#: crates/ui-egui/src/classification.rs:616
+#: crates/ui-egui/src/classification.rs:483
+#: crates/ui-egui/src/classification.rs:622
 msgid "Load a system's table and its parameters first, on the System tab."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:345
+#: crates/ui-egui/src/classification.rs:350
 #: crates/ui-egui/src/properties.rs:386
 msgid "Loaded"
 msgstr "Đã nạp"
@@ -5250,7 +5258,7 @@ msgstr "Đối xứng"
 msgid "Mode"
 msgstr "Chế độ"
 
-#: crates/ui-egui/src/classification.rs:1003
+#: crates/ui-egui/src/classification.rs:1012
 #: crates/ui-egui/src/fillpatterns.rs:548
 msgid "Model"
 msgstr "Mô hình"
@@ -5300,7 +5308,7 @@ msgstr "Sửa thành phần con: chọn một điểm, một góc hoặc một c
 msgid "Modify Wall"
 msgstr "Sửa đổi tường"
 
-#: crates/ui-egui/src/classification.rs:1011
+#: crates/ui-egui/src/classification.rs:1020
 msgid "More arguments"
 msgstr ""
 
@@ -5505,7 +5513,7 @@ msgstr "Kiểu mới"
 msgid "New {}"
 msgstr "{} mới"
 
-#: crates/ui-egui/src/classification.rs:492
+#: crates/ui-egui/src/classification.rs:497
 msgid "Next Unclassified"
 msgstr ""
 
@@ -5663,7 +5671,7 @@ msgstr "Không có gì có ID hoặc GUID đó: {}"
 msgid "Nothing here yet."
 msgstr "Chưa có gì ở đây."
 
-#: crates/ui-egui/src/classification.rs:849
+#: crates/ui-egui/src/classification.rs:855
 msgid "Nothing is selected."
 msgstr ""
 
@@ -5679,7 +5687,7 @@ msgstr "Không có gì khớp với tìm kiếm."
 msgid "Nothing selected is hidden in this view. Reveal Hidden Elements (RH) draws what is, to select it."
 msgstr "Không có đối tượng đã chọn nào bị ẩn trong khung nhìn này. Hiện cấu kiện ẩn (RH) sẽ vẽ những gì bị ẩn để chọn."
 
-#: crates/ui-egui/src/classification.rs:860
+#: crates/ui-egui/src/classification.rs:866
 msgid "Nothing to classify: everything asked for has a code."
 msgstr ""
 
@@ -5688,7 +5696,7 @@ msgstr ""
 msgid "Nothing was left out."
 msgstr "Không có gì bị bỏ qua."
 
-#: crates/ui-egui/src/classification.rs:756
+#: crates/ui-egui/src/classification.rs:763
 msgid "Now"
 msgstr ""
 
@@ -5878,7 +5886,7 @@ msgstr "Bộ phương án:"
 msgid "Options:"
 msgstr "Các phương án:"
 
-#: crates/ui-egui/src/classification.rs:674
+#: crates/ui-egui/src/classification.rs:680
 msgid "Or paste an answer:"
 msgstr ""
 
@@ -6830,7 +6838,7 @@ msgstr "Thuộc tính (PP): hiện hoặc ẩn bảng thuộc tính"
 msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Thuộc tính phía trên trình duyệt dự án, bên trái, như ban đầu"
 
-#: crates/ui-egui/src/classification.rs:757
+#: crates/ui-egui/src/classification.rs:764
 msgid "Proposed"
 msgstr ""
 
@@ -6918,7 +6926,7 @@ msgstr "Đường dốc"
 msgid "Ramp: click where it starts, then where its run ends; a landing turns it"
 msgstr "Đường dốc: nhấp chỗ bắt đầu, rồi chỗ vế dốc kết thúc; một chiếu nghỉ sẽ đổi hướng nó"
 
-#: crates/ui-egui/src/classification.rs:676
+#: crates/ui-egui/src/classification.rs:682
 msgid "Read Answer"
 msgstr ""
 
@@ -7040,7 +7048,7 @@ msgstr "Nạp lại tất cả"
 msgid "Reload CAD"
 msgstr "Nạp lại CAD"
 
-#: crates/ui-egui/src/classification.rs:375
+#: crates/ui-egui/src/classification.rs:380
 #: crates/ui-egui/src/favorites.rs:142
 #: crates/ui-egui/src/favorites.rs:165
 #: crates/ui-egui/src/graphics.rs:1144
@@ -7364,11 +7372,11 @@ msgstr "Góc xoay (°)"
 msgid "Round"
 msgstr "Tròn"
 
-#: crates/ui-egui/src/classification.rs:1017
+#: crates/ui-egui/src/classification.rs:1026
 msgid "Rows a call"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:1035
+#: crates/ui-egui/src/classification.rs:1044
 msgid "Run the agent's --version to see it's there"
 msgstr ""
 
@@ -7510,7 +7518,7 @@ msgstr "Bảng thống kê/Khối lượng (tất cả)"
 msgid "Screed"
 msgstr "Lớp vữa láng"
 
-#: crates/ui-egui/src/classification.rs:532
+#: crates/ui-egui/src/classification.rs:537
 #: crates/ui-egui/src/parameters.rs:782
 msgid "Search"
 msgstr ""
@@ -7615,7 +7623,7 @@ msgstr "Đoạn {}: chuyển lên"
 msgid "Select"
 msgstr "Chọn"
 
-#: crates/ui-egui/src/classification.rs:746
+#: crates/ui-egui/src/classification.rs:753
 msgid "Select All"
 msgstr ""
 
@@ -7656,7 +7664,7 @@ msgstr "Hãy chọn các cấu kiện cùng một loại: tất cả dầm, tấ
 msgid "Select fill pattern lines then press Enter"
 msgstr "Chọn các đường của mẫu tô rồi nhấn Enter"
 
-#: crates/ui-egui/src/classification.rs:767
+#: crates/ui-egui/src/classification.rs:774
 msgid "Select its elements"
 msgstr ""
 
@@ -7664,11 +7672,11 @@ msgstr ""
 msgid "Select the detail lines the pattern is made of, then press Enter."
 msgstr "Chọn các đường chi tiết tạo nên mẫu, rồi nhấn Enter."
 
-#: crates/ui-egui/src/classification.rs:493
+#: crates/ui-egui/src/classification.rs:498
 msgid "Select the elements of the next type (or element) with no code"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:515
+#: crates/ui-egui/src/classification.rs:520
 msgid "Select what to classify: its category's codes come up here."
 msgstr ""
 
@@ -8124,7 +8132,7 @@ msgstr "Mã nguồn trên GitHub"
 msgid "South"
 msgstr "Nam"
 
-#: crates/ui-egui/src/classification.rs:387
+#: crates/ui-egui/src/classification.rs:392
 msgid "Space Category from"
 msgstr ""
 
@@ -8435,7 +8443,7 @@ msgid "Symbols are what the plan draws of the family besides its forms: lines, a
 msgstr "Ký hiệu là những gì mặt bằng vẽ cho họ ngoài các khối của nó: đường, cung, nhãn và chấm."
 
 #: crates/core/src/schedule.rs:200
-#: crates/ui-egui/src/classification.rs:297
+#: crates/ui-egui/src/classification.rs:302
 msgid "System"
 msgstr "Hệ thống"
 
@@ -8479,13 +8487,13 @@ msgid "Tab with {}"
 msgstr "Gộp thẻ với {}"
 
 #: crates/core/src/family.rs:1884
-#: crates/ui-egui/src/classification.rs:345
-#: crates/ui-egui/src/classification.rs:485
-#: crates/ui-egui/src/classification.rs:755
+#: crates/ui-egui/src/classification.rs:350
+#: crates/ui-egui/src/classification.rs:490
+#: crates/ui-egui/src/classification.rs:762
 msgid "Table"
 msgstr "Bàn"
 
-#: crates/ui-egui/src/classification.rs:372
+#: crates/ui-egui/src/classification.rs:377
 msgid "Tables"
 msgstr ""
 
@@ -8606,7 +8614,7 @@ msgstr "Cô lập cấu kiện tạm thời"
 msgid "Temporary dimension {}"
 msgstr "Kích thước tạm thời {}"
 
-#: crates/ui-egui/src/classification.rs:1035
+#: crates/ui-egui/src/classification.rs:1044
 msgid "Test"
 msgstr ""
 
@@ -8674,7 +8682,7 @@ msgstr "Độ lệch dọc kết cấu bề mặt"
 msgid "That can't be drawn: an arc's radius is at least half the distance between its ends, and a centre-ends arc turns less than 180°."
 msgstr "Không thể vẽ: bán kính cung ít nhất bằng một nửa khoảng cách giữa hai đầu mút, và cung tâm-đầu mút quay ít hơn 180°."
 
-#: crates/ui-egui/src/classification.rs:686
+#: crates/ui-egui/src/classification.rs:692
 msgid "That holds no JSON answer."
 msgstr ""
 
@@ -8695,11 +8703,11 @@ msgstr "Khung nhìn 3D được vẽ bằng bộ xử lý: {}"
 msgid "The Same Parameter"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:946
+#: crates/ui-egui/src/classification.rs:955
 msgid "The agent gave no answer."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:631
+#: crates/ui-egui/src/classification.rs:637
 msgid "The agent you set is run on this computer and sends what it's given to its provider: each type's category, family, type name, materials, levels and hosts, and the tables' codes. BIMCraft itself sends nothing."
 msgstr ""
 
@@ -8963,11 +8971,11 @@ msgstr "Độ dày nét gạch xiên"
 msgid "Tick Mark Size"
 msgstr "Kích thước gạch xiên"
 
-#: crates/ui-egui/src/classification.rs:724
+#: crates/ui-egui/src/classification.rs:735
 msgid "Tick by Confidence"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:746
+#: crates/ui-egui/src/classification.rs:753
 msgid "Tick every proposal that has a code"
 msgstr ""
 
@@ -9008,7 +9016,7 @@ msgid "Timber"
 msgstr "Gỗ"
 
 #: crates/core/src/schedule.rs:513
-#: crates/ui-egui/src/classification.rs:758
+#: crates/ui-egui/src/classification.rs:765
 msgid "Title"
 msgstr "Tiêu đề"
 
@@ -9185,7 +9193,7 @@ msgstr "Có hai {} cùng tên {}."
 msgid "Type"
 msgstr "Kiểu"
 
-#: crates/ui-egui/src/classification.rs:387
+#: crates/ui-egui/src/classification.rs:392
 msgid "Type Category from"
 msgstr ""
 
@@ -9232,7 +9240,7 @@ msgstr "Loại tham số"
 msgid "Type of {}"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:754
+#: crates/ui-egui/src/classification.rs:761
 msgid "Type or element"
 msgstr ""
 
@@ -9641,7 +9649,7 @@ msgstr "Thể tích (m³)"
 msgid "WC"
 msgstr "Bồn cầu"
 
-#: crates/ui-egui/src/classification.rs:1014
+#: crates/ui-egui/src/classification.rs:1023
 msgid "Wait up to"
 msgstr ""
 
@@ -9765,15 +9773,15 @@ msgstr "Tại vị trí mà tọa độ trong tệp của nó xác định, như
 msgid "Where two walls or grids cross"
 msgstr "Nơi hai tường hoặc hai lưới trục giao nhau"
 
-#: crates/ui-egui/src/classification.rs:534
+#: crates/ui-egui/src/classification.rs:539
 msgid "Whole table"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:345
+#: crates/ui-egui/src/classification.rs:350
 msgid "Whose code"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:760
+#: crates/ui-egui/src/classification.rs:767
 msgid "Why"
 msgstr ""
 
@@ -10083,7 +10091,7 @@ msgstr "theo pháp tuyến: hướng lên từ tầng, hướng ra từ bề m�
 msgid "aluminium"
 msgstr "nhôm"
 
-#: crates/ui-egui/src/classification.rs:529
+#: crates/ui-egui/src/classification.rs:534
 msgid "and {} more"
 msgstr ""
 
@@ -10091,15 +10099,11 @@ msgstr ""
 msgid "arc"
 msgstr "cung"
 
-#: crates/ui-egui/src/classification.rs:700
-msgid "batch {} of {}"
-msgstr ""
-
 #: crates/ui-egui/src/properties.rs:3035
 msgid "begins with"
 msgstr "bắt đầu bằng"
 
-#: crates/ui-egui/src/classification.rs:646
+#: crates/ui-egui/src/classification.rs:652
 msgid "by"
 msgstr ""
 
@@ -10123,7 +10127,7 @@ msgstr "nhấp trên mặt trên của sàn"
 msgid "click where its run ends"
 msgstr "nhấp chỗ vế kết thúc"
 
-#: crates/ui-egui/src/classification.rs:533
+#: crates/ui-egui/src/classification.rs:538
 msgid "code or title"
 msgstr ""
 
@@ -10207,7 +10211,7 @@ msgstr "kết thúc bằng"
 msgid "equals"
 msgstr "bằng"
 
-#: crates/ui-egui/src/classification.rs:642
+#: crates/ui-egui/src/classification.rs:648
 msgid "everything"
 msgstr ""
 
@@ -10287,12 +10291,12 @@ msgstr "vật liệu"
 msgid "modify sub elements: `{}` is not an elevation"
 msgstr "sửa thành phần con: `{}` không phải là cao độ"
 
-#: crates/ui-egui/src/classification.rs:525
+#: crates/ui-egui/src/classification.rs:530
 msgid "no code"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:391
-#: crates/ui-egui/src/classification.rs:393
+#: crates/ui-egui/src/classification.rs:396
+#: crates/ui-egui/src/classification.rs:398
 msgid "none"
 msgstr ""
 
@@ -10313,7 +10317,7 @@ msgstr "đông bắc"
 msgid "north-west"
 msgstr "tây bắc"
 
-#: crates/ui-egui/src/classification.rs:368
+#: crates/ui-egui/src/classification.rs:373
 msgid "not loaded"
 msgstr ""
 
@@ -10466,7 +10470,7 @@ msgstr "tên chưa dùng tiếp theo"
 msgid "the opening has to stay on its wall"
 msgstr "lỗ mở phải nằm trên tường của nó"
 
-#: crates/ui-egui/src/classification.rs:643
+#: crates/ui-egui/src/classification.rs:649
 msgid "the selection"
 msgstr ""
 
@@ -10533,7 +10537,7 @@ msgstr "tường: {}"
 msgid "west"
 msgstr "tây"
 
-#: crates/ui-egui/src/classification.rs:641
+#: crates/ui-egui/src/classification.rs:647
 msgid "what has no code"
 msgstr ""
 
@@ -10549,7 +10553,7 @@ msgstr "loại dây"
 msgid "wire types"
 msgstr "loại dây"
 
-#: crates/ui-egui/src/classification.rs:1027
+#: crates/ui-egui/src/classification.rs:1036
 msgid "{prompt_file} is the instructions, {schema_file} the answer's JSON Schema, {answer_file} where to write the answer (or print it), {dir} the task's folder and {model} the model. The prompt also comes on standard input."
 msgstr ""
 
@@ -10594,7 +10598,7 @@ msgstr ""
 msgid "{} already exists: save under a name ending in .pat to replace it."
 msgstr "{} đã tồn tại: hãy lưu dưới một tên kết thúc bằng .pat để thay thế nó."
 
-#: crates/ui-egui/src/classification.rs:789
+#: crates/ui-egui/src/classification.rs:795
 msgid "{} answers left out"
 msgstr ""
 
@@ -10606,15 +10610,15 @@ msgstr "{} tại x {}, y {}"
 msgid "{} can't be read. Open Dictionary finds it again where it is now."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:245
+#: crates/ui-egui/src/classification.rs:250
 msgid "{} codes loaded into {}."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:814
+#: crates/ui-egui/src/classification.rs:820
 msgid "{} codes written; Undo takes them back."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:365
+#: crates/ui-egui/src/classification.rs:370
 msgid "{} codes, {}"
 msgstr ""
 
@@ -10643,7 +10647,7 @@ msgstr "{} theo mẫu khung nhìn {}: hãy thay đổi ở đó."
 msgid "{} follows its wall, which comes down in {}: take the wall back instead"
 msgstr "{} đi theo tường của nó, tường này bị phá dỡ trong {}: hãy khôi phục tường thay vào đó"
 
-#: crates/ui-egui/src/classification.rs:607
+#: crates/ui-egui/src/classification.rs:613
 msgid "{} given {}."
 msgstr ""
 
@@ -10687,11 +10691,11 @@ msgstr "{} mm cho A2-A4"
 msgid "{} months ago"
 msgstr "{} tháng trước"
 
-#: crates/ui-egui/src/classification.rs:506
+#: crates/ui-egui/src/classification.rs:511
 msgid "{} of {} classified"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:425
+#: crates/ui-egui/src/classification.rs:430
 msgid "{} of {} in the project"
 msgstr ""
 
@@ -10709,7 +10713,7 @@ msgstr "{} của {} {}"
 msgid "{} opened without {} fields this version doesn't know; saving it leaves them out."
 msgstr "Đã mở {}, bỏ qua {} trường mà phiên bản này không nhận biết; khi lưu, các trường đó sẽ bị loại bỏ."
 
-#: crates/ui-egui/src/classification.rs:273
+#: crates/ui-egui/src/classification.rs:278
 msgid "{} parameters are in the project."
 msgstr ""
 
@@ -10746,7 +10750,7 @@ msgstr "Đã nhập {} mẫu."
 msgid "{} patterns imported; left out: {}"
 msgstr "Đã nhập {} mẫu; bỏ qua: {}"
 
-#: crates/ui-egui/src/classification.rs:721
+#: crates/ui-egui/src/classification.rs:732
 msgid "{} proposals"
 msgstr ""
 
@@ -10758,11 +10762,11 @@ msgstr "{} px"
 msgid "{} redefined from lines"
 msgstr "{} được định nghĩa lại từ các đường"
 
-#: crates/ui-egui/src/classification.rs:833
+#: crates/ui-egui/src/classification.rs:839
 msgid "{} rows copied: paste them into your agent, and its answer here."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:246
+#: crates/ui-egui/src/classification.rs:251
 msgid "{} rows left out."
 msgstr ""
 
@@ -10786,7 +10790,7 @@ msgstr ""
 msgid "{} years ago"
 msgstr "{} năm trước"
 
-#: crates/ui-egui/src/classification.rs:524
+#: crates/ui-egui/src/classification.rs:529
 msgid "{} {} ({} elements): {}"
 msgstr ""
 
@@ -10880,7 +10884,7 @@ msgstr "{}: bản dựng BIMCraft này không hỗ trợ Revit (`--no-default-fe
 msgid "{}: {}"
 msgstr "{}: {}"
 
-#: crates/ui-egui/src/classification.rs:408
+#: crates/ui-egui/src/classification.rs:413
 msgid "{}: {} fields, {}"
 msgstr ""
 
@@ -11668,3 +11672,6 @@ msgstr ""
 #: crates/ui-egui/src/lib.rs:3970
 #~ msgid "Project Parameters: values of your own each element of their categories holds, for schedules and IFC"
 #~ msgstr "Tham số dự án: các giá trị do bạn định nghĩa mà mỗi cấu kiện thuộc các danh mục đó mang, dùng cho bảng thống kê và IFC"
+#: crates/ui-egui/src/classification.rs:700
+#~ msgid "batch {} of {}"
+#~ msgstr ""

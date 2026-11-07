@@ -36,15 +36,15 @@ msgstr "0：任何空閒連接埠"
 msgid "1 element"
 msgstr "1 個圖元"
 
-#: crates/ui-egui/src/classification.rs:343
+#: crates/ui-egui/src/classification.rs:348
 msgid "1. Load the tables you hold, from their .csv or .xlsx. BIMCraft ships none."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:412
+#: crates/ui-egui/src/classification.rs:417
 msgid "2. Make its parameters in the project."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:428
+#: crates/ui-egui/src/classification.rs:433
 msgid "3. Classify: by hand, or with your AI agent."
 msgstr ""
 
@@ -213,11 +213,11 @@ msgstr "牆的中心線，使繪製在其上的牆與之相接"
 msgid "A {} needs a name."
 msgstr "{}需要名稱。"
 
-#: crates/ui-egui/src/classification.rs:297
+#: crates/ui-egui/src/classification.rs:302
 msgid "AI Agent"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:982
+#: crates/ui-egui/src/classification.rs:991
 msgid "AI agent for classification"
 msgstr ""
 
@@ -263,7 +263,7 @@ msgstr "接受主選項"
 msgid "Accept Primary: the primary option's elements stay in the model; the others' elements and the set go"
 msgstr "接受主選項：主選項的圖元保留在模型中；其他選項的圖元及選項集被刪除"
 
-#: crates/ui-egui/src/classification.rs:722
+#: crates/ui-egui/src/classification.rs:733
 msgid "Accept from confidence"
 msgstr ""
 
@@ -459,15 +459,15 @@ msgstr "添加到選擇集"
 msgid "Added {} to the project"
 msgstr "已將 {} 添加到項目"
 
-#: crates/ui-egui/src/classification.rs:992
+#: crates/ui-egui/src/classification.rs:1001
 msgid "Agent"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:623
+#: crates/ui-egui/src/classification.rs:629
 msgid "Agent Settings…"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:622
+#: crates/ui-egui/src/classification.rs:628
 msgid "Agent: {} ({})"
 msgstr ""
 
@@ -694,7 +694,7 @@ msgid "Applies to all views; snaps to the active view's enabled main grid or sub
 msgstr "適用於所有視圖；捕捉到活動視圖中已啟用的主網格或子網格，即使已隱藏"
 
 #: crates/ui-egui/src/background_grid.rs:112
-#: crates/ui-egui/src/classification.rs:753
+#: crates/ui-egui/src/classification.rs:760
 #: crates/ui-egui/src/display.rs:80
 #: crates/ui-egui/src/editor.rs:1109
 #: crates/ui-egui/src/electrical.rs:501
@@ -726,7 +726,7 @@ msgstr ""
 msgid "Apply wipes the values {} elements have of {}."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:731
+#: crates/ui-egui/src/classification.rs:742
 msgid "Apply {}"
 msgstr ""
 
@@ -785,7 +785,7 @@ msgstr "按單位顯示"
 msgid "Ascending"
 msgstr "升序"
 
-#: crates/ui-egui/src/classification.rs:662
+#: crates/ui-egui/src/classification.rs:668
 msgid "Ask the Agent"
 msgstr ""
 
@@ -889,7 +889,7 @@ msgstr "BIMCraft 項目或 IFC"
 msgid "BIMCraft project, IFC or Revit"
 msgstr "BIMCraft 項目、IFC 或 Revit"
 
-#: crates/ui-egui/src/classification.rs:985
+#: crates/ui-egui/src/classification.rs:994
 msgid "BIMCraft runs the command line of an agent you have installed and signed in to. It opens no connection itself: the agent sends what it's given to its own provider."
 msgstr ""
 
@@ -1015,6 +1015,14 @@ msgstr "基線間距"
 msgid "Batch Actions"
 msgstr ""
 
+#: crates/ui-egui/src/classification.rs:708
+msgid "Batch {} of {} · handing it over…"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:706
+msgid "Batch {} of {} · waiting for the answer… {} s"
+msgstr ""
+
 #: crates/core/src/family.rs:2023
 msgid "Bathtub"
 msgstr "浴缸"
@@ -1132,7 +1140,7 @@ msgstr "開放、免費的建築信息模型。"
 msgid "By Category"
 msgstr "按類別"
 
-#: crates/ui-egui/src/classification.rs:297
+#: crates/ui-egui/src/classification.rs:302
 msgid "By Hand"
 msgstr ""
 
@@ -1148,7 +1156,7 @@ msgstr "CAD 圖紙"
 msgid "CAD drawings (DWG, DXF)"
 msgstr "CAD 圖紙（DWG、DXF）"
 
-#: crates/ui-egui/src/classification.rs:383
+#: crates/ui-egui/src/classification.rs:388
 msgid "COBie's Category fields take another system's codes: pick the tables, loaded under that system."
 msgstr ""
 
@@ -1204,7 +1212,7 @@ msgstr "相機：單擊視點所在位置，再單擊其注視的目標：由該
 
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:131
-#: crates/ui-egui/src/classification.rs:702
+#: crates/ui-egui/src/classification.rs:713
 #: crates/ui-egui/src/clouds.rs:87
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
@@ -1496,7 +1504,7 @@ msgstr "外接多邊形"
 msgid "Circumscribed Polygon: click its centre, then the middle of a side; Sides on the Options Bar"
 msgstr "外接多邊形：單擊中心，然後單擊一條邊的中點；邊數在選項欄中設置"
 
-#: crates/ui-egui/src/classification.rs:289
+#: crates/ui-egui/src/classification.rs:294
 #: crates/ui-egui/src/lib.rs:3993
 msgid "Classification Manager"
 msgstr ""
@@ -1505,11 +1513,11 @@ msgstr ""
 msgid "Classification Manager: a classification system's tables and parameters, codes picked by hand for the selection, or proposed by your AI agent"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:325
+#: crates/ui-egui/src/classification.rs:330
 msgid "Classification system"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:640
+#: crates/ui-egui/src/classification.rs:646
 msgid "Classify"
 msgstr ""
 
@@ -2105,7 +2113,7 @@ msgstr "合併：此階段中創建、拆除和顯示的內容歸入相鄰階段
 msgid "Coming in a later version"
 msgstr "將在後續版本中推出"
 
-#: crates/ui-egui/src/classification.rs:999
+#: crates/ui-egui/src/classification.rs:1008
 msgid "Command"
 msgstr ""
 
@@ -2113,7 +2121,7 @@ msgstr ""
 msgid "Command / Tool:"
 msgstr "命令 / 工具："
 
-#: crates/ui-egui/src/classification.rs:999
+#: crates/ui-egui/src/classification.rs:1008
 msgid "Command line"
 msgstr ""
 
@@ -2161,7 +2169,7 @@ msgstr "線管和導線"
 msgid "Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"
 msgstr "線管 (CN)：單擊起點和終點；連續單擊可為每一段創建一根線管"
 
-#: crates/ui-egui/src/classification.rs:759
+#: crates/ui-egui/src/classification.rs:766
 msgid "Confidence"
 msgstr ""
 
@@ -2255,7 +2263,7 @@ msgstr "複製 (CO)：單擊基點，再單擊副本的位置"
 msgid "Copy All"
 msgstr "全部複製"
 
-#: crates/ui-egui/src/classification.rs:666
+#: crates/ui-egui/src/classification.rs:672
 msgid "Copy Brief"
 msgstr ""
 
@@ -2855,7 +2863,7 @@ msgid "Dimensions"
 msgstr "尺寸標注"
 
 #: crates/ui-egui/src/autosave.rs:306
-#: crates/ui-egui/src/classification.rs:732
+#: crates/ui-egui/src/classification.rs:743
 msgid "Discard"
 msgstr "放棄"
 
@@ -3056,7 +3064,7 @@ msgstr "帶詳圖複製"
 msgid "Duplicate…"
 msgstr "複製…"
 
-#: crates/ui-egui/src/classification.rs:221
+#: crates/ui-egui/src/classification.rs:226
 msgid "Each element"
 msgstr ""
 
@@ -3076,7 +3084,7 @@ msgstr "每支筆在圖紙上的寬度（毫米），用於尺寸標注、標記
 msgid "Each pen's width on paper, mm, in views at each scale: a view between two takes the nearer one's. Pen 0 is always a hairline."
 msgstr "每支筆在各比例視圖中於圖紙上的寬度（毫米）：介於兩個比例之間的視圖取較近的一個。筆 0 始終是髮絲線。"
 
-#: crates/ui-egui/src/classification.rs:222
+#: crates/ui-egui/src/classification.rs:227
 msgid "Each type"
 msgstr ""
 
@@ -3176,7 +3184,7 @@ msgstr ""
 msgid "Editing"
 msgstr "編輯"
 
-#: crates/ui-egui/src/classification.rs:335
+#: crates/ui-egui/src/classification.rs:340
 msgid "Edition"
 msgstr ""
 
@@ -3332,7 +3340,7 @@ msgstr "每個視圖都已在圖紙上。"
 msgid "Everything the project has, as its categories draw it"
 msgstr "項目中的全部內容，按各類別的繪製方式顯示"
 
-#: crates/ui-egui/src/classification.rs:500
+#: crates/ui-egui/src/classification.rs:505
 msgid "Everything this table is for has a code."
 msgstr ""
 
@@ -3769,7 +3777,7 @@ msgstr "折疊"
 msgid "Folding Marks:"
 msgstr "折疊標記:"
 
-#: crates/ui-egui/src/classification.rs:667
+#: crates/ui-egui/src/classification.rs:673
 msgid "For an agent with no command line (a chat window): copy the instructions and the brief, then paste its answer below"
 msgstr ""
 
@@ -3941,7 +3949,7 @@ msgstr "常規"
 msgid "Geometry"
 msgstr "幾何圖形"
 
-#: crates/ui-egui/src/classification.rs:578
+#: crates/ui-egui/src/classification.rs:584
 msgid "Give the selection this code"
 msgstr ""
 
@@ -4200,7 +4208,7 @@ msgstr "根數、直徑和間距由您決定；留空的項不使用。間距為
 msgid "How many phases and wires each system has (the line conductors and the neutral), the voltages it supplies, and how it is earthed."
 msgstr "每個系統的相數和導線數（相線與中性線）、所供應的電壓，以及接地方式。"
 
-#: crates/ui-egui/src/classification.rs:635
+#: crates/ui-egui/src/classification.rs:641
 msgid "I understand; let the agent see this project's types"
 msgstr ""
 
@@ -4651,7 +4659,7 @@ msgstr "鏡頭："
 msgid "Let agents work on this project"
 msgstr "讓智能體在此項目上工作"
 
-#: crates/ui-egui/src/classification.rs:1061
+#: crates/ui-egui/src/classification.rs:1070
 msgid "Let the agent see the project's types when I ask it to classify"
 msgstr ""
 
@@ -4908,20 +4916,20 @@ msgstr "載入族…"
 msgid "Load File..."
 msgstr "載入檔案..."
 
-#: crates/ui-egui/src/classification.rs:414
+#: crates/ui-egui/src/classification.rs:419
 msgid "Load Parameters"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:370
+#: crates/ui-egui/src/classification.rs:375
 msgid "Load Table…"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:478
-#: crates/ui-egui/src/classification.rs:616
+#: crates/ui-egui/src/classification.rs:483
+#: crates/ui-egui/src/classification.rs:622
 msgid "Load a system's table and its parameters first, on the System tab."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:345
+#: crates/ui-egui/src/classification.rs:350
 #: crates/ui-egui/src/properties.rs:386
 msgid "Loaded"
 msgstr "已載入"
@@ -5250,7 +5258,7 @@ msgstr "已鏡像"
 msgid "Mode"
 msgstr "模式"
 
-#: crates/ui-egui/src/classification.rs:1003
+#: crates/ui-egui/src/classification.rs:1012
 #: crates/ui-egui/src/fillpatterns.rs:548
 msgid "Model"
 msgstr "模型"
@@ -5300,7 +5308,7 @@ msgstr "修改子圖元：選擇頂面的點、角點或邊，然後在選項欄
 msgid "Modify Wall"
 msgstr "修改牆"
 
-#: crates/ui-egui/src/classification.rs:1011
+#: crates/ui-egui/src/classification.rs:1020
 msgid "More arguments"
 msgstr ""
 
@@ -5505,7 +5513,7 @@ msgstr "新類型"
 msgid "New {}"
 msgstr "新建{}"
 
-#: crates/ui-egui/src/classification.rs:492
+#: crates/ui-egui/src/classification.rs:497
 msgid "Next Unclassified"
 msgstr ""
 
@@ -5663,7 +5671,7 @@ msgstr "沒有圖元具有該 ID 或 GUID：{}"
 msgid "Nothing here yet."
 msgstr "這裡還沒有內容。"
 
-#: crates/ui-egui/src/classification.rs:849
+#: crates/ui-egui/src/classification.rs:855
 msgid "Nothing is selected."
 msgstr ""
 
@@ -5679,7 +5687,7 @@ msgstr "沒有與搜索符合的內容。"
 msgid "Nothing selected is hidden in this view. Reveal Hidden Elements (RH) draws what is, to select it."
 msgstr "所選內容在此視圖中均未隱藏。“顯示隱藏的圖元”(RH) 會繪製被隱藏的內容，以便選擇。"
 
-#: crates/ui-egui/src/classification.rs:860
+#: crates/ui-egui/src/classification.rs:866
 msgid "Nothing to classify: everything asked for has a code."
 msgstr ""
 
@@ -5688,7 +5696,7 @@ msgstr ""
 msgid "Nothing was left out."
 msgstr "沒有未導入的內容。"
 
-#: crates/ui-egui/src/classification.rs:756
+#: crates/ui-egui/src/classification.rs:763
 msgid "Now"
 msgstr ""
 
@@ -5878,7 +5886,7 @@ msgstr "選項集："
 msgid "Options:"
 msgstr "選項："
 
-#: crates/ui-egui/src/classification.rs:674
+#: crates/ui-egui/src/classification.rs:680
 msgid "Or paste an answer:"
 msgstr ""
 
@@ -6830,7 +6838,7 @@ msgstr "屬性 (PP)：顯示或隱藏面板"
 msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "“屬性”在“項目瀏覽器”之上、位於左側，與最初一樣"
 
-#: crates/ui-egui/src/classification.rs:757
+#: crates/ui-egui/src/classification.rs:764
 msgid "Proposed"
 msgstr ""
 
@@ -6918,7 +6926,7 @@ msgstr "坡道"
 msgid "Ramp: click where it starts, then where its run ends; a landing turns it"
 msgstr "坡道：單擊起點，再單擊坡段終點；平台使其轉向"
 
-#: crates/ui-egui/src/classification.rs:676
+#: crates/ui-egui/src/classification.rs:682
 msgid "Read Answer"
 msgstr ""
 
@@ -7040,7 +7048,7 @@ msgstr "全部重新載入"
 msgid "Reload CAD"
 msgstr "重新載入 CAD"
 
-#: crates/ui-egui/src/classification.rs:375
+#: crates/ui-egui/src/classification.rs:380
 #: crates/ui-egui/src/favorites.rs:142
 #: crates/ui-egui/src/favorites.rs:165
 #: crates/ui-egui/src/graphics.rs:1144
@@ -7364,11 +7372,11 @@ msgstr "旋轉 (°)"
 msgid "Round"
 msgstr "圓形"
 
-#: crates/ui-egui/src/classification.rs:1017
+#: crates/ui-egui/src/classification.rs:1026
 msgid "Rows a call"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:1035
+#: crates/ui-egui/src/classification.rs:1044
 msgid "Run the agent's --version to see it's there"
 msgstr ""
 
@@ -7510,7 +7518,7 @@ msgstr "明細表/數量（全部）"
 msgid "Screed"
 msgstr "找平層"
 
-#: crates/ui-egui/src/classification.rs:532
+#: crates/ui-egui/src/classification.rs:537
 #: crates/ui-egui/src/parameters.rs:782
 msgid "Search"
 msgstr ""
@@ -7615,7 +7623,7 @@ msgstr "段 {}：上移"
 msgid "Select"
 msgstr "選擇"
 
-#: crates/ui-egui/src/classification.rs:746
+#: crates/ui-egui/src/classification.rs:753
 msgid "Select All"
 msgstr ""
 
@@ -7656,7 +7664,7 @@ msgstr "請選擇同一類元素：全是梁、全是柱、全是基礎或全是
 msgid "Select fill pattern lines then press Enter"
 msgstr "選擇填充圖案的線，然後按 Enter"
 
-#: crates/ui-egui/src/classification.rs:767
+#: crates/ui-egui/src/classification.rs:774
 msgid "Select its elements"
 msgstr ""
 
@@ -7664,11 +7672,11 @@ msgstr ""
 msgid "Select the detail lines the pattern is made of, then press Enter."
 msgstr "選擇構成圖案的詳圖線，然後按 Enter。"
 
-#: crates/ui-egui/src/classification.rs:493
+#: crates/ui-egui/src/classification.rs:498
 msgid "Select the elements of the next type (or element) with no code"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:515
+#: crates/ui-egui/src/classification.rs:520
 msgid "Select what to classify: its category's codes come up here."
 msgstr ""
 
@@ -8124,7 +8132,7 @@ msgstr "GitHub 上的源代碼"
 msgid "South"
 msgstr "南"
 
-#: crates/ui-egui/src/classification.rs:387
+#: crates/ui-egui/src/classification.rs:392
 msgid "Space Category from"
 msgstr ""
 
@@ -8435,7 +8443,7 @@ msgid "Symbols are what the plan draws of the family besides its forms: lines, a
 msgstr "符號是平面圖中除形狀之外為該族繪製的內容：線、圓弧、標籤和點。"
 
 #: crates/core/src/schedule.rs:200
-#: crates/ui-egui/src/classification.rs:297
+#: crates/ui-egui/src/classification.rs:302
 msgid "System"
 msgstr "系統"
 
@@ -8479,13 +8487,13 @@ msgid "Tab with {}"
 msgstr "與 {} 合併為選項卡"
 
 #: crates/core/src/family.rs:1884
-#: crates/ui-egui/src/classification.rs:345
-#: crates/ui-egui/src/classification.rs:485
-#: crates/ui-egui/src/classification.rs:755
+#: crates/ui-egui/src/classification.rs:350
+#: crates/ui-egui/src/classification.rs:490
+#: crates/ui-egui/src/classification.rs:762
 msgid "Table"
 msgstr "桌子"
 
-#: crates/ui-egui/src/classification.rs:372
+#: crates/ui-egui/src/classification.rs:377
 msgid "Tables"
 msgstr ""
 
@@ -8606,7 +8614,7 @@ msgstr "臨時隔離圖元"
 msgid "Temporary dimension {}"
 msgstr "臨時尺寸標注 {}"
 
-#: crates/ui-egui/src/classification.rs:1035
+#: crates/ui-egui/src/classification.rs:1044
 msgid "Test"
 msgstr ""
 
@@ -8674,7 +8682,7 @@ msgstr "紋理縱向偏移"
 msgid "That can't be drawn: an arc's radius is at least half the distance between its ends, and a centre-ends arc turns less than 180°."
 msgstr "無法繪製：圓弧的半徑至少為其兩端距離的一半，圓心-端點弧的轉角小於 180°。"
 
-#: crates/ui-egui/src/classification.rs:686
+#: crates/ui-egui/src/classification.rs:692
 msgid "That holds no JSON answer."
 msgstr ""
 
@@ -8695,11 +8703,11 @@ msgstr "3D視圖由處理器繪製：{}"
 msgid "The Same Parameter"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:946
+#: crates/ui-egui/src/classification.rs:955
 msgid "The agent gave no answer."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:631
+#: crates/ui-egui/src/classification.rs:637
 msgid "The agent you set is run on this computer and sends what it's given to its provider: each type's category, family, type name, materials, levels and hosts, and the tables' codes. BIMCraft itself sends nothing."
 msgstr ""
 
@@ -8963,11 +8971,11 @@ msgstr "記號線寬"
 msgid "Tick Mark Size"
 msgstr "記號尺寸"
 
-#: crates/ui-egui/src/classification.rs:724
+#: crates/ui-egui/src/classification.rs:735
 msgid "Tick by Confidence"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:746
+#: crates/ui-egui/src/classification.rs:753
 msgid "Tick every proposal that has a code"
 msgstr ""
 
@@ -9008,7 +9016,7 @@ msgid "Timber"
 msgstr "木材"
 
 #: crates/core/src/schedule.rs:513
-#: crates/ui-egui/src/classification.rs:758
+#: crates/ui-egui/src/classification.rs:765
 msgid "Title"
 msgstr "標題"
 
@@ -9185,7 +9193,7 @@ msgstr "有兩個{}都名為 {}。"
 msgid "Type"
 msgstr "類型"
 
-#: crates/ui-egui/src/classification.rs:387
+#: crates/ui-egui/src/classification.rs:392
 msgid "Type Category from"
 msgstr ""
 
@@ -9232,7 +9240,7 @@ msgstr "參數類型"
 msgid "Type of {}"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:754
+#: crates/ui-egui/src/classification.rs:761
 msgid "Type or element"
 msgstr ""
 
@@ -9641,7 +9649,7 @@ msgstr "體積 (m³)"
 msgid "WC"
 msgstr "坐便器"
 
-#: crates/ui-egui/src/classification.rs:1014
+#: crates/ui-egui/src/classification.rs:1023
 msgid "Wait up to"
 msgstr ""
 
@@ -9765,15 +9773,15 @@ msgstr "按檔案座標放置，與測量時的位置一致"
 msgid "Where two walls or grids cross"
 msgstr "兩面牆或兩條軸網相交處"
 
-#: crates/ui-egui/src/classification.rs:534
+#: crates/ui-egui/src/classification.rs:539
 msgid "Whole table"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:345
+#: crates/ui-egui/src/classification.rs:350
 msgid "Whose code"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:760
+#: crates/ui-egui/src/classification.rs:767
 msgid "Why"
 msgstr ""
 
@@ -10083,7 +10091,7 @@ msgstr "沿其法線：從標高向上，從表面向外"
 msgid "aluminium"
 msgstr "鋁"
 
-#: crates/ui-egui/src/classification.rs:529
+#: crates/ui-egui/src/classification.rs:534
 msgid "and {} more"
 msgstr ""
 
@@ -10091,15 +10099,11 @@ msgstr ""
 msgid "arc"
 msgstr "圓弧"
 
-#: crates/ui-egui/src/classification.rs:700
-msgid "batch {} of {}"
-msgstr ""
-
 #: crates/ui-egui/src/properties.rs:3035
 msgid "begins with"
 msgstr "開頭是"
 
-#: crates/ui-egui/src/classification.rs:646
+#: crates/ui-egui/src/classification.rs:652
 msgid "by"
 msgstr ""
 
@@ -10123,7 +10127,7 @@ msgstr "請在樓板的頂面上單擊"
 msgid "click where its run ends"
 msgstr "單擊其梯段終點"
 
-#: crates/ui-egui/src/classification.rs:533
+#: crates/ui-egui/src/classification.rs:538
 msgid "code or title"
 msgstr ""
 
@@ -10207,7 +10211,7 @@ msgstr "結尾是"
 msgid "equals"
 msgstr "等於"
 
-#: crates/ui-egui/src/classification.rs:642
+#: crates/ui-egui/src/classification.rs:648
 msgid "everything"
 msgstr ""
 
@@ -10287,12 +10291,12 @@ msgstr "材質"
 msgid "modify sub elements: `{}` is not an elevation"
 msgstr "修改子圖元：`{}` 不是有效的高程"
 
-#: crates/ui-egui/src/classification.rs:525
+#: crates/ui-egui/src/classification.rs:530
 msgid "no code"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:391
-#: crates/ui-egui/src/classification.rs:393
+#: crates/ui-egui/src/classification.rs:396
+#: crates/ui-egui/src/classification.rs:398
 msgid "none"
 msgstr ""
 
@@ -10313,7 +10317,7 @@ msgstr "東北"
 msgid "north-west"
 msgstr "西北"
 
-#: crates/ui-egui/src/classification.rs:368
+#: crates/ui-egui/src/classification.rs:373
 msgid "not loaded"
 msgstr ""
 
@@ -10466,7 +10470,7 @@ msgstr "下一個可用名稱"
 msgid "the opening has to stay on its wall"
 msgstr "洞口必須保留在其所在的牆上"
 
-#: crates/ui-egui/src/classification.rs:643
+#: crates/ui-egui/src/classification.rs:649
 msgid "the selection"
 msgstr ""
 
@@ -10533,7 +10537,7 @@ msgstr "牆：{}"
 msgid "west"
 msgstr "西"
 
-#: crates/ui-egui/src/classification.rs:641
+#: crates/ui-egui/src/classification.rs:647
 msgid "what has no code"
 msgstr ""
 
@@ -10549,7 +10553,7 @@ msgstr "導線類型"
 msgid "wire types"
 msgstr "導線類型"
 
-#: crates/ui-egui/src/classification.rs:1027
+#: crates/ui-egui/src/classification.rs:1036
 msgid "{prompt_file} is the instructions, {schema_file} the answer's JSON Schema, {answer_file} where to write the answer (or print it), {dir} the task's folder and {model} the model. The prompt also comes on standard input."
 msgstr ""
 
@@ -10594,7 +10598,7 @@ msgstr ""
 msgid "{} already exists: save under a name ending in .pat to replace it."
 msgstr "{}已存在：請用以 .pat 結尾的名稱儲存以替換它。"
 
-#: crates/ui-egui/src/classification.rs:789
+#: crates/ui-egui/src/classification.rs:795
 msgid "{} answers left out"
 msgstr ""
 
@@ -10606,15 +10610,15 @@ msgstr "{} 位於 x {}，y {}"
 msgid "{} can't be read. Open Dictionary finds it again where it is now."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:245
+#: crates/ui-egui/src/classification.rs:250
 msgid "{} codes loaded into {}."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:814
+#: crates/ui-egui/src/classification.rs:820
 msgid "{} codes written; Undo takes them back."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:365
+#: crates/ui-egui/src/classification.rs:370
 msgid "{} codes, {}"
 msgstr ""
 
@@ -10643,7 +10647,7 @@ msgstr "{} 跟隨視圖樣板 {}：請在樣板中更改。"
 msgid "{} follows its wall, which comes down in {}: take the wall back instead"
 msgstr "{} 跟隨其所在的牆，而該牆將在 {} 中拆除：請改為恢復該牆"
 
-#: crates/ui-egui/src/classification.rs:607
+#: crates/ui-egui/src/classification.rs:613
 msgid "{} given {}."
 msgstr ""
 
@@ -10687,11 +10691,11 @@ msgstr "A2-A4 為 {} mm"
 msgid "{} months ago"
 msgstr "{} 個月前"
 
-#: crates/ui-egui/src/classification.rs:506
+#: crates/ui-egui/src/classification.rs:511
 msgid "{} of {} classified"
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:425
+#: crates/ui-egui/src/classification.rs:430
 msgid "{} of {} in the project"
 msgstr ""
 
@@ -10709,7 +10713,7 @@ msgstr "{}：{} {}"
 msgid "{} opened without {} fields this version doesn't know; saving it leaves them out."
 msgstr "{} 已開啟，但略去了 {} 個此版本不認識的字段；儲存時這些字段將不再保留。"
 
-#: crates/ui-egui/src/classification.rs:273
+#: crates/ui-egui/src/classification.rs:278
 msgid "{} parameters are in the project."
 msgstr ""
 
@@ -10746,7 +10750,7 @@ msgstr "已導入 {} 個圖案。"
 msgid "{} patterns imported; left out: {}"
 msgstr "已導入 {} 個圖案；未導入：{}"
 
-#: crates/ui-egui/src/classification.rs:721
+#: crates/ui-egui/src/classification.rs:732
 msgid "{} proposals"
 msgstr ""
 
@@ -10758,11 +10762,11 @@ msgstr "{} px"
 msgid "{} redefined from lines"
 msgstr "{} 已由線重新定義"
 
-#: crates/ui-egui/src/classification.rs:833
+#: crates/ui-egui/src/classification.rs:839
 msgid "{} rows copied: paste them into your agent, and its answer here."
 msgstr ""
 
-#: crates/ui-egui/src/classification.rs:246
+#: crates/ui-egui/src/classification.rs:251
 msgid "{} rows left out."
 msgstr ""
 
@@ -10786,7 +10790,7 @@ msgstr ""
 msgid "{} years ago"
 msgstr "{} 年前"
 
-#: crates/ui-egui/src/classification.rs:524
+#: crates/ui-egui/src/classification.rs:529
 msgid "{} {} ({} elements): {}"
 msgstr ""
 
@@ -10880,7 +10884,7 @@ msgstr "{}：此版本的 BIMCraft 構建時未包含 Revit 支持（`--no-defau
 msgid "{}: {}"
 msgstr "{}：{}"
 
-#: crates/ui-egui/src/classification.rs:408
+#: crates/ui-egui/src/classification.rs:413
 msgid "{}: {} fields, {}"
 msgstr ""
 
@@ -11914,3 +11918,6 @@ msgstr "上"
 #: crates/ui-egui/src/lib.rs:3970
 #~ msgid "Project Parameters: values of your own each element of their categories holds, for schedules and IFC"
 #~ msgstr "項目參數：這些類別的每個圖元所儲存的自定義值，用於明細表和 IFC"
+#: crates/ui-egui/src/classification.rs:700
+#~ msgid "batch {} of {}"
+#~ msgstr ""

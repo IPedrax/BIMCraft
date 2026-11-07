@@ -30,6 +30,9 @@ pub(crate) type AgentTest = Arc<Mutex<Option<Result<String, String>>>>;
 /// How long a code given by hand blinks.
 const FLASH: f64 = 0.8;
 
+/// How tall the list of codes and the review's table are.
+const LIST_HEIGHT: f32 = 320.0;
+
 /// `a` turned `k` of the way to `b`.
 fn lerp_colour(a: Color32, b: Color32, k: f32) -> Color32 {
     let k = k.clamp(0.0, 1.0);
@@ -74,6 +77,8 @@ struct Progress {
     answers: Vec<Value>,
     error: Option<String>,
     finished: bool,
+    /// When the batch being waited for was handed over.
+    since: Option<std::time::Instant>,
 }
 
 /// An agent at work.
@@ -561,7 +566,8 @@ impl BimApp {
         if flash.is_some() {
             ui.ctx().request_repaint();
         }
-        let height = (ui.available_height() - 30.0).max(row_h * 3.0);
+        // A height of its own, not what the window has left: that grows with the message under it, and the window with it.
+        let height = LIST_HEIGHT;
         Frame::new().fill(ground).stroke(Stroke::new(1.0, pal().border)).corner_radius(4.0).inner_margin(2.0).show(ui, |ui| {
             ScrollArea::vertical().id_salt("classification-codes").auto_shrink([false, false]).max_height(height).show_rows(
                 ui,
@@ -689,16 +695,21 @@ impl BimApp {
             return;
         }
         if let Some(run) = &d.run {
-            let (done, total, log, error) = match run.progress.lock() {
-                Ok(p) => (p.done, p.total, p.log.clone(), p.error.clone()),
-                Err(_) => (0, 0, Vec::new(), None),
+            let (done, total, log, error, since) = match run.progress.lock() {
+                Ok(p) => (p.done, p.total, p.log.clone(), p.error.clone(), p.since),
+                Err(_) => (0, 0, Vec::new(), None, None),
+            };
+            let batch = (done + 1).min(total).to_string();
+            // The seconds the agent has had the batch: something is happening, even when it says nothing for a minute.
+            let text = match since {
+                Some(at) => {
+                    tf("Batch {} of {} · waiting for the answer… {} s", &[&batch, &total.to_string(), &at.elapsed().as_secs().to_string()])
+                }
+                None => tf("Batch {} of {} · handing it over…", &[&batch, &total.to_string()]),
             };
             ui.horizontal(|ui| {
-                ui.add(
-                    egui::ProgressBar::new(if total == 0 { 0.0 } else { done as f32 / total as f32 })
-                        .desired_width(260.0)
-                        .text(tf("batch {} of {}", &[&(done + 1).min(total).to_string(), &total.to_string()])),
-                );
+                ui.spinner();
+                ui.add(egui::ProgressBar::new(if total == 0 { 0.0 } else { done as f32 / total as f32 }).desired_width(380.0).text(text));
                 if ui.button(t("Cancel")).clicked() {
                     run.cancel.store(true, Ordering::Relaxed);
                 }
@@ -736,63 +747,58 @@ impl BimApp {
             });
         });
         let mut select: Option<Vec<Id>> = None;
-        ScrollArea::both()
-            .id_salt("classification-review")
-            .auto_shrink([false, false])
-            .max_height((ui.available_height() - 30.0).max(120.0))
-            .show(ui, |ui| {
-                Grid::new("classification-review-grid").striped(true).num_columns(8).show(ui, |ui| {
-                    // Above the Apply column: every proposal with a code ticked at once.
-                    if ui.add(Button::new(t("Select All")).small()).on_hover_text(t("Tick every proposal that has a code")).clicked() {
-                        for r in &mut d.review {
-                            r.accept = r.proposal.code.is_some();
-                        }
-                    }
-                    ui.end_row();
-                    for h in [
-                        msg!("Apply"),
-                        msg!("Type or element"),
-                        msg!("Table"),
-                        msg!("Now"),
-                        msg!("Proposed"),
-                        msg!("Title"),
-                        msg!("Confidence"),
-                        msg!("Why"),
-                    ] {
-                        ui.label(RichText::new(t(h)).strong());
-                    }
-                    ui.end_row();
+        ScrollArea::both().id_salt("classification-review").auto_shrink([false, false]).max_height(LIST_HEIGHT).show(ui, |ui| {
+            Grid::new("classification-review-grid").striped(true).num_columns(8).show(ui, |ui| {
+                // Above the Apply column: every proposal with a code ticked at once.
+                if ui.add(Button::new(t("Select All")).small()).on_hover_text(t("Tick every proposal that has a code")).clicked() {
                     for r in &mut d.review {
-                        ui.add_enabled(r.proposal.code.is_some(), egui::Checkbox::without_text(&mut r.accept));
-                        if ui.link(format!("{} {}", category_label(&r.category), r.label)).on_hover_text(t("Select its elements")).clicked()
-                        {
-                            select = Some(r.ids.clone());
-                        }
-                        ui.label(&r.proposal.table);
-                        ui.label(r.proposal.current.as_deref().unwrap_or("—"));
-                        ui.label(RichText::new(r.proposal.code.as_deref().unwrap_or("—")).strong());
-                        ui.label(r.proposal.title.as_deref().unwrap_or_default());
-                        let c = r.proposal.confidence;
-                        let ink = if c >= 0.8 {
-                            pal().text
-                        } else if c >= 0.5 {
-                            pal().muted
-                        } else {
-                            pal().error
-                        };
-                        ui.label(RichText::new(format!("{:.0}%", c * 100.0)).color(ink));
-                        ui.label(RichText::new(&r.proposal.reason).small());
-                        ui.end_row();
+                        r.accept = r.proposal.code.is_some();
                     }
-                });
-                if !d.refused.is_empty() {
-                    ui.collapsing(tf("{} answers left out", &[&d.refused.len().to_string()]), |ui| {
-                        for x in &d.refused {
-                            ui.label(RichText::new(x).small());
-                        }
-                    });
+                }
+                ui.end_row();
+                for h in [
+                    msg!("Apply"),
+                    msg!("Type or element"),
+                    msg!("Table"),
+                    msg!("Now"),
+                    msg!("Proposed"),
+                    msg!("Title"),
+                    msg!("Confidence"),
+                    msg!("Why"),
+                ] {
+                    ui.label(RichText::new(t(h)).strong());
+                }
+                ui.end_row();
+                for r in &mut d.review {
+                    ui.add_enabled(r.proposal.code.is_some(), egui::Checkbox::without_text(&mut r.accept));
+                    if ui.link(format!("{} {}", category_label(&r.category), r.label)).on_hover_text(t("Select its elements")).clicked() {
+                        select = Some(r.ids.clone());
+                    }
+                    ui.label(&r.proposal.table);
+                    ui.label(r.proposal.current.as_deref().unwrap_or("—"));
+                    ui.label(RichText::new(r.proposal.code.as_deref().unwrap_or("—")).strong());
+                    ui.label(r.proposal.title.as_deref().unwrap_or_default());
+                    let c = r.proposal.confidence;
+                    let ink = if c >= 0.8 {
+                        pal().text
+                    } else if c >= 0.5 {
+                        pal().muted
+                    } else {
+                        pal().error
+                    };
+                    ui.label(RichText::new(format!("{:.0}%", c * 100.0)).color(ink));
+                    ui.label(RichText::new(&r.proposal.reason).small());
+                    ui.end_row();
                 }
             });
+            if !d.refused.is_empty() {
+                ui.collapsing(tf("{} answers left out", &[&d.refused.len().to_string()]), |ui| {
+                    for x in &d.refused {
+                        ui.label(RichText::new(x).small());
+                    }
+                });
+            }
+        });
         if let Some(ids) = select {
             self.selection = ids;
         }
@@ -900,7 +906,10 @@ impl BimApp {
                 let dir = base.join(format!("batch-{n:03}"));
                 let result = agent::prepare(&settings, job, &dir).and_then(|call| {
                     let shown = call.shown();
-                    note(&|p| p.log.push(shown.clone()));
+                    note(&|p| {
+                        p.log.push(shown.clone());
+                        p.since = Some(std::time::Instant::now());
+                    });
                     agent::run(&call, &c2)
                 });
                 match result {

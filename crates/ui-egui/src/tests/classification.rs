@@ -117,3 +117,62 @@ fn default_settings() -> crate::settings::Settings {
     app.use_settings(path);
     app.settings_kept.clone().unwrap()
 }
+
+#[test]
+fn giving_codes_by_hand_again_and_again_keeps_the_windows_height() {
+    let mut h = loaded();
+    let wall = ids(&h, "wall")[0];
+    h.state_mut().selection = vec![wall];
+    h.run();
+    press(&mut h, "By Hand");
+    let window = || egui::Id::new("classification-manager");
+    let height = |h: &Harness<BimApp>| h.ctx.memory(|m| m.area_rect(window())).map(|r| r.height()).unwrap();
+    let before = height(&h);
+    for code in ["Ss_25_10_30_35  Brick and block wall systems", "Ss_25_10  Framed wall systems", "Ss_25  Wall and barrier systems"] {
+        press(&mut h, code);
+        for _ in 0..6 {
+            h.step();
+        }
+    }
+    let after = height(&h);
+    assert!(after - before < 30.0, "a message line at most: {before} then {after}");
+}
+
+#[cfg(unix)]
+#[test]
+fn while_the_agent_works_the_window_counts_the_seconds_it_has_waited() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join("slow-agent.sh");
+    std::fs::write(&script, "#!/bin/sh\ncat > /dev/null\nsleep 30\n").unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut h = loaded();
+    {
+        let a = &mut h.state_mut().agent;
+        a.preset = bimcraft_agent::Preset::Custom;
+        a.command = script.display().to_string();
+        a.consented = true;
+    }
+    press(&mut h, "AI Agent");
+    h.get_by_label("Ask the Agent").click();
+    let waiting = |h: &Harness<BimApp>| h.query_by_label_contains("Batch 1 of 1 · waiting for the answer…").is_some();
+    let mut seen = false;
+    for _ in 0..40 {
+        h.step();
+        if waiting(&h) {
+            seen = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(seen, "the batch and the seconds waited");
+    h.get_by_label("Cancel").click();
+    for _ in 0..40 {
+        h.step();
+        if h.state().classification.as_ref().is_some_and(|d| d.message.as_ref().is_some_and(|(m, _)| m == "cancelled")) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert_eq!(h.state().classification.as_ref().and_then(|d| d.message.clone()).map(|m| m.0).as_deref(), Some("cancelled"));
+}
