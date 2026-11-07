@@ -14,6 +14,7 @@ mod browser;
 mod cad;
 mod camera;
 mod canvas;
+mod classification;
 mod clouds;
 mod context;
 pub mod control;
@@ -45,6 +46,7 @@ mod notes;
 mod objectstyles;
 mod orbit;
 mod paper;
+mod parameters;
 mod phasing;
 mod popup;
 mod presets;
@@ -441,6 +443,12 @@ pub struct BimApp {
     /// Linux), unless `system_title_bar`, the user's ask for the system's (Settings > User Interface, kept in `settings.json`).
     pub own_title_bar: bool,
     pub system_title_bar: bool,
+    /// The AI agent the Classification Manager hands its briefs to: kept in `settings.json` (Settings > Agents).
+    pub agent: bimcraft_agent::Settings,
+    /// What Settings > Agents's Test found, once its thread is done.
+    agent_test: Option<classification::AgentTest>,
+    /// Manage > Classification Manager, while it's open.
+    classification: Option<classification::ClassificationManager>,
     /// The active view, which takes the tools: a tab of `views`, or one of `floating`.
     pub sheet: Sheet,
     pub tool: Tool,
@@ -717,7 +725,7 @@ pub struct BimApp {
     recent_path: Option<std::path::PathBuf>,
     /// The start page: up when the window opens on no project, and from the quick access bar's Home.
     home: start::Home,
-    parameters_dialog: Option<properties::ParametersDialog>,
+    parameter_manager: Option<parameters::ParameterManager>,
     schedule_dialog: Option<properties::ScheduleDialog>,
     /// Visibility/Graphics, Filters and View Templates, while they're open.
     vg_dialog: Option<graphics::VgDialog>,
@@ -768,6 +776,8 @@ pub struct BimApp {
     component_angle: f64,
     /// The Properties palette's folded groups.
     collapsed: BTreeSet<&'static str>,
+    /// The names of Properties' groups a project's parameters make, kept for `collapsed`.
+    collapse_keys: Vec<&'static str>,
     /// Where views show, last frame.
     view_rect: Rect,
     /// Where the last view drawn showed, whether it was the active view or not.
@@ -1124,6 +1134,9 @@ impl BimApp {
             os_events: None,
             own_title_bar: false,
             system_title_bar: false,
+            agent: bimcraft_agent::Settings::default(),
+            agent_test: None,
+            classification: None,
             sheet: first,
             tool: Tool::Modify,
             selection: Vec::new(),
@@ -1288,7 +1301,7 @@ impl BimApp {
             recent_path: None,
             home: start::Home::default(),
             paint_material: String::new(),
-            parameters_dialog: None,
+            parameter_manager: None,
             schedule_dialog: None,
             vg_dialog: None,
             filters_dialog: None,
@@ -1317,6 +1330,7 @@ impl BimApp {
             component: None,
             component_angle: 0.0,
             collapsed: BTreeSet::new(),
+            collapse_keys: Vec::new(),
             view_rect: Rect::ZERO,
             pane: Rect::ZERO,
             browser_tab: browser::Tab::All,
@@ -1786,7 +1800,7 @@ impl BimApp {
             || self.family_dialog.is_some()
             || self.favorites_dialog.is_some()
             || self.family_editor.is_some()
-            || self.parameters_dialog.is_some()
+            || self.parameter_manager.is_some()
             || self.schedule_dialog.is_some()
             || self.vg_dialog.is_some()
             || self.filters_dialog.is_some()
@@ -2977,6 +2991,7 @@ impl BimApp {
         fresh.status = std::mem::take(&mut self.status);
         fresh.os_events = self.os_events.take();
         (fresh.own_title_bar, fresh.system_title_bar) = (self.own_title_bar, self.system_title_bar);
+        fresh.agent = std::mem::take(&mut self.agent);
         (fresh.thin, fresh.lang, fresh.snaps, fresh.ribbon_min) = (self.thin, self.lang, self.snaps, self.ribbon_min);
         (fresh.compact, fresh.profile, fresh.scale) = (self.compact, self.profile, self.scale);
         (fresh.tools_hidden, fresh.presets) = (std::mem::take(&mut self.tools_hidden), std::mem::take(&mut self.presets));
@@ -3967,9 +3982,16 @@ impl BimApp {
             if big_button(ui, Icon::Favorite, "Favorites", self.favorites_dialog.is_some(), tip).clicked() {
                 self.open_favorites();
             }
-            let tip = msg!("Project Parameters: values of your own each element of their categories holds, for schedules and IFC");
-            if big_button(ui, Icon::Parameters, "Project Parameters", self.parameters_dialog.is_some(), tip).clicked() {
-                self.parameters_dialog = Some(properties::ParametersDialog::new(&self.session.model));
+            let tip =
+                msg!("Project Parameters: project and shared parameters in one place, their categories, dictionaries, import and export");
+            if big_button(ui, Icon::Parameters, "Project Parameters", self.parameter_manager.is_some(), tip).clicked() {
+                self.parameter_manager = Some(parameters::ParameterManager::new(&self.session.model));
+            }
+            let tip = msg!(
+                "Classification Manager: a classification system's tables and parameters, codes picked by hand for the selection, or proposed by your AI agent"
+            );
+            if big_button(ui, Icon::Classify, "Classification Manager", self.classification.is_some(), tip).clicked() {
+                self.classification = Some(classification::ClassificationManager::new(&self.session.model));
             }
             // What annotation draws with: pens, line styles and patterns, fill patterns; one button that lists them.
             let open = self.line_weights_dialog.is_some() || self.line_styles_dialog.is_some() || self.fill_patterns_dialog.is_some();
@@ -5079,6 +5101,7 @@ impl BimApp {
         self.family_editor_window(ctx);
         self.snaps_window(ctx);
         self.parameters_window(ctx);
+        self.classification_window(ctx);
         self.new_schedule_window(ctx);
         self.schedule_window(ctx);
         self.graphics_window(ctx);

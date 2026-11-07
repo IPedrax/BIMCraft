@@ -469,9 +469,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bimcraft-agent"
+version = "0.11.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "bimcraft-cli"
 version = "0.11.0"
 dependencies = [
+ "bimcraft-agent",
  "bimcraft-core",
  "bimcraft-dwg",
  "bimcraft-rvt",
@@ -527,6 +537,7 @@ dependencies = [
 name = "bimcraft-ui-egui"
 version = "0.11.0"
 dependencies = [
+ "bimcraft-agent",
  "bimcraft-core",
  "bimcraft-i18n",
  "bimcraft-update",

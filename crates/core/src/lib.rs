@@ -15,6 +15,9 @@ pub mod bridge;
 pub mod cad;
 #[cfg(test)]
 mod cad_tests;
+pub mod classification;
+#[cfg(test)]
+mod classification_tests;
 pub mod cloud;
 #[cfg(test)]
 mod cloud_tests;
@@ -80,6 +83,9 @@ mod openings_past_top_tests;
 #[cfg(test)]
 mod oracle_tests;
 pub mod paint;
+#[cfg(test)]
+mod parameter_tests;
+pub mod parameters;
 pub mod pat;
 pub mod pdf;
 pub mod pen;

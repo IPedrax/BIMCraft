@@ -167,7 +167,7 @@ fn clip(text: &str) -> String {
 const MARKED: [&str; 6] = ["beam", "column", "structuralcolumn", "footing", "stripfooting", "floor"];
 
 /// A property's name as a project parameter's: what a formula can say, each character it can't made a space.
-fn parameter_name(raw: &str) -> Option<String> {
+pub(crate) fn parameter_name(raw: &str) -> Option<String> {
     let spaced: String = raw.chars().map(|c| if c.is_alphanumeric() || c == '_' { c } else { ' ' }).collect();
     Some(spaced.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|n| crate::family::nameable(n))
 }
@@ -3271,7 +3271,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             let fits = PARAMETER_CATEGORIES.contains(&cat)
                 && !crate::schedule::own_field(cat, name)
                 && m.parameters.get(name).is_none_or(|p| p.kind == kind);
-            let p = ProjectParameter { kind, categories: vec![cat.to_string()] };
+            let p = ProjectParameter { kind, categories: vec![cat.to_string()], ..ProjectParameter::default() };
             if !fits || !p.holds(value) {
                 continue;
             }
@@ -3330,6 +3330,23 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                         Some(x) => (ParameterKind::Length, json!((x * mm * 1e6).round() / 1e6)),
                         None => continue,
                     },
+                    // What BIMCraft writes has its units fixed: m², m³ and radians.
+                    ("IFCINTEGER", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Integer, json!(x)),
+                        None => continue,
+                    },
+                    ("IFCAREAMEASURE", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Area, json!(x)),
+                        None => continue,
+                    },
+                    ("IFCVOLUMEMEASURE", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Volume, json!(x)),
+                        None => continue,
+                    },
+                    ("IFCPLANEANGLEMEASURE", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Angle, json!((x.to_degrees() * 1e6).round() / 1e6)),
+                        None => continue,
+                    },
                     ("IFCREAL" | "IFCINTEGER" | "IFCNUMERICMEASURE" | "IFCCOUNTMEASURE", v) => match real(Some(v)) {
                         Some(x) => (ParameterKind::Number, json!(x)),
                         None => continue,
@@ -3341,6 +3358,37 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             if !put(&mut m, &mut skipped, &refs(rel.args.get(4)), &name, kind, &value) {
                 break 'sets;
             }
+        }
+    }
+
+    // Each classification code an element is associated with, as its system's number and title parameters: a known
+    // system's own (`Uniclass Ss Number`), another's named for it. IFC2x3's reference has the same first four attributes.
+    'codes: for rel in named(&["IFCRELASSOCIATESCLASSIFICATION"]).into_iter().filter_map(e) {
+        let Some(r) = reference(rel.args.get(5)).and_then(e).filter(|x| x.name == "IFCCLASSIFICATIONREFERENCE") else { continue };
+        let Some(code) =
+            text(r.args.get(1)).map(str::trim).filter(|c| !c.is_empty() && c.chars().count() <= crate::classification::MAX_CODE)
+        else {
+            continue;
+        };
+        // The classification it is of, up through references of references.
+        let mut source = reference(r.args.get(3)).and_then(e);
+        for _ in 0..8 {
+            match source {
+                Some(x) if x.name == "IFCCLASSIFICATIONREFERENCE" => source = reference(x.args.get(3)).and_then(e),
+                _ => break,
+            }
+        }
+        let system = source.filter(|x| x.name == "IFCCLASSIFICATION").and_then(|x| text(x.args.get(3))).unwrap_or("Classification");
+        let (number, title) = crate::classification::imported_parameters(system, code);
+        let on = refs(rel.args.get(4));
+        let Some(number) = parameter_name(&number) else { continue };
+        if !put(&mut m, &mut skipped, &on, &number, ParameterKind::Text, &json!(clip(code))) {
+            break 'codes;
+        }
+        if let (Some(t), Some(title)) = (text(r.args.get(2)).filter(|t| !t.trim().is_empty()), parameter_name(&title))
+            && !put(&mut m, &mut skipped, &on, &title, ParameterKind::Text, &json!(clip(t)))
+        {
+            break 'codes;
         }
     }
 

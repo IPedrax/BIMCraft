@@ -121,6 +121,8 @@ pub struct Settings {
     pub shortcuts: BTreeMap<String, String>,
     /// The system's title bar rather than the window's own, where the window can draw its own.
     pub system_title_bar: bool,
+    /// The AI agent the Classification Manager hands its briefs to (Settings > Agent).
+    pub agent: bimcraft_agent::Settings,
     /// Agents: the window opens the control port (on `agents_port`, 0 for any free one), and they may edit or only read.
     pub agents_listen: bool,
     pub agents_port: u16,
@@ -159,6 +161,7 @@ impl Settings {
             "view_name": self.view_name,
             "shortcuts": self.shortcuts,
             "system_title_bar": self.system_title_bar,
+            "agent": serde_json::to_value(&self.agent).unwrap_or_default(),
             "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
         })
     }
@@ -203,6 +206,10 @@ impl Settings {
             view_name: v["view_name"].as_bool().unwrap_or(base.view_name),
             shortcuts: shortcuts_from(&v["shortcuts"], base.shortcuts),
             system_title_bar: v["system_title_bar"].as_bool().unwrap_or(base.system_title_bar),
+            agent: serde_json::from_value::<bimcraft_agent::Settings>(v["agent"].clone())
+                .ok()
+                .filter(|a| [&a.command, &a.model, &a.args].iter().all(|t| t.len() <= bimcraft_agent::MAX_COMMAND))
+                .unwrap_or(base.agent),
             agents_listen: v["agents"]["listen"].as_bool().unwrap_or(base.agents_listen),
             agents_port: v["agents"]["port"].as_u64().and_then(|p| u16::try_from(p).ok()).unwrap_or(base.agents_port),
             agents_edit: v["agents"]["edit"].as_bool().unwrap_or(base.agents_edit),
@@ -315,6 +322,7 @@ impl BimApp {
         (self.show_origin, self.show_view_name) = (kept.origin_marker, kept.view_name);
         self.custom_shortcuts = kept.shortcuts.clone();
         self.system_title_bar = kept.system_title_bar;
+        self.agent = kept.agent.clone();
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
         self.settings_kept = Some(kept);
         self.settings_path = Some(path);
@@ -351,6 +359,7 @@ impl BimApp {
             view_name: self.show_view_name,
             shortcuts: self.custom_shortcuts.clone(),
             system_title_bar: self.system_title_bar,
+            agent: self.agent.clone(),
             agents_listen: self.agents.listen,
             agents_port: self.agents.port,
             agents_edit: self.agents.edit,
@@ -732,6 +741,9 @@ impl BimApp {
         if !self.agents.edit {
             muted(ui, t("Agents may only read this project."));
         }
+        ui.add_space(10.0);
+        ui.separator();
+        self.agent_page(ui);
     }
 }
 
