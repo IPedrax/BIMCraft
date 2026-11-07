@@ -1,8 +1,10 @@
-//! An adaptive family edited as Revit edits a family: a document that takes the whole window. Its own ribbon (Create and Modify,
-//! and a contextual tab such as "Modify | Reference Points" for what is selected or the tool in hand), Properties on the left
-//! with Revit's groups, a Project Browser of the family's views, the modelling view in the middle with its tab and view control
-//! bar, and the Options Bar over it. What the ribbon asks for (Load into Project, closing it) goes through the same code the
-//! Family Editor dialog's buttons do (`family_asked`); Family Types and Family Category and Parameters are dialogs, as Revit's.
+//! Every family edited as Revit edits a family: a document that takes the whole window. Its own ribbon (Create and Modify,
+//! and for an adaptive family a contextual tab such as "Modify | Reference Points" for what is selected or the tool in hand),
+//! Properties on the left with Revit's groups, a Project Browser of the family's views, the view in the middle with its tab and
+//! view control bar (an adaptive family's modelling view, or the 3D preview of a family that isn't adaptive), and the Options
+//! Bar over it. What the ribbon asks for (Load into Project, closing it) is done after the frame is drawn (`family_asked`);
+//! Family Types and Family Category and Parameters are dialogs, as Revit's. The document has its own Undo and Redo, through
+//! the draft's history (`Draft`): the project's is never touched until the family is loaded into it.
 use super::*;
 use crate::adaptive_view::{self, Draw};
 use crate::dock::Palette;
@@ -10,8 +12,139 @@ use crate::icons::Icon;
 use crate::properties::group_header;
 use crate::ribbon;
 use crate::{big_button, icon_button, tab_button};
-use bimcraft_core::adaptive::{Evaluated, Plane, PointType, WorkPlane};
+use bimcraft_core::adaptive::{Definition, Evaluated, Plane, PointType, WorkPlane};
 use egui::{Align2, FontId, Frame, Margin, UiBuilder};
+
+/// What the family document keeps of its own: its history, its preview's size, and an association being made.
+pub(crate) struct State {
+    /// The 3D preview's size, in pixels: the view's.
+    pub(super) preview_size: [u32; 2],
+    /// An "=" pressed on a form's or a symbol's row: the association being made.
+    pub(super) association: Option<super::association::Choice>,
+    /// The draft before each step, newest last, and the steps undone.
+    undo: Vec<Draft>,
+    redo: Vec<Draft>,
+    /// The draft as the last step left it: what an edit still going on (a drag, a field being typed in, a dialog) began from.
+    mark: Option<Draft>,
+    /// The draft when the dialog open was, which its Cancel goes back to.
+    dialog_saved: Option<Draft>,
+    /// A form picked in the Project Browser, which Properties opens.
+    pub(super) reveal: Option<usize>,
+}
+
+impl Default for State {
+    fn default() -> State {
+        State {
+            preview_size: [360, 300],
+            association: None,
+            undo: Vec::new(),
+            redo: Vec::new(),
+            mark: None,
+            dialog_saved: None,
+            reveal: None,
+        }
+    }
+}
+
+/// The most steps the document's history keeps.
+const STEPS: usize = 100;
+
+/// What a step of the document's history holds: what is typed (even when it doesn't build yet) and the adaptive definition.
+#[derive(Clone, PartialEq)]
+pub(super) struct Draft {
+    name: String,
+    category: Category,
+    operation: Option<Operation>,
+    params: Vec<ParamText>,
+    types: Vec<(String, BTreeMap<String, String>)>,
+    forms: Vec<FormText>,
+    symbols: Vec<SymbolText>,
+    adaptive: Option<Definition>,
+    picked: usize,
+}
+
+impl Draft {
+    fn of(ed: &FamilyEditor) -> Draft {
+        Draft {
+            name: ed.name.clone(),
+            category: ed.category,
+            operation: ed.operation,
+            params: ed.params.clone(),
+            types: ed.types.clone(),
+            forms: ed.forms.clone(),
+            symbols: ed.symbols.clone(),
+            adaptive: ed.adaptive.clone(),
+            picked: ed.picked,
+        }
+    }
+
+    fn restore(self, ed: &mut FamilyEditor) {
+        ed.name = self.name;
+        ed.category = self.category;
+        ed.operation = self.operation;
+        ed.params = self.params;
+        ed.types = self.types;
+        ed.forms = self.forms;
+        ed.symbols = self.symbols;
+        ed.adaptive = self.adaptive;
+        ed.picked = self.picked;
+        // What is selected and no longer there goes from the selection.
+        let nodes = ed.adaptive.as_ref().map(|d| d.nodes.iter().map(|n| n.id.clone()).collect::<Vec<_>>()).unwrap_or_default();
+        ed.modeller.selection.retain(|id| nodes.contains(id));
+        ed.problem = None;
+    }
+}
+
+impl FamilyEditor {
+    /// Whether a dialog of the document's is open: Family Types, Family Category and Parameters, or an association.
+    fn modal(&self) -> bool {
+        self.dialog.is_some() || self.associating.is_some() || self.document.association.is_some()
+    }
+
+    /// The document's history, at the end of a frame: Undo or Redo when `ask` says so, else a step for what changed since the
+    /// last one, once nothing is going on any more (no button held, no field being typed in, no dialog open), so a drag, a
+    /// word typed or a dialog's whole visit is one step. Cancel in a dialog puts back what it began from, leaving no step.
+    pub(super) fn history(&mut self, ctx: &Context, ask: &Asked) {
+        let now = Draft::of(self);
+        let Some(mark) = self.document.mark.take() else {
+            self.document.mark = Some(now);
+            return;
+        };
+        if ask.undo || ask.redo {
+            // An edit not made a step yet is one now, and the first undone.
+            let mut current = now;
+            if mark != current {
+                self.document.undo.push(mark);
+                self.document.redo.clear();
+            }
+            let (from, to) = if ask.undo {
+                (&mut self.document.undo, &mut self.document.redo)
+            } else {
+                (&mut self.document.redo, &mut self.document.undo)
+            };
+            if let Some(step) = from.pop() {
+                to.push(current);
+                current = step.clone();
+                step.restore(self);
+            }
+            self.document.mark = Some(current);
+            return;
+        }
+        let busy = self.modal() || ctx.input(|i| i.pointer.any_down()) || ctx.egui_wants_keyboard_input();
+        if busy {
+            self.document.mark = Some(mark);
+            return;
+        }
+        if mark != now {
+            if self.document.undo.len() >= STEPS {
+                self.document.undo.remove(0);
+            }
+            self.document.undo.push(mark);
+            self.document.redo.clear();
+        }
+        self.document.mark = Some(now);
+    }
+}
 
 /// The contextual tab for what the family document has in hand: the tool, else what is selected, as Revit names them.
 fn context(ed: &FamilyEditor) -> Option<&'static str> {
@@ -43,14 +176,14 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
 pub(crate) const VIEW: &str = "{3D}";
 
 impl BimApp {
-    /// Whether a family document has the window: an adaptive family open in the Family Editor.
+    /// Whether a family document has the window: a family open in the Family Editor.
     pub(crate) fn family_doc(&self) -> bool {
-        self.family_editor.as_ref().is_some_and(FamilyEditor::document)
+        self.family_editor.is_some()
     }
 
     /// The title the window and its title bar give a family document: the family and its view.
     pub(crate) fn family_title(&self) -> Option<String> {
-        let ed = self.family_editor.as_ref().filter(|e| e.document())?;
+        let ed = self.family_editor.as_ref()?;
         Some(format!("{} · {}", ed.title(), tf("3D View: {}", &[VIEW])))
     }
 
@@ -117,13 +250,26 @@ impl BimApp {
         };
         let tab = ed.doc_tab;
         let drawing = !matches!(ed.modeller.tool, Draw::Modify);
+        let adaptive = ed.adaptive.is_some();
         if matches!(tab, DocTab::Create | DocTab::Modify | DocTab::Context) {
             self.select_and_properties(ui, ed);
         }
         match tab {
-            DocTab::Create => {
+            DocTab::Create if adaptive => {
                 draw_panel(ui, ed);
                 work_plane_panel(ui, ed);
+            }
+            // A family that isn't adaptive is made of forms drawn in sketches, which BIMCraft doesn't have yet: its forms are
+            // added and edited in Properties.
+            DocTab::Create => ribbon::panel(ui, msg!("Forms"), |ui| {
+                for label in [msg!("Extrusion"), msg!("Blend"), msg!("Revolve"), msg!("Sweep"), msg!("Swept Blend"), msg!("Void Forms")] {
+                    later(ui, Icon::CreateForm, label);
+                }
+            }),
+            _ => {}
+        }
+        match tab {
+            DocTab::Create => {
                 ribbon::panel(ui, msg!("Model"), |ui| {
                     later(ui, Icon::Component, "Component");
                     later(ui, Icon::Text, msg!("Model Text"));
@@ -132,8 +278,10 @@ impl BimApp {
                     later(ui, Icon::Level, "Level");
                     later(ui, Icon::Line, msg!("Reference Plane"));
                 });
-                self.form_panel(ui, ed, &lines);
-                self.test_placement_panel(ui, ed);
+                if adaptive {
+                    self.form_panel(ui, ed, &lines);
+                    self.test_placement_panel(ui, ed);
+                }
             }
             DocTab::Insert => {
                 ribbon::panel(ui, msg!("Family"), |ui| {
@@ -243,7 +391,7 @@ impl BimApp {
                             if big_button(ui, Icon::MakeAdaptive, msg!("Make Adaptive"), false, tip).clicked()
                                 && let Some(d) = ed.adaptive.as_mut()
                             {
-                                adaptive_view::make_adaptive(d, &mut ed.modeller, &points);
+                                adaptive_view::make_adaptive(d, &points);
                             }
                         });
                     }
@@ -285,9 +433,6 @@ impl BimApp {
             let tip = msg!("Family Types: the family's parameters, their formulas, and its types");
             if big_button(ui, Icon::FamilyTypes, msg!("Family Types"), ed.dialog == Some(DocDialog::Types), tip).clicked() {
                 ed.dialog = Some(DocDialog::Types);
-                if !matches!(ed.tab, Tab::Parameters | Tab::Types) {
-                    ed.tab = Tab::Parameters;
-                }
             }
         });
     }
@@ -351,13 +496,40 @@ impl BimApp {
         }
     }
 
-    /// The family document's Properties palette: what is selected in its view, with Revit's groups, or the family itself.
+    /// The family document's Properties palette: what is selected in its view, with Revit's groups, or the family itself; for a
+    /// family that isn't adaptive, the family and its forms and symbols.
     pub(crate) fn family_properties(&mut self, ui: &mut Ui) {
         let Some(mut ed) = self.family_editor.take() else { return };
         let values = ed.values();
         let category = category_label(ed.category);
         let selected = ed.modeller.selection.clone();
         let params = ed.parameter_kinds();
+        if ed.adaptive.is_none() {
+            let materials: Vec<String> = self.session.model.materials.keys().cloned().collect();
+            selector(ui, Icon::FamilyEditor, &tf("Family: {}", &[&category]));
+            ui.add_space(6.0);
+            identity(ui, &mut ed.name, &category);
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                for (tab, label) in [(Tab::Forms, msg!("Forms")), (Tab::Symbols, msg!("Symbols")), (Tab::Adaptive, msg!("Adaptive"))] {
+                    if ui.selectable_label(ed.tab == tab, t(label)).clicked() {
+                        ed.tab = tab;
+                    }
+                }
+            });
+            ui.separator();
+            match ed.tab {
+                Tab::Forms => forms_tab(&mut ed, ui, &materials),
+                Tab::Symbols => symbols_tab(&mut ed, ui),
+                Tab::Adaptive => {
+                    if let Some(a) = crate::adaptive_editor::show(ui, &mut ed.adaptive, &values, &params) {
+                        ed.associating = Some(a);
+                    }
+                }
+            }
+            self.family_editor = Some(ed);
+            return;
+        }
         if let Some(d) = ed.adaptive.as_mut() {
             // The type selector's place: what is selected, as Revit names it, or the family.
             let (what, icon) = match selected.as_slice() {
@@ -374,14 +546,7 @@ impl BimApp {
             selector(ui, icon, &what);
             ui.add_space(6.0);
             if selected.is_empty() {
-                group(ui, msg!("Identity Data"), |ui| {
-                    let l = ui.label(t("Family name"));
-                    ui.add(TextEdit::singleline(&mut ed.name).desired_width(f32::INFINITY)).labelled_by(l.id);
-                    ui.end_row();
-                    ui.label(t("Category"));
-                    ui.label(category.clone());
-                    ui.end_row();
-                });
+                identity(ui, &mut ed.name, &category);
                 if let Some(id) = ed.replay {
                     ui.label(
                         RichText::new(tf("Replaying instance {} with its exact parameters and placement", &[&id.to_string()]))
@@ -435,8 +600,13 @@ impl BimApp {
         self.family_editor = Some(ed);
     }
 
-    /// The family document's Project Browser: its views, as a Generic Model Adaptive template has them.
+    /// The family document's Project Browser: its views, as a family template has them, and the forms of a family that isn't
+    /// adaptive, each opening its Properties.
     pub(crate) fn family_browser(&mut self, ui: &mut Ui) {
+        let forms: Vec<String> = match &self.family_editor {
+            Some(ed) if ed.adaptive.is_none() => ed.forms.iter().enumerate().map(|(i, f)| format!("{}. {}", i + 1, f.describe())).collect(),
+            _ => Vec::new(),
+        };
         ScrollArea::vertical().id_salt("family-browser").auto_shrink([false, false]).show(ui, |ui| {
             Frame::new().inner_margin(8.0).show(ui, |ui| {
                 egui::CollapsingHeader::new(t("Views (all)")).id_salt("family-views").default_open(true).show(ui, |ui| {
@@ -460,12 +630,25 @@ impl BimApp {
                         });
                     }
                 });
+                if !forms.is_empty() {
+                    egui::CollapsingHeader::new(t("Forms")).id_salt("family-forms").default_open(true).show(ui, |ui| {
+                        for (i, form) in forms.iter().enumerate() {
+                            if ui.selectable_label(false, form).clicked()
+                                && let Some(ed) = self.family_editor.as_mut()
+                            {
+                                ed.tab = Tab::Forms;
+                                ed.document.reveal = Some(i);
+                            }
+                        }
+                    });
+                }
             });
         });
     }
 
-    /// The family document's view: the modelling view filling the pane, its tab over its top left corner with the family's
-    /// close button, and its view control bar at the bottom.
+    /// The family document's view: the modelling view (an adaptive family's) or the 3D preview (another's, turned by a drag, or
+    /// as Revit's by Shift and the middle button) filling the pane, its tab over its top left corner with the family's close
+    /// button, and its view control bar at the bottom.
     pub(crate) fn family_central(&mut self, ui: &mut Ui) {
         let Some(mut ed) = self.family_editor.take() else { return };
         let pane = ui.available_rect_before_wrap();
@@ -480,6 +663,20 @@ impl BimApp {
             // What a tool in the view could not do, in the status bar.
             if let Some(e) = ui.ctx().data_mut(|w| w.remove_temp::<String>(UiId::new("adaptive-view-problem"))) {
                 self.status = Status { text: e, error: true };
+            }
+        } else {
+            let response = ui.interact(pane, UiId::new("family-preview"), Sense::drag());
+            ed.document.preview_size = [pane.width().clamp(64.0, 1600.0) as u32, pane.height().clamp(64.0, 1200.0) as u32];
+            let orbit = response.dragged_by(PointerButton::Primary)
+                || (response.dragged_by(PointerButton::Middle) && ui.input(|i| i.modifiers.shift));
+            if orbit {
+                let d = response.drag_delta();
+                ed.look = (ed.look.0 - f64::from(d.x) * 0.5, (ed.look.1 + f64::from(d.y) * 0.5).clamp(-89.0, 89.0));
+            }
+            let base = Arc::clone(&self.session.model);
+            ed.refresh(ui.ctx(), &base);
+            if let Some((_, tile)) = &ed.preview {
+                ui.painter().image(tile.id(), pane, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
             }
         }
         let card = crate::style::card([true, false, true, false]).inner_margin(Margin::same(2));
@@ -500,10 +697,23 @@ impl BimApp {
                 ui.label(RichText::new(t("Shaded")).color(pal().muted));
                 if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
                     ed.modeller.camera = None;
+                    ed.look = (AZIMUTH, ELEVATION);
                 }
             });
         });
         self.work = pane.with_min_y(pane.top().max(self.tabs_foot));
+        // Why a family that isn't adaptive can't be tried or loaded, in the view under its tab (a dialog open says it itself).
+        if ed.adaptive.is_none()
+            && ed.dialog.is_none()
+            && let Some(problem) = &ed.problem
+        {
+            let room = self.work.shrink(12.0);
+            ui.scope_builder(UiBuilder::new().max_rect(room), |ui| {
+                crate::style::card([true; 4]).inner_margin(Margin::symmetric(8, 4)).show(ui, |ui| {
+                    ui.label(RichText::new(problem).color(pal().error));
+                });
+            });
+        }
         self.family_editor = Some(ed);
     }
 
@@ -553,48 +763,80 @@ impl BimApp {
         self.family_editor.as_ref().is_some_and(|ed| context(ed).is_some())
     }
 
-    /// What the family document's status bar asks for.
+    /// What the family document's status bar asks for: an adaptive family's modelling view's tool.
     pub(crate) fn family_prompt(&self) -> Option<&'static str> {
-        let ed = self.family_editor.as_ref().filter(|e| e.document())?;
+        let ed = self.family_editor.as_ref().filter(|e| e.adaptive.is_some())?;
         Some(adaptive_view::prompt(&ed.modeller))
     }
 
-    /// Undo in a family document: one step back through its edits.
+    /// Undo in a family document: one step back through its own history, done when the frame ends; the project's is not touched.
     pub(crate) fn family_undo(&mut self) {
-        if let Some(ed) = self.family_editor.as_mut()
-            && let Some(d) = ed.adaptive.as_mut()
-        {
-            adaptive_view::undo(d, &mut ed.modeller);
+        if let Some(ed) = self.family_editor.as_mut() {
+            ed.ask.undo = true;
+        }
+    }
+
+    /// Redo in a family document: a step undone done again.
+    pub(crate) fn family_redo(&mut self) {
+        if let Some(ed) = self.family_editor.as_mut() {
+            ed.ask.redo = true;
+        }
+    }
+
+    /// The family document's keys: Ctrl+Z undoes a step of its own, Ctrl+Y and Ctrl+Shift+Z redo one, unless a field being typed
+    /// in (whose own they are) or a dialog has them.
+    pub(crate) fn family_keys(&mut self, ctx: &Context) {
+        let Some(ed) = self.family_editor.as_mut() else { return };
+        if ed.modal() || ctx.egui_wants_keyboard_input() {
+            return;
+        }
+        let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
+        if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Z) || pressed(egui::Modifiers::COMMAND, egui::Key::Y) {
+            ed.ask.redo = true;
+        } else if pressed(egui::Modifiers::COMMAND, egui::Key::Z) {
+            ed.ask.undo = true;
         }
     }
 
     /// The dialogs a family document's ribbon opens: Family Types (its parameters and types, on two tabs) and Family
-    /// Category and Parameters (its name, category and, for a door or a window, how it opens).
+    /// Category and Parameters (its name, category and, for a door or a window, how it opens). Apply keeps what is typed,
+    /// Cancel puts back what was there when the dialog opened or last applied, OK keeps it and closes the dialog.
     pub(crate) fn document_dialogs(&mut self, ctx: &Context, ed: &mut FamilyEditor, materials: &[String]) {
         // Associate Family Parameter, from a row's "=": a parameter New Parameter makes goes in the family at once, as in Revit.
         ed.associate_dialog(ctx);
-        let Some(dialog) = ed.dialog else { return };
+        super::association::dialog(ctx, ed);
+        let Some(dialog) = ed.dialog else {
+            ed.document.dialog_saved = None;
+            return;
+        };
+        if ed.document.dialog_saved.is_none() {
+            ed.document.dialog_saved = Some(Draft::of(ed));
+        }
         let title = match dialog {
             DocDialog::Types => t("Family Types"),
             DocDialog::Category => t("Family Category and Parameters"),
         };
-        let mut done = false;
+        let (mut apply, mut ok, mut cancel) = (false, false, false);
         let r = Modal::new(UiId::new(("family-dialog", dialog as u8)), title).width(900.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| match dialog {
                 DocDialog::Types => {
                     ui.horizontal(|ui| {
-                        for (tab, label) in [(Tab::Parameters, msg!("Parameters")), (Tab::Types, msg!("Types"))] {
-                            if ui.selectable_label(ed.tab == tab, t(label)).clicked() {
-                                ed.tab = tab;
+                        for (tab, label) in [(TypesTab::Parameters, msg!("Parameters")), (TypesTab::Types, msg!("Types"))] {
+                            if ui.selectable_label(ed.types_tab == tab, t(label)).clicked() {
+                                ed.types_tab = tab;
                             }
                         }
                     });
                     ui.separator();
                     let room = (ctx.content_rect().height() - 260.0).clamp(160.0, 560.0);
-                    ScrollArea::vertical().max_height(room).auto_shrink([false, true]).show(ui, |ui| match ed.tab {
-                        Tab::Types => types_tab(ed, ui, materials),
-                        _ => parameters_tab(ed, ui, materials),
+                    ScrollArea::vertical().max_height(room).auto_shrink([false, true]).show(ui, |ui| match ed.types_tab {
+                        TypesTab::Types => types_tab(ed, ui, materials),
+                        TypesTab::Parameters => parameters_tab(ed, ui, materials),
                     });
+                    // Said in the dialog: the view's would be under it.
+                    if let Some(p) = &ed.problem {
+                        ui.label(RichText::new(p).color(pal().error));
+                    }
                 }
                 DocDialog::Category => {
                     Grid::new("family-category").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
@@ -614,17 +856,43 @@ impl BimApp {
                             });
                         c.response.labelled_by(l.id);
                         ui.end_row();
+                        if ed.category.hosted() {
+                            let l = ui.label(t("Operation"));
+                            let shown = ed.operation.map_or(t("(none)"), |op| t(op.label()));
+                            let c = ComboBox::from_id_salt("family-operation").selected_text(shown).width(220.0).show_ui(ui, |ui| {
+                                if ui.selectable_label(ed.operation.is_none(), t("(none)")).clicked() {
+                                    ed.operation = None;
+                                }
+                                for op in Operation::ALL {
+                                    if ui.selectable_label(ed.operation == Some(op), t(op.label())).clicked() {
+                                        ed.operation = Some(op);
+                                    }
+                                }
+                            });
+                            c.response.labelled_by(l.id);
+                            ui.end_row();
+                        }
                     });
                 }
             });
             crate::popup::footer(ui, |ui| {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    done = ui.button(t("OK")).clicked();
+                    ok = ui.button(t("OK")).clicked();
+                    cancel = ui.button(t("Cancel")).clicked();
+                    apply = ui.button(t("Apply")).clicked();
                 });
             });
         });
-        if done || r.should_close() {
+        if cancel || r.should_close() {
+            if let Some(saved) = ed.document.dialog_saved.take() {
+                saved.restore(ed);
+            }
             ed.dialog = None;
+        } else if ok {
+            ed.dialog = None;
+            ed.document.dialog_saved = None;
+        } else if apply {
+            ed.document.dialog_saved = Some(Draft::of(ed));
         }
     }
 }
@@ -709,6 +977,18 @@ fn work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
             }
             ui.add_enabled_ui(false, |ui| crate::stacked_button(ui, Icon::View3D, msg!("Viewer"), false, msg!("Not in BIMCraft yet")));
         });
+    });
+}
+
+/// The family's Identity Data in Properties: its name, typed, and its category.
+fn identity(ui: &mut Ui, name: &mut String, category: &str) {
+    group(ui, msg!("Identity Data"), |ui| {
+        let l = ui.label(t("Family name"));
+        ui.add(TextEdit::singleline(name).desired_width(f32::INFINITY)).labelled_by(l.id);
+        ui.end_row();
+        ui.label(t("Category"));
+        ui.label(category);
+        ui.end_row();
     });
 }
 

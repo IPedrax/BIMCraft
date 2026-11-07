@@ -19,10 +19,10 @@ evaluator), `adaptive/edit.rs` (every modelling edit and `Evaluation::pick`), `a
 local/project conversions), `adaptive/geometry.rs` (meshes); the commands `adaptive_capture`, `adaptive_place`, `adaptive_move`,
 `adaptive_evaluate` in `commands.rs`; `Model::component_axes`, `adaptive_placement`, `adaptive_points` in `model.rs`. In the
 desktop: `adaptive_view.rs` (the modelling view), `adaptive_editor.rs` (Properties and the element list), `adaptive_place.rs`
-(placing and grips in a plan), and in `editor.rs` the wide Adaptive layout (`adaptive_side`).
+(placing and grips in a plan), and `editor/document.rs`, the family document every family opens as.
 
 **How the pieces talk.** The Family Editor edits a copy of the family, as all its tabs do, and makes it the project's with the
-`family` command on Apply or OK; the modelling view's tools are pure edits of that copy's `Definition` (in the core, tested
+`family` command on Load into Project; the modelling view's tools are pure edits of that copy's `Definition` (in the core, tested
 there), so the window stays thin. In the project, every change is a command (`adaptive_place`, `adaptive_move`, `modify`), so
 Undo, scripts and MCP get it too. An instance holds its frames in its own axes (`Component::adaptive`); captured and clicked
 frames are the project's and `adaptive_place` converts them.
@@ -42,7 +42,7 @@ point, the view's buttons by label).
 
 ## Try it
 
-1. Manage > New Family, any category; on the **Adaptive** tab, **Make this family adaptive** (or **Create four-point adaptive
+1. Manage > New Family, any category; on the **Adaptive** tab of its Properties, **Make this family adaptive** (or **Create four-point adaptive
    panel** for a ready-made one). The family opens as a document of its own, taking the window.
 2. Create > **Point Element**: click four points on the work plane. **Line**: click them in turn and the first again, closing
    a profile.
@@ -58,7 +58,8 @@ samples/adaptive-panel.txt --save panel.bimcraft` places two instances of it, th
 ## Modelling as in Revit
 
 An adaptive family is edited as Revit edits a family: a **family document** that takes the whole window
-(`editor/document.rs`, `BimApp::family_doc`), in place of the Family Editor dialog the other families keep. The window's title
+(`editor/document.rs`, `BimApp::family_doc`), the one every family opens as ([families](families.md)): an adaptive family's has
+the modelling view and the tools below, another's a 3D preview. The window's title
 and title bar name the family and its view. Its own ribbon has Revit's tabs, Create, Insert, View, Manage and Modify, and a
 contextual tab for the tool in hand or what is selected, as Revit names them ("Modify | Place Reference Point", "Modify | Place
 Lines", "Modify | Reference Points", "Modify | Lines", "Modify | Form", "Modify | Multi-Select"): Modify's panels with the
@@ -87,12 +88,13 @@ BIMCraft does not have yet shows greyed where Revit has it ("Not in BIMCraft yet
 - **Adaptive Component** (contextual, with points selected): Make Adaptive.
 - **Family Editor** (every tab): Load into Project, Load into Project and Close.
 
-What they ask for goes through the code the dialog's buttons use (`FamilyEditor::ask`, `family_asked`). The docked Properties
+What they ask for is done when the frame ends (`FamilyEditor::ask`, `family_asked`). The docked Properties
 palette shows what is selected with Revit's groups (Adaptive Component, Graphics, Identity Data; a type-selector box naming it),
 or the family itself; the Project Browser lists the family's views as the template has them (Ref. Level's plans, `{3D}`, the four
 elevations: only `{3D}` is drawn yet). The view fills the pane under its tab (whose × is **Close Family**: what was not loaded is
 forgotten), with a view control bar (Zoom to Fit), the Options Bar over it (the contextual tab's name; with lines selected, the
-depth Create Form extrudes), Undo in the title bar stepping through the family's edits, and the status bar saying what the tool
+depth Create Form extrudes), Undo and Redo in the title bar (and Ctrl+Z, Ctrl+Y) stepping through the document's own history
+(`Draft`: a drag, a word typed or a dialog's visit is one step; the project's history is not touched), and the status bar saying what the tool
 asks for.
 
 The modelling view (`adaptive_view.rs`) is a 3D view drawn as Revit's of a family: a grey ground lighter towards the bottom (on
@@ -145,7 +147,8 @@ Its tools:
 - **Modify**: a click selects (Ctrl adds), a drag of a point moves it over its height, and a point selected alone shows a gizmo:
   a drag of its red, green or blue arrow moves it along x, y or z (`move_point`; a point on a line slides along it, one hosted on
   a point changes its offset). **Delete** removes what is selected and what depends on it, as Revit does (`remove`).
-- **Undo** steps back through the view's edits; Cancel forgets them all, Apply or OK makes the family the project's.
+- **Undo** steps back through the document's edits, **Redo** forward again; Close Family forgets what was not loaded, Load into
+  Project makes the family the project's.
 
 Beside the view, Properties shows what is selected. A point first has Revit's fields (`point_properties`): under Constraints its
 **Work Plane**, where it is along its line or edge (named after its measurement, as Revit names it) and how it is turned now
@@ -165,10 +168,10 @@ lists every element with the same fields, the test placement's frames, and what 
 the tools don't make yet (a point on a form's face by index, an intersection, a Bezier) is set. What is under the pointer is the
 core's to say (`Evaluation::pick`: a point first, then a line, then the form nearest the camera).
 
-Above the view, with adaptive instances selected in the project, **Capture selected placement frames in project coordinates**
-takes their points as the test placement (see Context capture). Selecting an adaptive instance and choosing Edit Family reopens it
-on that instance's own placement, type and instance parameters: **Apply test frames to this instance** gives it the frames edited
-(`modify`, in its own axes), **Place test frames as a new instance** places another on them (`adaptive_place`, the frames taken as
+On the Create tab's Test Placement panel, with adaptive instances selected in the project, **Capture Placement** takes their
+points as the test placement (see Context capture). Selecting an adaptive instance and choosing Edit Family opens it with that
+instance remembered; **Replay Instance** takes its own placement, type and instance parameters, **Apply to Instance** gives it the
+frames edited (`modify`, in its own axes), **Place Instance** places another on them (`adaptive_place`, the frames taken as
 the project's, each adaptive point without a test frame of its own getting the definition's: `Definition::completed`). The test
 placement and each instance's placement are independent snapshots; saving a family keeps its test placement and never changes an
 instance's.
