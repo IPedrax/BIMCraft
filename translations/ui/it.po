@@ -1080,7 +1080,7 @@ msgstr "Valore calcolato…"
 msgid "Came in: {}"
 msgstr "Importato: {}"
 
-#: crates/core/src/commands.rs:1673
+#: crates/core/src/commands.rs:1681
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3848
 #: crates/ui-egui/src/properties.rs:265
@@ -2414,7 +2414,7 @@ msgstr "Demolito"
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9578
 msgid "Dependent"
 msgstr "Dipendente"
 
@@ -2919,7 +2919,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:2039
+#: crates/core/src/commands.rs:2047
 msgid "Elements"
 msgstr "Elementi"
 
@@ -4634,7 +4634,7 @@ msgstr ""
 msgid "Maximum Riser Height"
 msgstr "Altezza massima alzata"
 
-#: crates/core/src/commands.rs:1783
+#: crates/core/src/commands.rs:1791
 msgid "Measure"
 msgstr "Misura"
 
@@ -6836,7 +6836,7 @@ msgstr "Scala: la carta che questa vista rappresenta, 1 : n del modello; annotaz
 msgid "Scan"
 msgstr "Scansione"
 
-#: crates/core/src/commands.rs:1578
+#: crates/core/src/commands.rs:1586
 msgid "Schedule"
 msgstr "Abaco"
 
@@ -8531,7 +8531,7 @@ msgstr "Formato unità"
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9719
 msgid "Unnamed"
 msgstr "Senza nome"
 

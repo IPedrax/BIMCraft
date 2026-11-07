@@ -1080,7 +1080,7 @@ msgstr "Giá trị tính toán…"
 msgid "Came in: {}"
 msgstr "Đã nhập vào: {}"
 
-#: crates/core/src/commands.rs:1673
+#: crates/core/src/commands.rs:1681
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3848
 #: crates/ui-egui/src/properties.rs:265
@@ -2414,7 +2414,7 @@ msgstr "Đã phá dỡ"
 msgid "Demolition"
 msgstr "Phá dỡ"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9578
 msgid "Dependent"
 msgstr "Phụ thuộc"
 
@@ -2919,7 +2919,7 @@ msgstr "Cài đặt điện"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Cài đặt điện: các điện áp, hệ thống phân phối và loại dây mà mạch điện và tủ điện tham chiếu; tiết diện tính bằng mm²"
 
-#: crates/core/src/commands.rs:2039
+#: crates/core/src/commands.rs:2047
 msgid "Elements"
 msgstr "Cấu kiện"
 
@@ -4634,7 +4634,7 @@ msgstr "Tối đa"
 msgid "Maximum Riser Height"
 msgstr "Chiều cao bậc đứng tối đa"
 
-#: crates/core/src/commands.rs:1783
+#: crates/core/src/commands.rs:1791
 msgid "Measure"
 msgstr "Đo"
 
@@ -6836,7 +6836,7 @@ msgstr "Tỷ lệ: tờ giấy mà khung nhìn này đại diện, 1 : n của m
 msgid "Scan"
 msgstr "Bản quét"
 
-#: crates/core/src/commands.rs:1578
+#: crates/core/src/commands.rs:1586
 msgid "Schedule"
 msgstr "Bảng thống kê"
 
@@ -8531,7 +8531,7 @@ msgstr "Định dạng đơn vị"
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9719
 msgid "Unnamed"
 msgstr "Chưa đặt tên"
 

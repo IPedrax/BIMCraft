@@ -1079,7 +1079,7 @@ msgstr "Berechneter Wert…"
 msgid "Came in: {}"
 msgstr "Eingelesen: {}"
 
-#: crates/core/src/commands.rs:1673
+#: crates/core/src/commands.rs:1681
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3848
 #: crates/ui-egui/src/properties.rs:265
@@ -2413,7 +2413,7 @@ msgstr "Abgebrochen"
 msgid "Demolition"
 msgstr "Abbruch"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9578
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -2918,7 +2918,7 @@ msgstr "Elektroeinstellungen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektroeinstellungen: die Spannungen, Verteilungssysteme und Leitungstypen, auf die sich Stromkreise und Verteiler beziehen; Querschnitte in mm²"
 
-#: crates/core/src/commands.rs:2039
+#: crates/core/src/commands.rs:2047
 msgid "Elements"
 msgstr "Elemente"
 
@@ -4633,7 +4633,7 @@ msgstr "Maximum"
 msgid "Maximum Riser Height"
 msgstr "Maximale Steigungshöhe"
 
-#: crates/core/src/commands.rs:1783
+#: crates/core/src/commands.rs:1791
 msgid "Measure"
 msgstr "Messen"
 
@@ -6835,7 +6835,7 @@ msgstr "Maßstab: das Papier, das diese Ansicht darstellt, 1 : n des Modells; Be
 msgid "Scan"
 msgstr "Scan"
 
-#: crates/core/src/commands.rs:1578
+#: crates/core/src/commands.rs:1586
 msgid "Schedule"
 msgstr "Tabelle"
 
@@ -8530,7 +8530,7 @@ msgstr "Einheitenformat"
 msgid "Unlock alignment"
 msgstr "Ausrichtung entsperren"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9719
 msgid "Unnamed"
 msgstr "Unbenannt"
 

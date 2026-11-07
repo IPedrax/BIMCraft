@@ -1079,7 +1079,7 @@ msgstr "Vypočítaná hodnota…"
 msgid "Came in: {}"
 msgstr "Importováno: {}"
 
-#: crates/core/src/commands.rs:1673
+#: crates/core/src/commands.rs:1681
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3848
 #: crates/ui-egui/src/properties.rs:265
@@ -2413,7 +2413,7 @@ msgstr "Zbourané"
 msgid "Demolition"
 msgstr "Demolice"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9578
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -2918,7 +2918,7 @@ msgstr "Elektrotechnická nastavení"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrotechnická nastavení: napětí, rozvodné soustavy a typy vodičů, na které se odkazují obvody a rozváděče; průřezy v mm²"
 
-#: crates/core/src/commands.rs:2039
+#: crates/core/src/commands.rs:2047
 msgid "Elements"
 msgstr "Prvky"
 
@@ -4633,7 +4633,7 @@ msgstr "Maximum"
 msgid "Maximum Riser Height"
 msgstr "Maximální výška stupně"
 
-#: crates/core/src/commands.rs:1783
+#: crates/core/src/commands.rs:1791
 msgid "Measure"
 msgstr "Změřit"
 
@@ -6835,7 +6835,7 @@ msgstr "Měřítko: velikost papíru odpovídající tomuto pohledu, 1 : n model
 msgid "Scan"
 msgstr "Sken"
 
-#: crates/core/src/commands.rs:1578
+#: crates/core/src/commands.rs:1586
 msgid "Schedule"
 msgstr "Výkaz"
 
@@ -8530,7 +8530,7 @@ msgstr "Formát jednotek"
 msgid "Unlock alignment"
 msgstr "Odemknout zarovnání"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9719
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 

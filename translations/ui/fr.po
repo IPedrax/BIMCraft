@@ -1080,7 +1080,7 @@ msgstr "Valeur calculée…"
 msgid "Came in: {}"
 msgstr "Importé: {}"
 
-#: crates/core/src/commands.rs:1673
+#: crates/core/src/commands.rs:1681
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3848
 #: crates/ui-egui/src/properties.rs:265
@@ -2414,7 +2414,7 @@ msgstr "Démoli"
 msgid "Demolition"
 msgstr "Démolition"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9578
 msgid "Dependent"
 msgstr "Dépendante"
 
@@ -2919,7 +2919,7 @@ msgstr "Paramètres électriques"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Paramètres électriques: les tensions, systèmes de distribution et types de câbles auxquels renvoient les circuits et les tableaux; sections en mm²"
 
-#: crates/core/src/commands.rs:2039
+#: crates/core/src/commands.rs:2047
 msgid "Elements"
 msgstr "Éléments"
 
@@ -4634,7 +4634,7 @@ msgstr "Maximale"
 msgid "Maximum Riser Height"
 msgstr "Hauteur maximale de contremarche"
 
-#: crates/core/src/commands.rs:1783
+#: crates/core/src/commands.rs:1791
 msgid "Measure"
 msgstr "Mesurer"
 
@@ -6836,7 +6836,7 @@ msgstr "Échelle: le papier que cette vue représente, 1 : n du modèle: ses ann
 msgid "Scan"
 msgstr "Numérisation"
 
-#: crates/core/src/commands.rs:1578
+#: crates/core/src/commands.rs:1586
 msgid "Schedule"
 msgstr "Nomenclature"
 
@@ -8531,7 +8531,7 @@ msgstr "Format des unités"
 msgid "Unlock alignment"
 msgstr "Déverrouiller l'alignement"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9719
 msgid "Unnamed"
 msgstr "Sans nom"
 

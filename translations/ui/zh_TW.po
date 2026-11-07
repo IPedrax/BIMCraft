@@ -1080,7 +1080,7 @@ msgstr "計算值…"
 msgid "Came in: {}"
 msgstr "已導入：{}"
 
-#: crates/core/src/commands.rs:1673
+#: crates/core/src/commands.rs:1681
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3848
 #: crates/ui-egui/src/properties.rs:265
@@ -2414,7 +2414,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9578
 msgid "Dependent"
 msgstr "相關"
 
@@ -2919,7 +2919,7 @@ msgstr "電氣設置"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "電氣設置：迴路和配電箱所引用的電壓、配電系統和導線類型；截面積以 mm² 計"
 
-#: crates/core/src/commands.rs:2039
+#: crates/core/src/commands.rs:2047
 msgid "Elements"
 msgstr "圖元"
 
@@ -4634,7 +4634,7 @@ msgstr "最大值"
 msgid "Maximum Riser Height"
 msgstr "最大踢面高度"
 
-#: crates/core/src/commands.rs:1783
+#: crates/core/src/commands.rs:1791
 msgid "Measure"
 msgstr "測量"
 
@@ -6836,7 +6836,7 @@ msgstr "比例：此視圖所代表的圖紙，為模型的 1 : n；其註釋和
 msgid "Scan"
 msgstr "掃瞄"
 
-#: crates/core/src/commands.rs:1578
+#: crates/core/src/commands.rs:1586
 msgid "Schedule"
 msgstr "明細表"
 
@@ -8531,7 +8531,7 @@ msgstr "單位格式"
 msgid "Unlock alignment"
 msgstr "解鎖對齊"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9719
 msgid "Unnamed"
 msgstr "未命名"
 

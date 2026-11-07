@@ -1080,7 +1080,7 @@ msgstr "Berekende waarde…"
 msgid "Came in: {}"
 msgstr "Binnengekomen: {}"
 
-#: crates/core/src/commands.rs:1673
+#: crates/core/src/commands.rs:1681
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3848
 #: crates/ui-egui/src/properties.rs:265
@@ -2414,7 +2414,7 @@ msgstr "Gesloopt"
 msgid "Demolition"
 msgstr "Sloop"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9578
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -2919,7 +2919,7 @@ msgstr "Elektrische instellingen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrische instellingen: de spanningen, distributiesystemen en draadtypes waarnaar kringen en verdeelborden verwijzen; doorsneden in mm²"
 
-#: crates/core/src/commands.rs:2039
+#: crates/core/src/commands.rs:2047
 msgid "Elements"
 msgstr "Elementen"
 
@@ -4634,7 +4634,7 @@ msgstr "Maximum"
 msgid "Maximum Riser Height"
 msgstr "Maximale hoogte optrede"
 
-#: crates/core/src/commands.rs:1783
+#: crates/core/src/commands.rs:1791
 msgid "Measure"
 msgstr "Meten"
 
@@ -6836,7 +6836,7 @@ msgstr "Schaal: het papier dat deze weergave voorstelt, 1 : n van het model: haa
 msgid "Scan"
 msgstr "Scan"
 
-#: crates/core/src/commands.rs:1578
+#: crates/core/src/commands.rs:1586
 msgid "Schedule"
 msgstr "Lijst"
 
@@ -8531,7 +8531,7 @@ msgstr "Eenhedenformaat"
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9719
 msgid "Unnamed"
 msgstr "Naamloos"
 
