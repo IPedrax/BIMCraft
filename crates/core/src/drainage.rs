@@ -22,10 +22,6 @@ pub const DNS: &[f64] = &[40.0, 50.0, 75.0, 100.0, 150.0, 200.0, 250.0, 300.0, 4
 /// The smallest DN of a building drain ("coletor predial").
 pub const MAIN_MIN_DN: f64 = 100.0;
 
-/// Tabela 3: (fixture, units, smallest DN of its drain).
-pub const FIXTURES: &[(&str, f64, f64)] =
-    &[("wc", 6.0, 100.0), ("lav", 1.0, 40.0), ("sink", 3.0, 50.0), ("shower", 2.0, 40.0), ("laundry", 3.0, 40.0)];
-
 /// Tabela 5: the units a branch of each DN carries.
 const BRANCH: &[(f64, f64)] = &[(40.0, 3.0), (50.0, 6.0), (75.0, 20.0), (100.0, 160.0)];
 
@@ -159,9 +155,9 @@ pub fn trap_distance(dn: f64) -> Option<f64> {
     find(TRAP_TO_VENT, dn)
 }
 
-/// The units of a fixture kind and the smallest DN of its drain.
+/// The units of a fixture kind and the smallest DN of its drain (Tabela 3, from the fixtures library, `data/plumbing.json`).
 pub fn fixture(kind: &str) -> Option<(f64, f64)> {
-    FIXTURES.iter().find(|f| f.0 == kind).map(|f| (f.1, f.2))
+    crate::plumbing::fixture(kind).map(|f| (f.uhc, f.drain_dn))
 }
 
 #[cfg(test)]

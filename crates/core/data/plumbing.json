@@ -1,0 +1,64 @@
+{
+ "fixtures": [
+  {
+   "kind": "wc",
+   "name": "Water closet with flush tank",
+   "cold_flow": 0.15,
+   "hot_flow": null,
+   "weight": 0.3,
+   "uhc": 6,
+   "drain_dn": 100,
+   "unit": "L/s",
+   "water_source": "Manual Técnico Tigre, 2021_10, p. 198 of the PDF, Vazões de projeto e pesos relativos nos pontos de utilização",
+   "drain_source": "NBR 8160, Tabela 3"
+  },
+  {
+   "kind": "lav",
+   "name": "Lavatory",
+   "cold_flow": 0.15,
+   "hot_flow": null,
+   "weight": 0.3,
+   "uhc": 1,
+   "drain_dn": 40,
+   "unit": "L/s",
+   "water_source": "Manual Técnico Tigre, 2021_10, p. 198 of the PDF, Vazões de projeto e pesos relativos nos pontos de utilização",
+   "drain_source": "NBR 8160, Tabela 3"
+  },
+  {
+   "kind": "sink",
+   "name": "Kitchen sink",
+   "cold_flow": 0.25,
+   "hot_flow": null,
+   "weight": 0.7,
+   "uhc": 3,
+   "drain_dn": 50,
+   "unit": "L/s",
+   "water_source": "Manual Técnico Tigre, 2021_10, p. 198 of the PDF, Vazões de projeto e pesos relativos nos pontos de utilização",
+   "drain_source": "NBR 8160, Tabela 3"
+  },
+  {
+   "kind": "shower",
+   "name": "Shower",
+   "cold_flow": 0.2,
+   "hot_flow": null,
+   "weight": 0.4,
+   "uhc": 2,
+   "drain_dn": 40,
+   "unit": "L/s",
+   "water_source": "Manual Técnico Tigre, 2021_10, p. 198 of the PDF, Vazões de projeto e pesos relativos nos pontos de utilização",
+   "drain_source": "NBR 8160, Tabela 3"
+  },
+  {
+   "kind": "laundry",
+   "name": "Laundry tub (tanque)",
+   "cold_flow": 0.25,
+   "hot_flow": null,
+   "weight": 0.7,
+   "uhc": 3,
+   "drain_dn": 40,
+   "unit": "L/s",
+   "water_source": "Manual Técnico Tigre, 2021_10, p. 198 of the PDF, Vazões de projeto e pesos relativos nos pontos de utilização",
+   "drain_source": "NBR 8160, Tabela 3"
+  }
+ ]
+}
