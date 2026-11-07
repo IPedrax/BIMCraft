@@ -798,6 +798,34 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "exports family document pixels for visual inspection"]
+    fn export_family_document_looks() {
+        let card = card().expect("a graphics adapter for visual inspection");
+        let dir = std::path::Path::new("target/a3-verification/looks");
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join("size.txt"), format!("{} {}", SIDE[0], SIDE[1])).unwrap();
+        for profile in [crate::style::Profile::Rev, crate::style::Profile::BimCraft] {
+            for (look, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
+                let mut app = crate::BimApp::new(Session::new());
+                app.profile = profile;
+                app.light_canvas = light_canvas;
+                app.theme_wanted = Some(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+                app.new_family(bimcraft_core::family::Category::Generic);
+                let ctx = Context::default();
+                let side = Rect::from_min_size(Pos2::ZERO, vec2(SIDE[0] as f32, SIDE[1] as f32));
+                let mut outputs = Vec::new();
+                for i in 0..6 {
+                    let mut raw = RawInput { screen_rect: Some(side), time: Some(f64::from(i) * 10.), ..RawInput::default() };
+                    raw.viewports.entry(ViewportId::ROOT).or_default().native_pixels_per_point = Some(1.);
+                    outputs.push(ctx.run_ui(raw, |ui| app.show(ui)));
+                }
+                let rgba = pixels((&card.0, &card.1), wgpu::TextureFormat::Rgba8Unorm, &ctx, outputs);
+                std::fs::write(dir.join(format!("{profile:?}-{look}.rgba")), rgba).unwrap();
+            }
+        }
+    }
+
+    #[test]
     fn the_whole_window_is_the_same_on_kept_triangles_in_each_look() {
         let Some(card) = card() else { return };
         let format = wgpu::TextureFormat::Bgra8Unorm;

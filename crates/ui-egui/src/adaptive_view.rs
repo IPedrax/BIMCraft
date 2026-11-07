@@ -11,7 +11,7 @@ use bimcraft_core::adaptive::{Definition, Evaluated, Evaluation, Host, Operation
 use bimcraft_core::family::{CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, PlaneRef, Planes, REF_LEVEL, Val};
 use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, P3};
 use bimcraft_i18n::msg;
-use egui::{Color32, Key, Modifiers, PointerButton, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Ui, vec2};
+use egui::{Color32, Key, PointerButton, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Ui, vec2};
 use std::collections::BTreeMap;
 
 /// The tool the view's clicks are for.
@@ -54,8 +54,6 @@ pub(crate) struct Modeller {
     pub(crate) tool: Draw,
     pub(crate) selection: Vec<String>,
     drag: Option<Drag>,
-    /// The definition before each edit, newest last.
-    history: Vec<Definition>,
     /// The solid or void Create Form makes: its depth, mm.
     pub(crate) depth: f64,
     /// Where Point Element and Line draw: Revit's Placement Plane, Ref. Level to begin with.
@@ -74,7 +72,6 @@ impl Default for Modeller {
             tool: Draw::Modify,
             selection: Vec::new(),
             drag: None,
-            history: Vec::new(),
             depth: 300.,
             work_plane: WorkPlane::default(),
             picking_plane: false,
@@ -96,13 +93,6 @@ impl Modeller {
                 self.rect.min + vec2(x as f32, y as f32)
             }
             None => self.rect.center(),
-        }
-    }
-
-    fn remember(&mut self, d: &Definition) {
-        self.history.push(d.clone());
-        if self.history.len() > 64 {
-            self.history.remove(0);
         }
     }
 }
@@ -233,8 +223,7 @@ pub(crate) fn selected(d: &Definition, m: &Modeller, values: &BTreeMap<String, V
 
 /// Make Adaptive, a toggle as Revit's: points all adaptive already go back to reference points; otherwise the others are made
 /// adaptive, numbered in the order they were selected.
-pub(crate) fn make_adaptive(d: &mut Definition, m: &mut Modeller, points: &[String]) {
-    m.remember(d);
+pub(crate) fn make_adaptive(d: &mut Definition, points: &[String]) {
     let all = points.iter().all(|id| matches!(d.point_type(id), Some(PointType::Placement | PointType::ShapeHandle)));
     for id in points {
         let _ = if all { d.make_reference(id) } else { d.make_adaptive(id).map(|_| ()) };
@@ -244,25 +233,15 @@ pub(crate) fn make_adaptive(d: &mut Definition, m: &mut Modeller, points: &[Stri
 /// Create Form, a solid or a `void`, from the lines selected, `m.depth` deep; it is selected after. What went wrong, if it did.
 pub(crate) fn create_form(d: &mut Definition, m: &mut Modeller, lines: &[String], void: bool) -> Result<(), String> {
     let before = d.clone();
-    let id = d.create_form(lines, m.depth, void).inspect_err(|_| *d = before.clone())?;
-    m.history.push(before);
+    let id = d.create_form(lines, m.depth, void).inspect_err(|_| *d = before)?;
     m.selection = vec![id];
     Ok(())
 }
 
 /// Delete: what is selected, with what depends on it.
 pub(crate) fn delete(d: &mut Definition, m: &mut Modeller) {
-    m.remember(d);
     d.remove(&m.selection);
     m.selection.clear();
-}
-
-/// Undo: one step back through this family's edits; whether there was one.
-pub(crate) fn undo(d: &mut Definition, m: &mut Modeller) -> bool {
-    let Some(before) = m.history.pop() else { return false };
-    *d = before;
-    m.selection.retain(|id| d.nodes.iter().any(|n| &n.id == id));
-    true
 }
 
 /// What the tool in hand asks for, as the status bar says it.
@@ -330,7 +309,6 @@ fn transform_click(d: &mut Definition, m: &mut Modeller, r: &Evaluation, p: P3, 
     };
     match done {
         Ok(made) => {
-            m.history.push(before);
             if let Some(made) = made {
                 // The copies of what was selected are selected after.
                 m.selection = made.into_iter().filter(|id| d.nodes.iter().any(|n| &n.id == id)).collect();
@@ -420,9 +398,6 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
             _ if middle && !mods.shift => Drag::Pan(origin),
             _ => Drag::Orbit(origin),
         });
-        if matches!(m.drag, Some(Drag::Axis(..) | Drag::Plane(..))) {
-            m.remember(d);
-        }
     }
     if response.dragged()
         && let (Some(drag), Some(now)) = (m.drag.clone(), latest)
@@ -533,7 +508,6 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
                     None => m.selection.clear(),
                 },
                 Draw::Point => {
-                    let before = d.clone();
                     let made = match picked {
                         Some(Picked::Curve(curve, t)) => d.add_hosted_point(&curve, t).ok(),
                         // Snapped onto the point under the pointer: exactly where it falls on the work plane (on that point's own
@@ -542,12 +516,10 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
                         _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r, planes).ok()),
                     };
                     if let Some(id) = made {
-                        m.history.push(before);
                         m.selection = vec![id];
                     }
                 }
                 Draw::Line(chain) => {
-                    let before = d.clone();
                     let point = match picked {
                         Some(Picked::Point(id)) => Some(id),
                         _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r, planes).ok()),
@@ -562,7 +534,6 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
                         } else if chain.last() != Some(&id) {
                             chain.push(id);
                         }
-                        m.history.push(before);
                     }
                 }
                 Draw::Move { .. } | Draw::Rotate { .. } => {}
@@ -570,21 +541,14 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
         }
     }
     // Finishing a chain open: Enter, Escape or a right click; Escape again back to Modify.
-    let (enter, escape, delete, undo) = ui.input(|i| {
-        (
-            i.key_pressed(Key::Enter),
-            i.key_pressed(Key::Escape),
-            i.key_pressed(Key::Delete),
-            i.modifiers.matches_exact(Modifiers::COMMAND) && i.key_pressed(Key::Z),
-        )
-    });
+    // Undo is the family document's, through its history.
+    let (enter, escape, delete) = ui.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Escape), i.key_pressed(Key::Delete)));
     if m.picking_plane && escape {
         m.picking_plane = false;
     }
     let finish = enter || ((escape || response.secondary_clicked()) && hover.is_some());
     if finish && let Draw::Line(chain) = &mut m.tool {
         if chain.len() >= 2 {
-            m.history.push(d.clone());
             if let Ok(line) = d.add_chain(chain, false) {
                 m.selection = vec![line];
             }
@@ -596,15 +560,8 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
         m.tool = Draw::Modify;
     }
     if hover.is_some() && delete && !m.selection.is_empty() {
-        m.remember(d);
         d.remove(&m.selection);
         m.selection.clear();
-    }
-    if hover.is_some()
-        && undo
-        && let Some(before) = m.history.pop()
-    {
-        *d = before;
     }
     m.selection.retain(|id| d.nodes.iter().any(|n| &n.id == id));
     let r = d.evaluate(values, &d.preview);

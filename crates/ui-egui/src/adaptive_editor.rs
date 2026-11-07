@@ -308,8 +308,25 @@ pub(crate) enum Field {
     Visible,
     /// What a form is made of.
     Material,
-    /// Whether a form of a family that isn't adaptive shows, its place among the family's forms the `id`.
-    FormVisible,
+    /// A row of a form of a family's own (one that isn't adaptive), its place among the family's forms the `id`.
+    Form(Slot),
+    /// A row of a symbol of a family's own, its place among the family's symbols the `id`.
+    Symbol(Slot),
+}
+
+/// Which row of a family's own form or symbol "=" ties: its numbers, whether it shows, what it is made of.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Slot {
+    From,
+    To,
+    Visible,
+    Material,
+    /// A circle's (or a symbol's) centre, x or y; a form's circle's radius is its third.
+    Centre(usize),
+    /// A revolve's axis: its two points' x and y.
+    Axis(usize),
+    /// A symbol's radius or text height.
+    Radius,
 }
 
 /// What Associate Family Parameter ties a row of: an adaptive definition's element, or a family's own forms.

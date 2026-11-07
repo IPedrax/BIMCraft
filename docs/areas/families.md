@@ -86,9 +86,24 @@ name: a triangle's face is read from its winding, so every solid emits triangles
 `Image::face` says which face a pixel is on. Favorites (`favorites.rs`) are a file of the user's own (`default_path`:
 `BIMCRAFT_FAVORITES`, else the configuration folder) with materials and their pictures, families and their materials; they change
 a project only through the `favorite` command (`load` never overwrites without `replace`). The desktop's Family Editor
-(`editor.rs`) edits text (`FormText`, `ParamText`, ...) and changes the project's family only through a `family` command; its
-preview is a scratch `Session` of its own, and it says what's wrong inside the window (the status box, over the view's corner, would lie on its
-buttons).
+(`editor.rs`, `editor/document.rs`) opens every family in a document occupying the window, with a family ribbon,
+docked Properties and Project Browser, and a 3D view: an adaptive family's modelling view and tools
+([adaptive families](adaptive-families.md)), another's 3D preview. For a family that isn't adaptive, Forms and Symbols are
+edited in Properties (whose Adaptive tab makes it adaptive); Family Types and Family Category and Parameters open dialogs
+(Apply, OK, and Cancel putting back what the dialog began from). Form creation tools that need sketch workflows remain
+disabled placeholders. Undo and Redo are the document's own (`Draft`), and never undo the project.
+The editor keeps text drafts (`FormText`, `ParamText`, ...) and changes the project's family only when Load into Project
+or Load into Project and Close runs a `family` command. Close Family discards the draft. Save Family and Add to Favorites
+prepare a private `Session`, so saving never implicitly loads the draft into the project. The preview is a scratch
+`Session` of its own; errors appear inside the document or its dialog. Connectors, reference planes and lines, form hosts,
+parameter metadata and symbols remain in the draft even when their dedicated tools are not yet available.
+
+Expression-valued form and symbol properties (their numbers, Visible and a form's Material) offer `=` (`editor/association.rs`),
+which opens the Associate Family Parameter an adaptive element's rows open (`adaptive_editor::associate`, through the `Tied`
+trait; `Field::Form` and `Field::Symbol` name the row). It lists family parameters of the property's kind and can create a
+new compatible type or instance parameter, starting from what the row comes to. A bound field shows its evaluated value and
+is read-only. Choosing `<None>` removes the association while retaining that evaluated value. Cancel leaves the property
+unchanged; parameter creation stays in the family draft until the family is loaded.
 
 A type of a category or of a family is renamed with `rename_type` (`Model::move_entry` moves it in its map, and `rename_entry` the
 library entry and every reference `Model::lib_refs_mut` visits, so it keeps its GUID). A type or a family goes with `delete_type` (one entry, refused while an element uses it, and for the last type of a category or of a family: a
@@ -181,7 +196,7 @@ type picked), the project's Properties and Type Properties.
 A form's `visible` is a yes/no parameter (`group: "visibility"` lists it under Visibility, as Revit's) or a formula; worked out
 as zero, the form is left out of what the family builds for that type or component (`Family::solid`), so a plan, the 3D view,
 a section and IFC leave it out alike, and a change of type, of the type's tick or of the component's own value follows. The
-Family Editor's Forms tab shows it as Revit's Properties do: a Visible tick with "=" at its end (Associate Family Parameter,
+family document's Properties (its Forms tab) show it as Revit's do: a Visible tick with "=" at its end (Associate Family Parameter,
 the same dialog an adaptive element's rows open, through `adaptive_editor::Tied`), which ties it to a yes/no parameter or, with
 <None>, unties it keeping what it came to; tied, or given a formula, the tick is greyed, showing what the type previewed comes
 to, the formula beside it. Revit's "Preview Visibility" (forms hidden in a type drawn greyed in the family's own views) is left
