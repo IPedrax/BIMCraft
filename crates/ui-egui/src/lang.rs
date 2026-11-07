@@ -1,4 +1,4 @@
-//! The interface's language: English, as the code writes it, Brazilian Portuguese, Spanish, Czech, French, German, Dutch,
+//! The interface's language: English, as the code writes it, Brazilian Portuguese, Spanish, Polish, Czech, French, German, Dutch,
 //! Italian, Vietnamese or Simplified Chinese. What
 //! the window shows goes through [`t`], English being its own key; the widget helpers translate
 //! their labels and tips, so most call sites pass English and read it back translated. What a
@@ -47,6 +47,7 @@ pub enum Lang {
     English,
     Portuguese,
     Spanish,
+    Polish,
     Czech,
     French,
     German,
@@ -58,10 +59,11 @@ pub enum Lang {
 }
 
 impl Lang {
-    pub const ALL: [Lang; 11] = [
+    pub const ALL: [Lang; 12] = [
         Lang::English,
         Lang::Portuguese,
         Lang::Spanish,
+        Lang::Polish,
         Lang::Czech,
         Lang::French,
         Lang::German,
@@ -84,6 +86,7 @@ impl Lang {
             Lang::English | Lang::Vietnamese | Lang::Chinese | Lang::TraditionalChinese => Language::English,
             Lang::Portuguese => Language::Portuguese,
             Lang::Spanish => Language::Spanish,
+            Lang::Polish => Language::Polish,
             Lang::Czech => Language::Czech,
             Lang::French => Language::French,
             Lang::German => Language::German,
@@ -92,7 +95,7 @@ impl Lang {
         }
     }
 
-    /// Its code in the settings file: en, pt, es, vi, zh, zh_TW (also the name of its catalog).
+    /// Its code in the settings file: en, pt, es, pl, vi, zh, zh_TW (also the name of its catalog).
     pub fn code(self) -> &'static str {
         match self {
             Lang::Vietnamese => "vi",
@@ -136,6 +139,7 @@ impl From<Language> for Lang {
             Language::English | Language::Swedish => Lang::English,
             Language::Portuguese => Lang::Portuguese,
             Language::Spanish => Lang::Spanish,
+            Language::Polish => Lang::Polish,
             Language::Czech => Lang::Czech,
             Language::French => Lang::French,
             Language::German => Lang::German,
@@ -335,6 +339,11 @@ mod tests {
         set(Lang::Spanish);
         assert_eq!((t("Wall Schedule"), t("Save changes to {}?")), ("Tabla de muros", "¿Guardar los cambios en {}?"));
         assert_eq!((category("room", true), category("viewport", false)), ("Habitaciones".to_string(), "Vista en plano".to_string()));
+        set(Lang::Polish);
+        assert_eq!(
+            (t("Wall Schedule"), t("Architecture"), category("wall", true), category("level", false)),
+            ("Zestawienie ścian", "Architektura", "Ściany".to_string(), "Poziom".to_string())
+        );
         set(Lang::English);
     }
 
@@ -410,7 +419,7 @@ mod tests {
             assert_eq!(Lang::from_code(code), Some(Lang::TraditionalChinese), "{code}");
         }
         assert_eq!(
-            ["pt-BR", "es_419.UTF-8", "nl-BE", "nl_NL.UTF-8", "en-US", "de", ""].map(Lang::from_code),
+            ["pt-BR", "es_419.UTF-8", "nl-BE", "nl_NL.UTF-8", "en-US", "de", "pl", "pl-PL", ""].map(Lang::from_code),
             [
                 Some(Lang::Portuguese),
                 Some(Lang::Spanish),
@@ -418,6 +427,8 @@ mod tests {
                 Some(Lang::Dutch),
                 Some(Lang::English),
                 Some(Lang::German),
+                Some(Lang::Polish),
+                Some(Lang::Polish),
                 None
             ]
         );
@@ -426,6 +437,7 @@ mod tests {
         assert_eq!((Lang::TraditionalChinese.code(), Lang::TraditionalChinese.project()), ("zh_TW", Language::English));
         assert_eq!((Lang::Dutch.code(), Lang::Dutch.label(), Lang::Dutch.project()), ("nl", "Nederlands", Language::Dutch));
         assert_eq!((Lang::Italian.code(), Lang::Italian.label(), Lang::Italian.project()), ("it", "Italiano", Language::Italian));
+        assert_eq!((Lang::Polish.code(), Lang::Polish.label(), Lang::Polish.project()), ("pl", "Polski", Language::Polish));
         assert_eq!(Lang::ALL.map(|l| Lang::from_code(l.code())), Lang::ALL.map(Some));
     }
 }
