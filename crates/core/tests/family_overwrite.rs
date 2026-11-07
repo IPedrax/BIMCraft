@@ -339,7 +339,7 @@ fn reload_preserves_reference_planes_lines_and_form_hosts() {
 #[test]
 fn reload_replaces_all_family_options_and_resets_omitted_defaults() {
     use bimcraft_core::family::{Expr, Family};
-    let old_options = json!({"work_plane_based":true,"always_vertical":false,"cut_with_voids_when_loaded":true,"shared":true,
+    let old_options = json!({"work_plane_based":true,"always_vertical":false,"default_elevation":450,"cut_with_voids_when_loaded":true,"shared":true,
         "room_calculation_point":["Width / 2",0,0],"cut_in_views":false,"omniclass":{"number":"23.30","title":"Original"}});
     for policy in [None, Some("no"), Some("version"), Some("version_and_values")] {
         let mut s = Session::new();
@@ -377,7 +377,7 @@ fn loading_and_reloading_a_file_keeps_nondefault_family_options() {
     use bimcraft_core::family::{Expr, Family};
     let mut f = Family::default();
     f.types.insert("A".into(), Default::default());
-    let options = json!({"work_plane_based":true,"always_vertical":false,"cut_with_voids_when_loaded":true,"shared":true,
+    let options = json!({"work_plane_based":true,"always_vertical":false,"default_elevation":300,"cut_with_voids_when_loaded":true,"shared":true,
         "room_calculation_point":[10,20,30],"cut_in_views":false,"omniclass":{"number":"23.30","title":"Incoming"}});
     f.merge_options(&options).unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -399,4 +399,169 @@ fn loading_and_reloading_a_file_keeps_nondefault_family_options() {
     assert_eq!(after.room_calculation_point, Some([Expr::Number(11.), Expr::Number(22.), Expr::Number(33.)]));
     assert_eq!(after.omniclass, f.omniclass);
     assert!(after.shared && after.work_plane_based && !after.always_vertical);
+    assert_eq!(after.default_elevation, 300.0);
+}
+
+/// A file holding the project's family `name` as `save` writes it, after `change` has edited it.
+#[allow(clippy::unwrap_used)] // Test fixture creation must succeed.
+fn saved(s: &mut Session, name: &str, dir: &tempfile::TempDir, change: impl FnOnce(&mut Value)) -> std::path::PathBuf {
+    let file = dir.path().join(format!("{name}.json"));
+    run(s, json!({"name":name,"save":file}));
+    let mut value: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    change(&mut value);
+    std::fs::write(&file, value.to_string()).unwrap();
+    file
+}
+
+#[test]
+fn reload_keeps_components_hosted_on_planes_and_faces_where_they_are() {
+    use bimcraft_core::model::Element;
+    for policy in [None, Some("version"), Some("version_and_values")] {
+        let mut s = Session::new();
+        run(
+            &mut s,
+            json!({"name":"Light","category":"generic","parameters":[{"name":"Size","kind":"length","value":400}],"types":{"A":{}},
+            "options":{"work_plane_based":true,"always_vertical":false,"default_elevation":300},
+            "forms":[{"profile":[[0,0],["Size",0],["Size","Size"],[0,"Size"]],"to":100}]}),
+        );
+        s.execute("reference_plane", &json!({"name":"Ramp","start":[0,0,0],"end":[10000,0,0],"up":[0,0.8,0.6]})).unwrap();
+        let wall = s.execute("wall", &json!({"points":[[0,-5000],[6000,-5000]],"height":3000})).unwrap()["ids"][0].as_u64().unwrap();
+        let ids: Vec<u64> = [
+            json!({"family":"Light","at":[2000,2000],"host":{"plane":"Ramp"},"angle":15}),
+            json!({"family":"Light","at":[3000,-5000,1500],"host":{"face":{"element":wall,"face":"exterior"}}}),
+            json!({"family":"Light","at":[1000,1000]}),
+        ]
+        .into_iter()
+        .map(|p| s.execute("component", &p).unwrap()["id"].as_u64().unwrap())
+        .collect();
+        let placed: Vec<Element> = ids.iter().map(|id| s.model.elements.get(*id).unwrap().clone()).collect();
+        let hosted = |e: &Element| matches!(e, Element::Component(c) if c.host.is_some());
+        assert!(placed[..2].iter().all(hosted), "{placed:?}");
+        let dir = tempfile::tempdir().unwrap();
+        let file = saved(&mut s, "Light", &dir, |v| {
+            v["forms"][0]["to"] = json!(250);
+            v["parameters"][0]["value"] = json!(500);
+        });
+        let mut p = json!({"path":file});
+        if let Some(policy) = policy {
+            p["overwrite"] = json!(policy);
+        }
+        run(&mut s, p);
+        let f = &s.model.families["Light"];
+        assert!(f.work_plane_based && !f.always_vertical && f.default_elevation == 300.0, "{policy:?}");
+        for (id, was) in ids.iter().zip(&placed) {
+            assert_eq!(s.model.elements.get(*id).unwrap(), was, "{policy:?}: component {id} moved or lost its host");
+        }
+        s.model.check().unwrap();
+
+        // A version that is no longer work plane-based can't strand them: the reload is refused and nothing moves. (A
+        // legacy merge's `dry_run` checks the family alone, as it always has; only its real run meets the model's check.)
+        let file = saved(&mut s, "Light", &dir, |v| v["work_plane_based"] = json!(false));
+        let before = s.model.to_json().unwrap();
+        for dry in if policy.is_some() { vec![true, false] } else { vec![false] } {
+            let mut p = json!({"path":file,"dry_run":dry});
+            if let Some(policy) = policy {
+                p["overwrite"] = json!(policy);
+            }
+            let e = s.execute("family", &p).unwrap_err();
+            assert!(e.contains("work plane-based"), "{policy:?}: {e}");
+            assert!(s.model.to_json().unwrap() == before, "{policy:?}: a refused reload changed the project");
+        }
+    }
+}
+
+#[test]
+fn reload_keeps_adaptive_definitions_and_placed_points() {
+    use bimcraft_core::adaptive::{Operation, four_point_panel};
+    use bimcraft_core::family::Expr;
+    use bimcraft_core::model::Element;
+    let distance = |s: &Session| {
+        let d = s.model.families["Panel"].adaptive.as_ref().expect("the family is still adaptive");
+        d.nodes
+            .iter()
+            .find_map(|n| match &n.operation {
+                Operation::Extrude { distance, .. } => Some(distance.clone()),
+                _ => None,
+            })
+            .expect("its panel")
+    };
+    for policy in [None, Some("no"), Some("version"), Some("version_and_values")] {
+        let mut s = Session::new();
+        run(
+            &mut s,
+            json!({"name":"Panel","parameters":[{"name":"Thickness","kind":"length","value":60}],"types":{"A":{}},
+            "adaptive":four_point_panel()}),
+        );
+        let preview = s.execute("component", &json!({"family":"Panel","at":[100,200],"angle":30})).unwrap()["id"].as_u64().unwrap();
+        let sources: Vec<Value> = (1..=4).map(|n| json!({"id":preview,"host":{"type":"frame","point":format!("p{n}")}})).collect();
+        let capture = s.execute("adaptive_capture", &json!({"sources":sources})).unwrap();
+        let framed = s.execute("adaptive_place", &json!({"family":"Panel","placements":[{"at":[3000,-500],"adaptive":capture}]})).unwrap()
+            ["ids"][0]
+            .as_u64()
+            .unwrap();
+        let placed: Vec<Element> = [preview, framed].iter().map(|id| s.model.elements.get(*id).unwrap().clone()).collect();
+        assert!(matches!(&placed[1], Element::Component(c) if c.adaptive.is_some()));
+        let definition = s.model.families["Panel"].adaptive.clone().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let file = saved(&mut s, "Panel", &dir, |v| {
+            let panel = v["adaptive"]["nodes"].as_array_mut().unwrap().iter_mut().find(|n| n["id"] == "panel").unwrap();
+            let extrude = &mut panel["operation"];
+            assert_eq!(extrude["distance"].as_f64(), Some(60.0), "{extrude}");
+            extrude["distance"] = json!("Thickness");
+        });
+        let mut p = json!({"path":file});
+        if let Some(policy) = policy {
+            p["overwrite"] = json!(policy);
+        }
+        run(&mut s, p);
+        if policy == Some("no") {
+            assert_eq!(s.model.families["Panel"].adaptive.as_ref(), Some(&definition));
+        } else {
+            assert_eq!(distance(&s), Expr::Formula("Thickness".into()), "{policy:?}");
+        }
+        for (id, was) in [preview, framed].iter().zip(&placed) {
+            assert_eq!(s.model.elements.get(*id).unwrap(), was, "{policy:?}: adaptive component {id} changed");
+            let builds = matches!(s.model.elements.get(*id), Some(Element::Component(c)) if !s.model.component_pieces(c).is_empty());
+            assert!(builds, "{policy:?}: component {id} no longer builds");
+        }
+        s.model.check().unwrap();
+        let (restored, left_out) = bimcraft_core::model::Model::read(&s.model.to_json().unwrap()).unwrap();
+        assert!(left_out.is_empty(), "{left_out:?}");
+        assert_eq!(restored.families["Panel"].adaptive, s.model.families["Panel"].adaptive);
+    }
+}
+
+#[test]
+fn reload_refuses_formulas_naming_what_the_incoming_family_lacks() {
+    for policy in [None, Some("version"), Some("version_and_values")] {
+        for (at, formula) in [("parameter", "Width * 2"), ("form", "Depth + 10")] {
+            let (mut s, _dir, file) = setup();
+            let mut data: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+            if at == "parameter" {
+                // The project family has Width; the incoming one drops it while a formula still says it.
+                data["parameters"][0] = json!({"name":"Length","kind":"length","value":200});
+                data["parameters"][2]["formula"] = json!(formula);
+                data["types"] = json!({"A":{"Length":250}});
+                data["forms"][0]["profile"] = json!([[0, 0], ["Length", 0], ["Length", 40], [0, 40]]);
+            } else {
+                data["forms"][0]["to"] = json!(formula);
+            }
+            std::fs::write(&file, data.to_string()).unwrap();
+            let unknown = if at == "parameter" { "Width" } else { "Depth" };
+            let before = s.model.to_json().unwrap();
+            for dry in [true, false] {
+                let mut p = json!({"path":file,"dry_run":dry});
+                if let Some(policy) = policy {
+                    p["overwrite"] = json!(policy);
+                }
+                let e = s.execute("family", &p).unwrap_err();
+                assert!(e.contains(&format!("not a valid parameter: {unknown}")) && e.contains(formula), "{policy:?} {at}: {e}");
+                assert!(s.model.to_json().unwrap() == before, "{policy:?} {at}: a refused reload changed the project");
+            }
+            // `no` keeps the project's own definition and never takes the file's formulas in.
+            let reply = run(&mut s, json!({"path":file,"overwrite":"no"}));
+            assert_eq!(reply["overwritten"], false);
+            assert!(s.model.to_json().unwrap() == before);
+        }
+    }
 }

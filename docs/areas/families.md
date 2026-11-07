@@ -472,6 +472,12 @@ the normal undo restores a successful reload. `dry_run` previews the change with
 
 An explicit reload of an identical definition is skipped with `overwritten: false`, without adding an undo step.
 
+A reload keeps what stands on the family where it is: components hosted on a reference plane or on a face of a wall, a floor,
+a ceiling or a roof (`host`) keep their host, place and Offset from Host, and adaptive components keep their points. A file's
+`adaptive` definition is loaded with the rest of it; a version that is no longer work plane-based, or no longer adaptive,
+while components rely on it is refused as a whole. The incoming family's formulas are checked as any edit's are: one that
+names a parameter the incoming family doesn't have refuses the reload (`no` never reads the file's formulas).
+
 The option is only accepted with `path`, and is the caller's decision: a field named `overwrite` inside a family file cannot
 choose the policy. With no option the original merge behaviour is preserved, including partial definitions. A family not
 yet in the project is loaded normally under all three policies. This changes commands, not the saved file format.
