@@ -516,7 +516,7 @@ fn rotate_project_north_turns_the_whole_sample_house() {
 /// How many pixels of the plan of level 100000 aren't paper within 12 px of model point `at`.
 fn ink_near(s: &Session, at: (f64, f64)) -> usize {
     use crate::render::{View, draw, png};
-    let view = View { scale: 0.05, cx: 0.0, cy: 0.0, width: 800, height: 600 };
+    let view = View { angle: 0.0, scale: 0.05, cx: 0.0, cy: 0.0, width: 800, height: 600 };
     let img = tiny_skia::Pixmap::decode_png(&png(&draw(&s.model, 100000, view)).unwrap()).unwrap();
     let (x, y) = view.px(crate::geom::P2(at.0, at.1));
     let (x, y) = (x as i64, y as i64);
@@ -575,7 +575,7 @@ fn each_point_is_picked_by_its_library_id_where_a_view_shows_it() {
     let mut s = Session::new();
     run(&mut s, "coordinates", json!({"base": [4000, 3000, 0], "survey": [-5000, 2000, 0]}));
     run(&mut s, "graphics", json!({"view": 100000, "show": ["internalorigin", "projectbasepoint", "surveypoint"]}));
-    let view = View { scale: 0.05, cx: 0.0, cy: 0.0, width: 800, height: 600 };
+    let view = View { angle: 0.0, scale: 0.05, cx: 0.0, cy: 0.0, width: 800, height: 600 };
     let d = draw(&s.model, 100000, view);
     for (point, at) in [(Point::Internal, (0.0, 0.0)), (Point::Base, (4000.0, 3000.0)), (Point::Survey, (-5000.0, 2000.0))] {
         let id = point.id(&s.model).unwrap_or_else(|| panic!("{point:?} has a library id"));
@@ -594,7 +594,7 @@ fn a_section_shows_the_points_where_its_graphics_show_them_and_picks_them() {
     run(&mut s, "coordinates", json!({"base": [4000, 0, 1000], "survey": [6000, 0, -500]}));
     // Looking north along y = -2000, from x = -2000 to 10000.
     let id = run(&mut s, "section", json!({"start": [-2000, -2000], "end": [10000, -2000]}))["id"].as_u64().unwrap();
-    let view = View { scale: 0.05, cx: 4000.0, cy: 0.0, width: 800, height: 400 };
+    let view = View { angle: 0.0, scale: 0.05, cx: 4000.0, cy: 0.0, width: 800, height: 400 };
     // Along the line from its start, and up.
     let points = [(Point::Internal, (2000.0, 0.0)), (Point::Base, (6000.0, 1000.0)), (Point::Survey, (8000.0, -500.0))];
     let ink = |s: &Session, at: (f64, f64)| {
@@ -614,4 +614,40 @@ fn a_section_shows_the_points_where_its_graphics_show_them_and_picks_them() {
         assert!(ink(&s, *at) + 2000 < before, "{p:?} drawn at {at:?}: darker than without it");
         assert_eq!(d.pick(view.px(crate::geom::P2(at.0, at.1)), 6.0), p.id(&s.model), "{p:?} picked");
     }
+}
+
+#[test]
+fn a_plan_oriented_to_true_north_turns_on_screen_and_nothing_else_moves() {
+    use crate::geom::P2;
+    use crate::render::{View, view_angle};
+    let mut s = Session::new();
+    run(&mut s, "wall", json!({"points": [[0, 0], [8000, 0]]}));
+    // True north 30° east of project north (clockwise on the plan).
+    run(&mut s, "location", json!({"name": "Internal", "angle": 30}));
+    let level = s.model.levels()[0].0;
+    assert_eq!(view_angle(&s.model, level), 0.0, "project north by default");
+    let flat = crate::sheet::size(&s.model, level, 100.0).unwrap();
+    let r = run(&mut s, "graphics", json!({"view": "Level 1", "orientation": "true_north"}));
+    assert_eq!(r["orientation"], "true_north", "{r}");
+    assert_eq!(view_angle(&s.model, level), 30.0);
+    let before = s.model.elements.clone();
+    // A turned view: a pixel and back is the same point; true north runs straight up the screen.
+    let v = View { scale: 0.1, cx: 1000.0, cy: 500.0, width: 800, height: 600, angle: 30.0 };
+    let p = P2(3210.0, -1234.0);
+    assert!(v.mm(v.px(p)).dist(p) < 1e-3);
+    let north = P2(30f64.to_radians().sin(), 30f64.to_radians().cos()) * 1000.0;
+    let (a, b) = (v.px(P2(1000.0, 500.0)), v.px(P2(1000.0, 500.0) + north));
+    assert!((a.0 - b.0).abs() < 1e-3 && b.1 < a.1, "true north is up: {a:?} {b:?}");
+    // The plan drawn is turned so; the model isn't.
+    let d = crate::render::plan(&s.model, level, 800, 600);
+    assert_eq!(d.view.angle, 30.0);
+    let (x0, y0) = d.view.px(P2(0.0, 0.0));
+    let (x1, y1) = d.view.px(P2(8000.0, 0.0));
+    assert!(((y0 - y1) / (x1 - x0)).atan().to_degrees() - 30.0 < 0.01, "the wall rises 30° on screen");
+    assert_eq!(s.model.elements, before);
+    // On a sheet too.
+    let turned = crate::sheet::size(&s.model, level, 100.0).unwrap();
+    assert!(turned.1 > flat.1 + 30.0, "a wall turned 30° takes more paper up the sheet: {flat:?} {turned:?}");
+    let e = fails(&mut s, "graphics", json!({"view": "Level 1", "orientation": "sideways"}));
+    assert!(e.contains("true_north"), "{e}");
 }

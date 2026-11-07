@@ -33,6 +33,7 @@ const PAD: f32 = 10.0;
 /// Paper mm (from the bottom left corner, y up) to the sheet drawing's pixels.
 fn page(paper: P2) -> View {
     View {
+        angle: 0.0,
         scale: DENSITY,
         cx: paper.0 / 2.0,
         cy: paper.1 / 2.0,
@@ -53,14 +54,17 @@ type Work = std::cell::OnceCell<render::SectionWork>;
 /// [`framing`], a section's of `work`.
 fn framing_in(m: &Model, work: &Work, view: impl Key, scale: f64) -> Option<View> {
     let k = DENSITY / scale;
+    let view = m.guid(view);
+    let angle = render::view_angle(m, view);
     let pts: Vec<P2> = match m.elements.get(view)? {
-        Element::Level(_) | Element::PlanView(_) => render::plan_extent(m, view),
+        // A plan turned to true north takes the paper it turned takes: its points as they lie on the sheet.
+        Element::Level(_) | Element::PlanView(_) => render::plan_extent(m, view).into_iter().map(|p| turn(p, angle)).collect(),
         Element::Section(_) | Element::Elevation(_) => {
             render::section_extent(m, work.get_or_init(|| render::SectionWork::new(m)), view, k, 1.0)?.to_vec()
         }
         Element::Schedule(sc) => {
             let (width, height) = table_size(&sc.name, &table_of(m, sc));
-            return Some(View { scale: 1.0, cx: 0.0, cy: 0.0, width, height });
+            return Some(View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width, height });
         }
         Element::PanelSchedule(ps) => {
             let (width, height) = panel::size(m, ps)?;
@@ -68,7 +72,7 @@ fn framing_in(m: &Model, work: &Work, view: impl Key, scale: f64) -> Option<View
         }
         Element::View3D(v) => {
             let cam = view3d::camera_in(m, v.azimuth, v.elevation, k, ROOM * DENSITY, &Look::of(m, view));
-            return Some(View { scale: k, cx: 0.0, cy: 0.0, width: cam.width, height: cam.height });
+            return Some(View { angle: 0.0, scale: k, cx: 0.0, cy: 0.0, width: cam.width, height: cam.height });
         }
         _ => return None,
     };
@@ -77,7 +81,14 @@ fn framing_in(m: &Model, work: &Work, view: impl Key, scale: f64) -> Option<View
         None => (P2(-5000.0, -5000.0), P2(5000.0, 5000.0)),
     };
     let side = |d: f64| ((d * k + 2.0 * ROOM * DENSITY).ceil().clamp(1.0, f64::from(u32::MAX))) as u32;
-    Some(View { scale: k, cx: (lo.0 + hi.0) / 2.0, cy: (lo.1 + hi.1) / 2.0, width: side(hi.0 - lo.0), height: side(hi.1 - lo.1) })
+    let c = turn(P2((lo.0 + hi.0) / 2.0, (lo.1 + hi.1) / 2.0), -angle);
+    Some(View { angle, scale: k, cx: c.0, cy: c.1, width: side(hi.0 - lo.0), height: side(hi.1 - lo.1) })
+}
+
+/// `p` turned `angle` degrees counter-clockwise about the origin.
+fn turn(p: P2, angle: f64) -> P2 {
+    let (sin, cos) = angle.to_radians().sin_cos();
+    P2(p.0 * cos - p.1 * sin, p.0 * sin + p.1 * cos)
 }
 
 /// How much paper view `view` takes at 1 : `scale`, mm.

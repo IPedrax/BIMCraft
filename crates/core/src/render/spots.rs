@@ -61,8 +61,10 @@ pub(super) fn spot_coordinate(d: &mut Drawing, m: &Model, sp: &Spot) {
     let layout = crate::text::layout(&tt, &text, &crate::text::styles(&tt, &text, false, &[]));
     let [l, top, r, b] = layout.frame(0.0);
     let (w, h) = ((r - l) * mm, (b - top) * mm);
+    // Level on the sheet however the view is turned, unless its type turns it with its component.
     let a = turn(m, sp, &t).to_radians();
-    let (along, up) = (P2(a.cos(), a.sin()), P2(-a.sin(), a.cos()));
+    let model = a - d.view.angle.to_radians();
+    let (along, up) = (P2(model.cos(), model.sin()), P2(-model.sin(), model.cos()));
     if !sp.leader {
         // Beside the point, past the symbol, its middle level with it.
         let from = p + along * (half + t.text_offset_symbol * mm);
@@ -114,7 +116,8 @@ fn arrowhead(d: &mut Drawing, t: &SpotCoordinateType, p: P2, dir: P2, size: f64,
     }
 }
 
-/// `text`, in the type's lettering and colour, its top left corner at model point `corner`, turned `angle` radians.
+/// `text`, in the type's lettering and colour, its top left corner at model point `corner`, turned `angle` radians on the
+/// sheet.
 fn letter(d: &mut Drawing, t: &SpotCoordinateType, text: &str, corner: P2, angle: f64) {
     if text.is_empty() {
         return;
