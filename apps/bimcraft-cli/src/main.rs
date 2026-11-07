@@ -9,8 +9,9 @@ use std::io::Write;
 use std::process::ExitCode;
 
 use bimcraft_core::cad::DwgReader;
-use bimcraft_core::engine::{Session, catalog};
+use bimcraft_core::engine::Session;
 use bimcraft_core::sample::SAMPLE;
+use bimcraft_plugin::{Level, Plugins};
 use serde_json::{Value, json};
 
 const USAGE: &str = "USAGE:
@@ -38,9 +39,40 @@ fn print_pretty(out: &mut impl Write, v: &Value) -> Result<(), String> {
     writeln!(out, "{}", serde_json::to_string_pretty(v).unwrap_or_default()).map_err(|e| format!("stdout: {e}"))
 }
 
+/// What a plugin log line says its level is, for the command line.
+fn level_name(level: Level) -> &'static str {
+    match level {
+        Level::Info => "info",
+        Level::Warning => "warning",
+        Level::Error => "error",
+    }
+}
+
+/// Reads the plugin folder into `session`, and says what became of each plugin on stderr: the command line and
+/// the MCP server have no plugin window to show it in. A missing folder is quiet.
+pub(crate) fn load_plugins(session: &mut Session) -> Plugins {
+    let plugins = bimcraft_plugin::load();
+    plugins.register(session);
+    for e in plugins.log() {
+        eprintln!("bimcraft: plugin `{}` {}: {}", e.plugin, level_name(e.level), e.text);
+    }
+    plugins
+}
+
+/// Says the log lines added since `seen`, and remembers how many there are.
+pub(crate) fn note_plugins(plugins: &Plugins, seen: &mut usize) {
+    let entries = plugins.log();
+    for e in entries.iter().skip(*seen) {
+        eprintln!("bimcraft: plugin `{}` {}: {}", e.plugin, level_name(e.level), e.text);
+    }
+    *seen = entries.len();
+}
+
 fn cli(args: &[String], out: &mut impl Write) -> Result<(), String> {
     let mut s = Session::new();
     s.dwg = dwg_reader();
+    let plugins = load_plugins(&mut s);
+    let mut seen = plugins.log().len();
     match args {
         [cmd, rest @ ..] if cmd == "run" => {
             let mut rest = rest.iter();
@@ -62,6 +94,7 @@ fn cli(args: &[String], out: &mut impl Write) -> Result<(), String> {
                 for r in results.iter().filter(|r| !r.is_null()) {
                     print(out, r)?;
                 }
+                note_plugins(&plugins, &mut seen);
             }
             Ok(())
         }
@@ -78,7 +111,11 @@ fn cli(args: &[String], out: &mut impl Write) -> Result<(), String> {
             }
             print(out, &s.execute("save", &json!({ "path": to }))?)
         }
-        [cmd] if cmd == "commands" => print_pretty(out, &catalog()),
+        [cmd] if cmd == "commands" => {
+            let list = s.catalog();
+            note_plugins(&plugins, &mut seen);
+            print_pretty(out, &list)
+        }
         [flag] if flag == "--version" || flag == "-V" => {
             writeln!(out, "bimcraft-cli {}", env!("CARGO_PKG_VERSION")).map_err(|e| format!("stdout: {e}"))
         }
