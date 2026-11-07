@@ -290,3 +290,22 @@ fn a_hostile_table_file_is_refused_or_cut_down() {
     let r = run(&mut s, "classification_answer", json!({"answer": {"rows": [{"key": 5}, "x", null]}}));
     assert_eq!(r["refused"].as_array().unwrap().len(), 3);
 }
+
+#[test]
+fn a_brief_is_cut_into_batches_each_with_its_categories_candidates_and_handed_over_with_its_tables() {
+    let (mut s, _, _) = house();
+    uniclass(&mut s);
+    let b = classification::brief(&s.model, &serde_json::from_value(json!({})).unwrap()).unwrap();
+    let parts = b.chunks(1);
+    assert_eq!(parts.len(), 2);
+    for p in &parts {
+        let cat = &p.rows[0].category;
+        assert_eq!(p.candidates["Uniclass Ss"].keys().collect::<Vec<_>>(), [cat], "only its category's candidates");
+    }
+    let h = classification::handover(&s.model, &parts[0], true);
+    let names: Vec<&str> = h.files.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(names, ["brief.json", "Uniclass-Ss.csv"]);
+    assert!(h.files[1].1.starts_with("Code,Title,Parent\n"));
+    assert!(h.files[1].1.contains("Ss_25_10_30_35,Brick and block wall systems,Ss_25_10_30\n"));
+    assert!(classification::handover(&s.model, &parts[0], false).inline.contains("candidates"));
+}

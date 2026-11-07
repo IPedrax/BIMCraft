@@ -1,0 +1,17 @@
+[package]
+name = "bimcraft-agent"
+description = "BIMCraft's bridge to the AI agent a user has: runs their command line (Claude Code, Codex, Ollama or their own) on a task's files and reads its answer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

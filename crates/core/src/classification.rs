@@ -1749,3 +1749,56 @@ pub(crate) fn check_command(s: &mut Session, p: &Value) -> R {
     }
     Ok(json!({"bindings": out}))
 }
+
+impl Brief {
+    /// The brief cut into briefs of up to `n` rows, each with the candidates of the categories its rows are.
+    pub fn chunks(&self, n: usize) -> Vec<Brief> {
+        let n = n.max(1);
+        self.rows
+            .chunks(n)
+            .map(|rows| {
+                let cats: BTreeSet<&str> = rows.iter().map(|r| r.category.as_str()).collect();
+                let tables: BTreeSet<&String> = rows.iter().flat_map(|r| r.tables.keys()).collect();
+                let candidates = self
+                    .candidates
+                    .iter()
+                    .filter(|(t, _)| tables.contains(t))
+                    .map(|(t, by)| {
+                        (t.clone(), by.iter().filter(|(c, _)| cats.contains(c.as_str())).map(|(c, l)| (c.clone(), l.clone())).collect())
+                    })
+                    .collect();
+                let tables = self
+                    .tables
+                    .iter()
+                    .filter(|x| x.get("table").and_then(Value::as_str).is_some_and(|t| tables.iter().any(|n| n.as_str() == t)))
+                    .cloned()
+                    .collect();
+                Brief { tables, rows: rows.to_vec(), candidates }
+            })
+            .collect()
+    }
+}
+
+/// What an agent is handed for a brief: its instructions, the files beside them (the brief and each table, as `.csv`),
+/// and, for an agent that reads no files, the brief as text.
+pub struct Handover {
+    pub instructions: String,
+    pub files: Vec<(String, String)>,
+    pub inline: String,
+}
+
+/// The handover of `brief` from the tables of `m`.
+pub fn handover(m: &Model, brief: &Brief, files: bool) -> Handover {
+    let text = serde_json::to_string_pretty(brief).unwrap_or_default();
+    let mut out = vec![("brief.json".to_string(), text.clone())];
+    if files {
+        for x in &brief.tables {
+            let Some(name) = x.get("table").and_then(Value::as_str) else { continue };
+            if let Some(t) = m.classification.tables.get(name) {
+                out.push((format!("{}.csv", file_stem(name)), t.to_csv()));
+            }
+        }
+    }
+    let inline = if files { String::new() } else { serde_json::to_string(brief).unwrap_or_default() };
+    Handover { instructions: instructions(brief, files), files: out, inline }
+}

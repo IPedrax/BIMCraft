@@ -469,6 +469,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bimcraft-agent"
+version = "0.10.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "bimcraft-cli"
 version = "0.10.0"
 dependencies = [
