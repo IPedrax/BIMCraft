@@ -296,3 +296,88 @@ fn a_load_into_project_refused_stays_said_in_the_document_until_the_draft_change
     press(&mut h, "Load into Project");
     assert!(h.state().session.model.families.contains_key("Dining Table"));
 }
+
+/// Every family, adaptive or not, opened as a document and loaded back is the family it was: T2's parameter metadata (group,
+/// shared, reporting, `of`), F2's planes, lines and hosts, T5a's options with Default Elevation, T27's symbol subcategories,
+/// connectors and an adaptive definition.
+#[test]
+fn every_family_comes_back_from_the_document_as_it_went_in() {
+    use bimcraft_core::family::{Category, Family, Group, Kind, Parameter};
+    let mut h = app("");
+    h.set_size(vec2(1600., 1000.));
+    let mut table = h.state().session.model.families["Table"].clone();
+    table.parameters.extend([
+        Parameter {
+            name: "Fire Rating".into(),
+            kind: Kind::Text,
+            value: json!("EI 60"),
+            group: Some(Group::IdentityData),
+            shared: bimcraft_core::model::Guid::parse("6f1c2a3b-4d5e-4f60-8a71-92b3c4d5e6f7"),
+            ..Parameter::default()
+        },
+        Parameter { name: "Reach".into(), reporting: true, value: json!(450.0), ..Parameter::default() },
+        Parameter { name: "Leaf".into(), kind: Kind::FamilyType, value: Value::Null, of: Some(Category::Door), ..Parameter::default() },
+    ]);
+    table.merge_options(&json!({"work_plane_based": true, "always_vertical": false, "default_elevation": 900.0, "shared": true})).unwrap();
+    let adaptive = Family {
+        types: [("A".into(), Default::default())].into(),
+        adaptive: Some(bimcraft_core::adaptive::four_point_panel()),
+        ..Family::default()
+    };
+    let mut put = |name: &str, f: &Family| {
+        let mut p = serde_json::to_value(f).unwrap();
+        let map = p.as_object_mut().unwrap();
+        Family::options_from_fields(map);
+        map.insert("options".into(), f.options_json());
+        for (from, to) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
+            let v = map.remove(from).unwrap_or(json!([]));
+            map.insert(to.into(), v);
+        }
+        p["name"] = json!(name);
+        h.state_mut().session.execute("family", &p).unwrap();
+    };
+    put("Table", &table);
+    put("Adaptive panel", &adaptive);
+    let names: Vec<String> = h.state().session.model.families.keys().cloned().collect();
+    let mut seen = (false, false, false);
+    for name in names {
+        let was = h.state().session.model.families[&name].clone();
+        seen.0 |= was.symbols.iter().any(|y| y.subcategory.is_some());
+        seen.1 |= !was.connectors.is_empty();
+        seen.2 |= !was.planes.is_empty();
+        h.state_mut().edit_family(&name);
+        h.run();
+        press(&mut h, "Load into Project and Close");
+        assert!(h.state().family_editor.is_none(), "{name}: loaded and closed");
+        // The same numbers, whether a file wrote them whole (1200) or the editor as numbers (1200.0), and a formula that is a
+        // number ("-40") as that number, as the editor's own round trip has them.
+        fn alike(v: Value) -> Value {
+            match v {
+                Value::Number(n) => json!(n.as_f64()),
+                Value::String(s) => s.trim().parse::<f64>().ok().filter(|x| x.is_finite()).map_or(Value::String(s), |x| json!(x)),
+                Value::Array(a) => Value::Array(a.into_iter().map(alike).collect()),
+                Value::Object(o) => Value::Object(o.into_iter().map(|(k, v)| (k, alike(v))).collect()),
+                other => other,
+            }
+        }
+        // Where two values first differ, as a path into them.
+        fn first_diff(path: String, a: &Value, b: &Value) -> Option<String> {
+            match (a, b) {
+                (Value::Object(x), Value::Object(y)) => x
+                    .keys()
+                    .chain(y.keys())
+                    .find_map(|k| first_diff(format!("{path}.{k}"), x.get(k).unwrap_or(&Value::Null), y.get(k).unwrap_or(&Value::Null))),
+                (Value::Array(x), Value::Array(y)) if x.len() == y.len() => {
+                    x.iter().zip(y).enumerate().find_map(|(i, (p, q))| first_diff(format!("{path}[{i}]"), p, q))
+                }
+                _ => (a != b).then(|| format!("{path}: {a} against {b}")),
+            }
+        }
+        let back = alike(serde_json::to_value(&h.state().session.model.families[&name]).unwrap());
+        assert_eq!(first_diff(name.clone(), &back, &alike(serde_json::to_value(&was).unwrap())), None);
+    }
+    assert_eq!(seen, (true, true, true), "the library has subcategories, connectors and planes to keep");
+    let back = &h.state().session.model.families["Table"];
+    assert_eq!(back.options_json()["default_elevation"], json!(900.0));
+    assert!(h.state().session.model.families["Adaptive panel"].adaptive.is_some());
+}
