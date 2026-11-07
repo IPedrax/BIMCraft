@@ -1494,6 +1494,7 @@ impl BimApp {
                     if self.run("family", p).is_some() {
                         ed.original = Some(ed.name.trim().to_string());
                         ed.document.refused = None;
+                        ed.saved_as(ed.draft());
                         made = true;
                     } else {
                         // Said in the document; the box over the view's corner would lie on its buttons. Kept apart from
@@ -1527,18 +1528,28 @@ impl BimApp {
             match prepared {
                 Ok(mut draft) => {
                     let name = ed.name.trim().to_string();
+                    let saved = ed.draft();
                     if save {
                         let dialog =
                             rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]).set_file_name(format!("{name}.json"));
                         self.ask_file(ctx, dialog, true, move |app, path| {
-                            if let Err(text) = draft.execute("family", &json!({"name":name,"save":path.to_string_lossy()})) {
-                                app.status = Status { text, error: true };
+                            match draft.execute("family", &json!({"name":name,"save":path.to_string_lossy()})) {
+                                // Still open, the document has nothing unsaved but what changed meanwhile.
+                                Ok(_) => {
+                                    if let Some(open) = app.family_editor.as_mut() {
+                                        open.saved_as(saved);
+                                    }
+                                }
+                                Err(text) => app.status = Status { text, error: true },
                             }
                         });
                     } else {
                         let p = self.favorite_params("save", "family", &name);
                         match draft.execute("favorite", &p) {
-                            Ok(_) => self.status = Status { text: tf("Saved {} to your Favorites", &[&name]), error: false },
+                            Ok(_) => {
+                                ed.saved_as(saved);
+                                self.status = Status { text: tf("Saved {} to your Favorites", &[&name]), error: false }
+                            }
                             Err(e) => ed.problem = Some(e),
                         }
                     }

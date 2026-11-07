@@ -30,11 +30,23 @@ pub(crate) struct State {
     pub(super) reveal: Option<usize>,
     /// What Load into Project was refused for: said until the draft changes.
     pub(super) refused: Option<String>,
+    /// The draft as it was opened, last saved to a file or the Favorites, or last loaded into the project: any other has
+    /// unsaved changes.
+    clean: Option<Draft>,
 }
 
 impl Default for State {
     fn default() -> State {
-        State { preview_size: [360, 300], undo: Vec::new(), redo: Vec::new(), mark: None, dialog_saved: None, reveal: None, refused: None }
+        State {
+            preview_size: [360, 300],
+            undo: Vec::new(),
+            redo: Vec::new(),
+            mark: None,
+            dialog_saved: None,
+            reveal: None,
+            refused: None,
+            clean: None,
+        }
     }
 }
 
@@ -88,6 +100,21 @@ impl Draft {
 }
 
 impl FamilyEditor {
+    /// The draft as it is now, for `saved_as` once it has been saved.
+    pub(super) fn draft(&self) -> Draft {
+        Draft::of(self)
+    }
+
+    /// The draft `d` was saved or loaded into the project: changes are counted from it.
+    pub(super) fn saved_as(&mut self, d: Draft) {
+        self.document.clean = Some(d);
+    }
+
+    /// Whether the draft has changes not saved or loaded into the project since it was opened.
+    pub(crate) fn unsaved(&self) -> bool {
+        self.document.clean.as_ref().is_some_and(|clean| *clean != Draft::of(self))
+    }
+
     /// Whether a dialog of the document's is open: Family Types, Family Category and Parameters, or an association.
     fn modal(&self) -> bool {
         self.dialog.is_some() || self.associating.is_some()
@@ -99,6 +126,8 @@ impl FamilyEditor {
     pub(super) fn history(&mut self, ctx: &Context, ask: &Asked) {
         let now = Draft::of(self);
         let Some(mark) = self.document.mark.take() else {
+            // The document's first frame: the draft as it was opened.
+            self.document.clean.get_or_insert_with(|| now.clone());
             self.document.mark = Some(now);
             return;
         };

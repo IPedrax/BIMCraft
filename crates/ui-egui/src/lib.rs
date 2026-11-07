@@ -5075,7 +5075,9 @@ impl BimApp {
                 if let Some(note) = self.snap_note() {
                     ui.label(RichText::new(note).color(pal().accent_ink));
                 }
-                if self.dirty() {
+                // The active document's: an open family's draft, else the project.
+                let unsaved = self.family_editor.as_ref().map_or_else(|| self.dirty(), |ed| ed.unsaved());
+                if unsaved {
                     ui.label(RichText::new(t("Unsaved changes")).color(pal().muted));
                 }
                 self.option_selector(ui);

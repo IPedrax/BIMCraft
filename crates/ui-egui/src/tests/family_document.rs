@@ -381,3 +381,51 @@ fn every_family_comes_back_from_the_document_as_it_went_in() {
     assert_eq!(back.options_json()["default_elevation"], json!(900.0));
     assert!(h.state().session.model.families["Adaptive panel"].adaptive.is_some());
 }
+
+/// The status bar's "Unsaved changes" is the active document's: with a family open, whether its draft has changes not yet
+/// saved to a file or loaded into the project; with the project active, the project's, whatever the family was.
+#[test]
+fn the_unsaved_mark_is_the_active_documents() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut h = app("");
+    h.set_size(vec2(1600., 1000.));
+    let marked = |h: &Harness<BimApp>| h.query_by_label("Unsaved changes").is_some();
+    let rename = |h: &mut Harness<BimApp>, name: &str| {
+        type_into(h, "Family name", name);
+        h.get_by_label("Close Family").focus();
+        h.run();
+    };
+    assert!(!marked(&h), "a clean project");
+    h.state_mut().edit_family("Table");
+    h.run();
+    assert!(!marked(&h), "a family just opened");
+    rename(&mut h, "Dining Table");
+    assert!(marked(&h), "the family edited");
+    assert!(!h.state().dirty(), "the project is untouched");
+    // Saved to a file: nothing left unsaved, though the project hasn't taken it.
+    press(&mut h, "Insert");
+    press(&mut h, "Save Family");
+    let file = dir.path().join("Dining Table.json");
+    let tx = crate::dialog::BEGUN.with(|b| b.borrow_mut().pop()).expect("a dialog was begun");
+    tx.send(Some(vec![file.clone()])).unwrap();
+    h.run();
+    assert!(file.exists());
+    assert!(!marked(&h), "the family saved");
+    rename(&mut h, "Kitchen Table");
+    assert!(marked(&h), "edited again");
+    // Loaded into the project: the family has nothing unsaved, the project has.
+    press(&mut h, "Load into Project");
+    assert!(h.state().session.model.families.contains_key("Kitchen Table"));
+    assert!(h.state().dirty());
+    assert!(!marked(&h), "the family loaded");
+    // Closed: the project's mark.
+    press(&mut h, "Close Family");
+    assert!(h.state().family_editor.is_none());
+    assert!(marked(&h), "the project's changes");
+    // Opened again on a changed project: the family's, which has none; closed, the project's again.
+    h.state_mut().edit_family("Kitchen Table");
+    h.run();
+    assert!(!marked(&h), "a family just opened on a changed project");
+    press(&mut h, "Close Family");
+    assert!(marked(&h), "the project's changes, after the family");
+}
