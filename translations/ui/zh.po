@@ -712,11 +712,11 @@ msgstr "指定视图样板"
 msgid "Associated Level"
 msgstr "关联标高"
 
-#: crates/core/src/model.rs:2641
+#: crates/core/src/model.rs:2645
 msgid "At wall centre line"
 msgstr "在墙中心线"
 
-#: crates/core/src/model.rs:2642
+#: crates/core/src/model.rs:2646
 msgid "At wall finish"
 msgstr "在墙面层"
 
@@ -1010,7 +1010,7 @@ msgstr "边界线：在上一标高绘制屋顶的迹线及其中的天井"
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "边界线：绘制竖井洞口的轮廓"
 
-#: crates/core/src/model.rs:2939
+#: crates/core/src/model.rs:2943
 msgid "Brick"
 msgstr "砖"
 
@@ -1230,7 +1230,7 @@ msgstr "中心"
 msgid "Centre Lines"
 msgstr "中心线"
 
-#: crates/core/src/model.rs:2947
+#: crates/core/src/model.rs:2951
 msgid "Ceramic tile"
 msgstr "瓷砖"
 
@@ -1936,7 +1936,7 @@ msgstr "概念体量"
 msgid "Concrete"
 msgstr "混凝土"
 
-#: crates/core/src/model.rs:2941
+#: crates/core/src/model.rs:2945
 msgid "Concrete block"
 msgstr "混凝土砌块"
 
@@ -2017,7 +2017,7 @@ msgstr "已复制 {} 个 IFC GlobalId。"
 msgid "Copied {} rows, tab-separated."
 msgstr "已复制 {} 行，以制表符分隔。"
 
-#: crates/core/src/model.rs:2955
+#: crates/core/src/model.rs:2959
 msgid "Copper"
 msgstr "铜"
 
@@ -2414,7 +2414,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9579
 msgid "Dependent"
 msgstr "相关"
 
@@ -2662,11 +2662,11 @@ msgstr "点线"
 msgid "Double Door"
 msgstr "双扇门"
 
-#: crates/core/src/model.rs:2472
+#: crates/core/src/model.rs:2476
 msgid "Double Sliding"
 msgstr "双扇推拉"
 
-#: crates/core/src/model.rs:2470
+#: crates/core/src/model.rs:2474
 msgid "Double Swing"
 msgstr "双扇平开"
 
@@ -2810,7 +2810,7 @@ msgstr "接地极 (EG)：在单击处自标高向下打入接地棒；按空格�
 msgid "Earthing Electrodes"
 msgstr "接地极"
 
-#: crates/core/src/model.rs:1875
+#: crates/core/src/model.rs:1879
 msgid "East"
 msgstr "东"
 
@@ -3302,7 +3302,7 @@ msgstr "离开草图所在平面之前，请先完成或取消草图。"
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "请先完成或取消草图：图案的线在平面图中选取。"
 
-#: crates/core/src/model.rs:2474
+#: crates/core/src/model.rs:2478
 msgid "Fixed"
 msgstr "固定"
 
@@ -3421,7 +3421,7 @@ msgstr "折叠"
 msgid "Folder for new projects"
 msgstr "新项目的文件夹"
 
-#: crates/core/src/model.rs:2473
+#: crates/core/src/model.rs:2477
 msgid "Folding"
 msgstr "折叠"
 
@@ -3660,7 +3660,7 @@ msgstr "组"
 msgid "Group:"
 msgstr "组："
 
-#: crates/core/src/model.rs:2946
+#: crates/core/src/model.rs:2950
 msgid "Gypsum board"
 msgstr "石膏板"
 
@@ -4536,7 +4536,7 @@ msgstr "管理"
 msgid "Manage Presets…"
 msgstr "管理预设…"
 
-#: crates/core/src/model.rs:1486
+#: crates/core/src/model.rs:1490
 msgid "Mark"
 msgstr "标记"
 
@@ -4855,7 +4855,7 @@ msgstr "NBR 6492：平面采用圆环靶心 (±0.00)，剖面采用等边三角�
 msgid "NOT ENCLOSED"
 msgstr "未封闭"
 
-#: crates/core/src/model.rs:1487
+#: crates/core/src/model.rs:1491
 #: crates/ui-egui/src/cad.rs:85
 #: crates/ui-egui/src/clouds.rs:59
 #: crates/ui-egui/src/electrical.rs:298
@@ -5061,7 +5061,7 @@ msgstr "标称文字高度:"
 msgid "None"
 msgstr "无"
 
-#: crates/core/src/model.rs:1873
+#: crates/core/src/model.rs:1877
 msgid "North"
 msgstr "北"
 
@@ -6675,7 +6675,7 @@ msgstr "面屋顶 (RB)：在所选体量的顶面上创建屋顶"
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "迹线屋顶：单击墙内部，在上一标高为其创建屋顶"
 
-#: crates/core/src/model.rs:2948
+#: crates/core/src/model.rs:2952
 msgid "Roof tiles"
 msgstr "屋面瓦"
 
@@ -6866,7 +6866,7 @@ msgstr "明细表"
 msgid "Schedules/Quantities (all)"
 msgstr "明细表/数量（全部）"
 
-#: crates/core/src/model.rs:2944
+#: crates/core/src/model.rs:2948
 msgid "Screed"
 msgstr "找平层"
 
@@ -7275,7 +7275,7 @@ msgstr "跳过此版本"
 msgid "Sky"
 msgstr "天空"
 
-#: crates/core/src/model.rs:2471
+#: crates/core/src/model.rs:2475
 msgid "Sliding"
 msgstr "推拉"
 
@@ -7416,7 +7416,7 @@ msgstr "排序/成组"
 msgid "Source code on GitHub"
 msgstr "GitHub 上的源代码"
 
-#: crates/core/src/model.rs:1874
+#: crates/core/src/model.rs:1878
 msgid "South"
 msgstr "南"
 
@@ -7665,7 +7665,7 @@ msgstr "表面透明度"
 msgid "Surface, {}°"
 msgstr "面，{}°"
 
-#: crates/core/src/model.rs:2469
+#: crates/core/src/model.rs:2473
 msgid "Swing"
 msgstr "平开"
 
@@ -8370,7 +8370,7 @@ msgstr "绕墙的{}旋转墙：{}"
 msgid "Two {} are called {}."
 msgstr "有两个{}的名称都是“{}”。"
 
-#: crates/core/src/model.rs:1488
+#: crates/core/src/model.rs:1492
 #: crates/ui-egui/src/editor.rs:683
 #: crates/ui-egui/src/editor.rs:689
 #: crates/ui-egui/src/properties.rs:3176
@@ -8531,7 +8531,7 @@ msgstr "单位格式"
 msgid "Unlock alignment"
 msgstr "解锁对齐"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9720
 msgid "Unnamed"
 msgstr "未命名"
 
@@ -8864,7 +8864,7 @@ msgstr "波浪"
 msgid "Weight"
 msgstr "重量"
 
-#: crates/core/src/model.rs:1876
+#: crates/core/src/model.rs:1880
 msgid "West"
 msgstr "西"
 

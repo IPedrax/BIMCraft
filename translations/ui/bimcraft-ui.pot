@@ -712,11 +712,11 @@ msgstr ""
 msgid "Associated Level"
 msgstr ""
 
-#: crates/core/src/model.rs:2641
+#: crates/core/src/model.rs:2645
 msgid "At wall centre line"
 msgstr ""
 
-#: crates/core/src/model.rs:2642
+#: crates/core/src/model.rs:2646
 msgid "At wall finish"
 msgstr ""
 
@@ -1010,7 +1010,7 @@ msgstr ""
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr ""
 
-#: crates/core/src/model.rs:2939
+#: crates/core/src/model.rs:2943
 msgid "Brick"
 msgstr ""
 
@@ -1230,7 +1230,7 @@ msgstr ""
 msgid "Centre Lines"
 msgstr ""
 
-#: crates/core/src/model.rs:2947
+#: crates/core/src/model.rs:2951
 msgid "Ceramic tile"
 msgstr ""
 
@@ -1936,7 +1936,7 @@ msgstr ""
 msgid "Concrete"
 msgstr ""
 
-#: crates/core/src/model.rs:2941
+#: crates/core/src/model.rs:2945
 msgid "Concrete block"
 msgstr ""
 
@@ -2017,7 +2017,7 @@ msgstr ""
 msgid "Copied {} rows, tab-separated."
 msgstr ""
 
-#: crates/core/src/model.rs:2955
+#: crates/core/src/model.rs:2959
 msgid "Copper"
 msgstr ""
 
@@ -2414,7 +2414,7 @@ msgstr ""
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9579
 msgid "Dependent"
 msgstr ""
 
@@ -2662,11 +2662,11 @@ msgstr ""
 msgid "Double Door"
 msgstr ""
 
-#: crates/core/src/model.rs:2472
+#: crates/core/src/model.rs:2476
 msgid "Double Sliding"
 msgstr ""
 
-#: crates/core/src/model.rs:2470
+#: crates/core/src/model.rs:2474
 msgid "Double Swing"
 msgstr ""
 
@@ -2810,7 +2810,7 @@ msgstr ""
 msgid "Earthing Electrodes"
 msgstr ""
 
-#: crates/core/src/model.rs:1875
+#: crates/core/src/model.rs:1879
 msgid "East"
 msgstr ""
 
@@ -3302,7 +3302,7 @@ msgstr ""
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr ""
 
-#: crates/core/src/model.rs:2474
+#: crates/core/src/model.rs:2478
 msgid "Fixed"
 msgstr ""
 
@@ -3421,7 +3421,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr ""
 
-#: crates/core/src/model.rs:2473
+#: crates/core/src/model.rs:2477
 msgid "Folding"
 msgstr ""
 
@@ -3660,7 +3660,7 @@ msgstr ""
 msgid "Group:"
 msgstr ""
 
-#: crates/core/src/model.rs:2946
+#: crates/core/src/model.rs:2950
 msgid "Gypsum board"
 msgstr ""
 
@@ -4536,7 +4536,7 @@ msgstr ""
 msgid "Manage Presets…"
 msgstr ""
 
-#: crates/core/src/model.rs:1486
+#: crates/core/src/model.rs:1490
 msgid "Mark"
 msgstr ""
 
@@ -4855,7 +4855,7 @@ msgstr ""
 msgid "NOT ENCLOSED"
 msgstr ""
 
-#: crates/core/src/model.rs:1487
+#: crates/core/src/model.rs:1491
 #: crates/ui-egui/src/cad.rs:85
 #: crates/ui-egui/src/clouds.rs:59
 #: crates/ui-egui/src/electrical.rs:298
@@ -5061,7 +5061,7 @@ msgstr ""
 msgid "None"
 msgstr ""
 
-#: crates/core/src/model.rs:1873
+#: crates/core/src/model.rs:1877
 msgid "North"
 msgstr ""
 
@@ -6675,7 +6675,7 @@ msgstr ""
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr ""
 
-#: crates/core/src/model.rs:2948
+#: crates/core/src/model.rs:2952
 msgid "Roof tiles"
 msgstr ""
 
@@ -6866,7 +6866,7 @@ msgstr ""
 msgid "Schedules/Quantities (all)"
 msgstr ""
 
-#: crates/core/src/model.rs:2944
+#: crates/core/src/model.rs:2948
 msgid "Screed"
 msgstr ""
 
@@ -7275,7 +7275,7 @@ msgstr ""
 msgid "Sky"
 msgstr ""
 
-#: crates/core/src/model.rs:2471
+#: crates/core/src/model.rs:2475
 msgid "Sliding"
 msgstr ""
 
@@ -7416,7 +7416,7 @@ msgstr ""
 msgid "Source code on GitHub"
 msgstr ""
 
-#: crates/core/src/model.rs:1874
+#: crates/core/src/model.rs:1878
 msgid "South"
 msgstr ""
 
@@ -7665,7 +7665,7 @@ msgstr ""
 msgid "Surface, {}°"
 msgstr ""
 
-#: crates/core/src/model.rs:2469
+#: crates/core/src/model.rs:2473
 msgid "Swing"
 msgstr ""
 
@@ -8370,7 +8370,7 @@ msgstr ""
 msgid "Two {} are called {}."
 msgstr ""
 
-#: crates/core/src/model.rs:1488
+#: crates/core/src/model.rs:1492
 #: crates/ui-egui/src/editor.rs:683
 #: crates/ui-egui/src/editor.rs:689
 #: crates/ui-egui/src/properties.rs:3176
@@ -8531,7 +8531,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9720
 msgid "Unnamed"
 msgstr ""
 
@@ -8864,7 +8864,7 @@ msgstr ""
 msgid "Weight"
 msgstr ""
 
-#: crates/core/src/model.rs:1876
+#: crates/core/src/model.rs:1880
 msgid "West"
 msgstr ""
 

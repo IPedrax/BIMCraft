@@ -923,14 +923,17 @@ impl Kept {
 }
 
 /// Which of an element's lines a dimension measures to: a wall's centre line, its face on the
-/// left or the right of its start-to-end direction, or its start or end; a door's or a window's
-/// centre, or its jamb toward its wall's start or end. A grid has only its line.
+/// left or the right of its start-to-end direction, or its start or end; a column's centre line
+/// along its angle, the line across it, its faces or its end caps; a door's or a window's centre,
+/// or its jamb toward its wall's start or end. A grid has only its line.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Face {
     #[default]
     #[serde(alias = "center")]
     Centre,
+    /// A column's centre line square to its angle: the one across it.
+    Across,
     Left,
     Right,
     Start,
@@ -961,6 +964,7 @@ impl Face {
     fn name(self) -> &'static str {
         match self {
             Face::Centre => "centre line",
+            Face::Across => "across line",
             Face::Left => "left face",
             Face::Right => "right face",
             Face::Start => "start",
@@ -5094,6 +5098,31 @@ impl Model {
             .unwrap_or_else(|| "?".into())
     }
 
+    /// The line of column `e` that `face` names: its centre line along its angle, the line across
+    /// it, its left and right faces, or its start and end caps.
+    fn column_reference_line(&self, e: &Element, face: Face, id: Guid) -> Result<Line, String> {
+        let (Some(c), Some(t)) = (e.column(), self.column_type(e)) else {
+            return Err(format!("{} {} has no type to measure", e.category(), id));
+        };
+        let (u, w, d) = (heading(c.angle), t.width / 2.0, t.depth / 2.0);
+        let v = u.perp();
+        if t.round {
+            return match face {
+                Face::Centre => Ok((c.at - u * w, c.at + u * w)),
+                Face::Across => Ok((c.at - v * d, c.at + v * d)),
+                _ => Err(format!("round {} {} has no faces; measure to its centre lines", e.category(), id)),
+            };
+        }
+        Ok(match face {
+            Face::Centre => (c.at - u * w, c.at + u * w),
+            Face::Across => (c.at - v * d, c.at + v * d),
+            Face::Left => (c.at + v * d - u * w, c.at + v * d + u * w),
+            Face::Right => (c.at - v * d - u * w, c.at - v * d + u * w),
+            Face::Start => (c.at - u * w - v * d, c.at - u * w + v * d),
+            Face::End => (c.at + u * w - v * d, c.at + u * w + v * d),
+        })
+    }
+
     /// The line `r` measures to, or why there is none. A straight wall's lines reach as far as its
     /// plan outline does, past the ends it shares; its ends, a curved wall's too, and a door's or a
     /// window's centre and jambs, run across it from face to face. Its centre is its centre line,
@@ -5102,6 +5131,7 @@ impl Model {
         match (self.elements.get(r.id), r.face) {
             (Some(Element::Grid(g)), Face::Centre) => Ok((g.start, g.end)),
             (Some(Element::Grid(_)), _) => Err(format!("grid {} has no faces; measure to its line", r.id)),
+            (Some(e @ (Element::Column(_) | Element::StructuralColumn(_))), face) => self.column_reference_line(e, face, r.id),
             (Some(Element::Wall(w)), face) => {
                 let axis = walls::Axis::of(w);
                 let (ext, int) = walls::faces(self, w);
@@ -5124,6 +5154,9 @@ impl Model {
                     Face::Right => (axis.at(a, int), axis.at(b, int)),
                     Face::Start => (axis.at(a, int), axis.at(a, ext)),
                     Face::End => (axis.at(b, int), axis.at(b, ext)),
+                    Face::Across => {
+                        return Err(format!("wall {} has no across line; measure to its centre line, faces or ends", r.id));
+                    }
                 })
             }
             (Some(e @ (Element::Door(o) | Element::Window(o))), face) => {
@@ -5135,7 +5168,7 @@ impl Model {
                     Face::Centre => o.offset,
                     Face::Start => o.offset - t.width / 2.0,
                     Face::End => o.offset + t.width / 2.0,
-                    Face::Left | Face::Right => {
+                    Face::Left | Face::Right | Face::Across => {
                         return Err(format!("{what} has a centre and two jambs, start and end; measure to one of those"));
                     }
                 };
@@ -5157,7 +5190,9 @@ impl Model {
                     Face::Centre => Ok((a, b)),
                     Face::Start => Ok((a - n, a + n)),
                     Face::End => Ok((b - n, b + n)),
-                    Face::Left | Face::Right => Err(format!("detail line {} has a line and two ends; measure to one of those", r.id)),
+                    Face::Left | Face::Right | Face::Across => {
+                        Err(format!("detail line {} has a line and two ends; measure to one of those", r.id))
+                    }
                 }
             }
             (Some(e), _) => Err(format!("{} {} isn't a wall, a door, a window, a grid or a detail line", e.category(), r.id)),
@@ -5215,6 +5250,7 @@ impl Model {
         let id = self.guid(id);
         let faces: &[Face] = match self.elements.get(id) {
             Some(Element::Wall(_)) => &[Face::Centre, Face::Left, Face::Right],
+            Some(Element::Column(_) | Element::StructuralColumn(_)) => &[Face::Centre, Face::Across, Face::Left, Face::Right],
             Some(Element::Door(_) | Element::Window(_)) => &[Face::Centre, Face::Start, Face::End],
             Some(Element::Grid(_) | Element::DetailLine(_)) => &[Face::Centre],
             _ => &[],
@@ -5246,11 +5282,14 @@ impl Model {
     }
 
     /// The lines dimensions measure to on element `id`: a wall's centre line, faces and ends, a
-    /// door's or a window's centre and jambs, a grid's line.
+    /// column's two centre lines and four faces, a door's or a window's centre and jambs, a grid's line.
     pub fn reference_lines(&self, id: impl Key) -> Vec<(Reference, Line)> {
         let id = self.guid(id);
         let faces: &[Face] = match self.elements.get(id) {
             Some(Element::Wall(_)) => &[Face::Centre, Face::Left, Face::Right, Face::Start, Face::End],
+            Some(Element::Column(_) | Element::StructuralColumn(_)) => {
+                &[Face::Centre, Face::Across, Face::Left, Face::Right, Face::Start, Face::End]
+            }
             Some(Element::Door(_) | Element::Window(_)) => &[Face::Centre, Face::Start, Face::End],
             Some(Element::Grid(_)) => &[Face::Centre],
             Some(Element::DetailLine(_)) => &[Face::Centre, Face::Start, Face::End],
@@ -5395,7 +5434,7 @@ impl Model {
                     Face::Left => ext,
                     Face::Right => int,
                     Face::Centre => (ext + int) / 2.0,
-                    Face::Start | Face::End => return Err(format!("wall {}'s ends are straight; {what}", r.id)),
+                    Face::Start | Face::End | Face::Across => return Err(format!("wall {}'s ends are straight; {what}", r.id)),
                 };
                 Ok((c, radius - sweep.signum() * off, a0, sweep))
             }
