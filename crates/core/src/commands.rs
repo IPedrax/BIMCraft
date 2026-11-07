@@ -858,9 +858,39 @@ pub static ALL: &[Command] = &[
         "sheet",
         "Sheet",
         &[],
-        "{number?, name?, size?: A0|A1|A2|A3|A4} a sheet of paper, landscape (A3 by default), with a title block; numbers \
-         run A101, A102…",
+        "{number?, name?, size?: A0|A1|A2|A3|A4, title_block?, fields?: {KEY: text}} a sheet of paper, landscape (A3 by \
+         default), with a title block: the built-in one, or the project's `title_block` of that name (see `title_block`), its \
+         sheet fields filled in from `fields`; numbers run A101, A102…. `modify` changes them later: `title_block` (\"\" for \
+         the built-in), `fields` (a key's value null to clear it)",
         new_sheet,
+    ),
+    edit(
+        "title_block",
+        "Title Blocks",
+        &[],
+        "{name?, like?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, lines?, fills?, texts?, \
+         fields?} a title block of the project's own, as Revit's title block families with labels, which a sheet names to be \
+         drawn with it in its bottom right corner, inside the border, in place of the built-in title box. Without `name`, the \
+         project's title blocks, its title fields' values and the automatic fields. All lengths are mm on paper from the title \
+         block's bottom left corner: `width` and `height` its box; `lines` [{points: [[x, y], …], closed?, pen?: 0 to 16 (1)}]; \
+         `fills` [{rings: [[[x, y], …], …]}], filled through (a logo); `texts` [{at: [x, y] on the baseline, text, size?: \
+         capitals mm (2.5), angle?: degrees, align?: left|center|right}]. A text may name fields as `{KEY}`: the automatic ones \
+         (PROJECT, SHEET_NAME, SHEET_NUMBER, SCALE, DATE, SHEET_INDEX, SHEET_COUNT, REVISION) or the title block's `fields` \
+         [{key, label?, scope?: sheet|project, default?}]: a project field has one value for every sheet (`title_values`), a \
+         sheet field each sheet's own (`sheet`'s and `modify`'s `fields`). `path` reads a DXF (or a DWG, which the desktop and the \
+         command line read as DXF) drawn at full size on paper, in `units` (auto: the file's own, else mm): its lines, arcs, \
+         circles and polylines as lines, its solid hatches as fills, its texts as texts, moved to its extents' corner, which \
+         become its box; each key its texts name becomes a sheet field, or keeps the field it was. A new one starts as the \
+         built-in title box drawn as one (`like` another), and what's given goes over it",
+        title_block,
+    ),
+    edit(
+        "title_values",
+        "Project Information",
+        &[],
+        "{values?: {KEY: text or null}} the project's values of its title blocks' project fields (and of an automatic field, \
+         DATE say, to give every sheet that instead): a key's null clears it. Without `values`, what they are",
+        title_values,
     ),
     edit(
         "place",
@@ -2594,6 +2624,13 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         }
         Element::Sheet(sh) => {
             extra.insert("paper".into(), json!(paper(&sh.size)));
+            // What its title block's fields say, filled in; and which of them are its own to give.
+            extra.insert("title_values".into(), json!(sheet::title_values(m, id)));
+            if let Some(tb) = m.title_blocks.get(&sh.title_block) {
+                let own: Vec<&str> =
+                    tb.fields.iter().filter(|f| f.scope == crate::titleblock::Scope::Sheet).map(|f| f.key.as_str()).collect();
+                extra.insert("sheet_fields".into(), json!(own));
+            }
             let on: Vec<Id> =
                 m.elements.iter().filter(|(_, e)| matches!(e, Element::Viewport(v) if m.same(v.sheet, id))).map(|(id, _)| *id).collect();
             extra.insert("viewports".into(), json!(on));
@@ -9710,8 +9747,155 @@ fn new_sheet(s: &mut Session, p: &Value) -> R {
     };
     let name = string(c, p, "name")?.unwrap_or_else(|| m.language.word(msg!("Unnamed")).into());
     let size = string(c, p, "size")?.map_or_else(|| "A3".into(), |z| z.trim().to_ascii_uppercase());
-    let id = s.model_mut().insert(Element::Sheet(Sheet { number: number.clone(), name, size }));
+    let title_block = name_param(c, p, "title_block")?.unwrap_or_default();
+    let fields = match p.get("fields") {
+        v if absent(v) => BTreeMap::new(),
+        Some(v) => field_values(c, "fields", v, &BTreeMap::new())?,
+        None => BTreeMap::new(),
+    };
+    let id = s.model_mut().insert(Element::Sheet(Sheet { number: number.clone(), name, size, title_block, fields }));
     Ok(json!({"id": id, "number": number}))
+}
+
+/// `v`, fields' values by key (`{KEY: text or null}`), over `old`: each key uppercase, a null taking the key's value away.
+fn field_values(c: &str, key: &str, v: &Value, old: &BTreeMap<String, String>) -> Result<BTreeMap<String, String>, String> {
+    let o = v.as_object().ok_or_else(|| bad(c, format!("`{key}` is {{KEY: text or null}}, not {v}")))?;
+    let mut out = old.clone();
+    for (k, x) in o {
+        if !crate::titleblock::valid_key(k) {
+            return Err(bad(c, format!("`{k}` isn't a field's key: letters, digits and `_`, starting with a letter")));
+        }
+        let k = k.to_ascii_uppercase();
+        match x {
+            Value::Null => {
+                out.remove(&k);
+            }
+            Value::String(t) => {
+                out.insert(k, t.clone());
+            }
+            Value::Number(n) => {
+                out.insert(k, n.to_string());
+            }
+            _ => return Err(bad(c, format!("`{key}`'s `{k}` is text, or null to clear it, not {x}"))),
+        }
+    }
+    Ok(out)
+}
+
+fn title_values(s: &mut Session, p: &Value) -> R {
+    let c = "title_values";
+    only(c, p, &["values"])?;
+    match p.get("values") {
+        v if absent(v) => {}
+        Some(v) => {
+            let values = field_values(c, "values", v, &s.model.title_values)?;
+            if values != s.model.title_values {
+                s.model_mut().title_values = values;
+            }
+        }
+        None => {}
+    }
+    Ok(json!({"values": s.model.title_values}))
+}
+
+fn title_block(s: &mut Session, p: &Value) -> R {
+    use crate::titleblock::{self, TitleBlock};
+    let c = "title_block";
+    only(c, p, &["name", "like", "rename", "delete", "path", "units", "width", "height", "lines", "fills", "texts", "fields"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        let auto: Map<String, Value> = titleblock::AUTO.iter().map(|(k, what)| ((*k).to_string(), json!(what))).collect();
+        return Ok(json!({"title_blocks": s.model.title_blocks, "values": s.model.title_values, "auto": auto}));
+    };
+    if flag(c, p, "delete")? {
+        let m = &s.model;
+        if !m.title_blocks.contains_key(&name) {
+            return Err(bad(c, format!("there's no title block `{name}`")));
+        }
+        if let Some(sh) = m.elements.values().find_map(|e| match e {
+            Element::Sheet(sh) if sh.title_block == name => Some(sh),
+            _ => None,
+        }) {
+            return Err(bad(c, format!("sheet {} is drawn with `{name}`; give it another title block first", sh.number)));
+        }
+        s.model_mut().title_blocks.remove(&name);
+        return Ok(json!({"deleted": name}));
+    }
+    let m = &s.model;
+    let mut t = match (m.title_blocks.get(&name), name_param(c, p, "like")?) {
+        (Some(t), _) => t.clone(),
+        (None, Some(like)) => {
+            m.title_blocks.get(&like).cloned().ok_or_else(|| bad(c, format!("there's no title block `{like}` to start from")))?
+        }
+        (None, None) => TitleBlock::default(),
+    };
+    let mut notes = Vec::new();
+    let mut left_out = BTreeMap::new();
+    if let Some(path) = string(c, p, "path")? {
+        let units = match string(c, p, "units")? {
+            None => None,
+            Some(u) if u.trim().eq_ignore_ascii_case("auto") => None,
+            Some(u) => Some(cloud::unit(&u).ok_or_else(|| bad(c, format!("`units` is auto, mm, cm, m, in or ft, not {u}")))?),
+        };
+        let (bytes, read_notes) = read_dxf_file(s, &path).map_err(|e| bad(c, e))?;
+        notes = read_notes;
+        let (read, out) = titleblock::read_dxf(&bytes, units).map_err(|e| bad(c, format!("{path}: {e}")))?;
+        if read.lines.is_empty() && read.fills.is_empty() && read.texts.is_empty() {
+            return Err(bad(c, format!("{path} draws nothing in its model space; draw the title block there, at full size")));
+        }
+        // The fields it had keep their labels, whose and defaults where the drawing still names them.
+        let fields = read.fields.iter().map(|f| t.field(&f.key).cloned().unwrap_or_else(|| f.clone())).collect();
+        t = TitleBlock { fields, ..read };
+        left_out = out;
+    } else if p.get("units").is_some() {
+        return Err(bad(c, "`units` is the unit of the DXF `path` names"));
+    }
+    // What's given goes over it, read as a file reads one: a key it hasn't is an error.
+    let mut v = serde_json::to_value(&t).map_err(|e| bad(c, e))?;
+    if let Some(o) = v.as_object_mut() {
+        for key in ["width", "height", "lines", "fills", "texts", "fields"] {
+            match p.get(key) {
+                None => {}
+                Some(Value::Null) => {
+                    o.remove(key);
+                }
+                Some(x) => {
+                    o.insert(key.into(), x.clone());
+                }
+            }
+        }
+    }
+    let mut t: TitleBlock = serde_json::from_value(v).map_err(|e| bad(c, e))?;
+    for f in &mut t.fields {
+        f.key = f.key.trim().to_ascii_uppercase();
+    }
+    let m = s.model_mut();
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.title_blocks.contains_key(&to) {
+                return Err(bad(c, format!("there's already a title block `{to}`")));
+            }
+            m.title_blocks.remove(&name);
+            rename_entry(m, &LibKind::TitleBlock, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    t.check(&name).map_err(|e| bad(c, e))?;
+    let undefined = t.undefined();
+    if m.title_blocks.get(&name) != Some(&t) {
+        m.title_blocks.insert(name.clone(), t.clone());
+    }
+    let mut out = json!({"name": name, "title_block": t});
+    if !undefined.is_empty() {
+        out["undefined"] = json!(undefined);
+    }
+    if !left_out.is_empty() {
+        out["left_out"] = json!(left_out);
+    }
+    if !notes.is_empty() {
+        out["notes"] = json!(notes);
+    }
+    Ok(out)
 }
 
 fn place(s: &mut Session, p: &Value) -> R {

@@ -1163,8 +1163,9 @@ fn de_boor(degree: usize, knots: &[f64], controls: &[(P2, f64)], u: f64) -> Opti
 
 /// A text's words as a file writes them: `%%d` is a degree sign, `%%p` plus or minus, `%%c` a diameter, `%%%` a
 /// percent, `%%u` and `%%o` underline and overline (dropped), `\U+XXXX` a character, and the formatting codes of
-/// multi-line text (`\P` a new line, `{…}` groups, `\f…;` fonts, `\H…;` heights and the rest) are dropped.
-fn decode(s: &str) -> String {
+/// multi-line text (`\P` a new line, `{…}` groups, `\f…;` fonts, `\H…;` heights and the rest) are dropped. A single line
+/// of text (`mtext` false) has no groups: its braces are its own, as a title block's fields (`{CLIENT}`) are.
+fn decode(s: &str, mtext: bool) -> String {
     let mut out = String::new();
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
@@ -1187,7 +1188,7 @@ fn decode(s: &str) -> String {
                     None => out.push_str("%%"),
                 }
             }
-            '{' | '}' => {}
+            '{' | '}' if mtext => {}
             '\\' => match chars.next() {
                 Some('P') => out.push('\n'),
                 Some('~') => out.push(' '),
@@ -1231,7 +1232,7 @@ fn text(e: &Ent) -> Result<Option<Shape>, String> {
     if height <= 0.0 {
         return Ok(None);
     }
-    let words = decode(words).replace('\n', " ");
+    let words = decode(words, false).replace('\n', " ");
     if words.trim().is_empty() {
         return Ok(None);
     }
@@ -1271,7 +1272,7 @@ fn mtext(e: &Ent) -> Result<Vec<Shape>, String> {
         }
     }
     raw.push_str(e.str(1).unwrap_or(""));
-    let words = decode(&raw);
+    let words = decode(&raw, true);
     let lines: Vec<&str> = words.lines().collect();
     if lines.iter().all(|l| l.trim().is_empty()) {
         return Ok(Vec::new());

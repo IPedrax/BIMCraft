@@ -680,3 +680,28 @@ corner seen within the snap's reach (`Scene::corner_near`), else an edge within 
 cursor), else the point of the face there; after two, a click places the line where it meets the plane through the two that faces the
 camera most (`dims3d::line_through`), and the status line says how long it is. In Modify a click on a dimension's lines picks it before what
 the picture shows under them (`dims3d::pick`).
+
+## Title blocks
+
+A sheet is drawn with the built-in title box unless it names a title block of the project's own (`Sheet::title_block`, a library
+entry of kind `title-block`, held by GUID in a file like any other name; FORMAT 18). A title block (`titleblock.rs`) is a box, `width`
+by `height` mm, that stands in the sheet's bottom right corner inside the border, where the built-in one stands, with lines (in pens),
+solid fills (a logo) and lettering, all in mm on paper from its own bottom left corner; the border and NBR 17067's folding marks are
+drawn as before, and a view placed by default goes above its height (`sheet::spot`). Lettering may name fields as `{KEY}`: a field the
+title block defines (`fields`: a key, a label for the desktop, a default) is the project's (`scope: project`, one value in
+`Model::title_values`, the same on every sheet) or each sheet's (`scope: sheet`, `Sheet::fields`); the automatic ones (`titleblock::AUTO`:
+PROJECT, SHEET_NAME, SHEET_NUMBER, SCALE as the built-in box says it, DATE in the project's language, SHEET_INDEX and SHEET_COUNT by
+sheet number in reading order, and REVISION, the latest of the revision clouds on the sheet and on the views placed on it) need no
+definition, and a value given to one (DATE, to issue on) is said instead. A key no value fills stays as written, so a missing field
+shows on the sheet. `titleblock::values` works them out, `sheet::title_values` with the sheet's scale, and `elements` gives a sheet's
+as `title_values`, with the keys that are its own to give as `sheet_fields`.
+
+`title_block` makes, edits, renames and deletes them (one a sheet is drawn with can't go), starting a new one as the built-in box drawn
+as one; with `path` it reads a DXF (or a DWG, through the session's reader) drawn at full size on paper in its model space: lines, arcs,
+circles and polylines as lines, in the pen nearest their weight, solid hatches as fills, texts as texts, moved to the corner of their
+extents, which become the box, and each key the texts name a sheet field, keeping a field it already had (its label, scope and default).
+A single line of DXF text keeps its braces (`dxf::decode`), as AutoCAD shows them; only multi-line text's braces are formatting.
+`title_values` gives the project's values. In the desktop, Manage > Title Blocks lists them (New, Duplicate, Delete, Import DXF…) and
+edits the one picked, with a preview drawn by the core (`titleblock::preview`) as the first sheet that names it fills it in: its fields,
+with the project's values, its texts, its straight lines and its size; a sheet's Properties pick its title block and fill in its sheet
+fields. The lettering is BIMCraft's own stroke lettering, in capitals, as the built-in box's.

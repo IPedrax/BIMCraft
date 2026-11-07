@@ -5870,6 +5870,7 @@ mod start;
 mod templates;
 mod themes;
 mod titlebar;
+mod titleblocks;
 mod tools;
 mod triad;
 mod trim;

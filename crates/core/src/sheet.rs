@@ -10,7 +10,7 @@ use bimcraft_i18n::msg;
 use crate::geom::P2;
 use crate::graphics::Look;
 use crate::language::Language;
-use crate::model::{Element, Id, Key, Model, Schedule, Sheet, Viewport, paper};
+use crate::model::{Element, Id, Key, Model, Schedule, Viewport, paper};
 use crate::pen::Pen;
 use crate::render::{self, Drawing, PAPER, Part, Prim, Rgb, View};
 use crate::{font, schedule, view3d};
@@ -102,7 +102,9 @@ pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
     let size_name = sh.map(|s| s.size.as_str()).unwrap_or("A3");
     let paper = sh.and_then(|s| paper(&s.size)).unwrap_or(P2(420.0, 297.0));
     let margins = m.standard().sheet_margins(size_name);
-    let middle = P2((margins.left + paper.0 - margins.right) / 2.0, (margins.bottom + margins.title_height + paper.1 - margins.top) / 2.0);
+    // Above its title block: the project's it names, else the built-in one.
+    let title = sh.and_then(|s| m.title_blocks.get(&s.title_block)).map_or(margins.title_height, |t| t.height);
+    let middle = P2((margins.left + paper.0 - margins.right) / 2.0, (margins.bottom + title + paper.1 - margins.top) / 2.0);
     let taken = size(m, view, scale).unwrap_or(P2(0.0, 0.0));
     let right = m
         .on_sheet(sheet)
@@ -159,11 +161,22 @@ fn draw_folding_marks(d: &mut Drawing, paper: P2, size: &str, margins: crate::st
 }
 
 /// The border, filing margin on the left and borders on the other sides, and the title
-/// box in the bottom right corner, adapted to `std`: the project, the sheet's name, its scale, and its number.
-fn title_block(d: &mut Drawing, project: &str, sheet: &Sheet, paper: P2, scale: &str, std: crate::standards::TechnicalStandard) {
+/// box in the bottom right corner, adapted to `std`: the project, the sheet's name, its scale, and its number. A sheet that
+/// names a title block of the project's has that one there instead, its fields filled in.
+fn title_block(d: &mut Drawing, m: &Model, id: impl Key, paper: P2, scale: &str) {
+    let Some(sheet) = m.sheet(id) else { return };
+    let (project, std) = (&m.name, m.standard());
     let margins = std.sheet_margins(&sheet.size);
     let rect = |a: P2, b: P2| vec![a, P2(b.0, a.1), b, P2(a.0, b.1)];
     d.line(&rect(P2(margins.left, margins.bottom), P2(paper.0 - margins.right, paper.1 - margins.top)), Pen::BORDER, INK, true);
+    if let Some(tb) = m.title_blocks.get(&sheet.title_block) {
+        let at = P2(paper.0 - margins.right - tb.width, margins.bottom);
+        crate::titleblock::draw(d, tb, at, &crate::titleblock::values(m, id, scale));
+        if margins.folding_marks {
+            draw_folding_marks(d, paper, &sheet.size, margins);
+        }
+        return;
+    }
     let width = margins.title_width.min(paper.0 - margins.left - margins.right);
     let height = margins.title_height;
     let (x0, x1, y0, y1) = (paper.0 - margins.right - width, paper.0 - margins.right, margins.bottom, margins.bottom + height);
@@ -268,6 +281,20 @@ fn scale_note(views: &[&Viewport], language: Language, units: crate::units::Unit
     }
 }
 
+/// What each field of sheet `id`'s title block says, by key: [`crate::titleblock::values`], its scale as its title box gives it.
+pub fn title_values(m: &Model, id: impl Key) -> std::collections::BTreeMap<String, String> {
+    let guid = m.guid(id);
+    let scaled: Vec<&Viewport> = m
+        .on_sheet(id)
+        .into_iter()
+        .filter_map(|v| match m.elements.get(v) {
+            Some(Element::Viewport(vp)) if vp.sheet == guid && !matches!(m.elements.get(vp.view), Some(Element::Schedule(_))) => Some(vp),
+            _ => None,
+        })
+        .collect();
+    crate::titleblock::values(m, id, &scale_note(&scaled, m.language, m.units))
+}
+
 /// Sheet `id` on its paper: its title block, then each view on it, at its scale and titled.
 pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
     let sheet = m.sheet(id)?;
@@ -289,7 +316,7 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
     // Schedules keep their own size: no scale of theirs.
     let scaled: Vec<&Viewport> =
         views.iter().filter(|(_, v)| !matches!(m.elements.get(v.view), Some(Element::Schedule(_)))).map(|(_, v)| *v).collect();
-    title_block(&mut d, &m.name, sheet, paper, &scale_note(&scaled, m.language, m.units), m.standard());
+    title_block(&mut d, m, id, paper, &scale_note(&scaled, m.language, m.units));
     let mut scene = None;
     let work = Work::new();
     for (vid, vp) in views {

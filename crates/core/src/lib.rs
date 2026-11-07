@@ -126,6 +126,9 @@ pub mod styles;
 pub mod symbol_set;
 pub mod text;
 pub mod texture;
+pub mod titleblock;
+#[cfg(test)]
+mod titleblock_tests;
 pub mod triad;
 pub mod triangulation;
 pub mod units;

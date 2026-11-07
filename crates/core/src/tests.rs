@@ -2256,6 +2256,14 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"view": "{3D}", "silhouette": 1e300, "edges": "x", "ambient_shadows": 5}),
         json!({"view": "Level 1", "silhouette": -1, "edges": false}),
         json!({"silhouette": 10, "ambient_shadows": true, "edges": false}),
+        // Title blocks: sizes and lettering no paper has, a field no key, lines and fills of no points, a title block no sheet
+        // can name, and fields' values that aren't text.
+        json!({"name": "T", "width": 1e300, "height": -1, "texts": [{"at": [1e300, 0], "text": "{X}", "size": 1e300, "angle": "x"}]}),
+        json!({"name": "T", "lines": [{"points": [], "pen": 1e300}], "fills": [{"rings": [[]]}], "fields": [{"key": ""}, 5]}),
+        json!({"name": "T", "like": "nope", "rename": "", "path": "/nonexistent/selo.dxf", "units": "furlong"}),
+        json!({"name": "T", "fields": [{"key": "A", "scope": "everyone", "default": []}], "texts": "x"}),
+        json!({"values": {"A": [], "B C": "x", "SHEET_COUNT": 1e300}}),
+        json!({"number": "Z1", "title_block": "nope", "fields": {"a": {}, "": "x"}}),
     ];
     let mut base = Session::new();
     house(&mut base);
