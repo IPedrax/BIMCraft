@@ -8,6 +8,7 @@ pub(crate) mod exists;
 mod extrusion;
 mod temp_hide;
 mod types_dialog;
+pub(crate) mod views;
 
 use crate::popup::Modal;
 
@@ -443,6 +444,8 @@ pub(crate) struct FamilyEditor {
     source: Option<bimcraft_core::model::Id>,
     /// The form selected (a family that isn't adaptive), whose Properties show as Revit's for an Extrusion (`extrusion.rs`).
     form: Option<usize>,
+    /// Its plans and elevations (`views.rs`): which one shows, and what each keeps for the session.
+    pub(crate) views: views::Views,
 }
 
 /// The tabs of a family document's ribbon, as Revit's family editor has them.
@@ -543,6 +546,7 @@ impl FamilyEditor {
             dialog: None,
             source: None,
             form: None,
+            views: Default::default(),
         }
     }
 

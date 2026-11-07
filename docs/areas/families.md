@@ -321,13 +321,49 @@ and `ref_line` and deletes with `delete_ref_plane` and `delete_ref_line` by id o
 line is drawn on is refused, naming them. A new plane or line may carry a GUID of its own, so forms are drawn on it in the
 same command; a host given as an id is resolved to that plane's GUID (`Family::resolve_hosts`). A plane or line whose GUID
 the sync gives anew (a family loaded twice) takes what is drawn on it along (`Family::rehost`). The Family Editor keeps the
-planes, lines and hosts as they are; its Plane list picks a datum. A connector has no place yet: when it gets `at` and
+planes, lines and hosts as they are; its Plane list picks a datum, and its plans and elevations draw, select and move
+planes (*The family's views*, below). A connector has no place yet: when it gets `at` and
 `direction` (upstream #269) it takes an optional host too. IFC is unchanged: it writes the forms' triangles.
 
 An adaptive family's work planes are these planes too: a reference point is drawn on a datum, a named plane of the family's own
 or a reference line's face, and keeps it as its Work Plane by `PlaneRef`; the three datums an adaptive definition had of its own
 before are the datum planes, read from an older file by name ([adaptive families](adaptive-families.md)). `Family::hosted_on`,
 `rehost` and `resolve_hosts` follow its points as they follow forms and lines.
+
+## The family's views
+
+F4: the family document's Project Browser opens the Ref. Level floor and ceiling plans and the four elevations, Back, Front, Left
+and Right, beside {3D}, and the view's tab and the window's title name the one shown (`Floor Plan: Ref. Level`, `Elevation:
+Front`). Each is the project's own drawing of a scratch model (`family/views.rs`, `stage`), as `render {family}` and the 3D
+preview make theirs: the family placed at the origin (a door or a window in its wall), the first level renamed Ref. Level and
+the others taken away, each of the family's planes but Ref. Level a project reference plane there, across what the views frame
+(named as it is, mapped back to the family's plane by GUID in `Staged::planes`), and four elevations outside it, Front looking
+north, so its right is east, Back south, Left east and Right west, as Revit's. The mapping lives in the scratch model alone:
+the project gets no element and no step from a view, and the family only the planes drawn and moved in one. A view's scale is
+the one at which, fitted, its annotation and pens are their size on paper, so names read as on a sheet and grow when it is
+zoomed (the wheel; the middle button moves it). The plan is `render::draw` with, over it, each component's forms seen from above
+at any height and, where a form crosses the level's cut plane (1200), its outline there in the cut pen (`render::family_plan`,
+`plan_cut`, the section's slicing turned on its side); a project's plans never cut a component. The ceiling plan is the project's.
+An elevation is a section's picture and drawing (`section_picture`, `section_over`): forms seen, Ref. Level a level with its name.
+The planes are drawn with the rules in [views and graphics](views-and-graphics.md#reference-planes-in-views). Views are drawn on
+the interface's thread, being one family, and kept until what they show changes (`editor/views.rs`).
+
+In a family that isn't adaptive, a click selects a form (`views::form_at`: the one nearest the eye there, highest in plan; its
+Properties and contextual tab as T11's) or a plane (Properties: its name, read-only for a datum; "Modify | Reference Planes",
+whose Delete takes away a plane of the family's own unless something is drawn on it). The selected form is outlined, the
+selected plane's trace drawn heavier. A plane of the family's own, selected, moves square to itself by a drag; a datum doesn't.
+Reference Plane (RP, the Create tab's Datum) draws one by two clicks: in plan upright (`up` the vertical), in an elevation
+`up` the way it looks, so its normal lies in the elevation's plane (`views::new_plane`); it has no name, is Weak, and is a step
+of the document's history (`Draft` keeps the planes). Work Plane on the Create tab: each view has its own work plane for the
+session (Ref. Level in plan, the Center plane an elevation faces), which Set picks from the family's planes as A4's list names
+them, or by a click on one (Pick; the Work Plane dialog is T12's); Show tints it, all over where the view looks straight at it,
+along its trace where across it. While Preview Visibility is off, the solid forms the type hides are a second component of a
+family of their own in the scratch model, drawn halftone, as {3D} ghosts them (not for a door or a window, whose wall holds one
+opening); on, they are left out. Temporary Hide/Isolate leaves a form hidden for now out of every view; a selected plane can be
+hidden (HH), isolated or hidden with every plane (HC). It keeps **one state for the whole family document**, every view showing
+what it hides, a deliberate limit: Revit keeps it per view, and Apply Hide/Isolate to View stays greyed. An adaptive family's
+plans and elevations show its test placement and nothing more (no selection, no Reference Plane, no drag); its tools stay in
+{3D}, its modelling view. None of this is a field of the family or a step of FORMAT: what a view keeps is the session's.
 
 ## Family options
 

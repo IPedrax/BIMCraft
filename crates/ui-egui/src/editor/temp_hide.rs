@@ -37,13 +37,15 @@ pub(crate) struct Temp {
     forms: BTreeSet<u64>,
     /// An adaptive family's elements, by id.
     nodes: BTreeSet<String>,
+    /// A family's reference planes, by GUID, selected in a plan or an elevation (F4).
+    planes: BTreeSet<bimcraft_core::ids::Guid>,
     kinds: BTreeSet<Kind>,
 }
 
 impl Temp {
     /// Whether it hides anything: the view wears the frame.
     pub(crate) fn hides(&self) -> bool {
-        !self.forms.is_empty() || !self.nodes.is_empty() || !self.kinds.is_empty()
+        !self.forms.is_empty() || !self.nodes.is_empty() || !self.planes.is_empty() || !self.kinds.is_empty()
     }
 }
 
@@ -77,7 +79,7 @@ impl FamilyEditor {
     pub(crate) fn temp_picked(&self) -> bool {
         match &self.adaptive {
             Some(d) => self.modeller.selection.iter().any(|id| d.nodes.iter().any(|n| &n.id == id)),
-            None => self.selected_form().is_some(),
+            None => self.selected_form().is_some() || self.selected_plane().is_some(),
         }
     }
 
@@ -107,38 +109,55 @@ impl FamilyEditor {
                 None => {
                     let picked = self.selected_form().map(|i| self.forms[i].tag);
                     let host = if self.category.hosted() { vec![Kind::Host] } else { Vec::new() };
+                    let kind = if self.selected_plane().is_some() { Kind::Planes } else { Kind::Forms };
                     (
                         picked.into_iter().collect(),
                         BTreeSet::new(),
-                        BTreeSet::from([Kind::Forms]),
+                        BTreeSet::from([kind]),
                         self.forms.iter().map(|f| f.tag).collect::<BTreeSet<_>>(),
                         BTreeSet::new(),
-                        host.into_iter().chain([Kind::Forms]).collect(),
+                        host.into_iter().chain([Kind::Forms, Kind::Planes]).collect(),
                     )
                 }
             };
+        // A plane selected in a plan or an elevation, and every plane of the family's own (the datums are Planes alone).
+        let plane: BTreeSet<bimcraft_core::ids::Guid> = self.selected_plane().into_iter().collect();
+        let every_plane: BTreeSet<bimcraft_core::ids::Guid> = self.planes.iter().filter(|p| !p.level).map(|p| p.guid).collect();
         let t = &mut self.document.temp;
         match asked {
             Asked::Hide { category: false } => {
                 t.forms.extend(forms);
                 t.nodes.extend(nodes);
+                t.planes.extend(plane);
             }
             Asked::Hide { category: true } => t.kinds.extend(kinds),
             // All but what is selected goes: the other elements, and the categories that aren't elements to select.
             Asked::Isolate { category: false } => {
                 t.forms = every_form.difference(&forms).copied().collect();
                 t.nodes = every_node.difference(&nodes).cloned().collect();
-                t.kinds = every_kind.into_iter().filter(|k| matches!(k, Kind::Planes | Kind::Host)).collect();
+                if plane.is_empty() {
+                    t.kinds = every_kind.into_iter().filter(|k| matches!(k, Kind::Planes | Kind::Host)).collect();
+                } else {
+                    t.planes = every_plane.difference(&plane).copied().collect();
+                    t.kinds = every_kind.into_iter().filter(|k| matches!(k, Kind::Host)).collect();
+                }
             }
             Asked::Isolate { category: true } => {
-                (t.forms, t.nodes) = (BTreeSet::new(), BTreeSet::new());
+                (t.forms, t.nodes, t.planes) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
                 t.kinds = every_kind.difference(&kinds).copied().collect();
             }
             Asked::Reset => {}
         }
         self.form = None;
+        self.views.plane = None;
         self.modeller.selection.clear();
         Ok(())
+    }
+
+    /// Whether plane `g` (a datum or the family's own) is hidden for now, in a plan or an elevation.
+    pub(super) fn temp_hidden_plane(&self, g: bimcraft_core::ids::Guid) -> bool {
+        let t = &self.document.temp;
+        t.kinds.contains(&Kind::Planes) || t.planes.contains(&g)
     }
 
     /// Whether form `i` of a family that isn't adaptive is hidden for now.
@@ -243,6 +262,15 @@ impl BimApp {
                 Some(action) => Some(action.as_str()),
                 None => crate::SHORTCUTS.iter().find(|(k, _)| *k == self.typed).map(|(_, a)| *a),
             };
+            // Reference Plane, in a family's plan or elevation (F4): the family document's own.
+            if self.typed == "RP"
+                && let Some(ed) = self.family_editor.as_mut()
+                && ed.editing_2d()
+            {
+                self.typed.clear();
+                ed.reference_plane_tool();
+                continue;
+            }
             let asked = match action {
                 Some("Temporary Hide Element") => Asked::Hide { category: false },
                 Some("Temporary Hide Category") => Asked::Hide { category: true },

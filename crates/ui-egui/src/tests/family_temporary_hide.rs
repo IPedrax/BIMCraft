@@ -204,7 +204,7 @@ const CORNERS: [[f64; 3]; 4] = [[0., 0., 0.], [2000., 0., 0.], [2000., 1500., 0.
 
 /// An adaptive family of four reference points, a closed profile through them and a solid form of it, open in its document;
 /// the points' ids and the form's.
-fn adaptive() -> (Harness<'static, BimApp>, Vec<String>, String) {
+pub(super) fn adaptive() -> (Harness<'static, BimApp>, Vec<String>, String) {
     let mut d = Definition::default();
     let planes = Planes { planes: &[], lines: &[] };
     let mut points = Vec::new();
