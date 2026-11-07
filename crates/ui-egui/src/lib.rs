@@ -531,6 +531,9 @@ pub struct BimApp {
     background_grid_dialog: Option<background_grid::GridDialog>,
     /// Global grid snapping preference, independent of view graphics and templates.
     grid_snapping: bool,
+    /// Whether the 3D view's section box shows what it cuts filled (Settings > Performance): off, its faces are left hollow,
+    /// which spares cutting the model each time the box moves.
+    pub(crate) cut_fills_3d: bool,
     /// The origin marker on a plan, and the view's name in its corner (File > Settings): working aids, drawn on the screen and
     /// never in a drawing that is printed or exported.
     show_origin: bool,
@@ -1383,6 +1386,7 @@ impl BimApp {
             scan_contrast: footer::HIGH_CONTRAST,
             background_grid_dialog: None,
             grid_snapping: false,
+            cut_fills_3d: true,
             show_origin: true,
             show_view_name: true,
             ribbon_bottom: Pos2::ZERO,
@@ -3559,6 +3563,7 @@ impl BimApp {
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
+        fresh.cut_fills_3d = self.cut_fills_3d;
         (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
         fresh.custom_shortcuts = std::mem::take(&mut self.custom_shortcuts);
         (fresh.light_canvas, fresh.scheme, fresh.accent) = (self.light_canvas, self.scheme, self.accent);

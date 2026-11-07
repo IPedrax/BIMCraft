@@ -32,8 +32,8 @@ use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::snap::{self, Found, Kind, Reach, Snaps};
 use bimcraft_core::view3d::gpu::{Hit, Mesh};
 use bimcraft_core::view3d::{
-    AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, PlaneMark, Scene, Surface, box_grips, move_box_face, on_floor_top, shape_handles,
-    shape_pick_3d, shape_snap_3d,
+    AZIMUTH, Camera, CapSource, Caps, ELEVATION, Image, MAX_SIDE, P3, PlaneMark, Scene, Surface, box_grips, move_box_face, on_floor_top,
+    shape_handles, shape_pick_3d, shape_snap_3d,
 };
 use bimcraft_core::workplane::{CursorPlane, Frame, cursor_plane};
 use egui::{
@@ -52,8 +52,8 @@ use crate::workplane::Picking;
 use crate::{BimApp, Status, Tool, icon_button};
 
 /// What a picture is of: the model, the camera, the elements tinted, the ground it is drawn on (which says whether it is dark
-/// too), whether the card drew it, and the section box it is cut to while one is dragged.
-type Shot = (Arc<Model>, Camera, Vec<(Id, Rgb)>, Color32, bool, Option<(P3, P3)>);
+/// too), whether the card drew it, the section box it is cut to while one is dragged, and the caps it shows.
+type Shot = (Arc<Model>, Camera, Vec<(Id, Rgb)>, Color32, bool, Option<(P3, P3)>, Option<Arc<Caps>>);
 
 /// A model's mesh for the card, or why the card can't draw it.
 pub(crate) type Meshed = (Arc<Model>, Result<Arc<Mesh>, String>);
@@ -108,6 +108,37 @@ fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<Sce
         return None;
     }
     Some(SceneDone { model: job.model, scene, fitted, mesh })
+}
+
+/// Caps made: of which model, for which box.
+type Capped = (Arc<Model>, (P3, P3), Arc<Caps>);
+
+/// The caps of a section box: of which model, cut from the solids found before where they are still the model's, and the box.
+struct CapJob {
+    model: Arc<Model>,
+    source: Option<Arc<CapSource>>,
+    cut: (P3, P3),
+}
+
+struct CapDone {
+    model: Arc<Model>,
+    source: Arc<CapSource>,
+    cut: (P3, P3),
+    caps: Arc<Caps>,
+}
+
+/// The caps of a job's box, as the default 3D view fills them: its solids found, unless the job has them, and each face cut.
+fn build_caps(job: CapJob, cancel: &crate::view_worker::Cancel) -> Option<CapDone> {
+    let source = match job.source {
+        Some(source) => source,
+        None => Arc::new(CapSource::new_cancellable(&job.model, &|| cancel.cancelled())?),
+    };
+    if cancel.cancelled() {
+        return None;
+    }
+    let look = Look::of_3d(&job.model).with_section_box(Some(job.cut));
+    let caps = Arc::new(source.caps_in(&job.model, job.model.default_3d(), &look));
+    (!cancel.cancelled()).then_some(CapDone { model: job.model, source, cut: job.cut, caps })
 }
 
 struct FitJob {
@@ -259,8 +290,9 @@ pub(crate) enum OnCard {
     Loading,
 }
 
-/// What a picture shows: the model and its scene, the camera, the tints, the work plane's marks, and the section box it is cut
-/// to: `dragged` while one of its grips is (a picture tells by that too), else `cut`, the model's.
+/// What a picture shows: the model and its scene, the camera, the tints, the work plane's marks, the section box it is cut
+/// to (`dragged` while one of its grips is, a picture tells by that too, else `cut`, the model's) and the `caps` that fill what
+/// the box cuts, once made.
 pub(crate) struct Shown<'a> {
     pub(crate) model: &'a Arc<Model>,
     pub(crate) scene: &'a Scene,
@@ -269,6 +301,7 @@ pub(crate) struct Shown<'a> {
     pub(crate) marks: &'a [PlaneMark],
     pub(crate) dragged: Option<(P3, P3)>,
     pub(crate) cut: Option<(P3, P3)>,
+    pub(crate) caps: Option<Arc<Caps>>,
 }
 
 /// The card's failure to draw the 3D view, as the status bar says it.
@@ -363,6 +396,12 @@ pub struct Orbit {
     /// with Enter); the next click begins another.
     pub(crate) chain: Vec<P3>,
     pub(crate) chain_done: Option<bool>,
+    /// What the section box's caps are cut from, and for which model; the caps last made, of which model and box; the worker
+    /// that makes them, and what was asked of it.
+    cap_source: Option<(Arc<Model>, Arc<CapSource>)>,
+    caps: Option<Capped>,
+    cap_worker: Option<crate::view_worker::Latest<CapJob, CapDone>>,
+    caps_requested: Option<(Arc<Model>, (P3, P3))>,
 }
 
 /// The next view's slot on the card.
@@ -419,6 +458,10 @@ impl Default for Orbit {
             hot_handle: None,
             chain: Vec::new(),
             chain_done: None,
+            cap_source: None,
+            caps: None,
+            cap_worker: None,
+            caps_requested: None,
         }
     }
 }
@@ -826,6 +869,52 @@ impl Orbit {
         self.requested = Some(Arc::clone(model));
     }
 
+    /// The caps of section box `cut` on `model`: those made already, else asked of the worker (with the solids found for a model
+    /// they are still the solids of, so a box moved only cuts its faces again); none until they come back.
+    fn caps_for(&mut self, ctx: &egui::Context, model: &Arc<Model>, cut: (P3, P3)) -> Option<Arc<Caps>> {
+        if let Some(done) = self.cap_worker.as_ref().and_then(crate::view_worker::Latest::take) {
+            self.cap_source = Some((Arc::clone(&done.model), done.source));
+            self.caps = Some((done.model, done.cut, done.caps));
+        }
+        let same = |m: &Arc<Model>| Arc::ptr_eq(m, model) || bimcraft_core::view3d::scene_kept(m, model);
+        if let Some((m, c, caps)) = &mut self.caps
+            && *c == cut
+            && same(m)
+        {
+            *m = Arc::clone(model);
+            return Some(Arc::clone(caps));
+        }
+        if !self.caps_requested.as_ref().is_some_and(|(m, c)| Arc::ptr_eq(m, model) && *c == cut) {
+            let source = self.cap_source.as_ref().filter(|(m, _)| same(m)).map(|(_, s)| Arc::clone(s));
+            let job = CapJob { model: Arc::clone(model), source, cut };
+            self.caps_requested = Some((Arc::clone(model), cut));
+            if cfg!(test) {
+                let done = build_caps(job, &crate::view_worker::Cancel::default())?;
+                self.cap_source = Some((Arc::clone(&done.model), done.source));
+                self.caps = Some((done.model, done.cut, Arc::clone(&done.caps)));
+                return Some(done.caps);
+            }
+            let wake = ctx.clone();
+            let worker = self.cap_worker.get_or_insert_with(|| crate::view_worker::Latest::new(build_caps, move || wake.request_repaint()));
+            worker.request(job);
+        }
+        if let Some(worker) = &self.cap_worker {
+            // A worker that fails leaves the box hollow, as it was before caps.
+            let _ = worker.start();
+            let _ = worker.take_error();
+            if worker.busy() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+            }
+        }
+        None
+    }
+
+    /// The caps the picture on screen shows, and the scene it was drawn from.
+    #[cfg(test)]
+    pub(crate) fn caps_shown(&self) -> (Option<Arc<Caps>>, Option<Arc<Scene>>) {
+        (self.shown.as_ref().and_then(|s| s.6.clone()), self.scene.as_ref().map(|(_, s)| Arc::clone(s)))
+    }
+
     /// Install a whole snapshot at once, so the picture and its picker cannot refer to different models.
     /// The scene of `model` (and its mesh, for a `card`) made or brought up to date on the worker, and a camera fitted to it
     /// through `lens` while the view has none (a view the user sent home, or opened anew): whether both are ready to draw.
@@ -1117,11 +1206,16 @@ impl Orbit {
         mesh: Option<&Arc<Mesh>>,
         shot: Shown<'_>,
     ) -> Option<Status> {
-        let Shown { model, scene, cam, tints, marks: plane_marks, dragged: reboxed, cut: boxed } = shot;
+        let Shown { model, scene, cam, tints, marks: plane_marks, dragged: reboxed, cut: boxed, caps } = shot;
         let mut failed = None;
         // The ground, which a canvas colour of the user's changes without making the drawing dark or light.
         let dark = color(render::PAPER);
-        if !matches!(&self.shown, Some((m, c, t, k, g, b)) if Arc::ptr_eq(m, model) && *c == cam && t.as_slice() == tints && *k == dark && *g == mesh.is_some() && *b == reboxed)
+        let same_caps = |held: &Option<Arc<Caps>>| match (held, &caps) {
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        };
+        if !matches!(&self.shown, Some((m, c, t, k, g, b, h)) if Arc::ptr_eq(m, model) && *c == cam && t.as_slice() == tints && *k == dark && *g == mesh.is_some() && *b == reboxed && same_caps(h))
         {
             // The card's picture, if it makes one; the processor's if not, and if the card fails it for good.
             let (mut drawn, mut exact) = (false, true);
@@ -1130,7 +1224,7 @@ impl Orbit {
                 plane_marks.clone_into(&mut gpu.marks);
                 // The model's box, whichever the mesh was made under.
                 let cut = reboxed.or(boxed);
-                match gpu.draw_cut(mesh, &cam, tints, rgb(color(render::PAPER)), cut) {
+                match gpu.draw_capped(mesh, &cam, tints, rgb(color(render::PAPER)), cut, caps.as_ref()) {
                     Ok(whole) => {
                         self.picker = Some(Picker::Mesh(Arc::clone(mesh), tints.to_vec(), cut));
                         self.marked = Some(plane_marks.to_vec());
@@ -1147,7 +1241,10 @@ impl Orbit {
                 // As the default 3D view says: what it hides, and the colours it draws in.
                 let look = Look::of_3d(model);
                 let look = if reboxed.is_some() { look.with_section_box(reboxed) } else { look };
-                let image = scene.render_in(&cam, tints, &look);
+                let mut image = scene.render_in(&cam, tints, &look);
+                if let Some(caps) = &caps {
+                    image.capped(&cam, caps, tints, &look);
+                }
                 // The model shaded as ever, on the theme's ground: only the background is paper white.
                 let ground = color(render::PAPER);
                 let (rgba, _) = image.rgba.as_chunks::<4>();
@@ -1169,7 +1266,7 @@ impl Orbit {
                 self.picker = Some(Picker::Image(image));
             }
             // A picture that stands in, or whose exact surfaces are on their way, is drawn again next frame until it is exact.
-            self.shown = exact.then(|| (Arc::clone(model), cam, tints.to_vec(), dark, drawn, reboxed));
+            self.shown = exact.then(|| (Arc::clone(model), cam, tints.to_vec(), dark, drawn, reboxed, caps.clone()));
             if !exact {
                 ctx.request_repaint();
             }
@@ -1180,7 +1277,7 @@ impl Orbit {
             if self.on_card {
                 if let (Some(mesh), Some(gpu)) = (mesh, card.gpu.as_mut()) {
                     plane_marks.clone_into(&mut gpu.marks);
-                    if let Err(e) = gpu.draw_cut(mesh, &cam, tints, rgb(color(render::PAPER)), reboxed.or(boxed)) {
+                    if let Err(e) = gpu.draw_capped(mesh, &cam, tints, rgb(color(render::PAPER)), reboxed.or(boxed), caps.as_ref()) {
                         failed = Some(card_failed(&e));
                         (card.gpu, card.note) = (None, Some(e));
                         self.shown = None;
@@ -1699,9 +1796,12 @@ impl BimApp {
             |picker: &Option<Picker>, at: Pos2| patch.is_some_and(|ring| crate::workplane::on_patch(&ring, at)) && patch_seen(picker, at);
         let patch_lit = hover.is_some_and(|at| on_patch(&o.picker, at));
         let plane_marks = crate::workplane::marks(m, &cam, ppp, planed, new_sketch.map(Frame::from), patch.is_some(), patch_lit);
+        // What the section box cuts, filled (Settings > Performance), once the worker has cut it: hollow meanwhile.
+        let cut_now = reboxed.or(boxed).filter(|_| self.cut_fills_3d && look3.style() != VisualStyle::Wireframe);
+        let caps = cut_now.and_then(|cut| o.caps_for(ui.ctx(), &model, cut));
         // The picture, on the card or the processor, and what picks in it.
         let p = ui.painter_at(rect);
-        let shot = Shown { model: &model, scene, cam, tints: &tints, marks: &plane_marks, dragged: reboxed, cut: boxed };
+        let shot = Shown { model: &model, scene, cam, tints: &tints, marks: &plane_marks, dragged: reboxed, cut: boxed, caps };
         if let Some(status) = o.paint(ui.ctx(), &p, &mut self.card, mesh.as_ref(), shot) {
             self.status = status;
         }

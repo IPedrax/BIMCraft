@@ -2079,7 +2079,7 @@ impl BimApp {
                 mesh
             }
         };
-        let shot = crate::orbit::Shown { model: &model, scene: &scene, cam, tints: &tints, marks: &plane_marks, dragged: None, cut: None };
+        let shot = crate::orbit::Shown { model: &model, scene: &scene, cam, tints: &tints, marks: &plane_marks, dragged: None, cut: None, caps: None };
         if let Some(status) = ed.orbit.paint(ui.ctx(), &p, &mut self.card, mesh.as_ref(), shot) {
             self.status = status;
         }

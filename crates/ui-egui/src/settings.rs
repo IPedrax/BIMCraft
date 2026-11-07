@@ -113,6 +113,8 @@ pub struct Settings {
     pub autosave_minutes: u32,
     /// Draw the 3D view on the graphics card, when there is one.
     pub gpu_3d: bool,
+    /// Fill what the 3D view's section box cuts.
+    pub cut_fills_3d: bool,
     pub window: Window,
     /// What High Contrast Point Clouds fills a view's scans with.
     pub high_contrast: [u8; 3],
@@ -174,6 +176,7 @@ impl Settings {
             "palettes": self.docking.to_json(),
             "autosave_minutes": self.autosave_minutes,
             "gpu_3d": self.gpu_3d,
+            "cut_fills_3d": self.cut_fills_3d,
             "window": self.window.to_json(),
             "high_contrast": self.high_contrast,
             "grid_snapping": self.grid_snapping,
@@ -221,6 +224,7 @@ impl Settings {
             docking: if v["palettes"].is_object() { Docking::from_json(&v["palettes"]) } else { base.docking },
             autosave_minutes: v["autosave_minutes"].as_u64().filter(|n| *n <= 120).map_or(base.autosave_minutes, |n| n as u32),
             gpu_3d: v["gpu_3d"].as_bool().unwrap_or(base.gpu_3d),
+            cut_fills_3d: v["cut_fills_3d"].as_bool().unwrap_or(base.cut_fills_3d),
             window: Window::from_json(&v["window"], base.window),
             high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
             grid_snapping: v["grid_snapping"].as_bool().unwrap_or(base.grid_snapping),
@@ -359,6 +363,7 @@ impl BimApp {
         self.light_canvas = kept.light_canvas;
         self.autosave.interval_minutes = kept.autosave_minutes;
         self.card.wanted = kept.gpu_3d;
+        self.cut_fills_3d = kept.cut_fills_3d;
         self.window.kept = kept.window;
         self.scan_contrast = kept.high_contrast;
         self.grid_snapping = kept.grid_snapping;
@@ -409,6 +414,7 @@ impl BimApp {
             docking: self.docking.clone(),
             autosave_minutes: self.autosave.interval_minutes,
             gpu_3d: self.card.wanted,
+            cut_fills_3d: self.cut_fills_3d,
             window: self.window.kept,
             high_contrast: self.scan_contrast,
             grid_snapping: self.grid_snapping,
@@ -677,6 +683,10 @@ impl BimApp {
             (true, None) => crate::lang::tf("Card: {}", &[&self.card.adapter().unwrap_or_default()]),
         };
         muted(ui, text);
+        heading(ui, msg!("3D view"));
+        ui.checkbox(&mut self.cut_fills_3d, t("Fill what the section box cuts")).on_hover_text(t(
+            "Each face of the box shows what it cuts in its cut pattern. Off, the faces are left hollow and moving the box is faster",
+        ));
         later(ui, |ui| {
             let (mut undo, mut quality, mut smooth, mut background) = (100, 0, true, false);
             ui.horizontal(|ui| {
