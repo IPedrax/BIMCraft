@@ -1027,7 +1027,7 @@ fn manage_tab_opens_keyboard_shortcuts_dialog() {
     // Wide enough that the Manage tab shows every panel unfolded.
     h.set_size(vec2(1800.0, 900.0));
     press(&mut h, "Manage");
-    press(&mut h, "Shortcuts");
+    from_list(&mut h, "Settings", "Shortcuts");
     assert!(h.state().show_shortcuts);
     assert!(h.query_by_label("Load File...").is_some());
     assert!(h.query_by_label("Add Shortcut").is_some());
@@ -3531,6 +3531,39 @@ fn rotate_centre_shows_a_walls_snap_before_the_click_and_takes_it() {
     assert_eq!((f.kind, f.at), (Kind::Endpoint, P2(8000.0, 0.0)), "{f:?}");
     click(&mut h, P2(8030.0, 20.0));
     assert!(matches!(h.state().tool, Tool::Rotate { centre, .. } if centre == P2(8000.0, 0.0)), "{:?}", h.state().tool);
+}
+
+#[test]
+fn rotate_snaps_the_angle_s_start_and_end_to_what_is_drawn() {
+    let mut h = app(&format!("{BOX}\nwall {{\"points\": [[1000, 3000], [3000, 3000]]}}"));
+    let wall =
+        ids(&h, "wall").into_iter().find(|id| h.state().session.model.wall(*id).is_some_and(|w| w.start == P2(1000.0, 3000.0))).unwrap();
+    click(&mut h, P2(2000.0, 3000.0));
+    press(&mut h, "Rotate");
+    // About the wall's middle, from near one of the box's corners to near another: the rays run to the corners themselves.
+    click(&mut h, P2(8030.0, 25.0));
+    click(&mut h, P2(8030.0, 5975.0));
+    let w = h.state().session.model.wall(wall).cloned().unwrap();
+    let a = 2.0 * 0.5f64.atan();
+    let end = P2(2000.0 + 1000.0 * a.cos(), 3000.0 + 1000.0 * a.sin());
+    assert!(w.end.dist(end) < 0.01, "turned {:.3}°: {:?}, not {:?}", a.to_degrees(), w.end, end);
+}
+
+#[test]
+fn rotate_takes_an_angle_typed_over_the_view() {
+    let mut h = app(BOX);
+    let wall = ids(&h, "wall").into_iter().find(|id| h.state().session.model.wall(*id).is_some_and(|w| w.start == P2(0.0, 0.0))).unwrap();
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Rotate");
+    // As Revit takes it: typed straight away (or after the start's click), Enter turns by it.
+    h.event(Event::Text("-90".into()));
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Rotate { .. }), "typing is no shortcut here: {:?}", h.state().tool);
+    h.key_press(Key::Enter);
+    h.run();
+    let w = h.state().session.model.wall(wall).cloned().unwrap();
+    assert!(w.start.dist(P2(4000.0, 4000.0)) < 1e-6 && w.end.dist(P2(4000.0, -4000.0)) < 1e-6, "{:?} {:?}", w.start, w.end);
+    assert_eq!(h.state().tool, Tool::Modify);
 }
 
 #[test]
@@ -6196,6 +6229,7 @@ mod chinese;
 mod clouds;
 mod control;
 mod cowork;
+mod coordinates;
 mod dialog;
 mod dimensions;
 mod dims3d;
@@ -6245,6 +6279,7 @@ mod sketch;
 mod sketch3d;
 mod smallest;
 mod spacemouse;
+mod spots;
 mod standards;
 mod start;
 mod templates;

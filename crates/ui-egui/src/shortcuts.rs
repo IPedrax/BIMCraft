@@ -282,6 +282,7 @@ impl BimApp {
             "Text" => self.set_tool(Tool::Text),
             "Spot Elevation" => self.set_tool(Tool::Spot),
             "Spot Slope" => self.set_tool(Tool::SpotSlope),
+            "Spot Coordinate" => self.set_tool(Tool::SpotCoordinate(None)),
             "Tag by Category" => self.set_tool(Tool::Tag),
             "Section" => self.set_tool(Tool::Section(None)),
             "Elevation" => self.set_tool(Tool::Elevation),

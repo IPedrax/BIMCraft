@@ -191,3 +191,22 @@ fn a_dwg_comes_in_through_the_box_with_the_reader_the_app_is_given_and_its_notes
     let status = &h.state().status;
     assert!(!status.error && status.text.contains("3 of the DWG's object records"), "{status:?}");
 }
+
+#[test]
+fn by_shared_coordinates_puts_the_drawing_where_the_active_location_puts_it_or_acquires_from_it() {
+    let mut h = app(BOX);
+    // The site's survey says the project's origin is at E 1000 m, N 2000 m: a drawing in those numbers lands 1 km off.
+    h.state_mut().run("location", json!({"name": "Internal", "east": 1_000_000.0, "north": 2_000_000.0}));
+    h.state_mut().import_cad_path(drawing("shared", "survey.dxf"), false);
+    h.run();
+    let acquire = h.get_by_role_and_label(Role::CheckBox, "Acquire coordinates from it");
+    assert!(egui_kittest::kittest::NodeT::accesskit_node(&acquire).is_disabled(), "for shared coordinates only");
+    pick(&mut h, Role::RadioButton, "Auto - By Shared Coordinates");
+    pick(&mut h, Role::CheckBox, "Acquire coordinates from it");
+    press(&mut h, "OK");
+    let placed = imports(&h);
+    assert_eq!(placed.len(), 1, "{}", h.state().status.text);
+    // Acquired: its middle (E 5 m, N 3 m) is now the project's origin.
+    let l = h.state().session.model.coordinates.location();
+    assert!((l.east - 5_000.0).abs() < 1.0 && (l.north - 3_000.0).abs() < 1.0, "{l:?}");
+}
