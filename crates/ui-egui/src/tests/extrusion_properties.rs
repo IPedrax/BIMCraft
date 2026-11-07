@@ -29,7 +29,7 @@ fn selected() -> Harness<'static, BimApp> {
 
 /// The draft as it stands, built.
 fn draft(h: &Harness<BimApp>) -> Family {
-    h.state().family_editor.as_ref().unwrap().draft().unwrap()
+    h.state().family_editor.as_ref().unwrap().draft_family().unwrap()
 }
 
 /// The draft's built triangles: their lowest and highest z.

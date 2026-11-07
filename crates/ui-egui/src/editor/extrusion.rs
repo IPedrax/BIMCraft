@@ -27,7 +27,7 @@ impl FamilyEditor {
 
     /// The family as the draft has it now, built: what the document would load into the project.
     #[cfg(test)]
-    pub(crate) fn draft(&self) -> Result<Family, String> {
+    pub(crate) fn draft_family(&self) -> Result<Family, String> {
         self.family()
     }
 
