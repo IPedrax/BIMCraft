@@ -92,6 +92,18 @@ docked Properties and Project Browser, and a 3D view: an adaptive family's model
 edited in Properties (whose Adaptive tab makes it adaptive); Family Types and Family Category and Parameters open dialogs
 (Apply, OK, and Cancel putting back what the dialog began from). Form creation tools that need sketch workflows remain
 disabled placeholders. Undo and Redo are the document's own (`Draft`), and never undo the project.
+Family Types is Revit's (`editor/types_dialog.rs`): Type name, a drop-down of the types with New Type (a name asked, the type
+shown copied), Rename Type and Delete Type (refused for the last, saying why); Search parameters (by name, case aside); one table,
+Parameter, Value, Formula and Lock, under the groups' headings in `Group::ALL`'s order (the Properties palette's), each folding.
+A type parameter's Value is the type shown's own (else the family's), an instance parameter's, marked "(default)", the family's;
+a row a formula drives is greyed with what it comes to; words and reporting parameters take no formula. Apply and OK are refused,
+with T9's words, while a parameter's formula doesn't read (`formula_refusal`). Lock is a disabled tick until locked labelled
+dimensions (F7). Under the table: New and Edit Parameter (Parameter Properties: family or shared, picked from a shared parameters
+file by path; name, Type or Instance, reporting, kind, a family type's category, the group), Edit's rename walking the draft as
+`Family::rename_parameter` does; Delete Parameter, the `family` command's `delete_parameter` on a private session holding the
+draft, so it is refused with the command's reason while a formula or a form uses it; Move Up and Move Down within a group and
+Ascending and Descending sorting each group, since `Family::parameters`' order is saved and is the order every list shows.
+Lookup tables and type catalogs are not there.
 The editor keeps text drafts (`FormText`, `ParamText`, ...) and changes the project's family only when Load into Project
 or Load into Project and Close runs a `family` command. Close Family discards the draft. Save Family and Add to Favorites
 prepare a private `Session`, so saving never implicitly loads the draft into the project. The preview is a scratch

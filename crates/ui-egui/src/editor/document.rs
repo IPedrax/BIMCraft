@@ -904,7 +904,7 @@ impl BimApp {
         }
     }
 
-    /// The dialogs a family document's ribbon opens: Family Types (its parameters and types, on two tabs) and Family
+    /// The dialogs a family document's ribbon opens: Family Types (its types and one table of its parameters: `types_dialog`) and Family
     /// Category and Parameters (its name, category and, for a door or a window, how it opens). Apply keeps what is typed,
     /// Cancel puts back what was there when the dialog opened or last applied, OK keeps it and closes the dialog.
     pub(crate) fn document_dialogs(&mut self, ctx: &Context, ed: &mut FamilyEditor, materials: &[String]) {
@@ -921,28 +921,11 @@ impl BimApp {
             DocDialog::Types => t("Family Types"),
             DocDialog::Category => t("Family Category and Parameters"),
         };
+        let base = Arc::clone(&self.session.model);
         let (mut apply, mut ok, mut cancel) = (false, false, false);
         let r = Modal::new(UiId::new(("family-dialog", dialog as u8)), title).width(900.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| match dialog {
-                DocDialog::Types => {
-                    ui.horizontal(|ui| {
-                        for (tab, label) in [(TypesTab::Parameters, msg!("Parameters")), (TypesTab::Types, msg!("Types"))] {
-                            if ui.selectable_label(ed.types_tab == tab, t(label)).clicked() {
-                                ed.types_tab = tab;
-                            }
-                        }
-                    });
-                    ui.separator();
-                    let room = (ctx.content_rect().height() - 260.0).clamp(160.0, 560.0);
-                    ScrollArea::vertical().max_height(room).auto_shrink([false, true]).show(ui, |ui| match ed.types_tab {
-                        TypesTab::Types => types_tab(ed, ui, materials),
-                        TypesTab::Parameters => parameters_tab(ed, ui, materials),
-                    });
-                    // Said in the dialog: the view's would be under it.
-                    if let Some(p) = ed.problem() {
-                        ui.label(RichText::new(p).color(pal().error));
-                    }
-                }
+                DocDialog::Types => super::types_dialog::body(ed, ui, &base, materials),
                 DocDialog::Category => {
                     Grid::new("family-category").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
                         let l = ui.label(t("Family name"));
@@ -988,6 +971,23 @@ impl BimApp {
                 });
             });
         });
+        if dialog == DocDialog::Types {
+            // Name and Parameter Properties, over Family Types.
+            super::types_dialog::over(ctx, ed);
+        }
+        // A formula that doesn't read is refused, as Revit's Family Types refuses it, with T9's words; Cancel still goes back.
+        if (ok || apply)
+            && !cancel
+            && dialog == DocDialog::Types
+            && let Some(why) = ed.formula_refusal()
+        {
+            ed.refuse_types(why);
+            (ok, apply) = (false, false);
+        }
+        let closing = cancel || r.should_close() || ok;
+        if closing {
+            ed.types_closed();
+        }
         if cancel || r.should_close() {
             if let Some(saved) = ed.document.dialog_saved.take() {
                 saved.restore(ed);

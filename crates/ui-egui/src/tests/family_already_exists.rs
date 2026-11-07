@@ -21,14 +21,16 @@ fn project() -> Harness<'static, BimApp> {
     h
 }
 
-/// Reload opened as a document and changed both ways: a parameter added (its definition) and Width's default 200 (a value).
+/// Reload opened as a document and changed both ways: a parameter added (its definition) and type A's Width 200 (a value).
 fn changed() -> Harness<'static, BimApp> {
     let mut h = project();
     h.state_mut().edit_family("Reload");
     h.run();
     press(&mut h, "Family Types");
-    press(&mut h, "Add Parameter");
-    type_into(&mut h, "Parameter Value 1", "200");
+    press(&mut h, "New Parameter");
+    type_into(&mut h, "Name:", "Parameter 1");
+    press_near(&mut h, "OK", "Name:");
+    type_into(&mut h, "Parameter Value Width", "200");
     press(&mut h, "OK");
     h
 }
@@ -76,7 +78,7 @@ fn overwrite_the_existing_version_and_its_parameter_values_takes_the_familys_val
     press(&mut h, VALUES);
     let f = reload(&h);
     assert!(f.parameters.iter().any(|p| p.name == "Parameter 1"));
-    assert_eq!(f.parameters[0].value, json!(200.0), "the family's Width default");
+    assert_eq!(f.types["A"]["Width"], json!(200.0), "the family's type A Width");
     assert!(f.types.contains_key("A"));
     assert_eq!(steps(&h), before + 1);
     assert_eq!(h.state().family_decided.as_ref().and_then(|d| d.overwrite), Some(Overwrite::VersionAndValues));
@@ -158,10 +160,10 @@ fn a_refused_load_stays_said_and_the_document_stays_open() {
     let mut h = project();
     h.state_mut().edit_family("Reload");
     h.run();
-    // A formula naming a parameter the family hasn't (T9's refusal).
-    press(&mut h, "Family Types");
-    type_into(&mut h, "Parameter Formula 1", "Nope + 1");
-    press(&mut h, "OK");
+    // A formula naming a parameter the family hasn't (T9's refusal), in the draft as a file from before T9 may hold one: Family
+    // Types refuses to take one typed.
+    h.state_mut().family_editor.as_mut().unwrap().set_formula("Width", "Nope + 1");
+    h.run();
     let was = h.state().session.model.to_json().unwrap();
     // Asked first, as Revit asks before it reads the family; the overwrite is then refused, as a whole.
     press(&mut h, "Load into Project and Close");
