@@ -137,7 +137,7 @@ pub fn value_of<'a>(m: &Model, e: &'a Element, name: &str, p: &'a ProjectParamet
 }
 
 /// The category of parameters the library's type entry `kind` and `name` is for.
-fn category_of_type(m: &Model, kind: &LibKind, name: &str) -> Option<String> {
+pub(crate) fn category_of_type(m: &Model, kind: &LibKind, name: &str) -> Option<String> {
     match kind {
         LibKind::Type(c) => Some(c.clone()),
         LibKind::FamilyType => {
@@ -715,7 +715,7 @@ pub(crate) fn import(s: &mut Session, p: &Value) -> R {
 }
 
 /// `rows` done to the session's model.
-fn apply(s: &mut Session, rows: &[Planned], dictionary: Option<&table::Source>, path: &str) -> Result<(), String> {
+pub(crate) fn apply(s: &mut Session, rows: &[Planned], dictionary: Option<&table::Source>, path: &str) -> Result<(), String> {
     let c = "parameter_import";
     let dict_name = dictionary.map(|d| d.name.clone());
     if let Some(d) = dictionary {

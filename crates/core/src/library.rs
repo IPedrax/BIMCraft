@@ -63,6 +63,8 @@ pub enum Kind {
     WireType,
     /// A dictionary project parameters came from.
     Dictionary,
+    /// A classification table loaded into the project.
+    Classification,
 }
 
 impl Kind {
@@ -96,6 +98,7 @@ impl Kind {
             Kind::DistributionSystem => "distribution system".into(),
             Kind::WireType => "wire type".into(),
             Kind::Dictionary => "parameter dictionary".into(),
+            Kind::Classification => "classification table".into(),
         }
     }
 
@@ -108,6 +111,7 @@ impl Kind {
             "family" => Kind::Family,
             "parameter" => Kind::Parameter,
             "dictionary" => Kind::Dictionary,
+            "classification" => Kind::Classification,
             "view-filter" => Kind::ViewFilter,
             "view-template" => Kind::ViewTemplate,
             "phase" => Kind::Phase,
@@ -162,6 +166,7 @@ impl fmt::Display for Kind {
             Kind::DistributionSystem => f.write_str("distribution-system"),
             Kind::WireType => f.write_str("wire-type"),
             Kind::Dictionary => f.write_str("dictionary"),
+            Kind::Classification => f.write_str("classification"),
         }
     }
 }
@@ -592,6 +597,7 @@ impl Model {
         add(Kind::Family, &mut self.families.keys());
         add(Kind::Parameter, &mut self.parameters.keys());
         add(Kind::Dictionary, &mut self.dictionaries.keys());
+        add(Kind::Classification, &mut self.classification.tables.keys());
         add(Kind::ViewFilter, &mut self.view_filters.keys());
         add(Kind::ViewTemplate, &mut self.view_templates.keys());
         add(Kind::Phase, &mut self.phases.iter());
@@ -1066,6 +1072,7 @@ impl Model {
         for d in self.parameters.values_mut().filter_map(|p| p.dictionary.as_mut()) {
             f(&Kind::Dictionary, d);
         }
+        self.classification.lib_refs_mut(f);
         let t = &mut self.types;
         let layers = t
             .wall

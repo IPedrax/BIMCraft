@@ -453,6 +453,7 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::DistributionSystem => one(&mut to.distribution_systems, Some(&from.distribution_systems), name),
         Kind::WireType => one(&mut to.wire_types, Some(&from.wire_types), name),
         Kind::Dictionary => one(&mut to.dictionaries, Some(&from.dictionaries), name),
+        Kind::Classification => one(&mut to.classification.tables, Some(&from.classification.tables), name),
         _ => false,
     }
 }

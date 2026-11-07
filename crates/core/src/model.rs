@@ -2437,6 +2437,9 @@ pub struct Model {
     /// What the files imported call categories, each to one of ours or, none, left out: asked once.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub parameter_map: BTreeMap<String, Option<String>>,
+    /// The classification tables it holds and the parameters they fill ([`crate::classification`]).
+    #[serde(default, skip_serializing_if = "crate::classification::Classification::is_empty")]
+    pub classification: crate::classification::Classification,
     /// Its view filters, by name: categories and rules that pick elements out for views to hide
     /// or draw another way.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -2574,6 +2577,7 @@ impl Model {
             families: BTreeMap::new(),
             parameters: BTreeMap::new(),
             dictionaries: BTreeMap::new(),
+            classification: Default::default(),
             parameter_map: BTreeMap::new(),
             view_filters: BTreeMap::new(),
             view_templates: BTreeMap::new(),
@@ -5058,6 +5062,7 @@ impl Model {
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
+        self.classification.check()?;
         if let Some(lw) = &self.line_weights {
             lw.check()?;
         }
