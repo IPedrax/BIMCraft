@@ -59,6 +59,9 @@ fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
             out.extend(axes(c.at, c.angle, 100.0));
             out
         }
+        // An upright one, its line; one that isn't upright has no line in plan.
+        Element::RefPlane(p) if p.upright() => vec![(P2(p.start[0], p.start[1]), P2(p.end[0], p.end[1]))],
+        Element::RefPlane(_) => Vec::new(),
         Element::Floor(f) => std::iter::once(&f.boundary).chain(&f.openings).flat_map(|r| path(r, true)).collect(),
         Element::Ceiling(c) => std::iter::once(&c.boundary).chain(&c.openings).flat_map(|r| path(r, true)).collect(),
         Element::Roof(r) => {

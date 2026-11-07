@@ -44,6 +44,8 @@ pub mod engine;
 pub mod falls;
 pub mod family;
 #[cfg(test)]
+mod family_options_tests;
+#[cfg(test)]
 mod family_parameter_tests;
 #[cfg(test)]
 mod family_plane_tests;
@@ -61,6 +63,7 @@ pub mod graphics;
 pub mod groups;
 #[cfg(test)]
 mod host_void_tests;
+pub mod hosting;
 pub mod hydrant;
 pub mod ids;
 pub mod ifc;
@@ -148,6 +151,8 @@ pub mod view3d;
 mod wall_top_offset_tests;
 pub mod walls;
 pub mod water;
+#[cfg(test)]
+mod work_plane_tests;
 pub mod workplane;
 #[cfg(test)]
 mod workplane_tests;

@@ -404,6 +404,8 @@ pub(crate) struct FamilyEditor {
     ifc: Option<IfcClass>,
     /// How a door's or a window's leaves open; none, not said.
     operation: Option<Operation>,
+    /// Its options (Family Category and Parameters), as the family has them: set with the `family` command, kept as they are.
+    options: Value,
     pub(crate) tab: Tab,
     /// The type shown in Types and on the preview.
     picked: usize,
@@ -506,6 +508,7 @@ impl FamilyEditor {
             kind: f.kind.clone(),
             ifc: f.ifc.clone(),
             operation: f.operation,
+            options: f.options_json(),
             tab: Tab::Parameters,
             picked: 0,
             look: (AZIMUTH, ELEVATION),
@@ -610,7 +613,7 @@ impl FamilyEditor {
         let forms = self.forms.iter().map(FormText::form).collect::<Result<_, _>>()?;
         let symbols = self.symbols.iter().map(SymbolText::symbol).collect::<Result<_, _>>()?;
         let operation = self.operation.filter(|_| self.category.hosted());
-        Ok(Family {
+        let mut family = Family {
             category: self.category,
             // A kind the category it now is has no row for goes with the change of category.
             kind: self.kind.clone().filter(|k| self.category.kinds().iter().any(|(n, _)| n == k)),
@@ -624,7 +627,10 @@ impl FamilyEditor {
             adaptive: self.adaptive.clone(),
             planes: self.planes.clone(),
             lines: self.lines.clone(),
-        })
+            ..Family::default()
+        };
+        family.merge_options(&self.options)?;
+        Ok(family)
     }
 
     /// The `family` command's parameters making the project's family what's typed: its name, its own and the type it drops.
@@ -636,8 +642,11 @@ impl FamilyEditor {
         let mut p = serde_json::to_value(&family).map_err(|e| e.to_string())?;
         // Said or not, so one taken off goes from the family too.
         p["operation"] = json!(family.operation.map_or("", Operation::name));
-        // Its planes and lines as the command takes them, so the forms drawn on them keep their hosts.
+        // Its planes and lines as the command takes them, so the forms drawn on them keep their hosts; its options, all of
+        // them, so the project's family keeps them as they are.
         if let Some(map) = p.as_object_mut() {
+            Family::options_from_fields(map);
+            map.insert("options".into(), family.options_json());
             for (k, key) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
                 let v = map.remove(k).unwrap_or_else(|| json!([]));
                 map.insert(key.into(), v);
@@ -1607,6 +1616,10 @@ mod tests {
         panel.category = Category::Generic;
         panel.ifc =
             Some(IfcClass { class: "IFCPLATE".into(), predefined: Some("CURTAIN_PANEL".into()), object_type: Some("Glass".into()) });
+        // And its options set, none at its default.
+        panel.merge_options(&json!({"work_plane_based": true, "always_vertical": false, "cut_with_voids_when_loaded": true,
+            "shared": true, "room_calculation_point": ["Width / 2", 0, 0], "cut_in_views": false, "omniclass": {"number": "23.30", "title": "Panel"}}))
+            .unwrap();
         m.families.insert("System Panel".into(), panel);
         for (name, f) in &m.families {
             let back = FamilyEditor::of(name, f).family().unwrap_or_else(|e| panic!("{name}: {e}"));
@@ -1640,6 +1653,18 @@ mod tests {
         assert!(!ed.family().unwrap().types[&ed.types[0].0].contains_key("Width"));
         ed.name = " ".into();
         assert!(ed.command(&m).unwrap_err().contains("needs a name"));
+    }
+
+    #[test]
+    fn the_editor_keeps_a_familys_options_when_it_saves() {
+        let mut s = Session::new();
+        let options = json!({"work_plane_based": true, "always_vertical": false, "default_elevation": 900.0, "cut_with_voids_when_loaded": true, "shared": true,
+            "room_calculation_point": ["Width / 2", 100.0, 0.0], "cut_in_views": true, "omniclass": {"number": "23.40.20", "title": "Tables"}});
+        s.execute("family", &json!({"name": "Table", "options": options})).unwrap();
+        let was = s.model.families["Table"].clone();
+        let p = FamilyEditor::of("Table", &was).command(&s.model).unwrap();
+        s.execute("family", &p).unwrap();
+        assert_eq!(s.model.families["Table"].options_json(), options);
     }
 
     #[test]

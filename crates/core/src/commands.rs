@@ -40,6 +40,8 @@ use crate::walls::{self, Axis, stacked};
 use crate::workplane::{Surface, WorkPlane};
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 
+mod work_plane;
+
 type R = Result<Value, String>;
 
 const fn edit(id: &'static str, label: &'static str, aliases: &'static [&'static str], params: &'static str, run: Run) -> Command {
@@ -173,6 +175,29 @@ pub static ALL: &[Command] = &[
     )
     .menu("Architecture > Level"),
     edit("grid", ui_msg!("Grid"), &["GR"], "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", grid).menu("Architecture > Grid"),
+    edit(
+        "reference_plane",
+        "Reference Plane",
+        &[],
+        "{start, end, up?: [x,y,z], name?, level?} a reference plane of the project: drawn along the line from `start` to `end` \
+         ([x, y] on `level`, the lowest by default, or [x, y, z]), its other direction `up` (the vertical by default, so a line \
+         drawn in plan makes an upright plane; tilt `up` for a sloped one). Work plane-based components are placed on it \
+         (`component` `host`) and move with it; deleting it deletes them. A name is one plane's",
+        work_plane::reference_plane,
+    )
+    .menu("Architecture > Reference Plane"),
+    edit(
+        "edit_work_plane",
+        "Edit Work Plane",
+        &[],
+        "{ids, host: {level: name|id} | {plane: name|id|GUID}} puts components on a level (at their plan point, on it) or a \
+         reference plane of the project (taken onto it; one from another plane keeps its Offset from Host). \
+         {family, form | ref_line: id|GUID, host: {plane: name|id|GUID} | {line, face}, keep?, dry_run?} puts a family's form \
+         or reference line on another of its planes: it moves with the plane, as Revit's Edit Work Plane, keeping its profile \
+         and start and end in the new plane's axes; with `keep` it stays where it is, which only a plane parallel to its old \
+         one allows (a reference line, only one it already lies on)",
+        work_plane::edit_work_plane,
+    ),
     edit(
         "point_cloud",
         "Point Cloud",
@@ -1076,8 +1101,15 @@ pub static ALL: &[Command] = &[
          ifc?: {class, predefined?, object_type?} | null (the IFC class a generic family's components go out as, which one \
          opened from IFC remembers: `IFCPLATE`, `CURTAIN_PANEL`; one IFC4 lacks goes out as a proxy that names it), \
          connectors?: [{kind: power|switch, system: power-balanced|power-unbalanced|switch, poles?: 1-3, voltage?, load_va?, \
-         power_factor?, classification?}], adaptive?: {nodes, preview?} | null, rename?, delete?: true, dry_run?, path?, \
-         save?} a family of \
+         power_factor?, classification?}], adaptive?: {nodes, preview?} | null, options?: {work_plane_based?, always_vertical?, cut_with_voids_when_loaded?, \
+         shared?, room_calculation_point?: [x, y, z] | null, cut_in_views?: true|false|null, omniclass?: {number, title?} | \
+         null} (Revit's Family Category and Parameters: each given merged over what it has, `null` back to its default; \
+         `room_calculation_point` is a point in its own axes, mm, numbers or formulas over its length parameters, whose room a \
+         component is in (else its insertion point's: `elements` says `room`, IFC references it in that space beside its storey); `cut_in_views` \
+         overrides whether sections cut its forms, which by default its category says; `omniclass` is a number of digits and \
+         dots (`23.30.20.17`) and a title, which IFC writes as a classification reference on its type; work_plane_based (off), \
+         always_vertical (on), cut_with_voids_when_loaded (off) and shared (off) are kept for later and change nothing yet; \
+         a reply's `options` has them all), rename?, delete?: true, dry_run?, path?, save?} a family of \
          the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .json file at `path` (a \
          family as `inspect` shows it, with its `name`). Without `name` it lists the project's families, each its category and \
          how many types, forms and symbols it has; with only a `name` it reads one — its definition, each of its types' \
@@ -1162,11 +1194,15 @@ pub static ALL: &[Command] = &[
         "component",
         ui_msg!("Component"),
         &["CM"],
-        "{family, type?, at: [x,y], level?, angle?, offset?, mirrored?, adaptive?: {frames: {number: {origin,x,y,z}}, context?}, params?: {parameter: value}} a family's type placed, its \
-         first by default: at a point on a level, turned `angle` degrees counter-clockwise, `offset` mm up from the level, and \
+        "{family, type?, at: [x,y], level?, angle?, offset?, mirrored?, params?: {parameter: value}, adaptive?: {frames: {number: {origin,x,y,z}}, context?}, host?: {level: name|id} | \
+         {plane: name|id|GUID}} a family's type placed, its first by default: at a point on a level, turned `angle` degrees \
+         counter-clockwise, `offset` mm up from the level (none: its family's Default Elevation, unless work plane-based), and \
          with `mirrored` flipped across its own x axis; `params` sets its instance parameters (`modify` merges into them, a null \
-         taking one back to the family's)",
-        component,
+         taking one back to the family's). A work plane-based family may go on a reference plane (`host` `plane`, Place on Work \
+         Plane): `at` [x, y] is taken straight onto the plane, [x, y, z] along its normal (an upright plane needs it), `offset` \
+         is its Offset from Host along the normal, `level` its Schedule Level (by default the highest level at or below it); \
+         it follows the plane when the plane moves, upright or, its family not Always Vertical, tilted with the plane",
+        work_plane::component,
     )
     .menu("Architecture > Component"),
     edit(
@@ -2130,7 +2166,8 @@ pub static ALL: &[Command] = &[
         "elements",
         ui_msg!("Elements"),
         "{category?, level?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, \
-         never changed), fields and derived values (length, height, area_m2…); what an element points at (its level, host, \
+         never changed), fields and derived values (length, height, area_m2…; a component's `room`, the GUID of the room \
+         its family's room calculation point, else its insertion point, is in); what an element points at (its level, host, \
          view…) it holds by GUID. Wherever a command takes an element, its id or its GUID will do",
         elements,
     ),
@@ -2540,6 +2577,10 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
     {
         extra.insert("room_bounding".into(), json!(room_bounding));
     }
+    // Its family's OmniClass number and title, where it has one.
+    if let Some(o) = e.family().and_then(|(f, _)| m.families.get(f)).and_then(|f| f.omniclass.as_ref()) {
+        extra.insert("omniclass".into(), json!(o));
+    }
     // Its type's and its family's GUIDs, beside their names.
     e.clone().lib_refs_mut(&mut |kind, name| {
         let key = match kind {
@@ -2630,6 +2671,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             let base = m.elevation(cp.level) + cp.offset;
             let top = m.component_pieces(cp).iter().map(|p| p.top).fold(base, f64::max);
             extra.insert("height".into(), json!(hundredth(top - base)));
+            // Its work plane, as Properties shows it, and its Offset from Host: on a level, its height over it.
+            extra.insert("work_plane".into(), json!(m.work_plane_name(cp)));
+            extra.insert("offset_from_host".into(), json!(cp.host.map_or(cp.offset, |h| h.offset)));
         }
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
             let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
@@ -2799,7 +2843,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         Element::Dimension3D(d) => {
             extra.insert("length".into(), json!(hundredth(crate::dims3d::length(d))));
         }
-        Element::Grid(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {}
+        Element::Grid(_) | Element::RefPlane(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {}
     }
     let mut v = serde_json::to_value(e).unwrap_or_default();
     if let Some(o) = v.as_object_mut() {
@@ -10421,6 +10465,10 @@ fn family(s: &mut Session, p: &Value) -> R {
                 .into_iter()
                 .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
                 .collect();
+        // Its options, flat fields in a file, as the command takes them.
+        if let Some(options) = crate::family::Family::options_from_fields(&mut fields) {
+            family.insert("options".into(), options);
+        }
         // Its planes and lines, as the command takes them.
         for (k, key) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
             if let Some(v) = fields.remove(k) {
@@ -10509,6 +10557,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         "ref_line",
         "delete_ref_plane",
         "delete_ref_line",
+        "options",
     ];
     if !keys.iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null())) {
         let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}`")))?;
@@ -10678,6 +10727,10 @@ fn family(s: &mut Session, p: &Value) -> R {
             f.ifc = Some(class.written());
         }
     }
+    // Its options, each given merged over what it holds; `null` takes one back to its default.
+    if let Some(v) = p.get("options").filter(|v| !v.is_null()) {
+        f.merge_options(v).map_err(|e| bad(c, e))?;
+    }
     if let Some(v) = p.get("types").filter(|v| !v.is_null()) {
         let mut types = serde_json::to_value(&f.types).map_err(|e| bad(c, e))?;
         merge(&mut types, v);
@@ -10733,7 +10786,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         }
     }
     m.families.insert(to.clone(), f.clone());
-    Ok(json!({"name": to, "family": f, "warnings": warnings}))
+    Ok(json!({"name": to, "family": f, "options": f.options_json(), "warnings": warnings}))
 }
 
 /// A family as `family` reads it: what it is, each of its types' parameters worked out (formulas and
@@ -10745,7 +10798,7 @@ fn family_reply(name: &str, f: &crate::family::Family, warnings: &[String]) -> V
         .filter_map(|t| f.values_in(t, &BTreeMap::new(), crate::family::DEFAULT_WALL).ok().map(|v| (t.clone(), v)))
         .map(|(t, v)| (t, Value::Object(v.iter().map(|(k, v)| (k.clone(), val(v))).collect())))
         .collect::<Map<String, Value>>();
-    json!({"name": name, "family": f, "values": Value::Object(values), "warnings": warnings})
+    json!({"name": name, "family": f, "options": f.options_json(), "values": Value::Object(values), "warnings": warnings})
 }
 
 /// A parameter's value worked out, as JSON: a number, or a material's name.
@@ -10788,6 +10841,7 @@ fn family_changes(was: Option<&crate::family::Family>, now: &crate::family::Fami
         "rename": rename,
         "parameters_renamed": patches.params_renamed.iter().map(|(a, b)| json!({"from": a, "to": b})).collect::<Vec<_>>(),
         "component_values_changed": patches.component_ops.len(),
+        "options": now.options_changed(was),
         "deleted": false,
     })
 }
@@ -10892,43 +10946,6 @@ fn symbol_set(s: &mut Session, p: &Value) -> R {
         }
     }
     Ok(json!({"set": set, "loaded": loaded, "kept": kept}))
-}
-
-fn component(s: &mut Session, p: &Value) -> R {
-    let c = "component";
-    let m = &s.model;
-    let family = string(c, p, "family")?.ok_or_else(|| bad(c, "`family` is required; `inspect` lists the families"))?;
-    let f = m.families.get(&family).ok_or_else(|| {
-        let names: Vec<&str> = m.families.keys().map(String::as_str).collect();
-        bad(c, format!("family `{family}` doesn't exist (there are: {})", names.join(", ")))
-    })?;
-    let type_name = match string(c, p, "type")? {
-        Some(t) => t,
-        None => f.types.keys().next().cloned().ok_or_else(|| bad(c, format!("family `{family}` has no type")))?,
-    };
-    let params = match p.get("params") {
-        Some(Value::Object(o)) => o.iter().filter(|(_, v)| !v.is_null()).map(|(k, v)| (k.clone(), v.clone())).collect(),
-        v if absent(v) => BTreeMap::new(),
-        v => return Err(bad(c, format!("`params` is {{parameter: value}}, not {}", v.unwrap_or(&Value::Null)))),
-    };
-    let adaptive = p
-        .get("adaptive")
-        .filter(|v| !v.is_null())
-        .map(|v| serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("adaptive: {e}"))))
-        .transpose()?;
-    let comp = Component {
-        adaptive,
-        family,
-        type_name,
-        level: level_param(c, m, p, "level")?,
-        at: point_req(c, p, "at")?,
-        angle: num(c, p, "angle")?.unwrap_or(0.0),
-        offset: num(c, p, "offset")?.unwrap_or(0.0),
-        mirrored: flag(c, p, "mirrored")?,
-        params,
-    };
-    let id = s.model_mut().insert(Element::Component(comp));
-    Ok(json!({"id": id}))
 }
 
 /// The project's pictures, each its name and its size in pixels.
@@ -11574,6 +11591,16 @@ fn modify(s: &mut Session, p: &Value) -> R {
         for (k, val) in fields {
             let val = match k.as_str() {
                 "id" | "ids" => continue,
+                // A component's Offset from Host: its host's offset on a plane, else its height over its level. Its Work Plane
+                // is what it is on, said, changed with `edit_work_plane`.
+                "offset_from_host" if matches!(e, Element::Component(_)) => {
+                    match obj.get_mut("host").and_then(Value::as_object_mut) {
+                        Some(host) => host.insert("offset".into(), val.clone()),
+                        None => obj.insert("offset".into(), val.clone()),
+                    };
+                    continue;
+                }
+                "work_plane" if matches!(e, Element::Component(_)) && json!(m.work_plane_name_of(e)) == *val => continue,
                 "category" if obj.get("category") == Some(val) => continue,
                 "category" => return Err(bad(c, "`category` can't change; delete the element and create another")),
                 "level" | "top_level" if val.is_string() => json!(level_param(c, m, p, k)?),
@@ -11808,6 +11835,19 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         // A mirror image runs back the other way, so its exterior side is the mirror image of the old one.
         Element::Wall(w) => (w.start, w.end) = if mo.mirror { (f(w.end), f(w.start)) } else { (f(w.start), f(w.end)) },
         Element::Grid(g) => (g.start, g.end) = (f(g.start), f(g.end)),
+        // Its line goes as a grid's, each end keeping its height; its `up` turns with it (a mirror image's too).
+        Element::RefPlane(rp) => {
+            let lift = |p: [f64; 3]| {
+                let q = f(P2(p[0], p[1]));
+                [q.0, q.1, p[2]]
+            };
+            // A direction, taken a long way out so the micron a point is kept to costs it nothing.
+            const FAR: f64 = 1e6;
+            let o = f(P2(0.0, 0.0));
+            let up = f(P2(rp.up[0] * FAR, rp.up[1] * FAR));
+            rp.up = [(up.0 - o.0) / FAR, (up.1 - o.1) / FAR, rp.up[2]];
+            (rp.start, rp.end) = (lift(rp.start), lift(rp.end));
+        }
         Element::RoomSeparator(rs) => (rs.start, rs.end) = (f(rs.start), f(rs.end)),
         Element::Rebar(rb) => {
             for q in &mut rb.path {
@@ -12907,6 +12947,7 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 Some(Element::Door(o) | Element::Window(o)) => gone.contains(&o.host),
                 Some(Element::Railing(r)) => r.host.is_some_and(|h| gone.contains(&h)),
                 Some(Element::Rebar(rb)) => rb.host.is_some_and(|h| gone.contains(&h)),
+                Some(Element::Component(cp)) => cp.host.is_some_and(|h| gone.contains(&h.host.guid())),
                 Some(Element::PlanView(v)) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
                 Some(Element::Tag(t)) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
                 Some(Element::Dimension(d)) => d.view.is_some_and(|v| gone.contains(&v)),
@@ -13027,6 +13068,7 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
                         Element::Door(o) | Element::Window(o) => gone.contains(&o.host),
                         Element::Railing(r) => r.host.is_some_and(|h| gone.contains(&h)),
                         Element::Rebar(rb) => rb.host.is_some_and(|h| gone.contains(&h)),
+                        Element::Component(cp) => cp.host.is_some_and(|h| gone.contains(&h.host.guid())),
                         // A plan view goes with its level and its parent; what is annotated in a view goes with it.
                         Element::PlanView(v) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
                         Element::Tag(t) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
@@ -14049,7 +14091,19 @@ fn elements(s: &mut Session, p: &Value) -> R {
         .map(|(id, _)| *id)
         .collect();
     let rooms = crate::rooms::Rooms::new(m);
-    let page: Vec<Value> = hits.iter().skip(offset).take(limit).map(|id| element_json_with(m, *id, &rooms)).collect();
+    let page: Vec<Value> = hits
+        .iter()
+        .skip(offset)
+        .take(limit)
+        .map(|id| {
+            let mut v = element_json_with(m, *id, &rooms);
+            // The room a component is in, by its family's room calculation point (else its insertion point), by GUID.
+            if let Some(Element::Component(cp)) = m.elements.get(*id) {
+                v["room"] = json!(rooms.component(cp).map(|r| m.guid(r)));
+            }
+            v
+        })
+        .collect();
     Ok(json!({"count": hits.len(), "returned": page.len(), "elements": page}))
 }
 
@@ -14135,7 +14189,7 @@ fn adaptive_place(s: &mut Session, p: &Value) -> R {
         if args.get("at").is_none_or(Value::is_null) {
             args["at"] = json!([first.origin[0], first.origin[1]]);
         }
-        let id = component(s, &args)?["id"].clone();
+        let id = work_plane::component(s, &args)?["id"].clone();
         let Some(Element::Component(c)) = id.as_u64().and_then(|n| s.model.elements.get(n)) else {
             return Err("adaptive_place: the instance was not made".into());
         };

@@ -230,6 +230,100 @@ or a reference line's face, and keeps it as its Work Plane by `PlaneRef`; the th
 before are the datum planes, read from an older file by name ([adaptive families](adaptive-families.md)). `Family::hosted_on`,
 `rehost` and `resolve_hosts` follow its points as they follow forms and lines.
 
+## Family options
+
+A family's options are those of Revit's Family Category and Parameters dialog (`family/options.rs`), each a flat field of
+`Family` left out of a file while it holds its default, so no `FORMAT` step: an older build leaves a field it doesn't know
+out of the file (`lenient.rs`) and opens it, the family then as it was before the option was set (cut by its category, its
+room its insertion point's, no classification). `family {name, options: {…}}` merges what it is given over what the family
+has, `null` taking one back to its default, and every reply that shows a family carries `options` with all eight, defaults
+too (`Family::options_json`); a dry run lists the ones it would change in `changes.options`. A family file holds them flat,
+as a project does, and `path` reads them back into `options`. The Family Editor has no tab for them yet: it keeps them as
+the family has them and sends them back whole when it saves.
+
+- `work_plane_based` (off) lets a component of the family be hosted on a reference plane of the project, and
+  `always_vertical` (on, Revit's default, and allowed off without `work_plane_based`: a wall-hosted family has it too) keeps
+  one on a sloped plane upright; off, it tilts with the plane (*Work planes*, below). A door's or a window's family is never
+  work plane-based, and the option can't be turned off while a component of the family is on a plane.
+- `default_elevation` (0, mm): the height over its level a component of a family that isn't work plane-based is placed at
+  when `component` is given no `offset` (Revit's Default Elevation); finite and within `MAX_COORD`. A component placed keeps
+  its offset, so changing it moves nothing.
+- `cut_with_voids_when_loaded` (off) and `shared` (off) are stored only: a project's voids cutting a component and nested
+  families will read them.
+- `cut_in_views`: none, a section cuts the family's forms as its category says (`Category::cut`); `true` or `false`
+  overrides that. `Family::cuts_in_views` is the one place that decides, for a component's solids in the 3D scene
+  (`view3d.rs`), the components a section cuts (`render.rs`) and a family door's or window's forms, which their category
+  always cut before.
+- `room_calculation_point`: `[x, y, z]` in the family's axes, mm, numbers or formulas that read only its length
+  parameters (a door's or a window's `Wall Thickness` too), worked out for each type by `Family::check` (finite, within
+  `MAX_COORD`) and renamed with them. `Model::component_room_point` places it with the component (mirrored, turned, moved;
+  its height over its level's base is kept but not yet read), else takes the insertion point, and `Rooms::component` finds
+  the room on the component's level whose boundary, where the project measures rooms, holds it (the first by id; none
+  in a wall or outside every room). Nothing in BIMCraft put a component in a room before, so this is that rule: `elements`
+  gives each component's `room` (its GUID, or null). IFC keeps every component contained in its storey, as before, and
+  adds one `IfcRelReferencedInSpatialStructure` for each room's `IfcSpace`, listing the components in it, after every other
+  entity, so the rest of the file is as it was (`ifc::export_with` without them is the test's oracle); the import finds the
+  storey by containment and passes the references over. Schedules have no Room field yet, and doors and
+  windows have no From Room and To Room: a door's or a window's point is stored and checked but placed nowhere.
+- `omniclass`: `{number, title}`, plain text, no table bundled: the number digits in groups between single dots
+  (`23.30.20.17`), at most 64; the title one line of at most `MAX_TEXT`. `elements` shows it on each element of the family,
+  and IFC writes one `IfcClassification` named OmniClass, an `IfcClassificationReference` for each number and title, and an
+  `IfcRelAssociatesClassification` to the type objects of the families that have it (to the occurrence where IFC4 has no
+  type object for its class). The import doesn't read it back yet.
+
+## Work planes
+
+Revit's Edit Work Plane and work plane-based families (T4, T13). In a family, `edit_work_plane {family, form | ref_line,
+host, keep?, dry_run?}` puts a form or a reference line on another of its planes (a `host` by name, id or GUID, as forms take
+it), building a `family` patch, so its checks, dry run and one undo step are the `family` command's. By default it moves with
+the plane, as Revit's does: a form keeps its profile and its `from` and `to` in the new plane's axes, a line its ends (taken
+from the old plane's axes to the new one's), and what is drawn on the line's planes follows. With `keep` it stays where it is:
+a form only on a plane parallel to its old one (facing either way), its profile mapped and its depth moved by the distance
+between the planes (negated and swapped facing the other way; a formula is kept and wrapped, `(…) + d`); a line only on a
+plane it already lies on. A mesh form has no work plane to change.
+
+The project has reference planes (`hosting.rs`, `ReferencePlane`, category `refplane`): drawn by `reference_plane {start,
+end, up?, name?, level?}` as a family's are, along a line with an `up` (the vertical by default, so a line drawn in plan makes
+an upright plane), their own axes x along the line, y `up` made square to it, z the normal, the origin `start`, so what they
+host moves and turns with them. A plan draws an upright one as a dashed line; `move`, `copy`, `rotate` and `mirror` take its
+ends and its `up` (each end keeps its height). A name is one plane's.
+
+A component of a work plane-based family may be hosted on one (`Component::host`, a `Hosted`: the plane, `uv` its insertion
+point in the plane's axes, `offset` its Offset from Host along the normal). The host is a `HostRef` tagged by kind
+(`{"plane": guid}`), so Place on Face (T16) adds its own kind beside it without a `FORMAT` step; one on a level has no host,
+its level its work plane. `uv` is the truth: after every command `Model::settle_hosts` works the component's `at` and `offset`
+(Elevation from Level, over its `level`, its Schedule Level) out from it, so whatever reads a component's `at` reads where it
+is, moving or turning the plane moves it, and a level moved under it changes its Elevation from Level and leaves it on its
+plane. A command that moves the component itself (`move`, `copy`, `rotate`, `mirror`, `modify` of `at` or `offset`) moves its
+`at`, which is taken onto the plane (straight down or up, along the normal for an upright plane) as its new `uv`. `component
+{…, host: {plane: name | id | GUID}}` (Place on Work Plane) takes `at` [x, y] straight onto the plane (an upright plane needs
+[x, y, z], taken along its normal), `offset` as its Offset from Host and `level` as its Schedule Level (by default the
+highest level at or below it; Revit lets it change, and the component stays where it is); `edit_work_plane {ids, host}` puts
+components on a level (at their plan point, on it) or a plane (taken onto it; from another plane, its Offset from Host kept).
+Deleting a plane deletes what it hosts. `Model::check` refuses a host that isn't a reference plane and one on a family that
+isn't work plane-based.
+
+`Model::component_placement` is the one place a component's family axes are put in the model, for the plan, the 3D view and
+its graphics card's copies, sections, bounds, rooms and IFC: upright, turned `angle` about z, unless it is on a plane that
+isn't level and its family isn't Always Vertical; then it tilts by the least turn that takes the vertical to the plane's
+normal, so on a level plane both are the same and `angle` still turns it about its own z. Tilted, its plan outline is the
+hull of its triangles seen from above and it draws no plan symbols; a hosted component isn't banded by height
+(`derived.rs`), since its family says whether it tilts. Adaptive components, when the adaptive branch merges, take their
+frame from their own points before this and refuse a host (the comments in `component_placement` and `Model::check` mark the
+place). `elements` gives each component's `work_plane` (`Level : Level 1`, `Reference Plane : Ramp`) and `offset_from_host`
+(its host's offset, or its height over its level), which `modify` also takes; component schedules have Elevation from
+Level, Work Plane and Offset from Host besides Level, its Schedule Level. IFC keeps it in its Schedule Level's storey, its
+`IfcAxis2Placement3D` taking the tilt as its Axis and RefDirection; the project's reference planes aren't exported. FORMAT
+22 is this change: a build of 21 would stand a tilted component upright and lose its plane; a file of 21 holds neither.
+
+The desktop's Component tool, placing a work plane-based family, shows Place on Work Plane and a Placement Plane (the plan's
+level, or a reference plane of the project) on its Options Bar, and for any family Rotate after placement, which selects what
+it placed and starts Rotate about its point. Properties shows a work plane-based family's component's Schedule Level,
+Elevation from Level (read only on a plane), Work Plane and Offset from Host (another's, its Level and Height Offset From
+Level as before). The Reference Plane tool (`Tool::ReferencePlane`, reached by Find or Create Similar: Revit's RP waits for
+its name in every language) draws an upright plane through two clicks in plan. Picking a sloped plane in plan, drawing
+planes in sections, the Work Plane dialog (T12) and Place on Face (T16) are not here.
+
 ## Plan symbols
 
 A family's `symbols`, of any category, are what its plan draws besides its forms, in its own axes: each is exactly one of a

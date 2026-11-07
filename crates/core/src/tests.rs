@@ -2105,6 +2105,12 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"name": "F", "types": {"A": {}}, "ref_lines": [{"start": [0, 0, 0], "end": [1e9, 1e9, 0]}, {"start": [0, 0, 0], "end": [0, 0, 1e9], "host": {"line": 5, "face": "start"}}], "ref_line": {"id": 5, "start": "x"}, "delete_ref_line": "x"}),
         json!({"name": "F", "types": {"A": {}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [0, 0, 1e9], "end": [1e-9, 0, 1e9], "up": [0, 1e-300, 0]}], "forms": [{"host": {"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}, "plane": "xz", "profile": [[0, 0], [1e9, 0], [0, 1e9]], "from": -1e9, "to": 1e9}]}),
         json!({"name": "F", "types": {"A": {}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [0, 0, 0], "end": [1, 1, 1], "up": [-1, 1, 0], "defines_origin": true}], "forms": [{"host": {"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}, "profile": [[0, 0], [9e8, 0], [0, 9e8]], "axis": [[0, 0], [0, 1]], "to": 360}]}),
+        json!({"name": "F", "types": {"A": {}}, "options": {"room_calculation_point": [f64::MAX, "1e300 * 1e300", "Nope"], "omniclass": {"number": "1".repeat(10_000), "title": "\u{0}"}, "cut_in_views": 5}}),
+        json!({"name": "F", "types": {"A": {}}, "options": {"work_plane_based": "x", "always_vertical": [], "shared": {}, "cut_with_voids_when_loaded": null, "room_calculation_point": [[], {}, null]}}),
+        json!({"name": "F", "types": {"A": {}}, "options": {"omniclass": {"number": "23..", "title": "x".repeat(100_000)}, "nope": true}}),
+        json!({"name": "F", "types": {"A": {}}, "parameters": [{"name": "W", "value": 1e300}], "options": {"room_calculation_point": ["W * W", "-W", "if(W > 0, W, 0)"], "omniclass": null, "cut_in_views": true}}),
+        json!({"name": "F", "options": "x"}),
+        json!({"name": "F", "options": [null, 1]}),
         json!({"name": "", "delete": true, "rename": ""}),
         json!({"name": "Outlet", "parameter": {"name": "X", "kind": "familytype", "of": "nowhere", "shared": 5, "group": [], "rename": ""}}),
         json!({"name": "Outlet", "parameter": {"name": "Load", "instance": true, "rename": "Width", "reporting": true, "kind": "integer"}}),
@@ -2269,6 +2275,14 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"view": "{3D}", "silhouette": 1e300, "edges": "x", "ambient_shadows": 5}),
         json!({"view": "Level 1", "silhouette": -1, "edges": false}),
         json!({"silhouette": 10, "ambient_shadows": true, "edges": false}),
+        // Work planes: a reference plane of no line, of no `up`, out of reach; hosts that aren't, and a form's host given oddly.
+        json!({"start": [0, 0, 0], "end": [1e300, 0, 0], "up": [0, 0, 0]}),
+        json!({"start": [0, 0], "end": [1000, 0], "up": [1, 0, 0], "name": "a\nb"}),
+        json!({"family": "Chair", "at": [0, 0, 1e300], "host": {"plane": 100002}}),
+        json!({"family": "Chair", "at": [0, 0], "host": {"plane": "nope", "level": 5}}),
+        json!({"ids": [100002, 100003], "host": {"level": "Level 2"}}),
+        json!({"family": "Chair", "form": 1, "host": {"line": 1, "face": "x"}, "keep": 1}),
+        json!({"family": "Chair", "options": {"default_elevation": 1e300, "work_plane_based": "x"}}),
     ];
     let mut base = Session::new();
     house(&mut base);
@@ -2294,6 +2308,9 @@ fn hostile_params_never_panic_or_break_the_model() {
     let roof = base
         .execute("roof", &json!({"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "slope": 30, "slopes": [30, 45, 30, 45]}))
         .map_or(Value::Null, |r| r["id"].clone());
+    // A sloped reference plane and a work plane-based component on it, after the roof, so that no id moves; and the payloads
+    // that name them.
+    targeted.extend(crate::work_plane_tests::sweep_payloads(&mut base));
     let line = |slope: Value| json!({"start": [0, 0], "end": [8000, 0], "slope": slope});
     let rest = [
         json!({"start": [8000, 0], "end": [8000, 6000]}),

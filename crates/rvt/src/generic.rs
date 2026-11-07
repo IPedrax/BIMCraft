@@ -228,6 +228,7 @@ fn boxes(
                 mirrored: false,
                 params,
                 adaptive: None,
+                host: None,
             })
         })();
         match made {

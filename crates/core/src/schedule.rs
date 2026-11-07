@@ -431,7 +431,23 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("component", 4, &[FAMILY, TYPE, LEVEL, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "component",
+        4,
+        &[
+            FAMILY,
+            TYPE,
+            LEVEL,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            // Its height over its level (its Schedule Level, for one on a plane), what it is on, and how far off that.
+            ("Elevation from Level", Kind::Length, From::Key("offset")),
+            ("Work Plane", Kind::Text, From::Key("work_plane")),
+            ("Offset from Host", Kind::Length, From::Key("offset_from_host")),
+        ],
+    ),
     (
         "stair",
         7,

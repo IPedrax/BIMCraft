@@ -1048,7 +1048,7 @@ fn solids_in_with(
             Element::Mass(ms) => out.push(slab(id, MASS, &ms.footprint(), m.span(ms.level, ms.base_offset, ms.top_level, ms.height))),
             // Each form in its material's colour; a curved one's facets one surface, as a curved wall's are.
             Element::Component(c) => {
-                let cut = m.families.get(&c.family).is_some_and(|f| f.category.cut());
+                let cut = m.families.get(&c.family).is_some_and(crate::family::Family::cuts_in_views);
                 for piece in components.pieces(c) {
                     let color = m.materials.get(&piece.material).map_or(COMPONENT, |x| Rgb(x.color[0], x.color[1], x.color[2]));
                     out.push(Solid::Mesh {
@@ -1120,8 +1120,9 @@ fn solids_in_with(
             }
             // Of a family: each form in its material's colour, cut where a section's line passes through it. Else a door's leaf or a window's glass: a 50 mm panel in the middle of the wall, square to it.
             Element::Door(o) | Element::Window(o) => {
-                if o.family.is_some() {
+                if let Some(family) = o.family.as_ref() {
                     let fallback = if matches!(e, Element::Door(_)) { DOOR } else { GLASS };
+                    let cut = m.families.get(family).is_none_or(crate::family::Family::cuts_in_views);
                     for piece in m.opening_pieces(e) {
                         let color = m.materials.get(&piece.material).map_or(fallback, |x| Rgb(x.color[0], x.color[1], x.color[2]));
                         out.push(Solid::Mesh {
@@ -1131,7 +1132,7 @@ fn solids_in_with(
                             tris: piece.tris,
                             caps: piece.caps,
                             round: piece.round,
-                            cut: true,
+                            cut,
                         });
                     }
                 } else if let (Some(t), Some(w)) = (m.opening_type(e), m.wall(o.host)) {

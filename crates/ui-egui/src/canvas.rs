@@ -1134,6 +1134,7 @@ fn degrees(a: f64) -> String {
 fn start_of(tool: &Tool) -> &[P2] {
     match tool {
         Tool::Grid(start)
+        | Tool::ReferencePlane(start)
         | Tool::RoomSeparator(start)
         | Tool::Move(start)
         | Tool::Copy(start)
@@ -2076,6 +2077,7 @@ impl BimApp {
             }
             Tool::Wall(_)
             | Tool::Grid(_)
+            | Tool::ReferencePlane(_)
             | Tool::RoomSeparator(_)
             | Tool::Move(_)
             | Tool::Copy(_)
@@ -2085,6 +2087,7 @@ impl BimApp {
                 let chain: Vec<P2> = match &self.tool {
                     Tool::Wall(chain) => chain.clone(),
                     Tool::Grid(start)
+                    | Tool::ReferencePlane(start)
                     | Tool::RoomSeparator(start)
                     | Tool::Move(start)
                     | Tool::Copy(start)
@@ -2328,9 +2331,10 @@ impl BimApp {
                     self.adaptive_click(m, level, v, at);
                 } else if let Some((family, ty)) = self.placing() {
                     let at = self.snap_point(m, level, v, at, &[], false);
-                    self.run(
-                        "component",
+                    let z = m.elevation(level);
+                    self.place_component(
                         json!({"family": family, "type": ty, "at": point(at), "level": level, "angle": self.component_angle}),
+                        z,
                     );
                 }
             }
@@ -2911,6 +2915,14 @@ impl BimApp {
                 None => *start = Some(p),
                 Some(a) if a.dist(p) > TOL => {
                     self.run("grid", json!({"start": point(a), "end": point(p)}));
+                }
+                Some(a) => *start = Some(a),
+            },
+            // An upright plane through the two points, on the plan's level.
+            Tool::ReferencePlane(start) => match start.take() {
+                None => *start = Some(p),
+                Some(a) if a.dist(p) > TOL => {
+                    self.run("reference_plane", json!({"start": point(a), "end": point(p), "level": level}));
                 }
                 Some(a) => *start = Some(a),
             },
@@ -3652,6 +3664,7 @@ impl BimApp {
                 return;
             }
             Tool::Grid(_)
+            | Tool::ReferencePlane(_)
             | Tool::RoomSeparator(_)
             | Tool::Run(_, None)
             | Tool::Move(_)
@@ -3919,6 +3932,7 @@ impl BimApp {
                         offset: 0.0,
                         mirrored: false,
                         params: Default::default(),
+                        host: None,
                     };
                     let e = Element::Component(c);
                     sketched(&e);
