@@ -57,6 +57,8 @@ pub(crate) const MAX_FEET: f64 = 3.0e5;
 /// A record chain's header and trailer lengths.
 const CHAIN_HEADER: usize = 16;
 const CHAIN_TRAILER: usize = 16;
+const CHAIN_HEADER_32: usize = 12;
+const CHAIN_TRAILER_32: usize = 12;
 
 /// 32-bit form (up to 2023), as offsets back from the marker.
 pub(crate) const CATEGORY_BEFORE_MARKER: usize = 38;
@@ -257,6 +259,30 @@ pub(crate) fn chain(buf: &[u8], marker: &[u8; 8]) -> Vec<Span> {
     out
 }
 
+/// The leading chain of records of a partition up to 2023: header (`u32` id, `u32` size, `u16` constant, `u16` count),
+/// body, and a 12-byte trailer whose last four bytes repeat the size. The constant is the marker's last tag less 9 (or 12).
+pub(crate) fn chain_32(buf: &[u8], marker: &[u8; 8]) -> Vec<Span> {
+    let parents = u16::from_le_bytes([marker[6], marker[7]]);
+    let (c9, c12) = (parents.wrapping_sub(9), parents.wrapping_sub(12));
+    let mut out = Vec::new();
+    let mut at = 0usize;
+    while let Some(id) = u32_at(buf, at).filter(|&id| id != 0 && id < u32::MAX) {
+        let Some(size) = u32_at(buf, at + 4).map(|v| v as usize) else { break };
+        let Some(rc) = u16_at(buf, at + 8) else { break };
+        if size < CHAIN_HEADER_32 || (rc != c9 && rc != c12) {
+            break;
+        }
+        let Some(end) = at.checked_add(size) else { break };
+        let echo = end.checked_add(8).and_then(|t| u32_at(buf, t));
+        if echo.map(|v| v as usize) != Some(size) {
+            break;
+        }
+        out.push(Span { start: at, end, id: u64::from(id) });
+        at = end + CHAIN_TRAILER_32;
+    }
+    out
+}
+
 /// How many records a partition's chain has (for tests).
 #[cfg(test)]
 pub(crate) fn chain_len(buf: &[u8], schema: &Schema) -> Option<(usize, usize)> {
@@ -330,8 +356,9 @@ pub(crate) fn records_64(buf: &[u8], tags: &Tags, ids: &[u32], partition: u32, k
         }
         let Some(category) = u64_at(buf, f + CATEGORY_AT).map(|v| v as i64).filter(|&c| in_band(c)) else { continue };
         let container = u64_at(buf, f + CONTAINER_AT).unwrap_or(0);
+        let no_host = container == NO_CONTAINER || u32::try_from(container).map_or(true, |c| !declared(ids, c));
         let kind = u64_at(buf, f + KIND_AT).map_or(0, |v| v as u32);
-        let placed = container == NO_CONTAINER && kind == KIND_PLACED;
+        let placed = no_host && kind == KIND_PLACED;
         let raw = u64_at(buf, f).unwrap_or(0);
         let inside = no_id(raw);
         let id = if inside {
@@ -363,9 +390,10 @@ pub(crate) fn records_64(buf: &[u8], tags: &Tags, ids: &[u32], partition: u32, k
 
 /// The records of a partition up to 2023.
 pub(crate) fn records_32(buf: &[u8], tags: &Tags, ids: &[u32], partition: u32, keep: &mut dyn FnMut(Record)) {
-    for hit in memchr::memmem::find_iter(buf, &tags.marker()) {
+    let marker = tags.marker();
+    let spans = chain_32(buf, &marker);
+    for hit in memchr::memmem::find_iter(buf, &marker) {
         let Some(category_at) = hit.checked_sub(CATEGORY_BEFORE_MARKER) else { continue };
-        let Some((id, id_at)) = id_before(buf, category_at, tags.header, ids) else { continue };
         let Some(category) = u64_at(buf, category_at).map(|v| v as i64).filter(|&c| in_band(c)) else {
             continue;
         };
@@ -373,6 +401,19 @@ pub(crate) fn records_32(buf: &[u8], tags: &Tags, ids: &[u32], partition: u32, k
         let container = u32_at(buf, hit - CONTAINER_BEFORE_MARKER);
         let kind = u32_at(buf, hit - KIND_BEFORE_MARKER);
         let placed = container == Some(u32::MAX) && kind == Some(KIND_PLACED);
+        let (id, id_at, inside) = if let Some((id, id_at)) = id_before(buf, category_at, tags.header, ids) {
+            (id, id_at, false)
+        } else if let Some(id_at) = category_at.checked_sub(14) {
+            let Some(span) = enclosing(&spans, id_at) else { continue };
+            if u16_at(buf, category_at - 2) != Some(0) {
+                continue;
+            }
+            let Some(host_id) = u32::try_from(span.id).ok().filter(|&id| declared(ids, id)) else { continue };
+            let raw = u32_at(buf, id_at).unwrap_or(0);
+            (host_id, id_at, raw == u32::MAX)
+        } else {
+            continue;
+        };
         let (refs, refs2) = match list_at(buf, hit + 8 + 48, false) {
             Some((first, end)) => (first, list_at(buf, end, false).map(|(second, _)| second).unwrap_or_default()),
             None => (Vec::new(), Vec::new()),
@@ -387,7 +428,7 @@ pub(crate) fn records_32(buf: &[u8], tags: &Tags, ids: &[u32], partition: u32, k
             bbox,
             refs,
             refs2,
-            inside: false,
+            inside,
         });
     }
 }
@@ -429,10 +470,22 @@ pub(crate) fn types_64(buf: &[u8], tags: &Tags, ids: &[u32], partition: u32, kee
 /// The box-less records of a partition up to 2023: laid out back from the marker, as a level's.
 pub(crate) fn types_32(buf: &[u8], tags: &Tags, ids: &[u32], partition: u32, keep: &mut dyn FnMut(TypeRecord)) {
     let marker = tags.marker();
+    let spans = chain_32(buf, &marker);
     for hit in memchr::memmem::find_iter(buf, &marker[2..]) {
         let Some(category_at) = hit.checked_sub(CATEGORY_BEFORE_MARKER) else { continue };
-        let Some((id, _)) = id_before(buf, category_at, tags.header, ids) else { continue };
         let Some(category) = u64_at(buf, category_at).map(|v| v as i64).filter(|&c| in_band(c)) else { continue };
+        let id = if let Some((id, _)) = id_before(buf, category_at, tags.header, ids) {
+            id
+        } else if let Some(id_at) = category_at.checked_sub(14) {
+            let Some(span) = enclosing(&spans, id_at) else { continue };
+            if u16_at(buf, category_at - 2) != Some(0) {
+                continue;
+            }
+            let Some(host_id) = u32::try_from(span.id).ok().filter(|&id| declared(ids, id)) else { continue };
+            host_id
+        } else {
+            continue;
+        };
         let container = u32_at(buf, category_at + 16);
         let Some(kind) = u32_at(buf, category_at + 24) else { continue };
         if container == Some(u32::MAX) {
