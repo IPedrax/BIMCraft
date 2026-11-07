@@ -1454,7 +1454,7 @@ impl BimApp {
             && let Ok(plane) = m.work_plane(m.default_3d()).resolve(m)
         {
             let plane = new_sketch.map_or(plane, Frame::from);
-            crate::workplane::draw_plane(&p, plane, extent, 2000.0, screen);
+            crate::workplane::draw_plane(&p, plane, extent, 2000.0, None, screen);
         }
         if let (Some(picking), Some((_, scene))) = (self.work_plane_picking(), &self.orbit.scene) {
             let look = Look::of_3d(m);

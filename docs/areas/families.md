@@ -345,7 +345,10 @@ zoomed (the wheel; the middle button moves it). The plan is `render::draw` with,
 at any height and, where a form crosses the level's cut plane (1200), its outline there in the cut pen (`render::family_plan`,
 `plan_cut`, the section's slicing turned on its side); a project's plans never cut a component. The ceiling plan is the project's.
 An elevation is a section's picture and drawing (`section_picture`, `section_over`): forms seen, Ref. Level a level with its name.
-The planes are drawn with the rules in [views and graphics](views-and-graphics.md#reference-planes-in-views). Views are drawn on
+The planes are drawn with the rules in [views and graphics](views-and-graphics.md#reference-planes-in-views). The family's reference
+lines (`Family.lines`) are drawn over each plan and elevation as the view sees them, solid in the planes' green and the thinnest
+pen, as Revit's: true length where their plane is square to the view, foreshortened where it isn't, nothing for one seen end on
+(`render::reference_lines`). They are owned by nothing in the drawing, so a click doesn't select one there yet. Views are drawn on
 the interface's thread, being one family, and kept until what they show changes (`editor/views.rs`).
 
 In a family that isn't adaptive, a click selects a form (`views::form_at`: the one nearest the eye there, highest in plan; its
@@ -357,7 +360,9 @@ Reference Plane (RP, the Create tab's Datum) draws one by two clicks: in plan up
 of the document's history (`Draft` keeps the planes). Work Plane on the Create tab: each view has its own work plane for the
 session (Ref. Level in plan, the Center plane an elevation faces), which Set picks from the family's planes as A4's list names
 them, or by a click on one (Pick; the Work Plane dialog is T12's); Show tints it, all over where the view looks straight at it,
-along its trace where across it. While Preview Visibility is off, the solid forms the type hides are a second component of a
+along its trace where across it. {3D} has a work plane of its own too (Ref. Level until Set, from the list alone): Show draws it
+there as the project's 3D view draws its work plane (`workplane::draw_plane`), a grid with its outline, over what the family takes
+up and 300 mm round, tinted as the plans tint it. An adaptive family's modelling view keeps its own Work Plane panel and Show. While Preview Visibility is off, the solid forms the type hides are a second component of a
 family of their own in the scratch model, drawn halftone, as {3D} ghosts them (not for a door or a window, whose wall holds one
 opening); on, they are left out. Temporary Hide/Isolate leaves a form hidden for now out of every view; a selected plane can be
 hidden (HH), isolated or hidden with every plane (HC). It keeps **one state for the whole family document**, every view showing

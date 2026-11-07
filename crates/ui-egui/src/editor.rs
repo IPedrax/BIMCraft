@@ -388,6 +388,32 @@ impl SymbolText {
     }
 }
 
+/// The family's {3D} preview: its picture, `size` pixels, what it was drawn of (`key`), the camera it was drawn through, and
+/// what the family takes up (in its axes), for what is drawn over it.
+pub(crate) struct Preview {
+    key: u64,
+    pub(crate) tile: TextureHandle,
+    pub(crate) cam: bimcraft_core::view3d::Camera,
+    pub(crate) size: [u32; 2],
+    pub(crate) extents: ([f64; 3], [f64; 3]),
+}
+
+impl Preview {
+    /// Where point `q` of the family is on screen, the picture stretched over `pane`.
+    pub(crate) fn screen(&self, pane: Rect, q: [f64; 3]) -> egui::Pos2 {
+        let (x, y, _) = self.cam.project(q);
+        pane.min + vec2(x as f32 * pane.width() / self.size[0].max(1) as f32, y as f32 * pane.height() / self.size[1].max(1) as f32)
+    }
+}
+
+#[cfg(test)]
+impl FamilyEditor {
+    /// The {3D} preview, once drawn.
+    pub(crate) fn preview(&self) -> Option<&Preview> {
+        self.preview.as_ref()
+    }
+}
+
 /// What the editor shows of a family: its tabs' contents, as typed.
 pub(crate) struct FamilyEditor {
     /// The name the project has it under, when it has it.
@@ -428,7 +454,7 @@ pub(crate) struct FamilyEditor {
     /// How the preview looks at it: azimuth and elevation, degrees.
     look: (f64, f64),
     /// The preview, and what it was drawn of.
-    preview: Option<(u64, TextureHandle)>,
+    preview: Option<Preview>,
     /// Why the family can't be tried or made: shown under the preview.
     problem: Option<String>,
     /// The document's own state: its history, its preview's size, an association being made.
@@ -779,7 +805,7 @@ impl FamilyEditor {
                 (base.materials.len(), base.images.len()).hash(&mut h);
                 h.finish()
             };
-            if self.preview.as_ref().is_some_and(|(k, _)| *k == key) {
+            if self.preview.as_ref().is_some_and(|p| p.key == key) {
                 return Ok(None);
             }
             let ghosts = ghosted(&f, &self.values());
@@ -809,7 +835,8 @@ impl FamilyEditor {
                 .map(|p| if p[..3] == [255; 3] { ground } else { Color32::from_rgb(p[0], p[1], p[2]) })
                 .collect();
             let picture = ColorImage { size: [w as usize, h as usize], pixels, source_size: Default::default() };
-            Ok(Some((key, ctx.load_texture("family-preview", picture, TextureOptions::LINEAR))))
+            let tile = ctx.load_texture("family-preview", picture, TextureOptions::LINEAR);
+            Ok(Some(Preview { key, tile, cam, size: [w, h], extents: bimcraft_core::family::views::extents(&f, &self.values()) }))
         });
         match result {
             Ok(Some(drawn)) => (self.preview, self.problem) = (Some(drawn), None),

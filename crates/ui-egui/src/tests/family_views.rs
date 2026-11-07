@@ -7,10 +7,14 @@
 use super::preview_visibility::{CABINET, Pictures, toggle};
 use super::*;
 use bimcraft_core::family::views::{Side, Which};
+use bimcraft_core::geom::P2;
 use egui::Color32;
 
 /// A box from Ref. Level to 2 m, east and behind the origin, crossing the plan's cut plane, and a plane of its own, Edge.
 const BOX_FAMILY: &str = r#"family {"name": "Box", "category": "generic", "types": {"T": {}}, "forms": [{"profile": [[500, 300], [1000, 300], [1000, 600], [500, 600]], "to": 2000}], "ref_planes": [{"name": "Edge", "start": [-400, -2000, 0], "end": [-400, 2000, 0], "up": [0, 0, 1]}]}"#;
+
+/// Two reference lines for [`BOX_FAMILY`]: one on Ref. Level, west and in front; one on Center (Front/Back), rising west of it.
+const LINES: &str = r#""ref_lines": [{"start": [-1300, -1000, 0], "end": [-700, -1000, 0]}, {"start": [-1300, 0, 300], "end": [-700, 0, 1100], "host": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}}]"#;
 
 /// Family `name` (of `script`) open in its document, the views' pictures kept.
 fn open(script: &str, name: &str) -> (Harness<'static, BimApp>, Pictures) {
@@ -252,19 +256,99 @@ fn a_click_selects_a_form_or_a_plane_and_a_selected_plane_moves_by_a_drag() {
 fn work_plane_set_picks_a_plane_and_show_tints_it() {
     let (mut h, _) = boxed();
     view(&mut h, Some(Which::Elevation(Side::Front)));
-    assert_eq!(editor(&h).views.work_plane(), Some(bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK)));
+    assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK));
     let edge = plane(&h, "Edge").guid;
     if let Some(ed) = h.state_mut().family_editor.as_mut() {
         ed.views.picking_plane = true;
     }
     click_family(&mut h, [-400.0, 0.0, 900.0]);
-    assert_eq!(editor(&h).views.work_plane(), Some(bimcraft_core::family::PlaneRef::Plane(edge)), "picked");
+    assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(edge), "picked");
     assert!(!editor(&h).views.picking_plane);
     press(&mut h, "Show");
     assert!(editor(&h).views.show_work_plane);
     // Each view keeps its own: the plan's is still Ref. Level.
     view(&mut h, Some(Which::Plan));
-    assert_eq!(editor(&h).views.work_plane(), Some(bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::REF_LEVEL)));
+    assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::REF_LEVEL));
+}
+
+/// The tinted quads the last frame filled with Work Plane > Show's tint, on screen.
+fn tinted(h: &Harness<BimApp>) -> Vec<Vec<P2>> {
+    fn walk(s: &egui::Shape, out: &mut Vec<Vec<P2>>) {
+        match s {
+            egui::Shape::Path(p) if p.closed && p.fill == crate::editor::views::TINT => {
+                out.push(p.points.iter().map(|q| P2(f64::from(q.x), f64::from(q.y))).collect());
+            }
+            egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    h.output().shapes.iter().for_each(|c| walk(&c.shape, &mut out));
+    out
+}
+
+/// Where family point `p` is on screen in {3D}.
+fn in_3d(h: &Harness<BimApp>, p: [f64; 3]) -> egui::Pos2 {
+    editor(h).preview().expect("the preview drawn").screen(h.state().view_rect, p)
+}
+
+/// A point of Ref. Level over the box, and one far off it, in {3D}: on screen, both in the view.
+fn on_and_off_ref_level(h: &Harness<BimApp>) -> (egui::Pos2, egui::Pos2) {
+    let (on, off) = (in_3d(h, [750.0, 450.0, 0.0]), in_3d(h, [750.0, 450.0, 1500.0]));
+    let pane = h.state().view_rect;
+    assert!(pane.contains(on) && pane.contains(off), "{on:?} {off:?} in {pane:?}");
+    (on, off)
+}
+
+#[test]
+fn work_plane_show_draws_the_work_plane_tinted_in_3d_with_a_grid() {
+    let (mut h, _) = boxed();
+    assert_eq!(editor(&h).views.shown, None, "{{3D}}");
+    assert!(tinted(&h).is_empty(), "nothing until Show");
+    press(&mut h, "Show");
+    h.run();
+    assert!(editor(&h).views.show_work_plane);
+    assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::REF_LEVEL), "{{3D}}'s own");
+    let (on, off) = on_and_off_ref_level(&h);
+    let inside = |q: egui::Pos2| tinted(&h).iter().any(|r| bimcraft_core::geom::contains(r, P2(f64::from(q.x), f64::from(q.y))));
+    assert!(inside(on), "Ref. Level tinted where it is");
+    assert!(!inside(off), "and not above it");
+    // Its grid and outline, as the project's 3D work plane, over the family's extents and the margin: wider than the box.
+    let quad = &tinted(&h)[0];
+    let wide = quad.iter().map(|q| q.0).fold(f64::MIN, f64::max) - quad.iter().map(|q| q.0).fold(f64::MAX, f64::min);
+    let box_wide = f64::from(in_3d(&h, [1000.0, 300.0, 0.0]).x - in_3d(&h, [500.0, 600.0, 0.0]).x).abs();
+    assert!(wide > box_wide, "{wide} > {box_wide}");
+    // Set to Center (Front/Back): the tint stands upright through the origin.
+    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+        ed.views.set_work_plane(bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK));
+    }
+    h.run();
+    let upright = in_3d(&h, [750.0, 0.0, 300.0]);
+    assert!(tinted(&h).iter().any(|r| bimcraft_core::geom::contains(r, P2(f64::from(upright.x), f64::from(upright.y)))));
+    // The plans keep theirs.
+    view(&mut h, Some(Which::Plan));
+    assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::REF_LEVEL));
+    press(&mut h, "Show");
+    view(&mut h, None);
+    assert!(tinted(&h).is_empty(), "off");
+}
+
+/// F2/T18's reference lines in the plan and the Front elevation: solid green.
+#[test]
+fn a_reference_line_shows_in_plan_and_in_an_elevation() {
+    let script = BOX_FAMILY.replace(r#""ref_planes""#, &format!(r#"{LINES}, "ref_planes""#));
+    let (mut h, pictures) = open(&script, "Box");
+    view(&mut h, Some(Which::Plan));
+    for x in [-1200.0, -1000.0, -800.0] {
+        assert!(around(&h, &pictures, [x, -1000.0, 0.0], 2).iter().any(green), "the level one in plan at {x}");
+    }
+    assert!(!around(&h, &pictures, [-1000.0, -1300.0, 0.0], 2).iter().any(green), "nothing beside it");
+    // In Front, the one on Center (Front/Back), rising across it.
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    for (x, z) in [(-1150.0, 500.0), (-1000.0, 700.0), (-850.0, 900.0)] {
+        assert!(around(&h, &pictures, [x, 0.0, z], 2).iter().any(green), "the rising one in Front at {x}, {z}");
+    }
+    assert!(!around(&h, &pictures, [-1000.0, 0.0, 1100.0], 2).iter().any(green), "nothing above it");
 }
 
 #[test]
@@ -335,12 +419,17 @@ fn an_adaptive_familys_plans_and_elevations_only_show_it() {
     assert!(editor(&h).adaptive.is_some() && editor(&h).views.shown.is_none());
 }
 
-/// The family's floor plan and Front elevation as the window shows them, saved where `BIMCRAFT_F4_DUMP` says (only then).
+/// The family's floor plan and Front elevation as the window shows them, with two named planes close together and a reference
+/// line, and {3D} with Work Plane > Show on, saved where `BIMCRAFT_F4_DUMP` says (only then).
 #[test]
 fn family_views_screenshots() {
     let Ok(folder) = std::env::var("BIMCRAFT_F4_DUMP") else { return };
     std::fs::create_dir_all(&folder).unwrap();
-    let mut h = app(BOX_FAMILY);
+    let script = BOX_FAMILY.replace(
+        r#""ref_planes": ["#,
+        &format!(r#"{LINES}, "ref_planes": [{{"name": "Near", "start": [-300, -2000, 0], "end": [-300, 2000, 0], "up": [0, 0, 1]}}, "#),
+    );
+    let mut h = app(&script);
     h.set_size(vec2(1600.0, 1000.0));
     h.state_mut().edit_family("Box");
     h.run();
@@ -348,5 +437,31 @@ fn family_views_screenshots() {
         view(&mut h, which);
         h.run();
         h.render().unwrap().save(std::path::Path::new(&folder).join(format!("f4-{name}.png"))).unwrap();
+    }
+    view(&mut h, None);
+    press(&mut h, "Show");
+    h.run();
+    h.render().unwrap().save(std::path::Path::new(&folder).join("f4-3d-work-plane.png")).unwrap();
+}
+
+/// On a real card (egui's renderer): {3D}'s pixels change with Work Plane > Show where Ref. Level is, and not above it.
+mod gpu {
+    use super::*;
+
+    #[test]
+    fn work_plane_show_changes_the_3d_views_pixels_where_the_plane_is() {
+        let mut h = app(BOX_FAMILY);
+        h.set_size(vec2(1600.0, 1000.0));
+        h.state_mut().edit_family("Box");
+        h.run();
+        let Ok(before) = h.render() else { return };
+        let (on, off) = on_and_off_ref_level(&h);
+        press(&mut h, "Show");
+        h.run();
+        let after = h.render().unwrap();
+        let ppp = h.ctx.pixels_per_point();
+        let at = |img: &image::RgbaImage, q: egui::Pos2| img.get_pixel((q.x * ppp) as u32, (q.y * ppp) as u32).0;
+        assert_ne!(at(&before, on), at(&after, on), "tinted where Ref. Level is");
+        assert_eq!(at(&before, off), at(&after, off), "unchanged above it");
     }
 }

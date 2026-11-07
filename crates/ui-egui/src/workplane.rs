@@ -433,8 +433,15 @@ pub(crate) fn draw_patch(painter: &Painter, ring: [Pos2; 4], hovered: bool, name
 }
 
 /// Plane `p` drawn as a light grid over as much of it as the model's box `(lo, hi)` spans and `room` mm round, `screen`
-/// placing its points.
-pub(crate) fn draw_plane(painter: &Painter, p: Frame, (lo, hi): (P3, P3), room: f64, screen: impl Fn(P3) -> Pos2) {
+/// placing its points; over a `tint` of it, when given (the family's {3D}).
+pub(crate) fn draw_plane(
+    painter: &Painter,
+    p: Frame,
+    (lo, hi): (P3, P3),
+    room: f64,
+    tint: Option<egui::Color32>,
+    screen: impl Fn(P3) -> Pos2,
+) {
     let (across, up) = p.axes();
     let middle: P3 = std::array::from_fn(|k| (lo[k] + hi[k]) / 2.0);
     let o = p.nearest(middle);
@@ -455,6 +462,9 @@ pub(crate) fn draw_plane(painter: &Painter, p: Frame, (lo, hi): (P3, P3), room: 
     let step = (span / 20.0).max(1000.0);
     let stroke = Stroke::new(1.0, pal().muted.gamma_multiply(0.5));
     let at = |u: f64, v: f64| screen(std::array::from_fn(|k| o[k] + across[k] * u + up[k] * v));
+    if let Some(tint) = tint {
+        painter.add(egui::Shape::convex_polygon(vec![at(a.0, a.1), at(b.0, a.1), at(b.0, b.1), at(a.0, b.1)], tint, Stroke::NONE));
+    }
     let lines = |n: f64| (0..=(n.ceil() as usize).min(40)).map(move |k| k as f64 * step);
     for d in lines((b.0 - a.0) / step) {
         let u = (a.0 + d).min(b.0);
