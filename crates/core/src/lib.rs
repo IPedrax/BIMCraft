@@ -50,6 +50,9 @@ pub mod geom;
 #[cfg(test)]
 mod georef_tests;
 pub mod gltf;
+pub mod glue;
+#[cfg(test)]
+mod glue_tests;
 pub mod graphics;
 pub mod groups;
 pub mod hydrant;

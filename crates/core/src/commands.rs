@@ -10809,7 +10809,12 @@ fn modify(s: &mut Session, p: &Value) -> R {
     let fields = p.as_object().ok_or_else(|| bad(c, "params must be {id | ids, …fields}"))?;
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
-    let (mut edited, mut rescaled) = (Vec::new(), Vec::new());
+    let mut edited = Vec::new();
+    let mut rescaled = Vec::new();
+    // Footings the command changes itself, and the ones that follow their wall's base as it goes up or down.
+    let moving_footings: Vec<Id> =
+        ids.iter().copied().filter(|id| m.elements.get(*id).is_some_and(|e| e.category() == "stripfooting")).collect();
+    let mut following: Vec<(Id, Element)> = Vec::new();
     for &id in &ids {
         let e = m.elements.get(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
         let mut v = serde_json::to_value(e).map_err(|e| bad(c, e))?;
@@ -10841,6 +10846,25 @@ fn modify(s: &mut Session, p: &Value) -> R {
             n.runs = crate::text::remap(&old.text, &n.text, &old.runs);
         }
         graphics::check_followed(m, e, &e2).map_err(|err| bad(c, format!("element {id}: {err}")))?;
+        // A strip footing glued to the wall keeps its top on the wall's base: raised or lowered along its level
+        // (its `base_offset` or the level's), the footing rises or falls with it. A footing changed by hand is
+        // soon no footing of that wall: the condition is read again from the geometry.
+        if let (Element::Wall(old), Element::Wall(w)) = (e, &e2) {
+            let (before, after) = (m.base_z(old), m.base_z(w));
+            if (after - before).abs() > 1e-9 {
+                for (fid, fid_wall) in crate::glue::footings_of(m, &[id]) {
+                    if fid_wall != id || moving_footings.contains(&fid) {
+                        continue;
+                    }
+                    let Some(r) = m.run_of(fid) else { continue };
+                    if let Some(on) = crate::glue::on_base(m, r, "stripfooting", after)
+                        && let Some(e) = Element::of_run("stripfooting", on)
+                    {
+                        following.push((fid, e));
+                    }
+                }
+            }
+        }
         // A wall put on another of its lines stays where it is: its line moves across it instead.
         if let (Element::Wall(old), Element::Wall(w)) = (e, &mut e2)
             && old.location != w.location
@@ -10868,6 +10892,13 @@ fn modify(s: &mut Session, p: &Value) -> R {
         edited.push((id, e2));
     }
     edited.extend(rescaled);
+    // A footing under a wall raised or lowered goes with it, unless the command set the footing itself.
+    for (fid, e) in following {
+        if !ids.contains(&fid) {
+            edited.retain(|(id, _)| *id != fid);
+            edited.push((fid, e));
+        }
+    }
     let m = s.model_mut();
     for (id, e) in edited {
         m.elements.insert(id, e);
@@ -11323,6 +11354,31 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             {
                 others.push((id, moved_run));
             }
+        }
+    }
+    // The strip footings glued to the walls taken whole ride them in plan, by the very transformation: their
+    // lines are the walls', so the lines still are after. A wall's end dragged (with `end`) doesn't move its
+    // footing as a whole: the condition is left to be read again after the command.
+    let glued: Vec<(Id, crate::model::Run, crate::model::Run)> = if end.is_none() {
+        let walls: Vec<Id> = walls.keys().copied().collect();
+        crate::glue::footings_of(m, &walls)
+            .into_iter()
+            .filter_map(|(fid, _)| {
+                let r = m.run_of(fid)?.clone();
+                let after = crate::glue::mapped(&r, f);
+                Some((fid, r, after))
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    for (id, _, after) in glued {
+        if moving.contains(&id) {
+            continue;
+        }
+        if let Some(e) = crate::model::Element::of_run("stripfooting", after) {
+            others.retain(|(other, _)| *other != id);
+            others.push((id, e));
         }
     }
     // Doors and windows in walls that changed keep their place, or go with their wall: those pointing at them, by id.
