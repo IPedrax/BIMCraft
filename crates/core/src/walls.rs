@@ -667,9 +667,12 @@ fn openings_of<'a>(m: &'a Model, id: Id, index: Option<&'a Index>) -> Box<dyn It
 }
 
 /// The voids wall `id`'s doors and windows cut it with, in the model's axes ([`Model::opening_voids`]): those of the
-/// openings whose families have their own, which cut the wall in their shape in place of a rectangle.
+/// openings whose families have their own, which cut the wall in their shape in place of a rectangle; and those of the
+/// components on its faces ([`Model::hosted_voids`]).
 pub(crate) fn host_voids_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<Vec<[crate::view3d::P3; 3]>> {
-    openings_of(m, id, index).flat_map(|e| m.opening_voids(e)).collect()
+    let mut out: Vec<_> = openings_of(m, id, index).flat_map(|e| m.opening_voids(e)).collect();
+    out.extend(m.hosted_voids(id).into_iter().flat_map(|(_, v)| v));
+    out
 }
 
 fn prisms_holed(m: &Model, id: Id, openings: bool, voided: bool, index: Option<&Index>) -> Vec<Prism> {

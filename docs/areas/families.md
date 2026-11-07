@@ -372,8 +372,8 @@ planes in sections and the Work Plane dialog (T12) are not here.
 
 Revit's Place on Face (T16): a work plane-based family's component hosted on a face of a wall, a floor, a ceiling or a roof,
 `host` `{"face": {"element": guid, "face": role}}` (`HostRef::Face`). No option of its own: Revit lets a work plane-based
-family take a face as its work plane, and its face-based families (a host block in the editor, voids that cut the host)
-are T16b's. A face is named by what it is to its element (`FaceRole`, paint's names): a wall's `exterior` (to the left of
+family take a face as its work plane, and its face-based families' voids that cut the host are read from the voids
+themselves (below). A face is named by what it is to its element (`FaceRole`, paint's names): a wall's `exterior` (to the left of
 start to end) or `interior` side, a floor's, a ceiling's or a roof's `top` or `bottom`; never by its triangles, which every
 join, opening and shape point renumbers. `uv` is in the face's own terms (`Model::face_at`, `face_uv`): on a wall's side
 `[along, up]`, mm along its location line from its start (as a door's offset) and up from its own base (as a sill), the
@@ -400,8 +400,27 @@ gives `host_element` and component schedules a Host field. IFC keeps the placeme
 none for an element that fills nothing). FORMAT 23 is this change: a build of 22 reads `host` whole and knows no face.
 The desktop's Component tool offers Place on Face beside Place on Work Plane: in plan it places on the top of the highest
 floor or roof of the level under the click, in a ceiling plan on the underside of the lowest ceiling (`Model::face_in_plan`),
-in the 3D view on the face clicked (`Model::face_role`). Voids that cut the host (floors, ceilings, roofs and walls), a
-wall's top and ends, the faces of other elements and of linked models are not here.
+in the 3D view on the face clicked (`Model::face_role`). A wall's top and ends, the faces of other elements and of linked
+models are not here.
+
+A face-hosted component's voids cut its host (T16b), as a Revit face-based family's do: each void of its family that cuts
+none of its own forms (T22's rule, `Family::face_voids`; one listed before them all) and reaches into its host makes an
+opening, a recess or a penetration there. There is no option: any face-hosted component's such voids cut, whatever
+`cut_with_voids_when_loaded` says, which is about the project's voids cutting a component; and a work plane-based family's
+void that cuts none of its forms is not warned of as cutting nothing. `Model::face_voids` gives a component's voids placed
+where it stands (mirrored, on its face's frame), `Model::hosted_voids` those of everything on a host's faces (found through
+the lookup's referrers, so an edit of the component or the host makes the other again in the 3D scene). A wall's go with its
+doors' and windows' (`walls::host_voids_in`) through `view3d::wall_solids`; a floor's, a ceiling's and a roof's solids
+(`view3d::slab_solids`) go through the same `cut_by_voids`: each solid a void's box reaches becomes its triangles less the
+voids (`csg::subtract`), a `Solid::Mesh` a section cuts, and every other host and solid is left as it was, so only hosts
+with such voids pay for csg; should cutting fail, the host is drawn uncut. `view3d::layered` splits a cut slab's piece into its
+type's layers (each the piece within that layer of the uncut slab), and a section draws the layers of a cut piece that still
+has two upright sides (`render::quad`). A plan, which sees a floor's or a roof's top, draws the hole a millimetre under its
+top face (`render::slab_holes`), its edge and the floor's surface pattern left out of it; a ceiling plan likewise just over a
+ceiling's underside; a plan's cut through a wall clears it where it passes through the voids, as a door's do. IFC writes an
+`IfcOpeningElement` for each component whose voids reach its host (`view3d::reaching_voids`), its body the voids as closed
+face sets in the host's frame, and an `IfcRelVoidsElement` to the `IfcSlab`, `IfcRoof`, `IfcCovering` or `IfcWall`. Nothing
+new is in a file. A void family placed alone (T23) and Cut Geometry are not here.
 
 ## Plan symbols
 

@@ -744,7 +744,7 @@ msgstr "Architectuur"
 msgid "Area"
 msgstr "Oppervlakte"
 
-#: crates/core/src/family.rs:2624
+#: crates/core/src/family.rs:2640
 msgid "Arm Width"
 msgstr "Breedte armleuning"
 
@@ -974,7 +974,7 @@ msgstr "Staven"
 msgid "Base"
 msgstr "Basis"
 
-#: crates/core/src/family.rs:2668
+#: crates/core/src/family.rs:2684
 msgid "Base Cabinet"
 msgstr "Onderkast"
 
@@ -1002,7 +1002,7 @@ msgstr "Basislijn"
 msgid "Baseline Spacing"
 msgstr "Basislijnafstand"
 
-#: crates/core/src/family.rs:2712
+#: crates/core/src/family.rs:2728
 msgid "Bathtub"
 msgstr "Bad"
 
@@ -1014,7 +1014,7 @@ msgstr "Balk"
 msgid "Beam (BM): click its start and its end; a chain of clicks makes a beam for each step"
 msgstr "Balk (BM): klik op het begin en het einde; een reeks klikken maakt een balk voor elke stap"
 
-#: crates/core/src/family.rs:2609
+#: crates/core/src/family.rs:2625
 msgid "Bed"
 msgstr "Bed"
 
@@ -1240,7 +1240,7 @@ msgstr ""
 msgid "Card: {}"
 msgstr "Kaart: {}"
 
-#: crates/core/src/family.rs:2893
+#: crates/core/src/family.rs:2909
 msgid "Casement Window"
 msgstr "Draairaam"
 
@@ -1350,7 +1350,7 @@ msgstr "Keramische tegel"
 msgid "Chain"
 msgstr "Keten"
 
-#: crates/core/src/family.rs:2594
+#: crates/core/src/family.rs:2610
 msgid "Chair"
 msgstr "Stoel"
 
@@ -2094,7 +2094,7 @@ msgstr "Berekeningshoogte"
 msgid "Conceptual Mass"
 msgstr "Conceptuele massa"
 
-#: crates/core/src/family.rs:2533
+#: crates/core/src/family.rs:2549
 msgid "Concrete"
 msgstr "Beton"
 
@@ -2448,7 +2448,7 @@ msgstr "Snijvlak"
 msgid "Cylinder"
 msgstr "Cilinder"
 
-#: crates/core/src/render.rs:3725
+#: crates/core/src/render.rs:3787
 msgid "DN"
 msgstr "DN"
 
@@ -2621,7 +2621,7 @@ msgstr "Afhankelijk"
 msgid "Depends on: {}"
 msgstr ""
 
-#: crates/core/src/family.rs:2531
+#: crates/core/src/family.rs:2547
 #: crates/ui-egui/src/properties.rs:465
 #: crates/ui-egui/src/properties.rs:466
 msgid "Depth"
@@ -2649,7 +2649,7 @@ msgstr "Ontwerpopties"
 msgid "Design Options (DO): sets of options for a part of the design, and the one new elements are made in"
 msgstr "Ontwerpopties (DO): sets van opties voor een deel van het ontwerp, en de optie waarin nieuwe elementen gemaakt worden"
 
-#: crates/core/src/family.rs:2640
+#: crates/core/src/family.rs:2656
 msgid "Desk"
 msgstr "Bureau"
 
@@ -2866,7 +2866,7 @@ msgstr "Punt"
 msgid "Dotted"
 msgstr "Gestippeld"
 
-#: crates/core/src/family.rs:2802
+#: crates/core/src/family.rs:2818
 msgid "Double Door"
 msgstr "Dubbele deur"
 
@@ -3317,7 +3317,7 @@ msgstr "Ooghoogte:"
 msgid "FRONT"
 msgstr ""
 
-#: crates/core/src/family.rs:2533
+#: crates/core/src/family.rs:2549
 msgid "Fabric"
 msgstr "Stof"
 
@@ -3578,7 +3578,7 @@ msgstr "Voltooi of annuleer eerst de schets: de lijnen van een patroon worden in
 msgid "Fixed"
 msgstr "Vast"
 
-#: crates/core/src/family.rs:2870
+#: crates/core/src/family.rs:2886
 msgid "Fixed Window"
 msgstr "Vast raam"
 
@@ -3780,15 +3780,15 @@ msgstr "Formule"
 msgid "Foundation"
 msgstr "Fundering"
 
-#: crates/core/src/family.rs:2742
+#: crates/core/src/family.rs:2758
 msgid "Frame Depth"
 msgstr "Kozijndiepte"
 
-#: crates/core/src/family.rs:2744
+#: crates/core/src/family.rs:2760
 msgid "Frame Material"
 msgstr "Kozijnmateriaal"
 
-#: crates/core/src/family.rs:2742
+#: crates/core/src/family.rs:2758
 msgid "Frame Width"
 msgstr "Kozijnbreedte"
 
@@ -3861,7 +3861,7 @@ msgstr "Generiek"
 msgid "Geometry"
 msgstr "Geometrie"
 
-#: crates/core/src/family.rs:2744
+#: crates/core/src/family.rs:2760
 msgid "Glass"
 msgstr "Glas"
 
@@ -3969,7 +3969,7 @@ msgstr "Half"
 msgid "Halftone"
 msgstr "Halftoon"
 
-#: crates/core/src/family.rs:2602
+#: crates/core/src/family.rs:2618
 msgid "Headboard Height"
 msgstr "Hoogte hoofdeinde"
 
@@ -4466,11 +4466,11 @@ msgstr "Verwijslijn"
 msgid "Leader/Border Offset"
 msgstr "Verschuiving verwijslijn/rand"
 
-#: crates/core/src/family.rs:2744
+#: crates/core/src/family.rs:2760
 msgid "Leaf Material"
 msgstr "Vleugelmateriaal"
 
-#: crates/core/src/family.rs:2742
+#: crates/core/src/family.rs:2758
 msgid "Leaf Thickness"
 msgstr "Vleugeldikte"
 
@@ -4491,7 +4491,7 @@ msgstr ""
 msgid "Left out: {}"
 msgstr "Weggelaten: {}"
 
-#: crates/core/src/family.rs:2532
+#: crates/core/src/family.rs:2548
 msgid "Leg Width"
 msgstr "Breedte poot"
 
@@ -4503,7 +4503,7 @@ msgstr "Legendes"
 msgid "Legends are coming in a later version."
 msgstr "Legendes komen in een latere versie."
 
-#: crates/core/src/family.rs:2531
+#: crates/core/src/family.rs:2547
 #: crates/ui-egui/src/linestyles/creator.rs:136
 msgid "Length"
 msgstr "Lengte"
@@ -5047,7 +5047,7 @@ msgstr "Net langs de diepte"
 msgid "Mesh along width"
 msgstr "Net langs de breedte"
 
-#: crates/core/src/family.rs:2744
+#: crates/core/src/family.rs:2760
 msgid "Metal"
 msgstr "Metaal"
 
@@ -5288,7 +5288,7 @@ msgstr "NBR 17068: 2 tot 3 mm verlenging"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: doelwit in plattegrond (±0,00), gelijkzijdige driehoek in doorsnede"
 
-#: crates/core/src/render.rs:2921
+#: crates/core/src/render.rs:2935
 msgid "NOT ENCLOSED"
 msgstr "NIET OMSLOTEN"
 
@@ -6089,7 +6089,7 @@ msgstr "Fase van sloop"
 msgid "Phase Filter"
 msgstr "Fasefilter"
 
-#: crates/core/src/ifc.rs:1737
+#: crates/core/src/ifc.rs:1768
 msgid "Phase Filters"
 msgstr "Fasefilters"
 
@@ -6675,7 +6675,7 @@ msgstr "Polylijn"
 msgid "Polyline: one line through every point clicked; Enter finishes it, the first point again closes it"
 msgstr "Polylijn: één lijn door elk aangeklikt punt; Enter voltooit ze, het eerste punt opnieuw sluit ze"
 
-#: crates/core/src/family.rs:2533
+#: crates/core/src/family.rs:2549
 msgid "Porcelain"
 msgstr "Porselein"
 
@@ -6872,7 +6872,7 @@ msgstr "Zet een weergave op dit blad: een die nog op geen blad staat"
 msgid "Quadrant"
 msgstr "Kwadrant"
 
-#: crates/core/src/render.rs:2921
+#: crates/core/src/render.rs:2935
 msgid "REDUNDANT"
 msgstr "OVERBODIG"
 
@@ -7595,7 +7595,7 @@ msgstr "De Projectbrowser doorzoeken"
 msgid "Search…"
 msgstr "Zoeken…"
 
-#: crates/core/src/family.rs:2532
+#: crates/core/src/family.rs:2548
 msgid "Seat Height"
 msgstr "Zithoogte"
 
@@ -7985,7 +7985,7 @@ msgstr "Eenvoudige lijnen"
 msgid "Simulate placement frames"
 msgstr ""
 
-#: crates/core/src/family.rs:2780
+#: crates/core/src/family.rs:2796
 msgid "Single Door"
 msgstr "Enkele deur"
 
@@ -8035,11 +8035,11 @@ msgstr "Lucht"
 msgid "Sliding"
 msgstr "Schuivend"
 
-#: crates/core/src/family.rs:2829
+#: crates/core/src/family.rs:2845
 msgid "Sliding Door"
 msgstr "Schuifdeur"
 
-#: crates/core/src/family.rs:2924
+#: crates/core/src/family.rs:2940
 msgid "Sliding Window"
 msgstr "Schuifraam"
 
@@ -8135,7 +8135,7 @@ msgstr "Snaps uit (volgend punt)"
 msgid "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none"
 msgstr "Snaps: waar een gekozen punt op blijft plakken (uiteinden, middens, kruisingen, middelpunten, loodlijnen), en de hoeken waarmee het stapt; SE, SM, SI, SC, SP en SN nemen er één alleen voor het volgende punt, SO geen"
 
-#: crates/core/src/family.rs:2626
+#: crates/core/src/family.rs:2642
 msgid "Sofa"
 msgstr "Zetel"
 
@@ -8540,7 +8540,7 @@ msgstr ""
 msgid "Tab with {}"
 msgstr "Tab met {}"
 
-#: crates/core/src/family.rs:2573
+#: crates/core/src/family.rs:2589
 msgid "Table"
 msgstr "Tafel"
 
@@ -8918,7 +8918,7 @@ msgstr "Thermisch"
 msgid "These patterns to a PAT file, but the solid ones"
 msgstr "Deze patronen naar een PAT-bestand, behalve de massieve"
 
-#: crates/core/src/family.rs:2532
+#: crates/core/src/family.rs:2548
 #: crates/ui-egui/src/properties.rs:467
 #: crates/ui-egui/src/properties.rs:468
 #: crates/ui-egui/src/properties.rs:802
@@ -9024,7 +9024,7 @@ msgstr "Tegelgrootte"
 msgid "Tile Width"
 msgstr "Breedte van de tegel"
 
-#: crates/core/src/family.rs:2533
+#: crates/core/src/family.rs:2549
 msgid "Timber"
 msgstr "Hout"
 
@@ -9251,7 +9251,7 @@ msgstr "Type:"
 msgid "Types"
 msgstr "Types"
 
-#: crates/core/src/render.rs:3725
+#: crates/core/src/render.rs:3787
 msgid "UP"
 msgstr "OMHOOG"
 
@@ -9631,7 +9631,7 @@ msgstr "Volume"
 msgid "Volume (m³)"
 msgstr "Volume (m³)"
 
-#: crates/core/src/family.rs:2682
+#: crates/core/src/family.rs:2698
 msgid "WC"
 msgstr "WC"
 
@@ -9683,11 +9683,11 @@ msgstr "Omtrek van de muren"
 msgid "Walls' Outline: the outline the level's walls enclose, along their centre lines, as sketch lines to edit"
 msgstr "Omtrek van de muren: de omtrek die de muren van het niveau omsluiten, langs hun hartlijnen, als schetslijnen om te bewerken"
 
-#: crates/core/src/family.rs:2654
+#: crates/core/src/family.rs:2670
 msgid "Wardrobe"
 msgstr "Kleerkast"
 
-#: crates/core/src/family.rs:2696
+#: crates/core/src/family.rs:2712
 msgid "Washbasin"
 msgstr "Wastafel"
 
@@ -9899,7 +9899,7 @@ msgstr "Werkvlak terug op het niveau"
 msgid "Work plane square to the {} axis"
 msgstr "Werkvlak loodrecht op as {}"
 
-#: crates/core/src/family.rs:2666
+#: crates/core/src/family.rs:2682
 msgid "Worktop"
 msgstr "Werkblad"
 

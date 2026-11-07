@@ -71,6 +71,8 @@ const TYPE_MATERIALS: u64 = 57;
 const USAGE_MATERIALS: u64 = 58;
 const CLASSIFIES: u64 = 59;
 const REFERENCED: u64 = 60;
+const FACE_OPENING: u64 = 61;
+const FACE_VOIDS: u64 = 62;
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
@@ -1434,6 +1436,35 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
             let shape = w.body(profile, 0.0, top - bottom, &[]);
             let opening = w.add(format!("IFCOPENINGELEMENT({},$,'Shaft',$,$,#{o_at},#{shape},'{id}',.OPENING.)", w.guid(SHAFT, key)));
             w.add(format!("IFCRELVOIDSELEMENT({},$,$,$,#{ent},#{opening})", w.guid(SHAFT_VOIDS, key)));
+        }
+    }
+    // What is on a face of a floor, a ceiling, a roof or a wall cuts it with its own voids where they reach it (T16b): an
+    // opening for each such component, its body those voids as closed face sets, in its host's frame.
+    for (&host, e) in &m.elements {
+        let frame: Box<dyn Fn(P3) -> P3> = match e {
+            Element::Floor(_) | Element::Ceiling(_) | Element::Roof(_) if hosts.contains_key(&host) => {
+                let z = hosts.get(&host).map_or(0.0, |h| h.2);
+                Box::new(move |p: P3| [p[0], p[1], p[2] - z])
+            }
+            Element::Wall(wl) if placed.contains_key(&host) => {
+                let (start, u, base) = (wl.start, Axis::of(wl).tangent(0.0), m.own_base(wl));
+                Box::new(move |p: P3| {
+                    let d = P2(p[0], p[1]) - start;
+                    [d.dot(u), d.dot(u.perp()), p[2] - base]
+                })
+            }
+            _ => continue,
+        };
+        let Some((ent, at)) = hosts.get(&host).map(|h| (h.0, h.1)).or_else(|| placed.get(&host).copied()) else { continue };
+        for (by, voids) in crate::view3d::reaching_voids(m, host) {
+            let items: Vec<u64> = voids.iter().map(|v| w.faceset(&v.iter().map(|t| t.map(&frame)).collect::<Vec<_>>())).collect();
+            let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body','Tessellation',({}))", w.body, refs(&items)));
+            let shape = w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))"));
+            let o_at = w.place(Some(at), (0.0, 0.0, 0.0), None);
+            let key = mix(by) ^ host;
+            let opening =
+                w.add(format!("IFCOPENINGELEMENT({},$,'Opening',$,$,#{o_at},#{shape},'{by}',.OPENING.)", w.guid(FACE_OPENING, key)));
+            w.add(format!("IFCRELVOIDSELEMENT({},$,$,$,#{ent},#{opening})", w.guid(FACE_VOIDS, key)));
         }
     }
     for (&id, e) in &m.elements {

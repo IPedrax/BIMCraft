@@ -200,7 +200,8 @@ fn geometry(f: &Family, out: &mut Vec<String>) {
             let cut = shapes.iter().any(|solid| !solid.void && solid.index < void.index && void.over(solid));
             // A door's or a window's that cuts none of its forms cuts its wall ([`Family::host_voids`]), where it reaches it.
             let host = f.category.hosted();
-            if !cut && (!host || void.max[1] <= -wall / 2.0 || void.min[1] >= wall / 2.0) {
+            // A work plane-based family's cuts the face it is placed on ([`Family::face_voids`]), where it reaches it.
+            if !cut && !f.work_plane_based && (!host || void.max[1] <= -wall / 2.0 || void.min[1] >= wall / 2.0) {
                 let what = if host { "no solid form listed before it, nor its wall" } else { "no solid form listed before it" };
                 faults
                     .entry(format!("form {}: its void passes through {what}; it cuts nothing", void.index + 1))
