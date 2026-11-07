@@ -211,8 +211,12 @@ a section and IFC leave it out alike, and a change of type, of the type's tick o
 family document's Properties (its Forms tab) show it as Revit's do: a Visible tick with "=" at its end (Associate Family Parameter,
 the same dialog an adaptive element's rows open, through `adaptive_editor::Tied`), which ties it to a yes/no parameter or, with
 <None>, unties it keeping what it came to; tied, or given a formula, the tick is greyed, showing what the type previewed comes
-to, the formula beside it. Revit's "Preview Visibility" (forms hidden in a type drawn greyed in the family's own views) is left
-out: the editor's preview shows each type as it builds.
+to, the formula beside it. As Revit's family editor, the document's preview draws a solid form the type previewed hides ghosted
+(grey and see-through: a material of the preview's scratch project, `editor.rs::ghosted`), so it can still be picked and edited;
+the view control bar's Preview Visibility shows the family as placed, the form left out, with an orange frame round the view and
+its name over it. The camera is fitted to every form either way, so the toggle doesn't move it; a change of type redraws both. The
+toggle is the document's (`document::State`), off when a family opens, and no part of the draft: not saved, no unsaved change, no
+step of its history. A void hidden in a type cuts nothing in either.
 
 ## Shared parameters file
 

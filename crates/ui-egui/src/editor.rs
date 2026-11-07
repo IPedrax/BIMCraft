@@ -723,6 +723,9 @@ impl FamilyEditor {
             let m = s.model_mut();
             m.materials = base.materials.clone();
             m.images = base.images.clone();
+            // What a ghosted form is made of.
+            m.materials
+                .insert(GHOST.into(), bimcraft_core::model::Material { color: [150, 150, 150], transparency: 65, ..Default::default() });
             m.families.insert(name.to_string(), family.clone());
         }
         let place = |s: &mut Session, id: &str, p: Value| s.execute(id, &p).map(|_| ());
@@ -736,9 +739,12 @@ impl FamilyEditor {
         Ok(Arc::unwrap_or_clone(s.model))
     }
 
-    /// The preview, drawn again when what it shows or how it's looked at changes.
+    /// The preview, drawn again when what it shows or how it's looked at changes. A form the type previewed hides is drawn
+    /// ghosted (`ghosted`), as Revit's family editor draws it, unless Preview Visibility is on: then the family is drawn as it
+    /// is placed, without it. The camera is fitted to every form either way, so turning Preview Visibility on doesn't move it.
     fn refresh(&mut self, ctx: &Context, base: &Model) {
         let ground = crate::canvas::color(bimcraft_core::render::PAPER);
+        let placed_only = self.document.preview_visibility;
         let result = self.family().and_then(|f| {
             let key = {
                 let mut h = DefaultHasher::new();
@@ -750,6 +756,7 @@ impl FamilyEditor {
                     self.look.1.to_bits(),
                     self.document.preview_size,
                     ground.to_array(),
+                    placed_only,
                 )
                     .hash(&mut h);
                 (base.materials.len(), base.images.len()).hash(&mut h);
@@ -758,14 +765,19 @@ impl FamilyEditor {
             if self.preview.as_ref().is_some_and(|(k, _)| *k == key) {
                 return Ok(None);
             }
-            let model = self.scratch(base, &f)?;
-            let scene = Scene::new(&model);
-            let [w, h] = self.document.preview_size;
+            let ghosts = ghosted(&f, &self.values());
+            let every = self.scratch(base, ghosts.as_ref().unwrap_or(&f))?;
             let mut graphics = bimcraft_core::graphics::Graphics::default();
             graphics.categories.insert("level".into(), bimcraft_core::graphics::Override { hidden: true, ..Default::default() });
-            let look = bimcraft_core::graphics::Look::with(&model, &graphics);
-            let cam = scene.fit_in(self.look.0, self.look.1, w, h, &look);
-            let image = scene.render_in(&cam, &[], &look);
+            let [w, h] = self.document.preview_size;
+            let scene = Scene::new(&every);
+            let cam = scene.fit_in(self.look.0, self.look.1, w, h, &bimcraft_core::graphics::Look::with(&every, &graphics));
+            let image = if placed_only && ghosts.is_some() {
+                let placed = self.scratch(base, &f)?;
+                Scene::new(&placed).render_in(&cam, &[], &bimcraft_core::graphics::Look::with(&placed, &graphics))
+            } else {
+                scene.render_in(&cam, &[], &bimcraft_core::graphics::Look::with(&every, &graphics))
+            };
             let pixels = image
                 .rgba
                 .as_chunks::<4>()
@@ -782,6 +794,28 @@ impl FamilyEditor {
             Err(e) => self.problem = Some(e),
         }
     }
+}
+
+/// The material the preview draws a ghosted form in: grey and see-through. The scratch project's own, never the family's.
+const GHOST: &str = "Preview Visibility ghost";
+
+/// The colour of the frame round the family document's view, and of its banner, while Preview Visibility is on.
+pub(crate) const PREVIEW_FRAME: Color32 = Color32::from_rgb(232, 128, 0);
+
+/// The family as the preview draws it while Preview Visibility is off: each solid form the type (its `values`) hides shown, in
+/// the ghost's material, as Revit's family editor greys a form hidden in a type so it can still be edited. A void stays as it
+/// builds: never seen, it cuts only where it is there. None when the type hides no form.
+fn ghosted(f: &Family, values: &BTreeMap<String, bimcraft_core::family::Val>) -> Option<Family> {
+    let mut g = f.clone();
+    let mut any = false;
+    for form in g.forms.iter_mut().filter(|form| !form.void) {
+        if form.visible.as_ref().is_some_and(|v| crate::adaptive_editor::worth(v, values) == Some(0.0)) {
+            form.visible = None;
+            form.material = GHOST.into();
+            any = true;
+        }
+    }
+    any.then_some(g)
 }
 
 /// The categories a family may be of, in the order they're offered.
