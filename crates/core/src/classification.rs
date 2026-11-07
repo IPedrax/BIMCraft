@@ -1833,3 +1833,40 @@ pub fn coverage(m: &Model, table: &str) -> Option<(usize, usize)> {
     let done = owners.values().filter(|t| current(m, b, t).is_some()).count();
     Some((done, owners.len()))
 }
+
+/// The system an IFC file's `IfcClassification` name is of, when it is one of `SYSTEMS` with tables: by its id, name or short
+/// name, or a name beginning with one (`Uniclass 2015 v1.30`). Its codes come in as its own parameters; another system's,
+/// as the parameter the import names for it.
+pub fn known_system(name: &str) -> Option<&'static SystemDef> {
+    let n = name.trim();
+    system(n)
+        .or_else(|| {
+            let lower = n.to_lowercase();
+            SYSTEMS
+                .iter()
+                .find(|s| !s.tables.is_empty() && (lower.starts_with(&s.short.to_lowercase()) || lower.starts_with(&s.name.to_lowercase())))
+        })
+        .filter(|s| !s.tables.is_empty())
+}
+
+/// The parameters an IFC file's code of the classification `name` comes in as: a known system's own (the table its code
+/// begins with, `Uniclass Ss Number` and `Uniclass Ss Title`), so a project written and read back is itself; another's,
+/// `<name> Number` and `<name> Title`.
+pub fn imported_parameters(name: &str, code: &str) -> (String, String) {
+    let n = name.trim();
+    if let Some(sys) = known_system(n) {
+        let k = normal(code);
+        let by_key = sys
+            .tables
+            .iter()
+            .filter(|t| !t.key.is_empty() && t.key.chars().all(char::is_alphanumeric))
+            .find(|t| k.starts_with(&normal(t.key)));
+        if let Some(t) = by_key.or_else(|| (sys.tables.len() == 1).then(|| &sys.tables[0])) {
+            return sys.parameters_of(t);
+        }
+        return (format!("{} Number", sys.short), format!("{} Title", sys.short));
+    }
+    let base: String = n.chars().take(MAX_TEXT / 2).collect();
+    let base = if base.is_empty() { "Classification".to_string() } else { base };
+    (format!("{base} Number"), format!("{base} Title"))
+}

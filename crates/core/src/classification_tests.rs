@@ -309,3 +309,53 @@ fn a_brief_is_cut_into_batches_each_with_its_categories_candidates_and_handed_ov
     assert!(h.files[1].1.contains("Ss_25_10_30_35,Brick and block wall systems,Ss_25_10_30\n"));
     assert!(classification::handover(&s.model, &parts[0], false).inline.contains("candidates"));
 }
+
+/// The entity `#n` of a STEP file: its line.
+fn line<'a>(f: &'a str, n: &str) -> &'a str {
+    f.lines().find(|l| l.starts_with(&format!("{n}="))).unwrap_or_else(|| panic!("no {n}"))
+}
+
+#[test]
+fn ifc_says_each_code_as_a_classification_reference_of_its_system_related_to_the_elements_that_hold_it() {
+    let (mut s, wall, door) = house();
+    uniclass(&mut s);
+    run(
+        &mut s,
+        "classify",
+        json!({"assign": [
+        {"target": wall.to_string(), "table": "Uniclass Ss", "code": "Ss_25_10_30_35"},
+        {"target": door.to_string(), "table": "Uniclass Ss", "code": "Ss_25_30_20"}]}),
+    );
+    let f = crate::ifc::export(&s.model);
+    let systems: Vec<&str> = f.lines().filter(|l| l.contains("=IFCCLASSIFICATION(")).collect();
+    assert_eq!(systems.len(), 1, "one Uniclass 2015 for its tables");
+    assert!(systems[0].contains("'NBS','2024-07',$,'Uniclass 2015'"), "{}", systems[0]);
+    let sys = systems[0].split('=').next().unwrap();
+    let refs: Vec<&str> = f.lines().filter(|l| l.contains("=IFCCLASSIFICATIONREFERENCE(")).collect();
+    assert_eq!(refs.len(), 2);
+    let brick = refs.iter().find(|l| l.contains("'Ss_25_10_30_35','Brick and block wall systems'")).unwrap();
+    assert!(brick.ends_with(&format!(",{sys},$,$);")), "{brick}");
+    let rel = f
+        .lines()
+        .find(|l| l.contains("=IFCRELASSOCIATESCLASSIFICATION(") && l.ends_with(&format!(",{});", brick.split('=').next().unwrap())))
+        .unwrap();
+    // The wall is the element its GlobalId names.
+    let wall_gid = crate::ifc::compress(s.model.elements.guid(wall).unwrap().as_u128());
+    let related = rel.split("$,$,$,(").nth(1).unwrap().split(')').next().unwrap();
+    assert!(related.split(',').any(|r| line(&f, r).contains(&wall_gid)), "{rel}");
+
+    // Read back, the code is in the system's own parameters again.
+    let back = crate::import::ifc(f.as_bytes(), "t").unwrap();
+    let w2 = back.model.elements.iter().find(|(_, e)| matches!(e, Element::Wall(_))).map(|(_, e)| e).unwrap();
+    assert_eq!(w2.params().unwrap()["Uniclass Ss Number"], "Ss_25_10_30_35");
+    assert_eq!(w2.params().unwrap()["Uniclass Ss Title"], "Brick and block wall systems");
+}
+
+#[test]
+fn another_programs_classification_comes_in_as_its_systems_parameters_or_named_for_it() {
+    assert_eq!(classification::imported_parameters("OmniClass", "23-17 11 00").0, "OmniClass 23 Number");
+    assert_eq!(classification::imported_parameters("Uniclass 2015", "Pr_30_59").0, "Uniclass Pr Number");
+    assert_eq!(classification::imported_parameters("Uniformat II", "B2010").0, "UniFormat Number");
+    assert_eq!(classification::imported_parameters("NBR 15965", "3E 20 02").1, "NBR 15965 3E Title");
+    assert_eq!(classification::imported_parameters("Our Office Codes", "X1").0, "Our Office Codes Number");
+}

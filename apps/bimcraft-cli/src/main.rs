@@ -1,6 +1,7 @@
 //! `bimcraft-cli`: BIMCraft from the command line. Scripts, conversion, and an MCP server for
 //! agents, all through the same commands.
 
+mod classify;
 mod mcp;
 mod revit;
 mod window;
@@ -24,6 +25,11 @@ const USAGE: &str = "USAGE:
   bimcraft-cli info FILE         levels, element counts, types and warnings of a project or an IFC file; of a Revit .rvt or
                                  .rfa file, its release, last save, levels and element counts by category
   bimcraft-cli convert IN OUT    a project, an IFC file or a Revit .rvt file to .ifc, .glb, .svg, .png or .bimc
+  bimcraft-cli classify FILE --agent claude|codex|ollama|custom [--command C] [--model M] [--args A] [--table NAME]…
+               [--all] [--min 0.7] [--batch N] [--timeout S] [--dry-run] [--save PATH]
+                                 the project's types classified by your AI agent from the tables it has loaded and bound
+                                 (classification_table, classification_parameters): each answer checked against the tables,
+                                 what has confidence --min or more written as one step
   bimcraft-cli commands          every command and its parameters
   bimcraft-cli mcp [--read-only] [FILE | --connect [PORT]]
                                  an MCP server on stdio, for agents: on a headless project of its own (FILE, opened first, or an
@@ -115,6 +121,14 @@ fn cli(args: &[String], out: &mut impl Write) -> Result<(), String> {
                 s.execute("open", &json!({ "path": from }))?;
             }
             print(out, &s.execute("save", &json!({ "path": to }))?)
+        }
+        [cmd, file, rest @ ..] if cmd == "classify" => {
+            if revit::is_revit(file) {
+                revit::open(&mut s, file)?;
+            } else {
+                s.execute("open", &json!({ "path": file }))?;
+            }
+            classify::run(&mut s, rest, out, USAGE)
         }
         [cmd] if cmd == "commands" => {
             let list = s.catalog();
