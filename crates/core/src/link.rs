@@ -127,6 +127,23 @@ pub fn seen(m: &Arc<Model>) -> Arc<Model> {
     Arc::new(out)
 }
 
+/// The link (this project's element) element `id` of the views' [`seen`] model comes from; none for one of the project's own.
+pub fn link_of(m: &Arc<Model>, id: Id) -> Option<Id> {
+    if !is_linked(id) {
+        return None;
+    }
+    let mut out = (**m).clone();
+    for (lid, e) in &m.elements {
+        let Element::Link(l) = e else { continue };
+        let Some(other) = m.loaded.get(&l.path) else { continue };
+        let before: BTreeSet<Id> = out.elements.keys().copied().collect();
+        if bring(&mut out, l, other).is_ok() && !before.contains(&id) && out.elements.contains_key(id) {
+            return Some(*lid);
+        }
+    }
+    None
+}
+
 /// What link `l` builds, in `to`: turned and moved as the link says, on `to`'s levels where they stand at the same height.
 fn bring(to: &mut Model, l: &crate::model::Link, from: &Model) -> Result<(), String> {
     let mut other = from.clone();
@@ -217,6 +234,21 @@ mod tests {
         // What the project would count, check or write doesn't have it.
         assert_eq!(s.model.check(), Ok(()));
         assert!(!crate::ifc::export(&s.model).contains("IFCWALL"));
+    }
+
+    #[test]
+    fn a_linked_element_names_its_link() {
+        let path = architect("owner");
+        let mut s = Session::new();
+        let a = run(&mut s, "link", json!({"path": path, "name": "A"}))["id"].as_u64().unwrap();
+        let b = run(&mut s, "link", json!({"path": path, "name": "B", "at": [20_000, 0]}))["id"].as_u64().unwrap();
+        let _ = std::fs::remove_file(&path);
+        let seen = seen(&s.model);
+        for (id, w) in walls(&seen) {
+            let want = if w.start.0 >= 19_000.0 { b } else { a };
+            assert_eq!(link_of(&s.model, id), Some(want));
+        }
+        assert_eq!(link_of(&s.model, a), None, "the link itself is the project's own");
     }
 
     #[test]

@@ -304,6 +304,7 @@ pub fn category(category: &str, several: bool) -> String {
         "text" => (msg!("category", "Text Note"), msg!("category-plural", "Text Notes")),
         "line" => (msg!("category", "Detail Line"), msg!("category-plural", "Lines")),
         "spot" => (msg!("category", "Spot Elevation"), msg!("category-plural", "Spot Elevations")),
+        "spotcoordinate" => (msg!("category", "Spot Coordinate"), msg!("category-plural", "Spot Coordinates")),
         "schedule" => (msg!("category", "Schedule"), msg!("category-plural", "Schedules")),
         "view3d" => (msg!("category", "3D View"), msg!("category-plural", "3D Views")),
         "link" => (msg!("category", "Linked Model"), msg!("category-plural", "Linked Models")),

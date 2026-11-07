@@ -200,15 +200,19 @@ pub enum Origin {
     Base,
     /// The Survey Point: the active location's shared coordinates.
     Survey,
+    /// The Internal Origin: the file's own coordinates.
+    Internal,
 }
 
 impl Origin {
-    pub const NAMES: &str = "base (the Project Base Point) or survey (the shared coordinates)";
+    pub const NAMES: &str = "base (the Project Base Point), survey (the shared coordinates) or internal (the Internal Origin)";
+    pub const ALL: [Origin; 3] = [Origin::Base, Origin::Survey, Origin::Internal];
 
     pub fn parse(s: &str) -> Option<Origin> {
         match s {
             "base" => Some(Origin::Base),
             "survey" | "shared" => Some(Origin::Survey),
+            "internal" => Some(Origin::Internal),
             _ => None,
         }
     }
@@ -314,6 +318,7 @@ impl Coordinates {
         match from {
             Origin::Base => z - self.base[2],
             Origin::Survey => self.location().elevation + z - self.survey[2],
+            Origin::Internal => z,
         }
     }
 
@@ -321,6 +326,7 @@ impl Coordinates {
     pub fn plan(&self, x: f64, y: f64, from: Origin) -> (f64, f64) {
         match from {
             Origin::Base => (x - self.base[0], y - self.base[1]),
+            Origin::Internal => (x, y),
             Origin::Survey => {
                 let q = self.to_shared([x, y, 0.0]);
                 (q[0], q[1])

@@ -117,6 +117,9 @@ pub mod sheet;
 pub mod skeleton;
 pub mod sketch;
 pub mod snap;
+#[cfg(test)]
+mod spot_coordinate_tests;
+pub mod spots;
 pub mod stairs;
 pub mod standards;
 pub mod step;

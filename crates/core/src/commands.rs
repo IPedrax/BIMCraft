@@ -536,8 +536,9 @@ pub static ALL: &[Command] = &[
         "coordinates",
         "Coordinates",
         &[],
-        "{base?: [x,y,z], survey?: [x,y,z], move?: point|system, acquire?: link} the project's coordinates. `acquire` takes \
-         the shared coordinates of a link (its id) where it stands now, as Revit's Acquire Coordinates: this project's active \
+        "{base?: [x,y,z], survey?: [x,y,z], move?: point|system, acquire?: link or CAD id} the project's coordinates. `acquire` takes \
+         the shared coordinates of a link (its id; a BIMCraft project or an IFC file) or of a CAD drawing placed in the \
+         project (its coordinates taken for the map's) where it stands now, as Revit's Acquire Coordinates: this project's active \
          location is solved so that the link's origin has the link's map coordinates here and its true north agrees. Without parameters, reports them: the \
          internal origin, the Project Base Point and the Survey Point, each `internal` (the file's own mm, where geometry is) and \
          `shared` (the active location's map coordinates, mm), the `active` location and every location. `base` moves the Project \
@@ -906,10 +907,35 @@ pub static ALL: &[Command] = &[
         "spot_coordinate",
         "Spot Coordinate",
         &[],
-        "{at: [x, y], view?, origin?: base|survey} a spot coordinate in a level's plan (the lowest by default): the north and \
-         east of `at`, from the Project Base Point along the project's axes (the default) or, with `origin: survey`, in the \
-         shared coordinates of the active location. The reply gives `north` and `east`, mm",
+        "{at: [x, y], view?, type?, origin?: base|survey|internal, host?, end?: [x, y], leader?, shoulder?} a spot \
+         coordinate in a level's plan (the lowest by default): the north and east of `at`, and its elevation, as its type \
+         (`spot_coordinate_type`) says. Without `type`, the project's type that reads from `origin` (the Project Base Point by \
+         default; `survey`, the shared coordinates of the active location). Its elevation is of the top of `host` (else of \
+         what stands at `at`, else of the level). Its leader runs from `at` to `end` (else up and to the right, 8 mm on \
+         paper), its text on a shoulder there; `leader: false` puts the text beside the point, `shoulder: false` leaves the \
+         shoulder out. `modify` changes `type`, `end`, `leader` and `shoulder`. The reply gives `north`, `east` (mm) and \
+         `text`, its lines",
         spot_coordinate,
+    ),
+    edit(
+        "spot_coordinate_type",
+        "Spot Coordinate Types",
+        &[],
+        "{name?, like?, rename?, delete?: true, …values} a spot coordinate type of the project's, as Revit's type \
+         parameters, lengths mm on paper. Constraints: `rotate_with_component` (its text turns with the component it reads). \
+         Graphics: `leader_arrowhead` filled|empty|dot|empty_dot|none, `arrowhead_size` (2.5), `leader_pen` and \
+         `arrowhead_pen` (0 to 16; 1), `leader_color` (\"#rrggbb\" or [r, g, b]), `symbol` none|cross|target, \
+         `symbol_size` (3). Text: `font` (Arial), `text_size` (2.5), `bold`, `italic`, `underline`, `width_factor` (1), \
+         `text_color`, `text_offset_leader` (1), `text_offset_symbol` (1), `text_location` above_leader|below_leader, \
+         `background` opaque|transparent, `origin` base|survey|internal (Coordinate Origin), `top` and `bottom` \
+         north_south|east_west|none (Top Value, Bottom Value), `north_south_indicator` (\"N \"), `east_west_indicator` \
+         (\"E \"), `include_elevation`, `elevation_indicator` (\"EL \"), `indicator` prefix|suffix, `units` (mm, cm, m, in, \
+         ft, ft-in; null for the project's) and `decimals` (0 to 6), `alternate` none|right|below with \
+         `alternate_units`, `alternate_decimals`, `alternate_prefix` and `alternate_suffix`. A new one starts as `like` \
+         says, else as the default. A project starts with `Spot Coordinate - Project Base Point` and `Spot Coordinate - \
+         Survey Point`. `rename` renames it, its spot coordinates following; `delete` takes it away while none is of it. \
+         Without `name`, it lists every type",
+        spot_coordinate_type,
     ),
     edit(
         "spot_slope",
@@ -2207,6 +2233,11 @@ fn flag(c: &str, p: &Value, key: &str) -> Result<bool, String> {
     }
 }
 
+/// [`flag`], `or` where it isn't given.
+fn flag_or(c: &str, p: &Value, key: &str, or: bool) -> Result<bool, String> {
+    if absent(p.get(key)) { Ok(or) } else { flag(c, p, key) }
+}
+
 fn string(c: &str, p: &Value, key: &str) -> Result<Option<String>, String> {
     match p.get(key) {
         v if absent(v) => Ok(None),
@@ -2775,9 +2806,17 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("level".into(), json!(m.level_of(e)));
         }
         Element::Spot(sp) if sp.coordinate => {
-            let read = m.spot_coordinate(sp);
-            extra.insert("east".into(), json!(read.map(|(e, _)| hundredth(e))));
-            extra.insert("north".into(), json!(read.map(|(_, n)| hundredth(n))));
+            let read = m.spot_coordinate_reads(sp);
+            extra.insert("east".into(), json!(read.map(|r| hundredth(r.east))));
+            extra.insert("north".into(), json!(read.map(|r| hundredth(r.north))));
+            extra.insert("elevation".into(), json!(read.and_then(|r| r.elevation).map(hundredth)));
+            extra.insert("text".into(), json!(m.spot_coordinate_text(sp)));
+            extra.insert(
+                "type".into(),
+                json!(sp.type_name.clone().or_else(|| crate::spots::default_type(&m.spot_coordinate_types, sp.origin).cloned())),
+            );
+            extra.insert("leader".into(), json!(sp.leader));
+            extra.insert("shoulder".into(), json!(sp.shoulder));
             extra.insert("level".into(), json!(m.level_of(e)));
         }
         Element::Spot(sp) => {
@@ -7237,11 +7276,31 @@ fn coordinates(s: &mut Session, p: &Value) -> R {
     use crate::coordinates::Move;
     let c = "coordinates";
     only(c, p, &["base", "survey", "move", "acquire"])?;
-    if let Some(link) = id_opt(c, p, "acquire")? {
+    if let Some(from) = id_opt(c, p, "acquire")? {
         let m = &s.model;
-        let Some(Element::Link(l)) = m.elements.get(link) else {
-            return Err(bad(c, format!("`acquire` takes a link, and element {} isn't one", link)));
+        let l = match m.elements.get(from) {
+            Some(Element::Link(l)) => l,
+            Some(Element::CadImport(ci)) => {
+                // A drawing's own coordinates are the map's: where its origin stands, the shared coordinates are its, in mm,
+                // and its axes the map's. The elevation stays.
+                let z = m.elevation(ci.level);
+                let shared = [ci.origin.0 * ci.scale, ci.origin.1 * ci.scale, m.coordinates.to_shared([ci.at.0, ci.at.1, z])[2]];
+                let mut co = m.coordinates.clone();
+                co.specify([ci.at.0, ci.at.1, z], shared, Some(-ci.angle));
+                co.check().map_err(|e| bad(c, e))?;
+                s.model_mut().coordinates = co;
+                let mut r = coordinates_report(&s.model);
+                r["acquired"] = json!({"from": from, "location": s.model.coordinates.location()});
+                return Ok(r);
+            }
+            _ => {
+                return Err(bad(
+                    c,
+                    format!("`acquire` takes a link or a CAD drawing placed in the project, and element {from} is neither"),
+                ));
+            }
         };
+        let link = from;
         let other = m.loaded.get(&l.path).ok_or_else(|| bad(c, format!("link `{}` isn't loaded: `reload` it first", l.name)))?;
         // Where its origin stands here, its shared coordinates are this project's from now on.
         let (at, angle, dz) = crate::link::placement(m, l, other);
@@ -7255,8 +7314,15 @@ fn coordinates(s: &mut Session, p: &Value) -> R {
             here.scale = theirs.scale;
         }
         co.specify([at.0, at.1, dz], q, None);
+        // Its map system comes with it, where it has one.
+        if other.coordinates.crs.is_some() {
+            co.crs = other.coordinates.crs;
+        }
+        co.check().map_err(|e| bad(c, e))?;
         s.model_mut().coordinates = co;
-        return Ok(coordinates_report(&s.model));
+        let mut r = coordinates_report(&s.model);
+        r["acquired"] = json!({"from": link, "location": s.model.coordinates.location()});
+        return Ok(r);
     }
     let base = match p.get("base") {
         v if absent(v) => None,
@@ -8790,7 +8856,7 @@ fn spot(s: &mut Session, p: &Value) -> R {
         })?)),
         (None, None) => None,
     };
-    let sp = Spot { view: m.guid(view), at, host, slope: false, coordinate: false, origin: origin_param(c, p)? };
+    let sp = Spot { host, origin: origin_param(c, p)?, ..Spot::new(m.guid(view), at) };
     let elevation = m.spot_reads(&sp).map(hundredth);
     let host = host.and_then(|h| m.elements.id(h));
     let id = s.model_mut().insert(Element::Spot(sp));
@@ -8826,20 +8892,119 @@ fn origin_param(c: &str, p: &Value) -> Result<crate::coordinates::Origin, String
     }
 }
 
-/// A spot coordinate: in a plan, the north and east of a point.
+/// A spot coordinate: in a plan, the north and east of a point, and its elevation, as its type says.
 fn spot_coordinate(s: &mut Session, p: &Value) -> R {
     let c = "spot_coordinate";
-    only(c, p, &["at", "view", "origin"])?;
+    only(c, p, &["at", "view", "origin", "type", "host", "end", "leader", "shoulder"])?;
     let m = &s.model;
     let at = point_req(c, p, "at")?;
     let view = view_param(c, m, p, false)?;
-    if m.plan_level(view).is_none() {
+    let Some(level) = m.plan_level(view) else {
         return Err(bad(c, "a spot coordinate reads north and east: place it in a plan"));
-    }
-    let sp = Spot { view: m.guid(view), at, host: None, slope: false, coordinate: true, origin: origin_param(c, p)? };
+    };
+    let origin = origin_param(c, p)?;
+    let type_name = match name_param(c, p, "type")? {
+        Some(t) if m.spot_coordinate_types.contains_key(&t) => t,
+        Some(t) => return Err(bad(c, format!("there's no spot coordinate type `{t}`; `spot_coordinate_type` lists them"))),
+        None => crate::spots::default_type(&m.spot_coordinate_types, origin)
+            .cloned()
+            .ok_or_else(|| bad(c, "the project has no spot coordinate type; make one with `spot_coordinate_type`"))?,
+    };
+    // What it stands on, for its elevation: the element given, else what is at its point, else nothing (the level's).
+    let host = match id_opt(c, p, "host")? {
+        Some(h) => Some(m.guid(h)),
+        None => m.spot_host(level, at).map(|h| m.guid(h)),
+    };
+    let sp = Spot {
+        host,
+        coordinate: true,
+        type_name: Some(type_name.clone()),
+        leader: flag_or(c, p, "leader", true)?,
+        shoulder: flag_or(c, p, "shoulder", true)?,
+        end: point_opt(c, p, "end")?,
+        ..Spot::new(m.guid(view), at)
+    };
     let read = m.spot_coordinate(&sp);
+    let text = m.spot_coordinate_text(&sp);
+    let host = host.and_then(|h| m.elements.id(h));
     let id = s.model_mut().insert(Element::Spot(sp));
-    Ok(json!({"id": id, "east": read.map(|(e, _)| hundredth(e)), "north": read.map(|(_, n)| hundredth(n))}))
+    Ok(json!({"id": id, "type": type_name, "east": read.map(|(e, _)| hundredth(e)), "north": read.map(|(_, n)| hundredth(n)),
+        "text": text, "host": host}))
+}
+
+fn spot_coordinate_type(s: &mut Session, p: &Value) -> R {
+    use crate::spots::SpotCoordinateType;
+    let c = "spot_coordinate_type";
+    let Some(name) = name_param(c, p, "name")? else {
+        return Ok(json!({"types": s.model.spot_coordinate_types, "fonts": crate::text::families()}));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if let Some((id, _)) =
+            m.elements.iter().find(|(_, e)| matches!(e, Element::Spot(sp) if sp.type_name.as_deref() == Some(name.as_str())))
+        {
+            return Err(bad(c, format!("spot coordinate {id} is of `{name}`; give it another type first")));
+        }
+        if m.spot_coordinate_types.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no spot coordinate type `{name}`")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let t = match (m.spot_coordinate_types.get(&name), name_param(c, p, "like")?) {
+        (Some(t), _) => t.clone(),
+        (None, Some(like)) => m
+            .spot_coordinate_types
+            .get(&like)
+            .cloned()
+            .ok_or_else(|| bad(c, format!("there's no spot coordinate type `{like}` to start from")))?,
+        (None, None) => SpotCoordinateType::default(),
+    };
+    // What it is, with the values given over it, read as a file reads one: a key it hasn't is an error.
+    let mut v = serde_json::to_value(&t).map_err(|e| bad(c, e.to_string()))?;
+    let mut font = None;
+    if let Some(o) = v.as_object_mut() {
+        for (key, value) in p.as_object().into_iter().flatten() {
+            match key.as_str() {
+                "name" | "like" | "rename" | "delete" => {}
+                "font" => font = name_param(c, p, "font")?,
+                "leader_color" | "text_color" if !value.is_null() => {
+                    let rgb =
+                        colour(value).ok_or_else(|| bad(c, format!("`{key}` is \"#rrggbb\" or [r, g, b], each 0 to 255, not {value}")))?;
+                    o.insert(key.clone(), json!(rgb));
+                }
+                "origin" if value.is_string() => {
+                    let t = value.as_str().unwrap_or_default();
+                    let origin = crate::coordinates::Origin::parse(t)
+                        .ok_or_else(|| bad(c, format!("`origin` is {}, not `{t}`", crate::coordinates::Origin::NAMES)))?;
+                    o.insert(key.clone(), json!(origin));
+                }
+                _ => {
+                    o.insert(key.clone(), value.clone());
+                }
+            }
+        }
+    }
+    let mut t: SpotCoordinateType = serde_json::from_value(v).map_err(|e| bad(c, e.to_string()))?;
+    if let Some(f) = font.filter(|f| !f.trim().eq_ignore_ascii_case(t.font.trim())) {
+        t.font = crate::text::known(&f)
+            .ok_or_else(|| bad(c, format!("this system has no font `{f}`; `spot_coordinate_type` without `name` lists them")))?;
+    }
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.spot_coordinate_types.contains_key(&to) {
+                return Err(bad(c, format!("there's already a spot coordinate type `{to}`")));
+            }
+            m.spot_coordinate_types.remove(&name);
+            rename_entry(m, &LibKind::SpotCoordinateType, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    t.check(&name).map_err(|e| bad(c, e))?;
+    if m.spot_coordinate_types.get(&name) != Some(&t) {
+        m.spot_coordinate_types.insert(name.clone(), t.clone());
+    }
+    Ok(json!({"name": name, "type": t}))
 }
 
 /// A spot slope: in a plan, how steeply the top of the floor or roof at `at` (or `host`) falls there, and which way.
@@ -8858,7 +9023,7 @@ fn spot_slope(s: &mut Session, p: &Value) -> R {
         let place = format!("[{}, {}] on {}", at.0, at.1, level_name(m, level));
         bad(c, format!("no slope to read at {place}; place it on a floor or a roof"))
     })?;
-    let sp = Spot { view: m.guid(view), at, host: Some(m.guid(host)), slope: true, coordinate: false, origin: Default::default() };
+    let sp = Spot { host: Some(m.guid(host)), slope: true, ..Spot::new(m.guid(view), at) };
     let read = m.spot_slope(&sp);
     let id = s.model_mut().insert(Element::Spot(sp));
     Ok(
@@ -11554,7 +11719,10 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             (n.at, n.angle) = (at, if mo.mirror { n.angle } else { angle });
             n.leader = n.leader.map(f);
         }
-        Element::Spot(sp) => sp.at = f(sp.at),
+        Element::Spot(sp) => {
+            sp.at = f(sp.at);
+            sp.end = sp.end.map(f);
+        }
         Element::DetailLine(l) => l.curve = l.curve.map(|p| micron(f(p))),
         // Its sketch went with it, above; its pattern goes too.
         Element::FilledRegion(r) => (r.pattern_origin, r.pattern_angle) = turned(f, r.pattern_origin, r.pattern_angle),

@@ -56,6 +56,8 @@ pub enum Kind {
     /// A named set of parameters for `reinforce`, for one kind of host.
     ReinforcementPreset,
     DimensionType,
+    /// A spot coordinate type: how a spot coordinate draws and reads.
+    SpotCoordinateType,
     /// A voltage the electrical settings define, with the band a device may read within.
     Voltage,
     /// A distribution system, which names the voltages it supplies.
@@ -95,6 +97,7 @@ impl Kind {
             Kind::TextType => "text type".into(),
             Kind::ReinforcementPreset => "reinforcement preset".into(),
             Kind::DimensionType => "dimension type".into(),
+            Kind::SpotCoordinateType => "spot coordinate type".into(),
             Kind::Voltage => "voltage".into(),
             Kind::DistributionSystem => "distribution system".into(),
             Kind::WireType => "wire type".into(),
@@ -127,6 +130,7 @@ impl Kind {
             "text-type" => Kind::TextType,
             "reinforcement-preset" => Kind::ReinforcementPreset,
             "dimension-type" => Kind::DimensionType,
+            "spot-coordinate-type" => Kind::SpotCoordinateType,
             "voltage" => Kind::Voltage,
             "distribution-system" => Kind::DistributionSystem,
             "wire-type" => Kind::WireType,
@@ -163,6 +167,7 @@ impl fmt::Display for Kind {
             Kind::TextType => f.write_str("text-type"),
             Kind::ReinforcementPreset => f.write_str("reinforcement-preset"),
             Kind::DimensionType => f.write_str("dimension-type"),
+            Kind::SpotCoordinateType => f.write_str("spot-coordinate-type"),
             Kind::Voltage => f.write_str("voltage"),
             Kind::DistributionSystem => f.write_str("distribution-system"),
             Kind::WireType => f.write_str("wire-type"),
@@ -792,6 +797,7 @@ impl Model {
         add(Kind::TextType, &mut self.text_types.keys());
         add(Kind::ReinforcementPreset, &mut self.reinforcement.keys());
         add(Kind::DimensionType, &mut self.dimension_types.keys());
+        add(Kind::SpotCoordinateType, &mut self.spot_coordinate_types.keys());
         add(Kind::Voltage, &mut self.voltages.keys());
         add(Kind::DistributionSystem, &mut self.distribution_systems.keys());
         add(Kind::WireType, &mut self.wire_types.keys());
@@ -1416,6 +1422,11 @@ impl crate::model::Element {
             Element::Text(n) => f(&Kind::TextType, &mut n.type_name),
             Element::Dimension(d) => f(&Kind::DimensionType, &mut d.type_name),
             Element::Dimension3D(d) => f(&Kind::DimensionType, &mut d.type_name),
+            Element::Spot(sp) => {
+                if let Some(t) = &mut sp.type_name {
+                    f(&Kind::SpotCoordinateType, t);
+                }
+            }
             Element::Schedule(sc) => {
                 let mut fields: Vec<&mut String> =
                     sc.fields.iter_mut().map(|x| &mut x.name).chain(sc.sort.iter_mut().map(|x| &mut x.field)).collect();

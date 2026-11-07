@@ -334,3 +334,44 @@ fn a_link_placed_by_shared_coordinates_is_not_moved_by_hand_until_it_is_manual()
     run(&mut s, "move", json!({"ids": [id], "by": [1000, 0]}));
     assert!(close2(linked_wall(&s).0, (11_000.0, 0.0)));
 }
+
+// ---------- Acquire Coordinates ----------
+
+#[test]
+fn a_project_acquires_its_coordinates_from_a_placed_drawing() {
+    let mut s = Session::new();
+    let path = file("cad-acquire-placed", "site.dxf", &site_plan(500_000.0, 7_000_000.0));
+    // Placed by hand: its middle on (2000, 1000), turned 20°.
+    let first = run(&mut s, "import_cad", json!({"path": path, "at": [2000, 1000], "angle": 20}));
+    let id = first["id"].as_u64().unwrap();
+    let r = run(&mut s, "coordinates", json!({"acquire": id}));
+    // Where its middle stands, the shared coordinates are the drawing's own, in mm, and its axes are the map's.
+    let q = to_shared(&s, [2000.0, 1000.0, 0.0]);
+    assert!(near3(q, [500_005_000.0, 7_000_003_000.0, 0.0], 1e-3), "{q:?} {r}");
+    assert!((s.model.coordinates.location().angle + 20.0).abs() < 1e-9, "{r}");
+    assert_eq!(r["acquired"]["from"], json!(id), "{r}");
+    // So the same drawing brought in by shared coordinates lands on it.
+    let again = run(&mut s, "import_cad", json!({"cad": "site", "position": "shared"}));
+    assert!(near2(&again["extents"], serde_json::from_value(first["extents"].clone()).unwrap(), 1e-3), "{again} {first}");
+    // Only a link or a drawing has coordinates of its own to give.
+    run(&mut s, "wall", json!({"points": [[0, 0], [1000, 0]]}));
+    let wall = s.model.elements.iter().find(|(_, e)| matches!(e, crate::model::Element::Wall(_))).map(|(id, _)| *id).unwrap();
+    let e = fails(&mut s, "coordinates", json!({"acquire": wall}));
+    assert!(e.contains("link") && e.contains("CAD"), "{e}");
+}
+
+#[test]
+fn a_project_acquires_its_coordinates_from_a_linked_ifc() {
+    let mut s = surveyed();
+    let want = to_shared(&s, [0.0, 0.0, 0.0]);
+    let text = ifc_of(&mut s, "ifc-link-acquire", None);
+    let path = file("ifc-link-acquire", "site.ifc", &text);
+    let mut h = Session::new();
+    let id = run(&mut h, "link", json!({"path": path, "at": [10_000, 0], "angle": 5}))["id"].as_u64().unwrap();
+    run(&mut h, "coordinates", json!({"acquire": id}));
+    let q = h.model.coordinates.to_shared([10_000.0, 0.0, 0.0]);
+    assert!(near3(q, want, 1.0), "{q:?}, not {want:?}");
+    let l = h.model.coordinates.location();
+    assert!((l.angle - 5.0).abs() < 1e-6 && (l.scale - 0.9996).abs() < 1e-9, "10° less the 5° it was turned: {l:?}");
+    assert_eq!(h.model.coordinates.crs, Some(31983), "the map system comes with it");
+}

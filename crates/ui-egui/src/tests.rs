@@ -5892,6 +5892,7 @@ mod shortcuts_kept;
 mod sketch;
 mod sketch3d;
 mod smallest;
+mod spots;
 mod standards;
 mod start;
 mod templates;

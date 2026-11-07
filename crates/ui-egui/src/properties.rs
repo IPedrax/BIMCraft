@@ -232,6 +232,15 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "host", msg!("Host"), Link),
             ("Other", "at", "Location", Point),
         ],
+        "spotcoordinate" => &[
+            ("Graphics", "leader", msg!("Leader"), Flag),
+            ("Graphics", "shoulder", msg!("Has Shoulder"), Flag),
+            ("Dimensions", "north", msg!("North / South"), LengthShown),
+            ("Dimensions", "east", msg!("East / West"), LengthShown),
+            ("Dimensions", "elevation", "Elevation", LengthShown),
+            ("Other", "host", msg!("Host"), Link),
+            ("Other", "at", "Location", Point),
+        ],
         "line" => &[
             ("Graphics", "style", "Line Style", LineStyle),
             ("Dimensions", "length", "Length", LengthShown),
@@ -496,6 +505,7 @@ fn icon(category: &str) -> Icon {
         "line" => Icon::Line,
         "region" => Icon::FilledRegion,
         "spot" => Icon::Spot,
+        "spotcoordinate" => Icon::SpotCoordinate,
         "view3d" => Icon::View3D,
         "pointcloud" => Icon::PointCloud,
         "cadimport" => Icon::ImportCad,
@@ -854,6 +864,7 @@ impl BimApp {
             ([], Tool::Text, _) => Subject::New("text"),
             ([], Tool::DetailLine(_), _) => Subject::New("line"),
             ([], Tool::Spot | Tool::SpotSlope, _) => Subject::New("spot"),
+            ([], Tool::SpotCoordinate(_), _) => Subject::New("spotcoordinate"),
             ([], Tool::Tag, _) => Subject::New("tag"),
             ([], Tool::Section(_), _) => Subject::New("section"),
             ([], Tool::Elevation, _) => Subject::New("elevation"),
@@ -988,6 +999,10 @@ impl BimApp {
             }
             if category == "dimension" {
                 self.dimension_type_dialog = Some(crate::dimtypes::DimensionTypeDialog::new(&self.session.model, name, elements));
+                return;
+            }
+            if category == "spotcoordinate" {
+                self.spot_type_dialog = Some(crate::spots::SpotTypeDialog::new(&self.session.model, name, elements));
                 return;
             }
             let pair = if category == "component" {

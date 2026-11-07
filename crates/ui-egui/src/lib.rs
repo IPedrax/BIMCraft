@@ -65,6 +65,7 @@ mod shape;
 pub mod shortcuts;
 mod sketch;
 mod sketch3d;
+mod spots;
 mod standards;
 mod start;
 mod structure;
@@ -163,6 +164,8 @@ pub enum Tool {
     /// Specify Coordinates at a Point: the point the shared coordinates typed in the Coordinates window are at, picked in the
     /// view (snapped) while the window steps aside.
     SpecifyPoint,
+    /// Acquire Coordinates: the link or CAD drawing clicked gives the project its shared coordinates.
+    Acquire,
     /// Mirror the selection across a line picked, or with `draw`, a line drawn from `start`.
     Mirror {
         draw: bool,
@@ -212,6 +215,8 @@ pub enum Tool {
     Spot,
     /// A spot slope where clicked: how steeply the floor's or roof's top falls there.
     SpotSlope,
+    /// A spot coordinate: the point it reads, once clicked; the next click ends its leader.
+    SpotCoordinate(Option<P2>),
     /// A ruler laid between two points: the first, once clicked.
     Measure(Option<P2>),
     /// Tag the door or window clicked.
@@ -636,6 +641,10 @@ pub struct BimApp {
     /// Text Type Properties, while it's open.
     text_type_dialog: Option<notes::TextTypeDialog>,
     dimension_type_dialog: Option<dimtypes::DimensionTypeDialog>,
+    /// Spot Coordinate Type Properties, while it's open.
+    spot_type_dialog: Option<spots::SpotTypeDialog>,
+    /// The spot coordinate whose leader's end is being dragged.
+    spot_grip: Option<Id>,
     dimension_text_dialog: Option<dimtypes::DimensionTextDialog>,
     /// The line style the Detail Line tool draws in; blank for the project's Thin Lines.
     line_style: String,
@@ -1252,6 +1261,8 @@ impl BimApp {
             note_edit: None,
             text_type_dialog: None,
             dimension_type_dialog: None,
+            spot_type_dialog: None,
+            spot_grip: None,
             dimension_text_dialog: None,
             line_style: String::new(),
             linework_style: String::new(),
@@ -1412,7 +1423,8 @@ impl BimApp {
             | Tool::SketchLine(_)
             | Tool::SketchPick
             | Tool::PatternCorner(_)
-            | Tool::SpecifyPoint => None,
+            | Tool::SpecifyPoint
+            | Tool::Acquire => None,
             Tool::Wall(_) => Some(msg!("Place Wall")),
             Tool::Paint => Some("Paint"),
             Tool::Unpaint => Some("Remove Paint"),
@@ -1431,6 +1443,7 @@ impl BimApp {
             Tool::DetailLine(_) => Some(msg!("Place Detail Lines")),
             Tool::Spot => Some("Spot Elevation"),
             Tool::SpotSlope => Some(msg!("Spot Slope")),
+            Tool::SpotCoordinate(_) => Some("Spot Coordinate"),
             Tool::Measure(_) => Some("Measure"),
             Tool::Tag => Some("Tag"),
             Tool::Section(_) => Some("Section"),
@@ -1805,6 +1818,7 @@ impl BimApp {
         if self.type_dialog.is_some()
             || self.text_type_dialog.is_some()
             || self.dimension_type_dialog.is_some()
+            || self.spot_type_dialog.is_some()
             || self.dimension_text_dialog.is_some()
             || self.materials_dialog.is_some()
             || self.family_dialog.is_some()
@@ -2292,6 +2306,7 @@ impl BimApp {
                 Tool::DetailLine(Vec::new())
             }
             Some(Element::Spot(sp)) if sp.slope => Tool::SpotSlope,
+            Some(Element::Spot(sp)) if sp.coordinate => Tool::SpotCoordinate(None),
             Some(Element::Spot(_)) => Tool::Spot,
             Some(Element::Tag(_)) => Tool::Tag,
             Some(Element::Section(_)) => Tool::Section(None),
@@ -3689,7 +3704,7 @@ impl BimApp {
         });
     }
 
-    /// Annotate > Dimension, as Revit's: Aligned and Linear big, the others small beside them, two rows of three.
+    /// Annotate > Dimension, as Revit's: Aligned and Linear big, the others small beside them, in two rows.
     fn dimension_panel(&mut self, ui: &mut Ui) {
         let big: [(Icon, &str, &str, Tool); 2] = [
             (
@@ -3711,7 +3726,7 @@ impl BimApp {
                 Tool::Dimension(DimMode::Auto, Vec::new()),
             ),
         ];
-        let small: [(Icon, &str, &str, Tool); 6] = [
+        let small: [(Icon, &str, &str, Tool); 7] = [
             (
                 Icon::Angular,
                 msg!("Angular"),
@@ -3748,6 +3763,14 @@ impl BimApp {
                 msg!("Spot Slope: click a floor or a roof in a plan; an arrow points downhill with how steeply its top falls"),
                 Tool::SpotSlope,
             ),
+            (
+                Icon::SpotCoordinate,
+                "Spot Coordinate",
+                msg!(
+                    "Spot Coordinate: click a point in a plan, then where its leader ends; it reads north, east and the elevation as its type says"
+                ),
+                Tool::SpotCoordinate(None),
+            ),
         ];
         panel(ui, "Dimension", |ui| {
             for (icon, label, tip, tool) in &big {
@@ -3757,7 +3780,7 @@ impl BimApp {
             }
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
-                for row in small.chunks(3) {
+                for row in small.chunks(4) {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
                         for (icon, label, tip, tool) in row {
@@ -4133,6 +4156,12 @@ impl BimApp {
             );
             if big_button(ui, Icon::ProjectNorth, "Rotate Project North", matches!(self.tool, Tool::RotateNorth { .. }), tip).clicked() {
                 self.set_tool(Tool::RotateNorth { centre: P2(0.0, 0.0), start: None, place: false });
+            }
+            let tip = msg!(
+                "Acquire Coordinates: click a linked model (BIMCraft or IFC) or a CAD drawing; its shared coordinates become this project's, where it stands now"
+            );
+            if big_button(ui, Icon::Acquire, "Acquire Coordinates", self.tool == Tool::Acquire, tip).clicked() {
+                self.acquire_now_or_pick();
             }
         });
         panel(ui, msg!("Links"), |ui| {
@@ -4851,6 +4880,9 @@ impl BimApp {
             Tool::Rotate { start: None, .. } => msg!("Click the start of the angle, or type an angle and press Enter."),
             Tool::Rotate { start: Some(_), .. } => msg!("Click the end of the angle. Esc cancels."),
             Tool::RotateNorth { place: true, .. } => msg!("Click the centre the model turns about."),
+            Tool::Acquire => msg!("Click a linked model or a CAD drawing: this project takes its shared coordinates. Esc cancels."),
+            Tool::SpotCoordinate(None) => msg!("Click the point the spot coordinate reads; it snaps."),
+            Tool::SpotCoordinate(Some(_)) => msg!("Click where its leader ends. Esc cancels."),
             Tool::SpecifyPoint => {
                 msg!(
                     "Click the point the shared coordinates typed are at: it snaps, and a wall's corner is its bottom, a slab's its top. Esc goes back."
@@ -5212,6 +5244,7 @@ impl BimApp {
         self.fill_patterns_window(ctx);
         self.text_type_window(ctx);
         self.dimension_type_window(ctx);
+        self.spot_type_window(ctx);
         self.dimension_text_window(ctx);
         self.standards_window(ctx);
         self.electrical_window(ctx);

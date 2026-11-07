@@ -251,6 +251,7 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::TextType => one(&mut to.text_types, Some(&from.text_types), name),
         Kind::ReinforcementPreset => one(&mut to.reinforcement, Some(&from.reinforcement), name),
         Kind::DimensionType => one(&mut to.dimension_types, Some(&from.dimension_types), name),
+        Kind::SpotCoordinateType => one(&mut to.spot_coordinate_types, Some(&from.spot_coordinate_types), name),
         Kind::Voltage => one(&mut to.voltages, Some(&from.voltages), name),
         Kind::DistributionSystem => one(&mut to.distribution_systems, Some(&from.distribution_systems), name),
         Kind::WireType => one(&mut to.wire_types, Some(&from.wire_types), name),

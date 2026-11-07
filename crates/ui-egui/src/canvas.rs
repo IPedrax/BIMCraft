@@ -1567,6 +1567,13 @@ impl BimApp {
                 .spot_host(level, view.mm(q))
                 .filter(|id| matches!(model.elements.get(*id), Some(Element::Floor(_) | Element::Roof(_)))),
             Tool::Tag => d.pick(q, PICK).filter(|id| model.anchor(*id).is_some()),
+            // A linked model's element (its link gives the coordinates) or a CAD drawing.
+            Tool::Acquire => d
+                .pick_all(q, PICK)
+                .into_iter()
+                .find(|id| bimcraft_core::link::is_linked(*id) || matches!(model.elements.get(id), Some(Element::CadImport(_)))),
+            // What a spot coordinate's elevation would read.
+            Tool::SpotCoordinate(None) => model.spot_host(level, view.mm(q)),
             Tool::Attach => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Roof(_) | Element::Floor(_))))
             }
@@ -1590,6 +1597,7 @@ impl BimApp {
         self.canvas.found.set(None);
         self.grip_drag(ui, &response, rect, &view, level);
         self.line_grip_drag(ui, &response, rect, &view, level);
+        self.spot_grip_drag(ui, &response, rect, &view, level);
         let dragged = self.shape_grip_drag(ui, &response, rect, &view, level) || dragged;
         // A drag from an element moves the selection; from empty floor, it draws a selection box.
         if response.drag_started_by(PointerButton::Primary)
@@ -1599,6 +1607,7 @@ impl BimApp {
             && self.canvas.crop_drag.is_none()
             && self.canvas.grip.is_none()
             && self.drawing.grip.is_none()
+            && self.spot_grip.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
         {
             let o = (o.x - rect.min.x, o.y - rect.min.y);
@@ -1780,6 +1789,11 @@ impl BimApp {
             .and_then(|_| ui.input(|i| i.pointer.latest_pos()))
             .map(|q| self.snap(&model, level, &view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at);
         self.line_grip_overlay(&ui.painter_at(rect), rect, &view, cursor);
+        let spot_cursor = self
+            .spot_grip
+            .and_then(|_| ui.input(|i| i.pointer.latest_pos()))
+            .map(|q| self.snap(&model, level, &view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at);
+        self.spot_grip_overlay(&ui.painter_at(rect), rect, &view, spot_cursor);
         self.shape_overlay(ui, &model, &view, rect, level);
         self.temporary_dimension(ui, &model, &view, rect);
         self.locks(ui, &model, &view, rect, key);
@@ -2297,6 +2311,17 @@ impl BimApp {
             }
             Tool::SpotSlope => {
                 self.run("spot_slope", json!({"at": point(round(v.mm(at))), "view": key}));
+            }
+            Tool::SpotCoordinate(first) => {
+                let first = *first;
+                let from: Vec<P2> = first.into_iter().collect();
+                let p = self.snap(m, level, v, at, &from, mods.shift).at;
+                self.spot_coordinate_click(key, first, p);
+            }
+            Tool::Acquire => {
+                if let Some(id) = hovered {
+                    self.acquire_from(id);
+                }
             }
             Tool::Tag => {
                 if let Some(id) = hovered {
@@ -3943,25 +3968,32 @@ impl BimApp {
             }
             Tool::Spot => {
                 let at = round(v.mm(q));
-                sketched(&Element::Spot(Spot {
-                    view: m.guid(key),
-                    at,
-                    host: m.spot_host(level, at).map(|h| m.guid(h)),
-                    slope: false,
-                    coordinate: false,
-                    origin: Default::default(),
-                }));
+                sketched(&Element::Spot(Spot { host: m.spot_host(level, at).map(|h| m.guid(h)), ..Spot::new(m.guid(key), at) }));
                 return;
             }
             Tool::SpotSlope => {
                 let at = round(v.mm(q));
                 sketched(&Element::Spot(Spot {
-                    view: m.guid(key),
-                    at,
                     host: m.spot_host(level, at).map(|h| m.guid(h)),
                     slope: true,
-                    coordinate: false,
-                    origin: Default::default(),
+                    ..Spot::new(m.guid(key), at)
+                }));
+                return;
+            }
+            // The spot coordinate as it would be: on the cursor, then from its point to the cursor.
+            Tool::SpotCoordinate(first) => {
+                let from: Vec<P2> = first.iter().copied().collect();
+                let p = self.snap(m, level, v, q, &from, false).at;
+                let (at, end) = match *first {
+                    None => (p, None),
+                    Some(a) => (a, Some(p)),
+                };
+                sketched(&Element::Spot(Spot {
+                    host: m.spot_host(level, at).map(|h| m.guid(h)),
+                    coordinate: true,
+                    type_name: self.spot_type(),
+                    end,
+                    ..Spot::new(m.guid(key), at)
                 }));
                 return;
             }

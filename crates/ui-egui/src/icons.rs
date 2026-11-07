@@ -100,6 +100,8 @@ icon_names! {
     Coordinates,
     ProjectNorth,
     SpotSlope,
+    SpotCoordinate,
+    Acquire,
     ConvertLines,
     Angular,
     Radial,
@@ -910,6 +912,26 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(9.0, 14.2), (11.0, 12.8)]);
             g.line(&[(13.0, 11.4), (19.0, 7.0)]);
             g.circle((19.0, 7.0), 1.6);
+        }
+        Icon::SpotCoordinate => {
+            // A cross on the point, a leader up and right to a shoulder, and two lines of numbers over it.
+            g.line(&[(2.0, 19.0), (8.0, 19.0)]);
+            g.line(&[(5.0, 16.0), (5.0, 22.0)]);
+            g.line(&[(5.0, 19.0), (11.0, 11.0), (22.0, 11.0)]);
+            g.line(&[(12.0, 4.0), (21.0, 4.0)]);
+            g.line(&[(12.0, 8.0), (19.0, 8.0)]);
+        }
+        Icon::Acquire => {
+            // A survey ring pulled in from a linked sheet: a dashed frame behind, an arrow from it to the ring.
+            g.line(&[(2.0, 3.0), (10.0, 3.0)]);
+            g.line(&[(2.0, 3.0), (2.0, 11.0)]);
+            g.line(&[(10.0, 3.0), (10.0, 5.0)]);
+            g.line(&[(2.0, 11.0), (4.0, 11.0)]);
+            g.circle((15.0, 15.0), 4.5);
+            g.line(&[(15.0, 9.0), (15.0, 21.0)]);
+            g.line(&[(9.0, 15.0), (21.0, 15.0)]);
+            g.line(&[(5.0, 6.0), (11.0, 12.0)]);
+            g.line(&[(7.0, 12.0), (11.0, 12.0), (11.0, 8.0)]);
         }
         Icon::SpotSlope => {
             // A falling top, an arrow down it, and its fall written over.

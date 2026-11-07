@@ -37,6 +37,8 @@ use crate::{font, massing, sheet, stairs};
 mod dimensions;
 use dimensions::dimension;
 mod regions;
+mod spots;
+pub use spots::leader_end;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Rgb(pub u8, pub u8, pub u8);
@@ -1172,7 +1174,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::DetailGroup(g) => detail_group(&mut d, m, g),
         Element::RepeatingDetail(r) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
         Element::Spot(sp) if sp.slope => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
-        Element::Spot(sp) if sp.coordinate => coordinate_mark(&mut d, view.px(sp.at), m.spot_coordinate(sp), m.units),
+        Element::Spot(sp) if sp.coordinate => spots::spot_coordinate(&mut d, m, sp),
         Element::Spot(sp) => spot_mark(&mut d, view.px(sp.at), m.spot_reads(sp), m.units),
         Element::Section(v) => section_mark(&mut d, v),
         Element::Elevation(v) => elevation_mark(&mut d, v),
@@ -3002,9 +3004,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             Element::DetailGroup(g) if m.annotation_in(e, key) => detail_group(&mut d, m, g),
             Element::RepeatingDetail(r) if m.annotation_in(e, key) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
             Element::Spot(sp) if sp.slope && m.annotation_in(e, key) && inside(sp.at) => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
-            Element::Spot(sp) if sp.coordinate && m.annotation_in(e, key) && inside(sp.at) => {
-                coordinate_mark(&mut d, view.px(sp.at), m.spot_coordinate(sp), m.units)
-            }
+            Element::Spot(sp) if sp.coordinate && m.annotation_in(e, key) && inside(sp.at) => spots::spot_coordinate(&mut d, m, sp),
             Element::Spot(sp) if m.annotation_in(e, key) && inside(sp.at) => spot_mark(&mut d, view.px(sp.at), m.spot_reads(sp), m.units),
             // A section's line is cropped as a line is.
             Element::Section(v) => section_mark(&mut d, v),
@@ -4166,29 +4166,6 @@ fn spot_mark(d: &mut Drawing, (x, y): (f32, f32), z: Option<f64>, units: Units) 
     d.grow(from, (x, y));
 }
 
-/// A spot coordinate's two lines of text: north, then east, in the project's units.
-fn coordinate_text(read: Option<(f64, f64)>, units: Units) -> [String; 2] {
-    match read {
-        Some((e, n)) => [format!("N {}", units.length(n)), format!("E {}", units.length(e))],
-        None => ["N ?".into(), "E ?".into()],
-    }
-}
-
-/// A spot coordinate: a cross on its point, a leader up and right, and its north over its east on a shoulder.
-fn coordinate_mark(d: &mut Drawing, (x, y): (f32, f32), read: Option<(f64, f64)>, units: Units) {
-    let from = d.prims.len();
-    d.stroke(vec![(x - 4.0, y), (x + 4.0, y)], Pen::PROJECTION, INK, None, false);
-    d.stroke(vec![(x, y - 4.0), (x, y + 4.0)], Pen::PROJECTION, INK, None, false);
-    let lines = coordinate_text(read, units);
-    let w = lines.iter().map(|t| font::width(t, 10.0)).fold(0.0, f32::max);
-    let shoulder = (x + 12.0, y - 12.0);
-    d.stroke(vec![(x, y), shoulder, (shoulder.0 + w + 4.0, shoulder.1)], Pen::PROJECTION, INK, None, false);
-    for (k, t) in lines.iter().enumerate() {
-        d.text(t, (shoulder.0 + 2.0 + w / 2.0, shoulder.1 - 8.0 + 14.0 * k as f32), 10.0, INK);
-    }
-    d.grow(from, (x, y));
-}
-
 /// A spot slope: from its point an arrow 24 px long pointing downhill, and the fall over it, as `1.5%`; on the level, `0%`
 /// alone; `?` while its host has no top there.
 fn slope_mark(d: &mut Drawing, at: P2, read: Option<(f64, Option<P2>)>) {
@@ -5179,8 +5156,6 @@ mod tests {
         let (r, g, b) = pixel(&png, (x + 3.0, y));
         assert!(r < 200 && g < 200 && b < 200, "its cross");
         assert_eq!(d.pick((x + 3.0, y), 2.0), Some(100010));
-        assert_eq!(coordinate_text(Some((2000.0, 3000.0)), Units::Millimetres), ["N 3000", "E 2000"]);
-        assert_eq!(coordinate_text(None, Units::Metres), ["N ?", "E ?"]);
     }
 
     #[test]
@@ -5494,14 +5469,7 @@ mod tests {
     fn a_tools_sketch_of_annotation_is_the_size_its_view_would_draw_it() {
         let mut s = house();
         let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
-        let spot = Element::Spot(crate::model::Spot {
-            view: s.model.guid(100000),
-            at: P2(4000.0, 3000.0),
-            host: None,
-            slope: false,
-            coordinate: false,
-            origin: Default::default(),
-        });
+        let spot = Element::Spot(crate::model::Spot::new(s.model.guid(100000), P2(4000.0, 3000.0)));
         let text = |s: &Session| lettering(&sketch(&s.model, view, 99, &spot), 99);
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 50})).unwrap();
         let none = text(&s);
