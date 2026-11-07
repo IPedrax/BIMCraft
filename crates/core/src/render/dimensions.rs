@@ -23,6 +23,64 @@ pub(super) fn dimension(d: &mut Drawing, m: &Model, dim: &Dimension) {
     }
 }
 
+/// Where a dimension letters one of its numbers: which, its middle, the way it reads and how long and tall it is, model mm.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NumberPlace {
+    pub index: usize,
+    pub at: P2,
+    pub along: P2,
+    pub long: f64,
+    pub tall: f64,
+}
+
+impl Drawing {
+    /// Where dimension `dim` letters its numbers in this drawing, as `aligned` and `angular` letter them: of a continuous
+    /// string and of an angular dimension, which are what's typed into.
+    pub fn dimension_number_places(&self, m: &Model, dim: &Dimension) -> Vec<NumberPlace> {
+        let t = m.dimension_type(dim);
+        let mm = f64::from(self.k) / self.view.scale * sheet::DENSITY;
+        let (size, off) = (t.text_size * mm, t.text_offset * mm);
+        let labels = m.dimension_labels(dim);
+        let tt = t.lettering();
+        // How long and tall label `i` letters, as `letter` lays it out.
+        let extent = |i: usize| {
+            let text = labels.get(i).map_or("", String::as_str);
+            let [l, top, r, b] = crate::text::layout(&tt, text, &crate::text::styles(&tt, text, false, &[])).frame(0.0);
+            ((r - l) * mm, (b - top) * mm)
+        };
+        // As `label` turns a line running up the page.
+        let reads = |along: P2| if t.read == Read::UpThenRight && along.1.abs() > along.0.abs() { along * -1.0 } else { along };
+        let place = |index: usize, at: P2, along: P2| {
+            let (long, tall) = extent(index);
+            NumberPlace { index, at, along: reads(along), long, tall }
+        };
+        match dim.kind {
+            DimKind::Aligned | DimKind::Linear if t.string == DimString::Continuous => {
+                let (n, cross) = m.crossings(dim);
+                let u = n.perp();
+                cross
+                    .windows(2)
+                    .enumerate()
+                    .filter_map(|(i, pair)| {
+                        let [(s0, _), (s1, _)] = pair else { return None };
+                        Some(place(i, dim.at + n * ((s0 + s1) / 2.0) + u * (off + size / 2.0), n))
+                    })
+                    .collect()
+            }
+            DimKind::Angular => {
+                let Some((o, from, sweep)) = m.angle_sector(dim) else { return Vec::new() };
+                let t_mid = from + sweep / 2.0;
+                let mid = P2(t_mid.cos(), t_mid.sin());
+                // As `angular` letters it: along the arc's middle, outside it.
+                let along = if mid.perp().0 < 0.0 { mid.perp() * -1.0 } else { mid.perp() };
+                let up = if mid.dot(along.perp()) >= 0.0 { along.perp() } else { along.perp() * -1.0 };
+                vec![place(0, o + mid * dim.at.dist(o) + up * (off + size / 2.0), along)]
+            }
+            _ => Vec::new(),
+        }
+    }
+}
+
 /// What a dimension draws with: its type, its colour, and how many model mm a mm of paper is in this view.
 struct Ink {
     t: DimensionType,

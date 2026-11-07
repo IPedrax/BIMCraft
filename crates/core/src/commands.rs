@@ -1122,10 +1122,12 @@ pub static ALL: &[Command] = &[
         "dimension_value",
         ui_msg!("Dimension Value"),
         &[],
-        "{id, value, segment?} types a length into an aligned or a linear dimension's segment (the first unless told), as a \
-         click on its number does: what the segment ends at (its second reference, as the dimension runs west to east or south \
-         to north) moves along the dimension so the segment is `value` mm; a locked segment is locked at it, and the other \
-         locks hold, or it is refused. Returns {id, moved, by}",
+        "{id, value, segment?, moves?} types a value into a dimension's segment (the first unless told), as a click on its \
+         number does. An aligned or a linear one's is a length: what the segment ends at (its second reference, as the dimension \
+         runs west to east or south to north; or `moves`, the element at either of its ends) moves along the dimension so the \
+         segment is `value` mm; a locked segment is locked at it, and the other locks hold, or it is refused. An angular one's \
+         is an angle above 0 and under 180 degrees: its second reference's element (or `moves`, either of its two) turns about \
+         where their lines cross. Returns {id, moved, by}, `by` in mm or degrees",
         dimension_value,
     ),
     edit(
@@ -2539,8 +2541,8 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             let top = m.component_pieces(cp).iter().map(|p| p.top).fold(base, f64::max);
             extra.insert("height".into(), json!(hundredth(top - base)));
         }
-        Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
-            let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
+        Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => {
+            let (bottom, top) = m.column_span(e);
             extra.insert("height".into(), json!(top - bottom));
             if let Some(t) = m.column_type(e) {
                 extra.insert("width".into(), json!(t.width));
@@ -8356,6 +8358,9 @@ pub fn stood_of(m: &Model, p: &Value, category: &str) -> Result<Element, String>
             top_level: None,
             height: thickness,
             base_offset: top - thickness,
+            top_offset: 0.0,
+            attach_top: None,
+            attach_base: None,
             room_bounding: true,
         };
         return Ok(Element::Footing(col));
@@ -8371,6 +8376,9 @@ pub fn stood_of(m: &Model, p: &Value, category: &str) -> Result<Element, String>
         top_level,
         height,
         base_offset: num(c, p, "base_offset")?.unwrap_or(0.0),
+        top_offset: num(c, p, "top_offset")?.unwrap_or(0.0),
+        attach_top: id_opt(c, p, "attach_top")?,
+        attach_base: id_opt(c, p, "attach_base")?,
     };
     Ok(if category == "column" { Element::Column(col) } else { Element::StructuralColumn(col) })
 }
@@ -11377,10 +11385,13 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
     }
     // Copied walls attached to roofs or floors copied with them attach to the copies.
     for id in &made {
-        if let Some(Element::Wall(w)) = m.elements.get_mut(id) {
-            for at in [&mut w.attach_top, &mut w.attach_base] {
-                *at = at.map(|a| hosts.get(&a).copied().unwrap_or(a));
-            }
+        let ties = match m.elements.get_mut(id) {
+            Some(Element::Wall(w)) => vec![&mut w.attach_top, &mut w.attach_base],
+            Some(Element::Column(col) | Element::StructuralColumn(col)) => vec![&mut col.attach_top, &mut col.attach_base],
+            _ => Vec::new(),
+        };
+        for at in ties {
+            *at = at.map(|a| hosts.get(&a).copied().unwrap_or(a));
         }
     }
     for (from, mut e) in notes {
@@ -11483,35 +11494,110 @@ fn alignment_lock(c: &str, s: &mut Session, id: Id, to: Option<Guid>, reference:
 }
 
 /// A typed value for a dimension's segment, as Revit's: what the segment ends at moves along the dimension (its second
-/// reference, as the dimension's line runs) so the segment is that long; a locked segment is locked at it.
+/// reference, as the dimension's line runs, or `moves`, what's selected in the window) so the segment is that long; a locked
+/// segment is locked at it. An angular dimension's element turns instead.
 fn dimension_value(s: &mut Session, p: &Value) -> R {
     let c = "dimension_value";
-    only(c, p, &["id", "value", "segment"])?;
+    only(c, p, &["id", "value", "segment", "moves"])?;
     let id = element_id(c, &s.model, p.get("id").unwrap_or(&Value::Null))?;
     let Some(Element::Dimension(d)) = s.model.elements.get(id) else {
         return Err(bad(c, format!("{} {id} isn't a dimension", s.model.elements.get(id).map_or("nothing", |e| e.category()))));
     };
-    if !matches!(d.kind, DimKind::Aligned | DimKind::Linear) || d.alignment {
-        return Err(bad(c, format!("dimension {id} isn't an aligned or a linear one: only their lengths are typed")));
+    if !matches!(d.kind, DimKind::Aligned | DimKind::Linear | DimKind::Angular) || d.alignment {
+        return Err(bad(c, format!("dimension {id} isn't an aligned, a linear or an angular one: only their values are typed")));
     }
     let mut d = d.clone();
-    let value = num(c, p, "value")?.ok_or_else(|| bad(c, "`value`, the length in mm, is required"))?;
+    let moves = match p.get("moves") {
+        v if absent(v) => None,
+        Some(v) => Some(element_id(c, &s.model, v)?),
+        None => None,
+    };
+    let moves = moves.map(|m| s.model.guid(m));
+    let value = num(c, p, "value")?.ok_or_else(|| bad(c, "`value` is required: a length in mm, or an angle in degrees"))?;
+    if d.kind == DimKind::Angular {
+        return angular_value(s, id, d, value, moves);
+    }
     if !(value > TOL && value <= MAX_COORD) {
         return Err(bad(c, format!("`value` is a length above 0 and at most {MAX_COORD} mm, not {value}")));
     }
     let (n, st) = s.model.stations(&d);
     let segment = count_opt(c, p, "segment", 0)?;
-    let (Some((from, ..)), Some((to, _, r))) = (st.get(segment), st.get(segment + 1)) else {
+    let (Some((from, _, first)), Some((to, _, r))) = (st.get(segment), st.get(segment + 1)) else {
         return Err(bad(c, format!("dimension {id} has segments 0 to {}, not {segment}", st.len().saturating_sub(2))));
     };
-    let by = value - (to - from);
-    let moved = s.model.elements.id(r.id).ok_or_else(|| bad(c, "what it measures to is gone"))?;
+    let grows = value - (to - from);
+    // The element at its far end moves on to lengthen it, the one at its near end back.
+    let (at, by) = match moves {
+        None => (r.id, grows),
+        Some(g) if g == r.id && g == first.id => {
+            return Err(bad(c, format!("both ends of segment {segment} are on element {}: moving it changes nothing", s.model.shown(g))));
+        }
+        Some(g) if g == r.id => (g, grows),
+        Some(g) if g == first.id => (g, -grows),
+        Some(g) => return Err(bad(c, format!("element {} isn't at either end of segment {segment}", s.model.shown(g)))),
+    };
+    // A door or a window at the other end, standing in the wall that would move, rides with it: the wall's own end, held by
+    // its join, would stay, and the segment change the other way. The opening is what moves, toward or away from the end.
+    let other = if at == r.id { first.id } else { r.id };
+    let hosted = |g: Guid| match s.model.elements.get(s.model.elements.id(g).unwrap_or_default()) {
+        Some(Element::Door(o) | Element::Window(o)) => o.host == at,
+        _ => false,
+    };
+    let (at, by) = if other != at && hosted(other) { (other, -by) } else { (at, by) };
+    let moved = s.model.elements.id(at).ok_or_else(|| bad(c, "what it measures to is gone"))?;
     if let Some(l) = d.locked.iter_mut().find(|l| l.segment == segment) {
         l.length = value;
         s.model_mut().elements.insert(id, Element::Dimension(d));
     }
     if by.abs() > 1e-9 {
         move_by(s, moved, n * by)?;
+    }
+    // What moving it did to the segment, which joins and hosts can turn: never the other way, nor short of what was typed.
+    if let Some(Element::Dimension(now)) = s.model.elements.get(id) {
+        let (_, st) = s.model.stations(now);
+        if let (Some((from, _, _)), Some((to, _, _))) = (st.get(segment), st.get(segment + 1))
+            && ((to - from) - value).abs() > 0.5
+        {
+            return Err(bad(
+                c,
+                format!(
+                    "moving {} makes segment {segment} {:.0} mm, not {value}: what holds it (a join, a host, a lock) keeps it from \
+                     reading what was typed; select the element at its other end and type the value again",
+                    s.model.shown(at),
+                    to - from
+                ),
+            ));
+        }
+    }
+    Ok(json!({"id": id, "moved": moved, "by": hundredth(by)}))
+}
+
+/// An angle typed into angular dimension `d`: the element of its second reference, or `moves` of either, turns about where
+/// their lines cross so the angle is `value` degrees, and the dimension's arc stays in the angle it measures.
+fn angular_value(s: &mut Session, id: Id, mut d: Dimension, value: f64, moves: Option<Guid>) -> R {
+    let c = "dimension_value";
+    if !(value > 0.01 && value < 179.99) {
+        return Err(bad(c, format!("an angle is above 0 and under 180 degrees, not {value}")));
+    }
+    let (o, from, sweep) = s.model.angle_sector(&d).ok_or_else(|| bad(c, "its lines no longer cross"))?;
+    let r = match moves {
+        Some(g) => {
+            d.refs.iter().find(|r| r.id == g).ok_or_else(|| bad(c, format!("element {} isn't what it measures", s.model.shown(g))))?
+        }
+        None => d.refs.last().ok_or_else(|| bad(c, "what it measures to is gone"))?,
+    };
+    let (a, b) = s.model.reference_line(r).map_err(|e| bad(c, e))?;
+    let ray = |t: f64| P2(t.cos(), t.sin());
+    // Which side of the angle it is: the far one opens it by turning on, the near one by turning back.
+    let far = geom::parallel(a, b, o, o + ray(from + sweep));
+    let grows = value - sweep.to_degrees();
+    let by = if far { grows } else { -grows };
+    let moved = s.model.elements.id(r.id).ok_or_else(|| bad(c, "what it measures to is gone"))?;
+    if by.abs() > 1e-9 {
+        rotate(s, &json!({"ids": [moved], "about": [o.0, o.1], "angle": by}))?;
+        let start = if far { from } else { from - grows.to_radians() };
+        d.at = micron(o + ray(start + value.to_radians() / 2.0) * d.at.dist(o));
+        s.model_mut().elements.insert(id, Element::Dimension(d));
     }
     Ok(json!({"id": id, "moved": moved, "by": hundredth(by)}))
 }
@@ -12195,6 +12281,9 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
         .flat_map(|g| lookup.referrers(g))
         .filter(|id| match m.elements.get(*id) {
             Some(Element::Wall(w)) => w.attach_top.is_some_and(|g| gone.contains(&g)) || w.attach_base.is_some_and(|g| gone.contains(&g)),
+            Some(Element::Column(col) | Element::StructuralColumn(col)) => {
+                col.attach_top.is_some_and(|g| gone.contains(&g)) || col.attach_base.is_some_and(|g| gone.contains(&g))
+            }
             Some(Element::Roof(r)) => r.join.is_some_and(|g| gone.contains(&g)),
             // A 3D view whose work plane's level goes sketches on the lowest level again.
             Some(Element::View3D(v)) => v.work_plane.as_ref().is_some_and(|wp| wp.level.is_some_and(|l| gone.contains(&l))),
@@ -12236,6 +12325,14 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 }
                 if w.attach_base.is_some_and(|g| gone.contains(&g)) {
                     w.attach_base = None;
+                }
+            }
+            Some(Element::Column(col) | Element::StructuralColumn(col)) => {
+                if col.attach_top.is_some_and(|g| gone.contains(&g)) {
+                    col.attach_top = None;
+                }
+                if col.attach_base.is_some_and(|g| gone.contains(&g)) {
+                    col.attach_base = None;
                 }
             }
             Some(Element::Roof(r)) if r.join.is_some_and(|g| gone.contains(&g)) => r.join = None,
@@ -12333,6 +12430,7 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     for e in m.elements.values_mut() {
         let ties = match e {
             Element::Wall(w) => vec![&mut w.attach_top, &mut w.attach_base],
+            Element::Column(col) | Element::StructuralColumn(col) => vec![&mut col.attach_top, &mut col.attach_base],
             Element::Roof(r) => vec![&mut r.join],
             _ => Vec::new(),
         };

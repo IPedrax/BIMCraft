@@ -1032,7 +1032,7 @@ pub fn export(m: &Model) -> String {
             // structural says it carries load.
             Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
                 let (Some(&(_, storey)), Some(t)) = (storeys.get(&col.level), m.column_type(e)) else { continue };
-                let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
+                let (bottom, top) = m.column_span(e);
                 let at = w.place(Some(storey), (col.at.0, col.at.1, col.base_offset), Some(heading(col.angle)));
                 // Its section is its type's, which the type's material profile set holds too.
                 let section = Section::new(t.width, t.depth, t.round);

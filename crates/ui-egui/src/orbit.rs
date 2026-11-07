@@ -1,8 +1,8 @@
 //! The 3D view: the core's picture of the model (`view3d::Scene`), orbited, panned and zoomed as
-//! in Revit. Shift and the middle button orbit, and so does a drag with the primary button (for a hand without a middle
-//! button), round the point under the pointer where the drag began; the middle button pans; the wheel zooms toward the
-//! point under the cursor. Shift and a primary drag in Modify are a selection box, as in a plan (`Scene::in_box`: from the
-//! left what lies wholly inside, from the right what it touches; the sketch's lines while sketching). A
+//! in Revit. Shift and the middle button orbit, round the point under the pointer where the drag began; the middle button
+//! pans; the wheel zooms toward the point under the cursor. A primary drag in Modify is a selection box, as in a plan, and
+//! never turns the view (`Scene::in_box`: from the left what lies wholly inside, from the right what it touches; the sketch's
+//! lines while sketching); with Shift held it adds to the selection. A
 //! click picks the element the picture shows there, and so does a press let go quickly, however
 //! far the hand went with it (`Canvas::quick_press`): the camera it turned goes back. A level
 //! selected alone has a grip at the middle of each edge of its plane, which a drag moves over it. A section box is drawn
@@ -21,6 +21,7 @@ use bimcraft_i18n::msg;
 use bimcraft_core::dims3d;
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::graphics::{Look, VisualStyle};
+use bimcraft_core::handles::{self, Handle};
 use bimcraft_core::model::{Dimension3D, Id, Model, Ref3, TOL, ViewCamera};
 use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::snap::{self, Found, Kind, Reach, Snaps};
@@ -249,6 +250,14 @@ pub struct Orbit {
     pub(crate) triad: crate::triad::Over,
     /// What the Aligned Dimension tool has picked in the 3D view so far: its references, before a click places its line.
     pub(crate) dim3: Vec<Ref3>,
+    /// The Measure tool in the 3D view: the chain of points clicked, and whether it is done (closed back to its start, or ended
+    /// with Enter); the next click begins another.
+    /// The handle of the selected wall or column being dragged: the element, which, its place and where the drag began.
+    pub(crate) handle: Option<(Id, Handle, P3, Pos2)>,
+    /// The handle under the pointer.
+    pub(crate) hot_handle: Option<Handle>,
+    pub(crate) chain: Vec<P3>,
+    pub(crate) chain_done: Option<bool>,
 }
 
 /// A room as the 3D view draws it: its outline in plan (an unbounded one's square), swept from `bottom` to `top`.
@@ -293,6 +302,10 @@ impl Default for Orbit {
             wall_base: None,
             triad: Default::default(),
             dim3: Vec::new(),
+            handle: None,
+            hot_handle: None,
+            chain: Vec::new(),
+            chain_done: None,
         }
     }
 }
@@ -341,6 +354,98 @@ fn dim_ref(scene: &Scene, cam: &Camera, at: (f64, f64), under: Option<Surface>, 
         return Some(Ref3 { at: q.map(f64::round), edge: Some([micron(a), micron(b)]) });
     }
     under.map(|s| Ref3 { at: s.at.map(f64::round), edge: None })
+}
+
+/// Whether Attach Top/Base takes element `id`: a roof or a floor.
+fn attach_target(m: &Model, id: Id) -> bool {
+    matches!(m.elements.get(id), Some(bimcraft_core::model::Element::Roof(_) | bimcraft_core::model::Element::Floor(_)))
+}
+
+/// A handle of the wall or column selected, as a section box's are drawn: an arrow up or down the screen for its top or base, a
+/// square for its ends or place. In the accent while held, in the hover colour under the pointer.
+fn draw_handle(p: &egui::Painter, cam: &Camera, h: Handle, q: P3, held: Option<Handle>, hot: Option<Handle>, screen: impl Fn(P3) -> Pos2) {
+    let at = screen(q);
+    if !at.is_finite() {
+        return;
+    }
+    let (k, held, hot) = (0, (held == Some(h)).then_some(0), (hot == Some(h)).then_some(0));
+    let (fill, outline) = crate::section_box::grip_colours(k, held, hot);
+    let stroke = Stroke::new(1.5, outline);
+    if h.vertical() {
+        let mut out = q;
+        out[2] += if h == Handle::Top { 1.0 } else { -1.0 } / cam.scale.max(1e-12);
+        let d = screen(out) - at;
+        if d.length() >= 0.25 {
+            crate::section_box::arrow(p, at, d.normalized(), fill, stroke);
+            return;
+        }
+    }
+    let r = Rect::from_center_size(at, vec2(9.0, 9.0));
+    p.rect_filled(r, 1.0, fill);
+    p.rect_stroke(r, 1.0, stroke, StrokeKind::Middle);
+}
+
+/// Whether point `b` is on chain point `a` as the cursor sees it: the same point, or within a snap of it on screen.
+fn closes(cam: &Camera, a: P3, b: P3, ppp: f32) -> bool {
+    let ((x0, y0, _), (x1, y1, _)) = (cam.project(a), cam.project(b));
+    a == b || (x1 - x0).hypot(y1 - y0) <= SNAP * f64::from(ppp)
+}
+
+/// Where the Measure tool lands at pixel `at`: what a dimension would pick there, or the middle of the edge when the cursor is
+/// that near it. Any point of the model, whatever the work plane.
+fn measure_point(scene: &Scene, cam: &Camera, at: (f64, f64), under: Option<Surface>, ppp: f32, look: &Look) -> Option<Ref3> {
+    let mut r = dim_ref(scene, cam, at, under, ppp, look)?;
+    if let Some([a, b]) = r.edge {
+        let mid = [0, 1, 2].map(|k| f64::midpoint(a[k], b[k]));
+        let (x, y, _) = cam.project(mid);
+        if (x - at.0).hypot(y - at.1) <= SNAP * f64::from(ppp) {
+            r.at = mid;
+        }
+    }
+    Some(r)
+}
+
+/// A chain of measured points, a dot at each and the line between, each segment's length at its middle; then by its last point
+/// (or `to`, the point the cursor is on while it grows) its total and, closed in one plane, its area. `closed` draws its way
+/// back to its start.
+fn draw_chain(p: &egui::Painter, m: &bimcraft_core::model::Model, points: &[P3], closed: bool, screen: &dyn Fn(P3) -> Pos2) {
+    let n = points.len();
+    if n == 0 {
+        return;
+    }
+    let on: Vec<Pos2> = points.iter().map(|q| screen(*q)).collect();
+    if on.iter().any(|q| !q.is_finite()) {
+        return;
+    }
+    let edges = if closed { n } else { n.saturating_sub(1) };
+    for i in 0..edges {
+        let (a, b) = (on[i], on[(i + 1) % n]);
+        p.line_segment([a, b], Stroke::new(2.0, pal().accent));
+        if edges > 1 {
+            let long = dims3d::reading(points[i], points[(i + 1) % n]).0;
+            crate::canvas::tag(p, a + (b - a) * 0.5 + vec2(0.0, -6.0), egui::Align2::CENTER_BOTTOM, m.units.length(long));
+        }
+    }
+    for q in &on {
+        p.circle_filled(*q, 3.5, pal().accent);
+    }
+    if n < 2 {
+        return;
+    }
+    let (total, area) = dims3d::chain_reading(points, closed);
+    let mut text = if edges > 1 { tf("Total {}", &[&m.units.with_unit(total)]) } else { m.units.with_unit(total) };
+    if edges == 1 {
+        let [x, y, z] = dims3d::reading(points[0], points[1]).1.map(|d| m.units.length(d));
+        text = format!("{text}\nΔX {x}  ΔY {y}  ΔZ {z}");
+    }
+    if let Some(a) = area {
+        let (area, unit) = m.units.area(a);
+        text = format!("{text}\n{}", tf("Area {}", &[&format!("{area:.2} {unit}")]));
+    } else if closed {
+        text = format!("{text}\n{}", t("No area: its points aren't in one plane"));
+    }
+    let at = if closed { on[0] } else { on[n - 1] };
+    crate::canvas::tag(p, at + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, text);
 }
 
 /// Whether `tool` draws in the 3D view on the face under the cursor.
@@ -722,6 +827,13 @@ impl BimApp {
             (self.tool == Tool::Modify && self.sketch.is_none() && !picking).then(|| self.work_plane_ring(last, rect, ppp)).flatten();
         let (modify, demolish, selection) = (self.tool == Tool::Modify, self.tool == Tool::Demolish, self.selection.clone());
         let (paint, unpaint) = (self.tool == Tool::Paint, self.tool == Tool::Unpaint);
+        let attaching = self.tool == Tool::Attach;
+        // Trim/Extend in the 3D view takes walls as a plan does, at the point of the face clicked.
+        let trimming = matches!(self.tool, Tool::Trim(_) | Tool::TrimTo { .. }) && self.sketch.is_none();
+        let trim_first = match self.tool {
+            Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } => Some(first),
+            _ => None,
+        };
         // The floor being shaped, with Shape Editing's tools: its points and corners where its top is, which Modify Sub
         // Elements' grips drag up or down; Add Point and Add Split Line click on its top.
         let shaping = self.shaping().and_then(|id| model.shapeable(id).ok());
@@ -886,6 +998,58 @@ impl BimApp {
         o.hot_grip = boxed
             .filter(|_| modify && o.grip.is_none() && o.boxing.is_none() && o.drag.is_none())
             .and_then(|b| crate::section_box::grip_at(b, hover?, |p| on_screen(&cam, rect, ppp, p)));
+        // The wall or column selected alone has handles: its ends or its place, and arrows on its top and under its base. A drag
+        // from one changes that, and the command runs when the drag ends (`handles.rs`).
+        let single = match selection.as_slice() {
+            &[id] if modify && !lifting && sketch_z.is_none() => Some(id),
+            _ => None,
+        };
+        let own_handles = single.map(|id| handles::of(&model, id)).unwrap_or_default();
+        let handle_at = |cam: &Camera, at: Pos2| {
+            own_handles.iter().find(|(_, q)| on_screen(cam, rect, ppp, *q).distance(at) <= crate::section_box::GRIP + 2.0).copied()
+        };
+        if let Some(id) = single
+            && o.grip.is_none()
+            && o.boxing.is_none()
+            && !held
+            && response.drag_started_by(PointerButton::Primary)
+            && let Some(origin) = ui.input(|i| i.pointer.press_origin())
+            && let Some((h, q)) = handle_at(&cam, origin)
+        {
+            o.handle = Some((id, h, q, origin));
+        }
+        if !o.handle.is_some_and(|(id, ..)| Some(id) == single) {
+            o.handle = None;
+        }
+        // Where the held handle is now: an arrow at its height, up or down its plumb line and on a level within a few pixels; the
+        // rest over its level's plane under the pointer, snapped as a plan snaps.
+        let held_to = match (o.handle, latest) {
+            (Some((_, h, q, from)), Some(now)) if h.vertical() => cam.along(2, q, px(from), px(now)).map(|by| {
+                let reach = f64::from(crate::section_box::GRIP) / cam.scale.max(1e-9);
+                (P2(q[0], q[1]), handles::settled(&model, (q[2] + by).round(), reach))
+            }),
+            (Some((id, _, q, _)), Some(now)) => cam.on_plane(px(now), q[2]).map(|at| {
+                let level = model.elements.get(id).and_then(|e| model.level_of(e)).and_then(|g| model.elements.id(g));
+                let landed = level.map(|level| {
+                    let plane = CursorPlane { on: id, level, offset: 0.0, z: q[2] };
+                    snap3d(&model, &cam, px(now), ppp, at, plane, &[], shift, &snaps).at
+                });
+                (landed.unwrap_or(P2(at[0], at[1])), q[2])
+            }),
+            _ => None,
+        };
+        let mut handled = None;
+        if response.drag_stopped()
+            && let (Some((id, h, ..)), Some((to, z))) = (o.handle.take(), held_to)
+            && !self.canvas.quick()
+        {
+            handled = handles::command(&model, id, h, to, z);
+        }
+        o.hot_handle = if o.grip.is_none() && o.boxing.is_none() && o.drag.is_none() && o.handle.is_none() {
+            hover.and_then(|at| handle_at(&cam, at)).map(|(h, _)| h)
+        } else {
+            None
+        };
         // A drag from a grip of the floor being shaped raises or lowers that point or corner, to the millimetre; the command
         // runs when the drag ends.
         if lifting
@@ -933,21 +1097,23 @@ impl BimApp {
             raise = lifted_by.map(|by| (qs, by));
         }
         let still = o.lift.is_some();
-        // The primary button, or Shift and the middle button, orbit, 0.4° a point, round the point under the pointer where
-        // the drag began (the target, where nothing is); the middle button alone pans. Shift and the primary button box, in
-        // Modify (the sketch's lines while sketching).
+        // Shift and the middle button orbit, 0.4° a point, round the point under the pointer where the drag began (the target,
+        // where nothing is); the middle button alone pans. The primary button boxes, in Modify (the sketch's lines while
+        // sketching), and only that: in no tool does it move the camera.
         if response.drag_started()
             && o.grip.is_none()
             && o.boxing.is_none()
+            && o.handle.is_none()
             && !held
             && o.lift.is_none()
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
         {
-            let primary = response.dragged_by(PointerButton::Primary);
-            if primary && modify && shift {
-                o.select = Some(origin);
-            } else if primary || response.dragged_by(PointerButton::Middle) {
-                let orbit = primary || shift;
+            if response.dragged_by(PointerButton::Primary) {
+                if modify {
+                    o.select = Some(origin);
+                }
+            } else if response.dragged_by(PointerButton::Middle) {
+                let orbit = shift;
                 let pivot = orbit.then(|| surface(&o.picker, &cam, origin)).flatten().map(|s| s.at);
                 o.drag = Some((orbit, origin, pivot));
                 o.before = Some(cam);
@@ -1030,14 +1196,22 @@ impl BimApp {
         let lit_dim = hover.filter(|_| modify && o.drag.is_none() && sketch_z.is_none() && !picking).and_then(dim_at);
         let hovered = hover
             .filter(|_| {
-                (modify || demolish || paint || unpaint) && o.drag.is_none() && o.hot_grip.is_none() && sketch_z.is_none() && !picking
+                (modify || demolish || paint || unpaint || attaching || trimming)
+                    && o.drag.is_none()
+                    && o.hot_grip.is_none()
+                    && o.hot_handle.is_none()
+                    && sketch_z.is_none()
+                    && !picking
             })
             .filter(|_| lit_dim.is_none())
             .and_then(|at| pick(&o.picker, at))
-            .map(|h| h.id);
+            .map(|h| h.id)
+            .filter(|id| !attaching || attach_target(&model, *id))
+            .filter(|id| !trimming || model.wall(*id).is_some());
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let tints: Vec<(Id, Rgb)> = selection
             .iter()
+            .chain(trim_first.iter())
             .filter(|id| Some(**id) != shaped)
             .map(|id| (*id, rgb(canvas_pal().accent)))
             .chain(hovered.filter(|id| !selection.contains(id)).map(|id| (id, rgb(canvas_pal().hover))))
@@ -1163,6 +1337,33 @@ impl BimApp {
                 }
             }
         }
+        // The Measure tool: what a click would take, snapped to the model wherever that is, and the ruler, begun or laid.
+        let measuring = matches!(self.tool, Tool::Measure(_)) && sketch_z.is_none() && !picking;
+        let measure_pick = |at: Pos2| measure_point(scene, &cam, px(at), surface(&o.picker, &cam, at), ppp, &look3);
+        if measuring {
+            let screen = |q: P3| on_screen(&cam, rect, ppp, q);
+            let aim = hover.filter(|_| o.drag.is_none()).and_then(measure_pick);
+            // The chain so far, and on to the point under the cursor while it grows.
+            let growing = o.chain_done.is_none() && !o.chain.is_empty();
+            match aim.filter(|_| growing) {
+                Some(r) => {
+                    let mut chain = o.chain.clone();
+                    // Back on its first point, it would close.
+                    let closing = chain.len() >= 3 && closes(&cam, chain[0], r.at, ppp);
+                    if !closing {
+                        chain.push(r.at);
+                    }
+                    draw_chain(&p, &model, &chain, closing, &screen);
+                }
+                None => draw_chain(&p, &model, &o.chain, o.chain_done == Some(true), &screen),
+            }
+            if let Some(r) = aim {
+                if let Some([a, b]) = r.edge {
+                    p.line_segment([screen(a), screen(b)], Stroke::new(3.0, pal().accent));
+                }
+                p.circle_stroke(screen(r.at), 5.0, Stroke::new(1.5, pal().accent));
+            }
+        }
         // Rooms aren't seen in 3D but while selected: then a see-through solid in the selection's colour, from their bottom to
         // their top, over their boundary (an unbounded one's square).
         // With Rooms shown in the view's Visibility/Graphics (they are off in every new 3D view), all of them so.
@@ -1205,6 +1406,25 @@ impl BimApp {
         let screen = |p: P3| on_screen(&cam, rect, ppp, p);
         if let Some(b) = reboxed.or(boxed) {
             crate::section_box::draw(&p, &cam, b, modify, (o.boxing.map(|(k, _)| k), o.hot_grip), screen);
+        }
+        // The held handle's element as it would stand, and its height beside the arrow; then the handles, where they are now.
+        if let (Some((id, h, ..)), Some((to, z))) = (o.handle, held_to) {
+            for ring in handles::preview(&model, id, h, to, z) {
+                let ring: Vec<Pos2> = ring.into_iter().map(&screen).filter(|q| q.is_finite()).collect();
+                p.add(egui::Shape::closed_line(ring, Stroke::new(1.5, pal().accent)));
+            }
+            let at = screen([to.0, to.1, z]);
+            if h.vertical() && at.is_finite() {
+                crate::canvas::tag(&p, at + vec2(14.0, -8.0), egui::Align2::LEFT_BOTTOM, model.units.with_unit(z));
+            }
+        }
+        // A selected wall's location line, as a plan shows it, along its base.
+        if let Some(id) = single {
+            let line: Vec<Pos2> = handles::location_line(&model, id).into_iter().map(&screen).filter(|q| q.is_finite()).collect();
+            p.extend(egui::Shape::dashed_line(&line, Stroke::new(1.5, pal().accent), 8.0, 5.0));
+        }
+        for (h, q) in &own_handles {
+            draw_handle(&p, &cam, *h, *q, o.handle.map(|(_, held, ..)| held), o.hot_handle, screen);
         }
         // The drawing tools take their points on the face under the cursor (`workplane`), snapped as its level's plan snaps:
         // a wall chain under way on the plane its first point found, a run's end on the face it is clicked on (where there is
@@ -1369,6 +1589,7 @@ impl BimApp {
         // A click on a grip picks nothing behind it.
         let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
         let click = click.filter(|at| !boxed.is_some_and(|b| modify && crate::section_box::grip_at(b, *at, screen).is_some()));
+        let click = click.filter(|at| handle_at(&cam, *at).is_none());
         let on_patch = |at: Pos2| patch.is_some_and(|ring| crate::workplane::on_patch(&ring, at));
         let patched = click.is_some_and(on_patch);
         let click = click.filter(|_| !patched);
@@ -1386,6 +1607,9 @@ impl BimApp {
             .filter(|_| sketch_z.is_none() && !picking)
             .map(|at| dim_at(at).filter(|_| modify).or_else(|| pick(&o.picker, at).map(|h| h.id)));
         let dim_click = click.filter(|_| dimming).map(|at| (px(at), dim_pick(at)));
+        let measure_click = click.filter(|_| measuring).map(measure_pick);
+        // Where on the face a Trim click is: the side of the wall it keeps.
+        let trim_at = click.filter(|_| trimming).and_then(|at| surface(&o.picker, &cam, at)).map(|s| s.at);
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
         let target = click.filter(|_| drawing).and_then(|at| aimed(&o.picker, at));
@@ -1399,7 +1623,14 @@ impl BimApp {
                 Some((q, plane, _)) => self.draw3d(q, plane),
                 None => self.status = Status { text: self.needs_face(), error: true },
             },
-            Some(_) if dimming => {}
+            Some(_) if dimming || measuring => {}
+            Some(Some(id)) if attaching && attach_target(&model, id) => self.attach_to(id),
+            Some(Some(id)) if trimming && model.wall(id).is_some() => {
+                let on = trim_at.map_or_else(|| model.wall(id).map_or(P2(0.0, 0.0), |w| (w.start + w.end) * 0.5), |q| P2(q[0], q[1]));
+                self.trim_click(Some(id), on);
+            }
+            Some(_) if trimming => {}
+            Some(_) if attaching => {}
             Some(_) => {
                 self.status =
                     Status { text: crate::lang::t("this tool works in plan views: open one from the Project Browser").into(), error: true }
@@ -1408,6 +1639,22 @@ impl BimApp {
         }
         if let Some((at, r)) = dim_click {
             self.dim3_click(&cam, at, r);
+        }
+        match measure_click {
+            Some(Some(r)) => {
+                let o = &mut self.orbit;
+                // A chain done, the click begins another; back on the first point of three or more, it closes.
+                if o.chain_done.take().is_some() {
+                    o.chain.clear();
+                }
+                if o.chain.len() >= 3 && closes(&cam, o.chain[0], r.at, ppp) {
+                    o.chain_done = Some(true);
+                } else if o.chain.last() != Some(&r.at) {
+                    o.chain.push(r.at);
+                }
+            }
+            Some(None) => self.status = Status { text: t("Pick a corner, an edge or a face of the model to measure.").into(), error: true },
+            None => {}
         }
         // The selection box being dragged, and what one let go picks.
         if let (Some(from), Some(now)) = (self.orbit.select, latest) {
@@ -1463,6 +1710,9 @@ impl BimApp {
         }
         if let Some((lo, hi)) = boxed_to {
             self.run("section_box", json!({"min": lo, "max": hi}));
+        }
+        if let Some((command, params)) = handled {
+            self.run(command, params);
         }
         // This view's drag's preview, while it lasts; a plan's is its own.
         if lift_held {

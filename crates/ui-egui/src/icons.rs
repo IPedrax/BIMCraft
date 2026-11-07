@@ -111,6 +111,7 @@ icon_names! {
     Flip,
     Attach,
     Detach,
+    Ai,
     Floor,
     WorkPlane,
     Ceiling,
@@ -982,6 +983,12 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(7.0, 13.0), (7.0, 21.0), (17.0, 21.0), (17.0, 13.0)]);
             g.line(&[(12.0, 14.0), (12.0, 7.0)]);
             g.line(&[(9.5, 9.5), (12.0, 7.0), (14.5, 9.5)]);
+        }
+        Icon::Ai => {
+            // The letters themselves, A then I, as the one sign everyone reads for this.
+            g.line(&[(2.5, 20.0), (9.0, 4.0), (15.5, 20.0)]);
+            g.line(&[(5.0, 14.5), (13.0, 14.5)]);
+            g.line(&[(20.5, 4.0), (20.5, 20.0)]);
         }
         Icon::Detach => {
             g.line(&[(3.0, 8.0), (12.0, 3.0), (21.0, 8.0)]);

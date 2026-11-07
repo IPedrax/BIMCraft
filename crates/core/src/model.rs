@@ -1507,6 +1507,15 @@ pub struct Column {
     pub height: f64,
     #[serde(default)]
     pub base_offset: f64,
+    /// How far above `top_level` its top is.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub top_offset: f64,
+    /// The roof or floor its top follows from below, as a wall's; a footing has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attach_top: Option<Guid>,
+    /// The roof or floor its base stands on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attach_base: Option<Guid>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -1989,13 +1998,16 @@ macro_rules! visit_refs {
             }
             Element::Shaft(Shaft { level, top_level, .. })
             | Element::Mass(Mass { level, top_level, .. })
-            | Element::Column(Column { level, top_level, .. })
-            | Element::StructuralColumn(Column { level, top_level, .. })
-            | Element::Footing(Column { level, top_level, .. })
             | Element::Stair(Stair { level, top_level, .. })
             | Element::Ramp(Ramp { level, top_level, .. }) => {
                 f(level);
                 if let Some(g) = top_level { f(g) }
+            }
+            Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => {
+                f(& $($m)? c.level);
+                if let Some(g) = & $($m)? c.top_level { f(g) }
+                if let Some(g) = & $($m)? c.attach_top { f(g) }
+                if let Some(g) = & $($m)? c.attach_base { f(g) }
             }
             Element::Door(o) | Element::Window(o) => f(& $($m)? o.host),
             Element::Dimension(d) => {
@@ -3827,7 +3839,7 @@ impl Model {
             .filter_map(|id| self.elements.get(id))
             .filter(|e| {
                 matches!(e, Element::Column(c) | Element::StructuralColumn(c) if c.room_bounding && {
-                    let (bottom, top) = self.span(c.level, c.base_offset, c.top_level, c.height);
+                    let (bottom, top) = self.column_span(e);
                     bottom <= z && z < top
                 })
             })
@@ -4201,6 +4213,23 @@ impl Model {
     pub fn span(&self, level: impl Key, base_offset: f64, top_level: Option<Guid>, height: f64) -> (f64, f64) {
         let base = self.elevation(level) + base_offset;
         (base, top_level.map_or(base + height, |t| self.elevation(t)))
+    }
+
+    /// Column `e`'s lowest base and highest top (a structural column's, a footing's): by its constraints, or on and under what it's
+    /// attached to. Everything that reads a column's heights comes here. (0, 0) for what isn't one.
+    pub fn column_span(&self, e: &Element) -> (f64, f64) {
+        let Some(col) = e.column() else { return (0.0, 0.0) };
+        walls::column_heights(self, e, col)
+    }
+
+    /// Its base by its level and offset, whatever it's attached to.
+    pub fn column_own_base(&self, col: &Column) -> f64 {
+        self.elevation(col.level) + col.base_offset
+    }
+
+    /// Its top by its top constraint, whatever it's attached to: its top level and offset, or its base and height.
+    pub fn column_own_top(&self, col: &Column) -> f64 {
+        col.top_level.map_or(self.column_own_base(col) + col.height, |t| self.elevation(t) + col.top_offset)
     }
 
     /// Whether the horizontal plane at height `z` passes through mass `ms`.
@@ -5301,6 +5330,66 @@ impl Model {
                 })
                 .min_by(|x, y| x.distance.total_cmp(&y.distance))
         })
+    }
+
+    /// How far straight wall `w` stands from the nearest parallel wall centre line or grid on each of its sides (left of the way
+    /// it runs, then right), measured from its middle where they run past it, on the plan of its level: the temporary
+    /// dimensions of a selected wall. A curved wall has none, and neither has a side with nothing parallel within [`REACH`].
+    pub fn wall_clearances(&self, id: impl Key) -> [Option<Clearance>; 2] {
+        let Some(w) = self.wall(id).filter(|w| w.arc == 0.0) else { return [None, None] };
+        let own = self.guid(id);
+        let (axis, (ext, int)) = (walls::Axis::of(w), walls::faces(self, w));
+        let mid_off = (ext + int) / 2.0;
+        let (a, b) = (axis.at(0.0, mid_off), axis.at(axis.length(), mid_off));
+        let at = (a + b) * 0.5;
+        const REACH: f64 = 50_000.0;
+        let lookup = self.lookup();
+        let box_ = [a.0.min(b.0), a.1.min(b.1), a.0.max(b.0), a.1.max(b.1)];
+        let lines: Vec<(Reference, Line)> = lookup
+            .walls_near(box_, REACH)
+            .into_iter()
+            .chain(lookup.grids())
+            .filter(|i| self.guid(*i) != own)
+            .filter_map(|i| match self.elements.get(i)? {
+                Element::Grid(g) => Some((Reference::line(self.guid(i), Face::Centre), (g.start, g.end))),
+                Element::Wall(o) if o.arc == 0.0 && self.cut_by(o, w.level) => {
+                    let (axis, (ext, int)) = (walls::Axis::of(o), walls::faces(self, o));
+                    let mid = (ext + int) / 2.0;
+                    Some((Reference::line(self.guid(i), Face::Centre), (axis.at(0.0, mid), axis.at(axis.length(), mid))))
+                }
+                _ => None,
+            })
+            .filter(|(_, (p, q))| geom::parallel(a, b, *p, *q))
+            .collect();
+        let left = (b - a).unit().perp();
+        [left, left * -1.0].map(|toward| {
+            lines
+                .iter()
+                .filter_map(|&(to, (p, q))| {
+                    let hit = geom::line_intersection(at, at + toward, p, q)?;
+                    let distance = (hit - at).dot(toward);
+                    (distance > TOL && distance <= REACH && geom::dist_to_segment(hit, p, q) <= 1e-6).then_some(Clearance {
+                        toward,
+                        distance,
+                        to,
+                    })
+                })
+                .min_by(|x, y| x.distance.total_cmp(&y.distance))
+        })
+    }
+
+    /// The dimensions in the plan `key` that measure to element `of`, found in the lookup: what lights up, and what its number
+    /// moves, while it's selected.
+    pub fn dimensions_on(&self, of: impl Key, key: impl Key) -> Vec<Id> {
+        let Some(g) = self.elements.guid(of) else { return Vec::new() };
+        let lookup = self.lookup();
+        lookup
+            .referrers(&g)
+            .filter(|id| match self.elements.get(*id) {
+                Some(e @ Element::Dimension(d)) => !d.alignment && d.refs.iter().any(|r| r.id == g) && self.annotation_in(e, key),
+                _ => false,
+            })
+            .collect()
     }
 
     /// The stretch of its wall's location line a door or window stands in, as distances along it: from the nearest face,
@@ -6970,9 +7059,22 @@ impl Model {
                     Some(t) => level_ok(t)?,
                     None => size(&format!("{who} height"), col.height)?,
                 }
-                let (bottom, top) = self.span(col.level, col.base_offset, col.top_level, col.height);
+                coord(&format!("{who} top offset"), col.top_offset)?;
+                for (what, at) in [("attach_top", col.attach_top), ("attach_base", col.attach_base)] {
+                    if let Some(a) = at {
+                        if matches!(e, Element::Footing(_)) {
+                            return Err(format!("{who}: a footing has no {what}"));
+                        }
+                        if !matches!(self.elements.get(a), Some(Element::Roof(_) | Element::Floor(_))) {
+                            return Err(format!("{who}: {what} {} isn't a roof or a floor", self.shown(a)));
+                        }
+                    }
+                }
+                let (bottom, top) = self.column_span(e);
                 if top <= bottom + TOL {
-                    return Err(format!("{who}: its top must be above its base"));
+                    return Err(format!(
+                        "{who}: its top ({top:.0} mm) must be above its base ({bottom:.0} mm); raise its top constraint, or attach it to something over its base"
+                    ));
                 }
             }
             run_arm!(r) => {

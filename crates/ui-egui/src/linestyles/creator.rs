@@ -25,6 +25,19 @@ impl PatternEditor {
 /// Paint the core's geometry, including the same glyph outlines used in SVG, PNG and PDF.
 pub(super) fn paint(ui: &Ui, segments: &[Segment], rect: Rect, k: f32, curved: bool) {
     let ink = ui.visuals().text_color();
+    paint_with(ui, segments, rect, k, curved, ink);
+}
+
+/// A straight sample of `segments` in `ink`, a solid line where there are none: a row of a Line Style list.
+pub(super) fn paint_in(ui: &Ui, segments: &[Segment], rect: Rect, k: f32, ink: egui::Color32) {
+    if segments.is_empty() {
+        ui.painter().line_segment([rect.left_center(), rect.right_center()], Stroke::new(1.5, ink));
+    } else {
+        paint_with(ui, segments, rect, k, false, ink);
+    }
+}
+
+fn paint_with(ui: &Ui, segments: &[Segment], rect: Rect, k: f32, curved: bool, ink: egui::Color32) {
     let painter = ui.painter().with_clip_rect(rect);
     let pts: Vec<_> = (0..=120)
         .map(|i| {

@@ -1,4 +1,4 @@
-//! The 3D view as a working view: a drag orbits round the point under the cursor and the wheel zooms toward it, and the drawing
+//! The 3D view as a working view: Shift and a middle drag orbit round the point under the cursor and the wheel zooms toward it, and the drawing
 //! tools (walls, beams and braces, pipes, conduits and trays, columns, components) take their points on the face under the cursor,
 //! snapped as a plan snaps; over empty space each says what it needs. In both profiles, on the processor's picture and, where the
 //! machine has a graphics adapter, on the card's.
@@ -35,20 +35,34 @@ fn views(script: &str) -> Vec<(String, Harness<'static, BimApp>)> {
 const FACE: P3 = [5000.0, -100.0, 1500.0];
 
 #[test]
-fn a_drag_orbits_round_the_point_under_the_cursor_which_stays_where_it_is_on_screen() {
+fn shift_and_a_middle_drag_orbit_round_the_point_under_the_cursor_which_stays_where_it_is_on_screen() {
     for (name, mut h) in views(BOX) {
         let before = h.state().orbit.camera.unwrap();
         let at = h.state().screen3(FACE);
-        drag_screen(&mut h, at, at + vec2(90.0, 40.0), PointerButton::Primary);
+        orbit_screen(&mut h, at, at + vec2(90.0, 40.0));
         let cam = h.state().orbit.camera.unwrap();
         assert!((cam.azimuth - before.azimuth).abs() > 10.0 && (cam.elevation - before.elevation).abs() > 5.0, "{name}: it turned");
         let now = h.state().screen3(FACE);
         assert!(now.distance(at) < 0.5, "{name}: the face under the cursor went from {at:?} to {now:?}");
         // From the background, round the target as ever.
         let corner = h.state().orbit.rect.min + vec2(6.0, 6.0);
-        drag_screen(&mut h, corner, corner + vec2(60.0, 0.0), PointerButton::Primary);
+        orbit_screen(&mut h, corner, corner + vec2(60.0, 0.0));
         let turned = h.state().orbit.camera.unwrap();
         assert!(turned.azimuth != cam.azimuth && turned.target == cam.target, "{name}");
+    }
+}
+
+#[test]
+fn a_primary_drag_never_moves_the_camera_in_any_tool() {
+    for (name, mut h) in views(BOX) {
+        let before = h.state().orbit.camera;
+        let at = h.state().screen3(FACE);
+        drag_screen(&mut h, at, at + vec2(90.0, 40.0), PointerButton::Primary);
+        assert_eq!(h.state().orbit.camera, before, "{name}: Modify's drag is a box");
+        h.state_mut().set_tool(Tool::Measure(None));
+        h.run();
+        drag_screen(&mut h, at, at + vec2(90.0, 40.0), PointerButton::Primary);
+        assert_eq!(h.state().orbit.camera, before, "{name}: another tool's drag leaves the view be");
     }
 }
 

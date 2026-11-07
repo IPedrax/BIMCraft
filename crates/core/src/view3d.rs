@@ -867,11 +867,22 @@ fn solids_in_with(
                     slabs(&mut out, m, id, CEILING, face, rise);
                 }
             }
-            Element::Column(col) => {
-                out.push(slab(id, WALL, &m.column_outline(e), m.span(col.level, col.base_offset, col.top_level, col.height)))
-            }
-            Element::StructuralColumn(col) | Element::Footing(col) => {
-                out.push(slab(id, STRUCTURE, &m.column_outline(e), m.span(col.level, col.base_offset, col.top_level, col.height)))
+            Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => {
+                let color = if matches!(e, Element::Column(_)) { WALL } else { STRUCTURE };
+                // Attached, its top follows what's over it, however that slopes: prisms, as a wall's.
+                let parts = walls::column_prisms(m, e);
+                if parts.is_empty() {
+                    out.push(slab(id, color, &m.column_outline(e), m.column_span(e)));
+                }
+                out.extend(parts.into_iter().map(|p| Solid::Prism {
+                    owner: id,
+                    color,
+                    tex: 0,
+                    ring: p.ring,
+                    bottom: p.bottom,
+                    top: p.top,
+                    curve: None,
+                }));
             }
             // A rectangular run is a sloped prism, which a section cuts; a round one a tube, shown beyond its line.
             crate::model::run_arm!(_) => {
@@ -2056,6 +2067,26 @@ impl Scene {
             }
             let e = seen.entry(t.owner).or_insert((true, false));
             *e = (e.0 && on.iter().all(|q| inside(*q)), e.1 || (crossing && touches(&on)) || on.iter().any(|q| inside(*q)));
+        }
+        // The levels, which are lines and a head over the picture rather than surfaces: by what of them is drawn, as Revit
+        // boxes them, the far edges of each plane and its head.
+        let shown = |id: Id| look.shows(id).then_some((Rgb(0, 0, 0), false));
+        for marks in level_marks(&self.levels, cam, &shown) {
+            let head = marks.head.iter().copied();
+            let ends = marks.lines.iter().filter(|(_, w)| *w == 2).flat_map(|([a, b], _)| [*a, *b]);
+            let on: Vec<P2> = head
+                .chain(ends)
+                .map(|p| {
+                    let (x, y, _) = cam.project(p);
+                    P2(x, y)
+                })
+                .collect();
+            if on.is_empty() || on.iter().any(|q| !(q.0.is_finite() && q.1.is_finite())) {
+                continue;
+            }
+            let all = on.iter().all(|q| inside(*q));
+            let any = on.iter().any(|q| inside(*q)) || (crossing && on.chunks(2).any(|s| s.len() == 2 && touches(&[s[0], s[1], s[1]])));
+            seen.insert(marks.id, (all, any));
         }
         seen.into_iter().filter(|(_, (all, any))| if crossing { *any } else { *all }).map(|(id, _)| id).collect()
     }
