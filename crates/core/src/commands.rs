@@ -7665,8 +7665,8 @@ fn room(s: &mut Session, p: &Value) -> R {
 
 /// The elements whose reference lines may come within `reach` mm of `p` in a plan of `level`, by id: the walls near it
 /// that span the plan's cut height (a wall's faces and caps stay within twice the thickest wall's thickness of its location
-/// line: a cap runs on no farther than the thickest wall meeting it, [`walls::cap`]), the doors and windows in them, and
-/// the grids.
+/// line: a cap runs on no farther than the thickest wall meeting it, [`walls::cap`]), the doors and windows in them, the
+/// grids, and the columns standing on the level.
 fn near_point(m: &Model, level: Guid, p: P2, reach: f64) -> BTreeSet<Id> {
     let look = m.lookup();
     let thickest = m.types.wall.values().map(|t| t.thickness).filter(|t| t.is_finite()).fold(0.0, f64::max);
@@ -7682,6 +7682,13 @@ fn near_point(m: &Model, level: Guid, p: P2, reach: f64) -> BTreeSet<Id> {
     }
     out.extend(walls);
     out.extend(look.grids());
+    out.extend(m.elements.iter().filter_map(|(id, e)| match e {
+        Element::Column(c) | Element::StructuralColumn(c) if c.level == level => {
+            let size = m.column_type(e).map_or(0.0, |t| t.width.max(t.depth));
+            (c.at.dist(p) <= reach + size).then_some(id)
+        }
+        _ => None,
+    }));
     out
 }
 
@@ -7704,6 +7711,7 @@ fn nearest_reference(m: &Model, level: Guid, p: P2, keep: impl Fn(Line) -> bool,
     ids.filter(|id| match m.elements.get(*id) {
         Some(Element::Wall(w)) => cut(Some(w)),
         Some(Element::Door(o) | Element::Window(o)) => cut(m.wall(o.host)),
+        Some(Element::Column(c) | Element::StructuralColumn(c)) => c.level == level,
         Some(Element::Grid(_)) => true,
         _ => false,
     })
@@ -7735,6 +7743,7 @@ fn nearest_end(m: &Model, level: Guid, view: Option<Guid>, p: P2, ids: impl Iter
     ids.filter(|id| match m.elements.get(*id) {
         Some(Element::Wall(w)) => cut(Some(w)),
         Some(Element::Door(o) | Element::Window(o)) => cut(m.wall(o.host)),
+        Some(Element::Column(c) | Element::StructuralColumn(c)) => c.level == level,
         Some(Element::Grid(_)) => true,
         Some(Element::DetailLine(l)) => m.same(l.view, plan),
         _ => false,

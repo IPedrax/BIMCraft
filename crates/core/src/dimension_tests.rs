@@ -488,3 +488,29 @@ fn an_equal_dimension_spreads_its_inner_references_evenly_and_keeps_them_so() {
     let e = err(&mut s, "dimension_constraint", json!({"id": one, "equal": true}));
     assert!(e.contains("segments"), "{e}");
 }
+
+#[test]
+fn a_dimension_measures_between_structural_column_faces_and_centre_lines() {
+    let mut s = Session::new();
+    let a = id_of(&run(&mut s, "structural_column", json!({"at": [3000, 3000]})));
+    let b = id_of(&run(&mut s, "structural_column", json!({"at": [7000, 5000]})));
+    // Across the column (its line running north): centre to centre is 4000 east.
+    let across =
+        id_of(&run(&mut s, "dimension", json!({"refs": [{"id": a, "face": "across"}, {"id": b, "face": "across"}], "at": [5000, 4000]})));
+    assert_eq!(values(&mut s, across), json!([4000.0]));
+    // Its east and west faces: 3700 between them.
+    let faces =
+        id_of(&run(&mut s, "dimension", json!({"refs": [{"id": a, "face": "end"}, {"id": b, "face": "start"}], "at": [5000, 4000]})));
+    assert_eq!(values(&mut s, faces), json!([3700.0]));
+    // Its centre line running east: 2000 north.
+    let along = id_of(&run(&mut s, "dimension", json!({"refs": [{"id": a}, {"id": b}], "at": [5000, 4000]})));
+    assert_eq!(values(&mut s, along), json!([2000.0]));
+    // A point on a face finds it, as a wall's face does.
+    let near = id_of(&run(&mut s, "dimension", json!({"refs": [[3150, 3050], [6850, 5050]], "at": [5000, 4000]})));
+    assert_eq!(values(&mut s, near), json!([3700.0]));
+    // The column moves: the dimensions follow it.
+    run(&mut s, "move", json!({"ids": [b], "by": [1000, 0]}));
+    assert_eq!(values(&mut s, across), json!([5000.0]));
+    assert_eq!(values(&mut s, faces), json!([4700.0]));
+    assert_eq!(values(&mut s, along), json!([2000.0]));
+}
