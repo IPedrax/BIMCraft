@@ -6,6 +6,7 @@ mod association;
 pub(crate) mod document;
 pub(crate) mod exists;
 mod extrusion;
+mod temp_hide;
 mod types_dialog;
 
 use crate::popup::Modal;
@@ -114,7 +115,13 @@ struct FormText {
     material: String,
     visible: String,
     void: bool,
+    /// Which form it is while the document is open, whatever its place in the list: what Temporary Hide/Isolate hides it by
+    /// (`temp_hide.rs`). Given when it is made, never saved.
+    tag: u64,
 }
+
+/// The last form's `tag`.
+static TAGS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 impl FormText {
     fn of(f: &Form) -> FormText {
@@ -137,6 +144,7 @@ impl FormText {
             material: f.material.clone(),
             visible: f.visible.as_ref().map(expr_text).unwrap_or_default(),
             void: f.void,
+            tag: TAGS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1,
         }
     }
 
@@ -744,7 +752,8 @@ impl FamilyEditor {
 
     /// The preview, drawn again when what it shows or how it's looked at changes. A form the type previewed hides is drawn
     /// ghosted (`ghosted`), as Revit's family editor draws it, unless Preview Visibility is on: then the family is drawn as it
-    /// is placed, without it. The camera is fitted to every form either way, so turning Preview Visibility on doesn't move it.
+    /// is placed, without it. The camera is fitted to every form either way, so turning Preview Visibility on doesn't move it,
+    /// nor does Temporary Hide/Isolate leaving forms or a door's wall out (`temp_hide.rs`).
     fn refresh(&mut self, ctx: &Context, base: &Model) {
         let ground = crate::canvas::color(bimcraft_core::render::PAPER);
         let placed_only = self.document.preview_visibility;
@@ -760,6 +769,7 @@ impl FamilyEditor {
                     self.document.preview_size,
                     ground.to_array(),
                     placed_only,
+                    self.temporary(),
                 )
                     .hash(&mut h);
                 (base.materials.len(), base.images.len()).hash(&mut h);
@@ -775,9 +785,15 @@ impl FamilyEditor {
             let [w, h] = self.document.preview_size;
             let scene = Scene::new(&every);
             let cam = scene.fit_in(self.look.0, self.look.1, w, h, &bimcraft_core::graphics::Look::with(&every, &graphics));
-            let image = if placed_only && ghosts.is_some() {
-                let placed = self.scratch(base, &f)?;
-                Scene::new(&placed).render_in(&cam, &[], &bimcraft_core::graphics::Look::with(&placed, &graphics))
+            // What Temporary Hide/Isolate hides for now: forms, and a door's or a window's wall.
+            let shown = if placed_only { &f } else { ghosts.as_ref().unwrap_or(&f) };
+            let hidden = temp_hide::without(shown, |i| self.temp_hidden_form(i));
+            if self.temp_hidden_host() {
+                graphics.categories.insert("wall".into(), bimcraft_core::graphics::Override { hidden: true, ..Default::default() });
+            }
+            let image = if hidden.is_some() || (placed_only && ghosts.is_some()) {
+                let drawn = self.scratch(base, hidden.as_ref().unwrap_or(shown))?;
+                Scene::new(&drawn).render_in(&cam, &[], &bimcraft_core::graphics::Look::with(&drawn, &graphics))
             } else {
                 scene.render_in(&cam, &[], &bimcraft_core::graphics::Look::with(&every, &graphics))
             };

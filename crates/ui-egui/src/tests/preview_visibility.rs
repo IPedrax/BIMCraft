@@ -7,11 +7,11 @@ use egui::epaint::ColorMode;
 use egui::{Color32, ImageData, Shape};
 
 /// A cabinet whose second form shows only where Show Top is ticked: in type A, not in type B.
-const CABINET: &str = r#"family {"name": "Cabinet", "category": "generic", "parameters": [{"name": "Show Top", "kind": "yesno", "group": "visibility", "value": true}], "types": {"A": {}, "B": {"Show Top": false}}, "forms": [{"profile": [[0, 0], [1000, 0], [1000, 500], [0, 500]], "to": 500}, {"profile": [[2000, 0], [3000, 0], [3000, 500], [2000, 500]], "to": 600, "visible": "Show Top"}]}"#;
+pub(super) const CABINET: &str = r#"family {"name": "Cabinet", "category": "generic", "parameters": [{"name": "Show Top", "kind": "yesno", "group": "visibility", "value": true}], "types": {"A": {}, "B": {"Show Top": false}}, "forms": [{"profile": [[0, 0], [1000, 0], [1000, 500], [0, 500]], "to": 500}, {"profile": [[2000, 0], [3000, 0], [3000, 500], [2000, 500]], "to": 600, "visible": "Show Top"}]}"#;
 
 /// The last whole picture handed to the harness for each texture: what a renderer would draw, kept to be read.
 #[derive(Clone, Default)]
-struct Pictures(Arc<std::sync::Mutex<Vec<(egui::TextureId, egui::ColorImage)>>>);
+pub(super) struct Pictures(Arc<std::sync::Mutex<Vec<(egui::TextureId, egui::ColorImage)>>>);
 
 impl egui_kittest::TestRenderer for Pictures {
     fn handle_delta(&mut self, delta: &mut egui::TexturesDelta) {
@@ -31,7 +31,7 @@ impl egui_kittest::TestRenderer for Pictures {
 }
 
 /// The Cabinet open in the family document, with the preview's pictures kept.
-fn cabinet() -> (Harness<'static, BimApp>, Pictures) {
+pub(super) fn cabinet() -> (Harness<'static, BimApp>, Pictures) {
     let mut s = Session::new();
     s.script(&format!("{BOX}\n{CABINET}")).unwrap();
     let pictures = Pictures::default();
@@ -47,7 +47,7 @@ fn cabinet() -> (Harness<'static, BimApp>, Pictures) {
 }
 
 /// The preview's last picture.
-fn preview(h: &Harness<BimApp>, pictures: &Pictures) -> egui::ColorImage {
+pub(super) fn preview(h: &Harness<BimApp>, pictures: &Pictures) -> egui::ColorImage {
     let named = |id: &egui::TextureId| h.ctx.tex_manager().read().meta(*id).is_some_and(|m| m.name == "family-preview");
     let kept = pictures.0.lock().unwrap();
     kept.iter().rev().find(|(id, _)| named(id)).map(|(_, p)| p.clone()).expect("the preview was drawn")
@@ -62,7 +62,7 @@ fn preview_type(h: &mut Harness<BimApp>, name: &str) {
 }
 
 /// The view control bar's Preview Visibility pressed: the lowest node of the name, the banner being over the view.
-fn toggle(h: &mut Harness<BimApp>) {
+pub(super) fn toggle(h: &mut Harness<BimApp>) {
     let at = h.get_all_by_label("Preview Visibility").map(|n| n.rect().center()).max_by(|a, b| a.y.total_cmp(&b.y)).unwrap();
     click_at(h, at);
 }
@@ -73,7 +73,7 @@ fn previewing(h: &Harness<BimApp>) -> bool {
 }
 
 /// The colours of the closed outlines the last frame stroked.
-fn outlines(h: &Harness<BimApp>) -> Vec<(egui::Rect, Color32)> {
+pub(super) fn outlines(h: &Harness<BimApp>) -> Vec<(egui::Rect, Color32)> {
     fn walk(s: &Shape, out: &mut Vec<(egui::Rect, Color32)>) {
         match s {
             Shape::Rect(r) => out.push((r.rect, r.stroke.color)),
@@ -92,7 +92,7 @@ fn outlines(h: &Harness<BimApp>) -> Vec<(egui::Rect, Color32)> {
 }
 
 /// The pixels where two pictures differ.
-fn differ(a: &egui::ColorImage, b: &egui::ColorImage) -> Vec<usize> {
+pub(super) fn differ(a: &egui::ColorImage, b: &egui::ColorImage) -> Vec<usize> {
     assert_eq!(a.size, b.size);
     (0..a.pixels.len()).filter(|&i| a.pixels[i] != b.pixels[i]).collect()
 }

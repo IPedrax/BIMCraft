@@ -230,6 +230,22 @@ its name over it. The camera is fitted to every form either way, so the toggle d
 toggle is the document's (`document::State`), off when a family opens, and no part of the draft: not saved, no unsaved change, no
 step of its history. A void hidden in a type cuts nothing in either.
 
+Temporary Hide/Isolate works in the family document's view as in the project's (`editor/temp_hide.rs`): Hide Element (HH), Hide
+Category (HC), Isolate Element (HI), Isolate Category (IC) and Reset (HR), from the keys (or what Keyboard Shortcuts made them) or
+the view control bar's Temporary Hide/Isolate menu (Apply Hide/Isolate to View greyed: a family's views keep nothing hidden for
+good yet). It acts on what is selected: the form selected in a family that isn't adaptive, the points, lines and forms selected in
+the modelling view; the selection goes. A family has no categories of elements, so the view's own stand for them, as Revit's
+family editor names them: Forms (solid and void alike: forms have no subcategory), Reference Points, Lines, Reference Planes (the
+datums and the family's planes the modelling view draws) and, in a door's or a window's preview, the wall it stands in. Only forms,
+points and lines are selected, so they are what HC hides; IC hides every other category the view draws, and HI the reference
+planes or the wall with the other elements. The preview leaves a hidden solid form out of what it draws (`temp_hide::without`; a
+hidden void still cuts, being never drawn) and hides the wall by its category; the modelling view neither draws nor picks a
+hidden element (`adaptive_view::Hidden`), the datums staying placed round everything. A form is known by a `tag` the document
+gives it, so a hidden one stays hidden as forms move in the list. A hidden form stays in the Forms list. What is hidden is the
+document's (`document::State::temp`), as Preview Visibility: not saved, no step of the history, no unsaved change, gone when the
+family closes. While it hides anything the view wears the project's cyan frame (`footer::FRAME`) and the bar says
+"Temporary Hide/Isolate (HR resets)"; Preview Visibility's orange frame is then drawn just inside it, so both show.
+
 ## Shared parameters file
 
 A shared parameters file (`shared_parameters.rs`, the `shared_parameters` command, Manage > Shared Parameters) is a plain-text
