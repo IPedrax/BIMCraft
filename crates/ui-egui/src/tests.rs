@@ -5691,6 +5691,8 @@ fn the_family_editor_edits_a_family_says_what_wont_build_and_starts_a_new_one_of
     type_into(&mut h, "Parameter Value 4", "55");
     press(&mut h, "OK");
     press(&mut h, "Load into Project");
+    // The project has the table otherwise: its values too, as they were typed.
+    press(&mut h, "Overwrite the existing version and its parameter values");
     let thickness = |h: &Harness<BimApp>| h.state().session.model.families["Table"].parameters[3].value.clone();
     assert_eq!(thickness(&h), json!(55.0));
     // A formula naming what isn't there is said, in the window; the project's family is as it was.
@@ -6738,6 +6740,8 @@ fn adaptive_family_editor_reopens_exact_failed_instance_and_keeps_valid_dependen
     press(&mut h, "Replay Instance");
     assert!(h.query_all_by_label_contains("Replaying instance").count() > 0);
     press(&mut h, "Load into Project");
+    // The replayed placement is the family's preview: the project has the family otherwise.
+    press(&mut h, "Overwrite the existing version");
     let Element::Component(c) = &h.state().session.model.elements[&id] else { panic!() };
     assert_eq!(c.adaptive.as_ref(), Some(&p));
     let r = h.state().session.model.component_adaptive_evaluation(c).unwrap();
@@ -6807,5 +6811,6 @@ fn adaptive_editor_visual_preview_in_three_looks() {
 mod background_grid;
 
 mod extrusion_properties;
+mod family_already_exists;
 mod family_document;
 mod preview_visibility;

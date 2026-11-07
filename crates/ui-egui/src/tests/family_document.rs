@@ -74,6 +74,8 @@ fn equals_associates_a_form_property_and_can_create_and_remove_a_parameter() {
     press(&mut h, "<None>");
     press(&mut h, "OK");
     press(&mut h, "Load into Project");
+    // Loaded once already, the project has it otherwise now.
+    press(&mut h, "Overwrite the existing version");
     assert_eq!(h.state().session.model.families["New Family"].forms[0].to, bimcraft_core::family::Expr::Number(750.));
 }
 
@@ -98,6 +100,7 @@ fn associations_filter_yesno_and_material_and_preserve_the_project_until_load() 
     assert_eq!(h.get_by_label("Form Material 1").value().as_deref(), Some(material.as_str()));
     assert_eq!(h.state().session.model.to_json().unwrap(), before);
     press(&mut h, "Load into Project");
+    press(&mut h, "Overwrite the existing version");
     let f = &h.state().session.model.families["Associations"];
     assert_eq!(f.forms[0].visible, Some(bimcraft_core::family::Expr::Formula("Show".into())));
     assert_eq!(f.forms[0].material, "Finish");

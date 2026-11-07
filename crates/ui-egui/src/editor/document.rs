@@ -36,6 +36,11 @@ pub(crate) struct State {
     /// Revit's Preview Visibility: the preview shows the family as placed, the forms its type hides left out, rather than
     /// ghosted. The view's own: no part of the draft, so neither saved nor a step of its history.
     pub(super) preview_visibility: bool,
+    /// Load into Project and Close went in: the document closes once the frame's work is done.
+    pub(super) loaded_to_close: bool,
+    /// The shared families nested in this one that the project already has, defined otherwise, which "Shared Family Already
+    /// Loaded" asks about on loading (`exists`). T6 (nested families) works them out; until then only a test puts them here.
+    pub(super) shared_nested: Vec<String>,
 }
 
 impl Default for State {
@@ -50,6 +55,8 @@ impl Default for State {
             refused: None,
             clean: None,
             preview_visibility: false,
+            loaded_to_close: false,
+            shared_nested: Vec::new(),
         }
     }
 }
@@ -112,6 +119,13 @@ impl FamilyEditor {
     /// The draft `d` was saved or loaded into the project: changes are counted from it.
     pub(super) fn saved_as(&mut self, d: Draft) {
         self.document.clean = Some(d);
+    }
+
+    /// The shared nested families the project already has otherwise, which loading asks about: T6's to work out, and until
+    /// then a test's to inject.
+    #[cfg(test)]
+    pub(crate) fn set_shared_nested(&mut self, names: Vec<String>) {
+        self.document.shared_nested = names;
     }
 
     /// Whether Preview Visibility is on: the preview shows the family as placed.

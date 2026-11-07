@@ -528,12 +528,26 @@ a ceiling or a roof (`host`) keep their host, place and Offset from Host, and ad
 while components rely on it is refused as a whole. The incoming family's formulas are checked as any edit's are: one that
 names a parameter the incoming family doesn't have refuses the reload (`no` never reads the file's formulas).
 
-The option is only accepted with `path`, and is the caller's decision: a field named `overwrite` inside a family file cannot
-choose the policy. With no option the original merge behaviour is preserved, including partial definitions. A family not
+The option is only accepted with `path` or `definition` (the family as such a file holds it, given in the command, read
+strictly), and is the caller's decision: a field named `overwrite` inside a family file cannot choose the policy. With no option the original merge behaviour is preserved, including partial definitions. A family not
 yet in the project is loaded normally under all three policies. This changes commands, not the saved file format.
 
-The overwrite dialogs and nested shared-family decisions are separate UI work. Dimension references to family forms and
-reference planes are not supported yet; reload does not silently delete project dimensions.
+Dimension references to family forms and reference planes are not supported yet; reload does not silently delete project
+dimensions.
+
+In the desktop (`editor/exists.rs`), Load into Project, Load into Project and Close and the Component tool's Load Family ask
+as Revit's "Family Already Exists" does when the project has a family of that name defined otherwise: Overwrite the existing
+version (`version`), Overwrite the existing version and its parameter values (`version_and_values`), or Cancel, which keeps the
+project's (as `no`) and changes nothing. The dialog only picks `overwrite`: the family document loads its draft as a
+`definition`, a file by its `path`. A family the project hasn't, or one that would load unchanged (the draft as the project's
+family opens, or the core's dry run saying `overwritten: false`), asks nothing and the unchanged one adds no undo step. A
+document renamed renames the project's family as before, asking nothing. Load into Project and Close closes only once the
+family went in; on Cancel or a refusal the document stays open, a refusal said in it.
+
+A load asks its questions in turn (`Question`): the family's own, then "Shared Family Already Loaded" for each shared family
+nested in it that the project has otherwise (keep the project's version, or overwrite it with the family's). Nested families
+(T6) don't exist yet, so nothing detects the second question: the document's `shared_nested` is where T6 puts what it finds,
+and until then only tests inject it. The answers are kept as the load's `Decided`, for the command to take once it can.
 
 Load matches family and type names exactly, including case. The caller's `name` overrides the file's name. A new family name
 creates a separate library definition; imported part identities are reconciled by the normal library sync and do not rename

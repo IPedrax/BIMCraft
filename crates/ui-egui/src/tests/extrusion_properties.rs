@@ -139,6 +139,7 @@ fn edit_work_plane_moves_the_form_onto_another_plane() {
     assert_eq!(draft(&h).forms[0].host, PlaneRef::default());
     press(&mut h, "Redo");
     press(&mut h, "Load into Project");
+    press(&mut h, "Overwrite the existing version");
     assert_eq!(h.state().session.model.families["Plinth"].forms[0].host, PlaneRef::Plane(up));
 }
 

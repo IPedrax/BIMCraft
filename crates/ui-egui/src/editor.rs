@@ -4,6 +4,7 @@
 
 mod association;
 pub(crate) mod document;
+pub(crate) mod exists;
 mod extrusion;
 
 use crate::popup::Modal;
@@ -1496,15 +1497,14 @@ impl BimApp {
         self.document_dialogs(ctx, &mut ed, &materials);
         let ask = std::mem::take(&mut ed.ask);
         ed.history(ctx, &ask);
-        let close = ask.cancel || ask.ok;
-        self.family_asked(ctx, ed, ask, close);
+        self.family_asked(ctx, ed, ask);
     }
 
     /// Does what the family document's ribbon asked for: capturing the selection's frames, loading a file, making the family the
     /// project's (Load into Project, placing the test frames), saving it to a file or the Favorites (from a session of its own,
-    /// which never touches the project), then closing it on `close` (Close Family) or on Load into Project and Close when it
-    /// was made. It stays open otherwise.
-    fn family_asked(&mut self, ctx: &Context, mut ed: FamilyEditor, ask: Asked, close: bool) {
+    /// which never touches the project), then closing it on Close Family, or on Load into Project and Close when the family
+    /// went in. It stays open otherwise.
+    fn family_asked(&mut self, ctx: &Context, mut ed: FamilyEditor, ask: Asked) {
         let base = Arc::clone(&self.session.model);
         let Asked { capture: capture_context, place: place_adaptive, apply_placement, apply, ok, cancel, save, favorite, load, .. } = ask;
         let capture_sources = self.capture_sources();
@@ -1531,37 +1531,6 @@ impl BimApp {
                 }
                 Err(text) => app.status = Status { text, error: true },
             });
-        }
-        // Made the project's: Load into Project does it, and so does placing the test frames, which places the family's.
-        let mut made = false;
-        if apply || ok || place_adaptive || apply_placement {
-            match ed.command(&base) {
-                Ok(p) => {
-                    if self.run("family", p).is_some() {
-                        ed.original = Some(ed.name.trim().to_string());
-                        ed.document.refused = None;
-                        ed.saved_as(ed.draft());
-                        made = true;
-                    } else {
-                        // Said in the document; the box over the view's corner would lie on its buttons. Kept apart from
-                        // what the preview says, which is worked out again every frame, so drawing it never hides this.
-                        ed.document.refused = Some(std::mem::take(&mut self.status).text);
-                    }
-                }
-                Err(e) => ed.document.refused = Some(e),
-            }
-        }
-        if made && let Some(d) = &ed.adaptive {
-            if apply_placement && let Some(id) = ed.replay {
-                self.run("modify", json!({"id":id,"adaptive":d.preview}));
-            }
-            // The test frames are taken as the project's, so a captured context builds where it was captured.
-            if place_adaptive && let Some((type_name, _)) = ed.types.get(ed.picked) {
-                self.run(
-                    "adaptive_place",
-                    json!({"family":ed.name.trim(),"type":type_name,"placements":[{"params":ed.preview_params,"adaptive":d.completed(&d.preview)}]}),
-                );
-            }
         }
         // Save and Favorites use a private Session: neither implicitly loads the draft into the project.
         if save || favorite {
@@ -1603,7 +1572,12 @@ impl BimApp {
                 Err(e) => ed.problem = Some(e),
             }
         }
-        let closed = cancel || (ok && made) || (close && !ok);
+        // Made the project's: Load into Project does it, and so does placing the test frames, which places the family's. A
+        // family the project has otherwise asks first (`exists`); Load into Project and Close closes once it went in.
+        if !cancel && (apply || ok || place_adaptive || apply_placement) {
+            self.load_draft(&mut ed, exists::After::Document { close: ok, place: place_adaptive, apply_placement });
+        }
+        let closed = cancel || std::mem::take(&mut ed.document.loaded_to_close);
         if !closed {
             self.family_editor = Some(ed);
         }
