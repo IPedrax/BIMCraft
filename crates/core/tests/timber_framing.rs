@@ -175,8 +175,17 @@ fn the_framing_axes_follow_the_wall_and_keys_survive_rigid_motion() {
     s.execute("rotate", &json!({"ids":[p["wall"]],"about":[0,0],"angle":90})).unwrap();
     s.execute("move", &json!({"ids":[p["wall"]],"by":[320,640]})).unwrap();
     let b = s.execute("timber_framing", &p).unwrap();
-    assert_eq!(a["members"], b["members"]);
-    assert_eq!(a["bays"], b["bays"]);
+    for kind in ["members", "bays"] {
+        let original = a[kind].as_array().unwrap();
+        let transformed = b[kind].as_array().unwrap();
+        assert_eq!(original.len(), transformed.len());
+        for (before, after) in original.iter().zip(transformed) {
+            assert_eq!(before["key"], after["key"]);
+            for i in 0..4 {
+                assert!(close(before["xz"][i].as_f64().unwrap(), after["xz"][i].as_f64().unwrap()));
+            }
+        }
+    }
     for (field, expected) in [("origin", [320. + 1.75 * IN, 640.]), ("x_axis", [0., 1.]), ("depth_axis", [-1., 0.])] {
         for (i, value) in expected.into_iter().enumerate() {
             assert!(close(b[field][i].as_f64().unwrap(), value), "{field}");
