@@ -369,8 +369,7 @@ fn copy_of(
                     shapes.len() - 1
                 }
             };
-            let (sin, cos) = c.angle.to_radians().sin_cos();
-            Some(ComponentInstance::turned(id, shape, [c.at.0, c.at.1, m.elevation(c.level) + c.offset], sin, cos))
+            Some(ComponentInstance::placed(id, shape, &m.component_placement(c)))
         }
         _ => {
             let (t, g) = (m.run_type(e)?, m.run_geom(e)?);

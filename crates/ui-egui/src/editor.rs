@@ -1338,7 +1338,7 @@ mod tests {
     #[test]
     fn the_editor_keeps_a_familys_options_when_it_saves() {
         let mut s = Session::new();
-        let options = json!({"work_plane_based": true, "always_vertical": false, "cut_with_voids_when_loaded": true, "shared": true,
+        let options = json!({"work_plane_based": true, "always_vertical": false, "default_elevation": 900.0, "cut_with_voids_when_loaded": true, "shared": true,
             "room_calculation_point": ["Width / 2", 100.0, 0.0], "cut_in_views": true, "omniclass": {"number": "23.40.20", "title": "Tables"}});
         s.execute("family", &json!({"name": "Table", "options": options})).unwrap();
         let was = s.model.families["Table"].clone();

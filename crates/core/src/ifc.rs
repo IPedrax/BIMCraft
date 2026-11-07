@@ -491,6 +491,16 @@ impl Step {
         }
     }
 
+    /// A placement at `xyz` with its z axis along `z` and its x axis along `x`, relative to `to`: a component tilted with its
+    /// work plane.
+    fn place_tilted(&mut self, to: u64, (x0, y0, z0): (f64, f64, f64), z: [f64; 3], x: [f64; 3]) -> u64 {
+        let o = self.add(format!("IFCCARTESIANPOINT(({},{},{}))", real(x0), real(y0), real(z0)));
+        let axis = self.add(format!("IFCDIRECTION(({},{},{}))", ratio(z[0]), ratio(z[1]), ratio(z[2])));
+        let along = self.add(format!("IFCDIRECTION(({},{},{}))", ratio(x[0]), ratio(x[1]), ratio(x[2])));
+        let a = self.add(format!("IFCAXIS2PLACEMENT3D(#{o},#{axis},#{along})"));
+        self.add(format!("IFCLOCALPLACEMENT(#{to},#{a})"))
+    }
+
     /// A placement at `xyz` with its x axis along `dir`, relative to `to` (none = the world).
     fn place(&mut self, to: Option<u64>, xyz: (f64, f64, f64), dir: Option<P2>) -> u64 {
         let a = self.axes(xyz, dir);
@@ -1167,7 +1177,13 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                 if pieces.is_empty() {
                     continue;
                 }
-                let at = w.place(Some(storey), (cp.at.0, cp.at.1, cp.offset), Some(heading(cp.angle)));
+                // Upright, turned about z; tilted with its work plane, its own axes.
+                let placed = m.component_placement(cp);
+                let at = if placed.upright {
+                    w.place(Some(storey), (cp.at.0, cp.at.1, cp.offset), Some(heading(cp.angle)))
+                } else {
+                    w.place_tilted(storey, (cp.at.0, cp.at.1, cp.offset), placed.axes[2], placed.axes[0])
+                };
                 let mut items = Vec::new();
                 let mut made_of: Vec<u64> = Vec::new();
                 for piece in &pieces {

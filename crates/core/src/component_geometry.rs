@@ -31,9 +31,9 @@ pub(crate) struct ComponentInstance {
 }
 
 impl ComponentInstance {
-    /// A component's: turned about the vertical by the angle whose sine and cosine these are.
-    pub(crate) fn turned(owner: Id, shape: usize, at: [f64; 3], sin: f64, cos: f64) -> Self {
-        Self { owner, shape, at, axes: [[cos, sin, 0.0], [-sin, cos, 0.0], [0.0, 0.0, 1.0]] }
+    /// A component's, where [`Model::component_placement`] puts it.
+    pub(crate) fn placed(owner: Id, shape: usize, p: &crate::hosting::Placement) -> Self {
+        Self { owner, shape, at: p.origin, axes: p.axes }
     }
 
     /// `p` placed. For a turn this is, to the last bit, `at + (x cos - y sin, x sin + y cos, z)` as a component's pieces are
@@ -119,8 +119,7 @@ impl SharedComponents {
                     n
                 }
             };
-            let (sin, cos) = c.angle.to_radians().sin_cos();
-            instances.push(ComponentInstance::turned(*owner, shape, [c.at.0, c.at.1, model.elevation(c.level) + c.offset], sin, cos));
+            instances.push(ComponentInstance::placed(*owner, shape, &model.component_placement(c)));
         }
         (!cancelled()).then_some(Self { shapes, bounds, instances, keys: indices })
     }
@@ -183,7 +182,7 @@ impl<'a> Components<'a> {
 
     /// [`Components::heights`] of a component of the model's.
     pub(crate) fn heights_of(&mut self, c: &'a Component) -> (f64, f64) {
-        if !c.params.is_empty() {
+        if !c.params.is_empty() || c.host.is_some() {
             return self.heights(c);
         }
         let base = self.model.elevation(c.level) + c.offset;
@@ -233,10 +232,12 @@ impl<'a> Components<'a> {
             kept.extend(high);
             self.extremes.insert(key.clone(), kept);
         }
-        let base = self.model.elevation(c.level) + c.offset;
-        let (sin, cos) = c.angle.to_radians().sin_cos();
-        let place = |p: [f64; 3]| [c.at.0 + p[0] * cos - p[1] * sin, c.at.1 + p[0] * sin + p[1] * cos, base + p[2]];
-        self.extremes.get(&key).map(|v| v.iter().map(|p| place(*p)).collect()).unwrap_or_default()
+        let placed = self.model.component_placement(c);
+        if !placed.upright {
+            // Tilted, the farthest points in plan aren't those of its own plan: every point is.
+            return self.local(c).iter().flat_map(|pc| pc.tris.iter().flatten().map(|p| placed.place(*p))).collect();
+        }
+        self.extremes.get(&key).map(|v| v.iter().map(|p| placed.place(*p)).collect()).unwrap_or_default()
     }
 
     /// Its geometry's heights over its base, lowest and highest: none (infinity, minus infinity) when it has no pieces.
@@ -245,38 +246,30 @@ impl<'a> Components<'a> {
     }
 
     pub(crate) fn heights(&mut self, c: &Component) -> (f64, f64) {
-        let base = self.model.elevation(c.level) + c.offset;
+        let placed = self.model.component_placement(c);
+        if !placed.upright {
+            return self.pieces(c).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)));
+        }
+        let base = placed.origin[2];
         self.local(c).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(base + p.bottom), hi.max(base + p.top)))
     }
 
-    /// Its pieces' outlines in plan, as [`Components::pieces`] places them, without their triangles.
+    /// Its pieces' outlines in plan, as [`Components::pieces`] places them, without their triangles (upright).
     pub(crate) fn outlines(&mut self, c: &Component) -> Vec<P2> {
-        let base = self.model.elevation(c.level) + c.offset;
-        let (sin, cos) = c.angle.to_radians().sin_cos();
-        let place = |p: [f64; 3]| [c.at.0 + p[0] * cos - p[1] * sin, c.at.1 + p[0] * sin + p[1] * cos, base + p[2]];
+        let placed = self.model.component_placement(c);
+        if !placed.upright {
+            return self.pieces(c).into_iter().flat_map(|p| p.outline).collect();
+        }
         let outlines: Vec<P2> =
-            self.local(c).iter().flat_map(|pc| pc.outline.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1]))).collect();
+            self.local(c).iter().flat_map(|pc| pc.outline.iter().map(|q| placed.place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1]))).collect();
         #[cfg(test)]
         assert_eq!(outlines, self.model.component_pieces(c).into_iter().flat_map(|p| p.outline).collect::<Vec<_>>());
         outlines
     }
 
     pub(crate) fn pieces(&mut self, c: &Component) -> Vec<Piece> {
-        let base = self.model.elevation(c.level) + c.offset;
-        let (sin, cos) = c.angle.to_radians().sin_cos();
-        let place = |p: [f64; 3]| [c.at.0 + p[0] * cos - p[1] * sin, c.at.1 + p[0] * sin + p[1] * cos, base + p[2]];
-        self.local(c)
-            .iter()
-            .map(|pc| Piece {
-                tris: pc.tris.iter().map(|t| t.map(place)).collect(),
-                outline: pc.outline.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect(),
-                bottom: base + pc.bottom,
-                top: base + pc.top,
-                material: pc.material.clone(),
-                caps: pc.caps,
-                round: pc.round,
-            })
-            .collect()
+        let placed = self.model.component_placement(c);
+        self.local(c).iter().map(|pc| placed.piece(pc)).collect()
     }
 }
 

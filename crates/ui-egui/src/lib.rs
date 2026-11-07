@@ -141,6 +141,8 @@ pub enum Tool {
     Level,
     /// The grid's start, once clicked.
     Grid(Option<P2>),
+    /// A reference plane's start, once clicked: two clicks draw an upright plane through them.
+    ReferencePlane(Option<P2>),
     /// Move the selection: its base point, once clicked.
     Move(Option<P2>),
     /// Copy the selection: its base point, once clicked.
@@ -766,6 +768,11 @@ pub struct BimApp {
     /// The family and type the Component tool places, as picked, and how far it's turned, degrees.
     component: Option<(String, String)>,
     component_angle: f64,
+    /// The Component tool's Placement Plane for a work plane-based family: a reference plane of the project, by GUID; none,
+    /// the view's level.
+    placement_plane: Option<bimcraft_core::ids::Guid>,
+    /// The Component tool's Rotate after placement: each component placed is selected and Rotate starts about its point.
+    rotate_after: bool,
     /// The Properties palette's folded groups.
     collapsed: BTreeSet<&'static str>,
     /// Where views show, last frame.
@@ -1316,6 +1323,8 @@ impl BimApp {
             new_schedule: None,
             component: None,
             component_angle: 0.0,
+            placement_plane: None,
+            rotate_after: false,
             collapsed: BTreeSet::new(),
             view_rect: Rect::ZERO,
             pane: Rect::ZERO,
@@ -1399,6 +1408,7 @@ impl BimApp {
             Tool::RoomSeparator(_) => Some(msg!("Place Room Separation")),
             Tool::Level => Some(msg!("Place Level")),
             Tool::Grid(_) => Some(msg!("Place Grid")),
+            Tool::ReferencePlane(_) => Some("Place Reference Plane"),
             Tool::Dimension(..) | Tool::Angular(_) | Tool::Round(..) => Some(msg!("Place Dimensions")),
             Tool::Text => Some(msg!("Place Text")),
             Tool::DetailGroup => Some(msg!("Place Detail Group")),
@@ -2103,6 +2113,7 @@ impl BimApp {
                 Some("room_separator") => Tool::RoomSeparator(None),
                 Some("level") => Tool::Level,
                 Some("grid") => Tool::Grid(None),
+                Some("reference_plane") => Tool::ReferencePlane(None),
                 Some("move") => Tool::Move(None),
                 Some("copy") => Tool::Copy(None),
                 Some("rotate") => Tool::Rotate { centre: P2(0.0, 0.0), start: None, place: false },
@@ -2236,6 +2247,7 @@ impl BimApp {
             Some(Element::RoomSeparator(_)) => Tool::RoomSeparator(None),
             Some(Element::Level(_)) => Tool::Level,
             Some(Element::Grid(_)) => Tool::Grid(None),
+            Some(Element::RefPlane(_)) => Tool::ReferencePlane(None),
             Some(Element::Dimension(d)) => match d.kind {
                 DimKind::Aligned => Tool::Dimension(DimMode::Aligned, Vec::new()),
                 DimKind::Linear if d.orient == Some(bimcraft_core::model::Orient::Vertical) => {
@@ -2578,6 +2590,7 @@ impl BimApp {
             Tool::Wall(chain) => chain.last().copied(),
             Tool::Run(_, start) => *start,
             Tool::Grid(start)
+            | Tool::ReferencePlane(start)
             | Tool::RoomSeparator(start)
             | Tool::Move(start)
             | Tool::Copy(start)
@@ -2622,6 +2635,7 @@ impl BimApp {
         self.tool = match std::mem::replace(&mut self.tool, Tool::Modify) {
             Tool::Wall(chain) if !chain.is_empty() => Tool::Wall(Vec::new()),
             Tool::Grid(Some(_)) => Tool::Grid(None),
+            Tool::ReferencePlane(Some(_)) => Tool::ReferencePlane(None),
             Tool::RoomSeparator(Some(_)) => Tool::RoomSeparator(None),
             Tool::Run(c, Some(_)) => Tool::Run(c, None),
             Tool::Mirror { draw, start: Some(_) } => Tool::Mirror { draw, start: None },
@@ -2763,7 +2777,7 @@ impl BimApp {
         }
         match &mut self.tool {
             Tool::Wall(chain) => chain.clear(),
-            Tool::Grid(start) | Tool::RoomSeparator(start) | Tool::Run(_, start) => *start = None,
+            Tool::Grid(start) | Tool::ReferencePlane(start) | Tool::RoomSeparator(start) | Tool::Run(_, start) => *start = None,
             Tool::Dimension(_, refs) | Tool::Angular(refs) => refs.clear(),
             Tool::Round(_, picked) => picked.clear(),
             Tool::Section(start) | Tool::Shaft(start) | Tool::Measure(start) | Tool::Camera(start) => *start = None,
@@ -4605,9 +4619,79 @@ impl BimApp {
                     }
                 }
                 Tool::Offset => self.offset_options(ui),
+                Tool::Component => self.component_options(ui),
                 _ => {}
             }
         });
+    }
+
+    /// The reference planes of the project a work plane-based family may be placed on, by name (unnamed ones by id).
+    fn placement_planes(&self) -> Vec<(bimcraft_core::ids::Guid, String)> {
+        let m = &self.session.model;
+        m.rare("refplane")
+            .into_iter()
+            .filter_map(|id| match m.elements.get(id) {
+                Some(bimcraft_core::model::Element::RefPlane(p)) => {
+                    let name = if p.name.is_empty() { id.to_string() } else { p.name.clone() };
+                    Some((m.guid(id), format!("{} : {name}", t("Reference Plane"))))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Whether the family the Component tool places is work plane-based.
+    fn placing_on_work_plane(&self) -> bool {
+        self.placing().is_some_and(|(f, _)| self.session.model.families.get(&f).is_some_and(|f| f.work_plane_based))
+    }
+
+    /// The Component tool's Options Bar, for a work plane-based family: Place on Work Plane, its Placement Plane (the view's
+    /// level or a reference plane of the project) and Rotate after placement.
+    fn component_options(&mut self, ui: &mut Ui) {
+        if !self.placing_on_work_plane() {
+            ui.checkbox(&mut self.rotate_after, t("Rotate after placement"));
+            return;
+        }
+        let _ = ui.selectable_label(true, t("Place on Work Plane"));
+        let level = self.plan_level().and_then(|l| self.session.model.level(l).map(|l| l.name.clone())).unwrap_or_default();
+        let on_level = format!("{} : {level}", t("Level"));
+        let planes = self.placement_planes();
+        let now = self.placement_plane.and_then(|g| planes.iter().find(|(p, _)| *p == g)).map_or(on_level.clone(), |(_, n)| n.clone());
+        let names: Vec<String> = std::iter::once(on_level).chain(planes.iter().map(|(_, n)| n.clone())).collect();
+        let l = ui.label(t("Placement Plane:"));
+        if let Some(n) = properties::combo(ui, (0, "placement-plane"), l.id, &now, &names) {
+            self.placement_plane = planes.iter().find(|(_, name)| *name == n).map(|(g, _)| *g);
+        }
+        ui.checkbox(&mut self.rotate_after, t("Rotate after placement"));
+    }
+
+    /// A component placed with `params` (and its Placement Plane, for a work plane-based family placed in plan at height
+    /// `z`): with Rotate after placement, it is selected and Rotate starts about its point.
+    pub(crate) fn place_component(&mut self, mut params: Value, z: f64) {
+        if self.placing_on_work_plane()
+            && let Some(g) = self.placement_plane.filter(|g| self.placement_planes().iter().any(|(p, _)| p == g))
+        {
+            // On the plane: a plan point taken straight onto it; an upright plane's, along its normal from the view's height.
+            let upright = matches!(self.session.model.elements.get(g), Some(bimcraft_core::model::Element::RefPlane(p)) if p.upright());
+            if upright && let Some([x, y]) = params["at"].as_array().map(|a| [a[0].clone(), a[1].clone()]) {
+                params["at"] = json!([x, y, z]);
+            }
+            params["host"] = json!({"plane": g});
+            if let Some(o) = params.as_object_mut() {
+                o.remove("offset");
+            }
+        }
+        let at = params["at"].as_array().and_then(|a| Some(P2(a.first()?.as_f64()?, a.get(1)?.as_f64()?)));
+        let Some(made) = self.run("component", params) else { return };
+        if self.rotate_after
+            && let (Some(id), Some(at)) = (made["id"].as_u64(), at)
+        {
+            self.selection = vec![id];
+            self.set_tool(Tool::Rotate { centre: at, start: None, place: false });
+            if let Tool::Rotate { centre, .. } = &mut self.tool {
+                *centre = at;
+            }
+        }
     }
 
     /// Offset's Options Bar: the distance, and Copy.
@@ -4743,6 +4827,8 @@ impl BimApp {
             Tool::Level => "Type the new level's elevation in the Options Bar, then Create.",
             Tool::Grid(None) => msg!("Click to enter the grid's start point."),
             Tool::Grid(Some(_)) => msg!("Click to enter the grid's end point."),
+            Tool::ReferencePlane(None) => "Click to enter the reference plane's start point.",
+            Tool::ReferencePlane(Some(_)) => "Click to enter the reference plane's end point.",
             Tool::Move(None) | Tool::Copy(None) => msg!("Click a base point to measure from."),
             Tool::Move(Some(_)) => msg!("Click where the base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Copy(Some(_)) => msg!("Click where the copy's base point goes, or type a distance and press Enter. Esc cancels."),

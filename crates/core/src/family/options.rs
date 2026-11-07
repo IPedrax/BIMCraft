@@ -15,8 +15,16 @@ use crate::model::MAX_TEXT;
 pub const MAX_OMNICLASS: usize = 64;
 
 /// The keys of a family's options, as a file and the `family` command's `options` name them.
-pub const OPTION_KEYS: [&str; 7] =
-    ["work_plane_based", "always_vertical", "cut_with_voids_when_loaded", "shared", "room_calculation_point", "cut_in_views", "omniclass"];
+pub const OPTION_KEYS: [&str; 8] = [
+    "work_plane_based",
+    "always_vertical",
+    "default_elevation",
+    "cut_with_voids_when_loaded",
+    "shared",
+    "room_calculation_point",
+    "cut_in_views",
+    "omniclass",
+];
 
 /// A family's OmniClass classification (Table 23, products): its number, digits and dots (`23.30.20.17`), and its title,
 /// as the user gives them. No table is bundled, so neither is looked up.
@@ -54,6 +62,12 @@ pub(super) fn yes() -> bool {
     true
 }
 
+/// Whether `x` is Default Elevation's default, 0, which a file leaves out.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+pub(super) fn is_zero(x: &f64) -> bool {
+    *x == 0.0
+}
+
 /// Whether `b` is Always Vertical's default, which a file leaves out.
 #[allow(clippy::trivially_copy_pass_by_ref)]
 pub(super) fn is_yes(b: &bool) -> bool {
@@ -72,6 +86,7 @@ impl Family {
         json!({
             "work_plane_based": self.work_plane_based,
             "always_vertical": self.always_vertical,
+            "default_elevation": self.default_elevation,
             "cut_with_voids_when_loaded": self.cut_with_voids_when_loaded,
             "shared": self.shared,
             "room_calculation_point": self.room_calculation_point,
@@ -95,6 +110,12 @@ impl Family {
             match k.as_str() {
                 "work_plane_based" => self.work_plane_based = flag(k, v, false)?,
                 "always_vertical" => self.always_vertical = flag(k, v, true)?,
+                "default_elevation" => {
+                    self.default_elevation = match v {
+                        Value::Null => 0.0,
+                        v => v.as_f64().ok_or_else(|| format!("`options` `default_elevation` is mm over the level, a number, not {v}"))?,
+                    }
+                }
                 "cut_with_voids_when_loaded" => self.cut_with_voids_when_loaded = flag(k, v, false)?,
                 "shared" => self.shared = flag(k, v, false)?,
                 "cut_in_views" => {
@@ -147,6 +168,13 @@ impl Family {
     /// formulas read only its length parameters (a door's or a window's `Wall Thickness` too) and that works out, for every
     /// type, finite and within reach.
     pub(super) fn check_options(&self) -> Result<(), String> {
+        let d = self.default_elevation;
+        if !d.is_finite() || d.abs() > crate::model::MAX_COORD {
+            return Err(format!("`default_elevation` {d} is not a usable height; give mm within ±{}", crate::model::MAX_COORD));
+        }
+        if self.work_plane_based && self.category.hosted() {
+            return Err("a door's or a window's family stands in a wall: it can't be work plane-based (`work_plane_based`)".into());
+        }
         if let Some(o) = &self.omniclass {
             o.check()?;
         }

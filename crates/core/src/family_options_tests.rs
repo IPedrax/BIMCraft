@@ -54,7 +54,7 @@ fn options_merge_round_trip_and_null_takes_one_back_to_its_default() {
     let mut s = Session::new();
     cabinet(&mut s);
     let all = json!({
-        "work_plane_based": true, "always_vertical": false, "cut_with_voids_when_loaded": true, "shared": true,
+        "work_plane_based": true, "always_vertical": false, "default_elevation": 450.0, "cut_with_voids_when_loaded": true, "shared": true,
         "room_calculation_point": ["Width / 2", 900.0, 0.0], "cut_in_views": true,
         "omniclass": {"number": "23.40.20.00", "title": "General Furniture"}
     });

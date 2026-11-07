@@ -72,14 +72,15 @@ pub enum Group {
 /// under its ends (`runs::Geom::half`, and its justification).
 const STEEP: f64 = 2.0;
 
-/// The kinds a plan finds by height, by view, by level or by host, or never shows, not in [`Lookup::other`].
+/// The kinds a plan finds by height, by view, by level or by host, or never shows, not in [`Lookup::other`]. A component on a
+/// reference plane isn't banded (it may tilt), so it is among the others.
 fn found_otherwise(e: &Element) -> bool {
     matches!(
         e,
         Element::Wall(_)
             | Element::Door(_)
             | Element::Window(_)
-            | Element::Component(_)
+            | Element::Component(crate::model::Component { host: None, .. })
             | Element::Room(_)
             | Element::RoomSeparator(_)
             | Element::Ceiling(_)
@@ -109,6 +110,10 @@ fn elevation_in(elements: &Elements, level: Guid) -> f64 {
 /// The group and own heights of an element banded by height; none for another, or a run too steep.
 fn banding(elements: &Elements, e: &Element) -> Option<(Group, f64, f64)> {
     if let Element::Component(c) = e {
+        // On a plane, it may tilt, and its family says whether it does: not banded, looked at wherever heights are asked.
+        if c.host.is_some() {
+            return None;
+        }
         let params = serde_json::to_string(&c.params).unwrap_or_default();
         let group = Group::Component { family: c.family.clone(), type_name: c.type_name.clone(), mirrored: c.mirrored, params };
         let base = elevation_in(elements, c.level) + c.offset;
@@ -131,6 +136,7 @@ const MAX_BANDS: i64 = 64;
 /// among all of them: kept by kind. Its views, sheets and viewports among them: a drawing set of a thousand sheets is a
 /// thousandth of a million elements.
 pub const RARE: &[&str] = &[
+    "refplane",
     "pointcloud",
     "cadimport",
     "mass",
