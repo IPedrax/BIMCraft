@@ -70,7 +70,7 @@ const CONNECTOR_DEFINES: u64 = 56;
 const TYPE_MATERIALS: u64 = 57;
 const USAGE_MATERIALS: u64 = 58;
 const CLASSIFIES: u64 = 59;
-const IN_SPACE: u64 = 60;
+const REFERENCED: u64 = 60;
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
@@ -774,6 +774,11 @@ fn wall_quantities(m: &Model, wl: &crate::model::Wall, holes: &[(f64, f64, f64)]
 }
 
 pub fn export(m: &Model) -> String {
+    export_with(m, true)
+}
+
+/// [`export`], with or without the components referenced in the rooms they stand in.
+pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
     let rooms = crate::rooms::Rooms::new(m);
     let own = m.elements.with_guids().map(|(id, g, _)| (id, g)).collect();
     let mut w = Step {
@@ -852,8 +857,8 @@ pub fn export(m: &Model) -> String {
     }
 
     let mut contained: BTreeMap<Guid, Vec<u64>> = BTreeMap::new();
-    // The components in each room, by the room's id, with their levels: contained in its space, else in their storey.
-    let mut in_rooms: BTreeMap<Id, Vec<(Guid, u64)>> = BTreeMap::new();
+    // The components in each room, by the room's id: contained in their storey, and referenced in its space too.
+    let mut in_rooms: BTreeMap<Id, Vec<u64>> = BTreeMap::new();
     let mut spaces: BTreeMap<Guid, Vec<u64>> = BTreeMap::new();
     // Each element's own entity, for what it holds of the project's parameters.
     let mut products: BTreeMap<Id, u64> = BTreeMap::new();
@@ -1188,10 +1193,10 @@ pub fn export(m: &Model) -> String {
                 let class = classes::class(&entity);
                 let tail = class.map_or_else(|| format!(",{kind}"), |c| classes::fill(c.1, &kind));
                 let ent = w.add(format!("{entity}({},$,{name},$,{object},#{at},#{shape},'{id}'{tail})", w.guid(ELEMENT, id)));
-                // In the room its family's room calculation point (else its insertion point) is in, else in its storey.
-                match rooms.component(cp) {
-                    Some(room) => in_rooms.entry(room).or_default().push((cp.level, ent)),
-                    None => contained.entry(cp.level).or_default().push(ent),
+                contained.entry(cp.level).or_default().push(ent);
+                // Also in the room its family's room calculation point (else its insertion point) is in.
+                if let Some(room) = rooms.component(cp) {
+                    in_rooms.entry(room).or_default().push(ent);
                 }
                 products.insert(id, ent);
                 let omniclass = f.omniclass.as_ref().map(|o| (o.number.clone(), o.title.clone()));
@@ -1600,15 +1605,6 @@ pub fn export(m: &Model) -> String {
         let system = w.add(format!("IFCSYSTEM({},$,{},$,$)", w.guid(SYSTEMS, key), s(name)));
         w.add(format!("IFCRELASSIGNSTOGROUP({},$,$,$,({}),$,#{system})", w.guid(SYSTEM_MEMBERS, key), refs(members)));
     }
-    for (room, held) in in_rooms {
-        match products.get(&room) {
-            Some(space) => {
-                let items: Vec<u64> = held.iter().map(|(_, ent)| *ent).collect();
-                w.add(format!("IFCRELCONTAINEDINSPATIALSTRUCTURE({},$,$,$,({}),#{space})", w.guid(IN_SPACE, room), refs(&items)));
-            }
-            None => held.into_iter().for_each(|(level, ent)| contained.entry(level).or_default().push(ent)),
-        }
-    }
     for (level, (storey, _)) in &storeys {
         if let Some(items) = contained.get(level) {
             w.add(format!(
@@ -1741,6 +1737,16 @@ pub fn export(m: &Model) -> String {
             }
         }
         w.define(project, PHASING, &props, (PHASED, PHASED_DEFINES), 0);
+    }
+
+    // The components standing in each room, referenced in its space (IFC4's "also in"), after everything else, so the rest
+    // of the file is as it was without them.
+    if reference_rooms {
+        for (room, items) in in_rooms {
+            if let Some(space) = products.get(&room) {
+                w.add(format!("IFCRELREFERENCEDINSPATIALSTRUCTURE({},$,$,$,({}),#{space})", w.guid(REFERENCED, room), refs(&items)));
+            }
+        }
     }
 
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());

@@ -1053,7 +1053,7 @@ pub static ALL: &[Command] = &[
          shared?, room_calculation_point?: [x, y, z] | null, cut_in_views?: true|false|null, omniclass?: {number, title?} | \
          null} (Revit's Family Category and Parameters: each given merged over what it has, `null` back to its default; \
          `room_calculation_point` is a point in its own axes, mm, numbers or formulas over its length parameters, whose room a \
-         component is in (else its insertion point's: `elements` says `room`, IFC contains it in that space); `cut_in_views` \
+         component is in (else its insertion point's: `elements` says `room`, IFC references it in that space beside its storey); `cut_in_views` \
          overrides whether sections cut its forms, which by default its category says; `omniclass` is a number of digits and \
          dots (`23.30.20.17`) and a title, which IFC writes as a classification reference on its type; work_plane_based (off), \
          always_vertical (on), cut_with_voids_when_loaded (off) and shared (off) are kept for later and change nothing yet; \

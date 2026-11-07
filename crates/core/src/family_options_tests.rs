@@ -258,34 +258,74 @@ fn entity(f: &str, what: &[&str]) -> String {
     f.lines().find(|l| what.iter().all(|w| l.contains(w))).and_then(|l| l.split('=').next()).unwrap().to_string()
 }
 
+/// The STEP line of relation `rel` (e.g. `IFCRELCONTAINEDINSPATIALSTRUCTURE`) that lists entity `ent`, if any.
+fn relation<'a>(f: &'a str, rel: &str, ent: &str) -> Option<&'a str> {
+    f.lines().find(|l| {
+        l.contains(&format!("={rel}("))
+            && (l.contains(&format!("({ent},")) || l.contains(&format!(",{ent},")) || l.contains(&format!("{ent})")))
+    })
+}
+
+/// Whether STEP line `line` ends relating to entity `to`.
+fn relates_to(line: &str, to: &str) -> bool {
+    line.trim_end_matches(';').ends_with(&format!(",{to})"))
+}
+
 #[test]
-fn ifc_contains_a_component_in_the_space_its_point_is_in() {
-    let (s, _, _) = two_rooms(Some(json!(["Width", 300, 0])), 0.0, false);
-    let f = crate::ifc::export(&s.model);
-    let (east, cabinet) = (entity(&f, &["=IFCSPACE(", "'East'"]), entity(&f, &["=IFCFURNITURE("]));
-    let rel = f.lines().find(|l| l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE(") && l.contains(&format!("({cabinet})"))).unwrap();
-    assert!(rel.trim_end_matches(';').ends_with(&format!(",{east})")), "{rel}");
-    // Without the point, the west space; outside every room, its storey.
-    let (s, _, _) = two_rooms(None, 0.0, false);
-    let f = crate::ifc::export(&s.model);
-    let (west, cabinet) = (entity(&f, &["=IFCSPACE(", "'West'"]), entity(&f, &["=IFCFURNITURE("]));
-    let rel = f.lines().find(|l| l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE(") && l.contains(&format!("({cabinet})"))).unwrap();
-    assert!(rel.trim_end_matches(';').ends_with(&format!(",{west})")), "{rel}");
-    let (s, _, _) = two_rooms(Some(json!([-5000, 0, 0])), 0.0, false);
-    let f = crate::ifc::export(&s.model);
-    let storey = entity(&f, &["=IFCBUILDINGSTOREY("]);
-    let cabinet = entity(&f, &["=IFCFURNITURE("]);
-    let rel = f
-        .lines()
-        .find(|l| {
-            l.contains("IFCRELCONTAINEDINSPATIALSTRUCTURE(") && (l.contains(&format!("{cabinet},")) || l.contains(&format!("{cabinet})")))
-        })
-        .unwrap();
-    assert!(rel.trim_end_matches(';').ends_with(&format!(",{storey})")), "{rel}");
-    // Read back, it is on its level still.
-    let (s, _, _) = two_rooms(Some(json!(["Width", 300, 0])), 0.0, false);
-    let back = crate::import::ifc(crate::ifc::export(&s.model).as_bytes(), "x").unwrap();
-    assert_eq!(back.model.elements.values().filter(|e| matches!(e, crate::model::Element::Component(_))).count(), 1);
+fn ifc_keeps_a_component_in_its_storey_and_references_it_in_the_space_its_point_is_in() {
+    const CONTAINED: &str = "IFCRELCONTAINEDINSPATIALSTRUCTURE";
+    const REFERENCED: &str = "IFCRELREFERENCEDINSPATIALSTRUCTURE";
+    for (point, room) in [(Some(json!(["Width", 300, 0])), Some("'East'")), (None, Some("'West'")), (Some(json!([-5000, 0, 0])), None)] {
+        let (s, _, _) = two_rooms(point.clone(), 0.0, false);
+        let f = crate::ifc::export(&s.model);
+        let (storey, cabinet) = (entity(&f, &["=IFCBUILDINGSTOREY("]), entity(&f, &["=IFCFURNITURE("]));
+        // Contained in its storey, always, as before.
+        let held = relation(&f, CONTAINED, &cabinet).unwrap_or_else(|| panic!("{point:?}: not contained"));
+        assert!(relates_to(held, &storey), "{point:?}: {held}");
+        assert_eq!(f.matches(&format!("={CONTAINED}(")).count(), 1, "{point:?}: only the storey's");
+        // Referenced in the space its point is in, if any.
+        match room {
+            Some(room) => {
+                let space = entity(&f, &["=IFCSPACE(", room]);
+                let r = relation(&f, REFERENCED, &cabinet).unwrap_or_else(|| panic!("{point:?}: not referenced"));
+                assert!(relates_to(r, &space), "{point:?}: {r}");
+                assert_eq!(f.matches(&format!("={REFERENCED}(")).count(), 1);
+            }
+            None => assert!(!f.contains(REFERENCED), "{point:?}: in no room, referenced in none"),
+        }
+        // Read back, it is on its level still.
+        let back = crate::import::ifc(f.as_bytes(), "x").unwrap();
+        let levels: Vec<bool> = back
+            .model
+            .elements
+            .values()
+            .filter_map(|e| match e {
+                crate::model::Element::Component(c) => {
+                    Some(matches!(back.model.elements.get(c.level), Some(crate::model::Element::Level(_))))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(levels, [true], "{point:?}: one component, on a level");
+    }
+}
+
+/// The DATA section of a STEP file: what follows its header, which holds the time it was written.
+fn data(f: &str) -> &str {
+    f.split_once("DATA;\n").map_or(f, |(_, d)| d)
+}
+
+#[test]
+fn rooms_without_room_points_export_as_before_but_for_the_references() {
+    let mut s = Session::new();
+    s.script(crate::sample::SAMPLE).unwrap();
+    assert!(s.model.families.values().all(|f| f.room_calculation_point.is_none() && f.omniclass.is_none()));
+    let now = crate::ifc::export(&s.model);
+    let before = crate::ifc::export_with(&s.model, false);
+    assert!(now.contains("=IFCRELREFERENCEDINSPATIALSTRUCTURE("), "the sample's furniture stands in its rooms");
+    let less: String =
+        data(&now).lines().filter(|l| !l.contains("=IFCRELREFERENCEDINSPATIALSTRUCTURE(")).map(|l| format!("{l}\n")).collect();
+    assert_eq!(less, data(&before));
 }
 
 #[test]

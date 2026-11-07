@@ -248,8 +248,10 @@ the family has them and sends them back whole when it saves.
   its height over its level's base is kept but not yet read), else takes the insertion point, and `Rooms::component` finds
   the room on the component's level whose boundary, where the project measures rooms, holds it (the first by id; none
   in a wall or outside every room). Nothing in BIMCraft put a component in a room before, so this is that rule: `elements`
-  gives each component's `room` (its GUID, or null), and IFC contains a component in that room's `IfcSpace` (else its
-  storey, as before), which the import still walks up to its storey. Schedules have no Room field yet, and doors and
+  gives each component's `room` (its GUID, or null). IFC keeps every component contained in its storey, as before, and
+  adds one `IfcRelReferencedInSpatialStructure` for each room's `IfcSpace`, listing the components in it, after every other
+  entity, so the rest of the file is as it was (`ifc::export_with` without them is the test's oracle); the import finds the
+  storey by containment and passes the references over. Schedules have no Room field yet, and doors and
   windows have no From Room and To Room: a door's or a window's point is stored and checked but placed nowhere.
 - `omniclass`: `{number, title}`, plain text, no table bundled: the number digits in groups between single dots
   (`23.30.20.17`), at most 64; the title one line of at most `MAX_TEXT`. `elements` shows it on each element of the family,
