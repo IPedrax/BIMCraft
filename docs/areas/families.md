@@ -373,8 +373,15 @@ out of the file (`lenient.rs`) and opens it, the family then as it was before th
 room its insertion point's, no classification). `family {name, options: {…}}` merges what it is given over what the family
 has, `null` taking one back to its default, and every reply that shows a family carries `options` with all eight, defaults
 too (`Family::options_json`); a dry run lists the ones it would change in `changes.options`. A family file holds them flat,
-as a project does, and `path` reads them back into `options`. The Family Editor has no tab for them yet: it keeps them as
-the family has them and sends them back whole when it saves.
+as a project does, and `path` reads them back into `options`. The family document edits them (T5b, `editor/options.rs`) in Family Category and
+Parameters' Family Parameters table (Parameter | Value, Revit's order, under the category list and its filter) and in
+Properties' Other group when nothing is selected, both in the draft, so the dialog's visit is one step of its history and
+Cancel puts back what it began from; it sends them back whole when it loads or saves. Room Calculation Point turned on
+starts at the insertion point, 300 mm up (so the room is the insertion point's until it is moved); a coordinate a formula
+gives is shown, not typed over. Enable Cutting in Views is a tick beside By Category: ticked, the category's rule decides
+and the tick shows it, greyed. OK or Apply runs `Family::check_options`, and what it refuses (an OmniClass number that
+isn't digits and dots) is said in the dialog, which stays open. Turning Work Plane-Based off while a component of the
+family is on a plane is refused by the project on Load into Project, said in the document.
 
 - `work_plane_based` (off) lets a component of the family be hosted on a reference plane of the project, and
   `always_vertical` (on, Revit's default, and allowed off without `work_plane_based`: a wall-hosted family has it too) keeps

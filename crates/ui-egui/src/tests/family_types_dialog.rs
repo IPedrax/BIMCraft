@@ -96,7 +96,10 @@ fn search_keeps_the_rows_whose_name_holds_what_is_typed_whatever_its_case() {
 #[test]
 fn rows_go_under_their_groups_headings_in_the_palettes_order_and_a_heading_folds_them() {
     let mut h = opened();
-    let y = |h: &Harness<BimApp>, label: &str| h.get_by_label(label).rect().top();
+    // The dialog's heading: Properties' Other group, under it on the left, is the family's options (T5b).
+    let y = |h: &Harness<BimApp>, label: &str| {
+        h.get_all_by_label(label).map(|n| n.rect()).max_by(|a, b| a.center().x.total_cmp(&b.center().x)).unwrap().top()
+    };
     // Dimensions before Visibility before Other, as `Group::ALL` (the Properties palette's order).
     assert!(y(&h, "Dimensions") < y(&h, "Visibility") && y(&h, "Visibility") < y(&h, "Other"));
     assert!(y(&h, "Dimensions") < y(&h, "Parameter Value Width") && y(&h, "Parameter Value Width") < y(&h, "Visibility"));
@@ -237,7 +240,10 @@ fn move_up_and_sort_order_a_groups_rows_and_the_family_keeps_the_order() {
     assert_eq!(names(&draft(&h)), ["Width", "Height", "Depth", "Show Top", "Note"]);
     press(&mut h, "Ascending");
     assert_eq!(names(&draft(&h)), ["Depth", "Height", "Width", "Show Top", "Note"], "each group sorted in its places");
-    let y = |h: &Harness<BimApp>, label: &str| h.get_by_label(label).rect().top();
+    // The dialog's heading: Properties' Other group, under it on the left, is the family's options (T5b).
+    let y = |h: &Harness<BimApp>, label: &str| {
+        h.get_all_by_label(label).map(|n| n.rect()).max_by(|a, b| a.center().x.total_cmp(&b.center().x)).unwrap().top()
+    };
     assert!(y(&h, "Parameter Value Depth") < y(&h, "Parameter Value Width"), "shown in that order");
     press(&mut h, "Descending");
     assert_eq!(names(&draft(&h)), ["Width", "Height", "Depth", "Show Top", "Note"]);

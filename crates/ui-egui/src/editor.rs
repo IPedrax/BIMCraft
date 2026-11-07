@@ -6,6 +6,7 @@ mod association;
 pub(crate) mod document;
 pub(crate) mod exists;
 mod extrusion;
+pub(crate) mod options;
 mod temp_hide;
 mod types_dialog;
 pub(crate) mod views;
@@ -417,8 +418,8 @@ pub(crate) struct FamilyEditor {
     ifc: Option<IfcClass>,
     /// How a door's or a window's leaves open; none, not said.
     operation: Option<Operation>,
-    /// Its options (Family Category and Parameters), as the family has them: set with the `family` command, kept as they are.
-    options: Value,
+    /// Its options (Family Category and Parameters, Properties' Other group), as the document edits them (`options.rs`).
+    options: options::OptionsText,
     /// The Properties palette's tab, for a family that isn't adaptive: its forms, its symbols, or making it adaptive.
     pub(crate) tab: Tab,
     /// What Family Types keeps while it is open: its search, the groups folded, the row selected, its own dialogs.
@@ -532,7 +533,7 @@ impl FamilyEditor {
             kind: f.kind.clone(),
             ifc: f.ifc.clone(),
             operation: f.operation,
-            options: f.options_json(),
+            options: options::OptionsText::of(f),
             tab: Tab::Forms,
             types_dialog: Default::default(),
             picked: 0,
@@ -682,7 +683,7 @@ impl FamilyEditor {
             lines: self.lines.clone(),
             ..Family::default()
         };
-        family.merge_options(&self.options)?;
+        self.options.apply(&mut family);
         Ok(family)
     }
 
