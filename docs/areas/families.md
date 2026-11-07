@@ -98,10 +98,12 @@ prepare a private `Session`, so saving never implicitly loads the draft into the
 `Session` of its own; errors appear inside the document or its dialog. Connectors, reference planes and lines, form hosts,
 parameter metadata and symbols remain in the draft even when their dedicated tools are not yet available.
 
-Expression-valued form and symbol properties offer `=` (`editor/association.rs`). The association dialog lists family
-parameters of the property's kind and can create a new compatible type or instance parameter. A bound field shows its
-evaluated value and is read-only. Choosing `<None>` removes the association while retaining that evaluated value.
-Cancel leaves the property unchanged; parameter creation stays in the family draft until the family is loaded.
+Expression-valued form and symbol properties (their numbers, Visible and a form's Material) offer `=` (`editor/association.rs`),
+which opens the Associate Family Parameter an adaptive element's rows open (`adaptive_editor::associate`, through the `Tied`
+trait; `Field::Form` and `Field::Symbol` name the row). It lists family parameters of the property's kind and can create a
+new compatible type or instance parameter, starting from what the row comes to. A bound field shows its evaluated value and
+is read-only. Choosing `<None>` removes the association while retaining that evaluated value. Cancel leaves the property
+unchanged; parameter creation stays in the family draft until the family is loaded.
 
 A type of a category or of a family is renamed with `rename_type` (`Model::move_entry` moves it in its map, and `rename_entry` the
 library entry and every reference `Model::lib_refs_mut` visits, so it keeps its GUID). A type or a family goes with `delete_type` (one entry, refused while an element uses it, and for the last type of a category or of a family: a

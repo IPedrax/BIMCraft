@@ -1,200 +1,115 @@
-//! Parameter associations shared by expression-valued form and symbol properties.
+//! Revit's "=" on the rows of a family's own forms and symbols (its numbers, Yes/No and materials): Associate Family Parameter,
+//! the dialog an adaptive element's rows open too (`adaptive_editor::associate`), through `adaptive_editor::Tied`. A row tied to
+//! a parameter holds its name, shows what it comes to for the type previewed, greyed, and takes no typing; untied with <None>,
+//! it keeps what it came to.
 use super::*;
-use bimcraft_core::family::{Val, eval, nameable};
+use crate::adaptive_editor::{Associating, Field, Slot, Tied, associating, equals, worth};
+use bimcraft_core::family::Val;
 
-#[derive(Clone, Copy)]
-pub(super) enum Slot {
-    From,
-    To,
-    Visible,
-    Material,
-    Circle(usize),
-    Axis(usize),
-    Radius,
+/// What a row of a form or a symbol comes to for `values`, as typed: a number worked out, a material a parameter holds, else
+/// as it is.
+fn worked_out(text: &str, kind: Holds, values: &BTreeMap<String, Val>) -> String {
+    match kind {
+        Holds::Material => match values.get(text.trim()) {
+            Some(Val::Text(m)) => m.clone(),
+            _ => text.to_string(),
+        },
+        Holds::YesNo => (if shows(text, values) { "1" } else { "0" }).into(),
+        _ => worth(&text_expr(text), values).map(number_text).unwrap_or_else(|| text.to_string()),
+    }
 }
-#[derive(Clone, Copy)]
-pub(super) enum Target {
-    Form(usize, Slot),
-    Symbol(usize, Slot),
+
+/// The "=" of the rows of a form's or a symbol's fields, drawn: what they may be tied to, and the association asked for.
+pub(super) struct Controls {
+    params: Vec<(String, Holds)>,
+    values: BTreeMap<String, Val>,
+    /// Associate Family Parameter, when an "=" was pressed.
+    pub(super) request: Option<Associating>,
 }
-impl Target {
-    fn text(self, ed: &mut FamilyEditor) -> Option<&mut String> {
-        match self {
-            Self::Form(i, slot) => {
-                let f = ed.forms.get_mut(i)?;
+
+impl Controls {
+    pub(super) fn new(ed: &FamilyEditor) -> Controls {
+        Controls { params: ed.parameter_kinds(), values: ed.values(), request: None }
+    }
+
+    /// Whether what is typed in a row holding a `kind` is a parameter of that kind's name: the row is tied to it.
+    pub(super) fn bound(&self, text: &str, kind: Holds) -> bool {
+        self.params.iter().any(|(n, k)| n == text.trim() && *k == kind)
+    }
+
+    /// A row's field, `label` naming it, with Revit's "=" at its end: tied, it shows what the parameter comes to, greyed.
+    /// `row` is which of its form's or symbol's fields it is, and that form's or symbol's place among them.
+    pub(super) fn field(&mut self, ui: &mut Ui, label: String, text: &mut String, width: f32, kind: Holds, row: (Field, usize)) {
+        ui.horizontal(|ui| {
+            if self.bound(text, kind) {
+                let mut shown = worked_out(text, kind, &self.values);
+                ui.add_enabled_ui(false, |ui| super::field(ui, label.clone(), &mut shown, width));
+            } else {
+                super::field(ui, label.clone(), text, width);
+            }
+            self.button(ui, label, text, kind, row);
+        });
+    }
+
+    /// Revit's "=" alone, for a row drawn otherwise (a material's list).
+    pub(super) fn button(&mut self, ui: &mut Ui, label: String, text: &str, kind: Holds, (row, index): (Field, usize)) {
+        if equals(ui, &label, self.bound(text, kind)) {
+            self.request = Some(associating(&index.to_string(), row, kind, &label, Some(text.trim()), &self.params));
+        }
+    }
+}
+
+/// Associate Family Parameter's rows of a family's own forms and symbols, each by its place among them.
+pub(super) struct Rows<'a> {
+    pub(super) forms: &'a mut [FormText],
+    pub(super) symbols: &'a mut [SymbolText],
+}
+
+impl Rows<'_> {
+    /// What is typed in the row `a` is open on.
+    fn text(&mut self, a: &Associating) -> Option<&mut String> {
+        let i = a.id.parse::<usize>().ok()?;
+        match a.field {
+            Field::Form(slot) => {
+                let f = self.forms.get_mut(i)?;
                 match slot {
                     Slot::From => Some(&mut f.from),
                     Slot::To => Some(&mut f.to),
                     Slot::Visible => Some(&mut f.visible),
                     Slot::Material => Some(&mut f.material),
-                    Slot::Circle(k) => f.circle.get_mut(k),
+                    Slot::Centre(k) => f.circle.get_mut(k),
                     Slot::Axis(k) => f.axis.get_mut(k),
-                    _ => None,
+                    Slot::Radius => f.circle.get_mut(2),
                 }
             }
-            Self::Symbol(i, slot) => {
-                let y = ed.symbols.get_mut(i)?;
+            Field::Symbol(slot) => {
+                let y = self.symbols.get_mut(i)?;
                 match slot {
                     Slot::From => Some(&mut y.from),
                     Slot::To => Some(&mut y.to),
                     Slot::Visible => Some(&mut y.visible),
-                    Slot::Circle(k) => y.centre.get_mut(k),
+                    Slot::Centre(k) => y.centre.get_mut(k),
                     Slot::Radius => Some(&mut y.radius),
-                    _ => None,
+                    Slot::Material | Slot::Axis(_) => None,
                 }
             }
+            _ => None,
         }
     }
 }
 
-pub(super) struct Choice {
-    target: Target,
-    kind: Holds,
-    label: String,
-    selected: String,
-    literal: Result<String, String>,
-    new_name: Option<String>,
-    instance: bool,
-    error: Option<String>,
-    shown: bool,
-}
+impl Tied for Rows<'_> {
+    fn tie(&mut self, a: &Associating, values: &BTreeMap<String, Val>) {
+        let Some(text) = self.text(a) else { return };
+        *text = match &a.chosen {
+            Some(p) => p.clone(),
+            // Untied, a Yes/No is shown unless it came to no: blank is what a form or a symbol is unless it says otherwise.
+            None if a.kind == Holds::YesNo => (if shows(text, values) { "" } else { "0" }).into(),
+            None => worked_out(text, a.kind, values),
+        };
+    }
 
-pub(super) struct Controls {
-    params: Vec<ParamText>,
-    values: BTreeMap<String, Val>,
-    pub(super) request: Option<Choice>,
-}
-impl Controls {
-    pub(super) fn new(ed: &FamilyEditor) -> Self {
-        let values =
-            ed.family().and_then(|f| f.values(ed.types.get(ed.picked).map_or("", |(n, _)| n), &BTreeMap::new())).unwrap_or_default();
-        Self { params: ed.params.clone(), values, request: None }
+    fn value_now(&mut self, a: &Associating, values: &BTreeMap<String, Val>) -> String {
+        self.text(a).map(|text| worked_out(text, a.kind, values)).unwrap_or_default()
     }
-    pub(super) fn bound(&self, text: &str, kind: Holds) -> bool {
-        self.params.iter().any(|p| p.name == text.trim() && p.kind == kind)
-    }
-    fn literal(&self, text: &str, kind: Holds) -> Result<String, String> {
-        if kind == Holds::Material {
-            return Ok(match self.values.get(text.trim()) {
-                Some(Val::Text(v)) => v.clone(),
-                _ => text.into(),
-            });
-        }
-        if text.trim().is_empty() {
-            return Ok(if kind == Holds::YesNo { "1" } else { "0" }.into());
-        }
-        eval(text, &mut |name| match self.values.get(name) {
-            Some(Val::Number(x)) => Ok(*x),
-            _ => Err(tf("{} is not a numeric parameter", &[name])),
-        })
-        .map(number_text)
-    }
-    pub(super) fn field(&mut self, ui: &mut Ui, label: String, text: &mut String, width: f32, kind: Holds, target: Target) {
-        ui.horizontal(|ui| {
-            if self.bound(text, kind) {
-                let mut shown = self.literal(text, kind).unwrap_or_else(|_| text.clone());
-                ui.add_enabled_ui(false, |ui| field(ui, label.clone(), &mut shown, width));
-            } else {
-                field(ui, label.clone(), text, width);
-            }
-            self.button(ui, label, text, kind, target);
-        });
-    }
-    pub(super) fn button(&mut self, ui: &mut Ui, label: String, text: &str, kind: Holds, target: Target) {
-        let response = ui.small_button("=").on_hover_text(t("Associate Family Parameter"));
-        response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Associate {}", &[&label])));
-        if response.clicked() {
-            self.request = Some(Choice {
-                target,
-                kind,
-                label,
-                selected: if self.bound(text, kind) { text.trim().into() } else { String::new() },
-                literal: self.literal(text, kind),
-                new_name: None,
-                instance: false,
-                error: None,
-                shown: false,
-            });
-        }
-    }
-}
-
-pub(super) fn dialog(ctx: &Context, ed: &mut FamilyEditor) {
-    let Some(mut choice) = ed.document.association.take() else { return };
-    let (mut ok, mut cancel) = (false, false);
-    let adding = choice.new_name.is_some();
-    let response = Modal::new(UiId::new("family-association"), if adding { t("New Parameter") } else { t("Associate Family Parameter") })
-        .width(440.)
-        .show(ctx, |ui| {
-            crate::popup::body(ui, |ui| {
-                ui.label(&choice.label);
-                if let Some(name) = &mut choice.new_name {
-                    field(ui, t("Parameter name").into(), name, 280.);
-                    ui.label(t(kind_name(choice.kind)));
-                    ui.checkbox(&mut choice.instance, t("Instance Parameter"));
-                } else {
-                    ui.selectable_value(&mut choice.selected, String::new(), t("<None>"));
-                    for p in ed.params.iter().filter(|p| p.kind == choice.kind) {
-                        ui.selectable_value(&mut choice.selected, p.name.clone(), &p.name);
-                    }
-                    if ui.button(t("New Parameter…")).clicked() {
-                        choice.new_name = Some(String::new());
-                    }
-                }
-                if let Some(error) = &choice.error {
-                    ui.label(RichText::new(error).color(pal().error));
-                }
-            });
-            crate::popup::footer(ui, |ui| {
-                ok = ui.button(t("OK")).clicked();
-                cancel = ui.button(t("Cancel")).clicked();
-            });
-        });
-    let was_shown = choice.shown;
-    choice.shown = true;
-    if cancel || (was_shown && response.should_close()) {
-        if adding {
-            choice.new_name = None;
-            choice.error = None;
-            ed.document.association = Some(choice);
-        }
-        return;
-    }
-    if ok {
-        if let Some(name) = choice.new_name.as_ref() {
-            let name = name.trim();
-            if !nameable(name) || ed.params.iter().any(|p| p.name == name) {
-                choice.error = Some(t("Choose a unique parameter name starting with a letter.").into());
-            } else {
-                match &choice.literal {
-                    Ok(value) => {
-                        ed.params.push(ParamText {
-                            original: Parameter::default(),
-                            name: name.into(),
-                            kind: choice.kind,
-                            instance: choice.instance,
-                            value: value.clone(),
-                            formula: String::new(),
-                        });
-                        choice.selected = name.into();
-                        choice.new_name = None;
-                        choice.error = None;
-                    }
-                    Err(error) => choice.error = Some(error.clone()),
-                }
-            }
-        } else {
-            let value = if choice.selected.is_empty() { choice.literal.clone() } else { Ok(choice.selected.clone()) };
-            match value {
-                Ok(value) => {
-                    if let Some(text) = choice.target.text(ed) {
-                        *text = value;
-                    }
-                    return;
-                }
-                Err(error) => choice.error = Some(error),
-            }
-        }
-    }
-    ed.document.association = Some(choice);
 }

@@ -15,12 +15,10 @@ use crate::{big_button, icon_button, tab_button};
 use bimcraft_core::adaptive::{Definition, Evaluated, Plane, PointType, WorkPlane};
 use egui::{Align2, FontId, Frame, Margin, UiBuilder};
 
-/// What the family document keeps of its own: its history, its preview's size, and an association being made.
+/// What the family document keeps of its own: its history and its preview's size.
 pub(crate) struct State {
     /// The 3D preview's size, in pixels: the view's.
     pub(super) preview_size: [u32; 2],
-    /// An "=" pressed on a form's or a symbol's row: the association being made.
-    pub(super) association: Option<super::association::Choice>,
     /// The draft before each step, newest last, and the steps undone.
     undo: Vec<Draft>,
     redo: Vec<Draft>,
@@ -34,15 +32,7 @@ pub(crate) struct State {
 
 impl Default for State {
     fn default() -> State {
-        State {
-            preview_size: [360, 300],
-            association: None,
-            undo: Vec::new(),
-            redo: Vec::new(),
-            mark: None,
-            dialog_saved: None,
-            reveal: None,
-        }
+        State { preview_size: [360, 300], undo: Vec::new(), redo: Vec::new(), mark: None, dialog_saved: None, reveal: None }
     }
 }
 
@@ -98,7 +88,7 @@ impl Draft {
 impl FamilyEditor {
     /// Whether a dialog of the document's is open: Family Types, Family Category and Parameters, or an association.
     fn modal(&self) -> bool {
-        self.dialog.is_some() || self.associating.is_some() || self.document.association.is_some()
+        self.dialog.is_some() || self.associating.is_some()
     }
 
     /// The document's history, at the end of a frame: Undo or Redo when `ask` says so, else a step for what changed since the
@@ -804,7 +794,6 @@ impl BimApp {
     pub(crate) fn document_dialogs(&mut self, ctx: &Context, ed: &mut FamilyEditor, materials: &[String]) {
         // Associate Family Parameter, from a row's "=": a parameter New Parameter makes goes in the family at once, as in Revit.
         ed.associate_dialog(ctx);
-        super::association::dialog(ctx, ed);
         let Some(dialog) = ed.dialog else {
             ed.document.dialog_saved = None;
             return;

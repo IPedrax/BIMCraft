@@ -539,14 +539,15 @@ impl FamilyEditor {
         }
     }
 
-    /// Associate Family Parameter, open from a row's "=" (an adaptive element's, or a form's Visible): a parameter New
-    /// Parameter makes goes in the family at once, as in Revit.
+    /// Associate Family Parameter, open from a row's "=" (an adaptive element's, or a form's or a symbol's of a family that isn't
+    /// adaptive): a parameter New Parameter makes goes in the family at once, as in Revit.
     pub(crate) fn associate_dialog(&mut self, ctx: &Context) {
         use crate::adaptive_editor::{Field, associate};
         let Some(mut a) = self.associating.take() else { return };
         let (params, values) = (self.parameter_kinds(), self.values());
-        let (done, new) = if a.field == Field::FormVisible {
-            associate(ctx, &mut a, &mut FormsVisible(&mut self.forms), &params, &values)
+        let (done, new) = if matches!(a.field, Field::Form(_) | Field::Symbol(_)) {
+            let mut rows = association::Rows { forms: &mut self.forms, symbols: &mut self.symbols };
+            associate(ctx, &mut a, &mut rows, &params, &values)
         } else if let Some(d) = self.adaptive.as_mut() {
             associate(ctx, &mut a, d, &params, &values)
         } else {
@@ -1009,22 +1010,22 @@ fn types_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     ui.label(RichText::new(t("A blank value is the family's own, as the Parameters tab has it.")).color(pal().muted));
 }
 
-/// A form's Visible row, as Revit's Properties have it: a tick, and "=" at its end to tie it to a yes/no parameter; tied (or
-/// worked out by a formula), the tick shows what the type previewed comes to, greyed, the formula beside it. Whether "=" was
-/// pressed.
-fn visible_row(ui: &mut Ui, f: &mut FormText, n: usize, values: &BTreeMap<String, bimcraft_core::family::Val>) -> bool {
+/// A form's or a symbol's Visible row, as Revit's Properties have it: a tick, and "=" at its end to tie it to a yes/no parameter;
+/// tied (or worked out by a formula), the tick shows what the type previewed comes to, greyed, the formula beside it. `name`
+/// names the tick for screen readers and tests. Whether "=" was pressed.
+fn visible_row(ui: &mut Ui, visible: &mut String, name: String, values: &BTreeMap<String, bimcraft_core::family::Val>) -> bool {
     let label = msg!("Visible");
     let l = ui.label(t(label));
-    let typed = f.visible.trim().to_string();
+    let typed = visible.trim().to_string();
     let tied = !typed.is_empty() && typed.parse::<f64>().is_err();
     let pressed = ui
         .horizontal(|ui| {
-            let mut on = shows(f, values);
+            let mut on = shows(visible, values);
             let r = ui.add_enabled(!tied, egui::Checkbox::without_text(&mut on)).labelled_by(l.id);
-            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, !tied, on, format!("{} {n}", t("Form Visible"))));
+            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, !tied, on, name.as_str()));
             if r.changed() {
-                // Shown is what a form is unless it says otherwise.
-                f.visible = if on { String::new() } else { "0".into() };
+                // Shown is what a form or a symbol is unless it says otherwise.
+                *visible = if on { String::new() } else { "0".into() };
             }
             if tied {
                 ui.label(RichText::new(&typed).color(pal().muted));
@@ -1036,29 +1037,9 @@ fn visible_row(ui: &mut Ui, f: &mut FormText, n: usize, values: &BTreeMap<String
     pressed
 }
 
-/// Associate Family Parameter's rows of a family's own forms: their Visible, each by its place among them.
-struct FormsVisible<'a>(&'a mut [FormText]);
-
-impl crate::adaptive_editor::Tied for FormsVisible<'_> {
-    fn tie(&mut self, a: &crate::adaptive_editor::Associating, values: &BTreeMap<String, bimcraft_core::family::Val>) {
-        let Some(f) = a.id.parse::<usize>().ok().and_then(|i| self.0.get_mut(i)) else { return };
-        f.visible = match &a.chosen {
-            Some(p) => p.clone(),
-            // Untied, it keeps what it came to.
-            None if shows(f, values) => String::new(),
-            None => "0".into(),
-        };
-    }
-
-    fn value_now(&mut self, a: &crate::adaptive_editor::Associating, values: &BTreeMap<String, bimcraft_core::family::Val>) -> String {
-        let on = a.id.parse::<usize>().ok().and_then(|i| self.0.get(i)).is_none_or(|f| shows(f, values));
-        (if on { "1" } else { "0" }).into()
-    }
-}
-
-/// Whether form `f` shows with `values`: unless it says otherwise, it does.
-fn shows(f: &FormText, values: &BTreeMap<String, bimcraft_core::family::Val>) -> bool {
-    let typed = f.visible.trim();
+/// Whether a form or a symbol whose Visible is typed `visible` shows with `values`: unless it says otherwise, it does.
+fn shows(visible: &str, values: &BTreeMap<String, bimcraft_core::family::Val>) -> bool {
+    let typed = visible.trim();
     typed.is_empty() || crate::adaptive_editor::worth(&text_expr(typed), values).is_some_and(|x| x != 0.0)
 }
 
@@ -1071,7 +1052,7 @@ fn form_fields(
     values: &BTreeMap<String, bimcraft_core::family::Val>,
     links: &mut association::Controls,
 ) -> bool {
-    use association::{Slot, Target};
+    use crate::adaptive_editor::{Field, Slot};
     let n = i + 1;
     let mut pressed = false;
     // The datums, by the planes they are; a form on a plane of the family's own keeps it until a datum is picked.
@@ -1119,7 +1100,7 @@ fn form_fields(
                             &mut f.circle[k],
                             80.0,
                             Holds::Length,
-                            Target::Form(i, Slot::Circle(k)),
+                            (Field::Form(Slot::Centre(k)), i),
                         );
                     }
                 });
@@ -1134,7 +1115,7 @@ fn form_fields(
                     for (k, what) in
                         [msg!("Form Axis X1"), msg!("Form Axis Y1"), msg!("Form Axis X2"), msg!("Form Axis Y2")].into_iter().enumerate()
                     {
-                        links.field(ui, format!("{} {n}", t(what)), &mut f.axis[k], 60.0, Holds::Length, Target::Form(i, Slot::Axis(k)));
+                        links.field(ui, format!("{} {n}", t(what)), &mut f.axis[k], 60.0, Holds::Length, (Field::Form(Slot::Axis(k)), i));
                     }
                 });
                 ui.end_row();
@@ -1146,7 +1127,7 @@ fn form_fields(
                 &mut f.from,
                 120.0,
                 if f.revolve { Holds::Angle } else { Holds::Length },
-                Target::Form(i, Slot::From),
+                (Field::Form(Slot::From), i),
             );
             ui.end_row();
             ui.label(if f.revolve { t("To (degrees)") } else { t("To") });
@@ -1156,23 +1137,30 @@ fn form_fields(
                 &mut f.to,
                 120.0,
                 if f.revolve { Holds::Angle } else { Holds::Length },
-                Target::Form(i, Slot::To),
+                (Field::Form(Slot::To), i),
             );
             ui.end_row();
         }
         ui.label(t("Material"));
         if links.bound(&f.material, Holds::Material) {
-            links.field(ui, format!("{} {n}", t("Form Material")), &mut f.material, 120., Holds::Material, Target::Form(i, Slot::Material));
+            links.field(
+                ui,
+                format!("{} {n}", t("Form Material")),
+                &mut f.material,
+                120.,
+                Holds::Material,
+                (Field::Form(Slot::Material), i),
+            );
         } else {
             ui.horizontal(|ui| {
                 if let Some(m) = pick(ui, format!("{} {n}", t("Form Material")), &f.material, options) {
                     f.material = m;
                 }
-                links.button(ui, format!("{} {n}", t("Form Material")), &f.material, Holds::Material, Target::Form(i, Slot::Material));
+                links.button(ui, format!("{} {n}", t("Form Material")), &f.material, Holds::Material, (Field::Form(Slot::Material), i));
             });
         }
         ui.end_row();
-        pressed = visible_row(ui, f, n, values);
+        pressed = visible_row(ui, &mut f.visible, format!("{} {n}", t("Form Visible")), values);
         ui.label(t("Void"));
         let r = ui.checkbox(&mut f.void, t("cuts the forms listed above it"));
         r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, f.void, format!("{} {n}", t("Form Void"))));
@@ -1200,7 +1188,7 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
                 let typed = ed.forms[i].visible.trim().to_string();
                 ed.associating = Some(crate::adaptive_editor::associating(
                     &i.to_string(),
-                    crate::adaptive_editor::Field::FormVisible,
+                    crate::adaptive_editor::Field::Form(crate::adaptive_editor::Slot::Visible),
                     Holds::YesNo,
                     msg!("Visible"),
                     Some(typed.as_str()),
@@ -1221,7 +1209,7 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
         });
     }
     if links.request.is_some() {
-        ed.document.association = links.request;
+        ed.associating = links.request;
     }
     match act {
         Some((i, -1)) => ed.forms.swap(i, i - 1),
@@ -1256,8 +1244,9 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
 }
 
 fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
-    use association::{Slot, Target};
+    use crate::adaptive_editor::{Field, Slot};
     let mut links = association::Controls::new(ed);
+    let (values, params) = (ed.values(), ed.parameter_kinds());
     ui.label(
         RichText::new(t("Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."))
             .color(pal().muted),
@@ -1291,7 +1280,7 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                                 &mut y.centre[k],
                                 90.0,
                                 Holds::Length,
-                                Target::Symbol(i, Slot::Circle(k)),
+                                (Field::Symbol(Slot::Centre(k)), i),
                             );
                         }
                     });
@@ -1304,7 +1293,7 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                         &mut y.radius,
                         120.0,
                         Holds::Length,
-                        Target::Symbol(i, Slot::Radius),
+                        (Field::Symbol(Slot::Radius), i),
                     );
                     ui.end_row();
                     if y.part == Part::Arc {
@@ -1318,7 +1307,7 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                                 text,
                                 120.0,
                                 Holds::Angle,
-                                Target::Symbol(i, if what == "Symbol From" { Slot::From } else { Slot::To }),
+                                (Field::Symbol(if what == "Symbol From" { Slot::From } else { Slot::To }), i),
                             );
                             ui.end_row();
                         }
@@ -1338,16 +1327,18 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                         ui.end_row();
                     }
                 }
-                ui.label(t("Visible when"));
-                links.field(
-                    ui,
-                    format!("{} {n}", t("Symbol Visible")),
-                    &mut y.visible,
-                    120.0,
-                    Holds::YesNo,
-                    Target::Symbol(i, Slot::Visible),
-                );
-                ui.end_row();
+                if visible_row(ui, &mut y.visible, format!("{} {n}", t("Symbol Visible")), &values) {
+                    let typed = y.visible.trim().to_string();
+                    let field = Field::Symbol(Slot::Visible);
+                    links.request = Some(crate::adaptive_editor::associating(
+                        &i.to_string(),
+                        field,
+                        Holds::YesNo,
+                        msg!("Visible"),
+                        Some(&typed),
+                        &params,
+                    ));
+                }
                 // Drawn in a subcategory a view hides or restyles apart (a door's swing in Doors > Opening), or the category.
                 if !subs.is_empty() || !y.subcategory.is_empty() {
                     ui.label(t("Subcategory"));
@@ -1368,7 +1359,7 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
         });
     }
     if links.request.is_some() {
-        ed.document.association = links.request;
+        ed.associating = links.request;
     }
     if let Some(i) = remove {
         ed.symbols.remove(i);

@@ -57,20 +57,20 @@ fn equals_associates_a_form_property_and_can_create_and_remove_a_parameter() {
     let mut h = app("");
     h.state_mut().new_family(bimcraft_core::family::Category::Generic);
     h.run();
-    associate(&mut h, "Associate Form To 1");
+    associate(&mut h, "Associate Family Parameter: Form To 1");
     assert!(h.query_by_label("Width").is_some());
     press(&mut h, "Height");
     press(&mut h, "OK");
-    associate(&mut h, "Associate Form To 1");
-    press(&mut h, "New Parameter…");
-    type_into(&mut h, "Parameter name", "Overall height");
+    associate(&mut h, "Associate Family Parameter: Form To 1");
+    press(&mut h, "New Parameter");
+    type_into(&mut h, "Name:", "Overall height");
     press(&mut h, "OK");
     press(&mut h, "OK");
     press(&mut h, "Load into Project");
     let f = &h.state().session.model.families["New Family"];
     assert_eq!(f.forms[0].to, bimcraft_core::family::Expr::Formula("Overall height".into()));
     assert!(f.parameters.iter().any(|p| p.name == "Overall height" && p.kind == bimcraft_core::family::Kind::Length));
-    associate(&mut h, "Associate Form To 1");
+    associate(&mut h, "Associate Family Parameter: Form To 1");
     press(&mut h, "<None>");
     press(&mut h, "OK");
     press(&mut h, "Load into Project");
@@ -90,7 +90,7 @@ fn associations_filter_yesno_and_material_and_preserve_the_project_until_load() 
     assert!(h.query_by_label("Finish").is_none() && h.query_by_label("Depth").is_none());
     press(&mut h, "Show");
     press(&mut h, "OK");
-    associate(&mut h, "Associate Form Material 1");
+    associate(&mut h, "Associate Family Parameter: Form Material 1");
     assert!(h.query_by_label("Finish").is_some());
     assert_eq!(h.query_all_by_label("Show").count(), 1, "only the Visible row's own, tied to it");
     press(&mut h, "Finish");
@@ -237,4 +237,32 @@ fn family_browser_scrolls_to_forms_in_a_short_window() {
     h.run();
     press(&mut h, "1. Extrusion");
     assert!(h.query_by_label("Form From 1").is_some(), "a form below the views can be reached and selected from the browser");
+}
+
+#[test]
+fn a_symbols_rows_are_tied_through_the_dialog_adaptive_rows_and_form_visibility_share() {
+    let mut h = app("");
+    h.set_size(vec2(1600., 1000.));
+    h.state_mut().new_family(bimcraft_core::family::Category::Generic);
+    h.run();
+    press(&mut h, "Symbols");
+    press(&mut h, "Add Arc");
+    // Its radius tied to Width: greyed, showing what Width comes to.
+    associate(&mut h, "Associate Family Parameter: Symbol Radius 1");
+    press(&mut h, "Width");
+    press(&mut h, "OK");
+    assert_eq!(h.get_by_label("Symbol Radius 1").value().as_deref(), Some("1000"));
+    // Its Visible tied to a new Yes/No parameter, which starts from what the row came to: shown.
+    associate(&mut h, "Associate Family Parameter: Visible");
+    press(&mut h, "New Parameter");
+    type_into(&mut h, "Name:", "Swing");
+    press(&mut h, "OK");
+    press(&mut h, "OK");
+    press(&mut h, "Load into Project");
+    let f = &h.state().session.model.families["New Family"];
+    let arc = f.symbols[0].arc.as_ref().unwrap();
+    assert_eq!(arc.radius, bimcraft_core::family::Expr::Formula("Width".into()));
+    assert_eq!(f.symbols[0].visible, Some(bimcraft_core::family::Expr::Formula("Swing".into())));
+    let swing = f.parameters.iter().find(|p| p.name == "Swing").unwrap();
+    assert_eq!((swing.kind, &swing.value), (bimcraft_core::family::Kind::YesNo, &json!(true)));
 }
