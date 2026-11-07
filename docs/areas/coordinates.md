@@ -165,8 +165,8 @@ comes with it. From a CAD drawing placed in the project: its file's coordinates 
 stands the shared coordinates are its (in mm, by its scale), its axes are the map's (the angle is less its turn), and the
 elevation stays. The reply adds `acquired: {from, location}`. A Revit file can't be linked yet, and the Revit reader doesn't
 read a file's survey or base point, so a Revit project's coordinates come over through its IFC export. In the desktop,
-Manage > Project Location > Acquire Coordinates acts on a link or drawing selected alone, else is a tool: a click on a
-linked model's element (`link::link_of` finds its link) or a drawing.
+it is on the Coordinates window's Manage tab: an Acquire button for each link and drawing, and Pick in the View, a tool
+(`Tool::Acquire`) whose click takes a linked model's element (`link::link_of` finds its link) or a drawing.
 
 `coordinates {reset: true}` is Reset Coordinates: the active location back on the internal origin (no offset, no turn, a scale
 of 1), both points on it; the other locations and the map system stay. No link moves: each placed by base points or shared
@@ -204,8 +204,22 @@ Point to Project Base Point, or By Shared Coordinates (with which of its locatio
 `by` and `location`. Import CAD, Link CAD and Point Cloud have By Shared Coordinates beside Center to Center and Origin to
 Origin, with **Acquire coordinates from it** (`acquire: true`).
 
-Still to come of the plan's stage 6: a plan turned to true north (`orientation`), which wants `render::View` turned, and
-everything that converts through it with it; and the north arrow annotation.
+## Orientation: plans turned to true north
+
+A plan's graphics hold `orientation`, `project_north` (the default) or `true_north` (`graphics::Orientation`; `graphics
+{view, orientation}`, or `modify` of the view's `graphics`; a view's own, not a template's). Oriented to true north, a plan is
+turned on screen by the active location's angle to true north (`render::view_angle`), so true north is up; the model never
+moves. `render::View` has an `angle`: `px` and `mm` turn about the view's middle, `along` turns a direction and `shown` is the
+whole box the view sees, which culling, hatching and patterns clip to. `render::plan` and the ceiling plan fit the plan as it
+lies turned (`fit_turned`), and so does a sheet's viewport of it (`sheet::framing_in`). Dimension numbers run along their
+turned lines and never upside down; elevation and section heads point the way they look on screen; CAD text turns with its
+drawing; a spot coordinate's shoulder and text stay level on the sheet. The desktop's canvas keeps each view's turn
+(`Canvas::turn`, set each frame from the plan), so zoom, pan, picking and snapping go through it, and the minimap draws the
+plan turned too. Properties' Graphics group has **Orientation** (Project North, True North) under Detail Level for a plan
+and a ceiling plan. Tests: `coordinates_tests.rs` (the angle, the fit, the sheet), `tests/coordinates.rs` (the dropdown, a
+click through the turned canvas).
+
+The north arrow annotation, and the map and the sun (the plan's stage 8), are on the [roadmap](../../ROADMAP.md) (0.9).
 
 ## Ids
 
@@ -291,10 +305,10 @@ deletes. A refusal stays in the window and says why. It looks the same in the th
 
 The Coordinates window's tabs are Locations, Points, Map System, Manage and Convert. Manage holds Specify Coordinates at a
 Point, Shift every location, Acquire Coordinates (an Acquire button for each link and CAD drawing, and Pick in the View) and
-Reset Coordinates, which asks first, saying what it does and how many links it pins. Acquire and Reset are done at once, each
+Reset Coordinates, which asks first, saying what it does and how many links it pins; each is a rounded card of its own, as
+the window's summary is, folded closed until its title opens it (`coordinates::fold`). Acquire and Reset are done at once, each
 its own undo step, and the window shows the result on Manage. Tests: `crates/ui-egui/src/tests/coordinates.rs`.
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
 
-Not yet (the plan's later stages): plans turned to true north, the north arrow and the markers, and the points' grips and
-Properties on the canvas.
+On the roadmap (0.9), out of this work: the north arrow annotation, the online map and the sun.

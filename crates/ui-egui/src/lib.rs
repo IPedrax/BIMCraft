@@ -4157,12 +4157,6 @@ impl BimApp {
             if big_button(ui, Icon::ProjectNorth, "Rotate Project North", matches!(self.tool, Tool::RotateNorth { .. }), tip).clicked() {
                 self.set_tool(Tool::RotateNorth { centre: P2(0.0, 0.0), start: None, place: false });
             }
-            let tip = msg!(
-                "Acquire Coordinates: click a linked model (BIMCraft or IFC) or a CAD drawing; its shared coordinates become this project's, where it stands now"
-            );
-            if big_button(ui, Icon::Acquire, "Acquire Coordinates", self.tool == Tool::Acquire, tip).clicked() {
-                self.acquire_now_or_pick();
-            }
         });
         panel(ui, msg!("Links"), |ui| {
             let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";

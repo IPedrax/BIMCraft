@@ -1716,7 +1716,8 @@ pub static ALL: &[Command] = &[
          | null, phase_filter?: name | null, options?: {set: option | null, …}, layers?: {drawing: [layer, …] | null, …}, template?: name | null, \
          background_grid?: {visible?, main?: {enabled?, color?: [r,g,b], pen?: 0..16}, sub?: {enabled?, color?, pen?}, \
          spacing?: [X,Y] (mm), divisions?: [X,Y] (1..1000), rotation?: degrees (-360..360)} | null, \
-         reset?: true} what a view hides and how it draws the rest, as Revit's Visibility/Graphics does; with \
+         orientation?: project_north|true_north (a plan's: which north is up; true north turns it on screen by the active \
+         location's angle to true north, never the model), reset?: true} what a view hides and how it draws the rest, as Revit's Visibility/Graphics does; with \
          none of those, the view's settings as they are. A category hidden (walls, floors, rooms, grids, dimensions, levels…, \
          in any case, singular or plural) leaves all its elements out of that view, and `hide_elements` the elements given. \
          In a 3D view rooms are hidden unless shown (`show: [rooms]`), every new 3D view so; shown, each is a \
@@ -3739,7 +3740,7 @@ fn merged_override(c: &str, what: &str, from: Option<&Override>, patch: &Value) 
 /// categories' and its filters' alone.
 fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: bool) -> Result<(), String> {
     let given = |k: &str| !absent(p.get(k));
-    let views_own = ["hide_elements", "show_elements", "elements", "layers"];
+    let views_own = ["hide_elements", "show_elements", "elements", "layers", "orientation"];
     if of_template && let Some(k) = views_own.iter().find(|k| given(k)).or(p.get("template").map(|_| &"template")) {
         return Err(bad(c, format!("`{k}` is a view's own; a template holds categories, filters, a phase and design options")));
     }
@@ -3773,6 +3774,13 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
     }
     if flag(c, p, "reset")? {
         *g = Graphics::default();
+    }
+    match p.get("orientation") {
+        v if absent(v) => {}
+        Some(Value::String(o)) if o == "project_north" || o == "project" => g.orientation = graphics::Orientation::ProjectNorth,
+        Some(Value::String(o)) if o == "true_north" || o == "true" => g.orientation = graphics::Orientation::TrueNorth,
+        Some(v) => return Err(bad(c, format!("`orientation` is project_north or true_north, not {v}"))),
+        None => {}
     }
     if let Some(patch) = p.get("background_grid") {
         if patch.is_null() {
@@ -3937,7 +3945,7 @@ fn graphics_reply(g: &Graphics) -> Value {
         "hidden": hidden, "categories": g.categories, "filters": g.filters, "layers": g.layers,
         "phase": g.phase, "phase_filter": g.phase_filter, "options": g.options,
         "scale": g.scale, "detail": g.detail, "visual_style": g.style,
-        "background_grid": g.background_grid,
+        "background_grid": g.background_grid, "orientation": g.orientation,
     })
 }
 

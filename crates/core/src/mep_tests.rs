@@ -287,7 +287,7 @@ fn a_project_with_runs_of_the_mep_saves_and_opens_again() {
 // ---------- drawn ----------
 
 fn view() -> View {
-    View { scale: 0.1, cx: 3000.0, cy: 0.0, width: 1000, height: 800 }
+    View { angle: 0.0, scale: 0.1, cx: 3000.0, cy: 0.0, width: 1000, height: 800 }
 }
 
 fn of(d: &Drawing, id: u64) -> Vec<&Prim> {
@@ -340,7 +340,7 @@ fn a_section_cuts_a_run_across_its_section_a_round_one_in_a_ring() {
         let mut s = Session::new();
         let a = made(&mut s, c.command, json!({"points": [[0, 0], [6000, 0]], "offset": 2400}));
         let section = made(&mut s, "section", json!({"start": [3000, -2000], "end": [3000, 2000]}));
-        let d = render::section(&s.model, section, View { scale: 0.1, cx: 2000.0, cy: 1500.0, width: 1000, height: 800 });
+        let d = render::section(&s.model, section, View { angle: 0.0, scale: 0.1, cx: 2000.0, cy: 1500.0, width: 1000, height: 800 });
         let w = element_json(&s.model, a)["width"].as_f64().unwrap();
         let (lo, hi) = extent(&d, a);
         // Across the line at 2000 along it, centred on 2400 up; a round one's ring is a polygon in its circle, to the tenth.

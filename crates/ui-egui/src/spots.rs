@@ -1,7 +1,8 @@
 //! Spot coordinates on the desktop: the Spot Coordinate tool's type, Spot Coordinate Type Properties (the dialog Edit Type
 //! opens, every type parameter Revit's has: leader arrowhead and its size, the leader's and the arrowhead's pens and colour,
 //! the symbol, the lettering and its colour, the coordinate origin, the top and bottom values, the indicators, the elevation,
-//! units and alternate units), the grip on a selected spot coordinate's leader end, and Acquire Coordinates.
+//! units and alternate units), the grip on a selected spot coordinate's leader end, and Acquire Coordinates' pick in the view
+//! (Coordinates > Manage > Pick in the View).
 
 use bimcraft_core::coordinates::Origin;
 use bimcraft_core::dims::Background;
@@ -248,17 +249,6 @@ impl BimApp {
         let r = Rect::from_center_size(at(live.unwrap_or(end)), vec2(9.0, 9.0));
         p.rect_filled(r, 1.0, if live.is_some() { pal().accent } else { canvas_pal().surface });
         p.rect_stroke(r, 1.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle);
-    }
-
-    /// Acquire Coordinates: with a link or a CAD drawing selected alone, from it now; else the tool, to pick one.
-    pub(crate) fn acquire_now_or_pick(&mut self) {
-        if let &[id] = self.selection.as_slice()
-            && matches!(self.session.model.elements.get(id), Some(Element::Link(_) | Element::CadImport(_)))
-        {
-            self.acquire_from(id);
-            return;
-        }
-        self.set_tool(Tool::Acquire);
     }
 
     /// The project's shared coordinates taken from what `picked` is of: a linked model's element names its link.

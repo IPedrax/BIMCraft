@@ -195,22 +195,51 @@ pub struct View {
     pub cy: f64,
     pub width: u32,
     pub height: u32,
+    /// How far the model is turned on screen about the view's middle, degrees counter-clockwise: a plan oriented to true
+    /// north turns it by the angle to true north ([`view_angle`]); 0, project north up.
+    pub angle: f64,
 }
 
 impl View {
+    /// The turn's sine and cosine; none for a view not turned, which takes the plain path.
+    fn turn(&self) -> Option<(f64, f64)> {
+        (self.angle != 0.0 && self.angle.is_finite()).then(|| self.angle.to_radians().sin_cos())
+    }
+
     pub fn px(&self, p: P2) -> (f32, f32) {
-        (
-            (f64::from(self.width) / 2.0 + (p.0 - self.cx) * self.scale) as f32,
-            (f64::from(self.height) / 2.0 - (p.1 - self.cy) * self.scale) as f32,
-        )
+        let (mut dx, mut dy) = (p.0 - self.cx, p.1 - self.cy);
+        if let Some((sin, cos)) = self.turn() {
+            (dx, dy) = (dx * cos - dy * sin, dx * sin + dy * cos);
+        }
+        ((f64::from(self.width) / 2.0 + dx * self.scale) as f32, (f64::from(self.height) / 2.0 - dy * self.scale) as f32)
     }
 
     /// The model point at a pixel: the inverse of [`View::px`].
     pub fn mm(&self, (x, y): (f32, f32)) -> P2 {
-        P2(
-            self.cx + (f64::from(x) - f64::from(self.width) / 2.0) / self.scale,
-            self.cy - (f64::from(y) - f64::from(self.height) / 2.0) / self.scale,
-        )
+        let (mut dx, mut dy) =
+            ((f64::from(x) - f64::from(self.width) / 2.0) / self.scale, -(f64::from(y) - f64::from(self.height) / 2.0) / self.scale);
+        if let Some((sin, cos)) = self.turn() {
+            (dx, dy) = (dx * cos + dy * sin, -dx * sin + dy * cos);
+        }
+        P2(self.cx + dx, self.cy + dy)
+    }
+
+    /// A model direction (a vector, mm) as it runs on screen, px: x right, y down.
+    pub fn along(&self, v: P2) -> (f64, f64) {
+        let (mut dx, mut dy) = (v.0, v.1);
+        if let Some((sin, cos)) = self.turn() {
+            (dx, dy) = (dx * cos - dy * sin, dx * sin + dy * cos);
+        }
+        (dx * self.scale, -dy * self.scale)
+    }
+
+    /// The model box the view shows: its four corners' bounds, the whole of it however it is turned.
+    pub fn shown(&self) -> [P2; 2] {
+        let (w, h) = (self.width as f32, self.height as f32);
+        let corners = [self.mm((0.0, 0.0)), self.mm((w, 0.0)), self.mm((0.0, h)), self.mm((w, h))];
+        let lo = corners.iter().fold(P2(f64::MAX, f64::MAX), |a, p| P2(a.0.min(p.0), a.1.min(p.1)));
+        let hi = corners.iter().fold(P2(f64::MIN, f64::MIN), |a, p| P2(a.0.max(p.0), a.1.max(p.1)));
+        [lo, hi]
     }
 }
 
@@ -1037,8 +1066,38 @@ fn turn_corners(runs: &mut [(Id, Vec<Vec<P2>>)], reach: f64) {
 }
 
 /// The plan of `level` fitted into `width` x `height` px, as an image of it is made: with its name lettered at its bottom left.
+/// How far plan `key` is turned on screen, degrees counter-clockwise: oriented to true north, the active location's angle to
+/// true north (which is clockwise from project north), so true north is up; else 0.
+pub fn view_angle(m: &Model, key: impl Key) -> f64 {
+    match crate::graphics::graphics_of(m, key) {
+        Some(g) if g.orientation == crate::graphics::Orientation::TrueNorth => {
+            let a = m.coordinates.location().angle;
+            if a.is_finite() { a } else { 0.0 }
+        }
+        _ => 0.0,
+    }
+}
+
+/// `p` turned `angle` degrees counter-clockwise about the origin.
+fn turn(p: P2, angle: f64) -> P2 {
+    let (sin, cos) = angle.to_radians().sin_cos();
+    P2(p.0 * cos - p.1 * sin, p.0 * sin + p.1 * cos)
+}
+
+/// [`fit`] for a view turned `angle`: the points fitted as they lie on screen, the middle taken back to the model's.
+pub(crate) fn fit_turned(pts: &[P2], width: u32, height: u32, n: f64, angle: f64) -> View {
+    if angle == 0.0 {
+        return fit(pts, width, height, n);
+    }
+    let on_screen: Vec<P2> = pts.iter().map(|p| turn(*p, angle)).collect();
+    let v = fit(&on_screen, width, height, n);
+    let c = turn(P2(v.cx, v.cy), -angle);
+    View { cx: c.0, cy: c.1, angle, ..v }
+}
+
 pub fn plan(m: &Model, level: impl Key, width: u32, height: u32) -> Drawing {
-    let view = fit(&plan_extent(m, level), width, height, scale_of(m, level));
+    let level = m.guid(level);
+    let view = fit_turned(&plan_extent(m, level), width, height, scale_of(m, level), view_angle(m, level));
     draw_plan(m, level, view, false, annotation(m, level, view), scale_of(m, level), true)
 }
 
@@ -2405,7 +2464,8 @@ pub fn draw(m: &Model, level: impl Key, view: View) -> Drawing {
 
 /// The reflected ceiling plan of `level` fitted into `width` x `height` px.
 pub fn ceiling_plan(m: &Model, level: impl Key, width: u32, height: u32) -> Drawing {
-    let view = fit(&plan_shows(m, level), width, height, scale_of(m, level));
+    let level = m.guid(level);
+    let view = fit_turned(&plan_shows(m, level), width, height, scale_of(m, level), view_angle(m, level));
     draw_plan(m, level, view, true, annotation(m, level, view), scale_of(m, level), true)
 }
 
@@ -2566,7 +2626,7 @@ fn cad_imports(d: &mut Drawing, m: &Model, key: crate::ids::Guid, level: crate::
                         Vertical::Top => left - v * *height,
                     };
                     let middle = d.view.px(place(base + u * (wide / 2.0) + v * (height / 2.0)));
-                    d.text_turned(text, middle, px, -((angle + ci.angle).to_radians()) as f32, color);
+                    d.text_turned(text, middle, px, -((angle + ci.angle + d.view.angle).to_radians()) as f32, color);
                 }
                 Shape::Point(_) => {}
                 Shape::Fill { rings, solid } => {
@@ -3229,8 +3289,8 @@ fn hatch(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, gap:
 }
 
 fn hatching(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, gap: f64) {
-    let (w, h) = (d.view.width as f32, d.view.height as f32);
-    let (lo, hi) = (d.view.mm((0.0, h)), d.view.mm((w, 0.0)));
+    // The box the view shows, whole however it is turned.
+    let [lo, hi] = d.view.shown();
     let ring = [(P2(1.0, 0.0), lo.0), (P2(-1.0, 0.0), -hi.0), (P2(0.0, 1.0), lo.1), (P2(0.0, -1.0), -hi.1)]
         .into_iter()
         .fold(ring.to_vec(), |r, (n, k)| geom::clip(&r, |q| q.dot(n) - k));
@@ -3477,7 +3537,7 @@ fn fit_by(extent: impl Fn(f64) -> [P2; 2], width: u32, height: u32, n: f64) -> V
         *(if fits(mid) { &mut fits_at } else { &mut too_big }) = mid;
     }
     let [lo, hi] = extent(fits_at);
-    View { scale: fits_at, cx: (lo.0 + hi.0) / 2.0, cy: (lo.1 + hi.1) / 2.0, width, height }
+    View { angle: 0.0, scale: fits_at, cx: (lo.0 + hi.0) / 2.0, cy: (lo.1 + hi.1) / 2.0, width, height }
 }
 
 /// A door or window the cut plane at height `cut` passes through: a gap in the wall, jambs, and
@@ -3708,8 +3768,8 @@ fn fill_pattern(d: &mut Drawing, p: &crate::fills::FillPattern, rings: &[Vec<P2>
         d.part = part;
         return;
     }
-    let (w, h) = (d.view.width as f32, d.view.height as f32);
-    let window = (d.view.mm((0.0, h)), d.view.mm((w, 0.0)));
+    let [lo, hi] = d.view.shown();
+    let window = (lo, hi);
     // A drafting pattern's mm are the view's paper's.
     let k = match p.target {
         crate::fills::Target::Drafting => (sheet::DENSITY as f32 * d.paper) as f64 / d.view.scale,
@@ -3852,7 +3912,7 @@ fn line_at(m: &Model, key: Id, id: Id, at: P2, reach: f64, pattern: bool) -> Opt
 fn lines_at(m: &Model, key: Id, id: Id, at: P2, reach: f64, pattern: bool) -> Vec<(f64, P2, P2)> {
     // A window round the point, 10 px to `reach`, drawn without the view's own linework (an edge drawn unseen is still one).
     let scale = 10.0 / reach.max(1.0);
-    let view = View { scale, cx: at.0, cy: at.1, width: 1000, height: 1000 };
+    let view = View { angle: 0.0, scale, cx: at.0, cy: at.1, width: 1000, height: 1000 };
     if !pattern {
         let centerlines: Option<Vec<Vec<P2>>> = match m.elements.get(id).filter(|e| m.annotation_in(e, key)) {
             Some(Element::DetailLine(l)) => Some(vec![l.curve.points()]),
@@ -4234,9 +4294,10 @@ fn tag(d: &mut Drawing, m: &Model, t: &Tag, rooms: &crate::rooms::Rooms) {
 }
 
 /// The way a section or elevation looks, on screen (y down).
-fn looking_px(v: &Section) -> (f32, f32) {
-    let l = v.looking();
-    (l.0 as f32, -l.1 as f32)
+fn looking_px(view: &View, v: &Section) -> (f32, f32) {
+    let (x, y) = view.along(v.looking());
+    let n = x.hypot(y).max(1e-12);
+    ((x / n) as f32, (y / n) as f32)
 }
 
 /// A section's line in plan, dashed, with its head at its start (a flag pointing the way it
@@ -4244,7 +4305,7 @@ fn looking_px(v: &Section) -> (f32, f32) {
 fn section_mark(d: &mut Drawing, v: &Section) {
     let (a, b) = (d.view.px(v.start), d.view.px(v.end));
     d.stroke(vec![a, b], Pen::MEDIUM, INK, Some(vec![18.0, 5.0]), false);
-    let (lx, ly) = looking_px(v);
+    let (lx, ly) = looking_px(&d.view, v);
     let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
     let (ux, uy) = ((b.0 - a.0) / len, (b.1 - a.1) / len);
     let from = d.prims.len();
@@ -4271,7 +4332,7 @@ fn elevation_mark(d: &mut Drawing, v: &Section) {
         .collect();
     d.push(Prim::Fill { rings: vec![ring.clone()], color: PAPER });
     d.stroke(ring, Pen::BUBBLE, INK, None, true);
-    let (lx, ly) = looking_px(v);
+    let (lx, ly) = looking_px(&d.view, v);
     let side = (-ly * R * 0.8, lx * R * 0.8);
     let flag = vec![(c.0 + side.0, c.1 + side.1), (c.0 + lx * (R + 7.0), c.1 + ly * (R + 7.0)), (c.0 - side.0, c.1 - side.1)];
     d.push(Prim::Fill { rings: vec![flag], color: INK });
@@ -4595,7 +4656,7 @@ mod tests {
         let mut s = house();
         let room = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Room(_))).map(|(id, _)| *id).unwrap();
         let level = s.model.levels()[0].0;
-        let view = View { scale: 0.05, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
+        let view = View { angle: 0.0, scale: 0.05, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
         let fills = |m: &Model| {
             draw(m, level, view).prims.iter().filter(|p| matches!(p, Prim::Fill { color, .. } if *color == Rgb(200, 120, 40))).count()
         };
@@ -5333,7 +5394,7 @@ mod tests {
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 50})).unwrap();
         // A tenth of a pixel to the mm: at 1 : 50, annotation is the size it has been all along (10 px lettering is
         // 2 mm of paper, DENSITY px to the mm).
-        let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+        let view = View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         let grid = |s: &Session, view: View| {
             let d = draw(&s.model, 100000, view);
             (lettering(&d, 100009), bubble(&d, 100009))
@@ -5361,7 +5422,7 @@ mod tests {
         let mut s = house();
         s.script("section {\"start\": [-1000, 3000], \"end\": [9000, 3000]}").unwrap();
         // The section's own line, from its start, and up.
-        let view = View { scale: 0.1, cx: 5000.0, cy: 1500.0, width: 1200, height: 800 };
+        let view = View { angle: 0.0, scale: 0.1, cx: 5000.0, cy: 1500.0, width: 1200, height: 800 };
         s.execute("scale", &serde_json::json!({"view": 100010, "scale": 50})).unwrap();
         let none = lettering(&section(&s.model, 100010, view), 100009);
         assert!((none - 10.0).abs() < 1.0, "{none}");
@@ -5404,7 +5465,7 @@ mod tests {
         )
         .unwrap();
         // Walls 3 to 6, the door 7, the window 8, the floor 9; layers 100 mm wide are 20 px, wide enough for their patterns.
-        let view = View { scale: 0.2, cx: 4000.0, cy: 3000.0, width: 2000, height: 1400 };
+        let view = View { angle: 0.0, scale: 0.2, cx: 4000.0, cy: 3000.0, width: 2000, height: 1400 };
         let all = |s: &Session| {
             let d = draw(&s.model, 100000, view);
             (layer_detail(&d, 100002), drawn_by(&d, 100006), drawn_by(&d, 100007), layer_detail(&d, 100008).0)
@@ -5468,7 +5529,7 @@ mod tests {
     #[test]
     fn a_tools_sketch_of_annotation_is_the_size_its_view_would_draw_it() {
         let mut s = house();
-        let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+        let view = View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         let spot = Element::Spot(crate::model::Spot::new(s.model.guid(100000), P2(4000.0, 3000.0)));
         let text = |s: &Session| lettering(&sketch(&s.model, view, 99, &spot), 99);
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 50})).unwrap();
@@ -5514,7 +5575,7 @@ mod tests {
         let wall = first_wall(&s);
         // A tenth of a pixel to the mm at 1 : 50 is 5 px to a mm of paper: a cut wall's outline, pen 10, is as wide as the
         // project's line weights say at 1 : 50.
-        let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+        let view = View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 50})).unwrap();
         let at_50 = widest(&s, view, wall);
         let mm = s.model.line_weights().at(50.0).mm(Pen::CUT, false) as f32;
@@ -5538,12 +5599,12 @@ mod tests {
         s.execute("graphics", &serde_json::json!({"view": 100000, "categories": {"walls": {"cut": {"weight": 0}}}})).unwrap();
         for (n, zoom) in [(50, 0.1), (200, 0.1), (100, 0.5)] {
             s.execute("scale", &serde_json::json!({"view": 100000, "scale": n})).unwrap();
-            let view = View { scale: zoom, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+            let view = View { angle: 0.0, scale: zoom, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
             assert_eq!(widest(&s, view, wall), 0.0, "1 : {n} at {zoom}");
         }
         // Width 0 is the thinnest line the device draws: the PNG draws it, the SVG a pixel that zooming doesn't widen, the
         // PDF its own hairline (`0 w`).
-        let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+        let view = View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         let d = draw(&s.model, 100000, view);
         let img = tiny_skia::Pixmap::decode_png(&png(&d).unwrap()).unwrap();
         // The north wall, 200 mm thick on its axis: its outside face.
@@ -5557,7 +5618,7 @@ mod tests {
     #[test]
     fn a_view_always_has_a_scale_and_one_without_its_own_is_at_1_100() {
         let mut s = house();
-        let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+        let view = View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         let none = png(&draw(&s.model, 100000, view)).unwrap();
         assert_eq!(s.execute("scale", &serde_json::json!({"view": 100000})).unwrap()["scale"], 100.0);
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 100})).unwrap();
@@ -5570,7 +5631,7 @@ mod tests {
     fn a_cut_walls_outline_is_inked_over_its_poche_and_not_across_its_joins() {
         let s = house();
         // At 1 : 100 a cut outline (pen 10, 0.35 mm on paper) is 35 mm of the model wide; at a fifth of a pixel to the mm, 7 px.
-        let view = View { scale: 0.2, cx: 6000.0, cy: 1000.0, width: 1000, height: 800 };
+        let view = View { angle: 0.0, scale: 0.2, cx: 6000.0, cy: 1000.0, width: 1000, height: 800 };
         let d = draw(&s.model, 100000, view);
         let png = png(&d).unwrap();
         // Two pixels inside the south wall's outer face (its axis on y = 0, 200 mm thick): the outline, whole.
@@ -5583,7 +5644,7 @@ mod tests {
 
     #[test]
     fn lettering_turns_its_corners_round_while_a_pens_lines_turn_them_square() {
-        let view = View { scale: 1.0, cx: 0.0, cy: 0.0, width: 400, height: 200 };
+        let view = View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width: 400, height: 200 };
         let mut d = Drawing::new(view);
         d.text("VW", (200.0, 100.0), 80.0, INK);
         d.line(&[P2(-150.0, 0.0), P2(-100.0, 50.0), P2(-50.0, 0.0)], Pen::MEDIUM, INK, false);
@@ -5601,7 +5662,7 @@ mod tests {
         s.script(r#"wall {"points": [[0, 0], [4000, 0]]}"#).unwrap();
         // Half a pixel to the mm: the outline, 35 mm of the model wide at 1 : 100, reaches 17.5 mm past each corner, so 15 mm
         // out each way is ink at a square corner and paper at a round one (21 mm from it).
-        let view = View { scale: 0.5, cx: 2000.0, cy: 0.0, width: 2400, height: 400 };
+        let view = View { angle: 0.0, scale: 0.5, cx: 2000.0, cy: 0.0, width: 2400, height: 400 };
         let d = draw(&s.model, 100000, view);
         let cut: Vec<bool> = d
             .prims
@@ -5626,7 +5687,7 @@ mod tests {
         // outer corner is at (8100, -100). The outline, 35 mm of the model wide at 1 : 100, reaches 17.5 mm past it each way,
         // a square corner: 15 mm out each way is inside that square, outside a rounded one (21 mm from the corner, past its
         // 17.5 mm radius). Half a pixel to the mm, to see it.
-        let view = View { scale: 0.5, cx: 8000.0, cy: 0.0, width: 1000, height: 800 };
+        let view = View { angle: 0.0, scale: 0.5, cx: 8000.0, cy: 0.0, width: 1000, height: 800 };
         let d = draw(&s.model, 100000, view);
         let png = png(&d).unwrap();
         assert_eq!(pixel(&png, view.px(P2(8115.0, -115.0))), (INK.0, INK.1, INK.2), "the outer corner, square");

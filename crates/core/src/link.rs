@@ -296,7 +296,7 @@ mod tests {
         let mut s = Session::new();
         run(&mut s, "link", json!({"path": path}));
         let _ = std::fs::remove_file(&path);
-        let view = View { scale: 0.08, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
+        let view = View { angle: 0.0, scale: 0.08, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
         let level = s.model.levels()[0].0;
         let own = render::draw(&direct.model, level, view);
         let linked = render::draw(&seen(&s.model), level, view);
@@ -519,7 +519,7 @@ mod tests {
         run(&mut s, "wall", json!({"points": [[1000, 1000], [7000, 1000]]}));
         run(&mut s, "link", json!({"path": path}));
         let _ = std::fs::remove_file(&path);
-        let view = View { scale: 0.08, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
+        let view = View { angle: 0.0, scale: 0.08, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
         let level = s.model.levels()[0].0;
         let d = render::draw(&seen(&s.model), level, view);
         let first_own = d.owners.iter().position(|o| o.is_some_and(|id| !is_linked(id)));
@@ -532,7 +532,7 @@ mod tests {
     fn a_line_keeps_its_pen_when_a_link_goes_under_the_projects() {
         use crate::pen::Pen;
         use crate::render::{Drawing, Rgb, View};
-        let mut d = Drawing::new(View { scale: 1.0, cx: 0.0, cy: 0.0, width: 10, height: 10 });
+        let mut d = Drawing::new(View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width: 10, height: 10 });
         d.own(Some(7));
         d.stroke(vec![(0.0, 0.0), (1.0, 1.0)], Pen::CUT, Rgb(0, 0, 0), None, false);
         d.own(Some(LINKED));
@@ -566,7 +566,7 @@ mod tests {
         assert!(!kinds.contains(&"line") && !kinds.contains(&"region"), "its annotation stays in it: {kinds:?}");
         // A masking region of the link's would hide this project's wall.
         run(&mut s, "wall", json!({"points": [[500, 1500], [2500, 1500]]}));
-        let view = View { scale: 0.08, cx: 3000.0, cy: 1500.0, width: 600, height: 400 };
+        let view = View { angle: 0.0, scale: 0.08, cx: 3000.0, cy: 1500.0, width: 600, height: 400 };
         let level = s.model.levels()[0].0;
         let d = render::draw(&seen, level, view);
         let linked_fills = d

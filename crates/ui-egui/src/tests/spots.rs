@@ -99,9 +99,14 @@ fn acquire_coordinates_takes_them_from_the_cad_drawing_clicked() {
     h.state_mut().run("import_cad", json!({"path": far_drawing(), "at": [4000, 3000]}));
     h.state_mut().selection.clear();
     h.run();
+    // Coordinates > Manage > Acquire Coordinates > Pick in the View: the window steps aside for the click.
     press(&mut h, "Manage");
-    from_list(&mut h, "Project Location", "Acquire Coordinates");
+    from_list(&mut h, "Project Location", "Coordinates");
+    press_near(&mut h, "Manage", "Convert");
+    press(&mut h, "Acquire Coordinates");
+    press(&mut h, "Pick in the View");
     assert_eq!(h.state().tool, Tool::Acquire);
+    assert!(h.state().coordinates_dialog.is_none(), "the window steps aside");
     // A click on the square's west edge.
     click(&mut h, P2(2000.0, 3000.0));
     let q = h.state().session.model.coordinates.to_shared([4000.0, 3000.0, 0.0]);

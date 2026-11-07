@@ -546,6 +546,25 @@ pub struct Graphics {
     /// The layers of each CAD drawing it hides, by the drawing's name: Revit's Imported Categories, layer by layer.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub layers: BTreeMap<String, BTreeSet<String>>,
+    /// Which north is up in a plan: project north, or true north (turned by the active location's angle to it).
+    #[serde(skip_serializing_if = "Orientation::is_project")]
+    pub orientation: Orientation,
+}
+
+/// Which north a plan has up, as Revit's view Orientation: Project North (the model's y), or True North (the active
+/// location's), the plan turned on screen by the angle between them; the model never moves.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Orientation {
+    #[default]
+    ProjectNorth,
+    TrueNorth,
+}
+
+impl Orientation {
+    pub fn is_project(&self) -> bool {
+        *self == Orientation::ProjectNorth
+    }
 }
 
 /// An edge of `element` as the view draws it, from `from` to `to` (mm in the view's terms), in line style `style` instead
@@ -2288,7 +2307,7 @@ mod tests {
         }
         // Level 1 follows it: its annotation and its detail are the template's, its own settings stay as they were.
         run(&mut s, "scale", json!({"view": 100000, "scale": 50}));
-        let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+        let view = View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         let k = |s: &Session| render::annotation(&s.model, 100000, view);
         let layered = |s: &Session| render::draw(&s.model, 100000, view).prims.len();
         let (alone, fine) = (k(&s), layered(&s));

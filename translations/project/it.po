@@ -36,7 +36,7 @@ msgstr "Mattone"
 msgid "Brick 225 x 75"
 msgstr "Mattone 225 x 75"
 
-#: crates/core/src/commands.rs:4226
+#: crates/core/src/commands.rs:4234
 msgid "Camera"
 msgstr ""
 
@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Plafoniera"
 
-#: crates/core/src/render.rs:3047
+#: crates/core/src/render.rs:3105
 msgid "Ceiling Plan"
 msgstr "Pianta controsoffitti"
 
@@ -96,7 +96,7 @@ msgstr "Numero"
 msgid "Crosshatch"
 msgstr "Tratteggio incrociato"
 
-#: crates/core/src/render.rs:3639
+#: crates/core/src/render.rs:3697
 msgid "DN"
 msgstr "GIÙ"
 
@@ -112,7 +112,7 @@ msgstr "Tratto punto"
 msgid "Data Outlet"
 msgstr "Presa dati"
 
-#: crates/core/src/commands.rs:10426
+#: crates/core/src/commands.rs:10435
 msgid "Dependent"
 msgstr "Dipendente"
 
@@ -176,20 +176,20 @@ msgstr "Est"
 msgid "Elbow 90"
 msgstr "Curva 90°"
 
-#: crates/core/src/graphics.rs:942
+#: crates/core/src/graphics.rs:961
 msgid "Electrical Ceiling"
 msgstr ""
 
-#: crates/core/src/graphics.rs:941
+#: crates/core/src/graphics.rs:960
 msgid "Electrical Lighting"
 msgstr ""
 
-#: crates/core/src/graphics.rs:940
+#: crates/core/src/graphics.rs:959
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:10210
-#: crates/core/src/commands.rs:12222
+#: crates/core/src/commands.rs:10219
+#: crates/core/src/commands.rs:12231
 msgid "Elevation"
 msgstr "Prospetto"
 
@@ -310,7 +310,7 @@ msgstr "Larghezza gamba"
 msgid "Length"
 msgstr "Lunghezza"
 
-#: crates/core/src/commands.rs:6278
+#: crates/core/src/commands.rs:6286
 #: crates/core/src/model.rs:3072
 msgid "Level"
 msgstr "Piano"
@@ -335,7 +335,7 @@ msgstr "ID"
 msgid "Masking"
 msgstr "Mascheramento"
 
-#: crates/core/src/commands.rs:8040
+#: crates/core/src/commands.rs:8049
 msgid "Mass"
 msgstr "Volume"
 
@@ -359,7 +359,7 @@ msgstr "Metallo"
 msgid "Mounting Height"
 msgstr "Altezza di installazione"
 
-#: crates/core/src/render.rs:2875
+#: crates/core/src/render.rs:2933
 msgid "NOT ENCLOSED"
 msgstr "NON CHIUSA"
 
@@ -423,11 +423,11 @@ msgstr "Intonaco"
 msgid "Porcelain"
 msgstr "Porcellana"
 
-#: crates/core/src/commands.rs:2889
+#: crates/core/src/commands.rs:2890
 msgid "Project"
 msgstr "Progetto"
 
-#: crates/core/src/render.rs:2875
+#: crates/core/src/render.rs:2933
 msgid "REDUNDANT"
 msgstr ""
 
@@ -451,7 +451,7 @@ msgstr "Alzate"
 msgid "Roof tiles"
 msgstr "Tegole"
 
-#: crates/core/src/commands.rs:8265
+#: crates/core/src/commands.rs:8274
 msgid "Room"
 msgstr "Zona"
 
@@ -459,11 +459,11 @@ msgstr "Zona"
 msgid "Room Schedule"
 msgstr "Abaco zone"
 
-#: crates/core/src/sheet.rs:265
+#: crates/core/src/sheet.rs:274
 msgid "SCALE"
 msgstr "SCALA"
 
-#: crates/core/src/sheet.rs:267
+#: crates/core/src/sheet.rs:276
 msgid "SCALE AS INDICATED"
 msgstr "SCALA COME INDICATO"
 
@@ -479,8 +479,8 @@ msgstr "Massetto"
 msgid "Seat Height"
 msgstr "Altezza seduta"
 
-#: crates/core/src/commands.rs:10187
-#: crates/core/src/commands.rs:12221
+#: crates/core/src/commands.rs:10196
+#: crates/core/src/commands.rs:12230
 msgid "Section"
 msgstr "Sezione"
 
@@ -596,7 +596,7 @@ msgstr "Piastrella 300"
 msgid "Timber"
 msgstr "Legno"
 
-#: crates/core/src/sheet.rs:204
+#: crates/core/src/sheet.rs:213
 msgid "Total"
 msgstr "Totale"
 
@@ -608,7 +608,7 @@ msgstr "Pedata"
 msgid "Type"
 msgstr "Tipo"
 
-#: crates/core/src/render.rs:3639
+#: crates/core/src/render.rs:3697
 msgid "UP"
 msgstr "SU"
 
@@ -616,7 +616,7 @@ msgstr "SU"
 msgid "Unbounded Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:10567
+#: crates/core/src/commands.rs:10576
 msgid "Unnamed"
 msgstr "Senza nome"
 

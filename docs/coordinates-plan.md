@@ -150,7 +150,7 @@ a push.
    Coordinates window and Rotate Project North.
    - A plan's `orientation`: Project North or True North. It turns the view (the canvas already draws rotated), never
      the model.
-   - A north arrow annotation that reads the angle.
+   - A north arrow annotation that reads the angle: moved to the roadmap (0.9), out of PR #284.
    - `rotate_project_north`.
    - Markers for the Internal Origin, the Base Point and the Survey Point in plans, sections and the 3D view, as a
      Visibility/Graphics category that is hidden by default.
@@ -162,7 +162,7 @@ a push.
    - The cursor read out in shared coordinates.
    - Positioning in the import and link dialogs.
    - Tested with egui_kittest, and looked at in the three looks.
-8. **Map and sun.**
+8. **Map and sun.** Moved to the roadmap (0.9: Map, Sun), out of PR #284, which ends at stage 7.
    - The Location dialog shows OpenStreetMap tiles in WGS84 with the building's footprint at its place, and a click
      there can set latitude and longitude.
    - `sun`: the sun's azimuth and altitude for a place, date and time, from the public NOAA formulas.

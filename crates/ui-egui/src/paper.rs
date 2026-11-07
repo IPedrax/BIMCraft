@@ -34,7 +34,7 @@ impl BimApp {
         // The whole paper, 24 points clear of the edges.
         let fit = |w: u32, h: u32| {
             let room = |px: u32, mm: f64| (f64::from(px) - 48.0).max(1.0) / mm;
-            View { scale: room(w, size.0).min(room(h, size.1)), cx: size.0 / 2.0, cy: size.1 / 2.0, width: w, height: h }
+            View { angle: 0.0, scale: room(w, size.0).min(room(h, size.1)), cx: size.0 / 2.0, cy: size.1 / 2.0, width: w, height: h }
         };
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, id, fit) else { return };
         let writing = self.writing();

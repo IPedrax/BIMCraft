@@ -15,6 +15,11 @@ fn manage_tab(h: &mut Harness<BimApp>) {
     assert_eq!(h.state().coordinates_dialog.as_ref().map(|d| d.tab()), Some(crate::coordinates::MANAGE));
 }
 
+/// One of Manage's folded cards, opened.
+fn unfold(h: &mut Harness<BimApp>, title: &str) {
+    press(h, title);
+}
+
 fn said(h: &Harness<BimApp>) -> Option<String> {
     h.state().coordinates_dialog.as_ref().and_then(|d| d.error()).map(String::from)
 }
@@ -33,6 +38,7 @@ fn locations_are_typed_shifted_and_applied_as_one_undo_step() {
     type_role(&mut h, Role::SpinButton, "Location 2 east", "333400");
     // The survey says the site is 5 m higher: every location goes up.
     manage_tab(&mut h);
+    unfold(&mut h, "Shift every location");
     type_role(&mut h, Role::SpinButton, "Shift elevation", "5");
     press(&mut h, "Shift All");
     assert!(h.state().session.model.coordinates.locations.len() == 1, "nothing is the project's until OK");
@@ -130,6 +136,7 @@ fn specify_coordinates_steps_aside_for_a_point_picked_on_the_plan_and_comes_back
     let mut h = app(BOX);
     open(&mut h);
     manage_tab(&mut h);
+    unfold(&mut h, "Specify Coordinates at a Point");
     assert!(h.query_by_label("Specify at x").is_none(), "shared coordinates only: the internal point is picked");
     // Without a map system, shared values are typed in metres.
     type_role(&mut h, Role::SpinButton, "Specify east", "1000");
@@ -158,6 +165,7 @@ fn in_the_3d_view_the_point_is_the_corner_picked_top_or_bottom_as_seen() {
     shortcut(&mut h, "3D");
     open(&mut h);
     manage_tab(&mut h);
+    unfold(&mut h, "Specify Coordinates at a Point");
     type_role(&mut h, Role::SpinButton, "Specify elevation", "100");
     h.get_by_label("Pick Point and Specify").scroll_to_me();
     h.run();
@@ -176,6 +184,7 @@ fn esc_while_picking_the_point_brings_the_window_back_unchanged() {
     let mut h = app(BOX);
     open(&mut h);
     manage_tab(&mut h);
+    unfold(&mut h, "Specify Coordinates at a Point");
     h.get_by_label("Pick Point and Specify").scroll_to_me();
     h.run();
     press(&mut h, "Pick Point and Specify");
@@ -371,8 +380,16 @@ fn the_manage_tab_sits_before_convert_with_specify_shift_acquire_and_reset() {
     };
     assert!(x(&h, "Map System") < x(&h, "Manage") && x(&h, "Manage") < x(&h, "Convert"), "Manage right before Convert");
     manage_tab(&mut h);
-    for label in ["Pick Point and Specify", "Shift All", "Pick in the View", "Reset Coordinates…"] {
-        assert!(h.query_by_label(label).is_some(), "{label} on Manage");
+    // Each tool a card of its own, closed until its title opens it.
+    for (title, inside) in [
+        ("Specify Coordinates at a Point", "Pick Point and Specify"),
+        ("Shift every location", "Shift All"),
+        ("Acquire Coordinates", "Pick in the View"),
+        ("Reset Coordinates", "Reset Coordinates…"),
+    ] {
+        assert!(h.query_by_label(inside).is_none(), "{title} starts closed");
+        unfold(&mut h, title);
+        assert!(h.query_by_label(inside).is_some(), "{inside} inside {title}");
     }
     press(&mut h, "Locations");
     assert!(h.query_by_label("Shift All").is_none(), "Shift All moved off Locations");
@@ -385,6 +402,7 @@ fn reset_asks_first_then_puts_the_coordinates_back_and_pins_nothing_it_needn_t()
     h.state_mut().run("coordinates", json!({"base": [1000.0, 2000.0, 0.0]}));
     open(&mut h);
     manage_tab(&mut h);
+    unfold(&mut h, "Reset Coordinates");
     h.get_by_label("Reset Coordinates…").scroll_to_me();
     h.run();
     press(&mut h, "Reset Coordinates…");
@@ -414,8 +432,30 @@ fn acquire_from_the_manage_tab_takes_a_drawing_s_coordinates() {
     h.state_mut().run("import_cad", json!({"path": path.to_string_lossy(), "at": [4000, 3000]}));
     open(&mut h);
     manage_tab(&mut h);
+    unfold(&mut h, "Acquire Coordinates");
     press(&mut h, "Acquire from square (CAD drawing)");
     let q = h.state().session.model.coordinates.to_shared([4000.0, 3000.0, 0.0]);
     assert!((q[0] - 500_002_000.0).abs() < 1e-3 && (q[1] - 7_000_000_000.0).abs() < 1e-3, "{q:?}");
     assert!(h.state().coordinates_dialog.is_some(), "the window stays open, showing them");
+}
+
+#[test]
+fn a_plan_s_properties_turn_it_to_true_north_and_the_canvas_turns_with_it() {
+    let mut h = app(BOX);
+    h.state_mut().run("location", json!({"name": "Internal", "angle": 30}));
+    h.run();
+    let key = h.state().session.model.levels()[0].0;
+    h.get_by_label("Orientation").scroll_to_me();
+    h.run();
+    pick(&mut h, Role::ComboBox, "Orientation");
+    press(&mut h, "True North");
+    let m = &h.state().session.model;
+    assert_eq!(bimcraft_core::render::view_angle(m, key), 30.0, "the plan's graphics say true north");
+    h.run();
+    let v = h.state().canvas.current_view(key).unwrap();
+    assert_eq!(v.angle, 30.0, "the canvas turns");
+    // A click lands on the model point under it, turned: the box's south wall is picked.
+    click(&mut h, P2(4000.0, 0.0));
+    let picked = h.state().selection.first().copied();
+    assert!(matches!(picked.and_then(|id| h.state().session.model.elements.get(id)), Some(Element::Wall(_))), "{picked:?}");
 }

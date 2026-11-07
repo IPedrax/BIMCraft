@@ -305,6 +305,9 @@ struct AlignmentCache {
 pub struct Canvas {
     pub(crate) drawing: PlanCache,
     cams: BTreeMap<Id, Camera>,
+    /// How far each view is turned on screen, degrees counter-clockwise: a plan oriented to true north
+    /// (`render::view_angle`); none, not turned.
+    turns: BTreeMap<Id, f64>,
     /// Where the plan was last shown, in points.
     rect: Rect,
     /// How much of its height the cards floating over the view (its tabs at the top, its view control bar at the foot) take
@@ -348,6 +351,7 @@ impl Default for Canvas {
         Canvas {
             drawing: PlanCache::default(),
             cams: BTreeMap::new(),
+            turns: BTreeMap::new(),
             rect: Rect::ZERO,
             room: 0.0,
             level: None,
@@ -373,6 +377,7 @@ impl Canvas {
     pub(crate) fn view(&self, level: Id) -> Option<View> {
         let c = self.cams.get(&level)?;
         Some(View {
+            angle: self.turns.get(&level).copied().unwrap_or(0.0),
             scale: c.scale,
             cx: c.cx,
             cy: c.cy,
@@ -406,6 +411,7 @@ impl Canvas {
         Canvas {
             drawing: self.drawing.clone(),
             cams: self.cams.clone(),
+            turns: self.turns.clone(),
             rect: self.rect,
             room: self.room,
             level: self.level,
@@ -527,12 +533,27 @@ impl Canvas {
         }
     }
 
+    /// How far view `id` is turned on screen, degrees counter-clockwise: what its plan's orientation says, each frame.
+    pub(crate) fn turn(&mut self, id: Id, angle: f64) {
+        if angle == 0.0 {
+            self.turns.remove(&id);
+        } else if angle.is_finite() {
+            self.turns.insert(id, angle);
+        }
+    }
+
     /// Keep model point `p` at pixel `at` (canvas coordinates) with `scale` px per mm.
     fn hold(&mut self, level: Id, p: P2, at: Vec2, scale: f64) {
         let scale = scale.clamp(SCALE.0, SCALE.1);
+        // Where pixel `at` is from the middle, mm, turned back as the view is turned: the middle is `p` less that.
         let (w, h) = (f64::from(self.rect.width()), f64::from(self.rect.height()));
-        let cx = (p.0 - (f64::from(at.x) - w / 2.0) / scale).clamp(-MAX_COORD, MAX_COORD);
-        let cy = (p.1 + (f64::from(at.y) - h / 2.0) / scale).clamp(-MAX_COORD, MAX_COORD);
+        let (mut dx, mut dy) = ((f64::from(at.x) - w / 2.0) / scale, -(f64::from(at.y) - h / 2.0) / scale);
+        if let Some(&angle) = self.turns.get(&level) {
+            let (sin, cos) = angle.to_radians().sin_cos();
+            (dx, dy) = (dx * cos + dy * sin, -dx * sin + dy * cos);
+        }
+        let cx = (p.0 - dx).clamp(-MAX_COORD, MAX_COORD);
+        let cy = (p.1 - dy).clamp(-MAX_COORD, MAX_COORD);
         if cx.is_finite() && cy.is_finite() {
             self.cams.insert(level, Camera { scale, cx, cy });
         }
@@ -1461,6 +1482,8 @@ impl BimApp {
         let level = model.plan_level(key).unwrap_or(key);
         let up = matches!(self.sheet, Sheet::Ceiling(_));
         let fit = |w, h| if up { render::ceiling_plan(&model, key, w, h).view } else { render::plan(&model, key, w, h).view };
+        // Oriented to true north, the plan turns on screen.
+        self.canvas.turn(key, render::view_angle(&model, key));
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, key, fit) else { return };
         let mods = ui.input(|i| i.modifiers);
         let shape = self.shape();

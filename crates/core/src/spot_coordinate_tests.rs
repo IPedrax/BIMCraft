@@ -144,7 +144,7 @@ fn a_spot_coordinate_type_is_renamed_with_its_spots_and_kept_while_used() {
 fn drawn(s: &Session, c: P2) -> (Vec<u8>, impl Fn(P2) -> (f32, f32), f32) {
     let m = &s.model;
     let level = m.elements.iter().find(|(_, e)| matches!(e, crate::model::Element::Level(_))).map(|(id, _)| *id).unwrap();
-    let view = crate::render::View { scale: 0.05, cx: c.0, cy: c.1, width: 800, height: 600 };
+    let view = crate::render::View { angle: 0.0, scale: 0.05, cx: c.0, cy: c.1, width: 800, height: 600 };
     let d = crate::render::draw(m, level, view);
     let png = crate::render::png(&d).unwrap();
     (png, move |p: P2| view.px(p), d.k * crate::sheet::DENSITY as f32)

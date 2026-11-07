@@ -441,6 +441,25 @@ fn section<R>(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
     add(ui)
 }
 
+/// One of the Manage tab's tools: a rounded card, as the summary's, whose title folds it open and closed (closed at first).
+fn fold<R>(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui) -> R) -> Option<R> {
+    ui.add_space(6.0);
+    crate::style::card([false; 4])
+        .inner_margin(Margin::symmetric(10, 6))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            egui::CollapsingHeader::new(RichText::new(t(title)).strong().size(14.0))
+                .id_salt(("coordinates-manage", title))
+                .default_open(false)
+                .show(ui, |ui| {
+                    ui.add_space(2.0);
+                    add(ui)
+                })
+                .body_returned
+        })
+        .inner
+}
+
 /// The dial: project north straight up, true north turned `angle` degrees clockwise from it (east positive).
 fn dial(ui: &mut Ui, angle: f64) {
     let size = 76.0;
@@ -691,10 +710,11 @@ fn points_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
     });
 }
 
-/// Manage: Specify Coordinates at a Point, Shift every location, Acquire Coordinates from a link or a drawing, and Reset.
+/// Manage: Specify Coordinates at a Point, Shift every location, Acquire Coordinates from a link or a drawing, and Reset, each a
+/// card of its own that folds, closed until opened.
 fn manage_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
     let grid = d.grid();
-    section(ui, msg!("Specify Coordinates at a Point"), |ui| {
+    fold(ui, msg!("Specify Coordinates at a Point"), |ui| {
         note(
             ui,
             msg!(
@@ -731,7 +751,7 @@ fn manage_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
             }
         });
     });
-    section(ui, msg!("Shift every location"), |ui| {
+    fold(ui, msg!("Shift every location"), |ui| {
         note(ui, msg!("The survey moved the site? Add the same amounts to every location at once, say +5 m of elevation."));
         ui.horizontal(|ui| {
             let [e, n, z] = &mut d.shift;
@@ -745,7 +765,7 @@ fn manage_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
             }
         });
     });
-    section(ui, msg!("Acquire Coordinates"), |ui| {
+    fold(ui, msg!("Acquire Coordinates"), |ui| {
         note(
             ui,
             msg!(
@@ -769,7 +789,7 @@ fn manage_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
             d.pick_acquire = true;
         }
     });
-    section(ui, msg!("Reset Coordinates"), |ui| {
+    fold(ui, msg!("Reset Coordinates"), |ui| {
         note(
             ui,
             msg!(

@@ -1616,7 +1616,7 @@ fn a_door_pointed_at_a_wall_shows_how_far_it_stands_from_the_ends() {
     let Some(Element::Door(o)) = m.elements.values().find(|e| matches!(e, Element::Door(_))) else { panic!("no door") };
     let ctx = egui::Context::default();
     let painter = egui::Painter::new(ctx, egui::LayerId::background(), egui::Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0)));
-    let v = bimcraft_core::render::View { scale: 0.06, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
+    let v = bimcraft_core::render::View { angle: 0.0, scale: 0.06, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
     let spans: Vec<String> = crate::canvas::opening_dimensions(&painter, &m, &v, o).into_iter().map(|(_, text, _)| text).collect();
     assert_eq!(spans, ["1900", "5900"]);
 }

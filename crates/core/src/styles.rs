@@ -152,8 +152,9 @@ mod tests {
         .unwrap();
         let (west, floor, section) = (100005, 100006, 100007);
         assert!(matches!(s.model.elements.get(floor), Some(crate::model::Element::Floor(_))));
-        let plan =
-            |s: &Session| crate::render::draw(&s.model, 100000, View { scale: 0.1, cx: 4000.0, cy: 2500.0, width: 1000, height: 800 });
+        let plan = |s: &Session| {
+            crate::render::draw(&s.model, 100000, View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 2500.0, width: 1000, height: 800 })
+        };
         let cut = |s: &Session| {
             let view = crate::render::section_fit(&s.model, section, 800, 600);
             crate::render::section(&s.model, section, view)
