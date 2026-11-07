@@ -20,7 +20,7 @@ msgstr ""
 msgid "(none)"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:712
+#: crates/ui-egui/src/settings.rs:713
 msgid "0 for any port that is free; an open port moves to a new one"
 msgstr ""
 
@@ -28,7 +28,7 @@ msgstr ""
 msgid "0.75 in (19.05 mm) binding margin"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:716
+#: crates/ui-egui/src/settings.rs:717
 msgid "0: any free port"
 msgstr ""
 
@@ -62,7 +62,7 @@ msgstr ""
 msgid "3D view"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:624
+#: crates/ui-egui/src/settings.rs:625
 msgid "3D view resolution"
 msgstr ""
 
@@ -424,11 +424,11 @@ msgstr ""
 msgid "Agents"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:728
+#: crates/ui-egui/src/settings.rs:729
 msgid "Agents connected: {}"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:737
+#: crates/ui-egui/src/settings.rs:738
 msgid "Agents may only read this project."
 msgstr ""
 
@@ -501,7 +501,7 @@ msgstr ""
 msgid "Aligned Dimension in 3D"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:851
+#: crates/ui-egui/src/orbit.rs:854
 msgid "Aligned dimension: {}"
 msgstr ""
 
@@ -524,7 +524,7 @@ msgstr ""
 msgid "All"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:731
+#: crates/ui-egui/src/settings.rs:732
 msgid "Allow agents to edit this project"
 msgstr ""
 
@@ -684,7 +684,7 @@ msgstr ""
 msgid "Area"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:481
+#: crates/ui-egui/src/orbit.rs:484
 msgid "Area {}"
 msgstr ""
 
@@ -770,7 +770,7 @@ msgstr ""
 msgid "Autosave"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:671
+#: crates/ui-egui/src/settings.rs:672
 msgid "Autosave in the background"
 msgstr ""
 
@@ -880,7 +880,7 @@ msgstr ""
 msgid "Background Pattern"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:660
+#: crates/ui-egui/src/settings.rs:661
 msgid "Background of the 3D view"
 msgstr ""
 
@@ -1034,7 +1034,7 @@ msgstr ""
 msgid "Build"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:994
+#: crates/ui-egui/src/orbit.rs:997
 msgid "Building 3D view…"
 msgstr ""
 
@@ -1908,7 +1908,7 @@ msgid "Combine: what was made, taken down and shown in this phase goes to the ne
 msgstr ""
 
 #: crates/ui-egui/src/browser.rs:236
-#: crates/ui-egui/src/settings.rs:751
+#: crates/ui-egui/src/settings.rs:752
 msgid "Coming in a later version"
 msgstr ""
 
@@ -1981,7 +1981,7 @@ msgstr ""
 msgid "Continuous"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:699
+#: crates/ui-egui/src/settings.rs:700
 msgid "Control port"
 msgstr ""
 
@@ -2081,7 +2081,7 @@ msgstr ""
 msgid "Corners"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:998
+#: crates/ui-egui/src/orbit.rs:1001
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
@@ -2887,7 +2887,7 @@ msgstr ""
 msgid "Edit {}"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:730
+#: crates/ui-egui/src/settings.rs:731
 msgid "Editing"
 msgstr ""
 
@@ -3433,7 +3433,7 @@ msgstr ""
 msgid "Fold"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:687
+#: crates/ui-egui/src/settings.rs:688
 msgid "Folder for new projects"
 msgstr ""
 
@@ -3546,8 +3546,8 @@ msgstr ""
 msgid "Frozen"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:626
 #: crates/ui-egui/src/settings.rs:627
+#: crates/ui-egui/src/settings.rs:628
 msgid "Full"
 msgstr ""
 
@@ -3685,7 +3685,7 @@ msgstr ""
 msgid "Hairline"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:627
+#: crates/ui-egui/src/settings.rs:628
 msgid "Half"
 msgstr ""
 
@@ -3776,11 +3776,11 @@ msgstr ""
 msgid "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours. A scan given a colour of its own in Visibility/Graphics keeps it."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:639
+#: crates/ui-egui/src/settings.rs:640
 msgid "High contrast colour"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:658
+#: crates/ui-egui/src/settings.rs:659
 msgid "Highlight what's under the cursor"
 msgstr ""
 
@@ -3788,7 +3788,7 @@ msgstr ""
 msgid "Home"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:1927
+#: crates/ui-egui/src/orbit.rs:1930
 msgid "Home View"
 msgstr ""
 
@@ -4205,7 +4205,7 @@ msgstr ""
 msgid "Lens:"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:704
+#: crates/ui-egui/src/settings.rs:705
 msgid "Let agents work on this project"
 msgstr ""
 
@@ -4438,7 +4438,7 @@ msgstr ""
 msgid "List {}"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:721
+#: crates/ui-egui/src/settings.rs:722
 msgid "Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}"
 msgstr ""
 
@@ -4478,7 +4478,7 @@ msgstr ""
 msgid "Loaded {} shortcuts from file."
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:1251
+#: crates/ui-egui/src/orbit.rs:1254
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
@@ -5013,7 +5013,7 @@ msgstr ""
 msgid "No Clip"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:483
+#: crates/ui-egui/src/orbit.rs:486
 msgid "No area: its points aren't in one plane"
 msgstr ""
 
@@ -5216,11 +5216,11 @@ msgstr ""
 msgid "Off"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:732
+#: crates/ui-egui/src/settings.rs:733
 msgid "Off, agents only read the project: they inspect it, read its schedules, render its views and export it to new files (its sheets to PDF among them), and whatever they ask that would change it, undo it, replace it or save over its file is refused"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:724
+#: crates/ui-egui/src/settings.rs:725
 msgid "Off: no agent can reach this window"
 msgstr ""
 
@@ -5318,7 +5318,7 @@ msgstr ""
 msgid "Opens"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:702
+#: crates/ui-egui/src/settings.rs:703
 msgid "Opens the control port now and whenever BIMCraft starts: an agent connects with bimcraft-cli mcp --connect. Only this machine can reach it, and only with the token in bridge.json beside your favorites"
 msgstr ""
 
@@ -5681,11 +5681,11 @@ msgstr ""
 msgid "Pick Walls: a boundary line along each wall clicked"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:855
+#: crates/ui-egui/src/orbit.rs:858
 msgid "Pick a corner, an edge or a face of the model to dimension."
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:1751
+#: crates/ui-egui/src/orbit.rs:1754
 msgid "Pick a corner, an edge or a face of the model to measure."
 msgstr ""
 
@@ -5874,12 +5874,12 @@ msgid "Place Centre"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:1452
-#: crates/ui-egui/src/orbit.rs:870
+#: crates/ui-egui/src/orbit.rs:873
 msgid "Place Column"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:1454
-#: crates/ui-egui/src/orbit.rs:872
+#: crates/ui-egui/src/orbit.rs:875
 msgid "Place Component"
 msgstr ""
 
@@ -6012,7 +6012,7 @@ msgid "Place Voice Outlet"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:1429
-#: crates/ui-egui/src/orbit.rs:869
+#: crates/ui-egui/src/orbit.rs:872
 msgid "Place Wall"
 msgstr ""
 
@@ -6032,8 +6032,8 @@ msgstr ""
 msgid "Place:"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:662
 #: crates/ui-egui/src/settings.rs:663
+#: crates/ui-egui/src/settings.rs:664
 msgid "Plain"
 msgstr ""
 
@@ -6130,7 +6130,7 @@ msgstr ""
 msgid "Porcelain"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:708
+#: crates/ui-egui/src/settings.rs:709
 msgid "Port"
 msgstr ""
 
@@ -6395,7 +6395,7 @@ msgstr ""
 msgid "Recover opens the backup as unsaved work. Discard deletes it. Postpone keeps it for later without replacing it."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:683
+#: crates/ui-egui/src/settings.rs:684
 msgid "Recovery copies are kept beside saved projects; untitled projects use the temporary folder."
 msgstr ""
 
@@ -6436,7 +6436,7 @@ msgstr ""
 msgid "Redo {} steps"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:630
+#: crates/ui-egui/src/settings.rs:631
 msgid "Redraw views in the background"
 msgstr ""
 
@@ -6584,7 +6584,7 @@ msgstr ""
 msgid "Reset Canvas"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:643
+#: crates/ui-egui/src/settings.rs:644
 msgid "Reset Colour"
 msgstr ""
 
@@ -6835,7 +6835,7 @@ msgstr ""
 msgid "Save Preset"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:676
+#: crates/ui-egui/src/settings.rs:677
 msgid "Save a recovery copy every"
 msgstr ""
 
@@ -7054,7 +7054,7 @@ msgstr ""
 msgid "Selected {}; nothing has these: {}"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:655
+#: crates/ui-egui/src/settings.rs:656
 msgid "Selection colour"
 msgstr ""
 
@@ -7315,7 +7315,7 @@ msgid "Skip this version"
 msgstr ""
 
 #: crates/ui-egui/src/properties.rs:1313
-#: crates/ui-egui/src/settings.rs:663
+#: crates/ui-egui/src/settings.rs:664
 msgid "Sky"
 msgstr ""
 
@@ -7363,7 +7363,7 @@ msgstr ""
 msgid "Slope: a number of degrees from 0 to {}, or blank for the roof's"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:629
+#: crates/ui-egui/src/settings.rs:630
 msgid "Smooth lines (anti-aliasing)"
 msgstr ""
 
@@ -8015,8 +8015,8 @@ msgstr ""
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:1256
-#: crates/ui-egui/src/orbit.rs:1328
+#: crates/ui-egui/src/orbit.rs:1259
+#: crates/ui-egui/src/orbit.rs:1331
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr ""
 
@@ -8129,7 +8129,7 @@ msgstr ""
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:841
+#: crates/ui-egui/src/orbit.rs:844
 msgid "The view runs along the dimension: turn it to place its line."
 msgstr ""
 
@@ -8357,7 +8357,7 @@ msgstr ""
 msgid "Total selected items: {}"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:474
+#: crates/ui-egui/src/orbit.rs:477
 msgid "Total {}"
 msgstr ""
 
@@ -8527,7 +8527,7 @@ msgstr ""
 msgid "Undo History"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:620
+#: crates/ui-egui/src/settings.rs:621
 msgid "Undo steps kept"
 msgstr ""
 
@@ -8917,7 +8917,7 @@ msgstr ""
 msgid "West"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:642
+#: crates/ui-egui/src/settings.rs:643
 msgid "What High Contrast Point Clouds, on the view control bar, draws a view's scans in"
 msgstr ""
 
@@ -9155,7 +9155,7 @@ msgid "Zoom Out"
 msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:1876
-#: crates/ui-egui/src/orbit.rs:1930
+#: crates/ui-egui/src/orbit.rs:1933
 msgid "Zoom to Fit"
 msgstr ""
 
@@ -9291,7 +9291,7 @@ msgstr ""
 msgid "click its line's end"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:1833
+#: crates/ui-egui/src/orbit.rs:1836
 msgid "click on the floor's top"
 msgstr ""
 
@@ -9622,7 +9622,7 @@ msgstr ""
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:789
+#: crates/ui-egui/src/orbit.rs:792
 msgid "there's no face to paint there"
 msgstr ""
 
@@ -9630,7 +9630,7 @@ msgstr ""
 msgid "there's no folder to keep favorites in here"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:1731
+#: crates/ui-egui/src/orbit.rs:1734
 #: crates/ui-egui/src/paper.rs:158
 #: crates/ui-egui/src/section.rs:409
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -9798,7 +9798,7 @@ msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:1486
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-#: crates/ui-egui/src/orbit.rs:1559
+#: crates/ui-egui/src/orbit.rs:1562
 msgid "{} of {} {}"
 msgstr ""
 
@@ -9913,11 +9913,11 @@ msgstr ""
 msgid "{}: `{}` isn't a number"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:883
+#: crates/ui-egui/src/orbit.rs:886
 msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:879
+#: crates/ui-egui/src/orbit.rs:882
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
 msgstr ""
 

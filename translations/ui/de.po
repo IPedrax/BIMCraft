@@ -19,7 +19,7 @@ msgstr " {}, {} mm verschoben, um es nahe an den Ursprung zu bringen."
 msgid "(none)"
 msgstr "(keine)"
 
-#: crates/ui-egui/src/settings.rs:712
+#: crates/ui-egui/src/settings.rs:713
 msgid "0 for any port that is free; an open port moves to a new one"
 msgstr "0 für einen beliebigen freien Port; ein geöffneter Port wechselt auf den neuen"
 
@@ -27,7 +27,7 @@ msgstr "0 für einen beliebigen freien Port; ein geöffneter Port wechselt auf d
 msgid "0.75 in (19.05 mm) binding margin"
 msgstr "0,75 Zoll (19,05 mm) Binderand"
 
-#: crates/ui-egui/src/settings.rs:716
+#: crates/ui-egui/src/settings.rs:717
 msgid "0: any free port"
 msgstr "0: beliebiger freier Port"
 
@@ -61,7 +61,7 @@ msgstr "3D-Ansichten"
 msgid "3D view"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:624
+#: crates/ui-egui/src/settings.rs:625
 msgid "3D view resolution"
 msgstr "Auflösung der 3D-Ansicht"
 
@@ -423,11 +423,11 @@ msgstr "{} zum Projekt hinzugefügt"
 msgid "Agents"
 msgstr "Agenten"
 
-#: crates/ui-egui/src/settings.rs:728
+#: crates/ui-egui/src/settings.rs:729
 msgid "Agents connected: {}"
 msgstr "Verbundene Agenten: {}"
 
-#: crates/ui-egui/src/settings.rs:737
+#: crates/ui-egui/src/settings.rs:738
 msgid "Agents may only read this project."
 msgstr "Agenten dürfen dieses Projekt nur lesen."
 
@@ -500,7 +500,7 @@ msgstr "Ausgerichtete Bemaßung (DI): parallele Wandflächen, Wandenden, Türen,
 msgid "Aligned Dimension in 3D"
 msgstr "Ausgerichtete Bemaßung in 3D"
 
-#: crates/ui-egui/src/orbit.rs:851
+#: crates/ui-egui/src/orbit.rs:854
 msgid "Aligned dimension: {}"
 msgstr "Ausgerichtete Bemaßung: {}"
 
@@ -523,7 +523,7 @@ msgstr "Ausrichtungslinien ein"
 msgid "All"
 msgstr "Alle"
 
-#: crates/ui-egui/src/settings.rs:731
+#: crates/ui-egui/src/settings.rs:732
 msgid "Allow agents to edit this project"
 msgstr "Agenten das Bearbeiten dieses Projekts erlauben"
 
@@ -683,7 +683,7 @@ msgstr "Architektur"
 msgid "Area"
 msgstr "Fläche"
 
-#: crates/ui-egui/src/orbit.rs:481
+#: crates/ui-egui/src/orbit.rs:484
 msgid "Area {}"
 msgstr ""
 
@@ -769,7 +769,7 @@ msgstr "Automatisch erkennen"
 msgid "Autosave"
 msgstr "Automatisches Speichern"
 
-#: crates/ui-egui/src/settings.rs:671
+#: crates/ui-egui/src/settings.rs:672
 msgid "Autosave in the background"
 msgstr "Im Hintergrund automatisch speichern"
 
@@ -879,7 +879,7 @@ msgstr "Hintergrundraster"
 msgid "Background Pattern"
 msgstr "Hintergrundmuster"
 
-#: crates/ui-egui/src/settings.rs:660
+#: crates/ui-egui/src/settings.rs:661
 msgid "Background of the 3D view"
 msgstr "Hintergrund der 3D-Ansicht"
 
@@ -1033,7 +1033,7 @@ msgstr "Ziegel 225 x 75"
 msgid "Build"
 msgstr "Erstellen"
 
-#: crates/ui-egui/src/orbit.rs:994
+#: crates/ui-egui/src/orbit.rs:997
 msgid "Building 3D view…"
 msgstr ""
 
@@ -1907,7 +1907,7 @@ msgid "Combine: what was made, taken down and shown in this phase goes to the ne
 msgstr "Kombinieren: Was in dieser Phase erstellt, abgebrochen und angezeigt wurde, geht in die benachbarte über, und diese entfällt"
 
 #: crates/ui-egui/src/browser.rs:236
-#: crates/ui-egui/src/settings.rs:751
+#: crates/ui-egui/src/settings.rs:752
 msgid "Coming in a later version"
 msgstr "In einer späteren Version verfügbar"
 
@@ -1980,7 +1980,7 @@ msgstr "Konstruktion"
 msgid "Continuous"
 msgstr "Fortlaufend"
 
-#: crates/ui-egui/src/settings.rs:699
+#: crates/ui-egui/src/settings.rs:700
 msgid "Control port"
 msgstr "Steuerport"
 
@@ -2080,7 +2080,7 @@ msgstr "Kernfläche: Innen"
 msgid "Corners"
 msgstr "Ecken"
 
-#: crates/ui-egui/src/orbit.rs:998
+#: crates/ui-egui/src/orbit.rs:1001
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
@@ -2886,7 +2886,7 @@ msgstr "Den Typ bearbeiten"
 msgid "Edit {}"
 msgstr "{} bearbeiten"
 
-#: crates/ui-egui/src/settings.rs:730
+#: crates/ui-egui/src/settings.rs:731
 msgid "Editing"
 msgstr "Bearbeitung"
 
@@ -3432,7 +3432,7 @@ msgstr "Brennweite"
 msgid "Fold"
 msgstr "Einklappen"
 
-#: crates/ui-egui/src/settings.rs:687
+#: crates/ui-egui/src/settings.rs:688
 msgid "Folder for new projects"
 msgstr "Ordner für neue Projekte"
 
@@ -3545,8 +3545,8 @@ msgstr "Von (Grad)"
 msgid "Frozen"
 msgstr "Eingefroren"
 
-#: crates/ui-egui/src/settings.rs:626
 #: crates/ui-egui/src/settings.rs:627
+#: crates/ui-egui/src/settings.rs:628
 msgid "Full"
 msgstr "Voll"
 
@@ -3684,7 +3684,7 @@ msgstr "Gipskartonplatte"
 msgid "Hairline"
 msgstr "Haarlinie"
 
-#: crates/ui-egui/src/settings.rs:627
+#: crates/ui-egui/src/settings.rs:628
 msgid "Half"
 msgstr "Halb"
 
@@ -3775,11 +3775,11 @@ msgstr "Punktwolken mit hohem Kontrast"
 msgid "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours. A scan given a colour of its own in Visibility/Graphics keeps it."
 msgstr "Punktwolken mit hohem Kontrast: die Scans dieser Ansicht in einer kräftigen Farbe zeichnen, damit lesbar wird, was sie zeigen; erneut für ihre eigenen Farben. Ein Scan mit eigener Farbe unter Sichtbarkeit/Grafik behält sie."
 
-#: crates/ui-egui/src/settings.rs:639
+#: crates/ui-egui/src/settings.rs:640
 msgid "High contrast colour"
 msgstr "Farbe für hohen Kontrast"
 
-#: crates/ui-egui/src/settings.rs:658
+#: crates/ui-egui/src/settings.rs:659
 msgid "Highlight what's under the cursor"
 msgstr "Element unter dem Cursor hervorheben"
 
@@ -3787,7 +3787,7 @@ msgstr "Element unter dem Cursor hervorheben"
 msgid "Home"
 msgstr "Start"
 
-#: crates/ui-egui/src/orbit.rs:1927
+#: crates/ui-egui/src/orbit.rs:1930
 msgid "Home View"
 msgstr "Startansicht"
 
@@ -4204,7 +4204,7 @@ msgstr "Längen und Größen sind mm auf Papier. Die Mittellinie bestimmt Geomet
 msgid "Lens:"
 msgstr "Objektiv:"
 
-#: crates/ui-egui/src/settings.rs:704
+#: crates/ui-egui/src/settings.rs:705
 msgid "Let agents work on this project"
 msgstr "Agenten an diesem Projekt arbeiten lassen"
 
@@ -4437,7 +4437,7 @@ msgstr "Verknüpfungen"
 msgid "List {}"
 msgstr "Liste {}"
 
-#: crates/ui-egui/src/settings.rs:721
+#: crates/ui-egui/src/settings.rs:722
 msgid "Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}"
 msgstr "Lauscht auf 127.0.0.1, Port {}: Agenten verbinden sich mit bimcraft-cli mcp --connect {}"
 
@@ -4477,7 +4477,7 @@ msgstr "Geladen"
 msgid "Loaded {} shortcuts from file."
 msgstr "{} Tastenkürzel aus Datei geladen."
 
-#: crates/ui-egui/src/orbit.rs:1251
+#: crates/ui-egui/src/orbit.rs:1254
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
@@ -5012,7 +5012,7 @@ msgstr "Nein"
 msgid "No Clip"
 msgstr "Kein Zuschnitt"
 
-#: crates/ui-egui/src/orbit.rs:483
+#: crates/ui-egui/src/orbit.rs:486
 msgid "No area: its points aren't in one plane"
 msgstr ""
 
@@ -5215,11 +5215,11 @@ msgstr "Objektstile…"
 msgid "Off"
 msgstr "Aus"
 
-#: crates/ui-egui/src/settings.rs:732
+#: crates/ui-egui/src/settings.rs:733
 msgid "Off, agents only read the project: they inspect it, read its schedules, render its views and export it to new files (its sheets to PDF among them), and whatever they ask that would change it, undo it, replace it or save over its file is refused"
 msgstr "Aus, Agenten können das Projekt nur lesen: sie sehen es ein, lesen seine Tabellen, rendern seine Ansichten und exportieren es in neue Dateien (darunter seine Pläne als PDF); jede Anfrage, die es ändern, rückgängig machen, ersetzen oder seine Datei überschreiben würde, wird abgelehnt"
 
-#: crates/ui-egui/src/settings.rs:724
+#: crates/ui-egui/src/settings.rs:725
 msgid "Off: no agent can reach this window"
 msgstr "Aus: kein Agent kann dieses Fenster erreichen"
 
@@ -5317,7 +5317,7 @@ msgstr "Öffnungen"
 msgid "Opens"
 msgstr "Öffnungsrichtung"
 
-#: crates/ui-egui/src/settings.rs:702
+#: crates/ui-egui/src/settings.rs:703
 msgid "Opens the control port now and whenever BIMCraft starts: an agent connects with bimcraft-cli mcp --connect. Only this machine can reach it, and only with the token in bridge.json beside your favorites"
 msgstr "Öffnet den Steuerport jetzt und bei jedem Start von BIMCraft: ein Agent verbindet sich mit bimcraft-cli mcp --connect. Nur dieser Rechner kann ihn erreichen, und nur mit dem Token in bridge.json neben den Favoriten"
 
@@ -5680,11 +5680,11 @@ msgstr "Wände wählen"
 msgid "Pick Walls: a boundary line along each wall clicked"
 msgstr "Wände wählen: eine Begrenzungslinie entlang jeder angeklickten Wand"
 
-#: crates/ui-egui/src/orbit.rs:855
+#: crates/ui-egui/src/orbit.rs:858
 msgid "Pick a corner, an edge or a face of the model to dimension."
 msgstr "Eine Ecke, eine Kante oder eine Fläche des Modells zum Bemaßen wählen."
 
-#: crates/ui-egui/src/orbit.rs:1751
+#: crates/ui-egui/src/orbit.rs:1754
 msgid "Pick a corner, an edge or a face of the model to measure."
 msgstr ""
 
@@ -5873,12 +5873,12 @@ msgid "Place Centre"
 msgstr "Mittelpunkt platzieren"
 
 #: crates/ui-egui/src/lib.rs:1452
-#: crates/ui-egui/src/orbit.rs:870
+#: crates/ui-egui/src/orbit.rs:873
 msgid "Place Column"
 msgstr "Stütze platzieren"
 
 #: crates/ui-egui/src/lib.rs:1454
-#: crates/ui-egui/src/orbit.rs:872
+#: crates/ui-egui/src/orbit.rs:875
 msgid "Place Component"
 msgstr "Bauteil platzieren"
 
@@ -6011,7 +6011,7 @@ msgid "Place Voice Outlet"
 msgstr "Sprachauslass platzieren"
 
 #: crates/ui-egui/src/lib.rs:1429
-#: crates/ui-egui/src/orbit.rs:869
+#: crates/ui-egui/src/orbit.rs:872
 msgid "Place Wall"
 msgstr "Wand platzieren"
 
@@ -6031,8 +6031,8 @@ msgstr "Leitung platzieren"
 msgid "Place:"
 msgstr "Platzieren:"
 
-#: crates/ui-egui/src/settings.rs:662
 #: crates/ui-egui/src/settings.rs:663
+#: crates/ui-egui/src/settings.rs:664
 msgid "Plain"
 msgstr "Einfach"
 
@@ -6129,7 +6129,7 @@ msgstr "Polylinie: eine Linie durch jeden angeklickten Punkt; Enter schließt si
 msgid "Porcelain"
 msgstr "Porzellan"
 
-#: crates/ui-egui/src/settings.rs:708
+#: crates/ui-egui/src/settings.rs:709
 msgid "Port"
 msgstr "Port"
 
@@ -6394,7 +6394,7 @@ msgstr "Automatische Sicherung wiederherstellen…"
 msgid "Recover opens the backup as unsaved work. Discard deletes it. Postpone keeps it for later without replacing it."
 msgstr "Wiederherstellen öffnet die Sicherung als ungespeicherte Arbeit. Verwerfen löscht sie. Später behält sie für später, ohne sie zu ersetzen."
 
-#: crates/ui-egui/src/settings.rs:683
+#: crates/ui-egui/src/settings.rs:684
 msgid "Recovery copies are kept beside saved projects; untitled projects use the temporary folder."
 msgstr "Sicherungskopien liegen neben gespeicherten Projekten; unbenannte Projekte nutzen den temporären Ordner."
 
@@ -6435,7 +6435,7 @@ msgstr "{} wiederholen"
 msgid "Redo {} steps"
 msgstr "{} Schritte wiederholen"
 
-#: crates/ui-egui/src/settings.rs:630
+#: crates/ui-egui/src/settings.rs:631
 msgid "Redraw views in the background"
 msgstr "Ansichten im Hintergrund neu zeichnen"
 
@@ -6583,7 +6583,7 @@ msgstr "Akzent zurücksetzen"
 msgid "Reset Canvas"
 msgstr "Zeichenfläche zurücksetzen"
 
-#: crates/ui-egui/src/settings.rs:643
+#: crates/ui-egui/src/settings.rs:644
 msgid "Reset Colour"
 msgstr "Farbe zurücksetzen"
 
@@ -6834,7 +6834,7 @@ msgstr "Muster speichern"
 msgid "Save Preset"
 msgstr "Voreinstellung speichern"
 
-#: crates/ui-egui/src/settings.rs:676
+#: crates/ui-egui/src/settings.rs:677
 msgid "Save a recovery copy every"
 msgstr "Wiederherstellungskopie speichern alle"
 
@@ -7053,7 +7053,7 @@ msgstr "{} ausgewählt."
 msgid "Selected {}; nothing has these: {}"
 msgstr "{} ausgewählt; nichts hat diese: {}"
 
-#: crates/ui-egui/src/settings.rs:655
+#: crates/ui-egui/src/settings.rs:656
 msgid "Selection colour"
 msgstr "Auswahlfarbe"
 
@@ -7314,7 +7314,7 @@ msgid "Skip this version"
 msgstr "Diese Version überspringen"
 
 #: crates/ui-egui/src/properties.rs:1313
-#: crates/ui-egui/src/settings.rs:663
+#: crates/ui-egui/src/settings.rs:664
 msgid "Sky"
 msgstr "Himmel"
 
@@ -7362,7 +7362,7 @@ msgstr "Neigung:"
 msgid "Slope: a number of degrees from 0 to {}, or blank for the roof's"
 msgstr "Neigung: eine Gradzahl von 0 bis {} oder leer für die des Dachs"
 
-#: crates/ui-egui/src/settings.rs:629
+#: crates/ui-egui/src/settings.rs:630
 msgid "Smooth lines (anti-aliasing)"
 msgstr "Weiche Linien (Anti-Aliasing)"
 
@@ -8014,8 +8014,8 @@ msgstr "Die Enden von Wänden, Rastern und weiteren gezeichneten Elementen sowie
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "Der Fußpunkt des Lots vom letzten Punkt auf eine Wand oder ein Raster"
 
-#: crates/ui-egui/src/orbit.rs:1256
-#: crates/ui-egui/src/orbit.rs:1328
+#: crates/ui-egui/src/orbit.rs:1259
+#: crates/ui-egui/src/orbit.rs:1331
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "Die Grafikkarte konnte die 3D-Ansicht nicht zeichnen ({}): Darstellung erfolgt auf dem Prozessor"
 
@@ -8128,7 +8128,7 @@ msgstr "Die Werkzeuge links, der Inspektor über dem Navigator rechts, wie zu Be
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr "Die Ansicht blickt genau an der Skizzenebene entlang: drehen, um darauf zu wählen."
 
-#: crates/ui-egui/src/orbit.rs:841
+#: crates/ui-egui/src/orbit.rs:844
 msgid "The view runs along the dimension: turn it to place its line."
 msgstr "Die Ansicht blickt entlang der Bemaßung: drehen, um ihre Linie zu platzieren."
 
@@ -8356,7 +8356,7 @@ msgstr "Gesamt"
 msgid "Total selected items: {}"
 msgstr "Ausgewählte Elemente gesamt: {}"
 
-#: crates/ui-egui/src/orbit.rs:474
+#: crates/ui-egui/src/orbit.rs:477
 msgid "Total {}"
 msgstr ""
 
@@ -8526,7 +8526,7 @@ msgstr "Rückgängig"
 msgid "Undo History"
 msgstr "Rückgängig-Verlauf"
 
-#: crates/ui-egui/src/settings.rs:620
+#: crates/ui-egui/src/settings.rs:621
 msgid "Undo steps kept"
 msgstr "Aufbewahrte Rückgängig-Schritte"
 
@@ -8916,7 +8916,7 @@ msgstr "Gewicht"
 msgid "West"
 msgstr "Westen"
 
-#: crates/ui-egui/src/settings.rs:642
+#: crates/ui-egui/src/settings.rs:643
 msgid "What High Contrast Point Clouds, on the view control bar, draws a view's scans in"
 msgstr "Womit Hoher Kontrast für Punktwolken in der Ansichtssteuerungsleiste die Scans einer Ansicht darstellt"
 
@@ -9154,7 +9154,7 @@ msgid "Zoom Out"
 msgstr "Verkleinern"
 
 #: crates/ui-egui/src/canvas.rs:1876
-#: crates/ui-egui/src/orbit.rs:1930
+#: crates/ui-egui/src/orbit.rs:1933
 msgid "Zoom to Fit"
 msgstr "Alles einpassen"
 
@@ -9290,7 +9290,7 @@ msgstr "Kreis"
 msgid "click its line's end"
 msgstr "das Ende der Linie anklicken"
 
-#: crates/ui-egui/src/orbit.rs:1833
+#: crates/ui-egui/src/orbit.rs:1836
 msgid "click on the floor's top"
 msgstr "auf die Oberseite des Bodens klicken"
 
@@ -9621,7 +9621,7 @@ msgstr "die Öffnung muss auf ihrer Wand bleiben"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "es gibt noch keine Detailgruppe: Detaillinien auswählen und Gruppe erstellen"
 
-#: crates/ui-egui/src/orbit.rs:789
+#: crates/ui-egui/src/orbit.rs:792
 msgid "there's no face to paint there"
 msgstr "dort gibt es keine Fläche zum Anstreichen"
 
@@ -9629,7 +9629,7 @@ msgstr "dort gibt es keine Fläche zum Anstreichen"
 msgid "there's no folder to keep favorites in here"
 msgstr "hier gibt es keinen Ordner für Favoriten"
 
-#: crates/ui-egui/src/orbit.rs:1731
+#: crates/ui-egui/src/orbit.rs:1734
 #: crates/ui-egui/src/paper.rs:158
 #: crates/ui-egui/src/section.rs:409
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -9797,7 +9797,7 @@ msgstr "{} von {} Steigungen"
 
 #: crates/ui-egui/src/canvas.rs:1486
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-#: crates/ui-egui/src/orbit.rs:1559
+#: crates/ui-egui/src/orbit.rs:1562
 msgid "{} of {} {}"
 msgstr "{} von {} {}"
 
@@ -9912,11 +9912,11 @@ msgstr "{}: `{}` ist keine Zahl"
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` ist keine Zahl"
 
-#: crates/ui-egui/src/orbit.rs:883
+#: crates/ui-egui/src/orbit.rs:886
 msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
 msgstr "{}: in der 3D-Ansicht steht das Element auf einer waagerechten Fläche (der Oberseite eines Bodens, eines Flachdachs oder eines Geschosses): auf eine zeigen"
 
-#: crates/ui-egui/src/orbit.rs:879
+#: crates/ui-egui/src/orbit.rs:882
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
 msgstr "{}: in der 3D-Ansicht liegen die Punkte des Elements auf einer waagerechten Fläche (der Oberseite eines Bodens, einer Stütze, eines Flachdachs oder eines Geschosses): auf eine zeigen"
 

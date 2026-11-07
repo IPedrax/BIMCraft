@@ -20,7 +20,7 @@ msgstr "{}, {} mm verplaatst om het dicht bij de oorsprong te brengen."
 msgid "(none)"
 msgstr "(geen)"
 
-#: crates/ui-egui/src/settings.rs:712
+#: crates/ui-egui/src/settings.rs:713
 msgid "0 for any port that is free; an open port moves to a new one"
 msgstr "0 voor een willekeurige vrije poort; een open poort schakelt over naar een nieuwe"
 
@@ -28,7 +28,7 @@ msgstr "0 voor een willekeurige vrije poort; een open poort schakelt over naar e
 msgid "0.75 in (19.05 mm) binding margin"
 msgstr "0,75 in (19,05 mm) bindmarge"
 
-#: crates/ui-egui/src/settings.rs:716
+#: crates/ui-egui/src/settings.rs:717
 msgid "0: any free port"
 msgstr "0: een willekeurige vrije poort"
 
@@ -62,7 +62,7 @@ msgstr "3D-weergaven"
 msgid "3D view"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:624
+#: crates/ui-egui/src/settings.rs:625
 msgid "3D view resolution"
 msgstr "Resolutie van de 3D-weergave"
 
@@ -424,11 +424,11 @@ msgstr "{} aan het project toegevoegd"
 msgid "Agents"
 msgstr "Agents"
 
-#: crates/ui-egui/src/settings.rs:728
+#: crates/ui-egui/src/settings.rs:729
 msgid "Agents connected: {}"
 msgstr "Verbonden agents: {}"
 
-#: crates/ui-egui/src/settings.rs:737
+#: crates/ui-egui/src/settings.rs:738
 msgid "Agents may only read this project."
 msgstr "Agents mogen dit project alleen lezen."
 
@@ -501,7 +501,7 @@ msgstr "Uitgelijnde maatlijn (DI): kies evenwijdige muurvlakken, muuruiteinden, 
 msgid "Aligned Dimension in 3D"
 msgstr "Uitgelijnde maatlijn in 3D"
 
-#: crates/ui-egui/src/orbit.rs:851
+#: crates/ui-egui/src/orbit.rs:854
 msgid "Aligned dimension: {}"
 msgstr "Uitgelijnde maatlijn: {}"
 
@@ -524,7 +524,7 @@ msgstr "Uitlijnhulplijnen aan"
 msgid "All"
 msgstr "Alle"
 
-#: crates/ui-egui/src/settings.rs:731
+#: crates/ui-egui/src/settings.rs:732
 msgid "Allow agents to edit this project"
 msgstr "Agents toestaan dit project te bewerken"
 
@@ -684,7 +684,7 @@ msgstr "Architectuur"
 msgid "Area"
 msgstr "Oppervlakte"
 
-#: crates/ui-egui/src/orbit.rs:481
+#: crates/ui-egui/src/orbit.rs:484
 msgid "Area {}"
 msgstr ""
 
@@ -770,7 +770,7 @@ msgstr "Automatisch detecteren"
 msgid "Autosave"
 msgstr "Automatisch opslaan"
 
-#: crates/ui-egui/src/settings.rs:671
+#: crates/ui-egui/src/settings.rs:672
 msgid "Autosave in the background"
 msgstr "Op de achtergrond automatisch opslaan"
 
@@ -880,7 +880,7 @@ msgstr "Achtergrondrasters"
 msgid "Background Pattern"
 msgstr "Achtergrondpatroon"
 
-#: crates/ui-egui/src/settings.rs:660
+#: crates/ui-egui/src/settings.rs:661
 msgid "Background of the 3D view"
 msgstr "Achtergrond van de 3D-weergave"
 
@@ -1034,7 +1034,7 @@ msgstr "Baksteen 225 x 75"
 msgid "Build"
 msgstr "Bouwen"
 
-#: crates/ui-egui/src/orbit.rs:994
+#: crates/ui-egui/src/orbit.rs:997
 msgid "Building 3D view…"
 msgstr ""
 
@@ -1908,7 +1908,7 @@ msgid "Combine: what was made, taken down and shown in this phase goes to the ne
 msgstr "Samenvoegen: wat in deze fase gemaakt, gesloopt en getoond werd gaat naar de naburige fase, en deze verdwijnt"
 
 #: crates/ui-egui/src/browser.rs:236
-#: crates/ui-egui/src/settings.rs:751
+#: crates/ui-egui/src/settings.rs:752
 msgid "Coming in a later version"
 msgstr "Wordt geïmplementeerd in een latere versie"
 
@@ -1981,7 +1981,7 @@ msgstr "Constructie"
 msgid "Continuous"
 msgstr "Doorlopend"
 
-#: crates/ui-egui/src/settings.rs:699
+#: crates/ui-egui/src/settings.rs:700
 msgid "Control port"
 msgstr "Besturingspoort"
 
@@ -2081,7 +2081,7 @@ msgstr "Kernvlak: binnenkant"
 msgid "Corners"
 msgstr "Hoeken"
 
-#: crates/ui-egui/src/orbit.rs:998
+#: crates/ui-egui/src/orbit.rs:1001
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
@@ -2887,7 +2887,7 @@ msgstr "Het type bewerken"
 msgid "Edit {}"
 msgstr "{} bewerken"
 
-#: crates/ui-egui/src/settings.rs:730
+#: crates/ui-egui/src/settings.rs:731
 msgid "Editing"
 msgstr "Bewerken"
 
@@ -3433,7 +3433,7 @@ msgstr "Brandpuntsafstand"
 msgid "Fold"
 msgstr "Inklappen"
 
-#: crates/ui-egui/src/settings.rs:687
+#: crates/ui-egui/src/settings.rs:688
 msgid "Folder for new projects"
 msgstr "Map voor nieuwe projecten"
 
@@ -3546,8 +3546,8 @@ msgstr "Van (graden)"
 msgid "Frozen"
 msgstr "Bevroren"
 
-#: crates/ui-egui/src/settings.rs:626
 #: crates/ui-egui/src/settings.rs:627
+#: crates/ui-egui/src/settings.rs:628
 msgid "Full"
 msgstr "Vol"
 
@@ -3685,7 +3685,7 @@ msgstr "Gipsplaat"
 msgid "Hairline"
 msgstr "Haarlijn"
 
-#: crates/ui-egui/src/settings.rs:627
+#: crates/ui-egui/src/settings.rs:628
 msgid "Half"
 msgstr "Half"
 
@@ -3776,11 +3776,11 @@ msgstr "Puntenwolken met hoog contrast"
 msgid "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours. A scan given a colour of its own in Visibility/Graphics keeps it."
 msgstr "Puntenwolken met hoog contrast: teken de scans van deze weergave in één sterke kleur, zodat te lezen valt wat ze tonen; nog eens voor hun eigen kleuren. Een scan met een eigen kleur in Zichtbaarheid/Grafische weergave behoudt die."
 
-#: crates/ui-egui/src/settings.rs:639
+#: crates/ui-egui/src/settings.rs:640
 msgid "High contrast colour"
 msgstr "Kleur met hoog contrast"
 
-#: crates/ui-egui/src/settings.rs:658
+#: crates/ui-egui/src/settings.rs:659
 msgid "Highlight what's under the cursor"
 msgstr "Markeer wat onder de cursor ligt"
 
@@ -3788,7 +3788,7 @@ msgstr "Markeer wat onder de cursor ligt"
 msgid "Home"
 msgstr "Startpagina"
 
-#: crates/ui-egui/src/orbit.rs:1927
+#: crates/ui-egui/src/orbit.rs:1930
 msgid "Home View"
 msgstr "Startweergave"
 
@@ -4205,7 +4205,7 @@ msgstr "Lengtes en afmetingen zijn mm op papier. De hartlijn bepaalt geometrie e
 msgid "Lens:"
 msgstr "Lens:"
 
-#: crates/ui-egui/src/settings.rs:704
+#: crates/ui-egui/src/settings.rs:705
 msgid "Let agents work on this project"
 msgstr "Agents aan dit project laten werken"
 
@@ -4438,7 +4438,7 @@ msgstr "Koppelingen"
 msgid "List {}"
 msgstr "{} weergeven"
 
-#: crates/ui-egui/src/settings.rs:721
+#: crates/ui-egui/src/settings.rs:722
 msgid "Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}"
 msgstr "Luistert op 127.0.0.1, poort {}: agents verbinden met bimcraft-cli mcp --connect {}"
 
@@ -4478,7 +4478,7 @@ msgstr "Geladen"
 msgid "Loaded {} shortcuts from file."
 msgstr "{} sneltoetsen uit het bestand geladen."
 
-#: crates/ui-egui/src/orbit.rs:1251
+#: crates/ui-egui/src/orbit.rs:1254
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
@@ -5013,7 +5013,7 @@ msgstr "Neen"
 msgid "No Clip"
 msgstr "Geen clip"
 
-#: crates/ui-egui/src/orbit.rs:483
+#: crates/ui-egui/src/orbit.rs:486
 msgid "No area: its points aren't in one plane"
 msgstr ""
 
@@ -5216,11 +5216,11 @@ msgstr "Objectstijlen…"
 msgid "Off"
 msgstr "Uit"
 
-#: crates/ui-egui/src/settings.rs:732
+#: crates/ui-egui/src/settings.rs:733
 msgid "Off, agents only read the project: they inspect it, read its schedules, render its views and export it to new files (its sheets to PDF among them), and whatever they ask that would change it, undo it, replace it or save over its file is refused"
 msgstr "Uit, agents lezen het project alleen: ze bekijken het, lezen de lijsten, renderen de weergaven en exporteren het naar nieuwe bestanden (waaronder de bladen naar PDF), en alles wat ze vragen dat het zou wijzigen, ongedaan maken, vervangen of overschrijven in het bestand wordt geweigerd"
 
-#: crates/ui-egui/src/settings.rs:724
+#: crates/ui-egui/src/settings.rs:725
 msgid "Off: no agent can reach this window"
 msgstr "Uit: geen enkele agent kan dit venster bereiken"
 
@@ -5318,7 +5318,7 @@ msgstr "Openingen"
 msgid "Opens"
 msgstr "Openingsrichting"
 
-#: crates/ui-egui/src/settings.rs:702
+#: crates/ui-egui/src/settings.rs:703
 msgid "Opens the control port now and whenever BIMCraft starts: an agent connects with bimcraft-cli mcp --connect. Only this machine can reach it, and only with the token in bridge.json beside your favorites"
 msgstr "Opent de besturingspoort nu en telkens wanneer BIMCraft start: een agent verbindt met bimcraft-cli mcp --connect. Alleen deze computer kan ze bereiken, en alleen met het token in bridge.json naast je favorieten"
 
@@ -5681,11 +5681,11 @@ msgstr "Muren kiezen"
 msgid "Pick Walls: a boundary line along each wall clicked"
 msgstr "Muren kiezen: een randlijn langs elke aangeklikte muur"
 
-#: crates/ui-egui/src/orbit.rs:855
+#: crates/ui-egui/src/orbit.rs:858
 msgid "Pick a corner, an edge or a face of the model to dimension."
 msgstr "Kies een hoek, een rand of een vlak van het model om te bematen."
 
-#: crates/ui-egui/src/orbit.rs:1751
+#: crates/ui-egui/src/orbit.rs:1754
 msgid "Pick a corner, an edge or a face of the model to measure."
 msgstr ""
 
@@ -5874,12 +5874,12 @@ msgid "Place Centre"
 msgstr "Hartlijn plaatsen"
 
 #: crates/ui-egui/src/lib.rs:1452
-#: crates/ui-egui/src/orbit.rs:870
+#: crates/ui-egui/src/orbit.rs:873
 msgid "Place Column"
 msgstr "Kolom plaatsen"
 
 #: crates/ui-egui/src/lib.rs:1454
-#: crates/ui-egui/src/orbit.rs:872
+#: crates/ui-egui/src/orbit.rs:875
 msgid "Place Component"
 msgstr "Onderdeel plaatsen"
 
@@ -6012,7 +6012,7 @@ msgid "Place Voice Outlet"
 msgstr "Telefoonaansluiting plaatsen"
 
 #: crates/ui-egui/src/lib.rs:1429
-#: crates/ui-egui/src/orbit.rs:869
+#: crates/ui-egui/src/orbit.rs:872
 msgid "Place Wall"
 msgstr "Muur plaatsen"
 
@@ -6032,8 +6032,8 @@ msgstr "Draad plaatsen"
 msgid "Place:"
 msgstr "Plaatsen:"
 
-#: crates/ui-egui/src/settings.rs:662
 #: crates/ui-egui/src/settings.rs:663
+#: crates/ui-egui/src/settings.rs:664
 msgid "Plain"
 msgstr "Gewoon"
 
@@ -6130,7 +6130,7 @@ msgstr "Polylijn: één lijn door elk aangeklikt punt; Enter voltooit ze, het ee
 msgid "Porcelain"
 msgstr "Porselein"
 
-#: crates/ui-egui/src/settings.rs:708
+#: crates/ui-egui/src/settings.rs:709
 msgid "Port"
 msgstr "Poort"
 
@@ -6395,7 +6395,7 @@ msgstr "Automatisch opgeslagen kopie herstellen…"
 msgid "Recover opens the backup as unsaved work. Discard deletes it. Postpone keeps it for later without replacing it."
 msgstr "Herstellen opent de back-up als niet-opgeslagen werk. Verwerpen verwijdert ze. Uitstellen bewaart ze voor later zonder ze te vervangen."
 
-#: crates/ui-egui/src/settings.rs:683
+#: crates/ui-egui/src/settings.rs:684
 msgid "Recovery copies are kept beside saved projects; untitled projects use the temporary folder."
 msgstr "Herstelkopieën worden naast opgeslagen projecten bewaard; naamloze projecten gebruiken de tijdelijke map."
 
@@ -6436,7 +6436,7 @@ msgstr "{} opnieuw uitvoeren"
 msgid "Redo {} steps"
 msgstr "{} stappen opnieuw uitvoeren"
 
-#: crates/ui-egui/src/settings.rs:630
+#: crates/ui-egui/src/settings.rs:631
 msgid "Redraw views in the background"
 msgstr "Weergaven op de achtergrond hertekenen"
 
@@ -6584,7 +6584,7 @@ msgstr "Accent herstellen"
 msgid "Reset Canvas"
 msgstr "Tekenruimte herstellen"
 
-#: crates/ui-egui/src/settings.rs:643
+#: crates/ui-egui/src/settings.rs:644
 msgid "Reset Colour"
 msgstr "Kleur herstellen"
 
@@ -6835,7 +6835,7 @@ msgstr "Patroon opslaan"
 msgid "Save Preset"
 msgstr "Voorinstelling opslaan"
 
-#: crates/ui-egui/src/settings.rs:676
+#: crates/ui-egui/src/settings.rs:677
 msgid "Save a recovery copy every"
 msgstr "Een herstelkopie opslaan elke"
 
@@ -7054,7 +7054,7 @@ msgstr "{} geselecteerd."
 msgid "Selected {}; nothing has these: {}"
 msgstr "{} geselecteerd; niets heeft deze: {}"
 
-#: crates/ui-egui/src/settings.rs:655
+#: crates/ui-egui/src/settings.rs:656
 msgid "Selection colour"
 msgstr "Selectiekleur"
 
@@ -7315,7 +7315,7 @@ msgid "Skip this version"
 msgstr "Deze versie overslaan"
 
 #: crates/ui-egui/src/properties.rs:1313
-#: crates/ui-egui/src/settings.rs:663
+#: crates/ui-egui/src/settings.rs:664
 msgid "Sky"
 msgstr "Lucht"
 
@@ -7363,7 +7363,7 @@ msgstr "Helling:"
 msgid "Slope: a number of degrees from 0 to {}, or blank for the roof's"
 msgstr "Helling: een aantal graden van 0 tot {}, of leeg voor die van het dak"
 
-#: crates/ui-egui/src/settings.rs:629
+#: crates/ui-egui/src/settings.rs:630
 msgid "Smooth lines (anti-aliasing)"
 msgstr "Gladde lijnen (anti-aliasing)"
 
@@ -8015,8 +8015,8 @@ msgstr "De uiteinden van muren, rasters en wat nog getekend is, en de tot nu toe
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "De voet van de loodlijn vanaf het laatste punt op een muur of raster"
 
-#: crates/ui-egui/src/orbit.rs:1256
-#: crates/ui-egui/src/orbit.rs:1328
+#: crates/ui-egui/src/orbit.rs:1259
+#: crates/ui-egui/src/orbit.rs:1331
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "De grafische kaart kon de 3D-weergave niet tekenen ({}): ze wordt op de processor getekend"
 
@@ -8129,7 +8129,7 @@ msgstr "De gereedschappen links, de Inspecteur boven de Navigator rechts, zoals 
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr "De weergave kijkt langs het schetsvlak: draai ze om erop te kiezen."
 
-#: crates/ui-egui/src/orbit.rs:841
+#: crates/ui-egui/src/orbit.rs:844
 msgid "The view runs along the dimension: turn it to place its line."
 msgstr "De weergave loopt langs de maatlijn: draai ze om de lijn ervan te plaatsen."
 
@@ -8357,7 +8357,7 @@ msgstr "Totaal"
 msgid "Total selected items: {}"
 msgstr "Totaal geselecteerde items: {}"
 
-#: crates/ui-egui/src/orbit.rs:474
+#: crates/ui-egui/src/orbit.rs:477
 msgid "Total {}"
 msgstr ""
 
@@ -8527,7 +8527,7 @@ msgstr "Ongedaan maken"
 msgid "Undo History"
 msgstr "Geschiedenis van ongedaan maken"
 
-#: crates/ui-egui/src/settings.rs:620
+#: crates/ui-egui/src/settings.rs:621
 msgid "Undo steps kept"
 msgstr "Bewaarde stappen voor ongedaan maken"
 
@@ -8917,7 +8917,7 @@ msgstr "Gewicht"
 msgid "West"
 msgstr "West"
 
-#: crates/ui-egui/src/settings.rs:642
+#: crates/ui-egui/src/settings.rs:643
 msgid "What High Contrast Point Clouds, on the view control bar, draws a view's scans in"
 msgstr "Waarin Puntenwolken met hoog contrast, op de weergavebalk, de scans van een weergave tekent"
 
@@ -9155,7 +9155,7 @@ msgid "Zoom Out"
 msgstr "Uitzoomen"
 
 #: crates/ui-egui/src/canvas.rs:1876
-#: crates/ui-egui/src/orbit.rs:1930
+#: crates/ui-egui/src/orbit.rs:1933
 msgid "Zoom to Fit"
 msgstr "Passend zoomen"
 
@@ -9291,7 +9291,7 @@ msgstr "cirkel"
 msgid "click its line's end"
 msgstr "klik op het einde van de lijn"
 
-#: crates/ui-egui/src/orbit.rs:1833
+#: crates/ui-egui/src/orbit.rs:1836
 msgid "click on the floor's top"
 msgstr "klik op de bovenkant van de vloer"
 
@@ -9622,7 +9622,7 @@ msgstr "de opening moet op haar muur blijven"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "er is nog geen detailgroep: selecteer detaillijnen en kies Groep maken"
 
-#: crates/ui-egui/src/orbit.rs:789
+#: crates/ui-egui/src/orbit.rs:792
 msgid "there's no face to paint there"
 msgstr "daar is geen vlak om te verven"
 
@@ -9630,7 +9630,7 @@ msgstr "daar is geen vlak om te verven"
 msgid "there's no folder to keep favorites in here"
 msgstr "hier is geen map om favorieten in te bewaren"
 
-#: crates/ui-egui/src/orbit.rs:1731
+#: crates/ui-egui/src/orbit.rs:1734
 #: crates/ui-egui/src/paper.rs:158
 #: crates/ui-egui/src/section.rs:409
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -9798,7 +9798,7 @@ msgstr "{} van {} optreden"
 
 #: crates/ui-egui/src/canvas.rs:1486
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-#: crates/ui-egui/src/orbit.rs:1559
+#: crates/ui-egui/src/orbit.rs:1562
 msgid "{} of {} {}"
 msgstr "{} van {} {}"
 
@@ -9913,11 +9913,11 @@ msgstr "{}: `{}` is geen getal"
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` is geen getal"
 
-#: crates/ui-egui/src/orbit.rs:883
+#: crates/ui-egui/src/orbit.rs:886
 msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
 msgstr "{}: in de 3D-weergave staat het op een horizontaal vlak (de bovenkant van een vloer, een plat dak of een niveau): wijs er een aan"
 
-#: crates/ui-egui/src/orbit.rs:879
+#: crates/ui-egui/src/orbit.rs:882
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
 msgstr "{}: in de 3D-weergave komen de punten op een horizontaal vlak (de bovenkant van een vloer, een kolom, een plat dak of een niveau): wijs er een aan"
 
