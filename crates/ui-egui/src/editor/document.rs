@@ -33,6 +33,9 @@ pub(crate) struct State {
     /// The draft as it was opened, last saved to a file or the Favorites, or last loaded into the project: any other has
     /// unsaved changes.
     clean: Option<Draft>,
+    /// Revit's Preview Visibility: the preview shows the family as placed, the forms its type hides left out, rather than
+    /// ghosted. The view's own: no part of the draft, so neither saved nor a step of its history.
+    pub(super) preview_visibility: bool,
 }
 
 impl Default for State {
@@ -46,6 +49,7 @@ impl Default for State {
             reveal: None,
             refused: None,
             clean: None,
+            preview_visibility: false,
         }
     }
 }
@@ -108,6 +112,11 @@ impl FamilyEditor {
     /// The draft `d` was saved or loaded into the project: changes are counted from it.
     pub(super) fn saved_as(&mut self, d: Draft) {
         self.document.clean = Some(d);
+    }
+
+    /// Whether Preview Visibility is on: the preview shows the family as placed.
+    pub(crate) fn preview_visibility(&self) -> bool {
+        self.document.preview_visibility
     }
 
     /// Whether the draft has changes not saved or loaded into the project since it was opened.
@@ -751,9 +760,26 @@ impl BimApp {
                     ed.modeller.camera = None;
                     ed.look = (AZIMUTH, ELEVATION);
                 }
+                // Revit's Preview Visibility: the family as placed, the forms its type hides left out rather than ghosted.
+                if ed.adaptive.is_none() {
+                    let on = ed.preview_visibility();
+                    if crate::small_button(ui, Icon::Visibility, PREVIEW_VISIBILITY, on, PREVIEW_VISIBILITY).clicked() {
+                        ed.document.preview_visibility = !on;
+                    }
+                }
             });
         });
         self.work = pane.with_min_y(pane.top().max(self.tabs_foot));
+        // While it is on, a frame round the view and its name over it, as Revit marks a view showing what is placed.
+        if ed.adaptive.is_none() && ed.preview_visibility() {
+            ui.painter().rect_stroke(pane.shrink(1.5), 0.0, Stroke::new(3.0, super::PREVIEW_FRAME), StrokeKind::Inside);
+            let text = t(PREVIEW_VISIBILITY);
+            let font = FontId::proportional(13.0);
+            let size = ui.painter().layout_no_wrap(text.to_string(), font.clone(), Color32::WHITE).size() + vec2(20.0, 6.0);
+            let banner = Rect::from_center_size(pos2(pane.center().x, self.work.top() + 6.0 + size.y / 2.0), size);
+            ui.painter().rect_filled(banner, 3.0, super::PREVIEW_FRAME);
+            ui.put(banner, egui::Label::new(RichText::new(text).font(font).color(Color32::WHITE).strong()).selectable(false));
+        }
         // Why a family that isn't adaptive can't be tried or loaded, in the view under its tab (a dialog open says it itself).
         if ed.adaptive.is_none()
             && ed.dialog.is_none()
@@ -961,6 +987,9 @@ impl BimApp {
         }
     }
 }
+
+/// Revit's Preview Visibility: the view control bar's toggle and the banner over the view while it is on.
+const PREVIEW_VISIBILITY: &str = msg!("Preview Visibility");
 
 /// Placement Plane's first entry: a plane picked in the view.
 const PICK: &str = msg!("Pick…");
