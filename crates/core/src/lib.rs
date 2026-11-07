@@ -57,6 +57,8 @@ pub mod favorites;
 pub mod fills;
 mod fixtures;
 mod font;
+#[cfg(test)]
+mod formula_visibility_tests;
 pub mod geom;
 #[cfg(test)]
 mod georef_tests;

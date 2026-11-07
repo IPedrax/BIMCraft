@@ -572,25 +572,7 @@ impl BimApp {
     /// Category and Parameters (its name, category and, for a door or a window, how it opens).
     pub(crate) fn document_dialogs(&mut self, ctx: &Context, ed: &mut FamilyEditor, materials: &[String]) {
         // Associate Family Parameter, from a row's "=": a parameter New Parameter makes goes in the family at once, as in Revit.
-        if let Some(mut a) = ed.associating.take() {
-            let (params, values) = (ed.parameter_kinds(), ed.values());
-            if let Some(d) = ed.adaptive.as_mut() {
-                let (done, new) = crate::adaptive_editor::associate(ctx, &mut a, d, &params, &values);
-                if let Some(n) = new {
-                    ed.params.push(ParamText {
-                        original: Parameter::default(),
-                        name: n.name,
-                        kind: n.kind,
-                        instance: n.instance,
-                        value: n.value,
-                        formula: String::new(),
-                    });
-                }
-                if !done {
-                    ed.associating = Some(a);
-                }
-            }
-        }
+        ed.associate_dialog(ctx);
         let Some(dialog) = ed.dialog else { return };
         let title = match dialog {
             DocDialog::Types => t("Family Types"),

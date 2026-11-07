@@ -1567,7 +1567,7 @@ fn warnings_are_collected_not_stopped_at_the_first() {
             ]}),
         )
         .unwrap_err();
-    assert!(e.contains("reads `Nowhere`") && e.contains("`Height / -`"), "{e}");
+    assert!(e.contains("not a valid parameter: Nowhere") && e.contains("`Height / -`"), "{e}");
     // A profile with no area is refused as it always was, and its void is named with it.
     let e = s
         .execute(

@@ -314,7 +314,12 @@ impl Session {
                 // What was made or changed must be as a sketch of it solves too (an outline that is simple), which a file
                 // from before may break; Insert from File brings in what it finds.
                 // (Before the check, which would name a bow tie of no area by that, not by what to redraw.)
-                let edited = if cmd.undoable && cmd.id != "insert" { self.model.check_edits(&before, cmd.id, params) } else { Ok(()) };
+                // A family made or changed says only names it has in its formulas, which a file from before may break.
+                let edited = if cmd.undoable && cmd.id != "insert" {
+                    self.model.check_edits(&before, cmd.id, params).and_then(|()| crate::family::check_family_edits(&self.model, &before))
+                } else {
+                    Ok(())
+                };
                 edited
                     .and_then(|()| {
                         #[cfg(test)]

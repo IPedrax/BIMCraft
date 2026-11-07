@@ -147,6 +147,46 @@ components agree on, refused naming the components where they don't. `delete_par
 values; whatever still names one is `Family::problems`'s to refuse. A file of 17 reads unchanged (every parameter the family's,
 grouped by its kind); FORMAT 19 says an older build can't read the new kinds and fields (18 is another branch's number).
 
+### Formulas
+
+A formula (`family::eval`, `names`) reads numbers, comparisons, `if`, `and`, `or`, `not` and the functions `FUNCTIONS` lists, over
+the family's parameters by name (names hold spaces and are case sensitive). A number in it takes a unit right after it
+(`UNITS`): `mm`, `cm`, `dm`, `m`, `mm²`, `cm²`, `m²`, `mm³`, `cm³`, `m³`, and `°` (or `º`) for degrees, each worked out into the
+family's own (mm, mm², mm³, degrees), so `if(Swing Angle = 90°, …)` and `if(Width > 52.6 mm, 1.2 m, 300 mm)` read as Revit's do,
+in a comparison or a result. A word after a number is a unit or refused, naming it and the units there are; no units are
+checked against each other (Revit's "inconsistent units" is not asked), and imperial feet and inches are not read.
+`renamed_in_formula` leaves a unit alone, so a parameter named `m` renamed keeps `2 m` as it was.
+
+Every formula a family holds is listed in one place (`validate::every_formula`: its parameters', its forms' sizes, profile,
+circle, axis and `visible`, its symbols' sizes, labels' place and height and `visible`, its room calculation point's, its
+connectors' and its adaptive definition's, `adaptive::Definition::exprs`), and each name one says that isn't a parameter (nor a
+door's or window's `Wall Thickness`) is refused, in every branch of its `if`s, not only those worked out: "the following is not
+a valid parameter: X. Note that parameter names are case sensitive.", naming the parameter it differs from in case only
+(`family::not_a_parameter`). A label's `{X}` and a room calculation point say it in the same words. Where it is refused: the
+`family` command refuses any (`Family::problems`, so Edit Family and Load into Project too); every other command that is an undo
+step, but `insert`, is refused when it leaves a family it made or changed with a name it didn't have before
+(`family::check_family_edits`, run by the engine beside `check_edits`; a favorite loaded is such). `Family::check`, and so
+`Model::check`, doesn't ask it: a file from before this check may hold one in a branch never taken, and it still opens, `open`
+listing each as `warnings` and `family {name}` as `errors`, until a change to that family mends it. Refusing it on check would
+have left such a file unopenable, and every command on it refused.
+
+A parameter a formula works out (`Parameter::driven`) is set by nothing: a type that sets it is refused (`Family::check`), and
+a component's instance value of it (`Model::family_values_ok`), the refusal naming the formula. Edit Parameter giving a
+parameter a formula takes away what its types and its components held of it, as Revit's does. The desktop shows such a value,
+greyed and taking no typing, as what it comes to: the Family Editor's Parameters and Types tabs (for the type previewed, or the
+type picked), the project's Properties and Type Properties.
+
+### Visibility
+
+A form's `visible` is a yes/no parameter (`group: "visibility"` lists it under Visibility, as Revit's) or a formula; worked out
+as zero, the form is left out of what the family builds for that type or component (`Family::solid`), so a plan, the 3D view,
+a section and IFC leave it out alike, and a change of type, of the type's tick or of the component's own value follows. The
+Family Editor's Forms tab shows it as Revit's Properties do: a Visible tick with "=" at its end (Associate Family Parameter,
+the same dialog an adaptive element's rows open, through `adaptive_editor::Tied`), which ties it to a yes/no parameter or, with
+<None>, unties it keeping what it came to; tied, or given a formula, the tick is greyed, showing what the type previewed comes
+to, the formula beside it. Revit's "Preview Visibility" (forms hidden in a type drawn greyed in the family's own views) is left
+out: the editor's preview shows each type as it builds.
+
 ## Shared parameters file
 
 A shared parameters file (`shared_parameters.rs`, the `shared_parameters` command, Manage > Shared Parameters) is a plain-text

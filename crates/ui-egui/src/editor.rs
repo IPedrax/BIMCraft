@@ -522,6 +522,34 @@ impl FamilyEditor {
         }
     }
 
+    /// Associate Family Parameter, open from a row's "=" (an adaptive element's, or a form's Visible): a parameter New
+    /// Parameter makes goes in the family at once, as in Revit.
+    pub(crate) fn associate_dialog(&mut self, ctx: &Context) {
+        use crate::adaptive_editor::{Field, associate};
+        let Some(mut a) = self.associating.take() else { return };
+        let (params, values) = (self.parameter_kinds(), self.values());
+        let (done, new) = if a.field == Field::FormVisible {
+            associate(ctx, &mut a, &mut FormsVisible(&mut self.forms), &params, &values)
+        } else if let Some(d) = self.adaptive.as_mut() {
+            associate(ctx, &mut a, d, &params, &values)
+        } else {
+            return;
+        };
+        if let Some(n) = new {
+            self.params.push(ParamText {
+                original: Parameter::default(),
+                name: n.name,
+                kind: n.kind,
+                instance: n.instance,
+                value: n.value,
+                formula: String::new(),
+            });
+        }
+        if !done {
+            self.associating = Some(a);
+        }
+    }
+
     /// Each of its parameters, by name, and what it holds: what a row of Properties may be tied to.
     pub(crate) fn parameter_kinds(&self) -> Vec<(String, Holds)> {
         self.params.iter().map(|p| (p.name.trim().to_string(), p.kind)).collect()
@@ -855,7 +883,29 @@ fn pick(ui: &mut Ui, label: String, current: &str, options: &[String]) -> Option
     picked
 }
 
+/// What a formula works out, shown greyed as Revit's Family Types shows it and taking no typing: a tick, or the value as text;
+/// `label` names it for screen readers and tests.
+fn computed(ui: &mut Ui, label: String, kind: Holds, value: Option<&bimcraft_core::family::Val>, width: f32) {
+    use bimcraft_core::family::Val;
+    if kind == Holds::YesNo {
+        let mut on = matches!(value, Some(Val::Number(x)) if *x != 0.0);
+        let r = ui.add_enabled(false, egui::Checkbox::without_text(&mut on));
+        r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, false, on, label.as_str()));
+        return;
+    }
+    let mut text = match value {
+        Some(Val::Number(x)) => number_text(*x),
+        Some(Val::Text(t)) => t.clone(),
+        None => "?".into(),
+    };
+    let r =
+        ui.add_enabled_ui(false, |ui| ui.add_sized([width, ui.spacing().interact_size.y], TextEdit::singleline(&mut text).id_salt(&label)));
+    r.inner.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, false, label.as_str()));
+}
+
 fn parameters_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
+    // What the type previewed comes to: a value a formula works out is shown, greyed.
+    let values = ed.values();
     if ed.category.hosted() {
         let note = t("A door or a window needs lengths named Width and Height; its formulas can read Wall Thickness, the wall's.");
         ui.label(RichText::new(note).color(pal().muted));
@@ -877,6 +927,9 @@ fn parameters_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
             let r = ui.checkbox(&mut p.instance, "");
             r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, p.instance, format!("{} {n}", t("Parameter Instance"))));
             match p.kind {
+                _ if !p.formula.trim().is_empty() => {
+                    computed(ui, format!("{} {n}", t("Parameter Value")), p.kind, values.get(p.name.trim()), 90.0);
+                }
                 Holds::YesNo => {
                     let mut on = p.value == "1";
                     let r = ui.checkbox(&mut on, "");
@@ -941,22 +994,29 @@ fn types_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
             ed.types.remove(ed.picked);
         }
     });
-    let own: Vec<(String, Holds)> = ed
+    // Each type parameter, and whether a formula works it out: shown then, greyed, as what the type comes to.
+    let own: Vec<(String, Holds, bool)> = ed
         .params
         .iter()
-        .filter(|p| !p.instance && !p.original.reporting && p.formula.trim().is_empty())
-        .map(|p| (p.name.clone(), p.kind))
+        .filter(|p| !p.instance && !p.original.reporting)
+        .map(|p| (p.name.clone(), p.kind, !p.formula.trim().is_empty()))
         .collect();
+    let values = ed.values();
     let Some((name, set)) = ed.types.get_mut(ed.picked) else { return };
     ui.add_space(4.0);
     Grid::new("fe-type").num_columns(2).spacing(vec2(12.0, 5.0)).show(ui, |ui| {
         ui.label(t("Type Name"));
         field(ui, t("Type Name").to_string(), name, 200.0);
         ui.end_row();
-        for (param, kind) in &own {
+        for (param, kind, driven) in &own {
             ui.label(param);
-            let text = set.entry(param.clone()).or_default();
             let label = format!("{} {param}", t("Type Value"));
+            if *driven {
+                computed(ui, label, *kind, values.get(param.trim()), 120.0);
+                ui.end_row();
+                continue;
+            }
+            let text = set.entry(param.clone()).or_default();
             match kind {
                 Holds::YesNo => {
                     // Blank is the family's; a tick or a clear is the type's own.
@@ -982,9 +1042,63 @@ fn types_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     ui.label(RichText::new(t("A blank value is the family's own, as the Parameters tab has it.")).color(pal().muted));
 }
 
-/// One form's fields.
-fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String]) {
+/// A form's Visible row, as Revit's Properties have it: a tick, and "=" at its end to tie it to a yes/no parameter; tied (or
+/// worked out by a formula), the tick shows what the type previewed comes to, greyed, the formula beside it. Whether "=" was
+/// pressed.
+fn visible_row(ui: &mut Ui, f: &mut FormText, n: usize, values: &BTreeMap<String, bimcraft_core::family::Val>) -> bool {
+    let label = msg!("Visible");
+    let l = ui.label(t(label));
+    let typed = f.visible.trim().to_string();
+    let tied = !typed.is_empty() && typed.parse::<f64>().is_err();
+    let pressed = ui
+        .horizontal(|ui| {
+            let mut on = shows(f, values);
+            let r = ui.add_enabled(!tied, egui::Checkbox::without_text(&mut on)).labelled_by(l.id);
+            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, !tied, on, format!("{} {n}", t("Form Visible"))));
+            if r.changed() {
+                // Shown is what a form is unless it says otherwise.
+                f.visible = if on { String::new() } else { "0".into() };
+            }
+            if tied {
+                ui.label(RichText::new(&typed).color(pal().muted));
+            }
+            crate::adaptive_editor::equals(ui, label, tied)
+        })
+        .inner;
+    ui.end_row();
+    pressed
+}
+
+/// Associate Family Parameter's rows of a family's own forms: their Visible, each by its place among them.
+struct FormsVisible<'a>(&'a mut [FormText]);
+
+impl crate::adaptive_editor::Tied for FormsVisible<'_> {
+    fn tie(&mut self, a: &crate::adaptive_editor::Associating, values: &BTreeMap<String, bimcraft_core::family::Val>) {
+        let Some(f) = a.id.parse::<usize>().ok().and_then(|i| self.0.get_mut(i)) else { return };
+        f.visible = match &a.chosen {
+            Some(p) => p.clone(),
+            // Untied, it keeps what it came to.
+            None if shows(f, values) => String::new(),
+            None => "0".into(),
+        };
+    }
+
+    fn value_now(&mut self, a: &crate::adaptive_editor::Associating, values: &BTreeMap<String, bimcraft_core::family::Val>) -> String {
+        let on = a.id.parse::<usize>().ok().and_then(|i| self.0.get(i)).is_none_or(|f| shows(f, values));
+        (if on { "1" } else { "0" }).into()
+    }
+}
+
+/// Whether form `f` shows with `values`: unless it says otherwise, it does.
+fn shows(f: &FormText, values: &BTreeMap<String, bimcraft_core::family::Val>) -> bool {
+    let typed = f.visible.trim();
+    typed.is_empty() || crate::adaptive_editor::worth(&text_expr(typed), values).is_some_and(|x| x != 0.0)
+}
+
+/// One form's fields, its Visible tied to the type previewed's `values`. Whether Visible's "=" was pressed.
+fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String], values: &BTreeMap<String, bimcraft_core::family::Val>) -> bool {
     let n = i + 1;
+    let mut pressed = false;
     // The datums, by the planes they are; a form on a plane of the family's own keeps it until a datum is picked.
     let planes = [
         (PlaneRef::Plane(REF_LEVEL), msg!("Plane XY")),
@@ -1055,14 +1169,13 @@ fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String]) {
             f.material = m;
         }
         ui.end_row();
-        ui.label(t("Visible when"));
-        field(ui, format!("{} {n}", t("Form Visible")), &mut f.visible, 200.0);
-        ui.end_row();
+        pressed = visible_row(ui, f, n, values);
         ui.label(t("Void"));
         let r = ui.checkbox(&mut f.void, t("cuts the forms listed above it"));
         r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, f.void, format!("{} {n}", t("Form Void"))));
         ui.end_row();
     });
+    pressed
 }
 
 fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
@@ -1071,10 +1184,21 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     options.extend(ed.params.iter().filter(|p| p.kind == Holds::Material).map(|p| p.name.clone()));
     options.extend(materials.iter().cloned());
     let mut act: Option<(usize, i8)> = None;
+    let (values, params) = (ed.values(), ed.parameter_kinds());
     for i in 0..ed.forms.len() {
         let heading = format!("{}. {}", i + 1, ed.forms[i].describe());
         CollapsingHeader::new(heading).id_salt(("fe-form", i)).default_open(ed.forms.len() == 1).show(ui, |ui| {
-            form_fields(ui, &mut ed.forms[i], i, &options);
+            if form_fields(ui, &mut ed.forms[i], i, &options, &values) {
+                let typed = ed.forms[i].visible.trim().to_string();
+                ed.associating = Some(crate::adaptive_editor::associating(
+                    &i.to_string(),
+                    crate::adaptive_editor::Field::FormVisible,
+                    Holds::YesNo,
+                    msg!("Visible"),
+                    Some(typed.as_str()),
+                    &params,
+                ));
+            }
             ui.horizontal(|ui| {
                 if ui.add_enabled(i > 0, egui::Button::new(t("Move Up"))).clicked() {
                     act = Some((i, -1));
@@ -1457,6 +1581,7 @@ impl BimApp {
                 });
             });
         });
+        ed.associate_dialog(ctx);
         let ask = Asked { capture: capture_context, place: place_adaptive, apply_placement, apply, ok, cancel, save, favorite, load };
         let close = cancel || r.should_close();
         self.family_asked(ctx, ed, ask, close);

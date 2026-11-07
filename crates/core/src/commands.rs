@@ -3003,6 +3003,12 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     let name = m.name.clone();
     s.reset(m, Some(path.clone()));
     let mut reply = json!({"path": path, "name": name});
+    // A formula saying a name its family lacks, which this BIMCraft refuses a command making: the file opens, saying so.
+    let warnings: Vec<String> =
+        s.model.families.iter().flat_map(|(n, f)| f.unknown_names().into_iter().map(move |w| format!("family `{n}`: {w}"))).collect();
+    if !warnings.is_empty() {
+        reply["warnings"] = json!(warnings);
+    }
     if !renamed.is_empty() {
         reply["renamed"] = json!(renamed);
     }
@@ -10418,6 +10424,18 @@ fn patch_parameter(
             }
         }
     }
+    // Given a formula, it is worked out from then on, as Revit's is: what its types and its components held of it goes.
+    if now.driven().is_some() {
+        f.types.values_mut().for_each(|t| {
+            t.remove(&name);
+        });
+        patches.component_ops.retain(|op| !matches!(op, ComponentOp::Set(_, n, _) | ComponentOp::Remove(_, n) if *n == name));
+        for (id, _, own) in &users {
+            if own.is_some_and(|o| o.contains_key(&name)) {
+                patches.component_ops.push(ComponentOp::Remove(*id, name.clone()));
+            }
+        }
+    }
     if let Some(to) = rename
         && to != name
     {
@@ -10586,6 +10604,11 @@ fn family(s: &mut Session, p: &Value) -> R {
         let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}`")))?;
         let (_, warnings) = f.problems(&|m| s.model.materials.contains_key(m));
         let mut reply = family_reply(&name, f, &warnings);
+        // What a file from before may hold and a change to it refuses until it is mended.
+        let errors = f.unknown_names();
+        if !errors.is_empty() {
+            reply["errors"] = json!(errors);
+        }
         if dry {
             reply["dry_run"] = json!(true);
             reply["ok"] = json!(true);
