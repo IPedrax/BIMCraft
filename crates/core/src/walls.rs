@@ -206,18 +206,18 @@ pub fn stacked(m: &Model, a: &Wall, b: &Wall) -> bool {
 
 /// A wall where it leaves a node: the way it goes, and where its faces' lines and its centre line
 /// are there (each running that way): the face on the counter-clockwise side of that way, the one
-/// on the clockwise side.
-struct Arm {
-    mine: bool,
-    way: P2,
-    ccw: P2,
-    cw: P2,
-    centre: P2,
-    thick: f64,
+/// on the clockwise side. A run's arm at its end is one too ([`crate::runs`]).
+pub(crate) struct Arm {
+    pub(crate) mine: bool,
+    pub(crate) way: P2,
+    pub(crate) ccw: P2,
+    pub(crate) cw: P2,
+    pub(crate) centre: P2,
+    pub(crate) thick: f64,
 }
 
 /// Wall `w` leaving the node at its start, or with `at_end`, at its end.
-fn arm(m: &Model, w: &Wall, at_end: bool, mine: bool) -> Arm {
+pub(crate) fn arm(m: &Model, w: &Wall, at_end: bool, mine: bool) -> Arm {
     let axis = Axis::of(w);
     let (ext, int) = faces(m, w);
     let s = if at_end { axis.length() } else { 0.0 };
@@ -235,6 +235,12 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bo
     let node = if at_end { w.end } else { w.start };
     let mut arms = vec![arm(m, w, at_end, true)];
     let mut through = false;
+    // A wall that refuses to join meets nothing at this end: its own square end is its whole cap.
+    if !w.join {
+        return (arms, false);
+    }
+    // A wall that refuses to join is no candidate for anyone either: neither side is mitred.
+    let joins = |o: &Wall| o.join && stacked(m, w, o);
     let candidates: Box<dyn Iterator<Item = (Id, &Wall)> + '_> = match index {
         Some(index) => Box::new(index.neighbours_at(id, node).into_iter().filter_map(|id| Some((id, m.wall(id)?)))),
         // The walls whose location lines come within the thickest wall's thickness of the node (those that end at it,
@@ -253,11 +259,11 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bo
             continue;
         }
         if o.start.dist(node) <= TOL {
-            if stacked(m, w, o) {
+            if joins(o) {
                 arms.push(arm(m, o, false, false));
             }
         } else if o.end.dist(node) <= TOL {
-            if stacked(m, w, o) {
+            if joins(o) {
                 arms.push(arm(m, o, true, false));
             }
         } else {
@@ -265,11 +271,7 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bo
             let ax = Axis::of(o);
             let (s, across) = ax.project(node);
             let (ext, int) = faces(m, o);
-            if s > TOL
-                && s < ax.length() - TOL
-                && (int - TOL..=ext + TOL).contains(&across)
-                && ax.distance(node, across) <= TOL
-                && stacked(m, w, o)
+            if s > TOL && s < ax.length() - TOL && (int - TOL..=ext + TOL).contains(&across) && ax.distance(node, across) <= TOL && joins(o)
             {
                 let (t, (e, i), c) = (ax.tangent(s), (ax.at(s, ext), ax.at(s, int)), ax.at(s, (ext + int) / 2.0));
                 arms.push(Arm { mine: false, way: t, ccw: e, cw: i, centre: c, thick: ext - int });

@@ -105,6 +105,8 @@ mod room_freeze_tests;
 #[cfg(test)]
 mod room_height_tests;
 pub mod rooms;
+#[cfg(test)]
+mod run_join_tests;
 pub mod runs;
 pub mod sample;
 pub mod schedule;

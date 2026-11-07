@@ -2354,7 +2354,21 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"ids": [100002, 100003], "top_offset": 1e-300, "top_level": null, "height": -1}),
         wall,
     ];
-    let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).collect();
+    // A strip footing of the runs' own: its gripped end, an end that isn't one, an end for a wall and a
+    // run together, and join flags that aren't booleans.
+    let footing = base.execute("strip_footing", &json!({"points": [[0, 0], [4000, 0]]})).map_or(Value::Null, |r| r["ids"][0].clone());
+    let grips = [
+        json!({"ids": [footing], "by": [10.0, 0.0], "end": "start"}),
+        json!({"ids": [footing], "by": [10.0, 0.0], "end": "both"}),
+        json!({"ids": [footing, 100002], "by": [10.0, 0.0], "end": "end"}),
+        json!({"ids": [100002, 100003], "by": [10.0, 0.0], "end": "start"}),
+        json!({"ids": [footing], "end": "start"}),
+        json!({"id": footing, "join": "x"}),
+        json!({"id": footing, "join": null}),
+        json!({"id": 100002, "join": "no"}),
+    ];
+    let hostile: Vec<Value> =
+        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(grips).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());

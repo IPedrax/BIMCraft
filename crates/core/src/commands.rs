@@ -11178,6 +11178,8 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
     let carried = |host: Guid| moving_guids.contains(&host) && end.is_none();
     let mut walls: BTreeMap<Id, Wall> = BTreeMap::new();
     let mut others: Vec<(Id, Element)> = Vec::new();
+    // The runs taken, as they were and as they now stand: what stretches to keep its joins with them.
+    let mut taken: BTreeMap<Id, (crate::model::Run, crate::model::Run)> = BTreeMap::new();
     for &id in ids {
         match transformed(c, m, id, mo, &moving)? {
             Element::Wall(mut w) => {
@@ -11194,6 +11196,9 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                 if let (Some(at_start), Some(me), Some(old)) = (end, e.run_mut(), m.run_of(id)) {
                     if at_start { me.end = old.end } else { me.start = old.start }
                 }
+                if let (Some(before), Some(after)) = (m.run_of(id).cloned(), e.run().cloned()) {
+                    taken.insert(id, (before, after));
+                }
                 others.push((id, e));
             }
         }
@@ -11209,6 +11214,8 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             let host = lookup.walls_near_at(&[at], 2.0 * TOL).into_iter().find_map(|other| match m.elements.get(other) {
                 Some(Element::Wall(o))
                     if !moving.contains(&other)
+                        && o.join
+                        && before.join
                         && o.arc == 0.0
                         && stacked(m, o, before)
                         && geom::dist_to_segment(was, o.start, o.end) <= TOL =>
@@ -11230,12 +11237,13 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
     let near = if boxes.is_empty() { BTreeSet::new() } else { lookup.walls_near_at(&boxes, 2.0 * TOL) };
     for id in near {
         let Some(w) = m.wall(id) else { continue };
-        if moving.contains(&id) {
+        // An unjoined wall stretches for no one, as it joins nothing itself.
+        if moving.contains(&id) || !w.join {
             continue;
         }
         let mut n = w.clone();
         for (end, at) in [(&mut n.start, w.start), (&mut n.end, w.end)] {
-            for (before, after) in moved.iter().filter(|(before, _)| stacked(m, w, before)) {
+            for (before, after) in moved.iter().filter(|(before, _)| before.join && stacked(m, w, before)) {
                 if at.dist(before.start) <= TOL || at.dist(before.end) <= TOL {
                     *end = if at.dist(before.start) <= TOL { after.start } else { after.end };
                     break;
@@ -11250,6 +11258,71 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
         }
         if n != *w {
             walls.insert(id, n);
+        }
+    }
+    // Runs staying put stretch to keep their joins with the taken ones, as the walls above do: an end on
+    // a taken run's end goes with it; an end on its span slides along the staying run's own line onto the
+    // intersection. What refuses to join, doesn't lie flat, or shares no category or heights with the
+    // taken run is left where it is — the flags act on the whole element, both ends alike.
+    if !taken.is_empty() {
+        let index = crate::walls::Index::new(m);
+        // The heights a run reaches: its section's, worked out as every view draws it — of a taken run
+        // from the model, whose plan a command changes nothing of (its heights are what stay put).
+        let span_of = |id: &Id| m.elements.get(*id).and_then(|e| m.run_geom(e)).map(|g| g.z_span());
+        let box_of =
+            |r: &crate::model::Run| [r.start.0.min(r.end.0), r.start.1.min(r.end.1), r.start.0.max(r.end.0), r.start.1.max(r.end.1)];
+        let met: BTreeSet<Id> = taken
+            .iter()
+            .filter(|(id, (before, after))| {
+                before.join && after.join && crate::runs::flat(before) && crate::runs::flat(after) && span_of(id).is_some()
+            })
+            .flat_map(|(id, (before, _))| {
+                let (lo, hi) = span_of(id).unwrap_or((0.0, 0.0));
+                index.runs_near_box(box_of(before), 2.0 * TOL, lo, hi)
+            })
+            .collect();
+        for id in met {
+            if moving.contains(&id) {
+                continue;
+            }
+            let Some(e) = m.elements.get(id) else { continue };
+            let (Some(r), category) = (e.run(), e.category()) else { continue };
+            let Some((lo, hi)) = span_of(&id) else { continue };
+            if !r.join || !crate::runs::flat(r) {
+                continue;
+            }
+            let mut n = r.clone();
+            for (end, at) in [(&mut n.start, r.start), (&mut n.end, r.end)] {
+                for (tid, (before, after)) in taken.iter() {
+                    if !before.join || !after.join || !crate::runs::flat(before) || !crate::runs::flat(after) {
+                        continue;
+                    }
+                    if m.elements.get(*tid).is_none_or(|o| o.category() != category) {
+                        continue;
+                    }
+                    let Some((blo, bhi)) = span_of(tid) else { continue };
+                    if !(lo < bhi && blo < hi) {
+                        continue;
+                    }
+                    if at.dist(before.start) <= TOL {
+                        *end = after.start;
+                        break;
+                    }
+                    if at.dist(before.end) <= TOL {
+                        *end = after.end;
+                        break;
+                    }
+                    if geom::dist_to_segment(at, before.start, before.end) <= TOL {
+                        *end = geom::line_intersection(r.start, r.end, after.start, after.end).map_or_else(|| f(at), micron);
+                        break;
+                    }
+                }
+            }
+            if n != *r
+                && let Some(moved_run) = Element::of_run(category, n)
+            {
+                others.push((id, moved_run));
+            }
         }
     }
     // Doors and windows in walls that changed keep their place, or go with their wall: those pointing at them, by id.
