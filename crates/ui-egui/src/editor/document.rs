@@ -28,11 +28,13 @@ pub(crate) struct State {
     dialog_saved: Option<Draft>,
     /// A form picked in the Project Browser, which Properties opens.
     pub(super) reveal: Option<usize>,
+    /// What Load into Project was refused for: said until the draft changes.
+    pub(super) refused: Option<String>,
 }
 
 impl Default for State {
     fn default() -> State {
-        State { preview_size: [360, 300], undo: Vec::new(), redo: Vec::new(), mark: None, dialog_saved: None, reveal: None }
+        State { preview_size: [360, 300], undo: Vec::new(), redo: Vec::new(), mark: None, dialog_saved: None, reveal: None, refused: None }
     }
 }
 
@@ -101,6 +103,7 @@ impl FamilyEditor {
             return;
         };
         if ask.undo || ask.redo {
+            self.document.refused = None;
             // An edit not made a step yet is one now, and the first undone.
             let mut current = now;
             if mark != current {
@@ -120,12 +123,14 @@ impl FamilyEditor {
             self.document.mark = Some(current);
             return;
         }
-        let busy = self.modal() || ctx.input(|i| i.pointer.any_down()) || ctx.egui_wants_keyboard_input();
+        let busy = self.modal() || ctx.input(|i| i.pointer.any_down()) || ctx.text_edit_focused();
         if busy {
             self.document.mark = Some(mark);
             return;
         }
         if mark != now {
+            // What was refused is no longer what is there.
+            self.document.refused = None;
             if self.document.undo.len() >= STEPS {
                 self.document.undo.remove(0);
             }
@@ -695,7 +700,7 @@ impl BimApp {
         // Why a family that isn't adaptive can't be tried or loaded, in the view under its tab (a dialog open says it itself).
         if ed.adaptive.is_none()
             && ed.dialog.is_none()
-            && let Some(problem) = &ed.problem
+            && let Some(problem) = ed.problem()
         {
             let room = self.work.shrink(12.0);
             ui.scope_builder(UiBuilder::new().max_rect(room), |ui| {
@@ -777,7 +782,7 @@ impl BimApp {
     /// in (whose own they are) or a dialog has them.
     pub(crate) fn family_keys(&mut self, ctx: &Context) {
         let Some(ed) = self.family_editor.as_mut() else { return };
-        if ed.modal() || ctx.egui_wants_keyboard_input() {
+        if ed.modal() || ctx.text_edit_focused() {
             return;
         }
         let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
@@ -823,7 +828,7 @@ impl BimApp {
                         TypesTab::Parameters => parameters_tab(ed, ui, materials),
                     });
                     // Said in the dialog: the view's would be under it.
-                    if let Some(p) = &ed.problem {
+                    if let Some(p) = ed.problem() {
                         ui.label(RichText::new(p).color(pal().error));
                     }
                 }

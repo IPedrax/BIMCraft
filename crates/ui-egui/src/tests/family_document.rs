@@ -266,3 +266,33 @@ fn a_symbols_rows_are_tied_through_the_dialog_adaptive_rows_and_form_visibility_
     let swing = f.parameters.iter().find(|p| p.name == "Swing").unwrap();
     assert_eq!((swing.kind, &swing.value), (bimcraft_core::family::Kind::YesNo, &json!(true)));
 }
+
+#[test]
+fn a_load_into_project_refused_stays_said_in_the_document_until_the_draft_changes() {
+    let mut h = app("");
+    h.set_size(vec2(1600., 1000.));
+    let other = h.state().session.model.families.keys().find(|n| *n != "Table").unwrap().clone();
+    h.state_mut().edit_family("Table");
+    h.run();
+    // Renamed onto another family's name: the project refuses it, and the document says so.
+    type_into(&mut h, "Family name", &other);
+    h.get_by_label("Close Family").focus();
+    h.run();
+    press(&mut h, "Load into Project");
+    let said = |h: &Harness<BimApp>| h.query_all_by_label_contains("already").count();
+    assert_eq!(said(&h), 1, "the refusal is said once, in the document");
+    // The preview drawn again (its size changed) does not take it away.
+    h.set_size(vec2(1500., 950.));
+    for _ in 0..5 {
+        h.run();
+    }
+    assert_eq!(said(&h), 1, "still said after the view is drawn again");
+    assert!(h.state().session.model.families.contains_key("Table"), "the project's family is as it was");
+    // Once the draft changes, what was refused is no longer what is there.
+    type_into(&mut h, "Family name", "Dining Table");
+    h.get_by_label("Close Family").focus();
+    h.run();
+    assert_eq!(said(&h), 0);
+    press(&mut h, "Load into Project");
+    assert!(h.state().session.model.families.contains_key("Dining Table"));
+}

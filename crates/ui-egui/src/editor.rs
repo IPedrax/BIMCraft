@@ -606,8 +606,9 @@ impl FamilyEditor {
     }
 
     /// Why it can't be made, if something said so.
+    /// What Load into Project was refused for, while the draft is as it was then, else why it can't be tried.
     pub(crate) fn problem(&self) -> Option<&str> {
-        self.problem.as_deref()
+        self.document.refused.as_deref().or(self.problem.as_deref())
     }
 
     /// A family to start from, of `category`: a box of its width, depth and height, or a door's or window's frame of its own.
@@ -1492,13 +1493,15 @@ impl BimApp {
                 Ok(p) => {
                     if self.run("family", p).is_some() {
                         ed.original = Some(ed.name.trim().to_string());
+                        ed.document.refused = None;
                         made = true;
                     } else {
-                        // Said in the document; the box over the view's corner would lie on its buttons.
-                        ed.problem = Some(std::mem::take(&mut self.status).text);
+                        // Said in the document; the box over the view's corner would lie on its buttons. Kept apart from
+                        // what the preview says, which is worked out again every frame, so drawing it never hides this.
+                        ed.document.refused = Some(std::mem::take(&mut self.status).text);
                     }
                 }
-                Err(e) => ed.problem = Some(e),
+                Err(e) => ed.document.refused = Some(e),
             }
         }
         if made && let Some(d) = &ed.adaptive {
