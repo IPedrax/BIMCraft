@@ -12,7 +12,7 @@ msgstr " Posunuto o {}, {} mm pro umístění poblíž počátku."
 
 #: crates/ui-egui/src/editor/types_dialog.rs:298
 msgid "(default)"
-msgstr ""
+msgstr "(výchozí)"
 
 #: crates/ui-egui/src/editor/document.rs:966
 #: crates/ui-egui/src/editor/document.rs:968
@@ -141,7 +141,7 @@ msgstr "Dveře nebo okno vyžadují délky s názvy Šířka a Výška; jejich v
 
 #: crates/ui-egui/src/editor/types_dialog.rs:625
 msgid "A family type parameter needs the category of the families whose types it picks."
-msgstr ""
+msgstr "Parametr typu rodiny potřebuje kategorii rodin, jejichž typy vybírá."
 
 #: crates/ui-egui/src/editor/document.rs:696
 msgid "A family's plans and elevations come with its work planes"
@@ -177,11 +177,11 @@ msgstr "Nový výkres s rozpiskou"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:228
 msgid "A new type, a copy of the type shown"
-msgstr ""
+msgstr "Nový typ, kopie zobrazeného typu"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:619
 msgid "A parameter needs a name."
-msgstr ""
+msgstr "Parametr musí mít název."
 
 #: crates/ui-egui/src/phasing.rs:634
 msgid "A phase filter draws a status this way where it says Overridden."
@@ -205,7 +205,7 @@ msgstr "Malá značka v bodě 0, 0 projektu se směry x (východ) a y (sever). K
 
 #: crates/ui-egui/src/editor/types_dialog.rs:472
 msgid "A type needs a name."
-msgstr ""
+msgstr "Typ musí mít název."
 
 #: crates/ui-egui/src/graphics.rs:568
 msgid "A view always has a scale"
@@ -2564,7 +2564,7 @@ msgstr "Odstranit variantu"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:410
 msgid "Delete Parameter"
-msgstr ""
+msgstr "Odstranit parametr"
 
 #: crates/ui-egui/src/reinforce.rs:469
 msgid "Delete Preset"
@@ -3075,7 +3075,7 @@ msgstr "Upravit variantu: nové prvky se vytvářejí v této variantě a pohled
 
 #: crates/ui-egui/src/editor/types_dialog.rs:391
 msgid "Edit Parameter"
-msgstr ""
+msgstr "Upravit parametr"
 
 #: crates/ui-egui/src/lib.rs:3418
 #: crates/ui-egui/src/presets.rs:176
@@ -3395,11 +3395,11 @@ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:496
 #: crates/ui-egui/src/editor/document.rs:938
 msgid "Family Types"
-msgstr ""
+msgstr "Typy rodiny"
 
 #: crates/ui-egui/src/editor/document.rs:495
 msgid "Family Types: the family's parameters, their formulas, and its types"
-msgstr ""
+msgstr "Typy rodiny: parametry rodiny, jejich vzorce a typy rodiny"
 
 #: crates/ui-egui/src/editor/document.rs:948
 #: crates/ui-egui/src/editor/document.rs:1111
@@ -3408,7 +3408,7 @@ msgstr "Název rodiny"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:507
 msgid "Family parameter"
-msgstr ""
+msgstr "Parametr rodiny"
 
 #: crates/ui-egui/src/adaptive_editor.rs:723
 msgid "Family parameter: {}"
@@ -3990,7 +3990,7 @@ msgstr "Skupina"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:583
 msgid "Group parameter under:"
-msgstr ""
+msgstr "Seskupit parametr pod:"
 
 #: crates/ui-egui/src/groups.rs:65
 msgid "Group:"
@@ -4878,7 +4878,7 @@ msgstr "Čára umístění: {}"
 #: crates/ui-egui/src/editor/types_dialog.rs:252
 #: crates/ui-egui/src/editor/types_dialog.rs:352
 msgid "Lock"
-msgstr ""
+msgstr "Zamknout"
 
 #: crates/ui-egui/src/canvas.rs:3399
 msgid "Lock alignment"
@@ -4894,7 +4894,7 @@ msgstr "Zamknutý segment {}"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:22
 msgid "Locking a parameter's value comes with labelled dimensions: not yet in BIMCraft."
-msgstr ""
+msgstr "Zamknutí hodnoty parametru přijde spolu s kótami s popiskem: zatím není v BIMCraft."
 
 #: crates/core/src/lines.rs:178
 msgid "Long Dash"
@@ -5420,7 +5420,7 @@ msgstr "Nový filtr"
 #: crates/ui-egui/src/adaptive_editor.rs:738
 #: crates/ui-egui/src/editor/types_dialog.rs:374
 msgid "New Parameter"
-msgstr ""
+msgstr "Nový parametr"
 
 #: crates/ui-egui/src/fillpatterns.rs:608
 #: crates/ui-egui/src/linestyles.rs:224
@@ -6020,7 +6020,7 @@ msgstr "Vzorec parametru"
 #: crates/ui-egui/src/adaptive_editor.rs:700
 #: crates/ui-egui/src/editor/types_dialog.rs:503
 msgid "Parameter Properties"
-msgstr ""
+msgstr "Vlastnosti parametru"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:301
 msgid "Parameter Value"
@@ -6254,7 +6254,7 @@ msgstr "Vyberte zvýrazněnou hranu modelu nebo čáru náčrtu jako referenci z
 
 #: crates/ui-egui/src/editor/types_dialog.rs:622
 msgid "Pick a parameter of the shared parameters file."
-msgstr ""
+msgstr "Vyberte parametr ze souboru sdílených parametrů."
 
 #: crates/ui-egui/src/adaptive_view.rs:271
 msgid "Pick a plane: one of a point's planes, the level or a reference plane; Escape gives up."
@@ -7002,7 +7002,7 @@ msgstr "Směr čtení"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:548
 msgid "Reads a dimension and never drives one: a length or an angle"
-msgstr ""
+msgstr "Čte kótu a nikdy ji neřídí: délku nebo úhel"
 
 #: crates/ui-egui/src/start.rs:331
 msgid "Recent"
@@ -7201,7 +7201,7 @@ msgstr "Přejmenovat sadu"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:232
 msgid "Rename Type"
-msgstr ""
+msgstr "Přejmenovat typ"
 
 #: crates/ui-egui/src/templates.rs:473
 #: crates/ui-egui/src/typeprops.rs:133
@@ -7254,7 +7254,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/types_dialog.rs:547
 msgid "Reporting Parameter"
-msgstr ""
+msgstr "Parametr výkazu"
 
 #: crates/ui-egui/src/graphics.rs:1308
 #: crates/ui-egui/src/lineweights.rs:146
@@ -7660,7 +7660,7 @@ msgstr "Hledat písma"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:194
 msgid "Search parameters"
-msgstr ""
+msgstr "Hledat parametry"
 
 #: crates/ui-egui/src/browser.rs:271
 msgid "Search the Project Browser"
@@ -7880,11 +7880,11 @@ msgstr "Sdílená rodina je již načtena"
 #: crates/ui-egui/src/editor/types_dialog.rs:508
 #: crates/ui-egui/src/editor/types_dialog.rs:521
 msgid "Shared parameter"
-msgstr ""
+msgstr "Sdílený parametr"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:512
 msgid "Shared parameters file:"
-msgstr ""
+msgstr "Soubor sdílených parametrů:"
 
 #: crates/ui-egui/src/lib.rs:4637
 msgid "Shed"
@@ -8263,11 +8263,11 @@ msgstr "Seřadit podle:"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:428
 msgid "Sort each group's parameters by name, A to Z"
-msgstr ""
+msgstr "Seřadit parametry každé skupiny podle názvu, od A do Z"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:431
 msgid "Sort each group's parameters by name, Z to A"
-msgstr ""
+msgstr "Seřadit parametry každé skupiny podle názvu, od Z do A"
 
 #: crates/ui-egui/src/properties.rs:2827
 msgid "Sorting/Grouping"
@@ -8863,11 +8863,11 @@ msgstr "Koncové body stěn, modulových os a dalších nakreslených prvků a d
 #: crates/ui-egui/src/adaptive_editor.rs:720
 #: crates/ui-egui/src/editor/types_dialog.rs:628
 msgid "The family has a parameter named {} already."
-msgstr ""
+msgstr "Rodina již má parametr s názvem {}."
 
 #: crates/ui-egui/src/editor/types_dialog.rs:474
 msgid "The family has a type named {} already."
-msgstr ""
+msgstr "Rodina již má typ s názvem {}."
 
 #: crates/ui-egui/src/editor/exists.rs:235
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
@@ -8892,7 +8892,7 @@ msgstr "Písmo rozhraní, ztmavené nebo zesvětlené tam, kde by na panelech ne
 
 #: crates/ui-egui/src/editor/types_dialog.rs:237
 msgid "The last type can't be deleted: a family needs a type to place."
-msgstr ""
+msgstr "Poslední typ nelze odstranit: rodina potřebuje typ, který lze umístit."
 
 #: crates/ui-egui/src/sketch.rs:290
 msgid "The lines are shown in red."
@@ -9335,7 +9335,7 @@ msgstr "Nejprve zadejte název předvolby."
 
 #: crates/ui-egui/src/editor/types_dialog.rs:219
 msgid "Type name:"
-msgstr ""
+msgstr "Název typu:"
 
 #: crates/ui-egui/src/properties.rs:2945
 msgid "Type of Parameter"
@@ -9344,7 +9344,7 @@ msgstr "Typ parametru"
 #: crates/ui-egui/src/adaptive_editor.rs:714
 #: crates/ui-egui/src/editor/types_dialog.rs:552
 msgid "Type of Parameter:"
-msgstr ""
+msgstr "Typ parametru:"
 
 #: crates/ui-egui/src/inquiry.rs:88
 msgid "Type or paste an ID, a GUID or an IFC GlobalId."
@@ -10550,7 +10550,7 @@ msgstr "rodina nemá tvar {}"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:648
 msgid "the family has no parameter `{}`"
-msgstr ""
+msgstr "rodina nemá parametr `{}`"
 
 #: crates/ui-egui/src/workplane.rs:368
 msgid "the model has no levels"
@@ -10686,7 +10686,7 @@ msgstr "{} v poloze x {}, y {}"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:418
 msgid "{} can't be deleted: {}"
-msgstr ""
+msgstr "{} nelze odstranit: {}"
 
 #: crates/ui-egui/src/start.rs:122
 msgid "{} days ago"

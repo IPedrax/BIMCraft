@@ -13,7 +13,7 @@ msgstr " 已移动 {}（{} 毫米），使其靠近原点。"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:298
 msgid "(default)"
-msgstr ""
+msgstr "（默认）"
 
 #: crates/ui-egui/src/editor/document.rs:966
 #: crates/ui-egui/src/editor/document.rs:968
@@ -142,7 +142,7 @@ msgstr "门或窗需要名为 Width 和 Height 的长度参数；其公式可以
 
 #: crates/ui-egui/src/editor/types_dialog.rs:625
 msgid "A family type parameter needs the category of the families whose types it picks."
-msgstr ""
+msgstr "族类型参数需要其所选类型所属族的类别。"
 
 #: crates/ui-egui/src/editor/document.rs:696
 msgid "A family's plans and elevations come with its work planes"
@@ -178,11 +178,11 @@ msgstr "带标题栏的新图纸"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:228
 msgid "A new type, a copy of the type shown"
-msgstr ""
+msgstr "新类型，为当前所示类型的副本"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:619
 msgid "A parameter needs a name."
-msgstr ""
+msgstr "参数需要名称。"
 
 #: crates/ui-egui/src/phasing.rs:634
 msgid "A phase filter draws a status this way where it says Overridden."
@@ -206,7 +206,7 @@ msgstr "位于项目 0, 0 处的小标记，标明 x（东）和 y（北）的�
 
 #: crates/ui-egui/src/editor/types_dialog.rs:472
 msgid "A type needs a name."
-msgstr ""
+msgstr "类型需要名称。"
 
 #: crates/ui-egui/src/graphics.rs:568
 msgid "A view always has a scale"
@@ -2565,7 +2565,7 @@ msgstr "删除选项"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:410
 msgid "Delete Parameter"
-msgstr ""
+msgstr "删除参数"
 
 #: crates/ui-egui/src/reinforce.rs:469
 msgid "Delete Preset"
@@ -3076,7 +3076,7 @@ msgstr "编辑选项：新图元将创建于此选项中，当前屏幕上的视
 
 #: crates/ui-egui/src/editor/types_dialog.rs:391
 msgid "Edit Parameter"
-msgstr ""
+msgstr "编辑参数"
 
 #: crates/ui-egui/src/lib.rs:3418
 #: crates/ui-egui/src/presets.rs:176
@@ -3396,11 +3396,11 @@ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:496
 #: crates/ui-egui/src/editor/document.rs:938
 msgid "Family Types"
-msgstr ""
+msgstr "族类型"
 
 #: crates/ui-egui/src/editor/document.rs:495
 msgid "Family Types: the family's parameters, their formulas, and its types"
-msgstr ""
+msgstr "族类型：族的参数、参数公式及其类型"
 
 #: crates/ui-egui/src/editor/document.rs:948
 #: crates/ui-egui/src/editor/document.rs:1111
@@ -3409,7 +3409,7 @@ msgstr "族名称"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:507
 msgid "Family parameter"
-msgstr ""
+msgstr "族参数"
 
 #: crates/ui-egui/src/adaptive_editor.rs:723
 msgid "Family parameter: {}"
@@ -3991,7 +3991,7 @@ msgstr "组"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:583
 msgid "Group parameter under:"
-msgstr ""
+msgstr "参数分组方式："
 
 #: crates/ui-egui/src/groups.rs:65
 msgid "Group:"
@@ -4879,7 +4879,7 @@ msgstr "定位线：{}"
 #: crates/ui-egui/src/editor/types_dialog.rs:252
 #: crates/ui-egui/src/editor/types_dialog.rs:352
 msgid "Lock"
-msgstr ""
+msgstr "锁定"
 
 #: crates/ui-egui/src/canvas.rs:3399
 msgid "Lock alignment"
@@ -4895,7 +4895,7 @@ msgstr "已锁定第 {} 段"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:22
 msgid "Locking a parameter's value comes with labelled dimensions: not yet in BIMCraft."
-msgstr ""
+msgstr "锁定参数值需配合带标签的尺寸标注：BIMCraft 尚不支持。"
 
 #: crates/core/src/lines.rs:178
 msgid "Long Dash"
@@ -5421,7 +5421,7 @@ msgstr "新建过滤器"
 #: crates/ui-egui/src/adaptive_editor.rs:738
 #: crates/ui-egui/src/editor/types_dialog.rs:374
 msgid "New Parameter"
-msgstr ""
+msgstr "新建参数"
 
 #: crates/ui-egui/src/fillpatterns.rs:608
 #: crates/ui-egui/src/linestyles.rs:224
@@ -6021,7 +6021,7 @@ msgstr "参数公式"
 #: crates/ui-egui/src/adaptive_editor.rs:700
 #: crates/ui-egui/src/editor/types_dialog.rs:503
 msgid "Parameter Properties"
-msgstr ""
+msgstr "参数属性"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:301
 msgid "Parameter Value"
@@ -6255,7 +6255,7 @@ msgstr "拾取高亮显示的模型边或草图线作为对齐参照。"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:622
 msgid "Pick a parameter of the shared parameters file."
-msgstr ""
+msgstr "请从共享参数文件中选择一个参数。"
 
 #: crates/ui-egui/src/adaptive_view.rs:271
 msgid "Pick a plane: one of a point's planes, the level or a reference plane; Escape gives up."
@@ -7003,7 +7003,7 @@ msgstr "读取规则"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:548
 msgid "Reads a dimension and never drives one: a length or an angle"
-msgstr ""
+msgstr "读取尺寸标注，但从不驱动它：长度或角度"
 
 #: crates/ui-egui/src/start.rs:331
 msgid "Recent"
@@ -7202,7 +7202,7 @@ msgstr "重命名选项集"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:232
 msgid "Rename Type"
-msgstr ""
+msgstr "重命名类型"
 
 #: crates/ui-egui/src/templates.rs:473
 #: crates/ui-egui/src/typeprops.rs:133
@@ -7255,7 +7255,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/types_dialog.rs:547
 msgid "Reporting Parameter"
-msgstr ""
+msgstr "报告参数"
 
 #: crates/ui-egui/src/graphics.rs:1308
 #: crates/ui-egui/src/lineweights.rs:146
@@ -7661,7 +7661,7 @@ msgstr "搜索字体"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:194
 msgid "Search parameters"
-msgstr ""
+msgstr "搜索参数"
 
 #: crates/ui-egui/src/browser.rs:271
 msgid "Search the Project Browser"
@@ -7881,11 +7881,11 @@ msgstr "共享族已载入"
 #: crates/ui-egui/src/editor/types_dialog.rs:508
 #: crates/ui-egui/src/editor/types_dialog.rs:521
 msgid "Shared parameter"
-msgstr ""
+msgstr "共享参数"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:512
 msgid "Shared parameters file:"
-msgstr ""
+msgstr "共享参数文件："
 
 #: crates/ui-egui/src/lib.rs:4637
 msgid "Shed"
@@ -8264,11 +8264,11 @@ msgstr "排序方式："
 
 #: crates/ui-egui/src/editor/types_dialog.rs:428
 msgid "Sort each group's parameters by name, A to Z"
-msgstr ""
+msgstr "按名称对每个组中的参数排序，从 A 到 Z"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:431
 msgid "Sort each group's parameters by name, Z to A"
-msgstr ""
+msgstr "按名称对每个组中的参数排序，从 Z 到 A"
 
 #: crates/ui-egui/src/properties.rs:2827
 msgid "Sorting/Grouping"
@@ -8864,11 +8864,11 @@ msgstr "墙、轴网及其他已绘制对象的端点，以及迄今已拾取的
 #: crates/ui-egui/src/adaptive_editor.rs:720
 #: crates/ui-egui/src/editor/types_dialog.rs:628
 msgid "The family has a parameter named {} already."
-msgstr ""
+msgstr "该族已有名为 {} 的参数。"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:474
 msgid "The family has a type named {} already."
-msgstr ""
+msgstr "该族已有名为 {} 的类型。"
 
 #: crates/ui-egui/src/editor/exists.rs:235
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
@@ -8893,7 +8893,7 @@ msgstr "界面文字；若在面板上的对比度达不到 4.5:1 而难以辨�
 
 #: crates/ui-egui/src/editor/types_dialog.rs:237
 msgid "The last type can't be deleted: a family needs a type to place."
-msgstr ""
+msgstr "无法删除最后一个类型：族需要一个类型才能放置。"
 
 #: crates/ui-egui/src/sketch.rs:290
 msgid "The lines are shown in red."
@@ -9336,7 +9336,7 @@ msgstr "请先输入模板名称。"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:219
 msgid "Type name:"
-msgstr ""
+msgstr "类型名称："
 
 #: crates/ui-egui/src/properties.rs:2945
 msgid "Type of Parameter"
@@ -9345,7 +9345,7 @@ msgstr "参数类型"
 #: crates/ui-egui/src/adaptive_editor.rs:714
 #: crates/ui-egui/src/editor/types_dialog.rs:552
 msgid "Type of Parameter:"
-msgstr ""
+msgstr "参数类型："
 
 #: crates/ui-egui/src/inquiry.rs:88
 msgid "Type or paste an ID, a GUID or an IFC GlobalId."
@@ -10551,7 +10551,7 @@ msgstr "族中没有形状 {}"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:648
 msgid "the family has no parameter `{}`"
-msgstr ""
+msgstr "该族没有参数 `{}`"
 
 #: crates/ui-egui/src/workplane.rs:368
 msgid "the model has no levels"
@@ -10687,7 +10687,7 @@ msgstr "{} 位于 x {}，y {}"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:418
 msgid "{} can't be deleted: {}"
-msgstr ""
+msgstr "无法删除 {}：{}"
 
 #: crates/ui-egui/src/start.rs:122
 msgid "{} days ago"
