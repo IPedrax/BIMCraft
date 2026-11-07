@@ -139,7 +139,7 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 
 `crates/update` (the updater, the only code that phones home; notes: [crates/update/CLAUDE.md](crates/update/CLAUDE.md); area: [updates](docs/areas/updates.md)): `updater.rs` the state the banner draws; `net.rs` HTTPS to GitHub; `detect.rs` which install this is; `install.rs` Windows, `appimage.rs` Linux, `macos.rs` macOS; `exec.rs`, `prefs.rs`, `testing.rs`.
 
-`crates/agent` (`bimcraft-agent`): the user's AI agent run on a task's files, for the desktop and the CLI, never the core.
+`crates/agent` (`bimcraft-agent`; [notes](crates/agent/CLAUDE.md)): the user's AI agent run on a task's files, for the desktop and the CLI.
 
 `crates/dwg` (`bimcraft-dwg`, the DWG bridge, which the core never depends on; notes: [crates/dwg/CLAUDE.md](crates/dwg/CLAUDE.md); area: [CAD import](docs/areas/cad-import.md)): a DWG as the DXF the core reads, through acadrust (MPL-2.0, unmodified), in a child process of the app (`in_child`, `child_main`); the apps hand a `Session` its `reader`.
 
