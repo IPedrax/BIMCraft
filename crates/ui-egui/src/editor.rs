@@ -4,6 +4,7 @@
 
 mod association;
 pub(crate) mod document;
+mod extrusion;
 
 use crate::popup::Modal;
 
@@ -430,6 +431,8 @@ pub(crate) struct FamilyEditor {
     pub(crate) dialog: Option<DocDialog>,
     /// The instance it was opened from (Edit Family on it), whose placement Replay Instance takes.
     source: Option<bimcraft_core::model::Id>,
+    /// The form selected (a family that isn't adaptive), whose Properties show as Revit's for an Extrusion (`extrusion.rs`).
+    form: Option<usize>,
 }
 
 /// The tabs of a family document's ribbon, as Revit's family editor has them.
@@ -536,6 +539,7 @@ impl FamilyEditor {
             ask: Asked::default(),
             dialog: None,
             source: None,
+            form: None,
         }
     }
 
@@ -1176,6 +1180,7 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     options.extend(ed.params.iter().filter(|p| p.kind == Holds::Material).map(|p| p.name.clone()));
     options.extend(materials.iter().cloned());
     let mut act: Option<(usize, i8)> = None;
+    let mut select = None;
     let (values, params) = (ed.values(), ed.parameter_kinds());
     let mut links = association::Controls::new(ed);
     // A form picked in the Project Browser opens.
@@ -1197,6 +1202,10 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
                 ));
             }
             ui.horizontal(|ui| {
+                // Selected, Properties show it as Revit's do an Extrusion.
+                if ui.button(t("Select")).clicked() {
+                    select = Some(i);
+                }
                 if ui.add_enabled(i > 0, egui::Button::new(t("Move Up"))).clicked() {
                     act = Some((i, -1));
                 }
@@ -1211,6 +1220,9 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     }
     if links.request.is_some() {
         ed.associating = links.request;
+    }
+    if select.is_some() {
+        ed.form = select;
     }
     match act {
         Some((i, -1)) => ed.forms.swap(i, i - 1),

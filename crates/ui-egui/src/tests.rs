@@ -6806,4 +6806,5 @@ fn adaptive_editor_visual_preview_in_three_looks() {
 }
 mod background_grid;
 
+mod extrusion_properties;
 mod family_document;

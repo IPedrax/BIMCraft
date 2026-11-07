@@ -379,6 +379,29 @@ fn a_forms_work_plane_changed_moves_it_with_the_plane_or_keeps_it_where_it_is() 
     assert_eq!(s.model.families["P"], before);
 }
 
+/// Revit's Solid/Void on a selected form: the `family` command's `form` patch switches it, and back, the form keeping its place
+/// and identity; a void cuts the solids listed before it.
+#[test]
+fn a_form_switches_between_solid_and_void_through_the_family_command() {
+    let mut s = Session::new();
+    family_with_plane(&mut s);
+    run(
+        &mut s,
+        "family",
+        json!({"name": "P", "forms": [{"profile": [[0, 0], [100, 0], [100, 50], [0, 50]], "from": 10, "to": 60},
+                                                      {"profile": [[20, 0], [40, 0], [40, 50], [20, 50]], "from": 0, "to": 100}]}),
+    );
+    let (id, guid) = (s.model.families["P"].forms[1].id, s.model.families["P"].forms[1].guid);
+    let solid = box_of(&s);
+    run(&mut s, "family", json!({"name": "P", "form": {"guid": guid, "void": true}}));
+    let f = &s.model.families["P"].forms[1];
+    assert!(f.void && f.id == id && f.guid == guid);
+    assert_ne!(box_of(&s), solid, "the void cuts the solid instead of adding to it");
+    run(&mut s, "family", json!({"name": "P", "form": {"id": id, "void": false}}));
+    assert!(!s.model.families["P"].forms[1].void);
+    assert_eq!(box_of(&s), solid);
+}
+
 #[test]
 fn a_reference_lines_work_plane_changed_takes_its_ends_and_what_is_drawn_on_it_along() {
     let mut s = Session::new();
