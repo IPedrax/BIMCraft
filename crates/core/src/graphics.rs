@@ -102,7 +102,7 @@ pub const COMPONENTS: [&str; 18] = [
     "rack",
 ];
 pub const ANNOTATION: [&str; 11] =
-    ["dimension", "tag", "text", "line", "region", "spot", "grid", "level", "section", "elevation", "circuit"];
+    ["dimension", "tag", "text", "line", "region", "spot", "spotcoordinate", "grid", "level", "section", "elevation", "circuit"];
 /// The point clouds, which views hide and override as Revit's Visibility/Graphics does on a tab of their own: not a model
 /// category, so Object Styles has no row for them.
 pub const SCANS: [&str; 1] = ["pointcloud"];

@@ -1510,9 +1510,39 @@ pub struct Spot {
     /// A spot coordinate: in a plan, the north and east of `at`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub coordinate: bool,
-    /// What it measures from: the Project Base Point or the Survey Point.
+    /// What it measures from: the Project Base Point or the Survey Point. A spot coordinate's type says, and this picks the
+    /// type one from before types takes.
     #[serde(default, skip_serializing_if = "crate::coordinates::Origin::is_default")]
     pub origin: crate::coordinates::Origin,
+    /// A spot coordinate's type (`spots`).
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub type_name: Option<String>,
+    /// A spot coordinate's leader, from its point to `end`, and the shoulder its text stands on.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub leader: bool,
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub shoulder: bool,
+    /// Where its leader ends: else up and to the right of the point, 8 mm on paper.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end: Option<P2>,
+}
+
+impl Spot {
+    /// A spot elevation in `view` at `at`, as a command makes one before it says more.
+    pub fn new(view: Guid, at: P2) -> Spot {
+        Spot {
+            view,
+            at,
+            host: None,
+            slope: false,
+            coordinate: false,
+            origin: Default::default(),
+            type_name: None,
+            leader: true,
+            shoulder: true,
+            end: None,
+        }
+    }
 }
 
 /// Another project shown in this one, a reference that can't be edited: Revit's linked model. The file stays where it is;
@@ -2612,6 +2642,7 @@ impl Element {
             Element::FilledRegion(_) => "region",
             Element::DetailGroup(_) => "detailgroup",
             Element::RepeatingDetail(_) => "repeatingdetail",
+            Element::Spot(sp) if sp.coordinate => "spotcoordinate",
             Element::Spot(_) => "spot",
             Element::Link(_) => "link",
             Element::PointCloud(_) => "pointcloud",
@@ -3351,6 +3382,9 @@ pub struct Model {
     /// Its dimension types, by name: how the dimensions of each draw and letter their numbers.
     #[serde(default = "crate::dims::types")]
     pub dimension_types: BTreeMap<String, crate::dims::DimensionType>,
+    /// Its spot coordinate types, by name: how the spot coordinates of each draw their leader and read their point.
+    #[serde(default = "crate::spots::types")]
+    pub spot_coordinate_types: BTreeMap<String, crate::spots::SpotCoordinateType>,
     /// Its detail group types, by name: the members each one placed draws.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub detail_groups: BTreeMap<String, crate::groups::GroupType>,
@@ -3481,6 +3515,7 @@ impl Model {
             region_types: fills::region_types(language),
             text_types: crate::text::types(language),
             dimension_types: crate::dims::types(),
+            spot_coordinate_types: crate::spots::types(),
             detail_groups: BTreeMap::new(),
             title_blocks: BTreeMap::new(),
             title_values: BTreeMap::new(),
@@ -4823,6 +4858,7 @@ impl Model {
             "region" => names(&self.region_types),
             "text" => names(&self.text_types),
             "dimension" => names(&self.dimension_types),
+            "spotcoordinate" => names(&self.spot_coordinate_types),
             "wall" => names(&self.types.wall),
             "floor" => names(&self.types.floor),
             "door" => names(&self.types.door),
@@ -4846,6 +4882,9 @@ impl Model {
             "region" => return fills::default_region_type(&self.region_types, self.language).map(String::as_str),
             "text" => return crate::text::default_type(&self.text_types).map(String::as_str),
             "dimension" => return crate::dims::default_type(&self.dimension_types, DimKind::Aligned).map(String::as_str),
+            "spotcoordinate" => {
+                return crate::spots::default_type(&self.spot_coordinate_types, crate::coordinates::Origin::Survey).map(String::as_str);
+            }
             "wall" | "floor" => "Generic - 200mm",
             "door" => "Single 900 x 2100",
             "column" => "Rectangular 400 x 400",
@@ -6630,10 +6669,39 @@ impl Model {
         self.spot_value(sp).map(|z| self.coordinates.elevation(z, sp.origin))
     }
 
-    /// What a spot coordinate shows: in a plan, the east and north of its point from its origin.
+    /// What a spot coordinate shows: in a plan, the east and north of its point from its type's origin.
     pub fn spot_coordinate(&self, sp: &Spot) -> Option<(f64, f64)> {
-        matches!(self.elements.get(sp.view)?, Element::Level(_) | Element::PlanView(_))
-            .then(|| self.coordinates.plan(sp.at.0, sp.at.1, sp.origin))
+        self.spot_coordinate_reads(sp).map(|r| (r.east, r.north))
+    }
+
+    /// The type spot coordinate `sp` draws in: its own, else (one from before types) the one its origin takes, else one as a
+    /// project starts with.
+    pub fn spot_coordinate_type(&self, sp: &Spot) -> crate::spots::SpotCoordinateType {
+        let types = &self.spot_coordinate_types;
+        sp.type_name
+            .as_ref()
+            .and_then(|n| types.get(n))
+            .or_else(|| crate::spots::default_type(types, sp.origin).and_then(|n| types.get(n)))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// What spot coordinate `sp` reads, from its type's origin: in a plan, the east and north of its point, and the elevation
+    /// of its host's top there (of the plan's level where it has none).
+    pub fn spot_coordinate_reads(&self, sp: &Spot) -> Option<crate::spots::Reads> {
+        let level = self.plan_level(sp.view)?;
+        let origin = self.spot_coordinate_type(sp).origin;
+        let (east, north) = self.coordinates.plan(sp.at.0, sp.at.1, origin);
+        let z = match sp.host {
+            Some(_) => self.spot_value(sp),
+            None => Some(self.elevation(level)),
+        };
+        Some(crate::spots::Reads { east, north, elevation: z.map(|z| self.coordinates.elevation(z, origin)) })
+    }
+
+    /// Spot coordinate `sp`'s lines of text, as its type lays them.
+    pub fn spot_coordinate_text(&self, sp: &Spot) -> Vec<String> {
+        self.spot_coordinate_type(sp).lines(self.spot_coordinate_reads(sp), self.units)
     }
 
     /// A level's elevation as it is shown: from its elevation base.
@@ -7029,6 +7097,16 @@ impl Model {
             t.check(n)?;
         }
         crate::titleblock::check_values("the project's title fields", &self.title_values)?;
+        if self.spot_coordinate_types.len() > crate::spots::MAX_TYPES {
+            return Err(format!(
+                "the project has {} spot coordinate types; it holds up to {}",
+                self.spot_coordinate_types.len(),
+                crate::spots::MAX_TYPES
+            ));
+        }
+        for (n, t) in &self.spot_coordinate_types {
+            t.check(n)?;
+        }
         crate::electrical::check(self)?;
         if let Some(g) = &self.georeference {
             g.check().map_err(|e| format!("the project's georeference: {e}"))?;
@@ -8072,6 +8150,18 @@ impl Model {
             Element::Spot(sp) => {
                 view_ok(sp.view, false)?;
                 point(&who, sp.at)?;
+                if let Some(e) = sp.end {
+                    point(&who, e)?;
+                }
+                if let Some(t) = &sp.type_name
+                    && !self.spot_coordinate_types.contains_key(t)
+                {
+                    let there: Vec<&str> = self.spot_coordinate_types.keys().map(String::as_str).collect();
+                    return Err(format!("{who}: there's no spot coordinate type `{t}` (there are: {})", there.join(", ")));
+                }
+                if sp.type_name.is_some() && !sp.coordinate {
+                    return Err(format!("{who}: only a spot coordinate has a type"));
+                }
                 match (self.plan_level(sp.view), sp.host) {
                     (None, _) if sp.coordinate => return Err(format!("{who}: a spot coordinate reads north and east: place it in a plan")),
                     (Some(_), None) if !sp.coordinate => {
@@ -8659,6 +8749,7 @@ impl Model {
             region_types,
             text_types,
             dimension_types,
+            spot_coordinate_types,
             detail_groups,
             title_blocks,
             title_values,
@@ -8705,6 +8796,7 @@ impl Model {
             && *region_types == o.region_types
             && *text_types == o.text_types
             && *dimension_types == o.dimension_types
+            && *spot_coordinate_types == o.spot_coordinate_types
             && *detail_groups == o.detail_groups
             && *title_blocks == o.title_blocks
             && *title_values == o.title_values
