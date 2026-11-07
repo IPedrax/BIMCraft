@@ -224,6 +224,39 @@ the sync gives anew (a family loaded twice) takes what is drawn on it along (`Fa
 planes, lines and hosts as they are; its Plane list picks a datum. A connector has no place yet: when it gets `at` and
 `direction` (upstream #269) it takes an optional host too. IFC is unchanged: it writes the forms' triangles.
 
+## Family options
+
+A family's options are those of Revit's Family Category and Parameters dialog (`family/options.rs`), each a flat field of
+`Family` left out of a file while it holds its default, so no `FORMAT` step: an older build leaves a field it doesn't know
+out of the file (`lenient.rs`) and opens it, the family then as it was before the option was set (cut by its category, its
+room its insertion point's, no classification). `family {name, options: {…}}` merges what it is given over what the family
+has, `null` taking one back to its default, and every reply that shows a family carries `options` with all seven, defaults
+too (`Family::options_json`); a dry run lists the ones it would change in `changes.options`. A family file holds them flat,
+as a project does, and `path` reads them back into `options`. The Family Editor has no tab for them yet: it keeps them as
+the family has them and sends them back whole when it saves.
+
+- `work_plane_based` (off), `always_vertical` (on, Revit's default, and allowed off without `work_plane_based`: a
+  wall-hosted family has it too), `cut_with_voids_when_loaded` (off) and `shared` (off) are stored only: placing on a work
+  plane, a project's voids cutting a component and nested families will read them.
+- `cut_in_views`: none, a section cuts the family's forms as its category says (`Category::cut`); `true` or `false`
+  overrides that. `Family::cuts_in_views` is the one place that decides, for a component's solids in the 3D scene
+  (`view3d.rs`), the components a section cuts (`render.rs`) and a family door's or window's forms, which their category
+  always cut before.
+- `room_calculation_point`: `[x, y, z]` in the family's axes, mm, numbers or formulas that read only its length
+  parameters (a door's or a window's `Wall Thickness` too), worked out for each type by `Family::check` (finite, within
+  `MAX_COORD`) and renamed with them. `Model::component_room_point` places it with the component (mirrored, turned, moved;
+  its height over its level's base is kept but not yet read), else takes the insertion point, and `Rooms::component` finds
+  the room on the component's level whose boundary, where the project measures rooms, holds it (the first by id; none
+  in a wall or outside every room). Nothing in BIMCraft put a component in a room before, so this is that rule: `elements`
+  gives each component's `room` (its GUID, or null), and IFC contains a component in that room's `IfcSpace` (else its
+  storey, as before), which the import still walks up to its storey. Schedules have no Room field yet, and doors and
+  windows have no From Room and To Room: a door's or a window's point is stored and checked but placed nowhere.
+- `omniclass`: `{number, title}`, plain text, no table bundled: the number digits in groups between single dots
+  (`23.30.20.17`), at most 64; the title one line of at most `MAX_TEXT`. `elements` shows it on each element of the family,
+  and IFC writes one `IfcClassification` named OmniClass, an `IfcClassificationReference` for each number and title, and an
+  `IfcRelAssociatesClassification` to the type objects of the families that have it (to the occurrence where IFC4 has no
+  type object for its class). The import doesn't read it back yet.
+
 ## Plan symbols
 
 A family's `symbols`, of any category, are what its plan draws besides its forms, in its own axes: each is exactly one of a

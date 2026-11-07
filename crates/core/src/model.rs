@@ -3274,6 +3274,19 @@ impl Model {
         marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
     }
 
+    /// Where component `c`'s room is found from: its family's room calculation point for its values, mirrored, turned and
+    /// moved with it to where it stands (x, y and the height over the project's origin); its insertion point where its family
+    /// has none, or the point doesn't work out.
+    pub fn component_room_point(&self, c: &Component) -> [f64; 3] {
+        let base = self.elevation(c.level) + c.offset;
+        let local =
+            self.families.get(&c.family).and_then(|f| f.values(&c.type_name, &c.params).ok().and_then(|v| f.room_point(&v).ok().flatten()));
+        let Some([x, y, z]) = local else { return [c.at.0, c.at.1, base] };
+        let y = if c.mirrored { -y } else { y };
+        let (sin, cos) = c.angle.to_radians().sin_cos();
+        [c.at.0 + x * cos - y * sin, c.at.1 + x * sin + y * cos, base + z]
+    }
+
     /// Component `c`'s solids in the model: its own, turned and moved to where it stands.
     pub fn component_pieces(&self, c: &Component) -> Vec<Piece> {
         let base = self.elevation(c.level) + c.offset;

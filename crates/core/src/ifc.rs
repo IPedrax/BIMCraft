@@ -69,6 +69,8 @@ const CONNECTOR: u64 = 55;
 const CONNECTOR_DEFINES: u64 = 56;
 const TYPE_MATERIALS: u64 = 57;
 const USAGE_MATERIALS: u64 = 58;
+const CLASSIFIES: u64 = 59;
+const IN_SPACE: u64 = 60;
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
@@ -215,6 +217,8 @@ struct Step {
     /// The profile definition of each section written, shared by the material profile set of the type that has it and the bodies of
     /// its occurrences.
     sections: BTreeMap<Section, u64>,
+    /// What each OmniClass number and title classifies: type objects, else occurrences with none. Written once at the end.
+    classified: BTreeMap<(String, String), Vec<u64>>,
 }
 
 /// A member's section as its type gives it: `width` and `depth` in mm (a round section is `width` across, so its depth is
@@ -254,6 +258,8 @@ struct TypeBuild {
     predefined: String,
     occurrences: Vec<u64>,
     usages: BTreeMap<u8, Vec<u64>>,
+    /// The OmniClass number and title its family has, which the type object is classified by.
+    omniclass: Option<(String, String)>,
 }
 
 /// The cardinal point (IFC4's `IfcCardinalPointReference`) a beam is placed by: its `justify` line, the top (8), the middle (5)
@@ -331,6 +337,7 @@ impl Step {
             predefined: predefined.to_string(),
             occurrences: Vec::new(),
             usages: BTreeMap::new(),
+            omniclass: None,
         });
         if build.predefined != predefined {
             build.predefined = ".NOTDEFINED.".into();
@@ -343,7 +350,9 @@ impl Step {
     /// its occurrences use, one for each cardinal point. All the GlobalIds come from the class, the name and the member, so they
     /// are the same on every export.
     fn write_types(&mut self, m: &Model) {
-        for ((class, before, after, name, member), TypeBuild { predefined, occurrences, usages }) in std::mem::take(&mut self.typed) {
+        for ((class, before, after, name, member), TypeBuild { predefined, occurrences, usages, omniclass }) in
+            std::mem::take(&mut self.typed)
+        {
             let member_text = member.as_ref().map(|x| format!("{x:?}")).unwrap_or_default();
             let key = name
                 .bytes()
@@ -354,6 +363,9 @@ impl Step {
             let predefined = if predefined.is_empty() { predefined } else { format!(",{predefined}") };
             let kind = self.add(format!("{class}({},$,{},$,$,$,$,$,${before}{predefined}{after})", self.guid(TYPES, key), s(&name)));
             self.add(format!("IFCRELDEFINESBYTYPE({},$,$,$,({}),#{kind})", self.guid(TYPE_DEFINES, key), refs(&occurrences)));
+            if let Some(o) = omniclass {
+                self.classified.entry(o).or_default().push(kind);
+            }
             let Some((section, material)) = member else { continue };
             let profile = self.section_profile(section);
             let material = if material.is_empty() { "$".to_string() } else { format!("#{}", self.material(m, &material)) };
@@ -365,6 +377,26 @@ impl Step {
                 let relation = self.guid(USAGE_MATERIALS, key.wrapping_add(u64::from(cardinal)));
                 self.add(format!("IFCRELASSOCIATESMATERIAL({relation},$,$,$,({}),#{usage})", refs(&users)));
             }
+        }
+    }
+
+    /// OmniClass, once, as the `IfcClassification` its references are of, and each number and title as an
+    /// `IfcClassificationReference` associated with what it classifies. The GlobalIds follow the number and the title.
+    fn write_classifications(&mut self) {
+        let classified = std::mem::take(&mut self.classified);
+        if classified.is_empty() {
+            return;
+        }
+        let system = self.add("IFCCLASSIFICATION($,$,$,'OmniClass',$,$,$)");
+        for ((number, title), objects) in classified {
+            let key = number
+                .bytes()
+                .chain([0])
+                .chain(title.bytes())
+                .fold(0xCBF2_9CE4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
+            let name = if title.is_empty() { "$".to_string() } else { s(&title) };
+            let reference = self.add(format!("IFCCLASSIFICATIONREFERENCE($,{},{name},#{system},$,$)", s(&number)));
+            self.add(format!("IFCRELASSOCIATESCLASSIFICATION({},$,$,$,({}),#{reference})", self.guid(CLASSIFIES, key), refs(&objects)));
         }
     }
 
@@ -757,6 +789,7 @@ pub fn export(m: &Model) -> String {
         common: BTreeMap::new(),
         typed: BTreeMap::new(),
         sections: BTreeMap::new(),
+        classified: BTreeMap::new(),
     };
     let origin = w.add("IFCCARTESIANPOINT((0.,0.,0.))");
     w.z = w.add("IFCDIRECTION((0.,0.,1.))");
@@ -819,6 +852,8 @@ pub fn export(m: &Model) -> String {
     }
 
     let mut contained: BTreeMap<Guid, Vec<u64>> = BTreeMap::new();
+    // The components in each room, by the room's id, with their levels: contained in its space, else in their storey.
+    let mut in_rooms: BTreeMap<Id, Vec<(Guid, u64)>> = BTreeMap::new();
     let mut spaces: BTreeMap<Guid, Vec<u64>> = BTreeMap::new();
     // Each element's own entity, for what it holds of the project's parameters.
     let mut products: BTreeMap<Id, u64> = BTreeMap::new();
@@ -1153,8 +1188,13 @@ pub fn export(m: &Model) -> String {
                 let class = classes::class(&entity);
                 let tail = class.map_or_else(|| format!(",{kind}"), |c| classes::fill(c.1, &kind));
                 let ent = w.add(format!("{entity}({},$,{name},$,{object},#{at},#{shape},'{id}'{tail})", w.guid(ELEMENT, id)));
-                contained.entry(cp.level).or_default().push(ent);
+                // In the room its family's room calculation point (else its insertion point) is in, else in its storey.
+                match rooms.component(cp) {
+                    Some(room) => in_rooms.entry(room).or_default().push((cp.level, ent)),
+                    None => contained.entry(cp.level).or_default().push(ent),
+                }
                 products.insert(id, ent);
+                let omniclass = f.omniclass.as_ref().map(|o| (o.number.clone(), o.title.clone()));
                 // Its type object, of the class it is written as, where IFC4 has one: with its family's kind's predefined type,
                 // or the one it remembers but `USERDEFINED` (which a type object would have to say), else none defined.
                 let says = f.kind.is_some() || f.remembered().is_some();
@@ -1162,6 +1202,15 @@ pub fn export(m: &Model) -> String {
                 if let Some(attributes) = class.and_then(|c| c.2) {
                     let (before, after) = classes::around(attributes);
                     w.typed_with(&format!("{entity}TYPE"), &before, type_kind, &after, &label, ent);
+                    if omniclass.is_some() {
+                        let key = (format!("{entity}TYPE"), before, after, label.clone(), None);
+                        if let Some(b) = w.typed.get_mut(&key) {
+                            b.omniclass = omniclass;
+                        }
+                    }
+                } else if let Some(o) = omniclass {
+                    // No type object to classify: the occurrence is.
+                    w.classified.entry(o).or_default().push(ent);
                 }
                 // What it's made of: its material, or the set of them.
                 let relating = match made_of.as_slice() {
@@ -1551,6 +1600,15 @@ pub fn export(m: &Model) -> String {
         let system = w.add(format!("IFCSYSTEM({},$,{},$,$)", w.guid(SYSTEMS, key), s(name)));
         w.add(format!("IFCRELASSIGNSTOGROUP({},$,$,$,({}),$,#{system})", w.guid(SYSTEM_MEMBERS, key), refs(members)));
     }
+    for (room, held) in in_rooms {
+        match products.get(&room) {
+            Some(space) => {
+                let items: Vec<u64> = held.iter().map(|(_, ent)| *ent).collect();
+                w.add(format!("IFCRELCONTAINEDINSPATIALSTRUCTURE({},$,$,$,({}),#{space})", w.guid(IN_SPACE, room), refs(&items)));
+            }
+            None => held.into_iter().for_each(|(level, ent)| contained.entry(level).or_default().push(ent)),
+        }
+    }
     for (level, (storey, _)) in &storeys {
         if let Some(items) = contained.get(level) {
             w.add(format!(
@@ -1635,6 +1693,7 @@ pub fn export(m: &Model) -> String {
         w.define(ent, pset, &props, (COMMON, COMMON_DEFINES), id);
     }
     w.write_types(m);
+    w.write_classifications();
     // Each element's phase and design option, in a property set of its own. The first phase is no value in a
     // model; here an element holding another value names it as its `Phase Created` (said to be implied), for
     // another tool to read. A door or a window holds only what it says: one with no phase follows its wall.

@@ -19,8 +19,11 @@ use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
 
 mod bounds;
+mod options;
 mod planes;
 mod validate;
+
+pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 
 pub use planes::{
     CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, DATUMS, Face, Frame, MAX_LINES, MAX_PLANES, PlaneRef, REF_LEVEL, RefLine, RefPlane, Reference,
@@ -793,6 +796,28 @@ pub struct Family {
     /// Where it joins a system: an electrical device's load, a switch. At most one is `power`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub connectors: Vec<Connector>,
+    /// Revit's Work Plane-Based: kept for placing on a work plane (not read yet).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub work_plane_based: bool,
+    /// Revit's Always Vertical, on by default: kept for placing on a sloped plane (not read yet).
+    #[serde(default = "options::yes", skip_serializing_if = "options::is_yes")]
+    pub always_vertical: bool,
+    /// Revit's Cut with Voids When Loaded: kept for a project's voids cutting it (not read yet).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub cut_with_voids_when_loaded: bool,
+    /// Revit's Shared, for nested families: kept (not read yet).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub shared: bool,
+    /// The point, in its own axes (mm, numbers or formulas over its length parameters), whose room a component is in; none,
+    /// its insertion point's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room_calculation_point: Option<[Expr; 3]>,
+    /// Whether sections cut its forms, over its category's rule ([`Family::cuts_in_views`]); none, the category's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cut_in_views: Option<bool>,
+    /// Its OmniClass number and title, which IFC writes as a classification reference.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub omniclass: Option<OmniClass>,
 }
 
 impl Default for Family {
@@ -809,6 +834,13 @@ impl Default for Family {
             symbols: Vec::new(),
             operation: None,
             connectors: Vec::new(),
+            work_plane_based: false,
+            always_vertical: true,
+            cut_with_voids_when_loaded: false,
+            shared: false,
+            room_calculation_point: None,
+            cut_in_views: None,
+            omniclass: None,
         }
     }
 }
@@ -1466,6 +1498,7 @@ impl Family {
             }
             sym.visible.iter_mut().for_each(&mut expr);
         }
+        self.room_calculation_point.iter_mut().flatten().for_each(&mut expr);
         for c in &mut self.connectors {
             [&mut c.voltage, &mut c.power_factor].into_iter().for_each(&mut expr);
             match &mut c.load_va {
@@ -1758,6 +1791,7 @@ impl Family {
         if symbol_exprs.into_iter().any(|e| matches!(e, Expr::Formula(f) if long(f))) {
             return Err(format!("a formula of a symbol is longer than {MAX_FORMULA} characters"));
         }
+        self.check_options()?;
         self.check_connectors()?;
         // Each formula read once across the types; past what a family may build, refused.
         let (mut read, mut built, mut cuts) = (HashMap::new(), 0, csg::Meter::default());

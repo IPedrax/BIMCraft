@@ -2094,7 +2094,7 @@ fn section_base_cancellable(
     // boxes the line's plane crosses.
     let mut lazy = crate::component_geometry::Components::new(m);
     let cut_component = |e: &Element| match e {
-        Element::Component(c) => m.families.get(&c.family).is_some_and(|f| f.category.cut()),
+        Element::Component(c) => m.families.get(&c.family).is_some_and(crate::family::Family::cuts_in_views),
         _ => false,
     };
     for (at, (id, _)) in work.placed.iter().enumerate() {
