@@ -340,7 +340,10 @@ mod tests {
         assert_eq!((t("Wall Schedule"), t("Save changes to {}?")), ("Tabla de muros", "¿Guardar los cambios en {}?"));
         assert_eq!((category("room", true), category("viewport", false)), ("Habitaciones".to_string(), "Vista en plano".to_string()));
         set(Lang::Polish);
-        assert_eq!((t("Wall Schedule"), t("Architecture"), category("wall", true), category("level", false)), ("Zestawienie ścian", "Architektura", "Ściany".to_string(), "Poziom".to_string()));
+        assert_eq!(
+            (t("Wall Schedule"), t("Architecture"), category("wall", true), category("level", false)),
+            ("Zestawienie ścian", "Architektura", "Ściany".to_string(), "Poziom".to_string())
+        );
         set(Lang::English);
     }
 
