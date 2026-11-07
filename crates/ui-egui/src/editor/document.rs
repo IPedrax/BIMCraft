@@ -758,10 +758,10 @@ impl BimApp {
         self.family_editor.as_ref().is_some_and(|ed| context(ed).is_some())
     }
 
-    /// What the family document's status bar asks for: an adaptive family's modelling view's tool.
+    /// What the family document's status bar asks for: an adaptive family's modelling view's tool, or how another's preview turns.
     pub(crate) fn family_prompt(&self) -> Option<&'static str> {
-        let ed = self.family_editor.as_ref().filter(|e| e.adaptive.is_some())?;
-        Some(adaptive_view::prompt(&ed.modeller))
+        let ed = self.family_editor.as_ref()?;
+        Some(if ed.adaptive.is_some() { adaptive_view::prompt(&ed.modeller) } else { msg!("Drag the picture to turn it.") })
     }
 
     /// Undo in a family document: one step back through its own history, done when the frame ends; the project's is not touched.
