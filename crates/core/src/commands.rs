@@ -3333,6 +3333,10 @@ fn render_view(s: &mut Session, p: &Value) -> R {
             (None, _) => fitted,
         };
         let mut image = scene.render_in(&cam, &[], &look);
+        // What its section box cuts, filled.
+        if look.section_box().is_some() {
+            image.capped(&cam, &view3d::CapSource::new(m).caps_in(m, m.default_3d(), &look), &[], &look);
+        }
         // Its dimensions, over the picture.
         if let Some(v) = three {
             crate::dims3d::paint(&mut image, &crate::dims3d::marks(m, v, &cam, &look, crate::dims3d::SCREEN));

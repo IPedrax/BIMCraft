@@ -36,7 +36,7 @@ msgstr "Cihla"
 msgid "Brick 225 x 75"
 msgstr "Cihla 225 x 75"
 
-#: crates/core/src/commands.rs:4070
+#: crates/core/src/commands.rs:4074
 msgid "Camera"
 msgstr "Kamera"
 
@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Stropní svítidlo"
 
-#: crates/core/src/render.rs:3032
+#: crates/core/src/render.rs:3065
 msgid "Ceiling Plan"
 msgstr "Půdorys podhledu"
 
@@ -96,7 +96,7 @@ msgstr "Počet"
 msgid "Crosshatch"
 msgstr "Křížové šrafování"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3708
 msgid "DN"
 msgstr "DOLŮ"
 
@@ -112,7 +112,7 @@ msgstr "Čerchovaná"
 msgid "Data Outlet"
 msgstr "Datová zásuvka"
 
-#: crates/core/src/commands.rs:9578
+#: crates/core/src/commands.rs:9582
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -188,8 +188,8 @@ msgstr "Elektroinstalace – osvětlení"
 msgid "Electrical Power"
 msgstr "Elektroinstalace – napájení"
 
-#: crates/core/src/commands.rs:9362
-#: crates/core/src/commands.rs:11360
+#: crates/core/src/commands.rs:9366
+#: crates/core/src/commands.rs:11364
 msgid "Elevation"
 msgstr "Pohled"
 
@@ -242,7 +242,7 @@ msgid "Gate Valve"
 msgstr "Šoupátko"
 
 #: crates/core/src/family.rs:2035
-#: crates/core/src/view3d.rs:1005
+#: crates/core/src/view3d.rs:1007
 msgid "Glass"
 msgstr "Sklo"
 
@@ -306,7 +306,7 @@ msgstr "Šířka nohy"
 msgid "Length"
 msgstr "Délka"
 
-#: crates/core/src/commands.rs:6122
+#: crates/core/src/commands.rs:6126
 #: crates/core/src/model.rs:3097
 msgid "Level"
 msgstr "Podlaží"
@@ -331,7 +331,7 @@ msgstr "Označení"
 msgid "Masking"
 msgstr "Maskovací"
 
-#: crates/core/src/commands.rs:7380
+#: crates/core/src/commands.rs:7384
 msgid "Mass"
 msgstr "Objem"
 
@@ -355,7 +355,7 @@ msgstr "Kov"
 msgid "Mounting Height"
 msgstr "Montážní výška"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2894
 msgid "NOT ENCLOSED"
 msgstr "NEUZAVŘENÝ OBVOD"
 
@@ -423,7 +423,7 @@ msgstr "Porcelán"
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2894
 msgid "REDUNDANT"
 msgstr "NADBYTEČNÁ"
 
@@ -447,7 +447,7 @@ msgstr "Počet stupňů"
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
-#: crates/core/src/commands.rs:7605
+#: crates/core/src/commands.rs:7609
 msgid "Room"
 msgstr "Místnost"
 
@@ -475,8 +475,8 @@ msgstr "Potěr"
 msgid "Seat Height"
 msgstr "Výška sedáku"
 
-#: crates/core/src/commands.rs:9339
-#: crates/core/src/commands.rs:11359
+#: crates/core/src/commands.rs:9343
+#: crates/core/src/commands.rs:11363
 msgid "Section"
 msgstr "Řez"
 
@@ -592,7 +592,7 @@ msgstr "Šířka stupně"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3708
 msgid "UP"
 msgstr "NAHORU"
 
@@ -600,7 +600,7 @@ msgstr "NAHORU"
 msgid "Unbounded Height"
 msgstr "Neohraničená výška"
 
-#: crates/core/src/commands.rs:9719
+#: crates/core/src/commands.rs:9723
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 

@@ -285,8 +285,10 @@ impl PreparedSolids {
     }
 }
 
+mod caps;
 mod fragments;
 mod update;
+pub use caps::{CapSource, CapTri, Caps};
 pub use fragments::{FragmentStats, SectionCache};
 pub(crate) type PreparedMade = (Vec<Prepared>, Vec<(Id, Vec<P3>)>, Vec<Option<[P3; 2]>>);
 
@@ -1137,6 +1139,11 @@ pub(crate) fn shaded(m: &Model) -> Vec<Solid> {
 }
 
 fn layered(m: &Model, s: Solid) -> Vec<Solid> {
+    layered_with(m, s).into_iter().map(|(s, _)| s).collect()
+}
+
+/// [`layered`], each piece with the place of its layer among its type's, none where it has no layers.
+pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
     let layers = match m.elements.get(s.owner()) {
         Some(Element::Wall(w)) => m.type_layers("wall", &w.type_name),
         Some(Element::Floor(f)) => m.type_layers("floor", &f.type_name),
@@ -1146,19 +1153,20 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
     };
     let total: f64 = layers.iter().map(|l| l.thickness).sum();
     if total <= 0.0 {
-        return vec![s];
+        return vec![(s, None)];
     }
     let colour = |l: &Layer, or: Rgb| m.materials.get(&l.material).map_or(or, |x| Rgb(x.color[0], x.color[1], x.color[2]));
     match s {
         Solid::Slab { owner, color, tex, face, rise } => {
             let mut out = Vec::new();
             let mut above = 0.0;
-            for l in layers {
+            for (k, l) in layers.iter().enumerate() {
                 let r = rise * l.thickness / total;
                 if r > 1e-9 {
                     let lift = rise - above - r;
                     let face = face.iter().map(|p| [p[0], p[1], p[2] + lift]).collect();
-                    out.push(Solid::Slab { owner, color: colour(l, color), tex: over(skin(m, &l.material), tex), face, rise: r });
+                    let slab = Solid::Slab { owner, color: colour(l, color), tex: over(skin(m, &l.material), tex), face, rise: r };
+                    out.push((slab, Some(k)));
                 }
                 above += r;
             }
@@ -1178,21 +1186,24 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
                 .iter()
                 .enumerate()
                 .filter(|(_, l)| l.thickness > 1e-9 || l.variable)
-                .map(|(k, l)| Solid::Prism {
-                    owner,
-                    color: colour(l, color),
-                    tex: over(skin(m, &l.material), tex),
-                    ring: ring.clone(),
-                    bottom: at(k + 1),
-                    top: at(k),
-                    curve: None,
+                .map(|(k, l)| {
+                    let prism = Solid::Prism {
+                        owner,
+                        color: colour(l, color),
+                        tex: over(skin(m, &l.material), tex),
+                        ring: ring.clone(),
+                        bottom: at(k + 1),
+                        top: at(k),
+                        curve: None,
+                    };
+                    (prism, Some(k))
                 })
                 .collect()
         }
         // Across the wall from its exterior face in, each layer between two of its boundaries; the
         // outermost and innermost reach whatever lies past them.
         Solid::Prism { owner, color, tex, ring, bottom, top, curve } => {
-            let Some(w) = m.wall(owner) else { return vec![Solid::Prism { owner, color, tex, ring, bottom, top, curve }] };
+            let Some(w) = m.wall(owner) else { return vec![(Solid::Prism { owner, color, tex, ring, bottom, top, curve }, None)] };
             let (axis, b) = (Axis::of(w), walls::boundaries(m, w));
             let off = |q: P2| axis.project(q).1;
             let n = layers.len();
@@ -1208,19 +1219,22 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
                     if let Some(lo) = b.get(k + 1).filter(|_| k + 1 < n) {
                         part = geom::clip(&part, |q| off(q) - lo);
                     }
-                    (part.len() >= 3 && geom::area(&part).abs() > 1e-6).then(|| Solid::Prism {
-                        owner,
-                        color: colour(l, color),
-                        tex: over(skin(m, &l.material), tex),
-                        ring: part,
-                        bottom,
-                        top,
-                        curve,
+                    (part.len() >= 3 && geom::area(&part).abs() > 1e-6).then(|| {
+                        let prism = Solid::Prism {
+                            owner,
+                            color: colour(l, color),
+                            tex: over(skin(m, &l.material), tex),
+                            ring: part,
+                            bottom,
+                            top,
+                            curve,
+                        };
+                        (prism, Some(k))
                     })
                 })
                 .collect()
         }
-        other => vec![other],
+        other => vec![(other, None)],
     }
 }
 

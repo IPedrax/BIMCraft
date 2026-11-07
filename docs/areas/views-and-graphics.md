@@ -274,10 +274,25 @@ it's on (`Look::section_box`; `with_section_box` puts another in, for a box bein
 is square on, so `Boxed` turns a pixel and its depth into a model point with one sum, and `raster` keeps a pixel only where that point
 is in the box (a triangle wholly past one plane is passed over first), `dots` a scan's point only where it is, and the wireframe each
 edge as far as it runs inside (`within`, Liang and Barsky's clipping). What it cuts away isn't drawn, so it isn't picked; the edge
-where a cut face meets paper is drawn as any edge is, and cut faces aren't capped yet. A level whose plane is above or below the box is
+where a cut face meets paper is drawn as any edge is. A level whose plane is above or below the box is
 left out, and the rest are cut to its sides. A section's picture has its own clip and ignores the box. The card cuts to it too: the mesh holds all it would hold without a box
 (`Mesh::section_box`), a pixel outside it is discarded by the point it shows (`fs_scene_cut`, `fs_clear`), `Mesh::visible_cut` leaves out what lies wholly past a side,
-and a pick asks `Boxed` as the picture does. So a face being dragged is a uniform (`Gpu::draw_cut`), and builds nothing. Its grips are the core's: `box_grips` (the middle of each face: west,
+and a pick asks `Boxed` as the picture does. So a face being dragged is a uniform (`Gpu::draw_cut`), and builds nothing.
+
+What the box cuts is capped, as Revit fills it (`view3d/caps.rs`): `CapSource` holds the solids a section cuts (no mass, no
+component's form), in their layers (`layered_with`, which says which layer each piece is), found once for a model, and each face's
+cut is made once for where it stands (`CapSource::face`, kept for the last `KEPT` faces): a level face by `level`, an upright one
+by `Solid::cuts`, a section's own, so the caps match what a section at the face would show. `CapSource::caps` clips each ring to
+the face, fills it as a section at the view's scale and detail fills it (`render::cap_fill`: the view's or its template's cut
+pattern override, else the layer's material's cut pattern, drawn by the 2D code into a drawing as dense as a sheet and read back
+as strokes; a solid pattern is the cap's colour, else the cut fill override, else the layer's material colour) and outlines it in
+the edge colour. The processor draws them over its picture (`Image::capped`: each cap where nothing nearer is, picking its
+element, then its lines where nothing nearer hides them); the card draws their triangles in the opaque pass with the uncut
+pipeline (`Gpu::draw_capped`; each cap a plane of its own from `CAP_PLANE`, so its edges come from the post pass) and their lines
+with the levels' marks. Moving a face keeps the scene and the mesh: the window (`Orbit::caps_for`) asks a worker for the caps of
+the new box, with the source kept while `scene_kept` holds, so only the moved face is cut again; the picture is hollow until they
+come back. Settings > Performance > Fill what the section box cuts turns it off (`cut_fills_3d`); a 3D view's PNG and a sheet's
+3D viewport are capped too. A mesh that isn't closed (some imports) or a component's form stays hollow. Its grips are the core's: `box_grips` (the middle of each face: west,
 east, south, north, bottom, top), `box_edges`, `move_box_face` (a face moved along its axis to 10 mm, stopping short of the face across
 from it) and `Camera::along` (how far, mm, a drag on the picture moves a point along an axis; none for an axis pointing at the camera).
 A plan may follow the box (`section_box` on a `Level` or a `PlanView`, set by `modify`; a dependent view follows its parent's,

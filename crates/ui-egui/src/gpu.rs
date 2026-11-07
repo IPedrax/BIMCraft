@@ -11,7 +11,7 @@ use std::sync::Arc;
 use bimcraft_core::model::Id;
 use bimcraft_core::render::Rgb;
 use bimcraft_core::view3d::gpu::{Instance, Mesh, Vertex, Visible};
-use bimcraft_core::view3d::{Camera, MAX_SIDE};
+use bimcraft_core::view3d::{Camera, Caps, MAX_SIDE};
 use eframe::egui_wgpu::{RenderState, wgpu};
 use egui::TextureId;
 
@@ -443,6 +443,8 @@ pub struct Gpu {
     group2: wgpu::BindGroupLayout,
     globals: wgpu::Buffer,
     segments: (wgpu::Buffer, u64),
+    /// The section box's caps drawn last, over the surfaces it cuts.
+    caps: Option<CapsUp>,
     mesh: Option<Uploaded>,
     upload_worker: Option<crate::view_worker::Latest<UploadJob, UploadDone>>,
     upload_requested: Option<Arc<Mesh>>,
@@ -491,6 +493,39 @@ fn spans(per: u64, range: std::ops::Range<u64>) -> Vec<(usize, std::ops::Range<u
 
 /// The bytes of a buffer, 32-bit words as the card's byte order has them.
 type Words = Vec<u8>;
+
+/// The first plane number a section box's cap takes, each its own from here up: past any the scene numbers, short of a scan's
+/// point's (`DOT_PLANE` in `gpu.wgsl`).
+const CAP_PLANE: u32 = 0x8000_0000;
+
+/// A section box's caps on the card: what they are of (the caps, and the mesh whose elements they name), and their vertices.
+struct CapsUp {
+    caps: Arc<Caps>,
+    mesh: Arc<Mesh>,
+    buffer: Option<wgpu::Buffer>,
+    count: u32,
+}
+
+/// The caps' triangles as the card reads a mesh's own vertices: from its origin, each its cap's own plane, owned as the mesh
+/// numbers its elements.
+fn cap_bytes(mesh: &Mesh, caps: &Caps) -> Words {
+    let owners: std::collections::HashMap<Id, u32> = mesh.owners.iter().enumerate().map(|(i, o)| (o.id, i as u32 + 1)).collect();
+    let mut bytes = Words::with_capacity(caps.tris.len() * 3 * STRIDE as usize);
+    for t in &caps.tris {
+        let owner = owners.get(&t.owner).copied().unwrap_or(0);
+        let normal = t.normal.map(|v| v as f32);
+        let color = u32::from(t.color.0) | u32::from(t.color.1) << 8 | u32::from(t.color.2) << 16;
+        let plane = CAP_PLANE.saturating_add(t.cap).min(u32::MAX - 1);
+        for p in t.p {
+            let at = std::array::from_fn::<f32, 3, _>(|i| (p[i] - mesh.origin[i]) as f32);
+            put(&mut bytes, &at);
+            put_unit(&mut bytes, &normal);
+            put_unit(&mut bytes, &normal);
+            put_words(&mut bytes, &[color, owner, plane, 0]);
+        }
+    }
+    bytes
+}
 
 /// The most triangles a frame draws: past it, while the view moves, the nearest of what it sees and a box for each of the
 /// rest, and once it stays, the exact picture over as many frames as it takes. About 12 ms of an RTX 2060.
@@ -952,6 +987,7 @@ impl Gpu {
             group2,
             globals,
             segments,
+            caps: None,
             mesh: None,
             upload_worker: None,
             upload_requested: None,
@@ -995,7 +1031,7 @@ impl Gpu {
     /// [`draw_cut`](Self::draw_cut), to the mesh's own section box.
     #[cfg(test)]
     pub(crate) fn draw(&mut self, mesh: &Arc<Mesh>, cam: &Camera, tints: &[(Id, Rgb)], ground: Rgb) -> Result<bool, String> {
-        self.draw_cut(mesh, cam, tints, ground, mesh.section_box)
+        self.draw_capped(mesh, cam, tints, ground, mesh.section_box, None)
     }
 
     /// Draws `mesh` as `cam` sees it, `tints` colouring (halfway, and the edges whole) what they name, on `ground` where nothing is,
@@ -1003,9 +1039,23 @@ impl Gpu {
     /// [`texture`](Self::texture). An error leaves the card with nothing kept: the caller does without it. True when the picture
     /// is the exact one; false while it stands in, or the exact one is on its way: then draw again with the same camera on the
     /// next frame, until it is.
+    #[cfg(test)]
     pub fn draw_cut(&mut self, mesh: &Arc<Mesh>, cam: &Camera, tints: &[(Id, Rgb)], ground: Rgb, cut: Cut) -> Result<bool, String> {
+        self.draw_capped(mesh, cam, tints, ground, cut, None)
+    }
+
+    /// [`draw_cut`](Self::draw_cut), with the caps of section box `cut`: what it cuts, filled.
+    pub fn draw_capped(
+        &mut self,
+        mesh: &Arc<Mesh>,
+        cam: &Camera,
+        tints: &[(Id, Rgb)],
+        ground: Rgb,
+        cut: Cut,
+        caps: Option<&Arc<Caps>>,
+    ) -> Result<bool, String> {
         let guard = scopes(&self.device);
-        let drawn = self.encode(mesh, cam, tints, ground, cut);
+        let drawn = self.encode(mesh, cam, tints, ground, cut, caps);
         let full = out_of_memory(guard);
         if let Some(up) = &self.mesh {
             self.card_bytes = self.card_bytes.min(up.room);
@@ -1104,7 +1154,15 @@ impl Gpu {
         self.mesh = None;
     }
 
-    fn encode(&mut self, mesh: &Arc<Mesh>, cam: &Camera, tints: &[(Id, Rgb)], ground: Rgb, cut: Cut) -> Result<bool, String> {
+    fn encode(
+        &mut self,
+        mesh: &Arc<Mesh>,
+        cam: &Camera,
+        tints: &[(Id, Rgb)],
+        ground: Rgb,
+        cut: Cut,
+        caps: Option<&Arc<Caps>>,
+    ) -> Result<bool, String> {
         let (w, h) = (cam.width.clamp(1, MAX_SIDE), cam.height.clamp(1, MAX_SIDE));
         if w.max(h) > self.device.limits().max_texture_dimension_2d {
             return Err("the picture is bigger than the card draws".into());
@@ -1120,6 +1178,32 @@ impl Gpu {
                 instances: std::iter::once(0..mesh.instances.len()).collect(),
             }
         };
+        // The caps, sent again when they or the mesh change; the picture is then made again whatever else stayed.
+        let caps = caps.filter(|c| cut.is_some() && !c.is_empty() && !mesh.wireframe);
+        let same = match (&self.caps, caps) {
+            (Some(up), Some(c)) => Arc::ptr_eq(&up.caps, c) && Arc::ptr_eq(&up.mesh, mesh),
+            (None, None) => true,
+            _ => false,
+        };
+        if !same {
+            self.caps = caps.map(|c| {
+                let bytes = cap_bytes(mesh, c);
+                let buffer = (!bytes.is_empty()).then(|| {
+                    let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some("bimcraft-3d-caps"),
+                        size: bytes.len() as u64,
+                        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                        mapped_at_creation: false,
+                    });
+                    self.queue.write_buffer(&buffer, 0, &bytes);
+                    buffer
+                });
+                CapsUp { caps: Arc::clone(c), mesh: Arc::clone(mesh), buffer, count: (c.tris.len() * 3) as u32 }
+            });
+            if let Some(up) = &mut self.mesh {
+                up.progress = None;
+            }
+        }
         let (device, queue, full_at) = (&self.device, &self.queue, self.full_at);
         let write = |buffer: &wgpu::Buffer, bytes: &[u8]| {
             if !bytes.is_empty() {
@@ -1161,6 +1245,14 @@ impl Gpu {
                 put(&mut lines, &[a[0], a[1], a[2], f32::from(*wide), b[0], b[1], b[2], 0.0, c[0], c[1], c[2], 0.0]);
                 count += 1;
             }
+        }
+        // The caps' outlines and patterns, in their colours or their elements' tints.
+        for ([a, b], c, owner) in self.caps.as_ref().map_or(&[][..], |up| &up.caps.lines[..]) {
+            let c = rgb(tints.iter().find(|(id, _)| id == owner).map_or(*c, |(_, t)| *t));
+            let rel = |p: &[f64; 3]| std::array::from_fn::<f32, 3, _>(|i| (p[i] - mesh.origin[i]) as f32);
+            let (a, b) = (rel(a), rel(b));
+            put(&mut lines, &[a[0], a[1], a[2], 1.0, b[0], b[1], b[2], 0.0, c[0], c[1], c[2], 0.0]);
+            count += 1;
         }
         if lines.len() as u64 > self.segments.1 {
             self.segments = (Gpu::storage(device, lines.len() as u64), lines.len() as u64);
@@ -1378,6 +1470,16 @@ impl Gpu {
                         }
                     }
                 }
+            }
+            // The section box's caps, once a picture, with the opaque surfaces: on the box's faces, which they aren't cut to.
+            if !clear
+                && first
+                && let Some(CapsUp { buffer: Some(buffer), count, .. }) = &self.caps
+            {
+                pass.set_pipeline(&self.scene);
+                pass.set_bind_group(0, &bind, &[]);
+                pass.set_vertex_buffer(0, buffer.slice(..));
+                pass.draw(0..*count, 0..1);
             }
         }
         if !picture {
@@ -1902,6 +2004,39 @@ mod tests {
         let mut s = Session::new();
         s.script(bimcraft_core::sample::SAMPLE).unwrap();
         s
+    }
+
+    #[test]
+    fn the_card_draws_a_section_box_s_caps_as_the_processor_does_and_drops_them_when_asked() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's caps are not compared");
+            return;
+        };
+        let mut s = sample();
+        cut_through(&mut s, [0.6, 0.7, 0.45]);
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let caps = Arc::new(bimcraft_core::view3d::CapSource::new(&s.model).caps_in(&s.model, s.model.default_3d(), &look));
+        assert!(!caps.is_empty());
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let hollow = scene.render_in(&cam, &[], &look);
+        let mut cpu = hollow.clone();
+        cpu.capped(&cam, &caps, &[], &look);
+        let far = |a: &[u8], b: &[u8]| a[..3].iter().zip(&b[..3]).any(|(x, y)| x.abs_diff(*y) > 6);
+        let differ = |a: &[u8], b: &[u8]| (0..a.len() / 4).filter(|&k| far(&a[4 * k..4 * k + 4], &b[4 * k..4 * k + 4])).count();
+        let capped = differ(&hollow.rgba, &cpu.rgba);
+        assert!(capped > 500, "the caps change {capped} pixels");
+        gpu.draw_capped(&mesh, &cam, &[], PAPER, mesh.section_box, Some(&caps)).unwrap();
+        let card = read(&gpu);
+        // What differs lies along the outlines and the patterns' lines, a pixel either way: a pixel whose four neighbours differ
+        // too is a cap filled otherwise.
+        let w = 640;
+        let off = |k: usize| far(&card[4 * k..4 * k + 4], &cpu.rgba[4 * k..4 * k + 4]);
+        let wrong = (w..w * 479).filter(|&k| [k, k - 1, k + 1, k - w, k + w].iter().all(|&n| off(n))).count();
+        assert!(wrong * 50 < capped, "{wrong} pixels of caps differ from the processor's, of {capped} the caps change");
+        // Without them, the card's picture is hollow again: the same camera and box draw anew.
+        gpu.draw_capped(&mesh, &cam, &[], PAPER, mesh.section_box, None).unwrap();
+        assert!(differ(&read(&gpu), &hollow.rgba) * 10 < capped);
     }
 
     #[test]

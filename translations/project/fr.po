@@ -36,7 +36,7 @@ msgstr "Brique"
 msgid "Brick 225 x 75"
 msgstr "Brique 225 x 75"
 
-#: crates/core/src/commands.rs:4070
+#: crates/core/src/commands.rs:4074
 msgid "Camera"
 msgstr "Caméra"
 
@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Luminaire de plafond"
 
-#: crates/core/src/render.rs:3032
+#: crates/core/src/render.rs:3065
 msgid "Ceiling Plan"
 msgstr "Plan de plafond"
 
@@ -96,7 +96,7 @@ msgstr "Nombre"
 msgid "Crosshatch"
 msgstr "Hachures croisées"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3708
 msgid "DN"
 msgstr "DESCEND"
 
@@ -112,7 +112,7 @@ msgstr "Tiret point"
 msgid "Data Outlet"
 msgstr "Prise de données"
 
-#: crates/core/src/commands.rs:9578
+#: crates/core/src/commands.rs:9582
 msgid "Dependent"
 msgstr "Dépendant"
 
@@ -188,8 +188,8 @@ msgstr "Éclairage électrique"
 msgid "Electrical Power"
 msgstr "Alimentation électrique"
 
-#: crates/core/src/commands.rs:9362
-#: crates/core/src/commands.rs:11360
+#: crates/core/src/commands.rs:9366
+#: crates/core/src/commands.rs:11364
 msgid "Elevation"
 msgstr "Élévation"
 
@@ -242,7 +242,7 @@ msgid "Gate Valve"
 msgstr "Vanne à opercule"
 
 #: crates/core/src/family.rs:2035
-#: crates/core/src/view3d.rs:1005
+#: crates/core/src/view3d.rs:1007
 msgid "Glass"
 msgstr "Verre"
 
@@ -306,7 +306,7 @@ msgstr "Largeur du pied"
 msgid "Length"
 msgstr "Longueur"
 
-#: crates/core/src/commands.rs:6122
+#: crates/core/src/commands.rs:6126
 #: crates/core/src/model.rs:3097
 msgid "Level"
 msgstr "Niveau"
@@ -331,7 +331,7 @@ msgstr "Repère"
 msgid "Masking"
 msgstr "Masque"
 
-#: crates/core/src/commands.rs:7380
+#: crates/core/src/commands.rs:7384
 msgid "Mass"
 msgstr "Volume"
 
@@ -355,7 +355,7 @@ msgstr "Métal"
 msgid "Mounting Height"
 msgstr "Hauteur de pose"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2894
 msgid "NOT ENCLOSED"
 msgstr "NON DÉLIMITÉE"
 
@@ -423,7 +423,7 @@ msgstr "Porcelaine"
 msgid "Project"
 msgstr "Projet"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2894
 msgid "REDUNDANT"
 msgstr "REDONDANTE"
 
@@ -447,7 +447,7 @@ msgstr "Contremarches"
 msgid "Roof tiles"
 msgstr "Tuiles"
 
-#: crates/core/src/commands.rs:7605
+#: crates/core/src/commands.rs:7609
 msgid "Room"
 msgstr "Pièce"
 
@@ -475,8 +475,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Hauteur assise"
 
-#: crates/core/src/commands.rs:9339
-#: crates/core/src/commands.rs:11359
+#: crates/core/src/commands.rs:9343
+#: crates/core/src/commands.rs:11363
 msgid "Section"
 msgstr "Coupe"
 
@@ -592,7 +592,7 @@ msgstr "Giron"
 msgid "Type"
 msgstr "Type"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3708
 msgid "UP"
 msgstr "MONTE"
 
@@ -600,7 +600,7 @@ msgstr "MONTE"
 msgid "Unbounded Height"
 msgstr "Hauteur non délimitée"
 
-#: crates/core/src/commands.rs:9719
+#: crates/core/src/commands.rs:9723
 msgid "Unnamed"
 msgstr "Sans nom"
 

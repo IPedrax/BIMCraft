@@ -3235,6 +3235,53 @@ fn cut_layer(d: &mut Drawing, m: &Model, layer: &Layer, ring: &[P2], u: P2, room
     }
 }
 
+/// What a 3D view's section box shows where it cuts element `owner` (one of its layers, where `layer` is one), over `ring` (mm,
+/// in the box face's plane), as a section at 1 : `n` and `detail` shows it: the view's cut pattern override where it gives one,
+/// else the layer's material's cut pattern, its courses along unit `u`. The colour a solid pattern fills it with, if one does,
+/// and the strokes of the rest in their colours, mm in the same plane.
+pub(crate) fn cap_fill(
+    m: &Model,
+    look: &Look,
+    (owner, layer): (Id, Option<&Layer>),
+    ring: &[P2],
+    u: P2,
+    (n, detail): (f64, Detail),
+) -> (Option<Rgb>, Vec<([P2; 2], Rgb)>) {
+    let (lo, hi) = ring.iter().fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), q| {
+        (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1)))
+    });
+    let over = look.pattern_style(owner, true).cloned();
+    if ring.len() < 3 || lo.0 > hi.0 || !(n.is_finite() && n > 0.0) || (over.is_none() && layer.is_none()) {
+        return (None, Vec::new());
+    }
+    // A drawing as dense as a sheet's, of the paper the view stands for: its patterns spaced as they print.
+    let scale = sheet::DENSITY / n;
+    let side = |a: f64| ((a * scale).ceil() + 4.0).clamp(1.0, f64::from(u16::MAX)) as u32;
+    let view = View { scale, cx: (lo.0 + hi.0) / 2.0, cy: (lo.1 + hi.1) / 2.0, width: side(hi.0 - lo.0), height: side(hi.1 - lo.1) };
+    let mut d = Drawing::new(view);
+    (d.paper, d.detail, d.owner) = (paper_of(n, scale), detail, Some(owner));
+    if let Some(s) = over {
+        d.pattern_styles.insert(owner, [Default::default(), s]);
+        override_patterns(&mut d, m, &[ring.to_vec()], true, (P2(0.0, 0.0), 0.0));
+    } else if let Some(layer) = layer {
+        // How wide the layer is: a strip's area over half its length round.
+        let round: f64 = geom::ring_edges(ring).map(|(a, b)| a.dist(b)).sum();
+        let room = if round > 0.0 { 2.0 * geom::area(ring).abs() / round * scale } else { 0.0 };
+        cut_layer(&mut d, m, layer, ring, u, room);
+    }
+    let (mut base, mut strokes) = (None, Vec::new());
+    for (prim, part) in d.prims.iter().zip(&d.parts) {
+        match prim {
+            Prim::Fill { color, .. } if *part == Part::Pattern => base = Some(*color),
+            Prim::Line { pts, color, .. } => {
+                strokes.extend(pts.windows(2).filter_map(|w| Some(([view.mm(*w.first()?), view.mm(*w.get(1)?)], *color))))
+            }
+            _ => {}
+        }
+    }
+    (base, strokes)
+}
+
 /// A surface pattern over `ring`, where its lines are far enough apart to read.
 fn surface(d: &mut Drawing, ring: &[P2], pattern: Pattern, color: Rgb) {
     if MODULE * d.view.scale >= GAP / 2.0 {

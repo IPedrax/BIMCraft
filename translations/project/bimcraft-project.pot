@@ -36,7 +36,7 @@ msgstr ""
 msgid "Brick 225 x 75"
 msgstr ""
 
-#: crates/core/src/commands.rs:4070
+#: crates/core/src/commands.rs:4074
 msgid "Camera"
 msgstr ""
 
@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr ""
 
-#: crates/core/src/render.rs:3032
+#: crates/core/src/render.rs:3065
 msgid "Ceiling Plan"
 msgstr ""
 
@@ -96,7 +96,7 @@ msgstr ""
 msgid "Crosshatch"
 msgstr ""
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3708
 msgid "DN"
 msgstr ""
 
@@ -112,7 +112,7 @@ msgstr ""
 msgid "Data Outlet"
 msgstr ""
 
-#: crates/core/src/commands.rs:9578
+#: crates/core/src/commands.rs:9582
 msgid "Dependent"
 msgstr ""
 
@@ -188,8 +188,8 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:9362
-#: crates/core/src/commands.rs:11360
+#: crates/core/src/commands.rs:9366
+#: crates/core/src/commands.rs:11364
 msgid "Elevation"
 msgstr ""
 
@@ -242,7 +242,7 @@ msgid "Gate Valve"
 msgstr ""
 
 #: crates/core/src/family.rs:2035
-#: crates/core/src/view3d.rs:1005
+#: crates/core/src/view3d.rs:1007
 msgid "Glass"
 msgstr ""
 
@@ -306,7 +306,7 @@ msgstr ""
 msgid "Length"
 msgstr ""
 
-#: crates/core/src/commands.rs:6122
+#: crates/core/src/commands.rs:6126
 #: crates/core/src/model.rs:3097
 msgid "Level"
 msgstr ""
@@ -331,7 +331,7 @@ msgstr ""
 msgid "Masking"
 msgstr ""
 
-#: crates/core/src/commands.rs:7380
+#: crates/core/src/commands.rs:7384
 msgid "Mass"
 msgstr ""
 
@@ -355,7 +355,7 @@ msgstr ""
 msgid "Mounting Height"
 msgstr ""
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2894
 msgid "NOT ENCLOSED"
 msgstr ""
 
@@ -423,7 +423,7 @@ msgstr ""
 msgid "Project"
 msgstr ""
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2894
 msgid "REDUNDANT"
 msgstr ""
 
@@ -447,7 +447,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr ""
 
-#: crates/core/src/commands.rs:7605
+#: crates/core/src/commands.rs:7609
 msgid "Room"
 msgstr ""
 
@@ -475,8 +475,8 @@ msgstr ""
 msgid "Seat Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:9339
-#: crates/core/src/commands.rs:11359
+#: crates/core/src/commands.rs:9343
+#: crates/core/src/commands.rs:11363
 msgid "Section"
 msgstr ""
 
@@ -592,7 +592,7 @@ msgstr ""
 msgid "Type"
 msgstr ""
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3708
 msgid "UP"
 msgstr ""
 
@@ -600,7 +600,7 @@ msgstr ""
 msgid "Unbounded Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:9719
+#: crates/core/src/commands.rs:9723
 msgid "Unnamed"
 msgstr ""
 
