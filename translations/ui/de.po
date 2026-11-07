@@ -2023,7 +2023,7 @@ msgstr ""
 #: crates/ui-egui/src/lib.rs:5177
 #: crates/ui-egui/src/phasing.rs:278
 #: crates/ui-egui/src/phasing.rs:400
-#: crates/ui-egui/src/popup.rs:90
+#: crates/ui-egui/src/popup.rs:96
 #: crates/ui-egui/src/properties.rs:2343
 #: crates/ui-egui/src/properties.rs:2686
 #: crates/ui-egui/src/properties.rs:2981
@@ -2046,7 +2046,7 @@ msgstr "Inaktive schließen"
 msgid "Close Inactive Views"
 msgstr ""
 
-#: crates/ui-egui/src/popup.rs:88
+#: crates/ui-egui/src/popup.rs:94
 msgid "Close dialog"
 msgstr "Dialog schließen"
 
