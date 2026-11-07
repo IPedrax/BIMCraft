@@ -1049,7 +1049,15 @@ pub static ALL: &[Command] = &[
          ifc?: {class, predefined?, object_type?} | null (the IFC class a generic family's components go out as, which one \
          opened from IFC remembers: `IFCPLATE`, `CURTAIN_PANEL`; one IFC4 lacks goes out as a proxy that names it), \
          connectors?: [{kind: power|switch, system: power-balanced|power-unbalanced|switch, poles?: 1-3, voltage?, load_va?, \
-         power_factor?, classification?}], rename?, delete?: true, dry_run?, path?, save?} a family of \
+         power_factor?, classification?}], options?: {work_plane_based?, always_vertical?, cut_with_voids_when_loaded?, \
+         shared?, room_calculation_point?: [x, y, z] | null, cut_in_views?: true|false|null, omniclass?: {number, title?} | \
+         null} (Revit's Family Category and Parameters: each given merged over what it has, `null` back to its default; \
+         `room_calculation_point` is a point in its own axes, mm, numbers or formulas over its length parameters, whose room a \
+         component is in (else its insertion point's: `elements` says `room`, IFC references it in that space beside its storey); `cut_in_views` \
+         overrides whether sections cut its forms, which by default its category says; `omniclass` is a number of digits and \
+         dots (`23.30.20.17`) and a title, which IFC writes as a classification reference on its type; work_plane_based (off), \
+         always_vertical (on), cut_with_voids_when_loaded (off) and shared (off) are kept for later and change nothing yet; \
+         a reply's `options` has them all), rename?, delete?: true, dry_run?, path?, save?} a family of \
          the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .json file at `path` (a \
          family as `inspect` shows it, with its `name`). Without `name` it lists the project's families, each its category and \
          how many types, forms and symbols it has; with only a `name` it reads one — its definition, each of its types' \
@@ -2102,7 +2110,8 @@ pub static ALL: &[Command] = &[
         "elements",
         ui_msg!("Elements"),
         "{category?, level?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, \
-         never changed), fields and derived values (length, height, area_m2…); what an element points at (its level, host, \
+         never changed), fields and derived values (length, height, area_m2…; a component's `room`, the GUID of the room \
+         its family's room calculation point, else its insertion point, is in); what an element points at (its level, host, \
          view…) it holds by GUID. Wherever a command takes an element, its id or its GUID will do",
         elements,
     ),
@@ -2511,6 +2520,10 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
     | Element::StructuralColumn(Column { room_bounding, .. }) = e
     {
         extra.insert("room_bounding".into(), json!(room_bounding));
+    }
+    // Its family's OmniClass number and title, where it has one.
+    if let Some(o) = e.family().and_then(|(f, _)| m.families.get(f)).and_then(|f| f.omniclass.as_ref()) {
+        extra.insert("omniclass".into(), json!(o));
     }
     // Its type's and its family's GUIDs, beside their names.
     e.clone().lib_refs_mut(&mut |kind, name| {
@@ -10393,6 +10406,10 @@ fn family(s: &mut Session, p: &Value) -> R {
                 .into_iter()
                 .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
                 .collect();
+        // Its options, flat fields in a file, as the command takes them.
+        if let Some(options) = crate::family::Family::options_from_fields(&mut fields) {
+            family.insert("options".into(), options);
+        }
         // Its planes and lines, as the command takes them.
         for (k, key) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
             if let Some(v) = fields.remove(k) {
@@ -10481,6 +10498,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         "ref_line",
         "delete_ref_plane",
         "delete_ref_line",
+        "options",
     ];
     if !keys.iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null())) {
         let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}`")))?;
@@ -10647,6 +10665,10 @@ fn family(s: &mut Session, p: &Value) -> R {
             f.ifc = Some(class.written());
         }
     }
+    // Its options, each given merged over what it holds; `null` takes one back to its default.
+    if let Some(v) = p.get("options").filter(|v| !v.is_null()) {
+        f.merge_options(v).map_err(|e| bad(c, e))?;
+    }
     if let Some(v) = p.get("types").filter(|v| !v.is_null()) {
         let mut types = serde_json::to_value(&f.types).map_err(|e| bad(c, e))?;
         merge(&mut types, v);
@@ -10702,7 +10724,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         }
     }
     m.families.insert(to.clone(), f.clone());
-    Ok(json!({"name": to, "family": f, "warnings": warnings}))
+    Ok(json!({"name": to, "family": f, "options": f.options_json(), "warnings": warnings}))
 }
 
 /// A family as `family` reads it: what it is, each of its types' parameters worked out (formulas and
@@ -10714,7 +10736,7 @@ fn family_reply(name: &str, f: &crate::family::Family, warnings: &[String]) -> V
         .filter_map(|t| f.values_in(t, &BTreeMap::new(), crate::family::DEFAULT_WALL).ok().map(|v| (t.clone(), v)))
         .map(|(t, v)| (t, Value::Object(v.iter().map(|(k, v)| (k.clone(), val(v))).collect())))
         .collect::<Map<String, Value>>();
-    json!({"name": name, "family": f, "values": Value::Object(values), "warnings": warnings})
+    json!({"name": name, "family": f, "options": f.options_json(), "values": Value::Object(values), "warnings": warnings})
 }
 
 /// A parameter's value worked out, as JSON: a number, or a material's name.
@@ -10757,6 +10779,7 @@ fn family_changes(was: Option<&crate::family::Family>, now: &crate::family::Fami
         "rename": rename,
         "parameters_renamed": patches.params_renamed.iter().map(|(a, b)| json!({"from": a, "to": b})).collect::<Vec<_>>(),
         "component_values_changed": patches.component_ops.len(),
+        "options": now.options_changed(was),
         "deleted": false,
     })
 }
@@ -14012,6 +14035,18 @@ fn elements(s: &mut Session, p: &Value) -> R {
         .map(|(id, _)| *id)
         .collect();
     let rooms = crate::rooms::Rooms::new(m);
-    let page: Vec<Value> = hits.iter().skip(offset).take(limit).map(|id| element_json_with(m, *id, &rooms)).collect();
+    let page: Vec<Value> = hits
+        .iter()
+        .skip(offset)
+        .take(limit)
+        .map(|id| {
+            let mut v = element_json_with(m, *id, &rooms);
+            // The room a component is in, by its family's room calculation point (else its insertion point), by GUID.
+            if let Some(Element::Component(cp)) = m.elements.get(*id) {
+                v["room"] = json!(rooms.component(cp).map(|r| m.guid(r)));
+            }
+            v
+        })
+        .collect();
     Ok(json!({"count": hits.len(), "returned": page.len(), "elements": page}))
 }
