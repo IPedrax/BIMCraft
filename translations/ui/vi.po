@@ -744,7 +744,7 @@ msgstr "Kiến trúc"
 msgid "Area"
 msgstr "Diện tích"
 
-#: crates/core/src/family.rs:2624
+#: crates/core/src/family.rs:2640
 msgid "Arm Width"
 msgstr "Chiều rộng tay"
 
@@ -974,7 +974,7 @@ msgstr "Thanh thép"
 msgid "Base"
 msgstr "Chân"
 
-#: crates/core/src/family.rs:2668
+#: crates/core/src/family.rs:2684
 msgid "Base Cabinet"
 msgstr "Tủ bếp dưới"
 
@@ -1002,7 +1002,7 @@ msgstr "Đường cơ sở"
 msgid "Baseline Spacing"
 msgstr "Khoảng cách đường cơ sở"
 
-#: crates/core/src/family.rs:2712
+#: crates/core/src/family.rs:2728
 msgid "Bathtub"
 msgstr "Bồn tắm"
 
@@ -1014,7 +1014,7 @@ msgstr "Dầm"
 msgid "Beam (BM): click its start and its end; a chain of clicks makes a beam for each step"
 msgstr "Dầm (BM): nhấp điểm đầu và điểm cuối; một chuỗi lần nhấp tạo một dầm cho mỗi bước"
 
-#: crates/core/src/family.rs:2609
+#: crates/core/src/family.rs:2625
 msgid "Bed"
 msgstr "Giường"
 
@@ -1240,7 +1240,7 @@ msgstr ""
 msgid "Card: {}"
 msgstr "Card đồ họa: {}"
 
-#: crates/core/src/family.rs:2893
+#: crates/core/src/family.rs:2909
 msgid "Casement Window"
 msgstr "Cửa sổ mở quay"
 
@@ -1350,7 +1350,7 @@ msgstr "Gạch men"
 msgid "Chain"
 msgstr "Chuỗi"
 
-#: crates/core/src/family.rs:2594
+#: crates/core/src/family.rs:2610
 msgid "Chair"
 msgstr "Ghế"
 
@@ -2094,7 +2094,7 @@ msgstr "Chiều cao tính toán"
 msgid "Conceptual Mass"
 msgstr "Khối ý tưởng"
 
-#: crates/core/src/family.rs:2533
+#: crates/core/src/family.rs:2549
 msgid "Concrete"
 msgstr "Bê tông"
 
@@ -2448,7 +2448,7 @@ msgstr "Mặt phẳng cắt"
 msgid "Cylinder"
 msgstr "Hình trụ"
 
-#: crates/core/src/render.rs:3725
+#: crates/core/src/render.rs:3787
 msgid "DN"
 msgstr "XUỐNG"
 
@@ -2621,7 +2621,7 @@ msgstr "Phụ thuộc"
 msgid "Depends on: {}"
 msgstr ""
 
-#: crates/core/src/family.rs:2531
+#: crates/core/src/family.rs:2547
 #: crates/ui-egui/src/properties.rs:465
 #: crates/ui-egui/src/properties.rs:466
 msgid "Depth"
@@ -2649,7 +2649,7 @@ msgstr "Phương án thiết kế"
 msgid "Design Options (DO): sets of options for a part of the design, and the one new elements are made in"
 msgstr "Phương án thiết kế (DO): các bộ phương án cho một phần của thiết kế, và phương án mà cấu kiện mới được tạo trong đó"
 
-#: crates/core/src/family.rs:2640
+#: crates/core/src/family.rs:2656
 msgid "Desk"
 msgstr "Bàn làm việc"
 
@@ -2866,7 +2866,7 @@ msgstr "Chấm"
 msgid "Dotted"
 msgstr "Nét chấm"
 
-#: crates/core/src/family.rs:2802
+#: crates/core/src/family.rs:2818
 msgid "Double Door"
 msgstr "Cửa đi hai cánh"
 
@@ -3317,7 +3317,7 @@ msgstr "Chiều cao mắt nhìn:"
 msgid "FRONT"
 msgstr ""
 
-#: crates/core/src/family.rs:2533
+#: crates/core/src/family.rs:2549
 msgid "Fabric"
 msgstr "Vải"
 
@@ -3578,7 +3578,7 @@ msgstr "Hãy hoàn tất hoặc hủy phác thảo trước: các đường củ
 msgid "Fixed"
 msgstr "Cố định"
 
-#: crates/core/src/family.rs:2870
+#: crates/core/src/family.rs:2886
 msgid "Fixed Window"
 msgstr "Cửa sổ cố định"
 
@@ -3780,15 +3780,15 @@ msgstr "Công thức"
 msgid "Foundation"
 msgstr "Móng"
 
-#: crates/core/src/family.rs:2742
+#: crates/core/src/family.rs:2758
 msgid "Frame Depth"
 msgstr "Chiều sâu khung"
 
-#: crates/core/src/family.rs:2744
+#: crates/core/src/family.rs:2760
 msgid "Frame Material"
 msgstr "Vật liệu khung"
 
-#: crates/core/src/family.rs:2742
+#: crates/core/src/family.rs:2758
 msgid "Frame Width"
 msgstr "Chiều rộng khung"
 
@@ -3861,7 +3861,7 @@ msgstr "Chung"
 msgid "Geometry"
 msgstr "Hình học"
 
-#: crates/core/src/family.rs:2744
+#: crates/core/src/family.rs:2760
 msgid "Glass"
 msgstr "Kính"
 
@@ -3969,7 +3969,7 @@ msgstr "Một nửa"
 msgid "Halftone"
 msgstr "Nửa tông"
 
-#: crates/core/src/family.rs:2602
+#: crates/core/src/family.rs:2618
 msgid "Headboard Height"
 msgstr "Chiều cao đầu giường"
 
@@ -4466,11 +4466,11 @@ msgstr "Đường dẫn chú thích"
 msgid "Leader/Border Offset"
 msgstr "Khoảng cách đường dẫn/viền"
 
-#: crates/core/src/family.rs:2744
+#: crates/core/src/family.rs:2760
 msgid "Leaf Material"
 msgstr "Vật liệu cánh"
 
-#: crates/core/src/family.rs:2742
+#: crates/core/src/family.rs:2758
 msgid "Leaf Thickness"
 msgstr "Chiều dày cánh"
 
@@ -4491,7 +4491,7 @@ msgstr ""
 msgid "Left out: {}"
 msgstr "Bỏ qua: {}"
 
-#: crates/core/src/family.rs:2532
+#: crates/core/src/family.rs:2548
 msgid "Leg Width"
 msgstr "Chiều rộng chân"
 
@@ -4503,7 +4503,7 @@ msgstr "Bảng chú thích"
 msgid "Legends are coming in a later version."
 msgstr "Bảng chú thích sẽ có trong phiên bản sau."
 
-#: crates/core/src/family.rs:2531
+#: crates/core/src/family.rs:2547
 #: crates/ui-egui/src/linestyles/creator.rs:136
 msgid "Length"
 msgstr "Chiều dài"
@@ -5047,7 +5047,7 @@ msgstr "Lưới thép theo chiều sâu"
 msgid "Mesh along width"
 msgstr "Lưới thép theo chiều rộng"
 
-#: crates/core/src/family.rs:2744
+#: crates/core/src/family.rs:2760
 msgid "Metal"
 msgstr "Kim loại"
 
@@ -5288,7 +5288,7 @@ msgstr "NBR 17068: kéo dài 2 đến 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: dấu tâm trên mặt bằng (±0.00), tam giác đều trên mặt cắt"
 
-#: crates/core/src/render.rs:2921
+#: crates/core/src/render.rs:2935
 msgid "NOT ENCLOSED"
 msgstr "KHÔNG KHÉP KÍN"
 
@@ -6089,7 +6089,7 @@ msgstr "Giai đoạn phá dỡ"
 msgid "Phase Filter"
 msgstr "Bộ lọc giai đoạn"
 
-#: crates/core/src/ifc.rs:1737
+#: crates/core/src/ifc.rs:1768
 msgid "Phase Filters"
 msgstr "Bộ lọc giai đoạn"
 
@@ -6675,7 +6675,7 @@ msgstr "Đường đa tuyến"
 msgid "Polyline: one line through every point clicked; Enter finishes it, the first point again closes it"
 msgstr "Đường đa tuyến: một đường đi qua mọi điểm được nhấp; Enter để kết thúc, nhấp lại điểm đầu tiên để khép kín"
 
-#: crates/core/src/family.rs:2533
+#: crates/core/src/family.rs:2549
 msgid "Porcelain"
 msgstr "Sứ"
 
@@ -6872,7 +6872,7 @@ msgstr "Đặt một khung nhìn lên bản vẽ này: một khung nhìn chưa n
 msgid "Quadrant"
 msgstr "Góc phần tư"
 
-#: crates/core/src/render.rs:2921
+#: crates/core/src/render.rs:2935
 msgid "REDUNDANT"
 msgstr "THỪA"
 
@@ -7595,7 +7595,7 @@ msgstr "Tìm trong trình duyệt dự án"
 msgid "Search…"
 msgstr "Tìm kiếm…"
 
-#: crates/core/src/family.rs:2532
+#: crates/core/src/family.rs:2548
 msgid "Seat Height"
 msgstr "Chiều cao mặt ghế"
 
@@ -7985,7 +7985,7 @@ msgstr "Đường đơn giản"
 msgid "Simulate placement frames"
 msgstr ""
 
-#: crates/core/src/family.rs:2780
+#: crates/core/src/family.rs:2796
 msgid "Single Door"
 msgstr "Cửa đi một cánh"
 
@@ -8035,11 +8035,11 @@ msgstr "Xanh da trời"
 msgid "Sliding"
 msgstr "Trượt"
 
-#: crates/core/src/family.rs:2829
+#: crates/core/src/family.rs:2845
 msgid "Sliding Door"
 msgstr "Cửa đi trượt"
 
-#: crates/core/src/family.rs:2924
+#: crates/core/src/family.rs:2940
 msgid "Sliding Window"
 msgstr "Cửa sổ trượt"
 
@@ -8135,7 +8135,7 @@ msgstr "Tắt bắt điểm (điểm tiếp theo)"
 msgid "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none"
 msgstr "Bắt điểm: những gì một điểm được chọn sẽ bám vào (đầu mút, điểm giữa, giao điểm, tâm, chân đường vuông góc), và bước góc của nó; SE, SM, SI, SC, SP và SN chỉ dùng riêng một loại cho điểm tiếp theo, SO không dùng loại nào"
 
-#: crates/core/src/family.rs:2626
+#: crates/core/src/family.rs:2642
 msgid "Sofa"
 msgstr "Sofa"
 
@@ -8540,7 +8540,7 @@ msgstr ""
 msgid "Tab with {}"
 msgstr "Gộp thẻ với {}"
 
-#: crates/core/src/family.rs:2573
+#: crates/core/src/family.rs:2589
 msgid "Table"
 msgstr "Bàn"
 
@@ -8918,7 +8918,7 @@ msgstr "Cách nhiệt"
 msgid "These patterns to a PAT file, but the solid ones"
 msgstr "Các mẫu này ra tệp PAT, trừ các mẫu tô đặc"
 
-#: crates/core/src/family.rs:2532
+#: crates/core/src/family.rs:2548
 #: crates/ui-egui/src/properties.rs:467
 #: crates/ui-egui/src/properties.rs:468
 #: crates/ui-egui/src/properties.rs:802
@@ -9024,7 +9024,7 @@ msgstr "Kích thước viên gạch"
 msgid "Tile Width"
 msgstr "Chiều rộng viên gạch"
 
-#: crates/core/src/family.rs:2533
+#: crates/core/src/family.rs:2549
 msgid "Timber"
 msgstr "Gỗ"
 
@@ -9251,7 +9251,7 @@ msgstr "Kiểu:"
 msgid "Types"
 msgstr "Kiểu"
 
-#: crates/core/src/render.rs:3725
+#: crates/core/src/render.rs:3787
 msgid "UP"
 msgstr "LÊN"
 
@@ -9631,7 +9631,7 @@ msgstr "Thể tích"
 msgid "Volume (m³)"
 msgstr "Thể tích (m³)"
 
-#: crates/core/src/family.rs:2682
+#: crates/core/src/family.rs:2698
 msgid "WC"
 msgstr "Bồn cầu"
 
@@ -9683,11 +9683,11 @@ msgstr "Đường bao tường"
 msgid "Walls' Outline: the outline the level's walls enclose, along their centre lines, as sketch lines to edit"
 msgstr "Đường bao tường: đường bao mà các tường của tầng bao quanh, theo đường tim của chúng, dưới dạng đường phác thảo để chỉnh sửa"
 
-#: crates/core/src/family.rs:2654
+#: crates/core/src/family.rs:2670
 msgid "Wardrobe"
 msgstr "Tủ quần áo"
 
-#: crates/core/src/family.rs:2696
+#: crates/core/src/family.rs:2712
 msgid "Washbasin"
 msgstr "Chậu rửa mặt"
 
@@ -9899,7 +9899,7 @@ msgstr ""
 msgid "Work plane square to the {} axis"
 msgstr ""
 
-#: crates/core/src/family.rs:2666
+#: crates/core/src/family.rs:2682
 msgid "Worktop"
 msgstr "Mặt bàn bếp"
 

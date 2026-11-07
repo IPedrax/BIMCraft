@@ -1223,7 +1223,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::Ramp(r) => ramp(&mut d, m, r, r.level),
         Element::Railing(rl) => d.line(&stairs::railing(m, rl).into_iter().map(|(p, _)| p).collect::<Vec<_>>(), Pen::MEDIUM, INK, false),
         Element::RoomSeparator(rs) => d.line(&[rs.start, rs.end], Pen::PROJECTION, INK, false),
-        Element::Roof(r) => roof(&mut d, m, r),
+        Element::Roof(r) => roof(&mut d, m, id, r),
         Element::Mass(ms) => d.dashed(&ms.boundary, Pen::MEDIUM, MASS, true),
         _ => {}
     }
@@ -2272,7 +2272,7 @@ fn section_base_cancellable(
         let variable = m.variable_under(owner);
         d.owner = Some(owner);
         for r in rings {
-            let &[a0, b0, b1, a1] = r.as_slice() else { continue };
+            let Some([a0, b0, b1, a1]) = quad(r) else { continue };
             // Where each layer starts down from the top at each end.
             let down = |top: P2, bottom: P2| {
                 let depth = top.1 - bottom.1;
@@ -2692,8 +2692,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         d.owner = Some(id);
         // Surface overrides also work on an unpatterned material and at coarse detail.
         let material = m.type_layers("floor", &f.type_name).first().and_then(|l| m.materials.get(&l.material));
+        // The holes the voids of what is on its faces cut it with, where they are just under its top (T16b).
+        let cut_by = slab_holes(m, id, crate::hosting::FaceRole::Top);
         for (face, rise) in m.floor_slabs(f) {
-            for piece in m.less_shafts(&face, rise).0 {
+            for piece in less_holes(m.less_shafts(&face, rise).0, &cut_by) {
                 let replaced = override_patterns(&mut d, m, std::slice::from_ref(&piece), false, (f.pattern_origin, f.pattern_angle));
                 if !replaced
                     && d.detail == Detail::Fine
@@ -2713,7 +2715,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 }
             }
         }
-        for ring in std::iter::once(&f.boundary).chain(&f.openings) {
+        for ring in std::iter::once(&f.boundary).chain(&f.openings).chain(&cut_by) {
             d.line(ring, BY_CATEGORY, FAINT, true);
         }
         // A shaped one's creases: the edges of each of its planes, as thin as its outline.
@@ -2873,6 +2875,18 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             d.owner = Some(id);
             opening(&mut d, m, e, o, w, range.cut, shown(id), &|sub| graphics.hides(sub));
         }
+        // A component on one of a wall's faces whose voids cut it (T16b): the wall cleared where the cut plane passes through
+        // them, as a door's voids clear it. The hole is the wall's: the component hidden, it is still there.
+        if let Element::Wall(w) = e
+            && shown(id)
+            && m.spans(w, range.cut)
+        {
+            for (by, voids) in m.hosted_voids(id) {
+                d.owner = Some(by).filter(|c| shown(*c));
+                let past = 3.0 / d.view.scale;
+                wall_voids(&mut d, &Axis::of(w), walls::faces(m, w), past, &voids, range.cut);
+            }
+        }
     }
     d.part(Part::Projection);
     // A ceiling plan isn't cropped: the crop region is the floor plan's.
@@ -2960,7 +2974,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             Element::Ceiling(c) if up => {
                 let z = m.elevation(c.level) + c.offset;
                 if range.cut < z && z <= range.top {
-                    ceiling(&mut d, m, c);
+                    ceiling(&mut d, m, id, c);
                 }
             }
             _ if up => {}
@@ -2974,7 +2988,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 let pts = vec![d.view.px(rs.start), d.view.px(rs.end)];
                 d.stroke(pts, BY_CATEGORY, INK, None, false);
             }
-            Element::Roof(r) if r.level == level => roof(&mut d, m, r),
+            Element::Roof(r) if r.level == level => roof(&mut d, m, id, r),
             // Overhead, from below: its edges, round its courtyards too, dashed, while its eaves are under
             // the view range's top.
             Element::Roof(r) => {
@@ -3161,6 +3175,20 @@ fn component(d: &mut Drawing, m: &Model, pieces: &[crate::family::Piece]) {
 }
 
 /// The outlines of the holes shafts cut in a floor's or a ceiling's slabs.
+/// The holes in plan that the voids of the components on face `seen` of floor, ceiling or roof `id` cut it with
+/// ([`Model::hosted_voids`]): each void's slice a millimetre inside that face, under its middle, which is what a plan looking
+/// at that face sees of it. None where nothing on its faces has voids that reach that far.
+fn slab_holes(m: &Model, id: Id, seen: crate::hosting::FaceRole) -> Vec<Vec<P2>> {
+    let Some(g) = m.elements.guid(id) else { return Vec::new() };
+    let inward = if seen == crate::hosting::FaceRole::Top { -1.0 } else { 1.0 };
+    view3d::host_holes(m, id, |q| m.face_at(g, seen, [q.0, q.1]).filter(|a| a.on).map(|a| a.point[2] + inward))
+}
+
+/// `pieces` less each of `holes`: convex pieces where there are any, else as they are.
+fn less_holes(pieces: Vec<Vec<P2>>, holes: &[Vec<P2>]) -> Vec<Vec<P2>> {
+    holes.iter().fold(pieces, |left, hole| walls::minus(&left, hole))
+}
+
 fn holes(d: &mut Drawing, m: &Model, slabs: &[(Vec<[f64; 3]>, f64)]) {
     let cut: std::collections::BTreeSet<Id> = slabs.iter().flat_map(|(face, rise)| m.less_shafts(face, *rise).1).collect();
     for id in cut {
@@ -3390,12 +3418,14 @@ fn hatching(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, g
 
 /// A ceiling in its reflected ceiling plan: its outline and its openings', the holes shafts cut in
 /// it, and with a grid, its tiles: lines through its middle, a tile apart, stopping at the holes.
-fn ceiling(d: &mut Drawing, m: &Model, c: &Ceiling) {
+fn ceiling(d: &mut Drawing, m: &Model, id: Id, c: &Ceiling) {
     let slabs = m.ceiling_slabs(c);
     // Its bottom layer's surface pattern, or the view's foreground and background.
     let material = m.type_layers("ceiling", &c.type_name).last().and_then(|l| m.materials.get(&l.material));
+    // The holes the voids of what is on its faces cut it with, where they are just over its underside (T16b).
+    let cut_by = slab_holes(m, id, crate::hosting::FaceRole::Bottom);
     for (face, rise) in &slabs {
-        for piece in m.less_shafts(face, *rise).0 {
+        for piece in less_holes(m.less_shafts(face, *rise).0, &cut_by) {
             let replaced = override_patterns(d, m, std::slice::from_ref(&piece), false, (P2(0.0, 0.0), 0.0));
             if !replaced && let Some(x) = material {
                 match x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n)) {
@@ -3405,7 +3435,7 @@ fn ceiling(d: &mut Drawing, m: &Model, c: &Ceiling) {
             }
         }
     }
-    for ring in std::iter::once(&c.boundary).chain(&c.openings) {
+    for ring in std::iter::once(&c.boundary).chain(&c.openings).chain(&cut_by) {
         d.line(ring, BY_CATEGORY, INK, true);
     }
     holes(d, m, &slabs);
@@ -3417,7 +3447,7 @@ fn ceiling(d: &mut Drawing, m: &Model, c: &Ceiling) {
     if t.grid <= 0.0 || (hi.0 - lo.0).max(hi.1 - lo.1) / t.grid > 2000.0 {
         return;
     }
-    let pieces: Vec<Vec<P2>> = slabs.iter().flat_map(|(face, rise)| m.less_shafts(face, *rise).0).collect();
+    let pieces: Vec<Vec<P2>> = slabs.iter().flat_map(|(face, rise)| less_holes(m.less_shafts(face, *rise).0, &cut_by)).collect();
     let mid = (lo + hi) * 0.5;
     for (u, across, (a, b)) in
         [(P2(0.0, 1.0), P2(1.0, 0.0), (lo.0 - mid.0, hi.0 - mid.0)), (P2(1.0, 0.0), P2(0.0, 1.0), (lo.1 - mid.1, hi.1 - mid.1))]
@@ -3523,6 +3553,60 @@ fn fit_by(extent: impl Fn(f64) -> [P2; 2], width: u32, height: u32, n: f64) -> V
     View { scale: fits_at, cx: (lo.0 + hi.0) / 2.0, cy: (lo.1 + hi.1) / 2.0, width, height }
 }
 
+/// A slab's cut piece in a section as its four corners, `[a0, b0, b1, a1]`: its bottom from left to right, then its top from
+/// right to left, as an uncut slab's comes. One a void cut (a mesh's slice, its points in any order, with points along its
+/// edges) is taken to its corners when it has two upright sides; a recess's or any other shape has none, and its layers are
+/// not drawn.
+fn quad(r: &[P2]) -> Option<[P2; 4]> {
+    if let &[a0, b0, b1, a1] = r
+        && a0.0 < b0.0
+        && (a0.0 - a1.0).abs() < 1e-6
+        && (b0.0 - b1.0).abs() < 1e-6
+    {
+        return Some([a0, b0, b1, a1]);
+    }
+    let n = r.len();
+    let corners: Vec<P2> = (0..n)
+        .filter(|&i| {
+            let (a, b, c) = (r[(i + n - 1) % n], r[i], r[(i + 1) % n]);
+            (b - a).cross(c - b).abs() > 1e-6 * (b - a).length().max(1.0) * (c - b).length().max(1.0)
+        })
+        .map(|i| r[i])
+        .collect();
+    // As it was before any void: four points in the order an uncut slab's come.
+    let as_given = || if let &[a0, b0, b1, a1] = r { Some([a0, b0, b1, a1]) } else { None };
+    let &[_, _, _, _] = corners.as_slice() else { return as_given() };
+    let mut by_x = corners;
+    by_x.sort_by(|p, q| p.0.total_cmp(&q.0));
+    let (l, h) = (by_x[0..2].to_vec(), by_x[2..4].to_vec());
+    if (l[0].0 - l[1].0).abs() > 1e-3 || (h[0].0 - h[1].0).abs() > 1e-3 || h[0].0 - l[0].0 < 1e-6 {
+        return as_given();
+    }
+    let low = |v: &[P2]| if v[0].1 < v[1].1 { (v[0], v[1]) } else { (v[1], v[0]) };
+    let ((a0, a1), (b0, b1)) = (low(&l), low(&h));
+    Some([a0, b0, b1, a1])
+}
+
+/// Where the cut plane at height `cut` passes through `voids` in a wall along `axis` with faces `ext` and `int` off it: the
+/// wall cleared there, inside its faces (and `past` beyond them, where the outlines' outer halves are), so a void deeper than
+/// the wall clears no more than the wall; its edges across the wall, the jambs.
+fn wall_voids(d: &mut Drawing, axis: &Axis, (ext, int): (f64, f64), past: f64, voids: &[Vec<[view3d::P3; 3]>], cut: f64) {
+    let off = |q: P2| axis.project(q).1;
+    for ring in voids.iter().flat_map(|v| view3d::level_slice(v, cut)) {
+        let clear = geom::clip(&geom::clip(&ring, |q| ext + past - off(q)), |q| off(q) - (int - past));
+        if clear.len() >= 3 {
+            d.fill(&[clear], PAPER);
+        }
+        let inside = geom::clip(&geom::clip(&ring, |q| ext - off(q)), |q| off(q) - int);
+        let on_face = |q: P2| (off(q) - ext).abs() < 1e-6 || (off(q) - int).abs() < 1e-6;
+        for (a, b) in geom::ring_edges(&inside) {
+            if inside.len() >= 3 && !(on_face(a) && on_face(b)) {
+                d.line(&[a, b], Pen::HEAVY, INK, false);
+            }
+        }
+    }
+}
+
 /// A door or window the cut plane at height `cut` passes through: a gap in the wall, jambs, and
 /// a leaf with its swing, or glass.
 #[allow(clippy::too_many_arguments)]
@@ -3551,20 +3635,7 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
             d.line(&[axis.at(s, int), axis.at(s, ext)], Pen::HEAVY, INK, false);
         }
     } else {
-        let off = |q: P2| axis.project(q).1;
-        for ring in voids.iter().flat_map(|v| level_slice(v, cut)) {
-            let clear = geom::clip(&geom::clip(&ring, |q| ext + past - off(q)), |q| off(q) - (int - past));
-            if clear.len() >= 3 {
-                d.fill(&[clear], PAPER);
-            }
-            let inside = geom::clip(&geom::clip(&ring, |q| ext - off(q)), |q| off(q) - int);
-            let on_face = |q: P2| (off(q) - ext).abs() < 1e-6 || (off(q) - int).abs() < 1e-6;
-            for (a, b) in geom::ring_edges(&inside) {
-                if inside.len() >= 3 && !(on_face(a) && on_face(b)) {
-                    d.line(&[a, b], Pen::HEAVY, INK, false);
-                }
-            }
-        }
+        wall_voids(d, &axis, (ext, int), past, &voids, cut);
     }
     d.own(owner);
     if !shown || d.detail == Detail::Coarse {
@@ -3612,15 +3683,6 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
             d.line(&axis.points(s0, s1, across), Pen::PROJECTION, INK, false);
         }
     }
-}
-
-/// Where the level plane at height `z` cuts closed mesh `tris`, as rings in plan: [`view3d::slice`] of the mesh turned on its
-/// side, so its upright plane is the level one.
-fn level_slice(tris: &[[view3d::P3; 3]], z: f64) -> Vec<Vec<P2>> {
-    const FAR: f64 = 1.0e6;
-    let turned: Vec<[view3d::P3; 3]> = tris.iter().map(|t| t.map(|p| [p[0], p[2] - z, p[1]])).collect();
-    let rings = view3d::slice(&turned, P2(-FAR, 0.0), P2(1.0, 0.0), 2.0 * FAR).unwrap_or_default();
-    rings.into_iter().map(|r| r.into_iter().map(|q| P2(q.0 - FAR, q.1)).collect()).collect()
 }
 
 /// A stair in the plan of `level`. From its own level: its risers up to the cut plane, a cut line
@@ -3746,7 +3808,7 @@ fn arrow(d: &mut Drawing, a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
 /// A roof in the plan of its level: its outline, and where its slopes meet, its ridges, hips and
 /// valleys.
 // ponytail: openings aren't drawn; a dormer's roof covers its own. Draw them for skylights.
-fn roof(d: &mut Drawing, m: &Model, r: &Roof) {
+fn roof(d: &mut Drawing, m: &Model, id: Id, r: &Roof) {
     let faces = m.roof_faces(r).map_or_else(|_| vec![m.roof_outline(r)], |f| f.into_iter().flat_map(|(loops, _)| loops).collect());
     // A shaped one's creases thin, as a shaped floor's are, its outline and courtyards as any roof's.
     let shaped = !r.shape.is_empty();
@@ -3758,6 +3820,10 @@ fn roof(d: &mut Drawing, m: &Model, r: &Roof) {
         for ring in std::iter::once(&r.boundary).chain(&r.courtyards) {
             d.line(ring, BY_CATEGORY, INK, true);
         }
+    }
+    // The holes the voids of what is on its faces cut it with, where they are just under its top (T16b).
+    for ring in slab_holes(m, id, crate::hosting::FaceRole::Top) {
+        d.line(&ring, BY_CATEGORY, INK, true);
     }
 }
 
