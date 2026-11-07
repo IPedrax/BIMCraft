@@ -128,6 +128,7 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
         w(msg!("Kitchen Sink")),
         json!({
             "category": "plumbing",
+            "kind": "sink",
             "parameters": [size(&width, 1200.0), size(&depth, 550.0), size(&height, 900.0), material(&mat, &metal)],
             "types": {"1200 x 550": {}, "800 x 500": {&width: 800, &depth: 500}},
             "forms": forms
@@ -145,6 +146,7 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
         w(msg!("Shower")),
         json!({
             "category": "plumbing",
+            "kind": "shower",
             "parameters": [size(&width, 900.0), size(&depth, 900.0)],
             "types": {"900 x 900": {}, "800 x 800": {&width: 800, &depth: 800}},
             "forms": [
@@ -167,6 +169,7 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
         w(msg!("Floor Drain")),
         json!({
             "category": "drain",
+            "kind": "floor_drain",
             "parameters": [size(&width, 150.0)],
             "types": {"150 x 150": {}, "100 x 100": {&width: 100}},
             "forms": [
@@ -206,6 +209,7 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
             w(msg!("Elbow 90")),
             json!({
                 "category": "pipefitting",
+                "kind": "bend",
                 "parameters": [size(&diameter, 50.0), material(&mat, &pvc)],
                 "types": sizes(&["25", "50", "110"]),
                 "forms": [along_x(&neg(&hub), &r, &mat), along_y(&neg(&r), &hub, &mat)]
@@ -215,6 +219,7 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
             w(msg!("Tee")),
             json!({
                 "category": "pipefitting",
+                "kind": "tee",
                 "parameters": [size(&diameter, 50.0), material(&mat, &pvc)],
                 "types": sizes(&["25", "50", "110"]),
                 "forms": [along_x(&neg(&hub), &hub, &mat), along_y("0", &hub, &mat)]

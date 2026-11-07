@@ -107,7 +107,9 @@ jobs:
 
       # The X11, Wayland and GL headers egui's window builds against; the tools that check the
       # desktop entry and the AppStream metadata, and write the AppImage's .zsync; nfpm for the deb and rpm.
+      # Ubuntu's archive can hang a download for the job's six hours; a slow mirror has taken 17 minutes.
       - name: Tools
+        timeout-minutes: 30
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libxkbcommon-dev libwayland-dev libx11-dev \
@@ -160,6 +162,7 @@ jobs:
           path: dist/linux
 
       - name: Tools
+        timeout-minutes: 30
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends flatpak flatpak-builder librsvg2-common
@@ -219,6 +222,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Tools
+        timeout-minutes: 30
         run: |
           . /etc/os-release
           sudo dpkg --add-architecture riscv64

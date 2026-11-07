@@ -19,6 +19,8 @@ serde_json = { workspace = true }
 egui = { workspace = true }
 eframe = { workspace = true }
 pollster = "1"
+rayon = { workspace = true }
+bytemuck = "1"
 rfd = { workspace = true }
 sys-locale = { workspace = true }
 

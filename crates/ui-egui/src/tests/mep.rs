@@ -696,3 +696,76 @@ fn the_electrical_tab_loads_the_arei_symbols_on_request_and_only_once() {
     let placed = ids(&h, "component");
     assert_eq!(field(&h, placed[0], "family"), json!("Switch, single-pole"));
 }
+
+/// A plan with a box of walls, a ceiling luminaire, an outlet and a switch.
+const FIXTURES_PLAN: &str = r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+component {"family": "Ceiling Luminaire", "at": [2000, 2000], "offset": -2000}
+component {"family": "Outlet", "type": "Low 300", "at": [1000, 300]}
+component {"family": "Switch", "type": "Low 300", "at": [3000, 300]}"#;
+
+/// The component of `family`, by its id.
+fn placed(h: &Harness<BimApp>, family: &str) -> Id {
+    ids(h, "component").into_iter().find(|id| field(h, *id, "family") == json!(family)).unwrap()
+}
+
+/// What the plan of Level 1 draws of element `id`, as the window's own view of it shows: its primitives.
+fn drawn_of(h: &Harness<BimApp>, id: Id) -> usize {
+    let d = bimcraft_core::render::plan(&h.state().session.model, 100000, 1600, 1000);
+    d.owners.iter().filter(|o| **o == Some(id)).count()
+}
+
+/// Hiding Lighting Fixtures in Visibility/Graphics on the plan leaves the luminaires out of it, and the outlets and switches in.
+fn lighting_hidden_in_visibility_graphics(mut h: Harness<'static, BimApp>) {
+    let (lamp, outlet, switch) = (placed(&h, "Ceiling Luminaire"), placed(&h, "Outlet"), placed(&h, "Switch"));
+    assert!([lamp, outlet, switch].iter().all(|id| drawn_of(&h, *id) > 0), "all three are drawn to begin with");
+    shortcut(&mut h, "VV");
+    // Each family category is a row of its own: Lighting, Outlets, Switches… and no Components row.
+    for row in ["Lighting Fixtures", "Outlets", "Switches", "Electrical Equipment", "Data Outlets"] {
+        assert!(h.query_by_role_and_label(Role::CheckBox, row).is_some(), "{row}");
+    }
+    assert!(h.query_by_role_and_label(Role::CheckBox, "Components").is_none());
+    pick(&mut h, Role::CheckBox, "Lighting Fixtures");
+    press(&mut h, "OK");
+    let g = plan_graphics(&h, 100000);
+    assert!(g.categories["lighting"].hidden && !g.categories.contains_key("component"));
+    assert_eq!(drawn_of(&h, lamp), 0, "the luminaire is gone from the plan");
+    assert!(drawn_of(&h, outlet) > 0 && drawn_of(&h, switch) > 0, "the outlet and the switch stay");
+    // Level 2's plan is its own view: its luminaires are not touched.
+    assert!(bimcraft_core::graphics::Look::of(&h.state().session.model, 100001).shows(lamp));
+}
+
+#[test]
+fn hiding_lighting_in_visibility_graphics_hides_the_luminaires_of_the_plan_in_rev() {
+    lighting_hidden_in_visibility_graphics(app(FIXTURES_PLAN));
+}
+
+#[test]
+fn hiding_lighting_in_visibility_graphics_hides_the_luminaires_of_the_plan_in_bimcraft() {
+    lighting_hidden_in_visibility_graphics(bimcraft(FIXTURES_PLAN));
+}
+
+/// A project from before the rows were split, which hid `component` in a view, shows its rows as hidden and lets the view show
+/// one of them again.
+fn an_older_components_override_is_the_rows_of_the_family_categories(mut h: Harness<'static, BimApp>) {
+    let (lamp, outlet) = (placed(&h, "Ceiling Luminaire"), placed(&h, "Outlet"));
+    h.state_mut().run("graphics", json!({"view": 100000, "hide": ["component"]}));
+    h.run();
+    assert!(drawn_of(&h, lamp) == 0 && drawn_of(&h, outlet) == 0);
+    shortcut(&mut h, "VV");
+    // Lighting Fixtures is shown as hidden, so a click shows it, and the rest stay hidden.
+    pick(&mut h, Role::CheckBox, "Lighting Fixtures");
+    press(&mut h, "OK");
+    let g = plan_graphics(&h, 100000);
+    assert!(!g.categories.contains_key("component") && !g.hides("lighting") && g.hides("outlet"), "{g:?}");
+    assert!(drawn_of(&h, lamp) > 0 && drawn_of(&h, outlet) == 0);
+}
+
+#[test]
+fn an_older_components_override_is_the_rows_of_the_family_categories_in_rev() {
+    an_older_components_override_is_the_rows_of_the_family_categories(app(FIXTURES_PLAN));
+}
+
+#[test]
+fn an_older_components_override_is_the_rows_of_the_family_categories_in_bimcraft() {
+    an_older_components_override_is_the_rows_of_the_family_categories(bimcraft(FIXTURES_PLAN));
+}

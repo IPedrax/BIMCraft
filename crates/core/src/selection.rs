@@ -42,11 +42,12 @@ pub fn common(m: &Model, ids: &[Id]) -> Vec<(String, Kind)> {
 /// schedule shows them, in the project's units.
 pub fn groups(m: &Model, ids: &[Id], by: &str) -> Vec<Group> {
     let mut found: BTreeMap<String, Vec<Id>> = BTreeMap::new();
+    let rooms = crate::rooms::Rooms::new(m);
     for &id in ids {
         let Some(e) = m.elements.get(id) else { continue };
         let value = match by {
             CATEGORY => e.category().to_string(),
-            _ => schedule::field_text(m, id, by).unwrap_or_default(),
+            _ => schedule::field_text_with(m, id, by, &rooms).unwrap_or_default(),
         };
         let held = found.entry(value).or_default();
         if !held.contains(&id) {

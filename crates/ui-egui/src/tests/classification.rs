@@ -54,6 +54,11 @@ fn a_table_is_loaded_from_the_users_file_and_the_selection_is_given_a_code_by_ha
     assert!(h.query_by_label("0 of 1 classified").is_some());
     let code = "Ss_25_10_30_35  Brick and block wall systems";
     assert!(h.query_by_label(code).is_some(), "a wall's candidates");
+    // A row to click: the pointing hand over it.
+    let at = h.get_by_label(code).rect().center();
+    h.hover_at(at);
+    h.run();
+    assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::PointingHand);
     press(&mut h, code);
     assert_eq!(type_value(&h, "Uniclass Ss Number", wall), Some(json!("Ss_25_10_30_35")));
     assert_eq!(type_value(&h, "Uniclass Ss Title", wall), Some(json!("Brick and block wall systems")));
@@ -74,6 +79,12 @@ fn an_agents_answer_is_reviewed_and_only_what_is_ticked_is_written() {
         {"key": key, "table": "Uniclass Ss", "code": "Ss_99", "confidence": 0.9, "reason": "invented"}]}));
     h.run();
     assert!(h.query_by_label("1 proposals").is_some());
+    // Unticked, Select All above the Apply column ticks it again.
+    h.state_mut().classification.as_mut().unwrap().review[0].accept = false;
+    h.run();
+    assert!(h.query_by_label("Apply 0").is_some());
+    press(&mut h, "Select All");
+    assert!(h.query_by_label("Apply 1").is_some());
     assert!(h.query_by_label("1 answers left out").is_some(), "the invented code");
     assert_eq!(type_value(&h, "Uniclass Ss Number", wall), None, "nothing written until Apply");
     press(&mut h, "Apply 1");

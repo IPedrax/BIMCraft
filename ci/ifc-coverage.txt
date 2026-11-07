@@ -43,3 +43,30 @@ phase {"now": "Stage 2"}
 option {"set": "Entrance", "options": ["Glass", "Brick"]}
 option {"now": "Entrance: Brick"}
 wall {"points": [[0,-5000],[6000,-5000]]}
+# A shaped floor (MOD-16): a drain 30 mm down and a split line to a corner, round an opening; one closed faceted Brep.
+floor {"boundary": [[30000,0],[38000,0],[38000,6000],[30000,6000]], "openings": [[[31000,1000],[32000,1000],[32000,2000],[31000,2000]]]}
+edit_shape {"id": 100341, "points": [{"at": [35000,3000], "z": -30}], "lines": [{"a": [35000,3000], "b": [38000,6000]}]}
+# The same over a variable layer: a level underside, the screed taking up the fall.
+type {"category": "floor", "name": "Terrace", "layers": [{"function": "finish", "thickness": 10}, {"function": "substrate", "thickness": 60, "variable": true}, {"function": "structure", "thickness": 200}]}
+floor {"boundary": [[40000,0],[48000,0],[48000,6000],[40000,6000]], "type": "Terrace"}
+edit_shape {"id": 100342, "points": [{"at": [44000,3000], "z": -30}]}
+# A shaped flat roof (MOD-16, phase 4): two drains 40 mm down; each plane a slab, its underside following.
+roof {"level": 100001, "slope": 0, "boundary": [[50000,0],[58000,0],[58000,6000],[50000,6000]]}
+edit_shape {"id": 100343, "points": [{"at": [52000,3000], "z": -40}, {"at": [56000,3000], "z": -40}]}
+# The same over a variable layer: a level underside, the insulation taking up the fall; one closed faceted Brep.
+type {"category": "roof", "name": "Terrace Roof", "layers": [{"function": "finish", "thickness": 10}, {"function": "substrate", "thickness": 100, "variable": true}, {"function": "structure", "thickness": 200}]}
+roof {"level": 100001, "slope": 0, "type": "Terrace Roof", "boundary": [[60000,0],[68000,0],[68000,6000],[60000,6000]]}
+edit_shape {"id": 100344, "points": [{"at": [64000,3000], "z": -40}]}
+# Runs whose IFC types (IfcDuctSegmentType, IfcCableSegmentType) the export writes; last, so the ids above stay put.
+duct {"points": [[0,8000],[6000,8000]], "offset": 2500, "system": "Supply air"}
+cabling {"points": [[0,8500],[6000,8500]], "offset": 2500, "system": "Network"}
+# Beam types hold their section as a material profile set (3.6b), each beam a usage of it by the line it is placed by: a bottom, a
+# centre and a top justified beam of a 150 x 600 type in concrete, a round one in metal, and one with no material; last, so the ids
+# above stay put.
+type {"category": "beam", "name": "B 150x600", "width": 150, "depth": 600, "material": "Concrete"}
+type {"category": "beam", "name": "B 120x300", "width": 120, "depth": 300}
+beam {"points": [[0,9000],[6000,9000]], "offset": 3000, "type": "B 150x600", "justify": "bottom"}
+beam {"points": [[0,9500],[6000,9500]], "offset": 3000, "type": "B 150x600", "justify": "centre"}
+beam {"points": [[0,10000],[6000,10000]], "offset": 3000, "type": "B 150x600"}
+beam {"points": [[0,10500],[6000,10500]], "offset": 3000, "end_offset": 3500, "type": "Steel Tube 150", "justify": "centre"}
+beam {"points": [[0,11000],[6000,11000]], "offset": 3000, "type": "B 120x300"}

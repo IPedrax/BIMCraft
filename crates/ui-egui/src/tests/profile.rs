@@ -1,5 +1,5 @@
-//! The interface's profiles: BIMCraft's own look (the default) and Rev, flat and square in light chrome, with the File tab
-//! leading the ribbon's tabs and the Options Bar docked under the ribbon.
+//! The interface's profiles: BIMCraft's own (the default), its tools a palette, and Rev, the same look with the ribbon: the
+//! floating cards, the dark app bar and the view's little tabs of both, Revit's palette layout and names.
 
 use egui::Shape;
 use egui_kittest::kittest::NodeT;
@@ -61,47 +61,61 @@ fn the_profile_is_picked_in_settings_and_the_settings_file_keeps_it() {
 }
 
 #[test]
-fn rev_leads_the_ribbons_tabs_with_file_and_docks_the_options_bar_under_the_ribbon_so_the_view_never_moves() {
-    let mut h = bimcraft(BOX);
+fn revs_file_is_on_the_app_bar_over_the_ribbon_and_its_options_bar_floats_over_the_view() {
+    let mut h = app(BOX);
     let (file, tab) = (h.get_by_label("File").rect(), h.get_by_label("Architecture").rect());
-    assert!(file.bottom() < tab.top(), "BIMCraft's File is on the app bar, over the tabs: {file:?} {tab:?}");
-    h.state_mut().profile = Profile::Rev;
-    h.run();
-    h.run();
-    let (file, tab) = (h.get_by_label("File").rect(), h.get_by_label("Architecture").rect());
-    assert!((file.center().y - tab.center().y).abs() < 1.0 && file.right() <= tab.left(), "Rev's File leads the tabs: {file:?} {tab:?}");
-    let (view, bar) = (h.state().view_rect, h.state().options_rect);
-    assert!(
-        bar.bottom() <= view.top() && bar.width() > view.width(),
-        "the bar is a strip across the window over the view: {bar:?} {view:?}"
-    );
+    assert!(file.bottom() < tab.top(), "File is on the app bar, over the ribbon's tabs: {file:?} {tab:?}");
+    let view = h.state().view_rect;
+    assert!(!h.state().options_rect.is_positive(), "no bar while nothing is on it");
     tool(&mut h, "Wall");
-    let field = h.get_by_label("Location Line:").rect();
-    assert!(h.state().options_rect.contains_rect(field), "the tool's options are on it: {field:?}");
-    assert_eq!(h.state().view_rect, view, "it is there with or without a tool's options, so the view never moves under them");
+    let (field, bar) = (h.get_by_label("Location Line:").rect(), h.state().options_rect);
+    assert!(bar.contains_rect(field), "the tool's options are on it: {field:?} {bar:?}");
+    assert!(view.contains_rect(bar) && bar.width() < view.width(), "a card over the view: {bar:?} {view:?}");
+    assert_eq!(h.state().view_rect, view, "coming, it takes no room, so the view never moves under it");
     // A click on the bar starts no wall.
     click_at(&mut h, field.left_center() - vec2(30.0, 0.0));
     assert_eq!(ids(&h, "wall").len(), 4);
 }
 
+/// The bands in the bar's colour the window drew as tall as a ribbon panel's name.
+fn name_bands(h: &Harness<BimApp>) -> usize {
+    fn walk(s: &Shape, out: &mut usize) {
+        match s {
+            Shape::Rect(r) if r.fill == crate::style::pal().bar && (r.rect.height() - 16.0).abs() < 0.5 => *out += 1,
+            Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+            _ => {}
+        }
+    }
+    let mut out = 0;
+    h.output().shapes.iter().for_each(|c| walk(&c.shape, &mut out));
+    out
+}
+
 #[test]
-fn rev_is_flush_light_chrome_whatever_layout_bimcraft_keeps() {
+fn rev_wears_the_floating_cards_the_dark_app_bar_and_the_views_little_tabs_and_compact_is_its_to_pick() {
     let mut h = bimcraft(BOX);
     let ground = app_bar_ground(&h);
-    assert!(luminance(ground) < 0.1, "BIMCraft's app bar is dark in the light theme: {ground:?}");
-    h.state_mut().profile = Profile::Rev;
-    h.run();
-    h.run();
-    let ground = app_bar_ground(&h);
-    assert!(luminance(ground) > 0.6, "Rev's is light chrome: {ground:?}");
-    // The view's tabs are a strip above the view, as they are Compact, and BIMCraft's layout (Floating) is left as it was.
-    let view = h.state().view_rect;
-    let tab = h.state().tab_rects.first().map(|(_, r)| *r).unwrap();
-    assert!(tab.bottom() <= view.top(), "{tab:?} over {view:?}");
-    assert!(!h.state().compact);
-    press(&mut h, "Settings");
-    let floating = h.get_by_role_and_label(Role::RadioButton, "Floating");
-    assert!(floating.accesskit_node().is_disabled(), "Rev has one layout: the choice is BIMCraft's");
+    let mut h2 = app(BOX);
+    assert_eq!(app_bar_ground(&h2), ground, "one app bar in both profiles");
+    assert!(luminance(ground) < 0.1, "dark in the light theme: {ground:?}");
+    assert_eq!(crate::style::pal().panel, crate::style::LIGHT.panel, "one palette in both profiles");
+    let gap = f32::from(crate::style::GAP);
+    assert!(h2.get_by_label("Architecture").rect().left() > gap, "the ribbon's card stands off the window's edge");
+    assert_eq!(name_bands(&h2), 0, "the panels' names are on no bands");
+    // The view fills the pane and its tabs float over its top left corner, a card as high as a tab.
+    let view = h2.state().view_rect;
+    let tab = h2.state().tab_rects.first().map(|(_, r)| *r).unwrap();
+    assert!(view.contains_rect(tab), "{tab:?} over {view:?}");
+    press(&mut h2, "Settings");
+    let floating = h2.get_by_role_and_label(Role::RadioButton, "Floating");
+    assert!(!floating.accesskit_node().is_disabled(), "Layout is every profile's");
+    h2.get_by_role_and_label(Role::RadioButton, "Compact").click_accesskit();
+    h2.run();
+    press(&mut h2, "Close");
+    assert!(h2.state().compact);
+    let (view, tab) = (h2.state().view_rect, h2.state().tab_rects.first().map(|(_, r)| *r).unwrap());
+    assert!(tab.bottom() <= view.top(), "Compact's tabs are a strip above the view: {tab:?} {view:?}");
+    let _ = &mut h;
 }
 
 /// The hairlines in the border's colour the window drew by the row whose value's field is at `field`: (under it, running across
@@ -140,23 +154,46 @@ fn rules_by(h: &Harness<BimApp>, field: egui::Rect) -> (usize, usize) {
 }
 
 #[test]
-fn revs_properties_are_a_ruled_grid_and_apply_stays_at_the_palettes_foot_while_the_rows_scroll() {
-    let mut h = bimcraft(BOX);
+fn revs_properties_are_the_clean_rows_and_apply_comes_after_them() {
+    let mut h = app(BOX);
     click(&mut h, P2(0.0, 3000.0));
     assert_eq!(h.state().selection.len(), 1, "a wall, whose rows run past the palette");
-    // The row's field, which its name labels.
     let field = h.get_by_label("Base Offset").rect();
-    assert_eq!(rules_by(&h, field), (0, 0), "BIMCraft's rows are not ruled");
-    h.state_mut().profile = Profile::Rev;
-    h.run();
-    h.run();
-    let field = h.get_by_label("Base Offset").rect();
-    let (under, beside) = rules_by(&h, field);
-    assert!(under == 1 && beside >= 1, "a line under the row and one between its name and its value: {under}, {beside}");
-    // Apply is at the palette's foot, over the Project Browser's title, though the rows run on past it.
-    let (apply, browser) = (h.get_by_label("Apply").rect(), h.get_by_label_contains("Project Browser ·").rect());
-    assert!(apply.bottom() <= browser.top() && browser.top() - apply.bottom() < 16.0, "{apply:?} over {browser:?}");
-    assert!(field.bottom() < apply.top());
+    assert_eq!(rules_by(&h, field), (0, 0), "no lines between or under the rows");
+    let apply = h.get_by_label("Apply").rect();
+    assert!(apply.top() > field.bottom() + 40.0, "Apply follows the rows, none of them over it: {apply:?} {field:?}");
+    let browser = h.get_by_label_contains("Project Browser ·").rect();
+    assert!(apply.top() > browser.top(), "scrolled past the palette's foot with the rows: {apply:?} {browser:?}");
+}
+
+/// The docked cards of a side from `from` to `to` across, as the frame painted them: tall, in the panels' colour.
+fn palette_cards(h: &Harness<BimApp>, from: f32, to: f32) -> Vec<egui::Rect> {
+    fn walk(s: &Shape, out: &mut Vec<egui::Rect>) {
+        match s {
+            Shape::Rect(r) if r.fill == crate::style::pal().panel && r.rect.height() > 100.0 => out.push(r.rect),
+            Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    h.output().shapes.iter().for_each(|c| walk(&c.shape, &mut out));
+    out.retain(|r| r.left() >= from && r.left() < to && r.width() < 500.0);
+    out
+}
+
+#[test]
+fn a_long_value_in_a_views_properties_never_pushes_its_card_past_the_one_under_it() {
+    // A view's Phasing group holds New Construction, wider than half a palette: Properties over the browser, in both profiles.
+    for (mut h, from, to) in [(app(BOX), 0.0, 300.0), (bimcraft(BOX), 900.0, 1280.0)] {
+        for look in ["plan", "3D"] {
+            if look == "3D" {
+                shortcut(&mut h, "3D");
+            }
+            let cards = palette_cards(&h, from, to);
+            let [properties, browser] = cards.as_slice() else { panic!("{look}: two cards: {cards:?}") };
+            assert_eq!(properties.right(), browser.right(), "{look}: {properties:?} {browser:?}");
+        }
+    }
 }
 
 #[test]
@@ -228,4 +265,28 @@ fn find_runs_a_tool_or_opens_a_view_by_what_is_typed_in_both_profiles() {
     assert!(h.state().find.is_some());
     key(&mut h, Key::Escape);
     assert!(h.state().find.is_none(), "Escape closes it");
+}
+
+#[test]
+fn the_tools_rail_scrolls_when_the_palette_is_too_short_for_its_tabs() {
+    let mut h = bimcraft(BOX);
+    h.set_size(vec2(1280.0, 420.0));
+    h.run();
+    h.run();
+    // The rail's own Manage, down the left: the rows name their tab in paint, not with a button.
+    let manage = |h: &Harness<BimApp>| h.get_all_by_label("Manage").map(|n| n.rect()).find(|r| r.left() < 60.0).unwrap();
+    let before = manage(&h);
+    assert!(before.bottom() > 420.0, "the window is too short for every tab: {before:?}");
+    h.hover_at(pos2(before.center().x, 200.0));
+    h.event(Event::MouseWheel {
+        phase: TouchPhase::Move,
+        unit: MouseWheelUnit::Point,
+        delta: vec2(0.0, -600.0),
+        modifiers: Modifiers::NONE,
+    });
+    h.run();
+    let after = manage(&h);
+    assert!(after.bottom() < 400.0, "the wheel over the rail brings it into view: {after:?}");
+    click_at(&mut h, after.center());
+    assert_eq!(h.state().tab, Tab::Manage);
 }

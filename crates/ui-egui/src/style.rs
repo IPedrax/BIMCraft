@@ -5,8 +5,7 @@
 //! lettering; the icons are drawn in `icons.rs`.
 //! A dark interface may keep the drawing canvas light; canvas painters use `canvas_dark`, chrome uses `dark`. The user's own panel,
 //! canvas and text colours go over any of it, what is read on them stepped until it reads (`with_ground`, `with_text`).
-//! The Rev profile (`Profile`) wears palettes of its own (`REV_LIGHT`, `REV_DARK`: the chrome in the ribbon's greys), square
-//! corners (`corner`) and the Compact layout; the drawing's colours (`canvas_pal`) are the same in both profiles.
+//! Both profiles (`Profile`) wear this one look: they differ in where the tools are, never in what the window is drawn in.
 
 use std::cell::Cell;
 use std::sync::Arc;
@@ -116,32 +115,6 @@ pub const DARK: Palette = Palette {
     app_bar_muted: rgb(0x9FA5B1),
     app_bar_hover: rgb(0x343A46),
     shadow: Color32::from_rgba_premultiplied(0, 0, 0, 110),
-};
-
-/// Rev's light palette: the chrome (the title bar and the ribbon's tabs) and the cards in the ribbon's own light greys, where
-/// BIMCraft's bar is dark. The accent, its tints and the drawing's colours are [`LIGHT`]'s.
-pub const REV_LIGHT: Palette = Palette {
-    panel: rgb(0xF7F8F9),
-    bar: rgb(0xE8EAED),
-    control: rgb(0xE0E3E7),
-    border: rgb(0xC9CDD2),
-    app_bar: rgb(0xE3E6EA),
-    app_bar_text: rgb(0x262A32),
-    app_bar_muted: rgb(0x555A63),
-    app_bar_hover: rgb(0xD3D7DD),
-    ..LIGHT
-};
-
-/// Rev's dark palette: neutral greys, the chrome a step darker than the cards. The accent and its tints are [`DARK`]'s.
-pub const REV_DARK: Palette = Palette {
-    panel: rgb(0x2B2F36),
-    bar: rgb(0x2F333A),
-    control: rgb(0x3D424B),
-    border: rgb(0x454B55),
-    surface: rgb(0x202328),
-    app_bar: rgb(0x1F2227),
-    app_bar_hover: rgb(0x30353D),
-    ..DARK
 };
 
 /// Dracula's colours (the open theme by Zeno Rocha, MIT): its purple for the accent, its ground and lines for the cards.
@@ -260,19 +233,16 @@ impl Scheme {
 /// The colours a frame is drawn in: the profile's own, light or dark, or the scheme picked when dark (the presets are dark ones),
 /// with the user's own panel, text and accent colours over them when there are some.
 pub fn palette(dark: bool, look: Look) -> Palette {
-    let rev = look.profile == Profile::Rev;
-    let base = match (dark, look.scheme, rev) {
-        (true, Scheme::Dracula, _) => DRACULA,
-        (true, Scheme::Midnight, _) => MIDNIGHT,
-        (true, Scheme::Amoled, _) => AMOLED,
-        (false, _, false) => LIGHT,
-        (true, _, false) => DARK,
-        (false, _, true) => REV_LIGHT,
-        (true, _, true) => REV_DARK,
+    let base = match (dark, look.scheme) {
+        (true, Scheme::Dracula) => DRACULA,
+        (true, Scheme::Midnight) => MIDNIGHT,
+        (true, Scheme::Amoled) => AMOLED,
+        (false, _) => LIGHT,
+        (true, _) => DARK,
     };
     let rgb = |[r, g, b]: [u8; 3]| Color32::from_rgb(r, g, b);
-    let base = look.panel_colour.map_or(base, |c| with_ground(base, rgb(c), rev));
-    let base = look.text_colour.map_or(base, |c| with_text(base, rgb(c), rev));
+    let base = look.panel_colour.map_or(base, |c| with_ground(base, rgb(c)));
+    let base = look.text_colour.map_or(base, |c| with_text(base, rgb(c)));
     // The tints of what is picked, made again over the user's accent or their panels.
     if look.accent.is_none() && look.panel_colour.is_none() {
         return base;
@@ -296,9 +266,9 @@ fn with_accent(p: Palette, accent: Color32) -> Palette {
 }
 
 /// `p` on the user's panel colour `ground`: the cards in it; their bands, buttons and hovered rows a step toward the ink that reads
-/// on it, never so near that the ink stops reading; a field a step away; in Rev the chrome a step darker, as Rev's own is. What is
+/// on it, never so near that the ink stops reading; a field a step away. What is
 /// read on them (the text, the muted text, icons, errors, the contextual tabs) is stepped toward that ink until it holds.
-fn with_ground(p: Palette, ground: Color32, rev: bool) -> Palette {
+fn with_ground(p: Palette, ground: Color32) -> Palette {
     let ink = ink_on(ground);
     let near = |c: Color32, t: f32| step(mix(c, ink, t), c, &[ink], 4.5);
     let away = if ink == Color32::BLACK { Color32::WHITE } else { Color32::BLACK };
@@ -315,33 +285,19 @@ fn with_ground(p: Palette, ground: Color32, rev: bool) -> Palette {
     };
     q.context = step(p.context, ink, &[q.context_fill], 4.5);
     q.on_context = ink_on(q.context);
-    if rev {
-        q.app_bar = step(mix(ground, Color32::BLACK, 0.08), ground, &[ink], 4.5);
-        q.app_bar_hover = near(q.app_bar, 0.1);
-    }
-    let on = grounds(&q, rev);
+    let on = grounds(&q);
     (q.muted, q.icon, q.error) = (step(p.muted, ink, &on, 4.5), step(p.icon, ink, &on, 3.0), step(p.error, ink, &on, 4.5));
-    if rev {
-        q.app_bar_muted = q.muted;
-    }
-    with_text(q, p.text, rev)
+    with_text(q, p.text)
 }
 
-/// `p` lettered in `text`, stepped toward black or white until it holds 4.5:1 on every ground it is read on; in Rev the chrome's
-/// lettering too, which is the text's there.
-fn with_text(p: Palette, text: Color32, rev: bool) -> Palette {
-    let text = step(text, ink_on(p.panel), &grounds(&p, rev), 4.5);
-    Palette { text, app_bar_text: if rev { text } else { p.app_bar_text }, ..p }
+/// `p` lettered in `text`, stepped toward black or white until it holds 4.5:1 on every ground it is read on.
+fn with_text(p: Palette, text: Color32) -> Palette {
+    Palette { text: step(text, ink_on(p.panel), &grounds(&p), 4.5), ..p }
 }
 
-/// What lettering is read on in `p`: the cards, their bands and buttons, a field, a hovered row and what is picked; in Rev the
-/// chrome too, where the ribbon's tabs are.
-fn grounds(p: &Palette, rev: bool) -> Vec<Color32> {
-    let mut on = vec![p.panel, p.bar, p.surface, p.hover_fill, p.control, p.select_fill];
-    if rev {
-        on.extend([p.app_bar, p.app_bar_hover]);
-    }
-    on
+/// What lettering is read on in `p`: the cards, their bands and buttons, a field, a hovered row and what is picked.
+fn grounds(p: &Palette) -> Vec<Color32> {
+    vec![p.panel, p.bar, p.surface, p.hover_fill, p.control, p.select_fill]
 }
 
 /// `from` stepped toward `to` a twentieth at a time until it holds `least`:1 on every one of `grounds`; `to` if it never does.
@@ -366,9 +322,6 @@ pub fn contrast(a: Color32, b: Color32) -> f32 {
     let (a, b) = (lum(a), lum(b));
     (a.max(b) + 0.05) / (a.min(b) + 0.05)
 }
-
-/// Rev's File tab, white on it in both themes.
-pub const FILE_TAB: Color32 = rgb(0x2064B5);
 
 /// How far the cards stand off the window's edges and each other, in the Floating layout.
 pub const GAP: i8 = 7;
@@ -419,11 +372,6 @@ pub fn pal() -> Palette {
     CURRENT.with(Cell::get)
 }
 
-/// A button's or a tab's corners, `r` in BIMCraft's look: Rev's are all but square.
-pub fn corner(r: f32) -> f32 {
-    if rev() { r.min(2.0) } else { r }
-}
-
 /// Whether the interface is dark this frame (the chrome around the drawing; the drawing's own is [`canvas_dark`]).
 pub fn dark() -> bool {
     DARK_ON.with(Cell::get)
@@ -440,14 +388,21 @@ pub fn canvas_ground() -> Option<Color32> {
     GROUND.with(Cell::get)
 }
 
+/// This thread's canvas, light or dark, and the colour the user picked for its paper (none for the drawing's white): a thread
+/// that paints for the interface's takes both, as `canvas::color` reads them.
+pub(crate) fn set_canvas(dark: bool, ground: Option<Color32>) {
+    CANVAS_DARK.with(|c| c.set(dark));
+    GROUND.with(|g| g.set(ground));
+}
+
 /// The colours the drawing paints with where they must read on its own ground (the fills of what is selected or hovered, a crop
 /// region's outline): the dark palette on a dark canvas, [`CANVAS_LIGHT`] on a light canvas, whatever the interface around it is.
 pub fn canvas_pal() -> &'static Palette {
     if canvas_dark() { &DARK } else { &CANVAS_LIGHT }
 }
 
-/// Which interface the window wears: BIMCraft's own (the default), or Rev, laid out as the ribbon tool its users know: flat and
-/// square, the chrome in the ribbon's own greys, the File tab leading the ribbon's tabs and the Options Bar docked under the ribbon.
+/// Which interface the window wears: BIMCraft's own (the default), its tools a palette, or Rev, the ribbon tool its users know:
+/// the ribbon in place of the palette, Revit's palette layout and names. One look: the same cards, colours and Layout.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Profile {
     #[default]
@@ -516,9 +471,9 @@ pub fn follow(ctx: &Context, look: Look) {
     SEMIBOLD_ON.with(|s| s.set(semibold));
 }
 
-/// Whether this frame is laid out flush: the Compact layout, and Rev, which has no other.
+/// Whether this frame is laid out flush: the Compact layout.
 pub fn compact() -> bool {
-    COMPACT.with(Cell::get) || rev()
+    COMPACT.with(Cell::get)
 }
 
 /// Whether this frame wears the Rev profile.
@@ -605,20 +560,26 @@ fn fonts() -> FontDefinitions {
     fonts
 }
 
-/// The fonts and the theme's preference, once: the widgets' look follows the profile ([`follow`]).
+/// The fonts, the theme's preference and how shapes are tessellated, once: the widgets' look follows the profile ([`follow`]).
 pub fn apply(ctx: &Context) {
     ctx.set_fonts(fonts());
     ctx.options_mut(|o| {
         o.theme_preference = ThemePreference::System;
         o.fallback_theme = Theme::Light;
+        tessellation(o);
     });
 }
 
-/// The lettering's sizes, the spacing and the widgets' colours and corners, in both themes, for `profile`.
+/// egui's coarse culling measures a stroke thinner than a pixel by half its width, though its soft edge reaches a pixel past it, so
+/// lettering just past a view's edge lost the edge it shows there, which the kept triangles draw. The canvas leaves out what is
+/// outside itself with room to spare.
+pub(crate) fn tessellation(o: &mut egui::Options) {
+    o.tessellation_options.coarse_tessellation_culling = false;
+}
+
+/// The lettering's sizes, the spacing and the widgets' colours and corners, in both themes, for `look`.
 fn visuals(ctx: &Context, look: Look) {
-    let rev = look.profile == Profile::Rev;
     let palettes = [false, true].map(|dark| palette(dark, look));
-    let (widget, window) = if rev { (2, 3) } else { (4, WINDOW_RADIUS) };
     for (theme, pal) in [Theme::Light, Theme::Dark].into_iter().zip(palettes) {
         ctx.style_mut_of(theme, |s| {
             for (style, size) in [(TextStyle::Heading, 15.0), (TextStyle::Body, 13.0), (TextStyle::Button, 13.0), (TextStyle::Small, 11.0)]
@@ -637,15 +598,15 @@ fn visuals(ctx: &Context, look: Look) {
             v.extreme_bg_color = pal.surface;
             v.faint_bg_color = pal.bar;
             v.window_stroke = Stroke::new(1.0, pal.border);
-            v.window_corner_radius = CornerRadius::same(window);
-            v.menu_corner_radius = CornerRadius::same(window);
+            v.window_corner_radius = CornerRadius::same(WINDOW_RADIUS);
+            v.menu_corner_radius = CornerRadius::same(WINDOW_RADIUS);
             v.window_shadow = Shadow { offset: [0, 10], blur: 32, spread: 0, color: pal.shadow };
             v.popup_shadow = Shadow { offset: [0, 8], blur: 24, spread: 0, color: pal.shadow };
             v.hyperlink_color = pal.accent;
             v.selection.bg_fill = pal.select_fill;
             v.selection.stroke = Stroke::new(1.0, pal.accent);
             v.text_cursor.stroke = Stroke::new(2.0, pal.accent);
-            let radius = CornerRadius::same(widget);
+            let radius = CornerRadius::same(4);
             for w in
                 [&mut v.widgets.noninteractive, &mut v.widgets.inactive, &mut v.widgets.hovered, &mut v.widgets.active, &mut v.widgets.open]
             {
@@ -685,44 +646,36 @@ mod tests {
     #[test]
     fn what_is_read_holds_its_contrast_on_what_it_sits_on_in_both_themes() {
         let mut fails = Vec::new();
-        let mut looks: Vec<(String, Palette, bool, bool)> = vec![
-            ("light".into(), LIGHT, false, false),
-            ("dark".into(), DARK, true, false),
-            ("Rev light".into(), REV_LIGHT, false, true),
-            ("Rev dark".into(), REV_DARK, true, true),
-        ];
+        let mut looks: Vec<(String, Palette, bool)> = vec![("light".into(), LIGHT, false), ("dark".into(), DARK, true)];
         for s in Scheme::PRESETS {
-            looks.push((s.name().into(), palette(true, Look { scheme: s, ..Look::default() }), true, false));
+            looks.push((s.name().into(), palette(true, Look { scheme: s, ..Look::default() }), true));
         }
-        let look =
-            |rev: bool, scheme: Scheme| Look { profile: if rev { Profile::Rev } else { Profile::BimCraft }, scheme, ..Look::default() };
+        let look = |scheme: Scheme| Look { scheme, ..Look::default() };
         // An accent of every kind on every ground: a pale yellow, a dark navy, a mid grey, pure red.
-        let bases = [(false, false, Scheme::Own), (true, false, Scheme::Own), (false, true, Scheme::Own), (true, true, Scheme::Own)];
-        let bases = bases.into_iter().chain(Scheme::PRESETS.map(|s| (true, false, s))).chain(Scheme::PRESETS.map(|s| (true, true, s)));
+        let bases = [(false, Scheme::Own), (true, Scheme::Own)];
+        let bases = bases.into_iter().chain(Scheme::PRESETS.map(|s| (true, s)));
         for accent in [[255, 255, 0], [0, 17, 51], [128, 128, 128], [255, 0, 0]] {
-            for (dark, rev, scheme) in bases.clone() {
-                let name = format!("{accent:?} over {scheme:?}, dark {dark}, Rev {rev}");
-                looks.push((name, palette(dark, Look { accent: Some(accent), ..look(rev, scheme) }), dark, rev));
+            for (dark, scheme) in bases.clone() {
+                let name = format!("{accent:?} over {scheme:?}, dark {dark}");
+                looks.push((name, palette(dark, Look { accent: Some(accent), ..look(scheme) }), dark));
             }
         }
         // Panels and text of the user's own over every ground, the worst kinds: white, black, the grey both black and white read
         // worst on, a pale yellow, a navy, pure red; the text the panel's own colour, a mid grey, white, or the scheme's.
         let colours = [[255, 255, 255], [0, 0, 0], [119, 119, 119], [255, 255, 200], [0, 17, 51], [255, 0, 0]];
-        for (dark, rev, scheme) in bases {
+        for (dark, scheme) in bases {
             for panel in colours.map(Some).into_iter().chain([None]) {
                 for text in [panel, Some([128, 128, 128]), Some([255, 255, 255]), None] {
                     for accent in [None, Some([255, 255, 0])] {
-                        let name = format!("panel {panel:?}, text {text:?}, accent {accent:?} over {scheme:?}, dark {dark}, Rev {rev}");
-                        let own = Look { panel_colour: panel, text_colour: text, accent, ..look(rev, scheme) };
-                        looks.push((name, palette(dark, own), dark, rev));
+                        let name = format!("panel {panel:?}, text {text:?}, accent {accent:?} over {scheme:?}, dark {dark}");
+                        let own = Look { panel_colour: panel, text_colour: text, accent, ..look(scheme) };
+                        looks.push((name, palette(dark, own), dark));
                     }
                 }
             }
         }
-        for (theme, p, dark, rev) in &looks {
-            let (dark, rev) = (*dark, *rev);
-            DARK_ON.with(|d| d.set(dark));
-            REV.with(|r| r.set(rev));
+        for (theme, p, dark) in &looks {
+            DARK_ON.with(|d| d.set(*dark));
             CURRENT.with(|c| c.set(*p));
             let (ring, ring_on_bar) = (focus_ring().color, on_app_bar(|| focus_ring().color));
             // Text, on a card, a band, a field and a hovered row; some also on the open tab's tint.
@@ -749,15 +702,6 @@ mod tests {
                 ("a caption button's focus ring and glyph", p.app_bar_text, p.app_bar_hover, 3.0),
                 ("Close's focus ring and glyph", Color32::WHITE, crate::titlebar::CLOSE_HOVER, 3.0),
             ]);
-            // Rev's ribbon tabs and the button that folds the ribbon sit on the chrome, and File is white on its blue.
-            if rev {
-                rows.extend([
-                    ("a ribbon tab's lettering on the chrome", p.text, p.app_bar, 4.5),
-                    ("a hovered ribbon tab's lettering", p.text, p.hover_fill, 4.5),
-                    ("an icon on the chrome", p.icon, p.app_bar, 3.0),
-                    ("the File tab's lettering", Color32::WHITE, FILE_TAB, 4.5),
-                ]);
-            }
             for (what, ink, ground, least) in rows {
                 let c = contrast(ink, ground);
                 if c < least {
@@ -765,7 +709,6 @@ mod tests {
                 }
             }
         }
-        REV.with(|r| r.set(false));
         assert!(fails.is_empty(), "{fails:#?}");
     }
 

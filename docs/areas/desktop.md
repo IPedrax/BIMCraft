@@ -9,10 +9,19 @@ bottom, or floating windows), apart from its drawing, so tests and the settings 
 `Palette` and its body in `palette_body`. A view's tab floats it in a window (`BimApp::floating`; `views` are the tabs and
 `front` the one the views' area shows): the active view (`BimApp::sheet`) takes the tools, any other on screen draws through
 `view_pane` as it is, with the canvas `at_rest` and `passive` set so it takes no clicks, and a click makes it active. Widget
-ids inside a view are per view (`push_id`), so two views on screen never clash. The start page is `start.rs` (`BimApp::home`; the desktop's `main` shows it when given no file, the quick access bar's Home and Ctrl+D bring it back over a project and go back to it, `BimApp::toggle_home`, and `Home::over` says there is one behind it): its tiles' pictures are drawn on a thread (`start::picture`, a `.bimcraft` file's 3D view) and a test waits for them with `Home::settled`. File > Settings is `settings.rs`, the user's
+ids inside a view are per view (`push_id`), so two views on screen never clash. The start page is `start.rs` (`BimApp::home`; the desktop's `main` shows it when given no file, the quick access bar's Home and Ctrl+D bring it back over a project and go back to it, `BimApp::toggle_home`, and `Home::over` says there is one behind it): its tiles' pictures are drawn on a thread (`start::picture`, a `.bimcraft` file's 3D view) and a test waits for them with `Home::settled`. Its Sample Project button (`Pending::Sample`, `BimApp::open_sample`) builds the sample house, `bimcraft_core::sample::SAMPLE`, as a project with no file, so Save asks where to put it; it goes through `guard` like New and Open, and the script's steps are not undo steps, as with `--sample`. File > Settings is `settings.rs`, the user's
 `settings.json` beside the favorites (`BimApp::use_settings`, which the desktop's `main` calls; tests never write it unless
 they hand it a file): what it keeps is `Settings`, written when it changes, between drags; a setting still to come goes on
 its page greyed out (`later`).
+
+Two working aids are drawn over a plan's or a ceiling plan's canvas, in `canvas()` right after the drawing: the origin marker
+(`origin_marker`: an arrow east for x in the canvas's red and one north for y in its green, lettered, at the screen point of the
+project's 0, 0, `ORIGIN_ARM` points long at any zoom, left out when the origin is far off the screen) and the view's name in the
+bottom left corner (`BimApp::corner_name`, over the view control bar where that floats over the corner, `bar_cover`; a ceiling plan's
+reads `Level 1 (Ceiling Plan)`, as an image's does). They are the window's alone: `render::draw` has neither, so no PNG, sheet or
+printout does. File > Settings > User Interface > Plans has a box for each (`BimApp::show_origin`, `show_view_name`; kept in
+`settings.json` as `origin_marker` and `view_name`, on when the file doesn't say), and New and Open keep them. The 3D view, sections
+and sheets have neither. Tests: `tests/origin.rs`, in both profiles.
 
 The minimap (`minimap.rs`, the same in both profiles) is at the top of the Navigator, Rev's Project Browser, under a header that folds
 it away: folded at first, so the tree keeps its room (the tests that click the tree's entries where they are drawn rely on it), and
@@ -73,6 +82,18 @@ request wakes the window (`Context::request_repaint`, from the context the first
 most; ten seconds, in all, to say the first line whole (a byte now and then does not count), and what is not a request, a web page's
 HTTP say, is answered with an error and closed. A test (`tests/control.rs`) plays the agent on a real connection while the harness runs frames.
 
+File > Settings > Agents opens the same port without `--control`: Let agents work on this project, and its Port (0 for any free one),
+both kept in `settings.json` (`agents`), so the window opens it again at its next start once `--control` has had its say
+(`listen_as_kept`), with the same bridge file and the same rules. Unticked, the port is closed: a `Control` dropped stops listening
+(its accept thread is woken by a connection of its own and lets the port go) and hangs up on its agents, so it can be opened again.
+Allow agents to edit this project (on by default, kept too) is `bridge::Access`: off, `answer_agents` runs each request read-only
+(`Session::reading`), so an edit, an undo or a redo, a script holding one, or a save over the project's own file comes back as an
+error that names the box, and what reads (inspect, schedules, render, exports to new files, the sheets to PDF) still answers; the
+user's own commands are never read-only. An agent may ask to only read as well (`"read_only": true` in a request, which
+`mcp --connect --read-only` sends). The view control bar ends with the port's state, in both profiles (`agents_indicator`): Agents:
+off, Agents: port N, or Agents: N connected (a connection counts once it has said a request with the token), with read-only when edits
+are off; a click opens Settings at Agents.
+
 The interface's language is `lang::Lang`: a project's language, or Simplified Chinese (issue 38), which only the window speaks
 (a drawing's lettering, `font.rs`, is drawn in code and has no hanzi, so a project is never in Chinese and `Lang::project()` gives
 it English). Its words, including the schedule headings shown in the window, are in `translations/ui/*.po`;
@@ -119,13 +140,18 @@ Multiple Trim keeps the boundary across successive target edits while that index
 another edit removes, renumbers or changes it. Escape clears the first pick; Ctrl+Z takes back each trim as one draft step.
 
 A point picked in a plan lands where `snap::snap` says, the core's so every front end agrees: on the end, middle or centre of
-what's drawn (`Scene::of`), a round detail line's quadrants (`rounds`: a circle's, an ellipse's or an arc's points along its axes),
+what's drawn (`Scene::of`; a column, structural column or footing gives its centre, the ends of its outline's corners and the middles of its edges from `Model::column_outline`, a round one's four quadrants), a round detail line's quadrants (`rounds`: a circle's, an ellipse's or an arc's points along its axes),
 where two straight lines (walls, grids; not arcs) or a detail line's chords cross (never a line's chords with each other), where a
 line from the last point touches a circle or an arc (`tangents`), else a scan's point where the cut plane cuts it
 ([point clouds](point-clouds.md)), the foot of the perpendicular from the last point
 to one, a guide through that point at
 a multiple of `Snaps::angle` from east or from the line before it (where the guide crosses a wall or grid it lands there, and a
 grid point lying on it beats a rounded length), a wall's centre line or the nearest point of a detail line, else the nearest 10 mm.
+Annotation adds its anchors (`Kind::Anchor`, switched by `Snaps::annotation`): a note's insertion point and leader, a tag's head
+and, with a leader, its host's anchor, a dimension's line and stations, a spot elevation, section and elevation marks, detail
+groups and repeating details. A camera's mark is not a symbol to snap to: its body, lens and name all land on its eye, its target
+is an endpoint, and its sight line gives no nearest point. Rotate's Place Centre runs its preview through `found` and
+`show_snap`, so its cross and marker stand on the point a click takes.
 Revit's Quadrants (SQ) and Tangents (ST) are snaps of their own, in Manage > Snaps with the rest. The desktop's `BimApp::snap` gives
 it the reach in px (`SNAP`, `PICK`) and the snaps in force (Manage > Snaps, kept while the window is open, or for one point
 a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and
@@ -144,9 +170,11 @@ makes, so for every tool but Modify that is a click where the button went down (
 sheets take their clicks), and what lay under it is read there (`under_at`), not where the hand has got to. In Modify a drag is its
 move and its box, so only a press let go within `QUICK` (0.2 s) is a click wherever the hand went: the drag it began is not
 finished (`Canvas::quick`, `BimApp::finish_drag`: grips, crop regions, a sheet's views, the plan's move and box) and the selection
-that drag's start replaced comes back (`BimApp::grab`) for the click to pick from. A slower press is the drag it is. In the 3D view,
-where every drag orbits, a quick press is a click whatever the tool, and the camera the hand turned meanwhile goes back
-(`Orbit::before`).
+that drag's start replaced comes back (`BimApp::grab`) for the click to pick from. A slower press is the drag it is. In the 3D view
+a quick press is a click whatever the tool, and a camera the hand turned meanwhile goes back (`Orbit::before`). There, as in
+Revit, Shift and the middle button orbit and the middle button alone pans; a primary drag orbits too, round the point under the
+pointer, and with Shift held in Modify it is a selection box, as in a plan (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
+inside, from the right what it touches, by where the model is rather than what's in front, so what's behind is boxed too.
 
 Startup (`apps/bimcraft/src/startup.rs`). A release build on Windows has no console, so a start that fails must say itself: `bimcraft.log`
 and `graphics.json` sit beside the favorites (`startup::Files::beside`). `startup::begin` runs once the arguments are read (never for
@@ -309,6 +337,61 @@ view goes back where it was (`section_box::Was`: closed, its tab at its place, o
 window ends the link. The selection is the model's, so the plan and the 3D view share it already. The plan's own Section Box flag reads the
 project's box, never the link's, so a plan that follows the box and a 3D view that follows the plan never chase each other.
 
+Sketching in 3D (`sketch3d.rs`). Edit Boundary on a floor, ceiling, roof by footprint or shaft selected in the 3D view keeps the
+sketch there, as Revit does: the lines are drawn over the picture on the element's own plane, `Model::sketch_plane` (a floor's
+top, sloped with it; a ceiling's underside; a roof's base; a shaft's bottom), and `Sketch::plan` is
+`Sheet::View3D`, so the window comes back to the 3D view until Finish or Cancel as it does to a plan (`BimApp::sketch_plan`,
+while the element still has a plane). The view turns, pans and zooms as ever, and its clicks pick no elements: `sketch3d::Plane`
+takes a point on screen to the plane (`Camera::on_slope`) and back. Modify picks a line where it shows (within `PICK` points of it
+on screen, so a foreshortened line is as easy to hit as any), and a primary drag from a picked line's end holds that grip, not the
+camera (`BimApp::sketch3d_grab`, before the camera moves), the ends there moved where it is let go; a Shift drag from anywhere else
+is a box picking the sketch's lines (`sketch3d_box`: wholly inside from the left, touching from the right). The Draw panel's shapes, Pick Walls and Pick Lines (the element the picture shows under the
+click), Split, Trim/Extend, Offset and Vertex take the plane's point as the plan takes its own, through `sketch_click`,
+`sketch_modify` and `vertex_click`, snapped by `snap::in_sketch` in the element's level with reaches from the view's scale.
+Align, which lines up with what a plan shows, says so. A view edge-on to the plane picks nothing on it, and says to turn it.
+
+Work planes in 3D (`workplane.rs`; the core's in [views and graphics](views-and-graphics.md)). The plane has a patch of its own in
+the view, as ArchiCAD's: a small square of it (`work_plane_ring`, the same size on screen at any zoom), by the model's south-west corner
+on a level plane and about the point it was set through on another, lit with the plane's name under the cursor, that a click in Modify
+opens the dialog from; so do the 3D view's right-click menu (Set Work Plane…, `Action::WorkPlane`) and the Architecture tab's Set, in
+its Datum panel. The 3D view's control bar has Work Plane, a `footer::menu_button` showing the plane (a level's name, `Surface, 90°` or
+`Three points, 14°`, and `+ offset` when moved), which opens its dialog (`workplane::Draft`). It sets the plane three ways (`By`): Pick
+from list, a level; Pick a surface, with Pick Surface; Pick three points, with Pick Points; and one Offset for each, along the plane's
+normal (up from a level, out from a surface). Nothing is typed but the offset. A pick closes the dialog while it's made (`Picking`) and
+brings it back with what it took, Esc going back without it: Pick Surface lights the face under the pointer (`Scene::face_at`, the
+element's triangles in the plane of the one hit) and a click takes it, a point of it and the way it faces; Pick Points takes three
+clicks, each snapping to the corner seen nearest the pointer within the snap's reach (`Scene::corner_near`, a square marking it, as a
+dimension's ends snap in plan), else the surface's point there (a circle), the points taken drawn as dots (`workplane::aim`,
+`draw_aim`). OK runs `work_plane`; what it refuses is said in the dialog. The plane is drawn as a grid over as much of it as the model
+spans while the dialog is up and while a new outline is sketched on it (`workplane::draw_plane`, along the plane's own axes). Floor,
+Ceiling, Roof and Shaft picked in the 3D view sketch a new one on the work plane at once (`set_tool`, `sketch_on_work_plane`):
+`Sketch::surface` holds the plane, `sketch_surface` gives it to `sketch3d.rs`, and Finish makes it on the level below the plane
+(`workplane::host`), as high above it as the plane is. Each of the four lies level, so on a plane that doesn't (`workplane::is_level`:
+sloped, or upright as a wall's face) its tool says the work plane must be horizontal and makes nothing; the plane itself may lie at any
+angle, for what comes to sketch on one later (an opening on a wall). A Line or Polyline sketched in 3D shows the line to come,
+from the last point to the cursor, with its length (`sketch3d_preview`; the other shapes' previews are `shape_preview`'s).
+
+The navigation triad (`triad.rs`; the core's `triad.rs` has what any front end needs of it). Left of the 3D view's navigation bar
+(`BimApp::triad_rect`, which steps under the Options Bar as the bar does) stand the x, y and z axes in red, green and blue, turning
+with the camera, each end a marker (the positive a disc with its letter, the negative a ring with a minus), the far ones fainter. It
+is a triad, not a cube (#154 argues about a patent on clickable cubes). A click on an end turns the camera to look from that side
+(`triad::turned`): +z the top, -z the bottom, -y the front, +y the back, -x the left, +x the right; the target, closeness and lens stay,
+and a second click on the end the camera already looks from turns to the opposite side. The camera never turns straight down
+(`Camera::orbit`), so the top and bottom views stand at 89 and -89 degrees, north up in the top view and the same turn in the bottom.
+A camera view's new position is written back to it as any turn is. Alt and a click on an end sets the work plane square to that axis
+(`triad::plane`, the `work_plane` command with a surface): through the point of the plane the view was on that is nearest the camera's
+target, to the millimetre, facing the way the end points (a plane square to z always faces up); Alt and a click on the triad's empty
+space clears the view's own plane, back to the lowest level (nothing is done, and there is no undo step, where it is there already).
+Hovering an end names the view a click turns to (`Top`, or `Bottom` when the camera is on top already), and with Alt held the plane it
+would set. `BimApp::triad_input` makes the widget over the view's, sensing clicks and drags, so a click or a drag that begins on it is
+its own and never reaches the model behind (the view under it is not hovered either); `view3d` turns the camera with what it asks, and
+`triad_draw` draws over the picture, so the processor's and the card's alike, and the pick uses the camera alone, so it picks the same
+on both. A floating or linked 3D view beside the active one draws it but takes no clicks.
+
+Floor goes into sketch mode at once, in a plan as in 3D, as Revit's does (`set_tool`); its sketch's ribbon has Walls' Outline
+(`walls_outline_panel`), which puts the outline the level's walls enclose, and its courtyards, in the sketch as lines to edit
+(`floor_outline`): what the tool's one click inside the walls made before.
+
 Unhide. Only Reveal Hidden Elements lets what a view hides be picked, so the Modify tab's View panel offers Unhide Element and Unhide Category (EU, VU) for a selection
 `BimApp::hidden_selection` finds the active view hiding: the elements hidden one by one, and the categories hidden whole. They run `graphics` with `show_elements` or `show`
 (`unhide_selection`), the selection stays, and with nothing of it hidden EU opens the Elements tab as before and VU says so.
@@ -353,18 +436,13 @@ window draws): `accent` is for fills, strokes and the drawing, `accent_ink` for 
 colours goes in that test.
 
 Profiles. File > Settings > User Interface > Profile picks the interface the window wears (`style::Profile`, kept in `settings.json` as
-`profile`, a name this version doesn't know read as the default): BIMCraft's own, the default, or Rev, laid out as the ribbon tool its
-users know. Rev has palettes of its own (`style::REV_LIGHT`, `REV_DARK`: the title bar and the ribbon's tabs in the ribbon's greys, where
-BIMCraft's bar is dark; the accent, its tints and the drawing's colours are the same), square corners (`style::corner`, and the widgets'
-own, which `style::follow` sets again when the profile changes), and one layout, flush, so the Layout choice is BIMCraft's and greyed while
-Rev is on. Its File is the ribbon's first tab, white on blue (`style::FILE_TAB`), and leaves the app bar; its open tab is outlined but
-along its foot, where it opens onto the panels; the panels' names sit on bands along the ribbon's foot (`ribbon::panel`); and the Options
-Bar is docked under the ribbon (`BimApp::show`), there with or without a tool's options, so the view never moves under it. In Properties
-each group is a ruled property grid (every group's rows go through `properties::grid`, which draws the line between the columns, and
-`properties::end_row`, which draws one under each row), the group headers are semibold, and Apply stays at the palette's foot over a line
-(`palette_body`), the rows scrolling above it. Each difference
-is read in the frame through `style::rev()`, never a second copy of a widget. Rev copies a layout, never another program's pictures or
-words: its icons are the ones `icons.rs` draws. `tests/profile.rs` drives it, and `tests/smallest.rs` runs the least window in both.
+`profile`, a name this version doesn't know read as the default): BIMCraft's own, the default, or Rev, the ribbon tool its users know.
+They differ in where things are, never in what the window is drawn in: Rev has the ribbon where BIMCraft has the Tools palette (`BimApp::show`), Revit's
+palette layout and names (`Docking::revit`, `Palette::label`), and Find as an icon among the app bar's. The cards, the colours, the dark
+app bar with File on it, the pills of the ribbon's and the view's tabs, the Options Bar over the view and the Layout choice are one code path and one
+palette in both, so a change to the look reaches both.
+What's left of the difference is read in the frame through `style::rev()`, never a second copy of a widget. Rev copies a layout, never another program's pictures or
+words: its icons are the ones `icons.rs` draws. `tests/profile.rs` drives it, and `tests/smallest.rs` runs the least window in both profiles and both layouts.
 
 The title bar (`titlebar.rs`). On Windows and Linux the window draws its own (`BimApp::own_title_bar`, set by `main`, which opens
 the window without the system's decorations): the app bar is the title bar. Its bare ground moves the window and a double-click
@@ -404,7 +482,10 @@ and a custom one is tried before the defaults. Each name in `ACTIONS` is a tool 
 carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System, Reference Plane, the duct tools): it waits
 for the tool. Load File reads JSON (`{"WA": "Wall"}`), Revit's `<Shortcut CommandName=… Shortcuts="WA#W1">` lines, or `KEY - Name` lines, up to 64 KiB;
 a description is an action only by its whole name in one of the interface's languages (`resolve_action`), and a key that is not two characters, names no action or
-is another action's is skipped and counted in the message. Custom shortcuts last while the window is open. Match Properties (MA) is the `match_properties`
+is another action's is skipped and counted in the message. Custom shortcuts are kept in `settings.json` (`shortcuts`: key to the action's English name, as `Settings::shortcuts`), written when one is added, edited or loaded and
+read into `BimApp::custom_shortcuts` at startup (`use_settings`), so they last past the window; Restore Defaults is kept too, as an empty object, and New and Open keep them.
+`Settings::from_json` keeps only what the dialog could have made (a key of two letters or digits, in upper case whatever its case in the file, and a name in `ACTIONS`),
+at most `MAX_SHORTCUTS`; a value that isn't an object leaves what the window had. Tests: `tests/shortcuts_kept.rs`. Match Properties (MA) is the `match_properties`
 command; with one element selected the window remembers its type for the next one drawn, with several it gives the others of the first's category its type.
 
 Annotation dialogs and draw tools. Manage > Annotation Settings lists Line Weights, Line Styles, Line Patterns (Line Styles on its
@@ -456,8 +537,8 @@ pattern geometry (including font outlines) and can follow a curve. The creator s
 Cancel, so OK/Apply remains one undoable Line Styles transaction. See [views and graphics](views-and-graphics.md) for the
 seven segment kinds, paper units, text fitting and centerline semantics.
 
-Annotate > Dimension has Aligned (DI) and Linear, and Angular, Radial, Diameter, Arc Length and Spot Elevation small beside them
-(`BimApp::dimension_panel`). Aligned and Linear are one tool, `Tool::Dimension(mode, refs)`: a click near an endpoint picks it before the line
+Annotate > Dimension has Aligned (DI) and Linear, and Angular, Radial, Diameter, Arc Length, Spot Elevation and Spot Slope small beside
+them (`BimApp::dimension_panel`); Spot Slope (`Tool::SpotSlope`) runs `spot_slope` where a floor or a roof is clicked in a plan. Aligned and Linear are one tool, `Tool::Dimension(mode, refs)`: a click near an endpoint picks it before the line
 it ends (`canvas::dimension_pick`), marked with a square; after two, a click away places the dimension the Options Bar's Place says (Auto,
 Aligned, Horizontal, Vertical; Space steps them), drawn as it would be while the cursor moves. `Tool::Round(kind, picked)` is Radial, Diameter
 and Arc Length; after its arc, Arc Length takes two ends on it to measure between (`dims::arc_point`), or a click places the whole arc's. A new dimension takes the type the Type Selector names, else its kind's (`dimtypes::dimension_type_for`); Edit Type on one opens

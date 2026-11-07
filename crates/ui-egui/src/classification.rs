@@ -3,7 +3,7 @@
 //! they're written. It stays open beside the views, so the selection can change under it. The logic is the core's
 //! (`bimcraft_core::classification`); the agent is run by `bimcraft_agent`, on a thread of its own.
 //!
-//! Also Settings > AI Agent: which agent, how it's called, and a test that it's there.
+//! Also Settings > Agents: which agent, how it's called, and a test that it's there.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,15 +14,32 @@ use bimcraft_core::classification::{self as cls, BriefAsk, Proposal, SystemDef, 
 use bimcraft_core::ids::Id;
 use bimcraft_core::model::{Model, Scope};
 use bimcraft_i18n::msg;
-use egui::{Align, Button, ComboBox, Context, Grid, Layout, RichText, ScrollArea, TextEdit, Ui, vec2};
+use egui::{
+    Align, Button, Color32, ComboBox, Context, CursorIcon, Frame, Grid, Layout, RichText, ScrollArea, Sense, Stroke, TextEdit, Ui,
+    WidgetInfo, WidgetType, vec2,
+};
 use serde_json::{Value, json};
 
 use crate::BimApp;
 use crate::lang::{t, tf};
 use crate::style::pal;
 
-/// What Settings > AI Agent's Test found: filled by its thread.
+/// What Settings > Agents's Test found: filled by its thread.
 pub(crate) type AgentTest = Arc<Mutex<Option<Result<String, String>>>>;
+
+/// How long a code given by hand blinks.
+const FLASH: f64 = 0.8;
+
+/// `a` turned `k` of the way to `b`.
+fn lerp_colour(a: Color32, b: Color32, k: f32) -> Color32 {
+    let k = k.clamp(0.0, 1.0);
+    let mix = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * k).round() as u8;
+    // `b` over `a` by its own opacity.
+    let a_ = f32::from(b.a()) / 255.0;
+    let over = |x: u8, y: u8| (f32::from(x) * (1.0 - a_) + f32::from(y) * a_).round() as u8;
+    let (br, bg, bb) = (over(a.r(), b.r()), over(a.g(), b.g()), over(a.b(), b.b()));
+    Color32::from_rgb(mix(a.r(), br), mix(a.g(), bg), mix(a.b(), bb))
+}
 
 /// The window's tabs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -106,6 +123,8 @@ pub(crate) struct ClassificationManager {
     pub(crate) review: Vec<ReviewRow>,
     refused: Vec<String>,
     pub(crate) message: Option<(String, bool)>,
+    /// The code just given by hand, and when: its row blinks blue to say so.
+    flash: Option<(String, f64)>,
     /// An answer pasted from an agent run elsewhere (a chat window), to read back.
     pub(crate) paste: String,
     /// The tree of each table, its rows' depths: worked out once a table.
@@ -136,6 +155,7 @@ impl ClassificationManager {
             refused: Vec::new(),
             message: None,
             paste: String::new(),
+            flash: None,
             depths: BTreeMap::new(),
         }
     }
@@ -531,25 +551,55 @@ impl BimApp {
             picked.iter().filter_map(|(code, _)| table.items.iter().position(|i| &i.code == code)).collect()
         };
         let mut chosen: Option<String> = None;
-        let row_h = ui.text_style_height(&egui::TextStyle::Body) + 6.0;
-        ScrollArea::vertical()
-            .id_salt("classification-codes")
-            .auto_shrink([false, false])
-            .max_height(ui.available_height() - 30.0)
-            .show_rows(ui, row_h, list.len(), |ui, range| {
-                for n in &list[range] {
-                    let item = &table.items[*n];
-                    let indent = if needle.is_empty() && d.show_all { depths.get(*n).copied().unwrap_or(0) as f32 * 14.0 } else { 0.0 };
-                    ui.horizontal(|ui| {
-                        ui.add_space(indent);
+        let row_h = ui.text_style_height(&egui::TextStyle::Body) + 8.0;
+        let dark = ui.visuals().dark_mode;
+        // A list of things to click: on white (the panel's surface when dark), grey under the pointer, blue a moment after a click.
+        let ground = if dark { pal().surface } else { Color32::WHITE };
+        let hover = if dark { pal().hover_fill } else { Color32::from_gray(232) };
+        let now = ui.input(|i| i.time);
+        let flash = d.flash.as_ref().filter(|(_, at)| now - at < FLASH).map(|(code, at)| (code.clone(), now - at));
+        if flash.is_some() {
+            ui.ctx().request_repaint();
+        }
+        let height = (ui.available_height() - 30.0).max(row_h * 3.0);
+        Frame::new().fill(ground).stroke(Stroke::new(1.0, pal().border)).corner_radius(4.0).inner_margin(2.0).show(ui, |ui| {
+            ScrollArea::vertical().id_salt("classification-codes").auto_shrink([false, false]).max_height(height).show_rows(
+                ui,
+                row_h,
+                list.len(),
+                |ui, range| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    for n in &list[range] {
+                        let item = &table.items[*n];
+                        let indent = if needle.is_empty() && d.show_all { depths.get(*n).copied().unwrap_or(0) as f32 * 14.0 } else { 0.0 };
                         let label = format!("{}  {}", item.code, item.title);
-                        if ui.add(Button::new(label).frame(false)).on_hover_text(t("Give the selection this code")).clicked() {
+                        let (rect, r) = ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::click());
+                        r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
+                        let r = r.on_hover_cursor(CursorIcon::PointingHand).on_hover_text(t("Give the selection this code"));
+                        let fill = match &flash {
+                            // Blue at once, fading back to what's under it.
+                            Some((code, age)) if *code == item.code => {
+                                let k = (1.0 - age / FLASH) as f32;
+                                let under = if r.hovered() { hover } else { ground };
+                                lerp_colour(under, pal().select_fill, k)
+                            }
+                            _ if r.hovered() => hover,
+                            _ => ground,
+                        };
+                        ui.painter().rect_filled(rect, 3.0, fill);
+                        let font = egui::TextStyle::Body.resolve(ui.style());
+                        let at = rect.left_center() + vec2(6.0 + indent, 0.0);
+                        let galley = ui.painter().layout_no_wrap(label.clone(), font, pal().text);
+                        ui.painter().with_clip_rect(rect).galley(at - vec2(0.0, galley.size().y / 2.0), galley, pal().text);
+                        if r.clicked() {
                             chosen = Some(item.code.clone());
                         }
-                    });
-                }
-            });
+                    }
+                },
+            );
+        });
         if let Some(code) = chosen {
+            d.flash = Some((code.clone(), ui.input(|i| i.time)));
             let assign: Vec<Value> =
                 self.selection.iter().map(|id| json!({"target": id.to_string(), "table": d.table, "code": code})).collect();
             if let Some(r) = self.classifying(d, "classify", json!({"assign": assign})) {
@@ -571,7 +621,7 @@ impl BimApp {
             let who = if self.agent.model.trim().is_empty() { program } else { format!("{program} · {}", self.agent.model.trim()) };
             ui.label(tf("Agent: {} ({})", &[self.agent.preset.label(), &who]));
             if ui.button(t("Agent Settings…")).clicked() {
-                self.settings_page = Some(crate::settings::Page::Agent);
+                self.settings_page = Some(crate::settings::Page::Agents);
             }
         });
         if !self.agent.consented {
@@ -692,6 +742,13 @@ impl BimApp {
             .max_height((ui.available_height() - 30.0).max(120.0))
             .show(ui, |ui| {
                 Grid::new("classification-review-grid").striped(true).num_columns(8).show(ui, |ui| {
+                    // Above the Apply column: every proposal with a code ticked at once.
+                    if ui.add(Button::new(t("Select All")).small()).on_hover_text(t("Tick every proposal that has a code")).clicked() {
+                        for r in &mut d.review {
+                            r.accept = r.proposal.code.is_some();
+                        }
+                    }
+                    ui.end_row();
                     for h in [
                         msg!("Apply"),
                         msg!("Type or element"),
@@ -919,10 +976,10 @@ impl BimApp {
         self.classification = Some(d);
     }
 
-    /// Settings > AI Agent.
+    /// Settings > Agents, below the control port: the AI agent the Classification Manager asks.
     pub(crate) fn agent_page(&mut self, ui: &mut Ui) {
         ui.add_space(6.0);
-        ui.label(RichText::new(t("The agent the Classification Manager asks")).strong());
+        ui.label(RichText::new(t("AI agent for classification")).strong());
         ui.label(
             RichText::new(t(
                 "BIMCraft runs the command line of an agent you have installed and signed in to. It opens no connection itself: the agent sends what it's given to its own provider.",

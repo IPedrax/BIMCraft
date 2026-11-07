@@ -8,6 +8,10 @@ use crate::dims::{Background, DimString, DimensionType, Read, Tick, Witness};
 
 /// A dimension, of its kind.
 pub(super) fn dimension(d: &mut Drawing, m: &Model, dim: &Dimension) {
+    // Align's lock is shown by a front end, never drawn.
+    if dim.alignment {
+        return;
+    }
     let t = m.dimension_type(dim);
     let ink = Ink { mm: f64::from(d.k) / d.view.scale * sheet::DENSITY, color: Rgb(t.color[0], t.color[1], t.color[2]), t };
     match dim.kind {

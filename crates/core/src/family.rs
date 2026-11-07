@@ -5,6 +5,7 @@
 
 use bimcraft_i18n::{msg, ui_msg};
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
@@ -17,6 +18,7 @@ use crate::geom::P2;
 use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
 
+mod bounds;
 mod validate;
 
 /// What a family is: how IFC names its components; a door or a window is hosted in a wall, which
@@ -108,6 +110,40 @@ impl Category {
             Category::Lighting => ("IFCLIGHTFIXTURE", OPEN, None),
             Category::Generic | Category::Door | Category::Window => ("IFCBUILDINGELEMENTPROXY", OPEN, None),
         }
+    }
+
+    /// The kinds a family of it may say it is, each with the predefined type IFC writes a component of that kind with, the
+    /// category's own where it has none. A kind says which fixture or fitting it is, by the names the sizing commands count
+    /// fixtures by (`drain_size`'s and `water_size`'s `wc`, `lav`…), so a WC reaches IFC as a toilet pan, not as a sanitary
+    /// terminal of no type. Where two kinds share a predefined type, reading it back gives the first.
+    pub fn kinds(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            Category::Plumbing => &[
+                ("wc", ".TOILETPAN."),
+                ("lav", ".WASHHANDBASIN."),
+                ("sink", ".SINK."),
+                ("laundry", ".SINK."),
+                ("shower", ".SHOWER."),
+                ("bath", ".BATH."),
+                ("bidet", ".BIDET."),
+                ("urinal", ".URINAL."),
+            ],
+            Category::Drain => &[("floor_drain", ".FLOORTRAP."), ("floor_waste", ".FLOORWASTE."), ("roof_drain", ".ROOFDRAIN.")],
+            Category::PipeFitting => &[
+                ("bend", ".BEND."),
+                ("tee", ".JUNCTION."),
+                ("cross", ".JUNCTION."),
+                ("transition", ".TRANSITION."),
+                ("coupling", ".CONNECTOR."),
+            ],
+            _ => &[],
+        }
+    }
+
+    /// The kind of it an IFC product of predefined type `predefined` (as the file spells it, without the dots) is, if one is.
+    pub fn kind_of(self, predefined: Option<&str>) -> Option<&'static str> {
+        let p = predefined?;
+        self.kinds().iter().find(|(_, t)| t.trim_matches('.') == p).map(|(k, _)| *k)
     }
 
     /// Whether a device of it draws or switches a load, so its family should hold a connector that says how much.
@@ -452,6 +488,13 @@ fn no_mesh(mesh: &Arc<Vec<[P3; 3]>>) -> bool {
 pub struct Family {
     #[serde(default)]
     pub category: Category,
+    /// Which fixture or fitting of its category it is (`wc`, `bend`…), one of [`Category::kinds`]: IFC writes its
+    /// components' predefined type from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// The IFC class its components came in from a file as, which a generic family's go back out as.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ifc: Option<IfcClass>,
     #[serde(default)]
     pub parameters: Vec<Parameter>,
     #[serde(default)]
@@ -467,6 +510,57 @@ pub struct Family {
     /// Where it joins a system: an electrical device's load, a switch. At most one is `power`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub connectors: Vec<Connector>,
+}
+
+/// The IFC class a product came in as, which a generic family remembers (BIMCraft has no element for it): the class as STEP
+/// writes it (`IFCPLATE`), its predefined type (`CURTAIN_PANEL`), and the object type that says what it is where its predefined
+/// type is `USERDEFINED` or its type object is named otherwise.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IfcClass {
+    pub class: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predefined: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_type: Option<String>,
+}
+
+/// The longest IFC class or predefined type a family remembers: IFC's longest are half of it.
+pub const MAX_IFC_NAME: usize = 64;
+
+impl IfcClass {
+    /// As IFC writes it: the class and the predefined type in capitals, whatever case they were typed in.
+    pub fn written(mut self) -> IfcClass {
+        self.class = self.class.trim().to_ascii_uppercase();
+        self.predefined = self.predefined.map(|p| p.trim().trim_matches('.').to_ascii_uppercase());
+        self
+    }
+
+    /// Why it isn't one IFC can write, if it isn't: a class `IFC` and capitals or digits, a predefined type of capitals, digits
+    /// and `_`, an object type of text.
+    pub fn check(&self) -> Result<(), String> {
+        let name = |what: &str, v: &str, ok: &dyn Fn(char) -> bool| {
+            let shown: String = v.chars().take(40).collect();
+            if v.is_empty() || v.len() > MAX_IFC_NAME || !v.chars().all(ok) {
+                Err(format!("`ifc` `{what}` `{shown}`: IFC's names are capitals, digits and `_`, up to {MAX_IFC_NAME}"))
+            } else {
+                Ok(())
+            }
+        };
+        name("class", &self.class, &|c| c.is_ascii_uppercase() || c.is_ascii_digit())?;
+        if !self.class.starts_with("IFC") {
+            return Err(format!("`ifc` `class` `{}`: an IFC class starts with `IFC` (`IFCPLATE`)", self.class));
+        }
+        if let Some(p) = &self.predefined {
+            name("predefined", p, &|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')?;
+        }
+        if let Some(o) = &self.object_type
+            && (o.trim().is_empty() || o.chars().count() > MAX_TEXT || o.chars().any(char::is_control))
+        {
+            return Err(format!("`ifc` `object_type`: text of 1 to {MAX_TEXT} characters on one line"));
+        }
+        Ok(())
+    }
 }
 
 /// A parameter's value, worked out: a number (yes/no, 1 or 0), or a material's name.
@@ -1014,6 +1108,31 @@ impl Family {
         Ok(v)
     }
 
+    /// How IFC writes a component of it: [`Category::ifc`], with its kind's predefined type where it says one. A generic family
+    /// that remembers the class it came in as writes that class, and its predefined type where IFC4 has it for the class (else
+    /// none defined; nothing for a class with none); a proxy that names it, for a class IFC4 doesn't have.
+    pub fn ifc(&self) -> (Cow<'static, str>, Cow<'static, str>, Option<Cow<'static, str>>) {
+        if let Some(m) = self.remembered() {
+            let object = m.object_type.clone().map(Cow::Owned);
+            return match crate::ifc::classes::class(&m.class) {
+                Some(c) if c.3.is_empty() => (c.0.into(), "".into(), object),
+                Some(c) => {
+                    let p = m.predefined.as_deref().filter(|p| crate::ifc::classes::takes(c, p)).unwrap_or("NOTDEFINED");
+                    (c.0.into(), format!(".{p}.").into(), object)
+                }
+                None => ("IFCBUILDINGELEMENTPROXY".into(), ".USERDEFINED.".into(), Some(object.unwrap_or_else(|| m.class.clone().into()))),
+            };
+        }
+        let (class, predefined, object) = self.category.ifc();
+        let kind = self.kind.as_deref().and_then(|k| self.category.kinds().iter().find(|(n, _)| *n == k)).map(|(_, t)| *t);
+        (class.into(), kind.unwrap_or(predefined).into(), object.map(Cow::Borrowed))
+    }
+
+    /// The IFC class it remembers, where it is a generic family: what its components go out as.
+    pub fn remembered(&self) -> Option<&IfcClass> {
+        self.ifc.as_ref().filter(|_| self.category == Category::Generic)
+    }
+
     /// Whether it's sound: its parameters named once each, so formulas can say them, and holding
     /// what their kinds hold; its types setting only the type parameters no formula works out; its
     /// materials in the library (`has_material`); and every type building.
@@ -1031,6 +1150,21 @@ impl Family {
         }
         if self.types.is_empty() {
             return Err("it needs a type: add one to `types`".into());
+        }
+        if let Some(kind) = &self.kind {
+            let kinds = self.category.kinds();
+            if !kinds.iter().any(|(k, _)| k == kind) {
+                let shown: String = kind.chars().take(40).collect();
+                let names: Vec<&str> = kinds.iter().map(|(k, _)| *k).collect();
+                return Err(if names.is_empty() {
+                    format!("`kind` `{shown}`: a family of this category has no kinds; leave `kind` out")
+                } else {
+                    format!("`kind` is one of {}, not `{shown}`", names.join(", "))
+                });
+            }
+        }
+        if let Some(m) = &self.ifc {
+            m.check()?;
         }
         if self.category.hosted() {
             for name in [WIDTH, HEIGHT] {
@@ -1859,6 +1993,7 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
         w(msg!("WC")),
         json!({
             "category": "plumbing",
+            "kind": "wc",
             "types": {"400 x 650": {}},
             "forms": [
                 block([n(-200.0), n(-180.0), n(200.0), n(0.0)], n(380.0), n(800.0), &porcelain),
@@ -1872,6 +2007,7 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
         w(msg!("Washbasin")),
         json!({
             "category": "plumbing",
+            "kind": "lav",
             "parameters": [size(&width, 600.0), size(&depth, 450.0), size(&height, 850.0)],
             "types": {"600 x 450": {}, "500 x 400": {&width: 500, &depth: 400}},
             "forms": [
@@ -1887,6 +2023,7 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
         w(msg!("Bathtub")),
         json!({
             "category": "plumbing",
+            "kind": "bath",
             "parameters": [size(&length, 1700.0), size(&width, 750.0), size(&height, 560.0)],
             "types": {"1700 x 750": {}, "1500 x 700": {&length: 1500, &width: 700}},
             "forms": [

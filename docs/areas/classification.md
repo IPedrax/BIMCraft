@@ -1,7 +1,7 @@
 # Classification
 
 Manage > Classification Manager classifies a project's elements by the systems the industry uses, by hand or with the
-user's own AI agent. The core is `crates/core/src/classification.rs`; the window and Settings > AI Agent are
+user's own AI agent. The core is `crates/core/src/classification.rs`; the window and Settings > Agents are
 `crates/ui-egui/src/classification.rs`; the agent is run by `crates/agent`; `bimcraft-cli classify` does the agent's part
 with no window (`apps/bimcraft-cli/src/classify.rs`). The plan and the owner's decisions: [the plan](../classification-plan.md).
 
@@ -82,7 +82,7 @@ An agent that reads files gets the full table as `.csv` too, and searches it whe
 (Ollama) gets the candidates in its prompt, in smaller batches. `Brief::chunks` cuts a brief into batches, and `handover`
 writes each batch's files.
 
-`crates/agent` runs the command the user set in Settings > AI Agent, in a fresh folder holding those files:
+`crates/agent` runs the command the user set in Settings > Agents, in a fresh folder holding those files:
 
 - **Claude Code:** `claude -p --output-format json --tools Read,Grep,Glob --strict-mcp-config --no-session-persistence
   --json-schema …`. Its structured output is the answer.

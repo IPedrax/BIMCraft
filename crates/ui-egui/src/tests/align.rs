@@ -5,7 +5,6 @@ use bimcraft_core::sketch::SketchLine;
 fn sketch_align_uses_a_model_edge_keeps_the_loop_closed_and_undoes_without_editing_the_model() {
     let mut h = app(BOX);
     press(&mut h, "Floor");
-    press(&mut h, "Boundary Line");
     press(&mut h, "Rectangle");
     click(&mut h, P2(1000.0, 1000.0));
     click(&mut h, P2(5000.0, 4000.0));

@@ -328,6 +328,13 @@ fn same_point(a: [f64; 3], b: [f64; 3]) -> bool {
 }
 
 #[test]
+fn the_window_draws_a_thin_stroke_s_soft_edge_past_a_clip_as_the_kept_triangles_do() {
+    for h in [app(""), bimcraft("")] {
+        assert!(!h.ctx.tessellation_options(|o| o.coarse_tessellation_culling), "style::tessellation");
+    }
+}
+
+#[test]
 fn clicking_the_plan_selects_the_element_drawn_nearest_the_cursor() {
     let mut h = app(SAMPLE);
     let door = find(&h, |e| matches!(e, Element::Door(o) if o.mark == "1"));
@@ -928,7 +935,8 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
 fn manage_tab_opens_keyboard_shortcuts_dialog() {
     let mut h = app(BOX);
     press(&mut h, "Manage");
-    press(&mut h, "Shortcuts");
+    // From the Settings panel's list, which has it whether the panel is folded to fit the window or not.
+    from_list(&mut h, "Settings", "Shortcuts");
     assert!(h.state().show_shortcuts);
     assert!(h.query_by_label("Load File...").is_some());
     assert!(h.query_by_label("Add Shortcut").is_some());
@@ -1009,11 +1017,29 @@ fn saving_writes_the_project_and_exports_by_extension() {
     let project = dir.join("house.bimcraft");
     assert!(h.state_mut().save_to(&project));
     assert!(!h.state().dirty() && h.state().session.path.as_deref() == Some(project.as_path()));
-    for (name, starts) in [("house.ifc", &b"ISO-10303-21"[..]), ("plan.png", b"\x89PNG"), ("plan.svg", b"<svg")] {
+    for (name, starts) in [("house.ifc", &b"ISO-10303-21"[..]), ("scene.glb", b"glTF"), ("plan.png", b"\x89PNG"), ("plan.svg", b"<svg")] {
         assert!(h.state_mut().save_to(&dir.join(name)), "{name}: {}", h.state().status.text);
         assert!(std::fs::read(dir.join(name)).unwrap().starts_with(starts), "{name}");
     }
     assert_eq!(h.state().session.path.as_deref(), Some(project.as_path()), "exports leave the project's path alone");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn file_export_lists_the_3d_scene_as_gltf_in_both_profiles_and_an_export_leaves_the_project_unsaved() {
+    for (name, mut h) in [("Rev", app(SAMPLE)), ("BIMCraft", bimcraft(SAMPLE))] {
+        press(&mut h, "File");
+        // The submenu's label carries its arrow too.
+        h.get_by_label_contains("Export").click();
+        h.run();
+        assert!(h.query_by_label("3D Scene as glTF…").is_some(), "{name}: File > Export lists glTF");
+    }
+    let mut h = app(SAMPLE);
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-gltf-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    h.state_mut().session.execute("level", &json!({"elevation": 6000})).unwrap();
+    assert!(h.state_mut().save_to(&dir.join("house.glb")), "{}", h.state().status.text);
+    assert!(h.state().dirty() && h.state().session.path.is_none(), "the project is still unsaved");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1849,25 +1875,29 @@ fn a_click_made_on_the_move_in_3d_picks_what_was_under_the_press_and_leaves_the_
 }
 
 #[test]
-fn in_3d_a_drag_orbits_the_middle_button_pans_and_the_wheel_zooms() {
+fn in_3d_a_shift_drag_boxes_shift_and_the_middle_button_orbit_the_middle_button_pans_and_the_wheel_zooms() {
     let mut h = app(BOX);
     press(&mut h, "Default 3D View");
     let cam = |h: &Harness<BimApp>| h.state().orbit.camera.unwrap();
     let (start, mid) = (cam(&h), h.state().orbit.rect.center());
-    // 100 px to the right: the model turns 40° with it.
+    // Shift and a primary drag are a selection box, as in a plan: the view stays.
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
     drag_screen(&mut h, mid, mid + vec2(100.0, 0.0), PointerButton::Primary);
-    let turned = cam(&h);
-    assert!((turned.azimuth - (start.azimuth - 40.0)).abs() < 0.5 && turned.elevation == start.elevation, "{turned:?}");
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    assert_eq!(cam(&h), start, "Shift and the primary button don't turn the view");
     drag_screen(&mut h, mid, mid + vec2(0.0, 50.0), PointerButton::Middle);
     let panned = cam(&h);
-    assert!(panned.target != turned.target && panned.azimuth == turned.azimuth, "{panned:?}");
-    // Shift and the middle button orbit too, as in Revit: dragging down looks from higher up.
+    assert!(panned.target != start.target && panned.azimuth == start.azimuth, "{panned:?}");
+    // Shift and the middle button orbit, as in Revit: 100 px to the right turns the model 40°; dragging down looks from higher up.
     h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    drag_screen(&mut h, mid, mid + vec2(100.0, 0.0), PointerButton::Middle);
+    let turned = cam(&h);
+    assert!((turned.azimuth - (start.azimuth - 40.0)).abs() < 0.5 && turned.elevation == start.elevation, "{turned:?}");
     drag_screen(&mut h, mid, mid + vec2(0.0, 50.0), PointerButton::Middle);
     h.event(Event::ModifiersChanged(Modifiers::NONE));
     h.run();
     let raised = cam(&h);
-    assert!(raised.elevation > panned.elevation + 15.0, "{raised:?}");
+    assert!(raised.elevation > turned.elevation + 15.0, "{raised:?}");
     h.hover_at(mid);
     h.event(Event::MouseWheel {
         unit: MouseWheelUnit::Point,
@@ -1881,6 +1911,30 @@ fn in_3d_a_drag_orbits_the_middle_button_pans_and_the_wheel_zooms() {
     // Zoom to Fit: the whole model again, from where the camera is now.
     press(&mut h, "Zoom to Fit");
     assert!(cam(&h).scale < zoomed.scale && cam(&h).azimuth == zoomed.azimuth);
+}
+
+#[test]
+fn in_3d_a_box_from_the_left_picks_what_lies_wholly_inside_and_from_the_right_what_it_touches() {
+    let mut h = app(BOX);
+    press(&mut h, "Default 3D View");
+    let south = find(&h, |e| matches!(e, Element::Wall(w) if w.start == P2(0.0, 0.0)));
+    // Round the south wall, its ends and height and all, from the left: it, and nothing else.
+    let corners = [[-300.0, -300.0, -100.0], [8300.0, 300.0, 3300.0], [-300.0, 300.0, 3300.0], [8300.0, -300.0, -100.0]];
+    let on: Vec<Pos2> = corners.iter().map(|p| h.state().screen3(*p)).collect();
+    let (lo, hi) = on.iter().fold((on[0], on[0]), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
+    let before = h.state().orbit.camera;
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    drag_screen(&mut h, lo, hi, PointerButton::Primary);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    assert_eq!(h.state().selection, [south], "window: wholly inside");
+    assert_eq!(h.state().orbit.camera, before);
+    key(&mut h, Key::Escape);
+    // From the right, a box over the south wall's middle only: the walls it touches, no more.
+    let (a, b) = (h.state().screen3([4500.0, 0.0, 1500.0]), h.state().screen3([3500.0, 0.0, 1500.0]));
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    drag_screen(&mut h, a + vec2(0.0, -10.0), b + vec2(0.0, 10.0), PointerButton::Primary);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    assert_eq!(h.state().selection, [south], "crossing: what it touches");
 }
 
 #[test]
@@ -2350,10 +2404,10 @@ fn a_window_told_of_no_file_keeps_no_recent_files_and_offers_none() {
 #[test]
 fn saved_and_opened_projects_are_listed_in_open_recent_newest_first_and_exports_are_not() {
     let (mut h, dir, file) = recent_rig("list");
-    for name in ["a.bimcraft", "b.bimcraft", "plan.png", "house.pdf", "house.ifc"] {
+    for name in ["a.bimcraft", "b.bimcraft", "plan.png", "house.pdf", "house.ifc", "scene.glb"] {
         assert!(h.state_mut().save_to(&dir.join(name)), "{name}");
     }
-    // An IFC export leaves the project unsaved and is not a file to come back to.
+    // An IFC or glTF export leaves the project unsaved and is not a file to come back to.
     let names = |h: &Harness<BimApp>| h.state().recent.labels();
     assert_eq!(names(&h), ["b.bimcraft", "a.bimcraft"]);
     // Opening one moves it to the top; an IFC file that is opened (imported) is listed too.
@@ -2445,7 +2499,7 @@ fn dark_mode_turns_the_window_and_the_drawing_dark() {
     // Ink light on a dark ground, the grid still blue.
     let (ground, ink, grid) = (crate::canvas::color(PAPER), crate::canvas::color(Rgb(25, 25, 25)), crate::canvas::color(Rgb(60, 100, 150)));
     assert!(ground.r() < 40 && ink.r() > 200 && grid.b() > grid.r() + 40, "{ground:?} {ink:?} {grid:?}");
-    assert_eq!(crate::style::pal().surface, crate::style::REV_DARK.surface, "Rev's dark");
+    assert_eq!(crate::style::pal().surface, crate::style::DARK.surface);
     press(&mut h, "Dark Mode");
     pick(&mut h, Role::RadioButton, "Light");
     assert!(!crate::style::dark() && crate::canvas::color(PAPER) == egui::Color32::WHITE);
@@ -2460,7 +2514,7 @@ fn dark_ui_with_light_canvas_is_shared_with_settings_and_survives_new_projects()
     press(&mut h, "Dark Mode");
     pick(&mut h, Role::RadioButton, "Dark UI, Light Canvas");
     assert!(crate::style::dark() && h.ctx.theme() == egui::Theme::Dark);
-    assert_eq!(crate::style::pal().surface, crate::style::REV_DARK.surface, "Rev's dark");
+    assert_eq!(crate::style::pal().surface, crate::style::DARK.surface);
     assert_eq!(crate::canvas::color(PAPER), egui::Color32::WHITE);
     assert_eq!(crate::canvas::color(Rgb(25, 25, 25)), egui::Color32::from_gray(25));
     assert!(h.query_by_label("Dark UI, Light Canvas").is_none(), "menu closes after choosing");
@@ -2827,6 +2881,10 @@ mass {"boundary": [[1000, 1000], [3000, 1000], [3000, 2000], [1000, 2000]], "nam
                 click(&mut h, at);
             }
             missed.extend(english(&h, l));
+            // Floor sketches at once, and a sketch holds the window in its plan: cancelled before the next.
+            if h.state().sketch.is_some() {
+                press(&mut h, tr("Cancel Edit Mode"));
+            }
         }
         // The Mass tool with its Options Bar and prompts, and the Massing tab with a mass selected.
         key(&mut h, Key::Escape);
@@ -3128,6 +3186,85 @@ fn rotate_turns_a_component_about_its_own_point() {
 }
 
 #[test]
+fn rotate_turns_a_camera_about_its_eye_by_default() {
+    let mut h = app(&format!("{BOX}\ncamera {{\"eye\": [5000, 5000, 1500], \"target\": [6000, 5000, 1200]}}"));
+    let camera = ids(&h, "view3d")[0];
+    click(&mut h, P2(5000.0, 5000.0));
+    assert_eq!(h.state().selection, [camera]);
+    press(&mut h, "Rotate");
+    assert!(
+        matches!(h.state().tool, Tool::Rotate { centre, .. } if centre == P2(5000.0, 5000.0)),
+        "the camera turns about its eye: {:?}",
+        h.state().tool
+    );
+}
+
+#[test]
+fn rotating_a_camera_about_its_eye_keeps_the_eye_and_turns_the_target() {
+    let mut h = app(&format!("{BOX}\ncamera {{\"eye\": [5000, 5000, 1500], \"target\": [6000, 5000, 1200]}}"));
+    let camera = ids(&h, "view3d")[0];
+    click(&mut h, P2(5000.0, 5000.0));
+    press(&mut h, "Rotate");
+    click(&mut h, P2(6000.0, 5000.0));
+    click(&mut h, P2(5000.0, 6000.0));
+    let cam = field(&h, camera, "camera");
+    assert_eq!(cam["eye"], json!([5000.0, 5000.0, 1500.0]), "the eye stays");
+    let target = cam["target"].as_array().unwrap();
+    assert!((target[0].as_f64().unwrap() - 5000.0).abs() < 0.01 && (target[1].as_f64().unwrap() - 6000.0).abs() < 0.01, "{cam}");
+    assert_eq!(target[2], json!(1200.0), "the target keeps its height");
+}
+
+#[test]
+fn rotate_centre_shows_a_walls_snap_before_the_click_and_takes_it() {
+    use bimcraft_core::snap::Kind;
+    let mut h = app(BOX);
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Rotate");
+    press(&mut h, "Place Centre");
+    let f = hover(&mut h, P2(8030.0, 20.0)).expect("a snap marker before the click");
+    assert_eq!((f.kind, f.at), (Kind::Endpoint, P2(8000.0, 0.0)), "{f:?}");
+    click(&mut h, P2(8030.0, 20.0));
+    assert!(matches!(h.state().tool, Tool::Rotate { centre, .. } if centre == P2(8000.0, 0.0)), "{:?}", h.state().tool);
+}
+
+#[test]
+fn rotate_centre_snaps_to_a_notes_anchor() {
+    use bimcraft_core::snap::Kind;
+    let mut h = app(&format!("{BOX}\ntext {{\"text\": \"Note\", \"at\": [4000, 3000], \"leader\": [5000, 3000]}}"));
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Rotate");
+    press(&mut h, "Place Centre");
+    let f = hover(&mut h, P2(4020.0, 3020.0)).expect("the note's anchor");
+    assert_eq!((f.kind, f.at), (Kind::Anchor, P2(4000.0, 3000.0)), "{f:?}");
+    click(&mut h, P2(4020.0, 3020.0));
+    assert!(matches!(h.state().tool, Tool::Rotate { centre, .. } if centre == P2(4000.0, 3000.0)), "{:?}", h.state().tool);
+}
+
+#[test]
+fn a_click_on_a_cameras_mark_takes_its_eye() {
+    let mut h = app(&format!("{BOX}\ncamera {{\"eye\": [5000, 5000, 1500], \"target\": [6000, 5000, 1200]}}"));
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Rotate");
+    press(&mut h, "Place Centre");
+    // The body stands behind the eye, against the way the camera looks: ten pixels west of it.
+    let eye = h.state().screen(P2(5000.0, 5000.0));
+    click_at(&mut h, eye - vec2(10.0, 0.0));
+    assert!(matches!(h.state().tool, Tool::Rotate { centre, .. } if centre == P2(5000.0, 5000.0)), "{:?}", h.state().tool);
+}
+
+#[test]
+fn manage_snaps_has_annotation_anchors() {
+    let mut h = app(BOX);
+    assert!(h.state().snaps.annotation);
+    press(&mut h, "Manage");
+    press(&mut h, "Snaps");
+    assert!(h.query_by_label("Annotation Anchor").is_some());
+    pick(&mut h, Role::CheckBox, "Annotation Anchor");
+    press(&mut h, "Close");
+    assert!(!h.state().snaps.annotation);
+}
+
+#[test]
 fn properties_and_type_properties_edit_a_components_parameters() {
     let stool = r#"family {"name": "Stool", "parameters": [{"name": "Seat", "instance": true, "value": 450}, {"name": "Size", "value": 400}], "types": {"A": {}}, "forms": [{"profile": [[0, 0], ["Size", 0], ["Size", "Size"], [0, "Size"]], "to": "Seat"}]}
 component {"family": "Stool", "at": [3000, 2000]}"#;
@@ -3159,8 +3296,8 @@ component {"family": "Stool", "at": [3000, 2000]}"#;
 fn floors_go_under_the_walls_and_a_slope_arrow_slopes_them() {
     let mut h = app(BOX);
     tool(&mut h, "Floor");
-    assert!(h.query_by_label("Modify | Create Floor").is_some());
-    click(&mut h, P2(4000.0, 3000.0));
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
     assert_eq!((floor.len(), field(&h, floor[0], "area_m2")), (1, json!(48.0)));
     assert_eq!(h.state().selection, floor, "finished, the floor is selected");
@@ -3175,11 +3312,182 @@ fn floors_go_under_the_walls_and_a_slope_arrow_slopes_them() {
 }
 
 #[test]
+fn shape_editing_raises_points_draws_split_lines_and_resets_a_floor() {
+    let mut h = app(BOX);
+    tool(&mut h, "Floor");
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
+    let floor = ids(&h, "floor");
+    // A drain 30 mm down in its middle, from Shape Editing's Add Point at the Options Bar's elevation.
+    press(&mut h, "Add Point");
+    type_into(&mut h, "Offset from Surface:", "-30");
+    click(&mut h, P2(4000.0, 3000.0));
+    let shape = field(&h, floor[0], "shape");
+    assert_eq!((shape["points"][0]["at"].clone(), shape["points"][0]["z"].clone()), (json!([4000.0, 3000.0]), json!(-30.0)), "{shape}");
+    assert_eq!(field(&h, floor[0], "top"), json!([-30.0, 0.0]));
+    assert_eq!((h.state().selection.as_slice(), &h.state().tool), (floor.as_slice(), &Tool::AddPoint), "ready for the next point");
+    // With Absolute, an elevation above the level, not the top: 10 mm under the level is 10 mm under the top here.
+    pick(&mut h, Role::RadioButton, "Absolute");
+    type_into(&mut h, "Elevation:", "-10");
+    click(&mut h, P2(2000.0, 1500.0));
+    assert_eq!(field(&h, floor[0], "shape")["points"].as_array().map(Vec::len), Some(2));
+    // A split line from a corner to the drain, each click snapping to them.
+    press(&mut h, "Add Split Line");
+    click(&mut h, P2(40.0, 5960.0));
+    click(&mut h, P2(3970.0, 3030.0));
+    let lines = field(&h, floor[0], "shape")["lines"].clone();
+    assert_eq!((lines[0]["a"].clone(), lines[0]["b"].clone()), (json!([0.0, 6000.0]), json!([4000.0, 3000.0])), "{lines}");
+    assert_eq!(h.state().tool, Tool::AddSplitLine(None), "ready for the next line");
+    // Reset Shape takes it all off, the floor still selected.
+    press(&mut h, "Reset Shape");
+    assert_eq!(field(&h, floor[0], "shape"), json!(null));
+    assert_eq!(h.state().selection, floor);
+}
+
+#[test]
+fn modify_sub_elements_selects_then_sets_a_points_height_or_an_edges_both_ends_and_deletes() {
+    let mut h = app(BOX);
+    tool(&mut h, "Floor");
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
+    let floor = ids(&h, "floor");
+    press(&mut h, "Add Point");
+    type_into(&mut h, "Offset from Surface:", "-30");
+    click(&mut h, P2(4000.0, 3000.0));
+    let id = field(&h, floor[0], "shape")["points"][0]["id"].clone();
+    // Nothing picked, the Elevation is blank; the drain picked, a little off it, it reads its height, and what's typed
+    // there, Enter, lowers it: the same point.
+    press(&mut h, "Modify Sub Elements");
+    assert_eq!(h.state().shape_z, "");
+    click(&mut h, P2(4030.0, 2970.0));
+    assert_eq!((h.state().shape_picked.len(), h.state().shape_z.as_str()), (1, "-30"));
+    type_into(&mut h, "Elevation:", "-50");
+    key(&mut h, Key::Enter);
+    let points = field(&h, floor[0], "shape")["points"].clone();
+    assert_eq!((points.as_array().map(Vec::len), points[0]["id"].clone(), points[0]["z"].clone()), (Some(1), id, json!(-50.0)), "{points}");
+    // An edge of the outline: both its corners, each a point now.
+    click(&mut h, P2(4000.0, 20.0));
+    assert_eq!(h.state().shape_z, "0");
+    type_into(&mut h, "Elevation:", "20");
+    key(&mut h, Key::Enter);
+    let points = field(&h, floor[0], "shape")["points"].clone();
+    let at = |x: f64, y: f64| points.as_array().unwrap().iter().find(|p| p["at"] == json!([x, y])).map(|p| p["z"].clone());
+    assert_eq!((at(0.0, 0.0), at(8000.0, 0.0)), (Some(json!(20.0)), Some(json!(20.0))), "{points}");
+    assert_eq!(field(&h, floor[0], "top"), json!([-50.0, 20.0]));
+    // The drain added with Shift: two heights, the Elevation blank; one typed sets them all.
+    click_with(&mut h, P2(4000.0, 3000.0), Modifiers::SHIFT);
+    assert_eq!((h.state().shape_picked.len(), h.state().shape_z.as_str()), (2, ""));
+    type_into(&mut h, "Elevation:", "5");
+    key(&mut h, Key::Enter);
+    let zs: Vec<Value> = field(&h, floor[0], "shape")["points"].as_array().unwrap().iter().map(|p| p["z"].clone()).collect();
+    assert!(zs.iter().all(|z| *z == json!(5.0)), "{zs:?}");
+    // Delete takes the drain off, the floor kept; its corners go back to the top's height.
+    click(&mut h, P2(4000.0, 3000.0));
+    key(&mut h, Key::Delete);
+    let shape = field(&h, floor[0], "shape");
+    assert!(!shape["points"].as_array().unwrap().iter().any(|p| p["at"] == json!([4000.0, 3000.0])), "{shape}");
+    assert_eq!((ids(&h, "floor"), &h.state().tool), (floor.clone(), &Tool::ModifySubElements));
+}
+
+#[test]
+fn modify_sub_elements_drags_a_point_with_its_split_lines_and_labels_its_height() {
+    let mut h = app(BOX);
+    tool(&mut h, "Floor");
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
+    let floor = ids(&h, "floor");
+    press(&mut h, "Add Point");
+    type_into(&mut h, "Offset from Surface:", "-30");
+    click(&mut h, P2(4000.0, 3000.0));
+    press(&mut h, "Add Split Line");
+    click(&mut h, P2(40.0, 5960.0));
+    click(&mut h, P2(3970.0, 3030.0));
+    // While shaping, the point's height beside it.
+    assert!(painted(&h).iter().any(|t| t == "-30"), "{:?}", painted(&h));
+    let id = field(&h, floor[0], "shape")["points"][0]["id"].clone();
+    // Its grip dragged: the same point, at its height, somewhere else, and the split line ending there with it.
+    press(&mut h, "Modify Sub Elements");
+    drag(&mut h, P2(4000.0, 3000.0), P2(5000.0, 2000.0));
+    let shape = field(&h, floor[0], "shape");
+    let p = &shape["points"][0];
+    assert_eq!((p["id"].clone(), p["at"].clone(), p["z"].clone()), (id, json!([5000.0, 2000.0]), json!(-30.0)), "{shape}");
+    assert_eq!(shape["lines"][0]["b"], json!([5000.0, 2000.0]), "{shape}");
+    assert_eq!((h.state().selection.as_slice(), &h.state().tool), (floor.as_slice(), &Tool::ModifySubElements));
+    // Away from shaping, no labels.
+    key(&mut h, Key::Escape);
+    key(&mut h, Key::Escape);
+    assert!(!painted(&h).iter().any(|t| t == "-30"), "{:?}", painted(&h));
+}
+
+#[test]
+fn a_shape_points_grip_held_mid_drag_previews_where_it_and_its_creases_will_go() {
+    let mut h = app(r#"floor {"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
+    let floor = ids(&h, "floor")[0];
+    h.state_mut().run("edit_shape", json!({"id": floor, "points": [{"at": [4000, 3000], "z": -30}]}));
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Modify Sub Elements");
+    let (a, b) = (h.state().screen(P2(4000.0, 3000.0)), h.state().screen(P2(5000.0, 2000.0)));
+    h.hover_at(a);
+    h.run();
+    h.event(Event::PointerButton { pos: a, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+    h.run();
+    for t in [0.5, 1.0] {
+        h.hover_at(a + (b - a) * t);
+        h.run();
+    }
+    // Held: the model as it was; the preview with the drain where the cursor is, the creases running to it.
+    assert_eq!(field(&h, floor, "shape")["points"][0]["at"], json!([4000.0, 3000.0]));
+    let preview = h.state().shape_preview.clone().expect("a preview while the grip is held");
+    assert_eq!((preview.shape.points[0].at, preview.shape.points[0].z), (P2(5000.0, 2000.0), -30.0));
+    let creases = h.state().session.model.shape_creases(&preview);
+    assert_eq!(creases.iter().flatten().filter(|p| (p[0], p[1]) == (5000.0, 2000.0)).count(), 4, "{creases:?}");
+    h.event(Event::PointerButton { pos: b, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+    h.run();
+    assert_eq!(field(&h, floor, "shape")["points"][0]["at"], json!([5000.0, 2000.0]));
+    assert!(h.state().shape_preview.is_none());
+}
+
+#[test]
+fn elevations_read_from_the_elevation_base_the_unshaped_top_the_level_or_the_project_zero() {
+    // On Level 2, 3000 mm up, its top 50 mm over the level.
+    let mut h = app(r#"floor {"level": 100001, "offset": 50, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}"#);
+    topmost(&mut h, "Level 2");
+    let floor = ids(&h, "floor");
+    click(&mut h, P2(4000.0, 0.0));
+    assert_eq!(h.state().selection, floor);
+    // Absolute over the level: 30 mm under Level 2, 80 mm under the top.
+    press(&mut h, "Add Point");
+    pick(&mut h, Role::RadioButton, "Absolute");
+    h.state_mut().shape_base = crate::shape::Base::Level;
+    type_into(&mut h, "Elevation:", "-30");
+    click(&mut h, P2(4000.0, 3000.0));
+    assert_eq!(field(&h, floor[0], "shape")["points"][0]["z"], json!(-80.0), "{}", field(&h, floor[0], "shape"));
+    // Modify Sub Elements reads it from each base: 30 under the level, 2970 over the project's zero, 80 under the top.
+    press(&mut h, "Modify Sub Elements");
+    h.state_mut().shape_base = crate::shape::Base::Level;
+    click(&mut h, P2(4000.0, 3000.0));
+    assert_eq!(h.state().shape_z, "-30");
+    h.state_mut().shape_base = crate::shape::Base::Project;
+    h.state_mut().shape_refresh();
+    assert_eq!(h.state().shape_z, "2970");
+    h.state_mut().shape_base = crate::shape::Base::Floor;
+    h.state_mut().shape_refresh();
+    assert_eq!(h.state().shape_z, "-80");
+    // Typed over the project's zero, set so.
+    h.state_mut().shape_base = crate::shape::Base::Project;
+    type_into(&mut h, "Elevation:", "3000");
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, floor[0], "shape")["points"][0]["z"], json!(-50.0));
+    assert!(h.query_by_label("Elevation Base:").is_some());
+}
+
+#[test]
 fn the_floor_tool_leaves_a_courtyard_open_inside_a_loop_of_walls_standing_free() {
     let mut h = app(r#"wall {"points": [[0, 0], [16000, 0], [16000, 16000], [0, 16000]], "closed": true}
 wall {"points": [[6000, 6000], [10000, 6000], [10000, 10000], [6000, 10000]], "closed": true}"#);
     tool(&mut h, "Floor");
-    click(&mut h, P2(3000.0, 8000.0));
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
     assert_eq!(floor.len(), 1);
     let courtyard = json!([[[6000.0, 6000.0], [6000.0, 10000.0], [10000.0, 10000.0], [10000.0, 6000.0]]]);
@@ -3365,7 +3673,8 @@ fn a_floor_types_layers_go_from_its_top_down() {
     use egui_kittest::kittest::{By, NodeT};
     let mut h = app(BOX);
     tool(&mut h, "Floor");
-    click(&mut h, P2(4000.0, 3000.0));
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "Finish Edit Mode");
     press(&mut h, "Edit Type");
     // A layer on top of its structure: tiles, 10 mm.
     press(&mut h, "Insert Layer");
@@ -3383,10 +3692,76 @@ fn a_floor_types_layers_go_from_its_top_down() {
     h.get_by(|n| n.id() == thick).type_text("10");
     h.run();
     assert!(h.get_all_by_label("Down").count() > 0 && h.query_by_label("In").is_none(), "a floor's layers move up and down");
+    // A floor's layer may be variable, to take up a shaped top's falls: one at most, so ticking another unticks it.
+    let boxes = |h: &Harness<BimApp>| {
+        h.query_all(By::new().role(Role::CheckBox).label("Variable")).map(|n| n.accesskit_node().id()).collect::<Vec<_>>()
+    };
+    let (top, under) = (boxes(&h)[0], boxes(&h)[1]);
+    h.get_by(|n| n.id() == under).click();
+    h.run();
+    h.get_by(|n| n.id() == top).click();
+    h.run();
     press(&mut h, "OK");
     let t = &h.state().session.model.types.floor["Generic - 200mm"];
     assert_eq!((t.thickness, t.layers.len()), (210.0, 2));
     assert_eq!((t.layers[0].material.as_str(), t.layers[0].thickness), ("Ceramic tile", 10.0));
+    assert_eq!((t.layers[0].variable, t.layers[1].variable), (true, false));
+}
+
+#[test]
+fn a_multi_category_schedule_is_made_from_the_new_schedule_dialog_and_lists_walls_and_doors() {
+    let mut h = app_at(&format!("{BOX}\ndoor {{\"at\": [2000, 0]}}"), 0.05);
+    press(&mut h, "View");
+    press(&mut h, "Schedules");
+    press(&mut h, "Schedule/Quantities…");
+    pick(&mut h, Role::Button, "Multi-Category");
+    let named = {
+        use egui_kittest::kittest::NodeT;
+        h.get_by_role_and_label(Role::TextInput, "Name:").accesskit_node().value()
+    };
+    assert_eq!(named.as_deref(), Some("Multi-Category Schedule"));
+    press(&mut h, "OK");
+    let sc = ids(&h, "schedule")[0];
+    assert_eq!(h.state().sheet, Sheet::Table(sc));
+    let Some(Element::Schedule(s)) = h.state().session.model.elements.get(sc).cloned() else { panic!("no schedule {sc}") };
+    assert_eq!(s.of, bimcraft_core::schedule::MULTI);
+    let t = bimcraft_core::schedule::table(&h.state().session.model, &s).unwrap();
+    let cats: Vec<&str> = t.rows.iter().filter_map(|r| r[0].as_str()).collect();
+    assert!(cats.contains(&"wall") && cats.contains(&"door"), "{cats:?}");
+}
+
+#[test]
+fn a_schedule_of_the_projects_own_is_deleted_from_the_browser_and_its_tab_closes() {
+    let mut h = app(&format!("{SAMPLE}\nschedule {{\"name\": \"Extras\", \"category\": \"multicategory\"}}"));
+    let sc = find(&h, |e| matches!(e, Element::Schedule(s) if s.name == "Extras"));
+    let before = ids(&h, "schedule").len();
+    h.get_by_label("Extras").scroll_to_me();
+    h.run();
+    browse(&mut h, "Extras");
+    assert_eq!(h.state().sheet, Sheet::Table(sc));
+    // Its entry in the browser, below its tab's: a widget's right click, pressed in one frame and let go in the next.
+    let pos = h.get_all_by_label("Extras").map(|n| n.rect()).max_by(|a, b| a.top().total_cmp(&b.top())).unwrap().center();
+    h.hover_at(pos);
+    h.run();
+    for pressed in [true, false] {
+        h.event(Event::PointerButton { pos, button: PointerButton::Secondary, pressed, modifiers: Modifiers::NONE });
+        h.run();
+    }
+    choose_item(&mut h, "Delete");
+    assert_eq!(ids(&h, "schedule").len(), before - 1, "deleted");
+    assert!(!h.state().session.model.elements.contains_key(sc), "it is the one deleted");
+    assert_ne!(h.state().sheet, Sheet::Table(sc), "its tab is closed");
+    // The six every project has have no Delete.
+    h.get_by_label("Room Schedule").scroll_to_me();
+    h.run();
+    let pos = h.get_by_label("Room Schedule").rect().center();
+    h.hover_at(pos);
+    h.run();
+    for pressed in [true, false] {
+        h.event(Event::PointerButton { pos, button: PointerButton::Secondary, pressed, modifiers: Modifiers::NONE });
+        h.run();
+    }
+    assert!(h.query_by_label("Delete").is_none(), "no Delete on a standard schedule");
 }
 
 #[test]
@@ -3521,6 +3896,23 @@ fn hover(h: &mut Harness<BimApp>, p: P2) -> Option<bimcraft_core::snap::Found> {
 /// Degrees from `a` to `b`, counter-clockwise from east.
 fn degrees(a: P2, b: P2) -> f64 {
     (b.1 - a.1).atan2(b.0 - a.0).to_degrees()
+}
+
+#[test]
+fn a_wall_is_drawn_to_a_columns_edge_and_not_only_to_its_centre() {
+    use bimcraft_core::snap::Kind;
+    // A 400 x 400 column at 4000, 3000: its left edge is at 3800 (issue #88 asked for a wall flush with one).
+    let mut h = app(&format!("{BOX}\ncolumn {{\"at\": [4000, 3000], \"type\": \"Rectangular 400 x 400\"}}"));
+    tool(&mut h, "Wall");
+    let at = |h: &mut Harness<BimApp>, p: P2| hover(h, p).map(|f| (f.kind, f.at));
+    assert_eq!(at(&mut h, P2(3790.0, 3020.0)), Some((Kind::Midpoint, P2(3800.0, 3000.0))), "the middle of its left edge");
+    assert_eq!(at(&mut h, P2(3790.0, 2790.0)), Some((Kind::Endpoint, P2(3800.0, 2800.0))), "its corner");
+    assert_eq!(at(&mut h, P2(4030.0, 3020.0)), Some((Kind::Centre, P2(4000.0, 3000.0))), "and still its centre");
+    // A wall from the west ends on the edge.
+    click(&mut h, P2(1000.0, 3000.0));
+    click(&mut h, P2(3790.0, 3020.0));
+    key(&mut h, Key::Enter);
+    assert_eq!(walls(&h).last(), Some(&(P2(1000.0, 3000.0), P2(3800.0, 3000.0))));
 }
 
 #[test]
@@ -4510,6 +4902,7 @@ fn a_templates_controls_are_ticked_and_unticked_one_at_a_time() {
     let mut h = app(BOX);
     h.state_mut().session.execute("template", &json!({"name": "T", "from": 100000, "controls": ["categories"]})).unwrap();
     shortcut(&mut h, "VT");
+    press(&mut h, "T");
     let controls = |h: &Harness<BimApp>| h.state().session.model.view_templates["T"].controls.iter().copied().collect::<Vec<_>>();
     assert_eq!(controls(&h), [Group::Categories]);
     // Each is ticked on its own, the others staying as they were; Apply (the dialog's, over the palette's) sends them.
@@ -5023,7 +5416,9 @@ fn a_view_that_does_not_show_the_active_option_says_so_and_picking_it_again_show
     press(&mut h, "Massing: Low");
     assert!(!h.state().active_option_unseen(), "Level 1 shows it now");
     // Level 2's plan still shows the primary: what is made there in Low would not be seen.
-    topmost(&mut h, "Level 2");
+    // By its row in the browser, whichever side of the palette's fold that lies.
+    h.get_all_by_label("Level 2").next().unwrap().click_accesskit();
+    h.run();
     assert!(plan_graphics(&h, 100001).options.is_empty());
     assert!(h.state().active_option_unseen());
     // The same pick again shows it in the view on screen.
@@ -5397,6 +5792,7 @@ mod clouds;
 mod control;
 mod dialog;
 mod dimensions;
+mod dims3d;
 mod display;
 mod dock;
 mod draw;
@@ -5418,6 +5814,7 @@ mod mep;
 mod minimap;
 mod notes;
 mod objectstyles;
+mod origin;
 mod parameters;
 mod patterns;
 mod perspective;
@@ -5430,7 +5827,10 @@ mod reinforce;
 mod revit;
 mod rooms;
 mod section_box;
+mod shape3d;
+mod shortcuts_kept;
 mod sketch;
+mod sketch3d;
 mod smallest;
 mod standards;
 mod start;
@@ -5438,12 +5838,14 @@ mod templates;
 mod themes;
 mod titlebar;
 mod tools;
+mod triad;
 mod trim;
 mod typed;
 mod typeprops;
 mod view_controls;
 mod window;
 mod working3d;
+mod workplane;
 
 #[test]
 fn a_mass_edits_its_levels_and_its_top_outline_in_its_properties_which_lofts_it() {
