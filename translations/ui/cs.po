@@ -500,7 +500,7 @@ msgstr "Jímač (AT): jímací prvek v místě kliknutí na střeše; Mezerník 
 msgid "Air Terminals"
 msgstr "Jímače"
 
-#: crates/core/src/commands.rs:1237
+#: crates/core/src/commands.rs:1239
 #: crates/ui-egui/src/editor.rs:1172
 #: crates/ui-egui/src/lib.rs:354
 #: crates/ui-egui/src/sketch.rs:709
@@ -1164,7 +1164,7 @@ msgstr "Vypočítaná hodnota…"
 msgid "Came in: {}"
 msgstr "Importováno: {}"
 
-#: crates/core/src/commands.rs:1801
+#: crates/core/src/commands.rs:1803
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3896
 #: crates/ui-egui/src/properties.rs:274
@@ -2181,7 +2181,7 @@ msgstr "Zkopírováno {} řádků oddělených tabulátory."
 msgid "Copper"
 msgstr "Měď"
 
-#: crates/core/src/commands.rs:1267
+#: crates/core/src/commands.rs:1269
 #: crates/ui-egui/src/editor/document.rs:203
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4632
@@ -2604,7 +2604,7 @@ msgstr "Zbourané"
 msgid "Demolition"
 msgstr "Demolice"
 
-#: crates/core/src/commands.rs:9706
+#: crates/core/src/commands.rs:9708
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -2758,7 +2758,7 @@ msgstr "Text kóty"
 msgid "Dimension Text Placement:"
 msgstr "Umístění textu kóty:"
 
-#: crates/core/src/commands.rs:1249
+#: crates/core/src/commands.rs:1251
 msgid "Dimension Value"
 msgstr "Hodnota kóty"
 
@@ -3120,7 +3120,7 @@ msgstr "Elektrotechnická nastavení"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrotechnická nastavení: napětí, rozvodné soustavy a typy vodičů, na které se odkazují obvody a rozváděče; průřezy v mm²"
 
-#: crates/core/src/commands.rs:2167
+#: crates/core/src/commands.rs:2169
 msgid "Elements"
 msgstr "Prvky"
 
@@ -3453,7 +3453,7 @@ msgstr "Vyplněná oblast (FR): načrtněte v tomto pohledu oblast vyplněnou vz
 msgid "Filled region"
 msgstr "Vyplněná oblast"
 
-#: crates/core/src/commands.rs:1336
+#: crates/core/src/commands.rs:1338
 msgid "Fillet Arc"
 msgstr "Zaoblovací oblouk"
 
@@ -4931,7 +4931,7 @@ msgstr "Podlaží objemu (MF): podlaží v každé úrovni, kterou vybrané obje
 msgid "Massing"
 msgstr "Objemy"
 
-#: crates/core/src/commands.rs:1229
+#: crates/core/src/commands.rs:1231
 msgid "Match Properties"
 msgstr "Shoda vlastností"
 
@@ -4994,7 +4994,7 @@ msgstr "Maximum"
 msgid "Maximum Riser Height"
 msgstr "Maximální výška stupně"
 
-#: crates/core/src/commands.rs:1911
+#: crates/core/src/commands.rs:1913
 #: crates/ui-egui/src/editor/document.rs:231
 #: crates/ui-egui/src/editor/document.rs:232
 msgid "Measure"
@@ -5199,7 +5199,7 @@ msgstr ""
 msgid "Mounting Height"
 msgstr "Montážní výška"
 
-#: crates/core/src/commands.rs:1259
+#: crates/core/src/commands.rs:1261
 #: crates/ui-egui/src/editor/document.rs:193
 msgid "Move"
 msgstr "Přesunout"
@@ -7353,7 +7353,7 @@ msgstr ""
 msgid "RotZ (degrees)"
 msgstr ""
 
-#: crates/core/src/commands.rs:1274
+#: crates/core/src/commands.rs:1276
 #: crates/ui-egui/src/editor/document.rs:213
 msgid "Rotate"
 msgstr "Otočit"
@@ -7503,7 +7503,7 @@ msgstr "Měřítko: velikost papíru odpovídající tomuto pohledu, 1 : n model
 msgid "Scan"
 msgstr "Sken"
 
-#: crates/core/src/commands.rs:1705
+#: crates/core/src/commands.rs:1707
 msgid "Schedule"
 msgstr "Výkaz"
 
@@ -8178,7 +8178,7 @@ msgstr "Křivka spline procházející body: klikněte na body, kterými prochá
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Křivka spline: klikněte na její řídicí body; klávesa Enter ji dokončí"
 
-#: crates/core/src/commands.rs:1316
+#: crates/core/src/commands.rs:1318
 msgid "Split"
 msgstr "Rozdělit"
 
@@ -9101,7 +9101,7 @@ msgstr "Oříznout/prodloužit jeden prvek"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Oříznout/prodloužit jeden prvek: vyberte hraniční čáru a poté čáru k úpravě na části, kterou chcete zachovat"
 
-#: crates/core/src/commands.rs:1290
+#: crates/core/src/commands.rs:1292
 #: crates/ui-egui/src/sketch.rs:712
 #: crates/ui-egui/src/sketch.rs:964
 msgid "Trim/Extend to Corner"
@@ -9295,7 +9295,7 @@ msgstr "Formát jednotek"
 msgid "Unlock alignment"
 msgstr "Odemknout zarovnání"
 
-#: crates/core/src/commands.rs:9847
+#: crates/core/src/commands.rs:9849
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 

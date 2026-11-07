@@ -1604,8 +1604,8 @@ pub struct Run {
 #[serde(deny_unknown_fields)]
 pub struct Component {
     /// Frames in component-local coordinates; None uses the definition test placement. A component whose frame comes from
-    /// its own adaptive points, as this one's does when it is set, can't take a host: `Model::check` is to refuse one once
-    /// components have hosts.
+    /// its adaptive points (this set, or its family adaptive: `Model::placed_by_points`) takes no `host`: `Model::check`
+    /// refuses one, and `Model::component_placement` and `Model::settle_hosts` leave it as its points place it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub adaptive: Option<crate::adaptive::Placement>,
     pub family: String,
@@ -7124,9 +7124,18 @@ impl Model {
                 point(&who, c.at)?;
                 coord(&format!("{who} angle"), c.angle)?;
                 coord(&format!("{who} offset"), c.offset)?;
-                // On a reference plane, only a work plane-based family's component. (An adaptive component, when the
-                // adaptive branch's `adaptive` merges, is placed by its own points: a `host` on one is refused here too.)
+                // On a reference plane, only a work plane-based family's component, and never an adaptive one: it is placed
+                // by its own points.
                 if let Some(h) = &c.host {
+                    if self.placed_by_points(c) {
+                        return Err(format!(
+                            "{who}: it is hosted on {}, and adaptive components take their place from their points (family \
+                             `{}` is adaptive): move its points (`adaptive_move`, `adaptive_place`) instead, or put it on a level \
+                             (`edit_work_plane` with `host` `level`)",
+                            self.work_plane_name(c),
+                            c.family
+                        ));
+                    }
                     match self.elements.get(h.host.guid()) {
                         Some(Element::RefPlane(_)) => {}
                         Some(other) => {

@@ -501,7 +501,7 @@ msgstr "Bocchetta aria (AT): un captatore, dove clicchi sulla copertura; Spazio 
 msgid "Air Terminals"
 msgstr "Bocchette aria"
 
-#: crates/core/src/commands.rs:1237
+#: crates/core/src/commands.rs:1239
 #: crates/ui-egui/src/editor.rs:1172
 #: crates/ui-egui/src/lib.rs:354
 #: crates/ui-egui/src/sketch.rs:709
@@ -1165,7 +1165,7 @@ msgstr "Valore calcolato…"
 msgid "Came in: {}"
 msgstr "Importato: {}"
 
-#: crates/core/src/commands.rs:1801
+#: crates/core/src/commands.rs:1803
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3896
 #: crates/ui-egui/src/properties.rs:274
@@ -2182,7 +2182,7 @@ msgstr "Copiate {} righe, separate da tabulazione."
 msgid "Copper"
 msgstr "Rame"
 
-#: crates/core/src/commands.rs:1267
+#: crates/core/src/commands.rs:1269
 #: crates/ui-egui/src/editor/document.rs:203
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4632
@@ -2605,7 +2605,7 @@ msgstr "Demolito"
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:9706
+#: crates/core/src/commands.rs:9708
 msgid "Dependent"
 msgstr "Dipendente"
 
@@ -2759,7 +2759,7 @@ msgstr "Testo di quota"
 msgid "Dimension Text Placement:"
 msgstr "Posizione del testo di quota:"
 
-#: crates/core/src/commands.rs:1249
+#: crates/core/src/commands.rs:1251
 msgid "Dimension Value"
 msgstr ""
 
@@ -3121,7 +3121,7 @@ msgstr ""
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr ""
 
-#: crates/core/src/commands.rs:2167
+#: crates/core/src/commands.rs:2169
 msgid "Elements"
 msgstr "Elementi"
 
@@ -3454,7 +3454,7 @@ msgstr "Retino (FR): disegna un'area riempita con un motivo, in questa vista"
 msgid "Filled region"
 msgstr "Retino"
 
-#: crates/core/src/commands.rs:1336
+#: crates/core/src/commands.rs:1338
 msgid "Fillet Arc"
 msgstr "Raccordo ad arco"
 
@@ -4932,7 +4932,7 @@ msgstr "Solai del volume (MF): un solaio a ogni piano attraversato dai volumi se
 msgid "Massing"
 msgstr "Volumi"
 
-#: crates/core/src/commands.rs:1229
+#: crates/core/src/commands.rs:1231
 msgid "Match Properties"
 msgstr "Copia proprietà"
 
@@ -4995,7 +4995,7 @@ msgstr ""
 msgid "Maximum Riser Height"
 msgstr "Altezza massima alzata"
 
-#: crates/core/src/commands.rs:1911
+#: crates/core/src/commands.rs:1913
 #: crates/ui-egui/src/editor/document.rs:231
 #: crates/ui-egui/src/editor/document.rs:232
 msgid "Measure"
@@ -5200,7 +5200,7 @@ msgstr ""
 msgid "Mounting Height"
 msgstr "Altezza di installazione"
 
-#: crates/core/src/commands.rs:1259
+#: crates/core/src/commands.rs:1261
 #: crates/ui-egui/src/editor/document.rs:193
 msgid "Move"
 msgstr "Sposta"
@@ -7354,7 +7354,7 @@ msgstr ""
 msgid "RotZ (degrees)"
 msgstr ""
 
-#: crates/core/src/commands.rs:1274
+#: crates/core/src/commands.rs:1276
 #: crates/ui-egui/src/editor/document.rs:213
 msgid "Rotate"
 msgstr "Ruota"
@@ -7504,7 +7504,7 @@ msgstr "Scala: la carta che questa vista rappresenta, 1 : n del modello; annotaz
 msgid "Scan"
 msgstr "Scansione"
 
-#: crates/core/src/commands.rs:1705
+#: crates/core/src/commands.rs:1707
 msgid "Schedule"
 msgstr "Abaco"
 
@@ -8179,7 +8179,7 @@ msgstr "Spline per punti: clicca i punti per cui passa; Invio termina"
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Spline: clicca i punti di controllo; Invio la termina"
 
-#: crates/core/src/commands.rs:1316
+#: crates/core/src/commands.rs:1318
 msgid "Split"
 msgstr "Dividi"
 
@@ -9102,7 +9102,7 @@ msgstr "Taglia/Estendi singolo elemento"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Taglia/Estendi singolo elemento: scegli la linea limite, poi la linea da modificare, sulla parte da tenere"
 
-#: crates/core/src/commands.rs:1290
+#: crates/core/src/commands.rs:1292
 #: crates/ui-egui/src/sketch.rs:712
 #: crates/ui-egui/src/sketch.rs:964
 msgid "Trim/Extend to Corner"
@@ -9296,7 +9296,7 @@ msgstr "Formato unità"
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:9847
+#: crates/core/src/commands.rs:9849
 msgid "Unnamed"
 msgstr "Senza nome"
 

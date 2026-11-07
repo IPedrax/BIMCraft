@@ -308,9 +308,10 @@ its graphics card's copies, sections, bounds, rooms and IFC: upright, turned `an
 isn't level and its family isn't Always Vertical; then it tilts by the least turn that takes the vertical to the plane's
 normal, so on a level plane both are the same and `angle` still turns it about its own z. Tilted, its plan outline is the
 hull of its triangles seen from above and it draws no plan symbols; a hosted component isn't banded by height
-(`derived.rs`), since its family says whether it tilts. Adaptive components, when the adaptive branch merges, take their
-frame from their own points before this and refuse a host (the comments in `component_placement` and `Model::check` mark the
-place). `elements` gives each component's `work_plane` (`Level : Level 1`, `Reference Plane : Ramp`) and `offset_from_host`
+(`derived.rs`), since its family says whether it tilts. Adaptive components (`Model::placed_by_points`: frames of their own, or an adaptive family's
+test placement) take their frame from their own points: `component_placement` places them upright, as before, whatever they
+hold, `settle_hosts` never moves them, and `Model::check` refuses a `host` on one ("adaptive components take their place from
+their points"), so `component` and `edit_work_plane` can't put one on a plane. `elements` gives each component's `work_plane` (`Level : Level 1`, `Reference Plane : Ramp`) and `offset_from_host`
 (its host's offset, or its height over its level), which `modify` also takes; component schedules have Elevation from
 Level, Work Plane and Offset from Host besides Level, its Schedule Level. IFC keeps it in its Schedule Level's storey, its
 `IfcAxis2Placement3D` taking the tilt as its Axis and RefDirection; the project's reference planes aren't exported. FORMAT

@@ -1201,7 +1201,9 @@ pub static ALL: &[Command] = &[
          taking one back to the family's). A work plane-based family may go on a reference plane (`host` `plane`, Place on Work \
          Plane): `at` [x, y] is taken straight onto the plane, [x, y, z] along its normal (an upright plane needs it), `offset` \
          is its Offset from Host along the normal, `level` its Schedule Level (by default the highest level at or below it); \
-         it follows the plane when the plane moves, upright or, its family not Always Vertical, tilted with the plane",
+         it follows the plane when the plane moves, upright or, its family not Always Vertical, tilted with the plane. An \
+         adaptive family's component is placed by its points (`adaptive`, else the family's test placement) and takes no `host` \
+         plane",
         work_plane::component,
     )
     .menu("Architecture > Component"),

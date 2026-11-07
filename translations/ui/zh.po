@@ -501,7 +501,7 @@ msgstr "接闪器 (AT)：在屋顶上单击处放置接闪器；按空格键旋�
 msgid "Air Terminals"
 msgstr "接闪器"
 
-#: crates/core/src/commands.rs:1237
+#: crates/core/src/commands.rs:1239
 #: crates/ui-egui/src/editor.rs:1172
 #: crates/ui-egui/src/lib.rs:354
 #: crates/ui-egui/src/sketch.rs:709
@@ -1165,7 +1165,7 @@ msgstr "计算值…"
 msgid "Came in: {}"
 msgstr "已导入：{}"
 
-#: crates/core/src/commands.rs:1801
+#: crates/core/src/commands.rs:1803
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3896
 #: crates/ui-egui/src/properties.rs:274
@@ -2182,7 +2182,7 @@ msgstr "已复制 {} 行，以制表符分隔。"
 msgid "Copper"
 msgstr "铜"
 
-#: crates/core/src/commands.rs:1267
+#: crates/core/src/commands.rs:1269
 #: crates/ui-egui/src/editor/document.rs:203
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4632
@@ -2605,7 +2605,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:9706
+#: crates/core/src/commands.rs:9708
 msgid "Dependent"
 msgstr "相关"
 
@@ -2759,7 +2759,7 @@ msgstr "尺寸标注文字"
 msgid "Dimension Text Placement:"
 msgstr "尺寸文字对齐:"
 
-#: crates/core/src/commands.rs:1249
+#: crates/core/src/commands.rs:1251
 msgid "Dimension Value"
 msgstr "尺寸标注值"
 
@@ -3121,7 +3121,7 @@ msgstr "电气设置"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "电气设置：电路和配电箱所引用的电压、配电系统和导线类型；截面积单位为 mm²"
 
-#: crates/core/src/commands.rs:2167
+#: crates/core/src/commands.rs:2169
 msgid "Elements"
 msgstr "图元"
 
@@ -3454,7 +3454,7 @@ msgstr "填充区域 (FR)：在此视图中绘制以图案填充的区域"
 msgid "Filled region"
 msgstr "填充区域"
 
-#: crates/core/src/commands.rs:1336
+#: crates/core/src/commands.rs:1338
 msgid "Fillet Arc"
 msgstr "圆角弧"
 
@@ -4932,7 +4932,7 @@ msgstr "体量楼层 (MF)：在所选体量穿过的每个标高处创建一个�
 msgid "Massing"
 msgstr "体量建模"
 
-#: crates/core/src/commands.rs:1229
+#: crates/core/src/commands.rs:1231
 msgid "Match Properties"
 msgstr "匹配属性"
 
@@ -4995,7 +4995,7 @@ msgstr "最大值"
 msgid "Maximum Riser Height"
 msgstr "最大踢面高度"
 
-#: crates/core/src/commands.rs:1911
+#: crates/core/src/commands.rs:1913
 #: crates/ui-egui/src/editor/document.rs:231
 #: crates/ui-egui/src/editor/document.rs:232
 msgid "Measure"
@@ -5200,7 +5200,7 @@ msgstr ""
 msgid "Mounting Height"
 msgstr "安装高度"
 
-#: crates/core/src/commands.rs:1259
+#: crates/core/src/commands.rs:1261
 #: crates/ui-egui/src/editor/document.rs:193
 msgid "Move"
 msgstr "移动"
@@ -7354,7 +7354,7 @@ msgstr ""
 msgid "RotZ (degrees)"
 msgstr ""
 
-#: crates/core/src/commands.rs:1274
+#: crates/core/src/commands.rs:1276
 #: crates/ui-egui/src/editor/document.rs:213
 msgid "Rotate"
 msgstr "旋转"
@@ -7504,7 +7504,7 @@ msgstr "比例：此视图所代表的图纸，为模型的 1 : n；其注释和
 msgid "Scan"
 msgstr "扫描"
 
-#: crates/core/src/commands.rs:1705
+#: crates/core/src/commands.rs:1707
 msgid "Schedule"
 msgstr "明细表"
 
@@ -8179,7 +8179,7 @@ msgstr "通过点的样条曲线：单击它经过的点；按 Enter 完成"
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "样条曲线：单击其控制点；按 Enter 完成"
 
-#: crates/core/src/commands.rs:1316
+#: crates/core/src/commands.rs:1318
 msgid "Split"
 msgstr "拆分"
 
@@ -9102,7 +9102,7 @@ msgstr "修剪/延伸单个图元"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "修剪/延伸单个图元：拾取边界线，然后在要保留的部分上拾取要更改的线"
 
-#: crates/core/src/commands.rs:1290
+#: crates/core/src/commands.rs:1292
 #: crates/ui-egui/src/sketch.rs:712
 #: crates/ui-egui/src/sketch.rs:964
 msgid "Trim/Extend to Corner"
@@ -9296,7 +9296,7 @@ msgstr "单位格式"
 msgid "Unlock alignment"
 msgstr "解锁对齐"
 
-#: crates/core/src/commands.rs:9847
+#: crates/core/src/commands.rs:9849
 msgid "Unnamed"
 msgstr "未命名"
 

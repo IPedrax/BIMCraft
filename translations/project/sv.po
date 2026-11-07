@@ -36,7 +36,7 @@ msgstr "Tegel"
 msgid "Brick 225 x 75"
 msgstr "Tegel 225 x 75"
 
-#: crates/core/src/commands.rs:4204
+#: crates/core/src/commands.rs:4206
 msgid "Camera"
 msgstr "Kamera"
 
@@ -84,7 +84,7 @@ msgstr "Betongblock"
 msgid "Copper"
 msgstr "Koppar"
 
-#: crates/core/src/commands.rs:1267
+#: crates/core/src/commands.rs:1269
 msgid "Copy"
 msgstr "Kopiera"
 
@@ -112,7 +112,7 @@ msgstr "Streckpunkt"
 msgid "Data Outlet"
 msgstr "Datauttag"
 
-#: crates/core/src/commands.rs:9706
+#: crates/core/src/commands.rs:9708
 msgid "Dependent"
 msgstr "Beroende"
 
@@ -188,8 +188,8 @@ msgstr "Elbelysning"
 msgid "Electrical Power"
 msgstr "Elkraft"
 
-#: crates/core/src/commands.rs:9490
-#: crates/core/src/commands.rs:12154
+#: crates/core/src/commands.rs:9492
+#: crates/core/src/commands.rs:12156
 msgid "Elevation"
 msgstr "Fasad"
 
@@ -306,7 +306,7 @@ msgstr "Benbredd"
 msgid "Length"
 msgstr "Längd"
 
-#: crates/core/src/commands.rs:6256
+#: crates/core/src/commands.rs:6258
 #: crates/core/src/model.rs:3123
 msgid "Level"
 msgstr "Nivå"
@@ -331,7 +331,7 @@ msgstr "Beteckning"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:7514
+#: crates/core/src/commands.rs:7516
 msgid "Mass"
 msgstr "Volymmodell"
 
@@ -419,7 +419,7 @@ msgstr "Puts"
 msgid "Porcelain"
 msgstr "Porslin"
 
-#: crates/core/src/commands.rs:2895
+#: crates/core/src/commands.rs:2897
 msgid "Project"
 msgstr "Projekt"
 
@@ -447,7 +447,7 @@ msgstr "Sättsteg"
 msgid "Roof tiles"
 msgstr "Takpannor"
 
-#: crates/core/src/commands.rs:7739
+#: crates/core/src/commands.rs:7741
 msgid "Room"
 msgstr "Rum"
 
@@ -475,8 +475,8 @@ msgstr "Avjämningsmassa"
 msgid "Seat Height"
 msgstr "Sitthöjd"
 
-#: crates/core/src/commands.rs:9467
-#: crates/core/src/commands.rs:12153
+#: crates/core/src/commands.rs:9469
+#: crates/core/src/commands.rs:12155
 msgid "Section"
 msgstr "Sektion"
 
@@ -600,7 +600,7 @@ msgstr "UPP"
 msgid "Unbounded Height"
 msgstr "Obegränsad höjd"
 
-#: crates/core/src/commands.rs:9847
+#: crates/core/src/commands.rs:9849
 msgid "Unnamed"
 msgstr "Namnlös"
 
