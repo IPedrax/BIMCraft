@@ -40,11 +40,13 @@ pub(crate) struct Key {
     own: Option<Revision>,
     levels: [Option<Revision>; 2],
     shape: Shape,
+    /// A component's own adaptive frames, hashed: its box follows its points, as the other component caches key on them.
+    adaptive: Option<u64>,
 }
 
 impl Key {
     pub(crate) fn of(m: &Model, id: Id) -> Self {
-        let mut key = Self { own: m.elements.revision(id), levels: [None; 2], shape: Shape::Other };
+        let mut key = Self { own: m.elements.revision(id), levels: [None; 2], shape: Shape::Other, adaptive: None };
         let Some(e) = m.elements.get(id) else { return key };
         if let Some(c) = e.column() {
             key.levels = [m.elements.revision(c.level), c.top_level.and_then(|id| m.elements.revision(id))];
@@ -57,6 +59,12 @@ impl Key {
                 m.run_type(e).map_or(Shape::Missing, |t| Shape::Run { dimensions: [t.width.to_bits(), t.depth.to_bits()], round: t.round });
         } else if let crate::model::Element::Component(c) = e {
             key.levels[0] = m.elements.revision(c.level);
+            key.adaptive = c.adaptive.as_ref().map(|a| {
+                use std::hash::{Hash, Hasher};
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                serde_json::to_string(a).unwrap_or_default().hash(&mut h);
+                h.finish()
+            });
         }
         key
     }
@@ -204,9 +212,18 @@ pub(crate) fn primitive(m: &Model, id: Id) -> Bounds {
     }
     if let crate::model::Element::Component(c) = e {
         let Some(family) = m.families.get(&c.family) else { return Bounds::Unknown };
-        let Some(bounds) = family.values(&c.type_name, &c.params).ok().and_then(|values| family.conservative_bounds(&values)) else {
-            return Bounds::Unknown;
+        let Ok(values) = family.values(&c.type_name, &c.params) else { return Bounds::Unknown };
+        // An adaptive family's geometry is where its instance's points put it: the box of what it builds there.
+        let local = match family.adaptive {
+            Some(_) => family.pieces_at(&values, c.adaptive.as_ref()).ok().and_then(|pieces| {
+                match padded(pieces.iter().flat_map(|p| p.tris.iter().flatten().copied())) {
+                    Bounds::Box(b) => Some(b),
+                    _ => None,
+                }
+            }),
+            None => family.conservative_bounds(&values),
         };
+        let Some(bounds) = local else { return Bounds::Unknown };
         return place_component(m, c, bounds);
     }
     Bounds::Unknown

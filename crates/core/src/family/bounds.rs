@@ -17,8 +17,12 @@ impl Family {
     /// Conservative local bounds for visible swept profiles and imported meshes.
     /// No triangles or boolean results are constructed. None means unknown/empty;
     /// callers must keep the instance. Visible voids and revolved forms currently
-    /// return unknown. These envelopes must not replace exact framing extrema.
+    /// return unknown, and so does an adaptive family, whose geometry its instances' points decide. These envelopes must
+    /// not replace exact framing extrema.
     pub fn conservative_bounds<'a>(&'a self, values: &BTreeMap<String, Val>) -> Option<[P3; 2]> {
+        if self.adaptive.is_some() {
+            return None;
+        }
         let mut read = HashMap::new();
         let mut num = |e: &'a Expr| number(e, values, &mut read).ok();
         let mut out = None;

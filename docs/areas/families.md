@@ -247,7 +247,8 @@ the family has them and sends them back whole when it saves.
   work plane-based, and the option can't be turned off while a component of the family is on a plane.
 - `default_elevation` (0, mm): the height over its level a component of a family that isn't work plane-based is placed at
   when `component` is given no `offset` (Revit's Default Elevation); finite and within `MAX_COORD`. A component placed keeps
-  its offset, so changing it moves nothing.
+  its offset, so changing it moves nothing. An adaptive one (`Model::placed_by_points`, by `component` or `adaptive_place`)
+  never takes it: Revit places it by its points alone.
 - `cut_with_voids_when_loaded` (off) and `shared` (off) are stored only: a project's voids cutting a component and nested
   families will read them.
 - `cut_in_views`: none, a section cuts the family's forms as its category says (`Category::cut`); `true` or `false`

@@ -11,6 +11,8 @@ mod geometry;
 #[cfg(test)]
 mod host_tests;
 #[cfg(test)]
+mod placement_tests;
+#[cfg(test)]
 mod plane_tests;
 #[cfg(test)]
 mod revit_tests;
