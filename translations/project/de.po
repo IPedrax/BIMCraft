@@ -51,7 +51,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Deckenleuchte"
 
-#: crates/core/src/render.rs:3105
+#: crates/core/src/render.rs:3107
 msgid "Ceiling Plan"
 msgstr "Deckenspiegel"
 
@@ -95,7 +95,7 @@ msgstr "Anzahl"
 msgid "Crosshatch"
 msgstr "Schraffur"
 
-#: crates/core/src/render.rs:3697
+#: crates/core/src/render.rs:3699
 msgid "DN"
 msgstr "AB"
 
@@ -358,7 +358,7 @@ msgstr "Metall"
 msgid "Mounting Height"
 msgstr "Montagehöhe"
 
-#: crates/core/src/render.rs:2933
+#: crates/core/src/render.rs:2935
 msgid "NOT ENCLOSED"
 msgstr "NICHT UMSCHLOSSEN"
 
@@ -426,7 +426,7 @@ msgstr "Porzellan"
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/render.rs:2933
+#: crates/core/src/render.rs:2935
 msgid "REDUNDANT"
 msgstr "REDUNDANT"
 
@@ -458,11 +458,11 @@ msgstr "Raum"
 msgid "Room Schedule"
 msgstr "Raumtabelle"
 
-#: crates/core/src/sheet.rs:274
+#: crates/core/src/sheet.rs:276
 msgid "SCALE"
 msgstr "MASSSTAB"
 
-#: crates/core/src/sheet.rs:276
+#: crates/core/src/sheet.rs:278
 msgid "SCALE AS INDICATED"
 msgstr "MASSSTAB WIE ANGEGEBEN"
 
@@ -595,7 +595,7 @@ msgstr "Fliese 300"
 msgid "Timber"
 msgstr "Holz"
 
-#: crates/core/src/sheet.rs:213
+#: crates/core/src/sheet.rs:215
 msgid "Total"
 msgstr "Gesamt"
 
@@ -607,7 +607,7 @@ msgstr "Auftritt"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:3697
+#: crates/core/src/render.rs:3699
 msgid "UP"
 msgstr "AUF"
 

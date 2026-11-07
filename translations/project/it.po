@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Plafoniera"
 
-#: crates/core/src/render.rs:3105
+#: crates/core/src/render.rs:3107
 msgid "Ceiling Plan"
 msgstr "Pianta controsoffitti"
 
@@ -96,7 +96,7 @@ msgstr "Numero"
 msgid "Crosshatch"
 msgstr "Tratteggio incrociato"
 
-#: crates/core/src/render.rs:3697
+#: crates/core/src/render.rs:3699
 msgid "DN"
 msgstr "GIÙ"
 
@@ -359,7 +359,7 @@ msgstr "Metallo"
 msgid "Mounting Height"
 msgstr "Altezza di installazione"
 
-#: crates/core/src/render.rs:2933
+#: crates/core/src/render.rs:2935
 msgid "NOT ENCLOSED"
 msgstr "NON CHIUSA"
 
@@ -427,7 +427,7 @@ msgstr "Porcellana"
 msgid "Project"
 msgstr "Progetto"
 
-#: crates/core/src/render.rs:2933
+#: crates/core/src/render.rs:2935
 msgid "REDUNDANT"
 msgstr ""
 
@@ -459,11 +459,11 @@ msgstr "Zona"
 msgid "Room Schedule"
 msgstr "Abaco zone"
 
-#: crates/core/src/sheet.rs:274
+#: crates/core/src/sheet.rs:276
 msgid "SCALE"
 msgstr "SCALA"
 
-#: crates/core/src/sheet.rs:276
+#: crates/core/src/sheet.rs:278
 msgid "SCALE AS INDICATED"
 msgstr "SCALA COME INDICATO"
 
@@ -596,7 +596,7 @@ msgstr "Piastrella 300"
 msgid "Timber"
 msgstr "Legno"
 
-#: crates/core/src/sheet.rs:213
+#: crates/core/src/sheet.rs:215
 msgid "Total"
 msgstr "Totale"
 
@@ -608,7 +608,7 @@ msgstr "Pedata"
 msgid "Type"
 msgstr "Tipo"
 
-#: crates/core/src/render.rs:3697
+#: crates/core/src/render.rs:3699
 msgid "UP"
 msgstr "SU"
 

@@ -1,9 +1,9 @@
-//! Manage > Coordinates: where the project stands in the world, as one window ([coordinates](../../../docs/areas/coordinates.md)).
+//! Manage > Project Location > Location: where the project stands in the world, as one window ([coordinates](../../../docs/areas/coordinates.md)).
 //!
 //! On top, always in sight, a summary of the active location: a dial of project north and true north, the Survey Point's
-//! shared coordinates in the map's own unit, and the map system with the latitude and longitude it gives. Under it four tabs:
-//! the locations as a table typed into (and shifted all at once when the survey changes), the three points side by side,
-//! internal and shared, the map system picked by search, and a converter. Everything is a draft until OK or Apply, which run
+//! shared coordinates in the map's own unit, and the map system with the latitude and longitude it gives. Under it five tabs:
+//! the locations as a table typed into, the three points side by side, internal and shared, the map system picked by search,
+//! Manage (Specify, Shift, Acquire, Rotate Project North and Reset, each a card that folds), and a converter. Everything is a draft until OK or Apply, which run
 //! the `crs`, `location` and `coordinates` commands as one undo step.
 
 use std::collections::BTreeSet;
@@ -60,7 +60,7 @@ struct Row {
     at: Location,
 }
 
-/// The Coordinates window: its tab, and the project's coordinates as edited and not yet applied.
+/// The Location window: its tab, and the project's coordinates as edited and not yet applied.
 pub(crate) struct CoordinatesDialog {
     tab: usize,
     rows: Vec<Row>,
@@ -100,6 +100,7 @@ pub(crate) struct CoordinatesDialog {
     /// one in the view, ask whether to reset, reset.
     acquire: Option<Id>,
     pick_acquire: bool,
+    rotate_north: bool,
     confirm_reset: bool,
     reset: bool,
     /// The links and CAD drawings to acquire from: their ids and names.
@@ -145,6 +146,7 @@ impl CoordinatesDialog {
             specify_angle: None,
             acquire: None,
             pick_acquire: false,
+            rotate_north: false,
             confirm_reset: false,
             reset: false,
             sources: m
@@ -710,7 +712,8 @@ fn points_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
     });
 }
 
-/// Manage: Specify Coordinates at a Point, Shift every location, Acquire Coordinates from a link or a drawing, and Reset, each a
+/// Manage: Specify Coordinates at a Point, Shift every location, Acquire Coordinates from a link or a drawing, Rotate Project
+/// North and Reset, each a
 /// card of its own that folds, closed until opened.
 fn manage_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
     let grid = d.grid();
@@ -718,7 +721,7 @@ fn manage_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
         note(
             ui,
             msg!(
-                "Type the shared coordinates the survey gives a point, then pick that point in the view: the window steps aside while you pick (it snaps; a wall's corner is its bottom, a floor's, roof's or ceiling's its top) and comes back to review before OK or Apply."
+                "Know the survey coordinates of one spot, such as a site corner or a benchmark? Type them here, press Pick Point and Specify, and click that spot in the view. The window hides while you pick and comes back so you can check before OK. A wall's corner gives its bottom; a floor, roof or ceiling gives its top."
             ),
         );
         Grid::new("coordinates-specify").spacing([10.0, 5.0]).show(ui, |ui| {
@@ -752,7 +755,12 @@ fn manage_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
         });
     });
     fold(ui, msg!("Shift every location"), |ui| {
-        note(ui, msg!("The survey moved the site? Add the same amounts to every location at once, say +5 m of elevation."));
+        note(
+            ui,
+            msg!(
+                "Did the surveyor's numbers change by a fixed amount? Type the change here and every location moves by it in one go, for example 5 m more elevation."
+            ),
+        );
         ui.horizontal(|ui| {
             let [e, n, z] = &mut d.shift;
             for (label, v) in [(msg!("East"), e), (msg!("North"), n), (msg!("Elevation"), z)] {
@@ -769,7 +777,7 @@ fn manage_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
         note(
             ui,
             msg!(
-                "Take the shared coordinates of a linked model (BIMCraft or IFC) or a CAD drawing, where it stands now: its coordinates become this project's. It is done at once, as its own undo step, and what is typed here and not applied is set back."
+                "Have a survey drawing or a linked model already sitting in the right place? Acquire takes its coordinates for this project, so the two agree. Choose one below, or pick it in the view. It happens straight away and can be undone; anything typed in this window and not applied yet is cleared."
             ),
         );
         if d.sources.is_empty() {
@@ -789,11 +797,26 @@ fn manage_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
             d.pick_acquire = true;
         }
     });
+    fold(ui, msg!("Rotate Project North"), |ui| {
+        note(
+            ui,
+            msg!(
+                "Turn the whole model on the plan, say to square the building up with the screen, without changing where it is in the world: true north turns back by the same amount. The window closes and you pick the angle on the plan, as with Rotate; you can also type it."
+            ),
+        );
+        ui.horizontal(|ui| {
+            let (rect, _) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::hover());
+            crate::icons::paint(ui.painter(), crate::icons::Icon::ProjectNorth, rect, pal().text);
+            if ui.button(t("Rotate Project North")).clicked() {
+                d.rotate_north = true;
+            }
+        });
+    });
     fold(ui, msg!("Reset Coordinates"), |ui| {
         note(
             ui,
             msg!(
-                "Shared coordinates back to the file's own: the active location on the internal origin, with no turn, and both points on it. No link moves: each placed by base points or shared coordinates is pinned by origin where it stands, its file loaded or not."
+                "Start the project's coordinates over: they become the model's own again, with no offset and no turn. Nothing in the model moves, and linked models stay exactly where they are, even when their file isn't loaded. You are asked to confirm first."
             ),
         );
         if ui.button(t("Reset Coordinates…")).clicked() {
@@ -1179,7 +1202,7 @@ fn convert_tab(ui: &mut Ui, d: &mut CoordinatesDialog) {
 }
 
 impl BimApp {
-    /// The Coordinates window, while it's open.
+    /// The Location window, while it's open.
     pub(crate) fn coordinates_window(&mut self, ctx: &Context) {
         let Some(mut d) = self.coordinates_dialog.take() else { return };
         if d.picking {
@@ -1192,7 +1215,7 @@ impl BimApp {
         }
         let units = self.session.model.units;
         let (mut ok, mut apply, mut cancel) = (false, false, false);
-        let r = Modal::new(UiId::new("coordinates"), t("Coordinates")).width(980.0).min_height(560.0).show(ctx, |ui| {
+        let r = Modal::new(UiId::new("coordinates"), t("Location")).width(980.0).min_height(560.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 ui.add_space(6.0);
                 summary(ui, &mut d);
@@ -1246,6 +1269,11 @@ impl BimApp {
         if std::mem::take(&mut d.pick_acquire) {
             // The window goes; the tool picks in the view.
             self.set_tool(crate::Tool::Acquire);
+            return;
+        }
+        if std::mem::take(&mut d.rotate_north) {
+            // The window goes; the angle is picked on the plan, about the Project Base Point.
+            self.set_tool(crate::Tool::RotateNorth { centre: P2(0.0, 0.0), start: None, place: false });
             return;
         }
         let failed = (ok || apply) && !self.apply_coordinates(&mut d, apply);
@@ -1319,7 +1347,7 @@ impl BimApp {
             if commands.is_empty() {
                 return Ok(());
             }
-            self.session.transaction("Coordinates", |s: &mut Session| commands.iter().try_for_each(|(c, p)| s.execute(c, p).map(|_| ())))
+            self.session.transaction("Location", |s: &mut Session| commands.iter().try_for_each(|(c, p)| s.execute(c, p).map(|_| ())))
         });
         if let Err(e) = done {
             d.error = Some(e.clone());

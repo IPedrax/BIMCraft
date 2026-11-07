@@ -2,7 +2,7 @@
 //! opens, every type parameter Revit's has: leader arrowhead and its size, the leader's and the arrowhead's pens and colour,
 //! the symbol, the lettering and its colour, the coordinate origin, the top and bottom values, the indicators, the elevation,
 //! units and alternate units), the grip on a selected spot coordinate's leader end, and Acquire Coordinates' pick in the view
-//! (Coordinates > Manage > Pick in the View).
+//! (Location > Manage > Pick in the View).
 
 use bimcraft_core::coordinates::Origin;
 use bimcraft_core::dims::Background;

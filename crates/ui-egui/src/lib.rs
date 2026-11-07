@@ -161,7 +161,7 @@ pub enum Tool {
         start: Option<P2>,
         place: bool,
     },
-    /// Specify Coordinates at a Point: the point the shared coordinates typed in the Coordinates window are at, picked in the
+    /// Specify Coordinates at a Point: the point the shared coordinates typed in the Location window are at, picked in the
     /// view (snapped) while the window steps aside.
     SpecifyPoint,
     /// Acquire Coordinates: the link or CAD drawing clicked gives the project its shared coordinates.
@@ -4146,16 +4146,10 @@ impl BimApp {
         });
         panel(ui, msg!("Project Location"), |ui| {
             let tip = msg!(
-                "Coordinates: where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, and conversions"
+                "Location: where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, managing them, and conversions"
             );
-            if big_button(ui, Icon::Coordinates, "Coordinates", self.coordinates_dialog.is_some(), tip).clicked() {
+            if big_button(ui, Icon::Coordinates, "Location", self.coordinates_dialog.is_some(), tip).clicked() {
                 self.coordinates_dialog = Some(coordinates::CoordinatesDialog::new(&self.session.model));
-            }
-            let tip = msg!(
-                "Rotate Project North: turn the whole model on the plan, as Rotate does, about the Project Base Point; true north turns back as much, so nothing moves in the world"
-            );
-            if big_button(ui, Icon::ProjectNorth, "Rotate Project North", matches!(self.tool, Tool::RotateNorth { .. }), tip).clicked() {
-                self.set_tool(Tool::RotateNorth { centre: P2(0.0, 0.0), start: None, place: false });
             }
         });
         panel(ui, msg!("Links"), |ui| {

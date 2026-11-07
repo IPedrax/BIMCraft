@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr ""
 
-#: crates/core/src/render.rs:3105
+#: crates/core/src/render.rs:3107
 msgid "Ceiling Plan"
 msgstr ""
 
@@ -96,7 +96,7 @@ msgstr ""
 msgid "Crosshatch"
 msgstr ""
 
-#: crates/core/src/render.rs:3697
+#: crates/core/src/render.rs:3699
 msgid "DN"
 msgstr ""
 
@@ -359,7 +359,7 @@ msgstr ""
 msgid "Mounting Height"
 msgstr ""
 
-#: crates/core/src/render.rs:2933
+#: crates/core/src/render.rs:2935
 msgid "NOT ENCLOSED"
 msgstr ""
 
@@ -427,7 +427,7 @@ msgstr ""
 msgid "Project"
 msgstr ""
 
-#: crates/core/src/render.rs:2933
+#: crates/core/src/render.rs:2935
 msgid "REDUNDANT"
 msgstr ""
 
@@ -459,11 +459,11 @@ msgstr ""
 msgid "Room Schedule"
 msgstr ""
 
-#: crates/core/src/sheet.rs:274
+#: crates/core/src/sheet.rs:276
 msgid "SCALE"
 msgstr ""
 
-#: crates/core/src/sheet.rs:276
+#: crates/core/src/sheet.rs:278
 msgid "SCALE AS INDICATED"
 msgstr ""
 
@@ -596,7 +596,7 @@ msgstr ""
 msgid "Timber"
 msgstr ""
 
-#: crates/core/src/sheet.rs:213
+#: crates/core/src/sheet.rs:215
 msgid "Total"
 msgstr ""
 
@@ -608,7 +608,7 @@ msgstr ""
 msgid "Type"
 msgstr ""
 
-#: crates/core/src/render.rs:3697
+#: crates/core/src/render.rs:3699
 msgid "UP"
 msgstr ""
 

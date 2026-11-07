@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Stropní svítidlo"
 
-#: crates/core/src/render.rs:3105
+#: crates/core/src/render.rs:3107
 msgid "Ceiling Plan"
 msgstr "Půdorys podhledu"
 
@@ -96,7 +96,7 @@ msgstr "Počet"
 msgid "Crosshatch"
 msgstr "Křížové šrafování"
 
-#: crates/core/src/render.rs:3697
+#: crates/core/src/render.rs:3699
 msgid "DN"
 msgstr "DOLŮ"
 
@@ -359,7 +359,7 @@ msgstr "Kov"
 msgid "Mounting Height"
 msgstr "Montážní výška"
 
-#: crates/core/src/render.rs:2933
+#: crates/core/src/render.rs:2935
 msgid "NOT ENCLOSED"
 msgstr "NEUZAVŘENÝ OBVOD"
 
@@ -427,7 +427,7 @@ msgstr "Porcelán"
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/render.rs:2933
+#: crates/core/src/render.rs:2935
 msgid "REDUNDANT"
 msgstr "NADBYTEČNÁ"
 
@@ -459,11 +459,11 @@ msgstr "Místnost"
 msgid "Room Schedule"
 msgstr "Výkaz místností"
 
-#: crates/core/src/sheet.rs:274
+#: crates/core/src/sheet.rs:276
 msgid "SCALE"
 msgstr "MĚŘÍTKO"
 
-#: crates/core/src/sheet.rs:276
+#: crates/core/src/sheet.rs:278
 msgid "SCALE AS INDICATED"
 msgstr "MĚŘÍTKO DLE VÝKRESŮ"
 
@@ -596,7 +596,7 @@ msgstr "Dlažba 300"
 msgid "Timber"
 msgstr "Dřevo"
 
-#: crates/core/src/sheet.rs:213
+#: crates/core/src/sheet.rs:215
 msgid "Total"
 msgstr "Celkem"
 
@@ -608,7 +608,7 @@ msgstr "Šířka stupně"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:3697
+#: crates/core/src/render.rs:3699
 msgid "UP"
 msgstr "NAHORU"
 

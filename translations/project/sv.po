@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Takarmatur"
 
-#: crates/core/src/render.rs:3105
+#: crates/core/src/render.rs:3107
 msgid "Ceiling Plan"
 msgstr "Undertaksplan"
 
@@ -96,7 +96,7 @@ msgstr "Antal"
 msgid "Crosshatch"
 msgstr "Korsskraffering"
 
-#: crates/core/src/render.rs:3697
+#: crates/core/src/render.rs:3699
 msgid "DN"
 msgstr "NED"
 
@@ -359,7 +359,7 @@ msgstr "Metall"
 msgid "Mounting Height"
 msgstr "Montagehöjd"
 
-#: crates/core/src/render.rs:2933
+#: crates/core/src/render.rs:2935
 msgid "NOT ENCLOSED"
 msgstr "EJ OMSLUTET"
 
@@ -427,7 +427,7 @@ msgstr "Porslin"
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/render.rs:2933
+#: crates/core/src/render.rs:2935
 msgid "REDUNDANT"
 msgstr "ÖVERFLÖDIGT"
 
@@ -459,11 +459,11 @@ msgstr "Rum"
 msgid "Room Schedule"
 msgstr "Rumsförteckning"
 
-#: crates/core/src/sheet.rs:274
+#: crates/core/src/sheet.rs:276
 msgid "SCALE"
 msgstr "SKALA"
 
-#: crates/core/src/sheet.rs:276
+#: crates/core/src/sheet.rs:278
 msgid "SCALE AS INDICATED"
 msgstr "SKALA ENLIGT ANGIVELSE"
 
@@ -596,7 +596,7 @@ msgstr "Platta 300"
 msgid "Timber"
 msgstr "Trä"
 
-#: crates/core/src/sheet.rs:213
+#: crates/core/src/sheet.rs:215
 msgid "Total"
 msgstr "Totalt"
 
@@ -608,7 +608,7 @@ msgstr "Plansteg"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:3697
+#: crates/core/src/render.rs:3699
 msgid "UP"
 msgstr "UPP"
 

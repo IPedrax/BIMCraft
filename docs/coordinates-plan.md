@@ -147,7 +147,7 @@ a push.
 5. **Links.** `by`: manual, origin to origin, base point to base point, or shared coordinates (with which of the link's
    locations). Worked out at each load, never written into the linked file. Acquire a location from a link.
 6. **Views**, and (at the owner's request, brought forward from stage 7) the desktop's Manage > Project Location: the
-   Coordinates window and Rotate Project North.
+   Location window and Rotate Project North.
    - A plan's `orientation`: Project North or True North. It turns the view (the canvas already draws rotated), never
      the model.
    - A north arrow annotation that reads the angle: moved to the roadmap (0.9), out of PR #284.

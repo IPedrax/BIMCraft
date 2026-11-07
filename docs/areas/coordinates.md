@@ -165,7 +165,7 @@ comes with it. From a CAD drawing placed in the project: its file's coordinates 
 stands the shared coordinates are its (in mm, by its scale), its axes are the map's (the angle is less its turn), and the
 elevation stays. The reply adds `acquired: {from, location}`. A Revit file can't be linked yet, and the Revit reader doesn't
 read a file's survey or base point, so a Revit project's coordinates come over through its IFC export. In the desktop,
-it is on the Coordinates window's Manage tab: an Acquire button for each link and drawing, and Pick in the View, a tool
+it is on the Location window's Manage tab: an Acquire button for each link and drawing, and Pick in the View, a tool
 (`Tool::Acquire`) whose click takes a linked model's element (`link::link_of` finds its link) or a drawing.
 
 `coordinates {reset: true}` is Reset Coordinates: the active location back on the internal origin (no offset, no turn, a scale
@@ -238,8 +238,8 @@ last follow the locations). Plan crops stay as they are.
 
 ## The desktop: Manage > Project Location
 
-`crates/ui-egui/src/coordinates.rs`. The panel has **Coordinates**, which opens the window, and **Rotate Project North**,
-a tool on the plan that works as Rotate does (`Tool::RotateNorth`, in `canvas.rs` beside `Tool::Rotate`): it starts on
+`crates/ui-egui/src/coordinates.rs`. The panel has **Coordinates**, which opens the window. **Rotate Project North** is on
+the window's Manage tab: its button closes the window for a tool on the plan that works as Rotate does (`Tool::RotateNorth`, in `canvas.rs` beside `Tool::Rotate`): it starts on
 the Project Base Point (Place Centre moves the centre), a click is the angle's start and the next its end, and between them
 the whole plan turns as a ghost, with project north (up, muted) and true north (in the accent, as it will be once turned)
 drawn from the centre and the angle at the cursor. The Options Bar takes an angle typed (Enter) and has **Align with True
@@ -303,9 +303,9 @@ deletes. A refusal stays in the window and says why. It looks the same in the th
 - `rotate_project_north`: the model turned, the world kept.
 - `convert_coordinates`: points between `internal`, `base`, `shared` and `wgs84`, of the active location or the one named.
 
-The Coordinates window's tabs are Locations, Points, Map System, Manage and Convert. Manage holds Specify Coordinates at a
-Point, Shift every location, Acquire Coordinates (an Acquire button for each link and CAD drawing, and Pick in the View) and
-Reset Coordinates, which asks first, saying what it does and how many links it pins; each is a rounded card of its own, as
+The Location window's tabs are Locations, Points, Map System, Manage and Convert. Manage holds Specify Coordinates at a
+Point, Shift every location, Acquire Coordinates (an Acquire button for each link and CAD drawing, and Pick in the View),
+Rotate Project North (the window closes for the tool on the plan; it is no longer on the ribbon) and Reset Coordinates, which asks first, saying what it does and how many links it pins; each is a rounded card of its own, as
 the window's summary is, folded closed until its title opens it (`coordinates::fold`). Acquire and Reset are done at once, each
 its own undo step, and the window shows the result on Manage. Tests: `crates/ui-egui/src/tests/coordinates.rs`.
 

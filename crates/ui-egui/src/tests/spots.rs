@@ -99,9 +99,9 @@ fn acquire_coordinates_takes_them_from_the_cad_drawing_clicked() {
     h.state_mut().run("import_cad", json!({"path": far_drawing(), "at": [4000, 3000]}));
     h.state_mut().selection.clear();
     h.run();
-    // Coordinates > Manage > Acquire Coordinates > Pick in the View: the window steps aside for the click.
+    // Location > Manage > Acquire Coordinates > Pick in the View: the window steps aside for the click.
     press(&mut h, "Manage");
-    from_list(&mut h, "Project Location", "Coordinates");
+    from_list(&mut h, "Project Location", "Location");
     press_near(&mut h, "Manage", "Convert");
     press(&mut h, "Acquire Coordinates");
     press(&mut h, "Pick in the View");

@@ -1,11 +1,11 @@
-//! Manage > Coordinates: the locations typed into and shifted, the points, the map system found by search, all a draft applied
+//! Manage > Project Location > Location: the locations typed into and shifted, the points, the map system found by search, all a draft applied
 //! as one undo step; and Rotate Project North from the ribbon.
 
 use super::*;
 
 fn open(h: &mut Harness<BimApp>) {
     press(h, "Manage");
-    from_list(h, "Project Location", "Coordinates");
+    from_list(h, "Project Location", "Location");
     assert!(h.state().coordinates_dialog.is_some(), "the button opens the window");
 }
 
@@ -18,6 +18,18 @@ fn manage_tab(h: &mut Harness<BimApp>) {
 /// One of Manage's folded cards, opened.
 fn unfold(h: &mut Harness<BimApp>, title: &str) {
     press(h, title);
+}
+
+/// Location > Manage > Rotate Project North: its card opened, its button (below the card's title of the same words)
+/// pressed. The window closes for the tool on the plan.
+fn rotate_north(h: &mut Harness<BimApp>) {
+    open(h);
+    manage_tab(h);
+    unfold(h, "Rotate Project North");
+    let button = h.get_all_by_label("Rotate Project North").map(|n| n.rect().center()).max_by(|a, b| a.y.total_cmp(&b.y));
+    click_at(h, button.unwrap());
+    assert!(h.state().coordinates_dialog.is_none(), "the window closes for the plan");
+    assert!(matches!(h.state().tool, Tool::RotateNorth { .. }), "{:?}", h.state().tool);
 }
 
 fn said(h: &Harness<BimApp>) -> Option<String> {
@@ -51,7 +63,7 @@ fn locations_are_typed_shifted_and_applied_as_one_undo_step() {
     let b = &co.locations["Lot B"];
     assert_eq!((b.east, b.north, b.angle, b.elevation), (333_400_000.0, a.north, 10.0, 5000.0), "a copy of the active one, shifted");
     assert_eq!(h.state().session.history().len(), steps + 1, "one undo step");
-    assert_eq!(h.state().session.history().last(), Some(&"Coordinates"));
+    assert_eq!(h.state().session.history().last(), Some(&"Location"));
 }
 
 #[test]
@@ -121,11 +133,10 @@ fn a_city_is_found_by_name_and_its_country_s_system_picked_with_it() {
 }
 
 #[test]
-fn rotate_project_north_aligns_with_true_north_from_the_ribbon() {
+fn rotate_project_north_aligns_with_true_north_from_the_manage_tab() {
     let mut h = app(BOX);
     h.state_mut().session.execute("location", &json!({"name": "Internal", "angle": 12.5})).unwrap();
-    press(&mut h, "Manage");
-    from_list(&mut h, "Project Location", "Rotate Project North");
+    rotate_north(&mut h);
     press(&mut h, "Align with True North (12.500°)");
     assert_eq!(h.state().session.model.coordinates.location().angle, 0.0);
     assert_eq!(h.state().session.history().last(), Some(&"Rotate Project North"));
@@ -199,8 +210,7 @@ fn rotate_project_north_is_a_tool_on_the_plan_that_turns_the_whole_model_about_t
     let mut h = app(BOX);
     h.state_mut().session.execute("coordinates", &json!({"base": [8000.0, 0.0, 0.0]})).unwrap();
     let wall = ids(&h, "wall")[0];
-    press(&mut h, "Manage");
-    from_list(&mut h, "Project Location", "Rotate Project North");
+    rotate_north(&mut h);
     assert!(
         matches!(h.state().tool, Tool::RotateNorth { centre, start: None, place: false } if centre == P2(8000.0, 0.0)),
         "it starts on the Project Base Point: {:?}",
@@ -221,8 +231,7 @@ fn rotate_project_north_is_a_tool_on_the_plan_that_turns_the_whole_model_about_t
 #[test]
 fn rotate_project_north_snaps_its_rays_and_space_moves_its_centre() {
     let mut h = app(BOX);
-    press(&mut h, "Manage");
-    from_list(&mut h, "Project Location", "Rotate Project North");
+    rotate_north(&mut h);
     // Space: the next click is the centre, snapped.
     h.key_press(Key::Space);
     h.run();
@@ -247,8 +256,7 @@ fn space_moves_rotate_s_centre_too() {
 #[test]
 fn rotate_project_north_takes_an_angle_typed_in_the_options_bar() {
     let mut h = app(BOX);
-    press(&mut h, "Manage");
-    from_list(&mut h, "Project Location", "Rotate Project North");
+    rotate_north(&mut h);
     type_into(&mut h, "Angle:", "30");
     h.key_press(Key::Enter);
     h.run();
@@ -372,6 +380,9 @@ fn the_status_bar_reads_the_cursor_out_in_shared_coordinates_once_they_are_not_t
 #[test]
 fn the_manage_tab_sits_before_convert_with_specify_shift_acquire_and_reset() {
     let mut h = app(BOX);
+    // On the ribbon's Manage tab, Project Location has the Location window alone: its tools are inside.
+    press(&mut h, "Manage");
+    assert!(h.query_by_label("Rotate Project North").is_none() && h.query_by_label("Acquire Coordinates").is_none());
     open(&mut h);
     // On the tabs' row: Convert's.
     let row = h.get_by_label("Convert").rect().center().y;
