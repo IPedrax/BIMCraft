@@ -778,6 +778,19 @@ pub struct Shape {
 }
 
 impl Shape {
+    /// The box round `tris`, form `index`'s; none for no triangles.
+    fn of(index: usize, void: bool, tris: &[[P3; 3]]) -> Option<Shape> {
+        let mut min = [f64::INFINITY; 3];
+        let mut max = [f64::NEG_INFINITY; 3];
+        for p in tris.iter().flatten() {
+            for k in 0..3 {
+                min[k] = min[k].min(p[k]);
+                max[k] = max[k].max(p[k]);
+            }
+        }
+        (min[0].is_finite() && max[0].is_finite()).then_some(Shape { index, void, min, max })
+    }
+
     /// Whether it and `other` overlap where all three of them have substance: strictly, a face
     /// touching another's is no overlap, so a void grazing a form cuts nothing.
     pub fn over(&self, other: &Shape) -> bool {
@@ -1951,19 +1964,39 @@ impl Family {
             let Some(piece) = self.solid(i, values, &mut read).ok().flatten() else {
                 continue;
             };
-            let mut min = [f64::INFINITY; 3];
-            let mut max = [f64::NEG_INFINITY; 3];
-            for p in piece.tris.iter().flatten() {
-                for k in 0..3 {
-                    min[k] = min[k].min(p[k]);
-                    max[k] = max[k].max(p[k]);
-                }
-            }
-            if min[0].is_finite() && max[0].is_finite() {
-                out.push(Shape { index: i, void: self.forms[i].void, min, max });
-            }
+            out.extend(Shape::of(i, self.forms[i].void, &piece.tris));
         }
         out
+    }
+
+    /// The voids a door's or a window's family cuts its wall with, sized by `values`, in its own axes: each void that reaches
+    /// across into the wall (its `Wall Thickness` about y = 0) and cuts none of its forms, by their boxes (none listed before it that it reaches, as [`Shape::over`] says, the test a warning
+    /// of a void that cuts nothing makes), so one listed before them all. They are the opening's shape in the wall, in place
+    /// of the rectangle of its `Width` and `Height`; none, of another category, or of a family with none, and the
+    /// rectangle stands. A void that cuts a form (a sash's light) cuts only that form, as before.
+    pub fn host_voids(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Vec<[P3; 3]>>, String> {
+        if !self.category.hosted() || !self.forms.iter().any(|f| f.void) {
+            return Ok(Vec::new());
+        }
+        // Across the wall it stands in: one that doesn't reach the wall cuts nothing, and leaves the rectangle.
+        let wall = match values.get(WALL) {
+            Some(Val::Number(t)) => *t,
+            _ => DEFAULT_WALL,
+        };
+        let mut read = HashMap::new();
+        let (mut solids, mut out): (Vec<Shape>, Vec<Vec<[P3; 3]>>) = (Vec::new(), Vec::new());
+        for i in 0..self.forms.len() {
+            let Some(piece) = self.solid(i, values, &mut read).map_err(|e| format!("form {}: {e}", i + 1))? else {
+                continue;
+            };
+            let Some(shape) = Shape::of(i, self.forms[i].void, &piece.tris) else { continue };
+            if !shape.void {
+                solids.push(shape);
+            } else if !solids.iter().any(|solid| shape.over(solid)) && shape.max[1] > -wall / 2.0 && shape.min[1] < wall / 2.0 {
+                out.push(piece.tris);
+            }
+        }
+        Ok(out)
     }
 
     /// What's wrong with it, which a change may not go ahead with, and what's worth knowing, which

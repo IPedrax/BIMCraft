@@ -136,7 +136,7 @@ and the content.
 |---|---|
 | Family editor sketch mode: reference planes, sketches drawn on screen, sweeps along a path and blends (revolve and void forms are done) | XL |
 | 2D sketch constraint solver (dimensions bound to parameters, equal, aligned, locked) | L |
-| Hosted families on floors, ceilings and faces, with cuts in the host (doors and windows host on walls today) | L |
+| Hosted families on floors, ceilings and faces, with cuts in the host (doors and windows host on walls today, their voids cutting the wall in their own shape) | L |
 | Nested and shared families; type catalogs (CSV) | M |
 | Visibility per view direction and detail level for a family's forms and symbols | M |
 | Sections that cut family forms: done for doors, windows, casework, generic models, equipment, racks and pipe fittings and accessories (poché in the form's own shape, holes left open); furniture and fixtures are shown beyond the cut, as in Revit; left: a form's material's cut pattern in place of poché | S |

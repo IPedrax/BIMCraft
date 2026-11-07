@@ -56,6 +56,8 @@ mod georef_tests;
 pub mod gltf;
 pub mod graphics;
 pub mod groups;
+#[cfg(test)]
+mod host_void_tests;
 pub mod hydrant;
 pub mod ids;
 pub mod ifc;

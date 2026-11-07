@@ -27,6 +27,22 @@ exterior, z up from the sill) and its formulas read `Wall Thickness`; its `symbo
 `Opening` holds a `family`, or none (one of the project's own types): `Model::opening_dims` gives its size either way
 (`opening_type` returns it by value), its flips are mirrors (`opening_local`), and `Element::family()` is the one way to ask what
 family a component or an opening is of. A section cuts a family opening's forms where its line passes through them.
+A hosted family's voids cut its wall as Revit's do (`Family::host_voids`): a void that reaches into the wall (its `Wall
+Thickness` about the opening's middle plane) and cuts none of the family's own forms, by the same boxes the "cuts nothing"
+warning reads (so one listed before them all), is the opening's shape in the wall in place of the rectangle of its `Width` and
+`Height`; a void that cuts a form (a sash's light) cuts that form alone, and a family with no such void cuts the rectangle as
+before. `Model::opening_voids_local` gives them in the family's axes with the opening's flips, `Model::opening_voids` where it
+stands. The wall's prisms leave such an opening out (`walls::prisms_in`; `prisms_rect_in` keeps every rectangle) and
+`view3d::wall_solids` takes each prism a void reaches as triangles less it (`csg::subtract`), a `Solid::Mesh` a section cuts
+(`cut: true`), so the 3D view and sections show an arch as an arch and a void deeper than the wall goes right through it;
+should cutting fail, every opening cuts its rectangle. `view3d::layered` splits such a piece into the wall type's layers (each
+the piece within its two boundaries in plan, `walls::layer_lines`), and a section's lines between layers follow the cut round
+the void. A plan clears the void's slice at its cut plane (`render::level_slice`) within the wall's faces, its edges across the
+wall the jambs; whether the opening is drawn at all is still its rectangle's height. IFC writes the voids as the
+`IfcOpeningElement`'s body, closed face sets placed at the opening's middle as its forms are, in place of the extruded
+rectangle. A void's size may read an instance parameter (a depth in its `from` and `to`), so each opening cuts its own.
+Neither is new in a file, so nothing takes a FORMAT step: an older build reads the family and cuts the rectangle.
+
 How a door or a window opens is its family's `operation` (`model::Operation`: swing, double-swing, sliding, double-sliding,
 folding, fixed), or for one of the project's own types the type's (`OpeningType::operation`); none, a door swings. IFC writes
 it as the door's `OperationType` (`Operation::ifc_door`, its side from `flip_hand`: `SLIDING_TO_RIGHT`) and a window's

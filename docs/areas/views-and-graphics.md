@@ -243,6 +243,10 @@ menu's Finish Drawing; Fillet Arc previews the arc nearest the cursor and its ra
 Trim/Extend and Fillet's picks so far show in the selection's colour. Trim/Extend to Corner with two lines or walls selected (or
 two sketch lines picked) joins them at once, each keeping the part toward its middle.
 
+A wall a door's or a window's own voids cut ([families](families.md): `Family::host_voids`) is cut in their shape: its pieces
+there are meshes a section slices (`view3d::slice`), their layers split in plan, the lines between layers drawn up the cut alone;
+a plan clears the voids' slice at its cut plane within the wall's faces (`render::level_slice`).
+
 `Drawing::detail` is the level the plan or the section is drawn at: coarse leaves out a compound element's layers and an opening's
 symbols, medium its patterns (`cut_layer`, a floor's `surface`), fine draws as before. In the 3D view `Look::style` picks how
 `Scene::picture` draws: shaded as ever, hidden line as a section's picture is (paper faces, edges), wireframe by `Scene::edges` (where

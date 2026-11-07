@@ -2228,9 +2228,19 @@ fn section_base_cancellable(
                 if !(first..=last).contains(&along) {
                     continue;
                 }
-                let own = work.solids.in_range(work.ranges.get(&wall).cloned().unwrap_or(0..0));
-                for s in own.filter(|s| s.owner() == wall && s.over(x)) {
-                    let (z0, z1) = s.z_at(x);
+                let own: Vec<&view3d::Solid> = work
+                    .solids
+                    .in_range(work.ranges.get(&wall).cloned().unwrap_or(0..0))
+                    .filter(|s| s.owner() == wall && s.over(x))
+                    .collect();
+                // Where a door's or a window's voids cut the wall there, up the wall's cut alone, round their shape.
+                let spans: Vec<(f64, f64)> = if own.iter().any(|s| matches!(s, view3d::Solid::Mesh { .. })) {
+                    let rings = cuts.get(&wall).into_iter().flatten();
+                    rings.flat_map(|r| view3d::crossings(r, P2(along, 0.0), P2(0.0, 1.0))).collect()
+                } else {
+                    own.iter().map(|s| s.z_at(x)).collect()
+                };
+                for (z0, z1) in spans {
                     d.part(Part::Pattern);
                     d.line(&[P2(along, z0), P2(along, z1)], Pen::PROJECTION, INK, false);
                     d.part(Part::Cut);
@@ -3522,9 +3532,29 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
     if !shown {
         d.own(None);
     }
-    d.fill(&[gap], PAPER);
-    for s in [s0, s1] {
-        d.line(&[axis.at(s, int), axis.at(s, ext)], Pen::HEAVY, INK, false);
+    // Of a family whose voids cut the wall: where the cut plane passes through them, inside the wall's faces (a void deeper
+    // than the wall clears no more than the wall), its edges across the wall the jambs.
+    let voids = if o.family.is_some() { m.opening_voids(e) } else { Vec::new() };
+    if voids.is_empty() {
+        d.fill(&[gap], PAPER);
+        for s in [s0, s1] {
+            d.line(&[axis.at(s, int), axis.at(s, ext)], Pen::HEAVY, INK, false);
+        }
+    } else {
+        let off = |q: P2| axis.project(q).1;
+        for ring in voids.iter().flat_map(|v| level_slice(v, cut)) {
+            let clear = geom::clip(&geom::clip(&ring, |q| ext + past - off(q)), |q| off(q) - (int - past));
+            if clear.len() >= 3 {
+                d.fill(&[clear], PAPER);
+            }
+            let inside = geom::clip(&geom::clip(&ring, |q| ext - off(q)), |q| off(q) - int);
+            let on_face = |q: P2| (off(q) - ext).abs() < 1e-6 || (off(q) - int).abs() < 1e-6;
+            for (a, b) in geom::ring_edges(&inside) {
+                if inside.len() >= 3 && !(on_face(a) && on_face(b)) {
+                    d.line(&[a, b], Pen::HEAVY, INK, false);
+                }
+            }
+        }
     }
     d.own(owner);
     if !shown || d.detail == Detail::Coarse {
@@ -3572,6 +3602,15 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
             d.line(&axis.points(s0, s1, across), Pen::PROJECTION, INK, false);
         }
     }
+}
+
+/// Where the level plane at height `z` cuts closed mesh `tris`, as rings in plan: [`view3d::slice`] of the mesh turned on its
+/// side, so its upright plane is the level one.
+fn level_slice(tris: &[[view3d::P3; 3]], z: f64) -> Vec<Vec<P2>> {
+    const FAR: f64 = 1.0e6;
+    let turned: Vec<[view3d::P3; 3]> = tris.iter().map(|t| t.map(|p| [p[0], p[2] - z, p[1]])).collect();
+    let rings = view3d::slice(&turned, P2(-FAR, 0.0), P2(1.0, 0.0), 2.0 * FAR).unwrap_or_default();
+    rings.into_iter().map(|r| r.into_iter().map(|q| P2(q.0 - FAR, q.1)).collect()).collect()
 }
 
 /// A stair in the plan of `level`. From its own level: its risers up to the cut plane, a cut line

@@ -4169,6 +4169,41 @@ impl Model {
         Some((pieces, marks))
     }
 
+    /// The voids a door's or window's family cuts its wall with ([`crate::family::Family::host_voids`]), in the family's own
+    /// axes turned out with the opening's flips as [`Model::opening_local`]'s solids are; none for one that isn't of a family,
+    /// has none, or doesn't build, whose wall the rectangle of its width and height cuts.
+    pub fn opening_voids_local(&self, e: &Element) -> Vec<Vec<[crate::view3d::P3; 3]>> {
+        let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
+        let Some(f) = o.family.as_ref().and_then(|n| self.families.get(n)) else { return Vec::new() };
+        if !f.category.hosted() || !f.forms.iter().any(|x| x.void) {
+            return Vec::new();
+        }
+        let Some(w) = self.wall(o.host) else { return Vec::new() };
+        let Ok(voids) = f.values_in(&o.type_name, &o.params, self.thickness(w)).and_then(|v| f.host_voids(&v)) else {
+            return Vec::new();
+        };
+        let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
+        let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
+        let mirrored = fx * fy < 0.0;
+        voids
+            .into_iter()
+            .map(|v| {
+                v.iter().map(|[a, b, c]| if mirrored { [flip(*a), flip(*c), flip(*b)] } else { [flip(*a), flip(*b), flip(*c)] }).collect()
+            })
+            .collect()
+    }
+
+    /// [`Model::opening_voids_local`] where the opening stands, in the model's own axes.
+    pub fn opening_voids(&self, e: &Element) -> Vec<Vec<[crate::view3d::P3; 3]>> {
+        let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
+        let Some((at, u, z)) = self.opening_frame(o) else { return Vec::new() };
+        let place = |p: [f64; 3]| {
+            let q = at + u * p[0] + u.perp() * p[1];
+            [q.0, q.1, z + p[2]]
+        };
+        self.opening_voids_local(e).into_iter().map(|v| v.iter().map(|t| t.map(place)).collect()).collect()
+    }
+
     /// A door's or window's family's solids where it stands, in the model's own axes: each form's triangles, its
     /// outline seen from above, and what it reaches from and to, over the level.
     pub fn opening_pieces(&self, e: &Element) -> Vec<Piece> {
