@@ -536,6 +536,7 @@ dependencies = [
 name = "bimcraft-ui-egui"
 version = "0.10.0"
 dependencies = [
+ "bimcraft-agent",
  "bimcraft-core",
  "bimcraft-i18n",
  "bimcraft-update",

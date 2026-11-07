@@ -111,6 +111,8 @@ pub struct Settings {
     pub grid_snapping: bool,
     /// The system's title bar rather than the window's own, where the window can draw its own.
     pub system_title_bar: bool,
+    /// The AI agent the Classification Manager hands its briefs to (Settings > Agent).
+    pub agent: bimcraft_agent::Settings,
 }
 
 impl Settings {
@@ -142,6 +144,7 @@ impl Settings {
             "high_contrast": self.high_contrast,
             "grid_snapping": self.grid_snapping,
             "system_title_bar": self.system_title_bar,
+            "agent": serde_json::to_value(&self.agent).unwrap_or_default(),
         })
     }
 
@@ -182,6 +185,10 @@ impl Settings {
             high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
             grid_snapping: v["grid_snapping"].as_bool().unwrap_or(base.grid_snapping),
             system_title_bar: v["system_title_bar"].as_bool().unwrap_or(base.system_title_bar),
+            agent: serde_json::from_value::<bimcraft_agent::Settings>(v["agent"].clone())
+                .ok()
+                .filter(|a| [&a.command, &a.model, &a.args].iter().all(|t| t.len() <= bimcraft_agent::MAX_COMMAND))
+                .unwrap_or(base.agent),
         }
     }
 }
@@ -222,11 +229,12 @@ pub enum Page {
     Performance,
     Graphics,
     Files,
+    Agent,
     Updates,
 }
 
 impl Page {
-    pub const ALL: [Page; 5] = [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Updates];
+    pub const ALL: [Page; 6] = [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Agent, Page::Updates];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -234,6 +242,7 @@ impl Page {
             Page::Performance => msg!("Performance"),
             Page::Graphics => "Graphics",
             Page::Files => msg!("Files"),
+            Page::Agent => msg!("AI Agent"),
             Page::Updates => msg!("Updates"),
         }
     }
@@ -272,6 +281,7 @@ impl BimApp {
         self.scan_contrast = kept.high_contrast;
         self.grid_snapping = kept.grid_snapping;
         self.system_title_bar = kept.system_title_bar;
+        self.agent = kept.agent.clone();
         self.settings_kept = Some(kept);
         self.settings_path = Some(path);
     }
@@ -304,6 +314,7 @@ impl BimApp {
             high_contrast: self.scan_contrast,
             grid_snapping: self.grid_snapping,
             system_title_bar: self.system_title_bar,
+            agent: self.agent.clone(),
         }
     }
 
@@ -347,6 +358,7 @@ impl BimApp {
                             Page::Performance => self.performance_page(ui),
                             Page::Graphics => self.graphics_page(ui),
                             Page::Files => self.files_page(ui),
+                            Page::Agent => self.agent_page(ui),
                             Page::Updates => self.updates_page(ui),
                         });
                     });
