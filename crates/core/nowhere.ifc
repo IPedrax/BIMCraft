@@ -1,7 +1,7 @@
 {
   "format": 17,
   "name": "Project",
-  "uid": 1033714081276399857,
+  "uid": 11741727062650551050,
   "units": "mm",
   "language": "en",
   "next_id": 100030,
@@ -12,30 +12,30 @@
         "layers": [
           {
             "id": 999622,
-            "guid": "113cb982-cf44-447e-959a-4258657d8d7d",
+            "guid": "42553ffb-a742-440c-959a-5e1b606b1183",
             "function": "finish",
-            "material": "09e33538-1c57-4796-abde-e605d58f6e5f",
+            "material": "9b33d19e-99d5-4a87-8aaf-af0c5e3ed94a",
             "thickness": 100.0
           },
           {
             "id": 999621,
-            "guid": "e4bed976-10b1-4e2c-b003-62ce26c01aaa",
+            "guid": "8e5f76cf-512b-4e12-968f-339d796082aa",
             "function": "thermal",
-            "material": "e3386f0e-3ba5-46c3-98e2-155cf6886f61",
+            "material": "b3fd11f7-1aab-40b0-abf1-590eefde5240",
             "thickness": 50.0
           },
           {
             "id": 999620,
-            "guid": "783f0bc3-1d0e-4f8a-859c-6073ea4dc0ee",
+            "guid": "083d3be6-14a2-406b-9ad6-10b0039af5b9",
             "function": "structure",
-            "material": "5ec0561e-3ddb-4ea4-99cc-6053e88ccce9",
+            "material": "c87f5523-b72e-415e-880f-ffa8efd6276d",
             "thickness": 140.0
           },
           {
             "id": 999619,
-            "guid": "ded17627-86e0-435e-a417-deee5adf9ebe",
+            "guid": "538fc0cb-f209-413c-840b-c84f98a16fac",
             "function": "finish",
-            "material": "6586b899-883b-47a3-ad21-edf4e888df48",
+            "material": "3bcc4fc5-100b-4163-9e1e-2ccd9ac044c5",
             "thickness": 10.0
           }
         ]
@@ -144,19 +144,19 @@
           "width": 150.0,
           "depth": 400.0,
           "round": false,
-          "material": "35574c5b-b5e1-467a-965d-81c799ed7b01"
+          "material": "f9954f4a-5e3d-4178-96a1-700aeaa0ed1b"
         },
         "Beam 200 x 500": {
           "width": 200.0,
           "depth": 500.0,
           "round": false,
-          "material": "35574c5b-b5e1-467a-965d-81c799ed7b01"
+          "material": "f9954f4a-5e3d-4178-96a1-700aeaa0ed1b"
         },
         "Steel Tube 150": {
           "width": 150.0,
           "depth": 150.0,
           "round": true,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       },
       "cable": {
@@ -164,19 +164,19 @@
           "width": 6.0,
           "depth": 6.0,
           "round": true,
-          "material": "1622994b-a9d7-4902-b0fd-9ecc8d7b0c37"
+          "material": "fddd6fed-7f4c-4c9a-9c8b-af78365ac927"
         },
         "Cat6A": {
           "width": 7.5,
           "depth": 7.5,
           "round": true,
-          "material": "1622994b-a9d7-4902-b0fd-9ecc8d7b0c37"
+          "material": "fddd6fed-7f4c-4c9a-9c8b-af78365ac927"
         },
         "Optical 3": {
           "width": 3.0,
           "depth": 3.0,
           "round": true,
-          "material": "1622994b-a9d7-4902-b0fd-9ecc8d7b0c37"
+          "material": "fddd6fed-7f4c-4c9a-9c8b-af78365ac927"
         }
       },
       "cabletray": {
@@ -184,19 +184,19 @@
           "width": 100.0,
           "depth": 50.0,
           "round": false,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         "Perforated 200 x 50": {
           "width": 200.0,
           "depth": 50.0,
           "round": false,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         "Perforated 300 x 100": {
           "width": 300.0,
           "depth": 100.0,
           "round": false,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       },
       "conduit": {
@@ -204,25 +204,25 @@
           "width": 20.0,
           "depth": 20.0,
           "round": true,
-          "material": "1622994b-a9d7-4902-b0fd-9ecc8d7b0c37"
+          "material": "fddd6fed-7f4c-4c9a-9c8b-af78365ac927"
         },
         "PVC 25": {
           "width": 25.0,
           "depth": 25.0,
           "round": true,
-          "material": "1622994b-a9d7-4902-b0fd-9ecc8d7b0c37"
+          "material": "fddd6fed-7f4c-4c9a-9c8b-af78365ac927"
         },
         "PVC 32": {
           "width": 32.0,
           "depth": 32.0,
           "round": true,
-          "material": "1622994b-a9d7-4902-b0fd-9ecc8d7b0c37"
+          "material": "fddd6fed-7f4c-4c9a-9c8b-af78365ac927"
         },
         "Steel 25": {
           "width": 25.0,
           "depth": 25.0,
           "round": true,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       },
       "downconductor": {
@@ -230,19 +230,19 @@
           "width": 8.0,
           "depth": 8.0,
           "round": true,
-          "material": "8be31d59-7cab-4214-869c-74b234c245f6"
+          "material": "95e13f6a-c268-47a1-a226-4c43d494aaf7"
         },
         "Flat 25 x 3": {
           "width": 25.0,
           "depth": 3.0,
           "round": false,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         "Steel 8": {
           "width": 8.0,
           "depth": 8.0,
           "round": true,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       },
       "duct": {
@@ -250,19 +250,19 @@
           "width": 400.0,
           "depth": 300.0,
           "round": false,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         "Rectangular 600 x 400": {
           "width": 600.0,
           "depth": 400.0,
           "round": false,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         "Round 300": {
           "width": 300.0,
           "depth": 300.0,
           "round": true,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       },
       "groundconductor": {
@@ -270,13 +270,13 @@
           "width": 9.0,
           "depth": 9.0,
           "round": true,
-          "material": "8be31d59-7cab-4214-869c-74b234c245f6"
+          "material": "95e13f6a-c268-47a1-a226-4c43d494aaf7"
         },
         "Steel 8": {
           "width": 8.0,
           "depth": 8.0,
           "round": true,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       },
       "pipe": {
@@ -284,25 +284,25 @@
           "width": 22.0,
           "depth": 22.0,
           "round": true,
-          "material": "8be31d59-7cab-4214-869c-74b234c245f6"
+          "material": "95e13f6a-c268-47a1-a226-4c43d494aaf7"
         },
         "PVC 110": {
           "width": 110.0,
           "depth": 110.0,
           "round": true,
-          "material": "1622994b-a9d7-4902-b0fd-9ecc8d7b0c37"
+          "material": "fddd6fed-7f4c-4c9a-9c8b-af78365ac927"
         },
         "PVC 25": {
           "width": 25.0,
           "depth": 25.0,
           "round": true,
-          "material": "1622994b-a9d7-4902-b0fd-9ecc8d7b0c37"
+          "material": "fddd6fed-7f4c-4c9a-9c8b-af78365ac927"
         },
         "PVC 50": {
           "width": 50.0,
           "depth": 50.0,
           "round": true,
-          "material": "1622994b-a9d7-4902-b0fd-9ecc8d7b0c37"
+          "material": "fddd6fed-7f4c-4c9a-9c8b-af78365ac927"
         }
       },
       "stripfooting": {
@@ -310,7 +310,7 @@
           "width": 600.0,
           "depth": 300.0,
           "round": false,
-          "material": "35574c5b-b5e1-467a-965d-81c799ed7b01"
+          "material": "f9954f4a-5e3d-4178-96a1-700aeaa0ed1b"
         }
       },
       "wire": {
@@ -318,19 +318,19 @@
           "width": 4.0,
           "depth": 4.0,
           "round": true,
-          "material": "8be31d59-7cab-4214-869c-74b234c245f6"
+          "material": "95e13f6a-c268-47a1-a226-4c43d494aaf7"
         },
         "Wire 4": {
           "width": 5.0,
           "depth": 5.0,
           "round": true,
-          "material": "8be31d59-7cab-4214-869c-74b234c245f6"
+          "material": "95e13f6a-c268-47a1-a226-4c43d494aaf7"
         },
         "Wire 6": {
           "width": 6.5,
           "depth": 6.5,
           "round": true,
-          "material": "8be31d59-7cab-4214-869c-74b234c245f6"
+          "material": "95e13f6a-c268-47a1-a226-4c43d494aaf7"
         }
       }
     }
@@ -592,7 +592,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "value": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       ],
       "types": {
@@ -609,7 +609,7 @@
       "forms": [
         {
           "id": 999618,
-          "guid": "db682ccf-ed15-43aa-a183-026d9ebd11c1",
+          "guid": "34a44b9b-4db6-4a3a-8ee6-50b64d3df74c",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -624,7 +624,7 @@
         },
         {
           "id": 999617,
-          "guid": "11edfcc6-ef2b-4728-9a2b-150a9a981c50",
+          "guid": "221a2a62-42b9-49ff-8bf0-5631f41a5e3d",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -660,12 +660,12 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "4d52ddf0-73a7-4634-98c0-6298bc1fcbf9"
+          "value": "914bd292-4506-4104-b39e-37b95062da09"
         },
         {
           "name": "Worktop",
           "kind": "material",
-          "value": "35574c5b-b5e1-467a-965d-81c799ed7b01"
+          "value": "f9954f4a-5e3d-4178-96a1-700aeaa0ed1b"
         }
       ],
       "types": {
@@ -680,7 +680,7 @@
       "forms": [
         {
           "id": 999616,
-          "guid": "b5327b07-59f2-4b0c-814a-fb8a69dbd913",
+          "guid": "64b3c3d1-d180-461e-befe-f99cf1f02954",
           "plane": "xy",
           "profile": [
             [
@@ -706,7 +706,7 @@
         },
         {
           "id": 999615,
-          "guid": "ef4ef4d2-a295-4b4e-a42a-7a9e7ec75389",
+          "guid": "95b1deb5-09b7-4d75-980c-c84349ad7b67",
           "plane": "xy",
           "profile": [
             [
@@ -732,7 +732,7 @@
         },
         {
           "id": 999614,
-          "guid": "1b11773b-42a1-4b2c-bda8-32eb24baf92a",
+          "guid": "5c3b9910-9fd9-4284-9c63-bfeecfe15ffc",
           "plane": "xy",
           "profile": [
             [
@@ -788,7 +788,7 @@
       "forms": [
         {
           "id": 999613,
-          "guid": "99535dd9-bb68-40ba-9d6e-13fe110fb0e2",
+          "guid": "95d57dd0-3d91-4101-8ff2-41ce4e14b3a6",
           "plane": "xy",
           "profile": [
             [
@@ -810,11 +810,11 @@
           ],
           "from": 0.0,
           "to": 120.0,
-          "material": "fb5aaa7b-2353-4a66-952b-9ad25bb9df82"
+          "material": "61305822-6ee7-48e0-a756-0eb30a026168"
         },
         {
           "id": 999612,
-          "guid": "37f956f4-88f7-472c-a6d9-264471deee44",
+          "guid": "0c80cede-404f-4c37-a4d3-8e5d35259de5",
           "plane": "xy",
           "profile": [
             [
@@ -836,11 +836,11 @@
           ],
           "from": 120.0,
           "to": "Height",
-          "material": "fb5aaa7b-2353-4a66-952b-9ad25bb9df82"
+          "material": "61305822-6ee7-48e0-a756-0eb30a026168"
         },
         {
           "id": 999611,
-          "guid": "f7d78fb5-000e-4521-8644-3b3d01c247d2",
+          "guid": "d3ac3044-af36-4390-8587-243dea5c963f",
           "plane": "xy",
           "profile": [
             [
@@ -862,11 +862,11 @@
           ],
           "from": 120.0,
           "to": "Height",
-          "material": "fb5aaa7b-2353-4a66-952b-9ad25bb9df82"
+          "material": "61305822-6ee7-48e0-a756-0eb30a026168"
         },
         {
           "id": 999610,
-          "guid": "753b8036-cf48-4772-8942-b232e075c7a2",
+          "guid": "a391c1ec-bdef-4a7c-be67-3b5c2bd953fb",
           "plane": "xy",
           "profile": [
             [
@@ -888,11 +888,11 @@
           ],
           "from": 120.0,
           "to": "Height",
-          "material": "fb5aaa7b-2353-4a66-952b-9ad25bb9df82"
+          "material": "61305822-6ee7-48e0-a756-0eb30a026168"
         },
         {
           "id": 999609,
-          "guid": "b431d04b-cb68-406b-91b0-4d1347d5771d",
+          "guid": "87ad7f59-f150-4297-8b9d-edd4ca9599c0",
           "plane": "xy",
           "profile": [
             [
@@ -914,7 +914,7 @@
           ],
           "from": 120.0,
           "to": "Height",
-          "material": "fb5aaa7b-2353-4a66-952b-9ad25bb9df82"
+          "material": "61305822-6ee7-48e0-a756-0eb30a026168"
         }
       ]
     },
@@ -944,7 +944,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "4d52ddf0-73a7-4634-98c0-6298bc1fcbf9"
+          "value": "914bd292-4506-4104-b39e-37b95062da09"
         }
       ],
       "types": {
@@ -959,7 +959,7 @@
       "forms": [
         {
           "id": 999608,
-          "guid": "46335906-27ae-42ca-8f0b-dedb2309df09",
+          "guid": "89038abb-27a7-45ae-b3fc-2313de8d77c6",
           "plane": "xy",
           "profile": [
             [
@@ -985,7 +985,7 @@
         },
         {
           "id": 999607,
-          "guid": "15bdfcdd-91e1-4e81-aa8f-0f54e9339be0",
+          "guid": "1bca7641-a89e-4c50-8437-1bf58f7d3730",
           "plane": "xy",
           "profile": [
             [
@@ -1007,11 +1007,11 @@
           ],
           "from": 300.0,
           "to": "Height",
-          "material": "909257b1-b8e6-49ab-b34f-2b6f4d33fc00"
+          "material": "81ea3160-0fa3-4154-8a53-3e6dff91c672"
         },
         {
           "id": 999606,
-          "guid": "fbf7cb8c-4afd-46b9-aa15-65c20c9cf0ab",
+          "guid": "36097c81-4b40-4818-89f1-8f1e504d7a10",
           "plane": "xz",
           "profile": [
             [
@@ -1037,7 +1037,7 @@
         },
         {
           "id": 999605,
-          "guid": "53a3f76b-ae15-4ee7-82bc-738d045d7236",
+          "guid": "3c3f0f2f-5db8-453b-9b61-0094f9f55126",
           "plane": "xy",
           "profile": [
             [
@@ -1059,12 +1059,12 @@
           ],
           "from": "Height",
           "to": "Height + 120",
-          "material": "909257b1-b8e6-49ab-b34f-2b6f4d33fc00",
+          "material": "81ea3160-0fa3-4154-8a53-3e6dff91c672",
           "visible": "Width > 1200"
         },
         {
           "id": 999604,
-          "guid": "1ebaf417-45ba-42a1-bdac-625afd043b5a",
+          "guid": "50145fe9-7c71-4297-845b-ab9a5b6d045a",
           "plane": "xy",
           "profile": [
             [
@@ -1086,12 +1086,12 @@
           ],
           "from": "Height",
           "to": "Height + 120",
-          "material": "909257b1-b8e6-49ab-b34f-2b6f4d33fc00",
+          "material": "81ea3160-0fa3-4154-8a53-3e6dff91c672",
           "visible": "Width > 1200"
         },
         {
           "id": 999603,
-          "guid": "5ef51420-7b82-477c-b722-20067c951e9f",
+          "guid": "8592b9e5-1101-4c5e-aa3a-1df8f0c19d7f",
           "plane": "xy",
           "profile": [
             [
@@ -1113,7 +1113,7 @@
           ],
           "from": "Height",
           "to": "Height + 120",
-          "material": "909257b1-b8e6-49ab-b34f-2b6f4d33fc00",
+          "material": "81ea3160-0fa3-4154-8a53-3e6dff91c672",
           "visible": "Width <= 1200"
         }
       ]
@@ -1149,7 +1149,7 @@
         {
           "name": "Frame Material",
           "kind": "material",
-          "value": "4d52ddf0-73a7-4634-98c0-6298bc1fcbf9"
+          "value": "914bd292-4506-4104-b39e-37b95062da09"
         }
       ],
       "types": {
@@ -1171,7 +1171,7 @@
       "forms": [
         {
           "id": 999602,
-          "guid": "4ce7ad77-c696-487e-8af6-dfe38151548c",
+          "guid": "0ff0d9dc-4b90-4ac1-85b1-4540691b3f86",
           "plane": "xy",
           "profile": [
             [
@@ -1197,7 +1197,7 @@
         },
         {
           "id": 999601,
-          "guid": "edcdb81d-16c2-463a-9748-c55cb7f80c45",
+          "guid": "c819b431-0038-4b5a-a38f-c06675931b64",
           "plane": "xy",
           "profile": [
             [
@@ -1223,7 +1223,7 @@
         },
         {
           "id": 999600,
-          "guid": "d64c6a73-77cb-44dd-856b-0494d9230208",
+          "guid": "33db0c9f-5761-4b62-96d4-794a3a7f769e",
           "plane": "xy",
           "profile": [
             [
@@ -1249,7 +1249,7 @@
         },
         {
           "id": 999599,
-          "guid": "0d080f13-dd33-4be2-bb6d-d4dcf6657494",
+          "guid": "e325ea4c-5b07-4c00-844a-50ea60f8bcc8",
           "plane": "xy",
           "profile": [
             [
@@ -1275,7 +1275,7 @@
         },
         {
           "id": 999598,
-          "guid": "6012ce2c-70c3-4923-b40c-3bb0b8d08ea6",
+          "guid": "1be39ee5-e4fa-4f77-bddc-b20b24e87ec9",
           "plane": "xy",
           "profile": [
             [
@@ -1301,7 +1301,7 @@
         },
         {
           "id": 999597,
-          "guid": "3a43bf29-088d-49ee-b3fc-63856c71ba10",
+          "guid": "16419feb-e811-47f8-a3c1-0148ad4cf0c5",
           "plane": "xy",
           "profile": [
             [
@@ -1327,7 +1327,7 @@
         },
         {
           "id": 999596,
-          "guid": "9259825c-b9d9-406a-b38d-de4d65241238",
+          "guid": "48453eae-e974-466c-8963-d7188740c969",
           "plane": "xy",
           "profile": [
             [
@@ -1349,11 +1349,11 @@
           ],
           "from": "Frame Width + 40",
           "to": "Height - Frame Width - 40",
-          "material": "6cdda579-15ad-4f88-be7f-8f00668fa515"
+          "material": "68d923d1-bd2b-4171-9ca2-6c0b763a5277"
         },
         {
           "id": 999595,
-          "guid": "4925294e-9bd2-4527-ac7b-a96d3a74d036",
+          "guid": "4605e60a-b096-44e8-b680-7caaf8080f23",
           "plane": "xy",
           "profile": [
             [
@@ -1379,7 +1379,7 @@
         },
         {
           "id": 999594,
-          "guid": "58c9cb27-e1ec-473a-8cf5-e306159486d5",
+          "guid": "06ec0008-b9ea-4e7a-970e-5d4acdcb778c",
           "plane": "xy",
           "profile": [
             [
@@ -1405,7 +1405,7 @@
         },
         {
           "id": 999593,
-          "guid": "910814db-d3aa-4c4f-a179-a7fdf1237412",
+          "guid": "48c3f088-1275-45e0-83bd-cb05c407bc2a",
           "plane": "xy",
           "profile": [
             [
@@ -1427,7 +1427,7 @@
           ],
           "from": "Frame Width + 40",
           "to": "Height - Frame Width - 40",
-          "material": "6cdda579-15ad-4f88-be7f-8f00668fa515"
+          "material": "68d923d1-bd2b-4171-9ca2-6c0b763a5277"
         }
       ],
       "operation": "double-swing"
@@ -1461,7 +1461,7 @@
       "forms": [
         {
           "id": 999592,
-          "guid": "680e2e58-cc23-4fd4-8363-0f49b2e854b9",
+          "guid": "da4ce706-9760-4560-b71b-900822057245",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -1472,11 +1472,11 @@
           },
           "from": "Mounting Height + (-40)",
           "to": "Mounting Height",
-          "material": "6586b899-883b-47a3-ad21-edf4e888df48"
+          "material": "3bcc4fc5-100b-4163-9e1e-2ccd9ac044c5"
         },
         {
           "id": 999591,
-          "guid": "2cf3e6d5-898a-4ddc-85c9-cb75777cb871",
+          "guid": "4f16a943-23d4-4dca-8ee2-6a56911a1bf5",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -1487,13 +1487,13 @@
           },
           "from": "Mounting Height + (-60)",
           "to": "Mounting Height + (-40)",
-          "material": "6cdda579-15ad-4f88-be7f-8f00668fa515"
+          "material": "68d923d1-bd2b-4171-9ca2-6c0b763a5277"
         }
       ],
       "connectors": [
         {
           "id": 999590,
-          "guid": "35d5bc0b-7321-4774-b753-5958e4970216",
+          "guid": "ca1dacc0-97ee-4851-b5d0-38559d27ed00",
           "kind": "power",
           "system": "power-balanced",
           "poles": 1,
@@ -1540,7 +1540,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "4d52ddf0-73a7-4634-98c0-6298bc1fcbf9"
+          "value": "914bd292-4506-4104-b39e-37b95062da09"
         }
       ],
       "types": {
@@ -1549,7 +1549,7 @@
       "forms": [
         {
           "id": 999589,
-          "guid": "47818450-42c9-4b2d-8eab-478193746bbd",
+          "guid": "fbe6abf9-9498-4bdc-aa7f-3af76a0d5262",
           "plane": "xy",
           "profile": [
             [
@@ -1575,7 +1575,7 @@
         },
         {
           "id": 999588,
-          "guid": "b2bd89b6-4fde-4ce5-ae1e-06955c5b774c",
+          "guid": "a296baa2-39d9-4a0a-b723-a55babd2f433",
           "plane": "xz",
           "profile": [
             [
@@ -1601,7 +1601,7 @@
         },
         {
           "id": 999587,
-          "guid": "2504d97b-aec5-44ce-892a-28a440e8ec19",
+          "guid": "e601be57-8711-46bc-9f18-74f87b30e8d4",
           "plane": "xy",
           "profile": [
             [
@@ -1627,7 +1627,7 @@
         },
         {
           "id": 999586,
-          "guid": "281a1e01-06f2-4822-bef2-2007fc301996",
+          "guid": "7827cc1d-e0e6-4642-abde-f005bccaf835",
           "plane": "xy",
           "profile": [
             [
@@ -1653,7 +1653,7 @@
         },
         {
           "id": 999585,
-          "guid": "0d9cc7a1-cd62-4b9f-b190-2de64c46893b",
+          "guid": "319517f5-9a11-4b0b-8513-0d2465f08ec2",
           "plane": "xy",
           "profile": [
             [
@@ -1679,7 +1679,7 @@
         },
         {
           "id": 999584,
-          "guid": "27da474e-8cff-4e0c-8606-791fc2b3e00d",
+          "guid": "01be4fe2-40f9-47ab-931e-76b34d1ebdf1",
           "plane": "xy",
           "profile": [
             [
@@ -1723,7 +1723,7 @@
       "forms": [
         {
           "id": 999583,
-          "guid": "fb55da3e-bdb0-4fa2-b4d0-ccf2ef0d15c1",
+          "guid": "49e4b19d-d742-432e-b860-42e0ecc13bb5",
           "plane": "xy",
           "profile": [
             [
@@ -1745,11 +1745,11 @@
           ],
           "from": "Mounting Height",
           "to": "Mounting Height + (85)",
-          "material": "6586b899-883b-47a3-ad21-edf4e888df48"
+          "material": "3bcc4fc5-100b-4163-9e1e-2ccd9ac044c5"
         },
         {
           "id": 999582,
-          "guid": "715a2f8b-1bb3-44a0-a28a-74e9fc5c0d79",
+          "guid": "1917996a-d7a2-4236-b1ee-82a89237688f",
           "plane": "xy",
           "profile": [
             [
@@ -1775,7 +1775,7 @@
         },
         {
           "id": 999581,
-          "guid": "90e071a4-5841-483d-8a23-8a71f3a7ea05",
+          "guid": "c9d47e22-39fb-4bda-8ee2-adb54e91423b",
           "plane": "xy",
           "profile": [
             [
@@ -1827,7 +1827,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "4d52ddf0-73a7-4634-98c0-6298bc1fcbf9"
+          "value": "914bd292-4506-4104-b39e-37b95062da09"
         }
       ],
       "types": {
@@ -1840,7 +1840,7 @@
       "forms": [
         {
           "id": 999580,
-          "guid": "a3e54e21-9a1e-4d25-a6e7-69f9cb85832e",
+          "guid": "d39917c5-9ebb-437c-a809-add55e4e2c1c",
           "plane": "xy",
           "profile": [
             [
@@ -1866,7 +1866,7 @@
         },
         {
           "id": 999579,
-          "guid": "1d1cd9f4-9dd9-4873-af39-9bf1f514ed9c",
+          "guid": "c257cfe0-3a8f-4f1d-8961-d6cfee09ac1c",
           "plane": "xy",
           "profile": [
             [
@@ -1892,7 +1892,7 @@
         },
         {
           "id": 999578,
-          "guid": "1cd814a2-2148-4d46-9a88-ab33fe127453",
+          "guid": "6a656eee-a0ac-44c6-8a71-a73c30f61fb0",
           "plane": "xy",
           "profile": [
             [
@@ -1918,7 +1918,7 @@
         },
         {
           "id": 999577,
-          "guid": "d31e5770-024d-49e8-aa37-894d7e2ac6e0",
+          "guid": "6e49653e-55e3-47ab-92e3-e0e42342cc6b",
           "plane": "xy",
           "profile": [
             [
@@ -1970,7 +1970,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "value": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       ],
       "types": {
@@ -1987,7 +1987,7 @@
       "forms": [
         {
           "id": 999576,
-          "guid": "31e5794b-04d4-4f03-8b4c-1de864ecc7b1",
+          "guid": "5c34a918-56c1-4fe0-b5f7-7c7529b23c68",
           "plane": "xy",
           "profile": [
             [
@@ -2013,7 +2013,7 @@
         },
         {
           "id": 999575,
-          "guid": "06966c75-bf7d-468d-adf5-6f9545c4d522",
+          "guid": "fa67fff7-27f2-4e1c-b748-b15bf0fbf107",
           "plane": "xy",
           "profile": [
             [
@@ -2065,12 +2065,12 @@
         {
           "name": "Frame Material",
           "kind": "material",
-          "value": "4d52ddf0-73a7-4634-98c0-6298bc1fcbf9"
+          "value": "914bd292-4506-4104-b39e-37b95062da09"
         },
         {
           "name": "Leaf Material",
           "kind": "material",
-          "value": "4d52ddf0-73a7-4634-98c0-6298bc1fcbf9"
+          "value": "914bd292-4506-4104-b39e-37b95062da09"
         }
       ],
       "types": {
@@ -2090,7 +2090,7 @@
       "forms": [
         {
           "id": 999574,
-          "guid": "85f50fc8-1fd0-4ee8-8589-3e4f443d224e",
+          "guid": "f89a7152-081a-4f35-ba6b-c49c4da1d01a",
           "plane": "xy",
           "profile": [
             [
@@ -2116,7 +2116,7 @@
         },
         {
           "id": 999573,
-          "guid": "36c834b6-02af-4536-90b4-87d49804f6cb",
+          "guid": "b1b73b01-c88c-44a0-8ba4-d2b3cf077fb6",
           "plane": "xy",
           "profile": [
             [
@@ -2142,7 +2142,7 @@
         },
         {
           "id": 999572,
-          "guid": "a3f7f778-f8ef-4efe-be29-2b8a9d21af04",
+          "guid": "333f71f5-0471-49fe-a038-560aad3912b2",
           "plane": "xy",
           "profile": [
             [
@@ -2168,7 +2168,7 @@
         },
         {
           "id": 999571,
-          "guid": "94b38097-7103-441f-b211-e93141aa1f1d",
+          "guid": "524aff29-1bd5-4e85-af44-6f9cf30b4fdd",
           "plane": "xy",
           "profile": [
             [
@@ -2194,7 +2194,7 @@
         },
         {
           "id": 999570,
-          "guid": "1b7e611c-a882-45be-b13e-87fe70124380",
+          "guid": "fcfc3365-a2b2-4367-a220-313301f25915",
           "plane": "xy",
           "profile": [
             [
@@ -2220,7 +2220,7 @@
         },
         {
           "id": 999569,
-          "guid": "5a80bc31-1dcb-4290-959c-b5a619a5ab85",
+          "guid": "22571a89-9a76-4169-a506-17553587ffa0",
           "plane": "xy",
           "profile": [
             [
@@ -2242,11 +2242,11 @@
           ],
           "from": "1000",
           "to": "1030",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999568,
-          "guid": "3ede820f-b610-4262-9633-dd6778fc42db",
+          "guid": "03e783a3-7387-42ab-adbf-ec5a296ee20a",
           "plane": "xy",
           "profile": [
             [
@@ -2268,11 +2268,11 @@
           ],
           "from": "1000",
           "to": "1030",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999567,
-          "guid": "d22bba8e-0c24-480f-b6db-9f17ca2f0ee1",
+          "guid": "6db18f4b-8e2b-42e7-b09a-a3effd2a3413",
           "plane": "xy",
           "profile": [
             [
@@ -2294,11 +2294,11 @@
           ],
           "from": "1000",
           "to": "1030",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999566,
-          "guid": "6c5a0834-bb28-4cc9-b5d9-935a8ffb684a",
+          "guid": "fab7b3ba-6e0e-49e9-91a7-540b26da0faf",
           "plane": "xy",
           "profile": [
             [
@@ -2320,13 +2320,13 @@
           ],
           "from": "1000",
           "to": "1030",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       ],
       "symbols": [
         {
           "id": 999565,
-          "guid": "232bf50f-e148-4c6c-bd55-e41e2b2aa0aa",
+          "guid": "941d5ae2-95c5-462c-bb1a-fcee593ba159",
           "line": [
             [
               "-Width / 2 + Frame Width",
@@ -2340,7 +2340,7 @@
         },
         {
           "id": 999564,
-          "guid": "7c024302-f356-433a-b355-549d5aa2f9b6",
+          "guid": "0e7ca3fa-0210-41ea-b551-e830f692af77",
           "arc": {
             "centre": [
               "-Width / 2 + Frame Width",
@@ -2353,7 +2353,7 @@
         },
         {
           "id": 999563,
-          "guid": "52c091f4-cd80-4815-8b45-e8da9a59d68f",
+          "guid": "1f975133-6741-4701-975b-ba164b7952bf",
           "line": [
             [
               "Width / 2 - Frame Width",
@@ -2367,7 +2367,7 @@
         },
         {
           "id": 999562,
-          "guid": "c9814902-9eae-41f2-b16d-3d489c919898",
+          "guid": "5aee023f-4078-4c5c-bcd8-0b1a76f0d2b1",
           "arc": {
             "centre": [
               "Width / 2 - Frame Width",
@@ -2397,7 +2397,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "value": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       ],
       "types": {
@@ -2411,7 +2411,7 @@
       "forms": [
         {
           "id": 999561,
-          "guid": "f734cebd-5e8a-40a8-8d75-ed55c4421acb",
+          "guid": "4cbb5879-fe83-4b82-bf07-32cebb1e7141",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -2438,7 +2438,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "1622994b-a9d7-4902-b0fd-9ecc8d7b0c37"
+          "value": "fddd6fed-7f4c-4c9a-9c8b-af78365ac927"
         }
       ],
       "types": {
@@ -2455,7 +2455,7 @@
       "forms": [
         {
           "id": 999560,
-          "guid": "ea2389f3-e742-49dc-b071-9f8c49b0d255",
+          "guid": "a5cf19bb-e95e-4de4-897b-4833b19133fd",
           "plane": "yz",
           "circle": {
             "centre": [
@@ -2470,7 +2470,7 @@
         },
         {
           "id": 999559,
-          "guid": "c8b21a8d-d3c4-4e8f-b77c-837e4d8b4431",
+          "guid": "2b3ea57a-bc6f-40a4-b213-1094357dfa20",
           "plane": "xz",
           "circle": {
             "centre": [
@@ -2516,7 +2516,7 @@
         {
           "name": "Frame Material",
           "kind": "material",
-          "value": "4d52ddf0-73a7-4634-98c0-6298bc1fcbf9"
+          "value": "914bd292-4506-4104-b39e-37b95062da09"
         }
       ],
       "types": {
@@ -2538,7 +2538,7 @@
       "forms": [
         {
           "id": 999558,
-          "guid": "8fc0bc3b-b976-492a-a622-3db8cccfd3d3",
+          "guid": "40958a90-899c-4ae6-84c5-0d54a404c68d",
           "plane": "xy",
           "profile": [
             [
@@ -2564,7 +2564,7 @@
         },
         {
           "id": 999557,
-          "guid": "840af6bb-6832-488e-9cd6-6c2c30dcde17",
+          "guid": "513b2ab3-4883-4590-acc6-ef3269ef3bb5",
           "plane": "xy",
           "profile": [
             [
@@ -2590,7 +2590,7 @@
         },
         {
           "id": 999556,
-          "guid": "e34feef6-ebf2-4d14-b184-db7b37c49fb6",
+          "guid": "cdeacc4d-c80f-4428-b820-5101409d4410",
           "plane": "xy",
           "profile": [
             [
@@ -2616,7 +2616,7 @@
         },
         {
           "id": 999555,
-          "guid": "9dd2a18f-5e49-44da-a95f-f8587480056d",
+          "guid": "48311602-35e6-42fb-afed-e2069a240a22",
           "plane": "xy",
           "profile": [
             [
@@ -2642,7 +2642,7 @@
         },
         {
           "id": 999554,
-          "guid": "f63f629b-e4c3-4235-88f9-26deccbf084f",
+          "guid": "b91802a9-f119-4619-81ed-4a9138bf14f3",
           "plane": "xy",
           "profile": [
             [
@@ -2664,7 +2664,7 @@
           ],
           "from": "Frame Width",
           "to": "Height - Frame Width",
-          "material": "6cdda579-15ad-4f88-be7f-8f00668fa515"
+          "material": "68d923d1-bd2b-4171-9ca2-6c0b763a5277"
         }
       ],
       "operation": "fixed"
@@ -2688,7 +2688,7 @@
       "forms": [
         {
           "id": 999553,
-          "guid": "ed8266db-7c1d-4d16-a09b-8652b4e9ce9a",
+          "guid": "addfea3d-dec0-4acd-9a4d-a4759f08beba",
           "plane": "xy",
           "profile": [
             [
@@ -2710,11 +2710,11 @@
           ],
           "from": -50.0,
           "to": 0.0,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999552,
-          "guid": "14e6b03a-be42-47a6-85a9-05f189b46266",
+          "guid": "0ad00fe0-9a7a-4a63-a959-3ad65bb87d7f",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -2729,7 +2729,7 @@
         },
         {
           "id": 999551,
-          "guid": "b705944e-c786-43fc-8d28-d13ed7bf72d5",
+          "guid": "12b6a992-3a9d-49a7-b481-e00270f9e5ab",
           "plane": "xy",
           "profile": [
             [
@@ -2751,11 +2751,11 @@
           ],
           "from": -10.0,
           "to": 0.0,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999550,
-          "guid": "feed2e20-0f35-40da-92af-263037b99998",
+          "guid": "4fe77402-20bc-42ac-ad98-2f7a214464ee",
           "plane": "xy",
           "profile": [
             [
@@ -2777,11 +2777,11 @@
           ],
           "from": -10.0,
           "to": 0.0,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999549,
-          "guid": "241f12bd-3a38-492a-9594-d3ce5c39974f",
+          "guid": "ab25bbd9-3612-4d8a-8839-a193caeff527",
           "plane": "xy",
           "profile": [
             [
@@ -2803,7 +2803,7 @@
           ],
           "from": -10.0,
           "to": 0.0,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       ]
     },
@@ -2818,7 +2818,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "value": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       ],
       "types": {
@@ -2832,7 +2832,7 @@
       "forms": [
         {
           "id": 999548,
-          "guid": "7df7d464-5d44-4029-a116-64da68ada151",
+          "guid": "e2cca36d-185b-42d0-8328-42c4ccceec1b",
           "plane": "yz",
           "circle": {
             "centre": [
@@ -2847,7 +2847,7 @@
         },
         {
           "id": 999547,
-          "guid": "9c03edb4-e6c5-463b-bf6b-8a51b8ef47af",
+          "guid": "592f21c6-1e73-46ff-b5a3-f681af673ab7",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -2862,7 +2862,7 @@
         },
         {
           "id": 999546,
-          "guid": "f6ff8398-6e4c-4e96-9b7e-4b259dd66a05",
+          "guid": "cdfe74b7-f035-4537-aa88-fa20755a58b0",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -2877,7 +2877,7 @@
         },
         {
           "id": 999545,
-          "guid": "ce475449-57b7-4e6b-811c-564dd92620e8",
+          "guid": "9f249d52-a1cb-426b-b25c-454239285211",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -2908,7 +2908,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "35574c5b-b5e1-467a-965d-81c799ed7b01"
+          "value": "f9954f4a-5e3d-4178-96a1-700aeaa0ed1b"
         }
       ],
       "types": {
@@ -2922,7 +2922,7 @@
       "forms": [
         {
           "id": 999544,
-          "guid": "9e0a3526-c25a-498f-a3c8-09d867d5f8cb",
+          "guid": "1d16dec7-2d0f-43f5-9696-5e000619767b",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -2937,7 +2937,7 @@
         },
         {
           "id": 999543,
-          "guid": "237bed09-d85f-415a-bc0d-904fd6c9bbfa",
+          "guid": "b255ff62-7ff7-4350-a303-c5508f6a72ac",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -2974,7 +2974,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "value": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       ],
       "types": {
@@ -2987,7 +2987,7 @@
       "forms": [
         {
           "id": 999542,
-          "guid": "29c28b7f-0488-4c62-8caf-4cc7082a70e6",
+          "guid": "24056b4f-20d8-42c2-b23b-8db6b4c8b020",
           "plane": "xy",
           "profile": [
             [
@@ -3009,11 +3009,11 @@
           ],
           "from": "Height - 40",
           "to": "Height",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999541,
-          "guid": "170b211c-e3bc-425e-9d76-03aa6c1951bf",
+          "guid": "eb3353d9-46aa-4a62-aa17-27327a13323d",
           "plane": "xy",
           "profile": [
             [
@@ -3035,11 +3035,11 @@
           ],
           "from": "Height - 210",
           "to": "Height - 40",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999540,
-          "guid": "42d0b8ba-8d69-4b9a-8e1f-89f14095efd7",
+          "guid": "68d0e83b-2c3c-4339-be87-7c5488641361",
           "plane": "xy",
           "profile": [
             [
@@ -3065,7 +3065,7 @@
         },
         {
           "id": 999539,
-          "guid": "23884725-da84-406c-884c-3190b4f98695",
+          "guid": "dc105c8f-d62d-4b48-860b-23c8ce313e6b",
           "plane": "xy",
           "profile": [
             [
@@ -3087,11 +3087,11 @@
           ],
           "from": 0.0,
           "to": "Height - 40",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999538,
-          "guid": "ff688055-ce27-42c6-86d8-9f30fbbd8550",
+          "guid": "124790c4-234c-4ffb-999f-0b5675e9073e",
           "plane": "xy",
           "profile": [
             [
@@ -3113,11 +3113,11 @@
           ],
           "from": 0.0,
           "to": "Height - 40",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999537,
-          "guid": "c201447d-7fd2-4e95-a688-1cdae14bf218",
+          "guid": "d5d3e0e5-2107-438e-a41c-72be1de9028d",
           "plane": "xy",
           "profile": [
             [
@@ -3139,11 +3139,11 @@
           ],
           "from": 0.0,
           "to": "Height - 40",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999536,
-          "guid": "67eb72ac-7366-45dd-9ff4-c95daa6a3ee3",
+          "guid": "c6e41327-1082-4676-a508-7e3371e46d0f",
           "plane": "xy",
           "profile": [
             [
@@ -3165,11 +3165,11 @@
           ],
           "from": 0.0,
           "to": "Height - 40",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999535,
-          "guid": "4ba57bfd-35a4-44d2-9148-b2534a2946b4",
+          "guid": "c505bd10-7180-4fc2-82f9-8c143304892a",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -3180,11 +3180,11 @@
           },
           "from": "Height",
           "to": "Height + 250",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999534,
-          "guid": "cef4fe5c-7e7c-4e74-ab4c-0e19afabfdf8",
+          "guid": "c8ea912d-d10b-4c74-ab75-faaac74fe11f",
           "plane": "xy",
           "profile": [
             [
@@ -3206,7 +3206,7 @@
           ],
           "from": "Height + 220",
           "to": "Height + 250",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       ]
     },
@@ -3236,7 +3236,7 @@
       "forms": [
         {
           "id": 999533,
-          "guid": "c975a563-2f2b-4b1f-a98e-00dda577d0c8",
+          "guid": "c5e06457-185c-4677-9ed1-dcd9c802263c",
           "plane": "xy",
           "profile": [
             [
@@ -3258,11 +3258,11 @@
           ],
           "from": "Mounting Height + (-50)",
           "to": "Mounting Height + (50)",
-          "material": "6586b899-883b-47a3-ad21-edf4e888df48"
+          "material": "3bcc4fc5-100b-4163-9e1e-2ccd9ac044c5"
         },
         {
           "id": 999532,
-          "guid": "ec91848d-d5fd-4ae1-abe1-33f15867331a",
+          "guid": "c761381f-6f9b-48a2-80f1-d2029d2bf723",
           "plane": "xz",
           "circle": {
             "centre": [
@@ -3279,7 +3279,7 @@
       "connectors": [
         {
           "id": 999531,
-          "guid": "04598272-f78f-4f4a-9fb3-9467b22b6b10",
+          "guid": "b99c4179-e51f-46e3-875f-aea0279f7999",
           "kind": "power",
           "system": "power-balanced",
           "poles": 1,
@@ -3301,7 +3301,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "value": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       ],
       "types": {
@@ -3311,7 +3311,7 @@
       "forms": [
         {
           "id": 999530,
-          "guid": "147f8175-feff-4c8c-b43e-8abaf3c9280b",
+          "guid": "1ec163e0-3eb1-4aa2-9691-54b311920098",
           "plane": "xy",
           "profile": [
             [
@@ -3358,7 +3358,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "value": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       ],
       "types": {
@@ -3373,7 +3373,7 @@
       "forms": [
         {
           "id": 999529,
-          "guid": "bccaeb98-e9e7-43d9-a56f-bb124ef83405",
+          "guid": "ea689e13-2a89-4ae7-afd5-e17e03a2c64c",
           "plane": "xy",
           "profile": [
             [
@@ -3399,7 +3399,7 @@
         },
         {
           "id": 999528,
-          "guid": "9087a0a4-ed75-45e8-9272-3d638146bf6b",
+          "guid": "7b7cab10-a63d-4390-ba5f-dd145bd32be8",
           "plane": "xy",
           "profile": [
             [
@@ -3421,7 +3421,7 @@
           ],
           "from": 60.0,
           "to": "Height - 40",
-          "material": "6586b899-883b-47a3-ad21-edf4e888df48"
+          "material": "3bcc4fc5-100b-4163-9e1e-2ccd9ac044c5"
         }
       ]
     },
@@ -3460,7 +3460,7 @@
       "forms": [
         {
           "id": 999527,
-          "guid": "9f940ffd-26bd-45a7-a6b8-dd17f261b229",
+          "guid": "18185806-38f0-4e60-ac68-dfcbaee533f7",
           "plane": "xy",
           "profile": [
             [
@@ -3482,11 +3482,11 @@
           ],
           "from": "Mounting Height + (-30)",
           "to": "Mounting Height",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999526,
-          "guid": "ac14c30e-d138-473c-9680-fe4031c24196",
+          "guid": "d47ea061-7a64-45e3-9146-ced08d9004b7",
           "plane": "xy",
           "profile": [
             [
@@ -3508,13 +3508,13 @@
           ],
           "from": "Mounting Height + (-35)",
           "to": "Mounting Height + (-30)",
-          "material": "6cdda579-15ad-4f88-be7f-8f00668fa515"
+          "material": "68d923d1-bd2b-4171-9ca2-6c0b763a5277"
         }
       ],
       "connectors": [
         {
           "id": 999525,
-          "guid": "9b4b0900-9f37-4838-8fc9-c51e406edbe0",
+          "guid": "12be77d3-4b8a-4d93-bde1-262754c301e1",
           "kind": "power",
           "system": "power-balanced",
           "poles": 1,
@@ -3550,7 +3550,7 @@
       "forms": [
         {
           "id": 999524,
-          "guid": "41442b90-b8c4-4fdc-82aa-c0c71e10b29a",
+          "guid": "7fc83683-14c1-48a9-99e1-31c38b4f2bd4",
           "plane": "xy",
           "profile": [
             [
@@ -3572,11 +3572,11 @@
           ],
           "from": 0.0,
           "to": 50.0,
-          "material": "fb5aaa7b-2353-4a66-952b-9ad25bb9df82"
+          "material": "61305822-6ee7-48e0-a756-0eb30a026168"
         },
         {
           "id": 999523,
-          "guid": "b4761e15-f7a2-4d94-b3e3-b70fe4417f7c",
+          "guid": "75253364-383c-4d90-acf4-117c8c71e804",
           "plane": "xy",
           "profile": [
             [
@@ -3602,7 +3602,7 @@
         },
         {
           "id": 999522,
-          "guid": "2ff2f647-5188-4463-b24f-81967b0f3809",
+          "guid": "373c7ba6-b6ba-4cae-9886-dff467d68ad2",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -3613,11 +3613,11 @@
           },
           "from": 50.0,
           "to": 2100.0,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999521,
-          "guid": "0a047cea-1b24-4ca8-af2c-5726a793d476",
+          "guid": "d8ce6cf9-beeb-418b-9196-e1a4a3776667",
           "plane": "xy",
           "profile": [
             [
@@ -3639,11 +3639,11 @@
           ],
           "from": 2070.0,
           "to": 2100.0,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999520,
-          "guid": "8532835b-1006-4c42-809e-a22fe03c2aab",
+          "guid": "2ce68d2e-b5ea-480f-a3ef-2f1fc42bfb90",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -3654,7 +3654,7 @@
           },
           "from": 2040.0,
           "to": 2070.0,
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       ]
     },
@@ -3684,12 +3684,12 @@
         {
           "name": "Frame Material",
           "kind": "material",
-          "value": "4d52ddf0-73a7-4634-98c0-6298bc1fcbf9"
+          "value": "914bd292-4506-4104-b39e-37b95062da09"
         },
         {
           "name": "Leaf Material",
           "kind": "material",
-          "value": "4d52ddf0-73a7-4634-98c0-6298bc1fcbf9"
+          "value": "914bd292-4506-4104-b39e-37b95062da09"
         }
       ],
       "types": {
@@ -3709,7 +3709,7 @@
       "forms": [
         {
           "id": 999519,
-          "guid": "c9f7c27f-c8c4-43eb-a692-d9fbff437a56",
+          "guid": "153d0b39-f625-4789-8f9e-983fa0dd32b6",
           "plane": "xy",
           "profile": [
             [
@@ -3735,7 +3735,7 @@
         },
         {
           "id": 999518,
-          "guid": "d61cc223-7c7e-4cd0-b45e-aa3fb8aa8a5b",
+          "guid": "4eb2480c-b31b-4423-b303-2e20adfe8bb1",
           "plane": "xy",
           "profile": [
             [
@@ -3761,7 +3761,7 @@
         },
         {
           "id": 999517,
-          "guid": "b15e0736-28b9-4893-9db1-a620909c9f1c",
+          "guid": "62883b23-0fd2-4dd6-a259-40a66c2a73f9",
           "plane": "xy",
           "profile": [
             [
@@ -3787,7 +3787,7 @@
         },
         {
           "id": 999516,
-          "guid": "bfe428d2-492d-4cae-b59e-890b069ecd6f",
+          "guid": "98d07126-2c5f-4ecf-a169-874d98bab5b0",
           "plane": "xy",
           "profile": [
             [
@@ -3813,7 +3813,7 @@
         },
         {
           "id": 999515,
-          "guid": "e837ce0b-90e5-45d4-a9ed-cfb5b6b2121b",
+          "guid": "31513e2d-2326-4451-b19d-f5849b97e078",
           "plane": "xy",
           "profile": [
             [
@@ -3835,11 +3835,11 @@
           ],
           "from": "1000",
           "to": "1030",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "id": 999514,
-          "guid": "37d31757-7e8f-443a-a3e2-fcee01beaaed",
+          "guid": "07bb01df-3178-441f-9b14-912e49aa745f",
           "plane": "xy",
           "profile": [
             [
@@ -3861,13 +3861,13 @@
           ],
           "from": "1000",
           "to": "1030",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       ],
       "symbols": [
         {
           "id": 999513,
-          "guid": "4f214cad-b5a1-45d5-9022-f579f13cbe72",
+          "guid": "2ff4d651-9282-457f-851a-c97bd13f9129",
           "line": [
             [
               "-Width / 2 + Frame Width",
@@ -3881,7 +3881,7 @@
         },
         {
           "id": 999512,
-          "guid": "077480cb-0ad2-482a-9435-ced3bfd531f4",
+          "guid": "1b505bb2-b8f8-42ea-b41f-ad3dd9a25dd1",
           "arc": {
             "centre": [
               "-Width / 2 + Frame Width",
@@ -3921,12 +3921,12 @@
         {
           "name": "Frame Material",
           "kind": "material",
-          "value": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "value": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         },
         {
           "name": "Leaf Material",
           "kind": "material",
-          "value": "6cdda579-15ad-4f88-be7f-8f00668fa515"
+          "value": "68d923d1-bd2b-4171-9ca2-6c0b763a5277"
         }
       ],
       "types": {
@@ -3946,7 +3946,7 @@
       "forms": [
         {
           "id": 999511,
-          "guid": "2b711f47-36eb-4647-a470-bdb8128947ec",
+          "guid": "9f5f1aa2-c94a-4f80-b12e-6e32b7339528",
           "plane": "xy",
           "profile": [
             [
@@ -3972,7 +3972,7 @@
         },
         {
           "id": 999510,
-          "guid": "be116a4f-b466-4176-baf5-e3629ec39e88",
+          "guid": "951bf78b-b87d-40b7-8b4c-af54e9d3e5c1",
           "plane": "xy",
           "profile": [
             [
@@ -3998,7 +3998,7 @@
         },
         {
           "id": 999509,
-          "guid": "d8ffe687-b678-41bc-a911-a524c40696e0",
+          "guid": "526c2048-b611-43cb-abcc-566652f7446c",
           "plane": "xy",
           "profile": [
             [
@@ -4024,7 +4024,7 @@
         },
         {
           "id": 999508,
-          "guid": "a819a4dc-303c-4954-aa72-46a758c3cd17",
+          "guid": "8a009d7c-ac31-4566-b8be-0f42248d9177",
           "plane": "xy",
           "profile": [
             [
@@ -4050,7 +4050,7 @@
         },
         {
           "id": 999507,
-          "guid": "19a29b95-e768-4ef8-b181-6234d07c24db",
+          "guid": "f2990bca-4c01-4e12-b547-12014af23125",
           "plane": "xy",
           "profile": [
             [
@@ -4076,7 +4076,7 @@
         },
         {
           "id": 999506,
-          "guid": "cf7a48d5-5226-4ca5-877f-6d78f9c90a6a",
+          "guid": "2c2b994a-1c5c-48c0-9e26-da8af5fbd44f",
           "plane": "xy",
           "profile": [
             [
@@ -4098,13 +4098,13 @@
           ],
           "from": "1000",
           "to": "1150",
-          "material": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "material": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       ],
       "symbols": [
         {
           "id": 999505,
-          "guid": "2a404926-c4c5-4432-a811-85c89a7746ea",
+          "guid": "5711451a-8cea-4ac2-8bcc-5a2a8508ceed",
           "line": [
             [
               "-Width / 2 + Frame Width",
@@ -4118,7 +4118,7 @@
         },
         {
           "id": 999504,
-          "guid": "b6d8a2e4-89a4-47c5-b211-1aede67150d6",
+          "guid": "93d65b27-0c03-48f2-b448-e4debbbee155",
           "line": [
             [
               "-25",
@@ -4164,7 +4164,7 @@
         {
           "name": "Frame Material",
           "kind": "material",
-          "value": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+          "value": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
         }
       ],
       "types": {
@@ -4186,7 +4186,7 @@
       "forms": [
         {
           "id": 999503,
-          "guid": "d1f48440-f274-4cf1-80b7-f8228ee58403",
+          "guid": "7334ce94-6b2e-494d-817f-9532445d6fe8",
           "plane": "xy",
           "profile": [
             [
@@ -4212,7 +4212,7 @@
         },
         {
           "id": 999502,
-          "guid": "8b4d5a6b-a3fd-4f5e-aacf-8fe94cf0c4c4",
+          "guid": "8b8d1066-532b-449a-afe6-700ea89a98ea",
           "plane": "xy",
           "profile": [
             [
@@ -4238,7 +4238,7 @@
         },
         {
           "id": 999501,
-          "guid": "4a2d6244-b709-4517-bb11-67d197591b13",
+          "guid": "d4046928-9ea0-4dee-b41b-37de169d93c3",
           "plane": "xy",
           "profile": [
             [
@@ -4264,7 +4264,7 @@
         },
         {
           "id": 999500,
-          "guid": "25be3ca4-3052-47e0-a089-4f76aa241011",
+          "guid": "0235bb08-0a02-42f5-aaee-435d45993948",
           "plane": "xy",
           "profile": [
             [
@@ -4290,7 +4290,7 @@
         },
         {
           "id": 999499,
-          "guid": "13df8505-7c0a-4960-b0e9-7d744bd27cef",
+          "guid": "96de92d1-ca4a-47e1-98bf-6b4c6c693127",
           "plane": "xy",
           "profile": [
             [
@@ -4316,7 +4316,7 @@
         },
         {
           "id": 999498,
-          "guid": "0c5bac51-3826-48ec-bf72-d839cf1f32c7",
+          "guid": "90b53647-2410-414a-be7a-1a97c97098f8",
           "plane": "xy",
           "profile": [
             [
@@ -4342,7 +4342,7 @@
         },
         {
           "id": 999497,
-          "guid": "bfb000e3-90d2-459a-95cd-359245e30b41",
+          "guid": "d688b8fb-cb34-44ea-982b-65d036c41650",
           "plane": "xy",
           "profile": [
             [
@@ -4368,7 +4368,7 @@
         },
         {
           "id": 999496,
-          "guid": "70a774b6-9f47-459c-807e-218b4c5005e5",
+          "guid": "7b2ff1e7-b1fe-4fa5-882f-b32a48bf7ae8",
           "plane": "xy",
           "profile": [
             [
@@ -4394,7 +4394,7 @@
         },
         {
           "id": 999495,
-          "guid": "2621c48b-8f36-4938-be3e-5896169b5ff8",
+          "guid": "f74efdf5-53ba-4d15-96c1-266d2f7d35ab",
           "plane": "xy",
           "profile": [
             [
@@ -4416,11 +4416,11 @@
           ],
           "from": "Frame Width + 40",
           "to": "Height - Frame Width - 40",
-          "material": "6cdda579-15ad-4f88-be7f-8f00668fa515"
+          "material": "68d923d1-bd2b-4171-9ca2-6c0b763a5277"
         },
         {
           "id": 999494,
-          "guid": "d7fe4c23-8586-443e-bd05-e099439e7ee0",
+          "guid": "a9a8b641-ac89-43e5-a40c-5f4542b98e3a",
           "plane": "xy",
           "profile": [
             [
@@ -4446,7 +4446,7 @@
         },
         {
           "id": 999493,
-          "guid": "5bd05594-accf-49a5-9d0f-570fd0c55b53",
+          "guid": "6ee12dfe-95c6-475d-8773-2ff525899b63",
           "plane": "xy",
           "profile": [
             [
@@ -4472,7 +4472,7 @@
         },
         {
           "id": 999492,
-          "guid": "76f915c1-18b6-46d5-b00a-1b837da966e9",
+          "guid": "cbccbb9b-f39a-46b3-8920-3e5cb6eba11d",
           "plane": "xy",
           "profile": [
             [
@@ -4498,7 +4498,7 @@
         },
         {
           "id": 999491,
-          "guid": "0842ae3c-6b39-4b37-b6c2-f315e5cc3c38",
+          "guid": "a3876405-acfa-4b5c-8124-5fb0d9284d48",
           "plane": "xy",
           "profile": [
             [
@@ -4524,7 +4524,7 @@
         },
         {
           "id": 999490,
-          "guid": "2a2b7174-0de4-4edc-8911-9cb1500ae4df",
+          "guid": "307ce44d-b092-4b64-ada4-bd9f8f562dc9",
           "plane": "xy",
           "profile": [
             [
@@ -4546,13 +4546,13 @@
           ],
           "from": "Frame Width + 40",
           "to": "Height - Frame Width - 40",
-          "material": "6cdda579-15ad-4f88-be7f-8f00668fa515"
+          "material": "68d923d1-bd2b-4171-9ca2-6c0b763a5277"
         }
       ],
       "symbols": [
         {
           "id": 999489,
-          "guid": "9d64bbb7-7da0-468b-b98f-3950938ba8db",
+          "guid": "e3eecac7-3986-40e0-b0d9-267db8059c17",
           "line": [
             [
               "-Width / 2 + Frame Width",
@@ -4566,7 +4566,7 @@
         },
         {
           "id": 999488,
-          "guid": "05bb0ed9-a249-4ae4-8846-8b6f8ab125a0",
+          "guid": "448cee3e-3fb2-4130-857b-a9ab3e3840f9",
           "line": [
             [
               "-20",
@@ -4612,7 +4612,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "909257b1-b8e6-49ab-b34f-2b6f4d33fc00"
+          "value": "81ea3160-0fa3-4154-8a53-3e6dff91c672"
         }
       ],
       "types": {
@@ -4624,7 +4624,7 @@
       "forms": [
         {
           "id": 999487,
-          "guid": "c1d3d9d4-5a80-461d-9c20-d54591f55d83",
+          "guid": "b275415a-d916-4d0b-a497-560340c46756",
           "plane": "xy",
           "profile": [
             [
@@ -4650,7 +4650,7 @@
         },
         {
           "id": 999486,
-          "guid": "69611cd4-6e14-4ac5-abd5-516d61add4e7",
+          "guid": "ecac7049-e511-4220-a210-c1c14063480c",
           "plane": "xy",
           "profile": [
             [
@@ -4676,7 +4676,7 @@
         },
         {
           "id": 999485,
-          "guid": "dcec056c-d5cd-4f68-81f7-a44292531c0f",
+          "guid": "54eb08a0-3fad-4f59-9940-45d414184951",
           "plane": "xy",
           "profile": [
             [
@@ -4702,7 +4702,7 @@
         },
         {
           "id": 999484,
-          "guid": "c681f2f4-df95-4809-b8bd-78ea2e9f5b24",
+          "guid": "22d94b90-022a-4186-9201-f5b6c803ae9b",
           "plane": "xy",
           "profile": [
             [
@@ -4746,7 +4746,7 @@
       "forms": [
         {
           "id": 999483,
-          "guid": "27de5e2b-d2b1-4df4-8546-f0025309ad47",
+          "guid": "47d7e78c-9f52-4d60-ad5a-9b72b02a924c",
           "plane": "xy",
           "profile": [
             [
@@ -4768,11 +4768,11 @@
           ],
           "from": "Mounting Height + (-50)",
           "to": "Mounting Height + (50)",
-          "material": "6586b899-883b-47a3-ad21-edf4e888df48"
+          "material": "3bcc4fc5-100b-4163-9e1e-2ccd9ac044c5"
         },
         {
           "id": 999482,
-          "guid": "9a6b6ee9-e534-4f4d-9901-daf0148077ae",
+          "guid": "1510aa4d-4feb-47ef-bda9-aa7d0398ec87",
           "plane": "xy",
           "profile": [
             [
@@ -4794,13 +4794,13 @@
           ],
           "from": "Mounting Height + (-30)",
           "to": "Mounting Height + (30)",
-          "material": "6586b899-883b-47a3-ad21-edf4e888df48"
+          "material": "3bcc4fc5-100b-4163-9e1e-2ccd9ac044c5"
         }
       ],
       "connectors": [
         {
           "id": 999481,
-          "guid": "2f795fd7-c228-4790-b8cc-f52bf790cb44",
+          "guid": "3c059f95-d39a-4891-83a5-422fdcec5e5f",
           "kind": "switch",
           "system": "switch",
           "poles": 1,
@@ -4842,7 +4842,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "4d52ddf0-73a7-4634-98c0-6298bc1fcbf9"
+          "value": "914bd292-4506-4104-b39e-37b95062da09"
         }
       ],
       "types": {
@@ -4859,7 +4859,7 @@
       "forms": [
         {
           "id": 999480,
-          "guid": "7a53d0a2-802e-4b1e-9e4a-1d54c54d5ba9",
+          "guid": "7a491513-1ad9-478f-a1ff-72f97a2473a4",
           "plane": "xy",
           "profile": [
             [
@@ -4885,7 +4885,7 @@
         },
         {
           "id": 999479,
-          "guid": "bb3f2b64-12c6-4073-9ecc-34fa6f8cab6e",
+          "guid": "e2facf15-f384-40f1-8708-ecc5380d8911",
           "plane": "xy",
           "profile": [
             [
@@ -4911,7 +4911,7 @@
         },
         {
           "id": 999478,
-          "guid": "be2a1111-af6e-440c-a761-14dd2995e74a",
+          "guid": "b943cb69-a298-43d0-82f8-af3039612b1c",
           "plane": "xy",
           "profile": [
             [
@@ -4937,7 +4937,7 @@
         },
         {
           "id": 999477,
-          "guid": "91359efe-20f2-4d6b-9bca-aee710881a14",
+          "guid": "92ee81ec-b65a-4a46-b7cb-7f2c5c5bd408",
           "plane": "xy",
           "profile": [
             [
@@ -4963,7 +4963,7 @@
         },
         {
           "id": 999476,
-          "guid": "81a1b1ba-2a17-4636-a0fd-962f18c28b3c",
+          "guid": "b1e70034-fbab-40dc-b895-857a10239028",
           "plane": "xy",
           "profile": [
             [
@@ -5001,7 +5001,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "1622994b-a9d7-4902-b0fd-9ecc8d7b0c37"
+          "value": "fddd6fed-7f4c-4c9a-9c8b-af78365ac927"
         }
       ],
       "types": {
@@ -5018,7 +5018,7 @@
       "forms": [
         {
           "id": 999475,
-          "guid": "c94a541b-cef3-4ec2-ba6e-a7b50c59300b",
+          "guid": "cb4ec3c5-00cd-4e14-a80b-802c7d0836a8",
           "plane": "yz",
           "circle": {
             "centre": [
@@ -5033,7 +5033,7 @@
         },
         {
           "id": 999474,
-          "guid": "64cdf86f-2665-4b93-bc0b-4688885ade58",
+          "guid": "f95d524e-e3a3-44b0-b001-3b1c57407926",
           "plane": "xz",
           "circle": {
             "centre": [
@@ -5083,7 +5083,7 @@
       "forms": [
         {
           "id": 999473,
-          "guid": "a92af40b-f144-49e9-bfa9-54bdf4acf539",
+          "guid": "f55378f2-1a02-4efc-acda-ab960f36c3bf",
           "plane": "xy",
           "profile": [
             [
@@ -5105,11 +5105,11 @@
           ],
           "from": "Mounting Height + (-50)",
           "to": "Mounting Height + (50)",
-          "material": "6586b899-883b-47a3-ad21-edf4e888df48"
+          "material": "3bcc4fc5-100b-4163-9e1e-2ccd9ac044c5"
         },
         {
           "id": 999472,
-          "guid": "205017ef-91a3-4076-b25a-af5d0bf88bb8",
+          "guid": "4321837d-d7bd-4d07-8b0c-31fc80df9661",
           "plane": "xz",
           "circle": {
             "centre": [
@@ -5126,7 +5126,7 @@
       "connectors": [
         {
           "id": 999471,
-          "guid": "e6a72e26-eb10-4698-959e-2b243c8bcedc",
+          "guid": "715fa89c-81dc-45f8-9aab-8757a98c3a84",
           "kind": "power",
           "system": "power-unbalanced",
           "poles": 3,
@@ -5159,7 +5159,7 @@
       "forms": [
         {
           "id": 999470,
-          "guid": "2b61d65c-3944-408c-8050-d0d3fb0acf9d",
+          "guid": "c00b15ea-ce0c-4323-b62f-af417edc3a98",
           "plane": "xy",
           "profile": [
             [
@@ -5181,11 +5181,11 @@
           ],
           "from": "Mounting Height",
           "to": "Mounting Height + (85)",
-          "material": "6586b899-883b-47a3-ad21-edf4e888df48"
+          "material": "3bcc4fc5-100b-4163-9e1e-2ccd9ac044c5"
         },
         {
           "id": 999469,
-          "guid": "89bf673f-4b50-4391-861c-cb286b75cf21",
+          "guid": "7f125e16-039f-42cd-aa71-0b884dd6d949",
           "plane": "xy",
           "profile": [
             [
@@ -5221,7 +5221,7 @@
       "forms": [
         {
           "id": 999468,
-          "guid": "b9b1c384-b609-4a25-aacb-a0888e475f97",
+          "guid": "fe150c9d-92ee-4dfe-9f0f-9be96af04d1a",
           "plane": "xy",
           "profile": [
             [
@@ -5243,11 +5243,11 @@
           ],
           "from": 380.0,
           "to": 800.0,
-          "material": "fb5aaa7b-2353-4a66-952b-9ad25bb9df82"
+          "material": "61305822-6ee7-48e0-a756-0eb30a026168"
         },
         {
           "id": 999467,
-          "guid": "8c80b7ca-a0c6-4f92-9e9f-ea332990c343",
+          "guid": "c651b238-dff8-4ca3-9117-f670e8006b72",
           "plane": "xy",
           "profile": [
             [
@@ -5269,11 +5269,11 @@
           ],
           "from": 0.0,
           "to": 400.0,
-          "material": "fb5aaa7b-2353-4a66-952b-9ad25bb9df82"
+          "material": "61305822-6ee7-48e0-a756-0eb30a026168"
         },
         {
           "id": 999466,
-          "guid": "e1f90eec-a859-45fe-91b3-177bf2a38360",
+          "guid": "61d4503e-9c02-4381-be3a-9a9582e31cb5",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -5284,7 +5284,7 @@
           },
           "from": 0.0,
           "to": 400.0,
-          "material": "fb5aaa7b-2353-4a66-952b-9ad25bb9df82"
+          "material": "61305822-6ee7-48e0-a756-0eb30a026168"
         }
       ]
     },
@@ -5309,7 +5309,7 @@
         {
           "name": "Material",
           "kind": "material",
-          "value": "4d52ddf0-73a7-4634-98c0-6298bc1fcbf9"
+          "value": "914bd292-4506-4104-b39e-37b95062da09"
         }
       ],
       "types": {
@@ -5321,7 +5321,7 @@
       "forms": [
         {
           "id": 999465,
-          "guid": "45067470-702e-41c8-bd09-5001462d185a",
+          "guid": "ee742ccc-cc73-468e-b171-a1766d7ad64f",
           "plane": "xy",
           "profile": [
             [
@@ -5347,7 +5347,7 @@
         },
         {
           "id": 999464,
-          "guid": "d9871bba-6331-4ab8-8df7-8f9018197497",
+          "guid": "a665acea-f04c-432c-8c2d-47e2adb7e7b5",
           "plane": "xy",
           "profile": [
             [
@@ -5403,7 +5403,7 @@
       "forms": [
         {
           "id": 999463,
-          "guid": "6ea10a2e-39c2-4e24-8a90-338a231ccbb8",
+          "guid": "c57ad2ff-21df-43ed-8d78-d38dca020ae8",
           "plane": "xy",
           "profile": [
             [
@@ -5425,11 +5425,11 @@
           ],
           "from": "Height - 160",
           "to": "Height",
-          "material": "fb5aaa7b-2353-4a66-952b-9ad25bb9df82"
+          "material": "61305822-6ee7-48e0-a756-0eb30a026168"
         },
         {
           "id": 999462,
-          "guid": "446439dc-f798-42a4-b02f-25c6cd19abcb",
+          "guid": "81b96664-f6b4-4db3-959b-0a8d8597ec90",
           "plane": "xy",
           "circle": {
             "centre": [
@@ -5440,7 +5440,7 @@
           },
           "from": 0.0,
           "to": "Height - 160",
-          "material": "fb5aaa7b-2353-4a66-952b-9ad25bb9df82"
+          "material": "61305822-6ee7-48e0-a756-0eb30a026168"
         }
       ]
     }
@@ -5571,7 +5571,7 @@
         0,
         0
       ],
-      "pattern": "670abfb3-a41c-4bf2-acb9-3374bb9f2e70"
+      "pattern": "3889c8b4-2f49-428b-a683-3160bd5775c5"
     },
     "Hairline": {
       "pen": 0,
@@ -5588,7 +5588,7 @@
         0,
         0
       ],
-      "pattern": "e9b455fd-de7e-4e0d-b3fe-54ab872b5197"
+      "pattern": "09daf5fa-e8c2-4d87-af96-227e9744af14"
     },
     "Medium Lines": {
       "pen": 4,
@@ -5605,7 +5605,7 @@
         0,
         0
       ],
-      "pattern": "d64a4e19-2e93-452c-832b-1f868ba3d105"
+      "pattern": "910ccfba-fd52-4e2c-8282-f9b143da2615"
     },
     "Thin Lines": {
       "pen": 1,
@@ -5738,7 +5738,7 @@
   },
   "region_types": {
     "Brick": {
-      "foreground": "03bfa518-6f09-43ca-8935-7ba2e45380b9",
+      "foreground": "79109902-e698-43aa-92bd-de967a25b851",
       "foreground_color": [
         0,
         0,
@@ -5751,7 +5751,7 @@
       ]
     },
     "Crosshatch": {
-      "foreground": "6b93ffe2-2227-494a-b193-a90c4f6ab2cb",
+      "foreground": "815c9ac5-145b-4f76-8852-f183d932a4ca",
       "foreground_color": [
         0,
         0,
@@ -5764,7 +5764,7 @@
       ]
     },
     "Diagonal Up": {
-      "foreground": "00278f81-1016-4ff9-9dff-09ac2744dfa7",
+      "foreground": "f89179f9-bca2-4ae9-b2bd-58d3cc0629dd",
       "foreground_color": [
         0,
         0,
@@ -5790,7 +5790,7 @@
       "masking": true
     },
     "Sand": {
-      "foreground": "19dcde1d-2330-4b7b-a46e-6d09d081400f",
+      "foreground": "88f13393-0cd1-4f3e-921c-34017344a043",
       "foreground_color": [
         0,
         0,
@@ -5803,7 +5803,7 @@
       ]
     },
     "Solid Black": {
-      "foreground": "e437794d-5c4b-4412-8ef2-7c2e1b7e3161",
+      "foreground": "23b95ebb-91c6-43d4-9836-9385523fb849",
       "foreground_color": [
         0,
         0,
@@ -5975,6 +5975,8 @@
       "east_west_indicator": "E ",
       "elevation_indicator": "EL ",
       "indicator": "prefix",
+      "units": "m",
+      "decimals": 4,
       "alternate": "none",
       "alternate_units": "ft-in"
     }
@@ -5984,7 +5986,7 @@
       "members": [
         {
           "id": 999452,
-          "guid": "10ada4bf-8cd1-4bb9-aa84-1bb8f42d6825",
+          "guid": "9d24a94c-1e27-4344-8e29-51121d3237f9",
           "element": {
             "category": "text",
             "view": 0,
@@ -5993,17 +5995,17 @@
               -600.0
             ],
             "text": "Fix",
-            "type": "ff8b654c-d48e-41a2-a75d-751feb036a18",
+            "type": "9d28c5d9-b9d8-42d1-b154-8300d43084d6",
             "angle": 0.0
           }
         },
         {
           "id": 999451,
-          "guid": "e62ca884-3edf-4e08-9492-33136f918cee",
+          "guid": "a98954f6-669d-4df8-bca7-7aa739072a69",
           "element": {
             "category": "line",
             "view": 0,
-            "style": "b40d6358-26a7-4af1-9e15-ae645c7547f1",
+            "style": "464a5483-9a7c-4d6a-bb2b-9e4e2dd21dec",
             "start": [
               -250.0,
               -200.0
@@ -6016,12 +6018,12 @@
         },
         {
           "id": 999450,
-          "guid": "5de3b315-07c0-4f96-b094-aaec4072fa4a",
+          "guid": "65f52557-8ce0-4f84-9841-8326d5f54760",
           "element": {
             "category": "region",
             "view": 0,
-            "type": "fc50120a-ba61-4b65-a11b-2d84f4309639",
-            "line_style": "b40d6358-26a7-4af1-9e15-ae645c7547f1",
+            "type": "06db18a9-259f-4431-b26f-0023f6dd79af",
+            "line_style": "464a5483-9a7c-4d6a-bb2b-9e4e2dd21dec",
             "sketch": [
               {
                 "start": [
@@ -6114,33 +6116,33 @@
     "127/220 V": {
       "phases": 3,
       "wires": 4,
-      "l_l": "6b204aa6-00c2-4e4e-9096-66fb2fa03f08",
-      "l_n": "9ab4061a-bb7a-40ae-af84-73963aaab821",
-      "l_g": "9ab4061a-bb7a-40ae-af84-73963aaab821",
+      "l_l": "f04dd086-f34d-4c82-85b4-7a3bcb688d77",
+      "l_n": "44d10ca2-677c-48dc-bae3-839342d132e6",
+      "l_g": "44d10ca2-677c-48dc-bae3-839342d132e6",
       "ground": "TN-S"
     },
     "220/380 V": {
       "phases": 3,
       "wires": 4,
-      "l_l": "844709b7-1fcd-49d8-8bbc-ad1cdbefb753",
-      "l_n": "6b204aa6-00c2-4e4e-9096-66fb2fa03f08",
-      "l_g": "6b204aa6-00c2-4e4e-9096-66fb2fa03f08",
+      "l_l": "d7d58abb-f436-4579-9fdc-01bbb10a7b8d",
+      "l_n": "f04dd086-f34d-4c82-85b4-7a3bcb688d77",
+      "l_g": "f04dd086-f34d-4c82-85b4-7a3bcb688d77",
       "ground": "TN-S"
     },
     "230/400 V": {
       "phases": 3,
       "wires": 4,
-      "l_l": "cb7de5c0-601b-4717-a6c2-92c3e97549d6",
-      "l_n": "c19ca4a2-ce0c-43f1-82e6-def500bca329",
-      "l_g": "c19ca4a2-ce0c-43f1-82e6-def500bca329",
+      "l_l": "911be50a-be02-4b77-89b2-bc1dd909970e",
+      "l_n": "5a0ba973-72a7-43d5-8493-12f16f069f51",
+      "l_g": "5a0ba973-72a7-43d5-8493-12f16f069f51",
       "ground": "TN-S"
     },
     "277/480 V": {
       "phases": 3,
       "wires": 4,
-      "l_l": "7e087f4e-228e-4d3f-abe3-85d3af47a256",
-      "l_n": "10fc553e-fa12-47c0-a280-e9cf9d0bdb75",
-      "l_g": "10fc553e-fa12-47c0-a280-e9cf9d0bdb75"
+      "l_l": "56d46f79-14d0-49e2-af8e-1d2f755b3070",
+      "l_n": "a7bb3331-da0c-4efc-a1fa-008ab36a9e75",
+      "l_g": "a7bb3331-da0c-4efc-a1fa-008ab36a9e75"
     }
   },
   "wire_types": {
@@ -6620,7 +6622,7 @@
       0.0,
       0.0
     ],
-    "active": "e5124017-551f-49e0-9a5d-3c13194ae053",
+    "active": "a79cd225-d5ac-4a14-96c5-007631b66cca",
     "locations": {
       "Internal": {
         "east": 0.0,
@@ -6632,7 +6634,7 @@
   },
   "elements": {
     "100000": {
-      "guid": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
+      "guid": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
       "category": "level",
       "name": "Level 1",
       "elevation": 0.0,
@@ -6645,7 +6647,7 @@
       "graphics": {
         "linework": [
           {
-            "element": "675fe81b-b7e1-4425-b2e1-24485c0b51af",
+            "element": "2b8cc32f-b69a-4b82-9f83-e1af5a66d75b",
             "from": [
               100.0,
               100.0
@@ -6654,13 +6656,13 @@
               7900.0,
               100.0
             ],
-            "style": "8e122bac-027a-47ef-8f80-3749e0ddb0e8"
+            "style": "6460d374-a8a4-4190-9b72-c130f78ffe29"
           }
         ]
       }
     },
     "100001": {
-      "guid": "28215d73-8192-4438-a07b-45e15ef3d3b2",
+      "guid": "4c388fdb-0006-46f5-97da-9882a999d67d",
       "category": "level",
       "name": "Level 2",
       "elevation": 3000.0,
@@ -6672,10 +6674,10 @@
       }
     },
     "100002": {
-      "guid": "675fe81b-b7e1-4425-b2e1-24485c0b51af",
+      "guid": "2b8cc32f-b69a-4b82-9f83-e1af5a66d75b",
       "category": "wall",
-      "type": "307a95a9-3942-4dea-ac50-84298513eb7f",
-      "level": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
+      "type": "2b0b30a5-03ac-4254-b5e7-217b1ed5482f",
+      "level": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
       "start": [
         0.0,
         0.0
@@ -6684,15 +6686,15 @@
         8000.0,
         0.0
       ],
-      "top_level": "28215d73-8192-4438-a07b-45e15ef3d3b2",
+      "top_level": "4c388fdb-0006-46f5-97da-9882a999d67d",
       "height": 3000.0,
       "base_offset": 0.0
     },
     "100003": {
-      "guid": "91ca7014-dbe1-4be8-b84e-41b1e3af31d3",
+      "guid": "c08634eb-3fbd-4322-9461-1702cac7ec73",
       "category": "wall",
-      "type": "307a95a9-3942-4dea-ac50-84298513eb7f",
-      "level": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
+      "type": "2b0b30a5-03ac-4254-b5e7-217b1ed5482f",
+      "level": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
       "start": [
         8000.0,
         0.0
@@ -6701,15 +6703,15 @@
         8000.0,
         6000.0
       ],
-      "top_level": "28215d73-8192-4438-a07b-45e15ef3d3b2",
+      "top_level": "4c388fdb-0006-46f5-97da-9882a999d67d",
       "height": 3000.0,
       "base_offset": 0.0
     },
     "100004": {
-      "guid": "12072caf-b538-4c07-bc62-d09df251904d",
+      "guid": "bbeec810-d4dd-4a14-88ec-867141eb1eff",
       "category": "wall",
-      "type": "307a95a9-3942-4dea-ac50-84298513eb7f",
-      "level": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
+      "type": "2b0b30a5-03ac-4254-b5e7-217b1ed5482f",
+      "level": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
       "start": [
         8000.0,
         6000.0
@@ -6718,15 +6720,15 @@
         0.0,
         6000.0
       ],
-      "top_level": "28215d73-8192-4438-a07b-45e15ef3d3b2",
+      "top_level": "4c388fdb-0006-46f5-97da-9882a999d67d",
       "height": 3000.0,
       "base_offset": 0.0
     },
     "100005": {
-      "guid": "f679d6f0-829b-42ba-aa63-1ad2e681ef6b",
+      "guid": "e1f4fc9e-5b3f-4331-bf13-d92e036fe21e",
       "category": "wall",
-      "type": "307a95a9-3942-4dea-ac50-84298513eb7f",
-      "level": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
+      "type": "2b0b30a5-03ac-4254-b5e7-217b1ed5482f",
+      "level": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
       "start": [
         0.0,
         6000.0
@@ -6735,15 +6737,15 @@
         0.0,
         0.0
       ],
-      "top_level": "28215d73-8192-4438-a07b-45e15ef3d3b2",
+      "top_level": "4c388fdb-0006-46f5-97da-9882a999d67d",
       "height": 3000.0,
       "base_offset": 0.0
     },
     "100006": {
-      "guid": "941e4bb0-5e1c-43f3-a3ed-3a3e1ee35656",
+      "guid": "a3ae11b5-0a43-4abb-b65a-8b92da41d033",
       "category": "mass",
       "name": "Mass",
-      "level": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
+      "level": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
       "boundary": [
         [
           0.0,
@@ -6767,10 +6769,10 @@
       "base_offset": 0.0
     },
     "100007": {
-      "guid": "33683455-5a06-4c81-a4a5-a72558fc2d7d",
+      "guid": "44450599-3272-4dce-8fd2-b8032116ef67",
       "category": "mass",
       "name": "Mass",
-      "level": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
+      "level": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
       "boundary": [
         [
           0.0,
@@ -6812,10 +6814,10 @@
       ]
     },
     "100008": {
-      "guid": "4c1de370-b94a-408f-b22a-d0377f5b8b5a",
+      "guid": "f3535baf-e03b-4d0c-8c74-a5d8f1728484",
       "category": "line",
-      "view": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
-      "style": "b40d6358-26a7-4af1-9e15-ae645c7547f1",
+      "view": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
+      "style": "464a5483-9a7c-4d6a-bb2b-9e4e2dd21dec",
       "start": [
         0.0,
         0.0
@@ -6826,10 +6828,10 @@
       ]
     },
     "100009": {
-      "guid": "b4c0ba75-8915-402d-8ba6-c5b74915a4d0",
+      "guid": "b683cf1a-3211-4bde-a5bf-6800a4a157b7",
       "category": "line",
-      "view": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
-      "style": "b40d6358-26a7-4af1-9e15-ae645c7547f1",
+      "view": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
+      "style": "464a5483-9a7c-4d6a-bb2b-9e4e2dd21dec",
       "start": [
         0.0,
         500.0
@@ -6840,10 +6842,10 @@
       ]
     },
     "100010": {
-      "guid": "b0631bb7-deb9-4069-a278-6e1672c701cb",
+      "guid": "1c5da782-8355-437c-88fc-13567d1eb175",
       "category": "line",
-      "view": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
-      "style": "b40d6358-26a7-4af1-9e15-ae645c7547f1",
+      "view": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
+      "style": "464a5483-9a7c-4d6a-bb2b-9e4e2dd21dec",
       "points": [
         [
           0.0,
@@ -6860,10 +6862,10 @@
       ]
     },
     "100011": {
-      "guid": "a0253514-4587-457c-91a5-ebc26bbb8b3d",
+      "guid": "f1a52e8e-42df-4bae-857b-3e7348e18566",
       "category": "line",
-      "view": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
-      "style": "b40d6358-26a7-4af1-9e15-ae645c7547f1",
+      "view": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
+      "style": "464a5483-9a7c-4d6a-bb2b-9e4e2dd21dec",
       "fit": [
         [
           0.0,
@@ -6884,10 +6886,10 @@
       ]
     },
     "100012": {
-      "guid": "8008d260-4fa1-46fe-a684-feb2d8e62fe8",
+      "guid": "9736cb91-8327-494c-8021-9d4fe1953b88",
       "category": "line",
-      "view": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
-      "style": "b40d6358-26a7-4af1-9e15-ae645c7547f1",
+      "view": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
+      "style": "464a5483-9a7c-4d6a-bb2b-9e4e2dd21dec",
       "centre": [
         3000.0,
         3000.0
@@ -6895,10 +6897,10 @@
       "radius": 500.0
     },
     "100013": {
-      "guid": "2d9f8efa-bfa0-4993-b37b-450b6fc7701c",
+      "guid": "abf23d83-3ab2-414b-9677-15062e595c64",
       "category": "line",
-      "view": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
-      "style": "b40d6358-26a7-4af1-9e15-ae645c7547f1",
+      "view": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
+      "style": "464a5483-9a7c-4d6a-bb2b-9e4e2dd21dec",
       "start": [
         500.0,
         -500.0
@@ -6909,10 +6911,10 @@
       ]
     },
     "100014": {
-      "guid": "155cac98-7d52-413e-a61f-12db03ce0b64",
+      "guid": "c6f29826-7a75-4dc7-bc8c-85b03ac33477",
       "category": "line",
-      "view": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
-      "style": "b40d6358-26a7-4af1-9e15-ae645c7547f1",
+      "view": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
+      "style": "464a5483-9a7c-4d6a-bb2b-9e4e2dd21dec",
       "start": [
         2000.0,
         0.0
@@ -6923,10 +6925,10 @@
       ]
     },
     "100015": {
-      "guid": "fded4265-2563-4c16-baea-05358d861409",
+      "guid": "3547ba01-443a-426f-b0fa-51b7d1ff5be9",
       "category": "line",
-      "view": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
-      "style": "b40d6358-26a7-4af1-9e15-ae645c7547f1",
+      "view": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
+      "style": "464a5483-9a7c-4d6a-bb2b-9e4e2dd21dec",
       "cloud": 300.0,
       "revision": "Rev 1",
       "points": [
@@ -6950,15 +6952,15 @@
       "closed": true
     },
     "100016": {
-      "guid": "fbaa2dc2-5169-4d49-a91f-c5bbc23187e8",
+      "guid": "193b87b0-1d25-4f18-ab67-3ddbba8cc217",
       "category": "region",
-      "view": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
-      "type": "5b58986c-f8bf-45bc-a528-2f1ed55efe5e",
-      "line_style": "b40d6358-26a7-4af1-9e15-ae645c7547f1",
+      "view": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
+      "type": "f75b61bd-f471-4e3a-ab04-996ef121cdeb",
+      "line_style": "464a5483-9a7c-4d6a-bb2b-9e4e2dd21dec",
       "sketch": [
         {
           "id": 999461,
-          "guid": "8058e71a-d0cf-4cb4-b0e1-bc4e8795d0b2",
+          "guid": "a1e0e6e8-120d-4387-9b76-ab0e037ca28a",
           "start": [
             5000.0,
             0.0
@@ -6970,7 +6972,7 @@
         },
         {
           "id": 999460,
-          "guid": "f0fa5979-cd32-4ab8-8780-d04860db2281",
+          "guid": "2da131f0-9903-4970-9b97-937c5538a624",
           "start": [
             5800.0,
             0.0
@@ -6982,7 +6984,7 @@
         },
         {
           "id": 999459,
-          "guid": "69c8b1b2-a053-4bdb-83b0-60f7bfd1134b",
+          "guid": "7e6e228e-c88d-4684-aaf1-59c0c6ac1a79",
           "start": [
             5800.0,
             800.0
@@ -6994,7 +6996,7 @@
         },
         {
           "id": 999458,
-          "guid": "e8c29b1f-10b7-434c-aa80-091e69cc90a3",
+          "guid": "e4540752-064e-4cee-9475-98b106bc9a12",
           "start": [
             5000.0,
             800.0
@@ -7007,20 +7009,20 @@
       ]
     },
     "100020": {
-      "guid": "0f4dcb05-4407-40bf-9bdb-5e8b1c15be02",
+      "guid": "569e049b-935e-49b2-96cc-28a1490283c2",
       "category": "detailgroup",
-      "view": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
-      "type": "9d01986b-5538-4479-b6d1-ab076a32e18f",
+      "view": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
+      "type": "cb168a64-d324-4da0-b1b3-762f899a2879",
       "at": [
         6250.0,
         700.0
       ]
     },
     "100021": {
-      "guid": "65ae5f9d-d7df-48d3-b8e1-b862f59f383d",
+      "guid": "bc429f9f-b3ca-4f34-80c1-54cbd66a1ed7",
       "category": "repeatingdetail",
-      "view": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
-      "type": "9d01986b-5538-4479-b6d1-ab076a32e18f",
+      "view": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
+      "type": "cb168a64-d324-4da0-b1b3-762f899a2879",
       "start": [
         0.0,
         4000.0
@@ -7032,10 +7034,10 @@
       "spacing": 1000.0
     },
     "100022": {
-      "guid": "162c609b-0d40-46a0-8b10-e035cebb430b",
+      "guid": "00e021d7-5353-44ed-a43c-64a08cca7335",
       "category": "floor",
-      "type": "102b2095-a6bd-47fd-bfd0-6fb7b813bb08",
-      "level": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
+      "type": "42dd20fc-e2ec-4219-b255-fb3dc86cc3bf",
+      "level": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
       "boundary": [
         [
           0.0,
@@ -7057,7 +7059,7 @@
       "sketch": [
         {
           "id": 999449,
-          "guid": "58aba04b-68c7-4c1c-8894-8b8f89d59435",
+          "guid": "77ad1943-4390-4eac-a6b1-720e80efc1d8",
           "start": [
             0.0,
             0.0
@@ -7069,7 +7071,7 @@
         },
         {
           "id": 999448,
-          "guid": "e81d2362-e834-4e22-9337-fabaf169a537",
+          "guid": "e802e042-f195-427d-94af-911349ed5a66",
           "start": [
             8000.0,
             0.0
@@ -7081,7 +7083,7 @@
         },
         {
           "id": 999447,
-          "guid": "64a9e39c-4e9f-4a82-aee2-d18e3805bcb8",
+          "guid": "dfdba002-3d5b-45d7-9eb3-55065e6c8316",
           "start": [
             8000.0,
             8000.0
@@ -7093,7 +7095,7 @@
         },
         {
           "id": 999446,
-          "guid": "6b3ccced-6871-48e4-94eb-d55b0d71ec0d",
+          "guid": "750f53b8-69a0-4a53-b180-dc536600872a",
           "start": [
             0.0,
             8000.0
@@ -7106,10 +7108,10 @@
       ]
     },
     "100023": {
-      "guid": "5ef18e56-8b89-4e21-a296-9c85277f8432",
+      "guid": "89064218-8ade-44a8-8d61-9ddd5f7fa816",
       "category": "line",
-      "view": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
-      "style": "b40d6358-26a7-4af1-9e15-ae645c7547f1",
+      "view": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
+      "style": "464a5483-9a7c-4d6a-bb2b-9e4e2dd21dec",
       "start": [
         0.0,
         -2000.0
@@ -7120,10 +7122,10 @@
       ]
     },
     "100024": {
-      "guid": "4f6e17c0-f2d7-43b8-9b51-3ba62f799880",
+      "guid": "6ac94edf-b206-4cc3-aac1-46489722716e",
       "category": "line",
-      "view": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
-      "style": "b40d6358-26a7-4af1-9e15-ae645c7547f1",
+      "view": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
+      "style": "464a5483-9a7c-4d6a-bb2b-9e4e2dd21dec",
       "start": [
         0.0,
         -1500.0
@@ -7134,17 +7136,17 @@
       ]
     },
     "100025": {
-      "guid": "e57a2609-b0d5-480b-8b7e-62b17a26256d",
+      "guid": "ecdbeaeb-380a-4ef2-aa6a-0b546ab7161e",
       "category": "dimension",
-      "level": "4c74bec4-6ac2-48ab-b12c-f700896b2294",
+      "level": "1aed66a4-ad65-4b07-8b5b-3457707c918f",
       "kind": "aligned",
       "refs": [
         {
-          "id": "5ef18e56-8b89-4e21-a296-9c85277f8432",
+          "id": "89064218-8ade-44a8-8d61-9ddd5f7fa816",
           "face": "centre"
         },
         {
-          "id": "4f6e17c0-f2d7-43b8-9b51-3ba62f799880",
+          "id": "6ac94edf-b206-4cc3-aac1-46489722716e",
           "face": "centre"
         }
       ],
@@ -7152,7 +7154,7 @@
         1000.0,
         -1750.0
       ],
-      "type": "a7074029-f45f-42b9-9d40-d6beaf501f58",
+      "type": "fa712c9c-69eb-44f8-b21a-ec102a8847ef",
       "locked": [
         {
           "segment": 0,
@@ -7161,7 +7163,7 @@
       ]
     },
     "100026": {
-      "guid": "ee9f06ff-6640-4aa9-9a94-bd60f1cbce78",
+      "guid": "a292906d-7bc1-4120-83d8-d33ca133cdd5",
       "category": "section",
       "name": "Section 1",
       "start": [
@@ -7175,7 +7177,7 @@
       "depth": null
     },
     "100027": {
-      "guid": "13541180-2527-49bd-9fd2-f0a4fdbc9aa5",
+      "guid": "17985459-2088-4b5b-ab5d-cf313b280860",
       "category": "elevation",
       "name": "South",
       "start": [
@@ -7189,7 +7191,7 @@
       "depth": null
     },
     "100028": {
-      "guid": "c1fa92f1-86ef-40a9-ae5e-d2a0759ab67d",
+      "guid": "afacdb97-26d5-4ba3-8559-be599a80c5ec",
       "category": "view3d",
       "name": "{3D}",
       "azimuth": -45.0,
@@ -7201,10 +7203,10 @@
       }
     },
     "100029": {
-      "guid": "b0af15ef-bc1e-4eda-87d3-eef6120b6c01",
+      "guid": "9893ccc1-d837-4155-88e8-726e642a0500",
       "category": "roof",
-      "type": "3b3d6694-49ca-4ef8-8bc2-605d473ef09c",
-      "level": "28215d73-8192-4438-a07b-45e15ef3d3b2",
+      "type": "0543462b-1a14-4e00-a30d-3b86c8afdc8a",
+      "level": "4c388fdb-0006-46f5-97da-9882a999d67d",
       "boundary": [
         [
           0.0,
@@ -7238,1892 +7240,1892 @@
     "999453": {
       "kind": "detail-group",
       "name": "Grp",
-      "guid": "9d01986b-5538-4479-b6d1-ab076a32e18f"
+      "guid": "cb168a64-d324-4da0-b1b3-762f899a2879"
     },
     "999623": {
       "kind": "coordinate-point",
       "name": "Survey Point",
-      "guid": "19301272-6bfc-4356-915b-6c878602882b"
+      "guid": "f92014e0-e7ca-43ce-97a6-5b78c2e30a41"
     },
     "999624": {
       "kind": "coordinate-point",
       "name": "Project Base Point",
-      "guid": "41a672f7-5c58-4abd-be6e-872ef69f6453"
+      "guid": "05a75cb7-25b2-4ea1-a4ff-09532017b42d"
     },
     "999625": {
       "kind": "coordinate-point",
       "name": "Internal Origin",
-      "guid": "adb3a5f8-1b60-4839-8f84-92de0dc20d59"
+      "guid": "b028544c-b125-44cf-a09f-431d0dd897cd"
     },
     "999626": {
       "kind": "location",
       "name": "Internal",
-      "guid": "e5124017-551f-49e0-9a5d-3c13194ae053"
+      "guid": "a79cd225-d5ac-4a14-96c5-007631b66cca"
     },
     "999627": {
       "kind": "wire-type",
       "name": "Cu XLPE/EPR 90 °C",
-      "guid": "9b65e0a0-f89d-4350-8669-5b7482fec9db"
+      "guid": "7ff92a54-1d99-4d4e-ba0b-a96c2d6b84b7"
     },
     "999628": {
       "kind": "wire-type",
       "name": "Cu THW 75 °C",
-      "guid": "4e03e18c-7bec-4840-9486-97a83249bd31"
+      "guid": "563d4618-cdb0-4168-8f6c-c12ee6f6cf46"
     },
     "999629": {
       "kind": "wire-type",
       "name": "Cu THHN 90 °C",
-      "guid": "f69e358f-ebd8-4a5b-83c4-4c7a8bf55d65"
+      "guid": "fb80afec-af8d-4555-90d6-963d75e3b901"
     },
     "999630": {
       "kind": "wire-type",
       "name": "Cu PVC 70 °C",
-      "guid": "6869abec-bdfa-409d-9985-c50cd19da5c2"
+      "guid": "ce09f1c3-e148-4a75-99cb-0e2fbb150603"
     },
     "999631": {
       "kind": "distribution-system",
       "name": "277/480 V",
-      "guid": "94e8efc3-1e60-424d-8f88-d9f1a7b3ac20"
+      "guid": "fb7a468d-a304-450d-a33b-132332871773"
     },
     "999632": {
       "kind": "distribution-system",
       "name": "230/400 V",
-      "guid": "d60bfc44-ba38-4421-a1b2-986c8d3cabe9"
+      "guid": "70e0cdcf-1e82-480d-bc58-add7bd82d213"
     },
     "999633": {
       "kind": "distribution-system",
       "name": "220/380 V",
-      "guid": "a2e0f97d-3e22-4d0c-8348-3407b823891d"
+      "guid": "f2765cb4-8043-478f-ab2c-519dc9cdfb8a"
     },
     "999634": {
       "kind": "distribution-system",
       "name": "127/220 V",
-      "guid": "952011b0-be4b-4556-99b8-6f2e82616627"
+      "guid": "39f4247c-dd63-4985-8da1-e797fb161b9f"
     },
     "999635": {
       "kind": "voltage",
       "name": "480 V",
-      "guid": "7e087f4e-228e-4d3f-abe3-85d3af47a256"
+      "guid": "56d46f79-14d0-49e2-af8e-1d2f755b3070"
     },
     "999636": {
       "kind": "voltage",
       "name": "400 V",
-      "guid": "cb7de5c0-601b-4717-a6c2-92c3e97549d6"
+      "guid": "911be50a-be02-4b77-89b2-bc1dd909970e"
     },
     "999637": {
       "kind": "voltage",
       "name": "380 V",
-      "guid": "844709b7-1fcd-49d8-8bbc-ad1cdbefb753"
+      "guid": "d7d58abb-f436-4579-9fdc-01bbb10a7b8d"
     },
     "999638": {
       "kind": "voltage",
       "name": "277 V",
-      "guid": "10fc553e-fa12-47c0-a280-e9cf9d0bdb75"
+      "guid": "a7bb3331-da0c-4efc-a1fa-008ab36a9e75"
     },
     "999639": {
       "kind": "voltage",
       "name": "230 V",
-      "guid": "c19ca4a2-ce0c-43f1-82e6-def500bca329"
+      "guid": "5a0ba973-72a7-43d5-8493-12f16f069f51"
     },
     "999640": {
       "kind": "voltage",
       "name": "220 V",
-      "guid": "6b204aa6-00c2-4e4e-9096-66fb2fa03f08"
+      "guid": "f04dd086-f34d-4c82-85b4-7a3bcb688d77"
     },
     "999641": {
       "kind": "voltage",
       "name": "127 V",
-      "guid": "9ab4061a-bb7a-40ae-af84-73963aaab821"
+      "guid": "44d10ca2-677c-48dc-bae3-839342d132e6"
     },
     "999642": {
       "kind": "spot-coordinate-type",
       "name": "Spot Coordinate - Survey Point",
-      "guid": "2756ca98-2ffd-42cb-9250-0eb539c18f8e"
+      "guid": "e4049e4c-64c5-43d7-a5f4-84c9c9437bf2"
     },
     "999643": {
       "kind": "spot-coordinate-type",
       "name": "Spot Coordinate - Project Base Point",
-      "guid": "97fe211b-7ec2-4dc9-b598-12fa6e87e006"
+      "guid": "6f9d847d-b840-4afc-a9a9-4d0f3e90b2c5"
     },
     "999644": {
       "kind": "dimension-type",
       "name": "Diagonal - 2.5mm Arial",
-      "guid": "a7074029-f45f-42b9-9d40-d6beaf501f58"
+      "guid": "fa712c9c-69eb-44f8-b21a-ec102a8847ef"
     },
     "999645": {
       "kind": "dimension-type",
       "name": "Arrow - 2.5mm Arial",
-      "guid": "1ccca73a-2396-42f3-be02-ca9799f1da23"
+      "guid": "c95db66e-500d-4e76-a54f-9f0491ef656d"
     },
     "999646": {
       "kind": "text-type",
       "name": "5mm",
-      "guid": "bab1949e-d9a7-4932-8d21-03673e6163ec"
+      "guid": "8de34bfc-9395-437d-b891-9ce500b88f90"
     },
     "999647": {
       "kind": "text-type",
       "name": "3.5mm",
-      "guid": "ae254fce-e238-4385-ada9-b08fb43de653"
+      "guid": "b298ce24-d4f2-42c9-a075-0af6dae6bb8d"
     },
     "999648": {
       "kind": "text-type",
       "name": "2.5mm",
-      "guid": "ff8b654c-d48e-41a2-a75d-751feb036a18"
+      "guid": "9d28c5d9-b9d8-42d1-b154-8300d43084d6"
     },
     "999649": {
       "kind": "filled-region-type",
       "name": "Solid Black",
-      "guid": "fc50120a-ba61-4b65-a11b-2d84f4309639"
+      "guid": "06db18a9-259f-4431-b26f-0023f6dd79af"
     },
     "999650": {
       "kind": "filled-region-type",
       "name": "Sand",
-      "guid": "f9811b09-b6f6-437e-8848-eda31ef07b6d"
+      "guid": "8233ddbc-7733-4b86-b69c-78b69119f440"
     },
     "999651": {
       "kind": "filled-region-type",
       "name": "Masking",
-      "guid": "fad5bdac-ccb6-46cd-b9a9-47b06663988a"
+      "guid": "3c66ab12-6745-46d4-861c-e3347e446e88"
     },
     "999652": {
       "kind": "filled-region-type",
       "name": "Diagonal Up",
-      "guid": "5c6b3090-1b6a-486e-aa78-9771f1a62edd"
+      "guid": "a3bfc2b3-1d34-47d3-97d1-a8b83f0226f5"
     },
     "999653": {
       "kind": "filled-region-type",
       "name": "Crosshatch",
-      "guid": "f8c5683a-124e-45d8-a111-768e8bea2d46"
+      "guid": "12fc00ae-05a4-4c0f-92ec-a2396661d285"
     },
     "999654": {
       "kind": "filled-region-type",
       "name": "Brick",
-      "guid": "5b58986c-f8bf-45bc-a528-2f1ed55efe5e"
+      "guid": "f75b61bd-f471-4e3a-ab04-996ef121cdeb"
     },
     "999655": {
       "kind": "fill-pattern",
       "name": "Vertical",
-      "guid": "24a26366-6a5d-4103-b75a-775087bb46cd"
+      "guid": "1c4c1213-228e-4bdc-98a2-091142302fa3"
     },
     "999656": {
       "kind": "fill-pattern",
       "name": "Tile 300",
-      "guid": "9e99421d-260f-48e2-bb92-d7990f8ec558"
+      "guid": "591cabc3-daa6-4a8f-a45f-ac9c7ff81ba0"
     },
     "999657": {
       "kind": "fill-pattern",
       "name": "Solid fill",
-      "guid": "e437794d-5c4b-4412-8ef2-7c2e1b7e3161"
+      "guid": "23b95ebb-91c6-43d4-9836-9385523fb849"
     },
     "999658": {
       "kind": "fill-pattern",
       "name": "Sand",
-      "guid": "19dcde1d-2330-4b7b-a46e-6d09d081400f"
+      "guid": "88f13393-0cd1-4f3e-921c-34017344a043"
     },
     "999659": {
       "kind": "fill-pattern",
       "name": "Horizontal",
-      "guid": "e297f0fb-4f61-48f4-92de-ff57a081d2aa"
+      "guid": "768cbdf4-46bf-43ac-b69f-e43ea0a33d82"
     },
     "999660": {
       "kind": "fill-pattern",
       "name": "Diagonal Up",
-      "guid": "00278f81-1016-4ff9-9dff-09ac2744dfa7"
+      "guid": "f89179f9-bca2-4ae9-b2bd-58d3cc0629dd"
     },
     "999661": {
       "kind": "fill-pattern",
       "name": "Diagonal Down",
-      "guid": "80b947bb-b76d-4fff-a0c2-b65a29302193"
+      "guid": "30f47d62-b51f-4ef0-b352-b29dd96d0453"
     },
     "999662": {
       "kind": "fill-pattern",
       "name": "Diagonal Crosshatch",
-      "guid": "1ad8abc2-9d7e-45fa-a764-26cd943f7f57"
+      "guid": "fc33e629-5f20-4cce-b632-d19ccabe67bf"
     },
     "999663": {
       "kind": "fill-pattern",
       "name": "Crosshatch",
-      "guid": "6b93ffe2-2227-494a-b193-a90c4f6ab2cb"
+      "guid": "815c9ac5-145b-4f76-8852-f183d932a4ca"
     },
     "999664": {
       "kind": "fill-pattern",
       "name": "Brick 225 x 75",
-      "guid": "03bfa518-6f09-43ca-8935-7ba2e45380b9"
+      "guid": "79109902-e698-43aa-92bd-de967a25b851"
     },
     "999665": {
       "kind": "line-style",
       "name": "Wide Lines",
-      "guid": "8e122bac-027a-47ef-8f80-3749e0ddb0e8"
+      "guid": "6460d374-a8a4-4190-9b72-c130f78ffe29"
     },
     "999666": {
       "kind": "line-style",
       "name": "Thin Lines",
-      "guid": "b40d6358-26a7-4af1-9e15-ae645c7547f1"
+      "guid": "464a5483-9a7c-4d6a-bb2b-9e4e2dd21dec"
     },
     "999667": {
       "kind": "line-style",
       "name": "Overhead Lines",
-      "guid": "26553ca8-46f1-4b5c-9986-6a5e686d372d"
+      "guid": "68529ff4-c120-47e7-8f4d-b240078b228f"
     },
     "999668": {
       "kind": "line-style",
       "name": "Medium Lines",
-      "guid": "f0f42184-9f7b-48d3-bede-a080f2552d4b"
+      "guid": "730b7da2-8052-416f-b298-d81d653c1ef0"
     },
     "999669": {
       "kind": "line-style",
       "name": "Hidden Lines",
-      "guid": "e732c1eb-0b5f-4261-8b59-cd199e89eef0"
+      "guid": "73c78062-564f-4f90-a77e-c4e2f13d4589"
     },
     "999670": {
       "kind": "line-style",
       "name": "Hairline",
-      "guid": "b9040691-e6cd-4239-a776-e46d4d66f3f7"
+      "guid": "7773dbeb-b4a6-479c-829a-beece816e441"
     },
     "999671": {
       "kind": "line-style",
       "name": "Centre Lines",
-      "guid": "6876b700-1375-458b-9dde-160bb9c5af52"
+      "guid": "687712e6-9f6b-4fa3-bfeb-eab770080a2e"
     },
     "999672": {
       "kind": "line-pattern",
       "name": "Long Dash",
-      "guid": "bd8b11a2-597c-4f0d-989d-7906b6d6f230"
+      "guid": "50825371-28cb-4e99-9d40-0355e6ad4e2e"
     },
     "999673": {
       "kind": "line-pattern",
       "name": "Hidden",
-      "guid": "e9b455fd-de7e-4e0d-b3fe-54ab872b5197"
+      "guid": "09daf5fa-e8c2-4d87-af96-227e9744af14"
     },
     "999674": {
       "kind": "line-pattern",
       "name": "Dot",
-      "guid": "e89e08da-4c77-4c8c-8ff7-dd8613c54b8e"
+      "guid": "acb38641-af61-4b15-8c25-6e1b8b230965"
     },
     "999675": {
       "kind": "line-pattern",
       "name": "Dash Dot",
-      "guid": "8ae4134e-8a6b-4cd9-a6d0-3f4bf567d654"
+      "guid": "395b4daa-8bff-4833-ad48-6e0cef9605ec"
     },
     "999676": {
       "kind": "line-pattern",
       "name": "Dash",
-      "guid": "d64a4e19-2e93-452c-832b-1f868ba3d105"
+      "guid": "910ccfba-fd52-4e2c-8282-f9b143da2615"
     },
     "999677": {
       "kind": "line-pattern",
       "name": "Centre",
-      "guid": "670abfb3-a41c-4bf2-acb9-3374bb9f2e70"
+      "guid": "3889c8b4-2f49-428b-a683-3160bd5775c5"
     },
     "999678": {
       "kind": "family-parameter",
       "name": "Washbasin: Height",
-      "guid": "f98cdd0b-15bd-4c44-bd66-42627b664af9"
+      "guid": "bfb3ba05-7d21-4172-8f3f-1983fe0ebb88"
     },
     "999679": {
       "kind": "family-parameter",
       "name": "Washbasin: Depth",
-      "guid": "cf30ede0-2d15-4dc4-9c3e-3ae0099b8d98"
+      "guid": "ba1dfc4b-fd03-4ffb-9e22-f7a8f229fbde"
     },
     "999680": {
       "kind": "family-parameter",
       "name": "Washbasin: Width",
-      "guid": "6153c3bc-a3f4-4aa4-b4e3-ef05dace26f1"
+      "guid": "fa99b64e-6fe2-4d87-9ccf-11d8a96dd96d"
     },
     "999681": {
       "kind": "family-parameter",
       "name": "Wardrobe: Material",
-      "guid": "a21ed60c-a7bf-4c84-aa5b-70d6406ebdbc"
+      "guid": "04ea681e-04c8-4cf3-9bcd-02f84f482f0c"
     },
     "999682": {
       "kind": "family-parameter",
       "name": "Wardrobe: Height",
-      "guid": "8245a61d-273a-4247-879c-c2398b4af798"
+      "guid": "b528a782-f833-46fc-b7cd-96498a2ceeb7"
     },
     "999683": {
       "kind": "family-parameter",
       "name": "Wardrobe: Depth",
-      "guid": "44016c10-c0f9-4446-b7aa-0e2c20c49394"
+      "guid": "b15b58a2-8e5e-42f3-bfd1-393a59ab562d"
     },
     "999684": {
       "kind": "family-parameter",
       "name": "Wardrobe: Width",
-      "guid": "c77fae8e-ae74-4bd7-b6b0-3b8673661959"
+      "guid": "d1327f55-b4e8-4f40-bde7-f1c56853fbde"
     },
     "999685": {
       "kind": "family-parameter",
       "name": "Voice Outlet: Mounting Height",
-      "guid": "140c501d-202c-476e-b97e-6422a651da72"
+      "guid": "92de24ec-a2af-4c91-8440-b34729377fa0"
     },
     "999686": {
       "kind": "family-parameter",
       "name": "Three-Phase Outlet: Load L3",
-      "guid": "d512c44f-7a16-465f-a038-a660751f294d"
+      "guid": "4131e4df-54cd-45ea-bb13-0c10f8e2d77c"
     },
     "999687": {
       "kind": "family-parameter",
       "name": "Three-Phase Outlet: Load L2",
-      "guid": "73ffc0f2-0fac-41e5-8d40-b64065658363"
+      "guid": "07ba5955-ba75-4b94-b14f-4397a6361415"
     },
     "999688": {
       "kind": "family-parameter",
       "name": "Three-Phase Outlet: Load L1",
-      "guid": "c58f997b-f27d-453e-a370-94a856be69cf"
+      "guid": "e88f9f32-b50d-474a-bcc9-b86797bf1c96"
     },
     "999689": {
       "kind": "family-parameter",
       "name": "Three-Phase Outlet: Mounting Height",
-      "guid": "2d63e057-e2de-428d-9758-eebb70aa6a92"
+      "guid": "01ede5b3-b2ed-4fbc-b35d-9bf4808fb9f8"
     },
     "999690": {
       "kind": "family-parameter",
       "name": "Tee: Material",
-      "guid": "0e3a218c-b4cf-4c8e-8878-833beca27c01"
+      "guid": "6ebe06a0-c5e1-474f-b3e7-805fef30e44c"
     },
     "999691": {
       "kind": "family-parameter",
       "name": "Tee: Diameter",
-      "guid": "9ce01502-6e43-4d74-b4f5-ba612efc8d80"
+      "guid": "f934f274-9402-4a4f-88ab-0ea2b2500ea4"
     },
     "999692": {
       "kind": "family-parameter",
       "name": "Table: Material",
-      "guid": "16ac4460-90d0-4109-a5c4-ee23a4787e2c"
+      "guid": "0550acda-cae9-454a-96a2-ebb6a2fbaaac"
     },
     "999693": {
       "kind": "family-parameter",
       "name": "Table: Leg Width",
-      "guid": "ab6a5e35-f54f-42d2-be17-7b11d820b7f4"
+      "guid": "46b2504f-43e3-466c-b7e4-d1daadaf832b"
     },
     "999694": {
       "kind": "family-parameter",
       "name": "Table: Thickness",
-      "guid": "d791359b-86f7-4ff6-8f83-05e60578772b"
+      "guid": "fb09d1ae-247f-4122-8d7b-9a94e7169108"
     },
     "999695": {
       "kind": "family-parameter",
       "name": "Table: Height",
-      "guid": "a99730a7-840e-4348-870d-5df40179045e"
+      "guid": "2733ce10-080b-46e2-b686-7ec6bf0c1435"
     },
     "999696": {
       "kind": "family-parameter",
       "name": "Table: Depth",
-      "guid": "313abfaa-9046-44c2-b84e-f3b665ae719a"
+      "guid": "2b1d316c-b301-4ae8-b6b0-db751b71b218"
     },
     "999697": {
       "kind": "family-parameter",
       "name": "Table: Width",
-      "guid": "4eeda324-ba69-4d47-8587-b91334a92d9c"
+      "guid": "f8c2b4c4-a65c-4b33-bcd7-07117a7f10cc"
     },
     "999698": {
       "kind": "family-parameter",
       "name": "Switch: Mounting Height",
-      "guid": "a92e7d25-2050-4cda-9a7d-b8d97cd0a952"
+      "guid": "859cec35-d26f-4cf6-a763-f0b8fb519ebd"
     },
     "999699": {
       "kind": "family-parameter",
       "name": "Sofa: Material",
-      "guid": "0565be5c-947a-473d-aedc-42fdce87f948"
+      "guid": "f90df96f-9d54-4d7f-9628-cf502a70d6b0"
     },
     "999700": {
       "kind": "family-parameter",
       "name": "Sofa: Arm Width",
-      "guid": "799db9d5-ba3f-4182-9e81-b8319757b3b0"
+      "guid": "05bbb5cd-7b46-4a6c-80c2-d870e6f9ee22"
     },
     "999701": {
       "kind": "family-parameter",
       "name": "Sofa: Height",
-      "guid": "6dac0bbd-8627-4976-a7ea-a701d49cadc6"
+      "guid": "b692eeae-d1ce-4716-9733-89b1606e6370"
     },
     "999702": {
       "kind": "family-parameter",
       "name": "Sofa: Seat Height",
-      "guid": "005de289-39f1-46ea-86ec-47a59f1faf8e"
+      "guid": "da7ed487-acbe-4d95-91f7-d5f45db457bb"
     },
     "999703": {
       "kind": "family-parameter",
       "name": "Sofa: Depth",
-      "guid": "54f5e58a-52da-42cb-9a0a-baf7f7c147cf"
+      "guid": "bf5a78b6-4e87-4113-a0d9-5d456ff4d33c"
     },
     "999704": {
       "kind": "family-parameter",
       "name": "Sofa: Width",
-      "guid": "ed98a0e9-8d00-4ca0-8413-1b156472dc7f"
+      "guid": "1da53371-fb10-4cba-8ce5-9a17f536c621"
     },
     "999705": {
       "kind": "family-parameter",
       "name": "Sliding Window: Frame Material",
-      "guid": "72a06b31-29a5-4f93-9919-61745ca43520"
+      "guid": "c304b7fa-154a-4396-963f-5fe668c748e7"
     },
     "999706": {
       "kind": "family-parameter",
       "name": "Sliding Window: Frame Depth",
-      "guid": "7d96476a-6a83-4fb1-875c-044b5b027074"
+      "guid": "728f0b1c-1bf8-4749-8c22-5973958775d4"
     },
     "999707": {
       "kind": "family-parameter",
       "name": "Sliding Window: Frame Width",
-      "guid": "297eb9fb-cd59-4a9a-a30e-2c741360312f"
+      "guid": "ab29a58a-26fb-4684-8453-6fef5cd77849"
     },
     "999708": {
       "kind": "family-parameter",
       "name": "Sliding Window: Sill Height",
-      "guid": "13178f7b-6e37-4635-b88c-5477351edccf"
+      "guid": "a6bcab76-9bfa-4354-bca9-6a2e68c28c58"
     },
     "999709": {
       "kind": "family-parameter",
       "name": "Sliding Window: Height",
-      "guid": "bfcc6bd1-7857-48d2-9b4e-54ab594059fa"
+      "guid": "75230257-1b05-4059-828f-0289d7c61249"
     },
     "999710": {
       "kind": "family-parameter",
       "name": "Sliding Window: Width",
-      "guid": "8e52496f-e226-4d0d-82fe-8df432c2de18"
+      "guid": "734ce539-3aa2-4656-94a2-195728d53ffa"
     },
     "999711": {
       "kind": "family-parameter",
       "name": "Sliding Door: Leaf Material",
-      "guid": "d0e39705-ff9c-42b1-8e09-e3c094981437"
+      "guid": "7e7fd78a-5917-430a-9ad9-fe40986bc9b1"
     },
     "999712": {
       "kind": "family-parameter",
       "name": "Sliding Door: Frame Material",
-      "guid": "96ef2912-5e06-46d7-bae9-2087001c2af6"
+      "guid": "213c0834-6de7-464b-8c9b-d4a106d16c9d"
     },
     "999713": {
       "kind": "family-parameter",
       "name": "Sliding Door: Leaf Thickness",
-      "guid": "2fb154cf-0e2d-4539-be3d-af2b8558d705"
+      "guid": "f9bce8af-6b6f-4d95-81e2-90b2fbdb9d59"
     },
     "999714": {
       "kind": "family-parameter",
       "name": "Sliding Door: Frame Width",
-      "guid": "09de3a30-0bc3-4ccd-99aa-28866a3d16b5"
+      "guid": "501998da-ac76-4af1-9987-c0a7a0fca810"
     },
     "999715": {
       "kind": "family-parameter",
       "name": "Sliding Door: Height",
-      "guid": "682c53c8-a579-4060-8926-794eb2df4890"
+      "guid": "398ca296-ebdb-4743-ba62-7494e3eb7320"
     },
     "999716": {
       "kind": "family-parameter",
       "name": "Sliding Door: Width",
-      "guid": "bc2e683f-fabf-4c23-8474-e60d13836eeb"
+      "guid": "71fc5416-eb64-4694-a4e7-c2f1e0f53b1b"
     },
     "999717": {
       "kind": "family-parameter",
       "name": "Single Door: Leaf Material",
-      "guid": "2a604bda-4569-4916-896f-d3020b9a655c"
+      "guid": "a8ed962f-21dd-4a9a-b34c-71752937ad0c"
     },
     "999718": {
       "kind": "family-parameter",
       "name": "Single Door: Frame Material",
-      "guid": "a979f6a5-c885-43dc-8288-b3e2329945a1"
+      "guid": "76361515-f83a-4058-ba8e-1046c895bd78"
     },
     "999719": {
       "kind": "family-parameter",
       "name": "Single Door: Leaf Thickness",
-      "guid": "3ecd5d5d-939f-4a86-aaac-beaf9b92440f"
+      "guid": "ae8c0e47-052e-4ed7-9e91-6b32ba2aed7d"
     },
     "999720": {
       "kind": "family-parameter",
       "name": "Single Door: Frame Width",
-      "guid": "3b840214-5f27-410d-917a-6450aae9a4ba"
+      "guid": "8a3500b0-209a-4d69-863e-092047c554fa"
     },
     "999721": {
       "kind": "family-parameter",
       "name": "Single Door: Height",
-      "guid": "07199f8e-1703-48a0-89fc-6f98dc95d95f"
+      "guid": "71cb430d-31a2-431c-b923-b24fd7b54014"
     },
     "999722": {
       "kind": "family-parameter",
       "name": "Single Door: Width",
-      "guid": "6d9ae132-c3d1-42e8-9e4c-0891515d65b9"
+      "guid": "978ad847-4ce9-4740-b7b5-e25ff3184b66"
     },
     "999723": {
       "kind": "family-parameter",
       "name": "Shower: Depth",
-      "guid": "49a60249-fbe9-473a-b7f3-76a4b3911cce"
+      "guid": "0292e228-a37d-4655-a221-e004c1bf2e2b"
     },
     "999724": {
       "kind": "family-parameter",
       "name": "Shower: Width",
-      "guid": "6ceb547e-696a-48d8-9627-60d3655b4cfc"
+      "guid": "69e0c710-432e-422a-8b0c-e8c35db09202"
     },
     "999725": {
       "kind": "family-parameter",
       "name": "Recessed Luminaire: Load",
-      "guid": "6f4e7e3f-4db5-4407-9c85-1c9a905f4a72"
+      "guid": "7c782d7a-968f-4325-af08-eeb40141e6b7"
     },
     "999726": {
       "kind": "family-parameter",
       "name": "Recessed Luminaire: Mounting Height",
-      "guid": "8b158fa0-f8e6-4157-bf60-66cc3fa5d95f"
+      "guid": "6705a03f-1c08-47f0-b938-01773da8ffac"
     },
     "999727": {
       "kind": "family-parameter",
       "name": "Recessed Luminaire: Depth",
-      "guid": "00ad8ce2-8475-4e2b-bafb-c61b5b36b9db"
+      "guid": "1961b49d-9952-4131-b8e2-bce1680777bc"
     },
     "999728": {
       "kind": "family-parameter",
       "name": "Recessed Luminaire: Width",
-      "guid": "d839ec81-521a-43ee-a0df-f48fff84df2e"
+      "guid": "a8bfe608-71ce-46ca-b271-6654aff77bec"
     },
     "999729": {
       "kind": "family-parameter",
       "name": "Rack: Material",
-      "guid": "843b554a-f3c2-4cd5-a4d2-fa5976d92201"
+      "guid": "8900b7cd-22f0-4022-99e0-7bff51460db7"
     },
     "999730": {
       "kind": "family-parameter",
       "name": "Rack: Height",
-      "guid": "591e6145-ac92-42a5-9e39-b9001645f50f"
+      "guid": "3ca4d22b-11ef-4ea6-9f99-ebc0895b9977"
     },
     "999731": {
       "kind": "family-parameter",
       "name": "Rack: Depth",
-      "guid": "bf100933-ae34-4d17-9d14-405255787ec9"
+      "guid": "98b86544-e65c-4dbf-add4-71f39a6ed1e9"
     },
     "999732": {
       "kind": "family-parameter",
       "name": "Rack: Width",
-      "guid": "3d7e3004-e4d9-4aff-a9cd-2aaff01286ea"
+      "guid": "8125398d-b50f-4eb3-a97e-f4ff9d087969"
     },
     "999733": {
       "kind": "family-parameter",
       "name": "Patch Panel: Material",
-      "guid": "89b32dc4-3b0a-4546-b38c-3c3018551757"
+      "guid": "316090ef-dbea-4c13-a6ea-20eaa21a4d43"
     },
     "999734": {
       "kind": "family-parameter",
       "name": "Patch Panel: Mounting Height",
-      "guid": "10ba9e45-38ac-4aad-b542-002eecb5c8c8"
+      "guid": "64331a0e-4a37-415e-954d-6e6d24484878"
     },
     "999735": {
       "kind": "family-parameter",
       "name": "Outlet: Load",
-      "guid": "51db845e-9d87-4f1b-8844-59ef5d4fa5b9"
+      "guid": "414eef03-c370-4246-a1b1-15806c22160f"
     },
     "999736": {
       "kind": "family-parameter",
       "name": "Outlet: Mounting Height",
-      "guid": "95bde481-d25b-4214-beaa-ebe223d3dd92"
+      "guid": "d2260c25-4142-4b5c-b603-7c66e8efefe0"
     },
     "999737": {
       "kind": "family-parameter",
       "name": "Kitchen Sink: Material",
-      "guid": "b42a1259-c7c8-4510-b72c-88a2867b170a"
+      "guid": "0795f964-8d51-49a8-8220-94e5738bd4c4"
     },
     "999738": {
       "kind": "family-parameter",
       "name": "Kitchen Sink: Height",
-      "guid": "9ab80e38-d4fc-4ad2-917f-5d7c6444dd67"
+      "guid": "ad10228b-55a6-4ecf-85c4-6c160494db96"
     },
     "999739": {
       "kind": "family-parameter",
       "name": "Kitchen Sink: Depth",
-      "guid": "7f1145dd-36a5-4498-b5b4-68efc2b1f06d"
+      "guid": "08116c21-e375-4857-a53f-f45cdefcfdfa"
     },
     "999740": {
       "kind": "family-parameter",
       "name": "Kitchen Sink: Width",
-      "guid": "eb631adf-3bfd-401a-a734-ff015852fff4"
+      "guid": "208bad76-b5c4-4924-a2e3-b9a93d1c4bde"
     },
     "999741": {
       "kind": "family-parameter",
       "name": "Inspection Box: Material",
-      "guid": "13be1612-a136-47b7-b045-3621305ed2ba"
+      "guid": "c5133a6b-df19-4393-8455-f5249d33294e"
     },
     "999742": {
       "kind": "family-parameter",
       "name": "Inspection Box: Height",
-      "guid": "a6554931-c7ed-409c-a7c4-b998821a4add"
+      "guid": "56569312-0295-45ea-b043-64027caa50d4"
     },
     "999743": {
       "kind": "family-parameter",
       "name": "Inspection Box: Diameter",
-      "guid": "85635dae-2c70-42fd-adc3-fcbcfa0e4683"
+      "guid": "0891a441-b617-4822-b30b-d65789e64781"
     },
     "999744": {
       "kind": "family-parameter",
       "name": "Gate Valve: Material",
-      "guid": "46fdb8f8-6ffe-4620-8fb7-4118861c0000"
+      "guid": "df7b591c-437b-417c-a036-719f69fa082d"
     },
     "999745": {
       "kind": "family-parameter",
       "name": "Gate Valve: Diameter",
-      "guid": "8ed99ce0-2905-4a29-a5ad-3e941398eab5"
+      "guid": "5ee9c00b-590b-43a3-81ab-07a499d133f7"
     },
     "999746": {
       "kind": "family-parameter",
       "name": "Floor Drain: Width",
-      "guid": "1d401018-861e-47ce-acd7-36bacafe6ae3"
+      "guid": "93a19da2-06d5-4f8d-bc93-8981df2fc3a9"
     },
     "999747": {
       "kind": "family-parameter",
       "name": "Fixed Window: Frame Material",
-      "guid": "218a2351-3b09-47ff-82cd-24d252d51119"
+      "guid": "48dccd82-b020-4be2-8bb7-1a8c5dc8cdb8"
     },
     "999748": {
       "kind": "family-parameter",
       "name": "Fixed Window: Frame Depth",
-      "guid": "357e55e9-2580-4613-ba32-f3d609d7c7c5"
+      "guid": "571dc7ec-8871-48a1-9096-2e1d213260a6"
     },
     "999749": {
       "kind": "family-parameter",
       "name": "Fixed Window: Frame Width",
-      "guid": "e9395c54-a804-46cd-8eeb-ba2cca49bb6f"
+      "guid": "913fd5f4-fef5-42fe-a337-1cccbc19de88"
     },
     "999750": {
       "kind": "family-parameter",
       "name": "Fixed Window: Sill Height",
-      "guid": "c2479d90-19a6-42a1-93ac-b330e435e62e"
+      "guid": "13ef2604-d94a-40d9-ba1b-da3dd8196ca6"
     },
     "999751": {
       "kind": "family-parameter",
       "name": "Fixed Window: Height",
-      "guid": "5abdec71-2e5a-47b0-ab46-ad2118e15857"
+      "guid": "9c745eda-c77d-4c4a-a25a-87c6d185baa5"
     },
     "999752": {
       "kind": "family-parameter",
       "name": "Fixed Window: Width",
-      "guid": "2025dddc-f274-46b4-bd6f-134347297746"
+      "guid": "ed383e00-ce99-43d1-8579-93fbaeb6b809"
     },
     "999753": {
       "kind": "family-parameter",
       "name": "Elbow 90: Material",
-      "guid": "b1143650-f9fe-4f3b-9f84-fb7d5327434b"
+      "guid": "bbd4ad71-b22d-40e5-8ec1-a362602793ef"
     },
     "999754": {
       "kind": "family-parameter",
       "name": "Elbow 90: Diameter",
-      "guid": "4319c0cd-bd88-4301-918f-b8a8d81444ac"
+      "guid": "b4e9c2ce-cb7f-4681-9467-20d6a6932e98"
     },
     "999755": {
       "kind": "family-parameter",
       "name": "Earthing Electrode: Material",
-      "guid": "437b14b5-ffac-450e-b192-f6d03d9efcf4"
+      "guid": "7ff67f9b-5398-48b0-b55f-1cbd22810556"
     },
     "999756": {
       "kind": "family-parameter",
       "name": "Earthing Electrode: Diameter",
-      "guid": "08914f4a-681f-4826-9b2d-68ac212484e3"
+      "guid": "ca58b856-7764-47c1-96a1-6d7201e63356"
     },
     "999757": {
       "kind": "family-parameter",
       "name": "Earthing Electrode: Height",
-      "guid": "994216cf-683e-452c-8fd7-728c2bf1e7cc"
+      "guid": "9c3d59f0-8d89-4726-a037-639d0705046c"
     },
     "999758": {
       "kind": "family-parameter",
       "name": "Double Door: Leaf Material",
-      "guid": "a5878b30-c615-40ab-9be7-81d4d3b341b5"
+      "guid": "a7c90030-aaeb-4c9b-813f-8d393d0142e4"
     },
     "999759": {
       "kind": "family-parameter",
       "name": "Double Door: Frame Material",
-      "guid": "0d2cf5ce-09bc-4c67-86a0-3da3751e29e8"
+      "guid": "8c9e6d21-adae-4340-98c8-6dcc3e4f32a2"
     },
     "999760": {
       "kind": "family-parameter",
       "name": "Double Door: Leaf Thickness",
-      "guid": "57728356-0ae2-4c1b-b11e-2c81abad9a67"
+      "guid": "9e6434ae-c16d-43ff-bcbe-7058e7ea0361"
     },
     "999761": {
       "kind": "family-parameter",
       "name": "Double Door: Frame Width",
-      "guid": "e71613d2-449c-481d-92a6-f0cf0a884ff8"
+      "guid": "7bdb2892-9570-4d35-ab80-fb24dfe2bb24"
     },
     "999762": {
       "kind": "family-parameter",
       "name": "Double Door: Height",
-      "guid": "c1452c30-dc2e-4d5f-97db-855a41f4adad"
+      "guid": "8fbbce0b-2961-407b-92a4-f5fb05cee7c6"
     },
     "999763": {
       "kind": "family-parameter",
       "name": "Double Door: Width",
-      "guid": "4c470e31-b95a-4e0f-853d-5d5f187fd3fa"
+      "guid": "4c7e21e5-de3c-4846-95fc-765a5cb6b3d0"
     },
     "999764": {
       "kind": "family-parameter",
       "name": "Distribution Board: Material",
-      "guid": "2a457573-7732-4164-b7b0-c7d5a51adbf0"
+      "guid": "ff6019ba-00a9-44a0-8747-60688177267c"
     },
     "999765": {
       "kind": "family-parameter",
       "name": "Distribution Board: Mounting Height",
-      "guid": "7559f8ed-f43d-47f0-80e5-f65d46200001"
+      "guid": "87701c0c-4e4f-4ff5-b0e0-4b91e2728244"
     },
     "999766": {
       "kind": "family-parameter",
       "name": "Distribution Board: Depth",
-      "guid": "4fa7d94d-2fb3-4a14-b327-d3af18eedd4d"
+      "guid": "d162dac9-ed7a-42e3-86ab-1c05468da3d2"
     },
     "999767": {
       "kind": "family-parameter",
       "name": "Distribution Board: Height",
-      "guid": "61f207de-4ff1-4c05-b207-2892a92d2d83"
+      "guid": "916c76ac-0216-4d10-95cc-dd8b89f8d73f"
     },
     "999768": {
       "kind": "family-parameter",
       "name": "Distribution Board: Width",
-      "guid": "93557161-e03f-4792-9e89-ba014c88fde8"
+      "guid": "871e39c0-5a23-4536-b78b-974c9e61e37e"
     },
     "999769": {
       "kind": "family-parameter",
       "name": "Desk: Material",
-      "guid": "05d4b2f9-a3fa-4623-92bd-0ffb8cb24270"
+      "guid": "f7892f1a-41b7-487a-8be4-f9b358deb82f"
     },
     "999770": {
       "kind": "family-parameter",
       "name": "Desk: Thickness",
-      "guid": "534d30a6-4bf2-4b40-abee-68f45d18beae"
+      "guid": "ecd9cc06-dfbc-46bc-b746-6016e14d96aa"
     },
     "999771": {
       "kind": "family-parameter",
       "name": "Desk: Height",
-      "guid": "c215bd63-5664-41b3-896e-f3410f5f4128"
+      "guid": "e97b3bd6-8d56-4966-8c42-793e5f1e1d14"
     },
     "999772": {
       "kind": "family-parameter",
       "name": "Desk: Depth",
-      "guid": "59468a9c-e78a-411c-bdcc-54f16963570a"
+      "guid": "e4740cee-baf7-445a-9812-60bef008eae5"
     },
     "999773": {
       "kind": "family-parameter",
       "name": "Desk: Width",
-      "guid": "987d96e4-3355-42b9-af31-c0aab0d16083"
+      "guid": "d787273c-f2b4-4369-9b7c-7cd69c8727e5"
     },
     "999774": {
       "kind": "family-parameter",
       "name": "Data Outlet: Mounting Height",
-      "guid": "f587c81b-62c9-40b8-b488-11dfcc98b2e0"
+      "guid": "a133b3d8-a6c2-4235-a1ee-fce3658ec976"
     },
     "999775": {
       "kind": "family-parameter",
       "name": "Chair: Material",
-      "guid": "0dcdd0c2-a399-47d0-a021-727fd02af8b0"
+      "guid": "270658d5-598a-43be-896c-f02bc7880b73"
     },
     "999776": {
       "kind": "family-parameter",
       "name": "Chair: Leg Width",
-      "guid": "cfd22577-08a5-4dd0-8607-95e3076047c9"
+      "guid": "3371eba9-03ab-4442-9698-9ed35cbc0f57"
     },
     "999777": {
       "kind": "family-parameter",
       "name": "Chair: Thickness",
-      "guid": "07bdf157-ed5c-45e6-a732-e55752379bab"
+      "guid": "51b58b73-8043-43b4-bcc7-2f56775e90bc"
     },
     "999778": {
       "kind": "family-parameter",
       "name": "Chair: Height",
-      "guid": "213f2cee-e17e-48d2-9ae1-573f8e5fc2cf"
+      "guid": "d9d1b4c2-e2da-4b27-b59d-451ffc13a69a"
     },
     "999779": {
       "kind": "family-parameter",
       "name": "Chair: Seat Height",
-      "guid": "88842ab8-2d68-40cf-b2b7-a5b42905cbf9"
+      "guid": "fef6154f-903f-4981-99fa-e9c26f879789"
     },
     "999780": {
       "kind": "family-parameter",
       "name": "Chair: Depth",
-      "guid": "aab764b0-a412-4446-8e1a-cf31a5b97d56"
+      "guid": "525ac051-379b-4991-8755-286cf0e21afe"
     },
     "999781": {
       "kind": "family-parameter",
       "name": "Chair: Width",
-      "guid": "61bf08c0-50d4-4e61-906c-e6a4acffdba4"
+      "guid": "7196de0e-7a26-445d-bddd-80024b2fbef5"
     },
     "999782": {
       "kind": "family-parameter",
       "name": "Ceiling Luminaire: Load",
-      "guid": "f9d50a28-8c6b-44de-b5b1-c75701cad472"
+      "guid": "7b07c0dc-60c1-4663-bf00-730e49079df2"
     },
     "999783": {
       "kind": "family-parameter",
       "name": "Ceiling Luminaire: Mounting Height",
-      "guid": "26823b40-423f-4210-8d73-5707cc5b7e88"
+      "guid": "36c01671-db2f-49ad-b257-8e05f9f68c55"
     },
     "999784": {
       "kind": "family-parameter",
       "name": "Ceiling Luminaire: Diameter",
-      "guid": "fafd661a-94df-4873-bc70-6436b27e6ff2"
+      "guid": "25a598ab-27a7-4d6e-b104-bbec5d88d709"
     },
     "999785": {
       "kind": "family-parameter",
       "name": "Casement Window: Frame Material",
-      "guid": "2fd533bb-7ddd-47d4-bbac-0597318629c8"
+      "guid": "1e267f28-ef6d-4af6-b63c-b33fd38d4f29"
     },
     "999786": {
       "kind": "family-parameter",
       "name": "Casement Window: Frame Depth",
-      "guid": "863c8698-729e-4393-834c-56c4e26141b8"
+      "guid": "7154295b-76d7-40f2-825f-806c9ac1fa45"
     },
     "999787": {
       "kind": "family-parameter",
       "name": "Casement Window: Frame Width",
-      "guid": "90aa41c7-73da-4a7c-9867-425a5ef83b12"
+      "guid": "d8f5db7b-4196-4e38-b0b7-233cbba0a9ac"
     },
     "999788": {
       "kind": "family-parameter",
       "name": "Casement Window: Sill Height",
-      "guid": "a330df81-569d-4d31-aa9b-20ed46f92700"
+      "guid": "1707350e-edcb-4bac-a450-84a5b3832e1d"
     },
     "999789": {
       "kind": "family-parameter",
       "name": "Casement Window: Height",
-      "guid": "ba9619e7-834f-40fd-9af3-7871675592a3"
+      "guid": "26b9baef-0a5c-42c7-8549-624b580757eb"
     },
     "999790": {
       "kind": "family-parameter",
       "name": "Casement Window: Width",
-      "guid": "b5a8ba88-3225-403a-9d7a-349d6c8dbc9c"
+      "guid": "de7ce383-0a4e-4500-8e35-b1c3b405437e"
     },
     "999791": {
       "kind": "family-parameter",
       "name": "Bed: Material",
-      "guid": "9da0a387-170f-4a7f-974e-05140db87f83"
+      "guid": "8556bc85-1a7d-46cf-8209-dcdd174de7df"
     },
     "999792": {
       "kind": "family-parameter",
       "name": "Bed: Headboard Height",
-      "guid": "a30d2d40-0451-4b3b-9549-035cac2b7519"
+      "guid": "359420b5-41e3-4794-a3a8-af6f1477db30"
     },
     "999793": {
       "kind": "family-parameter",
       "name": "Bed: Height",
-      "guid": "f256f84a-9740-47c4-a8f8-c15911eb6293"
+      "guid": "d11b416b-b542-47d4-ad79-34d819a733ae"
     },
     "999794": {
       "kind": "family-parameter",
       "name": "Bed: Length",
-      "guid": "c8462862-db98-4344-a409-4884fa4b1199"
+      "guid": "c7405273-41a2-4723-b233-58fd9d2aa0a1"
     },
     "999795": {
       "kind": "family-parameter",
       "name": "Bed: Width",
-      "guid": "3d670db9-8f05-4d7c-b190-55e49a71a1f6"
+      "guid": "72ebcaa5-9781-427a-b89c-0f69d7f70a36"
     },
     "999796": {
       "kind": "family-parameter",
       "name": "Bathtub: Height",
-      "guid": "7608afa9-5164-4b5a-abee-2adb32fc16b4"
+      "guid": "e883661f-0d00-4aef-aa75-9efad37e2325"
     },
     "999797": {
       "kind": "family-parameter",
       "name": "Bathtub: Width",
-      "guid": "d165fc9b-47d6-4165-b881-86d878abb852"
+      "guid": "b15e1644-53f1-45e5-b6f3-79e0e37a17ac"
     },
     "999798": {
       "kind": "family-parameter",
       "name": "Bathtub: Length",
-      "guid": "b665d8ba-1579-41fa-a96b-d3af37459ad5"
+      "guid": "99e9904c-89bd-47e0-bd68-f3fdf3945a95"
     },
     "999799": {
       "kind": "family-parameter",
       "name": "Base Cabinet: Worktop",
-      "guid": "a07c2a7b-ce94-4823-94dd-2a02daff7dd2"
+      "guid": "d7da28a3-e730-40cc-ba9a-0c5ad3a1f796"
     },
     "999800": {
       "kind": "family-parameter",
       "name": "Base Cabinet: Material",
-      "guid": "c99e6445-58fd-4fe5-960f-7137cffaefe8"
+      "guid": "af845d9d-d470-413b-b3c4-aaa54fdcee6e"
     },
     "999801": {
       "kind": "family-parameter",
       "name": "Base Cabinet: Height",
-      "guid": "82c50afb-ee2c-4797-86de-ae084edd3902"
+      "guid": "55450222-2600-4c3d-9d67-7abbae218f4f"
     },
     "999802": {
       "kind": "family-parameter",
       "name": "Base Cabinet: Depth",
-      "guid": "e26c547e-d200-4cf8-b1a7-af2ab12e401c"
+      "guid": "108e3d53-195c-4b64-8044-ced0321678ea"
     },
     "999803": {
       "kind": "family-parameter",
       "name": "Base Cabinet: Width",
-      "guid": "7d191ea1-7e11-497b-a484-bba8e6effd8f"
+      "guid": "80f9dbac-52e9-4893-a2a8-343e971f5b77"
     },
     "999804": {
       "kind": "family-parameter",
       "name": "Air Terminal: Material",
-      "guid": "54cad394-d2b2-48c8-8256-7dcbacd1c8bd"
+      "guid": "9ec88a8e-0620-4b8f-8eb8-3ee1ec506dee"
     },
     "999805": {
       "kind": "family-parameter",
       "name": "Air Terminal: Diameter",
-      "guid": "c3ec59a3-08ec-436c-b3d1-887f4b98c40e"
+      "guid": "3a2941e6-cc47-4d75-abb6-0ee5eb147c17"
     },
     "999806": {
       "kind": "family-parameter",
       "name": "Air Terminal: Height",
-      "guid": "e32e0b93-57b2-411b-ac35-5fc2bb91ab36"
+      "guid": "219a5e19-98c2-4ed2-a4c9-443051a759a0"
     },
     "999807": {
       "kind": "family-type",
       "name": "Washbasin: 600 x 450",
-      "guid": "f0190fad-082e-4844-af66-634a4956cac0"
+      "guid": "73ba793f-aee0-46cb-b38b-5e2c51544e0e"
     },
     "999808": {
       "kind": "family-type",
       "name": "Washbasin: 500 x 400",
-      "guid": "023718c7-15c8-4187-b506-749d2efcd56d"
+      "guid": "e9de155a-a776-4e38-8ff3-51272bb70e84"
     },
     "999809": {
       "kind": "family-type",
       "name": "Wardrobe: 900 x 600",
-      "guid": "96d6b888-1470-4545-abf4-1aac83f1d48b"
+      "guid": "38bfa1dc-cb47-488f-9479-ff3977bb7850"
     },
     "999810": {
       "kind": "family-type",
       "name": "Wardrobe: 1200 x 600",
-      "guid": "2c5c45e5-a15b-4a53-b47e-3d8d3218c5c7"
+      "guid": "001400d5-8ffa-485f-8004-3e1e1eb53c5b"
     },
     "999811": {
       "kind": "family-type",
       "name": "WC: 400 x 650",
-      "guid": "82f36fdc-3b7a-4975-8bc6-ceb76fa19b44"
+      "guid": "16174ecb-6120-41b2-a661-36124993df7a"
     },
     "999812": {
       "kind": "family-type",
       "name": "Voice Outlet: Medium 1100",
-      "guid": "3478eba0-5746-4f1f-a31b-cf2e26a3c949"
+      "guid": "ed2c4615-41e7-4e8c-b201-3ca054bcc46d"
     },
     "999813": {
       "kind": "family-type",
       "name": "Voice Outlet: Low 300",
-      "guid": "0619a94b-c797-4471-b4f1-eb791806b128"
+      "guid": "0c4c6ece-8e61-49e6-8b7d-38a47acaac98"
     },
     "999814": {
       "kind": "family-type",
       "name": "Three-Phase Outlet: Unbalanced 1100",
-      "guid": "94e03b35-3788-4e41-9152-0ae9e6384cfa"
+      "guid": "fdb9861a-e737-4ca7-b5eb-672099611318"
     },
     "999815": {
       "kind": "family-type",
       "name": "Three-Phase Outlet: Balanced 1100",
-      "guid": "6291f136-7ac6-400c-ab38-52a92fad7cf7"
+      "guid": "23073aac-9f72-42d2-b5ec-2aa8f5edfed8"
     },
     "999816": {
       "kind": "family-type",
       "name": "Tee: 50",
-      "guid": "cf837530-a838-49aa-b5e4-90b17a5d1648"
+      "guid": "dc3f4874-0ca4-4a91-ac62-a3bf0d91342b"
     },
     "999817": {
       "kind": "family-type",
       "name": "Tee: 25",
-      "guid": "22b31376-47ee-4496-ae27-056e84e68eef"
+      "guid": "de8c9b3a-f6bb-48a5-81c0-bbae1f3bf16c"
     },
     "999818": {
       "kind": "family-type",
       "name": "Tee: 110",
-      "guid": "f42f234e-f302-4105-95e9-c0c786e0cfd9"
+      "guid": "df38b069-b91d-4984-96a2-402a41ab1015"
     },
     "999819": {
       "kind": "family-type",
       "name": "Table: 2000 x 1000",
-      "guid": "dd5d7afc-fb4a-425d-b2f6-3baae3fc981e"
+      "guid": "616f7dd7-1f8c-4b45-9b43-5bba78781e59"
     },
     "999820": {
       "kind": "family-type",
       "name": "Table: 1600 x 900",
-      "guid": "81572c1b-23e8-4c71-826b-463dd6c6bce3"
+      "guid": "bcc620aa-7560-4e13-bbb9-e1232c431116"
     },
     "999821": {
       "kind": "family-type",
       "name": "Table: 1200 x 800",
-      "guid": "5d4cc93e-e1b6-4c2c-9c89-8b9470500652"
+      "guid": "b6d7ed52-1749-43b5-ab15-80e63d9d8a79"
     },
     "999822": {
       "kind": "family-type",
       "name": "Switch: Medium 1100",
-      "guid": "26665431-6164-4b0f-b89d-ecf805a71032"
+      "guid": "500053f0-fc0f-43a7-9bb3-95b340d3e69d"
     },
     "999823": {
       "kind": "family-type",
       "name": "Switch: Low 300",
-      "guid": "4d3e087d-45a4-4f19-a796-f670d668ba6c"
+      "guid": "e2035436-699c-4315-88f3-d73454930722"
     },
     "999824": {
       "kind": "family-type",
       "name": "Sofa: 2000 x 900",
-      "guid": "47790a9e-92c1-490e-8d1a-4d00bc951b7e"
+      "guid": "9e8262d7-29b7-4f68-9baf-15f6bd04c00b"
     },
     "999825": {
       "kind": "family-type",
       "name": "Sofa: 1600 x 900",
-      "guid": "00f8e27b-1871-450c-b740-2afee9acd80d"
+      "guid": "eb4c2525-a1ce-460d-ad0b-96d196db4120"
     },
     "999826": {
       "kind": "family-type",
       "name": "Sliding Window: 600 x 900",
-      "guid": "5c51e50d-b942-4f62-a720-73de4fb4e2c0"
+      "guid": "44152228-6771-40e0-b0a1-b9012815939f"
     },
     "999827": {
       "kind": "family-type",
       "name": "Sliding Window: 1800 x 1200",
-      "guid": "4a87358f-859e-4f05-8551-f1dcfa3e55a8"
+      "guid": "76563638-971e-4763-9bea-e20672c6b9e5"
     },
     "999828": {
       "kind": "family-type",
       "name": "Sliding Window: 1200 x 1500",
-      "guid": "35a1b7a1-7ccb-4449-a6e7-31bf7b6cceb0"
+      "guid": "645856ec-dbeb-4ccc-984b-f7c943c42e10"
     },
     "999829": {
       "kind": "family-type",
       "name": "Sliding Door: 2400 x 2100",
-      "guid": "1d7c6122-7444-447b-85cd-9e683cd7bfc9"
+      "guid": "483df8dc-c8d3-44fc-8016-75adf04c7f62"
     },
     "999830": {
       "kind": "family-type",
       "name": "Sliding Door: 2000 x 2100",
-      "guid": "308642de-d306-4fb6-af10-d5f61fdd0daf"
+      "guid": "2293d74a-54f4-4864-8308-6c835adc000f"
     },
     "999831": {
       "kind": "family-type",
       "name": "Sliding Door: 1500 x 2100",
-      "guid": "a7d1487c-400b-40c5-8e06-e1454cdf6c7e"
+      "guid": "c1db6d3b-68de-48e1-9c4b-b80afcd280f3"
     },
     "999832": {
       "kind": "family-type",
       "name": "Single Door: 900 x 2100",
-      "guid": "941ac050-a121-4f3a-b0ba-71513447fba3"
+      "guid": "59db73af-491c-44bf-9a12-60acb82cec00"
     },
     "999833": {
       "kind": "family-type",
       "name": "Single Door: 800 x 2100",
-      "guid": "679a0f0a-d157-42ae-847e-0a7fce465077"
+      "guid": "6e989840-d4e2-4431-af96-fa8119976895"
     },
     "999834": {
       "kind": "family-type",
       "name": "Single Door: 1000 x 2100",
-      "guid": "59a2c04a-08dc-4b65-bc85-8660c3842658"
+      "guid": "889875ef-4a0c-4286-a6b7-96fe8d641a95"
     },
     "999835": {
       "kind": "family-type",
       "name": "Shower: 900 x 900",
-      "guid": "4019e7a9-b650-4ed2-9e6b-cf433ecaada5"
+      "guid": "c5ba80ab-b6bc-46dd-ba2a-f0b9c7615640"
     },
     "999836": {
       "kind": "family-type",
       "name": "Shower: 800 x 800",
-      "guid": "0d4e073d-4d4c-4402-948e-ae0dc904ef6c"
+      "guid": "837f0140-8ec2-41e6-8774-4092771f838f"
     },
     "999837": {
       "kind": "family-type",
       "name": "Recessed Luminaire: 600 x 600",
-      "guid": "bb437d65-45bb-4959-9f4a-9174c5fe2ce0"
+      "guid": "c24c959d-94d1-4d82-a222-ee8183f5cba6"
     },
     "999838": {
       "kind": "family-type",
       "name": "Recessed Luminaire: 1200 x 300",
-      "guid": "9561c21b-c1b4-4439-9e81-7b2aa4ee9961"
+      "guid": "b4210997-199f-4003-9d44-30f0c9f4d182"
     },
     "999839": {
       "kind": "family-type",
       "name": "Rack: 800 x 1000",
-      "guid": "fc668972-fec8-4659-b819-53bfe0efa182"
+      "guid": "314fa2c8-bbc5-44e7-9e9f-a0f5d513b350"
     },
     "999840": {
       "kind": "family-type",
       "name": "Rack: 600 x 800",
-      "guid": "92866740-4ba7-478d-9d72-99bc97de97a3"
+      "guid": "f24365d6-110e-4148-a620-81cadc8ce693"
     },
     "999841": {
       "kind": "family-type",
       "name": "Rack: 600 x 1000",
-      "guid": "44cec44b-35a2-4e02-a490-2b5332b99640"
+      "guid": "3dd5bfd7-a565-4451-8b2d-d1e57a2f5dc2"
     },
     "999842": {
       "kind": "family-type",
       "name": "Patch Panel: 48 ports",
-      "guid": "43173f2c-9a6d-4eda-ae8f-f96eb86fbf60"
+      "guid": "da1644b2-1d25-4513-9ba1-7cb0fd802c75"
     },
     "999843": {
       "kind": "family-type",
       "name": "Patch Panel: 24 ports",
-      "guid": "204e4378-0fbe-4796-a286-b697a2992995"
+      "guid": "b3e7ef5a-a6f3-4619-874e-c10370366cb3"
     },
     "999844": {
       "kind": "family-type",
       "name": "Outlet: Medium 1100",
-      "guid": "4f98b934-3424-48c1-b222-6c701902b4a3"
+      "guid": "1bab1515-d2d1-42a5-9106-9f21073ea93d"
     },
     "999845": {
       "kind": "family-type",
       "name": "Outlet: Low 300",
-      "guid": "5fc2ddb5-ba69-4c6d-b459-89368de3fcb1"
+      "guid": "369b59a0-d2f4-42df-b9d2-06c9dc02e563"
     },
     "999846": {
       "kind": "family-type",
       "name": "Outlet: High 2100",
-      "guid": "d8071ca3-6d15-4fa3-9e8f-79ce67fa2f9f"
+      "guid": "69e9cacc-77d0-46cc-b7ec-99b4b171a535"
     },
     "999847": {
       "kind": "family-type",
       "name": "Kitchen Sink: 800 x 500",
-      "guid": "80527360-c3e5-4d93-83c7-22d87e0bad0b"
+      "guid": "70591872-44eb-4792-a86b-f5ee95c966d8"
     },
     "999848": {
       "kind": "family-type",
       "name": "Kitchen Sink: 1200 x 550",
-      "guid": "0aa35656-f747-46d0-907a-301265018cf2"
+      "guid": "9171f7a8-07b9-45a8-9200-92ddb4dd60f7"
     },
     "999849": {
       "kind": "family-type",
       "name": "Inspection Box: 300",
-      "guid": "7eaf9e50-3557-4138-89d0-a4db396e61af"
+      "guid": "129358c4-0e8e-4824-b437-8a9c0c8b2f06"
     },
     "999850": {
       "kind": "family-type",
       "name": "Inspection Box: 250",
-      "guid": "3d22ac72-2f54-487d-8e15-261aaede6491"
+      "guid": "cb5a2e4c-3c67-4739-98a6-eb3a05ed70c1"
     },
     "999851": {
       "kind": "family-type",
       "name": "Gate Valve: 50",
-      "guid": "0775fb30-6d0e-4ea4-9664-bd61c8617719"
+      "guid": "09edafd5-ad94-49cf-8390-bc05a4941082"
     },
     "999852": {
       "kind": "family-type",
       "name": "Gate Valve: 25",
-      "guid": "0add0d5d-610b-4fa2-a27f-984be6ae11f9"
+      "guid": "e19ed1c6-c1a1-4ef4-8522-dec0375a8d9b"
     },
     "999853": {
       "kind": "family-type",
       "name": "Floor Drain: 150 x 150",
-      "guid": "a190de33-c807-4b5a-8dae-067d2575b7a0"
+      "guid": "698d454e-3954-404a-8ae8-3070deca7e43"
     },
     "999854": {
       "kind": "family-type",
       "name": "Floor Drain: 100 x 100",
-      "guid": "8f8bcb41-045a-425d-85ef-599ec0b3db36"
+      "guid": "725c6d5e-ca59-42fb-90e5-5c55c115fae9"
     },
     "999855": {
       "kind": "family-type",
       "name": "Fixed Window: 600 x 900",
-      "guid": "3bce5681-dbf2-46f2-a1ad-21074d61cbdb"
+      "guid": "72f01c0a-c48f-4a11-8939-36e09121e73e"
     },
     "999856": {
       "kind": "family-type",
       "name": "Fixed Window: 1800 x 1200",
-      "guid": "257bfad4-629a-4f92-9bbb-f06329721330"
+      "guid": "581ee921-7cd0-4b86-a6d7-c0f7d99de4b0"
     },
     "999857": {
       "kind": "family-type",
       "name": "Fixed Window: 1200 x 1500",
-      "guid": "a1c9973d-7531-4504-916e-96805cbdaa4a"
+      "guid": "6f26f5d9-806e-431b-8072-6c0de0c95457"
     },
     "999858": {
       "kind": "family-type",
       "name": "Elbow 90: 50",
-      "guid": "1d10b44a-f875-437e-a6c3-47601ebb5d7a"
+      "guid": "8ea76e19-d461-49dd-bcab-d83524930b5e"
     },
     "999859": {
       "kind": "family-type",
       "name": "Elbow 90: 25",
-      "guid": "74781dd8-4dd4-46ec-bae9-826573c066ec"
+      "guid": "3fb125fc-6cbc-44ea-9aaa-75bc24b9b7c1"
     },
     "999860": {
       "kind": "family-type",
       "name": "Elbow 90: 110",
-      "guid": "c87ec799-27ae-4753-ba28-856fc7c9b7e1"
+      "guid": "4c79f2cf-e42c-44cb-9ac2-583e727060c4"
     },
     "999861": {
       "kind": "family-type",
       "name": "Earthing Electrode: 3000",
-      "guid": "6c2a583b-a445-49f4-b9c1-22f7771a467c"
+      "guid": "53605bf0-7406-41e7-a259-2755179ce066"
     },
     "999862": {
       "kind": "family-type",
       "name": "Earthing Electrode: 2400",
-      "guid": "b69b6c61-45b9-4d66-930c-a948f83a713a"
+      "guid": "ac8654a2-8466-4af2-bb49-b745df0ef760"
     },
     "999863": {
       "kind": "family-type",
       "name": "Double Door: 1800 x 2100",
-      "guid": "2ba036c6-8de2-4e40-a521-c1fc157ce142"
+      "guid": "fe98309c-5cac-40c4-8e1e-5fdd545c29d8"
     },
     "999864": {
       "kind": "family-type",
       "name": "Double Door: 1500 x 2100",
-      "guid": "d77d00ad-3e2a-4b0c-a8e9-50671cb4425b"
+      "guid": "a9328db8-6384-4d1d-bf53-4c9ff8273b1c"
     },
     "999865": {
       "kind": "family-type",
       "name": "Double Door: 1200 x 2100",
-      "guid": "aebeff98-8f2f-4dc0-ba2d-d645d1151795"
+      "guid": "09f2f28b-335f-4ff1-bac4-c94a8f6fa047"
     },
     "999866": {
       "kind": "family-type",
       "name": "Distribution Board: 36 circuits",
-      "guid": "f90d2e55-18fd-45d7-bab2-d1cc0304dee8"
+      "guid": "7b3d2b7c-1548-4e25-915f-5b25fe806f15"
     },
     "999867": {
       "kind": "family-type",
       "name": "Distribution Board: 24 circuits",
-      "guid": "25f625c3-3295-4331-aa95-472fbd87552b"
+      "guid": "be9cf100-fd96-4b18-8765-56f0c433b84c"
     },
     "999868": {
       "kind": "family-type",
       "name": "Distribution Board: 12 circuits",
-      "guid": "05156394-da87-4322-aba5-c2d64278964b"
+      "guid": "5c10f76f-3362-45ea-b373-ef64f4bf0b82"
     },
     "999869": {
       "kind": "family-type",
       "name": "Desk: 1400 x 700",
-      "guid": "caf39fa8-2528-45bf-ac53-1d0a65ef922a"
+      "guid": "7bbbf3e2-79f9-4345-84a7-d85216dddb5d"
     },
     "999870": {
       "kind": "family-type",
       "name": "Desk: 1200 x 600",
-      "guid": "960e95c6-3cbb-4d15-8ef4-0fd136e1ff7e"
+      "guid": "01646314-3cd0-4a3b-94e1-fe529bba74d0"
     },
     "999871": {
       "kind": "family-type",
       "name": "Data Outlet: Medium 1100",
-      "guid": "33490bc7-1a33-4835-b7fe-41ca3ef5e1e3"
+      "guid": "0de9f378-326b-4f7e-bd37-6665b626b7db"
     },
     "999872": {
       "kind": "family-type",
       "name": "Data Outlet: Low 300",
-      "guid": "6def3ad1-761e-470b-ba37-722bc3722369"
+      "guid": "d735ea65-eac7-45be-b0b3-0138995a8217"
     },
     "999873": {
       "kind": "family-type",
       "name": "Chair: 450 x 450",
-      "guid": "4237c1b2-b8d6-431a-a204-5d6b1ca6d110"
+      "guid": "86d573c0-aaf5-4505-bc0e-0ea4a571e135"
     },
     "999874": {
       "kind": "family-type",
       "name": "Ceiling Luminaire: 400",
-      "guid": "7e358c2d-a8c0-4fe2-9ee3-1d0369b0ac69"
+      "guid": "b8d21ea0-8a21-4be0-b92a-314db9aea0ef"
     },
     "999875": {
       "kind": "family-type",
       "name": "Ceiling Luminaire: 300",
-      "guid": "679aa56b-9e91-4517-838e-e56dca0a83d0"
+      "guid": "ec66b87f-710a-40b8-9474-193fe5ac4b54"
     },
     "999876": {
       "kind": "family-type",
       "name": "Casement Window: 600 x 900",
-      "guid": "8d86e645-eeef-497f-99c5-ff630d3c7bc3"
+      "guid": "22c36809-a102-4977-9785-c81156fdb405"
     },
     "999877": {
       "kind": "family-type",
       "name": "Casement Window: 1800 x 1200",
-      "guid": "9ee08efc-ae89-4ec4-9a37-dc349724250e"
+      "guid": "d15f97d6-2cf3-4e55-85e1-31d8430d1bd1"
     },
     "999878": {
       "kind": "family-type",
       "name": "Casement Window: 1200 x 1500",
-      "guid": "8c39817d-2ac4-43e0-914d-9f42607c78c7"
+      "guid": "8b098bb4-0134-4c9e-9dc4-d9a7a6031366"
     },
     "999879": {
       "kind": "family-type",
       "name": "Bed: 900 x 2000",
-      "guid": "288d0b98-5978-4979-837d-27fbc33f7e29"
+      "guid": "e950d6fa-eb6a-412c-af4f-e8d31da17603"
     },
     "999880": {
       "kind": "family-type",
       "name": "Bed: 1800 x 2000",
-      "guid": "bf8127ab-5548-47dc-b316-0302ba562eae"
+      "guid": "fd40aca3-de1f-4857-a332-c0074c2626db"
     },
     "999881": {
       "kind": "family-type",
       "name": "Bed: 1600 x 2000",
-      "guid": "bc28733a-0d81-4086-bf6b-eb8512998537"
+      "guid": "234a6acf-d12b-493c-a8e3-848b99f7fc4f"
     },
     "999882": {
       "kind": "family-type",
       "name": "Bathtub: 1700 x 750",
-      "guid": "bb0909f4-779d-472c-a290-4e850464c7a6"
+      "guid": "be4cd6ee-f3fc-4d6d-a971-170c0fb1ca86"
     },
     "999883": {
       "kind": "family-type",
       "name": "Bathtub: 1500 x 700",
-      "guid": "3655bd67-9128-4466-9664-9fad698c7172"
+      "guid": "ba38c32b-996c-4204-a86a-5b421b138f76"
     },
     "999884": {
       "kind": "family-type",
       "name": "Base Cabinet: 600 x 600",
-      "guid": "96d07956-1285-4f15-a035-2f53a4557363"
+      "guid": "1180a978-4e33-484a-93c5-e16f87e3ef9b"
     },
     "999885": {
       "kind": "family-type",
       "name": "Base Cabinet: 1800 x 600",
-      "guid": "f3d8d700-a63a-4c36-986e-884b77e12e3b"
+      "guid": "4f522edf-629d-4042-a75b-a381fe9a3cac"
     },
     "999886": {
       "kind": "family-type",
       "name": "Base Cabinet: 1200 x 600",
-      "guid": "c61ceb7d-83dc-44fc-a4ea-5a5f440e9fee"
+      "guid": "1b5cc9b7-6327-4cd9-bfc3-dc082479d7dc"
     },
     "999887": {
       "kind": "family-type",
       "name": "Air Terminal: 500",
-      "guid": "8b3923ad-214c-4329-bdc2-243d376c8939"
+      "guid": "27aa6139-6c84-4eca-8df2-18664f8f1419"
     },
     "999888": {
       "kind": "family-type",
       "name": "Air Terminal: 2000",
-      "guid": "40a4675f-fd98-4601-a364-d884e13a751e"
+      "guid": "daea98fd-000d-4a0d-a6ca-cdef503b202a"
     },
     "999889": {
       "kind": "family-type",
       "name": "Air Terminal: 1000",
-      "guid": "ebb02102-45d1-44a7-8e70-9c68468681c9"
+      "guid": "68c4b538-1de3-4175-953c-361145f6f68f"
     },
     "999890": {
       "kind": "phase-filter",
       "name": "Show Previous + New",
-      "guid": "c39728dc-b928-4bb9-acf4-282c8ad2ab10"
+      "guid": "293002ea-f4b8-4640-b99c-fb29373d0d88"
     },
     "999891": {
       "kind": "phase-filter",
       "name": "Show Previous + Demolished",
-      "guid": "3b64c299-4cc7-47c0-b94c-b49255f4d0d4"
+      "guid": "7eada696-278d-488f-a2ec-3ff9afc1ea32"
     },
     "999892": {
       "kind": "phase-filter",
       "name": "Show New",
-      "guid": "7819a907-69b3-4ca7-9e86-31af1ba379ba"
+      "guid": "5c94f1f8-6ea3-42e1-a648-9d0429d8b30e"
     },
     "999893": {
       "kind": "phase-filter",
       "name": "Show Complete",
-      "guid": "67fc44a5-a77d-4f00-93c8-7285b536bb23"
+      "guid": "3e933061-a4ef-4de4-8a89-fb379e8a983b"
     },
     "999894": {
       "kind": "phase-filter",
       "name": "Show All",
-      "guid": "26437814-cef0-486c-975a-ab08bae46ec8"
+      "guid": "0f52fe34-068f-446e-a707-722994b05231"
     },
     "999895": {
       "kind": "phase",
       "name": "New Construction",
-      "guid": "0ebd4390-28af-4c03-95df-e806d7b3ed3a"
+      "guid": "dcc488d1-ef07-4fa7-a826-98e2d0b20bb3"
     },
     "999896": {
       "kind": "phase",
       "name": "Existing",
-      "guid": "91629b66-652b-4eff-98af-ca14dff8aa99"
+      "guid": "f5c6b950-44d2-4420-bd6b-dd04104541aa"
     },
     "999897": {
       "kind": "view-template",
       "name": "Electrical Power",
-      "guid": "fba12f3d-ebd6-469d-b5cd-88afeb4d8458"
+      "guid": "eb11c20d-6fdb-4c18-8794-b43acde53400"
     },
     "999898": {
       "kind": "view-template",
       "name": "Electrical Lighting",
-      "guid": "4dabb82c-b401-4b33-a120-e8b8ec71f505"
+      "guid": "53fc5fd7-4962-4271-ae57-2723335e201a"
     },
     "999899": {
       "kind": "view-template",
       "name": "Electrical Ceiling",
-      "guid": "67a01d65-1aec-4d0a-8feb-c9bb7d053e7e"
+      "guid": "331e6744-432d-4d76-a17a-a25031ca5b46"
     },
     "999900": {
       "kind": "family",
       "name": "Washbasin",
-      "guid": "5183d5e7-32ee-4d85-8d75-984ce4270206"
+      "guid": "98b4c2c2-e589-4143-b3ee-382ef9731e88"
     },
     "999901": {
       "kind": "family",
       "name": "Wardrobe",
-      "guid": "c6207540-6c71-4a53-9588-f0e2a8a3a68a"
+      "guid": "a679cc78-f9f4-48a3-b084-6ffc00fb0618"
     },
     "999902": {
       "kind": "family",
       "name": "WC",
-      "guid": "015d47c7-8758-44e5-854c-12fadf3ed48a"
+      "guid": "d72fb053-3e0f-4f05-887d-01baa95cfe0c"
     },
     "999903": {
       "kind": "family",
       "name": "Voice Outlet",
-      "guid": "106f3b1d-1331-4238-b10b-5f6f16e600c9"
+      "guid": "3c744460-b1f4-4e3a-9e05-5f8c99fbad20"
     },
     "999904": {
       "kind": "family",
       "name": "Three-Phase Outlet",
-      "guid": "b7e92c5f-b706-413f-bff5-228618342fdd"
+      "guid": "f6923f27-bf3f-4029-8366-9f6f7d8331fd"
     },
     "999905": {
       "kind": "family",
       "name": "Tee",
-      "guid": "b50d7f84-5ebd-4da2-afca-895880284135"
+      "guid": "c643a3af-145f-44cd-a710-1b029fbbcd11"
     },
     "999906": {
       "kind": "family",
       "name": "Table",
-      "guid": "f717d572-07f4-41df-a798-9506190b186d"
+      "guid": "9c771186-5b8c-41e1-8558-6db688c1c839"
     },
     "999907": {
       "kind": "family",
       "name": "Switch",
-      "guid": "1a448ea2-b57a-4a28-a435-5b6358890164"
+      "guid": "ffebac0f-2a96-43fd-83c2-3f6bff10860e"
     },
     "999908": {
       "kind": "family",
       "name": "Sofa",
-      "guid": "fa380b63-6528-4577-9e05-704b0d4da843"
+      "guid": "0ba4b345-7dff-477c-b1f3-7124f7694a5d"
     },
     "999909": {
       "kind": "family",
       "name": "Sliding Window",
-      "guid": "86c898ca-3830-458b-84c2-87e6a332b9e9"
+      "guid": "2ee1567d-235e-48ed-bb2d-c8e36cfd81df"
     },
     "999910": {
       "kind": "family",
       "name": "Sliding Door",
-      "guid": "564ebb50-10db-49f6-9d02-b5968718edc7"
+      "guid": "22c46525-a626-44e2-a7e2-3e7e6853baec"
     },
     "999911": {
       "kind": "family",
       "name": "Single Door",
-      "guid": "7e5eb738-b703-4d58-af2c-e5fcd385229b"
+      "guid": "7293b436-5763-4b3f-86ad-d7b28d5eda61"
     },
     "999912": {
       "kind": "family",
       "name": "Shower",
-      "guid": "8283c672-12b9-44b6-a82a-3df192b11aed"
+      "guid": "5ca3564d-755b-49a6-93bc-40db323ba8b3"
     },
     "999913": {
       "kind": "family",
       "name": "Recessed Luminaire",
-      "guid": "180007df-e1c8-4599-b14d-6f9beb632f97"
+      "guid": "3a0c3261-10b0-42f0-99c8-b6c7ad85fde5"
     },
     "999914": {
       "kind": "family",
       "name": "Rack",
-      "guid": "5a70827b-3887-4a1f-8daa-cbc89d9d076f"
+      "guid": "dfc58a14-5e1e-4d69-a44e-67f5976dbd00"
     },
     "999915": {
       "kind": "family",
       "name": "Patch Panel",
-      "guid": "4230fa21-9694-422e-8405-27172dc815ea"
+      "guid": "a4b80a56-8dc3-4e51-9b44-f36cd18bd6cf"
     },
     "999916": {
       "kind": "family",
       "name": "Outlet",
-      "guid": "5d29f08a-a7f1-4230-815f-4f90e95cae5c"
+      "guid": "aba5a2c0-53ca-458b-b375-752639e9feaa"
     },
     "999917": {
       "kind": "family",
       "name": "Kitchen Sink",
-      "guid": "2a22e271-2e54-4856-b8bc-968f36994231"
+      "guid": "b43aee31-8e81-4ba5-94e8-7c1c34305ba8"
     },
     "999918": {
       "kind": "family",
       "name": "Inspection Box",
-      "guid": "be8b49b1-0d68-4981-9952-60f34b4c391f"
+      "guid": "3df4aaf3-527e-425a-991f-48462d4daa2d"
     },
     "999919": {
       "kind": "family",
       "name": "Gate Valve",
-      "guid": "b8d62ebd-1b30-401b-88b5-58c92e19c27d"
+      "guid": "52900ac9-be07-4645-b7c7-6acf4bf7d8a4"
     },
     "999920": {
       "kind": "family",
       "name": "Floor Drain",
-      "guid": "6a2b104d-52d5-4163-ab4d-0662df8a48ae"
+      "guid": "eb6f2f42-fee0-4eed-9875-539313e34eab"
     },
     "999921": {
       "kind": "family",
       "name": "Fixed Window",
-      "guid": "13e2b419-3f0b-4077-b65c-facc33537a52"
+      "guid": "3fd0d353-b284-4198-abf1-700638d40b5a"
     },
     "999922": {
       "kind": "family",
       "name": "Elbow 90",
-      "guid": "2c3f43f9-f2ab-4bbb-b018-b4ad8aded2be"
+      "guid": "c2b834a6-702d-4e2a-ab8b-6c2fa4bbbd8c"
     },
     "999923": {
       "kind": "family",
       "name": "Earthing Electrode",
-      "guid": "5548c559-683e-4559-9167-76ba3ce48e72"
+      "guid": "aa39b7d7-7b35-4a60-8852-078662c1db00"
     },
     "999924": {
       "kind": "family",
       "name": "Double Door",
-      "guid": "8f10197b-2113-4ce4-a36f-057b6567e4c5"
+      "guid": "304ba6a8-a568-482c-ae66-26e28e3590a5"
     },
     "999925": {
       "kind": "family",
       "name": "Distribution Board",
-      "guid": "ca0b0ec0-5db3-4517-ac46-7627d87f700d"
+      "guid": "41895e12-0bf0-4584-839f-a155853d0e81"
     },
     "999926": {
       "kind": "family",
       "name": "Desk",
-      "guid": "5c7934c4-03e2-4b5d-b3bb-6dfff09b0ef6"
+      "guid": "45e51995-3b0a-4a8f-90c7-1865d1f66a6b"
     },
     "999927": {
       "kind": "family",
       "name": "Data Outlet",
-      "guid": "8a9e1070-0cbd-47d4-9642-1ba19e8e5b2d"
+      "guid": "b6f7a92a-bd4c-4904-984e-f61343087d1f"
     },
     "999928": {
       "kind": "family",
       "name": "Chair",
-      "guid": "5c7dd0a2-e130-4f63-b62b-5953c9158cc8"
+      "guid": "fc19affe-028b-4573-80f5-732d64182d91"
     },
     "999929": {
       "kind": "family",
       "name": "Ceiling Luminaire",
-      "guid": "d8e07524-a132-481b-92f4-cc5004b95623"
+      "guid": "514e9cef-cfc8-4f9c-9dc1-29459f9246f5"
     },
     "999930": {
       "kind": "family",
       "name": "Casement Window",
-      "guid": "7d3a0cbe-5a30-4c3f-966c-511383ef63bf"
+      "guid": "73769219-f544-4b85-9767-8ddfad1e0a2a"
     },
     "999931": {
       "kind": "family",
       "name": "Bed",
-      "guid": "2f877917-d1fc-44c3-82bf-38fdce1732fd"
+      "guid": "c03f35d3-eae1-4e39-8c69-6298139626f5"
     },
     "999932": {
       "kind": "family",
       "name": "Bathtub",
-      "guid": "012b1ae8-cabf-46e8-8193-36b1df39a3fc"
+      "guid": "5926b28f-7816-4f7b-9d4b-8b636431742e"
     },
     "999933": {
       "kind": "family",
       "name": "Base Cabinet",
-      "guid": "5e957302-32f8-4d3d-974f-fb27f623ffb3"
+      "guid": "9b369609-4d5d-4d7c-a909-dc992ebcc809"
     },
     "999934": {
       "kind": "family",
       "name": "Air Terminal",
-      "guid": "f488b14f-f05b-402a-84a8-f647db94cf34"
+      "guid": "9d2e36b7-342c-408a-bf43-d02048a2dd2a"
     },
     "999935": {
       "kind": "material",
       "name": "Timber",
-      "guid": "4d52ddf0-73a7-4634-98c0-6298bc1fcbf9"
+      "guid": "914bd292-4506-4104-b39e-37b95062da09"
     },
     "999936": {
       "kind": "material",
       "name": "Screed",
-      "guid": "65e4d4b4-835e-4a18-beda-2541d8a467b5"
+      "guid": "7b2b4985-2d08-47b7-8afa-edcc125f45be"
     },
     "999937": {
       "kind": "material",
       "name": "Roof tiles",
-      "guid": "1b4b865b-b2bf-4e28-9f7b-8abe76b7cb9f"
+      "guid": "9c68e905-3b56-4b9e-b1d7-fbde0ab381b0"
     },
     "999938": {
       "kind": "material",
       "name": "Porcelain",
-      "guid": "fb5aaa7b-2353-4a66-952b-9ad25bb9df82"
+      "guid": "61305822-6ee7-48e0-a756-0eb30a026168"
     },
     "999939": {
       "kind": "material",
       "name": "Plaster",
-      "guid": "6586b899-883b-47a3-ad21-edf4e888df48"
+      "guid": "3bcc4fc5-100b-4163-9e1e-2ccd9ac044c5"
     },
     "999940": {
       "kind": "material",
       "name": "PVC",
-      "guid": "1622994b-a9d7-4902-b0fd-9ecc8d7b0c37"
+      "guid": "fddd6fed-7f4c-4c9a-9c8b-af78365ac927"
     },
     "999941": {
       "kind": "material",
       "name": "Metal",
-      "guid": "86b5cc15-13a8-4f32-8505-1055bb72c5b9"
+      "guid": "84bc7c50-0300-4699-b8f1-d403c85c2e5d"
     },
     "999942": {
       "kind": "material",
       "name": "Membrane",
-      "guid": "9d11b5fa-0694-4ef4-acbf-ec7d6c0493ca"
+      "guid": "638a372b-976c-4c02-a402-4f990d558bae"
     },
     "999943": {
       "kind": "material",
       "name": "Insulation",
-      "guid": "e3386f0e-3ba5-46c3-98e2-155cf6886f61"
+      "guid": "b3fd11f7-1aab-40b0-abf1-590eefde5240"
     },
     "999944": {
       "kind": "material",
       "name": "Gypsum board",
-      "guid": "7b89b660-5d0b-42ea-9f3e-57844853fd9c"
+      "guid": "fd45b4f0-b64f-4629-888d-b7e39192ffcc"
     },
     "999945": {
       "kind": "material",
       "name": "Glass",
-      "guid": "6cdda579-15ad-4f88-be7f-8f00668fa515"
+      "guid": "68d923d1-bd2b-4171-9ca2-6c0b763a5277"
     },
     "999946": {
       "kind": "material",
       "name": "Fabric",
-      "guid": "909257b1-b8e6-49ab-b34f-2b6f4d33fc00"
+      "guid": "81ea3160-0fa3-4154-8a53-3e6dff91c672"
     },
     "999947": {
       "kind": "material",
       "name": "Copper",
-      "guid": "8be31d59-7cab-4214-869c-74b234c245f6"
+      "guid": "95e13f6a-c268-47a1-a226-4c43d494aaf7"
     },
     "999948": {
       "kind": "material",
       "name": "Concrete block",
-      "guid": "5ec0561e-3ddb-4ea4-99cc-6053e88ccce9"
+      "guid": "c87f5523-b72e-415e-880f-ffa8efd6276d"
     },
     "999949": {
       "kind": "material",
       "name": "Concrete",
-      "guid": "35574c5b-b5e1-467a-965d-81c799ed7b01"
+      "guid": "f9954f4a-5e3d-4178-96a1-700aeaa0ed1b"
     },
     "999950": {
       "kind": "material",
       "name": "Ceramic tile",
-      "guid": "75e6507b-fa9d-4433-a394-a4c5e868cbab"
+      "guid": "b33d0175-ae7b-4088-a8f3-26557297a95c"
     },
     "999951": {
       "kind": "material",
       "name": "Brick",
-      "guid": "09e33538-1c57-4796-abde-e605d58f6e5f"
+      "guid": "9b33d19e-99d5-4a87-8aaf-af0c5e3ed94a"
     },
     "999952": {
       "kind": "type:wire",
       "name": "Wire 6",
-      "guid": "13bf0ea7-bd06-4a34-9e52-d38a55232611"
+      "guid": "97b06853-616e-46a4-b258-04885ba27527"
     },
     "999953": {
       "kind": "type:wire",
       "name": "Wire 4",
-      "guid": "e3aa005a-b2d8-4236-ae7c-40f30b37f9c3"
+      "guid": "809a3465-be59-4e3f-b5e8-0734212483d7"
     },
     "999954": {
       "kind": "type:wire",
       "name": "Wire 2.5",
-      "guid": "db630492-0671-49ee-a173-1f4a0c8edb94"
+      "guid": "db46f894-4471-48db-ae47-3a23ec98656d"
     },
     "999955": {
       "kind": "type:stripfooting",
       "name": "Strip 600 x 300",
-      "guid": "8314d2c3-6850-4941-8e19-fe224c655c79"
+      "guid": "ac785a40-ae26-4d70-8167-8e287cbac83c"
     },
     "999956": {
       "kind": "type:pipe",
       "name": "PVC 50",
-      "guid": "ed42c9e5-4615-49d8-8443-9d36e9062f1e"
+      "guid": "56b11ee5-0cd6-48c6-aa2d-4b11a438dd3b"
     },
     "999957": {
       "kind": "type:pipe",
       "name": "PVC 25",
-      "guid": "51328c86-3328-4a9b-9cd5-d4124776d2ee"
+      "guid": "3204e780-820a-48f4-ac48-1e4db054150d"
     },
     "999958": {
       "kind": "type:pipe",
       "name": "PVC 110",
-      "guid": "12ed5022-d4a3-450a-b83f-9638f0998d7e"
+      "guid": "0bf3aae9-4c47-4e00-ac00-ef35e1bb3b7d"
     },
     "999959": {
       "kind": "type:pipe",
       "name": "Copper 22",
-      "guid": "9299f257-a3d9-4589-818c-557210d18ec3"
+      "guid": "afa0d1e8-5332-4204-ab38-554c1a4be61c"
     },
     "999960": {
       "kind": "type:groundconductor",
       "name": "Steel 8",
-      "guid": "32e9fac6-4c64-4c8f-b6c1-104b5f79fafc"
+      "guid": "b86c9dac-7c6d-4139-8047-d2f4f815f573"
     },
     "999961": {
       "kind": "type:groundconductor",
       "name": "Copper 9",
-      "guid": "f4e15df0-8cbd-4a3a-a7dc-2bdf205ab38b"
+      "guid": "fb54134e-c9b6-448c-a439-6a950272fa90"
     },
     "999962": {
       "kind": "type:duct",
       "name": "Round 300",
-      "guid": "6ba8d6d8-addd-414d-8cc9-48e9fe8d0d4a"
+      "guid": "27929acd-7342-4754-86ae-fcc24962898b"
     },
     "999963": {
       "kind": "type:duct",
       "name": "Rectangular 600 x 400",
-      "guid": "518a960e-c884-47c6-94de-6d01828f754a"
+      "guid": "75401a6f-920b-404a-93ef-02fbb0aeb5ed"
     },
     "999964": {
       "kind": "type:duct",
       "name": "Rectangular 400 x 300",
-      "guid": "1c24d18f-faa5-42de-afc1-8700e77f928f"
+      "guid": "abeaf09b-98f9-467a-a9c1-b767cca28a75"
     },
     "999965": {
       "kind": "type:downconductor",
       "name": "Steel 8",
-      "guid": "e9ed853f-adea-47a2-960a-c6518a5bb4b9"
+      "guid": "82ebf79f-3564-48b1-8e05-010a2eb2d987"
     },
     "999966": {
       "kind": "type:downconductor",
       "name": "Flat 25 x 3",
-      "guid": "173c7db4-abaa-495f-aeca-577189b3833c"
+      "guid": "ff48b6fe-cf21-4b1b-8f51-58c66996713c"
     },
     "999967": {
       "kind": "type:downconductor",
       "name": "Copper 8",
-      "guid": "6e4102ef-727b-4104-b8df-f38d6a972b12"
+      "guid": "f8ef7293-ca9c-4b18-b1ff-b2ed44a5c480"
     },
     "999968": {
       "kind": "type:conduit",
       "name": "Steel 25",
-      "guid": "4839cbf4-0255-4717-8ca7-746a7d7019d5"
+      "guid": "76c04425-4421-40fe-b0f3-26b3dc3b0df6"
     },
     "999969": {
       "kind": "type:conduit",
       "name": "PVC 32",
-      "guid": "36880054-3161-4676-a1df-b73774d398c9"
+      "guid": "50a35b5b-8b0b-42a9-ab3a-a219993e73fa"
     },
     "999970": {
       "kind": "type:conduit",
       "name": "PVC 25",
-      "guid": "fd8f8179-5222-4f56-8d4f-6b333dbfdc5c"
+      "guid": "e26060b1-b5f5-4422-b54d-1c5a50bd7011"
     },
     "999971": {
       "kind": "type:conduit",
       "name": "PVC 20",
-      "guid": "957f3df7-9741-4fd2-9523-cbe9095e310e"
+      "guid": "9042c743-5ebf-4271-af9a-be61664e48cf"
     },
     "999972": {
       "kind": "type:cabletray",
       "name": "Perforated 300 x 100",
-      "guid": "d3717379-e869-4062-bfef-b1ec069c11fc"
+      "guid": "27942884-7d5e-4e5e-8fa8-d0bfef681fd4"
     },
     "999973": {
       "kind": "type:cabletray",
       "name": "Perforated 200 x 50",
-      "guid": "9465e49e-9202-4d5f-8d2b-b209db43c64b"
+      "guid": "6f29e94a-f340-4ca1-afee-1d202fc46583"
     },
     "999974": {
       "kind": "type:cabletray",
       "name": "Perforated 100 x 50",
-      "guid": "3376b20b-688a-4f7d-9166-d2e2731c397a"
+      "guid": "f232538b-b333-4ce5-95ff-dbffadc9d1c1"
     },
     "999975": {
       "kind": "type:cable",
       "name": "Optical 3",
-      "guid": "557612cf-8276-4906-9420-94c492aefebc"
+      "guid": "3378b288-cdd9-4695-a111-0a50742c2465"
     },
     "999976": {
       "kind": "type:cable",
       "name": "Cat6A",
-      "guid": "7083e45a-f3bd-4836-8617-33c037725c98"
+      "guid": "3fa1d436-5155-4415-9cc1-b40f03df0b34"
     },
     "999977": {
       "kind": "type:cable",
       "name": "Cat6",
-      "guid": "c20ff4d7-312e-45eb-a6e2-e2720284aa7e"
+      "guid": "dd294d66-0060-4391-ba66-d841c684856a"
     },
     "999978": {
       "kind": "type:beam",
       "name": "Steel Tube 150",
-      "guid": "10a88499-d9b6-43c3-9147-c99a0e0343ff"
+      "guid": "92ab07ed-5f89-40ff-b032-a646e52c1223"
     },
     "999979": {
       "kind": "type:beam",
       "name": "Beam 200 x 500",
-      "guid": "094eecf6-5303-49b7-af53-83c2a9d09592"
+      "guid": "92d824a8-eab5-4da0-a2fb-aef2ff30f471"
     },
     "999980": {
       "kind": "type:beam",
       "name": "Beam 150 x 400",
-      "guid": "b42d5c2b-cdad-4be7-9f69-c3351e6885cf"
+      "guid": "3e087e4b-3192-43b6-a3dc-5c0b74a0cc6f"
     },
     "999981": {
       "kind": "type:footing",
       "name": "Footing 1500 x 1500",
-      "guid": "97f63244-3983-47c3-ab5d-c5d0e42986a1"
+      "guid": "746c5e58-453a-4576-9bb6-b8f98983c9ec"
     },
     "999982": {
       "kind": "type:footing",
       "name": "Footing 1200 x 1200",
-      "guid": "b2ca254f-49bf-48e3-bca8-e198fbe57b7c"
+      "guid": "a17c0068-5d50-4c38-9c4f-c93c07a3391a"
     },
     "999983": {
       "kind": "type:structuralcolumn",
       "name": "Concrete Round 400",
-      "guid": "3544136c-3815-4f0b-840a-8e06cf3923f4"
+      "guid": "5a22700b-68c7-4e7c-a278-f13e707340d9"
     },
     "999984": {
       "kind": "type:structuralcolumn",
       "name": "Concrete 300 x 300",
-      "guid": "6e96ebb6-fb5c-4fcb-a29b-82e1e3d96d2e"
+      "guid": "35ee2e5f-c4b6-4acb-9fa9-1883b0986bf1"
     },
     "999985": {
       "kind": "type:structuralcolumn",
       "name": "Concrete 200 x 500",
-      "guid": "b0ebfb5e-b506-4fcf-8512-1eb3da396f7f"
+      "guid": "464ac6d7-7937-48ab-8546-0efa5dedfe97"
     },
     "999986": {
       "kind": "type:railing",
       "name": "Railing - 1000mm",
-      "guid": "f0a66c7f-9921-4b8f-afe7-b4141e2816ec"
+      "guid": "04959269-dbb7-47b1-b9c6-68a79a85edbc"
     },
     "999987": {
       "kind": "type:ceiling",
       "name": "Tile 600 x 600",
-      "guid": "85c4925b-e7cc-462b-a2a5-6b8eec13489d"
+      "guid": "e3923068-9587-41f2-9da1-341a26def770"
     },
     "999988": {
       "kind": "type:ceiling",
       "name": "Generic - 20mm",
-      "guid": "69f82862-021f-4e48-b7aa-fb233d1129b9"
+      "guid": "0d8bb071-2301-4d37-b9ec-e9281fbf2bbe"
     },
     "999989": {
       "kind": "type:roof",
       "name": "Generic - 300mm",
-      "guid": "3b3d6694-49ca-4ef8-8bc2-605d473ef09c"
+      "guid": "0543462b-1a14-4e00-a30d-3b86c8afdc8a"
     },
     "999990": {
       "kind": "type:column",
       "name": "Round 300",
-      "guid": "177c5522-d561-475e-8678-4a47b0f54996"
+      "guid": "68542ca3-8580-48f4-9ecd-85e8d6c8b9cb"
     },
     "999991": {
       "kind": "type:column",
       "name": "Rectangular 400 x 400",
-      "guid": "cb9b6a59-f89b-4dd4-88a1-0f279dc3f560"
+      "guid": "a8d34df0-f43d-49d3-846b-03e9a999f34a"
     },
     "999992": {
       "kind": "type:window",
       "name": "Fixed 600 x 900",
-      "guid": "ff171c66-ba18-4fa9-aacc-f27c55058cdb"
+      "guid": "9577e755-ef7c-4737-8bbb-98082131064f"
     },
     "999993": {
       "kind": "type:window",
       "name": "Fixed 1200 x 1500",
-      "guid": "1e1eab5b-1e54-4e21-8d39-c8b6b4a1efec"
+      "guid": "481283c9-6f62-4d99-9284-903edbbae77d"
     },
     "999994": {
       "kind": "type:door",
       "name": "Single 900 x 2100",
-      "guid": "3e03008e-3725-4990-ac6b-f987dad3f68f"
+      "guid": "18adabd8-7418-4b16-9f90-ae773ae46978"
     },
     "999995": {
       "kind": "type:door",
       "name": "Single 800 x 2100",
-      "guid": "75192ae3-7361-42a9-ba12-83461e0f8d37"
+      "guid": "e64d57cd-d4a4-4921-bec7-a4f1535a75ca"
     },
     "999996": {
       "kind": "type:floor",
       "name": "Generic - 200mm",
-      "guid": "102b2095-a6bd-47fd-bfd0-6fb7b813bb08"
+      "guid": "42dd20fc-e2ec-4219-b255-fb3dc86cc3bf"
     },
     "999997": {
       "kind": "type:wall",
       "name": "Interior - 100mm",
-      "guid": "faf5fd90-31af-4399-b2f0-ca6dd913ddf5"
+      "guid": "e4330d0e-0053-4c94-bd4f-4fddf3edff26"
     },
     "999998": {
       "kind": "type:wall",
       "name": "Generic - 200mm",
-      "guid": "307a95a9-3942-4dea-ac50-84298513eb7f"
+      "guid": "2b0b30a5-03ac-4254-b5e7-217b1ed5482f"
     },
     "999999": {
       "kind": "type:wall",
       "name": "Exterior - 300mm",
-      "guid": "f964c921-7453-435d-a9f5-35f6e88ac3ad"
+      "guid": "57b53606-dd04-4291-a957-e84aa08b1152"
     }
   }
 }

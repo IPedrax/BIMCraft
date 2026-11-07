@@ -87,12 +87,12 @@ pub(crate) const ARROWHEADS: [(Arrowhead, &str); 5] = [
 
 impl BimApp {
     /// The type a new spot coordinate is placed in: the one the Type Selector names, while the project has it, else the
-    /// project's first from the Project Base Point.
+    /// project's first in shared coordinates.
     pub(crate) fn spot_type(&self) -> Option<String> {
         let m = &self.session.model;
         match self.types.get("spotcoordinate") {
             Some(name) if m.spot_coordinate_types.contains_key(name) => Some(name.clone()),
-            _ => bimcraft_core::spots::default_type(&m.spot_coordinate_types, Origin::Base).cloned(),
+            _ => bimcraft_core::spots::default_type(&m.spot_coordinate_types, Origin::Survey).cloned(),
         }
     }
 

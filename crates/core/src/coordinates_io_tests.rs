@@ -375,3 +375,121 @@ fn a_project_acquires_its_coordinates_from_a_linked_ifc() {
     assert!((l.angle - 5.0).abs() < 1e-6 && (l.scale - 0.9996).abs() < 1e-9, "10° less the 5° it was turned: {l:?}");
     assert_eq!(h.model.coordinates.crs, Some(31983), "the map system comes with it");
 }
+
+/// [`site_plan`] whose header says inches (`$INSUNITS` 1), as a civil drawing in metres often wrongly does.
+fn site_plan_said_inches(e: f64, n: f64) -> String {
+    site_plan(e, n).replace("$INSUNITS\n70\n6\n", "$INSUNITS\n70\n1\n")
+}
+
+#[test]
+fn map_coordinates_whose_file_says_inches_are_read_in_the_map_systems_unit() {
+    // Dubai: DLTM, metres. The plot's corner at 248 599.2464, 2 715 989.0282.
+    let mut s = Session::new();
+    run(&mut s, "crs", json!({"code": 3997}));
+    let path = file("cad-said-inches", "plot.dxf", &site_plan_said_inches(248_599.246_4, 2_715_989.028_2));
+    let r = run(&mut s, "import_cad", json!({"path": path}));
+    assert_eq!(r["scale"], 1000.0, "read in metres, the map system's unit: {r}");
+    assert!(r["notes"].to_string().contains("inches") && r["notes"].to_string().contains("metre"), "and it says why: {r}");
+    let id = r["id"].as_u64().unwrap();
+    run(&mut s, "coordinates", json!({"acquire": id}));
+    let ci = match s.model.elements.get(id) {
+        Some(crate::model::Element::CadImport(c)) => c.clone(),
+        _ => panic!(),
+    };
+    let corner = crate::model::cad_place(&ci)(crate::geom::P2(248_599.246_4, 2_715_989.028_2));
+    let q = to_shared(&s, [corner.0, corner.1, 0.0]);
+    assert!(near3(q, [248_599_246.4, 2_715_989_028.2, 0.0], 1e-3), "{q:?}");
+    // A spot coordinate on each corner reads what the drawing's program says of it.
+    for (dx, dy) in [(0.0, 0.0), (10.0, 0.0), (10.0, 6.0), (0.0, 6.0)] {
+        let (e, n) = (248_599.246_4 + dx, 2_715_989.028_2 + dy);
+        let q = crate::model::cad_place(&ci)(crate::geom::P2(e, n));
+        let r = run(&mut s, "spot_coordinate", json!({"at": [q.0, q.1]}));
+        assert_eq!(r["text"], json!([format!("N {n:.4}"), format!("E {e:.4}")]), "{r}");
+    }
+    // Placed origin to origin, it would land 2 700 km off: refused, saying how to bring it in.
+    let e = fails(&mut s, "import_cad", json!({"cad": "plot", "position": "origin"}));
+    assert!(e.contains("acquire") && e.contains("shared"), "{e}");
+    // Units given are kept, whatever the map.
+    let r = run(&mut s, "import_cad", json!({"cad": "plot", "units": "in"}));
+    assert_eq!(r["scale"], 25.4);
+    // With no map system: metres, which map coordinates are, never inches.
+    let mut s = Session::new();
+    let r = run(&mut s, "import_cad", json!({"path": path}));
+    assert_eq!(r["scale"], 1000.0, "{r}");
+    // A file in feet at map coordinates may be State Plane: kept in feet, with a warning.
+    let feet =
+        file("cad-said-feet", "plot.dxf", &site_plan(248_599.246_4, 2_715_989.028_2).replace("$INSUNITS\n70\n6\n", "$INSUNITS\n70\n2\n"));
+    let r = run(&mut s, "import_cad", json!({"path": feet, "name": "feet"}));
+    assert_eq!(r["scale"], 304.8, "{r}");
+    assert!(r["warning"].as_str().is_some_and(|w| w.contains("feet") && w.contains("units m")), "{r}");
+}
+
+#[test]
+fn reset_puts_the_coordinates_back_on_the_internal_origin_and_pins_the_links_where_they_stand() {
+    // A link by shared coordinates 10 m east and 3 m up, another by base points.
+    let path =
+        linked_file("reset", &[("Plot", json!({"east": 1_010_000.0, "north": 2_000_000.0, "elevation": 3000.0, "angle": 30.0}))], [0.0; 3]);
+    let based = linked_file("reset-base", &[("Internal", json!({}))], [1000.0, 1000.0, 0.0]);
+    let mut s = Session::new();
+    run(&mut s, "location", json!({"name": "Internal", "east": 1_000_000.0, "north": 2_000_000.0, "angle": 12.0}));
+    run(&mut s, "coordinates", json!({"base": [5000.0, 0.0, 200.0], "survey": [-2000.0, 1000.0, 0.0]}));
+    let shared = run(&mut s, "link", json!({"path": path, "by": "shared"}))["id"].as_u64().unwrap();
+    let by_base = run(&mut s, "link", json!({"path": based, "by": "base", "name": "B"}))["id"].as_u64().unwrap();
+    let seen = |s: &Session| {
+        let m = crate::link::seen(&s.model);
+        let mut walls: Vec<_> = m
+            .elements
+            .iter()
+            .filter_map(|(id, e)| match e {
+                crate::model::Element::Wall(w) if crate::link::is_linked(*id) => {
+                    Some((w.start, w.end, m.level(w.level).map(|l| l.elevation + w.base_offset).unwrap_or_default()))
+                }
+                _ => None,
+            })
+            .collect();
+        walls.sort_by(|a, b| a.0.0.total_cmp(&b.0.0));
+        walls
+    };
+    let before = seen(&s);
+    let r = run(&mut s, "coordinates", json!({"reset": true}));
+    let co = &s.model.coordinates;
+    assert_eq!((co.base, co.survey), ([0.0; 3], [0.0; 3]), "{r}");
+    assert_eq!(co.to_shared([1234.0, 5678.0, 9.0]), [1234.0, 5678.0, 9.0], "shared is internal again");
+    let after = seen(&s);
+    assert_eq!(before.len(), after.len());
+    for (a, b) in before.iter().zip(&after) {
+        assert!(a.0.dist(b.0) < 1e-6 && a.1.dist(b.1) < 1e-6 && (a.2 - b.2).abs() < 1e-6, "no link moves: {a:?} {b:?}");
+    }
+    for id in [shared, by_base] {
+        let Some(crate::model::Element::Link(l)) = s.model.elements.get(id) else { panic!() };
+        assert_eq!(l.by, crate::link::By::Manual, "pinned by origin where it stands");
+    }
+    // One undo step brings it all back.
+    run(&mut s, "undo", json!({}));
+    assert_eq!(s.model.coordinates.base, [5000.0, 0.0, 200.0]);
+}
+
+#[test]
+fn reset_pins_an_unloaded_link_where_it_last_stood() {
+    let path = linked_file(
+        "reset-unloaded",
+        &[("Plot", json!({"east": 1_010_000.0, "north": 2_000_000.0, "elevation": 3000.0, "angle": 30.0}))],
+        [0.0; 3],
+    );
+    let mut s = Session::new();
+    run(&mut s, "location", json!({"name": "Internal", "east": 1_000_000.0, "north": 2_000_000.0}));
+    let id = run(&mut s, "link", json!({"path": path, "by": "shared"}))["id"].as_u64().unwrap();
+    // Where it stands is remembered in the project, and kept up as the project's coordinates change.
+    run(&mut s, "location", json!({"name": "Internal", "east": 1_004_000.0}));
+    let Some(crate::model::Element::Link(l)) = s.model.elements.get(id) else { panic!() };
+    let placed = l.placed.unwrap_or_else(|| panic!("no place remembered: {l:?}"));
+    assert!(
+        placed.at.dist(crate::geom::P2(6000.0, 0.0)) < 1e-6 && (placed.angle - 30.0).abs() < 1e-9 && (placed.raised - 3000.0).abs() < 1e-9,
+        "{placed:?}"
+    );
+    // Its file gone (the project opened elsewhere): reset still pins it there.
+    std::sync::Arc::make_mut(&mut s.model).loaded.clear();
+    run(&mut s, "coordinates", json!({"reset": true}));
+    let Some(crate::model::Element::Link(l)) = s.model.elements.get(id) else { panic!() };
+    assert_eq!((l.by, l.at, l.angle, l.raised), (crate::link::By::Manual, placed.at, placed.angle, placed.raised));
+}

@@ -14,7 +14,7 @@ use bimcraft_core::crs::{self, Info};
 use bimcraft_core::engine::Session;
 use bimcraft_core::geom::P2;
 use bimcraft_core::library::Kind;
-use bimcraft_core::model::Model;
+use bimcraft_core::model::{Element, Id, Model};
 use bimcraft_core::places::{self, Kind as PlaceKind, Place, Suggestion};
 use bimcraft_core::units::Units;
 use bimcraft_i18n::msg;
@@ -31,7 +31,9 @@ use crate::style::{ERROR_HEIGHT, boxed_text, pal};
 use crate::{BimApp, Status};
 
 /// The window's tabs.
-const TABS: [&str; 4] = [msg!("Locations"), msg!("Points"), msg!("Map System"), msg!("Convert")];
+const TABS: [&str; 5] = [msg!("Locations"), msg!("Points"), msg!("Map System"), msg!("Manage"), msg!("Convert")];
+/// The Manage tab's place among them.
+pub(crate) const MANAGE: usize = 3;
 
 /// How many systems a search lists.
 const FOUND: usize = 40;
@@ -94,10 +96,24 @@ pub(crate) struct CoordinatesDialog {
     map_zoom: f32,
     /// Specify Coordinates at a Point is picking its point in the view: the window steps aside until it's picked.
     picking: bool,
+    /// What the Manage tab asked for, done by the window once it is drawn: acquire from a link or a drawing (its id), pick
+    /// one in the view, ask whether to reset, reset.
+    acquire: Option<Id>,
+    pick_acquire: bool,
+    confirm_reset: bool,
+    reset: bool,
+    /// The links and CAD drawings to acquire from: their ids and names.
+    sources: Vec<(Id, String)>,
     error: Option<String>,
 }
 
 impl CoordinatesDialog {
+    /// Which tab it shows.
+    #[cfg(test)]
+    pub(crate) fn tab(&self) -> usize {
+        self.tab
+    }
+
     /// Open on the project's coordinates.
     pub(crate) fn new(m: &Model) -> CoordinatesDialog {
         let co = &m.coordinates;
@@ -127,6 +143,19 @@ impl CoordinatesDialog {
             specify_at: co.survey,
             specify_shared: co.to_shared(co.survey),
             specify_angle: None,
+            acquire: None,
+            pick_acquire: false,
+            confirm_reset: false,
+            reset: false,
+            sources: m
+                .elements
+                .iter()
+                .filter_map(|(id, e)| match e {
+                    Element::Link(l) => Some((*id, tf("{} (linked model)", &[&l.name]))),
+                    Element::CadImport(c) => Some((*id, tf("{} (CAD drawing)", &[&c.cad]))),
+                    _ => None,
+                })
+                .collect(),
             search: String::new(),
             found: Vec::new(),
             places: Vec::new(),
@@ -584,23 +613,9 @@ fn locations_tab(ui: &mut Ui, d: &mut CoordinatesDialog) {
     if add.on_hover_text(t("A new location, a copy of the active one")).clicked() {
         d.add();
     }
-    section(ui, msg!("Shift every location"), |ui| {
-        note(ui, msg!("The survey moved the site? Add the same amounts to every location at once, say +5 m of elevation."));
-        ui.horizontal(|ui| {
-            let [e, n, z] = &mut d.shift;
-            for (label, v) in [(msg!("East"), e), (msg!("North"), n), (msg!("Elevation"), z)] {
-                ui.label(t(label));
-                grid_field(ui, v, &grid, tf("Shift {}", &[&t(label).to_lowercase()]));
-                ui.add_space(6.0);
-            }
-            if ui.add_enabled(d.shift != [0.0; 3], Button::new(t("Shift All"))).clicked() {
-                d.shift_all();
-            }
-        });
-    });
 }
 
-/// The points: each internal and shared, side by side; how the Survey Point moves; Specify Coordinates at a Point.
+/// The points: each internal and shared, side by side; how the Survey Point moves.
 fn points_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
     note(
         ui,
@@ -674,6 +689,11 @@ fn points_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
             });
         }
     });
+}
+
+/// Manage: Specify Coordinates at a Point, Shift every location, Acquire Coordinates from a link or a drawing, and Reset.
+fn manage_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
+    let grid = d.grid();
     section(ui, msg!("Specify Coordinates at a Point"), |ui| {
         note(
             ui,
@@ -710,6 +730,55 @@ fn points_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
                 ui.label(RichText::new(tf("Last specified at the internal point {}", &[&at])).color(pal().muted));
             }
         });
+    });
+    section(ui, msg!("Shift every location"), |ui| {
+        note(ui, msg!("The survey moved the site? Add the same amounts to every location at once, say +5 m of elevation."));
+        ui.horizontal(|ui| {
+            let [e, n, z] = &mut d.shift;
+            for (label, v) in [(msg!("East"), e), (msg!("North"), n), (msg!("Elevation"), z)] {
+                ui.label(t(label));
+                grid_field(ui, v, &grid, tf("Shift {}", &[&t(label).to_lowercase()]));
+                ui.add_space(6.0);
+            }
+            if ui.add_enabled(d.shift != [0.0; 3], Button::new(t("Shift All"))).clicked() {
+                d.shift_all();
+            }
+        });
+    });
+    section(ui, msg!("Acquire Coordinates"), |ui| {
+        note(
+            ui,
+            msg!(
+                "Take the shared coordinates of a linked model (BIMCraft or IFC) or a CAD drawing, where it stands now: its coordinates become this project's. It is done at once, as its own undo step, and what is typed here and not applied is set back."
+            ),
+        );
+        if d.sources.is_empty() {
+            ui.label(RichText::new(t("The project has no linked model or CAD drawing.")).color(pal().muted));
+        }
+        for (id, name) in &d.sources {
+            ui.horizontal(|ui| {
+                let b = ui.button(t("Acquire"));
+                b.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf("Acquire from {}", &[name])));
+                if b.clicked() {
+                    d.acquire = Some(*id);
+                }
+                ui.label(name);
+            });
+        }
+        if ui.button(t("Pick in the View")).on_hover_text(t("The window steps aside: click a linked model or a drawing")).clicked() {
+            d.pick_acquire = true;
+        }
+    });
+    section(ui, msg!("Reset Coordinates"), |ui| {
+        note(
+            ui,
+            msg!(
+                "Shared coordinates back to the file's own: the active location on the internal origin, with no turn, and both points on it. No link moves: each placed by base points or shared coordinates is pinned by origin where it stands, its file loaded or not."
+            ),
+        );
+        if ui.button(t("Reset Coordinates…")).clicked() {
+            d.confirm_reset = true;
+        }
     });
 }
 
@@ -1120,6 +1189,7 @@ impl BimApp {
                     0 => locations_tab(ui, &mut d),
                     1 => points_tab(ui, &mut d, units),
                     2 => map_tab(ui, &mut d),
+                    MANAGE => manage_tab(ui, &mut d, units),
                     _ => convert_tab(ui, &mut d),
                 }
                 if let Some(error) = &d.error {
@@ -1140,9 +1210,85 @@ impl BimApp {
             self.set_tool(crate::Tool::SpecifyPoint);
             return;
         }
+        if d.confirm_reset {
+            self.confirm_reset(ctx, &mut d);
+        }
+        if let Some(from) = d.acquire.take() {
+            self.acquire_from(from);
+            self.manage_done(&mut d);
+        }
+        if std::mem::take(&mut d.reset) {
+            if self.run("coordinates", serde_json::json!({"reset": true})).is_some() {
+                self.status = Status { text: t("Coordinates reset: shared coordinates are the file's own.").into(), error: false };
+            }
+            self.manage_done(&mut d);
+        }
+        if std::mem::take(&mut d.pick_acquire) {
+            // The window goes; the tool picks in the view.
+            self.set_tool(crate::Tool::Acquire);
+            return;
+        }
         let failed = (ok || apply) && !self.apply_coordinates(&mut d, apply);
         if failed || !(ok || cancel || r.should_close()) {
             self.coordinates_dialog = Some(d);
+        }
+    }
+
+    /// After Acquire or Reset from the Manage tab: the window shows the project's coordinates again, on that tab; a refusal
+    /// stays in it.
+    fn manage_done(&mut self, d: &mut CoordinatesDialog) {
+        let said = self.status.error.then(|| self.status.text.clone());
+        *d = CoordinatesDialog::new(&self.session.model);
+        d.tab = MANAGE;
+        d.error = said;
+    }
+
+    /// Reset Coordinates' question: Reset or Cancel, saying what it does.
+    fn confirm_reset(&mut self, ctx: &Context, d: &mut CoordinatesDialog) {
+        let links = self
+            .session
+            .model
+            .elements
+            .values()
+            .filter(|e| matches!(e, Element::Link(l) if l.by != bimcraft_core::link::By::Manual))
+            .count();
+        let (mut yes, mut no) = (false, false);
+        let r = Modal::new(UiId::new("coordinates-reset"), t("Reset Coordinates")).width(460.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                ui.label(t("Reset the project's coordinates?"));
+                ui.add_space(4.0);
+                for line in [
+                    msg!("The active location goes back on the internal origin: no offset, no turn, a scale of 1."),
+                    msg!("The Project Base Point and the Survey Point go back on the internal origin."),
+                    msg!("Nothing in the model moves, and the other locations and the map system stay."),
+                ] {
+                    ui.label(RichText::new(format!("• {}", t(line))).color(pal().muted));
+                }
+                if links > 0 {
+                    let n = links.to_string();
+                    ui.label(
+                        RichText::new(format!(
+                            "• {}",
+                            tf("{} links placed by base points or shared coordinates are pinned by origin where they stand.", &[&n])
+                        ))
+                        .color(pal().muted),
+                    );
+                }
+                ui.add_space(4.0);
+                ui.label(RichText::new(t("Undo brings it back.")).color(pal().muted));
+            });
+            crate::popup::footer(ui, |ui| {
+                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                    no = ui.button(t("Cancel")).clicked();
+                    yes = ui.button(t("Reset")).clicked();
+                });
+            });
+        });
+        if yes {
+            d.reset = true;
+        }
+        if yes || no || r.should_close() {
+            d.confirm_reset = false;
         }
     }
 

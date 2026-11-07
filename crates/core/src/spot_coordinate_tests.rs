@@ -47,7 +47,7 @@ fn a_project_starts_with_spot_coordinate_types_from_each_point() {
 #[test]
 fn a_spot_coordinate_reads_as_its_type_says() {
     let mut s = surveyed();
-    let r = run(&mut s, "spot_coordinate", json!({"at": [4000, 6000]}));
+    let r = run(&mut s, "spot_coordinate", json!({"origin": "base", "at": [4000, 6000]}));
     assert_eq!(r["type"], DEFAULT, "{r}");
     assert_eq!(r["text"], json!(["N 4000", "E 3000"]), "{r}");
     let id = r["id"].as_u64().unwrap();
@@ -75,7 +75,7 @@ fn a_spot_coordinate_on_a_floor_reads_the_floors_top_as_its_elevation() {
     let mut s = Session::new();
     run(&mut s, "floor", json!({"boundary": [[0, 0], [5000, 0], [5000, 5000], [0, 5000]]}));
     run(&mut s, "spot_coordinate_type", json!({"name": DEFAULT, "include_elevation": true}));
-    let r = run(&mut s, "spot_coordinate", json!({"at": [1000, 1000]}));
+    let r = run(&mut s, "spot_coordinate", json!({"origin": "base", "at": [1000, 1000]}));
     assert_eq!(r["text"][2], "EL 0", "{r}");
     assert!(r["host"].is_u64(), "it reads the floor: {r}");
 }
@@ -83,7 +83,7 @@ fn a_spot_coordinate_on_a_floor_reads_the_floors_top_as_its_elevation() {
 #[test]
 fn a_spot_coordinate_has_a_leader_and_a_shoulder_that_can_be_turned_off_and_moved() {
     let mut s = Session::new();
-    let id = run(&mut s, "spot_coordinate", json!({"at": [1000, 1000], "end": [3000, 2500]}))["id"].as_u64().unwrap();
+    let id = run(&mut s, "spot_coordinate", json!({"origin": "base", "at": [1000, 1000], "end": [3000, 2500]}))["id"].as_u64().unwrap();
     let e = element(&mut s, id);
     assert_eq!(e["end"], json!([3000.0, 2500.0]), "{e}");
     assert_eq!((e["leader"].as_bool(), e["shoulder"].as_bool()), (Some(true), Some(true)), "{e}");
@@ -127,7 +127,7 @@ fn spot_coordinate_types_take_every_arrowhead_and_refuse_what_cant_be_drawn() {
 #[test]
 fn a_spot_coordinate_type_is_renamed_with_its_spots_and_kept_while_used() {
     let mut s = Session::new();
-    let id = run(&mut s, "spot_coordinate", json!({"at": [0, 0]}))["id"].as_u64().unwrap();
+    let id = run(&mut s, "spot_coordinate", json!({"origin": "base", "at": [0, 0]}))["id"].as_u64().unwrap();
     run(&mut s, "spot_coordinate_type", json!({"name": DEFAULT, "rename": "Site"}));
     assert_eq!(element(&mut s, id)["type"], "Site");
     let e = fails(&mut s, "spot_coordinate_type", json!({"name": "Site", "delete": true}));
@@ -174,7 +174,7 @@ fn a_spot_coordinate_draws_its_leader_and_its_text_in_their_own_colours() {
         json!({"name": DEFAULT, "leader_color": "#ff0000", "text_color": "#0000ff", "symbol": "none", "arrowhead_size": 4,
                "leader_pen": 5}),
     );
-    run(&mut s, "spot_coordinate", json!({"at": [0, 0], "end": [2000, 2000]}));
+    run(&mut s, "spot_coordinate", json!({"origin": "base", "at": [0, 0], "end": [2000, 2000]}));
     let (png, px, _) = drawn(&s, P2(1000.0, 1000.0));
     // Half way along the leader: red.
     assert!(tinted(&png, px(P2(1000.0, 1000.0)), 2, true), "the leader in its colour");
@@ -201,7 +201,7 @@ fn each_arrowhead_draws_its_own_shape_at_the_point() {
             "arrowhead_pen": 5}),
         );
         // The leader comes to the point from the west, level, with no shoulder: the head is all there is east of 2 m west.
-        run(&mut s, "spot_coordinate", json!({"at": [0, 0], "end": [-3000, 0], "shoulder": false}));
+        run(&mut s, "spot_coordinate", json!({"origin": "base", "at": [0, 0], "end": [-3000, 0], "shoulder": false}));
         let (png, px, k) = drawn(&s, P2(0.0, 0.0));
         let (x, y) = px(P2(0.0, 0.0));
         // Inside an arrowhead 5 mm long, beside the leader's line; inside a dot on the point.

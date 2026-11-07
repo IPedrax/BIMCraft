@@ -9,6 +9,12 @@ fn open(h: &mut Harness<BimApp>) {
     assert!(h.state().coordinates_dialog.is_some(), "the button opens the window");
 }
 
+/// The window's Manage tab: the one beside Convert, not the ribbon's Manage.
+fn manage_tab(h: &mut Harness<BimApp>) {
+    press_near(h, "Manage", "Convert");
+    assert_eq!(h.state().coordinates_dialog.as_ref().map(|d| d.tab()), Some(crate::coordinates::MANAGE));
+}
+
 fn said(h: &Harness<BimApp>) -> Option<String> {
     h.state().coordinates_dialog.as_ref().and_then(|d| d.error()).map(String::from)
 }
@@ -26,6 +32,7 @@ fn locations_are_typed_shifted_and_applied_as_one_undo_step() {
     type_into(&mut h, "Location 2 name", "Lot B");
     type_role(&mut h, Role::SpinButton, "Location 2 east", "333400");
     // The survey says the site is 5 m higher: every location goes up.
+    manage_tab(&mut h);
     type_role(&mut h, Role::SpinButton, "Shift elevation", "5");
     press(&mut h, "Shift All");
     assert!(h.state().session.model.coordinates.locations.len() == 1, "nothing is the project's until OK");
@@ -122,7 +129,7 @@ fn rotate_project_north_aligns_with_true_north_from_the_ribbon() {
 fn specify_coordinates_steps_aside_for_a_point_picked_on_the_plan_and_comes_back_to_review() {
     let mut h = app(BOX);
     open(&mut h);
-    press(&mut h, "Points");
+    manage_tab(&mut h);
     assert!(h.query_by_label("Specify at x").is_none(), "shared coordinates only: the internal point is picked");
     // Without a map system, shared values are typed in metres.
     type_role(&mut h, Role::SpinButton, "Specify east", "1000");
@@ -150,7 +157,7 @@ fn in_the_3d_view_the_point_is_the_corner_picked_top_or_bottom_as_seen() {
     let mut h = app(BOX);
     shortcut(&mut h, "3D");
     open(&mut h);
-    press(&mut h, "Points");
+    manage_tab(&mut h);
     type_role(&mut h, Role::SpinButton, "Specify elevation", "100");
     h.get_by_label("Pick Point and Specify").scroll_to_me();
     h.run();
@@ -168,7 +175,7 @@ fn in_the_3d_view_the_point_is_the_corner_picked_top_or_bottom_as_seen() {
 fn esc_while_picking_the_point_brings_the_window_back_unchanged() {
     let mut h = app(BOX);
     open(&mut h);
-    press(&mut h, "Points");
+    manage_tab(&mut h);
     h.get_by_label("Pick Point and Specify").scroll_to_me();
     h.run();
     press(&mut h, "Pick Point and Specify");
@@ -351,4 +358,64 @@ fn the_status_bar_reads_the_cursor_out_in_shared_coordinates_once_they_are_not_t
     h.state_mut().run("crs", json!({"code": 2263}));
     let s = h.state().shared_readout(P2(0.0, 0.0)).unwrap();
     assert!(s.ends_with("US ft"), "in the map system's unit: {s}");
+}
+
+#[test]
+fn the_manage_tab_sits_before_convert_with_specify_shift_acquire_and_reset() {
+    let mut h = app(BOX);
+    open(&mut h);
+    // On the tabs' row: Convert's.
+    let row = h.get_by_label("Convert").rect().center().y;
+    let x = |h: &Harness<BimApp>, l: &str| {
+        h.get_all_by_label(l).map(|n| n.rect().center()).find(|c| (c.y - row).abs() < 4.0).map_or(f32::NAN, |c| c.x)
+    };
+    assert!(x(&h, "Map System") < x(&h, "Manage") && x(&h, "Manage") < x(&h, "Convert"), "Manage right before Convert");
+    manage_tab(&mut h);
+    for label in ["Pick Point and Specify", "Shift All", "Pick in the View", "Reset Coordinates…"] {
+        assert!(h.query_by_label(label).is_some(), "{label} on Manage");
+    }
+    press(&mut h, "Locations");
+    assert!(h.query_by_label("Shift All").is_none(), "Shift All moved off Locations");
+}
+
+#[test]
+fn reset_asks_first_then_puts_the_coordinates_back_and_pins_nothing_it_needn_t() {
+    let mut h = app(BOX);
+    h.state_mut().run("location", json!({"name": "Internal", "east": 500_000_000.0, "north": 7_000_000_000.0, "angle": 20}));
+    h.state_mut().run("coordinates", json!({"base": [1000.0, 2000.0, 0.0]}));
+    open(&mut h);
+    manage_tab(&mut h);
+    h.get_by_label("Reset Coordinates…").scroll_to_me();
+    h.run();
+    press(&mut h, "Reset Coordinates…");
+    assert!(h.query_by_label("Reset the project's coordinates?").is_some(), "it asks first");
+    // Cancel: nothing changes.
+    press_near(&mut h, "Cancel", "Reset the project's coordinates?");
+    assert!(h.query_by_label("Reset the project's coordinates?").is_none());
+    assert_eq!(h.state().session.model.coordinates.location().east, 500_000_000.0);
+    press(&mut h, "Reset Coordinates…");
+    press(&mut h, "Reset");
+    let co = &h.state().session.model.coordinates;
+    assert_eq!((co.location().east, co.location().north, co.location().angle, co.base), (0.0, 0.0, 0.0, [0.0; 3]));
+    assert!(h.state().coordinates_dialog.as_ref().is_some_and(|d| d.tab() == crate::coordinates::MANAGE), "the window stays, on Manage");
+    assert_eq!(h.state().session.history().last(), Some(&"Coordinates"));
+}
+
+#[test]
+fn acquire_from_the_manage_tab_takes_a_drawing_s_coordinates() {
+    let mut h = app(BOX);
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-manage-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("square.dxf");
+    let pairs = |list: &[(i32, &str)]| list.iter().map(|(c, v)| format!("{c}\n{v}\n")).collect::<String>();
+    let line = pairs(&[(0, "LINE"), (8, "0"), (10, "500000"), (20, "7000000"), (11, "500004"), (21, "7000000")]);
+    let header = pairs(&[(9, "$INSUNITS"), (70, "6")]);
+    std::fs::write(&path, format!("0\nSECTION\n2\nHEADER\n{header}0\nENDSEC\n0\nSECTION\n2\nENTITIES\n{line}0\nENDSEC\n0\nEOF\n")).unwrap();
+    h.state_mut().run("import_cad", json!({"path": path.to_string_lossy(), "at": [4000, 3000]}));
+    open(&mut h);
+    manage_tab(&mut h);
+    press(&mut h, "Acquire from square (CAD drawing)");
+    let q = h.state().session.model.coordinates.to_shared([4000.0, 3000.0, 0.0]);
+    assert!((q[0] - 500_002_000.0).abs() < 1e-3 && (q[1] - 7_000_000_000.0).abs() < 1e-3, "{q:?}");
+    assert!(h.state().coordinates_dialog.is_some(), "the window stays open, showing them");
 }

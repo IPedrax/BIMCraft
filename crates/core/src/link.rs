@@ -87,7 +87,7 @@ impl By {
 /// the link's location carried to this project's active one (a link has no scale: the two locations' scales are taken as one).
 pub fn placement(to: &Model, l: &crate::model::Link, from: &Model) -> (P2, f64, f64) {
     match l.by {
-        By::Manual => (l.at, l.angle, 0.0),
+        By::Manual => (l.at, l.angle, l.raised),
         By::Base => {
             let (hb, lb) = (to.coordinates.base, from.coordinates.base);
             let (sin, cos) = l.angle.to_radians().sin_cos();

@@ -2,7 +2,7 @@
 //! leader's end, Edit Type opens Spot Coordinate Type Properties, the leader's end is a grip; and Manage > Acquire
 //! Coordinates takes the shared coordinates from a CAD drawing clicked.
 
-use bimcraft_core::spots::{Arrowhead, DEFAULT};
+use bimcraft_core::spots::{Arrowhead, SURVEY};
 
 use super::*;
 
@@ -27,8 +27,8 @@ fn spot_coordinate_is_placed_by_its_point_and_its_leader_s_end_both_snapped() {
     let sp = spot(&h, placed[0]);
     assert_eq!(sp.at, P2(8000.0, 6000.0));
     assert!(sp.end.is_some_and(|e| e.dist(P2(10_000.0, 8000.0)) < 300.0), "{:?}", sp.end);
-    assert_eq!(sp.type_name.as_deref(), Some(DEFAULT));
-    assert_eq!(field(&h, placed[0], "text"), json!(["N 6000", "E 8000"]));
+    assert_eq!(sp.type_name.as_deref(), Some(SURVEY), "in shared coordinates, unless the Type Selector says");
+    assert_eq!(field(&h, placed[0], "text"), json!(["N 6.0000", "E 8.0000"]), "in metres, as a survey reads");
     assert_eq!(h.state().tool, Tool::SpotCoordinate(None), "ready for the next");
 }
 

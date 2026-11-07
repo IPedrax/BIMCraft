@@ -536,7 +536,9 @@ pub static ALL: &[Command] = &[
         "coordinates",
         "Coordinates",
         &[],
-        "{base?: [x,y,z], survey?: [x,y,z], move?: point|system, acquire?: link or CAD id} the project's coordinates. `acquire` takes \
+        "{base?: [x,y,z], survey?: [x,y,z], move?: point|system, acquire?: link or CAD id, reset?: true} the project's \
+         coordinates. `reset` puts the active location back on the internal origin (shared coordinates the file's own) and both \
+         points on it, and pins every link placed by base points or shared coordinates by hand where it stands, so none moves. `acquire` takes \
          the shared coordinates of a link (its id; a BIMCraft project or an IFC file) or of a CAD drawing placed in the \
          project (its coordinates taken for the map's) where it stands now, as Revit's Acquire Coordinates: this project's active \
          location is solved so that the link's origin has the link's map coordinates here and its true north agrees. Without parameters, reports them: the \
@@ -909,8 +911,8 @@ pub static ALL: &[Command] = &[
         &[],
         "{at: [x, y], view?, type?, origin?: base|survey|internal, host?, end?: [x, y], leader?, shoulder?} a spot \
          coordinate in a level's plan (the lowest by default): the north and east of `at`, and its elevation, as its type \
-         (`spot_coordinate_type`) says. Without `type`, the project's type that reads from `origin` (the Project Base Point by \
-         default; `survey`, the shared coordinates of the active location). Its elevation is of the top of `host` (else of \
+         (`spot_coordinate_type`) says. Without `type`, the project's type that reads from `origin`: the Survey Point (the \
+         shared coordinates of the active location, in metres) by default; `base`, the Project Base Point; `internal`. Its elevation is of the top of `host` (else of \
          what stands at `at`, else of the level). Its leader runs from `at` to `end` (else up and to the right, 8 mm on \
          paper), its text on a shoulder there; `leader: false` puts the text beside the point, `shoulder: false` leaves the \
          shoulder out. `modify` changes `type`, `end`, `leader` and `shoulder`. The reply gives `north`, `east` (mm) and \
@@ -3167,7 +3169,7 @@ fn link_model(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("the linked project has no location `{l}`; it has {}", names.join(", "))));
     }
     let elements = other.elements.len();
-    let link = crate::model::Link { name: name.clone(), path: path.clone(), at, angle, by, location };
+    let link = crate::model::Link { name: name.clone(), path: path.clone(), at, angle, by, location, raised: 0.0, placed: None };
     let (placed, turned, raised) = crate::link::placement(&s.model, &link, &other);
     let mut reply = json!({"name": name, "elements": elements, "at": placed, "angle": turned, "raised": raised});
     let scales = (s.model.coordinates.location().scale, other.coordinates.location().scale);
@@ -6611,9 +6613,19 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
             let (lo, hi) = (crate::model::CAD_SCALE.start(), crate::model::CAD_SCALE.end());
             return Err(bad(c, format!("`scale` is mm to each of the drawing's units, from {lo} to {hi}, not {k}")));
         }
-        (None | Some("auto"), None) => dxf.scale.unwrap_or(1.0),
+        (None | Some("auto"), None) => {
+            let bulk = cad.bulk().unwrap_or_default();
+            let (k, note) = auto_scale(&s.model, dxf.scale, &dxf.unit, (bulk[0] + bulk[1]) * 0.5);
+            notes.extend(note);
+            k
+        }
         (Some(u), None) => cloud::unit(u).ok_or_else(|| bad(c, format!("`units` is auto, mm, cm, m, in or ft, not {u}")))?,
     };
+    let unit_warning = (absent(p.get("units")) || string(c, p, "units")?.as_deref() == Some("auto"))
+        && absent(p.get("scale"))
+        && s.model.coordinates.crs.is_none()
+        && looks_like_map(dxf.scale, (cad.bulk().unwrap_or_default()[0] + cad.bulk().unwrap_or_default()[1]) * 0.5) == Some(false);
+    let file_unit = dxf.unit.clone();
     let bulk = cad.bulk().unwrap_or_default();
     let middle = (bulk[0] + bulk[1]) * 0.5;
     let acquire = flag(c, p, "acquire")?;
@@ -6623,7 +6635,22 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
         None | Some("center" | "centre") => {
             (middle, point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0)), num(c, p, "angle")?.unwrap_or(0.0), scale)
         }
-        Some("origin") => (P2(0.0, 0.0), point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0)), num(c, p, "angle")?.unwrap_or(0.0), scale),
+        Some("origin") => {
+            // Its origin on `at`: refused where that puts the drawing past what a model reaches, saying how to bring it in.
+            let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
+            let here = [at.0 + middle.0 * scale, at.1 + middle.1 * scale, 0.0];
+            if !(here[0].abs() <= MAX_COORD && here[1].abs() <= MAX_COORD) {
+                return Err(bad(
+                    c,
+                    format!(
+                        "{}; or place it by shared coordinates (`position`: shared), or by its middle (`position`: center) and then take the project's coordinates from it \
+                         (`coordinates` with `acquire`)",
+                        far_message(here)
+                    ),
+                ));
+            }
+            (P2(0.0, 0.0), at, num(c, p, "angle")?.unwrap_or(0.0), scale)
+        }
         Some("shared") => {
             // Its file's coordinates are the map's: its middle goes where the active location puts it, turned and scaled to match.
             let q = [middle.0 * scale, middle.1 * scale, 0.0];
@@ -6671,6 +6698,7 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
     let unit = match string(c, p, "units")?.filter(|u| u != "auto") {
         Some(u) => format!("{u} (its file says {})", dxf.unit),
         None if p.get("scale").is_some_and(|v| !v.is_null()) => format!("a scale of its own (its file says {})", dxf.unit),
+        None if dxf.scale.is_some_and(|k| (k - scale).abs() > 1e-9) => format!("the map system's (its file says {})", dxf.unit),
         None if dxf.scale.is_some() => dxf.unit.clone(),
         None => format!("{} (read as mm unless `units` says)", dxf.unit),
     };
@@ -6692,6 +6720,13 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
     }
     if let Some(l) = acquired {
         reply["acquired"] = json!(l);
+    }
+    if unit_warning {
+        reply["warning"] = json!(format!(
+            "its file says its units are {}, and its coordinates look like map coordinates: if they are in metres, bring it in \
+             again with units m (Import units: m), or set the project's map system first and it is read in its unit",
+            spelled(&file_unit)
+        ));
     }
     if far > 0 {
         reply["warning"] = json!(format!(
@@ -7264,6 +7299,45 @@ fn shared1(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
     }
 }
 
+/// Reset Coordinates: the active location back on the internal origin (no offset, no turn, a scale of 1), both points on it,
+/// and every link placed by base points or by shared coordinates pinned by hand where it stands now, so none moves.
+fn reset_coordinates(s: &mut Session) -> R {
+    let c = "coordinates";
+    let m = &s.model;
+    let mut pinned = Vec::new();
+    for (id, e) in &m.elements {
+        let Element::Link(l) = e else { continue };
+        if l.by == crate::link::By::Manual {
+            continue;
+        }
+        // Where it stands: worked out from its file, else where it stood when it was last loaded, as the project remembers.
+        let (at, angle, raised) = match (m.loaded.get(&l.path), l.placed) {
+            (Some(other), _) => crate::link::placement(m, l, other),
+            (None, Some(p)) => (p.at, p.angle, p.raised),
+            (None, None) => {
+                return Err(bad(
+                    c,
+                    format!("link `{}` has never been loaded, so where it stands isn't known: `reload` it first, or delete it", l.name),
+                ));
+            }
+        };
+        pinned
+            .push((*id, crate::model::Link { by: crate::link::By::Manual, at, angle, raised, location: None, placed: None, ..l.clone() }));
+    }
+    let m = s.model_mut();
+    for (id, l) in pinned {
+        m.elements.insert(id, Element::Link(l));
+    }
+    let co = &mut m.coordinates;
+    co.base = [0.0; 3];
+    co.survey = [0.0; 3];
+    let active = co.active.clone();
+    if let Some(l) = co.locations.get_mut(&active) {
+        (l.east, l.north, l.elevation, l.angle, l.scale) = (0.0, 0.0, 0.0, 0.0, 1.0);
+    }
+    Ok(coordinates_report(&s.model))
+}
+
 /// An angle to true north under `key`, degrees.
 fn north_angle(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
     match amount(c, p, key, "degrees")? {
@@ -7275,7 +7349,10 @@ fn north_angle(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
 fn coordinates(s: &mut Session, p: &Value) -> R {
     use crate::coordinates::Move;
     let c = "coordinates";
-    only(c, p, &["base", "survey", "move", "acquire"])?;
+    only(c, p, &["base", "survey", "move", "acquire", "reset"])?;
+    if flag(c, p, "reset")? {
+        return reset_coordinates(s);
+    }
     if let Some(from) = id_opt(c, p, "acquire")? {
         let m = &s.model;
         let l = match m.elements.get(from) {
@@ -8872,6 +8949,55 @@ fn shared_at(m: &Model, extra: &mut Map<String, Value>, at: P2, z: f64) {
     }
 }
 
+/// Whether a drawing whose file says it is drawn at `scale` mm to its unit, its middle at `middle` in that unit, looks like map
+/// coordinates in a unit its file gets wrong: its file says inches or feet, and its middle is more than 50 000 units off its
+/// origin (a civil drawing in metres whose header was left at AutoCAD's imperial default). Some(true) for inches, which
+/// map coordinates never are; Some(false) for feet, which US State Plane coordinates are.
+fn looks_like_map(scale: Option<f64>, middle: P2) -> Option<bool> {
+    let far = middle.0.abs().max(middle.1.abs()) > 50_000.0;
+    match scale {
+        Some(k) if far && (k - 25.4).abs() < 1e-6 => Some(true),
+        Some(k) if far && (k - 304.8).abs() < 0.01 => Some(false),
+        _ => None,
+    }
+}
+
+/// The scale an import whose units are auto reads a drawing at, and a note when it isn't its file's: a file that says inches
+/// for map coordinates (`looks_like_map`) is read in the unit of the project's map system, else in metres; one that says
+/// feet, in the map system's unit when that is metric. Else its file's.
+fn auto_scale(m: &Model, scale: Option<f64>, unit: &str, middle: P2) -> (f64, Option<String>) {
+    let file = scale.unwrap_or(1.0);
+    let unit = spelled(unit);
+    let info = m.coordinates.crs.and_then(|code| crate::crs::lookup(code).ok());
+    let (k, why) = match (looks_like_map(scale, middle), &info) {
+        // Inches, or feet where the map system is metric: the map system's unit.
+        (Some(inches), Some(i)) if inches || i.mm() >= 1000.0 => {
+            (i.mm(), format!("{}s, the unit of the project's map system ({})", i.unit, i.name))
+        }
+        (Some(true), _) => (1000.0, "metres, as map coordinates are".to_string()),
+        _ => return (file, None),
+    };
+    if (k - file).abs() < 1e-9 {
+        return (file, None);
+    }
+    let note = format!(
+        "its file says its units are {unit}, but its coordinates are map coordinates: read in {why}; give `units` to read it otherwise"
+    );
+    (k, Some(note))
+}
+
+/// A unit's short name (`in`, `ft`) as a sentence says it.
+fn spelled(unit: &str) -> &str {
+    match unit {
+        "in" => "inches",
+        "ft" => "feet",
+        "mm" => "millimetres",
+        "cm" => "centimetres",
+        "m" => "metres",
+        u => u,
+    }
+}
+
 /// Why something far off can't come in where its coordinates put it, and what to do.
 fn far_message(here: [f64; 3]) -> String {
     format!(
@@ -8902,7 +9028,8 @@ fn spot_coordinate(s: &mut Session, p: &Value) -> R {
     let Some(level) = m.plan_level(view) else {
         return Err(bad(c, "a spot coordinate reads north and east: place it in a plan"));
     };
-    let origin = origin_param(c, p)?;
+    // Without `origin`, the shared coordinates: what a spot coordinate is for once the project stands somewhere.
+    let origin = if absent(p.get("origin")) { crate::coordinates::Origin::Survey } else { origin_param(c, p)? };
     let type_name = match name_param(c, p, "type")? {
         Some(t) if m.spot_coordinate_types.contains_key(&t) => t,
         Some(t) => return Err(bad(c, format!("there's no spot coordinate type `{t}`; `spot_coordinate_type` lists them"))),

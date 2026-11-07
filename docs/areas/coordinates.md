@@ -102,9 +102,10 @@ gives it, and `elements` replies with `text`, `east`, `north`, `elevation`, `typ
 point (an empty one filled with paper so the leader doesn't show through), the shoulder as long as the text on the side the
 leader leaves to, and the lines over it. Without a leader, the text stands beside the symbol.
 
-A project starts with `Spot Coordinate - Project Base Point` and `Spot Coordinate - Survey Point`; `spot_coordinate` takes
-`type`, or without one the type that reads from `origin` (`spots::default_type`), so a spot coordinate from before types
-keeps reading from where it did. `spot_coordinate_type` lists, makes (`like`), changes, renames and deletes them.
+A project starts with `Spot Coordinate - Project Base Point` and `Spot Coordinate - Survey Point` (in metres to four places,
+as a surveyor's CAD reads a point out); `spot_coordinate` takes `type`, or without one the type that reads from `origin`
+(`spots::default_type`), the Survey Point's when it gives none: after Acquire Coordinates, a spot coordinate reads what the
+drawing's program says of its point. One from before types keeps reading from where it did. `spot_coordinate_type` lists, makes (`like`), changes, renames and deletes them.
 
 In the desktop, Annotate > Dimension > Spot Coordinate places one with two clicks, both snapped: the point, then the
 leader's end, as the Type Selector's type (`BimApp::spot_type`). Selected, its Properties show Leader, Has Shoulder and what it
@@ -115,6 +116,12 @@ Duplicate and Rename; the leader's end is a grip (`BimApp::spot_grip_drag`), whi
 ## Far coordinates at import and export (the bias)
 
 Geometry stays near the internal origin; what comes in at map coordinates goes through the active location.
+
+A civil drawing in metres often keeps AutoCAD's imperial default in its header (`$INSUNITS` inches). With units auto,
+`import_cad` reads a drawing whose file says inches and whose middle is more than 50 000 units off its origin
+(`looks_like_map`) in the unit of the project's map system, else in metres, and says so in `notes`; one that says feet (US
+State Plane drawings are) is read in the map system's unit when that is metric, else in feet with a `warning`. Units given
+are always kept. Placed origin to origin past what a model reaches, it is refused with the ways to bring it in.
 
 - **CAD** (`import_cad`, `position: shared`): the drawing's coordinates are the map's, in its units. Its middle goes where
   `to_internal` puts it, turned `-angle` and scaled `scale / location.scale`, so every point of it is where the transform
@@ -160,6 +167,12 @@ elevation stays. The reply adds `acquired: {from, location}`. A Revit file can't
 read a file's survey or base point, so a Revit project's coordinates come over through its IFC export. In the desktop,
 Manage > Project Location > Acquire Coordinates acts on a link or drawing selected alone, else is a tool: a click on a
 linked model's element (`link::link_of` finds its link) or a drawing.
+
+`coordinates {reset: true}` is Reset Coordinates: the active location back on the internal origin (no offset, no turn, a scale
+of 1), both points on it; the other locations and the map system stay. No link moves: each placed by base points or shared
+coordinates is switched to `by: manual` where it stands, its height kept in `raised`. As Revit's file does, a link
+remembers where it stands (`Link::placed`, kept up after every command while its file is loaded, `Model::links_moved`), so
+a reset pins one whose file is gone where it last stood; one never loaded is refused.
 Tests: the link tests in `coordinates_io_tests.rs`.
 
 ## Site's three origins
@@ -265,7 +278,7 @@ deletes. A refusal stays in the window and says why. It looks the same in the th
 
 - `coordinates`: reports everything (the internal origin and both points, internal and shared, the active location and every
   location); `base` and `survey` move the points, `move: point|system` how the Survey Point goes; `acquire` takes a link's or a
-  placed CAD drawing's.
+  placed CAD drawing's; `reset` puts them back on the internal origin, the links pinned where they stand.
 - `link`: `by: manual|base|shared` and `location`.
 - `location`: makes (a copy of the active one), edits, renames, activates and deletes a location; `shift` adds to one, or to
   every location when no `name` is given (the survey says +5 m: one command).
@@ -275,6 +288,11 @@ deletes. A refusal stays in the window and says why. It looks the same in the th
   `elevation_base` on `level` (and `modify`).
 - `rotate_project_north`: the model turned, the world kept.
 - `convert_coordinates`: points between `internal`, `base`, `shared` and `wgs84`, of the active location or the one named.
+
+The Coordinates window's tabs are Locations, Points, Map System, Manage and Convert. Manage holds Specify Coordinates at a
+Point, Shift every location, Acquire Coordinates (an Acquire button for each link and CAD drawing, and Pick in the View) and
+Reset Coordinates, which asks first, saying what it does and how many links it pins. Acquire and Reset are done at once, each
+its own undo step, and the window shows the result on Manage. Tests: `crates/ui-egui/src/tests/coordinates.rs`.
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
 

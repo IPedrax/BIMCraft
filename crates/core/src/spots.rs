@@ -360,11 +360,16 @@ impl SpotCoordinateType {
     }
 }
 
-/// The spot coordinate types a project starts with: one from the Project Base Point, one in the shared coordinates.
+/// The spot coordinate types a project starts with: one from the Project Base Point, one in the shared coordinates (in metres
+/// to four places), which a new spot coordinate takes unless it says otherwise.
 pub fn types() -> BTreeMap<String, SpotCoordinateType> {
     BTreeMap::from([
         (DEFAULT.to_string(), SpotCoordinateType::default()),
-        (SURVEY.to_string(), SpotCoordinateType { origin: Origin::Survey, ..SpotCoordinateType::default() }),
+        // The map's numbers, in metres to the tenth of a millimetre, as a surveyor's CAD reads them out.
+        (
+            SURVEY.to_string(),
+            SpotCoordinateType { origin: Origin::Survey, units: Some(Units::Metres), decimals: Some(4), ..SpotCoordinateType::default() },
+        ),
     ])
 }
 

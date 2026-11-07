@@ -440,7 +440,7 @@ fn a_level_shows_its_elevation_from_its_elevation_base() {
 #[test]
 fn spot_coordinates_read_north_and_east_from_either_point() {
     let mut s = surveyed();
-    let base = run(&mut s, "spot_coordinate", json!({"at": [4000, 6000]}));
+    let base = run(&mut s, "spot_coordinate", json!({"origin": "base", "at": [4000, 6000]}));
     assert_eq!((base["east"].as_f64(), base["north"].as_f64()), (Some(3000.0), Some(4000.0)), "{base}");
     let survey = run(&mut s, "spot_coordinate", json!({"at": [4000, 6000], "origin": "survey"}));
     assert_eq!((survey["east"].as_f64(), survey["north"].as_f64()), (Some(333_004_000.0), Some(7_394_006_000.0)), "{survey}");
@@ -451,7 +451,7 @@ fn spot_coordinates_read_north_and_east_from_either_point() {
     assert!((e["north"].as_f64().unwrap() - (7_394_000_000.0 + 4000.0)).abs() < 0.01, "{e}");
     assert_eq!(element(&mut s, base["id"].as_u64().unwrap())["east"], 3000.0);
     run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}));
-    let e = fails(&mut s, "spot_coordinate", json!({"at": [0, 0], "view": "Section 1"}));
+    let e = fails(&mut s, "spot_coordinate", json!({"origin": "base", "at": [0, 0], "view": "Section 1"}));
     assert!(e.contains("plan"), "{e}");
 }
 

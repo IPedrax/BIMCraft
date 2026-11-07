@@ -1365,6 +1365,22 @@ pub struct Link {
     /// By shared coordinates, which of its locations it stands at: its active one where none is named.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<String>,
+    /// By hand, how far it is raised, mm: where Reset Coordinates pinned one that stood higher by its coordinates.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub raised: f64,
+    /// By base points or shared coordinates, where it stood when last worked out with its file loaded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placed: Option<Placed>,
+}
+
+/// Where a link stood when it was last worked out with its file loaded: its origin in plan, its turn, degrees, and how far it
+/// is raised, mm. A link placed by base points or shared coordinates keeps it, so it can be pinned there with its file gone.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Placed {
+    pub at: P2,
+    pub angle: f64,
+    pub raised: f64,
 }
 
 /// A schedule view: the elements of category `of` in rows, as the `schedule` command lists them:
@@ -3980,7 +3996,7 @@ impl Model {
             "text" => return crate::text::default_type(&self.text_types).map(String::as_str),
             "dimension" => return crate::dims::default_type(&self.dimension_types, DimKind::Aligned).map(String::as_str),
             "spotcoordinate" => {
-                return crate::spots::default_type(&self.spot_coordinate_types, crate::coordinates::Origin::Base).map(String::as_str);
+                return crate::spots::default_type(&self.spot_coordinate_types, crate::coordinates::Origin::Survey).map(String::as_str);
             }
             "wall" | "floor" => "Generic - 200mm",
             "door" => "Single 900 x 2100",
@@ -5583,6 +5599,26 @@ impl Model {
     /// What a spot coordinate shows: in a plan, the east and north of its point from its type's origin.
     pub fn spot_coordinate(&self, sp: &Spot) -> Option<(f64, f64)> {
         self.spot_coordinate_reads(sp).map(|r| (r.east, r.north))
+    }
+
+    /// The links placed by base points or shared coordinates, loaded, whose remembered place isn't where they stand now, and
+    /// where that is. None without a loaded link, without looking at the elements.
+    pub fn links_moved(&self) -> Vec<(Id, Placed)> {
+        if self.loaded.is_empty() {
+            return Vec::new();
+        }
+        self.elements
+            .iter()
+            .filter_map(|(id, e)| match e {
+                Element::Link(l) if l.by != crate::link::By::Manual => {
+                    let other = self.loaded.get(&l.path)?;
+                    let (at, angle, raised) = crate::link::placement(self, l, other);
+                    let now = Placed { at, angle, raised };
+                    (l.placed != Some(now)).then_some((*id, now))
+                }
+                _ => None,
+            })
+            .collect()
     }
 
     /// The type spot coordinate `sp` draws in: its own, else (one from before types) the one its origin takes, else one as a
