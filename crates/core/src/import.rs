@@ -2710,6 +2710,37 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
     }
 
+    // Each classification code an element is associated with, as its system's number and title parameters: a known
+    // system's own (`Uniclass Ss Number`), another's named for it. IFC2x3's reference has the same first four attributes.
+    'codes: for rel in named(&["IFCRELASSOCIATESCLASSIFICATION"]).into_iter().filter_map(e) {
+        let Some(r) = reference(rel.args.get(5)).and_then(e).filter(|x| x.name == "IFCCLASSIFICATIONREFERENCE") else { continue };
+        let Some(code) =
+            text(r.args.get(1)).map(str::trim).filter(|c| !c.is_empty() && c.chars().count() <= crate::classification::MAX_CODE)
+        else {
+            continue;
+        };
+        // The classification it is of, up through references of references.
+        let mut source = reference(r.args.get(3)).and_then(e);
+        for _ in 0..8 {
+            match source {
+                Some(x) if x.name == "IFCCLASSIFICATIONREFERENCE" => source = reference(x.args.get(3)).and_then(e),
+                _ => break,
+            }
+        }
+        let system = source.filter(|x| x.name == "IFCCLASSIFICATION").and_then(|x| text(x.args.get(3))).unwrap_or("Classification");
+        let (number, title) = crate::classification::imported_parameters(system, code);
+        let on = refs(rel.args.get(4));
+        let Some(number) = parameter_name(&number) else { continue };
+        if !put(&mut m, &mut skipped, &on, &number, ParameterKind::Text, &json!(clip(code))) {
+            break 'codes;
+        }
+        if let (Some(t), Some(title)) = (text(r.args.get(2)).filter(|t| !t.trim().is_empty()), parameter_name(&title))
+            && !put(&mut m, &mut skipped, &on, &title, ParameterKind::Text, &json!(clip(t)))
+        {
+            break 'codes;
+        }
+    }
+
     if !over.is_empty() {
         skipped.push(format!("{} project parameters: past the {MAX_PROJECT_PARAMETERS} a project holds", over.len()));
     }

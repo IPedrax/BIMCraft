@@ -481,6 +481,7 @@ dependencies = [
 name = "bimcraft-cli"
 version = "0.10.0"
 dependencies = [
+ "bimcraft-agent",
  "bimcraft-core",
  "bimcraft-dwg",
  "bimcraft-rvt",

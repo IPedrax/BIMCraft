@@ -1833,3 +1833,31 @@ pub fn coverage(m: &Model, table: &str) -> Option<(usize, usize)> {
     let done = owners.values().filter(|t| current(m, b, t).is_some()).count();
     Some((done, owners.len()))
 }
+
+/// The parameters an IFC file's code of the classification `name` comes in as: a known system's own (the table its code
+/// begins with, `Uniclass Ss Number` and `Uniclass Ss Title`), so a project written and read back is itself; another's,
+/// `<name> Number` and `<name> Title`.
+pub fn imported_parameters(name: &str, code: &str) -> (String, String) {
+    let n = name.trim();
+    let known = system(n).or_else(|| {
+        let lower = n.to_lowercase();
+        SYSTEMS
+            .iter()
+            .find(|s| !s.tables.is_empty() && (lower.starts_with(&s.short.to_lowercase()) || lower.starts_with(&s.name.to_lowercase())))
+    });
+    if let Some(sys) = known.filter(|s| !s.tables.is_empty()) {
+        let k = normal(code);
+        let by_key = sys
+            .tables
+            .iter()
+            .filter(|t| !t.key.is_empty() && t.key.chars().all(char::is_alphanumeric))
+            .find(|t| k.starts_with(&normal(t.key)));
+        if let Some(t) = by_key.or_else(|| (sys.tables.len() == 1).then(|| &sys.tables[0])) {
+            return sys.parameters_of(t);
+        }
+        return (format!("{} Number", sys.short), format!("{} Title", sys.short));
+    }
+    let base: String = n.chars().take(MAX_TEXT / 2).collect();
+    let base = if base.is_empty() { "Classification".to_string() } else { base };
+    (format!("{base} Number"), format!("{base} Title"))
+}

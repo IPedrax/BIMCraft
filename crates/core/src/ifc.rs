@@ -65,6 +65,7 @@ const DEVICE: u64 = 53;
 const DEVICE_DEFINES: u64 = 54;
 const CONNECTOR: u64 = 55;
 const CONNECTOR_DEFINES: u64 = 56;
+const CLASSIFIED: u64 = 57;
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
@@ -101,6 +102,54 @@ fn shape_of(landings: &[crate::model::Landing], kind: &str) -> String {
         _ => return ".NOTDEFINED.".into(),
     };
     format!(".{shape}_{kind}.")
+}
+
+/// The codes elements and their types hold from the project's classification tables, as ISO 16739's classification resource
+/// has them: an `IfcClassification` for each system (its publisher, edition and name), an `IfcClassificationReference` for
+/// each code held (its code, title and system), and an `IfcRelAssociatesClassification` from each code to the elements
+/// that hold it, theirs or their type's.
+fn classify(w: &mut Step, m: &Model, products: &BTreeMap<Id, u64>) {
+    use crate::classification::{self as cls, Target};
+    let mut systems: BTreeMap<String, u64> = BTreeMap::new();
+    let mut codes: BTreeMap<(String, String), (u64, Vec<u64>)> = BTreeMap::new();
+    for b in &m.classification.bindings {
+        let (Some(table), Some(q)) = (m.classification.tables.get(&b.table), m.parameters.get(&b.parameter)) else { continue };
+        let def = cls::system(&table.system);
+        // One classification a system: Uniclass's Ss and Pr are both Uniclass 2015.
+        let name = def.map_or_else(|| b.table.clone(), |d| d.name.to_string());
+        for (&id, &ent) in products {
+            let Some(e) = m.elements.get(id) else { continue };
+            if !q.categories.iter().any(|c| c == e.category()) {
+                continue;
+            }
+            let Some(item) = cls::current(m, b, &Target::Element(id)).and_then(|c| table.find(c)) else { continue };
+            let system = match systems.get(&name) {
+                Some(x) => *x,
+                None => {
+                    let source = def.map_or("$".to_string(), |d| s(d.publisher));
+                    let edition = if table.edition.is_empty() { "$".to_string() } else { s(&table.edition) };
+                    let x = w.add(format!("IFCCLASSIFICATION({source},{edition},$,{},$,$,$)", s(&name)));
+                    systems.insert(name.clone(), x);
+                    x
+                }
+            };
+            let entry = codes.entry((name.clone(), item.code.clone())).or_insert_with(|| {
+                let r = w.add(format!("IFCCLASSIFICATIONREFERENCE($,{},{},#{system},$,$)", s(&item.code), s(&item.title)));
+                (r, Vec::new())
+            });
+            if !entry.1.contains(&ent) {
+                entry.1.push(ent);
+            }
+        }
+    }
+    for ((name, code), (r, ents)) in codes {
+        let key = name
+            .bytes()
+            .chain([0])
+            .chain(code.bytes())
+            .fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
+        w.add(format!("IFCRELASSOCIATESCLASSIFICATION({},$,$,$,({}),#{r})", w.guid(CLASSIFIED, key), refs(&ents)));
+    }
 }
 
 /// A STEP string literal: `'` doubled, `\` doubled, anything outside printable ASCII as `\X2\…\X0\`
@@ -1367,6 +1416,7 @@ pub fn export(m: &Model) -> String {
             w.define(ent, PARAMETERS, &props, (PROPERTIES, DEFINES), id);
         }
     }
+    classify(&mut w, m, &products);
     // A placed device's connector (the power one, else the first): `Pset_ElectricalDeviceCommon`, with the poles, and for a power
     // connector the power factor and the voltage (IFC4's types: a ratio, and a bounded value with its set point), and `BIMCraft_Connector` with what IFC has no property for.
     for (&id, &ent) in &products {
