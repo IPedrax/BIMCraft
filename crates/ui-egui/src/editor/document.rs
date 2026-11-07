@@ -575,7 +575,14 @@ impl BimApp {
             if let Some(d) = ed.adaptive.as_mut() {
                 let (done, new) = crate::adaptive_editor::associate(ctx, &mut a, d, &params, &values);
                 if let Some(n) = new {
-                    ed.params.push(ParamText { name: n.name, kind: n.kind, instance: n.instance, value: n.value, formula: String::new() });
+                    ed.params.push(ParamText {
+                        original: Parameter::default(),
+                        name: n.name,
+                        kind: n.kind,
+                        instance: n.instance,
+                        value: n.value,
+                        formula: String::new(),
+                    });
                 }
                 if !done {
                     ed.associating = Some(a);

@@ -3,11 +3,16 @@
 Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the map, and this file is read when the area is touched.
 
 A family (`Model::families`, `family.rs`) is parameters, types that set them and forms in its own axes: x along a
-component's angle, y to its left, z up from its base; a form is a profile in a sketch plane (`xy` swept up, `xz` along y,
-`yz` along x), its sizes numbers or formulas, or triangles as a file brings them. A component places a type;
+component's angle, y to its left, z up from its base; a form is a profile drawn on one of its reference planes or a reference
+line's plane (its `host`, below) and swept along that plane's normal, its sizes numbers or formulas, or triangles as a file
+brings them. A component places a type;
 `Model::component_pieces` are its forms where it stands. Plans draw them from above, a form's edges hidden under a higher
-form of the same component; sections show them beyond their line and never cut them (a `Solid::Mesh` is cut only where its `cut`
-says, as a round run's tube is); the
+form of the same component. A section cuts the forms of a family whose category is built into the building (`Category::cut`:
+door, window, casework, generic, equipment, rack, pipe fittings and accessories), poché in their own shape where its plane passes
+through them (`view3d::slice`: each triangle crossed, the crossings joined by place into loops, since `csg` leaves an edge split on
+one side and not the other, and a loop inside another a hole); furniture, fixtures, devices and light fittings it shows beyond
+the line and never cuts, as Revit does. The section's work holds no component's triangles: it makes those of a component it
+cuts when the line's plane crosses its box, as it does a round run's. The
 3D view takes a form's triangles that share an edge and turn under 20° there as one curved surface, so a curve draws no
 edge between its facets (`view3d::facets`) and shades smoothly across them, each corner lit by the angle-weighted mean of
 its own surface's normals there, so a crease keeps its step (`corner_normals`); IFC writes each form as a closed face set,
@@ -22,7 +27,23 @@ the opening's axes (x along the wall from the middle of the opening, y across it
 exterior, z up from the sill) and its formulas read `Wall Thickness`; its `symbols` also draw in plan (a door's swing). Its `connectors` say what an electrical device draws ([structure and MEP](structure-and-mep.md)); a family file keeps them. An
 `Opening` holds a `family`, or none (one of the project's own types): `Model::opening_dims` gives its size either way
 (`opening_type` returns it by value), its flips are mirrors (`opening_local`), and `Element::family()` is the one way to ask what
-family a component or an opening is of. Sections show a family opening's forms beyond their line and never cut them.
+family a component or an opening is of. A section cuts a family opening's forms where its line passes through them.
+A hosted family's voids cut its wall as Revit's do (`Family::host_voids`): a void that reaches into the wall (its `Wall
+Thickness` about the opening's middle plane) and cuts none of the family's own forms, by the same boxes the "cuts nothing"
+warning reads (so one listed before them all), is the opening's shape in the wall in place of the rectangle of its `Width` and
+`Height`; a void that cuts a form (a sash's light) cuts that form alone, and a family with no such void cuts the rectangle as
+before. `Model::opening_voids_local` gives them in the family's axes with the opening's flips, `Model::opening_voids` where it
+stands. The wall's prisms leave such an opening out (`walls::prisms_in`; `prisms_rect_in` keeps every rectangle) and
+`view3d::wall_solids` takes each prism a void reaches as triangles less it (`csg::subtract`), a `Solid::Mesh` a section cuts
+(`cut: true`), so the 3D view and sections show an arch as an arch and a void deeper than the wall goes right through it;
+should cutting fail, every opening cuts its rectangle. `view3d::layered` splits such a piece into the wall type's layers (each
+the piece within its two boundaries in plan, `walls::layer_lines`), and a section's lines between layers follow the cut round
+the void. A plan clears the void's slice at its cut plane (`render::level_slice`) within the wall's faces, its edges across the
+wall the jambs; whether the opening is drawn at all is still its rectangle's height. IFC writes the voids as the
+`IfcOpeningElement`'s body, closed face sets placed at the opening's middle as its forms are, in place of the extruded
+rectangle. A void's size may read an instance parameter (a depth in its `from` and `to`), so each opening cuts its own.
+Neither is new in a file, so nothing takes a FORMAT step: an older build reads the family and cuts the rectangle.
+
 How a door or a window opens is its family's `operation` (`model::Operation`: swing, double-swing, sliding, double-sliding,
 folding, fixed), or for one of the project's own types the type's (`OpeningType::operation`); none, a door swings. IFC writes
 it as the door's `OperationType` (`Operation::ifc_door`, its side from `flip_hand`: `SLIDING_TO_RIGHT`) and a window's
@@ -98,6 +119,112 @@ in it, then `render_view` on that model — `3d`, `plan` (what its symbols draw)
 element and no undo step from it, the way the Family Editor's own preview already worked (`editor.rs::scratch`).
 
 
+## Parameters
+
+A family's `Parameter` (`family.rs`) is, as Revit's Parameter Properties describe one, a kind, a group, Type or Instance,
+Family or Shared, and maybe reporting. Its `kind` is a length (mm), a number, an `integer` (a whole number, refused
+otherwise; its formula rounds half away from zero), an angle, an `area` (mm²) or a `volume` (mm³), so a formula over
+lengths in mm needs no conversion (`Width * Depth` is an area), schedules and `{label}` text showing them in m² and m³;
+yes or no; or words: a material, `text`, a `url` (`MAX_URL`, one line) or a `familytype`. Words take no formula and no formula
+reads them (`Kind::text`; `family/validate.rs` refuses the formula, a material still where it is worked out). A family type
+parameter names the category of the families whose types it picks (`of`) and holds no value until nested families exist.
+`group` is the heading it is listed under (`Group`, 14 of them); none, its kind's (`Parameter::group`: Dimensions for lengths,
+areas, volumes and angles, Materials and Finishes for materials, else Other). `shared` is a shared parameter's GUID, the
+same wherever it is used and distinct from the parameter's library-entry GUID (which is per project and per family): two
+families' parameters of one shared GUID are one name and one kind, and one name shared is one GUID
+(`Model::check_shared_parameters`); without it, it is the family's own. Schedules list every family parameter by name either
+way, as they always have. A `reporting` parameter, a length or an angle, reads a dimension and never drives one: no formula,
+type or component sets it (`Parameter::check_own`, `Family::check`, `Model::family_values_ok`) and, until labelled dimensions
+exist, it holds its `value`, with a warning saying so. Discipline is implied by the kind (all Common), so there is no field.
+
+`family {parameter: {name, rename?, …}}` is Edit Parameter: the fields merged over the one named (added if there's none), a
+shared parameter's name and kind kept. `rename` goes through `Family::rename_parameter`, the one place that walks every part
+of a family naming a parameter (formulas, forms' sizes, materials and `visible`, symbols' sizes and `{label}` text, connectors'
+values: a new part that holds a formula adds its arm there), with `Library::renamed` keeping its GUID and the components'
+values following. `instance` switched moves values, not loses them (`patch_parameter` in `commands.rs`): to instance, each
+component takes its type's value (a type with nothing placed loses it, as Revit's does); to type, each type takes the value its
+components agree on, refused naming the components where they don't. `delete_parameter` takes parameters away with their
+values; whatever still names one is `Family::problems`'s to refuse. A file of 17 reads unchanged (every parameter the family's,
+grouped by its kind); FORMAT 19 says an older build can't read the new kinds and fields (18 is another branch's number).
+
+## Shared parameters file
+
+A shared parameters file (`shared_parameters.rs`, the `shared_parameters` command, Manage > Shared Parameters) is a plain-text
+file of the user's own, outside any project or family, as Revit keeps one: groups, and in them parameters, each a GUID, a name,
+a data type, a description, whether it is visible and whether the user may change it. The command takes the file's `path` on
+every call (Revit keeps it per user, never in the project; an agent says which file it means, and a front end remembers its
+own), and only `load` changes the project. The layout is Revit's tab-separated one, from what is publicly documented and
+commonly seen: `#` comments, a `*META`/`*GROUP`/`*PARAM` header naming the columns of the `META`/`GROUP`/`PARAM` lines after
+it, read by column name so version 1 (no `DESCRIPTION`, `USERMODIFIABLE`) and version 2 (with them and `HIDEWHENNOVALUE`) both
+read, and a column this version doesn't know passed over; a reader must be at least `MINVERSION`, so a file asking for more
+than 2 is refused. It is written as version 2, UTF-8 with a byte order mark and Windows line ends, groups and their
+parameters in order and our own comment line; it reads UTF-8, UTF-16 either way (by its mark, or by a first character with
+a zero byte) and, failing UTF-8, Latin-1. The file is hostile: at most 4 MiB (`MAX_FILE`), 100,000 lines, 64 fields a line,
+names of `MAX_TEXT`, descriptions of 1024 characters, no control characters, whole numbers in range, flags 1 or 0, GUIDs that
+parse (never an id, never nil), one GUID a parameter, one id and one name a group, every parameter in a group it has; each
+refusal names its line, and a file that doesn't read is never written over.
+
+`DATATYPE` maps to a family parameter's kind (`kind_of`): `TEXT`, `INTEGER`, `NUMBER`, `LENGTH`, `AREA`, `VOLUME`, `ANGLE`,
+`YESNO`, `URL`, `MATERIAL` and `FAMILYTYPE`, and the newer spec ids for the same (`autodesk.spec.aec:length-2.0.0`, the
+version left out). A family type's `DATACATEGORY` is Revit's built-in category number (`-2000080` furniture), known for the
+categories BIMCraft has an equivalent of (`CATEGORY_IDS`); one it doesn't know reads as a family type with no category, which
+`load` takes `of` for, and a family type of a category with no number (a rack) can't be written. A type BIMCraft has no kind
+for (`CURRENCY`, the HVAC ones) is listed with `kind: null` and its `line`, kept as written when the file is written again,
+and refused, naming its line, only when it is loaded into a family: a real file holds many such, and refusing the whole
+file would make it useless.
+
+`load` adds one of the file's parameters (by `name`, or `guid` where the name is there twice) to a family through the
+`family` command's Edit Parameter: `shared` its GUID, name and kind the file's (which the family then keeps from changing),
+`instance` and `under` (the heading) the caller's. It refuses, before `Model::check` would, saying which family holds what:
+a family with a parameter of that name or that GUID already; the project sharing the GUID under another name or kind; the
+project sharing the name as another GUID. `export` writes a family's (or every family's) shared parameters to the file,
+creating it, new ones in `group` (by default the family's name): an entry of that GUID is kept as the file has it, its
+description too, and one the file holds as another name or kind, or the name as another GUID, is refused naming its line.
+
+The description, visibility and user-modifiable flag stay in the file: a family's `Parameter` has no field for them, since
+nothing in BIMCraft reads them yet (no tooltip, no hidden parameters, no read-only values), so no `FORMAT` step was needed.
+An export of a parameter the file doesn't have writes it visible, modifiable and with no description. When BIMCraft enforces
+user-modifiable values, the flag becomes a `Parameter` field and a FORMAT of its own.
+
+## Reference planes
+
+A family's `planes` (`family/planes.rs`) are Revit's reference planes, each a `RefPlane`: the line it was drawn as (`start`,
+`end`, in the family's axes) and `up`, its other direction, so its normal is `(end - start) × up`; its own axes are x along the
+line, y `up` made square to it and z the normal, its origin the point of it nearest the family's origin (a profile on a plane
+parallel to a datum sits where it would on the datum, moved along the normal). Every family holds the three datums first,
+with the same GUIDs in every family (`REF_LEVEL`, `CENTER_FRONT_BACK`, `CENTER_LEFT_RIGHT`): Ref. Level (the family's xy,
+normal +z, a `level`, its reference `bottom`), Center (Front/Back) (xz: x along +x, y up, normal -y; `center_front_back`) and
+Center (Left/Right) (yz: x along +y, y up, normal +x; `center_left_right`). They are pinned: a file that leaves them out or
+moves them gets them as they are (`planes::with_datums`, `Family::settle_planes`), and the command refuses moving, changing
+or deleting them. Being in every family, they are no parts of the library and have no id; a plane of the family's own is a
+part (`HasPart`, `parts_now`), with an id and a GUID. Each has a `reference` (T1; Revit's Is Reference: `not_a_reference`,
+`strong`, `weak` by default, and `left`, `center_left_right`, `right`, `front`, `center_front_back`, `back`, `bottom`,
+`center_elevation`, `top`, each of these one plane's or line's in the family), a `subcategory` and `defines_origin`.
+`Family::check_planes` says what's wrong: a name used twice, a named reference taken twice, numbers past `MAX_COORD`, a line
+with one point, an `up` along the line, the origin defined twice in a direction, or by a plane square to none of x, y and z.
+The datums define the origin until a plane of the family's own in their direction takes it; moving the origin there (and
+correcting placed components' `at` so they stay put) is not done yet: the flag is kept and checked only.
+
+A family's `lines` are its reference lines (T18), each `start` to `end` drawn on a `host` it lies on, with four planes: its
+host's through it (`horizontal`), square to that through it (`vertical`), and square to it at each end (`start`, `end`), their
+origin the line's start (`end`'s its end), so what is drawn on one will turn with it once the angle that turns a line exists
+(F7, with dimensions and labels). A line may be drawn on an earlier line's plane, never a later one's.
+
+A form's `host` is a `PlaneRef`, `{"plane": guid}` or `{"line": guid, "face": …}`, Ref. Level when none: its profile is
+drawn in the host's axes and `from` and `to` run along its normal (Revit's Extrusion Start and End); a revolve turns in it
+(`Family::frame`, `sweep`, `revolve`, whose triangles turn round where a frame is mirrored). `plane` (`xy`, `xz`, `yz`) is the
+shorthand from before (`family::Plane`), read as it always was by the command and by a file of 19 (`FormIn`): `xy` and `yz`
+are Ref. Level and Center (Left/Right) as they were; `xz` swept along +y and Center (Front/Back)'s normal is -y, so its
+`from` and `to` are negated and swap places (a formula wrapped as `-(…)`), a revolve's angles kept. The starter families
+still say `plane`, and build the same triangles (`family_plane_tests`); FORMAT 20 is this change. The `family` command
+replaces the lists with `ref_planes` and `ref_lines` (datums given back as they are are kept), patches one with `ref_plane`
+and `ref_line` and deletes with `delete_ref_plane` and `delete_ref_line` by id or GUID, as forms; deleting one a form or a
+line is drawn on is refused, naming them. A new plane or line may carry a GUID of its own, so forms are drawn on it in the
+same command; a host given as an id is resolved to that plane's GUID (`Family::resolve_hosts`). A plane or line whose GUID
+the sync gives anew (a family loaded twice) takes what is drawn on it along (`Family::rehost`). The Family Editor keeps the
+planes, lines and hosts as they are; its Plane list picks a datum. A connector has no place yet: when it gets `at` and
+`direction` (upstream #269) it takes an optional host too. IFC is unchanged: it writes the forms' triangles.
+
 ## Plan symbols
 
 A family's `symbols`, of any category, are what its plan draws besides its forms, in its own axes: each is exactly one of a
@@ -109,6 +236,11 @@ tall, `at` the middle of the line, started, centred or ended there (`Align`); `{
 `Family::check`, and the lettered text is at most `MAX_TEXT` characters. `at` is the middle of the line of text vertically, and `align`
 sets the horizontal anchor. A `dot` is a `Circle`, drawn solid in ink. Everything
 numeric is checked finite and within `MAX_COORD`; a label's height and a dot's radius must be above zero.
+
+A symbol may name the subcategory of its family's category it is drawn in (`subcategory`, by its English name, any case:
+`Opening` for a door or a window; `Family::check` refuses a name its category has none of, saying which it has); a view hides and
+restyles it apart from the rest (Doors > Opening, [views and graphics](views-and-graphics.md)). The starter doors' swings and the
+windows' opening lines are in Opening. The Family Editor's Symbols tab picks it from the category's subcategories.
 
 `Model::component_marks` places a component's marks (mirrored, then turned and moved) and `Model::opening_marks` an opening's,
 and `render::marks` draws them: lines in the category's pen (`BY_CATEGORY`, so Object Styles and Visibility/Graphics apply), dots

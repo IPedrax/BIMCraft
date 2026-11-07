@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::{DEFAULT_WALL, Expr, Family, HEIGHT, MAX_FORMULA, Val, WALL, WIDTH, names};
+use super::{DEFAULT_WALL, Expr, Family, HEIGHT, Kind, MAX_FORMULA, Val, WALL, WIDTH, names};
 
 /// `f`'s errors, which a change may not go ahead with, and its warnings, which don't stop it: its
 /// formulas read over its own parameters, [`Family::check`]'s own findings (a family that builds,
@@ -19,6 +19,10 @@ pub(crate) fn problems(f: &Family, has_material: &dyn Fn(&str) -> bool) -> (Vec<
     }
     let mut warnings = Vec::new();
     geometry(f, &mut warnings);
+    // Labelled dimensions don't exist yet, so a reporting parameter holds what it was given.
+    warnings.extend(
+        f.parameters.iter().filter(|p| p.reporting).map(|p| format!("parameter `{}` reports no dimension yet: it holds its value", p.name)),
+    );
     (errors, warnings)
 }
 
@@ -34,12 +38,16 @@ fn formulas(f: &Family, out: &mut Vec<String>) {
         }
         match names(formula) {
             Err(e) => out.push(format!("{who}: {e}")),
-            Ok(found) => out.extend(
-                found
-                    .into_iter()
-                    .filter(|n| !given.contains(n.as_str()) && !(f.category.hosted() && n == WALL))
-                    .map(|n| format!("{who}: formula `{formula}` reads `{n}`, which isn't one of its parameters")),
-            ),
+            Ok(found) => {
+                for n in found {
+                    if !given.contains(n.as_str()) && !(f.category.hosted() && n == WALL) {
+                        out.push(format!("{who}: formula `{formula}` reads `{n}`, which isn't one of its parameters"));
+                    } else if let Some(p) = f.parameters.iter().find(|p| p.name == n && p.kind.text() && p.kind != Kind::Material) {
+                        // Words a formula can't read; a material's name is refused where it is worked out, as it always was.
+                        out.push(format!("{who}: formula `{formula}` reads `{n}`, which is {}: a formula reads numbers", p.kind.said()));
+                    }
+                }
+            }
         }
     };
     for p in &f.parameters {
@@ -78,7 +86,8 @@ fn formulas(f: &Family, out: &mut Vec<String>) {
     }
 }
 
-/// What the forms' boxes say, over every type: a void that reaches no solid before it, a door's or
+/// What the forms' boxes say, over every type: a void that reaches no solid before it (but a door's or a window's, which
+/// cuts its wall), a door's or
 /// a window's form wholly outside the opening it stands in, one thicker than the wall it's in, and
 /// a plan with nothing drawn on it. A fault every type has is one warning naming all of them.
 fn geometry(f: &Family, out: &mut Vec<String>) {
@@ -96,11 +105,15 @@ fn geometry(f: &Family, out: &mut Vec<String>) {
             continue;
         };
         let shapes = f.shapes(&values);
+        let wall = number(&values, WALL).unwrap_or(DEFAULT_WALL);
         for void in shapes.iter().filter(|s| s.void) {
             let cut = shapes.iter().any(|solid| !solid.void && solid.index < void.index && void.over(solid));
-            if !cut {
+            // A door's or a window's that cuts none of its forms cuts its wall ([`Family::host_voids`]), where it reaches it.
+            let host = f.category.hosted();
+            if !cut && (!host || void.max[1] <= -wall / 2.0 || void.min[1] >= wall / 2.0) {
+                let what = if host { "no solid form listed before it, nor its wall" } else { "no solid form listed before it" };
                 faults
-                    .entry(format!("form {}: its void passes through no solid form listed before it; it cuts nothing", void.index + 1))
+                    .entry(format!("form {}: its void passes through {what}; it cuts nothing", void.index + 1))
                     .or_default()
                     .insert(ty.clone());
             }
@@ -109,7 +122,6 @@ fn geometry(f: &Family, out: &mut Vec<String>) {
             continue;
         }
         let (width, height) = (number(&values, WIDTH), number(&values, HEIGHT));
-        let wall = number(&values, WALL).unwrap_or(DEFAULT_WALL);
         for solid in shapes.iter().filter(|s| !s.void) {
             if let (Some(w), Some(h)) = (width, height)
                 && w > 0.0

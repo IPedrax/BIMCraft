@@ -125,6 +125,10 @@ pub struct Sub {
 pub const SUBCATEGORIES: &[Sub] = &[
     Sub { key: "roomreference", parent: "room", name: ui_msg!("Reference"), off: true },
     Sub { key: "roomseparator", parent: "room", name: ui_msg!("Room Separation Lines"), off: false },
+    // A door's swing and a window's opening lines: the family symbols that name it (`subcategory: "Opening"`), and a door
+    // of the project's own type's swing.
+    Sub { key: "dooropening", parent: "door", name: ui_msg!("Opening"), off: false },
+    Sub { key: "windowopening", parent: "window", name: ui_msg!("Opening"), off: false },
 ];
 
 /// The subcategory `key` is, if it is one.
@@ -1036,6 +1040,9 @@ pub struct Look {
     /// The layers of each CAD drawing it hides, by the drawing's name.
     layers: BTreeMap<String, BTreeSet<String>>,
     paint: BTreeMap<Id, Override>,
+    /// How element `id`'s lines in subcategory `key` are drawn where the view says so of that subcategory: its row's override
+    /// over its category's, under the filters and the element's own.
+    sub_paint: BTreeMap<(Id, &'static str), Override>,
     style: VisualStyle,
     /// The section box a 3D view is cut to, its min and max corners, while it's on.
     section: Option<([f64; 3], [f64; 3])>,
@@ -1154,14 +1161,29 @@ impl Look {
             } else {
                 base.clone()
             };
-            let mut over = g.categories.get(cat).map_or(all.clone(), |c| c.over(&all));
-            for (a, picked) in applied.iter().rev().filter(|(_, picked)| picked.contains(&id)) {
-                let _ = picked;
-                over = a.over.over(&over);
+            let own = m.elements.guid(id).and_then(|k| g.elements.get(&k));
+            // Each filter's from the last to the first, then the element's own, over `under`.
+            let layered = |under: Override| {
+                let mut over = under;
+                for (a, _) in applied.iter().rev().filter(|(_, picked)| picked.contains(&id)) {
+                    over = a.over.over(&over);
+                }
+                if let Some(own) = own {
+                    over = own.over(&over);
+                }
+                over
+            };
+            let category = g.categories.get(cat).map_or(all.clone(), |c| c.over(&all));
+            // A subcategory's row, over its category's: what its lines are drawn with where it says something.
+            for s in subcategories(cat) {
+                if let Some(row) = g.categories.get(s.key) {
+                    let o = layered(row.over(&category));
+                    if !o.is_empty() {
+                        look.sub_paint.insert((id, s.key), o);
+                    }
+                }
             }
-            if let Some(own) = m.elements.guid(id).and_then(|k| g.elements.get(&k)) {
-                over = own.over(&over);
-            }
+            let over = layered(category);
             // A subcategory's elements go with their category, hidden.
             if over.hidden || sub(cat).is_some_and(|s| g.hides(s.parent)) {
                 look.hidden.insert(id);
@@ -1229,11 +1251,14 @@ impl Look {
     /// `d` with its primitives drawn as the view says: the colours, weights and dashes of each
     /// element's lines in projection and cut, its fills, lighter in halftone.
     pub fn dress(&self, d: &mut Drawing) {
-        if self.paint.is_empty() {
+        if self.paint.is_empty() && self.sub_paint.is_empty() {
             return;
         }
-        for (((prim, owner), part), pen) in d.prims.iter_mut().zip(&d.owners).zip(&d.parts).zip(d.pens.iter_mut()) {
-            let Some(over) = owner.and_then(|id| self.paint.get(&id)) else { continue };
+        let subs = &d.subs;
+        for (i, (((prim, owner), part), pen)) in d.prims.iter_mut().zip(&d.owners).zip(&d.parts).zip(d.pens.iter_mut()).enumerate() {
+            let sub = subs.get(i).copied().flatten();
+            let of_sub = owner.zip(sub).and_then(|k| self.sub_paint.get(&k));
+            let Some(over) = of_sub.or_else(|| owner.and_then(|id| self.paint.get(&id))) else { continue };
             let style = if *part == Part::Cut { &over.cut } else { &over.projection };
             match prim {
                 Prim::Line { color, dash, .. } => {

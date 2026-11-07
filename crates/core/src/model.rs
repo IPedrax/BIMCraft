@@ -70,10 +70,18 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 18: a family may be adaptive (`adaptive`: its
-/// points, lines and forms) and a component may hold the frames of its adaptive points (`adaptive`); nothing in a file of 17
-/// changes, but a build that reads up to 17 would leave both out as fields it doesn't know and draw such a family without its
-/// forms, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
+/// The version of the project file this build writes, and the newest it reads. 21 (provisional): a view's graphics, a view template and the object styles may name the subcategories
+/// `dooropening` and `windowopening` (Doors > Opening, Windows > Opening), and a family's symbol the subcategory it is drawn in
+/// (`subcategory`); nothing in a file of 19 changes, but a build that reads up to 19 would refuse such graphics or object
+/// styles on opening ("isn't a category views draw", as 14 says), not say "saved by a newer BIMCraft"; a symbol's
+/// subcategory alone it would leave out as a field it doesn't know, drawing the swing in the category. 19: a family's parameters may be text, whole
+/// numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a GUID) or reporting (`reporting`),
+/// and a family type parameter names its category (`of`); nothing in a file of 17 changes, but a build that reads up to 17
+/// would refuse a new kind ("unknown variant") and leave the rest out as fields it doesn't know, a shared parameter becoming
+/// the family's own and a reporting one one it sets, not say "saved by a newer BIMCraft". 18: a family may
+/// be adaptive (`adaptive`: its points, lines and forms) and a component may hold its adaptive points' frames (`adaptive`);
+/// nothing in a file of 17 changes, but a build that reads up to 17 would leave both out as fields it doesn't know and draw
+/// such a family without its forms. 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -111,7 +119,12 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 18;
+///
+/// 20: a family has reference planes (its three datums and its own, `planes`) and reference lines (`lines`), and a form is
+/// drawn on a `host` (one of them) where it named `plane` (xy, xz or yz); a form of 19 on `xz` swept along +y, and its host,
+/// Center (Front/Back), has its normal toward -y, so 19 read by 20 has its `from` and `to` negated (and swapped). A build
+/// of 19 would refuse `host`.
+pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3153,6 +3166,35 @@ impl Model {
         self.elements.iter().find(|(_, e)| self.component_materials(e).contains(&name)).map(|(id, _)| format!("component {id}"))
     }
 
+    /// Whether the families' shared parameters agree: a shared GUID is one name and one kind wherever a family holds it, and
+    /// a name is one shared GUID, so a schedule's column of it is one parameter.
+    fn check_shared_parameters(&self) -> Result<(), String> {
+        let mut by_guid: BTreeMap<Guid, (&str, &crate::family::Parameter)> = BTreeMap::new();
+        let mut by_name: BTreeMap<&str, (&str, Guid)> = BTreeMap::new();
+        for (n, f) in &self.families {
+            for p in &f.parameters {
+                let Some(g) = p.shared else { continue };
+                let who = format!("family `{n}`: parameter `{}` is shared as {g}", p.name);
+                if let Some((other, q)) = by_guid.get(&g) {
+                    if q.name != p.name {
+                        return Err(format!("{who}, which family `{other}` calls `{}`; a shared parameter has one name", q.name));
+                    }
+                    if q.kind != p.kind {
+                        return Err(format!("{who}, which family `{other}` holds as {}, not {}", q.kind.said(), p.kind.said()));
+                    }
+                }
+                if let Some((other, h)) = by_name.get(p.name.as_str())
+                    && *h != g
+                {
+                    return Err(format!("{who}, but family `{other}` shares `{}` as {h}: one name is one shared parameter", p.name));
+                }
+                by_guid.entry(g).or_insert((n, p));
+                by_name.entry(p.name.as_str()).or_insert((n, g));
+            }
+        }
+        Ok(())
+    }
+
     /// Whether the values `params` give an element of family `name` are its instance parameters' own: what the
     /// element sets of the family are instance parameters, none worked out by a formula, materials in the library.
     fn family_values_ok(&self, who: &str, name: &str, f: &Family, params: &BTreeMap<String, serde_json::Value>) -> Result<(), String> {
@@ -3164,7 +3206,11 @@ impl Model {
             if p.formula.is_some() {
                 return Err(format!("{who}: `{k}` is worked out by its formula"));
             }
+            if p.reporting {
+                return Err(format!("{who}: `{k}` is a reporting parameter: its dimension says what it is, and nothing sets it"));
+            }
             if let crate::family::Val::Text(m) = crate::family::read(p, v).map_err(|e| format!("{who}: {e}"))?
+                && p.kind == crate::family::Kind::Material
                 && !m.is_empty()
                 && !self.materials.contains_key(&m)
             {
@@ -3458,6 +3504,18 @@ impl Model {
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
         // 17 to 18 (adaptive families and components' adaptive frames) has none: a file of 17 holds neither, and both default.
+        // 18 to 19 (a family's parameters: new kinds, groups, shared GUIDs, reporting, a family type's category) has none:
+        // the new fields default, to a family parameter grouped by its kind, which is what a file of 18 holds.
+        // 19 to 20: a form's `plane` becomes its `host`, a datum: `xy` Ref. Level and `yz` Center (Left/Right) as they
+        // were; `xz` Center (Front/Back), its `from` and `to` negated and swapped (a formula wrapped as `-(…)`), since it
+        // swept along +y and the datum's normal is -y, a revolve's angles as they were. Reading the file does it, as it
+        // reads a command's shorthand (`Form`'s `FormIn`), and a family read without its datums is given them
+        // (`Family::planes`); here every family's datums are put first and the origin settled, whatever the file held.
+        if self.format < 20 {
+            self.families.values_mut().for_each(crate::family::Family::settle_planes);
+        }
+        // 20 to 21 (Doors > Opening and Windows > Opening, which a view's graphics, a template and the object styles may name,
+        // and a symbol's `subcategory`) has none: a file of 20 names neither.
         self.format = FORMAT;
     }
 
@@ -4134,11 +4192,11 @@ impl Model {
     /// A door's or window's family's solids and the lines its plan draws, in the family's own axes, turned out with
     /// the opening's flips as mirror images (its hinge on the other jamb, its swing to the wall's other side);
     /// none for one that isn't of a family, or doesn't build.
-    pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Mark>)> {
+    pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Tagged>)> {
         let (Element::Door(o) | Element::Window(o)) = e else { return None };
         let f = self.families.get(o.family.as_ref()?)?;
         let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
-        let (pieces, marks) = (f.pieces(&values).ok()?, f.marks(&values).ok()?);
+        let (pieces, marks) = (f.pieces(&values).ok()?, f.marks_tagged(&values).ok()?);
         let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
         let mirrored = fx * fy < 0.0;
         let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
@@ -4151,8 +4209,43 @@ impl Model {
                 Piece { tris: tris.collect(), outline: if mirrored { outline.into_iter().rev().collect() } else { outline }, ..pc }
             })
             .collect();
-        let marks = marks.iter().map(|k| k.map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0))).collect();
+        let marks = marks.iter().map(|(k, sub)| (k.map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)), *sub)).collect();
         Some((pieces, marks))
+    }
+
+    /// The voids a door's or window's family cuts its wall with ([`crate::family::Family::host_voids`]), in the family's own
+    /// axes turned out with the opening's flips as [`Model::opening_local`]'s solids are; none for one that isn't of a family,
+    /// has none, or doesn't build, whose wall the rectangle of its width and height cuts.
+    pub fn opening_voids_local(&self, e: &Element) -> Vec<Vec<[crate::view3d::P3; 3]>> {
+        let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
+        let Some(f) = o.family.as_ref().and_then(|n| self.families.get(n)) else { return Vec::new() };
+        if !f.category.hosted() || !f.forms.iter().any(|x| x.void) {
+            return Vec::new();
+        }
+        let Some(w) = self.wall(o.host) else { return Vec::new() };
+        let Ok(voids) = f.values_in(&o.type_name, &o.params, self.thickness(w)).and_then(|v| f.host_voids(&v)) else {
+            return Vec::new();
+        };
+        let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
+        let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
+        let mirrored = fx * fy < 0.0;
+        voids
+            .into_iter()
+            .map(|v| {
+                v.iter().map(|[a, b, c]| if mirrored { [flip(*a), flip(*c), flip(*b)] } else { [flip(*a), flip(*b), flip(*c)] }).collect()
+            })
+            .collect()
+    }
+
+    /// [`Model::opening_voids_local`] where the opening stands, in the model's own axes.
+    pub fn opening_voids(&self, e: &Element) -> Vec<Vec<[crate::view3d::P3; 3]>> {
+        let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
+        let Some((at, u, z)) = self.opening_frame(o) else { return Vec::new() };
+        let place = |p: [f64; 3]| {
+            let q = at + u * p[0] + u.perp() * p[1];
+            [q.0, q.1, z + p[2]]
+        };
+        self.opening_voids_local(e).into_iter().map(|v| v.iter().map(|t| t.map(place)).collect()).collect()
     }
 
     /// A door's or window's family's solids where it stands, in the model's own axes: each form's triangles, its
@@ -4176,11 +4269,12 @@ impl Model {
             .collect()
     }
 
-    /// The marks a door's or window's family draws in plan, where it stands.
-    pub fn opening_marks(&self, e: &Element) -> Vec<crate::family::Mark> {
+    /// The marks a door's or window's family draws in plan, where it stands, each with the subcategory it is drawn in
+    /// (`dooropening`; none, its category).
+    pub fn opening_marks(&self, e: &Element) -> Vec<crate::family::Tagged> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
         let (Some((_, marks)), Some((at, u, _))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
-        marks.iter().map(|k| k.map(|q| at + u * q.0 + u.perp() * q.1)).collect()
+        marks.iter().map(|(k, sub)| (k.map(|q| at + u * q.0 + u.perp() * q.1), *sub)).collect()
     }
 
     /// The level an element stands on: a door's or window's is its wall's, a tag's its door's or
@@ -6062,6 +6156,7 @@ impl Model {
             }
             f.check(&|m| self.materials.contains_key(m)).map_err(|e| format!("family `{n}`: {e}"))?;
         }
+        self.check_shared_parameters()?;
         if self.parameters.len() > MAX_PROJECT_PARAMETERS {
             return Err(format!("the project has {} parameters; it holds up to {MAX_PROJECT_PARAMETERS}", self.parameters.len()));
         }

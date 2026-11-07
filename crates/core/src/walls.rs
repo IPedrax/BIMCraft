@@ -642,30 +642,52 @@ pub struct Prism {
 
 /// Wall `id` as prisms: its outline cut across where its doors and windows start and end (with
 /// `openings`) and along an arc into short straight pieces, each piece from its base up to its
-/// top less the openings over it, cut where what it's attached to changes plane.
+/// top less the openings over it, cut where what it's attached to changes plane. An opening whose family cuts its wall
+/// with voids of its own ([`host_voids_in`]) leaves no rectangle: the voids cut what is left, as the 3D view's solids do.
 pub fn prisms(m: &Model, id: Id, openings: bool) -> Vec<Prism> {
     prisms_in(m, id, openings, None)
 }
 
 pub(crate) fn prisms_in(m: &Model, id: Id, openings: bool, index: Option<&Index>) -> Vec<Prism> {
+    prisms_holed(m, id, openings, true, index)
+}
+
+/// [`prisms_in`], every opening its rectangle, voids or none: what stands where cutting by the voids fails.
+pub(crate) fn prisms_rect_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<Prism> {
+    prisms_holed(m, id, true, false, index)
+}
+
+/// The doors and windows in wall `id`, or the openings `index` lists in it.
+fn openings_of<'a>(m: &'a Model, id: Id, index: Option<&'a Index>) -> Box<dyn Iterator<Item = &'a Element> + 'a> {
+    let guid = m.guid(id);
+    match index {
+        Some(index) => Box::new(index.openings(guid).iter().filter_map(|id| m.elements.get(*id))),
+        None => Box::new(m.elements.values().filter(move |e| matches!(e, Element::Door(o) | Element::Window(o) if o.host == guid))),
+    }
+}
+
+/// The voids wall `id`'s doors and windows cut it with, in the model's axes ([`Model::opening_voids`]): those of the
+/// openings whose families have their own, which cut the wall in their shape in place of a rectangle.
+pub(crate) fn host_voids_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<Vec<[crate::view3d::P3; 3]>> {
+    openings_of(m, id, index).flat_map(|e| m.opening_voids(e)).collect()
+}
+
+fn prisms_holed(m: &Model, id: Id, openings: bool, voided: bool, index: Option<&Index>) -> Vec<Prism> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let guid = m.guid(id);
     let axis = Axis::of(w);
     let (ext, int) = faces(m, w);
     let len = axis.length();
     let z0 = m.own_base(w);
-    // The openings: along the wall, and up it.
-    let candidates: Box<dyn Iterator<Item = &Element> + '_> = if !openings {
-        Box::new(std::iter::empty())
-    } else {
-        match index {
-            Some(index) => Box::new(index.openings(guid).iter().filter_map(|id| m.elements.get(*id))),
-            None => Box::new(m.elements.values()),
-        }
-    };
+    // The openings: along the wall, and up it; one whose voids cut the wall leaves its rectangle to them.
+    let candidates: Box<dyn Iterator<Item = &Element> + '_> =
+        if !openings { Box::new(std::iter::empty()) } else { openings_of(m, id, index) };
     let holes: Vec<((f64, f64), (f64, f64))> = candidates
         .filter_map(|e| match e {
             Element::Door(o) | Element::Window(o) if o.host == guid => {
+                if voided && !m.opening_voids_local(e).is_empty() {
+                    return None;
+                }
                 let t = m.opening_type(e)?;
                 Some(((o.offset - t.width / 2.0, o.offset + t.width / 2.0), (z0 + o.sill, z0 + o.sill + t.height)))
             }

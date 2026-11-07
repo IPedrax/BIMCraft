@@ -14,7 +14,8 @@ use std::sync::Arc;
 
 use bimcraft_core::engine::Session;
 use bimcraft_core::family::{
-    Align as LabelAlign, Category, Circle, Connector, Curve, Expr, Family, Form, IfcClass, Kind as Holds, Label, Parameter, Plane, Symbol,
+    Align as LabelAlign, CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, Category, Circle, Connector, Curve, Expr, Family, Form, IfcClass,
+    Kind as Holds, Label, Parameter, PlaneRef, REF_LEVEL, RefLine, RefPlane, Symbol,
 };
 use bimcraft_core::model::{Model, Operation};
 use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
@@ -98,7 +99,8 @@ struct FormText {
     /// What it was: what the editor doesn't edit (a mesh's triangles) stays as it was.
     original: Form,
     shape: Shape,
-    plane: Plane,
+    /// The plane it is drawn on, kept as it was unless a datum is picked.
+    host: PlaneRef,
     profile: String,
     circle: [String; 3],
     revolve: bool,
@@ -121,7 +123,7 @@ impl FormText {
         FormText {
             original: f.clone(),
             shape: if f.circle.is_some() { Shape::Circle } else { Shape::Profile },
-            plane: f.plane,
+            host: f.host,
             profile: profile_text(&f.profile),
             circle,
             revolve: f.axis.is_some(),
@@ -166,7 +168,7 @@ impl FormText {
         if self.mesh() {
             return Ok(f);
         }
-        (f.plane, f.from, f.to) = (self.plane, text_expr(&self.from), text_expr(&self.to));
+        (f.host, f.from, f.to) = (self.host, text_expr(&self.from), text_expr(&self.to));
         (f.profile, f.circle) = (Vec::new(), None);
         match self.shape {
             Shape::Profile => f.profile = text_profile(&self.profile)?,
@@ -184,6 +186,8 @@ impl FormText {
 /// A parameter as typed.
 #[derive(Clone)]
 struct ParamText {
+    /// What it was, whose group, shared GUID, reporting and `of` the editor keeps as they are.
+    original: Parameter,
     name: String,
     kind: Holds,
     instance: bool,
@@ -192,15 +196,36 @@ struct ParamText {
 }
 
 /// The name a parameter's kind goes by.
-fn kind_name(k: Holds) -> &'static str {
+pub(crate) fn kind_name(k: Holds) -> &'static str {
     match k {
         Holds::Length => "Length",
         Holds::Number => "Number",
         Holds::Angle => "Angle",
         Holds::YesNo => msg!("Yes/No"),
         Holds::Material => "Material",
+        Holds::Text => msg!("Text"),
+        Holds::Integer => msg!("Integer"),
+        Holds::Area => msg!("Area"),
+        Holds::Volume => msg!("Volume"),
+        Holds::Url => msg!("URL"),
+        Holds::FamilyType => msg!("Family Type"),
     }
 }
+
+/// Every kind a parameter may be, in the order the editor offers them.
+const KINDS: [Holds; 11] = [
+    Holds::Length,
+    Holds::Number,
+    Holds::Integer,
+    Holds::Angle,
+    Holds::Area,
+    Holds::Volume,
+    Holds::YesNo,
+    Holds::Text,
+    Holds::Url,
+    Holds::Material,
+    Holds::FamilyType,
+];
 
 /// A stored value, as typed for a parameter of `kind`.
 fn value_text(kind: Holds, v: &Value) -> String {
@@ -219,9 +244,9 @@ fn text_value(kind: Holds, s: &str, who: &str) -> Result<Option<Value>, String> 
         return Ok(None);
     }
     Ok(Some(match kind {
-        Holds::Material => json!(s),
+        Holds::Material | Holds::Text | Holds::Url | Holds::FamilyType => json!(s),
         Holds::YesNo => json!(matches!(s, "1" | "true" | "yes" | "Yes")),
-        Holds::Length | Holds::Number | Holds::Angle => {
+        Holds::Length | Holds::Number | Holds::Angle | Holds::Integer | Holds::Area | Holds::Volume => {
             json!(s.parse::<f64>().ok().filter(|x| x.is_finite()).ok_or_else(|| tf("{}: `{}` isn't a number", &[who, s]))?)
         }
     }))
@@ -230,6 +255,7 @@ fn text_value(kind: Holds, s: &str, who: &str) -> Result<Option<Value>, String> 
 impl ParamText {
     fn of(p: &Parameter) -> ParamText {
         ParamText {
+            original: p.clone(),
             name: p.name.clone(),
             kind: p.kind,
             instance: p.instance,
@@ -240,12 +266,20 @@ impl ParamText {
 
     fn parameter(&self) -> Result<Parameter, String> {
         let value = text_value(self.kind, &self.value, &self.name)?.unwrap_or(match self.kind {
-            Holds::Material => json!(""),
+            Holds::Material | Holds::Text | Holds::Url => json!(""),
+            Holds::FamilyType => Value::Null,
             Holds::YesNo => json!(false),
             _ => json!(0.0),
         });
         let formula = Some(self.formula.trim().to_string()).filter(|f| !f.is_empty());
-        Ok(Parameter { name: self.name.trim().to_string(), kind: self.kind, instance: self.instance, value, formula })
+        Ok(Parameter {
+            name: self.name.trim().to_string(),
+            kind: self.kind,
+            instance: self.instance,
+            value,
+            formula,
+            ..self.original.clone()
+        })
     }
 }
 
@@ -273,6 +307,8 @@ struct SymbolText {
     value: String,
     align: LabelAlign,
     visible: String,
+    /// The subcategory it is drawn in, by its English name (`Opening`); blank, its category.
+    subcategory: String,
 }
 
 impl SymbolText {
@@ -289,6 +325,7 @@ impl SymbolText {
             value: String::new(),
             align: LabelAlign::Left,
             visible: String::new(),
+            subcategory: String::new(),
         };
         match part {
             Part::Line => SymbolText { line: s("0, 0\n0, 900"), ..base },
@@ -304,6 +341,7 @@ impl SymbolText {
         t.ident = (y.id, y.guid);
         t.line = profile_text(&y.line);
         t.visible = y.visible.as_ref().map(expr_text).unwrap_or_default();
+        t.subcategory = y.subcategory.clone().unwrap_or_default();
         if let Some(c) = &y.arc {
             (t.part, t.centre, t.radius, t.from, t.to) =
                 (Part::Arc, [ex(&c.centre[0]), ex(&c.centre[1])], ex(&c.radius), ex(&c.from), ex(&c.to));
@@ -320,7 +358,8 @@ impl SymbolText {
         let visible = (!self.visible.trim().is_empty()).then(|| text_expr(&self.visible));
         let (id, guid) = self.ident;
         let centre = [text_expr(&self.centre[0]), text_expr(&self.centre[1])];
-        let base = Symbol { visible, id, guid, ..Symbol::default() };
+        let subcategory = (!self.subcategory.trim().is_empty()).then(|| self.subcategory.clone());
+        let base = Symbol { visible, id, guid, subcategory, ..Symbol::default() };
         Ok(match self.part {
             Part::Arc => Symbol {
                 arc: Some(Curve { centre, radius: text_expr(&self.radius), from: text_expr(&self.from), to: text_expr(&self.to) }),
@@ -356,6 +395,9 @@ pub(crate) struct FamilyEditor {
     symbols: Vec<SymbolText>,
     /// Its connectors, as the family has them: the editor has no tab for them yet, and keeps them as they are.
     connectors: Vec<Connector>,
+    /// Its reference planes and lines, as the family has them: the editor has no tab for them yet, and keeps them as they are.
+    planes: Vec<RefPlane>,
+    lines: Vec<RefLine>,
     /// Which fixture or fitting it is, as the family has it: set with the `family` command, kept as it is here.
     kind: Option<String>,
     /// The IFC class a generic family from IFC remembers: set with the `family` command or by the import, kept as it is here.
@@ -454,6 +496,8 @@ impl FamilyEditor {
             associating: None,
             symbols: f.symbols.iter().map(SymbolText::of).collect(),
             connectors: f.connectors.clone(),
+            planes: f.planes.clone(),
+            lines: f.lines.clone(),
             kind: f.kind.clone(),
             ifc: f.ifc.clone(),
             operation: f.operation,
@@ -573,6 +617,8 @@ impl FamilyEditor {
             operation,
             connectors: self.connectors.clone(),
             adaptive: self.adaptive.clone(),
+            planes: self.planes.clone(),
+            lines: self.lines.clone(),
         })
     }
 
@@ -585,6 +631,13 @@ impl FamilyEditor {
         let mut p = serde_json::to_value(&family).map_err(|e| e.to_string())?;
         // Said or not, so one taken off goes from the family too.
         p["operation"] = json!(family.operation.map_or("", Operation::name));
+        // Its planes and lines as the command takes them, so the forms drawn on them keep their hosts.
+        if let Some(map) = p.as_object_mut() {
+            for (k, key) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
+                let v = map.remove(k).unwrap_or_else(|| json!([]));
+                map.insert(key.into(), v);
+            }
+        }
         match &self.original {
             Some(was) => {
                 p["name"] = json!(was);
@@ -801,9 +854,8 @@ fn parameters_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
         for (i, p) in ed.params.iter_mut().enumerate() {
             let n = i + 1;
             field(ui, format!("{} {n}", t("Parameter Name")), &mut p.name, 130.0);
-            let kinds = [Holds::Length, Holds::Number, Holds::Angle, Holds::YesNo, Holds::Material];
             ComboBox::from_id_salt(("fe-param-kind", i)).selected_text(t(kind_name(p.kind))).width(84.0).show_ui(ui, |ui| {
-                for k in kinds {
+                for k in KINDS {
                     ui.selectable_value(&mut p.kind, k, t(kind_name(k)));
                 }
             });
@@ -837,7 +889,14 @@ fn parameters_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     }
     if ui.button(t("Add Parameter")).clicked() {
         let name = (1..).map(|k| format!("{} {k}", t("Parameter"))).find(|n| !ed.params.iter().any(|p| p.name == *n)).unwrap_or_default();
-        ed.params.push(ParamText { name, kind: Holds::Length, instance: false, value: "0".into(), formula: String::new() });
+        ed.params.push(ParamText {
+            original: Parameter::default(),
+            name,
+            kind: Holds::Length,
+            instance: false,
+            value: "0".into(),
+            formula: String::new(),
+        });
     }
 }
 
@@ -867,8 +926,12 @@ fn types_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
             ed.types.remove(ed.picked);
         }
     });
-    let own: Vec<(String, Holds)> =
-        ed.params.iter().filter(|p| !p.instance && p.formula.trim().is_empty()).map(|p| (p.name.clone(), p.kind)).collect();
+    let own: Vec<(String, Holds)> = ed
+        .params
+        .iter()
+        .filter(|p| !p.instance && !p.original.reporting && p.formula.trim().is_empty())
+        .map(|p| (p.name.clone(), p.kind))
+        .collect();
     let Some((name, set)) = ed.types.get_mut(ed.picked) else { return };
     ui.add_space(4.0);
     Grid::new("fe-type").num_columns(2).spacing(vec2(12.0, 5.0)).show(ui, |ui| {
@@ -907,7 +970,12 @@ fn types_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
 /// One form's fields.
 fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String]) {
     let n = i + 1;
-    let planes = [(Plane::Xy, msg!("Plane XY")), (Plane::Xz, msg!("Plane XZ")), (Plane::Yz, msg!("Plane YZ"))];
+    // The datums, by the planes they are; a form on a plane of the family's own keeps it until a datum is picked.
+    let planes = [
+        (PlaneRef::Plane(REF_LEVEL), msg!("Plane XY")),
+        (PlaneRef::Plane(CENTER_FRONT_BACK), msg!("Plane XZ")),
+        (PlaneRef::Plane(CENTER_LEFT_RIGHT), msg!("Plane YZ")),
+    ];
     Grid::new(("fe-form-grid", i)).num_columns(2).spacing(vec2(12.0, 5.0)).show(ui, |ui| {
         if f.mesh() {
             ui.label(t("Mesh"));
@@ -916,11 +984,11 @@ fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String]) {
         } else {
             ui.label(t("Plane"));
             ComboBox::from_id_salt(("fe-plane", i))
-                .selected_text(t(planes.iter().find(|(p, _)| *p == f.plane).map_or("Plane XY", |(_, l)| l)))
+                .selected_text(planes.iter().find(|(p, _)| *p == f.host).map_or_else(|| "…".to_string(), |(_, l)| t(l).to_string()))
                 .width(110.0)
                 .show_ui(ui, |ui| {
                     for (p, label) in planes {
-                        ui.selectable_value(&mut f.plane, p, t(label));
+                        ui.selectable_value(&mut f.host, p, t(label));
                     }
                 });
             ui.end_row();
@@ -1023,7 +1091,13 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
         }
         if ui.button(t("Add Revolve")).clicked() {
             let profile = "100, 0\n300, 0\n300, 500\n100, 500".to_string();
-            ed.forms.push(FormText { plane: Plane::Xz, profile, revolve: true, to: "360".into(), ..FormText::blank() });
+            ed.forms.push(FormText {
+                host: PlaneRef::Plane(CENTER_FRONT_BACK),
+                profile,
+                revolve: true,
+                to: "360".into(),
+                ..FormText::blank()
+            });
         }
         if ui.button(t("Add Void")).clicked() {
             ed.forms.push(FormText { void: true, ..FormText::blank() });
@@ -1037,6 +1111,8 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
             .color(pal().muted),
     );
     let mut remove = None;
+    // The subcategories a symbol may be drawn in: its family's category's (a door's and a window's Opening).
+    let subs: Vec<&'static str> = bimcraft_core::graphics::subcategories(ed.category.graphics_category()).map(|s| s.name).collect();
     for (i, y) in ed.symbols.iter_mut().enumerate() {
         let n = i + 1;
         let kind = match y.part {
@@ -1092,6 +1168,19 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                 ui.label(t("Visible when"));
                 field(ui, format!("{} {n}", t("Symbol Visible")), &mut y.visible, 200.0);
                 ui.end_row();
+                // Drawn in a subcategory a view hides or restyles apart (a door's swing in Doors > Opening), or the category.
+                if !subs.is_empty() || !y.subcategory.is_empty() {
+                    ui.label(t("Subcategory"));
+                    let shown = if y.subcategory.is_empty() { t("None").to_string() } else { t(&y.subcategory).to_string() };
+                    let c = ComboBox::from_id_salt(("fe-symbol-sub", i)).selected_text(shown).width(200.0).show_ui(ui, |ui| {
+                        ui.selectable_value(&mut y.subcategory, String::new(), t("None"));
+                        for name in &subs {
+                            ui.selectable_value(&mut y.subcategory, name.to_string(), t(name));
+                        }
+                    });
+                    c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, format!("{} {n}", t("Symbol Subcategory"))));
+                    ui.end_row();
+                }
             });
             if ui.button(t("Delete")).clicked() {
                 remove = Some(i);
@@ -1547,6 +1636,32 @@ mod tests {
     }
 
     #[test]
+    fn a_form_on_a_plane_of_the_familys_own_keeps_it_through_the_editor() {
+        let mut s = Session::new();
+        let shelf = "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8";
+        let line = "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809";
+        s.execute(
+            "family",
+            &json!({"name": "Shelf", "types": {"A": {}},
+                "ref_planes": [{"guid": shelf, "name": "Top", "start": [0, 0, 500], "end": [1000, 0, 500], "up": [0, 1, 0]}],
+                "ref_lines": [{"guid": line, "start": [0, 0, 500], "end": [100, 0, 500], "host": {"plane": shelf}}],
+                "forms": [{"host": {"plane": shelf}, "profile": [[0, 0], [100, 0], [100, 50]], "to": 20},
+                          {"host": {"line": line, "face": "start"}, "profile": [[0, 0], [100, 0], [100, 50]], "to": 20},
+                          {"plane": "xz", "profile": [[0, 0], [100, 0], [100, 50]], "to": 20}]}),
+        )
+        .unwrap();
+        let was = s.model.families["Shelf"].clone();
+        let mut ed = FamilyEditor::of("Shelf", &was);
+        assert_eq!(ed.forms[0].host, was.forms[0].host);
+        let p = ed.command(&s.model).unwrap();
+        s.execute("family", &p).unwrap();
+        assert_eq!(s.model.families["Shelf"], was, "its planes, lines and hosts as they were");
+        // The Plane list picks a datum.
+        ed.forms[0].host = PlaneRef::Plane(REF_LEVEL);
+        assert_eq!(ed.family().unwrap().forms[0].host, PlaneRef::Plane(REF_LEVEL));
+    }
+
+    #[test]
     fn a_form_as_typed_keeps_what_the_editor_doesnt_edit_and_a_revolve_and_a_void_survive() {
         let tri = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
         let mesh = Form { mesh: Arc::new(vec![tri]), material: "Timber".into(), ..Form::default() };
@@ -1557,9 +1672,9 @@ mod tests {
         assert_eq!((back.mesh.len(), back.visible, back.void), (1, Some(Expr::Formula("Legs".into())), true));
         assert_eq!(text.describe(), "Mesh (void)");
         let mut text = FormText::blank();
-        (text.revolve, text.plane, text.to) = (true, Plane::Xz, "360".into());
+        (text.revolve, text.host, text.to) = (true, PlaneRef::Plane(CENTER_FRONT_BACK), "360".into());
         let f = text.form().unwrap();
-        assert!(f.axis.is_some() && f.plane == Plane::Xz && f.to == Expr::Number(360.0) && f.profile.len() == 4);
+        assert!(f.axis.is_some() && f.host == PlaneRef::Plane(CENTER_FRONT_BACK) && f.to == Expr::Number(360.0) && f.profile.len() == 4);
         assert_eq!(FormText::of(&f).describe(), "Revolve");
         text.shape = Shape::Circle;
         text.circle = ["0".into(), "0".into(), "R".into()];
@@ -1605,7 +1720,7 @@ mod tests {
         for part in [Part::Line, Part::Arc, Part::Text, Part::Dot] {
             assert_eq!(SymbolText::of(&SymbolText::blank(part).symbol().unwrap()).part, part);
         }
-        let p = Parameter { name: "Legs".into(), kind: Holds::YesNo, instance: true, value: json!(true), formula: None };
+        let p = Parameter { name: "Legs".into(), kind: Holds::YesNo, instance: true, value: json!(true), ..Parameter::default() };
         assert_eq!(ParamText::of(&p).parameter().unwrap(), p);
         let area = Parameter {
             name: "Area".into(),
@@ -1613,8 +1728,24 @@ mod tests {
             instance: false,
             value: json!(0.0),
             formula: Some("Width * Depth".into()),
+            ..Parameter::default()
         };
         assert_eq!(ParamText::of(&area).parameter().unwrap(), area);
+        // What the editor shows no field for yet stays as the family has it.
+        let shared = Parameter {
+            name: "Fire Rating".into(),
+            kind: Holds::Text,
+            value: json!("EI 60"),
+            group: Some(bimcraft_core::family::Group::IdentityData),
+            shared: bimcraft_core::model::Guid::parse("6f1c2a3b-4d5e-4f60-8a71-92b3c4d5e6f7"),
+            ..Parameter::default()
+        };
+        assert_eq!(ParamText::of(&shared).parameter().unwrap(), shared);
+        let reach = Parameter { name: "Reach".into(), reporting: true, value: json!(450.0), ..Parameter::default() };
+        assert_eq!(ParamText::of(&reach).parameter().unwrap(), reach);
+        for k in KINDS {
+            assert!(!kind_name(k).is_empty());
+        }
         assert_eq!(kind_name(Holds::YesNo), "Yes/No");
         // The rest of an editor's tabs list: all of them there.
         let tabs: BTreeSet<&str> = ["Parameters", "Types", "Forms", "Symbols"].into_iter().collect();

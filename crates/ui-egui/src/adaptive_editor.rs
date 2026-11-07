@@ -337,13 +337,7 @@ const LIMIT: f64 = 1e7;
 
 /// The name of what a parameter holds, as Revit's Parameter type says it.
 fn holds(kind: Holds) -> &'static str {
-    match kind {
-        Holds::Length => "Length",
-        Holds::Number => "Number",
-        Holds::Angle => "Angle",
-        Holds::YesNo => msg!("Yes/No"),
-        Holds::Material => "Material",
-    }
+    crate::editor::kind_name(kind)
 }
 
 /// What `e` comes to with the type's `values`; none for a formula that does not work out.
