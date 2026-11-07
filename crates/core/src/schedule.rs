@@ -446,6 +446,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
             ("Elevation from Level", Kind::Length, From::Key("offset")),
             ("Work Plane", Kind::Text, From::Key("work_plane")),
             ("Offset from Host", Kind::Length, From::Key("offset_from_host")),
+            ("Host", Kind::Number, From::Ref("host_element")),
         ],
     ),
     (

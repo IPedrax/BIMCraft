@@ -21,7 +21,7 @@ use crate::fills::{self, FillPattern, FilledRegionType};
 use crate::geom::{self, P2, Region};
 use crate::graphics::{self, Graphics, ViewFilter, ViewTemplate};
 pub use crate::groups::{DetailGroup, RepeatingDetail};
-pub use crate::hosting::{HostRef, Hosted, ReferencePlane};
+pub use crate::hosting::{FaceRole, HostRef, Hosted, ReferencePlane};
 use crate::language::Language;
 pub use crate::lines::DetailLine;
 use crate::lines::{self, LinePattern, LineStyle};
@@ -129,7 +129,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 22: the project has reference planes (`refplane`), and a work plane-based component may be hosted on one (`host`), its
 /// `at` and `offset` following the plane and its family's axes tilted with it; a build of 21 would leave both out and stand
 /// the component upright where it was, no longer moving with its plane.
-pub const FORMAT: u32 = 22;
+///
+/// 23: a component may be hosted on a face of a wall, a floor, a ceiling or a roof (`host` `{"face": {"element", "face"}}`,
+/// Place on Face), its `uv` that face's own; a build of 22 reads a component's `host` whole and knows no such kind, so it
+/// would refuse the project or, left out, stand the component where it was, no longer on its face. A file of 22 holds none.
+pub const FORMAT: u32 = 23;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -2048,7 +2052,7 @@ macro_rules! visit_refs {
             run_arm!(r) => f(& $($m)? r.level),
             Element::Component(c) => {
                 f(& $($m)? c.level);
-                if let Some(Hosted { host: HostRef::Plane(g), .. }) = & $($m)? c.host { f(g) }
+                if let Some(Hosted { host: HostRef::Plane(g) | HostRef::Face { element: g, .. }, .. }) = & $($m)? c.host { f(g) }
             }
             Element::Railing(r) => {
                 f(& $($m)? r.level);
@@ -6020,7 +6024,7 @@ impl Model {
     }
 
     /// What is amiss in the model but doesn't make it wrong: soft issues, said so they can be fixed. `check` refuses a model;
-    /// these it accepts. A room the walls no longer close; a family of lighting, outlets or switches in use that holds no
+    /// these it accepts. A room the walls no longer close; a component off the face it is hosted on; a family of lighting, outlets or switches in use that holds no
     /// connector, so its devices count as a load of zero (a family of plan symbols alone, a symbol set's, is no device).
     pub fn warnings(&self) -> Vec<String> {
         let rooms = crate::rooms::Rooms::new(self);
@@ -6061,6 +6065,13 @@ impl Model {
                 "family `{n}` has no connector, so its {k} placed device{} count{} as a load of zero: give it one with `family` `connectors`",
                 if k == 1 { "" } else { "s" },
                 if k == 1 { "s" } else { "" }
+            )
+        }));
+        // A face-hosted component its face no longer reaches (Revit's lost association): it keeps to the face's plane.
+        out.extend(self.off_their_faces().into_iter().map(|(id, on)| {
+            format!(
+                "component {id} is off its host's face ({on}): it stays on the face's plane carried on; move it back onto the \
+                 face, or put it on another work plane with `edit_work_plane`"
             )
         }));
         out
@@ -7136,16 +7147,39 @@ impl Model {
                             c.family
                         ));
                     }
-                    match self.elements.get(h.host.guid()) {
-                        Some(Element::RefPlane(_)) => {}
-                        Some(other) => {
+                    match (h.host, self.elements.get(h.host.guid())) {
+                        (HostRef::Plane(_), Some(Element::RefPlane(_))) => {}
+                        (HostRef::Plane(_), Some(other)) => {
                             return Err(format!(
                                 "{who}: its host, {} {}, isn't a reference plane",
                                 other.category(),
                                 self.shown(h.host.guid())
                             ));
                         }
-                        None => return Err(format!("{who}: its host, reference plane {}, doesn't exist", self.shown(h.host.guid()))),
+                        (HostRef::Plane(_), None) => {
+                            return Err(format!("{who}: its host, reference plane {}, doesn't exist", self.shown(h.host.guid())));
+                        }
+                        (HostRef::Face { face, .. }, Some(e)) if face.of(e.category()) => {}
+                        (HostRef::Face { face, .. }, Some(e)) if matches!(e.category(), "wall" | "floor" | "ceiling" | "roof") => {
+                            let has = if e.category() == "wall" { "exterior and interior" } else { "top and bottom" };
+                            return Err(format!(
+                                "{who}: its host, {} {}, has no face `{}` to host on; its faces are {has}",
+                                e.category(),
+                                self.shown(h.host.guid()),
+                                face.name()
+                            ));
+                        }
+                        (HostRef::Face { .. }, Some(e)) => {
+                            return Err(format!(
+                                "{who}: its host, {} {}, has no faces to host on: a component goes on a face of a wall, a floor, \
+                                 a ceiling or a roof",
+                                e.category(),
+                                self.shown(h.host.guid())
+                            ));
+                        }
+                        (HostRef::Face { .. }, None) => {
+                            return Err(format!("{who}: its host, element {}, doesn't exist", self.shown(h.host.guid())));
+                        }
                     }
                     if !f.work_plane_based {
                         return Err(format!(
