@@ -6474,6 +6474,39 @@ fn a_right_click_in_a_plan_opens_a_menu_of_what_the_view_and_the_selection_can_d
 }
 
 #[test]
+fn a_wall_or_a_run_selected_offers_to_refuse_or_take_up_its_joins() {
+    let mut h = app(r#"strip_footing {"points": [[0, 0], [4000, 0]]}"#);
+    let footing = ids(&h, "stripfooting")[0];
+    let joined = |h: &Harness<BimApp>| h.state().session.model.run_of(footing).unwrap().join;
+    click(&mut h, P2(2000.0, 0.0));
+    assert_eq!(h.state().selection, [footing]);
+    let at = h.state().screen(P2(2000.0, 2000.0));
+    let items = offered(&mut h, at, &["Disallow Join", "Allow Join"]);
+    assert!(items.contains(&"Disallow Join") && items.contains(&"Allow Join"), "{items:?}");
+    assert!(joined(&h));
+    // Refused: the flag holds on the element, written only when it is off.
+    choose_item(&mut h, "Disallow Join");
+    assert!(!joined(&h), "the joins are refused");
+    assert_eq!(field(&h, footing, "join"), json!(false));
+    // Taken up again.
+    let at = h.state().screen(P2(2000.0, 2000.0));
+    offered(&mut h, at, &["Disallow Join", "Allow Join"]);
+    choose_item(&mut h, "Allow Join");
+    assert!(joined(&h), "the joins are back");
+    assert_eq!(field(&h, footing, "join"), serde_json::Value::Null, "joining is written nowhere");
+    // A wall offers it too; a room offers nothing.
+    let mut h2 = app(&format!("{BOX}\nroom {{\"point\": [4000, 3000]}}"));
+    click(&mut h2, P2(4000.0, 0.0));
+    let at = h2.state().screen(P2(4000.0, 3000.0));
+    assert!(offered(&mut h2, at, &["Disallow Join"]).contains(&"Disallow Join"));
+    let room = ids(&h2, "room")[0];
+    h2.state_mut().selection = vec![room];
+    h2.run();
+    let at = h2.state().screen(P2(4000.0, 3000.0));
+    assert!(offered(&mut h2, at, &["Disallow Join", "Allow Join"]).is_empty());
+}
+
+#[test]
 fn every_view_has_the_right_click_menu() {
     let mut h = app(&format!(
         "{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}\nroom {{\"point\": [4000, 3000], \"name\": \"Hall\"}}"
