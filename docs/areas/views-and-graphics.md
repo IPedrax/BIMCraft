@@ -59,6 +59,14 @@ The `sheet` command takes a named `size` (A3 by default), landscape: ISO A0–A4
 are case-insensitive and ignore surrounding spaces; ISO aliases have the same margins and folding marks as their bare names. The
 size string is kept in the project file.
 
+A custom `size`, such as `"500x300"` or `"500 × 300"`, is width × height in millimetres, in that order; it is not rotated. `x`, `X`
+or `×` separates two finite numbers, each from 100 to 1219.2 mm inclusive (`MIN_PAPER`, `MAX_PAPER`). The minimum keeps the border
+and title-block frame on the paper; below about 210 mm wide the title block narrows and long sheet names overlap the sheet number.
+The maximum is the ARCH E long side, 48 in: at the sheet drawing's 5 px/mm, a custom page is at most 6096 × 6096 px, below the
+render command's ordinary 8192 px side limit. Sheet images use paper dimensions rather than its width/height parameters. A0 is 5945
+× 4205 px and ARCH E 6096 × 4572 px; longer roll sheets are not supported. `Model::check` refuses malformed or out-of-range
+dimensions on creation and editing alike.
+
 The additional Revit dimensions follow the numerical sizes in the [Revit 2026 ExportPaperFormat
 reference](https://help.autodesk.com/cloudhelp/2026/ENU/Revit-API-MainReference/files/html/9ad6f7ad-a4d2-e471-e8f3-5f5d3c4f7405.htm):
 ARCH E2 26 × 38 in, ARCH E3 27 × 39 in; ISO B1 707 × 1000, B2 500 × 707, B3 353 × 500 and B4 250 × 353 mm. Super B is separate from

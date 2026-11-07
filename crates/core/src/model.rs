@@ -1893,7 +1893,7 @@ impl Facing {
     }
 }
 
-/// A sheet: landscape paper of a named size, with a title block and the views placed on it.
+/// A sheet: named landscape paper or custom width by height in mm, with a title block and views on it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Sheet {
@@ -1902,6 +1902,11 @@ pub struct Sheet {
     pub size: String,
 }
 
+/// Minimum custom paper side in mm: keeps the border and title-block frame on the paper.
+pub const MIN_PAPER: f64 = 100.0;
+/// Maximum custom paper side in mm: the longest named side (ARCH E, 48 in).
+pub const MAX_PAPER: f64 = 1219.2;
+
 /// The ISO aliases also name their bare format in margins and folding marks.
 pub(crate) fn paper_name(size: &str) -> String {
     let upper = size.trim().to_ascii_uppercase();
@@ -1909,7 +1914,7 @@ pub(crate) fn paper_name(size: &str) -> String {
     if matches!(iso, "A0" | "A1" | "A2" | "A3" | "A4" | "B1" | "B2" | "B3" | "B4") { iso.into() } else { upper }
 }
 
-/// The paper a standard size names, landscape: width and height in mm.
+/// Paper width and height in mm: named sizes are landscape; custom `widthxheight` keeps its order.
 pub fn paper(size: &str) -> Option<P2> {
     match paper_name(size).as_str() {
         "A0" => Some(P2(1189.0, 841.0)),
@@ -1937,7 +1942,12 @@ pub fn paper(size: &str) -> Option<P2> {
         "ANSI D" | "ANSID" => Some(P2(863.6, 558.8)),
         "ANSI E" | "ANSIE" => Some(P2(1117.6, 863.6)),
         "SUPER B" | "SUPERB" | "SUPER-B" => Some(P2(482.6, 330.2)),
-        _ => None,
+        custom => {
+            let (width, height) = custom.split_once(['X', '×'])?;
+            let width: f64 = width.trim().parse().ok()?;
+            let height: f64 = height.trim().parse().ok()?;
+            ((MIN_PAPER..=MAX_PAPER).contains(&width) && (MIN_PAPER..=MAX_PAPER).contains(&height)).then_some(P2(width, height))
+        }
     }
 }
 
@@ -7152,7 +7162,7 @@ impl Model {
                 }
                 if paper(&sh.size).is_none() {
                     return Err(format!(
-                        "{who}: size `{}` isn't a paper size: ISO A0–A4 or B1–B4, ARCH A–E or E1–E3, ANSI A–E, or SUPER B",
+                        "{who}: size `{}` isn't a paper size: ISO A0–A4 or B1–B4, ARCH A–E or E1–E3, ANSI A–E, SUPER B, or width x height in mm, {MIN_PAPER} to {MAX_PAPER} a side",
                         sh.size
                     ));
                 }

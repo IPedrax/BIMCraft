@@ -460,7 +460,7 @@ msgstr "Kim thu sét (AT): một kim thu, tại chỗ bạn nhấp trên mái; S
 msgid "Air Terminals"
 msgstr "Kim thu sét"
 
-#: crates/core/src/commands.rs:1111
+#: crates/core/src/commands.rs:1112
 #: crates/ui-egui/src/editor.rs:915
 #: crates/ui-egui/src/lib.rs:349
 #: crates/ui-egui/src/sketch.rs:709
@@ -712,11 +712,11 @@ msgstr "Gán mẫu khung nhìn"
 msgid "Associated Level"
 msgstr "Tầng liên kết"
 
-#: crates/core/src/model.rs:2654
+#: crates/core/src/model.rs:2664
 msgid "At wall centre line"
 msgstr "Tại đường tim tường"
 
-#: crates/core/src/model.rs:2655
+#: crates/core/src/model.rs:2665
 msgid "At wall finish"
 msgstr "Tại mặt hoàn thiện tường"
 
@@ -1010,7 +1010,7 @@ msgstr "Đường biên: phác thảo hình chiếu bằng của mái, trên t�
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Đường biên: phác thảo đường bao của lỗ mở thông tầng"
 
-#: crates/core/src/model.rs:2952
+#: crates/core/src/model.rs:2962
 msgid "Brick"
 msgstr "Gạch"
 
@@ -1080,7 +1080,7 @@ msgstr "Giá trị tính toán…"
 msgid "Came in: {}"
 msgstr "Đã nhập vào: {}"
 
-#: crates/core/src/commands.rs:1673
+#: crates/core/src/commands.rs:1674
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:3848
 #: crates/ui-egui/src/properties.rs:265
@@ -1230,7 +1230,7 @@ msgstr "Tâm"
 msgid "Centre Lines"
 msgstr "Đường tâm"
 
-#: crates/core/src/model.rs:2960
+#: crates/core/src/model.rs:2970
 msgid "Ceramic tile"
 msgstr "Gạch men"
 
@@ -1916,7 +1916,7 @@ msgstr "Thu gọn"
 msgid "Comparison"
 msgstr "So sánh"
 
-#: crates/core/src/commands.rs:1073
+#: crates/core/src/commands.rs:1074
 msgid "Component"
 msgstr "Thành phần"
 
@@ -1936,7 +1936,7 @@ msgstr "Khối ý tưởng"
 msgid "Concrete"
 msgstr "Bê tông"
 
-#: crates/core/src/model.rs:2954
+#: crates/core/src/model.rs:2964
 msgid "Concrete block"
 msgstr "Gạch block bê tông"
 
@@ -2017,11 +2017,11 @@ msgstr "Đã sao chép {} IFC GlobalId."
 msgid "Copied {} rows, tab-separated."
 msgstr "Đã sao chép {} hàng, phân tách bằng tab."
 
-#: crates/core/src/model.rs:2968
+#: crates/core/src/model.rs:2978
 msgid "Copper"
 msgstr "Đồng"
 
-#: crates/core/src/commands.rs:1141
+#: crates/core/src/commands.rs:1142
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4568
 #: crates/ui-egui/src/lib.rs:4618
@@ -2414,7 +2414,7 @@ msgstr "Đã phá dỡ"
 msgid "Demolition"
 msgstr "Phá dỡ"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9571
 msgid "Dependent"
 msgstr "Phụ thuộc"
 
@@ -2560,7 +2560,7 @@ msgstr "Chữ kích thước"
 msgid "Dimension Text Placement:"
 msgstr "Vị trí chữ kích thước:"
 
-#: crates/core/src/commands.rs:1123
+#: crates/core/src/commands.rs:1124
 msgid "Dimension Value"
 msgstr ""
 
@@ -2662,11 +2662,11 @@ msgstr "Nét chấm"
 msgid "Double Door"
 msgstr "Cửa đi hai cánh"
 
-#: crates/core/src/model.rs:2485
+#: crates/core/src/model.rs:2495
 msgid "Double Sliding"
 msgstr "Trượt hai cánh"
 
-#: crates/core/src/model.rs:2483
+#: crates/core/src/model.rs:2493
 msgid "Double Swing"
 msgstr "Mở quay hai chiều"
 
@@ -2919,7 +2919,7 @@ msgstr "Cài đặt điện"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Cài đặt điện: các điện áp, hệ thống phân phối và loại dây mà mạch điện và tủ điện tham chiếu; tiết diện tính bằng mm²"
 
-#: crates/core/src/commands.rs:2039
+#: crates/core/src/commands.rs:2040
 msgid "Elements"
 msgstr "Cấu kiện"
 
@@ -3194,7 +3194,7 @@ msgstr "Vùng tô (FR): phác thảo một vùng tô bằng mẫu, trong khung n
 msgid "Filled region"
 msgstr "Vùng tô"
 
-#: crates/core/src/commands.rs:1210
+#: crates/core/src/commands.rs:1211
 msgid "Fillet Arc"
 msgstr "Cung bo góc"
 
@@ -3302,7 +3302,7 @@ msgstr "Hãy hoàn tất hoặc hủy phác thảo trước khi rời mặt bằ
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "Hãy hoàn tất hoặc hủy phác thảo trước: các đường của mẫu được chọn trên mặt bằng."
 
-#: crates/core/src/model.rs:2487
+#: crates/core/src/model.rs:2497
 msgid "Fixed"
 msgstr "Cố định"
 
@@ -3421,7 +3421,7 @@ msgstr "Thu gọn"
 msgid "Folder for new projects"
 msgstr "Thư mục cho dự án mới"
 
-#: crates/core/src/model.rs:2486
+#: crates/core/src/model.rs:2496
 msgid "Folding"
 msgstr "Gấp"
 
@@ -3660,7 +3660,7 @@ msgstr "Nhóm"
 msgid "Group:"
 msgstr "Nhóm:"
 
-#: crates/core/src/model.rs:2959
+#: crates/core/src/model.rs:2969
 msgid "Gypsum board"
 msgstr "Tấm thạch cao"
 
@@ -4573,7 +4573,7 @@ msgstr "Sàn khối (MF): một sàn tại mỗi tầng mà các khối đã ch�
 msgid "Massing"
 msgstr "Khối tích"
 
-#: crates/core/src/commands.rs:1103
+#: crates/core/src/commands.rs:1104
 msgid "Match Properties"
 msgstr "Sao chép thuộc tính"
 
@@ -4634,7 +4634,7 @@ msgstr "Tối đa"
 msgid "Maximum Riser Height"
 msgstr "Chiều cao bậc đứng tối đa"
 
-#: crates/core/src/commands.rs:1783
+#: crates/core/src/commands.rs:1784
 msgid "Measure"
 msgstr "Đo"
 
@@ -4788,7 +4788,7 @@ msgstr "Sửa đổi tường"
 msgid "Mounting Height"
 msgstr "Chiều cao lắp đặt"
 
-#: crates/core/src/commands.rs:1133
+#: crates/core/src/commands.rs:1134
 msgid "Move"
 msgstr "Di chuyển"
 
@@ -6675,7 +6675,7 @@ msgstr "Mái theo mặt (RB): một mái trên mặt trên của các khối đ�
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Mái theo hình chiếu bằng: nhấp vào trong các tường để lợp mái, trên tầng phía trên"
 
-#: crates/core/src/model.rs:2961
+#: crates/core/src/model.rs:2971
 msgid "Roof tiles"
 msgstr "Ngói"
 
@@ -6724,7 +6724,7 @@ msgstr "Đường phân chia phòng: các đường bao phòng giống như tư�
 msgid "Rose"
 msgstr "Hồng"
 
-#: crates/core/src/commands.rs:1148
+#: crates/core/src/commands.rs:1149
 msgid "Rotate"
 msgstr "Xoay"
 
@@ -6836,7 +6836,7 @@ msgstr "Tỷ lệ: tờ giấy mà khung nhìn này đại diện, 1 : n của m
 msgid "Scan"
 msgstr "Bản quét"
 
-#: crates/core/src/commands.rs:1578
+#: crates/core/src/commands.rs:1579
 msgid "Schedule"
 msgstr "Bảng thống kê"
 
@@ -6866,7 +6866,7 @@ msgstr "Bảng thống kê"
 msgid "Schedules/Quantities (all)"
 msgstr "Bảng thống kê/Khối lượng (tất cả)"
 
-#: crates/core/src/model.rs:2957
+#: crates/core/src/model.rs:2967
 msgid "Screed"
 msgstr "Lớp vữa láng"
 
@@ -7275,7 +7275,7 @@ msgstr "Bỏ qua phiên bản này"
 msgid "Sky"
 msgstr "Xanh da trời"
 
-#: crates/core/src/model.rs:2484
+#: crates/core/src/model.rs:2494
 msgid "Sliding"
 msgstr "Trượt"
 
@@ -7457,7 +7457,7 @@ msgstr "Spline qua các điểm: nhấp các điểm mà nó đi qua; Enter đ�
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Spline: nhấp các điểm điều khiển; Enter để kết thúc"
 
-#: crates/core/src/commands.rs:1190
+#: crates/core/src/commands.rs:1191
 msgid "Split"
 msgstr "Chia"
 
@@ -7665,7 +7665,7 @@ msgstr "Độ trong suốt bề mặt"
 msgid "Surface, {}°"
 msgstr "Bề mặt, {}°"
 
-#: crates/core/src/model.rs:2482
+#: crates/core/src/model.rs:2492
 msgid "Swing"
 msgstr "Mở quay"
 
@@ -8347,7 +8347,7 @@ msgstr "Cắt/Kéo dài một cấu kiện"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Cắt/Kéo dài một cấu kiện: chọn đường cần cắt hoặc kéo dài tới, rồi đường cần thay đổi, trên phần cần giữ"
 
-#: crates/core/src/commands.rs:1164
+#: crates/core/src/commands.rs:1165
 #: crates/ui-egui/src/sketch.rs:712
 #: crates/ui-egui/src/sketch.rs:964
 msgid "Trim/Extend to Corner"
@@ -8531,7 +8531,7 @@ msgstr "Định dạng đơn vị"
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9712
 msgid "Unnamed"
 msgstr "Chưa đặt tên"
 
