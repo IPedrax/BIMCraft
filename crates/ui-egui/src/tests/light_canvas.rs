@@ -60,6 +60,10 @@ impl egui_kittest::TestRenderer for Uploads {
         // Nothing here draws them, and a delta dropped unhandled panics.
         delta.clear();
     }
+
+    fn render(&mut self, _: &egui::Context, _: &egui::FullOutput) -> Result<image::RgbaImage, String> {
+        Err("this renderer only keeps uploads".into())
+    }
 }
 
 /// [`app`], with the pictures it puts in textures kept.

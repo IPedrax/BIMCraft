@@ -26,8 +26,8 @@ mod validate;
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 
 pub use planes::{
-    CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, DATUMS, Face, Frame, MAX_LINES, MAX_PLANES, PlaneRef, REF_LEVEL, RefLine, RefPlane, Reference,
-    datums,
+    CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, DATUMS, Face, Frame, MAX_LINES, MAX_PLANES, PlaneRef, Planes, REF_LEVEL, RefLine, RefPlane,
+    Reference, datums,
 };
 
 /// What a family is: how IFC names its components; a door or a window is hosted in a wall, which
@@ -765,6 +765,8 @@ impl TryFrom<FormIn> for Form {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Family {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adaptive: Option<crate::adaptive::Definition>,
     #[serde(default)]
     pub category: Category,
     /// Which fixture or fitting of its category it is (`wc`, `bend`…), one of [`Category::kinds`]: IFC writes its
@@ -828,6 +830,7 @@ pub struct Family {
 impl Default for Family {
     fn default() -> Family {
         Family {
+            adaptive: None,
             category: Category::default(),
             kind: None,
             ifc: None,
@@ -903,7 +906,8 @@ impl IfcClass {
 }
 
 /// A parameter's value, worked out: a number (yes/no, 1 or 0), or a material's name.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum Val {
     Number(f64),
     Text(String),
@@ -1449,6 +1453,13 @@ impl Family {
                 }
             }
         }
+        if let Some(d) = &mut self.adaptive {
+            for node in
+                d.nodes.iter_mut().filter(|n| n.is_form() && !n.appearance.material.is_empty() && !params.contains(&n.appearance.material))
+            {
+                f(&mut node.appearance.material);
+            }
+        }
         for form in self.forms.iter_mut().filter(|x| !x.material.is_empty() && !params.contains(&x.material)) {
             f(&mut form.material);
         }
@@ -1456,10 +1467,17 @@ impl Family {
 
     /// Parameter `old` named `new` everywhere the family names it: the parameter itself, its types' values, and every
     /// formula and reference to it (the parameters' formulas, the forms' sizes, materials and `visible`, the symbols' sizes,
-    /// `visible` and `{label}` text, the connectors' values). Every part of a family that holds a formula or names a
+    /// `visible` and `{label}` text, the connectors' values, and the adaptive definition's formulas and forms' materials:
+    /// [`crate::adaptive::Definition::rename_parameter`]). Every part of a family that holds a formula or names a
     /// parameter must be walked here, so a rename never leaves one behind: a new such part adds its arm. The library
     /// entry (its GUID) and the components' values are the model's to follow (`Library::renamed`).
     pub fn rename_parameter(&mut self, old: &str, new: &str) {
+        // Adaptive: every formula of its points and forms (what "=" ties to a parameter), and its forms made of a material
+        // parameter.
+        let material = self.material_parameter(old);
+        if let Some(d) = &mut self.adaptive {
+            d.rename_parameter(old, new, material, &|f| renamed_in_formula(f, old, new));
+        }
         let mut expr = |e: &mut Expr| {
             if let Expr::Formula(f) = e {
                 *f = renamed_in_formula(f, old, new);
@@ -1527,6 +1545,14 @@ impl Family {
             out.extend(self.types.values().filter_map(|t| t.get(&p.name)).filter_map(Value::as_str));
         }
         out.extend(self.forms.iter().filter(|f| !self.material_parameter(&f.material)).map(|f| f.material.as_str()));
+        if let Some(d) = &self.adaptive {
+            out.extend(
+                d.nodes
+                    .iter()
+                    .filter(|n| n.is_form() && !self.material_parameter(&n.appearance.material))
+                    .map(|n| n.appearance.material.as_str()),
+            );
+        }
         out.retain(|m| !m.is_empty());
         out
     }
@@ -1541,6 +1567,11 @@ impl Family {
         };
         self.parameters.iter_mut().filter(|p| p.kind == Kind::Material).for_each(|p| swap(&mut p.value));
         self.types.values_mut().flat_map(|t| t.iter_mut()).filter(|(k, _)| params.contains(k)).for_each(|(_, v)| swap(v));
+        if let Some(d) = &mut self.adaptive {
+            for node in d.nodes.iter_mut().filter(|n| n.appearance.material == from && !params.contains(&n.appearance.material)) {
+                node.appearance.material = to.into();
+            }
+        }
         self.forms.iter_mut().filter(|f| f.material == from && !params.contains(&f.material)).for_each(|f| f.material = to.into());
     }
 
@@ -1636,6 +1667,9 @@ impl Family {
     /// what their kinds hold; its types setting only the type parameters no formula works out; its
     /// materials in the library (`has_material`); and every type building.
     pub fn check(&self, has_material: &dyn Fn(&str) -> bool) -> Result<(), String> {
+        if let Some(definition) = &self.adaptive {
+            definition.check()?;
+        }
         for (what, n, most) in [
             ("parameters", self.parameters.len(), MAX_PARAMETERS),
             ("forms", self.forms.len(), MAX_FORMS),
@@ -1760,6 +1794,16 @@ impl Family {
                 .chain(form.axis.iter().flatten().flatten());
             if exprs.any(|e| matches!(e, Expr::Formula(f) if long(f))) {
                 return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
+            }
+        }
+        if let Some(definition) = &self.adaptive {
+            for node in &definition.nodes {
+                if node.is_form()
+                    && !node.appearance.void
+                    && !self.parameters.iter().any(|p| p.name == node.appearance.material && p.kind == Kind::Material)
+                {
+                    material_ok(&node.id, &node.appearance.material)?;
+                }
             }
         }
         for (i, y) in self.symbols.iter().enumerate() {
@@ -1922,7 +1966,15 @@ impl Family {
 
     /// Its visible forms' solids, sized by `values`, less what its voids cut.
     pub fn pieces(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Piece>, String> {
-        self.build(values, &mut HashMap::new(), &mut csg::Meter::default())
+        self.pieces_at(values, None)
+    }
+
+    pub fn pieces_at(&self, values: &BTreeMap<String, Val>, placement: Option<&crate::adaptive::Placement>) -> Result<Vec<Piece>, String> {
+        let mut pieces = self.build(values, &mut HashMap::new(), &mut csg::Meter::default())?;
+        if let Some(definition) = &self.adaptive {
+            pieces.extend(definition.evaluate(values, placement.unwrap_or(&definition.preview)).pieces());
+        }
+        Ok(pieces)
     }
 
     /// The marks of its visible symbols, sized by `values`, in its own axes: an arc as a polyline of short chords, a label

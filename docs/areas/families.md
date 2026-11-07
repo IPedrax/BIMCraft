@@ -99,6 +99,7 @@ for what a pass frees (a family's material, a type's), at most 16 times, on a co
 `Model::remove_entry` is the single place that knows where each kind lives. The desktop's Purge Unused window (`purge.rs`) lists a dry run
 for the kinds checked and runs the same; the Project Browser's Families lists the system types and has the right-click Delete.
 
+Adaptive definitions, frame conventions, context snapshots and replay: [Adaptive families](adaptive-families.md).
 The `family` command works out the whole change before the model is touched (`commands.rs::family`), so reading one costs no undo step
 and a family `Model::check` would refuse never enters it. `family {name}` alone reads: the definition with every form's and symbol's `id`
 and `GUID`, each type's `values` worked out, and `warnings` — no `model_mut()`, no file. Without `name` it lists the project's families
@@ -224,6 +225,11 @@ the sync gives anew (a family loaded twice) takes what is drawn on it along (`Fa
 planes, lines and hosts as they are; its Plane list picks a datum. A connector has no place yet: when it gets `at` and
 `direction` (upstream #269) it takes an optional host too. IFC is unchanged: it writes the forms' triangles.
 
+An adaptive family's work planes are these planes too: a reference point is drawn on a datum, a named plane of the family's own
+or a reference line's face, and keeps it as its Work Plane by `PlaneRef`; the three datums an adaptive definition had of its own
+before are the datum planes, read from an older file by name ([adaptive families](adaptive-families.md)). `Family::hosted_on`,
+`rehost` and `resolve_hosts` follow its points as they follow forms and lines.
+
 ## Family options
 
 A family's options are those of Revit's Family Category and Parameters dialog (`family/options.rs`), each a flat field of
@@ -241,7 +247,8 @@ the family has them and sends them back whole when it saves.
   work plane-based, and the option can't be turned off while a component of the family is on a plane.
 - `default_elevation` (0, mm): the height over its level a component of a family that isn't work plane-based is placed at
   when `component` is given no `offset` (Revit's Default Elevation); finite and within `MAX_COORD`. A component placed keeps
-  its offset, so changing it moves nothing.
+  its offset, so changing it moves nothing. An adaptive one (`Model::placed_by_points`, by `component` or `adaptive_place`)
+  never takes it: Revit places it by its points alone.
 - `cut_with_voids_when_loaded` (off) and `shared` (off) are stored only: a project's voids cutting a component and nested
   families will read them.
 - `cut_in_views`: none, a section cuts the family's forms as its category says (`Category::cut`); `true` or `false`
@@ -302,9 +309,10 @@ its graphics card's copies, sections, bounds, rooms and IFC: upright, turned `an
 isn't level and its family isn't Always Vertical; then it tilts by the least turn that takes the vertical to the plane's
 normal, so on a level plane both are the same and `angle` still turns it about its own z. Tilted, its plan outline is the
 hull of its triangles seen from above and it draws no plan symbols; a hosted component isn't banded by height
-(`derived.rs`), since its family says whether it tilts. Adaptive components, when the adaptive branch merges, take their
-frame from their own points before this and refuse a host (the comments in `component_placement` and `Model::check` mark the
-place). `elements` gives each component's `work_plane` (`Level : Level 1`, `Reference Plane : Ramp`) and `offset_from_host`
+(`derived.rs`), since its family says whether it tilts. Adaptive components (`Model::placed_by_points`: frames of their own, or an adaptive family's
+test placement) take their frame from their own points: `component_placement` places them upright, as before, whatever they
+hold, `settle_hosts` never moves them, and `Model::check` refuses a `host` on one ("adaptive components take their place from
+their points"), so `component` and `edit_work_plane` can't put one on a plane. `elements` gives each component's `work_plane` (`Level : Level 1`, `Reference Plane : Ramp`) and `offset_from_host`
 (its host's offset, or its height over its level), which `modify` also takes; component schedules have Elevation from
 Level, Work Plane and Offset from Host besides Level, its Schedule Level. IFC keeps it in its Schedule Level's storey, its
 `IfcAxis2Placement3D` taking the tilt as its Axis and RefDirection; the project's reference planes aren't exported. FORMAT

@@ -25,6 +25,8 @@ pub(crate) enum Action {
     ZoomOut,
     /// The 3D view's default orientation.
     HomeView,
+    /// The Family Editor on the family of what is selected.
+    EditFamily,
     EditType,
     SelectAllInstances,
     HideElement,
@@ -52,6 +54,7 @@ impl Action {
             Action::ZoomIn => "Zoom In",
             Action::ZoomOut => "Zoom Out",
             Action::HomeView => "Home View",
+            Action::EditFamily => "Edit Family",
             Action::EditType => "Edit Type",
             Action::SelectAllInstances => msg!("Select All Instances"),
             Action::HideElement => "Hide Element",
@@ -139,11 +142,18 @@ impl BimApp {
             if camera {
                 groups.push(vec![Item::new(Action::OpenView, true), Item::new(Action::Delete, true)]);
             } else {
-                groups.push(vec![
+                // A family instance selected: its family, as Revit offers it.
+                let family = self.selection.iter().any(|id| m.elements.get(id).is_some_and(|e| e.family().is_some()));
+                let mut edits = Vec::new();
+                if family {
+                    edits.push(Item::new(Action::EditFamily, true));
+                }
+                edits.extend([
                     Item::new(Action::EditType, self.type_subject().is_some()),
                     Item::new(Action::SelectAllInstances, true),
                     Item::new(Action::Delete, true),
                 ]);
+                groups.push(edits);
                 // Detail lines, regions and notes group; a group comes apart.
                 let groupable = self.selection.iter().all(|id| m.elements.get(*id).is_some_and(bimcraft_core::groups::holds));
                 if groupable || self.group_selected() {
@@ -184,6 +194,11 @@ impl BimApp {
             Action::ZoomIn => self.zoom_view(1.25),
             Action::ZoomOut => self.zoom_view(0.8),
             Action::HomeView => self.home3d(),
+            Action::EditFamily => {
+                if let Some(f) = self.family_in_hand() {
+                    self.edit_family(&f);
+                }
+            }
             Action::EditType => self.edit_type(),
             Action::SelectAllInstances => self.select_all_instances(),
             Action::HideElement => self.hide_selection(false),

@@ -79,8 +79,10 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a GUID) or reporting (`reporting`),
 /// and a family type parameter names its category (`of`); nothing in a file of 17 changes, but a build that reads up to 17
 /// would refuse a new kind ("unknown variant") and leave the rest out as fields it doesn't know, a shared parameter becoming
-/// the family's own and a reporting one one it sets, not say "saved by a newer BIMCraft". 18 is another branch's (adaptive
-/// families), so this one skips it; a file of 18 has nothing of this. 17: a schedule may list several categories
+/// the family's own and a reporting one one it sets, not say "saved by a newer BIMCraft". 18: a family may
+/// be adaptive (`adaptive`: its points, lines and forms) and a component may hold its adaptive points' frames (`adaptive`);
+/// nothing in a file of 17 changes, but a build that reads up to 17 would leave both out as fields it doesn't know and draw
+/// such a family without its forms. 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -122,7 +124,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 20: a family has reference planes (its three datums and its own, `planes`) and reference lines (`lines`), and a form is
 /// drawn on a `host` (one of them) where it named `plane` (xy, xz or yz); a form of 19 on `xz` swept along +y, and its host,
 /// Center (Front/Back), has its normal toward -y, so 19 read by 20 has its `from` and `to` negated (and swapped). A build
-/// of 19 would refuse `host`. (18 is the adaptive families' branch's number, 19 is the family parameters'.)
+/// of 19 would refuse `host`.
 ///
 /// 22: the project has reference planes (`refplane`), and a work plane-based component may be hosted on one (`host`), its
 /// `at` and `offset` following the plane and its family's axes tilted with it; a build of 21 would leave both out and stand
@@ -1601,6 +1603,11 @@ pub struct Run {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Component {
+    /// Frames in component-local coordinates; None uses the definition test placement. A component whose frame comes from
+    /// its adaptive points (this set, or its family adaptive: `Model::placed_by_points`) takes no `host`: `Model::check`
+    /// refuses one, and `Model::component_placement` and `Model::settle_hosts` leave it as its points place it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adaptive: Option<crate::adaptive::Placement>,
     pub family: String,
     #[serde(rename = "type")]
     pub type_name: String,
@@ -3257,12 +3264,39 @@ impl Model {
         }
     }
 
+    /// Adaptive component `c`'s family evaluated on its frames (the family's test placement without frames of its own), in
+    /// its own axes, unmirrored.
+    pub fn component_adaptive_evaluation(&self, c: &Component) -> Result<crate::adaptive::Evaluation, String> {
+        let family = self.families.get(&c.family).ok_or("Unknown family")?;
+        let definition = family.adaptive.as_ref().ok_or("Family is not adaptive")?;
+        let values = family.values(&c.type_name, &c.params)?;
+        Ok(definition.evaluate(&values, c.adaptive.as_ref().unwrap_or(&definition.preview)))
+    }
+
+    /// Component `c`'s own axes in the project: at its point, up its level's elevation and its offset, turned by its angle.
+    pub fn component_axes(&self, c: &Component) -> Result<crate::adaptive::Frame, String> {
+        crate::adaptive::Frame::at([c.at.0, c.at.1, self.elevation(c.level) + c.offset]).transformed([0.; 3], [0., 0., c.angle])
+    }
+
+    /// Adaptive component `c`'s placement in its own axes, a frame for every adaptive point: its own, else the family's
+    /// test placement's, else the point's in the family. None for a component of a family that isn't adaptive.
+    pub fn adaptive_placement(&self, c: &Component) -> Option<crate::adaptive::Placement> {
+        let d = self.families.get(&c.family)?.adaptive.as_ref()?;
+        Some(d.completed(c.adaptive.as_ref().unwrap_or(&d.preview)))
+    }
+
+    /// Adaptive component `c`'s adaptive points in the project, by number: where its grips are and what a placement snaps to.
+    pub fn adaptive_points(&self, c: &Component) -> Vec<(u32, crate::adaptive::Frame)> {
+        let (Some(placement), Ok(axes)) = (self.adaptive_placement(c), self.component_axes(c)) else { return Vec::new() };
+        placement.frames.iter().filter_map(|(n, f)| f.from_local(axes, c.mirrored).ok().map(|f| (*n, f))).collect()
+    }
+
     /// Component `c`'s solids in its own axes, mirrored if it is: each visible form's triangles, its
     /// outline seen from above, from its bottom to its top over its base, what it's made of; none
     /// for one that doesn't build.
     pub fn component_local_pieces(&self, c: &Component) -> Vec<Piece> {
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
-        let Ok(pieces) = f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v)) else { return Vec::new() };
+        let Ok(pieces) = f.values(&c.type_name, &c.params).and_then(|v| f.pieces_at(&v, c.adaptive.as_ref())) else { return Vec::new() };
         if !c.mirrored {
             return pieces;
         }
@@ -3492,9 +3526,9 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
-        // 17 to 19 (a family's parameters: new kinds, groups, shared GUIDs, reporting, a family type's category) has none:
-        // the new fields default, to a family parameter grouped by its kind, which is what a file of 17 holds. (18 is
-        // another branch's number.)
+        // 17 to 18 (adaptive families and components' adaptive frames) has none: a file of 17 holds neither, and both default.
+        // 18 to 19 (a family's parameters: new kinds, groups, shared GUIDs, reporting, a family type's category) has none:
+        // the new fields default, to a family parameter grouped by its kind, which is what a file of 18 holds.
         // 19 to 20: a form's `plane` becomes its `host`, a datum: `xy` Ref. Level and `yz` Center (Left/Right) as they
         // were; `xz` Center (Front/Back), its `from` and `to` negated and swapped (a formula wrapped as `-(…)`), since it
         // swept along +y and the datum's normal is -y, a revolve's angles as they were. Reading the file does it, as it
@@ -3503,6 +3537,13 @@ impl Model {
         if self.format < 20 {
             self.families.values_mut().for_each(crate::family::Family::settle_planes);
         }
+        // The adaptive arm of 18 to 20: an adaptive family's three datums of its own (18, the definition's `Datum`) are the
+        // family's datum planes. A point drawn on one held `"datum": "level" | "front_back" | "left_right"` in its `world`
+        // host; it now names the plane, `"plane": {"plane": guid}` (Ref. Level, Center (Front/Back), Center (Left/Right)),
+        // or a reference line's face. Reading the file does it (`Host::World`'s `plane_or_datum`), so nothing is left to do
+        // here: the point keeps its frame, and each datum plane's frame is the one the datum had, so nothing moves. It takes
+        // no FORMAT of its own: it finishes 18 to 20 on a branch whose files already say 21, which a build of 18 or 19, which
+        // would misread `plane`, refuses as newer.
         // 20 to 21 (Doors > Opening and Windows > Opening, which a view's graphics, a template and the object styles may name,
         // and a symbol's `subcategory`) has none: a file of 20 names neither.
         // 21 to 22 (the project's reference planes, components hosted on them) has none: a file of 21 holds neither. A hosted
@@ -7083,9 +7124,18 @@ impl Model {
                 point(&who, c.at)?;
                 coord(&format!("{who} angle"), c.angle)?;
                 coord(&format!("{who} offset"), c.offset)?;
-                // On a reference plane, only a work plane-based family's component. (An adaptive component, when the
-                // adaptive branch's `adaptive` merges, is placed by its own points: a `host` on one is refused here too.)
+                // On a reference plane, only a work plane-based family's component, and never an adaptive one: it is placed
+                // by its own points.
                 if let Some(h) = &c.host {
+                    if self.placed_by_points(c) {
+                        return Err(format!(
+                            "{who}: it is hosted on {}, and adaptive components take their place from their points (family \
+                             `{}` is adaptive): move its points (`adaptive_move`, `adaptive_place`) instead, or put it on a level \
+                             (`edit_work_plane` with `host` `level`)",
+                            self.work_plane_name(c),
+                            c.family
+                        ));
+                    }
                     match self.elements.get(h.host.guid()) {
                         Some(Element::RefPlane(_)) => {}
                         Some(other) => {
@@ -7110,6 +7160,12 @@ impl Model {
                     coord(&format!("{who} offset from host"), h.offset)?;
                 }
                 self.family_values_ok(&who, &c.family, f, &c.params)?;
+                if let Some(placement) = &c.adaptive {
+                    if f.adaptive.is_none() {
+                        return Err(format!("{who}: adaptive placement requires an adaptive family"));
+                    }
+                    placement.check().map_err(|e| format!("{who}: {e}"))?;
+                }
                 // Its shape, built once for each family, type and values the project's components have.
                 let build = || f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v).and(f.marks(&v))).map(|_| ());
                 let built = match serde_json::to_string(&c.params) {

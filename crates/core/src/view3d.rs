@@ -3622,6 +3622,20 @@ impl Camera {
         add(self.unproject(at), mul(back, z))
     }
 
+    /// The point at pixel `(x, y)` on the plane through `origin` square to `normal`; none where the view is edge-on to it, or
+    /// in perspective where the plane is behind the eye there.
+    pub fn on(&self, at: (f64, f64), origin: P3, normal: P3) -> Option<P3> {
+        let (back, ..) = self.axes();
+        let p = self.unproject(at);
+        let (from, along) = match self.eye() {
+            Some(eye) => (eye, unit(sub(p, eye))),
+            None => (p, back),
+        };
+        let facing = dot(along, normal);
+        let t = dot(sub(origin, from), normal) / facing;
+        (facing.abs() > 1e-9 && t.is_finite() && (self.lens.is_none() || t > 0.0)).then(|| add(from, mul(along, t)))
+    }
+
     /// The model point at pixel `(x, y)` on the plane through the target, square to the view.
     pub fn unproject(&self, (x, y): (f64, f64)) -> P3 {
         let (_, right, up) = self.axes();
