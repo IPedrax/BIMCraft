@@ -26,6 +26,7 @@ mod constraints;
 pub mod crosscheck;
 mod csg;
 pub mod curves;
+pub mod demand;
 pub mod derived;
 pub mod dims;
 pub mod dims3d;
@@ -47,12 +48,22 @@ pub mod fills;
 mod fixtures;
 mod font;
 pub mod geom;
+#[cfg(test)]
+mod georef_tests;
 pub mod gltf;
 pub mod graphics;
 pub mod groups;
 pub mod hydrant;
 pub mod ids;
 pub mod ifc;
+#[cfg(test)]
+mod ifc_colour_tests;
+#[cfg(test)]
+mod ifc_generic_tests;
+#[cfg(test)]
+mod ifc_geometry_tests;
+#[cfg(test)]
+mod ifc_member_tests;
 pub mod import;
 pub mod inquiry;
 pub mod insert;
@@ -65,6 +76,8 @@ pub mod loads;
 pub mod massing;
 pub mod model;
 pub mod nbr5410;
+#[cfg(test)]
+mod openings_past_top_tests;
 #[cfg(test)]
 mod oracle_tests;
 pub mod paint;

@@ -115,7 +115,7 @@ fn the_categories_the_importer_has_no_reader_for_are_listed_with_how_many_the_fi
             p.recs.push(Rec::new(id, -2_009_000)); // rebar, which has no reader
         }
         p.recs.push(Rec { placed: false, ..Rec::new(304, -2_009_000) }); // a rebar type's symbol is no element
-        p.recs.push(Rec::new(310, -2_001_263)); // a site pad
+        p.recs.push(Rec::new(310, -2_003_200)); // an area, which has no body
         // A category the table has no name for is read by its id, as a box: it is not listed as unread.
         p.recs.push(Rec::new(320, -2_009_999));
         let i = import(&p);
@@ -124,7 +124,7 @@ fn the_categories_the_importer_has_no_reader_for_are_listed_with_how_many_the_fi
             left,
             [
                 "3 Structural Rebar left out, the importer has no reader for this category (ids 300, 301, 302)",
-                "1 Site: Pads left out, the importer has no reader for this category (ids 310)",
+                "1 Areas left out, the importer has no reader for this category (ids 310)",
             ],
             "Revit {release}"
         );

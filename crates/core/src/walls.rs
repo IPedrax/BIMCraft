@@ -610,6 +610,26 @@ pub fn heights(m: &Model, w: &Wall) -> (f64, f64) {
     (lo, hi)
 }
 
+/// The sides of the notches wall `id`'s doors and windows cut where they rise past its top, as Revit lets them: a line across
+/// the wall from face to face at each jamb whose head reaches the top there, which a plan seeing the wall from above draws.
+pub fn notches(m: &Model, id: Id) -> Vec<[P2; 2]> {
+    let Some(w) = m.wall(id) else { return Vec::new() };
+    let guid = m.guid(id);
+    let (axis, (ext, int), base) = (Axis::of(w), faces(m, w), m.own_base(w));
+    let mut out = Vec::new();
+    for e in m.lookup().referrers(&guid).filter_map(|k| m.elements.get(k)) {
+        let (Element::Door(o) | Element::Window(o)) = e else { continue };
+        let Some(t) = m.opening_type(e).filter(|_| o.host == guid) else { continue };
+        let head = base + o.sill + t.height;
+        for s in [o.offset - t.width / 2.0, o.offset + t.width / 2.0] {
+            if head >= top_at(m, w, s) - 1e-6 {
+                out.push([axis.at(s, int), axis.at(s, ext)]);
+            }
+        }
+    }
+    out
+}
+
 /// A part of a wall's solid: a ring in plan, from a bottom plane up to a top one; of a curved wall,
 /// with its centre and its centre line's radius.
 #[derive(Debug, PartialEq)]

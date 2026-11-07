@@ -328,6 +328,13 @@ fn same_point(a: [f64; 3], b: [f64; 3]) -> bool {
 }
 
 #[test]
+fn the_window_draws_a_thin_stroke_s_soft_edge_past_a_clip_as_the_kept_triangles_do() {
+    for h in [app(""), bimcraft("")] {
+        assert!(!h.ctx.tessellation_options(|o| o.coarse_tessellation_culling), "style::tessellation");
+    }
+}
+
+#[test]
 fn clicking_the_plan_selects_the_element_drawn_nearest_the_cursor() {
     let mut h = app(SAMPLE);
     let door = find(&h, |e| matches!(e, Element::Door(o) if o.mark == "1"));

@@ -897,7 +897,7 @@ fn a_family_says_which_fixture_it_is_and_ifc_writes_that_predefined_type() {
     assert_eq!(s.model.families["Basin"].kind, None);
     run(&mut s, "family", json!({"name": "Basin", "kind": "laundry"}));
     assert_eq!(s.model.families["Basin"].kind.as_deref(), Some("laundry"));
-    assert_eq!(s.model.families["Basin"].ifc(), ("IFCSANITARYTERMINAL", ".SINK.", None));
+    assert_eq!(s.model.families["Basin"].ifc(), ("IFCSANITARYTERMINAL".into(), ".SINK.".into(), None));
     // A kind its category has no row for is refused, naming the ones it has; one for a category with none, too.
     let e = fails(&mut s, "family", json!({"name": "Basin", "kind": "bend"}));
     assert!(e.contains("wc, lav, sink, laundry, shower, bath, bidet, urinal") && e.contains("`bend`"), "{e}");

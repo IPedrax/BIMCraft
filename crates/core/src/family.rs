@@ -5,6 +5,7 @@
 
 use bimcraft_i18n::{msg, ui_msg};
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
@@ -485,6 +486,9 @@ pub struct Family {
     /// components' predefined type from it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
+    /// The IFC class its components came in from a file as, which a generic family's go back out as.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ifc: Option<IfcClass>,
     #[serde(default)]
     pub parameters: Vec<Parameter>,
     #[serde(default)]
@@ -500,6 +504,57 @@ pub struct Family {
     /// Where it joins a system: an electrical device's load, a switch. At most one is `power`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub connectors: Vec<Connector>,
+}
+
+/// The IFC class a product came in as, which a generic family remembers (BIMCraft has no element for it): the class as STEP
+/// writes it (`IFCPLATE`), its predefined type (`CURTAIN_PANEL`), and the object type that says what it is where its predefined
+/// type is `USERDEFINED` or its type object is named otherwise.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IfcClass {
+    pub class: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predefined: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_type: Option<String>,
+}
+
+/// The longest IFC class or predefined type a family remembers: IFC's longest are half of it.
+pub const MAX_IFC_NAME: usize = 64;
+
+impl IfcClass {
+    /// As IFC writes it: the class and the predefined type in capitals, whatever case they were typed in.
+    pub fn written(mut self) -> IfcClass {
+        self.class = self.class.trim().to_ascii_uppercase();
+        self.predefined = self.predefined.map(|p| p.trim().trim_matches('.').to_ascii_uppercase());
+        self
+    }
+
+    /// Why it isn't one IFC can write, if it isn't: a class `IFC` and capitals or digits, a predefined type of capitals, digits
+    /// and `_`, an object type of text.
+    pub fn check(&self) -> Result<(), String> {
+        let name = |what: &str, v: &str, ok: &dyn Fn(char) -> bool| {
+            let shown: String = v.chars().take(40).collect();
+            if v.is_empty() || v.len() > MAX_IFC_NAME || !v.chars().all(ok) {
+                Err(format!("`ifc` `{what}` `{shown}`: IFC's names are capitals, digits and `_`, up to {MAX_IFC_NAME}"))
+            } else {
+                Ok(())
+            }
+        };
+        name("class", &self.class, &|c| c.is_ascii_uppercase() || c.is_ascii_digit())?;
+        if !self.class.starts_with("IFC") {
+            return Err(format!("`ifc` `class` `{}`: an IFC class starts with `IFC` (`IFCPLATE`)", self.class));
+        }
+        if let Some(p) = &self.predefined {
+            name("predefined", p, &|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')?;
+        }
+        if let Some(o) = &self.object_type
+            && (o.trim().is_empty() || o.chars().count() > MAX_TEXT || o.chars().any(char::is_control))
+        {
+            return Err(format!("`ifc` `object_type`: text of 1 to {MAX_TEXT} characters on one line"));
+        }
+        Ok(())
+    }
 }
 
 /// A parameter's value, worked out: a number (yes/no, 1 or 0), or a material's name.
@@ -1063,11 +1118,29 @@ impl Family {
         Ok(v)
     }
 
-    /// How IFC writes a component of it: [`Category::ifc`], with its kind's predefined type where it says one.
-    pub fn ifc(&self) -> (&'static str, &'static str, Option<&'static str>) {
+    /// How IFC writes a component of it: [`Category::ifc`], with its kind's predefined type where it says one. A generic family
+    /// that remembers the class it came in as writes that class, and its predefined type where IFC4 has it for the class (else
+    /// none defined; nothing for a class with none); a proxy that names it, for a class IFC4 doesn't have.
+    pub fn ifc(&self) -> (Cow<'static, str>, Cow<'static, str>, Option<Cow<'static, str>>) {
+        if let Some(m) = self.remembered() {
+            let object = m.object_type.clone().map(Cow::Owned);
+            return match crate::ifc::classes::class(&m.class) {
+                Some(c) if c.3.is_empty() => (c.0.into(), "".into(), object),
+                Some(c) => {
+                    let p = m.predefined.as_deref().filter(|p| crate::ifc::classes::takes(c, p)).unwrap_or("NOTDEFINED");
+                    (c.0.into(), format!(".{p}.").into(), object)
+                }
+                None => ("IFCBUILDINGELEMENTPROXY".into(), ".USERDEFINED.".into(), Some(object.unwrap_or_else(|| m.class.clone().into()))),
+            };
+        }
         let (class, predefined, object) = self.category.ifc();
         let kind = self.kind.as_deref().and_then(|k| self.category.kinds().iter().find(|(n, _)| *n == k)).map(|(_, t)| *t);
-        (class, kind.unwrap_or(predefined), object)
+        (class.into(), kind.unwrap_or(predefined).into(), object.map(Cow::Borrowed))
+    }
+
+    /// The IFC class it remembers, where it is a generic family: what its components go out as.
+    pub fn remembered(&self) -> Option<&IfcClass> {
+        self.ifc.as_ref().filter(|_| self.category == Category::Generic)
     }
 
     /// Whether it's sound: its parameters named once each, so formulas can say them, and holding
@@ -1102,6 +1175,9 @@ impl Family {
                     format!("`kind` is one of {}, not `{shown}`", names.join(", "))
                 });
             }
+        }
+        if let Some(m) = &self.ifc {
+            m.check()?;
         }
         if self.category.hosted() {
             for name in [WIDTH, HEIGHT] {
