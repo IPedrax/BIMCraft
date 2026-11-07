@@ -362,9 +362,10 @@ Level, Work Plane and Offset from Host besides Level, its Schedule Level. IFC ke
 The desktop's Component tool, placing a work plane-based family, shows Place on Work Plane and a Placement Plane (the plan's
 level, or a reference plane of the project) on its Options Bar, and for any family Rotate after placement, which selects what
 it placed and starts Rotate about its point. Properties shows a work plane-based family's component's Schedule Level,
-Elevation from Level (read only on a plane), Work Plane and Offset from Host (another's, its Level and Height Offset From
-Level as before). The Reference Plane tool (`Tool::ReferencePlane`, reached by Find or Create Similar: Revit's RP waits for
-its name in every language) draws an upright plane through two clicks in plan. Picking a sloped plane in plan, drawing
+Elevation from Level (read only on a plane), Work Plane and Offset from Host; another's, as Revit's level-based ones, its
+Level and Elevation from Level (the same `offset`). The Reference Plane tool (`Tool::ReferencePlane`: RP, the `reference_plane`
+command's alias, as Revit's; Architecture > Datum's Ref Plane, beside Set, where Revit's Work Plane panel has it; Find or
+Create Similar) draws an upright plane through two clicks in plan. Picking a sloped plane in plan, drawing
 planes in sections and the Work Plane dialog (T12) are not here.
 
 ### Place on Face

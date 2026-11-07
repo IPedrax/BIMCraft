@@ -1421,7 +1421,7 @@ impl BimApp {
             Tool::RoomSeparator(_) => Some(msg!("Place Room Separation")),
             Tool::Level => Some(msg!("Place Level")),
             Tool::Grid(_) => Some(msg!("Place Grid")),
-            Tool::ReferencePlane(_) => Some("Place Reference Plane"),
+            Tool::ReferencePlane(_) => Some(msg!("Place Reference Plane")),
             Tool::Dimension(..) | Tool::Angular(_) | Tool::Round(..) => Some(msg!("Place Dimensions")),
             Tool::Text => Some(msg!("Place Text")),
             Tool::DetailGroup => Some(msg!("Place Detail Group")),
@@ -3669,7 +3669,7 @@ impl BimApp {
                 ),
             ],
         );
-        // Datum, and the Work Plane's Set beside its levels and grids.
+        // Datum, and the Work Plane's Set and Ref Plane beside its levels and grids, as Revit's Work Plane panel has them.
         let datum: Tools = &[
             (Icon::Level, "Level", msg!("Level (LL): a new level at an elevation"), Tool::Level),
             (Icon::Grid, "Grid", msg!("Grid (GR): click its two ends"), Tool::Grid(None)),
@@ -3682,6 +3682,11 @@ impl BimApp {
                 }
             }
             self.work_plane_set(ui);
+            let plane = Tool::ReferencePlane(None);
+            let tip = msg!("Reference Plane (RP): click its two ends; work plane-based components are placed on it and move with it");
+            if big_button(ui, Icon::RefPlane, msg!("Ref Plane"), structure::same_tool(&self.tool, &plane), tip).clicked() {
+                self.set_tool(plane);
+            }
         });
     }
 
@@ -4925,8 +4930,8 @@ impl BimApp {
             Tool::Level => "Type the new level's elevation in the Options Bar, then Create.",
             Tool::Grid(None) => msg!("Click to enter the grid's start point."),
             Tool::Grid(Some(_)) => msg!("Click to enter the grid's end point."),
-            Tool::ReferencePlane(None) => "Click to enter the reference plane's start point.",
-            Tool::ReferencePlane(Some(_)) => "Click to enter the reference plane's end point.",
+            Tool::ReferencePlane(None) => msg!("Click to enter the reference plane's start point."),
+            Tool::ReferencePlane(Some(_)) => msg!("Click to enter the reference plane's end point."),
             Tool::Move(None) | Tool::Copy(None) => msg!("Click a base point to measure from."),
             Tool::Move(Some(_)) => msg!("Click where the base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Copy(Some(_)) => msg!("Click where the copy's base point goes, or type a distance and press Enter. Esc cancels."),

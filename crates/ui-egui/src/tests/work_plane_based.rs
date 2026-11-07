@@ -111,3 +111,49 @@ fn place_on_face_in_the_3d_view_puts_it_on_the_wall_face_clicked() {
     assert!((at[1].as_f64().unwrap() + 100.0).abs() < 1.0, "on the wall's outer face: {at}");
     assert!((field(&h, c, "offset").as_f64().unwrap() - 1500.0).abs() < 20.0, "where it was clicked");
 }
+
+#[test]
+fn rp_starts_the_reference_plane_tool_as_revits_does() {
+    let mut h = app(BOX);
+    shortcut(&mut h, "RP");
+    assert!(matches!(h.state().tool, Tool::ReferencePlane(None)), "{:?}", h.state().tool);
+    assert!(h.query_by_label("Modify | Place Reference Plane").is_some());
+    // Keyboard Shortcuts lists it, by its name.
+    assert!(crate::shortcuts().iter().any(|(letters, name)| *letters == "RP" && *name == "Reference Plane"));
+}
+
+#[test]
+fn the_ref_plane_button_stands_beside_set_on_architecture_and_starts_the_reference_plane_tool() {
+    // Wide enough for the whole tab: the button itself, after Set.
+    let mut h = app(BOX);
+    h.set_size(vec2(2400.0, 900.0));
+    h.run();
+    press(&mut h, "Architecture");
+    let (set, rp) = (h.get_by_label("Set").rect(), h.get_by_label("Ref Plane").rect());
+    assert!(rp.left() >= set.right() - 1.0 && (rp.center().y - set.center().y).abs() < 2.0, "beside Set: {set:?} {rp:?}");
+    press(&mut h, "Ref Plane");
+    assert!(matches!(h.state().tool, Tool::ReferencePlane(None)), "{:?}", h.state().tool);
+    // Where the window folds the panel, its list has it.
+    let mut h = app(BOX);
+    press(&mut h, "Architecture");
+    from_list(&mut h, "Datum", "Ref Plane");
+    assert!(matches!(h.state().tool, Tool::ReferencePlane(None)), "{:?}", h.state().tool);
+}
+
+#[test]
+fn properties_show_revits_level_and_elevation_from_level_for_a_component_not_work_plane_based() {
+    let mut h = app(&format!(
+        "{BOX}\nfamily {{\"name\": \"Box\", \"types\": {{\"A\": {{}}}}, \"forms\": [{{\"profile\": [[0, 0], [600, 0], [600, 600], [0, 600]], \"to\": 50}}]}}\n\
+         component {{\"family\": \"Box\", \"at\": [2000, 3000], \"offset\": 450}}"
+    ));
+    let c = *ids(&h, "component").last().unwrap();
+    h.state_mut().selection = vec![c];
+    h.run();
+    assert!(h.query_by_label("Level").is_some());
+    assert!(h.query_by_label("Height Offset From Level").is_none());
+    let elevation = h.get_by_role_and_label(Role::TextInput, "Elevation from Level").value().unwrap_or_default();
+    assert_eq!(elevation, "450", "the same value, under Revit's name");
+    for gone in ["Schedule Level", "Work Plane", "Offset from Host"] {
+        assert!(h.query_by_label(gone).is_none(), "{gone}");
+    }
+}
