@@ -10,6 +10,8 @@ use crate::style::{dialog_row, pal};
 
 const TITLE_HEIGHT: f32 = 30.0;
 const FRAME_MARGIN: f32 = 24.0;
+/// Where a dialog leaves its own minimum height for its `body`, under its content's id.
+const MIN_HEIGHT: &str = "popup-min-height";
 
 pub(crate) struct Modal {
     id: Id,
@@ -57,10 +59,14 @@ impl Modal {
         let (mut close, mut delta) = (false, egui::Vec2::ZERO);
         let response = egui::Modal::new(self.id).area(area).show(ctx, |ui| {
             ui.set_width(self.width.min((ctx.content_rect().width() - FRAME_MARGIN).max(120.0)));
-            // An Area starts with last frame's size. Give scrolling a stable budget on the first frame,
-            // so controls do not shift while a click or a combo-box selection is in progress.
-            ui.set_max_height((ctx.content_rect().height() - FRAME_MARGIN).max(80.0));
-            ui.set_min_height(self.min_height.min((ctx.content_rect().height() - FRAME_MARGIN).max(0.0)));
+            // At most the window less a margin; above that the body scrolls (`body`). At least the dialog's own minimum,
+            // which `body` fills, so its buttons stay at the bottom: never what the area measured last frame, or a dialog
+            // that was once tall would stay tall.
+            let most = (ctx.content_rect().height() - FRAME_MARGIN).max(80.0);
+            ui.set_max_height(most);
+            let least = self.min_height.min((ctx.content_rect().height() - FRAME_MARGIN).max(0.0));
+            ui.set_min_height(least);
+            ui.data_mut(|d| d.insert_temp(ui.id().with(MIN_HEIGHT), least));
             let (bar, _) = ui.allocate_exact_size(vec2(ui.available_width(), TITLE_HEIGHT), Sense::hover());
             ui.painter().rect_filled(bar, 3.0, pal().panel);
             let close_rect = egui::Rect::from_min_max(egui::pos2(bar.right() - TITLE_HEIGHT, bar.top()), bar.right_bottom());
@@ -118,12 +124,16 @@ impl<R> Response<R> {
     }
 }
 
-/// The form scrolls independently of the footer. A dialog's minimum height is filled by its body, so tab changes never
-/// leave its action buttons halfway up the window.
+/// The form scrolls independently of the footer. It is as tall as what it holds, up to what the window leaves it; a
+/// dialog's own minimum height (`Modal::min_height`) is filled by its body, so tab changes never leave its action buttons
+/// halfway up the window. Measured from the dialog's minimum, not from what the dialog's area took last frame
+/// (`ui.min_rect()`), which only ever grew: a dialog sized itself to its tallest moment and kept a blank band above its
+/// buttons after its content shrank.
 pub(crate) fn body<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     let footer = dialog_row(ui) + 12.0;
     let max_height = (ui.ctx().content_rect().height() - FRAME_MARGIN - TITLE_HEIGHT - footer - 12.0).max(40.0);
-    let min_height = (ui.min_rect().bottom() - ui.cursor().top() - footer).clamp(0.0, max_height);
+    let least = ui.data(|d| d.get_temp::<f32>(ui.id().with(MIN_HEIGHT))).unwrap_or(0.0);
+    let min_height = (ui.max_rect().top() + least - ui.cursor().top() - footer).clamp(0.0, max_height);
     ScrollArea::vertical()
         .id_salt("dialog-body")
         .max_height(max_height)
@@ -142,7 +152,11 @@ pub(crate) fn footer<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     let y = ui.cursor().top();
     ui.painter().hline(ui.max_rect().x_range(), y, Stroke::new(1.0, pal().border));
     ui.add_space(8.0);
-    let result = add(ui);
+    // One row's height to lay out in, not what is left of the window: a right-to-left row centred on the cross axis would
+    // otherwise sit halfway down the window's height, and the dialog grow to hold it.
+    let row = vec2(ui.available_width(), dialog_row(ui));
+    let layout = *ui.layout();
+    let result = ui.allocate_ui_with_layout(row, layout, add).inner;
     // Dialogs apply their commands after drawing. Paint the resulting validation message on the next frame,
     // even when the pointer stays on a button that was already hovered.
     if ui.input(|i| i.pointer.any_released() || i.key_pressed(egui::Key::Enter)) {

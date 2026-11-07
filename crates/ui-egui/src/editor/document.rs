@@ -13,6 +13,7 @@ use crate::properties::group_header;
 use crate::ribbon;
 use crate::{big_button, icon_button, tab_button};
 use bimcraft_core::adaptive::{Definition, Evaluated, Plane, PointType, WorkPlane};
+use bimcraft_core::units::Units;
 use egui::{Align2, FontId, Frame, Margin, UiBuilder};
 
 /// What the family document keeps of its own: its history and its preview's size.
@@ -43,6 +44,11 @@ pub(crate) struct State {
     /// The shared families nested in this one that the project already has, defined otherwise, which "Shared Family Already
     /// Loaded" asks about on loading (`exists`). T6 (nested families) works them out; until then only a test puts them here.
     pub(super) shared_nested: Vec<String>,
+    /// Why Family Category and Parameters' Apply or OK was refused, while the draft is as it was then.
+    options_refused: Option<(Draft, String)>,
+    /// What Family Category and Parameters' category list is filtered by, and whether the list has been shown since it opened.
+    category_filter: String,
+    category_shown: bool,
 }
 
 impl Default for State {
@@ -60,6 +66,9 @@ impl Default for State {
             temp: Default::default(),
             loaded_to_close: false,
             shared_nested: Vec::new(),
+            options_refused: None,
+            category_filter: String::new(),
+            category_shown: false,
         }
     }
 }
@@ -81,6 +90,8 @@ pub(super) struct Draft {
     picked: usize,
     /// Its reference planes: drawn and moved in its plans and elevations.
     planes: Vec<RefPlane>,
+    /// Its options: Family Category and Parameters' table, Properties' Other group.
+    options: super::options::OptionsText,
 }
 
 impl Draft {
@@ -96,6 +107,7 @@ impl Draft {
             adaptive: ed.adaptive.clone(),
             picked: ed.picked,
             planes: ed.planes.clone(),
+            options: ed.options.clone(),
         }
     }
 
@@ -110,6 +122,7 @@ impl Draft {
         ed.adaptive = self.adaptive;
         ed.picked = self.picked;
         ed.planes = self.planes;
+        ed.options = self.options;
         // What is selected and no longer there goes from the selection.
         let nodes = ed.adaptive.as_ref().map(|d| d.nodes.iter().map(|n| n.id.clone()).collect::<Vec<_>>()).unwrap_or_default();
         ed.modeller.selection.retain(|id| nodes.contains(id));
@@ -647,10 +660,13 @@ impl BimApp {
                     }
                 }
             }
+            // Last, as Revit's palette lists Other.
+            ui.add_space(6.0);
+            other(ui, &mut ed, self.session.model.units);
             self.family_editor = Some(ed);
             return;
         }
-        if let Some(d) = ed.adaptive.as_mut() {
+        if let Some(d) = ed.adaptive.as_ref() {
             // The type selector's place: what is selected, as Revit names it, or the family.
             let (what, icon) = match selected.as_slice() {
                 [] => (tf("Family: {}", &[&category]), Icon::FamilyEditor),
@@ -673,7 +689,10 @@ impl BimApp {
                             .color(pal().muted),
                     );
                 }
+                other(ui, &mut ed, self.session.model.units);
             }
+        }
+        if let Some(d) = ed.adaptive.as_mut() {
             let mut delete = Vec::new();
             for id in &selected {
                 ui.push_id(id, |ui| {
@@ -994,13 +1013,14 @@ impl BimApp {
     }
 
     /// The dialogs a family document's ribbon opens: Family Types (its types and one table of its parameters: `types_dialog`) and Family
-    /// Category and Parameters (its name, category and, for a door or a window, how it opens). Apply keeps what is typed,
+    /// Category and Parameters (its name, category, options (`options.rs`) and, for a door or a window, how it opens). Apply keeps what is typed,
     /// Cancel puts back what was there when the dialog opened or last applied, OK keeps it and closes the dialog.
     pub(crate) fn document_dialogs(&mut self, ctx: &Context, ed: &mut FamilyEditor, materials: &[String]) {
         // Associate Family Parameter, from a row's "=": a parameter New Parameter makes goes in the family at once, as in Revit.
         ed.associate_dialog(ctx);
         let Some(dialog) = ed.dialog else {
             ed.document.dialog_saved = None;
+            ed.document.category_shown = false;
             return;
         };
         if ed.document.dialog_saved.is_none() {
@@ -1011,46 +1031,13 @@ impl BimApp {
             DocDialog::Category => t("Family Category and Parameters"),
         };
         let base = Arc::clone(&self.session.model);
+        let units = base.units;
         let (mut apply, mut ok, mut cancel) = (false, false, false);
-        let r = Modal::new(UiId::new(("family-dialog", dialog as u8)), title).width(900.0).show(ctx, |ui| {
+        let width = if dialog == DocDialog::Category { 560.0 } else { 900.0 };
+        let r = Modal::new(UiId::new(("family-dialog", dialog as u8)), title).width(width).show(ctx, |ui| {
             crate::popup::body(ui, |ui| match dialog {
                 DocDialog::Types => super::types_dialog::body(ed, ui, &base, materials),
-                DocDialog::Category => {
-                    Grid::new("family-category").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
-                        let l = ui.label(t("Family name"));
-                        ui.add_sized([260.0, ui.spacing().interact_size.y], TextEdit::singleline(&mut ed.name)).labelled_by(l.id);
-                        ui.end_row();
-                        let l = ui.label(t("Category"));
-                        let c = ComboBox::from_id_salt("family-category-list")
-                            .selected_text(category_label(ed.category))
-                            .width(180.0)
-                            .show_ui(ui, |ui| {
-                                for c in CATEGORIES {
-                                    if ui.selectable_label(ed.category == c, category_label(c)).clicked() {
-                                        ed.category = c;
-                                    }
-                                }
-                            });
-                        c.response.labelled_by(l.id);
-                        ui.end_row();
-                        if ed.category.hosted() {
-                            let l = ui.label(t("Operation"));
-                            let shown = ed.operation.map_or(t("(none)"), |op| t(op.label()));
-                            let c = ComboBox::from_id_salt("family-operation").selected_text(shown).width(220.0).show_ui(ui, |ui| {
-                                if ui.selectable_label(ed.operation.is_none(), t("(none)")).clicked() {
-                                    ed.operation = None;
-                                }
-                                for op in Operation::ALL {
-                                    if ui.selectable_label(ed.operation == Some(op), t(op.label())).clicked() {
-                                        ed.operation = Some(op);
-                                    }
-                                }
-                            });
-                            c.response.labelled_by(l.id);
-                            ui.end_row();
-                        }
-                    });
-                }
+                DocDialog::Category => category_body(ed, ui, units),
             });
             crate::popup::footer(ui, |ui| {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -1073,9 +1060,21 @@ impl BimApp {
             ed.refuse_types(why);
             (ok, apply) = (false, false);
         }
+        // Options the `family` command would refuse (an OmniClass number that isn't one), said in the dialog, which stays open.
+        if (ok || apply)
+            && !cancel
+            && dialog == DocDialog::Category
+            && let Some(why) = ed.options_refusal()
+        {
+            ed.document.options_refused = Some((Draft::of(ed), why));
+            (ok, apply) = (false, false);
+        }
         let closing = cancel || r.should_close() || ok;
         if closing {
             ed.types_closed();
+            ed.document.options_refused = None;
+            ed.document.category_filter.clear();
+            ed.document.category_shown = false;
         }
         if cancel || r.should_close() {
             if let Some(saved) = ed.document.dialog_saved.take() {
@@ -1088,6 +1087,92 @@ impl BimApp {
         } else if apply {
             ed.document.dialog_saved = Some(Draft::of(ed));
         }
+    }
+}
+
+/// Family Category and Parameters' body, as Revit's: the family's name; Family Category, the categories in a list under a
+/// filter, the family's picked; Family Parameters, a table of Parameter and Value (its options, `options.rs`, and a door's or a
+/// window's Operation); then what Apply or OK was refused for, or why the draft can't be tried.
+fn category_body(ed: &mut FamilyEditor, ui: &mut Ui, units: Units) {
+    let h = ui.spacing().interact_size.y;
+    Grid::new("family-category").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
+        let l = ui.label(t("Family name"));
+        ui.add_sized([260.0, h], TextEdit::singleline(&mut ed.name)).labelled_by(l.id);
+        ui.end_row();
+    });
+    ui.add_space(8.0);
+    ui.label(RichText::new(t("Family Category")).strong());
+    ui.horizontal(|ui| {
+        let l = ui.label(t("Filter"));
+        let field = TextEdit::singleline(&mut ed.document.category_filter).hint_text(t("Search…"));
+        ui.add_sized([260.0, h], field).labelled_by(l.id);
+    });
+    let filter = ed.document.category_filter.trim().to_lowercase();
+    // The list scrolls to the family's category when the dialog opens.
+    let first = !std::mem::replace(&mut ed.document.category_shown, true);
+    Frame::new().stroke(Stroke::new(1.0, pal().border)).inner_margin(Margin::same(4)).show(ui, |ui| {
+        ScrollArea::vertical().id_salt("family-category-list").max_height(150.0).auto_shrink([false, true]).show(ui, |ui| {
+            ui.with_layout(Layout::top_down_justified(Align::Min), |ui| category_list(ed, ui, &filter, first));
+        });
+    });
+    ui.add_space(8.0);
+    ui.label(RichText::new(t("Family Parameters")).strong());
+    // The table as wide as the dialog: the names' column, the values' the rest.
+    const NAME_W: f32 = 230.0;
+    let value_w = (ui.available_width() - NAME_W - 12.0).max(160.0);
+    Grid::new("family-parameters").num_columns(2).striped(true).spacing(vec2(12.0, 4.0)).min_col_width(NAME_W).show(ui, |ui| {
+        ui.label(RichText::new(t("Parameter")).strong());
+        ui.label(RichText::new(t("Value")).strong());
+        ui.end_row();
+        super::options::rows(ui, &mut ed.options, ed.category, units, "family-category-dialog", value_w);
+        if ed.category.hosted() {
+            let l = ui.label(t("Operation"));
+            let shown = ed.operation.map_or(t("(none)"), |op| t(op.label()));
+            let c = ComboBox::from_id_salt("family-operation").selected_text(shown).width(value_w).show_ui(ui, |ui| {
+                if ui.selectable_label(ed.operation.is_none(), t("(none)")).clicked() {
+                    ed.operation = None;
+                }
+                for op in Operation::ALL {
+                    if ui.selectable_label(ed.operation == Some(op), t(op.label())).clicked() {
+                        ed.operation = Some(op);
+                    }
+                }
+            });
+            c.response.labelled_by(l.id);
+            ui.end_row();
+        }
+    });
+    // Said in the dialog: the view's would be under it.
+    let refused = ed.document.options_refused.as_ref().filter(|(d, _)| *d == Draft::of(ed)).map(|(_, w)| w.clone());
+    if refused.is_none() {
+        ed.document.options_refused = None;
+    }
+    if let Some(p) = refused.or_else(|| ed.problem().map(str::to_string)) {
+        ui.add_space(6.0);
+        ui.label(RichText::new(p).color(pal().error));
+    }
+}
+
+/// Family Category and Parameters' list: the categories `filter` keeps, the family's picked; scrolled to it when the dialog
+/// opens (`first`).
+fn category_list(ed: &mut FamilyEditor, ui: &mut Ui, filter: &str, first: bool) {
+    let mut any = false;
+    for c in CATEGORIES {
+        let label = category_label(c);
+        if !filter.is_empty() && !label.to_lowercase().contains(filter) {
+            continue;
+        }
+        any = true;
+        let r = ui.selectable_label(ed.category == c, &label);
+        if first && ed.category == c {
+            r.scroll_to_me(Some(Align::Center));
+        }
+        if r.clicked() {
+            ed.category = c;
+        }
+    }
+    if !any {
+        ui.label(RichText::new(t("Nothing matches the search.")).color(pal().muted));
     }
 }
 
@@ -1221,6 +1306,14 @@ fn identity(ui: &mut Ui, name: &mut String, category: &str) {
         ui.label(category);
         ui.end_row();
     });
+}
+
+/// The family's Other group in Properties, as Revit's: its options (`options.rs`), edited in the draft. What the `family`
+/// command would refuse of them is why the draft can't be tried, which the view says (Properties, for an adaptive family).
+fn other(ui: &mut Ui, ed: &mut FamilyEditor, units: Units) {
+    let category = ed.category;
+    let w = (ui.available_width() / 2.0 - 16.0).max(60.0);
+    group(ui, msg!("Other"), |ui| super::options::rows(ui, &mut ed.options, category, units, "family-properties-other", w));
 }
 
 /// Where Properties names what it shows, as Revit's type selector does: an icon and the name, on a box of its own.

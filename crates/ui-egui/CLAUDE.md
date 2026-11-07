@@ -16,7 +16,9 @@ startup, tags) is [the desktop](../../docs/areas/desktop.md).
 - **A ribbon tool that drops choices down** goes through `ribbon::choices(ui, &response, open, content)`, not `Popup::menu`: the
   tool may be a row in its panel's list, where a popup of its own would close the list (egui keeps one popup open).
 - **An application dialog** uses `popup::Modal` with a title, `popup::body` for the scrolling form, and `popup::footer` for its
-  bottom actions. Observe the returned `should_close()` so the corner close button and Escape follow Cancel/Close.
+  bottom actions. Observe the returned `should_close()` so the corner close button and Escape follow Cancel/Close. A dialog is as tall as
+  what it holds (at least its `min_height`, at most the window less a margin, the body scrolling past that), measured each
+  frame, so it shrinks when its content does: never size it from what its area took last frame.
 - **A palette or a window** that docks or floats goes through `dock.rs`; settings the user keeps go in `settings.rs`
   (`settings.json`), never in a project.
 - **The 3D view has two painters**: the core's software picture and the card's (`gpu.rs`, `gpu.wgsl`; the design is in
