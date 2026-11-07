@@ -60,6 +60,27 @@ fn two_flats_meeting_at_a_corner_mitre_into_each_other() {
 }
 
 #[test]
+fn a_wall_over_one_of_two_joined_footings_does_not_break_their_mitre() {
+    let plain = session(r#"strip_footing {"points": [[4000, 0], [0, 0], [0, 4000]]}"#);
+    let overlaid = session(
+        r#"strip_footing {"points": [[4000, 0], [0, 0], [0, 4000]]}
+           wall {"points": [[4000, 0], [0, 0]]}"#,
+    );
+    let plain_ids = runs(&plain, "stripfooting");
+    let overlaid_ids = runs(&overlaid, "stripfooting");
+    assert_eq!(plain_ids.len(), 2);
+    assert_eq!(overlaid_ids.len(), 2);
+    for (plain_id, overlaid_id) in plain_ids.into_iter().zip(overlaid_ids) {
+        let expected = outline(&plain, plain_id);
+        let actual = outline(&overlaid, overlaid_id);
+        assert_eq!(actual.len(), expected.len(), "wall above one footing must not add a spurious arm: {actual:?}");
+        for (a, e) in actual.iter().zip(expected) {
+            assert!(near(*a, e), "the supported footing's neighbouring mitre changed: {actual:?}");
+        }
+    }
+}
+
+#[test]
 fn a_flat_ending_on_another_stops_at_its_face() {
     let s = session(
         r#"strip_footing {"points": [[0, 0], [6000, 0]]}

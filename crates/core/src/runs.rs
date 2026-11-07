@@ -269,7 +269,7 @@ fn arms(m: &Model, id: Id, at_end: bool, g: &Geom, index: Option<&walls::Index>)
             })
             .collect(),
     };
-    for (other, o) in near {
+    for &(other, o) in &near {
         if other == id {
             continue;
         }
@@ -311,6 +311,35 @@ fn arms(m: &Model, id: Id, at_end: bool, g: &Geom, index: Option<&walls::Index>)
                 continue;
             }
             let axis = Axis::of(w);
+            // A straight wall directly over a footing at this joint is already represented by that run. Counting
+            // the wall as another arm made the adjoining footing see a through-joint too: the duplicate collinear
+            // arm set `through` and put the node back into the cap, breaking the mitre.
+            if w.arc == 0.0 {
+                let (s, across) = axis.project(node);
+                let tangent = axis.tangent(s);
+                let lies_under_wall = |rg: &Geom| {
+                    let (rlo, rhi) = rg.z_span();
+                    if !(rlo - TOL <= m.top_z(w) && m.base_z(w) - TOL <= rhi) {
+                        return false;
+                    }
+                    let a = P2(rg.a[0], rg.a[1]);
+                    let b = P2(rg.b[0], rg.b[1]);
+                    let (_, a_off) = axis.project(a);
+                    let (_, b_off) = axis.project(b);
+                    let parallel = tangent.cross(rg.along()).abs() <= TOL / axis.length().max(rg.plan_length()).max(TOL);
+                    a_off.abs() <= TOL && b_off.abs() <= TOL && parallel && geom::dist_to_segment(node, a, b) <= rg.width / 2.0 + TOL
+                };
+                let footing_under_wall = lies_under_wall(g)
+                    || near.iter().any(|(_, re)| {
+                        if re.category() != category || !re.run().is_some_and(|r| r.join) {
+                            return false;
+                        }
+                        m.run_geom(re).filter(joinable).is_some_and(|rg| lies_under_wall(&rg))
+                    });
+                if across.abs() <= TOL && footing_under_wall {
+                    continue;
+                }
+            }
             let (ext, int) = walls::faces(m, w);
             if w.start.dist(node) <= TOL {
                 arms.push(wall_arm_at(m, w, 0.0, true, false));
