@@ -2360,10 +2360,77 @@ fn section_base_cancellable(
             grid(&mut d, P2(along, lo - GRID_PAST), P2(along, hi + GRID_PAST), &g.name);
         }
     }
+    // Reference planes square to it (Revit's rule: their normal across the way it looks), their trace dashed green over
+    // the whole frame and named at its end; one it looks straight at, or askew, has none.
+    let look3 = v.looking();
+    let (corner_a, corner_b) = (d.view.mm((0.0, 0.0)), d.view.mm((d.view.width as f32, d.view.height as f32)));
+    let (lo_v, hi_v) =
+        (P2(corner_a.0.min(corner_b.0), corner_a.1.min(corner_b.1)), P2(corner_a.0.max(corner_b.0), corner_a.1.max(corner_b.1)));
+    for plane_id in m.rare("refplane") {
+        if cancelled() {
+            return None;
+        }
+        let Some(Element::RefPlane(rp)) = m.elements.get(plane_id).filter(|_| look.shows(plane_id)) else { continue };
+        let n = rp.frame().z;
+        if (n[0] * look3.0 + n[1] * look3.1).abs() > 1e-6 {
+            continue;
+        }
+        // n·p = n·start over the view's (along, up): a·s + b·z = c.
+        let (a, b) = (n[0] * u.0 + n[1] * u.1, n[2]);
+        let c = n[0] * (rp.start[0] - v.start.0) + n[1] * (rp.start[1] - v.start.1) + n[2] * rp.start[2];
+        let k = a * a + b * b;
+        if k < 1e-12 {
+            continue;
+        }
+        let foot = P2(a * c / k, b * c / k);
+        let along = P2(-b, a) * (1.0 / k.sqrt());
+        let far = 1e7;
+        if let Some((p, q)) = clip(foot - along * far, foot + along * far, lo_v, hi_v) {
+            // Drawn from its lower or left end, so the name sits at the top or the right.
+            let (p, q) = if (q.1 - p.1).abs() > (q.0 - p.0).abs() {
+                if q.1 < p.1 { (q, p) } else { (p, q) }
+            } else if q.0 < p.0 {
+                (q, p)
+            } else {
+                (p, q)
+            };
+            d.owner = Some(plane_id);
+            let (pa, pb) = (d.view.px(p), d.view.px(q));
+            d.stroke(vec![pa, pb], Pen::FINE, REFERENCE_PLANE, Some(vec![10.0, 5.0]), false);
+            // Its name inside the frame, by the end it reaches: the trace runs to the frame's edge.
+            let len = (pb.0 - pa.0).hypot(pb.1 - pa.1).max(1e-3);
+            let dir = ((pb.0 - pa.0) / len, (pb.1 - pa.1) / len);
+            let h = d.px(10.0);
+            let room = ((font::width(&rp.name, h) + d.px(16.0)) * dir.0.abs() + (h + d.px(16.0)) * dir.1.abs()).min(len / 2.0);
+            let short = (pb.0 - dir.0 * room, pb.1 - dir.1 * room);
+            plane_name_px(&mut d, pa, short, &rp.name);
+        }
+    }
+    d.owner = None;
     if cancelled() {
         return None;
     }
     Some(d)
+}
+
+/// A reference plane's name, lettered beyond its end `b` (from `a`), in model points.
+fn plane_name(d: &mut Drawing, a: P2, b: P2, name: &str) {
+    let (pa, pb) = (d.view.px(a), d.view.px(b));
+    plane_name_px(d, pa, pb, name);
+}
+
+/// A reference plane's name, lettered just beyond the end `b` of its trace from `a`, in pixels, in the planes' green.
+fn plane_name_px(d: &mut Drawing, a: (f32, f32), b: (f32, f32), name: &str) {
+    if name.is_empty() {
+        return;
+    }
+    let h = d.px(10.0);
+    let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
+    let dir = ((b.0 - a.0) / len, (b.1 - a.1) / len);
+    let half = font::width(name, h) / 2.0 + d.px(6.0);
+    // Along the trace past its end; for an upright trace, its half height is enough.
+    let reach = half * dir.0.abs() + (h / 2.0 + d.px(6.0)) * dir.1.abs();
+    d.text(name, (b.0 + dir.0 * reach, b.1 + dir.1 * reach), h, REFERENCE_PLANE);
 }
 
 fn section_finish(m: &Model, id: Id, d: Drawing) -> Drawing {
@@ -2908,6 +2975,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 let (a, b) = (P2(rp.start[0], rp.start[1]), P2(rp.end[0], rp.end[1]));
                 if let Some((a, b)) = crop.map_or(Some((a, b)), |[lo, hi]| clip(a, b, lo, hi)) {
                     d.dashed(&[a, b], Pen::FINE, REFERENCE_PLANE, false);
+                    plane_name(&mut d, a, b, &rp.name);
                 }
             }
             // Cropped, a grid stops at the crop's edge, with its bubbles there.
@@ -4624,6 +4692,63 @@ fn path(rings: &[&[(f32, f32)]], closed: bool) -> Option<tiny_skia::Path> {
     pb.finish()
 }
 
+/// `d`'s pixels, row by row as red, green, blue and alpha, drawn on paper or over `under` (a section's picture at its size):
+/// what a front end shows as a texture.
+pub fn rgba(d: &Drawing, under: Option<&view3d::Image>) -> Result<Vec<u8>, String> {
+    let mut pm = match under.filter(|i| i.width == d.view.width && i.height == d.view.height) {
+        Some(i) => picture(i.width, i.height, &i.rgba).ok_or("the image size is out of range")?,
+        None => {
+            let mut pm = Pixmap::new(d.view.width, d.view.height).ok_or("the image size is out of range")?;
+            pm.fill(Color::from_rgba8(PAPER.0, PAPER.1, PAPER.2, 255));
+            pm
+        }
+    };
+    paint(&mut pm, d);
+    Ok(pm.take())
+}
+
+/// A family's floor plan (F4), as Revit's family editor draws it: the project's plan of `level` (`draw`), and over it each
+/// component's forms seen from above whatever their height (a family's plan sees all of it), and where a form crosses the
+/// cut plane, its cut outline in the cut pen ([`crate::family::views::plan_cut`]). Project plans never cut a component.
+pub(crate) fn family_plan(m: &Model, level: Id, view: View) -> Drawing {
+    let mut d = draw(m, level, view);
+    let cut = m.level(level).map_or(crate::model::CUT_HEIGHT, |l| l.view_range.cut);
+    let look = Look::of(m, level);
+    let mut extra = Drawing::new(view);
+    (extra.k, extra.paper, extra.detail, extra.weights) = (d.k, d.paper, d.detail, d.weights);
+    for (&id, e) in m.elements.iter() {
+        let Element::Component(c) = e else { continue };
+        if !look.shows(id) {
+            continue;
+        }
+        let pieces = m.component_pieces(c);
+        extra.owner = Some(id);
+        extra.part(Part::Projection);
+        component(&mut extra, m, &pieces);
+        extra.part(Part::Cut);
+        for p in pieces.iter().filter(|p| p.bottom < cut && p.top > cut) {
+            for ring in crate::family::views::plan_cut(&p.tris, cut) {
+                extra.line(&ring, Pen::CUT, INK, true);
+            }
+        }
+    }
+    extra.owner = None;
+    extra.part(Part::Projection);
+    extra.by_category(|o, sub| style_of(m, o, sub));
+    look.dress(&mut extra);
+    extra.weigh(|o| annotates(m, o));
+    let subs = extra.take_subs();
+    for ((((prim, owner), part), pen), sub) in extra.prims.into_iter().zip(extra.owners).zip(extra.parts).zip(extra.pens).zip(subs) {
+        d.subs.resize(d.prims.len(), None);
+        d.subs.push(sub);
+        d.prims.push(prim);
+        d.owners.push(owner);
+        d.parts.push(part);
+        d.pens.push(pen);
+    }
+    d
+}
+
 pub fn png(d: &Drawing) -> Result<Vec<u8>, String> {
     let mut pm = Pixmap::new(d.view.width, d.view.height).ok_or("the image size is out of range")?;
     pm.fill(Color::from_rgba8(PAPER.0, PAPER.1, PAPER.2, 255));
@@ -5720,5 +5845,59 @@ mod tests {
             _ => false,
         });
         assert!(through, "a run turns the corner");
+    }
+
+    /// The text a drawing letters for element `id`: how many strokes of lettering it owns.
+    fn lettered_by(d: &Drawing, id: Id) -> usize {
+        d.owners.iter().zip(&d.parts).filter(|(o, p)| **o == Some(id) && **p == Part::Text).count()
+    }
+
+    /// F4: a reference plane with a name prints it in plan, beyond its end, as Revit's does; one without prints nothing.
+    #[test]
+    fn a_named_reference_plane_prints_its_name_in_plan() {
+        let mut s = house();
+        let id = |v: serde_json::Value| v["id"].as_u64().unwrap();
+        let named =
+            id(s.execute("reference_plane", &serde_json::json!({"name": "Axis", "start": [2000, -1000], "end": [2000, 7000]})).unwrap());
+        let bare = id(s.execute("reference_plane", &serde_json::json!({"start": [5000, -1000], "end": [5000, 7000]})).unwrap());
+        let level = s.model.levels()[0].0;
+        let d = plan(&s.model, level, 800, 600);
+        assert!(lettered_by(&d, named) > 0, "its name is lettered");
+        assert_eq!(lettered_by(&d, bare), 0, "an unnamed one letters nothing");
+        assert!(drawn_by(&d, bare) > 0, "and is still drawn");
+    }
+
+    /// F4: a section or an elevation draws each reference plane square to it as Revit's do: its trace, dashed in the reference
+    /// planes' green, with its name; one it looks straight at (parallel to it) is not drawn.
+    #[test]
+    fn a_section_draws_the_reference_planes_square_to_it() {
+        let mut s = house();
+        let id = |v: serde_json::Value| v["id"].as_u64().unwrap();
+        let across =
+            id(s.execute("reference_plane", &serde_json::json!({"name": "Across", "start": [3000, -2000], "end": [3000, 8000]})).unwrap());
+        let level = id(s
+            .execute("reference_plane", &serde_json::json!({"name": "Sill", "start": [0, 0, 900], "end": [8000, 0, 900], "up": [0, 1, 0]}))
+            .unwrap());
+        let parallel =
+            id(s.execute("reference_plane", &serde_json::json!({"name": "Along", "start": [0, 3000], "end": [8000, 3000]})).unwrap());
+        let cut = id(s.execute("section", &serde_json::json!({"start": [-1000, 1500], "end": [9000, 1500]})).unwrap());
+        let d = section(&s.model, cut, section_fit(&s.model, cut, 800, 600));
+        let dashed_green = |p: Id| {
+            d.prims
+                .iter()
+                .zip(&d.owners)
+                .any(|(prim, o)| *o == Some(p) && matches!(prim, Prim::Line { dash: Some(_), color, .. } if *color == REFERENCE_PLANE))
+        };
+        assert!(dashed_green(across), "an upright plane across the section: its trace, upright");
+        assert!(dashed_green(level), "a level plane: its trace, level, at its height");
+        assert!(lettered_by(&d, across) > 0 && lettered_by(&d, level) > 0, "each named");
+        assert_eq!(drawn_by(&d, parallel), 0, "a plane the section looks straight at has no trace in it");
+        // The upright one's trace stands at its place along the line, 4000 from its start.
+        let x = d.view.px(P2(4000.0, 0.0)).0;
+        let upright = d.prims.iter().zip(&d.owners).any(|(prim, o)| {
+            *o == Some(across)
+                && matches!(prim, Prim::Line { pts, dash: Some(_), .. } if pts.len() == 2 && (pts[0].0 - x).abs() < 1.0 && (pts[1].0 - x).abs() < 1.0)
+        });
+        assert!(upright, "upright, 4000 along");
     }
 }

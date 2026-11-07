@@ -79,6 +79,8 @@ pub(super) struct Draft {
     symbols: Vec<SymbolText>,
     adaptive: Option<Definition>,
     picked: usize,
+    /// Its reference planes: drawn and moved in its plans and elevations.
+    planes: Vec<RefPlane>,
 }
 
 impl Draft {
@@ -93,6 +95,7 @@ impl Draft {
             symbols: ed.symbols.clone(),
             adaptive: ed.adaptive.clone(),
             picked: ed.picked,
+            planes: ed.planes.clone(),
         }
     }
 
@@ -106,6 +109,7 @@ impl Draft {
         ed.symbols = self.symbols;
         ed.adaptive = self.adaptive;
         ed.picked = self.picked;
+        ed.planes = self.planes;
         // What is selected and no longer there goes from the selection.
         let nodes = ed.adaptive.as_ref().map(|d| d.nodes.iter().map(|n| n.id.clone()).collect::<Vec<_>>()).unwrap_or_default();
         ed.modeller.selection.retain(|id| nodes.contains(id));
@@ -206,6 +210,12 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
     }
     // A form of a family that isn't adaptive, selected.
     if ed.adaptive.is_none() {
+        if ed.editing_2d() && ed.views.drawing.is_some() {
+            return Some(msg!("Modify | Place Reference Plane"));
+        }
+        if ed.selected_plane().is_some() {
+            return Some(msg!("Modify | Reference Planes"));
+        }
         return ed.selected_form().map(|_| msg!("Modify | Form"));
     }
     let d = ed.adaptive.as_ref()?;
@@ -238,7 +248,7 @@ impl BimApp {
     /// The title the window and its title bar give a family document: the family and its view.
     pub(crate) fn family_title(&self) -> Option<String> {
         let ed = self.family_editor.as_ref()?;
-        Some(format!("{} · {}", ed.title(), tf("3D View: {}", &[VIEW])))
+        Some(format!("{} · {}", ed.title(), super::views::view_title(ed.views.shown)))
     }
 
     /// The family document's ribbon: its tabs, then the active tab's panels, folding to fit as the project's do.
@@ -330,8 +340,17 @@ impl BimApp {
                 });
                 ribbon::panel(ui, msg!("Datum"), |ui| {
                     later(ui, Icon::Level, "Level");
-                    later(ui, Icon::Line, msg!("Reference Plane"));
+                    // Drawn in a plan or an elevation of a family that isn't adaptive, as Revit's (F4).
+                    let tip = msg!("Reference Plane (RP): a plane drawn by two clicks in a plan or an elevation");
+                    let on = ed.views.drawing.is_some();
+                    if ui.add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::Line, msg!("Reference Plane"), on, tip)).inner.clicked()
+                    {
+                        ed.reference_plane_tool();
+                    }
                 });
+                if !adaptive && ed.editing_2d() {
+                    views_work_plane_panel(ui, ed);
+                }
                 if adaptive {
                     self.form_panel(ui, ed, &lines);
                     self.test_placement_panel(ui, ed);
@@ -425,8 +444,17 @@ impl BimApp {
                     later_small(ui, Icon::Trim, msg!("Trim/Extend"));
                     later_small(ui, Icon::Split, msg!("Split Element"));
                     let tip = msg!("Delete (DE): what is selected, with what depends on it");
-                    if ui.add_enabled_ui(some || form.is_some(), |ui| big_button(ui, Icon::Delete, "Delete", false, tip)).inner.clicked() {
-                        if let Some(i) = form {
+                    let plane = ed.selected_plane().filter(|g| ed.planes.iter().any(|p| p.guid == *g && !p.datum()));
+                    if ui
+                        .add_enabled_ui(some || form.is_some() || plane.is_some(), |ui| big_button(ui, Icon::Delete, "Delete", false, tip))
+                        .inner
+                        .clicked()
+                    {
+                        if let Some(g) = plane {
+                            if let Err(e) = ed.delete_plane(g) {
+                                self.status = Status { text: e, error: true };
+                            }
+                        } else if let Some(i) = form {
                             ed.forms.remove(i);
                             ed.form = None;
                         } else if let Some(d) = ed.adaptive.as_mut() {
@@ -475,10 +503,13 @@ impl BimApp {
     fn select_and_properties(&mut self, ui: &mut Ui, ed: &mut FamilyEditor) {
         ribbon::panel(ui, msg!("Select"), |ui| {
             let tip = msg!("Modify (MD): select elements");
-            if big_button(ui, Icon::Modify, "Modify", ed.modeller.tool == Draw::Modify, tip).clicked() {
+            if big_button(ui, Icon::Modify, "Modify", ed.modeller.tool == Draw::Modify && ed.views.drawing.is_none(), tip).clicked() {
                 ed.modeller.tool = Draw::Modify;
                 ed.modeller.picking_plane = false;
                 ed.form = None;
+                ed.views.drawing = None;
+                ed.views.picking_plane = false;
+                ed.views.plane = None;
             }
         });
         let shown = self.docking.shown(Palette::Properties);
@@ -566,6 +597,25 @@ impl BimApp {
         let category = category_label(ed.category);
         let selected = ed.modeller.selection.clone();
         let params = ed.parameter_kinds();
+        // A reference plane selected in a plan or an elevation: its name.
+        if let Some(g) = ed.selected_plane() {
+            selector(ui, Icon::Line, t("Reference Plane"));
+            ui.add_space(6.0);
+            if let Some(p) = ed.planes.iter_mut().find(|p| p.guid == g) {
+                let datum = p.datum();
+                group(ui, msg!("Identity Data"), |ui| {
+                    let l = ui.label(t("Name"));
+                    if datum {
+                        ui.label(t(&p.name)).labelled_by(l.id);
+                    } else {
+                        ui.add(TextEdit::singleline(&mut p.name).desired_width(f32::INFINITY)).labelled_by(l.id);
+                    }
+                    ui.end_row();
+                });
+            }
+            self.family_editor = Some(ed);
+            return;
+        }
         // A form selected: its own Properties, as Revit's show only what is selected.
         if let Some(i) = ed.selected_form() {
             selector(ui, Icon::CreateForm, &ed.forms[i].describe());
@@ -681,21 +731,23 @@ impl BimApp {
         ScrollArea::vertical().id_salt("family-browser").auto_shrink([false, false]).show(ui, |ui| {
             Frame::new().inner_margin(8.0).show(ui, |ui| {
                 egui::CollapsingHeader::new(t("Views (all)")).id_salt("family-views").default_open(true).show(ui, |ui| {
-                    let groups: [(&str, &[&str]); 4] = [
-                        (msg!("Floor Plans"), &["Ref. Level"]),
-                        (msg!("Ceiling Plans"), &["Ref. Level"]),
-                        (msg!("3D Views"), &[VIEW]),
-                        (msg!("Elevations"), &["Back", "Front", "Left", "Right"]),
+                    use bimcraft_core::family::views::{Side, Which};
+                    let elevations: Vec<(Option<Which>, &str)> = Side::ALL.iter().map(|s| (Some(Which::Elevation(*s)), s.name())).collect();
+                    type Entries<'a> = Vec<(Option<Which>, &'a str)>;
+                    let groups: [(&str, Entries); 4] = [
+                        (msg!("Floor Plans"), vec![(Some(Which::Plan), "Ref. Level")]),
+                        (msg!("Ceiling Plans"), vec![(Some(Which::Ceiling), "Ref. Level")]),
+                        (msg!("3D Views"), vec![(None, VIEW)]),
+                        (msg!("Elevations"), elevations),
                     ];
+                    let shown = self.family_editor.as_ref().and_then(|ed| ed.views.shown);
                     for (group, views) in groups {
                         egui::CollapsingHeader::new(t(group)).id_salt(("family-views", group)).default_open(true).show(ui, |ui| {
-                            for view in views {
-                                let on = group == msg!("3D Views");
-                                if ui.selectable_label(on, t(view)).clicked() && !on {
-                                    self.status = Status {
-                                        text: t("A family's plans and elevations come with its work planes").into(),
-                                        error: false,
-                                    };
+                            for (which, view) in views {
+                                if ui.selectable_label(shown == which, t(view)).clicked()
+                                    && let Some(ed) = self.family_editor.as_mut()
+                                {
+                                    ed.views.show(which);
                                 }
                             }
                         });
@@ -730,7 +782,13 @@ impl BimApp {
         self.pane = pane;
         let values = ed.values();
         let hidden = ed.adaptive.as_ref().map(|d| ed.temp_hidden(d)).unwrap_or_default();
-        if let Some(d) = ed.adaptive.as_mut() {
+        if let Some(which) = ed.views.shown {
+            // A plan or an elevation (F4): the project's own drawing of the family in a scratch model.
+            let base = Arc::clone(&self.session.model);
+            if let Some(e) = ed.view_2d(ui, &base, which, pane) {
+                self.status = Status { text: e, error: true };
+            }
+        } else if let Some(d) = ed.adaptive.as_mut() {
             ui.scope_builder(UiBuilder::new().max_rect(pane), |ui| {
                 let planes = bimcraft_core::family::Planes { planes: &ed.planes, lines: &ed.lines };
                 adaptive_view::show(ui, d, planes, &mut ed.modeller, &values, pane.size(), &hidden);
@@ -762,7 +820,7 @@ impl BimApp {
         let mut over = ui.new_child(UiBuilder::new().id_salt("family-view-tabs").max_rect(pane));
         let foot = card.show(&mut over, |ui| {
             ui.horizontal(|ui| {
-                crate::tab_button(ui, &format!("{} · {VIEW}", ed.title()), true, false);
+                crate::tab_button(ui, &format!("{} · {}", ed.title(), super::views::view_tab(ed.views.shown)), true, false);
                 if icon_button(ui, Icon::Close, msg!("Close Family")).clicked() {
                     ed.ask.cancel = true;
                 }
@@ -880,7 +938,14 @@ impl BimApp {
     /// What the family document's status bar asks for: an adaptive family's modelling view's tool, or how another's preview turns.
     pub(crate) fn family_prompt(&self) -> Option<&'static str> {
         let ed = self.family_editor.as_ref()?;
-        Some(if ed.adaptive.is_some() { adaptive_view::prompt(&ed.modeller) } else { msg!("Drag the picture to turn it.") })
+        Some(match (ed.views.shown, ed.adaptive.is_some()) {
+            (Some(_), true) => msg!("An adaptive family's plans and elevations show its test placement; model it in {3D}."),
+            (Some(_), false) if ed.views.picking_plane => msg!("Click a reference plane or a datum: the view's work plane."),
+            (Some(_), false) if ed.views.drawing.is_some() => msg!("Click two points: a reference plane through them."),
+            (Some(_), false) => msg!("Click a form or a reference plane to select it; drag a selected plane to move it."),
+            (None, true) => adaptive_view::prompt(&ed.modeller),
+            (None, false) => msg!("Drag the picture to turn it."),
+        })
     }
 
     /// Undo in a family document: one step back through its own history, done when the frame ends; the project's is not touched.
@@ -911,7 +976,14 @@ impl BimApp {
         let Some(ed) = self.family_editor.as_mut() else { return };
         // Escape lets a selected form go, though a button clicked has the keyboard (the window's own Escape does it otherwise).
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            ed.let_form_go();
+            // The plane being drawn first, then the tool, then the selection.
+            if ed.views.picking_plane {
+                ed.views.picking_plane = false;
+            } else if let Some(first) = ed.views.drawing {
+                ed.views.drawing = first.map(|_| None);
+            } else if ed.views.plane.take().is_none() {
+                ed.let_form_go();
+            }
         }
         let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
         if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Z) || pressed(egui::Modifiers::COMMAND, egui::Key::Y) {
@@ -1103,6 +1175,40 @@ fn work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
             ui.add_enabled_ui(false, |ui| crate::stacked_button(ui, Icon::View3D, msg!("Viewer"), false, msg!("Not in BIMCraft yet")));
         });
     });
+}
+
+/// Work Plane in a plan or an elevation of a family that isn't adaptive (F4): Set picks the view's work plane from the
+/// family's planes, as A4's list names them, or by a click on one (Pick); Show tints it. Revit's Work Plane dialog is T12's.
+fn views_work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
+    let listed = ed.plane_set().listed();
+    let now = ed.views.work_plane();
+    let mut chosen = None;
+    ribbon::panel(ui, msg!("Work Plane"), |ui| {
+        let tip = msg!("Set: the view's work plane, a plane picked in the view or from the list");
+        let r = big_button(ui, Icon::PickFaces, msg!("Set"), ed.views.picking_plane, tip);
+        ribbon::choices(ui, &r, false, |ui| {
+            if ui.button(t(PICK)).clicked() {
+                ed.views.picking_plane = true;
+                ui.close();
+            }
+            for (plane, label) in &listed {
+                if ui.selectable_label(now.as_ref() == Some(plane), t(label)).clicked() {
+                    chosen = Some(*plane);
+                    ui.close();
+                }
+            }
+        });
+        crate::stacked(ui, |ui| {
+            let tip = msg!("Show: the view's work plane, tinted");
+            if crate::stacked_button(ui, Icon::Visibility, msg!("Show"), ed.views.show_work_plane, tip).clicked() {
+                ed.views.show_work_plane = !ed.views.show_work_plane;
+            }
+        });
+    });
+    if let Some(p) = chosen {
+        ed.views.set_work_plane(p);
+        ed.views.picking_plane = false;
+    }
 }
 
 /// The family's Identity Data in Properties: its name, typed, and its category.

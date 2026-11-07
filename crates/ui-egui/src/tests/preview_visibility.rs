@@ -11,7 +11,7 @@ pub(super) const CABINET: &str = r#"family {"name": "Cabinet", "category": "gene
 
 /// The last whole picture handed to the harness for each texture: what a renderer would draw, kept to be read.
 #[derive(Clone, Default)]
-pub(super) struct Pictures(Arc<std::sync::Mutex<Vec<(egui::TextureId, egui::ColorImage)>>>);
+pub(super) struct Pictures(pub(super) Arc<std::sync::Mutex<Vec<(egui::TextureId, egui::ColorImage)>>>);
 
 impl egui_kittest::TestRenderer for Pictures {
     fn handle_delta(&mut self, delta: &mut egui::TexturesDelta) {
