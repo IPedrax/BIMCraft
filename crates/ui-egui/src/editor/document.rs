@@ -178,6 +178,10 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         Draw::Line(_) => return Some(msg!("Modify | Place Lines")),
         Draw::Modify | Draw::Move { .. } | Draw::Rotate { .. } => {}
     }
+    // A form of a family that isn't adaptive, selected.
+    if ed.adaptive.is_none() {
+        return ed.selected_form().map(|_| msg!("Modify | Form"));
+    }
     let d = ed.adaptive.as_ref()?;
     let r = d.evaluate(&ed.values(), &d.preview);
     let mut kinds = m.selection.iter().map(|id| match r.values.get(id.as_str()) {
@@ -350,6 +354,7 @@ impl BimApp {
                 ribbon::panel(ui, msg!("Clipboard"), |ui| {
                     later(ui, Icon::Copy, msg!("Paste"));
                 });
+                let form = ed.selected_form();
                 ribbon::panel(ui, msg!("Modify"), |ui| {
                     let some = !ed.modeller.selection.is_empty();
                     for (icon, label) in [(Icon::Align, "Align"), (Icon::Offset, "Offset"), (Icon::MirrorPick, msg!("Mirror - Pick Axis"))]
@@ -394,16 +399,22 @@ impl BimApp {
                     later_small(ui, Icon::Trim, msg!("Trim/Extend"));
                     later_small(ui, Icon::Split, msg!("Split Element"));
                     let tip = msg!("Delete (DE): what is selected, with what depends on it");
-                    if ui.add_enabled_ui(some, |ui| big_button(ui, Icon::Delete, "Delete", false, tip)).inner.clicked()
-                        && let Some(d) = ed.adaptive.as_mut()
-                    {
-                        adaptive_view::delete(d, &mut ed.modeller);
+                    if ui.add_enabled_ui(some || form.is_some(), |ui| big_button(ui, Icon::Delete, "Delete", false, tip)).inner.clicked() {
+                        if let Some(i) = form {
+                            ed.forms.remove(i);
+                            ed.form = None;
+                        } else if let Some(d) = ed.adaptive.as_mut() {
+                            adaptive_view::delete(d, &mut ed.modeller);
+                        }
                     }
                 });
                 ribbon::panel(ui, msg!("Measure"), |ui| {
                     later(ui, Icon::Measure, msg!("Measure"));
                 });
                 if tab == DocTab::Context {
+                    if let Some(i) = ed.selected_form() {
+                        self.form_work_plane_panel(ui, ed, i);
+                    }
                     if !lines.is_empty() {
                         self.form_panel(ui, ed, &lines);
                     }
@@ -441,6 +452,7 @@ impl BimApp {
             if big_button(ui, Icon::Modify, "Modify", ed.modeller.tool == Draw::Modify, tip).clicked() {
                 ed.modeller.tool = Draw::Modify;
                 ed.modeller.picking_plane = false;
+                ed.form = None;
             }
         });
         let shown = self.docking.shown(Palette::Properties);
@@ -528,6 +540,14 @@ impl BimApp {
         let category = category_label(ed.category);
         let selected = ed.modeller.selection.clone();
         let params = ed.parameter_kinds();
+        // A form selected: its own Properties, as Revit's show only what is selected.
+        if let Some(i) = ed.selected_form() {
+            selector(ui, Icon::CreateForm, &ed.forms[i].describe());
+            ui.add_space(6.0);
+            self.form_properties(ui, &mut ed, i);
+            self.family_editor = Some(ed);
+            return;
+        }
         if ed.adaptive.is_none() {
             let materials: Vec<String> = self.session.model.materials.keys().cloned().collect();
             selector(ui, Icon::FamilyEditor, &tf("Family: {}", &[&category]));
@@ -627,6 +647,7 @@ impl BimApp {
     /// The family document's Project Browser: its views, as a family template has them, and the forms of a family that isn't
     /// adaptive, each opening its Properties.
     pub(crate) fn family_browser(&mut self, ui: &mut Ui) {
+        let picked = self.family_editor.as_ref().and_then(FamilyEditor::selected_form);
         let forms: Vec<String> = match &self.family_editor {
             Some(ed) if ed.adaptive.is_none() => ed.forms.iter().enumerate().map(|(i, f)| format!("{}. {}", i + 1, f.describe())).collect(),
             _ => Vec::new(),
@@ -657,11 +678,14 @@ impl BimApp {
                 if !forms.is_empty() {
                     egui::CollapsingHeader::new(t("Forms")).id_salt("family-forms").default_open(true).show(ui, |ui| {
                         for (i, form) in forms.iter().enumerate() {
-                            if ui.selectable_label(false, form).clicked()
+                            if ui.selectable_label(picked == Some(i), form).clicked()
                                 && let Some(ed) = self.family_editor.as_mut()
                             {
+                                // Selected, as Revit's browser selects what it lists; its own row in the Forms tab opens for
+                                // when it is let go.
                                 ed.tab = Tab::Forms;
                                 ed.document.reveal = Some(i);
+                                ed.form = Some(i);
                             }
                         }
                     });
@@ -689,7 +713,11 @@ impl BimApp {
                 self.status = Status { text: e, error: true };
             }
         } else {
-            let response = ui.interact(pane, UiId::new("family-preview"), Sense::drag());
+            let response = ui.interact(pane, UiId::new("family-preview"), Sense::click_and_drag());
+            // A click in the view lets the selected form go, as a click on nothing does in Revit.
+            if response.clicked() {
+                ed.form = None;
+            }
             ed.document.preview_size = [pane.width().clamp(64.0, 1600.0) as u32, pane.height().clamp(64.0, 1200.0) as u32];
             let orbit = response.dragged_by(PointerButton::Primary)
                 || (response.dragged_by(PointerButton::Middle) && ui.input(|i| i.modifiers.shift));
@@ -744,6 +772,7 @@ impl BimApp {
     /// The family document's Options Bar: the contextual tab's name; drawing, Revit's Placement Plane; with lines selected, the
     /// depth Create Form gives a solid or a void.
     pub(crate) fn family_options(&mut self, ui: &mut Ui) -> bool {
+        let units = self.session.model.units;
         let Some(ed) = self.family_editor.as_mut() else { return false };
         let Some(name) = context(ed) else { return false };
         let values = ed.values();
@@ -777,6 +806,15 @@ impl BimApp {
                 ui.separator();
                 let l = ui.label(t("Depth (mm)"));
                 ui.add(egui::DragValue::new(&mut ed.modeller.depth).speed(5.).range(1.0..=100_000.0)).labelled_by(l.id);
+            }
+            // A selected extrusion's Depth, as Revit's Options Bar has it.
+            if let Some(i) = ed.selected_form()
+                && let Some(f) = ed.forms.get_mut(i)
+                && !f.revolve
+                && !f.mesh()
+            {
+                ui.separator();
+                super::extrusion::depth(ui, units, f, &values);
             }
         });
         true
@@ -813,6 +851,10 @@ impl BimApp {
         let Some(ed) = self.family_editor.as_mut() else { return };
         if ed.modal() || ctx.text_edit_focused() {
             return;
+        }
+        // Escape lets a selected form go, though a button clicked has the keyboard (the window's own Escape does it otherwise).
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            ed.let_form_go();
         }
         let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
         if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Z) || pressed(egui::Modifiers::COMMAND, egui::Key::Y) {

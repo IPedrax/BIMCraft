@@ -2649,6 +2649,12 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
+        // A form selected in a family document goes first.
+        if let Some(ed) = self.family_editor.as_mut()
+            && ed.let_form_go()
+        {
+            return;
+        }
         // Pick in View goes back to its dialog.
         if self.stop_work_plane_pick() {
             return;

@@ -236,7 +236,7 @@ fn family_browser_scrolls_to_forms_in_a_short_window() {
     h.get_by_label("1. Extrusion").scroll_to_me();
     h.run();
     press(&mut h, "1. Extrusion");
-    assert!(h.query_by_label("Form From 1").is_some(), "a form below the views can be reached and selected from the browser");
+    assert!(h.query_by_label("Extrusion Start").is_some(), "a form below the views can be reached and selected from the browser");
 }
 
 #[test]

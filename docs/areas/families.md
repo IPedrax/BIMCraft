@@ -98,6 +98,18 @@ prepare a private `Session`, so saving never implicitly loads the draft into the
 `Session` of its own; errors appear inside the document or its dialog. Connectors, reference planes and lines, form hosts,
 parameter metadata and symbols remain in the draft even when their dedicated tools are not yet available.
 
+A form selected in the document (from the Project Browser's Forms list, or Select in the Forms tab; Escape, a click in the view or
+Modify lets it go) shows its own Properties in place of the family's tabs, as Revit's do for an Extrusion (`editor/extrusion.rs`):
+Constraints (Extrusion End and Start in the project's units, each with `=`, a revolve's angles instead; the Work Plane, read-only,
+named as `Planes::listed` names it), Graphics (Visible with `=`; Visibility/Graphics Overrides is F8's and shows greyed), Materials
+and Finishes (Material with `=`) and Identity Data (Solid/Void). A value tied to a parameter or worked out by a formula is greyed. The
+contextual tab is "Modify | Form", with Delete and Edit Work Plane, which drops down the family's planes; the Options Bar shows
+Depth (End less Start: typed, Start stays and End moves; greyed while End is tied). Edits go to the draft and its history. Solid/Void
+and Edit Work Plane run `family` (its `form` patch) and `edit_work_plane` on a private session holding the draft, as Save Family
+does, and take the form back with the id and GUID it had: the form moves with the plane. Sketch mode (Edit Extrusion, Finish and
+Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's, Revit's Work Plane dialog T12's, Visibility Settings F8's;
+the 3D preview does not highlight the form selected.
+
 Expression-valued form and symbol properties (their numbers, Visible and a form's Material) offer `=` (`editor/association.rs`),
 which opens the Associate Family Parameter an adaptive element's rows open (`adaptive_editor::associate`, through the `Tied`
 trait; `Field::Form` and `Field::Symbol` name the row). It lists family parameters of the property's kind and can create a

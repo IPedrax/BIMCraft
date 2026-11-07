@@ -54,14 +54,14 @@ fn a_forms_visible_tied_to_a_yes_no_parameter_through_equals_greys_its_tick() {
     h.set_size(vec2(1800.0, 900.0));
     h.state_mut().edit_family("Cabinet");
     h.run();
-    // The second form, picked in the Project Browser, opens in Properties.
+    // The second form, picked in the Project Browser, is selected: Properties show its own rows (T11).
     press(&mut h, "Symbols");
     h.get_by_label("2. Extrusion").scroll_to_me();
     h.run();
     press(&mut h, "2. Extrusion");
     // Tied to Show Top: greyed, ticked as type A has it.
-    assert!(disabled(&h, "Form Visible 2"), "tied, the tick takes no clicks");
-    assert!(ticked(&h, "Form Visible 2"));
+    assert!(disabled(&h, "Visible"), "tied, the tick takes no clicks");
+    assert!(ticked(&h, "Visible"));
     let equals = "Associate Family Parameter: Visible";
     // Properties scrolls: the row is brought into view before its "=" is pressed.
     let press_equals = |h: &mut Harness<BimApp>| {
@@ -73,17 +73,17 @@ fn a_forms_visible_tied_to_a_yes_no_parameter_through_equals_greys_its_tick() {
     press_equals(&mut h);
     press(&mut h, "<None>");
     press_near(&mut h, "OK", "<None>");
-    assert!(!disabled(&h, "Form Visible 2") && ticked(&h, "Form Visible 2"));
+    assert!(!disabled(&h, "Visible") && ticked(&h, "Visible"));
     // A click hides it in every type.
-    h.get_by_label("Form Visible 2").scroll_to_me();
+    h.get_by_label("Visible").scroll_to_me();
     h.run();
-    press(&mut h, "Form Visible 2");
-    assert!(!ticked(&h, "Form Visible 2"));
+    press(&mut h, "Visible");
+    assert!(!ticked(&h, "Visible"));
     // "=" again, Show Top, OK: tied once more, greyed.
     press_equals(&mut h);
     press_near(&mut h, "Show Top", "<None>");
     press_near(&mut h, "OK", "<None>");
-    assert!(disabled(&h, "Form Visible 2") && ticked(&h, "Form Visible 2"));
+    assert!(disabled(&h, "Visible") && ticked(&h, "Visible"));
     press(&mut h, "Load into Project");
     let f = &h.state().session.model.families["Cabinet"];
     assert_eq!(f.forms[1].visible, Some(bimcraft_core::family::Expr::Formula("Show Top".into())));
