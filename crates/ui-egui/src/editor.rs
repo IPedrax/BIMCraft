@@ -6,6 +6,7 @@ mod association;
 pub(crate) mod document;
 pub(crate) mod exists;
 mod extrusion;
+mod types_dialog;
 
 use crate::popup::Modal;
 
@@ -411,8 +412,8 @@ pub(crate) struct FamilyEditor {
     options: Value,
     /// The Properties palette's tab, for a family that isn't adaptive: its forms, its symbols, or making it adaptive.
     pub(crate) tab: Tab,
-    /// Family Types' tab: the parameters, or the types.
-    pub(crate) types_tab: TypesTab,
+    /// What Family Types keeps while it is open: its search, the groups folded, the row selected, its own dialogs.
+    types_dialog: types_dialog::TypesDialog,
     /// The type shown in Types and on the preview.
     picked: usize,
     /// How the preview looks at it: azimuth and elevation, degrees.
@@ -487,13 +488,6 @@ pub(crate) enum Tab {
     Adaptive,
 }
 
-/// Family Types' tabs.
-#[derive(Clone, Copy, PartialEq)]
-pub(crate) enum TypesTab {
-    Parameters,
-    Types,
-}
-
 impl FamilyEditor {
     /// Its reference planes and lines, as the family has them: what an adaptive point's work plane is worked out from.
     pub(crate) fn plane_set(&self) -> bimcraft_core::family::Planes<'_> {
@@ -529,7 +523,7 @@ impl FamilyEditor {
             operation: f.operation,
             options: f.options_json(),
             tab: Tab::Forms,
-            types_tab: TypesTab::Parameters,
+            types_dialog: Default::default(),
             picked: 0,
             look: (AZIMUTH, ELEVATION),
             preview: None,
@@ -708,6 +702,14 @@ impl FamilyEditor {
                 // A type that's gone from the editor goes from the family: `types` merge into the family's.
                 for gone in project.families.get(was).iter().flat_map(|f| f.types.keys()).filter(|k| !family.types.contains_key(*k)) {
                     p["types"][gone] = Value::Null;
+                }
+                // And a value gone from a type that stays (a parameter renamed, deleted or no longer the type's) goes too.
+                for (name, set) in project.families.get(was).iter().flat_map(|f| f.types.iter()) {
+                    if let Some(now) = family.types.get(name) {
+                        for gone in set.keys().filter(|k| !now.contains_key(*k)) {
+                            p["types"][name][gone] = Value::Null;
+                        }
+                    }
                 }
             }
             None => p["name"] = json!(self.name.trim()),
@@ -909,145 +911,6 @@ fn computed(ui: &mut Ui, label: String, kind: Holds, value: Option<&bimcraft_cor
     let r =
         ui.add_enabled_ui(false, |ui| ui.add_sized([width, ui.spacing().interact_size.y], TextEdit::singleline(&mut text).id_salt(&label)));
     r.inner.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, false, label.as_str()));
-}
-
-fn parameters_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
-    // What the type previewed comes to: a value a formula works out is shown, greyed.
-    let values = ed.values();
-    if ed.category.hosted() {
-        let note = t("A door or a window needs lengths named Width and Height; its formulas can read Wall Thickness, the wall's.");
-        ui.label(RichText::new(note).color(pal().muted));
-    }
-    let mut remove = None;
-    Grid::new("fe-params").num_columns(6).striped(true).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
-        for h in ["Name", msg!("Kind"), msg!("Instance"), "Value", "Formula", ""] {
-            ui.label(RichText::new(t(h)).color(pal().muted));
-        }
-        ui.end_row();
-        for (i, p) in ed.params.iter_mut().enumerate() {
-            let n = i + 1;
-            field(ui, format!("{} {n}", t("Parameter Name")), &mut p.name, 130.0);
-            ComboBox::from_id_salt(("fe-param-kind", i)).selected_text(t(kind_name(p.kind))).width(84.0).show_ui(ui, |ui| {
-                for k in KINDS {
-                    ui.selectable_value(&mut p.kind, k, t(kind_name(k)));
-                }
-            });
-            let r = ui.checkbox(&mut p.instance, "");
-            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, p.instance, format!("{} {n}", t("Parameter Instance"))));
-            match p.kind {
-                _ if !p.formula.trim().is_empty() => {
-                    computed(ui, format!("{} {n}", t("Parameter Value")), p.kind, values.get(p.name.trim()), 90.0);
-                }
-                Holds::YesNo => {
-                    let mut on = p.value == "1";
-                    let r = ui.checkbox(&mut on, "");
-                    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, format!("{} {n}", t("Parameter Value"))));
-                    p.value = (if on { "1" } else { "0" }).into();
-                }
-                Holds::Material => {
-                    let mut options = vec![String::new()];
-                    options.extend(materials.iter().cloned());
-                    if let Some(m) = pick(ui, format!("{} {n}", t("Parameter Value")), &p.value, &options) {
-                        p.value = m;
-                    }
-                }
-                _ => field(ui, format!("{} {n}", t("Parameter Value")), &mut p.value, 90.0),
-            }
-            field(ui, format!("{} {n}", t("Parameter Formula")), &mut p.formula, 150.0);
-            if ui.small_button(t("Delete")).clicked() {
-                remove = Some(i);
-            }
-            ui.end_row();
-        }
-    });
-    if let Some(i) = remove {
-        ed.params.remove(i);
-    }
-    if ui.button(t("Add Parameter")).clicked() {
-        let name = (1..).map(|k| format!("{} {k}", t("Parameter"))).find(|n| !ed.params.iter().any(|p| p.name == *n)).unwrap_or_default();
-        ed.params.push(ParamText {
-            original: Parameter::default(),
-            name,
-            kind: Holds::Length,
-            instance: false,
-            value: "0".into(),
-            formula: String::new(),
-        });
-    }
-}
-
-fn types_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
-    ed.picked = ed.picked.min(ed.types.len().saturating_sub(1));
-    ui.horizontal(|ui| {
-        let names: Vec<String> = ed.types.iter().map(|(n, _)| n.clone()).collect();
-        let now = names.get(ed.picked).cloned().unwrap_or_default();
-        if let Some(n) = pick(ui, t("Type").to_string(), &now, &names)
-            && let Some(i) = names.iter().position(|x| *x == n)
-        {
-            ed.picked = i;
-        }
-        if ui.button(t("Add Type")).clicked() {
-            let name = (1..).map(|k| format!("{} {k}", t("Type"))).find(|n| !names.contains(n)).unwrap_or_default();
-            ed.types.push((name, BTreeMap::new()));
-            ed.picked = ed.types.len() - 1;
-        }
-        if ui.button(t("Duplicate Type")).clicked()
-            && let Some((n, set)) = ed.types.get(ed.picked).cloned()
-        {
-            let name = (2..).map(|k| format!("{n} {k}")).find(|x| !names.contains(x)).unwrap_or_default();
-            ed.types.push((name, set));
-            ed.picked = ed.types.len() - 1;
-        }
-        if ui.add_enabled(ed.types.len() > 1, egui::Button::new(t("Delete Type"))).clicked() {
-            ed.types.remove(ed.picked);
-        }
-    });
-    // Each type parameter, and whether a formula works it out: shown then, greyed, as what the type comes to.
-    let own: Vec<(String, Holds, bool)> = ed
-        .params
-        .iter()
-        .filter(|p| !p.instance && !p.original.reporting)
-        .map(|p| (p.name.clone(), p.kind, !p.formula.trim().is_empty()))
-        .collect();
-    let values = ed.values();
-    let Some((name, set)) = ed.types.get_mut(ed.picked) else { return };
-    ui.add_space(4.0);
-    Grid::new("fe-type").num_columns(2).spacing(vec2(12.0, 5.0)).show(ui, |ui| {
-        ui.label(t("Type Name"));
-        field(ui, t("Type Name").to_string(), name, 200.0);
-        ui.end_row();
-        for (param, kind, driven) in &own {
-            ui.label(param);
-            let label = format!("{} {param}", t("Type Value"));
-            if *driven {
-                computed(ui, label, *kind, values.get(param.trim()), 120.0);
-                ui.end_row();
-                continue;
-            }
-            let text = set.entry(param.clone()).or_default();
-            match kind {
-                Holds::YesNo => {
-                    // Blank is the family's; a tick or a clear is the type's own.
-                    let mut on = text == "1";
-                    let r = ui.checkbox(&mut on, "");
-                    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, label.as_str()));
-                    if r.changed() {
-                        *text = (if on { "1" } else { "0" }).into();
-                    }
-                }
-                Holds::Material => {
-                    let mut options = vec![String::new()];
-                    options.extend(materials.iter().cloned());
-                    if let Some(m) = pick(ui, label, text, &options) {
-                        *text = m;
-                    }
-                }
-                _ => field(ui, label, text, 120.0),
-            }
-            ui.end_row();
-        }
-    });
-    ui.label(RichText::new(t("A blank value is the family's own, as the Parameters tab has it.")).color(pal().muted));
 }
 
 /// A form's or a symbol's Visible row, as Revit's Properties have it: a tick, and "=" at its end to tie it to a yes/no parameter;

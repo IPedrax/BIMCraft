@@ -5686,18 +5686,18 @@ fn the_family_editor_edits_a_family_says_what_wont_build_and_starts_a_new_one_of
     press(&mut h, "Manage");
     press(&mut h, "Edit Family");
     assert!(h.state().family_editor.is_some(), "the window is open on the table's family");
-    // The table's parameters, a row each: its fourth is its top's thickness, 40 mm.
+    // The table's parameters, a row each: its top's Thickness, 40 mm, here the first type's, 1200 x 800.
     press(&mut h, "Family Types");
-    type_into(&mut h, "Parameter Value 4", "55");
+    type_into(&mut h, "Parameter Value Thickness", "55");
     press(&mut h, "OK");
     press(&mut h, "Load into Project");
     // The project has the table otherwise: its values too, as they were typed.
     press(&mut h, "Overwrite the existing version and its parameter values");
-    let thickness = |h: &Harness<BimApp>| h.state().session.model.families["Table"].parameters[3].value.clone();
+    let thickness = |h: &Harness<BimApp>| h.state().session.model.families["Table"].types["1200 x 800"]["Thickness"].clone();
     assert_eq!(thickness(&h), json!(55.0));
-    // A formula naming what isn't there is said, in the window; the project's family is as it was.
+    // A formula naming what isn't there is refused, said in the window; the project's family is as it was.
     press(&mut h, "Family Types");
-    type_into(&mut h, "Parameter Formula 4", "Nope + 1");
+    type_into(&mut h, "Parameter Formula Thickness", "Nope + 1");
     press_near(&mut h, "Apply", "Cancel");
     assert!(h.state().status.text.is_empty(), "the window says it itself: a box over the view's corner would lie on its buttons");
     assert_eq!(h.query_all_by_label_contains("Nope").count(), 1, "the window says what's wrong, once");
@@ -6813,4 +6813,5 @@ mod background_grid;
 mod extrusion_properties;
 mod family_already_exists;
 mod family_document;
+mod family_types_dialog;
 mod preview_visibility;

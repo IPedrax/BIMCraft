@@ -56,9 +56,8 @@ fn preview(h: &Harness<BimApp>, pictures: &Pictures) -> egui::ColorImage {
 /// Type `name` previewed, picked in Family Types.
 fn preview_type(h: &mut Harness<BimApp>, name: &str) {
     press(h, "Family Types");
-    press_near(h, "Types", "Parameters");
-    press(h, "Type");
-    press_near(h, name, "Type");
+    press(h, "Type Name");
+    press_near(h, name, "Type Name");
     press(h, "OK");
 }
 

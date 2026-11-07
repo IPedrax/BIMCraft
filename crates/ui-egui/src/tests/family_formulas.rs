@@ -26,20 +26,16 @@ fn family_types_greys_a_value_a_formula_works_out_showing_what_the_type_comes_to
     h.state_mut().edit_family("Cabinet");
     h.run();
     press(&mut h, "Family Types");
-    // Parameters: Height is worked out, so its value is shown, greyed, as type A comes to; Width is typed.
-    assert!(disabled(&h, "Parameter Value 2"), "a formula's value takes no typing");
-    assert_eq!(value(&h, "Parameter Value 2").as_deref(), Some("500"));
-    assert!(!disabled(&h, "Parameter Value 1"));
-    // Types: Height's row is there, greyed, with what each type comes to; the type's own tick is typed.
-    press_near(&mut h, "Types", "Parameter Name 1");
-    assert!(disabled(&h, "Type Value Height"));
-    assert_eq!(value(&h, "Type Value Height").as_deref(), Some("500"));
-    assert!(!disabled(&h, "Type Value Show Top"));
-    // The type previewed, picked in Types: B.
-    press(&mut h, "Type");
-    press_near(&mut h, "B", "Type");
+    // Height is worked out, so its value is shown, greyed, as type A comes to; Width is typed, and so is the type's own tick.
+    assert!(disabled(&h, "Parameter Value Height"), "a formula's value takes no typing");
+    assert_eq!(value(&h, "Parameter Value Height").as_deref(), Some("500"));
+    assert!(!disabled(&h, "Parameter Value Width"));
+    assert!(!disabled(&h, "Parameter Value Show Top"));
+    // The type previewed, picked in Type name: B.
+    press(&mut h, "Type Name");
+    press_near(&mut h, "B", "Type Name");
     h.run();
-    assert_eq!(value(&h, "Type Value Height").as_deref(), Some("300"), "type B: 600 / 2");
+    assert_eq!(value(&h, "Parameter Value Height").as_deref(), Some("300"), "type B: 600 / 2");
     // Loaded into the project, the family is as it was: no type sets Height.
     press(&mut h, "OK");
     press(&mut h, "Load into Project");

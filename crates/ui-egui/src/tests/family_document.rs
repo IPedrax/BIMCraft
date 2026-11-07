@@ -167,7 +167,7 @@ fn canceling_family_types_does_not_leave_changes_in_document_history() {
     h.run();
     type_into(&mut h, "Family name", "Draft");
     press(&mut h, "Family Types");
-    type_into(&mut h, "Parameter Value 1", "1200");
+    type_into(&mut h, "Parameter Value Width", "1200");
     press(&mut h, "Cancel");
     press(&mut h, "Undo");
     assert!(h.query_all_by_label("New Family · {3D}").count() > 0, "Cancel does not create a step that reintroduces canceled text");
