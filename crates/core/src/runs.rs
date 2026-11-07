@@ -225,6 +225,7 @@ mod tests {
             offset,
             end_offset,
             justify,
+            join: true,
             system: String::new(),
             params: Default::default(),
         }

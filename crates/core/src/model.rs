@@ -70,7 +70,10 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 17: a schedule may list several categories
+/// The version of the project file this build writes, and the newest it reads. 18: a wall or a run may refuse to join
+/// its neighbours (`join: false`, written only then), which turns off the mitres at its ends and stops it stretching
+/// with the elements it meets; nothing in a file of 17 changes, but a build that reads up to 17 would silently drop
+/// `join: false` and join the element again — the same class of change formats 12→13 and 13→14 were raised for. 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -108,7 +111,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 17;
+pub const FORMAT: u32 = 18;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -272,6 +275,10 @@ pub struct Wall {
     /// runs past.
     #[serde(default = "yes", skip_serializing_if = "is_yes")]
     pub room_bounding: bool,
+    /// Whether it joins its neighbours at its ends (Revit's Allow Join): on unless turned off, so its corners mitre and
+    /// its ends stretch with what they meet; an unjoined wall's ends stay square and follow no one.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub join: bool,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -1568,6 +1575,10 @@ pub struct Run {
     pub end_offset: Option<f64>,
     #[serde(default)]
     pub justify: Justify,
+    /// Whether it joins its neighbours at its ends (Revit's Allow Join): on unless turned off, so its ends mitre against
+    /// the runs and walls they meet; an unjoined run's ends stay square and follow no one.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub join: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub system: String,
     /// Its values of the project's parameters, by name.
@@ -3424,6 +3435,8 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
+        // 17 to 18 (a wall or a run that refuses to join, `join: false`) has no step: a file of 17 holds no `join`, which reads
+        // as the default — joining, as it always did.
         self.format = FORMAT;
     }
 
@@ -7714,6 +7727,7 @@ mod tests {
             attach_top: None,
             attach_base: None,
             room_bounding: true,
+            join: true,
         })
     }
 

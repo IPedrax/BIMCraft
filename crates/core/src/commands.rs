@@ -7080,6 +7080,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 attach_top,
                 attach_base,
                 room_bounding,
+                join: true,
             }))),
             _ => None,
         })
@@ -8484,6 +8485,7 @@ pub fn runs_of(m: &Model, p: &Value, category: &str) -> Result<Vec<Element>, Str
                     offset,
                     end_offset,
                     justify,
+                    join: true,
                     system: system.clone(),
                     params: Default::default(),
                 },
@@ -8776,6 +8778,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             attach_top: Some(roof_guid),
             attach_base: Some(host),
             room_bounding: true,
+            join: true,
         })
     };
     let (l, r) = (micron(at + n * (w / 2.0)), micron(at - n * (w / 2.0)));

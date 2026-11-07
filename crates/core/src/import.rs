@@ -1942,6 +1942,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             attach_top: None,
             attach_base: None,
             room_bounding: true,
+            join: true,
         };
         let id = m.insert(Element::Wall(wall));
         from.insert(id, who(w.ifc));
@@ -2576,6 +2577,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             offset: z0,
             end_offset: ((z1 - z0).abs() > 1e-6).then_some(z1),
             justify,
+            join: true,
             system,
             params: Default::default(),
         };
