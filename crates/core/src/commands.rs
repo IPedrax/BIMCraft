@@ -10484,15 +10484,23 @@ fn delete_parameter(
 /// Explicit reloads retain part identities and project-only types. Instance overrides stay on their elements.
 fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Family, keep_values: bool) -> crate::family::Family {
     let compatible = |p: &crate::family::Parameter| {
-        old.parameters
-            .iter()
-            .find(|q| q.name == p.name && q.kind == p.kind && q.instance == p.instance && q.formula.is_none() && p.formula.is_none())
+        old.parameters.iter().find(|q| {
+            q.name == p.name
+                && q.kind == p.kind
+                && q.instance == p.instance
+                && q.shared == p.shared
+                && !q.reporting
+                && !p.reporting
+                && q.of == p.of
+                && q.formula.is_none()
+                && p.formula.is_none()
+        })
     };
     // Keep incoming defaults on new types before replacing the family's defaults.
     if keep_values {
         for (name, values) in &mut incoming.types {
             if !old.types.contains_key(name) {
-                for p in incoming.parameters.iter().filter(|p| !p.instance && p.formula.is_none()) {
+                for p in incoming.parameters.iter().filter(|p| !p.instance && !p.reporting && p.formula.is_none()) {
                     values.entry(p.name.clone()).or_insert_with(|| p.value.clone());
                 }
             }

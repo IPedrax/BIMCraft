@@ -461,7 +461,9 @@ and every other language the English.
 - `version` replaces the definition but keeps compatible project parameter defaults and existing type values.
 - `version_and_values` replaces the definition and takes its defaults and matching type values from the file.
 
-Compatibility means the same case-sensitive parameter name, kind and Type/Instance setting, with neither version driven by
+Compatibility means the same case-sensitive parameter name, kind, Type/Instance setting and shared GUID (including both absent).
+Reporting parameters never carry values over. Family Type parameters also require the same `of` category; their values remain
+null until nested-family support. Neither compatible version is driven by
 a formula. Incoming formulas always belong to the new definition. Project-only types remain, keeping compatible values;
 new parameters and types use the incoming values. Explicit instance overrides are never rewritten by a family reload.
 Optional definition fields omitted from an explicit replacement are reset, rather than retained from the old definition.

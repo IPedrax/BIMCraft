@@ -211,3 +211,67 @@ fn unchanged_family_load_is_skipped_without_an_undo_step() {
         assert_eq!(s.model.families["Reload"].types["A"]["Width"], json!(150));
     }
 }
+
+#[test]
+fn reload_only_carries_values_between_matching_shared_identities() {
+    let guid_a = json!("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    let guid_b = json!("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+    for (old_shared, new_shared, expected) in [
+        (Value::Null, Value::Null, 100),
+        (guid_a.clone(), guid_a.clone(), 100),
+        (guid_a.clone(), guid_b.clone(), 200),
+        (guid_a.clone(), Value::Null, 200),
+        (Value::Null, guid_a.clone(), 200),
+    ] {
+        let mut s = Session::new();
+        run(&mut s, json!({"name":"Identity", "parameters":[{"name":"Size","value":100,"shared":old_shared}],"types":{"A":{"Size":150}}}));
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("identity.json");
+        std::fs::write(
+            &file,
+            json!({"name":"Identity","parameters":[{"name":"Size","value":200,"shared":new_shared}],"types":{"A":{"Size":250}}})
+                .to_string(),
+        )
+        .unwrap();
+        run(&mut s, json!({"path":file,"overwrite":"version"}));
+        let f = &s.model.families["Identity"];
+        assert_eq!(f.parameters[0].value, json!(expected));
+        assert_eq!(f.types["A"]["Size"], json!(if expected == 100 { 150 } else { 250 }));
+    }
+}
+
+#[test]
+fn reporting_values_are_never_carried_over_on_reload() {
+    let mut s = Session::new();
+    run(&mut s, json!({"name":"Reporting","parameters":[{"name":"Measured","value":10,"reporting":true}],"types":{"A":{}}}));
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("reporting.json");
+    std::fs::write(
+        &file,
+        json!({"name":"Reporting","parameters":[{"name":"Measured","value":20,"reporting":true}],"types":{"A":{},"New":{}}}).to_string(),
+    )
+    .unwrap();
+    run(&mut s, json!({"path":file,"overwrite":"version"}));
+    let f = &s.model.families["Reporting"];
+    assert_eq!(f.parameters[0].value, json!(20));
+    assert!(f.types.values().all(|t| !t.contains_key("Measured")));
+}
+
+#[test]
+fn family_type_reload_keeps_values_null_and_uses_incoming_category() {
+    for of in ["door", "furniture"] {
+        let mut s = Session::new();
+        run(
+            &mut s,
+            json!({"name":"Family types","parameters":[{"name":"Part","kind":"familytype","of":"door"}],"types":{"A":{"Part":null}}}),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("familytypes.json");
+        std::fs::write(&file,json!({"name":"Family types","parameters":[{"name":"Part","kind":"familytype","of":of,"group":"constraints"}],"types":{"A":{}}}).to_string()).unwrap();
+        run(&mut s, json!({"path":file,"overwrite":"version"}));
+        let f = &s.model.families["Family types"];
+        assert!(f.parameters[0].value.is_null());
+        assert_eq!(serde_json::to_value(&f.parameters[0]).unwrap()["of"], json!(of));
+        assert!(f.types.values().all(|t| t.get("Part").is_none_or(Value::is_null)));
+    }
+}
