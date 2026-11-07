@@ -177,3 +177,19 @@ there are no circuits, panels or fitting-to-pipe joins yet, and the connector ho
 count as zero load. IFC writes each device with a connector `Pset_ElectricalDeviceCommon` (`NumberOfPoles`, and for a power
 connector `PowerFactor` and `RatedVoltage`) and `BIMCraft_Connector` (`System`, `Classification`, `LoadVA`, `LoadVAPhase1`…); IFC
 import doesn't read them back.
+
+### Timber wall framing
+
+`timber_framing` reads one isolated straight wall, its chosen structural layer and its only hosted rectangular window.
+Supply their ids or GUIDs as `wall`, `layer` and `window`. Supply `spacing`, stud/plate `thickness`, layer `depth` and
+`header_height` in mm. The window cut provides the rough opening. The layout uses flush end studs, a grid measured
+from the wall start, one bottom and two top plates, one king and jack per jamb, a sill, and a header over the jacks.
+Only whole grid pieces that fit between the adjacent framing faces are included. Attached walls, wall junctions and
+layouts above 4096 grid stations are outside this command.
+
+Each member and clear bay has a `key` scoped to the returned wall and layer GUIDs. Its `xz` is
+`[left, right, bottom, top]` in mm, measured along the wall and up from its base. Every rectangle spans the returned
+`depth`. For model coordinates, start at `origin` on the interior face of the framing layer, move along `x_axis`,
+into the layer along `depth_axis`, and up. Repeating the query creates no project elements or Undo steps.
+A bay key names its vertical region and adjacent members. A placement whose bay disappears on a new query
+keeps its last intended position for conflict review. Outlet and niche placement are exercised as test consumers.

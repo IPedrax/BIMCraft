@@ -126,6 +126,7 @@ pub mod styles;
 pub mod symbol_set;
 pub mod text;
 pub mod texture;
+mod timber;
 pub mod triad;
 pub mod triangulation;
 pub mod units;
