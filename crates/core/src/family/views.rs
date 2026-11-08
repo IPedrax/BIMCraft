@@ -663,6 +663,81 @@ mod tests {
         }
     }
 
+    /// The lines drawn in projection of what `window` owns in `d`, in mm: each straight piece.
+    fn seen_lines(d: &render::Drawing, window: crate::model::Id) -> Vec<(P2, P2)> {
+        d.prims
+            .iter()
+            .zip(&d.parts)
+            .zip(&d.owners)
+            .filter(|((_, part), owner)| **part == render::Part::Projection && **owner == Some(window))
+            .flat_map(|((p, _), _)| match p {
+                render::Prim::Line { pts, .. } => pts.windows(2).map(|w| (d.view.mm(w[0]), d.view.mm(w[1]))).collect(),
+                _ => Vec::new(),
+            })
+            .collect()
+    }
+
+    /// F10b: a window's forms below the plan's cut plane are seen from it, in projection, as walls below the cut are: the
+    /// frame's lower rail between its cut jambs, and a sill board outside the wall; its head and a hood over the cut are not
+    /// drawn. In the family's plan and the project's.
+    #[test]
+    fn a_window_familys_plan_sees_its_forms_below_the_cut_and_not_above() {
+        let f: Family = serde_json::from_value(json!({
+            "category": "window",
+            "parameters": [{"name": "Width", "value": 1200}, {"name": "Height", "value": 1500}],
+            "types": {"T": {}},
+            "forms": [
+                {"host": {"plane": crate::family::CENTER_FRONT_BACK}, "from": -40, "to": 40, "sketch": [
+                    {"start": [-600, 0], "end": [600, 0]}, {"start": [600, 0], "end": [600, 1500]},
+                    {"start": [600, 1500], "end": [-600, 1500]}, {"start": [-600, 1500], "end": [-600, 0]},
+                    {"start": [-550, 50], "end": [-550, 1450]}, {"start": [-550, 1450], "end": [550, 1450]},
+                    {"start": [550, 1450], "end": [550, 50]}, {"start": [550, 50], "end": [-550, 50]}]},
+                {"profile": [[-650, -150], [650, -150], [650, -40], [-650, -40]], "from": 0, "to": 30},
+                {"profile": [[-650, 40], [650, 40], [650, 160], [-650, 160]], "from": 1400, "to": 1450}
+            ],
+        }))
+        .unwrap();
+        let mut s = Session::new();
+        s.model_mut().families.insert("W".into(), f.clone());
+        s.execute("wall", &json!({"points": [[-2500, 0], [2500, 0]]})).unwrap();
+        let window = s.execute("window", &json!({"at": [0, 0], "family": "W", "type": "T", "sill": 0})).unwrap()["id"].as_u64().unwrap();
+        let values = f.values("T", &BTreeMap::new()).unwrap();
+        let mut st = stage(std::sync::Arc::unwrap_or_clone(s.model.clone()), &f, &values, &|_| true);
+        let family = st.draw(Which::Plan, 600, 400, 1.0, P2(0.0, 0.0)).unwrap().drawing;
+        let staged_window =
+            st.model.elements.iter().find(|(_, e)| matches!(e, crate::model::Element::Window(_))).map(|(id, _)| *id).unwrap();
+        let view = render::View { scale: 0.2, cx: 0.0, cy: 0.0, width: 600, height: 400 };
+        let project = render::draw(&s.model, 100000, view);
+        for (d, owner, which) in [(&family, staged_window, "family"), (&project, window, "project")] {
+            let lines = seen_lines(d, owner);
+            let along = |y: f64, x0: f64, x1: f64| {
+                lines.iter().any(|(a, b)| (a.1 - y).abs() < 2.0 && (b.1 - y).abs() < 2.0 && a.0.min(b.0) <= x0 && a.0.max(b.0) >= x1)
+            };
+            let at = |y: f64| lines.iter().any(|(a, b)| (a.1 - y).abs() < 2.0 && (b.1 - y).abs() < 2.0 && a.dist(*b) > 50.0);
+            // The lower rail's faces between the jambs, which the cut covers.
+            let rail = [-40.0, 40.0].iter().filter(|y| along(**y, -500.0, 500.0)).count();
+            assert_eq!(rail, 2, "{which}: the lower rail between the jambs: {lines:?}");
+            assert!(
+                !lines.iter().any(|(a, b)| (a.1.abs() - 40.0).abs() < 2.0 && a.0.abs().min(b.0.abs()) > 560.0),
+                "{which}: not over the cut jambs: {lines:?}"
+            );
+            // The sill board's outer edge on one side, all along it; nothing of the hood over the cut on the other.
+            let (board, hood) = (at(150.0) || at(-150.0), at(160.0) || at(-160.0));
+            assert!(board, "{which}: the sill board below the cut: {lines:?}");
+            assert!(!hood, "{which}: nothing above the cut: {lines:?}");
+            // Lighter than the cut: the projection pen.
+            let width = |part: render::Part| {
+                d.prims.iter().zip(&d.parts).zip(&d.owners).filter(|((_, p), o)| **p == part && **o == Some(owner)).find_map(
+                    |((p, _), _)| match p {
+                        render::Prim::Line { width, .. } => Some(*width),
+                        _ => None,
+                    },
+                )
+            };
+            assert!(width(render::Part::Projection).unwrap() < width(render::Part::Cut).unwrap(), "{which}: lighter than the cut");
+        }
+    }
+
     #[test]
     fn the_plan_cuts_a_form_crossing_its_cut_plane_and_sees_the_others() {
         for (z0, z1, crossing) in [(0.0, 2000.0, true), (0.0, 800.0, false), (1500.0, 2500.0, false)] {

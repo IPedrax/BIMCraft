@@ -281,3 +281,76 @@ fn family_sketch_locks_screenshots() {
     h.run();
     h.render().unwrap().save(std::path::Path::new(&folder).join("f7b-sketch-align.png")).unwrap();
 }
+
+/// F10a: Pick Lines' Lock, on the Options Bar: a line picked from a reference plane is locked to it, as Align's padlock
+/// locks one, and follows it as the type flexes. Trim/Extend to Corner (TR) closes the lines picked and drawn into a loop.
+#[test]
+fn pick_lines_with_lock_locks_each_line_to_the_plane_it_was_picked_from() {
+    let mut h = in_plan("");
+    let button = |h: &mut Harness<BimApp>, label: &str| {
+        h.get_by_role_and_label(Role::Button, label).click();
+        h.run();
+    };
+    button(&mut h, "Extrusion");
+    assert!(editor(&h).sketching());
+    button(&mut h, "Pick Lines");
+    h.get_by_label("Lock").click();
+    h.run();
+    assert!(editor(&h).sketch.as_ref().unwrap().lock, "Lock on");
+    // Left and Right (at ±700, as Large, the type shown, has them), each a line along it, locked to it.
+    click_family(&mut h, [-700.0, 900.0, 0.0]);
+    click_family(&mut h, [700.0, 900.0, 0.0]);
+    let s = editor(&h).sketch.as_ref().unwrap();
+    assert_eq!(s.sketch.lines.len(), 2, "{}", status(&h));
+    let refs: Vec<DimRef> = s.locks.iter().map(|d| d.refs[0]).collect();
+    assert_eq!(refs, [DimRef::Plane(g(LEFT)), DimRef::Plane(g(RIGHT))], "each locked to its plane");
+    assert!(s.locks.iter().all(|d| d.alignment && d.refs.len() == 2 && d.locked.len() == 1));
+    assert_eq!(editor(&h).sketch_padlocks_shown().len(), 2, "their padlocks show, closed");
+    // A line across below and above, then each corner trimmed: the lines picked are long, as the planes' traces are.
+    button(&mut h, "Line");
+    for (a, b) in [([-900.0, -300.0], [900.0, -300.0]), ([-900.0, 300.0], [900.0, 300.0])] {
+        click_family(&mut h, [a[0], a[1], 0.0]);
+        click_family(&mut h, [b[0], b[1], 0.0]);
+        key(&mut h, Key::Escape);
+    }
+    shortcut(&mut h, "TR");
+    assert!(editor(&h).sketch.as_ref().unwrap().trim.is_some(), "Trim/Extend to Corner");
+    for (side, across) in [(-700.0, -300.0), (700.0, -300.0), (-700.0, 300.0), (700.0, 300.0)] {
+        click_family(&mut h, [side, 0.0, 0.0]);
+        click_family(&mut h, [0.0, across, 0.0]);
+    }
+    press(&mut h, "Finish Edit Mode");
+    assert!(!editor(&h).sketching(), "{}", status(&h));
+    let f = editor(&h).draft_family().unwrap();
+    let form = f.forms.last().unwrap().guid;
+    let locks: Vec<&DimRef> =
+        f.dimensions.iter().filter(|d| d.alignment && d.refs.iter().any(|r| r.names(form))).map(|d| &d.refs[0]).collect();
+    assert_eq!(locks, [&DimRef::Plane(g(LEFT)), &DimRef::Plane(g(RIGHT))], "written at Finish");
+    // Locked, the form is as wide as Width in every type.
+    for (t, w) in [("Small", 600.0), ("Large", 1400.0)] {
+        let v = f.values(t, &BTreeMap::new()).unwrap();
+        let b = f.shapes(&v).into_iter().find(|s| s.index == f.forms.len() - 1).unwrap();
+        assert!((b.min[0] + w / 2.0).abs() < 1e-6 && (b.max[0] - w / 2.0).abs() < 1e-6, "{t}: {b:?}");
+        assert!((b.min[1] + 300.0).abs() < 1e-6 && (b.max[1] - 300.0).abs() < 1e-6, "{t}: {b:?}");
+    }
+}
+
+/// F10a: with an Offset, or Lock off, Pick Lines locks nothing.
+#[test]
+fn pick_lines_locks_nothing_with_lock_off_or_an_offset() {
+    let mut h = in_plan("");
+    h.get_by_role_and_label(Role::Button, "Extrusion").click();
+    h.run();
+    h.get_by_role_and_label(Role::Button, "Pick Lines").click();
+    h.run();
+    click_family(&mut h, [-700.0, 900.0, 0.0]);
+    assert!(editor(&h).sketch.as_ref().unwrap().locks.is_empty(), "Lock off");
+    h.get_by_label("Lock").click();
+    h.run();
+    ed_mut(&mut h).sketch.as_mut().unwrap().offset = "50".into();
+    h.run();
+    click_family(&mut h, [700.0, 900.0, 0.0]);
+    let s = editor(&h).sketch.as_ref().unwrap();
+    assert_eq!(s.sketch.lines.len(), 2);
+    assert!(s.locks.is_empty(), "an Offset: no lock");
+}

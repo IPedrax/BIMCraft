@@ -627,6 +627,7 @@ impl FamilyEditor {
                 s.tool = None;
                 s.points.clear();
                 s.align_from = None;
+                s.trim = None;
                 self.views.aligning = Some(None);
                 return;
             }

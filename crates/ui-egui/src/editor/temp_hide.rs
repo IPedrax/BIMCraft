@@ -271,6 +271,16 @@ impl BimApp {
                 ed.reference_plane_tool();
                 continue;
             }
+            // Trim/Extend to Corner while a form is sketched (F10a).
+            if self.typed == "TR"
+                && let Some(ed) = self.family_editor.as_mut()
+                && let Some(s) = ed.sketch.as_mut()
+            {
+                s.trim_tool();
+                ed.views.aligning = None;
+                self.typed.clear();
+                continue;
+            }
             // Aligned Dimension and Align there too (F7).
             if matches!(self.typed.as_str(), "DI" | "AL")
                 && let Some(ed) = self.family_editor.as_mut()
