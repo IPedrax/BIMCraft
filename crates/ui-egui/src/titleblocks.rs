@@ -34,6 +34,13 @@ pub(crate) struct TitleBlocksDialog {
     /// A new one's name, as typed.
     new_name: String,
     error: Option<String>,
+    /// The text picked on the preview, by its place in the list.
+    selected: Option<usize>,
+    /// The key and scope Make Field gives the text picked, as typed.
+    field_key: String,
+    field_scope: Scope,
+    /// How much the preview is enlarged past fitting: 1 fits it.
+    zoom: f32,
 }
 
 impl TitleBlocksDialog {
@@ -42,7 +49,27 @@ impl TitleBlocksDialog {
         let name = name.filter(|n| m.title_blocks.contains_key(*n)).map(str::to_string).or_else(|| m.title_blocks.keys().next().cloned());
         let name = name.unwrap_or_default();
         let tb = m.title_blocks.get(&name).cloned().unwrap_or_default();
-        TitleBlocksDialog { rename: name.clone(), name, tb, values: m.title_values.clone(), tab: 0, new_name: String::new(), error: None }
+        TitleBlocksDialog {
+            rename: name.clone(),
+            name,
+            tb,
+            values: m.title_values.clone(),
+            tab: 0,
+            new_name: String::new(),
+            error: None,
+            selected: None,
+            field_key: String::new(),
+            field_scope: Scope::Sheet,
+            zoom: 1.0,
+        }
+    }
+
+    /// Text `i` picked on the preview (none, no text): Make Field offers a key made of what it says.
+    pub(crate) fn select(&mut self, i: Option<usize>) {
+        if i != self.selected {
+            self.selected = i;
+            self.field_key = i.and_then(|i| self.tb.texts.get(i)).map_or_else(String::new, |x| titleblock::key_for(&x.text));
+        }
     }
 
     /// What stopped OK, Apply, New, Duplicate or Delete, if anything did.
@@ -192,9 +219,10 @@ fn texts_tab(ui: &mut Ui, d: &mut TitleBlocksDialog) {
     });
     if let Some(i) = gone {
         d.tb.texts.remove(i);
+        d.select(None);
     }
     if ui.button(t("Add Text")).clicked() {
-        d.tb.texts.push(Text { at: P2(4.0, 4.0), text: t("Text").to_string(), size: 2.5, angle: 0.0, align: TextAlign::Left });
+        d.tb.texts.push(Text { at: P2(4.0, 4.0), text: t("Text").to_string(), size: 2.5, angle: 0.0, align: TextAlign::Left, color: None });
     }
 }
 
@@ -235,11 +263,11 @@ fn lines_tab(ui: &mut Ui, d: &mut TitleBlocksDialog) {
     }
     ui.horizontal(|ui| {
         if ui.button(t("Add Line")).clicked() {
-            d.tb.lines.push(Stroke { points: vec![P2(0.0, h / 2.0), P2(w, h / 2.0)], closed: false, pen: Pen::FINE });
+            d.tb.lines.push(Stroke { points: vec![P2(0.0, h / 2.0), P2(w, h / 2.0)], closed: false, pen: Pen::FINE, color: None });
         }
         if ui.button(t("Add Rectangle")).clicked() {
             let pts = vec![P2(0.0, 0.0), P2(w, 0.0), P2(w, h), P2(0.0, h)];
-            d.tb.lines.push(Stroke { points: pts, closed: true, pen: Pen::BORDER });
+            d.tb.lines.push(Stroke { points: pts, closed: true, pen: Pen::BORDER, color: None });
         }
     });
 }
@@ -264,6 +292,155 @@ fn size_tab(ui: &mut Ui, d: &mut TitleBlocksDialog) {
         });
         ui.end_row();
     });
+}
+
+/// The title block as it prints, to pick a text on and drag it: a click picks the text under it (or none), a drag moves the text
+/// picked, and the arrow keys nudge it half a millimetre while no field has the keyboard.
+fn canvas(ui: &mut Ui, model: &Model, d: &mut TitleBlocksDialog, values: &BTreeMap<String, String>) {
+    let drawing = titleblock::preview(model, &d.tb, values);
+    let (dw, dh) = (drawing.view.width as f32, drawing.view.height as f32);
+    let (room_w, room_h) = (860.0, 480.0);
+    ui.horizontal(|ui| {
+        ui.label(t("Zoom"));
+        ui.add(egui::Slider::new(&mut d.zoom, 1.0..=6.0).show_value(false));
+        if ui.small_button(t("Fit")).clicked() {
+            d.zoom = 1.0;
+        }
+    });
+    let k = (room_w / dw).min(room_h / dh).min(3.0) * d.zoom;
+    ScrollArea::both()
+        .id_salt("title-block-canvas")
+        .max_width(room_w)
+        .max_height(room_h)
+        .show(ui, |ui| canvas_at(ui, d, values, &drawing, k));
+}
+
+/// [`canvas`], drawn `k` screen points a drawing pixel.
+fn canvas_at(ui: &mut Ui, d: &mut TitleBlocksDialog, values: &BTreeMap<String, String>, drawing: &bimcraft_core::render::Drawing, k: f32) {
+    let (dw, dh) = (drawing.view.width as f32, drawing.view.height as f32);
+    let (rect, r) = ui.allocate_exact_size(vec2(dw * k, dh * k), Sense::click_and_drag());
+    ui.painter().rect_filled(rect, 0.0, egui::Color32::WHITE);
+    let at = Place { origin: rect.min, k, paper: true, hide: None };
+    paint(&ui.painter_at(rect), at, drawing, &[], None, false, &[]);
+    let view = drawing.view;
+    let to_mm = |q: egui::Pos2| view.mm(((q.x - rect.min.x) / k, (q.y - rect.min.y) / k));
+    let to_screen = |p: P2| {
+        let (x, y) = view.px(p);
+        rect.min + vec2(x * k, y * k)
+    };
+    let outlines: Vec<[P2; 4]> = d.tb.texts.iter().map(|x| x.outline(&titleblock::fill(&x.text, values))).collect();
+    // The last drawn wins, as it shows on top.
+    let under = |q: egui::Pos2| outlines.iter().rposition(|o| bimcraft_core::geom::contains(o, to_mm(q)));
+    let hovered = r.hover_pos().and_then(under);
+    if r.clicked() {
+        d.select(r.interact_pointer_pos().and_then(under));
+    }
+    if r.drag_started() {
+        let hit = r.interact_pointer_pos().and_then(under);
+        if hit.is_some() {
+            d.select(hit);
+        }
+    }
+    let per_mm = f64::from(k) * view.scale;
+    if r.dragged()
+        && let Some(x) = d.selected.and_then(|i| d.tb.texts.get_mut(i))
+    {
+        let delta = r.drag_delta();
+        x.at = x.at + P2(f64::from(delta.x) / per_mm, -f64::from(delta.y) / per_mm);
+    }
+    if r.drag_stopped()
+        && let Some(x) = d.selected.and_then(|i| d.tb.texts.get_mut(i))
+    {
+        // To the tenth of a millimetre, as a drawing is typed.
+        x.at = P2((x.at.0 * 10.0).round() / 10.0, (x.at.1 * 10.0).round() / 10.0);
+    }
+    let typing = ui.memory(|m| m.focused().is_some());
+    if !typing
+        && r.hovered()
+        && let Some(x) = d.selected.and_then(|i| d.tb.texts.get_mut(i))
+    {
+        let step = 0.5;
+        ui.input(|i| {
+            for (key, by) in [
+                (egui::Key::ArrowLeft, P2(-step, 0.0)),
+                (egui::Key::ArrowRight, P2(step, 0.0)),
+                (egui::Key::ArrowUp, P2(0.0, step)),
+                (egui::Key::ArrowDown, P2(0.0, -step)),
+            ] {
+                if i.key_pressed(key) {
+                    x.at = x.at + by;
+                }
+            }
+        });
+    }
+    let accent = ui.visuals().selection.bg_fill;
+    let ring = |o: &[P2; 4]| o.iter().map(|p| to_screen(*p)).collect::<Vec<_>>();
+    if let Some(o) = hovered.filter(|h| Some(*h) != d.selected).and_then(|i| outlines.get(i)) {
+        ui.painter().add(egui::Shape::closed_line(ring(o), egui::Stroke::new(1.0, accent.gamma_multiply(0.6))));
+    }
+    if let Some(o) = d.selected.and_then(|i| outlines.get(i)) {
+        ui.painter().add(egui::Shape::closed_line(ring(o), egui::Stroke::new(2.0, accent)));
+    }
+    let tip = if hovered.is_some() { t("Click to pick the text, drag to move it") } else { t("Click a text to pick it") };
+    r.on_hover_text(tip);
+}
+
+/// The text picked on the preview: what it says, its size, angle and justification, Make Field and Remove.
+fn selected_text(ui: &mut Ui, d: &mut TitleBlocksDialog) {
+    let Some(i) = d.selected.filter(|i| *i < d.tb.texts.len()) else {
+        ui.label(RichText::new(t("Click a text on the title block to move it, change it or make it a field.")).weak());
+        return;
+    };
+    let (mut make, mut remove) = (false, false);
+    egui::Frame::group(ui.style()).show(ui, |ui| {
+        let Some(x) = d.tb.texts.get_mut(i) else { return };
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(t("Text")).strong());
+            ui.add_sized([320.0, 20.0], TextEdit::singleline(&mut x.text));
+            ui.label(t("Size"));
+            ui.add(mm(&mut x.size, titleblock::MIN_LETTERING, titleblock::MAX_LETTERING));
+            ui.label(t("Angle (°)"));
+            ui.add(DragValue::new(&mut x.angle).range(-360.0..=360.0).speed(1.0));
+            let shown = match x.align {
+                TextAlign::Left => msg!("Left"),
+                TextAlign::Center => msg!("Center"),
+                TextAlign::Right => msg!("Right"),
+            };
+            ComboBox::from_id_salt("title-picked-align").selected_text(t(shown)).width(80.0).show_ui(ui, |ui| {
+                ui.selectable_value(&mut x.align, TextAlign::Left, t("Left"));
+                ui.selectable_value(&mut x.align, TextAlign::Center, t("Center"));
+                ui.selectable_value(&mut x.align, TextAlign::Right, t("Right"));
+            });
+            remove = ui.button(t("Remove")).on_hover_text(t("Remove the text")).clicked();
+        });
+        let trimmed = x.text.trim();
+        let is_field = trimmed.starts_with('{') && trimmed.ends_with('}') && titleblock::keys_in(trimmed).len() == 1;
+        if !is_field {
+            ui.horizontal(|ui| {
+                ui.label(t("Field key"));
+                ui.add_sized([180.0, 20.0], TextEdit::singleline(&mut d.field_key));
+                ComboBox::from_id_salt("title-picked-scope")
+                    .selected_text(t(if d.field_scope == Scope::Project { msg!("Project") } else { msg!("Sheet") }))
+                    .width(80.0)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut d.field_scope, Scope::Sheet, t("Sheet"));
+                        ui.selectable_value(&mut d.field_scope, Scope::Project, t("Project"));
+                    });
+                let tip = t("The text becomes {KEY}, and what it said becomes the field's default");
+                make = ui.button(t("Make Field")).on_hover_text(tip).clicked();
+            });
+        }
+    });
+    if make {
+        match d.tb.make_field(i, &d.field_key, d.field_scope) {
+            Ok(()) => d.error = None,
+            Err(e) => d.error = Some(e),
+        }
+    }
+    if remove {
+        d.tb.texts.remove(i);
+        d.select(None);
+    }
 }
 
 impl BimApp {
@@ -307,7 +484,7 @@ impl BimApp {
         let names: Vec<String> = model.title_blocks.keys().cloned().collect();
         let (mut ok, mut apply, mut cancel) = (false, false, false);
         let (mut pick, mut make, mut duplicate, mut delete, mut import) = (None, None, false, false, false);
-        let r = Modal::new(UiId::new("title-blocks-dialog"), t("Title Blocks")).width(900.0).show(ctx, |ui| {
+        let r = Modal::new(UiId::new("title-blocks-dialog"), t("Title Blocks")).width(1120.0).show(ctx, |ui| {
             popup::body(ui, |ui| {
                 ui.horizontal_top(|ui| {
                     // The project's title blocks, and what makes and takes them.
@@ -378,13 +555,8 @@ impl BimApp {
                                 values.insert(key.clone(), if f.default.is_empty() { format!("{{{key}}}") } else { f.default.clone() });
                             }
                         }
-                        let drawing = titleblock::preview(&model, &d.tb, &values);
-                        let (dw, dh) = (drawing.view.width as f32, drawing.view.height as f32);
-                        let k = (660.0 / dw).min(200.0 / dh).min(2.0);
-                        let (rect, _) = ui.allocate_exact_size(vec2(dw * k, dh * k), Sense::hover());
-                        ui.painter().rect_filled(rect, 0.0, egui::Color32::WHITE);
-                        let at = Place { origin: rect.min, k, paper: true, hide: None };
-                        paint(&ui.painter_at(rect), at, &drawing, &[], None, false, &[]);
+                        canvas(ui, &model, &mut d, &values);
+                        selected_text(ui, &mut d);
                         ui.add_space(6.0);
                         ui.horizontal(|ui| {
                             for (i, label) in TABS.iter().enumerate() {
@@ -394,7 +566,7 @@ impl BimApp {
                             }
                         });
                         ui.separator();
-                        ScrollArea::both().id_salt("title-block-tab").max_height(420.0).show(ui, |ui| match d.tab {
+                        ScrollArea::both().id_salt("title-block-tab").max_height(220.0).show(ui, |ui| match d.tab {
                             0 => fields_tab(ui, &mut d),
                             1 => texts_tab(ui, &mut d),
                             2 => lines_tab(ui, &mut d),

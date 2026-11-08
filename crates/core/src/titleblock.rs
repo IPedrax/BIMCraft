@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
-use crate::dxf::{self, Dxf, Horizontal, Shape};
+use crate::dxf::{self, Dxf, Horizontal, Shape, Vertical};
 use crate::geom::P2;
 use crate::language::Language;
 use crate::model::{Element, Key, Model};
@@ -94,6 +94,9 @@ pub struct Stroke {
     pub closed: bool,
     #[serde(default = "fine")]
     pub pen: Pen,
+    /// Its colour, `[r, g, b]`; none, the drawing's ink.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<[u8; 3]>,
 }
 
 fn fine() -> Pen {
@@ -105,6 +108,9 @@ fn fine() -> Pen {
 #[serde(deny_unknown_fields)]
 pub struct Fill {
     pub rings: Vec<Vec<P2>>,
+    /// Its colour, `[r, g, b]`; none, the drawing's ink.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<[u8; 3]>,
 }
 
 /// A line of lettering: where it starts (or is centred, or ends), mm from its bottom left corner, on its baseline; its
@@ -120,6 +126,9 @@ pub struct Text {
     pub angle: f64,
     #[serde(default)]
     pub align: Align,
+    /// Its colour, `[r, g, b]`; none, the drawing's ink.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<[u8; 3]>,
 }
 
 fn lettering() -> f64 {
@@ -156,16 +165,16 @@ impl Default for TitleBlock {
             width: w,
             height: h,
             lines: vec![
-                Stroke { points: vec![P2(0.0, 0.0), P2(w, 0.0), P2(w, h), P2(0.0, h)], closed: true, pen: Pen::BORDER },
-                Stroke { points: vec![P2(0.0, 26.0), P2(w, 26.0)], closed: false, pen: Pen::PROJECTION },
-                Stroke { points: vec![P2(w - 50.0, 0.0), P2(w - 50.0, 26.0)], closed: false, pen: Pen::PROJECTION },
+                Stroke { points: vec![P2(0.0, 0.0), P2(w, 0.0), P2(w, h), P2(0.0, h)], closed: true, pen: Pen::BORDER, color: None },
+                Stroke { points: vec![P2(0.0, 26.0), P2(w, 26.0)], closed: false, pen: Pen::PROJECTION, color: None },
+                Stroke { points: vec![P2(w - 50.0, 0.0), P2(w - 50.0, 26.0)], closed: false, pen: Pen::PROJECTION, color: None },
             ],
             fills: Vec::new(),
             texts: vec![
-                Text { at: P2(4.0, 30.5), text: "{PROJECT}".into(), size: 5.0, angle: 0.0, align: Align::Left },
-                Text { at: P2(4.0, 15.25), text: "{SHEET_NAME}".into(), size: 3.5, angle: 0.0, align: Align::Left },
-                Text { at: P2(4.0, 6.0), text: "{SCALE}".into(), size: 2.0, angle: 0.0, align: Align::Left },
-                Text { at: P2(w - 25.0, 9.5), text: "{SHEET_NUMBER}".into(), size: 7.0, angle: 0.0, align: Align::Center },
+                Text { at: P2(4.0, 30.5), text: "{PROJECT}".into(), size: 5.0, angle: 0.0, align: Align::Left, color: None },
+                Text { at: P2(4.0, 15.25), text: "{SHEET_NAME}".into(), size: 3.5, angle: 0.0, align: Align::Left, color: None },
+                Text { at: P2(4.0, 6.0), text: "{SCALE}".into(), size: 2.0, angle: 0.0, align: Align::Left, color: None },
+                Text { at: P2(w - 25.0, 9.5), text: "{SHEET_NUMBER}".into(), size: 7.0, angle: 0.0, align: Align::Center, color: None },
             ],
             fields: Vec::new(),
         }
@@ -327,6 +336,78 @@ impl TitleBlock {
     }
 }
 
+/// How wide `text` letters at capitals `size` mm tall, mm on paper.
+pub fn text_width(text: &str, size: f64) -> f64 {
+    let density = crate::sheet::DENSITY;
+    f64::from(crate::font::width(text, (size * density) as f32)) / density
+}
+
+impl Text {
+    /// The box round it as it letters `shown` (its text with its fields filled in), mm from the title block's corner: its four
+    /// corners, from the start of its baseline (a little under it) round counter-clockwise, turned with it.
+    pub fn outline(&self, shown: &str) -> [P2; 4] {
+        let w = text_width(shown, self.size).max(self.size);
+        let start = match self.align {
+            Align::Left => 0.0,
+            Align::Center => -w / 2.0,
+            Align::Right => -w,
+        };
+        let (s, c) = self.angle.to_radians().sin_cos();
+        let along = |d: f64| P2(d * c, d * s);
+        let up = |d: f64| P2(-d * s, d * c);
+        let a = self.at + along(start) + up(-0.25 * self.size);
+        let tall = 1.5 * self.size;
+        [a, a + along(w), a + along(w) + up(tall), a + up(tall)]
+    }
+}
+
+/// A key for a field made of a text that says `text`: its letters and digits in capitals, accents taken off, the rest `_`, up
+/// to [`MAX_KEY`]; `FIELD` when that leaves none.
+pub fn key_for(text: &str) -> String {
+    let plain = |c: char| match c {
+        'á' | 'à' | 'â' | 'ã' | 'ä' | 'Á' | 'À' | 'Â' | 'Ã' | 'Ä' => 'A',
+        'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => 'E',
+        'í' | 'ì' | 'î' | 'ï' | 'Í' | 'Ì' | 'Î' | 'Ï' => 'I',
+        'ó' | 'ò' | 'ô' | 'õ' | 'ö' | 'Ó' | 'Ò' | 'Ô' | 'Õ' | 'Ö' => 'O',
+        'ú' | 'ù' | 'û' | 'ü' | 'Ú' | 'Ù' | 'Û' | 'Ü' => 'U',
+        'ç' | 'Ç' => 'C',
+        'ñ' | 'Ñ' => 'N',
+        c if c.is_ascii_alphanumeric() => c.to_ascii_uppercase(),
+        _ => '_',
+    };
+    let mut key = String::new();
+    for c in text.chars().map(plain) {
+        if !(c == '_' && (key.is_empty() || key.ends_with('_'))) {
+            key.push(c);
+        }
+    }
+    let key: String = key.trim_matches('_').chars().skip_while(|c| !c.is_ascii_alphabetic()).take(MAX_KEY).collect();
+    let key = key.trim_end_matches('_').to_string();
+    if valid_key(&key) && !is_auto(&key) { key } else { "FIELD".into() }
+}
+
+impl TitleBlock {
+    /// Text `i` made a field: it letters `{KEY}`, and field `key` (the project's or each sheet's, as `scope` says) says what the
+    /// text said until it's given a value. Why not, when it can't be: no text `i`, a key that isn't one or is automatic, or one
+    /// another field has.
+    pub fn make_field(&mut self, i: usize, key: &str, scope: Scope) -> Result<(), String> {
+        let key = key.trim().to_ascii_uppercase();
+        if !valid_key(&key) {
+            return Err(format!("`{key}` isn't a key: letters, digits and `_`, starting with a letter, up to {MAX_KEY}"));
+        }
+        if is_auto(&key) {
+            return Err(format!("`{key}` is an automatic field"));
+        }
+        if self.field(&key).is_some() {
+            return Err(format!("there's already a field `{key}`"));
+        }
+        let t = self.texts.get_mut(i).ok_or_else(|| format!("there's no text {i}"))?;
+        let default = std::mem::replace(&mut t.text, format!("{{{key}}}"));
+        self.fields.push(Field { key, label: String::new(), scope, default });
+        Ok(())
+    }
+}
+
 /// Why `values`, fields' values by key, aren't (`who`'s, as the error names them), if they aren't: each key a key, uppercase,
 /// each value one line of up to [`MAX_TEXT`] characters, up to [`MAX_FIELDS`] of them.
 pub fn check_values(who: &str, values: &BTreeMap<String, String>) -> Result<(), String> {
@@ -451,13 +532,14 @@ const INK: Rgb = Rgb(25, 25, 25);
 /// from `values`.
 pub fn draw(d: &mut Drawing, tb: &TitleBlock, at: P2, values: &BTreeMap<String, String>) {
     let density = d.view.scale;
+    let ink = |c: Option<[u8; 3]>| c.map_or(INK, |[r, g, b]| Rgb(r, g, b));
     for f in &tb.fills {
         let rings: Vec<Vec<P2>> = f.rings.iter().map(|r| r.iter().map(|p| *p + at).collect()).collect();
-        d.fill(&rings, INK);
+        d.fill(&rings, ink(f.color));
     }
     for l in &tb.lines {
         let pts: Vec<P2> = l.points.iter().map(|p| *p + at).collect();
-        d.line(&pts, l.pen, INK, l.closed);
+        d.line(&pts, l.pen, ink(l.color), l.closed);
     }
     for t in &tb.texts {
         let text = fill(&t.text, values);
@@ -477,7 +559,7 @@ pub fn draw(d: &mut Drawing, tb: &TitleBlock, at: P2, values: &BTreeMap<String, 
         let (x, y) = d.view.px(t.at + at);
         // Up the page is minus y in pixels: the middle of the capitals is half their height above the baseline.
         let up = -h / 2.0;
-        d.text_turned(&text, (x + along * c - up * s, y + along * s + up * c), h, angle, INK);
+        d.text_turned(&text, (x + along * c - up * s, y + along * s + up * c), h, angle, ink(t.color));
     }
 }
 
@@ -519,31 +601,44 @@ pub fn from_dxf(dxf: &Dxf, mm: f64) -> (TitleBlock, BTreeMap<String, usize>) {
         }
         let weight = e.weight.or_else(|| dxf.layer(&e.layer).and_then(|l| l.weight));
         let pen = weight.map_or(Pen::FINE, Pen::nearest);
+        // Its colour, or its layer's; the drawing's ink (index 7) and a block's are none, the ink.
+        let own = match e.color {
+            dxf::Color::ByLayer => dxf.layer(&e.layer).map_or(dxf::Color::Index(7), |l| l.color),
+            c => c,
+        };
+        let color = own.rgb().map(|Rgb(r, g, b)| [r, g, b]);
         match &e.shape {
             Shape::Text { at, height, angle, text, align, tag } => {
-                let at = k(at);
+                let size = (height * mm).clamp(MIN_LETTERING, MAX_LETTERING);
+                // To its baseline: a text that hangs from its point (top), or is centred on it, stands lower.
+                let drop = match align.v {
+                    Vertical::Top => size,
+                    Vertical::Middle => size / 2.0,
+                    Vertical::Bottom | Vertical::Baseline => 0.0,
+                };
+                let (s, c) = angle.to_radians().sin_cos();
+                let at = k(at) + P2(drop * s, -drop * c);
                 grow(at);
                 let align = match align.h {
                     Horizontal::Left => Align::Left,
                     Horizontal::Center => Align::Center,
                     Horizontal::Right => Align::Right,
                 };
-                let size = (height * mm).clamp(MIN_LETTERING, MAX_LETTERING);
                 let text: String = text.chars().filter(|c| *c != '\n' && *c != '\r').take(MAX_TEXT).collect();
                 // A block's attribute is a field of its tag, what it says the field's default.
                 match tag.as_deref().map(str::to_ascii_uppercase).filter(|t| valid_key(t) && !is_auto(t)) {
                     Some(key) => {
                         attributes.entry(key.clone()).or_insert(text);
-                        tb.texts.push(Text { at, text: format!("{{{key}}}"), size, angle: *angle, align });
+                        tb.texts.push(Text { at, text: format!("{{{key}}}"), size, angle: *angle, align, color });
                     }
-                    None => tb.texts.push(Text { at, text, size, angle: *angle, align }),
+                    None => tb.texts.push(Text { at, text, size, angle: *angle, align, color }),
                 }
             }
             Shape::Fill { rings, solid: true } => {
                 let rings: Vec<Vec<P2>> = rings.iter().filter(|r| r.len() >= 3).map(|r| r.iter().map(k).collect()).collect();
                 rings.iter().flatten().for_each(|p| grow(*p));
                 if !rings.is_empty() {
-                    tb.fills.push(Fill { rings });
+                    tb.fills.push(Fill { rings, color });
                 }
             }
             Shape::Fill { solid: false, .. } => *left_out.entry("patterned hatch".into()).or_default() += 1,
@@ -553,7 +648,7 @@ pub fn from_dxf(dxf: &Dxf, mm: f64) -> (TitleBlock, BTreeMap<String, usize>) {
                     let points: Vec<P2> = pts.iter().map(k).collect();
                     points.iter().for_each(|p| grow(*p));
                     if points.len() >= 2 {
-                        tb.lines.push(Stroke { points, closed, pen });
+                        tb.lines.push(Stroke { points, closed, pen, color });
                     }
                 }
             }
@@ -613,6 +708,42 @@ mod tests {
     }
 
     #[test]
+    fn a_text_becomes_a_field_that_says_what_it_said() {
+        let mut tb = TitleBlock::default();
+        let i = tb.texts.len();
+        tb.texts.push(Text {
+            at: P2(4.0, 20.0),
+            text: "Rua XV de Novembro, nº 01".into(),
+            size: 2.5,
+            angle: 0.0,
+            align: Align::Left,
+            color: None,
+        });
+        let key = key_for("Endereço da obra:");
+        assert_eq!(key, "ENDERECO_DA_OBRA");
+        tb.make_field(i, &key, Scope::Project).unwrap();
+        assert_eq!(tb.texts[i].text, "{ENDERECO_DA_OBRA}");
+        let f = tb.field("ENDERECO_DA_OBRA").unwrap();
+        assert_eq!((f.scope, f.default.as_str()), (Scope::Project, "Rua XV de Novembro, nº 01"));
+        assert!(tb.make_field(i, "endereco_da_obra", Scope::Sheet).unwrap_err().contains("already"));
+        assert!(tb.make_field(0, "DATE", Scope::Sheet).unwrap_err().contains("automatic"));
+        assert!(tb.make_field(99, "X", Scope::Sheet).unwrap_err().contains("no text"));
+        assert_eq!(key_for("— 01 —"), "FIELD");
+        assert_eq!(key_for("Data"), "DATA");
+        assert!(tb.check("T").is_ok());
+    }
+
+    #[test]
+    fn a_texts_outline_is_where_it_letters_turned_with_it() {
+        let t = Text { at: P2(10.0, 5.0), text: "ABC".into(), size: 2.0, angle: 0.0, align: Align::Right, color: None };
+        let [a, b, _, d] = t.outline("ABC");
+        assert!((b.0 - 10.0).abs() < 1e-9 && a.0 < 10.0 && a.1 < 5.0 && d.1 > 5.0 + 2.0, "{a:?} {b:?} {d:?}");
+        let t = Text { angle: 90.0, align: Align::Left, ..t };
+        let [a, b, ..] = t.outline("ABC");
+        assert!((b.1 - a.1) > 0.0 && (b.0 - a.0).abs() < 1e-9, "it runs up the page");
+    }
+
+    #[test]
     fn dates_are_written_as_the_language_writes_them() {
         assert_eq!(civil(0), (1970, 1, 1));
         assert_eq!(civil(20_399), (2025, 11, 7));
@@ -666,6 +797,7 @@ mod tests {
         assert_eq!(tb.texts[0].at, P2(5.0, 40.0));
         assert_eq!(tb.fields.iter().map(|f| f.key.as_str()).collect::<Vec<_>>(), ["CLIENTE"]);
         assert_eq!(tb.texts[0].text, "Cliente: {CLIENTE}", "a single line's braces are its own");
+        assert_eq!(tb.texts[0].color, None, "the drawing's ink is the ink");
         assert!(tb.check("CIVILTEC").is_ok());
         // In cm, it's ten times the size.
         let tb = read_dxf(dxf.as_bytes(), Some(10.0)).unwrap().title_block;

@@ -616,11 +616,18 @@ impl<'a> Reader<'a> {
     fn entity(&mut self, kind: &'a str) -> Result<Ent<'a>, String> {
         let line = self.p.line;
         let mut codes = Vec::new();
+        // After a 101, an embedded object's data (an MTEXT's columns, written since 2018), whose 10s and 11s aren't the
+        // entity's: read past, not kept, or its point and direction would be the object's.
+        let mut embedded = false;
         while let Some((c, v)) = self.p.peek()? {
             if c == 0 {
                 break;
             }
             self.p.next()?;
+            embedded |= c == 101;
+            if embedded {
+                continue;
+            }
             codes.push((c, v));
             if codes.len() > MAX_PAIRS {
                 return Err(format!("line {line}: one {kind} holds more than {MAX_PAIRS} values"));
@@ -1213,7 +1220,7 @@ fn decode(s: &str, mtext: bool) -> String {
                     let body: String = chars.by_ref().take_while(|c| *c != ';').collect();
                     out.push_str(&body.replace(['^', '#'], "/"));
                 }
-                Some('A' | 'C' | 'F' | 'f' | 'H' | 'Q' | 'T' | 'W' | 'p') => {
+                Some('A' | 'C' | 'c' | 'F' | 'f' | 'H' | 'Q' | 'T' | 'W' | 'p') => {
                     chars.by_ref().take_while(|c| *c != ';').for_each(drop);
                 }
                 Some('L' | 'l' | 'O' | 'o' | 'K' | 'k' | 'N') => {}

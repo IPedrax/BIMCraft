@@ -64,3 +64,21 @@ fn manage_title_blocks_makes_one_and_gives_the_projects_values() {
     assert!(h.state().session.model.title_blocks.contains_key("CIVILTEC"));
     assert!(h.state().title_blocks_dialog.as_ref().unwrap().error().is_some_and(|e| e.contains("sheet")));
 }
+
+#[test]
+fn a_text_picked_on_the_preview_becomes_a_field_that_says_what_it_said() {
+    let mut h = app(&format!(
+        "{BOX}\n{SELO}\n{}",
+        r#"title_block {"name": "CIVILTEC", "texts": [{"at": [4, 30], "text": "{CLIENTE}"}, {"at": [4, 10], "text": "{DESENHO}"}, {"at": [4, 20], "text": "Rua XV de Novembro, 1"}]}"#
+    ));
+    h.state_mut().open_title_blocks(Some("CIVILTEC"));
+    h.run();
+    h.state_mut().title_blocks_dialog.as_mut().unwrap().select(Some(2));
+    h.run();
+    assert!(h.query_by_label("Make Field").is_some(), "a plain text can be made a field");
+    press(&mut h, "Make Field");
+    press(&mut h, "OK");
+    let tb = &h.state().session.model.title_blocks["CIVILTEC"];
+    assert_eq!(tb.texts[2].text, "{RUA_XV_DE_NOVEMBRO_1}");
+    assert_eq!(tb.field("RUA_XV_DE_NOVEMBRO_1").map(|f| f.default.as_str()), Some("Rua XV de Novembro, 1"));
+}

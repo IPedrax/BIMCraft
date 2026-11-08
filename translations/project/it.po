@@ -193,7 +193,7 @@ msgid "Electrical Power"
 msgstr ""
 
 #: crates/core/src/commands.rs:9391
-#: crates/core/src/commands.rs:11541
+#: crates/core/src/commands.rs:11542
 msgid "Elevation"
 msgstr "Prospetto"
 
@@ -480,7 +480,7 @@ msgid "Seat Height"
 msgstr "Altezza seduta"
 
 #: crates/core/src/commands.rs:9368
-#: crates/core/src/commands.rs:11540
+#: crates/core/src/commands.rs:11541
 msgid "Section"
 msgstr "Sezione"
 

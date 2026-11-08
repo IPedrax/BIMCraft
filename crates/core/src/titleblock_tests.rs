@@ -321,3 +321,24 @@ fn purge_takes_out_a_title_block_no_sheet_names_when_asked() {
     assert_eq!(r["removed"], json!([{"kind": "title block", "name": "Spare"}]));
     assert!(s.model.title_blocks.contains_key("CIVILTEC"));
 }
+
+#[test]
+fn a_drawings_colours_and_texts_that_hang_or_centre_on_their_point_come_in_as_drawn() {
+    // A label centred on its point (73 = 2, Middle) and one hanging from it (Top), a grey hatch, a red line, and an MTEXT
+    // whose true colour code (`\c`) is formatting, not words.
+    let dxf = "0\nSECTION\n2\nHEADER\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n\
+               0\nLINE\n8\nSELO\n62\n1\n10\n0\n20\n0\n11\n100\n21\n40\n\
+               0\nTEXT\n8\nT\n10\n10\n20\n20\n40\n2\n1\nMeio\n72\n0\n73\n2\n11\n10\n21\n20\n\
+               0\nTEXT\n8\nT\n10\n10\n20\n30\n40\n2\n1\nTopo\n72\n0\n73\n3\n11\n10\n21\n30\n\
+               0\nMTEXT\n8\nT\n10\n50\n20\n10\n40\n2\n71\n1\n1\n{\\C253;\\c10066329;CIVIL}\n101\nEmbedded Object\n70\n1\n10\n1.0\n20\n0.0\n11\n7.2\n21\n8.0\n\
+               0\nHATCH\n8\nT\n62\n251\n420\n4481116\n10\n0\n20\n0\n30\n0\n2\nSOLID\n70\n1\n71\n0\n91\n1\n92\n1\n93\n3\n\
+               72\n1\n10\n60\n20\n30\n11\n70\n21\n30\n72\n1\n10\n70\n20\n30\n11\n70\n21\n35\n72\n1\n10\n70\n20\n35\n11\n60\n21\n30\n\
+               97\n0\n75\n0\n76\n1\n98\n0\n0\nENDSEC\n0\nEOF\n";
+    let tb = crate::titleblock::read_dxf(dxf.as_bytes(), None).unwrap().title_block;
+    let text = |s: &str| tb.texts.iter().find(|t| t.text == s).unwrap_or_else(|| panic!("{s} in {:?}", tb.texts));
+    assert!((text("Meio").at.1 - 19.0).abs() < 1e-9, "its baseline half its height under the point: {:?}", text("Meio").at);
+    assert!((text("Topo").at.1 - 28.0).abs() < 1e-9, "its baseline its height under the point: {:?}", text("Topo").at);
+    assert!(tb.texts.iter().any(|t| t.text == "CIVIL" && t.angle == 0.0), "level, not turned by its embedded object: {:?}", tb.texts);
+    assert_eq!(tb.lines[0].color, Some([255, 0, 0]));
+    assert_eq!(tb.fills[0].color, Some([0x44, 0x60, 0x5c]), "the hatch's true colour");
+}

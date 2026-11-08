@@ -702,8 +702,15 @@ circles and polylines as lines, in the pen nearest their weight, solid hatches a
 extents, which become the box, and each key the texts name a sheet field, keeping a field it already had (its label, scope and default).
 A block's attribute (ATTRIB) becomes a field of its tag, what it says the field's default, as offices' CAD title blocks hold their
 fields; a drawing that names no unit is read in mm, and the reply's `notes` say so with the size that made.
+Lines, fills and texts keep their colour (the entity's or its layer's; the drawing's ink, index 7, is none), and a text that
+hangs from its point or is centred on it (DXF vertical alignment) comes in on its baseline where it showed. An MTEXT's embedded
+object (code 101 on, written since 2018) is read past (`dxf.rs`), so its 10s and 11s don't turn it, and `\c` true colour is
+formatting, as `\C` is. `TitleBlock::make_field` turns a text into a field of a key (`key_for` suggests one from what it says) whose
+default is what it said.
 A single line of DXF text keeps its braces (`dxf::decode`), as AutoCAD shows them; only multi-line text's braces are formatting.
 `title_values` gives the project's values. In the desktop, Manage > Title Blocks lists them (New, Duplicate, Delete, Import DXF…) and
 edits the one picked, with a preview drawn by the core (`titleblock::preview`) as the first sheet that names it fills it in: its fields,
 with the project's values, its texts, its straight lines and its size; a sheet's Properties pick its title block and fill in its sheet
-fields. The lettering is BIMCraft's own stroke lettering, in capitals, as the built-in box's.
+fields. The preview is the editor: a click picks a text (`Text::outline`), a drag moves it, the arrow keys nudge it half a
+millimetre, and the text picked is edited below it (what it says, size, angle, justification) or made a field (Make Field); it zooms
+and scrolls. The lettering is BIMCraft's own stroke lettering, in capitals, as the built-in box's; it has the ordinals º and ª.
