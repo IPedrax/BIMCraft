@@ -28,7 +28,7 @@ msgstr "Vasca da bagno"
 msgid "Bed"
 msgstr "Letto"
 
-#: crates/core/src/model.rs:3000
+#: crates/core/src/model.rs:3006
 msgid "Brick"
 msgstr "Mattone"
 
@@ -64,7 +64,7 @@ msgstr "Asse"
 msgid "Centre Lines"
 msgstr "Linee d'asse"
 
-#: crates/core/src/model.rs:3008
+#: crates/core/src/model.rs:3014
 msgid "Ceramic tile"
 msgstr "Piastrella ceramica"
 
@@ -76,11 +76,11 @@ msgstr "Sedia"
 msgid "Concrete"
 msgstr "Calcestruzzo"
 
-#: crates/core/src/model.rs:3002
+#: crates/core/src/model.rs:3008
 msgid "Concrete block"
 msgstr "Blocco in calcestruzzo"
 
-#: crates/core/src/model.rs:3016
+#: crates/core/src/model.rs:3022
 msgid "Copper"
 msgstr "Rame"
 
@@ -156,11 +156,11 @@ msgstr "Punto"
 msgid "Double Door"
 msgstr "Porta a due battenti"
 
-#: crates/core/src/model.rs:2533
+#: crates/core/src/model.rs:2539
 msgid "Double Sliding"
 msgstr "Scorrevole doppia"
 
-#: crates/core/src/model.rs:2531
+#: crates/core/src/model.rs:2537
 msgid "Double Swing"
 msgstr "Doppio battente"
 
@@ -168,7 +168,7 @@ msgstr "Doppio battente"
 msgid "Earthing Electrode"
 msgstr "Dispersore"
 
-#: crates/core/src/model.rs:1926
+#: crates/core/src/model.rs:1932
 msgid "East"
 msgstr "Est"
 
@@ -189,7 +189,7 @@ msgid "Electrical Power"
 msgstr ""
 
 #: crates/core/src/commands.rs:9612
-#: crates/core/src/commands.rs:12813
+#: crates/core/src/commands.rs:12815
 msgid "Elevation"
 msgstr "Prospetto"
 
@@ -205,7 +205,7 @@ msgstr "Tessuto"
 msgid "Family"
 msgstr "Oggetto"
 
-#: crates/core/src/model.rs:2535
+#: crates/core/src/model.rs:2541
 msgid "Fixed"
 msgstr "Fisso"
 
@@ -221,7 +221,7 @@ msgstr "Piletta a pavimento"
 msgid "Floor Schedule"
 msgstr "Abaco solai"
 
-#: crates/core/src/model.rs:2534
+#: crates/core/src/model.rs:2540
 msgid "Folding"
 msgstr "Pieghevole"
 
@@ -250,7 +250,7 @@ msgstr "Vetro"
 msgid "Gross Floor Area"
 msgstr "Superficie lorda"
 
-#: crates/core/src/model.rs:3007
+#: crates/core/src/model.rs:3013
 msgid "Gypsum board"
 msgstr "Cartongesso"
 
@@ -307,7 +307,7 @@ msgid "Length"
 msgstr "Lunghezza"
 
 #: crates/core/src/commands.rs:6369
-#: crates/core/src/model.rs:3146
+#: crates/core/src/model.rs:3152
 msgid "Level"
 msgstr "Piano"
 
@@ -323,7 +323,7 @@ msgstr ""
 msgid "Long Dash"
 msgstr "Tratto lungo"
 
-#: crates/core/src/model.rs:1527
+#: crates/core/src/model.rs:1533
 msgid "Mark"
 msgstr "ID"
 
@@ -359,7 +359,7 @@ msgstr "Altezza di installazione"
 msgid "NOT ENCLOSED"
 msgstr "NON CHIUSA"
 
-#: crates/core/src/model.rs:1528
+#: crates/core/src/model.rs:1534
 msgid "Name"
 msgstr "Nome"
 
@@ -371,7 +371,7 @@ msgstr "Nuova costruzione"
 msgid "No"
 msgstr "No"
 
-#: crates/core/src/model.rs:1924
+#: crates/core/src/model.rs:1930
 msgid "North"
 msgstr "Nord"
 
@@ -443,7 +443,7 @@ msgstr "Altezza alzata"
 msgid "Risers"
 msgstr "Alzate"
 
-#: crates/core/src/model.rs:3009
+#: crates/core/src/model.rs:3015
 msgid "Roof tiles"
 msgstr "Tegole"
 
@@ -467,7 +467,7 @@ msgstr "SCALA COME INDICATO"
 msgid "Sand"
 msgstr "Sabbia"
 
-#: crates/core/src/model.rs:3005
+#: crates/core/src/model.rs:3011
 msgid "Screed"
 msgstr "Massetto"
 
@@ -476,7 +476,7 @@ msgid "Seat Height"
 msgstr "Altezza seduta"
 
 #: crates/core/src/commands.rs:9589
-#: crates/core/src/commands.rs:12812
+#: crates/core/src/commands.rs:12814
 msgid "Section"
 msgstr "Sezione"
 
@@ -512,7 +512,7 @@ msgstr "Davanzale"
 msgid "Single Door"
 msgstr "Porta a un battente"
 
-#: crates/core/src/model.rs:2532
+#: crates/core/src/model.rs:2538
 msgid "Sliding"
 msgstr "Scorrevole"
 
@@ -540,11 +540,11 @@ msgstr "Nero pieno"
 msgid "Solid fill"
 msgstr "Riempimento pieno"
 
-#: crates/core/src/model.rs:1925
+#: crates/core/src/model.rs:1931
 msgid "South"
 msgstr "Sud"
 
-#: crates/core/src/model.rs:2530
+#: crates/core/src/model.rs:2536
 msgid "Swing"
 msgstr "Battente"
 
@@ -588,7 +588,7 @@ msgstr "Totale"
 msgid "Tread"
 msgstr "Pedata"
 
-#: crates/core/src/model.rs:1529
+#: crates/core/src/model.rs:1535
 msgid "Type"
 msgstr "Tipo"
 
@@ -640,7 +640,7 @@ msgstr "Lavabo"
 msgid "Weight"
 msgstr "Peso"
 
-#: crates/core/src/model.rs:1927
+#: crates/core/src/model.rs:1933
 msgid "West"
 msgstr "Ovest"
 

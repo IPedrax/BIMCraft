@@ -27,7 +27,7 @@ msgstr "Badewanne"
 msgid "Bed"
 msgstr "Bett"
 
-#: crates/core/src/model.rs:3000
+#: crates/core/src/model.rs:3006
 msgid "Brick"
 msgstr "Ziegel"
 
@@ -63,7 +63,7 @@ msgstr "Mittelpunkt"
 msgid "Centre Lines"
 msgstr "Mittellinien"
 
-#: crates/core/src/model.rs:3008
+#: crates/core/src/model.rs:3014
 msgid "Ceramic tile"
 msgstr "Keramikfliese"
 
@@ -75,11 +75,11 @@ msgstr "Stuhl"
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:3002
+#: crates/core/src/model.rs:3008
 msgid "Concrete block"
 msgstr "Betonblock"
 
-#: crates/core/src/model.rs:3016
+#: crates/core/src/model.rs:3022
 msgid "Copper"
 msgstr "Kupfer"
 
@@ -155,11 +155,11 @@ msgstr "Punkt"
 msgid "Double Door"
 msgstr "Doppeltür"
 
-#: crates/core/src/model.rs:2533
+#: crates/core/src/model.rs:2539
 msgid "Double Sliding"
 msgstr "Doppelschiebetür"
 
-#: crates/core/src/model.rs:2531
+#: crates/core/src/model.rs:2537
 msgid "Double Swing"
 msgstr "Doppelflügelig"
 
@@ -167,7 +167,7 @@ msgstr "Doppelflügelig"
 msgid "Earthing Electrode"
 msgstr "Erder"
 
-#: crates/core/src/model.rs:1926
+#: crates/core/src/model.rs:1932
 msgid "East"
 msgstr "Osten"
 
@@ -188,7 +188,7 @@ msgid "Electrical Power"
 msgstr "Elektro Energie"
 
 #: crates/core/src/commands.rs:9612
-#: crates/core/src/commands.rs:12813
+#: crates/core/src/commands.rs:12815
 msgid "Elevation"
 msgstr "Ansicht"
 
@@ -204,7 +204,7 @@ msgstr "Gewebe"
 msgid "Family"
 msgstr "Familie"
 
-#: crates/core/src/model.rs:2535
+#: crates/core/src/model.rs:2541
 msgid "Fixed"
 msgstr "Fest"
 
@@ -220,7 +220,7 @@ msgstr "Bodenablauf"
 msgid "Floor Schedule"
 msgstr "Bodentabelle"
 
-#: crates/core/src/model.rs:2534
+#: crates/core/src/model.rs:2540
 msgid "Folding"
 msgstr "Falttür"
 
@@ -249,7 +249,7 @@ msgstr "Glas"
 msgid "Gross Floor Area"
 msgstr "Bruttogrundfläche"
 
-#: crates/core/src/model.rs:3007
+#: crates/core/src/model.rs:3013
 msgid "Gypsum board"
 msgstr "Gipskarton"
 
@@ -306,7 +306,7 @@ msgid "Length"
 msgstr "Länge"
 
 #: crates/core/src/commands.rs:6369
-#: crates/core/src/model.rs:3146
+#: crates/core/src/model.rs:3152
 msgid "Level"
 msgstr "Geschoss"
 
@@ -322,7 +322,7 @@ msgstr "Last"
 msgid "Long Dash"
 msgstr "Langer Strich"
 
-#: crates/core/src/model.rs:1527
+#: crates/core/src/model.rs:1533
 msgid "Mark"
 msgstr "Marke"
 
@@ -358,7 +358,7 @@ msgstr "Montagehöhe"
 msgid "NOT ENCLOSED"
 msgstr "NICHT UMSCHLOSSEN"
 
-#: crates/core/src/model.rs:1528
+#: crates/core/src/model.rs:1534
 msgid "Name"
 msgstr "Name"
 
@@ -370,7 +370,7 @@ msgstr "Neubau"
 msgid "No"
 msgstr "Nein"
 
-#: crates/core/src/model.rs:1924
+#: crates/core/src/model.rs:1930
 msgid "North"
 msgstr "Norden"
 
@@ -442,7 +442,7 @@ msgstr "Steigungshöhe"
 msgid "Risers"
 msgstr "Steigungen"
 
-#: crates/core/src/model.rs:3009
+#: crates/core/src/model.rs:3015
 msgid "Roof tiles"
 msgstr "Dachziegel"
 
@@ -466,7 +466,7 @@ msgstr "MASSSTAB WIE ANGEGEBEN"
 msgid "Sand"
 msgstr "Sand"
 
-#: crates/core/src/model.rs:3005
+#: crates/core/src/model.rs:3011
 msgid "Screed"
 msgstr "Estrich"
 
@@ -475,7 +475,7 @@ msgid "Seat Height"
 msgstr "Sitzhöhe"
 
 #: crates/core/src/commands.rs:9589
-#: crates/core/src/commands.rs:12812
+#: crates/core/src/commands.rs:12814
 msgid "Section"
 msgstr "Schnitt"
 
@@ -511,7 +511,7 @@ msgstr "Brüstung"
 msgid "Single Door"
 msgstr "Einzeltür"
 
-#: crates/core/src/model.rs:2532
+#: crates/core/src/model.rs:2538
 msgid "Sliding"
 msgstr "Schieben"
 
@@ -539,11 +539,11 @@ msgstr "Schwarz"
 msgid "Solid fill"
 msgstr "Vollton"
 
-#: crates/core/src/model.rs:1925
+#: crates/core/src/model.rs:1931
 msgid "South"
 msgstr "Süden"
 
-#: crates/core/src/model.rs:2530
+#: crates/core/src/model.rs:2536
 msgid "Swing"
 msgstr "Anschlag"
 
@@ -587,7 +587,7 @@ msgstr "Gesamt"
 msgid "Tread"
 msgstr "Auftritt"
 
-#: crates/core/src/model.rs:1529
+#: crates/core/src/model.rs:1535
 msgid "Type"
 msgstr "Typ"
 
@@ -639,7 +639,7 @@ msgstr "Waschbecken"
 msgid "Weight"
 msgstr "Gewicht"
 
-#: crates/core/src/model.rs:1927
+#: crates/core/src/model.rs:1933
 msgid "West"
 msgstr "Westen"
 

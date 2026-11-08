@@ -4,7 +4,9 @@
 //! parameter (or Create Parameter…). Align (AL) moves what is picked second onto what is picked first and leaves a padlock,
 //! which locks them. Flexing a type solves them (`bimcraft_core::family::constraints`); what can't hold says "Constraints are
 //! not satisfied", with Remove Constraints or Cancel; a label, lock or EQ that adds nothing to the others is refused as
-//! over-constrained. The marks are the core's (`constraints::marks`), painted over the view's picture.
+//! over-constrained. The marks are the core's (`constraints::marks`), painted over the view's picture. Angular Dimension
+//! (F7c) picks lines that cross (reference lines, plane traces, lines of forms) and a click on nothing places its arc; its
+//! label is an Angle parameter.
 use super::views::{PICKED, Views};
 use super::*;
 pub(super) use bimcraft_core::family::constraints::DimMark;
@@ -68,8 +70,54 @@ pub(super) enum Clicked {
     AlignLock,
 }
 
+/// An arc's start angle and its sweep, on screen (radians).
+type Sweep = (f32, f32);
+
+/// An angular dimension's arc on screen: where its lines cross, its radius in pixels, and each segment's start angle and
+/// sweep (screen radians, y down), the short way round.
+fn arcs(m: &DimMark, screen: &dyn Fn(P2) -> Pos2) -> Option<(Pos2, f32, Vec<Sweep>)> {
+    let v = screen(*m.points.first()?);
+    let rays: Vec<Pos2> = m.points.iter().skip(1).map(|p| screen(*p)).collect();
+    let r = (*rays.first()? - v).length();
+    if !(r > 1.0 && r.is_finite()) {
+        return None;
+    }
+    let angle = |p: Pos2| (p.y - v.y).atan2(p.x - v.x);
+    let tau = std::f32::consts::TAU;
+    let segs = rays
+        .windows(2)
+        .map(|w| {
+            let (a, b) = (angle(w[0]), angle(w[1]));
+            let mut sweep = (b - a).rem_euclid(tau);
+            if sweep > std::f32::consts::PI {
+                sweep -= tau;
+            }
+            (a, sweep)
+        })
+        .collect();
+    Some((v, r, segs))
+}
+
+/// The point at `angle` (screen radians), `r` pixels from `v`.
+fn polar(v: Pos2, r: f32, angle: f32) -> Pos2 {
+    v + vec2(angle.cos(), angle.sin()) * r
+}
+
+/// What an angle reads: degrees, to two places at most.
+fn degrees(a: f64) -> String {
+    let s = format!("{a:.2}");
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+    format!("{s}°")
+}
+
 /// Where a selected dimension's segment's padlock and its EQ toggle are, on screen.
 fn lock_at(m: &DimMark, i: usize, screen: &dyn Fn(P2) -> Pos2) -> Option<Pos2> {
+    // An angle's: inside its arc, on its middle, clear of the lines either side.
+    if m.kind == DimKind::Angular {
+        let (v, r, segs) = arcs(m, screen)?;
+        let (a, sweep) = *segs.get(i)?;
+        return Some(polar(v, (r - 20.0).max(r * 0.55), a + sweep / 2.0));
+    }
     let (a, b) = (screen(*m.points.get(i)?), screen(*m.points.get(i + 1)?));
     // A radius's or a diameter's: beside its leader past the circle, clear of it.
     if m.kind != DimKind::Aligned {
@@ -80,6 +128,13 @@ fn lock_at(m: &DimMark, i: usize, screen: &dyn Fn(P2) -> Pos2) -> Option<Pos2> {
 }
 
 fn equal_at(m: &DimMark, screen: &dyn Fn(P2) -> Pos2) -> Option<Pos2> {
+    // An angular string's: past its first end, on round its arc.
+    if m.kind == DimKind::Angular {
+        let (v, r, segs) = arcs(m, screen)?;
+        let (a, sweep) = *segs.first()?;
+        let back = (22.0 + 16.0) / r;
+        return Some(polar(v, r, a - back * sweep.signum()));
+    }
     let (a, b) = (screen(*m.points.first()?), screen(*m.points.last()?));
     Some(a + (b - a) * 0.5 - down(a, b) * 30.0)
 }
@@ -202,6 +257,10 @@ pub(super) fn paint(painter: &Painter, m: &DimMark, screen: &dyn Fn(P2) -> Pos2,
         }
         return;
     }
+    if m.kind == DimKind::Angular {
+        paint_angular(painter, m, screen, selected, color);
+        return;
+    }
     if m.kind != DimKind::Aligned {
         paint_radial(painter, m, screen, selected, units, color);
         return;
@@ -303,6 +362,80 @@ fn paint_radial(painter: &Painter, m: &DimMark, screen: &dyn Fn(P2) -> Pos2, sel
     }
 }
 
+/// An angular dimension's mark painted (F7c): an arc between each two of its lines at the radius it was placed at, an arrow
+/// at each end of each arc, a short witness along each line where the arc meets it, and each angle (or EQ, or its label and
+/// angle) level just outside the middle of its arc; selected, a padlock inside each arc and the EQ toggle past a string's
+/// first end.
+fn paint_angular(painter: &Painter, m: &DimMark, screen: &dyn Fn(P2) -> Pos2, selected: bool, color: Color32) {
+    let Some((v, r, segs)) = arcs(m, screen) else { return };
+    let stroke = Stroke::new(1.0, color);
+    let font = egui::FontId::proportional(12.0);
+    for (i, (a, sweep)) in segs.iter().enumerate() {
+        let n = ((sweep.abs() * r / 4.0).ceil() as usize).clamp(2, 256);
+        let pts: Vec<Pos2> = (0..=n).map(|k| polar(v, r, a + sweep * k as f32 / n as f32)).collect();
+        painter.add(egui::Shape::line(pts, stroke));
+        // The arrows, pointing out along the arc at each end.
+        let turn = sweep.signum();
+        for (at, out) in [(*a, -turn), (a + sweep, turn)] {
+            let tip = polar(v, r, at);
+            let tangent = vec2(-at.sin(), at.cos()) * out;
+            let radial = vec2(at.cos(), at.sin());
+            let back = tip - tangent * 9.0;
+            painter.add(egui::Shape::convex_polygon(vec![tip, back + radial * 3.0, back - radial * 3.0], color, Stroke::NONE));
+        }
+        let len = m.lengths.get(i).copied().unwrap_or(0.0);
+        let text = match &m.label {
+            _ if m.equal && m.lengths.len() > 1 => t("EQ").to_string(),
+            Some(l) => format!("{l} = {}", degrees(len)),
+            None => degrees(len),
+        };
+        let galley = painter.layout_no_wrap(text, font.clone(), color);
+        let mid = a + sweep / 2.0;
+        let dir = vec2(mid.cos(), mid.sin());
+        let size = galley.size();
+        // Its nearest corner a few pixels off the arc, whichever way the middle points.
+        let reach = (dir.x.abs() * size.x + dir.y.abs() * size.y) / 2.0;
+        let centre = v + dir * (r + 5.0 + reach);
+        painter.galley(centre - size / 2.0, galley, color);
+        if selected && let Some(at) = lock_at(m, i, screen) {
+            let locked = m.locked.get(i).copied().unwrap_or(false);
+            padlock(painter, at, locked, if locked { pal().accent } else { pal().muted });
+        }
+    }
+    // A witness along each line, across the arc.
+    for p in m.points.iter().skip(1) {
+        let d = (screen(*p) - v).normalized();
+        if d.is_finite() {
+            painter.line_segment([v + d * (r - 6.0).max(0.0), v + d * (r + 6.0)], stroke);
+        }
+    }
+    if selected
+        && segs.len() > 1
+        && let Some(at) = equal_at(m, screen)
+    {
+        let tone = if m.equal { pal().accent } else { pal().muted };
+        let rect = Rect::from_center_size(at, vec2(22.0, 14.0));
+        painter.rect_stroke(rect, 2.0, Stroke::new(1.0, tone), StrokeKind::Inside);
+        painter.text(at, egui::Align2::CENTER_CENTER, "EQ", egui::FontId::proportional(10.0), tone);
+        if !m.equal {
+            painter.line_segment([rect.left_bottom(), rect.right_top()], Stroke::new(1.0, tone));
+        }
+    }
+}
+
+/// Whether `p` is on angular mark `m`: on one of its arcs, or by an angle's text just outside one.
+fn on_arc(m: &DimMark, p: Pos2, screen: &dyn Fn(P2) -> Pos2) -> bool {
+    let Some((v, r, segs)) = arcs(m, screen) else { return false };
+    let d = p - v;
+    let at = d.y.atan2(d.x);
+    let tau = std::f32::consts::TAU;
+    segs.iter().any(|(a, sweep)| {
+        let into = if *sweep >= 0.0 { (at - a).rem_euclid(tau) } else { (a - at).rem_euclid(tau) };
+        let near = (d.length() - r).abs() < NEAR || (d.length() > r && d.length() < r + 30.0);
+        into <= sweep.abs() + 0.02 && near
+    })
+}
+
 /// What a click at `p` on the dimensions does, before anything else in the view takes it: a padlock or the EQ toggle of the
 /// selected one, an Align lock's padlock, Align's padlock waiting, or a dimension (its line or its text).
 pub(super) fn clicked(
@@ -324,7 +457,8 @@ pub(super) fn clicked(
                 return guid(m).map(|g| Clicked::Lock(g, i));
             }
         }
-        if m.points.len() > 2 && equal_at(m, screen).is_some_and(|at| (at - p).length() < NEAR + 4.0) {
+        let string = if m.kind == DimKind::Angular { m.points.len() > 3 } else { m.points.len() > 2 };
+        if string && equal_at(m, screen).is_some_and(|at| (at - p).length() < NEAR + 4.0) {
             return guid(m).map(Clicked::Equal);
         }
     }
@@ -334,6 +468,12 @@ pub(super) fn clicked(
         }
     }
     for m in marks.iter().filter(|m| !m.alignment) {
+        if m.kind == DimKind::Angular {
+            if on_arc(m, p, screen) {
+                return guid(m).map(Clicked::Select);
+            }
+            continue;
+        }
         let pts: Vec<Pos2> = m.points.iter().map(|q| screen(*q)).collect();
         let (Some(&a), Some(&b)) = (pts.first(), pts.last()) else { continue };
         let up = -down(a, b);
@@ -366,7 +506,7 @@ pub(super) fn reference_at(
 ) -> Option<DimRef> {
     let centre = constraints::sketch_circles(flexed, values, st, which)
         .into_iter()
-        .map(|(r, c, _)| ((screen(c) - p).length(), r))
+        .map(|c| ((screen(c.centre) - p).length(), c.r))
         .filter(|(d, _)| *d < NEAR)
         .min_by(|x, y| x.0.total_cmp(&y.0));
     if let Some((_, DimRef::Sketch(f, l))) = centre {
@@ -385,7 +525,8 @@ pub(super) fn reference_at(
     }
 }
 
-/// The circle of a sketch under `p` in view `which` (near its edge): what Radial and Diameter Dimension pick.
+/// The circle or arc of a sketch under `p` in view `which` (near its edge, within an arc's sweep): what Radial and Diameter
+/// Dimension pick.
 pub(super) fn circle_at(
     flexed: &Family,
     values: &BTreeMap<String, Val>,
@@ -393,16 +534,58 @@ pub(super) fn circle_at(
     which: Which,
     p: Pos2,
     screen: &dyn Fn(P2) -> Pos2,
-) -> Option<(DimRef, P2, f64)> {
+) -> Option<constraints::Round> {
     constraints::sketch_circles(flexed, values, st, which)
         .into_iter()
-        .map(|(r, c, radius)| {
-            let (sc, rim) = (screen(c), screen(P2(c.0 + radius, c.1)));
-            (((p - sc).length() - (rim - sc).length()).abs(), (r, c, radius))
+        .filter_map(|c| {
+            let (sc, rim) = (screen(c.centre), screen(P2(c.centre.0 + c.radius, c.centre.1)));
+            // Within an arc's sweep, seen on screen (a mirror keeps what lies between its ends).
+            let px = |q: Pos2| P2(f64::from(q.x), f64::from(q.y));
+            let on_screen = constraints::Round { centre: px(sc), arc: c.arc.map(|a| a.map(|q| px(screen(q)))), ..c };
+            on_screen.sweeps(px(p)).then_some((((p - sc).length() - (rim - sc).length()).abs(), c))
         })
         .filter(|(d, _)| *d < NEAR)
         .min_by(|x, y| x.0.total_cmp(&y.0))
         .map(|(_, c)| c)
+}
+
+/// The line under `p` in view `which` an angular dimension may measure to (F7c): a reference line, a straight line of a
+/// sketch seen flat, or a plane's trace (by the view's drawing), the nearer.
+pub(super) fn line_at(
+    flexed: &Family,
+    values: &BTreeMap<String, Val>,
+    st: &Staged,
+    which: Which,
+    plane: Option<Guid>,
+    p: Pos2,
+    screen: &dyn Fn(P2) -> Pos2,
+) -> Option<DimRef> {
+    let view = DimView::of(which);
+    let line = constraints::line_faces(flexed, st, which)
+        .into_iter()
+        .chain(constraints::sketch_faces(flexed, values, st, which))
+        .filter(|(r, ..)| constraints::view_way(flexed, r, values, view).is_ok())
+        .map(|(r, a, b)| (off(p, screen(a), screen(b)), r))
+        .filter(|(d, _)| *d < NEAR)
+        .min_by(|x, y| x.0.total_cmp(&y.0));
+    let plane = plane.map(DimRef::Plane).filter(|r| constraints::view_way(flexed, r, values, view).is_ok());
+    match (line, plane) {
+        (Some((d, r)), Some(_)) if d < 3.0 => Some(r),
+        (_, Some(r)) => Some(r),
+        (Some((_, r)), None) => Some(r),
+        (None, None) => None,
+    }
+}
+
+/// Whether line `b` may follow `refs` in an angular dimension: it crosses the last of them (they aren't parallel).
+pub(super) fn crosses_last(flexed: &Family, values: &BTreeMap<String, Val>, which: Which, refs: &[DimRef], b: &DimRef) -> bool {
+    let view = DimView::of(which);
+    let Ok(n) = constraints::view_way(flexed, b, values, view) else { return false };
+    let Some(last) = refs.last() else { return true };
+    match constraints::view_way(flexed, last, values, view) {
+        Ok(m) => (n.0 * m.1 - n.1 * m.0).abs() > 1e-6 * n.length() * m.length(),
+        Err(_) => false,
+    }
 }
 
 /// The segment reference `r` of `flexed` is drawn as in view `which`, or the point it is at, to show it picked.
@@ -411,8 +594,8 @@ pub(super) fn drawn_as(flexed: &Family, values: &BTreeMap<String, Val>, st: &Sta
         DimRef::Plane(g) => flexed.planes.iter().find(|p| p.guid == *g).and_then(|p| super::views::plane_trace(st, which, &p.frame())),
         DimRef::Point(f, l, _) => constraints::sketch_circles(flexed, values, st, which)
             .into_iter()
-            .find(|(c, ..)| *c == DimRef::Sketch(*f, *l))
-            .map(|(_, c, _)| (c, c)),
+            .find(|c| c.r == DimRef::Sketch(*f, *l))
+            .map(|c| (c.centre, c.centre)),
         _ => traces(flexed, values, st, which).into_iter().find(|(e, ..)| e == r).map(|(_, a, b)| (a, b)),
     }
 }
@@ -426,7 +609,8 @@ impl FamilyEditor {
         }
     }
 
-    /// Radial Dimension or Diameter Dimension (F7b): pick a circle of a sketch seen flat, then click where it goes.
+    /// Radial Dimension or Diameter Dimension (F7b): pick a circle or an arc of a sketch seen flat, then click where it goes;
+    /// Angular Dimension (F7c): pick lines that cross, then click where its arc goes.
     pub(crate) fn radial_tool(&mut self, kind: DimKind) {
         if self.editing_2d() && self.sketch.is_none() {
             self.drop_tools();
@@ -573,6 +757,13 @@ impl FamilyEditor {
                         }
                     }
                 }
+                Edit::LineEnds(g, start, end) => {
+                    if let Some(l) = self.lines.iter_mut().find(|l| l.guid == g) {
+                        l.start = start;
+                        l.end = end;
+                    }
+                }
+                Edit::Turn(i, k, t) => self.turn_sketch_arc(i, k, t),
                 Edit::Parameter(name, v) => {
                     let Some(at) = self.param_at(&name) else { continue };
                     let text = number_text(v);
@@ -584,6 +775,17 @@ impl FamilyEditor {
                 }
             }
         }
+    }
+
+    /// Line `k` of form `i`'s sketch, an arc, turning `t` degrees, a number.
+    fn turn_sketch_arc(&mut self, i: usize, k: usize, t: f64) {
+        use bimcraft_core::family::sketch::FormCurve;
+        let Some(ft) = self.forms.get(i) else { return };
+        let Ok(mut f) = ft.form() else { return };
+        let Some(FormCurve::Line { turn, .. }) = f.sketch.get_mut(k).map(|l| &mut l.curve) else { return };
+        *turn = Some(Expr::Number(t));
+        let tag = ft.tag;
+        self.forms[i] = FormText::again(&f, tag);
     }
 
     /// Point `spot` of line `k` of form `i`'s sketch put at `p` (its host's axes), a number.
@@ -778,11 +980,12 @@ impl FamilyEditor {
         if self.param_at(name).is_some() {
             return Err(tf("there's a parameter `{}` already", &[name]));
         }
-        let length = self.dimension_length(c.dim).unwrap_or(1000.0);
-        let p: Parameter = serde_json::from_value(
-            json!({"name": name, "kind": "length", "instance": c.instance, "reporting": c.reporting, "value": length}),
-        )
-        .map_err(|e| e.to_string())?;
+        let angular = self.dimensions.iter().any(|d| d.guid == c.dim && d.kind == DimKind::Angular);
+        let length = self.dimension_length(c.dim).unwrap_or(if angular { 90.0 } else { 1000.0 });
+        let kind = if angular { "angle" } else { "length" };
+        let p: Parameter =
+            serde_json::from_value(json!({"name": name, "kind": kind, "instance": c.instance, "reporting": c.reporting, "value": length}))
+                .map_err(|e| e.to_string())?;
         self.params.push(ParamText::of(&p));
         match self.set_label(c.dim, Some(name.to_string())) {
             Ok(()) => Ok(()),
@@ -807,11 +1010,13 @@ impl FamilyEditor {
         f.measured(&self.values()).ok()?.get(at)?.first().copied()
     }
 
-    /// The Options Bar of a dimension selected: Label, a length parameter of the family's, none, or Create Parameter….
+    /// The Options Bar of a dimension selected: Label, a length parameter of the family's (an angle, for an angular one), none,
+    /// or Create Parameter….
     pub(crate) fn dimension_options(&mut self, ui: &mut Ui, g: Guid) -> Option<String> {
         let d = self.dimensions.iter().find(|d| d.guid == g)?.clone();
         let one = d.segments() == 1 && !d.alignment;
-        let lengths: Vec<String> = self.params.iter().filter(|p| p.kind == Holds::Length).map(|p| p.name.trim().to_string()).collect();
+        let holds = if d.kind == DimKind::Angular { Holds::Angle } else { Holds::Length };
+        let lengths: Vec<String> = self.params.iter().filter(|p| p.kind == holds).map(|p| p.name.trim().to_string()).collect();
         let l = ui.label(t("Label"));
         let shown = d.label.clone().unwrap_or_else(|| t(NONE).to_string());
         let mut picked: Option<Option<String>> = None;
@@ -908,8 +1113,9 @@ pub(super) fn new_dimension(
     }
 }
 
-/// The marks of the dimensions of `flexed` in view `which`, and of `preview` (a dimension being placed) too.
+/// The marks of the dimensions of `flexed` (`drawn` flexed) in view `which`, and of `preview` (a dimension being placed) too.
 pub(super) fn marks_of(
+    drawn: &Family,
     flexed: &Family,
     values: &BTreeMap<String, Val>,
     st: &Staged,
@@ -917,11 +1123,11 @@ pub(super) fn marks_of(
     preview: Option<FamilyDimension>,
 ) -> Vec<DimMark> {
     match preview {
-        None => constraints::marks(flexed, values, st, which),
+        None => constraints::marks(drawn, flexed, values, st, which),
         Some(d) => {
             let mut f = flexed.clone();
             f.dimensions.push(d);
-            constraints::marks(&f, values, st, which)
+            constraints::marks(drawn, &f, values, st, which)
         }
     }
 }

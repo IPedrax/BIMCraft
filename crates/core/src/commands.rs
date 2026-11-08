@@ -11028,10 +11028,12 @@ fn family(s: &mut Session, p: &Value) -> R {
                 json!({"guid": x.guid, "id": x.id, "from": x.from, "to": x.to, "sketch": sketch})
             })
             .collect();
+        // Each reference line where the type has it: turned and moved by its constraints (F7c).
+        let lines: Vec<Value> = flexed.lines.iter().map(|l| json!({"guid": l.guid, "id": l.id, "start": l.start, "end": l.end})).collect();
         let lengths = f.measured(&values).map_err(|e| bad(c, e))?;
         let dims: Vec<Value> =
             f.dimensions.iter().zip(lengths).map(|(d, l)| json!({"guid": d.guid, "id": d.id, "label": d.label, "lengths": l})).collect();
-        return Ok(json!({"name": name, "type": type_name, "planes": planes, "forms": forms, "dimensions": dims}));
+        return Ok(json!({"name": name, "type": type_name, "planes": planes, "lines": lines, "forms": forms, "dimensions": dims}));
     }
     if !keys.iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null())) {
         let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}`")))?;

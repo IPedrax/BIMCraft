@@ -149,7 +149,13 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 27: a family may nest families (`nested`, each its whole definition) and place their instances (`nested_instances`), T6a.
 /// A build of 26 reads a family leniently and would leave both out: the host would open without its nested geometry and lose
 /// it on saving.
-pub const FORMAT: u32 = 27;
+///
+/// 28: a family's dimensions may be angular (between reference lines, reference planes and straight sketch lines, labelled
+/// with angles), measure to a reference line's start or end, measure an arc's radius, diameter or centre, and measure the
+/// forms drawn on a reference line's face; reference lines turn and move with them (F7c). A build of 27 knows no `angular`
+/// kind and no line point, so it would leave those dimensions out of the file and flex the family as if nothing turned its
+/// lines.
+pub const FORMAT: u32 = 28;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3590,6 +3596,8 @@ impl Model {
         // 25 to 26 (dimensions to sketch lines, their points and reference lines' faces; radial and diameter ones) has none:
         // a file of 25 holds none, and every dimension it holds reads as it did.
         // 26 to 27 (nested families and their instances) has none: a file of 26 holds none.
+        // 27 to 28 (angular dimensions, reference lines' ends, arcs' radii and centres, forms on reference lines measured) has
+        // none: a file of 27 holds none, and every dimension it holds solves as it did.
         self.settle_hosts(None);
         self.format = FORMAT;
     }
