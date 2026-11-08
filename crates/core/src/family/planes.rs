@@ -473,6 +473,7 @@ impl Family {
         self.forms.iter_mut().for_each(|f| follow(&mut f.host));
         self.lines.iter_mut().for_each(|l| follow(&mut l.host));
         self.adaptive.iter_mut().for_each(|d| d.work_planes_mut(&mut |h| follow(h)));
+        self.resolve_dimension_refs(planes, &[]);
     }
 
     /// Each host given as an id (as a command may) given as the GUID of the plane or line of that id.
@@ -491,6 +492,7 @@ impl Family {
         self.forms.iter_mut().for_each(|f| resolve(&mut f.host));
         self.lines.iter_mut().for_each(|l| resolve(&mut l.host));
         self.adaptive.iter_mut().for_each(|d| d.work_planes_mut(&mut |h| resolve(h)));
+        self.resolve_dimension_refs(&[], &[]);
     }
 
     /// Whether its planes and lines are sound: its datums first and pinned; each plane drawable, named once, a level only

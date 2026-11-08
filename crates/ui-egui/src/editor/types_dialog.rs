@@ -4,7 +4,8 @@
 //! parameter's (marked "(default)") the value a new instance starts with; a value a formula works out is greyed, showing what
 //! it comes to. Under the table New, Edit and Delete Parameter, Move Up and Move Down within a group, and sorting every group.
 //! Everything goes to the draft, so the dialog's Apply, OK and Cancel (and the document's history) take it as one.
-//! Lock is shown and disabled: locked labelled dimensions arrive with F7. Lookup tables and type catalogs are not here.
+//! Lock (T21) locks every dimension a parameter labels, so dragging in a view can't change its value; it is greyed for a
+//! parameter that labels none or that a formula works out. Lookup tables and type catalogs are not here.
 use super::*;
 use crate::properties::group_header;
 use bimcraft_core::family::{Group, Val};
@@ -18,8 +19,9 @@ const VALUE_W: f32 = 150.0;
 const FORMULA_W: f32 = 270.0;
 const LOCK_W: f32 = 40.0;
 
-/// Lock's tooltip: its behaviour arrives with locked labelled dimensions.
-const LOCK_TIP: &str = msg!("Locking a parameter's value comes with labelled dimensions: not yet in BIMCraft.");
+/// Lock's tooltips: what it does, and why it is greyed.
+const LOCK_TIP: &str = msg!("Lock: the dimensions this parameter labels keep its value when planes are dragged");
+const LOCK_NONE: &str = msg!("Only a parameter that labels a dimension, and that no formula works out, can be locked.");
 
 /// What Family Types keeps while it is open, none of it the draft's: the search, the groups folded, the row selected, and the
 /// Name and Parameter Properties dialogs it opens over itself.
@@ -84,7 +86,7 @@ fn found(search: &str, name: &str) -> bool {
 
 impl FamilyEditor {
     /// The parameter named `name`'s place.
-    fn param_at(&self, name: &str) -> Option<usize> {
+    pub(super) fn param_at(&self, name: &str) -> Option<usize> {
         self.params.iter().position(|p| p.name.trim() == name)
     }
 
@@ -291,7 +293,7 @@ fn table(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
 /// Row `i` of the table: its name (selecting it), its value, its formula and its lock. Whether its name was clicked.
 fn row(ed: &mut FamilyEditor, ui: &mut Ui, i: usize, values: &BTreeMap<String, Val>, materials: &[String]) -> bool {
     let h = ui.spacing().interact_size.y;
-    let FamilyEditor { params, types, picked, types_dialog, .. } = ed;
+    let FamilyEditor { params, types, picked, types_dialog, dimensions, .. } = ed;
     let p = &mut params[i];
     let name = p.name.trim().to_string();
     // Revit marks an instance parameter's: what is typed is the value a new instance starts with.
@@ -350,10 +352,30 @@ fn row(ed: &mut FamilyEditor, ui: &mut Ui, i: usize, values: &BTreeMap<String, V
         field(ui, formula_label, &mut p.formula, FORMULA_W);
     }
     let lock_label = format!("{} {name}", t("Lock"));
+    // Locked, the dimensions it labels: a drag in a view that would change it is refused (T21).
+    let labels: Vec<usize> =
+        (0..dimensions.len()).filter(|k| dimensions[*k].label.as_deref() == Some(name.as_str()) && !dimensions[*k].alignment).collect();
+    let can = !labels.is_empty() && p.formula.trim().is_empty() && !p.original.reporting;
+    let mut on = can && labels.iter().all(|k| dimensions[*k].is_locked(0));
+    let was = on;
     cell(ui, LOCK_W, |ui| {
-        let r = ui.add_enabled(false, egui::Checkbox::without_text(&mut false)).on_disabled_hover_text(t(LOCK_TIP));
-        r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, false, false, lock_label.as_str()));
+        let r = ui.add_enabled(can, egui::Checkbox::without_text(&mut on));
+        let r = if can { r.on_hover_text(t(LOCK_TIP)) } else { r.on_disabled_hover_text(t(LOCK_NONE)) };
+        r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, can, on, lock_label.as_str()));
     });
+    if on != was {
+        let length = match values.get(&name) {
+            Some(Val::Number(x)) if x.is_finite() && *x >= 0.0 => *x,
+            _ => 0.0,
+        };
+        for k in labels {
+            let d = &mut dimensions[k];
+            d.locked.retain(|l| l.segment != 0);
+            if on {
+                d.locked.insert(0, bimcraft_core::model::Lock { segment: 0, length });
+            }
+        }
+    }
     clicked
 }
 
