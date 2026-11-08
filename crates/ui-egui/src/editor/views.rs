@@ -9,8 +9,8 @@
 //! Dimension and Align are F7's (`dimensions.rs`).
 use super::dimensions::{self as dims, Clicked};
 use super::*;
-use bimcraft_core::family::DimRef;
 use bimcraft_core::family::views::{self as fv, Side, Staged, Which};
+use bimcraft_core::family::{DimRef, FamilyDimension};
 use bimcraft_core::geom::P2;
 use bimcraft_core::graphics::Override;
 use bimcraft_core::ids::Guid;
@@ -52,6 +52,10 @@ pub(crate) struct Views {
     pub(crate) aligning: Option<Option<DimRef>>,
     /// The padlock Align leaves until the next click: the two references, where it shows (the view's mm), in which view.
     pub(crate) align_lock: Option<(DimRef, DimRef, P2, Which)>,
+    /// Where each Align padlock was last shown on screen, by its dimension's place (the one Align offers, past the last).
+    pub(crate) locks_shown: Vec<(usize, egui::Pos2)>,
+    /// Where Align's offered padlock was last shown on screen.
+    pub(crate) offer_shown: Option<egui::Pos2>,
     /// An Align "Constraints are not satisfied" asked about, which Remove Constraints does again.
     pub(crate) align_pending: Option<(DimRef, DimRef, P2, Which)>,
     /// "Constraints are not satisfied", asked until Remove Constraints or Cancel.
@@ -147,7 +151,34 @@ impl FamilyEditor {
             let (x, y) = c.view.px(super::sketch::in_view(&c.staged, c.which, &frame, q));
             Some(pane.min + vec2(x, y))
         };
-        self.sketch_padlocks(&on_screen)
+        self.sketch_padlocks(&on_screen, &drawn_lines(&c.drawing, pane.min))
+    }
+
+    /// The view's drawing's lines on screen.
+    pub(crate) fn view_lines_shown(&self) -> Vec<[egui::Pos2; 2]> {
+        match (self.views.cache.as_ref(), self.views.pane) {
+            (Some(c), Some(pane)) => drawn_lines(&c.drawing, pane.min),
+            _ => Vec::new(),
+        }
+    }
+
+    /// The sketch's lines and the view's drawing on screen, while a form is sketched: what its padlocks keep off.
+    pub(crate) fn sketch_lines_shown(&self) -> Vec<[egui::Pos2; 2]> {
+        let (Some(c), Some(pane), Some(frame), Some(s)) =
+            (self.views.cache.as_ref(), self.views.pane, self.sketch_frame(), self.sketch.as_ref())
+        else {
+            return Vec::new();
+        };
+        let on_screen = |q: P2| {
+            let (x, y) = c.view.px(super::sketch::in_view(&c.staged, c.which, &frame, q));
+            pane.min + vec2(x, y)
+        };
+        let mut out = drawn_lines(&c.drawing, pane.min);
+        for l in &s.sketch.lines {
+            let pts: Vec<egui::Pos2> = l.curve.points().into_iter().map(on_screen).collect();
+            out.extend(pts.windows(2).map(|w| [w[0], w[1]]));
+        }
+        out
     }
 }
 
@@ -369,7 +400,8 @@ impl FamilyEditor {
                 let (x, y) = view.px(super::sketch::in_view(&cache.staged, which, f, q));
                 Some(pane.min + vec2(x, y))
             };
-            let locks = self.sketch_padlocks(&on_screen);
+            let lines = drawn_lines(&cache.drawing, pane.min);
+            let locks = self.sketch_padlocks(&on_screen, &lines);
             let free = self.sketch.as_ref().is_some_and(|s| s.tool.is_none());
             // A shape of the Draw panel picked puts Align down.
             if !free {
@@ -380,7 +412,7 @@ impl FamilyEditor {
             if response.clicked()
                 && let Some(p) = response.interact_pointer_pos()
             {
-                let near = locks.iter().find(|(at, _)| (*at - p).length() < 10.0).map(|(_, w)| *w);
+                let near = locks.iter().find(|(at, _)| dims::lock_rect(*at).contains(p)).map(|(_, w)| *w);
                 match near {
                     Some(what) if aligning || free => self.sketch_padlock(what),
                     _ if aligning => {
@@ -408,7 +440,7 @@ impl FamilyEditor {
             {
                 painter.line_segment([a, b], Stroke::new(2.5, PICKED));
             }
-            for (at, what) in self.sketch_padlocks(&on_screen) {
+            for (at, what) in self.sketch_padlocks(&on_screen, &lines) {
                 let open = what == super::sketch::Padlock::Offer;
                 dims::padlock(&painter, at, !open, pal().accent);
             }
@@ -460,10 +492,57 @@ impl FamilyEditor {
         };
         let selected_dim = self.selected_dimension();
         let unsatisfied: Vec<Guid> = self.views.unsatisfied.as_ref().map(|u| u.dims.clone()).unwrap_or_default();
+        // Where Align's padlocks go: beside their lines, clear of every line drawn and of each other (`padlock_spot`), the
+        // one Align offers too (the last).
+        let mut lines = drawn_lines(&c.drawing, pane.min);
+        for m in marks.iter().filter(|m| !m.alignment) {
+            if let (Some(a), Some(b)) = (m.points.first(), m.points.last()) {
+                lines.push([on_screen(*a), on_screen(*b)]);
+            }
+        }
+        let offer = self.views.align_lock.filter(|(.., w)| *w == which).and_then(|(reference, target, at, _)| {
+            let f = family.as_ref()?;
+            let lock = FamilyDimension {
+                refs: vec![reference, target],
+                alignment: true,
+                ..dims::new_dimension(f, &values, &c.staged, which, &[], at, Default::default())
+            };
+            dims::marks_of(f, &values, &c.staged, which, Some(lock)).pop()
+        });
+        let mut pending: Vec<(&dims::DimMark, Vec<DimRef>)> = marks
+            .iter()
+            .filter(|m| m.alignment)
+            .map(|m| (m, self.dimensions.get(m.index).map(|d| d.refs.clone()).unwrap_or_default()))
+            .collect();
+        if let (Some(o), Some((a, b, ..))) = (offer.as_ref(), self.views.align_lock) {
+            pending.push((o, vec![a, b]));
+        }
+        let mut locks: Vec<(usize, egui::Pos2)> = Vec::new();
+        for (m, refs) in pending {
+            let (Some(base), Some(f)) = (m.points.first(), family.as_ref()) else { continue };
+            let base_at = on_screen(*base);
+            let dir = on_screen(*base + m.across) - base_at;
+            // A form one of its references belongs to: its outline is the inside the padlock keeps out of.
+            let ring: Vec<egui::Pos2> = refs
+                .iter()
+                .find_map(|r| match r {
+                    DimRef::Form(g, _) | DimRef::Sketch(g, _) | DimRef::Point(g, ..) => f.forms.iter().position(|x| x.guid == *g),
+                    _ => None,
+                })
+                .map(|i| fv::outline(f, &values, &c.staged, which, i).into_iter().map(&on_screen).collect())
+                .unwrap_or_default();
+            let taken: Vec<egui::Pos2> = locks.iter().map(|(_, p)| *p).collect();
+            let at = dims::padlock_spot(base_at, dir, &|p| ring.len() > 2 && dims::within(&ring, p), &lines, &taken);
+            locks.push((m.index, at));
+        }
+        let offered = offer.as_ref().and_then(|o| locks.iter().find(|(i, _)| *i == o.index).map(|(_, p)| *p));
+        self.views.locks_shown = locks.clone();
+        self.views.offer_shown = offered;
         for m in &marks {
             let g = self.dimensions.get(m.index).map(|d| d.guid);
             let picked = g.is_some() && (g == selected_dim || g.is_some_and(|g| unsatisfied.contains(&g)));
-            dims::paint(&painter, m, &on_screen, picked, base.units);
+            let lock = locks.iter().find(|(i, _)| *i == m.index).map(|(_, p)| *p);
+            dims::paint(&painter, m, &on_screen, picked, base.units, lock);
         }
         // The references Aligned Dimension and Align have picked.
         let picked_refs: Vec<DimRef> = match (&self.views.dimensioning, &self.views.aligning) {
@@ -494,7 +573,7 @@ impl FamilyEditor {
             }
         }
         // Align's padlock, open, until the next click.
-        let align_lock = self.views.align_lock.filter(|(.., w)| *w == which).map(|(_, _, at, _)| screen(at));
+        let align_lock = offered;
         if let Some(at) = align_lock {
             dims::padlock(&painter, at, false, pal().accent);
         }
@@ -598,7 +677,7 @@ impl FamilyEditor {
                         self.views.drawing = Some(None);
                     }
                 }
-            } else if align_lock.is_some_and(|at| (at - p).length() < 10.0) {
+            } else if align_lock.is_some_and(|at| dims::lock_rect(at).contains(p)) {
                 // Align's padlock, waiting: it locks what was aligned, whatever tool is on.
                 on_dims = Some((Clicked::AlignLock, Vec::new()));
             } else if let Some(refs) = self.views.dimensioning.as_mut().filter(|_| radial) {
@@ -640,7 +719,7 @@ impl FamilyEditor {
                     }
                     _ => problem = Some(t("Pick a reference plane, an extrusion's end or a line of a form.").to_string()),
                 }
-            } else if let Some(hit) = dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, p, &on_screen) {
+            } else if let Some(hit) = dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, p, &on_screen) {
                 let lengths = match &hit {
                     Clicked::Lock(g, _) => marks
                         .iter()
@@ -844,6 +923,21 @@ fn ghosts(f: &Family, values: &BTreeMap<String, bimcraft_core::family::Val>, hid
 
 /// What the ghost family is called beside the family in a view's scratch model.
 const GHOST: &str = "(hidden in type)";
+
+/// The lines of drawing `d` (shown from `min` on screen) as segments on screen: what a padlock keeps off.
+pub(super) fn drawn_lines(d: &Drawing, min: egui::Pos2) -> Vec<[egui::Pos2; 2]> {
+    let at = |p: &(f32, f32)| min + vec2(p.0, p.1);
+    let mut out = Vec::new();
+    for prim in &d.prims {
+        if let bimcraft_core::render::Prim::Line { pts, closed, .. } = prim {
+            out.extend(pts.windows(2).map(|w| [at(&w[0]), at(&w[1])]));
+            if *closed && let (Some(a), Some(b)) = (pts.last(), pts.first()) {
+                out.push([at(a), at(b)]);
+            }
+        }
+    }
+    out
+}
 
 /// Where a plane of frame `f` crosses view `which`: its trace across the view's room, ends in the view's millimetres. None
 /// for a plane the view looks straight at (or askew), which has none.

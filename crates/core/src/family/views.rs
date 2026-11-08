@@ -619,4 +619,86 @@ mod tests {
         assert_eq!(form_at(&f, &values, &st, front, st.to_view(front, [750.0, 0.0, 900.0])), None);
         assert!(!outline(&f, &values, &st, front, 0).is_empty());
     }
+
+    /// A box family's planes, the datums with Left, Right, Front, Back and Top of its own, drawn in every view: no plane's
+    /// name lies on any plane's trace, its own or another's.
+    #[test]
+    fn no_plane_name_lies_on_a_trace_in_any_view() {
+        use crate::render::{Part, Prim};
+        let mut f = boxed(0.0, 900.0);
+        f.planes.retain(|p| p.datum());
+        let plane = |name: &str, start: [f64; 3], end: [f64; 3], up: [f64; 3]| crate::family::RefPlane {
+            id: 0,
+            guid: Guid::new(),
+            name: name.into(),
+            start,
+            end,
+            up,
+            reference: Default::default(),
+            defines_origin: false,
+            subcategory: None,
+            level: false,
+        };
+        let up = [0.0, 0.0, 1.0];
+        f.planes.extend([
+            plane("Left", [-500.0, -2000.0, 0.0], [-500.0, 2000.0, 0.0], up),
+            plane("Right", [500.0, -2000.0, 0.0], [500.0, 2000.0, 0.0], up),
+            plane("Front", [-2000.0, -300.0, 0.0], [2000.0, -300.0, 0.0], up),
+            plane("Back", [-2000.0, 300.0, 0.0], [2000.0, 300.0, 0.0], up),
+            plane("Top", [-2000.0, 0.0, 900.0], [2000.0, 0.0, 900.0], [0.0, 1.0, 0.0]),
+        ]);
+        let mut st = staged(&f);
+        let views = [Which::Plan, Which::Ceiling].into_iter().chain(Side::ALL.iter().map(|s| Which::Elevation(*s)));
+        for which in views {
+            for (w, h) in [(1200, 800), (900, 900)] {
+                let shown = st.draw(which, w, h, 1.0, P2(0.0, 0.0)).unwrap();
+                if let Ok(dir) = std::env::var("TMP_DUMP") {
+                    let (x0, y0, cw, ch) = (shown.view.width / 2 - 200, 0u32, 400u32, 120u32);
+                    let mut px = Vec::new();
+                    for y in y0..y0 + ch {
+                        for x in x0..x0 + cw {
+                            let i = ((y * shown.view.width + x) * 4) as usize;
+                            px.extend_from_slice(&shown.rgba[i..i + 4]);
+                        }
+                    }
+                    let pm = tiny_skia::Pixmap::from_vec(px, tiny_skia::IntSize::from_wh(cw, ch).unwrap()).unwrap();
+                    std::fs::write(format!("{dir}/{which:?}-{w}.png"), pm.encode_png().unwrap()).unwrap();
+                }
+                let d = &shown.drawing;
+                let green = crate::render::REFERENCE_PLANE;
+                let traces: Vec<((f32, f32), (f32, f32))> = d
+                    .prims
+                    .iter()
+                    .filter_map(|p| match p {
+                        Prim::Line { pts, dash: Some(_), color, .. } if *color == green && pts.len() == 2 => Some((pts[0], pts[1])),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(!traces.is_empty(), "{which:?}: its traces");
+                let mut names: BTreeMap<Id, [f32; 4]> = BTreeMap::new();
+                for ((prim, o), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+                    if let (Prim::Line { pts, color, .. }, Some(id), Part::Text) = (prim, o, part)
+                        && *color == green
+                    {
+                        let b = names.entry(*id).or_insert([f32::MAX, f32::MAX, f32::MIN, f32::MIN]);
+                        for &(x, y) in pts {
+                            *b = [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)];
+                        }
+                    }
+                }
+                assert!(names.len() >= 3, "{which:?}: its planes' names: {}", names.len());
+                for (id, r) in &names {
+                    for (a, b) in &traces {
+                        // Sampled along the trace: a point of it inside the name's box is a name on a trace.
+                        let on = (0..=2000).any(|i| {
+                            let t = i as f32 / 2000.0;
+                            let (x, y) = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+                            x > r[0] && x < r[2] && y > r[1] && y < r[3]
+                        });
+                        assert!(!on, "{which:?} {w}x{h}: the name of {id} at {r:?} lies on the trace {a:?}-{b:?}");
+                    }
+                }
+            }
+        }
+    }
 }

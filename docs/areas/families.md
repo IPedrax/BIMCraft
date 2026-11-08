@@ -406,7 +406,9 @@ joined to it stretching, through the constraints (refused where they hold it), a
 sketched (Modify > Align or AL in a plan or an elevation), Align takes a plane, a reference line or another line, then a line of
 the sketch, moved with `align::sketch_lines`; its open padlock locks them, and the padlocks of the form's locks show beside their
 lines, a click unlocking one. They are written at Finish (a refusal by the constraints keeps sketch mode open) and dropped by
-Cancel. Edit Extrusion opens the sketch as the type previewed flexes it, and a line that comes back there keeps its formulas
+Cancel. An Align padlock, on a finished form and while sketching, sits beside the line it locks, a few pixels off it to the side away from the
+form's inside, slid along it as little as keeps it off every line drawn and every other padlock (`dimensions::padlock_spot`);
+Align's offered padlock too. Edit Extrusion opens the sketch as the type previewed flexes it, and a line that comes back there keeps its formulas
 (`sketch::kept` against the lines shown). Every line gets a GUID of its own at Finish, a new form its GUID at once, so a lock or
 a dimension can name them before the family is loaded.
 

@@ -867,27 +867,39 @@ impl FamilyEditor {
     }
 
     /// The padlocks shown while a form is sketched, each where it is on screen (`screen` puts a point of the plane there):
-    /// Align's offer, the locks added while sketching and those the form had, beside the middle of the line each locks.
-    pub(crate) fn sketch_padlocks(&self, screen: &dyn Fn(P2) -> Option<Pos2>) -> Vec<(Pos2, Padlock)> {
+    /// Align's offer, the locks added while sketching and those the form had, each beside the line it locks on its outer
+    /// side, clear of the sketch's lines, of `lines` (what the view draws) and of each other (`dimensions::padlock_spot`).
+    pub(crate) fn sketch_padlocks(&self, screen: &dyn Fn(P2) -> Option<Pos2>, lines: &[[Pos2; 2]]) -> Vec<(Pos2, Padlock)> {
         let Some(s) = self.sketch.as_ref() else { return Vec::new() };
-        let mut out = Vec::new();
-        let mut put = |d: &FamilyDimension, what: Padlock| {
-            let Some(DimRef::Sketch(_, g)) = d.refs.iter().find(|r| matches!(r, DimRef::Sketch(f, _) if *f == s.guid)) else { return };
-            let Some(l) = s.sketch.lines.iter().find(|l| l.guid == *g) else { return };
-            let (Some(a), Some(b)) = (screen(l.start()), screen(l.end())) else { return };
-            let d = (b - a).normalized();
-            let n = vec2(-d.y, d.x);
-            // Inside the loop's side matters little: beside it, a third of the way along, clear of the line.
-            out.push((a + (b - a) * 0.35 + n * 12.0, what));
+        // The sketch's lines on screen: what a padlock keeps off, and whose loops are the inside it keeps out of.
+        let mut own: Vec<[Pos2; 2]> = Vec::new();
+        for l in s.sketch.lines.iter().filter(|l| !is_axis(l)) {
+            let pts: Vec<Pos2> = l.curve.points().into_iter().filter_map(screen).collect();
+            own.extend(pts.windows(2).map(|w| [w[0], w[1]]));
+            if matches!(l.curve, Curve::Circle { .. })
+                && let (Some(a), Some(b)) = (pts.last(), pts.first())
+            {
+                own.push([*a, *b]);
+            }
+        }
+        let inside = |p: Pos2| {
+            own.iter().filter(|[a, b]| (a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) / (b.y - a.y) * (b.x - a.x)).count() % 2 == 1
         };
+        let mut avoid = own.clone();
+        avoid.extend_from_slice(lines);
+        let mut wanted: Vec<(&FamilyDimension, Padlock)> = Vec::new();
         if let Some(d) = &s.offer {
-            put(d, Padlock::Offer);
+            wanted.push((d, Padlock::Offer));
         }
-        for (k, d) in s.locks.iter().enumerate() {
-            put(d, Padlock::Added(k));
-        }
-        for d in self.dimensions.iter().filter(|d| d.alignment && !s.unlocked.contains(&d.guid)) {
-            put(d, Padlock::Had(d.guid));
+        wanted.extend(s.locks.iter().enumerate().map(|(k, d)| (d, Padlock::Added(k))));
+        wanted.extend(self.dimensions.iter().filter(|d| d.alignment && !s.unlocked.contains(&d.guid)).map(|d| (d, Padlock::Had(d.guid))));
+        let mut out: Vec<(Pos2, Padlock)> = Vec::new();
+        for (d, what) in wanted {
+            let Some(DimRef::Sketch(_, g)) = d.refs.iter().find(|r| matches!(r, DimRef::Sketch(f, _) if *f == s.guid)) else { continue };
+            let Some(l) = s.sketch.lines.iter().find(|l| l.guid == *g) else { continue };
+            let (Some(a), Some(b)) = (screen(l.start()), screen(l.end())) else { continue };
+            let taken: Vec<Pos2> = out.iter().map(|(p, _)| *p).collect();
+            out.push((super::dimensions::padlock_spot(a + (b - a) * 0.5, b - a, &inside, &avoid, &taken), what));
         }
         out
     }

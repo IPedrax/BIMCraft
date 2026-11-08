@@ -67,6 +67,15 @@ fn locks_to(h: &Harness<BimApp>, line: &str) -> Vec<Vec<DimRef>> {
         .collect()
 }
 
+/// Whether no padlock of `spots` covers a line of `lines` or another padlock.
+fn padlocks_clear(spots: &[egui::Pos2], lines: &[[egui::Pos2; 2]]) -> bool {
+    use crate::editor::dimensions::{crosses, lock_rect};
+    spots.iter().enumerate().all(|(i, p)| {
+        !lines.iter().any(|[a, b]| crosses(*a, *b, lock_rect(*p)))
+            && spots[i + 1..].iter().all(|q| !lock_rect(*p).intersects(lock_rect(*q)))
+    })
+}
+
 /// The padlock shown while sketching that `which` is, clicked.
 fn click_padlock(h: &mut Harness<BimApp>, which: crate::editor::sketch::Padlock) {
     let at = editor(h).sketch_padlocks_shown().into_iter().find(|(_, w)| *w == which).map(|(p, _)| p).expect("the padlock shown");
@@ -89,6 +98,10 @@ fn align_in_sketch_mode_moves_a_line_onto_a_plane_and_its_padlock_locks_it_at_fi
     let west = s.sketch.lines.iter().find(|l| l.guid == g(WEST)).unwrap();
     assert!((west.start().0 + 700.0).abs() < 1e-6 && (west.end().0 + 700.0).abs() < 1e-6, "{:?}", west.curve);
     assert!(s.offer.is_some(), "its padlock, open: {}", status(&h));
+    let spots: Vec<egui::Pos2> = editor(&h).sketch_padlocks_shown().into_iter().map(|(p, _)| p).collect();
+    assert!(padlocks_clear(&spots, &editor(&h).sketch_lines_shown()), "the offered padlock beside its line, on no line: {spots:?}");
+    // Outside the slab: to the west of the west line.
+    assert!(spots[0].x < editor(&h).views.screen_of([-700.0, 0.0, 0.0]).unwrap().x, "{spots:?}");
     click_padlock(&mut h, crate::editor::sketch::Padlock::Offer);
     assert_eq!(editor(&h).sketch.as_ref().unwrap().locks.len(), 1, "locked");
     assert!(editor(&h).dimensions.len() == 2, "the draft waits for Finish");
@@ -111,6 +124,9 @@ fn align_in_sketch_mode_moves_a_line_onto_a_plane_and_its_padlock_locks_it_at_fi
     shortcut(&mut h, "AL");
     click_family(&mut h, [700.0, 900.0, 0.0]);
     click_family(&mut h, [300.0, 0.0, 0.0]);
+    let spots: Vec<egui::Pos2> = editor(&h).sketch_padlocks_shown().into_iter().map(|(p, _)| p).collect();
+    assert_eq!(spots.len(), 2);
+    assert!(padlocks_clear(&spots, &editor(&h).sketch_lines_shown()), "two padlocks, each clear: {spots:?}");
     click_padlock(&mut h, crate::editor::sketch::Padlock::Offer);
     press(&mut h, "Cancel Edit Mode");
     assert!(locks_to(&h, EAST).is_empty(), "Cancel drops it");
@@ -147,8 +163,9 @@ fn align_on_a_finished_form_in_plan_and_on_its_face_in_an_elevation_locks_its_li
     click_family(&mut h, [300.0, 0.0, 0.0]);
     assert_eq!(flexed_line(&h, "Large", EAST).0[0], 700.0, "moved onto Right where the type shows it: {}", status(&h));
     assert!(editor(&h).views.align_lock.is_some(), "its padlock, open");
-    // Its padlock, where the line was clicked.
-    click_family(&mut h, [300.0, 0.0, 0.0]);
+    // Its padlock, beside the line: clicked where it shows.
+    let at = editor(&h).views.offer_shown.expect("shown");
+    click_at(&mut h, at);
     assert_eq!(locks_to(&h, EAST), vec![vec![DimRef::Plane(g(RIGHT)), DimRef::Sketch(g(SLAB), g(EAST))]]);
     assert_eq!(flexed_line(&h, "Small", EAST).0[0], 300.0, "and follows Right");
     // In Front: Left, then the slab's west face, its line running the way the view looks.
@@ -158,7 +175,12 @@ fn align_on_a_finished_form_in_plan_and_on_its_face_in_an_elevation_locks_its_li
     click_family(&mut h, [-700.0, 0.0, 900.0]);
     click_family(&mut h, [-300.0, 0.0, 50.0]);
     assert_eq!(flexed_line(&h, "Large", WEST).0[0], -700.0, "{}", status(&h));
-    click_family(&mut h, [-300.0, 0.0, 50.0]);
+    let at = editor(&h).views.offer_shown.expect("shown");
+    click_at(&mut h, at);
+    // Each padlock beside its line, on no line drawn and on no other padlock.
+    h.run();
+    let spots: Vec<egui::Pos2> = editor(&h).views.locks_shown.iter().map(|(_, p)| *p).collect();
+    assert!(!spots.is_empty() && padlocks_clear(&spots, &editor(&h).view_lines_shown()), "{spots:?}");
     let locks = locks_to(&h, WEST);
     assert_eq!(locks, vec![vec![DimRef::Plane(g(LEFT)), DimRef::Sketch(g(SLAB), g(WEST))]]);
     assert_eq!(editor(&h).dimensions.last().unwrap().view, bimcraft_core::family::DimView::Front);
@@ -227,7 +249,7 @@ fn family_sketch_locks_screenshots() {
     let dims = format!(
         r#"{}{}, {{"refs": [{{"form": "{SLAB}", "line": "{SOUTH}"}}, {{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}}], "at": [-900, 0, 0]}}, {{"kind": "radial", "refs": [{{"form": "{DISC}", "line": "{RING}"}}], "at": [400, 800, 0], "label": "R"}}"#,
         lock(LEFT, WEST, "[-300, 0, 0]", "plan"),
-        lock(RIGHT, EAST, "[300, 0, 0]", "plan")
+        lock(RIGHT, EAST, "[300, 0, 50]", "front")
     );
     let mut h = app(&family(&dims));
     h.set_size(vec2(1600.0, 1000.0));
@@ -246,6 +268,9 @@ fn family_sketch_locks_screenshots() {
     view(&mut h, Some(Which::Elevation(Side::Front)));
     h.run();
     h.render().unwrap().save(std::path::Path::new(&folder).join("f7b-front.png")).unwrap();
+    view(&mut h, Some(Which::Elevation(Side::Left)));
+    h.run();
+    h.render().unwrap().save(std::path::Path::new(&folder).join("f7b-left.png")).unwrap();
     // Sketch mode: the slab again, its locks' padlocks shown; the south line aligned to Center (Front/Back), offered.
     view(&mut h, Some(Which::Plan));
     ed_mut(&mut h).edit_form_sketch(0).unwrap();

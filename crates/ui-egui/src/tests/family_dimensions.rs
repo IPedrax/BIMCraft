@@ -149,7 +149,9 @@ fn align_moves_an_extrusions_end_onto_a_plane_and_its_padlock_locks_them() {
     let draft = editor(&h).draft_family().unwrap();
     assert_eq!(draft.forms[0].to, bimcraft_core::family::Expr::Number(500.0), "the bar's end onto Right");
     assert!(editor(&h).views.align_lock.is_some(), "its padlock, open");
-    click_family(&mut h, [400.0, 0.0, 0.0]);
+    // Beside the aligned end, off its line (F7b): clicked where it shows.
+    let at = editor(&h).views.offer_shown.expect("shown");
+    click_at(&mut h, at);
     let lock = editor(&h).dimensions.last().cloned().expect("locked");
     assert!(lock.alignment && lock.refs == vec![DimRef::Plane(g(RIGHT)), DimRef::Form(g(BAR), Extent::End)]);
     // Locked, the bar's end follows Right when Width flexes it.

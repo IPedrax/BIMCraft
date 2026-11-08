@@ -7,7 +7,8 @@
 //! over-constrained. The marks are the core's (`constraints::marks`), painted over the view's picture.
 use super::views::{PICKED, Views};
 use super::*;
-use bimcraft_core::family::constraints::{self, DimMark, Edit, NOT_SATISFIED, Unsat};
+pub(super) use bimcraft_core::family::constraints::DimMark;
+use bimcraft_core::family::constraints::{self, Edit, NOT_SATISFIED, Unsat};
 use bimcraft_core::family::views::{Staged, Which};
 use bimcraft_core::family::{DimKind, DimRef, DimView, FamilyDimension, Spot, Val};
 use bimcraft_core::geom::P2;
@@ -83,12 +84,73 @@ fn equal_at(m: &DimMark, screen: &dyn Fn(P2) -> Pos2) -> Option<Pos2> {
     Some(a + (b - a) * 0.5 - down(a, b) * 30.0)
 }
 
-/// Where an Align lock's padlock is on screen: beside where the two references meet, along them, clear of the lines.
-fn align_at(m: &DimMark, screen: &dyn Fn(P2) -> Pos2) -> Option<Pos2> {
-    let at = screen(*m.points.first()?);
-    let across = vec2(m.across.0 as f32, -(m.across.1 as f32));
-    let across = if across.length_sq() > 0.0 { across.normalized() } else { vec2(0.0, -1.0) };
-    Some(at + across * 12.0)
+/// The room a padlock centred at `c` takes on screen, shut or open (its shackle lifted), with a hair round it.
+pub(crate) fn lock_rect(c: Pos2) -> Rect {
+    Rect::from_min_max(pos2(c.x - 7.0, c.y - 12.0), pos2(c.x + 7.0, c.y + 8.0))
+}
+
+/// Whether the segment from `a` to `b` passes through `r` (Liang-Barsky).
+pub(crate) fn crosses(a: Pos2, b: Pos2, r: Rect) -> bool {
+    let d = b - a;
+    let (mut t0, mut t1) = (0.0f32, 1.0f32);
+    for (p, q) in [(-d.x, a.x - r.min.x), (d.x, r.max.x - a.x), (-d.y, a.y - r.min.y), (d.y, r.max.y - a.y)] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return false;
+            }
+        } else {
+            let t = q / p;
+            if p < 0.0 {
+                t0 = t0.max(t);
+            } else {
+                t1 = t1.min(t);
+            }
+            if t0 > t1 {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Where an Align padlock goes on screen: beside the aligned line through `base` (running along `dir`), a few pixels off it
+/// to its outer side (away from what `inside` says is a form's inside, where one is), slid along the line as little as
+/// takes it clear of every line of `lines` and of the padlocks `taken`; on the other side only where the outer one has no
+/// room. So a padlock never covers a line, the one it locks among them, or another padlock.
+pub(super) fn padlock_spot(base: Pos2, dir: Vec2, inside: &dyn Fn(Pos2) -> bool, lines: &[[Pos2; 2]], taken: &[Pos2]) -> Pos2 {
+    let dir = if dir.is_finite() && dir.length_sq() > 0.0 { dir.normalized() } else { vec2(1.0, 0.0) };
+    let n = vec2(-dir.y, dir.x);
+    let out = if inside(base + n * 6.0) && !inside(base - n * 6.0) { -n } else { n };
+    let free = |c: Pos2| {
+        let r = lock_rect(c);
+        !lines.iter().any(|[a, b]| crosses(*a, *b, r)) && taken.iter().all(|t| !lock_rect(*t).intersects(r))
+    };
+    let mut first = None;
+    for side in [out, -out] {
+        // Off the line by half the padlock's width along `side` and a gap, whatever way the line runs.
+        let off = 4.0 + 7.0 * side.x.abs() + 12.0 * side.y.abs();
+        for k in 0..13 {
+            let slide = if k % 2 == 0 { (k / 2) as f32 } else { -((k / 2 + 1) as f32) } * 14.0;
+            let c = base + side * off + dir * slide;
+            first.get_or_insert(c);
+            if free(c) {
+                return c;
+            }
+        }
+    }
+    first.unwrap_or(base)
+}
+
+/// Whether `p` is inside the closed ring `ring` (even-odd).
+pub(super) fn within(ring: &[Pos2], p: Pos2) -> bool {
+    let mut inside = false;
+    for k in 0..ring.len() {
+        let (a, b) = (ring[k], ring[(k + 1) % ring.len()]);
+        if (a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) / (b.y - a.y) * (b.x - a.x) {
+            inside = !inside;
+        }
+    }
+    inside
 }
 
 /// Square to the line from `a` to `b` on screen, toward the bottom of the page (to the right for an upright one).
@@ -132,10 +194,10 @@ pub(super) fn padlock(painter: &Painter, c: Pos2, locked: bool, color: Color32) 
 /// Dimension mark `m` painted: its line, a tick and a short witness at each reference, each segment's length (EQ, or its
 /// label and length) over it; selected, a padlock under each segment and the EQ toggle over a string. An Align lock is its
 /// padlock alone, shut.
-pub(super) fn paint(painter: &Painter, m: &DimMark, screen: &dyn Fn(P2) -> Pos2, selected: bool, units: Units) {
+pub(super) fn paint(painter: &Painter, m: &DimMark, screen: &dyn Fn(P2) -> Pos2, selected: bool, units: Units, lock: Option<Pos2>) {
     let color = if selected { PICKED } else { ink() };
     if m.alignment {
-        if let Some(at) = align_at(m, screen) {
+        if let Some(at) = lock {
             padlock(painter, at, true, if selected { PICKED } else { pal().accent });
         }
         return;
@@ -248,6 +310,7 @@ pub(super) fn clicked(
     dims: &[FamilyDimension],
     selected: Option<Guid>,
     align_lock: Option<Pos2>,
+    locks: &[(usize, Pos2)],
     p: Pos2,
     screen: &dyn Fn(P2) -> Pos2,
 ) -> Option<Clicked> {
@@ -266,7 +329,7 @@ pub(super) fn clicked(
         }
     }
     for m in marks.iter().filter(|m| m.alignment) {
-        if align_at(m, screen).is_some_and(|at| (at - p).length() < NEAR + 1.0) {
+        if locks.iter().any(|(i, at)| *i == m.index && lock_rect(*at).contains(p)) {
             return guid(m).map(Clicked::Unlock);
         }
     }

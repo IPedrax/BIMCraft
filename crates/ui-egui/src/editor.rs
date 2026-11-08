@@ -3,7 +3,7 @@
 //! Every change to the project is a `family` command, so it's checked, and undone, like any other.
 
 mod association;
-mod dimensions;
+pub(crate) mod dimensions;
 pub(crate) mod document;
 pub(crate) mod exists;
 mod extrusion;
