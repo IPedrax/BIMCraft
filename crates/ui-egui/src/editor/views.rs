@@ -399,6 +399,11 @@ impl FamilyEditor {
         let mut moved: Option<(Guid, [f64; 3])> = None;
         let mut new_plane = None;
         let mut picked_work_plane = None;
+        // A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
+        let edit = (editable && response.double_clicked() && self.views.drawing.is_none() && !self.views.picking_plane)
+            .then(|| response.interact_pointer_pos())
+            .flatten()
+            .and_then(|p| family.as_ref().and_then(|f| fv::form_at(f, &values, &c.staged, which, at_view(p))));
         // An adaptive family's views only show it: its tools are in {3D}.
         if editable
             && response.clicked()
@@ -456,6 +461,11 @@ impl FamilyEditor {
         if let Some((end, d)) = end_moved
             && d != 0.0
             && let Err(e) = self.drag_end(end, d)
+        {
+            problem = Some(e);
+        }
+        if let Some(i) = edit
+            && let Err(e) = self.edit_form_sketch(i)
         {
             problem = Some(e);
         }

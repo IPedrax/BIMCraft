@@ -19,6 +19,7 @@ fn open() -> Harness<'static, BimApp> {
     let mut h = Harness::builder()
         .with_size([1600.0, 1200.0])
         .with_max_steps(32)
+        .with_step_dt(0.05)
         .renderer(Pictures::default())
         .build_ui_state(|ui, app: &mut BimApp| app.show(ui), BimApp::new(s));
     h.run();
@@ -340,6 +341,17 @@ fn family_sketch_screenshots() {
     button(&mut h, "Extrusion");
     rectangle(&mut h, P2(-1000.0, -800.0), P2(-500.0, -400.0));
     save(&mut h, "sketch-rectangle-plan");
+    // A line from the box's corner, its end about to snap onto Back's trace; then Chain turned off in the Options Bar.
+    button(&mut h, "Line");
+    click_plane(&mut h, P2(400.0, 300.0));
+    let near = screen(&h, [-494.0, 120.0, 0.0]);
+    h.hover_at(near);
+    save(&mut h, "snapping");
+    pick(&mut h, Role::CheckBox, "Chain");
+    h.hover_at(near);
+    save(&mut h, "options-chain");
+    pick(&mut h, Role::CheckBox, "Chain");
+    key(&mut h, Key::Escape);
     button(&mut h, "Finish Edit Mode");
     view(&mut h, Some(Which::Elevation(Side::Front)));
     editor_mut(&mut h).let_form_go();
@@ -353,4 +365,114 @@ fn family_sketch_screenshots() {
     button(&mut h, "Finish Edit Mode");
     view(&mut h, None);
     save(&mut h, "finished-3d");
+}
+
+/// Two clicks at `pos` in one frame: a double click.
+fn double_click_at(h: &mut Harness<BimApp>, pos: Pos2) {
+    // Let the last clicks age first: a third click within 600 ms of two others is a triple.
+    h.run_steps(15);
+    h.hover_at(pos);
+    h.run();
+    for pressed in [true, false, true, false] {
+        h.event(egui::Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+    }
+    h.run();
+}
+
+#[test]
+fn a_line_drawn_near_a_reference_plane_snaps_onto_it_and_its_marker_shows() {
+    let mut h = open();
+    view(&mut h, Some(Which::Plan));
+    button(&mut h, "Extrusion");
+    button(&mut h, "Line");
+    // Back stands at x -500: a click 6 mm off it lands on it.
+    let at = screen(&h, [-506.0, -300.0, 0.0]);
+    h.hover_at(at);
+    h.run();
+    assert!(editor(&h).sketch.as_ref().unwrap().snapped().is_some(), "a marker where it snaps");
+    click_plane(&mut h, P2(-506.0, -300.0));
+    click_plane(&mut h, P2(-1000.0, -300.0));
+    let s = editor(&h).sketch.as_ref().unwrap();
+    assert_eq!(s.sketch.lines.len(), 1);
+    assert_eq!(s.sketch.lines[0].start().0, -500.0, "exactly on Back: {:?}", s.sketch.lines[0]);
+    // The box's corner, an end of its edges on Ref. Level.
+    click_plane(&mut h, P2(-1000.0, -300.0));
+    let s = editor_mut(&mut h).sketch.as_mut().unwrap();
+    s.points.clear();
+    click_plane(&mut h, P2(404.0, 296.0));
+    assert_eq!(editor(&h).sketch.as_ref().unwrap().points, [P2(400.0, 300.0)]);
+}
+
+#[test]
+fn chain_off_starts_each_line_afresh_and_is_kept_for_the_session() {
+    let mut h = open();
+    view(&mut h, Some(Which::Plan));
+    button(&mut h, "Extrusion");
+    button(&mut h, "Line");
+    pick(&mut h, Role::CheckBox, "Chain");
+    for q in [P2(-1000.0, -800.0), P2(-600.0, -800.0), P2(-600.0, -500.0)] {
+        click_plane(&mut h, q);
+    }
+    assert_eq!(editor(&h).sketch.as_ref().unwrap().sketch.lines.len(), 1, "the third click begins a new line");
+    button(&mut h, "Cancel Edit Mode");
+    button(&mut h, "Extrusion");
+    button(&mut h, "Line");
+    assert!(!editor(&h).sketch.as_ref().unwrap().chain, "off still, the next sketch");
+    for q in [P2(-1000.0, -800.0), P2(-600.0, -800.0), P2(-600.0, -500.0), P2(-1000.0, -500.0)] {
+        click_plane(&mut h, q);
+    }
+    assert_eq!(editor(&h).sketch.as_ref().unwrap().sketch.lines.len(), 2);
+}
+
+#[test]
+fn a_double_click_on_a_form_sketches_it_again_and_a_mesh_says_it_has_no_sketch() {
+    let mut h = open();
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    let at = screen(&h, [200.0, 0.0, 300.0]);
+    double_click_at(&mut h, at);
+    assert_eq!(editor(&h).sketch.as_ref().map(|s| s.index), Some(Some(0)), "{}", h.state().status.text);
+    assert!(h.query_all_by_label("Modify | Edit Extrusion").count() > 0);
+    button(&mut h, "Cancel Edit Mode");
+    view(&mut h, None);
+    let at = screen(&h, [200.0, 150.0, 600.0]);
+    double_click_at(&mut h, at);
+    assert_eq!(editor(&h).sketch.as_ref().map(|s| s.index), Some(Some(0)), "in {{3D}} too");
+    button(&mut h, "Cancel Edit Mode");
+    // A form brought as triangles: no sketch, said.
+    let mut s = Session::new();
+    s.script(r#"family {"name": "Mesh", "category": "generic", "types": {"T": {}}, "forms": [{"mesh": [[[0, 0, 0], [800, 0, 0], [0, 800, 0]], [[0, 0, 0], [0, 800, 0], [0, 0, 800]], [[0, 0, 0], [0, 0, 800], [800, 0, 0]], [[800, 0, 0], [0, 0, 800], [0, 800, 0]]]}]}"#).unwrap();
+    let mut h = Harness::builder()
+        .with_size([1600.0, 1200.0])
+        .with_max_steps(32)
+        .with_step_dt(0.05)
+        .renderer(Pictures::default())
+        .build_ui_state(|ui, app: &mut BimApp| app.show(ui), BimApp::new(s));
+    h.run();
+    h.state_mut().edit_family("Mesh");
+    h.run();
+    view(&mut h, Some(Which::Plan));
+    let at = screen(&h, [200.0, 200.0, 0.0]);
+    double_click_at(&mut h, at);
+    assert!(!editor(&h).sketching());
+    assert!(h.state().status.text.contains("mesh"), "{}", h.state().status.text);
+}
+
+#[test]
+fn pick_lines_in_3d_picks_a_forms_edge_onto_the_work_plane_and_refuses_one_square_to_it() {
+    let mut h = open();
+    view(&mut h, None);
+    button(&mut h, "Extrusion");
+    button(&mut h, "Pick Lines");
+    // The box's top front edge, 600 up: seen square on to Ref. Level, the line along its front.
+    let at = screen(&h, [200.0, 0.0, 600.0]);
+    click_at(&mut h, at);
+    let lines = editor(&h).sketch.as_ref().unwrap().sketch.lines.clone();
+    assert_eq!(lines.len(), 1, "{}", h.state().status.text);
+    let ends = [lines[0].start(), lines[0].end()];
+    assert!(ends.contains(&P2(0.0, 0.0)) && ends.contains(&P2(400.0, 0.0)), "{ends:?}");
+    // An upright edge has no line on Ref. Level: said, nothing added.
+    let at = screen(&h, [400.0, 0.0, 300.0]);
+    click_at(&mut h, at);
+    assert_eq!(editor(&h).sketch.as_ref().unwrap().sketch.lines.len(), 1);
+    assert!(h.state().status.text.contains("square to the work plane"), "{}", h.state().status.text);
 }

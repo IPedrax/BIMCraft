@@ -392,15 +392,22 @@ other way; `rename_parameter` and `every_formula` reach its formulas; the conser
 In the family document (`editor/sketch.rs`), Create > Extrusion or Revolve, or Void Forms > Void Extrusion or Void Revolve, sketch
 on the view's work plane: "Modify | Create Extrusion" and the like, its Mode (Finish and Cancel Edit Mode), Draw (Boundary Line
 and, for a revolve, Axis Line; Line, Rectangle, the polygons, Circle, the three arcs, Fillet Arc and, in a plan or an elevation,
-Pick Lines: a plane's or reference line's trace, or another form's edge; no spline or ellipse), Modify (pick, Delete, a picked
-line's end dragged) and Work Plane (Show). A plan or an elevation that doesn't see the work plane flat asks Go To View, offering
+Pick Lines: in a plan or an elevation a plane's or reference line's trace, or another form's edge; in {3D} another form's edge
+(`snap::creases`), a reference line or the line a reference plane was drawn as, which {3D} draws while sketching, seen square on to
+the work plane, an edge square to it refused with a message; no spline or ellipse), Modify (pick, Delete, a picked line's end
+dragged) and Work Plane (Show). The pointer snaps as a project's view snaps (`snap::among`, the same switches, guides, order and
+markers, `canvas::snap_mark`) to the reference planes' traces across the work plane, where they cross, the other forms' edges
+and their ends seen on it, the reference lines and the sketch's own lines (`Family::sketch_targets`). Chain, on the Options Bar
+for Line and the chained arcs, is kept for the session: off, each starts afresh. A plan or an elevation that doesn't see the work plane flat asks Go To View, offering
 those that do and {3D}; {3D} draws on the plane where the pointer shows it. The lines are the project's sketch's
 (`sketch::Sketch`, with its local Ctrl+Z), in the plane's axes. The Options Bar has Depth (End less Start), Sides, Radius and
-Offset; Properties the Start and End (or angles), Material and Solid/Void. Finish checks the lines as the core does
+Offset; Properties the Start and End (a revolve's Start Angle and End Angle, as a selected one's Properties and the Forms tab
+name them), Material and Solid/Void. Finish checks the lines as the core does
 (`family::sketch::finish_check`): open loops, crossing or overlapping lines, a revolve with no axis or a profile across it are
 refused, said in the project's words with the lines shown red, the draft left as it was; then each type is built with the form,
 and a fault of this form refuses it too. On success the form is in the draft, one step of its history, and selected. Cancel leaves
-the draft (and so its Unsaved mark) as it was. A selected form's contextual tab has Edit Extrusion or Edit Revolve: its lines worked
+the draft (and so its Unsaved mark) as it was. A selected form's contextual tab has Edit Extrusion or Edit Revolve, as a double click on a form in a plan, an elevation or {3D}
+(`views::form_at_3d`) does: its lines worked
 out for the type shown, in the view shown if it sees the plane flat, else {3D}; a line that keeps its GUID and comes to where it
 was keeps its formulas (`family::sketch::kept`), one moved holds numbers. A selected extrusion's Start and End show shape handles
 in a plan or an elevation that sees its plane edge-on; dragged, they move along the normal, a step of the history; an end tied to a

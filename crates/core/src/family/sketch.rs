@@ -510,3 +510,129 @@ fn chorded(l: &SketchLine) -> SketchLine {
     };
     SketchLine { curve, ..l.clone() }
 }
+
+/// The most edges of other forms a sketch snaps to and picks.
+pub const MAX_EDGES: usize = 20_000;
+/// How far a reference plane's trace runs either way across a sketch's plane, mm: past anything a family holds.
+const TRACE: f64 = 100_000.0;
+/// How far apart, degrees, two faces of a solid turn at an edge for it to be one of its edges as drawn: less, and it is a
+/// facet of a curved surface or a cap's diagonal.
+const CREASE: f64 = 20.0;
+
+/// What a sketch on a plane snaps to and picks (F5), in that plane's own axes: the traces of the family's reference planes
+/// across it (lines with no ends), and the edges of its other forms and its reference lines, as seen square on to it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Targets {
+    pub traces: Vec<(P2, P2)>,
+    pub segments: Vec<(P2, P2)>,
+}
+
+/// The edges of solid `tris` as drawn: where two faces meet at more than [`CREASE`], or where a face has no neighbour.
+pub fn creases(tris: &[[crate::view3d::P3; 3]]) -> Vec<(crate::view3d::P3, crate::view3d::P3)> {
+    use crate::view3d::{P3, cross, dot};
+    use std::collections::HashMap;
+    let key = |p: &P3| p.map(|x| (x * 1e3).round() as i64);
+    // Each edge by its ends to the micron: its ends, and the normals of the faces that share it.
+    type Shared = (P3, P3, Vec<P3>);
+    let mut edges: HashMap<([i64; 3], [i64; 3]), Shared> = HashMap::new();
+    for t in tris {
+        let n = cross(std::array::from_fn(|i| t[1][i] - t[0][i]), std::array::from_fn(|i| t[2][i] - t[0][i]));
+        let len = dot(n, n).sqrt();
+        if len <= 1e-12 {
+            continue;
+        }
+        let n = n.map(|x| x / len);
+        for k in 0..3 {
+            let (a, b) = (t[k], t[(k + 1) % 3]);
+            let (ka, kb) = (key(&a), key(&b));
+            if ka == kb {
+                continue;
+            }
+            let id = if ka < kb { (ka, kb) } else { (kb, ka) };
+            edges.entry(id).or_insert_with(|| (a, b, Vec::new())).2.push(n);
+        }
+    }
+    let crease = CREASE.to_radians().cos();
+    let mut out: Vec<(P3, P3)> = edges
+        .into_values()
+        .filter(|(_, _, ns)| match ns.as_slice() {
+            [a, b] => dot(*a, *b) < crease,
+            _ => true,
+        })
+        .map(|(a, b, _)| (a, b))
+        .collect();
+    out.sort_by(|x, y| {
+        x.0.partial_cmp(&y.0).unwrap_or(std::cmp::Ordering::Equal).then(x.1.partial_cmp(&y.1).unwrap_or(std::cmp::Ordering::Equal))
+    });
+    out.truncate(MAX_EDGES);
+    out
+}
+
+impl super::Family {
+    /// The edges of its forms but `skip` (the one being sketched again), sized by `values`, in its own axes, and its
+    /// reference lines and the lines its reference planes were drawn as: what Pick Lines picks in {3D}.
+    pub fn edges_3d(
+        &self,
+        values: &std::collections::BTreeMap<String, super::Val>,
+        skip: Option<usize>,
+    ) -> Vec<(crate::view3d::P3, crate::view3d::P3)> {
+        let mut read = std::collections::HashMap::new();
+        let mut out: Vec<(crate::view3d::P3, crate::view3d::P3)> = Vec::new();
+        for i in (0..self.forms.len()).filter(|i| Some(*i) != skip) {
+            if let Ok(Some(piece)) = self.solid(i, values, &mut read) {
+                out.extend(creases(&piece.tris));
+            }
+            if out.len() >= MAX_EDGES {
+                break;
+            }
+        }
+        out.extend(self.lines.iter().map(|l| (l.start, l.end)));
+        out.extend(self.planes.iter().filter(|p| !p.datum()).map(|p| (p.start, p.end)));
+        out.truncate(MAX_EDGES);
+        out
+    }
+
+    /// What a sketch on `host` snaps to, in its axes ([`Targets`]): each reference plane's trace across it (none for one
+    /// parallel to it), and the other forms' edges and the reference lines seen square on to it (none for one square to it).
+    pub fn sketch_targets(
+        &self,
+        values: &std::collections::BTreeMap<String, super::Val>,
+        host: &super::PlaneRef,
+        skip: Option<usize>,
+    ) -> Targets {
+        use crate::view3d::{cross, dot};
+        let Ok(f) = self.frame(host) else { return Targets::default() };
+        let mut t = Targets::default();
+        for plane in &self.planes {
+            let g = plane.frame();
+            let d = cross(f.z, g.z);
+            let dd = dot(d, d);
+            if dd < 1e-12 {
+                continue;
+            }
+            // The point of both planes nearest the family's origin, and the way their crossing runs.
+            let (h1, h2) = (dot(f.z, f.origin), dot(g.z, g.origin));
+            let (a, b) = (cross(g.z, d), cross(d, f.z));
+            let p0: crate::view3d::P3 = std::array::from_fn(|i| (h1 * a[i] + h2 * b[i]) / dd);
+            let (q, _) = f.local(p0);
+            let u = P2(dot(d, f.x), dot(d, f.y)).unit();
+            t.traces.push((q - u * TRACE, q + u * TRACE));
+        }
+        for (a, b) in self.edges_3d(values, skip) {
+            let ((p, _), (q, _)) = (f.local(a), f.local(b));
+            if p.dist(q) > TOL {
+                t.segments.push((p, q));
+            }
+        }
+        t
+    }
+}
+
+/// Edge `(a, b)` of the family seen square on to plane `f`: its ends in the plane's axes, or why it has no line there.
+pub fn on_plane(f: &super::Frame, (a, b): (crate::view3d::P3, crate::view3d::P3)) -> Result<(P2, P2), String> {
+    let ((p, _), (q, _)) = (f.local(a), f.local(b));
+    if p.dist(q) <= TOL {
+        return Err("it runs square to the work plane: it has no line on it".into());
+    }
+    Ok((p, q))
+}

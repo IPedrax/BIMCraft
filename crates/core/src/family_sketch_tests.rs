@@ -425,3 +425,57 @@ fn finish_checks_lines_as_sketch_mode_draws_them_and_keeps_unmoved_formulas() {
     assert_eq!((new[1].id, new[1].guid), (old[1].id, old[1].guid));
     assert!(new[1].exprs().iter().all(|e| matches!(e, Expr::Number(_))));
 }
+
+#[test]
+fn a_sketch_snaps_to_the_planes_traces_and_the_other_forms_edges_on_its_plane() {
+    use crate::family::sketch::{creases, on_plane};
+    use crate::family::{CENTER_LEFT_RIGHT, PlaneRef, REF_LEVEL};
+    use crate::geom::P2;
+    use crate::snap::{Kind, Reach, Snaps, among};
+    let (mut s, r) = sketched(json!([{"sketch": rect(500.0, 300.0, 1000.0, 600.0), "to": 200}]));
+    r.unwrap();
+    run(
+        &mut s,
+        "family",
+        json!({"name": "S", "ref_planes": [{"name": "Edge", "start": [-400, -2000, 0], "end": [-400, 2000, 0], "up": [0, 0, 1]}]}),
+    );
+    let f = family(&s);
+    let values = f.values("A", &BTreeMap::new()).unwrap();
+    // A box has twelve edges as drawn; its caps' diagonals are none of them.
+    let (tris, _) = solid(f, 0);
+    assert_eq!(creases(&tris).len(), 12);
+    // On Ref. Level: Center (Left/Right)'s trace runs along y at x 0, Edge's at x -400; Ref. Level itself has none.
+    let t = f.sketch_targets(&values, &PlaneRef::Plane(REF_LEVEL), None);
+    assert_eq!(t.traces.len(), 3, "Center (Front/Back), Center (Left/Right) and Edge");
+    let reach = Reach { point: 20.0, line: 20.0 };
+    let o = Snaps::default();
+    let found = among(&t.traces, &t.segments, &[], P2(-407.3, 123.4), reach, &[], false, &o);
+    assert_eq!((found.at.0, found.kind), (-400.0, Kind::Nearest), "{found:?}");
+    let found = among(&t.traces, &t.segments, &[], P2(-396.0, 4.0), reach, &[], false, &o);
+    assert_eq!((found.at, found.kind), (P2(-400.0, 0.0), Kind::Intersection), "where Edge crosses Center (Front/Back)");
+    // The box's corner, seen on Ref. Level from its edges; its upright edges, square to the plane, are no line on it.
+    let found = among(&t.traces, &t.segments, &[], P2(1004.0, 596.0), reach, &[], false, &o);
+    assert_eq!((found.at, found.kind), (P2(1000.0, 600.0), Kind::Endpoint));
+    assert!(on_plane(&f.frame(&PlaneRef::Plane(REF_LEVEL)).unwrap(), ([500.0, 300.0, 0.0], [500.0, 300.0, 200.0])).is_err());
+    // Skipping the form sketched again: only the line Edge was drawn as.
+    assert_eq!(f.sketch_targets(&values, &PlaneRef::Plane(REF_LEVEL), Some(0)).segments, [(P2(-400.0, -2000.0), P2(-400.0, 2000.0))]);
+    // On Center (Left/Right), its own trace is none, and the box is seen side on: y along its x, z along its y.
+    let t = f.sketch_targets(&values, &PlaneRef::Plane(CENTER_LEFT_RIGHT), None);
+    assert_eq!(t.traces.len(), 2, "Ref. Level and Center (Front/Back); Edge is parallel");
+    assert!(t.segments.iter().any(|(a, b)| [*a, *b].contains(&P2(300.0, 200.0))));
+}
+
+#[test]
+fn a_form_is_picked_in_3d_where_it_shows_nearest_the_eye() {
+    use crate::family::views::form_at_3d;
+    let (s, r) = sketched(
+        json!([{"sketch": rect(0.0, 0.0, 100.0, 100.0), "to": 100}, {"sketch": rect(0.0, 0.0, 100.0, 100.0), "from": 300, "to": 400}]),
+    );
+    r.unwrap();
+    let f = family(&s);
+    let values = f.values("A", &BTreeMap::new()).unwrap();
+    let cam = crate::view3d::Camera::at([50.0, 50.0, 2000.0], [50.0, 50.0, 0.0], 50.0, 400, 400);
+    let (x, y, _) = cam.project([50.0, 50.0, 400.0]);
+    assert_eq!(form_at_3d(f, &values, &cam, (x, y)), Some(1), "the upper one, nearer the eye looking down");
+    assert_eq!(form_at_3d(f, &values, &cam, (1.0, 1.0)), None);
+}

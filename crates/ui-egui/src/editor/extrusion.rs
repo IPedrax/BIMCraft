@@ -21,9 +21,14 @@ impl FamilyEditor {
     }
 
     /// Form `i` selected, as a click on it selects it.
+    pub(crate) fn select_form_at(&mut self, i: usize) {
+        self.form = Some(i);
+    }
+
+    /// Form `i` selected, as a click on it selects it.
     #[cfg(test)]
     pub(crate) fn select_form(&mut self, i: usize) {
-        self.form = Some(i);
+        self.select_form_at(i);
     }
 
     /// Escape: the form selected let go. Whether there was one.
@@ -142,7 +147,7 @@ impl BimApp {
                 return;
             }
             let (end, start, u) = if f.revolve {
-                (msg!("To (degrees)"), msg!("From (degrees)"), None)
+                (msg!("End Angle"), msg!("Start Angle"), None)
             } else {
                 (msg!("Extrusion End"), msg!("Extrusion Start"), Some(units))
             };

@@ -23,6 +23,9 @@ use crate::sketch::{Drag, Of, Sketch};
 /// What marks a sketch line as a revolve's Axis Line while it is drawn: never kept, the form's axis line is marked its own way.
 const AXIS: &str = "\u{0}axis";
 
+/// The green the family's views draw reference planes and lines in (the core's `render::REFERENCE_PLANE`).
+const REFERENCE: Color32 = Color32::from_rgb(70, 140, 90);
+
 /// Revit's green, a revolve's Axis Line.
 const AXIS_COLOUR: Color32 = Color32::from_rgb(20, 150, 60);
 
@@ -70,11 +73,23 @@ pub(crate) struct FormSketch {
     pub(crate) radius_on: bool,
     pub(crate) radius: String,
     pub(crate) offset: String,
-    /// Where the cursor is on the plane, for the preview.
+    /// Where the cursor is on the plane, for the preview, snapped.
     hover: Option<P2>,
+    /// What the cursor snapped to, for its marker.
+    found: Option<bimcraft_core::snap::Found>,
+    /// Chain: a line or an arc drawn starts the next where it ends (the Options Bar's, for the session).
+    pub(crate) chain: bool,
+    /// What the sketch snaps to (`Family::sketch_targets`), and the draft it was found for.
+    targets: Option<(u64, fs::Targets)>,
 }
 
 impl FormSketch {
+    /// What the cursor snaps to now, if anything.
+    #[cfg(test)]
+    pub(crate) fn snapped(&self) -> Option<bimcraft_core::snap::Found> {
+        self.found.filter(|f| f.kind != bimcraft_core::snap::Kind::Free)
+    }
+
     /// The lines of the profile: all but the axis.
     fn boundary(&self) -> Vec<SketchLine> {
         self.sketch.lines.iter().filter(|l| !is_axis(l)).cloned().collect()
@@ -127,7 +142,7 @@ impl FormSketch {
 
     /// A click at `p` on the plane: the next point of the shape (made once it has its points), or with Modify a line picked;
     /// `pick` is what Pick Lines finds there. What went wrong, if anything.
-    fn click(&mut self, p: P2, reach: f64, shift: bool, pick: &dyn Fn() -> Option<Curve>) -> Option<String> {
+    fn click(&mut self, p: P2, reach: f64, shift: bool, pick: &dyn Fn() -> Result<Curve, String>) -> Option<String> {
         match self.tool {
             None => {
                 match self.sketch.line_at(p, reach) {
@@ -142,12 +157,12 @@ impl FormSketch {
                 None
             }
             Some(Shape::PickLines) => match pick() {
-                Some(c) => {
+                Ok(c) => {
                     let by = self.options().offset;
                     self.add(vec![shapes::pick(&c, p, by).unwrap_or(c)]);
                     None
                 }
-                None => Some(t("Pick a reference plane, a reference line or a form's edge in the view.").to_string()),
+                Err(e) => Some(e),
             },
             Some(Shape::Fillet) => {
                 let i = self.sketch.line_at(p, reach)?;
@@ -180,7 +195,7 @@ impl FormSketch {
                     self.add(made);
                     self.points.clear();
                     // Chained: the next starts where this one ended.
-                    if shape.chains() && !self.axis_tool && o.offset == 0.0 {
+                    if self.chain && shape.chains() && !self.axis_tool && o.offset == 0.0 {
                         self.points.extend(self.last.map(|l| l.0));
                     }
                 } else if self.points.len() >= shape.clicks(&o).max(1) {
@@ -243,6 +258,19 @@ impl FormSketch {
             }
         }
     }
+}
+
+/// What Pick Lines says of a line picked that runs square to the work plane.
+fn square_to_plane() -> String {
+    t("That runs square to the work plane: it has no line on it to pick.").to_string()
+}
+
+/// Where Chain is kept for the session: on, unless the Options Bar turned it off.
+const CHAIN: &str = "family-sketch-chain";
+
+/// Chain, as the Options Bar last left it this session.
+pub(crate) fn chain(ctx: &Context) -> bool {
+    ctx.data(|d| d.get_temp::<bool>(UiId::new(CHAIN))).unwrap_or(true)
 }
 
 /// Whether a line drawn is the Axis Line.
@@ -407,6 +435,9 @@ impl FamilyEditor {
             radius: "100".into(),
             offset: "0".into(),
             hover: None,
+            found: None,
+            chain: true,
+            targets: None,
         }));
         self.form = None;
         self.views.plane = None;
@@ -531,10 +562,11 @@ impl FamilyEditor {
         let seen_flat = flat(which, &frame);
         let at = |p: Pos2| on_plane(st, which, &frame, view.mm((p.x - pane.min.x, p.y - pane.min.y))).filter(|_| seen_flat);
         let reach = f64::from(REACH) / view.scale.max(1e-9);
-        let pick = |p: Pos2| -> Option<Curve> {
-            let (a, b) = pick_view(p)?;
-            let (a, b) = (on_plane(st, which, &frame, a)?, on_plane(st, which, &frame, b)?);
-            (a.dist(b) > 1.0).then(|| Curve::line(a, b))
+        let pick = |p: Pos2| -> Result<Curve, String> {
+            let missed = || t("Pick a reference plane, a reference line or a form's edge in the view.").to_string();
+            let (a, b) = pick_view(p).ok_or_else(missed)?;
+            let (a, b) = (on_plane(st, which, &frame, a).ok_or_else(missed)?, on_plane(st, which, &frame, b).ok_or_else(missed)?);
+            if a.dist(b) > 1.0 { Ok(Curve::line(a, b)) } else { Err(square_to_plane()) }
         };
         self.sketch_input(ui, response, painter, &screen, &at, reach, &pick, seen_flat)
     }
@@ -568,7 +600,41 @@ impl FamilyEditor {
             .and_then(|p| Some(at(p)?.dist(at(p + vec2(REACH, 0.0))?)))
             .filter(|r| r.is_finite() && *r > 0.0)
             .unwrap_or(10.0);
-        let pick = |_: Pos2| -> Option<Curve> { None };
+        // Pick Lines: the edge of another form, a reference line or the line a reference plane was drawn as, where it shows
+        // nearest the click, seen square on to the plane.
+        let values = self.values();
+        let edges = self.family().map(|f| f.edges_3d(&values, self.sketch.as_ref().and_then(|s| s.index))).unwrap_or_default();
+        let shown = |p: [f64; 3]| {
+            let (x, y, _) = cam.project(p);
+            (x.is_finite() && y.is_finite())
+                .then(|| P2(f64::from(pane.min.x) + x * f64::from(sx), f64::from(pane.min.y) + y * f64::from(sy)))
+        };
+        // The reference lines and planes, drawn over the picture while sketching, so they can be seen and picked.
+        let family = self.family().ok();
+        for (a, b, plane) in family.iter().flat_map(|f| {
+            f.lines.iter().map(|l| (l.start, l.end, false)).chain(f.planes.iter().filter(|p| !p.datum()).map(|p| (p.start, p.end, true)))
+        }) {
+            if let (Some(p), Some(q)) = (shown(a), shown(b)) {
+                let ends = [Pos2::new(p.0 as f32, p.1 as f32), Pos2::new(q.0 as f32, q.1 as f32)];
+                let stroke = Stroke::new(1.5, REFERENCE);
+                if plane {
+                    painter.extend(egui::Shape::dashed_line(&ends, stroke, 8.0, 4.0));
+                } else {
+                    painter.line_segment(ends, stroke);
+                }
+            }
+        }
+        let pick = |p: Pos2| -> Result<Curve, String> {
+            let at = P2(f64::from(p.x), f64::from(p.y));
+            let near = edges
+                .iter()
+                .filter_map(|e| Some((bimcraft_core::geom::dist_to_segment(at, shown(e.0)?, shown(e.1)?), *e)))
+                .filter(|(d, _)| *d <= f64::from(REACH))
+                .min_by(|a, b| a.0.total_cmp(&b.0));
+            let (_, edge) = near.ok_or_else(|| t("Pick a reference plane, a reference line or a form's edge in the view.").to_string())?;
+            let (a, b) = fs::on_plane(&frame, edge).map_err(|_| square_to_plane())?;
+            Ok(Curve::line(a, b))
+        };
         let on = response.hover_pos().is_some_and(|p| at(p).is_some());
         self.sketch_input(ui, response, painter, &screen, &at, reach, &pick, on || response.hover_pos().is_none())
     }
@@ -585,12 +651,39 @@ impl FamilyEditor {
         screen: &dyn Fn(P2) -> Option<Pos2>,
         at: &dyn Fn(Pos2) -> Option<P2>,
         reach: f64,
-        pick: &dyn Fn(Pos2) -> Option<Curve>,
+        pick: &dyn Fn(Pos2) -> Result<Curve, String>,
         usable: bool,
     ) -> Option<String> {
+        // What it snaps to, found again when the draft changes.
+        let key = {
+            let mut h = DefaultHasher::new();
+            self.family().ok().map(|f| serde_json::to_string(&f).unwrap_or_default()).hash(&mut h);
+            (self.picked, self.sketch.as_ref().map(|s| (format!("{:?}", s.host), s.index))).hash(&mut h);
+            h.finish()
+        };
+        if self.sketch.as_ref().is_some_and(|s| s.targets.as_ref().is_none_or(|t| t.0 != key)) {
+            let values = self.values();
+            let (host, index) = self.sketch.as_ref().map(|s| (s.host, s.index)).unwrap_or_default();
+            let targets = self.family().map(|f| f.sketch_targets(&values, &host, index)).unwrap_or_default();
+            if let Some(s) = self.sketch.as_mut() {
+                s.targets = Some((key, targets));
+            }
+        }
+        let snaps = self.snaps;
         let s = self.sketch.as_mut()?;
-        let hover = response.hover_pos().and_then(at);
+        s.chain = chain(ui.ctx());
+        // The pointer snapped, as a project's view snaps it, while a shape is drawn or a line's end dragged.
+        let snapping = matches!(s.tool, Some(shape) if !matches!(shape, Shape::Fillet | Shape::PickLines)) || s.sketch.drag.is_some();
+        let snap = |s: &FormSketch, raw: P2| -> bimcraft_core::snap::Found {
+            let own: Vec<Curve> = s.sketch.lines.iter().map(|l| l.curve.clone()).collect();
+            let (traces, segments) = s.targets.as_ref().map(|(_, t)| (t.traces.as_slice(), t.segments.as_slice())).unwrap_or_default();
+            let reach = bimcraft_core::snap::Reach { point: reach, line: reach };
+            bimcraft_core::snap::among(traces, segments, &own, raw, reach, &s.points, false, &snaps)
+        };
+        let found = response.hover_pos().and_then(at).filter(|_| snapping).map(|raw| snap(s, raw));
+        let hover = found.map(|f| f.at).or_else(|| response.hover_pos().and_then(at));
         s.hover = hover;
+        s.found = found;
         let hovered = hover.filter(|_| s.tool.is_none()).and_then(|p| s.sketch.line_at(p, reach));
         let mut problem = None;
         // A picked line's end, dragged with Modify: the lines joined there follow it.
@@ -610,7 +703,7 @@ impl FamilyEditor {
         if response.clicked()
             && let Some(pos) = response.interact_pointer_pos()
         {
-            match at(pos) {
+            match at(pos).map(|raw| if snapping { snap(s, raw).at } else { raw }) {
                 Some(p) => {
                     let shift = ui.input(|i| i.modifiers.shift);
                     problem = s.click(p, reach, shift, &|| pick(pos));
@@ -623,6 +716,12 @@ impl FamilyEditor {
         }
         s.sketch.track();
         s.paint(painter, screen, hovered);
+        if let Some(f) = s.found
+            && let Some(at) = screen(f.at)
+        {
+            let from = f.guide.and_then(|g| screen(g.from));
+            crate::canvas::snap_mark(painter, at, from, f.kind, t(f.kind.name()).to_string());
+        }
         problem
     }
 
@@ -705,6 +804,15 @@ pub(crate) fn options_bar(ui: &mut Ui, ed: &mut FamilyEditor, units: bimcraft_co
         }
         ui.separator();
     }
+    // Chain: a line or an arc starts where the last ended; off, each starts afresh. Kept for the session.
+    if s.tool.is_some_and(Shape::chains) && !s.axis_tool {
+        let mut on = chain(ui.ctx());
+        if ui.checkbox(&mut on, t("Chain")).changed() {
+            ui.ctx().data_mut(|d| d.insert_temp(UiId::new(CHAIN), on));
+            s.chain = on;
+        }
+        ui.separator();
+    }
     if matches!(s.tool, Some(Shape::Inscribed | Shape::Circumscribed)) {
         let l = ui.label(t("Sides"));
         ui.add(TextEdit::singleline(&mut s.sides).desired_width(40.0)).labelled_by(l.id);
@@ -733,12 +841,7 @@ impl BimApp {
             cancel |= crate::big_button(ui, Icon::Close, "Cancel Edit Mode", false, "Cancel Edit Mode: drop the lines, keep it as it was")
                 .clicked();
         });
-        // Pick Lines picks what a plan or an elevation draws: {3D} has no traces to pick.
-        let picks = ed.views.shown.is_some();
         let Some(s) = ed.sketch.as_mut() else { return };
-        if !picks && s.tool == Some(Shape::PickLines) {
-            s.tool = Some(Shape::Line);
-        }
         ribbon::panel(ui, msg!("Draw"), |ui| {
             crate::stacked(ui, |ui| {
                 let tip = msg!("Boundary Line: the lines of the profile");
@@ -755,9 +858,7 @@ impl BimApp {
             });
             ui.vertical(|ui| {
                 let mut shapes: Vec<Shape> = if s.axis_tool { vec![Shape::Line] } else { GALLERY.to_vec() };
-                if picks {
-                    shapes.push(Shape::PickLines);
-                }
+                shapes.push(Shape::PickLines);
                 for row in shapes.chunks(4) {
                     ui.horizontal(|ui| {
                         for shape in row {

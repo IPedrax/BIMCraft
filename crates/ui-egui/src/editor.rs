@@ -494,6 +494,8 @@ pub(crate) struct FamilyEditor {
     pub(crate) sketch: Option<Box<sketch::FormSketch>>,
     /// Go To View, asked by Create > Extrusion or Revolve (revolve, void) where the view doesn't see the work plane flat.
     pub(crate) go_to: Option<(bool, bool)>,
+    /// What a sketch snaps to, as Manage > Snaps says: the window's, given each frame.
+    pub(crate) snaps: bimcraft_core::snap::Snaps,
 }
 
 /// The tabs of a family document's ribbon, as Revit's family editor has them.
@@ -597,6 +599,7 @@ impl FamilyEditor {
             views: Default::default(),
             sketch: None,
             go_to: None,
+            snaps: Default::default(),
         }
     }
 
@@ -1106,7 +1109,7 @@ fn form_fields(
                 });
                 ui.end_row();
             }
-            ui.label(if f.revolve { t("From (degrees)") } else { t("From") });
+            ui.label(if f.revolve { t("Start Angle") } else { t("From") });
             links.field(
                 ui,
                 format!("{} {n}", t("Form From")),
@@ -1116,7 +1119,7 @@ fn form_fields(
                 (Field::Form(Slot::From), i),
             );
             ui.end_row();
-            ui.label(if f.revolve { t("To (degrees)") } else { t("To") });
+            ui.label(if f.revolve { t("End Angle") } else { t("To") });
             links.field(
                 ui,
                 format!("{} {n}", t("Form To")),
@@ -1291,9 +1294,10 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                     );
                     ui.end_row();
                     if y.part == Part::Arc {
-                        for (label, what, text) in
-                            [("From (degrees)", msg!("Symbol From"), &mut y.from), ("To (degrees)", msg!("Symbol To"), &mut y.to)]
-                        {
+                        for (label, what, text) in [
+                            (msg!("From (degrees)"), msg!("Symbol From"), &mut y.from),
+                            (msg!("To (degrees)"), msg!("Symbol To"), &mut y.to),
+                        ] {
                             ui.label(t(label));
                             links.field(
                                 ui,

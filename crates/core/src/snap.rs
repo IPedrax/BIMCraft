@@ -656,6 +656,33 @@ pub fn snap(m: &Model, level: Id, p: P2, reach: Reach, from: &[P2], square: bool
     solve(scene, p, reach, from, square, o, false)
 }
 
+/// Where a point picked at `p` lands among what is given, not a model's plan: `traces`, lines with no ends of their own (a
+/// reference plane's trace across a sketch's plane), crossed with each other and with the rest and taken nearest; `segments`,
+/// straight edges with their ends and middles (a form's edges seen on the plane); and `curves`, a sketch's own lines. The
+/// same switches, guides and order as [`snap`] and [`in_sketch`]: a family's sketch (F5) is drawn in its plane's own axes.
+#[allow(clippy::too_many_arguments)]
+pub fn among(
+    traces: &[(P2, P2)],
+    segments: &[(P2, P2)],
+    curves: &[Curve],
+    p: P2,
+    reach: Reach,
+    from: &[P2],
+    square: bool,
+    o: &Snaps,
+) -> Found {
+    let window = reach.point.max(reach.line);
+    let mut scene = Scene { points: Vec::new(), lines: Vec::new(), walls: Vec::new(), curves: Vec::new(), chords: Vec::new(), cloud: None };
+    scene.lines.extend(traces.iter().filter(|(a, b)| geom::dist_to_segment(p, *a, *b) <= window).map(|(a, b)| (*a, *b, None)));
+    for (a, b) in segments.iter().filter(|(a, b)| geom::dist_to_segment(p, *a, *b) <= window) {
+        scene.segment(*a, *b, None);
+    }
+    for c in curves {
+        scene.curve(c, p, window, None);
+    }
+    solve(scene, p, reach, from, square, o, true)
+}
+
 /// A sketch's view and draft geometry. The element being edited is omitted so its old boundary cannot attract a grip.
 pub struct Sketch<'a> {
     pub view: Id,

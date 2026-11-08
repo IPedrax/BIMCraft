@@ -834,6 +834,7 @@ impl BimApp {
     /// button, and its view control bar at the bottom.
     pub(crate) fn family_central(&mut self, ui: &mut Ui) {
         let Some(mut ed) = self.family_editor.take() else { return };
+        ed.snaps = self.snaps_now();
         let pane = ui.available_rect_before_wrap();
         self.view_rect = pane;
         self.pane = pane;
@@ -871,6 +872,24 @@ impl BimApp {
             }
             let base = Arc::clone(&self.session.model);
             ed.refresh(ui.ctx(), &base);
+            // A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
+            if response.double_clicked()
+                && !ed.sketching()
+                && let (Some(p), Some((cam, size))) = (response.interact_pointer_pos(), ed.preview.as_ref().map(|p| (p.cam, p.size)))
+            {
+                let px = (
+                    f64::from((p.x - pane.min.x) * size[0] as f32 / pane.width().max(1.0)),
+                    f64::from((p.y - pane.min.y) * size[1] as f32 / pane.height().max(1.0)),
+                );
+                let values = ed.values();
+                let hit = ed.family().ok().and_then(|f| bimcraft_core::family::views::form_at_3d(&f, &values, &cam, px));
+                if let Some(i) = hit {
+                    ed.select_form_at(i);
+                    if let Err(e) = ed.edit_form_sketch(i) {
+                        self.status = Status { text: e, error: true };
+                    }
+                }
+            }
             if let Some(p) = &ed.preview {
                 ui.painter().image(p.tile.id(), pane, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
             }
