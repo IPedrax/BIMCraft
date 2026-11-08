@@ -155,6 +155,7 @@ impl BimApp {
         let (values, params) = (ed.values(), ed.parameter_kinds());
         let mut links = association::Controls::new(ed);
         let host = host_label(ed.plane_set(), &ed.forms[i].host);
+        let hosted = ed.category.hosted();
         let [from, to] = ed.driven_ends(i);
         let Some(f) = ed.forms.get_mut(i) else { return };
         let (mut visible, mut void, mut edit_visibility) = (false, None, false);
@@ -228,6 +229,28 @@ impl BimApp {
                 });
             c.response.labelled_by(l.id);
             ui.end_row();
+            // F10d: what a door's or a window's void cuts: the forms listed before it and the wall, whatever its place in
+            // the list; the wall alone (an opening's void round its frame); or the forms alone (a sash's light).
+            if f.void && hosted {
+                use bimcraft_core::family::Cuts;
+                let l = ui.label(t("Cuts"));
+                let name = |c: Cuts| match c {
+                    Cuts::Both => t("Forms and Host"),
+                    Cuts::Host => t("Host"),
+                    Cuts::Forms => t("Forms"),
+                };
+                let now = f.original.cuts();
+                let tip = msg!("What the void cuts: the solid forms listed before it, and the wall the door or window stands in");
+                let c = ComboBox::from_id_salt(("form-cuts", i)).selected_text(name(now)).width(width(ui)).truncate().show_ui(ui, |ui| {
+                    for c in [Cuts::Both, Cuts::Host, Cuts::Forms] {
+                        if ui.selectable_label(now == c, name(c)).clicked() {
+                            f.original.cuts = (c != Cuts::Both).then_some(c);
+                        }
+                    }
+                });
+                c.response.labelled_by(l.id).on_hover_text(t(tip));
+                ui.end_row();
+            }
         });
         if visible {
             let typed = f.visible.trim().to_string();
@@ -242,7 +265,9 @@ impl BimApp {
         }
         if let Some(v) = void {
             let base = Arc::clone(&self.session.model);
-            if let Err(e) = ed.through(&base, i, "family", |name, guid| json!({"name": name, "form": {"guid": guid, "void": v}})) {
+            if let Err(e) =
+                ed.through(&base, i, "family", |name, guid| json!({"name": name, "form": {"guid": guid, "void": v, "cuts": null}}))
+            {
                 self.status = Status { text: e, error: true };
             }
         }

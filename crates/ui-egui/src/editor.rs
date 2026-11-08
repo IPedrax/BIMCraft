@@ -717,7 +717,8 @@ impl FamilyEditor {
         self.document.refused.as_deref().or(self.problem.as_deref())
     }
 
-    /// A family to start from, of `category`: a box of its width, depth and height, or a door's or window's frame of its own.
+    /// A family to start from, of `category`: a box of its width, depth and height, or a door's or window's frame of its own;
+    /// a window's with a Sill plane on Ref. Level (F10c), as Revit's window template has it.
     pub(crate) fn blank(category: Category) -> FamilyEditor {
         let length = |name: &str, value: f64| json!({"name": name, "value": value});
         let block = |x: [&str; 2], y: [&str; 2], z: [&str; 2]| json!({"profile": [[x[0], y[0]], [x[1], y[0]], [x[1], y[1]], [x[0], y[1]]], "from": z[0], "to": z[1]});
@@ -732,7 +733,10 @@ impl FamilyEditor {
                    "types": {"1000 x 600": {}},
                    "forms": [block(["-Width / 2", "Width / 2"], ["-Depth / 2", "Depth / 2"], ["0", "Height"])]})
         };
-        let family: Family = serde_json::from_value(family).unwrap_or_default();
+        let mut family: Family = serde_json::from_value(family).unwrap_or_default();
+        if category == Category::Window {
+            sill_plane(&mut family);
+        }
         let mut editor = FamilyEditor::of(t("New Family"), &family);
         editor.original = None;
         editor
@@ -1108,6 +1112,7 @@ fn form_fields(
     options: &[String],
     values: &BTreeMap<String, bimcraft_core::family::Val>,
     links: &mut association::Controls,
+    hosted: bool,
 ) -> bool {
     use crate::adaptive_editor::{Field, Slot};
     let n = i + 1;
@@ -1244,9 +1249,30 @@ fn form_fields(
         ui.end_row();
         pressed = visible_row(ui, &mut f.visible, format!("{} {n}", t("Form Visible")), values);
         ui.label(t("Void"));
-        let r = ui.checkbox(&mut f.void, t("cuts the forms listed above it"));
+        // A door's or a window's void cuts what its Cuts says (F10d): the forms listed above it and the wall, unless said.
+        let says = if hosted { t("cuts what Cuts says") } else { t("cuts the forms listed above it") };
+        let r = ui.checkbox(&mut f.void, says);
         r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, f.void, format!("{} {n}", t("Form Void"))));
         ui.end_row();
+        if f.void && hosted {
+            use bimcraft_core::family::Cuts;
+            ui.label(t("Cuts"));
+            let name = |c: Cuts| match c {
+                Cuts::Both => t("Forms and Host"),
+                Cuts::Host => t("Host"),
+                Cuts::Forms => t("Forms"),
+            };
+            let now = f.original.cuts();
+            let c = ComboBox::from_id_salt(("fe-form-cuts", i)).selected_text(name(now)).show_ui(ui, |ui| {
+                for c in [Cuts::Both, Cuts::Host, Cuts::Forms] {
+                    if ui.selectable_label(now == c, name(c)).clicked() {
+                        f.original.cuts = (c != Cuts::Both).then_some(c);
+                    }
+                }
+            });
+            c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, format!("{} {n}", t("Form Cuts"))));
+            ui.end_row();
+        }
     });
     pressed
 }
@@ -1274,6 +1300,7 @@ fn held_forms(ed: &FamilyEditor, values: &BTreeMap<String, bimcraft_core::family
 }
 
 fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
+    let hosted = ed.category.hosted();
     // What a form may be made of: nothing, a library material, or a material parameter.
     let mut options = vec![String::new()];
     options.extend(ed.params.iter().filter(|p| p.kind == Holds::Material).map(|p| p.name.clone()));
@@ -1292,7 +1319,8 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
         let header = CollapsingHeader::new(heading).id_salt(("fe-form", i)).default_open(ed.forms.len() == 1);
         let header = if reveal == Some(i) { header.open(Some(true)) } else { header };
         header.show(ui, |ui| {
-            if form_fields(ui, &mut ed.forms[i], held.get(i).and_then(Option::as_ref), &type_name, i, &options, &values, &mut links) {
+            if form_fields(ui, &mut ed.forms[i], held.get(i).and_then(Option::as_ref), &type_name, i, &options, &values, &mut links, hosted)
+            {
                 let typed = ed.forms[i].visible.trim().to_string();
                 ed.associating = Some(crate::adaptive_editor::associating(
                     &i.to_string(),
@@ -1711,6 +1739,40 @@ impl BimApp {
             self.family_editor = self.family_hosts.pop();
         }
     }
+}
+
+/// A window's Sill (F10c): a reference plane on Ref. Level, seen edge on in the elevations, Align-locked to it so a Height
+/// dimensioned from it moves its head alone. A window's axes rise from its sill, so the two lie on one another; Tab picks
+/// between them in a view.
+fn sill_plane(family: &mut Family) {
+    use bimcraft_core::family::{DimKind, DimRef, DimView, FamilyDimension};
+    let guid = bimcraft_core::ids::Guid::new();
+    family.planes.push(RefPlane {
+        id: 0,
+        guid,
+        name: t("Sill").to_string(),
+        start: [-1500.0, 0.0, 0.0],
+        end: [1500.0, 0.0, 0.0],
+        up: [0.0, 1.0, 0.0],
+        reference: Default::default(),
+        defines_origin: false,
+        subcategory: None,
+        level: false,
+        pivot: None,
+        turned: None,
+    });
+    family.dimensions.push(FamilyDimension {
+        id: 0,
+        guid: bimcraft_core::ids::Guid::new(),
+        view: DimView::Front,
+        refs: vec![DimRef::Plane(REF_LEVEL), DimRef::Plane(guid)],
+        at: [1300.0, 0.0, 0.0],
+        label: None,
+        locked: vec![bimcraft_core::model::Lock { segment: 0, length: 0.0 }],
+        equal: false,
+        alignment: true,
+        kind: DimKind::Aligned,
+    });
 }
 
 #[cfg(test)]

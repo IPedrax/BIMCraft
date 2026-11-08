@@ -87,6 +87,21 @@ pub(crate) struct Views {
     pub(crate) grips_shown: Vec<(super::pivot::Grip, egui::Pos2)>,
     /// What is typed in a pivot's rows of Properties: its element, its angle, its minimum and its maximum.
     pub(crate) pivot_text: Option<(Guid, String, String, String)>,
+    /// The planes under the pointer, where several lie on one another (a Sill plane on Ref. Level, F10c), and which of them
+    /// a click takes: Tab steps through them, as Revit's Tab does.
+    pub(crate) under: Vec<Guid>,
+    pub(crate) cycle: usize,
+}
+
+/// The planes the view draws under pixel `(x, y)` of `drawing` (within reach), each once, nearest first.
+fn planes_under(drawing: &Drawing, staged: &Staged, at: (f32, f32)) -> Vec<Guid> {
+    let mut out: Vec<Guid> = Vec::new();
+    for g in drawing.pick_all(at, 6.0).into_iter().filter_map(|id| staged.plane_of(id)) {
+        if !out.contains(&g) {
+            out.push(g);
+        }
+    }
+    out
 }
 
 /// A view drawn: what it was drawn of, its scratch model, its frame and drawing (to pick in) and its picture.
@@ -132,6 +147,11 @@ pub(crate) const WORK_PLANE_MARGIN: f64 = 300.0;
 
 /// The selection's colour in the family's views.
 pub(super) const PICKED: Color32 = Color32::from_rgb(40, 120, 230);
+/// How far a dimension's tick reaches from its point, in points: what a padlock keeps clear of.
+const TICK: f32 = 7.0;
+
+/// The plane a click would take where several lie on one another (F10c): lit, lighter than one selected.
+const PRESELECT: Color32 = Color32::from_rgb(110, 170, 240);
 /// Work Plane > Show's tint, the project's 3D view's.
 pub(crate) const TINT: Color32 = crate::workplane::TINT;
 
@@ -395,6 +415,34 @@ impl FamilyEditor {
         };
         let at_view = |p: egui::Pos2| view.mm((p.x - pane.min.x, p.y - pane.min.y));
         let editable = self.adaptive.is_none();
+        // The planes under the pointer, and Tab stepping through them where several lie on one another (F10c).
+        let under =
+            response.hover_pos().map(|p| planes_under(&c.drawing, &c.staged, (p.x - pane.min.x, p.y - pane.min.y))).unwrap_or_default();
+        if under != self.views.under {
+            (self.views.under, self.views.cycle) = (under, 0);
+        }
+        if response.hovered() && ui.input(|i| i.key_pressed(egui::Key::Tab)) {
+            ui.ctx().memory_mut(|m| {
+                if let Some(f) = m.focused() {
+                    m.surrender_focus(f);
+                }
+            });
+            if self.views.under.len() > 1 {
+                self.views.cycle = (self.views.cycle + 1) % self.views.under.len();
+            }
+        }
+        let (under, cycle) = (self.views.under.clone(), self.views.cycle);
+        // The plane a click at `p` takes: the one Tab has come to, where the pointer is over several; else the nearest.
+        let plane_at = |drawing: &Drawing, staged: &Staged, p: egui::Pos2| -> Option<Guid> {
+            let here = planes_under(drawing, staged, (p.x - pane.min.x, p.y - pane.min.y));
+            if here.len() > 1 && here == under { here.get(cycle % here.len()).copied() } else { here.first().copied() }
+        };
+        // Where several planes lie on one another, the one a click would take, lit.
+        if editable && under.len() > 1 {
+            for s in plane_strokes(&c.drawing, &c.staged, under[cycle % under.len()], pane.min) {
+                painter.line_segment(s, Stroke::new(2.0, PRESELECT));
+            }
+        }
         // A form being sketched (F5): the view draws and picks for the sketch alone.
         if editable && self.sketch.is_some() {
             let cache = self.views.cache.take()?;
@@ -409,8 +457,7 @@ impl FamilyEditor {
                 if response.clicked()
                     && let Some(p) = response.interact_pointer_pos()
                 {
-                    let (x, y) = (p.x - pane.min.x, p.y - pane.min.y);
-                    let plane = cache.drawing.pick_all((x, y), 6.0).into_iter().find_map(|id| cache.staged.plane_of(id));
+                    let plane = plane_at(&cache.drawing, &cache.staged, p);
                     let line = cache.staged.line_at(which, at_view(p), reach);
                     problem = self.picked(&Arc::new(base.clone()), plane, line);
                 }
@@ -418,14 +465,49 @@ impl FamilyEditor {
                 self.zoom_and_pan(ui, &response, which, view.scale);
                 return problem;
             }
-            // Pick Lines: a reference plane's or a reference line's trace, else the nearest edge of another form's outline.
-            let pick = |p: egui::Pos2| -> Option<(P2, P2)> {
-                let (x, y) = (p.x - pane.min.x, p.y - pane.min.y);
-                let picked = cache.drawing.pick_all((x, y), 6.0).into_iter().find_map(|id| cache.staged.plane_of(id));
-                if let Some(g) = picked
-                    && let Some(plane) = planes.iter().find(|q| q.guid == g)
-                {
-                    return plane_trace(&cache.staged, which, &plane.frame());
+            // Pick Lines: a reference plane's or a reference line's trace, else the nearest edge of another form's outline. With
+            // Lock on (F10a), what Align would take there (a plane, a reference line, another form's line), as its lock waits.
+            let locking = self.sketch.as_ref().is_some_and(|s| s.lock && s.options().offset == 0.0);
+            let own = self.sketch.as_ref().map(|s| s.guid).unwrap_or_default();
+            let pick = |p: egui::Pos2| -> Option<super::sketch::PickedInView> {
+                let picked = plane_at(&cache.drawing, &cache.staged, p);
+                let lock = |r: DimRef| FamilyDimension {
+                    id: 0,
+                    guid: Guid::new(),
+                    view: bimcraft_core::family::DimView::of(which),
+                    refs: vec![r],
+                    at: cache.staged.from_view(which, at_view(p)),
+                    label: None,
+                    locked: vec![bimcraft_core::model::Lock { segment: 0, length: 0.0 }],
+                    equal: false,
+                    alignment: true,
+                    kind: Default::default(),
+                };
+                // The planes as the type previewed puts them, as the view draws them.
+                let flexed = family.as_ref().map(|f| f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone()));
+                let trace = |g: Guid| {
+                    let plane = flexed
+                        .as_ref()
+                        .and_then(|f| f.planes.iter().find(|q| q.guid == g))
+                        .or_else(|| planes.iter().find(|q| q.guid == g))?;
+                    plane_trace(&cache.staged, which, &plane.frame())
+                };
+                if locking && let Some(flexed) = flexed.as_ref() {
+                    let screen_of = dims::screen_of(view, pane.min);
+                    if let Some(r) =
+                        dims::reference_at(flexed, &values, &cache.staged, which, picked, p, &screen_of).filter(|r| !r.names(own))
+                        && let Some((a, b)) = dims::drawn_as(flexed, &values, &cache.staged, which, &r).filter(|(a, b)| a != b)
+                    {
+                        // A plane's whole trace, as Pick Lines takes it unlocked; else the line the reference is drawn as.
+                        let line = match r {
+                            DimRef::Plane(g) => trace(g),
+                            _ => None,
+                        };
+                        return Some((line.unwrap_or((a, b)), Some(lock(r))));
+                    }
+                }
+                if let Some(t) = picked.and_then(trace) {
+                    return Some((t, None));
                 }
                 let q = at_view(p);
                 let f = family.as_ref()?;
@@ -440,7 +522,7 @@ impl FamilyEditor {
                         }
                     }
                 }
-                best.map(|(_, s)| s)
+                best.map(|(_, s)| (s, None))
             };
             // Align on the sketch's lines (F7b), and the padlocks of its locks: clicked before the sketch takes the click.
             let frame = self.sketch_frame();
@@ -470,8 +552,7 @@ impl FamilyEditor {
                         let flexed =
                             family.as_ref().map(|f| f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone()));
                         let screen_of = dims::screen_of(view, pane.min);
-                        let (x, y) = (p.x - pane.min.x, p.y - pane.min.y);
-                        let plane = cache.drawing.pick_all((x, y), 6.0).into_iter().find_map(|id| cache.staged.plane_of(id));
+                        let plane = plane_at(&cache.drawing, &cache.staged, p);
                         let outside = flexed.as_ref().and_then(|f| {
                             let r = dims::reference_at(f, &values, &cache.staged, which, plane, p, &screen_of).filter(|r| !r.names(own))?;
                             let (a, b) = dims::drawn_as(f, &values, &cache.staged, which, &r)?;
@@ -506,10 +587,7 @@ impl FamilyEditor {
         let family: Option<Family> =
             drawn.as_ref().map(|f| f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone()));
         let on_screen = dims::screen_of(view, pane.min);
-        let pick_plane = |p: egui::Pos2| -> Option<Guid> {
-            let (x, y) = (p.x - pane.min.x, p.y - pane.min.y);
-            c.drawing.pick_all((x, y), 6.0).into_iter().find_map(|id| c.staged.plane_of(id))
-        };
+        let pick_plane = |p: egui::Pos2| -> Option<Guid> { plane_at(&c.drawing, &c.staged, p) };
         let kind = self.views.dim_kind;
         let radial = kind.is_round();
         let angular = kind == bimcraft_core::family::DimKind::Angular;
@@ -575,6 +653,12 @@ impl FamilyEditor {
                 }
             } else if let (Some(a), Some(b)) = (m.points.first(), m.points.last()) {
                 lines.push([on_screen(*a), on_screen(*b)]);
+                // Its ticks: a small cross at each point, so a padlock keeps off them too.
+                for p in &m.points {
+                    let c = on_screen(*p);
+                    lines.push([c - egui::vec2(TICK, 0.0), c + egui::vec2(TICK, 0.0)]);
+                    lines.push([c - egui::vec2(0.0, TICK), c + egui::vec2(0.0, TICK)]);
+                }
             }
         }
         let offer = self.views.align_lock.filter(|(.., w)| *w == which).and_then(|(reference, target, at, _)| {

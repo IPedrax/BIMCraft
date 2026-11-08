@@ -29,10 +29,9 @@ exterior, z up from the sill) and its formulas read `Wall Thickness`; its `symbo
 (`opening_type` returns it by value), its flips are mirrors (`opening_local`), and `Element::family()` is the one way to ask what
 family a component or an opening is of. A section cuts a family opening's forms where its line passes through them.
 A hosted family's voids cut its wall as Revit's do (`Family::host_voids`): a void that reaches into the wall (its `Wall
-Thickness` about the opening's middle plane) and cuts none of the family's own forms, by the same boxes the "cuts nothing"
-warning reads (so one listed before them all), is the opening's shape in the wall in place of the rectangle of its `Width` and
-`Height`; a void that cuts a form (a sash's light) cuts that form alone, and a family with no such void cuts the rectangle as
-before. `Model::opening_voids_local` gives them in the family's axes with the opening's flips, `Model::opening_voids` where it
+Thickness` about the opening's middle plane), wherever it is listed, is the opening's shape in the wall in place of the
+rectangle of its `Width` and `Height`, unless its `cuts` says otherwise (F10d, below); a family with no such void cuts the
+rectangle as before. `Model::opening_voids_local` gives them in the family's axes with the opening's flips, `Model::opening_voids` where it
 stands. The wall's prisms leave such an opening out (`walls::prisms_in`; `prisms_rect_in` keeps every rectangle) and
 `view3d::wall_solids` takes each prism a void reaches as triangles less it (`csg::subtract`), a `Solid::Mesh` a section cuts
 (`cut: true`), so the 3D view and sections show an arch as an arch and a void deeper than the wall goes right through it;
@@ -43,7 +42,29 @@ wall the jambs; whether the opening is drawn at all is still its rectangle's hei
 `IfcOpeningElement`'s body, closed face sets placed at the opening's middle as its forms are, in place of the extruded
 rectangle. A plan draws a family opening's forms the cut plane passes through as it cuts them (`view3d::level_slice`: a frame
 extruded across the wall, its jambs), each edge of a void's cut from one face of the wall to the other a jamb. A void's size may read an instance parameter (a depth in its `from` and `to`), so each opening cuts its own.
-Neither is new in a file, so nothing takes a FORMAT step: an older build reads the family and cuts the rectangle.
+Neither is new in a file, so nothing takes a FORMAT step: an older build reads the family and cuts the rectangle. Below the cut
+plane (F10b), a plan sees the family's forms from it, in projection, as walls below the cut are drawn: each form's outline there
+(its triangles clipped at the cut and laid flat, an edge drawn where one side of it is covered and the other not, so the
+triangles a cut leaves along a face draw nothing between them), less what the cut covers (the forms' cut rings, and the wall
+cut round the opening) and what a form reaching higher covers, in the category's projection pen, lighter than the cut's; an
+edge the cut's line runs along already is left to it (`render::below_cut`). So a frame across the wall shows its lower rail
+between its cut jambs, and a sill board outside the wall its edge; nothing above the cut is drawn. A family's plan is the
+project's drawing of its scratch model, so it shows the same. Past `MAX_BELOW` triangles, each form's outline stands for it.
+
+F10d, FORMAT 32: a void's `cuts` (`family::Cuts`): `both` (left out of the file) cuts the solid forms listed before it that it
+reaches and, in a door's or a window's family, the wall wherever it reaches into it, whatever its place in the list; `host`
+the wall alone, never the family's forms (the opening's void round its frame, which it would otherwise cut away: Revit's
+Uncut Geometry, as one setting); `forms` the forms alone, leaving the wall to the rest (a sash's light, as the Casement
+Window's starter has its two). Until 31 a void cut the wall only if it cut none of the solid forms listed before it, by
+their boxes, so the order mattered: a void had to be put first. `Family::check` refuses `cuts` on a solid; the "cuts
+nothing" warning reads it (a void of `host` in a generic family cuts nothing); a work plane-based family's face voids take a
+`host` void whatever it overlaps and leave out a `forms` one (`free_voids`). In the family document, a void's Properties
+(Identity Data) and its row of the Forms tab have Cuts (Forms and Host, Host, Forms) in a door's or a window's family.
+`Model::migrate` takes a file of 31 to 32 (`Family::pin_cuts`): each void of a door's or a window's family that 31 didn't
+cut the wall with, though it reaches into it (it overlapped a solid listed before it in any of the family's types), says
+`forms`, so it cuts what it did; one that cut the wall cut none of the forms, and reads as it did. A build of 31 would leave
+`cuts` out and cut the wall with a `host` void listed after its frame no more. A family file carries no FORMAT, so it is read
+as 32 reads it.
 
 How a door or a window opens is its family's `operation` (`model::Operation`: swing, double-swing, sliding, double-sliding,
 folding, fixed), or for one of the project's own types the type's (`OpeningType::operation`); none, a door swings. IFC writes
@@ -572,7 +593,14 @@ the interface's thread, being one family, and kept until what they show changes 
 
 In a family that isn't adaptive, a click selects a form (`views::form_at`: the one nearest the eye there, highest in plan; its
 Properties and contextual tab as T11's) or a plane (Properties: its name, read-only for a datum; "Modify | Reference Planes",
-whose Delete takes away a plane of the family's own unless something is drawn on it). The selected form is outlined, the
+whose Delete takes away a plane of the family's own unless something is drawn on it). Planes may lie on one another (F10c: a
+window's Sill on Ref. Level, as Revit's window template has it): each is drawn, and where the pointer is over several
+(`Views::under`, each once, nearest first) the one a click takes is lit and Tab steps to the next, as Revit's Tab does, for
+selecting, Aligned Dimension, Align, Pick Lines and the Work Plane dialog's Pick alike; Ref. Level is picked by its level. The
+app's Tab hook leaves Tab to the family document while it is open. The blank window (Manage > New Family > Window) has Sill: a
+plane on Ref. Level seen edge on in the elevations, Align-locked to it, so a Height dimensioned from it moves its head alone (a
+window's axes rise from its sill, so the sill's plane and Ref. Level are one; without the lock the least-change solve would
+share a Height's change between them); a door's blank has none, as Revit's door template. The selected form is outlined, the
 selected plane's trace drawn heavier. A plane of the family's own, selected, moves square to itself by a drag; a datum doesn't.
 Reference Plane (RP, the Create tab's Datum) draws one by two clicks: in plan upright (`up` the vertical), in an elevation
 `up` the way it looks, so its normal lies in the elevation's plane (`views::new_plane`); it has no name, is Weak, and is a step
@@ -625,10 +653,11 @@ other way; `rename_parameter` and `every_formula` reach its formulas; the conser
 In the family document (`editor/sketch.rs`), Create > Extrusion or Revolve, or Void Forms > Void Extrusion or Void Revolve, sketch
 on the view's work plane: "Modify | Create Extrusion" and the like, its Mode (Finish and Cancel Edit Mode), Draw (Boundary Line
 and, for a revolve, Axis Line; Line, Rectangle, the polygons, Circle, the three arcs, Fillet Arc and, in a plan or an elevation,
-Pick Lines: in a plan or an elevation a plane's or reference line's trace, or another form's edge; in {3D} another form's edge
-(`snap::creases`), a reference line or the line a reference plane was drawn as, which {3D} draws while sketching, seen square on to
-the work plane, an edge square to it refused with a message; no spline or ellipse), Modify (pick, Delete, a picked line's end
-dragged) and Work Plane (Set, the Work Plane dialog for the sketch: the plane taken, its lines go with it in the plane's own
+Pick Lines: in a plan or an elevation a plane's or reference line's trace (where the type previewed puts it, as the view draws
+it), or another form's edge; in {3D} another form's edge (`snap::creases`), a reference line or the line a reference plane was
+drawn as, which {3D} draws while sketching, seen square on to the work plane, an edge square to it refused with a message; no
+spline or ellipse), Modify (pick, Delete, a picked line's end dragged; Trim/Extend to Corner, TR, two lines trimmed or extended
+to where they meet, each keeping the part clicked, `draw::corner`, F10a) and Work Plane (Set, the Work Plane dialog for the sketch: the plane taken, its lines go with it in the plane's own
 axes; Show). The pointer snaps as a project's view snaps (`snap::among`, the same switches, guides, order and
 markers, `canvas::snap_mark`) to the reference planes' traces across the work plane, where they cross, the other forms' edges
 and their ends seen on it, the reference lines and the sketch's own lines (`Family::sketch_targets`). Chain, on the Options Bar
@@ -636,8 +665,12 @@ for Line and the chained arcs, is kept for the session: off, each starts afresh.
 those that do and {3D}: the Work Plane dialog's one Go To View (`FamilyEditor::on_work_plane`, `work_plane::Then`), the sketch
 beginning in the view opened; {3D} draws on the plane where the pointer shows it. The lines are the project's sketch's
 (`sketch::Sketch`, with its local Ctrl+Z), in the plane's axes. The Options Bar has Depth (End less Start), Sides, Radius and
-Offset; Properties the Start and End (a revolve's Start Angle and End Angle, as a selected one's Properties and the Forms tab
-name them), Material and Solid/Void. Finish checks the lines as the core does
+Offset, and for Pick Lines Revit's Lock (F10a, kept for the session, off to begin with): a line picked with it on, with no
+Offset and in a plan or an elevation, is locked to what it was picked from (a plane, a reference line, another form's line: what
+Align would take there, `dimensions::reference_at`), the same lock Align's padlock leaves (`alignment`, written at Finish,
+dropped by Cancel, its padlock shown closed beside the line, a click unlocking it); greyed with an Offset and in {3D}, where
+Align isn't either. Properties the Start and End (a revolve's Start Angle and End Angle, as a selected one's Properties and the
+Forms tab name them), Material and Solid/Void. Finish checks the lines as the core does
 (`family::sketch::finish_check`): open loops, crossing or overlapping lines, a revolve with no axis or a profile across it are
 refused, said in the project's words with the lines shown red, the draft left as it was; then each type is built with the form,
 and a fault of this form refuses it too. On success the form is in the draft, one step of its history, and selected. Cancel leaves
@@ -1036,24 +1069,26 @@ instances to the new family or type is a separate explicit edit.
 ## Exit test (F10)
 
 0.8's exit criterion: a parametric window drawn from blank and taken all the way through, as a user does it. Two twins build the
-same window: reference planes Left and Right (the opening's sides) and Head, Ref. Level being the sill, since a window's axes
-rise from it; an Aligned Dimension Left to Right labelled Width with EQ about Center (Left/Right), and Ref. Level to Head
-labelled Height (a door or window family always has Width and Height, so the labels take them); a frame extruded on Center
-(Front/Back), 80 deep, its outline Align-locked to the four planes and its light dimensioned and locked 50 mm inside them; and a
-void extrusion there through the wall, also locked to the planes, put first in the Forms tab so it cuts none of the family's forms
-and so cuts the wall (`Family::host_voids`). Three types (900 x 1200, 1200 x 1500, 600 x 600), loaded, placed in a wall, flexed
-through its types, a window schedule, IFC.
+same window: reference planes Left and Right (the opening's sides) and Head, and the blank's Sill, on Ref. Level and locked to it,
+since a window's axes rise from its sill; an Aligned Dimension Left to Right labelled Width with EQ about Center (Left/Right), and
+Sill to Head labelled Height (a door or window family always has Width and Height, so the labels take them); a frame extruded on
+Center (Front/Back), 80 deep, its outline locked to the four planes (picked from them with Pick Lines' Lock and trimmed to
+corners, F10a) and its light dimensioned and locked 50 mm inside them; and a void extrusion there through the wall, its outline
+Align-locked to the planes, listed after the frame: it cuts the wall wherever it is listed, and Cuts: Host keeps it off the frame
+(F10d). Three types (900 x 1200, 1200 x 1500, 600 x 600), loaded, placed in a wall, flexed through its types, a window
+schedule, IFC.
 
 - **The desktop** (`crates/ui-egui/src/tests/family_exit.rs`): every step through the window, from Manage > New Family > Window
-  to File > Export's IFC: the Reference Plane tool and Properties' Name, Aligned Dimension and the Options Bar's Label, EQ,
-  Extrusion and Void Extrusion in sketch mode with Rectangle and Align's padlocks, the dimensions' padlocks, the Forms tab, Family
-  Types, Load into Project and Close, the Window tool and the Type Selector, View > Schedules. At each type it measures what is
+  to File > Export's IFC: the Reference Plane tool and Properties' Name, Aligned Dimension (Tab onto Sill) and the Options Bar's
+  Label, EQ, Extrusion with Pick Lines, its Lock and Trim/Extend to Corner, Rectangle, Void Extrusion with Rectangle and Align's
+  padlocks, the dimensions' padlocks, the void's Cuts in Properties, the Forms tab, Family Types, Load into Project and Close,
+  the Window tool and the Type Selector, View > Schedules. At each type it measures what is
   built: the frame's pieces (`Model::opening_pieces`) and a picture of the 3D view probed across the opening's edges (the wall
   just outside, the frame just inside, through the light). The IFC is read back for each IfcWindow's size, its
   IfcOpeningElement, the IfcRelVoidsElement to its IfcWall and Width and Height in `Qto_WindowBaseQuantities`.
   `cargo test -p bimcraft-ui-egui family_exit`; with `BIMCRAFT_F10_DUMP` set to a folder it also saves the screenshots
-  (`f10-*.png`: the family's plan and Front elevation, Family Types, the project's plan, elevation and 3D view at two types, the
-  schedule) and its IFC (`f10-window.ifc`) there.
+  (`f10-*.png`: Pick Lines with Lock, Tab onto Sill, the family's plan and Front elevation, Family Types, the project's plan,
+  elevation and 3D view at two types, the schedule) and its IFC (`f10-window.ifc`) there.
 - **Commands** (`ci/family-window.txt`): the same family through the `family` command, placed, flexed with `modify` and
   scheduled; `the_exit_tests_window_flexes_as_built_schedules_and_goes_to_ifc` (`crates/core/src/tests.rs`) checks it, and CI's
   IFC job writes it (`bimcraft-cli run --script ci/family-window.txt --save family-window.ifc`) and validates it with
@@ -1066,3 +1101,10 @@ plane crosses, in the project's plans and the family's); a void straight through
 one face to the other is a jamb, not the face's); the Delete key did nothing to a selected form or plane in the family
 document; the Forms tab's Delete left dimensions measuring to the form gone (Load into Project refused them), and its row ran
 past the palette's edge; it showed a locked form's corners as drawn, not as the type previewed puts them.
+
+The follow-ups it left open, done after it: Pick Lines' Lock and Trim/Extend to Corner in sketch mode (F10a,
+`family_sketch_locks`' `pick_lines_with_lock_…`); a window's forms below the cut seen in plan (F10b, `family::views`'
+`a_window_familys_plan_sees_its_forms_…`); planes on one another, Tab and the blank window's Sill (F10c, `family_views`'
+`a_sill_plane_on_ref_level_…`); a void cutting the host whatever its place in the list, and Cuts (F10d, FORMAT 32,
+`host_void_tests`). What they found: in a plan or an elevation, Pick Lines put a line where a plane is drawn rather than where
+the type previewed puts it, as the view shows it; it takes the one shown now.

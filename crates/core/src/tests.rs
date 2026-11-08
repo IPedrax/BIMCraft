@@ -6615,6 +6615,11 @@ fn the_exit_tests_window_flexes_as_built_schedules_and_goes_to_ifc() {
     s.script(include_str!("../../../ci/family-window.txt")).unwrap();
     let (window, east) = (100006, 100007);
     let f = s.model.families["Exit Window"].clone();
+    // The void listed after the frame (F10d), cutting the wall alone; Sill on Ref. Level (F10c), Height measured from it.
+    assert!(!f.forms[0].void && f.forms[1].void && f.forms[1].cuts == Some(crate::family::Cuts::Host));
+    let sill = f.planes.iter().find(|p| p.name == "Sill").map(|p| p.guid).unwrap();
+    let height = f.dimensions.iter().find(|d| d.label.as_deref() == Some("Height")).unwrap();
+    assert_eq!(height.refs[0], crate::family::DimRef::Plane(sill));
     // Flexed through its types: the frame and the void it cuts the wall with are its Width and Height, whatever was drawn.
     for (name, w, h) in [("900 x 1200", 900.0, 1200.0), ("1200 x 1500", 1200.0, 1500.0), ("600 x 600", 600.0, 600.0)] {
         run(&mut s, "modify", json!({"ids": [window], "type": name}));
@@ -6635,6 +6640,9 @@ fn the_exit_tests_window_flexes_as_built_schedules_and_goes_to_ifc() {
         assert!(near(lo, [want.0[0], -300.0, 900.0]) && near(hi, [want.1[0], 300.0, 900.0 + h]), "{name}: the void {lo:?} {hi:?}");
         // The frame's light, 50 mm inside the opening all round: its volume.
         let v = f.values(name, &Default::default()).unwrap();
+        let flexed = f.flexed(&v).unwrap();
+        let z = flexed.planes.iter().find(|p| p.guid == sill).map(|p| p.start[2]).unwrap();
+        assert!(z.abs() < 1e-6, "{name}: Sill stays on Ref. Level, at {z}");
         let built: f64 = f.pieces(&v).unwrap().iter().map(|p| crate::ifc_geometry_tests::volume(&p.tris)).sum();
         assert!((built - (w * h - (w - 100.0) * (h - 100.0)) * 80.0).abs() < 1.0, "{name}: the frame's volume {built}");
     }

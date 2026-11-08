@@ -251,6 +251,64 @@ fn a_click_selects_a_form_or_a_plane_and_a_selected_plane_moves_by_a_drag() {
     assert!(editor(&h).planes.iter().all(|p| !p.datum() || p.as_datum()), "the datums as they are");
 }
 
+/// A window with a Sill plane on Ref. Level, Align-locked to it, and Head 1200 above: as the blank window has Sill (F10c).
+const SILL_WINDOW: &str = r#"family {"name": "Sill Window", "category": "window", "parameters": [{"name": "Width", "value": 900}, {"name": "Height", "value": 1200}], "types": {"T": {}}, "ref_planes": [{"guid": "f1000000-0000-4000-8000-000000000003", "name": "Head", "start": [-1500, 0, 1200], "end": [1500, 0, 1200], "up": [0, 1, 0]}, {"guid": "f1000000-0000-4000-8000-000000000004", "name": "Sill", "start": [-1500, 0, 0], "end": [1500, 0, 0], "up": [0, 1, 0]}], "dimensions": [{"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1"}, {"plane": "f1000000-0000-4000-8000-000000000004"}], "view": "front", "at": [1300, 0, 0], "locked": [{"segment": 0, "length": 0}], "alignment": true}], "forms": [{"plane": "xz", "profile": [[-450, 0], [450, 0], [450, 1200], [-450, 1200]], "from": -40, "to": 40}]}"#;
+
+/// The pointer over family point `p` in the view shown.
+fn hover_family(h: &mut Harness<BimApp>, p: [f64; 3]) {
+    let at = editor(h).views.screen_of(p).expect("a view shown");
+    h.hover_at(at);
+    h.run();
+}
+
+/// F10c: a plane on another (Sill on Ref. Level) is drawn, and picked: a click takes the one Tab has come to, lit, Tab stepping
+/// through those under the pointer as Revit's does; so a dimension measures from it. The blank window has one, locked.
+#[test]
+fn a_sill_plane_on_ref_level_is_picked_with_tab_and_dimensioned_to() {
+    let (mut h, _) = open(SILL_WINDOW, "Sill Window");
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    let sill = plane(&h, "Sill").guid;
+    let head = plane(&h, "Head").guid;
+    let level = bimcraft_core::family::REF_LEVEL;
+    // Both drawn there: the pointer over them finds both.
+    hover_family(&mut h, [-1300.0, 0.0, 0.0]);
+    let mut under = editor(&h).views.under.clone();
+    under.sort();
+    let mut both = vec![sill, level];
+    both.sort();
+    assert_eq!(under, both, "Sill and Ref. Level, one on the other");
+    // A click takes the first; Tab, the next; Tab again, back to the first.
+    click_family(&mut h, [-1300.0, 0.0, 0.0]);
+    let first = editor(&h).selected_plane().unwrap();
+    key(&mut h, Key::Tab);
+    click_family(&mut h, [-1300.0, 0.0, 0.0]);
+    let second = editor(&h).selected_plane().unwrap();
+    assert_ne!(first, second, "Tab took the other");
+    key(&mut h, Key::Tab);
+    click_family(&mut h, [-1300.0, 0.0, 0.0]);
+    assert_eq!(editor(&h).selected_plane(), Some(first), "and round again");
+    key(&mut h, Key::Escape);
+    // Aligned Dimension from Sill (Tabbed to, where it isn't first) to Head.
+    h.get_by_role_and_label(Role::Button, "Aligned Dimension").click();
+    h.run();
+    hover_family(&mut h, [-1300.0, 0.0, 0.0]);
+    while editor(&h).views.under.get(editor(&h).views.cycle) != Some(&sill) {
+        key(&mut h, Key::Tab);
+    }
+    click_family(&mut h, [-1300.0, 0.0, 0.0]);
+    click_family(&mut h, [-1300.0, 0.0, 1200.0]);
+    click_family(&mut h, [-1700.0, 0.0, 600.0]);
+    let d = editor(&h).dimensions.last().unwrap().clone();
+    assert_eq!(d.refs, vec![bimcraft_core::family::DimRef::Plane(sill), bimcraft_core::family::DimRef::Plane(head)]);
+    // The blank window ships with Sill, Align-locked to Ref. Level, and builds.
+    let blank = crate::editor::FamilyEditor::blank(bimcraft_core::family::Category::Window).draft_family().unwrap();
+    let sill = blank.planes.iter().find(|p| p.name == "Sill").expect("the blank's Sill");
+    assert!(sill.start[2] == 0.0 && sill.end[2] == 0.0, "on Ref. Level");
+    let lock = blank.dimensions.iter().find(|d| d.alignment).expect("its lock");
+    assert_eq!(lock.refs, vec![bimcraft_core::family::DimRef::Plane(level), bimcraft_core::family::DimRef::Plane(sill.guid)]);
+    assert_eq!(blank.check(&|_| true), Ok(()));
+}
+
 #[test]
 fn work_plane_set_picks_a_plane_and_show_tints_it() {
     let (mut h, _) = boxed();

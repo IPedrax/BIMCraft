@@ -2,10 +2,12 @@
 //! placed in a project's wall, flexed through its types, scheduled and exported to IFC. Every step goes through the window:
 //! the ribbon, the Project Browser, Properties, the Options Bar, Family Types, clicks in the views and keys.
 //!
-//! The window: reference planes Left and Right of the opening (plan) and Head (Front elevation), Ref. Level being the sill in a
-//! window's axes; Aligned Dimensions Left to Right labelled Width and Ref. Level to Head labelled Height, with EQ about Center
-//! (Left/Right); a frame extruded on Center (Front/Back) whose outer lines are Align-locked to the planes and whose inner lines
-//! are dimensioned and locked 50 mm inside them; a void extrusion, locked to the planes too, through the wall: the opening.
+//! The window: reference planes Left and Right of the opening (plan) and Head (Front elevation), and the blank's Sill, on Ref.
+//! Level and locked to it (a window's axes rise from its sill); Aligned Dimensions Left to Right labelled Width and Sill (Tab
+//! picks it off Ref. Level) to Head labelled Height, with EQ about Center (Left/Right); a frame extruded on Center (Front/Back)
+//! whose outer lines are picked from the planes with Pick Lines' Lock and trimmed to corners, and whose inner lines are
+//! dimensioned and locked 50 mm inside them; a void extrusion, its outline Align-locked to the planes, through the wall: the
+//! opening, listed after the frame and cutting the wall alone (Cuts: Host).
 use super::family_views::{click_family, editor};
 use super::*;
 use bimcraft_core::family::views::{Side, Which};
@@ -136,35 +138,56 @@ fn a_parametric_window_drawn_from_blank_is_placed_flexed_scheduled_and_exported(
     click_off(&mut h, [0.0, -1600.0, 0.0], vec2(0.0, -30.0));
     assert!(editor(&h).dimensions[eq].equal, "EQ on: {}", status(&h));
     key(&mut h, Key::Escape);
-    // In the Front elevation, Head, and Ref. Level to Head labelled Height.
+    // In the Front elevation, Head, and Sill to Head labelled Height: the blank window's Sill lies on Ref. Level, locked to it
+    // (F10c), and Tab picks it there.
     view(&mut h, Some(Which::Elevation(Side::Front)));
+    let sill = editor(&h).planes.iter().find(|p| p.name == "Sill").map(|p| p.guid).expect("the blank window's Sill");
     let head = reference_plane(&mut h, [-1500.0, 0.0, 1200.0], [1500.0, 0.0, 1200.0], "Head");
-    let height = aligned_dimension(&mut h, &[[-1300.0, 0.0, 0.0], [-1300.0, 0.0, 1200.0]], [-1700.0, 0.0, 600.0]);
+    let before = editor(&h).dimensions.len();
+    button(&mut h, "Aligned Dimension");
+    tab_to(&mut h, [-1300.0, 0.0, 0.0], sill);
+    dump(&mut h, "sill-tab");
+    click_family(&mut h, [-1300.0, 0.0, 0.0]);
+    click_family(&mut h, [-1300.0, 0.0, 1200.0]);
+    click_family(&mut h, [-1700.0, 0.0, 600.0]);
+    assert_eq!(editor(&h).dimensions.len(), before + 1, "placed: {}", status(&h));
+    key(&mut h, Key::Escape);
+    let height = before;
     label(&mut h, [-1700.0, 0.0, 300.0], height, "Height");
     let dims = &editor(&h).dimensions;
     assert_eq!(dims[width].refs, vec![DimRef::Plane(left), DimRef::Plane(right)]);
     assert_eq!(dims[eq].refs, vec![DimRef::Plane(left), DimRef::Plane(CENTER_LEFT_RIGHT), DimRef::Plane(right)]);
-    assert_eq!(dims[height].refs, vec![DimRef::Plane(REF_LEVEL), DimRef::Plane(head)]);
+    assert_eq!(dims[height].refs, vec![DimRef::Plane(sill), DimRef::Plane(head)]);
+    assert!(dims.iter().any(|d| d.alignment && d.refs == [DimRef::Plane(REF_LEVEL), DimRef::Plane(sill)]), "Sill locked on Ref. Level");
     // The frame: an extrusion sketched on Center (Front/Back), the Front elevation's work plane: the opening's outline and
     // a member's width inside it.
     button(&mut h, "Extrusion");
     assert!(editor(&h).sketching());
     assert_eq!(editor(&h).sketch.as_ref().unwrap().host, PlaneRef::Plane(CENTER_FRONT_BACK));
-    rectangle(&mut h, P2(-450.0, 0.0), P2(450.0, 1200.0));
+    // The outline picked from the planes with Pick Lines and its Lock (F10a): Left, Right, Head and Sill (Tab picks it off Ref.
+    // Level), each a line locked to its plane, then trimmed to the corners where they meet (TR).
+    button(&mut h, "Pick Lines");
+    h.get_by_label("Lock").click();
+    h.run();
+    for (at, plane) in
+        [([-450.0, 0.0, 1700.0], left), ([450.0, 0.0, 1700.0], right), ([1000.0, 0.0, 1200.0], head), ([1000.0, 0.0, 0.0], sill)]
+    {
+        tab_to(&mut h, at, plane);
+        click_family(&mut h, at);
+    }
+    let locked: Vec<DimRef> = editor(&h).sketch.as_ref().unwrap().locks.iter().map(|d| d.refs[0]).collect();
+    assert_eq!(locked, [DimRef::Plane(left), DimRef::Plane(right), DimRef::Plane(head), DimRef::Plane(sill)], "{}", status(&h));
+    dump(&mut h, "pick-lines-lock");
+    shortcut(&mut h, "TR");
+    for (side, across) in [(-450.0, 0.0), (450.0, 0.0), (-450.0, 1200.0), (450.0, 1200.0)] {
+        click_family(&mut h, [side, 0.0, 600.0]);
+        click_family(&mut h, [0.0, 0.0, across]);
+    }
     // Zoomed in, as a user does to draw 50 mm inside a line without snapping onto it, then out again.
     zoom(&mut h, [0.0, 0.0, 600.0], 240.0);
     rectangle(&mut h, P2(-450.0 + MEMBER, MEMBER), P2(450.0 - MEMBER, 1200.0 - MEMBER));
     zoom(&mut h, [0.0, 0.0, 600.0], -240.0);
     assert_eq!(editor(&h).sketch.as_ref().unwrap().sketch.lines.len(), 8, "{}", status(&h));
-    // The outline Align-locked to the planes: Left, Right, Ref. Level and Head, each picked off the sketch, then its line.
-    for (reference, line) in [
-        ([-450.0, 0.0, 1700.0], [-450.0, 0.0, 600.0]),
-        ([450.0, 0.0, 1700.0], [450.0, 0.0, 600.0]),
-        ([-1300.0, 0.0, 0.0], [200.0, 0.0, 0.0]),
-        ([-1300.0, 0.0, 1200.0], [200.0, 0.0, 1200.0]),
-    ] {
-        lock_line(&mut h, reference, line);
-    }
     assert_eq!(editor(&h).sketch.as_ref().unwrap().locks.len(), 4);
     button(&mut h, "Finish Edit Mode");
     assert!(!editor(&h).sketching(), "{}", status(&h));
@@ -218,19 +241,18 @@ fn a_parametric_window_drawn_from_blank_is_placed_flexed_scheduled_and_exported(
     key(&mut h, Key::Enter);
     type_into(&mut h, "Extrusion End", "300");
     key(&mut h, Key::Enter);
-    key(&mut h, Key::Escape);
-    // Listed after the frame it would cut the frame away: put first in the Forms tab, it cuts none of the family's own forms
-    // and so the wall (`Family::host_voids`).
+    // Listed after the frame, it cuts the wall all the same (F10d), and the frame it overlaps, as a void cuts the forms listed
+    // before it: Properties' Cuts, Host, has it cut the wall alone.
     let values = draft(&h).values(&draft(&h).types.keys().next().unwrap().clone(), &BTreeMap::new()).unwrap();
-    assert!(draft(&h).host_voids(&values).unwrap().is_empty(), "after the frame, it cuts the frame");
-    press_near(&mut h, "Forms", "Symbols");
-    // The frame's Move Down, under its heading (the Forms tab opens the first form's).
-    h.get_by_label("Move Down").scroll_to_me();
-    h.run();
-    let down = h.get_by_label("Move Down").rect().center();
-    click_at(&mut h, down);
-    assert!(draft(&h).forms[0].void, "{:?}", draft(&h).forms.iter().map(|f| f.void).collect::<Vec<_>>());
+    assert_eq!(draft(&h).host_voids(&values).unwrap().len(), 1, "after the frame, it cuts the wall");
+    assert_eq!(editor(&h).selected_form(), Some(void), "the void made is selected");
+    press(&mut h, "Cuts");
+    press_near(&mut h, "Host", "Cuts");
+    assert_eq!(draft(&h).forms[void].cuts, Some(bimcraft_core::family::Cuts::Host));
+    assert!(!draft(&h).forms[0].void, "the frame stays first");
     assert_eq!(draft(&h).host_voids(&values).unwrap().len(), 1, "the void cuts the wall");
+    assert_eq!(draft(&h).pieces(&values).unwrap().len(), 1, "and leaves the frame");
+    key(&mut h, Key::Escape);
     // Types, in Family Types: the blank's one renamed, two more made, each its Width and Height.
     press(&mut h, "Family Types");
     press(&mut h, "Rename Type");
@@ -265,7 +287,15 @@ fn a_parametric_window_drawn_from_blank_is_placed_flexed_scheduled_and_exported(
     }
     // The Forms tab shows the void as this type's planes put it, greyed and saying so, not as it was drawn at 900 x 1200.
     use egui_kittest::kittest::NodeT;
-    let corners = h.get_by_label("Form Corners 1").accesskit_node();
+    press_near(&mut h, "Forms", "Symbols");
+    // The void's, under its heading in the tab (the Project Browser lists it too).
+    let heading =
+        h.get_all_by_label("2. Extrusion (void)").min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).map(|n| n.accesskit_node().id());
+    h.get_by(|n| Some(n.id()) == heading).scroll_to_me();
+    h.run();
+    h.get_by(|n| Some(n.id()) == heading).click();
+    h.run();
+    let corners = h.get_by_label("Form Corners 2").accesskit_node();
     assert_eq!(corners.value().as_deref(), Some("-600, 0\n600, 0\n600, 1500\n-600, 1500"));
     assert!(corners.is_disabled());
     h.get_by_label_contains("Set by its dimensions and locks for the type 1200 x 1500").scroll_to_me();
@@ -588,6 +618,20 @@ fn click_plane(h: &mut Harness<BimApp>, q: P2) {
     let frame = ed.plane_set().frame(&ed.sketch.as_ref().expect("sketching").host).unwrap();
     let at = ed.views.screen_of(frame.point(q, 0.0)).expect("a view shown");
     click_at(h, at);
+}
+
+/// The pointer over family point `p`, and Tab pressed until the plane a click there takes is `g` (F10c).
+fn tab_to(h: &mut Harness<BimApp>, p: [f64; 3], g: Guid) {
+    let at = editor(h).views.screen_of(p).expect("a view shown");
+    h.hover_at(at);
+    h.run();
+    for _ in 0..4 {
+        let ed = editor(h);
+        if ed.views.under.len() < 2 || ed.views.under.get(ed.views.cycle) == Some(&g) {
+            break;
+        }
+        key(h, Key::Tab);
+    }
 }
 
 /// Align while sketching: the reference at `reference`, then the sketch's line at `line` (family points), and its padlock.

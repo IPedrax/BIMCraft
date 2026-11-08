@@ -5410,7 +5410,8 @@ impl eframe::App for BimApp {
     /// rather than moving the keyboard between widgets.
     fn raw_input_hook(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
         self.pace(&mut raw.events);
-        if self.canvas.hovering() && !ctx.egui_wants_keyboard_input() {
+        // The family document's views take Tab themselves (F10c), the project's canvas being out of sight.
+        if self.canvas.hovering() && self.family_editor.is_none() && !ctx.egui_wants_keyboard_input() {
             self.tab_cycle |= raw.events.iter().any(|e| matches!(e, Event::Key { key: Key::Tab, pressed: true, .. }));
             raw.events.retain(|e| !matches!(e, Event::Key { key: Key::Tab, .. }));
         }

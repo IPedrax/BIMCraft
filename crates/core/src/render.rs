@@ -3869,6 +3869,127 @@ fn wall_voids(d: &mut Drawing, axis: &Axis, (ext, int): (f64, f64), past: f64, v
     }
 }
 
+/// What covers a point besides the cut, for [`below_cut`], and the edges where that cover starts and stops.
+type Cover<'a> = (&'a dyn Fn(P2) -> bool, &'a [(P2, P2)]);
+
+/// The most triangles [`below_cut`] looks at in all: past them, each form's outline stands for what is below the cut.
+const MAX_BELOW: usize = 600;
+
+/// What `pieces` (each with a part below height `cut`) show below it, seen from above (F10b): for each, the edges of what it
+/// covers in plan below the cut (its triangles clipped there and laid flat), but where the cut (`cut_rings`, and what `over`
+/// says covers a point: the wall cut round the opening) or the part below the cut of a piece reaching higher covers both
+/// sides of it. An edge is the shadow's where one side of it is in the
+/// shadow and the other not, so the triangles a cut leaves split along a face draw nothing between them.
+fn below_cut(pieces: &[&crate::family::Piece], cut_rings: &[Vec<P2>], (over, over_edges): Cover, cut: f64) -> Vec<(P2, P2)> {
+    let shadows: Vec<(Vec<[P2; 3]>, f64)> = pieces
+        .iter()
+        .map(|p| {
+            let tris = below_tris(&p.tris, cut);
+            let top = tris.iter().flatten().map(|q| q[2]).fold(f64::NEG_INFINITY, f64::max);
+            let flat = tris.iter().map(|t| t.map(|q| P2(q[0], q[1]))).filter(|t| (t[1] - t[0]).cross(t[2] - t[0]).abs() > 1e-6).collect();
+            (flat, top)
+        })
+        .collect();
+    let mut out = Vec::new();
+    if shadows.iter().map(|(t, _)| t.len()).sum::<usize>() > MAX_BELOW {
+        // Too many to sort out: each one's outline, as a component's is drawn.
+        for p in pieces {
+            out.extend(geom::ring_edges(&p.outline));
+        }
+        return out;
+    }
+    let inside = |tris: &[[P2; 3]], q: P2| {
+        tris.iter().any(|t| {
+            let (d0, d1, d2) = ((t[1] - t[0]).cross(q - t[0]), (t[2] - t[1]).cross(q - t[1]), (t[0] - t[2]).cross(q - t[2]));
+            (d0 > 0.0 && d1 > 0.0 && d2 > 0.0) || (d0 < 0.0 && d1 < 0.0 && d2 < 0.0)
+        })
+    };
+    let mut seen: std::collections::HashSet<[i64; 4]> = std::collections::HashSet::new();
+    // What an edge is split at, where it meets or crosses one: every piece's edges, the cut's and what `over` covers from.
+    let splits: Vec<(P2, P2)> = shadows
+        .iter()
+        .flat_map(|(t, _)| t.iter().flat_map(|t| [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])]))
+        .chain(cut_rings.iter().flat_map(|r| geom::ring_edges(r)))
+        .chain(over_edges.iter().copied())
+        .collect();
+    for (i, (tris, top)) in shadows.iter().enumerate() {
+        let covered = |q: P2| {
+            over(q)
+                || cut_rings.iter().any(|r| r.len() >= 3 && geom::contains(r, q))
+                || shadows.iter().enumerate().any(|(j, (other, t))| j != i && *t > top + 1e-6 && inside(other, q))
+        };
+        let edges: Vec<(P2, P2)> = tris.iter().flat_map(|t| [(t[0], t[1]), (t[1], t[2]), (t[2], t[0])]).collect();
+        for &(a, b) in &edges {
+            let len = a.dist(b);
+            if len < 1e-6 {
+                continue;
+            }
+            let u = (b - a) * (1.0 / len);
+            // Split where another edge meets it or crosses it, so each piece of it is the shadow's edge or not along it.
+            let mut at = vec![0.0, len];
+            for &(c, e) in &splits {
+                for q in [c, e] {
+                    let s = (q - a).dot(u);
+                    if s > 1e-6 && s < len - 1e-6 && (q - a).cross(u).abs() < 1e-6 {
+                        at.push(s);
+                    }
+                }
+                let v = e - c;
+                let den = u.cross(v);
+                if den.abs() > 1e-12 {
+                    let s = (c - a).cross(v) / den;
+                    let r = (c - a).cross(u) / den;
+                    if s > 1e-6 && s < len - 1e-6 && (-1e-9..=1.0 + 1e-9).contains(&r) {
+                        at.push(s);
+                    }
+                }
+            }
+            at.sort_by(f64::total_cmp);
+            at.dedup_by(|x, y| (*x - *y).abs() < 1e-6);
+            let n = u.perp() * 0.05;
+            for w in at.windows(2) {
+                let (p, q) = (a + u * w[0], a + u * w[1]);
+                let mid = (p + q) * 0.5;
+                let (left, right) = (mid + n, mid - n);
+                // Not the shadow's edge, covered on both sides, or where the cut's line is drawn already.
+                let on_cut = cut_rings.iter().any(|r| geom::ring_edges(r).any(|(c, e)| geom::dist_to_segment(mid, c, e) < 0.1));
+                if inside(tris, left) == inside(tris, right) || (covered(left) && covered(right)) || on_cut {
+                    continue;
+                }
+                let key = |x: P2| [(x.0 * 1e3).round() as i64, (x.1 * 1e3).round() as i64];
+                let (kp, kq) = (key(p), key(q));
+                let k = if kp < kq { [kp[0], kp[1], kq[0], kq[1]] } else { [kq[0], kq[1], kp[0], kp[1]] };
+                if seen.insert(k) {
+                    out.push((p, q));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The part of the triangles `tris` below height `cut`: each clipped there, cut into triangles again.
+fn below_tris(tris: &[[view3d::P3; 3]], cut: f64) -> Vec<[view3d::P3; 3]> {
+    let mut out = Vec::new();
+    for t in tris {
+        let mut poly: Vec<view3d::P3> = Vec::with_capacity(4);
+        for k in 0..3 {
+            let (a, b) = (t[k], t[(k + 1) % 3]);
+            if a[2] <= cut {
+                poly.push(a);
+            }
+            if (a[2] < cut) != (b[2] < cut) && (a[2] - b[2]).abs() > 1e-12 {
+                let s = (cut - a[2]) / (b[2] - a[2]);
+                poly.push(std::array::from_fn(|i| a[i] + (b[i] - a[i]) * s));
+            }
+        }
+        for k in 1..poly.len().saturating_sub(1) {
+            out.push([poly[0], poly[k], poly[k + 1]]);
+        }
+    }
+    out
+}
+
 /// A door or window the cut plane at height `cut` passes through: a gap in the wall, jambs, and
 /// a leaf with its swing, or glass.
 #[allow(clippy::too_many_arguments)]
@@ -3913,16 +4034,50 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
         };
         // Where it is cut, as the plane cuts it (F10: a frame extruded across the wall is cut as its two jambs, not
         // outlined whole); its outline where the cut finds no ring.
-        for piece in m.opening_pieces(e).iter().filter(|p| p.bottom <= cut && cut < p.top && drawn(p)) {
+        let pieces = m.opening_pieces(e);
+        let mut cut_rings: Vec<Vec<P2>> = Vec::new();
+        for piece in pieces.iter().filter(|p| p.bottom <= cut && cut < p.top && drawn(p)) {
             let rings = view3d::level_slice(&piece.tris, cut);
             if rings.is_empty() {
                 d.line(&piece.outline, BY_CATEGORY, INK, true);
+                cut_rings.push(piece.outline.clone());
             }
             for ring in rings {
                 d.line(&ring, BY_CATEGORY, INK, true);
+                cut_rings.push(ring);
             }
         }
         d.part(Part::Projection);
+        // What lies below the cut plane (F10b: a sill member, the frame's lower rail between its jambs), seen from it in
+        // projection, as walls below the cut are: each form's outline there, but where the cut or a higher form covers it.
+        // Nothing above the cut is drawn.
+        let seen = |p: &crate::family::Piece| match p.vis {
+            Some(v) => v.in_plan(detail, p.bottom <= cut && cut < p.top),
+            None => detail != Detail::Coarse,
+        };
+        let below: Vec<&crate::family::Piece> = pieces.iter().filter(|p| p.bottom < cut - 1e-6 && seen(p)).collect();
+        // The wall cut round the opening covers what lies under it: within its faces, but where the opening clears it.
+        let void_rings: Vec<Vec<P2>> = voids.iter().flat_map(|v| view3d::level_slice(v, cut)).collect();
+        let (lo, hi) = (ext.min(int), ext.max(int));
+        let wall_covers = |q: P2| {
+            let (s, off) = axis.project(q);
+            let cleared = if voids.is_empty() { s0 < s && s < s1 } else { void_rings.iter().any(|r| r.len() >= 3 && geom::contains(r, q)) };
+            lo < off && off < hi && !cleared
+        };
+        // Where the wall's cover starts and stops: its faces, and the opening's sides or its voids' slices.
+        let mut edges: Vec<(P2, P2)> = Vec::new();
+        for off in [ext, int] {
+            let face = axis.points(0.0, axis.length(), off);
+            edges.extend(face.windows(2).map(|w| (w[0], w[1])));
+        }
+        if voids.is_empty() {
+            edges.extend([s0, s1].map(|s| (axis.at(s, int), axis.at(s, ext))));
+        } else {
+            edges.extend(void_rings.iter().flat_map(|r| geom::ring_edges(r)));
+        }
+        for (a, b) in below_cut(&below, &cut_rings, (&wall_covers, &edges), cut) {
+            d.line(&[a, b], BY_CATEGORY, INK, false);
+        }
         // Each in its subcategory, which the view may hide (Doors > Opening: the swing) or draw its own way.
         for (mark, sub) in m.opening_marks_in(e, detail) {
             if sub.is_some_and(hides) {

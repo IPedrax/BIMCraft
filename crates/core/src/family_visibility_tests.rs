@@ -267,7 +267,8 @@ fn settings_are_kept_through_a_file_and_read_back_by_the_family_command() {
     let path = dir.join("door.bimcraft");
     run(&mut s, "save", json!({"path": path}));
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("\"format\": 31") || text.contains("\"format\":31"), "FORMAT 31");
+    let format = crate::model::FORMAT;
+    assert!(text.contains(&format!("\"format\": {format}")) || text.contains(&format!("\"format\":{format}")), "FORMAT {format}");
     let mut t = Session::new();
     run(&mut t, "open", json!({"path": path}));
     let f = &t.model.families["Test Door"];

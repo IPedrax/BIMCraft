@@ -168,7 +168,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 31: a family's forms, symbols and nested instances may carry Visibility Settings (`visibility`, F8): the views they are
 /// drawn in by the way those look and their detail level. A build of 30 reads a family leniently and would leave
 /// `visibility` out: a door's leaf hidden in plan would be drawn over its symbolic swing, and saving would lose the settings.
-pub const FORMAT: u32 = 31;
+pub const FORMAT: u32 = 32;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3645,6 +3645,12 @@ impl Model {
         // 29 to 30 (pivots on reference lines and planes) has none: a file of 29 holds none.
         // 30 to 31 (Visibility Settings of forms, symbols and nested instances) has none: a file of 30 holds none, and a part
         // without them draws as it did (`family::visibility`).
+        // 31 to 32 (F10d): a door's or a window's void cuts its wall whatever its place in the family's list, unless its
+        // `cuts` says `forms`; in 31 only one that cut none of the solid forms listed before it did. Each void a file of 31
+        // didn't cut the wall with, though it reaches into it, says `forms` (`Family::pin_cuts`), so it cuts what it did.
+        if self.format < 32 {
+            self.families.values_mut().for_each(crate::family::Family::pin_cuts);
+        }
         self.settle_hosts(None);
         self.format = FORMAT;
     }
