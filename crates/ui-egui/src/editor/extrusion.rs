@@ -33,6 +33,10 @@ impl FamilyEditor {
 
     /// Escape: the form selected let go. Whether there was one.
     pub(crate) fn let_form_go(&mut self) -> bool {
+        // Component placing, then a nested instance selected, go first.
+        if self.placing.take().is_some() || self.nested_sel.take().is_some() {
+            return true;
+        }
         self.selected_form().is_some() && self.form.take().is_some()
     }
 

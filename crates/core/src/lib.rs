@@ -50,6 +50,8 @@ pub mod family;
 #[cfg(test)]
 mod family_constraint_tests;
 #[cfg(test)]
+mod family_nested_tests;
+#[cfg(test)]
 mod family_options_tests;
 #[cfg(test)]
 mod family_parameter_tests;

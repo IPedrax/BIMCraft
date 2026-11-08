@@ -474,7 +474,7 @@ impl Family {
         let forms = self.forms.iter().enumerate().filter(|(_, f)| f.host.guid() == guid).map(|(i, _)| format!("form {}", i + 1));
         let lines = self.lines.iter().enumerate().filter(|(_, l)| l.host.guid() == guid).map(|(i, _)| format!("line {}", i + 1));
         let points = self.adaptive.iter().flat_map(|d| d.drawn_on(guid)).map(|id| format!("adaptive point `{id}`"));
-        forms.chain(lines).chain(points).collect()
+        forms.chain(lines).chain(points).chain(self.nested_on(guid)).collect()
     }
 
     /// What is drawn on a plane or a line given another GUID (`planes` and `lines`: from, to) drawn on it still.
@@ -491,6 +491,7 @@ impl Family {
         };
         self.forms.iter_mut().for_each(|f| follow(&mut f.host));
         self.lines.iter_mut().for_each(|l| follow(&mut l.host));
+        self.nested_instances.iter_mut().for_each(|n| follow(&mut n.host));
         self.adaptive.iter_mut().for_each(|d| d.work_planes_mut(&mut |h| follow(h)));
         self.resolve_dimension_refs(planes, &[]);
     }
@@ -510,6 +511,7 @@ impl Family {
         };
         self.forms.iter_mut().for_each(|f| resolve(&mut f.host));
         self.lines.iter_mut().for_each(|l| resolve(&mut l.host));
+        self.nested_instances.iter_mut().for_each(|n| resolve(&mut n.host));
         self.adaptive.iter_mut().for_each(|d| d.work_planes_mut(&mut |h| resolve(h)));
         self.resolve_dimension_refs(&[], &[]);
     }

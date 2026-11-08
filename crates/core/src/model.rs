@@ -140,7 +140,13 @@ pub const MAX_SLOPE: f64 = 75.0;
 ///
 /// 25: a family's `dimensions` (F7): labels, locks, EQ and Align's locks, solved as a type flexes. A build of 24 would drop
 /// them and so flex the family wrongly.
-pub const FORMAT: u32 = 25;
+///
+/// 26 is F7b's (sketch lines in a family's dimensions), on another branch.
+///
+/// 27: a family may nest families (`nested`, each its whole definition) and place their instances (`nested_instances`), T6a.
+/// A build of 26 reads a family leniently and would leave both out: the host would open without its nested geometry and lose
+/// it on saving.
+pub const FORMAT: u32 = 27;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3578,6 +3584,8 @@ impl Model {
         // command's shorthands (`Form`'s `FormIn`), so nothing is left to do here: the lines are given their ids and GUIDs by
         // the library's sync, as any new part is, and the form builds the triangles it did.
         // 24 to 25 (a family's dimensions, labels, locks and Align's locks) has none: a file of 24 holds none.
+        // 25 to 26 is F7b's (sketch lines in dimensions), and has none: a file of 25 holds none.
+        // 26 to 27 (nested families and their instances) has none: a file of 26 holds none.
         self.settle_hosts(None);
         self.format = FORMAT;
     }
@@ -6225,7 +6233,7 @@ impl Model {
             if n.trim().is_empty() {
                 return Err("a family needs a name".into());
             }
-            f.check(&|m| self.materials.contains_key(m)).map_err(|e| format!("family `{n}`: {e}"))?;
+            f.check_in(&|m| self.materials.contains_key(m), &mut vec![n.clone()], &mut 0).map_err(|e| format!("family `{n}`: {e}"))?;
         }
         self.check_shared_parameters()?;
         if self.parameters.len() > MAX_PROJECT_PARAMETERS {

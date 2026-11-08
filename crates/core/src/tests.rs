@@ -2373,7 +2373,38 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"ids": [100002, 100003], "top_offset": 1e-300, "top_level": null, "height": -1}),
         wall,
     ];
-    let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).collect();
+    // Nested families (T6a): deep, cyclic, a family nesting itself, huge counts, hostile places and associations.
+    let nested = {
+        let leaf = json!({"types": {"A": {}}, "parameters": [{"name": "W", "value": 10}], "forms": [{"profile": [[0, 0], ["W", 0], ["W", 1], [0, 1]], "to": 1}]});
+        let mut deep = leaf.clone();
+        for k in 0..12 {
+            deep = json!({"types": {"A": {}}, "nested": [{"name": format!("N{k}"), "family": deep}], "nested_instances": [{"family": format!("N{k}"), "type": "A"}]});
+        }
+        let many: Vec<Value> = (0..300).map(|i| json!({"family": "L", "type": "A", "at": [i, 0]})).collect();
+        let wide: Vec<Value> = (0..256).map(|i| json!({"family": "L", "type": "A", "at": [i, 0]})).collect();
+        let fan = json!({"types": {"A": {}}, "nested": [{"name": "L", "family": leaf}], "nested_instances": wide});
+        let fans: Vec<Value> = (0..256).map(|i| json!({"family": "Fan", "type": "A", "at": [0, i]})).collect();
+        vec![
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "D", "family": deep}]}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "F", "family": leaf}]}),
+            json!({"name": "F", "nest": {"definition": {"name": "F", "types": {"A": {}}}}}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "B", "family": {"types": {"A": {}}, "nested": [{"name": "F", "family": leaf}]}}]}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "L", "family": leaf}, {"name": "L", "family": leaf}]}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "L", "family": leaf}], "nested_instances": many}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "Fan", "family": fan}], "nested_instances": fans}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "L", "family": leaf}],
+                   "nested_instances": [{"family": "L", "type": "A", "at": [1e300, "W / 0"], "offset": f64::MAX, "angle": "1e308 * 10",
+                   "params": {"W": "Nope", "X": 1}, "visible": "x", "host": {"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}}]}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "L", "family": leaf}],
+                   "nested_instance": {"family": "L", "type": "A", "host": "Reference Plane : nowhere", "params": {"W": 1e300}}}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "", "family": leaf}], "delete_nested": ["L", 5], "delete_nested_instance": "x"}),
+            json!({"name": "F", "types": {"A": {}}, "nest": {"path": "/nonexistent/x.json", "definition": {}, "overwrite": "maybe", "shared_nested": 5}}),
+            json!({"definition": {"name": "S", "types": {"A": {}}, "nested": [{"name": "L", "family": {"shared": true, "types": {"A": {}}}}]}, "shared_nested": {"L": "neither"}}),
+            json!({"name": "F", "types": {"A": {}}, "nested": "x", "nested_instances": [{"family": 5}], "nested_instance": {"id": u64::MAX}}),
+        ]
+    };
+    let hostile: Vec<Value> =
+        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(nested).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());

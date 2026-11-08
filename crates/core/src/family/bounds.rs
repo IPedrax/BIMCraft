@@ -20,7 +20,8 @@ impl Family {
     /// return unknown, and so does an adaptive family, whose geometry its instances' points decide. These envelopes must
     /// not replace exact framing extrema.
     pub fn conservative_bounds<'a>(&'a self, values: &BTreeMap<String, Val>) -> Option<[P3; 2]> {
-        if self.adaptive.is_some() {
+        // Nested instances (T6a) are boxed by what they build, as an adaptive family is.
+        if self.adaptive.is_some() || !self.nested_instances.is_empty() {
             return None;
         }
         let mut read = HashMap::new();

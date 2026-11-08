@@ -262,6 +262,18 @@ impl HasPart for crate::model::SplitLine {
     }
 }
 
+impl HasPart for crate::family::NestedFamily {
+    fn ident(&mut self) -> (&mut Id, &mut Guid) {
+        (&mut self.id, &mut self.guid)
+    }
+}
+
+impl HasPart for crate::family::NestedInstance {
+    fn ident(&mut self) -> (&mut Id, &mut Guid) {
+        (&mut self.id, &mut self.guid)
+    }
+}
+
 impl HasPart for crate::family::Symbol {
     fn ident(&mut self) -> (&mut Id, &mut Guid) {
         (&mut self.id, &mut self.guid)
@@ -919,6 +931,8 @@ impl Model {
             add("plane", "family", n, f.planes.iter().filter(|x| !x.datum()).map(|x| (x.id, x.guid)).collect());
             add("line", "family", n, f.lines.iter().map(|x| (x.id, x.guid)).collect());
             add("dimension", "family", n, f.dimensions.iter().map(|x| (x.id, x.guid)).collect());
+            add("nested family", "family", n, f.nested.iter().map(|x| (x.id, x.guid)).collect());
+            add("nested instance", "family", n, f.nested_instances.iter().map(|x| (x.id, x.guid)).collect());
         }
         for (n, g) in &self.detail_groups {
             add("member", "detail group", n, g.members.iter().map(|x| (x.id, x.guid)).collect());
@@ -1057,6 +1071,8 @@ impl Model {
             f.planes.iter_mut().filter(|x| !x.datum()).for_each(|x| give(&mut x.id, &mut x.guid));
             f.lines.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             f.dimensions.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
+            f.nested.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
+            f.nested_instances.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             let moved = |old: &[Guid], new: Vec<Guid>| -> Vec<(Guid, Guid)> {
                 old.iter().zip(new).filter(|(a, b)| !a.is_nil() && **a != *b).map(|(a, b)| (*a, b)).collect()
             };
@@ -1279,6 +1295,8 @@ impl Model {
             f.planes.iter_mut().filter(|x| !x.datum()).for_each(|x| x.id = 0);
             f.lines.iter_mut().for_each(|x| x.id = 0);
             f.dimensions.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            f.nested.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            f.nested_instances.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
         }
         for g in self.detail_groups.values_mut() {
             g.members.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));

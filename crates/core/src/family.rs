@@ -20,6 +20,7 @@ use crate::view3d::{P3, add, cross, mul};
 
 mod bounds;
 pub mod constraints;
+pub mod nested;
 mod options;
 mod planes;
 pub mod sketch;
@@ -29,6 +30,7 @@ pub mod views;
 pub(crate) use validate::check_family_edits;
 
 pub use constraints::{DimRef, DimView, Extent, FamilyDimension, MAX_DIMENSIONS, Unsat};
+pub use nested::{Keep, NestedFamily, NestedInstance};
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 
 pub use planes::{
@@ -859,6 +861,12 @@ pub struct Family {
     /// Its OmniClass number and title, which IFC writes as a classification reference.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub omniclass: Option<OmniClass>,
+    /// The families loaded into it (T6a), each its whole definition, carried inside it ([`nested`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub nested: Vec<NestedFamily>,
+    /// The instances of its nested families placed in it, built into its own pieces.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub nested_instances: Vec<NestedInstance>,
 }
 
 impl Default for Family {
@@ -885,6 +893,8 @@ impl Default for Family {
             room_calculation_point: None,
             cut_in_views: None,
             omniclass: None,
+            nested: Vec::new(),
+            nested_instances: Vec::new(),
         }
     }
 }
@@ -1560,6 +1570,28 @@ impl Family {
         for form in self.forms.iter_mut().filter(|x| !x.material.is_empty() && !params.contains(&x.material)) {
             f(&mut form.material);
         }
+        // Its nested families' own, at every depth, and the materials its instances name that are no parameter of its.
+        for i in 0..self.nested_instances.len() {
+            let materials = self.instance_materials(i);
+            for (k, e) in self.nested_instances[i].params.iter_mut() {
+                if let Expr::Formula(m) = e
+                    && materials.contains(k)
+                    && !params.contains(m)
+                {
+                    f(m);
+                }
+            }
+        }
+        for n in &mut self.nested {
+            n.family.material_refs_mut(f);
+        }
+    }
+
+    /// The parameters nested instance `i` sets that are its family's materials.
+    fn instance_materials(&self, i: usize) -> Vec<String> {
+        let Some(inst) = self.nested_instances.get(i) else { return Vec::new() };
+        let Some(n) = self.nested_family(&inst.family) else { return Vec::new() };
+        inst.params.keys().filter(|k| n.family.material_parameter(k)).cloned().collect()
     }
 
     /// Parameter `old` named `new` everywhere the family names it: the parameter itself, its types' values, and every
@@ -1621,6 +1653,22 @@ impl Family {
                 d.label = Some(new.to_string());
             }
         }
+        // Its nested instances' places and the host parameters their "=" names: a word parameter's by its whole name.
+        for i in 0..self.nested_instances.len() {
+            let words: Vec<String> = self.instance_words(&self.nested_instances[i]).into_iter().map(String::from).collect();
+            let inst = &mut self.nested_instances[i];
+            inst.at.iter_mut().chain([&mut inst.offset, &mut inst.angle]).chain(inst.visible.iter_mut()).for_each(&mut expr);
+            for (k, e) in inst.params.iter_mut() {
+                match e {
+                    Expr::Formula(f) if words.contains(k) => {
+                        if f == old {
+                            *f = new.to_string();
+                        }
+                    }
+                    e => expr(e),
+                }
+            }
+        }
         for c in &mut self.connectors {
             [&mut c.voltage, &mut c.power_factor].into_iter().for_each(&mut expr);
             match &mut c.load_va {
@@ -1651,6 +1699,20 @@ impl Family {
                     .map(|n| n.appearance.material.as_str()),
             );
         }
+        for (i, inst) in self.nested_instances.iter().enumerate() {
+            let materials = self.instance_materials(i);
+            for (k, e) in &inst.params {
+                if let Expr::Formula(m) = e
+                    && materials.contains(k)
+                    && !self.material_parameter(m)
+                {
+                    out.push(m.as_str());
+                }
+            }
+        }
+        for n in &self.nested {
+            out.extend(n.family.materials());
+        }
         out.retain(|m| !m.is_empty());
         out
     }
@@ -1671,6 +1733,21 @@ impl Family {
             }
         }
         self.forms.iter_mut().filter(|f| f.material == from && !params.contains(&f.material)).for_each(|f| f.material = to.into());
+        for i in 0..self.nested_instances.len() {
+            let materials = self.instance_materials(i);
+            for (k, e) in self.nested_instances[i].params.iter_mut() {
+                if let Expr::Formula(m) = e
+                    && materials.contains(k)
+                    && m == from
+                    && !params.contains(m)
+                {
+                    *m = to.into();
+                }
+            }
+        }
+        for n in &mut self.nested {
+            n.family.rename_material(from, to);
+        }
     }
 
     /// Its parameters' values for type `type_name`, a component's `instance` values over them, and
@@ -1681,6 +1758,18 @@ impl Family {
 
     /// [`Family::values`], with a hosted family's wall `wall` mm thick: what its formulas read as `Wall Thickness`.
     pub fn values_in(&self, type_name: &str, instance: &BTreeMap<String, Value>, wall: f64) -> Result<BTreeMap<String, Val>, String> {
+        self.values_seeded(type_name, instance, wall, &BTreeMap::new())
+    }
+
+    /// [`Family::values_in`], with `seeds` taken as some of its parameters' values over its type's and its own: what a host's
+    /// nested instance sets them to (Revit's "=" on a nested family's parameters).
+    pub fn values_seeded(
+        &self,
+        type_name: &str,
+        instance: &BTreeMap<String, Value>,
+        wall: f64,
+        seeds: &BTreeMap<String, Val>,
+    ) -> Result<BTreeMap<String, Val>, String> {
         let set = self.types.get(type_name).ok_or_else(|| {
             let names: Vec<&str> = self.types.keys().map(String::as_str).collect();
             format!("type `{type_name}` doesn't exist (there are: {})", names.join(", "))
@@ -1689,6 +1778,7 @@ impl Family {
         if self.category.hosted() {
             done.insert(WALL.to_string(), Val::Number(wall));
         }
+        done.extend(seeds.iter().map(|(k, v)| (k.clone(), v.clone())));
         let seeded = done.clone();
         for p in &self.parameters {
             self.resolve(&p.name, set, instance, &mut done, &mut Vec::new())?;
@@ -1776,6 +1866,12 @@ impl Family {
     /// what their kinds hold; its types setting only the type parameters no formula works out; its
     /// materials in the library (`has_material`); and every type building.
     pub fn check(&self, has_material: &dyn Fn(&str) -> bool) -> Result<(), String> {
+        self.check_in(has_material, &mut Vec::new(), &mut 0)
+    }
+
+    /// [`Family::check`], within a tree of nested families: `chain` the names of the families it is nested in, `total` the
+    /// nested definitions counted so far ([`nested`]).
+    pub(crate) fn check_in(&self, has_material: &dyn Fn(&str) -> bool, chain: &mut Vec<String>, total: &mut usize) -> Result<(), String> {
         if let Some(definition) = &self.adaptive {
             definition.check()?;
         }
@@ -1950,19 +2046,31 @@ impl Family {
         }
         self.check_options()?;
         self.check_connectors()?;
+        self.check_nested(has_material, chain, total)?;
         // Each formula read once across the types; past what a family may build, refused.
         let (mut read, mut built, mut cuts) = (HashMap::new(), 0, csg::Meter::default());
         let mut solving = constraints::Meter::default();
+        let mut meter = nested::Meter::default();
         for t in self.types.keys() {
             let pieces = self
                 .values(t, &BTreeMap::new())
                 .and_then(|v| {
-                    self.marks(&v)?;
+                    self.marks_metered(&v, &mut meter)?;
                     // Its dimensions solved for the type: what they hold built where they put it.
-                    match self.flexed_with(&v, &mut solving).map_err(|e| e.to_string())? {
-                        Cow::Borrowed(_) => self.build(&v, &mut read, &mut cuts),
-                        Cow::Owned(f) => f.build(&v, &mut HashMap::new(), &mut cuts),
-                    }
+                    let mut pieces = match self.flexed_with(&v, &mut solving).map_err(|e| e.to_string())? {
+                        Cow::Borrowed(_) => {
+                            let mut p = self.build(&v, &mut read, &mut cuts)?;
+                            p.extend(self.nested_pieces(&v, &mut meter)?);
+                            p
+                        }
+                        Cow::Owned(f) => {
+                            let mut p = f.build(&v, &mut HashMap::new(), &mut cuts)?;
+                            p.extend(f.nested_pieces(&v, &mut meter)?);
+                            p
+                        }
+                    };
+                    pieces.shrink_to_fit();
+                    Ok(pieces)
                 })
                 .map_err(|e| format!("type `{t}`: {e}"))?;
             built += pieces.iter().map(|p| p.tris.len()).sum::<usize>();
@@ -2082,8 +2190,19 @@ impl Family {
     }
 
     pub fn pieces_at(&self, values: &BTreeMap<String, Val>, placement: Option<&crate::adaptive::Placement>) -> Result<Vec<Piece>, String> {
+        self.pieces_metered(values, placement, &mut nested::Meter::default())
+    }
+
+    /// [`Family::pieces_at`], its nested instances' builds counted by `meter`, shared by the whole tree.
+    pub(crate) fn pieces_metered(
+        &self,
+        values: &BTreeMap<String, Val>,
+        placement: Option<&crate::adaptive::Placement>,
+        meter: &mut nested::Meter,
+    ) -> Result<Vec<Piece>, String> {
         let flexed = self.flexed(values).map_err(|e| e.to_string())?;
         let mut pieces = flexed.build(values, &mut HashMap::new(), &mut csg::Meter::default())?;
+        pieces.extend(flexed.nested_pieces(values, meter)?);
         if let Some(definition) = &self.adaptive {
             pieces.extend(definition.evaluate(values, placement.unwrap_or(&definition.preview)).pieces());
         }
@@ -2104,7 +2223,12 @@ impl Family {
     }
 
     /// [`Family::marks`], each with the subcategory key it is drawn in (none, its category).
-    pub fn marks_tagged<'a>(&'a self, values: &BTreeMap<String, Val>) -> Result<Vec<Tagged>, String> {
+    pub fn marks_tagged(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Tagged>, String> {
+        self.marks_metered(values, &mut nested::Meter::default())
+    }
+
+    /// [`Family::marks_tagged`], its nested instances' counted by `meter`.
+    pub(crate) fn marks_metered<'a>(&'a self, values: &BTreeMap<String, Val>, meter: &mut nested::Meter) -> Result<Vec<Tagged>, String> {
         let mut read = HashMap::new();
         let mut out = Vec::new();
         for (i, sym) in self.symbols.iter().enumerate() {
@@ -2159,6 +2283,7 @@ impl Family {
             }
             out.push((Mark::Line(pts), sub));
         }
+        out.extend(self.nested_marks(values, meter)?);
         Ok(out)
     }
 

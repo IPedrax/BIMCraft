@@ -431,6 +431,12 @@ impl FamilyEditor {
                 painter.add(egui::Shape::closed_line(ring, Stroke::new(2.0, PICKED)));
             }
         }
+        if editable && let (Some(i), Some(f)) = (self.selected_nested(), family.as_ref()) {
+            let ring: Vec<egui::Pos2> = fv::nested_outline(f, &values, &c.staged, which, i).into_iter().map(screen).collect();
+            if ring.len() > 2 {
+                painter.add(egui::Shape::closed_line(ring, Stroke::new(2.0, PICKED)));
+            }
+        }
         let trace = |g: Guid| -> Option<(egui::Pos2, egui::Pos2)> {
             let p =
                 family.as_ref().and_then(|f| f.planes.iter().find(|p| p.guid == g)).or_else(|| self.planes.iter().find(|p| p.guid == g))?;
@@ -492,6 +498,8 @@ impl FamilyEditor {
             self.views.end_drag = Some((end, to, n));
         }
         let mut select: Option<(Option<usize>, Option<Guid>)> = None;
+        let mut select_nested: Option<usize> = None;
+        let mut place_at: Option<(PlaneRef, (f64, f64), f64)> = None;
         let mut moved: Option<(Guid, [f64; 3])> = None;
         let mut new_plane = None;
         let mut picked_work_plane = None;
@@ -522,6 +530,14 @@ impl FamilyEditor {
                         new_plane = fv::new_plane(&c.staged, which, a, q);
                         self.views.drawing = Some(None);
                     }
+                }
+            } else if self.placing.is_some() {
+                // Component (T6a): an instance on the view's work plane, where the click is on it.
+                let host = self.views.work_plane();
+                if let Some(f) = family.as_ref()
+                    && let Some((at, offset)) = bimcraft_core::family::nested::on_plane(f, &host, c.staged.from_view(which, q))
+                {
+                    place_at = Some((host, (at.0, at.1), offset));
                 }
             } else if align_lock.is_some_and(|at| (at - p).length() < 10.0) {
                 // Align's padlock, waiting: it locks what was aligned, whatever tool is on.
@@ -562,6 +578,8 @@ impl FamilyEditor {
                     _ => Vec::new(),
                 };
                 on_dims = Some((hit, lengths));
+            } else if let Some(i) = family.as_ref().and_then(|f| fv::nested_at(f, &values, &c.staged, which, q)) {
+                select_nested = Some(i);
             } else {
                 let plane = pick_plane(p);
                 let form = family.as_ref().and_then(|f| fv::form_at(f, &values, &c.staged, which, q));
@@ -643,7 +661,14 @@ impl FamilyEditor {
                 problem = Some(e);
             }
         }
+        if let Some((host, at, offset)) = place_at {
+            self.place_nested(host, at, offset);
+        }
+        if let Some(i) = select_nested {
+            self.select_nested(Some(i));
+        }
         if let Some((form, plane)) = select {
+            self.nested_sel = None;
             self.views.dim = None;
             self.form = form;
             self.views.plane = plane;
