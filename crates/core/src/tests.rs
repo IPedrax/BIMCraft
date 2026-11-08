@@ -6605,3 +6605,48 @@ fn an_error_that_repeats_a_huge_value_stays_short() {
     let e = s.execute("graphics", &json!({"view": "Level 1", "hide_elements": [1]})).unwrap_err();
     assert!(!e.contains("more characters"), "{e}");
 }
+
+/// F10, the Family Editor's exit test through commands (`ci/family-window.txt`, which CI writes to IFC for IfcOpenShell): the
+/// window drawn with reference planes, labelled dimensions, a frame locked to them and a void, flexed through its types as built,
+/// scheduled, and written to IFC with its opening. The desktop's twin is `crates/ui-egui/src/tests/family_exit.rs`.
+#[test]
+fn the_exit_tests_window_flexes_as_built_schedules_and_goes_to_ifc() {
+    let mut s = Session::new();
+    s.script(include_str!("../../../ci/family-window.txt")).unwrap();
+    let (window, east) = (100006, 100007);
+    let f = s.model.families["Exit Window"].clone();
+    // Flexed through its types: the frame and the void it cuts the wall with are its Width and Height, whatever was drawn.
+    for (name, w, h) in [("900 x 1200", 900.0, 1200.0), ("1200 x 1500", 1200.0, 1500.0), ("600 x 600", 600.0, 600.0)] {
+        run(&mut s, "modify", json!({"ids": [window], "type": name}));
+        let e = s.model.elements.get(window).unwrap().clone();
+        let bbox = |tris: &mut dyn Iterator<Item = [f64; 3]>| {
+            tris.fold(([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]), |(lo, hi), p| {
+                (std::array::from_fn(|k| lo[k].min(p[k])), std::array::from_fn(|k| hi[k].max(p[k])))
+            })
+        };
+        let pieces = s.model.opening_pieces(&e);
+        let (lo, hi) = bbox(&mut pieces.iter().flat_map(|p| p.tris.iter()).flatten().copied());
+        let want = ([4000.0 - w / 2.0, -40.0, 900.0], [4000.0 + w / 2.0, 40.0, 900.0 + h]);
+        let near = |a: [f64; 3], b: [f64; 3]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-6);
+        assert!(near(lo, want.0) && near(hi, want.1), "{name}: the frame {lo:?} {hi:?}");
+        let voids = s.model.opening_voids(&e);
+        assert_eq!(voids.len(), 1, "{name}: one void cuts the wall");
+        let (lo, hi) = bbox(&mut voids.iter().flatten().flatten().copied());
+        assert!(near(lo, [want.0[0], -300.0, 900.0]) && near(hi, [want.1[0], 300.0, 900.0 + h]), "{name}: the void {lo:?} {hi:?}");
+        // The frame's light, 50 mm inside the opening all round: its volume.
+        let v = f.values(name, &Default::default()).unwrap();
+        let built: f64 = f.pieces(&v).unwrap().iter().map(|p| crate::ifc_geometry_tests::volume(&p.tris)).sum();
+        assert!((built - (w * h - (w - 100.0) * (h - 100.0)) * 80.0).abs() < 1.0, "{name}: the frame's volume {built}");
+    }
+    run(&mut s, "modify", json!({"ids": [window], "type": "1200 x 1500"}));
+    // Its schedule lists both windows with their sizes.
+    let t = run(&mut s, "schedule", json!({"name": "Exit Windows"}));
+    assert_eq!(t["elements"], json!([[window], [east]]));
+    let sizes: Vec<(Value, Value)> = t["rows"].as_array().unwrap().iter().map(|r| (r[2].clone(), r[3].clone())).collect();
+    assert_eq!(sizes, [(json!(1200.0), json!(1500.0)), (json!(600.0), json!(600.0))]);
+    // IFC: two IfcWindows of those sizes, each filling an opening that voids its wall.
+    let ifc = crate::ifc::export(&s.model);
+    let n = |class: &str| ifc.lines().filter(|l| l.contains(&format!("={class}("))).count();
+    assert_eq!((n("IFCWINDOW"), n("IFCOPENINGELEMENT"), n("IFCRELVOIDSELEMENT"), n("IFCRELFILLSELEMENT")), (2, 2, 2, 2));
+    assert!(ifc.contains("'Exit Window:1200 x 1500',#") && ifc.contains(",1500.,1200.,.WINDOW."), "the window's OverallHeight and Width");
+}

@@ -844,8 +844,13 @@ impl FamilyEditor {
         let place = |s: &mut Session, id: &str, p: Value| s.execute(id, &p).map(|_| ());
         if family.category.hosted() {
             place(&mut s, "wall", json!({"points": [[-2500, 0], [2500, 0]]}))?;
+            // A window's sill on Ref. Level: its forms are drawn in axes whose z is up from the sill, as its planes are.
             let kind = if family.category == Category::Door { "door" } else { "window" };
-            place(&mut s, kind, json!({"at": [0, 0], "family": name, "type": type_name}))?;
+            let mut p = json!({"at": [0, 0], "family": name, "type": type_name});
+            if kind == "window" {
+                p["sill"] = json!(0);
+            }
+            place(&mut s, kind, p)?;
         } else {
             place(&mut s, "component", json!({"family": name, "type": type_name, "at": [0, 0], "params": self.preview_params}))?;
         }
@@ -1250,7 +1255,8 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
                     &params,
                 ));
             }
-            ui.horizontal(|ui| {
+            // Wrapped, as the palette is narrower than the row (F10: Delete was cut off at its edge).
+            ui.horizontal_wrapped(|ui| {
                 // Selected, Properties show it as Revit's do an Extrusion.
                 if ui.button(t("Select")).clicked() {
                     select = Some(i);
@@ -1273,15 +1279,41 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     if select.is_some() {
         ed.form = select;
     }
+    // The form selected stays selected as it moves; one deleted takes the dimensions and locks measuring to it along, as
+    // the ribbon's Delete does (F10: a dimension left measuring to nothing refused Load into Project).
+    let swap = |ed: &mut FamilyEditor, i: usize, j: usize| {
+        ed.forms.swap(i, j);
+        ed.form = ed.form.map(|f| {
+            if f == i {
+                j
+            } else if f == j {
+                i
+            } else {
+                f
+            }
+        });
+    };
     match act {
-        Some((i, -1)) => ed.forms.swap(i, i - 1),
-        Some((i, 1)) => ed.forms.swap(i, i + 1),
+        Some((i, -1)) => swap(ed, i, i - 1),
+        Some((i, 1)) => swap(ed, i, i + 1),
         Some((i, _)) => {
-            ed.forms.remove(i);
+            let gone = ed.forms.remove(i).original.guid;
+            if !gone.is_nil() {
+                ed.forget_reference(gone);
+            }
+            ed.form = ed.form.and_then(|f| {
+                if f == i {
+                    None
+                } else if f > i {
+                    Some(f - 1)
+                } else {
+                    Some(f)
+                }
+            });
         }
         None => {}
     }
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if ui.button(t("Add Box")).clicked() {
             ed.forms.push(FormText::blank());
         }
@@ -1744,6 +1776,19 @@ mod tests {
         assert!(!ed.family().unwrap().types[&ed.types[0].0].contains_key("Width"));
         ed.name = " ".into();
         assert!(ed.command(&m).unwrap_err().contains("needs a name"));
+    }
+
+    /// F10: a window stands on Ref. Level in its document's scratch model, its sill at 0, as its forms are drawn in axes whose z
+    /// is up from the sill: else every view drew its forms `Sill Height` above the reference planes they are locked to.
+    #[test]
+    fn a_window_in_its_documents_scratch_model_stands_with_its_sill_on_ref_level() {
+        let m = Arc::unwrap_or_clone(Session::new().model);
+        let ed = FamilyEditor::blank(Category::Window);
+        let family = ed.family().unwrap();
+        let scratch = ed.scratch(&m, &family).unwrap();
+        let window = scratch.elements.values().find(|e| matches!(e, bimcraft_core::model::Element::Window(_))).unwrap();
+        let low = scratch.opening_pieces(window).iter().flat_map(|p| p.tris.iter()).flatten().map(|p| p[2]).fold(f64::INFINITY, f64::min);
+        assert!(low.abs() < 1e-9, "the frame from the sill, on Ref. Level: {low}");
     }
 
     #[test]

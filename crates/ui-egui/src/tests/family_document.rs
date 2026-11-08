@@ -442,3 +442,60 @@ fn the_unsaved_mark_is_the_active_documents() {
     press(&mut h, "Close Family");
     assert!(marked(&h), "the project's changes, after the family");
 }
+
+/// F10: the Delete key takes away what is selected in the family document, as the ribbon's Delete does: a form (and the
+/// dimensions measuring to it), a plane of the family's own; a datum stays.
+#[test]
+fn the_delete_key_takes_a_selected_form_or_plane_away() {
+    use super::family_views::{click_family, editor, select_form, view};
+    use bimcraft_core::family::views::Which;
+    let script = r#"family {"name": "Box", "category": "generic", "types": {"T": {}}, "ref_planes": [{"guid": "11111111-1111-4111-8111-000000000001", "name": "Edge", "start": [-400, -2000, 0], "end": [-400, 2000, 0], "up": [0, 0, 1]}], "forms": [{"guid": "22222222-2222-4222-8222-000000000001", "host": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, "profile": [[0, 0], [300, 0], [300, 500], [0, 500]], "to": 400}, {"profile": [[600, 0], [800, 0], [800, 300], [600, 300]], "to": 500}], "dimensions": [{"refs": [{"plane": "11111111-1111-4111-8111-000000000001"}, {"form": "22222222-2222-4222-8222-000000000001", "end": "end"}], "view": "front", "at": [0, 0, 700]}]}"#;
+    let mut h = wide(script);
+    h.set_size(vec2(1600.0, 1200.0));
+    h.state_mut().edit_family("Box");
+    h.run();
+    // The first form, from the Project Browser: gone, and the dimension to it with it.
+    select_form(&mut h, 1);
+    assert_eq!(editor(&h).selected_form(), Some(0));
+    key(&mut h, Key::Delete);
+    let f = editor(&h).draft_family().unwrap();
+    assert_eq!(f.forms.len(), 1, "the form deleted");
+    assert!(f.dimensions.is_empty(), "the dimension measuring to it goes too");
+    // A plane of its own, picked in plan.
+    view(&mut h, Some(Which::Plan));
+    click_family(&mut h, [-400.0, -1000.0, 0.0]);
+    assert!(editor(&h).selected_plane().is_some());
+    key(&mut h, Key::Delete);
+    assert!(!editor(&h).planes.iter().any(|p| p.name == "Edge"), "the plane deleted");
+    // A datum stays.
+    click_family(&mut h, [0.0, -1000.0, 0.0]);
+    assert_eq!(editor(&h).selected_plane(), Some(bimcraft_core::family::CENTER_LEFT_RIGHT));
+    key(&mut h, Key::Delete);
+    assert_eq!(editor(&h).planes.len(), 3, "the datums stay");
+}
+
+/// F10: the Forms tab's Delete takes the dimensions measuring to the form along, as the ribbon's does; a dimension left
+/// measuring to nothing refused Load into Project. Its row wraps in the palette, so Delete isn't cut off at its edge.
+#[test]
+fn the_forms_tabs_delete_forgets_the_dimensions_to_the_form() {
+    use super::family_views::editor;
+    let script = r#"family {"name": "Box", "category": "generic", "types": {"T": {}}, "ref_planes": [{"guid": "11111111-1111-4111-8111-000000000001", "name": "Edge", "start": [-400, -2000, 0], "end": [-400, 2000, 0], "up": [0, 0, 1]}], "forms": [{"guid": "22222222-2222-4222-8222-000000000001", "host": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, "profile": [[0, 0], [300, 0], [300, 500], [0, 500]], "to": 400}], "dimensions": [{"refs": [{"plane": "11111111-1111-4111-8111-000000000001"}, {"form": "22222222-2222-4222-8222-000000000001", "end": "end"}], "view": "front", "at": [0, 0, 700]}]}"#;
+    let mut h = wide(script);
+    h.set_size(vec2(1600.0, 1200.0));
+    h.state_mut().edit_family("Box");
+    h.run();
+    // The Forms tab's only form is open: its Delete.
+    use egui_kittest::kittest::NodeT;
+    let entry = h.get_all_by_label("Delete").filter(|n| n.rect().left() < 300.0).map(|n| n.accesskit_node().id()).next();
+    h.get_by(|n| Some(n.id()) == entry).scroll_to_me();
+    h.run();
+    let at = h.get_by(|n| Some(n.id()) == entry).rect();
+    assert!(at.right() <= 290.0, "within the palette: {at:?}");
+    click_at(&mut h, at.center());
+    let f = editor(&h).draft_family().unwrap();
+    assert!(f.forms.is_empty(), "the form deleted");
+    assert!(f.dimensions.is_empty(), "and the dimension measuring to it");
+    press(&mut h, "Load into Project");
+    press(&mut h, "Overwrite the existing version");
+    assert!(h.state().session.model.families["Box"].forms.is_empty(), "it loads: {}", h.state().status.text);
+}

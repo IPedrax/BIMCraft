@@ -3857,9 +3857,12 @@ fn wall_voids(d: &mut Drawing, axis: &Axis, (ext, int): (f64, f64), past: f64, v
             d.fill(&[clear], PAPER);
         }
         let inside = geom::clip(&geom::clip(&ring, |q| ext - off(q)), |q| off(q) - int);
-        let on_face = |q: P2| (off(q) - ext).abs() < 1e-6 || (off(q) - int).abs() < 1e-6;
+        // An edge along a face is the face's; one across the wall, from face to face, is a jamb (F10: a ring whose jambs
+        // ran straight from one face to the other lost them).
+        let on = |q: P2, face: f64| (off(q) - face).abs() < 1e-6;
         for (a, b) in geom::ring_edges(&inside) {
-            if inside.len() >= 3 && !(on_face(a) && on_face(b)) {
+            let along = (on(a, ext) && on(b, ext)) || (on(a, int) && on(b, int));
+            if inside.len() >= 3 && !along {
                 d.line(&[a, b], Pen::HEAVY, INK, false);
             }
         }
@@ -3908,8 +3911,16 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
             Some(v) => v.in_plan(detail, true),
             None => detail != Detail::Coarse,
         };
+        // Where it is cut, as the plane cuts it (F10: a frame extruded across the wall is cut as its two jambs, not
+        // outlined whole); its outline where the cut finds no ring.
         for piece in m.opening_pieces(e).iter().filter(|p| p.bottom <= cut && cut < p.top && drawn(p)) {
-            d.line(&piece.outline, BY_CATEGORY, INK, true);
+            let rings = view3d::level_slice(&piece.tris, cut);
+            if rings.is_empty() {
+                d.line(&piece.outline, BY_CATEGORY, INK, true);
+            }
+            for ring in rings {
+                d.line(&ring, BY_CATEGORY, INK, true);
+            }
         }
         d.part(Part::Projection);
         // Each in its subcategory, which the view may hide (Doors > Opening: the swing) or draw its own way.
@@ -5023,6 +5034,28 @@ mod tests {
         assert_eq!(fills(&s.model), 1, "its region, in its colour");
         let (back, left_out) = Model::read(&s.model.to_json().unwrap()).unwrap();
         assert!(left_out.is_empty() && fills(&back) == 1, "{left_out:?}");
+    }
+
+    /// F10: a family window whose void runs straight through the wall (its slice a rectangle from face to face, no corner
+    /// between) draws both jambs across the wall, heavy, as one whose slice has a point in the wall's middle does.
+    #[test]
+    fn a_void_straight_through_the_wall_draws_both_jambs() {
+        let mut s = Session::new();
+        s.script(include_str!("../../../ci/family-window.txt")).unwrap();
+        let level = s.model.levels()[0].0;
+        let view = View { scale: 0.2, cx: 4000.0, cy: 0.0, width: 800, height: 600 };
+        let d = draw(&s.model, level, view);
+        // The south window, 1200 x 1500 at 4000: its jambs at 3400 and 4600, from the exterior face (y -100) to the interior's.
+        for x in [3400.0, 4600.0] {
+            let across = d.prims.iter().any(|p| match p {
+                Prim::Line { pts, width, .. } if pts.len() == 2 && *width >= 2.0 => {
+                    let (a, b) = (view.mm(pts[0]), view.mm(pts[1]));
+                    (a.0 - x).abs() < 1.0 && (b.0 - x).abs() < 1.0 && (a.1 - b.1).abs() > 190.0
+                }
+                _ => false,
+            });
+            assert!(across, "a jamb across the wall at {x}");
+        }
     }
 
     fn house() -> Session {

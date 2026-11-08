@@ -96,7 +96,7 @@ msgstr "Aantal"
 msgid "Crosshatch"
 msgstr "Kruisarcering"
 
-#: crates/core/src/render.rs:4055
+#: crates/core/src/render.rs:4066
 msgid "DN"
 msgstr "DN"
 
@@ -592,7 +592,7 @@ msgstr "Aantrede"
 msgid "Type"
 msgstr "Type"
 
-#: crates/core/src/render.rs:4055
+#: crates/core/src/render.rs:4066
 msgid "UP"
 msgstr "OMHOOG"
 
