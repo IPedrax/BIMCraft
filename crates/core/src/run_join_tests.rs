@@ -4,7 +4,7 @@
 
 use crate::engine::Session;
 use crate::geom::{self, P2};
-use crate::model::Run;
+use crate::model::{Run, Wall};
 use crate::snap::{Kind, Reach, Snaps, snap};
 use serde_json::json;
 
@@ -24,6 +24,11 @@ fn runs(s: &Session, category: &str) -> Vec<u64> {
 /// Run `id` as it stands in the model.
 fn run(s: &Session, id: u64) -> Run {
     s.model.run_of(id).cloned().unwrap_or_else(|| panic!("run {id} is there"))
+}
+
+/// Wall `id` as it stands in the model.
+fn wall(s: &Session, id: u64) -> Wall {
+    s.model.wall(id).cloned().unwrap_or_else(|| panic!("wall {id} is there"))
 }
 
 /// Run `id`'s outline in plan, as every view fills and cuts it.
@@ -205,6 +210,122 @@ fn dragging_one_end_of_a_run_takes_the_runs_joined_there_with_it() {
     assert_eq!(run(&s, mate).start, P2(0.0, 1000.0), "the end on the end went with it");
     assert_eq!(run(&s, on_span).end, P2(3000.0, 250.0), "the end on the span slid to the crossing");
     assert_eq!(s.model.check(), Ok(()));
+}
+
+#[test]
+fn dragging_one_end_of_a_wall_takes_the_footing_joined_there_with_it() {
+    let mut s = session(
+        r#"wall {"points": [[0, 0], [4000, 0]]}
+           wall {"points": [[4000, 0], [4000, 4000]]}
+           strip_footing {"points": [[0, 0], [4000, 0]]}
+           strip_footing {"points": [[4000, 0], [4000, 4000]]}"#,
+    );
+    let [west, east] = runs(&s, "wall")[..] else { panic!("two walls") };
+    let [under_west, under_east] = runs(&s, "stripfooting")[..] else { panic!("two footings") };
+    // The west wall's end, where the other wall and both footings meet it, pulled north.
+    s.execute("move", &json!({"ids": [west], "by": [0.0, 1000.0], "end": "end"})).unwrap();
+    assert_eq!(wall(&s, west).end, P2(4000.0, 1000.0));
+    assert_eq!(wall(&s, east).start, P2(4000.0, 1000.0), "the wall joined there followed");
+    assert_eq!(run(&s, under_west).end, P2(4000.0, 1000.0), "the footing under the wall followed");
+    assert_eq!(run(&s, under_east).start, P2(4000.0, 1000.0), "the footing joined at the corner followed");
+    assert_eq!(s.model.check(), Ok(()));
+}
+
+#[test]
+fn dragging_one_end_of_a_footing_takes_the_walls_joined_there_with_it() {
+    let mut s = session(
+        r#"wall {"points": [[0, 0], [4000, 0]]}
+           wall {"points": [[4000, 0], [4000, 4000]]}
+           strip_footing {"points": [[0, 0], [4000, 0]]}
+           strip_footing {"points": [[4000, 0], [4000, 4000]]}"#,
+    );
+    let [west, east] = runs(&s, "wall")[..] else { panic!("two walls") };
+    let [under_west, under_east] = runs(&s, "stripfooting")[..] else { panic!("two footings") };
+    // The footing's end at the same corner pulled north: the walls follow, as they do for a wall.
+    s.execute("move", &json!({"ids": [under_west], "by": [0.0, 1000.0], "end": "end"})).unwrap();
+    assert_eq!(run(&s, under_west).end, P2(4000.0, 1000.0));
+    assert_eq!(wall(&s, west).end, P2(4000.0, 1000.0), "the wall over it followed");
+    assert_eq!(wall(&s, east).start, P2(4000.0, 1000.0), "the wall joined at the corner followed");
+    assert_eq!(run(&s, under_east).start, P2(4000.0, 1000.0), "the footing joined there followed");
+    assert_eq!(s.model.check(), Ok(()));
+}
+
+#[test]
+fn moving_a_wall_whole_takes_the_footing_ending_on_it_with_it() {
+    let mut s = session(
+        r#"wall {"points": [[0, 0], [4000, 0]]}
+           wall {"points": [[4000, 0], [4000, 4000]]}
+           strip_footing {"points": [[0, 0], [4000, 0]]}
+           strip_footing {"points": [[4000, 0], [4000, 4000]]}"#,
+    );
+    let west = runs(&s, "wall")[0];
+    let east_wall = runs(&s, "wall")[1];
+    let [_, under_east] = runs(&s, "stripfooting")[..] else { panic!("two footings") };
+    // The whole west wall a metre north: the wall and footing it carries and the corner they meet move with it.
+    s.execute("move", &json!({"ids": [west], "by": [0.0, 1000.0]})).unwrap();
+    assert_eq!(wall(&s, west).start, P2(0.0, 1000.0));
+    assert_eq!(wall(&s, west).end, P2(4000.0, 1000.0));
+    assert_eq!(wall(&s, east_wall).start, P2(4000.0, 1000.0), "the wall joined there followed");
+    assert_eq!(wall(&s, east_wall).end, P2(4000.0, 4000.0), "its free end stayed");
+    assert_eq!(run(&s, under_east).start, P2(4000.0, 1000.0), "the footing joined at the corner followed");
+    assert_eq!(run(&s, under_east).end, P2(4000.0, 4000.0), "its free end stayed, under the wall's");
+    assert_eq!(s.model.check(), Ok(()));
+}
+
+#[test]
+fn moving_a_run_whole_lets_an_angled_neighbour_extend_along_its_own_axis() {
+    for category in crate::model::RUN_CATEGORIES {
+        let command = crate::commands::command_of(category);
+        let mut s = session(&format!(
+            r#"{command} {{"points": [[0, 0], [4000, 0]]}}
+               {command} {{"points": [[4000, 0], [6000, 3000]]}}"#
+        ));
+        let [taken, joined] = runs(&s, category)[..] else { panic!("{category}: two runs were made") };
+
+        s.execute("move", &json!({"ids": [taken], "by": [0.0, 1000.0]})).unwrap();
+
+        // The taken run's end slides along the neighbour's line to their new crossing, as a wall's does;
+        // the neighbour keeps its own line and only stretches to that crossing.
+        assert_eq!(run(&s, taken).start, P2(0.0, 1000.0), "{category}: the taken run moved");
+        assert!((run(&s, taken).end.0 - 4666.667).abs() < 0.01, "{category}: its end found the crossing: {:?}", run(&s, taken).end);
+        assert_eq!(run(&s, taken).end.1, 1000.0);
+        assert!((run(&s, joined).start.0 - 4666.667).abs() < 0.01, "{category}: its joint slid along its own line");
+        assert_eq!(run(&s, joined).start.1, 1000.0);
+        assert_eq!(run(&s, joined).end, P2(6000.0, 3000.0), "{category}: its free end stayed");
+    }
+}
+
+#[test]
+fn moving_a_footing_whole_lets_a_wall_at_its_angle_extend_along_its_own_axis() {
+    let mut s = session(
+        r#"wall {"points": [[4000, 0], [4000, 4000]]}
+           strip_footing {"points": [[0, 0], [4000, 0]]}"#,
+    );
+    let wall_id = runs(&s, "wall")[0];
+    let footing = runs(&s, "stripfooting")[0];
+    s.execute("move", &json!({"ids": [footing], "by": [0.0, 1000.0]})).unwrap();
+    assert_eq!(run(&s, footing).start, P2(0.0, 1000.0));
+    assert_eq!(run(&s, footing).end, P2(4000.0, 1000.0));
+    assert_eq!(wall(&s, wall_id).start, P2(4000.0, 1000.0), "the wall's end slid along its own axis");
+    assert_eq!(wall(&s, wall_id).end, P2(4000.0, 4000.0), "its free end stayed");
+}
+
+#[test]
+fn moving_a_wall_whole_lets_a_footing_at_its_angle_extend_along_its_own_axis() {
+    let mut s = session(
+        r#"wall {"points": [[0, 0], [4000, 0]]}
+           strip_footing {"points": [[4000, 0], [5000, 3000]]}"#,
+    );
+    let wall_id = runs(&s, "wall")[0];
+    let footing = runs(&s, "stripfooting")[0];
+    s.execute("move", &json!({"ids": [wall_id], "by": [0.0, 1000.0]})).unwrap();
+    // The moved wall runs on to the footing's own line, and the footing runs on along its line to the same crossing.
+    assert_eq!(wall(&s, wall_id).start, P2(0.0, 1000.0));
+    assert!((wall(&s, wall_id).end.0 - 4333.333).abs() < 0.01, "the wall found the crossing: {:?}", wall(&s, wall_id).end);
+    assert_eq!(wall(&s, wall_id).end.1, 1000.0);
+    assert!((run(&s, footing).start.0 - 4333.333).abs() < 0.01, "the footing's end slid along its own axis");
+    assert_eq!(run(&s, footing).start.1, 1000.0);
+    assert_eq!(run(&s, footing).end, P2(5000.0, 3000.0), "its free end stayed");
 }
 
 #[test]

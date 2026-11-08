@@ -20,7 +20,12 @@ cap layer first) and the sections — so a joint is the same everywhere. Its lin
 shapes the outline. IFC still writes a run's section swept along its axis (a reader comes back to the line and section it was
 given), so a joint shows in the plan, the 3D view and the sections, not in an exported body. A run's end may be dragged with
 `move {end}`, one run alone, and the runs joined there follow as walls' do (an end on an end goes with it; an end on the span
-slides along its own line onto the crossing). Glue: a strip footing under a wall sticks to it as Revit's does — its line the
+slides along its own line onto the crossing). Moved whole, a run's end that lay on a neighbour's line runs on or is cut back
+to their new crossing, as a wall's does, and the neighbour keeps its own axis and only stretches to it — whether the pair is
+two runs of one category or a strip footing meeting a wall. At a corner where a wall and a strip footing end together, with
+another element also ending there, the wall's end and the footing's go together too, as two walls' do; a footing simply
+carrying on under a wall keeps its length, so a wall dragged along its own axis may be shorter than the footing it carries.
+Glue: a strip footing under a wall sticks to it as Revit's does — its line the
 wall's (same direction and place, within `TOL`), its top on the wall's base — and while that holds it rides the wall in plan
 (`relocate` moves it by the wall's own transformation) and keeps its top on the wall's base when the wall's base moves
 (`modify`, `glue::on_base`). Nothing is stored: the condition is read from the geometry (`glue`), so moving the wall or the

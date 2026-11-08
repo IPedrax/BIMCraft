@@ -11194,6 +11194,35 @@ fn place_tag(m: &mut Model, id: Id, head: P2) {
     }
 }
 
+/// How many walls and runs that join have an end at `at` at heights `(lo, hi)`: the arms of the node
+/// there. Three or more is a corner where several elements meet, not one element simply carrying on
+/// under another.
+fn arms_at(m: &Model, at: P2, (lo, hi): (f64, f64)) -> usize {
+    m.elements
+        .values()
+        .filter(|e| match e {
+            Element::Wall(w) => {
+                w.join && (w.start.dist(at) <= TOL || w.end.dist(at) <= TOL) && m.base_z(w) <= hi + TOL && lo - TOL <= m.top_z(w)
+            }
+            e => e.run().is_some_and(|r| {
+                r.join
+                    && (r.start.dist(at) <= TOL || r.end.dist(at) <= TOL)
+                    && m.run_geom(e).is_some_and(|g| {
+                        let (rlo, rhi) = g.z_span();
+                        rlo <= hi + TOL && lo - TOL <= rhi
+                    })
+            }),
+        })
+        .count()
+}
+
+/// Whether two lines run the same way, so that one carries on under the other rather than meeting it
+/// at a corner.
+fn same_way(a: (P2, P2), b: (P2, P2)) -> bool {
+    let (u, v) = (a.1 - a.0, b.1 - b.0);
+    u.length() > TOL && v.length() > TOL && u.unit().cross(v.unit()).abs() <= 1e-9
+}
+
 /// Take elements by `mo`, keeping walls joined: walls joined to a taken wall stretch to stay
 /// joined, and doors and windows in walls that changed keep their place or go with their wall.
 /// With `end` (`Some(true)` the start, `Some(false)` the end), only that end of one wall or one run goes.
@@ -11235,37 +11264,176 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
         }
     }
     let old = |id: &Id| m.wall(*id);
-    // A taken wall's end that was on a wall staying put slides back onto it, along the taken wall.
-    // (A wall's end taken on its own goes where it's told.)
-    for (id, w) in walls.iter_mut().filter(|_| end.is_none()) {
-        let Some(before) = old(id).filter(|b| b.arc == 0.0) else { continue };
-        let line = (w.start, w.end);
-        for (end, was) in [(&mut w.start, before.start), (&mut w.end, before.end)] {
-            let at = ([was.0, was.1, was.0, was.1], m.base_z(before), m.top_z(before));
-            let host = lookup.walls_near_at(&[at], 2.0 * TOL).into_iter().find_map(|other| match m.elements.get(other) {
-                Some(Element::Wall(o))
+    // Glued footings move with their walls; make that planned move a taken run before finding what stretches to
+    // keep its joins. Otherwise an angled footing sees only the old position and stays behind after the glue runs.
+    let mut glued: Vec<(Id, crate::model::Run, crate::model::Run)> = if end.is_none() {
+        let walls: Vec<Id> = walls.keys().copied().collect();
+        crate::glue::footings_of(m, &walls)
+            .into_iter()
+            .filter_map(|(fid, _)| {
+                let r = m.run_of(fid)?.clone();
+                let after = crate::glue::mapped(&r, f);
+                Some((fid, r, after))
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let glued_moving: BTreeSet<Id> = glued.iter().map(|(id, ..)| *id).collect();
+    for (id, before, after) in &glued {
+        if !moving.contains(id) {
+            taken.entry(*id).or_insert_with(|| (before.clone(), after.clone()));
+        }
+    }
+    let index = crate::walls::Index::new(m);
+    let thickest = m.types.wall.values().map(|t| t.thickness).filter(|t| t.is_finite()).fold(0.0, f64::max);
+    // A taken line's end that was on a staying line slides along that line to the new crossing, as two
+    // walls' ends do: the staying element keeps its own axis and only runs on or is cut back. An end taken
+    // on its own (with `end`) goes where it is told. Runs of one category meet each other; a strip footing
+    // meets a wall by its top touching the wall's base, as the run's own outline has it.
+    if end.is_none() {
+        for (id, w) in walls.iter_mut() {
+            let Some(before) = old(id).filter(|b| b.arc == 0.0) else { continue };
+            let line = (w.start, w.end);
+            for (end, was) in [(&mut w.start, before.start), (&mut w.end, before.end)] {
+                let mut host = None;
+                let at = ([was.0, was.1, was.0, was.1], m.base_z(before), m.top_z(before));
+                for other in lookup.walls_near_at(&[at], 2.0 * TOL) {
+                    let Some(Element::Wall(o)) = m.elements.get(other) else { continue };
                     if !moving.contains(&other)
+                        && !glued_moving.contains(&other)
                         && o.join
                         && before.join
                         && o.arc == 0.0
                         && stacked(m, o, before)
-                        && geom::dist_to_segment(was, o.start, o.end) <= TOL =>
-                {
-                    Some((o.start, o.end))
+                        && geom::dist_to_segment(was, o.start, o.end) <= TOL
+                    {
+                        host = Some((o.start, o.end));
+                        break;
+                    }
                 }
-                _ => None,
-            });
-            if let Some((a, b)) = host {
-                *end = geom::line_intersection(line.0, line.1, a, b).map_or(*end, micron);
+                if host.is_none() {
+                    let (lo, hi) = (m.base_z(before), m.top_z(before));
+                    for other in index.runs_near(was, lo - TOL, hi + TOL) {
+                        if moving.contains(&other) || glued_moving.contains(&other) {
+                            continue;
+                        }
+                        let Some(e) = m.elements.get(other) else { continue };
+                        if e.category() != "stripfooting" {
+                            continue;
+                        }
+                        let Some(r) = e.run() else { continue };
+                        if !r.join || !before.join || !crate::runs::flat(r) {
+                            continue;
+                        }
+                        let Some(g) = m.run_geom(e) else { continue };
+                        let (rlo, rhi) = g.z_span();
+                        if !(rlo - TOL <= m.top_z(before) && m.base_z(before) - TOL <= rhi) {
+                            continue;
+                        }
+                        if geom::dist_to_segment(was, r.start, r.end) <= TOL {
+                            host = Some((r.start, r.end));
+                            break;
+                        }
+                    }
+                }
+                if let Some((a, b)) = host {
+                    *end = geom::line_intersection(line.0, line.1, a, b).map_or(*end, micron);
+                }
+            }
+        }
+        for (id, (before, after)) in taken.iter_mut() {
+            if !before.join || !after.join || !crate::runs::flat(before) {
+                continue;
+            }
+            let Some(e) = m.elements.get(*id) else { continue };
+            let category = e.category();
+            let Some((lo, hi)) = m.run_geom(e).map(|g| g.z_span()) else { continue };
+            let line = (after.start, after.end);
+            for (end, was) in [(&mut after.start, before.start), (&mut after.end, before.end)] {
+                let mut host = None;
+                for other in index.runs_near(was, lo - TOL, hi + TOL) {
+                    if other == *id || moving.contains(&other) || glued_moving.contains(&other) {
+                        continue;
+                    }
+                    let Some(oe) = m.elements.get(other) else { continue };
+                    let (Some(r), other_category) = (oe.run(), oe.category()) else { continue };
+                    if other_category != category || !r.join || !crate::runs::flat(r) {
+                        continue;
+                    }
+                    let Some(g) = m.run_geom(oe) else { continue };
+                    let (olo, ohi) = g.z_span();
+                    if !(lo < ohi && olo < hi) {
+                        continue;
+                    }
+                    if geom::dist_to_segment(was, r.start, r.end) <= TOL {
+                        host = Some((r.start, r.end));
+                        break;
+                    }
+                }
+                if host.is_none() && category == "stripfooting" {
+                    let at = ([was.0, was.1, was.0, was.1], lo - TOL, hi + TOL);
+                    for other in lookup.walls_near_at(&[at], thickest + 1.0) {
+                        if moving.contains(&other) {
+                            continue;
+                        }
+                        let Some(Element::Wall(w)) = m.elements.get(other) else { continue };
+                        if !w.join || w.arc != 0.0 || !(lo - TOL <= m.top_z(w) && m.base_z(w) - TOL <= hi) {
+                            continue;
+                        }
+                        if geom::dist_to_segment(was, w.start, w.end) <= TOL {
+                            host = Some((w.start, w.end));
+                            break;
+                        }
+                    }
+                }
+                if let Some((a, b)) = host {
+                    *end = geom::line_intersection(line.0, line.1, a, b).map_or(*end, micron);
+                }
+            }
+        }
+        // A glued footing rides the corrected line of its wall: take the wall's crossing, not the bare move.
+        for (id, _, after) in glued.iter_mut() {
+            if let Some((_, corrected)) = taken.get(id) {
+                *after = corrected.clone();
+            }
+        }
+        // The taken runs themselves stand where they were cut or run on to the crossing, as the walls do.
+        for (id, (_, after)) in &taken {
+            if !moving.contains(id) {
+                continue;
+            }
+            let Some(e) = m.elements.get(*id) else { continue };
+            if let Some(corrected) = Element::of_run(e.category(), after.clone())
+                && let Some(slot) = others.iter_mut().find(|(other, _)| other == id)
+            {
+                slot.1 = corrected;
             }
         }
     }
     // Walls staying put stretch to keep their joins with the taken ones: an end on a taken wall's
-    // end goes with it; an end on a taken wall's span slides along its own wall onto it.
+    // end goes with it; an end on a taken wall's span slides along its own wall onto it. At a corner
+    // where a strip footing ends too, the wall's end and the footing's go together, as walls' do.
     let moved: Vec<(Wall, Wall)> = walls.iter().filter_map(|(id, w)| Some((old(id)?.clone(), w.clone()))).collect();
-    // The walls whose ends may lie on a taken wall's line as it was.
+    // The walls whose ends may lie on a taken wall's line as it was, and those near a taken footing: its end
+    // or span may meet a wall's end there, as the footing's own outline meets it.
     let boxes: Vec<_> = moved.iter().map(|(before, _)| (crate::derived::axis_box(before), m.base_z(before), m.top_z(before))).collect();
-    let near = if boxes.is_empty() { BTreeSet::new() } else { lookup.walls_near_at(&boxes, 2.0 * TOL) };
+    let mut near = if boxes.is_empty() { BTreeSet::new() } else { lookup.walls_near_at(&boxes, 2.0 * TOL) };
+    for (rid, (before, _)) in &taken {
+        let Some(e) = m.elements.get(*rid) else { continue };
+        let Some(g) = m.run_geom(e) else { continue };
+        if e.category() != "stripfooting" || !before.join {
+            continue;
+        }
+        let box_of = [
+            before.start.0.min(before.end.0),
+            before.start.1.min(before.end.1),
+            before.start.0.max(before.end.0),
+            before.start.1.max(before.end.1),
+        ];
+        let (lo, hi) = g.z_span();
+        near.extend(lookup.walls_near_at(&[(box_of, lo - TOL, hi + TOL)], thickest + g.width / 2.0 + 1.0));
+    }
     for id in near {
         let Some(w) = m.wall(id) else { continue };
         // An unjoined wall stretches for no one, as it joins nothing itself.
@@ -11286,43 +11454,83 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                     break;
                 }
             }
+            // A strip footing meets a wall by its top touching the wall's base, as it does in the run's own
+            // outline: the wall's end goes with a footing's the same way it goes with another wall's.
+            for (rid, (before, after)) in taken.iter() {
+                if !before.join || !after.join || !crate::runs::flat(before) {
+                    continue;
+                }
+                let Some(e) = m.elements.get(*rid) else { continue };
+                if e.category() != "stripfooting" {
+                    continue;
+                }
+                let Some(g) = m.run_geom(e) else { continue };
+                let (lo, hi) = g.z_span();
+                if !(lo - TOL <= m.top_z(w) && m.base_z(w) - TOL <= hi) {
+                    continue;
+                }
+                // A footing simply running on under the wall keeps its length: only a real corner, where
+                // another element also ends, takes the footing's end with the wall's.
+                let same = w.arc == 0.0 && same_way((w.start, w.end), (before.start, before.end));
+                if same && arms_at(m, at, (m.base_z(w), m.top_z(w))) <= 2 {
+                    continue;
+                }
+                if at.dist(before.start) <= TOL || at.dist(before.end) <= TOL {
+                    *end = if at.dist(before.start) <= TOL { after.start } else { after.end };
+                    break;
+                }
+                if geom::dist_to_segment(at, before.start, before.end) <= TOL {
+                    let straight = w.arc == 0.0;
+                    *end =
+                        geom::line_intersection(w.start, w.end, after.start, after.end).filter(|_| straight).map_or_else(|| f(at), micron);
+                    break;
+                }
+            }
         }
         if n != *w {
             walls.insert(id, n);
         }
     }
-    // Glued footings move with their walls; make that planned move a taken run before finding what stretches to
-    // keep its joins. Otherwise an angled footing sees only the old position and stays behind after the glue runs.
-    let glued: Vec<(Id, crate::model::Run, crate::model::Run)> = if end.is_none() {
-        let walls: Vec<Id> = walls.keys().copied().collect();
-        crate::glue::footings_of(m, &walls)
-            .into_iter()
-            .filter_map(|(fid, _)| {
-                let r = m.run_of(fid)?.clone();
-                let after = crate::glue::mapped(&r, f);
-                Some((fid, r, after))
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
-    for (id, before, after) in &glued {
-        if !moving.contains(id) {
-            taken.entry(*id).or_insert_with(|| (before.clone(), after.clone()));
+    // A footing glued to a wall the move dragged (not taken itself) rides it too. Under a taken wall it takes the
+    // command's motion, as the footing under either of two collinear wall segments does; under a dragged wall it
+    // follows that wall's own new line, so a corner does not push it past the wall it carries.
+    let mut glued_ids: BTreeSet<Id> = glued.iter().map(|(id, ..)| *id).collect();
+    let glued_walls: Vec<Id> = walls.keys().copied().collect();
+    for (fid, _) in if end.is_none() { crate::glue::footings_of(m, &glued_walls) } else { Vec::new() } {
+        if glued_ids.contains(&fid) {
+            continue;
         }
+        let Some(before) = m.run_of(fid).cloned() else { continue };
+        let category = m.elements.get(fid).map(|e| e.category()).unwrap_or_default();
+        let under_taken = moved.iter().any(|(wall, _)| crate::glue::holds(m, wall, &before, category));
+        let along_wall =
+            (!under_taken).then(|| crate::glue::wall_of(m, fid)).flatten().and_then(|w| Some((m.wall(w)?.clone(), walls.get(&w)?.clone())));
+        let after = match along_wall {
+            Some((was, now)) => {
+                let u = was.end - was.start;
+                let along = |p: P2| {
+                    if u.length() <= TOL { f(p) } else { now.start + (now.end - now.start) * ((p - was.start).dot(u) / u.dot(u)) }
+                };
+                crate::glue::mapped(&before, along)
+            }
+            None => crate::glue::mapped(&before, f),
+        };
+        taken.insert(fid, (before.clone(), after.clone()));
+        glued.push((fid, before, after));
+        glued_ids.insert(fid);
     }
     // Runs staying put stretch to keep their joins with the taken ones, as the walls above do: an end on
     // a taken run's end goes with it; an end on its span slides along the staying run's own line onto the
-    // intersection. What refuses to join, doesn't lie flat, or shares no category or heights with the
-    // taken run is left where it is — the flags act on the whole element, both ends alike.
-    if !taken.is_empty() {
-        let index = crate::walls::Index::new(m);
+    // intersection. A strip footing takes a taken wall's end at a corner the same way, and what refuses to
+    // join, doesn't lie flat, or shares no category or heights with the taken run is left where it is — the
+    // flags act on the whole element, both ends alike.
+    if !taken.is_empty() || !moved.is_empty() {
         // The heights a run reaches: its section's, worked out as every view draws it — of a taken run
         // from the model, whose plan a command changes nothing of (its heights are what stay put).
         let span_of = |id: &Id| m.elements.get(*id).and_then(|e| m.run_geom(e)).map(|g| g.z_span());
         let box_of =
             |r: &crate::model::Run| [r.start.0.min(r.end.0), r.start.1.min(r.end.1), r.start.0.max(r.end.0), r.start.1.max(r.end.1)];
-        let met: BTreeSet<Id> = taken
+        let mut met: BTreeSet<Id> = taken
             .iter()
             .filter(|(id, (before, after))| {
                 before.join && after.join && crate::runs::flat(before) && crate::runs::flat(after) && span_of(id).is_some()
@@ -11332,6 +11540,15 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                 index.runs_near_box(box_of(before), 2.0 * TOL, lo, hi)
             })
             .collect();
+        // A strip footing ending on a taken wall follows it too: the touch of its top with the wall's base
+        // is its joint, as the run's own outline has it.
+        for (before, after) in &moved {
+            if !before.join || !after.join {
+                continue;
+            }
+            let (lo, hi) = (m.base_z(before), m.top_z(before));
+            met.extend(index.runs_near_box(crate::derived::axis_box(before), 2.0 * TOL, lo - TOL, hi + TOL));
+        }
         for id in met {
             if moving.contains(&id) {
                 continue;
@@ -11365,6 +11582,35 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                     }
                     if geom::dist_to_segment(at, before.start, before.end) <= TOL {
                         *end = geom::line_intersection(r.start, r.end, after.start, after.end).map_or_else(|| f(at), micron);
+                        break;
+                    }
+                }
+                if category != "stripfooting" {
+                    continue;
+                }
+                for (before, after) in moved.iter().filter(|(before, after)| before.join && after.join) {
+                    let (wlo, whi) = (m.base_z(before), m.top_z(before));
+                    if !(lo - TOL <= whi && wlo - TOL <= hi) {
+                        continue;
+                    }
+                    // As above: a wall running on over the footing leaves its length be; a corner takes it.
+                    let same = before.arc == 0.0 && same_way((r.start, r.end), (before.start, before.end));
+                    if same && arms_at(m, at, (lo, hi)) <= 2 {
+                        continue;
+                    }
+                    if at.dist(before.start) <= TOL {
+                        *end = after.start;
+                        break;
+                    }
+                    if at.dist(before.end) <= TOL {
+                        *end = after.end;
+                        break;
+                    }
+                    if geom::dist_to_segment(at, before.start, before.end) <= TOL {
+                        let straight = before.arc == 0.0 && after.arc == 0.0;
+                        *end = geom::line_intersection(r.start, r.end, after.start, after.end)
+                            .filter(|_| straight)
+                            .map_or_else(|| f(at), micron);
                         break;
                     }
                 }

@@ -159,7 +159,8 @@ a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and
 Enter places the point along it; a point lined up with a wall says which: "Lines up with wall 100231", the core's
 `AlignmentResult::wall_id`), and a point that moves with the cursor goes through them. A selected wall's ends are
 grips (`grip_drag`): a drag runs `move` with `end`, Ctrl keeps the length; the angle beside each end runs `rotate` about it. A
-wall joined at the end that moves keeps its joint, which slides along the wall it meets, so lengths change.
+wall joined at the end that moves keeps its joint, which slides along the wall it meets, so lengths change. At a corner where
+a strip footing ends with it and another element also ends there, the footing's end goes with the wall's, as another wall's would.
 
 A click is made where the button was, not where the hand has got to. egui reads a click's position, and what lay under it, from the
 pointer's last position in the frame, and counts two clicks in a frame as one, so a hand that moves on in the time between frames
