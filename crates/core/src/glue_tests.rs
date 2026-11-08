@@ -78,6 +78,26 @@ fn a_glued_footing_moves_and_turns_with_its_wall_in_plan() {
 }
 
 #[test]
+fn a_footing_joined_to_a_glued_footing_stretches_to_the_new_intersection() {
+    let mut s = session(
+        r#"wall {"points": [[0, 0], [6000, 0]]}
+           strip_footing {"points": [[0, 0], [6000, 0]]}
+           strip_footing {"points": [[3000, 4000], [3000, 0]]}"#,
+    );
+    let wall_id = s.model.elements.iter().find(|(_, e)| e.category() == "wall").map(|(id, _)| *id).unwrap();
+    let mut footings: Vec<u64> = s.model.elements.iter().filter(|(_, e)| e.category() == "stripfooting").map(|(id, _)| *id).collect();
+    footings.sort_unstable();
+    let [under_wall, joined_at_angle] = footings[..] else { panic!() };
+    assert_eq!(crate::glue::wall_of(&s.model, under_wall), Some(wall_id), "the first footing is glued to the wall");
+
+    s.execute("move", &json!({"ids": [wall_id], "by": [0.0, 1000.0]})).unwrap();
+
+    assert_eq!((run(&s, under_wall).start, run(&s, under_wall).end), (P2(0.0, 1000.0), P2(6000.0, 1000.0)));
+    assert_eq!(run(&s, joined_at_angle).start, P2(3000.0, 4000.0), "the free end stays put");
+    assert_eq!(run(&s, joined_at_angle).end, P2(3000.0, 1000.0), "only the junction follows the new intersection");
+}
+
+#[test]
 fn the_glue_goes_and_comes_as_the_geometry_does() {
     let (mut s, wall_id, footing) = under();
     // The footing moved by hand a metre north: their lines no longer bear on one another. It lets go of the wall

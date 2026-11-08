@@ -11291,6 +11291,26 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             walls.insert(id, n);
         }
     }
+    // Glued footings move with their walls; make that planned move a taken run before finding what stretches to
+    // keep its joins. Otherwise an angled footing sees only the old position and stays behind after the glue runs.
+    let glued: Vec<(Id, crate::model::Run, crate::model::Run)> = if end.is_none() {
+        let walls: Vec<Id> = walls.keys().copied().collect();
+        crate::glue::footings_of(m, &walls)
+            .into_iter()
+            .filter_map(|(fid, _)| {
+                let r = m.run_of(fid)?.clone();
+                let after = crate::glue::mapped(&r, f);
+                Some((fid, r, after))
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    for (id, before, after) in &glued {
+        if !moving.contains(id) {
+            taken.entry(*id).or_insert_with(|| (before.clone(), after.clone()));
+        }
+    }
     // Runs staying put stretch to keep their joins with the taken ones, as the walls above do: an end on
     // a taken run's end goes with it; an end on its span slides along the staying run's own line onto the
     // intersection. What refuses to join, doesn't lie flat, or shares no category or heights with the
@@ -11359,19 +11379,6 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
     // The strip footings glued to the walls taken whole ride them in plan, by the very transformation: their
     // lines are the walls', so the lines still are after. A wall's end dragged (with `end`) doesn't move its
     // footing as a whole: the condition is left to be read again after the command.
-    let glued: Vec<(Id, crate::model::Run, crate::model::Run)> = if end.is_none() {
-        let walls: Vec<Id> = walls.keys().copied().collect();
-        crate::glue::footings_of(m, &walls)
-            .into_iter()
-            .filter_map(|(fid, _)| {
-                let r = m.run_of(fid)?.clone();
-                let after = crate::glue::mapped(&r, f);
-                Some((fid, r, after))
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
     for (id, _, after) in glued {
         if moving.contains(&id) {
             continue;
