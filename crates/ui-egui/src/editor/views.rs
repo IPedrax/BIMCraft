@@ -70,6 +70,16 @@ pub(crate) struct Views {
     pub(crate) status: Option<String>,
     /// Where on screen the view was last shown.
     pane: Option<Rect>,
+    /// The reference line selected, by GUID (F7d).
+    pub(crate) line: Option<Guid>,
+    /// Pivot, on: the line or plane the next click pins.
+    pub(crate) pivoting: Option<Guid>,
+    /// A grip being dragged, and where the pointer was (the view's mm).
+    pub(super) grip: Option<(super::pivot::Grip, P2)>,
+    /// Where the selected element's grips were last shown on screen.
+    pub(crate) grips_shown: Vec<(super::pivot::Grip, egui::Pos2)>,
+    /// What is typed in a pivot's rows of Properties: its element, its angle, its minimum and its maximum.
+    pub(crate) pivot_text: Option<(Guid, String, String, String)>,
 }
 
 /// A view drawn: what it was drawn of, its scratch model, its frame and drawing (to pick in) and its picture.
@@ -523,6 +533,15 @@ impl FamilyEditor {
             (Some(d), Some(f)) if editable => dims::marks_of(d, f, &values, &c.staged, which, placing),
             _ => Vec::new(),
         };
+        // Pivots (F7d): their marks, and the selected element's grips.
+        let pivots = match family.as_ref() {
+            Some(f) if editable => bimcraft_core::family::constraints::pivot_marks(f, &values, &c.staged, which),
+            _ => Vec::new(),
+        };
+        let grips = match family.as_ref() {
+            Some(f) if editable => self.grips(&pivots, f, &c.staged, which, &on_screen),
+            _ => Vec::new(),
+        };
         let selected_dim = self.selected_dimension();
         let unsatisfied: Vec<Guid> = self.views.unsatisfied.as_ref().map(|u| u.dims.clone()).unwrap_or_default();
         // Where Align's padlocks go: beside their lines, clear of every line drawn and of each other (`padlock_spot`), the
@@ -674,6 +693,32 @@ impl FamilyEditor {
                 }
             }
         }
+        // The reference line selected, its pivots' marks and its grips (F7d).
+        if editable
+            && let (Some(g), Some(f)) = (self.selected_line(), family.as_ref())
+            && let Some(l) = f.lines.iter().find(|l| l.guid == g)
+        {
+            let (a, b) = (c.staged.to_view(which, l.start), c.staged.to_view(which, l.end));
+            painter.line_segment([screen(a), screen(b)], Stroke::new(2.5, PICKED));
+        }
+        let chosen = self.selected_line().or_else(|| self.selected_plane());
+        let turning = match self.views.grip {
+            Some((super::pivot::Grip::Rotate(g), _)) => Some(g),
+            _ => None,
+        };
+        super::pivot::paint(&painter, &pivots, &on_screen, chosen, turning);
+        let ends: Vec<(super::pivot::Grip, egui::Pos2)> =
+            grips.iter().filter(|(g, _)| matches!(g, super::pivot::Grip::End(..))).copied().collect();
+        super::pivot::paint_ends(&painter, &ends);
+        self.views.grips_shown = grips.clone();
+        // Pivot, on: the point the click would pin it to, ringed.
+        if self.views.pivoting.is_some()
+            && let (Some(h), Some(f)) = (response.hover_pos(), family.as_ref())
+        {
+            let targets = bimcraft_core::family::constraints::pivot_targets(f, &values, &c.staged, which);
+            let (_, p) = super::pivot::target(&c.staged, which, &targets, at_view(h), &on_screen);
+            painter.circle_stroke(screen(c.staged.to_view(which, p)), 7.0, Stroke::new(2.0, PICKED));
+        }
         // Work Plane > Show: the plane tinted, all over where the view looks straight at it, along its trace where across it.
         if editable
             && self.views.show_work_plane
@@ -727,6 +772,30 @@ impl FamilyEditor {
             self.views.end_drag = Some((end, to, n));
         }
         let mut select: Option<(Option<usize>, Option<Guid>)> = None;
+        let mut select_line: Option<Option<Guid>> = None;
+        let mut pin: Option<(Guid, (bimcraft_core::family::PivotPoint, bimcraft_core::family::PivotAt))> = None;
+        let mut grip_moved: Option<super::pivot::GripMove> = None;
+        // A grip pressed (F7d): the rotate grip, or a line's end; the drag is the grip's.
+        if editable
+            && response.drag_started_by(PointerButton::Primary)
+            && let Some(p) = ui.input(|i| i.pointer.press_origin())
+            && let Some((grip, _)) = grips.iter().find(|(_, at)| at.distance(p) <= super::pivot::REACH)
+        {
+            self.views.grip = Some((*grip, at_view(p)));
+        }
+        if let Some((grip, last)) = self.views.grip
+            && response.dragged_by(PointerButton::Primary)
+            && let Some(now) = response.interact_pointer_pos().map(at_view)
+            && now != last
+        {
+            grip_moved = Some(match grip {
+                super::pivot::Grip::Rotate(g) => super::pivot::GripMove::Rotate(g, c.staged.from_view(which, now)),
+                super::pivot::Grip::End(g, spot) => {
+                    super::pivot::GripMove::End(g, spot, c.staged.vector(which, P2(now.0 - last.0, now.1 - last.1)))
+                }
+            });
+            self.views.grip = Some((grip, now));
+        }
         let mut select_nested: Option<usize> = None;
         let mut place_at: Option<(PlaneRef, (f64, f64), f64)> = None;
         let mut moved: Option<(Guid, [f64; 3])> = None;
@@ -752,6 +821,13 @@ impl FamilyEditor {
                 // Pick a line: the reference line within the reach a plane's trace has.
                 let line = c.staged.line_at(which, q, 6.0 / view.scale.max(1e-9));
                 picked_work_plane = Some((pick_plane(p), line));
+            } else if let Some(g) = self.views.pivoting {
+                // Pivot: the point the element is pinned to.
+                self.views.pivoting = None;
+                pin = family
+                    .as_ref()
+                    .and_then(|f| super::pivot::picked(f, &values, &c.staged, which, g, q, &on_screen, view.scale))
+                    .map(|x| (g, x));
             } else if let Some(first) = self.views.drawing {
                 match first {
                     None => self.views.drawing = Some(Some(q)),
@@ -839,13 +915,20 @@ impl FamilyEditor {
             } else if let Some(i) = family.as_ref().and_then(|f| fv::nested_at(f, &values, &c.staged, which, q)) {
                 select_nested = Some(i);
             } else {
-                let plane = pick_plane(p);
+                // A reference line where the view draws it (F7d): over the planes' traces and the forms, as it is drawn.
+                let line = c
+                    .staged
+                    .line_at(which, q, 6.0 / view.scale.max(1e-9))
+                    .and_then(|i| family.as_ref().and_then(|f| f.lines.get(i)).map(|l| l.guid));
+                let plane = if line.is_some() { None } else { pick_plane(p) };
                 let form = family.as_ref().and_then(|f| fv::form_at(f, &values, &c.staged, which, q));
-                select = Some(match (plane, form) {
-                    (Some(g), _) => (None, Some(g)),
-                    (None, Some(i)) => (Some(i), None),
-                    (None, None) => (None, None),
+                select = Some(match (plane, line, form) {
+                    (Some(g), _, _) => (None, Some(g)),
+                    (None, Some(_), _) => (None, None),
+                    (None, None, Some(i)) => (Some(i), None),
+                    (None, None, None) => (None, None),
                 });
+                select_line = Some(line);
             }
         }
         // A plane of the family's own, selected, dragged square to itself.
@@ -853,6 +936,7 @@ impl FamilyEditor {
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.end_drag.is_none()
+            && self.views.grip.is_none()
             && response.dragged_by(PointerButton::Primary)
         {
             let now = response.interact_pointer_pos().map(at_view);
@@ -860,7 +944,8 @@ impl FamilyEditor {
             if response.drag_started()
                 && let Some(p) = ui.input(|i| i.pointer.press_origin())
             {
-                let own = self.selected_plane().filter(|g| self.planes.iter().any(|q| q.guid == *g && !q.datum()));
+                // A plane its pivot holds turns by its grip, never slides (F7d).
+                let own = self.selected_plane().filter(|g| self.planes.iter().any(|q| q.guid == *g && !q.datum() && q.pivot.is_none()));
                 self.views.drag = own.filter(|g| pick_plane(p) == Some(*g)).map(|_| at_view(p));
             }
             if let (Some(from), Some(to), Some(g)) = (self.views.drag, now, self.selected_plane()) {
@@ -871,6 +956,7 @@ impl FamilyEditor {
         if response.drag_stopped() {
             self.views.drag = None;
             self.views.end_drag = None;
+            self.views.grip = None;
         }
         self.zoom_and_pan(ui, &response, which, view.scale);
         if let Some((end, d)) = end_moved
@@ -925,11 +1011,22 @@ impl FamilyEditor {
         if let Some(i) = select_nested {
             self.select_nested(Some(i));
         }
+        if let Some(m) = grip_moved
+            && let Some(e) = self.drag_grip(m)
+        {
+            problem = Some(e);
+        }
+        if let Some((g, (to, at))) = pin
+            && let Err(e) = self.set_pivot(g, to, at)
+        {
+            problem = Some(e);
+        }
         if let Some((form, plane)) = select {
             self.nested_sel = None;
             self.views.dim = None;
             self.form = form;
             self.views.plane = plane;
+            self.views.line = select_line.flatten();
             if let Some(i) = form {
                 self.tab = Tab::Forms;
                 self.document.reveal = Some(i);
@@ -970,6 +1067,8 @@ impl FamilyEditor {
                 defines_origin: false,
                 subcategory: None,
                 level: false,
+                pivot: None,
+                turned: None,
             });
             self.views.plane = Some(guid);
             self.form = None;

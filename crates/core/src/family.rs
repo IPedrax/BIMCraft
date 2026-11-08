@@ -29,7 +29,10 @@ pub mod views;
 
 pub(crate) use validate::check_family_edits;
 
-pub use constraints::{DimKind, DimRef, DimView, Extent, FamilyDimension, MAX_DIMENSIONS, Spot, Unsat};
+pub use constraints::{
+    DimKind, DimRef, DimView, Extent, FamilyDimension, MAX_DIMENSIONS, MAX_SWING, Pivot, PivotAt, PivotFrom, PivotMark, PivotPoint,
+    Pivoted, Spot, Unsat,
+};
 pub use nested::{Keep, NestedFamily, NestedInstance};
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 
@@ -1653,6 +1656,12 @@ impl Family {
                 d.label = Some(new.to_string());
             }
         }
+        // A pivot's angle (F7d).
+        for piv in self.lines.iter_mut().filter_map(|l| l.pivot.as_mut()).chain(self.planes.iter_mut().filter_map(|p| p.pivot.as_mut())) {
+            if piv.parameter.as_deref() == Some(old) {
+                piv.parameter = Some(new.to_string());
+            }
+        }
         // Its nested instances' places and the host parameters their "=" names: a word parameter's by its whole name.
         for i in 0..self.nested_instances.len() {
             let words: Vec<String> = self.instance_words(&self.nested_instances[i]).into_iter().map(String::from).collect();
@@ -1906,6 +1915,7 @@ impl Family {
         }
         self.check_planes()?;
         self.check_dimensions()?;
+        self.check_pivots()?;
         if self.category.hosted() {
             for name in [WIDTH, HEIGHT] {
                 if !self.parameters.iter().any(|p| p.name == name && p.kind == Kind::Length && !p.reporting) {
@@ -2057,6 +2067,7 @@ impl Family {
                 .and_then(|v| {
                     self.marks_metered(&v, &mut meter)?;
                     self.check_dimensions_for(&v)?;
+                    self.check_pivot_values(&v)?;
                     // Its dimensions solved for the type: what they hold built where they put it.
                     let mut pieces = match self.flexed_with(&v, &mut solving).map_err(|e| e.to_string())? {
                         Cow::Borrowed(_) => {

@@ -645,6 +645,8 @@ impl FamilyEditor {
         self.views.align_lock = None;
         self.views.plane = None;
         self.views.dim = None;
+        self.views.line = None;
+        self.views.pivoting = None;
         self.form = None;
     }
 
@@ -764,6 +766,7 @@ impl FamilyEditor {
                     }
                 }
                 Edit::Turn(i, k, t) => self.turn_sketch_arc(i, k, t),
+                Edit::PivotAngle(..) => super::pivot::apply_angle(&mut self.lines, &mut self.planes, &e),
                 Edit::Parameter(name, v) => {
                     let Some(at) = self.param_at(&name) else { continue };
                     let text = number_text(v);

@@ -13,7 +13,10 @@ use super::sketch::{FormCurve, FormLine};
 use super::*;
 use crate::ids::{Guid, Id};
 use crate::model::{Lock, TOL};
-use crate::view3d::dot;
+use crate::view3d::{dot, sub};
+
+mod pivot;
+pub use pivot::{MAX_SWING, Pivot, PivotAt, PivotFrom, PivotMark, PivotPoint, Pivoted, Rotation, pivot_marks, pivot_targets};
 
 /// Dimensions one family may hold, and references one dimension may measure between.
 pub const MAX_DIMENSIONS: usize = 1000;
@@ -340,12 +343,14 @@ enum Unknown {
     LineAngle(usize),
     LineLength(usize),
     Turn(usize, usize),
+    /// A plane its pivot turns, about its axis from as drawn (radians; F7d).
+    PlaneTurn(usize),
 }
 
 impl Unknown {
     /// Whether rows that read it are non-linear: a line's angle and length and an arc's turn are read through sines.
     fn turns(&self) -> bool {
-        matches!(self, Unknown::LineStart(..) | Unknown::LineAngle(_) | Unknown::LineLength(_) | Unknown::Turn(..))
+        matches!(self, Unknown::LineStart(..) | Unknown::LineAngle(_) | Unknown::LineLength(_) | Unknown::Turn(..) | Unknown::PlaneTurn(_))
     }
 }
 
@@ -554,11 +559,13 @@ struct Row {
     lin: Lin,
     dim: Option<usize>,
     soft: bool,
+    /// The pivot it holds, as a message names it (F7d).
+    pivot: Option<String>,
 }
 
 impl Row {
     fn hard(lin: Lin, dim: Option<usize>) -> Row {
-        Row { lin, dim, soft: false }
+        Row { lin, dim, soft: false, pivot: None }
     }
 }
 
@@ -607,6 +614,8 @@ pub struct Solution {
     pub lines: Vec<(usize, [f64; 4])>,
     /// Each arc's turn the constraints set: the form's place, the line's, and the turn in degrees.
     pub turns: Vec<(usize, usize, f64)>,
+    /// Each plane its pivot turned (F7d): its place in `planes`, its axes as it now stands and the turn (radians).
+    pub turned_planes: Vec<(usize, Frame, f64)>,
 }
 
 /// A change a drag or Align asks of the draft: a plane's offset along its normal, an extrusion end's value, a parameter's, a
@@ -622,6 +631,8 @@ pub enum Edit {
     Line(Guid, P3),
     LineEnds(Guid, P3, P3),
     Turn(usize, usize, f64),
+    /// A pivot's own angle (degrees), where no parameter labels it (F7d): the line's or the plane's GUID.
+    PivotAngle(Guid, f64),
 }
 
 /// What a solve holds where it is told, besides the constraints: a plane at an offset along its normal, or a reference at a
@@ -885,6 +896,9 @@ impl<'f> Problem<'f> {
     fn host_ad(&self, host: &PlaneRef, depth: usize) -> Result<AdFrame, String> {
         match *host {
             PlaneRef::Plane(g) => {
+                if let Some(i) = self.turning_plane(g) {
+                    return self.plane_frame_ad(i, depth);
+                }
                 let fr = self.family.frame(host)?;
                 let (z, lin) = self.plane_pos(g)?;
                 Ok(AdFrame { origin: vmul(&v3(z), &lin.ad(&self.at)), x: v3(fr.x), y: v3(fr.y), z: v3(fr.z) })
@@ -947,7 +961,7 @@ impl<'f> Problem<'f> {
                 return true;
             }
             match self.family.lines[i].host {
-                PlaneRef::Plane(_) => return false,
+                PlaneRef::Plane(h) => return self.turning_plane(h).is_some(),
                 PlaneRef::Line(h, _) => at = h,
             }
         }
@@ -1016,6 +1030,9 @@ impl<'f> Problem<'f> {
         let PlaneRef::Plane(h) = s.host else {
             return Ok(vdotk(&self.sketch_point(s, &self.vertex_ad(s.form, v))?, m).lin(&self.at));
         };
+        if self.turning_plane(h).is_some() {
+            return Ok(vdotk(&self.sketch_point(s, &self.vertex_ad(s.form, v))?, m).lin(&self.at));
+        }
         let (z, host) = self.plane_pos(h)?;
         Ok(host
             .scaled(dot(m, z))
@@ -1087,6 +1104,9 @@ impl<'f> Problem<'f> {
     {
         let signed = |n: P3, lin: Lin| if dot(n, m) < 0.0 { lin.scaled(-1.0) } else { lin };
         match *r {
+            DimRef::Plane(g) if self.turning_plane(g).is_some() => {
+                Ok(vdotk(&self.host_ad(&PlaneRef::Plane(g), DEPTH)?.origin, m).lin(&self.at))
+            }
             DimRef::Plane(g) => {
                 let (z, lin) = self.plane_pos(g)?;
                 Ok(signed(z, lin))
@@ -1097,8 +1117,9 @@ impl<'f> Problem<'f> {
                     Some(u) => Lin::of(u, 1.0),
                     None => Lin::number(number(end_expr(form, end), values, read)?),
                 };
-                let PlaneRef::Plane(h) = form.host else {
-                    // On a reference line's face (F7c): along the face's normal as it turns.
+                let turning = matches!(form.host, PlaneRef::Plane(h) if self.turning_plane(h).is_some());
+                let (PlaneRef::Plane(h), false) = (form.host, turning) else {
+                    // On a reference line's face (F7c), or a plane a pivot turns (F7d): along the face's normal as it turns.
                     let f = self.host_ad(&form.host, DEPTH)?;
                     return Ok(vdotk(&vadd(&f.origin, &vmul(&f.z, &value.ad(&self.at))), m).lin(&self.at));
                 };
@@ -1146,7 +1167,9 @@ impl<'f> Problem<'f> {
     /// itself (F7c).
     fn unknowns_of(&self, r: &DimRef, kind: DimKind, add: &mut dyn FnMut(Unknown)) {
         let f = self.family;
-        let own = |g: Guid| f.planes.iter().position(|p| p.guid == g && !p.datum() && !p.defines_origin);
+        let own = |g: Guid| f.planes.iter().position(|p| p.guid == g && !p.datum() && !p.defines_origin && p.pivot.is_none());
+        // A plane a pivot turns: its turn, whatever measures it (F7d).
+        let pivoted = |g: Guid| f.planes.iter().position(|p| p.guid == g && p.pivot.is_some() && !p.datum());
         let line = |g: Guid, add: &mut dyn FnMut(Unknown)| {
             if let Some(i) = f.lines.iter().position(|l| l.guid == g) {
                 add(Unknown::LineStart(i, 0));
@@ -1160,6 +1183,7 @@ impl<'f> Problem<'f> {
                 if kind != DimKind::Angular {
                     own(g).into_iter().for_each(|i| add(Unknown::Plane(i)));
                 }
+                pivoted(g).into_iter().for_each(|i| add(Unknown::PlaneTurn(i)));
             }
             DimRef::Form(g, end) => {
                 if let Some(i) = f.forms.iter().position(|x| x.guid == g) {
@@ -1196,12 +1220,14 @@ impl<'f> Problem<'f> {
                     && let PlaneRef::Plane(h) = s.host
                 {
                     own(h).into_iter().for_each(|i| add(Unknown::Plane(i)));
+                    pivoted(h).into_iter().for_each(|i| add(Unknown::PlaneTurn(i)));
                 }
             }
             DimRef::Line(g, _) | DimRef::LinePoint(g, _) => {
                 if kind != DimKind::Angular {
                     line_root(f, g).and_then(own).into_iter().for_each(|i| add(Unknown::Plane(i)));
                 }
+                line_root(f, g).and_then(pivoted).into_iter().for_each(|i| add(Unknown::PlaneTurn(i)));
                 line(g, add);
             }
         }
@@ -1274,7 +1300,8 @@ impl<'f> Problem<'f> {
                     return Err(ANGULAR_REFS.into());
                 }
                 let f = self.host_ad(&PlaneRef::Plane(g), DEPTH)?;
-                (f.origin, v3(cross(eye, z)))
+                let way = vcross(&v3(eye), &f.z);
+                (f.origin, way)
             }
             DimRef::Line(g, _) => {
                 let (_, start, end, _) = self.line_ends(g, DEPTH)?;
@@ -1665,7 +1692,7 @@ impl Family {
     /// Whether it has a dimension that constrains anything: else flexing has nothing to do.
     pub fn constrained(&self) -> bool {
         let reporting = |l: &str| self.reporting(l);
-        self.dimensions.iter().any(|d| d.constrains(&reporting))
+        self.dimensions.iter().any(|d| d.constrains(&reporting)) || !self.pivots().is_empty()
     }
 
     /// Its dimensions solved for `values`: where the planes, extrusion ends and sketch points they hold go, the least change
@@ -1684,10 +1711,23 @@ impl Family {
         let constraining: Vec<(usize, &FamilyDimension)> =
             self.dimensions.iter().enumerate().filter(|(_, d)| d.constrains(&reporting)).collect();
         let mut read = HashMap::new();
-        let refs = constraining.iter().flat_map(|(_, d)| d.refs.iter().copied()).chain(pins.iter().filter_map(|p| match p {
-            Pin::Ref(r, ..) => Some(*r),
-            Pin::Plane(..) => None,
-        }));
+        // The sketches pivots are pinned to are read too (F7d).
+        let pivot_refs: Vec<DimRef> = self
+            .pivots()
+            .into_iter()
+            .filter_map(|(_, p)| match p.to {
+                PivotPoint::Sketch(f, l, s) => Some(DimRef::Point(f, l, s)),
+                _ => None,
+            })
+            .collect();
+        let refs = constraining
+            .iter()
+            .flat_map(|(_, d)| d.refs.iter().copied())
+            .chain(pins.iter().filter_map(|p| match p {
+                Pin::Ref(r, ..) => Some(*r),
+                Pin::Plane(..) => None,
+            }))
+            .chain(pivot_refs);
         let mut problem = Problem::new(self, refs, values, &mut read, meter).map_err(Unsat::from)?;
         // What may move: what a constraint or a pin holds, in the dimensions' order.
         let mut unknowns = Vec::new();
@@ -1708,6 +1748,18 @@ impl Family {
                     Pin::Ref(r, ..) => problem.unknowns_of(r, DimKind::Aligned, &mut add),
                 }
             }
+            // What pivots turn: a line's start, angle and length, a plane's turn (F7d).
+            for (e, _) in self.pivots() {
+                match e {
+                    Pivoted::Line(i) => {
+                        add(Unknown::LineStart(i, 0));
+                        add(Unknown::LineStart(i, 1));
+                        add(Unknown::LineAngle(i));
+                        add(Unknown::LineLength(i));
+                    }
+                    Pivoted::Plane(i) => add(Unknown::PlaneTurn(i)),
+                }
+            }
         }
         let mut x0 = Vec::with_capacity(unknowns.len());
         for u in &unknowns {
@@ -1726,6 +1778,7 @@ impl Family {
                 Unknown::LineAngle(i) => problem.line_drawn(i).map_err(Unsat::from)?[4],
                 Unknown::LineLength(i) => problem.line_drawn(i).map_err(Unsat::from)?[5],
                 Unknown::Turn(i, k) => problem.layouts.get(&i).and_then(|l| l.turn.get(k)).copied().unwrap_or(0.0).to_radians(),
+                Unknown::PlaneTurn(_) => 0.0,
             });
         }
         (problem.unknowns, problem.x0) = (unknowns, x0);
@@ -1743,6 +1796,10 @@ impl Family {
             .map(|u| match u {
                 Unknown::Plane(_) | Unknown::LineStart(..) | Unknown::LineLength(_) => 1.0,
                 Unknown::LineAngle(i) => 1.0 / problem.line_drawn(*i).map_or(1.0, |d| d[5]).max(1e-3),
+                Unknown::PlaneTurn(i) => {
+                    let p = self.planes.get(*i);
+                    1.0 / p.map_or(1.0, |p| dot(sub(p.end, p.start), sub(p.end, p.start)).sqrt()).max(1e-3)
+                }
                 Unknown::Turn(i, k) => {
                     let r = problem.layouts.get(i).and_then(|l| l.radius.get(*k)).copied().unwrap_or(1.0);
                     END_GIVES / r.max(1e-3)
@@ -1834,11 +1891,13 @@ impl Family {
         };
         // To a millionth of a millimetre, so what the arithmetic leaves over (500.00000000000006) doesn't show; angles as
         // they come.
-        let x: Vec<f64> = x
-            .into_iter()
-            .zip(&problem.unknowns)
-            .map(|(v, u)| if matches!(u, Unknown::LineAngle(_) | Unknown::Turn(..)) { v } else { (v * 1e6).round() / 1e6 })
-            .collect();
+        let x: Vec<f64> =
+            x.into_iter()
+                .zip(&problem.unknowns)
+                .map(|(v, u)| {
+                    if matches!(u, Unknown::LineAngle(_) | Unknown::Turn(..) | Unknown::PlaneTurn(_)) { v } else { (v * 1e6).round() / 1e6 }
+                })
+                .collect();
         if x.iter().any(|v| !v.is_finite() || v.abs() > MAX_COORD) {
             return Err(Unsat {
                 message: format!("{NOT_SATISFIED}: they would put a plane, a line, a form's end or a sketch past {MAX_COORD} mm"),
@@ -1881,9 +1940,23 @@ impl Family {
                 Unknown::LineAngle(i) => lines.entry(i).or_default()[2] = *v,
                 Unknown::LineLength(i) => lines.entry(i).or_default()[3] = *v,
                 Unknown::Turn(i, k) => out.turns.push((i, k, v.to_degrees())),
+                Unknown::PlaneTurn(_) => {}
             }
         }
         out.lines = lines.into_iter().collect();
+        // Each plane a pivot turned, its axes where it now stands (F7d).
+        problem.at = x.clone();
+        for (u, v) in problem.unknowns.iter().zip(&x) {
+            if let Unknown::PlaneTurn(i) = *u {
+                let f = problem.plane_frame_ad(i, DEPTH).map_err(Unsat::from)?;
+                let val = |a: &V3| [a[0].v, a[1].v, a[2].v];
+                let frame = Frame { origin: val(&f.origin), x: val(&f.x), y: val(&f.y), z: val(&f.z) };
+                if !frame.origin.iter().chain(&frame.x).chain(&frame.z).all(|c| c.is_finite() && c.abs() <= MAX_COORD) {
+                    return refuse(format!("they would put {} past {MAX_COORD} mm", self.pivoted_said(Pivoted::Plane(i))));
+                }
+                out.turned_planes.push((i, frame, *v));
+            }
+        }
         for ((i, vx), p) in vertices {
             let at = problem.layouts.get(&i).and_then(|l| l.points.get(vx));
             for (k, spot) in at.into_iter().flatten() {
@@ -1911,12 +1984,31 @@ impl Family {
         let mut rows: Vec<Row> = Vec::new();
         let mut soft: Vec<(Guid, Guid)> = Vec::new();
         let mut keep: Vec<usize> = Vec::new();
+        let mut turned_soft: Vec<Row> = Vec::new();
         for &(k, d) in constraining {
             let who = format!("dimension {}", k + 1);
             let at = |e: String| Unsat::from(format!("{who}: {e}"));
             let angular = d.kind == DimKind::Angular;
             // Each segment, the way it runs as drawn: a label or a lock is a length (an angle) along it.
-            let segments: Vec<Lin> = if d.kind.is_aligned() {
+            let turning = d.kind.is_aligned().then(|| {
+                d.refs.iter().find_map(|r| match r {
+                    DimRef::Plane(g) => problem.turning_plane(*g).map(|_| *g),
+                    _ => None,
+                })
+            });
+            let segments: Vec<Lin> = if let Some(Some(g)) = turning {
+                // An aligned dimension to a plane a pivot turns measures along its normal as it turns (F7d).
+                let stations = problem.turned_stations(d, g, values, read, &mut turned_soft).map_err(at)?;
+                let flips = memo
+                    .take(|| {
+                        Ok(stations
+                            .windows(2)
+                            .map(|w| if w[1].clone().minus(&w[0]).at(&problem.at) < -1e-9 { -1.0 } else { 1.0 })
+                            .collect())
+                    })
+                    .map_err(at)?;
+                stations.windows(2).zip(flips).map(|(w, f)| w[1].clone().minus(&w[0]).scaled(f)).collect()
+            } else if d.kind.is_aligned() {
                 let m = problem.way(d).map_err(at)?;
                 let mut stations: Vec<Lin> = Vec::new();
                 for r in &d.refs {
@@ -2040,18 +2132,35 @@ impl Family {
                 }
             }
         }
-        for (g, l) in soft {
+        // The pivots (F7d): their hard rows, then their own angles and the sketch lines kept parallel to turning planes, soft,
+        // before F7b's and F7c's soft rows.
+        let mut pivot_soft = Vec::new();
+        problem.pivot_rows(values, &mut rows, &mut pivot_soft)?;
+        rows.extend(pivot_soft);
+        let parallel_to_turned: Vec<(Guid, Guid)> = constraining
+            .iter()
+            .filter(|(_, d)| {
+                d.kind.is_aligned() && d.refs.iter().any(|r| matches!(r, DimRef::Plane(g) if problem.turning_plane(*g).is_some()))
+            })
+            .flat_map(|(_, d)| d.refs.iter())
+            .filter_map(|r| match r {
+                DimRef::Sketch(g, l) => Some((*g, *l)),
+                _ => None,
+            })
+            .collect();
+        rows.extend(turned_soft);
+        for (g, l) in soft.into_iter().filter(|x| !parallel_to_turned.contains(x)) {
             let s = problem.seen(g, l).map_err(Unsat::from)?;
             let n = problem.across(&s).map_err(Unsat::from)?;
             let a = problem.vertex_along(&s, s.ends.0, n).map_err(Unsat::from)?;
             let b = problem.vertex_along(&s, s.ends.1, n).map_err(Unsat::from)?;
-            rows.push(Row { lin: b.minus(&a), dim: None, soft: true });
+            rows.push(Row { lin: b.minus(&a), dim: None, soft: true, pivot: None });
         }
         // A reference line measured across keeps its angle on what it is drawn on, unless the rows before turn it (F7c).
         for i in keep {
             if let Some(u) = problem.unknown(Unknown::LineAngle(i)) {
                 let drawn = problem.x0.get(u).copied().unwrap_or(0.0);
-                rows.push(Row { lin: Lin { terms: vec![(u, 1.0)], c: -drawn }, dim: None, soft: true });
+                rows.push(Row { lin: Lin { terms: vec![(u, 1.0)], c: -drawn }, dim: None, soft: true, pivot: None });
             }
         }
         Ok(rows)
@@ -2075,7 +2184,8 @@ impl Family {
     /// A copy with solution `s` applied.
     fn moved(&self, s: &Solution) -> Family {
         let mut f = self.clone();
-        let mut shift: Vec<(Guid, P3)> = Vec::new();
+        // Each plane that went: by how much, or turned (none).
+        let mut shift: Vec<(Guid, Option<P3>)> = Vec::new();
         for (i, v) in &s.planes {
             let Some(p) = f.planes.get_mut(*i) else { continue };
             let z = p.frame().z;
@@ -2084,8 +2194,24 @@ impl Family {
                 let by = mul(z, d);
                 p.start = add(p.start, by);
                 p.end = add(p.end, by);
-                shift.push((p.guid, by));
+                shift.push((p.guid, Some(by)));
             }
+        }
+        // A plane its pivot turned takes its axes as they now stand, its line moved with them (F7d).
+        for (i, frame, phi) in &s.turned_planes {
+            let Some(p) = f.planes.get_mut(*i) else { continue };
+            let old = p.frame();
+            let carry = |q: P3| {
+                let (l, t) = old.local(q);
+                frame.point(l, t)
+            };
+            p.start = carry(p.start);
+            p.end = carry(p.end);
+            p.turned = Some(*frame);
+            if let Some(piv) = p.pivot.as_mut() {
+                piv.turned += phi;
+            }
+            shift.push((p.guid, None));
         }
         // A reference line lies on what it is drawn on: moved with it, and what is drawn on it with it. One the constraints
         // set goes where they put it, in the axes of what it is drawn on as that now stands (F7c); one drawn on a line that
@@ -2096,14 +2222,20 @@ impl Family {
             for k in 0..f.lines.len() {
                 let l = f.lines[k].clone();
                 let host = match l.host {
-                    PlaneRef::Plane(g) => shift.iter().find(|(h, _)| *h == g).map(|(_, b)| Some(*b)),
+                    PlaneRef::Plane(g) => shift.iter().find(|(h, _)| *h == g).map(|(_, b)| *b),
                     PlaneRef::Line(g, _) => lines.iter().find(|(h, _)| *h == g).map(|(_, b)| *b),
                 };
                 let solved = s.lines.iter().find(|(i, _)| *i == k).map(|(_, v)| *v);
                 let (Ok(old), Ok(new)) = (self.frame(&l.host), f.frame(&l.host)) else { continue };
                 let (start, end, how) = match (solved, host) {
                     (Some([su, sv, th, len]), _) => {
-                        let ((_, h0), (_, h1)) = (old.local(l.start), old.local(l.end));
+                        let ((a, h0), (b, h1)) = (old.local(l.start), old.local(l.end));
+                        // How far it turned on what it is drawn on, for its pivot (F7d).
+                        if let Some(piv) = f.lines[k].pivot.as_mut() {
+                            let was = (b.1 - a.1).atan2(b.0 - a.0);
+                            let d = th - was;
+                            piv.turned += d - (d / std::f64::consts::TAU).round() * std::f64::consts::TAU;
+                        }
                         let start = new.point(P2(su, sv), h0);
                         (start, new.point(P2(su + len * th.cos(), sv + len * th.sin()), h1), None)
                     }
@@ -2219,6 +2351,13 @@ impl Family {
 
     fn drag_from(&self, values: &BTreeMap<String, Val>, g: Guid, to: f64) -> Result<Vec<Edit>, Unsat> {
         let Some(i) = self.planes.iter().position(|p| p.guid == g) else { return Err(format!("plane {g} isn't one of its planes").into()) };
+        if self.planes[i].pivot.is_some() {
+            return Err(Unsat {
+                message: format!("{NOT_SATISFIED}: the plane pivots: turn it by its rotate grip"),
+                dims: Vec::new(),
+                over: true,
+            });
+        }
         if self.planes[i].datum() || self.planes[i].defines_origin {
             return Err(Unsat {
                 message: format!("{NOT_SATISFIED}: the plane defines the origin, which stays"),
@@ -2282,7 +2421,23 @@ impl Family {
             let moved = self.moved(s);
             for (was, now) in self.lines.iter().zip(&moved.lines) {
                 if was.start != now.start || was.end != now.end {
-                    out.push(Edit::LineEnds(was.guid, now.start, now.end));
+                    // A pivoted line is drawn unturned: its pivot turns it again as it flexes (F7d).
+                    let (start, end) = match (&now.pivot, moved.frame(&now.host)) {
+                        (Some(piv), Ok(h)) if piv.turned != 0.0 => {
+                            let ((a, ha), (b, hb)) = (h.local(now.start), h.local(now.end));
+                            let len = a.dist(b);
+                            let way = (b - a) * (1.0 / len.max(1e-12));
+                            let at = a + way * piv.at.distance(len);
+                            let (c, sn) = ((-piv.turned).cos(), (-piv.turned).sin());
+                            let back = |q: P2| {
+                                let d = q - at;
+                                at + P2(d.0 * c - d.1 * sn, d.0 * sn + d.1 * c)
+                            };
+                            (h.point(back(a), ha), h.point(back(b), hb))
+                        }
+                        _ => (now.start, now.end),
+                    };
+                    out.push(Edit::LineEnds(was.guid, start, end));
                 }
             }
         }
@@ -2371,7 +2526,12 @@ impl Family {
         let now: BTreeSet<Guid> = self.forms.iter().flat_map(|f| f.sketch.iter().map(|l| l.guid)).collect();
         let gone: Vec<Guid> =
             before.iter().flat_map(|f| f.sketch.iter().map(|l| l.guid)).filter(|g| !g.is_nil() && !now.contains(g)).collect();
-        gone.into_iter().map(|g| self.forget_reference(g)).sum()
+        gone.into_iter()
+            .map(|g| {
+                self.forget_pivots(g);
+                self.forget_reference(g)
+            })
+            .sum()
     }
 
     /// Each dimension's reference given as an id (as a command may) given as the GUID of the plane, form, sketch line or
@@ -2395,6 +2555,42 @@ impl Family {
                 *g = *to;
             }
         };
+        // A pivot's point and reference (F7d), as a dimension's references.
+        let pivots = self.lines.iter_mut().filter_map(|l| l.pivot.as_mut()).chain(self.planes.iter_mut().filter_map(|p| p.pivot.as_mut()));
+        for piv in pivots {
+            match &mut piv.to {
+                PivotPoint::Crossing(a, b) => {
+                    for g in [a, b] {
+                        pick(&plane_ids, g);
+                        follow(g);
+                    }
+                }
+                PivotPoint::LineEnd(g, _) => {
+                    pick(&line_ids, g);
+                    follow(g);
+                }
+                PivotPoint::Sketch(g, l, _) => {
+                    pick(&form_ids, g);
+                    if let Some((_, lines)) = sketch_ids.iter().find(|(f, _)| f == g) {
+                        pick(lines, l);
+                    }
+                    follow(g);
+                    follow(l);
+                }
+                PivotPoint::Fixed(_) => {}
+            }
+            match &mut piv.from {
+                PivotFrom::Plane(g) => {
+                    pick(&plane_ids, g);
+                    follow(g);
+                }
+                PivotFrom::Line(g) => {
+                    pick(&line_ids, g);
+                    follow(g);
+                }
+                PivotFrom::Drawn => {}
+            }
+        }
         for r in self.dimensions.iter_mut().flat_map(|d| d.refs.iter_mut()) {
             match r {
                 DimRef::Plane(g) => pick(&plane_ids, g),
@@ -2542,15 +2738,28 @@ fn dot_n(a: &[f64], b: &[f64]) -> f64 {
 /// Row `k` refused: it adds nothing to rows `with` (by place in `rows`).
 fn over(rows: &[Row], k: usize, with: &[usize]) -> Unsat {
     let own = rows.get(k).and_then(|r| r.dim);
+    let own_pivot = rows.get(k).and_then(|r| r.pivot.clone());
     let mut dims: Vec<usize> = with.iter().filter_map(|i| rows.get(*i).and_then(|r| r.dim)).filter(|d| Some(*d) != own).collect();
     dims.sort_unstable();
     dims.dedup();
+    // The pivots among them (F7d), named as they are.
+    let mut pivots: Vec<String> =
+        with.iter().filter_map(|i| rows.get(*i).and_then(|r| r.pivot.clone())).filter(|p| Some(p) != own_pivot.as_ref()).collect();
+    pivots.sort();
+    pivots.dedup();
     let named = |ds: &[usize]| ds.iter().map(|d| (d + 1).to_string()).collect::<Vec<_>>().join(", ");
-    let message = match (own, dims.is_empty()) {
-        (Some(d), true) => format!("dimension {} is over-constrained: what it holds can't move", d + 1),
-        (Some(d), false) => format!("dimension {} is over-constrained: dimension {} hold what it holds already", d + 1, named(&dims)),
+    let mut others: Vec<String> = Vec::new();
+    if !dims.is_empty() {
+        others.push(format!("dimension {}", named(&dims)));
+    }
+    others.extend(pivots);
+    let others = others.join(" and ");
+    let whose = own.map(|d| format!("dimension {}", d + 1)).or(own_pivot);
+    let message = match (whose, others.is_empty()) {
+        (Some(d), true) => format!("{d} is over-constrained: what it holds can't move"),
+        (Some(d), false) => format!("{d} is over-constrained: {others} hold what it holds already"),
         (None, true) => "what is moved is fixed".to_string(),
-        (None, false) => format!("dimension {} hold it where it is", named(&dims)),
+        (None, false) => format!("{others} hold it where it is"),
     };
     let mut all = dims;
     if let Some(d) = own {

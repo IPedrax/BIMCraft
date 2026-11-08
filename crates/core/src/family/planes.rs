@@ -81,6 +81,13 @@ pub struct RefPlane {
     /// Whether it is a level, not a reference plane: only Ref. Level is.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub level: bool,
+    /// What it turns about (F7d): a point it is pinned to, its axis its `up`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pivot: Option<super::Pivot>,
+    /// Its axes where a pivot has turned it, in a flexed copy only (never in a file): what is drawn on it turns with it
+    /// rigidly, where its axes worked out from its line would slide along it.
+    #[serde(skip)]
+    pub turned: Option<Frame>,
 }
 
 /// One of a reference line's four planes: `horizontal`, the plane it is drawn on, through it; `vertical`, square to that
@@ -183,6 +190,9 @@ pub struct RefLine {
     pub reference: Reference,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subcategory: Option<String>,
+    /// What it turns about (F7d): a point it is pinned to, its axis the normal of what it is drawn on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pivot: Option<super::Pivot>,
 }
 
 /// A plane's own axes in the family's: a point `p` of a profile drawn on it, `t` along its normal, is
@@ -249,6 +259,8 @@ pub fn datums() -> Vec<RefPlane> {
         defines_origin: true,
         subcategory: None,
         level,
+        pivot: None,
+        turned: None,
     };
     vec![
         datum(REF_LEVEL, "Ref. Level", [1000.0, 0.0, 0.0], [0.0, 1000.0, 0.0], Reference::Bottom, true),
@@ -294,6 +306,9 @@ impl RefPlane {
             CENTER_FRONT_BACK => return Frame::FRONT_BACK,
             CENTER_LEFT_RIGHT => return Frame::LEFT_RIGHT,
             _ => {}
+        }
+        if let Some(f) = self.turned {
+            return f;
         }
         let x = unit(sub(self.end, self.start));
         let y = unit(sub(self.up, mul(x, dot(self.up, x))));

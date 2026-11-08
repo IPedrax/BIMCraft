@@ -155,7 +155,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// forms drawn on a reference line's face; reference lines turn and move with them (F7c). A build of 27 knows no `angular`
 /// kind and no line point, so it would leave those dimensions out of the file and flex the family as if nothing turned its
 /// lines.
-pub const FORMAT: u32 = 28;
+///
+/// 30: a reference line or a reference plane may carry a `pivot` (F7d): a point it is pinned to and turns about, its swing an
+/// Angle parameter or a number of its own, within limits. A build of 28 reads a family leniently and would leave `pivot` out
+/// of the file, so a door would open unswung and lose its hinge on saving. (29 is F6's, on its own branch.)
+pub const FORMAT: u32 = 30;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3259,6 +3263,10 @@ impl Model {
             if p.reporting {
                 return Err(format!("{who}: `{k}` is a reporting parameter: its dimension says what it is, and nothing sets it"));
             }
+            // A pivot's swing within its limits (F7d).
+            if let crate::family::Val::Number(n) = crate::family::read(p, v).map_err(|e| format!("{who}: {e}"))? {
+                f.pivot_value_ok(k, n).map_err(|e| format!("{who}: {e}"))?;
+            }
             if let crate::family::Val::Text(m) = crate::family::read(p, v).map_err(|e| format!("{who}: {e}"))?
                 && p.kind == crate::family::Kind::Material
                 && !m.is_empty()
@@ -3503,6 +3511,17 @@ impl Model {
                 f.dimensions.remove(*i);
                 left_out.push(format!("/families/{}/dimensions/{i}", crate::lenient::escaped(name)));
             }
+            // A pivot pinned to, or measured from, what the family hasn't: left out too (F7d).
+            for g in f.dangling_pivots() {
+                if let Some(i) = f.lines.iter().position(|l| l.guid == g) {
+                    f.lines[i].pivot = None;
+                    left_out.push(format!("/families/{}/lines/{i}/pivot", crate::lenient::escaped(name)));
+                }
+                if let Some(i) = f.planes.iter().position(|p| p.guid == g) {
+                    f.planes[i].pivot = None;
+                    left_out.push(format!("/families/{}/planes/{i}/pivot", crate::lenient::escaped(name)));
+                }
+            }
         }
         Ok((m, left_out))
     }
@@ -3598,6 +3617,7 @@ impl Model {
         // 26 to 27 (nested families and their instances) has none: a file of 26 holds none.
         // 27 to 28 (angular dimensions, reference lines' ends, arcs' radii and centres, forms on reference lines measured) has
         // none: a file of 27 holds none, and every dimension it holds solves as it did.
+        // 28 to 30 (pivots on reference lines and planes) has none: a file of 28 holds none. 29 is F6's, on its own branch.
         self.settle_hosts(None);
         self.format = FORMAT;
     }
