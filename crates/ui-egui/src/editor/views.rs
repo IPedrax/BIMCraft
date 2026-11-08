@@ -72,6 +72,9 @@ pub(crate) struct Views {
     pane: Option<Rect>,
     /// The reference line selected, by GUID (F7d).
     pub(crate) line: Option<Guid>,
+    /// Where the pointer was last over {3D} and the camera {3D} was seen through, and the form or nested instance under it
+    /// there (T11's hover).
+    pub(crate) hover3d: Option<(egui::Pos2, bimcraft_core::view3d::Camera, Option<bimcraft_core::family::views::Part>)>,
     /// Pivot, on: the line or plane the next click pins.
     pub(crate) pivoting: Option<Guid>,
     /// A grip being dragged, and where the pointer was (the view's mm).
@@ -121,12 +124,12 @@ fn default_work_plane(which: Option<Which>) -> PlaneRef {
 }
 
 /// How far beyond what the family takes up {3D} draws its work plane, mm: as far as the plans and elevations frame past it.
-const WORK_PLANE_MARGIN: f64 = 300.0;
+pub(crate) const WORK_PLANE_MARGIN: f64 = 300.0;
 
 /// The selection's colour in the family's views.
 pub(super) const PICKED: Color32 = Color32::from_rgb(40, 120, 230);
-/// Work Plane > Show's tint.
-pub(crate) const TINT: Color32 = Color32::from_rgba_premultiplied(30, 70, 140, 60);
+/// Work Plane > Show's tint, the project's 3D view's.
+pub(crate) const TINT: Color32 = crate::workplane::TINT;
 
 impl Views {
     /// The work plane of the view shown.
@@ -1119,8 +1122,7 @@ pub(crate) fn draw_work_plane_3d(
     let plane = bimcraft_core::workplane::Frame { origin: f.origin, normal: f.z };
     let Some(p) = crate::workplane::patch(plane, extents, WORK_PLANE_MARGIN, [0.0; 3]) else { return };
     let step = bimcraft_core::workplane::grid_step((p.hi.0 - p.lo.0).max(p.hi.1 - p.lo.1));
-    let (grid, edge) = (pal().muted.gamma_multiply(0.5), pal().accent.gamma_multiply(0.6));
-    image.draw_plane(cam, p.origin, p.axes, (p.lo, p.hi), step, TINT.to_array(), grid.to_array(), edge.to_array());
+    image.draw_marks(cam, &[crate::workplane::plane_mark(p, step)]);
 }
 
 /// The solid forms the type previewed (`values`) hides, alone: what a view draws halftone while Preview Visibility is off.

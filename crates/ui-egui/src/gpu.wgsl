@@ -9,6 +9,8 @@
 //      view shows them, read off the opaque depth round the pixel; tinted halfway where selected), else the ground; and over it
 //      what is seen through, blended.
 //   4. vs_line / fs_line: each level's plane and name as lines, where nothing opaque nearer hides them.
+//   5. vs_full / fs_marks: the work plane and its patch (core `PlaneMark`), each pixel's ray met with the plane, blended over
+//      the picture where nothing opaque is nearer, as the processor's `Image::draw_marks` lays them.
 //   In wireframe, passes 1 and 2 have nothing to draw and pass 3 only paper, and vs_wire / fs_wire draw every edge over it; then
 //   vs_wire_tinted / fs_wire, those tinted, over the rest.
 // Lengths are mm. A colour is 0 to 255 in each channel, as the processor keeps it, and is divided down only on its way out.
@@ -40,6 +42,24 @@ struct Globals {
     // The section box from the mesh's origin: its least corner (w: 1 where there is one) and its greatest.
     cut_lo: vec4<f32>,
     cut_hi: vec4<f32>,
+    // The work plane and its patch, drawn over the picture (pass 5).
+    marks: array<Mark, 2>,
+}
+
+// A rectangle of a plane drawn over the picture, as the core's `PlaneMark`.
+struct Mark {
+    // xyz: a point of it, from the mesh's origin. w: 1 where it is drawn.
+    origin: vec4<f32>,
+    // xyz: across it (unit). w: its grid's step, mm (0 for none).
+    across: vec4<f32>,
+    // xyz: up it (unit, square to across). w: how many pixels wide its outline is.
+    up: vec4<f32>,
+    // Its least corner across and up from the origin (xy), and its greatest (zw).
+    span: vec4<f32>,
+    // Premultiplied, 0 to 1.
+    fill: vec4<f32>,
+    grid: vec4<f32>,
+    edge: vec4<f32>,
 }
 
 // A point `d` from the aim in clip space: parallel, or seen from the eye.
@@ -717,4 +737,65 @@ fn fs_wire(in: WireOut) -> @location(0) vec4<f32> {
         discard;
     }
     return vec4<f32>(inked(in.color) / 255.0, 1.0);
+}
+
+// How much nearer than a mark, in pixels' worth of depth, a surface must be to hide it: the core's `MARK_SLACK`.
+const MARK_SLACK: f32 = 0.5;
+
+// `c` laid over `under`, both premultiplied.
+fn laid(c: vec4<f32>, under: vec4<f32>) -> vec4<f32> {
+    return c + under * (1.0 - c.a);
+}
+
+// Mark `m` at the pixel whose middle is `xy`, premultiplied (nothing where it is not seen); `behind`, the opaque depth there.
+fn mark_at(m: Mark, xy: vec2<f32>, behind: f32) -> vec4<f32> {
+    let n = cross(m.across.xyz, m.up.xyz);
+    let right = g.right.xyz;
+    let up = g.up.xyz;
+    let back = g.back.xyz;
+    let off = vec2<f32>(xy.x - g.size.x * 0.5, g.size.y * 0.5 - xy.y);
+    // The pixel's ray: from the eye in perspective, else straight in from the plane through the aim.
+    var start = g.aim.xyz + right * (off.x / g.aim.w) + up * (off.y / g.aim.w);
+    var ray = -back;
+    if g.lens.x > 0.0 {
+        start = g.aim.xyz + back * g.lens.y;
+        ray = normalize(right * (off.x / g.lens.x) + up * (off.y / g.lens.x) - back);
+    }
+    let facing = dot(ray, n);
+    let t = dot(m.origin.xyz - start, n) / select(facing, 1.0, abs(facing) < 1e-9);
+    let p = start + ray * t;
+    let d = p - m.origin.xyz;
+    let u = dot(d, m.across.xyz);
+    let v = dot(d, m.up.xyz);
+    // How far the plane runs across a pixel here: half that either side of a line is that line's pixel. Taken before any
+    // pixel leaves, as a derivative must be.
+    let r = max(max(abs(dpdx(u)), abs(dpdy(u))), max(abs(dpdx(v)), abs(dpdy(v)))) * 0.5;
+    let z = to_pixel(p).z;
+    var slack = g.size.z / 1.5 * MARK_SLACK;
+    if g.lens.x > 0.0 {
+        slack = MARK_SLACK / g.lens.x * (z - g.lens.z);
+    }
+    let hidden = behind > 0.0 && behind > z + slack;
+    let away = abs(facing) < 1e-9 || (g.lens.x > 0.0 && t <= 0.0);
+    let outside = u < m.span.x || u > m.span.z || v < m.span.y || v > m.span.w;
+    if m.origin.w < 0.5 || hidden || away || outside {
+        return vec4<f32>(0.0);
+    }
+    let e = 2.0 * r * m.up.w;
+    let pitch = m.across.w;
+    var c = m.fill;
+    if abs(u - m.span.x) <= e || abs(u - m.span.z) <= e || abs(v - m.span.y) <= e || abs(v - m.span.w) <= e {
+        c = laid(m.edge, c);
+    } else if pitch > 0.0 && (abs(u - round(u / pitch) * pitch) <= r || abs(v - round(v / pitch) * pitch) <= r) {
+        c = laid(m.grid, c);
+    }
+    return c;
+}
+
+@fragment
+fn fs_marks(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    let behind = textureLoad(scene_depth, vec2<i32>(frag.xy), 0);
+    let first = mark_at(g.marks[0], frag.xy, behind);
+    let second = mark_at(g.marks[1], frag.xy, behind);
+    return laid(second, first);
 }
