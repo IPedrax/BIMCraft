@@ -267,8 +267,8 @@ fn a_project_file_with_a_dimension_measuring_to_nothing_opens_with_it_left_out()
     let (m, left_out) = Model::read(&v.to_string()).unwrap();
     assert_eq!(left_out, vec!["/families/Box/dimensions/2".to_string()]);
     assert_eq!(m.families["Box"].dimensions.len(), 7);
-    // A file of 24 holds no dimensions and reads as it was; this build writes 26 (F7b's sketch references).
-    assert_eq!(crate::model::FORMAT, 26);
+    // A file of 24 holds no dimensions and reads as it was; this build writes 28 (F7c's angles).
+    assert_eq!(crate::model::FORMAT, 28);
     let (back, left_out) = Model::read(&s.model.to_json().unwrap()).unwrap();
     assert!(left_out.is_empty());
     assert_eq!(back.families["Box"].dimensions, s.model.families["Box"].dimensions);

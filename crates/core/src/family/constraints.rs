@@ -26,6 +26,11 @@ const BUDGET: u64 = 200_000_000;
 const PARALLEL: f64 = 1e-6;
 /// A row left this much of its length once the rows before it are taken out adds nothing to them.
 const DEPENDENT: f64 = 1e-9;
+/// How many steps a non-linear solve takes at most, and how many times one step may be halved back (F7c).
+const MAX_STEPS: usize = 50;
+const MAX_HALVINGS: usize = 20;
+/// A labelled or locked angle is from 0 up to this, in degrees.
+pub const MAX_ANGLE: f64 = 180.0;
 /// What Revit says when constraints can't hold: the desktop's dialog title, and the start of the core's messages for it.
 pub const NOT_SATISFIED: &str = "Constraints are not satisfied";
 /// What the `family` command says of dimensions that measure to what the family hasn't: the desktop asks Delete
@@ -126,20 +131,22 @@ pub enum DimRef {
     Point(Guid, Guid, Spot),
     /// A face of a reference line.
     Line(Guid, Face),
+    /// A reference line's start or end (F7c): the line's GUID, which end.
+    LinePoint(Guid, Spot),
 }
 
 impl DimRef {
     /// Whether it names `g`: as its plane, its form, its form's sketch line or its reference line.
     pub fn names(&self, g: Guid) -> bool {
         match *self {
-            DimRef::Plane(a) | DimRef::Form(a, _) | DimRef::Line(a, _) => a == g,
+            DimRef::Plane(a) | DimRef::Form(a, _) | DimRef::Line(a, _) | DimRef::LinePoint(a, _) => a == g,
             DimRef::Sketch(f, l) | DimRef::Point(f, l, _) => f == g || l == g,
         }
     }
 
     /// Whether it is a point, with no direction of its own.
     pub fn is_point(&self) -> bool {
-        matches!(self, DimRef::Point(..))
+        matches!(self, DimRef::Point(..) | DimRef::LinePoint(..))
     }
 }
 
@@ -152,6 +159,7 @@ impl std::fmt::Display for DimRef {
             DimRef::Sketch(g, l) => write!(f, "form {g}'s line {l}"),
             DimRef::Point(g, l, s) => write!(f, "form {g}'s line {l}'s {}", s.said()),
             DimRef::Line(g, face) => write!(f, "line {g}'s {} face", face_said(*face)),
+            DimRef::LinePoint(g, s) => write!(f, "line {g}'s {}", s.said()),
         }
     }
 }
@@ -191,10 +199,11 @@ impl TryFrom<RawDimRef> for DimRef {
             (None, Some(g), None, Some(l), None, None) => Ok(DimRef::Sketch(g, l)),
             (None, Some(g), None, Some(l), Some(s), None) => Ok(DimRef::Point(g, l, s)),
             (None, None, None, Some(l), None, Some(face)) => Ok(DimRef::Line(l, face)),
+            (None, None, None, Some(l), Some(s), None) => Ok(DimRef::LinePoint(l, s)),
             _ => Err(
                 "a dimension's reference is {\"plane\": guid}, {\"form\": guid, \"end\": \"start\" | \"end\"}, {\"form\": guid, \"line\": \
-                      guid}, {\"form\": guid, \"line\": guid, \"point\": \"start\" | \"end\" | \"centre\"} or {\"line\": guid, \"face\": \
-                      \"horizontal\" | \"vertical\" | \"start\" | \"end\"}"
+                      guid}, {\"form\": guid, \"line\": guid, \"point\": \"start\" | \"end\" | \"centre\"}, {\"line\": guid, \"face\": \
+                      \"horizontal\" | \"vertical\" | \"start\" | \"end\"} or {\"line\": guid, \"point\": \"start\" | \"end\"}"
                     .into(),
             ),
         }
@@ -210,12 +219,13 @@ impl From<DimRef> for RawDimRef {
             DimRef::Sketch(g, l) => RawDimRef { form: Some(g), line: Some(l), ..none },
             DimRef::Point(g, l, s) => RawDimRef { form: Some(g), line: Some(l), point: Some(s), ..none },
             DimRef::Line(l, face) => RawDimRef { line: Some(l), face: Some(face), ..none },
+            DimRef::LinePoint(l, s) => RawDimRef { line: Some(l), point: Some(s), ..none },
         }
     }
 }
 
-/// What a dimension measures: the way between parallel references (aligned), or a circle of a form's sketch, its radius or
-/// its diameter (Revit's radial and diameter dimensions).
+/// What a dimension measures: the way between parallel references (aligned), a circle's or an arc's radius or diameter
+/// (Revit's radial and diameter dimensions), or the angles between lines that cross (angular, F7c).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DimKind {
@@ -223,6 +233,7 @@ pub enum DimKind {
     Aligned,
     Radial,
     Diameter,
+    Angular,
 }
 
 impl DimKind {
@@ -230,9 +241,14 @@ impl DimKind {
         *self == DimKind::Aligned
     }
 
+    /// Whether it measures a radius or a diameter: one reference, a circle or an arc.
+    pub fn is_round(&self) -> bool {
+        matches!(self, DimKind::Radial | DimKind::Diameter)
+    }
+
     /// The references a dimension of it holds at least.
     fn least(self) -> usize {
-        if self.is_aligned() { 2 } else { 1 }
+        if self.is_round() { 1 } else { 2 }
     }
 
     /// How many times the circle's radius it measures.
@@ -272,9 +288,10 @@ pub struct FamilyDimension {
 }
 
 impl FamilyDimension {
-    /// How many segments it has: one less than its references, one for a radius or a diameter.
+    /// How many segments it has: one less than its references (an angular one's, an angle each), one for a radius or a
+    /// diameter.
     pub fn segments(&self) -> usize {
-        if self.kind.is_aligned() { self.refs.len().saturating_sub(1) } else { 1 }
+        if self.kind.is_round() { 1 } else { self.refs.len().saturating_sub(1) }
     }
 
     /// Whether it holds a constraint: a label (not a reporting one's, which `labels` says), a lock, equality, or Align's lock.
@@ -310,14 +327,175 @@ impl From<String> for Unsat {
 }
 
 /// What can move: a plane of the family's own (its place in `planes`) along its normal, an extrusion's end, a vertex of a
-/// form's sketch along its host's x or y (the form's place, the vertex's, 0 or 1), or a circle's radius (the form's place,
-/// the line's).
+/// form's sketch along its host's x or y (the form's place, the vertex's, 0 or 1), a circle's radius (the form's place,
+/// the line's); and (F7c) a reference line's start along x or y of what it is drawn on, its angle there (radians) and its
+/// length (its place in `lines`), and an arc's turn (radians; the form's place, the line's).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Unknown {
     Plane(usize),
     End(usize, Extent),
     Vertex(usize, usize, usize),
     Radius(usize, usize),
+    LineStart(usize, usize),
+    LineAngle(usize),
+    LineLength(usize),
+    Turn(usize, usize),
+}
+
+impl Unknown {
+    /// Whether rows that read it are non-linear: a line's angle and length and an arc's turn are read through sines.
+    fn turns(&self) -> bool {
+        matches!(self, Unknown::LineStart(..) | Unknown::LineAngle(_) | Unknown::LineLength(_) | Unknown::Turn(..))
+    }
+}
+
+/// A number and how it changes with each unknown (forward-mode differentiation, sparse): what a non-linear row reads, at
+/// the point the solve has reached. As a [`Lin`] it is the row linearised there, which for a linear row is the row itself.
+#[derive(Clone, Debug, Default)]
+struct Ad {
+    v: f64,
+    g: Vec<(usize, f64)>,
+}
+
+impl Ad {
+    fn k(v: f64) -> Ad {
+        Ad { v, g: Vec::new() }
+    }
+
+    fn var(u: usize, v: f64) -> Ad {
+        Ad { v, g: vec![(u, 1.0)] }
+    }
+
+    /// `a·self + b·other`, its derivatives summed by unknown, in the unknowns' order.
+    fn mix(&self, a: f64, other: &Ad, b: f64, v: f64) -> Ad {
+        let mut g: Vec<(usize, f64)> = self.g.iter().map(|(u, k)| (*u, a * k)).chain(other.g.iter().map(|(u, k)| (*u, b * k))).collect();
+        g.sort_by_key(|t| t.0);
+        let mut out: Vec<(usize, f64)> = Vec::with_capacity(g.len());
+        for (u, k) in g {
+            match out.last_mut() {
+                Some(last) if last.0 == u => last.1 += k,
+                _ => out.push((u, k)),
+            }
+        }
+        Ad { v, g: out }
+    }
+
+    fn add(&self, o: &Ad) -> Ad {
+        self.mix(1.0, o, 1.0, self.v + o.v)
+    }
+
+    fn sub(&self, o: &Ad) -> Ad {
+        self.mix(1.0, o, -1.0, self.v - o.v)
+    }
+
+    fn mul(&self, o: &Ad) -> Ad {
+        self.mix(o.v, o, self.v, self.v * o.v)
+    }
+
+    fn scale(&self, k: f64) -> Ad {
+        Ad { v: self.v * k, g: self.g.iter().map(|(u, d)| (*u, d * k)).collect() }
+    }
+
+    /// Of a function `f` whose derivative at `self.v` is `d`.
+    fn chain(&self, v: f64, d: f64) -> Ad {
+        Ad { v, g: self.g.iter().map(|(u, k)| (*u, k * d)).collect() }
+    }
+
+    fn div(&self, o: &Ad) -> Ad {
+        let q = self.v / o.v;
+        self.mix(1.0 / o.v, o, -q / o.v, q)
+    }
+
+    fn sin(&self) -> Ad {
+        self.chain(self.v.sin(), self.v.cos())
+    }
+
+    fn cos(&self) -> Ad {
+        self.chain(self.v.cos(), -self.v.sin())
+    }
+
+    fn sqrt(&self) -> Ad {
+        let r = self.v.sqrt();
+        self.chain(r, if r > 0.0 { 0.5 / r } else { 0.0 })
+    }
+
+    fn abs(&self) -> Ad {
+        if self.v < 0.0 { self.scale(-1.0) } else { self.clone() }
+    }
+
+    /// The angle of `(x, y)`, `self` being y.
+    fn atan2(&self, x: &Ad) -> Ad {
+        let r2 = self.v * self.v + x.v * x.v;
+        let v = self.v.atan2(x.v);
+        if r2 <= 0.0 {
+            return Ad::k(v);
+        }
+        self.mix(x.v / r2, x, -self.v / r2, v)
+    }
+
+    /// The row it is, linearised at `x`.
+    fn lin(self, x: &[f64]) -> Lin {
+        let c = self.v - self.g.iter().map(|(u, k)| k * x.get(*u).copied().unwrap_or(0.0)).sum::<f64>();
+        Lin { terms: self.g, c }.tidy()
+    }
+}
+
+/// A point or a way in a view's own axes whose parts are [`Ad`]s.
+type Ad2 = (Ad, Ad);
+
+/// A point or a direction in the family's axes whose parts are [`Ad`]s.
+type V3 = [Ad; 3];
+
+fn v3(p: P3) -> V3 {
+    p.map(Ad::k)
+}
+
+fn vadd(a: &V3, b: &V3) -> V3 {
+    std::array::from_fn(|k| a[k].add(&b[k]))
+}
+
+fn vsub(a: &V3, b: &V3) -> V3 {
+    std::array::from_fn(|k| a[k].sub(&b[k]))
+}
+
+fn vmul(a: &V3, s: &Ad) -> V3 {
+    std::array::from_fn(|k| a[k].mul(s))
+}
+
+fn vdot(a: &V3, b: &V3) -> Ad {
+    a[0].mul(&b[0]).add(&a[1].mul(&b[1])).add(&a[2].mul(&b[2]))
+}
+
+fn vdotk(a: &V3, m: P3) -> Ad {
+    a[0].scale(m[0]).add(&a[1].scale(m[1])).add(&a[2].scale(m[2]))
+}
+
+fn vcross(a: &V3, b: &V3) -> V3 {
+    [a[1].mul(&b[2]).sub(&a[2].mul(&b[1])), a[2].mul(&b[0]).sub(&a[0].mul(&b[2])), a[0].mul(&b[1]).sub(&a[1].mul(&b[0]))]
+}
+
+fn vunit(a: &V3) -> V3 {
+    let l = vdot(a, a).sqrt();
+    if l.v > 1e-12 { std::array::from_fn(|k| a[k].div(&l)) } else { a.clone() }
+}
+
+/// A plane's axes whose parts are [`Ad`]s: what a frame that moves and turns with the unknowns is.
+#[derive(Clone, Debug)]
+struct AdFrame {
+    origin: V3,
+    x: V3,
+    y: V3,
+    z: V3,
+}
+
+impl AdFrame {
+    fn point(&self, u: &Ad, v: &Ad, t: &Ad) -> V3 {
+        vadd(&vadd(&self.origin, &vmul(&self.x, u)), &vadd(&vmul(&self.y, v), &vmul(&self.z, t)))
+    }
+
+    fn dir(&self, u: &Ad, v: &Ad) -> V3 {
+        vadd(&vmul(&self.x, u), &vmul(&self.y, v))
+    }
 }
 
 /// A position along a normal: the sum of some unknowns, each times its factor, and a constant.
@@ -363,6 +541,11 @@ impl Lin {
     fn at(&self, x: &[f64]) -> f64 {
         self.terms.iter().map(|(u, k)| k * x.get(*u).copied().unwrap_or(0.0)).sum::<f64>() + self.c
     }
+
+    /// Its value and derivatives at `x`.
+    fn ad(&self, x: &[f64]) -> Ad {
+        Ad::k(0.0).mix(0.0, &Ad { v: 0.0, g: self.terms.clone() }, 1.0, self.at(x))
+    }
 }
 
 /// One constraint: `lin = 0`, held for dimension `dim` (none: a pin a drag or Align adds, or a soft row). A soft row (a
@@ -379,6 +562,34 @@ impl Row {
     }
 }
 
+/// What a solve reads where things are drawn, kept for the steps after (F7c): each dimension's segments' ways and angles'
+/// sectors, recorded in order the first time the rows are made and given back in the same order after.
+#[derive(Debug, Default)]
+struct Memo {
+    record: bool,
+    saved: Vec<Vec<f64>>,
+    next: usize,
+}
+
+impl Memo {
+    fn take(&mut self, f: impl FnOnce() -> Result<Vec<f64>, String>) -> Result<Vec<f64>, String> {
+        if self.record {
+            let v = f()?;
+            self.saved.push(v.clone());
+            return Ok(v);
+        }
+        let v = self.saved.get(self.next).cloned().ok_or("the solve lost its place")?;
+        self.next += 1;
+        Ok(v)
+    }
+
+    /// Recording done: what is read from here on is given back from the start.
+    fn replay(&mut self) {
+        self.record = false;
+        self.next = 0;
+    }
+}
+
 /// What one solve came to.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Solution {
@@ -391,11 +602,17 @@ pub struct Solution {
     pub points: Vec<(usize, usize, Spot, P2)>,
     /// Each circle's radius the constraints set: the form's place, the line's, and the radius.
     pub radii: Vec<(usize, usize, f64)>,
+    /// Each reference line the constraints set (F7c): its place in `lines`, and its start (x, y), angle (radians) and length
+    /// in the axes of what it is drawn on.
+    pub lines: Vec<(usize, [f64; 4])>,
+    /// Each arc's turn the constraints set: the form's place, the line's, and the turn in degrees.
+    pub turns: Vec<(usize, usize, f64)>,
 }
 
 /// A change a drag or Align asks of the draft: a plane's offset along its normal, an extrusion end's value, a parameter's, a
-/// point of a form's sketch (the form's place, the line's, which point, where in its host's axes), or a reference line moved
-/// by so much (in the family's axes, what is drawn on it with it).
+/// point of a form's sketch (the form's place, the line's, which point, where in its host's axes), a reference line moved
+/// by so much (in the family's axes, what is drawn on it with it), a reference line put at a start and an end (F7c: one the
+/// constraints moved or turned, or one drawn on such a line), or an arc's turn (degrees).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Edit {
     Plane(Guid, f64),
@@ -403,6 +620,8 @@ pub enum Edit {
     Parameter(String, f64),
     Point(usize, usize, Spot, [f64; 2]),
     Line(Guid, P3),
+    LineEnds(Guid, P3, P3),
+    Turn(usize, usize, f64),
 }
 
 /// What a solve holds where it is told, besides the constraints: a plane at an offset along its normal, or a reference at a
@@ -440,13 +659,15 @@ enum Shape {
 
 /// A form's sketch as a solve reads it for a type (F7b): where its vertices are in its host's axes (the ends of its lines
 /// that meet within [`TOL`] one vertex, an axis line's ends and each circle's centre their own), each line's start and end
-/// vertex (a circle's centre twice), what each line is and each circle's radius, and the points at each vertex.
+/// vertex (a circle's centre twice), what each line is, each circle's radius and each arc's turn (degrees), and the points
+/// at each vertex.
 #[derive(Clone, Debug, Default)]
 struct Layout {
     at: Vec<P2>,
     ends: Vec<(usize, usize)>,
     shape: Vec<Shape>,
     radius: Vec<f64>,
+    turn: Vec<f64>,
     points: Vec<Vec<(usize, Spot)>>,
 }
 
@@ -492,15 +713,16 @@ fn layout<'a>(
             FormCurve::Line { start, end, turn } => {
                 let a = P2(num(&start[0])?, num(&start[1])?);
                 let b = P2(num(&end[0])?, num(&end[1])?);
-                let straight = match turn {
-                    Some(t) => num(t)? == 0.0,
-                    None => true,
+                let t = match turn {
+                    Some(t) => num(t)?,
+                    None => 0.0,
                 };
                 let va = join(&mut out, a, l.axis, k, Spot::Start);
                 let vb = join(&mut out, b, l.axis, k, Spot::End);
                 out.ends.push((va, vb));
-                out.shape.push(if straight { Shape::Straight } else { Shape::Arc });
-                out.radius.push(0.0);
+                out.shape.push(if t == 0.0 { Shape::Straight } else { Shape::Arc });
+                out.radius.push(if t == 0.0 { 0.0 } else { arc_radius(a, b, t.to_radians()) });
+                out.turn.push(t);
             }
             FormCurve::Circle { centre, radius } => {
                 let c = P2(num(&centre[0])?, num(&centre[1])?);
@@ -512,24 +734,33 @@ fn layout<'a>(
                 out.ends.push((v, v));
                 out.shape.push(Shape::Circle);
                 out.radius.push(r);
+                out.turn.push(0.0);
             }
         }
     }
     Ok(out)
 }
 
-/// Form `g` a sketch reference names: its place, the form, the plane it is drawn on and that plane's axes. A form drawn on a
-/// reference line's face is measured once lines turn (F7c).
-fn sketched(f: &Family, g: Guid) -> Result<(usize, &Form, Guid, Frame), String> {
+/// An arc's radius, from its ends and its turn (radians).
+fn arc_radius(a: P2, b: P2, t: f64) -> f64 {
+    a.dist(b) / (2.0 * (t / 2.0).sin().abs())
+}
+
+/// An arc's centre, from its ends and its turn (radians): left of the way from `a` to `b` for a turn counter-clockwise.
+fn arc_centre(a: P2, b: P2, t: f64) -> P2 {
+    let k = 0.5 / (t / 2.0).tan();
+    P2((a.0 + b.0) / 2.0 - (b.1 - a.1) * k, (a.1 + b.1) / 2.0 + (b.0 - a.0) * k)
+}
+
+/// Form `g` a sketch reference names: its place, the form, what it is drawn on (a plane, or a reference line's face, F7c)
+/// and the axes of that as drawn.
+fn sketched(f: &Family, g: Guid) -> Result<(usize, &Form, PlaneRef, Frame), String> {
     let i = f.forms.iter().position(|x| x.guid == g).ok_or_else(|| format!("form {g} isn't one of its forms"))?;
     let form = &f.forms[i];
     if !form.mesh.is_empty() {
         return Err(format!("form {}: a mesh from a file has no sketch to measure", i + 1));
     }
-    let PlaneRef::Plane(h) = form.host else {
-        return Err(format!("form {}: a sketch drawn on a reference line's plane is dimensioned once lines turn (F7c)", i + 1));
-    };
-    Ok((i, form, h, f.frame(&form.host)?))
+    Ok((i, form, form.host, f.frame(&form.host)?))
 }
 
 /// Line `l` of form `i`'s sketch: its place and the line.
@@ -557,21 +788,35 @@ fn line_root(f: &Family, g: Guid) -> Option<Guid> {
 struct Seen {
     form: usize,
     line: usize,
-    host: Guid,
+    host: PlaneRef,
     frame: Frame,
     ends: (usize, usize),
     shape: Shape,
 }
 
-/// The working of one solve: what may move, where it is drawn, and the sketches its references name, read for the type.
+/// The working of one solve: what may move, where it is drawn, where the solve has got to (`at`, what non-linear rows are
+/// linearised about), and the sketches its references name, read for the type.
 struct Problem<'f> {
     family: &'f Family,
     unknowns: Vec<Unknown>,
     x0: Vec<f64>,
+    at: Vec<f64>,
     layouts: BTreeMap<usize, Layout>,
 }
 
+/// How deep reference lines drawn on reference lines are followed.
+const DEPTH: usize = planes::MAX_LINES + 1;
+
+/// What an angular dimension measures between: reference lines, reference planes and straight sketch lines.
+const ANGULAR_REFS: &str =
+    "an angular dimension measures between reference lines, reference planes and straight sketch lines, each seen as a line in its view";
+
 impl<'f> Problem<'f> {
+    /// Nothing to move yet, and nothing read: what only reads where things are drawn works from it.
+    fn bare(family: &'f Family) -> Problem<'f> {
+        Problem { family, unknowns: Vec::new(), x0: Vec::new(), at: Vec::new(), layouts: BTreeMap::new() }
+    }
+
     /// Nothing to move yet; the sketches `refs` name read for `values`.
     fn new<'a>(
         family: &'f Family,
@@ -593,11 +838,21 @@ impl<'f> Problem<'f> {
                 layouts.insert(i, layout(form, values, read, meter).map_err(|e| format!("form {}: {e}", i + 1))?);
             }
         }
-        Ok(Problem { family, unknowns: Vec::new(), x0: Vec::new(), layouts })
+        Ok(Problem { layouts, ..Problem::bare(family) })
     }
 
     fn unknown(&self, u: Unknown) -> Option<usize> {
         self.unknowns.iter().position(|v| *v == u)
+    }
+
+    /// Unknown `u` (by place) where the solve has got to.
+    fn var(&self, u: usize) -> Ad {
+        Ad::var(u, self.at.get(u).copied().unwrap_or(0.0))
+    }
+
+    /// Unknown `u` where the solve has got to, or `drawn` where it isn't one.
+    fn value(&self, u: Unknown, drawn: f64) -> Ad {
+        self.unknown(u).map_or(Ad::k(drawn), |k| self.var(k))
     }
 
     /// Plane `g`'s place in `planes`, and its normal and offset as drawn (a datum's are its own, whether listed or not).
@@ -623,6 +878,80 @@ impl<'f> Problem<'f> {
             Some(u) => (z, Lin::of(u, 1.0)),
             None => (z, Lin::number(s)),
         })
+    }
+
+    /// The axes of what `host` names, moving and turning with the unknowns: a plane along its normal, a reference line's
+    /// face with the line (F7c).
+    fn host_ad(&self, host: &PlaneRef, depth: usize) -> Result<AdFrame, String> {
+        match *host {
+            PlaneRef::Plane(g) => {
+                let fr = self.family.frame(host)?;
+                let (z, lin) = self.plane_pos(g)?;
+                Ok(AdFrame { origin: vmul(&v3(z), &lin.ad(&self.at)), x: v3(fr.x), y: v3(fr.y), z: v3(fr.z) })
+            }
+            PlaneRef::Line(g, face) => self.line_face(g, face, depth),
+        }
+    }
+
+    /// Reference line `i` as drawn in the axes of what it is drawn on: its start (x, y and off the plane), its end off the
+    /// plane, its angle and its length.
+    fn line_drawn(&self, i: usize) -> Result<[f64; 6], String> {
+        let l = self.family.lines.get(i).ok_or("no such line")?;
+        let fr = self.family.frame(&l.host)?;
+        let ((a, h0), (b, h1)) = (fr.local(l.start), fr.local(l.end));
+        Ok([a.0, a.1, h0, h1, (b.1 - a.1).atan2(b.0 - a.0), a.dist(b)])
+    }
+
+    /// Reference line `g`'s place, its start and end, and the normal of what it is drawn on, moving with the unknowns.
+    fn line_ends(&self, g: Guid, depth: usize) -> Result<(usize, V3, V3, V3), String> {
+        let i = self.family.lines.iter().position(|l| l.guid == g).ok_or_else(|| format!("line {g} isn't one of its lines"))?;
+        if depth == 0 {
+            return Err(format!("line {}: it is drawn on lines too deep to follow", i + 1));
+        }
+        let l = &self.family.lines[i];
+        let h = self.host_ad(&l.host, depth - 1)?;
+        let [su, sv, h0, h1, th, len] = self.line_drawn(i)?;
+        let (su, sv) = (self.value(Unknown::LineStart(i, 0), su), self.value(Unknown::LineStart(i, 1), sv));
+        let (th, len) = (self.value(Unknown::LineAngle(i), th), self.value(Unknown::LineLength(i), len));
+        let start = h.point(&su, &sv, &Ad::k(h0));
+        let end = vadd(&vadd(&start, &vmul(&h.dir(&th.cos(), &th.sin()), &len)), &vmul(&h.z, &Ad::k(h1 - h0)));
+        Ok((i, start, end, h.z))
+    }
+
+    /// Face `face` of reference line `g`, its axes as T18 has them, moving and turning with the line.
+    fn line_face(&self, g: Guid, face: Face, depth: usize) -> Result<AdFrame, String> {
+        let (_, start, end, n) = self.line_ends(g, depth)?;
+        let d = vunit(&vsub(&end, &start));
+        let side = vcross(&n, &d);
+        Ok(match face {
+            Face::Horizontal => AdFrame { origin: start, x: d, y: side, z: n },
+            Face::Vertical => {
+                let z = vcross(&d, &n);
+                AdFrame { origin: start, x: d, y: n, z }
+            }
+            Face::Start => AdFrame { origin: start, x: side, y: n, z: d },
+            Face::End => AdFrame { origin: end, x: side, y: n, z: d },
+        })
+    }
+
+    /// Whether reference line `g`, or one it is drawn on, may turn or move: one of the unknowns is its.
+    fn line_moves(&self, g: Guid) -> bool {
+        let mut at = g;
+        for _ in 0..=self.family.lines.len() {
+            let Some(i) = self.family.lines.iter().position(|l| l.guid == at) else { return false };
+            if self
+                .unknowns
+                .iter()
+                .any(|u| matches!(u, Unknown::LineStart(k, _) | Unknown::LineAngle(k) | Unknown::LineLength(k) if *k == i))
+            {
+                return true;
+            }
+            match self.family.lines[i].host {
+                PlaneRef::Plane(_) => return false,
+                PlaneRef::Line(h, _) => at = h,
+            }
+        }
+        false
     }
 
     /// Line `l` of form `g`'s sketch, as the solve reads it.
@@ -652,10 +981,42 @@ impl<'f> Problem<'f> {
         }
     }
 
+    /// Vertex `v` of form `i`'s sketch in its host's axes, where the solve has got to.
+    fn vertex_ad(&self, i: usize, v: usize) -> (Ad, Ad) {
+        (self.coord(i, v, 0).ad(&self.at), self.coord(i, v, 1).ad(&self.at))
+    }
+
+    /// The turn (radians) of arc `s`, where the solve has got to.
+    fn turn_ad(&self, s: &Seen) -> Ad {
+        let drawn = self.layouts.get(&s.form).and_then(|l| l.turn.get(s.line)).copied().unwrap_or(0.0).to_radians();
+        self.value(Unknown::Turn(s.form, s.line), drawn)
+    }
+
+    /// The centre of arc `s` and its radius, in its host's axes, where the solve has got to.
+    fn arc_ad(&self, s: &Seen) -> ((Ad, Ad), Ad) {
+        let (a, b) = (self.vertex_ad(s.form, s.ends.0), self.vertex_ad(s.form, s.ends.1));
+        let t = self.turn_ad(s);
+        let half = t.scale(0.5);
+        let (dx, dy) = (b.0.sub(&a.0), b.1.sub(&a.1));
+        let chord = dx.mul(&dx).add(&dy.mul(&dy)).sqrt();
+        let r = chord.div(&half.sin().abs().scale(2.0));
+        let k = half.cos().div(&half.sin().scale(2.0));
+        let c = (a.0.add(&b.0).scale(0.5).sub(&dy.mul(&k)), a.1.add(&b.1).scale(0.5).add(&dx.mul(&k)));
+        (c, r)
+    }
+
+    /// A point of sketch `s` at `p` (its host's axes) in the family's axes, moving with the unknowns.
+    fn sketch_point(&self, s: &Seen, p: &(Ad, Ad)) -> Result<V3, String> {
+        Ok(self.host_ad(&s.host, DEPTH)?.point(&p.0, &p.1, &Ad::k(0.0)))
+    }
+
     /// Vertex `v` of the sketch `s` is a line of, along `m`: its host's offset as much as `m` runs along the host's normal,
-    /// and its place on the host.
+    /// and its place on the host; on a reference line's face, through the face's axes as the line turns (F7c).
     fn vertex_along(&self, s: &Seen, v: usize, m: P3) -> Result<Lin, String> {
-        let (z, host) = self.plane_pos(s.host)?;
+        let PlaneRef::Plane(h) = s.host else {
+            return Ok(vdotk(&self.sketch_point(s, &self.vertex_ad(s.form, v))?, m).lin(&self.at));
+        };
+        let (z, host) = self.plane_pos(h)?;
         Ok(host
             .scaled(dot(m, z))
             .plus(self.coord(s.form, v, 0).scaled(dot(m, s.frame.x)))
@@ -669,7 +1030,10 @@ impl<'f> Problem<'f> {
         match s.shape {
             Shape::Straight => {}
             Shape::Arc => {
-                return Err(format!("{}: an arc; a dimension measures to a straight line (an arc's radius waits for F7c)", who()));
+                return Err(format!(
+                    "{}: an arc; a dimension measures to a straight line, an arc by its centre or a radial dimension",
+                    who()
+                ));
             }
             Shape::Circle => return Err(format!("{}: a circle; it is measured by its centre or by a radial dimension", who())),
         }
@@ -685,24 +1049,24 @@ impl<'f> Problem<'f> {
         Ok(match *r {
             DimRef::Plane(g) => Some(self.plane(g)?.1),
             DimRef::Form(g, _) => {
-                let (i, form) = end_form(self.family, g)?;
-                let PlaneRef::Plane(h) = form.host else { return Err(on_line(i)) };
-                Some(self.plane(h)?.1)
+                let (_, form) = end_form(self.family, g)?;
+                Some(self.family.frame(&form.host)?.z)
             }
             DimRef::Sketch(g, l) => Some(self.across(&self.seen(g, l)?)?),
-            DimRef::Point(..) => None,
+            DimRef::Point(..) | DimRef::LinePoint(..) => None,
             DimRef::Line(g, face) => Some(self.family.frame(&PlaneRef::Line(g, face))?.z),
         })
     }
 
-    /// The vertex point `spot` of line `l` of form `g` is at.
+    /// The vertex point `spot` of line `l` of form `g` is at (an arc's centre is no vertex: [`Problem::position`] works it
+    /// out).
     fn spot(&self, g: Guid, l: Guid, spot: Spot) -> Result<(Seen, usize), String> {
         let s = self.seen(g, l)?;
         let who = format!("form {}: line {}", s.form + 1, s.line + 1);
         let v = match (s.shape, spot) {
             (Shape::Circle, Spot::Centre) => s.ends.0,
             (Shape::Circle, _) => return Err(format!("{who}: a circle has a centre, no start or end")),
-            (Shape::Arc, Spot::Centre) => return Err(format!("{who}: an arc's centre is measured once arcs are solved (F7c)")),
+            (Shape::Arc, Spot::Centre) => return Err(format!("{who}: an arc's centre is no vertex")),
             (Shape::Straight, Spot::Centre) => return Err(format!("{who}: a straight line has no centre")),
             (_, Spot::Start) => s.ends.0,
             (_, Spot::End) => s.ends.1,
@@ -710,7 +1074,7 @@ impl<'f> Problem<'f> {
         Ok((s, v))
     }
 
-    /// Reference `r`'s place along `m`, worked out over `values`.
+    /// Reference `r`'s place along `m`, worked out over `values`: linearised where the solve has got to, where it turns.
     fn position<'a>(
         &self,
         r: &DimRef,
@@ -729,12 +1093,16 @@ impl<'f> Problem<'f> {
             }
             DimRef::Form(g, end) => {
                 let (i, form) = end_form(self.family, g)?;
-                let PlaneRef::Plane(h) = form.host else { return Err(on_line(i)) };
-                let (z, host) = self.plane_pos(h)?;
                 let value = match self.unknown(Unknown::End(i, end)) {
                     Some(u) => Lin::of(u, 1.0),
                     None => Lin::number(number(end_expr(form, end), values, read)?),
                 };
+                let PlaneRef::Plane(h) = form.host else {
+                    // On a reference line's face (F7c): along the face's normal as it turns.
+                    let f = self.host_ad(&form.host, DEPTH)?;
+                    return Ok(vdotk(&vadd(&f.origin, &vmul(&f.z, &value.ad(&self.at))), m).lin(&self.at));
+                };
+                let (z, host) = self.plane_pos(h)?;
                 Ok(signed(z, host.plus(value)))
             }
             DimRef::Sketch(g, l) => {
@@ -742,10 +1110,16 @@ impl<'f> Problem<'f> {
                 self.across(&s)?;
                 self.vertex_along(&s, s.ends.0, m)
             }
+            DimRef::Point(g, l, Spot::Centre) if self.seen(g, l).is_ok_and(|s| s.shape == Shape::Arc) => {
+                let s = self.seen(g, l)?;
+                let (c, _) = self.arc_ad(&s);
+                Ok(vdotk(&self.sketch_point(&s, &c)?, m).lin(&self.at))
+            }
             DimRef::Point(g, l, spot) => {
                 let (s, v) = self.spot(g, l, spot)?;
                 self.vertex_along(&s, v, m)
             }
+            DimRef::Line(g, face) if self.line_moves(g) => Ok(vdotk(&self.line_face(g, face, DEPTH)?.origin, m).lin(&self.at)),
             DimRef::Line(g, face) => {
                 let fr = self.family.frame(&PlaneRef::Line(g, face))?;
                 let mut lin = Lin::number(dot(fr.origin, fr.z));
@@ -759,16 +1133,34 @@ impl<'f> Problem<'f> {
                 }
                 Ok(signed(fr.z, lin))
             }
+            DimRef::LinePoint(g, spot) => {
+                let (_, start, end, _) = self.line_ends(g, DEPTH)?;
+                let p = if spot == Spot::End { end } else { start };
+                Ok(vdotk(&p, m).lin(&self.at))
+            }
         }
     }
 
     /// What may move when `r` is held, a dimension of `kind` measuring to it: its plane, its end, its line's vertices (and
-    /// a point's host), its circle's radius, the plane its reference line is drawn on.
+    /// a point's host), its circle's radius or its arc's turn, the plane its reference line is drawn on, the reference line
+    /// itself (F7c).
     fn unknowns_of(&self, r: &DimRef, kind: DimKind, add: &mut dyn FnMut(Unknown)) {
         let f = self.family;
         let own = |g: Guid| f.planes.iter().position(|p| p.guid == g && !p.datum() && !p.defines_origin);
+        let line = |g: Guid, add: &mut dyn FnMut(Unknown)| {
+            if let Some(i) = f.lines.iter().position(|l| l.guid == g) {
+                add(Unknown::LineStart(i, 0));
+                add(Unknown::LineStart(i, 1));
+                add(Unknown::LineAngle(i));
+                add(Unknown::LineLength(i));
+            }
+        };
         match *r {
-            DimRef::Plane(g) => own(g).into_iter().for_each(|i| add(Unknown::Plane(i))),
+            DimRef::Plane(g) => {
+                if kind != DimKind::Angular {
+                    own(g).into_iter().for_each(|i| add(Unknown::Plane(i)));
+                }
+            }
             DimRef::Form(g, end) => {
                 if let Some(i) = f.forms.iter().position(|x| x.guid == g) {
                     add(Unknown::End(i, end));
@@ -776,24 +1168,42 @@ impl<'f> Problem<'f> {
             }
             DimRef::Sketch(g, l) | DimRef::Point(g, l, _) => {
                 let Ok(s) = self.seen(g, l) else { return };
-                if !kind.is_aligned() {
+                let both = |add: &mut dyn FnMut(Unknown)| {
+                    for v in [s.ends.0, s.ends.1] {
+                        add(Unknown::Vertex(s.form, v, 0));
+                        add(Unknown::Vertex(s.form, v, 1));
+                    }
+                };
+                let arc = s.shape == Shape::Arc && (kind.is_round() || matches!(r, DimRef::Point(_, _, Spot::Centre)));
+                if arc {
+                    both(add);
+                    add(Unknown::Turn(s.form, s.line));
+                } else if kind.is_round() {
                     add(Unknown::Radius(s.form, s.line));
                     return;
+                } else {
+                    let vs = match r {
+                        DimRef::Point(_, _, Spot::End) => vec![s.ends.1],
+                        DimRef::Point(..) => vec![s.ends.0],
+                        _ => vec![s.ends.0, s.ends.1],
+                    };
+                    for v in vs {
+                        add(Unknown::Vertex(s.form, v, 0));
+                        add(Unknown::Vertex(s.form, v, 1));
+                    }
                 }
-                let vs = match r {
-                    DimRef::Point(_, _, Spot::End) => vec![s.ends.1],
-                    DimRef::Point(..) => vec![s.ends.0],
-                    _ => vec![s.ends.0, s.ends.1],
-                };
-                for v in vs {
-                    add(Unknown::Vertex(s.form, v, 0));
-                    add(Unknown::Vertex(s.form, v, 1));
-                }
-                if r.is_point() {
-                    own(s.host).into_iter().for_each(|i| add(Unknown::Plane(i)));
+                if r.is_point()
+                    && let PlaneRef::Plane(h) = s.host
+                {
+                    own(h).into_iter().for_each(|i| add(Unknown::Plane(i)));
                 }
             }
-            DimRef::Line(g, _) => line_root(f, g).and_then(own).into_iter().for_each(|i| add(Unknown::Plane(i))),
+            DimRef::Line(g, _) | DimRef::LinePoint(g, _) => {
+                if kind != DimKind::Angular {
+                    line_root(f, g).and_then(own).into_iter().for_each(|i| add(Unknown::Plane(i)));
+                }
+                line(g, add);
+            }
         }
     }
 
@@ -821,28 +1231,160 @@ impl<'f> Problem<'f> {
         let m = self.way(d)?;
         let mut out = Vec::with_capacity(d.refs.len());
         for r in &d.refs {
-            out.push(self.position(r, m, values, read)?.c);
+            out.push(self.position(r, m, values, read)?.at(&self.at));
         }
         Ok((m, out))
     }
 
-    /// The circle radial or diameter dimension `d` measures: its centre (the family's axes), its radius and its host's axes.
+    /// The circle or arc radial or diameter dimension `d` measures: its centre (the family's axes), its radius and its host's
+    /// axes.
     fn circle(&self, d: &FamilyDimension) -> Result<(P3, f64, Frame), String> {
-        let Some(DimRef::Sketch(g, l)) = d.refs.first() else { return Err("a radial or diameter dimension measures a circle".into()) };
+        let Some(DimRef::Sketch(g, l)) = d.refs.first() else {
+            return Err("a radial or diameter dimension measures a circle or an arc".into());
+        };
         let s = self.seen(*g, *l)?;
-        if s.shape != Shape::Circle {
-            return Err(format!("form {}: line {} isn't a circle; a radial or diameter dimension measures one", s.form + 1, s.line + 1));
+        match s.shape {
+            Shape::Circle => {
+                let r = self.layouts.get(&s.form).and_then(|x| x.radius.get(s.line)).copied().unwrap_or(0.0);
+                Ok((s.frame.point(self.drawn(s.form, s.ends.0), 0.0), r, s.frame))
+            }
+            Shape::Arc => {
+                let ((cx, cy), r) = self.arc_ad(&s);
+                Ok((s.frame.point(P2(cx.v, cy.v), 0.0), r.v, s.frame))
+            }
+            Shape::Straight => Err(format!(
+                "form {}: line {} is straight; a radial or diameter dimension measures a circle or an arc",
+                s.form + 1,
+                s.line + 1
+            )),
         }
-        let r = self.layouts.get(&s.form).and_then(|x| x.radius.get(s.line)).copied().unwrap_or(0.0);
-        Ok((s.frame.point(self.drawn(s.form, s.ends.0), 0.0), r, s.frame))
+    }
+
+    /// Reference `r` of an angular dimension drawn in `view`, in the view's own axes ([`view_axes`]), where the solve has got
+    /// to: a point it passes and the way it runs (a reference line from its start to its end, a plane's trace, a sketch line
+    /// from its start to its end).
+    fn in_view(&self, r: &DimRef, view: DimView) -> Result<(Ad2, Ad2), String> {
+        let (a, b) = view_axes(view);
+        let eye = view.eye();
+        let flat = |p: &V3| (vdotk(p, a), vdotk(p, b));
+        let (point, way): (V3, V3) = match *r {
+            DimRef::Plane(g) => {
+                let (_, z, _) = self.plane(g)?;
+                if dot(z, eye).abs() > PARALLEL {
+                    return Err(ANGULAR_REFS.into());
+                }
+                let f = self.host_ad(&PlaneRef::Plane(g), DEPTH)?;
+                (f.origin, v3(cross(eye, z)))
+            }
+            DimRef::Line(g, _) => {
+                let (_, start, end, _) = self.line_ends(g, DEPTH)?;
+                let way = vsub(&end, &start);
+                (start, way)
+            }
+            DimRef::Sketch(g, l) => {
+                let s = self.seen(g, l)?;
+                if s.shape != Shape::Straight {
+                    return Err(ANGULAR_REFS.into());
+                }
+                let pa = self.sketch_point(&s, &self.vertex_ad(s.form, s.ends.0))?;
+                let pb = self.sketch_point(&s, &self.vertex_ad(s.form, s.ends.1))?;
+                let way = vsub(&pb, &pa);
+                (pa, way)
+            }
+            _ => return Err(ANGULAR_REFS.into()),
+        };
+        let w = [way[0].v, way[1].v, way[2].v];
+        match unit3(w) {
+            Some(u) if dot(u, eye).abs() <= PARALLEL => Ok((flat(&point), flat(&way))),
+            Some(_) => Err(ANGULAR_REFS.into()),
+            None => Err("a line it measures has no length".into()),
+        }
+    }
+
+    /// The angles of angular dimension `d` where the solve has got to, each signed so that it is the angle as drawn when
+    /// `signs` (each reference's ray and each segment's turn, from [`ray_signs`] on the family as drawn) are the drawn ones.
+    fn angles(&self, d: &FamilyDimension, signs: &AngleSigns) -> Result<Vec<Ad>, String> {
+        let mut ways: Vec<(Ad, Ad)> = Vec::with_capacity(d.refs.len());
+        for (r, s) in d.refs.iter().zip(&signs.rays) {
+            let (_, w) = self.in_view(r, d.view)?;
+            ways.push((w.0.scale(*s), w.1.scale(*s)));
+        }
+        Ok(ways
+            .windows(2)
+            .zip(&signs.turns)
+            .map(|(w, s)| {
+                let (a, b) = (&w[0], &w[1]);
+                let cross = a.0.mul(&b.1).sub(&a.1.mul(&b.0));
+                let along = a.0.mul(&b.0).add(&a.1.mul(&b.1));
+                cross.atan2(&along).scale(*s)
+            })
+            .collect())
+    }
+
+    /// The rays and turns of angular dimension `d` as the family stands: the sector each angle is, the one `at` lies in.
+    fn angle_signs(&self, d: &FamilyDimension) -> Result<AngleSigns, String> {
+        let mut seen = Vec::with_capacity(d.refs.len());
+        for r in &d.refs {
+            let (p, w) = self.in_view(r, d.view)?;
+            seen.push((P2(p.0.v, p.1.v), P2(w.0.v, w.1.v)));
+        }
+        let (a, b) = view_axes(d.view);
+        ray_signs(&seen, P2(dot(d.at, a), dot(d.at, b)))
     }
 }
 
-fn on_line(i: usize) -> String {
-    format!("form {}: an extrusion drawn on a reference line's plane is dimensioned once lines turn (F7c)", i + 1)
+/// Which half of each line an angular dimension measures to (+1 its own way, -1 the other) and which way each of its angles
+/// turns (+1 counter-clockwise in the view's axes), and where its first two lines cross (the view's axes).
+#[derive(Clone, Debug, Default, PartialEq)]
+struct AngleSigns {
+    rays: Vec<f64>,
+    turns: Vec<f64>,
+    vertex: P2,
 }
 
-/// The form of GUID `g` an end of which is measured: an extrusion of a profile or a circle.
+/// An angle (radians) as it is measured: in degrees, unsigned, to a billionth of a degree (so 30° drawn by its cosine and
+/// sine reads 30).
+fn degrees(a: f64) -> f64 {
+    (a.abs().to_degrees() * 1e9).round() / 1e9
+}
+
+/// Two axes across the way view `view` looks, which an angular dimension's angles are measured in.
+fn view_axes(view: DimView) -> (P3, P3) {
+    match view.which() {
+        views::Which::Plan | views::Which::Ceiling => ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+        views::Which::Elevation(_) => {
+            let e = view.eye();
+            ([-e[1], e[0], 0.0], [0.0, 0.0, 1.0])
+        }
+    }
+}
+
+/// The rays and turns of an angular dimension between lines (each a point and a way in the view's axes), its sector the one
+/// `at` lies in: each line's half on `at`'s side of where the first two cross. Lines next to each other that are parallel
+/// make no angle.
+fn ray_signs(lines: &[(P2, P2)], at: P2) -> Result<AngleSigns, String> {
+    let cross2 = |a: P2, b: P2| a.0 * b.1 - a.1 * b.0;
+    let (Some(&(p0, d0)), Some(&(p1, d1))) = (lines.first(), lines.get(1)) else {
+        return Err("it measures between 2 lines or more".into());
+    };
+    let parallel = |a: P2, b: P2| cross2(a, b).abs() <= PARALLEL * a.length() * b.length();
+    if lines.windows(2).any(|w| parallel(w[0].1, w[1].1)) {
+        return Err("two lines next to each other are parallel; an angular dimension measures between lines that cross".into());
+    }
+    let t = cross2(p1 - p0, d1) / cross2(d0, d1);
+    let vertex = p0 + d0 * t;
+    let toward = at - vertex;
+    let rays: Vec<f64> = lines.iter().map(|(_, d)| if d.dot(toward) < 0.0 { -1.0 } else { 1.0 }).collect();
+    let turns =
+        lines.windows(2).zip(rays.windows(2)).map(|(w, s)| if cross2(w[0].1 * s[0], w[1].1 * s[1]) < 0.0 { -1.0 } else { 1.0 }).collect();
+    if !(vertex.0.is_finite() && vertex.1.is_finite()) {
+        return Err("its lines cross too far away to measure".into());
+    }
+    Ok(AngleSigns { rays, turns, vertex })
+}
+
+/// The form of GUID `g` an end of which is measured: an extrusion of a profile or a circle, on a plane or a reference
+/// line's face.
 fn end_form(f: &Family, g: Guid) -> Result<(usize, &Form), String> {
     let i = f.forms.iter().position(|x| x.guid == g).ok_or_else(|| format!("form {g} isn't one of its forms"))?;
     let form = &f.forms[i];
@@ -891,10 +1433,10 @@ impl Family {
             if !d.guid.is_nil() && !guids.insert(d.guid) {
                 return Err(format!("{who}: another dimension holds its GUID"));
             }
-            if d.refs.len() < 2 && d.kind.is_aligned() || d.refs.len() > MAX_DIM_REFS {
+            if d.refs.len() < 2 && !d.kind.is_round() || d.refs.len() > MAX_DIM_REFS {
                 return Err(format!("{who}: it measures between 2 to {MAX_DIM_REFS} references, not {}", d.refs.len()));
             }
-            if !d.kind.is_aligned() && d.refs.len() != 1 {
+            if d.kind.is_round() && d.refs.len() != 1 {
                 return Err(format!("{who}: a radial or diameter dimension measures one circle, not {} references", d.refs.len()));
             }
             if !d.at.iter().all(|x| x.is_finite() && x.abs() <= MAX_COORD) {
@@ -910,10 +1452,31 @@ impl Family {
             if d.kind.is_aligned() && d.refs.iter().all(DimRef::is_point) {
                 return Err(format!("{who}: it measures between points alone: give it a plane or a line to measure along"));
             }
+            let problem = Problem::bare(self);
+            if d.kind == DimKind::Angular {
+                // Lines in its view, whatever the values: planes and reference lines (sketch lines are a type's).
+                if d.equal && d.refs.len() < 3 {
+                    return Err(format!("{who}: EQ keeps the angles of three lines or more equal"));
+                }
+                let mut seen = Vec::new();
+                for r in &d.refs {
+                    match r {
+                        DimRef::Plane(_) | DimRef::Line(..) => {
+                            let (p, w) = problem.in_view(r, d.view).map_err(|e| format!("{who}: {e}"))?;
+                            seen.push((P2(p.0.v, p.1.v), P2(w.0.v, w.1.v)));
+                        }
+                        DimRef::Sketch(..) => {}
+                        _ => return Err(format!("{who}: {ANGULAR_REFS}")),
+                    }
+                }
+                if seen.len() == d.refs.len() {
+                    let (a, b) = view_axes(d.view);
+                    ray_signs(&seen, P2(dot(d.at, a), dot(d.at, b))).map_err(|e| format!("{who}: {e}"))?;
+                }
+            }
             // The ways what is drawn faces, whatever the values: planes, extrusion ends and reference lines.
-            let problem = Problem { family: self, unknowns: Vec::new(), x0: Vec::new(), layouts: BTreeMap::new() };
             let mut normals = Vec::new();
-            for r in d.refs.iter().filter(|r| matches!(r, DimRef::Plane(_) | DimRef::Form(..) | DimRef::Line(..))) {
+            for r in d.refs.iter().filter(|r| d.kind.is_aligned() && matches!(r, DimRef::Plane(_) | DimRef::Form(..) | DimRef::Line(..))) {
                 if let Some(n) = problem.direction(r).map_err(|e| format!("{who}: {e}"))? {
                     normals.push(n);
                 }
@@ -933,7 +1496,10 @@ impl Family {
                     .iter()
                     .find(|p| &p.name == l)
                     .ok_or_else(|| format!("{who}: its label: {}", not_a_parameter(l, &self.parameters)))?;
-                if p.kind != Kind::Length {
+                if d.kind == DimKind::Angular && p.kind != Kind::Angle {
+                    return Err(format!("{who}: its label `{l}` is {}; an angular dimension's label is an angle", p.kind.said()));
+                }
+                if d.kind != DimKind::Angular && p.kind != Kind::Length {
                     return Err(format!("{who}: its label `{l}` is {}; a dimension's label is a length", p.kind.said()));
                 }
                 if segments != 1 {
@@ -947,12 +1513,18 @@ impl Family {
                 if l.segment >= segments {
                     return Err(format!("{who}: segment {} is locked; it has {segments}", l.segment));
                 }
+                if d.kind == DimKind::Angular && !(l.length.is_finite() && (0.0..MAX_ANGLE).contains(&l.length)) {
+                    return Err(format!("{who}: a locked angle is from 0 up to {MAX_ANGLE}°, not {}", l.length));
+                }
                 if !l.length.is_finite() || l.length < 0.0 || l.length > MAX_COORD {
                     return Err(format!("{who}: a locked length is from 0 to {MAX_COORD} mm, not {}", l.length));
                 }
             }
-            if !d.kind.is_aligned() && (d.equal || d.alignment) {
+            if d.kind.is_round() && (d.equal || d.alignment) {
                 return Err(format!("{who}: a radial or diameter dimension takes a label or a lock, no EQ and no Align"));
+            }
+            if d.kind == DimKind::Angular && d.alignment {
+                return Err(format!("{who}: an angular dimension is no Align lock"));
             }
             if d.alignment && (segments != 1 || d.equal || !matches!(d.locked.as_slice(), [Lock { segment: 0, length }] if *length == 0.0))
             {
@@ -986,19 +1558,18 @@ impl Family {
         };
         let who = |i: usize, k: usize| format!("form {}: line {}", i + 1, k + 1);
         let straight = |l: &FormLine| matches!(&l.curve, FormCurve::Line { turn: None | Some(Expr::Number(0.0)), .. });
-        if !kind.is_aligned() {
-            let DimRef::Sketch(g, l) = *r else { return Err("a radial or diameter dimension measures a circle of a sketch".into()) };
+        if kind.is_round() {
+            let DimRef::Sketch(g, l) = *r else {
+                return Err("a radial or diameter dimension measures a circle or an arc of a sketch".into());
+            };
             let (i, k, l) = line(g, l)?;
-            if !matches!(l.curve, FormCurve::Circle { .. }) {
-                return Err(format!("{}: a radial or diameter dimension measures a circle (an arc's waits for F7c)", who(i, k)));
+            if straight(l) {
+                return Err(format!("{}: a radial or diameter dimension measures a circle or an arc, not a straight line", who(i, k)));
             }
             return Ok(());
         }
         match *r {
-            DimRef::Plane(_) | DimRef::Form(..) => {
-                let problem = Problem { family: self, unknowns: Vec::new(), x0: Vec::new(), layouts: BTreeMap::new() };
-                problem.direction(r).map(|_| ())
-            }
+            DimRef::Plane(_) | DimRef::Form(..) => Problem::bare(self).direction(r).map(|_| ()),
             DimRef::Sketch(g, l) => {
                 let (i, k, l) = line(g, l)?;
                 if straight(l) {
@@ -1006,7 +1577,10 @@ impl Family {
                 } else if matches!(l.curve, FormCurve::Circle { .. }) {
                     Err(format!("{}: a circle; it is measured by its centre or by a radial dimension", who(i, k)))
                 } else {
-                    Err(format!("{}: an arc; a dimension measures to a straight line (an arc's radius waits for F7c)", who(i, k)))
+                    Err(format!(
+                        "{}: an arc; a dimension measures to a straight line, an arc by its centre or a radial dimension",
+                        who(i, k)
+                    ))
                 }
             }
             DimRef::Point(g, l, spot) => {
@@ -1015,11 +1589,17 @@ impl Family {
                     (FormCurve::Circle { .. }, Spot::Centre) => Ok(()),
                     (FormCurve::Circle { .. }, _) => Err(format!("{}: a circle has a centre, no start or end", who(i, k))),
                     (_, Spot::Centre) if straight(l) => Err(format!("{}: a straight line has no centre", who(i, k))),
-                    (_, Spot::Centre) => Err(format!("{}: an arc's centre is measured once arcs are solved (F7c)", who(i, k))),
                     _ => Ok(()),
                 }
             }
             DimRef::Line(g, face) => self.frame(&PlaneRef::Line(g, face)).map(|_| ()),
+            DimRef::LinePoint(g, spot) => {
+                self.frame(&PlaneRef::Line(g, Face::Horizontal))?;
+                if spot == Spot::Centre {
+                    return Err(format!("line {g}: a reference line has a start and an end, no centre"));
+                }
+                Ok(())
+            }
         }
     }
 
@@ -1027,7 +1607,8 @@ impl Family {
     /// faces the way the dimension's other references do and is seen edge on in its view; a radial or diameter one's circle
     /// is seen flat in its view.
     pub(super) fn check_dimensions_for(&self, values: &BTreeMap<String, Val>) -> Result<(), String> {
-        let sketchy = |d: &&FamilyDimension| d.refs.iter().any(|r| matches!(r, DimRef::Sketch(..) | DimRef::Point(..)));
+        let sketchy =
+            |d: &&FamilyDimension| d.refs.iter().any(|r| matches!(r, DimRef::Sketch(..) | DimRef::Point(..) | DimRef::LinePoint(..)));
         if !self.dimensions.iter().any(|d| sketchy(&d)) {
             return Ok(());
         }
@@ -1036,7 +1617,11 @@ impl Family {
         let problem = Problem::new(self, refs, values, &mut read, &mut Meter::default())?;
         for (i, d) in self.dimensions.iter().enumerate().filter(|(_, d)| sketchy(d)) {
             let who = format!("dimension {}", i + 1);
-            if !d.kind.is_aligned() {
+            if d.kind == DimKind::Angular {
+                problem.angle_signs(d).map_err(|e| format!("{who}: {e}"))?;
+                continue;
+            }
+            if d.kind.is_round() {
                 let (_, _, frame) = problem.circle(d).map_err(|e| format!("{who}: {e}"))?;
                 if !parallel(frame.z, d.view.eye()) {
                     return Err(format!("{who}: its circle isn't seen flat in its view; draw it in a view that looks square on to it"));
@@ -1137,50 +1722,272 @@ impl Family {
                     if axis == 0 { p.0 } else { p.1 }
                 }
                 Unknown::Radius(i, k) => problem.layouts.get(&i).and_then(|l| l.radius.get(k)).copied().unwrap_or(0.0),
+                Unknown::LineStart(i, axis) => problem.line_drawn(i).map_err(Unsat::from)?[axis],
+                Unknown::LineAngle(i) => problem.line_drawn(i).map_err(Unsat::from)?[4],
+                Unknown::LineLength(i) => problem.line_drawn(i).map_err(Unsat::from)?[5],
+                Unknown::Turn(i, k) => problem.layouts.get(&i).and_then(|l| l.turn.get(k)).copied().unwrap_or(0.0).to_radians(),
             });
         }
         (problem.unknowns, problem.x0) = (unknowns, x0);
-        // The rows, dimension after dimension, then the pins, then the soft rows keeping sketch lines parallel.
+        problem.at = problem.x0.clone();
+        // Lines and arcs read through sines, and angles between sketch lines through their vertices: non-linear (F7c).
+        let turns = problem.unknowns.iter().any(Unknown::turns)
+            || constraining.iter().any(|(_, d)| d.kind == DimKind::Angular && d.refs.iter().any(|r| matches!(r, DimRef::Sketch(..))));
+        let mut memo = Memo { record: true, ..Memo::default() };
+        let mut rows = self.rows(&problem, &constraining, pins, free, values, &mut read, &mut memo)?;
+        // An extrusion's end, a sketch's vertex, a circle's radius and an arc's turn give way before a plane or a reference
+        // line does: what a plane or a line holds them to, they follow. A line's angle gives way as its end moves.
+        let give: Vec<f64> = problem
+            .unknowns
+            .iter()
+            .map(|u| match u {
+                Unknown::Plane(_) | Unknown::LineStart(..) | Unknown::LineLength(_) => 1.0,
+                Unknown::LineAngle(i) => 1.0 / problem.line_drawn(*i).map_or(1.0, |d| d[5]).max(1e-3),
+                Unknown::Turn(i, k) => {
+                    let r = problem.layouts.get(i).and_then(|l| l.radius.get(*k)).copied().unwrap_or(1.0);
+                    END_GIVES / r.max(1e-3)
+                }
+                _ => END_GIVES,
+            })
+            .collect();
+        let x = if turns {
+            // Gauss-Newton on the least change: each step holds the rows linearised where it has got to, with the least
+            // change from where they are drawn; a step that doesn't bring them nearer is halved back.
+            let x0 = problem.x0.clone();
+            let (mut x, dropped) = solve_rows(&x0, &give, &rows, meter, &[], false)?;
+            let size = x0.iter().fold(0.0f64, |a, v| a.max(v.abs()));
+            let tol = 1e-9 * (size / 1000.0).max(1.0);
+            let off = |rows: &[Row], x: &[f64]| -> f64 {
+                let s: f64 = rows.iter().enumerate().filter(|(k, _)| !dropped.contains(k)).map(|(_, r)| r.lin.at(x).powi(2)).sum();
+                if s.is_finite() { s.sqrt() } else { f64::INFINITY }
+            };
+            let mut again = |x: &[f64], meter: &mut Meter| -> Option<Vec<Row>> {
+                if !x.iter().all(|v| v.is_finite() && v.abs() <= 4.0 * MAX_COORD) || meter.spend(64 * x.len() as u64 + 64).is_err() {
+                    return None;
+                }
+                problem.at = x.to_vec();
+                memo.replay();
+                self.rows(&problem, &constraining, pins, free, values, &mut read, &mut memo).ok()
+            };
+            let mut gone = None;
+            match again(&x, meter) {
+                Some(r) => rows = r,
+                None => gone = Some(0.0),
+            }
+            // Until the rows hold and the step comes to nothing: held is not yet the least change (a step from a far
+            // linearisation may have moved what the rows no longer read), so it goes on to the point that is its own step.
+            let mut now = off(&rows, &x);
+            let mut steps = 0;
+            while gone.is_none() {
+                steps += 1;
+                if steps > MAX_STEPS {
+                    if now > tol {
+                        gone = Some(now);
+                    }
+                    break;
+                }
+                let (next, _) = solve_rows(&x0, &give, &rows, meter, &dropped, true)?;
+                let step = x.iter().zip(&next).fold(0.0f64, |a, (p, q)| a.max((p - q).abs()));
+                if now <= tol && step <= tol {
+                    break;
+                }
+                let mut alpha = 1.0;
+                let mut took = None;
+                for _ in 0..=MAX_HALVINGS {
+                    let cand: Vec<f64> = x.iter().zip(&next).map(|(a, b)| a + alpha * (b - a)).collect();
+                    if let Some(r) = again(&cand, meter) {
+                        let o = off(&r, &cand);
+                        if o < now || o <= tol {
+                            took = Some((cand, r, o));
+                            break;
+                        }
+                    }
+                    alpha *= 0.5;
+                }
+                match took {
+                    Some((c, r, o)) => (x, rows, now) = (c, r, o),
+                    None if now <= tol => break,
+                    None => gone = Some(now),
+                }
+            }
+            if gone.is_some() {
+                let mut dims: Vec<usize> = rows
+                    .iter()
+                    .filter(|r| r.lin.at(&x).abs().partial_cmp(&tol) != Some(std::cmp::Ordering::Less))
+                    .filter_map(|r| r.dim)
+                    .collect();
+                if dims.is_empty() {
+                    dims = rows.iter().filter_map(|r| r.dim).collect();
+                }
+                dims.sort_unstable();
+                dims.dedup();
+                let named = dims.iter().map(|d| (d + 1).to_string()).collect::<Vec<_>>().join(", ");
+                return Err(Unsat {
+                    message: format!("{NOT_SATISFIED}: they can't all hold for these values (dimension {named})"),
+                    dims,
+                    over: false,
+                });
+            }
+            x
+        } else {
+            solve_rows(&problem.x0, &give, &rows, meter, &[], false)?.0
+        };
+        // To a millionth of a millimetre, so what the arithmetic leaves over (500.00000000000006) doesn't show; angles as
+        // they come.
+        let x: Vec<f64> = x
+            .into_iter()
+            .zip(&problem.unknowns)
+            .map(|(v, u)| if matches!(u, Unknown::LineAngle(_) | Unknown::Turn(..)) { v } else { (v * 1e6).round() / 1e6 })
+            .collect();
+        if x.iter().any(|v| !v.is_finite() || v.abs() > MAX_COORD) {
+            return Err(Unsat {
+                message: format!("{NOT_SATISFIED}: they would put a plane, a line, a form's end or a sketch past {MAX_COORD} mm"),
+                dims: Vec::new(),
+                over: false,
+            });
+        }
+        let refuse = |message: String| Err(Unsat { message: format!("{NOT_SATISFIED}: {message}"), dims: Vec::new(), over: false });
+        for (u, v) in problem.unknowns.iter().zip(&x) {
+            match *u {
+                Unknown::Radius(i, _) if *v <= 0.0 => {
+                    return refuse(format!("they would give a circle of form {} a radius of {v} mm", i + 1));
+                }
+                Unknown::LineLength(i) if *v < 1e-3 => {
+                    return refuse(format!("they would give reference line {} a length of {v} mm", i + 1));
+                }
+                Unknown::Turn(i, _) if !(v.abs() > 1e-9 && v.abs() < std::f64::consts::TAU) => {
+                    return refuse(format!("they would make an arc of form {} straight or a whole circle", i + 1));
+                }
+                _ => {}
+            }
+        }
+        let mut out = Solution::default();
+        let mut vertices: BTreeMap<(usize, usize), P2> = BTreeMap::new();
+        let mut lines: BTreeMap<usize, [f64; 4]> = BTreeMap::new();
+        for (u, v) in problem.unknowns.iter().zip(&x) {
+            match *u {
+                Unknown::Plane(i) => out.planes.push((i, *v)),
+                Unknown::End(i, end) => out.ends.push((i, end, *v)),
+                Unknown::Vertex(i, vx, axis) => {
+                    let p = vertices.entry((i, vx)).or_insert_with(|| problem.drawn(i, vx));
+                    if axis == 0 {
+                        p.0 = *v;
+                    } else {
+                        p.1 = *v;
+                    }
+                }
+                Unknown::Radius(i, k) => out.radii.push((i, k, *v)),
+                Unknown::LineStart(i, axis) => lines.entry(i).or_default()[axis] = *v,
+                Unknown::LineAngle(i) => lines.entry(i).or_default()[2] = *v,
+                Unknown::LineLength(i) => lines.entry(i).or_default()[3] = *v,
+                Unknown::Turn(i, k) => out.turns.push((i, k, v.to_degrees())),
+            }
+        }
+        out.lines = lines.into_iter().collect();
+        for ((i, vx), p) in vertices {
+            let at = problem.layouts.get(&i).and_then(|l| l.points.get(vx));
+            for (k, spot) in at.into_iter().flatten() {
+                out.points.push((i, *k, *spot, p));
+            }
+        }
+        Ok(out)
+    }
+
+    /// The rows of a solve, linearised where `problem` has got to: dimension after dimension, then the pins, then the soft
+    /// rows keeping sketch lines and reference lines measured across parallel. What depends on where things are drawn (the
+    /// way a segment runs, the sector an angle is) is read the first time (`memo` recording, at the drawn point) and kept.
+    #[allow(clippy::too_many_arguments)]
+    fn rows<'a>(
+        &'a self,
+        problem: &Problem<'a>,
+        constraining: &[(usize, &FamilyDimension)],
+        pins: &[Pin],
+        free: &[usize],
+        values: &BTreeMap<String, Val>,
+        read: &mut HashMap<&'a str, Result<Node, String>>,
+        memo: &mut Memo,
+    ) -> Result<Vec<Row>, Unsat> {
+        let reporting = |l: &str| self.reporting(l);
         let mut rows: Vec<Row> = Vec::new();
         let mut soft: Vec<(Guid, Guid)> = Vec::new();
-        for &(k, d) in &constraining {
+        let mut keep: Vec<usize> = Vec::new();
+        for &(k, d) in constraining {
             let who = format!("dimension {}", k + 1);
             let at = |e: String| Unsat::from(format!("{who}: {e}"));
-            // Each segment, the way it runs as drawn: a label or a lock is a length along it.
+            let angular = d.kind == DimKind::Angular;
+            // Each segment, the way it runs as drawn: a label or a lock is a length (an angle) along it.
             let segments: Vec<Lin> = if d.kind.is_aligned() {
                 let m = problem.way(d).map_err(at)?;
                 let mut stations: Vec<Lin> = Vec::new();
                 for r in &d.refs {
-                    stations.push(problem.position(r, m, values, &mut read).map_err(at)?);
+                    stations.push(problem.position(r, m, values, read).map_err(at)?);
                     if let DimRef::Sketch(g, l) = *r
                         && !soft.contains(&(g, l))
                     {
                         soft.push((g, l));
                     }
+                    if let DimRef::Line(g, _) = *r
+                        && let Some(i) = self.lines.iter().position(|l| l.guid == g)
+                        && problem.unknown(Unknown::LineAngle(i)).is_some()
+                        && !keep.contains(&i)
+                    {
+                        keep.push(i);
+                    }
                 }
-                stations
-                    .windows(2)
-                    .map(|w| {
-                        let s = w[1].clone().minus(&w[0]);
-                        if s.at(&problem.x0) < -1e-9 { s.scaled(-1.0) } else { s }
+                let flips = memo
+                    .take(|| {
+                        Ok(stations
+                            .windows(2)
+                            .map(|w| if w[1].clone().minus(&w[0]).at(&problem.at) < -1e-9 { -1.0 } else { 1.0 })
+                            .collect())
                     })
-                    .collect()
+                    .map_err(at)?;
+                stations.windows(2).zip(flips).map(|(w, f)| w[1].clone().minus(&w[0]).scaled(f)).collect()
+            } else if angular {
+                let n = d.refs.len();
+                let saved = memo
+                    .take(|| {
+                        let s = problem.angle_signs(d)?;
+                        Ok(s.rays.into_iter().chain(s.turns).collect())
+                    })
+                    .map_err(at)?;
+                let signs = AngleSigns {
+                    rays: saved.iter().take(n).copied().collect(),
+                    turns: saved.iter().skip(n).copied().collect(),
+                    ..AngleSigns::default()
+                };
+                problem.angles(d, &signs).map_err(at)?.into_iter().map(|a| a.lin(&problem.at)).collect()
             } else {
                 problem.circle(d).map_err(at)?;
                 let Some(DimRef::Sketch(g, l)) = d.refs.first() else { continue };
                 let s = problem.seen(*g, *l).map_err(at)?;
-                match problem.unknown(Unknown::Radius(s.form, s.line)) {
-                    Some(u) => vec![Lin::of(u, d.kind.times())],
-                    None => continue,
+                if s.shape == Shape::Arc {
+                    vec![problem.arc_ad(&s).1.scale(d.kind.times()).lin(&problem.at)]
+                } else {
+                    match problem.unknown(Unknown::Radius(s.form, s.line)) {
+                        Some(u) => vec![Lin::of(u, d.kind.times())],
+                        None => continue,
+                    }
                 }
             };
             let labelled = d.label.as_deref().filter(|l| !reporting(l) && !free.contains(&k));
             if let (Some(l), Some(s)) = (labelled, segments.first()) {
                 let v = match values.get(l) {
                     Some(Val::Number(v)) => *v,
+                    _ if angular => return Err(format!("{who}: its label `{l}` has no angle").into()),
                     _ => return Err(format!("{who}: its label `{l}` has no length").into()),
                 };
-                if !v.is_finite() || v <= 0.0 || v > MAX_COORD {
+                if angular && !(v.is_finite() && (0.0..MAX_ANGLE).contains(&v)) {
+                    return Err(Unsat {
+                        message: format!(
+                            "{NOT_SATISFIED}: dimension {}'s label `{l}` is {v}°; a labelled angle is from 0 up to {MAX_ANGLE}°",
+                            k + 1
+                        ),
+                        dims: vec![k],
+                        over: false,
+                    });
+                }
+                if !angular && (!v.is_finite() || v <= 0.0 || v > MAX_COORD) {
                     return Err(Unsat {
                         message: format!(
                             "{NOT_SATISFIED}: dimension {}'s label `{l}` is {v} mm; a labelled length is above 0 and within {MAX_COORD} mm",
@@ -1191,7 +1998,7 @@ impl Family {
                     });
                 }
                 let mut lin = s.clone();
-                lin.c -= v;
+                lin.c -= if angular { v.to_radians() } else { v };
                 rows.push(Row::hard(lin, Some(k)));
             }
             for lock in &d.locked {
@@ -1200,7 +2007,7 @@ impl Family {
                 }
                 if let Some(s) = segments.get(lock.segment) {
                     let mut lin = s.clone();
-                    lin.c -= lock.length;
+                    lin.c -= if angular { lock.length.to_radians() } else { lock.length };
                     rows.push(Row::hard(lin, Some(k)));
                 }
             }
@@ -1220,7 +2027,7 @@ impl Family {
                     rows.push(Row::hard(lin, None));
                 }
                 Pin::Ref(r, m, at) => {
-                    let mut lin = problem.position(&r, m, values, &mut read).map_err(Unsat::from)?;
+                    let mut lin = problem.position(&r, m, values, read).map_err(Unsat::from)?;
                     lin.c -= at;
                     rows.push(Row::hard(lin, None));
                     // A line both its ends.
@@ -1240,54 +2047,14 @@ impl Family {
             let b = problem.vertex_along(&s, s.ends.1, n).map_err(Unsat::from)?;
             rows.push(Row { lin: b.minus(&a), dim: None, soft: true });
         }
-        // An extrusion's end, a sketch's vertex and a circle's radius give way before a plane does: what a plane holds them
-        // to, they follow.
-        let give: Vec<f64> = problem.unknowns.iter().map(|u| if matches!(u, Unknown::Plane(_)) { 1.0 } else { END_GIVES }).collect();
-        let x = solve_rows(&problem.x0, &give, &rows, meter)?;
-        // To a millionth of a millimetre, so what the arithmetic leaves over (500.00000000000006) doesn't show.
-        let x: Vec<f64> = x.into_iter().map(|v| (v * 1e6).round() / 1e6).collect();
-        if x.iter().any(|v| !v.is_finite() || v.abs() > MAX_COORD) {
-            return Err(Unsat {
-                message: format!("{NOT_SATISFIED}: they would put a plane, a form's end or a sketch past {MAX_COORD} mm"),
-                dims: Vec::new(),
-                over: false,
-            });
-        }
-        for (u, v) in problem.unknowns.iter().zip(&x) {
-            if let Unknown::Radius(i, _) = u
-                && *v <= 0.0
-            {
-                return Err(Unsat {
-                    message: format!("{NOT_SATISFIED}: they would give a circle of form {} a radius of {v} mm", i + 1),
-                    dims: Vec::new(),
-                    over: false,
-                });
+        // A reference line measured across keeps its angle on what it is drawn on, unless the rows before turn it (F7c).
+        for i in keep {
+            if let Some(u) = problem.unknown(Unknown::LineAngle(i)) {
+                let drawn = problem.x0.get(u).copied().unwrap_or(0.0);
+                rows.push(Row { lin: Lin { terms: vec![(u, 1.0)], c: -drawn }, dim: None, soft: true });
             }
         }
-        let mut out = Solution::default();
-        let mut vertices: BTreeMap<(usize, usize), P2> = BTreeMap::new();
-        for (u, v) in problem.unknowns.iter().zip(&x) {
-            match *u {
-                Unknown::Plane(i) => out.planes.push((i, *v)),
-                Unknown::End(i, end) => out.ends.push((i, end, *v)),
-                Unknown::Vertex(i, vx, axis) => {
-                    let p = vertices.entry((i, vx)).or_insert_with(|| problem.drawn(i, vx));
-                    if axis == 0 {
-                        p.0 = *v;
-                    } else {
-                        p.1 = *v;
-                    }
-                }
-                Unknown::Radius(i, k) => out.radii.push((i, k, *v)),
-            }
-        }
-        for ((i, vx), p) in vertices {
-            let at = problem.layouts.get(&i).and_then(|l| l.points.get(vx));
-            for (k, spot) in at.into_iter().flatten() {
-                out.points.push((i, *k, *spot, p));
-            }
-        }
-        Ok(out)
+        Ok(rows)
     }
 
     /// The family flexed for `values`: its planes where its dimensions put them (and the lines and forms drawn on them with
@@ -1320,19 +2087,41 @@ impl Family {
                 shift.push((p.guid, by));
             }
         }
-        // A reference line lies on what it is drawn on: moved with it, and what is drawn on it with it.
-        if !shift.is_empty() {
-            let mut lines: Vec<(Guid, P3)> = Vec::new();
-            for l in &mut f.lines {
-                let by = match l.host {
-                    PlaneRef::Plane(g) => shift.iter().find(|(h, _)| *h == g).map(|(_, b)| *b),
+        // A reference line lies on what it is drawn on: moved with it, and what is drawn on it with it. One the constraints
+        // set goes where they put it, in the axes of what it is drawn on as that now stands (F7c); one drawn on a line that
+        // turned turns with it.
+        if !shift.is_empty() || !s.lines.is_empty() {
+            // Each line that went: by how much, or turned (none).
+            let mut lines: Vec<(Guid, Option<P3>)> = Vec::new();
+            for k in 0..f.lines.len() {
+                let l = f.lines[k].clone();
+                let host = match l.host {
+                    PlaneRef::Plane(g) => shift.iter().find(|(h, _)| *h == g).map(|(_, b)| Some(*b)),
                     PlaneRef::Line(g, _) => lines.iter().find(|(h, _)| *h == g).map(|(_, b)| *b),
                 };
-                if let Some(by) = by {
-                    l.start = add(l.start, by);
-                    l.end = add(l.end, by);
-                    lines.push((l.guid, by));
-                }
+                let solved = s.lines.iter().find(|(i, _)| *i == k).map(|(_, v)| *v);
+                let (Ok(old), Ok(new)) = (self.frame(&l.host), f.frame(&l.host)) else { continue };
+                let (start, end, how) = match (solved, host) {
+                    (Some([su, sv, th, len]), _) => {
+                        let ((_, h0), (_, h1)) = (old.local(l.start), old.local(l.end));
+                        let start = new.point(P2(su, sv), h0);
+                        (start, new.point(P2(su + len * th.cos(), sv + len * th.sin()), h1), None)
+                    }
+                    (None, Some(Some(by))) => (add(l.start, by), add(l.end, by), Some(by)),
+                    (None, Some(None)) => {
+                        let move_ = |p: P3| {
+                            let (q, t) = old.local(p);
+                            new.point(q, t)
+                        };
+                        (move_(l.start), move_(l.end), None)
+                    }
+                    (None, None) => continue,
+                };
+                // To a billionth of a millimetre, so a quarter turn's cosine (6e-17) doesn't show.
+                let tidy = |p: P3| p.map(|v| (v * 1e9).round() / 1e9);
+                f.lines[k].start = if how.is_some() { start } else { tidy(start) };
+                f.lines[k].end = if how.is_some() { end } else { tidy(end) };
+                lines.push((l.guid, how));
             }
         }
         for (i, end, v) in &s.ends {
@@ -1359,6 +2148,11 @@ impl Family {
                 *radius = Expr::Number(*r);
             }
         }
+        for (i, k, t) in &s.turns {
+            if let Some(FormCurve::Line { turn, .. }) = f.forms.get_mut(*i).and_then(|x| x.sketch.get_mut(*k)).map(|l| &mut l.curve) {
+                *turn = Some(Expr::Number(*t));
+            }
+        }
         f
     }
 
@@ -1370,7 +2164,8 @@ impl Family {
         problem.stations(d, values, &mut read)
     }
 
-    /// Each segment's length of each of its dimensions, flexed for `values` (empty for one that can't be measured).
+    /// Each segment's length of each of its dimensions (an angular one's angles, in degrees), flexed for `values` (empty for
+    /// one that can't be measured).
     pub fn measured(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Vec<f64>>, Unsat> {
         let f = self.flexed(values)?;
         let mut read = HashMap::new();
@@ -1378,10 +2173,17 @@ impl Family {
         let Ok(problem) = Problem::new(&f, all, values, &mut read, &mut Meter::default()) else {
             return Ok(vec![Vec::new(); f.dimensions.len()]);
         };
+        let mut drawn_read = HashMap::new();
+        let all = self.dimensions.iter().filter(|d| d.kind == DimKind::Angular).flat_map(|d| d.refs.iter().copied());
+        let drawn = Problem::new(self, all, values, &mut drawn_read, &mut Meter::default()).ok();
         Ok(f.dimensions
             .iter()
-            .map(|d| {
-                if d.kind.is_aligned() {
+            .enumerate()
+            .map(|(k, d)| {
+                if d.kind == DimKind::Angular {
+                    let signs = drawn.as_ref().zip(self.dimensions.get(k)).and_then(|(p, d)| p.angle_signs(d).ok());
+                    signs.and_then(|s| problem.angles(d, &s).ok()).map(|a| a.iter().map(|x| degrees(x.v)).collect()).unwrap_or_default()
+                } else if d.kind.is_aligned() {
                     problem
                         .stations(d, values, &mut read)
                         .map(|(_, p)| p.windows(2).map(|w| (w[1] - w[0]).abs()).collect())
@@ -1475,6 +2277,18 @@ impl Family {
     /// the sketch points it moved.
     fn edits(&self, s: &Solution, values: &BTreeMap<String, Val>) -> Vec<Edit> {
         let mut out: Vec<Edit> = s.planes.iter().filter_map(|(i, v)| Some(Edit::Plane(self.planes.get(*i)?.guid, *v))).collect();
+        // Reference lines the constraints moved or turned, and those drawn on them (F7c).
+        if !s.lines.is_empty() {
+            let moved = self.moved(s);
+            for (was, now) in self.lines.iter().zip(&moved.lines) {
+                if was.start != now.start || was.end != now.end {
+                    out.push(Edit::LineEnds(was.guid, now.start, now.end));
+                }
+            }
+        }
+        for (i, k, t) in &s.turns {
+            out.push(Edit::Turn(*i, *k, *t));
+        }
         let mut read = HashMap::new();
         for (i, k, spot, p) in &s.points {
             let Some(line) = self.forms.get(*i).and_then(|f| f.sketch.get(*k)) else { continue };
@@ -1523,7 +2337,7 @@ impl Family {
                     DimRef::Plane(g) => !self.planes.iter().any(|p| p.guid == g) && !DATUMS.contains(&g),
                     DimRef::Form(g, _) => !self.forms.iter().any(|f| f.guid == g),
                     DimRef::Sketch(g, l) | DimRef::Point(g, l, _) => !line(g, l),
-                    DimRef::Line(g, _) => !self.lines.iter().any(|x| x.guid == g),
+                    DimRef::Line(g, _) | DimRef::LinePoint(g, _) => !self.lines.iter().any(|x| x.guid == g),
                 })
             })
             .map(|(i, _)| i)
@@ -1541,7 +2355,7 @@ impl Family {
                 // The segments either side of it become one: a lock on either goes, those after move down.
                 d.locked.retain(|l| l.segment + 1 != at && l.segment != at);
                 d.locked.iter_mut().filter(|l| l.segment > at).for_each(|l| l.segment -= 1);
-                if d.kind.is_aligned() && d.refs.len() != 2 {
+                if !d.kind.is_round() && d.refs.len() != 2 {
                     d.label = None;
                 }
             }
@@ -1585,7 +2399,7 @@ impl Family {
             match r {
                 DimRef::Plane(g) => pick(&plane_ids, g),
                 DimRef::Form(g, _) => pick(&form_ids, g),
-                DimRef::Line(g, _) => pick(&line_ids, g),
+                DimRef::Line(g, _) | DimRef::LinePoint(g, _) => pick(&line_ids, g),
                 DimRef::Sketch(g, l) | DimRef::Point(g, l, _) => {
                     pick(&form_ids, g);
                     if let Some((_, lines)) = sketch_ids.iter().find(|(f, _)| f == g) {
@@ -1594,7 +2408,7 @@ impl Family {
                 }
             }
             match r {
-                DimRef::Plane(g) | DimRef::Form(g, _) | DimRef::Line(g, _) => follow(g),
+                DimRef::Plane(g) | DimRef::Form(g, _) | DimRef::Line(g, _) | DimRef::LinePoint(g, _) => follow(g),
                 DimRef::Sketch(g, l) | DimRef::Point(g, l, _) => {
                     follow(g);
                     follow(l);
@@ -1610,8 +2424,17 @@ const END_GIVES: f64 = 1e6;
 
 /// The least change `dx` from `x0` with every row held (`lin(x0 + dx) = 0`), each connected group of unknowns on its own, an
 /// unknown's change weighed down by its `give` (the change of `give · y`, `y` the least). A row that adds nothing to those
-/// before it in its group is refused, naming the dimensions it comes from; a soft one is left out.
-fn solve_rows(x0: &[f64], give: &[f64], rows: &[Row], meter: &mut Meter) -> Result<Vec<f64>, Unsat> {
+/// before it in its group is refused, naming the dimensions it comes from; a soft one is left out (and listed with the
+/// point). The rows `skip` (by place) are left out; `lenient` leaves out a hard row that adds nothing too, as a step of a
+/// non-linear solve does away from the drawn point, where its residual decides.
+fn solve_rows(
+    x0: &[f64],
+    give: &[f64],
+    rows: &[Row],
+    meter: &mut Meter,
+    skip: &[usize],
+    lenient: bool,
+) -> Result<(Vec<f64>, Vec<usize>), Unsat> {
     let n = x0.len();
     // Groups: unknowns joined by a row.
     let mut parent: Vec<usize> = (0..n).collect();
@@ -1639,13 +2462,17 @@ fn solve_rows(x0: &[f64], give: &[f64], rows: &[Row], meter: &mut Meter) -> Resu
         let r = root(&mut parent, u);
         groups.entry(r).or_default().0.push(u);
     }
+    let mut dropped = Vec::new();
     for (k, row) in rows.iter().enumerate() {
+        if skip.contains(&k) {
+            continue;
+        }
         match row.lin.terms.iter().map(|t| t.0).find(|u| *u < n) {
             Some(u) => {
                 let r = root(&mut parent, u);
                 groups.entry(r).or_default().1.push(k);
             }
-            None if row.soft => {}
+            None if row.soft || lenient => dropped.push(k),
             // Nothing in it may move: it adds nothing.
             None => return Err(over(rows, k, &[])),
         }
@@ -1685,7 +2512,8 @@ fn solve_rows(x0: &[f64], give: &[f64], rows: &[Row], meter: &mut Meter) -> Resu
             }
             let left = dot_n(&v, &v).sqrt();
             if size == 0.0 || left <= DEPENDENT * size.max(1.0) {
-                if rows[k].soft {
+                if rows[k].soft || lenient {
+                    dropped.push(k);
                     continue;
                 }
                 let with: Vec<usize> = t.iter().enumerate().filter(|(i, w)| *i != j && w.abs() > 1e-9).map(|(i, _)| ks[i]).collect();
@@ -1704,7 +2532,7 @@ fn solve_rows(x0: &[f64], give: &[f64], rows: &[Row], meter: &mut Meter) -> Resu
             }
         }
     }
-    Ok(x)
+    Ok((x, dropped))
 }
 
 fn dot_n(a: &[f64], b: &[f64]) -> f64 {
@@ -1733,7 +2561,9 @@ fn over(rows: &[Row], k: usize, with: &[usize]) -> Unsat {
 
 /// A dimension as a family's view draws it: its references' places on its line (the view's mm), the way along it and
 /// across it there, each segment's length, its label and which segments are locked. A radial one's points are the
-/// circle's centre and a point of it, a diameter one's two points of it across the centre.
+/// circle's centre and a point of it, a diameter one's two points of it across the centre. An angular one's are where its
+/// lines cross, then a point on each line's ray as far from there as `at` is (its arc's radius), its lengths the angles in
+/// degrees.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DimMark {
     /// Its place in the family's dimensions.
@@ -1749,15 +2579,46 @@ pub struct DimMark {
     pub kind: DimKind,
 }
 
-/// The dimensions of `flexed` (the family flexed for `values`) drawn in view `which` of `st`.
-pub fn marks(flexed: &Family, values: &BTreeMap<String, Val>, st: &views::Staged, which: views::Which) -> Vec<DimMark> {
+/// The dimensions of `flexed` (`drawn`, the family as drawn, flexed for `values`) drawn in view `which` of `st`. An angular
+/// one measures the sector it was drawn in, whichever way its lines have turned since.
+pub fn marks(drawn: &Family, flexed: &Family, values: &BTreeMap<String, Val>, st: &views::Staged, which: views::Which) -> Vec<DimMark> {
     let view = DimView::of(which);
     let mut out = Vec::new();
     let mut read = HashMap::new();
     let shown = flexed.dimensions.iter().filter(|d| d.view == view).flat_map(|d| d.refs.iter().copied());
     let Ok(problem) = Problem::new(flexed, shown, values, &mut read, &mut Meter::default()) else { return out };
+    let mut drawn_read = HashMap::new();
+    let angular = drawn.dimensions.iter().filter(|d| d.view == view && d.kind == DimKind::Angular).flat_map(|d| d.refs.iter().copied());
+    let as_drawn = Problem::new(drawn, angular, values, &mut drawn_read, &mut Meter::default()).ok();
     for (index, d) in flexed.dimensions.iter().enumerate().filter(|(_, d)| d.view == view) {
-        let (points, lengths) = if d.kind.is_aligned() {
+        let (points, lengths) = if d.kind == DimKind::Angular {
+            // The sector as drawn (a dimension being placed, which the drawn family hasn't, as it is now).
+            let signs = match drawn.dimensions.get(index).filter(|x| x.guid == d.guid && x.refs == d.refs) {
+                Some(x) => as_drawn.as_ref().and_then(|p| p.angle_signs(x).ok()),
+                None => problem.angle_signs(d).ok(),
+            };
+            let Some(signs) = signs else { continue };
+            let Ok(angles) = problem.angles(d, &signs) else { continue };
+            let mut seen = Vec::new();
+            for r in &d.refs {
+                let Ok((p, w)) = problem.in_view(r, view) else { break };
+                seen.push((P2(p.0.v, p.1.v), P2(w.0.v, w.1.v)));
+            }
+            let Ok(now) = ray_signs(&seen, P2(0.0, 0.0)) else { continue };
+            let (a, b) = view_axes(view);
+            let eye = view.eye();
+            let depth = mul(eye, dot(d.at, eye));
+            let to3 = |p: P2| add(add(mul(a, p.0), mul(b, p.1)), depth);
+            let radius = (P2(dot(d.at, a), dot(d.at, b)) - now.vertex).length();
+            if !(radius > 1e-6 && radius.is_finite()) {
+                continue;
+            }
+            let mut points = vec![st.to_view(which, to3(now.vertex))];
+            for ((_, w), s) in seen.iter().zip(&signs.rays) {
+                points.push(st.to_view(which, to3(now.vertex + (*w * *s).unit() * radius)));
+            }
+            (points, angles.iter().map(|x| degrees(x.v)).collect::<Vec<f64>>())
+        } else if d.kind.is_aligned() {
             let Ok((m, p)) = problem.stations(d, values, &mut read) else { continue };
             let base = dot(d.at, m);
             let points: Vec<P2> = p.iter().map(|s| st.to_view(which, add(d.at, mul(m, s - base)))).collect();
@@ -1777,6 +2638,8 @@ pub fn marks(flexed: &Family, values: &BTreeMap<String, Val>, st: &views::Staged
         let along = if d.kind.is_aligned() {
             let m = problem.way(d).unwrap_or([1.0, 0.0, 0.0]);
             st.to_view(which, add(d.at, m)) - st.to_view(which, d.at)
+        } else if d.kind == DimKind::Angular {
+            points.get(1).map_or(b - a, |p| *p - a)
         } else {
             b - a
         };
@@ -1813,7 +2676,6 @@ pub fn end_faces(flexed: &Family, values: &BTreeMap<String, Val>, st: &views::St
         if !form.mesh.is_empty() || form.axis().is_some() || form.guid.is_nil() {
             continue;
         }
-        let PlaneRef::Plane(_) = form.host else { continue };
         let Ok(frame) = flexed.frame(&form.host) else { continue };
         let z = frame.z;
         if dot(z, eye).abs() > PARALLEL {
@@ -1854,7 +2716,6 @@ pub fn sketch_faces(flexed: &Family, values: &BTreeMap<String, Val>, st: &views:
         if !form.mesh.is_empty() || form.guid.is_nil() {
             continue;
         }
-        let PlaneRef::Plane(_) = form.host else { continue };
         let Ok(frame) = flexed.frame(&form.host) else { continue };
         let flat = parallel(frame.z, eye);
         let edge = dot(frame.z, eye).abs() <= PARALLEL && !form.revolves();
@@ -1891,9 +2752,32 @@ pub fn sketch_faces(flexed: &Family, values: &BTreeMap<String, Val>, st: &views:
     out
 }
 
-/// The circles of `flexed`'s sketches on planes view `which` sees flat (F7b): each one's reference (its line), its centre
-/// and its radius (the view's mm). What a radial dimension picks, and whose centre a dimension or Align picks.
-pub fn sketch_circles(flexed: &Family, values: &BTreeMap<String, Val>, st: &views::Staged, which: views::Which) -> Vec<(DimRef, P2, f64)> {
+/// A circle or an arc of a sketch as a view sees it (the view's mm): its reference (its line), its centre and radius, and
+/// an arc's start, middle and end.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Round {
+    pub r: DimRef,
+    pub centre: P2,
+    pub radius: f64,
+    pub arc: Option<[P2; 3]>,
+}
+
+impl Round {
+    /// Whether `p` (the view's mm) lies within its sweep, seen from its centre: anywhere for a circle.
+    pub fn sweeps(&self, p: P2) -> bool {
+        let Some([a, m, b]) = self.arc else { return true };
+        let angle = |q: P2| (q.1 - self.centre.1).atan2(q.0 - self.centre.0);
+        let tau = std::f64::consts::TAU;
+        let from = |q: P2| (angle(q) - angle(a)).rem_euclid(tau);
+        // Counter-clockwise from its start (in the view) when its middle comes before its end that way, else clockwise.
+        let (to_m, to_b, to_p) = (from(m), from(b), from(p));
+        if to_m <= to_b { to_p <= to_b } else { to_p >= to_b }
+    }
+}
+
+/// The circles and arcs of `flexed`'s sketches on planes view `which` sees flat (F7b, arcs F7c): what a radial dimension
+/// picks, and whose centre a dimension or Align picks.
+pub fn sketch_circles(flexed: &Family, values: &BTreeMap<String, Val>, st: &views::Staged, which: views::Which) -> Vec<Round> {
     let eye = DimView::of(which).eye();
     let mut out = Vec::new();
     let mut read = HashMap::new();
@@ -1901,16 +2785,36 @@ pub fn sketch_circles(flexed: &Family, values: &BTreeMap<String, Val>, st: &view
         if !form.mesh.is_empty() || form.guid.is_nil() {
             continue;
         }
-        let PlaneRef::Plane(_) = form.host else { continue };
         let Ok(frame) = flexed.frame(&form.host) else { continue };
         if !parallel(frame.z, eye) {
             continue;
         }
+        let at = |p: P2| st.to_view(which, frame.point(p, 0.0));
         for l in form.sketch.iter().filter(|l| !l.guid.is_nil()) {
-            let FormCurve::Circle { centre, radius } = &l.curve else { continue };
+            let r = DimRef::Sketch(form.guid, l.guid);
             let mut num = |e| number(e, values, &mut read);
-            let (Ok(x), Ok(y), Ok(r)) = (num(&centre[0]), num(&centre[1]), num(radius)) else { continue };
-            out.push((DimRef::Sketch(form.guid, l.guid), st.to_view(which, frame.point(P2(x, y), 0.0)), r));
+            match &l.curve {
+                FormCurve::Circle { centre, radius } => {
+                    let (Ok(x), Ok(y), Ok(radius)) = (num(&centre[0]), num(&centre[1]), num(radius)) else { continue };
+                    out.push(Round { r, centre: at(P2(x, y)), radius, arc: None });
+                }
+                FormCurve::Line { start, end, turn: Some(t) } => {
+                    let (Ok(ax), Ok(ay), Ok(bx), Ok(by), Ok(t)) = (num(&start[0]), num(&start[1]), num(&end[0]), num(&end[1]), num(t))
+                    else {
+                        continue;
+                    };
+                    let (a, b, t) = (P2(ax, ay), P2(bx, by), t.to_radians());
+                    if t == 0.0 || a.dist(b) < 1e-9 || !t.is_finite() {
+                        continue;
+                    }
+                    let c = arc_centre(a, b, t);
+                    let from = (a.1 - c.1).atan2(a.0 - c.0) + t / 2.0;
+                    let radius = arc_radius(a, b, t);
+                    let m = c + P2(from.cos(), from.sin()) * radius;
+                    out.push(Round { r, centre: at(c), radius, arc: Some([at(a), at(m), at(b)]) });
+                }
+                FormCurve::Line { .. } => {}
+            }
         }
     }
     out
@@ -1959,6 +2863,15 @@ pub fn place_along(flexed: &Family, r: &DimRef, values: &BTreeMap<String, Val>) 
     Ok((n, place(flexed, r, values, n)?))
 }
 
+/// The way reference `r` of `flexed` runs in view `view` (in the view's own axes), for `values`: a line an angular dimension
+/// may measure to, seen as a line there (F7c); else why not.
+pub fn view_way(flexed: &Family, r: &DimRef, values: &BTreeMap<String, Val>, view: DimView) -> Result<P2, String> {
+    let mut read = HashMap::new();
+    let problem = Problem::new(flexed, [*r], values, &mut read, &mut Meter::default())?;
+    let (_, w) = problem.in_view(r, view)?;
+    Ok(P2(w.0.v, w.1.v))
+}
+
 /// Align (AL): `target` moved onto `reference` (parallel to it), as Revit's Align moves it, for `values`: the edits that
 /// do it. A plane is dragged ([`Family::drag_plane`]); an extrusion end the constraints don't set takes the new value; a
 /// sketch's line or circle centre moves there and the lines joined to it follow, through the constraints (refused where they
@@ -2003,6 +2916,6 @@ pub fn align(f: &Family, values: &BTreeMap<String, Val>, reference: &DimRef, tar
                 Err(e) => Err(e),
             }
         }
-        DimRef::Line(g, _) => Ok(vec![Edit::Line(g, mul(m, at - was))]),
+        DimRef::Line(g, _) | DimRef::LinePoint(g, _) => Ok(vec![Edit::Line(g, mul(m, at - was))]),
     }
 }

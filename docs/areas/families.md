@@ -309,8 +309,8 @@ correcting placed components' `at` so they stay put) is not done yet: the flag i
 
 A family's `lines` are its reference lines (T18), each `start` to `end` drawn on a `host` it lies on, with four planes: its
 host's through it (`horizontal`), square to that through it (`vertical`), and square to it at each end (`start`, `end`), their
-origin the line's start (`end`'s its end), so what is drawn on one will turn with it once the angle that turns a line exists
-(F7c, with angular dimensions). A line may be drawn on an earlier line's plane, never a later one's.
+origin the line's start (`end`'s its end), so what is drawn on one turns with it when its constraints turn it (F7c, below).
+A line may be drawn on an earlier line's plane, never a later one's.
 
 A form's `host` is a `PlaneRef`, `{"plane": guid}` or `{"line": guid, "face": …}`, Ref. Level when none: its profile is
 drawn in the host's axes and `from` and `to` run along its normal (Revit's Extrusion Start and End); a revolve turns in it
@@ -379,7 +379,7 @@ refusal, like Family Types' values a type can't hold, asks "Constraints are not 
 labels, locks and EQ taken off, and what was being done done) or Cancel. An extrusion end a dimension sets is greyed in its
 Properties and the Options Bar's Depth. A reload whose family has dimensions measuring to nothing (`exists.rs`) asks Invalid
 Dimensions first: Delete Dimension(s) or Cancel, and nothing passes it over. Angular dimensions and reference lines that turn
-are F7c.
+are F7c's (below).
 
 F7b, FORMAT 26: sketch lines locked. A dimension may also measure to a straight line of a form's sketch, `{"form": guid,
 "line": guid}` (the plane through it square to the form's plane: Revit's sketch line seen edge on), to a line's end or a
@@ -393,8 +393,8 @@ where the other rows hold it already (two ends held never read as over-constrain
 extrusion ends, so lines follow planes. `moved` writes the solved points and radii as numbers in the flexed copy; a coordinate no
 row touches keeps its formula. A line's direction is the type's, so `check` checks each type's (`check_dimensions_for`). A form
 given again (`forms`, `form`) keeps the dimensions of the lines that keep their GUIDs, and those of the lines gone go
-(`forget_lines_gone`, `deleted_dimensions`); copies follow the sketch lines' new GUIDs. Arcs follow their ends: an arc's
-radius and centre wait for F7c's non-linear solve. `solve` lists each form's sketch for the type. The conservative bounds of a
+(`forget_lines_gone`, `deleted_dimensions`); copies follow the sketch lines' new GUIDs. An arc follows its ends unless its
+radius or centre is measured (F7c). `solve` lists each form's sketch for the type. The conservative bounds of a
 constrained family are its flexed one's.
 
 In the family document, Aligned Dimension and Align also pick a form's straight sketch line where the view sees it edge on (any
@@ -411,6 +411,43 @@ form's inside, slid along it as little as keeps it off every line drawn and ever
 Align's offered padlock too. Edit Extrusion opens the sketch as the type previewed flexes it, and a line that comes back there keeps its formulas
 (`sketch::kept` against the lines shown). Every line gets a GUID of its own at Finish, a new form its GUID at once, so a lock or
 a dimension can name them before the family is loaded.
+
+F7c, FORMAT 28 (27 is nested families', T6): angles, turning reference lines and arcs. `kind: "angular"` measures the angles
+between 2 to `MAX_DIM_REFS` lines seen as lines in its view: reference planes seen edge on (their traces), reference lines
+(`{"line": guid, "face": …}`, any face: the line's way counts) and straight sketch lines on a plane seen flat. Segment *i* is the
+angle from reference *i* to *i + 1*, in degrees; the sector is the one `at` lies in as drawn (each line's half on `at`'s side of
+where the first two cross, `ray_signs`), kept for every type, so the angle reads continuously as the lines turn. A label is an
+Angle parameter (0 ≤ value < `MAX_ANGLE`, 180), a lock keeps the angle (`Lock.length` in degrees), EQ keeps a fan's angles
+equal (three lines or more); no Align lock. Neighbours parallel as drawn are refused. A dimension may measure to a reference
+line's end, `{"line": guid, "point": "start" | "end"}`, along its other references (the rig's start is held where two planes
+cross by two Align locks to it); radial and diameter dimensions take an arc, and `{"form", "line", "point": "centre"}` an arc's
+centre; and forms drawn on a reference line's face are measured like any other (F7b's refusal is gone). A reference line a
+constraint measures becomes four unknowns in the axes of what it is drawn on: its start, its angle and its length (a line not
+measured follows what it is drawn on, rigidly, as forms and lines on its faces follow it); an arc whose radius or centre is
+measured, its turn beside its end vertices. Lines give way like planes; vertices, ends and turns before them. An aligned
+dimension to a turning line's face measures the face through its start and adds a soft row keeping the line's angle, left out
+where an angle sets it.
+
+The solve (`solve_with`) writes every row as its linearisation at the point reached (`Ad`, forward-mode derivatives, as a `Lin`),
+so a linear row is the row itself. With no line or arc unknown and no angle between sketch lines it is F7a's single least-norm
+solve, untouched. Otherwise it is Gauss-Newton on the least change: each step holds the rows linearised where it has got to
+with the least weighted change from the drawn point (`solve_rows(x₀, …, rows(x_k))`), halved back (at most `MAX_HALVINGS`)
+until the residual falls, and goes on until the rows hold and the step comes to nothing, at most `MAX_STEPS`; what is drawn
+(each segment's way, each angle's sector) is read once at the drawn point (`Memo`). Over-constraint is the rank test on the first
+step, at the drawn point; a step away from it leaves a row that lost rank to the residual. What doesn't settle, or would give
+a line no length, an arc a straight or whole turn, says "Constraints are not satisfied: they can't all hold for these values",
+naming the dimensions. Deterministic: fixed orders, step and halving counts, no hashing, every type from the drawn point.
+`moved` puts each solved line in its host's flexed axes (to 1e-9 mm) and carries lines drawn on a moved or turned line with
+it; `edits` gives a drag or Align `LineEnds` and `Turn`; `measured` reads angles in degrees (reporting Angle parameters
+report); `solve` lists the lines. `marks` takes the drawn family too, for the sector.
+
+In the family document, Create > Dimension > Angular picks lines that cross the one before (`dimensions::line_at`,
+`crosses_last`, through `constraints::view_way`), then a click on nothing places the arc, following the pointer until then. Its
+mark is the core's: an arc between each two lines at `at`'s distance from where they cross, arrows at its ends, a short witness
+across it on each line, each angle level just outside the middle of its arc; selected, a padlock inside each arc and the EQ
+toggle past a string's first end. The Options Bar's Label lists Angle parameters for it, and Create Parameter… makes an Angle
+of what it measures. Radial and Diameter also pick an arc by its edge within its sweep (`constraints::Round`), and an arc's
+centre is picked as a circle's. Turning a reference line with the mouse is F7d's (with T18's line grips).
 
 ## The family's views
 

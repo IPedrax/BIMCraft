@@ -145,7 +145,13 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// faces, and measure a circle's radius or diameter (F7b): sketches locked to planes flex with them. A build of 25 reads a
 /// dimension's references strictly and knows none of these, so it would leave those dimensions out of the file and flex a
 /// locked sketch as if nothing held it.
-pub const FORMAT: u32 = 26;
+///
+/// 28: a family's dimensions may be angular (between reference lines, reference planes and straight sketch lines, labelled
+/// with angles), measure to a reference line's start or end, measure an arc's radius, diameter or centre, and measure the
+/// forms drawn on a reference line's face; reference lines turn and move with them (F7c). A build of 26 knows no `angular`
+/// kind and no line point, so it would leave those dimensions out of the file and flex the family as if nothing turned its
+/// lines. 27 is taken by nested families (T6), on a branch of its own.
+pub const FORMAT: u32 = 28;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3585,6 +3591,9 @@ impl Model {
         // 24 to 25 (a family's dimensions, labels, locks and Align's locks) has none: a file of 24 holds none.
         // 25 to 26 (dimensions to sketch lines, their points and reference lines' faces; radial and diameter ones) has none:
         // a file of 25 holds none, and every dimension it holds reads as it did.
+        // 26 to 28 (angular dimensions, reference lines' ends, arcs' radii and centres, forms on reference lines measured) has
+        // none: a file of 26 holds none, and every dimension it holds solves as it did. 27 is nested families' (T6), on a
+        // branch of its own; a file of 27 is read as one of 26 here, as it holds nothing of this.
         self.settle_hosts(None);
         self.format = FORMAT;
     }

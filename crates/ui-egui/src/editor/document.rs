@@ -426,19 +426,28 @@ impl BimApp {
                         {
                             ed.dimension_tool();
                         }
-                        // A circle of a sketch, its radius or its diameter (F7b).
+                        // The angles between lines that cross (F7c); a circle or an arc of a sketch, its radius or its diameter
+                        // (F7b).
                         for (kind, icon, label, tip) in [
+                            (
+                                bimcraft_core::family::DimKind::Angular,
+                                Icon::Angular,
+                                msg!("Angular"),
+                                msg!(
+                                    "Angular Dimension: pick reference lines, reference planes or lines of forms that cross, then click where its arc goes"
+                                ),
+                            ),
                             (
                                 bimcraft_core::family::DimKind::Radial,
                                 Icon::Radial,
                                 msg!("Radial"),
-                                msg!("Radial Dimension: pick a circle of a form's sketch, then click where it goes"),
+                                msg!("Radial Dimension: pick a circle or an arc of a form's sketch, then click where it goes"),
                             ),
                             (
                                 bimcraft_core::family::DimKind::Diameter,
                                 Icon::Diameter,
                                 msg!("Diameter"),
-                                msg!("Diameter Dimension: pick a circle of a form's sketch, then click where it goes"),
+                                msg!("Diameter Dimension: pick a circle or an arc of a form's sketch, then click where it goes"),
                             ),
                         ] {
                             let lit = on && ed.views.dim_kind == kind;
@@ -1136,8 +1145,11 @@ impl BimApp {
                 msg!("Click a reference plane or a datum for the work plane. Esc goes back to the dialog.")
             }
             (Some(_), false) if ed.views.drawing.is_some() => msg!("Click two points: a reference plane through them."),
+            (Some(_), false) if ed.views.dimensioning.is_some() && ed.views.dim_kind == bimcraft_core::family::DimKind::Angular => {
+                msg!("Click lines that cross (reference lines, reference planes, lines of forms), then click where the dimension goes.")
+            }
             (Some(_), false) if ed.views.dimensioning.is_some() && ed.views.dim_kind != bimcraft_core::family::DimKind::Aligned => {
-                msg!("Click a circle, then click where the dimension goes.")
+                msg!("Click a circle or an arc, then click where the dimension goes.")
             }
             (Some(_), false) if ed.views.dimensioning.is_some() => {
                 msg!("Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes.")
