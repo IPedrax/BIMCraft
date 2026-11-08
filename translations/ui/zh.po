@@ -91,7 +91,7 @@ msgstr "<按类别>"
 
 #: crates/ui-egui/src/editor/sketch.rs:1334
 msgid "<By Sketch>"
-msgstr ""
+msgstr "<按草图>"
 
 #: crates/ui-egui/src/properties.rs:1685
 #: crates/ui-egui/src/sketch.rs:874
@@ -224,11 +224,11 @@ msgstr "位于项目 0, 0 处的小标记，标明 x（东）和 y（北）的�
 
 #: crates/ui-egui/src/editor/sketch.rs:704
 msgid "A swept blend's path is one line or one arc."
-msgstr ""
+msgstr "放样融合的路径只能是一条线或一段弧。"
 
 #: crates/ui-egui/src/editor/visibility.rs:77
 msgid "A symbol is drawn only in plan: only its detail levels change"
-msgstr ""
+msgstr "符号只在平面中绘制：只能更改其详细程度"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:494
 msgid "A type needs a name."
@@ -1116,7 +1116,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:416
 msgid "Blend: sketch a base and a top on the work plane, joined between their two ends"
-msgstr ""
+msgstr "融合：在工作平面上绘制底部和顶部，在其两端之间相连"
 
 #: crates/ui-egui/src/properties.rs:689
 msgid "Block"
@@ -1595,7 +1595,7 @@ msgstr "单击楼板、屋顶、楼梯或墙：高程点读取其顶部在该处
 
 #: crates/ui-egui/src/editor/document.rs:1301
 msgid "Click a form, a nested instance, a reference plane, a reference line or a dimension to select it; drag a selected plane to move it, a grip to turn or stretch."
-msgstr ""
+msgstr "单击形状、嵌套实例、参照平面、参照线或尺寸标注以选择它；拖动所选平面可移动它，拖动夹点可旋转或拉伸。"
 
 #: crates/ui-egui/src/editor/sketch.rs:1212
 msgid "Click a line to pick it, Shift to add; drag a picked line's end; Delete takes the lines picked away."
@@ -1651,7 +1651,7 @@ msgstr "单击参照平面、参照线或形状的边：沿其绘制一条线。
 
 #: crates/ui-egui/src/editor/sketch.rs:1207
 msgid "Click a reference plane, a reference line or a form's edge: a line of the path along it."
-msgstr ""
+msgstr "单击参照平面、参照线或形状的边：沿其绘制一条路径线。"
 
 #: crates/ui-egui/src/lib.rs:5053
 msgid "Click a roof's slope where the dormer's front wall goes, across the slope."
@@ -1888,7 +1888,7 @@ msgstr "单击路径的下一个点。按 Enter 完成，按 Esc 取消。"
 
 #: crates/ui-egui/src/editor/document.rs:1298
 msgid "Click the point it turns about: where two planes cross, a line's end, a point of a sketch, or anywhere."
-msgstr ""
+msgstr "单击其旋转所绕的点：两个平面的交点、线的端点、草图中的点，或任意位置。"
 
 #: crates/ui-egui/src/editor/sketch.rs:1216
 msgid "Click the points of the shape; Finish Edit Mode when the lines close into loops."
@@ -2718,7 +2718,7 @@ msgstr "小数位数"
 
 #: crates/ui-egui/src/editor/visibility.rs:110
 msgid "Default"
-msgstr ""
+msgstr "默认"
 
 #: crates/ui-egui/src/lib.rs:3184
 msgid "Default 3D View"
@@ -2924,16 +2924,16 @@ msgstr "详细程度：“粗略”将剖切部分绘制为单一填充，“中
 
 #: crates/ui-egui/src/footer.rs:385
 msgid "Detail Level: the family forms the 3D view draws, as their Visibility Settings say"
-msgstr ""
+msgstr "详细程度：三维视图按可见性设置绘制的族形状"
 
 #: crates/ui-egui/src/editor/document.rs:1130
 msgid "Detail Level: the forms and symbols each view of the family draws, as their Visibility Settings say"
-msgstr ""
+msgstr "详细程度：族的每个视图按可见性设置绘制的形状和符号"
 
 #: crates/ui-egui/src/editor/visibility.rs:96
 #: crates/ui-egui/src/editor.rs:1499
 msgid "Detail Levels"
-msgstr ""
+msgstr "详细程度"
 
 #: crates/ui-egui/src/draw.rs:659
 msgid "Detail Line"
@@ -3057,7 +3057,7 @@ msgstr "关闭"
 
 #: crates/ui-egui/src/editor/visibility.rs:79
 msgid "Display in 3D views and:"
-msgstr ""
+msgstr "在三维视图中显示，以及："
 
 #: crates/ui-egui/src/editor/work_plane.rs:205
 #: crates/ui-egui/src/workplane.rs:284
@@ -3223,7 +3223,7 @@ msgstr "使用显卡绘制三维视图"
 
 #: crates/ui-egui/src/editor/sketch.rs:1210
 msgid "Draw the path: lines and arcs end to end, open or closed; then Edit Profile."
-msgstr ""
+msgstr "绘制路径：首尾相接的线和弧，开放或闭合；然后单击“编辑轮廓”。"
 
 #: crates/ui-egui/src/properties.rs:387
 msgid "Drawing"
@@ -3327,19 +3327,19 @@ msgstr "编辑背景网格"
 
 #: crates/ui-egui/src/editor/sketch.rs:1291
 msgid "Edit Base"
-msgstr ""
+msgstr "编辑底部"
 
 #: crates/ui-egui/src/editor/sketch.rs:1291
 msgid "Edit Base: sketch the blend's base, at its First End"
-msgstr ""
+msgstr "编辑底部：在第一端点处绘制融合的底部"
 
 #: crates/ui-egui/src/editor/sketch.rs:1465
 msgid "Edit Blend"
-msgstr ""
+msgstr "编辑融合"
 
 #: crates/ui-egui/src/editor/sketch.rs:1465
 msgid "Edit Blend: sketch its base and its top again"
-msgstr ""
+msgstr "编辑融合：重新绘制其底部和顶部"
 
 #: crates/ui-egui/src/sketch.rs:801
 msgid "Edit Boundary"
@@ -3390,11 +3390,11 @@ msgstr "编辑参数"
 
 #: crates/ui-egui/src/editor/sketch.rs:1314
 msgid "Edit Profile"
-msgstr ""
+msgstr "编辑轮廓"
 
 #: crates/ui-egui/src/editor/sketch.rs:1315
 msgid "Edit Profile: sketch the profile on its plane, square to the path at its first line's middle"
-msgstr ""
+msgstr "编辑轮廓：在轮廓平面上绘制轮廓，该平面在路径第一条线的中点处与路径垂直"
 
 #: crates/ui-egui/src/editor/sketch.rs:1464
 msgid "Edit Revolve"
@@ -3406,19 +3406,19 @@ msgstr "编辑旋转：重新绘制其轮廓和轴线"
 
 #: crates/ui-egui/src/editor/sketch.rs:1466
 msgid "Edit Sweep"
-msgstr ""
+msgstr "编辑放样"
 
 #: crates/ui-egui/src/editor/sketch.rs:1466
 msgid "Edit Sweep: sketch its path and its profile again"
-msgstr ""
+msgstr "编辑放样：重新绘制其路径和轮廓"
 
 #: crates/ui-egui/src/editor/sketch.rs:1467
 msgid "Edit Swept Blend"
-msgstr ""
+msgstr "编辑放样融合"
 
 #: crates/ui-egui/src/editor/sketch.rs:1467
 msgid "Edit Swept Blend: sketch its path and its profiles again"
-msgstr ""
+msgstr "编辑放样融合：重新绘制其路径和轮廓"
 
 #: crates/ui-egui/src/lib.rs:3424
 #: crates/ui-egui/src/presets.rs:176
@@ -3427,11 +3427,11 @@ msgstr "编辑工具"
 
 #: crates/ui-egui/src/editor/sketch.rs:1293
 msgid "Edit Top"
-msgstr ""
+msgstr "编辑顶部"
 
 #: crates/ui-egui/src/editor/sketch.rs:1293
 msgid "Edit Top: sketch the blend's top, at its Second End"
-msgstr ""
+msgstr "编辑顶部：在第二端点处绘制融合的顶部"
 
 #: crates/ui-egui/src/properties.rs:1066
 msgid "Edit Type"
@@ -3439,7 +3439,7 @@ msgstr "编辑类型"
 
 #: crates/ui-egui/src/editor/sketch.rs:1342
 msgid "Edit Vertices"
-msgstr ""
+msgstr "编辑顶点"
 
 #: crates/ui-egui/src/editor/extrusion.rs:258
 #: crates/ui-egui/src/editor/work_plane.rs:190
@@ -3775,11 +3775,11 @@ msgstr "族编辑器"
 
 #: crates/ui-egui/src/editor/visibility.rs:72
 msgid "Family Element Visibility Settings"
-msgstr ""
+msgstr "族图元可见性设置"
 
 #: crates/ui-egui/src/editor/extrusion.rs:188
 msgid "Family Element Visibility Settings: the views and detail levels it is drawn in"
-msgstr ""
+msgstr "族图元可见性设置：绘制它的视图和详细程度"
 
 #: crates/ui-egui/src/editor/document.rs:1518
 msgid "Family Parameters"
@@ -4016,7 +4016,7 @@ msgstr "请先完成或取消草图：图案的线在平面图中选取。"
 #: crates/ui-egui/src/editor/extrusion.rs:172
 #: crates/ui-egui/src/editor/sketch.rs:1502
 msgid "First End"
-msgstr ""
+msgstr "第一端点"
 
 #: crates/core/src/model.rs:2554
 msgid "Fixed"
@@ -4256,7 +4256,7 @@ msgstr "起始角（度）"
 
 #: crates/ui-egui/src/editor/visibility.rs:81
 msgid "Front/Back"
-msgstr ""
+msgstr "前/后"
 
 #: crates/ui-egui/src/properties.rs:181
 msgid "Frozen"
@@ -4829,7 +4829,7 @@ msgstr "无法偏移：请输入距离，并拾取直线、圆弧、多段线或
 
 #: crates/ui-egui/src/editor/pivot.rs:167
 msgid "It is no longer there."
-msgstr ""
+msgstr "它已不存在。"
 
 #: crates/ui-egui/src/dimtypes.rs:162
 #: crates/ui-egui/src/notes.rs:540
@@ -4974,7 +4974,7 @@ msgstr "未导入：{}"
 
 #: crates/ui-egui/src/editor/visibility.rs:81
 msgid "Left/Right"
-msgstr ""
+msgstr "左/右"
 
 #: crates/core/src/family.rs:2832
 msgid "Leg Width"
@@ -5506,7 +5506,7 @@ msgstr "最大值"
 
 #: crates/ui-egui/src/editor/pivot.rs:329
 msgid "Maximum Angle"
-msgstr ""
+msgstr "最大角度"
 
 #: crates/ui-egui/src/properties.rs:337
 msgid "Maximum Riser Height"
@@ -5600,7 +5600,7 @@ msgstr "最小值"
 
 #: crates/ui-egui/src/editor/pivot.rs:329
 msgid "Minimum Angle"
-msgstr ""
+msgstr "最小角度"
 
 #: crates/ui-egui/src/editor/document.rs:592
 msgid "Mirror - Draw Axis"
@@ -5710,11 +5710,11 @@ msgstr "修改 | 对齐"
 
 #: crates/ui-egui/src/editor/sketch.rs:168
 msgid "Modify | Create Blend Base Boundary"
-msgstr ""
+msgstr "修改 | 创建融合底部边界"
 
 #: crates/ui-egui/src/editor/sketch.rs:166
 msgid "Modify | Create Blend Top Boundary"
-msgstr ""
+msgstr "修改 | 创建融合顶部边界"
 
 #: crates/ui-egui/src/sketch.rs:95
 msgid "Modify | Create Extrusion"
@@ -5726,11 +5726,11 @@ msgstr "修改 | 创建旋转"
 
 #: crates/ui-egui/src/editor/sketch.rs:169
 msgid "Modify | Create Void Blend Base Boundary"
-msgstr ""
+msgstr "修改 | 创建空心融合底部边界"
 
 #: crates/ui-egui/src/editor/sketch.rs:167
 msgid "Modify | Create Void Blend Top Boundary"
-msgstr ""
+msgstr "修改 | 创建空心融合顶部边界"
 
 #: crates/ui-egui/src/sketch.rs:97
 msgid "Modify | Create Void Extrusion"
@@ -5771,7 +5771,7 @@ msgstr "修改 | 嵌套实例"
 
 #: crates/ui-egui/src/editor/document.rs:286
 msgid "Modify | Pivot"
-msgstr ""
+msgstr "修改 | 枢轴"
 
 #: crates/ui-egui/src/editor/document.rs:271
 msgid "Modify | Place Component"
@@ -5795,7 +5795,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:292
 msgid "Modify | Reference Lines"
-msgstr ""
+msgstr "修改 | 参照线"
 
 #: crates/ui-egui/src/editor/document.rs:289
 msgid "Modify | Reference Planes"
@@ -5807,23 +5807,23 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/sketch.rs:171
 msgid "Modify | Sweep > Edit Profile"
-msgstr ""
+msgstr "修改 | 放样 > 编辑轮廓"
 
 #: crates/ui-egui/src/editor/sketch.rs:170
 msgid "Modify | Sweep > Sketch Path"
-msgstr ""
+msgstr "修改 | 放样 > 绘制路径"
 
 #: crates/ui-egui/src/editor/sketch.rs:174
 msgid "Modify | Swept Blend > Edit Profile 1"
-msgstr ""
+msgstr "修改 | 放样融合 > 编辑轮廓 1"
 
 #: crates/ui-egui/src/editor/sketch.rs:173
 msgid "Modify | Swept Blend > Edit Profile 2"
-msgstr ""
+msgstr "修改 | 放样融合 > 编辑轮廓 2"
 
 #: crates/ui-egui/src/editor/sketch.rs:172
 msgid "Modify | Swept Blend > Sketch Path"
-msgstr ""
+msgstr "修改 | 放样融合 > 绘制路径"
 
 #: crates/core/src/fixtures.rs:250
 msgid "Mounting Height"
@@ -6372,7 +6372,7 @@ msgstr "只有多段线和样条曲线可以添加顶点，直线保留其两个
 
 #: crates/ui-egui/src/editor/visibility.rs:90
 msgid "Only shown when cut"
-msgstr ""
+msgstr "仅当被剖切时显示"
 
 #: crates/ui-egui/src/dimtypes.rs:169
 msgid "Opaque"
@@ -6814,11 +6814,11 @@ msgstr "拾取线：单击一条线、一面墙或一条轴网沿其绘制（设
 
 #: crates/ui-egui/src/editor/sketch.rs:1306
 msgid "Pick Path"
-msgstr ""
+msgstr "拾取路径"
 
 #: crates/ui-egui/src/editor/sketch.rs:1305
 msgid "Pick Path: pick reference planes, reference lines or forms' edges: lines of the path along them"
-msgstr ""
+msgstr "拾取路径：拾取参照平面、参照线或形状的边：沿其绘制路径线"
 
 #: crates/ui-egui/src/draw.rs:320
 msgid "Pick Walls"
@@ -7077,16 +7077,16 @@ msgstr "管件 (PF)：在单击处、管道的高度放置弯头或三通；按�
 
 #: crates/ui-egui/src/editor/document.rs:649
 msgid "Pivot"
-msgstr ""
+msgstr "枢轴"
 
 #: crates/ui-egui/src/editor/pivot.rs:282
 #: crates/ui-egui/src/editor/pivot.rs:302
 msgid "Pivot Point"
-msgstr ""
+msgstr "枢轴点"
 
 #: crates/ui-egui/src/editor/document.rs:647
 msgid "Pivot: click the point it turns about (where two planes cross, a line's end, a point of a sketch, or anywhere); its Swing Angle turns it"
-msgstr ""
+msgstr "枢轴：单击其旋转所绕的点（两个平面的交点、线的端点、草图中的点，或任意位置）；由其摆动角度使其旋转"
 
 #: crates/ui-egui/src/mep.rs:93
 msgid "Place Air Terminal"
@@ -7326,7 +7326,7 @@ msgstr "将平面导出为 SVG…"
 
 #: crates/ui-egui/src/editor/visibility.rs:81
 msgid "Plan/RCP"
-msgstr ""
+msgstr "平面/天花板平面"
 
 #: crates/ui-egui/src/editor/document.rs:1616
 #: crates/ui-egui/src/editor.rs:1131
@@ -7405,7 +7405,7 @@ msgstr "点高度 {}"
 
 #: crates/ui-egui/src/editor/pivot.rs:270
 msgid "Point of a sketch"
-msgstr ""
+msgstr "草图中的点"
 
 #: crates/ui-egui/src/lib.rs:4992
 msgid "Point to a wall or a line: the offset goes to the cursor's side. Click to place it."
@@ -7500,20 +7500,20 @@ msgstr "轮廓"
 #: crates/ui-egui/src/editor/sketch.rs:718
 #: crates/ui-egui/src/editor/sketch.rs:1321
 msgid "Profile 1"
-msgstr ""
+msgstr "轮廓 1"
 
 #: crates/ui-egui/src/editor/sketch.rs:1322
 msgid "Profile 1: sketch the profile at the path's start, square to it"
-msgstr ""
+msgstr "轮廓 1：在路径起点处绘制轮廓，与路径垂直"
 
 #: crates/ui-egui/src/editor/sketch.rs:720
 #: crates/ui-egui/src/editor/sketch.rs:1324
 msgid "Profile 2"
-msgstr ""
+msgstr "轮廓 2"
 
 #: crates/ui-egui/src/editor/sketch.rs:1324
 msgid "Profile 2: sketch the profile at the path's end, square to it"
-msgstr ""
+msgstr "轮廓 2：在路径终点处绘制轮廓，与路径垂直"
 
 #: apps/bimcraft/src/main.rs:262
 msgid "Project"
@@ -7799,7 +7799,7 @@ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:822
 #: crates/ui-egui/src/editor/pivot.rs:264
 msgid "Reference Line {}"
-msgstr ""
+msgstr "参照线 {}"
 
 #: crates/core/src/commands.rs:180
 #: crates/ui-egui/src/editor/document.rs:471
@@ -7899,11 +7899,11 @@ msgstr "移除油漆：去除三维视图中您单击的面上的油漆"
 
 #: crates/ui-egui/src/editor/document.rs:655
 msgid "Remove Pivot"
-msgstr ""
+msgstr "移除枢轴"
 
 #: crates/ui-egui/src/editor/document.rs:653
 msgid "Remove Pivot: it stops turning and stays where it is drawn"
-msgstr ""
+msgstr "移除枢轴：它不再旋转，停留在绘制的位置"
 
 #: crates/ui-egui/src/start.rs:357
 msgid "Remove from List"
@@ -8239,7 +8239,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:645
 msgid "Rotation"
-msgstr ""
+msgstr "旋转"
 
 #: crates/ui-egui/src/properties.rs:237
 msgid "Rotation (°)"
@@ -8426,7 +8426,7 @@ msgstr "座面高度"
 #: crates/ui-egui/src/editor/extrusion.rs:172
 #: crates/ui-egui/src/editor/sketch.rs:1502
 msgid "Second End"
-msgstr ""
+msgstr "第二端点"
 
 #: crates/ui-egui/src/lib.rs:3926
 msgid "Section"
@@ -8578,7 +8578,7 @@ msgstr "设置工作平面…"
 
 #: crates/ui-egui/src/editor.rs:1122
 msgid "Set by its dimensions and locks for the type {}: Edit Extrusion or the dimensions change it."
-msgstr ""
+msgstr "由其尺寸标注和锁定为类型 {} 确定：使用“编辑拉伸”或修改尺寸标注来更改它。"
 
 #: crates/ui-egui/src/graphics.rs:154
 msgid "Set by view template {}: change the template, or stop following it."
@@ -8897,15 +8897,15 @@ msgstr "绘制天花板：绘制天花板的轮廓及其中的洞口"
 
 #: crates/ui-egui/src/editor/sketch.rs:1302
 msgid "Sketch Path"
-msgstr ""
+msgstr "绘制路径"
 
 #: crates/ui-egui/src/editor/sketch.rs:1301
 msgid "Sketch Path: draw the path on the work plane, lines and arcs end to end"
-msgstr ""
+msgstr "绘制路径：在工作平面上绘制路径，线和弧首尾相接"
 
 #: crates/ui-egui/src/editor/sketch.rs:607
 msgid "Sketch the path first: {}"
-msgstr ""
+msgstr "请先绘制路径：{}"
 
 #: crates/ui-egui/src/reinforce.rs:88
 msgid "Skin bars"
@@ -9360,7 +9360,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:424
 msgid "Sweep: sketch or pick a path on the work plane, then a profile square to it, swept along it"
-msgstr ""
+msgstr "放样：在工作平面上绘制或拾取路径，再绘制与路径垂直的轮廓，沿路径放样"
 
 #: crates/ui-egui/src/editor/document.rs:429
 #: crates/ui-egui/src/editor/sketch.rs:1300
@@ -9371,7 +9371,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:428
 msgid "Swept Blend: a path of one line or arc, and a profile at each end, blended along it"
-msgstr ""
+msgstr "放样融合：一条线或一段弧构成的路径，两端各有一个轮廓，沿路径融合"
 
 #: crates/core/src/model.rs:2549
 msgid "Swing"
@@ -9379,7 +9379,7 @@ msgstr "平开"
 
 #: crates/ui-egui/src/editor/pivot.rs:305
 msgid "Swing Angle"
-msgstr ""
+msgstr "摆动角度"
 
 #: crates/core/src/fixtures.rs:344
 msgid "Switch"
@@ -9423,7 +9423,7 @@ msgstr "符号终止角"
 
 #: crates/ui-egui/src/editor.rs:1501
 msgid "Symbol Visibility Settings"
-msgstr ""
+msgstr "符号可见性设置"
 
 #: crates/ui-egui/src/editor.rs:1473
 msgid "Symbol Visible"
@@ -9694,7 +9694,7 @@ msgstr "圆弧放不下：请拾取两条以一定角度相交、且足够长的
 
 #: crates/ui-egui/src/editor/sketch.rs:716
 msgid "The base"
-msgstr ""
+msgstr "底部"
 
 #: crates/ui-egui/src/properties.rs:2644
 msgid "The centre of a curved wall, a column or a component"
@@ -9792,7 +9792,7 @@ msgstr "面板、显示的工具、项目规模和布局，以此名称保存"
 
 #: crates/ui-egui/src/editor/sketch.rs:708
 msgid "The path can't be swept along: {}"
-msgstr ""
+msgstr "无法沿该路径放样：{}"
 
 #: crates/ui-egui/src/objectstyles.rs:60
 msgid "The pen each category draws its lines in, seen and cut, in every plan and section. A view's Visibility/Graphics overrides them."
@@ -9800,7 +9800,7 @@ msgstr "每个类别在所有平面和剖面中绘制线条所用的笔，可见
 
 #: crates/ui-egui/src/editor/sketch.rs:719
 msgid "The profile"
-msgstr ""
+msgstr "轮廓"
 
 #: crates/ui-egui/src/editor/sketch.rs:654
 msgid "The profile crosses the axis line: draw it to one side of the axis."
@@ -9874,7 +9874,7 @@ msgstr "工具位于左侧，“检查器”在“导航器”之上、位于右
 
 #: crates/ui-egui/src/editor/sketch.rs:717
 msgid "The top"
-msgstr ""
+msgstr "顶部"
 
 #: crates/ui-egui/src/sketch3d.rs:246
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
@@ -10193,23 +10193,23 @@ msgstr "绕墙的{}旋转墙：{}"
 
 #: crates/ui-egui/src/editor/sketch.rs:1345
 msgid "Twist Left"
-msgstr ""
+msgstr "向左扭曲"
 
 #: crates/ui-egui/src/editor/sketch.rs:1344
 msgid "Twist Left: pair the top's vertices with the base's one place on, counter-clockwise"
-msgstr ""
+msgstr "向左扭曲：将顶部的顶点与底部向前错一位的顶点配对，逆时针"
 
 #: crates/ui-egui/src/editor/sketch.rs:1349
 msgid "Twist Right"
-msgstr ""
+msgstr "向右扭曲"
 
 #: crates/ui-egui/src/editor/sketch.rs:1348
 msgid "Twist Right: pair the top's vertices with the base's one place back, clockwise"
-msgstr ""
+msgstr "向右扭曲：将顶部的顶点与底部向后错一位的顶点配对，顺时针"
 
 #: crates/ui-egui/src/editor/sketch.rs:1352
 msgid "Twist: {}"
-msgstr ""
+msgstr "扭曲：{}"
 
 #: crates/ui-egui/src/electrical.rs:184
 msgid "Two {} are called {}."
@@ -10527,7 +10527,7 @@ msgstr "视图比例（1 : n）"
 
 #: crates/ui-egui/src/editor/visibility.rs:76
 msgid "View Specific Display"
-msgstr ""
+msgstr "视图专用显示"
 
 #: crates/ui-egui/src/graphics.rs:619
 #: crates/ui-egui/src/graphics.rs:623
@@ -10589,11 +10589,11 @@ msgstr "可见性集：此视图所跟随的视图样板，一键即可切换其
 
 #: crates/ui-egui/src/editor/document.rs:1736
 msgid "Visibility Settings"
-msgstr ""
+msgstr "可见性设置"
 
 #: crates/ui-egui/src/editor/document.rs:1734
 msgid "Visibility Settings: the views it is drawn in (Plan/RCP, Front/Back, Left/Right, only when cut) and at which detail levels"
-msgstr ""
+msgstr "可见性设置：绘制它的视图（平面/天花板平面、前/后、左/右、仅当被剖切时）以及详细程度"
 
 #: crates/ui-egui/src/editor/document.rs:555
 #: crates/ui-egui/src/lib.rs:3864
@@ -10659,7 +10659,7 @@ msgstr "空心"
 #: crates/ui-egui/src/editor/document.rs:439
 #: crates/ui-egui/src/editor/sketch.rs:1492
 msgid "Void Blend"
-msgstr ""
+msgstr "空心融合"
 
 #: crates/ui-egui/src/editor/document.rs:438
 #: crates/ui-egui/src/editor/sketch.rs:1490
@@ -10676,7 +10676,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:433
 msgid "Void Forms: a void extrusion, blend, revolve, sweep or swept blend, sketched as a solid one is, which cuts the solids before it"
-msgstr ""
+msgstr "空心形状：空心拉伸、融合、旋转、放样或放样融合，按实心形状的方式绘制，剪切在其之前的实心形状"
 
 #: crates/ui-egui/src/editor/document.rs:440
 #: crates/ui-egui/src/editor/sketch.rs:1491
@@ -10686,12 +10686,12 @@ msgstr "空心旋转"
 #: crates/ui-egui/src/editor/document.rs:441
 #: crates/ui-egui/src/editor/sketch.rs:1493
 msgid "Void Sweep"
-msgstr ""
+msgstr "空心放样"
 
 #: crates/ui-egui/src/editor/document.rs:442
 #: crates/ui-egui/src/editor/sketch.rs:1494
 msgid "Void Swept Blend"
-msgstr ""
+msgstr "空心放样融合"
 
 #: crates/ui-egui/src/electrical.rs:126
 msgid "Voltage {} is supplied by distribution system {}: change that first."
@@ -10804,7 +10804,7 @@ msgstr "视图控制栏上的“高对比度点云”用来绘制视图中扫描
 
 #: crates/ui-egui/src/editor/visibility.rs:104
 msgid "What a view leaves out stays in the model, its schedules and IFC."
-msgstr ""
+msgstr "视图中未显示的内容仍保留在模型、其明细表和 IFC 中。"
 
 #: crates/ui-egui/src/linestyles.rs:149
 msgid "What detail lines draw in: a pen, a colour and a line pattern."
@@ -11141,7 +11141,7 @@ msgstr "`{}` 不是有效的角度"
 
 #: crates/ui-egui/src/editor/pivot.rs:346
 msgid "`{}` isn't an angle"
-msgstr ""
+msgstr "`{}` 不是角度"
 
 #: crates/ui-egui/src/editor/views.rs:256
 msgid "a datum stays: it can't be deleted"
@@ -11547,7 +11547,7 @@ msgstr "形状已不存在"
 
 #: crates/ui-egui/src/editor/pivot.rs:205
 msgid "the line can't go while {} is drawn on it"
-msgstr ""
+msgstr "线上绘有 {}，无法删除该线"
 
 #: crates/ui-egui/src/workplane.rs:546
 msgid "the model has no levels"
@@ -11667,7 +11667,7 @@ msgstr "{}（{}）"
 
 #: crates/ui-egui/src/editor/pivot.rs:267
 msgid "{} / {}"
-msgstr ""
+msgstr "{} / {}"
 
 #: crates/ui-egui/src/editor/document.rs:1591
 msgid "{} : {} plane"
@@ -11856,7 +11856,7 @@ msgstr "{}：编辑图案"
 
 #: crates/ui-egui/src/editor/pivot.rs:268
 msgid "{}: End"
-msgstr ""
+msgstr "{}：终点"
 
 #: crates/ui-egui/src/linestyles.rs:162
 msgid "{}: Line Weight"
@@ -11878,7 +11878,7 @@ msgstr "{}：重新定义"
 
 #: crates/ui-egui/src/editor/pivot.rs:269
 msgid "{}: Start"
-msgstr ""
+msgstr "{}：起点"
 
 #: crates/ui-egui/src/fillpatterns.rs:543
 msgid "{}: Type"
