@@ -353,7 +353,7 @@ fn an_arcs_radius_takes_a_label_and_its_centre_a_dimension() {
 #[test]
 fn a_file_keeps_its_angles_and_a_command_names_a_lines_end_by_its_id() {
     let s = rig();
-    assert_eq!(crate::model::FORMAT, 28);
+    const { assert!(crate::model::FORMAT >= 28) };
     let text = s.model.to_json().unwrap();
     let (back, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");

@@ -368,28 +368,44 @@ impl BimApp {
             // A family that isn't adaptive is made of forms drawn in sketches, which BIMCraft doesn't have yet: its forms are
             // added and edited in Properties.
             DocTab::Create => ribbon::panel(ui, msg!("Forms"), |ui| {
-                // Extrusion and Revolve sketch on the work plane (F5); Blend, Sweep and Swept Blend are F6's.
+                // Extrusion and Revolve sketch on the work plane (F5); Blend, Sweep and Swept Blend too (F6).
+                use bimcraft_core::family::forms::FormKind;
                 let tip = msg!("Extrusion: sketch a profile on the work plane, extruded along its normal");
                 if big_button(ui, Icon::CreateForm, msg!("Extrusion"), false, tip).clicked() {
-                    ed.create_form(false, false);
+                    ed.create_form(FormKind::Extrusion, false);
                 }
-                later(ui, Icon::CreateForm, msg!("Blend"));
+                let tip = msg!("Blend: sketch a base and a top on the work plane, joined between their two ends");
+                if big_button(ui, Icon::CreateForm, msg!("Blend"), false, tip).clicked() {
+                    ed.create_form(FormKind::Blend, false);
+                }
                 let tip = msg!("Revolve: sketch a profile and an axis line on the work plane, turned about the axis");
                 if big_button(ui, Icon::CreateForm, msg!("Revolve"), false, tip).clicked() {
-                    ed.create_form(true, false);
+                    ed.create_form(FormKind::Revolve, false);
                 }
-                later(ui, Icon::CreateForm, msg!("Sweep"));
-                later(ui, Icon::CreateForm, msg!("Swept Blend"));
-                let tip = msg!("Void Forms: a void extrusion or revolve, sketched as a solid one is, which cuts the solids before it");
+                let tip = msg!("Sweep: sketch or pick a path on the work plane, then a profile square to it, swept along it");
+                if big_button(ui, Icon::CreateForm, msg!("Sweep"), false, tip).clicked() {
+                    ed.create_form(FormKind::Sweep, false);
+                }
+                let tip = msg!("Swept Blend: a path of one line or arc, and a profile at each end, blended along it");
+                if big_button(ui, Icon::CreateForm, msg!("Swept Blend"), false, tip).clicked() {
+                    ed.create_form(FormKind::SweptBlend, false);
+                }
+                let tip = msg!(
+                    "Void Forms: a void extrusion, blend, revolve, sweep or swept blend, sketched as a solid one is, which cuts the solids before it"
+                );
                 let r = big_button(ui, Icon::CreateForm, msg!("Void Forms"), false, tip);
                 ribbon::choices(ui, &r, false, |ui| {
-                    if ui.button(t("Void Extrusion")).clicked() {
-                        ed.create_form(false, true);
-                        ui.close();
-                    }
-                    if ui.button(t("Void Revolve")).clicked() {
-                        ed.create_form(true, true);
-                        ui.close();
+                    for (label, kind) in [
+                        (msg!("Void Extrusion"), FormKind::Extrusion),
+                        (msg!("Void Blend"), FormKind::Blend),
+                        (msg!("Void Revolve"), FormKind::Revolve),
+                        (msg!("Void Sweep"), FormKind::Sweep),
+                        (msg!("Void Swept Blend"), FormKind::SweptBlend),
+                    ] {
+                        if ui.button(t(label)).clicked() {
+                            ed.create_form(kind, true);
+                            ui.close();
+                        }
                     }
                 });
             }),

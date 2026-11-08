@@ -181,8 +181,12 @@ impl FormText {
 
     /// What it says it is, for its heading.
     fn describe(&self) -> String {
+        use bimcraft_core::family::forms::FormKind;
         let what = match (self.mesh(), self.shape, self.revolve) {
             (true, _, _) => t("Mesh"),
+            _ if self.original.kind() == FormKind::Blend => t("Blend"),
+            _ if self.original.kind() == FormKind::Sweep => t("Sweep"),
+            _ if self.original.kind() == FormKind::SweptBlend => t("Swept Blend"),
             (_, Shape::Circle, true) => t("Revolved Circle"),
             (_, Shape::Circle, false) => t("Cylinder"),
             (_, Shape::Profile | Shape::Sketch, true) => t("Revolve"),

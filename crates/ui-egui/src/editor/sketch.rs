@@ -9,6 +9,7 @@
 use super::*;
 use bimcraft_core::curves::Curve;
 use bimcraft_core::draw::{self as shapes, Options, Shape};
+use bimcraft_core::family::forms::{self as forms, FormKind, Swept};
 use bimcraft_core::family::sketch::{self as fs, FormLine};
 use bimcraft_core::family::views::{Staged, Which};
 use bimcraft_core::family::{DimKind, DimRef, DimView, FamilyDimension, Frame, Val};
@@ -30,6 +31,9 @@ const REFERENCE: Color32 = Color32::from_rgb(70, 140, 90);
 /// Revit's green, a revolve's Axis Line.
 const AXIS_COLOUR: Color32 = Color32::from_rgb(20, 150, 60);
 
+/// The parts of a form not being sketched (F6: a Blend's base while its top is, a sweep's path while its profile is): grey.
+const GHOST: Color32 = Color32::from_rgb(140, 140, 150);
+
 /// How near a line, in points, a click picks it.
 const REACH: f32 = 8.0;
 
@@ -47,6 +51,16 @@ pub(crate) const GALLERY: [Shape; 9] = [
     Shape::Fillet,
 ];
 
+/// Which of a form's sketches is on screen (F6): its sketch (an extrusion's or a revolve's profile, a Blend's base, a sweep's
+/// path), a Blend's top, a sweep's profile, a Swept Blend's second profile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Part {
+    Main = 0,
+    Top = 1,
+    Profile = 2,
+    End = 3,
+}
+
 /// A form being sketched: the lines, which form (none, a new one), what it is, the plane it is drawn on and the view it was
 /// begun in, its numbers as typed, and the Draw panel's tool and what it has been clicked so far.
 pub(crate) struct FormSketch {
@@ -54,6 +68,13 @@ pub(crate) struct FormSketch {
     /// The form redrawn; none, a new one.
     pub(crate) index: Option<usize>,
     pub(crate) revolve: bool,
+    /// What it is (F6): an extrusion, a revolve, a Blend, a Sweep or a Swept Blend.
+    pub(crate) kind: FormKind,
+    /// Which of its sketches is on screen, in `sketch`; the others' lines wait in `parts`, by [`Part`].
+    pub(crate) part: Part,
+    pub(crate) parts: [Vec<SketchLine>; 4],
+    /// Edit Vertices' Twist, a Blend's or a Swept Blend's.
+    pub(crate) twist: i32,
     pub(crate) void: bool,
     pub(crate) host: PlaneRef,
     /// Extrusion Start and End, or a revolve's Start and End Angle, as typed (a number or a formula).
@@ -84,8 +105,9 @@ pub(crate) struct FormSketch {
     targets: Option<(u64, fs::Targets)>,
     /// The form's GUID: its own when edited, a new one for a new form, so its lines can be locked before it is made (F7b).
     pub(crate) guid: Guid,
-    /// The form's lines as the type previewed showed them when Edit began: a line that comes back there keeps its formulas.
-    shown: Vec<FormLine>,
+    /// The form's lines as the type previewed showed them when Edit began, each part's (by [`Part`]): a line that comes back
+    /// there keeps its formulas.
+    shown: [Vec<FormLine>; 4],
     /// Align (F7b): the reference picked first, its line on the plane, and which of the sketch's lines it is, if one.
     pub(crate) align_from: Option<(DimRef, (P2, P2), Option<usize>)>,
     /// Align's padlock, offered until the next click: the lock it adds.
@@ -104,6 +126,55 @@ pub(crate) enum Padlock {
 }
 
 impl FormSketch {
+    /// The lines of part `p`, on screen or waiting.
+    pub(crate) fn part_lines(&self, p: Part) -> &[SketchLine] {
+        if p == self.part { &self.sketch.lines } else { &self.parts[p as usize] }
+    }
+
+    /// Part `p` put on screen, the one there put by (its lines, its own Ctrl+Z gone with it); the tool back to Line.
+    pub(crate) fn set_part(&mut self, p: Part) {
+        if p == self.part {
+            return;
+        }
+        let now = std::mem::take(&mut self.sketch.lines);
+        self.parts[self.part as usize] = now;
+        let lines = std::mem::take(&mut self.parts[p as usize]);
+        self.sketch = Sketch::of_form(self.sketch.of, lines);
+        self.part = p;
+        self.points.clear();
+        self.last = None;
+        self.fillet = None;
+        self.align_from = None;
+        self.offer = None;
+        self.targets = None;
+        self.set_tool(Some(Shape::Line), false);
+    }
+
+    /// The path (a sweep's sketch) as drawn, chained, its numbers as they are.
+    pub(crate) fn path(&self) -> Result<forms::Path, String> {
+        let lines = fs::lines_of(self.part_lines(Part::Main));
+        forms::path(&lines, &mut |e| match e {
+            Expr::Number(x) => Ok(*x),
+            Expr::Formula(f) => Err(f.clone()),
+        })
+    }
+
+    /// What the contextual tab is called: Revit's words for the form and the part on screen.
+    pub(crate) fn title(&self) -> &'static str {
+        match (self.kind, self.part, self.void) {
+            (FormKind::Extrusion | FormKind::Revolve, _, _) => self.sketch.title(),
+            (FormKind::Blend, Part::Top, false) => msg!("Modify | Create Blend Top Boundary"),
+            (FormKind::Blend, Part::Top, true) => msg!("Modify | Create Void Blend Top Boundary"),
+            (FormKind::Blend, _, false) => msg!("Modify | Create Blend Base Boundary"),
+            (FormKind::Blend, _, true) => msg!("Modify | Create Void Blend Base Boundary"),
+            (FormKind::Sweep, Part::Main, _) => msg!("Modify | Sweep > Sketch Path"),
+            (FormKind::Sweep, _, _) => msg!("Modify | Sweep > Edit Profile"),
+            (FormKind::SweptBlend, Part::Main, _) => msg!("Modify | Swept Blend > Sketch Path"),
+            (FormKind::SweptBlend, Part::End, _) => msg!("Modify | Swept Blend > Edit Profile 2"),
+            (FormKind::SweptBlend, _, _) => msg!("Modify | Swept Blend > Edit Profile 1"),
+        }
+    }
+
     /// What the cursor snaps to now, if anything.
     #[cfg(test)]
     pub(crate) fn snapped(&self) -> Option<bimcraft_core::snap::Found> {
@@ -361,19 +432,57 @@ impl FamilyEditor {
 
     /// What the contextual tab is called while a form is sketched.
     pub(crate) fn sketch_title(&self) -> Option<&'static str> {
-        self.sketch.as_ref().map(|s| s.sketch.title())
+        self.sketch.as_ref().map(|s| s.title())
     }
 
-    /// The frame of the plane being sketched on.
+    /// The frame of the plane being sketched on: the host's; a Blend's top's, at its Second End; a sweep's profile plane,
+    /// square to its path where it is shown (F6).
     pub(crate) fn sketch_frame(&self) -> Option<Frame> {
         let s = self.sketch.as_ref()?;
-        self.plane_set().frame(&s.host).ok()
+        self.part_frame(s, s.part)
     }
 
-    /// Create > Extrusion or Revolve (`revolve`), solid or void: sketch mode on the view's work plane, unless a plan or an
-    /// elevation shows it edge-on or askew; then Go To View is asked (the Work Plane dialog's, `editor/work_plane.rs`),
-    /// offering the views that show it flat and {3D}, and the sketch begins in the one opened.
-    pub(crate) fn create_form(&mut self, revolve: bool, void: bool) {
+    /// The frame part `p` of sketch `s` is drawn on; none where it has no plane yet (a profile of a path that doesn't chain).
+    pub(crate) fn part_frame(&self, s: &FormSketch, p: Part) -> Option<Frame> {
+        let host = self.plane_set().frame(&s.host).ok()?;
+        match p {
+            Part::Main => Some(host),
+            Part::Top => {
+                let to = crate::adaptive_editor::worth(&text_expr(&s.to), &self.values())?;
+                Some(Frame { origin: std::array::from_fn(|k| host.origin[k] + host.z[k] * to), ..host })
+            }
+            Part::Profile | Part::End => {
+                let path = s.path().ok()?;
+                let n = path.points.len();
+                let (at, way) = match (s.kind, p) {
+                    (FormKind::SweptBlend, Part::End) => (path.points[n - 1], path.end_way),
+                    (FormKind::SweptBlend, _) => (path.points[0], (path.points[1] - path.points[0]).unit()),
+                    _ => (path.at, path.way),
+                };
+                Some(forms::profile_frame(&host, at, way))
+            }
+        }
+    }
+
+    /// The lines of the parts not on screen, each as polylines on its own plane: drawn grey under the one being sketched.
+    pub(crate) fn other_parts(&self) -> Vec<(Frame, Vec<Vec<P2>>)> {
+        let Some(s) = self.sketch.as_ref() else { return Vec::new() };
+        let mut out = Vec::new();
+        for p in [Part::Main, Part::Top, Part::Profile, Part::End] {
+            if p == s.part || s.parts[p as usize].is_empty() {
+                continue;
+            }
+            if let Some(f) = self.part_frame(s, p) {
+                out.push((f, s.parts[p as usize].iter().map(|l| l.curve.points()).collect()));
+            }
+        }
+        out
+    }
+
+    /// Create > Extrusion, Blend, Revolve, Sweep or Swept Blend (`kind`), solid or void: sketch mode on the view's work
+    /// plane, unless a plan or an elevation shows it edge-on or askew; then Go To View is asked (the Work Plane dialog's,
+    /// `editor/work_plane.rs`), offering the views that show it flat and {3D}, and the sketch begins in the one opened.
+    pub(crate) fn create_form(&mut self, kind: FormKind, void: bool) {
         if self.adaptive.is_some() {
             return;
         }
@@ -381,11 +490,12 @@ impl FamilyEditor {
         if self.plane_set().frame(&host).is_err() {
             return;
         }
-        self.on_work_plane(host, super::work_plane::Then::Create { revolve, void });
+        self.on_work_plane(host, super::work_plane::Then::Create { kind, void });
     }
 
-    /// Edit Extrusion or Edit Revolve on form `i`: its lines worked out for the type previewed, each keeping its id and
-    /// GUID, sketched again where it is, in the view shown if it sees the form's plane flat, else in {3D}.
+    /// Edit Extrusion, Edit Revolve, Edit Blend, Edit Sweep or Edit Swept Blend on form `i`: its lines worked out for the
+    /// type previewed, each keeping its id and GUID, sketched again where it is, in the view shown if it sees the form's plane
+    /// flat, else in {3D}.
     pub(crate) fn edit_form_sketch(&mut self, i: usize) -> Result<(), String> {
         let f = self.forms.get(i).ok_or_else(|| t("the form is gone").to_string())?.form()?;
         if !f.mesh.is_empty() {
@@ -393,16 +503,20 @@ impl FamilyEditor {
         }
         let values = self.values();
         // As the type previewed flexes it (F7b): where its locks and labels put its lines.
-        let shown =
-            self.family()?.flexed(&values).ok().and_then(|x| x.forms.get(i).map(|x| x.sketch.clone())).unwrap_or_else(|| f.sketch.clone());
+        let flexed = self.family()?.flexed(&values).ok().and_then(|x| x.forms.get(i).cloned()).unwrap_or_else(|| f.clone());
+        let none = Swept::default();
+        let sweep = flexed.sweep.as_ref().unwrap_or(&none);
+        let shown = [flexed.sketch.clone(), flexed.top.clone(), sweep.profile.clone(), sweep.end.clone()];
         let mut num = reader(&values);
-        let mut lines = Vec::new();
-        for l in &shown {
-            let mut drawn = l.curve(&mut num)?;
-            if l.axis {
-                drawn.style = Some(AXIS.into());
+        let mut parts: [Vec<SketchLine>; 4] = Default::default();
+        for (k, group) in shown.iter().enumerate() {
+            for l in group {
+                let mut drawn = l.curve(&mut num)?;
+                if l.axis {
+                    drawn.style = Some(AXIS.into());
+                }
+                parts[k].push(drawn);
             }
-            lines.push(drawn);
         }
         let frame = self.plane_set().frame(&f.host)?;
         if let Some(which) = self.views.shown
@@ -412,18 +526,31 @@ impl FamilyEditor {
         }
         let ft = &self.forms[i];
         let (from, to, material) = (ft.from.clone(), ft.to.clone(), ft.material.clone());
-        self.start_form_sketch(Some(i), f.revolves(), f.void, f.host, lines);
+        let main = std::mem::take(&mut parts[0]);
+        self.start_form_sketch(Some(i), f.kind(), f.void, f.host, main);
         if let Some(s) = self.sketch.as_mut() {
             (s.from, s.to, s.material) = (from, to, material);
             s.shown = shown;
+            s.twist = f.twist;
+            // Its sketch is on screen; its top and profiles wait.
+            for (slot, lines) in s.parts.iter_mut().zip(parts).skip(1) {
+                *slot = lines;
+            }
         }
         Ok(())
     }
 
-    /// Sketch mode on: `lines` to begin with, drawing with Line (a revolve with no axis yet, with Axis Line).
-    pub(super) fn start_form_sketch(&mut self, index: Option<usize>, revolve: bool, void: bool, host: PlaneRef, lines: Vec<SketchLine>) {
+    /// Sketch mode on: `lines` to begin with (its sketch: a profile, a Blend's base, a sweep's path), drawing with Line (a
+    /// revolve with no axis yet, with Axis Line).
+    pub(super) fn start_form_sketch(&mut self, index: Option<usize>, kind: FormKind, void: bool, host: PlaneRef, lines: Vec<SketchLine>) {
         let edit = index.is_some();
-        let (from, to) = if revolve { ("0", "360") } else { ("0", "250") };
+        let revolve = kind == FormKind::Revolve;
+        let (from, to) = match kind {
+            FormKind::Revolve => ("0", "360"),
+            FormKind::Sweep | FormKind::SweptBlend => ("0", "0"),
+            FormKind::Blend => ("0", "1000"),
+            FormKind::Extrusion => ("0", "250"),
+        };
         let had = index.and_then(|i| self.forms.get(i)).and_then(|ft| ft.form().ok()).map(|f| f.guid).filter(|g| !g.is_nil());
         // A new form's GUID made now: a new one, not the nil one `Default` is.
         let guid = match had {
@@ -434,6 +561,10 @@ impl FamilyEditor {
             sketch: Sketch::of_form(Of::Form { revolve, void, edit }, lines),
             index,
             revolve,
+            kind,
+            part: Part::Main,
+            parts: Default::default(),
+            twist: 0,
             void,
             host,
             from: from.into(),
@@ -453,7 +584,7 @@ impl FamilyEditor {
             chain: true,
             targets: None,
             guid,
-            shown: Vec::new(),
+            shown: Default::default(),
             align_from: None,
             offer: None,
             locks: Vec::new(),
@@ -463,6 +594,28 @@ impl FamilyEditor {
         self.views.plane = None;
         self.views.drawing = None;
         self.views.picking = None;
+    }
+
+    /// Part `p` of the form being sketched put on screen (Edit Top, Edit Base, Sketch Path, Edit Profile): refused for a
+    /// profile while the path doesn't chain, saying why. A view that doesn't see its plane flat gives way to one that does,
+    /// else to {3D}.
+    pub(crate) fn show_part(&mut self, p: Part) -> Result<(), String> {
+        let Some(s) = self.sketch.as_ref() else { return Ok(()) };
+        if matches!(p, Part::Profile | Part::End)
+            && let Err(e) = s.path()
+        {
+            return Err(tf("Sketch the path first: {}", &[&e]));
+        }
+        if let Some(s) = self.sketch.as_mut() {
+            s.set_part(p);
+        }
+        if let Some(frame) = self.sketch_frame()
+            && self.views.shown.is_some_and(|w| !flat(w, &frame))
+        {
+            let to = Which::ALL.into_iter().find(|w| flat(*w, &frame));
+            self.views.show(to);
+        }
+        Ok(())
     }
 
     /// Cancel Edit Mode: the lines dropped, and the locks added or taken off while sketching; the draft as it was.
@@ -475,13 +628,16 @@ impl FamilyEditor {
 
     /// Finish Edit Mode: the lines checked as the core checks a sketch, and the form they make built with the family; then
     /// put in the draft (a new one last, an edited one where it was, keeping its id and GUID) and selected. Refused, saying
-    /// what to fix (the lines it is about shown in red), the draft left as it was.
+    /// what to fix (the lines it is about shown in red, the part they are in put on screen), the draft left as it was.
     pub(crate) fn finish_form_sketch(&mut self, units: bimcraft_core::units::Units) -> Result<(), String> {
         let values = self.values();
         let Some(s) = self.sketch.as_mut() else { return Ok(()) };
         // Every line a GUID of its own (F7b), so a lock or a dimension can name it: one drawn new gets a new one.
-        for l in s.sketch.lines.iter_mut().filter(|l| l.guid.is_nil()) {
+        for l in s.sketch.lines.iter_mut().chain(s.parts.iter_mut().flatten()).filter(|l| l.guid.is_nil()) {
             l.guid = Guid::new();
+        }
+        if s.kind != FormKind::Extrusion && s.kind != FormKind::Revolve {
+            return self.finish_f6(units);
         }
         let boundary = s.boundary();
         let axis = s.axis();
@@ -501,8 +657,7 @@ impl FamilyEditor {
         }
         let (index, revolve, void, host) = (s.index, s.revolve, s.void, s.host);
         let (from, to, material) = (s.from.clone(), s.to.clone(), s.material.clone());
-        let (guid, shown) = (s.guid, s.shown.clone());
-        let (added, unlocked) = (s.locks.clone(), s.unlocked.clone());
+        let (guid, shown) = (s.guid, s.shown[0].clone());
         // What the form had, its lines kept where they didn't move.
         let before = match index.and_then(|i| self.forms.get(i)) {
             Some(ft) => ft.form()?,
@@ -526,12 +681,98 @@ impl FamilyEditor {
         if form.guid.is_nil() {
             form.guid = guid;
         }
+        self.commit_form(index, form, &before)
+    }
+
+    /// Finish Edit Mode for a Blend, a Sweep or a Swept Blend (F6): each part checked (a Blend's base and top, a sweep's path
+    /// as one chain and its profiles closed), then the form made of them all.
+    fn finish_f6(&mut self, units: bimcraft_core::units::Units) -> Result<(), String> {
+        let values = self.values();
+        let Some(s) = self.sketch.as_mut() else { return Ok(()) };
+        let kind = s.kind;
+        let parts: Vec<Part> = match kind {
+            FormKind::Blend => vec![Part::Main, Part::Top],
+            FormKind::Sweep => vec![Part::Main, Part::Profile],
+            _ => vec![Part::Main, Part::Profile, Part::End],
+        };
+        for &p in &parts {
+            let lines: Vec<SketchLine> = s.part_lines(p).to_vec();
+            let path = p == Part::Main && kind.swept();
+            if path {
+                let mut problem = s.path().err();
+                if problem.is_none() && kind == FormKind::SweptBlend && fs::lines_of(&lines).len() != 1 {
+                    problem = Some(t("A swept blend's path is one line or one arc.").to_string());
+                }
+                if let Some(e) = problem {
+                    s.set_part(Part::Main);
+                    return Err(tf("The path can't be swept along: {}", &[&e]));
+                }
+                continue;
+            }
+            if let Err(fs::Finish::Problems(problems)) = fs::finish_check(&lines, None, false) {
+                s.set_part(p);
+                s.sketch.wrong = problems.iter().flat_map(|q| q.lines()).collect();
+                let which = match p {
+                    Part::Main => t("The base"),
+                    Part::Top => t("The top"),
+                    Part::Profile if kind == FormKind::SweptBlend => t("Profile 1"),
+                    Part::Profile => t("The profile"),
+                    Part::End => t("Profile 2"),
+                };
+                return Err(format!("{which}: {}", crate::sketch::friendly(&problems, &lines, units)));
+            }
+        }
+        let (index, void, host, twist) = (s.index, s.void, s.host, s.twist);
+        let (from, to, material) = (s.from.clone(), s.to.clone(), s.material.clone());
+        let guid = s.guid;
+        let shown = s.shown.clone();
+        let drawn: Vec<Vec<FormLine>> =
+            [Part::Main, Part::Top, Part::Profile, Part::End].iter().map(|p| fs::lines_of(s.part_lines(*p))).collect();
+        let before = match index.and_then(|i| self.forms.get(i)) {
+            Some(ft) => ft.form()?,
+            None => Form::default(),
+        };
+        let none = Swept::default();
+        let was = before.sweep.as_ref().unwrap_or(&none);
+        let mut num = reader(&values);
+        let mut keep = |old: &[FormLine], k: usize| fs::kept(old, &shown[k], drawn[k].clone(), &mut num);
+        let sketch = keep(&before.sketch, 0);
+        let top = if kind == FormKind::Blend { keep(&before.top, 1) } else { Vec::new() };
+        let sweep = kind.swept().then(|| Swept {
+            profile: keep(&was.profile, 2),
+            end: if kind == FormKind::SweptBlend { keep(&was.end, 3) } else { Vec::new() },
+        });
+        let (from, to) = if kind == FormKind::Blend { (text_expr(&from), text_expr(&to)) } else { (Expr::Number(0.0), Expr::Number(0.0)) };
+        let mut form = Form {
+            host,
+            from,
+            to,
+            void,
+            material: material.trim().to_string(),
+            sketch,
+            top,
+            sweep,
+            twist: if matches!(kind, FormKind::Blend | FormKind::SweptBlend) { twist } else { 0 },
+            ..before.clone()
+        };
+        if form.guid.is_nil() {
+            form.guid = guid;
+        }
+        self.commit_form(index, form, &before)
+    }
+
+    /// Form `form` (made by Finish from `before`, the one at `index`, or a new one) put in the draft with the locks added and
+    /// taken off while sketching: built with each type first, a fault of it or a constraint a type can't hold refusing it,
+    /// the draft as it was.
+    fn commit_form(&mut self, index: Option<usize>, form: Form, before: &Form) -> Result<(), String> {
+        let Some(s) = self.sketch.as_ref() else { return Ok(()) };
+        let (added, unlocked) = (s.locks.clone(), s.unlocked.clone());
         // Its locks: those added while sketching, less those taken off, and none to a line that is gone (F7b).
         let mut dims = self.dimensions.clone();
         dims.retain(|d| !unlocked.contains(&d.guid));
         dims.extend(added);
         let mut gone = Family { dimensions: dims, forms: vec![form.clone()], ..Family::default() };
-        gone.forget_lines_gone(std::slice::from_ref(&before));
+        gone.forget_lines_gone(std::slice::from_ref(before));
         let dims = gone.dimensions;
         let made = FormText { tag: index.and_then(|i| self.forms.get(i)).map_or(0, |f| f.tag), ..FormText::of(&form) };
         let made = if made.tag == 0 { FormText::of(&form) } else { made };
@@ -608,6 +849,18 @@ impl FamilyEditor {
         let seen_flat = flat(which, &frame);
         let at = |p: Pos2| on_plane(st, which, &frame, view.mm((p.x - pane.min.x, p.y - pane.min.y))).filter(|_| seen_flat);
         let reach = f64::from(REACH) / view.scale.max(1e-9);
+        for (f, polys) in self.other_parts() {
+            for poly in polys {
+                let pts: Vec<Pos2> = poly
+                    .iter()
+                    .map(|q| {
+                        let (x, y) = view.px(in_view(st, which, &f, *q));
+                        pane.min + vec2(x, y)
+                    })
+                    .collect();
+                painter.add(egui::Shape::line(pts, Stroke::new(1.5, GHOST)));
+            }
+        }
         let pick = |p: Pos2| -> Result<Curve, String> {
             let missed = || t("Pick a reference plane, a reference line or a form's edge in the view.").to_string();
             let (a, b) = pick_view(p).ok_or_else(missed)?;
@@ -655,6 +908,13 @@ impl FamilyEditor {
             (x.is_finite() && y.is_finite())
                 .then(|| P2(f64::from(pane.min.x) + x * f64::from(sx), f64::from(pane.min.y) + y * f64::from(sy)))
         };
+        for (f, polys) in self.other_parts() {
+            for poly in polys {
+                let pts: Vec<Pos2> =
+                    poly.iter().filter_map(|q| shown(f.point(*q, 0.0))).map(|q| Pos2::new(q.0 as f32, q.1 as f32)).collect();
+                painter.add(egui::Shape::line(pts, Stroke::new(1.5, GHOST)));
+            }
+        }
         // The reference lines and planes, drawn over the picture while sketching, so they can be seen and picked.
         let family = self.family().ok();
         for (a, b, plane) in family.iter().flat_map(|f| {
@@ -905,7 +1165,7 @@ impl FamilyEditor {
         let Some(i) = self.selected_form() else { return Vec::new() };
         let Some(ft) = self.forms.get(i) else { return Vec::new() };
         let Ok(f) = ft.form() else { return Vec::new() };
-        if f.revolves() || !f.mesh.is_empty() {
+        if !matches!(f.kind(), FormKind::Extrusion | FormKind::Blend) || !f.mesh.is_empty() {
             return Vec::new();
         }
         let Ok(frame) = self.plane_set().frame(&f.host) else { return Vec::new() };
@@ -943,6 +1203,12 @@ impl FamilyEditor {
 /// What the status bar asks for while a form is sketched.
 pub(crate) fn prompt(s: &FormSketch) -> &'static str {
     match s.tool {
+        Some(Shape::PickLines) if s.kind.swept() && s.part == Part::Main => {
+            msg!("Click a reference plane, a reference line or a form's edge: a line of the path along it.")
+        }
+        Some(_) if s.kind.swept() && s.part == Part::Main => {
+            msg!("Draw the path: lines and arcs end to end, open or closed; then Edit Profile.")
+        }
         None => msg!("Click a line to pick it, Shift to add; drag a picked line's end; Delete takes the lines picked away."),
         Some(_) if s.axis_tool => msg!("Click two points: the axis the profile turns about."),
         Some(Shape::PickLines) => msg!("Click a reference plane, a reference line or a form's edge: a line along it."),
@@ -956,7 +1222,7 @@ pub(crate) fn prompt(s: &FormSketch) -> &'static str {
 pub(crate) fn options_bar(ui: &mut Ui, ed: &mut FamilyEditor, units: bimcraft_core::units::Units) {
     let values = ed.values();
     let Some(s) = ed.sketch.as_mut() else { return };
-    if !s.revolve {
+    if matches!(s.kind, FormKind::Extrusion | FormKind::Blend) {
         let l = ui.label(t("Depth"));
         let (from, to) =
             (crate::adaptive_editor::worth(&text_expr(&s.from), &values), crate::adaptive_editor::worth(&text_expr(&s.to), &values));
@@ -1014,6 +1280,93 @@ impl BimApp {
             cancel |= crate::big_button(ui, Icon::Close, "Cancel Edit Mode", false, "Cancel Edit Mode: drop the lines, keep it as it was")
                 .clicked();
         });
+        // F6: a Blend's Edit Top and Edit Base, a sweep's path and profiles, and Edit Vertices' twist.
+        let mut part = None;
+        let mut twist = 0;
+        if let Some(s) = ed.sketch.as_ref() {
+            let (kind, on) = (s.kind, s.part);
+            match kind {
+                FormKind::Blend => ribbon::panel(ui, msg!("Blend"), |ui| {
+                    let (label, tip, to) = if on == Part::Top {
+                        (msg!("Edit Base"), msg!("Edit Base: sketch the blend's base, at its First End"), Part::Main)
+                    } else {
+                        (msg!("Edit Top"), msg!("Edit Top: sketch the blend's top, at its Second End"), Part::Top)
+                    };
+                    if crate::big_button(ui, Icon::Line, label, false, tip).clicked() {
+                        part = Some(to);
+                    }
+                }),
+                FormKind::Sweep | FormKind::SweptBlend => {
+                    ribbon::panel(ui, if kind == FormKind::Sweep { msg!("Sweep") } else { msg!("Swept Blend") }, |ui| {
+                        let tip = msg!("Sketch Path: draw the path on the work plane, lines and arcs end to end");
+                        if crate::big_button(ui, Icon::Line, msg!("Sketch Path"), on == Part::Main, tip).clicked() {
+                            part = Some(Part::Main);
+                        }
+                        let tip = msg!("Pick Path: pick reference planes, reference lines or forms' edges: lines of the path along them");
+                        if crate::big_button(ui, Icon::PickFaces, msg!("Pick Path"), false, tip).clicked() {
+                            part = Some(Part::Main);
+                            twist = i32::MIN;
+                        }
+                        crate::stacked(ui, |ui| {
+                            let profiles: &[(Part, &str, &str)] = if kind == FormKind::Sweep {
+                                &[(
+                                    Part::Profile,
+                                    msg!("Edit Profile"),
+                                    msg!("Edit Profile: sketch the profile on its plane, square to the path at its first line's middle"),
+                                )]
+                            } else {
+                                &[
+                                    (
+                                        Part::Profile,
+                                        msg!("Profile 1"),
+                                        msg!("Profile 1: sketch the profile at the path's start, square to it"),
+                                    ),
+                                    (Part::End, msg!("Profile 2"), msg!("Profile 2: sketch the profile at the path's end, square to it")),
+                                ]
+                            };
+                            for (p, label, tip) in profiles {
+                                if crate::stacked_button(ui, Icon::Line, label, on == *p, tip).clicked() {
+                                    part = Some(*p);
+                                }
+                            }
+                            // Revit's Select Profile: a sketched profile; profile families are not here yet (F6c).
+                            ui.add_enabled_ui(false, |ui| {
+                                ComboBox::from_id_salt("sweep-profile").selected_text(t("<By Sketch>")).width(110.0).show_ui(ui, |_| {});
+                            });
+                        });
+                    })
+                }
+                _ => {}
+            }
+            if matches!(kind, FormKind::Blend | FormKind::SweptBlend) {
+                ribbon::panel(ui, msg!("Edit Vertices"), |ui| {
+                    crate::stacked(ui, |ui| {
+                        let tip = msg!("Twist Left: pair the top's vertices with the base's one place on, counter-clockwise");
+                        if crate::stacked_button(ui, Icon::Rotate, msg!("Twist Left"), false, tip).clicked() {
+                            twist = 1;
+                        }
+                        let tip = msg!("Twist Right: pair the top's vertices with the base's one place back, clockwise");
+                        if crate::stacked_button(ui, Icon::Rotate, msg!("Twist Right"), false, tip).clicked() {
+                            twist = -1;
+                        }
+                        ui.label(tf("Twist: {}", &[&s.twist.to_string()]));
+                    });
+                });
+            }
+        }
+        if let Some(p) = part {
+            match ed.show_part(p) {
+                Ok(()) => self.status = Status::default(),
+                Err(e) => self.status = Status { text: e, error: true },
+            }
+        }
+        if let Some(s) = ed.sketch.as_mut() {
+            if twist == i32::MIN {
+                s.set_tool(Some(Shape::PickLines), false);
+            } else if twist != 0 {
+                s.twist = (s.twist + twist).clamp(-forms::MAX_TWIST, forms::MAX_TWIST);
+            }
+        }
         let Some(s) = ed.sketch.as_mut() else { return };
         ribbon::panel(ui, msg!("Draw"), |ui| {
             crate::stacked(ui, |ui| {
@@ -1022,7 +1375,7 @@ impl BimApp {
                     let tool = s.tool.or(Some(Shape::Line));
                     s.set_tool(tool, false);
                 }
-                if s.revolve {
+                if s.revolve && s.part == Part::Main {
                     let tip = msg!("Axis Line: the line the profile turns about, drawn by two clicks or picked");
                     if crate::stacked_button(ui, Icon::Line, msg!("Axis Line"), s.axis_tool, tip).clicked() {
                         s.set_tool(Some(Shape::Line), true);
@@ -1104,13 +1457,15 @@ impl BimApp {
     /// Revit's Mode panel on a selected form's contextual tab: Edit Extrusion or Edit Revolve, its sketch drawn again.
     pub(crate) fn form_mode_panel(&mut self, ui: &mut Ui, ed: &mut FamilyEditor, i: usize) {
         let Some(f) = ed.forms.get(i) else { return };
-        let (mesh, revolve) = (f.mesh(), f.revolve);
+        let (mesh, kind) = (f.mesh(), f.form().map(|x| x.kind()).unwrap_or(FormKind::Extrusion));
         let mut edit = false;
         ribbon::panel(ui, msg!("Mode"), |ui| {
-            let (label, tip) = if revolve {
-                (msg!("Edit Revolve"), msg!("Edit Revolve: sketch its profile and its axis again"))
-            } else {
-                (msg!("Edit Extrusion"), msg!("Edit Extrusion: sketch its profile again"))
+            let (label, tip) = match kind {
+                FormKind::Revolve => (msg!("Edit Revolve"), msg!("Edit Revolve: sketch its profile and its axis again")),
+                FormKind::Blend => (msg!("Edit Blend"), msg!("Edit Blend: sketch its base and its top again")),
+                FormKind::Sweep => (msg!("Edit Sweep"), msg!("Edit Sweep: sketch its path and its profile again")),
+                FormKind::SweptBlend => (msg!("Edit Swept Blend"), msg!("Edit Swept Blend: sketch its path and its profiles again")),
+                FormKind::Extrusion => (msg!("Edit Extrusion"), msg!("Edit Extrusion: sketch its profile again")),
             };
             edit = ui.add_enabled_ui(!mesh, |ui| crate::big_button(ui, Icon::Line, label, false, tip)).inner.clicked();
         });
@@ -1126,23 +1481,34 @@ impl BimApp {
         materials.extend(ed.params.iter().filter(|p| p.kind == Holds::Material).map(|p| p.name.clone()));
         materials.extend(self.session.model.materials.keys().cloned());
         let Some(s) = ed.sketch.as_mut() else { return };
-        let what = match (s.revolve, s.void) {
-            (false, false) => t("Extrusion"),
-            (true, false) => t("Revolve"),
-            (false, true) => t("Void Extrusion"),
-            (true, true) => t("Void Revolve"),
+        let what = match (s.kind, s.void) {
+            (FormKind::Extrusion, false) => t("Extrusion"),
+            (FormKind::Revolve, false) => t("Revolve"),
+            (FormKind::Blend, false) => t("Blend"),
+            (FormKind::Sweep, false) => t("Sweep"),
+            (FormKind::SweptBlend, false) => t("Swept Blend"),
+            (FormKind::Extrusion, true) => t("Void Extrusion"),
+            (FormKind::Revolve, true) => t("Void Revolve"),
+            (FormKind::Blend, true) => t("Void Blend"),
+            (FormKind::Sweep, true) => t("Void Sweep"),
+            (FormKind::SweptBlend, true) => t("Void Swept Blend"),
         };
         ui.label(RichText::new(what).strong());
         ui.add_space(6.0);
-        document::group(ui, msg!("Constraints"), |ui| {
-            let (end, start) =
-                if s.revolve { (msg!("End Angle"), msg!("Start Angle")) } else { (msg!("Extrusion End"), msg!("Extrusion Start")) };
-            for (label, text) in [(end, &mut s.to), (start, &mut s.from)] {
-                let l = ui.label(t(label));
-                ui.add(TextEdit::singleline(text).desired_width(120.0)).labelled_by(l.id);
-                ui.end_row();
-            }
-        });
+        if !s.kind.swept() {
+            document::group(ui, msg!("Constraints"), |ui| {
+                let (end, start) = match s.kind {
+                    FormKind::Revolve => (msg!("End Angle"), msg!("Start Angle")),
+                    FormKind::Blend => (msg!("Second End"), msg!("First End")),
+                    _ => (msg!("Extrusion End"), msg!("Extrusion Start")),
+                };
+                for (label, text) in [(end, &mut s.to), (start, &mut s.from)] {
+                    let l = ui.label(t(label));
+                    ui.add(TextEdit::singleline(text).desired_width(120.0)).labelled_by(l.id);
+                    ui.end_row();
+                }
+            });
+        }
         document::group(ui, msg!("Materials and Finishes"), |ui| {
             let l = ui.label(t("Material"));
             let shown = if s.material.is_empty() { t("(none)").to_string() } else { s.material.clone() };

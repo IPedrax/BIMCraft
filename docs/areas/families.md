@@ -90,8 +90,8 @@ a project only through the `favorite` command (`load` never overwrites without `
 docked Properties and Project Browser, and a 3D view: an adaptive family's modelling view and tools
 ([adaptive families](adaptive-families.md)), another's 3D preview. For a family that isn't adaptive, Forms and Symbols are
 edited in Properties (whose Adaptive tab makes it adaptive); Family Types and Family Category and Parameters open dialogs
-(Apply, OK, and Cancel putting back what the dialog began from). Extrusion, Revolve and Void Forms sketch forms (F5, below);
-Blend, Sweep and Swept Blend (F6) remain disabled placeholders. Undo and Redo are the document's own (`Draft`), and never undo the project.
+(Apply, OK, and Cancel putting back what the dialog began from). Extrusion, Blend, Revolve, Sweep, Swept Blend and Void Forms
+sketch forms (F5 and F6, below). Undo and Redo are the document's own (`Draft`), and never undo the project.
 Family Types is Revit's (`editor/types_dialog.rs`): Type name, a drop-down of the types with New Type (a name asked, the type
 shown copied), Rename Type and Delete Type (refused for the last, saying why); Search parameters (by name, case aside); one table,
 Parameter, Value, Formula and Lock, under the groups' headings in `Group::ALL`'s order (the Properties palette's), each folding.
@@ -547,6 +547,62 @@ was keeps its formulas (`family::sketch::kept`), one moved holds numbers. A sele
 in a plan or an elevation that sees its plane edge-on; dragged, they move along the normal, a step of the history; an end tied to a
 parameter or a formula is greyed and a drag on it is refused, saying why. The Forms tab keeps the typed corners, circle and axis as
 an advanced view; a sketch they can't say shows as "Sketch" with its count of lines.
+
+## Blends, sweeps and swept blends
+
+F6, FORMAT 29 (`family/forms.rs`). A form's `sketch` is always drawn in its host plane's axes: an extrusion's or a revolve's
+profile, a Blend's base, a Sweep's or a Swept Blend's path. What a form is follows from what it holds (`Form::kind`,
+`FormKind`): a `top` (lines in the host's axes) makes it a Blend, its base at `from` (First End) and its top at `to` (Second
+End) along the normal; a `sweep` (`{profile, end?}`) a Sweep, or with `end` a Swept Blend. A profile is drawn in the profile
+plane's axes (`forms::profile_frame`): x to the right of someone looking along the path, y the host's normal, its origin on
+the path, so it is the same at every point of the path and the plane it is shown on is only where it is drawn (a Sweep's at
+the middle of the path's first line, Revit's default; a Swept Blend's at the path's start and end). `twist` (Edit Vertices'
+Twist) moves the top's, or the second profile's, first vertex on. `Family::check` (`forms::check_kind`) refuses a `top` with
+a `sweep`, either with an axis or a mesh, a twist on anything but a blend or a swept blend or past `MAX_TWIST`, and a swept
+blend's path of more than one line. Every line of `top`, `sweep.profile` and `sweep.end` is a part ("sketch line"), kept by
+place within its group (`Form::keep_lines`); `rename_parameter`, `every_formula` and the formula checks reach them
+(`Form::all_lines`). A build of 28 would drop the three fields and build a Blend as an extrusion of its base, so 29 refuses
+it as newer; a file of 28 holds none and has no migrate step.
+
+Built (`forms::build`, from `Family::solid`): a Blend's ends and a Swept Blend's profiles are one loop each (several, or a
+hole, refused, as Revit's); a Sweep's profile may have several loops and holes. `forms::mapped` pairs two rings: each starts
+at its vertex nearest the angle (about its middle, from +x) of the first ring's least-angled vertex, the second moved on by
+`twist`; equal counts pair vertex to vertex, others are walked together taking the shorter diagonal each step, measured
+as the turn between the two vertices about their own rings' middles (not as a length, which pairs a ring off the other's
+middle across it and folds a swept blend's sides), a vertex of one held while the other's run past it (a fan, as Revit's
+square-to-circle blend), so no vertex is added. A Swept Blend's end stations are its profiles exactly, so a held vertex
+stays one point there. The path
+(`forms::path`) is the sketch's lines chained end to end, open or closed, or one circle; a gap, a branch, two pieces, a line
+of no length or a crossing are refused, naming where. Arcs are chorded 32 to a turn. At each vertex of the path the profile
+is mitred along the bisector (`stations`); where a bend's set-backs either side of a segment (the profile's reach on the
+inside times tan of half the turn) are longer than it, or the path turns back, it is refused ("would fold over itself").
+A Swept Blend's rings are interpolated along the path's length. Every solid is closed and turned out by its signed volume
+(no volume refused), capped where the path is open. On a level host a sweep's plan outline is the band it covers
+(`Piece::holes` carries the hole of one round a closed path, which `render::component` draws), else the hull of its
+triangles, as for any form not flat on a level plane. IFC writes the triangles as every form's (a closed face set).
+
+Constraints (F7) reach a Blend's base and top and a sweep's path: they are `Form::plane_lines`, the sketch then the top,
+whose vertices join within one group only (a base corner and a top corner over each other stay two); a Blend's First and
+Second End are measured as an extrusion's Start and End. A sweep's profile lines lie in a plane of their own and aren't
+measured yet: a dimension naming one is refused, saying so (F6d). `edit_work_plane`'s `keep` maps a Blend's top too (and
+swaps base and top on a plane facing the other way) and refuses a sweep on a plane facing the other way or mirrored.
+
+In the family document (`editor/sketch.rs`), Create > Blend, Sweep and Swept Blend, and Void Forms' Void Blend, Void Sweep
+and Void Swept Blend, open sketch mode with every part of the form: `FormSketch::part` (`Part::Main`, `Top`, `Profile`,
+`End`) is on screen, the others wait in `parts` and are drawn grey on their own planes (`other_parts`). A Blend's tab is
+"Modify | Create Blend Base Boundary" with Edit Top ("… Top Boundary", drawn on the plane at its Second End) and Edit Base;
+a Sweep's "Modify | Sweep > Sketch Path" with Sketch Path, Pick Path (Pick Lines on the path), Edit Profile and a greyed
+Select Profile showing "<By Sketch>"; a Swept Blend's the same with Profile 1 and Profile 2. A profile can't be edited
+before the path chains (said in the status bar); its plane faces along the path, so a view that doesn't see it flat gives
+way to one that does (an elevation), else {3D} (`show_part`). Edit Vertices' Twist Left and Twist Right step `twist`. The
+Options Bar's Depth is a Blend's Second End less its First; Properties show First End and Second End, a sweep no ends.
+Finish checks each part (`finish_f6`), putting the part at fault on screen with its lines red, then builds the form with
+every type as F5 does (`commit_form`); Edit Blend, Edit Sweep and Edit Swept Blend (and a double click) sketch it again,
+each part keeping its lines' formulas where they don't move.
+
+Left out, each a task: Edit Vertices' connecting chosen vertex pairs by hand (F6b); profile families (BIMCraft has no
+Profile category: loading one, `sweep.family`, its offsets and angle; F6c); dimensions and locks on a sweep's profile (F6d);
+paths across planes and Pick Path of 3D edges (F6e).
 
 ## Family options
 

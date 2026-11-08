@@ -1091,7 +1091,12 @@ pub static ALL: &[Command] = &[
          fields}, delete_parameter?: [name, …], types?: {type: {parameter: value}}, forms?: [{host?: {plane: guid} | {line: guid, face: \
          horizontal|vertical|start|end}, plane?: xy|xz|yz, sketch?: [{start: [a, b], end: [a, b], turn?, axis?} | {centre: [a, b], radius}, …], \
          profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, \
-         void?}], symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to} | text?: {at: [x, y], height, value, align?: left|center|right} | dot?: {centre: [x, y], radius}, visible?}], form?: {id | guid, …a \
+         void?, top?: [sketch lines] (a Blend: `sketch` its base at `from`, `top` its top at `to`, each one closed loop in the \
+         host plane's axes), sweep?: {profile: [sketch lines], end?: [sketch lines]} (a Sweep: `sketch` is its path, a chain of \
+         lines and arcs, open or closed, or one circle, and `profile` its profile drawn square to the path, x to the right \
+         looking along it and y the host's normal; with `end`, a Swept Blend: a path of one line or arc, `profile` at its start \
+         and `end` at its end, one loop each), twist?: n (a Blend's top or a Swept Blend's end profile paired from its vertex n \
+         on: Edit Vertices' Twist)}], symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to} | text?: {at: [x, y], height, value, align?: left|center|right} | dot?: {centre: [x, y], radius}, visible?}], form?: {id | guid, …a \
          form's fields}, symbol?: {id | guid, …a symbol's fields}, delete_form?: [id | guid, …], delete_symbol?: [id | guid, …], \
          ref_planes?: [{guid?, name?, start: [x, y, z], end: [x, y, z], up: [x, y, z], reference?: not_a_reference|strong|weak|\
          left|center_left_right|right|front|center_front_back|back|bottom|center_elevation|top, defines_origin?, subcategory?}], \
@@ -11013,8 +11018,7 @@ fn family(s: &mut Session, p: &Value) -> R {
             .iter()
             .map(|x| {
                 let sketch: Vec<Value> = x
-                    .sketch
-                    .iter()
+                    .plane_lines()
                     .filter_map(|l| {
                         let drawn = l.curve(&mut |e| crate::family::worth(e, &values)).ok()?;
                         Some(match drawn.curve {
@@ -11234,6 +11238,18 @@ fn family(s: &mut Session, p: &Value) -> R {
     // A dimension that measures to what the family hasn't: refused, unless the caller says to delete it (T14's Delete
     // Dimension(s)); a reload can't leave one behind unasked.
     let dangling = f.dangling_dimensions();
+    // A sweep's profile lies square to its path, in a plane of its own: not measured yet (F6d), and said so.
+    let profile_lines: Vec<crate::ids::Guid> =
+        f.forms.iter().flat_map(|x| x.sweep.iter().flat_map(|s| s.profile.iter().chain(&s.end)).map(|l| l.guid)).collect();
+    for i in &dangling {
+        let on_profile = f.dimensions[*i].refs.iter().any(|r| match *r {
+            crate::family::DimRef::Sketch(_, l) | crate::family::DimRef::Point(_, l, _) => profile_lines.contains(&l),
+            _ => false,
+        });
+        if on_profile {
+            return Err(bad(c, format!("dimension {}: a sweep's profile line isn't measured or locked yet: dimension its path", i + 1)));
+        }
+    }
     if !dangling.is_empty() {
         match string(c, &p, "invalid_dimensions")?.as_deref() {
             Some("delete") => {

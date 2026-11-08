@@ -6813,6 +6813,7 @@ mod background_grid;
 mod extrusion_properties;
 mod family_already_exists;
 mod family_angles;
+mod family_blend;
 mod family_category_dialog;
 mod family_dimensions;
 mod family_document;

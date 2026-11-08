@@ -390,8 +390,19 @@ fn family_work_plane(s: &mut Session, p: &Value) -> R {
                 let map = |q: &[Expr; 2]| [affine(rx[0], &q[0], rx[1], &q[1], rx[2]), affine(ry[0], &q[0], ry[1], &q[1], ry[2])];
                 // A plane that mirrors the profile turns its arcs the other way.
                 let flip = rx[0] * ry[1] - rx[1] * ry[0] < 0.0;
+                if fm.kind().swept() && (flip || sign < 0.0) {
+                    return Err(bad(
+                        c,
+                        "`keep`: a sweep's profile is drawn square to its path, so it can stay where it is only on a plane facing the same way, unmirrored",
+                    ));
+                }
                 fm.sketch.iter_mut().for_each(|l| l.map_points(map, flip));
-                if !fm.revolves() {
+                fm.top.iter_mut().for_each(|l| l.map_points(map, flip));
+                // Facing the other way, a blend's first end is where its second was: its base and top change places.
+                if sign < 0.0 && !fm.top.is_empty() {
+                    std::mem::swap(&mut fm.sketch, &mut fm.top);
+                }
+                if !fm.revolves() && !fm.kind().swept() {
                     let depth = |t: &Expr| affine(sign, t, 0.0, &Expr::Number(0.0), d);
                     (fm.from, fm.to) = if sign > 0.0 { (depth(&fm.from), depth(&fm.to)) } else { (depth(&fm.to), depth(&fm.from)) };
                 }
