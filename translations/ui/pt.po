@@ -136,7 +136,7 @@ msgstr "O material, o isolamento e a temperatura de serviço de um condutor, e a
 
 #: crates/ui-egui/src/editor/extrusion.rs:125
 msgid "A dimension sets it: unlock it to change it here."
-msgstr ""
+msgstr "Uma cota define o valor: desbloqueie-a para alterá-lo aqui."
 
 #: crates/ui-egui/src/properties.rs:2666
 msgid "A direction from the last point sticks to multiples of this angle, from east and from the line before; a dashed guide shows it"
@@ -148,7 +148,7 @@ msgstr "Uma porta ou janela precisa de comprimentos chamados Width e Height; sua
 
 #: crates/ui-egui/src/editor/options.rs:90
 msgid "A door or a window stands in its wall: it can't be work plane-based."
-msgstr ""
+msgstr "Uma porta ou uma janela fica na sua parede: não pode ser baseada em plano de trabalho."
 
 #: crates/ui-egui/src/editor/types_dialog.rs:647
 msgid "A family type parameter needs the category of the families whose types it picks."
@@ -542,11 +542,11 @@ msgstr "Alinhar (AL): selecione uma linha de referência e depois o que alinhar 
 
 #: crates/ui-egui/src/editor/sketch.rs:1064
 msgid "Align (AL): pick a reference, then a line of the sketch that moves onto it; its padlock locks them"
-msgstr ""
+msgstr "Alinhar (AL): selecione uma referência e depois uma linha do esboço que se move até ela; o seu cadeado as bloqueia"
 
 #: crates/ui-egui/src/editor/document.rs:519
 msgid "Align (AL): pick a reference, then what moves onto it; its padlock locks them"
-msgstr ""
+msgstr "Alinhar (AL): selecione uma referência e depois o que se move até ela; o seu cadeado os bloqueia"
 
 #: crates/ui-egui/src/sketch3d.rs:281
 msgid "Align lines up with what a plan shows: in the 3D view, drag a line's end or draw it again."
@@ -564,7 +564,7 @@ msgstr "Cota alinhada"
 
 #: crates/ui-egui/src/editor/document.rs:425
 msgid "Aligned Dimension (DI): pick parallel reference planes, extrusion ends or lines of forms, then click where it goes"
-msgstr ""
+msgstr "Cota alinhada (DI): selecione planos de referência paralelos, extremidades de extrusões ou linhas de formas e clique onde fica"
 
 #: crates/ui-egui/src/lib.rs:3729
 msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, or endpoints, then click where the dimension line goes"
@@ -627,7 +627,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/options.rs:17
 msgid "Always Vertical"
-msgstr ""
+msgstr "Sempre vertical"
 
 #: crates/ui-egui/src/electrical.rs:444
 msgid "Ampacity"
@@ -1189,11 +1189,11 @@ msgstr "Pela vista"
 
 #: crates/ui-egui/src/editor/options.rs:156
 msgid "By its category, sections cut it."
-msgstr ""
+msgstr "Pela sua categoria, os cortes a cortam."
 
 #: crates/ui-egui/src/editor/options.rs:156
 msgid "By its category, sections don't cut it."
-msgstr ""
+msgstr "Pela sua categoria, os cortes não a cortam."
 
 #: crates/core/src/library.rs:75
 msgid "CAD drawing"
@@ -1538,7 +1538,7 @@ msgstr "Clique num ponto base de referência."
 
 #: crates/ui-egui/src/editor/document.rs:1178
 msgid "Click a circle, then click where the dimension goes."
-msgstr ""
+msgstr "Clique num círculo e depois onde fica a cota."
 
 #: crates/ui-egui/src/draw.rs:584
 msgid "Click a corner of the rectangle."
@@ -1570,7 +1570,7 @@ msgstr "Clique num piso, num telhado, numa escada ou numa parede: a elevação d
 
 #: crates/ui-egui/src/editor/document.rs:1187
 msgid "Click a form, a nested instance, a reference plane or a dimension to select it; drag a selected plane to move it."
-msgstr ""
+msgstr "Clique numa forma, numa instância aninhada, num plano de referência ou numa cota para selecioná-lo; arraste um plano selecionado para movê-lo."
 
 #: crates/ui-egui/src/editor/sketch.rs:946
 msgid "Click a line to pick it, Shift to add; drag a picked line's end; Delete takes the lines picked away."
@@ -1614,11 +1614,11 @@ msgstr "Clique num vértice de polilinha ou ponto de spline para tirá-lo."
 
 #: crates/ui-egui/src/editor/document.rs:1171
 msgid "Click a reference line: the work plane it was sketched in. Esc goes back to the dialog."
-msgstr ""
+msgstr "Clique numa linha de referência: o plano de trabalho em que foi esboçada. Esc volta à caixa de diálogo."
 
 #: crates/ui-egui/src/editor/document.rs:1174
 msgid "Click a reference plane or a datum for the work plane. Esc goes back to the dialog."
-msgstr ""
+msgstr "Clique num plano de referência ou numa referência para o plano de trabalho. Esc volta à caixa de diálogo."
 
 #: crates/ui-egui/src/editor/sketch.rs:948
 msgid "Click a reference plane, a reference line or a form's edge: a line along it."
@@ -1650,7 +1650,7 @@ msgstr "Clique numa parede para inserir a janela."
 
 #: crates/ui-egui/src/workplane.rs:577
 msgid "Click a wall, a beam, a pipe or another element drawn along a line: its level is the work plane. Esc goes back to the dialog."
-msgstr ""
+msgstr "Clique numa parede, numa viga, numa tubulação ou noutro elemento desenhado ao longo de uma linha: o seu nível é o plano de trabalho. Esc volta à caixa de diálogo."
 
 #: crates/ui-egui/src/sketch.rs:937
 msgid "Click a wall: a boundary line along it."
@@ -1751,7 +1751,7 @@ msgstr "Clique numa extremidade do eixo."
 
 #: crates/ui-egui/src/editor/document.rs:1181
 msgid "Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes."
-msgstr ""
+msgstr "Clique em planos de referência paralelos, extremidades de extrusões ou linhas de formas e depois onde fica a cota."
 
 #: crates/ui-egui/src/adaptive_view.rs:278
 msgid "Click points or the work plane; click the first point again to close the profile."
@@ -1807,7 +1807,7 @@ msgstr "Clique no próximo canto da projeção. Esc cancela."
 
 #: crates/ui-egui/src/editor/document.rs:1163
 msgid "Click the line of the sketch that moves onto it; its padlock locks them."
-msgstr ""
+msgstr "Clique na linha do esboço que se move até ela; o seu cadeado as bloqueia."
 
 #: crates/ui-egui/src/lib.rs:4985
 msgid "Click the line to trim or extend to it, on the part to keep."
@@ -1859,11 +1859,11 @@ msgstr "Clique nos pontos da forma; Concluir modo de edição quando as linhas s
 
 #: crates/ui-egui/src/editor/document.rs:1183
 msgid "Click the reference to align to."
-msgstr ""
+msgstr "Clique na referência à qual alinhar."
 
 #: crates/ui-egui/src/editor/document.rs:1162
 msgid "Click the reference to align to: a reference plane, a reference line or a line."
-msgstr ""
+msgstr "Clique na referência à qual alinhar: um plano de referência, uma linha de referência ou uma linha."
 
 #: crates/ui-egui/src/lib.rs:5008
 msgid "Click the ruler's start: points snap as they do drawing."
@@ -1987,7 +1987,7 @@ msgstr "Clique em dois pontos: o eixo em torno do qual o perfil gira."
 
 #: crates/ui-egui/src/editor/document.rs:1184
 msgid "Click what moves onto it."
-msgstr ""
+msgstr "Clique no que se move até ela."
 
 #: crates/ui-egui/src/lib.rs:5028
 msgid "Click what the camera looks at; its eye and target heights are the Options Bar's."
@@ -2051,7 +2051,7 @@ msgstr "Clique onde fica o olho da câmera: ela olha para o ponto que você clic
 
 #: crates/ui-egui/src/editor/document.rs:1185
 msgid "Click where the component goes, on the view's work plane."
-msgstr ""
+msgstr "Clique onde fica o componente, no plano de trabalho da vista."
 
 #: crates/ui-egui/src/lib.rs:5031
 msgid "Click where the component goes; Space turns it a quarter turn."
@@ -2238,7 +2238,7 @@ msgstr "Componente (CM): um tipo de família, onde você clicar; Espaço o gira"
 
 #: crates/ui-egui/src/editor/document.rs:403
 msgid "Component (CM): an instance of a family loaded into this one, placed by a click in a plan or an elevation"
-msgstr ""
+msgstr "Componente (CM): uma instância de uma família carregada nesta, inserida com um clique numa planta ou numa elevação"
 
 #: crates/ui-egui/src/properties.rs:218
 msgid "Computation Height"
@@ -2292,7 +2292,7 @@ msgstr "Restrições"
 
 #: crates/ui-egui/src/editor/dimensions.rs:27
 msgid "Constraints are not satisfied"
-msgstr ""
+msgstr "As restrições não são satisfeitas"
 
 #: crates/core/src/family.rs:336
 #: crates/ui-egui/src/properties.rs:458
@@ -2514,7 +2514,7 @@ msgstr "Criar massa"
 
 #: crates/ui-egui/src/editor/dimensions.rs:25
 msgid "Create Parameter…"
-msgstr ""
+msgstr "Criar parâmetro…"
 
 #: crates/ui-egui/src/lib.rs:1457
 msgid "Create Railing Path"
@@ -2572,7 +2572,7 @@ msgstr "Hachura cruzada"
 #: crates/ui-egui/src/editor/work_plane.rs:193
 #: crates/ui-egui/src/workplane.rs:252
 msgid "Current Work Plane"
-msgstr ""
+msgstr "Plano de trabalho atual"
 
 #: crates/ui-egui/src/cad.rs:122
 msgid "Current view only"
@@ -2616,7 +2616,7 @@ msgstr "Plano de corte"
 
 #: crates/ui-egui/src/editor/options.rs:18
 msgid "Cut with Voids When Loaded"
-msgstr ""
+msgstr "Cortar com vazios ao carregar"
 
 #: crates/ui-egui/src/editor.rs:187
 msgid "Cylinder"
@@ -2682,7 +2682,7 @@ msgstr "Vista 3D padrão"
 
 #: crates/ui-egui/src/editor/options.rs:25
 msgid "Default Elevation"
-msgstr ""
+msgstr "Elevação padrão"
 
 #: crates/ui-egui/src/standards.rs:55
 msgid "Default Sheet Size:"
@@ -2733,7 +2733,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/exists.rs:497
 msgid "Delete Dimension(s)"
-msgstr ""
+msgstr "Excluir cota(s)"
 
 #: crates/ui-egui/src/phasing.rs:389
 msgid "Delete Option"
@@ -2931,7 +2931,7 @@ msgstr "Diâmetro"
 
 #: crates/ui-egui/src/editor/document.rs:450
 msgid "Diameter Dimension: pick a circle of a form's sketch, then click where it goes"
-msgstr ""
+msgstr "Cota de diâmetro: escolha um círculo do esboço de uma forma e clique onde fica"
 
 #: crates/ui-egui/src/lib.rs:3760
 msgid "Diameter Dimension: pick a round column, a curved wall, a circle or an arc, then click where it goes"
@@ -2987,7 +2987,7 @@ msgstr "Dimensões"
 
 #: crates/ui-egui/src/editor/exists.rs:395
 msgid "Dimensions of the family you are loading can't be kept: {}"
-msgstr ""
+msgstr "As cotas da família que você está carregando não podem ser mantidas: {}"
 
 #: crates/ui-egui/src/autosave.rs:306
 msgid "Discard"
@@ -3000,23 +3000,23 @@ msgstr "Dispensar"
 #: crates/ui-egui/src/editor/work_plane.rs:205
 #: crates/ui-egui/src/workplane.rs:269
 msgid "Dissociate"
-msgstr ""
+msgstr "Desassociar"
 
 #: crates/ui-egui/src/workplane.rs:266
 msgid "Dissociate: a component stays on its host, which it moves with"
-msgstr ""
+msgstr "Desassociar: um componente permanece no seu hospedeiro, com o qual se move"
 
 #: crates/ui-egui/src/editor/work_plane.rs:204
 msgid "Dissociate: a family's work plane is always one of its planes or lines, which forms are drawn on"
-msgstr ""
+msgstr "Desassociar: o plano de trabalho de uma família é sempre um dos seus planos ou linhas, sobre os quais as formas são desenhadas"
 
 #: crates/ui-egui/src/workplane.rs:264
 msgid "Dissociate: only a work plane on a reference plane follows it; this one follows nothing"
-msgstr ""
+msgstr "Desassociar: só um plano de trabalho sobre um plano de referência o acompanha; este não acompanha nada"
 
 #: crates/ui-egui/src/workplane.rs:262
 msgid "Dissociate: the work plane left where its reference plane is now, no longer following it"
-msgstr ""
+msgstr "Desassociar: o plano de trabalho fica onde está agora o seu plano de referência, sem o acompanhar mais"
 
 #: crates/core/src/fixtures.rs:261
 msgid "Distribution Board"
@@ -3202,7 +3202,7 @@ msgstr "Duplicar…"
 
 #: crates/ui-egui/src/editor/dimensions.rs:236
 msgid "EQ"
-msgstr ""
+msgstr "EQ"
 
 #: crates/ui-egui/src/templates.rs:777
 msgid "Each is a length, and Top may be left empty for the level above."
@@ -3286,7 +3286,7 @@ msgstr "Editar família: a família do que está selecionado, ou do componente q
 
 #: crates/ui-egui/src/editor/nested.rs:363
 msgid "Edit Family: the nested family opens over this one; its Load into Project loads it back here"
-msgstr ""
+msgstr "Editar família: a família aninhada abre-se sobre esta; o seu Carregar no projeto a carrega de volta aqui"
 
 #: crates/ui-egui/src/fillpatterns.rs:527
 #: crates/ui-egui/src/fillpatterns.rs:574
@@ -3330,11 +3330,11 @@ msgstr "Editar plano de trabalho"
 
 #: crates/ui-egui/src/lib.rs:4407
 msgid "Edit Work Plane: the components onto a level, a reference plane or a face picked (the Work Plane dialog), keeping their Offset from Host"
-msgstr ""
+msgstr "Editar plano de trabalho: os componentes para um nível, um plano de referência ou uma face selecionada (caixa de diálogo Plano de trabalho), mantendo o seu Deslocamento do hospedeiro"
 
 #: crates/ui-egui/src/editor/extrusion.rs:248
 msgid "Edit Work Plane: the form onto another of the family's planes, moving with it (the Work Plane dialog)"
-msgstr ""
+msgstr "Editar plano de trabalho: a forma para outro dos planos da família, movendo-se com ele (caixa de diálogo Plano de trabalho)"
 
 #: crates/ui-egui/src/lib.rs:4224
 msgid "Edit the type"
@@ -3453,7 +3453,7 @@ msgstr "Elipse: clique no centro, na extremidade de um eixo e depois até onde v
 
 #: crates/ui-egui/src/editor/options.rs:21
 msgid "Enable Cutting in Views"
-msgstr ""
+msgstr "Ativar corte nas vistas"
 
 #: crates/ui-egui/src/properties.rs:151
 #: crates/ui-egui/src/reinforce.rs:93
@@ -3638,7 +3638,7 @@ msgstr "A família já existe"
 
 #: crates/ui-egui/src/editor/document.rs:1380
 msgid "Family Category"
-msgstr ""
+msgstr "Categoria de família"
 
 #: crates/ui-egui/src/editor/document.rs:670
 #: crates/ui-egui/src/editor/document.rs:1303
@@ -3655,7 +3655,7 @@ msgstr "Editor de Famílias"
 
 #: crates/ui-egui/src/editor/document.rs:1395
 msgid "Family Parameters"
-msgstr ""
+msgstr "Parâmetros de família"
 
 #: crates/ui-egui/src/editor.rs:249
 msgid "Family Type"
@@ -4628,7 +4628,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/nested.rs:86
 msgid "Instances of {} are placed in the family: delete them first."
-msgstr ""
+msgstr "Há instâncias de {} inseridas na família: exclua-as primeiro."
 
 #: crates/core/src/import.rs:1364
 #: crates/ui-egui/src/draw.rs:664
@@ -4661,7 +4661,7 @@ msgstr "Interseção"
 
 #: crates/ui-egui/src/editor/exists.rs:496
 msgid "Invalid Dimensions"
-msgstr ""
+msgstr "Cotas inválidas"
 
 #: crates/ui-egui/src/graphics.rs:1029
 msgid "Invert"
@@ -5112,7 +5112,7 @@ msgstr "Carregar família"
 
 #: crates/ui-egui/src/editor/document.rs:472
 msgid "Load Family: a family file loaded into this family, to place with Component"
-msgstr ""
+msgstr "Carregar família: um arquivo de família carregado nesta família, para inserir com Componente"
 
 #: crates/ui-egui/src/lib.rs:4359
 msgid "Load Family: a family saved as a .json file, BIMCraft's own"
@@ -5132,7 +5132,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:638
 msgid "Load into Project and Close: the family it is nested in takes it, and it closes"
-msgstr ""
+msgstr "Carregar no projeto e fechar: a família em que está aninhada a recebe, e ela se fecha"
 
 #: crates/ui-egui/src/editor/document.rs:640
 msgid "Load into Project and Close: the project takes the family, and the family closes"
@@ -5140,7 +5140,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:630
 msgid "Load into Project: the family it is nested in takes it as it is here, and it stays open"
-msgstr ""
+msgstr "Carregar no projeto: a família em que está aninhada a recebe como está aqui, e ela continua aberta"
 
 #: crates/ui-egui/src/editor/document.rs:632
 msgid "Load into Project: the project takes the family as it is here, and the family stays open"
@@ -5189,7 +5189,7 @@ msgstr "Bloquear segmento {}"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:23
 msgid "Lock: the dimensions this parameter labels keep its value when planes are dragged"
-msgstr ""
+msgstr "Bloquear: as cotas que este parâmetro rotula mantêm o seu valor quando os planos são arrastados"
 
 #: crates/ui-egui/src/canvas.rs:3316
 msgid "Locked segment {}"
@@ -5551,7 +5551,7 @@ msgstr "Modificar parede"
 
 #: crates/ui-egui/src/editor/document.rs:247
 msgid "Modify | Align"
-msgstr ""
+msgstr "Modificar | Alinhar"
 
 #: crates/ui-egui/src/sketch.rs:95
 msgid "Modify | Create Extrusion"
@@ -5571,7 +5571,7 @@ msgstr "Modificar | Criar revolução vazia"
 
 #: crates/ui-egui/src/editor/document.rs:250
 msgid "Modify | Dimensions"
-msgstr ""
+msgstr "Modificar | Cotas"
 
 #: crates/ui-egui/src/sketch.rs:99
 msgid "Modify | Edit Extrusion"
@@ -5596,15 +5596,15 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:241
 msgid "Modify | Nested Instance"
-msgstr ""
+msgstr "Modificar | Instância aninhada"
 
 #: crates/ui-egui/src/editor/document.rs:238
 msgid "Modify | Place Component"
-msgstr ""
+msgstr "Modificar | Inserir componente"
 
 #: crates/ui-egui/src/editor/document.rs:244
 msgid "Modify | Place Dimensions"
-msgstr ""
+msgstr "Modificar | Inserir cotas"
 
 #: crates/ui-egui/src/editor/document.rs:226
 msgid "Modify | Place Lines"
@@ -6152,19 +6152,19 @@ msgstr "Deslocamentos a partir do nível da planta."
 
 #: crates/ui-egui/src/editor/options.rs:23
 msgid "OmniClass Number"
-msgstr ""
+msgstr "Número OmniClass"
 
 #: crates/ui-egui/src/editor/options.rs:24
 msgid "OmniClass Title"
-msgstr ""
+msgstr "Título OmniClass"
 
 #: crates/ui-egui/src/editor/dimensions.rs:833
 msgid "Only a dimension of one segment takes a label."
-msgstr ""
+msgstr "Só uma cota de um segmento aceita um rótulo."
 
 #: crates/ui-egui/src/editor/types_dialog.rs:24
 msgid "Only a parameter that labels a dimension, and that no formula works out, can be locked."
-msgstr ""
+msgstr "Só se pode bloquear um parâmetro que rotule uma cota e que nenhuma fórmula calcule."
 
 #: crates/ui-egui/src/draw.rs:1134
 msgid "Only a polyline or a spline takes a vertex, and a line keeps its two ends."
@@ -6194,7 +6194,7 @@ msgstr "Abrir recente"
 
 #: crates/ui-egui/src/editor/work_plane.rs:288
 msgid "Open View"
-msgstr ""
+msgstr "Abrir vista"
 
 #: crates/ui-egui/src/fillpatterns.rs:782
 msgid "Open a plan to pick the pattern's lines in: detail lines are drawn in plans."
@@ -6618,7 +6618,7 @@ msgstr "Selecionar paredes: uma linha de limite ao longo de cada parede clicada"
 
 #: crates/ui-egui/src/editor/views.rs:725
 msgid "Pick a circle, then click where the dimension goes."
-msgstr ""
+msgstr "Selecione um círculo e depois clique onde fica a cota."
 
 #: crates/ui-egui/src/orbit.rs:666
 msgid "Pick a corner, an edge or a face of the model to dimension."
@@ -6639,19 +6639,19 @@ msgstr "Escolha uma aresta do modelo ou uma linha do esboço destacada como refe
 #: crates/ui-egui/src/editor/work_plane.rs:227
 #: crates/ui-egui/src/workplane.rs:299
 msgid "Pick a line and use the work plane it was sketched in"
-msgstr ""
+msgstr "Selecionar uma linha e usar o plano de trabalho em que foi esboçada"
 
 #: crates/ui-egui/src/workplane.rs:578
 msgid "Pick a line: a wall, a beam, a pipe or another element drawn along a line."
-msgstr ""
+msgstr "Selecionar uma linha: uma parede, uma viga, uma tubulação ou outro elemento desenhado ao longo de uma linha."
 
 #: crates/ui-egui/src/workplane.rs:301
 msgid "Pick a line: after OK, click a wall, a beam, a pipe or another element drawn along a line; its level is taken"
-msgstr ""
+msgstr "Selecionar uma linha: após OK, clique numa parede, numa viga, numa tubulação ou noutro elemento desenhado ao longo de uma linha; o seu nível é usado"
 
 #: crates/ui-egui/src/editor/work_plane.rs:159
 msgid "Pick a line: click a reference line in the view."
-msgstr ""
+msgstr "Selecionar uma linha: clique numa linha de referência na vista."
 
 #: crates/ui-egui/src/editor/types_dialog.rs:644
 msgid "Pick a parameter of the shared parameters file."
@@ -6660,23 +6660,23 @@ msgstr "Escolha um parâmetro do arquivo de parâmetros compartilhados."
 #: crates/ui-egui/src/editor/work_plane.rs:227
 #: crates/ui-egui/src/workplane.rs:294
 msgid "Pick a plane"
-msgstr ""
+msgstr "Selecionar um plano"
 
 #: crates/ui-egui/src/editor/views.rs:742
 msgid "Pick a plane or a line too: points alone face no way to measure along."
-msgstr ""
+msgstr "Selecione também um plano ou uma linha: pontos sozinhos não indicam nenhuma direção para medir."
 
 #: crates/ui-egui/src/workplane.rs:579
 msgid "Pick a plane: a component goes on a face of a wall, a floor, a ceiling or a roof."
-msgstr ""
+msgstr "Selecionar um plano: um componente vai numa face de uma parede, um piso, um forro ou um telhado."
 
 #: crates/ui-egui/src/workplane.rs:295
 msgid "Pick a plane: after OK, click a face of the model in the 3D view, a wall's or a roof's"
-msgstr ""
+msgstr "Selecionar um plano: após OK, clique numa face do modelo na vista 3D, de uma parede ou de um telhado"
 
 #: crates/ui-egui/src/editor/work_plane.rs:161
 msgid "Pick a plane: click a reference plane or a datum in the view."
-msgstr ""
+msgstr "Selecionar um plano: clique num plano de referência ou numa referência na vista."
 
 #: crates/ui-egui/src/adaptive_view.rs:271
 msgid "Pick a plane: one of a point's planes, the level or a reference plane; Escape gives up."
@@ -6688,7 +6688,7 @@ msgstr "Escolha uma aresta de referência ou uma linha de centro; a linha sob o 
 
 #: crates/ui-egui/src/editor/views.rs:732
 msgid "Pick a reference parallel to the first."
-msgstr ""
+msgstr "Selecione uma referência paralela à primeira."
 
 #: crates/ui-egui/src/editor/sketch.rs:612
 #: crates/ui-egui/src/editor/sketch.rs:680
@@ -6697,11 +6697,11 @@ msgstr "Selecione um plano de referência, uma linha de referência ou uma arest
 
 #: crates/ui-egui/src/editor/sketch.rs:812
 msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
-msgstr ""
+msgstr "Selecione um plano de referência, uma linha de referência ou uma linha e depois uma linha do esboço."
 
 #: crates/ui-egui/src/editor/views.rs:754
 msgid "Pick a reference plane, an extrusion's end or a line of a form."
-msgstr ""
+msgstr "Selecione um plano de referência, uma extremidade de uma extrusão ou uma linha de uma forma."
 
 #: crates/ui-egui/src/lib.rs:4959
 msgid "Pick a roof or a floor: the selected walls' bases stand on it."
@@ -6725,7 +6725,7 @@ msgstr "Escolha uma linha do esboço a aparar ou estender, na parte a manter. Es
 
 #: crates/ui-egui/src/editor/sketch.rs:817
 msgid "Pick a straight line of the sketch: it moves onto the reference."
-msgstr ""
+msgstr "Selecione uma linha reta do esboço: ela se move até a referência."
 
 #: crates/ui-egui/src/lib.rs:5001
 msgid "Pick a wall face, centre line or end, a door, a window, a grid, or an endpoint to measure from."
@@ -6805,15 +6805,15 @@ msgstr "Selecionar três pontos"
 
 #: crates/ui-egui/src/workplane.rs:307
 msgid "Pick three points: after OK, click three points on the model, each snapping to a corner near the pointer"
-msgstr ""
+msgstr "Selecionar três pontos: após OK, clique em três pontos do modelo, cada um ajustado a um canto perto do ponteiro"
 
 #: crates/ui-egui/src/editor/views.rs:744
 msgid "Pick two references or more, then click where the dimension goes."
-msgstr ""
+msgstr "Selecione duas ou mais referências e depois clique onde fica a cota."
 
 #: crates/ui-egui/src/editor/work_plane.rs:308
 msgid "Pick works in a plan or an elevation, where the family's planes and lines are drawn"
-msgstr ""
+msgstr "Selecionar funciona numa planta ou numa elevação, onde os planos e as linhas da família são desenhados"
 
 #: crates/ui-egui/src/editor/document.rs:1459
 msgid "Pick…"
@@ -7400,7 +7400,7 @@ msgstr "Radial"
 
 #: crates/ui-egui/src/editor/document.rs:444
 msgid "Radial Dimension: pick a circle of a form's sketch, then click where it goes"
-msgstr ""
+msgstr "Cota radial: escolha um círculo do esboço de uma forma e clique onde fica"
 
 #: crates/ui-egui/src/lib.rs:3754
 msgid "Radial Dimension: pick a round column, a curved wall, a circle or an arc, then click where the radius goes"
@@ -7621,7 +7621,7 @@ msgstr "Remover barras"
 
 #: crates/ui-egui/src/editor/dimensions.rs:698
 msgid "Remove Constraints"
-msgstr ""
+msgstr "Remover restrições"
 
 #: crates/ui-egui/src/lib.rs:4472
 msgid "Remove Paint"
@@ -7906,7 +7906,7 @@ msgstr "Delimitação de ambiente"
 
 #: crates/ui-egui/src/editor/options.rs:20
 msgid "Room Calculation Point"
-msgstr ""
+msgstr "Ponto de cálculo de ambiente"
 
 #: crates/core/src/schedule.rs:118
 msgid "Room Schedule"
@@ -8287,7 +8287,7 @@ msgstr "Definir"
 
 #: crates/ui-egui/src/workplane.rs:177
 msgid "Set Work Plane: the plane the 3D view sketches on, by name or picked on the model, with an offset; its patch in the view sets it too"
-msgstr ""
+msgstr "Definir plano de trabalho: o plano em que a vista 3D esboça, pelo nome ou selecionado no modelo, com um deslocamento; a sua área na vista também o define"
 
 #: crates/ui-egui/src/context.rs:68
 msgid "Set Work Plane…"
@@ -8299,11 +8299,11 @@ msgstr "Definido pelo modelo de vista {}: mude o modelo, ou deixe de segui-lo."
 
 #: crates/ui-egui/src/editor/sketch.rs:1077
 msgid "Set: the plane the sketch is drawn on, by name or picked in the view (the Work Plane dialog); its lines go with it"
-msgstr ""
+msgstr "Definir: o plano em que o esboço é desenhado, pelo nome ou selecionado na vista (caixa de diálogo Plano de trabalho); as suas linhas vão com ele"
 
 #: crates/ui-egui/src/editor/document.rs:1545
 msgid "Set: the view's work plane, by name or picked in the view (the Work Plane dialog)"
-msgstr ""
+msgstr "Definir: o plano de trabalho da vista, pelo nome ou selecionado na vista (caixa de diálogo Plano de trabalho)"
 
 #: crates/ui-egui/src/editor/document.rs:1527
 msgid "Set: the work plane, a plane picked in the view (a point's, the level or a reference plane)"
@@ -8354,7 +8354,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/options.rs:19
 msgid "Shared"
-msgstr ""
+msgstr "Compartilhada"
 
 #: crates/ui-egui/src/editor/exists.rs:492
 msgid "Shared Family Already Loaded"
@@ -8526,7 +8526,7 @@ msgstr "Mostrar: o plano de trabalho da vista, colorido"
 
 #: crates/ui-egui/src/workplane.rs:260
 msgid "Show: the work plane drawn as a grid in the 3D view, on or off"
-msgstr ""
+msgstr "Mostrar: o plano de trabalho desenhado como grade na vista 3D, ligado ou desligado"
 
 #: crates/ui-egui/src/editor/document.rs:1532
 msgid "Show: the work plane drawn, tinted, with a grid on it"
@@ -8534,7 +8534,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/work_plane.rs:202
 msgid "Show: the work plane tinted in the view, on or off"
-msgstr ""
+msgstr "Mostrar: o plano de trabalho colorido na vista, ligado ou desligado"
 
 #: crates/core/src/fixtures.rs:146
 msgid "Shower"
@@ -8809,7 +8809,7 @@ msgstr "Espaçamento:"
 #: crates/ui-egui/src/editor/work_plane.rs:208
 #: crates/ui-egui/src/workplane.rs:275
 msgid "Specify a new Work Plane"
-msgstr ""
+msgstr "Especificar um novo plano de trabalho"
 
 #: crates/core/src/draw.rs:112
 msgid "Spline"
@@ -9046,7 +9046,7 @@ msgstr "Transparência da superfície"
 
 #: crates/ui-egui/src/workplane.rs:239
 msgid "Surface, {}"
-msgstr ""
+msgstr "Superfície, {}"
 
 #: crates/ui-egui/src/workplane.rs:126
 msgid "Surface, {}°"
@@ -9381,7 +9381,7 @@ msgstr "A porta de controle, por onde um agente trabalha neste projeto (bimcraft
 
 #: crates/ui-egui/src/editor/dimensions.rs:22
 msgid "The dimension is over-constrained"
-msgstr ""
+msgstr "A cota está sobrerrestringida"
 
 #: crates/ui-egui/src/properties.rs:2641
 msgid "The ends of walls, grids and what else is drawn, and the points picked so far"
@@ -9398,11 +9398,11 @@ msgstr "A família já tem um tipo chamado {}."
 
 #: crates/ui-egui/src/editor/exists.rs:190
 msgid "The family it was nested in is closed."
-msgstr ""
+msgstr "A família em que estava aninhada está fechada."
 
 #: crates/ui-egui/src/editor/exists.rs:365
 msgid "The family {} you are loading is already in this family, defined differently. What would you like to do?"
-msgstr ""
+msgstr "A família {} que você está carregando já está nesta família, definida de outra forma. O que você deseja fazer?"
 
 #: crates/ui-egui/src/editor/exists.rs:373
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
@@ -9515,7 +9515,7 @@ msgstr "O elemento selecionado não possui tipo para igualar"
 
 #: crates/ui-egui/src/editor/exists.rs:381
 msgid "The shared family {} nested in the family you are loading is already in this family. Which version should it use?"
-msgstr ""
+msgstr "A família compartilhada {} aninhada na família que você está carregando já está nesta família. Qual versão ela deve usar?"
 
 #: crates/ui-egui/src/editor/exists.rs:389
 msgid "The shared family {} nested in this family is already loaded in the project. Which version should the project use?"
@@ -10093,7 +10093,7 @@ msgstr "Usar a barra de título do sistema"
 
 #: crates/ui-egui/src/editor/exists.rs:494
 msgid "Use this family's version"
-msgstr ""
+msgstr "Usar a versão desta família"
 
 #: crates/ui-egui/src/lib.rs:3994
 msgid "User Interface"
@@ -10595,11 +10595,11 @@ msgstr "Plano de trabalho"
 
 #: crates/ui-egui/src/editor/options.rs:16
 msgid "Work Plane-Based"
-msgstr ""
+msgstr "Baseada em plano de trabalho"
 
 #: crates/ui-egui/src/workplane.rs:167
 msgid "Work Plane: what the 3D view sketches on: a level, a reference plane, a surface of the model or three points, each with an offset"
-msgstr ""
+msgstr "Plano de trabalho: aquilo em que a vista 3D esboça: um nível, um plano de referência, uma superfície do modelo ou três pontos, cada um com um deslocamento"
 
 #: crates/ui-egui/src/workplane.rs:596
 msgid "Work Plane: {}"
@@ -10657,7 +10657,7 @@ msgstr "A cor do seu texto estava próxima demais da dos painéis: ela é escure
 
 #: crates/ui-egui/src/editor/options.rs:100
 msgid "Z"
-msgstr ""
+msgstr "Z"
 
 #: crates/ui-egui/src/properties.rs:326
 msgid "Z Justification"
@@ -10775,7 +10775,7 @@ msgstr "um número"
 
 #: crates/ui-egui/src/editor/dimensions.rs:776
 msgid "a parameter needs a name"
-msgstr ""
+msgstr "um parâmetro precisa de um nome"
 
 #: crates/ui-egui/src/camera.rs:134
 msgid "a point is three lengths, `x, y, z`"
@@ -11169,7 +11169,7 @@ msgstr "o plano não pode sair enquanto {} estiver desenhado nele"
 
 #: crates/ui-egui/src/editor/dimensions.rs:779
 msgid "there's a parameter `{}` already"
-msgstr ""
+msgstr "já existe um parâmetro `{}`"
 
 #: crates/ui-egui/src/groups.rs:94
 #: crates/ui-egui/src/groups.rs:111
@@ -11297,7 +11297,7 @@ msgstr "Não é possível excluir {}: {}"
 
 #: crates/ui-egui/src/editor/nested.rs:78
 msgid "{} can't be loaded into itself, nor into a family it nests"
-msgstr ""
+msgstr "{} não pode ser carregada em si mesma nem numa família aninhada nela"
 
 #: crates/ui-egui/src/editor/sketch.rs:353
 msgid "{} can't be worked out"
@@ -11337,7 +11337,7 @@ msgstr "{} não é {}: `{}`"
 
 #: crates/ui-egui/src/editor/work_plane.rs:273
 msgid "{} isn't parallel to this view. Open a view that shows it flat:"
-msgstr ""
+msgstr "{} não é paralelo a esta vista. Abra uma vista que o mostre de frente:"
 
 #: crates/ui-egui/src/fillpatterns.rs:560
 msgid "{} line families"
