@@ -51,7 +51,7 @@ point, the view's buttons by label).
 4. **Load into Project and Close**, then in a plan **Component** (CM) with the family: click its adaptive points in order;
    select the instance and drag its numbered grips.
 
-`samples/adaptive-panel.json` (Family Editor > Load Family…) is a ready panel with four adaptive points on the family's axes (two raised), a warped
+`samples/adaptive-panel.json` (the project's Load Family, then Edit Family; a family document's Insert > Load Family nests it, T6a) is a ready panel with four adaptive points on the family's axes (two raised), a warped
 extrusion, a reference line and a point hosted on it; `bimcraft-cli run --script
 samples/adaptive-panel.txt --save panel.bimcraft` places two instances of it, the second flexing one frame and its Thickness.
 

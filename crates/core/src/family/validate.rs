@@ -168,6 +168,15 @@ pub(crate) fn every_formula(f: &Family) -> Vec<(String, &str)> {
             add(&mut out, &|| format!("adaptive element `{id}`"), e);
         }
     }
+    // A nested instance's place and the parameters it sets but its words, which name a host parameter or are words.
+    for (i, inst) in f.nested_instances.iter().enumerate() {
+        for e in inst.place_exprs() {
+            add(&mut out, &|| format!("nested instance {}", i + 1), e);
+        }
+        for (k, e) in f.instance_exprs(inst) {
+            add(&mut out, &|| format!("nested instance {}'s `{k}`", i + 1), e);
+        }
+    }
     out
 }
 

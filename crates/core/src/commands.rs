@@ -1116,8 +1116,12 @@ pub static ALL: &[Command] = &[
          component is in (else its insertion point's: `elements` says `room`, IFC references it in that space beside its storey); `cut_in_views` \
          overrides whether sections cut its forms, which by default its category says; `omniclass` is a number of digits and \
          dots (`23.30.20.17`) and a title, which IFC writes as a classification reference on its type; work_plane_based (off), \
-         always_vertical (on), cut_with_voids_when_loaded (off) and shared (off) are kept for later and change nothing yet; \
-         a reply's `options` has them all), rename?, delete?: true, dry_run?, path?, definition?, save?, overwrite?: no|version|version_and_values} a family of \
+         always_vertical (on) and cut_with_voids_when_loaded (off) are kept for later and change nothing yet; shared (off) makes it a \
+         shared nested family (below); \
+         a reply's `options` has them all), rename?, delete?: true, dry_run?, path?, definition?, save?, overwrite?: no|version|version_and_values, \
+         shared_nested?: {name: project|family}, nest?: {path | definition, name?, overwrite?, shared_nested?}, nested?: [{name, family}], \
+         delete_nested?: [names], nested_instances?: [...], nested_instance?: {id | guid?, family, type, host?, at?: [x, y], offset?, \
+         angle?, visible?, params?: {name: number | formula}}, delete_nested_instance?: [ids or GUIDs]} a family of \
          the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .json file at `path` (a \
          family as `inspect` shows it, with its `name`). Without `name` it lists the project's families, each its category and \
          how many types, forms and symbols it has; with only a `name` it reads one — its definition, each of its types' \
@@ -1159,7 +1163,17 @@ pub static ALL: &[Command] = &[
          worth knowing and doesn't stop the change (a void cutting no solid, a form outside the opening or thicker than its \
          wall, a door's or window's plan with no symbols). `definition` is a family as such a file holds it, given in place of `path` and loaded as the file would be (read strictly). On `path` or `definition`, `overwrite` chooses `no` (keep the project family), \
          `version` (replace the definition, retaining compatible values) or `version_and_values` (also use incoming values). \
-         Omitted: legacy merge. Project-only types and instance overrides stay; incoming formulas replace the old ones. Its forms are profiles drawn in its own axes (x along a component's \
+         Omitted: legacy merge. Project-only types and instance overrides stay; incoming formulas replace the old ones. \
+         Nested families (T6a): `nest` loads a family (a file or a definition) into this one, carried whole inside it; one it \
+         nests already defined otherwise is refused unless `overwrite` says version or version_and_values. A nested instance places \
+         one of its types on a plane of this family (`host`, by GUID or by name as the Work Plane dialog names it; Ref. Level when \
+         none) at `at` in that plane's axes, `offset` along its normal and turned `angle` degrees about it; `params` sets its \
+         parameters by numbers or formulas over this family's (Associate Family Parameter: `{\"W\": \"Width\"}`; a material or text \
+         parameter names one of this family's of its kind, or holds the words), and its geometry is built into this family's own \
+         (plans, 3D, IFC). No family nests itself, at any depth; nesting stops at 5 levels, 32 families, 256 instances. A nested \
+         family whose option `shared` is on is loaded into the project with the family that nests it: one the project has \
+         otherwise is kept (`shared_nested`: project, the default) or overwritten (`family`); a dry run lists them in \
+         `shared_conflicts`, and one shared family is one definition across the project's families. Its forms are profiles drawn in its own axes (x along a component's \
          angle, y to its left, z up from its base): each is drawn on its `host`, a plane of the family, in that plane's own \
          axes, and swept along its normal from `from` to `to`. Every family has three datums, pinned, with the same GUIDs in \
          every family: Ref. Level (9e3c0a10-1f0b-4d8c-8a5e-0000000000a1, its xy, normal +z), Center (Front/Back) \
@@ -10342,6 +10356,15 @@ struct Patches {
     params_renamed: Vec<(String, String)>,
     /// What changes the components of the family: values moved onto them or off them, renamed, taken away.
     component_ops: Vec<ComponentOp>,
+    /// Nested families loaded (by name), taken away; nested instances replaced (how many), patched, added, deleted.
+    nested_loaded: Vec<String>,
+    nested_deleted: Vec<String>,
+    instances_replaced: usize,
+    instances_patched: Vec<Id>,
+    instances_added: usize,
+    instances_deleted: Vec<Id>,
+    /// The shared nested families a load asked about (the target had them otherwise).
+    shared_asked: Vec<String>,
 }
 
 /// A change to one component's (or family door's or window's) own values, which an edit of its family's parameters makes.
@@ -10563,8 +10586,148 @@ fn delete_parameter(
     Ok(())
 }
 
+/// A family to load from `v`: `{path}` (a family file) or `{definition}` (a family as a file holds it), read strictly; and
+/// the name it gives itself (`name`, else the file's, else the file's stem).
+fn family_source(c: &str, v: &Value) -> Result<(crate::family::Family, Option<String>), String> {
+    let path = v.get("path").filter(|x| !x.is_null());
+    let definition = v.get("definition").filter(|x| !x.is_null());
+    let (mut fields, stem) = match (path, definition) {
+        (Some(_), Some(_)) => return Err(bad(c, "`path` or `definition`, not both: the family loaded comes from one")),
+        (Some(path), None) => {
+            let path = PathBuf::from(path.as_str().ok_or_else(|| bad(c, "`path` is a file's path"))?);
+            let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+            if size >= MAX_FILE {
+                return Err(bad(c, format!("{} is too large ({size} bytes)", path.display())));
+            }
+            let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+            let loaded: Value = serde_json::from_str(&text).map_err(|e| bad(c, format!("{} is not a family: {e}", path.display())))?;
+            let Value::Object(fields) = loaded else {
+                return Err(bad(c, format!("{} is not a family: it isn't an object", path.display())));
+            };
+            (fields, path.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        }
+        (None, Some(Value::Object(fields))) => (fields.clone(), None),
+        (None, Some(_)) => return Err(bad(c, "`definition` is a family as a family file holds it, an object")),
+        (None, None) => return Err(bad(c, "the family to load: its `path` or its `definition`")),
+    };
+    let own = fields.remove("name").and_then(|n| n.as_str().map(str::to_string));
+    let family = serde_json::from_value(Value::Object(fields)).map_err(|e| bad(c, format!("the family loaded: {e}")))?;
+    let name = v.get("name").and_then(Value::as_str).map(str::to_string).or(own).or(stem);
+    Ok((family, name))
+}
+
+/// The answers to "Shared Family Already Loaded" a command gives: `{name: "project" | "family"}`.
+fn shared_answers(c: &str, v: Option<&Value>) -> Result<BTreeMap<String, crate::family::Keep>, String> {
+    match v {
+        None | Some(Value::Null) => Ok(BTreeMap::new()),
+        Some(v) => serde_json::from_value(v.clone())
+            .map_err(|e| bad(c, format!("`shared_nested` is {{name: \"project\" | \"family\"}}, a shared nested family's version: {e}"))),
+    }
+}
+
+/// Family `f`'s nested families and instances, as `p` asks: a family loaded into it (`nest`), the whole lists replaced
+/// (`nested`, `nested_instances`), an instance patched or added (`nested_instance`), some taken away (`delete_nested`,
+/// `delete_nested_instance`). `name` is the family's own, which it can't nest.
+fn nested_edits(c: &str, name: &str, f: &mut crate::family::Family, p: &Value, patches: &mut Patches) -> Result<(), String> {
+    let field = |key: &str, e: serde_json::Error| bad(c, format!("`{key}`: {e}"));
+    if let Some(v) = p.get("nested").filter(|v| !v.is_null()) {
+        let mut list: Vec<crate::family::NestedFamily> = serde_json::from_value(v.clone()).map_err(|e| field("nested", e))?;
+        crate::library::keep_parts(&mut f.nested, &mut list);
+        f.nested = list;
+    }
+    if let Some(v) = p.get("nest").filter(|v| !v.is_null()) {
+        if !v.is_object() {
+            return Err(bad(c, "`nest` is {path | definition, name?, overwrite?, shared_nested?}: a family loaded into this one"));
+        }
+        let (incoming, given) = family_source(c, v)?;
+        let nested_name = given.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+        let nested_name = nested_name.ok_or_else(|| bad(c, "`nest` needs the nested family's `name`"))?;
+        if nested_name == name || incoming.nests(name) {
+            return Err(bad(c, format!("`{nested_name}`: a family can't be loaded into itself, nor into a family it nests")));
+        }
+        let overwrite = match v.get("overwrite").and_then(Value::as_str) {
+            None => None,
+            Some("version") => Some(true),
+            Some("version_and_values") => Some(false),
+            Some("no") => {
+                if f.nested_family(&nested_name).is_some() {
+                    return Ok(());
+                }
+                None
+            }
+            Some(o) => return Err(bad(c, format!("`nest`'s `overwrite` is no, version or version_and_values, not `{o}`"))),
+        };
+        let answers = shared_answers(c, v.get("shared_nested"))?;
+        let done = crate::family::nested::nest_into(&mut f.nested, &nested_name, incoming, overwrite, &answers).map_err(|e| bad(c, e))?;
+        patches.shared_asked.extend(done.shared_asked);
+        patches.nested_loaded.extend(done.shared_added);
+        if !done.unchanged {
+            patches.nested_loaded.push(nested_name);
+        }
+    }
+    // A host given by its name, as the Work Plane dialog names it, is that plane.
+    let named_host = |f: &crate::family::Family, v: &mut Value| -> Result<(), String> {
+        if let Some(Value::String(h)) = v.get("host") {
+            let found = f.plane_set().by_name(h).ok_or_else(|| bad(c, format!("there's no plane `{h}` to place on")))?;
+            v["host"] = serde_json::to_value(found).map_err(|e| bad(c, e))?;
+        }
+        Ok(())
+    };
+    if let Some(Value::Array(list)) = p.get("nested_instances") {
+        let mut list = list.clone();
+        for v in &mut list {
+            named_host(f, v)?;
+        }
+        let mut given: Vec<crate::family::NestedInstance> =
+            serde_json::from_value(Value::Array(list)).map_err(|e| field("nested_instances", e))?;
+        crate::library::keep_parts(&mut f.nested_instances, &mut given);
+        patches.instances_replaced = given.len();
+        f.nested_instances = given;
+    } else if let Some(v) = p.get("nested_instances").filter(|v| !v.is_null()) {
+        return Err(bad(c, format!("`nested_instances` is a list of nested instances, not {v}")));
+    }
+    if let Some(v) = p.get("nested_instance").filter(|v| !v.is_null()) {
+        let mut v = v.clone();
+        named_host(f, &mut v)?;
+        if v.get("id").is_none() && v.get("guid").is_none() {
+            let inst: crate::family::NestedInstance = serde_json::from_value(v).map_err(|e| field("nested_instance", e))?;
+            f.nested_instances.push(inst);
+            patches.instances_added += 1;
+        } else {
+            patches.instances_patched.push(patch_part(c, name, &mut f.nested_instances, &v, "nested_instance")?);
+        }
+    }
+    match p.get("delete_nested_instance") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(list)) => {
+            for v in list {
+                patches.instances_deleted.push(take_part(c, name, &mut f.nested_instances, v, "nested_instance")?);
+            }
+        }
+        Some(v) => return Err(bad(c, format!("`delete_nested_instance` is a list of ids or GUIDs, not {v}"))),
+    }
+    match p.get("delete_nested") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(list)) => {
+            for v in list {
+                let gone = v.as_str().ok_or_else(|| bad(c, format!("`delete_nested` is a list of nested families' names, not {v}")))?;
+                let at = f.nested.iter().position(|n| n.name == gone).ok_or_else(|| bad(c, format!("it nests no family `{gone}`")))?;
+                let users: Vec<String> =
+                    f.nested_instances.iter().enumerate().filter(|(_, n)| n.family == gone).map(|(i, _)| (i + 1).to_string()).collect();
+                if !users.is_empty() {
+                    return Err(bad(c, format!("nested instances {} place `{gone}`; delete them first", users.join(", "))));
+                }
+                f.nested.remove(at);
+                patches.nested_deleted.push(gone.to_string());
+            }
+        }
+        Some(v) => return Err(bad(c, format!("`delete_nested` is a list of nested families' names, not {v}"))),
+    }
+    Ok(())
+}
+
 /// Explicit reloads retain part identities and project-only types. Instance overrides stay on their elements.
-fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Family, keep_values: bool) -> crate::family::Family {
+pub(crate) fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Family, keep_values: bool) -> crate::family::Family {
     let compatible = |p: &crate::family::Parameter| {
         old.parameters.iter().find(|q| {
             q.name == p.name
@@ -10614,6 +10777,8 @@ fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Famil
     crate::library::keep_parts(&mut old.planes, &mut incoming.planes);
     crate::library::keep_parts(&mut old.lines, &mut incoming.lines);
     crate::library::keep_parts(&mut old.dimensions, &mut incoming.dimensions);
+    crate::library::keep_parts(&mut old.nested, &mut incoming.nested);
+    crate::library::keep_parts(&mut old.nested_instances, &mut incoming.nested_instances);
     incoming
 }
 
@@ -10636,6 +10801,9 @@ fn family(s: &mut Session, p: &Value) -> R {
     if overwrite.is_some() && path.is_none() && definition.is_none() {
         return Err(bad(c, "`overwrite` is only for loading a family with `path` or `definition`"));
     }
+    // The answers to "Shared Family Already Loaded" (`shared_nested`), the caller's as `overwrite` is; `shared` is the family's
+    // own option.
+    let answers = shared_answers(c, p.get("shared_nested"))?;
     // From a file, or a definition as a file holds it: its fields under the name given, else its own, else the file's.
     let mut p = p.clone();
     let loaded = match (path, definition) {
@@ -10668,6 +10836,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         }
         (None, None) => None,
     };
+    let loading = loaded.is_some();
     if let Some((mut fields, stem)) = loaded {
         let name = p.get("name").filter(|v| !v.is_null()).cloned().or_else(|| fields.remove("name")).unwrap_or(stem);
         if !name.as_str().is_some_and(|n| !n.trim().is_empty()) {
@@ -10688,6 +10857,8 @@ fn family(s: &mut Session, p: &Value) -> R {
             "planes",
             "lines",
             "dimensions",
+            "nested",
+            "nested_instances",
         ]
         .into_iter()
         .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
@@ -10818,6 +10989,12 @@ fn family(s: &mut Session, p: &Value) -> R {
         "dimensions",
         "dimension",
         "delete_dimension",
+        "nested",
+        "nested_instances",
+        "nest",
+        "nested_instance",
+        "delete_nested",
+        "delete_nested_instance",
     ];
     // Its dimensions solved for a type, which changes nothing: where its planes go, and each dimension's lengths.
     if let Some(type_name) = string(c, &p, "solve")? {
@@ -11014,6 +11191,8 @@ fn family(s: &mut Session, p: &Value) -> R {
             patches.symbols_deleted.push(take_part(c, &name, &mut f.symbols, v, "symbol")?);
         }
     }
+    // Its nested families and instances, before the planes go, so one command can move an instance off a plane first.
+    nested_edits(c, &name, &mut f, &p, &mut patches)?;
     // A plane or a line taken away, refused while a form or a line is drawn on it; after the forms, so one command can move
     // them off it first.
     for (key, planes) in [("delete_ref_line", false), ("delete_ref_plane", true)] {
@@ -11130,6 +11309,21 @@ fn family(s: &mut Session, p: &Value) -> R {
         said.extend(warnings.iter().map(|w| format!("family `{to}`: warning: {w}")));
         return Err(said.join("\n"));
     }
+    // A family loaded into the project (or given its nested families) brings its shared nested families: one the project hasn't is added, one it has
+    // otherwise is kept or overwritten as `shared` answers (kept unasked). Every family of the project that nests a shared
+    // family changed then takes the same definition of it.
+    let mut shared_takes: Vec<(String, crate::family::Family)> = Vec::new();
+    let bringing = ["nested", "nest"].iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null()));
+    if loading || bringing {
+        let project = &s.model.families;
+        let has = |n: &str| if n == to { None } else { project.get(n).cloned() };
+        let (takes, asked) = crate::family::nested::reconcile_shared(&mut f, &to, &has, &answers);
+        shared_takes = takes;
+        patches.shared_asked.extend(asked);
+    }
+    if f.shared {
+        shared_takes.push((to.clone(), f.clone()));
+    }
     if dry {
         if overwrite.is_some() {
             let mut preview = (*s.model).clone();
@@ -11141,6 +11335,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         reply["dry_run"] = json!(true);
         reply["ok"] = json!(true);
         reply["changes"] = family_changes(was.as_ref(), &f, &patches, rename.as_deref());
+        reply["shared_conflicts"] = json!(patches.shared_asked);
         return Ok(reply);
     }
     let m = s.model_mut();
@@ -11162,9 +11357,16 @@ fn family(s: &mut Session, p: &Value) -> R {
         }
     }
     m.families.insert(to.clone(), f.clone());
-    Ok(
-        json!({"name": to, "family": f, "options": f.options_json(), "warnings": warnings, "deleted_dimensions": patches.dimensions_dropped}),
-    )
+    for (shared, definition) in &shared_takes {
+        if *shared != to {
+            m.families.insert(shared.clone(), definition.clone());
+        }
+        for family in m.families.values_mut() {
+            family.replace_shared(shared, definition);
+        }
+    }
+    Ok(json!({"name": to, "family": f, "options": f.options_json(), "warnings": warnings, "deleted_dimensions": patches.dimensions_dropped,
+        "shared_conflicts": patches.shared_asked, "shared_loaded": shared_takes.iter().map(|(n, _)| n).collect::<Vec<_>>()}))
 }
 
 /// A family as `family` reads it: what it is, each of its types' parameters worked out (formulas and
@@ -11221,6 +11423,9 @@ fn family_changes(was: Option<&crate::family::Family>, now: &crate::family::Fami
         "parameters_renamed": patches.params_renamed.iter().map(|(a, b)| json!({"from": a, "to": b})).collect::<Vec<_>>(),
         "component_values_changed": patches.component_ops.len(),
         "options": now.options_changed(was),
+        "nested": {"loaded": patches.nested_loaded, "deleted": patches.nested_deleted},
+        "nested_instances": {"replaced": patches.instances_replaced, "patched": patches.instances_patched,
+            "added": patches.instances_added, "deleted": patches.instances_deleted},
         "deleted": false,
     })
 }

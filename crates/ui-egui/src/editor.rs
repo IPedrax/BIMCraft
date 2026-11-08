@@ -7,6 +7,7 @@ pub(crate) mod dimensions;
 pub(crate) mod document;
 pub(crate) mod exists;
 mod extrusion;
+mod nested;
 pub(crate) mod options;
 pub(crate) mod sketch;
 mod temp_hide;
@@ -503,6 +504,17 @@ pub(crate) struct FamilyEditor {
     pub(crate) sketch: Option<Box<sketch::FormSketch>>,
     /// What a sketch snaps to, as Manage > Snaps says: the window's, given each frame.
     pub(crate) snaps: bimcraft_core::snap::Snaps,
+    /// The families loaded into it and their instances placed in it (T6a, `nested.rs`), as the family holds them.
+    pub(crate) nested: Vec<bimcraft_core::family::NestedFamily>,
+    pub(crate) nested_instances: Vec<bimcraft_core::family::NestedInstance>,
+    /// The nested instance selected.
+    nested_sel: Option<usize>,
+    /// Create > Component, on: the nested family and type a click places.
+    pub(crate) placing: Option<(String, String)>,
+    /// Opened by Edit Family on a family nested in the document under it: its loads go into that one, not the project.
+    pub(crate) into_host: bool,
+    /// Edit Family asked for on this nested family, done after the frame.
+    pub(crate) open_nested: Option<String>,
 }
 
 /// The tabs of a family document's ribbon, as Revit's family editor has them.
@@ -607,6 +619,12 @@ impl FamilyEditor {
             views: Default::default(),
             sketch: None,
             snaps: Default::default(),
+            nested: f.nested.clone(),
+            nested_instances: f.nested_instances.clone(),
+            nested_sel: None,
+            placing: None,
+            into_host: false,
+            open_nested: None,
         }
     }
 
@@ -616,7 +634,10 @@ impl FamilyEditor {
         use crate::adaptive_editor::{Field, associate};
         let Some(mut a) = self.associating.take() else { return };
         let (params, values) = (self.parameter_kinds(), self.values());
-        let (done, new) = if matches!(a.field, Field::Form(_) | Field::Symbol(_)) {
+        let (done, new) = if matches!(a.field, Field::Nested(_)) {
+            let mut rows = nested::NestedRows { instances: &mut self.nested_instances };
+            associate(ctx, &mut a, &mut rows, &params, &values)
+        } else if matches!(a.field, Field::Form(_) | Field::Symbol(_)) {
             let mut rows = association::Rows { forms: &mut self.forms, symbols: &mut self.symbols };
             associate(ctx, &mut a, &mut rows, &params, &values)
         } else if let Some(d) = self.adaptive.as_mut() {
@@ -741,6 +762,8 @@ impl FamilyEditor {
             planes: self.planes.clone(),
             lines: self.lines.clone(),
             dimensions: self.dimensions.clone(),
+            nested: self.nested.clone(),
+            nested_instances: self.nested_instances.clone(),
             ..Family::default()
         };
         self.options.apply(&mut family);
@@ -1408,12 +1431,15 @@ impl BimApp {
                 editor.tab = Tab::Adaptive;
             }
             self.family_editor = Some(editor);
+            // A document opened anew has no family under it.
+            self.family_hosts.clear();
         }
     }
 
     /// Open the Family Editor on a new family of `category`.
     pub(crate) fn new_family(&mut self, category: Category) {
         self.family_editor = Some(FamilyEditor::blank(category));
+        self.family_hosts.clear();
     }
 
     /// The family the selection is of, else the one the Component tool places.
@@ -1463,6 +1489,11 @@ impl BimApp {
     /// which never touches the project), then closing it on Close Family, or on Load into Project and Close when the family
     /// went in. It stays open otherwise.
     fn family_asked(&mut self, ctx: &Context, mut ed: FamilyEditor, ask: Asked) {
+        // Edit Family on a nested family: its document over this one, which waits under it.
+        if let Some(name) = ed.open_nested.take() {
+            self.open_nested_family(ed, &name);
+            return;
+        }
         let base = Arc::clone(&self.session.model);
         let Asked { capture: capture_context, place: place_adaptive, apply_placement, apply, ok, cancel, save, favorite, load, .. } = ask;
         let capture_sources = self.capture_sources();
@@ -1479,15 +1510,11 @@ impl BimApp {
         }
         if load {
             let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]);
-            self.ask_file(ctx, dialog, false, |app, path| match read_family_file(&path) {
-                Ok((name, f)) => {
-                    // Closed meanwhile, the editor has nothing to load into.
-                    if let Some(open) = app.family_editor.as_mut() {
-                        *open = FamilyEditor::of(&name, &f);
-                        open.original = None;
-                    }
+            // Loaded into this family (T6a), as Revit's Insert > Load Family in a family; closed meanwhile, nothing to load into.
+            self.ask_file(ctx, dialog, false, |app, path| {
+                if app.family_editor.is_some() {
+                    app.nest_family_file(&path);
                 }
-                Err(text) => app.status = Status { text, error: true },
             });
         }
         // Save and Favorites use a private Session: neither implicitly loads the draft into the project.
@@ -1532,12 +1559,31 @@ impl BimApp {
         }
         // Made the project's: Load into Project does it, and so does placing the test frames, which places the family's. A
         // family the project has otherwise asks first (`exists`); Load into Project and Close closes once it went in.
+        if !cancel && ed.into_host && (apply || ok) {
+            // A nested family's document loads into the family under it, asking as a load into the project does.
+            let family = ed.family();
+            match family {
+                Ok(family) => {
+                    let name = ed.name.trim().to_string();
+                    self.family_editor = Some(ed);
+                    self.nest_family(name, family, exists::After::IntoHost { close: ok });
+                }
+                Err(e) => {
+                    ed.document.refused = Some(e);
+                    self.family_editor = Some(ed);
+                }
+            }
+            return;
+        }
         if !cancel && (apply || ok || place_adaptive || apply_placement) {
             self.load_draft(&mut ed, exists::After::Document { close: ok, place: place_adaptive, apply_placement });
         }
         let closed = cancel || std::mem::take(&mut ed.document.loaded_to_close);
         if !closed {
             self.family_editor = Some(ed);
+        } else if ed.into_host {
+            // Closed, a nested family's document goes back to the family under it.
+            self.family_editor = self.family_hosts.pop();
         }
     }
 }

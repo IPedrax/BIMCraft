@@ -41,9 +41,6 @@ pub(crate) struct State {
     pub(super) temp: super::temp_hide::Temp,
     /// Load into Project and Close went in: the document closes once the frame's work is done.
     pub(super) loaded_to_close: bool,
-    /// The shared families nested in this one that the project already has, defined otherwise, which "Shared Family Already
-    /// Loaded" asks about on loading (`exists`). T6 (nested families) works them out; until then only a test puts them here.
-    pub(super) shared_nested: Vec<String>,
     /// Why Family Category and Parameters' Apply or OK was refused, while the draft is as it was then.
     options_refused: Option<(Draft, String)>,
     /// What Family Category and Parameters' category list is filtered by, and whether the list has been shown since it opened.
@@ -65,7 +62,6 @@ impl Default for State {
             preview_visibility: false,
             temp: Default::default(),
             loaded_to_close: false,
-            shared_nested: Vec::new(),
             options_refused: None,
             category_filter: String::new(),
             category_shown: false,
@@ -94,6 +90,9 @@ pub(super) struct Draft {
     dimensions: Vec<bimcraft_core::family::FamilyDimension>,
     /// Its options: Family Category and Parameters' table, Properties' Other group.
     options: super::options::OptionsText,
+    /// Its nested families and their instances (T6a).
+    nested: Vec<bimcraft_core::family::NestedFamily>,
+    nested_instances: Vec<bimcraft_core::family::NestedInstance>,
 }
 
 impl Draft {
@@ -111,6 +110,8 @@ impl Draft {
             planes: ed.planes.clone(),
             dimensions: ed.dimensions.clone(),
             options: ed.options.clone(),
+            nested: ed.nested.clone(),
+            nested_instances: ed.nested_instances.clone(),
         }
     }
 
@@ -127,6 +128,8 @@ impl Draft {
         ed.planes = self.planes;
         ed.dimensions = self.dimensions;
         ed.options = self.options;
+        ed.nested = self.nested;
+        ed.nested_instances = self.nested_instances;
         // What is selected and no longer there goes from the selection.
         let nodes = ed.adaptive.as_ref().map(|d| d.nodes.iter().map(|n| n.id.clone()).collect::<Vec<_>>()).unwrap_or_default();
         ed.modeller.selection.retain(|id| nodes.contains(id));
@@ -143,13 +146,6 @@ impl FamilyEditor {
     /// The draft `d` was saved or loaded into the project: changes are counted from it.
     pub(super) fn saved_as(&mut self, d: Draft) {
         self.document.clean = Some(d);
-    }
-
-    /// The shared nested families the project already has otherwise, which loading asks about: T6's to work out, and until
-    /// then a test's to inject.
-    #[cfg(test)]
-    pub(crate) fn set_shared_nested(&mut self, names: Vec<String>) {
-        self.document.shared_nested = names;
     }
 
     /// Whether Preview Visibility is on: the preview shows the family as placed.
@@ -237,6 +233,12 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         }
         if ed.editing_2d() && ed.views.drawing.is_some() {
             return Some(msg!("Modify | Place Reference Plane"));
+        }
+        if ed.placing.is_some() {
+            return Some(msg!("Modify | Place Component"));
+        }
+        if ed.selected_nested().is_some() {
+            return Some(msg!("Modify | Nested Instance"));
         }
         if ed.editing_2d() && ed.views.dimensioning.is_some() {
             return Some(msg!("Modify | Place Dimensions"));
@@ -396,7 +398,14 @@ impl BimApp {
         match tab {
             DocTab::Create => {
                 ribbon::panel(ui, msg!("Model"), |ui| {
-                    later(ui, Icon::Component, "Component");
+                    // A family loaded into this one placed (T6a): in a plan or an elevation, on the view's work plane.
+                    let tip =
+                        msg!("Component (CM): an instance of a family loaded into this one, placed by a click in a plan or an elevation");
+                    let can = !adaptive && !ed.nested.is_empty();
+                    if ui.add_enabled_ui(can, |ui| big_button(ui, Icon::Component, "Component", ed.placing.is_some(), tip)).inner.clicked()
+                    {
+                        ed.component_tool();
+                    }
                     later(ui, Icon::Text, msg!("Model Text"));
                 });
                 ribbon::panel(ui, msg!("Datum"), |ui| {
@@ -460,8 +469,8 @@ impl BimApp {
             }
             DocTab::Insert => {
                 ribbon::panel(ui, msg!("Family"), |ui| {
-                    if big_button(ui, Icon::LoadFamily, msg!("Load Family"), false, msg!("Load Family: open a family file here")).clicked()
-                    {
+                    let tip = msg!("Load Family: a family file loaded into this family, to place with Component");
+                    if big_button(ui, Icon::LoadFamily, msg!("Load Family"), false, tip).clicked() {
                         ed.ask.load = true;
                     }
                     if big_button(ui, Icon::Save, msg!("Save Family"), false, msg!("Save Family: the family to a file")).clicked() {
@@ -557,14 +566,18 @@ impl BimApp {
                     let tip = msg!("Delete (DE): what is selected, with what depends on it");
                     let plane = ed.selected_plane().filter(|g| ed.planes.iter().any(|p| p.guid == *g && !p.datum()));
                     let dim = ed.selected_dimension();
+                    let nested = ed.selected_nested();
                     if ui
-                        .add_enabled_ui(some || form.is_some() || plane.is_some() || dim.is_some(), |ui| {
+                        .add_enabled_ui(some || form.is_some() || plane.is_some() || dim.is_some() || nested.is_some(), |ui| {
                             big_button(ui, Icon::Delete, "Delete", false, tip)
                         })
                         .inner
                         .clicked()
                     {
-                        if let Some(g) = dim {
+                        if let Some(i) = nested {
+                            ed.nested_instances.remove(i);
+                            ed.select_nested(None);
+                        } else if let Some(g) = dim {
                             ed.delete_dimension(g);
                         } else if let Some(g) = plane {
                             if let Err(e) = ed.delete_plane(g) {
@@ -585,6 +598,9 @@ impl BimApp {
                     later(ui, Icon::Measure, msg!("Measure"));
                 });
                 if tab == DocTab::Context {
+                    if let Some(i) = ed.selected_nested() {
+                        self.nested_mode_panel(ui, ed, i);
+                    }
                     if let Some(i) = ed.selected_form() {
                         self.form_work_plane_panel(ui, ed, i);
                         self.form_mode_panel(ui, ed, i);
@@ -607,12 +623,22 @@ impl BimApp {
                 }
             }
         }
+        let into_host = ed.into_host;
         ribbon::panel(ui, msg!("Family Editor"), |ui| {
-            let tip = msg!("Load into Project: the project takes the family as it is here, and the family stays open");
+            // Opened from a family it is nested in, it loads back into that one (T6a), as Revit's does into the open family.
+            let tip = if into_host {
+                msg!("Load into Project: the family it is nested in takes it as it is here, and it stays open")
+            } else {
+                msg!("Load into Project: the project takes the family as it is here, and the family stays open")
+            };
             if big_button(ui, Icon::LoadIntoProject, msg!("Load into Project"), false, tip).clicked() {
                 ed.ask.apply = true;
             }
-            let tip = msg!("Load into Project and Close: the project takes the family, and the family closes");
+            let tip = if into_host {
+                msg!("Load into Project and Close: the family it is nested in takes it, and it closes")
+            } else {
+                msg!("Load into Project and Close: the project takes the family, and the family closes")
+            };
             if big_button(ui, Icon::LoadIntoProjectClose, msg!("Load into Project and Close"), false, tip).clicked() {
                 ed.ask.ok = true;
             }
@@ -742,6 +768,15 @@ impl BimApp {
                     ui.end_row();
                 });
             }
+            self.family_editor = Some(ed);
+            return;
+        }
+        // A nested instance selected: its type, where it stands and its family's parameters (T6a).
+        if let Some(i) = ed.selected_nested() {
+            let what = ed.nested_instances.get(i).map(|n| format!("{} : {}", n.family, n.type_name)).unwrap_or_default();
+            selector(ui, Icon::Component, &what);
+            ui.add_space(6.0);
+            self.nested_properties(ui, &mut ed, i);
             self.family_editor = Some(ed);
             return;
         }
@@ -888,6 +923,7 @@ impl BimApp {
                         });
                     }
                 });
+                self.nested_browser(ui);
                 if !forms.is_empty() {
                     egui::CollapsingHeader::new(t("Forms")).id_salt("family-forms").default_open(true).show(ui, |ui| {
                         for (i, form) in forms.iter().enumerate() {
@@ -1088,6 +1124,8 @@ impl BimApp {
                 let l = ui.label(t("Depth (mm)"));
                 ui.add(egui::DragValue::new(&mut ed.modeller.depth).speed(5.).range(1.0..=100_000.0)).labelled_by(l.id);
             }
+            // Component's family and type (T6a).
+            super::nested::placing_options(ui, ed);
             // A dimension's Label, as Revit's Options Bar has it (T19).
             if let Some(g) = ed.selected_dimension() {
                 ui.separator();
@@ -1144,8 +1182,9 @@ impl BimApp {
             }
             (Some(_), false) if ed.views.aligning.as_ref().is_some_and(Option::is_none) => msg!("Click the reference to align to."),
             (Some(_), false) if ed.views.aligning.is_some() => msg!("Click what moves onto it."),
+            (Some(_), false) if ed.placing.is_some() => msg!("Click where the component goes, on the view's work plane."),
             (Some(_), false) => {
-                msg!("Click a form, a reference plane or a dimension to select it; drag a selected plane to move it.")
+                msg!("Click a form, a nested instance, a reference plane or a dimension to select it; drag a selected plane to move it.")
             }
             (None, true) => adaptive_view::prompt(&ed.modeller),
             (None, false) => msg!("Drag the picture to turn it."),

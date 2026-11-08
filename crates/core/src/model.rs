@@ -145,7 +145,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// faces, and measure a circle's radius or diameter (F7b): sketches locked to planes flex with them. A build of 25 reads a
 /// dimension's references strictly and knows none of these, so it would leave those dimensions out of the file and flex a
 /// locked sketch as if nothing held it.
-pub const FORMAT: u32 = 26;
+///
+/// 27: a family may nest families (`nested`, each its whole definition) and place their instances (`nested_instances`), T6a.
+/// A build of 26 reads a family leniently and would leave both out: the host would open without its nested geometry and lose
+/// it on saving.
+pub const FORMAT: u32 = 27;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3585,6 +3589,7 @@ impl Model {
         // 24 to 25 (a family's dimensions, labels, locks and Align's locks) has none: a file of 24 holds none.
         // 25 to 26 (dimensions to sketch lines, their points and reference lines' faces; radial and diameter ones) has none:
         // a file of 25 holds none, and every dimension it holds reads as it did.
+        // 26 to 27 (nested families and their instances) has none: a file of 26 holds none.
         self.settle_hosts(None);
         self.format = FORMAT;
     }
@@ -6232,7 +6237,7 @@ impl Model {
             if n.trim().is_empty() {
                 return Err("a family needs a name".into());
             }
-            f.check(&|m| self.materials.contains_key(m)).map_err(|e| format!("family `{n}`: {e}"))?;
+            f.check_in(&|m| self.materials.contains_key(m), &mut vec![n.clone()], &mut 0).map_err(|e| format!("family `{n}`: {e}"))?;
         }
         self.check_shared_parameters()?;
         if self.parameters.len() > MAX_PROJECT_PARAMETERS {
