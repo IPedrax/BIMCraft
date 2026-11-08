@@ -499,3 +499,56 @@ fn the_forms_tabs_delete_forgets_the_dimensions_to_the_form() {
     press(&mut h, "Overwrite the existing version");
     assert!(h.state().session.model.families["Box"].forms.is_empty(), "it loads: {}", h.state().status.text);
 }
+
+/// F10: the Forms tab shows a locked form's corners and From and To as the type previewed flexes it, greyed and saying so,
+/// not the numbers it was drawn with; a form its constraints leave as drawn stays typed as before.
+#[test]
+fn the_forms_tab_shows_a_locked_forms_corners_as_the_type_previewed_flexes_it() {
+    use super::family_views::editor;
+    use egui_kittest::kittest::NodeT;
+    const L: &str = "11111111-1111-4111-8111-000000000001";
+    const R: &str = "11111111-1111-4111-8111-000000000002";
+    const F: &str = "22222222-2222-4222-8222-000000000001";
+    let line =
+        |k: u32, a: [i32; 2], b: [i32; 2]| format!(r#"{{"guid": "33333333-3333-4333-8333-00000000000{k}", "start": {a:?}, "end": {b:?}}}"#);
+    let lock = |plane: &str, k: u32, at: i32| {
+        format!(
+            r#"{{"refs": [{{"plane": "{plane}"}}, {{"form": "{F}", "line": "33333333-3333-4333-8333-00000000000{k}"}}], "view": "plan", "at": [{at}, 0, 0], "locked": [{{"segment": 0, "length": 0}}], "alignment": true}}"#
+        )
+    };
+    let script = format!(
+        r#"family {{"name": "Slab", "category": "generic", "parameters": [{{"name": "Width", "value": 1000}}], "types": {{"Large": {{}}, "Small": {{"Width": 600}}}}, "ref_planes": [{{"guid": "{L}", "name": "Left", "start": [-500, -2000, 0], "end": [-500, 2000, 0], "up": [0, 0, 1]}}, {{"guid": "{R}", "name": "Right", "start": [500, -2000, 0], "end": [500, 2000, 0], "up": [0, 0, 1]}}], "forms": [{{"guid": "{F}", "sketch": [{}, {}, {}, {}], "to": 100}}], "dimensions": [{{"refs": [{{"plane": "{L}"}}, {{"plane": "{R}"}}], "view": "plan", "at": [0, -900, 0], "label": "Width"}}, {{"refs": [{{"plane": "{L}"}}, {{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}}, {{"plane": "{R}"}}], "view": "plan", "at": [0, -1100, 0], "equal": true}}, {}, {}]}}"#,
+        line(1, [-500, 0], [500, 0]),
+        line(2, [500, 0], [500, 300]),
+        line(3, [500, 300], [-500, 300]),
+        line(4, [-500, 300], [-500, 0]),
+        lock(L, 4, -500),
+        lock(R, 2, 500),
+    );
+    let mut h = wide(&script);
+    h.set_size(vec2(1600.0, 1200.0));
+    h.state_mut().edit_family("Slab");
+    h.run();
+    let corners = |h: &Harness<BimApp>| {
+        let n = h.get_by_label("Form Corners 1");
+        (n.accesskit_node().value().map(|v| v.to_string()), n.accesskit_node().is_disabled())
+    };
+    // Large, as drawn: typed as before.
+    assert_eq!(corners(&h), (Some("-500, 0\n500, 0\n500, 300\n-500, 300".into()), false));
+    assert!(h.query_by_label_contains("Set by its dimensions and locks").is_none());
+    // Small: as its locks put it, greyed, saying why; the draft keeps what was drawn.
+    h.state_mut().family_editor.as_mut().unwrap().preview_type("Small");
+    h.run();
+    assert_eq!(corners(&h), (Some("-300, 0\n300, 0\n300, 300\n-300, 300".into()), true));
+    assert!(h.query_by_label_contains("Set by its dimensions and locks for the type Small").is_some());
+    let drawn = editor(&h).draft_family().unwrap();
+    assert_eq!(drawn.forms[0].corners().unwrap()[0][0], bimcraft_core::family::Expr::Number(-500.0), "the drawn numbers stay");
+    // Its To, which no constraint sets, stays typed: a value typed there goes to the form.
+    assert!(!h.get_by_label("Form To 1").accesskit_node().is_disabled());
+    type_into(&mut h, "Form To 1", "150");
+    key(&mut h, Key::Enter);
+    assert_eq!(editor(&h).draft_family().unwrap().forms[0].to, bimcraft_core::family::Expr::Number(150.0));
+    // The note wraps inside the palette.
+    let note = h.get_by_label_contains("Set by its dimensions and locks").rect();
+    assert!(note.right() <= 300.0, "{note:?}");
+}

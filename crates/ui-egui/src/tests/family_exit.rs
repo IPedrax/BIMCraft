@@ -263,6 +263,13 @@ fn a_parametric_window_drawn_from_blank_is_placed_flexed_scheduled_and_exported(
         assert!(near(b.min, [-w / 2.0, -40.0, 0.0]) && near(b.max, [w / 2.0, 40.0, ht]), "{name}: the frame {b:?}");
         assert_eq!(f.host_voids(&v).unwrap().len(), 1, "{name}: the void cuts the wall");
     }
+    // The Forms tab shows the void as this type's planes put it, greyed and saying so, not as it was drawn at 900 x 1200.
+    use egui_kittest::kittest::NodeT;
+    let corners = h.get_by_label("Form Corners 1").accesskit_node();
+    assert_eq!(corners.value().as_deref(), Some("-600, 0\n600, 0\n600, 1500\n-600, 1500"));
+    assert!(corners.is_disabled());
+    h.get_by_label_contains("Set by its dimensions and locks for the type 1200 x 1500").scroll_to_me();
+    h.run();
     // The family's views, its dimensions labelled, as the window shows them.
     view(&mut h, Some(Which::Plan));
     dump(&mut h, "family-plan");

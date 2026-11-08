@@ -647,7 +647,9 @@ out for the type shown, in the view shown if it sees the plane flat, else {3D}; 
 was keeps its formulas (`family::sketch::kept`), one moved holds numbers. A selected extrusion's Start and End show shape handles
 in a plan or an elevation that sees its plane edge-on; dragged, they move along the normal, a step of the history; an end tied to a
 parameter or a formula is greyed and a drag on it is refused, saying why. The Forms tab keeps the typed corners, circle and axis as
-an advanced view; a sketch they can't say shows as "Sketch" with its count of lines.
+an advanced view; a sketch they can't say shows as "Sketch" with its count of lines. Where a form's dimensions and locks put
+its outline, From or To otherwise for the type previewed than it is drawn, the tab shows those fields as they come to, greyed
+under a note naming the type (F10, `held_forms`): the drawn numbers stay, and Edit Extrusion or the dimensions change them.
 
 ## Blends, sweeps and swept blends
 
@@ -1063,4 +1065,4 @@ extruded across the wall was outlined whole in plan instead of cut as its jambs 
 plane crosses, in the project's plans and the family's); a void straight through the wall lost its jambs in plan (an edge from
 one face to the other is a jamb, not the face's); the Delete key did nothing to a selected form or plane in the family
 document; the Forms tab's Delete left dimensions measuring to the form gone (Load into Project refused them), and its row ran
-past the palette's edge.
+past the palette's edge; it showed a locked form's corners as drawn, not as the type previewed puts them.
