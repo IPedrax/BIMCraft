@@ -2007,10 +2007,13 @@ macro_rules! visit_refs {
             // A view's graphics, as `views_graphics` gives them.
             Element::Level(_) | Element::Section(_) | Element::Elevation(_) => {}
             Element::View3D(v) => {
-                if let Some(wp) = & $($m)? v.work_plane
-                    && let Some(g) = & $($m)? wp.level
-                {
-                    f(g)
+                if let Some(wp) = & $($m)? v.work_plane {
+                    if let Some(g) = & $($m)? wp.level {
+                        f(g)
+                    }
+                    if let Some(g) = & $($m)? wp.ref_plane {
+                        f(g)
+                    }
                 }
             }
             Element::Grid(_) | Element::RefPlane(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}

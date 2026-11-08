@@ -764,6 +764,8 @@ pub struct BimApp {
     select_by_id: Option<inquiry::SelectById>,
     /// The Work Plane dialog's draft, while it's open or picking its points in the 3D view.
     work_plane: Option<workplane::Draft>,
+    /// The Work Plane dialog's Show (T12): the 3D view's work plane drawn as a grid whether or not it is being set.
+    pub(crate) show_work_plane: bool,
     ids_of_selection: Option<inquiry::IdsOfSelection>,
     selection_filter: Option<filter::SelectionFilter>,
     /// What was last put on the clipboard.
@@ -1332,6 +1334,7 @@ impl BimApp {
             purge_dialog: None,
             select_by_id: None,
             work_plane: None,
+            show_work_plane: false,
             ids_of_selection: None,
             selection_filter: None,
             copied: None,
@@ -4390,6 +4393,18 @@ impl BimApp {
                     .clicked()
                 {
                     self.run("modify", json!({"ids": walls, "attach_top": null, "attach_base": null}));
+                }
+            });
+        }
+        // Work plane-based components selected: Revit's Work Plane panel, Edit Work Plane (T12).
+        let hosted = self.work_plane_components();
+        if !hosted.is_empty() && self.tool == Tool::Modify {
+            panel(ui, msg!("Work Plane"), |ui| {
+                let tip = msg!(
+                    "Edit Work Plane: the components onto a level, a reference plane or a face picked (the Work Plane dialog), keeping their Offset from Host"
+                );
+                if big_button(ui, Icon::WorkPlane, msg!("Edit Work Plane"), self.work_plane.is_some(), tip).clicked() {
+                    self.open_component_work_plane(hosted.clone());
                 }
             });
         }

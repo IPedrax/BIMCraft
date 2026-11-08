@@ -431,6 +431,19 @@ impl<'a> Planes<'a> {
     }
 }
 
+impl Planes<'_> {
+    /// The plane named `name`, as the Work Plane dialog's Name lists it (`Reference Plane : Left`, `Reference Line 1 :
+    /// Vertical`, `Level : Ref. Level`), or a plane's own name (`Left`, `Ref. Level`).
+    pub fn by_name(&self, name: &str) -> Option<PlaneRef> {
+        let name = name.trim();
+        let listed = self.listed();
+        listed.iter().find(|(_, l)| l == name).map(|(r, _)| *r).or_else(|| {
+            let own = self.planes.iter().find(|p| !p.name.is_empty() && p.name == name).map(|p| PlaneRef::Plane(p.guid));
+            own.or_else(|| datums().into_iter().find(|d| d.name == name).map(|d| PlaneRef::Plane(d.guid)))
+        })
+    }
+}
+
 impl Family {
     /// Its planes and lines, borrowed, to work out the frame of a plane they name.
     pub fn plane_set(&self) -> Planes<'_> {

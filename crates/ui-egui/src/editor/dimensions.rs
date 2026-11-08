@@ -274,7 +274,7 @@ impl FamilyEditor {
     /// Every tool of the views put down and the selection let go.
     fn drop_tools(&mut self) {
         self.views.drawing = None;
-        self.views.picking_plane = false;
+        self.views.picking = None;
         self.views.dimensioning = None;
         self.views.aligning = None;
         self.views.align_lock = None;

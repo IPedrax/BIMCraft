@@ -28,8 +28,12 @@ pub(crate) struct Views {
     work_planes: BTreeMap<Option<Which>, PlaneRef>,
     /// Work Plane > Show: the work plane tinted.
     pub(crate) show_work_plane: bool,
-    /// Work Plane > Set's Pick: the next click picks the plane under it.
-    pub(crate) picking_plane: bool,
+    /// The Work Plane dialog's Pick a plane or Pick a line (T12): the next click picks.
+    pub(crate) picking: Option<super::work_plane::Picking>,
+    /// The Work Plane dialog, open.
+    pub(crate) dialog: Option<super::work_plane::Dialog>,
+    /// Go To View, asked for a plane the view shown doesn't show flat.
+    pub(crate) go_to: Option<super::work_plane::GoTo>,
     /// The Reference Plane tool, on, with its first click once made.
     pub(crate) drawing: Option<Option<P2>>,
     /// The plane selected, by GUID.
@@ -123,7 +127,7 @@ impl Views {
         if self.shown != which {
             self.shown = which;
             self.drawing = None;
-            self.picking_plane = false;
+            self.picking = None;
             self.drag = None;
             self.dimensioning = None;
             self.aligning = None;
@@ -172,7 +176,7 @@ impl FamilyEditor {
     pub(crate) fn reference_plane_tool(&mut self) {
         if self.editing_2d() {
             self.views.drawing = Some(None);
-            self.views.picking_plane = false;
+            self.views.picking = None;
             self.views.plane = None;
             self.form = None;
         }
@@ -319,6 +323,21 @@ impl FamilyEditor {
             let editing = self.sketch.as_ref().and_then(|s| s.index);
             let planes = self.planes.clone();
             let reach = 6.0 / view.scale.max(1e-9);
+            // The Work Plane dialog's Pick a plane or Pick a line, from sketch mode's Set (T12): the click is its.
+            if self.views.picking.is_some() {
+                let mut problem = None;
+                if response.clicked()
+                    && let Some(p) = response.interact_pointer_pos()
+                {
+                    let (x, y) = (p.x - pane.min.x, p.y - pane.min.y);
+                    let plane = cache.drawing.pick_all((x, y), 6.0).into_iter().find_map(|id| cache.staged.plane_of(id));
+                    let line = cache.staged.line_at(which, at_view(p), reach);
+                    problem = self.picked(&Arc::new(base.clone()), plane, line);
+                }
+                self.views.cache = Some(cache);
+                self.zoom_and_pan(ui, &response, which, view.scale);
+                return problem;
+            }
             // Pick Lines: a reference plane's or a reference line's trace, else the nearest edge of another form's outline.
             let pick = |p: egui::Pos2| -> Option<(P2, P2)> {
                 let (x, y) = (p.x - pane.min.x, p.y - pane.min.y);
@@ -481,7 +500,7 @@ impl FamilyEditor {
         let mut on_dims: Option<(Clicked, Vec<f64>)> = None;
         let mut clicked_any = false;
         // A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
-        let edit = (editable && response.double_clicked() && self.views.drawing.is_none() && !self.views.picking_plane)
+        let edit = (editable && response.double_clicked() && self.views.drawing.is_none() && self.views.picking.is_none())
             .then(|| response.interact_pointer_pos())
             .flatten()
             .and_then(|p| family.as_ref().and_then(|f| fv::form_at(f, &values, &c.staged, which, at_view(p))));
@@ -492,11 +511,10 @@ impl FamilyEditor {
         {
             let q = at_view(p);
             clicked_any = true;
-            if self.views.picking_plane {
-                match pick_plane(p) {
-                    Some(g) => picked_work_plane = Some(PlaneRef::Plane(g)),
-                    None => problem = Some(t("Pick a reference plane or a datum in the view.").to_string()),
-                }
+            if self.views.picking.is_some() {
+                // Pick a line: the reference line within the reach a plane's trace has.
+                let line = c.staged.line_at(which, q, 6.0 / view.scale.max(1e-9));
+                picked_work_plane = Some((pick_plane(p), line));
             } else if let Some(first) = self.views.drawing {
                 match first {
                     None => self.views.drawing = Some(Some(q)),
@@ -557,7 +575,7 @@ impl FamilyEditor {
         // A plane of the family's own, selected, dragged square to itself.
         if editable
             && self.views.drawing.is_none()
-            && !self.views.picking_plane
+            && self.views.picking.is_none()
             && self.views.end_drag.is_none()
             && response.dragged_by(PointerButton::Primary)
         {
@@ -590,9 +608,9 @@ impl FamilyEditor {
         {
             problem = Some(e);
         }
-        if let Some(plane) = picked_work_plane {
-            self.views.set_work_plane(plane);
-            self.views.picking_plane = false;
+        if let Some((plane, line)) = picked_work_plane {
+            let base = Arc::new(base.clone());
+            problem = self.picked(&base, plane, line);
         }
         // The next click lets Align's padlock go, unless it locks it.
         if clicked_any && !matches!(on_dims, Some((Clicked::AlignLock, _))) && align.is_none() {

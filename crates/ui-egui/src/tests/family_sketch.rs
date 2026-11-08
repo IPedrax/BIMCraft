@@ -275,9 +275,12 @@ fn go_to_view_offers_the_views_that_see_the_work_plane_flat() {
     view(&mut h, Some(Which::Plan));
     editor_mut(&mut h).views.set_work_plane(PlaneRef::Plane(CENTER_FRONT_BACK));
     button(&mut h, "Extrusion");
-    assert!(!editor(&h).sketching() && editor(&h).go_to.is_some(), "asked first");
-    assert_eq!(editor(&h).go_to_choices(), [Which::Elevation(Side::Back), Which::Elevation(Side::Front)]);
+    // The one Go To View, the Work Plane dialog's (T12): the views that see the plane flat, then {3D}.
+    assert!(!editor(&h).sketching(), "asked first");
+    let go = editor(&h).views.go_to.clone().expect("Go To View");
+    assert_eq!(go.views, [Some(Which::Elevation(Side::Back)), Some(Which::Elevation(Side::Front)), None]);
     press(&mut h, "Elevation: Front");
+    press(&mut h, "Open View");
     assert!(editor(&h).sketching());
     assert_eq!(editor(&h).views.shown, Some(Which::Elevation(Side::Front)));
     assert_eq!(editor(&h).sketch.as_ref().unwrap().host, PlaneRef::Plane(CENTER_FRONT_BACK));
@@ -475,4 +478,35 @@ fn pick_lines_in_3d_picks_a_forms_edge_onto_the_work_plane_and_refuses_one_squar
     click_at(&mut h, at);
     assert_eq!(editor(&h).sketch.as_ref().unwrap().sketch.lines.len(), 1);
     assert!(h.state().status.text.contains("square to the work plane"), "{}", h.state().status.text);
+}
+
+/// Sketch mode's Work Plane > Set (T12): the Work Plane dialog for the sketch; a plane the view sees edge-on asks Go To View,
+/// and the sketch goes onto it in the view opened, its lines with it.
+#[test]
+fn set_in_sketch_mode_puts_the_sketch_on_another_plane_through_the_work_plane_dialog() {
+    let mut h = open();
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    button(&mut h, "Extrusion");
+    rectangle(&mut h, P2(100.0, 100.0), P2(300.0, 400.0));
+    let lines = editor(&h).sketch.as_ref().unwrap().sketch.lines.clone();
+    assert_eq!(editor(&h).sketch.as_ref().unwrap().host, PlaneRef::Plane(CENTER_FRONT_BACK));
+    // Set's the topmost of the labels: the Work Plane panel's, on the contextual tab.
+    let at = h.get_all_by_label("Set").map(|n| n.rect()).min_by(|a, b| a.top().total_cmp(&b.top())).expect("Set").center();
+    click_at(&mut h, at);
+    assert!(editor(&h).views.dialog.is_some(), "the Work Plane dialog");
+    assert!(h.query_by_label("Reference Plane : Center (Front/Back)").is_some(), "Current: the sketch's plane");
+    let back = editor(&h).planes.iter().find(|p| p.name == "Back").map(|p| p.guid).unwrap();
+    if let Some(d) = editor_mut(&mut h).views.dialog.as_mut() {
+        d.chosen = PlaneRef::Plane(back);
+    }
+    h.run();
+    press(&mut h, "OK");
+    // Back stands across Front: Go To View, Left.
+    assert!(editor(&h).views.go_to.is_some());
+    press(&mut h, "Elevation: Left");
+    press(&mut h, "Open View");
+    let s = editor(&h).sketch.as_ref().expect("still sketching");
+    assert_eq!((s.host, editor(&h).views.shown), (PlaneRef::Plane(back), Some(Which::Elevation(Side::Left))));
+    assert_eq!(s.sketch.lines, lines, "its lines, in the plane's own axes, go with it");
+    assert_eq!(editor(&h).views.work_plane(), PlaneRef::Plane(back));
 }

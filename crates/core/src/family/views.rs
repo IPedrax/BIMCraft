@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::{Family, Val};
-use crate::geom::P2;
+use crate::geom::{self, P2};
 use crate::hosting::ReferencePlane;
 use crate::ids::{Guid, Id};
 use crate::model::{Element, Model, Section};
@@ -63,6 +63,42 @@ pub enum Which {
     Elevation(Side),
 }
 
+impl Which {
+    /// Every view besides {3D}, as the Project Browser lists them: the plans, then the elevations.
+    pub const ALL: [Which; 6] = [
+        Which::Plan,
+        Which::Ceiling,
+        Which::Elevation(Side::Back),
+        Which::Elevation(Side::Front),
+        Which::Elevation(Side::Left),
+        Which::Elevation(Side::Right),
+    ];
+
+    /// The way it looks along, in the family's axes, either way: up and down for the plans, level for an elevation.
+    pub fn eye(self) -> P3 {
+        match self {
+            Which::Plan | Which::Ceiling => [0.0, 0.0, 1.0],
+            Which::Elevation(side) => {
+                let l = side.looking();
+                [l.0, l.1, 0.0]
+            }
+        }
+    }
+
+    /// Whether it shows a plane of `normal` flat, looking straight at it (either side): what can be sketched on in it.
+    pub fn faces(self, normal: P3) -> bool {
+        let e = self.eye();
+        let n = (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+        n > 0.0 && ((normal[0] * e[0] + normal[1] * e[1] + normal[2] * e[2]) / n).abs() > 1.0 - 1e-9
+    }
+}
+
+/// The views that show a plane of `normal` flat (Go To View's list, before {3D}, which shows any): the two plans for a
+/// level plane, Front and Back or Left and Right for an upright one square to them; none for another.
+pub fn flat_views(normal: P3) -> Vec<Which> {
+    Which::ALL.into_iter().filter(|w| w.faces(normal)).collect()
+}
+
 /// A scratch model a family is placed in, made ready for its views.
 pub struct Staged {
     pub model: Model,
@@ -104,11 +140,22 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
     if let Some(Element::Level(l)) = m.elements.get_mut(level) {
         l.name = "Ref. Level".into();
     }
-    let (lo, hi) = extents(family, values);
+    let (mut lo, mut hi) = extents(family, values);
+    // The reference lines are in the room too, so the planes' traces and the level run past them.
+    for p in family.lines.iter().flat_map(|l| [l.start, l.end]) {
+        for i in 0..3 {
+            (lo[i], hi[i]) = (lo[i].min(p[i]), hi[i].max(p[i]));
+        }
+    }
     let room: (P3, P3) = (
         std::array::from_fn(|i| if i == 2 { (lo[i] - 300.0).min(0.0) } else { (lo[i] - 300.0).min(-1500.0) }),
         std::array::from_fn(|i| (hi[i] + 300.0).max(1500.0)),
     );
+    // Ref. Level runs across the room in every elevation, as the planes' traces do, and under the reference lines drawn
+    // over the views, which aren't elements of the model and so wouldn't stretch it.
+    if let Some(Element::Level(l)) = m.elements.get_mut(level) {
+        l.extent = Some([P2(room.0[0], room.0[1]), P2(room.1[0], room.1[1])]);
+    }
     let mut planes = BTreeMap::new();
     for p in family.planes.iter().filter(|p| !p.level && shown(p.guid)) {
         let f = p.frame();
@@ -206,7 +253,19 @@ impl Staged {
         let lo = corners.iter().fold(P2(f64::INFINITY, f64::INFINITY), |a, c| P2(a.0.min(c.0), a.1.min(c.1)));
         let hi = corners.iter().fold(P2(f64::NEG_INFINITY, f64::NEG_INFINITY), |a, c| P2(a.0.max(c.0), a.1.max(c.1)));
         let (w, h) = (f64::from(width.max(16)), f64::from(height.max(16)));
-        let scale = 0.75 * (w / (hi.0 - lo.0).max(1.0)).min(h / (hi.1 - lo.1).max(1.0)) * zoom.clamp(0.05, 50.0);
+        let fit = |lo: P2, hi: P2| 0.75 * (w / (hi.0 - lo.0).max(1.0)).min(h / (hi.1 - lo.1).max(1.0));
+        // An elevation frames what it shows as the project's do (`render::section_extent`): its levels' lines run past the
+        // room, with their names past their ends, which would be cut at the picture's edge.
+        let (mut lo, mut hi) = (lo, hi);
+        if let Which::Elevation(side) = which
+            && let Some(id) = self.elevation(side)
+        {
+            let work = render::SectionWork::new(&self.model);
+            if let Some([a, b]) = render::section_extent(&self.model, &work, id, fit(lo, hi), 1.0) {
+                (lo, hi) = (P2(lo.0.min(a.0), lo.1.min(a.1)), P2(hi.0.max(b.0), hi.1.max(b.1)));
+            }
+        }
+        let scale = fit(lo, hi) * zoom.clamp(0.05, 50.0);
         View { scale, cx: (lo.0 + hi.0) / 2.0 + pan.0, cy: (lo.1 + hi.1) / 2.0 + pan.1, width: width.max(16), height: height.max(16) }
     }
 
@@ -236,6 +295,18 @@ impl Staged {
         render::reference_lines(&mut drawing, &lines);
         let rgba = render::rgba(&drawing, picture.as_ref())?;
         Ok(Shown { view, drawing, rgba })
+    }
+
+    /// The family's reference line drawn nearest point `q` of view `which` (mm), within `reach` mm of it: its place in the
+    /// family's `lines`. A line seen end on is a point there, and is picked as one.
+    pub fn line_at(&self, which: Which, q: P2, reach: f64) -> Option<usize> {
+        self.lines
+            .iter()
+            .enumerate()
+            .map(|(i, (a, b))| (i, geom::dist_to_segment(q, self.to_view(which, *a), self.to_view(which, *b))))
+            .filter(|(_, d)| d.is_finite() && *d <= reach)
+            .min_by(|x, y| x.1.total_cmp(&y.1))
+            .map(|(i, _)| i)
     }
 
     /// The family's plane a reference plane of the scratch model drawn by `owner` stands for.
@@ -509,6 +580,39 @@ mod tests {
             assert!((normal[0] * l.0 + normal[1] * l.1).abs() < 1e-6, "{side:?}: its normal lies in the elevation's plane");
         }
         assert!(new_plane(&st, Which::Plan, P2(1.0, 1.0), P2(1.0, 1.0)).is_none());
+    }
+
+    /// Go To View's list: the views that show a plane flat, either side of it; none for an askew one.
+    #[test]
+    fn the_views_that_show_a_plane_flat_are_the_plans_for_a_level_one_and_two_elevations_for_an_upright_one() {
+        assert_eq!(flat_views([0.0, 0.0, -1.0]), [Which::Plan, Which::Ceiling]);
+        assert_eq!(flat_views([0.0, -1.0, 0.0]), [Which::Elevation(Side::Back), Which::Elevation(Side::Front)]);
+        assert_eq!(flat_views([1.0, 0.0, 0.0]), [Which::Elevation(Side::Left), Which::Elevation(Side::Right)]);
+        assert!(flat_views([1.0, 1.0, 0.0]).is_empty(), "askew to every elevation");
+        assert!(Which::Plan.faces([0.0, 0.0, 2.0]) && !Which::Plan.faces([0.0, 1.0, 0.0]));
+        assert!(!Which::Plan.faces([0.0, 0.0, 0.0]));
+    }
+
+    /// Pick a line: the reference line drawn nearest the click, within reach; one seen end on is a point.
+    #[test]
+    fn a_reference_line_is_found_where_a_view_draws_it() {
+        let mut f = boxed(0.0, 500.0);
+        let line = |start: P3, end: P3, host: Guid| crate::family::RefLine {
+            guid: Guid::new(),
+            start,
+            end,
+            host: crate::family::PlaneRef::Plane(host),
+            ..Default::default()
+        };
+        f.lines.push(line([-1200.0, -1000.0, 0.0], [-600.0, -1000.0, 0.0], crate::family::REF_LEVEL));
+        f.lines.push(line([-1500.0, 0.0, 0.0], [-1500.0, 0.0, 1200.0], crate::family::CENTER_FRONT_BACK));
+        let st = staged(&f);
+        assert_eq!(st.line_at(Which::Plan, P2(-900.0, -1010.0), 20.0), Some(0));
+        assert_eq!(st.line_at(Which::Plan, P2(-900.0, -1100.0), 20.0), None, "out of reach");
+        assert_eq!(st.line_at(Which::Plan, P2(-1505.0, 0.0), 20.0), Some(1), "end on, a point");
+        let front = Which::Elevation(Side::Front);
+        let at = st.to_view(front, [-1500.0, 0.0, 600.0]);
+        assert_eq!(st.line_at(front, at, 5.0), Some(1));
     }
 
     /// The family's reference lines in its plan and its Front elevation: solid green, thinner than the planes' dashed traces,

@@ -354,16 +354,21 @@ Work planes in 3D (`workplane.rs`; the core's in [views and graphics](views-and-
 the view, as ArchiCAD's: a small square of it (`work_plane_ring`, the same size on screen at any zoom), by the model's south-west corner
 on a level plane and about the point it was set through on another, lit with the plane's name under the cursor, that a click in Modify
 opens the dialog from; so do the 3D view's right-click menu (Set Work Plane…, `Action::WorkPlane`) and the Architecture tab's Set, in
-its Datum panel. The 3D view's control bar has Work Plane, a `footer::menu_button` showing the plane (a level's name, `Surface, 90°` or
-`Three points, 14°`, and `+ offset` when moved), which opens its dialog (`workplane::Draft`). It sets the plane three ways (`By`): Pick
-from list, a level; Pick a surface, with Pick Surface; Pick three points, with Pick Points; and one Offset for each, along the plane's
-normal (up from a level, out from a surface). Nothing is typed but the offset. A pick closes the dialog while it's made (`Picking`) and
-brings it back with what it took, Esc going back without it: Pick Surface lights the face under the pointer (`Scene::face_at`, the
-element's triangles in the plane of the one hit) and a click takes it, a point of it and the way it faces; Pick Points takes three
-clicks, each snapping to the corner seen nearest the pointer within the snap's reach (`Scene::corner_near`, a square marking it, as a
-dimension's ends snap in plan), else the surface's point there (a circle), the points taken drawn as dots (`workplane::aim`,
-`draw_aim`). OK runs `work_plane`; what it refuses is said in the dialog. The plane is drawn as a grid over as much of it as the model
-spans while the dialog is up and while a new outline is sketched on it (`workplane::draw_plane`, along the plane's own axes). Floor,
+its Datum panel. The 3D view's control bar has Work Plane, a `footer::menu_button` showing the plane (`Level : Level 1`, `Reference
+Plane : Ramp`, `Surface, 90°` or `Three points, 14°`, and `+ offset` when moved), which opens Revit's Work Plane dialog (T12,
+`workplane::Draft`, a `popup::Modal`). Current Work Plane names it (a surface by the way it faces), with Show (`BimApp::show_work_plane`:
+the plane's grid drawn in the 3D view whether or not the dialog is up) and Dissociate (enabled only for a work plane on a reference
+plane: `work_plane {dissociate}`, leaving it where the plane is now). Specify a new Work Plane takes it four ways (`By`): Name, a level or
+a named reference plane of the project (`workplane::choices`); Pick a plane, a face of the model; Pick a line and use the work plane it
+was sketched in, a wall, a beam, a pipe or another element drawn along a line, whose level is taken (`workplane::sketched_in`); Pick
+three points (BIMCraft's own); and one Offset for each, along the plane's normal (up from a level, out from a surface). As Revit's, OK
+by name runs `work_plane` at once; OK with a Pick closes the dialog while the pick is made (`Picking`) and the click sets the plane
+(the third, for points), Esc going back to the dialog: Pick a plane and Pick a line light the face under the pointer (`Scene::face_at`,
+the element's triangles in the plane of the one hit); Pick three points snaps each click to the corner seen nearest the pointer within
+the snap's reach (`Scene::corner_near`, a square marking it, as a dimension's ends snap in plan), else the surface's point there (a
+circle), the points taken drawn as dots (`workplane::aim`, `draw_aim`). What `work_plane` refuses is said in the dialog, which comes
+back. The plane is drawn as a grid over as much of it as the model spans while the dialog is up, while Show is on and while a new
+outline is sketched on it (`workplane::draw_plane`, along the plane's own axes). Floor,
 Ceiling, Roof and Shaft picked in the 3D view sketch a new one on the work plane at once (`set_tool`, `sketch_on_work_plane`):
 `Sketch::surface` holds the plane, `sketch_surface` gives it to `sketch3d.rs`, and Finish makes it on the level below the plane
 (`workplane::host`), as high above it as the plane is. Each of the four lies level, so on a plane that doesn't (`workplane::is_level`:

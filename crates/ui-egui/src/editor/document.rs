@@ -164,7 +164,12 @@ impl FamilyEditor {
 
     /// Whether a dialog of the document's is open: Family Types, Family Category and Parameters, or an association.
     fn modal(&self) -> bool {
-        self.dialog.is_some() || self.associating.is_some() || self.views.unsatisfied.is_some() || self.views.creating.is_some()
+        self.dialog.is_some()
+            || self.associating.is_some()
+            || self.views.unsatisfied.is_some()
+            || self.views.creating.is_some()
+            || self.views.dialog.is_some()
+            || self.views.go_to.is_some()
     }
 
     /// The document's history, at the end of a frame: Undo or Redo when `ask` says so, else a step for what changed since the
@@ -598,7 +603,7 @@ impl BimApp {
                 ed.modeller.picking_plane = false;
                 ed.form = None;
                 ed.views.drawing = None;
-                ed.views.picking_plane = false;
+                ed.views.picking = None;
                 ed.views.plane = None;
                 ed.views.dimensioning = None;
                 ed.views.aligning = None;
@@ -1092,7 +1097,12 @@ impl BimApp {
         }
         Some(match (ed.views.shown, ed.adaptive.is_some()) {
             (Some(_), true) => msg!("An adaptive family's plans and elevations show its test placement; model it in {3D}."),
-            (Some(_), false) if ed.views.picking_plane => msg!("Click a reference plane or a datum: the view's work plane."),
+            (Some(_), false) if ed.views.picking.is_some_and(|p| p.line) => {
+                msg!("Click a reference line: the work plane it was sketched in. Esc goes back to the dialog.")
+            }
+            (Some(_), false) if ed.views.picking.is_some() => {
+                msg!("Click a reference plane or a datum for the work plane. Esc goes back to the dialog.")
+            }
             (Some(_), false) if ed.views.drawing.is_some() => msg!("Click two points: a reference plane through them."),
             (Some(_), false) if ed.views.dimensioning.is_some() => {
                 msg!("Click parallel reference planes or extrusion ends, then click where the dimension goes.")
@@ -1155,8 +1165,7 @@ impl BimApp {
         // Escape lets a selected form go, though a button clicked has the keyboard (the window's own Escape does it otherwise).
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             // The plane being drawn first, then the tool, then the selection.
-            if ed.views.picking_plane {
-                ed.views.picking_plane = false;
+            if ed.stop_picking() {
             } else if let Some(refs) = ed.views.dimensioning.as_mut() {
                 if refs.is_empty() {
                     ed.views.dimensioning = None;
@@ -1196,6 +1205,12 @@ impl BimApp {
         // F7: Constraints are not satisfied, and Create Parameter… for a dimension's label.
         ed.constraints_dialog(ctx);
         ed.create_parameter_dialog(ctx);
+        // T12: the Work Plane dialog and Go To View.
+        let base = Arc::clone(&self.session.model);
+        if let Some(e) = ed.work_plane_dialog(ctx, &base) {
+            self.status = Status { text: e, error: true };
+        }
+        ed.go_to_view_dialog(ctx);
         let Some(dialog) = ed.dialog else {
             ed.document.dialog_saved = None;
             ed.document.category_shown = false;
@@ -1444,29 +1459,15 @@ fn work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
     });
 }
 
-/// Work Plane in a plan or an elevation of a family that isn't adaptive (F4): Set picks the view's work plane from the
-/// family's planes, as A4's list names them, or by a click on one (Pick); Show tints it. Revit's Work Plane dialog is T12's.
+/// Work Plane on the Create tab of a family that isn't adaptive: Set opens Revit's Work Plane dialog for the view's work plane
+/// (T12: Name, Pick a plane, Pick a line, Go To View); Show tints it.
 fn views_work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
-    let listed = ed.plane_set().listed();
-    let now = ed.views.work_plane();
-    let mut chosen = None;
     ribbon::panel(ui, msg!("Work Plane"), |ui| {
-        let tip = msg!("Set: the view's work plane, a plane picked in the view or from the list");
-        let r = big_button(ui, Icon::PickFaces, msg!("Set"), ed.views.picking_plane, tip);
-        // Pick takes a plane clicked in a plan or an elevation; {3D} offers the list alone.
-        let pickable = ed.views.shown.is_some();
-        ribbon::choices(ui, &r, false, |ui| {
-            if pickable && ui.button(t(PICK)).clicked() {
-                ed.views.picking_plane = true;
-                ui.close();
-            }
-            for (plane, label) in &listed {
-                if ui.selectable_label(now == *plane, t(label)).clicked() {
-                    chosen = Some(*plane);
-                    ui.close();
-                }
-            }
-        });
+        let tip = msg!("Set: the view's work plane, by name or picked in the view (the Work Plane dialog)");
+        let on = ed.views.dialog.is_some() || ed.views.picking.is_some();
+        if big_button(ui, Icon::PickFaces, msg!("Set"), on, tip).clicked() {
+            ed.open_work_plane_dialog(super::work_plane::Target::View);
+        }
         crate::stacked(ui, |ui| {
             let tip = msg!("Show: the view's work plane, tinted");
             if crate::stacked_button(ui, Icon::Visibility, msg!("Show"), ed.views.show_work_plane, tip).clicked() {
@@ -1474,10 +1475,6 @@ fn views_work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
             }
         });
     });
-    if let Some(p) = chosen {
-        ed.views.set_work_plane(p);
-        ed.views.picking_plane = false;
-    }
 }
 
 /// The family's Identity Data in Properties: its name, typed, and its category.

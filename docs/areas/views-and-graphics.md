@@ -268,8 +268,16 @@ transparency shows in 3D only. A surface is seen through as much as the greater 
 plain views too) and the view's override for its element (not in a plain view); both painters take it from `Tri::alpha`.
 
 A 3D view sketches on its work plane (`workplane.rs`), as Revit's Work Plane > Set and more: `View3D::work_plane`, a `WorkPlane` on a
-`level` (a GUID, in `visit_refs!`), through three `points`, or on a `surface` picked on the model (a point and a normal), each moved
-`offset` mm along its normal; with none, the lowest level (`Model::work_plane`). `WorkPlane::resolve` gives it as a `workplane::Frame`,
+`level` (a GUID, in `visit_refs!`), through three `points`, on a `surface` picked on the model (a point and a normal), or on a
+reference plane of the project (`ref_plane`, a GUID in `visit_refs!` too; T12), each moved `offset` mm along its normal; with none, the
+lowest level (`Model::work_plane`). On a reference plane it follows the plane, moved or turned with it; its `surface` is kept beside
+it as where the plane is now (`Model::settle_work_planes`, after every command where `settle_hosts` runs), so a build that doesn't
+know `ref_plane` leaves the key out and reads the same plane, dissociated: no FORMAT step. `work_plane {dissociate: true}` (Revit's
+Dissociate) drops `ref_plane` and keeps the surface; deleting the plane does the same. `work_plane {name}` takes a label of
+`workplane::choices` (`Level : Level 2`, `Reference Plane : Ramp`: the levels low to high, then the named planes by name) or a bare
+name, refusing one that is both a level's and a plane's; `{ref_plane: name | id | GUID}` names the plane directly; the reply says the
+`name` the dialog's Current Work Plane shows (`WorkPlane::name`) and the `ref_plane`'s id. `Model::check` refuses a `ref_plane` beside
+a `level` or `points`, or naming what isn't a reference plane. `WorkPlane::resolve` gives it as a `workplane::Frame`,
 a point and a unit normal, at any angle, upright too: three points along a line are refused (`workplane::through`, facing up unless
 upright), and `Model::check` resolves it. `Frame::over_plan` is it as a `walls::Plane` over the plan, as a floor's top is, for a sketch
 that stays plan lines raised onto it (none for an upright one); `Frame::axes` are its level and up directions. The `work_plane` command

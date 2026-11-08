@@ -193,7 +193,8 @@ pub static ALL: &[Command] = &[
         "{ids, host: {level: name|id} | {plane: name|id|GUID} | {face: {element: id|GUID, face}}} puts components on a level \
          (at their plan point, on it), a reference plane of the project or a face of a wall, a floor, a ceiling or a roof \
          (taken onto it; one from another plane or face keeps its Offset from Host). \
-         {family, form | ref_line: id|GUID, host: {plane: name|id|GUID} | {line, face}, keep?, dry_run?} puts a family's form \
+         {family, form | ref_line: id|GUID, host: {plane: name|id|GUID} | {line, face} | a name as the Work Plane dialog \
+         lists it (`Reference Line 1 : Vertical`), keep?, dry_run?} puts a family's form \
          or reference line on another of its planes: it moves with the plane, as Revit's Edit Work Plane, keeping its profile \
          and start and end in the new plane's axes; with `keep` it stays where it is, which only a plane parallel to its old \
          one allows (a reference line, only one it already lies on)",
@@ -1854,8 +1855,12 @@ pub static ALL: &[Command] = &[
          along its normal (up, for a level; 0 unless given), and may lie at any angle, upright too: what a tool may sketch on \
          it is up to the tool (a floor, a ceiling, a roof and a shaft need a level plane, and stand on the highest level at or \
          below it). Given only `offset`, the plane as it is is moved by that instead. Given nothing, it's the lowest level \
-         again, as it is until set. A level deleted takes its work plane with it. Says the plane: a point of it (`origin`), its \
-         `normal`, its height at the origin where it isn't upright (`z`) and its `slope` in degrees from level",
+         again, as it is until set. A level deleted takes its work plane with it. As the Work Plane dialog's Name: `name` \
+         (`Level : Level 2`, `Reference Plane : Ramp`, or a level's or a named reference plane's own name), or `ref_plane` (a \
+         reference plane of the project by name, id or GUID): on a reference plane the work plane follows it, moved and turned \
+         with it; `dissociate: true` leaves it where the plane is now and no longer following (as does deleting the plane). \
+         Says the plane: its `name` as the dialog's Current Work Plane says it, its `level` or `ref_plane` (ids), a point of \
+         it (`origin`), its `normal`, its height at the origin where it isn't upright (`z`) and its `slope` in degrees from level",
         work_plane,
     ),
     edit(
@@ -4258,7 +4263,7 @@ fn camera(s: &mut Session, p: &Value) -> R {
 
 fn work_plane(s: &mut Session, p: &Value) -> R {
     let c = "work_plane";
-    only(c, p, &["view", "level", "offset", "points", "surface"])?;
+    only(c, p, &["view", "level", "offset", "points", "surface", "name", "ref_plane", "dissociate"])?;
     let m = &s.model;
     let default = absent(p.get("view"))
         || matches!(p.get("view"), Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D"));
@@ -4288,9 +4293,50 @@ fn work_plane(s: &mut Session, p: &Value) -> R {
         None => None,
     };
     let level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
-    let given = WorkPlane { level, offset: offset.unwrap_or(0.0), points, surface };
-    let plane = if level.is_some() || points.is_some() || surface.is_some() {
-        Some(given)
+    // By name, as the Work Plane dialog's Name lists them; a reference plane of the project by name, id or GUID.
+    let named = string(c, p, "name")?.map(|n| crate::workplane::by_name(m, &n).map_err(|e| bad(c, e))).transpose()?;
+    let ref_plane = match p.get("ref_plane") {
+        v if absent(v) => None,
+        Some(v) => {
+            let id = match v {
+                Value::String(n) if Guid::parse(n).is_none() => m
+                    .rare("refplane")
+                    .into_iter()
+                    .find(|id| matches!(m.elements.get(*id), Some(Element::RefPlane(rp)) if rp.name == *n))
+                    .ok_or_else(|| bad(c, format!("no reference plane named `{n}`")))?,
+                v => element_id(c, m, v)?,
+            };
+            match m.elements.get(id) {
+                Some(Element::RefPlane(_)) => Some(m.guid(id)),
+                Some(e) => return Err(bad(c, format!("`ref_plane`: {} {id} isn't a reference plane", e.category()))),
+                None => return Err(bad(c, format!("no element {id}"))),
+            }
+        }
+        None => None,
+    };
+    let dissociate = flag(c, p, "dissociate")?;
+    let given = [level.is_some(), points.is_some(), surface.is_some(), named.is_some(), ref_plane.is_some()];
+    if given.iter().filter(|g| **g).count() > 1 {
+        return Err(bad(c, "give only one of `level`, `points`, `surface`, `name` and `ref_plane`: a work plane is on one of them"));
+    }
+    if dissociate && given.iter().any(|g| *g) {
+        return Err(bad(c, "`dissociate` keeps the work plane where it is: give it without a new plane"));
+    }
+    let plane = if dissociate {
+        let now = m.work_plane(view);
+        let Some(wp) = now.dissociated(m) else {
+            return Err(bad(
+                c,
+                format!("the work plane, {}, follows no reference plane: there's nothing to dissociate it from", now.name(m)),
+            ));
+        };
+        Some(WorkPlane { offset: offset.unwrap_or(wp.offset), ..wp })
+    } else if let Some(wp) = named {
+        Some(WorkPlane { offset: offset.unwrap_or(0.0), ..wp })
+    } else if let Some(g) = ref_plane {
+        Some(WorkPlane { ref_plane: Some(g), offset: offset.unwrap_or(0.0), ..WorkPlane::default() })
+    } else if level.is_some() || points.is_some() || surface.is_some() {
+        Some(WorkPlane { level, offset: offset.unwrap_or(0.0), points: points.map(Box::new), surface, ref_plane: None })
     } else {
         offset.map(|offset| WorkPlane { offset, ..m.work_plane(view) })
     };
@@ -4302,12 +4348,15 @@ fn work_plane(s: &mut Session, p: &Value) -> R {
     if let Some(Element::View3D(v3)) = s.model_mut().elements.get_mut(v) {
         v3.work_plane = plane;
     }
+    // On a reference plane, its snapshot where it is now, as after every command.
+    s.model_mut().settle_work_planes();
     let wp = s.model.work_plane(Some(v));
     let level = wp.level.and_then(|g| s.model.elements.id(g));
+    let ref_plane = wp.ref_plane.and_then(|g| s.model.elements.id(g));
     let z = resolved.over_plan().map(|p| p.z);
     Ok(json!({
-        "view": v, "level": level, "offset": wp.offset, "points": wp.points, "surface": wp.surface,
-        "origin": resolved.origin, "normal": resolved.normal, "z": z, "slope": resolved.slope(),
+        "view": v, "name": wp.name(&s.model), "level": level, "ref_plane": ref_plane, "offset": wp.offset, "points": wp.points,
+        "surface": wp.surface, "origin": resolved.origin, "normal": resolved.normal, "z": z, "slope": resolved.slope(),
     }))
 }
 

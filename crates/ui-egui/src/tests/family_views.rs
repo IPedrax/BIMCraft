@@ -257,12 +257,17 @@ fn work_plane_set_picks_a_plane_and_show_tints_it() {
     view(&mut h, Some(Which::Elevation(Side::Front)));
     assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK));
     let edge = plane(&h, "Edge").guid;
-    if let Some(ed) = h.state_mut().family_editor.as_mut() {
-        ed.views.picking_plane = true;
-    }
+    // Set: the Work Plane dialog (T12); Pick a plane, OK, then Edge's trace. Seen edge-on here, so Go To View: Left.
+    super::family_work_plane::set(&mut h);
+    pick(&mut h, Role::RadioButton, "Pick a plane");
+    press(&mut h, "OK");
+    assert!(editor(&h).views.picking.is_some());
     click_family(&mut h, [-400.0, 0.0, 900.0]);
-    assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(edge), "picked");
-    assert!(!editor(&h).views.picking_plane);
+    assert!(editor(&h).views.picking.is_none());
+    assert!(editor(&h).views.go_to.is_some(), "Edge is upright across Front: Go To View");
+    press(&mut h, "Open View");
+    assert_eq!(editor(&h).views.shown, Some(Which::Elevation(Side::Left)));
+    assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(edge), "picked, set in Left");
     press(&mut h, "Show");
     assert!(editor(&h).views.show_work_plane);
     // Each view keeps its own: the plan's is still Ref. Level.

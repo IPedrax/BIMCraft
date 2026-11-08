@@ -162,6 +162,8 @@ mod wall_top_offset_tests;
 pub mod walls;
 pub mod water;
 #[cfg(test)]
+mod work_plane_dialog_tests;
+#[cfg(test)]
 mod work_plane_tests;
 pub mod workplane;
 #[cfg(test)]

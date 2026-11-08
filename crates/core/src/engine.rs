@@ -307,6 +307,10 @@ impl Session {
                 if !unsettled.is_empty() {
                     self.model_mut().settle(unsettled);
                 }
+                // A 3D view's work plane on a reference plane goes where the plane is; the plane gone, it stays, dissociated.
+                if !self.model.unsettled_work_planes().is_empty() {
+                    self.model_mut().settle_work_planes();
+                }
                 // Locked and equal dimensions moved what they measure to as the command moved it.
                 if cmd.undoable {
                     crate::constraints::keep(self, &before)?;

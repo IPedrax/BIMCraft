@@ -10,7 +10,7 @@ use super::*;
 use bimcraft_core::curves::Curve;
 use bimcraft_core::draw::{self as shapes, Options, Shape};
 use bimcraft_core::family::sketch::{self as fs, FormLine};
-use bimcraft_core::family::views::{Side, Staged, Which};
+use bimcraft_core::family::views::{Staged, Which};
 use bimcraft_core::family::{Frame, Val};
 use bimcraft_core::geom::P2;
 use bimcraft_core::sketch::SketchLine;
@@ -294,9 +294,10 @@ fn dot3(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
-/// Whether view `which` sees plane `f` flat: its normal along the way the view looks.
+/// Whether view `which` sees plane `f` flat: its normal along the way the view looks (`Which::faces`, which Go To View's
+/// list is made by too).
 pub(crate) fn flat(which: Which, f: &Frame) -> bool {
-    dot3(looking(which), f.z).abs() > 1.0 - 1e-6
+    which.faces(f.z)
 }
 
 /// Whether view `which` sees plane `f` edge-on: its normal square to the way the view looks.
@@ -323,13 +324,6 @@ pub(crate) fn in_view(st: &Staged, which: Which, f: &Frame, h: P2) -> P2 {
     st.to_view(which, f.point(h, 0.0))
 }
 
-/// The views of a family that see plane `f` flat: where it can be sketched on but {3D}.
-pub(crate) fn views_flat(f: &Frame) -> Vec<Which> {
-    let mut all = vec![Which::Plan, Which::Ceiling];
-    all.extend(Side::ALL.map(Which::Elevation));
-    all.into_iter().filter(|w| flat(*w, f)).collect()
-}
-
 /// A typed number or formula's worth for `values`, for the core's evaluation: unread, said.
 fn reader(values: &BTreeMap<String, Val>) -> impl FnMut(&Expr) -> Result<f64, String> + '_ {
     move |e: &Expr| crate::adaptive_editor::worth(e, values).ok_or_else(|| tf("{} can't be worked out", &[&expr_text(e)]))
@@ -353,31 +347,17 @@ impl FamilyEditor {
     }
 
     /// Create > Extrusion or Revolve (`revolve`), solid or void: sketch mode on the view's work plane, unless a plan or an
-    /// elevation shows it edge-on or askew; then Go To View is asked, offering the views that show it flat and {3D}.
+    /// elevation shows it edge-on or askew; then Go To View is asked (the Work Plane dialog's, `editor/work_plane.rs`),
+    /// offering the views that show it flat and {3D}, and the sketch begins in the one opened.
     pub(crate) fn create_form(&mut self, revolve: bool, void: bool) {
         if self.adaptive.is_some() {
             return;
         }
         let host = self.views.work_plane();
-        let Ok(frame) = self.plane_set().frame(&host) else { return };
-        match self.views.shown {
-            Some(which) if !flat(which, &frame) => self.go_to = Some((revolve, void)),
-            _ => self.start_form_sketch(None, revolve, void, host, Vec::new()),
+        if self.plane_set().frame(&host).is_err() {
+            return;
         }
-    }
-
-    /// Go To View's choice: the view shown (none, {3D}) and the sketch begun there.
-    pub(crate) fn go_to_view(&mut self, which: Option<Which>) {
-        let Some((revolve, void)) = self.go_to.take() else { return };
-        let host = self.views.work_plane();
-        self.views.show(which);
-        self.views.set_work_plane(host);
-        self.start_form_sketch(None, revolve, void, host, Vec::new());
-    }
-
-    /// The views Go To View offers for the work plane in hand: those that see it flat.
-    pub(crate) fn go_to_choices(&self) -> Vec<Which> {
-        self.plane_set().frame(&self.views.work_plane()).map(|f| views_flat(&f)).unwrap_or_default()
+        self.on_work_plane(host, super::work_plane::Then::Create { revolve, void });
     }
 
     /// Edit Extrusion or Edit Revolve on form `i`: its lines worked out for the type previewed, each keeping its id and
@@ -413,7 +393,7 @@ impl FamilyEditor {
     }
 
     /// Sketch mode on: `lines` to begin with, drawing with Line (a revolve with no axis yet, with Axis Line).
-    fn start_form_sketch(&mut self, index: Option<usize>, revolve: bool, void: bool, host: PlaneRef, lines: Vec<SketchLine>) {
+    pub(super) fn start_form_sketch(&mut self, index: Option<usize>, revolve: bool, void: bool, host: PlaneRef, lines: Vec<SketchLine>) {
         let edit = index.is_some();
         let (from, to) = if revolve { ("0", "360") } else { ("0", "250") };
         self.sketch = Some(Box::new(FormSketch {
@@ -442,7 +422,7 @@ impl FamilyEditor {
         self.form = None;
         self.views.plane = None;
         self.views.drawing = None;
-        self.views.picking_plane = false;
+        self.views.picking = None;
     }
 
     /// Cancel Edit Mode: the lines dropped, the draft as it was.
@@ -894,10 +874,18 @@ impl BimApp {
             }
         });
         ribbon::panel(ui, msg!("Work Plane"), |ui| {
-            let tip = msg!("Show: the view's work plane, tinted");
-            if crate::stacked_button(ui, Icon::Visibility, msg!("Show"), ed.views.show_work_plane, tip).clicked() {
-                ed.views.show_work_plane = !ed.views.show_work_plane;
+            let tip =
+                msg!("Set: the plane the sketch is drawn on, by name or picked in the view (the Work Plane dialog); its lines go with it");
+            let on = ed.views.dialog.is_some() || ed.views.picking.is_some();
+            if crate::big_button(ui, Icon::PickFaces, msg!("Set"), on, tip).clicked() {
+                ed.open_work_plane_dialog(super::work_plane::Target::Sketch);
             }
+            crate::stacked(ui, |ui| {
+                let tip = msg!("Show: the view's work plane, tinted");
+                if crate::stacked_button(ui, Icon::Visibility, msg!("Show"), ed.views.show_work_plane, tip).clicked() {
+                    ed.views.show_work_plane = !ed.views.show_work_plane;
+                }
+            });
         });
         if finish {
             match ed.finish_form_sketch(units) {
@@ -971,41 +959,5 @@ impl BimApp {
             ui.checkbox(&mut s.void, t("Void"));
             ui.end_row();
         });
-    }
-
-    /// Go To View, asked by Create > Extrusion or Revolve where the view shown doesn't see the work plane flat: the views
-    /// that do, and {3D}; the one picked shown and the sketch begun there.
-    pub(crate) fn go_to_view_dialog(&mut self, ctx: &Context, ed: &mut FamilyEditor) {
-        if ed.go_to.is_none() {
-            return;
-        }
-        let choices = ed.go_to_choices();
-        let mut picked: Option<Option<Which>> = None;
-        let mut close = false;
-        let modal = Modal::new(UiId::new("family-go-to-view"), t("Go To View")).width(380.0).show(ctx, |ui| {
-            crate::popup::body(ui, |ui| {
-                ui.label(t("The work plane is perpendicular to this view: sketch it in a view that sees it flat."));
-                ui.add_space(6.0);
-                for which in &choices {
-                    if ui.button(super::views::view_title(Some(*which))).clicked() {
-                        picked = Some(Some(*which));
-                    }
-                }
-                if ui.button(super::views::view_title(None)).clicked() {
-                    picked = Some(None);
-                }
-            });
-            crate::popup::footer(ui, |ui| {
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    close |= ui.button(t("Cancel")).clicked();
-                });
-            });
-        });
-        if modal.should_close() || close {
-            ed.go_to = None;
-        }
-        if let Some(which) = picked {
-            ed.go_to_view(which);
-        }
     }
 }
