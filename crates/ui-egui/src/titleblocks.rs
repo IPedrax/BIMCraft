@@ -283,8 +283,19 @@ impl BimApp {
             } else {
                 name
             };
-            if app.run("title_block", json!({"name": name, "path": path.to_string_lossy()})).is_some() {
+            if let Some(reply) = app.run("title_block", json!({"name": name, "path": path.to_string_lossy()})) {
                 app.open_title_blocks(Some(&name));
+                // What the reading says (a drawing of no unit, read in mm) and what it left out, on the status bar.
+                let mut said: Vec<String> =
+                    reply["notes"].as_array().into_iter().flatten().filter_map(|n| n.as_str().map(str::to_string)).collect();
+                let left: Vec<String> =
+                    reply["left_out"].as_object().into_iter().flatten().map(|(what, n)| format!("{n} × {what}")).collect();
+                if !left.is_empty() {
+                    said.push(tf("Left out: {}", &[&left.join(", ")]));
+                }
+                if !said.is_empty() {
+                    app.status = crate::Status { text: said.join("; "), error: false };
+                }
             }
         });
     }
@@ -342,7 +353,22 @@ impl BimApp {
                         });
                         // What it looks like, filled in as the first sheet that names it would be, else with its defaults.
                         let sheet = model.elements.iter().find_map(|(id, e)| matches!(e, Element::Sheet(s) if s.title_block == d.name).then_some(*id));
-                        let mut values = sheet.map(|s| bimcraft_core::sheet::title_values(&model, s)).unwrap_or_default();
+                        // No sheet names it yet: the automatic fields as a sheet of one view at 1 : 100 would have them.
+                        let mut values = sheet.map(|s| bimcraft_core::sheet::title_values(&model, s)).unwrap_or_else(|| {
+                            [
+                                ("PROJECT", model.name.clone()),
+                                ("SHEET_NAME", t("Sheet Name").to_string()),
+                                ("SHEET_NUMBER", "A101".to_string()),
+                                ("SCALE", model.units.scale(100.0)),
+                                ("DATE", titleblock::today(model.language)),
+                                ("SHEET_INDEX", "01".to_string()),
+                                ("SHEET_COUNT", "01".to_string()),
+                                ("REVISION", String::new()),
+                            ]
+                            .into_iter()
+                            .map(|(k, v)| (k.to_string(), v))
+                            .collect()
+                        });
                         for f in &d.tb.fields {
                             let key = f.key.trim().to_ascii_uppercase();
                             let given = if f.scope == Scope::Project { d.values.get(&key).filter(|v| !v.is_empty()) } else { None };

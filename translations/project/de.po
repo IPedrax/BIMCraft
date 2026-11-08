@@ -2,6 +2,10 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nLast-Translator: Christopher Kluge\nLanguage: de\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
 
+#: crates/core/src/sheet.rs:290
+msgid "AS INDICATED"
+msgstr ""
+
 #: crates/core/src/fixtures.rs:369
 msgid "Air Terminal"
 msgstr "Luftauslass"
@@ -188,7 +192,7 @@ msgid "Electrical Power"
 msgstr "Elektro Energie"
 
 #: crates/core/src/commands.rs:9391
-#: crates/core/src/commands.rs:11536
+#: crates/core/src/commands.rs:11541
 msgid "Elevation"
 msgstr "Ansicht"
 
@@ -454,11 +458,11 @@ msgstr "Raum"
 msgid "Room Schedule"
 msgstr "Raumtabelle"
 
-#: crates/core/src/sheet.rs:278
+#: crates/core/src/sheet.rs:279
 msgid "SCALE"
 msgstr "MASSSTAB"
 
-#: crates/core/src/sheet.rs:280
+#: crates/core/src/sheet.rs:281
 msgid "SCALE AS INDICATED"
 msgstr "MASSSTAB WIE ANGEGEBEN"
 
@@ -475,7 +479,7 @@ msgid "Seat Height"
 msgstr "Sitzhöhe"
 
 #: crates/core/src/commands.rs:9368
-#: crates/core/src/commands.rs:11535
+#: crates/core/src/commands.rs:11540
 msgid "Section"
 msgstr "Schnitt"
 
@@ -579,7 +583,7 @@ msgstr "Fliese 300"
 msgid "Timber"
 msgstr "Holz"
 
-#: crates/core/src/sheet.rs:217
+#: crates/core/src/sheet.rs:218
 msgid "Total"
 msgstr "Gesamt"
 

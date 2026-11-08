@@ -197,6 +197,10 @@ msgstr "墙的中心线，使绘制在其上的墙与之相接"
 msgid "A {} needs a name."
 msgstr "{}需要名称。"
 
+#: crates/core/src/sheet.rs:290
+msgid "AS INDICATED"
+msgstr ""
+
 #: crates/ui-egui/src/standards.rs:162
 msgid "ASME / AIA: 180 mm"
 msgstr "ASME / AIA：180 mm"
@@ -660,7 +664,7 @@ msgstr "适用于所有视图；捕捉到当前视图中已启用的主网格或
 #: crates/ui-egui/src/objectstyles.rs:78
 #: crates/ui-egui/src/properties.rs:629
 #: crates/ui-egui/src/standards.rs:333
-#: crates/ui-egui/src/titleblocks.rs:385
+#: crates/ui-egui/src/titleblocks.rs:411
 #: crates/ui-egui/src/typeprops.rs:309
 msgid "Apply"
 msgstr "应用"
@@ -1141,7 +1145,7 @@ msgstr "相机：单击视点所在位置，再单击其观察的目标：创建
 #: crates/ui-egui/src/shortcuts.rs:530
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:757
-#: crates/ui-egui/src/titleblocks.rs:386
+#: crates/ui-egui/src/titleblocks.rs:412
 #: crates/ui-egui/src/typeprops.rs:310
 #: crates/ui-egui/src/workplane.rs:252
 msgid "Cancel"
@@ -2384,7 +2388,7 @@ msgstr "默认厚度"
 #: crates/ui-egui/src/properties.rs:2456
 #: crates/ui-egui/src/properties.rs:2948
 #: crates/ui-egui/src/templates.rs:477
-#: crates/ui-egui/src/titleblocks.rs:324
+#: crates/ui-egui/src/titleblocks.rs:335
 msgid "Delete"
 msgstr "删除"
 
@@ -2780,7 +2784,7 @@ msgid "Duct"
 msgstr "风管"
 
 #: crates/ui-egui/src/browser.rs:434
-#: crates/ui-egui/src/titleblocks.rs:321
+#: crates/ui-egui/src/titleblocks.rs:332
 msgid "Duplicate"
 msgstr "复制"
 
@@ -3934,7 +3938,7 @@ msgstr "导入 CAD"
 msgid "Import CAD: a DWG or DXF drawing brought into the project, drawn under the model in the plans of a level, its layers, colours and linetypes kept, and snapped to"
 msgstr "导入 CAD：导入项目的 DWG 或 DXF 图纸，绘制在某标高平面图的模型之下，保留其图层、颜色和线型，并可捕捉"
 
-#: crates/ui-egui/src/titleblocks.rs:329
+#: crates/ui-egui/src/titleblocks.rs:340
 msgid "Import DXF…"
 msgstr ""
 
@@ -4231,6 +4235,7 @@ msgstr ""
 
 #: crates/ui-egui/src/revit.rs:76
 #: crates/ui-egui/src/revit.rs:241
+#: crates/ui-egui/src/titleblocks.rs:294
 msgid "Left out: {}"
 msgstr "未导入：{}"
 
@@ -4599,7 +4604,7 @@ msgstr "设为主选项"
 msgid "Make a schedule, or open one"
 msgstr "创建明细表，或打开已有的明细表"
 
-#: crates/ui-egui/src/titleblocks.rs:336
+#: crates/ui-egui/src/titleblocks.rs:347
 msgid "Make one with New, or read one from a DXF with Import DXF…."
 msgstr ""
 
@@ -4939,7 +4944,7 @@ msgstr "未封闭"
 #: crates/ui-egui/src/properties.rs:2234
 #: crates/ui-egui/src/properties.rs:2959
 #: crates/ui-egui/src/properties.rs:3230
-#: crates/ui-egui/src/titleblocks.rs:340
+#: crates/ui-egui/src/titleblocks.rs:351
 msgid "Name"
 msgstr "名称"
 
@@ -4964,7 +4969,7 @@ msgstr "最近点"
 #: crates/ui-egui/src/graphics.rs:453
 #: crates/ui-egui/src/properties.rs:2218
 #: crates/ui-egui/src/properties.rs:2940
-#: crates/ui-egui/src/titleblocks.rs:318
+#: crates/ui-egui/src/titleblocks.rs:329
 msgid "New"
 msgstr "新建"
 
@@ -5042,7 +5047,7 @@ msgstr "新名称"
 msgid "New pattern from lines"
 msgstr "由线生成的新图案"
 
-#: crates/ui-egui/src/titleblocks.rs:316
+#: crates/ui-egui/src/titleblocks.rs:327
 msgid "New title block's name"
 msgstr ""
 
@@ -5235,7 +5240,7 @@ msgstr "编号"
 #: crates/ui-egui/src/reinforce.rs:537
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/templates.rs:758
-#: crates/ui-egui/src/titleblocks.rs:387
+#: crates/ui-egui/src/titleblocks.rs:413
 #: crates/ui-egui/src/typeprops.rs:311
 #: crates/ui-egui/src/workplane.rs:253
 msgid "OK"
@@ -6425,7 +6430,7 @@ msgstr "坡道：单击起点，再单击坡段终点；平台使其转向"
 msgid "Read Convention"
 msgstr "读取规则"
 
-#: crates/ui-egui/src/titleblocks.rs:328
+#: crates/ui-egui/src/titleblocks.rs:339
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
@@ -6855,11 +6860,11 @@ msgstr "旋转 (°)"
 msgid "Round"
 msgstr "圆形"
 
-#: crates/core/src/sheet.rs:278
+#: crates/core/src/sheet.rs:279
 msgid "SCALE"
 msgstr "比例"
 
-#: crates/core/src/sheet.rs:280
+#: crates/core/src/sheet.rs:281
 msgid "SCALE AS INDICATED"
 msgstr "比例如图所示"
 
@@ -7197,6 +7202,7 @@ msgid "Sheet Composition"
 msgstr "图纸布置"
 
 #: crates/ui-egui/src/properties.rs:275
+#: crates/ui-egui/src/titleblocks.rs:360
 msgid "Sheet Name"
 msgstr "图纸名称"
 
@@ -8170,7 +8176,7 @@ msgstr "项目没有设计选项：可通过“管理”>“设计选项”创�
 msgid "The project has no phase filter that shows this: make one in Manage > Phasing"
 msgstr "项目中没有可显示此内容的阶段过滤器：请在“管理”>“阶段化”中创建一个"
 
-#: crates/ui-egui/src/titleblocks.rs:312
+#: crates/ui-egui/src/titleblocks.rs:323
 msgid "The project has no title blocks of its own; sheets draw the built-in one."
 msgstr ""
 
@@ -8384,12 +8390,13 @@ msgstr ""
 msgid "Title Block Width:"
 msgstr "标题栏宽度:"
 
-#: crates/ui-egui/src/titleblocks.rs:434
+#: crates/ui-egui/src/titleblocks.rs:460
 msgid "Title Block {}"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:4004
-#: crates/ui-egui/src/titleblocks.rs:299
+#: crates/ui-egui/src/purge.rs:17
+#: crates/ui-egui/src/titleblocks.rs:310
 msgid "Title Blocks"
 msgstr ""
 

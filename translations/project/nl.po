@@ -3,6 +3,10 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nLanguage: nl\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
 
+#: crates/core/src/sheet.rs:290
+msgid "AS INDICATED"
+msgstr ""
+
 #: crates/core/src/fixtures.rs:369
 msgid "Air Terminal"
 msgstr "Luchtuitlaat"
@@ -189,7 +193,7 @@ msgid "Electrical Power"
 msgstr "Elektrische voeding"
 
 #: crates/core/src/commands.rs:9391
-#: crates/core/src/commands.rs:11536
+#: crates/core/src/commands.rs:11541
 msgid "Elevation"
 msgstr "Gevel"
 
@@ -455,11 +459,11 @@ msgstr "Ruimte"
 msgid "Room Schedule"
 msgstr "Ruimtelijst"
 
-#: crates/core/src/sheet.rs:278
+#: crates/core/src/sheet.rs:279
 msgid "SCALE"
 msgstr "SCHAAL"
 
-#: crates/core/src/sheet.rs:280
+#: crates/core/src/sheet.rs:281
 msgid "SCALE AS INDICATED"
 msgstr "SCHAAL ZOALS AANGEGEVEN"
 
@@ -476,7 +480,7 @@ msgid "Seat Height"
 msgstr "Zithoogte"
 
 #: crates/core/src/commands.rs:9368
-#: crates/core/src/commands.rs:11535
+#: crates/core/src/commands.rs:11540
 msgid "Section"
 msgstr "Doorsnede"
 
@@ -580,7 +584,7 @@ msgstr "Tegel 300"
 msgid "Timber"
 msgstr "Hout"
 
-#: crates/core/src/sheet.rs:217
+#: crates/core/src/sheet.rs:218
 msgid "Total"
 msgstr "Totaal"
 

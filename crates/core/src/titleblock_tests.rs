@@ -250,3 +250,74 @@ fn a_new_title_block_starts_as_the_built_in_one_and_another_like_it() {
     let v = sheet::title_values(&s.model, sheet_id(&s, "A101"));
     assert_eq!(crate::titleblock::fill("{SHEET_NUMBER} {SHEET_NAME}", &v), "A101 Plans");
 }
+
+#[test]
+fn a_sheets_fields_take_keys_in_any_case_through_modify_too() {
+    let mut s = Session::new();
+    civiltec(&mut s);
+    run(&mut s, "sheet", json!({"number": "A101", "title_block": "CIVILTEC", "fields": {"desenho": "J.P."}}));
+    let id = sheet_id(&s, "A101");
+    assert_eq!(s.model.sheet(id).unwrap().fields["DESENHO"], "J.P.");
+    run(&mut s, "modify", json!({"id": id, "fields": {"Desenho": "M.S."}}));
+    assert_eq!(s.model.sheet(id).unwrap().fields["DESENHO"], "M.S.");
+    run(&mut s, "modify", json!({"id": id, "fields": {"desenho": null}}));
+    assert!(s.model.sheet(id).unwrap().fields.is_empty(), "a null clears it whatever its case");
+}
+
+#[test]
+fn scale_is_the_views_scale_alone_or_as_indicated() {
+    let mut s = Session::new();
+    s.execute("new", &json!({"language": "pt"})).unwrap();
+    s.script(
+        r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+           title_block {"name": "T"}
+           sheet {"number": "A101", "title_block": "T"}"#,
+    )
+    .unwrap();
+    let id = sheet_id(&s, "A101");
+    let levels: Vec<Id> = s.model.levels().iter().map(|(id, _)| *id).collect();
+    assert_eq!(sheet::title_values(&s.model, id)["SCALE"], "", "nothing on it, no scale");
+    run(&mut s, "place", json!({"sheet": "A101", "view": levels[0], "scale": 50}));
+    assert_eq!(sheet::title_values(&s.model, id)["SCALE"], "1 : 50", "the scale alone, for the title block to letter as it likes");
+    run(&mut s, "place", json!({"sheet": "A101", "view": levels[1], "scale": 100}));
+    assert_eq!(sheet::title_values(&s.model, id)["SCALE"], "INDICADA");
+}
+
+#[test]
+fn a_blocks_attributes_are_fields_of_their_tags_and_a_drawing_of_no_unit_says_so() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("selo.dxf");
+    // A title block as offices keep one: a block with an attribute, placed with its value.
+    std::fs::write(
+        &path,
+        "0\nSECTION\n2\nBLOCKS\n0\nBLOCK\n8\n0\n2\nSELO\n70\n2\n10\n0\n20\n0\n\
+         0\nLINE\n8\nSELO\n10\n0\n20\n0\n11\n100\n21\n30\n\
+         0\nATTDEF\n8\nTEXTO\n10\n5\n20\n20\n40\n3\n1\n\n3\nCliente\n2\nCLIENTE\n70\n0\n\
+         0\nENDBLK\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nINSERT\n8\n0\n66\n1\n2\nSELO\n10\n0\n20\n0\n\
+         0\nATTRIB\n8\nTEXTO\n10\n5\n20\n20\n40\n3\n1\nJoão da Silva\n2\ncliente\n70\n0\n0\nSEQEND\n0\nENDSEC\n0\nEOF\n",
+    )
+    .unwrap();
+    let mut s = Session::new();
+    let r = run(&mut s, "title_block", json!({"name": "B", "path": path}));
+    let tb = &s.model.title_blocks["B"];
+    assert_eq!(tb.texts[0].text, "{CLIENTE}", "{r}");
+    assert_eq!((tb.fields[0].key.as_str(), tb.fields[0].default.as_str()), ("CLIENTE", "João da Silva"));
+    // It names no unit: read in mm, and the reply says so.
+    assert!(r["notes"][0].as_str().is_some_and(|n| n.contains("no unit") && n.contains("100.0 by 30.0")), "{r}");
+    let r = run(&mut s, "title_block", json!({"name": "B", "path": path, "units": "cm"}));
+    assert!(r.get("notes").is_none(), "{r}");
+    assert_eq!(s.model.title_blocks["B"].width, 1000.0);
+}
+
+#[test]
+fn purge_takes_out_a_title_block_no_sheet_names_when_asked() {
+    let mut s = Session::new();
+    civiltec(&mut s);
+    run(&mut s, "title_block", json!({"name": "Spare"}));
+    run(&mut s, "sheet", json!({"number": "A101", "title_block": "CIVILTEC"}));
+    run(&mut s, "purge", json!({}));
+    assert_eq!(s.model.title_blocks.len(), 2, "types and families by default");
+    let r = run(&mut s, "purge", json!({"kinds": ["titleblock"]}));
+    assert_eq!(r["removed"], json!([{"kind": "title block", "name": "Spare"}]));
+    assert!(s.model.title_blocks.contains_key("CIVILTEC"));
+}

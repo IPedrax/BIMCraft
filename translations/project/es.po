@@ -3,6 +3,10 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nLanguage: es\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
 
+#: crates/core/src/sheet.rs:290
+msgid "AS INDICATED"
+msgstr ""
+
 #: crates/core/src/fixtures.rs:369
 msgid "Air Terminal"
 msgstr "Terminal aéreo"
@@ -189,7 +193,7 @@ msgid "Electrical Power"
 msgstr "Fuerza eléctrica"
 
 #: crates/core/src/commands.rs:9391
-#: crates/core/src/commands.rs:11536
+#: crates/core/src/commands.rs:11541
 msgid "Elevation"
 msgstr "Elevación"
 
@@ -455,11 +459,11 @@ msgstr "Habitación"
 msgid "Room Schedule"
 msgstr "Tabla de habitaciones"
 
-#: crates/core/src/sheet.rs:278
+#: crates/core/src/sheet.rs:279
 msgid "SCALE"
 msgstr "ESCALA"
 
-#: crates/core/src/sheet.rs:280
+#: crates/core/src/sheet.rs:281
 msgid "SCALE AS INDICATED"
 msgstr "ESCALA SEGÚN SE INDICA"
 
@@ -476,7 +480,7 @@ msgid "Seat Height"
 msgstr "Altura del asiento"
 
 #: crates/core/src/commands.rs:9368
-#: crates/core/src/commands.rs:11535
+#: crates/core/src/commands.rs:11540
 msgid "Section"
 msgstr "Sección"
 
@@ -580,7 +584,7 @@ msgstr "Baldosa 300"
 msgid "Timber"
 msgstr "Madera"
 
-#: crates/core/src/sheet.rs:217
+#: crates/core/src/sheet.rs:218
 msgid "Total"
 msgstr "Total"
 

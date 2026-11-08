@@ -197,6 +197,10 @@ msgstr "La línea central de un muro, para que un muro dibujado sobre ella se en
 msgid "A {} needs a name."
 msgstr "Cada {} necesita un nombre."
 
+#: crates/core/src/sheet.rs:290
+msgid "AS INDICATED"
+msgstr ""
+
 #: crates/ui-egui/src/standards.rs:162
 msgid "ASME / AIA: 180 mm"
 msgstr "ASME / AIA: 180 mm"
@@ -660,7 +664,7 @@ msgstr "Se aplica a todas las vistas; se ajusta a la cuadrícula principal o a l
 #: crates/ui-egui/src/objectstyles.rs:78
 #: crates/ui-egui/src/properties.rs:629
 #: crates/ui-egui/src/standards.rs:333
-#: crates/ui-egui/src/titleblocks.rs:385
+#: crates/ui-egui/src/titleblocks.rs:411
 #: crates/ui-egui/src/typeprops.rs:309
 msgid "Apply"
 msgstr "Aplicar"
@@ -1141,7 +1145,7 @@ msgstr "Cámara: haz clic donde está el ojo y luego en lo que mira: una vista 3
 #: crates/ui-egui/src/shortcuts.rs:530
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:757
-#: crates/ui-egui/src/titleblocks.rs:386
+#: crates/ui-egui/src/titleblocks.rs:412
 #: crates/ui-egui/src/typeprops.rs:310
 #: crates/ui-egui/src/workplane.rs:252
 msgid "Cancel"
@@ -2384,7 +2388,7 @@ msgstr "Espesor predeterminado"
 #: crates/ui-egui/src/properties.rs:2456
 #: crates/ui-egui/src/properties.rs:2948
 #: crates/ui-egui/src/templates.rs:477
-#: crates/ui-egui/src/titleblocks.rs:324
+#: crates/ui-egui/src/titleblocks.rs:335
 msgid "Delete"
 msgstr "Eliminar"
 
@@ -2780,7 +2784,7 @@ msgid "Duct"
 msgstr "Conducto"
 
 #: crates/ui-egui/src/browser.rs:434
-#: crates/ui-egui/src/titleblocks.rs:321
+#: crates/ui-egui/src/titleblocks.rs:332
 msgid "Duplicate"
 msgstr "Duplicar"
 
@@ -3934,7 +3938,7 @@ msgstr "Importar CAD"
 msgid "Import CAD: a DWG or DXF drawing brought into the project, drawn under the model in the plans of a level, its layers, colours and linetypes kept, and snapped to"
 msgstr "Importar CAD: un dibujo DWG o DXF traído al proyecto, dibujado bajo el modelo en las plantas de un nivel, con sus capas, colores y tipos de línea, y con referencias a objetos"
 
-#: crates/ui-egui/src/titleblocks.rs:329
+#: crates/ui-egui/src/titleblocks.rs:340
 msgid "Import DXF…"
 msgstr ""
 
@@ -4231,6 +4235,7 @@ msgstr ""
 
 #: crates/ui-egui/src/revit.rs:76
 #: crates/ui-egui/src/revit.rs:241
+#: crates/ui-egui/src/titleblocks.rs:294
 msgid "Left out: {}"
 msgstr "Dejados fuera: {}"
 
@@ -4599,7 +4604,7 @@ msgstr "Hacer principal"
 msgid "Make a schedule, or open one"
 msgstr "Crear una tabla o abrir una"
 
-#: crates/ui-egui/src/titleblocks.rs:336
+#: crates/ui-egui/src/titleblocks.rs:347
 msgid "Make one with New, or read one from a DXF with Import DXF…."
 msgstr ""
 
@@ -4939,7 +4944,7 @@ msgstr "NO DELIMITADA"
 #: crates/ui-egui/src/properties.rs:2234
 #: crates/ui-egui/src/properties.rs:2959
 #: crates/ui-egui/src/properties.rs:3230
-#: crates/ui-egui/src/titleblocks.rs:340
+#: crates/ui-egui/src/titleblocks.rs:351
 msgid "Name"
 msgstr "Nombre"
 
@@ -4964,7 +4969,7 @@ msgstr "Más cercano"
 #: crates/ui-egui/src/graphics.rs:453
 #: crates/ui-egui/src/properties.rs:2218
 #: crates/ui-egui/src/properties.rs:2940
-#: crates/ui-egui/src/titleblocks.rs:318
+#: crates/ui-egui/src/titleblocks.rs:329
 msgid "New"
 msgstr "Nuevo"
 
@@ -5042,7 +5047,7 @@ msgstr "Nombre nuevo"
 msgid "New pattern from lines"
 msgstr "Nuevo patrón a partir de líneas"
 
-#: crates/ui-egui/src/titleblocks.rs:316
+#: crates/ui-egui/src/titleblocks.rs:327
 msgid "New title block's name"
 msgstr ""
 
@@ -5235,7 +5240,7 @@ msgstr "Número"
 #: crates/ui-egui/src/reinforce.rs:537
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/templates.rs:758
-#: crates/ui-egui/src/titleblocks.rs:387
+#: crates/ui-egui/src/titleblocks.rs:413
 #: crates/ui-egui/src/typeprops.rs:311
 #: crates/ui-egui/src/workplane.rs:253
 msgid "OK"
@@ -6425,7 +6430,7 @@ msgstr "Rampa: haz clic donde empieza y luego donde termina su tramo; un descans
 msgid "Read Convention"
 msgstr "Convención de lectura"
 
-#: crates/ui-egui/src/titleblocks.rs:328
+#: crates/ui-egui/src/titleblocks.rs:339
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
@@ -6855,11 +6860,11 @@ msgstr "Rotación (°)"
 msgid "Round"
 msgstr "Redonda"
 
-#: crates/core/src/sheet.rs:278
+#: crates/core/src/sheet.rs:279
 msgid "SCALE"
 msgstr "ESCALA"
 
-#: crates/core/src/sheet.rs:280
+#: crates/core/src/sheet.rs:281
 msgid "SCALE AS INDICATED"
 msgstr "ESCALA SEGÚN SE INDICA"
 
@@ -7197,6 +7202,7 @@ msgid "Sheet Composition"
 msgstr "Composición de planos"
 
 #: crates/ui-egui/src/properties.rs:275
+#: crates/ui-egui/src/titleblocks.rs:360
 msgid "Sheet Name"
 msgstr "Nombre de plano"
 
@@ -8170,7 +8176,7 @@ msgstr "El proyecto no tiene opciones de diseño: Gestionar > Opciones de diseñ
 msgid "The project has no phase filter that shows this: make one in Manage > Phasing"
 msgstr "El proyecto no tiene ningún filtro de fase que muestre esto: cree uno en Gestionar > Fases"
 
-#: crates/ui-egui/src/titleblocks.rs:312
+#: crates/ui-egui/src/titleblocks.rs:323
 msgid "The project has no title blocks of its own; sheets draw the built-in one."
 msgstr ""
 
@@ -8384,12 +8390,13 @@ msgstr ""
 msgid "Title Block Width:"
 msgstr "Ancho del cuadro de rotulación:"
 
-#: crates/ui-egui/src/titleblocks.rs:434
+#: crates/ui-egui/src/titleblocks.rs:460
 msgid "Title Block {}"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:4004
-#: crates/ui-egui/src/titleblocks.rs:299
+#: crates/ui-egui/src/purge.rs:17
+#: crates/ui-egui/src/titleblocks.rs:310
 msgid "Title Blocks"
 msgstr ""
 

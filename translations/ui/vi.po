@@ -197,6 +197,10 @@ msgstr "Đường tim của tường, để tường vẽ trên đó gặp nó"
 msgid "A {} needs a name."
 msgstr "{} cần một tên."
 
+#: crates/core/src/sheet.rs:290
+msgid "AS INDICATED"
+msgstr ""
+
 #: crates/ui-egui/src/standards.rs:162
 msgid "ASME / AIA: 180 mm"
 msgstr "ASME / AIA: 180 mm"
@@ -660,7 +664,7 @@ msgstr "Áp dụng cho mọi khung nhìn; bắt điểm vào lưới chính ho�
 #: crates/ui-egui/src/objectstyles.rs:78
 #: crates/ui-egui/src/properties.rs:629
 #: crates/ui-egui/src/standards.rs:333
-#: crates/ui-egui/src/titleblocks.rs:385
+#: crates/ui-egui/src/titleblocks.rs:411
 #: crates/ui-egui/src/typeprops.rs:309
 msgid "Apply"
 msgstr "Áp dụng"
@@ -1141,7 +1145,7 @@ msgstr "Camera: nhấp chỗ đặt mắt nhìn, rồi chỗ nó nhìn tới: m�
 #: crates/ui-egui/src/shortcuts.rs:530
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:757
-#: crates/ui-egui/src/titleblocks.rs:386
+#: crates/ui-egui/src/titleblocks.rs:412
 #: crates/ui-egui/src/typeprops.rs:310
 #: crates/ui-egui/src/workplane.rs:252
 msgid "Cancel"
@@ -2384,7 +2388,7 @@ msgstr "Chiều dày mặc định"
 #: crates/ui-egui/src/properties.rs:2456
 #: crates/ui-egui/src/properties.rs:2948
 #: crates/ui-egui/src/templates.rs:477
-#: crates/ui-egui/src/titleblocks.rs:324
+#: crates/ui-egui/src/titleblocks.rs:335
 msgid "Delete"
 msgstr "Xóa"
 
@@ -2780,7 +2784,7 @@ msgid "Duct"
 msgstr "Ống gió"
 
 #: crates/ui-egui/src/browser.rs:434
-#: crates/ui-egui/src/titleblocks.rs:321
+#: crates/ui-egui/src/titleblocks.rs:332
 msgid "Duplicate"
 msgstr "Nhân bản"
 
@@ -3934,7 +3938,7 @@ msgstr "Nhập CAD"
 msgid "Import CAD: a DWG or DXF drawing brought into the project, drawn under the model in the plans of a level, its layers, colours and linetypes kept, and snapped to"
 msgstr "Nhập CAD: đưa một bản vẽ DWG hoặc DXF vào dự án, vẽ bên dưới mô hình trong các mặt bằng của một tầng, giữ nguyên lớp, màu và kiểu nét, và có thể bắt điểm"
 
-#: crates/ui-egui/src/titleblocks.rs:329
+#: crates/ui-egui/src/titleblocks.rs:340
 msgid "Import DXF…"
 msgstr ""
 
@@ -4231,6 +4235,7 @@ msgstr ""
 
 #: crates/ui-egui/src/revit.rs:76
 #: crates/ui-egui/src/revit.rs:241
+#: crates/ui-egui/src/titleblocks.rs:294
 msgid "Left out: {}"
 msgstr "Bỏ qua: {}"
 
@@ -4599,7 +4604,7 @@ msgstr "Đặt làm phương án chính"
 msgid "Make a schedule, or open one"
 msgstr "Tạo một bảng thống kê, hoặc mở một bảng có sẵn"
 
-#: crates/ui-egui/src/titleblocks.rs:336
+#: crates/ui-egui/src/titleblocks.rs:347
 msgid "Make one with New, or read one from a DXF with Import DXF…."
 msgstr ""
 
@@ -4939,7 +4944,7 @@ msgstr "KHÔNG KHÉP KÍN"
 #: crates/ui-egui/src/properties.rs:2234
 #: crates/ui-egui/src/properties.rs:2959
 #: crates/ui-egui/src/properties.rs:3230
-#: crates/ui-egui/src/titleblocks.rs:340
+#: crates/ui-egui/src/titleblocks.rs:351
 msgid "Name"
 msgstr "Tên"
 
@@ -4964,7 +4969,7 @@ msgstr "Gần nhất"
 #: crates/ui-egui/src/graphics.rs:453
 #: crates/ui-egui/src/properties.rs:2218
 #: crates/ui-egui/src/properties.rs:2940
-#: crates/ui-egui/src/titleblocks.rs:318
+#: crates/ui-egui/src/titleblocks.rs:329
 msgid "New"
 msgstr "Mới"
 
@@ -5042,7 +5047,7 @@ msgstr "Tên mới"
 msgid "New pattern from lines"
 msgstr "Mẫu mới từ các đường"
 
-#: crates/ui-egui/src/titleblocks.rs:316
+#: crates/ui-egui/src/titleblocks.rs:327
 msgid "New title block's name"
 msgstr ""
 
@@ -5235,7 +5240,7 @@ msgstr "Số"
 #: crates/ui-egui/src/reinforce.rs:537
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/templates.rs:758
-#: crates/ui-egui/src/titleblocks.rs:387
+#: crates/ui-egui/src/titleblocks.rs:413
 #: crates/ui-egui/src/typeprops.rs:311
 #: crates/ui-egui/src/workplane.rs:253
 msgid "OK"
@@ -6425,7 +6430,7 @@ msgstr "Đường dốc: nhấp chỗ bắt đầu, rồi chỗ vế dốc kết
 msgid "Read Convention"
 msgstr "Quy ước đọc"
 
-#: crates/ui-egui/src/titleblocks.rs:328
+#: crates/ui-egui/src/titleblocks.rs:339
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
@@ -6855,11 +6860,11 @@ msgstr "Góc xoay (°)"
 msgid "Round"
 msgstr "Tròn"
 
-#: crates/core/src/sheet.rs:278
+#: crates/core/src/sheet.rs:279
 msgid "SCALE"
 msgstr "TỶ LỆ"
 
-#: crates/core/src/sheet.rs:280
+#: crates/core/src/sheet.rs:281
 msgid "SCALE AS INDICATED"
 msgstr "TỶ LỆ NHƯ GHI CHÚ"
 
@@ -7197,6 +7202,7 @@ msgid "Sheet Composition"
 msgstr "Dàn trang bản vẽ"
 
 #: crates/ui-egui/src/properties.rs:275
+#: crates/ui-egui/src/titleblocks.rs:360
 msgid "Sheet Name"
 msgstr "Tên bản vẽ"
 
@@ -8170,7 +8176,7 @@ msgstr "Dự án không có phương án thiết kế nào: Quản lý > Phươn
 msgid "The project has no phase filter that shows this: make one in Manage > Phasing"
 msgstr "Dự án không có bộ lọc giai đoạn nào hiển thị điều này: hãy tạo một bộ lọc trong Quản lý > Phân giai đoạn"
 
-#: crates/ui-egui/src/titleblocks.rs:312
+#: crates/ui-egui/src/titleblocks.rs:323
 msgid "The project has no title blocks of its own; sheets draw the built-in one."
 msgstr ""
 
@@ -8384,12 +8390,13 @@ msgstr ""
 msgid "Title Block Width:"
 msgstr "Chiều rộng khung tên:"
 
-#: crates/ui-egui/src/titleblocks.rs:434
+#: crates/ui-egui/src/titleblocks.rs:460
 msgid "Title Block {}"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:4004
-#: crates/ui-egui/src/titleblocks.rs:299
+#: crates/ui-egui/src/purge.rs:17
+#: crates/ui-egui/src/titleblocks.rs:310
 msgid "Title Blocks"
 msgstr ""
 

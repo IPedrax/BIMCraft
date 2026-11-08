@@ -1493,7 +1493,7 @@ pub static ALL: &[Command] = &[
         "purge",
         "Purge Unused",
         &["PU"],
-        "{kinds?: [type|family|material|picture|filter|template, …], dry_run?} takes out what nothing uses, again for what that \
+        "{kinds?: [type|family|material|picture|filter|template|titleblock, …], dry_run?} takes out what nothing uses, again for what that \
          leaves unused: types and families unless `kinds` says; a category keeps a type and a family a type; with `dry_run` it \
          lists what would go and changes nothing",
         purge,
@@ -9838,7 +9838,9 @@ fn title_block(s: &mut Session, p: &Value) -> R {
         };
         let (bytes, read_notes) = read_dxf_file(s, &path).map_err(|e| bad(c, e))?;
         notes = read_notes;
-        let (read, out) = titleblock::read_dxf(&bytes, units).map_err(|e| bad(c, format!("{path}: {e}")))?;
+        let titleblock::Read { title_block: read, left_out: out, note } =
+            titleblock::read_dxf(&bytes, units).map_err(|e| bad(c, format!("{path}: {e}")))?;
+        notes.extend(note);
         if read.lines.is_empty() && read.fills.is_empty() && read.texts.is_empty() {
             return Err(bad(c, format!("{path} draws nothing in its model space; draw the title block there, at full size")));
         }
@@ -10999,6 +11001,10 @@ fn modify(s: &mut Session, p: &Value) -> R {
                 "category" if obj.get("category") == Some(val) => continue,
                 "category" => return Err(bad(c, "`category` can't change; delete the element and create another")),
                 "level" | "top_level" if val.is_string() => json!(level_param(c, m, p, k)?),
+                // A sheet's fields by their keys in capitals, as its title block names them, whatever case they're given in.
+                "fields" if matches!(e, Element::Sheet(_)) && val.is_object() => {
+                    Value::Object(val.as_object().into_iter().flatten().map(|(k, v)| (k.to_ascii_uppercase(), v.clone())).collect())
+                }
                 _ => val.clone(),
             };
             match obj.get_mut(k) {

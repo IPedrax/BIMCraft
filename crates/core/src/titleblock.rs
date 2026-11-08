@@ -38,7 +38,7 @@ pub const AUTO: &[(&str, &str)] = &[
     ("PROJECT", "the project's name"),
     ("SHEET_NAME", "the sheet's name"),
     ("SHEET_NUMBER", "the sheet's number"),
-    ("SCALE", "the scale of the views on it, as the built-in title box says it"),
+    ("SCALE", "the scale of the views on it (1 : 100), or AS INDICATED when they differ"),
     ("DATE", "today's date, as the project's language writes dates"),
     ("SHEET_INDEX", "the sheet's place among the project's sheets, by number, from 1 (two digits)"),
     ("SHEET_COUNT", "how many sheets the project has (two digits)"),
@@ -380,8 +380,8 @@ fn latest<'a>(revisions: impl Iterator<Item = &'a str>) -> Option<&'a str> {
     revisions.filter(|r| !r.trim().is_empty()).max_by(|a, b| a.len().cmp(&b.len()).then_with(|| a.cmp(b)))
 }
 
-/// What every field of sheet `id`'s title block says, by uppercase key: the automatic ones (`scale` is its scale as the
-/// built-in title box gives it), then each field's default, the project's value of a project field and the sheet's of a
+/// What every field of sheet `id`'s title block says, by uppercase key: the automatic ones (`scale` is its views' scale),
+/// then each field's default, the project's value of a project field and the sheet's of a
 /// sheet field over it. A sheet's or the project's value of an automatic field (`DATE`, say) is given over the automatic one.
 pub fn values(m: &Model, id: impl Key, scale: &str) -> BTreeMap<String, String> {
     let mut out = BTreeMap::new();
@@ -503,6 +503,7 @@ pub fn preview(m: &Model, tb: &TitleBlock, values: &BTreeMap<String, String>) ->
 pub fn from_dxf(dxf: &Dxf, mm: f64) -> (TitleBlock, BTreeMap<String, usize>) {
     let mut tb = TitleBlock { width: 0.0, height: 0.0, lines: Vec::new(), fills: Vec::new(), texts: Vec::new(), fields: Vec::new() };
     let mut left_out: BTreeMap<String, usize> = BTreeMap::new();
+    let mut attributes: BTreeMap<String, String> = BTreeMap::new();
     let k = |p: &P2| P2(p.0 * mm, p.1 * mm);
     let mut lo = P2(f64::INFINITY, f64::INFINITY);
     let mut hi = P2(f64::NEG_INFINITY, f64::NEG_INFINITY);
@@ -519,7 +520,7 @@ pub fn from_dxf(dxf: &Dxf, mm: f64) -> (TitleBlock, BTreeMap<String, usize>) {
         let weight = e.weight.or_else(|| dxf.layer(&e.layer).and_then(|l| l.weight));
         let pen = weight.map_or(Pen::FINE, Pen::nearest);
         match &e.shape {
-            Shape::Text { at, height, angle, text, align } => {
+            Shape::Text { at, height, angle, text, align, tag } => {
                 let at = k(at);
                 grow(at);
                 let align = match align.h {
@@ -529,7 +530,14 @@ pub fn from_dxf(dxf: &Dxf, mm: f64) -> (TitleBlock, BTreeMap<String, usize>) {
                 };
                 let size = (height * mm).clamp(MIN_LETTERING, MAX_LETTERING);
                 let text: String = text.chars().filter(|c| *c != '\n' && *c != '\r').take(MAX_TEXT).collect();
-                tb.texts.push(Text { at, text, size, angle: *angle, align });
+                // A block's attribute is a field of its tag, what it says the field's default.
+                match tag.as_deref().map(str::to_ascii_uppercase).filter(|t| valid_key(t) && !is_auto(t)) {
+                    Some(key) => {
+                        attributes.entry(key.clone()).or_insert(text);
+                        tb.texts.push(Text { at, text: format!("{{{key}}}"), size, angle: *angle, align });
+                    }
+                    None => tb.texts.push(Text { at, text, size, angle: *angle, align }),
+                }
             }
             Shape::Fill { rings, solid: true } => {
                 let rings: Vec<Vec<P2>> = rings.iter().filter(|r| r.len() >= 3).map(|r| r.iter().map(k).collect()).collect();
@@ -560,15 +568,37 @@ pub fn from_dxf(dxf: &Dxf, mm: f64) -> (TitleBlock, BTreeMap<String, usize>) {
         tb.moved(P2(-lo.0, -lo.1));
     }
     let keys: BTreeSet<String> = tb.texts.iter().flat_map(|t| keys_in(&t.text)).filter(|k| !is_auto(k)).collect();
-    tb.fields = keys.into_iter().map(|key| Field { key, label: String::new(), scope: Scope::Sheet, default: String::new() }).collect();
+    tb.fields = keys
+        .into_iter()
+        .map(|key| {
+            let default = attributes.get(&key).cloned().unwrap_or_default();
+            Field { key, label: String::new(), scope: Scope::Sheet, default }
+        })
+        .collect();
     (tb, left_out)
 }
 
-/// [`from_dxf`] of DXF text, a title block drawn in `units` (`auto`: the file's own, else mm).
-pub fn read_dxf(bytes: &[u8], units: Option<f64>) -> Result<(TitleBlock, BTreeMap<String, usize>), String> {
+/// A title block read from a DXF: it, what was left out by kind, and a note on how it was read, if one is wanted.
+pub struct Read {
+    pub title_block: TitleBlock,
+    pub left_out: BTreeMap<String, usize>,
+    pub note: Option<String>,
+}
+
+/// [`from_dxf`] of DXF text, a title block drawn in `units` (`auto`: the file's own, else mm); and, when the drawing names
+/// no unit and none was given, a note that says it was read in mm, and how big that made it.
+pub fn read_dxf(bytes: &[u8], units: Option<f64>) -> Result<Read, String> {
     let dxf = dxf::read(bytes)?;
     let mm = units.or(dxf.scale).unwrap_or(1.0);
-    Ok(from_dxf(&dxf, mm))
+    let (tb, left_out) = from_dxf(&dxf, mm);
+    let note = (units.is_none() && dxf.scale.is_none()).then(|| {
+        format!(
+            "the drawing names no unit (its $INSUNITS), so it was read in mm: {:.1} by {:.1} mm on paper; if it was drawn in cm or \
+             m, read it again with `units`",
+            tb.width, tb.height
+        )
+    });
+    Ok(Read { title_block: tb, left_out, note })
 }
 
 #[cfg(test)]
@@ -628,7 +658,8 @@ mod tests {
                    0\nTEXT\n8\nCT_TEXTO\n10\n105\n20\n90\n40\n3\n1\nCliente: {CLIENTE}\n\
                    0\nTEXT\n8\nCT_TEXTO\n10\n105\n20\n60\n40\n2.5\n1\nFolha {SHEET_INDEX}/{SHEET_COUNT}\n\
                    0\nENDSEC\n0\nEOF\n";
-        let (tb, _) = read_dxf(dxf.as_bytes(), None).unwrap();
+        let Read { title_block: tb, note, .. } = read_dxf(dxf.as_bytes(), None).unwrap();
+        assert!(note.is_none(), "the drawing says it's in mm");
         assert_eq!((tb.width, tb.height), (180.0, 50.0));
         assert_eq!(tb.lines.len(), 2);
         assert_eq!(tb.lines[0].points, [P2(0.0, 0.0), P2(180.0, 0.0)]);
@@ -637,7 +668,7 @@ mod tests {
         assert_eq!(tb.texts[0].text, "Cliente: {CLIENTE}", "a single line's braces are its own");
         assert!(tb.check("CIVILTEC").is_ok());
         // In cm, it's ten times the size.
-        let (tb, _) = read_dxf(dxf.as_bytes(), Some(10.0)).unwrap();
+        let tb = read_dxf(dxf.as_bytes(), Some(10.0)).unwrap().title_block;
         assert_eq!((tb.width, tb.height), (1800.0, 500.0));
     }
 }

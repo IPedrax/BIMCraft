@@ -598,7 +598,7 @@ impl<'de> Deserialize<'de> for Library {
 
 /// What Purge Unused may take out, as a command names it: `type` (every kind of type, and a family's types), `family`, `material`,
 /// `picture`, `filter` and `template`.
-pub const PURGE_KINDS: [&str; 6] = ["type", "family", "material", "picture", "filter", "template"];
+pub const PURGE_KINDS: [&str; 7] = ["type", "family", "material", "picture", "filter", "template", "titleblock"];
 
 impl Model {
     /// How many times something names each library entry: an element its type or family, a type's layer its material, a material
@@ -637,6 +637,7 @@ impl Model {
             Kind::Picture => self.images.remove(name).is_some(),
             Kind::ViewFilter => self.view_filters.remove(name).is_some(),
             Kind::ViewTemplate => self.view_templates.remove(name).is_some(),
+            Kind::TitleBlock => self.title_blocks.remove(name).is_some(),
             _ => false,
         }
     }
@@ -729,6 +730,7 @@ impl Model {
                     Kind::Picture => "picture",
                     Kind::ViewFilter => "filter",
                     Kind::ViewTemplate => "template",
+                    Kind::TitleBlock => "titleblock",
                     _ => return None,
                 },
             ))

@@ -176,12 +176,14 @@ pub enum Shape {
     },
     Point(P2),
     /// One line of lettering: `height` is its capital height, `angle` its baseline's in degrees counter-clockwise from east.
+    /// An attribute's (ATTRIB) has its tag: what a title block reads it as a field of.
     Text {
         at: P2,
         height: f64,
         angle: f64,
         text: String,
         align: Align,
+        tag: Option<String>,
     },
     /// A hatch's boundaries, or a solid: `solid` when filled through, else patterned, which a view draws as it can.
     Fill {
@@ -1015,9 +1017,9 @@ fn transformed(shape: Shape, xf: Xf) -> Shape {
             }
             None => Shape::Polyline { pts: arc_points(c, r, start, end - start).into_iter().map(at).collect(), closed: false },
         },
-        Shape::Text { at: p, height, angle, text, align } => {
+        Shape::Text { at: p, height, angle, text, align, tag } => {
             let (k, turn) = xf.similarity().map_or((xf.x.length(), xf.x.1.atan2(xf.x.0).to_degrees()), |(k, t, _)| (k, t));
-            Shape::Text { at: at(p), height: height * k, angle: angle + turn, text, align }
+            Shape::Text { at: at(p), height: height * k, angle: angle + turn, text, align, tag }
         }
     }
 }
@@ -1256,7 +1258,8 @@ fn text(e: &Ent) -> Result<Option<Shape>, String> {
             (p, Align { h, v })
         }
     };
-    Ok(Some(Shape::Text { at, height, angle: e.num(50)?.unwrap_or(0.0), text: words, align }))
+    let tag = (e.kind == "ATTRIB").then(|| e.str(2).map(|t| t.trim().to_string())).flatten().filter(|t| !t.is_empty());
+    Ok(Some(Shape::Text { at, height, angle: e.num(50)?.unwrap_or(0.0), text: words, align, tag }))
 }
 
 /// A multi-line text's lines, each a text of its own, stepped down from where its attachment point puts the block.
@@ -1306,6 +1309,7 @@ fn mtext(e: &Ent) -> Result<Vec<Shape>, String> {
             angle,
             text: line.to_string(),
             align: Align { h, v: Vertical::Baseline },
+            tag: None,
         })
         .collect())
 }
@@ -1892,21 +1896,24 @@ mod tests {
                     height: 2.5,
                     angle: 30.0,
                     text: "Room ° Ø ± % é x".into(),
-                    align: Align { h: Horizontal::Left, v: Vertical::Baseline }
+                    align: Align { h: Horizontal::Left, v: Vertical::Baseline },
+                    tag: None
                 },
                 &Shape::Text {
                     at: P2(8.0, 9.0),
                     height: 1.0,
                     angle: 0.0,
                     text: "Centred".into(),
-                    align: Align { h: Horizontal::Center, v: Vertical::Top }
+                    align: Align { h: Horizontal::Center, v: Vertical::Top },
+                    tag: None
                 },
                 &Shape::Text {
                     at: P2(8.0, 9.0),
                     height: 1.0,
                     angle: 0.0,
                     text: "Middle".into(),
-                    align: Align { h: Horizontal::Center, v: Vertical::Middle }
+                    align: Align { h: Horizontal::Center, v: Vertical::Middle },
+                    tag: None
                 },
             ]
         );

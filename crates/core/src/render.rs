@@ -2535,7 +2535,7 @@ fn cad_imports(d: &mut Drawing, m: &Model, key: crate::ids::Guid, level: crate::
             }
             let color = cad.color(ent, ci.colors).unwrap_or(INK);
             match &ent.shape {
-                Shape::Text { at, height, angle, text, align } => {
+                Shape::Text { at, height, angle, text, align, .. } => {
                     let px = (height * k) as f32;
                     if px < 1.0 {
                         continue;
