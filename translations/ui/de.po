@@ -696,7 +696,7 @@ msgstr "Winkel:"
 #: crates/ui-egui/src/editor/document.rs:499
 #: crates/ui-egui/src/lib.rs:3747
 msgid "Angular"
-msgstr "Winklig"
+msgstr "Winkel"
 
 #: crates/ui-egui/src/editor/document.rs:501
 msgid "Angular Dimension: pick reference lines, reference planes or lines of forms that cross, then click where its arc goes"
