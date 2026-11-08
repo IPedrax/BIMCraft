@@ -244,8 +244,9 @@ pub fn axis_line(axis: &[[Expr; 2]; 2]) -> FormLine {
 }
 
 /// `new` (lines drawn on screen, by sketch mode) with what `old` held where they are the same: a line that keeps the GUID
-/// it had and comes, read by `num`, to where it was (within [`TOL`]) keeps its formulas; a line moved or new holds numbers.
-pub fn kept(old: &[FormLine], new: Vec<FormLine>, num: &mut dyn FnMut(&Expr) -> Result<f64, String>) -> Vec<FormLine> {
+/// it had and comes, read by `num`, to where it was shown (`shown`: `old` as the type flexes it, F7b; within [`TOL`]) keeps
+/// what `old` holds, its formulas; a line moved or new holds numbers.
+pub fn kept(old: &[FormLine], shown: &[FormLine], new: Vec<FormLine>, num: &mut dyn FnMut(&Expr) -> Result<f64, String>) -> Vec<FormLine> {
     let mut same = |a: &FormLine, b: &FormLine| -> bool {
         let (Ok(x), Ok(y)) = (a.curve(num), b.curve(num)) else { return false };
         let (px, py) = (x.curve.handles(), y.curve.handles());
@@ -255,9 +256,13 @@ pub fn kept(old: &[FormLine], new: Vec<FormLine>, num: &mut dyn FnMut(&Expr) -> 
             && (x.curve.length() - y.curve.length()).abs() <= TOL
     };
     new.into_iter()
-        .map(|l| match old.iter().find(|o| !o.guid.is_nil() && o.guid == l.guid && o.axis == l.axis) {
-            Some(o) if same(o, &l) => o.clone(),
-            _ => l,
+        .map(|l| {
+            let was = old.iter().find(|o| !o.guid.is_nil() && o.guid == l.guid && o.axis == l.axis);
+            let seen = shown.iter().find(|o| !o.guid.is_nil() && o.guid == l.guid && o.axis == l.axis).or(was);
+            match (was, seen) {
+                (Some(o), Some(s)) if same(s, &l) => o.clone(),
+                _ => l,
+            }
         })
         .collect()
 }

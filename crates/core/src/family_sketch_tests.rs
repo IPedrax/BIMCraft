@@ -419,7 +419,7 @@ fn finish_checks_lines_as_sketch_mode_draws_them_and_keeps_unmoved_formulas() {
     };
     let mut drawn: Vec<SketchLine> = old.iter().map(|l| l.curve(&mut num).unwrap()).collect();
     drawn[1].curve = drawn[1].curve.moved(P2(0.0, 100.0), P2(0.0, 200.0));
-    let new = kept(&old, lines_of(&drawn), &mut num);
+    let new = kept(&old, &[], lines_of(&drawn), &mut num);
     assert_eq!(new[0], old[0]);
     assert_ne!(new[1], old[1]);
     assert_eq!((new[1].id, new[1].guid), (old[1].id, old[1].guid));

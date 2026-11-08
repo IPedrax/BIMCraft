@@ -140,7 +140,12 @@ pub const MAX_SLOPE: f64 = 75.0;
 ///
 /// 25: a family's `dimensions` (F7): labels, locks, EQ and Align's locks, solved as a type flexes. A build of 24 would drop
 /// them and so flex the family wrongly.
-pub const FORMAT: u32 = 25;
+///
+/// 26: a family's dimensions may measure to its forms' sketch lines, their ends and circles' centres, and its reference lines'
+/// faces, and measure a circle's radius or diameter (F7b): sketches locked to planes flex with them. A build of 25 reads a
+/// dimension's references strictly and knows none of these, so it would leave those dimensions out of the file and flex a
+/// locked sketch as if nothing held it.
+pub const FORMAT: u32 = 26;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3575,6 +3580,8 @@ impl Model {
         // command's shorthands (`Form`'s `FormIn`), so nothing is left to do here: the lines are given their ids and GUIDs by
         // the library's sync, as any new part is, and the form builds the triangles it did.
         // 24 to 25 (a family's dimensions, labels, locks and Align's locks) has none: a file of 24 holds none.
+        // 25 to 26 (dimensions to sketch lines, their points and reference lines' faces; radial and diameter ones) has none:
+        // a file of 25 holds none, and every dimension it holds reads as it did.
         self.settle_hosts(None);
         self.format = FORMAT;
     }

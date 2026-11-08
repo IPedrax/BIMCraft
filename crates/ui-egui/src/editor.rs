@@ -130,6 +130,11 @@ struct FormText {
 static TAGS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 impl FormText {
+    /// Form `f` as typed again, keeping the tag `tag` it is known by while the document is open.
+    pub(crate) fn again(f: &Form, tag: u64) -> FormText {
+        FormText { tag, ..FormText::of(f) }
+    }
+
     fn of(f: &Form) -> FormText {
         let axis =
             f.axis().map_or_else(Default::default, |[a, b]| [expr_text(&a[0]), expr_text(&a[1]), expr_text(&b[0]), expr_text(&b[1])]);

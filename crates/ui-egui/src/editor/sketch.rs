@@ -11,8 +11,9 @@ use bimcraft_core::curves::Curve;
 use bimcraft_core::draw::{self as shapes, Options, Shape};
 use bimcraft_core::family::sketch::{self as fs, FormLine};
 use bimcraft_core::family::views::{Side, Staged, Which};
-use bimcraft_core::family::{Frame, Val};
+use bimcraft_core::family::{DimKind, DimRef, DimView, FamilyDimension, Frame, Val};
 use bimcraft_core::geom::P2;
+use bimcraft_core::ids::Guid;
 use bimcraft_core::sketch::SketchLine;
 use egui::Pos2;
 
@@ -81,6 +82,25 @@ pub(crate) struct FormSketch {
     pub(crate) chain: bool,
     /// What the sketch snaps to (`Family::sketch_targets`), and the draft it was found for.
     targets: Option<(u64, fs::Targets)>,
+    /// The form's GUID: its own when edited, a new one for a new form, so its lines can be locked before it is made (F7b).
+    pub(crate) guid: Guid,
+    /// The form's lines as the type previewed showed them when Edit began: a line that comes back there keeps its formulas.
+    shown: Vec<FormLine>,
+    /// Align (F7b): the reference picked first, its line on the plane, and which of the sketch's lines it is, if one.
+    pub(crate) align_from: Option<(DimRef, (P2, P2), Option<usize>)>,
+    /// Align's padlock, offered until the next click: the lock it adds.
+    pub(crate) offer: Option<FamilyDimension>,
+    /// Locks added while sketching, and those the form had that were taken off: written at Finish, dropped by Cancel.
+    pub(crate) locks: Vec<FamilyDimension>,
+    pub(crate) unlocked: Vec<Guid>,
+}
+
+/// A padlock shown while a form is sketched (F7b): Align's offer (open), a lock added while sketching, one the form had.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Padlock {
+    Offer,
+    Added(usize),
+    Had(Guid),
 }
 
 impl FormSketch {
@@ -208,6 +228,10 @@ impl FormSketch {
 
     /// Escape: the shape's points let go, then the tool (Modify).
     pub(crate) fn escape(&mut self) {
+        self.offer = None;
+        if self.align_from.take().is_some() {
+            return;
+        }
         if !self.points.is_empty() || self.fillet.is_some() {
             self.points.clear();
             self.fillet = None;
@@ -347,7 +371,7 @@ impl FamilyEditor {
     }
 
     /// The frame of the plane being sketched on.
-    fn sketch_frame(&self) -> Option<Frame> {
+    pub(crate) fn sketch_frame(&self) -> Option<Frame> {
         let s = self.sketch.as_ref()?;
         self.plane_set().frame(&s.host).ok()
     }
@@ -388,9 +412,12 @@ impl FamilyEditor {
             return Err(t("A mesh from a file has no sketch to edit.").to_string());
         }
         let values = self.values();
+        // As the type previewed flexes it (F7b): where its locks and labels put its lines.
+        let shown =
+            self.family()?.flexed(&values).ok().and_then(|x| x.forms.get(i).map(|x| x.sketch.clone())).unwrap_or_else(|| f.sketch.clone());
         let mut num = reader(&values);
         let mut lines = Vec::new();
-        for l in &f.sketch {
+        for l in &shown {
             let mut drawn = l.curve(&mut num)?;
             if l.axis {
                 drawn.style = Some(AXIS.into());
@@ -408,6 +435,7 @@ impl FamilyEditor {
         self.start_form_sketch(Some(i), f.revolves(), f.void, f.host, lines);
         if let Some(s) = self.sketch.as_mut() {
             (s.from, s.to, s.material) = (from, to, material);
+            s.shown = shown;
         }
         Ok(())
     }
@@ -416,6 +444,12 @@ impl FamilyEditor {
     fn start_form_sketch(&mut self, index: Option<usize>, revolve: bool, void: bool, host: PlaneRef, lines: Vec<SketchLine>) {
         let edit = index.is_some();
         let (from, to) = if revolve { ("0", "360") } else { ("0", "250") };
+        let had = index.and_then(|i| self.forms.get(i)).and_then(|ft| ft.form().ok()).map(|f| f.guid).filter(|g| !g.is_nil());
+        // A new form's GUID made now: a new one, not the nil one `Default` is.
+        let guid = match had {
+            Some(g) => g,
+            None => Guid::new(),
+        };
         self.sketch = Some(Box::new(FormSketch {
             sketch: Sketch::of_form(Of::Form { revolve, void, edit }, lines),
             index,
@@ -438,6 +472,12 @@ impl FamilyEditor {
             found: None,
             chain: true,
             targets: None,
+            guid,
+            shown: Vec::new(),
+            align_from: None,
+            offer: None,
+            locks: Vec::new(),
+            unlocked: Vec::new(),
         }));
         self.form = None;
         self.views.plane = None;
@@ -445,20 +485,27 @@ impl FamilyEditor {
         self.views.picking_plane = false;
     }
 
-    /// Cancel Edit Mode: the lines dropped, the draft as it was.
+    /// Cancel Edit Mode: the lines dropped, and the locks added or taken off while sketching; the draft as it was.
     pub(crate) fn cancel_form_sketch(&mut self) {
         if let Some(s) = self.sketch.take() {
             self.form = s.index;
         }
+        self.views.aligning = None;
     }
 
     /// Finish Edit Mode: the lines checked as the core checks a sketch, and the form they make built with the family; then
     /// put in the draft (a new one last, an edited one where it was, keeping its id and GUID) and selected. Refused, saying
     /// what to fix (the lines it is about shown in red), the draft left as it was.
     pub(crate) fn finish_form_sketch(&mut self, units: bimcraft_core::units::Units) -> Result<(), String> {
+        let values = self.values();
         let Some(s) = self.sketch.as_mut() else { return Ok(()) };
+        // Every line a GUID of its own (F7b), so a lock or a dimension can name it: one drawn new gets a new one.
+        for l in s.sketch.lines.iter_mut().filter(|l| l.guid.is_nil()) {
+            l.guid = Guid::new();
+        }
         let boundary = s.boundary();
         let axis = s.axis();
+        let axis_guid = s.sketch.lines.iter().find(|l| is_axis(l)).map(|l| l.guid);
         if let Err(why) = fs::finish_check(&boundary, axis, s.revolve) {
             let text = match why {
                 fs::Finish::Problems(problems) => {
@@ -474,7 +521,8 @@ impl FamilyEditor {
         }
         let (index, revolve, void, host) = (s.index, s.revolve, s.void, s.host);
         let (from, to, material) = (s.from.clone(), s.to.clone(), s.material.clone());
-        let values = self.values();
+        let (guid, shown) = (s.guid, s.shown.clone());
+        let (added, unlocked) = (s.locks.clone(), s.unlocked.clone());
         // What the form had, its lines kept where they didn't move.
         let before = match index.and_then(|i| self.forms.get(i)) {
             Some(ft) => ft.form()?,
@@ -486,14 +534,25 @@ impl FamilyEditor {
             let was = before.axis_line();
             lines.push(FormLine {
                 id: was.map_or(0, |l| l.id),
-                guid: was.map(|l| l.guid).unwrap_or_default(),
+                guid: was.map(|l| l.guid).or(axis_guid).unwrap_or_default(),
                 axis: true,
                 ..FormLine::line([n(a.0), n(a.1)], [n(b.0), n(b.1)])
             });
         }
-        let lines = fs::kept(&before.sketch, lines, &mut reader(&values));
-        let mut form = Form { host, from: text_expr(&from), to: text_expr(&to), void, material: material.trim().to_string(), ..before };
+        let lines = fs::kept(&before.sketch, &shown, lines, &mut reader(&values));
+        let mut form =
+            Form { host, from: text_expr(&from), to: text_expr(&to), void, material: material.trim().to_string(), ..before.clone() };
         form.sketch = lines;
+        if form.guid.is_nil() {
+            form.guid = guid;
+        }
+        // Its locks: those added while sketching, less those taken off, and none to a line that is gone (F7b).
+        let mut dims = self.dimensions.clone();
+        dims.retain(|d| !unlocked.contains(&d.guid));
+        dims.extend(added);
+        let mut gone = Family { dimensions: dims, forms: vec![form.clone()], ..Family::default() };
+        gone.forget_lines_gone(std::slice::from_ref(&before));
+        let dims = gone.dimensions;
         let made = FormText { tag: index.and_then(|i| self.forms.get(i)).map_or(0, |f| f.tag), ..FormText::of(&form) };
         let made = if made.tag == 0 { FormText::of(&form) } else { made };
         // Built with the family, as the draft would be: refused, the draft untouched.
@@ -509,11 +568,16 @@ impl FamilyEditor {
             }
         };
         let kept = std::mem::replace(&mut self.forms, forms);
-        // Each type built with it: what is wrong with this form refuses it (another form's fault is the draft's, as before).
+        let kept_dims = std::mem::replace(&mut self.dimensions, dims);
+        // Each type built with it: what is wrong with this form refuses it (another form's fault is the draft's, as before);
+        // so do constraints a type can't hold with it.
         let built = self.family().and_then(|f| {
             let mine = format!("form {}:", at + 1);
             for name in f.types.keys() {
                 let values = f.values(name, &BTreeMap::new())?;
+                if let Err(e) = f.solve(&values) {
+                    return Err(format!("{name}: {e}"));
+                }
                 if let Err(e) = f.pieces(&values)
                     && e.contains(&mine)
                 {
@@ -524,8 +588,10 @@ impl FamilyEditor {
         });
         if let Err(e) = built {
             self.forms = kept;
+            self.dimensions = kept_dims;
             return Err(e);
         }
+        self.views.aligning = None;
         self.sketch = None;
         self.form = Some(at);
         self.tab = Tab::Forms;
@@ -725,6 +791,121 @@ impl FamilyEditor {
         problem
     }
 
+    /// Align while a form is sketched (F7b), a click at `q` (the view's mm) in view `which`: first the reference (a line of
+    /// the sketch, else `outside`, what the view shows there: a plane's trace, a reference line, another form's line, in
+    /// the view's mm), then a line of the sketch, moved onto it with the lines joined to it, and its padlock offered.
+    pub(crate) fn sketch_align(
+        &mut self,
+        st: &Staged,
+        which: Which,
+        q: P2,
+        reach: f64,
+        outside: Option<(DimRef, (P2, P2))>,
+    ) -> Option<String> {
+        let frame = self.sketch_frame()?;
+        let p = on_plane(st, which, &frame, q)?;
+        let s = self.sketch.as_mut()?;
+        s.offer = None;
+        let straight = |l: &SketchLine| matches!(&l.curve, Curve::Poly { points, arcs, closed: false } if points.len() == 2 && arcs.iter().all(|a| *a == 0.0));
+        let own = s.sketch.line_at(p, reach).filter(|i| s.sketch.lines.get(*i).is_some_and(|l| straight(l) && !is_axis(l)));
+        match s.align_from {
+            None => {
+                let picked = match (own, outside) {
+                    (Some(i), _) => {
+                        let l = &mut s.sketch.lines[i];
+                        if l.guid.is_nil() {
+                            l.guid = Guid::new();
+                        }
+                        Some((DimRef::Sketch(s.guid, l.guid), (l.start(), l.end()), Some(i)))
+                    }
+                    (None, Some((r, (a, b)))) => match (on_plane(st, which, &frame, a), on_plane(st, which, &frame, b)) {
+                        (Some(a), Some(b)) if a.dist(b) > 1.0 => Some((r, (a, b), None)),
+                        _ => None,
+                    },
+                    (None, None) => None,
+                };
+                match picked {
+                    Some(r) => {
+                        s.align_from = Some(r);
+                        None
+                    }
+                    None => Some(t("Pick a reference plane, a reference line or a line, then a line of the sketch.").to_string()),
+                }
+            }
+            Some((reference, line, fixed)) => {
+                let Some(target) = own.filter(|i| Some(*i) != fixed) else {
+                    return Some(t("Pick a straight line of the sketch: it moves onto the reference.").to_string());
+                };
+                let was = (s.sketch.lines[target].start(), s.sketch.lines[target].end());
+                match bimcraft_core::align::sketch_lines(&s.sketch.lines, target, line, was, fixed) {
+                    Ok(lines) => {
+                        s.sketch.lines = lines;
+                        s.sketch.changed();
+                        let l = &mut s.sketch.lines[target];
+                        if l.guid.is_nil() {
+                            l.guid = Guid::new();
+                        }
+                        s.offer = Some(FamilyDimension {
+                            id: 0,
+                            guid: Guid::new(),
+                            view: DimView::of(which),
+                            refs: vec![reference, DimRef::Sketch(s.guid, l.guid)],
+                            at: st.from_view(which, q),
+                            label: None,
+                            locked: vec![bimcraft_core::model::Lock { segment: 0, length: 0.0 }],
+                            equal: false,
+                            alignment: true,
+                            kind: DimKind::Aligned,
+                        });
+                        s.align_from = None;
+                        None
+                    }
+                    Err(e) => Some(e),
+                }
+            }
+        }
+    }
+
+    /// The padlocks shown while a form is sketched, each where it is on screen (`screen` puts a point of the plane there):
+    /// Align's offer, the locks added while sketching and those the form had, beside the middle of the line each locks.
+    pub(crate) fn sketch_padlocks(&self, screen: &dyn Fn(P2) -> Option<Pos2>) -> Vec<(Pos2, Padlock)> {
+        let Some(s) = self.sketch.as_ref() else { return Vec::new() };
+        let mut out = Vec::new();
+        let mut put = |d: &FamilyDimension, what: Padlock| {
+            let Some(DimRef::Sketch(_, g)) = d.refs.iter().find(|r| matches!(r, DimRef::Sketch(f, _) if *f == s.guid)) else { return };
+            let Some(l) = s.sketch.lines.iter().find(|l| l.guid == *g) else { return };
+            let (Some(a), Some(b)) = (screen(l.start()), screen(l.end())) else { return };
+            let d = (b - a).normalized();
+            let n = vec2(-d.y, d.x);
+            // Inside the loop's side matters little: beside it, a third of the way along, clear of the line.
+            out.push((a + (b - a) * 0.35 + n * 12.0, what));
+        };
+        if let Some(d) = &s.offer {
+            put(d, Padlock::Offer);
+        }
+        for (k, d) in s.locks.iter().enumerate() {
+            put(d, Padlock::Added(k));
+        }
+        for d in self.dimensions.iter().filter(|d| d.alignment && !s.unlocked.contains(&d.guid)) {
+            put(d, Padlock::Had(d.guid));
+        }
+        out
+    }
+
+    /// A padlock clicked while sketching: Align's offer locks, a lock unlocks.
+    pub(crate) fn sketch_padlock(&mut self, what: Padlock) {
+        let Some(s) = self.sketch.as_mut() else { return };
+        match what {
+            Padlock::Offer => s.locks.extend(s.offer.take()),
+            Padlock::Added(k) => {
+                if k < s.locks.len() {
+                    s.locks.remove(k);
+                }
+            }
+            Padlock::Had(g) => s.unlocked.push(g),
+        }
+    }
+
     /// The handles of a selected extrusion's Start and End in view `which`, where the view sees its plane edge-on: where each
     /// shows (the view's millimetres), whether it is End, whether it is free to drag (a number, not tied), and the normal it
     /// moves along.
@@ -879,11 +1060,17 @@ impl BimApp {
                 }
             });
         });
+        let aligning = ed.views.aligning.is_some();
+        let mut align = false;
+        let Some(s) = ed.sketch.as_mut() else { return };
         ribbon::panel(ui, msg!("Modify"), |ui| {
             let tip = msg!("Modify (MD): pick lines of the sketch, and drag their ends");
-            if crate::small_button(ui, Icon::Modify, "Modify", s.tool.is_none(), tip).clicked() {
+            if crate::small_button(ui, Icon::Modify, "Modify", s.tool.is_none() && !aligning, tip).clicked() {
                 s.set_tool(None, false);
             }
+            // Align (AL, F7b): a line of the sketch onto a plane, a reference line or another line; its padlock locks them.
+            let tip = msg!("Align (AL): pick a reference, then a line of the sketch that moves onto it; its padlock locks them");
+            align = crate::small_button(ui, Icon::Align, "Align", aligning, tip).clicked();
             let tip = msg!("Delete (DE): the lines picked");
             if ui
                 .add_enabled_ui(!s.sketch.picked.is_empty(), |ui| crate::small_button(ui, Icon::Delete, "Delete", false, tip))
@@ -899,6 +1086,9 @@ impl BimApp {
                 ed.views.show_work_plane = !ed.views.show_work_plane;
             }
         });
+        if align {
+            ed.align_tool();
+        }
         if finish {
             match ed.finish_form_sketch(units) {
                 Ok(()) => self.status = Status::default(),

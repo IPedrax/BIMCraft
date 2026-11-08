@@ -85,7 +85,7 @@ pub struct RefPlane {
 
 /// One of a reference line's four planes: `horizontal`, the plane it is drawn on, through it; `vertical`, square to that
 /// through it; `start` and `end`, square to it at each end.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Face {
     #[default]
@@ -479,7 +479,8 @@ impl Family {
         self.forms.iter_mut().for_each(|f| follow(&mut f.host));
         self.lines.iter_mut().for_each(|l| follow(&mut l.host));
         self.adaptive.iter_mut().for_each(|d| d.work_planes_mut(&mut |h| follow(h)));
-        self.resolve_dimension_refs(planes, &[]);
+        let moved: Vec<(Guid, Guid)> = planes.iter().chain(lines).copied().collect();
+        self.resolve_dimension_refs(&moved);
     }
 
     /// Each host given as an id (as a command may) given as the GUID of the plane or line of that id.
@@ -498,7 +499,7 @@ impl Family {
         self.forms.iter_mut().for_each(|f| resolve(&mut f.host));
         self.lines.iter_mut().for_each(|l| resolve(&mut l.host));
         self.adaptive.iter_mut().for_each(|d| d.work_planes_mut(&mut |h| resolve(h)));
-        self.resolve_dimension_refs(&[], &[]);
+        self.resolve_dimension_refs(&[]);
     }
 
     /// Whether its planes and lines are sound: its datums first and pinned; each plane drawable, named once, a level only

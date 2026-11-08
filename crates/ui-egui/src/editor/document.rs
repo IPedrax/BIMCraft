@@ -407,15 +407,40 @@ impl BimApp {
                 // Drawn in a plan or an elevation of a family that isn't adaptive (F7).
                 if !adaptive {
                     ribbon::panel(ui, msg!("Dimension"), |ui| {
-                        let tip =
-                            msg!("Aligned Dimension (DI): pick parallel reference planes or extrusion ends, then click where it goes");
+                        let tip = msg!(
+                            "Aligned Dimension (DI): pick parallel reference planes, extrusion ends or lines of forms, then click where it goes"
+                        );
                         let on = ed.views.dimensioning.is_some();
+                        let aligned = ed.views.dim_kind == bimcraft_core::family::DimKind::Aligned;
                         if ui
-                            .add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::Dimension, msg!("Aligned Dimension"), on, tip))
+                            .add_enabled_ui(ed.editing_2d() && !ed.sketching(), |ui| {
+                                big_button(ui, Icon::Dimension, msg!("Aligned Dimension"), on && aligned, tip)
+                            })
                             .inner
                             .clicked()
                         {
                             ed.dimension_tool();
+                        }
+                        // A circle of a sketch, its radius or its diameter (F7b).
+                        for (kind, icon, label, tip) in [
+                            (
+                                bimcraft_core::family::DimKind::Radial,
+                                Icon::Radial,
+                                msg!("Radial"),
+                                msg!("Radial Dimension: pick a circle of a form's sketch, then click where it goes"),
+                            ),
+                            (
+                                bimcraft_core::family::DimKind::Diameter,
+                                Icon::Diameter,
+                                msg!("Diameter"),
+                                msg!("Diameter Dimension: pick a circle of a form's sketch, then click where it goes"),
+                            ),
+                        ] {
+                            let lit = on && ed.views.dim_kind == kind;
+                            let usable = ed.editing_2d() && !ed.sketching();
+                            if ui.add_enabled_ui(usable, |ui| crate::small_button(ui, icon, label, lit, tip)).inner.clicked() {
+                                ed.radial_tool(kind);
+                            }
                         }
                     });
                 }
@@ -1088,14 +1113,24 @@ impl BimApp {
     pub(crate) fn family_prompt(&self) -> Option<&'static str> {
         let ed = self.family_editor.as_ref()?;
         if let Some(s) = ed.sketch.as_ref() {
+            // Align on the sketch's lines (F7b).
+            if ed.views.aligning.is_some() {
+                return Some(match s.align_from {
+                    None => msg!("Click the reference to align to: a reference plane, a reference line or a line."),
+                    Some(_) => msg!("Click the line of the sketch that moves onto it; its padlock locks them."),
+                });
+            }
             return Some(super::sketch::prompt(s));
         }
         Some(match (ed.views.shown, ed.adaptive.is_some()) {
             (Some(_), true) => msg!("An adaptive family's plans and elevations show its test placement; model it in {3D}."),
             (Some(_), false) if ed.views.picking_plane => msg!("Click a reference plane or a datum: the view's work plane."),
             (Some(_), false) if ed.views.drawing.is_some() => msg!("Click two points: a reference plane through them."),
+            (Some(_), false) if ed.views.dimensioning.is_some() && ed.views.dim_kind != bimcraft_core::family::DimKind::Aligned => {
+                msg!("Click a circle, then click where the dimension goes.")
+            }
             (Some(_), false) if ed.views.dimensioning.is_some() => {
-                msg!("Click parallel reference planes or extrusion ends, then click where the dimension goes.")
+                msg!("Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes.")
             }
             (Some(_), false) if ed.views.aligning.as_ref().is_some_and(Option::is_none) => msg!("Click the reference to align to."),
             (Some(_), false) if ed.views.aligning.is_some() => msg!("Click what moves onto it."),
@@ -1142,7 +1177,12 @@ impl BimApp {
         // the sketch's own last change. The document's history waits for Finish.
         if let Some(s) = ed.sketch.as_mut() {
             if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-                s.escape();
+                // Align's reference let go, then Align itself; else the sketch's own Escape.
+                if ed.views.aligning.is_some() && s.align_from.is_none() && s.offer.is_none() {
+                    ed.views.aligning = None;
+                } else {
+                    s.escape();
+                }
             }
             if ctx.input(|i| i.key_pressed(egui::Key::Delete)) {
                 s.delete_picked();

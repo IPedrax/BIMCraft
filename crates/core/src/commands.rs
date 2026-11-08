@@ -1097,7 +1097,9 @@ pub static ALL: &[Command] = &[
          ref_plane?: {id | guid, …a plane's fields}, delete_ref_plane?: [id | guid, …], ref_lines?: [{guid?, start: [x, y, z], \
          end: [x, y, z], host?: {plane: guid} | {line: guid, face}, reference?, subcategory?}], ref_line?: {id | guid, …}, \
          delete_ref_line?: [id | guid, …], dimensions?: [{guid?, view?: plan|ceiling|front|back|left|right, refs: [{plane: guid} | \
-         {form: guid, end: start|end}, …], at: [x, y, z], label?: parameter, locked?: [{segment, length}], equal?, alignment?}], \
+         {form: guid, end: start|end} | {form: guid, line: guid} | {form: guid, line: guid, point: start|end|centre} | \
+         {line: guid, face: horizontal|vertical|start|end}, …], at: [x, y, z], kind?: aligned|radial|diameter, label?: parameter, \
+         locked?: [{segment, length}], equal?, alignment?}], \
          dimension?: {id | guid, …a dimension's fields} (none: one added), delete_dimension?: [id | guid, …], \
          invalid_dimensions?: delete, solve?: type, \
          operation?: swing|double-swing|sliding|double-sliding|folding|fixed (a door's or window's, for IFC and schedules), \
@@ -1137,17 +1139,22 @@ pub static ALL: &[Command] = &[
          family's own. `reporting`, a length or an angle, reads a dimension and drives none: no formula, type or component sets \
          it: a dimension labelled with it measures it, and formulas read what it measures (no label may be worked out from one). \
          `dimensions` are Revit's family dimensions (F7): each between two or more parallel references (its planes, the datums, an \
-         extrusion's `start` or `end` face), in order along the way it measures, drawn in `view` (which must see them edge on) \
-         with its line through `at`. A `label` (one segment, a length parameter) makes the segment that parameter's value in \
+         extrusion's `start` or `end` face, a straight line of a form's sketch, `{form, line}`: the plane through it square to \
+         the form's plane, a reference line's face), in order along the way it measures, drawn in `view` (which must see them \
+         edge on) with its line through `at`; a line's end or a circle's centre (`point`) is measured along the others. A \
+         `radial` or `diameter` one measures one circle of a sketch, seen flat in its view. A line or a form is named by its \
+         GUID or its id. A `label` (one segment, a length parameter) makes the segment that parameter's value in \
          every type; `locked` keeps a segment at a length (a labelled one's lock stops dragging from changing it); `equal` keeps \
          its segments equal (EQ); `alignment` is Align's lock, two references, its segment locked at 0. Flexing a type solves \
-         them: the planes and extrusion ends they measure to take the least change from where they are drawn that holds them \
-         all (a datum or a plane that defines the origin stays), and what is drawn on a plane moves with it; a constraint that \
+         them: the planes, extrusion ends and sketch points they measure to take the least change from where they are drawn \
+         that holds them all (a datum or a plane that defines the origin stays; a sketch's lines that meet stay joined), and \
+         what is drawn on a plane moves with it; a constraint that \
          adds nothing to the others is refused as over-constrained, naming them, and a labelled length of 0 or less is refused \
-         for its type. Deleting a plane or form takes it out of the dimensions measuring to it (a dimension left with one \
-         reference goes: `deleted_dimensions`). A dimension measuring to what the family hasn't is refused, unless \
+         for its type. Deleting a plane, a form or a sketch line (a form given \
+         again without it) takes it out of the dimensions measuring to it (a dimension left with one reference goes: \
+         `deleted_dimensions`). A dimension measuring to what the family hasn't is refused, unless \
          `invalid_dimensions` is `delete` (a reload's Delete Dimension(s)); a file opened leaves it out. `solve` reads, for a \
-         type, where its planes and forms' ends go and each dimension's lengths, and changes nothing. Every reply carries `warnings`: what's \
+         type, where its planes, forms' ends and sketches' lines go and each dimension's lengths, and changes nothing. Every reply carries `warnings`: what's \
          worth knowing and doesn't stop the change (a void cutting no solid, a form outside the opening or thicker than its \
          wall, a door's or window's plan with no symbols). `definition` is a family as such a file holds it, given in place of `path` and loaded as the file would be (read strictly). On `path` or `definition`, `overwrite` chooses `no` (keep the project family), \
          `version` (replace the definition, retaining compatible values) or `version_and_values` (also use incoming values). \
@@ -10774,7 +10781,27 @@ fn family(s: &mut Session, p: &Value) -> R {
             .filter(|q| !q.datum())
             .map(|q| json!({"guid": q.guid, "id": q.id, "name": q.name, "offset": crate::view3d::dot(q.start, q.frame().z)}))
             .collect();
-        let forms: Vec<Value> = flexed.forms.iter().map(|x| json!({"guid": x.guid, "id": x.id, "from": x.from, "to": x.to})).collect();
+        // Each form's ends and its sketch's lines, worked out for the type.
+        let forms: Vec<Value> = flexed
+            .forms
+            .iter()
+            .map(|x| {
+                let sketch: Vec<Value> = x
+                    .sketch
+                    .iter()
+                    .filter_map(|l| {
+                        let drawn = l.curve(&mut |e| crate::family::worth(e, &values)).ok()?;
+                        Some(match drawn.curve {
+                            crate::curves::Curve::Circle { centre, radius } => {
+                                json!({"guid": l.guid, "id": l.id, "centre": [centre.0, centre.1], "radius": radius})
+                            }
+                            c => json!({"guid": l.guid, "id": l.id, "start": [c.start().0, c.start().1], "end": [c.end().0, c.end().1]}),
+                        })
+                    })
+                    .collect();
+                json!({"guid": x.guid, "id": x.id, "from": x.from, "to": x.to, "sketch": sketch})
+            })
+            .collect();
         let lengths = f.measured(&values).map_err(|e| bad(c, e))?;
         let dims: Vec<Value> =
             f.dimensions.iter().zip(lengths).map(|(d, l)| json!({"guid": d.guid, "id": d.id, "label": d.label, "lengths": l})).collect();
@@ -10867,6 +10894,8 @@ fn family(s: &mut Session, p: &Value) -> R {
     if let Some(v) = p.get("ref_line").filter(|v| !v.is_null()) {
         patches.lines_patched.push(patch_part(c, &name, &mut f.lines, v, "ref_line")?);
     }
+    // The forms as they were: a sketch line a form no longer has takes its dimensions with it (F7b).
+    let forms_were = f.forms.clone();
     if let Some(v) = p.get("forms").filter(|v| !v.is_null()) {
         let mut forms: Vec<crate::family::Form> = serde_json::from_value(v.clone()).map_err(|e| field("forms", e))?;
         crate::library::keep_parts(&mut f.forms, &mut forms);
@@ -10895,6 +10924,7 @@ fn family(s: &mut Session, p: &Value) -> R {
     if let Some(v) = p.get("symbol").filter(|v| !v.is_null()) {
         patches.symbols_patched.push(patch_part(c, &name, &mut f.symbols, v, "symbol")?);
     }
+    patches.dimensions_dropped += f.forget_lines_gone(&forms_were);
     if let Some(list) = p.get("delete_form").and_then(Value::as_array) {
         for v in list {
             let at = part_at(c, &mut f.forms, v, "form", &name)?;

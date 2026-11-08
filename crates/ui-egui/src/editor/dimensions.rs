@@ -9,7 +9,7 @@ use super::views::{PICKED, Views};
 use super::*;
 use bimcraft_core::family::constraints::{self, DimMark, Edit, NOT_SATISFIED, Unsat};
 use bimcraft_core::family::views::{Staged, Which};
-use bimcraft_core::family::{DimRef, DimView, FamilyDimension, Val};
+use bimcraft_core::family::{DimKind, DimRef, DimView, FamilyDimension, Spot, Val};
 use bimcraft_core::geom::P2;
 use bimcraft_core::ids::Guid;
 use bimcraft_core::model::Lock;
@@ -70,6 +70,11 @@ pub(super) enum Clicked {
 /// Where a selected dimension's segment's padlock and its EQ toggle are, on screen.
 fn lock_at(m: &DimMark, i: usize, screen: &dyn Fn(P2) -> Pos2) -> Option<Pos2> {
     let (a, b) = (screen(*m.points.get(i)?), screen(*m.points.get(i + 1)?));
+    // A radius's or a diameter's: beside its leader past the circle, clear of it.
+    if m.kind != DimKind::Aligned {
+        let along = (b - a).normalized();
+        return along.is_finite().then(|| b + along * 9.0 + down(a, b) * 12.0);
+    }
     Some(a + (b - a) * 0.5 + down(a, b) * 16.0)
 }
 
@@ -135,6 +140,10 @@ pub(super) fn paint(painter: &Painter, m: &DimMark, screen: &dyn Fn(P2) -> Pos2,
         }
         return;
     }
+    if m.kind != DimKind::Aligned {
+        paint_radial(painter, m, screen, selected, units, color);
+        return;
+    }
     let pts: Vec<Pos2> = m.points.iter().map(|p| screen(*p)).collect();
     let (Some(&first), Some(&last)) = (pts.first(), pts.last()) else { return };
     let along = (last - first).normalized();
@@ -193,6 +202,45 @@ pub(super) fn paint(painter: &Painter, m: &DimMark, screen: &dyn Fn(P2) -> Pos2,
     }
 }
 
+/// A radial or diameter dimension's mark painted (F7b): its line from the centre (or across the circle), an arrow where it
+/// meets the circle, and `R` or `⌀` and its length (or its label and length) over it, read up the page; selected, its
+/// padlock under it.
+fn paint_radial(painter: &Painter, m: &DimMark, screen: &dyn Fn(P2) -> Pos2, selected: bool, units: Units, color: Color32) {
+    let (Some(a), Some(b)) = (m.points.first().map(|p| screen(*p)), m.points.last().map(|p| screen(*p))) else { return };
+    let along = (b - a).normalized();
+    if !along.is_finite() || along.length_sq() == 0.0 {
+        return;
+    }
+    let stroke = Stroke::new(1.0, color);
+    let n = vec2(-along.y, along.x);
+    // The leader runs on past the circle to where its text is, clear of the circle.
+    let end = b + along * 18.0;
+    painter.line_segment([a, end], stroke);
+    let arrow = |tip: Pos2, way: Vec2| {
+        painter.add(egui::Shape::convex_polygon(vec![tip, tip - way * 9.0 + n * 3.0, tip - way * 9.0 - n * 3.0], color, Stroke::NONE));
+    };
+    arrow(b, along);
+    if m.kind == DimKind::Diameter {
+        arrow(a, -along);
+    } else {
+        painter.circle_filled(a, 2.0, color);
+    }
+    let len = m.lengths.first().copied().unwrap_or(0.0);
+    let sign = if m.kind == DimKind::Diameter { "⌀" } else { "R" };
+    let text = match &m.label {
+        Some(l) => format!("{l} = {}", units.length(len)),
+        None => format!("{sign} {}", units.length(len)),
+    };
+    // Level, read as a note is, beyond the leader's end on its side.
+    let (anchor, at) =
+        if along.x >= 0.0 { (egui::Align2::LEFT_CENTER, end + vec2(4.0, 0.0)) } else { (egui::Align2::RIGHT_CENTER, end - vec2(4.0, 0.0)) };
+    painter.text(at, anchor, text, egui::FontId::proportional(12.0), color);
+    if selected && let Some(at) = lock_at(m, 0, screen) {
+        let locked = m.locked.first().copied().unwrap_or(false);
+        padlock(painter, at, locked, if locked { pal().accent } else { pal().muted });
+    }
+}
+
 /// What a click at `p` on the dimensions does, before anything else in the view takes it: a padlock or the EQ toggle of the
 /// selected one, an Align lock's padlock, Align's padlock waiting, or a dimension (its line or its text).
 pub(super) fn clicked(
@@ -233,7 +281,17 @@ pub(super) fn clicked(
     None
 }
 
-/// The reference under `p` in view `which`: an extrusion's end seen edge on, or a plane (by the view's drawing); the nearer.
+/// The references of `flexed` view `which` sees edge on besides its planes, each as the segment it is drawn as (the view's
+/// mm): extrusion ends, sketch lines and extrusions' sides (F7b), reference lines' faces.
+pub(super) fn traces(flexed: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which) -> Vec<(DimRef, P2, P2)> {
+    let mut out = constraints::end_faces(flexed, values, st, which);
+    out.extend(constraints::sketch_faces(flexed, values, st, which));
+    out.extend(constraints::line_faces(flexed, st, which));
+    out
+}
+
+/// The reference under `p` in view `which`: a circle's centre near it (F7b); else an extrusion's end, a sketch line seen edge
+/// on or a reference line's face, or a plane (by the view's drawing), the nearer.
 pub(super) fn reference_at(
     flexed: &Family,
     values: &BTreeMap<String, Val>,
@@ -243,9 +301,19 @@ pub(super) fn reference_at(
     p: Pos2,
     screen: &dyn Fn(P2) -> Pos2,
 ) -> Option<DimRef> {
-    let ends = constraints::end_faces(flexed, values, st, which);
-    let end =
-        ends.into_iter().map(|(r, a, b)| (off(p, screen(a), screen(b)), r)).filter(|(d, _)| *d < NEAR).min_by(|x, y| x.0.total_cmp(&y.0));
+    let centre = constraints::sketch_circles(flexed, values, st, which)
+        .into_iter()
+        .map(|(r, c, _)| ((screen(c) - p).length(), r))
+        .filter(|(d, _)| *d < NEAR)
+        .min_by(|x, y| x.0.total_cmp(&y.0));
+    if let Some((_, DimRef::Sketch(f, l))) = centre {
+        return Some(DimRef::Point(f, l, Spot::Centre));
+    }
+    let end = traces(flexed, values, st, which)
+        .into_iter()
+        .map(|(r, a, b)| (off(p, screen(a), screen(b)), r))
+        .filter(|(d, _)| *d < NEAR)
+        .min_by(|x, y| x.0.total_cmp(&y.0));
     match (end, plane) {
         (Some((d, r)), Some(_)) if d < 3.0 => Some(r),
         (_, Some(g)) => Some(DimRef::Plane(g)),
@@ -254,18 +322,67 @@ pub(super) fn reference_at(
     }
 }
 
+/// The circle of a sketch under `p` in view `which` (near its edge): what Radial and Diameter Dimension pick.
+pub(super) fn circle_at(
+    flexed: &Family,
+    values: &BTreeMap<String, Val>,
+    st: &Staged,
+    which: Which,
+    p: Pos2,
+    screen: &dyn Fn(P2) -> Pos2,
+) -> Option<(DimRef, P2, f64)> {
+    constraints::sketch_circles(flexed, values, st, which)
+        .into_iter()
+        .map(|(r, c, radius)| {
+            let (sc, rim) = (screen(c), screen(P2(c.0 + radius, c.1)));
+            (((p - sc).length() - (rim - sc).length()).abs(), (r, c, radius))
+        })
+        .filter(|(d, _)| *d < NEAR)
+        .min_by(|x, y| x.0.total_cmp(&y.0))
+        .map(|(_, c)| c)
+}
+
+/// The segment reference `r` of `flexed` is drawn as in view `which`, or the point it is at, to show it picked.
+pub(super) fn drawn_as(flexed: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, r: &DimRef) -> Option<(P2, P2)> {
+    match r {
+        DimRef::Plane(g) => flexed.planes.iter().find(|p| p.guid == *g).and_then(|p| super::views::plane_trace(st, which, &p.frame())),
+        DimRef::Point(f, l, _) => constraints::sketch_circles(flexed, values, st, which)
+            .into_iter()
+            .find(|(c, ..)| *c == DimRef::Sketch(*f, *l))
+            .map(|(_, c, _)| (c, c)),
+        _ => traces(flexed, values, st, which).into_iter().find(|(e, ..)| e == r).map(|(_, a, b)| (a, b)),
+    }
+}
+
 impl FamilyEditor {
     /// Aligned Dimension (DI): the tool, in a plan or an elevation of a family that isn't adaptive; the selection goes.
     pub(crate) fn dimension_tool(&mut self) {
-        if self.editing_2d() {
+        if self.editing_2d() && self.sketch.is_none() {
             self.drop_tools();
             self.views.dimensioning = Some(Vec::new());
         }
     }
 
-    /// Align (AL): the tool, as Aligned Dimension's.
+    /// Radial Dimension or Diameter Dimension (F7b): pick a circle of a sketch seen flat, then click where it goes.
+    pub(crate) fn radial_tool(&mut self, kind: DimKind) {
+        if self.editing_2d() && self.sketch.is_none() {
+            self.drop_tools();
+            self.views.dimensioning = Some(Vec::new());
+            self.views.dim_kind = kind;
+        }
+    }
+
+    /// Align (AL): the tool, as Aligned Dimension's. While a form is sketched, its lines are aligned (F7b): Modify's picks
+    /// stay, the Draw panel's shape goes.
     pub(crate) fn align_tool(&mut self) {
         if self.editing_2d() {
+            if let Some(s) = self.sketch.as_mut() {
+                s.tool = None;
+                s.points.clear();
+                s.align_from = None;
+                self.views.aligning = Some(None);
+                return;
+            }
             self.drop_tools();
             self.views.aligning = Some(None);
         }
@@ -276,6 +393,7 @@ impl FamilyEditor {
         self.views.drawing = None;
         self.views.picking_plane = false;
         self.views.dimensioning = None;
+        self.views.dim_kind = DimKind::Aligned;
         self.views.aligning = None;
         self.views.align_lock = None;
         self.views.plane = None;
@@ -374,6 +492,24 @@ impl FamilyEditor {
                         *slot = number_text(v);
                     }
                 }
+                Edit::Point(i, k, spot, p) => self.move_sketch_point(i, k, spot, p),
+                Edit::Line(g, by) => {
+                    // The line and the lines drawn on it, as far down as they go.
+                    let mut moving = vec![g];
+                    for l in self.lines.iter_mut() {
+                        let on = match l.host {
+                            PlaneRef::Line(h, _) => moving.contains(&h),
+                            PlaneRef::Plane(_) => false,
+                        };
+                        if l.guid == g || on {
+                            for (k, d) in by.iter().enumerate() {
+                                l.start[k] += d;
+                                l.end[k] += d;
+                            }
+                            moving.push(l.guid);
+                        }
+                    }
+                }
                 Edit::Parameter(name, v) => {
                     let Some(at) = self.param_at(&name) else { continue };
                     let text = number_text(v);
@@ -385,6 +521,23 @@ impl FamilyEditor {
                 }
             }
         }
+    }
+
+    /// Point `spot` of line `k` of form `i`'s sketch put at `p` (its host's axes), a number.
+    fn move_sketch_point(&mut self, i: usize, k: usize, spot: Spot, p: [f64; 2]) {
+        use bimcraft_core::family::sketch::FormCurve;
+        let Some(ft) = self.forms.get(i) else { return };
+        let Ok(mut f) = ft.form() else { return };
+        let Some(line) = f.sketch.get_mut(k) else { return };
+        let at = [Expr::Number(p[0]), Expr::Number(p[1])];
+        match (&mut line.curve, spot) {
+            (FormCurve::Line { start, .. }, Spot::Start) => *start = at,
+            (FormCurve::Line { end, .. }, Spot::End) => *end = at,
+            (FormCurve::Circle { centre, .. }, Spot::Centre) => *centre = at,
+            _ => return,
+        }
+        let tag = ft.tag;
+        self.forms[i] = FormText::again(&f, tag);
     }
 
     /// Plane `g` dragged to `to` along its normal, through its constraints: done, or "Constraints are not satisfied".
@@ -431,6 +584,7 @@ impl FamilyEditor {
             locked: vec![Lock { segment: 0, length: 0.0 }],
             equal: false,
             alignment: true,
+            kind: DimKind::Aligned,
         };
         if let Err(e) = self.try_dimensions(|dims| dims.push(lock)) {
             self.views.status = Some(said(e));
@@ -593,7 +747,7 @@ impl FamilyEditor {
     /// The Options Bar of a dimension selected: Label, a length parameter of the family's, none, or Create Parameter….
     pub(crate) fn dimension_options(&mut self, ui: &mut Ui, g: Guid) -> Option<String> {
         let d = self.dimensions.iter().find(|d| d.guid == g)?.clone();
-        let one = d.refs.len() == 2 && !d.alignment;
+        let one = d.segments() == 1 && !d.alignment;
         let lengths: Vec<String> = self.params.iter().filter(|p| p.kind == Holds::Length).map(|p| p.name.trim().to_string()).collect();
         let l = ui.label(t("Label"));
         let shown = d.label.clone().unwrap_or_else(|| t(NONE).to_string());
@@ -637,16 +791,28 @@ fn said(e: Unsat) -> String {
     if e.over && !e.message.starts_with(NOT_SATISFIED) { format!("{}: {}", t(OVER), e.message) } else { e.message }
 }
 
-/// The reference picked second in Aligned Dimension, parallel to the first? Where it isn't, why not.
-pub(super) fn parallel(flexed: &Family, values: &BTreeMap<String, Val>, a: &DimRef, b: &DimRef) -> bool {
-    let (Ok((n, _)), Ok((m, _))) = (constraints::place_along(flexed, a, values), constraints::place_along(flexed, b, values)) else {
-        return false;
-    };
-    let c = [n[1] * m[2] - n[2] * m[1], n[2] * m[0] - n[0] * m[2], n[0] * m[1] - n[1] * m[0]];
-    (c[0] * c[0] + c[1] * c[1] + c[2] * c[2]).sqrt() < 1e-6
+/// Whether reference `b` may join `refs` in a dimension: parallel to those that face a way (a point faces none, so it may).
+pub(super) fn parallel(flexed: &Family, values: &BTreeMap<String, Val>, refs: &[DimRef], b: &DimRef) -> bool {
+    let way = |r: &DimRef| constraints::direction(flexed, r, values);
+    let Ok(n) = way(b) else { return false };
+    let Some(n) = n else { return true };
+    refs.iter().all(|r| match way(r) {
+        Ok(Some(m)) => {
+            let c = [n[1] * m[2] - n[2] * m[1], n[2] * m[0] - n[0] * m[2], n[0] * m[1] - n[1] * m[0]];
+            (c[0] * c[0] + c[1] * c[1] + c[2] * c[2]).sqrt() < 1e-6
+        }
+        Ok(None) => true,
+        Err(_) => false,
+    })
 }
 
-/// A new dimension in view `which` between `refs`, put in order along the way it measures, its line through `at`.
+/// Whether some of `refs` faces a way a dimension between them may measure along: points alone face none.
+pub(super) fn has_way(flexed: &Family, values: &BTreeMap<String, Val>, refs: &[DimRef]) -> bool {
+    refs.iter().any(|r| matches!(constraints::direction(flexed, r, values), Ok(Some(_))))
+}
+
+/// A new dimension in view `which` between `refs`, put in order along the way it measures (its first reference that faces
+/// one), its line through `at`. A radial or diameter one (`kind`) measures its one circle.
 pub(super) fn new_dimension(
     flexed: &Family,
     values: &BTreeMap<String, Val>,
@@ -654,15 +820,17 @@ pub(super) fn new_dimension(
     which: Which,
     refs: &[DimRef],
     at: P2,
+    kind: DimKind,
 ) -> FamilyDimension {
     let mut placed: Vec<(f64, DimRef)> = Vec::new();
-    let m = refs.first().and_then(|r| constraints::place_along(flexed, r, values).ok()).map(|(n, _)| n);
+    let m = refs.iter().find_map(|r| constraints::direction(flexed, r, values).ok().flatten());
     for r in refs {
-        let Ok((n, s)) = constraints::place_along(flexed, r, values) else { continue };
-        let sign = m.map_or(1.0, |m| if n[0] * m[0] + n[1] * m[1] + n[2] * m[2] < 0.0 { -1.0 } else { 1.0 });
-        placed.push((s * sign, *r));
+        let s = m.and_then(|m| constraints::place(flexed, r, values, m).ok()).unwrap_or(0.0);
+        placed.push((s, *r));
     }
-    placed.sort_by(|a, b| a.0.total_cmp(&b.0));
+    if kind == DimKind::Aligned {
+        placed.sort_by(|a, b| a.0.total_cmp(&b.0));
+    }
     FamilyDimension {
         id: 0,
         guid: Guid::new(),
@@ -673,6 +841,7 @@ pub(super) fn new_dimension(
         locked: Vec::new(),
         equal: false,
         alignment: false,
+        kind,
     }
 }
 
