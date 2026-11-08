@@ -906,10 +906,13 @@ impl<'a> Reader<'a> {
                     text(e)?
                 }
                 "MTEXT" => {
+                    // A colour its formatting gives the whole of it, before its first word, over the entity's.
+                    let raw: String = e.codes.iter().filter(|(c, _)| *c == 3 || *c == 1).map(|(_, v)| *v).collect();
+                    let color = leading_color(&raw).unwrap_or(style.color);
                     for line in mtext(e)? {
                         out.push(Entity {
                             layer: style.layer.clone(),
-                            color: style.color,
+                            color,
                             linetype: style.linetype.clone(),
                             weight: style.weight,
                             shape: transformed(line, xf),
@@ -1168,6 +1171,36 @@ fn de_boor(degree: usize, knots: &[f64], controls: &[(P2, f64)], u: f64) -> Opti
     }
     let [x, y, w] = *d.get(degree)?;
     (w.abs() > 1e-12).then(|| P2(x / w, y / w))
+}
+
+/// The colour a multi-line text's formatting sets before its first word (`\C1;` an index, `\c255;` a true colour as
+/// AutoCAD writes it, blue in the high byte): the last of them, if any.
+fn leading_color(raw: &str) -> Option<Color> {
+    let mut chars = raw.chars().peekable();
+    let mut color = None;
+    while let Some(c) = chars.next() {
+        match c {
+            '{' | '}' => {}
+            '\\' => {
+                let code = chars.next()?;
+                let body: String = chars.by_ref().take_while(|c| *c != ';').collect();
+                match code {
+                    'C' => color = body.trim().parse::<i64>().ok().map(index_color).or(color),
+                    'c' => {
+                        color = body.trim().parse::<i64>().ok().map(|v| {
+                            // AutoCAD's MTEXT true colour: red in the low byte.
+                            let (r, g, b) = ((v & 0xff) as u8, ((v >> 8) & 0xff) as u8, ((v >> 16) & 0xff) as u8);
+                            Color::True(r, g, b)
+                        });
+                    }
+                    'f' | 'F' | 'H' | 'W' | 'Q' | 'T' | 'A' | 'p' => {}
+                    _ => return color,
+                }
+            }
+            _ => return color,
+        }
+    }
+    color
 }
 
 /// A text's words as a file writes them: `%%d` is a degree sign, `%%p` plus or minus, `%%c` a diameter, `%%%` a

@@ -713,4 +713,8 @@ edits the one picked, with a preview drawn by the core (`titleblock::preview`) a
 with the project's values, its texts, its straight lines and its size; a sheet's Properties pick its title block and fill in its sheet
 fields. The preview is the editor: a click picks a text (`Text::outline`), a drag moves it, the arrow keys nudge it half a
 millimetre, and the text picked is edited below it (what it says, size, angle, justification) or made a field (Make Field); it zooms
-and scrolls. The lettering is BIMCraft's own stroke lettering, in capitals, as the built-in box's; it has the ordinals º and ª.
+and scrolls. Its lettering is in a font (`TitleBlock::font`, Arial unless it says, a system font as a text type names one, stood in for where
+the system hasn't it), each text at its size as a capital's height and with a width factor, laid out and drawn as notes are
+(`render::lettering`). A fill's rings that lie inside an odd number of the others are holes (a hatch's islands), drawn empty. An
+MTEXT's colour is the one its formatting sets before its first word (`\C`, `\c`), over the entity's. The stroke lettering has the
+ordinals º and ª.

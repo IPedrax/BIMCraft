@@ -868,13 +868,13 @@ pub static ALL: &[Command] = &[
         "title_block",
         "Title Blocks",
         &[],
-        "{name?, like?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, lines?, fills?, texts?, \
-         fields?} a title block of the project's own, as Revit's title block families with labels, which a sheet names to be \
+        "{name?, like?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, font?, lines?, fills?, \
+         texts?, fields?} a title block of the project's own, as Revit's title block families with labels, which a sheet names to be \
          drawn with it in its bottom right corner, inside the border, in place of the built-in title box. Without `name`, the \
          project's title blocks, its title fields' values and the automatic fields. All lengths are mm on paper from the title \
-         block's bottom left corner: `width` and `height` its box; `lines` [{points: [[x, y], …], closed?, pen?: 0 to 16 (1)}]; \
+         block's bottom left corner: `width` and `height` its box; `font` what letters its texts (Arial unless told; any the system has); `lines` [{points: [[x, y], …], closed?, pen?: 0 to 16 (1)}]; \
          `fills` [{rings: [[[x, y], …], …]}], filled through (a logo); `texts` [{at: [x, y] on the baseline, text, size?: \
-         capitals mm (2.5), angle?: degrees, align?: left|center|right}]. A text may name fields as `{KEY}`: the automatic ones \
+         capitals mm (2.5), angle?: degrees, align?: left|center|right, width_factor?: 0.1 to 10 (1), color?: [r, g, b]}]. A text may name fields as `{KEY}`: the automatic ones \
          (PROJECT, SHEET_NAME, SHEET_NUMBER, SCALE, DATE, SHEET_INDEX, SHEET_COUNT, REVISION) or the title block's `fields` \
          [{key, label?, scope?: sheet|project, default?}]: a project field has one value for every sheet (`title_values`), a \
          sheet field each sheet's own (`sheet`'s and `modify`'s `fields`). `path` reads a DXF (or a DWG, which the desktop and the \
@@ -9801,7 +9801,7 @@ fn title_values(s: &mut Session, p: &Value) -> R {
 fn title_block(s: &mut Session, p: &Value) -> R {
     use crate::titleblock::{self, TitleBlock};
     let c = "title_block";
-    only(c, p, &["name", "like", "rename", "delete", "path", "units", "width", "height", "lines", "fills", "texts", "fields"])?;
+    only(c, p, &["name", "like", "rename", "delete", "path", "units", "width", "height", "font", "lines", "fills", "texts", "fields"])?;
     let Some(name) = name_param(c, p, "name")? else {
         let auto: Map<String, Value> = titleblock::AUTO.iter().map(|(k, what)| ((*k).to_string(), json!(what))).collect();
         return Ok(json!({"title_blocks": s.model.title_blocks, "values": s.model.title_values, "auto": auto}));
@@ -9854,7 +9854,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
     // What's given goes over it, read as a file reads one: a key it hasn't is an error.
     let mut v = serde_json::to_value(&t).map_err(|e| bad(c, e))?;
     if let Some(o) = v.as_object_mut() {
-        for key in ["width", "height", "lines", "fills", "texts", "fields"] {
+        for key in ["width", "height", "font", "lines", "fills", "texts", "fields"] {
             match p.get(key) {
                 None => {}
                 Some(Value::Null) => {

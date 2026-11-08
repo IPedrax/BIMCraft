@@ -129,6 +129,21 @@ pub struct Text {
     /// Its colour, `[r, g, b]`; none, the drawing's ink.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<[u8; 3]>,
+    /// How much wider than its font draws it.
+    #[serde(default = "one", skip_serializing_if = "is_one")]
+    pub width_factor: f64,
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+fn is_one(x: &f64) -> bool {
+    *x == 1.0
+}
+
+fn arial() -> String {
+    crate::text::ARIAL.into()
 }
 
 fn lettering() -> f64 {
@@ -146,6 +161,9 @@ fn is_zero(x: &f64) -> bool {
 pub struct TitleBlock {
     pub width: f64,
     pub height: f64,
+    /// The font its lettering is in, as a text type names one: a font the system has (one it hasn't is stood in for).
+    #[serde(default = "arial")]
+    pub font: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lines: Vec<Stroke>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -164,6 +182,7 @@ impl Default for TitleBlock {
         TitleBlock {
             width: w,
             height: h,
+            font: arial(),
             lines: vec![
                 Stroke { points: vec![P2(0.0, 0.0), P2(w, 0.0), P2(w, h), P2(0.0, h)], closed: true, pen: Pen::BORDER, color: None },
                 Stroke { points: vec![P2(0.0, 26.0), P2(w, 26.0)], closed: false, pen: Pen::PROJECTION, color: None },
@@ -171,10 +190,42 @@ impl Default for TitleBlock {
             ],
             fills: Vec::new(),
             texts: vec![
-                Text { at: P2(4.0, 30.5), text: "{PROJECT}".into(), size: 5.0, angle: 0.0, align: Align::Left, color: None },
-                Text { at: P2(4.0, 15.25), text: "{SHEET_NAME}".into(), size: 3.5, angle: 0.0, align: Align::Left, color: None },
-                Text { at: P2(4.0, 6.0), text: "{SCALE}".into(), size: 2.0, angle: 0.0, align: Align::Left, color: None },
-                Text { at: P2(w - 25.0, 9.5), text: "{SHEET_NUMBER}".into(), size: 7.0, angle: 0.0, align: Align::Center, color: None },
+                Text {
+                    at: P2(4.0, 30.5),
+                    text: "{PROJECT}".into(),
+                    size: 5.0,
+                    angle: 0.0,
+                    align: Align::Left,
+                    color: None,
+                    width_factor: 1.0,
+                },
+                Text {
+                    at: P2(4.0, 15.25),
+                    text: "{SHEET_NAME}".into(),
+                    size: 3.5,
+                    angle: 0.0,
+                    align: Align::Left,
+                    color: None,
+                    width_factor: 1.0,
+                },
+                Text {
+                    at: P2(4.0, 6.0),
+                    text: "{SCALE}".into(),
+                    size: 2.0,
+                    angle: 0.0,
+                    align: Align::Left,
+                    color: None,
+                    width_factor: 1.0,
+                },
+                Text {
+                    at: P2(w - 25.0, 9.5),
+                    text: "{SHEET_NUMBER}".into(),
+                    size: 7.0,
+                    angle: 0.0,
+                    align: Align::Center,
+                    color: None,
+                    width_factor: 1.0,
+                },
             ],
             fields: Vec::new(),
         }
@@ -265,6 +316,10 @@ impl TitleBlock {
         };
         size("width", self.width)?;
         size("height", self.height)?;
+        let n = self.font.trim().chars().count();
+        if n == 0 || n > crate::model::MAX_TEXT || self.font.chars().any(char::is_control) {
+            return Err(format!("{who}: a font is named by up to {} characters", crate::model::MAX_TEXT));
+        }
         let items = self.lines.len() + self.fills.len() + self.texts.len();
         if items > MAX_ITEMS {
             return Err(format!("{who}: it holds {items} lines, fills and texts; up to {MAX_ITEMS}"));
@@ -299,6 +354,9 @@ impl TitleBlock {
             }
             if !t.angle.is_finite() {
                 return Err(format!("{who}: text {i}'s angle isn't a number"));
+            }
+            if !(0.1..=10.0).contains(&t.width_factor) {
+                return Err(format!("{who}: text {i}'s width factor, {}, isn't from 0.1 to 10", t.width_factor));
             }
             if t.text.chars().count() > MAX_TEXT || t.text.contains(['\n', '\r']) {
                 return Err(format!("{who}: text {i} is one line of up to {MAX_TEXT} characters"));
@@ -336,17 +394,22 @@ impl TitleBlock {
     }
 }
 
-/// How wide `text` letters at capitals `size` mm tall, mm on paper.
-pub fn text_width(text: &str, size: f64) -> f64 {
-    let density = crate::sheet::DENSITY;
-    f64::from(crate::font::width(text, (size * density) as f32)) / density
-}
-
 impl Text {
-    /// The box round it as it letters `shown` (its text with its fields filled in), mm from the title block's corner: its four
-    /// corners, from the start of its baseline (a little under it) round counter-clockwise, turned with it.
-    pub fn outline(&self, shown: &str) -> [P2; 4] {
-        let w = text_width(shown, self.size).max(self.size);
+    /// It laid out in `font` as it letters `shown` (its text with its fields filled in): one line, mm, y down from its top left.
+    pub fn layout(&self, font: &str, shown: &str) -> crate::text::Layout {
+        let t = crate::text::TextType {
+            font: font.to_string(),
+            size: self.size,
+            width_factor: self.width_factor,
+            ..crate::text::TextType::default()
+        };
+        crate::text::layout(&t, shown, &crate::text::styles(&t, shown, false, &[]))
+    }
+
+    /// The box round it as it letters `shown` in `font`, mm from the title block's corner: its four corners, from the start of
+    /// its baseline (a little under it) round counter-clockwise, turned with it.
+    pub fn outline(&self, font: &str, shown: &str) -> [P2; 4] {
+        let w = self.layout(font, shown).width.max(self.size);
         let start = match self.align {
             Align::Left => 0.0,
             Align::Center => -w / 2.0,
@@ -531,11 +594,23 @@ const INK: Rgb = Rgb(25, 25, 25);
 /// Title block `tb` drawn on sheet drawing `d` with its bottom left corner at paper point `at`, mm, its fields filled in
 /// from `values`.
 pub fn draw(d: &mut Drawing, tb: &TitleBlock, at: P2, values: &BTreeMap<String, String>) {
-    let density = d.view.scale;
     let ink = |c: Option<[u8; 3]>| c.map_or(INK, |[r, g, b]| Rgb(r, g, b));
     for f in &tb.fills {
-        let rings: Vec<Vec<P2>> = f.rings.iter().map(|r| r.iter().map(|p| *p + at).collect()).collect();
-        d.fill(&rings, ink(f.color));
+        // A ring inside an odd number of the others is a hole (a hatch's island): wound the other way, so it stays empty.
+        let rings: Vec<Vec<(f32, f32)>> = f
+            .rings
+            .iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let depth =
+                    r.first().map_or(0, |p| f.rings.iter().enumerate().filter(|(j, o)| *j != i && crate::geom::contains(o, *p)).count());
+                let ccw = crate::geom::area(r) >= 0.0;
+                let mut r: Vec<P2> = if ccw == (depth % 2 == 0) { r.clone() } else { r.iter().rev().copied().collect() };
+                r.dedup();
+                r.iter().map(|p| d.view.px(*p + at)).collect()
+            })
+            .collect();
+        d.push(crate::render::Prim::Fill { rings, color: ink(f.color) });
     }
     for l in &tb.lines {
         let pts: Vec<P2> = l.points.iter().map(|p| *p + at).collect();
@@ -546,20 +621,17 @@ pub fn draw(d: &mut Drawing, tb: &TitleBlock, at: P2, values: &BTreeMap<String, 
         if text.trim().is_empty() {
             continue;
         }
-        let h = (t.size * density) as f32;
-        let w = crate::font::width(&text, h);
-        // From the point along the baseline to the text's middle, by its alignment, then turned.
-        let along = match t.align {
-            Align::Left => w / 2.0,
-            Align::Center => 0.0,
-            Align::Right => -w / 2.0,
+        let layout = t.layout(&tb.font, &text);
+        // Its top left: back along the baseline by its justification, up its capitals' height, turned with it.
+        let start = match t.align {
+            Align::Left => 0.0,
+            Align::Center => -layout.width / 2.0,
+            Align::Right => -layout.width,
         };
-        let angle = -(t.angle.to_radians() as f32);
-        let (s, c) = angle.sin_cos();
-        let (x, y) = d.view.px(t.at + at);
-        // Up the page is minus y in pixels: the middle of the capitals is half their height above the baseline.
-        let up = -h / 2.0;
-        d.text_turned(&text, (x + along * c - up * s, y + along * s + up * c), h, angle, ink(t.color));
+        let (s, c) = t.angle.to_radians().sin_cos();
+        let top_left = t.at + at + P2(start * c, start * s) + P2(-t.size * s, t.size * c);
+        let frame = crate::render::frame_at(d, top_left, t.angle);
+        crate::render::lettering(d, &layout, frame, ink(t.color));
     }
 }
 
@@ -583,7 +655,8 @@ pub fn preview(m: &Model, tb: &TitleBlock, values: &BTreeMap<String, String>) ->
 /// texts, moved so its extents' bottom left corner is the title block's; its box, those extents; and its fields, each key its
 /// texts name that isn't automatic, as each sheet's. And what was left out, counted by kind.
 pub fn from_dxf(dxf: &Dxf, mm: f64) -> (TitleBlock, BTreeMap<String, usize>) {
-    let mut tb = TitleBlock { width: 0.0, height: 0.0, lines: Vec::new(), fills: Vec::new(), texts: Vec::new(), fields: Vec::new() };
+    let mut tb =
+        TitleBlock { width: 0.0, height: 0.0, font: arial(), lines: Vec::new(), fills: Vec::new(), texts: Vec::new(), fields: Vec::new() };
     let mut left_out: BTreeMap<String, usize> = BTreeMap::new();
     let mut attributes: BTreeMap<String, String> = BTreeMap::new();
     let k = |p: &P2| P2(p.0 * mm, p.1 * mm);
@@ -629,9 +702,9 @@ pub fn from_dxf(dxf: &Dxf, mm: f64) -> (TitleBlock, BTreeMap<String, usize>) {
                 match tag.as_deref().map(str::to_ascii_uppercase).filter(|t| valid_key(t) && !is_auto(t)) {
                     Some(key) => {
                         attributes.entry(key.clone()).or_insert(text);
-                        tb.texts.push(Text { at, text: format!("{{{key}}}"), size, angle: *angle, align, color });
+                        tb.texts.push(Text { at, text: format!("{{{key}}}"), size, angle: *angle, align, color, width_factor: 1.0 });
                     }
-                    None => tb.texts.push(Text { at, text, size, angle: *angle, align, color }),
+                    None => tb.texts.push(Text { at, text, size, angle: *angle, align, color, width_factor: 1.0 }),
                 }
             }
             Shape::Fill { rings, solid: true } => {
@@ -718,6 +791,7 @@ mod tests {
             angle: 0.0,
             align: Align::Left,
             color: None,
+            width_factor: 1.0,
         });
         let key = key_for("Endereço da obra:");
         assert_eq!(key, "ENDERECO_DA_OBRA");
@@ -735,11 +809,11 @@ mod tests {
 
     #[test]
     fn a_texts_outline_is_where_it_letters_turned_with_it() {
-        let t = Text { at: P2(10.0, 5.0), text: "ABC".into(), size: 2.0, angle: 0.0, align: Align::Right, color: None };
-        let [a, b, _, d] = t.outline("ABC");
+        let t = Text { at: P2(10.0, 5.0), text: "ABC".into(), size: 2.0, angle: 0.0, align: Align::Right, color: None, width_factor: 1.0 };
+        let [a, b, _, d] = t.outline("Arial", "ABC");
         assert!((b.0 - 10.0).abs() < 1e-9 && a.0 < 10.0 && a.1 < 5.0 && d.1 > 5.0 + 2.0, "{a:?} {b:?} {d:?}");
         let t = Text { angle: 90.0, align: Align::Left, ..t };
-        let [a, b, ..] = t.outline("ABC");
+        let [a, b, ..] = t.outline("Arial", "ABC");
         assert!((b.1 - a.1) > 0.0 && (b.0 - a.0).abs() < 1e-9, "it runs up the page");
     }
 

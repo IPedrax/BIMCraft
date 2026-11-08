@@ -339,6 +339,30 @@ fn a_drawings_colours_and_texts_that_hang_or_centre_on_their_point_come_in_as_dr
     assert!((text("Meio").at.1 - 19.0).abs() < 1e-9, "its baseline half its height under the point: {:?}", text("Meio").at);
     assert!((text("Topo").at.1 - 28.0).abs() < 1e-9, "its baseline its height under the point: {:?}", text("Topo").at);
     assert!(tb.texts.iter().any(|t| t.text == "CIVIL" && t.angle == 0.0), "level, not turned by its embedded object: {:?}", tb.texts);
+    let civil = text("CIVIL");
+    assert_eq!(civil.color, Some([0x99, 0x99, 0x99]), "the colour its formatting gives it, `\\c` over `\\C`");
     assert_eq!(tb.lines[0].color, Some([255, 0, 0]));
     assert_eq!(tb.fills[0].color, Some([0x44, 0x60, 0x5c]), "the hatch's true colour");
+}
+
+#[test]
+fn its_font_and_a_texts_width_factor_are_given_as_the_rest_and_checked() {
+    let mut s = Session::new();
+    let r = run(
+        &mut s,
+        "title_block",
+        json!({"name": "Selo", "font": "DejaVu Sans", "texts": [{"at": [4, 4], "text": "OBRA", "width_factor": 0.8, "color": [0, 128, 128]}]}),
+    );
+    assert_eq!(r["title_block"]["font"], "DejaVu Sans");
+    let tb = &s.model.title_blocks["Selo"];
+    assert_eq!(tb.font, "DejaVu Sans");
+    assert_eq!(tb.texts[0].width_factor, 0.8);
+    assert_eq!(tb.texts[0].color, Some([0, 128, 128]));
+    // A font left out is kept; a width factor past its range is refused.
+    run(&mut s, "title_block", json!({"name": "Selo", "width": 120}));
+    assert_eq!(s.model.title_blocks["Selo"].font, "DejaVu Sans");
+    let e = s.execute("title_block", &json!({"name": "Selo", "texts": [{"at": [4, 4], "text": "OBRA", "width_factor": 40}]}));
+    assert!(e.is_err_and(|e| e.to_string().contains("width factor")));
+    let e = s.execute("title_block", &json!({"name": "Selo", "font": ""}));
+    assert!(e.is_err_and(|e| e.to_string().contains("font")));
 }

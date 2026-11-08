@@ -222,7 +222,15 @@ fn texts_tab(ui: &mut Ui, d: &mut TitleBlocksDialog) {
         d.select(None);
     }
     if ui.button(t("Add Text")).clicked() {
-        d.tb.texts.push(Text { at: P2(4.0, 4.0), text: t("Text").to_string(), size: 2.5, angle: 0.0, align: TextAlign::Left, color: None });
+        d.tb.texts.push(Text {
+            at: P2(4.0, 4.0),
+            text: t("Text").to_string(),
+            size: 2.5,
+            angle: 0.0,
+            align: TextAlign::Left,
+            color: None,
+            width_factor: 1.0,
+        });
     }
 }
 
@@ -283,6 +291,16 @@ fn size_tab(ui: &mut Ui, d: &mut TitleBlocksDialog) {
         ui.label(t("Height"));
         ui.add(mm(&mut d.tb.height, 1.0, titleblock::MAX_SIZE));
         ui.end_row();
+        ui.label(t("Font"));
+        let fonts = bimcraft_core::text::families();
+        ComboBox::from_id_salt("title-block-font").selected_text(d.tb.font.clone()).width(220.0).show_ui(ui, |ui| {
+            ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
+                for f in &fonts {
+                    ui.selectable_value(&mut d.tb.font, f.clone(), f);
+                }
+            });
+        });
+        ui.end_row();
         ui.label(t("Fills"));
         ui.horizontal(|ui| {
             ui.label(d.tb.fills.len().to_string());
@@ -328,7 +346,7 @@ fn canvas_at(ui: &mut Ui, d: &mut TitleBlocksDialog, values: &BTreeMap<String, S
         let (x, y) = view.px(p);
         rect.min + vec2(x * k, y * k)
     };
-    let outlines: Vec<[P2; 4]> = d.tb.texts.iter().map(|x| x.outline(&titleblock::fill(&x.text, values))).collect();
+    let outlines: Vec<[P2; 4]> = d.tb.texts.iter().map(|x| x.outline(&d.tb.font, &titleblock::fill(&x.text, values))).collect();
     // The last drawn wins, as it shows on top.
     let under = |q: egui::Pos2| outlines.iter().rposition(|o| bimcraft_core::geom::contains(o, to_mm(q)));
     let hovered = r.hover_pos().and_then(under);
@@ -401,6 +419,8 @@ fn selected_text(ui: &mut Ui, d: &mut TitleBlocksDialog) {
             ui.add(mm(&mut x.size, titleblock::MIN_LETTERING, titleblock::MAX_LETTERING));
             ui.label(t("Angle (°)"));
             ui.add(DragValue::new(&mut x.angle).range(-360.0..=360.0).speed(1.0));
+            ui.label(t("Width Factor"));
+            ui.add(DragValue::new(&mut x.width_factor).range(0.1..=10.0).speed(0.01).max_decimals(2));
             let shown = match x.align {
                 TextAlign::Left => msg!("Left"),
                 TextAlign::Center => msg!("Center"),

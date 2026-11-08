@@ -4102,8 +4102,27 @@ pub(crate) fn note(d: &mut Drawing, m: &Model, n: &Note) {
     let t = m.text_types.get(&n.type_name).cloned().unwrap_or_default();
     let layout = note_layout(m, n);
     let frame = d.note_frame(n);
-    let f = |(x, y): (f32, f32)| frame.px((f64::from(x), f64::from(y)));
     let color = Rgb(t.color[0], t.color[1], t.color[2]);
+    lettering(d, &layout, frame, color);
+    let off = if t.border { t.border_offset } else { 0.4 * t.size };
+    if t.border {
+        let [l, top, r, b] = layout.frame(t.border_offset);
+        let ring = [(l, top), (r, top), (r, b), (l, b)].into_iter().map(|p| frame.px(p)).collect();
+        d.stroke(ring, t.border_pen, color, None, true);
+    }
+    if let Some(to) = n.leader {
+        // From the side nearer where it points.
+        let to = d.view.px(to);
+        let right = frame.mm(to).0 > layout.width / 2.0;
+        let from = frame.px((if right { layout.width + off } else { -off }, t.size / 2.0));
+        d.stroke(vec![from, to], Pen::PROJECTION, INK, None, false);
+        arrow(d, from, to);
+    }
+}
+
+/// `layout` lettered where `frame` puts it, in `color`: a note's text, or a title block's.
+pub(crate) fn lettering(d: &mut Drawing, layout: &crate::text::Layout, frame: NoteFrame, color: Rgb) {
+    let f = |(x, y): (f32, f32)| frame.px((f64::from(x), f64::from(y)));
     let k = frame.k;
     let part = std::mem::replace(&mut d.part, Part::Text);
     let drawn = layout.drawn();
@@ -4123,20 +4142,11 @@ pub(crate) fn note(d: &mut Drawing, m: &Model, n: &Note) {
         });
     }
     d.part = part;
-    let off = if t.border { t.border_offset } else { 0.4 * t.size };
-    if t.border {
-        let [l, top, r, b] = layout.frame(t.border_offset);
-        let ring = [(l, top), (r, top), (r, b), (l, b)].into_iter().map(|p| frame.px(p)).collect();
-        d.stroke(ring, t.border_pen, color, None, true);
-    }
-    if let Some(to) = n.leader {
-        // From the side nearer where it points.
-        let to = d.view.px(to);
-        let right = frame.mm(to).0 > layout.width / 2.0;
-        let from = frame.px((if right { layout.width + off } else { -off }, t.size / 2.0));
-        d.stroke(vec![from, to], Pen::PROJECTION, INK, None, false);
-        arrow(d, from, to);
-    }
+}
+
+/// Where lettering with its top left at paper point `top_left`, turned `angle` degrees counter-clockwise, lands in `d`.
+pub(crate) fn frame_at(d: &Drawing, top_left: P2, angle: f64) -> NoteFrame {
+    NoteFrame { at: d.view.px(top_left), k: d.px(sheet::DENSITY as f32), angle: -(angle.to_radians() as f32) }
 }
 
 /// A spot elevation's mark at pixel `at`: a triangle standing on the point, and the height it
