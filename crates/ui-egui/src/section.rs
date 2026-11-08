@@ -438,7 +438,11 @@ mod worker_tests {
         loop {
             harness.step();
             let cut = &harness.state().cut;
-            if cut.shown.as_ref().is_some_and(|(_, shown, ..)| *shown == id) && cut.worker.as_ref().is_some_and(|w| !w.busy()) {
+            // The worker not being busy is not enough: its finished frame is installed by the next poll,
+            // so wait until the frame shown is the one the current request asks for.
+            let shown = cut.shown.as_ref().filter(|(_, shown, ..)| *shown == id).map(|(_, _, view, _)| *view);
+            let requested = cut.requested.as_ref().and_then(|request| request.view);
+            if shown.is_some() && shown == requested && cut.worker.as_ref().is_some_and(|w| !w.busy()) {
                 break;
             }
             assert!(Instant::now() < deadline, "worker did not publish a frame: {}", harness.state().status.text);
@@ -483,7 +487,7 @@ mod worker_tests {
             move || ctx.request_repaint(),
         ));
         harness.state_mut().cut.requested = None;
-        harness.state_mut().canvas.show(id, point - P2(6000.0, 4000.0), point + P2(6000.0, 4000.0));
+        harness.state_mut().canvas.show(id, point - P2(6500.0, 4000.0), point + P2(5500.0, 4000.0));
         harness.step();
         enter.recv_timeout(Duration::from_secs(5)).unwrap();
         let at = harness.state().screen(point);
