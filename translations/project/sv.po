@@ -96,7 +96,7 @@ msgstr "Antal"
 msgid "Crosshatch"
 msgstr "Korsskraffering"
 
-#: crates/core/src/render.rs:4055
+#: crates/core/src/render.rs:4066
 msgid "DN"
 msgstr "NED"
 
@@ -592,7 +592,7 @@ msgstr "Plansteg"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:4055
+#: crates/core/src/render.rs:4066
 msgid "UP"
 msgstr "UPP"
 

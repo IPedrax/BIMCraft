@@ -6817,6 +6817,7 @@ mod family_blend;
 mod family_category_dialog;
 mod family_dimensions;
 mod family_document;
+mod family_exit;
 mod family_pivots;
 mod family_sketch;
 mod family_sketch_locks;

@@ -844,8 +844,13 @@ impl FamilyEditor {
         let place = |s: &mut Session, id: &str, p: Value| s.execute(id, &p).map(|_| ());
         if family.category.hosted() {
             place(&mut s, "wall", json!({"points": [[-2500, 0], [2500, 0]]}))?;
+            // A window's sill on Ref. Level: its forms are drawn in axes whose z is up from the sill, as its planes are.
             let kind = if family.category == Category::Door { "door" } else { "window" };
-            place(&mut s, kind, json!({"at": [0, 0], "family": name, "type": type_name}))?;
+            let mut p = json!({"at": [0, 0], "family": name, "type": type_name});
+            if kind == "window" {
+                p["sill"] = json!(0);
+            }
+            place(&mut s, kind, p)?;
         } else {
             place(&mut s, "component", json!({"family": name, "type": type_name, "at": [0, 0], "params": self.preview_params}))?;
         }
@@ -1090,10 +1095,15 @@ fn shows(visible: &str, values: &BTreeMap<String, bimcraft_core::family::Val>) -
     typed.is_empty() || crate::adaptive_editor::worth(&text_expr(typed), values).is_some_and(|x| x != 0.0)
 }
 
-/// One form's fields, its Visible tied to the type previewed's `values`. Whether Visible's "=" was pressed.
+/// One form's fields, its Visible tied to the type previewed's `values`. Whether Visible's "=" was pressed. `held`, the form as
+/// its dimensions and locks put it for the type previewed (`type_name`) where that isn't how it is drawn: its corners, circle,
+/// axis, From and To are shown so, greyed, as Revit greys what a constraint sets; Edit Extrusion or the dimensions change them.
+#[allow(clippy::too_many_arguments)]
 fn form_fields(
     ui: &mut Ui,
     f: &mut FormText,
+    held: Option<&FormText>,
+    type_name: &str,
     i: usize,
     options: &[String],
     values: &BTreeMap<String, bimcraft_core::family::Val>,
@@ -1108,6 +1118,10 @@ fn form_fields(
         (PlaneRef::Plane(CENTER_FRONT_BACK), msg!("Plane XZ")),
         (PlaneRef::Plane(CENTER_LEFT_RIGHT), msg!("Plane YZ")),
     ];
+    if held.is_some() {
+        let note = tf("Set by its dimensions and locks for the type {}: Edit Extrusion or the dimensions change it.", &[type_name]);
+        ui.add(egui::Label::new(RichText::new(note).color(pal().muted)).wrap());
+    }
     Grid::new(("fe-form-grid", i)).num_columns(2).spacing(vec2(12.0, 5.0)).show(ui, |ui| {
         if f.mesh() {
             ui.label(t("Mesh"));
@@ -1135,23 +1149,37 @@ fn form_fields(
                 ui.selectable_value(&mut f.shape, Shape::Circle, t("Circle"));
             });
             ui.end_row();
-            if f.shape == Shape::Sketch {
+            // What its constraints set, as the type previewed has it: shown greyed, field by field, never typed over (the drawn
+            // numbers stay); what they leave as drawn stays typed.
+            let (shape_free, from_free, to_free) = match held {
+                Some(h) => (h.profile == f.profile && h.circle == f.circle && h.axis == f.axis, h.from == f.from, h.to == f.to),
+                None => (true, true, true),
+            };
+            let mut copy = held.cloned();
+            let g: &mut FormText = match copy.as_mut() {
+                Some(c) if !shape_free => c,
+                _ => &mut *f,
+            };
+            if g.shape == Shape::Sketch {
                 // Lines, arcs or loops the corners can't say: sketch mode draws them (Edit Extrusion).
                 ui.label(t("Sketch"));
-                let n = f.original.boundary().count().to_string();
+                let n = g.original.boundary().count().to_string();
                 ui.label(RichText::new(tf("{} lines and arcs, drawn in sketch mode", &[&n])).color(pal().muted));
-            } else if f.shape == Shape::Profile {
+            } else if g.shape == Shape::Profile {
                 ui.label(t("Corners"));
-                let r = ui.add(TextEdit::multiline(&mut f.profile).desired_rows(4).desired_width(300.0).id_salt(("fe-profile", i)));
+                let r = ui.add_enabled(
+                    shape_free,
+                    TextEdit::multiline(&mut g.profile).desired_rows(4).desired_width(300.0).id_salt(("fe-profile", i)),
+                );
                 r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, format!("{} {n}", t("Form Corners"))));
             } else {
                 ui.label(t("Circle centre and radius"));
-                ui.horizontal(|ui| {
+                ui.add_enabled_ui(shape_free, |ui| {
                     for (k, what) in [msg!("Form Circle X"), msg!("Form Circle Y"), msg!("Form Circle Radius")].into_iter().enumerate() {
                         links.field(
                             ui,
                             format!("{} {n}", t(what)),
-                            &mut f.circle[k],
+                            &mut g.circle[k],
                             80.0,
                             Holds::Length,
                             (Field::Form(Slot::Centre(k)), i),
@@ -1161,38 +1189,38 @@ fn form_fields(
             }
             ui.end_row();
             ui.label(t("Revolve"));
-            ui.checkbox(&mut f.revolve, t("turned about an axis"));
+            ui.add_enabled(shape_free, egui::Checkbox::new(&mut g.revolve, t("turned about an axis")));
             ui.end_row();
-            if f.revolve {
+            if g.revolve {
                 ui.label(t("Axis"));
-                ui.horizontal(|ui| {
+                ui.add_enabled_ui(shape_free, |ui| {
                     for (k, what) in
                         [msg!("Form Axis X1"), msg!("Form Axis Y1"), msg!("Form Axis X2"), msg!("Form Axis Y2")].into_iter().enumerate()
                     {
-                        links.field(ui, format!("{} {n}", t(what)), &mut f.axis[k], 60.0, Holds::Length, (Field::Form(Slot::Axis(k)), i));
+                        links.field(ui, format!("{} {n}", t(what)), &mut g.axis[k], 60.0, Holds::Length, (Field::Form(Slot::Axis(k)), i));
                     }
                 });
                 ui.end_row();
             }
-            ui.label(if f.revolve { t("Start Angle") } else { t("From") });
-            links.field(
-                ui,
-                format!("{} {n}", t("Form From")),
-                &mut f.from,
-                120.0,
-                if f.revolve { Holds::Angle } else { Holds::Length },
-                (Field::Form(Slot::From), i),
-            );
+            let revolve = g.revolve;
+            let angle = if revolve { Holds::Angle } else { Holds::Length };
+            // From and To: what the constraints set, else what is typed (the form's own, though its outline is held).
+            let (mut from_set, mut to_set) = (copy.as_ref().map(|c| c.from.clone()), copy.as_ref().map(|c| c.to.clone()));
+            let from = match (&mut from_set, from_free) {
+                (Some(c), false) => c,
+                _ => &mut f.from,
+            };
+            ui.label(if revolve { t("Start Angle") } else { t("From") });
+            ui.add_enabled_ui(from_free, |ui| {
+                links.field(ui, format!("{} {n}", t("Form From")), from, 120.0, angle, (Field::Form(Slot::From), i))
+            });
             ui.end_row();
-            ui.label(if f.revolve { t("End Angle") } else { t("To") });
-            links.field(
-                ui,
-                format!("{} {n}", t("Form To")),
-                &mut f.to,
-                120.0,
-                if f.revolve { Holds::Angle } else { Holds::Length },
-                (Field::Form(Slot::To), i),
-            );
+            let to = match (&mut to_set, to_free) {
+                (Some(c), false) => c,
+                _ => &mut f.to,
+            };
+            ui.label(if revolve { t("End Angle") } else { t("To") });
+            ui.add_enabled_ui(to_free, |ui| links.field(ui, format!("{} {n}", t("Form To")), to, 120.0, angle, (Field::Form(Slot::To), i)));
             ui.end_row();
         }
         ui.label(t("Material"));
@@ -1223,6 +1251,28 @@ fn form_fields(
     pressed
 }
 
+/// Each form of the draft as `values` (the type previewed) flex it, where that differs from how it is drawn in the shapes the
+/// Forms tab types (corners, circle, axis, From and To): what its dimensions and locks set. None for one they leave as drawn.
+fn held_forms(ed: &FamilyEditor, values: &BTreeMap<String, bimcraft_core::family::Val>) -> Vec<Option<FormText>> {
+    let flexed = ed.family().ok().and_then(|f| f.flexed(values).ok().map(std::borrow::Cow::into_owned));
+    ed.forms
+        .iter()
+        .enumerate()
+        .map(|(i, drawn)| {
+            let f = flexed.as_ref()?;
+            let guid = drawn.original.guid;
+            let form = if guid.is_nil() { f.forms.get(i) } else { f.forms.iter().find(|x| x.guid == guid) }?;
+            let as_set = FormText::of(form);
+            let moved = as_set.profile != drawn.profile
+                || as_set.circle != drawn.circle
+                || as_set.axis != drawn.axis
+                || as_set.from != drawn.from
+                || as_set.to != drawn.to;
+            moved.then_some(as_set)
+        })
+        .collect()
+}
+
 fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     // What a form may be made of: nothing, a library material, or a material parameter.
     let mut options = vec![String::new()];
@@ -1234,12 +1284,15 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     let mut links = association::Controls::new(ed);
     // A form picked in the Project Browser opens.
     let reveal = ed.document.reveal.take();
+    // Each form as the type previewed flexes it, where its dimensions and locks put it otherwise than it is drawn.
+    let held = held_forms(ed, &values);
+    let type_name = ed.types.get(ed.picked).map(|(n, _)| n.clone()).unwrap_or_default();
     for i in 0..ed.forms.len() {
         let heading = format!("{}. {}", i + 1, ed.forms[i].describe());
         let header = CollapsingHeader::new(heading).id_salt(("fe-form", i)).default_open(ed.forms.len() == 1);
         let header = if reveal == Some(i) { header.open(Some(true)) } else { header };
         header.show(ui, |ui| {
-            if form_fields(ui, &mut ed.forms[i], i, &options, &values, &mut links) {
+            if form_fields(ui, &mut ed.forms[i], held.get(i).and_then(Option::as_ref), &type_name, i, &options, &values, &mut links) {
                 let typed = ed.forms[i].visible.trim().to_string();
                 ed.associating = Some(crate::adaptive_editor::associating(
                     &i.to_string(),
@@ -1250,7 +1303,8 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
                     &params,
                 ));
             }
-            ui.horizontal(|ui| {
+            // Wrapped, as the palette is narrower than the row (F10: Delete was cut off at its edge).
+            ui.horizontal_wrapped(|ui| {
                 // Selected, Properties show it as Revit's do an Extrusion.
                 if ui.button(t("Select")).clicked() {
                     select = Some(i);
@@ -1273,15 +1327,41 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     if select.is_some() {
         ed.form = select;
     }
+    // The form selected stays selected as it moves; one deleted takes the dimensions and locks measuring to it along, as
+    // the ribbon's Delete does (F10: a dimension left measuring to nothing refused Load into Project).
+    let swap = |ed: &mut FamilyEditor, i: usize, j: usize| {
+        ed.forms.swap(i, j);
+        ed.form = ed.form.map(|f| {
+            if f == i {
+                j
+            } else if f == j {
+                i
+            } else {
+                f
+            }
+        });
+    };
     match act {
-        Some((i, -1)) => ed.forms.swap(i, i - 1),
-        Some((i, 1)) => ed.forms.swap(i, i + 1),
+        Some((i, -1)) => swap(ed, i, i - 1),
+        Some((i, 1)) => swap(ed, i, i + 1),
         Some((i, _)) => {
-            ed.forms.remove(i);
+            let gone = ed.forms.remove(i).original.guid;
+            if !gone.is_nil() {
+                ed.forget_reference(gone);
+            }
+            ed.form = ed.form.and_then(|f| {
+                if f == i {
+                    None
+                } else if f > i {
+                    Some(f - 1)
+                } else {
+                    Some(f)
+                }
+            });
         }
         None => {}
     }
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         if ui.button(t("Add Box")).clicked() {
             ed.forms.push(FormText::blank());
         }
@@ -1744,6 +1824,19 @@ mod tests {
         assert!(!ed.family().unwrap().types[&ed.types[0].0].contains_key("Width"));
         ed.name = " ".into();
         assert!(ed.command(&m).unwrap_err().contains("needs a name"));
+    }
+
+    /// F10: a window stands on Ref. Level in its document's scratch model, its sill at 0, as its forms are drawn in axes whose z
+    /// is up from the sill: else every view drew its forms `Sill Height` above the reference planes they are locked to.
+    #[test]
+    fn a_window_in_its_documents_scratch_model_stands_with_its_sill_on_ref_level() {
+        let m = Arc::unwrap_or_clone(Session::new().model);
+        let ed = FamilyEditor::blank(Category::Window);
+        let family = ed.family().unwrap();
+        let scratch = ed.scratch(&m, &family).unwrap();
+        let window = scratch.elements.values().find(|e| matches!(e, bimcraft_core::model::Element::Window(_))).unwrap();
+        let low = scratch.opening_pieces(window).iter().flat_map(|p| p.tris.iter()).flatten().map(|p| p[2]).fold(f64::INFINITY, f64::min);
+        assert!(low.abs() < 1e-9, "the frame from the sill, on Ref. Level: {low}");
     }
 
     #[test]

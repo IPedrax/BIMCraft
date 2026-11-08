@@ -138,6 +138,39 @@ impl Draft {
 }
 
 impl FamilyEditor {
+    /// Whether something of the family's own is selected that Delete takes away: a form, a plane of its own (a datum stays), a
+    /// dimension, a nested instance or a reference line.
+    pub(crate) fn deletable(&self) -> bool {
+        self.selected_form().is_some()
+            || self.selected_plane().is_some_and(|g| self.planes.iter().any(|p| p.guid == g && !p.datum()))
+            || self.selected_dimension().is_some()
+            || self.selected_nested().is_some()
+            || self.selected_line().is_some()
+    }
+
+    /// Delete (DE, the Delete key, the ribbon's Delete): what is selected taken away, with what depends on it, or why not.
+    pub(crate) fn delete_selected(&mut self) -> Result<(), String> {
+        if let Some(i) = self.selected_nested() {
+            self.nested_instances.remove(i);
+            self.select_nested(None);
+        } else if let Some(g) = self.selected_dimension() {
+            self.delete_dimension(g);
+        } else if let Some(g) = self.selected_line() {
+            self.delete_line(g)?;
+        } else if let Some(g) = self.selected_plane().filter(|g| self.planes.iter().any(|p| p.guid == *g && !p.datum())) {
+            self.delete_plane(g)?;
+        } else if let Some(i) = self.selected_form() {
+            let gone = self.forms.remove(i).original.guid;
+            if !gone.is_nil() {
+                self.forget_reference(gone);
+            }
+            self.form = None;
+        } else if let Some(d) = self.adaptive.as_mut() {
+            adaptive_view::delete(d, &mut self.modeller);
+        }
+        Ok(())
+    }
+
     /// The draft as it is now, for `saved_as` once it has been saved.
     pub(super) fn draft(&self) -> Draft {
         Draft::of(self)
@@ -541,7 +574,6 @@ impl BimApp {
                 ribbon::panel(ui, msg!("Clipboard"), |ui| {
                     later(ui, Icon::Copy, msg!("Paste"));
                 });
-                let form = ed.selected_form();
                 ribbon::panel(ui, msg!("Modify"), |ui| {
                     let some = !ed.modeller.selection.is_empty();
                     // Align, in a plan or an elevation of a family that isn't adaptive (F7): what is picked second onto what is
@@ -595,40 +627,10 @@ impl BimApp {
                     later_small(ui, Icon::Trim, msg!("Trim/Extend"));
                     later_small(ui, Icon::Split, msg!("Split Element"));
                     let tip = msg!("Delete (DE): what is selected, with what depends on it");
-                    let plane = ed.selected_plane().filter(|g| ed.planes.iter().any(|p| p.guid == *g && !p.datum()));
-                    let dim = ed.selected_dimension();
-                    let nested = ed.selected_nested();
-                    let line = ed.selected_line();
-                    if ui
-                        .add_enabled_ui(
-                            some || form.is_some() || plane.is_some() || dim.is_some() || nested.is_some() || line.is_some(),
-                            |ui| big_button(ui, Icon::Delete, "Delete", false, tip),
-                        )
-                        .inner
-                        .clicked()
+                    if ui.add_enabled_ui(some || ed.deletable(), |ui| big_button(ui, Icon::Delete, "Delete", false, tip)).inner.clicked()
+                        && let Err(e) = ed.delete_selected()
                     {
-                        if let Some(i) = nested {
-                            ed.nested_instances.remove(i);
-                            ed.select_nested(None);
-                        } else if let Some(g) = dim {
-                            ed.delete_dimension(g);
-                        } else if let Some(g) = line {
-                            if let Err(e) = ed.delete_line(g) {
-                                self.status = Status { text: e, error: true };
-                            }
-                        } else if let Some(g) = plane {
-                            if let Err(e) = ed.delete_plane(g) {
-                                self.status = Status { text: e, error: true };
-                            }
-                        } else if let Some(i) = form {
-                            let gone = ed.forms.remove(i).original.guid;
-                            if !gone.is_nil() {
-                                ed.forget_reference(gone);
-                            }
-                            ed.form = None;
-                        } else if let Some(d) = ed.adaptive.as_mut() {
-                            adaptive_view::delete(d, &mut ed.modeller);
-                        }
+                        self.status = Status { text: e, error: true };
                     }
                 });
                 ribbon::panel(ui, msg!("Measure"), |ui| {
@@ -1375,15 +1377,22 @@ impl BimApp {
             }
         }
         let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
-        if let Some(g) = ed.selected_dimension()
+        let mut refused = None;
+        // Delete takes what is selected away, as the ribbon's Delete does (a text field with the keyboard keeps the key).
+        if ed.deletable()
+            && !ctx.egui_wants_keyboard_input()
             && pressed(egui::Modifiers::NONE, egui::Key::Delete)
+            && let Err(e) = ed.delete_selected()
         {
-            ed.delete_dimension(g);
+            refused = Some(e);
         }
         if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Z) || pressed(egui::Modifiers::COMMAND, egui::Key::Y) {
             ed.ask.redo = true;
         } else if pressed(egui::Modifiers::COMMAND, egui::Key::Z) {
             ed.ask.undo = true;
+        }
+        if let Some(text) = refused {
+            self.status = Status { text, error: true };
         }
     }
 

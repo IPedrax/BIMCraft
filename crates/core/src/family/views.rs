@@ -356,8 +356,12 @@ impl Staged {
             .map(|(i, _)| i)
     }
 
-    /// The family's plane a reference plane of the scratch model drawn by `owner` stands for.
+    /// The family's plane a reference plane of the scratch model drawn by `owner` stands for: Ref. Level for the level an
+    /// elevation draws it as, so it is picked as the planes are (a dimension to the sill, Align, a work plane).
     pub fn plane_of(&self, owner: Id) -> Option<Guid> {
+        if owner == self.level {
+            return Some(super::REF_LEVEL);
+        }
         self.planes.get(&owner).copied()
     }
 }
@@ -609,6 +613,56 @@ mod tests {
         (-2..=2).any(|dx| (-2..=2).any(|dy| green(pixel(s, (at.0 + dx as f32, at.1 + dy as f32)))))
     }
 
+    /// F10: a window's frame, one extrusion across the wall with its light a hole, is cut in plan as its two jambs, as the
+    /// plane cuts it, not outlined whole: in the family's plan and the project's.
+    #[test]
+    fn a_window_familys_plan_cuts_its_frame_as_its_jambs() {
+        let f: Family = serde_json::from_value(json!({
+            "category": "window",
+            "parameters": [{"name": "Width", "value": 1200}, {"name": "Height", "value": 1500}],
+            "types": {"T": {}},
+            "forms": [{"host": {"plane": crate::family::CENTER_FRONT_BACK}, "from": -40, "to": 40, "sketch": [
+                {"start": [-600, 0], "end": [600, 0]}, {"start": [600, 0], "end": [600, 1500]},
+                {"start": [600, 1500], "end": [-600, 1500]}, {"start": [-600, 1500], "end": [-600, 0]},
+                {"start": [-550, 50], "end": [-550, 1450]}, {"start": [-550, 1450], "end": [550, 1450]},
+                {"start": [550, 1450], "end": [550, 50]}, {"start": [550, 50], "end": [-550, 50]}]}],
+        }))
+        .unwrap();
+        let mut s = Session::new();
+        s.model_mut().families.insert("W".into(), f.clone());
+        s.execute("wall", &json!({"points": [[-2500, 0], [2500, 0]]})).unwrap();
+        let window = s.execute("window", &json!({"at": [0, 0], "family": "W", "type": "T", "sill": 0})).unwrap()["id"].as_u64().unwrap();
+        let values = f.values("T", &BTreeMap::new()).unwrap();
+        let mut st = stage(std::sync::Arc::unwrap_or_clone(s.model.clone()), &f, &values, &|_| true);
+        let d = st.draw(Which::Plan, 600, 400, 1.0, P2(0.0, 0.0)).unwrap().drawing;
+        let cut = d
+            .prims
+            .iter()
+            .zip(&d.parts)
+            .zip(&d.owners)
+            .filter(|((p, part), owner)| {
+                **part == render::Part::Cut && owner.is_some_and(|o| o == window) && matches!(p, render::Prim::Line { closed: true, .. })
+            })
+            .count();
+        assert_eq!(cut, 2, "each jamb cut");
+        // Each a 50 by 80 ring, at either end of the opening.
+        let rings: Vec<Vec<P2>> = d
+            .prims
+            .iter()
+            .zip(&d.parts)
+            .zip(&d.owners)
+            .filter(|((_, part), owner)| **part == render::Part::Cut && owner.is_some_and(|o| o == window))
+            .filter_map(|((p, _), _)| match p {
+                render::Prim::Line { pts, closed: true, .. } => Some(pts.iter().map(|q| d.view.mm(*q)).collect()),
+                _ => None,
+            })
+            .collect();
+        for ring in &rings {
+            let (x0, x1) = ring.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), q| (a.min(q.0), b.max(q.0)));
+            assert!((x1 - x0 - 50.0).abs() < 2.0 && (x0.abs() - 575.0).abs() < 30.0, "a jamb: {x0} to {x1}");
+        }
+    }
+
     #[test]
     fn the_plan_cuts_a_form_crossing_its_cut_plane_and_sees_the_others() {
         for (z0, z1, crossing) in [(0.0, 2000.0, true), (0.0, 800.0, false), (1500.0, 2500.0, false)] {
@@ -665,6 +719,16 @@ mod tests {
             assert!(some, "a green trace at ({x}, {y})");
         }
         assert!(st.model.levels().len() == 1 && st.model.levels()[0].1.name == "Ref. Level");
+    }
+
+    /// F10: Ref. Level, drawn as a level in an elevation, is picked there as the family's datum, as a plane's trace is.
+    #[test]
+    fn ref_level_drawn_as_a_level_in_an_elevation_is_picked_as_the_datum() {
+        let mut st = staged(&boxed(0.0, 1500.0));
+        let shown = st.draw(Which::Elevation(Side::Front), 600, 400, 1.0, P2(0.0, 0.0)).unwrap();
+        let at = shown.view.px(st.to_view(Which::Elevation(Side::Front), [-1300.0, 0.0, 0.0]));
+        let picked: Vec<Guid> = shown.drawing.pick_all(at, 6.0).into_iter().filter_map(|id| st.plane_of(id)).collect();
+        assert_eq!(picked.first(), Some(&super::super::REF_LEVEL), "{picked:?}");
     }
 
     /// Each elevation sees the box (east of the origin, behind it) on its own side of the Center plane across it: Front

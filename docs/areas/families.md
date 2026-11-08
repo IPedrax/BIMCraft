@@ -41,7 +41,8 @@ the piece within its two boundaries in plan, `walls::layer_lines`), and a sectio
 the void. A plan clears the void's slice at its cut plane (`render::level_slice`) within the wall's faces, its edges across the
 wall the jambs; whether the opening is drawn at all is still its rectangle's height. IFC writes the voids as the
 `IfcOpeningElement`'s body, closed face sets placed at the opening's middle as its forms are, in place of the extruded
-rectangle. A void's size may read an instance parameter (a depth in its `from` and `to`), so each opening cuts its own.
+rectangle. A plan draws a family opening's forms the cut plane passes through as it cuts them (`view3d::level_slice`: a frame
+extruded across the wall, its jambs), each edge of a void's cut from one face of the wall to the other a jamb. A void's size may read an instance parameter (a depth in its `from` and `to`), so each opening cuts its own.
 Neither is new in a file, so nothing takes a FORMAT step: an older build reads the family and cuts the rectangle.
 
 How a door or a window opens is its family's `operation` (`model::Operation`: swing, double-swing, sliding, double-sliding,
@@ -552,7 +553,8 @@ Out of scope: a pivoted plane dragged square to itself, the grip in {3D}, a repo
 F4: the family document's Project Browser opens the Ref. Level floor and ceiling plans and the four elevations, Back, Front, Left
 and Right, beside {3D}, and the view's tab and the window's title name the one shown (`Floor Plan: Ref. Level`, `Elevation:
 Front`). Each is the project's own drawing of a scratch model (`family/views.rs`, `stage`), as `render {family}` and the 3D
-preview make theirs: the family placed at the origin (a door or a window in its wall), the first level renamed Ref. Level and
+preview make theirs: the family placed at the origin (a door or a window in its wall, a window's sill on Ref. Level, since its
+axes rise from the sill, F10), the first level renamed Ref. Level and
 the others taken away, each of the family's planes but Ref. Level a project reference plane there, across what the views frame
 (named as it is, mapped back to the family's plane by GUID in `Staged::planes`), and four elevations outside it, Front looking
 north, so its right is east, Back south, Left east and Right west, as Revit's. The mapping lives in the scratch model alone:
@@ -645,7 +647,9 @@ out for the type shown, in the view shown if it sees the plane flat, else {3D}; 
 was keeps its formulas (`family::sketch::kept`), one moved holds numbers. A selected extrusion's Start and End show shape handles
 in a plan or an elevation that sees its plane edge-on; dragged, they move along the normal, a step of the history; an end tied to a
 parameter or a formula is greyed and a drag on it is refused, saying why. The Forms tab keeps the typed corners, circle and axis as
-an advanced view; a sketch they can't say shows as "Sketch" with its count of lines.
+an advanced view; a sketch they can't say shows as "Sketch" with its count of lines. Where a form's dimensions and locks put
+its outline, From or To otherwise for the type previewed than it is drawn, the tab shows those fields as they come to, greyed
+under a note naming the type (F10, `held_forms`): the drawn numbers stay, and Edit Extrusion or the dimensions change them.
 
 ## Blends, sweeps and swept blends
 
@@ -1028,3 +1032,37 @@ Load matches family and type names exactly, including case. The caller's `name` 
 creates a separate library definition; imported part identities are reconciled by the normal library sync and do not rename
 or replace an existing family by GUID. A renamed type is added while the old type and its placed instances remain. Switching
 instances to the new family or type is a separate explicit edit.
+
+## Exit test (F10)
+
+0.8's exit criterion: a parametric window drawn from blank and taken all the way through, as a user does it. Two twins build the
+same window: reference planes Left and Right (the opening's sides) and Head, Ref. Level being the sill, since a window's axes
+rise from it; an Aligned Dimension Left to Right labelled Width with EQ about Center (Left/Right), and Ref. Level to Head
+labelled Height (a door or window family always has Width and Height, so the labels take them); a frame extruded on Center
+(Front/Back), 80 deep, its outline Align-locked to the four planes and its light dimensioned and locked 50 mm inside them; and a
+void extrusion there through the wall, also locked to the planes, put first in the Forms tab so it cuts none of the family's forms
+and so cuts the wall (`Family::host_voids`). Three types (900 x 1200, 1200 x 1500, 600 x 600), loaded, placed in a wall, flexed
+through its types, a window schedule, IFC.
+
+- **The desktop** (`crates/ui-egui/src/tests/family_exit.rs`): every step through the window, from Manage > New Family > Window
+  to File > Export's IFC: the Reference Plane tool and Properties' Name, Aligned Dimension and the Options Bar's Label, EQ,
+  Extrusion and Void Extrusion in sketch mode with Rectangle and Align's padlocks, the dimensions' padlocks, the Forms tab, Family
+  Types, Load into Project and Close, the Window tool and the Type Selector, View > Schedules. At each type it measures what is
+  built: the frame's pieces (`Model::opening_pieces`) and a picture of the 3D view probed across the opening's edges (the wall
+  just outside, the frame just inside, through the light). The IFC is read back for each IfcWindow's size, its
+  IfcOpeningElement, the IfcRelVoidsElement to its IfcWall and Width and Height in `Qto_WindowBaseQuantities`.
+  `cargo test -p bimcraft-ui-egui family_exit`; with `BIMCRAFT_F10_DUMP` set to a folder it also saves the screenshots
+  (`f10-*.png`: the family's plan and Front elevation, Family Types, the project's plan, elevation and 3D view at two types, the
+  schedule) and its IFC (`f10-window.ifc`) there.
+- **Commands** (`ci/family-window.txt`): the same family through the `family` command, placed, flexed with `modify` and
+  scheduled; `the_exit_tests_window_flexes_as_built_schedules_and_goes_to_ifc` (`crates/core/src/tests.rs`) checks it, and CI's
+  IFC job writes it (`bimcraft-cli run --script ci/family-window.txt --save family-window.ifc`) and validates it with
+  IfcOpenShell (`python ci/validate_ifc.py family-window.ifc`: the EXPRESS rules and a shape for every product).
+
+What it found and fixed: Ref. Level, drawn as a level in an elevation, couldn't be picked as a reference (`Staged::plane_of`); a
+window stood `Sill Height` above its planes in its document's views (its scratch model now places it on Ref. Level); a frame
+extruded across the wall was outlined whole in plan instead of cut as its jambs (`view3d::level_slice` of each piece the cut
+plane crosses, in the project's plans and the family's); a void straight through the wall lost its jambs in plan (an edge from
+one face to the other is a jamb, not the face's); the Delete key did nothing to a selected form or plane in the family
+document; the Forms tab's Delete left dimensions measuring to the form gone (Load into Project refused them), and its row ran
+past the palette's edge; it showed a locked form's corners as drawn, not as the type previewed puts them.
