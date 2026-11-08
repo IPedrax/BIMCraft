@@ -156,9 +156,14 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// kind and no line point, so it would leave those dimensions out of the file and flex the family as if nothing turned its
 /// lines.
 ///
+/// 29: a family's form may be a Blend (`top`, its top's sketch), a Sweep (`sweep.profile`, its `sketch` the path) or a Swept
+/// Blend (`sweep.profile` and `sweep.end`), and twist (`twist`), F6. A build of 28 reads a family leniently and would drop
+/// all three, building a Blend as an extrusion of its base and a Sweep as an extrusion of its path, which doesn't close and
+/// is refused, so the family wouldn't build: it must refuse the file as newer.
+///
 /// 30: a reference line or a reference plane may carry a `pivot` (F7d): a point it is pinned to and turns about, its swing an
-/// Angle parameter or a number of its own, within limits. A build of 28 reads a family leniently and would leave `pivot` out
-/// of the file, so a door would open unswung and lose its hinge on saving. (29 is F6's, on its own branch.)
+/// Angle parameter or a number of its own, within limits. A build of 29 reads a family leniently and would leave `pivot` out
+/// of the file, so a door would open unswung and lose its hinge on saving.
 pub const FORMAT: u32 = 30;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -3346,6 +3351,7 @@ impl Model {
             .map(|pc| Piece {
                 tris: pc.tris.iter().map(|[a, b, t]| [flip(*a), flip(*t), flip(*b)]).collect(),
                 outline: pc.outline.iter().rev().map(|q| P2(q.0, -q.1)).collect(),
+                holes: pc.holes.iter().map(|h| h.iter().rev().map(|q| P2(q.0, -q.1)).collect()).collect(),
                 ..pc
             })
             .collect()
@@ -3617,7 +3623,9 @@ impl Model {
         // 26 to 27 (nested families and their instances) has none: a file of 26 holds none.
         // 27 to 28 (angular dimensions, reference lines' ends, arcs' radii and centres, forms on reference lines measured) has
         // none: a file of 27 holds none, and every dimension it holds solves as it did.
-        // 28 to 30 (pivots on reference lines and planes) has none: a file of 28 holds none. 29 is F6's, on its own branch.
+        // 28 to 29 (Blends, Sweeps and Swept Blends: a form's `top`, `sweep` and `twist`) has none: a file of 28 holds none, and
+        // every form it holds is an extrusion or a revolve, built as it was.
+        // 29 to 30 (pivots on reference lines and planes) has none: a file of 29 holds none.
         self.settle_hosts(None);
         self.format = FORMAT;
     }
@@ -4309,7 +4317,15 @@ impl Model {
                 let tris =
                     pc.tris.iter().map(|[a, b, c]| if mirrored { [flip(*a), flip(*c), flip(*b)] } else { [flip(*a), flip(*b), flip(*c)] });
                 let outline: Vec<P2> = pc.outline.iter().map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)).collect();
-                Piece { tris: tris.collect(), outline: if mirrored { outline.into_iter().rev().collect() } else { outline }, ..pc }
+                let holes = pc
+                    .holes
+                    .iter()
+                    .map(|h| {
+                        let h: Vec<P2> = h.iter().map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)).collect();
+                        if mirrored { h.into_iter().rev().collect() } else { h }
+                    })
+                    .collect();
+                Piece { tris: tris.collect(), outline: if mirrored { outline.into_iter().rev().collect() } else { outline }, holes, ..pc }
             })
             .collect();
         let marks = marks.iter().map(|(k, sub)| (k.map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)), *sub)).collect();
@@ -4365,6 +4381,7 @@ impl Model {
             .map(|pc| Piece {
                 tris: pc.tris.iter().map(|t| t.map(place)).collect(),
                 outline: pc.outline.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect(),
+                holes: pc.holes.iter().map(|h| h.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect()).collect(),
                 bottom: z + pc.bottom,
                 top: z + pc.top,
                 ..pc

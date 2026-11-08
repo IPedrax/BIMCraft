@@ -378,11 +378,24 @@ impl Form {
                 }
             }
         }
+        // A Blend's top and a sweep's profiles (F6), each from its own.
+        let keep = |new: &mut [FormLine], old: &[FormLine]| {
+            for (l, o) in new.iter_mut().zip(old) {
+                if crate::ids::unset(&l.id) && l.guid.is_nil() {
+                    (l.id, l.guid) = (o.id, o.guid);
+                }
+            }
+        };
+        keep(&mut self.top, &old.top);
+        if let (Some(s), Some(o)) = (self.sweep.as_mut(), old.sweep.as_ref()) {
+            keep(&mut s.profile, &o.profile);
+            keep(&mut s.end, &o.end);
+        }
     }
 
-    /// Its sketch's numbers, each once.
+    /// Its sketch's numbers, each once, and its top's and profiles' (F6).
     pub fn sketch_exprs(&self) -> impl Iterator<Item = &Expr> {
-        self.sketch.iter().flat_map(FormLine::exprs)
+        self.all_lines().flat_map(FormLine::exprs)
     }
 
     /// The loops its profile makes, read by `num` for a type: each outline counter-clockwise with its holes clockwise, the
@@ -491,7 +504,7 @@ pub enum Finish {
 
 /// A line or an arc as straight pieces, an arc's [`SEGMENTS`] to a whole turn (at least one), a circle's all round: what a
 /// form is built of, and what its loops are found from. It keeps its id and GUID.
-fn chorded(l: &SketchLine) -> SketchLine {
+pub(crate) fn chorded(l: &SketchLine) -> SketchLine {
     use crate::curves::Curve;
     let steps = |turn: f64| ((turn.abs() / 360.0 * SEGMENTS as f64) - 1e-9).ceil().max(1.0) as usize;
     let curve = match &l.curve {

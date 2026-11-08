@@ -689,19 +689,22 @@ fn layout<'a>(
     read: &mut HashMap<&'a str, Result<Node, String>>,
     meter: &mut Meter,
 ) -> Result<Layout, String> {
-    if form.sketch.len() > sketch::MAX_SKETCH {
-        return Err(format!("its sketch has {} lines, more than {}", form.sketch.len(), sketch::MAX_SKETCH));
+    let count = form.plane_lines().count();
+    if count > 2 * sketch::MAX_SKETCH {
+        return Err(format!("its sketch has {count} lines, more than {}", 2 * sketch::MAX_SKETCH));
     }
-    meter.spend(16 * form.sketch.len() as u64 + 1)?;
+    meter.spend(16 * count as u64 + 1)?;
     let mut out = Layout::default();
-    let mut grid: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+    // A Blend's base and top (F6) are two groups: a vertex of one never joins one of the other.
+    let mut grid: HashMap<(usize, i64, i64), Vec<usize>> = HashMap::new();
     let cell = |p: P2| ((p.0 / TOL).floor() as i64, (p.1 / TOL).floor() as i64);
     let mut join = |out: &mut Layout, p: P2, own: bool, k: usize, spot: Spot| -> usize {
+        let group = form.plane_group(k);
         if !own {
             let (cx, cy) = cell(p);
             for dx in -1..=1 {
                 for dy in -1..=1 {
-                    for &v in grid.get(&(cx + dx, cy + dy)).map(Vec::as_slice).unwrap_or_default() {
+                    for &v in grid.get(&(group, cx + dx, cy + dy)).map(Vec::as_slice).unwrap_or_default() {
                         if out.at[v].dist(p) <= TOL {
                             out.points[v].push((k, spot));
                             return v;
@@ -714,11 +717,12 @@ fn layout<'a>(
         out.points.push(vec![(k, spot)]);
         let v = out.at.len() - 1;
         if !own {
-            grid.entry(cell(p)).or_default().push(v);
+            let (cx, cy) = cell(p);
+            grid.entry((group, cx, cy)).or_default().push(v);
         }
         v
     };
-    for (k, l) in form.sketch.iter().enumerate() {
+    for (k, l) in form.plane_lines().enumerate() {
         let mut num = |e: &'a Expr| number(e, values, read);
         match &l.curve {
             FormCurve::Line { start, end, turn } => {
@@ -776,10 +780,9 @@ fn sketched(f: &Family, g: Guid) -> Result<(usize, &Form, PlaneRef, Frame), Stri
 
 /// Line `l` of form `i`'s sketch: its place and the line.
 fn sketch_line(form: &Form, i: usize, l: Guid) -> Result<(usize, &FormLine), String> {
-    form.sketch
-        .iter()
-        .position(|x| x.guid == l)
-        .map(|k| (k, &form.sketch[k]))
+    form.plane_lines()
+        .enumerate()
+        .find(|(_, x)| x.guid == l)
         .ok_or_else(|| format!("form {}: line {l} isn't one of its sketch's lines", i + 1))
 }
 
@@ -1415,8 +1418,8 @@ fn ray_signs(lines: &[(P2, P2)], at: P2) -> Result<AngleSigns, String> {
 fn end_form(f: &Family, g: Guid) -> Result<(usize, &Form), String> {
     let i = f.forms.iter().position(|x| x.guid == g).ok_or_else(|| format!("form {g} isn't one of its forms"))?;
     let form = &f.forms[i];
-    if !form.mesh.is_empty() || form.axis().is_some() {
-        return Err(format!("form {}: only an extrusion's start and end are measured", i + 1));
+    if !form.mesh.is_empty() || form.axis().is_some() || form.kind().swept() {
+        return Err(format!("form {}: only an extrusion's or a blend's start and end are measured", i + 1));
     }
     Ok((i, form))
 }
@@ -2267,7 +2270,7 @@ impl Family {
         }
         let n = |p: &P2| [Expr::Number(p.0), Expr::Number(p.1)];
         for (i, k, spot, p) in &s.points {
-            let Some(line) = f.forms.get_mut(*i).and_then(|x| x.sketch.get_mut(*k)) else { continue };
+            let Some(line) = f.forms.get_mut(*i).and_then(|x| x.plane_line_mut(*k)) else { continue };
             match (&mut line.curve, spot) {
                 (FormCurve::Line { start, .. }, Spot::Start) => *start = n(p),
                 (FormCurve::Line { end, .. }, Spot::End) => *end = n(p),
@@ -2276,12 +2279,12 @@ impl Family {
             }
         }
         for (i, k, r) in &s.radii {
-            if let Some(FormCurve::Circle { radius, .. }) = f.forms.get_mut(*i).and_then(|x| x.sketch.get_mut(*k)).map(|l| &mut l.curve) {
+            if let Some(FormCurve::Circle { radius, .. }) = f.forms.get_mut(*i).and_then(|x| x.plane_line_mut(*k)).map(|l| &mut l.curve) {
                 *radius = Expr::Number(*r);
             }
         }
         for (i, k, t) in &s.turns {
-            if let Some(FormCurve::Line { turn, .. }) = f.forms.get_mut(*i).and_then(|x| x.sketch.get_mut(*k)).map(|l| &mut l.curve) {
+            if let Some(FormCurve::Line { turn, .. }) = f.forms.get_mut(*i).and_then(|x| x.plane_line_mut(*k)).map(|l| &mut l.curve) {
                 *turn = Some(Expr::Number(*t));
             }
         }
@@ -2446,7 +2449,7 @@ impl Family {
         }
         let mut read = HashMap::new();
         for (i, k, spot, p) in &s.points {
-            let Some(line) = self.forms.get(*i).and_then(|f| f.sketch.get(*k)) else { continue };
+            let Some(line) = self.forms.get(*i).and_then(|f| f.plane_line(*k)) else { continue };
             let was = match (&line.curve, spot) {
                 (FormCurve::Line { start, .. }, Spot::Start) => start,
                 (FormCurve::Line { end, .. }, Spot::End) => end,
@@ -2483,7 +2486,7 @@ impl Family {
     /// What its dimensions measure to that isn't there: each dimension (by place) with a reference it has no plane, form,
     /// sketch line or reference line for.
     pub fn dangling_dimensions(&self) -> Vec<usize> {
-        let line = |g: Guid, l: Guid| self.forms.iter().any(|f| f.guid == g && f.sketch.iter().any(|x| x.guid == l));
+        let line = |g: Guid, l: Guid| self.forms.iter().any(|f| f.guid == g && f.plane_lines().any(|x| x.guid == l));
         self.dimensions
             .iter()
             .enumerate()
@@ -2523,9 +2526,9 @@ impl Family {
     /// ([`Family::forget_reference`]): a form drawn again keeps the dimensions of the lines that keep their GUIDs. How many
     /// dimensions went.
     pub fn forget_lines_gone(&mut self, before: &[Form]) -> usize {
-        let now: BTreeSet<Guid> = self.forms.iter().flat_map(|f| f.sketch.iter().map(|l| l.guid)).collect();
+        let now: BTreeSet<Guid> = self.forms.iter().flat_map(|f| f.all_lines().map(|l| l.guid)).collect();
         let gone: Vec<Guid> =
-            before.iter().flat_map(|f| f.sketch.iter().map(|l| l.guid)).filter(|g| !g.is_nil() && !now.contains(g)).collect();
+            before.iter().flat_map(|f| f.all_lines().map(|l| l.guid)).filter(|g| !g.is_nil() && !now.contains(g)).collect();
         gone.into_iter()
             .map(|g| {
                 self.forget_pivots(g);
@@ -2542,7 +2545,7 @@ impl Family {
         let form_ids = ids(&mut self.forms.iter().map(|f| (f.id, f.guid)));
         let line_ids = ids(&mut self.lines.iter().map(|l| (l.id, l.guid)));
         let sketch_ids: Vec<(Guid, Vec<(Id, Guid)>)> =
-            self.forms.iter().map(|f| (f.guid, f.sketch.iter().map(|l| (l.id, l.guid)).collect())).collect();
+            self.forms.iter().map(|f| (f.guid, f.plane_lines().map(|l| (l.id, l.guid)).collect())).collect();
         let pick = |among: &[(Id, Guid)], g: &mut Guid| {
             if let Some(id) = g.pending()
                 && let Some((_, found)) = among.iter().find(|(i, found)| *i == id && !crate::ids::unset(i) && !found.is_nil())
@@ -2882,7 +2885,7 @@ pub fn end_faces(flexed: &Family, values: &BTreeMap<String, Val>, st: &views::St
     let mut out = Vec::new();
     let mut read = HashMap::new();
     for (i, form) in flexed.forms.iter().enumerate() {
-        if !form.mesh.is_empty() || form.axis().is_some() || form.guid.is_nil() {
+        if !form.mesh.is_empty() || form.axis().is_some() || form.kind().swept() || form.guid.is_nil() {
             continue;
         }
         let Ok(frame) = flexed.frame(&form.host) else { continue };
@@ -2927,7 +2930,8 @@ pub fn sketch_faces(flexed: &Family, values: &BTreeMap<String, Val>, st: &views:
         }
         let Ok(frame) = flexed.frame(&form.host) else { continue };
         let flat = parallel(frame.z, eye);
-        let edge = dot(frame.z, eye).abs() <= PARALLEL && !form.revolves();
+        // A side face seen edge on is an extrusion's alone: a blend's sides lean, a sweep's follow its path.
+        let edge = dot(frame.z, eye).abs() <= PARALLEL && form.kind() == super::forms::FormKind::Extrusion;
         if !flat && !edge {
             continue;
         }
@@ -2939,7 +2943,7 @@ pub fn sketch_faces(flexed: &Family, values: &BTreeMap<String, Val>, st: &views:
         } else {
             (0.0, 0.0)
         };
-        for l in form.sketch.iter().filter(|l| !l.guid.is_nil()) {
+        for l in form.plane_lines().filter(|l| !l.guid.is_nil()) {
             let FormCurve::Line { start, end, turn } = &l.curve else { continue };
             let mut num = |e| number(e, values, &mut read);
             let (Ok(ax), Ok(ay), Ok(bx), Ok(by)) = (num(&start[0]), num(&start[1]), num(&end[0]), num(&end[1])) else { continue };
@@ -2999,7 +3003,7 @@ pub fn sketch_circles(flexed: &Family, values: &BTreeMap<String, Val>, st: &view
             continue;
         }
         let at = |p: P2| st.to_view(which, frame.point(p, 0.0));
-        for l in form.sketch.iter().filter(|l| !l.guid.is_nil()) {
+        for l in form.plane_lines().filter(|l| !l.guid.is_nil()) {
             let r = DimRef::Sketch(form.guid, l.guid);
             let mut num = |e| number(e, values, &mut read);
             match &l.curve {
