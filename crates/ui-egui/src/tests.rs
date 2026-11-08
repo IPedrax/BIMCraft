@@ -5865,6 +5865,7 @@ mod shortcuts_kept;
 mod sketch;
 mod sketch3d;
 mod smallest;
+mod spacemouse;
 mod standards;
 mod start;
 mod templates;

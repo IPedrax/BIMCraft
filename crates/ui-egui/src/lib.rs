@@ -64,6 +64,7 @@ mod shape;
 pub mod shortcuts;
 mod sketch;
 mod sketch3d;
+pub mod spacemouse;
 mod standards;
 mod start;
 mod structure;
@@ -781,6 +782,8 @@ pub struct BimApp {
     styled: bool,
     /// The updater, which the desktop app attaches: a window starts without one, and so never phones home.
     pub updates: Option<bimcraft_update::Updater>,
+    /// The 3D mouse's reader, which the desktop app attaches: a window starts without one, so a test never opens a device.
+    pub space_mouse: Option<spacemouse::SpaceMouse>,
     /// The reader of Revit files, which the desktop app attaches (`bimcraft-rvt` is Apache-2.0 only, so this crate never depends on
     /// it): a window starts without one, so it offers no `.rvt` and a test never reads a real one.
     pub revit: Option<revit::Importer>,
@@ -1325,6 +1328,7 @@ impl BimApp {
             title: String::new(),
             styled: false,
             updates: None,
+            space_mouse: None,
             revit: None,
             control: None,
             agents: control::Agents::default(),
@@ -2993,6 +2997,8 @@ impl BimApp {
         (fresh.settings_path, fresh.settings_kept) = (self.settings_path.take(), self.settings_kept.take());
         fresh.window = std::mem::take(&mut self.window);
         (fresh.updates, fresh.revit) = (self.updates.take(), self.revit.take());
+        // The 3D mouse's reader runs for the window, not the project: without it the cap would move nothing once a project is open.
+        fresh.space_mouse = self.space_mouse.take();
         fresh.control = self.control.take();
         fresh.agents = std::mem::take(&mut self.agents);
         fresh.opens = std::mem::take(&mut self.opens);
