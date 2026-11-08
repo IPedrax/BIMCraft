@@ -117,11 +117,11 @@ Modify lets it go) shows its own Properties in place of the family's tabs, as Re
 Constraints (Extrusion End and Start in the project's units, each with `=`, a revolve's angles instead; the Work Plane, read-only,
 named as `Planes::listed` names it), Graphics (Visible with `=`; Visibility/Graphics Overrides is F8's and shows greyed), Materials
 and Finishes (Material with `=`) and Identity Data (Solid/Void). A value tied to a parameter or worked out by a formula is greyed. The
-contextual tab is "Modify | Form", with Delete and Edit Work Plane, which drops down the family's planes; the Options Bar shows
+contextual tab is "Modify | Form", with Delete and Edit Work Plane, which opens the Work Plane dialog for the form (T12, below); the Options Bar shows
 Depth (End less Start: typed, Start stays and End moves; greyed while End is tied). Edits go to the draft and its history. Solid/Void
 and Edit Work Plane run `family` (its `form` patch) and `edit_work_plane` on a private session holding the draft, as Save Family
 does, and take the form back with the id and GUID it had: the form moves with the plane. Sketch mode (Edit Extrusion, Finish and
-Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's (below), Revit's Work Plane dialog T12's, Visibility Settings F8's;
+Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's (below), Visibility Settings F8's;
 the 3D preview does not highlight the form selected.
 
 Expression-valued form and symbol properties (their numbers, Visible and a form's Material) offer `=` (`editor/association.rs`),
@@ -409,14 +409,27 @@ selected plane's trace drawn heavier. A plane of the family's own, selected, mov
 Reference Plane (RP, the Create tab's Datum) draws one by two clicks: in plan upright (`up` the vertical), in an elevation
 `up` the way it looks, so its normal lies in the elevation's plane (`views::new_plane`); it has no name, is Weak, and is a step
 of the document's history (`Draft` keeps the planes). Work Plane on the Create tab: each view has its own work plane for the
-session (Ref. Level in plan, the Center plane an elevation faces), which Set picks from the family's planes as A4's list names
-them, or by a click on one (Pick; the Work Plane dialog is T12's); Show tints it, all over where the view looks straight at it,
-along its trace where across it. {3D} has a work plane of its own too (Ref. Level until Set, from the list alone): Show draws it
+session (Ref. Level in plan, the Center plane an elevation faces), which Set sets through Revit's Work Plane dialog (T12, below); Show
+tints it, all over where the view looks straight at it, along its trace where across it. {3D} has a work plane of its own too (Ref.
+Level until Set, by name alone): Show draws it
 into its picture over the patch the project's 3D view lays its work plane on (`workplane::patch`), what the family takes up and
 300 mm round: tinted as the plans tint it, with its outline and a grid through the family's origin whose step leaves about 5 to 20
 lines across it (10, 50, 100, 500 or 1000 mm, `workplane::grid_step`), depth tested against the picture
 (`view3d::Image::draw_plane`), so a form in front of the plane hides it and one behind it is seen through its tint.
-An adaptive family's modelling view keeps its own Work Plane panel and Show. While Preview Visibility is off, the solid forms the type hides are a second component of a
+An adaptive family's modelling view keeps its own Work Plane panel and Show. An elevation is framed on what it shows as a project's
+is (`render::section_extent`), so its levels' names past their lines' ends aren't cut at the picture's edge.
+
+The Work Plane dialog (T12, `editor/work_plane.rs`), as Revit's: Current Work Plane names the plane as `Planes::listed` does, with Show
+(the ribbon's toggle) and Dissociate, greyed (a family's work plane is always one of its planes or lines, which forms are drawn on).
+Specify a new Work Plane: Name, the family's planes as `Planes::listed` lists them; Pick a plane, a reference plane's or a datum's
+trace; Pick a line and use the work plane it was sketched in, a reference line as the view draws it (`Staged::line_at`), whose host is
+taken. The two Picks need a plan or an elevation, where planes and lines are drawn; in {3D} they are greyed. OK with a Pick closes the
+dialog and the next click picks (the status bar says what to click; a click on nothing waits on); Escape brings the dialog back. The
+view's work plane is set where the view shows the plane flat (`Which::faces`; {3D} takes any); else Go To View asks, listing the views
+that do (`views::flat_views`: the two plans for a level plane, Front and Back or Left and Right for an upright one square to them) and
+{3D}; Open View (or a double click) shows the one chosen with the plane set there, Cancel sets nothing. So a trace picked in a plan or
+an elevation, always edge-on there, goes through Go To View, as in Revit. From a form's Edit Work Plane the dialog runs
+`edit_work_plane` through the draft, as before, and the form moves with its plane; nothing is asked. While Preview Visibility is off, the solid forms the type hides are a second component of a
 family of their own in the scratch model, drawn halftone, as {3D} ghosts them (not for a door or a window, whose wall holds one
 opening); on, they are left out. Temporary Hide/Isolate leaves a form hidden for now out of every view; a selected plane can be
 hidden (HH), isolated or hidden with every plane (HC). It keeps **one state for the whole family document**, every view showing
@@ -446,11 +459,13 @@ and, for a revolve, Axis Line; Line, Rectangle, the polygons, Circle, the three 
 Pick Lines: in a plan or an elevation a plane's or reference line's trace, or another form's edge; in {3D} another form's edge
 (`snap::creases`), a reference line or the line a reference plane was drawn as, which {3D} draws while sketching, seen square on to
 the work plane, an edge square to it refused with a message; no spline or ellipse), Modify (pick, Delete, a picked line's end
-dragged) and Work Plane (Show). The pointer snaps as a project's view snaps (`snap::among`, the same switches, guides, order and
+dragged) and Work Plane (Set, the Work Plane dialog for the sketch: the plane taken, its lines go with it in the plane's own
+axes; Show). The pointer snaps as a project's view snaps (`snap::among`, the same switches, guides, order and
 markers, `canvas::snap_mark`) to the reference planes' traces across the work plane, where they cross, the other forms' edges
 and their ends seen on it, the reference lines and the sketch's own lines (`Family::sketch_targets`). Chain, on the Options Bar
 for Line and the chained arcs, is kept for the session: off, each starts afresh. A plan or an elevation that doesn't see the work plane flat asks Go To View, offering
-those that do and {3D}; {3D} draws on the plane where the pointer shows it. The lines are the project's sketch's
+those that do and {3D}: the Work Plane dialog's one Go To View (`FamilyEditor::on_work_plane`, `work_plane::Then`), the sketch
+beginning in the view opened; {3D} draws on the plane where the pointer shows it. The lines are the project's sketch's
 (`sketch::Sketch`, with its local Ctrl+Z), in the plane's axes. The Options Bar has Depth (End less Start), Sides, Radius and
 Offset; Properties the Start and End (a revolve's Start Angle and End Angle, as a selected one's Properties and the Forms tab
 name them), Material and Solid/Void. Finish checks the lines as the core does
@@ -523,7 +538,8 @@ the plane, as Revit's does: a form keeps its profile and its `from` and `to` in 
 from the old plane's axes to the new one's), and what is drawn on the line's planes follows. With `keep` it stays where it is:
 a form only on a plane parallel to its old one (facing either way), its profile mapped and its depth moved by the distance
 between the planes (negated and swapped facing the other way; a formula is kept and wrapped, `(…) + d`); a line only on a
-plane it already lies on. A mesh form has no work plane to change.
+plane it already lies on. A mesh form has no work plane to change. `host` may also be a name, as the Work Plane dialog lists it
+(`"Reference Line 1 : Vertical"`, `"Reference Plane : Left"`) or a plane's own (`Planes::by_name`).
 
 The project has reference planes (`hosting.rs`, `ReferencePlane`, category `refplane`): drawn by `reference_plane {start,
 end, up?, name?, level?}` as a family's are, along a line with an `up` (the vertical by default, so a line drawn in plan makes
@@ -565,10 +581,15 @@ The desktop's Component tool, placing a work plane-based family, shows Place on 
 level, or a reference plane of the project) on its Options Bar, and for any family Rotate after placement, which selects what
 it placed and starts Rotate about its point. Properties shows a work plane-based family's component's Schedule Level,
 Elevation from Level (read only on a plane), Work Plane and Offset from Host; another's, as Revit's level-based ones, its
-Level and Elevation from Level (the same `offset`). The Reference Plane tool (`Tool::ReferencePlane`: RP, the `reference_plane`
+Level and Elevation from Level (the same `offset`). Selected work plane-based components (not adaptive ones) have Revit's
+Work Plane panel on their contextual tab: Edit Work Plane opens the Work Plane dialog (T12) on them, naming the first one's plane,
+and runs `edit_work_plane {ids, host}`: Name puts them on a level or a named reference plane, Pick a plane on the face of a wall,
+a floor, a ceiling or a roof clicked in the 3D view (`Model::face_role`), Pick a line on the level of a line clicked; their
+Offset from Host is kept, and there is no Pick three points, Offset or Dissociate for them. The Reference Plane tool (`Tool::ReferencePlane`: RP, the `reference_plane`
 command's alias, as Revit's; Architecture > Datum's Ref Plane, beside Set, where Revit's Work Plane panel has it; Find or
-Create Similar) draws an upright plane through two clicks in plan. Picking a sloped plane in plan, drawing
-planes in sections and the Work Plane dialog (T12) are not here.
+Create Similar) draws an upright plane through two clicks in plan. A 3D view's work plane may be a reference plane of the
+project, which it then follows (T12, [views and graphics](views-and-graphics.md)). Picking a sloped plane in plan and drawing
+planes in sections are not here.
 
 ### Place on Face
 

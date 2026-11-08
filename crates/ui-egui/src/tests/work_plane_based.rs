@@ -157,3 +157,68 @@ fn properties_show_revits_level_and_elevation_from_level_for_a_component_not_wor
         assert!(h.query_by_label(gone).is_none(), "{gone}");
     }
 }
+
+/// Edit Work Plane on a selected work plane-based component (T12): the Work Plane dialog, naming its plane, puts it on a
+/// named reference plane, a face picked in the 3D view, or the level of a line picked, by `edit_work_plane`.
+#[test]
+fn edit_work_plane_puts_a_selected_component_on_a_named_plane_a_picked_face_or_a_picked_lines_level() {
+    let script = format!(
+        "{BOX}\n{SIGN}\nfloor {{\"boundary\": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], \"offset\": 300}}\n\
+         component {{\"family\": \"Sign\", \"at\": [2000, 3000]}}"
+    );
+    let mut h = app(&script);
+    let c = *ids(&h, "component").last().unwrap();
+    assert_eq!(field(&h, c, "work_plane"), json!("Level : Level 1"));
+    h.state_mut().selection = vec![c];
+    h.state_mut().raise_context();
+    h.run();
+    press(&mut h, "Edit Work Plane");
+    assert!(h.state().work_plane.as_ref().is_some_and(|d| d.components == vec![c]), "the dialog, for the component");
+    assert!(h.query_by_label("Pick three points").is_none(), "a component isn't put on three points");
+    if let Some(d) = h.state_mut().work_plane.as_mut() {
+        d.name = "Reference Plane : Ramp".into();
+    }
+    h.run();
+    press(&mut h, "OK");
+    assert!(h.state().work_plane.is_none(), "{:?}", h.state().status);
+    assert_eq!(field(&h, c, "work_plane"), json!("Reference Plane : Ramp"));
+    // Pick a plane: the floor's top, clicked in the 3D view, which the pick opens.
+    press(&mut h, "Edit Work Plane");
+    pick(&mut h, Role::RadioButton, "Pick a plane");
+    press(&mut h, "OK");
+    assert_eq!(h.state().sheet, Sheet::View3D);
+    let at = h.state().screen3([4000.0, 4500.0, 300.0]);
+    click_at(&mut h, at);
+    assert!(h.state().work_plane.is_none(), "{:?}", h.state().status);
+    assert_eq!(field(&h, c, "work_plane"), json!("Floor : Generic - 200mm : Top"));
+    // Pick a line: a wall, whose level is taken.
+    h.state_mut().selection = vec![c];
+    h.state_mut().raise_context();
+    h.run();
+    press(&mut h, "Edit Work Plane");
+    pick(&mut h, Role::RadioButton, "Pick a line and use the work plane it was sketched in");
+    press(&mut h, "OK");
+    let half = {
+        let m = &h.state().session.model;
+        m.thickness(m.wall(ids(&h, "wall")[0]).unwrap()) / 2.0
+    };
+    let at = h.state().screen3([4000.0, -half, 1500.0]);
+    click_at(&mut h, at);
+    assert!(h.state().work_plane.is_none(), "{:?}", h.state().status);
+    assert_eq!(field(&h, c, "work_plane"), json!("Level : Level 1"));
+}
+
+/// The project's Edit Work Plane dialog, rendered for a look (`BIMCRAFT_T12_DUMP`: a folder).
+#[test]
+fn component_edit_work_plane_picture() {
+    let Ok(folder) = std::env::var("BIMCRAFT_T12_DUMP") else { return };
+    let mut h = app(&format!("{BOX}\n{SIGN}\ncomponent {{\"family\": \"Sign\", \"at\": [2000, 3000], \"host\": {{\"plane\": \"Ramp\"}}}}"));
+    h.set_size(vec2(1600.0, 1000.0));
+    let c = *ids(&h, "component").last().unwrap();
+    h.state_mut().selection = vec![c];
+    h.state_mut().raise_context();
+    h.run();
+    press(&mut h, "Edit Work Plane");
+    h.run();
+    h.render().unwrap().save(std::path::Path::new(&folder).join("t12-component-edit-work-plane.png")).unwrap();
+}

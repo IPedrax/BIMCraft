@@ -15,12 +15,16 @@
 use serde::{Deserialize, Serialize};
 
 use crate::geom::P2;
-use crate::model::{Guid, Id, MAX_COORD, Model, TOL};
+use crate::model::{Element, Guid, Id, MAX_COORD, Model, TOL};
 use crate::view3d::{Camera, P3, add, cross, dot, mul, sub, unit};
 use crate::walls::Plane;
 
-/// A 3D view's work plane: on `level`, through three `points`, or on a `surface` picked on the model; `offset` mm off it,
-/// along its normal (up, for a level).
+/// A 3D view's work plane: on `level`, through three `points`, on a `surface` picked on the model, or on a reference plane
+/// of the project (`ref_plane`, T12); `offset` mm off it, along its normal (up, for a level).
+///
+/// On a reference plane it follows the plane: the plane moved or turned moves it. Its `surface` is kept beside it as where
+/// the plane is now ([`Model::settle_work_planes`], after every command), so a build that doesn't know `ref_plane` (which
+/// leaves the key out as it reads the file) reads the same plane, only no longer following it: what Dissociate makes of it.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkPlane {
@@ -29,9 +33,11 @@ pub struct WorkPlane {
     #[serde(default, skip_serializing_if = "is_zero")]
     pub offset: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub points: Option<[[f64; 3]; 3]>,
+    pub points: Option<Box<[[f64; 3]; 3]>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surface: Option<Surface>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ref_plane: Option<Guid>,
 }
 
 /// A surface of the model a work plane was set on: a point of it and the way it faces.
@@ -109,6 +115,17 @@ impl WorkPlane {
         if !self.offset.is_finite() || self.offset.abs() > MAX_COORD {
             return Err(format!("its offset {} isn't a length", self.offset));
         }
+        if let Some(g) = self.ref_plane {
+            if self.level.is_some() || self.points.is_some() {
+                return Err("a work plane on a `ref_plane` has no `level` or `points` beside it".into());
+            }
+            let f = match m.elements.get(g) {
+                Some(Element::RefPlane(rp)) => rp.frame(),
+                Some(e) => return Err(format!("its `ref_plane` is a {}, not a reference plane", e.category())),
+                None => return Err("its reference plane isn't in the project".into()),
+            };
+            return Ok(Frame { origin: f.origin, normal: f.z }.moved(self.offset));
+        }
         let plane = match (&self.level, &self.points, &self.surface) {
             (Some(level), None, None) => {
                 if m.elements.get(*level).is_none() {
@@ -128,6 +145,114 @@ impl WorkPlane {
     pub fn slope(&self, m: &Model) -> f64 {
         self.resolve(m).map_or(0.0, |p| p.slope())
     }
+
+    /// What the Work Plane dialog calls it, as Revit's Current Work Plane: `Level : Level 1`, `Reference Plane : Ramp` (its
+    /// id where it has no name); a surface `Surface` and three points `Three points`. Its offset is not said.
+    pub fn name(&self, m: &Model) -> String {
+        if let Some(g) = self.ref_plane {
+            return match m.elements.get(g) {
+                Some(Element::RefPlane(rp)) if !rp.name.is_empty() => format!("Reference Plane : {}", rp.name),
+                _ => format!("Reference Plane : {}", m.shown(g)),
+            };
+        }
+        match (&self.level, &self.surface, &self.points) {
+            (Some(g), ..) => format!("Level : {}", m.level(*g).map(|l| l.name.as_str()).unwrap_or_default()),
+            (None, Some(_), _) => "Surface".into(),
+            (None, None, Some(_)) => "Three points".into(),
+            // Unset: the lowest level, as the view sketches on.
+            _ => m.levels().first().map(|(_, l)| format!("Level : {}", l.name)).unwrap_or_default(),
+        }
+    }
+
+    /// The same plane, no longer following its reference plane (Dissociate): where the plane is now, as a surface. None for
+    /// one that follows nothing.
+    pub fn dissociated(&self, m: &Model) -> Option<WorkPlane> {
+        self.ref_plane?;
+        let f = WorkPlane { offset: 0.0, ..self.clone() }.resolve(m).ok()?;
+        Some(WorkPlane { surface: Some(Surface { point: f.origin, normal: f.normal }), ref_plane: None, ..self.clone() })
+    }
+}
+
+impl Model {
+    /// The 3D views whose work plane follows a reference plane and isn't where the plane is now, each with its work plane
+    /// as it is to be: its `surface` where the plane is; or, the plane gone, dissociated where it last was.
+    pub fn unsettled_work_planes(&self) -> Vec<(Id, WorkPlane)> {
+        self.rare("view3d")
+            .into_iter()
+            .filter_map(|id| {
+                let Some(Element::View3D(v)) = self.elements.get(id) else { return None };
+                let wp = v.work_plane.as_ref()?;
+                let g = wp.ref_plane?;
+                let next = match self.elements.get(g) {
+                    Some(Element::RefPlane(rp)) => {
+                        let f = rp.frame();
+                        WorkPlane { surface: Some(Surface { point: f.origin, normal: f.z }), ..wp.clone() }
+                    }
+                    _ => WorkPlane { ref_plane: None, ..wp.clone() },
+                };
+                (next != *wp).then_some((id, next))
+            })
+            .collect()
+    }
+
+    /// Each 3D view's work plane that follows a reference plane put where the plane is ([`Model::unsettled_work_planes`]).
+    pub fn settle_work_planes(&mut self) {
+        for (id, wp) in self.unsettled_work_planes() {
+            if let Some(Element::View3D(v)) = self.elements.get_mut(id) {
+                v.work_plane = Some(wp);
+            }
+        }
+    }
+}
+
+/// The work planes a 3D view may be set on by name, as the Work Plane dialog's Name lists them: each level, low to high
+/// (`Level : Level 1`), then each named reference plane of the project by name (`Reference Plane : Ramp`).
+pub fn choices(m: &Model) -> Vec<(WorkPlane, String)> {
+    let mut out: Vec<(WorkPlane, String)> =
+        m.levels().into_iter().map(|(id, l)| (WorkPlane::on(m.guid(id), 0.0), format!("Level : {}", l.name))).collect();
+    let mut planes: Vec<(String, Guid)> = m
+        .rare("refplane")
+        .into_iter()
+        .filter_map(|id| match m.elements.get(id) {
+            Some(Element::RefPlane(rp)) if !rp.name.is_empty() => Some((rp.name.clone(), m.guid(id))),
+            _ => None,
+        })
+        .collect();
+    planes.sort();
+    out.extend(
+        planes.into_iter().map(|(n, g)| (WorkPlane { ref_plane: Some(g), ..WorkPlane::default() }, format!("Reference Plane : {n}"))),
+    );
+    out
+}
+
+/// The work plane named `name`: a label [`choices`] lists, or a level's or a named reference plane's own name. A name that
+/// is both a level's and a plane's is refused, naming both labels, as is one that is neither.
+pub fn by_name(m: &Model, name: &str) -> Result<WorkPlane, String> {
+    let all = choices(m);
+    let name = name.trim();
+    if let Some((wp, _)) = all.iter().find(|(_, label)| label == name) {
+        return Ok(wp.clone());
+    }
+    let bare: Vec<&(WorkPlane, String)> = all.iter().filter(|(_, label)| label.split_once(" : ").is_some_and(|(_, n)| n == name)).collect();
+    match bare[..] {
+        [(wp, _)] => Ok(wp.clone()),
+        [] => {
+            let names: Vec<&str> = all.iter().map(|(_, l)| l.as_str()).collect();
+            Err(format!("no level or named reference plane is `{name}`; the work planes by name are: {}", names.join(", ")))
+        }
+        _ => {
+            let labels: Vec<&str> = bare.iter().map(|(_, l)| l.as_str()).collect();
+            Err(format!("`{name}` names more than one work plane; give one of {}", labels.join(" and ")))
+        }
+    }
+}
+
+/// The work plane element `id` was drawn on, for Pick a line: a wall, a beam, a pipe or another element drawn along a line
+/// on a level, that level (a beam's work plane is its level, as Revit's). None for anything else.
+pub fn sketched_in(m: &Model, id: Id) -> Option<WorkPlane> {
+    let e = m.elements.get(id)?;
+    let along_a_line = matches!(e, Element::Wall(_)) || matches!(e, crate::model::run_arm!(_r));
+    along_a_line.then(|| m.level_of(e)).flatten().map(|g| WorkPlane::on(g, 0.0))
 }
 
 /// Whether plane `p` lies level: what a floor, a ceiling, a roof or a shaft can be sketched on.
