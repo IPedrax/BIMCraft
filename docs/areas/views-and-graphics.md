@@ -639,7 +639,10 @@ the order it draws the planes, once every plane's trace is known, and a name who
 its trace's other end; crowded there too, it goes beside its own trace, its box a hair off the line just inside an end (one side,
 then the other, then by the other end, then stepped in along the trace), the first place clear of the other names and of the other
 planes' traces inside the picture taken (`render::plane_name_px`). So a name always touches its own plane's line and never stands
-across another's, and a plane alone is named where it always was. `render::tests::a_named_reference_plane_prints_its_name_in_plan`,
+across another's, and a plane alone is named where it always was. In a section or an elevation, whose traces run to the frame, a
+trace stops short of every name that lies on it, its own beyond its end (so it runs up to its name, as Revit's) and any other's
+crowded onto it, a stub left past a name going too (`render::cut_traces`): no name lies on a trace in any of a family's views
+(`family::views::tests::no_plane_name_lies_on_a_trace_in_any_view`). `render::tests::a_named_reference_plane_prints_its_name_in_plan`,
 `a_section_draws_the_reference_planes_square_to_it`, `the_names_of_two_planes_close_together_do_not_overlap` and
 `crowded_plane_names_stay_clear_and_by_their_own_traces` hold these. These are what a family's plans and elevations draw its planes
 with ([families](families.md#the-familys-views)).

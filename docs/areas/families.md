@@ -363,7 +363,7 @@ Remove Constraints. `constraints::align` is Align. Deleting a plane or a form ta
 it (`forget_reference`; one left with a single reference goes). The `family` command takes `dimensions`, `dimension` (added,
 or patched by id or GUID) and `delete_dimension`, and reads a type's solve with `solve`. A dimension measuring to what the
 family hasn't is refused, unless `invalid_dimensions: "delete"` (T14's Delete Dimension(s)); a file opened leaves it out and
-lists it in `left_out` (`Model::read`). FORMAT 25 (24 is F5's).
+lists it in `left_out` (`Model::read`). FORMAT 25 (24 is F5's; 26 is F7b's, below).
 
 In the family document (`editor/dimensions.rs`), Create > Dimension > Aligned Dimension (DI) picks reference planes (by the
 view's drawing) and extrusion ends seen edge on (`constraints::end_faces`), parallel to the first, and a click on nothing
@@ -378,8 +378,39 @@ them; an Align lock's padlock unlocks it when clicked. A plane its dimensions ho
 refusal, like Family Types' values a type can't hold, asks "Constraints are not satisfied" with Remove Constraints (their
 labels, locks and EQ taken off, and what was being done done) or Cancel. An extrusion end a dimension sets is greyed in its
 Properties and the Options Bar's Depth. A reload whose family has dimensions measuring to nothing (`exists.rs`) asks Invalid
-Dimensions first: Delete Dimension(s) or Cancel, and nothing passes it over. Sketch lines as references and unknowns are F7b,
-angular dimensions and reference lines that turn F7c.
+Dimensions first: Delete Dimension(s) or Cancel, and nothing passes it over. Angular dimensions and reference lines that turn
+are F7c.
+
+F7b, FORMAT 26: sketch lines locked. A dimension may also measure to a straight line of a form's sketch, `{"form": guid,
+"line": guid}` (the plane through it square to the form's plane: Revit's sketch line seen edge on), to a line's end or a
+circle's centre, `{"form", "line", "point": "start" | "end" | "centre"}` (measured along the dimension's other references, so
+one of them must face a way), and to a reference line's face, `{"line": guid, "face": …}` (fixed but for moving with the plane
+it is drawn on). A command may name the form and the line by their ids. `kind: "radial" | "diameter"` measures one circle of
+a sketch seen flat in the view, with a label or a lock. Flexing adds the sketches' vertices as unknowns (the ends of lines that
+meet within `TOL` one vertex, an axis line's and a circle's centre their own; `Layout`), each circle's radius, and the host
+plane's offset where a point is measured off it; a line's place is its start's, and a soft row keeps it parallel, left out
+where the other rows hold it already (two ends held never read as over-constrained). Vertices and radii give way like
+extrusion ends, so lines follow planes. `moved` writes the solved points and radii as numbers in the flexed copy; a coordinate no
+row touches keeps its formula. A line's direction is the type's, so `check` checks each type's (`check_dimensions_for`). A form
+given again (`forms`, `form`) keeps the dimensions of the lines that keep their GUIDs, and those of the lines gone go
+(`forget_lines_gone`, `deleted_dimensions`); copies follow the sketch lines' new GUIDs. Arcs follow their ends: an arc's
+radius and centre wait for F7c's non-linear solve. `solve` lists each form's sketch for the type. The conservative bounds of a
+constrained family are its flexed one's.
+
+In the family document, Aligned Dimension and Align also pick a form's straight sketch line where the view sees it edge on (any
+line of a sketch on a plane seen flat; an extrusion's side where its line runs the way the view looks, as Revit's extrusion
+face), a circle's centre and a reference line (the face the view sees edge on): `constraints::sketch_faces`, `sketch_circles`,
+`line_faces`. Create > Dimension's Radial and Diameter pick a circle by its edge, then where the dimension goes; its mark is a
+leader with an arrow and `R`/`⌀` (or `Label = length`) level beyond it. Align on a finished form's line moves it, the lines
+joined to it stretching, through the constraints (refused where they hold it), and leaves Align's padlock. While a form is
+sketched (Modify > Align or AL in a plan or an elevation), Align takes a plane, a reference line or another line, then a line of
+the sketch, moved with `align::sketch_lines`; its open padlock locks them, and the padlocks of the form's locks show beside their
+lines, a click unlocking one. They are written at Finish (a refusal by the constraints keeps sketch mode open) and dropped by
+Cancel. An Align padlock, on a finished form and while sketching, sits beside the line it locks, a few pixels off it to the side away from the
+form's inside, slid along it as little as keeps it off every line drawn and every other padlock (`dimensions::padlock_spot`);
+Align's offered padlock too. Edit Extrusion opens the sketch as the type previewed flexes it, and a line that comes back there keeps its formulas
+(`sketch::kept` against the lines shown). Every line gets a GUID of its own at Finish, a new form its GUID at once, so a lock or
+a dimension can name them before the family is loaded.
 
 ## The family's views
 

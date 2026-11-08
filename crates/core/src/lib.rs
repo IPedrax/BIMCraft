@@ -58,6 +58,8 @@ mod family_plane_tests;
 #[cfg(test)]
 mod family_section_tests;
 #[cfg(test)]
+mod family_sketch_lock_tests;
+#[cfg(test)]
 mod family_sketch_tests;
 pub mod favorites;
 pub mod fills;
