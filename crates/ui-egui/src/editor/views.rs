@@ -33,6 +33,9 @@ pub(crate) struct Views {
     pub(crate) plane: Option<Guid>,
     /// The plane being dragged: where the pointer was, in the view's millimetres.
     drag: Option<P2>,
+    /// A selected extrusion's Start or End (true) being dragged by its handle (F5): where the pointer was, in the view's
+    /// millimetres, and the normal it moves along.
+    end_drag: Option<(bool, P2, [f64; 3])>,
     /// The picture shown, and what it was drawn of.
     cache: Option<Cached>,
     /// Where on screen the view was last shown.
@@ -283,6 +286,43 @@ impl FamilyEditor {
         };
         let at_view = |p: egui::Pos2| view.mm((p.x - pane.min.x, p.y - pane.min.y));
         let editable = self.adaptive.is_none();
+        // A form being sketched (F5): the view draws and picks for the sketch alone.
+        if editable && self.sketch.is_some() {
+            let cache = self.views.cache.take()?;
+            let family = self.family().ok();
+            let values = self.values();
+            let editing = self.sketch.as_ref().and_then(|s| s.index);
+            let planes = self.planes.clone();
+            let reach = 6.0 / view.scale.max(1e-9);
+            // Pick Lines: a reference plane's or a reference line's trace, else the nearest edge of another form's outline.
+            let pick = |p: egui::Pos2| -> Option<(P2, P2)> {
+                let (x, y) = (p.x - pane.min.x, p.y - pane.min.y);
+                let picked = cache.drawing.pick_all((x, y), 6.0).into_iter().find_map(|id| cache.staged.plane_of(id));
+                if let Some(g) = picked
+                    && let Some(plane) = planes.iter().find(|q| q.guid == g)
+                {
+                    return plane_trace(&cache.staged, which, &plane.frame());
+                }
+                let q = at_view(p);
+                let f = family.as_ref()?;
+                let mut best: Option<(f64, (P2, P2))> = None;
+                for i in (0..f.forms.len()).filter(|i| Some(*i) != editing) {
+                    let ring = fv::outline(f, &values, &cache.staged, which, i);
+                    for k in 0..ring.len() {
+                        let (a, b) = (ring[k], ring[(k + 1) % ring.len()]);
+                        let d = bimcraft_core::geom::dist_to_segment(q, a, b);
+                        if d <= reach && best.is_none_or(|(e, _)| d < e) {
+                            best = Some((d, (a, b)));
+                        }
+                    }
+                }
+                best.map(|(_, s)| s)
+            };
+            let problem = self.sketch_in_view(ui, &response, &painter, &cache.staged, which, &view, pane, &pick);
+            self.views.cache = Some(cache);
+            self.zoom_and_pan(ui, &response, which, view.scale);
+            return problem;
+        }
         let values = self.values();
         let family = self.family().ok();
         // What is selected, over the picture.
@@ -323,20 +363,38 @@ impl FamilyEditor {
             let (x, y) = (p.x - pane.min.x, p.y - pane.min.y);
             c.drawing.pick_all((x, y), 6.0).into_iter().find_map(|id| c.staged.plane_of(id))
         };
-        // How close, by the wheel; moved, by the middle button.
-        let mut frame = self.views.frames.get(&which).copied().unwrap_or((1.0, (0.0, 0.0)));
-        let before = frame;
-        if response.hovered() {
-            let scroll = ui.input(|i| i.smooth_scroll_delta.y);
-            if scroll != 0.0 {
-                frame.0 = (frame.0 * f64::from(scroll * 0.003).exp()).clamp(0.05, 50.0);
-            }
-        }
-        if response.dragged_by(PointerButton::Middle) {
-            let d = response.drag_delta();
-            frame.1 = (frame.1.0 - f64::from(d.x) / view.scale, frame.1.1 + f64::from(d.y) / view.scale);
+        // A selected extrusion's Start and End, where the view sees its plane edge-on: shape handles to drag (F5); one tied to
+        // a parameter or a formula, greyed.
+        let handles = if editable { self.end_handles(&c.staged, which) } else { Vec::new() };
+        for (at, end, free, n) in &handles {
+            let centre = screen(*at);
+            let towards = c.staged.to_view(which, [n[0], n[1], n[2]]) - c.staged.to_view(which, [0.0; 3]);
+            let way = egui::vec2(towards.0 as f32, -towards.1 as f32).normalized() * if *end { 1.0 } else { -1.0 };
+            let side = egui::vec2(-way.y, way.x);
+            let tip = [centre + way * 9.0, centre + side * 6.0, centre - side * 6.0];
+            let colour = if *free { PICKED } else { pal().muted };
+            painter.add(egui::Shape::convex_polygon(tip.to_vec(), colour, Stroke::new(1.0, Color32::WHITE)));
         }
         let mut problem = None;
+        let mut end_moved: Option<(bool, f64)> = None;
+        if response.drag_started_by(PointerButton::Primary)
+            && let Some(p) = ui.input(|i| i.pointer.press_origin())
+            && let Some((_, end, free, n)) = handles.iter().find(|h| screen(h.0).distance(p) <= 10.0)
+        {
+            if *free {
+                self.views.end_drag = Some((*end, at_view(p), *n));
+            } else {
+                problem = Some(t("This end is tied to a parameter or worked out by a formula: change it in Family Types.").to_string());
+            }
+        }
+        if let Some((end, from, n)) = self.views.end_drag
+            && let Some(to) = response.interact_pointer_pos().map(at_view)
+            && response.dragged_by(PointerButton::Primary)
+        {
+            let d = c.staged.vector(which, P2(to.0 - from.0, to.1 - from.1));
+            end_moved = Some((end, d[0] * n[0] + d[1] * n[1] + d[2] * n[2]));
+            self.views.end_drag = Some((end, to, n));
+        }
         let mut select: Option<(Option<usize>, Option<Guid>)> = None;
         let mut moved: Option<(Guid, [f64; 3])> = None;
         let mut new_plane = None;
@@ -371,7 +429,12 @@ impl FamilyEditor {
             }
         }
         // A plane of the family's own, selected, dragged square to itself.
-        if editable && self.views.drawing.is_none() && !self.views.picking_plane && response.dragged_by(PointerButton::Primary) {
+        if editable
+            && self.views.drawing.is_none()
+            && !self.views.picking_plane
+            && self.views.end_drag.is_none()
+            && response.dragged_by(PointerButton::Primary)
+        {
             let now = response.interact_pointer_pos().map(at_view);
             // From where the button went down: the drag begins only once the hand has moved on.
             if response.drag_started()
@@ -387,9 +450,14 @@ impl FamilyEditor {
         }
         if response.drag_stopped() {
             self.views.drag = None;
+            self.views.end_drag = None;
         }
-        if frame != before {
-            self.views.frames.insert(which, frame);
+        self.zoom_and_pan(ui, &response, which, view.scale);
+        if let Some((end, d)) = end_moved
+            && d != 0.0
+            && let Err(e) = self.drag_end(end, d)
+        {
+            problem = Some(e);
         }
         if let Some(plane) = picked_work_plane {
             self.views.set_work_plane(plane);
@@ -435,6 +503,25 @@ impl FamilyEditor {
 }
 
 impl FamilyEditor {
+    /// How close view `which` is, by the wheel over it, and where, moved by the middle button (its `scale`, pixels a mm).
+    fn zoom_and_pan(&mut self, ui: &Ui, response: &egui::Response, which: Which, scale: f64) {
+        let mut frame = self.views.frames.get(&which).copied().unwrap_or((1.0, (0.0, 0.0)));
+        let before = frame;
+        if response.hovered() {
+            let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+            if scroll != 0.0 {
+                frame.0 = (frame.0 * f64::from(scroll * 0.003).exp()).clamp(0.05, 50.0);
+            }
+        }
+        if response.dragged_by(PointerButton::Middle) {
+            let d = response.drag_delta();
+            frame.1 = (frame.1.0 - f64::from(d.x) / scale, frame.1.1 + f64::from(d.y) / scale);
+        }
+        if frame != before {
+            self.views.frames.insert(which, frame);
+        }
+    }
+
     /// The work plane {3D} shows, while Work Plane > Show is on in a family that isn't adaptive: its frame.
     pub(crate) fn shown_work_plane_3d(&self) -> Option<bimcraft_core::family::Frame> {
         if self.adaptive.is_some() || !self.views.show_work_plane {
@@ -479,7 +566,7 @@ const GHOST: &str = "(hidden in type)";
 
 /// Where a plane of frame `f` crosses view `which`: its trace across the view's room, ends in the view's millimetres. None
 /// for a plane the view looks straight at (or askew), which has none.
-fn plane_trace(st: &Staged, which: Which, f: &bimcraft_core::family::Frame) -> Option<(P2, P2)> {
+pub(super) fn plane_trace(st: &Staged, which: Which, f: &bimcraft_core::family::Frame) -> Option<(P2, P2)> {
     let eye = match which {
         Which::Plan | Which::Ceiling => [0.0, 0.0, 1.0],
         Which::Elevation(side) => {

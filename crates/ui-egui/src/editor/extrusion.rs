@@ -20,6 +20,12 @@ impl FamilyEditor {
         self.form.filter(|i| *i < self.forms.len())
     }
 
+    /// Form `i` selected, as a click on it selects it.
+    #[cfg(test)]
+    pub(crate) fn select_form(&mut self, i: usize) {
+        self.form = Some(i);
+    }
+
     /// Escape: the form selected let go. Whether there was one.
     pub(crate) fn let_form_go(&mut self) -> bool {
         self.selected_form().is_some() && self.form.take().is_some()

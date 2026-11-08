@@ -1088,7 +1088,8 @@ pub static ALL: &[Command] = &[
          construction|dimensions|graphics|identity-data|materials-and-finishes|text|visibility|electrical|mechanical|plumbing|\
          structural|data|other, shared?: guid, reporting?, of?: category}], parameter?: {name, rename?, …a parameter's \
          fields}, delete_parameter?: [name, …], types?: {type: {parameter: value}}, forms?: [{host?: {plane: guid} | {line: guid, face: \
-         horizontal|vertical|start|end}, plane?: xy|xz|yz, profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, \
+         horizontal|vertical|start|end}, plane?: xy|xz|yz, sketch?: [{start: [a, b], end: [a, b], turn?, axis?} | {centre: [a, b], radius}, …], \
+         profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, \
          void?}], symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to} | text?: {at: [x, y], height, value, align?: left|center|right} | dot?: {centre: [x, y], radius}, visible?}], form?: {id | guid, …a \
          form's fields}, symbol?: {id | guid, …a symbol's fields}, delete_form?: [id | guid, …], delete_symbol?: [id | guid, …], \
          ref_planes?: [{guid?, name?, start: [x, y, z], end: [x, y, z], up: [x, y, z], reference?: not_a_reference|strong|weak|\
@@ -1151,7 +1152,12 @@ pub static ALL: &[Command] = &[
          end). Give a new plane or line a `guid` of your own to host forms on it in the same command; a plane or line a \
          form or line is drawn on can't be deleted, and the datums can't be moved, changed or deleted. With an \
          `axis`, a line in that plane, the profile is turned about it instead, `from` to `to` degrees (up to 360, right-handed \
-         from the axis' first point toward its second; it can't cross the axis): a pipe, a bowl, a lamp shade. A `void` is no \
+         from the axis' first point toward its second; it can't cross the axis): a pipe, a bowl, a lamp shade. A form's profile is its \
+         `sketch`, as Revit's Create Extrusion draws it: lines (`start` to `end`), arcs (`turn` degrees counter-clockwise from \
+         start to end; negative, clockwise) and whole circles (`centre`, `radius`), in any order, each number a number or a \
+         formula, joined end to end into loops: a loop inside another is a hole, several loops make one form of several solids; \
+         lines that don't close, cross or overlap are refused, named. A revolve's axis is a line of its sketch with `axis: \
+         true`, one at most. `profile` (corners in turn), `circle` and `axis` are shorthands, read as such lines. A `void` is no \
          solid: it cuts the solid forms listed before it that it passes through, a hole, a notch, a sink's bowl, and is never \
          seen itself (forms listed after it are whole). A `door` or `window` family stands in a wall, placed with `door` or \
          `window` and a `family`: its forms are drawn in the opening's axes (x along the wall from the middle of the opening, y \
@@ -10526,6 +10532,7 @@ fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Famil
     }
     let mut old = old.clone();
     crate::library::keep_parts(&mut old.forms, &mut incoming.forms);
+    old.forms.iter().zip(incoming.forms.iter_mut()).for_each(|(o, n)| n.keep_lines(o));
     crate::library::keep_parts(&mut old.symbols, &mut incoming.symbols);
     crate::library::keep_parts(&mut old.connectors, &mut incoming.connectors);
     crate::library::keep_parts(&mut old.planes, &mut incoming.planes);
@@ -10817,6 +10824,7 @@ fn family(s: &mut Session, p: &Value) -> R {
     if let Some(v) = p.get("forms").filter(|v| !v.is_null()) {
         let mut forms: Vec<crate::family::Form> = serde_json::from_value(v.clone()).map_err(|e| field("forms", e))?;
         crate::library::keep_parts(&mut f.forms, &mut forms);
+        f.forms.iter().zip(forms.iter_mut()).for_each(|(o, n)| n.keep_lines(o));
         patches.forms_replaced = forms.len();
         f.forms = forms;
     }
@@ -10830,7 +10838,13 @@ fn family(s: &mut Session, p: &Value) -> R {
     // what that one holds, a `null` taking one away, its place and its id and GUID kept. Whole lists,
     // `forms` and `symbols`, replace as they always have; these only touch the one they name.
     if let Some(v) = p.get("form").filter(|v| !v.is_null()) {
-        patches.forms_patched.push(patch_part(c, &name, &mut f.forms, v, "form")?);
+        let before = f.forms.clone();
+        let id = patch_part(c, &name, &mut f.forms, v, "form")?;
+        // Its sketch's lines given again (its corners, its axis) keep their ids and GUIDs by place.
+        if let (Some(old), Some(new)) = (before.iter().find(|x| x.id == id), f.forms.iter_mut().find(|x| x.id == id)) {
+            new.keep_lines(old);
+        }
+        patches.forms_patched.push(id);
     }
     if let Some(v) = p.get("symbol").filter(|v| !v.is_null()) {
         patches.symbols_patched.push(patch_part(c, &name, &mut f.symbols, v, "symbol")?);
@@ -11052,6 +11066,15 @@ where
         && let Some(map) = whole.as_object_mut()
     {
         map.remove("host");
+    }
+    // A form's sketch given again, in whole or by a shorthand (its `profile`, `circle` or `axis`): what it replaces goes.
+    if let Some(Value::Array(lines)) = whole.get_mut("sketch") {
+        let given = |k: &str| patch.get(k).is_some();
+        let (all, profile, axis) = (given("sketch"), given("profile") || given("circle"), given("axis"));
+        lines.retain(|l| {
+            let is_axis = l.get("axis").and_then(Value::as_bool) == Some(true);
+            !(all || (is_axis && axis) || (!is_axis && profile))
+        });
     }
     merge(&mut whole, &patch);
     parts[at] = serde_json::from_value(whole).map_err(|e| bad(c, format!("{what} {} of family \"{family}\": {e}", shown(key))))?;

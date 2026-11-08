@@ -133,7 +133,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 23: a component may be hosted on a face of a wall, a floor, a ceiling or a roof (`host` `{"face": {"element", "face"}}`,
 /// Place on Face), its `uv` that face's own; a build of 22 reads a component's `host` whole and knows no such kind, so it
 /// would refuse the project or, left out, stand the component where it was, no longer on its face. A file of 22 holds none.
-pub const FORMAT: u32 = 23;
+///
+/// 24: a family's form is drawn by its `sketch` (F5): lines and arcs on its host plane, each with an id and a GUID, a
+/// revolve's axis one of them; its `profile`, `circle` and `axis` are read as such lines and no longer written. A build of 23
+/// would refuse `sketch` or, left out, leave every form with no profile.
+pub const FORMAT: u32 = 24;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3554,6 +3558,10 @@ impl Model {
         // and a symbol's `subcategory`) has none: a file of 20 names neither.
         // 21 to 22 (the project's reference planes, components hosted on them) has none: a file of 21 holds neither. A hosted
         // component's `at` and `offset` are worked out from its host, whatever the file says of them.
+        // 22 to 23 (components on faces) has none: a file of 22 holds none.
+        // 23 to 24: a form's `profile`, `circle` and `axis` become lines of its `sketch`. Reading the file does it, as it reads a
+        // command's shorthands (`Form`'s `FormIn`), so nothing is left to do here: the lines are given their ids and GUIDs by
+        // the library's sync, as any new part is, and the form builds the triangles it did.
         self.settle_hosts(None);
         self.format = FORMAT;
     }

@@ -197,7 +197,7 @@ fn new_edit_and_delete_parameter_and_a_parameter_in_use_is_not_deleted() {
     let f = draft(&h);
     assert!(names(&f).contains(&"Breadth") && !names(&f).contains(&"Width"));
     assert_eq!(f.parameters.iter().find(|p| p.name == "Height").unwrap().formula.as_deref(), Some("Breadth / 2"));
-    assert_eq!(f.forms[0].profile[1][0], Expr::Formula("Breadth".into()));
+    assert_eq!(f.forms[0].corners().unwrap()[1][0], Expr::Formula("Breadth".into()));
     assert_eq!(f.types["B"]["Breadth"], json!(600.0));
     // Delete Parameter: Note goes; Breadth, which the form and Height use, is refused, saying why.
     press(&mut h, "Note (default)");

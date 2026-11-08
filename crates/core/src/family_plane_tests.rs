@@ -467,7 +467,8 @@ fn as_19(family: &mut Value) {
             Some(CENTER_LEFT_RIGHT) => "yz",
             _ => panic!("a starter form on {host}"),
         };
-        if plane == "xz" && !f.contains_key("axis") {
+        let revolve = f.contains_key("axis") || f.get("sketch").and_then(Value::as_array).into_iter().flatten().any(|l| l["axis"] == true);
+        if plane == "xz" && !revolve {
             let (from, to) = (f.get("from").cloned().unwrap_or(json!(0.0)), f.get("to").cloned().unwrap_or(json!(0.0)));
             f.insert("from".into(), neg(&to));
             f.insert("to".into(), neg(&from));
