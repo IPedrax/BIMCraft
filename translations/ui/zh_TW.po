@@ -689,7 +689,7 @@ msgstr "角度"
 
 #: crates/ui-egui/src/editor/document.rs:446
 msgid "Angular Dimension: pick reference lines, reference planes or lines of forms that cross, then click where its arc goes"
-msgstr ""
+msgstr "角度尺寸標注：拾取相交的參照線、參照平面或形狀的線，然後單擊其圓弧的放置位置"
 
 #: crates/ui-egui/src/lib.rs:3748
 msgid "Angular Dimension: pick two lines that meet, then click where the arc goes"
@@ -1543,7 +1543,7 @@ msgstr "單擊一個基點作為測量起點。"
 
 #: crates/ui-egui/src/editor/document.rs:1190
 msgid "Click a circle or an arc, then click where the dimension goes."
-msgstr ""
+msgstr "單擊一個圓或圓弧，然後單擊尺寸標注的放置位置。"
 
 #: crates/ui-egui/src/draw.rs:584
 msgid "Click a corner of the rectangle."
@@ -1731,7 +1731,7 @@ msgstr "單擊下一個點；按 Enter 完成，再次單擊第一個點閉合�
 
 #: crates/ui-egui/src/editor/document.rs:1187
 msgid "Click lines that cross (reference lines, reference planes, lines of forms), then click where the dimension goes."
-msgstr ""
+msgstr "單擊相交的線（參照線、參照平面、形狀的線），然後單擊尺寸標注的放置位置。"
 
 #: crates/ui-egui/src/lib.rs:4913
 #: crates/ui-egui/src/lib.rs:5079
@@ -2940,7 +2940,7 @@ msgstr "直徑"
 
 #: crates/ui-egui/src/editor/document.rs:459
 msgid "Diameter Dimension: pick a circle or an arc of a form's sketch, then click where it goes"
-msgstr ""
+msgstr "直徑尺寸標注：拾取形狀草圖中的圓或圓弧，然後單擊放置位置"
 
 #: crates/ui-egui/src/lib.rs:3760
 msgid "Diameter Dimension: pick a round column, a curved wall, a circle or an arc, then click where it goes"
@@ -6628,7 +6628,7 @@ msgstr "拾取牆：沿每面單擊的牆繪製一條邊界線"
 
 #: crates/ui-egui/src/editor/views.rs:782
 msgid "Pick a circle or an arc, then click where the dimension goes."
-msgstr ""
+msgstr "拾取一個圓或圓弧，然後單擊尺寸標注的放置位置。"
 
 #: crates/ui-egui/src/orbit.rs:666
 msgid "Pick a corner, an edge or a face of the model to dimension."
@@ -6653,7 +6653,7 @@ msgstr "拾取一條線並使用繪製該線所在的工作平面"
 
 #: crates/ui-egui/src/editor/views.rs:789
 msgid "Pick a line that crosses the one before."
-msgstr ""
+msgstr "拾取與前一條線相交的線。"
 
 #: crates/ui-egui/src/workplane.rs:578
 msgid "Pick a line: a wall, a beam, a pipe or another element drawn along a line."
@@ -6755,7 +6755,7 @@ msgstr "選取一面牆、一條軸網或其他線；然後選取與之相交的
 
 #: crates/ui-egui/src/editor/views.rs:798
 msgid "Pick lines that cross, then click where the dimension goes."
-msgstr ""
+msgstr "拾取相交的線，然後單擊尺寸標注的放置位置。"
 
 #: crates/ui-egui/src/lib.rs:5005
 msgid "Pick more references, or click away from them where the dimension line goes; Space steps Auto, Aligned, Horizontal, Vertical. Esc cancels."
@@ -7418,7 +7418,7 @@ msgstr "半徑"
 
 #: crates/ui-egui/src/editor/document.rs:453
 msgid "Radial Dimension: pick a circle or an arc of a form's sketch, then click where it goes"
-msgstr ""
+msgstr "徑向尺寸標注：拾取形狀草圖中的圓或圓弧，然後單擊放置位置"
 
 #: crates/ui-egui/src/lib.rs:3754
 msgid "Radial Dimension: pick a round column, a curved wall, a circle or an arc, then click where the radius goes"

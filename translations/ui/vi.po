@@ -689,7 +689,7 @@ msgstr "Góc"
 
 #: crates/ui-egui/src/editor/document.rs:446
 msgid "Angular Dimension: pick reference lines, reference planes or lines of forms that cross, then click where its arc goes"
-msgstr ""
+msgstr "Kích thước góc: chọn các đường tham chiếu, mặt phẳng tham chiếu hoặc đường của khối cắt nhau, rồi nhấp vào chỗ đặt cung của nó"
 
 #: crates/ui-egui/src/lib.rs:3748
 msgid "Angular Dimension: pick two lines that meet, then click where the arc goes"
@@ -1543,7 +1543,7 @@ msgstr "Nhấp một điểm gốc để đo từ đó."
 
 #: crates/ui-egui/src/editor/document.rs:1190
 msgid "Click a circle or an arc, then click where the dimension goes."
-msgstr ""
+msgstr "Nhấp một đường tròn hoặc một cung, rồi nhấp vào vị trí đặt kích thước."
 
 #: crates/ui-egui/src/draw.rs:584
 msgid "Click a corner of the rectangle."
@@ -1731,7 +1731,7 @@ msgstr "Nhấp điểm tiếp theo; Enter để kết thúc, nhấp lại điể
 
 #: crates/ui-egui/src/editor/document.rs:1187
 msgid "Click lines that cross (reference lines, reference planes, lines of forms), then click where the dimension goes."
-msgstr ""
+msgstr "Nhấp các đường cắt nhau (đường tham chiếu, mặt phẳng tham chiếu, đường của khối), rồi nhấp vào vị trí đặt kích thước."
 
 #: crates/ui-egui/src/lib.rs:4913
 #: crates/ui-egui/src/lib.rs:5079
@@ -2940,7 +2940,7 @@ msgstr "Đường kính"
 
 #: crates/ui-egui/src/editor/document.rs:459
 msgid "Diameter Dimension: pick a circle or an arc of a form's sketch, then click where it goes"
-msgstr ""
+msgstr "Kích thước đường kính: chọn một đường tròn hoặc một cung trong phác thảo của khối, rồi nhấp chỗ đặt"
 
 #: crates/ui-egui/src/lib.rs:3760
 msgid "Diameter Dimension: pick a round column, a curved wall, a circle or an arc, then click where it goes"
@@ -6628,7 +6628,7 @@ msgstr "Chọn tường: một đường biên dọc theo mỗi tường đượ
 
 #: crates/ui-egui/src/editor/views.rs:782
 msgid "Pick a circle or an arc, then click where the dimension goes."
-msgstr ""
+msgstr "Chọn một đường tròn hoặc một cung, rồi nhấp vào vị trí đặt kích thước."
 
 #: crates/ui-egui/src/orbit.rs:666
 msgid "Pick a corner, an edge or a face of the model to dimension."
@@ -6653,7 +6653,7 @@ msgstr "Chọn một đường và dùng mặt phẳng làm việc mà nó đư�
 
 #: crates/ui-egui/src/editor/views.rs:789
 msgid "Pick a line that crosses the one before."
-msgstr ""
+msgstr "Chọn một đường cắt đường trước đó."
 
 #: crates/ui-egui/src/workplane.rs:578
 msgid "Pick a line: a wall, a beam, a pipe or another element drawn along a line."
@@ -6755,7 +6755,7 @@ msgstr "Chọn một tường, lưới trục hoặc một đường khác; rồ
 
 #: crates/ui-egui/src/editor/views.rs:798
 msgid "Pick lines that cross, then click where the dimension goes."
-msgstr ""
+msgstr "Chọn các đường cắt nhau, rồi nhấp vào vị trí đặt kích thước."
 
 #: crates/ui-egui/src/lib.rs:5005
 msgid "Pick more references, or click away from them where the dimension line goes; Space steps Auto, Aligned, Horizontal, Vertical. Esc cancels."
@@ -7418,7 +7418,7 @@ msgstr "Bán kính"
 
 #: crates/ui-egui/src/editor/document.rs:453
 msgid "Radial Dimension: pick a circle or an arc of a form's sketch, then click where it goes"
-msgstr ""
+msgstr "Kích thước bán kính: chọn một đường tròn hoặc một cung trong phác thảo của khối, rồi nhấp chỗ đặt"
 
 #: crates/ui-egui/src/lib.rs:3754
 msgid "Radial Dimension: pick a round column, a curved wall, a circle or an arc, then click where the radius goes"

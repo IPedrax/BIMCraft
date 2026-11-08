@@ -689,7 +689,7 @@ msgstr "Angulaire"
 
 #: crates/ui-egui/src/editor/document.rs:446
 msgid "Angular Dimension: pick reference lines, reference planes or lines of forms that cross, then click where its arc goes"
-msgstr ""
+msgstr "Cote angulaire: choisir des lignes de référence, des plans de référence ou des lignes de formes qui se croisent, puis cliquer à l'endroit de son arc"
 
 #: crates/ui-egui/src/lib.rs:3748
 msgid "Angular Dimension: pick two lines that meet, then click where the arc goes"
@@ -1543,7 +1543,7 @@ msgstr "Cliquer sur un point de base pour mesurer."
 
 #: crates/ui-egui/src/editor/document.rs:1190
 msgid "Click a circle or an arc, then click where the dimension goes."
-msgstr ""
+msgstr "Cliquer sur un cercle ou un arc, puis à l'emplacement de la cote."
 
 #: crates/ui-egui/src/draw.rs:584
 msgid "Click a corner of the rectangle."
@@ -1731,7 +1731,7 @@ msgstr "Cliquer sur son point suivant; Entrée termine, le premier point de nouv
 
 #: crates/ui-egui/src/editor/document.rs:1187
 msgid "Click lines that cross (reference lines, reference planes, lines of forms), then click where the dimension goes."
-msgstr ""
+msgstr "Cliquer sur des lignes qui se croisent (lignes de référence, plans de référence, lignes de formes), puis à l'emplacement de la cote."
 
 #: crates/ui-egui/src/lib.rs:4913
 #: crates/ui-egui/src/lib.rs:5079
@@ -2940,7 +2940,7 @@ msgstr "Diamètre"
 
 #: crates/ui-egui/src/editor/document.rs:459
 msgid "Diameter Dimension: pick a circle or an arc of a form's sketch, then click where it goes"
-msgstr ""
+msgstr "Cote de diamètre: choisir un cercle ou un arc de l'esquisse d'une forme, puis cliquer à l'endroit où la placer"
 
 #: crates/ui-egui/src/lib.rs:3760
 msgid "Diameter Dimension: pick a round column, a curved wall, a circle or an arc, then click where it goes"
@@ -6628,7 +6628,7 @@ msgstr "Sélectionner des murs: une ligne de limite le long de chaque mur cliqu�
 
 #: crates/ui-egui/src/editor/views.rs:782
 msgid "Pick a circle or an arc, then click where the dimension goes."
-msgstr ""
+msgstr "Sélectionner un cercle ou un arc, puis cliquer à l'emplacement de la cote."
 
 #: crates/ui-egui/src/orbit.rs:666
 msgid "Pick a corner, an edge or a face of the model to dimension."
@@ -6653,7 +6653,7 @@ msgstr "Choisir une ligne et utiliser le plan de travail dans lequel elle a ét�
 
 #: crates/ui-egui/src/editor/views.rs:789
 msgid "Pick a line that crosses the one before."
-msgstr ""
+msgstr "Sélectionner une ligne qui croise la précédente."
 
 #: crates/ui-egui/src/workplane.rs:578
 msgid "Pick a line: a wall, a beam, a pipe or another element drawn along a line."
@@ -6755,7 +6755,7 @@ msgstr "Sélectionner un mur, un quadrillage ou une autre ligne; puis une ligne 
 
 #: crates/ui-egui/src/editor/views.rs:798
 msgid "Pick lines that cross, then click where the dimension goes."
-msgstr ""
+msgstr "Sélectionner des lignes qui se croisent, puis cliquer à l'emplacement de la cote."
 
 #: crates/ui-egui/src/lib.rs:5005
 msgid "Pick more references, or click away from them where the dimension line goes; Space steps Auto, Aligned, Horizontal, Vertical. Esc cancels."
@@ -7418,7 +7418,7 @@ msgstr "Radiale"
 
 #: crates/ui-egui/src/editor/document.rs:453
 msgid "Radial Dimension: pick a circle or an arc of a form's sketch, then click where it goes"
-msgstr ""
+msgstr "Cote radiale: choisir un cercle ou un arc de l'esquisse d'une forme, puis cliquer à l'endroit où la placer"
 
 #: crates/ui-egui/src/lib.rs:3754
 msgid "Radial Dimension: pick a round column, a curved wall, a circle or an arc, then click where the radius goes"
