@@ -227,6 +227,9 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
     }
     // A form of a family that isn't adaptive, selected.
     if ed.adaptive.is_none() {
+        if let Some(title) = ed.sketch_title() {
+            return Some(title);
+        }
         if ed.editing_2d() && ed.views.drawing.is_some() {
             return Some(msg!("Modify | Place Reference Plane"));
         }
@@ -341,6 +344,12 @@ impl BimApp {
         let tab = ed.doc_tab;
         let drawing = !matches!(ed.modeller.tool, Draw::Modify);
         let adaptive = ed.adaptive.is_some();
+        // Sketch mode (F5): its contextual tab alone, as Revit's "Modify | Create Extrusion".
+        if ed.sketching() {
+            self.select_and_properties(ui, ed);
+            self.form_sketch_panels(ui, ed);
+            return;
+        }
         if matches!(tab, DocTab::Create | DocTab::Modify | DocTab::Context) {
             self.select_and_properties(ui, ed);
         }
@@ -352,9 +361,30 @@ impl BimApp {
             // A family that isn't adaptive is made of forms drawn in sketches, which BIMCraft doesn't have yet: its forms are
             // added and edited in Properties.
             DocTab::Create => ribbon::panel(ui, msg!("Forms"), |ui| {
-                for label in [msg!("Extrusion"), msg!("Blend"), msg!("Revolve"), msg!("Sweep"), msg!("Swept Blend"), msg!("Void Forms")] {
-                    later(ui, Icon::CreateForm, label);
+                // Extrusion and Revolve sketch on the work plane (F5); Blend, Sweep and Swept Blend are F6's.
+                let tip = msg!("Extrusion: sketch a profile on the work plane, extruded along its normal");
+                if big_button(ui, Icon::CreateForm, msg!("Extrusion"), false, tip).clicked() {
+                    ed.create_form(false, false);
                 }
+                later(ui, Icon::CreateForm, msg!("Blend"));
+                let tip = msg!("Revolve: sketch a profile and an axis line on the work plane, turned about the axis");
+                if big_button(ui, Icon::CreateForm, msg!("Revolve"), false, tip).clicked() {
+                    ed.create_form(true, false);
+                }
+                later(ui, Icon::CreateForm, msg!("Sweep"));
+                later(ui, Icon::CreateForm, msg!("Swept Blend"));
+                let tip = msg!("Void Forms: a void extrusion or revolve, sketched as a solid one is, which cuts the solids before it");
+                let r = big_button(ui, Icon::CreateForm, msg!("Void Forms"), false, tip);
+                ribbon::choices(ui, &r, false, |ui| {
+                    if ui.button(t("Void Extrusion")).clicked() {
+                        ed.create_form(false, true);
+                        ui.close();
+                    }
+                    if ui.button(t("Void Revolve")).clicked() {
+                        ed.create_form(true, true);
+                        ui.close();
+                    }
+                });
             }),
             _ => {}
         }
@@ -527,6 +557,7 @@ impl BimApp {
                 if tab == DocTab::Context {
                     if let Some(i) = ed.selected_form() {
                         self.form_work_plane_panel(ui, ed, i);
+                        self.form_mode_panel(ui, ed, i);
                     }
                     if !lines.is_empty() {
                         self.form_panel(ui, ed, &lines);
@@ -655,6 +686,12 @@ impl BimApp {
     /// family that isn't adaptive, the family and its forms and symbols.
     pub(crate) fn family_properties(&mut self, ui: &mut Ui) {
         let Some(mut ed) = self.family_editor.take() else { return };
+        // A form being sketched: what it will be.
+        if ed.sketching() {
+            self.form_sketch_properties(ui, &mut ed);
+            self.family_editor = Some(ed);
+            return;
+        }
         let values = ed.values();
         let category = category_label(ed.category);
         let selected = ed.modeller.selection.clone();
@@ -845,6 +882,7 @@ impl BimApp {
     /// button, and its view control bar at the bottom.
     pub(crate) fn family_central(&mut self, ui: &mut Ui) {
         let Some(mut ed) = self.family_editor.take() else { return };
+        ed.snaps = self.snaps_now();
         let pane = ui.available_rect_before_wrap();
         self.view_rect = pane;
         self.pane = pane;
@@ -868,11 +906,13 @@ impl BimApp {
         } else {
             let response = ui.interact(pane, UiId::new("family-preview"), Sense::click_and_drag());
             // A click in the view lets the selected form go, as a click on nothing does in Revit.
-            if response.clicked() {
+            if response.clicked() && !ed.sketching() {
                 ed.form = None;
             }
             ed.document.preview_size = [pane.width().clamp(64.0, 1600.0) as u32, pane.height().clamp(64.0, 1200.0) as u32];
-            let orbit = response.dragged_by(PointerButton::Primary)
+            // While sketching, a drag drags a picked line's end rather than turn the view, unless none is held.
+            let gripped = ed.sketch.as_ref().is_some_and(|s| s.sketch.drag.is_some());
+            let orbit = (response.dragged_by(PointerButton::Primary) && !gripped)
                 || (response.dragged_by(PointerButton::Middle) && ui.input(|i| i.modifiers.shift));
             if orbit {
                 let d = response.drag_delta();
@@ -880,8 +920,32 @@ impl BimApp {
             }
             let base = Arc::clone(&self.session.model);
             ed.refresh(ui.ctx(), &base);
+            // A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
+            if response.double_clicked()
+                && !ed.sketching()
+                && let (Some(p), Some((cam, size))) = (response.interact_pointer_pos(), ed.preview.as_ref().map(|p| (p.cam, p.size)))
+            {
+                let px = (
+                    f64::from((p.x - pane.min.x) * size[0] as f32 / pane.width().max(1.0)),
+                    f64::from((p.y - pane.min.y) * size[1] as f32 / pane.height().max(1.0)),
+                );
+                let values = ed.values();
+                let hit = ed.family().ok().and_then(|f| bimcraft_core::family::views::form_at_3d(&f, &values, &cam, px));
+                if let Some(i) = hit {
+                    ed.select_form_at(i);
+                    if let Err(e) = ed.edit_form_sketch(i) {
+                        self.status = Status { text: e, error: true };
+                    }
+                }
+            }
             if let Some(p) = &ed.preview {
                 ui.painter().image(p.tile.id(), pane, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            }
+            // A form being sketched on its plane, over the picture (F5).
+            if let Some((cam, size)) = ed.preview.as_ref().map(|p| (p.cam, p.size))
+                && let Some(e) = ed.sketch_in_3d(ui, &response, &ui.painter_at(pane), &cam, size, pane)
+            {
+                self.status = Status { text: e, error: true };
             }
         }
         let card = crate::style::card([true, false, true, false]).inner_margin(Margin::same(2));
@@ -953,6 +1017,15 @@ impl BimApp {
         let units = self.session.model.units;
         let Some(ed) = self.family_editor.as_mut() else { return false };
         let Some(name) = context(ed) else { return false };
+        if ed.sketching() {
+            ui.horizontal(|ui| {
+                ui.set_min_height(24.0);
+                ui.label(t(name));
+                ui.separator();
+                super::sketch::options_bar(ui, ed, units);
+            });
+            return true;
+        }
         let values = ed.values();
         let lines = ed.adaptive.as_ref().is_some_and(|d| !adaptive_view::selected(d, &ed.modeller, &values).1.is_empty());
         let drawing = !matches!(ed.modeller.tool, Draw::Modify);
@@ -1014,6 +1087,9 @@ impl BimApp {
     /// What the family document's status bar asks for: an adaptive family's modelling view's tool, or how another's preview turns.
     pub(crate) fn family_prompt(&self) -> Option<&'static str> {
         let ed = self.family_editor.as_ref()?;
+        if let Some(s) = ed.sketch.as_ref() {
+            return Some(super::sketch::prompt(s));
+        }
         Some(match (ed.views.shown, ed.adaptive.is_some()) {
             (Some(_), true) => msg!("An adaptive family's plans and elevations show its test placement; model it in {3D}."),
             (Some(_), false) if ed.views.picking_plane => msg!("Click a reference plane or a datum: the view's work plane."),
@@ -1034,13 +1110,18 @@ impl BimApp {
     /// Undo in a family document: one step back through its own history, done when the frame ends; the project's is not touched.
     pub(crate) fn family_undo(&mut self) {
         if let Some(ed) = self.family_editor.as_mut() {
-            ed.ask.undo = true;
+            // While sketching, the sketch's own last change.
+            if ed.sketching() {
+                ed.undo_sketch();
+            } else {
+                ed.ask.undo = true;
+            }
         }
     }
 
     /// Redo in a family document: a step undone done again.
     pub(crate) fn family_redo(&mut self) {
-        if let Some(ed) = self.family_editor.as_mut() {
+        if let Some(ed) = self.family_editor.as_mut().filter(|ed| !ed.sketching()) {
             ed.ask.redo = true;
         }
     }
@@ -1057,6 +1138,20 @@ impl BimApp {
             self.family_typed(ctx);
         }
         let Some(ed) = self.family_editor.as_mut() else { return };
+        // Sketch mode: Escape lets the shape's points go, then its tool; Delete takes the lines picked away; Ctrl+Z takes back
+        // the sketch's own last change. The document's history waits for Finish.
+        if let Some(s) = ed.sketch.as_mut() {
+            if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                s.escape();
+            }
+            if ctx.input(|i| i.key_pressed(egui::Key::Delete)) {
+                s.delete_picked();
+            }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Z)) {
+                ed.undo_sketch();
+            }
+            return;
+        }
         // Escape lets a selected form go, though a button clicked has the keyboard (the window's own Escape does it otherwise).
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             // The plane being drawn first, then the tool, then the selection.

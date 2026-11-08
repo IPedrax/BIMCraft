@@ -213,6 +213,12 @@ impl Frame {
         std::array::from_fn(|k| self.x[k] * p.0 + self.y[k] * p.1)
     }
 
+    /// Where point `p` of the family is in its own axes: along x and y, and how far along its normal.
+    pub fn local(&self, p: P3) -> (P2, f64) {
+        let d = sub(p, self.origin);
+        (P2(dot(d, self.x), dot(d, self.y)), dot(d, self.z))
+    }
+
     /// Whether x, y and the normal turn as the family's x, y and z do: a mirrored frame's triangles turn the other way.
     pub fn right_handed(&self) -> bool {
         dot(cross(self.x, self.y), self.z) > 0.0

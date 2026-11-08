@@ -90,8 +90,8 @@ a project only through the `favorite` command (`load` never overwrites without `
 docked Properties and Project Browser, and a 3D view: an adaptive family's modelling view and tools
 ([adaptive families](adaptive-families.md)), another's 3D preview. For a family that isn't adaptive, Forms and Symbols are
 edited in Properties (whose Adaptive tab makes it adaptive); Family Types and Family Category and Parameters open dialogs
-(Apply, OK, and Cancel putting back what the dialog began from). Form creation tools that need sketch workflows remain
-disabled placeholders. Undo and Redo are the document's own (`Draft`), and never undo the project.
+(Apply, OK, and Cancel putting back what the dialog began from). Extrusion, Revolve and Void Forms sketch forms (F5, below);
+Blend, Sweep and Swept Blend (F6) remain disabled placeholders. Undo and Redo are the document's own (`Draft`), and never undo the project.
 Family Types is Revit's (`editor/types_dialog.rs`): Type name, a drop-down of the types with New Type (a name asked, the type
 shown copied), Rename Type and Delete Type (refused for the last, saying why); Search parameters (by name, case aside); one table,
 Parameter, Value, Formula and Lock, under the groups' headings in `Group::ALL`'s order (the Properties palette's), each folding.
@@ -121,7 +121,7 @@ contextual tab is "Modify | Form", with Delete and Edit Work Plane, which drops 
 Depth (End less Start: typed, Start stays and End moves; greyed while End is tied). Edits go to the draft and its history. Solid/Void
 and Edit Work Plane run `family` (its `form` patch) and `edit_work_plane` on a private session holding the draft, as Save Family
 does, and take the form back with the id and GUID it had: the form moves with the plane. Sketch mode (Edit Extrusion, Finish and
-Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's, Revit's Work Plane dialog T12's, Visibility Settings F8's;
+Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's (below), Revit's Work Plane dialog T12's, Visibility Settings F8's;
 the 3D preview does not highlight the form selected.
 
 Expression-valued form and symbol properties (their numbers, Visible and a form's Material) offer `=` (`editor/association.rs`),
@@ -423,6 +423,47 @@ hidden (HH), isolated or hidden with every plane (HC). It keeps **one state for 
 what it hides, a deliberate limit: Revit keeps it per view, and Apply Hide/Isolate to View stays greyed. An adaptive family's
 plans and elevations show its test placement and nothing more (no selection, no Reference Plane, no drag); its tools stay in
 {3D}, its modelling view. None of this is a field of the family or a step of FORMAT: what a view keeps is the session's.
+
+## Sketches of forms
+
+F5, FORMAT 24. A form's profile is its `sketch` (`family/sketch.rs`): lines (`start`, `end`), arcs (`turn` degrees
+counter-clockwise from start to end) and whole circles (`centre`, `radius`) in its host plane's own axes, each number a number or a
+formula, each line a part of the family (an id and a GUID, `parts_now`'s "sketch line", kept by place when a form is given again,
+`Form::keep_lines`) so F7 can dimension and lock it. A revolve's axis is a line of its sketch with `axis: true`, one at most. The
+shorthands from before, `profile` (corners in turn), `circle` and `axis`, are read as such lines (`FormIn`), by a file of 23 or a
+command, and never written; a `form` patch giving one replaces what it stands for. Built (`Form::loops`), a sketch that is one
+loop of straight lines in order, or one circle, is built as a profile always was (the same triangles and IFC:
+`family_sketch_tests` against `testdata/family_format23.golden.json`, which the build of 23 wrote); any other is solved as the
+project's sketches are (`sketch::solve`: every problem named, each line by its id), arcs cut into chords 32 to a turn: an outline
+counter-clockwise with its holes clockwise, an island an outline again, several loops one form of several solids. A loop with holes
+is capped by the constrained triangulation (`triangulation::constrained`), every ring gets its sides, and a revolve turns them all.
+Only a lone circle is `round` in plan. `edit_work_plane`'s `keep` maps the sketch's points, a mirroring plane turning its arcs the
+other way; `rename_parameter` and `every_formula` reach its formulas; the conservative bounds box an arc by its circle.
+
+In the family document (`editor/sketch.rs`), Create > Extrusion or Revolve, or Void Forms > Void Extrusion or Void Revolve, sketch
+on the view's work plane: "Modify | Create Extrusion" and the like, its Mode (Finish and Cancel Edit Mode), Draw (Boundary Line
+and, for a revolve, Axis Line; Line, Rectangle, the polygons, Circle, the three arcs, Fillet Arc and, in a plan or an elevation,
+Pick Lines: in a plan or an elevation a plane's or reference line's trace, or another form's edge; in {3D} another form's edge
+(`snap::creases`), a reference line or the line a reference plane was drawn as, which {3D} draws while sketching, seen square on to
+the work plane, an edge square to it refused with a message; no spline or ellipse), Modify (pick, Delete, a picked line's end
+dragged) and Work Plane (Show). The pointer snaps as a project's view snaps (`snap::among`, the same switches, guides, order and
+markers, `canvas::snap_mark`) to the reference planes' traces across the work plane, where they cross, the other forms' edges
+and their ends seen on it, the reference lines and the sketch's own lines (`Family::sketch_targets`). Chain, on the Options Bar
+for Line and the chained arcs, is kept for the session: off, each starts afresh. A plan or an elevation that doesn't see the work plane flat asks Go To View, offering
+those that do and {3D}; {3D} draws on the plane where the pointer shows it. The lines are the project's sketch's
+(`sketch::Sketch`, with its local Ctrl+Z), in the plane's axes. The Options Bar has Depth (End less Start), Sides, Radius and
+Offset; Properties the Start and End (a revolve's Start Angle and End Angle, as a selected one's Properties and the Forms tab
+name them), Material and Solid/Void. Finish checks the lines as the core does
+(`family::sketch::finish_check`): open loops, crossing or overlapping lines, a revolve with no axis or a profile across it are
+refused, said in the project's words with the lines shown red, the draft left as it was; then each type is built with the form,
+and a fault of this form refuses it too. On success the form is in the draft, one step of its history, and selected. Cancel leaves
+the draft (and so its Unsaved mark) as it was. A selected form's contextual tab has Edit Extrusion or Edit Revolve, as a double click on a form in a plan, an elevation or {3D}
+(`views::form_at_3d`) does: its lines worked
+out for the type shown, in the view shown if it sees the plane flat, else {3D}; a line that keeps its GUID and comes to where it
+was keeps its formulas (`family::sketch::kept`), one moved holds numbers. A selected extrusion's Start and End show shape handles
+in a plan or an elevation that sees its plane edge-on; dragged, they move along the normal, a step of the history; an end tied to a
+parameter or a formula is greyed and a drag on it is refused, saying why. The Forms tab keeps the typed corners, circle and axis as
+an advanced view; a sketch they can't say shows as "Sketch" with its count of lines.
 
 ## Family options
 

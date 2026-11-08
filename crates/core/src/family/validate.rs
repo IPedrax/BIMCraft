@@ -131,15 +131,7 @@ pub(crate) fn every_formula(f: &Family) -> Vec<(String, &str)> {
         }
     }
     for (i, form) in f.forms.iter().enumerate() {
-        let circle = form.circle.iter().flat_map(|c| c.centre.iter().chain([&c.radius]));
-        let exprs = form
-            .profile
-            .iter()
-            .flatten()
-            .chain([&form.from, &form.to])
-            .chain(&form.visible)
-            .chain(circle)
-            .chain(form.axis.iter().flatten().flatten());
+        let exprs = form.sketch_exprs().chain([&form.from, &form.to]).chain(&form.visible);
         for e in exprs {
             add(&mut out, &|| format!("form {}", i + 1), e);
         }

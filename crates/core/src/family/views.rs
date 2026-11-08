@@ -307,6 +307,33 @@ pub fn form_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, whi
     best.map(|(_, i)| i)
 }
 
+/// The solid form of `family` (sized by `values`) shown at pixel `px` of a picture taken through `cam`, the family at the
+/// origin as {3D} shows it: the one nearest the eye there.
+pub fn form_at_3d(family: &Family, values: &BTreeMap<String, Val>, cam: &view3d::Camera, px: (f64, f64)) -> Option<usize> {
+    let mut read = HashMap::new();
+    let mut best: Option<(f64, usize)> = None;
+    for i in 0..family.forms.len() {
+        if family.forms[i].void {
+            continue;
+        }
+        let Some(piece) = family.solid(i, values, &mut read).ok().flatten() else { continue };
+        for t in &piece.tris {
+            let q = t.map(|p| cam.project(p));
+            if q.iter().any(|(x, y, z)| !(x.is_finite() && y.is_finite() && z.is_finite())) {
+                continue;
+            }
+            if !inside(&q.map(|(x, y, _)| P2(x, y)), P2(px.0, px.1)) {
+                continue;
+            }
+            let near = q.iter().map(|(_, _, z)| *z).fold(f64::NEG_INFINITY, f64::max);
+            if best.is_none_or(|(b, _)| near > b) {
+                best = Some((near, i));
+            }
+        }
+    }
+    best.map(|(_, i)| i)
+}
+
 /// The outline form `i` of `family` is seen with in view `which`: the hull of its solid's corners there. Empty for a form
 /// that builds nothing.
 pub fn outline(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, i: usize) -> Vec<P2> {

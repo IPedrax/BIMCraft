@@ -63,7 +63,7 @@ fn version_replaces_definition_but_keeps_project_values() {
     assert_eq!(f.types["New type"]["Width"], json!(300));
     assert!(f.symbols.is_empty(), "omitted definition fields reset on explicit replacement");
     assert_eq!(f.forms[0].guid, old_form);
-    assert_eq!(serde_json::to_value(&f.forms[0]).unwrap()["profile"][2][1], 40.0);
+    assert_eq!(f.forms[0].corners().unwrap()[2][1], bimcraft_core::family::Expr::Number(40.0));
     s.execute("undo", &json!({})).unwrap();
     assert!(s.model.to_json().unwrap() == before, "the project snapshot changed");
 }
@@ -305,7 +305,9 @@ fn reload_preserves_reference_planes_lines_and_form_hosts() {
     });
     f.forms.push(Form {
         host: PlaneRef::Line(line_guid, Face::Vertical),
-        profile: vec![[0., 0.], [10., 0.], [10., 10.], [0., 10.]].into_iter().map(|p| p.map(Expr::Number)).collect(),
+        sketch: bimcraft_core::family::sketch::profile_lines(
+            &[[0., 0.], [10., 0.], [10., 10.], [0., 10.]].into_iter().map(|p| p.map(Expr::Number)).collect::<Vec<_>>(),
+        ),
         to: Expr::Number(20.),
         ..Default::default()
     });

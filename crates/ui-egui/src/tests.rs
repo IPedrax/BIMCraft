@@ -6815,6 +6815,7 @@ mod family_already_exists;
 mod family_category_dialog;
 mod family_dimensions;
 mod family_document;
+mod family_sketch;
 mod family_temporary_hide;
 mod family_types_dialog;
 mod family_views;

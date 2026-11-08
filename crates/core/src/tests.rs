@@ -1512,7 +1512,7 @@ fn patching_one_form_keeps_every_other_guid() {
     // A field given as null is taken away; the ones left alone are as they were.
     run(&mut s, "family", json!({"name": "Shelf", "form": {"id": before[2].0, "material": null}}));
     assert_eq!(s.model.families["Shelf"].forms[2].material, "");
-    assert_eq!(s.model.families["Shelf"].forms[2].circle.as_ref().map(|c| c.radius.clone()), Some(crate::family::Expr::Number(25.0)));
+    assert_eq!(s.model.families["Shelf"].forms[2].circle().as_ref().map(|c| c.radius.clone()), Some(crate::family::Expr::Number(25.0)));
     // One taken away: the others keep their ids and GUIDs, and close up over its place.
     run(&mut s, "family", json!({"name": "Shelf", "delete_form": [before[0].0]}));
     let left: Vec<(u64, String)> = parts(&mut s).into_iter().map(|(id, guid, _)| (id, guid)).collect();
@@ -1582,7 +1582,8 @@ fn warnings_are_collected_not_stopped_at_the_first() {
 }
 
 /// What a family is in a file: its own fields, no more and no less, and a project written here read
-/// back whole (ТЗ-003 §6.8). FORMAT 20 grew its `planes` (the datums, always written) and a form's `host`.
+/// back whole (ТЗ-003 §6.8). FORMAT 20 grew its `planes` (the datums, always written) and a form's `host`; FORMAT 24 its
+/// `sketch`, in place of its `profile`.
 #[test]
 fn a_family_is_saved_with_the_fields_it_has_always_had() {
     let mut s = Session::new();
@@ -1594,7 +1595,7 @@ fn a_family_is_saved_with_the_fields_it_has_always_had() {
         keys
     }
     assert_eq!(keys(&f), ["category", "forms", "parameters", "planes", "types"], "`symbols` and `operation` are only there when they are");
-    assert_eq!(keys(&f["forms"][0]), ["from", "guid", "host", "id", "material", "profile", "to"], "every other field is unset");
+    assert_eq!(keys(&f["forms"][0]), ["from", "guid", "host", "id", "material", "sketch", "to"], "every other field is unset");
     let path = temp("family-format.bimcraft");
     run(&mut s, "save", json!({"path": path}));
     let mut back = Session::new();
@@ -2451,6 +2452,27 @@ fn hostile_params_never_panic_or_break_the_model() {
     let many: Vec<Value> = (0..100_000).map(|_| json!({"kind": "switch", "system": "switch"})).collect();
     let mut s = base.clone();
     assert!(s.execute("family", &json!({"name": "Hostile", "types": {"A": {}}, "connectors": many})).is_err());
+    assert_eq!(s.model.check(), Ok(()));
+    // A form's sketch (F5): each field of an arc of it given every hostile value, a revolve's axis line too; and far more lines
+    // than a sketch may hold.
+    for field in ["start", "end", "turn", "centre", "radius", "axis", "id", "guid"] {
+        for v in &values {
+            let mut arc = json!({"start": [100, 0], "end": [0, 0], "turn": 90});
+            arc[field] = v.clone();
+            let sketch = json!([{"start": [0, 0], "end": [100, 0]}, arc, {"start": [200, 0], "end": [200, 10], "axis": true}]);
+            let p = json!({"name": "Hostile", "types": {"A": {}}, "forms": [{"sketch": sketch, "to": 90}]});
+            let mut s = base.clone();
+            let made = s.execute("family", &p).is_ok();
+            assert_eq!(s.model.check(), Ok(()), "family {p} left a broken model");
+            if made {
+                let _ = s.execute("component", &json!({"family": "Hostile", "at": [500, 500]}));
+                draw_plans(&s.model);
+            }
+        }
+    }
+    let many: Vec<Value> = (0..20_000).map(|k| json!({"start": [k, 0], "end": [k + 1, 0]})).collect();
+    let mut s = base.clone();
+    assert!(s.execute("family", &json!({"name": "Hostile", "types": {"A": {}}, "forms": [{"sketch": many, "to": 1}]})).is_err());
     assert_eq!(s.model.check(), Ok(()));
 }
 
