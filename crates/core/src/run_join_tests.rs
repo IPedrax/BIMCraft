@@ -208,6 +208,25 @@ fn dragging_one_end_of_a_run_takes_the_runs_joined_there_with_it() {
 }
 
 #[test]
+fn moving_a_run_in_any_category_keeps_a_middle_join_on_the_new_intersection() {
+    for category in crate::model::RUN_CATEGORIES {
+        let command = crate::commands::command_of(category);
+        let mut s = session(&format!(
+            r#"{command} {{"points": [[0, 0], [6000, 0]]}}
+               {command} {{"points": [[3000, 4000], [3000, 0]]}}"#
+        ));
+        let [taken, joined] = runs(&s, category)[..] else { panic!("{category}: two runs were made") };
+
+        s.execute("move", &json!({"ids": [taken], "by": [0.0, 1000.0]})).unwrap();
+
+        assert_eq!(run(&s, taken).start, P2(0.0, 1000.0), "{category}: the taken run moved");
+        assert_eq!(run(&s, taken).end, P2(6000.0, 1000.0), "{category}: the taken run moved");
+        assert_eq!(run(&s, joined).start, P2(3000.0, 4000.0), "{category}: the free end stays put");
+        assert_eq!(run(&s, joined).end, P2(3000.0, 1000.0), "{category}: its joint follows the new intersection");
+    }
+}
+
+#[test]
 fn a_joined_runs_3d_body_is_cut_where_its_outline_is() {
     let s = session(
         r#"strip_footing {"points": [[0, 0], [6000, 0]]}
