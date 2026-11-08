@@ -359,7 +359,7 @@ impl<'f> Problem<'f> {
 fn end_form(f: &Family, g: Guid) -> Result<(usize, &Form), String> {
     let i = f.forms.iter().position(|x| x.guid == g).ok_or_else(|| format!("form {g} isn't one of its forms"))?;
     let form = &f.forms[i];
-    if !form.mesh.is_empty() || form.axis.is_some() {
+    if !form.mesh.is_empty() || form.axis_line().is_some() {
         return Err(format!("form {}: only an extrusion's start and end are measured", i + 1));
     }
     Ok((i, form))
@@ -1056,7 +1056,7 @@ pub fn end_faces(flexed: &Family, values: &BTreeMap<String, Val>, st: &views::St
     let mut out = Vec::new();
     let mut read = HashMap::new();
     for (i, form) in flexed.forms.iter().enumerate() {
-        if !form.mesh.is_empty() || form.axis.is_some() || form.guid.is_nil() {
+        if !form.mesh.is_empty() || form.axis_line().is_some() || form.guid.is_nil() {
             continue;
         }
         let PlaneRef::Plane(_) = form.host else { continue };
