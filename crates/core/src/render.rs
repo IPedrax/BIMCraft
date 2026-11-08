@@ -229,7 +229,7 @@ pub struct Drawing {
     pub(crate) weights: Weights,
     /// The element being drawn now, and the part of it.
     owner: Option<Id>,
-    part: Part,
+    pub(crate) part: Part,
     /// How big annotation is drawn, times the pixels it is drawn in: see [`annotation`].
     pub(crate) k: f32,
     /// How many times [`sheet::DENSITY`] pixels a mm of the paper the view stands for is, so the pens' size: `k`, not

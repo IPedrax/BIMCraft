@@ -68,7 +68,7 @@ impl TitleBlocksDialog {
     pub(crate) fn select(&mut self, i: Option<usize>) {
         if i != self.selected {
             self.selected = i;
-            self.field_key = i.and_then(|i| self.tb.texts.get(i)).map_or_else(String::new, |x| titleblock::key_for(&x.text));
+            self.field_key = i.and_then(|i| self.tb.texts.get(i)).map_or_else(String::new, |x| self.tb.free_key(&x.text));
         }
     }
 
@@ -186,17 +186,43 @@ fn fields_tab(ui: &mut Ui, d: &mut TitleBlocksDialog) {
     });
 }
 
-/// The texts: what each says, where, how big, which way and at what angle.
+/// The texts: what each says (a field's, what it says until it's given a value), whether it's a field, where, how big, which way
+/// and at what angle. Make Field makes one a field of each sheet's, keyed by what it says; Make Text makes it plain again.
 fn texts_tab(ui: &mut Ui, d: &mut TitleBlocksDialog) {
     let (w, h) = (d.tb.width, d.tb.height);
     let mut gone = None;
-    Grid::new("title-block-texts").striped(true).num_columns(7).spacing(vec2(6.0, 4.0)).show(ui, |ui| {
-        for head in [msg!("Text"), "X", "Y", msg!("Size"), msg!("Angle (°)"), msg!("Justification"), ""] {
+    let mut make: Option<(usize, bool)> = None;
+    let TitleBlock { texts, fields, .. } = &mut d.tb;
+    Grid::new("title-block-texts").striped(true).num_columns(8).spacing(vec2(6.0, 4.0)).show(ui, |ui| {
+        for head in [msg!("Text"), msg!("Field"), "X", "Y", msg!("Size"), msg!("Angle (°)"), msg!("Justification"), ""] {
             ui.label(RichText::new(t(head)).strong());
         }
         ui.end_row();
-        for (i, x) in d.tb.texts.iter_mut().enumerate() {
-            ui.add_sized([200.0, 20.0], TextEdit::singleline(&mut x.text));
+        for (i, x) in texts.iter_mut().enumerate() {
+            let field = titleblock::whole_key(&x.text).and_then(|k| fields.iter_mut().find(|f| f.key.eq_ignore_ascii_case(&k)));
+            match field {
+                Some(f) => {
+                    let tip = tf("What field {} says until a sheet or the project gives it a value", &[&f.key]);
+                    ui.add_sized([200.0, 20.0], TextEdit::singleline(&mut f.default)).on_hover_text(tip);
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(format!("{{{}}}", f.key)).monospace().small());
+                        let tip = t("It says this again, as plain text, and the field goes when no other text names it");
+                        if ui.small_button(t("Make Text")).on_hover_text(tip).clicked() {
+                            make = Some((i, false));
+                        }
+                    });
+                }
+                None => {
+                    ui.add_sized([200.0, 20.0], TextEdit::singleline(&mut x.text));
+                    let tip = t("The text becomes {KEY}, and what it said becomes the field's default");
+                    if let Some(k) = titleblock::whole_key(&x.text) {
+                        let what = if titleblock::is_auto(&k) { msg!("automatic") } else { msg!("not defined") };
+                        ui.label(RichText::new(t(what)).weak());
+                    } else if ui.small_button(t("Make Field")).on_hover_text(tip).clicked() {
+                        make = Some((i, true));
+                    }
+                }
+            }
             ui.add(mm(&mut x.at.0, -w, 2.0 * w));
             ui.add(mm(&mut x.at.1, -h, 2.0 * h));
             ui.add(mm(&mut x.size, titleblock::MIN_LETTERING, titleblock::MAX_LETTERING));
@@ -217,6 +243,14 @@ fn texts_tab(ui: &mut Ui, d: &mut TitleBlocksDialog) {
             ui.end_row();
         }
     });
+    match make {
+        Some((i, true)) => {
+            let key = d.tb.texts.get(i).map(|x| d.tb.free_key(&x.text)).unwrap_or_default();
+            d.error = d.tb.make_field(i, &key, Scope::Sheet).err();
+        }
+        Some((i, false)) => d.error = d.tb.make_text(i).err(),
+        None => {}
+    }
     if let Some(i) = gone {
         d.tb.texts.remove(i);
         d.select(None);

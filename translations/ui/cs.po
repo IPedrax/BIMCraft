@@ -313,7 +313,7 @@ msgstr "Přidat filtr"
 
 #: crates/ui-egui/src/editor.rs:940
 #: crates/ui-egui/src/fillpatterns.rs:410
-#: crates/ui-egui/src/titleblocks.rs:273
+#: crates/ui-egui/src/titleblocks.rs:307
 msgid "Add Line"
 msgstr "Přidat čáru"
 
@@ -333,7 +333,7 @@ msgstr "Přidat bod"
 msgid "Add Point: click on the top to raise or lower it there to the Options Bar's elevation"
 msgstr "Přidat bod: kliknutím na horní líc jej v daném místě zvednete nebo snížíte na výšku z panelu Možnosti"
 
-#: crates/ui-egui/src/titleblocks.rs:276
+#: crates/ui-egui/src/titleblocks.rs:310
 msgid "Add Rectangle"
 msgstr ""
 
@@ -375,7 +375,7 @@ msgid "Add Split Line: click two points; the top folds along the line between th
 msgstr "Přidat dělicí čáru: klikněte na dva body; horní líc se zalomí podél čáry mezi nimi"
 
 #: crates/ui-egui/src/editor.rs:940
-#: crates/ui-egui/src/titleblocks.rs:224
+#: crates/ui-egui/src/titleblocks.rs:258
 msgid "Add Text"
 msgstr "Přidat text"
 
@@ -592,8 +592,8 @@ msgstr "A:"
 msgid "Angle"
 msgstr "Úhel"
 
-#: crates/ui-egui/src/titleblocks.rs:194
-#: crates/ui-egui/src/titleblocks.rs:420
+#: crates/ui-egui/src/titleblocks.rs:197
+#: crates/ui-egui/src/titleblocks.rs:454
 msgid "Angle (°)"
 msgstr ""
 
@@ -664,7 +664,7 @@ msgstr "Platí pro všechny pohledy; přichytává se k zapnuté hlavní mříž
 #: crates/ui-egui/src/objectstyles.rs:78
 #: crates/ui-egui/src/properties.rs:629
 #: crates/ui-egui/src/standards.rs:333
-#: crates/ui-egui/src/titleblocks.rs:603
+#: crates/ui-egui/src/titleblocks.rs:637
 #: crates/ui-egui/src/typeprops.rs:309
 msgid "Apply"
 msgstr "Použít"
@@ -1074,7 +1074,7 @@ msgid "CAD drawing"
 msgstr "Výkres CAD"
 
 #: crates/ui-egui/src/cad.rs:51
-#: crates/ui-egui/src/titleblocks.rs:475
+#: crates/ui-egui/src/titleblocks.rs:509
 msgid "CAD drawings (DWG, DXF)"
 msgstr "Výkresy CAD (DWG, DXF)"
 
@@ -1145,7 +1145,7 @@ msgstr "Kamera: klikněte na místo, kde stojí její oko, a potom na to, na co 
 #: crates/ui-egui/src/shortcuts.rs:530
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:757
-#: crates/ui-egui/src/titleblocks.rs:604
+#: crates/ui-egui/src/titleblocks.rs:638
 #: crates/ui-egui/src/typeprops.rs:310
 #: crates/ui-egui/src/workplane.rs:252
 msgid "Cancel"
@@ -1229,10 +1229,10 @@ msgstr "Půdorysy podhledů"
 msgid "Ceiling: click inside a room for a ceiling out to its walls"
 msgstr "Podhled: klikněte uvnitř místnosti pro vytvoření podhledu k jejím stěnám"
 
-#: crates/ui-egui/src/titleblocks.rs:206
-#: crates/ui-egui/src/titleblocks.rs:211
-#: crates/ui-egui/src/titleblocks.rs:426
-#: crates/ui-egui/src/titleblocks.rs:431
+#: crates/ui-egui/src/titleblocks.rs:232
+#: crates/ui-egui/src/titleblocks.rs:237
+#: crates/ui-egui/src/titleblocks.rs:460
+#: crates/ui-egui/src/titleblocks.rs:465
 msgid "Center"
 msgstr ""
 
@@ -1449,11 +1449,11 @@ msgstr "Klikněte na sklon střechy napříč sklonem v místě, kde bude stát 
 msgid "Click a stair or a ramp for a railing down each side, or the start of a path."
 msgstr "Klikněte na schodiště nebo rampu pro umístění zábradlí po obou stranách, případně na počátek trasy."
 
-#: crates/ui-egui/src/titleblocks.rs:409
+#: crates/ui-egui/src/titleblocks.rs:443
 msgid "Click a text on the title block to move it, change it or make it a field."
 msgstr ""
 
-#: crates/ui-egui/src/titleblocks.rs:402
+#: crates/ui-egui/src/titleblocks.rs:436
 msgid "Click a text to pick it"
 msgstr ""
 
@@ -1722,7 +1722,7 @@ msgstr "Kliknutím zadejte počáteční bod osnovy."
 msgid "Click to enter the wall's start point."
 msgstr "Kliknutím zadejte počáteční bod stěny."
 
-#: crates/ui-egui/src/titleblocks.rs:402
+#: crates/ui-egui/src/titleblocks.rs:436
 msgid "Click to pick the text, drag to move it"
 msgstr ""
 
@@ -1909,7 +1909,7 @@ msgstr "Zavřít všechny pohledy kromě tohoto"
 msgid "Close {}"
 msgstr "Zavřít {}"
 
-#: crates/ui-egui/src/titleblocks.rs:255
+#: crates/ui-egui/src/titleblocks.rs:289
 msgid "Closed polyline, {} points"
 msgstr ""
 
@@ -2402,7 +2402,7 @@ msgstr "Výchozí tloušťka"
 #: crates/ui-egui/src/properties.rs:2456
 #: crates/ui-egui/src/properties.rs:2948
 #: crates/ui-egui/src/templates.rs:477
-#: crates/ui-egui/src/titleblocks.rs:532
+#: crates/ui-egui/src/titleblocks.rs:566
 msgid "Delete"
 msgstr "Odstranit"
 
@@ -2798,7 +2798,7 @@ msgid "Duct"
 msgstr "Vzduchovod"
 
 #: crates/ui-egui/src/browser.rs:434
-#: crates/ui-egui/src/titleblocks.rs:529
+#: crates/ui-egui/src/titleblocks.rs:563
 msgid "Duplicate"
 msgstr "Duplikovat"
 
@@ -3033,7 +3033,7 @@ msgstr "Elipsa: klikněte na střed, konec jedné poloosy a poté na dosah druh�
 
 #: crates/ui-egui/src/properties.rs:141
 #: crates/ui-egui/src/reinforce.rs:93
-#: crates/ui-egui/src/titleblocks.rs:242
+#: crates/ui-egui/src/titleblocks.rs:276
 msgid "End"
 msgstr "Konec"
 
@@ -3212,7 +3212,11 @@ msgstr "Stopy"
 msgid "Feet and inches"
 msgstr "Stopy a palce"
 
-#: crates/ui-egui/src/titleblocks.rs:440
+#: crates/ui-egui/src/titleblocks.rs:197
+msgid "Field"
+msgstr ""
+
+#: crates/ui-egui/src/titleblocks.rs:474
 msgid "Field key"
 msgstr ""
 
@@ -3274,7 +3278,7 @@ msgstr "Zaoblovací oblouk"
 msgid "Fillet Arc: pick two lines, then click to size the arc (or set its Radius); the lines are cut back to it"
 msgstr "Zaoblovací oblouk: vyberte dvě čáry a kliknutím určete velikost oblouku (nebo zadejte jeho Poloměr); čáry se k němu oříznou"
 
-#: crates/ui-egui/src/titleblocks.rs:304
+#: crates/ui-egui/src/titleblocks.rs:338
 msgid "Fills"
 msgstr ""
 
@@ -3378,7 +3382,7 @@ msgstr "Před opuštěním půdorysu dokončete nebo zrušte náčrt."
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "Nejprve dokončete nebo zrušte náčrt: čáry vzoru se vybírají v půdorysu."
 
-#: crates/ui-egui/src/titleblocks.rs:324
+#: crates/ui-egui/src/titleblocks.rs:358
 msgid "Fit"
 msgstr ""
 
@@ -3509,7 +3513,7 @@ msgstr "Skládací"
 msgid "Folding Marks:"
 msgstr "Značky přehybů:"
 
-#: crates/ui-egui/src/titleblocks.rs:294
+#: crates/ui-egui/src/titleblocks.rs:328
 msgid "Font"
 msgstr ""
 
@@ -3776,7 +3780,7 @@ msgstr "Záhlaví"
 #: crates/ui-egui/src/properties.rs:447
 #: crates/ui-egui/src/properties.rs:448
 #: crates/ui-egui/src/properties.rs:453
-#: crates/ui-egui/src/titleblocks.rs:291
+#: crates/ui-egui/src/titleblocks.rs:325
 msgid "Height"
 msgstr "Výška"
 
@@ -3964,7 +3968,7 @@ msgstr "Importovat CAD"
 msgid "Import CAD: a DWG or DXF drawing brought into the project, drawn under the model in the plans of a level, its layers, colours and linetypes kept, and snapped to"
 msgstr "Importovat CAD: výkres DWG nebo DXF vložený do projektu, vykreslený pod modelem v půdorysech podlaží, se zachovanými vrstvami, barvami a typy čar a s možností uchopování"
 
-#: crates/ui-egui/src/titleblocks.rs:537
+#: crates/ui-egui/src/titleblocks.rs:571
 msgid "Import DXF…"
 msgstr ""
 
@@ -4113,6 +4117,10 @@ msgstr "Základová patka (FI): klikněte v místě umístění patky"
 msgid "It can't be offset: give a distance, and pick a line, an arc, a polyline or a circle."
 msgstr "Nelze vytvořit ekvidistantu: zadejte vzdálenost a vyberte úsečku, oblouk, křivku nebo kružnici."
 
+#: crates/ui-egui/src/titleblocks.rs:209
+msgid "It says this again, as plain text, and the field goes when no other text names it"
+msgstr ""
+
 #: crates/ui-egui/src/dimtypes.rs:162
 #: crates/ui-egui/src/notes.rs:540
 msgid "Italic"
@@ -4159,7 +4167,7 @@ msgstr "Spojit do křivky (PJ): vybrané čáry navazující na sebe koncovými 
 msgid "Just now"
 msgstr "Právě teď"
 
-#: crates/ui-egui/src/titleblocks.rs:194
+#: crates/ui-egui/src/titleblocks.rs:197
 msgid "Justification"
 msgstr ""
 
@@ -4246,10 +4254,10 @@ msgid "Leaf Thickness"
 msgstr "Tloušťka křídla"
 
 #: crates/ui-egui/src/editor.rs:918
-#: crates/ui-egui/src/titleblocks.rs:205
-#: crates/ui-egui/src/titleblocks.rs:210
-#: crates/ui-egui/src/titleblocks.rs:425
-#: crates/ui-egui/src/titleblocks.rs:430
+#: crates/ui-egui/src/titleblocks.rs:231
+#: crates/ui-egui/src/titleblocks.rs:236
+#: crates/ui-egui/src/titleblocks.rs:459
+#: crates/ui-egui/src/titleblocks.rs:464
 msgid "Left"
 msgstr "Vlevo"
 
@@ -4263,7 +4271,7 @@ msgstr ""
 
 #: crates/ui-egui/src/revit.rs:76
 #: crates/ui-egui/src/revit.rs:241
-#: crates/ui-egui/src/titleblocks.rs:491
+#: crates/ui-egui/src/titleblocks.rs:525
 msgid "Left out: {}"
 msgstr "Vynecháno: {}"
 
@@ -4624,7 +4632,8 @@ msgstr "Hlavní rozteč X"
 msgid "Main spacing Y"
 msgstr "Hlavní rozteč Y"
 
-#: crates/ui-egui/src/titleblocks.rs:450
+#: crates/ui-egui/src/titleblocks.rs:221
+#: crates/ui-egui/src/titleblocks.rs:484
 msgid "Make Field"
 msgstr ""
 
@@ -4632,11 +4641,15 @@ msgstr ""
 msgid "Make Primary"
 msgstr "Nastavit jako primární"
 
+#: crates/ui-egui/src/titleblocks.rs:210
+msgid "Make Text"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3855
 msgid "Make a schedule, or open one"
 msgstr "Vytvořte výkaz nebo nějaký otevřete"
 
-#: crates/ui-egui/src/titleblocks.rs:544
+#: crates/ui-egui/src/titleblocks.rs:578
 msgid "Make one with New, or read one from a DXF with Import DXF…."
 msgstr ""
 
@@ -4976,7 +4989,7 @@ msgstr "NEUZAVŘENÝ OBVOD"
 #: crates/ui-egui/src/properties.rs:2234
 #: crates/ui-egui/src/properties.rs:2959
 #: crates/ui-egui/src/properties.rs:3230
-#: crates/ui-egui/src/titleblocks.rs:548
+#: crates/ui-egui/src/titleblocks.rs:582
 msgid "Name"
 msgstr "Název"
 
@@ -5001,7 +5014,7 @@ msgstr "Nejbližší"
 #: crates/ui-egui/src/graphics.rs:453
 #: crates/ui-egui/src/properties.rs:2218
 #: crates/ui-egui/src/properties.rs:2940
-#: crates/ui-egui/src/titleblocks.rs:526
+#: crates/ui-egui/src/titleblocks.rs:560
 msgid "New"
 msgstr "Nový"
 
@@ -5079,7 +5092,7 @@ msgstr "Nový název"
 msgid "New pattern from lines"
 msgstr "Nový vzor z čar"
 
-#: crates/ui-egui/src/titleblocks.rs:524
+#: crates/ui-egui/src/titleblocks.rs:558
 msgid "New title block's name"
 msgstr ""
 
@@ -5272,7 +5285,7 @@ msgstr "Číslo"
 #: crates/ui-egui/src/reinforce.rs:537
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/templates.rs:758
-#: crates/ui-egui/src/titleblocks.rs:605
+#: crates/ui-egui/src/titleblocks.rs:639
 #: crates/ui-egui/src/typeprops.rs:311
 #: crates/ui-egui/src/workplane.rs:253
 msgid "OK"
@@ -5635,7 +5648,7 @@ msgstr "Vzory ze souboru PAT, z AutoCADu a Revitu"
 #: crates/ui-egui/src/lineweights.rs:111
 #: crates/ui-egui/src/standards.rs:110
 #: crates/ui-egui/src/titleblocks.rs:126
-#: crates/ui-egui/src/titleblocks.rs:242
+#: crates/ui-egui/src/titleblocks.rs:276
 msgid "Pen"
 msgstr "Pero"
 
@@ -6203,7 +6216,7 @@ msgstr "Body"
 msgid "Polyline"
 msgstr "Křivka"
 
-#: crates/ui-egui/src/titleblocks.rs:255
+#: crates/ui-egui/src/titleblocks.rs:289
 msgid "Polyline, {} points"
 msgstr ""
 
@@ -6288,8 +6301,8 @@ msgstr "Profil"
 #: apps/bimcraft/src/main.rs:262
 #: crates/ui-egui/src/titleblocks.rs:148
 #: crates/ui-egui/src/titleblocks.rs:152
-#: crates/ui-egui/src/titleblocks.rs:443
-#: crates/ui-egui/src/titleblocks.rs:447
+#: crates/ui-egui/src/titleblocks.rs:477
+#: crates/ui-egui/src/titleblocks.rs:481
 msgid "Project"
 msgstr "Projekt"
 
@@ -6464,7 +6477,7 @@ msgstr "Rampa: klikněte na začátek a poté na konec ramene; podesta jej zalom
 msgid "Read Convention"
 msgstr "Směr čtení"
 
-#: crates/ui-egui/src/titleblocks.rs:536
+#: crates/ui-egui/src/titleblocks.rs:570
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
@@ -6590,9 +6603,9 @@ msgstr "Znovu načíst CAD"
 #: crates/ui-egui/src/properties.rs:3145
 #: crates/ui-egui/src/properties.rs:3298
 #: crates/ui-egui/src/titleblocks.rs:162
-#: crates/ui-egui/src/titleblocks.rs:214
-#: crates/ui-egui/src/titleblocks.rs:263
-#: crates/ui-egui/src/titleblocks.rs:434
+#: crates/ui-egui/src/titleblocks.rs:240
+#: crates/ui-egui/src/titleblocks.rs:297
+#: crates/ui-egui/src/titleblocks.rs:468
 msgid "Remove"
 msgstr "Odebrat"
 
@@ -6616,16 +6629,16 @@ msgstr "Odebrat ze seznamu"
 msgid "Remove the field"
 msgstr ""
 
-#: crates/ui-egui/src/titleblocks.rs:307
+#: crates/ui-egui/src/titleblocks.rs:341
 msgid "Remove the fills"
 msgstr ""
 
-#: crates/ui-egui/src/titleblocks.rs:263
+#: crates/ui-egui/src/titleblocks.rs:297
 msgid "Remove the line"
 msgstr ""
 
-#: crates/ui-egui/src/titleblocks.rs:214
-#: crates/ui-egui/src/titleblocks.rs:434
+#: crates/ui-egui/src/titleblocks.rs:240
+#: crates/ui-egui/src/titleblocks.rs:468
 msgid "Remove the text"
 msgstr ""
 
@@ -6794,10 +6807,10 @@ msgid "Ribbon"
 msgstr "Pás karet"
 
 #: crates/ui-egui/src/editor.rs:918
-#: crates/ui-egui/src/titleblocks.rs:207
-#: crates/ui-egui/src/titleblocks.rs:212
-#: crates/ui-egui/src/titleblocks.rs:427
-#: crates/ui-egui/src/titleblocks.rs:432
+#: crates/ui-egui/src/titleblocks.rs:233
+#: crates/ui-egui/src/titleblocks.rs:238
+#: crates/ui-egui/src/titleblocks.rs:461
+#: crates/ui-egui/src/titleblocks.rs:466
 msgid "Right"
 msgstr "Vpravo"
 
@@ -7232,8 +7245,8 @@ msgstr "Pultová"
 #: crates/ui-egui/src/lib.rs:3875
 #: crates/ui-egui/src/titleblocks.rs:148
 #: crates/ui-egui/src/titleblocks.rs:151
-#: crates/ui-egui/src/titleblocks.rs:443
-#: crates/ui-egui/src/titleblocks.rs:446
+#: crates/ui-egui/src/titleblocks.rs:477
+#: crates/ui-egui/src/titleblocks.rs:480
 msgid "Sheet"
 msgstr "Výkres"
 
@@ -7242,7 +7255,7 @@ msgid "Sheet Composition"
 msgstr "Sestavení výkresu"
 
 #: crates/ui-egui/src/properties.rs:275
-#: crates/ui-egui/src/titleblocks.rs:557
+#: crates/ui-egui/src/titleblocks.rs:591
 msgid "Sheet Name"
 msgstr "Název výkresu"
 
@@ -7403,8 +7416,8 @@ msgstr "Jednokřídlé dveře"
 #: crates/ui-egui/src/linestyles/creator.rs:191
 #: crates/ui-egui/src/properties.rs:276
 #: crates/ui-egui/src/titleblocks.rs:22
-#: crates/ui-egui/src/titleblocks.rs:194
-#: crates/ui-egui/src/titleblocks.rs:418
+#: crates/ui-egui/src/titleblocks.rs:197
+#: crates/ui-egui/src/titleblocks.rs:452
 msgid "Size"
 msgstr "Velikost"
 
@@ -7702,7 +7715,7 @@ msgstr "Normy zahrnuté v této předvolbě:"
 
 #: crates/ui-egui/src/properties.rs:140
 #: crates/ui-egui/src/reinforce.rs:93
-#: crates/ui-egui/src/titleblocks.rs:242
+#: crates/ui-egui/src/titleblocks.rs:276
 msgid "Start"
 msgstr "Začátek"
 
@@ -8053,9 +8066,9 @@ msgstr "Dočasná kóta {}"
 #: crates/ui-egui/src/editor.rs:879
 #: crates/ui-egui/src/editor.rs:912
 #: crates/ui-egui/src/notes.rs:503
-#: crates/ui-egui/src/titleblocks.rs:194
-#: crates/ui-egui/src/titleblocks.rs:227
-#: crates/ui-egui/src/titleblocks.rs:416
+#: crates/ui-egui/src/titleblocks.rs:197
+#: crates/ui-egui/src/titleblocks.rs:261
+#: crates/ui-egui/src/titleblocks.rs:450
 msgid "Text"
 msgstr "Text"
 
@@ -8218,7 +8231,7 @@ msgstr "Projekt neobsahuje žádné možnosti návrhu: vytvořte je pomocí Spr�
 msgid "The project has no phase filter that shows this: make one in Manage > Phasing"
 msgstr "Projekt nemá filtr fází, který by toto zobrazoval: vytvořte jej v nabídce Správa > Fázování"
 
-#: crates/ui-egui/src/titleblocks.rs:520
+#: crates/ui-egui/src/titleblocks.rs:554
 msgid "The project has no title blocks of its own; sheets draw the built-in one."
 msgstr ""
 
@@ -8259,7 +8272,8 @@ msgstr "Náčrt obsahuje příliš mnoho čar."
 msgid "The system's own title bar and frame, rather than the window's: the app bar then sits under it"
 msgstr "Použije se záhlaví a rámeček operačního systému namísto okna: panel aplikace se pak umístí pod něj"
 
-#: crates/ui-egui/src/titleblocks.rs:449
+#: crates/ui-egui/src/titleblocks.rs:217
+#: crates/ui-egui/src/titleblocks.rs:483
 msgid "The text becomes {KEY}, and what it said becomes the field's default"
 msgstr ""
 
@@ -8267,7 +8281,7 @@ msgstr ""
 msgid "The texts name {} without defining them"
 msgstr ""
 
-#: crates/ui-egui/src/titleblocks.rs:285
+#: crates/ui-egui/src/titleblocks.rs:319
 msgid "The title block stands in the sheet's bottom right corner, inside the border; views go above it."
 msgstr ""
 
@@ -8436,13 +8450,13 @@ msgstr ""
 msgid "Title Block Width:"
 msgstr "Šířka rozpisky:"
 
-#: crates/ui-egui/src/titleblocks.rs:652
+#: crates/ui-egui/src/titleblocks.rs:686
 msgid "Title Block {}"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:4004
 #: crates/ui-egui/src/purge.rs:17
-#: crates/ui-egui/src/titleblocks.rs:507
+#: crates/ui-egui/src/titleblocks.rs:541
 msgid "Title Blocks"
 msgstr ""
 
@@ -9089,6 +9103,10 @@ msgstr "Čím volba Vysoký kontrast mračen bodů na ovládacím panelu zobraze
 msgid "What detail lines draw in: a pen, a colour and a line pattern."
 msgstr "Čím se kreslí čáry detailu: pero, barva a vzor čáry."
 
+#: crates/ui-egui/src/titleblocks.rs:205
+msgid "What field {} says until a sheet or the project gives it a value"
+msgstr ""
+
 #: crates/ui-egui/src/settings.rs:491
 msgid "What is picked and what has focus are drawn in it, in every theme; its lettering is made dark or light enough to read"
 msgstr "Touto barvou se v každém motivu kreslí vybrané prvky a prvek s fokusem; písmo na ní se ztmaví nebo zesvětlí tak, aby bylo čitelné"
@@ -9145,7 +9163,7 @@ msgstr "Tlusté čáry"
 #: crates/ui-egui/src/properties.rs:448
 #: crates/ui-egui/src/properties.rs:449
 #: crates/ui-egui/src/properties.rs:450
-#: crates/ui-egui/src/titleblocks.rs:288
+#: crates/ui-egui/src/titleblocks.rs:322
 msgid "Width"
 msgstr "Šířka"
 
@@ -9155,7 +9173,7 @@ msgstr "Šířka (mm)"
 
 #: crates/ui-egui/src/dimtypes.rs:164
 #: crates/ui-egui/src/notes.rs:542
-#: crates/ui-egui/src/titleblocks.rs:422
+#: crates/ui-egui/src/titleblocks.rs:456
 msgid "Width Factor"
 msgstr "Faktor šířky"
 
@@ -9309,7 +9327,7 @@ msgid "Zig Zag"
 msgstr "Cik-cak"
 
 #: crates/ui-egui/src/linestyles/creator.rs:110
-#: crates/ui-egui/src/titleblocks.rs:322
+#: crates/ui-egui/src/titleblocks.rs:356
 msgid "Zoom"
 msgstr "Zoom"
 
@@ -9441,6 +9459,10 @@ msgstr "hliník"
 #: crates/core/src/curves.rs:125
 msgid "arc"
 msgstr "oblouk"
+
+#: crates/ui-egui/src/titleblocks.rs:219
+msgid "automatic"
+msgstr ""
 
 #: crates/ui-egui/src/properties.rs:2878
 msgid "begins with"
@@ -9638,6 +9660,10 @@ msgstr "severovýchod"
 #: crates/ui-egui/src/workplane.rs:397
 msgid "north-west"
 msgstr "severozápad"
+
+#: crates/ui-egui/src/titleblocks.rs:219
+msgid "not defined"
+msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:2171
 #: crates/ui-egui/src/canvas.rs:2848

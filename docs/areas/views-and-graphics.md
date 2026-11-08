@@ -168,9 +168,11 @@ with 2.5mm, 3.5mm and 5mm in Arial; `text_type` makes, renames and deletes them 
 any font the system has, or one we carry (IBM Plex Sans, IBM Plex Mono, BIMCraft Lettering: `font.rs`'s single-stroke
 capitals). `text/system.rs` lists the system's fonts once (`system::index`): it looks through the folders Linux, Windows
 and macOS keep them in and reads each file only as far as its OpenType table directory and its `name`, `OS/2` and `head`
-tables (family, weight, italic, whether it varies its weight), from the public specification, every offset checked; a face
+tables (family, weight, width, italic, whether it varies its weight), from the public specification, every offset checked; a face
 is read whole (`system::load`, kept, up to `MAX_FONT`) only when a note is lettered in it. `text::resolve` turns a type's font
-and a character's bold and italic into a `Face`: ours by name; else the family; else its stand-ins (`system::substitutes`:
+and a character's bold and italic into a `Face` (of a family, the face upright or italic as asked, then of normal width, so
+Windows' Arial Narrow, which names its family Arial, doesn't letter Arial, then of the nearest weight): ours by name; else the
+family; else its stand-ins (`system::substitutes`:
 Arial by Liberation Sans, Arimo, Helvetica, Nimbus Sans, DejaVu Sans…, Times New Roman and Courier New likewise); else Plex
 Sans. So Arial, the default, letters on any system, and a file naming a font this one hasn't opens (`TextType::check`
 takes any name) and draws with what stands in; the `text_type` command refuses a font the system can't letter, unless the
@@ -714,7 +716,12 @@ with the project's values, its texts, its straight lines and its size; a sheet's
 fields. The preview is the editor: a click picks a text (`Text::outline`), a drag moves it, the arrow keys nudge it half a
 millimetre, and the text picked is edited below it (what it says, size, angle, justification) or made a field (Make Field); it zooms
 and scrolls. Its lettering is in a font (`TitleBlock::font`, Arial unless it says, a system font as a text type names one, stood in for where
-the system hasn't it), each text at its size as a capital's height and with a width factor, laid out and drawn as notes are
-(`render::lettering`). A fill's rings that lie inside an odd number of the others are holes (a hatch's islands), drawn empty. An
+the system hasn't it), each text at its size as a capital's height (the font's OS/2 says it; an older font's, its H's) and with a
+width factor, laid out and drawn as notes are
+(`render::lettering`). A fill's rings that lie inside an odd number of the others are holes (a hatch's islands), drawn empty: wound
+the other way and, when it has more than one, pushed as `Part::Text`, so the desktop's canvas fills it by the non-zero rule as it
+does lettering rather than each ring on its own. The Texts tab shows a field's text as what it says (its default, edited there), its
+key beside it, with Make Text (`TitleBlock::make_text`: back to plain text, the field gone when no other text names it); a plain
+text has Make Field, keyed by what it says (`TitleBlock::free_key`, numbered past the keys there are) as each sheet's. An
 MTEXT's colour is the one its formatting sets before its first word (`\C`, `\c`), over the entity's. The stroke lettering has the
 ordinals º and ª.

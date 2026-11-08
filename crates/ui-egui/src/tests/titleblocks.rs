@@ -82,3 +82,37 @@ fn a_text_picked_on_the_preview_becomes_a_field_that_says_what_it_said() {
     assert_eq!(tb.texts[2].text, "{RUA_XV_DE_NOVEMBRO_1}");
     assert_eq!(tb.field("RUA_XV_DE_NOVEMBRO_1").map(|f| f.default.as_str()), Some("Rua XV de Novembro, 1"));
 }
+
+#[test]
+fn each_text_in_the_texts_tab_is_made_a_field_and_back_showing_what_it_says() {
+    let mut h = app(&format!(
+        "{BOX}\n{SELO}\n{}",
+        r#"title_block {"name": "CIVILTEC", "texts": [{"at": [4, 30], "text": "{CLIENTE}"}, {"at": [4, 10], "text": "{DESENHO}"}, {"at": [4, 20], "text": "Planta Baixa Térreo"}]}"#
+    ));
+    h.state_mut().open_title_blocks(Some("CIVILTEC"));
+    h.run();
+    press(&mut h, "Texts");
+    // The one plain text has the button; a field's row says what it says, its key beside it.
+    press(&mut h, "Make Field");
+    assert!(h.query_by_label("{PLANTA_BAIXA_TERREO}").is_some(), "its key shows beside it");
+    assert!(h.query_by_label("Make Field").is_none());
+    press(&mut h, "OK");
+    let tb = &h.state().session.model.title_blocks["CIVILTEC"];
+    assert_eq!(tb.texts[2].text, "{PLANTA_BAIXA_TERREO}");
+    assert_eq!(
+        tb.field("PLANTA_BAIXA_TERREO").map(|f| (f.scope, f.default.as_str())),
+        Some((bimcraft_core::titleblock::Scope::Sheet, "Planta Baixa Térreo"))
+    );
+    // Make Text puts back what it said; the field goes with it.
+    h.state_mut().open_title_blocks(Some("CIVILTEC"));
+    h.run();
+    press(&mut h, "Texts");
+    let n = h.query_all_by_label("Make Text").count();
+    assert_eq!(n, 3, "each field's row offers it");
+    h.query_all_by_label("Make Text").nth(2).unwrap().click_accesskit();
+    h.run();
+    press(&mut h, "OK");
+    let tb = &h.state().session.model.title_blocks["CIVILTEC"];
+    assert_eq!(tb.texts[2].text, "Planta Baixa Térreo");
+    assert!(tb.field("PLANTA_BAIXA_TERREO").is_none());
+}

@@ -471,6 +471,47 @@ impl TitleBlock {
     }
 }
 
+/// The key of a text that is one field and nothing else, `{KEY}`, uppercase; none, any other text.
+pub fn whole_key(text: &str) -> Option<String> {
+    let inner = text.trim().strip_prefix('{')?.strip_suffix('}')?;
+    let key = inner.trim().to_ascii_uppercase();
+    (!inner.contains(['{', '}']) && valid_key(&key)).then_some(key)
+}
+
+impl TitleBlock {
+    /// A key for a field made of a text saying `text`: [`key_for`] it, numbered (`_2`, `_3`…) past the fields it has.
+    pub fn free_key(&self, text: &str) -> String {
+        let base = key_for(text);
+        if self.field(&base).is_none() {
+            return base;
+        }
+        (2..=MAX_FIELDS + 1)
+            .map(|n| {
+                let tail = format!("_{n}");
+                let head: String = base.chars().take(MAX_KEY - tail.len()).collect();
+                format!("{}{tail}", head.trim_end_matches('_'))
+            })
+            .find(|k| self.field(k).is_none())
+            .unwrap_or(base)
+    }
+
+    /// Text `i`, a field alone, made the text it says until it's given a value (its field's default) again; the field goes
+    /// when no other text names it. Why not, when it can't be: no text `i`, or one that isn't a field of its own.
+    pub fn make_text(&mut self, i: usize) -> Result<(), String> {
+        let t = self.texts.get(i).ok_or_else(|| format!("there's no text {i}"))?;
+        let key =
+            whole_key(&t.text).filter(|k| self.field(k).is_some()).ok_or_else(|| format!("text {i} isn't a field of this title block"))?;
+        let default = self.field(&key).map(|f| f.default.clone()).unwrap_or_default();
+        if let Some(t) = self.texts.get_mut(i) {
+            t.text = default;
+        }
+        if !self.texts.iter().any(|t| keys_in(&t.text).iter().any(|k| k.eq_ignore_ascii_case(&key))) {
+            self.fields.retain(|f| !f.key.eq_ignore_ascii_case(&key));
+        }
+        Ok(())
+    }
+}
+
 /// Why `values`, fields' values by key, aren't (`who`'s, as the error names them), if they aren't: each key a key, uppercase,
 /// each value one line of up to [`MAX_TEXT`] characters, up to [`MAX_FIELDS`] of them.
 pub fn check_values(who: &str, values: &BTreeMap<String, String>) -> Result<(), String> {
@@ -610,7 +651,13 @@ pub fn draw(d: &mut Drawing, tb: &TitleBlock, at: P2, values: &BTreeMap<String, 
                 r.iter().map(|p| d.view.px(*p + at)).collect()
             })
             .collect();
+        // Filled by the non-zero rule, as lettering is, so the desktop's canvas leaves its holes empty too.
+        let part = d.part;
+        if rings.len() > 1 {
+            d.part = crate::render::Part::Text;
+        }
         d.push(crate::render::Prim::Fill { rings, color: ink(f.color) });
+        d.part = part;
     }
     for l in &tb.lines {
         let pts: Vec<P2> = l.points.iter().map(|p| *p + at).collect();
@@ -805,6 +852,41 @@ mod tests {
         assert_eq!(key_for("— 01 —"), "FIELD");
         assert_eq!(key_for("Data"), "DATA");
         assert!(tb.check("T").is_ok());
+    }
+
+    #[test]
+    fn a_text_is_made_a_field_under_a_free_key_and_back_into_the_text_it_was() {
+        let mut tb = TitleBlock::default();
+        let n = tb.texts.len();
+        for s in ["Planta Baixa Térreo", "Planta baixa térreo", "{CLIENTE} e {DATE}"] {
+            tb.texts.push(Text {
+                at: P2(4.0, 4.0),
+                text: s.into(),
+                size: 2.5,
+                angle: 0.0,
+                align: Align::Left,
+                color: None,
+                width_factor: 1.0,
+            });
+        }
+        assert_eq!(whole_key(" {planta} "), Some("PLANTA".into()));
+        assert_eq!(whole_key("{CLIENTE} e {DATE}"), None);
+        assert_eq!(whole_key("Planta"), None);
+        let key = tb.free_key(&tb.texts[n].text.clone());
+        tb.make_field(n, &key, Scope::Sheet).unwrap();
+        // The same words again get a key of their own.
+        let again = tb.free_key(&tb.texts[n + 1].text.clone());
+        assert_eq!((key.as_str(), again.as_str()), ("PLANTA_BAIXA_TERREO", "PLANTA_BAIXA_TERREO_2"));
+        tb.make_field(n + 1, &again, Scope::Sheet).unwrap();
+        // Back to the text it was; its field goes when no other text names it.
+        tb.texts.push(Text { at: P2(4.0, 8.0), text: "{PLANTA_BAIXA_TERREO}".into(), ..tb.texts[n].clone() });
+        tb.make_text(n).unwrap();
+        assert_eq!(tb.texts[n].text, "Planta Baixa Térreo");
+        assert!(tb.field("PLANTA_BAIXA_TERREO").is_some(), "another text still names it");
+        tb.make_text(n + 3).unwrap();
+        assert!(tb.field("PLANTA_BAIXA_TERREO").is_none());
+        assert!(tb.make_text(n + 2).unwrap_err().contains("isn't a field"));
+        assert!(tb.make_text(99).unwrap_err().contains("no text"));
     }
 
     #[test]

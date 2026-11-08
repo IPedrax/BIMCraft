@@ -314,7 +314,7 @@ msgstr "Adicionar filtro"
 
 #: crates/ui-egui/src/editor.rs:940
 #: crates/ui-egui/src/fillpatterns.rs:410
-#: crates/ui-egui/src/titleblocks.rs:273
+#: crates/ui-egui/src/titleblocks.rs:307
 msgid "Add Line"
 msgstr "Adicionar linha"
 
@@ -334,7 +334,7 @@ msgstr "Adicionar ponto"
 msgid "Add Point: click on the top to raise or lower it there to the Options Bar's elevation"
 msgstr "Adicionar ponto: clique no topo para elevá-lo ou rebaixá-lo ali até a elevação da barra de opções"
 
-#: crates/ui-egui/src/titleblocks.rs:276
+#: crates/ui-egui/src/titleblocks.rs:310
 msgid "Add Rectangle"
 msgstr "Adicionar retângulo"
 
@@ -376,7 +376,7 @@ msgid "Add Split Line: click two points; the top folds along the line between th
 msgstr "Adicionar linha de divisão: clique em dois pontos; o topo dobra ao longo da linha entre eles"
 
 #: crates/ui-egui/src/editor.rs:940
-#: crates/ui-egui/src/titleblocks.rs:224
+#: crates/ui-egui/src/titleblocks.rs:258
 msgid "Add Text"
 msgstr "Adicionar texto"
 
@@ -593,8 +593,8 @@ msgstr "E:"
 msgid "Angle"
 msgstr "Ângulo"
 
-#: crates/ui-egui/src/titleblocks.rs:194
-#: crates/ui-egui/src/titleblocks.rs:420
+#: crates/ui-egui/src/titleblocks.rs:197
+#: crates/ui-egui/src/titleblocks.rs:454
 msgid "Angle (°)"
 msgstr "Ângulo (°)"
 
@@ -665,7 +665,7 @@ msgstr "Vale para todas as vistas; faz snap na grade principal ou na subgrade at
 #: crates/ui-egui/src/objectstyles.rs:78
 #: crates/ui-egui/src/properties.rs:629
 #: crates/ui-egui/src/standards.rs:333
-#: crates/ui-egui/src/titleblocks.rs:603
+#: crates/ui-egui/src/titleblocks.rs:637
 #: crates/ui-egui/src/typeprops.rs:309
 msgid "Apply"
 msgstr "Aplicar"
@@ -1075,7 +1075,7 @@ msgid "CAD drawing"
 msgstr "desenho CAD"
 
 #: crates/ui-egui/src/cad.rs:51
-#: crates/ui-egui/src/titleblocks.rs:475
+#: crates/ui-egui/src/titleblocks.rs:509
 msgid "CAD drawings (DWG, DXF)"
 msgstr "Desenhos CAD (DWG, DXF)"
 
@@ -1146,7 +1146,7 @@ msgstr "Câmera: clique onde fica o olho e depois no ponto para onde ela olha: u
 #: crates/ui-egui/src/shortcuts.rs:530
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:757
-#: crates/ui-egui/src/titleblocks.rs:604
+#: crates/ui-egui/src/titleblocks.rs:638
 #: crates/ui-egui/src/typeprops.rs:310
 #: crates/ui-egui/src/workplane.rs:252
 msgid "Cancel"
@@ -1230,10 +1230,10 @@ msgstr "Plantas de forro"
 msgid "Ceiling: click inside a room for a ceiling out to its walls"
 msgstr "Forro: clique dentro de um ambiente para um forro até as paredes"
 
-#: crates/ui-egui/src/titleblocks.rs:206
-#: crates/ui-egui/src/titleblocks.rs:211
-#: crates/ui-egui/src/titleblocks.rs:426
-#: crates/ui-egui/src/titleblocks.rs:431
+#: crates/ui-egui/src/titleblocks.rs:232
+#: crates/ui-egui/src/titleblocks.rs:237
+#: crates/ui-egui/src/titleblocks.rs:460
+#: crates/ui-egui/src/titleblocks.rs:465
 msgid "Center"
 msgstr "Centro"
 
@@ -1450,11 +1450,11 @@ msgstr "Clique na água do telhado onde vai a parede da frente da água-furtada,
 msgid "Click a stair or a ramp for a railing down each side, or the start of a path."
 msgstr "Clique numa escada ou rampa para um guarda-corpo em cada lado, ou no início de um caminho."
 
-#: crates/ui-egui/src/titleblocks.rs:409
+#: crates/ui-egui/src/titleblocks.rs:443
 msgid "Click a text on the title block to move it, change it or make it a field."
 msgstr "Clique num texto do carimbo para movê-lo, alterá-lo ou transformá-lo em campo."
 
-#: crates/ui-egui/src/titleblocks.rs:402
+#: crates/ui-egui/src/titleblocks.rs:436
 msgid "Click a text to pick it"
 msgstr "Clique num texto para selecioná-lo"
 
@@ -1723,7 +1723,7 @@ msgstr "Clique para indicar o ponto inicial do eixo."
 msgid "Click to enter the wall's start point."
 msgstr "Clique para indicar o ponto inicial da parede."
 
-#: crates/ui-egui/src/titleblocks.rs:402
+#: crates/ui-egui/src/titleblocks.rs:436
 msgid "Click to pick the text, drag to move it"
 msgstr "Clique para selecionar o texto, arraste para movê-lo"
 
@@ -1910,7 +1910,7 @@ msgstr "Fechar todas as vistas menos esta"
 msgid "Close {}"
 msgstr "Fechar {}"
 
-#: crates/ui-egui/src/titleblocks.rs:255
+#: crates/ui-egui/src/titleblocks.rs:289
 msgid "Closed polyline, {} points"
 msgstr "Polilinha fechada, {} pontos"
 
@@ -2403,7 +2403,7 @@ msgstr "Espessura padrão"
 #: crates/ui-egui/src/properties.rs:2456
 #: crates/ui-egui/src/properties.rs:2948
 #: crates/ui-egui/src/templates.rs:477
-#: crates/ui-egui/src/titleblocks.rs:532
+#: crates/ui-egui/src/titleblocks.rs:566
 msgid "Delete"
 msgstr "Excluir"
 
@@ -2799,7 +2799,7 @@ msgid "Duct"
 msgstr "Duto"
 
 #: crates/ui-egui/src/browser.rs:434
-#: crates/ui-egui/src/titleblocks.rs:529
+#: crates/ui-egui/src/titleblocks.rs:563
 msgid "Duplicate"
 msgstr "Duplicar"
 
@@ -3034,7 +3034,7 @@ msgstr "Elipse: clique no centro, na extremidade de um eixo e depois até onde v
 
 #: crates/ui-egui/src/properties.rs:141
 #: crates/ui-egui/src/reinforce.rs:93
-#: crates/ui-egui/src/titleblocks.rs:242
+#: crates/ui-egui/src/titleblocks.rs:276
 msgid "End"
 msgstr "Fim"
 
@@ -3213,7 +3213,11 @@ msgstr "Pés"
 msgid "Feet and inches"
 msgstr "Pés e polegadas"
 
-#: crates/ui-egui/src/titleblocks.rs:440
+#: crates/ui-egui/src/titleblocks.rs:197
+msgid "Field"
+msgstr "Campo"
+
+#: crates/ui-egui/src/titleblocks.rs:474
 msgid "Field key"
 msgstr "Chave do campo"
 
@@ -3275,7 +3279,7 @@ msgstr "Arco de concordância"
 msgid "Fillet Arc: pick two lines, then click to size the arc (or set its Radius); the lines are cut back to it"
 msgstr "Arco de concordância: escolha duas linhas e clique para definir o arco (ou defina o Raio); as linhas são cortadas até ele"
 
-#: crates/ui-egui/src/titleblocks.rs:304
+#: crates/ui-egui/src/titleblocks.rs:338
 msgid "Fills"
 msgstr "Preenchimentos"
 
@@ -3379,7 +3383,7 @@ msgstr "Conclua ou cancele o esboço antes de sair da sua planta."
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "Termine ou cancele o esboço primeiro: as linhas de um padrão são escolhidas na planta."
 
-#: crates/ui-egui/src/titleblocks.rs:324
+#: crates/ui-egui/src/titleblocks.rs:358
 msgid "Fit"
 msgstr "Ajustar"
 
@@ -3510,7 +3514,7 @@ msgstr "Camarão"
 msgid "Folding Marks:"
 msgstr "Marcas de dobramento:"
 
-#: crates/ui-egui/src/titleblocks.rs:294
+#: crates/ui-egui/src/titleblocks.rs:328
 msgid "Font"
 msgstr "Fonte"
 
@@ -3777,7 +3781,7 @@ msgstr "Cabeçalho"
 #: crates/ui-egui/src/properties.rs:447
 #: crates/ui-egui/src/properties.rs:448
 #: crates/ui-egui/src/properties.rs:453
-#: crates/ui-egui/src/titleblocks.rs:291
+#: crates/ui-egui/src/titleblocks.rs:325
 msgid "Height"
 msgstr "Altura"
 
@@ -3965,7 +3969,7 @@ msgstr "Importar CAD"
 msgid "Import CAD: a DWG or DXF drawing brought into the project, drawn under the model in the plans of a level, its layers, colours and linetypes kept, and snapped to"
 msgstr "Importar CAD: um desenho DWG ou DXF trazido ao projeto, desenhado sob o modelo nas plantas de um nível, com suas camadas, cores e tipos de linha, e com snap"
 
-#: crates/ui-egui/src/titleblocks.rs:537
+#: crates/ui-egui/src/titleblocks.rs:571
 msgid "Import DXF…"
 msgstr "Importar DXF…"
 
@@ -4114,6 +4118,10 @@ msgstr "Sapata isolada (FI): clique onde a sapata fica"
 msgid "It can't be offset: give a distance, and pick a line, an arc, a polyline or a circle."
 msgstr "Não dá para deslocar: dê uma distância e escolha uma linha, arco, polilinha ou círculo."
 
+#: crates/ui-egui/src/titleblocks.rs:209
+msgid "It says this again, as plain text, and the field goes when no other text names it"
+msgstr "Volta a ser texto comum, com o que dizia, e o campo sai quando nenhum outro texto o usa"
+
 #: crates/ui-egui/src/dimtypes.rs:162
 #: crates/ui-egui/src/notes.rs:540
 msgid "Italic"
@@ -4160,7 +4168,7 @@ msgstr "Unir em polilinha (PJ): as linhas selecionadas, ligadas pelas extremidad
 msgid "Just now"
 msgstr "Agora mesmo"
 
-#: crates/ui-egui/src/titleblocks.rs:194
+#: crates/ui-egui/src/titleblocks.rs:197
 msgid "Justification"
 msgstr "Alinhamento"
 
@@ -4247,10 +4255,10 @@ msgid "Leaf Thickness"
 msgstr "Espessura da folha"
 
 #: crates/ui-egui/src/editor.rs:918
-#: crates/ui-egui/src/titleblocks.rs:205
-#: crates/ui-egui/src/titleblocks.rs:210
-#: crates/ui-egui/src/titleblocks.rs:425
-#: crates/ui-egui/src/titleblocks.rs:430
+#: crates/ui-egui/src/titleblocks.rs:231
+#: crates/ui-egui/src/titleblocks.rs:236
+#: crates/ui-egui/src/titleblocks.rs:459
+#: crates/ui-egui/src/titleblocks.rs:464
 msgid "Left"
 msgstr "Esquerda"
 
@@ -4264,7 +4272,7 @@ msgstr ""
 
 #: crates/ui-egui/src/revit.rs:76
 #: crates/ui-egui/src/revit.rs:241
-#: crates/ui-egui/src/titleblocks.rs:491
+#: crates/ui-egui/src/titleblocks.rs:525
 msgid "Left out: {}"
 msgstr "Deixados de fora: {}"
 
@@ -4625,7 +4633,8 @@ msgstr "Espaçamento principal X"
 msgid "Main spacing Y"
 msgstr "Espaçamento principal Y"
 
-#: crates/ui-egui/src/titleblocks.rs:450
+#: crates/ui-egui/src/titleblocks.rs:221
+#: crates/ui-egui/src/titleblocks.rs:484
 msgid "Make Field"
 msgstr "Transformar em campo"
 
@@ -4633,11 +4642,15 @@ msgstr "Transformar em campo"
 msgid "Make Primary"
 msgstr "Tornar principal"
 
+#: crates/ui-egui/src/titleblocks.rs:210
+msgid "Make Text"
+msgstr "Voltar a texto"
+
 #: crates/ui-egui/src/lib.rs:3855
 msgid "Make a schedule, or open one"
 msgstr "Criar uma tabela ou abrir uma"
 
-#: crates/ui-egui/src/titleblocks.rs:544
+#: crates/ui-egui/src/titleblocks.rs:578
 msgid "Make one with New, or read one from a DXF with Import DXF…."
 msgstr "Crie um com Novo, ou leia um de um DXF com Importar DXF…."
 
@@ -4977,7 +4990,7 @@ msgstr "NÃO DELIMITADO"
 #: crates/ui-egui/src/properties.rs:2234
 #: crates/ui-egui/src/properties.rs:2959
 #: crates/ui-egui/src/properties.rs:3230
-#: crates/ui-egui/src/titleblocks.rs:548
+#: crates/ui-egui/src/titleblocks.rs:582
 msgid "Name"
 msgstr "Nome"
 
@@ -5002,7 +5015,7 @@ msgstr "Mais próximo"
 #: crates/ui-egui/src/graphics.rs:453
 #: crates/ui-egui/src/properties.rs:2218
 #: crates/ui-egui/src/properties.rs:2940
-#: crates/ui-egui/src/titleblocks.rs:526
+#: crates/ui-egui/src/titleblocks.rs:560
 msgid "New"
 msgstr "Novo"
 
@@ -5080,7 +5093,7 @@ msgstr "Novo nome"
 msgid "New pattern from lines"
 msgstr "Novo padrão a partir de linhas"
 
-#: crates/ui-egui/src/titleblocks.rs:524
+#: crates/ui-egui/src/titleblocks.rs:558
 msgid "New title block's name"
 msgstr "Nome do novo carimbo"
 
@@ -5273,7 +5286,7 @@ msgstr "Número"
 #: crates/ui-egui/src/reinforce.rs:537
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/templates.rs:758
-#: crates/ui-egui/src/titleblocks.rs:605
+#: crates/ui-egui/src/titleblocks.rs:639
 #: crates/ui-egui/src/typeprops.rs:311
 #: crates/ui-egui/src/workplane.rs:253
 msgid "OK"
@@ -5636,7 +5649,7 @@ msgstr "Padrões de um arquivo PAT, do AutoCAD e do Revit"
 #: crates/ui-egui/src/lineweights.rs:111
 #: crates/ui-egui/src/standards.rs:110
 #: crates/ui-egui/src/titleblocks.rs:126
-#: crates/ui-egui/src/titleblocks.rs:242
+#: crates/ui-egui/src/titleblocks.rs:276
 msgid "Pen"
 msgstr "Pena"
 
@@ -6204,7 +6217,7 @@ msgstr "Pontos"
 msgid "Polyline"
 msgstr "Polilinha"
 
-#: crates/ui-egui/src/titleblocks.rs:255
+#: crates/ui-egui/src/titleblocks.rs:289
 msgid "Polyline, {} points"
 msgstr "Polilinha, {} pontos"
 
@@ -6289,8 +6302,8 @@ msgstr "Perfil"
 #: apps/bimcraft/src/main.rs:262
 #: crates/ui-egui/src/titleblocks.rs:148
 #: crates/ui-egui/src/titleblocks.rs:152
-#: crates/ui-egui/src/titleblocks.rs:443
-#: crates/ui-egui/src/titleblocks.rs:447
+#: crates/ui-egui/src/titleblocks.rs:477
+#: crates/ui-egui/src/titleblocks.rs:481
 msgid "Project"
 msgstr "Projeto"
 
@@ -6465,7 +6478,7 @@ msgstr "Rampa: clique onde ela começa e depois onde o lance termina; um patamar
 msgid "Read Convention"
 msgstr "Convenção de leitura"
 
-#: crates/ui-egui/src/titleblocks.rs:536
+#: crates/ui-egui/src/titleblocks.rs:570
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr "Lê um carimbo desenhado em tamanho real (em mm do papel) no espaço do modelo de um DXF ou DWG: suas linhas, hachuras sólidas e textos; cada {KEY} citado nos textos vira um campo"
 
@@ -6591,9 +6604,9 @@ msgstr "Recarregar CAD"
 #: crates/ui-egui/src/properties.rs:3145
 #: crates/ui-egui/src/properties.rs:3298
 #: crates/ui-egui/src/titleblocks.rs:162
-#: crates/ui-egui/src/titleblocks.rs:214
-#: crates/ui-egui/src/titleblocks.rs:263
-#: crates/ui-egui/src/titleblocks.rs:434
+#: crates/ui-egui/src/titleblocks.rs:240
+#: crates/ui-egui/src/titleblocks.rs:297
+#: crates/ui-egui/src/titleblocks.rs:468
 msgid "Remove"
 msgstr "Remover"
 
@@ -6617,16 +6630,16 @@ msgstr "Remover da lista"
 msgid "Remove the field"
 msgstr "Remover o campo"
 
-#: crates/ui-egui/src/titleblocks.rs:307
+#: crates/ui-egui/src/titleblocks.rs:341
 msgid "Remove the fills"
 msgstr "Remover os preenchimentos"
 
-#: crates/ui-egui/src/titleblocks.rs:263
+#: crates/ui-egui/src/titleblocks.rs:297
 msgid "Remove the line"
 msgstr "Remover a linha"
 
-#: crates/ui-egui/src/titleblocks.rs:214
-#: crates/ui-egui/src/titleblocks.rs:434
+#: crates/ui-egui/src/titleblocks.rs:240
+#: crates/ui-egui/src/titleblocks.rs:468
 msgid "Remove the text"
 msgstr "Remover o texto"
 
@@ -6795,10 +6808,10 @@ msgid "Ribbon"
 msgstr "Faixa de opções"
 
 #: crates/ui-egui/src/editor.rs:918
-#: crates/ui-egui/src/titleblocks.rs:207
-#: crates/ui-egui/src/titleblocks.rs:212
-#: crates/ui-egui/src/titleblocks.rs:427
-#: crates/ui-egui/src/titleblocks.rs:432
+#: crates/ui-egui/src/titleblocks.rs:233
+#: crates/ui-egui/src/titleblocks.rs:238
+#: crates/ui-egui/src/titleblocks.rs:461
+#: crates/ui-egui/src/titleblocks.rs:466
 msgid "Right"
 msgstr "Direita"
 
@@ -7233,8 +7246,8 @@ msgstr "Meia-água"
 #: crates/ui-egui/src/lib.rs:3875
 #: crates/ui-egui/src/titleblocks.rs:148
 #: crates/ui-egui/src/titleblocks.rs:151
-#: crates/ui-egui/src/titleblocks.rs:443
-#: crates/ui-egui/src/titleblocks.rs:446
+#: crates/ui-egui/src/titleblocks.rs:477
+#: crates/ui-egui/src/titleblocks.rs:480
 msgid "Sheet"
 msgstr "Folha"
 
@@ -7243,7 +7256,7 @@ msgid "Sheet Composition"
 msgstr "Composição de folha"
 
 #: crates/ui-egui/src/properties.rs:275
-#: crates/ui-egui/src/titleblocks.rs:557
+#: crates/ui-egui/src/titleblocks.rs:591
 msgid "Sheet Name"
 msgstr "Nome da folha"
 
@@ -7404,8 +7417,8 @@ msgstr "Porta simples"
 #: crates/ui-egui/src/linestyles/creator.rs:191
 #: crates/ui-egui/src/properties.rs:276
 #: crates/ui-egui/src/titleblocks.rs:22
-#: crates/ui-egui/src/titleblocks.rs:194
-#: crates/ui-egui/src/titleblocks.rs:418
+#: crates/ui-egui/src/titleblocks.rs:197
+#: crates/ui-egui/src/titleblocks.rs:452
 msgid "Size"
 msgstr "Tamanho"
 
@@ -7703,7 +7716,7 @@ msgstr "Normas incluídas neste conjunto:"
 
 #: crates/ui-egui/src/properties.rs:140
 #: crates/ui-egui/src/reinforce.rs:93
-#: crates/ui-egui/src/titleblocks.rs:242
+#: crates/ui-egui/src/titleblocks.rs:276
 msgid "Start"
 msgstr "Início"
 
@@ -8054,9 +8067,9 @@ msgstr "Cota temporária {}"
 #: crates/ui-egui/src/editor.rs:879
 #: crates/ui-egui/src/editor.rs:912
 #: crates/ui-egui/src/notes.rs:503
-#: crates/ui-egui/src/titleblocks.rs:194
-#: crates/ui-egui/src/titleblocks.rs:227
-#: crates/ui-egui/src/titleblocks.rs:416
+#: crates/ui-egui/src/titleblocks.rs:197
+#: crates/ui-egui/src/titleblocks.rs:261
+#: crates/ui-egui/src/titleblocks.rs:450
 msgid "Text"
 msgstr "Texto"
 
@@ -8219,7 +8232,7 @@ msgstr "O projeto não tem opções de projeto: Gerenciar > Opções de projeto 
 msgid "The project has no phase filter that shows this: make one in Manage > Phasing"
 msgstr "O projeto não tem filtro de fase que mostre isto: crie um em Gerenciar > Fases"
 
-#: crates/ui-egui/src/titleblocks.rs:520
+#: crates/ui-egui/src/titleblocks.rs:554
 msgid "The project has no title blocks of its own; sheets draw the built-in one."
 msgstr "O projeto não tem carimbos próprios; as folhas usam o carimbo padrão."
 
@@ -8260,7 +8273,8 @@ msgstr "O esboço tem linhas demais."
 msgid "The system's own title bar and frame, rather than the window's: the app bar then sits under it"
 msgstr "A barra de título e a moldura do próprio sistema, em vez das da janela: a barra do aplicativo fica então abaixo dela"
 
-#: crates/ui-egui/src/titleblocks.rs:449
+#: crates/ui-egui/src/titleblocks.rs:217
+#: crates/ui-egui/src/titleblocks.rs:483
 msgid "The text becomes {KEY}, and what it said becomes the field's default"
 msgstr "O texto vira {KEY}, e o que ele dizia vira o valor padrão do campo"
 
@@ -8268,7 +8282,7 @@ msgstr "O texto vira {KEY}, e o que ele dizia vira o valor padrão do campo"
 msgid "The texts name {} without defining them"
 msgstr "Os textos citam {} sem defini-los"
 
-#: crates/ui-egui/src/titleblocks.rs:285
+#: crates/ui-egui/src/titleblocks.rs:319
 msgid "The title block stands in the sheet's bottom right corner, inside the border; views go above it."
 msgstr "O carimbo fica no canto inferior direito da folha, dentro da margem; as vistas ficam acima dele."
 
@@ -8437,13 +8451,13 @@ msgstr "Carimbo"
 msgid "Title Block Width:"
 msgstr "Largura da legenda / carimbo:"
 
-#: crates/ui-egui/src/titleblocks.rs:652
+#: crates/ui-egui/src/titleblocks.rs:686
 msgid "Title Block {}"
 msgstr "Carimbo {}"
 
 #: crates/ui-egui/src/lib.rs:4004
 #: crates/ui-egui/src/purge.rs:17
-#: crates/ui-egui/src/titleblocks.rs:507
+#: crates/ui-egui/src/titleblocks.rs:541
 msgid "Title Blocks"
 msgstr "Carimbos"
 
@@ -9090,6 +9104,10 @@ msgstr "A cor em que Nuvens de pontos em alto contraste, na barra de controle da
 msgid "What detail lines draw in: a pen, a colour and a line pattern."
 msgstr "Em que as linhas de detalhe são desenhadas: uma pena, uma cor e um padrão de linha."
 
+#: crates/ui-egui/src/titleblocks.rs:205
+msgid "What field {} says until a sheet or the project gives it a value"
+msgstr "O que o campo {} mostra até a folha ou o projeto lhe dar um valor"
+
 #: crates/ui-egui/src/settings.rs:491
 msgid "What is picked and what has focus are drawn in it, in every theme; its lettering is made dark or light enough to read"
 msgstr "O que está selecionado e o que tem foco são desenhados nela, em todos os temas; o texto sobre ela é escurecido ou clareado o bastante para ser legível"
@@ -9146,7 +9164,7 @@ msgstr "Linhas grossas"
 #: crates/ui-egui/src/properties.rs:448
 #: crates/ui-egui/src/properties.rs:449
 #: crates/ui-egui/src/properties.rs:450
-#: crates/ui-egui/src/titleblocks.rs:288
+#: crates/ui-egui/src/titleblocks.rs:322
 msgid "Width"
 msgstr "Largura"
 
@@ -9156,7 +9174,7 @@ msgstr "Espessura (mm)"
 
 #: crates/ui-egui/src/dimtypes.rs:164
 #: crates/ui-egui/src/notes.rs:542
-#: crates/ui-egui/src/titleblocks.rs:422
+#: crates/ui-egui/src/titleblocks.rs:456
 msgid "Width Factor"
 msgstr "Fator de largura"
 
@@ -9310,7 +9328,7 @@ msgid "Zig Zag"
 msgstr "Zigue-zague"
 
 #: crates/ui-egui/src/linestyles/creator.rs:110
-#: crates/ui-egui/src/titleblocks.rs:322
+#: crates/ui-egui/src/titleblocks.rs:356
 msgid "Zoom"
 msgstr "Zoom"
 
@@ -9442,6 +9460,10 @@ msgstr "alumínio"
 #: crates/core/src/curves.rs:125
 msgid "arc"
 msgstr "arco"
+
+#: crates/ui-egui/src/titleblocks.rs:219
+msgid "automatic"
+msgstr "automático"
 
 #: crates/ui-egui/src/properties.rs:2878
 msgid "begins with"
@@ -9639,6 +9661,10 @@ msgstr "nordeste"
 #: crates/ui-egui/src/workplane.rs:397
 msgid "north-west"
 msgstr "noroeste"
+
+#: crates/ui-egui/src/titleblocks.rs:219
+msgid "not defined"
+msgstr "não definido"
 
 #: crates/ui-egui/src/canvas.rs:2171
 #: crates/ui-egui/src/canvas.rs:2848
