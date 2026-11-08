@@ -662,6 +662,10 @@ impl BimApp {
                     if let Some(i) = ed.selected_form() {
                         self.form_work_plane_panel(ui, ed, i);
                         self.form_mode_panel(ui, ed, i);
+                        visibility_panel(ui, ed, super::visibility::Target::Form(i));
+                    }
+                    if let Some(i) = ed.selected_nested() {
+                        visibility_panel(ui, ed, super::visibility::Target::Nested(i));
                     }
                     if !lines.is_empty() {
                         self.form_panel(ui, ed, &lines);
@@ -1118,6 +1122,19 @@ impl BimApp {
         let mut bar = ui.new_child(UiBuilder::new().id_salt("family-view-bar").max_rect(pane).layout(Layout::bottom_up(Align::Min)));
         crate::style::card([true, true, true, true]).inner_margin(Margin::symmetric(6, 2)).show(&mut bar, |ui| {
             ui.horizontal(|ui| {
+                // F8: the document's Detail Level, which each of its views draws its forms and symbols at.
+                if ed.adaptive.is_none() {
+                    let now = ed.views.detail;
+                    let tip = msg!("Detail Level: the forms and symbols each view of the family draws, as their Visibility Settings say");
+                    let r = crate::footer::menu_button(ui, "Detail Level", now.name(), tip, None);
+                    egui::Popup::menu(&r).show(|ui| {
+                        for d in bimcraft_core::graphics::Detail::ALL {
+                            if ui.selectable_label(now == d, t(d.name())).clicked() {
+                                ed.views.detail = d;
+                            }
+                        }
+                    });
+                }
                 ui.label(RichText::new(t("Shaded")).color(pal().muted));
                 if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
                     ed.modeller.camera = None;
@@ -1385,6 +1402,8 @@ impl BimApp {
             self.status = Status { text: e, error: true };
         }
         ed.go_to_view_dialog(ctx);
+        // F8: Family Element Visibility Settings.
+        ed.visibility_dialog(ctx);
         let Some(dialog) = ed.dialog else {
             ed.document.dialog_saved = None;
             ed.document.category_shown = false;
@@ -1696,4 +1715,17 @@ pub(crate) fn group(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui)) {
             Grid::new(key).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, add);
         });
     }
+}
+
+/// Revit's Visibility panel on a form's or a nested instance's contextual tab: Visibility Settings opens Family Element
+/// Visibility Settings for it (F8).
+fn visibility_panel(ui: &mut Ui, ed: &mut FamilyEditor, target: super::visibility::Target) {
+    ribbon::panel(ui, msg!("Visibility"), |ui| {
+        let tip = msg!(
+            "Visibility Settings: the views it is drawn in (Plan/RCP, Front/Back, Left/Right, only when cut) and at which detail levels"
+        );
+        if big_button(ui, Icon::Visibility, msg!("Visibility Settings"), false, tip).clicked() {
+            ed.open_visibility(target);
+        }
+    });
 }

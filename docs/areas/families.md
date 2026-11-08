@@ -115,13 +115,13 @@ parameter metadata and symbols remain in the draft even when their dedicated too
 A form selected in the document (from the Project Browser's Forms list, or Select in the Forms tab; Escape, a click in the view or
 Modify lets it go) shows its own Properties in place of the family's tabs, as Revit's do for an Extrusion (`editor/extrusion.rs`):
 Constraints (Extrusion End and Start in the project's units, each with `=`, a revolve's angles instead; the Work Plane, read-only,
-named as `Planes::listed` names it), Graphics (Visible with `=`; Visibility/Graphics Overrides is F8's and shows greyed), Materials
+named as `Planes::listed` names it), Graphics (Visible with `=`; Visibility/Graphics Overrides' Edit… opens F8's Visibility Settings, *Visibility Settings* below), Materials
 and Finishes (Material with `=`) and Identity Data (Solid/Void). A value tied to a parameter or worked out by a formula is greyed. The
 contextual tab is "Modify | Form", with Delete and Edit Work Plane, which opens the Work Plane dialog for the form (T12, below); the Options Bar shows
 Depth (End less Start: typed, Start stays and End moves; greyed while End is tied). Edits go to the draft and its history. Solid/Void
 and Edit Work Plane run `family` (its `form` patch) and `edit_work_plane` on a private session holding the draft, as Save Family
 does, and take the form back with the id and GUID it had: the form moves with the plane. Sketch mode (Edit Extrusion, Finish and
-Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's (below), Visibility Settings F8's.
+Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's (below); its Visibility panel's Visibility Settings is F8's (below).
 
 {3D} shows what is selected as the project's 3D view does (T11, `editor/lit3d.rs`): a form, a void or a nested instance selected
 is tinted halfway in the selection's colour with its edges whole, through the project's own tints (`Scene::render_in`), the part a
@@ -255,6 +255,53 @@ gives it, so a hidden one stays hidden as forms move in the list. A hidden form 
 document's (`document::State::temp`), as Preview Visibility: not saved, no step of the history, no unsaved change, gone when the
 family closes. While it hides anything the view wears the project's cyan frame (`footer::FRAME`) and the bar says
 "Temporary Hide/Isolate (HR resets)"; Preview Visibility's orange frame is then drawn just inside it, so both show.
+
+### Visibility Settings (F8)
+
+F8, FORMAT 31 (`family/visibility.rs`). Revit's Family Element Visibility Settings: a form's, a void's and a nested instance's
+`visibility` is `{plan, front_back, left_right, coarse, medium, fine, only_when_cut}`, each true by default but `only_when_cut`,
+and a file or a command writes only what differs (`{"plan": false}`); a symbol's takes only `coarse`, `medium` and `fine`
+(`Visibility::check_symbol`, refused in `Family::check` naming the symbol), as Revit's symbolic lines do. They are drawing
+only: `Family::pieces` still builds every form `visible` leaves in, so IFC, schedules, bounds and snapping are untouched, and a
+form is drawn where both `visible` and its settings allow it. A void cuts whatever its settings say (they are kept, and change
+nothing: cutting per view would change the solid per view and its IFC). A nested instance's settings AND with each of its
+family's forms' and symbols' (`Visibility::both`, `nested.rs`); a nested piece's view direction is read against the host's axes.
+
+Each built form carries its settings as `Piece::vis`. What a view reads, by `Look::forms()` (`FormView`: how it looks, set by
+`Look::of`, and its detail level, by `Look::with`):
+
+- **Plans and ceiling plans** read `plan`, cut or not (Revit applies Plan/RCP only to a family the plan cuts; BIMCraft draws a
+  family's symbols in its level's plans whatever height its forms reach, so applying it always keeps a hidden leaf from
+  doubling its symbolic swing), and the view's detail level; `only_when_cut` draws a form only where the cut plane passes
+  through it (`render::plan_draws`; the family's own plan, `family_plan`, the same). A door's or a window's forms with no
+  settings keep the old rule: left out of a plan at Coarse with its symbols.
+- **Sections and elevations** read `front_back` where they look nearer the component's y axis (its family's Front and Back
+  elevations' way; a tie counts as Front/Back) and `left_right` nearer its x (`visibility::class`), and their detail level;
+  the projection never draws `only_when_cut`, the poché where the line cuts does (`render::section_base` asks
+  `look.forms_show(vis, true)`).
+- **3D views** read only their detail level, whichever way they look, as Revit's 3D always shows the form; never
+  `only_when_cut`. A 3D view has a Detail Level now: the `detail` command takes a 3D view or `{3D}` (made when its level first
+  changes, as `visual_style` makes it), and the 3D view's control bar and its Properties (Graphics) have it. It changes nothing else in 3D yet.
+
+The 3D scene keeps a form's settings packed on each of its triangles (`Tri::vis`, `Solid::Mesh`'s `vis`:
+`visibility::packed`, the hide flags and the component's x axis in plan to a half turn; 0 for anything without settings), and
+every picture, pick, wireframe and the card's mesh (`view3d/gpu.rs`) leaves out those `Look::forms_show` refuses. A copy whose
+triangles carry settings is never instanced on the card (`placements`), so the card's per-triangle filter sees it. Symbols:
+`Family::marks_in(values, detail)` (`Model::component_marks_in`, `Model::opening_marks_in`) gives those drawn at a detail level,
+a symbol with no settings at Medium and Fine (`SYMBOL_DEFAULT`, the old "Coarse leaves them out"); so a door authored as
+Revit's, its leaf `{plan: false}` and its swing a symbol, shows the swing in plan where the leaf's outline was.
+
+In the family document (`editor/visibility.rs`), Family Element Visibility Settings opens from a form's or a nested instance's
+contextual tab (Visibility > Visibility Settings), from a form's Properties (Graphics > Visibility/Graphics Overrides, Edit…)
+and from a symbol's row in the Symbols tab (Detail Levels, Edit…; only its detail levels can be changed):
+View Specific Display (Plan/RCP, Front/Back, Left/Right, Only shown when cut), Detail Levels (Coarse, Medium, Fine), Default,
+OK (into the draft, a step of its history) and Cancel. The document's view control bar has a Detail Level menu (`Views::detail`,
+the session's, Fine when a family opens). Its views draw a form its settings leave out of that view (`views::hidden_in`)
+**halftone**, as Revit's family views grey it, so it can still be seen and picked; Preview Visibility on leaves it out, as the
+project would. The plans and elevations take it into the ghost component of forms the type hides (`views.rs::ghosts`), which a
+door's or a window's now has too: a generic copy of the family, its wall's thickness a parameter, placed at the opening's
+frame. {3D} ghosts the forms its Detail Level leaves out in the ghost material. Model lines and model text in families, and
+symbolic lines drawn in elevations, are not here.
 
 ## Shared parameters file
 
@@ -840,7 +887,7 @@ windows' opening lines are in Opening. The Family Editor's Symbols tab picks it 
 
 `Model::component_marks` places a component's marks (mirrored, then turned and moved) and `Model::opening_marks` an opening's,
 and `render::marks` draws them: lines in the category's pen (`BY_CATEGORY`, so Object Styles and Visibility/Graphics apply), dots
-as filled discs. Coarse detail leaves them out. A label's anchor is placed with the component (turned, mirrored, moved) but its
+as filled discs. Coarse detail leaves them out, unless their Visibility Settings tick Coarse (F8, *Visibility Settings*). A label's anchor is placed with the component (turned, mirrored, moved) but its
 letters never are: they are always drawn at 0 degrees in the view, left to right with a horizontal baseline, however the component
 stands (the simplest rule; no flipping by quadrant). Symbols are annotation of the component's level: they draw in that level's
 plan and its ceiling plan whatever height the component's forms reach (a ceiling light shows its symbols in the floor plan) and

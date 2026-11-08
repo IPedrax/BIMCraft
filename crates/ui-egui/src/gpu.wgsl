@@ -4,7 +4,8 @@
 //      fs_scene_cut, which keeps only what lies in it. Then vs_dot / fs_dot, a scan's points, in the same targets and depth.
 //   2. vs_scene and vs_instanced_clear / fs_clear: the surfaces seen through, the nearest of them where it is nearer than anything opaque, into a
 //      colour target and an element target of their own (only when the view sees through something).
-//   3. vs_full / fs_post: an edge wherever the opaque plane changes between a pixel and the one to its right or below it (where
+//   3. vs_full / fs_post: an edge wherever the opaque plane changes between a pixel and the one to its right or below it, and
+//      across a surface only two pixels across (`sliver`) (where
 //      the view shows its edges) and a silhouette as wide as the view says, else the shaded colour (in ambient shadow where the
 //      view shows them, read off the opaque depth round the pixel; tinted halfway where selected), else the ground; and over it
 //      what is seen through, blended.
@@ -432,6 +433,31 @@ fn inked(c: vec3<f32>) -> vec3<f32> {
     return floor(vec3<f32>(26.0) + floor(clamp(c + vec3<f32>(shift), vec3<f32>(0.0), vec3<f32>(255.0)) * 206.0 / 255.0));
 }
 
+// Whether the pixel at (x, y), on plane `here`, is the first of a surface two pixels across between others (a face seen nearly
+// edge on, a door leaf's top under its head), which is edge throughout rather than its colour showing between its two lines a
+// pixel here and there: the processor's `view3d::edge_at`.
+fn sliver(x: i32, y: i32, here: u32) -> bool {
+    if here == 0u || here == DOT_PLANE {
+        return false;
+    }
+    let size = vec2<i32>(g.size.xy);
+    let across = x >= 1 && x + 2 < size.x && plane_differs(x - 1, y, here) && plane_same(x + 1, y, here) && plane_differs(x + 2, y, here);
+    let down = y >= 1 && y + 2 < size.y && plane_differs(x, y - 1, here) && plane_same(x, y + 1, here) && plane_differs(x, y + 2, here);
+    return across || down;
+}
+
+// Whether the pixel at (x, y) shows a surface on another plane than `here`, or nothing (a point is neither).
+fn plane_differs(x: i32, y: i32, here: u32) -> bool {
+    let p = ids_at(x, y).x;
+    return p != DOT_PLANE && p != here;
+}
+
+// Whether the pixel at (x, y) shows plane `here` (not a point).
+fn plane_same(x: i32, y: i32, here: u32) -> bool {
+    let p = ids_at(x, y).x;
+    return p != DOT_PLANE && p == here;
+}
+
 @fragment
 fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let x = i32(frag.x);
@@ -445,7 +471,7 @@ fn fs_post(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let on_dot = here.x == DOT_PLANE;
     let lines = g.ground.w > 0.5;
     let differs = (x + 1 < size.x && right.x != DOT_PLANE && right.x != here.x) || (y + 1 < size.y && below.x != DOT_PLANE && below.x != here.x);
-    let edge = !on_dot && (((g.display.x > 0.5 || lines) && differs) || outlined(x, y));
+    let edge = !on_dot && (((g.display.x > 0.5 || lines) && (differs || sliver(x, y, here.x))) || outlined(x, y));
     var rgb = select(g.ground.xyz, vec3<f32>(255.0), lines);
     if edge {
         // In the tint where the pixel's own element is tinted, else in the edge colour of the first element of it, the pixel
