@@ -19,6 +19,7 @@ use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
 
 mod bounds;
+pub mod constraints;
 mod options;
 mod planes;
 mod validate;
@@ -26,6 +27,7 @@ pub mod views;
 
 pub(crate) use validate::check_family_edits;
 
+pub use constraints::{DimRef, DimView, Extent, FamilyDimension, MAX_DIMENSIONS, Unsat};
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 
 pub use planes::{
@@ -798,6 +800,10 @@ pub struct Family {
     pub lines: Vec<RefLine>,
     #[serde(default)]
     pub forms: Vec<Form>,
+    /// Its dimensions (F7): between its planes and its extrusions' ends, labelled, locked and EQ, and the locks Align leaves;
+    /// what they hold is solved when a type is built (`constraints.rs`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dimensions: Vec<FamilyDimension>,
     /// What its plan draws besides its forms: lines, arcs, labels and dots of its own, in any category.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub symbols: Vec<Symbol>,
@@ -848,6 +854,7 @@ impl Default for Family {
             planes: datums(),
             lines: Vec::new(),
             forms: Vec::new(),
+            dimensions: Vec::new(),
             symbols: Vec::new(),
             operation: None,
             connectors: Vec::new(),
@@ -1594,6 +1601,11 @@ impl Family {
             sym.visible.iter_mut().for_each(&mut expr);
         }
         self.room_calculation_point.iter_mut().flatten().for_each(&mut expr);
+        for d in &mut self.dimensions {
+            if d.label.as_deref() == Some(old) {
+                d.label = Some(new.to_string());
+            }
+        }
         for c in &mut self.connectors {
             [&mut c.voltage, &mut c.power_factor].into_iter().for_each(&mut expr);
             match &mut c.load_va {
@@ -1662,8 +1674,19 @@ impl Family {
         if self.category.hosted() {
             done.insert(WALL.to_string(), Val::Number(wall));
         }
+        let seeded = done.clone();
         for p in &self.parameters {
             self.resolve(&p.name, set, instance, &mut done, &mut Vec::new())?;
+        }
+        // A reporting parameter a dimension measures is what it measures, and the formulas that read it are worked out again
+        // over it; no label reads one (`check_dimensions`), so the dimensions come out the same.
+        let reported = self.reported(&done);
+        if !reported.is_empty() {
+            done = seeded;
+            done.extend(reported.into_iter().map(|(name, v)| (name, Val::Number(v))));
+            for p in &self.parameters {
+                self.resolve(&p.name, set, instance, &mut done, &mut Vec::new())?;
+            }
         }
         Ok(done)
     }
@@ -1771,6 +1794,7 @@ impl Family {
             m.check()?;
         }
         self.check_planes()?;
+        self.check_dimensions()?;
         if self.category.hosted() {
             for name in [WIDTH, HEIGHT] {
                 if !self.parameters.iter().any(|p| p.name == name && p.kind == Kind::Length && !p.reporting) {
@@ -1918,12 +1942,17 @@ impl Family {
         self.check_connectors()?;
         // Each formula read once across the types; past what a family may build, refused.
         let (mut read, mut built, mut cuts) = (HashMap::new(), 0, csg::Meter::default());
+        let mut solving = constraints::Meter::default();
         for t in self.types.keys() {
             let pieces = self
                 .values(t, &BTreeMap::new())
                 .and_then(|v| {
                     self.marks(&v)?;
-                    self.build(&v, &mut read, &mut cuts)
+                    // Its dimensions solved for the type: what they hold built where they put it.
+                    match self.flexed_with(&v, &mut solving).map_err(|e| e.to_string())? {
+                        Cow::Borrowed(_) => self.build(&v, &mut read, &mut cuts),
+                        Cow::Owned(f) => f.build(&v, &mut HashMap::new(), &mut cuts),
+                    }
                 })
                 .map_err(|e| format!("type `{t}`: {e}"))?;
             built += pieces.iter().map(|p| p.tris.len()).sum::<usize>();
@@ -2043,7 +2072,8 @@ impl Family {
     }
 
     pub fn pieces_at(&self, values: &BTreeMap<String, Val>, placement: Option<&crate::adaptive::Placement>) -> Result<Vec<Piece>, String> {
-        let mut pieces = self.build(values, &mut HashMap::new(), &mut csg::Meter::default())?;
+        let flexed = self.flexed(values).map_err(|e| e.to_string())?;
+        let mut pieces = flexed.build(values, &mut HashMap::new(), &mut csg::Meter::default())?;
         if let Some(definition) = &self.adaptive {
             pieces.extend(definition.evaluate(values, placement.unwrap_or(&definition.preview)).pieces());
         }
@@ -2247,13 +2277,14 @@ impl Family {
     /// that builds to nothing on its own — a formula it can't read, a profile with no area — is left
     /// out: what a warning tells is best worked out around it, not stopped by it.
     pub fn shapes(&self, values: &BTreeMap<String, Val>) -> Vec<Shape> {
+        let Ok(f) = self.flexed(values) else { return Vec::new() };
         let mut read = HashMap::new();
         let mut out = Vec::new();
-        for i in 0..self.forms.len() {
-            let Some(piece) = self.solid(i, values, &mut read).ok().flatten() else {
+        for i in 0..f.forms.len() {
+            let Some(piece) = f.solid(i, values, &mut read).ok().flatten() else {
                 continue;
             };
-            out.extend(Shape::of(i, self.forms[i].void, &piece.tris));
+            out.extend(Shape::of(i, f.forms[i].void, &piece.tris));
         }
         out
     }
@@ -2288,13 +2319,14 @@ impl Family {
 
     /// The voids that cut none of the solid forms listed before them, by their boxes, and that `reach` takes.
     fn free_voids(&self, values: &BTreeMap<String, Val>, reach: impl Fn(&Shape) -> bool) -> Result<Vec<Vec<[P3; 3]>>, String> {
+        let f = self.flexed(values).map_err(|e| e.to_string())?;
         let mut read = HashMap::new();
         let (mut solids, mut out): (Vec<Shape>, Vec<Vec<[P3; 3]>>) = (Vec::new(), Vec::new());
-        for i in 0..self.forms.len() {
-            let Some(piece) = self.solid(i, values, &mut read).map_err(|e| format!("form {}: {e}", i + 1))? else {
+        for i in 0..f.forms.len() {
+            let Some(piece) = f.solid(i, values, &mut read).map_err(|e| format!("form {}: {e}", i + 1))? else {
                 continue;
             };
-            let Some(shape) = Shape::of(i, self.forms[i].void, &piece.tris) else { continue };
+            let Some(shape) = Shape::of(i, f.forms[i].void, &piece.tris) else { continue };
             if !shape.void {
                 solids.push(shape);
             } else if !solids.iter().any(|solid| shape.over(solid)) && reach(&shape) {

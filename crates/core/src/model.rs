@@ -133,7 +133,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 23: a component may be hosted on a face of a wall, a floor, a ceiling or a roof (`host` `{"face": {"element", "face"}}`,
 /// Place on Face), its `uv` that face's own; a build of 22 reads a component's `host` whole and knows no such kind, so it
 /// would refuse the project or, left out, stand the component where it was, no longer on its face. A file of 22 holds none.
-pub const FORMAT: u32 = 23;
+pub const FORMAT: u32 = 25;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3470,6 +3470,15 @@ impl Model {
         let mut m: Model = serde_json::from_value(v).map_err(|e| e.to_string())?;
         m.migrate();
         m.names_from_file();
+        // A family's dimension measuring to something it hasn't is left out, as what this version can't read is: a file is
+        // read kindly, and a command that would leave one is refused.
+        for (name, f) in m.families.iter_mut() {
+            let gone = f.dangling_dimensions();
+            for i in gone.iter().rev() {
+                f.dimensions.remove(*i);
+                left_out.push(format!("/families/{}/dimensions/{i}", crate::lenient::escaped(name)));
+            }
+        }
         Ok((m, left_out))
     }
 
@@ -3554,6 +3563,8 @@ impl Model {
         // and a symbol's `subcategory`) has none: a file of 20 names neither.
         // 21 to 22 (the project's reference planes, components hosted on them) has none: a file of 21 holds neither. A hosted
         // component's `at` and `offset` are worked out from its host, whatever the file says of them.
+        // 22 to 23 and 23 to 24 are other steps' (24: a form's sketch). 24 to 25 (a family's dimensions, labels, locks and
+        // Align's locks, which a build of 24 would drop and so flex the family wrongly) has none: a file of 24 holds none.
         self.settle_hosts(None);
         self.format = FORMAT;
     }

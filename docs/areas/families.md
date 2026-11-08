@@ -97,8 +97,10 @@ shown copied), Rename Type and Delete Type (refused for the last, saying why); S
 Parameter, Value, Formula and Lock, under the groups' headings in `Group::ALL`'s order (the Properties palette's), each folding.
 A type parameter's Value is the type shown's own (else the family's), an instance parameter's, marked "(default)", the family's;
 a row a formula drives is greyed with what it comes to; words and reporting parameters take no formula. Apply and OK are refused,
-with T9's words, while a parameter's formula doesn't read (`formula_refusal`). Lock is a disabled tick until locked labelled
-dimensions (F7). Under the table: New and Edit Parameter (Parameter Properties: family or shared, picked from a shared parameters
+with T9's words, while a parameter's formula doesn't read (`formula_refusal`). Lock (T21) locks every dimension the parameter
+labels (their first segment's padlock), so a drag in a view can't change its value; it is greyed for a parameter that labels
+no dimension or that a formula works out. Apply and OK are refused, as "Constraints are not satisfied" (*Dimensions and
+constraints*), for a value a type's dimensions can't hold. Under the table: New and Edit Parameter (Parameter Properties: family or shared, picked from a shared parameters
 file by path; name, Type or Instance, reporting, kind, a family type's category, the group), Edit's rename walking the draft as
 `Family::rename_parameter` does; Delete Parameter, the `family` command's `delete_parameter` on a private session holding the
 draft, so it is refused with the command's reason while a formula or a form uses it; Move Up and Move Down within a group and
@@ -173,8 +175,9 @@ same wherever it is used and distinct from the parameter's library-entry GUID (w
 families' parameters of one shared GUID are one name and one kind, and one name shared is one GUID
 (`Model::check_shared_parameters`); without it, it is the family's own. Schedules list every family parameter by name either
 way, as they always have. A `reporting` parameter, a length or an angle, reads a dimension and never drives one: no formula,
-type or component sets it (`Parameter::check_own`, `Family::check`, `Model::family_values_ok`) and, until labelled dimensions
-exist, it holds its `value`, with a warning saying so. Discipline is implied by the kind (all Common), so there is no field.
+type or component sets it (`Parameter::check_own`, `Family::check`, `Model::family_values_ok`): a dimension labelled with it
+measures it (`Family::values_in` works its formulas out again over what it measures), and one no dimension is labelled with
+holds its `value`, with a warning saying so. No label may be worked out from a reporting parameter a dimension measures. Discipline is implied by the kind (all Common), so there is no field.
 
 `family {parameter: {name, rename?, …}}` is Edit Parameter: the fields merged over the one named (added if there's none), a
 shared parameter's name and kind kept. `rename` goes through `Family::rename_parameter`, the one place that walks every part
@@ -307,7 +310,7 @@ correcting placed components' `at` so they stay put) is not done yet: the flag i
 A family's `lines` are its reference lines (T18), each `start` to `end` drawn on a `host` it lies on, with four planes: its
 host's through it (`horizontal`), square to that through it (`vertical`), and square to it at each end (`start`, `end`), their
 origin the line's start (`end`'s its end), so what is drawn on one will turn with it once the angle that turns a line exists
-(F7, with dimensions and labels). A line may be drawn on an earlier line's plane, never a later one's.
+(F7c, with angular dimensions). A line may be drawn on an earlier line's plane, never a later one's.
 
 A form's `host` is a `PlaneRef`, `{"plane": guid}` or `{"line": guid, "face": …}`, Ref. Level when none: its profile is
 drawn in the host's axes and `from` and `to` run along its normal (Revit's Extrusion Start and End); a revolve turns in it
@@ -329,6 +332,54 @@ An adaptive family's work planes are these planes too: a reference point is draw
 or a reference line's face, and keeps it as its Work Plane by `PlaneRef`; the three datums an adaptive definition had of its own
 before are the datum planes, read from an older file by name ([adaptive families](adaptive-families.md)). `Family::hosted_on`,
 `rehost` and `resolve_hosts` follow its points as they follow forms and lines.
+
+## Dimensions and constraints
+
+F7a (`family/constraints.rs`). A family's `dimensions` are Revit's family dimensions, each a part (id and GUID, `HasPart`): an
+aligned dimension between two or more parallel references, `{"plane": guid}` (a datum or one of its own) or `{"form": guid,
+"end": "start" | "end"}` (an extrusion's Extrusion Start or End face, its host a plane), in order along the way it measures,
+drawn in one of its views (`view`: plan, ceiling, front, back, left, right; the references must be seen edge on there) with its
+line through `at`. `label` (a dimension of one segment, a length parameter) makes that segment the parameter's value in every
+type; `locked` (Revit's padlock) keeps a segment at a length (a labelled one's lock is Family Types' Lock: it stops a drag
+from changing the parameter); `equal` keeps every segment one length (EQ); `alignment` is the lock Align leaves, two references,
+one segment locked at 0, drawn as a padlock and never printed. `Family::check_dimensions` refuses what can't be (a reference
+it hasn't, references not parallel or not seen edge on, a label that isn't a length or is on a string, a lock past the last
+segment), and caps them (`MAX_DIMENSIONS`, `MAX_DIM_REFS`).
+
+Flexing a type solves them (`Family::solve`, `Family::flexed`): the unknowns are the offsets along their own normals of the
+planes a constraint measures to (a datum or a plane that defines the origin stays) and the extrusion ends one measures to;
+each label, lock, EQ and Align lock is a linear row with coefficients that never depend on the values; and the solution is
+the least change from where they are drawn that holds every row (an extrusion's end gives way first, `END_GIVES`), each
+connected group of unknowns on its own, by modified Gram-Schmidt in a fixed order, so it is deterministic. A row that adds
+nothing to those before it is refused for every type as over-constrained, naming the dimensions it repeats; a family accepted
+solves for any values but a labelled length of 0 or less (refused for its type, "Constraints are not satisfied"). The work is
+capped (`Meter`, shared by the types of one check). Nothing solved is stored: `pieces_at`, `shapes`, the voids and the check
+build `flexed`, a copy with the planes moved (the reference lines and forms drawn on them with them) and the ends the
+constraints set given as numbers, so a type's geometry depends on its values only, never on the type flexed before it, and a
+family with no constraint is built as it was, borrowed. `Family::drag_plane` is a plane dragged in a view, from where the type
+has it: a labelled dimension measuring to it (unlocked, its parameter no formula's) takes the new length; else the constraints
+move what they hold with it, or refuse ("Constraints are not satisfied", the dimensions that hold it); `remove_constraints` is
+Remove Constraints. `constraints::align` is Align. Deleting a plane or a form takes it out of the dimensions that measure to
+it (`forget_reference`; one left with a single reference goes). The `family` command takes `dimensions`, `dimension` (added,
+or patched by id or GUID) and `delete_dimension`, and reads a type's solve with `solve`. A dimension measuring to what the
+family hasn't is refused, unless `invalid_dimensions: "delete"` (T14's Delete Dimension(s)); a file opened leaves it out and
+lists it in `left_out` (`Model::read`). FORMAT 25 (24 is F5's).
+
+In the family document (`editor/dimensions.rs`), Create > Dimension > Aligned Dimension (DI) picks reference planes (by the
+view's drawing) and extrusion ends seen edge on (`constraints::end_faces`), parallel to the first, and a click on nothing
+places the string (its line through the click); a dimension being placed follows the pointer. The marks are the core's
+(`constraints::marks`), painted over the view's picture: its line, ticks, each segment's length (or EQ, or `Label = length`),
+read up the page. A click on one selects it ("Modify | Dimensions"): a padlock under each segment locks it at its length or
+unlocks it, the EQ toggle over a string turns equality on or off, and the Options Bar's Label gives it `<None>`, a length
+parameter or Create Parameter… (Parameter Properties: name, Type or Instance, reporting). A label, lock or EQ that adds
+nothing to the constraints is refused, "The dimension is over-constrained" (T19). Delete takes it away. Align (AL, Modify)
+picks a reference then what moves onto it (a plane, or an extrusion's end); a padlock waits beside it, and a click on it locks
+them; an Align lock's padlock unlocks it when clicked. A plane its dimensions hold is dragged through them (`drag_plane`); a
+refusal, like Family Types' values a type can't hold, asks "Constraints are not satisfied" with Remove Constraints (their
+labels, locks and EQ taken off, and what was being done done) or Cancel. An extrusion end a dimension sets is greyed in its
+Properties and the Options Bar's Depth. A reload whose family has dimensions measuring to nothing (`exists.rs`) asks Invalid
+Dimensions first: Delete Dimension(s) or Cancel, and nothing passes it over. Sketch lines as references and unknowns are F7b,
+angular dimensions and reference lines that turn F7c.
 
 ## The family's views
 

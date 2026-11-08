@@ -26,7 +26,7 @@ pub(crate) struct State {
     /// The draft as the last step left it: what an edit still going on (a drag, a field being typed in, a dialog) began from.
     mark: Option<Draft>,
     /// The draft when the dialog open was, which its Cancel goes back to.
-    dialog_saved: Option<Draft>,
+    pub(super) dialog_saved: Option<Draft>,
     /// A form picked in the Project Browser, which Properties opens.
     pub(super) reveal: Option<usize>,
     /// What Load into Project was refused for: said until the draft changes.
@@ -90,6 +90,8 @@ pub(super) struct Draft {
     picked: usize,
     /// Its reference planes: drawn and moved in its plans and elevations.
     planes: Vec<RefPlane>,
+    /// Its dimensions: drawn, labelled and locked in its plans and elevations.
+    dimensions: Vec<bimcraft_core::family::FamilyDimension>,
     /// Its options: Family Category and Parameters' table, Properties' Other group.
     options: super::options::OptionsText,
 }
@@ -107,6 +109,7 @@ impl Draft {
             adaptive: ed.adaptive.clone(),
             picked: ed.picked,
             planes: ed.planes.clone(),
+            dimensions: ed.dimensions.clone(),
             options: ed.options.clone(),
         }
     }
@@ -122,6 +125,7 @@ impl Draft {
         ed.adaptive = self.adaptive;
         ed.picked = self.picked;
         ed.planes = self.planes;
+        ed.dimensions = self.dimensions;
         ed.options = self.options;
         // What is selected and no longer there goes from the selection.
         let nodes = ed.adaptive.as_ref().map(|d| d.nodes.iter().map(|n| n.id.clone()).collect::<Vec<_>>()).unwrap_or_default();
@@ -160,7 +164,7 @@ impl FamilyEditor {
 
     /// Whether a dialog of the document's is open: Family Types, Family Category and Parameters, or an association.
     fn modal(&self) -> bool {
-        self.dialog.is_some() || self.associating.is_some()
+        self.dialog.is_some() || self.associating.is_some() || self.views.unsatisfied.is_some() || self.views.creating.is_some()
     }
 
     /// The document's history, at the end of a frame: Undo or Redo when `ask` says so, else a step for what changed since the
@@ -225,6 +229,15 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
     if ed.adaptive.is_none() {
         if ed.editing_2d() && ed.views.drawing.is_some() {
             return Some(msg!("Modify | Place Reference Plane"));
+        }
+        if ed.editing_2d() && ed.views.dimensioning.is_some() {
+            return Some(msg!("Modify | Place Dimensions"));
+        }
+        if ed.editing_2d() && ed.views.aligning.is_some() {
+            return Some(msg!("Modify | Align"));
+        }
+        if ed.selected_dimension().is_some() {
+            return Some(msg!("Modify | Dimensions"));
         }
         if ed.selected_plane().is_some() {
             return Some(msg!("Modify | Reference Planes"));
@@ -361,6 +374,21 @@ impl BimApp {
                         ed.reference_plane_tool();
                     }
                 });
+                // Drawn in a plan or an elevation of a family that isn't adaptive (F7).
+                if !adaptive {
+                    ribbon::panel(ui, msg!("Dimension"), |ui| {
+                        let tip =
+                            msg!("Aligned Dimension (DI): pick parallel reference planes or extrusion ends, then click where it goes");
+                        let on = ed.views.dimensioning.is_some();
+                        if ui
+                            .add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::Dimension, msg!("Aligned Dimension"), on, tip))
+                            .inner
+                            .clicked()
+                        {
+                            ed.dimension_tool();
+                        }
+                    });
+                }
                 // In {3D} too, where Show draws it over the preview.
                 if !adaptive {
                     views_work_plane_panel(ui, ed);
@@ -416,8 +444,17 @@ impl BimApp {
                 let form = ed.selected_form();
                 ribbon::panel(ui, msg!("Modify"), |ui| {
                     let some = !ed.modeller.selection.is_empty();
-                    for (icon, label) in [(Icon::Align, "Align"), (Icon::Offset, "Offset"), (Icon::MirrorPick, msg!("Mirror - Pick Axis"))]
-                    {
+                    // Align, in a plan or an elevation of a family that isn't adaptive (F7): what is picked second onto what is
+                    // picked first, and a padlock that locks them.
+                    if ed.editing_2d() {
+                        let tip = msg!("Align (AL): pick a reference, then what moves onto it; its padlock locks them");
+                        if crate::small_button(ui, Icon::Align, "Align", ed.views.aligning.is_some(), tip).clicked() {
+                            ed.align_tool();
+                        }
+                    } else {
+                        later_small(ui, Icon::Align, "Align");
+                    }
+                    for (icon, label) in [(Icon::Offset, "Offset"), (Icon::MirrorPick, msg!("Mirror - Pick Axis"))] {
                         later_small(ui, icon, label);
                     }
                     later_small(ui, Icon::MirrorDraw, msg!("Mirror - Draw Axis"));
@@ -459,17 +496,25 @@ impl BimApp {
                     later_small(ui, Icon::Split, msg!("Split Element"));
                     let tip = msg!("Delete (DE): what is selected, with what depends on it");
                     let plane = ed.selected_plane().filter(|g| ed.planes.iter().any(|p| p.guid == *g && !p.datum()));
+                    let dim = ed.selected_dimension();
                     if ui
-                        .add_enabled_ui(some || form.is_some() || plane.is_some(), |ui| big_button(ui, Icon::Delete, "Delete", false, tip))
+                        .add_enabled_ui(some || form.is_some() || plane.is_some() || dim.is_some(), |ui| {
+                            big_button(ui, Icon::Delete, "Delete", false, tip)
+                        })
                         .inner
                         .clicked()
                     {
-                        if let Some(g) = plane {
+                        if let Some(g) = dim {
+                            ed.delete_dimension(g);
+                        } else if let Some(g) = plane {
                             if let Err(e) = ed.delete_plane(g) {
                                 self.status = Status { text: e, error: true };
                             }
                         } else if let Some(i) = form {
-                            ed.forms.remove(i);
+                            let gone = ed.forms.remove(i).original.guid;
+                            if !gone.is_nil() {
+                                ed.forget_reference(gone);
+                            }
                             ed.form = None;
                         } else if let Some(d) = ed.adaptive.as_mut() {
                             adaptive_view::delete(d, &mut ed.modeller);
@@ -524,6 +569,9 @@ impl BimApp {
                 ed.views.drawing = None;
                 ed.views.picking_plane = false;
                 ed.views.plane = None;
+                ed.views.dimensioning = None;
+                ed.views.aligning = None;
+                ed.views.dim = None;
             }
         });
         let shown = self.docking.shown(Palette::Properties);
@@ -937,14 +985,22 @@ impl BimApp {
                 let l = ui.label(t("Depth (mm)"));
                 ui.add(egui::DragValue::new(&mut ed.modeller.depth).speed(5.).range(1.0..=100_000.0)).labelled_by(l.id);
             }
+            // A dimension's Label, as Revit's Options Bar has it (T19).
+            if let Some(g) = ed.selected_dimension() {
+                ui.separator();
+                if let Some(e) = ed.dimension_options(ui, g) {
+                    self.status = Status { text: e, error: true };
+                }
+            }
             // A selected extrusion's Depth, as Revit's Options Bar has it.
+            let driven = ed.selected_form().map(|i| ed.driven_ends(i)).unwrap_or_default();
             if let Some(i) = ed.selected_form()
                 && let Some(f) = ed.forms.get_mut(i)
                 && !f.revolve
                 && !f.mesh()
             {
                 ui.separator();
-                super::extrusion::depth(ui, units, f, &values);
+                super::extrusion::depth(ui, units, f, &values, driven);
             }
         });
         true
@@ -962,7 +1018,14 @@ impl BimApp {
             (Some(_), true) => msg!("An adaptive family's plans and elevations show its test placement; model it in {3D}."),
             (Some(_), false) if ed.views.picking_plane => msg!("Click a reference plane or a datum: the view's work plane."),
             (Some(_), false) if ed.views.drawing.is_some() => msg!("Click two points: a reference plane through them."),
-            (Some(_), false) => msg!("Click a form or a reference plane to select it; drag a selected plane to move it."),
+            (Some(_), false) if ed.views.dimensioning.is_some() => {
+                msg!("Click parallel reference planes or extrusion ends, then click where the dimension goes.")
+            }
+            (Some(_), false) if ed.views.aligning.as_ref().is_some_and(Option::is_none) => msg!("Click the reference to align to."),
+            (Some(_), false) if ed.views.aligning.is_some() => msg!("Click what moves onto it."),
+            (Some(_), false) => {
+                msg!("Click a form, a reference plane or a dimension to select it; drag a selected plane to move it.")
+            }
             (None, true) => adaptive_view::prompt(&ed.modeller),
             (None, false) => msg!("Drag the picture to turn it."),
         })
@@ -999,6 +1062,17 @@ impl BimApp {
             // The plane being drawn first, then the tool, then the selection.
             if ed.views.picking_plane {
                 ed.views.picking_plane = false;
+            } else if let Some(refs) = ed.views.dimensioning.as_mut() {
+                if refs.is_empty() {
+                    ed.views.dimensioning = None;
+                } else {
+                    refs.clear();
+                }
+            } else if let Some(first) = ed.views.aligning {
+                ed.views.aligning = first.map(|_| None);
+                ed.views.align_lock = None;
+            } else if ed.views.dim.is_some() {
+                ed.views.dim = None;
             } else if let Some(first) = ed.views.drawing {
                 ed.views.drawing = first.map(|_| None);
             } else if ed.views.plane.take().is_none() {
@@ -1006,6 +1080,11 @@ impl BimApp {
             }
         }
         let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
+        if let Some(g) = ed.selected_dimension()
+            && pressed(egui::Modifiers::NONE, egui::Key::Delete)
+        {
+            ed.delete_dimension(g);
+        }
         if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Z) || pressed(egui::Modifiers::COMMAND, egui::Key::Y) {
             ed.ask.redo = true;
         } else if pressed(egui::Modifiers::COMMAND, egui::Key::Z) {
@@ -1019,6 +1098,9 @@ impl BimApp {
     pub(crate) fn document_dialogs(&mut self, ctx: &Context, ed: &mut FamilyEditor, materials: &[String]) {
         // Associate Family Parameter, from a row's "=": a parameter New Parameter makes goes in the family at once, as in Revit.
         ed.associate_dialog(ctx);
+        // F7: Constraints are not satisfied, and Create Parameter… for a dimension's label.
+        ed.constraints_dialog(ctx);
+        ed.create_parameter_dialog(ctx);
         let Some(dialog) = ed.dialog else {
             ed.document.dialog_saved = None;
             ed.document.category_shown = false;
@@ -1059,6 +1141,10 @@ impl BimApp {
             && let Some(why) = ed.formula_refusal()
         {
             ed.refuse_types(why);
+            (ok, apply) = (false, false);
+        }
+        // Values a type's dimensions can't hold (a labelled length of 0): "Constraints are not satisfied", over the dialog.
+        if (ok || apply) && !cancel && dialog == DocDialog::Types && ed.constraints_refusal(ok) {
             (ok, apply) = (false, false);
         }
         // Options the `family` command would refuse (an OmniClass number that isn't one), said in the dialog, which stays open.

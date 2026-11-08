@@ -1,0 +1,703 @@
+//! F7a: a family's dimensions in its plans and elevations, as Revit's family editor has them. Aligned Dimension (DI) picks
+//! reference planes and extrusion ends one after another and a click on nothing places the string; a dimension selected shows
+//! a padlock under each segment and, with two or more, the EQ toggle over it, and the Options Bar's Label gives it a length
+//! parameter (or Create Parameter…). Align (AL) moves what is picked second onto what is picked first and leaves a padlock,
+//! which locks them. Flexing a type solves them (`bimcraft_core::family::constraints`); what can't hold says "Constraints are
+//! not satisfied", with Remove Constraints or Cancel; a label, lock or EQ that adds nothing to the others is refused as
+//! over-constrained. The marks are the core's (`constraints::marks`), painted over the view's picture.
+use super::views::{PICKED, Views};
+use super::*;
+use bimcraft_core::family::constraints::{self, DimMark, Edit, NOT_SATISFIED, Unsat};
+use bimcraft_core::family::views::{Staged, Which};
+use bimcraft_core::family::{DimRef, DimView, FamilyDimension, Val};
+use bimcraft_core::geom::P2;
+use bimcraft_core::ids::Guid;
+use bimcraft_core::model::Lock;
+use bimcraft_core::render::View;
+use bimcraft_core::units::Units;
+use egui::{Painter, Pos2, Vec2};
+
+/// What T19 says of a label, lock or EQ that adds nothing to the constraints there are.
+pub(crate) const OVER: &str = msg!("The dimension is over-constrained");
+/// The Options Bar's label for no label, and its entry for a new parameter.
+const NONE: &str = msg!("<None>");
+const CREATE: &str = msg!("Create Parameter…");
+/// Revit's title for what can't hold (the core says it in the same words, `NOT_SATISFIED`).
+const UNSATISFIED: &str = msg!("Constraints are not satisfied");
+
+/// How near a click must be to what it picks, in pixels.
+const NEAR: f32 = 7.0;
+
+/// "Constraints are not satisfied": why, the dimensions in it (by GUID), and what was being done, which Remove Constraints
+/// does again once they are taken off.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Unsatisfied {
+    pub(crate) message: String,
+    pub(crate) dims: Vec<Guid>,
+    pub(crate) retry: Retry,
+}
+
+/// What was being done when the constraints couldn't hold.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum Retry {
+    /// A plane dragged to an offset along its normal.
+    Drag(Guid, f64),
+    /// Align, of the second reference onto the first.
+    Align(DimRef, DimRef),
+    /// Family Types' Apply (or OK, which closes it).
+    Types { ok: bool },
+}
+
+/// Create Parameter…, for the selected dimension's label: the Parameter Properties a label needs.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct Creating {
+    dim: Guid,
+    name: String,
+    instance: bool,
+    reporting: bool,
+    error: Option<String>,
+}
+
+/// What a click on the dimensions asked, done once the view is drawn.
+pub(super) enum Clicked {
+    Select(Guid),
+    Lock(Guid, usize),
+    Equal(Guid),
+    Unlock(Guid),
+    AlignLock,
+}
+
+/// Where a selected dimension's segment's padlock and its EQ toggle are, on screen.
+fn lock_at(m: &DimMark, i: usize, screen: &dyn Fn(P2) -> Pos2) -> Option<Pos2> {
+    let (a, b) = (screen(*m.points.get(i)?), screen(*m.points.get(i + 1)?));
+    Some(a + (b - a) * 0.5 + down(a, b) * 16.0)
+}
+
+fn equal_at(m: &DimMark, screen: &dyn Fn(P2) -> Pos2) -> Option<Pos2> {
+    let (a, b) = (screen(*m.points.first()?), screen(*m.points.last()?));
+    Some(a + (b - a) * 0.5 - down(a, b) * 30.0)
+}
+
+/// Where an Align lock's padlock is on screen: beside where the two references meet, along them, clear of the lines.
+fn align_at(m: &DimMark, screen: &dyn Fn(P2) -> Pos2) -> Option<Pos2> {
+    let at = screen(*m.points.first()?);
+    let across = vec2(m.across.0 as f32, -(m.across.1 as f32));
+    let across = if across.length_sq() > 0.0 { across.normalized() } else { vec2(0.0, -1.0) };
+    Some(at + across * 12.0)
+}
+
+/// Square to the line from `a` to `b` on screen, toward the bottom of the page (to the right for an upright one).
+fn down(a: Pos2, b: Pos2) -> Vec2 {
+    let d = (b - a).normalized();
+    let n = vec2(-d.y, d.x);
+    if n.y < -1e-6 || (n.y.abs() <= 1e-6 && n.x < 0.0) { -n } else { n }
+}
+
+/// How far `p` is from the segment `a`–`b`.
+fn off(p: Pos2, a: Pos2, b: Pos2) -> f32 {
+    let ab = b - a;
+    let t = if ab.length_sq() > 0.0 { ((p - a).dot(ab) / ab.length_sq()).clamp(0.0, 1.0) } else { 0.0 };
+    (a + ab * t - p).length()
+}
+
+/// The ink dimensions are drawn in over the view's paper.
+fn ink() -> Color32 {
+    if crate::style::canvas_dark() { Color32::from_gray(225) } else { Color32::from_gray(30) }
+}
+
+/// A padlock at `c`: shut, or open (its shackle lifted to one side).
+pub(super) fn padlock(painter: &Painter, c: Pos2, locked: bool, color: Color32) {
+    let body = Rect::from_center_size(c + vec2(0.0, 2.5), vec2(10.0, 7.5));
+    painter.rect_filled(body, 1.5, color);
+    let lift = if locked { 0.0 } else { 3.0 };
+    let (l, r) = (body.left() + 2.5, body.right() - 2.5);
+    let top = body.top() - 4.5 - lift;
+    let pts: Vec<Pos2> = (0..=8)
+        .map(|k| {
+            let a = std::f32::consts::PI * k as f32 / 8.0;
+            pos2((l + r) / 2.0 - a.cos() * (r - l) / 2.0, top - a.sin() * 2.0 + 2.0)
+        })
+        .collect();
+    let mut shackle = vec![pos2(l, body.top() - if locked { 0.0 } else { lift + 1.0 })];
+    shackle.extend(pts);
+    shackle.push(pos2(r, body.top()));
+    painter.add(egui::Shape::line(shackle, Stroke::new(1.6, color)));
+}
+
+/// Dimension mark `m` painted: its line, a tick and a short witness at each reference, each segment's length (EQ, or its
+/// label and length) over it; selected, a padlock under each segment and the EQ toggle over a string. An Align lock is its
+/// padlock alone, shut.
+pub(super) fn paint(painter: &Painter, m: &DimMark, screen: &dyn Fn(P2) -> Pos2, selected: bool, units: Units) {
+    let color = if selected { PICKED } else { ink() };
+    if m.alignment {
+        if let Some(at) = align_at(m, screen) {
+            padlock(painter, at, true, if selected { PICKED } else { pal().accent });
+        }
+        return;
+    }
+    let pts: Vec<Pos2> = m.points.iter().map(|p| screen(*p)).collect();
+    let (Some(&first), Some(&last)) = (pts.first(), pts.last()) else { return };
+    let along = (last - first).normalized();
+    let along = if along.is_finite() && along.length_sq() > 0.0 { along } else { vec2(1.0, 0.0) };
+    let n = vec2(-along.y, along.x);
+    let stroke = Stroke::new(1.0, color);
+    painter.line_segment([first - along * 8.0, last + along * 8.0], stroke);
+    for p in &pts {
+        painter.line_segment([*p - n * 9.0, *p + n * 9.0], stroke);
+        painter.line_segment([*p - (along + n) * 4.0, *p + (along + n) * 4.0], Stroke::new(1.6, color));
+    }
+    let up = -down(first, last);
+    let angle = {
+        let a = along.y.atan2(along.x);
+        // Read from below or from the right, as a drawing's dimensions are: up the page, never down it.
+        if a > std::f32::consts::FRAC_PI_2 - 1e-3 {
+            a - std::f32::consts::PI
+        } else if a < -std::f32::consts::FRAC_PI_2 - 1e-3 {
+            a + std::f32::consts::PI
+        } else {
+            a
+        }
+    };
+    let font = egui::FontId::proportional(12.0);
+    for (i, w) in pts.windows(2).enumerate() {
+        let len = m.lengths.get(i).copied().unwrap_or(0.0);
+        let text = match &m.label {
+            _ if m.equal && m.lengths.len() > 1 => t("EQ").to_string(),
+            Some(l) => format!("{l} = {}", units.length(len)),
+            None => units.length(len),
+        };
+        let galley = painter.layout_no_wrap(text, font.clone(), color);
+        let mid = w[0] + (w[1] - w[0]) * 0.5 + up * 9.0;
+        let size = galley.size();
+        // Centred on `mid`, turned with the line.
+        let (s, c) = angle.sin_cos();
+        let half = vec2(size.x / 2.0, size.y);
+        let corner = mid - vec2(half.x * c - half.y * s, half.x * s + half.y * c);
+        painter.add(egui::epaint::TextShape::new(corner, galley, color).with_angle(angle));
+        if selected && let Some(at) = lock_at(m, i, screen) {
+            let locked = m.locked.get(i).copied().unwrap_or(false);
+            padlock(painter, at, locked, if locked { pal().accent } else { pal().muted });
+        }
+    }
+    if selected
+        && pts.len() > 2
+        && let Some(at) = equal_at(m, screen)
+    {
+        let tone = if m.equal { pal().accent } else { pal().muted };
+        let r = Rect::from_center_size(at, vec2(22.0, 14.0));
+        painter.rect_stroke(r, 2.0, Stroke::new(1.0, tone), StrokeKind::Inside);
+        painter.text(at, egui::Align2::CENTER_CENTER, "EQ", egui::FontId::proportional(10.0), tone);
+        if !m.equal {
+            painter.line_segment([r.left_bottom(), r.right_top()], Stroke::new(1.0, tone));
+        }
+    }
+}
+
+/// What a click at `p` on the dimensions does, before anything else in the view takes it: a padlock or the EQ toggle of the
+/// selected one, an Align lock's padlock, Align's padlock waiting, or a dimension (its line or its text).
+pub(super) fn clicked(
+    marks: &[DimMark],
+    dims: &[FamilyDimension],
+    selected: Option<Guid>,
+    align_lock: Option<Pos2>,
+    p: Pos2,
+    screen: &dyn Fn(P2) -> Pos2,
+) -> Option<Clicked> {
+    if align_lock.is_some_and(|at| (at - p).length() < NEAR + 3.0) {
+        return Some(Clicked::AlignLock);
+    }
+    let guid = |m: &DimMark| dims.get(m.index).map(|d| d.guid);
+    if let Some(m) = marks.iter().find(|m| guid(m).is_some() && guid(m) == selected) {
+        for i in 0..m.lengths.len() {
+            if lock_at(m, i, screen).is_some_and(|at| (at - p).length() < NEAR + 1.0) {
+                return guid(m).map(|g| Clicked::Lock(g, i));
+            }
+        }
+        if m.points.len() > 2 && equal_at(m, screen).is_some_and(|at| (at - p).length() < NEAR + 4.0) {
+            return guid(m).map(Clicked::Equal);
+        }
+    }
+    for m in marks.iter().filter(|m| m.alignment) {
+        if align_at(m, screen).is_some_and(|at| (at - p).length() < NEAR + 1.0) {
+            return guid(m).map(Clicked::Unlock);
+        }
+    }
+    for m in marks.iter().filter(|m| !m.alignment) {
+        let pts: Vec<Pos2> = m.points.iter().map(|q| screen(*q)).collect();
+        let (Some(&a), Some(&b)) = (pts.first(), pts.last()) else { continue };
+        let up = -down(a, b);
+        if off(p, a, b) < NEAR || off(p, a + up * 9.0, b + up * 9.0) < NEAR {
+            return guid(m).map(Clicked::Select);
+        }
+    }
+    None
+}
+
+/// The reference under `p` in view `which`: an extrusion's end seen edge on, or a plane (by the view's drawing); the nearer.
+pub(super) fn reference_at(
+    flexed: &Family,
+    values: &BTreeMap<String, Val>,
+    st: &Staged,
+    which: Which,
+    plane: Option<Guid>,
+    p: Pos2,
+    screen: &dyn Fn(P2) -> Pos2,
+) -> Option<DimRef> {
+    let ends = constraints::end_faces(flexed, values, st, which);
+    let end =
+        ends.into_iter().map(|(r, a, b)| (off(p, screen(a), screen(b)), r)).filter(|(d, _)| *d < NEAR).min_by(|x, y| x.0.total_cmp(&y.0));
+    match (end, plane) {
+        (Some((d, r)), Some(_)) if d < 3.0 => Some(r),
+        (_, Some(g)) => Some(DimRef::Plane(g)),
+        (Some((_, r)), None) => Some(r),
+        (None, None) => None,
+    }
+}
+
+impl FamilyEditor {
+    /// Aligned Dimension (DI): the tool, in a plan or an elevation of a family that isn't adaptive; the selection goes.
+    pub(crate) fn dimension_tool(&mut self) {
+        if self.editing_2d() {
+            self.drop_tools();
+            self.views.dimensioning = Some(Vec::new());
+        }
+    }
+
+    /// Align (AL): the tool, as Aligned Dimension's.
+    pub(crate) fn align_tool(&mut self) {
+        if self.editing_2d() {
+            self.drop_tools();
+            self.views.aligning = Some(None);
+        }
+    }
+
+    /// Every tool of the views put down and the selection let go.
+    fn drop_tools(&mut self) {
+        self.views.drawing = None;
+        self.views.picking_plane = false;
+        self.views.dimensioning = None;
+        self.views.aligning = None;
+        self.views.align_lock = None;
+        self.views.plane = None;
+        self.views.dim = None;
+        self.form = None;
+    }
+
+    /// The dimension selected, while the family has it.
+    pub(crate) fn selected_dimension(&self) -> Option<Guid> {
+        self.views.dim.filter(|g| self.dimensions.iter().any(|d| d.guid == *g))
+    }
+
+    /// The draft's family with `change` made to its dimensions, if its constraints still solve for the type previewed: else
+    /// why not, nothing changed.
+    fn try_dimensions(&mut self, change: impl FnOnce(&mut Vec<FamilyDimension>)) -> Result<(), Unsat> {
+        let mut f = self.family().map_err(Unsat::from)?;
+        change(&mut f.dimensions);
+        let values = self.values();
+        f.solve(&values)?;
+        self.dimensions = f.dimensions;
+        Ok(())
+    }
+
+    /// The selected dimension's label set (`None`: taken off). Refused as over-constrained where it adds nothing to what holds
+    /// the planes already.
+    pub(crate) fn set_label(&mut self, g: Guid, label: Option<String>) -> Result<(), String> {
+        self.try_dimensions(|dims| {
+            if let Some(d) = dims.iter_mut().find(|d| d.guid == g) {
+                d.label = label;
+            }
+        })
+        .map_err(said)
+    }
+
+    /// Segment `i` of dimension `g` locked at the length it has now, or unlocked.
+    pub(crate) fn toggle_lock(&mut self, g: Guid, i: usize, length: f64) -> Result<(), String> {
+        self.try_dimensions(|dims| {
+            if let Some(d) = dims.iter_mut().find(|d| d.guid == g) {
+                if d.is_locked(i) {
+                    d.locked.retain(|l| l.segment != i);
+                } else {
+                    d.locked.push(Lock { segment: i, length });
+                    d.locked.sort_by_key(|l| l.segment);
+                }
+            }
+        })
+        .map_err(said)
+    }
+
+    /// Dimension `g`'s equality turned on or off.
+    pub(crate) fn toggle_equal(&mut self, g: Guid) -> Result<(), String> {
+        self.try_dimensions(|dims| {
+            if let Some(d) = dims.iter_mut().find(|d| d.guid == g) {
+                d.equal = !d.equal;
+            }
+        })
+        .map_err(said)
+    }
+
+    /// Dimension `g` taken away.
+    pub(crate) fn delete_dimension(&mut self, g: Guid) {
+        self.dimensions.retain(|d| d.guid != g);
+        if self.views.dim == Some(g) {
+            self.views.dim = None;
+        }
+    }
+
+    /// The draft's dimensions measuring to plane or form `g` lose it, as deleting it does in Revit.
+    pub(crate) fn forget_reference(&mut self, g: Guid) {
+        let mut f = Family { dimensions: std::mem::take(&mut self.dimensions), ..Family::default() };
+        f.forget_reference(g);
+        self.dimensions = f.dimensions;
+    }
+
+    /// Edits a drag or Align worked out, made to the draft: planes moved along their normals, extrusion ends given numbers, a
+    /// label's parameter given its new value in the type previewed (an instance parameter's, its default).
+    pub(crate) fn apply_edits(&mut self, edits: Vec<Edit>) {
+        for e in edits {
+            match e {
+                Edit::Plane(g, at) => {
+                    if let Some(p) = self.planes.iter_mut().find(|p| p.guid == g) {
+                        let z = p.frame().z;
+                        let d = at - (p.start[0] * z[0] + p.start[1] * z[1] + p.start[2] * z[2]);
+                        for (k, n) in z.iter().enumerate() {
+                            p.start[k] += n * d;
+                            p.end[k] += n * d;
+                        }
+                    }
+                }
+                Edit::End(i, end, v) => {
+                    if let Some(f) = self.forms.get_mut(i) {
+                        let slot = match end {
+                            bimcraft_core::family::Extent::Start => &mut f.from,
+                            bimcraft_core::family::Extent::End => &mut f.to,
+                        };
+                        *slot = number_text(v);
+                    }
+                }
+                Edit::Parameter(name, v) => {
+                    let Some(at) = self.param_at(&name) else { continue };
+                    let text = number_text(v);
+                    if self.params[at].instance {
+                        self.params[at].value = text;
+                    } else if let Some((_, set)) = self.types.get_mut(self.picked) {
+                        set.insert(name, text);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Plane `g` dragged to `to` along its normal, through its constraints: done, or "Constraints are not satisfied".
+    pub(super) fn drag_through(&mut self, g: Guid, to: f64) {
+        let Ok(f) = self.family() else { return };
+        match f.drag_plane(&self.values(), g, to) {
+            Ok(edits) => self.apply_edits(edits),
+            Err(e) => {
+                self.views.drag = None;
+                self.unsatisfied(e, Retry::Drag(g, to));
+            }
+        }
+    }
+
+    /// Align: `target` moved onto `reference`, with its padlock left at `at` (the view's mm) in view `which`.
+    pub(super) fn align_through(&mut self, reference: DimRef, target: DimRef, at: P2, which: Which) {
+        let Ok(f) = self.family() else { return };
+        match constraints::align(&f, &self.values(), &reference, &target) {
+            Ok(edits) => {
+                self.apply_edits(edits);
+                self.views.align_lock = Some((reference, target, at, which));
+            }
+            Err(e) if e.dims.is_empty() && !e.message.starts_with(NOT_SATISFIED) => {
+                self.views.status = Some(e.message);
+            }
+            Err(e) => {
+                self.views.align_pending = Some((reference, target, at, which));
+                self.unsatisfied(e, Retry::Align(reference, target));
+            }
+        }
+    }
+
+    /// Align's padlock clicked: the two references it aligned locked together.
+    pub(super) fn lock_alignment(&mut self) {
+        let Some((reference, target, at, which)) = self.views.align_lock.take() else { return };
+        let Some(st) = self.views.staged_for(which) else { return };
+        let lock = FamilyDimension {
+            id: 0,
+            guid: Guid::new(),
+            view: DimView::of(which),
+            refs: vec![reference, target],
+            at: st.from_view(which, at),
+            label: None,
+            locked: vec![Lock { segment: 0, length: 0.0 }],
+            equal: false,
+            alignment: true,
+        };
+        if let Err(e) = self.try_dimensions(|dims| dims.push(lock)) {
+            self.views.status = Some(said(e));
+        }
+    }
+
+    /// "Constraints are not satisfied" asked, about what `e` says.
+    pub(crate) fn unsatisfied(&mut self, e: Unsat, retry: Retry) {
+        let dims = e.dims.iter().filter_map(|k| self.dimensions.get(*k).map(|d| d.guid)).collect();
+        self.views.unsatisfied = Some(Unsatisfied { message: e.message, dims, retry });
+    }
+
+    /// The constraints of dimensions `dims` taken off (Remove Constraints): labels, locks and equality; Align's locks go.
+    fn remove_constraints(&mut self, dims: &[Guid]) {
+        let places: Vec<usize> = dims.iter().filter_map(|g| self.dimensions.iter().position(|d| d.guid == *g)).collect();
+        let mut f = Family { dimensions: std::mem::take(&mut self.dimensions), ..Family::default() };
+        f.remove_constraints(&places);
+        self.dimensions = f.dimensions;
+    }
+
+    /// Why Family Types' Apply or OK can't take the draft's values: a type its constraints can't be solved for. Asked as
+    /// "Constraints are not satisfied"; true when it was.
+    pub(super) fn constraints_refusal(&mut self, ok: bool) -> bool {
+        let Ok(f) = self.family() else { return false };
+        for (name, _) in &self.types {
+            let Ok(values) = f.values(name, &self.preview_params) else { continue };
+            if let Err(e) = f.solve(&values) {
+                let e = Unsat { message: format!("{name}: {}", e.message), ..e };
+                self.unsatisfied(e, Retry::Types { ok });
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Revit's "Constraints are not satisfied": what can't hold, the dimensions in it highlighted in the view; Remove
+    /// Constraints takes theirs off and does what was being done, Cancel leaves the draft as it was before it.
+    pub(crate) fn constraints_dialog(&mut self, ctx: &Context) {
+        let Some(u) = self.views.unsatisfied.clone() else { return };
+        let (mut remove, mut cancel) = (false, false);
+        let r = Modal::new(UiId::new("family-constraints"), t(UNSATISFIED)).width(480.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                ui.label(&u.message);
+            });
+            crate::popup::footer(ui, |ui| {
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    cancel = ui.button(t("Cancel")).clicked();
+                    remove = ui.add_enabled(!u.dims.is_empty(), egui::Button::new(t("Remove Constraints"))).clicked();
+                });
+            });
+        });
+        if remove {
+            self.views.unsatisfied = None;
+            self.remove_constraints(&u.dims);
+            match u.retry {
+                Retry::Drag(g, to) => self.drag_through(g, to),
+                Retry::Align(a, b) => {
+                    if let Some((_, _, at, which)) = self.views.align_pending.take() {
+                        self.align_through(a, b, at, which);
+                    }
+                }
+                Retry::Types { ok } => {
+                    self.document.dialog_saved = Some(self.draft());
+                    if ok {
+                        self.dialog = None;
+                        self.document.dialog_saved = None;
+                        self.types_closed();
+                    }
+                }
+            }
+        } else if cancel || r.should_close() {
+            self.views.unsatisfied = None;
+            self.views.align_pending = None;
+        }
+    }
+
+    /// Create Parameter…: Parameter Properties for the label of the selected dimension, a length (Type or Instance, reporting
+    /// or not), made with the dimension's length as its value and given to it as its label.
+    pub(crate) fn create_parameter_dialog(&mut self, ctx: &Context) {
+        let Some(mut c) = self.views.creating.take() else { return };
+        let (mut ok, mut cancel) = (false, false);
+        let r = Modal::new(UiId::new("family-dimension-parameter"), t("Parameter Properties")).width(420.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                Grid::new("family-dimension-parameter-grid").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
+                    let l = ui.label(t("Name"));
+                    ui.add(TextEdit::singleline(&mut c.name).desired_width(220.0)).labelled_by(l.id);
+                    ui.end_row();
+                    ui.label("");
+                    ui.horizontal(|ui| {
+                        ui.radio_value(&mut c.instance, false, t("Type"));
+                        ui.radio_value(&mut c.instance, true, t("Instance"));
+                    });
+                    ui.end_row();
+                    ui.label("");
+                    ui.checkbox(&mut c.reporting, t("Reporting Parameter"));
+                    ui.end_row();
+                });
+                if let Some(e) = &c.error {
+                    ui.label(RichText::new(e).color(pal().error));
+                }
+            });
+            crate::popup::footer(ui, |ui| {
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    cancel = ui.button(t("Cancel")).clicked();
+                    ok = ui.button(t("OK")).clicked();
+                });
+            });
+        });
+        if cancel || r.should_close() {
+            return;
+        }
+        if ok {
+            match self.create_label(&c) {
+                Ok(()) => return,
+                Err(e) => c.error = Some(e),
+            }
+        }
+        self.views.creating = Some(c);
+    }
+
+    /// The parameter `c` asks for made and given to its dimension as its label: refused, the draft as it was, where the name
+    /// is taken or empty or the label would over-constrain.
+    fn create_label(&mut self, c: &Creating) -> Result<(), String> {
+        let name = c.name.trim();
+        if name.is_empty() {
+            return Err(t("a parameter needs a name").to_string());
+        }
+        if self.param_at(name).is_some() {
+            return Err(tf("there's a parameter `{}` already", &[name]));
+        }
+        let length = self.dimension_length(c.dim).unwrap_or(1000.0);
+        let p: Parameter = serde_json::from_value(
+            json!({"name": name, "kind": "length", "instance": c.instance, "reporting": c.reporting, "value": length}),
+        )
+        .map_err(|e| e.to_string())?;
+        self.params.push(ParamText::of(&p));
+        match self.set_label(c.dim, Some(name.to_string())) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                self.params.pop();
+                Err(e)
+            }
+        }
+    }
+
+    /// What form `i`'s start and end are, where the type previewed's dimensions set them.
+    pub(crate) fn driven_ends(&self, i: usize) -> [Option<f64>; 2] {
+        let Some(s) = self.family().ok().filter(Family::constrained).and_then(|f| f.solve(&self.values()).ok()) else { return [None; 2] };
+        let at = |e: bimcraft_core::family::Extent| s.ends.iter().find(|(k, x, _)| *k == i && *x == e).map(|(.., v)| *v);
+        [at(bimcraft_core::family::Extent::Start), at(bimcraft_core::family::Extent::End)]
+    }
+
+    /// Dimension `g`'s first segment's length, flexed for the type previewed.
+    pub(crate) fn dimension_length(&self, g: Guid) -> Option<f64> {
+        let f = self.family().ok()?;
+        let at = f.dimensions.iter().position(|d| d.guid == g)?;
+        f.measured(&self.values()).ok()?.get(at)?.first().copied()
+    }
+
+    /// The Options Bar of a dimension selected: Label, a length parameter of the family's, none, or Create Parameter….
+    pub(crate) fn dimension_options(&mut self, ui: &mut Ui, g: Guid) -> Option<String> {
+        let d = self.dimensions.iter().find(|d| d.guid == g)?.clone();
+        let one = d.refs.len() == 2 && !d.alignment;
+        let lengths: Vec<String> = self.params.iter().filter(|p| p.kind == Holds::Length).map(|p| p.name.trim().to_string()).collect();
+        let l = ui.label(t("Label"));
+        let shown = d.label.clone().unwrap_or_else(|| t(NONE).to_string());
+        let mut picked: Option<Option<String>> = None;
+        let mut create = false;
+        ui.add_enabled_ui(one, |ui| {
+            let list = ComboBox::from_id_salt("family-dimension-label").selected_text(shown).width(200.0).show_ui(ui, |ui| {
+                if ui.selectable_label(d.label.is_none(), t(NONE)).clicked() {
+                    picked = Some(None);
+                }
+                for name in &lengths {
+                    if ui.selectable_label(d.label.as_deref() == Some(name.as_str()), name).clicked() {
+                        picked = Some(Some(name.clone()));
+                    }
+                }
+                if ui.selectable_label(false, t(CREATE)).clicked() {
+                    create = true;
+                }
+            });
+            list.response.labelled_by(l.id).on_disabled_hover_text(t("Only a dimension of one segment takes a label."));
+        });
+        if create {
+            self.views.creating = Some(Creating { dim: g, ..Creating::default() });
+        }
+        match picked {
+            Some(label) if label != d.label => self.set_label(g, label).err(),
+            _ => None,
+        }
+    }
+}
+
+impl Views {
+    /// The staged model of view `which`, while it is the one drawn.
+    fn staged_for(&self, which: Which) -> Option<&Staged> {
+        self.cache.as_ref().filter(|c| c.which == which).map(|c| &c.staged)
+    }
+}
+
+/// What `e` says, as the desktop says it: T19's words for a constraint that adds nothing.
+fn said(e: Unsat) -> String {
+    if e.over && !e.message.starts_with(NOT_SATISFIED) { format!("{}: {}", t(OVER), e.message) } else { e.message }
+}
+
+/// The reference picked second in Aligned Dimension, parallel to the first? Where it isn't, why not.
+pub(super) fn parallel(flexed: &Family, values: &BTreeMap<String, Val>, a: &DimRef, b: &DimRef) -> bool {
+    let (Ok((n, _)), Ok((m, _))) = (constraints::place_along(flexed, a, values), constraints::place_along(flexed, b, values)) else {
+        return false;
+    };
+    let c = [n[1] * m[2] - n[2] * m[1], n[2] * m[0] - n[0] * m[2], n[0] * m[1] - n[1] * m[0]];
+    (c[0] * c[0] + c[1] * c[1] + c[2] * c[2]).sqrt() < 1e-6
+}
+
+/// A new dimension in view `which` between `refs`, put in order along the way it measures, its line through `at`.
+pub(super) fn new_dimension(
+    flexed: &Family,
+    values: &BTreeMap<String, Val>,
+    st: &Staged,
+    which: Which,
+    refs: &[DimRef],
+    at: P2,
+) -> FamilyDimension {
+    let mut placed: Vec<(f64, DimRef)> = Vec::new();
+    let m = refs.first().and_then(|r| constraints::place_along(flexed, r, values).ok()).map(|(n, _)| n);
+    for r in refs {
+        let Ok((n, s)) = constraints::place_along(flexed, r, values) else { continue };
+        let sign = m.map_or(1.0, |m| if n[0] * m[0] + n[1] * m[1] + n[2] * m[2] < 0.0 { -1.0 } else { 1.0 });
+        placed.push((s * sign, *r));
+    }
+    placed.sort_by(|a, b| a.0.total_cmp(&b.0));
+    FamilyDimension {
+        id: 0,
+        guid: Guid::new(),
+        view: DimView::of(which),
+        refs: placed.into_iter().map(|(_, r)| r).collect(),
+        at: st.from_view(which, at),
+        label: None,
+        locked: Vec::new(),
+        equal: false,
+        alignment: false,
+    }
+}
+
+/// The marks of the dimensions of `flexed` in view `which`, and of `preview` (a dimension being placed) too.
+pub(super) fn marks_of(
+    flexed: &Family,
+    values: &BTreeMap<String, Val>,
+    st: &Staged,
+    which: Which,
+    preview: Option<FamilyDimension>,
+) -> Vec<DimMark> {
+    match preview {
+        None => constraints::marks(flexed, values, st, which),
+        Some(d) => {
+            let mut f = flexed.clone();
+            f.dimensions.push(d);
+            constraints::marks(&f, values, st, which)
+        }
+    }
+}
+
+/// Where a view's millimetres are on screen, for `view` shown from `min`.
+pub(super) fn screen_of(view: View, min: Pos2) -> impl Fn(P2) -> Pos2 {
+    move |q: P2| {
+        let (x, y) = view.px(q);
+        min + vec2(x, y)
+    }
+}

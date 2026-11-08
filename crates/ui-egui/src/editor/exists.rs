@@ -18,6 +18,9 @@ pub(crate) enum Question {
     Exists(String),
     /// A shared family nested in the one loaded is in the project already: keep the project's, or take the family's.
     SharedNested(String),
+    /// Dimensions of the family loaded measure to references it no longer has (T14): delete them, or don't load it. What the
+    /// `family` command said of them.
+    InvalidDimensions(String),
 }
 
 /// How a family already in the project is overwritten, as the `family` command's `overwrite` names it.
@@ -102,7 +105,27 @@ impl BimApp {
         } else {
             Some(source)
         };
+        // Dimensions measuring to what the family hasn't: asked first, an error that can't be passed over (T14).
+        if let Some(c) = &command
+            && let Some(said) = self.invalid_dimensions(c, exists)
+        {
+            questions.push_front(Question::InvalidDimensions(said));
+        }
         Loading { name: name.to_string(), command, questions, decided: Decided { name: name.to_string(), ..Decided::default() }, after }
+    }
+
+    /// What the `family` command says of `command`'s dimensions measuring to references the family hasn't, if it says so: its
+    /// dry run, as a reload (`overwrite`) where the project has the family.
+    fn invalid_dimensions(&mut self, command: &Value, exists: bool) -> Option<String> {
+        let mut probe = command.clone();
+        probe["dry_run"] = json!(true);
+        if exists && probe.get("overwrite").is_none() && (probe.get("path").is_some() || probe.get("definition").is_some()) {
+            probe["overwrite"] = json!("version");
+        }
+        match self.session.execute("family", &probe) {
+            Err(e) if e.contains(bimcraft_core::family::constraints::INVALID_DIMENSIONS) => Some(e),
+            _ => None,
+        }
     }
 
     /// Whether loading `source` over the project's family would change nothing: the core's dry run says it wasn't overwritten.
@@ -159,7 +182,15 @@ impl BimApp {
     pub(crate) fn load_family_file(&mut self, path: &Path) {
         let source = json!({"path": path.to_string_lossy()});
         // The name it loads under, as the command works it out; a file that isn't a family says so as the load would.
-        let name = match self.session.execute("family", &json!({"path": path.to_string_lossy(), "dry_run": true})) {
+        // A file whose dimensions measure to nothing loads under its name all the same, once they are deleted: asked below.
+        let named = self.session.execute("family", &json!({"path": path.to_string_lossy(), "dry_run": true})).or_else(|e| {
+            if e.contains(bimcraft_core::family::constraints::INVALID_DIMENSIONS) {
+                self.session.execute("family", &json!({"path": path.to_string_lossy(), "dry_run": true, "invalid_dimensions": "delete"}))
+            } else {
+                Err(e)
+            }
+        });
+        let name = match named {
             Ok(r) => r["name"].as_str().unwrap_or_default().to_string(),
             Err(text) => {
                 self.status = Status { text, error: true };
@@ -228,14 +259,14 @@ impl BimApp {
             self.end_family_load(loading);
             return;
         };
-        let (title, text, choices): (&str, String, [&str; 2]) = match &question {
+        let (title, text, choices): (&str, String, Vec<&str>) = match &question {
             Question::Exists(name) => (
                 t(EXISTS),
                 tf(
                     "The family {} you are loading is already in this project, defined differently. What would you like to do?",
                     &[name.as_str()],
                 ),
-                [OVERWRITE, OVERWRITE_VALUES],
+                vec![OVERWRITE, OVERWRITE_VALUES],
             ),
             Question::SharedNested(name) => (
                 t(SHARED),
@@ -243,8 +274,11 @@ impl BimApp {
                     "The shared family {} nested in this family is already loaded in the project. Which version should the project use?",
                     &[name.as_str()],
                 ),
-                [KEEP_PROJECT, TAKE_FAMILY],
+                vec![KEEP_PROJECT, TAKE_FAMILY],
             ),
+            Question::InvalidDimensions(said) => {
+                (t(INVALID), tf("Dimensions of the family you are loading can't be kept: {}", &[said.as_str()]), vec![DELETE_DIMENSIONS])
+            }
         };
         let (mut chosen, mut cancel) = (None, false);
         let r = Modal::new(UiId::new("family-already-exists"), title).width(520.0).show(ctx, |ui| {
@@ -282,6 +316,11 @@ impl BimApp {
                 }
             }
             Question::SharedNested(name) => loading.decided.shared.push((name, if i == 0 { Shared::Project } else { Shared::Family })),
+            Question::InvalidDimensions(_) => {
+                if let Some(p) = loading.command.as_mut() {
+                    p["invalid_dimensions"] = json!("delete");
+                }
+            }
         }
         if loading.questions.is_empty() {
             self.end_family_load(loading);
@@ -314,3 +353,5 @@ const OVERWRITE_VALUES: &str = msg!("Overwrite the existing version and its para
 const SHARED: &str = msg!("Shared Family Already Loaded");
 const KEEP_PROJECT: &str = msg!("Use the project's version");
 const TAKE_FAMILY: &str = msg!("Overwrite it with the version in this family");
+const INVALID: &str = msg!("Invalid Dimensions");
+const DELETE_DIMENSIONS: &str = msg!("Delete Dimension(s)");

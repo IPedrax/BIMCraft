@@ -159,7 +159,7 @@ fn a_good_formula_is_taken_and_a_bad_one_refused_with_t9s_words_in_the_dialog() 
 }
 
 #[test]
-fn every_row_has_a_lock_shown_disabled_until_labelled_dimensions_come() {
+fn a_lock_is_greyed_for_a_parameter_that_labels_no_dimension() {
     let h = opened();
     assert!(h.query_by_label("Lock").is_some(), "the column's heading");
     for name in ["Width", "Height", "Depth", "Show Top", "Note"] {

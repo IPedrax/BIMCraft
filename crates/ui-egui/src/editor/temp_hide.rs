@@ -271,6 +271,19 @@ impl BimApp {
                 ed.reference_plane_tool();
                 continue;
             }
+            // Aligned Dimension and Align there too (F7).
+            if matches!(self.typed.as_str(), "DI" | "AL")
+                && let Some(ed) = self.family_editor.as_mut()
+                && ed.editing_2d()
+            {
+                if self.typed == "DI" {
+                    ed.dimension_tool();
+                } else {
+                    ed.align_tool();
+                }
+                self.typed.clear();
+                continue;
+            }
             let asked = match action {
                 Some("Temporary Hide Element") => Asked::Hide { category: false },
                 Some("Temporary Hide Category") => Asked::Hide { category: true },

@@ -1095,7 +1095,10 @@ pub static ALL: &[Command] = &[
          left|center_left_right|right|front|center_front_back|back|bottom|center_elevation|top, defines_origin?, subcategory?}], \
          ref_plane?: {id | guid, …a plane's fields}, delete_ref_plane?: [id | guid, …], ref_lines?: [{guid?, start: [x, y, z], \
          end: [x, y, z], host?: {plane: guid} | {line: guid, face}, reference?, subcategory?}], ref_line?: {id | guid, …}, \
-         delete_ref_line?: [id | guid, …], \
+         delete_ref_line?: [id | guid, …], dimensions?: [{guid?, view?: plan|ceiling|front|back|left|right, refs: [{plane: guid} | \
+         {form: guid, end: start|end}, …], at: [x, y, z], label?: parameter, locked?: [{segment, length}], equal?, alignment?}], \
+         dimension?: {id | guid, …a dimension's fields} (none: one added), delete_dimension?: [id | guid, …], \
+         invalid_dimensions?: delete, solve?: type, \
          operation?: swing|double-swing|sliding|double-sliding|folding|fixed (a door's or window's, for IFC and schedules), \
          kind?: which fixture or fitting it is, for IFC's predefined type (plumbing: wc|lav|sink|laundry|shower|bath|bidet|urinal; \
          drain: floor_drain|floor_waste|roof_drain; pipefitting: bend|tee|cross|transition|coupling; \"\" clears it), \
@@ -1131,7 +1134,19 @@ pub static ALL: &[Command] = &[
          angles, Materials and Finishes for materials, else Other). `shared` makes it a shared parameter, by a GUID that is one \
          name and one kind across the project's families (its name and kind can't change while shared); without it, it is the \
          family's own. `reporting`, a length or an angle, reads a dimension and drives none: no formula, type or component sets \
-         it, and until labelled dimensions exist it holds its `value`. Every reply carries `warnings`: what's \
+         it: a dimension labelled with it measures it, and formulas read what it measures (no label may be worked out from one). \
+         `dimensions` are Revit's family dimensions (F7): each between two or more parallel references (its planes, the datums, an \
+         extrusion's `start` or `end` face), in order along the way it measures, drawn in `view` (which must see them edge on) \
+         with its line through `at`. A `label` (one segment, a length parameter) makes the segment that parameter's value in \
+         every type; `locked` keeps a segment at a length (a labelled one's lock stops dragging from changing it); `equal` keeps \
+         its segments equal (EQ); `alignment` is Align's lock, two references, its segment locked at 0. Flexing a type solves \
+         them: the planes and extrusion ends they measure to take the least change from where they are drawn that holds them \
+         all (a datum or a plane that defines the origin stays), and what is drawn on a plane moves with it; a constraint that \
+         adds nothing to the others is refused as over-constrained, naming them, and a labelled length of 0 or less is refused \
+         for its type. Deleting a plane or form takes it out of the dimensions measuring to it (a dimension left with one \
+         reference goes: `deleted_dimensions`). A dimension measuring to what the family hasn't is refused, unless \
+         `invalid_dimensions` is `delete` (a reload's Delete Dimension(s)); a file opened leaves it out. `solve` reads, for a \
+         type, where its planes and forms' ends go and each dimension's lengths, and changes nothing. Every reply carries `warnings`: what's \
          worth knowing and doesn't stop the change (a void cutting no solid, a form outside the opening or thicker than its \
          wall, a door's or window's plan with no symbols). `definition` is a family as such a file holds it, given in place of `path` and loaded as the file would be (read strictly). On `path` or `definition`, `overwrite` chooses `no` (keep the project family), \
          `version` (replace the definition, retaining compatible values) or `version_and_values` (also use incoming values). \
@@ -10256,6 +10271,11 @@ struct Patches {
     lines_replaced: usize,
     lines_patched: Vec<Id>,
     lines_deleted: Vec<String>,
+    dimensions_replaced: usize,
+    dimensions_patched: Vec<Id>,
+    dimensions_deleted: Vec<Id>,
+    /// Dimensions taken away with what they measured to, or for measuring to nothing (`invalid_dimensions`).
+    dimensions_dropped: usize,
     /// Parameters `parameter` renamed, from and to.
     params_renamed: Vec<(String, String)>,
     /// What changes the components of the family: values moved onto them or off them, renamed, taken away.
@@ -10530,6 +10550,7 @@ fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Famil
     crate::library::keep_parts(&mut old.connectors, &mut incoming.connectors);
     crate::library::keep_parts(&mut old.planes, &mut incoming.planes);
     crate::library::keep_parts(&mut old.lines, &mut incoming.lines);
+    crate::library::keep_parts(&mut old.dimensions, &mut incoming.dimensions);
     incoming
 }
 
@@ -10603,6 +10624,7 @@ fn family(s: &mut Session, p: &Value) -> R {
             "adaptive",
             "planes",
             "lines",
+            "dimensions",
         ]
         .into_iter()
         .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
@@ -10644,6 +10666,10 @@ fn family(s: &mut Session, p: &Value) -> R {
             }
         }
         family.insert("name".into(), name);
+        // How a dimension that measures to nothing is dealt with is the caller's, not the file's.
+        if let Some(v) = p.get("invalid_dimensions") {
+            family.insert("invalid_dimensions".into(), v.clone());
+        }
         // `dry_run` is the caller's, not the file's: a dry run of a file loads nothing.
         if let Some(dry) = p.get("dry_run") {
             family.insert("dry_run".into(), dry.clone());
@@ -10726,7 +10752,27 @@ fn family(s: &mut Session, p: &Value) -> R {
         "delete_ref_plane",
         "delete_ref_line",
         "options",
+        "dimensions",
+        "dimension",
+        "delete_dimension",
     ];
+    // Its dimensions solved for a type, which changes nothing: where its planes go, and each dimension's lengths.
+    if let Some(type_name) = string(c, &p, "solve")? {
+        let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}`")))?;
+        let values = f.values(&type_name, &BTreeMap::new()).map_err(|e| bad(c, e))?;
+        let flexed = f.flexed(&values).map_err(|e| bad(c, e))?;
+        let planes: Vec<Value> = flexed
+            .planes
+            .iter()
+            .filter(|q| !q.datum())
+            .map(|q| json!({"guid": q.guid, "id": q.id, "name": q.name, "offset": crate::view3d::dot(q.start, q.frame().z)}))
+            .collect();
+        let forms: Vec<Value> = flexed.forms.iter().map(|x| json!({"guid": x.guid, "id": x.id, "from": x.from, "to": x.to})).collect();
+        let lengths = f.measured(&values).map_err(|e| bad(c, e))?;
+        let dims: Vec<Value> =
+            f.dimensions.iter().zip(lengths).map(|(d, l)| json!({"guid": d.guid, "id": d.id, "label": d.label, "lengths": l})).collect();
+        return Ok(json!({"name": name, "type": type_name, "planes": planes, "forms": forms, "dimensions": dims}));
+    }
     if !keys.iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null())) {
         let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}`")))?;
         let (_, warnings) = f.problems(&|m| s.model.materials.contains_key(m));
@@ -10837,8 +10883,38 @@ fn family(s: &mut Session, p: &Value) -> R {
     }
     if let Some(list) = p.get("delete_form").and_then(Value::as_array) {
         for v in list {
-            patches.forms_deleted.push(take_part(c, &name, &mut f.forms, v, "form")?);
+            let at = part_at(c, &mut f.forms, v, "form", &name)?;
+            let gone = f.forms.remove(at);
+            // The dimensions measuring to it lose it, as Revit's do.
+            if !gone.guid.is_nil() {
+                patches.dimensions_dropped += f.forget_reference(gone.guid);
+            }
+            patches.forms_deleted.push(gone.id);
         }
+    }
+    // Its dimensions: the whole list replaced, one patched by its id or GUID (one given neither is added), some taken away.
+    if let Some(v) = p.get("dimensions").filter(|v| !v.is_null()) {
+        let mut dims: Vec<crate::family::FamilyDimension> = serde_json::from_value(v.clone()).map_err(|e| field("dimensions", e))?;
+        crate::library::keep_parts(&mut f.dimensions, &mut dims);
+        patches.dimensions_replaced = dims.len();
+        f.dimensions = dims;
+    }
+    if let Some(v) = p.get("dimension").filter(|v| !v.is_null()) {
+        if v.get("id").is_none() && v.get("guid").is_none() {
+            let d: crate::family::FamilyDimension = serde_json::from_value(v.clone()).map_err(|e| field("dimension", e))?;
+            f.dimensions.push(d);
+        } else {
+            patches.dimensions_patched.push(patch_part(c, &name, &mut f.dimensions, v, "dimension")?);
+        }
+    }
+    match p.get("delete_dimension") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(list)) => {
+            for v in list {
+                patches.dimensions_deleted.push(take_part(c, &name, &mut f.dimensions, v, "dimension")?);
+            }
+        }
+        Some(v) => return Err(bad(c, format!("`delete_dimension` is a list of ids or GUIDs, not {v}"))),
     }
     if let Some(list) = p.get("delete_symbol").and_then(Value::as_array) {
         for v in list {
@@ -10855,7 +10931,10 @@ fn family(s: &mut Session, p: &Value) -> R {
                     let gone = if planes {
                         not_datum(c, Some(v))?;
                         let at = part_at(c, f.planes.get_mut(3..).unwrap_or_default(), v, "ref_plane", &name)? + 3;
-                        f.planes.remove(at).guid
+                        let gone = f.planes.remove(at).guid;
+                        // The dimensions measuring to it lose it, as Revit's do.
+                        patches.dimensions_dropped += f.forget_reference(gone);
+                        gone
                     } else {
                         let at = part_at(c, &mut f.lines, v, "ref_line", &name)?;
                         f.lines.remove(at).guid
@@ -10878,6 +10957,31 @@ fn family(s: &mut Session, p: &Value) -> R {
     // Hosts named by id are given by GUID; which plane defines the origin in each direction settled.
     f.resolve_hosts();
     f.settle_planes();
+    // A dimension that measures to what the family hasn't: refused, unless the caller says to delete it (T14's Delete
+    // Dimension(s)); a reload can't leave one behind unasked.
+    let dangling = f.dangling_dimensions();
+    if !dangling.is_empty() {
+        match string(c, &p, "invalid_dimensions")?.as_deref() {
+            Some("delete") => {
+                for i in dangling.iter().rev() {
+                    f.dimensions.remove(*i);
+                }
+                patches.dimensions_dropped += dangling.len();
+            }
+            None => {
+                let named: Vec<String> = dangling.iter().map(|i| (i + 1).to_string()).collect();
+                return Err(bad(
+                    c,
+                    format!(
+                        "dimension {} {}: delete them (`invalid_dimensions`: \"delete\") or give the family back what they measure",
+                        named.join(", "),
+                        crate::family::constraints::INVALID_DIMENSIONS
+                    ),
+                ));
+            }
+            Some(other) => return Err(bad(c, format!("`invalid_dimensions` is \"delete\", not `{other}`"))),
+        }
+    }
     if let Some(v) = p.get("connectors").filter(|v| !v.is_null()) {
         let mut connectors: Vec<crate::family::Connector> = serde_json::from_value(v.clone()).map_err(|e| field("connectors", e))?;
         crate::library::keep_parts(&mut f.connectors, &mut connectors);
@@ -10965,7 +11069,9 @@ fn family(s: &mut Session, p: &Value) -> R {
         }
     }
     m.families.insert(to.clone(), f.clone());
-    Ok(json!({"name": to, "family": f, "options": f.options_json(), "warnings": warnings}))
+    Ok(
+        json!({"name": to, "family": f, "options": f.options_json(), "warnings": warnings, "deleted_dimensions": patches.dimensions_dropped}),
+    )
 }
 
 /// A family as `family` reads it: what it is, each of its types' parameters worked out (formulas and
@@ -11017,6 +11123,7 @@ fn family_changes(was: Option<&crate::family::Family>, now: &crate::family::Fami
         "symbols": {"replaced": patches.symbols_replaced, "patched": patches.symbols_patched, "deleted": patches.symbols_deleted},
         "ref_planes": {"replaced": patches.planes_replaced, "patched": patches.planes_patched, "deleted": patches.planes_deleted},
         "ref_lines": {"replaced": patches.lines_replaced, "patched": patches.lines_patched, "deleted": patches.lines_deleted},
+        "dimensions": {"replaced": patches.dimensions_replaced, "patched": patches.dimensions_patched, "deleted": patches.dimensions_deleted, "dropped": patches.dimensions_dropped},
         "rename": rename,
         "parameters_renamed": patches.params_renamed.iter().map(|(a, b)| json!({"from": a, "to": b})).collect::<Vec<_>>(),
         "component_values_changed": patches.component_ops.len(),
