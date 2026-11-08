@@ -21,8 +21,8 @@ pub(crate) struct Views {
     pub(crate) shown: Option<Which>,
     /// How close each view is, times as fitted, and how far it is moved (mm).
     frames: BTreeMap<Which, (f64, (f64, f64))>,
-    /// Each view's work plane, once Set; else its own (`default_work_plane`).
-    work_planes: BTreeMap<Which, PlaneRef>,
+    /// Each view's work plane ({3D}'s under none), once Set; else its own (`default_work_plane`).
+    work_planes: BTreeMap<Option<Which>, PlaneRef>,
     /// Work Plane > Show: the work plane tinted.
     pub(crate) show_work_plane: bool,
     /// Work Plane > Set's Pick: the next click picks the plane under it.
@@ -67,32 +67,33 @@ pub(crate) fn view_tab(which: Option<Which>) -> String {
     }
 }
 
-/// The plane a view draws on until another is Set, as Revit's: Ref. Level in plan, the Center plane an elevation faces.
-fn default_work_plane(which: Which) -> PlaneRef {
+/// The plane a view draws on until another is Set, as Revit's: Ref. Level in plan and in {3D} (none), the Center plane an
+/// elevation faces.
+fn default_work_plane(which: Option<Which>) -> PlaneRef {
     match which {
-        Which::Plan | Which::Ceiling => PlaneRef::Plane(REF_LEVEL),
-        Which::Elevation(Side::Front | Side::Back) => PlaneRef::Plane(CENTER_FRONT_BACK),
-        Which::Elevation(Side::Left | Side::Right) => PlaneRef::Plane(CENTER_LEFT_RIGHT),
+        None | Some(Which::Plan | Which::Ceiling) => PlaneRef::Plane(REF_LEVEL),
+        Some(Which::Elevation(Side::Front | Side::Back)) => PlaneRef::Plane(CENTER_FRONT_BACK),
+        Some(Which::Elevation(Side::Left | Side::Right)) => PlaneRef::Plane(CENTER_LEFT_RIGHT),
     }
 }
+
+/// How far beyond what the family takes up {3D} draws its work plane, mm: as far as the plans and elevations frame past it.
+const WORK_PLANE_MARGIN: f64 = 300.0;
 
 /// The selection's colour in the family's views.
 const PICKED: Color32 = Color32::from_rgb(40, 120, 230);
 /// Work Plane > Show's tint.
-const TINT: Color32 = Color32::from_rgba_premultiplied(30, 70, 140, 60);
+pub(crate) const TINT: Color32 = Color32::from_rgba_premultiplied(30, 70, 140, 60);
 
 impl Views {
     /// The work plane of the view shown.
-    pub(crate) fn work_plane(&self) -> Option<PlaneRef> {
-        let w = self.shown?;
-        Some(self.work_planes.get(&w).copied().unwrap_or_else(|| default_work_plane(w)))
+    pub(crate) fn work_plane(&self) -> PlaneRef {
+        self.work_planes.get(&self.shown).copied().unwrap_or_else(|| default_work_plane(self.shown))
     }
 
     /// The work plane of the view shown made `plane`.
     pub(crate) fn set_work_plane(&mut self, plane: PlaneRef) {
-        if let Some(w) = self.shown {
-            self.work_planes.insert(w, plane);
-        }
+        self.work_planes.insert(self.shown, plane);
     }
 
     /// Another view shown: the tool and the drag in hand go, the selection stays.
@@ -301,8 +302,7 @@ impl FamilyEditor {
         // Work Plane > Show: the plane tinted, all over where the view looks straight at it, along its trace where across it.
         if editable
             && self.views.show_work_plane
-            && let Some(wp) = self.views.work_plane()
-            && let Ok(f) = self.plane_set().frame(&wp)
+            && let Ok(f) = self.plane_set().frame(&self.views.work_plane())
         {
             match plane_trace(&c.staged, which, &f) {
                 Some((a, b)) => {
@@ -432,6 +432,33 @@ impl FamilyEditor {
         }
         problem
     }
+}
+
+impl FamilyEditor {
+    /// The work plane {3D} shows, while Work Plane > Show is on in a family that isn't adaptive: its frame.
+    pub(crate) fn shown_work_plane_3d(&self) -> Option<bimcraft_core::family::Frame> {
+        if self.adaptive.is_some() || !self.views.show_work_plane {
+            return None;
+        }
+        self.plane_set().frame(&self.views.work_plane()).ok()
+    }
+}
+
+/// Work Plane > Show in the family's {3D}: plane `f` drawn into its picture `image` (taken through `cam`), as the project's 3D
+/// view lays out its work plane (`workplane::patch`) over what the family takes up (`extents`) and [`WORK_PLANE_MARGIN`]
+/// round, tinted as the plans tint it, with a grid through the family's origin about 5 to 20 lines across
+/// (`workplane::grid_step`) and its outline; depth tested, so a form in front of it hides it.
+pub(crate) fn draw_work_plane_3d(
+    image: &mut bimcraft_core::view3d::Image,
+    cam: &bimcraft_core::view3d::Camera,
+    f: &bimcraft_core::family::Frame,
+    extents: ([f64; 3], [f64; 3]),
+) {
+    let plane = bimcraft_core::workplane::Frame { origin: f.origin, normal: f.z };
+    let Some(p) = crate::workplane::patch(plane, extents, WORK_PLANE_MARGIN, [0.0; 3]) else { return };
+    let step = bimcraft_core::workplane::grid_step((p.hi.0 - p.lo.0).max(p.hi.1 - p.lo.1));
+    let (grid, edge) = (pal().muted.gamma_multiply(0.5), pal().accent.gamma_multiply(0.6));
+    image.draw_plane(cam, p.origin, p.axes, (p.lo, p.hi), step, TINT.to_array(), grid.to_array(), edge.to_array());
 }
 
 /// The solid forms the type previewed (`values`) hides, alone: what a view draws halftone while Preview Visibility is off.

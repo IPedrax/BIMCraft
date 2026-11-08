@@ -1,6 +1,15 @@
 //! The family editor occupies the window for conventional families too.
 use super::*;
 
+/// The app on `script` in a window wide enough for the family document's Create tab to show every tool: {3D}'s has a Work
+/// Plane panel too, which at the harness's 1280 hands Family Editor's last tools over to its list.
+fn wide(script: &str) -> Harness<'static, BimApp> {
+    let mut h = app(script);
+    h.set_size(vec2(1600.0, 800.0));
+    h.run();
+    h
+}
+
 fn associate(h: &mut Harness<BimApp>, label: &str) {
     h.get_by_label(label).scroll_to_me();
     h.run();
@@ -11,6 +20,7 @@ fn associate(h: &mut Harness<BimApp>, label: &str) {
 fn conventional_family_opens_as_a_document_in_both_profiles() {
     for profile in [crate::style::Profile::Rev, crate::style::Profile::BimCraft] {
         let mut h = harness("", 0.25, profile);
+        h.set_size(vec2(1600.0, 800.0));
         h.state_mut().edit_family("Table");
         h.run();
         assert!(h.query_by_label("Load into Project").is_some(), "the family document owns the ribbon");
@@ -34,7 +44,7 @@ fn closing_a_new_family_document_does_not_change_the_project() {
 
 #[test]
 fn family_draft_history_never_undoes_the_project() {
-    let mut h = app(BOX);
+    let mut h = wide(BOX);
     let before = h.state().session.model.to_json().unwrap();
     h.state_mut().new_family(bimcraft_core::family::Category::Generic);
     h.run();
@@ -54,7 +64,7 @@ fn family_draft_history_never_undoes_the_project() {
 
 #[test]
 fn equals_associates_a_form_property_and_can_create_and_remove_a_parameter() {
-    let mut h = app("");
+    let mut h = wide("");
     h.state_mut().new_family(bimcraft_core::family::Category::Generic);
     h.run();
     associate(&mut h, "Associate Family Parameter: Form To 1");
@@ -81,20 +91,20 @@ fn equals_associates_a_form_property_and_can_create_and_remove_a_parameter() {
 
 #[test]
 fn associations_filter_yesno_and_material_and_preserve_the_project_until_load() {
-    let mut h = app("");
+    let mut h = wide("");
     let material = h.state().session.model.materials.keys().next().unwrap().clone();
-    assert!(h.state_mut().run("family",json!({"name":"Associations","parameters":[{"name":"Show","kind":"yesno","value":true},{"name":"Finish","kind":"material","value":material},{"name":"Depth","value":100}],"types":{"A":{}},"forms":[{"profile":[[0,0],[100,0],[100,100],[0,100]],"to":100}]})).is_some());
+    assert!(h.state_mut().run("family",json!({"name":"Associations","parameters":[{"name":"Lit","kind":"yesno","value":true},{"name":"Finish","kind":"material","value":material},{"name":"Depth","value":100}],"types":{"A":{}},"forms":[{"profile":[[0,0],[100,0],[100,100],[0,100]],"to":100}]})).is_some());
     let before = h.state().session.model.to_json().unwrap();
     h.state_mut().edit_family("Associations");
     h.run();
     associate(&mut h, "Associate Family Parameter: Visible");
-    assert!(h.query_by_label("Show").is_some());
+    assert!(h.query_by_label("Lit").is_some());
     assert!(h.query_by_label("Finish").is_none() && h.query_by_label("Depth").is_none());
-    press(&mut h, "Show");
+    press(&mut h, "Lit");
     press(&mut h, "OK");
     associate(&mut h, "Associate Family Parameter: Form Material 1");
     assert!(h.query_by_label("Finish").is_some());
-    assert_eq!(h.query_all_by_label("Show").count(), 1, "only the Visible row's own, tied to it");
+    assert_eq!(h.query_all_by_label("Lit").count(), 1, "only the Visible row's own, tied to it");
     press(&mut h, "Finish");
     press(&mut h, "OK");
     assert_eq!(h.get_by_label("Form Material 1").value().as_deref(), Some(material.as_str()));
@@ -102,7 +112,7 @@ fn associations_filter_yesno_and_material_and_preserve_the_project_until_load() 
     press(&mut h, "Load into Project");
     press(&mut h, "Overwrite the existing version");
     let f = &h.state().session.model.families["Associations"];
-    assert_eq!(f.forms[0].visible, Some(bimcraft_core::family::Expr::Formula("Show".into())));
+    assert_eq!(f.forms[0].visible, Some(bimcraft_core::family::Expr::Formula("Lit".into())));
     assert_eq!(f.forms[0].material, "Finish");
 }
 
@@ -110,7 +120,7 @@ fn associations_filter_yesno_and_material_and_preserve_the_project_until_load() 
 fn loading_an_edited_document_keeps_connectors_reference_geometry_and_symbols() {
     use bimcraft_core::family::{Face, PlaneRef, RefLine, Reference};
     use bimcraft_core::ids::Guid;
-    let mut h = app("");
+    let mut h = wide("");
     let mut f = h.state().session.model.families.values().find(|f| !f.connectors.is_empty()).unwrap().clone();
     let plane_guid = Guid::from_u128(0xdddddddd_dddd_4ddd_8ddd_dddddddddd11);
     let line_guid = Guid::from_u128(0xdddddddd_dddd_4ddd_8ddd_dddddddddd12);

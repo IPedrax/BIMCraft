@@ -216,8 +216,39 @@ pub fn cursor_plane(m: &Model, cam: &Camera, at: (f64, f64), under: Option<crate
     Some(CursorPlane { on: s.id, level, offset, z: m.elevation(level) + offset })
 }
 
+/// How far apart a work plane's grid lines are over a patch `span` mm across, so about 5 to 20 of them span it: the least of
+/// 10, 50, 100, 500, 1000 mm and on (5 and 10 times) that leaves at most 20.
+pub fn grid_step(span: f64) -> f64 {
+    let mut step = 10.0;
+    let mut five = true;
+    while span.is_finite() && span / step > 20.0 && step < 1e9 {
+        step *= if five { 5.0 } else { 2.0 };
+        five = !five;
+    }
+    step
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_grid_steps_10_50_100_500_1000_mm_so_about_5_to_20_lines_span_it() {
+        use super::grid_step;
+        for (span, step) in [
+            (100.0, 10.0),
+            (200.0, 10.0),
+            (201.0, 50.0),
+            (1100.0, 100.0),
+            (1600.0, 100.0),
+            (2100.0, 500.0),
+            (9000.0, 500.0),
+            (15000.0, 1000.0),
+            (30000.0, 5000.0),
+        ] {
+            assert_eq!(grid_step(span), step, "{span}");
+            assert!(span / step <= 20.0);
+        }
+    }
+
     use super::*;
     use crate::engine::Session;
     use crate::graphics::Look;

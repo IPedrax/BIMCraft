@@ -12,6 +12,9 @@ use egui::Color32;
 /// A box from Ref. Level to 2 m, east and behind the origin, crossing the plan's cut plane, and a plane of its own, Edge.
 const BOX_FAMILY: &str = r#"family {"name": "Box", "category": "generic", "types": {"T": {}}, "forms": [{"profile": [[500, 300], [1000, 300], [1000, 600], [500, 600]], "to": 2000}], "ref_planes": [{"name": "Edge", "start": [-400, -2000, 0], "end": [-400, 2000, 0], "up": [0, 0, 1]}]}"#;
 
+/// Two reference lines for [`BOX_FAMILY`]: one on Ref. Level, west and in front; one on Center (Front/Back), rising west of it.
+const LINES: &str = r#""ref_lines": [{"start": [-1300, -1000, 0], "end": [-700, -1000, 0]}, {"start": [-1300, 0, 300], "end": [-700, 0, 1100], "host": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}}]"#;
+
 /// Family `name` (of `script`) open in its document, the views' pictures kept.
 fn open(script: &str, name: &str) -> (Harness<'static, BimApp>, Pictures) {
     let mut s = Session::new();
@@ -252,19 +255,80 @@ fn a_click_selects_a_form_or_a_plane_and_a_selected_plane_moves_by_a_drag() {
 fn work_plane_set_picks_a_plane_and_show_tints_it() {
     let (mut h, _) = boxed();
     view(&mut h, Some(Which::Elevation(Side::Front)));
-    assert_eq!(editor(&h).views.work_plane(), Some(bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK)));
+    assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK));
     let edge = plane(&h, "Edge").guid;
     if let Some(ed) = h.state_mut().family_editor.as_mut() {
         ed.views.picking_plane = true;
     }
     click_family(&mut h, [-400.0, 0.0, 900.0]);
-    assert_eq!(editor(&h).views.work_plane(), Some(bimcraft_core::family::PlaneRef::Plane(edge)), "picked");
+    assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(edge), "picked");
     assert!(!editor(&h).views.picking_plane);
     press(&mut h, "Show");
     assert!(editor(&h).views.show_work_plane);
     // Each view keeps its own: the plan's is still Ref. Level.
     view(&mut h, Some(Which::Plan));
-    assert_eq!(editor(&h).views.work_plane(), Some(bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::REF_LEVEL)));
+    assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::REF_LEVEL));
+}
+
+/// Where family point `p` is on screen in {3D}.
+fn in_3d(h: &Harness<BimApp>, p: [f64; 3]) -> egui::Pos2 {
+    editor(h).preview().expect("the preview drawn").screen(h.state().view_rect, p)
+}
+
+/// The {3D} preview's last picture's colour at family point `p`.
+fn preview_at(h: &Harness<BimApp>, pictures: &Pictures, p: [f64; 3]) -> Color32 {
+    let img = super::preview_visibility::preview(h, pictures);
+    let (x, y, _) = editor(h).preview().expect("the preview drawn").cam.project(p);
+    img.pixels[y as usize * img.size[0] + x as usize]
+}
+
+/// A point of Ref. Level in front of the box, seen; and one on the box's front face, in front of Ref. Level.
+const ON_PLANE: [f64; 3] = [300.0, 100.0, 0.0];
+const ON_BOX: [f64; 3] = [750.0, 300.0, 1500.0];
+
+#[test]
+fn work_plane_show_draws_the_work_plane_into_3d_hidden_by_the_forms_in_front_of_it() {
+    let (mut h, pictures) = boxed();
+    assert_eq!(editor(&h).views.shown, None, "{{3D}}");
+    let (plane, front) = (preview_at(&h, &pictures, ON_PLANE), preview_at(&h, &pictures, ON_BOX));
+    let low = [750.0, 300.0, 300.0];
+    let box_low = preview_at(&h, &pictures, low);
+    press(&mut h, "Show");
+    h.run();
+    assert!(editor(&h).views.show_work_plane);
+    assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::REF_LEVEL), "{{3D}}'s own");
+    assert_ne!(preview_at(&h, &pictures, ON_PLANE), plane, "Ref. Level tinted where it is seen");
+    assert_eq!(preview_at(&h, &pictures, ON_BOX), front, "the box in front of it keeps its colours");
+    // Set to Center (Front/Back), upright through the origin, in front of the box: the box behind it is tinted.
+    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+        ed.views.set_work_plane(bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK));
+    }
+    h.run();
+    assert_ne!(preview_at(&h, &pictures, low), box_low, "the box seen through it");
+    // The plans keep theirs.
+    view(&mut h, Some(Which::Plan));
+    assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::REF_LEVEL));
+    press(&mut h, "Show");
+    view(&mut h, None);
+    assert_eq!(preview_at(&h, &pictures, ON_PLANE), plane, "off");
+}
+
+/// F2/T18's reference lines in the plan and the Front elevation: solid green.
+#[test]
+fn a_reference_line_shows_in_plan_and_in_an_elevation() {
+    let script = BOX_FAMILY.replace(r#""ref_planes""#, &format!(r#"{LINES}, "ref_planes""#));
+    let (mut h, pictures) = open(&script, "Box");
+    view(&mut h, Some(Which::Plan));
+    for x in [-1200.0, -1000.0, -800.0] {
+        assert!(around(&h, &pictures, [x, -1000.0, 0.0], 2).iter().any(green), "the level one in plan at {x}");
+    }
+    assert!(!around(&h, &pictures, [-1000.0, -1300.0, 0.0], 2).iter().any(green), "nothing beside it");
+    // In Front, the one on Center (Front/Back), rising across it.
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    for (x, z) in [(-1150.0, 500.0), (-1000.0, 700.0), (-850.0, 900.0)] {
+        assert!(around(&h, &pictures, [x, 0.0, z], 2).iter().any(green), "the rising one in Front at {x}, {z}");
+    }
+    assert!(!around(&h, &pictures, [-1000.0, 0.0, 1100.0], 2).iter().any(green), "nothing above it");
 }
 
 #[test]
@@ -335,12 +399,17 @@ fn an_adaptive_familys_plans_and_elevations_only_show_it() {
     assert!(editor(&h).adaptive.is_some() && editor(&h).views.shown.is_none());
 }
 
-/// The family's floor plan and Front elevation as the window shows them, saved where `BIMCRAFT_F4_DUMP` says (only then).
+/// The family's floor plan and Front elevation as the window shows them, with two named planes close together and a reference
+/// line, and {3D} with Work Plane > Show on, saved where `BIMCRAFT_F4_DUMP` says (only then).
 #[test]
 fn family_views_screenshots() {
     let Ok(folder) = std::env::var("BIMCRAFT_F4_DUMP") else { return };
     std::fs::create_dir_all(&folder).unwrap();
-    let mut h = app(BOX_FAMILY);
+    let script = BOX_FAMILY.replace(
+        r#""ref_planes": ["#,
+        &format!(r#"{LINES}, "ref_planes": [{{"name": "Near", "start": [-300, -2000, 0], "end": [-300, 2000, 0], "up": [0, 0, 1]}}, "#),
+    );
+    let mut h = app(&script);
     h.set_size(vec2(1600.0, 1000.0));
     h.state_mut().edit_family("Box");
     h.run();
@@ -348,5 +417,34 @@ fn family_views_screenshots() {
         view(&mut h, which);
         h.run();
         h.render().unwrap().save(std::path::Path::new(&folder).join(format!("f4-{name}.png"))).unwrap();
+    }
+    view(&mut h, None);
+    press(&mut h, "Show");
+    h.run();
+    h.render().unwrap().save(std::path::Path::new(&folder).join("f4-3d-work-plane.png")).unwrap();
+}
+
+/// On a real card (egui's renderer): {3D}'s pixels change with Work Plane > Show where Ref. Level is seen, and not on the box
+/// standing in front of it.
+mod gpu {
+    use super::*;
+
+    #[test]
+    fn work_plane_show_changes_the_3d_views_pixels_where_the_plane_is_and_not_on_a_form_in_front_of_it() {
+        let mut h = app(BOX_FAMILY);
+        h.set_size(vec2(1600.0, 1000.0));
+        h.state_mut().edit_family("Box");
+        h.run();
+        let Ok(before) = h.render() else { return };
+        let (on, front) = (in_3d(&h, ON_PLANE), in_3d(&h, ON_BOX));
+        let pane = h.state().view_rect;
+        assert!(pane.contains(on) && pane.contains(front), "{on:?} {front:?} in {pane:?}");
+        press(&mut h, "Show");
+        h.run();
+        let after = h.render().unwrap();
+        let ppp = h.ctx.pixels_per_point();
+        let at = |img: &image::RgbaImage, q: egui::Pos2| img.get_pixel((q.x * ppp) as u32, (q.y * ppp) as u32).0;
+        assert_ne!(at(&before, on), at(&after, on), "tinted where Ref. Level is");
+        assert_eq!(at(&before, front), at(&after, front), "the box in front of it keeps its colour");
     }
 }

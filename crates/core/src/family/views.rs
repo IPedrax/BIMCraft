@@ -74,10 +74,23 @@ pub struct Staged {
     /// What the views frame, in the family's axes: what it takes up, 300 mm beyond, and at least 1.5 m from its origin each
     /// way but down, as the modelling view frames it.
     pub room: (P3, P3),
+    /// The family's reference lines, each from its start to its end: drawn over every view.
+    lines: Vec<(P3, P3)>,
 }
 
 /// How far the elevations stand outside what they look at.
 const OUTSIDE: f64 = 1000.0;
+
+/// What `family` takes up sized by `values`, in its axes, its least and greatest corners: what any of its types draws (a form
+/// the type hides is still drawn, halftone); a family that builds nothing, two metres round its origin.
+pub fn extents(family: &Family, values: &BTreeMap<String, Val>) -> (P3, P3) {
+    let mut every = family.clone();
+    every.forms.iter_mut().for_each(|f| f.visible = None);
+    let shapes = every.shapes(values);
+    let lo: P3 = std::array::from_fn(|i| shapes.iter().map(|s| s.min[i]).fold(f64::INFINITY, f64::min));
+    let hi: P3 = std::array::from_fn(|i| shapes.iter().map(|s| s.max[i]).fold(f64::NEG_INFINITY, f64::max));
+    if lo.iter().chain(&hi).all(|v| v.is_finite()) { (lo, hi) } else { ([-1000.0; 3], [1000.0; 3]) }
+}
 
 /// Model `m`, the family placed in it (at the origin, unturned: a component, or a door or a window in its wall), staged for
 /// its views: the first level renamed Ref. Level and the others taken away; each of `family`'s planes `shown` a reference
@@ -91,13 +104,7 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
     if let Some(Element::Level(l)) = m.elements.get_mut(level) {
         l.name = "Ref. Level".into();
     }
-    // What it takes up in any type: a form the type hides is still drawn, halftone.
-    let mut every = family.clone();
-    every.forms.iter_mut().for_each(|f| f.visible = None);
-    let shapes = every.shapes(values);
-    let lo: P3 = std::array::from_fn(|i| shapes.iter().map(|s| s.min[i]).fold(f64::INFINITY, f64::min));
-    let hi: P3 = std::array::from_fn(|i| shapes.iter().map(|s| s.max[i]).fold(f64::NEG_INFINITY, f64::max));
-    let (lo, hi) = if lo.iter().chain(&hi).all(|v| v.is_finite()) { (lo, hi) } else { ([-1000.0; 3], [1000.0; 3]) };
+    let (lo, hi) = extents(family, values);
     let room: (P3, P3) = (
         std::array::from_fn(|i| if i == 2 { (lo[i] - 300.0).min(0.0) } else { (lo[i] - 300.0).min(-1500.0) }),
         std::array::from_fn(|i| (hi[i] + 300.0).max(1500.0)),
@@ -125,7 +132,8 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
             Section { name: side.name().into(), start, end, depth: None, crop: None, graphics: crate::graphics::Graphics::default() };
         elevations.push((side, m.insert(Element::Elevation(section)), start));
     }
-    Staged { model: m, level, elevations, planes, room }
+    let lines = family.lines.iter().map(|l| (l.start, l.end)).collect();
+    Staged { model: m, level, elevations, planes, room, lines }
 }
 
 /// What one of a family's views shows: its frame, its drawing (what picks) and its pixels.
@@ -213,25 +221,21 @@ impl Staged {
         }
         let m = &self.model;
         let view = self.frame(which, width, height, zoom, pan);
-        match which {
-            Which::Plan => {
-                let drawing = render::family_plan(m, self.level, view);
-                let rgba = render::rgba(&drawing, None)?;
-                Ok(Shown { view, drawing, rgba })
-            }
-            Which::Ceiling => {
-                let drawing = render::draw_ceiling(m, self.level, view);
-                let rgba = render::rgba(&drawing, None)?;
-                Ok(Shown { view, drawing, rgba })
-            }
+        // The reference lines, as the view sees them: seen from above in plan (and from below in the ceiling plan), across
+        // an elevation where their plane is square to it, foreshortened where it isn't.
+        let lines: Vec<(P2, P2)> = self.lines.iter().map(|(a, b)| (self.to_view(which, *a), self.to_view(which, *b))).collect();
+        let (mut drawing, picture) = match which {
+            Which::Plan => (render::family_plan(m, self.level, view), None),
+            Which::Ceiling => (render::draw_ceiling(m, self.level, view), None),
             Which::Elevation(side) => {
                 let id = self.elevation(side).ok_or("the family has no such elevation")?;
                 let picture = render::section_picture(m, id, view, &[]).ok_or("the elevation can't be drawn")?;
-                let drawing = render::section_over(m, id, view, &picture);
-                let rgba = render::rgba(&drawing, Some(&picture))?;
-                Ok(Shown { view, drawing, rgba })
+                (render::section_over(m, id, view, &picture), Some(picture))
             }
-        }
+        };
+        render::reference_lines(&mut drawing, &lines);
+        let rgba = render::rgba(&drawing, picture.as_ref())?;
+        Ok(Shown { view, drawing, rgba })
     }
 
     /// The family's plane a reference plane of the scratch model drawn by `owner` stands for.
@@ -478,6 +482,102 @@ mod tests {
             assert!((normal[0] * l.0 + normal[1] * l.1).abs() < 1e-6, "{side:?}: its normal lies in the elevation's plane");
         }
         assert!(new_plane(&st, Which::Plan, P2(1.0, 1.0), P2(1.0, 1.0)).is_none());
+    }
+
+    /// The family's reference lines in its plan and its Front elevation: solid green, thinner than the planes' dashed traces,
+    /// each as the view sees it; one seen end on (upright, in plan) draws nothing there.
+    #[test]
+    fn reference_lines_are_drawn_solid_green_and_thin_in_plan_and_in_an_elevation() {
+        let mut f = boxed(0.0, 500.0);
+        let line = |start: P3, end: P3, host: Guid| crate::family::RefLine {
+            guid: Guid::new(),
+            start,
+            end,
+            host: crate::family::PlaneRef::Plane(host),
+            ..Default::default()
+        };
+        // One on Ref. Level, in front; one upright on Center (Front/Back).
+        f.lines.push(line([-1200.0, -1000.0, 0.0], [-600.0, -1000.0, 0.0], crate::family::REF_LEVEL));
+        f.lines.push(line([-1500.0, 0.0, 0.0], [-1500.0, 0.0, 1200.0], crate::family::CENTER_FRONT_BACK));
+        let mut st = staged(&f);
+        let solid = |d: &Drawing| -> Vec<f32> {
+            d.prims
+                .iter()
+                .zip(&d.owners)
+                .filter_map(|(p, o)| match p {
+                    render::Prim::Line { dash: None, color, width, .. } if o.is_none() && *color == render::REFERENCE_PLANE => Some(*width),
+                    _ => None,
+                })
+                .collect()
+        };
+        let dashed = |d: &Drawing| -> f32 {
+            d.prims
+                .iter()
+                .filter_map(|p| match p {
+                    render::Prim::Line { dash: Some(_), color, width, .. } if *color == render::REFERENCE_PLANE => Some(*width),
+                    _ => None,
+                })
+                .fold(f32::MAX, f32::min)
+        };
+        let plan = st.draw(Which::Plan, 600, 400, 1.0, P2(0.0, 0.0)).unwrap();
+        assert_eq!(solid(&plan.drawing).len(), 1, "in plan the level line; the upright one is seen end on");
+        assert!(solid(&plan.drawing).iter().all(|w| *w < dashed(&plan.drawing)), "thinner than a plane");
+        // Green all along it, unbroken.
+        for x in [-1150.0, -1000.0, -900.0, -800.0, -650.0] {
+            assert!(green_near(&plan, plan.view.px(P2(x, -1000.0))), "in plan at {x}");
+        }
+        assert!(!green_near(&plan, plan.view.px(P2(-1000.0, -1300.0))), "nothing beside it");
+        let front = Which::Elevation(Side::Front);
+        let shown = st.draw(front, 600, 400, 1.0, P2(0.0, 0.0)).unwrap();
+        assert_eq!(solid(&shown.drawing).len(), 2, "in Front both");
+        for x in [-1150.0, -900.0, -650.0] {
+            assert!(green_near(&shown, shown.view.px(st.to_view(front, [x, -1000.0, 0.0]))), "across Front at {x}");
+        }
+        for z in [100.0, 600.0, 1100.0] {
+            assert!(green_near(&shown, shown.view.px(st.to_view(front, [-1500.0, 0.0, z]))), "upright in Front at {z}");
+        }
+    }
+
+    /// A plane drawn into a picture of the box through its middle (level at 1000): where the box stands in front of it (above
+    /// it, seen from above) the box keeps its colours; where the box is behind it, and where nothing is, the plane tints.
+    #[test]
+    fn a_plane_drawn_into_a_picture_is_hidden_by_forms_in_front_of_it() {
+        let f = boxed(0.0, 2000.0);
+        let st = staged(&f);
+        let scene = view3d::Scene::new(&st.model);
+        let cam = scene.fit(view3d::AZIMUTH, view3d::ELEVATION, 400, 300);
+        let before = scene.render(&cam, &[]);
+        let mut after = before.clone();
+        let (across, up) = ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let tint = [30, 70, 140, 60];
+        after.draw_plane(&cam, [0.0, 0.0, 1000.0], (across, up), ((-3000.0, -3000.0), (3000.0, 3000.0)), 100.0, tint, tint, tint);
+        let (mut front, mut behind, mut empty) = (0, 0, 0);
+        for y in 0..300 {
+            for x in 0..400 {
+                let (fx, fy) = (f64::from(x) + 0.5, f64::from(y) + 0.5);
+                let k = 4 * (y * 400 + x) as usize;
+                let changed = before.rgba[k..k + 3] != after.rgba[k..k + 3];
+                match before.point(&cam, fx, fy) {
+                    Some(p) if p[2] > 1050.0 => {
+                        assert!(!changed, "({x}, {y}) on the box above the plane keeps its colour");
+                        front += 1;
+                    }
+                    Some(p) if p[2] < 950.0 && cam.on((fx, fy), [0.0, 0.0, 1000.0], [0.0, 0.0, 1.0]).is_some() => {
+                        assert!(changed, "({x}, {y}) on the box below the plane is tinted");
+                        behind += 1;
+                    }
+                    None if cam
+                        .on((fx, fy), [0.0, 0.0, 1000.0], [0.0, 0.0, 1.0])
+                        .is_some_and(|q| q[0].abs() < 2900.0 && q[1].abs() < 2900.0) =>
+                    {
+                        assert!(changed, "({x}, {y}) on nothing is tinted");
+                        empty += 1;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        assert!(front > 50 && behind > 50 && empty > 50, "{front} {behind} {empty}");
     }
 
     #[test]

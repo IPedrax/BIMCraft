@@ -361,7 +361,8 @@ impl BimApp {
                         ed.reference_plane_tool();
                     }
                 });
-                if !adaptive && ed.editing_2d() {
+                // In {3D} too, where Show draws it over the preview.
+                if !adaptive {
                     views_work_plane_panel(ui, ed);
                 }
                 if adaptive {
@@ -831,8 +832,8 @@ impl BimApp {
             }
             let base = Arc::clone(&self.session.model);
             ed.refresh(ui.ctx(), &base);
-            if let Some((_, tile)) = &ed.preview {
-                ui.painter().image(tile.id(), pane, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            if let Some(p) = &ed.preview {
+                ui.painter().image(p.tile.id(), pane, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
             }
         }
         let card = crate::style::card([true, false, true, false]).inner_margin(Margin::same(2));
@@ -1271,13 +1272,15 @@ fn views_work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
     ribbon::panel(ui, msg!("Work Plane"), |ui| {
         let tip = msg!("Set: the view's work plane, a plane picked in the view or from the list");
         let r = big_button(ui, Icon::PickFaces, msg!("Set"), ed.views.picking_plane, tip);
+        // Pick takes a plane clicked in a plan or an elevation; {3D} offers the list alone.
+        let pickable = ed.views.shown.is_some();
         ribbon::choices(ui, &r, false, |ui| {
-            if ui.button(t(PICK)).clicked() {
+            if pickable && ui.button(t(PICK)).clicked() {
                 ed.views.picking_plane = true;
                 ui.close();
             }
             for (plane, label) in &listed {
-                if ui.selectable_label(now.as_ref() == Some(plane), t(label)).clicked() {
+                if ui.selectable_label(now == *plane, t(label)).clicked() {
                     chosen = Some(*plane);
                     ui.close();
                 }
