@@ -101,6 +101,23 @@ fn wireframe_stays_on_the_card_and_picks_what_it_shows() {
     assert!(h.state().orbit.on_card);
 }
 
+#[test]
+fn on_the_card_the_work_plane_shows_and_its_patch_hidden_by_a_wall_is_the_wall_s() {
+    let Some(gpu) = headless() else {
+        eprintln!("no graphics adapter here: the card's 3D view is not driven");
+        return;
+    };
+    let mut h = app(BOX);
+    h.state_mut().card = Card::with(gpu);
+    h.state_mut().show_work_plane = true;
+    let patch = super::highlight3d::patch_behind(&mut h);
+    assert!(h.state().orbit.on_card, "the card draws it, the work plane too: {:?}", h.state().card.note);
+    click_at(&mut h, patch);
+    assert!(h.state().work_plane.is_none(), "hidden, the patch opens nothing");
+    assert_eq!(h.state().selection.len(), 1, "the wall in front of it is picked");
+    assert!(h.state().orbit.on_card);
+}
+
 /// The mesh the view draws from now.
 fn mesh_now(h: &Harness<BimApp>) -> std::sync::Arc<bimcraft_core::view3d::gpu::Mesh> {
     match h.state().orbit.mesh.as_ref() {

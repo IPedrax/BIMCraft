@@ -1,5 +1,6 @@
 //! The 3D view drawn on the graphics card: the core's `view3d::gpu::Mesh` uploaded once for a model, and the passes for each
-//! picture (the opaque surfaces; those seen through; edges, ground and the blend; the levels' lines), in `gpu.wgsl`, into a
+//! picture (the opaque surfaces; those seen through; edges, ground and the blend; the levels' lines; the work plane and its
+//! patch, depth tested as the processor's `Image::draw_marks` lays them), in `gpu.wgsl`, into a
 //! texture that egui shows as it shows the CPU picture. What changes between pictures is small: the camera, the levels' lines,
 //! and, only when they change, the selection's tints and the textures' mip levels. A section box is a uniform each pixel is cut
 //! to, so a face being dragged builds nothing. Opt-in (Settings > Performance); what the card can't draw (wireframe, a point cloud) is the processor's, and so is everything when the card fails: a validation or out-of-memory error from the device is caught
@@ -11,7 +12,7 @@ use std::sync::Arc;
 use bimcraft_core::model::Id;
 use bimcraft_core::render::Rgb;
 use bimcraft_core::view3d::gpu::{Instance, Mesh, Vertex, Visible};
-use bimcraft_core::view3d::{Camera, MAX_SIDE};
+use bimcraft_core::view3d::{Camera, MAX_SIDE, PlaneMark};
 use eframe::egui_wgpu::{RenderState, wgpu};
 use egui::TextureId;
 
@@ -24,7 +25,10 @@ const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 /// A vertex (see [`Vertex`]) as the card takes it: its position as three floats, its two normals as four 16-bit signed fractions
 /// each (the fourth 0), and its four words. 44 bytes, not the 52 of floats.
 const STRIDE: u64 = 44;
-const GLOBALS: u64 = 11 * 16;
+/// The view's 11 vec4s, and its two marks' 7 each.
+const GLOBALS: u64 = (11 + MARKS as u64 * 7) * 16;
+/// How many marks a picture has room for: the work plane and its patch.
+pub(crate) const MARKS: usize = 2;
 /// A section box: its least corner and its greatest, in the model.
 type Cut = Option<([f64; 3], [f64; 3])>;
 /// An owner's edge and tint colours, a skin's parts and a segment's ends and colour: 2, 3 and 3 vec4s.
@@ -244,7 +248,7 @@ impl Store {
 /// A wireframe's picture drawn in parts because the card can't hold all its lines at once: what it is of, and how many parts
 /// are done (a part being one buffer's lines, once for all of them and again for what is tinted).
 struct WireStream {
-    key: (Camera, Cut, Vec<(Id, Rgb)>, bool),
+    key: (Camera, Cut, Vec<(Id, Rgb)>, bool, Vec<PlaneMark>),
     done: usize,
 }
 
@@ -462,6 +466,10 @@ pub struct Gpu {
     pub(crate) full_at: Option<u64>,
     /// Hidden line is drawn as a section is, paper and ink swapped on a dark canvas (`canvas::color`).
     pub(crate) swapped_ink: bool,
+    /// The work plane and its patch, drawn over the picture where nothing opaque is nearer (the first [`MARKS`]).
+    pub(crate) marks: Vec<PlaneMark>,
+    /// Pass 5: the marks, blended over the picture.
+    marking: wgpu::RenderPipeline,
 }
 
 /// The most bytes a buffer of vertices holds, whatever the card allows: some drivers place a very large buffer badly.
@@ -903,6 +911,31 @@ impl Gpu {
             &[target(COLOR), target(CLEAR_IDS)],
             true,
         );
+        let marking = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("bimcraft-3d-marks"),
+            layout: Some(&targets_layout),
+            vertex: wgpu::VertexState {
+                module: &module,
+                entry_point: Some("vs_full"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &module,
+                entry_point: Some("fs_marks"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: COLOR,
+                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
         let post = pipeline("bimcraft-3d-post", &picture_layout, "vs_full", "fs_post", &[], &[target(COLOR)], false);
         let lines = pipeline("bimcraft-3d-lines", &targets_layout, "vs_line", "fs_line", &[], &[target(COLOR)], false);
         let wire_attributes = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Uint32];
@@ -964,6 +997,8 @@ impl Gpu {
             card_bytes: u64::MAX,
             full_at: None,
             swapped_ink: false,
+            marks: Vec::new(),
+            marking,
         })
     }
 
@@ -1196,6 +1231,26 @@ impl Gpu {
         let (lo, hi) = (from(lo), from(hi));
         put(&mut globals, &[lo[0], lo[1], lo[2], if cut.is_some() { 1.0 } else { 0.0 }]);
         put(&mut globals, &[hi[0], hi[1], hi[2], 0.0]);
+        // The marks, from the mesh's origin; a mark not there is drawn nowhere.
+        for k in 0..MARKS {
+            match self.marks.get(k) {
+                Some(m) => {
+                    let o = from(m.origin);
+                    let f = |v: [f64; 3]| v.map(|x| x as f32);
+                    let (a, u) = (f(m.axes.0), f(m.axes.1));
+                    let c = |c: [u8; 4]| c.map(|x| f32::from(x) / 255.0);
+                    put(&mut globals, &[o[0], o[1], o[2], 1.0]);
+                    put(&mut globals, &[a[0], a[1], a[2], m.step as f32]);
+                    put(&mut globals, &[u[0], u[1], u[2], m.edge_width as f32]);
+                    put(&mut globals, &[m.lo.0 as f32, m.lo.1 as f32, m.hi.0 as f32, m.hi.1 as f32]);
+                    for colour in [m.fill, m.grid, m.edge] {
+                        put(&mut globals, &c(colour));
+                    }
+                }
+                None => put(&mut globals, &[0.0; 28]),
+            }
+        }
+        let marked = !self.marks.is_empty();
         write(&self.globals, &globals);
         // What this frame draws of the surfaces: nothing where they are drawn already for this camera (a tint changes only the
         // picture); the next part of the exact drawing while the camera stays; else, the camera moved, all it sees if that fits
@@ -1390,7 +1445,7 @@ impl Gpu {
         let streams = mesh.wireframe && lines > 0 && up.wires.count * WIRE > up.room;
         let mut stands_in = false;
         if streams {
-            let key = (*cam, cut, tints.to_vec(), self.swapped_ink);
+            let key = (*cam, cut, tints.to_vec(), self.swapped_ink, self.marks.clone());
             let passes: &[&wgpu::RenderPipeline] = if tints.is_empty() { &[&self.wires] } else { &[&self.wires, &self.wires_tinted] };
             let buffers = up.wires.buffers.len();
             let total = buffers * passes.len();
@@ -1460,6 +1515,9 @@ impl Gpu {
                     if whole {
                         let size = wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 };
                         encoder.copy_texture_to_texture(targets.color_texture.as_image_copy(), targets.picture.as_image_copy(), size);
+                        if marked {
+                            mark(&self.marking, targets, &mut encoder, &bind);
+                        }
                     }
                     up.wire_stream = Some(WireStream { key, done: end });
                     self.queue.submit([encoder.finish()]);
@@ -1531,10 +1589,36 @@ impl Gpu {
                 }
             }
         }
+        if marked {
+            mark(&self.marking, targets, &mut encoder, &bind);
+        }
         self.queue.submit([encoder.finish()]);
         Ok(complete && !stands_in)
     }
+}
 
+/// Pass 5: the marks over the picture in `targets`, where nothing opaque is nearer, through pipeline `marking`.
+fn mark(marking: &wgpu::RenderPipeline, targets: &Targets, encoder: &mut wgpu::CommandEncoder, bind: &wgpu::BindGroup) {
+    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some("marks"),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view: &targets.picture_view,
+            depth_slice: None,
+            resolve_target: None,
+            ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+        })],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    });
+    pass.set_pipeline(marking);
+    pass.set_bind_group(0, bind, &[]);
+    pass.set_bind_group(1, &targets.bind, &[]);
+    pass.draw(0..3, 0..1);
+}
+
+impl Gpu {
     /// Puts `mesh` on the card, unless it's there already.
     fn upload(&mut self, mesh: &Arc<Mesh>) -> Result<(), String> {
         if self.mesh.as_ref().is_some_and(|u| Arc::ptr_eq(&u.mesh, mesh)) {
@@ -2079,6 +2163,78 @@ mod tests {
         let level = s.model.levels().first().unwrap().0;
         let wall = s.model.elements.iter().find(|(_, e)| e.category() == "wall").unwrap().0;
         draws_as_the_processor(&mut gpu, &s, &[(level, Rgb(0, 120, 215)), (*wall, Rgb(255, 160, 0))]);
+    }
+
+    /// The work plane through the box's walls (half way up them, and on Level 1, where a floor's top is) and a patch of it:
+    /// the card lays them where the processor does, hidden where a wall stands in front of them and seen on the floor they
+    /// lie on, from afar and from among the walls. `BIMCRAFT_P1_DUMP` (a folder) keeps the card's pictures.
+    #[test]
+    fn the_card_draws_the_work_plane_where_the_processor_does_hidden_by_what_stands_in_front_of_it() {
+        let Some(mut gpu) = headless() else {
+            eprintln!("no graphics adapter here: the card's work plane is not compared");
+            return;
+        };
+        let mut s = Session::new();
+        s.script(
+            r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+floor {}"#,
+        )
+        .unwrap();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let mesh = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let mark = |z: f64, lo: (f64, f64), hi: (f64, f64), fill: [u8; 4], step: f64| PlaneMark {
+            origin: [4000.0, 3000.0, z],
+            axes: ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+            lo,
+            hi,
+            step,
+            fill,
+            grid: [60, 60, 60, 120],
+            edge: [20, 60, 200, 255],
+            edge_width: 1.0,
+        };
+        let far_cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        for (k, (z, cam)) in [(1500.0, far_cam), (0.0, far_cam), (1500.0, inside(&s, far_cam))].into_iter().enumerate() {
+            let marks = vec![
+                mark(z, (-6000.0, -5000.0), (6000.0, 5000.0), [30, 70, 140, 60], 1000.0),
+                mark(z, (-5500.0, -4500.0), (-4500.0, -3500.0), [0, 90, 200, 110], 0.0),
+            ];
+            let mut cpu = scene.render_in(&cam, &[], &look);
+            let plain = cpu.rgba.clone();
+            cpu.draw_marks(&cam, &marks);
+            gpu.marks.clone_from(&marks);
+            gpu.draw(&mesh, &cam, &[], PAPER).unwrap();
+            let pixels = read(&gpu);
+            if let Ok(dir) = std::env::var("BIMCRAFT_P1_DUMP") {
+                let img = image::RgbaImage::from_raw(cam.width, cam.height, pixels.clone()).unwrap();
+                img.save(format!("{dir}/p1-card-{k}.png")).unwrap();
+                let cpu_img = image::RgbaImage::from_raw(cam.width, cam.height, cpu.rgba.clone()).unwrap();
+                cpu_img.save(format!("{dir}/p1-processor-{k}.png")).unwrap();
+            }
+            let far = |a: &[u8], b: &[u8]| a[..3].iter().zip(&b[..3]).any(|(x, y)| x.abs_diff(*y) > 6);
+            let n = pixels.len() / 4;
+            let wrong = (0..n).filter(|&i| far(&pixels[4 * i..4 * i + 4], &cpu.rgba[4 * i..4 * i + 4])).count();
+            let marked = (0..n).filter(|&i| far(&plain[4 * i..4 * i + 4], &cpu.rgba[4 * i..4 * i + 4])).count();
+            assert!(marked * 10 > n, "picture {k}: the plane covers much of it ({marked} of {n})");
+            assert!(wrong * 100 < marked, "picture {k}: {wrong} of the {marked} pixels the plane changes differ from the processor's");
+            // Where a wall stands in front of the plane the card leaves it as it was (seen from afar: from among the walls the
+            // plane runs off to the horizon at eye height, where f32 can't tell the wall from it).
+            if cam.lens.is_some() {
+                continue;
+            }
+            let wall = scene.render_in(&cam, &[], &look);
+            let hidden = (0..n)
+                .filter(|&i| {
+                    let (x, y) = ((i % cam.width as usize) as f64 + 0.5, (i / cam.width as usize) as f64 + 0.5);
+                    let on = cam.on((x, y), [0.0, 0.0, z], [0.0, 0.0, 1.0]).map(|q| cam.project(q).2);
+                    let seen = wall.point(&cam, x, y).map(|p| cam.project(p).2);
+                    matches!((on, seen), (Some(a), Some(b)) if b > a + 200.0)
+                })
+                .collect::<Vec<_>>();
+            let shown = hidden.iter().filter(|&&i| far(&pixels[4 * i..4 * i + 4], &plain[4 * i..4 * i + 4])).count();
+            assert!(hidden.len() > 1000 && shown * 100 <= hidden.len(), "picture {k}: {shown} of {} hidden pixels drawn", hidden.len());
+        }
+        gpu.marks.clear();
     }
 
     fn inside(s: &Session, cam: Camera) -> Camera {

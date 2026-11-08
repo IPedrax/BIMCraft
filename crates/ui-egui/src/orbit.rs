@@ -26,8 +26,8 @@ use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::snap::{self, Found, Kind, Reach, Snaps};
 use bimcraft_core::view3d::gpu::{Hit, Mesh};
 use bimcraft_core::view3d::{
-    AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, Scene, Surface, box_grips, move_box_face, on_floor_top, shape_handles, shape_pick_3d,
-    shape_snap_3d,
+    AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, PlaneMark, Scene, Surface, box_grips, move_box_face, on_floor_top, shape_handles,
+    shape_pick_3d, shape_snap_3d,
 };
 use bimcraft_core::workplane::{CursorPlane, Frame, cursor_plane};
 use egui::{
@@ -195,6 +195,10 @@ pub struct Orbit {
     /// What picks in the picture on screen, and what the picture is of.
     picker: Option<Picker>,
     shown: Option<Shot>,
+    /// The processor's picture as it is shown before the work plane is laid over it, and the marks the picture on screen has:
+    /// a change of marks alone lays them again, without drawing the picture anew.
+    unmarked: Option<Vec<u8>>,
+    marked: Option<Vec<PlaneMark>>,
     /// The processor's picture as a texture; and whether the card's is the one on screen.
     texture: Option<TextureHandle>,
     pub(crate) on_card: bool,
@@ -264,6 +268,8 @@ impl Default for Orbit {
             last: None,
             picker: None,
             shown: None,
+            unmarked: None,
+            marked: None,
             texture: None,
             on_card: false,
             mesh: None,
@@ -1044,6 +1050,28 @@ impl BimApp {
             .map(|id| (*id, rgb(canvas_pal().accent)))
             .chain(hovered.filter(|id| !selection.contains(id)).map(|id| (id, rgb(canvas_pal().hover))))
             .collect();
+        // The work plane and its patch, drawn into the picture so what stands in front of them hides them: the plane while it's
+        // being set, shown (Show) or a new outline is sketched on it; the patch in Modify, lit while the pointer is on it where
+        // it is seen.
+        let new_sketch = self.sketch.as_ref().and_then(|sk| sk.surface.filter(|_| sk.plan == crate::Sheet::View3D));
+        let planed = self.work_plane.is_some() || self.show_work_plane || new_sketch.is_some();
+        let m = &self.session.model;
+        let wp = m.work_plane(m.default_3d()).resolve(m).ok();
+        let patch_seen = |picker: &Option<Picker>, at: Pos2| {
+            let on = wp.and_then(|f| cam.on(px(at), f.origin, f.normal));
+            match (on, surface(picker, &cam, at)) {
+                (None, _) => false,
+                (Some(q), Some(s)) => {
+                    let z = cam.project(q).2;
+                    cam.project(s.at).2 <= z + cam.slack(bimcraft_core::view3d::MARK_SLACK, z)
+                }
+                (Some(_), None) => true,
+            }
+        };
+        let on_patch =
+            |picker: &Option<Picker>, at: Pos2| patch.is_some_and(|ring| crate::workplane::on_patch(&ring, at)) && patch_seen(picker, at);
+        let patch_lit = hover.is_some_and(|at| on_patch(&o.picker, at));
+        let plane_marks = crate::workplane::marks(m, &cam, ppp, planed, new_sketch.map(Frame::from), patch.is_some(), patch_lit);
         // The ground, which a canvas colour of the user's changes without making the drawing dark or light.
         let dark = color(render::PAPER);
         if !matches!(&o.shown, Some((m, c, t, k, g, b)) if Arc::ptr_eq(m, &model) && *c == cam && *t == tints && *k == dark && *g == mesh.is_some() && *b == reboxed)
@@ -1052,11 +1080,13 @@ impl BimApp {
             let (mut drawn, mut exact) = (false, true);
             if let (Some(mesh), Some(gpu)) = (&mesh, self.card.gpu.as_mut()) {
                 gpu.swapped_ink = crate::style::canvas_dark();
+                gpu.marks.clone_from(&plane_marks);
                 // The model's box, whichever the mesh was made under.
                 let cut = reboxed.or(boxed);
                 match gpu.draw_cut(mesh, &cam, &tints, rgb(color(render::PAPER)), cut) {
                     Ok(whole) => {
                         o.picker = Some(Picker::Mesh(Arc::clone(mesh), tints.clone(), cut));
+                        o.marked = Some(plane_marks.clone());
                         (drawn, exact) = (true, whole);
                     }
                     Err(e) => {
@@ -1079,26 +1109,54 @@ impl BimApp {
                 let (rgba, _) = image.rgba.as_chunks::<4>();
                 // Hidden line and wireframe are drawn as a section is, dark in the dark theme: paper and ink swap.
                 let lines = look.style() != VisualStyle::Shaded;
-                let pixels = rgba
+                let shown: Vec<u8> = rgba
                     .iter()
-                    .map(|&[r, g, b, _]| match [r, g, b] {
-                        _ if lines => color(Rgb(r, g, b)),
-                        [255, 255, 255] => ground,
-                        _ => Color32::from_rgb(r, g, b),
+                    .flat_map(|&[r, g, b, _]| {
+                        match [r, g, b] {
+                            _ if lines => color(Rgb(r, g, b)),
+                            [255, 255, 255] => ground,
+                            _ => Color32::from_rgb(r, g, b),
+                        }
+                        .to_array()
                     })
                     .collect();
+                // The work plane is laid over it below.
+                (o.unmarked, o.marked) = (Some(shown), None);
+                o.picker = Some(Picker::Image(image));
+            }
+            // A picture that stands in, or whose exact surfaces are on their way, is drawn again next frame until it is exact.
+            o.shown = exact.then(|| (Arc::clone(&model), cam, tints.clone(), dark, drawn, reboxed));
+            if !exact {
+                ui.ctx().request_repaint();
+            }
+        }
+        // The work plane laid over the picture again where only it has changed (the patch lit, Show turned on): over the
+        // processor's picture as it was before, or by the card, which draws the surfaces it has again only if it must.
+        if o.marked.as_ref() != Some(&plane_marks) {
+            if o.on_card {
+                if let (Some(mesh), Some(gpu)) = (&mesh, self.card.gpu.as_mut()) {
+                    gpu.marks.clone_from(&plane_marks);
+                    if let Err(e) = gpu.draw_cut(mesh, &cam, &tints, rgb(color(render::PAPER)), reboxed.or(boxed)) {
+                        self.status = crate::updates::failed(crate::lang::tf(
+                            "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor",
+                            &[&e],
+                        ));
+                        (self.card.gpu, self.card.note) = (None, Some(e));
+                        o.shown = None;
+                        ui.ctx().request_repaint();
+                    }
+                }
+            } else if let (Some(Picker::Image(image)), Some(base)) = (&o.picker, &o.unmarked) {
+                let mut rgba = base.clone();
+                image.mark(&mut rgba, &cam, &plane_marks);
+                let pixels = rgba.as_chunks::<4>().0.iter().map(|&[r, g, b, _]| Color32::from_rgb(r, g, b)).collect();
                 let pixels = ColorImage { size: [image.width as usize, image.height as usize], pixels, source_size: Default::default() };
                 match &mut o.texture {
                     Some(t) => t.set(pixels, TextureOptions::NEAREST),
                     None => o.texture = Some(ui.ctx().load_texture("view3d", pixels, TextureOptions::NEAREST)),
                 }
-                o.picker = Some(Picker::Image(image));
             }
-            // A picture that stands in, or whose exact surfaces are on their way, is drawn again next frame until it is exact.
-            o.shown = exact.then(|| (Arc::clone(&model), cam, tints, dark, drawn, reboxed));
-            if !exact {
-                ui.ctx().request_repaint();
-            }
+            o.marked = Some(plane_marks.clone());
         }
         (o.waiting, o.waiting_since) = (None, None);
         o.picture_size = Some(rect.size());
@@ -1371,8 +1429,7 @@ impl BimApp {
         // A click on a grip picks nothing behind it.
         let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
         let click = click.filter(|at| !boxed.is_some_and(|b| modify && crate::section_box::grip_at(b, *at, screen).is_some()));
-        let on_patch = |at: Pos2| patch.is_some_and(|ring| crate::workplane::on_patch(&ring, at));
-        let patched = click.is_some_and(on_patch);
+        let patched = click.is_some_and(|at| on_patch(&o.picker, at));
         let click = click.filter(|_| !patched);
         // Shape Editing's clicks are the floor's, not the picture's; one on a height label is the label's.
         let label_rects: Vec<Rect> =
@@ -1439,23 +1496,15 @@ impl BimApp {
             }
             self.sketch3d(ui, &response, &p, plane, click, under);
         }
-        if let Some(ring) = patch {
+        if let Some(ring) = patch.filter(|_| patch_lit) {
             let name = self.work_plane_name();
-            crate::workplane::draw_patch(&p, ring, hover.is_some_and(on_patch), &name);
+            crate::workplane::name_patch(&p, ring, &name);
         }
         if patched {
             self.open_work_plane();
         }
-        // The work plane, drawn while it's being set, shown (Show) or a new outline is sketched on it; and what a Pick would take.
+        // What a Pick of the work plane would take.
         let m = &self.session.model;
-        let new_sketch = self.sketch.as_ref().and_then(|sk| sk.surface.filter(|_| sk.plan == crate::Sheet::View3D));
-        if (self.work_plane.is_some() || self.show_work_plane || new_sketch.is_some())
-            && let Some(extent) = m.model_box()
-            && let Ok(plane) = m.work_plane(m.default_3d()).resolve(m)
-        {
-            let plane = new_sketch.map_or(plane, Frame::from);
-            crate::workplane::draw_plane(&p, plane, extent, 2000.0, screen);
-        }
         if let (Some(picking), Some((_, scene))) = (self.work_plane_picking(), &self.orbit.scene) {
             let look = Look::of_3d(m);
             let aim = |at: Pos2| crate::workplane::aim(scene, &cam, px(at), picking, &look, ppp);

@@ -121,8 +121,15 @@ contextual tab is "Modify | Form", with Delete and Edit Work Plane, which opens 
 Depth (End less Start: typed, Start stays and End moves; greyed while End is tied). Edits go to the draft and its history. Solid/Void
 and Edit Work Plane run `family` (its `form` patch) and `edit_work_plane` on a private session holding the draft, as Save Family
 does, and take the form back with the id and GUID it had: the form moves with the plane. Sketch mode (Edit Extrusion, Finish and
-Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's (below), Visibility Settings F8's;
-the 3D preview does not highlight the form selected.
+Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's (below), Visibility Settings F8's.
+
+{3D} shows what is selected as the project's 3D view does (T11, `editor/lit3d.rs`): a form, a void or a nested instance selected
+is tinted halfway in the selection's colour with its edges whole, through the project's own tints (`Scene::render_in`), the part a
+family of its own in the scratch model placed where the family is, the rest of the family without it, so what stands in front of
+it still hides it; a void, never seen, is drawn see-through while selected. The form or nested instance under the pointer is lit
+in the hover colour (`family::views::part_at_3d`, the one whose surface there is nearest the eye), and a click selects it, a click
+on nothing letting the selection go. A reference plane or line selected in a plan or an elevation is drawn into {3D}'s picture in
+the selection's colour, depth tested as the work plane is (`view3d::PlaneMark`, `Image::draw_line`).
 
 Expression-valued form and symbol properties (their numbers, Visible and a form's Material) offer `=` (`editor/association.rs`),
 which opens the Associate Family Parameter an adaptive element's rows open (`adaptive_editor::associate`, through the `Tied`
@@ -527,7 +534,8 @@ Level until Set, by name alone): Show draws it
 into its picture over the patch the project's 3D view lays its work plane on (`workplane::patch`), what the family takes up and
 300 mm round: tinted as the plans tint it, with its outline and a grid through the family's origin whose step leaves about 5 to 20
 lines across it (10, 50, 100, 500 or 1000 mm, `workplane::grid_step`), depth tested against the picture
-(`view3d::Image::draw_plane`), so a form in front of the plane hides it and one behind it is seen through its tint.
+(`view3d::Image::draw_marks`, through `workplane::plane_mark`, as the project's 3D view draws its own), so a form in front of the
+plane hides it and one behind it is seen through its tint.
 An adaptive family's modelling view keeps its own Work Plane panel and Show. An elevation is framed on what it shows as a project's
 is (`render::section_extent`), so its levels' names past their lines' ends aren't cut at the picture's edge.
 

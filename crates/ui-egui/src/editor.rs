@@ -7,6 +7,7 @@ pub(crate) mod dimensions;
 pub(crate) mod document;
 pub(crate) mod exists;
 mod extrusion;
+pub(crate) mod lit3d;
 mod nested;
 pub(crate) mod options;
 mod pivot;
@@ -855,6 +856,8 @@ impl FamilyEditor {
         let placed_only = self.document.preview_visibility;
         // Work Plane > Show: the plane drawn into the picture, so the forms in front of it hide it.
         let work_plane = self.shown_work_plane_3d();
+        // What is selected, and what is under the pointer, highlighted as the project's 3D view does (T11).
+        let lit = self.lit_3d();
         let result = self.family().and_then(|f| {
             let key = {
                 let mut h = DefaultHasher::new();
@@ -868,7 +871,7 @@ impl FamilyEditor {
                     ground.to_array(),
                     placed_only,
                     self.temporary(),
-                    format!("{work_plane:?} {:?}", (pal().muted, pal().accent)),
+                    format!("{work_plane:?} {:?} {lit:?}", (pal().muted, pal().accent)),
                 )
                     .hash(&mut h);
                 (base.materials.len(), base.images.len()).hash(&mut h);
@@ -890,7 +893,14 @@ impl FamilyEditor {
             if self.temp_hidden_host() {
                 graphics.categories.insert("wall".into(), bimcraft_core::graphics::Override { hidden: true, ..Default::default() });
             }
-            let mut image = if hidden.is_some() || (placed_only && ghosts.is_some()) {
+            let mut image = if !lit.is_empty() {
+                // The parts lit, each a family of its own placed where the family is, tinted; the rest without them.
+                let shown = hidden.as_ref().unwrap_or(shown);
+                let (rest, parts) = lit3d::split(shown, &lit);
+                let mut drawn = self.scratch(base, &rest)?;
+                let tints = lit3d::place(&mut drawn, self.name.trim(), parts);
+                Scene::new(&drawn).render_in(&cam, &tints, &bimcraft_core::graphics::Look::with(&drawn, &graphics))
+            } else if hidden.is_some() || (placed_only && ghosts.is_some()) {
                 let drawn = self.scratch(base, hidden.as_ref().unwrap_or(shown))?;
                 Scene::new(&drawn).render_in(&cam, &[], &bimcraft_core::graphics::Look::with(&drawn, &graphics))
             } else {
@@ -900,9 +910,15 @@ impl FamilyEditor {
             for p in image.rgba.as_chunks_mut::<4>().0.iter_mut().filter(|p| p[..3] == [255; 3]) {
                 p[..3].copy_from_slice(&ground.to_array()[..3]);
             }
+            let extents = bimcraft_core::family::views::extents(&f, &self.values());
             if let Some(shown) = &work_plane {
-                let extents = bimcraft_core::family::views::extents(&f, &self.values());
                 views::draw_work_plane_3d(&mut image, &cam, shown, extents);
+            }
+            // A reference plane or line selected, drawn over the picture where nothing stands in front of it.
+            if let Some((datum, c)) = lit.iter().find(|(l, _)| !matches!(l, lit3d::Lit::Part(_))) {
+                let values = self.values();
+                let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
+                lit3d::draw_datum(&mut image, &cam, &flexed, *datum, Color32::from_rgb(c.0, c.1, c.2), extents);
             }
             let pixels = image.rgba.as_chunks::<4>().0.iter().map(|p| Color32::from_rgb(p[0], p[1], p[2])).collect();
             let picture = ColorImage { size: [w as usize, h as usize], pixels, source_size: Default::default() };

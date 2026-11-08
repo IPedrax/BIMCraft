@@ -434,6 +434,62 @@ pub fn form_at_3d(family: &Family, values: &BTreeMap<String, Val>, cam: &view3d:
     best.map(|(_, i)| i)
 }
 
+/// What of a family its {3D} shows at a pixel, by its place: a form (solid or void) or a nested instance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Part {
+    Form(usize),
+    Nested(usize),
+}
+
+/// The solid form or the nested instance of `family` (sized by `values`) seen at pixel `px` of a picture taken through
+/// `cam`, the family at the origin as {3D} shows it: the one whose surface there is nearest the eye. A void, never seen, is
+/// not; nor is a form or an instance its `visible` leaves out.
+pub fn part_at_3d(family: &Family, values: &BTreeMap<String, Val>, cam: &view3d::Camera, px: (f64, f64)) -> Option<Part> {
+    let flexed = family.flexed(values).ok()?;
+    let mut read = HashMap::new();
+    let mut best: Option<(f64, Part)> = None;
+    let mut seen = |tris: &[[P3; 3]], part: Part| {
+        for t in tris {
+            if let Some(z) = depth_at(t.map(|p| cam.project(p)), px)
+                && best.is_none_or(|(b, _)| z > b)
+            {
+                best = Some((z, part));
+            }
+        }
+    };
+    for i in 0..flexed.forms.len() {
+        if flexed.forms[i].void {
+            continue;
+        }
+        if let Some(piece) = flexed.solid(i, values, &mut read).ok().flatten() {
+            seen(&piece.tris, Part::Form(i));
+        }
+    }
+    for i in 0..family.nested_instances.len() {
+        for piece in family.instance_pieces(i, values) {
+            seen(&piece.tris, Part::Nested(i));
+        }
+    }
+    best.map(|(_, part)| part)
+}
+
+/// How near the eye triangle `q` (its corners projected: pixel and nearness) is at pixel `p`, where it covers it.
+fn depth_at(q: [(f64, f64, f64); 3], p: (f64, f64)) -> Option<f64> {
+    if q.iter().any(|(x, y, z)| !(x.is_finite() && y.is_finite() && z.is_finite())) {
+        return None;
+    }
+    let [a, b, c] = q;
+    let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
+    if area.abs() < 1e-9 {
+        return None;
+    }
+    let wb = ((p.0 - a.0) * (c.1 - a.1) - (p.1 - a.1) * (c.0 - a.0)) / area;
+    let wc = ((b.0 - a.0) * (p.1 - a.1) - (b.1 - a.1) * (p.0 - a.0)) / area;
+    let wa = 1.0 - wb - wc;
+    let e = -1e-9;
+    (wa >= e && wb >= e && wc >= e).then_some(a.2 * wa + b.2 * wb + c.2 * wc)
+}
+
 /// The outline form `i` of `family` is seen with in view `which`: the hull of its solid's corners there. Empty for a form
 /// that builds nothing.
 pub fn outline(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, i: usize) -> Vec<P2> {
@@ -740,6 +796,47 @@ mod tests {
             }
         }
         assert!(front > 50 && behind > 50 && empty > 50, "{front} {behind} {empty}");
+    }
+
+    /// A mark on the box's top, where it lies, shows there (no face it lies on hides it); a line through the box is hidden
+    /// where the box stands in front of it; and {3D}'s picking finds the box where it is seen and nothing beside it.
+    #[test]
+    fn a_mark_shows_on_a_face_it_lies_on_a_line_is_hidden_inside_a_form_and_3d_finds_the_form_seen() {
+        let f = boxed(0.0, 2000.0);
+        let st = staged(&f);
+        let scene = view3d::Scene::new(&st.model);
+        let cam = scene.fit(view3d::AZIMUTH, view3d::ELEVATION, 400, 300);
+        let before = scene.render(&cam, &[]);
+        let red = [200, 0, 0, 255];
+        let level = ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let mark = view3d::PlaneMark {
+            origin: [0.0, 0.0, 2000.0],
+            axes: level,
+            lo: (-3000.0, -3000.0),
+            hi: (3000.0, 3000.0),
+            step: 0.0,
+            fill: red,
+            grid: red,
+            edge: red,
+            edge_width: 1.0,
+        };
+        let mut after = before.clone();
+        after.draw_marks(&cam, &[mark]);
+        for (x, y) in [(600.0, 350.0), (750.0, 450.0), (950.0, 550.0)] {
+            let (px, py, _) = cam.project([x, y, 2000.0]);
+            assert_eq!(after.color(px, py), crate::render::Rgb(200, 0, 0), "the box's top at ({x}, {y}) shows the mark");
+        }
+        // A line west to east through the box at 1000: hidden where the box is in front of it, drawn where nothing is.
+        let mut lined = before.clone();
+        lined.draw_line(&cam, [[-1000.0, 450.0, 1000.0], [2500.0, 450.0, 1000.0]], 3.0, red);
+        let at = |x: f64| cam.project([x, 450.0, 1000.0]);
+        let (inside, outside) = (at(750.0), at(-500.0));
+        assert_eq!(lined.color(inside.0, inside.1), before.color(inside.0, inside.1), "hidden inside the box");
+        assert_eq!(lined.color(outside.0, outside.1), crate::render::Rgb(200, 0, 0), "drawn where nothing hides it");
+        let values = f.values("T", &BTreeMap::new()).unwrap();
+        let top = cam.project([750.0, 450.0, 2000.0]);
+        assert_eq!(part_at_3d(&f, &values, &cam, (top.0, top.1)), Some(Part::Form(0)));
+        assert_eq!(part_at_3d(&f, &values, &cam, (2.5, 2.5)), None);
     }
 
     #[test]
