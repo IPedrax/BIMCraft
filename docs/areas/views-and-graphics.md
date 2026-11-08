@@ -4,6 +4,7 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
 
 A view's scale, detail level and visual style are in its `Graphics` (`scale`, `detail`, `style`; the `scale`, `detail` and `visual_style`
 commands, which the view control bar's menus, Properties' View Scale, Scale Value 1:, Detail Level and Visual Style, and WF, HL and SD run). A
+3D view has a detail level too (F8), which only a family's forms' Visibility Settings read; its bar's Detail Level menu and its Properties' row run `detail` on it ([families](families.md), *Visibility Settings*). A
 view template controls them as groups of their own (`Group::Scale`, `Detail`, `Style`, in `Graphics::resolved`, `check_followed` and the three
 commands, which refuse what a template controls); `render::scale_of`, `detail_of` and `Look::with` read the value in force, never the view's own, and
 the bar and Properties show it greyed out, the template named on hover (`controlled_note`). A scale is the n of 1 : n (`graphics::SCALES`);
@@ -420,7 +421,9 @@ same projection and barycentric test for triangles (the nearest seen through whe
 definition of a level's lines and head). The desktop's `gpu.rs` and `gpu.wgsl` draw it in passes into a texture egui shows like the
 processor's picture: the opaque surfaces (lit as `picture` lights them, textured as `Sampler::at` looks up), those seen through (the
 nearest in front of the opaque depth, in targets of their own), then an edge wherever the opaque plane changes between a pixel and the one
-to its right or below, else the surface tinted halfway where selected, with what is seen through blended over it, and the levels' lines
+to its right or below, and across all of a surface only two pixels across between others (`view3d::edge_at`, `gpu.wgsl`'s `sliver`: a
+face seen nearly edge on, a door leaf's top under its head, would otherwise show its colour between its two lines a pixel here and there, a
+broken line), else the surface tinted halfway where selected, with what is seen through blended over it, and the levels' lines
 where nothing opaque nearer hides them. What changes between pictures is the camera and the lines; the owners' tints and the textures'
 lookups are written again only when they change. A change to how
 the processor shades, draws an edge or marks a level goes in the shader too: `the_card_draws_what_the_processor_does` and the core's

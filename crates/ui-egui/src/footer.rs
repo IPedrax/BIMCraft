@@ -380,6 +380,18 @@ impl BimApp {
                                     self.open_display();
                                 }
                             });
+                            // F8: a 3D view's Detail Level, which a family's forms with Visibility Settings read.
+                            let detail = self.graphics_shown().detail;
+                            let tip = msg!("Detail Level: the family forms the 3D view draws, as their Visibility Settings say");
+                            let r = menu_button(ui, "Detail Level", detail.name(), tip, self.controlled_by(Group::Detail).as_deref());
+                            Popup::menu(&r).show(|ui| {
+                                for d in Detail::ALL {
+                                    if ui.selectable_label(detail == d, t(d.name())).clicked() {
+                                        let view = self.active_3d().map_or_else(|| json!("{3D}"), |id| json!(id));
+                                        self.run("detail", json!({"view": view, "detail": d.name()}));
+                                    }
+                                }
+                            });
                             self.work_plane_button(ui);
                             ui.separator();
                         }

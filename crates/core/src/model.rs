@@ -164,7 +164,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 30: a reference line or a reference plane may carry a `pivot` (F7d): a point it is pinned to and turns about, its swing an
 /// Angle parameter or a number of its own, within limits. A build of 29 reads a family leniently and would leave `pivot` out
 /// of the file, so a door would open unswung and lose its hinge on saving.
-pub const FORMAT: u32 = 30;
+///
+/// 31: a family's forms, symbols and nested instances may carry Visibility Settings (`visibility`, F8): the views they are
+/// drawn in by the way those look and their detail level. A build of 30 reads a family leniently and would leave
+/// `visibility` out: a door's leaf hidden in plan would be drawn over its symbolic swing, and saving would lose the settings.
+pub const FORMAT: u32 = 31;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3360,6 +3364,15 @@ impl Model {
     /// Component `c`'s plan marks in the model: its family's symbols in its own axes, mirrored if it is, turned and moved to
     /// where it stands. A label is lettered upright in the family's axes, so it turns (and mirrors) with the component.
     pub fn component_marks(&self, c: &Component) -> Vec<crate::family::Mark> {
+        self.component_marks_at(c, None)
+    }
+
+    /// [`Model::component_marks`] that a plan at detail level `detail` draws ([`crate::family::Family::marks_in`]).
+    pub fn component_marks_in(&self, c: &Component, detail: crate::graphics::Detail) -> Vec<crate::family::Mark> {
+        self.component_marks_at(c, Some(detail))
+    }
+
+    fn component_marks_at(&self, c: &Component, detail: Option<crate::graphics::Detail>) -> Vec<crate::family::Mark> {
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
         if f.symbols.is_empty() {
             return Vec::new();
@@ -3368,7 +3381,11 @@ impl Model {
         if !self.component_placement(c).upright {
             return Vec::new();
         }
-        let Ok(marks) = f.values(&c.type_name, &c.params).and_then(|v| f.marks(&v)) else { return Vec::new() };
+        let marks = f.values(&c.type_name, &c.params).and_then(|v| match detail {
+            Some(d) => f.marks_in(&v, d).map(|m| m.into_iter().map(|(k, _)| k).collect()),
+            None => f.marks(&v),
+        });
+        let Ok(marks) = marks else { return Vec::new() };
         let (sin, cos) = c.angle.to_radians().sin_cos();
         let flip = if c.mirrored { -1.0 } else { 1.0 };
         marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
@@ -3626,6 +3643,8 @@ impl Model {
         // 28 to 29 (Blends, Sweeps and Swept Blends: a form's `top`, `sweep` and `twist`) has none: a file of 28 holds none, and
         // every form it holds is an extrusion or a revolve, built as it was.
         // 29 to 30 (pivots on reference lines and planes) has none: a file of 29 holds none.
+        // 30 to 31 (Visibility Settings of forms, symbols and nested instances) has none: a file of 30 holds none, and a part
+        // without them draws as it did (`family::visibility`).
         self.settle_hosts(None);
         self.format = FORMAT;
     }
@@ -4304,10 +4323,19 @@ impl Model {
     /// the opening's flips as mirror images (its hinge on the other jamb, its swing to the wall's other side);
     /// none for one that isn't of a family, or doesn't build.
     pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Tagged>)> {
+        self.opening_local_at(e, None)
+    }
+
+    /// [`Model::opening_local`], its marks those a plan at `detail` draws if it says.
+    fn opening_local_at(&self, e: &Element, detail: Option<crate::graphics::Detail>) -> Option<(Vec<Piece>, Vec<crate::family::Tagged>)> {
         let (Element::Door(o) | Element::Window(o)) = e else { return None };
         let f = self.families.get(o.family.as_ref()?)?;
         let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
-        let (pieces, marks) = (f.pieces(&values).ok()?, f.marks_tagged(&values).ok()?);
+        let marks = match detail {
+            Some(d) => f.marks_in(&values, d),
+            None => f.marks_tagged(&values),
+        };
+        let (pieces, marks) = (f.pieces(&values).ok()?, marks.ok()?);
         let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
         let mirrored = fx * fy < 0.0;
         let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
@@ -4392,8 +4420,17 @@ impl Model {
     /// The marks a door's or window's family draws in plan, where it stands, each with the subcategory it is drawn in
     /// (`dooropening`; none, its category).
     pub fn opening_marks(&self, e: &Element) -> Vec<crate::family::Tagged> {
+        self.opening_marks_at(e, None)
+    }
+
+    /// [`Model::opening_marks`] that a plan at detail level `detail` draws ([`crate::family::Family::marks_in`]).
+    pub fn opening_marks_in(&self, e: &Element, detail: crate::graphics::Detail) -> Vec<crate::family::Tagged> {
+        self.opening_marks_at(e, Some(detail))
+    }
+
+    fn opening_marks_at(&self, e: &Element, detail: Option<crate::graphics::Detail>) -> Vec<crate::family::Tagged> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let (Some((_, marks)), Some((at, u, _))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
+        let (Some((_, marks)), Some((at, u, _))) = (self.opening_local_at(e, detail), self.opening_frame(o)) else { return Vec::new() };
         marks.iter().map(|(k, sub)| (k.map(|q| at + u * q.0 + u.perp() * q.1), *sub)).collect()
     }
 

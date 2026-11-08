@@ -591,6 +591,16 @@ impl BimApp {
                     }
                 });
                 ui.end_row();
+                // F8: the family forms the 3D view draws, as their Visibility Settings say.
+                let note = controlled(Group::Detail);
+                let label = ui.label(t("Detail Level"));
+                let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
+                ui.add_enabled_ui(note.is_none(), |ui| {
+                    if let Some(level) = detail_combo(ui, "detail-level-3d", label.id, shown.detail) {
+                        set = Some(("detail", json!({"view": view, "detail": level.name()})));
+                    }
+                });
+                ui.end_row();
             }
             if let Some(id) = own_id {
                 let note = self.grid_controlled(id);

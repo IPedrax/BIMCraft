@@ -117,6 +117,38 @@ pub struct Staged {
 /// How far the elevations stand outside what they look at.
 const OUTSIDE: f64 = 1000.0;
 
+/// Which of `family`'s forms (by place) view `which` (none, {3D}) at `detail` leaves out by their Visibility Settings (F8),
+/// sized by `values`: a plan by Plan/RCP (only when cut, where its cut plane at `cut` mm passes through it), an elevation by
+/// Front/Back or Left/Right as it looks along the family's y or x, {3D} by the detail level alone. What a family's views draw
+/// halftone, so a hidden form can still be seen and picked, as Revit's family views do.
+pub fn hidden_in(
+    family: &Family,
+    values: &BTreeMap<String, Val>,
+    which: Option<Which>,
+    detail: crate::graphics::Detail,
+    cut: f64,
+) -> Vec<bool> {
+    use super::visibility::{Visibility, class};
+    let shapes = family.shapes(values);
+    family
+        .forms
+        .iter()
+        .enumerate()
+        .map(|(i, f)| {
+            let Some(v): Option<Visibility> = f.visibility else { return false };
+            let shown = match which {
+                None => v.in_3d(detail),
+                Some(Which::Plan | Which::Ceiling) => {
+                    let through = shapes.iter().any(|s| s.index == i && s.min[2] < cut && cut < s.max[2]);
+                    v.in_plan(detail, through)
+                }
+                Some(Which::Elevation(side)) => v.along(class(side.looking(), P2(1.0, 0.0)), detail, false),
+            };
+            !shown
+        })
+        .collect()
+}
+
 /// What `family` takes up sized by `values`, in its axes, its least and greatest corners: what any of its types draws (a form
 /// the type hides is still drawn, halftone); a family that builds nothing, two metres round its origin.
 pub fn extents(family: &Family, values: &BTreeMap<String, Val>) -> (P3, P3) {
@@ -134,6 +166,21 @@ pub fn extents(family: &Family, values: &BTreeMap<String, Val>) -> (P3, P3) {
 pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, shown: &dyn Fn(Guid) -> bool) -> Staged {
     let levels: Vec<Id> = m.levels().iter().map(|(id, _)| *id).collect();
     let level = levels.first().copied().unwrap_or_else(|| m.insert(Element::Level(crate::model::Level::new("Ref. Level", 0.0))));
+    // A door's or a window's wall stands as tall as it did, unconnected: the level its top was tied to goes.
+    let gone: Vec<Guid> = levels.iter().skip(1).map(|id| m.guid(*id)).collect();
+    let tied: Vec<(Id, f64)> = m
+        .elements
+        .iter()
+        .filter_map(|(id, e)| match e {
+            Element::Wall(w) if w.top_level.is_some_and(|t| gone.contains(&t)) => Some((*id, m.own_top(w) - m.own_base(w))),
+            _ => None,
+        })
+        .collect();
+    for (id, height) in tied {
+        if let Some(Element::Wall(w)) = m.elements.get_mut(id) {
+            (w.top_level, w.top_offset, w.height) = (None, 0.0, height);
+        }
+    }
     for id in levels.iter().skip(1) {
         m.elements.remove(*id);
     }

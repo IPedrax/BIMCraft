@@ -64,7 +64,7 @@ fn picture(h: &Harness<BimApp>, pictures: &Pictures) -> egui::ColorImage {
 }
 
 /// The picture's pixels within `r` of family point `p`.
-fn around(h: &Harness<BimApp>, pictures: &Pictures, p: [f64; 3], r: i32) -> Vec<Color32> {
+pub(super) fn around(h: &Harness<BimApp>, pictures: &Pictures, p: [f64; 3], r: i32) -> Vec<Color32> {
     let img = picture(h, pictures);
     let (x, y) = editor(h).views.pixel_of(p).expect("a view shown");
     let mut out = Vec::new();
@@ -84,7 +84,7 @@ fn green(c: &Color32) -> bool {
 }
 
 /// The darkest of `cs`: the sum of its channels.
-fn darkest(cs: &[Color32]) -> u32 {
+pub(super) fn darkest(cs: &[Color32]) -> u32 {
     cs.iter().map(|c| u32::from(c.r()) + u32::from(c.g()) + u32::from(c.b())).min().unwrap_or(765)
 }
 
@@ -103,7 +103,7 @@ pub(super) fn click_family(h: &mut Harness<BimApp>, p: [f64; 3]) {
 }
 
 /// Form `n` (from 1) selected from the Project Browser's Forms list, the Properties' Symbols tab in front.
-fn select_form(h: &mut Harness<BimApp>, n: usize) {
+pub(super) fn select_form(h: &mut Harness<BimApp>, n: usize) {
     if h.query_by_label("Symbols").is_some() {
         press(h, "Symbols");
     }
