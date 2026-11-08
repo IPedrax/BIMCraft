@@ -1311,12 +1311,12 @@ msgstr "Annulla"
 #: crates/ui-egui/src/editor/sketch.rs:1280
 #: crates/ui-egui/src/sketch.rs:796
 msgid "Cancel Edit Mode"
-msgstr "Annulla modalità modifica"
+msgstr "Annulla modalità di modifica"
 
 #: crates/ui-egui/src/editor/sketch.rs:1280
 #: crates/ui-egui/src/sketch.rs:796
 msgid "Cancel Edit Mode: drop the lines, keep it as it was"
-msgstr "Annulla modalità modifica: scarta le linee e lascia com'era"
+msgstr "Annulla modalità di modifica: scarta le linee e lascia com'era"
 
 #: crates/ui-egui/src/linestyles/creator.rs:218
 msgid "Cancel Pattern"
@@ -1892,7 +1892,7 @@ msgstr "Clicca il punto attorno a cui ruota: dove si incrociano due piani, l'est
 
 #: crates/ui-egui/src/editor/sketch.rs:1216
 msgid "Click the points of the shape; Finish Edit Mode when the lines close into loops."
-msgstr "Clicca i punti della forma; Termina modalità modifica quando le linee si chiudono in contorni."
+msgstr "Clicca i punti della forma; Fine modalità di modifica quando le linee si chiudono in contorni."
 
 #: crates/ui-egui/src/editor/document.rs:1294
 msgid "Click the reference to align to."
@@ -3987,15 +3987,15 @@ msgstr "Termina disegno"
 #: crates/ui-egui/src/editor/sketch.rs:1279
 #: crates/ui-egui/src/sketch.rs:793
 msgid "Finish Edit Mode"
-msgstr "Termina modalità modifica"
+msgstr "Fine modalità di modifica"
 
 #: crates/ui-egui/src/editor/sketch.rs:1278
 msgid "Finish Edit Mode: the lines, closed into loops, become the form"
-msgstr "Termina modalità modifica: le linee, chiuse in contorni, diventano la forma"
+msgstr "Fine modalità di modifica: le linee, chiuse in contorni, diventano la forma"
 
 #: crates/ui-egui/src/sketch.rs:792
 msgid "Finish Edit Mode: the lines, closed into loops, become the outline and its holes"
-msgstr "Termina modalità modifica: le linee, chiuse in contorni, diventano il contorno e i suoi fori"
+msgstr "Fine modalità di modifica: le linee, chiuse in contorni, diventano il contorno e i suoi fori"
 
 #: crates/core/src/model.rs:438
 msgid "Finish Face: Exterior"
@@ -5771,7 +5771,7 @@ msgstr "Modifica | Istanza annidata"
 
 #: crates/ui-egui/src/editor/document.rs:286
 msgid "Modify | Pivot"
-msgstr "Modifica | Perno"
+msgstr "Modifica | Punto di rotazione"
 
 #: crates/ui-egui/src/editor/document.rs:271
 msgid "Modify | Place Component"
@@ -6969,7 +6969,7 @@ msgstr ""
 
 #: crates/ui-egui/src/sketch.rs:945
 msgid "Pick sketch lines (a box picks several); drag a picked line's end to move it; Delete removes them. Finish Edit Mode when every loop is closed."
-msgstr "Scegli le linee dello schizzo (un riquadro ne sceglie più di una); trascina l'estremo di una linea scelta per spostarlo; Canc le elimina. Termina modalità modifica quando ogni contorno è chiuso."
+msgstr "Scegli le linee dello schizzo (un riquadro ne sceglie più di una); trascina l'estremo di una linea scelta per spostarlo; Canc le elimina. Fine modalità di modifica quando ogni contorno è chiuso."
 
 #: crates/ui-egui/src/lib.rs:4981
 msgid "Pick the element's highlighted edge to move and turn onto the reference."
@@ -7077,7 +7077,7 @@ msgstr "Raccordo tubazione (PF): una curva o un raccordo a T, dove clicchi all'a
 
 #: crates/ui-egui/src/editor/document.rs:649
 msgid "Pivot"
-msgstr "Perno"
+msgstr "Punto di rotazione"
 
 #: crates/ui-egui/src/editor/pivot.rs:282
 #: crates/ui-egui/src/editor/pivot.rs:302
@@ -7086,7 +7086,7 @@ msgstr "Punto di rotazione"
 
 #: crates/ui-egui/src/editor/document.rs:647
 msgid "Pivot: click the point it turns about (where two planes cross, a line's end, a point of a sketch, or anywhere); its Swing Angle turns it"
-msgstr "Perno: clicca il punto attorno a cui ruota (dove si incrociano due piani, l'estremità di una linea, un punto di uno schizzo, o in qualsiasi punto); il suo angolo di rotazione lo fa ruotare"
+msgstr "Punto di rotazione: clicca il punto attorno a cui ruota (dove si incrociano due piani, l'estremità di una linea, un punto di uno schizzo, o in qualsiasi punto); il suo angolo di rotazione lo fa ruotare"
 
 #: crates/ui-egui/src/mep.rs:93
 msgid "Place Air Terminal"
@@ -7899,11 +7899,11 @@ msgstr "Rimuovi pittura: togli il materiale dalla faccia che clicchi nella vista
 
 #: crates/ui-egui/src/editor/document.rs:655
 msgid "Remove Pivot"
-msgstr "Rimuovi perno"
+msgstr "Rimuovi punto di rotazione"
 
 #: crates/ui-egui/src/editor/document.rs:653
 msgid "Remove Pivot: it stops turning and stays where it is drawn"
-msgstr "Rimuovi perno: smette di ruotare e resta dove è disegnato"
+msgstr "Rimuovi punto di rotazione: smette di ruotare e resta dove è disegnato"
 
 #: crates/ui-egui/src/start.rs:357
 msgid "Remove from List"
