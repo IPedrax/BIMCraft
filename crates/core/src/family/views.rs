@@ -477,6 +477,8 @@ mod tests {
             defines_origin: false,
             subcategory: None,
             level: false,
+            pivot: None,
+            turned: None,
         });
         f
     }
@@ -771,6 +773,8 @@ mod tests {
             defines_origin: false,
             subcategory: None,
             level: false,
+            pivot: None,
+            turned: None,
         };
         let up = [0.0, 0.0, 1.0];
         f.planes.extend([
