@@ -7,7 +7,6 @@
 use super::preview_visibility::{CABINET, Pictures, toggle};
 use super::*;
 use bimcraft_core::family::views::{Side, Which};
-use bimcraft_core::geom::P2;
 use egui::Color32;
 
 /// A box from Ref. Level to 2 m, east and behind the origin, crossing the plan's cut plane, and a plane of its own, Edge.
@@ -271,66 +270,47 @@ fn work_plane_set_picks_a_plane_and_show_tints_it() {
     assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::REF_LEVEL));
 }
 
-/// The tinted quads the last frame filled with Work Plane > Show's tint, on screen.
-fn tinted(h: &Harness<BimApp>) -> Vec<Vec<P2>> {
-    fn walk(s: &egui::Shape, out: &mut Vec<Vec<P2>>) {
-        match s {
-            egui::Shape::Path(p) if p.closed && p.fill == crate::editor::views::TINT => {
-                out.push(p.points.iter().map(|q| P2(f64::from(q.x), f64::from(q.y))).collect());
-            }
-            egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
-            _ => {}
-        }
-    }
-    let mut out = Vec::new();
-    h.output().shapes.iter().for_each(|c| walk(&c.shape, &mut out));
-    out
-}
-
 /// Where family point `p` is on screen in {3D}.
 fn in_3d(h: &Harness<BimApp>, p: [f64; 3]) -> egui::Pos2 {
     editor(h).preview().expect("the preview drawn").screen(h.state().view_rect, p)
 }
 
-/// A point of Ref. Level over the box, and one far off it, in {3D}: on screen, both in the view.
-fn on_and_off_ref_level(h: &Harness<BimApp>) -> (egui::Pos2, egui::Pos2) {
-    let (on, off) = (in_3d(h, [750.0, 450.0, 0.0]), in_3d(h, [750.0, 450.0, 1500.0]));
-    let pane = h.state().view_rect;
-    assert!(pane.contains(on) && pane.contains(off), "{on:?} {off:?} in {pane:?}");
-    (on, off)
+/// The {3D} preview's last picture's colour at family point `p`.
+fn preview_at(h: &Harness<BimApp>, pictures: &Pictures, p: [f64; 3]) -> Color32 {
+    let img = super::preview_visibility::preview(h, pictures);
+    let (x, y, _) = editor(h).preview().expect("the preview drawn").cam.project(p);
+    img.pixels[y as usize * img.size[0] + x as usize]
 }
 
+/// A point of Ref. Level in front of the box, seen; and one on the box's front face, in front of Ref. Level.
+const ON_PLANE: [f64; 3] = [300.0, 100.0, 0.0];
+const ON_BOX: [f64; 3] = [750.0, 300.0, 1500.0];
+
 #[test]
-fn work_plane_show_draws_the_work_plane_tinted_in_3d_with_a_grid() {
-    let (mut h, _) = boxed();
+fn work_plane_show_draws_the_work_plane_into_3d_hidden_by_the_forms_in_front_of_it() {
+    let (mut h, pictures) = boxed();
     assert_eq!(editor(&h).views.shown, None, "{{3D}}");
-    assert!(tinted(&h).is_empty(), "nothing until Show");
+    let (plane, front) = (preview_at(&h, &pictures, ON_PLANE), preview_at(&h, &pictures, ON_BOX));
+    let low = [750.0, 300.0, 300.0];
+    let box_low = preview_at(&h, &pictures, low);
     press(&mut h, "Show");
     h.run();
     assert!(editor(&h).views.show_work_plane);
     assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::REF_LEVEL), "{{3D}}'s own");
-    let (on, off) = on_and_off_ref_level(&h);
-    let inside = |q: egui::Pos2| tinted(&h).iter().any(|r| bimcraft_core::geom::contains(r, P2(f64::from(q.x), f64::from(q.y))));
-    assert!(inside(on), "Ref. Level tinted where it is");
-    assert!(!inside(off), "and not above it");
-    // Its grid and outline, as the project's 3D work plane, over the family's extents and the margin: wider than the box.
-    let quad = &tinted(&h)[0];
-    let wide = quad.iter().map(|q| q.0).fold(f64::MIN, f64::max) - quad.iter().map(|q| q.0).fold(f64::MAX, f64::min);
-    let box_wide = f64::from(in_3d(&h, [1000.0, 300.0, 0.0]).x - in_3d(&h, [500.0, 600.0, 0.0]).x).abs();
-    assert!(wide > box_wide, "{wide} > {box_wide}");
-    // Set to Center (Front/Back): the tint stands upright through the origin.
+    assert_ne!(preview_at(&h, &pictures, ON_PLANE), plane, "Ref. Level tinted where it is seen");
+    assert_eq!(preview_at(&h, &pictures, ON_BOX), front, "the box in front of it keeps its colours");
+    // Set to Center (Front/Back), upright through the origin, in front of the box: the box behind it is tinted.
     if let Some(ed) = h.state_mut().family_editor.as_mut() {
         ed.views.set_work_plane(bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK));
     }
     h.run();
-    let upright = in_3d(&h, [750.0, 0.0, 300.0]);
-    assert!(tinted(&h).iter().any(|r| bimcraft_core::geom::contains(r, P2(f64::from(upright.x), f64::from(upright.y)))));
+    assert_ne!(preview_at(&h, &pictures, low), box_low, "the box seen through it");
     // The plans keep theirs.
     view(&mut h, Some(Which::Plan));
     assert_eq!(editor(&h).views.work_plane(), bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::REF_LEVEL));
     press(&mut h, "Show");
     view(&mut h, None);
-    assert!(tinted(&h).is_empty(), "off");
+    assert_eq!(preview_at(&h, &pictures, ON_PLANE), plane, "off");
 }
 
 /// F2/T18's reference lines in the plan and the Front elevation: solid green.
@@ -444,24 +424,27 @@ fn family_views_screenshots() {
     h.render().unwrap().save(std::path::Path::new(&folder).join("f4-3d-work-plane.png")).unwrap();
 }
 
-/// On a real card (egui's renderer): {3D}'s pixels change with Work Plane > Show where Ref. Level is, and not above it.
+/// On a real card (egui's renderer): {3D}'s pixels change with Work Plane > Show where Ref. Level is seen, and not on the box
+/// standing in front of it.
 mod gpu {
     use super::*;
 
     #[test]
-    fn work_plane_show_changes_the_3d_views_pixels_where_the_plane_is() {
+    fn work_plane_show_changes_the_3d_views_pixels_where_the_plane_is_and_not_on_a_form_in_front_of_it() {
         let mut h = app(BOX_FAMILY);
         h.set_size(vec2(1600.0, 1000.0));
         h.state_mut().edit_family("Box");
         h.run();
         let Ok(before) = h.render() else { return };
-        let (on, off) = on_and_off_ref_level(&h);
+        let (on, front) = (in_3d(&h, ON_PLANE), in_3d(&h, ON_BOX));
+        let pane = h.state().view_rect;
+        assert!(pane.contains(on) && pane.contains(front), "{on:?} {front:?} in {pane:?}");
         press(&mut h, "Show");
         h.run();
         let after = h.render().unwrap();
         let ppp = h.ctx.pixels_per_point();
         let at = |img: &image::RgbaImage, q: egui::Pos2| img.get_pixel((q.x * ppp) as u32, (q.y * ppp) as u32).0;
         assert_ne!(at(&before, on), at(&after, on), "tinted where Ref. Level is");
-        assert_eq!(at(&before, off), at(&after, off), "unchanged above it");
+        assert_eq!(at(&before, front), at(&after, front), "the box in front of it keeps its colour");
     }
 }

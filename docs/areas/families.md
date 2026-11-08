@@ -361,8 +361,11 @@ of the document's history (`Draft` keeps the planes). Work Plane on the Create t
 session (Ref. Level in plan, the Center plane an elevation faces), which Set picks from the family's planes as A4's list names
 them, or by a click on one (Pick; the Work Plane dialog is T12's); Show tints it, all over where the view looks straight at it,
 along its trace where across it. {3D} has a work plane of its own too (Ref. Level until Set, from the list alone): Show draws it
-there as the project's 3D view draws its work plane (`workplane::draw_plane`), a grid with its outline, over what the family takes
-up and 300 mm round, tinted as the plans tint it. An adaptive family's modelling view keeps its own Work Plane panel and Show. While Preview Visibility is off, the solid forms the type hides are a second component of a
+into its picture over the patch the project's 3D view lays its work plane on (`workplane::patch`), what the family takes up and
+300 mm round: tinted as the plans tint it, with its outline and a grid through the family's origin whose step leaves about 5 to 20
+lines across it (10, 50, 100, 500 or 1000 mm, `workplane::grid_step`), depth tested against the picture
+(`view3d::Image::draw_plane`), so a form in front of the plane hides it and one behind it is seen through its tint.
+An adaptive family's modelling view keeps its own Work Plane panel and Show. While Preview Visibility is off, the solid forms the type hides are a second component of a
 family of their own in the scratch model, drawn halftone, as {3D} ghosts them (not for a door or a window, whose wall holds one
 opening); on, they are left out. Temporary Hide/Isolate leaves a form hidden for now out of every view; a selected plane can be
 hidden (HH), isolated or hidden with every plane (HC). It keeps **one state for the whole family document**, every view showing

@@ -538,6 +538,48 @@ mod tests {
         }
     }
 
+    /// A plane drawn into a picture of the box through its middle (level at 1000): where the box stands in front of it (above
+    /// it, seen from above) the box keeps its colours; where the box is behind it, and where nothing is, the plane tints.
+    #[test]
+    fn a_plane_drawn_into_a_picture_is_hidden_by_forms_in_front_of_it() {
+        let f = boxed(0.0, 2000.0);
+        let st = staged(&f);
+        let scene = view3d::Scene::new(&st.model);
+        let cam = scene.fit(view3d::AZIMUTH, view3d::ELEVATION, 400, 300);
+        let before = scene.render(&cam, &[]);
+        let mut after = before.clone();
+        let (across, up) = ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+        let tint = [30, 70, 140, 60];
+        after.draw_plane(&cam, [0.0, 0.0, 1000.0], (across, up), ((-3000.0, -3000.0), (3000.0, 3000.0)), 100.0, tint, tint, tint);
+        let (mut front, mut behind, mut empty) = (0, 0, 0);
+        for y in 0..300 {
+            for x in 0..400 {
+                let (fx, fy) = (f64::from(x) + 0.5, f64::from(y) + 0.5);
+                let k = 4 * (y * 400 + x) as usize;
+                let changed = before.rgba[k..k + 3] != after.rgba[k..k + 3];
+                match before.point(&cam, fx, fy) {
+                    Some(p) if p[2] > 1050.0 => {
+                        assert!(!changed, "({x}, {y}) on the box above the plane keeps its colour");
+                        front += 1;
+                    }
+                    Some(p) if p[2] < 950.0 && cam.on((fx, fy), [0.0, 0.0, 1000.0], [0.0, 0.0, 1.0]).is_some() => {
+                        assert!(changed, "({x}, {y}) on the box below the plane is tinted");
+                        behind += 1;
+                    }
+                    None if cam
+                        .on((fx, fy), [0.0, 0.0, 1000.0], [0.0, 0.0, 1.0])
+                        .is_some_and(|q| q[0].abs() < 2900.0 && q[1].abs() < 2900.0) =>
+                    {
+                        assert!(changed, "({x}, {y}) on nothing is tinted");
+                        empty += 1;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        assert!(front > 50 && behind > 50 && empty > 50, "{front} {behind} {empty}");
+    }
+
     #[test]
     fn a_form_is_found_where_it_is_drawn() {
         let f = boxed(0.0, 500.0);

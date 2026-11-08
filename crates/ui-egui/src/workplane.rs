@@ -432,19 +432,19 @@ pub(crate) fn draw_patch(painter: &Painter, ring: [Pos2; 4], hovered: bool, name
     }
 }
 
-/// Plane `p` drawn as a light grid over as much of it as the model's box `(lo, hi)` spans and `room` mm round, `screen`
-/// placing its points; over a `tint` of it, when given (the family's {3D}).
-pub(crate) fn draw_plane(
-    painter: &Painter,
-    p: Frame,
-    (lo, hi): (P3, P3),
-    room: f64,
-    tint: Option<egui::Color32>,
-    screen: impl Fn(P3) -> Pos2,
-) {
+/// The patch of a plane a work plane is drawn over: from `lo` to `hi` along its `axes` (across it and up it) from `origin`.
+pub(crate) struct Patch {
+    pub(crate) origin: P3,
+    pub(crate) axes: (P3, P3),
+    pub(crate) lo: (f64, f64),
+    pub(crate) hi: (f64, f64),
+}
+
+/// The patch of plane `p` as much of it as box `(lo, hi)` spans laid on it and `room` mm round, measured from the point of it
+/// nearest `about`; none for a box with no size or none at all.
+pub(crate) fn patch(p: Frame, (lo, hi): (P3, P3), room: f64, about: P3) -> Option<Patch> {
     let (across, up) = p.axes();
-    let middle: P3 = std::array::from_fn(|k| (lo[k] + hi[k]) / 2.0);
-    let o = p.nearest(middle);
+    let o = p.nearest(about);
     // The box's corners laid on the plane, as far across and up it as they go.
     let (mut a, mut b) = ((f64::MAX, f64::MAX), (f64::MIN, f64::MIN));
     for k in 0..8 {
@@ -455,16 +455,19 @@ pub(crate) fn draw_plane(
     }
     let (a, b) = ((a.0 - room, a.1 - room), (b.0 + room, b.1 + room));
     let span = (b.0 - a.0).max(b.1 - a.1);
-    if !(span.is_finite() && span > 0.0) {
-        return;
-    }
+    (span.is_finite() && span > 0.0).then_some(Patch { origin: o, axes: (across, up), lo: a, hi: b })
+}
+
+/// Plane `p` drawn as a light grid over as much of it as the model's box `(lo, hi)` spans and `room` mm round, `screen`
+/// placing its points.
+pub(crate) fn draw_plane(painter: &Painter, p: Frame, (lo, hi): (P3, P3), room: f64, screen: impl Fn(P3) -> Pos2) {
+    let middle: P3 = std::array::from_fn(|k| (lo[k] + hi[k]) / 2.0);
+    let Some(Patch { origin: o, axes: (across, up), lo: a, hi: b }) = patch(p, (lo, hi), room, middle) else { return };
+    let span = (b.0 - a.0).max(b.1 - a.1);
     // A metre apart, or as many as fit in twenty.
     let step = (span / 20.0).max(1000.0);
     let stroke = Stroke::new(1.0, pal().muted.gamma_multiply(0.5));
     let at = |u: f64, v: f64| screen(std::array::from_fn(|k| o[k] + across[k] * u + up[k] * v));
-    if let Some(tint) = tint {
-        painter.add(egui::Shape::convex_polygon(vec![at(a.0, a.1), at(b.0, a.1), at(b.0, b.1), at(a.0, b.1)], tint, Stroke::NONE));
-    }
     let lines = |n: f64| (0..=(n.ceil() as usize).min(40)).map(move |k| k as f64 * step);
     for d in lines((b.0 - a.0) / step) {
         let u = (a.0 + d).min(b.0);

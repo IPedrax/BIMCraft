@@ -388,16 +388,18 @@ impl SymbolText {
     }
 }
 
-/// The family's {3D} preview: its picture, `size` pixels, what it was drawn of (`key`), the camera it was drawn through, and
-/// what the family takes up (in its axes), for what is drawn over it.
+/// The family's {3D} preview: its picture and what it was drawn of (`key`); for a test, the camera it was drawn through and
+/// its size in pixels.
 pub(crate) struct Preview {
     key: u64,
     pub(crate) tile: TextureHandle,
+    #[cfg(test)]
     pub(crate) cam: bimcraft_core::view3d::Camera,
+    #[cfg(test)]
     pub(crate) size: [u32; 2],
-    pub(crate) extents: ([f64; 3], [f64; 3]),
 }
 
+#[cfg(test)]
 impl Preview {
     /// Where point `q` of the family is on screen, the picture stretched over `pane`.
     pub(crate) fn screen(&self, pane: Rect, q: [f64; 3]) -> egui::Pos2 {
@@ -787,6 +789,8 @@ impl FamilyEditor {
     fn refresh(&mut self, ctx: &Context, base: &Model) {
         let ground = crate::canvas::color(bimcraft_core::render::PAPER);
         let placed_only = self.document.preview_visibility;
+        // Work Plane > Show: the plane drawn into the picture, so the forms in front of it hide it.
+        let work_plane = self.shown_work_plane_3d();
         let result = self.family().and_then(|f| {
             let key = {
                 let mut h = DefaultHasher::new();
@@ -800,6 +804,7 @@ impl FamilyEditor {
                     ground.to_array(),
                     placed_only,
                     self.temporary(),
+                    format!("{work_plane:?} {:?}", (pal().muted, pal().accent)),
                 )
                     .hash(&mut h);
                 (base.materials.len(), base.images.len()).hash(&mut h);
@@ -821,22 +826,33 @@ impl FamilyEditor {
             if self.temp_hidden_host() {
                 graphics.categories.insert("wall".into(), bimcraft_core::graphics::Override { hidden: true, ..Default::default() });
             }
-            let image = if hidden.is_some() || (placed_only && ghosts.is_some()) {
+            let mut image = if hidden.is_some() || (placed_only && ghosts.is_some()) {
                 let drawn = self.scratch(base, hidden.as_ref().unwrap_or(shown))?;
                 Scene::new(&drawn).render_in(&cam, &[], &bimcraft_core::graphics::Look::with(&drawn, &graphics))
             } else {
                 scene.render_in(&cam, &[], &bimcraft_core::graphics::Look::with(&every, &graphics))
             };
-            let pixels = image
-                .rgba
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .map(|p| if p[..3] == [255; 3] { ground } else { Color32::from_rgb(p[0], p[1], p[2]) })
-                .collect();
+            // The canvas's ground where nothing is, before the work plane is laid over it.
+            for p in image.rgba.as_chunks_mut::<4>().0.iter_mut().filter(|p| p[..3] == [255; 3]) {
+                p[..3].copy_from_slice(&ground.to_array()[..3]);
+            }
+            if let Some(shown) = &work_plane {
+                let extents = bimcraft_core::family::views::extents(&f, &self.values());
+                views::draw_work_plane_3d(&mut image, &cam, shown, extents);
+            }
+            let pixels = image.rgba.as_chunks::<4>().0.iter().map(|p| Color32::from_rgb(p[0], p[1], p[2])).collect();
             let picture = ColorImage { size: [w as usize, h as usize], pixels, source_size: Default::default() };
             let tile = ctx.load_texture("family-preview", picture, TextureOptions::LINEAR);
-            Ok(Some(Preview { key, tile, cam, size: [w, h], extents: bimcraft_core::family::views::extents(&f, &self.values()) }))
+            #[cfg(test)]
+            let shown = (cam, [w, h]);
+            Ok(Some(Preview {
+                key,
+                tile,
+                #[cfg(test)]
+                cam: shown.0,
+                #[cfg(test)]
+                size: shown.1,
+            }))
         });
         match result {
             Ok(Some(drawn)) => (self.preview, self.problem) = (Some(drawn), None),

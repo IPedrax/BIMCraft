@@ -435,17 +435,30 @@ impl FamilyEditor {
 }
 
 impl FamilyEditor {
-    /// Work Plane > Show in {3D} of a family that isn't adaptive: its work plane as the project's 3D view draws one, a grid over
-    /// what the family takes up and [`WORK_PLANE_MARGIN`] round, here tinted as the plans and elevations tint it, over the
-    /// preview `p` stretched over `pane`.
-    pub(crate) fn work_plane_3d(&self, painter: &egui::Painter, pane: Rect, p: &super::Preview) {
+    /// The work plane {3D} shows, while Work Plane > Show is on in a family that isn't adaptive: its frame.
+    pub(crate) fn shown_work_plane_3d(&self) -> Option<bimcraft_core::family::Frame> {
         if self.adaptive.is_some() || !self.views.show_work_plane {
-            return;
+            return None;
         }
-        let Ok(f) = self.plane_set().frame(&self.views.work_plane()) else { return };
-        let plane = bimcraft_core::workplane::Frame { origin: f.origin, normal: f.z };
-        crate::workplane::draw_plane(painter, plane, p.extents, WORK_PLANE_MARGIN, Some(TINT), |q| p.screen(pane, q));
+        self.plane_set().frame(&self.views.work_plane()).ok()
     }
+}
+
+/// Work Plane > Show in the family's {3D}: plane `f` drawn into its picture `image` (taken through `cam`), as the project's 3D
+/// view lays out its work plane (`workplane::patch`) over what the family takes up (`extents`) and [`WORK_PLANE_MARGIN`]
+/// round, tinted as the plans tint it, with a grid through the family's origin about 5 to 20 lines across
+/// (`workplane::grid_step`) and its outline; depth tested, so a form in front of it hides it.
+pub(crate) fn draw_work_plane_3d(
+    image: &mut bimcraft_core::view3d::Image,
+    cam: &bimcraft_core::view3d::Camera,
+    f: &bimcraft_core::family::Frame,
+    extents: ([f64; 3], [f64; 3]),
+) {
+    let plane = bimcraft_core::workplane::Frame { origin: f.origin, normal: f.z };
+    let Some(p) = crate::workplane::patch(plane, extents, WORK_PLANE_MARGIN, [0.0; 3]) else { return };
+    let step = bimcraft_core::workplane::grid_step((p.hi.0 - p.lo.0).max(p.hi.1 - p.lo.1));
+    let (grid, edge) = (pal().muted.gamma_multiply(0.5), pal().accent.gamma_multiply(0.6));
+    image.draw_plane(cam, p.origin, p.axes, (p.lo, p.hi), step, TINT.to_array(), grid.to_array(), edge.to_array());
 }
 
 /// The solid forms the type previewed (`values`) hides, alone: what a view draws halftone while Preview Visibility is off.

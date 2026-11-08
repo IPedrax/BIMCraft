@@ -815,8 +815,6 @@ impl BimApp {
             ed.refresh(ui.ctx(), &base);
             if let Some(p) = &ed.preview {
                 ui.painter().image(p.tile.id(), pane, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-                // Work Plane > Show: the work plane, tinted, over it.
-                ed.work_plane_3d(&ui.painter_at(pane), pane, p);
             }
         }
         let card = crate::style::card([true, false, true, false]).inner_margin(Margin::same(2));

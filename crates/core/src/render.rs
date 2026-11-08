@@ -2398,16 +2398,21 @@ fn section_base_cancellable(
             d.owner = Some(plane_id);
             let (pa, pb) = (d.view.px(p), d.view.px(q));
             d.stroke(vec![pa, pb], Pen::FINE, REFERENCE_PLANE, Some(vec![10.0, 5.0]), false);
-            // Its name inside the frame, by the end it reaches: the trace runs to the frame's edge.
-            let len = (pb.0 - pa.0).hypot(pb.1 - pa.1).max(1e-3);
-            let dir = ((pb.0 - pa.0) / len, (pb.1 - pa.1) / len);
-            let h = d.px(10.0);
-            let room = ((font::width(&rp.name, h) + d.px(16.0)) * dir.0.abs() + (h + d.px(16.0)) * dir.1.abs()).min(len / 2.0);
-            let short = (pb.0 - dir.0 * room, pb.1 - dir.1 * room);
-            // Crowded there, by the other end, inside the frame too, or stepped in along it.
-            let short_a = (pa.0 + dir.0 * room, pa.1 + dir.1 * room);
-            plane_name_px(&mut d, [(pa, short), (pb, short_a)], -1.0, &rp.name, &mut lettered);
+            lettered.traces.push((plane_id, pa, pb));
         }
+    }
+    // Their names once every trace is known, in the order they were drawn: each inside the frame, by the end it reaches
+    // (the trace runs to the frame's edge); crowded there, by the other end, inside the frame too, or beside the trace.
+    for (plane_id, pa, pb) in lettered.traces.clone() {
+        let Some(Element::RefPlane(rp)) = m.elements.get(plane_id) else { continue };
+        d.owner = Some(plane_id);
+        let len = (pb.0 - pa.0).hypot(pb.1 - pa.1).max(1e-3);
+        let dir = ((pb.0 - pa.0) / len, (pb.1 - pa.1) / len);
+        let h = d.px(10.0);
+        let room = ((font::width(&rp.name, h) + d.px(16.0)) * dir.0.abs() + (h + d.px(16.0)) * dir.1.abs()).min(len / 2.0);
+        let short = (pb.0 - dir.0 * room, pb.1 - dir.1 * room);
+        let short_a = (pa.0 + dir.0 * room, pa.1 + dir.1 * room);
+        plane_name_px(&mut d, [(pa, short), (pb, short_a)], &rp.name, &mut lettered);
     }
     d.owner = None;
     if cancelled() {
@@ -2416,11 +2421,11 @@ fn section_base_cancellable(
     Some(d)
 }
 
-/// A reference plane's name, lettered beyond its end `b` (from `a`), in model points; by its other end, or further out, where
-/// a name lettered before is in the way ([`plane_name_px`]).
+/// A reference plane's name, lettered beyond its end `b` (from `a`), in model points; by its other end, or beside its line,
+/// where a name lettered before is in the way ([`plane_name_px`]).
 fn plane_name(d: &mut Drawing, a: P2, b: P2, name: &str, lettered: &mut Lettered) {
     let (pa, pb) = (d.view.px(a), d.view.px(b));
-    plane_name_px(d, [(pa, pb), (pb, pa)], 1.0, name, lettered);
+    plane_name_px(d, [(pa, pb), (pb, pa)], name, lettered);
 }
 
 /// A family's reference lines over a drawing of one of its views (F4), each from one end to the other in the view's
@@ -2437,47 +2442,81 @@ pub(crate) fn reference_lines(d: &mut Drawing, lines: &[(P2, P2)]) {
     }
 }
 
-/// The boxes the names of the reference planes a drawing has lettered so far take up, in pixels: `[left, top, right, bottom]`.
-type Lettered = Vec<[f32; 4]>;
+/// What a drawing's reference-plane names are placed among: the boxes the names lettered so far take up, in pixels
+/// (`[left, top, right, bottom]`), and every plane's trace it draws, each with its plane, in pixels.
+#[derive(Default)]
+struct Lettered {
+    boxes: Vec<[f32; 4]>,
+    traces: Vec<Trace>,
+}
 
-/// How many places a reference plane's name is tried at before it is lettered where it would go alone.
-const NAME_PLACES: usize = 8;
+/// A reference plane's trace in a drawing: the plane, and its ends in pixels.
+type Trace = (Id, (f32, f32), (f32, f32));
+
+/// How many steps along its trace a crowded reference plane's name is tried at, beside it, by each end and on each side.
+const NAME_STEPS: usize = 3;
 
 /// A reference plane's name, in the planes' green, lettered just beyond the end of its trace (pixels): `ends[0]` the end it
 /// goes by alone, `ends[1]` the other, each as (from, to), lettered beyond `to`. Where it would overlap a name `lettered`
-/// before, as two planes close together would have them, it goes by the other end; crowded there too, it steps along its
-/// trace, a name's length and a gap at a time, `step` outwards (1) or inwards (-1), alternating ends, up to [`NAME_PLACES`]
-/// places, the first clear one taken that lies inside the picture (else the first clear one; else where it goes alone). So
-/// a name stays on its plane's line, by one of its ends, and a plane alone is named as it always was.
-fn plane_name_px(d: &mut Drawing, ends: [((f32, f32), (f32, f32)); 2], step: f32, name: &str, lettered: &mut Lettered) {
+/// before, as two planes close together would have them, it goes beyond the other end; crowded there too, it goes beside
+/// its trace, its box a hair off the line just inside an end: by the first end, on one side then the other, then by the
+/// other end, then a name's extent and a gap further in, [`NAME_STEPS`] times. The first place clear of the other names and
+/// of the other planes' traces inside the picture is taken (else the first clear of the names inside it, else the first
+/// clear of them; else where it goes alone). So a name always touches its own plane's line, never stands
+/// where it could be read as another's, and a plane alone is named as it always was.
+fn plane_name_px(d: &mut Drawing, ends: [((f32, f32), (f32, f32)); 2], name: &str, lettered: &mut Lettered) {
     if name.is_empty() {
         return;
     }
     let h = d.px(10.0);
     let w = font::width(name, h);
-    let place = |k: usize| {
-        let (a, b) = ends[k % 2];
+    let (gap, hair) = (d.px(6.0), d.px(2.0));
+    let axes = |e: usize| {
+        let (a, b) = ends[e];
         let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
-        let dir = ((b.0 - a.0) / len, (b.1 - a.1) / len);
-        let half = w / 2.0 + d.px(6.0);
-        // Along the trace past its end; for an upright trace, its half height is enough.
-        let reach = half * dir.0.abs() + (h / 2.0 + d.px(6.0)) * dir.1.abs();
-        // A step: the name's own extent along the trace and a gap.
-        let pitch = (w + d.px(6.0)) * dir.0.abs() + (h + d.px(6.0)) * dir.1.abs();
-        let out = reach + step * pitch * (k / 2) as f32;
-        let at = (b.0 + dir.0 * out, b.1 + dir.1 * out);
-        (at, [at.0 - w / 2.0, at.1 - h / 2.0, at.0 + w / 2.0, at.1 + h / 2.0])
+        (b, ((b.0 - a.0) / len, (b.1 - a.1) / len))
     };
-    let clear = |r: &[f32; 4]| lettered.iter().all(|o| r[2] <= o[0] || o[2] <= r[0] || r[3] <= o[1] || o[3] <= r[1]);
+    let boxed = |at: (f32, f32)| (at, [at.0 - w / 2.0, at.1 - h / 2.0, at.0 + w / 2.0, at.1 + h / 2.0]);
+    // Beyond each end, along the trace: for an upright trace, its half height is enough.
+    let beyond = |e: usize| {
+        let (b, dir) = axes(e);
+        let reach = (w / 2.0 + gap) * dir.0.abs() + (h / 2.0 + gap) * dir.1.abs();
+        boxed((b.0 + dir.0 * reach, b.1 + dir.1 * reach))
+    };
+    // Beside the trace by end `e`, on `side` (1 or -1), `n` steps in from it.
+    let beside = |e: usize, side: f32, n: usize| {
+        let (b, dir) = axes(e);
+        let across = (-dir.1 * side, dir.0 * side);
+        let along = (w / 2.0) * dir.0.abs() + (h / 2.0) * dir.1.abs();
+        let off = (w / 2.0) * across.0.abs() + (h / 2.0) * across.1.abs() + hair;
+        let back = along + (2.0 * along + gap) * n as f32;
+        boxed((b.0 - dir.0 * back + across.0 * off, b.1 - dir.1 * back + across.1 * off))
+    };
+    let mut places = vec![beyond(0), beyond(1)];
+    for n in 0..NAME_STEPS {
+        for e in 0..2 {
+            places.extend([beside(e, 1.0, n), beside(e, -1.0, n)]);
+        }
+    }
+    let clear = |r: &[f32; 4]| lettered.boxes.iter().all(|o| r[2] <= o[0] || o[2] <= r[0] || r[3] <= o[1] || o[3] <= r[1]);
+    // Moved, a name also keeps off every other plane's trace, so it can't be read as that one's.
+    let own = d.owner;
+    let apart =
+        |r: &[f32; 4]| clear(r) && !lettered.traces.iter().any(|(id, a, b)| Some(*id) != own && clips(*a, *b, (r[0], r[1]), (r[2], r[3])));
     let (width, height) = (d.view.width as f32, d.view.height as f32);
     let inside = |r: &[f32; 4]| r[0] >= 0.0 && r[1] >= 0.0 && r[2] <= width && r[3] <= height;
-    let places: Vec<_> = (0..NAME_PLACES).map(place).collect();
     let (at, r) = if clear(&places[0].1) {
         places[0]
     } else {
-        places.iter().find(|(_, r)| clear(r) && inside(r)).or_else(|| places.iter().find(|(_, r)| clear(r))).copied().unwrap_or(places[0])
+        places
+            .iter()
+            .find(|(_, r)| apart(r) && inside(r))
+            .or_else(|| places.iter().find(|(_, r)| clear(r) && inside(r)))
+            .or_else(|| places.iter().find(|(_, r)| clear(r)))
+            .copied()
+            .unwrap_or(places[0])
     };
-    lettered.push(r);
+    lettered.boxes.push(r);
     d.text(name, at, h, REFERENCE_PLANE);
 }
 
@@ -3014,8 +3053,18 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     let reference = !graphics.hides("roomreference");
     // Bars seen from above that lie where another was drawn (a column's stirrups, up its height) are drawn once.
     let mut bars_seen: std::collections::HashSet<Vec<(i64, i64)>> = std::collections::HashSet::new();
-    // The reference planes' names lettered so far: one crowded by another goes elsewhere.
+    // The reference planes' names lettered so far, among every upright plane's trace: one crowded goes elsewhere.
     let mut lettered = Lettered::default();
+    for (&id, e) in all().filter(|(id, _)| shown(**id)) {
+        if let Element::RefPlane(rp) = e
+            && rp.upright()
+        {
+            let (a, b) = (P2(rp.start[0], rp.start[1]), P2(rp.end[0], rp.end[1]));
+            if let Some((a, b)) = crop.map_or(Some((a, b)), |[lo, hi]| clip(a, b, lo, hi)) {
+                lettered.traces.push((id, d.view.px(a), d.view.px(b)));
+            }
+        }
+    }
     for (&id, e) in all().filter(|(id, _)| shown(**id)) {
         d.owner = Some(id);
         match e {
@@ -5964,7 +6013,59 @@ mod tests {
         let d = section(&s.model, cut, section_fit(&s.model, cut, 800, 600));
         let (a, b) = (lettering_box(&d, first), lettering_box(&d, second));
         assert!(apart(a, b), "in the section: {a:?} and {b:?}");
+        assert!(named_by_its_own_trace(&d, first) && named_by_its_own_trace(&d, second), "each by its own trace");
         assert!(a[1] >= 0.0 && b[3] <= d.view.height as f32 && b[1] > a[3], "the first at the top, the second at the bottom");
+    }
+
+    /// Whether the name element `id` letters in `d` touches its own trace: its box within the gap a name keeps from its
+    /// trace's end (6 px of annotation) of the dashed line it draws.
+    fn named_by_its_own_trace(d: &Drawing, id: Id) -> bool {
+        let r = lettering_box(d, id);
+        let tol = 6.0 * d.k + 1.5;
+        let traces: Vec<&Vec<(f32, f32)>> = d
+            .prims
+            .iter()
+            .zip(&d.owners)
+            .filter_map(|(p, o)| match p {
+                Prim::Line { pts, dash: Some(_), .. } if *o == Some(id) => Some(pts),
+                _ => None,
+            })
+            .collect();
+        traces.iter().flat_map(|pts| pts.windows(2)).any(|w| {
+            (0..=400).any(|i| {
+                let t = i as f32 / 400.0;
+                let (x, y) = (w[0].0 + (w[1].0 - w[0].0) * t, w[0].1 + (w[1].1 - w[0].1) * t);
+                let dx = (r[0] - x).max(x - r[2]).max(0.0);
+                let dy = (r[1] - y).max(y - r[3]).max(0.0);
+                dx.hypot(dy) <= tol
+            })
+        })
+    }
+
+    /// Four named planes 100 mm apart, in plan and in a section: every name clear of the others and touching its own trace,
+    /// so none can be read as its neighbour's.
+    #[test]
+    fn crowded_plane_names_stay_clear_and_by_their_own_traces() {
+        let mut s = house();
+        let id = |v: serde_json::Value| v["id"].as_u64().unwrap();
+        let mut planes = Vec::new();
+        for (k, name) in ["Center (Left/Right)", "Edge", "Near", "Inner Face"].iter().enumerate() {
+            let x = 2000.0 + 100.0 * k as f64;
+            planes
+                .push(id(s.execute("reference_plane", &serde_json::json!({"name": name, "start": [x, -1000], "end": [x, 7000]})).unwrap()));
+        }
+        let level = s.model.levels()[0].0;
+        let cut = id(s.execute("section", &serde_json::json!({"start": [-1000, 1500], "end": [9000, 1500]})).unwrap());
+        for (what, d) in
+            [("plan", plan(&s.model, level, 800, 600)), ("section", section(&s.model, cut, section_fit(&s.model, cut, 800, 600)))]
+        {
+            for (i, a) in planes.iter().enumerate() {
+                assert!(named_by_its_own_trace(&d, *a), "{what}: plane {i}'s name by its own trace: {:?}", lettering_box(&d, *a));
+                for b in &planes[i + 1..] {
+                    assert!(apart(lettering_box(&d, *a), lettering_box(&d, *b)), "{what}: names {a} and {b} apart");
+                }
+            }
+        }
     }
 
     /// F4: a section or an elevation draws each reference plane square to it as Revit's do: its trace, dashed in the reference
