@@ -303,7 +303,7 @@ fn a_file_keeps_its_pivots_and_a_file_of_28_reads_unchanged() {
     assert!(
         text.contains(&format!("\"format\": {}", crate::model::FORMAT)) || text.contains(&format!("\"format\":{}", crate::model::FORMAT))
     );
-    assert_eq!(crate::model::FORMAT, 32);
+    assert_eq!(crate::model::FORMAT, 18);
     let (back, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
     assert_eq!(back.families["Swing"].lines, s.model.families["Swing"].lines);
@@ -313,9 +313,9 @@ fn a_file_keeps_its_pivots_and_a_file_of_28_reads_unchanged() {
     assert_eq!((pivot.at, pivot.min, pivot.max), (PivotAt::Start, Some(0.0), Some(90.0)));
     // Read and written again it says the same.
     assert_eq!(back.to_json().unwrap(), text);
-    // A file of 28 (no pivot) reads as it was, its families unchanged.
+    // A file of 17 (no pivot) reads as it was, its families unchanged.
     let mut v: Value = serde_json::from_str(&text).unwrap();
-    v["format"] = json!(28);
+    v["format"] = json!(17);
     v["families"]["Swing"]["lines"][0].as_object_mut().unwrap().remove("pivot");
     v["families"]["Panel"]["planes"][4].as_object_mut().unwrap().remove("pivot");
     let (old, left_out) = Model::read(&v.to_string()).unwrap();

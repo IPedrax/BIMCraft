@@ -356,7 +356,7 @@ fn a_hosted_familys_void_cuts_the_wall_whatever_its_place_in_the_list() {
 }
 
 #[test]
-fn cuts_is_a_voids_and_a_file_of_31_keeps_what_its_voids_cut() {
+fn cuts_is_a_voids_and_a_file_of_17_keeps_what_its_voids_cut() {
     let mut s = Session::new();
     let e = s
         .execute(
@@ -367,12 +367,12 @@ fn cuts_is_a_voids_and_a_file_of_31_keeps_what_its_voids_cut() {
         )
         .unwrap_err();
     assert!(e.contains("`cuts` says what a void cuts"), "{e}");
-    // FORMAT 31 to 32: a file of 31 whose void, listed after the member it overlaps, cut the member and not the wall, reads
+    // FORMAT 17 to 18: a file of 17 whose void, listed after the member it overlaps, cut the member and not the wall, reads
     // `cuts: forms` and cuts what it did; one listed first, which cut the wall, reads as it was.
     framed(&mut s, None);
     arched(&mut s);
     let mut file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
-    file["format"] = json!(31);
+    file["format"] = json!(17);
     let dir = std::env::temp_dir().join(format!("bimcraft-f10d-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("old.bimcraft");
@@ -384,7 +384,7 @@ fn cuts_is_a_voids_and_a_file_of_31_keeps_what_its_voids_cut() {
     assert_eq!(framed.forms[1].cuts, Some(crate::family::Cuts::Forms));
     assert!(framed.host_voids(&framed.values("A", &Default::default()).unwrap()).unwrap().is_empty());
     let arched = &t.model.families["Arched"];
-    assert_eq!(arched.forms[0].cuts, None, "the arch's void cut the wall in 31 too");
+    assert_eq!(arched.forms[0].cuts, None, "the arch's void cut the wall before `cuts` too");
     assert_eq!(arched.host_voids(&arched.values("A", &Default::default()).unwrap()).unwrap().len(), 1);
     let saved: Value = serde_json::from_str(&t.model.to_json().unwrap()).unwrap();
     assert_eq!(saved["format"], json!(crate::model::FORMAT));

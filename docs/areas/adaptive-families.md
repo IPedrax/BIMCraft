@@ -124,7 +124,7 @@ Plane : name`; an unnamed one is not listed, as in Revit), then each reference l
 Vertical, Start, End). Working out where one is takes the family's planes and lines (`Planes`, `Family::plane_set`; the
 Family Editor keeps them beside the definition it edits); `Planes::default()` knows the three datums. A world point's `plane`
 is `{"plane": guid}` or `{"line": guid, "face": …}`; it keeps its own `frame`, so the plane only says where it was drawn. A
-file from before (FORMAT 18 and 19) held `"datum": "level" | "front_back" | "left_right"`, which reads as Ref. Level, Center
+point from before the family had reference planes held `"datum": "level" | "front_back" | "left_right"`, which reads as Ref. Level, Center
 (Front/Back) and Center (Left/Right) (`plane_or_datum`), whose frames are the ones those datums had, so nothing moves. A plane
 a point is drawn on is one of the family's (`Family::check_planes` says which point names one it hasn't), can't be deleted
 while the point is on it (`Family::hosted_on`), and takes the point along when the sync gives it a new GUID (`Family::rehost`).

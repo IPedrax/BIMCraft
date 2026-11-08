@@ -460,7 +460,7 @@ impl Default for Expr {
     }
 }
 
-/// The shorthand a form (and a file of 19 or before) names its sketch plane by, from before reference planes: across the
+/// The shorthand a form (and a file of 17 or before) names its sketch plane by, from before reference planes: across the
 /// family's x and y, swept up (Ref. Level); upright, across x and z, swept along +y (Center (Front/Back), whose normal is
 /// -y, so its `from` and `to` are negated and swap places, a formula wrapped as `-(…)`; a revolve's angles stay as they
 /// are); or across y and z, swept along x (Center (Left/Right)).
@@ -705,7 +705,7 @@ pub struct Form {
     /// (Revit's Extrusion Start and End); a revolve turns in it. Ref. Level unless said.
     #[serde(default)]
     pub host: PlaneRef,
-    /// Its profile's lines and arcs, and a revolve's axis line ([`sketch`]): in place of a file of 23's `profile`,
+    /// Its profile's lines and arcs, and a revolve's axis line ([`sketch`]): in place of a file of 17's `profile`,
     /// `circle` and `axis`, which are read as such lines.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sketch: Vec<sketch::FormLine>,
@@ -734,7 +734,7 @@ pub struct Form {
     #[serde(default, skip_serializing_if = "is_zero_i32")]
     pub twist: i32,
     /// Its Visibility Settings (F8): the views it is drawn in by the way they look and their detail level. None draws as a
-    /// file of 30 did. A void cuts whatever they say: they are drawing, and a void is never drawn.
+    /// file of 17 did. A void cuts whatever they say: they are drawing, and a void is never drawn.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visibility: Option<Visibility>,
     /// What a void cuts (F10d): none, [`Cuts::Both`].
@@ -1056,7 +1056,7 @@ pub struct Piece {
     pub top: f64,
     pub material: String,
     pub round: bool,
-    /// Its form's Visibility Settings (and a nested instance's over them): where views draw it. None, as a file of 30 drew it.
+    /// Its form's Visibility Settings (and a nested instance's over them): where views draw it. None, as a file of 17 drew it.
     pub vis: Option<Visibility>,
 }
 
@@ -2569,10 +2569,10 @@ impl Family {
         Ok(out)
     }
 
-    /// The voids a door's or a window's family cut its wall with in a file of 31 (before F10d), by `values`: each that
+    /// The voids a door's or a window's family cut its wall with before a void had `cuts` (F10d), by `values`: each that
     /// reaches into the wall and cuts none of the solid forms listed before it, by their boxes. The forms' places in its
     /// list, for [`Family::pin_cuts`].
-    fn voids_of_31(&self, values: &BTreeMap<String, Val>) -> Result<Vec<usize>, String> {
+    fn voids_before_cuts(&self, values: &BTreeMap<String, Val>) -> Result<Vec<usize>, String> {
         let wall = wall_of(values);
         let f = self.flexed(values).map_err(|e| e.to_string())?;
         let mut read = HashMap::new();
@@ -2591,7 +2591,7 @@ impl Family {
         Ok(out)
     }
 
-    /// FORMAT 31 to 32 (F10d), a door's or a window's family: each void that a file of 31 didn't cut the wall with, though
+    /// FORMAT 17 to 18 (F10d), a door's or a window's family: each void that a file of 17 didn't cut the wall with, though
     /// it reaches into it (it cut a solid form listed before it, by their boxes, in any of the family's types), now says
     /// `forms`, so it cuts what it did and nothing more; one that did cut the wall cut none of the forms, and reads as it did.
     pub(crate) fn pin_cuts(&mut self) {
@@ -2616,7 +2616,7 @@ impl Family {
                         .is_some_and(|s| s.max[1] > -wall / 2.0 && s.min[1] < wall / 2.0)
                 })
                 .collect();
-            Some((reach, self.voids_of_31(values).ok()?))
+            Some((reach, self.voids_before_cuts(values).ok()?))
         };
         let mut pinned: BTreeSet<usize> = BTreeSet::new();
         for values in &sets {

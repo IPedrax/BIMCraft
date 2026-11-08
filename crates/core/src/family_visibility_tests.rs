@@ -1,6 +1,6 @@
 //! F8: a family's Visibility Settings, as Revit's Family Element Visibility Settings. A door-like family, its leaf hidden in
 //! plan and at Coarse and its swing a symbolic arc, placed in a wall: what a plan at each detail level, an elevation, a
-//! section through it and the 3D view draw; the settings kept through a file; a file of 30 drawn as before; IFC untouched.
+//! section through it and the 3D view draw; the settings kept through a file; a file of 17 drawn as before; IFC untouched.
 //!
 //! Driven through `Session::execute`, as every front end drives it, and tested through the pictures.
 
@@ -30,7 +30,7 @@ fn id_of(v: &Value) -> Id {
 /// The leaf's colour in a shaded 3D view: nothing else in the project is this red.
 const LEAF: [u8; 3] = [220, 20, 20];
 
-/// A door family: a frame (two jambs and a head, as a file of 30 has them), a leaf 760 x 2000 inside it whose settings are
+/// A door family: a frame (two jambs and a head, as a file of 17 has them), a leaf 760 x 2000 inside it whose settings are
 /// `leaf`, and a symbolic swing (an arc and the leaf open) in Opening, its settings `swing`.
 fn door_family(leaf: Value, swing: Value) -> Value {
     let block = |x: [f64; 2], y: [&str; 2], z: [f64; 2]| json!({"profile": [[x[0], y[0]], [x[1], y[0]], [x[1], y[1]], [x[0], y[1]]], "from": z[0], "to": z[1]});
@@ -121,7 +121,7 @@ fn a_door_with_its_leaf_hidden_in_plan_shows_its_swing_in_its_place_at_medium_an
     assert_eq!(leaf_and_swing(&mut s, "fine"), (false, true), "Fine: the swing, not the leaf");
     assert_eq!(leaf_and_swing(&mut s, "medium"), (false, true), "Medium: the swing, not the leaf");
     assert_eq!(leaf_and_swing(&mut s, "coarse"), (false, false), "Coarse: a symbol with no settings is left out, as ever");
-    // The same door without settings draws its leaf too, at Medium and Fine, as a file of 30 does.
+    // The same door without settings draws its leaf too, at Medium and Fine, as a file of 17 does.
     let (mut old, _) = project(Value::Null, Value::Null);
     assert_eq!(leaf_and_swing(&mut old, "fine"), (true, true));
     assert_eq!(leaf_and_swing(&mut old, "coarse"), (false, false));
@@ -287,18 +287,18 @@ fn settings_are_kept_through_a_file_and_read_back_by_the_family_command() {
 }
 
 #[test]
-fn a_file_of_30_reads_with_no_settings_and_draws_as_it_did() {
-    // The starter door's project written as a build of 30 wrote it: no `visibility` anywhere, `format` 30.
+fn a_file_of_17_reads_with_no_settings_and_draws_as_it_did() {
+    // The starter door's project written as a file of 17: no `visibility` anywhere, `format` 17.
     let mut s = Session::new();
     run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]]}));
     run(&mut s, "door", json!({"at": [3000, 0], "family": "Single Door"}));
-    let dir = std::env::temp_dir().join(format!("bimcraft-f8-30-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("bimcraft-f8-17-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("thirty.bimcraft");
+    let path = dir.join("seventeen.bimcraft");
     run(&mut s, "save", json!({"path": path}));
     let mut file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     let _ = std::fs::remove_dir_all(&dir);
-    file["format"] = json!(30);
+    file["format"] = json!(17);
     assert!(!file.to_string().contains("\"visibility\""));
     let read = crate::model::Model::from_json(&file.to_string()).unwrap();
     assert_eq!(read.format, crate::model::FORMAT);

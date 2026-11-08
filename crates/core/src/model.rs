@@ -71,18 +71,43 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 21 (provisional): a view's graphics, a view template and the object styles may name the subcategories
-/// `dooropening` and `windowopening` (Doors > Opening, Windows > Opening), and a family's symbol the subcategory it is drawn in
-/// (`subcategory`); nothing in a file of 19 changes, but a build that reads up to 19 would refuse such graphics or object
-/// styles on opening ("isn't a category views draw", as 14 says), not say "saved by a newer BIMCraft"; a symbol's
-/// subcategory alone it would leave out as a field it doesn't know, drawing the swing in the category. 19: a family's parameters may be text, whole
-/// numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a GUID) or reporting (`reporting`),
-/// and a family type parameter names its category (`of`); nothing in a file of 17 changes, but a build that reads up to 17
-/// would refuse a new kind ("unknown variant") and leave the rest out as fields it doesn't know, a shared parameter becoming
-/// the family's own and a reporting one one it sets, not say "saved by a newer BIMCraft". 18: a family may
-/// be adaptive (`adaptive`: its points, lines and forms) and a component may hold its adaptive points' frames (`adaptive`);
-/// nothing in a file of 17 changes, but a build that reads up to 17 would leave both out as fields it doesn't know and draw
-/// such a family without its forms. 17: a schedule may list several categories
+/// The version of the project file this build writes, and the newest it reads. 18: the Family Editor, and what places its
+/// families in a project. A build that reads up to 17 would leave most of it out as fields it doesn't know (a family's planes,
+/// sketches, dimensions, nested families, pivots and settings, a component's host), drawing a family without them or failing
+/// to build it, and losing them on saving, and refuse the rest on opening ("unknown variant", "isn't a category views draw"),
+/// not say "saved by a newer BIMCraft". A file of 17 is brought up to 18 by one step of [`Model::migrate`]. What 18 adds:
+///
+/// - Family parameters: text, whole numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a
+///   GUID) or reporting (`reporting`); a family type parameter names its category (`of`).
+/// - Reference planes and lines (F2): a family has reference planes (its three datums and its own, `planes`) and reference
+///   lines (`lines`), and a form is drawn on a `host`, one of them, where it named a `plane` (`xy`, `xz` or `yz`). A form on
+///   `xz` swept along +y and its host, Center (Front/Back), has its normal toward -y, so such a form's `from` and `to` are
+///   read negated and swapped.
+/// - Sketches (F5): a form is drawn by its `sketch`, lines and arcs on its host plane, each with an id and a GUID, a revolve's
+///   axis one of them; its `profile`, `circle` and `axis` are read as such lines and no longer written.
+/// - Blends and sweeps (F6): a form may be a Blend (`top`, its top's sketch), a Sweep (`sweep.profile`, its `sketch` the
+///   path) or a Swept Blend (`sweep.profile` and `sweep.end`), and twist (`twist`).
+/// - Constraints (F7): a family's `dimensions`, with labels, locks, EQ and Align's locks, solved as a type flexes. They may
+///   measure to its forms' sketch lines, their ends, circles' and arcs' centres, and to its reference lines' faces, starts and
+///   ends and the forms drawn on them; measure a circle's or an arc's radius or diameter; and be angular, between reference
+///   lines, reference planes and straight sketch lines, the reference lines turning and moving with them.
+/// - Pivots (F7d): a reference line or a reference plane may carry a `pivot`, a point it is pinned to and turns about, its
+///   swing an Angle parameter or a number of its own, within limits.
+/// - Nested families (T6a): a family may nest families (`nested`, each its whole definition) and place their instances
+///   (`nested_instances`).
+/// - Visibility (F8): a family's forms, symbols and nested instances may carry Visibility Settings (`visibility`): the views
+///   they are drawn in by the way those look, and their detail level.
+/// - Void cuts (F10d): a void's `cuts` says whether it cuts the family's forms, the wall or both, and a door's or a window's
+///   void cuts its wall wherever it reaches into it, whatever its place in the family's list.
+/// - Subcategories: a view's graphics, a view template and the object styles may name `dooropening` and `windowopening`
+///   (Doors > Opening, Windows > Opening), and a family's symbol the subcategory it is drawn in (`subcategory`).
+/// - Adaptive families: a family may be adaptive (`adaptive`: its points, lines and forms), and a component may hold its
+///   adaptive points' frames (`adaptive`).
+/// - Work planes and hosts (T4, T16): the project has reference planes (`refplane`); a work plane-based component may be
+///   hosted on one (`host`), its `at` and `offset` following the plane and its family's axes tilted with it, or on a face of a
+///   wall, a floor, a ceiling or a roof (`host` `{"face": {"element", "face"}}`, Place on Face), its `uv` that face's own.
+///
+/// 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -120,55 +145,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-///
-/// 20: a family has reference planes (its three datums and its own, `planes`) and reference lines (`lines`), and a form is
-/// drawn on a `host` (one of them) where it named `plane` (xy, xz or yz); a form of 19 on `xz` swept along +y, and its host,
-/// Center (Front/Back), has its normal toward -y, so 19 read by 20 has its `from` and `to` negated (and swapped). A build
-/// of 19 would refuse `host`.
-///
-/// 22: the project has reference planes (`refplane`), and a work plane-based component may be hosted on one (`host`), its
-/// `at` and `offset` following the plane and its family's axes tilted with it; a build of 21 would leave both out and stand
-/// the component upright where it was, no longer moving with its plane.
-///
-/// 23: a component may be hosted on a face of a wall, a floor, a ceiling or a roof (`host` `{"face": {"element", "face"}}`,
-/// Place on Face), its `uv` that face's own; a build of 22 reads a component's `host` whole and knows no such kind, so it
-/// would refuse the project or, left out, stand the component where it was, no longer on its face. A file of 22 holds none.
-///
-/// 24: a family's form is drawn by its `sketch` (F5): lines and arcs on its host plane, each with an id and a GUID, a
-/// revolve's axis one of them; its `profile`, `circle` and `axis` are read as such lines and no longer written. A build of 23
-/// would refuse `sketch` or, left out, leave every form with no profile.
-///
-/// 25: a family's `dimensions` (F7): labels, locks, EQ and Align's locks, solved as a type flexes. A build of 24 would drop
-/// them and so flex the family wrongly.
-///
-/// 26: a family's dimensions may measure to its forms' sketch lines, their ends and circles' centres, and its reference lines'
-/// faces, and measure a circle's radius or diameter (F7b): sketches locked to planes flex with them. A build of 25 reads a
-/// dimension's references strictly and knows none of these, so it would leave those dimensions out of the file and flex a
-/// locked sketch as if nothing held it.
-///
-/// 27: a family may nest families (`nested`, each its whole definition) and place their instances (`nested_instances`), T6a.
-/// A build of 26 reads a family leniently and would leave both out: the host would open without its nested geometry and lose
-/// it on saving.
-///
-/// 28: a family's dimensions may be angular (between reference lines, reference planes and straight sketch lines, labelled
-/// with angles), measure to a reference line's start or end, measure an arc's radius, diameter or centre, and measure the
-/// forms drawn on a reference line's face; reference lines turn and move with them (F7c). A build of 27 knows no `angular`
-/// kind and no line point, so it would leave those dimensions out of the file and flex the family as if nothing turned its
-/// lines.
-///
-/// 29: a family's form may be a Blend (`top`, its top's sketch), a Sweep (`sweep.profile`, its `sketch` the path) or a Swept
-/// Blend (`sweep.profile` and `sweep.end`), and twist (`twist`), F6. A build of 28 reads a family leniently and would drop
-/// all three, building a Blend as an extrusion of its base and a Sweep as an extrusion of its path, which doesn't close and
-/// is refused, so the family wouldn't build: it must refuse the file as newer.
-///
-/// 30: a reference line or a reference plane may carry a `pivot` (F7d): a point it is pinned to and turns about, its swing an
-/// Angle parameter or a number of its own, within limits. A build of 29 reads a family leniently and would leave `pivot` out
-/// of the file, so a door would open unswung and lose its hinge on saving.
-///
-/// 31: a family's forms, symbols and nested instances may carry Visibility Settings (`visibility`, F8): the views they are
-/// drawn in by the way those look and their detail level. A build of 30 reads a family leniently and would leave
-/// `visibility` out: a door's leaf hidden in plan would be drawn over its symbolic swing, and saving would lose the settings.
-pub const FORMAT: u32 = 32;
+pub const FORMAT: u32 = 18;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3608,47 +3585,30 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
-        // 17 to 18 (adaptive families and components' adaptive frames) has none: a file of 17 holds neither, and both default.
-        // 18 to 19 (a family's parameters: new kinds, groups, shared GUIDs, reporting, a family type's category) has none:
-        // the new fields default, to a family parameter grouped by its kind, which is what a file of 18 holds.
-        // 19 to 20: a form's `plane` becomes its `host`, a datum: `xy` Ref. Level and `yz` Center (Left/Right) as they
-        // were; `xz` Center (Front/Back), its `from` and `to` negated and swapped (a formula wrapped as `-(…)`), since it
-        // swept along +y and the datum's normal is -y, a revolve's angles as they were. Reading the file does it, as it
-        // reads a command's shorthand (`Form`'s `FormIn`), and a family read without its datums is given them
-        // (`Family::planes`); here every family's datums are put first and the origin settled, whatever the file held.
-        if self.format < 20 {
+        // 17 to 18 (the Family Editor, and what places its families): one step, in this order.
+        // 1. A form's `plane` becomes its `host`, a datum: `xy` Ref. Level and `yz` Center (Left/Right) as they were; `xz`
+        //    Center (Front/Back), its `from` and `to` negated and swapped (a formula wrapped as `-(…)`), since it swept along
+        //    +y and the datum's normal is -y, a revolve's angles as they were. Its `profile`, `circle` and `axis` become lines
+        //    of its `sketch`, given their ids and GUIDs by the library's sync as any new part is, building the triangles they
+        //    did. Reading the file does both, as it reads a command's shorthands (`Form`'s `FormIn`), whatever its format,
+        //    and a family read without its datums is given them (`Family::planes`).
+        // 2. Every family's datums are put first and its origin settled, whatever the file held (`Family::settle_planes`).
+        // 3. A door's or a window's void cuts its wall wherever it reaches into it, whatever its place in the family's list,
+        //    unless its `cuts` says `forms`. Before 18, only one that cut none of the solid forms listed before it cut the
+        //    wall, in its own shape in place of the opening's rectangle (a rule that took no step, so a file of 17 is drawn
+        //    by it too). Each void that rule didn't cut the wall with, though it reaches into it, says `forms`
+        //    (`Family::pin_cuts`), so it cuts what it did. It runs after 2, as it did, the family flexed on its settled planes.
+        // The rest of 18 needs nothing of a file of 17, which holds none of it: an adaptive family and a component's
+        // adaptive frames, a family parameter's group, shared GUID and reporting (each defaults to what a file of 17 means:
+        // grouped by its kind, the family's own, set), Doors > Opening and Windows > Opening, the project's reference planes
+        // and components hosted on them or on faces (a hosted component's `at` and `offset` are worked out from its host
+        // whatever the file says), a family's dimensions of every kind, nested families, Blends and Sweeps (every form of 17
+        // is an extrusion or a revolve, built as it was), pivots, and Visibility Settings (a part without them draws as it
+        // did, `family::visibility`). An adaptive point's `"datum": "level" | "front_back" | "left_right"`, the name the
+        // Family Editor's first adaptive points gave their work plane, is still read as the datum plane of the same frame
+        // (`Host::World`'s `plane_or_datum`); a file of 17 holds no adaptive family, so it takes no part in this step.
+        if self.format < 18 {
             self.families.values_mut().for_each(crate::family::Family::settle_planes);
-        }
-        // The adaptive arm of 18 to 20: an adaptive family's three datums of its own (18, the definition's `Datum`) are the
-        // family's datum planes. A point drawn on one held `"datum": "level" | "front_back" | "left_right"` in its `world`
-        // host; it now names the plane, `"plane": {"plane": guid}` (Ref. Level, Center (Front/Back), Center (Left/Right)),
-        // or a reference line's face. Reading the file does it (`Host::World`'s `plane_or_datum`), so nothing is left to do
-        // here: the point keeps its frame, and each datum plane's frame is the one the datum had, so nothing moves. It takes
-        // no FORMAT of its own: it finishes 18 to 20 on a branch whose files already say 21, which a build of 18 or 19, which
-        // would misread `plane`, refuses as newer.
-        // 20 to 21 (Doors > Opening and Windows > Opening, which a view's graphics, a template and the object styles may name,
-        // and a symbol's `subcategory`) has none: a file of 20 names neither.
-        // 21 to 22 (the project's reference planes, components hosted on them) has none: a file of 21 holds neither. A hosted
-        // component's `at` and `offset` are worked out from its host, whatever the file says of them.
-        // 22 to 23 (components on faces) has none: a file of 22 holds none.
-        // 23 to 24: a form's `profile`, `circle` and `axis` become lines of its `sketch`. Reading the file does it, as it reads a
-        // command's shorthands (`Form`'s `FormIn`), so nothing is left to do here: the lines are given their ids and GUIDs by
-        // the library's sync, as any new part is, and the form builds the triangles it did.
-        // 24 to 25 (a family's dimensions, labels, locks and Align's locks) has none: a file of 24 holds none.
-        // 25 to 26 (dimensions to sketch lines, their points and reference lines' faces; radial and diameter ones) has none:
-        // a file of 25 holds none, and every dimension it holds reads as it did.
-        // 26 to 27 (nested families and their instances) has none: a file of 26 holds none.
-        // 27 to 28 (angular dimensions, reference lines' ends, arcs' radii and centres, forms on reference lines measured) has
-        // none: a file of 27 holds none, and every dimension it holds solves as it did.
-        // 28 to 29 (Blends, Sweeps and Swept Blends: a form's `top`, `sweep` and `twist`) has none: a file of 28 holds none, and
-        // every form it holds is an extrusion or a revolve, built as it was.
-        // 29 to 30 (pivots on reference lines and planes) has none: a file of 29 holds none.
-        // 30 to 31 (Visibility Settings of forms, symbols and nested instances) has none: a file of 30 holds none, and a part
-        // without them draws as it did (`family::visibility`).
-        // 31 to 32 (F10d): a door's or a window's void cuts its wall whatever its place in the family's list, unless its
-        // `cuts` says `forms`; in 31 only one that cut none of the solid forms listed before it did. Each void a file of 31
-        // didn't cut the wall with, though it reaches into it, says `forms` (`Family::pin_cuts`), so it cuts what it did.
-        if self.format < 32 {
             self.families.values_mut().for_each(crate::family::Family::pin_cuts);
         }
         self.settle_hosts(None);

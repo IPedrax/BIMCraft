@@ -1,7 +1,7 @@
 //! Place on Face (T16): a work plane-based family's component hosted on a face of a wall, a floor, a ceiling or a roof,
 //! named by its role (`exterior`, `interior`, `top`, `bottom`) with its place in that face's own terms; following the face
 //! when the host moves, turns, changes its slope, thickness or type; Always Vertical on every face; carried and copied
-//! with its host, deleted with it, kept with a warning when its face no longer reaches it; and files of 23.
+//! with its host, deleted with it, kept with a warning when its face no longer reaches it; and files of 17.
 
 use serde_json::{Value, json};
 
@@ -296,12 +296,12 @@ fn edit_work_plane_puts_components_on_a_face_and_back_on_a_level() {
 }
 
 #[test]
-fn a_file_keeps_its_face_hosts_and_a_file_of_22_reads_as_it_did() {
+fn a_file_keeps_its_face_hosts_and_a_file_of_17_reads_as_it_did() {
     let mut s = Session::new();
     light(&mut s, false);
     let w = first(&run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]], "height": 3000})));
     let c = on(&mut s, w, "exterior", json!([2000, 100, 1500]));
-    const { assert!(FORMAT >= 23) };
+    const { assert!(FORMAT >= 18) };
     let text = s.model.to_json().unwrap();
     let (m, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
@@ -314,7 +314,7 @@ fn a_file_keeps_its_face_hosts_and_a_file_of_22_reads_as_it_did() {
     let v = json_of(&mut s, c);
     assert_eq!(v["host_element"], json!(s.model.guid(w)));
     let mut old: Value = serde_json::from_str(&text).unwrap();
-    old["format"] = json!(22);
+    old["format"] = json!(17);
     for e in old["elements"].as_object_mut().unwrap().values_mut() {
         if let Some(o) = e.as_object_mut() {
             o.remove("host");

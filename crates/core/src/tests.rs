@@ -1582,8 +1582,8 @@ fn warnings_are_collected_not_stopped_at_the_first() {
 }
 
 /// What a family is in a file: its own fields, no more and no less, and a project written here read
-/// back whole (ТЗ-003 §6.8). FORMAT 20 grew its `planes` (the datums, always written) and a form's `host`; FORMAT 24 its
-/// `sketch`, in place of its `profile`.
+/// back whole (ТЗ-003 §6.8). FORMAT 18 grew its `planes` (the datums, always written), a form's `host`, and its `sketch`
+/// in place of its `profile`.
 #[test]
 fn a_family_is_saved_with_the_fields_it_has_always_had() {
     let mut s = Session::new();
@@ -5903,6 +5903,26 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
     let e = t.execute("open", &json!({"path": path.to_str().unwrap()})).unwrap_err();
     let _ = std::fs::remove_file(&path);
     assert!(e.contains("newer BIMCraft"), "{e}");
+}
+
+#[test]
+fn a_file_of_the_family_editors_unreleased_formats_19_to_32_is_refused_as_newer() {
+    // The Family Editor took the format from 17 to 32 a step at a time before it was released, and then became one step,
+    // 17 to 18. Nothing of 19 to 32 was released, so this build reads none of them: each is refused as any newer file is.
+    use crate::model::{FORMAT, Model};
+    assert_eq!(FORMAT, 18);
+    let mut s = Session::new();
+    house(&mut s);
+    let v = serde_json::to_value(&*s.model).unwrap();
+    for old in 19..=32 {
+        let mut was = v.clone();
+        was["format"] = json!(old);
+        let e = Model::read(&was.to_string()).unwrap_err();
+        assert!(
+            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 18"),
+            "{old}: {e}"
+        );
+    }
 }
 
 #[test]

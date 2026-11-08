@@ -160,9 +160,9 @@ pub enum OrientsTo {
 fn host_orients() -> OrientsTo {
     OrientsTo::Host
 }
-/// The datums a file of 18 or 19 drew a point on, the definition's own then: now the family's datum planes, whose frames are
-/// the ones these had (Ref. Level the family's xy; Center (Front/Back) x along +x, y up, normal -y; Center (Left/Right) x along
-/// +y, y up, normal +x).
+/// The datums an adaptive point was drawn on before the family had reference planes, the definition's own then: now the
+/// family's datum planes, whose frames are the ones these had (Ref. Level the family's xy; Center (Front/Back) x along +x,
+/// y up, normal -y; Center (Left/Right) x along +y, y up, normal +x).
 #[derive(Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum OldDatum {
@@ -171,7 +171,7 @@ enum OldDatum {
     LeftRight,
 }
 /// A World point's work plane as a file gives it: a plane (`{"plane": guid}`, `{"line": guid, "face": …}`), or a datum's name
-/// from before the family had planes (the adaptive arm of FORMAT 18 to 20).
+/// from before the family had planes.
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum PlaneIn {
@@ -241,9 +241,9 @@ pub enum Host {
         #[serde(default)]
         frame: Frame,
         /// The family's plane it was drawn on, its Work Plane (none from before work planes): `{"plane": guid}` or
-        /// `{"line": guid, "face": …}`, as a form's `host`. A file of 18 or 19 named one of three datums of the definition's
-        /// own, `"datum": "level" | "front_back" | "left_right"`, which reads as the family's datum plane of the same frame
-        /// (`plane_or_datum`).
+        /// `{"line": guid, "face": …}`, as a form's `host`. Before the family had reference planes, a point named one of three
+        /// datums of the definition's own, `"datum": "level" | "front_back" | "left_right"`, which reads as the family's datum
+        /// plane of the same frame (`plane_or_datum`).
         #[serde(default, alias = "datum", deserialize_with = "plane_or_datum", skip_serializing_if = "Option::is_none")]
         plane: Option<PlaneRef>,
     },
