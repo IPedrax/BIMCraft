@@ -58,29 +58,36 @@ fn the_start_page_offers_new_and_open_and_says_where_the_source_is() {
 }
 
 #[test]
-fn ctrl_d_and_the_back_arrow_go_between_the_start_page_and_the_project() {
+fn ctrl_u_and_the_back_arrow_go_between_the_start_page_and_the_project() {
     let dir = tempfile::tempdir().unwrap();
     let mut h = home(dir.path(), &[]);
     // Opened on no project, there is nothing behind it to go back to.
-    h.key_press_modifiers(Modifiers::COMMAND, Key::D);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::U);
     h.run();
     assert!(h.state().home.shown);
     assert!(h.query_by_label("Back").is_none());
     press(&mut h, "New Project");
     h.state_mut().run("wall", json!({"points": [[0, 0], [3000, 0]]}));
+    // Ctrl+D is free: it no longer opens the start page.
     h.key_press_modifiers(Modifiers::COMMAND, Key::D);
     h.run();
-    assert!(h.state().home.shown, "Ctrl+D brings it up over the project");
+    assert!(!h.state().home.shown, "Ctrl+D is free");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::U);
+    h.run();
+    assert!(h.state().home.shown, "Ctrl+U brings it up over the project");
     press(&mut h, "Back");
     assert!(!h.state().home.shown, "the arrow at the top goes back");
     press(&mut h, "Home");
-    h.key_press_modifiers(Modifiers::COMMAND, Key::D);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::U);
     h.run();
-    assert!(!h.state().home.shown, "and so does Ctrl+D");
+    assert!(!h.state().home.shown, "and so does Ctrl+U");
     assert_eq!(walls(&h).len(), 1);
-    // In a field the keys are the field's: Ctrl+D there doesn't leave the project.
+    // In a field the keys are the field's: neither Ctrl+U nor Ctrl+D there leaves the project.
     h.get_by_label("View Name").focus();
     h.run();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::U);
+    h.run();
+    assert!(!h.state().home.shown, "typing, Ctrl+U stays in the field");
     h.key_press_modifiers(Modifiers::COMMAND, Key::D);
     h.run();
     assert!(!h.state().home.shown, "typing, Ctrl+D stays in the field");

@@ -1017,6 +1017,16 @@ pub(crate) fn stacked_button(ui: &mut Ui, icon: Icon, label: &str, active: bool,
 /// A small icon button, named for screen readers and tests.
 fn icon_button(ui: &mut Ui, icon: Icon, label: &str) -> Response {
     let label = t(label);
+    icon_button_named(ui, icon, label, label)
+}
+
+/// A small icon button already named for screen readers and tests, whose hover text says more,
+/// as Home does with its key.
+fn icon_button_tip(ui: &mut Ui, icon: Icon, label: &str, tip: String) -> Response {
+    icon_button_named(ui, icon, label, &tip)
+}
+
+fn icon_button_named(ui: &mut Ui, icon: Icon, label: &str, tip: &str) -> Response {
     let (rect, r) = ui.allocate_exact_size(vec2(26.0, 24.0), Sense::click());
     r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
     let (ink, hover) = style::icon_inks();
@@ -1027,7 +1037,7 @@ fn icon_button(ui: &mut Ui, icon: Icon, label: &str) -> Response {
         ui.painter().rect_stroke(rect, 6.0, style::focus_ring(), StrokeKind::Inside);
     }
     icons::paint(ui.painter(), icon, Rect::from_center_size(rect.center(), vec2(18.0, 18.0)), ink);
-    r.on_hover_text(label)
+    r.on_hover_text(tip)
 }
 
 /// An undo step as Undo's list names it: what it made (Create Walls) or took away (Delete Door), or else its command.
@@ -1848,7 +1858,7 @@ impl BimApp {
         if ctx.egui_wants_keyboard_input() {
             return;
         }
-        if pressed(Modifiers::COMMAND, Key::D) {
+        if pressed(Modifiers::COMMAND, Key::U) {
             self.toggle_home();
         }
         if self.sketch.is_some() {
@@ -1899,7 +1909,8 @@ impl BimApp {
         if matches!(self.tool, Tool::Component | Tool::Fixture(_)) && pressed(Modifiers::NONE, Key::Space) {
             self.component_angle = (self.component_angle + 90.0) % 360.0;
         }
-        if pressed(Modifiers::NONE, Key::F8) || pressed(Modifiers::NONE, Key::F11) {
+        // F8 is the one function key for the guides. F11 is free: the system may use it for full screen.
+        if pressed(Modifiers::NONE, Key::F8) {
             self.toggle_alignment_guides();
         }
         let typed: String = ctx.input(|i| {
@@ -3076,7 +3087,8 @@ impl BimApp {
         let ctx = ui.ctx().clone();
         let row = ui
             .horizontal(|ui| {
-                if icon_button(ui, Icon::Home, "Home").clicked() {
+                let cmd = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl+" };
+                if icon_button_tip(ui, Icon::Home, t("Home"), tf("Home ({})", &[cmd])).clicked() {
                     self.toggle_home();
                 }
                 let file = egui::Button::new(RichText::new(t("File")).color(pal().app_bar_text)).frame(false).min_size(vec2(44.0, 24.0));

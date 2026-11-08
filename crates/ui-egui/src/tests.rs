@@ -4105,6 +4105,9 @@ fn grids_drawn_near_alignment_guide_snap_to_other_grids_reference_points() {
 fn shortcut_toggles_alignment_guides() {
     let mut h = app("");
     assert!(h.state().snaps.alignment_guides);
+    // F11 is free now: only F8, and the legacy two-letter sequences, move the guides.
+    key(&mut h, Key::F11);
+    assert!(h.state().snaps.alignment_guides, "F11 no longer toggles the guides");
     key(&mut h, Key::F8);
     assert!(!h.state().snaps.alignment_guides);
     key(&mut h, Key::F8);
