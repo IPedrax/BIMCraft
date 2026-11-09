@@ -46,6 +46,7 @@ mod objectstyles;
 mod orbit;
 mod paper;
 mod phasing;
+mod plugins;
 mod popup;
 mod presets;
 mod properties;
@@ -64,6 +65,7 @@ mod shape;
 pub mod shortcuts;
 mod sketch;
 mod sketch3d;
+pub mod spacemouse;
 mod standards;
 mod start;
 mod structure;
@@ -303,6 +305,28 @@ enum Tab {
     Manage,
     Modify,
     Context,
+    /// A tab a plugin declared, by its place in [`BimApp::plugin_tabs`].
+    Plugin(usize),
+}
+
+/// A key for the tab, for the frame data egui keeps between frames: a plain sort in reading order.
+fn tab_key(tab: Tab) -> u64 {
+    match tab {
+        Tab::Architecture => 0,
+        Tab::Structure => 1,
+        Tab::Plumbing => 2,
+        Tab::Electrical => 3,
+        Tab::Lightning => 4,
+        Tab::Data => 5,
+        Tab::Insert => 6,
+        Tab::Annotate => 7,
+        Tab::Massing => 8,
+        Tab::View => 9,
+        Tab::Manage => 10,
+        Tab::Modify => 11,
+        Tab::Context => 12,
+        Tab::Plugin(i) => 100 + i as u64,
+    }
 }
 
 /// A step that would drop unsaved changes, waiting on the user.
@@ -738,7 +762,7 @@ pub struct BimApp {
     object_styles_dialog: Option<objectstyles::ObjectStylesDialog>,
     /// Manage > Line Styles, while open.
     line_styles_dialog: Option<linestyles::LineStylesDialog>,
-    /// Manage > Title Blocks, while open.
+    /// View > Title Blocks, while open.
     title_blocks_dialog: Option<titleblocks::TitleBlocksDialog>,
     fill_patterns_dialog: Option<fillpatterns::FillPatternsDialog>,
     /// Sketch mode: the lines of an outline being drawn, until Finish or Cancel.
@@ -750,6 +774,18 @@ pub struct BimApp {
     mode_width: f32,
     /// Manage > Technical Standards, while open.
     standards_dialog: Option<standards::StandardsDialog>,
+    /// The plugins of the user's folder, the tabs they put on the ribbon, and the Plugins window while it is open.
+    pub(crate) plugins: bimcraft_plugin::Plugins,
+    pub(crate) plugin_tabs: Vec<bimcraft_plugin::RibbonTab>,
+    pub(crate) plugins_dialog: bool,
+    /// A report a plugin's function asked the window to show, while it is open.
+    pub(crate) plugin_report: Option<plugins::PluginReport>,
+    /// A plugin's function whose path the user is choosing in the system's dialog: its command, and the parameters with
+    /// the path left to set. Running a function is one click on the ribbon, and a function that needs a file asks for
+    /// it there.
+    pub(crate) plugin_pick: Option<(String, serde_json::Map<String, serde_json::Value>)>,
+    /// The folder being read on a thread of its own, so the first frame isn't kept waiting by it.
+    plugins_job: Option<std::sync::mpsc::Receiver<bimcraft_plugin::Plugins>>,
     /// Manage > Electrical Settings, while open.
     electrical_dialog: Option<electrical::ElectricalDialog>,
     options_dialog: Option<phasing::OptionsDialog>,
@@ -784,6 +820,8 @@ pub struct BimApp {
     styled: bool,
     /// The updater, which the desktop app attaches: a window starts without one, and so never phones home.
     pub updates: Option<bimcraft_update::Updater>,
+    /// The 3D mouse's reader, which the desktop app attaches: a window starts without one, so a test never opens a device.
+    pub space_mouse: Option<spacemouse::SpaceMouse>,
     /// The reader of Revit files, which the desktop app attaches (`bimcraft-rvt` is Apache-2.0 only, so this crate never depends on
     /// it): a window starts without one, so it offers no `.rvt` and a test never reads a real one.
     pub revit: Option<revit::Importer>,
@@ -837,21 +875,80 @@ fn top_params(m: &Model, level: Id, top: Option<Option<Id>>, height: &str) -> Re
 /// A ribbon button: an icon over its label, tinted while its tool is on; as wide as its label, which breaks over two lines
 /// when one would make it wider than `WIDE`.
 fn big_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
+    ribbon_button(ui, icon, label, active, tip, true)
+}
+
+/// A ribbon button whose label is a plugin's data: it isn't translated, as its manifest wrote it, and it has no icon
+/// (icons come later, from a limited set of glyphs in the manifest).
+fn plugin_button(ui: &mut Ui, label: &str, tip: &str) -> Response {
+    const WIDE: f32 = 78.0;
+    if ribbon::left_out(label) {
+        return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
+    }
+    if ribbon::listing() {
+        return plugin_row(ui, label, tip);
+    }
+    if let Some(r) = ribbon::handed_over(ui) {
+        return r;
+    }
+    let (label, tip) = (label.to_string(), t(tip));
+    let font = FontId::proportional(12.0);
+    let wide = |s: &str| ui.painter().layout_no_wrap(s.to_string(), font.clone(), pal().text).size().x;
+    let one = wide(&label);
+    let lines: Vec<String> = match label.char_indices().filter(|(_, c)| *c == ' ').min_by_key(|(i, _)| i.abs_diff(label.len() / 2)) {
+        Some((at, _)) if one + 12.0 > WIDE => vec![label[..at].to_string(), label[at + 1..].to_string()],
+        _ => vec![label.clone()],
+    };
+    let width = lines.iter().map(|l| wide(l)).fold(0.0, f32::max) + 12.0;
+    let (rect, r) = ui.allocate_exact_size(vec2(width.max(54.0), 60.0), Sense::click());
+    let enabled = ui.is_enabled();
+    r.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, false, &label));
+    let (fill, stroke, ink) = match r.hovered() && enabled {
+        true => (pal().hover_fill, Stroke::new(1.0, pal().hover), pal().text),
+        false => (Color32::TRANSPARENT, Stroke::NONE, if enabled { pal().text } else { pal().muted.gamma_multiply(0.6) }),
+    };
+    let stroke = if r.has_focus() { style::focus_ring() } else { stroke };
+    ui.painter().rect(rect, 6.0, fill, stroke, StrokeKind::Inside);
+    let top = rect.center_top() + vec2(0.0, 30.0 - 6.5 * (lines.len().saturating_sub(1)) as f32);
+    for (i, line) in lines.iter().enumerate() {
+        ui.painter().text(top + vec2(0.0, 13.0 * i as f32), Align2::CENTER_CENTER, line, font.clone(), ink);
+    }
+    r.on_hover_text(tip)
+}
+
+/// A plugin's button in its panel's list: its row is text alone, as its ribbon button has no icon.
+fn plugin_row(ui: &mut Ui, label: &str, tip: &str) -> Response {
+    let width = if ribbon::in_palette() { ui.available_width() } else { ui.available_width().max(200.0) };
+    let (rect, r) = ui.allocate_exact_size(vec2(width, 30.0), Sense::click());
+    let enabled = ui.is_enabled();
+    r.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, false, label));
+    let (fill, ink) = match r.hovered() && enabled {
+        true => (pal().hover_fill, pal().text),
+        false => (Color32::TRANSPARENT, if enabled { pal().text } else { pal().muted.gamma_multiply(0.6) }),
+    };
+    let stroke = if r.has_focus() { style::focus_ring() } else { Stroke::NONE };
+    let p = ui.painter();
+    p.rect(rect, 4.0, fill, stroke, StrokeKind::Inside);
+    p.text(rect.left_center() + vec2(10.0, 0.0), Align2::LEFT_CENTER, label, FontId::proportional(12.5), ink);
+    r.on_hover_text(t(tip))
+}
+
+fn ribbon_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, translate: bool) -> Response {
     const WIDE: f32 = 78.0;
     if ribbon::left_out(label) {
         return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
     }
     let name = label;
     if ribbon::listing() {
-        return list_row(ui, icon, label, active, tip);
+        return list_row_in(ui, icon, label, active, tip, translate);
     }
     if let Some(r) = ribbon::handed_over(ui) {
         return r;
     }
-    let (label, tip) = (t(label), t(tip));
+    let (label, tip) = if translate { (t(label).to_string(), t(tip)) } else { (label.to_string(), t(tip)) };
     let font = FontId::proportional(12.0);
     let wide = |s: &str| ui.painter().layout_no_wrap(s.to_string(), font.clone(), pal().text).size().x;
-    let one = wide(label);
+    let one = wide(&label);
     // The space nearest the middle, for a label too wide for one line.
     let lines: Vec<String> = match label.char_indices().filter(|(_, c)| *c == ' ').min_by_key(|(i, _)| i.abs_diff(label.len() / 2)) {
         Some((at, _)) if one + 12.0 > WIDE => vec![label[..at].to_string(), label[at + 1..].to_string()],
@@ -860,7 +957,7 @@ fn big_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> 
     let width = lines.iter().map(|l| wide(l)).fold(0.0, f32::max) + 12.0;
     let (rect, r) = ui.allocate_exact_size(vec2(width.max(54.0), 60.0), Sense::click());
     let enabled = ui.is_enabled();
-    r.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, active, label));
+    r.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, active, &label));
     let (fill, stroke, ink) = match (active, r.hovered() && enabled) {
         (true, _) => (pal().select_fill, Stroke::new(1.0, pal().accent), pal().accent_ink),
         (false, true) => (pal().hover_fill, Stroke::new(1.0, pal().hover), pal().icon),
@@ -917,16 +1014,20 @@ fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -
 
 /// A ribbon button in its panel's list: a row of its icon and its name.
 fn list_row(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
+    list_row_in(ui, icon, label, active, tip, true)
+}
+
+fn list_row_in(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, translate: bool) -> Response {
     if ribbon::left_out(label) {
         return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
     }
     let name = label;
-    let (label, tip) = (t(label), t(tip));
+    let (label, tip) = if translate { (t(label).to_string(), t(tip)) } else { (label.to_string(), t(tip)) };
     // A panel's list is at least a menu wide; the Tools palette's rows are as wide as its column.
     let width = if ribbon::in_palette() { ui.available_width() } else { ui.available_width().max(200.0) };
     let (rect, r) = ui.allocate_exact_size(vec2(width, 30.0), Sense::click());
     let enabled = ui.is_enabled();
-    r.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, active, label));
+    r.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, active, &label));
     let fill = match (active, r.hovered() && enabled) {
         (true, _) => pal().select_fill,
         (false, true) => pal().hover_fill,
@@ -1044,7 +1145,7 @@ fn step_name(st: &engine::Step) -> String {
         ([], removed) if !removed.is_empty() => one(removed).map(|c| tf("Delete {}", &[&c])),
         _ => None,
     };
-    named.unwrap_or_else(|| t(st.label).to_string())
+    named.unwrap_or_else(|| t(&st.label).to_string())
 }
 
 /// A tab, of the ribbon or of a view. Contextual tabs are green, as Revit's are.
@@ -1308,6 +1409,12 @@ impl BimApp {
             sketch: None,
             mode_width: 0.0,
             standards_dialog: None,
+            plugins: bimcraft_plugin::Plugins::empty(),
+            plugin_tabs: Vec::new(),
+            plugins_dialog: false,
+            plugin_report: None,
+            plugin_pick: None,
+            plugins_job: None,
             electrical_dialog: None,
             options_dialog: None,
             purge_dialog: None,
@@ -1329,6 +1436,7 @@ impl BimApp {
             title: String::new(),
             styled: false,
             updates: None,
+            space_mouse: None,
             revit: None,
             control: None,
             agents: control::Agents::default(),
@@ -1532,6 +1640,7 @@ impl BimApp {
         self.tidy();
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
+        self.poll_plugins(&ctx);
         self.poll_autosave(&ctx);
         self.keys(&ctx);
         self.os_requests(&ctx);
@@ -1810,6 +1919,7 @@ impl BimApp {
             || self.ids_of_selection.is_some()
             || self.selection_filter.is_some()
             || self.settings_page.is_some()
+            || self.plugins_dialog
             || self.find.is_some()
             || self.new_schedule.is_some()
             || self.show_shortcuts
@@ -2997,6 +3107,8 @@ impl BimApp {
         (fresh.settings_path, fresh.settings_kept) = (self.settings_path.take(), self.settings_kept.take());
         fresh.window = std::mem::take(&mut self.window);
         (fresh.updates, fresh.revit) = (self.updates.take(), self.revit.take());
+        // The 3D mouse's reader runs for the window, not the project: without it the cap would move nothing once a project is open.
+        fresh.space_mouse = self.space_mouse.take();
         fresh.control = self.control.take();
         fresh.agents = std::mem::take(&mut self.agents);
         fresh.opens = std::mem::take(&mut self.opens);
@@ -3004,6 +3116,13 @@ impl BimApp {
         fresh.autosave = std::mem::take(&mut self.autosave);
         fresh.card = std::mem::take(&mut self.card);
         fresh.home = self.home.put_away();
+        // A new or opened project keeps the plugins and their tabs: they are the user's folder, not the project's, and the
+        // session's external commands were already registered. Re-registering puts them back if the project replaced them.
+        (fresh.plugins, fresh.plugin_tabs) = (std::mem::take(&mut self.plugins), std::mem::take(&mut self.plugin_tabs));
+        fresh.plugins_job = self.plugins_job.take();
+        fresh.plugins_dialog = self.plugins_dialog;
+        fresh.plugins.register(&mut fresh.session);
+        fresh.plugin_tabs = fresh.plugins.tabs();
         *self = fresh;
     }
 
@@ -3217,9 +3336,10 @@ impl BimApp {
                 // The tab that has just been picked (or a contextual tab that has just come) is brought into view: the row
                 // scrolls in a window too narrow for it, and its last tabs are out of sight.
                 let seen = UiId::new("ribbon-tab-seen");
-                let now = self.tab as u8;
-                let changed = ui.ctx().data(|d| d.get_temp::<u8>(seen)) != Some(now);
+                let now = tab_key(self.tab);
+                let changed = ui.ctx().data(|d| d.get_temp::<u64>(seen)) != Some(now);
                 ui.ctx().data_mut(|d| d.insert_temp(seen, now));
+                let plugin_tabs: Vec<String> = self.plugin_tabs.iter().map(|p| self.plugin_tab_name(p)).collect();
                 ScrollArea::horizontal()
                     .id_salt("ribbon-tabs")
                     .max_width(room)
@@ -3228,6 +3348,15 @@ impl BimApp {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 2.0;
                             for (tab, label, _) in TABS {
+                                let r = tab_button(ui, label, self.tab == tab, false);
+                                if changed && self.tab == tab {
+                                    r.scroll_to_me(None);
+                                }
+                                self.ribbon_tab(&r, tab);
+                            }
+                            // The plugins' tabs come after BIMCraft's, each as its manifest declared it.
+                            for (i, label) in plugin_tabs.iter().enumerate() {
+                                let tab = Tab::Plugin(i);
                                 let r = tab_button(ui, label, self.tab == tab, false);
                                 if changed && self.tab == tab {
                                     r.scroll_to_me(None);
@@ -3318,6 +3447,7 @@ impl BimApp {
             Tab::View => self.view_tab(ui),
             Tab::Manage => self.manage_tab(ui),
             Tab::Modify | Tab::Context => self.modify_tab(ui),
+            Tab::Plugin(i) => self.plugin_tab(ui, i),
         }
     }
 
@@ -3337,6 +3467,13 @@ impl BimApp {
                 for (tab, label, icon) in TABS {
                     if rail_button(ui, icon, label, tab == open).clicked() {
                         self.tab = tab;
+                    }
+                }
+                // The plugins' tabs come after BIMCraft's, scrolling with them.
+                let plugin_tabs: Vec<String> = self.plugin_tabs.iter().map(|p| self.plugin_tab_name(p)).collect();
+                for (i, label) in plugin_tabs.iter().enumerate() {
+                    if rail_button(ui, Icon::Code, label, Tab::Plugin(i) == open).clicked() {
+                        self.tab = Tab::Plugin(i);
                     }
                 }
             });
@@ -3361,9 +3498,13 @@ impl BimApp {
                 if open != Tab::Modify || context.is_none() {
                     ui.add_space(8.0);
                     // Painted: the rail's button already names it for screen readers.
-                    let label = TABS.iter().find(|(tab, ..)| *tab == open).map_or("", |(_, label, _)| label);
+                    let (label, plugin) = match open {
+                        Tab::Plugin(i) => (self.plugin_tabs.get(i).map(|t| self.plugin_tab_name(t)).unwrap_or_default(), true),
+                        tab => (TABS.iter().find(|(t, ..)| *t == tab).map_or("", |(_, label, _)| *label).to_string(), false),
+                    };
+                    let label = if plugin { label } else { t(&label).to_string() };
                     let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 18.0), Sense::hover());
-                    ui.painter().text(r.left_center(), Align2::LEFT_CENTER, t(label), style::semibold(13.0), pal().text);
+                    ui.painter().text(r.left_center(), Align2::LEFT_CENTER, label, style::semibold(13.0), pal().text);
                     ribbon::rows(ui, |ui| self.tab_content(ui, open));
                 }
                 ribbon::skip_select(false);
@@ -3376,9 +3517,9 @@ impl BimApp {
         Frame::new().inner_margin(Margin::symmetric(6, 4)).show(ui, |ui| {
             // A tab wider than the window folds its last panels; one still too wide scrolls sideways, each tab where it was
             // left.
-            let key = UiId::new(("ribbon-widths", self.tab as u8));
+            let key = UiId::new(("ribbon-widths", tab_key(self.tab)));
             let room = ui.available_width();
-            egui::ScrollArea::horizontal().id_salt(self.tab as u8).auto_shrink([false, true]).show(ui, |ui| {
+            egui::ScrollArea::horizontal().id_salt(tab_key(self.tab)).auto_shrink([false, true]).show(ui, |ui| {
                 ribbon::tab(ui, key, room, |ui| {
                     ui.horizontal(|ui| self.tab_content(ui, self.tab));
                 });
@@ -3877,6 +4018,10 @@ impl BimApp {
             {
                 self.open_sheet(Sheet::Paper(id));
             }
+            let tip = msg!("Title Blocks: your own, read from a DXF or typed, with fields each sheet or the whole project fills in");
+            if big_button(ui, Icon::Sheet, "Title Blocks", self.title_blocks_dialog.is_some(), tip).clicked() {
+                self.open_title_blocks(None);
+            }
             let sheet = match self.sheet {
                 Sheet::Paper(id) => Some(id),
                 _ => None,
@@ -3971,6 +4116,11 @@ impl BimApp {
             if big_button(ui, Icon::Favorite, "Favorites", self.favorites_dialog.is_some(), tip).clicked() {
                 self.open_favorites();
             }
+            let tip =
+                msg!("Plugins: the WASM extensions in your plugin folder, what became of each, their log, and switching them on and off");
+            if big_button(ui, Icon::Code, "Plugins", self.plugins_dialog, tip).clicked() {
+                self.plugins_dialog = true;
+            }
             let tip = msg!("Project Parameters: values of your own each element of their categories holds, for schedules and IFC");
             if big_button(ui, Icon::Parameters, "Project Parameters", self.parameters_dialog.is_some(), tip).clicked() {
                 self.parameters_dialog = Some(properties::ParametersDialog::new(&self.session.model));
@@ -4000,10 +4150,6 @@ impl BimApp {
                     self.fill_patterns_dialog = Some(fillpatterns::FillPatternsDialog::new(&self.session.model));
                 }
             });
-            let tip = msg!("Title Blocks: your own, read from a DXF or typed, with fields each sheet or the whole project fills in");
-            if big_button(ui, Icon::Sheet, "Title Blocks", self.title_blocks_dialog.is_some(), tip).clicked() {
-                self.open_title_blocks(None);
-            }
             let tip = msg!(
                 "Purge Unused (PU): take out the types, families and the rest nothing in the project uses; each category keeps a type"
             );
@@ -5124,6 +5270,8 @@ impl BimApp {
         self.selection_filter_window(ctx);
         self.shortcuts_window(ctx);
         self.settings_window(ctx);
+        self.plugins_window(ctx);
+        self.plugin_report_window(ctx);
         self.background_grid_window(ctx);
         self.installing_box(ctx);
         self.importing_box(ctx);

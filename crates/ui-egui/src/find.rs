@@ -14,13 +14,15 @@ use crate::{BimApp, Sheet};
 const MOST: usize = 12;
 
 /// What a row of Find does.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Found {
     /// A tool or a command, by its name in `shortcuts::ACTIONS`.
     Action(&'static str),
     View(Sheet),
     /// A 3D view: the default `{3D}` when none.
     View3D(Option<Id>),
+    /// A function a plugin registered, by its command id (`plugin:<plugin>:<function>`), run as its ribbon button runs it.
+    Plugin(String),
 }
 
 /// Whether `label` has every word of `query` in it, whatever their case. Nothing typed matches nothing.
@@ -51,14 +53,27 @@ pub(crate) fn button(ui: &mut egui::Ui) -> egui::Response {
 
 impl BimApp {
     /// What Find lists for `query`: the tools and commands, then the views, `MOST` at most; each with the shortcut it has.
-    fn find_matches(&self, query: &str) -> Vec<(String, Option<&'static str>, Found)> {
+    pub(crate) fn find_matches(&self, query: &str) -> Vec<(String, Option<&'static str>, Found)> {
         let keys = crate::shortcuts();
         let actions = crate::shortcuts::ACTIONS.iter().map(|a| {
             let key = keys.iter().find(|(_, does)| does == a).map(|(k, _)| *k);
             (t(a).to_string(), key, Found::Action(a))
         });
         let views = self.openable().into_iter().map(|(label, f)| (label, None, f));
-        actions.chain(views).filter(|(label, ..)| matches(label, query)).take(MOST).collect()
+        // The plugins' functions, as their ribbon tabs and the Tools palette list them.
+        let owners = self.plugins.owners();
+        let plugin_commands = self.plugins.plugins.iter().filter(|p| p.status.is_loaded()).flat_map(|p| {
+            p.manifest
+                .functions
+                .iter()
+                .filter_map(|f| {
+                    let id = format!("plugin:{}:{}", p.manifest.id, f.id);
+                    let owner = owners.get(&id)?;
+                    Some((format!("{} · {}", f.label, owner), None, Found::Plugin(id)))
+                })
+                .collect::<Vec<_>>()
+        });
+        actions.chain(plugin_commands).chain(views).filter(|(label, ..)| matches(label, query)).take(MOST).collect()
     }
 
     /// Find, while it's open: a field across the top of the window, and under it what matches.
@@ -82,7 +97,7 @@ impl BimApp {
                         .font(egui::TextStyle::Heading),
                 );
                 if field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                    run = found.first().map(|(.., f)| *f);
+                    run = found.first().map(|(.., f)| f.clone());
                 }
                 field.request_focus();
                 if !found.is_empty() {
@@ -100,7 +115,7 @@ impl BimApp {
                         ui.painter().text(rect.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER, key, font, pal().muted);
                     }
                     if row.clicked() {
-                        run = Some(*f);
+                        run = Some(f.clone());
                     }
                 }
                 if found.is_empty() && !query.trim().is_empty() {
@@ -120,6 +135,10 @@ impl BimApp {
             }
             Some(Found::View(sheet)) => self.open_sheet(sheet),
             Some(Found::View3D(id)) => self.open_3d(id),
+            Some(Found::Plugin(id)) => {
+                let label = self.plugins.owners().get(id.as_str()).cloned().unwrap_or_else(|| id.clone());
+                self.run_plugin_function(&id, label, ctx);
+            }
             None if !close => self.find = Some(query),
             None => {}
         }

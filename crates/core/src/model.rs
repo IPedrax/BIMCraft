@@ -70,11 +70,14 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 18: a project may hold title blocks of its
+/// The version of the project file this build writes, and the newest it reads. 19: a project may hold title blocks of its
 /// own (`title_blocks`, library entries of kind `title-block`) and its values of their fields (`title_values`), and a sheet
-/// may name one (`title_block`) and hold its values of its fields (`fields`); nothing in a file of 17 changes, but a build
-/// that reads up to 17 would leave them out as fields it doesn't know and draw every sheet with the built-in title box, not
-/// say "saved by a newer BIMCraft". 17: a schedule may list several categories
+/// may name one (`title_block`) and hold its values of its fields (`fields`); nothing in a file of 18 changes, but a build
+/// that reads up to 18 would leave them out as fields it doesn't know and draw every sheet with the built-in title box, not
+/// say "saved by a newer BIMCraft". 18: a family's connector may be a `pipe`,
+/// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
+/// the starter fixtures and fittings have them; nothing in a file of 17 changes, but a build that reads up to 17 would answer
+/// such a connector with a serde error ("unknown variant", "missing field `system`"), not "saved by a newer BIMCraft". 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -112,7 +115,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 18;
+pub const FORMAT: u32 = 19;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3246,6 +3249,29 @@ impl Model {
         marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
     }
 
+    /// Component `c`'s connectors, worked out for its type and values, with their place and the way they face in the
+    /// model: mirrored if it is, turned and moved to where it stands (a connector without a place has neither). None for a
+    /// component whose family has none or doesn't work out.
+    pub fn component_connectors(&self, c: &Component) -> Vec<crate::family::PlacedConnector> {
+        let Some(f) = self.families.get(&c.family) else { return Vec::new() };
+        let Ok(connectors) = f.connector_values(&c.type_name, &c.params) else { return Vec::new() };
+        let base = self.elevation(c.level) + c.offset;
+        let (sin, cos) = c.angle.to_radians().sin_cos();
+        let flip = if c.mirrored { -1.0 } else { 1.0 };
+        let turn = |p: [f64; 3]| [p[0] * cos - flip * p[1] * sin, p[0] * sin + flip * p[1] * cos, p[2]];
+        connectors
+            .into_iter()
+            .map(|k| {
+                let at = k.at.map(|p| {
+                    let q = turn(p);
+                    [c.at.0 + q[0], c.at.1 + q[1], base + q[2]]
+                });
+                let dir = k.direction.map(turn);
+                (k, at, dir)
+            })
+            .collect()
+    }
+
     /// Component `c`'s solids in the model: its own, turned and moved to where it stands.
     pub fn component_pieces(&self, c: &Component) -> Vec<Piece> {
         let base = self.elevation(c.level) + c.offset;
@@ -3443,7 +3469,9 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
-        // 17 to 18 (title blocks of the project's own, and their fields' values) has none either: a file of 17 holds none.
+        // 17 to 18 (pipe, data and earthing connectors, a connector's place) has none either: a file of 17's connectors are
+        // a power or a switch one, each with its system, which 18 reads as they were.
+        // 18 to 19 (title blocks of the project's own, and their fields' values) has none either: a file of 18 holds none.
         self.format = FORMAT;
     }
 
@@ -7504,10 +7532,25 @@ fn ccw(ring: &[P2]) -> Vec<P2> {
 }
 
 /// What lies inside `loops` (an outline, then holes in it) and outside `holes`: the outline as it
-/// is, or convex pieces once a hole cuts it.
+/// is, or convex pieces once a hole cuts it: the triangles round the holes (`triangulation::constrained`); or, where that
+/// refuses them or its triangles miss some of the area (a hole over or along the outline's edge), the outline cut by each
+/// hole in turn, which leaves thousands of slivers round finely curved ones.
 fn solid(loops: &[Vec<P2>], holes: &[Vec<P2>]) -> Vec<Vec<P2>> {
     let Some((outline, inner)) = loops.split_first() else { return Vec::new() };
-    inner.iter().chain(holes).fold(vec![outline.clone()], |parts, hole| walls::minus(&parts, hole))
+    let cuts: Vec<Vec<P2>> = inner.iter().chain(holes).cloned().collect();
+    if cuts.is_empty() {
+        return vec![outline.clone()];
+    }
+    if let Ok(t) = crate::triangulation::constrained(outline, &cuts, &[], &[]) {
+        let corner = |i: usize| t.points.get(i).copied().unwrap_or_default();
+        let tris: Vec<Vec<P2>> = t.triangles.iter().map(|k| k.map(corner).to_vec()).collect();
+        let area = |rings: &[Vec<P2>]| rings.iter().map(|r| geom::area(r).abs()).sum::<f64>();
+        let whole = geom::area(outline).abs() - area(&cuts);
+        if (area(&tris) - whole).abs() <= 1.0 + whole.abs() * 1e-9 {
+            return tris;
+        }
+    }
+    cuts.iter().fold(vec![outline.clone()], |parts, hole| walls::minus(&parts, hole))
 }
 
 /// A floor's shape: no more points and lines than it may have, each point finite and in range, inside the outline and in

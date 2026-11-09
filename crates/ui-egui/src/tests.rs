@@ -5711,6 +5711,23 @@ fn the_family_editor_edits_a_family_says_what_wont_build_and_starts_a_new_one_of
 }
 
 #[test]
+fn the_family_editor_shows_a_familys_connectors_and_keeps_them() {
+    let mut h = app(&format!("{BOX}\ncomponent {{\"family\": \"WC\", \"at\": [3000, 3000]}}"));
+    let wc = find(&h, |e| matches!(e, Element::Component(_)));
+    h.state_mut().selection = vec![wc];
+    h.set_size(vec2(1800.0, 900.0));
+    press(&mut h, "Manage");
+    press(&mut h, "Edit Family");
+    press(&mut h, "Connectors");
+    assert!(h.query_by_label_contains("pipe · waste · out · Size 100").is_some(), "the waste outlet, its DN");
+    assert!(h.query_by_label_contains("cold · in").is_some(), "the cistern's cold water");
+    // Applied, the family keeps them as they were.
+    let before = h.state().session.model.families["WC"].connectors.clone();
+    press_near(&mut h, "Apply", "Cancel");
+    assert_eq!(h.state().session.model.families["WC"].connectors, before);
+}
+
+#[test]
 fn the_door_tool_places_the_projects_single_door_of_a_family_and_the_type_selector_offers_both_kinds() {
     let mut h = app(BOX);
     tool(&mut h, "Door");
@@ -5852,6 +5869,7 @@ mod origin;
 mod patterns;
 mod perspective;
 mod planviews;
+mod plugins;
 mod popup;
 mod presets;
 mod profile;
@@ -5865,6 +5883,7 @@ mod shortcuts_kept;
 mod sketch;
 mod sketch3d;
 mod smallest;
+mod spacemouse;
 mod standards;
 mod start;
 mod templates;

@@ -1,4 +1,4 @@
-//! Title blocks of the project's own: Manage > Title Blocks makes and edits them, and a sheet's Properties picks one and
+//! Title blocks of the project's own: View > Title Blocks makes and edits them, and a sheet's Properties picks one and
 //! fills in its sheet fields.
 
 use super::*;
@@ -38,16 +38,16 @@ fn a_sheets_properties_pick_its_title_block_and_fill_in_its_sheet_fields() {
 #[test]
 fn manage_title_blocks_makes_one_and_gives_the_projects_values() {
     let mut h = app(&format!("{BOX}\n{SELO}"));
-    press(&mut h, "Manage");
+    press(&mut h, "View");
     press(&mut h, "Title Blocks");
-    assert!(h.state().title_blocks_dialog.is_some(), "Manage > Title Blocks opens the dialog");
+    assert!(h.state().title_blocks_dialog.is_some(), "View > Title Blocks opens the dialog");
     // A project field's value, typed in the dialog, is the project's on OK.
     {
         let d = h.state_mut().title_blocks_dialog.as_mut().unwrap();
-        d.set_value("CLIENTE", "Henrique Güths");
+        d.set_value("CLIENTE", "Maria Conceição");
     }
     press_near(&mut h, "Apply", "Cancel");
-    assert_eq!(h.state().session.model.title_values["CLIENTE"], "Henrique Güths");
+    assert_eq!(h.state().session.model.title_values["CLIENTE"], "Maria Conceição");
     // New makes another, the built-in one drawn as one; Add Field gives it a field.
     press(&mut h, "New");
     let m = &h.state().session.model;

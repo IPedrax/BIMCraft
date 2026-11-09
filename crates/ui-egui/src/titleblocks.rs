@@ -1,4 +1,4 @@
-//! Manage > Title Blocks: the project's own title blocks, as Revit's title block families with labels. A list of them (New,
+//! View > Title Blocks: the project's own title blocks, as Revit's title block families with labels. A list of them (New,
 //! Duplicate, Delete, Import DXF…), and the one picked: a preview, filled in as the first sheet that names it fills it in,
 //! its fields (each the project's or each sheet's, with its label, default and, for the project's, its value), its texts,
 //! its lines and its size, all typed. OK and Apply make it with the `title_block` command and give the project's values
@@ -498,7 +498,7 @@ fn selected_text(ui: &mut Ui, d: &mut TitleBlocksDialog) {
 }
 
 impl BimApp {
-    /// Manage > Title Blocks, on `name` or the project's first.
+    /// View > Title Blocks, on `name` or the project's first.
     pub(crate) fn open_title_blocks(&mut self, name: Option<&str>) {
         self.title_blocks_dialog = Some(TitleBlocksDialog::new(&self.session.model, name));
     }
@@ -531,7 +531,7 @@ impl BimApp {
         });
     }
 
-    /// Manage > Title Blocks, while it's open.
+    /// View > Title Blocks, while it's open.
     pub(crate) fn title_blocks_window(&mut self, ctx: &Context) {
         let Some(mut d) = self.title_blocks_dialog.take() else { return };
         let model = std::sync::Arc::clone(&self.session.model);

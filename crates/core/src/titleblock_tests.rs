@@ -69,18 +69,21 @@ fn a_sheet_draws_the_title_block_it_names_in_its_corner_in_place_of_the_built_in
 #[test]
 fn its_fields_are_filled_in_from_the_project_the_sheet_and_the_automatic_ones() {
     let mut s = Session::new();
-    s.execute("new", &json!({"name": "Casa Güths", "language": "pt"})).unwrap();
+    s.execute("new", &json!({"name": "Casa Conceição", "language": "pt"})).unwrap();
     escritorio(&mut s);
     run(&mut s, "sheet", json!({"number": "A102", "name": "Cortes", "title_block": "ESCRITORIO", "fields": {"desenho": "M.S."}}));
     run(&mut s, "sheet", json!({"number": "A101", "name": "Plantas", "title_block": "ESCRITORIO"}));
-    run(&mut s, "title_values", json!({"values": {"CLIENTE": "Henrique Güths"}}));
+    run(&mut s, "title_values", json!({"values": {"CLIENTE": "Maria Conceição"}}));
     let a101 = sheet::title_values(&s.model, sheet_id(&s, "A101"));
     let a102 = sheet::title_values(&s.model, sheet_id(&s, "A102"));
-    assert_eq!(a101["CLIENTE"], "Henrique Güths");
-    assert_eq!(a102["CLIENTE"], "Henrique Güths", "a project field is the same on every sheet");
+    assert_eq!(a101["CLIENTE"], "Maria Conceição");
+    assert_eq!(a102["CLIENTE"], "Maria Conceição", "a project field is the same on every sheet");
     assert_eq!((a101["DESENHO"].as_str(), a102["DESENHO"].as_str()), ("A.B.", "M.S."), "a sheet field is each sheet's, else its default");
     assert_eq!((a101["SHEET_INDEX"].as_str(), a102["SHEET_INDEX"].as_str(), a101["SHEET_COUNT"].as_str()), ("01", "02", "02"));
-    assert_eq!((a101["PROJECT"].as_str(), a101["SHEET_NAME"].as_str(), a101["SHEET_NUMBER"].as_str()), ("Casa Güths", "Plantas", "A101"));
+    assert_eq!(
+        (a101["PROJECT"].as_str(), a101["SHEET_NAME"].as_str(), a101["SHEET_NUMBER"].as_str()),
+        ("Casa Conceição", "Plantas", "A101")
+    );
     assert_eq!(a101["DATE"].len(), 10);
     assert_eq!(a101["DATE"].chars().nth(2), Some('/'), "dd/mm/aaaa in Portuguese: {}", a101["DATE"]);
     // An automatic field given a value says that; the project's for every sheet, a sheet's over it.
@@ -94,7 +97,7 @@ fn its_fields_are_filled_in_from_the_project_the_sheet_and_the_automatic_ones() 
     // What `elements` says of a sheet: its fields filled in, and which are its own to give.
     let e = run(&mut s, "elements", json!({"category": "sheet"}));
     let e = e["elements"].as_array().unwrap().iter().find(|e| e["id"] == json!(a102_id)).unwrap().clone();
-    assert_eq!(e["title_values"]["CLIENTE"], "Henrique Güths", "{e}");
+    assert_eq!(e["title_values"]["CLIENTE"], "Maria Conceição", "{e}");
     assert_eq!(e["sheet_fields"], json!(["DESENHO"]));
     // A null clears a project value.
     run(&mut s, "title_values", json!({"values": {"CLIENTE": null}}));
