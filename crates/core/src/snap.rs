@@ -423,6 +423,7 @@ impl<'a> Scene<'a> {
                 Element::Stair(st) if st.level == level && near(&[st.start]) => s.points.push((st.start, Kind::Endpoint, of)),
                 Element::Ramp(r) if r.level == level && near(&[r.start]) => s.points.push((r.start, Kind::Endpoint, of)),
                 Element::Railing(r) if r.level == level => s.points.extend(ring(&r.path)),
+                Element::PropertyLine(pl) if pl.level == level => s.polyline(&pl.points, true, of),
                 Element::CadImport(ci) if ci.level == level => cad_scene(&mut s, m, ci, p, window, look, id),
                 _ => {}
             }

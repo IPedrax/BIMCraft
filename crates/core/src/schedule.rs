@@ -241,6 +241,7 @@ const SHARED: (&str, usize, &[Own]) = (
 /// Each category's own fields, and how many of them, from the first, its schedule shows unless it
 /// chooses.
 const OWN: &[(&str, usize, &[Own])] = &[
+    ("propertyline", 4, &[NAME, LEVEL, AREA, (msg!("Perimeter"), Kind::Length, From::Metres("perimeter_m")), COUNT]),
     (
         "room",
         5,
@@ -520,7 +521,7 @@ pub fn categories() -> Vec<&'static str> {
 
 /// The categories a multi-category schedule lists where it names none: what's built, not rooms, levels and masses.
 pub fn built() -> Vec<&'static str> {
-    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor")).collect()
+    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor" | "propertyline")).collect()
 }
 
 /// The categories multi-category schedule `sc` lists, as elements name theirs.

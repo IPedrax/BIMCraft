@@ -82,6 +82,7 @@ fn found_otherwise(e: &Element) -> bool {
             | Element::Component(_)
             | Element::Room(_)
             | Element::RoomSeparator(_)
+            | Element::PropertyLine(_)
             | Element::Ceiling(_)
             | Element::Text(_)
             | Element::DetailLine(_)

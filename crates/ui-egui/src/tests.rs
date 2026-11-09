@@ -643,6 +643,30 @@ fn rooms_go_where_clicked_and_their_area_follows_the_walls() {
 }
 
 #[test]
+fn property_boundary_can_be_selected_edited_in_properties_and_undone() {
+    let mut h = app(r#"property_line {"name":"Synthetic Plot","points":[[0,0],[6000,0],[6000,4000],[0,4000]]}"#);
+    let plot = ids(&h, "propertyline")[0];
+    click(&mut h, P2(0.0, 2000.0));
+    assert_eq!(h.state().selection, [plot]);
+    type_into(&mut h, "Name", "Renamed Plot");
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, plot, "name"), json!("Renamed Plot"));
+    assert_eq!(field(&h, plot, "area_m2"), json!(24.0));
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(field(&h, plot, "name"), json!("Synthetic Plot"));
+    press(&mut h, "Redo");
+    assert_eq!(field(&h, plot, "name"), json!("Renamed Plot"));
+    type_into(&mut h, "Boundary", "0, 0; 6000, 0; 0, 4000");
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, plot, "area_m2"), json!(12.0));
+    type_into(&mut h, "Boundary", "0, 0; 1, 1");
+    key(&mut h, Key::Enter);
+    assert!(h.state().status.error);
+    assert_eq!(field(&h, plot, "area_m2"), json!(12.0), "invalid boundary edits must leave the plot unchanged");
+}
+
+#[test]
 fn properties_edit_through_modify_and_undo_puts_them_back() {
     let mut h = app(SAMPLE);
     click(&mut h, P2(3000.0, 2000.0));

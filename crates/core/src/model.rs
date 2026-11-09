@@ -213,6 +213,16 @@ pub struct RoomSeparator {
     pub end: P2,
 }
 
+/// A named, simple closed property boundary in a level's plan. Points exclude the repeated closing corner.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PropertyLine {
+    #[serde(default)]
+    pub name: String,
+    pub level: Guid,
+    pub points: Vec<P2>,
+}
+
 /// A reinforcing bar: a round bar of `diameter` mm bent along `path` (mm: x east, y north, z over `level`), of steel `grade`. It
 /// reinforces `host`, a beam, a column, a footing or a floor, and goes with it; a hoop is a bar whose last point is its first.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -2042,6 +2052,7 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? ci.view { f(g) }
             }
             Element::RoomSeparator(rs) => f(& $($m)? rs.level),
+            Element::PropertyLine(pl) => f(& $($m)? pl.level),
             Element::Rebar(rb) => {
                 f(& $($m)? rb.level);
                 if let Some(g) = & $($m)? rb.host { f(g) }
@@ -2066,6 +2077,7 @@ pub enum Element {
     /// A room separation line: it bounds rooms and builds nothing.
     #[serde(rename = "roomseparator")]
     RoomSeparator(RoomSeparator),
+    PropertyLine(PropertyLine),
     Dimension(Dimension),
     /// A dimension in a 3D view, between points or edges of the model.
     Dimension3D(Dimension3D),
@@ -2311,6 +2323,7 @@ impl Element {
             Element::Window(_) => "window",
             Element::Room(_) => "room",
             Element::RoomSeparator(_) => "roomseparator",
+            Element::PropertyLine(_) => "propertyline",
             Element::Rebar(_) => "rebar",
             Element::Dimension(_) => "dimension",
             Element::Dimension3D(_) => "dimension3d",
@@ -4191,6 +4204,7 @@ impl Model {
             Element::Mass(ms) => Some(ms.level),
             Element::Room(r) => Some(r.level),
             Element::RoomSeparator(rs) => Some(rs.level),
+            Element::PropertyLine(pl) => Some(pl.level),
             Element::Rebar(rb) => Some(rb.level),
             Element::Dimension(d) => Some(d.level),
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => Some(c.level),
@@ -5075,6 +5089,7 @@ impl Model {
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => Some(c.at),
             Element::Component(c) => Some(c.at),
             Element::Room(r) => Some(r.point),
+            Element::PropertyLine(pl) => Some(geom::centroid(&pl.points)),
             run_arm!(r) => middle(r.start, r.end),
             Element::Stair(s) => Some(s.start),
             Element::Ramp(r) => Some(r.start),
@@ -6387,6 +6402,15 @@ impl Model {
                 if !grid_names.insert(g.name.as_str()) {
                     return Err(format!("{who}: another grid is already named `{}`", g.name));
                 }
+            }
+            Element::PropertyLine(pl) => {
+                level_ok(pl.level)?;
+                boundary(&who, &pl.points)?;
+                text(&who, "name", &pl.name)?;
+                if pl.name.trim().is_empty() {
+                    return Err(format!("{who}: a property line needs a name"));
+                }
+                crate::site::check(&who, &pl.points)?;
             }
             Element::RoomSeparator(rs) => {
                 level_ok(rs.level)?;

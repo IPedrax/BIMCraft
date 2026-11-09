@@ -742,6 +742,7 @@ fn plan_filter<'a>(
             }
             Element::Room(x) => x.level == level,
             Element::RoomSeparator(x) => x.level == level,
+            Element::PropertyLine(pl) => pl.level == level,
             Element::Rebar(_) => m.level_of(e) == Some(level),
             Element::Ceiling(_) => false,
             // A 3D view's own dimension shows in no plan.
@@ -1121,6 +1122,7 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
             }
             Element::Grid(g) => extent.extend([g.start, g.end]),
             Element::RoomSeparator(rs) if rs.level == level => extent.extend([rs.start, rs.end]),
+            Element::PropertyLine(pl) if pl.level == level => extent.extend(&pl.points),
             Element::Dimension(dm) if m.annotation_in(e, key) => extent.push(dm.at),
             Element::Section(v) | Element::Elevation(v) => extent.extend([v.start, v.end]),
             Element::Tag(t) if m.annotation_in(e, key) => extent.extend(m.anchor(t.host).map(|a| a + t.offset)),
@@ -1193,6 +1195,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::Ramp(r) => ramp(&mut d, m, r, r.level),
         Element::Railing(rl) => d.line(&stairs::railing(m, rl).into_iter().map(|(p, _)| p).collect::<Vec<_>>(), Pen::MEDIUM, INK, false),
         Element::RoomSeparator(rs) => d.line(&[rs.start, rs.end], Pen::PROJECTION, INK, false),
+        Element::PropertyLine(pl) => property_line(&mut d, m, pl),
         Element::Roof(r) => roof(&mut d, m, r),
         Element::Mass(ms) => d.dashed(&ms.boundary, Pen::MEDIUM, MASS, true),
         _ => {}
@@ -1202,6 +1205,44 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
     d.by_category(|_| style);
     d.weigh(|_| annotation);
     d
+}
+
+/// A bounded dash-dot outline, and its name and area at the area centroid.
+fn property_line(d: &mut Drawing, m: &Model, pl: &crate::model::PropertyLine) {
+    let px: Vec<(f32, f32)> = pl.points.iter().chain(pl.points.first()).map(|p| d.view.px(*p)).collect();
+    let length: f32 = px.windows(2).map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1)).sum();
+    let pattern = [(24.0_f32, true), (5.0, false), (2.0, true), (5.0, false)];
+    if !length.is_finite() || length > 360_000.0 {
+        d.line(&pl.points, BY_CATEGORY, INK, true);
+    } else {
+        let (mut part, mut left) = (0, pattern[0].0);
+        for w in px.windows(2) {
+            let (a, b) = (w[0], w[1]);
+            let len = (b.0 - a.0).hypot(b.1 - a.1);
+            if len <= 0.0 {
+                continue;
+            }
+            let mut at = 0.0;
+            while at < len {
+                let next = (at + left).min(len);
+                if pattern[part].1 {
+                    let p = |t: f32| (a.0 + (b.0 - a.0) * t / len, a.1 + (b.1 - a.1) * t / len);
+                    d.stroke(vec![p(at), p(next)], BY_CATEGORY, INK, None, false);
+                }
+                left -= next - at;
+                at = next;
+                if left <= 0.05 {
+                    part = (part + 1) % pattern.len();
+                    left = pattern[part].0;
+                }
+            }
+        }
+    }
+    let (x, y) = d.view.px(geom::centroid(&pl.points));
+    let height = d.px(10.0);
+    d.text(&pl.name, (x, y - height), height, INK);
+    let (area, unit) = m.units.area(geom::area(&pl.points).abs());
+    d.text(&format!("{area:.2} {unit}"), (x, y + height), height, INK);
 }
 
 /// A reinforcing bar seen from above: its line, with each point once after another, thin; a bar that stands, a dot as thick as it
@@ -2911,6 +2952,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             Element::Stair(st) => stair(&mut d, m, st, level),
             Element::Ramp(r) => ramp(&mut d, m, r, level),
             Element::Railing(rl) if m.level_of(e) == Some(level) => railing(&mut d, m, rl, range.cut),
+            Element::PropertyLine(pl) if pl.level == level => property_line(&mut d, m, pl),
             // A room separation line: a thin line, on its own level's plan only.
             Element::RoomSeparator(rs) if rs.level == level => {
                 let pts = vec![d.view.px(rs.start), d.view.px(rs.end)];

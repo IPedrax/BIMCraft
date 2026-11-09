@@ -115,6 +115,7 @@ pub mod selection;
 mod shape_tests;
 pub mod shared;
 pub mod sheet;
+pub mod site;
 pub mod skeleton;
 pub mod sketch;
 pub mod snap;
