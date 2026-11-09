@@ -20,11 +20,43 @@ fn deflate(bytes: &[u8]) -> Vec<u8> {
 /// A picture as a page holds it: its width and height, its pixels' RGB, and their alpha if any isn't opaque.
 type Picture = (u32, u32, Vec<u8>, Option<Vec<u8>>);
 
-/// A page's content stream: the drawing's pixels mapped onto `paper` mm in points, y up; and its
-/// pictures, RGB and the alpha of one not all there, in the order the stream names them (`/Im0`, `/Im1`…).
+/// Where a drawing lies on its page: `k` paper mm to the drawing's pixel, its pixel (0, 0) `at` mm from the paper's top left
+/// corner, and drawn only inside `clip` (left, top, width, height, mm from the top left) when there is one.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Place {
+    pub k: f64,
+    pub at: P2,
+    pub clip: Option<[f64; 4]>,
+}
+
+/// A page: a drawing on `paper` mm, where `place` puts it (none, at full size from the corner: a sheet on its own paper), and
+/// its title in the file's bookmarks, if it has one.
+pub struct Page<'a> {
+    pub drawing: &'a Drawing,
+    pub paper: P2,
+    pub place: Option<Place>,
+    pub title: Option<String>,
+}
+
+/// Points to the mm.
+const PT: f64 = 72.0 / 25.4;
+
+/// [`contents_at`] at full size from the corner, as the tests read a page.
+#[cfg(test)]
 pub(crate) fn contents(d: &Drawing, paper: P2) -> (String, Vec<Picture>) {
-    let k = 72.0 / 25.4 / d.view.scale;
-    let mut s = format!("{k:.6} 0 0 {:.6} 0 {:.3} cm 1 J 0 j\n", -k, paper.1 * 72.0 / 25.4);
+    contents_at(d, paper, None)
+}
+
+/// A page's content stream: the drawing's pixels mapped onto `paper` mm in points, y up, where `place` puts them (none, at full
+/// size from the corner); and its pictures, RGB and the alpha of one not all there, in the order the stream names them (`/Im0`,
+/// `/Im1`…).
+fn contents_at(d: &Drawing, paper: P2, place: Option<Place>) -> (String, Vec<Picture>) {
+    let Place { k, at, clip } = place.unwrap_or(Place { k: 1.0 / d.view.scale, at: P2(0.0, 0.0), clip: None });
+    let mut s = String::new();
+    if let Some([l, t, w, h]) = clip {
+        let _ = writeln!(s, "q {:.3} {:.3} {:.3} {:.3} re W n", l * PT, (paper.1 - t - h) * PT, w * PT, h * PT);
+    }
+    let _ = writeln!(s, "{:.6} 0 0 {:.6} {:.3} {:.3} cm 1 J 0 j", k * PT, -k * PT, at.0 * PT, (paper.1 - at.1) * PT);
     let color =
         |c: crate::render::Rgb| format!("{:.3} {:.3} {:.3}", f32::from(c.0) / 255.0, f32::from(c.1) / 255.0, f32::from(c.2) / 255.0);
     let path = |s: &mut String, pts: &[(f32, f32)], closed: bool| {
@@ -61,11 +93,26 @@ pub(crate) fn contents(d: &Drawing, paper: P2) -> (String, Vec<Picture>) {
             }
         }
     }
+    if clip.is_some() {
+        s.push_str("Q\n");
+    }
     (s, images)
+}
+
+/// Text as a PDF string any reader shows, whatever its script: UTF-16, big-endian, in hex.
+fn text(s: &str) -> String {
+    let hex: String = s.chars().take(256).collect::<String>().encode_utf16().map(|u| format!("{u:04X}")).collect();
+    format!("<FEFF{hex}>")
 }
 
 /// The pages, each a drawing of `paper` mm, as a PDF file.
 pub fn pdf(pages: &[(&Drawing, P2)]) -> Vec<u8> {
+    let pages: Vec<Page> = pages.iter().map(|(drawing, paper)| Page { drawing, paper: *paper, place: None, title: None }).collect();
+    document(&pages)
+}
+
+/// The pages as a PDF file, with a bookmark for each that has a title.
+pub fn document(pages: &[Page]) -> Vec<u8> {
     let mut out: Vec<u8> = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n".to_vec();
     let mut offsets = vec![0usize; 3];
     let object = |out: &mut Vec<u8>, offsets: &mut Vec<usize>, n: usize, dict: &str, stream: Option<&[u8]>| {
@@ -86,9 +133,13 @@ pub fn pdf(pages: &[(&Drawing, P2)]) -> Vec<u8> {
     // 1 the catalog, 2 the page tree; then a page, its contents and its images, page by page.
     let mut kids = Vec::new();
     let mut next = 3;
-    for (d, paper) in pages {
+    let mut marks = Vec::new();
+    for Page { drawing: d, paper, place, title } in pages {
         let (page, stream) = (next, next + 1);
-        let (text, images) = contents(d, *paper);
+        let (text, images) = contents_at(d, *paper, *place);
+        if let Some(title) = title {
+            marks.push((page, title));
+        }
         // Each image's object, and its mask's after it if it has one.
         let mut numbers = Vec::with_capacity(images.len());
         next = stream + 1;
@@ -123,7 +174,30 @@ pub fn pdf(pages: &[(&Drawing, P2)]) -> Vec<u8> {
             }
         }
     }
-    object(&mut out, &mut offsets, 1, "<< /Type /Catalog /Pages 2 0 R >>", None);
+    // The bookmarks: their root, then one a titled page, each pointing at its page fitted in the window.
+    let outlines = if marks.is_empty() {
+        None
+    } else {
+        let root = next;
+        let first = root + 1;
+        let last = root + marks.len();
+        for (i, (page, title)) in marks.iter().enumerate() {
+            let n = first + i;
+            let prev = if n > first { format!("/Prev {} 0 R ", n - 1) } else { String::new() };
+            let after = if n < last { format!("/Next {} 0 R ", n + 1) } else { String::new() };
+            let dict = format!("<< /Title {} /Parent {root} 0 R {prev}{after}/Dest [{page} 0 R /Fit] >>", text(title));
+            object(&mut out, &mut offsets, n, &dict, None);
+        }
+        let dict = format!("<< /Type /Outlines /First {first} 0 R /Last {last} 0 R /Count {} >>", marks.len());
+        object(&mut out, &mut offsets, root, &dict, None);
+        next = last + 1;
+        Some(root)
+    };
+    let catalog = match outlines {
+        Some(root) => format!("<< /Type /Catalog /Pages 2 0 R /Outlines {root} 0 R /PageMode /UseOutlines >>"),
+        None => "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+    };
+    object(&mut out, &mut offsets, 1, &catalog, None);
     object(&mut out, &mut offsets, 2, &format!("<< /Type /Pages /Kids [{}] /Count {} >>", kids.join(" "), kids.len()), None);
     let start = out.len();
     let mut xref = format!("xref\n0 {next}\n0000000000 65535 f \n");

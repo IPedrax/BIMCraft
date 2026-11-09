@@ -280,6 +280,18 @@ pub struct Drawing {
 }
 
 impl Drawing {
+    /// A copy through the same view, each primitive as `f` makes it, its owners, parts and pens kept: how it prints in other
+    /// colours or other lines.
+    pub fn restyled(&self, f: impl Fn(&Prim) -> Prim) -> Drawing {
+        let mut d = Drawing::new(self.view);
+        d.prims = self.prims.iter().map(f).collect();
+        d.owners = self.owners.clone();
+        d.parts = self.parts.clone();
+        d.pens = self.pens.clone();
+        d.notes = self.notes.clone();
+        d
+    }
+
     /// Nothing yet, through `view`.
     pub fn new(view: View) -> Drawing {
         Drawing {
@@ -2912,7 +2924,7 @@ pub fn section_png_noted(m: &Model, id: impl Key, view: View) -> Result<(Vec<u8>
     let size = tiny_skia::IntSize::from_wh(image.width, image.height).ok_or("the image size is out of range")?;
     let drawing = section_in(m, &w, id, view, annotation(m, id, view), scale_of(m, id), Some(&image));
     let mut pm = Pixmap::from_vec(image.rgba, size).ok_or("the image size is out of range")?;
-    paint(&mut pm, &drawing);
+    paint(&mut pm, &drawing, Transform::identity(), None);
     Ok((pm.encode_png().map_err(|e| e.to_string())?, drawing.notes))
 }
 
@@ -5621,8 +5633,36 @@ pub(crate) fn family_plan(m: &Model, level: Id, view: View) -> Drawing {
 pub fn png(d: &Drawing) -> Result<Vec<u8>, String> {
     let mut pm = Pixmap::new(d.view.width, d.view.height).ok_or("the image size is out of range")?;
     pm.fill(Color::from_rgba8(PAPER.0, PAPER.1, PAPER.2, 255));
-    paint(&mut pm, d);
+    paint(&mut pm, d, Transform::identity(), None);
     pm.encode_png().map_err(|e| e.to_string())
+}
+
+/// The most pixels [`raster`] makes: a page at 1200 dpi on A0 is about 700 million, too many for memory; this is A1 at 600.
+pub const MAX_RASTER_PIXELS: u64 = 300_000_000;
+
+/// `d` painted on white paper `width` × `height` px, each of its pixels `k` of the paper's and the drawing's origin at `(x, y)`
+/// of it, painted only inside `clip` (left, top, width, height, px) when there is one: its pixels as RGBA, row by row, every
+/// one opaque. What a page printed from a drawing at a scale is made of.
+pub fn raster(d: &Drawing, width: u32, height: u32, k: f32, (x, y): (f32, f32), clip: Option<[f32; 4]>) -> Result<Vec<u8>, String> {
+    if u64::from(width) * u64::from(height) > MAX_RASTER_PIXELS {
+        return Err(format!("a picture {width} × {height} px is too large to make; lower its resolution"));
+    }
+    if !(k.is_finite() && k > 0.0 && x.is_finite() && y.is_finite()) {
+        return Err("the drawing's place on the picture is not a number".to_string());
+    }
+    let mut pm = Pixmap::new(width, height).ok_or("the image size is out of range")?;
+    pm.fill(Color::from_rgba8(PAPER.0, PAPER.1, PAPER.2, 255));
+    let mask = match clip {
+        Some([l, t, w, h]) => {
+            let mut mask = tiny_skia::Mask::new(width, height).ok_or("the image size is out of range")?;
+            let rect = tiny_skia::Rect::from_xywh(l, t, w, h).ok_or("the printable area is empty")?;
+            mask.fill_path(&PathBuilder::from_rect(rect), FillRule::Winding, false, Transform::identity());
+            Some(mask)
+        }
+        None => None,
+    };
+    paint(&mut pm, d, Transform::from_row(k, 0.0, 0.0, k, x, y), mask.as_ref());
+    Ok(pm.take())
 }
 
 /// A picture's pixels as a pixmap.
@@ -5631,7 +5671,7 @@ fn picture(width: u32, height: u32, rgba: &[u8]) -> Option<Pixmap> {
 }
 
 /// The display list drawn over what `pm` holds.
-fn paint(pm: &mut Pixmap, d: &Drawing) {
+fn paint(pm: &mut Pixmap, d: &Drawing, t: Transform, clip: Option<&tiny_skia::Mask>) {
     for (i, p) in d.prims.iter().enumerate() {
         let mut paint = Paint { anti_alias: true, ..Paint::default() };
         match p {
@@ -5639,7 +5679,7 @@ fn paint(pm: &mut Pixmap, d: &Drawing) {
                 paint.set_color_rgba8(color.0, color.1, color.2, 255);
                 let rings: Vec<&[(f32, f32)]> = rings.iter().map(Vec::as_slice).collect();
                 if let Some(path) = path(&rings, true) {
-                    pm.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+                    pm.fill_path(&path, &paint, FillRule::Winding, t, clip);
                 }
             }
             Prim::Line { pts, width, color, dash, closed } => {
@@ -5652,19 +5692,19 @@ fn paint(pm: &mut Pixmap, d: &Drawing) {
                     ..Stroke::default()
                 };
                 if let Some(path) = path(&[pts], *closed) {
-                    pm.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+                    pm.stroke_path(&path, &paint, &stroke, t, clip);
                 }
             }
             Prim::Image { at, width, height, rgba, .. } => {
                 if let Some(img) = picture(*width, *height, rgba) {
-                    pm.draw_pixmap(
-                        at.0.round() as i32,
-                        at.1.round() as i32,
-                        img.as_ref(),
-                        &PixmapPaint::default(),
-                        Transform::identity(),
-                        None,
-                    );
+                    // At its own size it lands on whole pixels, as it always has; scaled, it is smoothed.
+                    let (x, y, quality) = if t.is_identity() {
+                        (at.0.round() as i32, at.1.round() as i32, tiny_skia::FilterQuality::Nearest)
+                    } else {
+                        (0, 0, tiny_skia::FilterQuality::Bilinear)
+                    };
+                    let t = if t.is_identity() { t } else { t.pre_translate(at.0, at.1) };
+                    pm.draw_pixmap(x, y, img.as_ref(), &PixmapPaint { quality, ..PixmapPaint::default() }, t, clip);
                 }
             }
         }
