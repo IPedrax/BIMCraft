@@ -3931,7 +3931,7 @@ msgstr "Nome famiglia"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:529
 msgid "Family parameter"
-msgstr "Parametro di famiglia"
+msgstr "Parametro famiglia"
 
 #: crates/ui-egui/src/adaptive_editor.rs:737
 msgid "Family parameter: {}"
