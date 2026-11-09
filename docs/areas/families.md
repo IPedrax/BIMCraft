@@ -187,6 +187,15 @@ in the hover colour (`family::views::part_at_3d`, the one whose surface there is
 on nothing letting the selection go. A reference plane or line selected in a plan or an elevation is drawn into {3D}'s picture in
 the selection's colour, depth tested as the work plane is (`view3d::PlaneMark`, `Image::draw_line`).
 
+A family's connectors (#269) are elements of its document, as Revit's: Create > Connectors places a pipe, power, switch, data
+or earthing one at the origin, selected; the browser lists them under Connectors, and a selected one's Properties type its name,
+domain, flow, size, place and direction (numbers or formulas), and a device's poles, voltage, load, power factor and
+classification. Each with a place is drawn over {3D}, the plans and the elevations as a symbol the same size on screen at any
+zoom (a pipe's a circle, a power, switch or data connector's a square, an earthing one's the earthing sign) and an arrow the
+way it faces (none where it faces the eye), in amber; the one under the pointer lit in the hover colour and a click selecting
+it, before what lies behind it; the selected one in the selection's (`editor/connector_marks.rs`). It is an overlay drawn
+through the view's projection alone, so it is not hidden by the forms in front of it.
+
 Expression-valued form and symbol properties (their numbers, Visible and a form's Material) offer `=` (`editor/association.rs`),
 which opens the Associate Family Parameter an adaptive element's rows open (`adaptive_editor::associate`, through the `Tied`
 trait; `Field::Form` and `Field::Symbol` name the row). It lists family parameters of the property's kind and can create a
@@ -1187,4 +1196,7 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/work_plane.rs`: its Work Plane dialog and Go To View.
 - `editor/options.rs`: the family's options (Family Category and Parameters, Properties' Other).
 - `editor/nested.rs`: its nested families (Load Family, Component, Edit Family). `editor/pivot.rs`: its pivots and grips.
+- `editor/connectors.rs`: a family's connectors in the document, placed from Create > Connectors, listed in the browser, typed
+  in Properties. `editor/connector_marks.rs`: their symbols and arrows over {3D}, plans and elevations, lit and picked (an
+  overlay drawn through a view's projection alone).
 - `editor/lit3d.rs`: {3D}'s selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.

@@ -126,8 +126,6 @@ fn loading_an_edited_document_keeps_connectors_reference_geometry_and_symbols() 
     use bimcraft_core::family::{Face, PlaneRef, RefLine, Reference};
     use bimcraft_core::ids::Guid;
     let mut h = wide("");
-    // A plumbing family's Create tab has a Connectors panel too: wide enough for Family Editor's beside it, unfolded.
-    h.set_size(vec2(1700.0, 800.0));
     let mut f = h.state().session.model.families.values().find(|f| !f.connectors.is_empty()).unwrap().clone();
     let plane_guid = Guid::from_u128(0xdddddddd_dddd_4ddd_8ddd_dddddddddd11);
     let line_guid = Guid::from_u128(0xdddddddd_dddd_4ddd_8ddd_dddddddddd12);
@@ -326,8 +324,7 @@ fn a_load_into_project_refused_stays_said_in_the_document_until_the_draft_change
 fn every_family_comes_back_from_the_document_as_it_went_in() {
     use bimcraft_core::family::{Category, Family, Group, Kind, Parameter};
     let mut h = app("");
-    // The plumbing and electrical families' Create tab has a Connectors panel too: wide enough for Family Editor's beside it.
-    h.set_size(vec2(1700., 1000.));
+    h.set_size(vec2(1600., 1000.));
     let mut table = h.state().session.model.families["Table"].clone();
     table.parameters.extend([
         Parameter {

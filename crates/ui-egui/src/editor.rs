@@ -3,6 +3,7 @@
 //! Every change to the project is a `family` command, so it's checked, and undone, like any other.
 
 mod association;
+pub(crate) mod connector_marks;
 pub(crate) mod connectors;
 pub(crate) mod dimensions;
 pub(crate) mod document;
@@ -490,6 +491,8 @@ pub(crate) struct FamilyEditor {
     pub(crate) symbol: Option<usize>,
     /// The connector selected: Properties show its rows.
     pub(crate) connector: Option<usize>,
+    /// The connector under the pointer in a view, lit as a click would select it.
+    pub(crate) connector_hover: Option<usize>,
     /// What Family Types keeps while it is open: its search, the groups folded, the row selected, its own dialogs.
     types_dialog: types_dialog::TypesDialog,
     /// The type shown in Types and on the preview.
@@ -613,6 +616,7 @@ impl FamilyEditor {
             options: options::OptionsText::of(f),
             symbol: None,
             connector: None,
+            connector_hover: None,
             types_dialog: Default::default(),
             picked: 0,
             look: (AZIMUTH, ELEVATION),

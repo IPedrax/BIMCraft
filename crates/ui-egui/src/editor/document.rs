@@ -479,7 +479,8 @@ impl BimApp {
         }
         match tab {
             DocTab::Create => {
-                ribbon::panel(ui, msg!("Model"), |ui| {
+                // Model and Datum make room first in a narrow window: their last tools are greyed, not in BIMCraft yet.
+                ribbon::yielding(ui, msg!("Model"), |ui| {
                     // A family loaded into this one placed (T6a): in a plan or an elevation, on the view's work plane.
                     let tip =
                         msg!("Component (CM): an instance of a family loaded into this one, placed by a click in a plan or an elevation");
@@ -490,8 +491,7 @@ impl BimApp {
                     }
                     later(ui, Icon::Text, msg!("Model Text"));
                 });
-                ribbon::panel(ui, msg!("Datum"), |ui| {
-                    later(ui, Icon::Level, "Level");
+                ribbon::yielding(ui, msg!("Datum"), |ui| {
                     // Drawn in a plan or an elevation of a family that isn't adaptive, as Revit's (F4).
                     let tip = msg!("Reference Plane (RP): a plane drawn by two clicks in a plan or an elevation");
                     let on = ed.views.drawing.is_some();
@@ -499,6 +499,7 @@ impl BimApp {
                     {
                         ed.reference_plane_tool();
                     }
+                    later(ui, Icon::Level, "Level");
                 });
                 // Drawn in a plan or an elevation of a family that isn't adaptive (F7).
                 if !adaptive {
@@ -757,18 +758,14 @@ impl BimApp {
                 }
             }
         }
-        // Where the family joins a system (#269), as Revit's Connectors panel, before Family Editor: each placed at the family's
-        // origin and selected, its place and what it carries typed in Properties. Only in the families of the categories that
-        // join a system (plumbing, fittings, electrical and data devices, lighting…): the Create tab is full at 1600 pixels,
-        // and one more panel there folds Family Editor's, so a furniture's, a casework's, a door's, a window's and a generic
-        // model's leave it out. Connectors such a family came with are still listed in the browser and shown selected.
-        let joins =
-            !matches!(ed.category, Category::Furniture | Category::Casework | Category::Door | Category::Window | Category::Generic);
-        if tab == DocTab::Create && ed.adaptive.is_none() && joins {
+        // Where the family joins a system (#269), as Revit's Connectors panel, before Family Editor, in every category's family:
+        // each placed at the family's origin and selected, its place and what it carries typed in Properties.
+        if tab == DocTab::Create && ed.adaptive.is_none() {
             connectors_panel(ui, ed);
         }
         let into_host = ed.into_host;
-        ribbon::panel(ui, msg!("Family Editor"), |ui| {
+        // Kept whole while the tab makes room, as Revit's: the family's way back into the project stays in sight.
+        ribbon::kept(ui, msg!("Family Editor"), |ui| {
             // Opened from a family it is nested in, it loads back into that one (T6a), as Revit's does into the open family.
             let tip = if into_host {
                 msg!("Load into Project: the family it is nested in takes it as it is here, and it stays open")
@@ -1240,19 +1237,31 @@ impl BimApp {
             };
             // A click selects the form or the nested instance under it, and on nothing lets the selection go, as in Revit
             // and the project's 3D view; the pointer over one lights it first (T11).
+            // The connectors' symbols are over the picture, so a click near one picks it first (#269).
             if let Some((cam, size)) = drawn
                 && !ed.sketching()
             {
+                let marks = ed.connector_marks();
+                let project = on_pane(cam, size, pane);
                 if response.clicked()
                     && let Some(p) = response.interact_pointer_pos()
                 {
-                    ed.click_3d(&cam, in_picture(p, size));
+                    match super::connector_marks::pick(&marks, &project, p) {
+                        Some(i) => ed.select_connector(i),
+                        None => ed.click_3d(&cam, in_picture(p, size)),
+                    }
                 }
                 let still = !response.dragged() && ui.input(|i| !i.pointer.any_down());
                 let at = response.hover_pos().filter(|_| still).map(|p| (p, in_picture(p, size)));
-                ed.hover_3d(at, &cam);
+                ed.connector_hover = at.and_then(|(p, _)| super::connector_marks::pick(&marks, &project, p));
+                if ed.connector_hover.is_some() {
+                    ed.views.hover3d = None;
+                } else {
+                    ed.hover_3d(at, &cam);
+                }
             } else {
                 ed.views.hover3d = None;
+                ed.connector_hover = None;
             }
             ed.document.preview_size = [pane.width().clamp(64.0, 1600.0) as u32, pane.height().clamp(64.0, 1200.0) as u32];
             // While sketching, a drag drags a picked line's end rather than turn the view, unless none is held.
@@ -1282,6 +1291,13 @@ impl BimApp {
             }
             if let Some(p) = &ed.preview {
                 ui.painter().image(p.tile.id(), pane, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            }
+            // The connectors over it, at their places in the family's axes, through the camera it was drawn with.
+            if let Some((cam, size)) = ed.preview.as_ref().map(|p| (p.cam, p.size)) {
+                let marks = ed.connector_marks();
+                let lit = (crate::style::canvas_pal().accent, crate::style::canvas_pal().hover);
+                let project = on_pane(cam, size, pane);
+                super::connector_marks::paint(&ui.painter_at(pane), &marks, &project, ed.selected_connector(), ed.connector_hover, lit);
             }
             // A form being sketched on its plane, over the picture (F5).
             if let Some((cam, size)) = ed.preview.as_ref().map(|p| (p.cam, p.size))
@@ -1781,8 +1797,17 @@ fn later(ui: &mut Ui, icon: Icon, label: &str) {
     ui.add_enabled_ui(false, |ui| big_button(ui, icon, label, false, msg!("Not in BIMCraft yet")));
 }
 
-/// Create > Connectors: one Connector button whose list places a pipe, power, switch, data or earthing connector. One button,
-/// not Revit's five, so the Create tab still fits a 1600-pixel window.
+/// Where a point of the family's axes shows on `pane`, the {3D} picture `size` pixels wide drawn through `cam` and stretched over
+/// it; none behind the eye.
+fn on_pane(cam: bimcraft_core::view3d::Camera, size: [u32; 2], pane: Rect) -> impl Fn([f64; 3]) -> Option<egui::Pos2> {
+    move |q| {
+        let (x, y, _) = cam.project(q);
+        let (sx, sy) = (pane.width() / size[0].max(1) as f32, pane.height() / size[1].max(1) as f32);
+        (x.is_finite() && y.is_finite()).then(|| pane.min + vec2(x as f32 * sx, y as f32 * sy))
+    }
+}
+
+/// Create > Connectors: one Connector button whose list places a pipe, power, switch, data or earthing connector.
 fn connectors_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
     ribbon::panel(ui, msg!("Connectors"), |ui| {
         let tip = msg!("Connector: a pipe, power, switch, data or earthing connector, where the family joins a system");

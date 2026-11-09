@@ -488,7 +488,10 @@ The ribbon's panels (`ribbon.rs`). A panel's name, under its tools, is a button 
 (`ribbon::list`) draws the same tools again as rows: `ribbon::listing` turns `big_button` and `small_button` into `list_row`. A tab too
 wide for the window makes room from the right, on the last frame's widths (`ribbon::tab`, `ribbon::fits`): a panel hands its last tools
 over to its list (`ribbon::handed_over`: counted, not drawn), and when one tool left isn't room enough it folds to one button that lists
-them all, and the panel before it is asked; what still doesn't fit scrolls sideways. A tool that drops a list of choices down (Project
+them all, and the panel before it is asked; what still doesn't fit scrolls sideways. A panel drawn with `ribbon::yielding` is asked
+first and hands over all but its first tool at most (the family document's Model and Datum, whose last tools are greyed, not in
+BIMCraft yet); one drawn with `ribbon::kept` is asked last, once every other has folded (the family document's Family Editor, Load
+into Project). Once every panel has made what room it can, `ribbon::tab` asks no frame more. A tool that drops a list of choices down (Project
 Units, Schedules, Duplicate View...) goes through `ribbon::choices`, never `Popup::menu` on its own button: egui keeps one
 popup open, so a popup of a row's own closes the panel's list that holds the row, and with it itself. In a list the choices are a
 submenu of the row; a request to open them at once (UN) opens the panel's list when the tool has no button, and waits for a tab's second
