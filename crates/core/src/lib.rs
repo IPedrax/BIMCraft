@@ -52,6 +52,9 @@ pub mod geom;
 #[cfg(test)]
 mod georef_tests;
 pub mod gltf;
+pub mod glue;
+#[cfg(test)]
+mod glue_tests;
 pub mod graphics;
 pub mod groups;
 pub mod hydrant;
@@ -111,6 +114,8 @@ mod room_height_tests;
 #[cfg(test)]
 mod room_of_tests;
 pub mod rooms;
+#[cfg(test)]
+mod run_join_tests;
 pub mod runs;
 pub mod sample;
 pub mod schedule;

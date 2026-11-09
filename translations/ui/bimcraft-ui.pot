@@ -10622,3 +10622,11 @@ msgstr ""
 #: crates/core/src/schedule.rs:211
 msgid "Room Number"
 msgstr ""
+
+#: crates/ui-egui/src/context.rs:70
+msgid "Allow Join"
+msgstr ""
+
+#: crates/ui-egui/src/context.rs:69
+msgid "Disallow Join"
+msgstr ""

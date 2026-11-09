@@ -7,7 +7,30 @@ Structure (`runs.rs`, `structure.rs`; the design for the five discipline tabs is
 (top, centre or bottom) at the start, `end_offset` at the end (level when none), `system` the name of the system it is in: a beam, a
 strip footing, a pipe (Plumbing), and what the other tabs draw (conduits, cable trays, down conductors, data cabling) as further
 `Element` variants over the same struct, as `Door` and `Window` share `Opening`; `model::run_arm!` is the pattern for any of them, so a
-place that treats runs alike names no category, and a new category is a line there. Its type is `Types::runs[category][name]`, a `RunType`
+place that treats runs alike names no category, and a new category is a line there.
+Joins: runs of one category lying flat whose heights overlap meet as walls do — mitred end to end at any angle, one ending on
+another's span stopping at its face (`runs::outline`, `runs::cap`, as `walls::cap` shapes a wall's; `runs::arms` finds the
+neighbours through `walls::Index`'s tiles for runs, or among every run when no index is given), and a strip footing also stops at
+a wall's face (a wall never changes for a run: its own outline knows no runs; the footing's top touching the wall's base is the
+joint). Runs meet strictly in height, as two walls do, but a footing meets a wall by that touch. `join` is each run's and each
+wall's Allow Join, on unless turned off: an unjoined run's ends stay square and it stretches for no one (`relocate` passes it by).
+The outline is the one source for what every view draws — the plan's fill and seams, the seen-below and overhead pictures, the
+snaps' corners, the 3D prism (and a round run's tube, cut by the same end planes, `runs::end_cuts` and `runs::clip_tube`, its
+cap layer first) and the sections — so a joint is the same everywhere. Its line (`start`–`end`) never changes: a join only
+shapes the outline. IFC still writes a run's section swept along its axis (a reader comes back to the line and section it was
+given), so a joint shows in the plan, the 3D view and the sections, not in an exported body. A run's end may be dragged with
+`move {end}`, one run alone, and the runs joined there follow as walls' do (an end on an end goes with it; an end on the span
+slides along its own line onto the crossing). Moved whole, a run's end that lay on a neighbour's line runs on or is cut back
+to their new crossing, as a wall's does, and the neighbour keeps its own axis and only stretches to it — whether the pair is
+two runs of one category or a strip footing meeting a wall. At a corner where a wall and a strip footing end together, with
+another element also ending there, the wall's end and the footing's go together too, as two walls' do; a footing simply
+carrying on under a wall keeps its length, so a wall dragged along its own axis may be shorter than the footing it carries.
+Glue: a strip footing under a wall sticks to it as Revit's does — its line the
+wall's (same direction and place, within `TOL`), its top on the wall's base — and while that holds it rides the wall in plan
+(`relocate` moves it by the wall's own transformation) and keeps its top on the wall's base when the wall's base moves
+(`modify`, `glue::on_base`). Nothing is stored: the condition is read from the geometry (`glue`), so moving the wall or the
+footing away lets go, putting them back glues again, and deleting the wall leaves the footing where it is. Only `stripfooting`
+glues; a sloped one (an `end_offset`) doesn't; a footing changed by hand soon no longer meets its line or its base and lets go. Its type is `Types::runs[category][name]`, a `RunType`
 (`width` across by `depth` deep, or round, in a `material` of the library). The section is square to the axis, so a sloped run is
 `depth / cos θ` deep vertically (`Geom::half`). `runs::Geom` is the one place that knows the geometry (centre line, `footprint`,
 `prism` for a rectangle, `tube` for a round one, `z_span`); plans, sections (a prism is cut like any solid; a tube by the plane

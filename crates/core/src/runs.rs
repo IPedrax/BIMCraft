@@ -3,10 +3,10 @@
 //! tube it makes in 3D. It knows no category but for the table that gives its IFC class and the defaults it takes (may it stand,
 //! where its heights are); the plan, the section, the 3D view, the snaps and IFC ask it.
 
-use crate::geom::P2;
-use crate::model::{Justify, MAX_SLOPE, Model, Run, RunType, TOL, heading};
+use crate::geom::{self, P2};
+use crate::model::{Element, Id, Justify, MAX_SLOPE, Model, Run, RunType, TOL, Wall, heading};
 use crate::view3d::{P3, cross, mul, sub, unit};
-use crate::walls::Plane;
+use crate::walls::{self, Axis, Plane};
 
 /// Sides a round run's tube is drawn with.
 pub const SIDES: usize = 24;
@@ -181,6 +181,386 @@ impl Geom {
     }
 }
 
+/// Whether two runs' heights overlap the way joined runs' must, strictly, as [`crate::walls::stacked`] holds two
+/// walls': a footing whose top sits exactly on a beam's bottom meets it nowhere to mitre, while the touch of a
+/// footing's top with a wall's base is the joint a glued footing makes ([`arms`] allows it of a wall).
+fn overlapped(a: (f64, f64), b: (f64, f64)) -> bool {
+    a.0 < b.1 && b.0 < a.1
+}
+
+/// Whether a run lies flat along the plan — from the run itself, what [`joinable`] says of its worked-out
+/// geometry: upright it would be a column's stance and `end_offset` would make it slope.
+pub(crate) fn flat(r: &Run) -> bool {
+    r.start.dist(r.end) > TOL && (r.end_offset.unwrap_or(r.offset) - r.offset).abs() <= TOL
+}
+
+/// Whether `g` lies flat along the plan: upright it is a column's section, and with an `end_offset` its heights
+/// change along it, so neither can mitre against anything (they draw as they did). A round run joins as its plan
+/// outline shows it — its body is cut by the same planes as the outline (see [`tube_at`]).
+pub(crate) fn joinable(g: &Geom) -> bool {
+    !g.vertical() && (g.b[2] - g.a[2]).abs() <= TOL
+}
+
+/// Run `g`'s arm leaving the node at its start (or with `at_end`, at its end): [`run_arm_at`] from that end.
+fn run_arm(g: &Geom, at_end: bool, mine: bool) -> walls::Arm {
+    run_arm_at(g, if at_end { g.plan_length() } else { 0.0 }, !at_end, mine)
+}
+
+/// Run `g`'s arm leaving the node `s` mm along its line (from its `a`), going on with `forward` (else back along
+/// itself): its way, where its two faces are there — the one left of the way first, as a wall's [`walls::Arm`] has
+/// them — and how wide it is across.
+fn run_arm_at(g: &Geom, s: f64, forward: bool, mine: bool) -> walls::Arm {
+    let (a, b) = (P2(g.a[0], g.a[1]), P2(g.b[0], g.b[1]));
+    let t = (b - a).unit();
+    let n = t.perp() * (g.width / 2.0);
+    let p = a + t * s;
+    let (way, ccw, cw) = if forward { (t, p + n, p - n) } else { (t * -1.0, p - n, p + n) };
+    walls::Arm { mine, way, ccw, cw, centre: p, thick: g.width }
+}
+
+/// A wall's arm at `s` mm along its line, as [`walls::arm`] makes one at an end: left of its way first.
+fn wall_arm_at(m: &Model, w: &Wall, s: f64, forward: bool, mine: bool) -> walls::Arm {
+    let axis = Axis::of(w);
+    let (ext, int) = walls::faces(m, w);
+    let t = axis.tangent(s);
+    let (way, ccw, cw) = if forward { (t, ext, int) } else { (t * -1.0, int, ext) };
+    walls::Arm { mine, way, ccw: axis.at(s, ccw), cw: axis.at(s, cw), centre: axis.at(s, (ext + int) / 2.0), thick: ext - int }
+}
+
+/// How far along `g` the node lies where its body takes it: over [`TOL`] from either end and within its half
+/// width across; none, the node is beside it or past its ends.
+fn lying_on(g: &Geom, node: P2) -> Option<f64> {
+    let (a, b) = (P2(g.a[0], g.a[1]), P2(g.b[0], g.b[1]));
+    let t = (b - a).unit();
+    let s = (node - a).dot(t);
+    let across = (node - a).dot(t.perp());
+    (s > TOL && s < g.plan_length() - TOL && across.abs() <= g.width / 2.0 + TOL).then_some(s)
+}
+
+/// Run `id`'s arms round the node at its start (or with `at_end`, at its end), its own first, then those of the
+/// runs of its own category that end there or that it ends on (or that its node lies on), and — of a strip footing
+/// — of the walls it ends on, round the node counter-clockwise; and whether it ends ON one, which fills the node
+/// past its own end. Runs meet only where their heights overlap (a footing meets a wall by its top touching the
+/// wall's base), only when both join (`join`), and only runs lying flat. Candidates come through `index` when there
+/// is one, else from every element of the model — the neighbours a plan of thousands of runs would cost O(n²).
+fn arms(m: &Model, id: Id, at_end: bool, g: &Geom, index: Option<&walls::Index>) -> (Vec<walls::Arm>, bool) {
+    let Some(e) = m.elements.get(id) else { return (Vec::new(), false) };
+    let mut arms = vec![run_arm(g, at_end, true)];
+    let mut through = false;
+    // An element that refuses to join, or doesn't lie flat, meets nothing: its own square end is its whole cap.
+    if !e.run().is_some_and(|r| r.join) || !joinable(g) {
+        return (arms, false);
+    }
+    let category = e.category();
+    let node = if at_end { P2(g.b[0], g.b[1]) } else { P2(g.a[0], g.a[1]) };
+    let (lo, hi) = g.z_span();
+    // The runs near the node: through the tile index when there is one, else every run, kept only those whose
+    // bodies reach within half a width of the node.
+    let near: Vec<(Id, &Element)> = match index {
+        Some(index) => index.runs_near(node, lo, hi).into_iter().filter_map(|oid| Some((oid, m.elements.get(oid)?))).collect(),
+        None => m
+            .elements
+            .iter()
+            .filter(|(oid, oe)| **oid != id && oe.run().is_some())
+            .filter_map(|(oid, oe)| {
+                let og = m.run_geom(oe)?;
+                let (a, b) = (P2(og.a[0], og.a[1]), P2(og.b[0], og.b[1]));
+                (geom::dist_to_segment(node, a, b) <= og.width / 2.0 + TOL).then_some((*oid, oe))
+            })
+            .collect(),
+    };
+    for &(other, o) in &near {
+        if other == id {
+            continue;
+        }
+        let (Some(oe), Some(og)) = (o.run(), m.run_geom(o)) else { continue };
+        if !oe.join || o.category() != category || !joinable(&og) {
+            continue;
+        }
+        if !overlapped((lo, hi), og.z_span()) {
+            continue;
+        }
+        let (oa, ob) = (P2(og.a[0], og.a[1]), P2(og.b[0], og.b[1]));
+        if oa.dist(node) <= TOL {
+            arms.push(run_arm(&og, false, false));
+        } else if ob.dist(node) <= TOL {
+            arms.push(run_arm(&og, true, false));
+        } else if let Some(s) = lying_on(&og, node) {
+            // Ending on it: it runs on both ways from where the node meets it, and fills the node.
+            arms.push(run_arm_at(&og, s, true, false));
+            arms.push(run_arm_at(&og, s, false, false));
+            through = true;
+        }
+    }
+    // A strip footing ends on walls: they stop it at their faces and are never changed by it — the walls' own
+    // outlines know nothing of runs. Its top touching the wall's base is enough: that is how a footing meets the
+    // wall it carries.
+    if category == "stripfooting" {
+        // The query asks the bands a touch falls in: a footing's top exactly on the wall's base shares no
+        // band with it, and the tile bands would leave the wall out before the exact check below could
+        // allow it. That check is still the one that decides, with the touch allowed.
+        let at = ([node.0, node.1, node.0, node.1], lo - TOL, hi + TOL);
+        let thickest = m.types.wall.values().map(|t| t.thickness).filter(|t| t.is_finite()).fold(0.0, f64::max);
+        let lookup = m.lookup();
+        for oid in lookup.walls_near_at(&[at], thickest + 1.0) {
+            if oid == id {
+                continue;
+            }
+            let Some(Element::Wall(w)) = m.elements.get(oid) else { continue };
+            if !w.join || !(lo - TOL <= m.top_z(w) && m.base_z(w) - TOL <= hi) {
+                continue;
+            }
+            let axis = Axis::of(w);
+            // A straight wall directly over a footing at this joint is already represented by that run. Counting
+            // the wall as another arm made the adjoining footing see a through-joint too: the duplicate collinear
+            // arm set `through` and put the node back into the cap, breaking the mitre.
+            if w.arc == 0.0 {
+                let (s, across) = axis.project(node);
+                let tangent = axis.tangent(s);
+                let lies_under_wall = |rg: &Geom| {
+                    let (rlo, rhi) = rg.z_span();
+                    if !(rlo - TOL <= m.top_z(w) && m.base_z(w) - TOL <= rhi) {
+                        return false;
+                    }
+                    let a = P2(rg.a[0], rg.a[1]);
+                    let b = P2(rg.b[0], rg.b[1]);
+                    let (_, a_off) = axis.project(a);
+                    let (_, b_off) = axis.project(b);
+                    let parallel = tangent.cross(rg.along()).abs() <= TOL / axis.length().max(rg.plan_length()).max(TOL);
+                    a_off.abs() <= TOL && b_off.abs() <= TOL && parallel && geom::dist_to_segment(node, a, b) <= rg.width / 2.0 + TOL
+                };
+                let footing_under_wall = lies_under_wall(g)
+                    || near.iter().any(|(_, re)| {
+                        if re.category() != category || !re.run().is_some_and(|r| r.join) {
+                            return false;
+                        }
+                        m.run_geom(re).filter(joinable).is_some_and(|rg| lies_under_wall(&rg))
+                    });
+                if across.abs() <= TOL && footing_under_wall {
+                    continue;
+                }
+            }
+            let (ext, int) = walls::faces(m, w);
+            if w.start.dist(node) <= TOL {
+                arms.push(wall_arm_at(m, w, 0.0, true, false));
+            } else if w.end.dist(node) <= TOL {
+                arms.push(wall_arm_at(m, w, axis.length(), false, false));
+            } else {
+                let (s, across) = axis.project(node);
+                if s > TOL && s < axis.length() - TOL && (int - TOL..=ext + TOL).contains(&across) && axis.distance(node, across) <= TOL {
+                    arms.push(wall_arm_at(m, w, s, true, false));
+                    arms.push(wall_arm_at(m, w, s, false, false));
+                    through = true;
+                }
+            }
+        }
+    }
+    arms.sort_by(|a, b| a.way.1.atan2(a.way.0).total_cmp(&b.way.1.atan2(b.way.0)));
+    (arms, through)
+}
+
+/// Run `id`'s cap at its start (or with `at_end`, at its end): the corners closing it from its face on the
+/// clockwise side of the way it leaves the node round to the other, exactly as a wall's [`walls::cap`] closes
+/// its own — faces crossing near the node (no farther than the widest arm is wide: past that the end goes
+/// square), the node itself between them where several meet there, and just the two faces where it ends on one.
+fn cap(m: &Model, id: Id, at_end: bool, g: &Geom, index: Option<&walls::Index>) -> Vec<P2> {
+    let (arms, through) = arms(m, id, at_end, g, index);
+    let n = arms.len();
+    let Some(i) = arms.iter().position(|a| a.mine) else { return Vec::new() };
+    let (prev, me, next) = (&arms[(i + n - 1) % n], &arms[i], &arms[(i + 1) % n]);
+    if n < 2 {
+        return vec![me.cw, me.ccw];
+    }
+    let node = if at_end { P2(g.b[0], g.b[1]) } else { P2(g.a[0], g.a[1]) };
+    let limit = arms.iter().map(|a| a.thick).fold(0.0, f64::max);
+    let meet = |face: P2, other: P2, other_way: P2| {
+        geom::line_intersection(face, face + me.way, other, other + other_way)
+            .filter(|c| (-limit..=limit).contains(&(*c - node).dot(me.way)))
+            .unwrap_or(face)
+    };
+    let (cw, ccw) = (meet(me.cw, prev.ccw, prev.way), meet(me.ccw, next.cw, next.way));
+    if through { vec![cw, ccw] } else { vec![cw, node, ccw] }
+}
+
+/// Run `id`'s outline in plan: its caps and its faces, mitred against the runs and (of a strip footing) the walls
+/// they meet, as [`crate::walls::outline`] is of walls; its plain rectangle where it joins nothing there, its
+/// `join` is off, or it doesn't lie flat. The line from `start` to `end` never changes: the join only shapes what
+/// the plan fills, 3D cuts and IFC sweeps.
+pub fn outline(m: &Model, id: Id) -> Vec<P2> {
+    outline_in(m, id, None)
+}
+
+/// [`outline`], its joins found through `index` when there is one.
+pub(crate) fn outline_in(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<P2> {
+    let Some(e) = m.elements.get(id) else { return Vec::new() };
+    let Some(g) = m.run_geom(e) else { return Vec::new() };
+    if !joinable(&g) {
+        return g.footprint();
+    }
+    // Its faces are straight, so the caps alone carry the corners, as a straight wall's caps do: each cap's last
+    // point lies on the face the next cap's first lies on, and the ring closes along the other face.
+    let (start, end) = (cap(m, id, false, &g, index), cap(m, id, true, &g, index));
+    // Nothing joins it at either end: the plain rectangle, exactly as it was drawn before it could join.
+    if plain(&g, false, &start) && plain(&g, true, &end) {
+        return g.footprint();
+    }
+    let mut ring = start;
+    ring.extend(end);
+    ring.dedup_by(|a, b| a.dist(*b) < 1e-6);
+    // Counter-clockwise, as [`Geom::footprint`] gives it, for the fills and prisms built from it.
+    if ring.len() >= 3 && geom::area(&ring) < 0.0 {
+        ring.reverse();
+    }
+    ring
+}
+
+/// Whether `cap` is just this end's own two corners: nothing joined there, so the rectangle (or the tube)
+/// already ends where the outline does and nothing needs cutting.
+fn plain(g: &Geom, at_end: bool, cap: &[P2]) -> bool {
+    let square = run_arm(g, at_end, true);
+    cap.len() == 2 && cap[0].dist(square.cw) <= 1e-6 && cap[1].dist(square.ccw) <= 1e-6
+}
+
+/// One end's cap of run `id` as the vertical planes a round run's body is cut by: each segment of the cap,
+/// and the run's point at the other end, which side of the plane is its inside. None where the run doesn't lie
+/// flat, or where the cap is its plain square end — the tube already ends there, and stays the one shape a view
+/// shares between round runs of a material. The same plane twice (a mitre of equal widths, whose cap is one
+/// straight line through the node) is taken once.
+pub(crate) fn end_cuts(m: &Model, id: Id, at_end: bool, g: &Geom, index: Option<&walls::Index>) -> Option<Vec<(P2, P2, P2)>> {
+    if !joinable(g) {
+        return None;
+    }
+    let cap = cap(m, id, at_end, g, index);
+    if cap.len() < 2 || plain(g, at_end, &cap) {
+        return None;
+    }
+    let inside = if at_end { P2(g.a[0], g.a[1]) } else { P2(g.b[0], g.b[1]) };
+    let mut cuts: Vec<(P2, P2, P2)> = Vec::new();
+    for seg in cap.windows(2) {
+        let (p0, p1) = (seg[0], seg[1]);
+        if p0.dist(p1) <= 1e-9 {
+            continue;
+        }
+        // A segment of one straight cap line is the same plane again: one cut is enough.
+        let same_line = cuts.iter().any(|(q0, q1, _)| {
+            let (q0, q1) = (*q0, *q1);
+            let (d, e) = (p1 - p0, q1 - q0);
+            d.cross(e).abs() <= 1e-9 * d.length() * e.length() && (q0 - p0).cross(d).abs() <= 1e-6 * d.length()
+        });
+        if !same_line {
+            cuts.push((p0, p1, inside));
+        }
+    }
+    (!cuts.is_empty()).then_some(cuts)
+}
+
+/// `tris` (a round run's tube, its first `caps` its flat end faces) cut by the planes of `cuts` — (p0, p1,
+/// inside) — the side `inside` lies on kept, each cut open filled back flat: the body ends where the outline
+/// says, so plan and 3D never show different joints. The flat faces stay first, for `caps` to count them.
+pub(crate) fn clip_tube(tris: Vec<[P3; 3]>, caps: usize, cuts: &[(P2, P2, P2)]) -> (Vec<[P3; 3]>, usize) {
+    /// On the plane, or near enough for a point of it: coordinates run to 1e9 mm, where the rounding of a
+    /// crossing is still far below anything the model holds.
+    const EPS: f64 = 1e-6;
+    type Vertex = (u64, u64);
+    type Edge = (Vertex, Vertex);
+    let plan = |q: P3| P2(q[0], q[1]);
+    let key = |q: P3| -> Vertex {
+        let n = std::array::from_fn::<_, 2, _>(|i| if q[i] == 0.0 { 0.0 } else { q[i] }.to_bits());
+        (n[0], n[1])
+    };
+    let edge = |a: P3, b: P3| -> Edge {
+        let (ka, kb) = (key(a), key(b));
+        if ka <= kb { (ka, kb) } else { (kb, ka) }
+    };
+    // Where a plane cuts an edge: cached by the edge's own vertices, so the two triangles that share an edge
+    // fill it in with the very same point and the mesh stays welded (each is clipped on its own).
+    let mut cut_at: std::collections::HashMap<Edge, P3> = std::collections::HashMap::new();
+    let mut flat: Vec<[P3; 3]> = tris[..caps].to_vec();
+    let mut sides: Vec<[P3; 3]> = tris[caps..].to_vec();
+    for &(p0, p1, inside) in cuts {
+        let n = (p1 - p0).perp();
+        let nd = if (inside - p0).dot(n) < 0.0 { n * -1.0 } else { n };
+        let d = |q: P3| (plan(q) - p0).dot(nd);
+        // The rim of the cut face: the points of the clipped polygons that lie in the plane and are
+        // joined there to another of them. The face a convex body takes through a plane is convex, so
+        // ordering the rim about its middle closes the loop whatever the triangles under it were — no
+        // chain to guess at, and the same order every time a scene is built.
+        let mut rim: std::collections::BTreeMap<(i64, i64, i64), P3> = std::collections::BTreeMap::new();
+        let grid = |q: P3| -> (i64, i64, i64) {
+            let k = std::array::from_fn::<_, 3, _>(|i| (q[i] * 1e6).round() as i64);
+            (k[0], k[1], k[2])
+        };
+        // One triangle kept where it lies, cut into a fan where the plane crosses it.
+        let mut clip = |t: [P3; 3]| -> Vec<[P3; 3]> {
+            let mut poly = Vec::with_capacity(4);
+            for i in 0..3 {
+                let (cur, next) = (t[i], t[(i + 1) % 3]);
+                let (dc, dn) = (d(cur), d(next));
+                if dc >= -EPS {
+                    poly.push(cur);
+                }
+                if (dc > EPS && dn < -EPS) || (dc < -EPS && dn > EPS) {
+                    let at = *cut_at.entry(edge(cur, next)).or_insert_with(|| {
+                        let f = dc / (dc - dn);
+                        std::array::from_fn(|k| cur[k] + (next[k] - cur[k]) * f)
+                    });
+                    poly.push(at);
+                }
+            }
+            for i in 0..poly.len() {
+                let (a, b) = (poly[i], poly[(i + 1) % poly.len()]);
+                if d(a).abs() <= EPS && d(b).abs() <= EPS {
+                    rim.entry(grid(a)).or_insert(a);
+                    rim.entry(grid(b)).or_insert(b);
+                }
+            }
+            (1..poly.len().saturating_sub(1)).map(|i| [poly[0], poly[i], poly[i + 1]]).collect()
+        };
+        for mesh in [&mut flat, &mut sides] {
+            let was = std::mem::take(mesh);
+            for t in was {
+                mesh.extend(clip(t));
+            }
+        }
+        // The cut face shows outward: where the kept side of the plane ends.
+        let wanted = [-nd.0, -nd.1, 0.0];
+        if rim.len() < 3 {
+            continue;
+        }
+        let middle = rim.values().fold([0.0; 3], |s, p| std::array::from_fn(|i| s[i] + p[i] / rim.len() as f64));
+        let along = (p1 - p0).unit();
+        let mut ring: Vec<P3> = rim.into_values().collect();
+        ring.sort_by(|a, b| {
+            let turn = |q: &P3| {
+                let s = P2(q[0] - middle[0], q[1] - middle[1]).dot(along);
+                (q[2] - middle[2]).atan2(s)
+            };
+            turn(a).total_cmp(&turn(b))
+        });
+        // Newell's normal of the loop, turned to the side the cut face shows.
+        let n = ring.iter().zip(ring.iter().cycle().skip(1)).fold([0.0; 3], |n, (a, b)| {
+            [n[0] + (a[1] - b[1]) * (a[2] + b[2]), n[1] + (a[2] - b[2]) * (a[0] + b[0]), n[2] + (a[0] - b[0]) * (a[1] + b[1])]
+        });
+        if n[0] * wanted[0] + n[1] * wanted[1] < 0.0 {
+            ring.reverse();
+        }
+        for i in 1..ring.len() - 1 {
+            let (b, c) = (ring[i], ring[i + 1]);
+            let cross = [
+                (b[1] - ring[0][1]) * (c[2] - ring[0][2]) - (b[2] - ring[0][2]) * (c[1] - ring[0][1]),
+                (b[2] - ring[0][2]) * (c[0] - ring[0][0]) - (b[0] - ring[0][0]) * (c[2] - ring[0][2]),
+                (b[0] - ring[0][0]) * (c[1] - ring[0][1]) - (b[1] - ring[0][1]) * (c[0] - ring[0][0]),
+            ];
+            if cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2] > 1e-18 {
+                flat.push([ring[0], b, c]);
+            }
+        }
+    }
+    let caps = flat.len();
+    flat.extend(sides);
+    (flat, caps)
+}
+
 /// A round run of length 1 and radius 1, from the origin along x: its caps' triangles first, and how many they are.
 pub fn unit_tube() -> (Vec<[P3; 3]>, usize) {
     let ring = |x: f64| -> Vec<P3> {
@@ -225,6 +605,7 @@ mod tests {
             offset,
             end_offset,
             justify,
+            join: true,
             system: String::new(),
             params: Default::default(),
         }

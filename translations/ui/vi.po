@@ -10629,6 +10629,14 @@ msgstr ""
 msgid "Room Number"
 msgstr ""
 
+#: crates/ui-egui/src/context.rs:70
+msgid "Allow Join"
+msgstr ""
+
+#: crates/ui-egui/src/context.rs:69
+msgid "Disallow Join"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4503
 #~ msgid "Click to select. Drag to orbit (or Shift and the middle button), the middle button pans, the wheel zooms."
 #~ msgstr "Nhấp để chọn. Kéo để xoay quanh (hoặc Shift và nút giữa), nút giữa để kéo, con lăn để thu phóng."

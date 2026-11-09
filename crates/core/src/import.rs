@@ -1953,6 +1953,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             attach_top: None,
             attach_base: None,
             room_bounding: true,
+            join: true,
         };
         let id = m.insert(Element::Wall(wall));
         from.insert(id, who(w.ifc));
@@ -2587,6 +2588,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             offset: z0,
             end_offset: ((z1 - z0).abs() > 1e-6).then_some(z1),
             justify,
+            join: true,
             system,
             params: Default::default(),
         };

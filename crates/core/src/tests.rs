@@ -556,6 +556,31 @@ fn moving_one_end_of_a_wall_stretches_it_and_the_walls_joined_there() {
     assert!(e.contains("one wall"), "{e}");
 }
 
+/// The ends of a run, as `elements` shows them.
+fn run_ends(s: &mut Session, id: u64) -> (Value, Value) {
+    let all = run(s, "elements", json!({}));
+    let e = all["elements"].as_array().unwrap().iter().find(|e| e["id"] == id).cloned().unwrap();
+    (e["start"].clone(), e["end"].clone())
+}
+
+#[test]
+fn moving_one_end_of_a_run_stretches_it_and_leaves_the_other_end_put() {
+    let mut s = Session::new();
+    let beam = run(&mut s, "beam", json!({"points": [[0, 0], [4000, 0]], "offset": 2800}))["ids"][0].as_u64().unwrap();
+    run(&mut s, "move", json!({"ids": [beam], "by": [1000, 500], "end": "start"}));
+    assert_eq!(run_ends(&mut s, beam), (json!([1000.0, 500.0]), json!([4000.0, 0.0])), "only the start went");
+    run(&mut s, "move", json!({"ids": [beam], "by": [0, -500], "end": "end"}));
+    assert_eq!(run_ends(&mut s, beam), (json!([1000.0, 500.0]), json!([4000.0, -500.0])), "only the end went");
+    assert_eq!(s.model.check(), Ok(()), "the run is still sound");
+    // `end` refuses two elements, and an element that is neither a wall nor a run.
+    let other = run(&mut s, "beam", json!({"points": [[0, 2000], [4000, 2000]], "offset": 2800}))["ids"][0].as_u64().unwrap();
+    let e = s.execute("move", &json!({"ids": [beam, other], "by": [10, 0], "end": "start"})).unwrap_err();
+    assert!(e.contains("one wall or one run"), "{e}");
+    let grid = run(&mut s, "grid", json!({"start": [0, -1000], "end": [0, 7000]}))["id"].as_u64().unwrap();
+    let e = s.execute("move", &json!({"ids": [grid], "by": [10, 0], "end": "start"})).unwrap_err();
+    assert!(e.contains("one wall or one run"), "{e}");
+}
+
 #[test]
 fn doors_move_along_their_walls_and_copies_bring_their_doors() {
     let mut s = Session::new();
@@ -2432,7 +2457,21 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"ids": [100002, 100003], "top_offset": 1e-300, "top_level": null, "height": -1}),
         wall,
     ];
-    let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).collect();
+    // A strip footing of the runs' own: its gripped end, an end that isn't one, an end for a wall and a
+    // run together, and join flags that aren't booleans.
+    let footing = base.execute("strip_footing", &json!({"points": [[0, 0], [4000, 0]]})).map_or(Value::Null, |r| r["ids"][0].clone());
+    let grips = [
+        json!({"ids": [footing], "by": [10.0, 0.0], "end": "start"}),
+        json!({"ids": [footing], "by": [10.0, 0.0], "end": "both"}),
+        json!({"ids": [footing, 100002], "by": [10.0, 0.0], "end": "end"}),
+        json!({"ids": [100002, 100003], "by": [10.0, 0.0], "end": "start"}),
+        json!({"ids": [footing], "end": "start"}),
+        json!({"id": footing, "join": "x"}),
+        json!({"id": footing, "join": null}),
+        json!({"id": 100002, "join": "no"}),
+    ];
+    let hostile: Vec<Value> =
+        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(grips).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -5903,7 +5942,8 @@ fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_i
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch;
     // 13 floors' and flat roofs' shapes; 14 the categories of family components, which the starter view templates name; 15 a roof's slope for each
-    // edge and a wall's top offset; 16 dimensions in 3D views and the locks Align leaves; 17 multi-category schedules and Italian projects. Nothing in a file of 4
+    // edge and a wall's top offset; 16 dimensions in 3D views and the locks Align leaves; 17 multi-category schedules and Italian projects; 18 a wall or a run
+    // that refuses to join. Nothing in a file of 4
     // to 7 that holds no notes changes.
     let mut s = Session::new();
     let empty = serde_json::to_value(&*s.model).unwrap();
@@ -5941,6 +5981,45 @@ fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_i
     odd["something_new"] = json!(true);
     let (m, left_out) = Model::read(&odd.to_string()).unwrap();
     assert_eq!((m.format, left_out), (FORMAT, vec!["/something_new".to_string()]));
+}
+
+#[test]
+fn a_format_17_file_without_join_opens_with_every_element_joining_and_a_refusal_survives_a_reread() {
+    use crate::model::{Element, FORMAT, Model};
+    let mut s = Session::new();
+    house(&mut s);
+    let mut v = serde_json::to_value(&*s.model).unwrap();
+    // A file of 17 holds no `join`: it reads as the default, joining, for walls and runs alike.
+    v["format"] = json!(17);
+    for e in v["elements"].as_object_mut().unwrap().values_mut() {
+        if let Some(o) = e.as_object_mut() {
+            o.remove("join");
+        }
+    }
+    let (m, left_out) = Model::read(&v.to_string()).unwrap();
+    assert_eq!((m.format, left_out.len()), (FORMAT, 0), "{left_out:?}");
+    let joining = m.elements.values().filter(|e| matches!(e, Element::Wall(_) | crate::model::run_arm!(_))).count();
+    assert!(joining > 0, "the house has walls");
+    assert!(
+        m.elements.values().all(|e| match e {
+            Element::Wall(w) => w.join,
+            crate::model::run_arm!(r) => r.join,
+            _ => true,
+        }),
+        "everything joins by default"
+    );
+    // A refusal is written only when it is one, and comes back when the file is read again.
+    let wall = m.elements.iter().find(|(_, e)| matches!(e, Element::Wall(_))).map(|(id, _)| *id).unwrap();
+    let mut saved: serde_json::Value = serde_json::from_str(&m.to_json().unwrap()).unwrap();
+    let guid = m.guid(wall).to_string();
+    let key = saved["elements"].as_object().unwrap().iter().find(|(_, e)| e["guid"] == json!(guid)).unwrap().0.clone();
+    assert!(saved["elements"][&key].get("join").is_none(), "joining is written nowhere");
+    saved["elements"][&key]["join"] = json!(false);
+    let (m2, left_out) = Model::read(&saved.to_string()).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    let Some(Element::Wall(w)) = m2.elements.get(wall) else { panic!("the wall came back") };
+    assert!(!w.join, "the refusal survives");
+    assert!(serde_json::to_value(w).unwrap().get("join").is_some_and(|v| v == &json!(false)));
 }
 
 #[test]

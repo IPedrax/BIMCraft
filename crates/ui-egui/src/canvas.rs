@@ -3042,30 +3042,39 @@ impl BimApp {
         Some(p)
     }
 
-    /// The wall selected alone, with Modify: the one whose ends are grips.
+    /// The wall or run selected alone, with Modify: the one whose ends are grips.
     fn gripped(&self) -> Option<Id> {
+        let m = &self.session.model;
         match (self.selection.as_slice(), &self.tool) {
-            (&[id], Tool::Modify) if self.session.model.wall(id).is_some() => Some(id),
+            (&[id], Tool::Modify) if m.wall(id).is_some() || m.run_of(id).is_some() => Some(id),
             _ => None,
         }
     }
 
-    /// Where wall `w`'s start (else its end) goes for a drag to pixel `q`: what that snaps to from
-    /// the wall's other end; with Ctrl, along that line at the wall's own length, so it turns
-    /// about its other end.
-    fn grip_target(&self, m: &Model, level: Id, v: &View, (w, start): (&Wall, bool), q: (f32, f32), mods: Modifiers) -> (Found, P2) {
-        let fixed = if start { w.end } else { w.start };
+    /// The ends of the element whose ends are grips, `(start, end)`: a wall's or a run's line.
+    fn grip_ends(m: &Model, id: Id) -> Option<(P2, P2)> {
+        match m.elements.get(id)? {
+            Element::Wall(w) => Some((w.start, w.end)),
+            e => Some((e.run()?.start, e.run()?.end)),
+        }
+    }
+
+    /// Where the gripped end (else `start`, the line's other end) goes for a drag to pixel `q`:
+    /// what that snaps to from the fixed end; with Ctrl, along that line at the line's own length,
+    /// so it turns about the fixed end.
+    fn grip_target(&self, m: &Model, level: Id, v: &View, (ends, start): ((P2, P2), bool), q: (f32, f32), mods: Modifiers) -> (Found, P2) {
+        let (mine, fixed) = if start { (ends.0, ends.1) } else { (ends.1, ends.0) };
         let found = self.snap(m, level, v, q, &[fixed], mods.shift);
         let at = if mods.command && fixed.dist(found.at) > TOL {
-            micron(fixed + (found.at - fixed).unit() * w.start.dist(w.end))
+            micron(fixed + (found.at - fixed).unit() * mine.dist(fixed))
         } else {
             found.at
         };
         (found, at)
     }
 
-    /// A drag from an end of the selected wall moves that end: its angle and length follow the
-    /// cursor, with the snaps and angle guides from the other end (Ctrl keeps the length); on
+    /// A drag from an end of the selected wall or run moves that end: its angle and length follow
+    /// the cursor, with the snaps and angle guides from the other end (Ctrl keeps the length); on
     /// release, `move`, and the walls joined there follow.
     fn grip_drag(&mut self, ui: &Ui, response: &Response, rect: Rect, view: &View, level: Id) {
         let Some(id) = self.gripped() else {
@@ -3073,14 +3082,14 @@ impl BimApp {
             return;
         };
         let m = std::sync::Arc::clone(&self.session.model);
-        let Some(w) = m.wall(id) else { return };
+        let Some(ends) = Self::grip_ends(&m, id) else { return };
         let at = |p: P2| pos(rect.min, view.px(p));
         if response.drag_started_by(PointerButton::Primary)
             && self.canvas.crop_drag.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
         {
             let near = |p: P2| at(p).distance(o);
-            let nearest = [(true, w.start), (false, w.end)]
+            let nearest = [(true, ends.0), (false, ends.1)]
                 .into_iter()
                 .filter(|(_, p)| near(*p) <= 8.0)
                 .min_by(|a, b| near(a.1).total_cmp(&near(b.1)));
@@ -3099,9 +3108,9 @@ impl BimApp {
                 && let Some(q) = ui.input(|i| i.pointer.latest_pos())
             {
                 let mods = ui.input(|i| i.modifiers);
-                let (_, to) = self.grip_target(&m, level, view, (w, start), (q.x - rect.min.x, q.y - rect.min.y), mods);
+                let (_, to) = self.grip_target(&m, level, view, (ends, start), (q.x - rect.min.x, q.y - rect.min.y), mods);
                 self.snap_once = None;
-                let by = to - if start { w.start } else { w.end };
+                let by = to - if start { ends.0 } else { ends.1 };
                 if by.length() > 1e-6 {
                     self.run("move", json!({"ids": [id], "by": point(by), "end": if start { "start" } else { "end" }}));
                 }
@@ -3109,48 +3118,70 @@ impl BimApp {
         }
     }
 
-    /// The selected wall's grips at its ends and, beside each, its angle to click and type: it
-    /// turns about that end. Dragging one, the wall as it would stand, with its ruler.
+    /// The selected wall's or run's grips at its ends and, beside each for a wall, its angle to
+    /// click and type: the wall turns about that end. Dragging one, the element as it would stand,
+    /// with its ruler.
     #[allow(clippy::too_many_arguments)]
     fn grip_overlay(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, level: Id, d: &Drawing, place: Place) {
         let Some(id) = self.gripped() else {
             self.angle_edit = None;
             return;
         };
-        let Some(w) = m.wall(id) else { return };
+        let Some(ends) = Self::grip_ends(m, id) else { return };
+        let wall = m.wall(id).cloned();
         let p = ui.painter_at(rect);
         let at = |q: P2| pos(rect.min, v.px(q));
         let held = self.canvas.grip.filter(|(g, _)| *g == id).map(|(_, start)| start);
-        let mut ends = [w.start, w.end];
+        let mut ends_drawn = [ends.0, ends.1];
         if let (Some(start), Some(q)) = (held, ui.input(|i| i.pointer.latest_pos())) {
             let (mods, q) = (ui.input(|i| i.modifiers), (q.x - rect.min.x, q.y - rect.min.y));
-            let (found, to) = self.grip_target(m, level, v, (w, start), q, mods);
-            let moved = Wall { start: if start { to } else { w.start }, end: if start { w.end } else { to }, ..w.clone() };
+            let (found, to) = self.grip_target(m, level, v, (ends, start), q, mods);
             let sc = Scene { p: &p, m, d, place, level, key: level, v };
-            // The wall as it would stand: its outline, and the ruler from the end that stays.
-            // Its faces, where its location line puts them.
-            let (ext, int) = walls::faces(m, &moved);
-            let axis = Axis::of(&moved);
-            let (left, right) = (axis.points(0.0, axis.length(), ext), axis.points(0.0, axis.length(), int));
-            let ring: Vec<Pos2> = left.into_iter().chain(right.into_iter().rev()).map(&at).collect();
+            // The element as it would stand: its outline, and the ruler from the end that stays.
+            let moved_ends = if start { (to, ends.1) } else { (ends.0, to) };
+            let ring: Vec<P2> = match &wall {
+                // A wall's faces, where its location line puts them.
+                Some(w) => {
+                    let moved = Wall { start: moved_ends.0, end: moved_ends.1, ..w.clone() };
+                    let (ext, int) = walls::faces(m, &moved);
+                    let axis = Axis::of(&moved);
+                    let (left, right) = (axis.points(0.0, axis.length(), ext), axis.points(0.0, axis.length(), int));
+                    left.into_iter().chain(right.into_iter().rev()).collect()
+                }
+                // A run's footprint across its axis, in the state it would take.
+                None => m
+                    .elements
+                    .get(id)
+                    .and_then(|e| {
+                        let mut e = e.clone();
+                        let r = e.run_mut()?;
+                        (r.start, r.end) = moved_ends;
+                        m.run_geom(&e).map(|g| g.footprint())
+                    })
+                    .unwrap_or_default(),
+            };
+            let ring: Vec<Pos2> = ring.into_iter().map(&at).collect();
             p.add(Shape::closed_line(ring, Stroke::new(1.0, pal().accent)));
-            let fixed = if start { w.end } else { w.start };
+            let fixed = if start { ends.1 } else { ends.0 };
             p.extend(ruler_shapes(&sc, fixed, to));
             self.show_snap(&sc, &found);
             self.canvas.found.set(Some(found));
             let r = snap::ruler(fixed, to);
             let reading = format!("{}  {}", m.units.with_unit(r.length), degrees(if start { norm_turn(r.angle + 180.0) } else { r.angle }));
             tag(&p, at(to) + vec2(12.0, -12.0), Align2::LEFT_BOTTOM, reading);
-            ends[usize::from(!start)] = to;
+            ends_drawn[usize::from(!start)] = to;
         }
-        for (k, e) in ends.into_iter().enumerate() {
+        for (k, e) in ends_drawn.into_iter().enumerate() {
             let r = Rect::from_center_size(at(e), vec2(9.0, 9.0));
             let live = held.is_some_and(|s| s == (k == 0));
             p.rect_filled(r, 1.0, if live { pal().accent } else { pal().surface });
             p.rect_stroke(r, 1.0, Stroke::new(1.5, pal().accent), StrokeKind::Middle);
         }
-        if held.is_none() {
-            self.wall_angles(ui, &p, id, w, v, rect);
+        // Angles to type are a wall's: a run turns with its other commands.
+        if held.is_none()
+            && let Some(w) = wall
+        {
+            self.wall_angles(ui, &p, id, &w, v, rect);
         }
     }
 
