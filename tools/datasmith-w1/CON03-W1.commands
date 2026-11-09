@@ -1,0 +1,5 @@
+type {"category":"wall","name":"Timber 2x4 - 16 in OC","layers":[{"function":"structure","thickness":88.9}]}
+type {"category":"window","name":"W1 - 36 x 36 in","width":914.4,"height":914.4}
+wall {"type":"Timber 2x4 - 16 in OC","points":[[0,0],[3657.6,0]],"height":2438.4}
+window {"wall":100002,"type":"W1 - 36 x 36 in","offset":1828.8,"sill":914.4,"mark":"W1"}
+elevation {"name":"W1 - Framing Elevation","start":[-300,-1000],"end":[3957.6,-1000],"depth":2000}
