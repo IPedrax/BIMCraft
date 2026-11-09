@@ -162,7 +162,7 @@ msgstr "Une porte ou une fenêtre se trouve dans son mur: elle ne peut pas être
 
 #: crates/ui-egui/src/start.rs:350
 msgid "A family file, to edit."
-msgstr ""
+msgstr "Un fichier de famille, à modifier."
 
 #: crates/ui-egui/src/editor/types_dialog.rs:647
 msgid "A family type parameter needs the category of the families whose types it picks."
@@ -735,7 +735,7 @@ msgstr "Autre couleur"
 
 #: crates/ui-egui/src/editor/connectors.rs:310
 msgid "Apparent Load (VA)"
-msgstr ""
+msgstr "Charge apparente (VA)"
 
 #: crates/ui-egui/src/footer.rs:466
 #: crates/ui-egui/src/properties.rs:2684
@@ -1528,7 +1528,7 @@ msgstr "Polygone circonscrit: cliquer sur son centre, puis au milieu d'un côté
 
 #: crates/ui-egui/src/editor/connectors.rs:317
 msgid "Classification"
-msgstr ""
+msgstr "Classification"
 
 #: crates/ui-egui/src/graphics.rs:1009
 msgid "Clear Overrides"
@@ -1584,7 +1584,7 @@ msgstr "Cliquer sur un sol, un toit, un escalier ou un mur: la cote d'altitude i
 
 #: crates/ui-egui/src/editor/document.rs:1409
 msgid "Click a form or a nested instance to select it. A drag or Shift and the middle button orbit, the middle button pans, the wheel zooms."
-msgstr ""
+msgstr "Cliquer sur une forme ou une instance imbriquée pour la sélectionner. Un glissement ou Maj et le bouton du milieu font tourner la vue, le bouton du milieu fait un panoramique, la molette zoome."
 
 #: crates/ui-egui/src/editor/document.rs:1405
 msgid "Click a form, a nested instance, a reference plane, a reference line or a dimension to select it; drag a selected plane to move it, a grip to turn or stretch."
@@ -1640,7 +1640,7 @@ msgstr "Cliquer sur un plan de référence ou un repère pour le plan de travail
 
 #: crates/ui-egui/src/editor/sketch.rs:1292
 msgid "Click a reference plane, a reference line or a form's edge: a line along it, locked to it."
-msgstr ""
+msgstr "Cliquer sur un plan de référence, une ligne de référence ou une arête d'une forme: une ligne le long de celui-ci, verrouillée dessus."
 
 #: crates/ui-egui/src/editor/sketch.rs:1294
 msgid "Click a reference plane, a reference line or a form's edge: a line along it."
@@ -2192,7 +2192,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/tabs.rs:290
 msgid "Close Without Loading"
-msgstr ""
+msgstr "Fermer sans charger"
 
 #: crates/ui-egui/src/popup.rs:94
 msgid "Close dialog"
@@ -2316,59 +2316,59 @@ msgstr "Configure les normes de dessin technique nationales et internationales (
 #: crates/ui-egui/src/editor/connectors.rs:161
 #: crates/ui-egui/src/editor/document.rs:1723
 msgid "Connector"
-msgstr ""
+msgstr "Connecteur"
 
 #: crates/ui-egui/src/editor/connectors.rs:318
 msgid "Connector Classification"
-msgstr ""
+msgstr "Classification du connecteur"
 
 #: crates/ui-egui/src/editor/connectors.rs:294
 msgid "Connector Direction"
-msgstr ""
+msgstr "Direction du connecteur"
 
 #: crates/ui-egui/src/editor/connectors.rs:257
 msgid "Connector Domain"
-msgstr ""
+msgstr "Domaine du connecteur"
 
 #: crates/ui-egui/src/editor/connectors.rs:275
 msgid "Connector Flow"
-msgstr ""
+msgstr "Flux du connecteur"
 
 #: crates/ui-egui/src/editor/connectors.rs:311
 msgid "Connector Load"
-msgstr ""
+msgstr "Charge du connecteur"
 
 #: crates/ui-egui/src/editor/connectors.rs:289
 msgid "Connector Location"
-msgstr ""
+msgstr "Emplacement du connecteur"
 
 #: crates/ui-egui/src/editor/connectors.rs:225
 msgid "Connector Name"
-msgstr ""
+msgstr "Nom du connecteur"
 
 #: crates/ui-egui/src/editor/connectors.rs:303
 msgid "Connector Poles"
-msgstr ""
+msgstr "Pôles du connecteur"
 
 #: crates/ui-egui/src/editor/connectors.rs:314
 msgid "Connector Power Factor"
-msgstr ""
+msgstr "Facteur de puissance du connecteur"
 
 #: crates/ui-egui/src/editor/connectors.rs:281
 msgid "Connector Size"
-msgstr ""
+msgstr "Taille du connecteur"
 
 #: crates/ui-egui/src/editor/connectors.rs:239
 msgid "Connector System"
-msgstr ""
+msgstr "Système du connecteur"
 
 #: crates/ui-egui/src/editor/connectors.rs:307
 msgid "Connector Voltage"
-msgstr ""
+msgstr "Tension du connecteur"
 
 #: crates/ui-egui/src/editor/document.rs:1722
 msgid "Connector: a pipe, power, switch, data or earthing connector, where the family joins a system"
-msgstr ""
+msgstr "Connecteur: un connecteur de tuyau, d'alimentation, d'interrupteur, de données ou de mise à la terre, là où la famille rejoint un système"
 
 #: crates/ui-egui/src/editor/document.rs:1148
 #: crates/ui-egui/src/editor/document.rs:1721
@@ -2730,7 +2730,7 @@ msgstr "Couper avec des vides lors du chargement"
 
 #: crates/ui-egui/src/editor/extrusion.rs:266
 msgid "Cuts"
-msgstr ""
+msgstr "Coupe"
 
 #: crates/ui-egui/src/editor.rs:198
 msgid "Cylinder"
@@ -2771,11 +2771,11 @@ msgstr "Données"
 
 #: crates/ui-egui/src/editor/connectors.rs:33
 msgid "Data Connector"
-msgstr ""
+msgstr "Connecteur de données"
 
 #: crates/ui-egui/src/editor/connectors.rs:33
 msgid "Data Connector: where a data cable meets the family"
-msgstr ""
+msgstr "Connecteur de données: là où un câble de données rejoint la famille"
 
 #: crates/core/src/fixtures.rs:468
 msgid "Data Outlet"
@@ -3133,7 +3133,7 @@ msgstr "Les cotes de la famille que vous chargez ne peuvent pas être conservée
 
 #: crates/ui-egui/src/editor/connectors.rs:293
 msgid "Direction"
-msgstr ""
+msgstr "Direction"
 
 #: crates/ui-egui/src/plugins.rs:395
 msgid "Disable"
@@ -3207,7 +3207,7 @@ msgstr "Ancrer {}"
 
 #: crates/ui-egui/src/editor/connectors.rs:246
 msgid "Domain"
-msgstr ""
+msgstr "Domaine"
 
 #: crates/ui-egui/src/lib.rs:5606
 msgid "Don't Save"
@@ -3252,7 +3252,7 @@ msgstr "Point"
 
 #: crates/ui-egui/src/editor/document.rs:561
 msgid "Dot: a filled circle the family's plans draw"
-msgstr ""
+msgstr "Point: un cercle plein que dessinent les plans de la famille"
 
 #: crates/ui-egui/src/graphics.rs:1462
 msgid "Dotted"
@@ -3403,11 +3403,11 @@ msgstr "Conducteur de terre (GC): cliquer sur son début et sa fin; une suite de
 
 #: crates/ui-egui/src/editor/connectors.rs:34
 msgid "Earthing Connector"
-msgstr ""
+msgstr "Connecteur de mise à la terre"
 
 #: crates/ui-egui/src/editor/connectors.rs:34
 msgid "Earthing Connector: where an earthing conductor meets the family"
-msgstr ""
+msgstr "Connecteur de mise à la terre: là où un conducteur de terre rejoint la famille"
 
 #: crates/core/src/fixtures.rs:423
 msgid "Earthing Electrode"
@@ -3922,7 +3922,7 @@ msgstr "Types de famille: les paramètres de la famille, leurs formules et ses t
 
 #: crates/ui-egui/src/lib.rs:5388
 msgid "Family document: {}"
-msgstr ""
+msgstr "Document de famille: {}"
 
 #: crates/ui-egui/src/editor/document.rs:1604
 #: crates/ui-egui/src/editor/document.rs:1817
@@ -3949,7 +3949,7 @@ msgstr ""
 #: crates/ui-egui/src/lib.rs:3698
 #: crates/ui-egui/src/lib.rs:3706
 msgid "Family…"
-msgstr ""
+msgstr "Famille…"
 
 #: crates/ui-egui/src/properties.rs:372
 msgid "Far Clip Offset"
@@ -4264,7 +4264,7 @@ msgstr "Sol: cliquer à l'intérieur des murs pour les doter d'un sol"
 
 #: crates/ui-egui/src/editor/connectors.rs:273
 msgid "Flow"
-msgstr ""
+msgstr "Flux"
 
 #: crates/ui-egui/src/camera.rs:83
 msgid "Focal Length"
@@ -4311,7 +4311,7 @@ msgstr "Formes"
 
 #: crates/ui-egui/src/editor/extrusion.rs:268
 msgid "Forms and Host"
-msgstr ""
+msgstr "Formes et hôte"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:254
 #: crates/ui-egui/src/properties.rs:3195
@@ -4325,11 +4325,11 @@ msgstr "Fondation"
 
 #: crates/ui-egui/src/editor/document.rs:613
 msgid "Four-Point Panel"
-msgstr ""
+msgstr "Panneau à quatre points"
 
 #: crates/ui-egui/src/editor/document.rs:612
 msgid "Four-Point Panel: the family made adaptive, as a panel on four placement points"
-msgstr ""
+msgstr "Panneau à quatre points: la famille rendue adaptative, comme un panneau sur quatre points de placement"
 
 #: crates/core/src/family.rs:3330
 msgid "Frame Depth"
@@ -5374,20 +5374,20 @@ msgstr "Charger un fichier..."
 
 #: crates/ui-egui/src/editor/document.rs:750
 msgid "Load into Family"
-msgstr ""
+msgstr "Charger dans la famille"
 
 #: crates/ui-egui/src/editor/document.rs:761
 #: crates/ui-egui/src/editor/tabs.rs:283
 msgid "Load into Family and Close"
-msgstr ""
+msgstr "Charger dans la famille et fermer"
 
 #: crates/ui-egui/src/editor/document.rs:761
 msgid "Load into Family and Close: the family it is nested in takes it, and it closes"
-msgstr ""
+msgstr "Charger dans la famille et fermer: la famille dans laquelle elle est imbriquée la reçoit, et elle se ferme"
 
 #: crates/ui-egui/src/editor/document.rs:750
 msgid "Load into Family: the family it is nested in takes it as it is here, and it stays open"
-msgstr ""
+msgstr "Charger dans la famille: la famille dans laquelle elle est imbriquée la reçoit telle qu'elle est ici, et elle reste ouverte"
 
 #: crates/ui-egui/src/editor/document.rs:753
 msgid "Load into Project"
@@ -5449,7 +5449,7 @@ msgstr "Verrouiller l'alignement"
 
 #: crates/ui-egui/src/editor/sketch.rs:1356
 msgid "Lock locks a line picked with no Offset, in a plan or an elevation"
-msgstr ""
+msgstr "Verrouiller verrouille une ligne sélectionnée sans Décalage, dans un plan ou une élévation"
 
 #: crates/ui-egui/src/canvas.rs:3225
 msgid "Lock segment {}"
@@ -5457,7 +5457,7 @@ msgstr "Verrouiller le segment {}"
 
 #: crates/ui-egui/src/editor/sketch.rs:1354
 msgid "Lock: each line picked is locked to what it was picked from, as Align's padlock locks it"
-msgstr ""
+msgstr "Verrouiller: chaque ligne sélectionnée est verrouillée sur ce dont elle a été sélectionnée, comme la verrouille le cadenas d'Aligner"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:23
 msgid "Lock: the dimensions this parameter labels keep its value when planes are dragged"
@@ -5515,11 +5515,11 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:609
 msgid "Make Family Adaptive"
-msgstr ""
+msgstr "Rendre la famille adaptative"
 
 #: crates/ui-egui/src/editor/document.rs:607
 msgid "Make Family Adaptive: its points are placed where each instance is clicked, as Revit's Generic Model Adaptive"
-msgstr ""
+msgstr "Rendre la famille adaptative: ses points sont placés là où chaque instance est cliquée, comme le Modèle générique adaptatif de Revit"
 
 #: crates/ui-egui/src/phasing.rs:386
 msgid "Make Primary"
@@ -5805,7 +5805,7 @@ msgstr ""
 
 #: crates/ui-egui/src/start.rs:311
 msgid "Models"
-msgstr ""
+msgstr "Modèles"
 
 #: crates/ui-egui/src/editor/document.rs:627
 #: crates/ui-egui/src/editor/document.rs:778
@@ -5850,11 +5850,11 @@ msgstr "Modifier | Aligner"
 
 #: crates/ui-egui/src/editor/document.rs:307
 msgid "Modify | Blend"
-msgstr ""
+msgstr "Modifier | Raccord"
 
 #: crates/ui-egui/src/editor/document.rs:278
 msgid "Modify | Connectors"
-msgstr ""
+msgstr "Modifier | Connecteurs"
 
 #: crates/ui-egui/src/editor/sketch.rs:179
 msgid "Modify | Create Blend Base Boundary"
@@ -5902,7 +5902,7 @@ msgstr "Modifier | Modifier la révolution"
 
 #: crates/ui-egui/src/editor/document.rs:306
 msgid "Modify | Extrusion"
-msgstr ""
+msgstr "Modifier | Extrusion"
 
 #: crates/ui-egui/src/editor/document.rs:296
 #: crates/ui-egui/src/editor/document.rs:304
@@ -5959,11 +5959,11 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:308
 msgid "Modify | Revolve"
-msgstr ""
+msgstr "Modifier | Révolution"
 
 #: crates/ui-egui/src/editor/document.rs:309
 msgid "Modify | Sweep"
-msgstr ""
+msgstr "Modifier | Extrusion par chemin"
 
 #: crates/ui-egui/src/editor/sketch.rs:182
 msgid "Modify | Sweep > Edit Profile"
@@ -5975,7 +5975,7 @@ msgstr "Modifier | Extrusion par chemin > Esquisser le chemin"
 
 #: crates/ui-egui/src/editor/document.rs:310
 msgid "Modify | Swept Blend"
-msgstr ""
+msgstr "Modifier | Raccord par chemin"
 
 #: crates/ui-egui/src/editor/sketch.rs:185
 msgid "Modify | Swept Blend > Edit Profile 1"
@@ -5991,27 +5991,27 @@ msgstr "Modifier | Raccord par chemin > Esquisser le chemin"
 
 #: crates/ui-egui/src/editor/document.rs:275
 msgid "Modify | Symbols"
-msgstr ""
+msgstr "Modifier | Symboles"
 
 #: crates/ui-egui/src/editor/document.rs:312
 msgid "Modify | Void Blend"
-msgstr ""
+msgstr "Modifier | Raccord vide"
 
 #: crates/ui-egui/src/editor/document.rs:311
 msgid "Modify | Void Extrusion"
-msgstr ""
+msgstr "Modifier | Extrusion vide"
 
 #: crates/ui-egui/src/editor/document.rs:313
 msgid "Modify | Void Revolve"
-msgstr ""
+msgstr "Modifier | Révolution vide"
 
 #: crates/ui-egui/src/editor/document.rs:314
 msgid "Modify | Void Sweep"
-msgstr ""
+msgstr "Modifier | Extrusion par chemin vide"
 
 #: crates/ui-egui/src/editor/document.rs:315
 msgid "Modify | Void Swept Blend"
-msgstr ""
+msgstr "Modifier | Raccord par chemin vide"
 
 #: crates/core/src/fixtures.rs:287
 msgid "Mounting Height"
@@ -6447,7 +6447,7 @@ msgstr "Numéro"
 
 #: crates/ui-egui/src/editor/connectors.rs:300
 msgid "Number of Poles"
-msgstr ""
+msgstr "Nombre de pôles"
 
 #: crates/ui-egui/src/adaptive_editor.rs:760
 #: crates/ui-egui/src/background_grid.rs:113
@@ -6499,7 +6499,7 @@ msgstr "Styles d'objet…"
 
 #: crates/ui-egui/src/start.rs:339
 msgid "Of a category you pick."
-msgstr ""
+msgstr "D'une catégorie de votre choix."
 
 #: crates/ui-egui/src/properties.rs:2659
 #: crates/ui-egui/src/properties.rs:2662
@@ -6603,7 +6603,7 @@ msgstr "Ouvrir la vue de caméra"
 
 #: crates/ui-egui/src/start.rs:350
 msgid "Open Family…"
-msgstr ""
+msgstr "Ouvrir une famille…"
 
 #: crates/ui-egui/src/recent.rs:130
 #: crates/ui-egui/src/recent.rs:134
@@ -6879,7 +6879,7 @@ msgstr "Panneaux de brassage"
 
 #: crates/ui-egui/src/editor/extrusion.rs:195
 msgid "Path"
-msgstr ""
+msgstr "Chemin"
 
 #: crates/ui-egui/src/fillpatterns.rs:263
 #: crates/ui-egui/src/fillpatterns.rs:618
@@ -7073,7 +7073,7 @@ msgstr "Choisir une ligne et utiliser le plan de travail dans lequel elle a ét�
 
 #: crates/ui-egui/src/editor/sketch.rs:251
 msgid "Pick a line of the sketch, on the part to keep."
-msgstr ""
+msgstr "Sélectionner une ligne de l'esquisse, sur la partie à conserver."
 
 #: crates/ui-egui/src/editor/views.rs:1004
 msgid "Pick a line that crosses the one before."
@@ -7203,7 +7203,7 @@ msgstr "Sélectionner la première ligne à arrondir."
 
 #: crates/ui-egui/src/editor/sketch.rs:1278
 msgid "Pick the first line, on the part to keep."
-msgstr ""
+msgstr "Sélectionner la première ligne, sur la partie à conserver."
 
 #: crates/ui-egui/src/sketch.rs:953
 msgid "Pick the first sketch line, on the part to keep."
@@ -7231,7 +7231,7 @@ msgstr "Sélectionner la référence ou l'extrémité suivante."
 
 #: crates/ui-egui/src/editor/sketch.rs:1279
 msgid "Pick the second line, on the part to keep."
-msgstr ""
+msgstr "Sélectionner la deuxième ligne, sur la partie à conserver."
 
 #: crates/ui-egui/src/draw.rs:601
 msgid "Pick the second line."
@@ -7299,11 +7299,11 @@ msgstr "Accessoire de tuyauterie (PA): une vanne, à l'endroit du clic, à la ha
 
 #: crates/ui-egui/src/editor/connectors.rs:30
 msgid "Pipe Connector"
-msgstr ""
+msgstr "Connecteur de tuyau"
 
 #: crates/ui-egui/src/editor/connectors.rs:30
 msgid "Pipe Connector: where a pipe meets the family, its domain, flow and size"
-msgstr ""
+msgstr "Connecteur de tuyau: là où un tuyau rejoint la famille, son domaine, son flux et sa taille"
 
 #: crates/ui-egui/src/mep.rs:47
 msgid "Pipe Fitting"
@@ -7686,15 +7686,15 @@ msgstr "Reporter"
 
 #: crates/ui-egui/src/editor/connectors.rs:31
 msgid "Power Connector"
-msgstr ""
+msgstr "Connecteur d'alimentation"
 
 #: crates/ui-egui/src/editor/connectors.rs:31
 msgid "Power Connector: what an electrical device draws, its voltage and load"
-msgstr ""
+msgstr "Connecteur d'alimentation: ce que consomme un appareil électrique, sa tension et sa charge"
 
 #: crates/ui-egui/src/editor/connectors.rs:313
 msgid "Power Factor"
-msgstr ""
+msgstr "Facteur de puissance"
 
 #: crates/ui-egui/src/properties.rs:224
 msgid "Prefix"
@@ -7843,7 +7843,7 @@ msgstr "Projection/Surface"
 
 #: crates/ui-egui/src/lib.rs:3703
 msgid "Project…"
-msgstr ""
+msgstr "Projet…"
 
 #: crates/ui-egui/src/editor/document.rs:793
 #: crates/ui-egui/src/editor/document.rs:794
@@ -8845,7 +8845,7 @@ msgstr "Définir le plan de travail…"
 
 #: crates/ui-egui/src/editor/extrusion.rs:171
 msgid "Set by its dimensions and locks for the type {}: {} or the dimensions change it."
-msgstr ""
+msgstr "Fixé par ses cotes et verrouillages pour le type {}: {} ou les cotes le modifient."
 
 #: crates/ui-egui/src/graphics.rs:154
 msgid "Set by view template {}: change the template, or stop following it."
@@ -9173,7 +9173,7 @@ msgstr "Esquisser d'abord le chemin: {}"
 
 #: crates/ui-egui/src/editor/extrusion.rs:193
 msgid "Sketch, {} lines and arcs"
-msgstr ""
+msgstr "Esquisse, {} lignes et arcs"
 
 #: crates/ui-egui/src/reinforce.rs:88
 msgid "Skin bars"
@@ -9654,11 +9654,11 @@ msgstr "Interrupteur"
 
 #: crates/ui-egui/src/editor/connectors.rs:32
 msgid "Switch Connector"
-msgstr ""
+msgstr "Connecteur d'interrupteur"
 
 #: crates/ui-egui/src/editor/connectors.rs:32
 msgid "Switch Connector: what a switch controls"
-msgstr ""
+msgstr "Connecteur d'interrupteur: ce que commande un interrupteur"
 
 #: crates/ui-egui/src/editor.rs:929
 msgid "Switches"
@@ -9706,16 +9706,16 @@ msgstr "Symbole visible"
 
 #: crates/ui-egui/src/editor.rs:1178
 msgid "Symbolic Arc"
-msgstr ""
+msgstr "Arc symbolique"
 
 #: crates/ui-egui/src/editor/document.rs:548
 #: crates/ui-egui/src/editor.rs:1181
 msgid "Symbolic Line"
-msgstr ""
+msgstr "Ligne symbolique"
 
 #: crates/ui-egui/src/editor/document.rs:547
 msgid "Symbolic Line: a line or an arc the family's plans draw, not part of its forms (a door's swing)"
-msgstr ""
+msgstr "Ligne symbolique: une ligne ou un arc que dessinent les plans de la famille, hors de ses formes (le débattement d'une porte)"
 
 #: crates/ui-egui/src/editor/document.rs:1129
 #: crates/ui-egui/src/mep.rs:189
@@ -9941,7 +9941,7 @@ msgstr "Texte: IBM Plex Sans (inclus). Le texte se réduit pour tenir dans son s
 
 #: crates/ui-egui/src/editor/document.rs:557
 msgid "Text: a label the family's plans draw"
-msgstr ""
+msgstr "Texte: une étiquette que dessinent les plans de la famille"
 
 #: crates/ui-egui/src/properties.rs:2264
 msgid "Texture"
@@ -10005,7 +10005,7 @@ msgstr "Les extrémités des murs, quadrillages et autres éléments dessinés, 
 
 #: crates/ui-egui/src/editor/exists.rs:516
 msgid "The family document was closed before the load finished: nothing was loaded."
-msgstr ""
+msgstr "Le document de famille a été fermé avant la fin du chargement: rien n'a été chargé."
 
 #: crates/ui-egui/src/adaptive_editor.rs:734
 #: crates/ui-egui/src/editor/types_dialog.rs:650
@@ -10018,7 +10018,7 @@ msgstr "La famille a déjà un type nommé {}."
 
 #: crates/ui-egui/src/editor/tabs.rs:286
 msgid "The family has changes that are not loaded. If you close it without loading, they are lost."
-msgstr ""
+msgstr "La famille a des modifications qui ne sont pas chargées. Si vous la fermez sans la charger, elles sont perdues."
 
 #: crates/ui-egui/src/editor/exists.rs:206
 msgid "The family it was nested in is closed."
@@ -10239,7 +10239,7 @@ msgstr "Ces lignes ne peuvent pas être raccordées: sélectionner deux lignes d
 
 #: crates/ui-egui/src/editor/sketch.rs:264
 msgid "These lines don't meet: pick two that would, on the parts to keep."
-msgstr ""
+msgstr "Ces lignes ne se rejoignent pas: sélectionner deux lignes qui se rejoindraient, sur les parties à conserver."
 
 #: crates/ui-egui/src/fillpatterns.rs:625
 msgid "These patterns to a PAT file, but the solid ones"
@@ -10494,7 +10494,7 @@ msgstr "Ajuster/Prolonger au coin"
 
 #: crates/ui-egui/src/editor/sketch.rs:1514
 msgid "Trim/Extend to Corner (TR): pick two lines, on the parts to keep"
-msgstr ""
+msgstr "Ajuster/Prolonger au coin (TR): choisir deux lignes, sur les parties à conserver"
 
 #: crates/ui-egui/src/lib.rs:4548
 #: crates/ui-egui/src/sketch.rs:742
@@ -11011,7 +11011,7 @@ msgstr "Raccord par chemin vide"
 
 #: crates/ui-egui/src/editor/connectors.rs:306
 msgid "Voltage"
-msgstr ""
+msgstr "Tension"
 
 #: crates/ui-egui/src/electrical.rs:126
 msgid "Voltage {} is supplied by distribution system {}: change that first."
@@ -11148,7 +11148,7 @@ msgstr "Ce sur quoi les vues sont dessinées; les lignes du dessin deviennent cl
 
 #: crates/ui-egui/src/editor/extrusion.rs:273
 msgid "What the void cuts: the solid forms listed before it, and the wall the door or window stands in"
-msgstr ""
+msgstr "Ce que coupe le vide: les formes pleines listées avant lui, et le mur dans lequel se trouve la porte ou la fenêtre"
 
 #: crates/ui-egui/src/phasing.rs:82
 msgid "What the work builds, over what stood before"
