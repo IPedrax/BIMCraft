@@ -189,7 +189,7 @@ msgid "Electrical Power"
 msgstr "Elektrische voeding"
 
 #: crates/core/src/commands.rs:9359
-#: crates/core/src/commands.rs:11745
+#: crates/core/src/commands.rs:11706
 msgid "Elevation"
 msgstr "Gevel"
 
@@ -476,7 +476,7 @@ msgid "Seat Height"
 msgstr "Zithoogte"
 
 #: crates/core/src/commands.rs:9336
-#: crates/core/src/commands.rs:11744
+#: crates/core/src/commands.rs:11705
 msgid "Section"
 msgstr "Doorsnede"
 

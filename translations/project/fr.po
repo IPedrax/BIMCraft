@@ -189,7 +189,7 @@ msgid "Electrical Power"
 msgstr "Alimentation électrique"
 
 #: crates/core/src/commands.rs:9359
-#: crates/core/src/commands.rs:11745
+#: crates/core/src/commands.rs:11706
 msgid "Elevation"
 msgstr "Élévation"
 
@@ -476,7 +476,7 @@ msgid "Seat Height"
 msgstr "Hauteur assise"
 
 #: crates/core/src/commands.rs:9336
-#: crates/core/src/commands.rs:11744
+#: crates/core/src/commands.rs:11705
 msgid "Section"
 msgstr "Coupe"
 
