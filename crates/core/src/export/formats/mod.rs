@@ -2,6 +2,8 @@
 //! lines. A format not written yet is [`Planned`], listed so the dialog can show it and an export to it says so.
 
 mod document;
+mod line;
+mod mesh;
 mod model;
 mod picture;
 mod table;
@@ -13,6 +15,8 @@ use super::{Family, Format, Options, Out, Prepared, Status, Takes};
 use crate::render::{Drawing, Prim, Rgb};
 
 pub use document::Pdf;
+pub use line::Dxf;
+pub use mesh::{Obj, Stl};
 pub use model::{Glb, Ifc};
 pub use picture::{Png, Svg};
 pub use table::{Csv, Xlsx};
@@ -25,15 +29,15 @@ pub fn builtin() -> Vec<Arc<dyn Format>> {
         Arc::new(Png),
         Arc::new(Planned { id: "jpeg", label: "JPEG", extension: "jpg", family: Family::Raster, takes: &[Takes::Drawing] }),
         Arc::new(Planned { id: "jxl", label: "JPEG XL", extension: "jxl", family: Family::Raster, takes: &[Takes::Drawing] }),
-        Arc::new(Planned { id: "dxf", label: "DXF", extension: "dxf", family: Family::Line, takes: &[Takes::Drawing] }),
+        Arc::new(Dxf),
         // Written by an app that has the DWG bridge; the core can't.
         Arc::new(Planned { id: "dwg", label: "DWG", extension: "dwg", family: Family::Line, takes: &[Takes::Drawing] }),
         Arc::new(Planned { id: "ifc2x3", label: "IFC2x3", extension: "ifc", family: Family::Model, takes: &[Takes::Model] }),
         Arc::new(Ifc),
         Arc::new(Planned { id: "ifc4x3", label: "IFC4.3", extension: "ifc", family: Family::Model, takes: &[Takes::Model] }),
         Arc::new(Glb),
-        Arc::new(Planned { id: "obj", label: "OBJ", extension: "obj", family: Family::Model, takes: &[Takes::Model] }),
-        Arc::new(Planned { id: "stl", label: "STL", extension: "stl", family: Family::Model, takes: &[Takes::Model] }),
+        Arc::new(Obj),
+        Arc::new(Stl),
         Arc::new(Planned { id: "u3d", label: "U3D", extension: "u3d", family: Family::Model, takes: &[Takes::Model] }),
         Arc::new(Csv),
         Arc::new(Xlsx),

@@ -71,6 +71,23 @@ fn a_sheet_exports_to_one_pdf_at_path() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// An export is readable as any file the user makes, not only by its owner as a temporary file is.
+#[cfg(unix)]
+#[test]
+fn an_exported_file_is_made_as_any_file_is() {
+    use std::os::unix::fs::PermissionsExt;
+    let mut s = project();
+    let dir = folder("mode");
+    std::fs::create_dir_all(&dir).unwrap();
+    let plain = dir.join("plain.txt");
+    std::fs::File::create(&plain).unwrap();
+    let to = dir.join("plan.svg");
+    run(&mut s, "export", json!({"format": "svg", "view": "Level 1", "path": to}));
+    let mode = |p: &Path| std::fs::metadata(p).map(|m| m.permissions().mode() & 0o777).unwrap_or(0);
+    assert_eq!(mode(&to), mode(&plain));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 #[test]
 fn views_export_to_a_folder_named_by_a_template_and_numbered_rather_than_written_over() {
     let mut s = project();
