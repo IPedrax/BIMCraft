@@ -3318,7 +3318,7 @@ msgstr "Encontra {}; nada tem estes: {}"
 msgid "Fine"
 msgstr "Fino"
 
-#: crates/core/src/import.rs:1365
+#: crates/core/src/import.rs:1367
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:718
 msgid "Finish"
@@ -4029,7 +4029,7 @@ msgstr "Instalando o BIMCraft {}…"
 msgid "Instance"
 msgstr "Instância"
 
-#: crates/core/src/import.rs:1364
+#: crates/core/src/import.rs:1366
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Isolamento"
@@ -4709,7 +4709,7 @@ msgstr "Médio"
 msgid "Medium Lines"
 msgstr "Linhas médias"
 
-#: crates/core/src/import.rs:1367
+#: crates/core/src/import.rs:1369
 #: crates/ui-egui/src/properties.rs:717
 msgid "Membrane"
 msgstr "Membrana"
@@ -5640,7 +5640,7 @@ msgstr "Fase de demolição"
 msgid "Phase Filter"
 msgstr "Filtro de fase"
 
-#: crates/core/src/ifc.rs:1659
+#: crates/core/src/ifc.rs:1673
 msgid "Phase Filters"
 msgstr "Filtros de fase"
 
@@ -7731,7 +7731,7 @@ msgstr "Divisões da subgrade Y"
 msgid "Subgrid pen"
 msgstr "Pena da subgrade"
 
-#: crates/core/src/import.rs:1366
+#: crates/core/src/import.rs:1368
 #: crates/ui-egui/src/properties.rs:715
 msgid "Substrate"
 msgstr "Substrato"

@@ -83,6 +83,20 @@ class where it hasn't ([families](families.md)); a class is never forced into an
   discipline tabs, `lenient` and the translations; worth doing when BIMCraft has tools for those systems, not as an import's
   side effect.
 
+## Authored wall location and attachments
+
+BIMCraft exports a `BIMCraft_Wall` property set on each wall. `Location` names its native location line; the IFC Axis
+representation lies on that line. `AttachTop` and `AttachBase`, when present, are the GlobalIds of the roof or floor the
+wall follows. Reopening keeps those choices and the drawn endpoints, without extending them to nearby walls. A recognized
+location with no attachment property means unattached, so geometric roof inference does not add a link.
+
+Walls without a recognized location still come in from the body's centre line and retain the existing join and roof
+inference. A missing axis, or a layer usage that reverses it, also keeps the generic centre-line reconstruction. Attachment
+targets must have come in as roofs or floors; missing or other-kind targets are ignored. The axis is read through the file's
+placements and length units, so the metadata does not introduce a second coordinate system. Other native wall constraints
+(such as height and top offsets) continue to be inferred from geometry; this set does not preserve all native parameters.
+The native project schema and file format are unchanged.
+
 ## Georeference
 
 Where a project lies on a map is `Model::georeference` (`model::Georeference`): a projected coordinate reference system by its
