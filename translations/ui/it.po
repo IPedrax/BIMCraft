@@ -800,7 +800,7 @@ msgstr "Architettura"
 msgid "Area"
 msgstr "Superficie"
 
-#: crates/core/src/family.rs:3201
+#: crates/core/src/family.rs:3196
 msgid "Arm Width"
 msgstr "Larghezza bracciolo"
 
@@ -846,11 +846,11 @@ msgstr ""
 msgid "Associated Level"
 msgstr "Piano associato"
 
-#: crates/core/src/model.rs:2701
+#: crates/core/src/model.rs:2702
 msgid "At wall centre line"
 msgstr "Sull'asse del muro"
 
-#: crates/core/src/model.rs:2702
+#: crates/core/src/model.rs:2703
 msgid "At wall finish"
 msgstr "Sulla finitura del muro"
 
@@ -1036,7 +1036,7 @@ msgstr "Barre"
 msgid "Base"
 msgstr "Base"
 
-#: crates/core/src/family.rs:3245
+#: crates/core/src/family.rs:3240
 msgid "Base Cabinet"
 msgstr "Mobile base"
 
@@ -1064,7 +1064,7 @@ msgstr "Linea di base"
 msgid "Baseline Spacing"
 msgstr "Interasse linee di base"
 
-#: crates/core/src/family.rs:3299
+#: crates/core/src/family.rs:3294
 msgid "Bathtub"
 msgstr "Vasca da bagno"
 
@@ -1076,7 +1076,7 @@ msgstr "Trave"
 msgid "Beam (BM): click its start and its end; a chain of clicks makes a beam for each step"
 msgstr "Trave (BM): clicca l'inizio e la fine; una serie di clic crea una trave per ogni tratto"
 
-#: crates/core/src/family.rs:3186
+#: crates/core/src/family.rs:3181
 msgid "Bed"
 msgstr "Letto"
 
@@ -1173,7 +1173,7 @@ msgstr "Linea di contorno: disegna il contorno del cavedio"
 msgid "Boundary Line: the lines of the profile"
 msgstr "Linea di contorno: le linee del profilo"
 
-#: crates/core/src/model.rs:2999
+#: crates/core/src/model.rs:3000
 msgid "Brick"
 msgstr "Mattone"
 
@@ -1334,7 +1334,7 @@ msgstr ""
 msgid "Card: {}"
 msgstr "Scheda: {}"
 
-#: crates/core/src/family.rs:3488
+#: crates/core/src/family.rs:3483
 msgid "Casement Window"
 msgstr "Finestra a battente"
 
@@ -1438,7 +1438,7 @@ msgstr "Centro"
 msgid "Centre Lines"
 msgstr "Linee d'asse"
 
-#: crates/core/src/model.rs:3007
+#: crates/core/src/model.rs:3008
 msgid "Ceramic tile"
 msgstr "Piastrella ceramica"
 
@@ -1449,7 +1449,7 @@ msgstr "Piastrella ceramica"
 msgid "Chain"
 msgstr "Concatena"
 
-#: crates/core/src/family.rs:3171
+#: crates/core/src/family.rs:3166
 msgid "Chair"
 msgstr "Sedia"
 
@@ -2280,11 +2280,11 @@ msgstr ""
 msgid "Conceptual Mass"
 msgstr "Volume concettuale"
 
-#: crates/core/src/family.rs:3110
+#: crates/core/src/family.rs:3105
 msgid "Concrete"
 msgstr "Calcestruzzo"
 
-#: crates/core/src/model.rs:3001
+#: crates/core/src/model.rs:3002
 msgid "Concrete block"
 msgstr "Blocco in calcestruzzo"
 
@@ -2446,7 +2446,7 @@ msgstr "Copiati {} IFC GlobalId."
 msgid "Copied {} rows, tab-separated."
 msgstr "Copiate {} righe, separate da tabulazione."
 
-#: crates/core/src/model.rs:3015
+#: crates/core/src/model.rs:3016
 msgid "Copper"
 msgstr "Rame"
 
@@ -2496,15 +2496,15 @@ msgstr "Copia ID, GUID e IFC GlobalId"
 msgid "Copy: click the point to copy from."
 msgstr ""
 
-#: crates/core/src/model.rs:417
+#: crates/core/src/model.rs:418
 msgid "Core Centreline"
 msgstr "Asse del nucleo"
 
-#: crates/core/src/model.rs:420
+#: crates/core/src/model.rs:421
 msgid "Core Face: Exterior"
 msgstr "Faccia del nucleo: esterna"
 
-#: crates/core/src/model.rs:421
+#: crates/core/src/model.rs:422
 msgid "Core Face: Interior"
 msgstr "Faccia del nucleo: interna"
 
@@ -2929,7 +2929,7 @@ msgstr "Dipendente"
 msgid "Depends on: {}"
 msgstr ""
 
-#: crates/core/src/family.rs:3108
+#: crates/core/src/family.rs:3103
 #: crates/ui-egui/src/editor/extrusion.rs:324
 #: crates/ui-egui/src/editor/sketch.rs:1307
 #: crates/ui-egui/src/properties.rs:465
@@ -2960,7 +2960,7 @@ msgstr "Opzioni di progetto"
 msgid "Design Options (DO): sets of options for a part of the design, and the one new elements are made in"
 msgstr "Opzioni di progetto (DO): gruppi di opzioni per una parte del progetto, e quella in cui si creano i nuovi elementi"
 
-#: crates/core/src/family.rs:3217
+#: crates/core/src/family.rs:3212
 msgid "Desk"
 msgstr "Scrivania"
 
@@ -3248,15 +3248,15 @@ msgstr ""
 msgid "Dotted"
 msgstr "Punteggiata"
 
-#: crates/core/src/family.rs:3395
+#: crates/core/src/family.rs:3390
 msgid "Double Door"
 msgstr "Porta a due battenti"
 
-#: crates/core/src/model.rs:2532
+#: crates/core/src/model.rs:2533
 msgid "Double Sliding"
 msgstr "Scorrevole doppia"
 
-#: crates/core/src/model.rs:2530
+#: crates/core/src/model.rs:2531
 msgid "Double Swing"
 msgstr "Doppio battente"
 
@@ -3415,7 +3415,7 @@ msgstr "Dispersore (EG): un picchetto infisso dal piano, dove clicchi; Spazio lo
 msgid "Earthing Electrodes"
 msgstr "Dispersori"
 
-#: crates/core/src/model.rs:1925
+#: crates/core/src/model.rs:1926
 msgid "East"
 msgstr "Est"
 
@@ -3840,7 +3840,7 @@ msgstr ""
 msgid "FRONT"
 msgstr ""
 
-#: crates/core/src/family.rs:3110
+#: crates/core/src/family.rs:3105
 msgid "Fabric"
 msgstr "Tessuto"
 
@@ -4122,11 +4122,11 @@ msgstr "Fine modalità di modifica: le linee, chiuse in contorni, diventano la f
 msgid "Finish Edit Mode: the lines, closed into loops, become the outline and its holes"
 msgstr "Fine modalità di modifica: le linee, chiuse in contorni, diventano il contorno e i suoi fori"
 
-#: crates/core/src/model.rs:418
+#: crates/core/src/model.rs:419
 msgid "Finish Face: Exterior"
 msgstr "Faccia di finitura: esterna"
 
-#: crates/core/src/model.rs:419
+#: crates/core/src/model.rs:420
 msgid "Finish Face: Interior"
 msgstr "Faccia di finitura: interna"
 
@@ -4143,11 +4143,11 @@ msgstr ""
 msgid "First End"
 msgstr "Primo estremo"
 
-#: crates/core/src/model.rs:2534
+#: crates/core/src/model.rs:2535
 msgid "Fixed"
 msgstr "Fisso"
 
-#: crates/core/src/family.rs:3463
+#: crates/core/src/family.rs:3458
 msgid "Fixed Window"
 msgstr "Finestra fissa"
 
@@ -4272,7 +4272,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr "Cartella per i nuovi progetti"
 
-#: crates/core/src/model.rs:2533
+#: crates/core/src/model.rs:2534
 msgid "Folding"
 msgstr "Pieghevole"
 
@@ -4321,15 +4321,15 @@ msgstr ""
 msgid "Four-Point Panel: the family made adaptive, as a panel on four placement points"
 msgstr ""
 
-#: crates/core/src/family.rs:3335
+#: crates/core/src/family.rs:3330
 msgid "Frame Depth"
 msgstr "Profondità telaio"
 
-#: crates/core/src/family.rs:3337
+#: crates/core/src/family.rs:3332
 msgid "Frame Material"
 msgstr "Materiale telaio"
 
-#: crates/core/src/family.rs:3335
+#: crates/core/src/family.rs:3330
 msgid "Frame Width"
 msgstr "Larghezza telaio"
 
@@ -4402,7 +4402,7 @@ msgstr "Generico"
 msgid "Geometry"
 msgstr "Geometria"
 
-#: crates/core/src/family.rs:3337
+#: crates/core/src/family.rs:3332
 msgid "Glass"
 msgstr "Vetro"
 
@@ -4502,7 +4502,7 @@ msgstr "Raggruppa parametro in:"
 msgid "Group:"
 msgstr "Gruppo:"
 
-#: crates/core/src/model.rs:3006
+#: crates/core/src/model.rs:3007
 msgid "Gypsum board"
 msgstr "Cartongesso"
 
@@ -4521,7 +4521,7 @@ msgstr "Metà"
 msgid "Halftone"
 msgstr "Mezzatinta"
 
-#: crates/core/src/family.rs:3179
+#: crates/core/src/family.rs:3174
 msgid "Headboard Height"
 msgstr "Altezza testiera"
 
@@ -5041,11 +5041,11 @@ msgstr "Linea di richiamo"
 msgid "Leader/Border Offset"
 msgstr "Scostamento richiamo/bordo"
 
-#: crates/core/src/family.rs:3337
+#: crates/core/src/family.rs:3332
 msgid "Leaf Material"
 msgstr "Materiale anta"
 
-#: crates/core/src/family.rs:3335
+#: crates/core/src/family.rs:3330
 msgid "Leaf Thickness"
 msgstr "Spessore anta"
 
@@ -5070,7 +5070,7 @@ msgstr "Esclusi: {}"
 msgid "Left/Right"
 msgstr "Sinistra/Destra"
 
-#: crates/core/src/family.rs:3109
+#: crates/core/src/family.rs:3104
 msgid "Leg Width"
 msgstr "Larghezza gamba"
 
@@ -5082,7 +5082,7 @@ msgstr "Legende"
 msgid "Legends are coming in a later version."
 msgstr "Le legende arriveranno in una versione successiva."
 
-#: crates/core/src/family.rs:3108
+#: crates/core/src/family.rs:3103
 #: crates/ui-egui/src/linestyles/creator.rs:136
 msgid "Length"
 msgstr "Lunghezza"
@@ -5521,7 +5521,7 @@ msgstr "Gestisci"
 msgid "Manage Presets…"
 msgstr ""
 
-#: crates/core/src/model.rs:1526
+#: crates/core/src/model.rs:1527
 msgid "Mark"
 msgstr "ID"
 
@@ -5670,7 +5670,7 @@ msgstr "Rete lungo la profondità"
 msgid "Mesh along width"
 msgstr "Rete lungo la larghezza"
 
-#: crates/core/src/family.rs:3337
+#: crates/core/src/family.rs:3332
 msgid "Metal"
 msgstr "Metallo"
 
@@ -6078,7 +6078,7 @@ msgstr "NBR 6492: bersaglio in pianta (±0,00), triangolo equilatero in sezione"
 msgid "NOT ENCLOSED"
 msgstr "NON CHIUSA"
 
-#: crates/core/src/model.rs:1527
+#: crates/core/src/model.rs:1528
 #: crates/ui-egui/src/adaptive_editor.rs:665
 #: crates/ui-egui/src/adaptive_editor.rs:804
 #: crates/ui-egui/src/cad.rs:85
@@ -6330,7 +6330,7 @@ msgstr ""
 msgid "Normalized Segment Length"
 msgstr ""
 
-#: crates/core/src/model.rs:1923
+#: crates/core/src/model.rs:1924
 msgid "North"
 msgstr "Nord"
 
@@ -7637,7 +7637,7 @@ msgstr "Polilinea"
 msgid "Polyline: one line through every point clicked; Enter finishes it, the first point again closes it"
 msgstr "Polilinea: un'unica linea per tutti i punti cliccati; Invio termina, cliccando di nuovo il primo punto si chiude"
 
-#: crates/core/src/family.rs:3110
+#: crates/core/src/family.rs:3105
 msgid "Porcelain"
 msgstr "Porcellana"
 
@@ -8384,7 +8384,7 @@ msgstr "Copertura da faccia (RB): una copertura sulle facce superiori dei volumi
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Copertura da impronta: clicca dentro i muri per coprirli, sul piano superiore"
 
-#: crates/core/src/model.rs:3008
+#: crates/core/src/model.rs:3009
 msgid "Roof tiles"
 msgstr "Tegole"
 
@@ -8638,7 +8638,7 @@ msgstr "Abachi"
 msgid "Schedules/Quantities (all)"
 msgstr "Abachi/Quantità (tutti)"
 
-#: crates/core/src/model.rs:3004
+#: crates/core/src/model.rs:3005
 msgid "Screed"
 msgstr "Massetto"
 
@@ -8662,7 +8662,7 @@ msgstr "Cerca nel navigatore di progetto"
 msgid "Search…"
 msgstr "Cerca…"
 
-#: crates/core/src/family.rs:3109
+#: crates/core/src/family.rs:3104
 msgid "Seat Height"
 msgstr "Altezza seduta"
 
@@ -9102,7 +9102,7 @@ msgstr ""
 msgid "Simulate placement frames"
 msgstr ""
 
-#: crates/core/src/family.rs:3373
+#: crates/core/src/family.rs:3368
 msgid "Single Door"
 msgstr "Porta a un battente"
 
@@ -9166,15 +9166,15 @@ msgstr "Salta questa versione"
 msgid "Sky"
 msgstr "Cielo"
 
-#: crates/core/src/model.rs:2531
+#: crates/core/src/model.rs:2532
 msgid "Sliding"
 msgstr "Scorrevole"
 
-#: crates/core/src/family.rs:3422
+#: crates/core/src/family.rs:3417
 msgid "Sliding Door"
 msgstr "Porta scorrevole"
 
-#: crates/core/src/family.rs:3519
+#: crates/core/src/family.rs:3514
 msgid "Sliding Window"
 msgstr "Finestra scorrevole"
 
@@ -9270,7 +9270,7 @@ msgstr "Aggancio disattivato (punto successivo)"
 msgid "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none"
 msgstr "Agganci: a cosa si aggancia un punto scelto (estremi, punti medi, intersezioni, centri, perpendicolari) e gli angoli a passi; SE, SM, SI, SC, SP e SN ne attivano uno solo per il punto successivo, SO nessuno"
 
-#: crates/core/src/family.rs:3203
+#: crates/core/src/family.rs:3198
 msgid "Sofa"
 msgstr "Divano"
 
@@ -9326,7 +9326,7 @@ msgstr "Ordinamento/Raggruppamento"
 msgid "Source code on GitHub"
 msgstr "Codice sorgente su GitHub"
 
-#: crates/core/src/model.rs:1924
+#: crates/core/src/model.rs:1925
 msgid "South"
 msgstr "Sud"
 
@@ -9618,7 +9618,7 @@ msgstr ""
 msgid "Swept Blend: a path of one line or arc, and a profile at each end, blended along it"
 msgstr "Unione su percorso: un percorso di una linea o di un arco e un profilo a ogni estremo, uniti lungo il percorso"
 
-#: crates/core/src/model.rs:2529
+#: crates/core/src/model.rs:2530
 msgid "Swing"
 msgstr "Battente"
 
@@ -9749,7 +9749,7 @@ msgstr ""
 msgid "Tab with {}"
 msgstr "Scheda con {}"
 
-#: crates/core/src/family.rs:3150
+#: crates/core/src/family.rs:3145
 msgid "Table"
 msgstr "Tavolo"
 
@@ -10217,7 +10217,7 @@ msgstr ""
 msgid "These patterns to a PAT file, but the solid ones"
 msgstr "Questi motivi in un file PAT, tranne quelli pieni"
 
-#: crates/core/src/family.rs:3109
+#: crates/core/src/family.rs:3104
 #: crates/ui-egui/src/properties.rs:467
 #: crates/ui-egui/src/properties.rs:468
 #: crates/ui-egui/src/properties.rs:802
@@ -10332,7 +10332,7 @@ msgstr "Dimensione piastrella"
 msgid "Tile Width"
 msgstr "Larghezza piastrella"
 
-#: crates/core/src/family.rs:3110
+#: crates/core/src/family.rs:3105
 msgid "Timber"
 msgstr "Legno"
 
@@ -10505,7 +10505,7 @@ msgstr "Torsione: {}"
 msgid "Two {} are called {}."
 msgstr ""
 
-#: crates/core/src/model.rs:1528
+#: crates/core/src/model.rs:1529
 #: crates/ui-egui/src/adaptive_editor.rs:724
 #: crates/ui-egui/src/editor/dimensions.rs:946
 #: crates/ui-egui/src/editor/nested.rs:272
@@ -11018,7 +11018,7 @@ msgstr "Volume"
 msgid "Volume (m³)"
 msgstr "Volume (m³)"
 
-#: crates/core/src/family.rs:3259
+#: crates/core/src/family.rs:3254
 msgid "WC"
 msgstr "WC"
 
@@ -11030,7 +11030,7 @@ msgstr "Muro"
 msgid "Wall (WA): each click builds a wall; Enter or Esc ends the chain"
 msgstr "Muro (WA): ogni clic costruisce un muro; Invio o Esc chiude la catena"
 
-#: crates/core/src/model.rs:416
+#: crates/core/src/model.rs:417
 msgid "Wall Centreline"
 msgstr "Asse del muro"
 
@@ -11070,11 +11070,11 @@ msgstr ""
 msgid "Walls' Outline: the outline the level's walls enclose, along their centre lines, as sketch lines to edit"
 msgstr ""
 
-#: crates/core/src/family.rs:3231
+#: crates/core/src/family.rs:3226
 msgid "Wardrobe"
 msgstr "Armadio"
 
-#: crates/core/src/family.rs:3278
+#: crates/core/src/family.rs:3273
 msgid "Washbasin"
 msgstr "Lavabo"
 
@@ -11086,7 +11086,7 @@ msgstr "Onda"
 msgid "Weight"
 msgstr "Peso"
 
-#: crates/core/src/model.rs:1926
+#: crates/core/src/model.rs:1927
 msgid "West"
 msgstr "Ovest"
 
@@ -11301,7 +11301,7 @@ msgstr ""
 msgid "Work plane square to the {} axis"
 msgstr ""
 
-#: crates/core/src/family.rs:3243
+#: crates/core/src/family.rs:3238
 msgid "Worktop"
 msgstr "Piano di lavoro cucina"
 
