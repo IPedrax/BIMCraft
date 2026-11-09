@@ -159,11 +159,11 @@ fn wall_start_shared(text: &str) -> ([f64; 3], crate::coordinates::Coordinates) 
 fn ifc_goes_out_with_its_map_conversion_and_crs() {
     let mut s = surveyed();
     let text = ifc_of(&mut s, "ifc-out", None);
-    // The internal origin's map coordinates, in metres, the map unit; the x axis turned 10°; the scale.
+    // The internal origin's map coordinates, in metres, the map unit; the x axis turned 10°; the scale, mm to m with it.
     let at = to_shared(&s, [0.0, 0.0, 0.0]);
     let (c, sn) = (10f64.to_radians().cos(), 10f64.to_radians().sin());
     let conversion = text.lines().find(|l| l.contains("IFCMAPCONVERSION(")).unwrap_or_else(|| panic!("no map conversion:\n{text}"));
-    for v in [at[0] / 1000.0, at[1] / 1000.0, at[2] / 1000.0, c, sn, 0.9996] {
+    for v in [at[0] / 1000.0, at[1] / 1000.0, at[2] / 1000.0, c, sn, 0.0009996] {
         let shown = format!("{v}");
         let digits = &shown[..shown.len().min(9)];
         assert!(conversion.contains(digits), "{digits} in {conversion}");
@@ -190,6 +190,86 @@ fn ifc_comes_back_where_it_was_in_the_world_from_each_origin() {
         let l = co.location();
         assert!((l.angle - 10.0).abs() < 1e-6 && (l.scale - 0.9996).abs() < 1e-9 || origin == Some("shared"), "{origin:?}: {l:?}");
     }
+}
+
+/// The numbers of the file's `IfcMapConversion`: eastings, northings, height, x axis abscissa and ordinate, scale.
+fn conversion_of(text: &str) -> [f64; 6] {
+    let line = text.lines().find(|l| l.contains("IFCMAPCONVERSION(")).unwrap_or_else(|| panic!("no map conversion:\n{text}"));
+    let args = line.split("IFCMAPCONVERSION(").nth(1).unwrap().trim_end_matches(';').trim_end_matches(')');
+    let v: Vec<f64> = args.split(',').skip(2).map(|x| x.trim().parse().unwrap_or_else(|e| panic!("{x} in {line}: {e}"))).collect();
+    [v[0], v[1], v[2], v[3], v[4], v[5]]
+}
+
+/// A point of the file (its length unit, mm) on the map, as IFC4 and IfcOpenShell's `xyz2enh` take it: the scale carries the
+/// conversion from the project's unit to the map's.
+fn on_map(k: [f64; 6], p: [f64; 3]) -> [f64; 3] {
+    let t = k[4].atan2(k[3]);
+    let (c, s) = (t.cos(), t.sin());
+    [k[5] * (c * p[0] - s * p[1]) + k[0], k[5] * (s * p[0] + c * p[1]) + k[1], k[5] * p[2] + k[2]]
+}
+
+#[test]
+fn ifc_map_conversion_scale_takes_the_projects_millimetres_to_the_maps_unit() {
+    // In metres: 0.9996 from ground to grid, and 0.001 from millimetres to metres.
+    let mut s = surveyed();
+    let text = ifc_of(&mut s, "ifc-scale-m", None);
+    let k = conversion_of(&text);
+    assert!((k[5] - 0.9996e-3).abs() < 1e-12, "scale {} in {k:?}", k[5]);
+    // The wall's end, 8 m east of the origin, lands where the project's shared coordinates put it, in metres.
+    let want = to_shared(&s, [8000.0, 0.0, 0.0]).map(|x| x / 1000.0);
+    let got = on_map(k, [8000.0, 0.0, 0.0]);
+    assert!(near3(got, want, 1e-3), "{got:?}, not {want:?}");
+    // From the survey point too.
+    let text = ifc_of(&mut s, "ifc-scale-survey", Some("survey"));
+    let k = conversion_of(&text);
+    let got = on_map(k, [8000.0 - 3000.0, 1000.0, 0.0]);
+    assert!(near3(got, want, 1e-3), "survey: {got:?}, not {want:?}");
+    // Shared: the file's coordinates are the map's, in millimetres; the scale only changes the unit.
+    let text = ifc_of(&mut s, "ifc-scale-shared", Some("shared"));
+    let k = conversion_of(&text);
+    assert!((k[5] - 1e-3).abs() < 1e-15 && k[0] == 0.0 && k[1] == 0.0, "{k:?}");
+
+    // In US survey feet (NY Long Island): the scale takes millimetres to feet.
+    let mut s = Session::new();
+    run(&mut s, "crs", json!({"code": 2263}));
+    run(&mut s, "location", json!({"name": "Internal", "east": 300_000_000.0, "north": 60_000_000.0, "scale": 0.9999}));
+    run(&mut s, "wall", json!({"points": [[0, 0], [8000, 0]]}));
+    let text = ifc_of(&mut s, "ifc-scale-ft", None);
+    let k = conversion_of(&text);
+    let ft = 1200.0 / 3937.0 * 1000.0;
+    assert!((k[5] - 0.9999 / ft).abs() < 1e-12, "scale {} in {k:?}", k[5]);
+    let want = to_shared(&s, [8000.0, 0.0, 0.0]).map(|x| x / ft);
+    let got = on_map(k, [8000.0, 0.0, 0.0]);
+    assert!(near3(got, want, 1e-3), "{got:?}, not {want:?}");
+}
+
+#[test]
+fn ifc_whose_scale_carries_the_unit_comes_in_with_its_ground_to_grid_scale() {
+    // Every other point of the round trip, not only the origin: the wall's end.
+    for origin in [None, Some("base"), Some("shared")] {
+        let mut s = surveyed();
+        let want = to_shared(&s, [8000.0, 0.0, 0.0]);
+        let text = ifc_of(&mut s, &format!("ifc-end-{}", origin.unwrap_or("default")), origin);
+        let i = crate::import::ifc(text.as_bytes(), "back").unwrap();
+        let end = i.model.elements.values().find_map(|e| match e {
+            crate::model::Element::Wall(w) => Some(w.end),
+            _ => None,
+        });
+        let e = end.unwrap();
+        let back = i.model.coordinates.to_shared([e.0, e.1, 0.0]);
+        // At the shared origin the site's placement moves and turns but can't scale: the wall goes out at its length on the
+        // ground, 8 m, not on the grid, 0.9996 of it (3.2 mm less).
+        let tol = if origin == Some("shared") { 8000.0 * (1.0 - 0.9996) + 1.0 } else { 1.0 };
+        assert!(near3([back[0], back[1], 0.0], [want[0], want[1], 0.0], tol), "{origin:?}: {back:?}, not {want:?}");
+    }
+    // A file written by another tool as IFC4 says: millimetres, a map in metres, scale 0.001 (ground to grid 1).
+    let text = ifc_of(&mut surveyed(), "ifc-spec", None);
+    let k = conversion_of(&text);
+    let theirs = text.replace(&crate::ifc::ratio(k[5]), "0.001");
+    assert_ne!(theirs, text);
+    let (_, co) = wall_start_shared(&theirs);
+    let l = co.location();
+    assert!((l.scale - 1.0).abs() < 1e-9, "ground to grid 1, the unit taken out: {l:?}");
 }
 
 #[test]

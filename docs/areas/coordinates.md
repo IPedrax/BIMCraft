@@ -135,9 +135,11 @@ are always kept. Placed origin to origin past what a model reaches, it is refuse
   a CRS or its location isn't zero, `IfcMapConversion` from the file's coordinates to `IfcProjectedCRS` (named `EPSG:<code>`
   and described by its name, or named after the location without one), in the CRS's unit (metre, foot, US survey foot as a
   conversion-based unit): eastings, northings and height of the file's origin, the x axis (cos, sin of the angle) and the
-  scale; for `shared` the conversion is the identity, so nothing is turned twice. The context's `TrueNorth` agrees with it,
+  scale, which in IFC4 carries the unit too, from the file's millimetres to the map's (0.9996 in metres is 0.0009996, as
+  IfcOpenShell's `xyz2enh` takes it); for `shared` the conversion turns and moves nothing, its scale only the unit. The context's `TrueNorth` agrees with it,
   and with a CRS the site has `RefLatitude`, `RefLongitude` (compound degrees) and `RefElevation`.
-- **IFC import** (`import::georeference`): `IfcMapConversion` (its map unit, else the project's), else the context's
+- **IFC import** (`import::georeference`): `IfcMapConversion` (its map unit, else the project's; the ground-to-grid scale is
+  its scale less the unit, or the scale as it is where that is already one, as IFC4.3 writes it), else the context's
   `TrueNorth`, becomes the active location, composed with the shift a far model is moved by; a target named `EPSG:<code>`
   this version knows becomes the CRS. So what went out comes back where it was in the world, from every origin, and a model
   at map coordinates keeps them instead of losing the shift. IFC2x3's `ePSet_MapConversion` isn't read yet.
