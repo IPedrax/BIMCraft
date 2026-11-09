@@ -230,6 +230,14 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
     Staged { model: m, level, elevations, planes, room, lines }
 }
 
+/// What one of a family's views draws, for a front end that paints it as vectors: its frame, its drawing (what picks), and
+/// an elevation's hidden-line picture, which the drawing goes over.
+pub struct Lines {
+    pub view: View,
+    pub drawing: Drawing,
+    pub picture: Option<crate::view3d::Image>,
+}
+
 /// What one of a family's views shows: its frame, its drawing (what picks) and its pixels.
 pub struct Shown {
     pub view: View,
@@ -319,7 +327,7 @@ impl Staged {
     /// View `which`, `width` by `height` pixels, `zoom` times as close as fitted, moved `pan` mm. Its scale is the one at
     /// which, fitted, its annotation and pens are their size on paper, so the names read as a sheet's would, and grow
     /// and shrink as it is zoomed, as a project's views' do.
-    pub fn draw(&mut self, which: Which, width: u32, height: u32, zoom: f64, pan: P2) -> Result<Shown, String> {
+    pub fn draw_lines(&mut self, which: Which, width: u32, height: u32, zoom: f64, pan: P2) -> Result<Lines, String> {
         let fitted = self.frame(which, width, height, 1.0, P2(0.0, 0.0));
         let n = (crate::sheet::DENSITY / fitted.scale).clamp(1.0, 1e5);
         if let Some(g) = self.view_id(which).and_then(|id| self.model.elements.get_mut(id)).and_then(crate::graphics::graphics_mut) {
@@ -340,6 +348,12 @@ impl Staged {
             }
         };
         render::reference_lines(&mut drawing, &lines);
+        Ok(Lines { view, drawing, picture })
+    }
+
+    /// View `which` as [`draw_lines`](Self::draw_lines) draws it, rasterized: its drawing over its picture, on paper.
+    pub fn draw(&mut self, which: Which, width: u32, height: u32, zoom: f64, pan: P2) -> Result<Shown, String> {
+        let Lines { view, drawing, picture } = self.draw_lines(which, width, height, zoom, pan)?;
         let rgba = render::rgba(&drawing, picture.as_ref())?;
         Ok(Shown { view, drawing, rgba })
     }

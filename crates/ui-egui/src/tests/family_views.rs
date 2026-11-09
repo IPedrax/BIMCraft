@@ -56,11 +56,9 @@ pub(super) fn editor<'a>(h: &'a Harness<'_, BimApp>) -> &'a crate::editor::Famil
     h.state().active_family().expect("a family open")
 }
 
-/// The view's last picture.
-fn picture(h: &Harness<BimApp>, pictures: &Pictures) -> egui::ColorImage {
-    let named = |id: &egui::TextureId| h.ctx.tex_manager().read().meta(*id).is_some_and(|m| m.name == "family-view");
-    let kept = pictures.0.lock().unwrap();
-    kept.iter().rev().find(|(id, _)| named(id)).map(|(_, p)| p.clone()).expect("the view was drawn")
+/// The view's pixels, as its drawing paints them over its picture (the drawing is painted as vectors).
+fn picture(h: &Harness<BimApp>, _: &Pictures) -> egui::ColorImage {
+    editor(h).view_pixels().expect("the view was drawn")
 }
 
 /// The picture's pixels within `r` of family point `p`.
@@ -539,4 +537,39 @@ fn a_connector_is_lit_under_the_pointer_and_selected_by_a_click_in_3d_and_in_a_p
     // Off it, a click on the bowl selects a form, and lets the connector go.
     click_family(&mut h, [0.0, -150.0, 0.0]);
     assert_eq!(editor(&h).selected_connector(), None);
+}
+
+/// Every point of the lines the last frame painted, on screen.
+fn painted_points(h: &Harness<BimApp>) -> Vec<egui::Pos2> {
+    fn walk(s: &egui::Shape, out: &mut Vec<egui::Pos2>) {
+        match s {
+            egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+            egui::Shape::LineSegment { points, .. } => out.extend(points),
+            egui::Shape::Path(p) => out.extend(&p.points),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for clipped in &h.output().shapes {
+        walk(&clipped.shape, &mut out);
+    }
+    out
+}
+
+#[test]
+fn a_family_plan_is_painted_as_vectors_as_a_project_plan_is_with_no_picture_uploaded() {
+    let (mut h, pictures) = open(BOX_FAMILY, "Box");
+    view(&mut h, Some(Which::Plan));
+    let named = |id: &egui::TextureId| h.ctx.tex_manager().read().meta(*id).is_some_and(|m| m.name == "family-view");
+    assert!(!pictures.0.lock().unwrap().iter().any(|(id, _)| named(id)), "a plan is no picture");
+    // The box's corner, where its outline's lines meet.
+    let corner = editor(&h).views.screen_of([500.0, 300.0, 0.0]).expect("a view shown");
+    assert!(painted_points(&h).iter().any(|p| p.distance(corner) < 1.5), "the box's outline painted at {corner:?}");
+    // An elevation's hidden-line picture goes under its lines.
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    let named = |id: &egui::TextureId| h.ctx.tex_manager().read().meta(*id).is_some_and(|m| m.name == "family-view");
+    assert!(pictures.0.lock().unwrap().iter().any(|(id, _)| named(id)), "the elevation's picture");
+    // Its datums, drawn over it as lines: Ref. Level's line through the origin.
+    let origin = editor(&h).views.screen_of([0.0, 0.0, 0.0]).expect("a view shown");
+    assert!(painted_points(&h).iter().any(|p| (p.y - origin.y).abs() < 1.5), "Ref. Level painted at {origin:?}");
 }

@@ -650,6 +650,10 @@ zoomed (the wheel; the middle button moves it). The plan is `render::draw` with,
 at any height and, where a form crosses the level's cut plane (1200), its outline there in the cut pen (`render::family_plan`,
 `plan_cut`, the section's slicing turned on its side); a project's plans never cut a component. The ceiling plan is the project's.
 An elevation is a section's picture and drawing (`section_picture`, `section_over`): forms seen, Ref. Level a level with its name.
+The window paints each view's drawing as vectors, as it paints a project's plan (`Staged::draw_lines`, `canvas::paint`; egui
+tessellates it and draws it on the card where there is one), an elevation's hidden-line picture under its lines as a section's
+is; picking goes through the drawing as before. A test reads the same pixels rasterized from the drawing kept
+(`FamilyEditor::view_pixels`).
 The planes are drawn with the rules in [views and graphics](views-and-graphics.md#reference-planes-in-views). The family's reference
 lines (`Family.lines`) are drawn over each plan and elevation as the view sees them, solid in the planes' green and the thinnest
 pen, as Revit's: true length where their plane is square to the view, foreshortened where it isn't, nothing for one seen end on

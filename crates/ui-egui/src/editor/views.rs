@@ -15,7 +15,7 @@ use bimcraft_core::geom::P2;
 use bimcraft_core::graphics::Override;
 use bimcraft_core::ids::Guid;
 use bimcraft_core::model::Element;
-use bimcraft_core::render::{Drawing, View};
+use bimcraft_core::render::{Drawing, Rgb, View};
 
 /// What the family document's views keep for the session.
 #[derive(Default)]
@@ -111,7 +111,21 @@ pub(super) struct Cached {
     pub(super) staged: Staged,
     view: View,
     drawing: Drawing,
-    texture: TextureHandle,
+    /// An elevation's hidden-line picture, which its drawing is painted over; and the picture itself, kept for a test.
+    texture: Option<TextureHandle>,
+    #[cfg(test)]
+    picture: Option<bimcraft_core::view3d::Image>,
+}
+
+#[cfg(test)]
+impl FamilyEditor {
+    /// The view shown's pixels, as its drawing paints over its picture: what a test reads where the painted vectors are.
+    pub(crate) fn view_pixels(&self) -> Option<ColorImage> {
+        let c = self.views.cache.as_ref()?;
+        let rgba = bimcraft_core::render::rgba(&c.drawing, c.picture.as_ref()).ok()?;
+        let pixels = rgba.as_chunks::<4>().0.iter().map(|p| Color32::from_rgb(p[0], p[1], p[2])).collect();
+        Some(ColorImage { size: [c.view.width as usize, c.view.height as usize], pixels, source_size: Default::default() })
+    }
 }
 
 /// The name a family's view goes by, as Revit's browser and title name it.
@@ -374,16 +388,29 @@ impl FamilyEditor {
             return;
         }
         let drawn = self.staged(base, which).and_then(|mut st| {
-            let shown = st.draw(which, size[0], size[1], zoom, P2(pan.0, pan.1))?;
+            let shown = st.draw_lines(which, size[0], size[1], zoom, P2(pan.0, pan.1))?;
             Ok((st, shown))
         });
         match drawn {
             Ok((staged, shown)) => {
-                let pixels = shown.rgba.as_chunks::<4>().0.iter().map(|p| Color32::from_rgb(p[0], p[1], p[2])).collect();
-                let picture =
-                    ColorImage { size: [shown.view.width as usize, shown.view.height as usize], pixels, source_size: Default::default() };
-                let texture = ctx.load_texture("family-view", picture, TextureOptions::LINEAR);
-                self.views.cache = Some(Cached { key, which, staged, view: shown.view, drawing: shown.drawing, texture });
+                // The drawing is painted as vectors, as a project's plan is; an elevation's hidden-line picture goes under it, as a
+                // section's does, dark on a dark canvas as the drawing over it is.
+                let texture = shown.picture.as_ref().map(|image| {
+                    let pixels = image.rgba.as_chunks::<4>().0.iter().map(|p| crate::canvas::color(Rgb(p[0], p[1], p[2]))).collect();
+                    let picture =
+                        ColorImage { size: [image.width as usize, image.height as usize], pixels, source_size: Default::default() };
+                    ctx.load_texture("family-view", picture, TextureOptions::NEAREST)
+                });
+                self.views.cache = Some(Cached {
+                    key,
+                    which,
+                    staged,
+                    view: shown.view,
+                    drawing: shown.drawing,
+                    texture,
+                    #[cfg(test)]
+                    picture: shown.picture,
+                });
                 self.problem = None;
             }
             Err(e) => {
@@ -403,12 +430,12 @@ impl FamilyEditor {
         let c = self.views.cache.as_ref().filter(|c| c.which == which)?;
         let view = c.view;
         let painter = ui.painter_at(pane);
-        painter.image(
-            c.texture.id(),
-            Rect::from_min_size(pane.min, vec2(view.width as f32, view.height as f32)),
-            Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
-            Color32::WHITE,
-        );
+        painter.rect_filled(pane, 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
+        if let Some(t) = &c.texture {
+            let at = Rect::from_min_size(pane.min, vec2(view.width as f32, view.height as f32));
+            painter.image(t.id(), at, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+        }
+        crate::canvas::paint(&painter, crate::canvas::Place::at(pane.min), &c.drawing, &[], None, false, &[]);
         let screen = |q: P2| {
             let (x, y) = view.px(q);
             pane.min + vec2(x, y)
