@@ -5683,10 +5683,11 @@ impl Model {
     /// The segments of [`Model::wall_lines`], each with half its wall's thickness.
     /// With `rooms`, of the walls whose Room Bounding is on.
     fn wall_segments(&self, level: &impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<(P2, P2, f64)> {
+        let keep = |w: &Wall| self.bounding(w, level) && (!rooms || w.room_bounding);
         self.bounding_walls(level, rooms)
             .filter_map(|id| Some((id, self.thickness(self.wall(id)?) / 2.0)))
             .flat_map(|(id, half)| {
-                let line = walls::centre_line_in(self, id, index);
+                let line = walls::centre_line_filtered(self, id, index, &keep);
                 line.windows(2).filter_map(|s| s.first().zip(s.get(1)).map(|(a, b)| (*a, *b, half))).collect::<Vec<_>>()
             })
             .collect()
@@ -5700,8 +5701,9 @@ impl Model {
 
     /// [`Model::face_lines`] (with `rooms`, of the walls whose Room Bounding is on), the walls' joins found through `index`.
     pub(crate) fn face_lines_in(&self, level: impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<(P2, P2)> {
+        let keep = |w: &Wall| self.bounding(w, level) && (!rooms || w.room_bounding);
         self.bounding_walls(&level, rooms)
-            .flat_map(|id| geom::ring_edges(&walls::outline_in(self, id, index)).collect::<Vec<_>>())
+            .flat_map(|id| geom::ring_edges(&walls::outline_filtered(self, id, index, &keep)).collect::<Vec<_>>())
             .collect()
     }
 

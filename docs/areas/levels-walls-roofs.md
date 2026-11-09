@@ -43,7 +43,9 @@ of many rooms; moved, rotated or mirrored, its boundary goes with it, and only a
 rooms while their Room Bounding is on (`Wall::room_bounding`, `Column::room_bounding`, on unless set; `Model::room_bounding`,
 `bounding_columns`, `room_lines`): a column's outline either way rooms are measured, a free one an island. A wall with it off
 still bounds floors and roofs picked by their walls. Walls and columns bound a level's rooms where its
-Computation Height (`Level::computation_height`, 1200 mm unless set) cuts them; room separation lines bound them whatever
+Computation Height (`Level::computation_height`, 1200 mm unless set) cuts them. Their room-boundary joins use only walls
+that bound rooms at that height too, so a raised wall cannot change the room below it; physical wall joins still use
+walls that overlap in height. Room separation lines bound them whatever
 it is. Two rooms can't share a space (`Model::room_bound`, `Unbound`): the one placed first (the lower id) keeps it, the
 other is unbounded, and `room` and `inspect` warn. A room can be placed where nothing encloses it: unbounded, it covers a
 `UNBOUNDED_ROOM` square round its point (`Model::room_outline`), as Revit's. A plan labels it NOT ENCLOSED, or REDUNDANT where another
