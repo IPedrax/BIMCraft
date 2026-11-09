@@ -84,6 +84,7 @@ pub mod loads;
 pub mod massing;
 pub mod model;
 pub mod nbr5410;
+pub mod ods;
 #[cfg(test)]
 mod openings_past_top_tests;
 #[cfg(test)]

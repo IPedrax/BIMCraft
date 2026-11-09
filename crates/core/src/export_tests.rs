@@ -116,7 +116,7 @@ fn schedules_export_as_tables_and_a_plan_as_a_table_says_why_not() {
     let dir = folder("tables");
     run(&mut s, "schedule", json!({"name": "Rooms", "category": "rooms", "fields": ["Name", "Area"]}));
     let name = "Rooms";
-    for format in ["csv", "xlsx"] {
+    for format in ["csv", "xlsx", "ods"] {
         let r = run(&mut s, "export", json!({"format": format, "view": name, "folder": dir}));
         assert_eq!(r["written"].as_array().map(Vec::len), Some(1), "{format}: {r}");
     }

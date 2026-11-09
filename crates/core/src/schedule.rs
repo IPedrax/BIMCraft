@@ -1271,6 +1271,18 @@ pub fn to_csv(t: &Table) -> String {
 /// The table as a workbook of one sheet named `name`: its headings (in metric) in bold, its rows, then its totals. Numbers
 /// go in as numbers, so the spreadsheet sums them; text as text, never a formula.
 pub fn to_xlsx(t: &Table, name: &str) -> Vec<u8> {
+    let (headings, rows) = cells(t);
+    crate::xlsx::workbook(name, &headings, &rows)
+}
+
+/// The table as an OpenDocument spreadsheet (`.ods`) of one sheet named `name`, as [`to_xlsx`] writes it.
+pub fn to_ods(t: &Table, name: &str) -> Vec<u8> {
+    let (headings, rows) = cells(t);
+    crate::ods::spreadsheet(name, &headings, &rows)
+}
+
+/// The table's headings, and its rows and totals as a spreadsheet's cells: numbers as numbers, in millimetres.
+fn cells(t: &Table) -> (Vec<String>, Vec<Vec<crate::xlsx::Cell>>) {
     use crate::xlsx::Cell;
     let headings: Vec<String> = t.columns.iter().map(|c| heading(Units::Millimetres, c)).collect();
     let rows: Vec<Vec<Cell>> = t
@@ -1287,7 +1299,7 @@ pub fn to_xlsx(t: &Table, name: &str) -> Vec<u8> {
                 .collect()
         })
         .collect();
-    crate::xlsx::workbook(name, &headings, &rows)
+    (headings, rows)
 }
 
 #[cfg(test)]

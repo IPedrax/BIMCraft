@@ -1,4 +1,5 @@
-//! Schedules' tables: CSV (`schedule::to_csv`) and a one-sheet workbook (`schedule::to_xlsx`).
+//! Schedules' tables: CSV (`schedule::to_csv`), and a spreadsheet of one sheet as Excel's (`schedule::to_xlsx`) or
+//! OpenDocument's (`schedule::to_ods`).
 
 use super::super::{Content, Ctx, Family, Format, Options, Out, Prepared, Takes};
 use crate::schedule::Table;
@@ -59,5 +60,29 @@ impl Format for Xlsx {
     fn write(&self, items: &[Prepared], _: &Options, _: &Ctx) -> Result<Vec<Out>, String> {
         let (t, name) = table(items)?;
         Ok(vec![Out { suffix: None, bytes: crate::schedule::to_xlsx(t, name) }])
+    }
+}
+
+pub struct Ods;
+
+impl Format for Ods {
+    fn id(&self) -> &'static str {
+        "ods"
+    }
+    fn label(&self) -> &'static str {
+        "ODS"
+    }
+    fn extension(&self) -> &'static str {
+        "ods"
+    }
+    fn family(&self) -> Family {
+        Family::Schedule
+    }
+    fn takes(&self) -> &'static [Takes] {
+        &[Takes::Table]
+    }
+    fn write(&self, items: &[Prepared], _: &Options, _: &Ctx) -> Result<Vec<Out>, String> {
+        let (t, name) = table(items)?;
+        Ok(vec![Out { suffix: None, bytes: crate::schedule::to_ods(t, name) }])
     }
 }
