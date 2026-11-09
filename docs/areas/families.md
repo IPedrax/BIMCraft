@@ -776,10 +776,10 @@ family is on a plane is refused by the project on Load into Project, said in the
   parameters (a door's or a window's `Wall Thickness` too), worked out for each type by `Family::check` (finite, within
   `MAX_COORD`) and renamed with them. `Model::component_room_point` places it with the component (mirrored, turned, moved,
   its height included), else takes the insertion point, and `Rooms::component` finds the room on the component's level
-  whose volume holds it, as Revit's point has to fall inside the room's volume: its boundary, where the project measures
-  rooms, holds it in plan, and its height lies from the room's bottom (its level plus `base_offset`) up to its top (its
-  `top_level`, else its own, plus `limit_offset`), both ends included (`Rooms::room_holding`; the first by id; none in a
-  wall, outside every room, or over or under it, as a ceiling luminaire hung over a room's top). The starter wall devices
+  whose volume holds it, as Revit's point has to fall inside the room's volume: its boundary at its walls' centre lines
+  holds it in plan (whatever the project measures areas at, as #280 counts components too), and its height lies from the room's bottom (its level plus `base_offset`) up to its top (its
+  `top_level`, else its own, plus `limit_offset`), both ends included (`Rooms::room_holding`; the first by id; none outside
+  every room, or over or under it, as a ceiling luminaire hung over a room's top). The starter wall devices
   (the outlets, the switch, the distribution board, the data and voice outlets, the patch panel: `fixtures.rs`) have a
   point as Revit's do, `ROOM_POINT_OUT` (150 mm) in front of the wall's face at the middle of their height, so one on a
   wall's face is in the room on its side however rooms are measured; a component without a point is where its insertion

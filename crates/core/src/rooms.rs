@@ -32,7 +32,7 @@ pub struct Rooms<'a> {
     plans: RefCell<HashMap<(Guid, bool), Rc<Plan>>>,
     /// Each level's rooms, in order of id.
     placed: RefCell<HashMap<Guid, Placed<'a>>>,
-    /// Each room's boundary where the project measures rooms, found once: what [`Rooms::room_at`] asks of many points.
+    /// Each room's boundary at its walls' centre lines, found once: what [`Rooms::room_at`] asks of many points.
     regions: RefCell<HashMap<Id, Option<Rc<Region>>>>,
 }
 
@@ -131,8 +131,9 @@ impl<'a> Rooms<'a> {
             .map(|(id, _)| *id)
     }
 
-    /// The room on `level` whose boundary (where the project measures rooms) holds `point`, the first by id; none where no
-    /// enclosed room does. A point in a wall is in no room.
+    /// The room on `level` whose boundary at its walls' centre lines holds `point`, the first by id; none where no enclosed
+    /// room does. Which room a point is in doesn't follow where the project measures rooms' areas, as in Revit: a point inside
+    /// a wall is in the room on its side of the wall's centre line, so a device on a wall's face counts in that room.
     pub fn room_at(&self, level: Guid, point: P2) -> Option<Id> {
         let rooms = self.placed(level);
         rooms.iter().find(|(id, r)| self.cached_region(*id, r).is_some_and(|g| region_holds(&g, point))).map(|(id, _)| *id)
@@ -160,7 +161,7 @@ impl<'a> Rooms<'a> {
         if let Some(g) = self.regions.borrow().get(&id) {
             return g.clone();
         }
-        let g = self.region(r).map(Rc::new);
+        let g = self.region_at(r, RoomArea::Centre).map(Rc::new);
         self.regions.borrow_mut().insert(id, g.clone());
         g
     }

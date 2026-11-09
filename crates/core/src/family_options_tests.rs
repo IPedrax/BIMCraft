@@ -344,7 +344,7 @@ fn a_component_over_a_rooms_top_or_under_its_bottom_is_not_in_it() {
 }
 
 #[test]
-fn a_component_without_a_point_on_a_rooms_boundary_is_where_its_plan_point_puts_it() {
+fn a_component_without_a_point_on_a_rooms_boundary_is_in_the_room_on_its_side_of_the_centre_line() {
     for at in ["centre", "finish"] {
         let (mut s, [_, east]) = walled_rooms(at, json!({}));
         cabinet(&mut s);
@@ -354,9 +354,8 @@ fn a_component_without_a_point_on_a_rooms_boundary_is_where_its_plan_point_puts_
         let crate::model::Element::Component(cp) = &s.model.elements[c] else { panic!("a component") };
         let plan = rooms.room_at(cp.level, P2(4100.0, 3000.0));
         assert_eq!(rooms.component(cp), plan, "at {at}: its room is its plan point's, as before");
-        if at == "centre" {
-            assert_eq!(plan, Some(east), "east of the centre line");
-        }
+        // Rooms take in what their walls' centre lines bound, however the project measures their areas (as #280 counts).
+        assert_eq!(plan, Some(east), "at {at}: east of the centre line");
     }
 }
 
