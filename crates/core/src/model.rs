@@ -70,7 +70,8 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 18: a family's connector may be a `pipe`,
+/// The version of the project file this build writes, and the newest it reads. 19: optional title-block drawing area and template-owned border.
+/// 18: a family's connector may be a `pipe`,
 /// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
 /// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
 /// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
@@ -117,7 +118,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 18;
+pub const FORMAT: u32 = 19;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3532,6 +3533,7 @@ impl Model {
         // either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
         // file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
         // did, and none of its dimensions measures `across`.
+        // 18 to 19 needs no conversion: earlier templates keep the standard border and placement.
         self.format = FORMAT;
     }
 
@@ -7302,6 +7304,14 @@ impl Model {
                         sh.size
                     ));
                 };
+                if let Some([_, hi]) = self.title_blocks.get(&sh.title_block).and_then(|tb| tb.drawing_area)
+                    && (hi.0 > width || hi.1 > height)
+                {
+                    return Err(format!(
+                        "{who}: title block `{}` drawing area extends outside {width} × {height} mm paper on sheet {}",
+                        sh.title_block, sh.number
+                    ));
+                }
                 // The title block is drawn its standard's size in the bottom right corner, inside the border: paper
                 // smaller than that would squeeze it until the sheet's name runs over its number. A sheet with none has
                 // nothing there to squeeze.

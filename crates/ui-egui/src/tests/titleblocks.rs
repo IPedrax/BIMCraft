@@ -165,3 +165,21 @@ fn the_tools_palette_opens_title_blocks_and_the_inspector_picks_a_sheets() {
     h.run();
     assert!(h.state().title_blocks_dialog.is_some(), "Edit Title Blocks… opens the dialog from the Inspector");
 }
+
+#[test]
+fn the_size_tab_applies_and_clears_paper_layout() {
+    let mut h = app(&format!("{BOX}\n{SELO}"));
+    h.state_mut().open_title_blocks(Some("ESCRITORIO"));
+    h.run();
+    press(&mut h, "Size");
+    press(&mut h, "Template draws the sheet border");
+    press(&mut h, "Use a drawing area for automatic placement");
+    press_near(&mut h, "Apply", "Cancel");
+    let tb = &h.state().session.model.title_blocks["ESCRITORIO"];
+    assert!(tb.template_border && tb.drawing_area.is_some());
+    press(&mut h, "Template draws the sheet border");
+    press(&mut h, "Use a drawing area for automatic placement");
+    press(&mut h, "OK");
+    let tb = &h.state().session.model.title_blocks["ESCRITORIO"];
+    assert!(!tb.template_border && tb.drawing_area.is_none());
+}

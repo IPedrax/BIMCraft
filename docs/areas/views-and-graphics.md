@@ -718,7 +718,7 @@ the picture shows under them (`dims3d::pick`).
 ## Title blocks
 
 A sheet is drawn with the built-in title box unless it names a title block of the project's own (`Sheet::title_block`, a library
-entry of kind `title-block`, held by GUID in a file like any other name; FORMAT 19). A title block (`titleblock.rs`) is a box, `width`
+entry of kind `title-block`, held by GUID in a file like any other name; FORMAT 18). A title block (`titleblock.rs`) is a box, `width`
 by `height` mm, that stands in the sheet's bottom right corner inside the border, where the built-in one stands, with lines (in pens),
 solid fills (a logo) and lettering, all in mm on paper from its own bottom left corner; the border and NBR 17067's folding marks are
 drawn as before, and a view placed by default goes above its height (`sheet::spot`). Lettering may name fields as `{KEY}`: a field the
@@ -729,6 +729,12 @@ sheet number in reading order, and REVISION, the latest of the revision clouds o
 definition, and a value given to one (DATE, to issue on) is said instead. A key no value fills stays as written, so a missing field
 shows on the sheet. `titleblock::values` works them out, `sheet::title_values` with the sheet's scale, and `elements` gives a sheet's
 as `title_values`, with the keys that are its own to give as `sheet_fields`.
+
+A definition may set `drawing_area: [[left,bottom],[right,top]]` in millimetres from the paper's bottom left. Each sheet using it
+must contain the rectangle. The first automatic viewport is centered there. Subsequent frames are placed to the right when they fit,
+otherwise at the rectangle's top right. An oversized frame reports both sizes. Explicit centers and existing viewports keep their
+positions. Set `template_border: true` for a frame drawn by the template's own lines; standard fold marks still print.
+Both options are under Size in the title-block editor. Format 19 saves them; earlier definitions keep the standard behavior.
 
 A sheet may also have no title block at all: `sheet {"title_block": "none"}` (`titleblock::NONE`, in any case, or `false`; `true` or
 `""` is the built-in one), for one drawn on the sheet itself. It leaves out the border, the title box and its lettering and the folding

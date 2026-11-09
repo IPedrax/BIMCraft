@@ -106,14 +106,7 @@ pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
     let title = sh.and_then(|s| m.title_blocks.get(&s.title_block)).map_or(margins.title_height, |t| t.height);
     let middle = P2((margins.left + paper.0 - margins.right) / 2.0, (margins.bottom + title + paper.1 - margins.top) / 2.0);
     let taken = size(m, view, scale).unwrap_or(P2(0.0, 0.0));
-    let right = m
-        .on_sheet(sheet)
-        .into_iter()
-        .filter_map(|id| match m.elements.get(id) {
-            Some(Element::Viewport(v)) if v.sheet == sheet => Some(v.at.0 + size(m, v.view, v.scale)?.0 / 2.0),
-            _ => None,
-        })
-        .fold(None, |r: Option<f64>, x| Some(r.map_or(x, |r| r.max(x))));
+    let right = rightmost_viewport_edge(m, sheet);
     // Inside the border, 5 mm clear of it.
     let (east, north) = (paper.0 - margins.right - 5.0, paper.1 - margins.top - 5.0);
     match right {
@@ -121,6 +114,36 @@ pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
         Some(r) if r + 10.0 + taken.0 <= east => P2(r + 10.0 + taken.0 / 2.0, middle.1),
         Some(_) => P2(east - taken.0 / 2.0, north - taken.1 / 2.0),
     }
+}
+
+/// The rightmost existing viewport frame edge, in paper millimetres.
+fn rightmost_viewport_edge(m: &Model, sheet: impl Key) -> Option<f64> {
+    let sheet = m.guid(sheet);
+    m.on_sheet(sheet)
+        .into_iter()
+        .filter_map(|id| match m.elements.get(id) {
+            Some(Element::Viewport(v)) if v.sheet == sheet => Some(v.at.0 + size(m, v.view, v.scale)?.0 / 2.0),
+            _ => None,
+        })
+        .fold(None, |r: Option<f64>, x| Some(r.map_or(x, |r| r.max(x))))
+}
+
+/// Default placement uses the sheet's standard unless its template defines a drawing rectangle.
+pub fn automatic_center(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> Result<P2, String> {
+    let area = m.sheet(sheet).and_then(|s| m.title_blocks.get(&s.title_block)).and_then(|t| t.drawing_area);
+    let Some([lo, hi]) = area else { return Ok(spot(m, sheet, view, scale)) };
+    let frame = size(m, view, scale).ok_or_else(|| "the viewport frame cannot be measured at this scale".to_string())?;
+    let available = hi - lo;
+    if frame.0 > available.0 || frame.1 > available.1 {
+        return Err(format!(
+            "viewport frame is {} × {} mm at 1:{scale}; drawing area is {} × {} mm. Choose a smaller view scale or an explicit center",
+            frame.0, frame.1, available.0, available.1
+        ));
+    }
+    let middle = (lo + hi) * 0.5;
+    let Some(edge) = rightmost_viewport_edge(m, sheet) else { return Ok(middle) };
+    let left = (edge + 10.0).max(lo.0);
+    if left + frame.0 <= hi.0 { Ok(P2(left + frame.0 / 2.0, middle.1)) } else { Ok(hi - frame * 0.5) }
 }
 
 /// `text` with its left end at paper point `at` (mm), capitals `height` mm tall.
@@ -169,8 +192,11 @@ fn title_block(d: &mut Drawing, m: &Model, id: impl Key, paper: P2, views: &[&Vi
     let (project, std) = (&m.name, m.standard());
     let margins = std.sheet_margins(&sheet.size);
     let rect = |a: P2, b: P2| vec![a, P2(b.0, a.1), b, P2(a.0, b.1)];
-    d.line(&rect(P2(margins.left, margins.bottom), P2(paper.0 - margins.right, paper.1 - margins.top)), Pen::BORDER, INK, true);
-    if let Some(tb) = m.title_blocks.get(&sheet.title_block) {
+    let template = m.title_blocks.get(&sheet.title_block);
+    if !template.is_some_and(|t| t.template_border) {
+        d.line(&rect(P2(margins.left, margins.bottom), P2(paper.0 - margins.right, paper.1 - margins.top)), Pen::BORDER, INK, true);
+    }
+    if let Some(tb) = template {
         let at = P2(paper.0 - margins.right - tb.width, margins.bottom);
         let scale = scale_value(views, m.language, m.units);
         crate::titleblock::draw(d, tb, at, &crate::titleblock::values(m, id, &scale));
