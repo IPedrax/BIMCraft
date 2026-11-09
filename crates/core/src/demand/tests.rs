@@ -205,9 +205,9 @@ mod command {
     #[test]
     fn another_utility_is_refused_and_named() {
         let mut s = Session::new();
-        for u in ["Light", "CELESC", "xx"] {
+        for u in ["Light", "COPEL", "xx"] {
             let e = s.execute("demand", &json!({"utility": u, "area": 40})).unwrap_err();
-            assert!(e.contains("CPFL") && e.contains("ENEL") && e.contains(u), "{e}");
+            assert!(e.contains("CPFL") && e.contains("ENEL") && e.contains("CELESC") && e.contains(u), "{e}");
         }
         let e = s.execute("demand", &json!({"area": 40})).unwrap_err();
         assert!(e.contains("utility"), "{e}");
@@ -453,5 +453,112 @@ mod enel_more {
         let r = run(&mut s, json!({"utility": "ENEL", "network": "aerial_delta", "demand_current_a": 400}));
         assert_eq!(r["category"], Value::Null);
         assert!(r["category_note"].as_str().is_some_and(|n| n.contains("300")), "{r}");
+    }
+}
+
+/// Celesc's Tabela 01 (N-321.0001, rev. December 2025) as printed: each row's range, demand, breaker, phases and wires, branches and
+/// earthing conductor.
+#[test]
+fn celesc_tabela_01_is_as_printed() {
+    type Printed = (&'static str, f64, f64, Option<(f64, f64)>, f64, u8, u8, (f64, f64), f64, (f64, f64));
+    let printed: [Printed; 13] = [
+        ("A1", 0.0, 11.0, None, 50.0, 1, 2, (10.0, 10.0), 10.0, (10.0, 16.0)),
+        ("A2", 11.0, 13.0, None, 63.0, 1, 2, (10.0, 10.0), 10.0, (10.0, 16.0)),
+        ("M1", 0.0, 22.0, None, 50.0, 2, 3, (10.0, 10.0), 10.0, (10.0, 16.0)),
+        ("M2", 22.0, 28.0, None, 63.0, 2, 3, (10.0, 10.0), 10.0, (10.0, 16.0)),
+        ("M3", 28.0, 37.0, None, 90.0, 2, 3, (16.0, 25.0), 16.0, (16.0, 16.0)),
+        ("M4", 37.0, 50.0, None, 100.0, 2, 3, (16.0, 25.0), 25.0, (16.0, 25.0)),
+        ("B1", 13.0, 20.0, None, 50.0, 2, 3, (10.0, 10.0), 10.0, (10.0, 16.0)),
+        ("B2", 20.0, 25.0, None, 63.0, 2, 3, (10.0, 10.0), 10.0, (10.0, 16.0)),
+        ("C1", 25.0, 30.0, Some((0.0, 30.0)), 50.0, 3, 4, (10.0, 10.0), 10.0, (10.0, 16.0)),
+        ("C2", 30.0, 42.0, Some((30.0, 40.0)), 63.0, 3, 4, (10.0, 25.0), 16.0, (16.0, 16.0)),
+        ("C3", 42.0, 50.0, Some((40.0, 45.0)), 80.0, 3, 4, (16.0, 25.0), 16.0, (16.0, 16.0)),
+        ("C4", 50.0, 65.0, Some((45.0, 60.0)), 100.0, 3, 4, (25.0, 35.0), 25.0, (16.0, 25.0)),
+        ("C5", 65.0, 75.0, Some((60.0, 75.0)), 125.0, 3, 4, (35.0, 50.0), 50.0, (16.0, 35.0)),
+    ];
+    for (name, lo, hi, demand, breaker, phases, wires, connection, entry, earth) in printed {
+        let r = celesc_row(name).unwrap_or_else(|| panic!("{name}"));
+        assert_eq!((r.lo, r.hi, r.demand, r.breaker), (lo, hi, demand, breaker), "{name}");
+        assert_eq!((r.phases, r.wires, r.connection, r.entry, r.earth), (phases, wires, connection, entry, earth), "{name}");
+        // Each row is picked at the top of its range, on its network.
+        let network = if name.starts_with('M') { "220/440" } else { "220/380" };
+        assert_eq!(celesc_pick(network, hi, Some(phases)).map(|r| r.name), Some(name), "{name} at {hi} kW");
+    }
+}
+
+#[test]
+fn celesc_frames_a_unit_by_its_installed_load() {
+    let name = |network: &str, kw: f64, phases: Option<u8>| celesc_pick(network, kw, phases).map(|r| r.name);
+    // On 220/380 V: single-phase up to 13 kW, two-phase up to 25 kW, three-phase up to 75 kW (items 5.3.2.1 to 5.3.2.3).
+    assert_eq!(name("220/380", 4.0, None), Some("A1"));
+    assert_eq!(name("220/380", 12.0, None), Some("A2"));
+    assert_eq!(name("220/380", 13.5, None), Some("B1"));
+    assert_eq!(name("220/380", 26.0, None), Some("C1"));
+    assert_eq!(name("220/380", 75.0, None), Some("C5"));
+    assert_eq!(name("220/380", 75.5, None), None);
+    // A three-phase appliance asks for three phases whatever the load: the first three-phase row.
+    assert_eq!(name("220/380", 8.0, Some(3)), Some("C1"));
+    assert_eq!(name("220/380", 8.0, Some(2)), Some("B1"));
+    // On 220/440 V a single-phase unit of three wires goes up to 50 kW; below 13 kW two wires at 220 V come first.
+    assert_eq!(name("220/440", 8.0, None), Some("A1"));
+    assert_eq!(name("220/440", 18.0, None), Some("M1"));
+    assert_eq!(name("220/440", 8.0, Some(2)), Some("M1"));
+    assert_eq!(name("220/440", 50.5, None), None);
+}
+
+mod celesc_command {
+    use crate::engine::Session;
+    use serde_json::{Value, json};
+
+    fn run(s: &mut Session, p: Value) -> Value {
+        s.execute("demand", &p).unwrap_or_else(|e| panic!("demand {p}: {e}"))
+    }
+
+    /// An apartment whose electrical design installs 22.4 kW, two-phase at 220/380 V, and works out a demand of 19.24 kVA: by its
+    /// installed load Tabela 01 makes it B2, a 63 A breaker, whatever the demand the design took.
+    #[test]
+    fn an_apartment_is_framed_by_its_installed_load_and_its_demand_is_carried() {
+        let mut s = Session::new();
+        let r = run(&mut s, json!({"utility": "CELESC", "installed_kw": 22.426, "demand_kva": 19.24}));
+        assert_eq!(r["table"], "01");
+        assert_eq!(r["network"], "220/380");
+        assert_eq!(r["category"]["name"], "B2");
+        assert_eq!(r["category"]["breaker_a"], 63.0);
+        assert_eq!((&r["category"]["phases"], &r["category"]["wires"]), (&json!(2), &json!(3)));
+        assert_eq!(r["category"]["connection_mm2"], json!({"copper": 10.0, "aluminium": 10.0}));
+        assert_eq!(r["demand_kva"], 19.24);
+        assert!(r["source"].as_str().is_some_and(|t| t.contains("N-321.0001")), "{r}");
+        assert!(r["demand_note"].as_str().is_some_and(|t| t.contains("designer")), "{r}");
+    }
+
+    #[test]
+    fn a_three_phase_unit_says_the_demand_printed_beside_it() {
+        let mut s = Session::new();
+        let r = run(&mut s, json!({"utility": "CELESC", "installed_kw": 45, "demand_kva": 47}));
+        assert_eq!(r["category"]["name"], "C3");
+        assert_eq!(r["category"]["demand_kva"], json!({"over": 40.0, "up_to": 45.0}));
+        assert!(r["category_note"].as_str().is_some_and(|n| n.contains("47")), "{r}");
+        let r = run(&mut s, json!({"utility": "CELESC", "installed_kw": 70}));
+        assert!(r["category_note"].as_str().is_some_and(|n| n.contains("note 1")), "{r}");
+        let r = run(&mut s, json!({"utility": "CELESC", "installed_kw": 90}));
+        assert_eq!(r["category"], Value::Null);
+        assert!(r["category_note"].as_str().is_some_and(|n| n.contains("5.2.2.8")), "{r}");
+    }
+
+    #[test]
+    fn what_celesc_does_not_take_is_refused() {
+        let mut s = Session::new();
+        for p in [
+            json!({"utility": "CELESC"}),
+            json!({"utility": "CELESC", "installed_kw": -1}),
+            json!({"utility": "CELESC", "installed_kw": 1e300}),
+            json!({"utility": "CELESC", "installed_kw": 5, "network": "127/220"}),
+            json!({"utility": "CELESC", "installed_kw": 5, "network": "220/440", "phases": 3}),
+            json!({"utility": "CELESC", "installed_kw": 5, "phases": 4}),
+            json!({"utility": "CELESC", "installed_kw": 5, "area": 40}),
+            json!({"utility": "CELESC", "installed_kw": 5, "demand_current_a": 40}),
+        ] {
+            assert!(s.execute("demand", &p).is_err(), "{p}");
+        }
     }
 }
