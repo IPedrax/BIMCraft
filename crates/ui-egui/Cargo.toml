@@ -24,6 +24,10 @@ bytemuck = "1"
 rfd = { workspace = true }
 sys-locale = { workspace = true }
 
+# The 3D mouse (`spacemouse.rs`), read from its HID reports through hidapi's own Windows backend: pure Rust, MIT.
+[target.'cfg(windows)'.dependencies]
+hidapi = { version = "2.6.7", default-features = false, features = ["windows-native"] }
+
 [dev-dependencies]
 tempfile = { workspace = true }
 egui_kittest = { workspace = true }

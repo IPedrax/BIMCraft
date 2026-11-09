@@ -216,6 +216,9 @@ fn main() -> ExitCode {
         if let Some(updates) = app.updates.as_mut() {
             updates.check_at_startup();
         }
+        // The 3D mouse is read on a thread of its own too, which wakes the window as its cap moves.
+        let ctx = cc.egui_ctx.clone();
+        app.space_mouse = bimcraft_ui_egui::spacemouse::SpaceMouse::start(move || ctx.request_repaint());
         Ok(Box::new(app))
     };
     match eframe::run_native("BIMCraft", options, Box::new(start)) {
