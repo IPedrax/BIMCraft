@@ -175,6 +175,14 @@ a quick press is a click whatever the tool, and a camera the hand turned meanwhi
 Revit, Shift and the middle button orbit and the middle button alone pans; a primary drag orbits too, round the point under the
 pointer, and with Shift held in Modify it is a selection box, as in a plan (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
 inside, from the right what it touches, by where the model is rather than what's in front, so what's behind is boxed too.
+A 3D mouse (a 3Dconnexion SpaceMouse, SpaceNavigator, SpacePilot) moves the active 3D view as 3DxWare's object mode moves a
+model (`spacemouse.rs`): the cap pans, pulling it toward you zooms in, twisting it turns the view about the vertical and tilting
+it raises or lowers the eye, about the middle of the picture, while the window has focus. Like the hand it moves only the active
+view, and only a 3D one: plans, sections and sheets it leaves alone, and a 3D view drawn beside the active one too. A camera
+view's position is written back once the cap rests, and wheel turns 3DxWare may make of the cap are ignored while it moves. The
+desktop app starts its reader (`BimApp::space_mouse`, Windows only for now), which reads the device's HID reports itself (with
+3DxWare running too, while its profile for BIMCraft passes the axes on as `HIDMultiAxis_*`), the axes found in its report
+descriptor (`spacemouse/descriptor.rs`). With `BIMCRAFT_SPACEMOUSE_LOG=<file>` the reader logs what it found and every report.
 
 Startup (`apps/bimcraft/src/startup.rs`). A release build on Windows has no console, so a start that fails must say itself: `bimcraft.log`
 and `graphics.json` sit beside the favorites (`startup::Files::beside`). `startup::begin` runs once the arguments are read (never for
