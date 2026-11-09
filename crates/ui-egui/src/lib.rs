@@ -25,6 +25,7 @@ mod dock;
 mod draw;
 mod editor;
 mod electrical;
+mod export;
 mod favorites;
 mod fillpatterns;
 mod filter;
@@ -861,6 +862,13 @@ pub struct BimApp {
     dialog: Option<dialog::Dialog>,
     /// What the last Revit import left out and brought in, for as long as its project is the one open.
     revit_report: Option<revit::Report>,
+    /// File > Export…, while it is open.
+    export_dialog: Option<export::Dialog>,
+    /// The export being written, on a thread of its own.
+    export_job: Option<export::worker::Running>,
+    /// The format the last export was to, and each format's settings, for the next export while the window is open.
+    export_format: Option<String>,
+    export_last: std::collections::BTreeMap<String, bimcraft_core::export::Options>,
 }
 
 /// The Options Bar's Height: up to a level above the plan's `level` (by default the next one up),
@@ -1469,6 +1477,10 @@ impl BimApp {
             control: None,
             agents: control::Agents::default(),
             revit_job: None,
+            export_dialog: None,
+            export_job: None,
+            export_format: None,
+            export_last: Default::default(),
             opens: Vec::new(),
             dialog: None,
             revit_report: None,
@@ -1672,6 +1684,7 @@ impl BimApp {
         self.tidy();
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
+        self.poll_export(&ctx);
         self.poll_plugins(&ctx);
         self.poll_autosave(&ctx);
         self.keys(&ctx);
@@ -1964,6 +1977,7 @@ impl BimApp {
             || self.installing()
             || self.importing()
             || self.report_open()
+            || self.export_dialog.is_some()
             // An open menu takes the keys: Esc closes it, not the tool.
             || egui::Popup::is_any_open(ctx)
         {
@@ -1991,7 +2005,7 @@ impl BimApp {
             self.toggle_properties();
         }
         if pressed(Modifiers::COMMAND, Key::P) {
-            self.export(ctx, "PDF", "pdf");
+            self.open_export(Some("pdf"));
         }
         // The rest belongs to a text field while one has the keyboard.
         if ctx.egui_wants_keyboard_input() {
@@ -3622,6 +3636,11 @@ impl BimApp {
             self.autosave.show_recovery = true;
         }
         SubMenuButton::new(t("Export")).ui(ui, |ui| {
+            let shortcut = ctx.format_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::P));
+            if ui.add(egui::Button::new(t("Export…")).shortcut_text(shortcut)).clicked() {
+                self.open_export(None);
+            }
+            ui.separator();
             if ui.button(t("IFC…")).clicked() {
                 self.export(ctx, "IFC4", "ifc");
             }
@@ -5141,6 +5160,7 @@ impl BimApp {
                 // How many elements are selected, by the selection filter, as Revit shows it.
                 // A click on it filters the selection, as Revit's does.
                 ui.label(format!(":{}", self.selection.len()));
+                self.export_progress(ui);
                 let (r, funnel) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
                 icons::paint(ui.painter(), Icon::Filter, r, pal().icon);
                 funnel.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, t("Filter Selection")));
@@ -5409,6 +5429,7 @@ impl BimApp {
         self.installing_box(ctx);
         self.importing_box(ctx);
         self.report_window(ctx);
+        self.export_window(ctx);
         if self.pending.is_none() {
             self.recovery_window(ctx);
         }

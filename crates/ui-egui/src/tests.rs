@@ -5888,6 +5888,7 @@ mod display;
 mod dock;
 mod draw;
 mod electrical;
+mod export;
 mod fills;
 mod filter;
 mod fonts;
