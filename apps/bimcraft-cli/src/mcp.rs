@@ -56,8 +56,14 @@ impl Backend {
         }
     }
 
-    /// A script's results, as `{results: [...]}`.
-    fn script(&mut self, text: &str, atomic: bool) -> Result<Value, String> {
+    /// A script's results, as `{results: [...]}`; a dry run's report as [`Session::script_dry_run`] gives it.
+    fn script(&mut self, text: &str, atomic: bool, dry_run: bool) -> Result<Value, String> {
+        if dry_run {
+            return match self {
+                Backend::Own(s) => s.script_dry_run(text),
+                Backend::Window(w) => w.ask(json!({"op": "script", "text": text, "dry_run": true})),
+            };
+        }
         let results = match self {
             Backend::Own(s) if atomic => s.script_atomic(text).map(Value::from),
             Backend::Own(s) => s.script(text).map(Value::from),
@@ -117,8 +123,10 @@ fn tools() -> Value {
             room {point: [x, y], name}, modify {id, …fields}, delete {ids}, undo. list_commands shows them all with their parameters.",
          "inputSchema": {"type": "object", "properties": {"command": {"type": "string"}, "params": {"type": "object"}}, "required": ["command"]}},
         {"name": "script", "description": "Run several commands, one per line: `wall {\"points\": [[0,0],[4000,0]]}`. Stops at the first failing line and names it; the lines before it stay done, each its own undo step. \
-            With `atomic`, all or nothing: a failing line takes back the lines before it, and a script that goes through is one undo step.",
-         "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "atomic": {"type": "boolean"}}, "required": ["text"]}},
+            With `atomic`, all or nothing: a failing line takes back the lines before it, and a script that goes through is one undo step. \
+            With `dry_run`, tried all or nothing and taken back: the reply lists what it would make, change and remove (`made`, `changed`, `removed`, by id and category), \
+            whether it would change anything else (`other_changes`) and the model's `warnings` after it, and nothing of it stays. A dry run refuses a line that names a file or would save, undo, redo or replace the project, and a `favorite` other than `list`, which would use the user's favorites file.",
+         "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "atomic": {"type": "boolean"}, "dry_run": {"type": "boolean"}}, "required": ["text"]}},
         {"name": "list_commands", "description": "Every command with its id, label, Revit-style shortcut, parameters and the menu it sits in (`menu`, null when the interface has no place for it). `filter` matches part of an id, label or shortcut.",
          "inputSchema": {"type": "object", "properties": {"filter": {"type": "string"}}}},
         {"name": "inspect_model", "description": "The model at a glance: levels, element counts, types, warnings (such as rooms no longer enclosed) and undo history.",
@@ -283,7 +291,12 @@ impl Server {
                     Some(Value::Bool(b)) => *b,
                     Some(v) => return Err((INVALID_PARAMS, format!("`atomic` is true or false, not {v}"))),
                 };
-                b.script(text, atomic)
+                let dry_run = match args.get("dry_run") {
+                    None | Some(Value::Null) => false,
+                    Some(Value::Bool(b)) => *b,
+                    Some(v) => return Err((INVALID_PARAMS, format!("`dry_run` is true or false, not {v}"))),
+                };
+                b.script(text, atomic, dry_run)
             }
             "list_commands" => {
                 let filter = args["filter"].as_str().map(str::to_ascii_lowercase).unwrap_or_default();
@@ -548,6 +561,17 @@ mod tests {
         tool(&mut s, "execute", json!({"command": "undo"}));
         assert_eq!(levels(&mut s), 2, "one undo takes back the whole script");
         let r = call(&mut s, 2, "tools/call", json!({"name": "script", "arguments": {"text": "inspect", "atomic": "yes"}}));
+        assert_eq!(r["error"]["code"], -32602);
+    }
+
+    #[test]
+    fn a_dry_run_through_mcp_says_what_a_script_would_do_and_keeps_nothing() {
+        let mut s = Server::new();
+        let levels = |s: &mut Server| tool(s, "inspect_model", json!({}))["counts"]["level"].clone();
+        let r = tool(&mut s, "script", json!({"text": "level {\"elevation\": 6000}", "dry_run": true}));
+        assert_eq!((r["dry_run"].as_bool(), r["made"][0]["category"].as_str()), (Some(true), Some("level")), "{r}");
+        assert_eq!(levels(&mut s), 2, "nothing of it stays");
+        let r = call(&mut s, 2, "tools/call", json!({"name": "script", "arguments": {"text": "inspect", "dry_run": "yes"}}));
         assert_eq!(r["error"]["code"], -32602);
     }
 
