@@ -3177,28 +3177,41 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // Apply the site's placement and the reader's units/origin translation, as for other products.
     for site in named(&["IFCSITE"]) {
         let Some(x) = e(site) else { continue };
-        let metadata: HashMap<String, Vec<String>> = named(&["IFCRELDEFINESBYPROPERTIES"])
+        let reps = r.reps(x);
+        let curve_count: usize = reps.iter().filter(|(kind, _)| kind.eq_ignore_ascii_case("FootPrint")).map(|(_, items)| items.len()).sum();
+        // Borrow only the three recognized arrays (Names, Guids, Levels). A shared set may target many sites;
+        // never clone arbitrary property bags or their reference/value lists for each target.
+        let mut metadata: [Option<&[V]>; 3] = [None; 3];
+        for set in named(&["IFCRELDEFINESBYPROPERTIES"])
             .into_iter()
             .filter_map(e)
-            .filter(|rel| refs(rel.args.get(4)).contains(&site))
+            .filter(|rel| list(rel.args.get(4)).iter().any(|v| reference(Some(v)) == Some(site)))
             .filter_map(|rel| {
                 reference(rel.args.get(5))
                     .and_then(e)
                     .filter(|set| set.name == "IFCPROPERTYSET" && text(set.args.get(2)) == Some(crate::ifc::PROPERTY_LINES))
             })
-            .flat_map(|set| refs(set.args.get(4)))
-            .filter_map(e)
-            .filter(|p| p.name == "IFCPROPERTYLISTVALUE")
-            .filter_map(|p| {
-                Some((
-                    text(p.args.first())?.to_string(),
-                    list(p.args.get(2)).iter().map(|v| text(Some(v)).map(clip).unwrap_or_default()).collect(),
-                ))
-            })
-            .collect();
-        let value = |key: &str, k: usize| metadata.get(key).and_then(|v| v.get(k));
+        {
+            for p in list(set.args.get(4)).iter().filter_map(|v| reference(Some(v))).filter_map(e) {
+                if p.name != "IFCPROPERTYLISTVALUE" {
+                    continue;
+                }
+                let key = match text(p.args.first()) {
+                    Some("Names") => 0,
+                    Some("Guids") => 1,
+                    Some("Levels") => 2,
+                    _ => continue,
+                };
+                if let Some(V::List(values)) = p.args.get(2)
+                    && values.len() == curve_count
+                {
+                    metadata[key] = Some(values);
+                }
+            }
+        }
+        let value = |key: usize, k: usize| metadata[key].and_then(|values| values.get(k)).and_then(|v| text(Some(v)));
         let f = r.frame(x);
-        let curves = r.reps(x).into_iter().filter(|(kind, _)| kind.eq_ignore_ascii_case("FootPrint")).flat_map(|(_, items)| items);
+        let curves = reps.into_iter().filter(|(kind, _)| kind.eq_ignore_ascii_case("FootPrint")).flat_map(|(_, items)| items);
         for (k, item) in curves.enumerate() {
             let Some(pts) = r.curve(Some(item), 0) else {
                 skipped.push(format!("{}: footprint curve {}: unsupported curve", who(site), k + 1));
@@ -3222,9 +3235,9 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
                 skipped.push(format!("{}: footprint curve {}: {reason}", who(site), k + 1));
                 continue;
             }
-            let name = value("Names", k).filter(|v| !v.trim().is_empty()).cloned().unwrap_or_else(|| format!("Property Line {}", k + 1));
-            let level = value("Levels", k)
-                .and_then(|v| Guid::parse(v))
+            let name = value(0, k).filter(|v| !v.trim().is_empty()).map(clip).unwrap_or_else(|| format!("Property Line {}", k + 1));
+            let level = value(2, k)
+                .and_then(Guid::parse)
                 .and_then(|guid| {
                     storeys.iter().find_map(|(sid, _, _)| {
                         (e(*sid).and_then(|x| text(x.args.first())).and_then(crate::ifc::expand) == Some(guid.as_u128()))
@@ -3236,7 +3249,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
                 .map(Guid::of_id)
                 .unwrap_or_default();
             let pid = m.insert(Element::PropertyLine(crate::model::PropertyLine { name, level, points }));
-            if let Some(guid) = value("Guids", k).and_then(|v| Guid::parse(v)).filter(|g| g.pending().is_none()) {
+            if let Some(guid) = value(1, k).and_then(Guid::parse).filter(|g| g.pending().is_none()) {
                 plot_guids.insert(pid, guid.as_u128());
             }
             from.insert(pid, who(site));

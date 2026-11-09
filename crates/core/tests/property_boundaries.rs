@@ -164,6 +164,26 @@ mod tests {
         }
     }
     #[test]
+    fn mismatched_site_metadata_is_ignored_without_losing_the_boundary_or_identity() {
+        let mut s = Session::new();
+        let made = run(&mut s, "property_line", json!({"name":"Named metadata plot","points":[[0,0],[6000,0],[0,4000]]}));
+        let id = made["id"].as_u64().unwrap();
+        let step = ifc::export(&s.model);
+        let malformed = step.replace(
+            "IFCPROPERTYLISTVALUE('Names',$,(IFCTEXT('Named metadata plot')),$)",
+            "IFCPROPERTYLISTVALUE('Names',$,(IFCTEXT('Wrong plot name'),IFCTEXT('Unmatched extra name')),$)",
+        );
+        assert_ne!(malformed, step);
+        let loaded = import::ifc(malformed.as_bytes(), "synthetic malformed metadata").unwrap();
+        let plot = loaded.model.elements.get(s.model.guid(id)).unwrap();
+        let bimcraft_core::model::Element::PropertyLine(plot) = plot else { panic!("expected the valid boundary") };
+        assert_eq!(plot.name, "Property Line 1", "metadata lists must correspond to the footprint curve count");
+        assert_eq!(plot.points.len(), 3);
+        assert_eq!(plot.level, s.model.level_of(s.model.elements.get(id).unwrap()).unwrap());
+        loaded.model.check().unwrap();
+    }
+
+    #[test]
     fn an_open_ifc_site_footprint_is_reported_instead_of_silently_closed() {
         let mut s = Session::new();
         run(&mut s, "property_line", json!({"points":[[0,0],[6000,0],[0,4000]]}));
