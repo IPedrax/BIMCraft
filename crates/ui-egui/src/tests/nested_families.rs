@@ -37,7 +37,8 @@ fn placed(dir: &std::path::Path) -> Harness<'static, BimApp> {
     h.set_size(vec2(1600., 1000.));
     h.state_mut().edit_family("Cabinet");
     h.run();
-    h.state_mut().nest_family_file(&box_file(dir));
+    let doc = h.state().active_doc().expect("a family document");
+    h.state_mut().nest_family_file(doc, &box_file(dir));
     h.run();
     assert_eq!(editor(&h).nested.len(), 1, "the box is loaded into the cabinet");
     assert!(editor(&h).nested_instances.is_empty(), "and nothing is placed yet");

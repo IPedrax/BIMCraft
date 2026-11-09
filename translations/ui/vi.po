@@ -925,8 +925,8 @@ msgid "BIMCraft couldn't start"
 msgstr "BIMCraft không thể khởi động"
 
 #: crates/ui-egui/src/editor.rs:1298
-#: crates/ui-egui/src/editor.rs:1434
-#: crates/ui-egui/src/editor.rs:1456
+#: crates/ui-egui/src/editor.rs:1439
+#: crates/ui-egui/src/editor.rs:1458
 #: crates/ui-egui/src/sketch.rs:814
 msgid "BIMCraft family"
 msgstr "Họ BIMCraft"
@@ -1273,7 +1273,7 @@ msgstr "Camera: nhấp chỗ đặt mắt nhìn, rồi chỗ nó nhìn tới: m�
 #: crates/ui-egui/src/editor/dimensions.rs:903
 #: crates/ui-egui/src/editor/dimensions.rs:960
 #: crates/ui-egui/src/editor/document.rs:1546
-#: crates/ui-egui/src/editor/exists.rs:421
+#: crates/ui-egui/src/editor/exists.rs:442
 #: crates/ui-egui/src/editor/types_dialog.rs:482
 #: crates/ui-egui/src/editor/types_dialog.rs:620
 #: crates/ui-egui/src/editor/visibility.rs:108
@@ -2190,7 +2190,7 @@ msgstr "Đóng các khung nhìn khác"
 msgid "Close Inactive Views"
 msgstr ""
 
-#: crates/ui-egui/src/editor/tabs.rs:273
+#: crates/ui-egui/src/editor/tabs.rs:290
 msgid "Close Without Loading"
 msgstr ""
 
@@ -2858,7 +2858,7 @@ msgstr "Xóa (DE): các đường đã chọn"
 msgid "Delete (DE): what is selected, with what depends on it"
 msgstr ""
 
-#: crates/ui-egui/src/editor/exists.rs:508
+#: crates/ui-egui/src/editor/exists.rs:529
 msgid "Delete Dimension(s)"
 msgstr "Xóa kích thước"
 
@@ -3127,7 +3127,7 @@ msgstr ""
 msgid "Dimensions"
 msgstr "Kích thước"
 
-#: crates/ui-egui/src/editor/exists.rs:403
+#: crates/ui-egui/src/editor/exists.rs:424
 msgid "Dimensions of the family you are loading can't be kept: {}"
 msgstr "Không thể giữ các kích thước của họ bạn đang nạp: {}"
 
@@ -3874,7 +3874,7 @@ msgstr "Các nhóm đường song song: loại bản vẽ tính bằng mm trên 
 msgid "Family"
 msgstr "Họ"
 
-#: crates/ui-egui/src/editor/exists.rs:500
+#: crates/ui-egui/src/editor/exists.rs:521
 msgid "Family Already Exists"
 msgstr "Họ đã tồn tại"
 
@@ -4897,7 +4897,7 @@ msgstr "Tỷ lệ giao diện"
 msgid "Intersection"
 msgstr "Giao điểm"
 
-#: crates/ui-egui/src/editor/exists.rs:507
+#: crates/ui-egui/src/editor/exists.rs:528
 msgid "Invalid Dimensions"
 msgstr "Kích thước không hợp lệ"
 
@@ -5377,7 +5377,7 @@ msgid "Load into Family"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:761
-#: crates/ui-egui/src/editor/tabs.rs:266
+#: crates/ui-egui/src/editor/tabs.rs:283
 msgid "Load into Family and Close"
 msgstr ""
 
@@ -5394,7 +5394,7 @@ msgid "Load into Project"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:764
-#: crates/ui-egui/src/editor/tabs.rs:266
+#: crates/ui-egui/src/editor/tabs.rs:283
 msgid "Load into Project and Close"
 msgstr ""
 
@@ -6773,15 +6773,15 @@ msgstr "Ghi đè đồ họa theo cấu kiện (EO): vẽ các cấu kiện đã
 msgid "Override…"
 msgstr "Ghi đè…"
 
-#: crates/ui-egui/src/editor/exists.rs:506
+#: crates/ui-egui/src/editor/exists.rs:527
 msgid "Overwrite it with the version in this family"
 msgstr "Ghi đè bằng phiên bản trong họ này"
 
-#: crates/ui-egui/src/editor/exists.rs:501
+#: crates/ui-egui/src/editor/exists.rs:522
 msgid "Overwrite the existing version"
 msgstr "Ghi đè phiên bản hiện có"
 
-#: crates/ui-egui/src/editor/exists.rs:502
+#: crates/ui-egui/src/editor/exists.rs:523
 msgid "Overwrite the existing version and its parameter values"
 msgstr "Ghi đè phiên bản hiện có và các giá trị tham số của nó"
 
@@ -8058,7 +8058,7 @@ msgstr "Đường tham chiếu {}"
 #: crates/ui-egui/src/editor/document.rs:477
 #: crates/ui-egui/src/editor/document.rs:896
 #: crates/ui-egui/src/editor/extrusion.rs:80
-#: crates/ui-egui/src/editor/nested.rs:466
+#: crates/ui-egui/src/editor/nested.rs:471
 #: crates/ui-egui/src/editor/pivot.rs:259
 #: crates/ui-egui/src/editor/pivot.rs:260
 #: crates/ui-egui/src/editor/work_plane.rs:82
@@ -8596,7 +8596,7 @@ msgstr "Lưu thành"
 msgid "Save as:"
 msgstr "Lưu thành:"
 
-#: crates/ui-egui/src/editor/tabs.rs:267
+#: crates/ui-egui/src/editor/tabs.rs:284
 #: crates/ui-egui/src/lib.rs:5600
 msgid "Save changes to {}?"
 msgstr "Lưu các thay đổi vào {}?"
@@ -8605,7 +8605,7 @@ msgstr "Lưu các thay đổi vào {}?"
 msgid "Save to Favorites"
 msgstr "Lưu vào mục yêu thích"
 
-#: crates/ui-egui/src/editor.rs:1473
+#: crates/ui-egui/src/editor.rs:1476
 #: crates/ui-egui/src/properties.rs:2354
 msgid "Saved {} to your Favorites"
 msgstr "Đã lưu {} vào mục yêu thích"
@@ -8906,7 +8906,7 @@ msgstr ""
 msgid "Shared"
 msgstr "Dùng chung"
 
-#: crates/ui-egui/src/editor/exists.rs:503
+#: crates/ui-egui/src/editor/exists.rs:524
 msgid "Shared Family Already Loaded"
 msgstr "Họ dùng chung đã được nạp"
 
@@ -9108,7 +9108,7 @@ msgid "Silhouettes"
 msgstr "Đường viền bóng"
 
 #: crates/core/src/schedule.rs:270
-#: crates/ui-egui/src/editor.rs:1525
+#: crates/ui-egui/src/editor.rs:1527
 msgid "Sill"
 msgstr "Bậu cửa"
 
@@ -10003,6 +10003,10 @@ msgstr "Kích thước bị ràng buộc quá mức"
 msgid "The ends of walls, grids and what else is drawn, and the points picked so far"
 msgstr "Đầu mút của tường, lưới trục và những gì khác được vẽ, cùng các điểm đã chọn"
 
+#: crates/ui-egui/src/editor/exists.rs:516
+msgid "The family document was closed before the load finished: nothing was loaded."
+msgstr ""
+
 #: crates/ui-egui/src/adaptive_editor.rs:734
 #: crates/ui-egui/src/editor/types_dialog.rs:650
 msgid "The family has a parameter named {} already."
@@ -10012,19 +10016,19 @@ msgstr "Họ đã có một tham số tên là {}."
 msgid "The family has a type named {} already."
 msgstr "Họ đã có một kiểu tên là {}."
 
-#: crates/ui-egui/src/editor/tabs.rs:269
+#: crates/ui-egui/src/editor/tabs.rs:286
 msgid "The family has changes that are not loaded. If you close it without loading, they are lost."
 msgstr ""
 
-#: crates/ui-egui/src/editor/exists.rs:190
+#: crates/ui-egui/src/editor/exists.rs:206
 msgid "The family it was nested in is closed."
 msgstr "Họ chứa nó đã được đóng."
 
-#: crates/ui-egui/src/editor/exists.rs:373
+#: crates/ui-egui/src/editor/exists.rs:394
 msgid "The family {} you are loading is already in this family, defined differently. What would you like to do?"
 msgstr "Họ {} bạn đang nạp đã có trong họ này nhưng được định nghĩa khác. Bạn muốn làm gì?"
 
-#: crates/ui-egui/src/editor/exists.rs:381
+#: crates/ui-egui/src/editor/exists.rs:402
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
 msgstr "Họ {} bạn đang nạp đã có trong dự án này nhưng được định nghĩa khác. Bạn muốn làm gì?"
 
@@ -10152,11 +10156,11 @@ msgstr "Dải băng, các bảng công cụ và các thanh sát mép cửa sổ"
 msgid "The selected element has no type to match"
 msgstr "Cấu kiện đã chọn không có kiểu để sao chép"
 
-#: crates/ui-egui/src/editor/exists.rs:389
+#: crates/ui-egui/src/editor/exists.rs:410
 msgid "The shared family {} nested in the family you are loading is already in this family. Which version should it use?"
 msgstr "Họ dùng chung {} lồng trong họ bạn đang nạp đã có trong họ này. Nên dùng phiên bản nào?"
 
-#: crates/ui-egui/src/editor/exists.rs:397
+#: crates/ui-egui/src/editor/exists.rs:418
 msgid "The shared family {} nested in this family is already loaded in the project. Which version should the project use?"
 msgstr "Họ dùng chung {} lồng trong họ này đã được nạp vào dự án. Dự án nên dùng phiên bản nào?"
 
@@ -10533,7 +10537,7 @@ msgstr "Có hai {} cùng tên {}."
 #: crates/ui-egui/src/adaptive_editor.rs:724
 #: crates/ui-egui/src/editor/dimensions.rs:946
 #: crates/ui-egui/src/editor/nested.rs:273
-#: crates/ui-egui/src/editor/nested.rs:449
+#: crates/ui-egui/src/editor/nested.rs:454
 #: crates/ui-egui/src/editor/types_dialog.rs:566
 #: crates/ui-egui/src/properties.rs:3213
 msgid "Type"
@@ -10755,7 +10759,7 @@ msgstr "Dùng"
 msgid "Use Project Settings"
 msgstr "Dùng cài đặt dự án"
 
-#: crates/ui-egui/src/editor/exists.rs:504
+#: crates/ui-egui/src/editor/exists.rs:525
 msgid "Use the project's version"
 msgstr "Dùng phiên bản của dự án"
 
@@ -10763,7 +10767,7 @@ msgstr "Dùng phiên bản của dự án"
 msgid "Use the system's title bar"
 msgstr "Dùng thanh tiêu đề của hệ thống"
 
-#: crates/ui-egui/src/editor/exists.rs:505
+#: crates/ui-egui/src/editor/exists.rs:526
 msgid "Use this family's version"
 msgstr "Dùng phiên bản của họ này"
 

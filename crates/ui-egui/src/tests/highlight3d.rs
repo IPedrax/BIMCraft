@@ -23,7 +23,8 @@ fn box_file(dir: &std::path::Path) -> std::path::PathBuf {
 /// The cabinet open in its document in {3D} (in `h`), the box loaded into it and placed at (-150, -100) on Ref. Level, 300
 /// above it (by Offset): on the plinth, under the top.
 fn nest_box(h: &mut Harness<BimApp>, dir: &std::path::Path) {
-    h.state_mut().nest_family_file(&box_file(dir));
+    let doc = h.state().active_doc().expect("a family document");
+    h.state_mut().nest_family_file(doc, &box_file(dir));
     h.run();
     view(h, Some(Which::Plan));
     ed_mut(h).component_tool();

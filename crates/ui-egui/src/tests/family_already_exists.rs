@@ -223,7 +223,8 @@ fn a_shared_nested_family_asks_after_the_family_and_either_choice_loads() {
         own["name"] = json!("Hinge");
         assert!(h.state_mut().run("family", json!({"definition": own})).is_some());
         // Loaded into the document: it has no Hinge, so nothing asks.
-        h.state_mut().nest_family_file(&door);
+        let doc = h.state().active_doc().expect("a family document");
+        h.state_mut().nest_family_file(doc, &door);
         h.run();
         assert!(!asked(&h, EXISTS) && !asked(&h, SHARED));
         press(&mut h, "Load into Project and Close");

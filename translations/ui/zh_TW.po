@@ -925,8 +925,8 @@ msgid "BIMCraft couldn't start"
 msgstr "BIMCraft 無法啟動"
 
 #: crates/ui-egui/src/editor.rs:1298
-#: crates/ui-egui/src/editor.rs:1434
-#: crates/ui-egui/src/editor.rs:1456
+#: crates/ui-egui/src/editor.rs:1439
+#: crates/ui-egui/src/editor.rs:1458
 #: crates/ui-egui/src/sketch.rs:814
 msgid "BIMCraft family"
 msgstr "BIMCraft 族"
@@ -1273,7 +1273,7 @@ msgstr "相機：單擊視點所在位置，再單擊其注視的目標：由該
 #: crates/ui-egui/src/editor/dimensions.rs:903
 #: crates/ui-egui/src/editor/dimensions.rs:960
 #: crates/ui-egui/src/editor/document.rs:1546
-#: crates/ui-egui/src/editor/exists.rs:421
+#: crates/ui-egui/src/editor/exists.rs:442
 #: crates/ui-egui/src/editor/types_dialog.rs:482
 #: crates/ui-egui/src/editor/types_dialog.rs:620
 #: crates/ui-egui/src/editor/visibility.rs:108
@@ -2190,7 +2190,7 @@ msgstr "關閉非活動視圖"
 msgid "Close Inactive Views"
 msgstr ""
 
-#: crates/ui-egui/src/editor/tabs.rs:273
+#: crates/ui-egui/src/editor/tabs.rs:290
 msgid "Close Without Loading"
 msgstr ""
 
@@ -2858,7 +2858,7 @@ msgstr "刪除 (DE)：所拾取的線"
 msgid "Delete (DE): what is selected, with what depends on it"
 msgstr ""
 
-#: crates/ui-egui/src/editor/exists.rs:508
+#: crates/ui-egui/src/editor/exists.rs:529
 msgid "Delete Dimension(s)"
 msgstr "刪除尺寸標注"
 
@@ -3127,7 +3127,7 @@ msgstr "尺寸標注 {}"
 msgid "Dimensions"
 msgstr "尺寸標注"
 
-#: crates/ui-egui/src/editor/exists.rs:403
+#: crates/ui-egui/src/editor/exists.rs:424
 msgid "Dimensions of the family you are loading can't be kept: {}"
 msgstr "無法保留您正在載入的族的尺寸標注：{}"
 
@@ -3874,7 +3874,7 @@ msgstr "平行線組：繪圖圖案以圖紙上的毫米計，在任何比例下
 msgid "Family"
 msgstr "族"
 
-#: crates/ui-egui/src/editor/exists.rs:500
+#: crates/ui-egui/src/editor/exists.rs:521
 msgid "Family Already Exists"
 msgstr "族已存在"
 
@@ -4897,7 +4897,7 @@ msgstr "界面縮放"
 msgid "Intersection"
 msgstr "交點"
 
-#: crates/ui-egui/src/editor/exists.rs:507
+#: crates/ui-egui/src/editor/exists.rs:528
 msgid "Invalid Dimensions"
 msgstr "無效尺寸標注"
 
@@ -5377,7 +5377,7 @@ msgid "Load into Family"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:761
-#: crates/ui-egui/src/editor/tabs.rs:266
+#: crates/ui-egui/src/editor/tabs.rs:283
 msgid "Load into Family and Close"
 msgstr ""
 
@@ -5394,7 +5394,7 @@ msgid "Load into Project"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:764
-#: crates/ui-egui/src/editor/tabs.rs:266
+#: crates/ui-egui/src/editor/tabs.rs:283
 msgid "Load into Project and Close"
 msgstr ""
 
@@ -6773,15 +6773,15 @@ msgstr "按圖元替換圖形 (EO)：在此視圖中以自定義方式繪製所�
 msgid "Override…"
 msgstr "替換…"
 
-#: crates/ui-egui/src/editor/exists.rs:506
+#: crates/ui-egui/src/editor/exists.rs:527
 msgid "Overwrite it with the version in this family"
 msgstr "以此族中的版本覆寫"
 
-#: crates/ui-egui/src/editor/exists.rs:501
+#: crates/ui-egui/src/editor/exists.rs:522
 msgid "Overwrite the existing version"
 msgstr "覆寫現有版本"
 
-#: crates/ui-egui/src/editor/exists.rs:502
+#: crates/ui-egui/src/editor/exists.rs:523
 msgid "Overwrite the existing version and its parameter values"
 msgstr "覆寫現有版本及其參數值"
 
@@ -8058,7 +8058,7 @@ msgstr "參照線 {}"
 #: crates/ui-egui/src/editor/document.rs:477
 #: crates/ui-egui/src/editor/document.rs:896
 #: crates/ui-egui/src/editor/extrusion.rs:80
-#: crates/ui-egui/src/editor/nested.rs:466
+#: crates/ui-egui/src/editor/nested.rs:471
 #: crates/ui-egui/src/editor/pivot.rs:259
 #: crates/ui-egui/src/editor/pivot.rs:260
 #: crates/ui-egui/src/editor/work_plane.rs:82
@@ -8596,7 +8596,7 @@ msgstr "另存為"
 msgid "Save as:"
 msgstr "另存為："
 
-#: crates/ui-egui/src/editor/tabs.rs:267
+#: crates/ui-egui/src/editor/tabs.rs:284
 #: crates/ui-egui/src/lib.rs:5600
 msgid "Save changes to {}?"
 msgstr "是否將更改儲存到 {}？"
@@ -8605,7 +8605,7 @@ msgstr "是否將更改儲存到 {}？"
 msgid "Save to Favorites"
 msgstr "儲存到收藏夾"
 
-#: crates/ui-egui/src/editor.rs:1473
+#: crates/ui-egui/src/editor.rs:1476
 #: crates/ui-egui/src/properties.rs:2354
 msgid "Saved {} to your Favorites"
 msgstr "已將 {} 儲存到您的收藏夾"
@@ -8906,7 +8906,7 @@ msgstr ""
 msgid "Shared"
 msgstr "共用"
 
-#: crates/ui-egui/src/editor/exists.rs:503
+#: crates/ui-egui/src/editor/exists.rs:524
 msgid "Shared Family Already Loaded"
 msgstr "共用族已載入"
 
@@ -9108,7 +9108,7 @@ msgid "Silhouettes"
 msgstr "輪廓線"
 
 #: crates/core/src/schedule.rs:270
-#: crates/ui-egui/src/editor.rs:1525
+#: crates/ui-egui/src/editor.rs:1527
 msgid "Sill"
 msgstr "窗台"
 
@@ -10003,6 +10003,10 @@ msgstr "尺寸標注已被過度約束"
 msgid "The ends of walls, grids and what else is drawn, and the points picked so far"
 msgstr "牆、軸網及其他已繪製對象的端點，以及迄今已拾取的點"
 
+#: crates/ui-egui/src/editor/exists.rs:516
+msgid "The family document was closed before the load finished: nothing was loaded."
+msgstr ""
+
 #: crates/ui-egui/src/adaptive_editor.rs:734
 #: crates/ui-egui/src/editor/types_dialog.rs:650
 msgid "The family has a parameter named {} already."
@@ -10012,19 +10016,19 @@ msgstr "該族已有名為 {} 的參數。"
 msgid "The family has a type named {} already."
 msgstr "該族已有名為 {} 的類型。"
 
-#: crates/ui-egui/src/editor/tabs.rs:269
+#: crates/ui-egui/src/editor/tabs.rs:286
 msgid "The family has changes that are not loaded. If you close it without loading, they are lost."
 msgstr ""
 
-#: crates/ui-egui/src/editor/exists.rs:190
+#: crates/ui-egui/src/editor/exists.rs:206
 msgid "The family it was nested in is closed."
 msgstr "其所巢狀的族已關閉。"
 
-#: crates/ui-egui/src/editor/exists.rs:373
+#: crates/ui-egui/src/editor/exists.rs:394
 msgid "The family {} you are loading is already in this family, defined differently. What would you like to do?"
 msgstr "您正在載入的族 {} 已存在於此族中，但定義不同。您想要執行什麼操作？"
 
-#: crates/ui-egui/src/editor/exists.rs:381
+#: crates/ui-egui/src/editor/exists.rs:402
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
 msgstr "您正在載入的族 {} 已存在於此項目中，但定義不同。您想要執行什麼操作？"
 
@@ -10152,11 +10156,11 @@ msgstr "功能區、選項板和工具欄緊貼視窗邊緣"
 msgid "The selected element has no type to match"
 msgstr "所選元素沒有可符合的類型"
 
-#: crates/ui-egui/src/editor/exists.rs:389
+#: crates/ui-egui/src/editor/exists.rs:410
 msgid "The shared family {} nested in the family you are loading is already in this family. Which version should it use?"
 msgstr "巢狀於您正在載入的族中的共用族 {} 已存在於此族中。應使用哪個版本？"
 
-#: crates/ui-egui/src/editor/exists.rs:397
+#: crates/ui-egui/src/editor/exists.rs:418
 msgid "The shared family {} nested in this family is already loaded in the project. Which version should the project use?"
 msgstr "巢狀於此族中的共用族 {} 已載入到項目中。項目應使用哪個版本？"
 
@@ -10533,7 +10537,7 @@ msgstr "有兩個{}都名為 {}。"
 #: crates/ui-egui/src/adaptive_editor.rs:724
 #: crates/ui-egui/src/editor/dimensions.rs:946
 #: crates/ui-egui/src/editor/nested.rs:273
-#: crates/ui-egui/src/editor/nested.rs:449
+#: crates/ui-egui/src/editor/nested.rs:454
 #: crates/ui-egui/src/editor/types_dialog.rs:566
 #: crates/ui-egui/src/properties.rs:3213
 msgid "Type"
@@ -10755,7 +10759,7 @@ msgstr "使用"
 msgid "Use Project Settings"
 msgstr "使用項目設置"
 
-#: crates/ui-egui/src/editor/exists.rs:504
+#: crates/ui-egui/src/editor/exists.rs:525
 msgid "Use the project's version"
 msgstr "使用項目中的版本"
 
@@ -10763,7 +10767,7 @@ msgstr "使用項目中的版本"
 msgid "Use the system's title bar"
 msgstr "使用系統標題欄"
 
-#: crates/ui-egui/src/editor/exists.rs:505
+#: crates/ui-egui/src/editor/exists.rs:526
 msgid "Use this family's version"
 msgstr "使用此族中的版本"
 

@@ -431,11 +431,16 @@ impl BimApp {
         }
     }
 
-    /// Insert > Load Family in a family document: the family in the file at `path` loaded into it, asking first when it nests
-    /// one of that name otherwise, or a shared family the file nests otherwise.
-    pub(crate) fn nest_family_file(&mut self, path: &std::path::Path) {
+    /// Insert > Load Family in family document `doc`: the family in the file at `path` loaded into it, whichever tab is active,
+    /// asking first when it nests one of that name otherwise, or a shared family the file nests otherwise. Closed meanwhile,
+    /// nothing is loaded anywhere.
+    pub(crate) fn nest_family_file(&mut self, doc: tabs::DocId, path: &std::path::Path) {
+        if self.doc(doc).is_none() {
+            self.document_closed();
+            return;
+        }
         match read_family_file(path) {
-            Ok((name, family)) => self.nest_family(name, family, exists::After::Nest),
+            Ok((name, family)) => self.nest_family(name, family, exists::After::Nest { doc }),
             Err(text) => self.status = Status { text, error: true },
         }
     }

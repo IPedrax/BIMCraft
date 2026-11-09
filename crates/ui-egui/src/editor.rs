@@ -1416,6 +1416,11 @@ impl BimApp {
             self.open_nested_family(ed, &name);
             return;
         }
+        // The document `ed` is of: what a file dialog it opens finishes in, whichever tab is active by then.
+        let Some(doc) = self.active_doc() else {
+            self.put_family(ed);
+            return;
+        };
         let base = Arc::clone(&self.session.model);
         let Asked { capture: capture_context, place: place_adaptive, apply_placement, apply, ok, cancel, save, favorite, load, .. } = ask;
         let capture_sources = self.capture_sources();
@@ -1432,12 +1437,9 @@ impl BimApp {
         }
         if load {
             let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]);
-            // Loaded into this family (T6a), as Revit's Insert > Load Family in a family; closed meanwhile, nothing to load into.
-            self.ask_file(ctx, dialog, false, |app, path| {
-                if app.active_family().is_some() {
-                    app.nest_family_file(&path);
-                }
-            });
+            // Loaded into this family (T6a), as Revit's Insert > Load Family in a family, though another tab came forward
+            // meanwhile; closed meanwhile, nothing to load into.
+            self.ask_file(ctx, dialog, false, move |app, path| app.nest_family_file(doc, &path));
         }
         // Save and Favorites use a private Session: neither implicitly loads the draft into the project.
         if save || favorite {
@@ -1456,9 +1458,10 @@ impl BimApp {
                             rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]).set_file_name(format!("{name}.json"));
                         self.ask_file(ctx, dialog, true, move |app, path| {
                             match draft.execute("family", &json!({"name":name,"save":path.to_string_lossy()})) {
-                                // Still open, the document has nothing unsaved but what changed meanwhile.
+                                // Still open, the document that saved has nothing unsaved but what changed meanwhile, whichever
+                                // tab is active; closed, the file is all there is.
                                 Ok(_) => {
-                                    if let Some(open) = app.active_family_mut() {
+                                    if let Some(open) = app.family_of_mut(doc) {
                                         open.saved_as(saved);
                                     }
                                 }
@@ -1487,28 +1490,27 @@ impl BimApp {
             match family {
                 Ok(family) => {
                     let name = ed.name.trim().to_string();
-                    self.put_family(ed);
-                    self.nest_family(name, family, exists::After::IntoHost { close: ok });
+                    self.put_family_of(doc, ed);
+                    self.nest_family(name, family, exists::After::IntoHost { doc, close: ok });
                 }
                 Err(e) => {
                     ed.document.refused = Some(e);
-                    self.put_family(ed);
+                    self.put_family_of(doc, ed);
                 }
             }
             return;
         }
         if !cancel && (apply || ok || place_adaptive || apply_placement) {
-            self.load_draft(&mut ed, exists::After::Document { close: ok, place: place_adaptive, apply_placement });
+            self.load_draft(&mut ed, exists::After::Document { doc, close: ok, place: place_adaptive, apply_placement });
         }
         // Loaded and closed: its tabs go, and the one it was opened from comes back (a nested family's, the family under it).
         // Close Family asks first while it has unsaved changes.
         let loaded = std::mem::take(&mut ed.document.loaded_to_close);
-        let id = self.active_doc();
-        self.put_family(ed);
-        match id {
-            Some(id) if loaded => self.close_family_document(id),
-            Some(id) if cancel => self.ask_close_family(id, tabs::Then::Nothing),
-            _ => {}
+        self.put_family_of(doc, ed);
+        if loaded {
+            self.close_family_document(doc);
+        } else if cancel {
+            self.ask_close_family(doc, tabs::Then::Nothing);
         }
     }
 }

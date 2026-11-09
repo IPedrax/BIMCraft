@@ -924,8 +924,8 @@ msgid "BIMCraft couldn't start"
 msgstr "BIMCraft konnte nicht starten"
 
 #: crates/ui-egui/src/editor.rs:1298
-#: crates/ui-egui/src/editor.rs:1434
-#: crates/ui-egui/src/editor.rs:1456
+#: crates/ui-egui/src/editor.rs:1439
+#: crates/ui-egui/src/editor.rs:1458
 #: crates/ui-egui/src/sketch.rs:814
 msgid "BIMCraft family"
 msgstr "BIMCraft-Familie"
@@ -1272,7 +1272,7 @@ msgstr "Kamera: den Augpunkt anklicken, dann das Ziel: eine perspektivische 3D-A
 #: crates/ui-egui/src/editor/dimensions.rs:903
 #: crates/ui-egui/src/editor/dimensions.rs:960
 #: crates/ui-egui/src/editor/document.rs:1546
-#: crates/ui-egui/src/editor/exists.rs:421
+#: crates/ui-egui/src/editor/exists.rs:442
 #: crates/ui-egui/src/editor/types_dialog.rs:482
 #: crates/ui-egui/src/editor/types_dialog.rs:620
 #: crates/ui-egui/src/editor/visibility.rs:108
@@ -2189,7 +2189,7 @@ msgstr "Inaktive schließen"
 msgid "Close Inactive Views"
 msgstr ""
 
-#: crates/ui-egui/src/editor/tabs.rs:273
+#: crates/ui-egui/src/editor/tabs.rs:290
 msgid "Close Without Loading"
 msgstr ""
 
@@ -2857,7 +2857,7 @@ msgstr "Löschen (DE): die gewählten Linien"
 msgid "Delete (DE): what is selected, with what depends on it"
 msgstr ""
 
-#: crates/ui-egui/src/editor/exists.rs:508
+#: crates/ui-egui/src/editor/exists.rs:529
 msgid "Delete Dimension(s)"
 msgstr "Bemaßung(en) löschen"
 
@@ -3126,7 +3126,7 @@ msgstr "Bemaßung {}"
 msgid "Dimensions"
 msgstr "Bemaßungen"
 
-#: crates/ui-egui/src/editor/exists.rs:403
+#: crates/ui-egui/src/editor/exists.rs:424
 msgid "Dimensions of the family you are loading can't be kept: {}"
 msgstr "Die Bemaßungen der zu ladenden Familie können nicht beibehalten werden: {}"
 
@@ -3873,7 +3873,7 @@ msgstr "Familien paralleler Linien: Zeichnungsmuster in mm auf dem Papier, bei j
 msgid "Family"
 msgstr "Familie"
 
-#: crates/ui-egui/src/editor/exists.rs:500
+#: crates/ui-egui/src/editor/exists.rs:521
 msgid "Family Already Exists"
 msgstr "Familie bereits vorhanden"
 
@@ -4896,7 +4896,7 @@ msgstr "Oberflächenskalierung"
 msgid "Intersection"
 msgstr "Schnittpunkt"
 
-#: crates/ui-egui/src/editor/exists.rs:507
+#: crates/ui-egui/src/editor/exists.rs:528
 msgid "Invalid Dimensions"
 msgstr "Ungültige Bemaßungen"
 
@@ -5376,7 +5376,7 @@ msgid "Load into Family"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:761
-#: crates/ui-egui/src/editor/tabs.rs:266
+#: crates/ui-egui/src/editor/tabs.rs:283
 msgid "Load into Family and Close"
 msgstr ""
 
@@ -5393,7 +5393,7 @@ msgid "Load into Project"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:764
-#: crates/ui-egui/src/editor/tabs.rs:266
+#: crates/ui-egui/src/editor/tabs.rs:283
 msgid "Load into Project and Close"
 msgstr ""
 
@@ -6772,15 +6772,15 @@ msgstr "Grafik nach Element überschreiben (EO): ausgewählte Elemente in dieser
 msgid "Override…"
 msgstr "Überschreiben…"
 
-#: crates/ui-egui/src/editor/exists.rs:506
+#: crates/ui-egui/src/editor/exists.rs:527
 msgid "Overwrite it with the version in this family"
 msgstr "Mit der Version aus dieser Familie überschreiben"
 
-#: crates/ui-egui/src/editor/exists.rs:501
+#: crates/ui-egui/src/editor/exists.rs:522
 msgid "Overwrite the existing version"
 msgstr "Vorhandene Version überschreiben"
 
-#: crates/ui-egui/src/editor/exists.rs:502
+#: crates/ui-egui/src/editor/exists.rs:523
 msgid "Overwrite the existing version and its parameter values"
 msgstr "Vorhandene Version und ihre Parameterwerte überschreiben"
 
@@ -8057,7 +8057,7 @@ msgstr "Referenzlinie {}"
 #: crates/ui-egui/src/editor/document.rs:477
 #: crates/ui-egui/src/editor/document.rs:896
 #: crates/ui-egui/src/editor/extrusion.rs:80
-#: crates/ui-egui/src/editor/nested.rs:466
+#: crates/ui-egui/src/editor/nested.rs:471
 #: crates/ui-egui/src/editor/pivot.rs:259
 #: crates/ui-egui/src/editor/pivot.rs:260
 #: crates/ui-egui/src/editor/work_plane.rs:82
@@ -8595,7 +8595,7 @@ msgstr "Speichern als"
 msgid "Save as:"
 msgstr "Speichern als:"
 
-#: crates/ui-egui/src/editor/tabs.rs:267
+#: crates/ui-egui/src/editor/tabs.rs:284
 #: crates/ui-egui/src/lib.rs:5600
 msgid "Save changes to {}?"
 msgstr "Änderungen an {} speichern?"
@@ -8604,7 +8604,7 @@ msgstr "Änderungen an {} speichern?"
 msgid "Save to Favorites"
 msgstr "Zu Favoriten hinzufügen"
 
-#: crates/ui-egui/src/editor.rs:1473
+#: crates/ui-egui/src/editor.rs:1476
 #: crates/ui-egui/src/properties.rs:2354
 msgid "Saved {} to your Favorites"
 msgstr "{} zu den Favoriten hinzugefügt"
@@ -8905,7 +8905,7 @@ msgstr ""
 msgid "Shared"
 msgstr "Gemeinsam genutzt"
 
-#: crates/ui-egui/src/editor/exists.rs:503
+#: crates/ui-egui/src/editor/exists.rs:524
 msgid "Shared Family Already Loaded"
 msgstr "Gemeinsam genutzte Familie bereits geladen"
 
@@ -9107,7 +9107,7 @@ msgid "Silhouettes"
 msgstr "Silhouetten"
 
 #: crates/core/src/schedule.rs:270
-#: crates/ui-egui/src/editor.rs:1525
+#: crates/ui-egui/src/editor.rs:1527
 msgid "Sill"
 msgstr "Brüstung"
 
@@ -10002,6 +10002,10 @@ msgstr "Die Bemaßung ist überbestimmt"
 msgid "The ends of walls, grids and what else is drawn, and the points picked so far"
 msgstr "Die Enden von Wänden, Rastern und weiteren gezeichneten Elementen sowie die bisher gewählten Punkte"
 
+#: crates/ui-egui/src/editor/exists.rs:516
+msgid "The family document was closed before the load finished: nothing was loaded."
+msgstr ""
+
 #: crates/ui-egui/src/adaptive_editor.rs:734
 #: crates/ui-egui/src/editor/types_dialog.rs:650
 msgid "The family has a parameter named {} already."
@@ -10011,19 +10015,19 @@ msgstr "Die Familie hat bereits einen Parameter namens {}."
 msgid "The family has a type named {} already."
 msgstr "Die Familie hat bereits einen Typ namens {}."
 
-#: crates/ui-egui/src/editor/tabs.rs:269
+#: crates/ui-egui/src/editor/tabs.rs:286
 msgid "The family has changes that are not loaded. If you close it without loading, they are lost."
 msgstr ""
 
-#: crates/ui-egui/src/editor/exists.rs:190
+#: crates/ui-egui/src/editor/exists.rs:206
 msgid "The family it was nested in is closed."
 msgstr "Die Familie, in der sie verschachtelt war, ist geschlossen."
 
-#: crates/ui-egui/src/editor/exists.rs:373
+#: crates/ui-egui/src/editor/exists.rs:394
 msgid "The family {} you are loading is already in this family, defined differently. What would you like to do?"
 msgstr "Die Familie {}, die geladen wird, ist in dieser Familie bereits vorhanden, aber anders definiert. Was soll geschehen?"
 
-#: crates/ui-egui/src/editor/exists.rs:381
+#: crates/ui-egui/src/editor/exists.rs:402
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
 msgstr "Die Familie {}, die geladen wird, ist in diesem Projekt bereits vorhanden, aber anders definiert. Was soll geschehen?"
 
@@ -10151,11 +10155,11 @@ msgstr "Menüband, Paletten und Leisten bündig an den Fensterrändern"
 msgid "The selected element has no type to match"
 msgstr "Das ausgewählte Element hat keinen passenden Typ"
 
-#: crates/ui-egui/src/editor/exists.rs:389
+#: crates/ui-egui/src/editor/exists.rs:410
 msgid "The shared family {} nested in the family you are loading is already in this family. Which version should it use?"
 msgstr "Die gemeinsam genutzte Familie {}, die in der zu ladenden Familie verschachtelt ist, ist bereits in dieser Familie vorhanden. Welche Version soll sie verwenden?"
 
-#: crates/ui-egui/src/editor/exists.rs:397
+#: crates/ui-egui/src/editor/exists.rs:418
 msgid "The shared family {} nested in this family is already loaded in the project. Which version should the project use?"
 msgstr "Die gemeinsam genutzte Familie {}, die in dieser Familie verschachtelt ist, ist bereits in das Projekt geladen. Welche Version soll das Projekt verwenden?"
 
@@ -10532,7 +10536,7 @@ msgstr "{}: Der Name {} ist doppelt vergeben."
 #: crates/ui-egui/src/adaptive_editor.rs:724
 #: crates/ui-egui/src/editor/dimensions.rs:946
 #: crates/ui-egui/src/editor/nested.rs:273
-#: crates/ui-egui/src/editor/nested.rs:449
+#: crates/ui-egui/src/editor/nested.rs:454
 #: crates/ui-egui/src/editor/types_dialog.rs:566
 #: crates/ui-egui/src/properties.rs:3213
 msgid "Type"
@@ -10754,7 +10758,7 @@ msgstr "Verwenden"
 msgid "Use Project Settings"
 msgstr "Projekteinstellungen verwenden"
 
-#: crates/ui-egui/src/editor/exists.rs:504
+#: crates/ui-egui/src/editor/exists.rs:525
 msgid "Use the project's version"
 msgstr "Version des Projekts verwenden"
 
@@ -10762,7 +10766,7 @@ msgstr "Version des Projekts verwenden"
 msgid "Use the system's title bar"
 msgstr "Systemtitelleiste verwenden"
 
-#: crates/ui-egui/src/editor/exists.rs:505
+#: crates/ui-egui/src/editor/exists.rs:526
 msgid "Use this family's version"
 msgstr "Version dieser Familie verwenden"
 

@@ -3,7 +3,10 @@
 //! titled "{family} - {view}". The project stays the one `Session`; the active tab says which document the ribbon, Properties,
 //! the Project Browser, the title, the status bar and Undo are for (`BimApp::active_family`).
 //!
-//! A frame works on the active document by taking it out of its place and putting it back (`take_family`, `put_family`). A
+//! A frame works on the active document by taking it out of its place and putting it back (`take_family`, `put_family`). What
+//! finishes later than it started (a file dialog answered, "Family Already Exists" answered) holds the `DocId` of the document
+//! that started it and finishes there (`family_of`, `take_family_of`), whichever tab is active by then; nothing is done to
+//! another document when that one was closed meanwhile. A
 //! document is closed with its last tab, or by Close Family: one with unsaved changes asks first ("Save changes to {family}?":
 //! Load into Project and Close, Close Without Loading, Cancel), and one with a nested family's document open over it closes that
 //! one first, asking the same. File > New, Open, Close and quitting ask for each unsaved document before the project's own
@@ -86,7 +89,21 @@ impl BimApp {
     /// The active document taken out of its place for the frame to work on, as `put_family` puts it back.
     pub(crate) fn take_family(&mut self) -> Option<FamilyEditor> {
         let id = self.active_doc()?;
+        self.take_family_of(id)
+    }
+
+    /// Document `id` taken out of its place, whichever tab is active, as `put_family_of` puts it back: for what finishes
+    /// later than it started (a file dialog answered, a question answered), which finishes in the document that started it.
+    /// None when that document was closed meanwhile.
+    pub(crate) fn take_family_of(&mut self, id: DocId) -> Option<FamilyEditor> {
         self.doc_mut(id)?.ed.take()
+    }
+
+    /// Document `id`, taken out by `take_family_of`, back in its place.
+    pub(crate) fn put_family_of(&mut self, id: DocId, ed: FamilyEditor) {
+        if let Some(d) = self.doc_mut(id).filter(|d| d.ed.is_none()) {
+            d.ed = Some(ed);
+        }
     }
 
     /// A document taken out, back in its place.
