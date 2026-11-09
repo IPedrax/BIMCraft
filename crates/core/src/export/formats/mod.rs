@@ -125,7 +125,9 @@ pub fn styled(d: &Drawing, setup: &PageSetup) -> Option<Drawing> {
                 rgba: match colour {
                     Colour::Colour => rgba.clone(),
                     Colour::Grey | Colour::Black => rgba
-                        .chunks_exact(4)
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .flat_map(|px| {
                             let l = luma(Rgb(px[0], px[1], px[2]));
                             [l, l, l, px[3]]

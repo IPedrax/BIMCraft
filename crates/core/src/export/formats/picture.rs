@@ -6,7 +6,7 @@ use super::styled;
 use crate::render;
 
 /// The one drawing a picture format writes.
-fn drawing<'a>(items: &'a [Prepared]) -> Result<(&'a Prepared, &'a Paged), String> {
+fn drawing(items: &[Prepared]) -> Result<(&Prepared, &Paged), String> {
     match items {
         [item] => match &item.content {
             Content::Drawing(paged) => Ok((item, paged)),

@@ -159,7 +159,8 @@ impl Paged {
 
 /// What a writer is given, made of a source.
 pub enum Content {
-    Drawing(Paged),
+    /// Boxed: a drawing's display list is far bigger than the others.
+    Drawing(Box<Paged>),
     Table(crate::schedule::Table),
     /// The model as its links make it, and the 3D view it is seen through, if it is one's.
     Model {
@@ -298,14 +299,14 @@ pub fn prepare(project: &Arc<Model>, m: &Arc<Model>, id: Option<Id>, takes: Take
         (Takes::Drawing, Some(id)) if kind == Kind::Sheet => {
             let own = m.sheet(id).and_then(|s| crate::model::paper(&s.size));
             let drawing = crate::sheet::draw(m, id).ok_or_else(|| format!("sheet {title} can't be drawn"))?;
-            Content::Drawing(Paged { drawing, n: 1.0, own })
+            Content::Drawing(Box::new(Paged { drawing, n: 1.0, own }))
         }
         (Takes::Drawing, Some(id)) => {
             // A schedule keeps its own size; a view is drawn at its scale.
             let n = if kind == Kind::Schedule { 1.0 } else { crate::graphics::scale_of(m, id) };
             let n = if n.is_finite() && n > 0.0 { n } else { 100.0 };
             let drawing = crate::sheet::draw_view(m, id, n).ok_or_else(|| format!("{title} has nothing to draw"))?;
-            Content::Drawing(Paged { drawing, n, own: None })
+            Content::Drawing(Box::new(Paged { drawing, n, own: None }))
         }
         (_, None) => return Err("the whole project exports only as a model (IFC, glTF, OBJ, STL)".to_string()),
     };
@@ -461,6 +462,9 @@ pub fn write_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
 
 /// The job's exports, written under its folder. A source that can't be exported is reported and the rest go on; the job
 /// fails only when it can't start (no folder, an unknown format, a bad template).
+/// One format and the sources it writes, together where it combines them.
+type Group = (Arc<dyn Format>, Vec<Option<Id>>);
+
 pub fn run(model: &Arc<Model>, registry: &Registry, job: &Job, ctx: &Ctx) -> Result<Report, String> {
     if job.items.is_empty() {
         return Err("there is nothing to export: `items` is empty".to_string());
@@ -484,7 +488,7 @@ pub fn run(model: &Arc<Model>, registry: &Registry, job: &Job, ctx: &Ctx) -> Res
     let mut report = Report::default();
     let mut taken = BTreeSet::new();
     // Combined: each format that can, its sources together, in the order given.
-    let mut groups: Vec<(Arc<dyn Format>, Vec<Option<Id>>)> = Vec::new();
+    let mut groups: Vec<Group> = Vec::new();
     for (format, id) in work {
         match groups.iter_mut().find(|(f, _)| job.combine.is_some() && f.combines() && f.id() == format.id()) {
             Some((_, ids)) => ids.push(id),
