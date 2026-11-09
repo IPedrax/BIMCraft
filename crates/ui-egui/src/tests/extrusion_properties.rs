@@ -60,7 +60,7 @@ fn a_selected_form_shows_revits_extrusion_properties() {
         assert!(h.query_by_label(group).is_some(), "{group}");
     }
     // The contextual tab and the Options Bar's Depth come with it.
-    assert!(h.query_all_by_label("Modify | Form").count() > 0);
+    assert!(h.query_all_by_label("Modify | Extrusion").count() > 0);
     assert_eq!(h.get_by_label("Depth").value().as_deref(), Some("50"));
     // The family's own are not shown under it, as Revit's Properties show only what is selected.
     assert!(h.query_by_label("Family name").is_none());

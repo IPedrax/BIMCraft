@@ -56,6 +56,8 @@ fn a_form_selected_in_the_browser_shows_its_own_properties_and_escape_shows_the_
         assert!(h.query_by_label(row).is_some(), "{row}");
     }
     assert!(h.query_by_label("Family name").is_none(), "only what is selected");
+    // Its contextual tab and the Options Bar named for its kind, as Revit's.
+    assert!(h.query_all_by_label("Modify | Extrusion").count() >= 2, "the tab and the Options Bar");
     assert_eq!(h.get_by_label("Extrusion End").value().as_deref(), Some("750"));
     key(&mut h, Key::Escape);
     assert!(h.query_by_label("Family name").is_some() && h.query_by_label("Extrusion End").is_none());
@@ -71,6 +73,8 @@ fn a_void_selected_shows_solid_void_and_in_a_doors_family_what_it_cuts() {
     assert_eq!(h.get_by_label("Cuts").value().as_deref(), Some("Forms and Host"));
     // The browser names it a void.
     assert!(h.query_by_label("1. Extrusion (void)").is_some());
+    assert!(h.query_all_by_label("Modify | Void Extrusion").count() >= 2, "the tab and the Options Bar");
+    assert!(h.query_by_label("Modify | Extrusion").is_none());
 }
 
 #[test]
@@ -145,6 +149,7 @@ fn a_sweeps_properties_name_its_path_and_profile() {
     h.state_mut().edit_family("Rail");
     h.run();
     browse(&mut h, "1. Sweep");
+    assert!(h.query_all_by_label("Modify | Sweep").count() > 0);
     assert!(h.query_by_label("Path").is_some() && h.query_by_label("Profile").is_some());
     assert!(h.query_by_label("Sketch, 2 lines and arcs").is_some());
     assert!(h.query_by_label("Sketch, 4 lines and arcs").is_some());
@@ -185,12 +190,12 @@ fn rv2_screenshots() {
     key(&mut h, Key::Escape);
     key(&mut h, Key::Escape);
     click(&mut h, P2(3800.0, 3000.0));
-    save(&mut h, "modify-furniture", [500, 90, 120, 90]);
+    save(&mut h, "modify-furniture", [820, 50, 770, 125]);
     press(&mut h, "Edit Family");
     key(&mut h, Key::Escape);
     save(&mut h, "properties-nothing", [16, 190, 280, 310]);
     browse(&mut h, "1. Extrusion");
-    save(&mut h, "properties-extrusion", [16, 190, 280, 310]);
+    save(&mut h, "properties-extrusion", [16, 50, 580, 250]);
     key(&mut h, Key::Escape);
     h.state_mut().new_family(Category::Door);
     h.run();
@@ -198,7 +203,7 @@ fn rv2_screenshots() {
     choose(&mut h, "Solid/Void", "Void");
     // Its Identity Data, below the palette's fold.
     h.get_by_label("Cuts").scroll_to_me();
-    save(&mut h, "properties-void", [16, 190, 280, 310]);
+    save(&mut h, "properties-void", [16, 50, 580, 450]);
     h.get_by_label("2. Extrusion").click_secondary();
     h.run();
     save(&mut h, "browser-forms-menu", [16, 700, 280, 250]);

@@ -140,6 +140,9 @@ fn edit_family_is_on_the_contextual_tab_of_a_family_instance_and_of_place_compon
     click(&mut h, P2(3800.0, 3000.0));
     assert_eq!(h.state().tab, Tab::Context);
     assert_eq!(h.state().context().as_deref(), Some("Modify | Furniture"));
+    // Its Mode panel at the tab's right end, as Revit's: past Geometry's Paint and Remove Paint.
+    let right = |h: &Harness<BimApp>, l: &str| h.get_by_label(l).rect().left();
+    assert!(right(&h, "Edit Family") > right(&h, "Remove Paint"), "Mode is last");
     press(&mut h, "Edit Family");
     assert_eq!(open_family(&h).as_deref(), Some("Table"));
     press(&mut h, "Close Family");

@@ -149,7 +149,7 @@ the project's: Load into Project loads it, asking first (Family Already Exists) 
 project is left as it is. The family document stands over a project, which the window always has: the blank one it starts with
 when given no file, so a family opened from the start page needs nothing more; closed, it goes back to the start page
 (`family_from_home`) unless the page was over a project or the family was loaded into the blank one. A file that isn't a family
-opens nothing and says why. Edit Family (`edit_family`) is on the contextual tab's Mode panel, as Revit's: a family's instance
+opens nothing and says why. Edit Family (`edit_family`) is on the contextual tab's Mode panel, at its right end as Revit's (`mode_panel`): a family's instance
 selected (the tab named for its family's category, Modify | Furniture), or a component being placed (Modify | Place Component,
 beside Load Family, the family being placed); and on the right-click menu. Manage has neither New Family nor Edit Family.
 
@@ -159,7 +159,8 @@ Constraints (Extrusion End and Start in the project's units, each with `=`; a Bl
 End Angle and Start Angle; a Sweep's Path and Profile, a Swept Blend's Path, Profile 1 and Profile 2, each the sketch Edit Sweep
 or Edit Swept Blend draws, by its count of lines; the Work Plane, read-only, named as `Planes::listed` names it), Graphics (Visible with `=`; Visibility/Graphics Overrides' Edit… opens F8's Visibility Settings, *Visibility Settings* below), Materials
 and Finishes (Material with `=`) and Identity Data (Solid/Void). A value tied to a parameter or worked out by a formula is greyed. The
-contextual tab is "Modify | Form", with Delete and Edit Work Plane, which opens the Work Plane dialog for the form (T12, below); the Options Bar shows
+contextual tab, and the Options Bar, are named for its kind as Revit's (Modify | Extrusion, Modify | Blend, Modify | Revolve,
+Modify | Sweep, Modify | Swept Blend, and Modify | Void Extrusion and so on; a mesh from a file, Modify | Form), with Delete and Edit Work Plane, which opens the Work Plane dialog for the form (T12, below); the Options Bar shows
 Depth (End less Start: typed, Start stays and End moves; greyed while End is tied). Edits go to the draft and its history. Solid/Void
 and Edit Work Plane run `family` (its `form` patch) and `edit_work_plane` on a private session holding the draft, as Save Family
 does, and take the form back with the id and GUID it had: the form moves with the plane. Its shape is its sketch's: Edit

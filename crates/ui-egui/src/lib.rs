@@ -4364,28 +4364,6 @@ impl BimApp {
             Tool::DetailLine(_) => self.draw_panel(ui, draw::Target::Detail),
             _ => {}
         }
-        // Revit's Mode panel: placing a component, Load Family and Edit Family (Modify | Place Component); a family's instance
-        // selected, Edit Family (Modify | <Category>).
-        let placing = matches!(self.tool, Tool::Component | Tool::Fixture(_));
-        let family = if placing || self.tool == Tool::Modify { self.family_in_hand() } else { None };
-        if placing || family.is_some() {
-            panel(ui, msg!("Mode"), |ui| {
-                if placing {
-                    let tip = msg!("Load Family: a family saved as a .json file, BIMCraft's own");
-                    if big_button(ui, Icon::LoadFamily, "Load Family", false, tip).clicked() {
-                        let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]);
-                        // A family the project has otherwise asks first: Family Already Exists.
-                        self.ask_file(ui.ctx(), dialog, false, |app, path| app.load_family_file(&path));
-                    }
-                }
-                let tip = msg!("Edit Family: the family of what is selected, or of the component being placed");
-                if ui.add_enabled_ui(family.is_some(), |ui| big_button(ui, Icon::FamilyEditor, "Edit Family", false, tip)).inner.clicked()
-                    && let Some(f) = family.as_deref()
-                {
-                    self.edit_family(f);
-                }
-            });
-        }
         // Detail lines selected, or sketch lines picked: Join into Polyline and Explode Polyline.
         let picked = self.sketch.as_ref().map(|sk| sk.picked.len());
         if (self.lines_selected() && self.tool == Tool::Modify) || (picked.is_some() && self.tool == Tool::Modify) {

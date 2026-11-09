@@ -5710,6 +5710,8 @@ fn the_family_editor_edits_a_family_says_what_wont_build_and_starts_a_new_one_of
     click(&mut h, P2(3800.0, 3000.0));
     assert_eq!(h.state().selection, [table]);
     h.set_size(vec2(1800.0, 900.0));
+    // Laid out at the new size: the Mode panel keeps to the ribbon's right end.
+    h.run();
     // Modify | Furniture's Mode panel, as Revit's.
     press(&mut h, "Edit Family");
     assert!(h.state().family_editor.is_some(), "the window is open on the table's family");

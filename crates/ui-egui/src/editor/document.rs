@@ -290,7 +290,7 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         if ed.selected_symbol().is_some() {
             return Some(msg!("Modify | Symbols"));
         }
-        return ed.selected_form().map(|_| msg!("Modify | Form"));
+        return ed.selected_form().map(|i| form_context(ed, i));
     }
     let d = ed.adaptive.as_ref()?;
     let r = d.evaluate(&ed.values(), &d.preview);
@@ -308,6 +308,25 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         1 => msg!("Modify | Lines"),
         _ => msg!("Modify | Form"),
     })
+}
+
+/// A selected form's contextual tab, named for its kind as Revit's (Modify | Extrusion, Modify | Void Blend); a mesh from a
+/// file, Modify | Form.
+fn form_context(ed: &FamilyEditor, i: usize) -> &'static str {
+    use bimcraft_core::family::forms::FormKind;
+    let Some(f) = ed.forms.get(i).filter(|f| !f.mesh()).and_then(|f| f.form().ok()) else { return msg!("Modify | Form") };
+    match (f.kind(), f.void) {
+        (FormKind::Extrusion, false) => msg!("Modify | Extrusion"),
+        (FormKind::Blend, false) => msg!("Modify | Blend"),
+        (FormKind::Revolve, false) => msg!("Modify | Revolve"),
+        (FormKind::Sweep, false) => msg!("Modify | Sweep"),
+        (FormKind::SweptBlend, false) => msg!("Modify | Swept Blend"),
+        (FormKind::Extrusion, true) => msg!("Modify | Void Extrusion"),
+        (FormKind::Blend, true) => msg!("Modify | Void Blend"),
+        (FormKind::Revolve, true) => msg!("Modify | Void Revolve"),
+        (FormKind::Sweep, true) => msg!("Modify | Void Sweep"),
+        (FormKind::SweptBlend, true) => msg!("Modify | Void Swept Blend"),
+    }
 }
 
 /// What a family document's view tab and title call its view.
