@@ -44,7 +44,9 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   does the first two, as CI's IFC job does on the sample and on `ci/ifc-coverage.txt` (add a line there for a new kind of element).
 - Structure: after touching `runs.rs` or how a run, a footing or a structural column goes to IFC, export beams (level, sloped, round), footings, a strip
   footing, columns and a structural floor, validate with IfcOpenShell (`express_rules=True`), and compare each product's volume and bounding box
-  with a hand calculation (a round section is a polygon in IfcOpenShell's tessellation: a fraction of a percent short). Look at the plan, a
+  with a hand calculation (a round section is a polygon in IfcOpenShell's tessellation: a fraction of a percent short). Read the material profile
+  sets back (`ifcopenshell.util.element.get_type` and `get_material`: each beam, column and footing has an `IfcMaterialProfileSetUsage` of its type's
+  set, with the cardinal point, and the set's profile is the type's width and depth, or half its width as a radius). Look at the plan, a
   section across a beam, and the 3D view in the three looks.
 - Discipline tabs (Plumbing, Electrical, SPDA, Data): after touching `fixtures.rs`, `runs::IFC`, `Category::ifc` or the run arm of `ifc.rs`, script
   one of every run category (sloped, upright, each justification, in a system) and one of every starter family, `--save` the IFC, validate it with
@@ -55,6 +57,8 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   walls hidden (`graphics {"view": "{3D}", "hide": ["wall"]}`), in the three looks.
 - IFC import: after touching `import.rs` or `step.rs`, open the sample's IFC (`run house.ifc --cmd 'elements {}'`) and
   compare it with the sample, then the same file with its bodies turned into triangle meshes by IfcOpenShell, and a
-  building written with IfcOpenShell's API. Render what came in and look at it. After touching how phases and design options
+  building written with IfcOpenShell's API. Render what came in and look at it. For what has no element (generic components),
+  write that building with coverings, a curtain wall's parts, terrain and the like, save it back and compare each product's
+  class, predefined type, type object and box with IfcOpenShell (`ifcopenshell.util.element.get_type`, `geom.create_shape`). After touching how phases and design options
   cross (`ifc::PHASING`), do it with a phased sample too: `run --sample --script phased.txt --save p.ifc`, `convert p.ifc
   p.bimcraft`, and compare `phases`, `phase_filters`, `phase_overrides`, `option_sets` and each element's `params` with the project's.

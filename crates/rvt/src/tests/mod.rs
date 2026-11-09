@@ -140,6 +140,7 @@ mod columns;
 mod decoders;
 mod ducts;
 mod floors;
+mod framing;
 mod generic;
 mod import;
 mod inventory;

@@ -5,10 +5,12 @@
 //! the drawing knows who owns each line; the rest of an element's lines (a wall's layers, a door's jambs, a stair's walk
 //! line) keep their own.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
-use crate::graphics::MODEL;
-use crate::model::Model;
+use crate::graphics::{COMPONENT, COMPONENTS, MODEL};
+use crate::model::{Element, Model};
 use crate::pen::{MAX_PEN, Pen};
 
 /// The pen a drawing draws a line in that is its category's, cut or in projection as the line's part is: not a pen a file
@@ -47,19 +49,37 @@ impl ObjectStyle {
     }
 }
 
-/// An error saying what to fix, unless `category` is one Object Styles has: a model category views draw.
+/// An error saying what to fix, unless `category` is one Object Styles has: a model category views draw, or `component`, which
+/// stands for every family category that has none of its own.
 pub fn known(category: &str) -> Result<(), String> {
-    if MODEL.contains(&category) {
+    if MODEL.contains(&category) || category == COMPONENT {
         Ok(())
     } else {
-        Err(format!("`{category}` isn't a model category; Object Styles has: {}", MODEL.join(", ")))
+        Err(format!(
+            "`{category}` isn't a model category; Object Styles has: {} (and `{COMPONENT}`, for every family category)",
+            MODEL.join(", ")
+        ))
+    }
+}
+
+/// What `category` draws in when `styles` hold nothing of its own: for a family category, what `component` says of them all
+/// (a project from before the rows were split holds only that), else what a category starts with.
+pub fn inherited(styles: &BTreeMap<String, ObjectStyle>, category: &str) -> ObjectStyle {
+    match styles.get(COMPONENT) {
+        Some(all) if COMPONENTS.contains(&category) => *all,
+        _ => default_of(category),
     }
 }
 
 impl Model {
-    /// The pens `category` draws in: the project's own, or what it starts with.
+    /// The pens `category` draws in: the project's own, or what it starts with (a family category: what `component` says).
     pub fn object_style(&self, category: &str) -> ObjectStyle {
-        self.object_styles.get(category).copied().unwrap_or_else(|| default_of(category))
+        self.object_styles.get(category).copied().unwrap_or_else(|| inherited(&self.object_styles, category))
+    }
+
+    /// The pens element `e` draws in: those of its category, a component's those of its family's.
+    pub fn object_style_of(&self, e: &Element) -> ObjectStyle {
+        self.object_style(crate::graphics::category_of(self, e))
     }
 }
 

@@ -5,6 +5,7 @@
 
 use bimcraft_i18n::{msg, ui_msg};
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
@@ -17,6 +18,7 @@ use crate::geom::P2;
 use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
 
+mod bounds;
 mod validate;
 
 /// What a family is: how IFC names its components; a door or a window is hosted in a wall, which
@@ -31,7 +33,7 @@ pub enum Category {
     Plumbing,
     /// A floor drain.
     Drain,
-    /// An elbow, a tee: what joins pipes, carried by a component until fittings have connectors.
+    /// An elbow, a tee: what joins pipes, a component with a connector at each end.
     PipeFitting,
     /// A valve, a cleanout.
     PipeAccessory,
@@ -108,6 +110,40 @@ impl Category {
             Category::Lighting => ("IFCLIGHTFIXTURE", OPEN, None),
             Category::Generic | Category::Door | Category::Window => ("IFCBUILDINGELEMENTPROXY", OPEN, None),
         }
+    }
+
+    /// The kinds a family of it may say it is, each with the predefined type IFC writes a component of that kind with, the
+    /// category's own where it has none. A kind says which fixture or fitting it is, by the names the sizing commands count
+    /// fixtures by (`drain_size`'s and `water_size`'s `wc`, `lav`…), so a WC reaches IFC as a toilet pan, not as a sanitary
+    /// terminal of no type. Where two kinds share a predefined type, reading it back gives the first.
+    pub fn kinds(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            Category::Plumbing => &[
+                ("wc", ".TOILETPAN."),
+                ("lav", ".WASHHANDBASIN."),
+                ("sink", ".SINK."),
+                ("laundry", ".SINK."),
+                ("shower", ".SHOWER."),
+                ("bath", ".BATH."),
+                ("bidet", ".BIDET."),
+                ("urinal", ".URINAL."),
+            ],
+            Category::Drain => &[("floor_drain", ".FLOORTRAP."), ("floor_waste", ".FLOORWASTE."), ("roof_drain", ".ROOFDRAIN.")],
+            Category::PipeFitting => &[
+                ("bend", ".BEND."),
+                ("tee", ".JUNCTION."),
+                ("cross", ".JUNCTION."),
+                ("transition", ".TRANSITION."),
+                ("coupling", ".CONNECTOR."),
+            ],
+            _ => &[],
+        }
+    }
+
+    /// The kind of it an IFC product of predefined type `predefined` (as the file spells it, without the dots) is, if one is.
+    pub fn kind_of(self, predefined: Option<&str>) -> Option<&'static str> {
+        let p = predefined?;
+        self.kinds().iter().find(|(_, t)| t.trim_matches('.') == p).map(|(k, _)| *k)
     }
 
     /// Whether a device of it draws or switches a load, so its family should hold a connector that says how much.
@@ -315,14 +351,57 @@ pub struct Symbol {
     pub visible: Option<Expr>,
 }
 
-/// What a connector joins: `power` carries a load, `switch` only switches one.
+/// What a connector joins: `power` carries a load, `switch` only switches one, `pipe` joins a pipe of its `domain`, `data`
+/// a data cable and `earthing` an earthing conductor.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ConnectorKind {
     #[default]
     Power,
     Switch,
+    Pipe,
+    Data,
+    Earthing,
 }
+
+impl ConnectorKind {
+    /// Whether it is an electrical device's, which has a `system` and draws (or switches) a load.
+    pub fn electrical(self) -> bool {
+        matches!(self, ConnectorKind::Power | ConnectorKind::Switch)
+    }
+}
+
+/// What a pipe connector carries: cold or hot water, waste (sewage), vent, storm water or gas.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Domain {
+    Cold,
+    Hot,
+    Waste,
+    Vent,
+    Storm,
+    Gas,
+}
+
+/// Which way what it carries goes through it: into the family (`in`, as water into a basin), out of it (`out`, as waste
+/// from a WC) or either way (`both`, the default).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Flow {
+    In,
+    Out,
+    #[default]
+    Both,
+}
+
+impl Flow {
+    fn is_both(&self) -> bool {
+        *self == Flow::Both
+    }
+}
+
+/// The largest connector size, mm.
+pub const MAX_CONNECTOR_SIZE: f64 = 2000.0;
 
 /// How a connector's load is shared among its poles: the same on each (`power-balanced`), or each its own
 /// (`power-unbalanced`); a `switch` has none.
@@ -350,9 +429,10 @@ impl Default for Load {
     }
 }
 
-/// Where a family joins a system, as Revit's connector does: what an electrical device draws, what a switch controls.
-/// `voltage`, `load_va` and `power_factor` are numbers or formulas over the family's parameters, so a type or a
-/// component can set them.
+/// Where a family joins a system, as Revit's connector does: what an electrical device draws, what a switch controls, where
+/// a pipe or a cable meets it. `voltage`, `load_va` and `power_factor` are numbers or formulas over the family's parameters,
+/// so a type or a component can set them, and so are its place (`at`, in the family's axes: x along it, y to its left, z up
+/// from its base), the way it faces (`direction`, out of the family: the way a pipe leaves it) and its `size`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Connector {
@@ -361,8 +441,27 @@ pub struct Connector {
     pub id: crate::ids::Id,
     #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
     pub guid: crate::ids::Guid,
+    /// What it's called in its family (`Waste`, `Cold water`), for people; none is fine.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
     pub kind: ConnectorKind,
-    pub system: ConnectorSystem,
+    /// How a `power` connector shares its load, or `switch`; the other kinds have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system: Option<ConnectorSystem>,
+    /// What a `pipe` connector carries; none on a pipe fitting or accessory, which takes its pipe's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<Domain>,
+    #[serde(default, skip_serializing_if = "Flow::is_both")]
+    pub flow: Flow,
+    /// Where it is, mm, in the family's axes. A `pipe`, `data` or `earthing` connector has one; an electrical device's may.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<[Expr; 3]>,
+    /// The way it faces, out of the family, in its axes: any length but none. A `pipe` connector has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direction: Option<[Expr; 3]>,
+    /// Its size, mm: a pipe connector's nominal diameter, which it has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<Expr>,
     #[serde(default = "one_pole")]
     pub poles: u8,
     /// Volts.
@@ -385,13 +484,25 @@ fn unity() -> Expr {
     Expr::Number(1.0)
 }
 
+/// A component's connector, worked out, with its place and the way it faces in the model (none for one without a place).
+pub type PlacedConnector = (ConnectorValues, Option<[f64; 3]>, Option<[f64; 3]>);
+
 /// A connector, worked out for one type and one component's values.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ConnectorValues {
     pub id: crate::ids::Id,
     pub guid: crate::ids::Guid,
+    pub name: String,
     pub kind: ConnectorKind,
-    pub system: ConnectorSystem,
+    pub system: Option<ConnectorSystem>,
+    pub domain: Option<Domain>,
+    pub flow: Flow,
+    /// In the family's axes, mm.
+    pub at: Option<[f64; 3]>,
+    /// A unit vector, in the family's axes.
+    pub direction: Option<[f64; 3]>,
+    /// mm.
+    pub size: Option<f64>,
     pub poles: u8,
     pub voltage: f64,
     /// The whole load, VA: the phases' sum.
@@ -452,6 +563,13 @@ fn no_mesh(mesh: &Arc<Vec<[P3; 3]>>) -> bool {
 pub struct Family {
     #[serde(default)]
     pub category: Category,
+    /// Which fixture or fitting of its category it is (`wc`, `bend`…), one of [`Category::kinds`]: IFC writes its
+    /// components' predefined type from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    /// The IFC class its components came in from a file as, which a generic family's go back out as.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ifc: Option<IfcClass>,
     #[serde(default)]
     pub parameters: Vec<Parameter>,
     #[serde(default)]
@@ -467,6 +585,57 @@ pub struct Family {
     /// Where it joins a system: an electrical device's load, a switch. At most one is `power`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub connectors: Vec<Connector>,
+}
+
+/// The IFC class a product came in as, which a generic family remembers (BIMCraft has no element for it): the class as STEP
+/// writes it (`IFCPLATE`), its predefined type (`CURTAIN_PANEL`), and the object type that says what it is where its predefined
+/// type is `USERDEFINED` or its type object is named otherwise.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct IfcClass {
+    pub class: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub predefined: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_type: Option<String>,
+}
+
+/// The longest IFC class or predefined type a family remembers: IFC's longest are half of it.
+pub const MAX_IFC_NAME: usize = 64;
+
+impl IfcClass {
+    /// As IFC writes it: the class and the predefined type in capitals, whatever case they were typed in.
+    pub fn written(mut self) -> IfcClass {
+        self.class = self.class.trim().to_ascii_uppercase();
+        self.predefined = self.predefined.map(|p| p.trim().trim_matches('.').to_ascii_uppercase());
+        self
+    }
+
+    /// Why it isn't one IFC can write, if it isn't: a class `IFC` and capitals or digits, a predefined type of capitals, digits
+    /// and `_`, an object type of text.
+    pub fn check(&self) -> Result<(), String> {
+        let name = |what: &str, v: &str, ok: &dyn Fn(char) -> bool| {
+            let shown: String = v.chars().take(40).collect();
+            if v.is_empty() || v.len() > MAX_IFC_NAME || !v.chars().all(ok) {
+                Err(format!("`ifc` `{what}` `{shown}`: IFC's names are capitals, digits and `_`, up to {MAX_IFC_NAME}"))
+            } else {
+                Ok(())
+            }
+        };
+        name("class", &self.class, &|c| c.is_ascii_uppercase() || c.is_ascii_digit())?;
+        if !self.class.starts_with("IFC") {
+            return Err(format!("`ifc` `class` `{}`: an IFC class starts with `IFC` (`IFCPLATE`)", self.class));
+        }
+        if let Some(p) = &self.predefined {
+            name("predefined", p, &|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')?;
+        }
+        if let Some(o) = &self.object_type
+            && (o.trim().is_empty() || o.chars().count() > MAX_TEXT || o.chars().any(char::is_control))
+        {
+            return Err(format!("`ifc` `object_type`: text of 1 to {MAX_TEXT} characters on one line"));
+        }
+        Ok(())
+    }
 }
 
 /// A parameter's value, worked out: a number (yes/no, 1 or 0), or a material's name.
@@ -1014,6 +1183,31 @@ impl Family {
         Ok(v)
     }
 
+    /// How IFC writes a component of it: [`Category::ifc`], with its kind's predefined type where it says one. A generic family
+    /// that remembers the class it came in as writes that class, and its predefined type where IFC4 has it for the class (else
+    /// none defined; nothing for a class with none); a proxy that names it, for a class IFC4 doesn't have.
+    pub fn ifc(&self) -> (Cow<'static, str>, Cow<'static, str>, Option<Cow<'static, str>>) {
+        if let Some(m) = self.remembered() {
+            let object = m.object_type.clone().map(Cow::Owned);
+            return match crate::ifc::classes::class(&m.class) {
+                Some(c) if c.3.is_empty() => (c.0.into(), "".into(), object),
+                Some(c) => {
+                    let p = m.predefined.as_deref().filter(|p| crate::ifc::classes::takes(c, p)).unwrap_or("NOTDEFINED");
+                    (c.0.into(), format!(".{p}.").into(), object)
+                }
+                None => ("IFCBUILDINGELEMENTPROXY".into(), ".USERDEFINED.".into(), Some(object.unwrap_or_else(|| m.class.clone().into()))),
+            };
+        }
+        let (class, predefined, object) = self.category.ifc();
+        let kind = self.kind.as_deref().and_then(|k| self.category.kinds().iter().find(|(n, _)| *n == k)).map(|(_, t)| *t);
+        (class.into(), kind.unwrap_or(predefined).into(), object.map(Cow::Borrowed))
+    }
+
+    /// The IFC class it remembers, where it is a generic family: what its components go out as.
+    pub fn remembered(&self) -> Option<&IfcClass> {
+        self.ifc.as_ref().filter(|_| self.category == Category::Generic)
+    }
+
     /// Whether it's sound: its parameters named once each, so formulas can say them, and holding
     /// what their kinds hold; its types setting only the type parameters no formula works out; its
     /// materials in the library (`has_material`); and every type building.
@@ -1031,6 +1225,21 @@ impl Family {
         }
         if self.types.is_empty() {
             return Err("it needs a type: add one to `types`".into());
+        }
+        if let Some(kind) = &self.kind {
+            let kinds = self.category.kinds();
+            if !kinds.iter().any(|(k, _)| k == kind) {
+                let shown: String = kind.chars().take(40).collect();
+                let names: Vec<&str> = kinds.iter().map(|(k, _)| *k).collect();
+                return Err(if names.is_empty() {
+                    format!("`kind` `{shown}`: a family of this category has no kinds; leave `kind` out")
+                } else {
+                    format!("`kind` is one of {}, not `{shown}`", names.join(", "))
+                });
+            }
+        }
+        if let Some(m) = &self.ifc {
+            m.check()?;
         }
         if self.category.hosted() {
             for name in [WIDTH, HEIGHT] {
@@ -1166,8 +1375,46 @@ impl Family {
         let long = |e: &Expr| matches!(e, Expr::Formula(f) if f.chars().count() > MAX_FORMULA);
         for (i, c) in self.connectors.iter().enumerate() {
             let who = format!("connector {}", i + 1);
-            if c.classification.chars().count() > MAX_TEXT {
-                return Err(format!("{who}: its classification is longer than {MAX_TEXT} characters"));
+            if c.classification.chars().count() > MAX_TEXT || c.name.chars().count() > MAX_TEXT {
+                return Err(format!("{who}: its name or classification is longer than {MAX_TEXT} characters"));
+            }
+            let placed = c.at.iter().flatten().chain(c.direction.iter().flatten()).chain(c.size.iter());
+            if placed.into_iter().any(long) {
+                return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
+            }
+            if c.kind != ConnectorKind::Pipe && c.domain.is_some() {
+                return Err(format!("{who}: a `domain` is a pipe connector's: cold, hot, waste, vent, storm or gas"));
+            }
+            if c.kind.electrical() {
+                if c.flow != Flow::Both {
+                    return Err(format!("{who}: a `flow` is a pipe's, data's or earthing's connector's, not an electrical device's"));
+                }
+                if c.size.is_some() {
+                    return Err(format!("{who}: a `size` is a pipe's, data's or earthing's connector's, not an electrical device's"));
+                }
+            } else {
+                if c.system.is_some() {
+                    return Err(format!("{who}: a `system` is a power or a switch connector's, not a {:?} one's", c.kind).to_lowercase());
+                }
+                if c.at.is_none() {
+                    return Err(format!("{who}: a pipe, data or earthing connector needs `at`, where it is in the family's axes"));
+                }
+                if !matches!(&c.load_va, Load::One(Expr::Number(x)) if *x == 0.0) {
+                    return Err(format!("{who}: only a power connector carries a load; leave `load_va` out"));
+                }
+            }
+            if c.kind == ConnectorKind::Pipe {
+                // A fitting's or a valve's takes the domain of the pipe it joins, as its system is the pipe's.
+                if c.domain.is_none() && !matches!(self.category, Category::PipeFitting | Category::PipeAccessory) {
+                    return Err(format!(
+                        "{who}: a pipe connector needs its `domain`: cold, hot, waste, vent, storm or gas (only a pipe fitting's or accessory's takes its pipe's)"
+                    ));
+                }
+                if c.direction.is_none() || c.size.is_none() {
+                    return Err(format!(
+                        "{who}: a pipe connector needs its `direction` (the way the pipe leaves it) and its `size` (DN, mm)"
+                    ));
+                }
             }
             let loads: &[Expr] = match &c.load_va {
                 Load::One(e) => std::slice::from_ref(e),
@@ -1177,20 +1424,21 @@ impl Family {
                 return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
             }
             match (c.kind, c.system) {
-                (ConnectorKind::Power, ConnectorSystem::PowerBalanced | ConnectorSystem::PowerUnbalanced)
-                | (ConnectorKind::Switch, ConnectorSystem::Switch) => {}
+                (ConnectorKind::Power, Some(ConnectorSystem::PowerBalanced | ConnectorSystem::PowerUnbalanced))
+                | (ConnectorKind::Switch, Some(ConnectorSystem::Switch)) => {}
                 (ConnectorKind::Power, _) => {
-                    return Err(format!("{who}: a power connector's system is `power-balanced` or `power-unbalanced`, not `switch`"));
+                    return Err(format!("{who}: a power connector's system is `power-balanced` or `power-unbalanced`"));
                 }
                 (ConnectorKind::Switch, _) => {
                     return Err(format!("{who}: a switch connector's system is `switch`"));
                 }
+                _ => {}
             }
             if !(1..=3).contains(&c.poles) {
                 return Err(format!("{who}: poles are 1, 2 or 3, not {}", c.poles));
             }
             if let Load::PerPhase(v) = &c.load_va
-                && (c.system != ConnectorSystem::PowerUnbalanced || v.len() != usize::from(c.poles))
+                && (c.system != Some(ConnectorSystem::PowerUnbalanced) || v.len() != usize::from(c.poles))
             {
                 return Err(format!(
                     "{who}: a load per phase is a list of one for each pole ({}) on a `power-unbalanced` connector; a balanced one takes a single load",
@@ -1244,11 +1492,42 @@ impl Family {
                     return Err(format!("{who}: its load is {x} VA; it takes 0 up to {MAX_LOAD_VA}"));
                 }
             }
+            let at = match &c.at {
+                None => None,
+                Some(v) => Some(point(v, &values, &mut read).map_err(|e| said("place", e))?),
+            };
+            let direction = match &c.direction {
+                None => None,
+                Some(v) => {
+                    let d = point(v, &values, &mut read).map_err(|e| said("direction", e))?;
+                    let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                    if len < 1e-9 {
+                        return Err(format!("{who}: its direction has no length: give the way it faces"));
+                    }
+                    Some(d.map(|x| x / len))
+                }
+            };
+            let size = match &c.size {
+                None => None,
+                Some(e) => {
+                    let x = number(e, &values, &mut read).map_err(|e| said("size", e))?;
+                    if x <= 0.0 || x > MAX_CONNECTOR_SIZE {
+                        return Err(format!("{who}: its size is {x} mm; it takes more than 0 and up to {MAX_CONNECTOR_SIZE}"));
+                    }
+                    Some(x)
+                }
+            };
             out.push(ConnectorValues {
                 id: c.id,
                 guid: c.guid,
+                name: c.name.clone(),
                 kind: c.kind,
                 system: c.system,
+                domain: c.domain,
+                flow: c.flow,
+                at,
+                direction,
+                size,
                 poles: c.poles,
                 voltage,
                 load_va: by_phase.iter().sum(),
@@ -1552,6 +1831,15 @@ fn number<'a>(e: &'a Expr, values: &BTreeMap<String, Val>, read: &mut HashMap<&'
         },
     };
     if x.is_finite() && x.abs() <= MAX_COORD { Ok(x) } else { Err(format!("{x} is not a usable number")) }
+}
+
+/// Three numbers or formulas, worked out.
+fn point<'a>(
+    v: &'a [Expr; 3],
+    values: &BTreeMap<String, Val>,
+    read: &mut HashMap<&'a str, Result<Node, String>>,
+) -> Result<[f64; 3], String> {
+    Ok([number(&v[0], values, read)?, number(&v[1], values, read)?, number(&v[2], values, read)?])
 }
 
 /// How low and how high `tris` reach.
@@ -1859,11 +2147,17 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
         w(msg!("WC")),
         json!({
             "category": "plumbing",
+            "kind": "wc",
             "types": {"400 x 650": {}},
             "forms": [
                 block([n(-200.0), n(-180.0), n(200.0), n(0.0)], n(380.0), n(800.0), &porcelain),
                 block([n(-160.0), n(-380.0), n(160.0), n(-150.0)], n(0.0), n(400.0), &porcelain),
                 {"circle": {"centre": [0, -470], "radius": 180}, "from": 0, "to": 400, "material": porcelain}
+            ],
+            // Its waste through the floor under the bowl, and the cistern's cold water in the wall.
+            "connectors": [
+                crate::fixtures::pipe("waste", "out", [n(0.0), n(-300.0), n(0.0)], [0.0, 0.0, -1.0], 100.0),
+                crate::fixtures::pipe("cold", "in", [n(150.0), n(0.0), n(200.0)], [0.0, 1.0, 0.0], 20.0)
             ]
         }),
     ));
@@ -1872,11 +2166,17 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
         w(msg!("Washbasin")),
         json!({
             "category": "plumbing",
+            "kind": "lav",
             "parameters": [size(&width, 600.0), size(&depth, 450.0), size(&height, 850.0)],
             "types": {"600 x 450": {}, "500 x 400": {&width: 500, &depth: 400}},
             "forms": [
                 block([neg(&half_w), neg(&depth), f(half_w.clone()), n(0.0)], f(format!("{height} - 160")), f(height.clone()), &porcelain),
                 {"circle": {"centre": [0, -150], "radius": 90}, "from": 0, "to": format!("{height} - 160"), "material": porcelain}
+            ],
+            // Its waste and its cold water in the wall behind the pedestal.
+            "connectors": [
+                crate::fixtures::pipe("waste", "out", [n(0.0), n(0.0), f(format!("{height} - 300"))], [0.0, 1.0, 0.0], 40.0),
+                crate::fixtures::pipe("cold", "in", [n(-100.0), n(0.0), f(format!("{height} - 200"))], [0.0, 1.0, 0.0], 20.0)
             ]
         }),
     ));
@@ -1887,6 +2187,7 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
         w(msg!("Bathtub")),
         json!({
             "category": "plumbing",
+            "kind": "bath",
             "parameters": [size(&length, 1700.0), size(&width, 750.0), size(&height, 560.0)],
             "types": {"1700 x 750": {}, "1500 x 700": {&length: 1500, &width: 700}},
             "forms": [
@@ -1894,7 +2195,13 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
                 block([neg(&half_l), n(-60.0), f(half_l.clone()), n(0.0)], n(120.0), f(rim.clone()), &porcelain),
                 block([neg(&half_l), neg(&width), f(half_l.clone()), f(inner.clone())], n(120.0), f(rim.clone()), &porcelain),
                 block([neg(&half_l), f(inner.clone()), f(format!("-({length}) / 2 + 60")), n(-60.0)], n(120.0), f(rim.clone()), &porcelain),
-                block([f(format!("{length} / 2 - 60")), f(inner), f(half_l), n(-60.0)], n(120.0), f(rim), &porcelain)
+                block([f(format!("{length} / 2 - 60")), f(inner.clone()), f(half_l), n(-60.0)], n(120.0), f(rim), &porcelain)
+            ],
+            // Its waste through the floor at one end, and the mixer's cold and hot water in the wall above that end.
+            "connectors": [
+                crate::fixtures::pipe("waste", "out", [f(format!("-({length}) / 2 + 150")), f(format!("-({width}) / 2")), n(0.0)], [0.0, 0.0, -1.0], 40.0),
+                crate::fixtures::pipe("cold", "in", [f(format!("-({length}) / 2 + 100")), n(0.0), f(format!("{height} + 200"))], [0.0, 1.0, 0.0], 20.0),
+                crate::fixtures::pipe("hot", "in", [f(format!("-({length}) / 2 + 250")), n(0.0), f(format!("{height} + 200"))], [0.0, 1.0, 0.0], 20.0)
             ]
         }),
     ));
@@ -2473,7 +2780,7 @@ mod tests {
         for (t, load) in [("9 W", 9.0), ("18 W", 18.0)] {
             let c = f.connector_values(t, &BTreeMap::new()).unwrap();
             assert_eq!(c.len(), 1);
-            assert_eq!((c[0].kind, c[0].system, c[0].poles), (ConnectorKind::Power, ConnectorSystem::PowerBalanced, 1));
+            assert_eq!((c[0].kind, c[0].system, c[0].poles), (ConnectorKind::Power, Some(ConnectorSystem::PowerBalanced), 1));
             assert_eq!((c[0].voltage, c[0].load_va, c[0].power_factor), (127.0, load, 0.9));
             assert_eq!((c[0].load_va_by_phase.clone(), c[0].classification.as_str()), (vec![load], "lighting"));
         }

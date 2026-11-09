@@ -3,7 +3,8 @@
 //! parameters; or calculated, worked out from the others by a formula, as a family's are. Its
 //! filters keep the elements every one of them holds for; its rows sort by its sort fields in turn
 //! (a phase by its place in the project's order, not its name) and, grouped, come together into one
-//! row for each set of their values.
+//! row for each set of their values. A multi-category schedule (`MULTI`) lists the elements of several
+//! categories, with the fields they share.
 
 use bimcraft_i18n::{msg, ui_msg};
 
@@ -13,11 +14,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::commands::{category, element_json};
+use crate::commands::{category, element_json_with};
 use crate::family::{self, MAX_FORMULA};
 use crate::language::Language;
 use crate::model::{Element, Id, MAX_COORD, MAX_TEXT, Model, ParameterKind, Schedule};
 use crate::phasing;
+use crate::rooms::Rooms;
 use crate::units::Units;
 
 /// What a field holds, and so how a schedule shows it and a formula reads it: text, a number, a
@@ -138,10 +140,10 @@ pub fn builtin(name: Option<&str>, cat: Option<&str>) -> Option<(&'static str, &
 /// else the one of that name.
 pub fn named(m: &Model, name: &str) -> Option<Id> {
     let twin = builtin(Some(name), None);
-    m.elements.iter().find_map(|(id, e)| match e {
-        Element::Schedule(sc) if twin.is_some() && builtin(Some(&sc.name), None) == twin => Some(*id),
-        Element::Schedule(sc) if twin.is_none() && sc.name == name => Some(*id),
-        _ => None,
+    m.lookup().rare("schedule").find(|id| match m.elements.get(*id) {
+        Some(Element::Schedule(sc)) if twin.is_some() => builtin(Some(&sc.name), None) == twin,
+        Some(Element::Schedule(sc)) => sc.name == name,
+        _ => false,
     })
 }
 
@@ -173,6 +175,14 @@ enum From {
     Param,
     /// How a door or a window opens, in the project's language.
     Operation,
+    /// Its element's category, as elements name theirs: `wall`.
+    Category,
+    /// What its element is made of: its type's structure layer's material (or its thickest's), a run's type's, or a
+    /// family's first material parameter's.
+    Material,
+    /// Its element's own category's field of the same name, holding the same; for an area, a wall's length by its
+    /// height, a door's or a window's width by its height, a roof's plan area.
+    Shared,
 }
 
 type Own = (&'static str, Kind, From);
@@ -198,6 +208,35 @@ const PHASE_CREATED: Own = ("Phase Created", Kind::Text, From::Param);
 const PHASE_DEMOLISHED: Own = ("Phase Demolished", Kind::Text, From::Param);
 const DESIGN_OPTION: Own = ("Design Option", Kind::Text, From::Param);
 const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
+
+/// A multi-category schedule's category: a row for each element of the categories it lists (`Schedule::categories`),
+/// or of every built one (`built`) where it lists none.
+pub const MULTI: &str = "multicategory";
+
+/// The fields a multi-category schedule's categories share, and how many it shows unless it chooses.
+const SHARED: (&str, usize, &[Own]) = (
+    MULTI,
+    11,
+    &[
+        (msg!("Category"), Kind::Text, From::Category),
+        FAMILY,
+        TYPE,
+        LEVEL,
+        COUNT,
+        ("Width", Kind::Length, From::Shared),
+        ("Height", Kind::Length, From::Shared),
+        ("Length", Kind::Length, From::Shared),
+        ("Thickness", Kind::Length, From::Shared),
+        (msg!("Area"), Kind::Area, From::Shared),
+        (msg!("Material"), Kind::Text, From::Material),
+        ID,
+        MARK,
+        NAME,
+        PHASE_CREATED,
+        PHASE_DEMOLISHED,
+        DESIGN_OPTION,
+    ],
+);
 
 /// Each category's own fields, and how many of them, from the first, its schedule shows unless it
 /// chooses.
@@ -479,8 +518,22 @@ pub fn categories() -> Vec<&'static str> {
     OWN.iter().map(|(c, _, _)| *c).collect()
 }
 
+/// The categories a multi-category schedule lists where it names none: what's built, not rooms, levels and masses.
+pub fn built() -> Vec<&'static str> {
+    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor")).collect()
+}
+
+/// The categories multi-category schedule `sc` lists, as elements name theirs.
+pub fn listed(sc: &Schedule) -> Vec<String> {
+    if sc.categories.is_empty() {
+        built().into_iter().map(String::from).collect()
+    } else {
+        sc.categories.iter().map(|c| category(c)).collect()
+    }
+}
+
 fn own(cat: &str) -> (usize, &'static [Own]) {
-    OWN.iter().chain(MORE).find(|(c, _, _)| *c == cat).map_or((0, &[][..]), |(_, n, f)| (*n, *f))
+    OWN.iter().chain(MORE).chain(std::iter::once(&SHARED)).find(|(c, _, _)| *c == cat).map_or((0, &[][..]), |(_, n, f)| (*n, *f))
 }
 
 /// Whether `name` is one of category `cat`'s own fields.
@@ -529,12 +582,17 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
 /// Field `name` of element `id` as its category's schedule shows it (a length or an area in the project's units, a yes or no as
 /// `Yes` or `No`): what a tag shows. None where the element has no such field, or no value for it.
 pub fn field_text(m: &Model, id: impl crate::ids::Key, name: &str) -> Option<String> {
+    field_text_with(m, id, name, &Rooms::new(m))
+}
+
+/// [`field_text`], a room's boundary found among `rooms`.
+pub fn field_text_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &Rooms) -> Option<String> {
     let id = m.elements.id(id)?;
     let e = m.elements.get(id)?;
     let cat = e.category();
     let kind = fields(m, cat).into_iter().find(|(n, _)| n == name)?.1;
     let formulas = BTreeMap::new();
-    let mut row = Row { m, e, cat, json: element_json(m, id), formulas: &formulas, done: BTreeMap::new() };
+    let mut row = Row { m, e, cat, json: element_json_with(m, id, rooms), formulas: &formulas, done: BTreeMap::new() };
     match row.get(name) {
         Value::Null => None,
         v => Some(shown(m.units, kind, &v)),
@@ -569,7 +627,17 @@ fn holding(k: Kind) -> &'static str {
 pub fn check(m: &Model, sc: &Schedule) -> Result<(), String> {
     let cat = category(&sc.of);
     if own(&cat).1.is_empty() {
-        return Err(format!("there's no schedule of `{}`; there are schedules of: {}", sc.of, categories().join(", ")));
+        return Err(format!("there's no schedule of `{}`; there are schedules of: {}, {MULTI}", sc.of, categories().join(", ")));
+    }
+    if cat != MULTI && !sc.categories.is_empty() {
+        return Err(format!("a schedule of {cat}s lists no categories; only a multi-category one (`{MULTI}`) does"));
+    }
+    if sc.categories.len() > MAX_FIELDS {
+        return Err(format!("it lists {} categories; a schedule lists up to {MAX_FIELDS}", sc.categories.len()));
+    }
+    if let Some(c) = sc.categories.iter().find(|c| !categories().contains(&category(c).as_str()) || category(c) == "massfloor") {
+        let there: Vec<&str> = categories().into_iter().filter(|c| *c != "massfloor").collect();
+        return Err(format!("`{c}` isn't a category a multi-category schedule lists; there are: {}", there.join(", ")));
     }
     if let Some((of, name)) = builtin(Some(&sc.name), None).filter(|(of, _)| *of != cat) {
         return Err(format!("`{}` is the {of}s' {name} every project has; call a schedule of {cat}s something else", sc.name));
@@ -702,9 +770,10 @@ pub fn picks(m: &Model, cats: &[String], rules: &[Filter]) -> BTreeSet<Id> {
     let kinds: BTreeMap<&str, BTreeMap<String, Kind>> = cats.iter().map(|c| (c.as_str(), fields(m, c).into_iter().collect())).collect();
     let formulas = BTreeMap::new();
     let mut out = BTreeSet::new();
+    let rooms = Rooms::new(m);
     for (&id, e) in &m.elements {
         let Some(of) = kinds.get(e.category()) else { continue };
-        let mut row = Row { m, e, cat: e.category(), json: element_json(m, id), formulas: &formulas, done: BTreeMap::new() };
+        let mut row = Row { m, e, cat: e.category(), json: element_json_with(m, id, &rooms), formulas: &formulas, done: BTreeMap::new() };
         if rules.iter().all(|f| keeps(f, &row.get(&f.field), of.get(&f.field).copied(), m.units)) {
             out.insert(id);
         }
@@ -800,8 +869,13 @@ impl Row<'_> {
 
     /// One of its category's fields: its own, a project parameter's, or its family's.
     fn field(&self, name: &str) -> Value {
+        self.field_of(self.cat, name)
+    }
+
+    /// One of category `cat`'s fields, of its element.
+    fn field_of(&self, cat: &str, name: &str) -> Value {
         let (m, j) = (self.m, &self.json);
-        if let Some((_, kind, from)) = own(self.cat).1.iter().find(|(n, _, _)| *n == name) {
+        if let Some((_, kind, from)) = own(cat).1.iter().find(|(n, _, _)| *n == name) {
             let number = |v: Option<&Value>| v.and_then(Value::as_f64).unwrap_or(0.0);
             return match *from {
                 From::Key(k) if matches!(kind, Kind::Text) => match j.get(k) {
@@ -838,6 +912,9 @@ impl Row<'_> {
                     _ if name == phasing::CREATED => m.phases.first().map_or(Value::Null, |p| Value::String(p.clone())),
                     _ => Value::Null,
                 },
+                From::Category => Value::String(self.e.category().to_string()),
+                From::Material => self.material(),
+                From::Shared => self.shared(name, *kind),
             };
         }
         // A family's own first: where a project parameter has the name too, the family's is tied to it, and is its value here.
@@ -862,6 +939,58 @@ impl Row<'_> {
         }
         Value::Null
     }
+
+    /// Field `name`, holding `kind`, as its element's own category has it; else an area worked out from its sizes.
+    fn shared(&self, name: &str, kind: Kind) -> Value {
+        let cat = self.e.category();
+        let name = if (cat, name) == ("roof", "Area") { "Plan Area" } else { name };
+        if own(cat).1.iter().any(|(n, k, _)| *n == name && *k == kind) {
+            return self.field_of(cat, name);
+        }
+        let by = |a: &str, b: &str| match (self.field_of(cat, a).as_f64(), self.field_of(cat, b).as_f64()) {
+            (Some(x), Some(y)) => serde_json::json!(fine(x * y / 1e6)),
+            _ => Value::Null,
+        };
+        match (cat, name) {
+            ("wall", "Area") => by("Length", "Height"),
+            ("door" | "window", "Area") => by("Width", "Height"),
+            _ => Value::Null,
+        }
+    }
+
+    /// What its element is made of: its type's structure layer's material, or its thickest's; a run's type's; or its
+    /// family's first material parameter's value. `null` where it says none.
+    fn material(&self) -> Value {
+        let (m, e) = (self.m, self.e);
+        let ty = self.json.get("type").and_then(Value::as_str).unwrap_or_default();
+        let layers = match e.category() {
+            "wall" => m.types.wall.get(ty).map(|t| &t.layers),
+            "floor" => m.types.floor.get(ty).map(|t| &t.layers),
+            "roof" => m.types.roof.get(ty).map(|t| &t.layers),
+            "ceiling" => m.types.ceiling.get(ty).map(|t| &t.layers),
+            _ => None,
+        };
+        let named = |l: &&crate::model::Layer| !l.material.trim().is_empty();
+        let name = match layers {
+            Some(ls) => ls
+                .iter()
+                .filter(named)
+                .find(|l| matches!(l.function, crate::model::Function::Structure))
+                .or_else(|| ls.iter().filter(named).max_by(|a, b| a.thickness.total_cmp(&b.thickness)))
+                .map(|l| l.material.clone()),
+            None => match (m.run_type(e), e.family()) {
+                (Some(t), _) => Some(t.material.clone()),
+                (None, Some((family, _))) => m.families.get(family).and_then(|f| {
+                    f.parameters
+                        .iter()
+                        .filter(|p| p.kind == family::Kind::Material)
+                        .find_map(|p| self.json.get("values")?.get(&p.name)?.as_str().map(String::from))
+                }),
+                _ => None,
+            },
+        };
+        name.filter(|n| !n.trim().is_empty()).map_or(Value::Null, Value::String)
+    }
 }
 
 /// `x` to the millionth, so sums and formulas come out as written.
@@ -870,11 +999,23 @@ fn fine(x: f64) -> f64 {
     if r.is_finite() { r } else { x }
 }
 
-/// What a schedule of category `cat` has a row for, each with its JSON: an element of the category. Of mass floors, a mass
-/// at each level it crosses, with its floor area there, its perimeter and the volume up to the next such level or its top.
-fn sources<'a>(m: &'a Model, cat: &str) -> Vec<(Id, &'a Element, Value)> {
+/// What schedule `sc` of category `cat` has a row for, each with its JSON: an element of the category, or of the categories
+/// a multi-category one lists. Of mass floors, a mass at each level it crosses, with its floor area there, its perimeter
+/// and the volume up to the next such level or its top.
+fn sources<'a>(m: &'a Model, sc: &Schedule, cat: &str) -> Vec<(Id, &'a Element, Value)> {
+    if cat == MULTI {
+        let cats = listed(sc);
+        let rooms = Rooms::new(m);
+        return m
+            .elements
+            .iter()
+            .filter(|(_, e)| cats.iter().any(|c| c == e.category()))
+            .map(|(id, e)| (*id, e, element_json_with(m, *id, &rooms)))
+            .collect();
+    }
     if cat != "massfloor" {
-        return m.elements.iter().filter(|(_, e)| e.category() == cat).map(|(id, e)| (*id, e, element_json(m, *id))).collect();
+        let rooms = Rooms::new(m);
+        return m.elements.iter().filter(|(_, e)| e.category() == cat).map(|(id, e)| (*id, e, element_json_with(m, *id, &rooms))).collect();
     }
     let mut out = Vec::new();
     for (&id, e) in &m.elements {
@@ -901,7 +1042,7 @@ fn sources<'a>(m: &'a Model, cat: &str) -> Vec<(Id, &'a Element, Value)> {
 pub fn table(m: &Model, sc: &Schedule) -> Result<Table, String> {
     let cat = category(&sc.of);
     if own(&cat).1.is_empty() {
-        return Err(format!("no schedule of `{}`; there are schedules of: {}", sc.of, categories().join(", ")));
+        return Err(format!("no schedule of `{}`; there are schedules of: {}, {MULTI}", sc.of, categories().join(", ")));
     }
     let available = fields(m, &cat);
     let fields = chosen(sc, &cat);
@@ -924,7 +1065,7 @@ pub fn table(m: &Model, sc: &Schedule) -> Result<Table, String> {
     };
     // Each element its filters keep: its cells, its sort fields' values, and itself.
     let mut rows: Vec<(Vec<Value>, Vec<Value>, Id)> = Vec::new();
-    for (id, e, json) in sources(m, &cat) {
+    for (id, e, json) in sources(m, sc, &cat) {
         let mut row = Row { m, e, cat: &cat, json, formulas: &formulas, done: BTreeMap::new() };
         if sc.filters.iter().all(|f| keeps(f, &row.get(&f.field), kind_of(&f.field), m.units)) {
             let cells = fields.iter().map(|f| row.get(&f.name)).collect();
@@ -1219,6 +1360,85 @@ mod tests {
         let sheet = &parts["xl/worksheets/sheet1.xml"];
         assert!(sheet.contains(r#"<t xml:space="preserve">Area (m²)</t>"#), "{sheet}");
         assert!(sheet.contains(r#"<t xml:space="preserve">Kitchen</t></is></c><c r="C2" t="inlineStr"><is><t xml:space="preserve">Level 1</t></is></c><c r="D2"><v>18</v></c><c r="E2"><v>18000</v></c>"#), "{sheet}");
+    }
+
+    fn multi(cats: &[&str], fields: &[&str]) -> Schedule {
+        Schedule {
+            of: MULTI.into(),
+            categories: cats.iter().map(|c| c.to_string()).collect(),
+            fields: fields.iter().map(|f| Field { name: f.to_string(), ..Field::default() }).collect(),
+            ..Schedule::default()
+        }
+    }
+
+    #[test]
+    fn a_multi_category_schedule_lists_its_categories_elements_with_the_fields_they_share() {
+        let m = house().model;
+        let sc = multi(&["walls", "door"], &["Category", "Type", "Width", "Height", "Length", "Area", "Count"]);
+        check(&m, &sc).unwrap();
+        let t = table(&m, &sc).unwrap();
+        assert_eq!(headings(&t), ["Category", "Type", "Width", "Height", "Length", "Area (m²)", "Count"]);
+        assert_eq!(t.rows.len(), 7, "five walls and two doors, no rooms");
+        let doors: Vec<&Vec<Value>> = t.rows.iter().filter(|r| r[0] == "door").collect();
+        assert_eq!(doors.len(), 2, "sorted by its first column, the doors first");
+        assert_eq!((&doors[0][2], &doors[0][3], &doors[0][4]), (&json!(900.0), &json!(2100.0), &Value::Null), "a door has no length");
+        assert_eq!(doors[0][5], json!(1.89), "a door's area is its width by its height");
+        for wall in t.rows.iter().filter(|r| r[0] == "wall") {
+            assert_eq!(wall[2], Value::Null, "a wall has a thickness, not a width");
+            let (l, h) = (wall[4].as_f64().unwrap(), wall[3].as_f64().unwrap());
+            assert!(l > 0.0 && h > 0.0, "{wall:?}");
+            assert_eq!(wall[5], json!(fine(l * h / 1e6)), "a wall's area is its length by its height");
+        }
+    }
+
+    #[test]
+    fn a_multi_category_schedule_filters_groups_and_totals_as_any_other() {
+        let m = house().model;
+        let mut sc = multi(&[], &["Category", "Type", "Count"]);
+        sc.sort = vec![Sort { field: "Category".into(), descending: false }];
+        sc.grouped = true;
+        let t = table(&m, &sc).unwrap();
+        assert_eq!(
+            t.rows,
+            [vec![json!("door"), json!("Single 900 x 2100"), json!(2.0)], vec![json!("wall"), Value::Null, json!(5.0)]],
+            "rooms aren't built"
+        );
+        assert_eq!(t.ids.iter().map(Vec::len).collect::<Vec<_>>(), [2, 5]);
+        sc.grouped = false;
+        sc.filters = vec![Filter { field: "Category".into(), op: Op::Equals, value: json!("Door") }];
+        assert_eq!(table(&m, &sc).unwrap().rows.len(), 2);
+    }
+
+    #[test]
+    fn a_multi_category_schedule_reads_its_materials_from_its_types() {
+        let mut s = house();
+        s.script(
+            r#"type {"category": "wall", "name": "Cavity", "layers": [{"function": "finish", "material": "Brick", "thickness": 100}, {"function": "structure", "material": "Concrete block", "thickness": 140}]}
+               type {"category": "wall", "name": "Lined", "layers": [{"function": "finish", "material": "Plaster", "thickness": 10}, {"function": "finish", "material": "Brick", "thickness": 100}]}
+               wall {"points": [[0,-2000],[4000,-2000]], "type": "Cavity"}
+               wall {"points": [[0,-4000],[4000,-4000]], "type": "Lined"}"#,
+        )
+        .unwrap();
+        let mut sc = multi(&["wall"], &["Type", "Material"]);
+        sc.grouped = true;
+        sc.sort = vec![Sort { field: "Type".into(), descending: false }];
+        let t = table(&s.model, &sc).unwrap();
+        let material = |ty: &str| t.rows.iter().find(|r| r[0] == ty).map(|r| r[1].clone());
+        assert_eq!(material("Cavity"), Some(json!("Concrete block")), "its structure layer's");
+        assert_eq!(material("Lined"), Some(json!("Brick")), "with none, its thickest layer's");
+        assert_eq!(material("Interior - 100mm"), Some(Value::Null), "a type of no layers says none");
+    }
+
+    #[test]
+    fn only_a_multi_category_schedule_lists_categories_and_only_their_shared_fields() {
+        let m = house().model;
+        let e = check(&m, &Schedule { categories: vec!["door".into()], ..of("wall") }).unwrap_err();
+        assert!(e.contains("multi-category"), "{e}");
+        let e = check(&m, &multi(&["door", "clouds"], &[])).unwrap_err();
+        assert!(e.contains("cloud") && e.contains("stair"), "{e}");
+        let e = check(&m, &multi(&["door"], &["Sill"])).unwrap_err();
+        assert!(e.contains("Sill") && e.contains("Category"), "{e}");
+        assert_eq!(defaults(MULTI).len(), 11);
     }
 
     #[test]

@@ -64,6 +64,65 @@ fn picture(s: &Session, cam: &Camera) -> Image {
     Scene::new(&s.model).render_in(cam, &[], &Look::of_3d(&s.model))
 }
 
+#[test]
+fn only_a_change_of_the_section_box_is_said_to_leave_the_scene_as_it_was() {
+    use crate::view3d::differs_only_in_section_box as only_box;
+    let mut s = Session::new();
+    run(&mut s, "wall", json!({"points": [[0, 0], [3000, 0]]}));
+    let step = |s: &mut Session, id: &str, p: Value| {
+        let before = s.model.clone();
+        run(s, id, p);
+        only_box(&before, &s.model)
+    };
+    assert!(step(&mut s, "section_box", json!({"on": true})), "turned on");
+    assert!(step(&mut s, "section_box", json!({"min": [0, -500, 0], "max": [3000, 500, 1000]})), "moved");
+    assert!(step(&mut s, "section_box", json!({"on": false})), "turned off");
+    assert!(step(&mut s, "section_box", json!({"on": true})), "and on again");
+    assert!(step(&mut s, "undo", json!({})), "undone");
+    // Anything else leaves it to be made again.
+    assert!(!step(&mut s, "wall", json!({"points": [[0, 2000], [3000, 2000]]})), "a wall");
+    assert!(!step(&mut s, "visual_style", json!({"style": "hidden_line"})), "the style");
+    assert!(!step(&mut s, "graphics", json!({"view": "{3D}", "categories": {"walls": {"hidden": true}}})), "what it hides");
+    assert!(
+        !step(&mut s, "graphics", json!({"view": "{3D}", "categories": {"walls": {"hidden": false, "transparency": 40}}})),
+        "how it shows it"
+    );
+    // The same model is no change either.
+    let same = s.model.clone();
+    assert!(only_box(&same, &s.model));
+}
+
+#[test]
+fn a_camera_written_back_or_a_3d_dimension_leaves_the_scene_as_it_was_and_a_wall_does_not() {
+    use crate::view3d::scene_kept as kept;
+    let mut s = Session::new();
+    run(&mut s, "wall", json!({"points": [[0, 0], [3000, 0]]}));
+    let step = |s: &mut Session, id: &str, p: Value| {
+        let before = s.model.clone();
+        run(s, id, p);
+        kept(&before, &s.model)
+    };
+    assert!(step(&mut s, "camera", json!({"eye": [-5000, -5000, 1700], "target": [1500, 0, 1000], "name": "Corner"})), "a camera view");
+    // Its eye and target written back, as the 3D view does once the hand lets it be.
+    assert!(step(&mut s, "camera", json!({"view": "Corner", "eye": [-6000, -4000, 1700], "target": [1500, 0, 1200]})), "its camera");
+    assert!(
+        step(&mut s, "dimension_3d", json!({"refs": [{"at": [0, 0, 0]}, {"at": [3000, 0, 0]}], "at": [1500, -1000, 0]})),
+        "a 3D dimension"
+    );
+    assert!(step(&mut s, "section_box", json!({"on": true})), "the default view's box");
+    assert!(!step(&mut s, "wall", json!({"points": [[0, 2000], [3000, 2000]]})), "a wall");
+    assert!(!step(&mut s, "visual_style", json!({"style": "hidden_line"})), "the default view's style");
+}
+
+#[test]
+fn a_mesh_holds_a_scan_s_points_but_in_wireframe_which_draws_none() {
+    let (mut s, _) = floor_and_ceiling("points_on_the_card");
+    let shaded = gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap();
+    assert!(!shaded.dots.is_empty());
+    run(&mut s, "visual_style", json!({"style": "wireframe"}));
+    assert!(gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap().dots.is_empty());
+}
+
 fn floor_and_ceiling(test: &str) -> (Session, Camera) {
     let mut s = Session::new();
     run(&mut s, "point_cloud", json!({"path": scan(test, &room()), "at": [1000, 1000]}));
@@ -168,13 +227,15 @@ fn a_section_box_goes_into_the_project_file_and_undo_takes_it_back() {
 }
 
 #[test]
-fn the_graphics_card_leaves_a_boxed_view_to_the_processor() {
+fn the_graphics_card_keeps_all_of_a_boxed_view_and_cuts_its_pixels() {
     let mut s = Session::new();
     run(&mut s, "wall", json!({"points": [[0, 0], [3000, 0]]}));
-    assert!(gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).is_ok());
+    let whole = gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap();
+    assert_eq!(whole.section_box, None);
     run(&mut s, "section_box", json!({"min": [0, -500, 0], "max": [3000, 500, 1000]}));
-    let err = gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).err().unwrap();
-    assert!(err.contains("section box"), "{err}");
+    let cut = gpu::Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap();
+    assert_eq!(cut.section_box, Some(([0.0, -500.0, 0.0], [3000.0, 500.0, 1000.0])));
+    assert_eq!(cut.triangles(), whole.triangles(), "moving a face makes no triangles");
 }
 
 #[test]

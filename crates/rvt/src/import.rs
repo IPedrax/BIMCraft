@@ -17,7 +17,7 @@ use bimcraft_core::model::{Element, Id, Level, MAX_TEXT, Model, culprit};
 use crate::inventory::{Inventory, OST_LEVELS, Survey, Wants, category_name};
 use crate::records::{Record, TypeRecord};
 use crate::{Limits, Revit};
-use crate::{columns, ducts, floors, generic, openings, pipes, roofs, rooms, walls};
+use crate::{columns, ducts, floors, framing, generic, openings, pipes, roofs, rooms, walls};
 
 /// `OST_Materials`.
 pub(crate) const OST_MATERIALS: i64 = -2_000_700;
@@ -200,7 +200,7 @@ fn has_volume(r: &Record) -> bool {
 }
 
 /// The categories whose records the first pass keeps.
-const CATEGORIES: [i64; 13] = [
+const CATEGORIES: [i64; 15] = [
     walls::OST_WALLS,
     floors::OST_FLOORS,
     floors::OST_CEILINGS,
@@ -214,6 +214,8 @@ const CATEGORIES: [i64; 13] = [
     pipes::OST_PIPES,
     ducts::OST_DUCTS,
     ducts::OST_CABLE_TRAYS,
+    framing::OST_STRUCTURAL_FRAMING,
+    framing::OST_STRUCTURAL_FOUNDATION,
 ];
 
 /// Reads the Revit project in `bytes` into a model named after its title (or `name`).
@@ -277,6 +279,7 @@ pub(crate) fn build(revit: &mut Revit, name: &str) -> Result<(Imported, HashMap<
     rooms::import(&mut cx, &facts, &gathered);
     pipes::import(&mut cx, &facts, &gathered);
     ducts::import(&mut cx, &facts, &gathered);
+    framing::import(&mut cx, &facts);
     generic::import(&mut cx, &facts, &inv);
     let from = cx.from.clone();
     finish(cx, format!("Revit {release}")).map(|i| (i, from))

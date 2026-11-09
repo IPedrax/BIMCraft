@@ -332,6 +332,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                 top_level,
                 height: mm(r.bbox[5] - r.bbox[2]),
                 base_offset: micron(mm(r.bbox[2]) - mm(elevation)),
+                top_offset: 0.0,
                 arc,
                 location: Location::Centre,
                 attach_top: None,
@@ -370,7 +371,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                     "panels" => cx.note(
                         "wall",
                         r.id,
-                        "its type has no layers (a curtain wall or a storefront): it comes in as the plane its own box gives, and the panels and mullions are not read",
+                        "its type has no layers (a curtain wall or a storefront): it comes in as the plane its own box gives, and its grid is not read (its panels and mullions are boxes of their own, where their boxes run along an axis)",
                     ),
                     _ => {}
                 }

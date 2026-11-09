@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use bimcraft_core::engine::Session;
 use bimcraft_core::family::{
-    Align as LabelAlign, Category, Circle, Connector, Curve, Expr, Family, Form, Kind as Holds, Label, Parameter, Plane, Symbol,
+    Align as LabelAlign, Category, Circle, Connector, Curve, Expr, Family, Form, IfcClass, Kind as Holds, Label, Parameter, Plane, Symbol,
 };
 use bimcraft_core::model::{Model, Operation};
 use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
@@ -359,8 +359,12 @@ pub(crate) struct FamilyEditor {
     types: Vec<(String, BTreeMap<String, String>)>,
     forms: Vec<FormText>,
     symbols: Vec<SymbolText>,
-    /// Its connectors, as the family has them: the editor has no tab for them yet, and keeps them as they are.
+    /// Its connectors, as the family has them: the Connectors tab shows them, and the editor keeps them as they are.
     connectors: Vec<Connector>,
+    /// Which fixture or fitting it is, as the family has it: set with the `family` command, kept as it is here.
+    kind: Option<String>,
+    /// The IFC class a generic family from IFC remembers: set with the `family` command or by the import, kept as it is here.
+    ifc: Option<IfcClass>,
     /// How a door's or a window's leaves open; none, not said.
     operation: Option<Operation>,
     tab: Tab,
@@ -380,6 +384,7 @@ enum Tab {
     Types,
     Forms,
     Symbols,
+    Connectors,
 }
 
 impl FamilyEditor {
@@ -400,6 +405,8 @@ impl FamilyEditor {
             forms: f.forms.iter().map(FormText::of).collect(),
             symbols: f.symbols.iter().map(SymbolText::of).collect(),
             connectors: f.connectors.clone(),
+            kind: f.kind.clone(),
+            ifc: f.ifc.clone(),
             operation: f.operation,
             tab: Tab::Parameters,
             picked: 0,
@@ -453,7 +460,18 @@ impl FamilyEditor {
         let forms = self.forms.iter().map(FormText::form).collect::<Result<_, _>>()?;
         let symbols = self.symbols.iter().map(SymbolText::symbol).collect::<Result<_, _>>()?;
         let operation = self.operation.filter(|_| self.category.hosted());
-        Ok(Family { category: self.category, parameters, types, forms, symbols, operation, connectors: self.connectors.clone() })
+        Ok(Family {
+            category: self.category,
+            // A kind the category it now is has no row for goes with the change of category.
+            kind: self.kind.clone().filter(|k| self.category.kinds().iter().any(|(n, _)| n == k)),
+            ifc: self.ifc.clone(),
+            parameters,
+            types,
+            forms,
+            symbols,
+            operation,
+            connectors: self.connectors.clone(),
+        })
     }
 
     /// The `family` command's parameters making the project's family what's typed: its name, its own and the type it drops.
@@ -870,6 +888,50 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     });
 }
 
+/// A connector in a line: what it is, what it carries, and where it is and faces in the family's axes.
+fn connector_text(c: &Connector) -> String {
+    let word = |v: Value| v.as_str().map(str::to_string).unwrap_or_default();
+    let xyz = |p: &[Expr; 3]| format!("({}, {}, {})", expr_text(&p[0]), expr_text(&p[1]), expr_text(&p[2]));
+    let mut parts = vec![word(json!(c.kind))];
+    if !c.name.is_empty() {
+        parts.insert(0, c.name.clone());
+    }
+    if let Some(s) = c.system {
+        parts.push(word(json!(s)));
+    }
+    if let Some(d) = c.domain {
+        parts.push(word(json!(d)));
+    }
+    if c.flow != bimcraft_core::family::Flow::Both {
+        parts.push(word(json!(c.flow)));
+    }
+    if let Some(e) = &c.size {
+        parts.push(format!("{} {}", t("Size"), expr_text(e)));
+    }
+    if let Some(p) = &c.at {
+        parts.push(format!("{} {}", t("at"), xyz(p)));
+    }
+    if let Some(p) = &c.direction {
+        parts.push(format!("{} {}", t("facing"), xyz(p)));
+    }
+    parts.join(" · ")
+}
+
+fn connectors_tab(ed: &FamilyEditor, ui: &mut Ui) {
+    ui.label(
+        RichText::new(t(
+            "Connectors are where the family joins a system: what an electrical device draws, where a pipe or a cable meets it. They are set with the family command; the editor keeps them.",
+        ))
+        .color(pal().muted),
+    );
+    if ed.connectors.is_empty() {
+        ui.label(t("This family has no connectors."));
+    }
+    for (i, c) in ed.connectors.iter().enumerate() {
+        ui.label(format!("{}. {}", i + 1, connector_text(c)));
+    }
+}
+
 fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
     ui.label(
         RichText::new(t("Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."))
@@ -1034,6 +1096,7 @@ impl BimApp {
                                 (Tab::Types, msg!("Types")),
                                 (Tab::Forms, msg!("Forms")),
                                 (Tab::Symbols, msg!("Symbols")),
+                                (Tab::Connectors, msg!("Connectors")),
                             ] {
                                 if ui.selectable_label(ed.tab == tab, t(label)).clicked() {
                                     ed.tab = tab;
@@ -1048,6 +1111,7 @@ impl BimApp {
                                 Tab::Types => types_tab(&mut ed, ui, &materials),
                                 Tab::Forms => forms_tab(&mut ed, ui, &materials),
                                 Tab::Symbols => symbols_tab(&mut ed, ui),
+                                Tab::Connectors => connectors_tab(&ed, ui),
                             },
                         );
                     });
@@ -1197,7 +1261,13 @@ mod tests {
                 _ => (a != b).then(|| format!("{path}: {a} against {b}")),
             }
         }
-        let m = Model::new("x");
+        let mut m = Model::new("x");
+        // And one from IFC, which remembers the class it came in as.
+        let mut panel = m.families["Table"].clone();
+        panel.category = Category::Generic;
+        panel.ifc =
+            Some(IfcClass { class: "IFCPLATE".into(), predefined: Some("CURTAIN_PANEL".into()), object_type: Some("Glass".into()) });
+        m.families.insert("System Panel".into(), panel);
         for (name, f) in &m.families {
             let back = FamilyEditor::of(name, f).family().unwrap_or_else(|e| panic!("{name}: {e}"));
             let (back, was) = (alike(serde_json::to_value(&back).unwrap()), alike(serde_json::to_value(f).unwrap()));

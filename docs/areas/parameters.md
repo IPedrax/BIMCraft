@@ -101,6 +101,23 @@ share its name with a family's only if tied (`family_clash`), a schedule has one
 (`schedule.rs` looks at the family first). A tied project parameter can't be renamed: there's no way yet to rename a family's parameter with
 its forms' formulas, and two names would split the column. An integer, an area and a volume go in a family as numbers (`family_kind`).
 
+## Project Information
+
+As Revit's: an element of its own (`Element::ProjectInfo`, category `project`, `project_info.rs`), one in a project at most, with an id and a
+GUID. The first `project_info` that sets something makes it; a read makes nothing and costs no undo step. It holds the fields title blocks
+and IFC name a project by (`FIELDS`: number, client, address, status, issue date, author, organization and its description, building), all
+text and one line but the address, and the values of the project parameters for `project` (a category like any other: a rename, a kind
+change and taking the category off reach its values as they reach an element's; it has no type, so `TYPELESS`). The project's name stays
+`Model::name`, which `project_info` sets too. It can't be deleted or copied (`deletable`, and `Model::check` refuses a second); emptied, it
+says nothing. Revit's `OST_ProjectInformation` is ours by name (`NAMED_CATEGORIES`).
+
+A sheet's title box letters the client, then the number, status and issue date, right of the project's name (`sheet::title_block`). IFC
+writes the status as `IfcProject.Phase`, the building's name and an `IfcPostalAddress` (its lines) on `IfcBuilding`, every field as typed in
+`BIMCraft_ProjectInformation` on the project, and the project parameters in `Project Parameters` on the project, as any element's; the
+import reads them back, and from another program's file the phase, the building's name and its address (lines, postal code and town,
+region, country). Manage > Project Information (`crates/ui-egui/src/projectinfo.rs`) is the dialog: OK sends what changed in one
+`project_info`.
+
 ## The window
 
 Edits are staged in `ParameterManager::rows` and go in one `parameter_batch` on Apply; the footer counts them. Import is a dry
@@ -119,3 +136,4 @@ Text in a table's narrow column goes through `wrapped`, which knows its height f
 - The definition's GUID through IFC: a project parameter's name goes out in its property set, its GUID doesn't, so one that has
   been through IFC is a new parameter. Requirements from IDS and URIs to bSDD build on that.
 - Schedules that span linked models by GUID.
+- Sheet parameters (Revit's Sheets category) and title-block labels a user places: the title box's layout is fixed.

@@ -113,6 +113,8 @@ fn relevant(e: &Value, key: &str) -> bool {
     match (e["shape"].as_str(), key) {
         (Some(shape), "centre_mark") => matches!(shape, "arc" | "circle"),
         (Some(_), "revision") => !e["cloud"].is_null(),
+        // A wall's Top Offset is from its top constraint: an unconnected wall stands `height` tall and has none.
+        (_, "top_offset") => !e["top_level"].is_null(),
         _ => true,
     }
 }
@@ -130,6 +132,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "base_offset", msg!("Base Offset"), Length),
             ("Constraints", "attach_base", msg!("Base is Attached"), Attached),
             ("Constraints", "top_level", msg!("Top Constraint"), TopLevel),
+            ("Constraints", "top_offset", msg!("Top Offset"), Length),
             ("Constraints", "height", msg!("Unconnected Height"), Height),
             ("Constraints", "attach_top", msg!("Top is Attached"), Attached),
             ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
@@ -529,6 +532,29 @@ fn area_parsed(s: &str, units: Units) -> Result<Value, String> {
     number(s).map(|x| json!(x / per_m2)).ok_or_else(|| tf("`{}` is not a number", &[s]))
 }
 
+/// A project parameter's value of `kind` as a field shows it: lengths and areas in `units`. Not for yes or no, a checkbox.
+pub(crate) fn parameter_shown(kind: ParameterKind, v: &Value, units: Units) -> String {
+    match kind {
+        ParameterKind::Area => area_shown(v, units),
+        ParameterKind::Length => shown(Length, v, units),
+        ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => shown(Number, v, units),
+        ParameterKind::Text | ParameterKind::YesNo => shown(Text, v, units),
+    }
+}
+
+/// What was typed for a project parameter of `kind`, as the value commands take; blank, none.
+pub(crate) fn parameter_parsed(kind: ParameterKind, typed: &str, units: Units) -> Result<Value, String> {
+    if typed.trim().is_empty() {
+        return Ok(Value::Null);
+    }
+    match kind {
+        ParameterKind::Area => area_parsed(typed, units),
+        ParameterKind::Length => parse(Length, typed, units),
+        ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => parse(Number, typed, units),
+        ParameterKind::Text | ParameterKind::YesNo => parse(Text, typed, units),
+    }
+}
+
 fn shown(kind: Kind, v: &Value, units: Units) -> String {
     let each = |f: &dyn Fn(f64) -> String| match v {
         Value::Array(a) => a.iter().filter_map(Value::as_f64).map(f).collect::<Vec<_>>().join(", "),
@@ -578,7 +604,7 @@ fn parse(kind: Kind, s: &str, units: Units) -> Result<Value, String> {
 /// A drop-down of `options`, named by `label`; the one picked, if it changed.
 pub(crate) fn combo(ui: &mut Ui, salt: (Id, &str), label: UiId, current: &str, options: &[String]) -> Option<String> {
     let mut picked = None;
-    let c = ComboBox::from_id_salt(salt).selected_text(current).width(ui.available_width()).show_ui(ui, |ui| {
+    let c = ComboBox::from_id_salt(salt).selected_text(current).width(ui.available_width()).truncate().show_ui(ui, |ui| {
         for o in options {
             if ui.selectable_label(o == current, o).clicked() && o != current {
                 picked = Some(o.clone());
@@ -611,8 +637,7 @@ pub(crate) fn group_header(ui: &mut Ui, group: &str, open: bool) -> bool {
     response.widget_info(|| WidgetInfo::selected(WidgetType::CollapsingHeader, true, open, group));
     let p = ui.painter();
     p.rect_filled(r, 0.0, if response.hovered() { pal().hover_fill } else { pal().bar });
-    let font = if crate::style::rev() { crate::style::semibold(13.0) } else { FontId::proportional(13.0) };
-    p.text(r.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER, group, font, pal().text);
+    p.text(r.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER, group, FontId::proportional(13.0), pal().text);
     // A chevron on the right, pointing down while the group is open.
     let c = pos2(r.right() - 12.0, r.center().y);
     let chevron =
@@ -625,32 +650,18 @@ pub(crate) fn group_header(ui: &mut Ui, group: &str, open: bool) -> bool {
 }
 
 /// A group's rows under its header: names on the left and values on the right, half the palette each, as Revit's columns, so a
-/// long name wraps rather than pushing its field past the palette's edge. Rev rules it as its property grid is: a line between the
-/// columns here, and one under each row ([`end_row`]).
+/// long name wraps rather than pushing its field past the palette's edge.
 pub(crate) fn grid(ui: &mut Ui, id: impl egui::AsIdSalt, add: impl FnOnce(&mut Ui)) {
     Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
         // Room left for the palette's scroll bar: one that comes would otherwise push the rows past the card.
         let half = (ui.available_width() - ui.spacing().item_spacing.x - ui.spacing().scroll.bar_width) / 2.0;
-        let rows = Grid::new(id).num_columns(2).min_col_width(half).max_col_width(half).show(ui, add).response.rect;
-        if crate::style::rev() {
-            let x = rows.left() + half + ui.spacing().item_spacing.x / 2.0;
-            ui.painter().vline(x, rows.y_range(), Stroke::new(1.0, pal().border));
-        }
+        Grid::new(id).num_columns(2).min_col_width(half).max_col_width(half).show(ui, add);
     });
 }
 
 /// The palette's Apply. Fields commit on Enter or when they lose the keyboard, which a click here does.
-pub(crate) fn apply(ui: &mut Ui) {
+fn apply(ui: &mut Ui) {
     let _ = ui.button(t("Apply"));
-}
-
-/// Ends a row of a [`grid`]; Rev draws the line under it.
-pub(crate) fn end_row(ui: &mut Ui) {
-    ui.end_row();
-    if crate::style::rev() {
-        let y = ui.cursor().top() - ui.spacing().item_spacing.y / 2.0;
-        ui.painter().hline(ui.max_rect().x_range(), y, Stroke::new(1.0, pal().border));
-    }
 }
 
 /// What the palette shows.
@@ -669,8 +680,8 @@ enum Subject {
     Schedule,
 }
 
-/// A type's layer as typed: what it does, what it's made of, how thick.
-type LayerRow = (Function, String, String);
+/// A type's layer as typed: what it does, what it's made of, how thick, and whether it's variable (a floor's or a roof's).
+type LayerRow = (Function, String, String, bool);
 
 /// The categories whose types have layers: a wall's from its exterior in, the others' from the top down.
 const LAYERED: [&str; 4] = ["wall", "floor", "roof", "ceiling"];
@@ -923,9 +934,9 @@ impl TypeDialog {
     /// A layered type's layers, as typed: one structure layer as thick as it, without any.
     fn layers(m: &Model, category: &str, name: &str) -> Vec<LayerRow> {
         let Some((.., thickness, layers)) = m.layered_types().find(|(c, n, ..)| *c == category && *n == name) else { return Vec::new() };
-        let typed = |l: &Layer| (l.function, l.material.clone(), m.units.length(l.thickness));
+        let typed = |l: &Layer| (l.function, l.material.clone(), m.units.length(l.thickness), l.variable);
         match layers {
-            [] => vec![(Function::Structure, String::new(), m.units.length(thickness))],
+            [] => vec![(Function::Structure, String::new(), m.units.length(thickness), false)],
             layers => layers.iter().map(typed).collect(),
         }
     }
@@ -936,9 +947,13 @@ impl TypeDialog {
         let mut p = json!({"category": self.category, "name": name});
         let layered = copy || self.layers != self.layers_were;
         if layered {
-            let layers = self.layers.iter().map(|(function, material, typed)| {
+            let layers = self.layers.iter().map(|(function, material, typed, variable)| {
                 let thickness = units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[t("Thickness"), typed]))?;
-                Ok(json!({"function": function, "material": material.trim(), "thickness": thickness}))
+                let mut l = json!({"function": function, "material": material.trim(), "thickness": thickness});
+                if *variable {
+                    l["variable"] = json!(true);
+                }
+                Ok(l)
             });
             p["layers"] = Value::Array(layers.collect::<Result<_, String>>()?);
         }
@@ -1003,7 +1018,7 @@ impl BimApp {
             ([], Tool::Dimension(..) | Tool::Angular(_) | Tool::Round(..), _) => Subject::New("dimension"),
             ([], Tool::Text, _) => Subject::New("text"),
             ([], Tool::DetailLine(_), _) => Subject::New("line"),
-            ([], Tool::Spot, _) => Subject::New("spot"),
+            ([], Tool::Spot | Tool::SpotSlope, _) => Subject::New("spot"),
             ([], Tool::Tag, _) => Subject::New("tag"),
             ([], Tool::Section(_), _) => Subject::New("section"),
             ([], Tool::Elevation, _) => Subject::New("elevation"),
@@ -1227,6 +1242,7 @@ impl BimApp {
         self.opening_picker(ui, &model);
         self.room_colour(ui, &model);
         self.floor_slope(ui, &model);
+        self.sketch_slope(ui);
         if !ids.is_empty() {
             self.parameters(ui, &model, &ids, rows);
             if let Subject::Element(id) = subject {
@@ -1262,11 +1278,8 @@ impl BimApp {
             self.graphics_properties(ui);
             self.phasing_properties(ui);
         }
-        // Rev's Apply is at the palette's foot, out of the rows (`palette_body`).
-        if !crate::style::rev() {
-            ui.add_space(8.0);
-            ui.with_layout(Layout::right_to_left(Align::Min), apply);
-        }
+        ui.add_space(8.0);
+        ui.with_layout(Layout::right_to_left(Align::Min), apply);
     }
 
     /// The layers of the type the palette shows, drawn to their thicknesses in their materials' colours: a wall's from its exterior
@@ -1350,7 +1363,7 @@ impl BimApp {
                 r.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, true, on, t(label)));
                 let p = ui.painter();
                 let (fill, edge) = if on { (pal().select_fill, pal().accent) } else { (pal().surface, pal().border) };
-                p.rect(rect, crate::style::corner(4.0), fill, Stroke::new(1.0, edge), StrokeKind::Inside);
+                p.rect(rect, 4.0, fill, Stroke::new(1.0, edge), StrokeKind::Inside);
                 // The wall across the tile with its opening in the middle; the leaf from its hinge and the arc it sweeps.
                 let ink = Stroke::new(1.5, if on { pal().accent_ink } else { pal().icon });
                 let (c, half) = (rect.center(), (w * 0.2).min(10.0));
@@ -1403,7 +1416,7 @@ impl BimApp {
                 r.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, true, on, t(label)));
                 let fill = c.map_or(pal().surface, |[red, green, blue]| egui::Color32::from_rgb(red, green, blue));
                 let edge = if on { Stroke::new(2.0, pal().accent_ink) } else { Stroke::new(1.0, pal().border) };
-                ui.painter().rect(rect, crate::style::corner(4.0), fill, edge, StrokeKind::Inside);
+                ui.painter().rect(rect, 4.0, fill, edge, StrokeKind::Inside);
                 if c.is_none() {
                     ui.painter().line_segment(
                         [rect.left_bottom() + vec2(4.0, -4.0), rect.right_top() + vec2(-4.0, 4.0)],
@@ -1480,6 +1493,43 @@ impl BimApp {
         }
     }
 
+    /// A roof's sketch (a new roof's footprint or Edit Boundary's) with one line picked: its Slope, the angle in degrees the roof's
+    /// edges along it rise at, blank for the roof's own, which is what a line has until it is given one. It is set on the line, and
+    /// Finish Edit Mode sends it with the lines for the core to give the edges along the line theirs (`slopes`).
+    fn sketch_slope(&mut self, ui: &mut Ui) {
+        let Some(sk) = &self.sketch else { return };
+        let roof = match sk.of {
+            crate::sketch::Of::Roof(_) => true,
+            crate::sketch::Of::Edit(id) => matches!(self.session.model.elements.get(id), Some(Element::Roof(_))),
+            _ => false,
+        };
+        let picked: Vec<usize> = sk.picked.iter().copied().collect();
+        let (true, &[i]) = (roof, picked.as_slice()) else { return };
+        let Some(line) = sk.lines.get(i) else { return };
+        let current = line.slope.filter(|s| *s > 0.0).map_or_else(String::new, |s| text(&json!(s)));
+        let mut typed = None;
+        grid(ui, ("sketch-slope", i), |ui| {
+            let name = ui.label(t("Slope"));
+            typed = self.field(ui, 1 + i as Id, "sketch-slope", current, name.id, t("Roof's slope"));
+            ui.end_row();
+        });
+        let Some(typed) = typed else { return };
+        let max = bimcraft_core::model::MAX_SLOPE;
+        match Some(typed.trim()).filter(|s| !s.is_empty()).map_or(Some(0.0), |s| number(s).filter(|x| (0.0..=max).contains(x))) {
+            Some(slope) => {
+                if let Some(l) = self.sketch.as_mut().and_then(|sk| sk.lines.get_mut(i)) {
+                    l.slope = Some(slope);
+                }
+            }
+            None => {
+                self.status = Status {
+                    text: tf("Slope: a number of degrees from 0 to {}, or blank for the roof's", &[&max.to_string()]),
+                    error: true,
+                };
+            }
+        }
+    }
+
     /// The Type Selector: the category and the type of what the palette shows, a drop-down of
     /// the category's types.
     fn type_selector(&mut self, ui: &mut Ui, model: &Model, subject: Subject) {
@@ -1540,7 +1590,7 @@ impl BimApp {
         let p = ui.painter();
         p.rect(
             rect,
-            crate::style::corner(3.0),
+            3.0,
             pal().surface,
             Stroke::new(1.0, if r.hovered() && enabled { pal().hover } else { pal().border }),
             StrokeKind::Inside,
@@ -1570,7 +1620,7 @@ impl BimApp {
             p.add(Shape::convex_polygon(vec![c + vec2(-4.0, -2.0), c + vec2(4.0, -2.0), c + vec2(0.0, 3.0)], pal().icon, Stroke::NONE));
         }
         if r.has_focus() {
-            p.rect_stroke(rect, crate::style::corner(3.0), crate::style::focus_ring(), StrokeKind::Inside);
+            p.rect_stroke(rect, 3.0, crate::style::focus_ring(), StrokeKind::Inside);
         }
         let mut picked = None;
         // A component's list holds every family's types, more than a window has room for (issue 64): it scrolls, as tall as
@@ -1825,7 +1875,7 @@ impl BimApp {
                             }
                         }
                     }
-                    end_row(ui);
+                    ui.end_row();
                 }
             });
         }
@@ -1888,7 +1938,7 @@ impl BimApp {
                         }
                     }
                 });
-                end_row(ui);
+                ui.end_row();
             }
         });
         if let Some(other) = select {
@@ -2061,7 +2111,7 @@ impl BimApp {
                     if p.read_only {
                         // Shown, and changed only by a command.
                         ui.add_enabled(false, egui::Label::new(value_shown(p.kind, &val, units)));
-                        end_row(ui);
+                        ui.end_row();
                         continue;
                     }
                     let field = match p.kind {
@@ -2072,7 +2122,7 @@ impl BimApp {
                             if r.labelled_by(label.id).changed() {
                                 change = Some((name.to_string(), Ok(json!(on))));
                             }
-                            end_row(ui);
+                            ui.end_row();
                             continue;
                         }
                         ParameterKind::Area => {
@@ -2080,7 +2130,7 @@ impl BimApp {
                                 let v = if typed.trim().is_empty() { Ok(Value::Null) } else { area_parsed(&typed, units) };
                                 change = Some((name.to_string(), v));
                             }
-                            end_row(ui);
+                            ui.end_row();
                             continue;
                         }
                         ParameterKind::Length => Length,
@@ -2091,7 +2141,7 @@ impl BimApp {
                         let v = if typed.trim().is_empty() { Ok(Value::Null) } else { parse(field, &typed, units) };
                         change = Some((name.to_string(), v));
                     }
-                    end_row(ui);
+                    ui.end_row();
                 }
             });
             match change {
@@ -2142,12 +2192,12 @@ impl BimApp {
                             ui.label(RichText::new(&sc.name).color(pal().muted));
                         }
                     }
-                    end_row(ui);
+                    ui.end_row();
                     return;
                 }
                 ui.label(t("Category"));
                 ui.label(RichText::new(lang::category(&sc.of, true)).color(pal().muted));
-                end_row(ui);
+                ui.end_row();
                 for (tab, label) in SCHEDULE_TABS.iter().enumerate() {
                     ui.label(t(label));
                     let r = wide_button(ui, t("Edit…"));
@@ -2156,7 +2206,7 @@ impl BimApp {
                     if r.clicked() {
                         open = Some(tab);
                     }
-                    end_row(ui);
+                    ui.end_row();
                 }
             });
         }
@@ -2217,7 +2267,8 @@ impl BimApp {
                         }
                         if g == "Construction" && layered {
                             let (out, inward) = if d.category == "wall" { (msg!("Out"), msg!("In")) } else { ("Up", "Down") };
-                            tb.full(|ui| layer_editor(ui, &mut d.layers, model.units, &materials, (out, inward)));
+                            let variable = matches!(d.category, "floor" | "roof");
+                            tb.full(|ui| layer_editor(ui, &mut d.layers, model.units, &materials, (out, inward), variable));
                         }
                     }
                     type_value_rows(tb, &mut d.project, model.units);
@@ -2519,18 +2570,23 @@ impl BimApp {
 }
 
 /// A type's layers, exterior or top first: what each does, what it's made of (from the library),
-/// how thick; a new one on the outside, or on top, and each moved, or taken away.
-fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials: &[String], (out, inward): (&str, &str)) {
+/// how thick; with `variable` (a floor's or a roof's), which one takes up a shaped top's falls; a new one on the outside, or on
+/// top, and each moved, or taken away.
+fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials: &[String], (out, inward): (&str, &str), variable: bool) {
     ui.label(RichText::new(t("Layers")).strong());
     let mut action: Option<(usize, i8)> = None;
-    Grid::new("type-layers").num_columns(4).striped(true).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
+    let mut varied: Option<usize> = None;
+    Grid::new("type-layers").num_columns(if variable { 5 } else { 4 }).striped(true).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
         let function = ui.label(RichText::new(t("Function")).color(pal().muted));
         let material = ui.label(RichText::new(t("Material")).color(pal().muted));
         let thickness = ui.label(RichText::new(t("Thickness")).color(pal().muted));
+        if variable {
+            ui.label(RichText::new(t("Variable")).color(pal().muted));
+        }
         ui.label("");
         ui.end_row();
         let last = layers.len().saturating_sub(1);
-        for (k, (f, mat, typed)) in layers.iter_mut().enumerate() {
+        for (k, (f, mat, typed, var)) in layers.iter_mut().enumerate() {
             let c = ComboBox::from_id_salt(("layer-function", k)).selected_text(t(function_name(*f))).width(110.0).show_ui(ui, |ui| {
                 for (g, n) in FUNCTIONS {
                     if ui.selectable_label(*f == g, t(n)).clicked() {
@@ -2553,6 +2609,12 @@ fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials
             });
             c.response.labelled_by(material.id);
             ui.add_sized([70.0, 20.0], TextEdit::singleline(typed).hint_text(units.name())).labelled_by(thickness.id);
+            if variable
+                && ui.checkbox(var, t("Variable")).on_hover_text(t("Takes up a shaped top's falls: one layer at most")).changed()
+                && *var
+            {
+                varied = Some(k);
+            }
             ui.horizontal(|ui| {
                 if ui.add_enabled(k > 0, Button::new(t(out)).small()).clicked() {
                     action = Some((k, -1));
@@ -2575,9 +2637,15 @@ fn layer_editor(ui: &mut Ui, layers: &mut Vec<LayerRow>, units: Units, materials
         Some((k, _)) if k + 1 < layers.len() => layers.swap(k, k + 1),
         _ => {}
     }
+    // One variable layer at most: the one just ticked.
+    if let Some(k) = varied {
+        for (j, row) in layers.iter_mut().enumerate() {
+            row.3 = j == k;
+        }
+    }
     // A finish 10 mm thick, on the exterior side.
     if ui.button(t("Insert Layer")).clicked() {
-        layers.insert(0, (Function::Finish, String::new(), units.length(10.0)));
+        layers.insert(0, (Function::Finish, String::new(), units.length(10.0), false));
     }
 }
 
@@ -2788,7 +2856,7 @@ impl BimApp {
                 ui.add_space(6.0);
                 ui.label(RichText::new(t("Object Snaps")).strong());
                 let s = &mut self.snaps;
-                let kinds: [(&mut bool, Snap, &str); 9] = [
+                let kinds: [(&mut bool, Snap, &str); 10] = [
                     (&mut s.endpoint, Snap::Endpoint, msg!("The ends of walls, grids and what else is drawn, and the points picked so far")),
                     (&mut s.midpoint, Snap::Midpoint, msg!("The middle of a wall, along its arc")),
                     (&mut s.intersection, Snap::Intersection, msg!("Where two walls or grids cross")),
@@ -2797,6 +2865,7 @@ impl BimApp {
                     (&mut s.quadrant, Snap::Quadrant, msg!("A circle's, an ellipse's or an arc's points along its axes: east, north, west and south")),
                     (&mut s.tangent, Snap::Tangent, msg!("Where a line from the last point touches a circle or an arc")),
                     (&mut s.nearest, Snap::Nearest, msg!("A wall's centre line, so a wall drawn on it meets it")),
+                    (&mut s.annotation, Snap::Anchor, msg!("Where a note, dimension, tag, spot elevation, section or elevation mark, detail group or repeating detail is placed")),
                     (&mut s.cloud, Snap::Point, msg!("A scan's points where the plan's cut plane cuts it, to trace what was measured")),
                 ];
                 for (on, kind, tip) in kinds {
@@ -3039,7 +3108,8 @@ impl BimApp {
                 ui.add_space(6.0);
                 ui.label(t("Category:"));
                 ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
-                    for cat in schedule::categories() {
+                    // Multi-Category first, as Revit's list has it.
+                    for cat in std::iter::once(schedule::MULTI).chain(schedule::categories()) {
                         if ui.selectable_label(d.category == Some(cat), lang::category(cat, true)).clicked() {
                             d.category = Some(cat);
                             // Named after it, as one of its kind there isn't yet.

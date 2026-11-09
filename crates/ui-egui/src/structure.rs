@@ -189,14 +189,19 @@ impl BimApp {
         Ok(self.typed(category, p))
     }
 
-    /// The parameters a standing thing made at `at` on `level` has, from the Options Bar.
-    pub(crate) fn stand_params(&self, m: &Model, category: &str, level: Id, at: P2) -> Result<Value, String> {
+    /// The parameters a standing thing made at `at` on `level` has, from the Options Bar; `lift` mm over the level, where it
+    /// stands on a face higher than the level (in the 3D view).
+    pub(crate) fn stand_params(&self, m: &Model, category: &str, level: Id, at: P2, lift: f64) -> Result<Value, String> {
         let command = command(category);
         let mut p = if category == "structuralcolumn" {
-            top_params(m, level, self.column_top, &self.column_height).map_err(|e| tf("{}: {}", &[command, &e]))?
+            let mut p = top_params(m, level, self.column_top, &self.column_height).map_err(|e| tf("{}: {}", &[command, &e]))?;
+            if lift != 0.0 {
+                p["base_offset"] = json!(lift);
+            }
+            p
         } else {
             let height = |text: &str| m.units.parse(text).ok_or_else(|| tf("{}: `{}` is not a height", &[command, text]));
-            json!({"thickness": height(&self.footing_thickness)?, "offset": height(&self.footing_top)?})
+            json!({"thickness": height(&self.footing_thickness)?, "offset": height(&self.footing_top)? + lift})
         };
         p["at"] = json!([at.0, at.1]);
         p["level"] = json!(level);
@@ -205,17 +210,32 @@ impl BimApp {
 
     /// A click of a run's tool at `p`: the start, then the end, which makes it, and with Chain starts the next there.
     pub(crate) fn place_run(&mut self, level: Id, p: P2) {
+        self.place_run_lifted(level, p, (0.0, 0.0));
+    }
+
+    /// A click of a run's tool at `p`, its start `lift.0` mm over `level` and its end `lift.1` (in the 3D view, the faces they
+    /// were clicked on): the Options Bar's offset over each; where they differ, the run climbs from one to the other (a
+    /// brace), and over one point, it stands (a riser).
+    pub(crate) fn place_run_lifted(&mut self, level: Id, p: P2, lift: (f64, f64)) {
         let Tool::Run(category, start) = self.tool.clone() else { return };
         let Some(a) = start else {
             self.tool = Tool::Run(category, Some(p));
             return;
         };
-        if a.dist(p) <= TOL {
+        let climbs = (lift.1 - lift.0).abs() > TOL;
+        if a.dist(p) <= TOL && !climbs {
             return;
         }
         let m = std::sync::Arc::clone(&self.session.model);
         match self.run_params(&m, category, level, a, p) {
-            Ok(params) => {
+            Ok(mut params) => {
+                let offset = params["offset"].as_f64().unwrap_or(0.0);
+                if lift.0 != 0.0 {
+                    params["offset"] = json!(offset + lift.0);
+                }
+                if climbs {
+                    params["end_offset"] = json!(offset + lift.1);
+                }
                 if self.run(command(category), params).is_some() {
                     self.tool = Tool::Run(category, self.chain.then_some(p));
                 }
@@ -226,12 +246,34 @@ impl BimApp {
 
     /// A click of a standing tool at `at`.
     pub(crate) fn place_stand(&mut self, level: Id, at: P2, category: &'static str) {
+        self.place_stand_lifted(level, at, category, 0.0);
+    }
+
+    /// A click of a standing tool at `at`, on a face `lift` mm over `level`.
+    pub(crate) fn place_stand_lifted(&mut self, level: Id, at: P2, category: &'static str, lift: f64) {
         let m = std::sync::Arc::clone(&self.session.model);
-        match self.stand_params(&m, category, level, at) {
+        match self.stand_params(&m, category, level, at, lift) {
             Ok(params) => {
                 self.run(command(category), params);
             }
             Err(e) => self.status = Status { text: e, error: true },
+        }
+    }
+
+    /// A click of the Column tool at `at`: an architectural column on `level`, its base `base` mm over it (on a face in the 3D
+    /// view), as high as the Options Bar says.
+    pub(crate) fn place_column(&mut self, level: Id, at: P2, base: f64) {
+        match top_params(&self.session.model, level, self.column_top, &self.column_height) {
+            Ok(mut p) => {
+                p["at"] = json!([at.0, at.1]);
+                p["level"] = json!(level);
+                if base != 0.0 {
+                    p["base_offset"] = json!(base);
+                }
+                let p = self.typed("column", p);
+                self.run("column", p);
+            }
+            Err(e) => self.status = Status { text: tf("column: {}", &[&e]), error: true },
         }
     }
 
@@ -243,7 +285,7 @@ impl BimApp {
 
     /// What a click would make with a standing tool at `at`.
     pub(crate) fn stand_sketch(&self, m: &Model, category: &str, level: Id, at: P2) -> Option<Element> {
-        self.stand_params(m, category, level, at).ok().and_then(|p| stood_of(m, &p, category).ok())
+        self.stand_params(m, category, level, at, 0.0).ok().and_then(|p| stood_of(m, &p, category).ok())
     }
 }
 

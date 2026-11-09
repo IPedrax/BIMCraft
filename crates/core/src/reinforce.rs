@@ -467,6 +467,23 @@ pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Made, String> {
             (bars, check.map(|n| n.footing(&x.cover)).unwrap_or_default())
         }
         Element::Floor(fl) => {
+            // A shaped floor's structure is level under a variable layer above it: its bars keep to it, between the
+            // underside and the layers over it. Without one, or with one under its structure, the structure follows the top.
+            if !fl.shape.is_empty() {
+                let layers = m.type_layers("floor", &fl.type_name);
+                let flat = m.floor_under(fl).filter(|(_, v)| {
+                    !layers.iter().enumerate().any(|(k, l)| k <= v.index && l.function == crate::model::Function::Structure)
+                });
+                let Some((under, v)) = flat else {
+                    return Err("reinforce: a shaped floor's structure isn't level: give its type a variable layer over its \
+                         structure (`type` with `variable: true` on its screed), or `reset_shape` it"
+                        .into());
+                };
+                let top = Plane { z: under.z + v.below, ..under };
+                let bars = slab(fl, &top, m.elevation(fl.level), v.below, &x, a)?;
+                let notes = check.map(|n| n.floor(v.below, &x.cover, &bars)).unwrap_or_default();
+                return Ok(Made { bars, notes });
+            }
             // Its thickness is square to its top, which may slope; the cover and the bars are measured from it.
             let thick = m.types.floor.get(&fl.type_name).map_or(0.0, |t| t.thickness);
             if thick <= TOL {

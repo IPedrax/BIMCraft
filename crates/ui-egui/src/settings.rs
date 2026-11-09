@@ -3,13 +3,16 @@
 //! ([`BimApp::use_settings`]); a window that wasn't given the file (every test's) keeps them for as long as it's open.
 //! What it keeps: the theme and whether the drawing stays light in a dark one, the user's own accent, panel, canvas and text colours,
 //! the profile, the layout, interface language, ribbon, palettes, the
-//! window's size, the background autosave interval, and the colour High Contrast Point Clouds draws scans in.
+//! window's size, the background autosave interval, the colour High Contrast Point Clouds draws scans in, whether plans show the
+//! origin marker and their view's name in the corner, the shortcuts the user made, and the control port
+//! for agents (whether the window opens it, on which port, and whether agents may edit the project or only read it).
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
 use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use egui::{Align, Color32, ComboBox, Context, Id as UiId, Layout, RichText, ScrollArea, ThemePreference, Ui, vec2};
@@ -17,7 +20,7 @@ use serde_json::{Value, json};
 
 use crate::BimApp;
 use crate::dock::{Docking, Palette};
-use crate::lang::{Lang, t};
+use crate::lang::{Lang, t, tf};
 use crate::presets::{Preset, Scale, hidden_from_json, presets_from_json};
 use crate::style::{Profile, Scheme, pal};
 use crate::updates::failed;
@@ -27,6 +30,8 @@ use std::collections::BTreeSet;
 pub const FILE: &str = "settings.json";
 /// The most of it that's read: it's a few hundred bytes.
 const MAX_FILE: u64 = 64 * 1024;
+/// The most shortcuts of the user's own that are read back: the file is the user's, but also a hand's or a damage's.
+pub const MAX_SHORTCUTS: usize = 256;
 
 /// The settings file beside the favorites file at `favorites`.
 pub fn beside(favorites: &Path) -> PathBuf {
@@ -109,8 +114,17 @@ pub struct Settings {
     pub high_contrast: [u8; 3],
     /// Grid snapping applies to every view, using the active view's enabled lattice.
     pub grid_snapping: bool,
+    /// The plans' origin marker, and the view's name in their corner: working aids on the screen.
+    pub origin_marker: bool,
+    pub view_name: bool,
+    /// The shortcuts the user made (Keyboard Shortcuts): two-character key to the English name of an action.
+    pub shortcuts: BTreeMap<String, String>,
     /// The system's title bar rather than the window's own, where the window can draw its own.
     pub system_title_bar: bool,
+    /// Agents: the window opens the control port (on `agents_port`, 0 for any free one), and they may edit or only read.
+    pub agents_listen: bool,
+    pub agents_port: u16,
+    pub agents_edit: bool,
 }
 
 impl Settings {
@@ -141,7 +155,11 @@ impl Settings {
             "window": self.window.to_json(),
             "high_contrast": self.high_contrast,
             "grid_snapping": self.grid_snapping,
+            "origin_marker": self.origin_marker,
+            "view_name": self.view_name,
+            "shortcuts": self.shortcuts,
             "system_title_bar": self.system_title_bar,
+            "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
         })
     }
 
@@ -181,9 +199,30 @@ impl Settings {
             window: Window::from_json(&v["window"], base.window),
             high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
             grid_snapping: v["grid_snapping"].as_bool().unwrap_or(base.grid_snapping),
+            origin_marker: v["origin_marker"].as_bool().unwrap_or(base.origin_marker),
+            view_name: v["view_name"].as_bool().unwrap_or(base.view_name),
+            shortcuts: shortcuts_from(&v["shortcuts"], base.shortcuts),
             system_title_bar: v["system_title_bar"].as_bool().unwrap_or(base.system_title_bar),
+            agents_listen: v["agents"]["listen"].as_bool().unwrap_or(base.agents_listen),
+            agents_port: v["agents"]["port"].as_u64().and_then(|p| u16::try_from(p).ok()).unwrap_or(base.agents_port),
+            agents_edit: v["agents"]["edit"].as_bool().unwrap_or(base.agents_edit),
         }
     }
+}
+
+/// The shortcuts a settings file holds: an object of key to action, of which only the entries that Keyboard Shortcuts could have made
+/// are kept (a key of two letters or digits, in upper case whatever its case in the file, and an action's English name), and no more
+/// than [`MAX_SHORTCUTS`]. A value that isn't an object leaves `base`'s; an empty object is none (Restore Defaults).
+fn shortcuts_from(v: &Value, base: BTreeMap<String, String>) -> BTreeMap<String, String> {
+    let Some(entries) = v.as_object() else { return base };
+    entries
+        .iter()
+        .filter_map(|(key, action)| {
+            let (key, action) = (key.to_ascii_uppercase(), action.as_str()?);
+            (crate::shortcuts::is_key(&key) && crate::shortcuts::ACTIONS.contains(&action)).then(|| (key, action.to_string()))
+        })
+        .take(MAX_SHORTCUTS)
+        .collect()
 }
 
 /// `[r, g, b]`, each 0 to 255: a colour; anything else, none.
@@ -222,11 +261,12 @@ pub enum Page {
     Performance,
     Graphics,
     Files,
+    Agents,
     Updates,
 }
 
 impl Page {
-    pub const ALL: [Page; 5] = [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Updates];
+    pub const ALL: [Page; 6] = [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Agents, Page::Updates];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -234,6 +274,7 @@ impl Page {
             Page::Performance => msg!("Performance"),
             Page::Graphics => "Graphics",
             Page::Files => msg!("Files"),
+            Page::Agents => msg!("Agents"),
             Page::Updates => msg!("Updates"),
         }
     }
@@ -271,7 +312,10 @@ impl BimApp {
         self.window.kept = kept.window;
         self.scan_contrast = kept.high_contrast;
         self.grid_snapping = kept.grid_snapping;
+        (self.show_origin, self.show_view_name) = (kept.origin_marker, kept.view_name);
+        self.custom_shortcuts = kept.shortcuts.clone();
         self.system_title_bar = kept.system_title_bar;
+        (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
         self.settings_kept = Some(kept);
         self.settings_path = Some(path);
     }
@@ -303,7 +347,13 @@ impl BimApp {
             window: self.window.kept,
             high_contrast: self.scan_contrast,
             grid_snapping: self.grid_snapping,
+            origin_marker: self.show_origin,
+            view_name: self.show_view_name,
+            shortcuts: self.custom_shortcuts.clone(),
             system_title_bar: self.system_title_bar,
+            agents_listen: self.agents.listen,
+            agents_port: self.agents.port,
+            agents_edit: self.agents.edit,
         }
     }
 
@@ -347,6 +397,7 @@ impl BimApp {
                             Page::Performance => self.performance_page(ui),
                             Page::Graphics => self.graphics_page(ui),
                             Page::Files => self.files_page(ui),
+                            Page::Agents => self.agents_page(ui),
                             Page::Updates => self.updates_page(ui),
                         });
                     });
@@ -391,16 +442,33 @@ impl BimApp {
         }
     }
 
+    /// A box for each palette, shown or closed, and the layout the profile starts in: Settings > User Interface's, and the
+    /// app bar's Palettes menu, which is the way back for the Tools palette, as it has no shortcut.
+    pub(crate) fn palette_switches(&mut self, ui: &mut Ui) {
+        for p in Palette::ALL {
+            let mut on = self.docking.shown(p);
+            if ui.checkbox(&mut on, t(p.name())).changed() {
+                self.show_palette(p, on);
+            }
+        }
+        let (tip, layout) = match self.profile {
+            Profile::BimCraft => {
+                (msg!("The tools on the left, the Inspector over the Navigator on the right, as at first"), Docking::default())
+            }
+            Profile::Rev => (msg!("Properties over the Project Browser, on the left, as at first"), Docking::revit()),
+        };
+        if ui.button(t("Reset Palette Layout")).on_hover_text(t(tip)).clicked() {
+            self.docking = layout;
+        }
+    }
+
     fn interface_page(&mut self, ui: &mut Ui, ctx: &Context) {
         heading(ui, msg!("Profile"));
         let before = self.profile;
         ui.horizontal(|ui| {
             for (profile, tip) in [
-                (Profile::BimCraft, msg!("BIMCraft's own look: a dark title bar, and the ribbon, the palettes and the bars laid out as Layout says")),
-                (
-                    Profile::Rev,
-                    msg!("Flat and square, the title bar in the ribbon's greys: the File tab leads the ribbon's tabs and the Options Bar is docked under the ribbon"),
-                ),
+                (Profile::BimCraft, msg!("BIMCraft's own: the tools in a palette, the Inspector and the Navigator on the right")),
+                (Profile::Rev, msg!("The ribbon over the view, Properties and the Project Browser on the left")),
             ] {
                 ui.radio_value(&mut self.profile, profile, profile.name()).on_hover_text(t(tip));
             }
@@ -464,14 +532,11 @@ impl BimApp {
             ui.label(RichText::new(why).color(now.muted));
         }
         heading(ui, msg!("Layout"));
-        // Rev has one layout, flush: the choice is BIMCraft's, and kept for it.
-        ui.add_enabled_ui(self.profile == Profile::BimCraft, |ui| {
-            ui.horizontal(|ui| {
-                let tip = msg!("The ribbon, the palettes and the bars as cards floating over the view");
-                ui.radio_value(&mut self.compact, false, t("Floating")).on_hover_text(t(tip));
-                let tip = msg!("The ribbon, the palettes and the bars flush to the window's edges");
-                ui.radio_value(&mut self.compact, true, t("Compact")).on_hover_text(t(tip));
-            });
+        ui.horizontal(|ui| {
+            let tip = msg!("The ribbon, the palettes and the bars as cards floating over the view");
+            ui.radio_value(&mut self.compact, false, t("Floating")).on_hover_text(t(tip));
+            let tip = msg!("The ribbon, the palettes and the bars flush to the window's edges");
+            ui.radio_value(&mut self.compact, true, t("Compact")).on_hover_text(t(tip));
         });
         heading(ui, "Language");
         ComboBox::from_id_salt("settings-language").selected_text(self.lang.label()).width(200.0).show_ui(ui, |ui| {
@@ -496,21 +561,16 @@ impl BimApp {
             }
         }
         heading(ui, msg!("Palettes"));
-        for p in Palette::ALL {
-            let mut on = self.docking.shown(p);
-            if ui.checkbox(&mut on, t(p.name())).changed() {
-                self.show_palette(p, on);
-            }
-        }
-        let (tip, layout) = match self.profile {
-            Profile::BimCraft => {
-                (msg!("The tools on the left, the Inspector over the Navigator on the right, as at first"), Docking::default())
-            }
-            Profile::Rev => (msg!("Properties over the Project Browser, on the left, as at first"), Docking::revit()),
-        };
-        if ui.button(t("Reset Palette Layout")).on_hover_text(t(tip)).clicked() {
-            self.docking = layout;
-        }
+        self.palette_switches(ui);
+        heading(ui, msg!("Plans"));
+        ui.checkbox(&mut self.show_origin, t("Show the origin marker in plans")).on_hover_text(t(
+            "A small marker at the project's 0, 0 with the directions of x (east) and y (north). It is drawn on the screen only: \
+             never in a printed drawing, a sheet or an export",
+        ));
+        ui.checkbox(&mut self.show_view_name, t("Show the view's name in the corner of plans")).on_hover_text(t(
+            "The name of the floor plan or ceiling plan in its bottom left corner. It is drawn on the screen only, and the view's tab \
+             names it too",
+        ));
         later(ui, |ui| {
             let (mut scale, mut keys, mut reopen, mut views) = (100.0, true, false, false);
             ui.horizontal(|ui| {
@@ -536,9 +596,8 @@ impl BimApp {
     fn performance_page(&mut self, ui: &mut Ui) {
         heading(ui, msg!("Graphics card"));
         let found = self.card.available();
-        ui.add_enabled(found, egui::Checkbox::new(&mut self.card.wanted, t("Draw the 3D view on the graphics card"))).on_hover_text(t(
-            "Faster for large models. Hidden line and wireframe are still drawn on the processor, and so is everything if the card fails",
-        ));
+        ui.add_enabled(found, egui::Checkbox::new(&mut self.card.wanted, t("Draw the 3D view on the graphics card")))
+            .on_hover_text(t("Faster for large models. If the card fails, the 3D view is drawn on the processor"));
         let muted = |ui: &mut Ui, text: String| ui.label(RichText::new(text).color(pal().muted));
         let text = match (self.card.available(), &self.card.note) {
             (_, Some(why)) => crate::lang::tf("The 3D view is drawn on the processor: {}", &[why]),
@@ -620,6 +679,59 @@ impl BimApp {
                 ui.add(egui::TextEdit::singleline(&mut folder).desired_width(220.0));
             });
         });
+    }
+}
+
+impl BimApp {
+    /// Agents: the control port, through which an agent works on this project (`bimcraft-cli mcp --connect`), opened and closed
+    /// here as `--control PORT` opens it at the start, and whether agents may change the project or only read it.
+    fn agents_page(&mut self, ui: &mut Ui) {
+        let muted = |ui: &mut Ui, text: &str| ui.label(RichText::new(text).color(pal().muted));
+        heading(ui, msg!("Control port"));
+        let mut on = self.control.is_some();
+        let tip =
+            t("Opens the control port now and whenever BIMCraft starts: an agent connects with bimcraft-cli mcp --connect. Only this \
+             machine can reach it, and only with the token in bridge.json beside your favorites");
+        if ui.checkbox(&mut on, t("Let agents work on this project")).on_hover_text(tip).changed() {
+            self.agents.listen = on;
+            if on {
+                self.open_control();
+            } else {
+                self.close_control();
+            }
+        }
+        ui.horizontal(|ui| {
+            let l = ui.label(t("Port"));
+            let r = ui
+                .add(egui::DragValue::new(&mut self.agents.port).range(0..=u16::MAX).update_while_editing(false))
+                .labelled_by(l.id)
+                .on_hover_text(t("0 for any port that is free; an open port moves to a new one"));
+            if (r.changed() && !r.dragged()) || r.drag_stopped() {
+                self.control_port_changed();
+            }
+            muted(ui, t("0: any free port"));
+        });
+        let state = match (&self.control, &self.agents.failed) {
+            (Some(c), _) => {
+                let port = c.entry.port.to_string();
+                tf("Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}", &[&port, &port])
+            }
+            (None, Some(why)) => why.clone(),
+            (None, None) => t("Off: no agent can reach this window").to_string(),
+        };
+        muted(ui, &state);
+        if let Some(c) = &self.control {
+            muted(ui, &tf("Agents connected: {}", &[&c.agents().to_string()]));
+        }
+        heading(ui, msg!("Editing"));
+        ui.checkbox(&mut self.agents.edit, t("Allow agents to edit this project")).on_hover_text(t(
+            "Off, agents only read the project: they inspect it, read its schedules, render its views and export it to new files \
+             (its sheets to PDF among them), and whatever they ask that would change it, undo it, replace it or save over its file \
+             is refused",
+        ));
+        if !self.agents.edit {
+            muted(ui, t("Agents may only read this project."));
+        }
     }
 }
 

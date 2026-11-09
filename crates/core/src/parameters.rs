@@ -91,7 +91,7 @@ pub struct DictionaryRef {
 }
 
 /// The categories whose elements have no type: a type parameter can't be for them.
-pub const TYPELESS: [&str; 4] = ["room", "stair", "ramp", "mass"];
+pub const TYPELESS: [&str; 5] = ["room", "stair", "ramp", "mass", "project"];
 
 /// The category of project parameters a family's elements are.
 pub fn family_category(c: Category) -> &'static str {
@@ -244,7 +244,8 @@ pub fn kind_word(k: ParameterKind) -> &'static str {
 }
 
 /// Categories that are ours under another program's name, Revit's above all.
-const NAMED_CATEGORIES: [(&str, &str); 22] = [
+const NAMED_CATEGORIES: [(&str, &str); 23] = [
+    ("projectinformation", "project"),
     ("walls", "wall"),
     ("floors", "floor"),
     ("ceilings", "ceiling"),

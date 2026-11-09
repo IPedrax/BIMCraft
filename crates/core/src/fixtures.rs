@@ -63,6 +63,12 @@ fn power(load_va: Value, power_factor: f64, classification: &str) -> Value {
     })
 }
 
+/// A pipe connector of `domain` (`cold`, `hot`, `waste`…) and `flow`, at `at` in the family's axes, facing `direction` (the way
+/// its pipe leaves it), of nominal diameter `dn` mm.
+pub(crate) fn pipe(domain: &str, flow: &str, at: [Value; 3], direction: [f64; 3], dn: f64) -> Value {
+    json!({"kind": "pipe", "domain": domain, "flow": flow, "at": at, "direction": direction, "size": dn})
+}
+
 /// Sanitary fixtures: a kitchen sink, a shower, a floor drain (the WC, the washbasin and the bathtub are in the furniture's
 /// library).
 fn plumbing(language: Language) -> Vec<(String, Value)> {
@@ -128,9 +134,15 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
         w(msg!("Kitchen Sink")),
         json!({
             "category": "plumbing",
+            "kind": "sink",
             "parameters": [size(&width, 1200.0), size(&depth, 550.0), size(&height, 900.0), material(&mat, &metal)],
             "types": {"1200 x 550": {}, "800 x 500": {&width: 800, &depth: 500}},
-            "forms": forms
+            "forms": forms,
+            // Its waste under the bowl and its cold water beside it, both in the wall behind.
+            "connectors": [
+                pipe("waste", "out", [n(tap_x), n(0.0), f(format!("{height} - 400"))], [0.0, 1.0, 0.0], 50.0),
+                pipe("cold", "in", [n(tap_x - 150.0), n(0.0), f(format!("{height} - 300"))], [0.0, 1.0, 0.0], 20.0)
+            ]
         }),
     ));
 
@@ -145,6 +157,7 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
         w(msg!("Shower")),
         json!({
             "category": "plumbing",
+            "kind": "shower",
             "parameters": [size(&width, 900.0), size(&depth, 900.0)],
             "types": {"900 x 900": {}, "800 x 800": {&width: 800, &depth: 800}},
             "forms": [
@@ -153,6 +166,12 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
                 post(n(0.0), n(-60.0), n(12.0), n(50.0), n(2100.0), &metal),
                 block([n(-12.0), n(-300.0), n(12.0), n(-48.0)], n(2070.0), n(2100.0), &metal),
                 post(n(0.0), n(-300.0), n(90.0), n(2040.0), n(2070.0), &metal)
+            ],
+            // Its waste in the middle of the tray, and the mixer's cold and hot water in the wall.
+            "connectors": [
+                pipe("waste", "out", [n(0.0), f(format!("-({depth}) / 2")), n(0.0)], [0.0, 0.0, -1.0], 40.0),
+                pipe("cold", "in", [n(-100.0), n(0.0), n(1100.0)], [0.0, 1.0, 0.0], 20.0),
+                pipe("hot", "in", [n(100.0), n(0.0), n(1100.0)], [0.0, 1.0, 0.0], 20.0)
             ]
         }),
     ));
@@ -167,20 +186,22 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
         w(msg!("Floor Drain")),
         json!({
             "category": "drain",
+            "kind": "floor_drain",
             "parameters": [size(&width, 150.0)],
             "types": {"150 x 150": {}, "100 x 100": {&width: 100}},
             "forms": [
                 block([f(format!("-({side}) / 2")), f(format!("-({side}) / 2")), f(format!("{side} / 2")), f(format!("{side} / 2"))], n(-50.0), n(0.0), &metal),
                 opening,
                 slat(-20.0), slat(0.0), slat(20.0)
-            ]
+            ],
+            "connectors": [pipe("waste", "out", [n(0.0), n(0.0), n(-50.0)], [0.0, 0.0, -1.0], 40.0)]
         }),
     ));
     out
 }
 
-/// Pipe fittings and a valve, centred on the pipe they join (its centre line at their z = 0, along x, and a branch toward +y):
-/// they are components until fittings have connectors.
+/// Pipe fittings and a valve, centred on the pipe they join (its centre line at their z = 0, along x, and a branch toward +y),
+/// with a connector at each end, of their diameter and the domain of the pipe they join.
 pub fn pipework(language: Language) -> Vec<(String, Value)> {
     let w = |s: &str| language.word(s).to_string();
     let (diameter, mat) = (w(msg!("Diameter")), w("Material"));
@@ -201,23 +222,34 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
             .into()
     };
     let neg = |e: &str| format!("-({e})");
+    // An end of it: where its pipe goes in, the way it leaves, its diameter, any domain.
+    let end = |at: [Value; 3], direction: [f64; 3]| json!({"kind": "pipe", "at": at, "direction": direction, "size": diameter});
+    let zero = || json!(0);
     vec![
         (
             w(msg!("Elbow 90")),
             json!({
                 "category": "pipefitting",
+                "kind": "bend",
                 "parameters": [size(&diameter, 50.0), material(&mat, &pvc)],
                 "types": sizes(&["25", "50", "110"]),
-                "forms": [along_x(&neg(&hub), &r, &mat), along_y(&neg(&r), &hub, &mat)]
+                "forms": [along_x(&neg(&hub), &r, &mat), along_y(&neg(&r), &hub, &mat)],
+                "connectors": [end([f(neg(&hub)), zero(), zero()], [-1.0, 0.0, 0.0]), end([zero(), f(hub.clone()), zero()], [0.0, 1.0, 0.0])]
             }),
         ),
         (
             w(msg!("Tee")),
             json!({
                 "category": "pipefitting",
+                "kind": "tee",
                 "parameters": [size(&diameter, 50.0), material(&mat, &pvc)],
                 "types": sizes(&["25", "50", "110"]),
-                "forms": [along_x(&neg(&hub), &hub, &mat), along_y("0", &hub, &mat)]
+                "forms": [along_x(&neg(&hub), &hub, &mat), along_y("0", &hub, &mat)],
+                "connectors": [
+                    end([f(neg(&hub)), zero(), zero()], [-1.0, 0.0, 0.0]),
+                    end([f(hub.clone()), zero(), zero()], [1.0, 0.0, 0.0]),
+                    end([zero(), f(hub.clone()), zero()], [0.0, 1.0, 0.0])
+                ]
             }),
         ),
         (
@@ -231,7 +263,8 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
                     post(json!(0), json!(0), f(format!("{diameter} * 0.7")), f(neg(&r)), f(format!("{diameter} * 0.7")), &mat),
                     post(json!(0), json!(0), f(format!("{diameter} * 0.25")), f(format!("{diameter} * 0.7")), f(format!("{diameter} * 1.6")), &mat),
                     post(json!(0), json!(0), f(format!("{diameter} * 0.8")), f(format!("{diameter} * 1.6")), f(format!("{diameter} * 1.7")), &mat)
-                ]
+                ],
+                "connectors": [end([f(neg(&hub)), zero(), zero()], [-1.0, 0.0, 0.0]), end([f(hub.clone()), zero(), zero()], [1.0, 0.0, 0.0])]
             }),
         ),
     ]

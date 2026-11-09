@@ -22,6 +22,97 @@ fn count(s: &mut Session, category: &str) -> u64 {
     run(s, "elements", json!({"category": category}))["count"].as_u64().unwrap()
 }
 
+/// Every property a command's parameter schema declares, by its dotted path (`texture.path`).
+fn schema_paths(value: &Value, prefix: &str, out: &mut Vec<String>) {
+    let Some(object) = value.as_object() else { return };
+    if let Some(Value::Object(props)) = object.get("properties") {
+        for (name, schema) in props {
+            let path = if prefix.is_empty() { name.clone() } else { format!("{prefix}.{name}") };
+            out.push(path.clone());
+            schema_paths(schema, &path, out);
+        }
+    }
+    for key in ["items", "oneOf", "anyOf", "allOf"] {
+        if let Some(inner) = object.get(key) {
+            match inner {
+                Value::Array(all) => {
+                    for v in all {
+                        schema_paths(v, prefix, out);
+                    }
+                }
+                v => schema_paths(v, prefix, out),
+            }
+        }
+    }
+}
+
+/// A plugin only reaches the disk with the `files` permission, and what says a command reaches it is its own mark.
+/// So a command that takes a file's path cannot be left unmarked: a new command with a `path` (or a texture's
+/// picture, or a `save` file) fails here until it says [`crate::engine::Files::Read`] or `Write`, or
+/// [`crate::engine::Files::Conditional`] if only some of its parameters do.
+#[test]
+fn a_command_that_takes_a_path_is_marked_as_touching_files() {
+    let mut unmarked = Vec::new();
+    let mut conditional = Vec::new();
+    for command in commands() {
+        let schema: Value = match serde_json::from_str(command.params) {
+            Ok(schema) => schema,
+            // A documented example with its own words (`{name?, language?: en|pt|…}`) isn't a JSON schema: there
+            // is no property to find, so nothing to miss.
+            Err(_) => continue,
+        };
+        let mut paths = Vec::new();
+        schema_paths(&schema, "", &mut paths);
+        let kinds = ["path", "save", "texture.path"];
+        let takes = kinds.iter().find(|kind| paths.iter().any(|p| p == *kind));
+        let Some(kind) = takes else {
+            // A command with no file parameter that is marked as a file one is a lie too: it would need the
+            // permission for nothing.
+            assert!(
+                command.files == crate::engine::Files::Conditional || command.files == crate::engine::Files::None,
+                "`{}` is marked {:?} but takes no path",
+                command.id,
+                command.files
+            );
+            continue;
+        };
+        match command.files {
+            crate::engine::Files::None => unmarked.push(format!("{kind} in `{}`", command.id)),
+            crate::engine::Files::Conditional => conditional.push(command.id),
+            _ => {}
+        }
+    }
+    assert!(unmarked.is_empty(), "these commands take a file and aren't marked as touching files: {unmarked:?}");
+    // The conditional ones decide by their parameters; the test below checks each call.
+    for id in conditional {
+        let command = crate::engine::find(id).unwrap();
+        assert!(crate::engine::touches_files(command, &json!({})).is_none(), "`{id}` touches no file without parameters");
+    }
+}
+
+#[test]
+fn a_conditional_command_says_which_parameters_reach_the_disk() {
+    let given = |id: &str, params: Value| {
+        let command = crate::engine::find(id).unwrap();
+        crate::engine::touches_files(command, &params).is_some()
+    };
+    // `render` writes only a `.png`; any other path is refused before it reaches the disk.
+    assert!(given("render", json!({"path": "plan.png"})), "a picture written to a path");
+    assert!(!given("render", json!({})), "the default is a picture in the reply");
+    assert!(given("material", json!({"texture": {"kind": "image", "path": "oak.png"}})), "a texture read from a file");
+    assert!(!given("material", json!({"texture": {"kind": "image", "image": "aGVsbG8="}})), "a texture given as bytes");
+    assert!(given("family", json!({"save": "door.json"})), "a family written to a file");
+    assert!(given("family", json!({"path": "door.json"})), "a family read from a file");
+    assert!(!given("family", json!({"category": "door"})), "a family made in the project");
+    // The binary writers: any path they take is a file they write.
+    for id in ["schedule", "export_fill_patterns", "export_crosscheck"] {
+        assert!(given(id, json!({"path": "out.bin"})), "`{id}` writes a file");
+    }
+    for id in ["import_fill_patterns", "compare_crosscheck"] {
+        assert!(given(id, json!({"path": "in.txt"})), "`{id}` reads a file");
+    }
+}
+
 /// An 8 x 6 m box of walls on Level 1; the ids of its walls, bottom one first.
 fn house(s: &mut Session) -> Vec<u64> {
     let r = run(s, "wall", json!({"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true}));
@@ -331,6 +422,30 @@ fn undo_and_redo_step_through_commands() {
 }
 
 #[test]
+fn undo_and_redo_back_to_a_model_that_passed_the_check_dont_check_it_again() {
+    let mut s = Session::new();
+    house(&mut s);
+    run(&mut s, "door", json!({"at": [2000, 0]}));
+    let checks = s.checks;
+    run(&mut s, "undo", json!({}));
+    run(&mut s, "redo", json!({}));
+    run(&mut s, "undo", json!({"count": 1}));
+    assert_eq!(s.checks, checks, "each model undo and redo went back to had passed");
+    // A model that never passed (one opened, which is checked only by the first command after it) is checked when undo
+    // comes back to it.
+    let opened = s.model.as_ref().clone();
+    s.reset(opened, None);
+    run(&mut s, "door", json!({"at": [5000, 0]}));
+    let checks = s.checks;
+    run(&mut s, "undo", json!({}));
+    assert_eq!(s.checks, checks + 1);
+    // And once it has passed, not again.
+    run(&mut s, "redo", json!({}));
+    run(&mut s, "undo", json!({}));
+    assert_eq!(s.checks, checks + 1);
+}
+
+#[test]
 fn rooms_need_walls_around_them_and_follow_the_walls() {
     let mut s = Session::new();
     house(&mut s);
@@ -353,6 +468,25 @@ fn floors_default_to_the_outline_of_the_walls() {
     assert_eq!(run(&mut s, "floor", json!({}))["area_m2"], 48.0);
     let e = s.execute("floor", &json!({"level": "Level 2"})).unwrap_err();
     assert!(e.contains("boundary"), "{e}");
+}
+
+#[test]
+fn a_sketched_elements_boundary_lies_at_its_own_height_in_3d() {
+    let mut s = Session::new();
+    house(&mut s);
+    let at = |s: &Session, v: &Value| id_of(s, &json!(v["id"])).and_then(|id| s.model.sketch_plane(id).map(|p| p.z));
+    let floor = run(&mut s, "floor", json!({"offset": 150}));
+    assert_eq!(at(&s, &floor), Some(150.0), "a floor's top");
+    let ceiling = run(&mut s, "ceiling", json!({"point": [4000, 3000], "offset": 2600}));
+    assert_eq!(at(&s, &ceiling), Some(2600.0), "a ceiling's underside");
+    let up = s.model.elevation(s.model.levels()[1].0);
+    let roof = run(&mut s, "roof", json!({"level": "Level 2", "offset": 200}));
+    assert_eq!(at(&s, &roof), Some(up + 200.0), "a roof's base");
+    let sketch = json!([[1000, 1000], [2000, 1000], [2000, 2000], [1000, 2000]]);
+    let shaft = run(&mut s, "shaft", json!({"boundary": sketch, "base_offset": 300}));
+    assert_eq!(at(&s, &shaft), Some(300.0), "a shaft's bottom");
+    let wall = s.model.elements.iter().find(|(_, e)| matches!(e, crate::model::Element::Wall(_))).map(|(id, _)| *id);
+    assert_eq!(wall.and_then(|id| s.model.sketch_plane(id)), None, "a wall has no sketch");
 }
 
 #[test]
@@ -631,16 +765,16 @@ fn scripts_run_line_by_line_and_name_the_line_that_fails() {
 fn an_atomic_script_is_one_undo_step_and_leaves_nothing_done_when_a_line_fails() {
     let mut s = Session::new();
     run(&mut s, "level", json!({"elevation": 3000}));
-    let (history, levels) = (s.history(), count(&mut s, "level"));
+    let (history, levels) = (s.history().len(), count(&mut s, "level"));
     let e = s.script_atomic("level {\"elevation\": 6000}\nphase {\"name\": \"Later\"}\nnope\n").unwrap_err();
     assert!(e.contains("line 3"), "{e}");
     assert_eq!(count(&mut s, "level"), levels, "the lines before the failure are undone too");
-    assert_eq!(s.history(), history, "and leave no undo step");
+    assert_eq!(s.history().len(), history, "and leave no undo step");
     // One that goes through is one step: undo takes all of it back, redo puts it all again.
     let out = s.script_atomic("# two levels\nlevel {\"elevation\": 6000}\nlevel {\"elevation\": 9000}\n").unwrap();
     assert_eq!(out.len(), 2);
     assert_eq!(count(&mut s, "level"), levels + 2);
-    assert_eq!(s.history().len(), history.len() + 1);
+    assert_eq!(s.history().len(), history + 1);
     assert_eq!(s.history().last(), Some(&"Script"));
     run(&mut s, "undo", json!({}));
     assert_eq!(count(&mut s, "level"), levels);
@@ -657,7 +791,7 @@ fn a_failed_transaction_puts_back_the_history_the_phase_and_the_path_too() {
     let mut s = Session::new();
     run(&mut s, "level", json!({"elevation": 3000}));
     run(&mut s, "undo", json!({}));
-    let (model, history) = (Arc::clone(&s.model), s.history());
+    let (model, history) = (Arc::clone(&s.model), s.history().len());
     s.path = Some("kept.bimcraft".into());
     let e = s
         .transaction("Grouped", |s| {
@@ -671,7 +805,7 @@ fn a_failed_transaction_puts_back_the_history_the_phase_and_the_path_too() {
         .unwrap_err();
     assert!(!e.is_empty());
     assert!(Arc::ptr_eq(&s.model, &model), "the very model it started from");
-    assert_eq!(s.history(), history);
+    assert_eq!(s.history().len(), history);
     assert_eq!(s.phase, None);
     assert_eq!(s.path.as_deref(), Some(std::path::Path::new("kept.bimcraft")));
     // The redo that was there before is still there.
@@ -887,6 +1021,48 @@ fn flat(s: &mut Session) {
            door {"at": [5000, 3000], "type": "Single 800 x 2100"}"#,
     )
     .unwrap();
+}
+
+#[test]
+fn a_multi_category_schedule_counts_the_categories_it_names_and_is_the_projects_view() {
+    let mut s = Session::new();
+    flat(&mut s);
+    let r = run(
+        &mut s,
+        "schedule",
+        json!({"name": "Takeoff", "category": "multi-category", "categories": ["walls", "doors"],
+               "fields": ["Category", "Type", {"name": "Count", "total": true}], "sort": ["Category", "Type"], "grouped": true}),
+    );
+    assert_eq!(r["category"], "multicategory");
+    assert_eq!(r["categories"], json!(["wall", "door"]));
+    assert_eq!(
+        r["rows"],
+        json!([
+            ["door", "Single 800 x 2100", 1.0],
+            ["door", "Single 900 x 2100", 2.0],
+            ["wall", "Generic - 200mm", 4.0],
+            ["wall", "Interior - 100mm", 1.0]
+        ])
+    );
+    assert_eq!(r["totals"], json!([null, null, 8.0]));
+    assert!(r["available"].as_array().unwrap().contains(&json!("Material")), "{}", r["available"]);
+    // Kept by its name, as it was left; its categories changed in place.
+    let id = r["id"].as_u64().unwrap();
+    let r = run(&mut s, "schedule", json!({"name": "Takeoff", "categories": ["doors"]}));
+    assert_eq!((r["id"].as_u64(), r["rows"].as_array().map(Vec::len)), (Some(id), Some(2)));
+    let e = s.execute("schedule", &json!({"name": "Door Schedule", "categories": ["walls"]})).unwrap_err();
+    assert!(e.contains("multi-category"), "{e}");
+    // On a sheet, as any schedule; and in a file, read back.
+    s.script(
+        r#"sheet {}
+               place {"sheet": "A101", "view": "Takeoff"}"#,
+    )
+    .unwrap();
+    let (back, left_out) = crate::model::Model::read(&serde_json::to_string(&*s.model).unwrap()).unwrap();
+    assert!(
+        left_out.is_empty()
+            && back.elements.values().any(|e| matches!(e, crate::model::Element::Schedule(sc) if sc.categories == ["door"]))
+    );
 }
 
 #[test]
@@ -1292,9 +1468,9 @@ fn a_family_loads_from_its_file() {
 fn reading_a_family_adds_no_undo_step() {
     let mut s = Session::new();
     desk(&mut s);
-    let before = s.history();
+    let before = s.history().len();
     let read = run(&mut s, "family", json!({"name": "Work Desk"}));
-    assert_eq!(s.history(), before, "reading costs no undo step");
+    assert_eq!(s.history().len(), before, "reading costs no undo step");
     // What it is, whole: its forms with their ids and GUIDs, its types, its values worked out.
     assert_eq!(read["name"], json!("Work Desk"));
     let form = &read["family"]["forms"][0];
@@ -1313,7 +1489,7 @@ fn reading_a_family_adds_no_undo_step() {
     let e = s.execute("family", &json!({"name": "Nope"})).unwrap_err();
     assert!(e.contains("there's no family `Nope`"), "{e}");
     assert!(!s.model.families.contains_key("Nope"));
-    assert_eq!(s.history(), before, "not even a failed read costs an undo step");
+    assert_eq!(s.history().len(), before, "not even a failed read costs an undo step");
 }
 
 /// `dry_run` holds when the family comes from a file (`path`) and when it is saved to one (`save`): neither loads nor writes.
@@ -1327,12 +1503,12 @@ fn dry_run_holds_for_a_family_loaded_from_a_file_and_one_saved_to_a_file() {
     // Saved for real once, the file the loads below read.
     run(&mut s, "family", json!({"name": "Work Desk", "save": file_name}));
     assert!(file.exists());
-    let before = s.history();
+    let before = s.history().len();
     // Loaded under another name with `dry_run`: it says what it would make, and the project has no such family.
     let dry = run(&mut s, "family", json!({"path": file_name, "name": "Loaded Desk", "dry_run": true}));
     assert_eq!(dry["dry_run"], json!(true), "{dry}");
     assert!(!s.model.families.contains_key("Loaded Desk"), "a dry run of a file makes nothing");
-    assert_eq!(s.history(), before);
+    assert_eq!(s.history().len(), before);
     // Saved with `dry_run`: the file is not written.
     let _ = std::fs::remove_file(&file);
     let dry = run(&mut s, "family", json!({"name": "Work Desk", "save": file_name, "dry_run": true}));
@@ -1346,7 +1522,7 @@ fn dry_run_holds_for_a_family_loaded_from_a_file_and_one_saved_to_a_file() {
 fn dry_run_reports_changes_and_keeps_the_model() {
     let mut s = Session::new();
     desk(&mut s);
-    let before = s.history();
+    let before = s.history().len();
     let change = json!({
         "name": "Work Desk", "dry_run": true,
         "parameters": [
@@ -1374,20 +1550,20 @@ fn dry_run_reports_changes_and_keeps_the_model() {
     // A `dry_run` of nothing to change reads the family as reading it does.
     let plain = run(&mut s, "family", json!({"name": "Work Desk"}));
     assert_eq!(run(&mut s, "family", json!({"name": "Work Desk", "dry_run": true}))["family"], plain["family"]);
-    assert_eq!(s.history(), before, "dry_run costs no undo step");
+    assert_eq!(s.history().len(), before, "dry_run costs no undo step");
     // The same change without `dry_run` makes it: one undo step, and the family as it said it would be.
     let mut change = change;
     change["dry_run"] = Value::Null;
     run(&mut s, "family", change);
     assert!(!s.model.families["Work Desk"].types.contains_key("1800 x 800"), "nothing named that");
     assert_eq!(s.model.families["Work Desk"].types["1800 x 900"]["Width"], json!(1800));
-    assert_eq!(s.history().len(), before.len() + 1);
+    assert_eq!(s.history().len(), before + 1);
     // A change that's refused comes back as an error without `dry_run` too, and makes nothing.
-    let before = s.history();
+    let before = s.history().len();
     let e = s.execute("family", &json!({"name": "Work Desk", "dry_run": true, "types": {"1800 x 900": {"Width": 0}}})).unwrap_err();
     assert!(e.contains("no area"), "{e}");
     assert_eq!(s.model.families["Work Desk"].types["1800 x 900"]["Width"], json!(1800));
-    assert_eq!(s.history(), before);
+    assert_eq!(s.history().len(), before);
 }
 
 /// One form patched by its id: every other form keeps its id, its GUID and its place.
@@ -1524,7 +1700,7 @@ fn a_family_is_saved_with_the_fields_it_has_always_had() {
 #[test]
 fn a_family_is_drawn_on_its_own_and_the_project_is_left_alone() {
     let mut s = family_house();
-    let before = s.history();
+    let before = s.history().len();
     let counts = run(&mut s, "inspect", json!({}))["counts"].clone();
     // The model the expensive way: a wall, the door in it, drawn by `render` on that model itself.
     let mut hand = Session::new();
@@ -1558,7 +1734,7 @@ fn a_family_is_drawn_on_its_own_and_the_project_is_left_alone() {
     }
     // The project: no element made, no step of history, nothing of it drawn on.
     assert_eq!(run(&mut s, "inspect", json!({}))["counts"], counts, "a preview makes no element");
-    assert_eq!(s.history(), before, "a preview makes no undo step");
+    assert_eq!(s.history().len(), before, "a preview makes no undo step");
     // A family never placed anywhere draws as well: it's drawn from what it is, not from what stands.
     let never = json!({"name": "Stool", "types": {"A": {}}, "forms": [
         {"profile": [[0, 0], [320, 0], [320, 320], [0, 320]], "from": 420, "to": 450, "material": "Timber"},
@@ -1585,7 +1761,7 @@ fn a_family_is_drawn_on_its_own_and_the_project_is_left_alone() {
     let _ = std::fs::remove_file(&path);
     // What's refused says so and draws nothing: no such family, no such type, no such mode.
     // (The history grew once above, when `Stool` was made: a real change, as it should be.)
-    let before = s.history();
+    let before = s.history().len();
     for (p, says) in [
         (json!({"family": "Nowhere"}), "there's no family `Nowhere`"),
         (json!({"family": "Single Door", "type": "9 x 9"}), "no type `9 x 9`"),
@@ -1595,7 +1771,7 @@ fn a_family_is_drawn_on_its_own_and_the_project_is_left_alone() {
         let e = s.execute("render", &p).unwrap_err();
         assert!(e.contains(says), "{p}: {e}");
     }
-    assert_eq!(s.history(), before, "not even a refused preview costs an undo step");
+    assert_eq!(s.history().len(), before, "not even a refused preview costs an undo step");
 }
 
 /// A table: a top 750 mm up over two legs, one square at a corner, one round.
@@ -1832,6 +2008,8 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"view": 100000, "show": ["roomreference"], "categories": {"roomreference": {"shown": 5}}}),
         json!({"elevation": "high"}),
         json!({"elevation": 1e300}),
+        json!({"crs": "EPSG:31983", "eastings": 1e300, "rotation": "x", "scale": -1, "clear": "yes", "map_zone": 5}),
+        json!({"crs": "EPSG:31983", "northings": 1e12, "height": -1e12, "rotation": 359, "scale": 1e-300, "description": "a\nb"}),
         json!({"category": "wall", "name": "", "thickness": -5}),
         json!({"category": "window", "name": "W", "width": 1e12, "height": 1}),
         json!({"boundary": [[0, 0], [1, 0], [0, 0]]}),
@@ -1847,6 +2025,9 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"from": "a", "to": [1], "names": "x", "prefix": 5, "find": []}),
         json!({"name": "P", "description": 5, "group": [], "read_only": 1, "scope": "x", "dictionary": "d", "kind": "plasma"}),
         json!({"name": "P", "scope": 5, "categories": ["room"]}),
+        json!({"name": 5, "number": [], "client": "x\n", "address": "a".repeat(5000), "params": {"Nope": 1}, "issue_date": 1e300}),
+        json!({"number": "1", "params": "x", "building": "\u{1}", "status": "a\rb", "organization": {}}),
+        json!({"client": "c", "params": {"P": [], "Phase Created": "x"}, "author": null}),
         json!({"category": "wall", "type": "x", "values": {"P": 1e300}, "copy_to": 5}),
         json!({"family": [], "type": {}, "values": 5}),
         json!({"category": "wall", "type": "Generic - 200mm", "values": {"Nope": []}}),
@@ -1882,6 +2063,9 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"refs": [{"id": 100002}, {"id": 100003}], "at": [0, 0]}),
         json!({"refs": [{"id": 100002, "face": "up"}, {"id": 100004}], "at": [0, 0]}),
         json!({"refs": [{"id": u64::MAX}, [0, 6000]], "at": [0, 0]}),
+        json!({"refs": [{"at": [0, 0, 0]}, {"at": [8000, 0, 3000], "edge": [[0, 6000, 0], [0, 6000, 0]]}], "at": [0, -1000, 0]}),
+        json!({"refs": [{"at": [0, 0, 1e300]}, {"at": [8000, 0, 0]}], "at": [0, -1000, f64::MAX], "view": 100002}),
+        json!({"refs": [{"at": [0, 0, 0], "edge": "x"}, {"at": [8000, 0, 0], "id": 5}], "at": [], "type": 7}),
         json!({"ids": [100002], "offset": [1e300, 0]}),
         json!({"ids": [100002, 100003], "leader": 5}),
         json!({"view": "{3D}", "azimuth": 1e300}),
@@ -1982,6 +2166,9 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"category": "ceiling", "name": "T", "thickness": 20, "grid": 1e-9}),
         json!({"category": "ceiling", "name": "T", "thickness": 1e300, "grid": -600}),
         json!({"id": 100002, "slope": 5, "arrow": [[0, 0], [1, 1]]}),
+        json!({"id": 100002, "drains": [[1e300, 0], [0, 0]], "fall": 1e300}),
+        json!({"id": 100002, "drains": "x", "fall": -1, "points": [{"at": [0, 0], "z": 1e300}], "lines": 5}),
+        json!({"id": 100002, "drains": [[1, 1]], "fall": 1, "ridges": [[[0, 0], [1e300, 0]], [[0, 0], [0, 0]]]}),
         json!({"ids": [100002, 100003], "offset": 1e300, "grid": 600}),
         json!({"start": [0, 0], "landings": [{"at": 1e300, "turn": 90}]}),
         json!({"start": [0, 0], "landings": [{"at": 8, "turn": "left"}], "slope": 1e-300}),
@@ -2198,7 +2385,62 @@ fn hostile_params_never_panic_or_break_the_model() {
     assert_eq!(views(&base.model), 2, "the sweep's base has a section and an elevation to draw");
     // The default 3D view's silhouettes and ambient shadows on, last so that no id moves: every picture of it draws them.
     let _ = base.execute("graphic_display_options", &json!({"edges": false, "silhouette": 4, "ambient_shadows": true}));
-    let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).collect();
+    // A roof over a rectangle with a slope of its own on each edge, last so that no id moves, and the
+    // payloads that give its edges slopes they can't have, or the lines of its sketch.
+    let roof = base
+        .execute("roof", &json!({"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "slope": 30, "slopes": [30, 45, 30, 45]}))
+        .map_or(Value::Null, |r| r["id"].clone());
+    let line = |slope: Value| json!({"start": [0, 0], "end": [8000, 0], "slope": slope});
+    let rest = [
+        json!({"start": [8000, 0], "end": [8000, 6000]}),
+        json!({"start": [8000, 6000], "end": [0, 6000]}),
+        json!({"start": [0, 6000], "end": [0, 0]}),
+    ];
+    let slopes = [
+        json!({"id": roof, "slopes": [1e300, 0, 0, 0]}),
+        json!({"id": roof, "slopes": [1, 2, 3]}),
+        json!({"id": roof, "slopes": "x"}),
+        json!({"id": roof, "slopes": [null, 0, 0, 0]}),
+        json!({"id": roof, "slopes": [-1, 0, 0, 0], "slope": 1e-300}),
+        json!({"id": roof, "slopes": [1e-320, 74.9, 0.0001, 75]}),
+        json!({"id": roof, "slopes": [1e-320, 74.9, 0.0001, 75], "slope": 5e-324}),
+        json!({"id": roof, "slopes": [0, 0, 0, 0], "slope": 0}),
+        json!({"id": roof, "slopes": [30, 45, 30, 45], "gables": [0, 1, 2, 3]}),
+        json!({"id": roof, "slopes": vec![45; 100_000]}),
+        json!({"id": roof, "slope": 75, "slopes": [75, 1, 75, 1]}),
+        json!({"boundary": [[0, 0], [4000, 0], [0, 4000]], "slope": 45, "slopes": [1e300, -1, 5]}),
+        json!({"boundary": [[0, 0], [4000, 0], [0, 4000]], "slope": 45, "slopes": [10, 80, 30], "gables": [0]}),
+        json!({"boundary": [[0, 0], [4000, 0], [0, 4000]], "courtyards": [[[1000, 500], [2000, 500], [1000, 1500]]], "slopes": [10, 20, 30, 40, 50, 60]}),
+        json!({"sketch": [line(json!(1e300)), rest[0].clone(), rest[1].clone(), rest[2].clone()], "slope": 30}),
+        json!({"sketch": [line(json!(-5)), rest[0].clone(), rest[1].clone(), rest[2].clone()], "slope": 30, "slopes": [10, 20, 30, 40]}),
+        json!({"sketch": [line(json!("x")), rest[0].clone()]}),
+        json!({"id": roof, "sketch": [line(json!(1e300)), rest[0].clone(), rest[1].clone(), rest[2].clone()]}),
+        json!({"id": roof, "sketch": [line(json!(0)), rest[0].clone(), rest[1].clone(), rest[2].clone()]}),
+        json!({"id": roof, "sketch": [line(json!(60)), rest[0].clone(), rest[1].clone(), rest[2].clone()]}),
+        json!({"sketch": [line(json!(60)), rest[0].clone(), rest[1].clone(), rest[2].clone()]}),
+    ];
+    // Walls' top offsets they can't have: past what a coordinate is, taking the top to or under the base, or not a number.
+    let wall = json!({"points": [[0, 0], [4000, 0]], "top_level": "Level 2"});
+    let offsets = [
+        json!({"points": [[0, 0], [4000, 0]], "top_level": "Level 2", "top_offset": 1e300}),
+        json!({"points": [[0, 0], [4000, 0]], "top_level": "Level 2", "top_offset": -1e300}),
+        json!({"points": [[0, 0], [4000, 0]], "top_level": "Level 2", "top_offset": f64::MAX}),
+        json!({"points": [[0, 0], [4000, 0]], "top_level": "Level 2", "top_offset": -3000}),
+        json!({"points": [[0, 0], [4000, 0]], "top_level": "Level 2", "top_offset": -3500, "base_offset": 1e9}),
+        json!({"points": [[0, 0], [4000, 0]], "top_level": "Level 2", "top_offset": 500, "arc": 90, "closed": true}),
+        json!({"points": [[0, 0], [4000, 0]], "top_offset": "x"}),
+        json!({"points": [[0, 0], [4000, 0]], "top_offset": [], "height": 1e300}),
+        json!({"points": [[0, 0], [4000, 0]], "height": 2700, "top_offset": 1e300}),
+        json!({"id": 100002, "top_offset": -3000}),
+        json!({"id": 100002, "top_offset": 1e300}),
+        json!({"id": 100002, "top_offset": null}),
+        json!({"id": 100002, "top_offset": {}}),
+        json!({"id": 100002, "top_offset": -2999, "base_offset": 1e9}),
+        json!({"ids": [100002, 100003, 100004], "top_offset": -2999.999}),
+        json!({"ids": [100002, 100003], "top_offset": 1e-300, "top_level": null, "height": -1}),
+        wall,
+    ];
+    let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -3454,17 +3696,18 @@ fn walls_attached_to_a_roof_follow_its_underside() {
     let ids = house(&mut s);
     // Gabled over the 8 x 6 m box: its slopes face south and north, the ridge runs east and west.
     let roof = run(&mut s, "roof", json!({"gable": true}))["id"].as_u64().unwrap();
-    // A window above the walls' tops doesn't fit the east wall, until it rises into the gable.
-    assert!(s.execute("window", &json!({"at": [8000, 3000], "sill": 2000})).unwrap_err().contains("fit"));
+    // A window whose sill is over the walls' tops isn't in the east wall, until it rises into the gable (one only reaching
+    // past the top is: issue #215).
+    assert!(s.execute("window", &json!({"at": [8000, 3000], "sill": 3200})).unwrap_err().contains("over the top"));
     run(&mut s, "modify", json!({"ids": ids, "attach_top": roof}));
     let tan = 30f64.to_radians().tan();
     let top = |s: &Session, id: u64, p: P2| crate::view3d::tops_at(&s.model, p)[&id];
     assert!((top(&s, ids[1], P2(8000.0, 3000.0)) - (3000.0 + 3100.0 * tan)).abs() < 1.0, "the east wall reaches the ridge");
     assert!((top(&s, ids[0], P2(4000.0, 0.0)) - (3000.0 + 100.0 * tan)).abs() < 1.0, "the south wall keeps under its slope");
-    run(&mut s, "window", json!({"at": [8000, 3000], "sill": 2000}));
+    run(&mut s, "window", json!({"at": [8000, 3000], "sill": 3200}));
     assert!((element(&mut s, ids[1])["height"].as_f64().unwrap() - (3000.0 + 3100.0 * tan)).abs() < 1.0);
     // Detached, the wall wouldn't hold the window.
-    assert!(s.execute("modify", &json!({"id": ids[1], "attach_top": null})).unwrap_err().contains("fit"));
+    assert!(s.execute("modify", &json!({"id": ids[1], "attach_top": null})).unwrap_err().contains("over the top"));
     // A wall attached to a floor stops under it; its base attached to one stands on it.
     let floor =
         run(&mut s, "floor", json!({"level": 100001, "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}))["id"].as_u64().unwrap();
@@ -3582,6 +3825,32 @@ fn shafts_cut_the_floors_ceilings_and_roofs_they_pass_through() {
     let _ = std::fs::remove_file(path);
     assert_eq!((ifc.matches("IFCOPENINGELEMENT(").count(), ifc.matches("IFCRELVOIDSELEMENT(").count()), (3, 3));
     assert!(ifc.contains(".CEILING.)"), "the ceiling, as a covering");
+}
+
+#[test]
+fn a_floor_with_curved_openings_is_cut_round_them_into_few_pieces() {
+    // A wavy floor with two round openings dented here and there, as finely curved as the Leuven library's: each concave,
+    // so in triangles, every piece of the floor cut by every piece of one opening and then the other, it came to tens of
+    // thousands of slivers, each a slab with sides of its own.
+    let ring = |x: f64, r: f64, n: usize, dent: f64, every: usize| -> Vec<[f64; 2]> {
+        let at = |i: usize| (std::f64::consts::TAU * i as f64 / n as f64, if i.is_multiple_of(every) { r - dent } else { r });
+        (0..n).map(at).map(|(a, r)| [x + r * a.cos(), r * a.sin()]).collect()
+    };
+    let mut s = Session::new();
+    let holes = [ring(-4500.0, 3000.0, 141, 200.0, 12), ring(4500.0, 3000.0, 141, 200.0, 12)];
+    let id = run(&mut s, "floor", json!({"boundary": ring(0.0, 10000.0, 158, 600.0, 2), "openings": holes}))["id"].as_u64().unwrap();
+    // Triangles round its holes: as many as its corners, and two for each hole less two.
+    let corners = 158 + 2 * 141 + 2;
+    let Some(crate::model::Element::Floor(f)) = s.model.elements.get(id) else { panic!("{id} is a floor") };
+    let pieces = s.model.floor_faces(f);
+    let shown = crate::view3d::Scene::new(&s.model).shown(&crate::graphics::Look::of_3d(&s.model));
+    assert!(pieces.len() <= corners && shown <= 8 * corners, "{} pieces, {shown} triangles", pieces.len());
+    // All of it but the openings, open through each and whole between and round them.
+    let area: f64 = pieces.iter().map(|(r, _)| crate::geom::area(r)).sum();
+    let whole = crate::geom::area(&f.boundary).abs() - f.openings.iter().map(|o| crate::geom::area(o).abs()).sum::<f64>();
+    assert!((area - whole).abs() < 1000.0, "{area} mm² of {whole}");
+    let over = |x: f64| crate::view3d::tops_at(&s.model, P2(x, 0.0)).contains_key(&id);
+    assert_eq!([-4500.0, 4500.0, 0.0, 9000.0].map(over), [false, false, true, true]);
 }
 
 #[test]
@@ -4439,7 +4708,9 @@ fn sliding_doors_and_windows_say_how_they_open_in_ifc_and_in_schedules() {
     // Out to IFC: a sliding door slides toward its hand, a double door is a double door, a window of two leaves two panels.
     let file = crate::ifc::export(&s.model);
     assert!(file.contains(".SLIDING_TO_LEFT.") && file.contains(".DOUBLE_DOOR_SINGLE_SWING."), "door operations");
-    assert_eq!(file.matches(".DOUBLE_PANEL_VERTICAL.").count(), 2, "both windows have two leaves");
+    // Counted on the windows themselves: their types say so too, as a window of two leaves is of a type that does.
+    let two_leaves = file.lines().filter(|l| l.contains("=IFCWINDOW(") && l.contains(".DOUBLE_PANEL_VERTICAL.")).count();
+    assert_eq!(two_leaves, 2, "both windows have two leaves");
     run(&mut s, "modify", json!({"id": doors[0], "flip_hand": true}));
     let file = crate::ifc::export(&s.model);
     assert!(file.contains(".SLIDING_TO_RIGHT."));
@@ -5635,10 +5906,12 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_project_is_saved_as_format_13_and_one_of_format_4_to_12_opens_as_it_is_and_one_of_format_14_is_refused() {
-    use crate::model::Model;
+fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_is_and_a_newer_one_is_refused() {
+    use crate::model::{FORMAT, Model};
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
-    // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch. Nothing in a file of 4
+    // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch;
+    // 13 floors' and flat roofs' shapes; 14 the categories of family components, which the starter view templates name; 15 a roof's slope for each
+    // edge and a wall's top offset; 16 dimensions in 3D views and the locks Align leaves; 17 multi-category schedules and Italian projects; 18 pipe, data and earthing connectors; 19 dictionaries and project parameters' kinds and scopes. Nothing in a file of 4
     // to 7 that holds no notes changes.
     let mut s = Session::new();
     let empty = serde_json::to_value(&*s.model).unwrap();
@@ -5646,38 +5919,41 @@ fn a_project_is_saved_as_format_13_and_one_of_format_4_to_12_opens_as_it_is_and_
     run(&mut s, "detail_line", json!({"start": [0, 0], "end": [1000, 0]}));
     let full = serde_json::to_value(&*s.model).unwrap();
     for v in [&empty, &full] {
-        assert_eq!(v["format"], 13, "a project is saved as format 13");
-        for old in [4, 5, 6, 7, 8, 9, 10, 11, 12] {
+        assert_eq!(v["format"], FORMAT, "a project is saved as the current format");
+        for old in 4..FORMAT {
             let mut was = v.clone();
             was["format"] = json!(old);
             let (m, left_out) = Model::read(&was.to_string()).unwrap();
-            assert_eq!((m.format, left_out.len(), m.elements.len()), (13, 0, v["elements"].as_object().unwrap().len()));
+            assert_eq!((m.format, left_out.len(), m.elements.len()), (FORMAT, 0, v["elements"].as_object().unwrap().len()));
         }
     }
     assert!(full["elements"].as_object().unwrap().len() > 5);
-    // A project in Dutch is saved as format 13, which is what tells a build that doesn't know `nl` to refuse it.
+    // A project in Dutch is saved in the current format, newer than 12, which added Dutch, which is what tells a build that doesn't know `nl` to refuse it.
     let mut dutch = Session::new();
     run(&mut dutch, "new", json!({"language": "nl"}));
     let v = serde_json::to_value(&*dutch.model).unwrap();
-    assert_eq!((v["format"].clone(), v["language"].clone()), (json!(13), json!("nl")));
+    assert_eq!((v["format"].clone(), v["language"].clone()), (json!(FORMAT), json!("nl")));
     // A newer file says what it is and what to do, even when nothing else in it is wrong.
     let mut newer = empty.clone();
-    newer["format"] = json!(14);
+    newer["format"] = json!(FORMAT + 1);
     let e = Model::read(&newer.to_string()).unwrap_err();
     assert!(
-        e.contains("newer BIMCraft") && e.contains("file format 14") && e.contains("reads up to 13") && e.contains("update BIMCraft"),
+        e.contains("newer BIMCraft")
+            && e.contains(&format!("file format {}", FORMAT + 1))
+            && e.contains(&format!("reads up to {FORMAT}"))
+            && e.contains("update BIMCraft"),
         "{e}"
     );
     // A file of this format with a field it doesn't know is read without it, and says which.
     let mut odd = full.clone();
     odd["something_new"] = json!(true);
     let (m, left_out) = Model::read(&odd.to_string()).unwrap();
-    assert_eq!((m.format, left_out), (13, vec!["/something_new".to_string()]));
+    assert_eq!((m.format, left_out), (FORMAT, vec!["/something_new".to_string()]));
 }
 
 #[test]
-fn a_format_5_file_that_holds_elements_and_scans_migrates_to_13_and_keeps_both() {
-    use crate::model::Model;
+fn a_format_5_file_that_holds_elements_and_scans_migrates_to_the_current_format_and_keeps_both() {
+    use crate::model::{FORMAT, Model};
     let mut s = Session::new();
     house(&mut s);
     run(&mut s, "detail_line", json!({"start": [0, 0], "end": [1000, 0]}));
@@ -5688,13 +5964,13 @@ fn a_format_5_file_that_holds_elements_and_scans_migrates_to_13_and_keeps_both()
     let mut file: serde_json::Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
     file["format"] = json!(5);
     let (m, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((m.format, m.clouds.len(), left_out.len(), m.elements.len()), (13, 1, 0, s.model.elements.len()));
-    // Written again, it says 13.
-    assert_eq!(serde_json::from_str::<serde_json::Value>(&m.to_json().unwrap()).unwrap()["format"], 13);
-    // A file of 6 (detailing, no CAD drawings) opens as 10 likewise.
+    assert_eq!((m.format, m.clouds.len(), left_out.len(), m.elements.len()), (FORMAT, 1, 0, s.model.elements.len()));
+    // Written again, it says the current format.
+    assert_eq!(serde_json::from_str::<serde_json::Value>(&m.to_json().unwrap()).unwrap()["format"], FORMAT);
+    // A file of 6 (detailing, no CAD drawings) opens as the current format likewise.
     file["format"] = json!(6);
     let (m, left_out) = Model::read(&file.to_string()).unwrap();
-    assert_eq!((m.format, left_out.len(), m.elements.len()), (13, 0, s.model.elements.len()));
+    assert_eq!((m.format, left_out.len(), m.elements.len()), (FORMAT, 0, s.model.elements.len()));
 }
 
 #[test]
@@ -5782,13 +6058,13 @@ fn each_undo_step_says_what_it_made_or_took_away_and_undo_and_redo_go_back_sever
     run(&mut s, "move", json!({"ids": [walls[1]], "by": [0, 100]}));
     // Newest first, as Undo's list shows them.
     let steps = s.steps(false);
-    assert_eq!(steps.iter().map(|st| st.label).collect::<Vec<_>>(), ["Move", "Delete", "Door", "Wall"]);
+    assert_eq!(steps.iter().map(|st| st.label.clone()).collect::<Vec<_>>(), ["Move", "Delete", "Door", "Wall"]);
     assert!(steps[0].made.is_empty() && steps[0].removed.is_empty());
     assert_eq!(steps[1].removed, [("wall", 1), ("door", 1)], "by the first of each, in id order");
     assert_eq!((steps[2].made.as_slice(), steps[3].made.as_slice()), (&[("door", 1)][..], &[("wall", 4)][..]));
     assert_eq!(run(&mut s, "undo", json!({"count": 3})), json!({"undone": "Door", "count": 3}));
     assert_eq!((count(&mut s, "wall"), count(&mut s, "door")), (4, 0));
-    assert_eq!(s.steps(true).iter().map(|st| st.label).collect::<Vec<_>>(), ["Door", "Delete", "Move"]);
+    assert_eq!(s.steps(true).iter().map(|st| st.label.clone()).collect::<Vec<_>>(), ["Door", "Delete", "Move"]);
     assert_eq!(run(&mut s, "redo", json!({"count": 2})), json!({"redone": "Delete", "count": 2}));
     assert_eq!((count(&mut s, "wall"), count(&mut s, "door")), (3, 0));
     assert_eq!(run(&mut s, "undo", json!({})), json!({"undone": "Delete", "count": 1}));
@@ -6298,4 +6574,34 @@ fn symbols_draw_in_the_plan_and_ceiling_plan_of_their_level_whatever_height_the_
     // Not on another level's plan.
     let d = crate::render::draw(&s.model, 100001, view);
     assert!(!d.owners.contains(&Some(id)));
+}
+
+#[test]
+fn a_door_or_window_refused_for_a_wall_the_level_does_not_cut_says_so() {
+    let mut s = Session::new();
+    // The project's own "Level 2" at 3000 stands over "First floor", so a wall of it is 250 mm high.
+    run(&mut s, "level", json!({"name": "First floor", "elevation": 2750}));
+    let square = json!([[0, 0], [8000, 0], [8000, 6000], [0, 6000]]);
+    run(&mut s, "wall", json!({"points": square, "closed": true, "level": "First floor"}));
+    let e = s.execute("window", &json!({"at": [2000, 0], "level": "First floor"})).unwrap_err();
+    assert!(e.contains("no wall at [2000, 0] on First floor"), "{e}");
+    assert!(e.contains("wall 100") && e.contains("2750") && e.contains("3000") && e.contains("cuts at 3950"), "{e}");
+    // Where no wall stands at all, it is still just that.
+    let e = s.execute("window", &json!({"at": [4000, 3000], "level": "First floor"})).unwrap_err();
+    assert!(!e.contains("cuts at"), "{e}");
+}
+
+#[test]
+fn an_error_that_repeats_a_huge_value_stays_short() {
+    let mut s = Session::new();
+    house(&mut s);
+    // Isolating a few elements of a big model hides all the rest: more ids than a view's overrides may hold.
+    let ids: Vec<u64> = (100_000..100_000 + 100_001).collect();
+    let e = s.execute("graphics", &json!({"view": "Level 1", "hide_elements": ids})).unwrap_err();
+    assert!(e.len() < 2500, "{} characters", e.len());
+    assert!(e.starts_with("graphics: `hide_elements` is a list of element ids"), "{}", &e[..80.min(e.len())]);
+    assert!(e.contains("more characters"), "it says it was cut");
+    // A short message is left as it is.
+    let e = s.execute("graphics", &json!({"view": "Level 1", "hide_elements": [1]})).unwrap_err();
+    assert!(!e.contains("more characters"), "{e}");
 }

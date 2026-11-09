@@ -7,23 +7,27 @@
 //! what a view's graphics come to for each element: the drawing code asks it what to leave out and
 //! how to draw the rest, and it dresses the finished drawing.
 
-use bimcraft_i18n::ui_msg;
+use bimcraft_i18n::{msg, ui_msg};
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
+use crate::language::Language;
 use crate::model::{Element, Guid, Id, Key, MAX_TEXT, Model, ViewRange};
 use crate::pen::{MAX_PEN, Pen};
 use crate::render::{Drawing, Part, Prim, Rgb};
 use crate::schedule;
 
 #[cfg(test)]
+mod category_tests;
+#[cfg(test)]
 mod fill_tests;
 
 /// The categories a plan, a section or a 3D view draws, and so may hide and override: those of the
-/// model, then those of the annotation.
-pub const MODEL: [&str; 28] = [
+/// model, then those of the annotation. A family component is of its family's category (see [`COMPONENTS`]); `component`, which
+/// names them all, is no row of its own (see [`COMPONENT`]).
+pub const MODEL: [&str; 45] = [
     "wall",
     "floor",
     "ceiling",
@@ -47,11 +51,54 @@ pub const MODEL: [&str; 28] = [
     "groundconductor",
     "cable",
     "rebar",
-    "component",
+    "furniture",
+    "casework",
+    "plumbing",
+    "drain",
+    "pipefitting",
+    "pipeaccessory",
+    "equipment",
+    "outlet",
+    "switch",
+    "airterminal",
+    "earthing",
+    "inspectionbox",
+    "lighting",
+    "generic",
+    "dataoutlet",
+    "voiceoutlet",
+    "patchpanel",
+    "rack",
     "stair",
     "ramp",
     "railing",
     "roof",
+];
+/// What every family component is, named as a whole: an override, a view filter, a view template or a schedule that names
+/// `component` means every one of [`COMPONENTS`], as it did when they were one row. It is no row of Visibility/Graphics or
+/// Object Styles any more, but a file or a command may still say it; a category's own override is laid over it.
+pub const COMPONENT: &str = "component";
+/// The categories of family components, the names a family's category goes by in a file: one row each in Visibility/Graphics
+/// and Object Styles, in [`MODEL`]. A door's or a window's family is placed in a wall as a door or a window, so it has none.
+pub const COMPONENTS: [&str; 18] = [
+    "furniture",
+    "casework",
+    "plumbing",
+    "drain",
+    "pipefitting",
+    "pipeaccessory",
+    "equipment",
+    "outlet",
+    "switch",
+    "airterminal",
+    "earthing",
+    "inspectionbox",
+    "lighting",
+    "generic",
+    "dataoutlet",
+    "voiceoutlet",
+    "patchpanel",
+    "rack",
 ];
 pub const ANNOTATION: [&str; 10] = ["dimension", "tag", "text", "line", "region", "spot", "grid", "level", "section", "elevation"];
 /// The point clouds, which views hide and override as Revit's Visibility/Graphics does on a tab of their own: not a model
@@ -99,9 +146,52 @@ pub fn off_unless_shown(key: &str) -> bool {
     sub(key).is_some_and(|s| s.off)
 }
 
+/// The category of family components a family of `category` has, as a row of [`MODEL`]; none for a door's or a window's, which
+/// are placed in walls as doors and windows. Every other category is named here, so a new one is a compile error until it is.
+pub fn component_category(category: crate::family::Category) -> Option<&'static str> {
+    use crate::family::Category as C;
+    Some(match category {
+        C::Furniture => "furniture",
+        C::Casework => "casework",
+        C::Plumbing => "plumbing",
+        C::Drain => "drain",
+        C::PipeFitting => "pipefitting",
+        C::PipeAccessory => "pipeaccessory",
+        C::Equipment => "equipment",
+        C::Outlet => "outlet",
+        C::Switch => "switch",
+        C::AirTerminal => "airterminal",
+        C::Earthing => "earthing",
+        C::InspectionBox => "inspectionbox",
+        C::Lighting => "lighting",
+        C::Generic => "generic",
+        C::DataOutlet => "dataoutlet",
+        C::VoiceOutlet => "voiceoutlet",
+        C::PatchPanel => "patchpanel",
+        C::Rack => "rack",
+        C::Door | C::Window => return None,
+    })
+}
+
+/// The category views and Object Styles know element `e` by: its own, but for a component, which is of its family's category
+/// (`component` when its family is gone, or is a door's or a window's).
+pub fn category_of(m: &Model, e: &Element) -> &'static str {
+    match e {
+        Element::Component(c) => m.families.get(&c.family).and_then(|f| component_category(f.category)).unwrap_or(COMPONENT),
+        // A 3D view's dimensions are Dimensions to its Visibility/Graphics.
+        Element::Dimension3D(_) => "dimension",
+        other => other.category(),
+    }
+}
+
+/// Whether `category` is one of the model's: a row of [`MODEL`], or `component`, which names the family categories.
+pub fn is_model(category: &str) -> bool {
+    MODEL.contains(&category) || category == COMPONENT
+}
+
 /// Whether views draw elements of `category`, or hide and show it (a subcategory).
 pub fn drawn(category: &str) -> bool {
-    MODEL.contains(&category)
+    is_model(category)
         || ANNOTATION.contains(&category)
         || SCANS.contains(&category)
         || IMPORTED.contains(&category)
@@ -535,7 +625,31 @@ impl Graphics {
             Some(o) => o.hidden || (off_unless_shown(c) && !o.shown),
             None => off_unless_shown(c),
         };
-        own || sub(c).is_some_and(|s| self.hides(s.parent))
+        own || sub(c).is_some_and(|s| self.hides(s.parent)) || (COMPONENTS.contains(&c) && self.hides(COMPONENT))
+    }
+
+    /// These with `component` split into the family categories it names: each takes its own override laid over it, and
+    /// `component` is gone. What a view draws is the same, and every category has the row an editor shows it by.
+    pub fn split_component(&mut self) {
+        let Some(all) = self.categories.remove(COMPONENT) else { return };
+        for key in COMPONENTS {
+            let merged = self.categories.get(key).map_or_else(|| all.clone(), |own| own.over(&all));
+            self.categories.insert(key.to_string(), merged);
+        }
+    }
+
+    /// The category that hides `c` from this view, the one to show to bring it back: `c` itself, else what it is under
+    /// (`component`, for a category of a family component). None when it isn't hidden.
+    pub fn hidden_by(&self, c: &'static str) -> Option<&'static str> {
+        let own = match self.categories.get(c) {
+            Some(o) => o.hidden || (off_unless_shown(c) && !o.shown),
+            None => off_unless_shown(c),
+        };
+        if own {
+            return Some(c);
+        }
+        let parent = sub(c).map(|s| s.parent).or_else(|| COMPONENTS.contains(&c).then_some(COMPONENT))?;
+        self.hidden_by(parent)
     }
 
     /// Whether it is sound in `m`: known categories, overrides in range, filters and the template
@@ -552,7 +666,15 @@ impl Graphics {
             if !drawn(c) {
                 return Err(format!(
                     "`{c}` isn't a category views draw; there are: {}",
-                    MODEL.iter().chain(&ANNOTATION).chain(&SCANS).chain(&IMPORTED).copied().collect::<Vec<_>>().join(", ")
+                    MODEL
+                        .iter()
+                        .chain(&ANNOTATION)
+                        .chain(&SCANS)
+                        .chain(&IMPORTED)
+                        .chain(&[COMPONENT])
+                        .copied()
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 ));
             }
             o.check(&format!("category `{c}`"))?;
@@ -788,6 +910,36 @@ impl ViewTemplate {
     }
 }
 
+/// The view templates a new project starts with, named in `language`: three plan templates for the electrical disciplines,
+/// each controlling the view's categories alone (its scale, detail and range stay the view's own). Power draws luminaires in
+/// halftone behind the outlets and equipment; Lighting hides the outlets; Ceiling keeps luminaires and cable trays and hides
+/// what stands on the floor or the wall. A project from before has none, unless it made them.
+pub fn starter_templates(language: Language) -> BTreeMap<String, ViewTemplate> {
+    let template = |hidden: &[&str], halftone: &[&str]| {
+        let mut categories = BTreeMap::new();
+        for c in hidden {
+            categories.insert((*c).to_string(), Override { hidden: true, ..Override::default() });
+        }
+        for c in halftone {
+            categories.insert((*c).to_string(), Override { halftone: true, ..Override::default() });
+        }
+        ViewTemplate {
+            kind: Some(ViewKind::Plan),
+            controls: BTreeSet::from([Group::Categories]),
+            graphics: Graphics { categories, ..Graphics::default() },
+            view_range: None,
+        }
+    };
+    [
+        (msg!("Electrical Power"), template(&[], &["lighting"])),
+        (msg!("Electrical Lighting"), template(&["outlet"], &[])),
+        (msg!("Electrical Ceiling"), template(&["outlet", "switch", "equipment", "dataoutlet", "voiceoutlet", "patchpanel", "rack"], &[])),
+    ]
+    .into_iter()
+    .map(|(name, t)| (language.word(name).to_string(), t))
+    .collect()
+}
+
 /// Whether the project's view filters and view templates are sound.
 pub(crate) fn check_project(m: &Model) -> Result<(), String> {
     if m.view_filters.len() > MAX_FILTERS {
@@ -878,7 +1030,7 @@ pub fn graphics_of(m: &Model, view: impl Key) -> Option<&Graphics> {
 }
 
 /// What a view's graphics come to for each element of the model.
-#[derive(Default)]
+#[derive(Default, PartialEq)]
 pub struct Look {
     hidden: BTreeSet<Id>,
     /// The layers of each CAD drawing it hides, by the drawing's name.
@@ -952,7 +1104,7 @@ impl Look {
         let mut look = Look { style: g.style, layers: own.layers.clone(), ..Look::default() };
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
         let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));
-        if own.draws_as_is() && !linked && !crate::phasing::any(m) && !m.elements.values().any(|e| matches!(e, Element::Mass(_))) {
+        if own.draws_as_is() && !linked && !crate::phasing::any(m) && m.rare("mass").is_empty() {
             return look;
         }
         // The phase it shows, as where it stands in the project's order, and how its phase filter shows each status.
@@ -962,7 +1114,7 @@ impl Look {
         let applied: Vec<(&Applied, BTreeSet<Id>)> =
             g.filters.iter().filter_map(|a| Some((a, m.view_filters.get(&a.filter)?.matching(m)))).collect();
         for (&id, e) in &m.elements {
-            let cat = e.category();
+            let cat = category_of(m, e);
             if !drawn(cat) {
                 continue;
             }
@@ -996,7 +1148,13 @@ impl Look {
                 continue;
             }
             // The category's, then each filter's from the last to the first, then the element's own.
-            let mut over = g.categories.get(cat).map_or_else(|| base.clone(), |c| c.over(&base));
+            // A component takes what `component` says of all of them, under what its own category does.
+            let all = if COMPONENTS.contains(&cat) {
+                g.categories.get(COMPONENT).map_or_else(|| base.clone(), |c| c.over(&base))
+            } else {
+                base.clone()
+            };
+            let mut over = g.categories.get(cat).map_or(all.clone(), |c| c.over(&all));
             for (a, picked) in applied.iter().rev().filter(|(_, picked)| picked.contains(&id)) {
                 let _ = picked;
                 over = a.over.over(&over);

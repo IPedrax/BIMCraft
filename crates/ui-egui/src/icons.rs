@@ -97,6 +97,8 @@ icon_names! {
     Theme,
     Text,
     Spot,
+    SpotSlope,
+    ConvertLines,
     Angular,
     Radial,
     Linear,
@@ -110,10 +112,15 @@ icon_names! {
     Attach,
     Detach,
     Floor,
+    WorkPlane,
     Ceiling,
     Shaft,
     Mass,
     SlopeArrow,
+    ModifySubElements,
+    AddPoint,
+    AddSplitLine,
+    ResetShape,
     Ramp,
     Railing,
     ExtrusionRoof,
@@ -127,6 +134,7 @@ icon_names! {
     ImportCad,
     LinkCad,
     Parameters,
+    ProjectInfo,
     Measure,
     Snaps,
     Visibility,
@@ -879,6 +887,22 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(15.0, 7.0), (21.0, 7.0)]);
             g.line(&[(15.0, 11.0), (19.0, 11.0)]);
         }
+        Icon::ConvertLines => {
+            // As Add Split Line's: a slab's top, a crease across it, dashed where it's a folding line, solid where it's
+            // become a split line, its end ringed.
+            g.closed(&[(3.0, 5.0), (21.0, 5.0), (21.0, 19.0), (3.0, 19.0)]);
+            g.line(&[(5.0, 17.0), (7.0, 15.6)]);
+            g.line(&[(9.0, 14.2), (11.0, 12.8)]);
+            g.line(&[(13.0, 11.4), (19.0, 7.0)]);
+            g.circle((19.0, 7.0), 1.6);
+        }
+        Icon::SpotSlope => {
+            // A falling top, an arrow down it, and its fall written over.
+            g.line(&[(3.0, 13.0), (21.0, 19.0)]);
+            g.line(&[(6.0, 9.0), (18.0, 13.0)]);
+            g.line(&[(14.0, 9.5), (18.0, 13.0), (13.5, 14.0)]);
+            g.line(&[(4.0, 4.0), (9.0, 4.0)]);
+        }
         Icon::Angular => {
             // Two rays and their shared-center angular dimension arc.
             g.line(&[(4.0, 20.0), (21.0, 20.0)]);
@@ -971,6 +995,14 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(3.0, 11.0), (3.0, 14.0), (11.0, 18.0), (21.0, 13.0), (21.0, 10.0)]);
             g.line(&[(11.0, 15.0), (11.0, 18.0)]);
         }
+        Icon::WorkPlane => {
+            // A plane seen at an angle, ruled once each way, and the arrow square to it.
+            g.closed(&[(2.0, 16.0), (8.0, 10.0), (22.0, 10.0), (16.0, 16.0)]);
+            g.line(&[(5.0, 13.0), (19.0, 13.0)]);
+            g.line(&[(12.0, 10.0), (9.0, 16.0)]);
+            g.line(&[(12.0, 13.0), (12.0, 3.0)]);
+            g.line(&[(9.5, 5.5), (12.0, 3.0), (14.5, 5.5)]);
+        }
         Icon::Ceiling => {
             // A suspended tiled ceiling above a separate floor datum; not a floating pair of bars.
             if compact {
@@ -1005,6 +1037,31 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.closed(&[(3.0, 16.0), (21.0, 7.0), (21.0, 11.0), (3.0, 20.0)]);
             g.line(&[(5.0, 11.0), (15.0, 6.0)]);
             g.line(&[(11.5, 5.0), (15.0, 6.0), (13.7, 9.4)]);
+        }
+        Icon::ModifySubElements => {
+            // A slab's folded top, a pointer on its point.
+            g.line(&[(3.0, 9.0), (12.0, 13.0), (21.0, 9.0)]);
+            g.line(&[(3.0, 9.0), (3.0, 19.0), (21.0, 19.0), (21.0, 9.0)]);
+            g.closed(&[(12.0, 13.0), (12.0, 4.0), (15.0, 7.0), (18.0, 6.0)]);
+        }
+        Icon::AddPoint => {
+            // A slab's top folded down to a point, the point ringed.
+            g.line(&[(3.0, 9.0), (12.0, 14.0), (21.0, 9.0)]);
+            g.line(&[(3.0, 9.0), (3.0, 19.0), (21.0, 19.0), (21.0, 9.0)]);
+            g.circle((12.0, 14.0), 2.0);
+        }
+        Icon::AddSplitLine => {
+            // A slab's top in plan, a crease across it from corner to corner, its ends ringed.
+            g.closed(&[(3.0, 5.0), (21.0, 5.0), (21.0, 19.0), (3.0, 19.0)]);
+            g.line(&[(5.0, 17.0), (19.0, 7.0)]);
+            g.circle((5.0, 17.0), 1.6);
+            g.circle((19.0, 7.0), 1.6);
+        }
+        Icon::ResetShape => {
+            // A flat slab, and over it an arrow turning back.
+            g.closed(&[(3.0, 14.0), (21.0, 14.0), (21.0, 19.0), (3.0, 19.0)]);
+            g.line(&[(8.0, 10.0), (8.0, 6.0), (16.0, 6.0), (16.0, 10.0)]);
+            g.line(&[(5.5, 8.0), (8.0, 10.5), (10.5, 8.0)]);
         }
         Icon::Ramp => {
             g.closed(&[(3.0, 19.0), (21.0, 19.0), (21.0, 10.0)]);
@@ -1105,6 +1162,12 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.circle((11.0, 6.0), 2.0);
             g.circle((16.0, 12.0), 2.0);
             g.circle((8.0, 18.0), 2.0);
+        }
+        Icon::ProjectInfo => {
+            // A house's outline with an "i" inside: what the project is.
+            g.closed(&[(4.0, 21.0), (4.0, 9.0), (12.0, 3.0), (20.0, 9.0), (20.0, 21.0)]);
+            g.circle((12.0, 10.5), 1.0);
+            g.line(&[(12.0, 14.0), (12.0, 18.5)]);
         }
         Icon::Measure => {
             // A diagonal ruler with ticks perpendicular to its top edge, distinct from Units.

@@ -32,6 +32,17 @@ fn a_template_is_made_from_a_view_listed_by_its_kind_and_its_settings_wait_for_o
     pick(&mut h, Role::CheckBox, "Rooms");
     press(&mut h, "OK");
     shortcut(&mut h, "VT");
+    // A new project starts with the three electrical plan templates, listed with the kind of view they are for.
+    for starter in ["Electrical Power", "Electrical Lighting", "Electrical Ceiling"] {
+        assert!(h.query_by_label(starter).is_some(), "{starter}");
+    }
+    assert!(h.query_by_label("No Plan templates yet: New from This View makes one from a view of the kind.").is_none());
+    press(&mut h, "Cancel");
+    // Taken away, none is left to list.
+    for starter in ["Electrical Power", "Electrical Lighting", "Electrical Ceiling"] {
+        h.state_mut().session.execute("template", &json!({"name": starter, "delete": true})).unwrap();
+    }
+    shortcut(&mut h, "VT");
     assert!(h.query_by_label("No Plan templates yet: New from This View makes one from a view of the kind.").is_some());
     // One place makes one: from the view open, under the name typed.
     press(&mut h, "New from This View…");
@@ -71,6 +82,7 @@ fn duplicate_rename_and_delete_act_on_the_template_picked() {
     h.state_mut().session.execute("template", &json!({"name": "Plans", "from": 100000, "detail": "coarse"})).unwrap();
     h.state_mut().session.execute("graphics", &json!({"view": 100001, "template": "Plans"})).unwrap();
     shortcut(&mut h, "VT");
+    press(&mut h, "Plans");
     // Duplicate carries what the dialog has, unsaved edits too.
     choose_last(&mut h, "Detail Level", "Medium");
     press(&mut h, "Duplicate…");
@@ -101,6 +113,7 @@ fn visibility_graphics_edits_a_templates_draft_without_the_elements_tab() {
     let mut h = app(BOX);
     h.state_mut().session.execute("template", &json!({"name": "T", "from": 100000})).unwrap();
     shortcut(&mut h, "VT");
+    press(&mut h, "T");
     press(&mut h, "Edit V/G Overrides");
     assert!(h.query_by_label("Visibility/Graphics Overrides for View Template: T").is_some());
     assert!(h.query_by_role_and_label(Role::Button, "Elements").is_none(), "an element is a view's own");

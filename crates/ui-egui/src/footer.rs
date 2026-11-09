@@ -1,6 +1,6 @@
 //! The view control bar under a view, as Revit's has it: the view's Scale and Detail Level, or the 3D view's Visual Style, which
 //! the project keeps (the `scale`, `detail` and `visual_style` commands), then Temporary Hide/Isolate and Reveal Hidden Elements. What is hidden or revealed here is
-//! the window's, per view: it isn't in the project, saved or undone. The view draws a copy of the model with its graphics
+//! the window's, per view: it isn't in the project, saved or undone. Last on the bar, the control port's state (`control.rs`). The view draws a copy of the model with its graphics
 //! changed ([`BimApp::view_model`]), made once for each model and each setting, through the same `graphics` command the
 //! project's own changes go through; Apply to View makes the same change for good.
 
@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use bimcraft_core::engine::Session;
 use bimcraft_core::graphics::{self, ANNOTATION, Detail, Group, MODEL, VisualStyle};
-use bimcraft_core::model::{Id, Model};
+use bimcraft_core::model::{Element, Id, Model};
 use egui::{
     Color32, FontId, Frame, Key, Margin, Popup, Rect, Response, RichText, Sense, Shape, Stroke, StrokeKind, TextEdit, Ui, UiBuilder,
     WidgetInfo, WidgetType, pos2, vec2,
@@ -121,7 +121,12 @@ fn shadowed(base: &Arc<Model>, sheet: Sheet, three_d: Option<Id>, temp: &Temp) -
             g.elements.iter().filter(|(_, o)| o.hidden).filter_map(|(g, _)| base.elements.id(g)).filter(|i| drawn(i)).collect();
         // Each of them, and each element of a category hidden, in magenta.
         let paint = json!({"projection": {"color": REVEALED}, "cut": {"color": REVEALED}});
-        let by_category = base.elements.iter().filter(|(_, e)| cats.contains(&e.category())).map(|(i, _)| *i);
+        // Hidden with its own category, or with `component`, which an older project may say of all of them.
+        let hidden_whole = |e: &Element| {
+            let c = graphics::category_of(base, e);
+            cats.contains(&c) || (graphics::COMPONENTS.contains(&c) && cats.contains(&graphics::COMPONENT))
+        };
+        let by_category = base.elements.iter().filter(|(_, e)| hidden_whole(e)).map(|(i, _)| *i);
         if !cats.is_empty() {
             p["show"] = json!(cats);
         }
@@ -227,7 +232,7 @@ impl BimApp {
             self.status = Status { text: t("select what to hide or isolate first").into(), error: true };
             return None;
         }
-        let categories = elements.iter().filter_map(|id| m.elements.get(id)).map(|e| e.category()).collect();
+        let categories = elements.iter().filter_map(|id| m.elements.get(id)).map(|e| graphics::category_of(&m, e)).collect();
         Some((elements, categories))
     }
 
@@ -375,6 +380,7 @@ impl BimApp {
                                     self.open_display();
                                 }
                             });
+                            self.work_plane_button(ui);
                             ui.separator();
                         }
                         _ => {}
@@ -483,6 +489,9 @@ impl BimApp {
                         let note = if temp.reveal && !temp.hides() { msg!("Revealing hidden elements") } else { "Temporary Hide/Isolate" };
                         ui.label(RichText::new(tf("{} (HR resets)", &[t(note)])).color(FRAME));
                     }
+                    // The control port: off, listening, the agents connected, read-only.
+                    ui.separator();
+                    self.agents_indicator(ui);
                 })
             })
             .response
@@ -499,6 +508,16 @@ impl BimApp {
             let tall = controls(&mut ui.new_child(UiBuilder::new().id_salt(id).max_rect(rect)));
             ui.ctx().data_mut(|d| d.insert_temp(id.with("tall"), tall));
         }
+    }
+
+    /// How much of the view's foot the view control bar covers, in points: its card and the gap under it where it floats over the
+    /// view (as tall as it was drawn last, a row at first), nothing where (Compact) it is a bar under the view.
+    pub(crate) fn bar_cover(&self, ctx: &egui::Context) -> f32 {
+        if crate::style::compact() || self.graphic_view().is_none() {
+            return 0.0;
+        }
+        let tall = ctx.data(|d| d.get_temp::<f32>(egui::Id::new(("view-control", self.sheet)).with("tall")));
+        tall.unwrap_or(crate::FLOATING_CARD) + f32::from(crate::style::gap())
     }
 
     /// The cyan frame round a view that hides, isolates or reveals for now, as Revit draws.

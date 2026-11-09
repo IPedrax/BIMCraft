@@ -444,21 +444,22 @@ impl BimApp {
                     set = Some(json!({"view": view, "phase_filter": if picked == none { Value::Null } else { json!(picked) }}));
                 }
             });
-            crate::properties::end_row(ui);
+            ui.end_row();
             // The phase it shows now is the last unless it says; any phase picked, that one too, is its own.
             let label = ui.label(t("Phase"));
             let shown = g.phase.clone().or_else(|| model.phases.last().cloned()).unwrap_or_default();
             ui.add_enabled_ui(!follows, |ui| {
-                let c = ComboBox::from_id_salt((0, "phase")).selected_text(&shown).width(ui.available_width()).show_ui(ui, |ui| {
-                    for p in &model.phases {
-                        if ui.selectable_label(*p == shown, p).clicked() && g.phase.as_ref() != Some(p) {
-                            set = Some(json!({"view": view, "phase": p}));
+                let c =
+                    ComboBox::from_id_salt((0, "phase")).selected_text(&shown).width(ui.available_width()).truncate().show_ui(ui, |ui| {
+                        for p in &model.phases {
+                            if ui.selectable_label(*p == shown, p).clicked() && g.phase.as_ref() != Some(p) {
+                                set = Some(json!({"view": view, "phase": p}));
+                            }
                         }
-                    }
-                });
+                    });
                 c.response.labelled_by(label.id);
             });
-            crate::properties::end_row(ui);
+            ui.end_row();
         });
         if let Some(p) = set {
             self.run("graphics", p);
@@ -497,13 +498,13 @@ impl BimApp {
             if let Some(p) = combo(ui, (id, "phase-created"), label.id, &created, &model.phases) {
                 change = Some((phasing::CREATED, json!(p)));
             }
-            crate::properties::end_row(ui);
+            ui.end_row();
             let label = ui.label(t("Phase Demolished"));
             let phases: Vec<String> = std::iter::once(none.clone()).chain(model.phases.iter().cloned()).collect();
             if let Some(p) = combo(ui, (id, "phase-demolished"), label.id, &demolished, &phases) {
                 change = Some((phasing::DEMOLISHED, if p == none { Value::Null } else { json!(p) }));
             }
-            crate::properties::end_row(ui);
+            ui.end_row();
             if !model.option_sets.is_empty() {
                 let label = ui.label(t("Design Option"));
                 let all = model.option_sets.iter().flat_map(|(set, s)| s.options.iter().map(move |o| format!("{set}: {o}")));
@@ -511,7 +512,7 @@ impl BimApp {
                 if let Some(p) = combo(ui, (id, "design-option"), label.id, &option, &options) {
                     change = Some((phasing::OPTION, if p == main { Value::Null } else { json!(p) }));
                 }
-                crate::properties::end_row(ui);
+                ui.end_row();
             }
         });
         if let Some((key, v)) = change {

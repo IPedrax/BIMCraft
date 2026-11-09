@@ -1,30 +1,48 @@
 //! The 3D view: the core's picture of the model (`view3d::Scene`), orbited, panned and zoomed as
-//! in Revit. Shift and the middle button orbit, and so does a drag with the primary button (for
-//! a hand without a middle button), round the point under the pointer where the drag began; the
-//! middle button pans; the wheel zooms toward the point under the cursor. A
+//! in Revit. Shift and the middle button orbit, and so does a drag with the primary button (for a hand without a middle
+//! button), round the point under the pointer where the drag began; the middle button pans; the wheel zooms toward the
+//! point under the cursor. Shift and a primary drag in Modify are a selection box, as in a plan (`Scene::in_box`: from the
+//! left what lies wholly inside, from the right what it touches; the sketch's lines while sketching). A
 //! click picks the element the picture shows there, and so does a press let go quickly, however
 //! far the hand went with it (`Canvas::quick_press`): the camera it turned goes back. A level
 //! selected alone has a grip at the middle of each edge of its plane, which a drag moves over it. A section box is drawn
-//! round what it keeps, with a grip on each face in Modify that a drag moves along its axis (`section_box.rs`).
+//! round what it keeps, with a grip on each face in Modify that a drag moves along its axis (`section_box.rs`). An Edit
+//! Boundary begun here is sketched here, on the element's plane (`sketch3d.rs`): its clicks are the sketch's.
+//! With Shape Editing's tools, the selected floor's points and corners have grips that drag their heights, and clicks
+//! land on its top (`shape.rs`). The drawing tools (walls, runs, columns, components) take their points on the level face under
+//! the cursor, snapped as that level's plan snaps; a run's ends may lie on two faces, and climb from one to the other.
+//! The scene and the card's mesh are made on a worker (`view_worker.rs`), an edit's from the scene before; meanwhile the view
+//! shows the last picture, then faded with what it waits for.
 
 use std::sync::Arc;
 
+use bimcraft_i18n::msg;
+
+use bimcraft_core::dims3d;
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::graphics::{Look, VisualStyle};
-use bimcraft_core::model::{Id, Model, ViewCamera};
+use bimcraft_core::model::{Dimension3D, Id, Model, Ref3, TOL, ViewCamera};
 use bimcraft_core::render::{self, Rgb};
+use bimcraft_core::snap::{self, Found, Kind, Reach, Snaps};
 use bimcraft_core::view3d::gpu::{Hit, Mesh};
-use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, Scene, Surface, box_grips, move_box_face};
-use bimcraft_core::workplane::{WorkPlane, work_plane};
+use bimcraft_core::view3d::{
+    AZIMUTH, Camera, ELEVATION, Image, MAX_SIDE, P3, Scene, Surface, box_grips, move_box_face, on_floor_top, shape_handles, shape_pick_3d,
+    shape_snap_3d,
+};
+use bimcraft_core::workplane::{CursorPlane, Frame, cursor_plane};
 use egui::{
     Align, Color32, ColorImage, Layout, PointerButton, Pos2, Rect, Sense, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui, UiBuilder,
     pos2, vec2,
 };
 use serde_json::json;
 
-use crate::canvas::{click_modifiers, color};
+use crate::canvas::{PICK, SNAP, click_modifiers, color};
 use crate::icons::Icon;
+use crate::lang::{t, tf};
+use crate::sketch3d::Plane;
 use crate::style::{canvas_pal, pal};
+use crate::triad::Ask;
+use crate::workplane::Picking;
 use crate::{BimApp, Status, Tool, icon_button};
 
 /// What a picture is of: the model, the camera, the elements tinted, the ground it is drawn on (which says whether it is dark
@@ -32,12 +50,89 @@ use crate::{BimApp, Status, Tool, icon_button};
 type Shot = (Arc<Model>, Camera, Vec<(Id, Rgb)>, Color32, bool, Option<(P3, P3)>);
 
 /// A model's mesh for the card, or why the card can't draw it.
-type Meshed = (Arc<Model>, Result<Arc<Mesh>, String>);
+pub(crate) type Meshed = (Arc<Model>, Result<Arc<Mesh>, String>);
 
-/// What picks in the picture on screen: the processor's own picture, or the mesh the card drew it from (with its tints).
+struct SceneJob {
+    model: Arc<Model>,
+    scene: Option<Arc<Scene>>,
+    /// The scene of a model before this one, which an edit brings up to date instead of making the whole scene again.
+    from: Option<(Arc<Model>, Arc<Scene>)>,
+    width: u32,
+    height: u32,
+    lens: Option<f64>,
+    card: bool,
+}
+
+struct SceneDone {
+    model: Arc<Model>,
+    scene: Arc<Scene>,
+    fitted: Camera,
+    mesh: Option<Result<Arc<Mesh>, String>>,
+}
+
+fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<SceneDone> {
+    let scene = match (job.scene, job.from) {
+        (Some(scene), _) => scene,
+        (None, Some((model, scene))) => Arc::new(scene.update_cancellable(&model, &job.model, &|| cancel.cancelled())?),
+        (None, None) => Arc::new(Scene::new_cancellable(&job.model, &|| cancel.cancelled())?),
+    };
+    if cancel.cancelled() {
+        return None;
+    }
+    let look = Look::of_3d(&job.model);
+    let fitted = scene.fit_from(Camera { lens: job.lens, ..scene.fit_in(AZIMUTH, ELEVATION, job.width, job.height, &look) }, &look);
+    if cancel.cancelled() {
+        return None;
+    }
+    let mesh = if job.card {
+        match Mesh::new_cancellable(&scene, &look, &|| cancel.cancelled()) {
+            Ok(Some(mesh)) => Some(Ok(Arc::new(mesh))),
+            Ok(None) => return None,
+            Err(error) => Some(Err(error)),
+        }
+    } else {
+        None
+    };
+    if let Some(Ok(mesh)) = &mesh
+        && !mesh.prepare_picking_cancellable(&|| cancel.cancelled())
+    {
+        return None;
+    }
+    if cancel.cancelled() {
+        return None;
+    }
+    Some(SceneDone { model: job.model, scene, fitted, mesh })
+}
+
+struct FitJob {
+    model: Arc<Model>,
+    scene: Arc<Scene>,
+    from: Camera,
+    camera: Camera,
+}
+
+struct FitDone {
+    model: Arc<Model>,
+    scene: Arc<Scene>,
+    from: Camera,
+    target: Camera,
+    camera: Camera,
+}
+
+fn fit_scene(job: FitJob, cancel: &crate::view_worker::Cancel) -> Option<FitDone> {
+    if cancel.cancelled() {
+        return None;
+    }
+    let look = Look::of_3d(&job.model);
+    let camera = job.scene.fit_from(job.camera, &look);
+    (!cancel.cancelled()).then_some(FitDone { model: job.model, scene: job.scene, from: job.from, target: job.camera, camera })
+}
+
+/// What picks in the picture on screen: the processor's own picture, or the mesh the card drew it from (with its tints and the
+/// section box it was cut to).
 enum Picker {
     Image(Image),
-    Mesh(Arc<Mesh>, Vec<(Id, Rgb)>),
+    Mesh(Arc<Mesh>, Vec<(Id, Rgb)>, Option<(P3, P3)>),
 }
 
 impl Picker {
@@ -45,7 +140,7 @@ impl Picker {
     fn at(&self, cam: &Camera, x: f64, y: f64) -> Option<Hit> {
         match self {
             Picker::Image(i) => Some(Hit { id: i.pick(x, y)?, face: i.face(x, y).unwrap_or("") }),
-            Picker::Mesh(m, tints) => m.pick(cam, tints, x, y),
+            Picker::Mesh(m, tints, cut) => m.pick_cut(cam, tints, *cut, x, y),
         }
     }
 
@@ -54,10 +149,37 @@ impl Picker {
     fn surface(&self, scene: Option<&Scene>, cam: &Camera, at: (f64, f64)) -> Option<Surface> {
         match self {
             Picker::Image(i) => scene?.surface_in(i, cam, at),
-            Picker::Mesh(m, tints) => m.surface(cam, tints, at.0, at.1),
+            Picker::Mesh(m, tints, cut) => m.surface_cut(cam, tints, *cut, at.0, at.1),
         }
     }
 }
+
+/// How the view shows while its scene or mesh is made.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Waiting {
+    /// The last picture as it was, as a short wait shouldn't flicker.
+    Quiet,
+    /// The last picture faded, with the words over it.
+    Faded,
+    /// No picture yet: the words on the paper.
+    Bare,
+}
+
+impl Waiting {
+    /// How a wait `elapsed` long shows: with a last `picture` or none, and whether it has something to say `now`.
+    pub(crate) fn after(elapsed: std::time::Duration, picture: bool, now: bool) -> Waiting {
+        match (picture, now || elapsed >= WAIT_QUIET) {
+            (false, _) => Waiting::Bare,
+            (true, false) => Waiting::Quiet,
+            (true, true) => Waiting::Faded,
+        }
+    }
+}
+
+/// How long a wait shows the last picture as it was, before it fades and says why.
+const WAIT_QUIET: std::time::Duration = std::time::Duration::from_millis(200);
+/// How much of the paper lies over the last picture in a longer wait.
+const WAIT_FADE: u8 = 150;
 
 /// The 3D view between frames.
 pub struct Orbit {
@@ -65,9 +187,11 @@ pub struct Orbit {
     pub(crate) camera: Option<Camera>,
     /// Where the view showed last, in points, and the pixels a point holds.
     pub(crate) rect: Rect,
-    ppp: f32,
+    pub(crate) ppp: f32,
     /// The scene of the model shown last, in the 3D view or a section's.
-    pub(crate) scene: Option<(Arc<Model>, Scene)>,
+    pub(crate) scene: Option<(Arc<Model>, Arc<Scene>)>,
+    /// The scene of a model before, kept while the scene of the model now is made from it.
+    last: Option<(Arc<Model>, Arc<Scene>)>,
     /// What picks in the picture on screen, and what the picture is of.
     picker: Option<Picker>,
     shown: Option<Shot>,
@@ -75,27 +199,56 @@ pub struct Orbit {
     texture: Option<TextureHandle>,
     pub(crate) on_card: bool,
     /// The mesh of the scene shown last, for the card: or why it can't draw it.
-    mesh: Option<Meshed>,
+    pub(crate) mesh: Option<Meshed>,
+    worker: Option<crate::view_worker::Latest<SceneJob, SceneDone>>,
+    pub(crate) requested: Option<Arc<Model>>,
+    requested_card: bool,
+    /// Whether a job asked of the worker for the model shown is still to come back with a camera fitted to it.
+    fitting: bool,
+    loading_error: Option<String>,
+    /// How big the last picture was drawn, points, which a wait shows it at.
+    picture_size: Option<egui::Vec2>,
+    fit_worker: Option<crate::view_worker::Latest<FitJob, FitDone>>,
+    fit_target: Option<Camera>,
+    fit_requested: Option<Camera>,
+    fit_from: Option<Camera>,
     /// A drag under way: whether it orbits (else it pans), where the pointer was last, and the model point it orbits about,
     /// the one under the pointer where it began (none: the target).
     drag: Option<(bool, Pos2, Option<P3>)>,
+    /// A selection box being dragged with Shift and the primary button: where it began.
+    select: Option<Pos2>,
     /// The camera as that drag found it, for a drag that turns out a click.
     before: Option<Camera>,
     /// A selected level's grip being dragged: the level, and which edge of its plane (as
     /// `geom::edge_grips` orders them).
     grip: Option<(Id, usize)>,
+    /// The section box's grip under the pointer, in Modify: which face.
+    pub(crate) hot_grip: Option<usize>,
+    /// What the view is showing while its scene or mesh is made, and since when it has been waiting.
+    pub(crate) waiting: Option<Waiting>,
+    pub(crate) waiting_since: Option<std::time::Instant>,
+    /// Holds a scene being made back, for a test to see the view wait.
+    pub(crate) hold_build: bool,
     /// A section box's grip being dragged: which face (as `view3d::box_grips` orders them), and where the drag began.
     boxing: Option<(usize, Pos2)>,
+    /// A shaped floor's point or corner being dragged up or down: where it is in plan and in the model, and where the drag
+    /// began.
+    lift: Option<(Vec<P2>, P3, Pos2)>,
     /// The view and the camera its model held when the picture on screen was built from it or written back as: a difference
     /// means the camera changed elsewhere (dragged on a plan, a command, undo), so the picture stands from the model anew.
     pub(crate) built: Option<(Id, ViewCamera, Option<f64>)>,
     /// Each room's solid as the model shown last has it: its outline, bottom and top. Found once for each model.
     rooms: Option<(Arc<Model>, std::collections::BTreeMap<Id, RoomSolid>)>,
-    /// The work plane the Wall tool's chain under way is drawn on, which its first point found.
-    plane: Option<WorkPlane>,
+    /// The last point a drawing tool clicked here, in plan, and the plane it went on: a wall chain under way stays on it, and
+    /// a run's end falls back to it where nothing is under the cursor.
+    plane: Option<(P2, CursorPlane)>,
     /// While the Wall tool places a point in the 3D view, the base offset its walls take there: the height of the face they
     /// stand on over their level, which `BimApp::wall_params` puts in.
     pub(crate) wall_base: Option<f64>,
+    /// Where the pointer was over the navigation triad in the last frame (`triad.rs`).
+    pub(crate) triad: crate::triad::Over,
+    /// What the Aligned Dimension tool has picked in the 3D view so far: its references, before a click places its line.
+    pub(crate) dim3: Vec<Ref3>,
 }
 
 /// A room as the 3D view draws it: its outline in plan (an unbounded one's square), swept from `bottom` to `top`.
@@ -108,30 +261,100 @@ impl Default for Orbit {
             rect: Rect::ZERO,
             ppp: 1.0,
             scene: None,
+            last: None,
             picker: None,
             shown: None,
             texture: None,
             on_card: false,
             mesh: None,
+            worker: None,
+            requested: None,
+            requested_card: false,
+            fitting: false,
+            loading_error: None,
+            picture_size: None,
+            fit_worker: None,
+            fit_target: None,
+            fit_requested: None,
+            fit_from: None,
             drag: None,
+            select: None,
             before: None,
             grip: None,
+            hot_grip: None,
+            waiting: None,
+            waiting_since: None,
+            hold_build: false,
             boxing: None,
+            lift: None,
             built: None,
             rooms: None,
             plane: None,
             wall_base: None,
+            triad: Default::default(),
+            dim3: Vec::new(),
         }
     }
 }
 
-/// Where a tool drawing in the 3D view puts its point for pixel `at`, through `cam`: on `held`, the plane of the chain under
-/// way, else on the work plane of `under`, the surface the view shows there; to the 10 mm, as a plan's free point is.
-fn aim(m: &Model, cam: &Camera, at: (f64, f64), held: Option<WorkPlane>, under: Option<Surface>) -> Option<(P3, WorkPlane)> {
-    let plane = held.or_else(|| work_plane(m, cam, at, under))?;
-    let q = cam.on_plane(at, plane.z)?;
-    let round = |v: f64| (v / 10.0).round() * 10.0 + 0.0;
-    Some(([round(q[0]), round(q[1]), plane.z], plane))
+/// Where a tool drawing in the 3D view aims for pixel `at`, through `cam`, before it snaps: on `held`, the plane of a wall
+/// chain under way; else on the work plane of `under`, the surface the view shows there; with nothing there, on `fallback`
+/// (the plane a run's start went on), else on the ground.
+fn aim(
+    m: &Model,
+    cam: &Camera,
+    at: (f64, f64),
+    held: Option<CursorPlane>,
+    fallback: Option<CursorPlane>,
+    under: Option<Surface>,
+) -> Option<(P3, CursorPlane)> {
+    let plane = match (held, fallback, under) {
+        (Some(p), ..) => p,
+        (None, Some(p), None) => p,
+        (None, _, under) => cursor_plane(m, cam, at, under)?,
+    };
+    Some((cam.on_plane(at, plane.z)?, plane))
+}
+
+/// Where a point aimed at `q` on `plane`, at pixel `at` (`ppp` pixels a point), lands: snapped as its level's plan snaps
+/// (`snap::snap`: ends, middles, crossings, guides from `from`, else the nearest 10 mm), within as many mm of it as the snap's
+/// points cover on the plane there.
+#[allow(clippy::too_many_arguments)]
+fn snap3d(m: &Model, cam: &Camera, at: (f64, f64), ppp: f32, q: P3, plane: CursorPlane, from: &[P2], square: bool, o: &Snaps) -> Found {
+    let per_px = cam
+        .on_plane((at.0 + 1.0, at.1), plane.z)
+        .map(|r| (r[0] - q[0]).hypot(r[1] - q[1]))
+        .filter(|d| d.is_finite() && *d > 0.0)
+        .unwrap_or(1.0 / cam.scale.max(1e-9));
+    let reach = Reach { point: SNAP * f64::from(ppp) * per_px, line: f64::from(PICK) * f64::from(ppp) * per_px };
+    snap::snap(m, plane.level, P2(q[0], q[1]), reach, from, square, o)
+}
+
+/// What the Aligned Dimension tool picks at pixel `at` of the 3D view through `cam` (`ppp` pixels a point): a corner seen within
+/// the snap's reach, else an edge within a pick's (the point of it nearest), else the point of `under`, the face there.
+fn dim_ref(scene: &Scene, cam: &Camera, at: (f64, f64), under: Option<Surface>, ppp: f32, look: &Look) -> Option<Ref3> {
+    let micron = |q: P3| q.map(|v| (v * 1e3).round() / 1e3 + 0.0);
+    if let Some(c) = scene.corner_near(cam, at, SNAP * f64::from(ppp), look) {
+        return Some(Ref3 { at: micron(c), edge: None });
+    }
+    if let Some(([a, b], q)) = scene.edge_near(cam, at, f64::from(PICK) * f64::from(ppp), look) {
+        return Some(Ref3 { at: q.map(f64::round), edge: Some([micron(a), micron(b)]) });
+    }
+    under.map(|s| Ref3 { at: s.at.map(f64::round), edge: None })
+}
+
+/// Whether `tool` draws in the 3D view on the face under the cursor.
+fn draws_on_faces(tool: &Tool) -> bool {
+    matches!(tool, Tool::Wall(_) | Tool::Run(..) | Tool::Column | Tool::Stand(_) | Tool::Component | Tool::Fixture(_))
+}
+
+/// The point the tool's next goes on from, in plan: a wall chain's last, a run's start.
+fn base_point(tool: &Tool) -> Option<P2> {
+    match tool {
+        Tool::Wall(chain) => chain.last().copied(),
+        Tool::Run(_, start) => *start,
+        _ => None,
+    }
 }
 
 /// A room as a see-through solid, drawn over the 3D view's picture in the selection's colour: its outline swept from its
@@ -189,20 +412,164 @@ pub(crate) fn rgb(c: Color32) -> Rgb {
     Rgb(c.r(), c.g(), c.b())
 }
 
-/// The scene of `model` in `slot`, built again when the model changed.
-pub(crate) fn scene_of<'a>(slot: &'a mut Option<(Arc<Model>, Scene)>, model: &Arc<Model>) -> &'a Scene {
-    if !slot.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model)) {
-        *slot = None;
+impl Orbit {
+    pub(crate) fn suspend(&mut self) {
+        self.worker = None;
+        self.requested = None;
+        self.fit_worker = None;
+        self.fit_target = None;
+        self.fit_requested = None;
+        self.fit_from = None;
+        self.fitting = false;
     }
-    &slot.get_or_insert_with(|| (Arc::clone(model), Scene::new(model))).1
-}
 
-/// The mesh of `scene` for the card, built again when the model changed; or why the card can't draw it.
-fn mesh_of<'a>(slot: &'a mut Option<Meshed>, model: &Arc<Model>, scene: &Scene) -> &'a Result<Arc<Mesh>, String> {
-    if !slot.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model)) {
-        *slot = None;
+    /// A model that differs from the last only in its section box, or in what the scene doesn't draw (a camera view's camera
+    /// written back, a 3D dimension), has its scene and its mesh: a box is asked of them as they are drawn and picked, so there
+    /// is nothing to make again, or to wait for.
+    fn keep_for_a_new_box(&mut self, model: &Arc<Model>) {
+        let Some((before, scene)) = &self.scene else { return };
+        if Arc::ptr_eq(before, model) || !bimcraft_core::view3d::scene_kept(before, model) {
+            return;
+        }
+        let scene = Arc::clone(scene);
+        self.scene = Some((Arc::clone(model), scene));
+        if let Some((held, _)) = &mut self.mesh {
+            *held = Arc::clone(model);
+        }
+        self.requested = Some(Arc::clone(model));
     }
-    &slot.get_or_insert_with(|| (Arc::clone(model), Mesh::new(scene, &Look::of_3d(model)).map(Arc::new))).1
+
+    /// Install a whole snapshot at once, so the picture and its picker cannot refer to different models.
+    /// The scene of `model` (and its mesh, for a `card`) made or brought up to date on the worker, and a camera fitted to it
+    /// through `lens` while the view has none (a view the user sent home, or opened anew): whether both are ready to draw.
+    fn prepare(&mut self, ctx: &egui::Context, model: &Arc<Model>, (width, height): (u32, u32), lens: Option<f64>, card: bool) -> bool {
+        if let Some(done) = self.worker.as_ref().and_then(crate::view_worker::Latest::take)
+            && Arc::ptr_eq(&done.model, model)
+        {
+            self.install(done);
+        }
+        let current = self.scene.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model));
+        let needs_mesh = card && !self.mesh.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model));
+        if !current || needs_mesh || self.camera.is_none() {
+            if !self.requested.as_ref().is_some_and(|m| Arc::ptr_eq(m, model))
+                || (needs_mesh && !self.requested_card)
+                || (self.camera.is_none() && !self.fitting)
+            {
+                let job = SceneJob {
+                    model: Arc::clone(model),
+                    scene: self.scene.as_ref().filter(|(m, _)| Arc::ptr_eq(m, model)).map(|(_, s)| Arc::clone(s)),
+                    from: if current { None } else { self.scene.clone().or_else(|| self.last.clone()) },
+                    width,
+                    height,
+                    lens,
+                    card: needs_mesh,
+                };
+                if !current {
+                    self.last = self.scene.take().or_else(|| self.last.take());
+                    self.mesh = None;
+                    self.picker = None;
+                    self.shown = None;
+                    self.fit_worker = None;
+                    self.fit_target = None;
+                    self.fit_requested = None;
+                    self.fit_from = None;
+                }
+                self.loading_error = None;
+                self.fitting = true;
+                if self.hold_build {
+                } else if cfg!(test) {
+                    if let Some(done) = build_scene(job, &crate::view_worker::Cancel::default()) {
+                        self.install(done);
+                    }
+                } else {
+                    let wake = ctx.clone();
+                    let worker =
+                        self.worker.get_or_insert_with(|| crate::view_worker::Latest::new(build_scene, move || wake.request_repaint()));
+                    worker.request(job);
+                }
+                self.requested = Some(Arc::clone(model));
+                self.requested_card = card;
+            }
+            if let Some(worker) = &self.worker {
+                if let Err(error) = worker.start() {
+                    self.loading_error = Some(error);
+                }
+                if let Some(error) = worker.take_error() {
+                    self.loading_error = Some(error);
+                }
+                if worker.busy() {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                }
+            }
+        }
+        self.camera.is_some() && self.scene.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model))
+    }
+
+    /// What the worker made for a model, in place: its scene, its mesh if it made one, and its fitted camera if the view has none.
+    fn install(&mut self, done: SceneDone) {
+        if self.camera.is_none() {
+            self.camera = Some(done.fitted);
+        }
+        if let Some(mesh) = done.mesh {
+            self.mesh = Some((Arc::clone(&done.model), mesh));
+        }
+        self.scene = Some((done.model, done.scene));
+        self.last = None;
+        self.fitting = false;
+    }
+
+    fn prepare_fit(&mut self, ctx: &egui::Context, model: &Arc<Model>) -> Option<String> {
+        if self.fit_from.is_some_and(|from| self.camera != Some(from)) {
+            self.fit_worker = None;
+            self.fit_target = None;
+            self.fit_requested = None;
+            self.fit_from = None;
+        }
+        if let Some(done) = self.fit_worker.as_ref().and_then(crate::view_worker::Latest::take)
+            && self.fit_requested == Some(done.target)
+        {
+            if self.camera == Some(done.from)
+                && Arc::ptr_eq(&done.model, model)
+                && self.scene.as_ref().is_some_and(|(_, scene)| Arc::ptr_eq(scene, &done.scene))
+            {
+                self.camera = Some(done.camera);
+            }
+            self.fit_target = None;
+            self.fit_requested = None;
+            self.fit_from = None;
+        }
+        let (Some(target), Some(from), Some((_, scene))) = (self.fit_target, self.camera, &self.scene) else { return None };
+        if self.fit_requested != Some(target) {
+            let job = FitJob { model: Arc::clone(model), scene: Arc::clone(scene), from, camera: target };
+            if cfg!(test) {
+                if let Some(done) = fit_scene(job, &crate::view_worker::Cancel::default()) {
+                    self.camera = Some(done.camera);
+                    self.fit_target = None;
+                }
+                return None;
+            }
+            let wake = ctx.clone();
+            let worker = self.fit_worker.get_or_insert_with(|| crate::view_worker::Latest::new(fit_scene, move || wake.request_repaint()));
+            worker.request(job);
+            self.fit_requested = Some(target);
+            self.fit_from = Some(from);
+        }
+        if let Some(worker) = &self.fit_worker {
+            if let Err(error) = worker.start() {
+                return Some(error);
+            }
+            if let Some(error) = worker.take_error() {
+                self.fit_target = None;
+                self.fit_requested = None;
+                self.fit_from = None;
+                return Some(error);
+            }
+            if worker.busy() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+            }
+        }
+        None
+    }
 }
 
 impl BimApp {
@@ -220,11 +587,10 @@ impl BimApp {
 
     /// Zoom to Fit: all the view shows of the model, from where the camera is.
     pub(crate) fn fit3d(&mut self) {
-        let model = Arc::clone(&self.session.model);
-        let look = Look::of_3d(&model);
-        let o = &mut self.orbit;
-        if let (Some(c), Some((_, scene))) = (o.camera, &o.scene) {
-            o.camera = Some(scene.fit_from(c, &look));
+        if let Some(c) = self.orbit.camera {
+            self.orbit.fit_target = Some(c);
+            self.orbit.fit_requested = None;
+            self.orbit.fit_from = None;
         }
     }
 
@@ -243,17 +609,89 @@ impl BimApp {
     }
 
     /// A drawing tool's click in the 3D view, its point `q` on work plane `plane`: the Wall tool's next point, its walls going
-    /// on the plane's level with their base on the plane (`place`, as in a plan); a component placed there.
-    fn draw3d(&mut self, q: P3, plane: WorkPlane) {
+    /// on the plane's level with their base on the plane (`place`, as in a plan); a run's start, then its end, each as high
+    /// as the face it was clicked on (a brace, from one face up to another); a column, a structural column, a footing or a
+    /// component standing on the plane.
+    fn draw3d(&mut self, q: P3, plane: CursorPlane) {
         let at = P2(q[0], q[1]);
-        if matches!(self.tool, Tool::Wall(_)) {
-            (self.orbit.plane, self.orbit.wall_base) = (Some(plane), Some(plane.offset));
-            self.place(plane.level, at);
-            self.orbit.wall_base = None;
-        } else if let Some((family, ty)) = self.placing() {
-            let p = json!({"family": family, "type": ty, "at": [at.0, at.1], "level": plane.level, "offset": plane.offset,
-                           "angle": self.component_angle});
-            self.run("component", p);
+        let m = Arc::clone(&self.session.model);
+        match self.tool.clone() {
+            Tool::Wall(_) => {
+                self.orbit.wall_base = Some(plane.offset);
+                self.place(plane.level, at);
+                self.orbit.wall_base = None;
+            }
+            Tool::Run(_, start) => {
+                // Its start's plane, where it was clicked here; else the end's.
+                let from = self.orbit.plane.filter(|(p, _)| Some(*p) == start).map_or(plane, |(_, p)| p);
+                let micron = |v: f64| (v * 1e3).round() / 1e3 + 0.0;
+                self.place_run_lifted(from.level, at, (from.offset, micron(plane.z - m.elevation(from.level))));
+            }
+            Tool::Column => self.place_column(plane.level, at, plane.offset),
+            Tool::Stand(category) => self.place_stand_lifted(plane.level, at, category, plane.offset),
+            Tool::Component | Tool::Fixture(_) => {
+                if let Some((family, ty)) = self.placing() {
+                    let p = json!({"family": family, "type": ty, "at": [at.0, at.1], "level": plane.level, "offset": plane.offset,
+                                   "angle": self.component_angle});
+                    self.run("component", p);
+                }
+            }
+            _ => {}
+        }
+        self.orbit.plane = Some((at, plane));
+    }
+
+    /// The Aligned Dimension tool's click in the 3D view at pixel `at` through `cam`, `r` what it picks there: its first and
+    /// second references, then where its line goes, which places it (`dimension_3d`) and says how long it is.
+    fn dim3_click(&mut self, cam: &Camera, at: (f64, f64), r: Option<Ref3>) {
+        let picks = std::mem::take(&mut self.orbit.dim3);
+        match (picks.as_slice(), r) {
+            (&[a, b], _) => {
+                let (p, q) = bimcraft_core::dims3d::ends([a, b]);
+                let Some(on) = bimcraft_core::dims3d::line_through(cam, p, q, at) else {
+                    self.status = Status { text: t("The view runs along the dimension: turn it to place its line.").into(), error: true };
+                    self.orbit.dim3 = picks;
+                    return;
+                };
+                let mut params = json!({"refs": [a, b], "at": on.map(f64::round)});
+                if let Some(v) = self.active_3d() {
+                    params["view"] = json!(v);
+                }
+                if let Some(made) = self.run("dimension_3d", params) {
+                    let long = self.session.model.units.with_unit(made["length"].as_f64().unwrap_or(0.0));
+                    self.status = Status { text: tf("Aligned dimension: {}", &[&long]), error: false };
+                }
+            }
+            (_, None) => {
+                self.status = Status { text: t("Pick a corner, an edge or a face of the model to dimension.").into(), error: true };
+                self.orbit.dim3 = picks;
+            }
+            (_, Some(r)) => {
+                self.orbit.dim3 = picks;
+                self.orbit.dim3.push(r);
+            }
+        }
+    }
+
+    /// What the tool on needs under the cursor in the 3D view and found none of there: a level face to stand on or to take
+    /// its points on.
+    fn needs_face(&self) -> String {
+        let title = match &self.tool {
+            Tool::Wall(_) => Some(msg!("Place Wall")),
+            Tool::Column => Some(msg!("Place Column")),
+            Tool::Run(..) | Tool::Stand(_) => crate::structure::title(&self.tool),
+            Tool::Component => Some(msg!("Place Component")),
+            Tool::Fixture(key) => crate::mep::fixture(key).map(|f| f.title),
+            _ => None,
+        };
+        let title = title.map(t).unwrap_or_default();
+        if matches!(self.tool, Tool::Wall(_) | Tool::Run(..)) {
+            tf(
+                "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one",
+                &[title],
+            )
+        } else {
+            tf("{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one", &[title])
         }
     }
 
@@ -261,6 +699,9 @@ impl BimApp {
     pub(crate) fn view3d(&mut self, ui: &mut Ui) {
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
         self.canvas.track(ui, &response);
+        // The navigation triad's widget lies over the view's, so a click or a drag on it is its own and the model behind never
+        // sees it; what it asks for is done below.
+        let asked = self.triad_input(ui, rect);
         let ppp = ui.ctx().pixels_per_point();
         let side = |v: f32| ((v * ppp).round().max(1.0) as u32).min(MAX_SIDE);
         let (w, h) = (side(rect.width()), side(rect.height()));
@@ -269,9 +710,52 @@ impl BimApp {
             let hover = i.pointer.hover_pos().filter(|_| response.hovered());
             (hover, i.smooth_scroll_delta.y, i.zoom_delta(), i.modifiers.shift, i.pointer.latest_pos())
         });
+        // The 3D mouse's cap, while it is held off rest (`spacemouse.rs`), moves the camera below when this is the active view
+        // and the window has focus; a 3D view drawn beside the active one it leaves alone, as the hand does. Meanwhile the
+        // wheel turns 3DxWare may make of the cap are left alone.
+        let (focused, frame) = ui.input(|i| (i.focused, f64::from(i.stable_dt)));
+        let device = self.space_mouse.as_ref().and_then(crate::spacemouse::SpaceMouse::motion).filter(|_| focused && !self.passive);
+        let wheel = if device.is_some() { 0.0 } else { wheel };
         let model = self.view_model();
+        // An Edit Boundary begun here: its lines on the element's plane, a drag from a picked one's end holding its grip.
+        let sketch_z = self.sketch_surface();
+        let last = self.orbit.camera.map(|c| Camera { width: w, height: h, ..c });
+        let held = self.sketch3d_grab(ui, &response, sketch_z.zip(last).map(|(surface, cam)| Plane { cam, rect, ppp, surface }));
+        // Pick in View, taking the work plane's surface or points: clicks are its, not the selection's.
+        let picking = self.work_plane_picking().is_some();
+        // The work plane's patch, in Modify while nothing is sketched: a click on it opens the Work Plane dialog.
+        let patch =
+            (self.tool == Tool::Modify && self.sketch.is_none() && !picking).then(|| self.work_plane_ring(last, rect, ppp)).flatten();
         let (modify, demolish, selection) = (self.tool == Tool::Modify, self.tool == Tool::Demolish, self.selection.clone());
         let (paint, unpaint) = (self.tool == Tool::Paint, self.tool == Tool::Unpaint);
+        // The floor being shaped, with Shape Editing's tools: its points and corners where its top is, which Modify Sub
+        // Elements' grips drag up or down; Add Point and Add Split Line click on its top.
+        let shaping = self.shaping().and_then(|id| model.shapeable(id).ok());
+        let lifting = shaping.is_some() && self.tool == Tool::ModifySubElements;
+        let split_start = match self.tool {
+            Tool::AddSplitLine(start) => start,
+            _ => None,
+        };
+        let adding = shaping.is_some() && matches!(self.tool, Tool::AddPoint | Tool::AddSplitLine(_));
+        // How high above the level a click would land: Add Point's point as the Options Bar says, a split line's end on the top.
+        let (point_tool, along) = (self.tool == Tool::AddPoint, self.shape_along);
+        let offset = model.units.parse(&self.shape_offset).unwrap_or(0.0);
+        let typed_z = model.units.parse(&self.shape_z);
+        let handles = shaping.as_ref().map(|f| shape_handles(&model, f).0).unwrap_or_default();
+        let base = self.shape_base;
+        // Modify Sub Elements' selection, shown only while it's on.
+        let picked = if self.tool == Tool::ModifySubElements { self.shape_picked.clone() } else { Vec::new() };
+        let shaped = self.shaping();
+        // Where the floor's top is over plan point `q`; an edge's middle, between its ends.
+        let top_at = |q: P2| -> Option<P3> {
+            let f = shaping.as_ref()?;
+            Some([q.0, q.1, model.floor_top(f).at(q) + model.shape_height(f, q)])
+        };
+        let anchor = |ends: &[P2]| -> Option<P3> {
+            let tops: Vec<P3> = ends.iter().filter_map(|q| top_at(*q)).collect();
+            let n = tops.len().max(1) as f64;
+            (!tops.is_empty()).then(|| [0, 1, 2].map(|k| tops.iter().map(|t| t[k]).sum::<f64>() / n))
+        };
         // The 3D view on screen: a camera view stands where its camera looks from; the default is fitted over the model,
         // and its lens is the one it is seen through.
         let active = self.active_3d();
@@ -281,6 +765,14 @@ impl BimApp {
         });
         let lens = three_d.and_then(|(_, l)| l);
         let stored = three_d.and_then(|(c, _)| c);
+        let snaps = self.snaps_now();
+        // The points a drawing tool's next snaps from (guides, perpendiculars), as in a plan.
+        let from: Vec<P2> = match (&self.tool, self.shape()) {
+            (Tool::Wall(chain), crate::draw::Shape::Line) => chain.clone(),
+            (Tool::Wall(chain), _) if chain.len() < 2 => chain.clone(),
+            (Tool::Run(_, start), _) => start.iter().copied().collect(),
+            _ => Vec::new(),
+        };
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
         // The camera changed elsewhere than by the hand in this view (dragged on a plan, a command, undo): the picture stands
@@ -289,25 +781,38 @@ impl BimApp {
             (Some((id, cam, l)), Some(active), Some(stored)) => id != active || cam != stored || l != lens,
             _ => false,
         };
-        if elsewhere && o.camera.is_some() && o.drag.is_none() && wheel == 0.0 && pinch == 1.0 {
+        if elsewhere && o.camera.is_some() && o.drag.is_none() && wheel == 0.0 && pinch == 1.0 && device.is_none() {
             o.camera = None;
         }
-        let scene = scene_of(&mut o.scene, &model);
-        // Through the view's lens while it's in perspective: the eye stays where it stood as the lens or the picture changes.
-        let from_model = o.camera.is_none();
-        let mut cam = match o.camera {
-            Some(c) => c.sized(w, h, lens),
-            None => {
-                let look = Look::of_3d(&model);
-                match (three_d.and_then(|(c, _)| c), lens) {
-                    (Some(cam), Some(lens)) => Camera::at(cam.eye, cam.target, lens, w, h),
-                    _ => scene.fit_from(Camera { lens, ..scene.fit_in(AZIMUTH, ELEVATION, w, h, &look) }, &look),
-                }
-            }
-        };
-        if from_model {
+        // The view stands from the model anew: a camera view where its camera looks from, which needs no fitting; another is
+        // fitted over the model on the worker, with its scene.
+        if o.camera.is_none() {
             o.built = active.zip(stored).map(|(id, cam)| (id, cam, lens));
+            if let (Some(cam), Some(lens)) = (stored, lens) {
+                o.camera = Some(Camera::at(cam.eye, cam.target, lens, w, h));
+            }
         }
+        o.keep_for_a_new_box(&model);
+        if !o.scene.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, &model))
+            && let Some(gpu) = &mut self.card.gpu
+        {
+            gpu.forget_mesh();
+        }
+        let card_ready = self.card.ready().is_some();
+        if !o.prepare(ui.ctx(), &model, (w, h), lens, card_ready) {
+            let error = o.loading_error.clone();
+            self.wait3d(ui, rect, error.as_deref().unwrap_or(crate::lang::t("Building 3D view…")), error.is_some());
+            return;
+        }
+        if let Some(error) = o.prepare_fit(ui.ctx(), &model) {
+            self.status = Status { text: crate::lang::tf("Could not fit the 3D view: {}", &[&error]), error: true };
+        }
+        // A prepared view has both; without them there's nothing to draw this frame.
+        let (Some((_, scene)), Some(camera)) = (o.scene.as_ref(), o.camera) else { return };
+        let scene = Arc::clone(scene);
+        let scene: &Scene = &scene;
+        // Through the view's lens while it's in perspective: the eye stays where it stood as the lens or the picture changes.
+        let mut cam = camera.sized(w, h, lens);
         // What the picture on screen shows at a point, as the view picks: its scene is this model's while it's of this model.
         let fresh = o.shown.as_ref().is_some_and(|s| Arc::ptr_eq(&s.0, &model));
         let surface = |picker: &Option<Picker>, cam: &Camera, at: Pos2| picker.as_ref()?.surface(fresh.then_some(scene), cam, px(at));
@@ -321,6 +826,10 @@ impl BimApp {
                     None => cam.zoom(factor, px(at)),
                 };
             }
+        }
+        if let Some(motion) = device {
+            cam = crate::spacemouse::navigate(cam, motion, frame);
+            ui.ctx().request_repaint();
         }
         // A level selected alone has a grip at the middle of each edge of its plane: a drag from one
         // moves that edge over the plane, rather than turning the view.
@@ -359,6 +868,7 @@ impl BimApp {
         if let Some(b) = boxed
             && modify
             && o.grip.is_none()
+            && !held
             && response.drag_started_by(PointerButton::Primary)
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
             && let Some(k) = crate::section_box::grip_at(b, origin, |p| on_screen(&cam, rect, ppp, p))
@@ -382,17 +892,84 @@ impl BimApp {
         {
             boxed_to = Some(to);
         }
+        // The grip under the pointer shows it: a press there moves that face, not the view.
+        o.hot_grip = boxed
+            .filter(|_| modify && o.grip.is_none() && o.boxing.is_none() && o.drag.is_none())
+            .and_then(|b| crate::section_box::grip_at(b, hover?, |p| on_screen(&cam, rect, ppp, p)));
+        // A drag from a grip of the floor being shaped raises or lowers that point or corner, to the millimetre; the command
+        // runs when the drag ends.
+        if lifting
+            && o.grip.is_none()
+            && o.boxing.is_none()
+            && response.drag_started_by(PointerButton::Primary)
+            && let Some(origin) = ui.input(|i| i.pointer.press_origin())
+        {
+            let off = |p: &P3| on_screen(&cam, rect, ppp, *p).distance(origin);
+            // A selected point's or edge's ▲ or ▼ takes all of it; else the grip there.
+            let arrows = picked.iter().find_map(|s| {
+                let at = anchor(&s.ends())?;
+                let c = on_screen(&cam, rect, ppp, at);
+                let near = [c + vec2(-12.0, -9.0), c + vec2(-12.0, 9.0)].iter().any(|g| g.distance(origin) <= 9.0);
+                near.then(|| (s.ends(), at, origin))
+            });
+            o.lift = arrows.or_else(|| {
+                handles
+                    .iter()
+                    .filter(|(_, p)| off(p) <= 8.0)
+                    .min_by(|a, b| off(&a.1).total_cmp(&off(&b.1)))
+                    .map(|(q, p)| (vec![*q], *p, origin))
+            });
+        }
+        if !lifting {
+            o.lift = None;
+        }
+        let lift_held = o.lift.is_some();
+        let lifted_by = match (&o.lift, latest) {
+            (Some((_, at, from)), Some(now)) => cam.along(2, *at, px(*from), px(now)).map(f64::round),
+            _ => None,
+        };
+        // While it's dragged, the floor as it would be with those points or corners there.
+        let preview = match (&shaping, &o.lift, lifted_by) {
+            (Some(f), Some((qs, ..)), Some(by)) => {
+                crate::shape::raised_all(&model, f, qs, by).map(|shape| bimcraft_core::model::Floor { shape, ..f.clone() })
+            }
+            _ => None,
+        };
+        let mut raise = None;
+        if response.drag_stopped()
+            && let Some((qs, ..)) = o.lift.take()
+            && !self.canvas.quick()
+        {
+            raise = lifted_by.map(|by| (qs, by));
+        }
+        let still = o.lift.is_some();
         // The primary button, or Shift and the middle button, orbit, 0.4° a point, round the point under the pointer where
-        // the drag began (the target, where nothing is); the middle button alone pans.
+        // the drag began (the target, where nothing is); the middle button alone pans. Shift and the primary button box, in
+        // Modify (the sketch's lines while sketching).
         if response.drag_started()
             && o.grip.is_none()
             && o.boxing.is_none()
+            && !held
+            && o.lift.is_none()
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
         {
-            let orbit = response.dragged_by(PointerButton::Primary) || shift;
-            let pivot = orbit.then(|| surface(&o.picker, &cam, origin)).flatten().map(|s| s.at);
-            o.drag = Some((orbit, origin, pivot));
-            o.before = Some(cam);
+            let primary = response.dragged_by(PointerButton::Primary);
+            if primary && modify && shift {
+                o.select = Some(origin);
+            } else if primary || response.dragged_by(PointerButton::Middle) {
+                let orbit = primary || shift;
+                let pivot = orbit.then(|| surface(&o.picker, &cam, origin)).flatten().map(|s| s.at);
+                o.drag = Some((orbit, origin, pivot));
+                o.before = Some(cam);
+            }
+        }
+        let mut selected_box = None;
+        if response.drag_stopped()
+            && let Some(from) = o.select.take()
+            && !self.canvas.quick()
+            && let Some(to) = latest
+        {
+            selected_box = Some((from, to));
         }
         if let (Some((orbit, last, pivot)), Some(now)) = (o.drag, latest)
             && response.dragged()
@@ -409,14 +986,41 @@ impl BimApp {
                 cam = before;
             }
         }
+        // A click on one of the triad's ends turns the camera to look from that side (or from the opposite one, if it does already).
+        if let Some(Ask::Turn(end)) = asked {
+            cam = bimcraft_core::triad::turned(cam, end);
+        }
         o.camera = Some(cam);
-        // The hand and the wheel have let the camera be: a camera view's position is written back then (below).
-        let settled = o.drag.is_none() && wheel == 0.0 && pinch == 1.0;
+        // The hand, the wheel and the 3D mouse have let the camera be: a camera view's position is written back then (below).
+        let settled = o.drag.is_none() && wheel == 0.0 && pinch == 1.0 && device.is_none();
+        // A box let go: what it picks, as the picture is now.
+        let boxed_ids = selected_box
+            .filter(|_| sketch_z.is_none())
+            .map(|(from, to)| scene.in_box(&cam, px(from), px(to), to.x < from.x, &Look::of_3d(&model)));
         // On the card when the user asked for it and it can draw what the view shows; else on the processor.
-        let mesh = match self.card.ready().is_some().then(|| mesh_of(&mut o.mesh, &model, scene)) {
+        let mut mesh = match card_ready.then(|| o.mesh.as_ref().map(|(_, m)| m)).flatten() {
             Some(Ok(mesh)) => Some(Arc::clone(mesh)),
             _ => None,
         };
+        if let (Some(mesh_to_upload), Some(gpu)) = (mesh.as_ref(), self.card.gpu.as_mut())
+            && !cfg!(test)
+        {
+            match gpu.prepare_upload(ui.ctx(), mesh_to_upload) {
+                Ok(true) => {}
+                Ok(false) => {
+                    self.wait3d(ui, rect, crate::lang::t("Loading 3D view onto the card…"), false);
+                    return;
+                }
+                Err(e) => {
+                    self.status = crate::updates::failed(crate::lang::tf(
+                        "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor",
+                        &[&e],
+                    ));
+                    (self.card.gpu, self.card.note) = (None, Some(e));
+                    mesh = None;
+                }
+            }
+        }
         // Why not, where the mesh says; a card that failed keeps what it said.
         if !self.card.failed {
             let why = (self.card.wanted && mesh.is_none()).then(|| o.mesh.as_ref().and_then(|(_, m)| m.as_ref().err().cloned())).flatten();
@@ -428,10 +1032,23 @@ impl BimApp {
             let (x, y) = px(at);
             picker.as_ref().and_then(|p| p.at(&cam, x, y))
         };
-        let hovered =
-            hover.filter(|_| (modify || demolish || paint || unpaint) && o.drag.is_none()).and_then(|at| pick(&o.picker, at)).map(|h| h.id);
+        // The view's dimensions, as the core draws them through this camera: over the picture, whichever painter drew it, and
+        // picked where they are drawn.
+        let look3 = Look::of_3d(&model);
+        let marks = active.map(|v| dims3d::marks(&model, v, &cam, &look3, dims3d::SCREEN * f64::from(ppp))).unwrap_or_default();
+        let dim_at = |at: Pos2| dims3d::pick(&marks, px(at), f64::from(PICK) * f64::from(ppp));
+        let lit_dim = hover.filter(|_| modify && o.drag.is_none() && sketch_z.is_none() && !picking).and_then(dim_at);
+        let hovered = hover
+            .filter(|_| {
+                (modify || demolish || paint || unpaint) && o.drag.is_none() && o.hot_grip.is_none() && sketch_z.is_none() && !picking
+            })
+            .filter(|_| lit_dim.is_none())
+            .and_then(|at| pick(&o.picker, at))
+            .map(|h| h.id);
+        // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let tints: Vec<(Id, Rgb)> = selection
             .iter()
+            .filter(|id| Some(**id) != shaped)
             .map(|id| (*id, rgb(canvas_pal().accent)))
             .chain(hovered.filter(|id| !selection.contains(id)).map(|id| (id, rgb(canvas_pal().hover))))
             .collect();
@@ -440,12 +1057,15 @@ impl BimApp {
         if !matches!(&o.shown, Some((m, c, t, k, g, b)) if Arc::ptr_eq(m, &model) && *c == cam && *t == tints && *k == dark && *g == mesh.is_some() && *b == reboxed)
         {
             // The card's picture, if it makes one; the processor's if not, and if the card fails it for good.
-            let mut drawn = false;
+            let (mut drawn, mut exact) = (false, true);
             if let (Some(mesh), Some(gpu)) = (&mesh, self.card.gpu.as_mut()) {
-                match gpu.draw(mesh, &cam, &tints, rgb(color(render::PAPER))) {
-                    Ok(()) => {
-                        o.picker = Some(Picker::Mesh(Arc::clone(mesh), tints.clone()));
-                        drawn = true;
+                gpu.swapped_ink = crate::style::canvas_dark();
+                // The model's box, whichever the mesh was made under.
+                let cut = reboxed.or(boxed);
+                match gpu.draw_cut(mesh, &cam, &tints, rgb(color(render::PAPER)), cut) {
+                    Ok(whole) => {
+                        o.picker = Some(Picker::Mesh(Arc::clone(mesh), tints.clone(), cut));
+                        (drawn, exact) = (true, whole);
                     }
                     Err(e) => {
                         self.status = crate::updates::failed(crate::lang::tf(
@@ -482,13 +1102,76 @@ impl BimApp {
                 }
                 o.picker = Some(Picker::Image(image));
             }
-            o.shown = Some((Arc::clone(&model), cam, tints, dark, drawn, reboxed));
+            // A picture that stands in, or whose exact surfaces are on their way, is drawn again next frame until it is exact.
+            o.shown = exact.then(|| (Arc::clone(&model), cam, tints, dark, drawn, reboxed));
+            if !exact {
+                ui.ctx().request_repaint();
+            }
         }
+        (o.waiting, o.waiting_since) = (None, None);
+        o.picture_size = Some(rect.size());
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
         let shown = if o.on_card { self.card.gpu.as_ref().and_then(|g| g.texture()) } else { o.texture.as_ref().map(|t| t.id()) };
         if let Some(id) = shown {
             p.image(id, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+        }
+        let on_view = |(x, y): (f32, f32)| rect.min + vec2(x / ppp, y / ppp);
+        let draw_marks = |marks: &[dims3d::Mark], ink: &dyn Fn(Id, Rgb) -> Color32| {
+            for mk in marks {
+                p.add(egui::Shape::line(
+                    mk.pts.iter().copied().map(on_view).collect(),
+                    Stroke::new(mk.width / ppp, ink(mk.owner, mk.color)),
+                ));
+            }
+        };
+        draw_marks(&marks, &|owner, c| {
+            if selection.contains(&owner) {
+                canvas_pal().accent
+            } else if lit_dim == Some(owner) {
+                canvas_pal().hover
+            } else {
+                color(c)
+            }
+        });
+        // The Aligned Dimension tool: what a click would pick, and once two are picked, the dimension its line would make.
+        let dimming = matches!(self.tool, Tool::Dimension(..)) && sketch_z.is_none() && !picking;
+        if !dimming {
+            o.dim3.clear();
+        }
+        let dim_pick = |at: Pos2| dim_ref(scene, &cam, px(at), surface(&o.picker, &cam, at), ppp, &look3);
+        if let Some(at) = hover.filter(|_| dimming && o.drag.is_none()) {
+            let accent = Stroke::new(1.5, pal().accent);
+            let screen = |q: P3| on_screen(&cam, rect, ppp, q);
+            match o.dim3.as_slice() {
+                &[a, b] => {
+                    let (from, to) = dims3d::ends([a, b]);
+                    if let Some(on) = dims3d::line_through(&cam, from, to, px(at)) {
+                        let type_name = bimcraft_core::dims::default_type(&model.dimension_types, bimcraft_core::model::DimKind::Aligned);
+                        let d = Dimension3D {
+                            view: Default::default(),
+                            refs: [a, b],
+                            at: on,
+                            type_name: type_name.cloned().unwrap_or_default(),
+                        };
+                        draw_marks(&dims3d::marks_of(&model, 0, &d, &cam, dims3d::SCREEN * f64::from(ppp)), &|_, _| pal().accent);
+                    }
+                }
+                picked => {
+                    for r in picked {
+                        p.circle_filled(screen(r.at), 3.5, pal().accent);
+                    }
+                    if let Some(r) = dim_pick(at) {
+                        if let Some([a, b]) = r.edge {
+                            p.line_segment([screen(a), screen(b)], Stroke::new(3.0, pal().accent));
+                        }
+                        p.circle_stroke(screen(r.at), 5.0, accent);
+                        if let Some(first) = picked.first() {
+                            p.extend(egui::Shape::dashed_line(&[screen(first.at), screen(r.at)], accent, 6.0, 4.0));
+                        }
+                    }
+                }
+            }
         }
         // Rooms aren't seen in 3D but while selected: then a see-through solid in the selection's colour, from their bottom to
         // their top, over their boundary (an unbounded one's square).
@@ -502,14 +1185,15 @@ impl BimApp {
             o.rooms = None;
         }
         let solids = &mut o.rooms.get_or_insert_with(|| (Arc::clone(&model), std::collections::BTreeMap::new())).1;
+        let selected: std::collections::HashSet<Id> = selection.iter().copied().collect();
         for (id, e) in model.elements.iter() {
-            let shown = selection.contains(id) || look.as_ref().is_some_and(|l| l.shows(*id));
+            let shown = selected.contains(id) || look.as_ref().is_some_and(|l| l.shows(*id));
             if let (true, bimcraft_core::model::Element::Room(r)) = (shown, e) {
                 let solid = solids.entry(*id).or_insert_with(|| {
                     let (bottom, top) = model.room_span(r);
                     (model.room_outline(r).0, bottom, top)
                 });
-                room_solid(&p, solid, selection.contains(id), &|q: P3| on_screen(&cam, rect, ppp, q));
+                room_solid(&p, solid, selected.contains(id), &|q: P3| on_screen(&cam, rect, ppp, q));
             }
         }
         // The selected level's grips, and its plane as the held one would leave it.
@@ -530,39 +1214,188 @@ impl BimApp {
         // The section box's frame, as the held grip would leave it.
         let screen = |p: P3| on_screen(&cam, rect, ppp, p);
         if let Some(b) = reboxed.or(boxed) {
-            crate::section_box::draw(&p, &cam, b, modify, o.boxing.map(|(k, _)| k), screen);
+            crate::section_box::draw(&p, &cam, b, modify, (o.boxing.map(|(k, _)| k), o.hot_grip), screen);
         }
-        // The Wall tool and a component take their points on the face under the cursor (`workplane`), a wall chain under way
-        // on the plane its first point found; the point is shown as a plan shows a snap, and the wall from the chain's last.
-        let drawing = matches!(self.tool, Tool::Wall(_) | Tool::Component | Tool::Fixture(_));
-        let held = o.plane.filter(|_| matches!(&self.tool, Tool::Wall(chain) if !chain.is_empty()));
-        let aimed = |picker: &Option<Picker>, at: Pos2| {
+        // The drawing tools take their points on the face under the cursor (`workplane`), snapped as its level's plan snaps:
+        // a wall chain under way on the plane its first point found, a run's end on the face it is clicked on (where there is
+        // none, the plane of its start). The point is shown as a plan shows a snap, and the wall or run from the point before.
+        let drawing = draws_on_faces(&self.tool) && sketch_z.is_none();
+        let last3 = o.plane.filter(|(q, _)| base_point(&self.tool) == Some(*q));
+        let held = last3.filter(|_| matches!(self.tool, Tool::Wall(_))).map(|(_, p)| p);
+        let fallback = last3.filter(|_| matches!(self.tool, Tool::Run(..))).map(|(_, p)| p);
+        let aimed = |picker: &Option<Picker>, at: Pos2| -> Option<(P3, CursorPlane, Found)> {
             let under = picker.as_ref().and_then(|k| k.surface(Some(scene), &cam, px(at)));
-            aim(&model, &cam, px(at), held, under)
+            let (q, plane) = aim(&model, &cam, px(at), held, fallback, under)?;
+            let f = snap3d(&model, &cam, px(at), ppp, q, plane, &from, shift, &snaps);
+            Some(([f.at.0, f.at.1, plane.z], plane, f))
         };
-        if let Some((q, plane)) = hover.filter(|_| drawing && o.drag.is_none()).and_then(|at| aimed(&o.picker, at))
+        if let Some((q, plane, found)) = hover.filter(|_| drawing && o.drag.is_none()).and_then(|at| aimed(&o.picker, at))
             && let at = screen(q)
             && at.is_finite()
         {
-            let from = match &self.tool {
-                Tool::Wall(chain) => chain.last().map(|a| screen([a.0, a.1, plane.z])).filter(|a| a.is_finite()),
-                _ => None,
-            };
-            if let Some(from) = from {
+            // The point before, at the height of the plane it went on.
+            let before = base_point(&self.tool).map(|b| [b.0, b.1, last3.map_or(plane.z, |(_, p)| p.z)]);
+            if let Some(b) = before
+                && let from = screen(b)
+                && from.is_finite()
+            {
                 p.line_segment([from, at], Stroke::new(1.0, pal().accent));
+                let long = P2(b[0], b[1]).dist(P2(q[0], q[1])).hypot(q[2] - b[2]);
+                crate::canvas::tag(&p, at + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, model.units.with_unit(long));
             }
             let diamond = [vec2(0.0, -6.0), vec2(6.0, 0.0), vec2(0.0, 6.0), vec2(-6.0, 0.0)].map(|d| at + d).to_vec();
             p.add(egui::Shape::closed_line(diamond, Stroke::new(2.0, pal().accent)));
-            if let Some(e) = model.elements.get(plane.on) {
-                let (near, of) = (crate::lang::t(bimcraft_core::snap::Kind::Nearest.name()), crate::lang::category(e.category(), false));
-                let name = crate::lang::tf("{} of {} {}", &[near, &of, &plane.on.to_string()]);
-                crate::canvas::tag(&p, at + vec2(12.0, 14.0), egui::Align2::LEFT_TOP, name);
+            // What it snapped to, of which element; a free point, the face it's on.
+            let (kind, of) = match found.kind {
+                Kind::Free => (Kind::Nearest, Some(plane.on)),
+                k => (k, found.source),
+            };
+            let name = match of.and_then(|id| Some((id, model.elements.get(id)?))) {
+                Some((id, e)) => tf("{} of {} {}", &[t(kind.name()), &crate::lang::category(e.category(), false), &id.to_string()]),
+                None => t(kind.name()).to_string(),
+            };
+            crate::canvas::tag(&p, at + vec2(12.0, 14.0), egui::Align2::LEFT_TOP, name);
+        }
+        // Where a click lands on the floor being shaped, in plan: a point or corner within reach of it, else on an edge within
+        // reach (the edge, to light up), else its top there.
+        let snapped = |at: Pos2| -> Option<(P2, Option<[P3; 2]>, Option<bimcraft_core::view3d::ShapeSnap>)> {
+            let f = shaping.as_ref()?;
+            shape_snap_3d(&model, f, &cam, px(at), 8.0 * f64::from(ppp))
+                .map(|(q, e, k)| (q, e, Some(k)))
+                .or_else(|| on_floor_top(&model, f, &cam, px(at)).map(|q| (q, None, None)))
+        };
+        let landing = |at: Pos2| snapped(at).map(|(q, ..)| q);
+        // What a click there would pick, lit: a point or an edge.
+        let lit = hover
+            .filter(|_| lifting && o.lift.is_none())
+            .and_then(|h| crate::shape::Sub::of(&shape_pick_3d(&model, shaping.as_ref()?, &cam, px(h), 8.0 * f64::from(ppp))));
+        let mut labels: Vec<(Pos2, P2, Vec<P2>, String)> = Vec::new();
+        // Where the floor's top is over plan point `q`.
+        let on_top = |q: P2| -> Option<P3> {
+            let f = shaping.as_ref()?;
+            Some([q.0, q.1, model.floor_top(f).at(q) + model.shape_height(f, q)])
+        };
+        if let Some(f) = &shaping {
+            // The creases the drag would leave, dashed over the ones there are.
+            for [a, b] in preview.as_ref().map(|f| model.shape_creases(f)).unwrap_or_default() {
+                let (a, b) = (screen(a), screen(b));
+                if a.is_finite() && b.is_finite() {
+                    p.extend(egui::Shape::dashed_line(&[a, b], Stroke::new(1.5, pal().accent), 6.0, 4.0));
+                }
+            }
+            // Its points, edges, split lines and creases as edit mode colours them; the grip under the cursor lit, the
+            // selection thick.
+            crate::shape::draw_marks(&p, &crate::shape::marks(&model, f), screen, &picked, lit);
+            let held: Vec<P2> = o.lift.as_ref().map(|(qs, ..)| qs.clone()).unwrap_or_default();
+            let by = lifted_by.unwrap_or(0.0);
+            // A selected point's offset from the top as it would be without the shape, as Revit dimensions it: plumb, an
+            // arrow at each end, the distance beside it.
+            for s in &picked {
+                let crate::shape::Sub::Point(q) = *s else { continue };
+                let (flat, up) = (model.floor_top(f).at(q), model.shape_height(f, q));
+                if up.abs() < 0.5 {
+                    continue;
+                }
+                let (a, b) = (screen([q.0, q.1, flat]), screen([q.0, q.1, flat + up]));
+                if !(a.is_finite() && b.is_finite()) || a.distance(b) < 12.0 {
+                    continue;
+                }
+                // Left of its ▲/▼, clear of its label on the right.
+                let (a, b) = (a + vec2(-26.0, 0.0), b + vec2(-26.0, 0.0));
+                p.line_segment([a, b], Stroke::new(1.0, pal().accent));
+                for (tip, from) in [(a, b), (b, a)] {
+                    let u = (tip - from).normalized();
+                    let n = vec2(-u.y, u.x) * 3.0;
+                    p.add(egui::Shape::convex_polygon(vec![tip, tip - u * 7.0 + n, tip - u * 7.0 - n], pal().accent, Stroke::NONE));
+                }
+                crate::canvas::tag(&p, a + (b - a) * 0.5 + vec2(-6.0, 0.0), egui::Align2::RIGHT_CENTER, model.units.length(up.abs()));
+            }
+            // What's held, where the drag takes it.
+            for at in held.iter().filter_map(|q| top_at(*q)) {
+                let (from, to) = (screen(at), screen([at[0], at[1], at[2] + by]));
+                if from.is_finite() && to.is_finite() {
+                    p.line_segment([from, to], Stroke::new(1.5, pal().accent));
+                    p.circle_filled(to, 5.5, pal().accent);
+                }
+            }
+            // Each point's height beside it, and the selection's (an edge's at its middle, ▲/▼ beside it): a click on one
+            // types it; a held one's follows the drag.
+            let mut items: Vec<(P2, Vec<P2>)> = f.shape.points.iter().map(|x| (x.at, vec![x.at])).collect();
+            for s in &picked {
+                if !items.iter().any(|(q, _)| q.dist(s.at()) <= TOL) {
+                    items.push((s.at(), s.ends()));
+                }
+            }
+            for (q, ends) in items {
+                let Some(at) = anchor(&ends) else { continue };
+                let is_held = !held.is_empty() && ends.iter().all(|e| held.iter().any(|h| h.dist(*e) <= TOL));
+                let lift = if is_held { by } else { 0.0 };
+                let to = screen([at[0], at[1], at[2] + lift]);
+                if !to.is_finite() {
+                    continue;
+                }
+                let text = crate::shape::heights_text(&model, f, &ends, base, lift);
+                if is_held {
+                    crate::canvas::tag(&p, to + vec2(8.0, -8.0), egui::Align2::LEFT_BOTTOM, text);
+                } else {
+                    labels.push((to + vec2(8.0, -8.0), q, ends.clone(), text));
+                }
+                if lifting && picked.iter().any(|s| s.at().dist(q) <= TOL) {
+                    crate::shape::arrows(&p, to);
+                }
+            }
+            // Where a click would add a point, or end the split line begun; the edge it snaps to lit.
+            if adding && let Some((q, edge, kind)) = hover.and_then(snapped) {
+                if let Some([a, b]) = edge {
+                    let (a, b) = (screen(a), screen(b));
+                    if a.is_finite() && b.is_finite() {
+                        p.line_segment([a, b], Stroke::new(3.0, pal().accent));
+                    }
+                }
+                if let Some(at) = on_top(q) {
+                    let to = screen(at);
+                    let surface = at[2] - base.at(&model, f, q);
+                    let z = match (point_tool, along) {
+                        (true, true) => surface + offset,
+                        (true, false) => typed_z.unwrap_or(surface),
+                        _ => surface,
+                    };
+                    crate::canvas::tag(&p, to + vec2(12.0, -12.0), egui::Align2::LEFT_BOTTOM, model.units.length(z));
+                    match split_start.and_then(on_top) {
+                        Some(start) => {
+                            p.line_segment([screen(start), to], Stroke::new(1.5, pal().accent));
+                        }
+                        None if kind.is_none() => {
+                            p.circle_stroke(to, 4.0, Stroke::new(1.5, pal().accent));
+                        }
+                        None => {}
+                    }
+                    if let Some(kind) = kind {
+                        crate::shape::snap_marker(&p, to, kind);
+                    }
+                }
             }
         }
         // A click on a grip picks nothing behind it.
         let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
         let click = click.filter(|at| !boxed.is_some_and(|b| modify && crate::section_box::grip_at(b, *at, screen).is_some()));
-        let clicked = click.map(|at| pick(&o.picker, at).map(|h| h.id));
+        let on_patch = |at: Pos2| patch.is_some_and(|ring| crate::workplane::on_patch(&ring, at));
+        let patched = click.is_some_and(on_patch);
+        let click = click.filter(|_| !patched);
+        // Shape Editing's clicks are the floor's, not the picture's; one on a height label is the label's.
+        let label_rects: Vec<Rect> =
+            labels.iter().map(|(at, _, _, text)| crate::shape::label_rect(ui, *at, text).expand2(vec2(18.0, 2.0))).collect();
+        let shape_click = click.filter(|at| shaping.is_some() && !label_rects.iter().any(|r| r.contains(*at)));
+        let shape_reach = 8.0 * f64::from(ppp);
+        let landed = shape_click.map(|at| (landing(at), px(at)));
+        let click = click.filter(|_| shaping.is_none());
+        // While sketching here a click is the sketch's, with what's under it for Pick Walls and Pick Lines.
+        let under = click.filter(|_| sketch_z.is_some()).and_then(|at| pick(&o.picker, at)).map(|h| h.id);
+        // A dimension's lines are picked before what the picture shows under them.
+        let clicked = click
+            .filter(|_| sketch_z.is_none() && !picking)
+            .map(|at| dim_at(at).filter(|_| modify).or_else(|| pick(&o.picker, at).map(|h| h.id)));
+        let dim_click = click.filter(|_| dimming).map(|at| (px(at), dim_pick(at)));
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
         let target = click.filter(|_| drawing).and_then(|at| aimed(&o.picker, at));
@@ -573,17 +1406,66 @@ impl BimApp {
             // Nothing under the cursor: nothing to take down, or to paint.
             Some(None) if demolish || paint || unpaint => {}
             Some(_) if drawing => match target {
-                Some((q, plane)) => self.draw3d(q, plane),
-                None => {
-                    let why = crate::lang::t("in the 3D view this tool draws on a level face: the top of a floor, a flat roof or a level");
-                    self.status = Status { text: why.into(), error: true };
-                }
+                Some((q, plane, _)) => self.draw3d(q, plane),
+                None => self.status = Status { text: self.needs_face(), error: true },
             },
+            Some(_) if dimming => {}
             Some(_) => {
                 self.status =
                     Status { text: crate::lang::t("this tool works in plan views: open one from the Project Browser").into(), error: true }
             }
             None => {}
+        }
+        if let Some((at, r)) = dim_click {
+            self.dim3_click(&cam, at, r);
+        }
+        // The selection box being dragged, and what one let go picks.
+        if let (Some(from), Some(now)) = (self.orbit.select, latest) {
+            let local = |q: Pos2| (q.x - rect.min.x, q.y - rect.min.y);
+            p.extend(crate::canvas::box_shapes(rect, local(from), local(now)));
+        }
+        if let Some(found) = boxed_ids {
+            self.pick_up(found, click_modifiers(ui));
+        }
+        if let Some(surface) = sketch_z {
+            let plane = Plane { cam, rect, ppp, surface };
+            if let Some((from, to)) = selected_box {
+                self.sketch3d_box(&plane, from, to, click_modifiers(ui));
+            }
+            self.sketch3d(ui, &response, &p, plane, click, under);
+        }
+        if let Some(ring) = patch {
+            let name = self.work_plane_name();
+            crate::workplane::draw_patch(&p, ring, hover.is_some_and(on_patch), &name);
+        }
+        if patched {
+            self.open_work_plane();
+        }
+        // The work plane, drawn while it's being set or a new outline is sketched on it; and what Pick in View would take.
+        let m = &self.session.model;
+        let new_sketch = self.sketch.as_ref().and_then(|sk| sk.surface.filter(|_| sk.plan == crate::Sheet::View3D));
+        if (self.work_plane.is_some() || new_sketch.is_some())
+            && let Some(extent) = m.model_box()
+            && let Ok(plane) = m.work_plane(m.default_3d()).resolve(m)
+        {
+            let plane = new_sketch.map_or(plane, Frame::from);
+            crate::workplane::draw_plane(&p, plane, extent, 2000.0, screen);
+        }
+        if let (Some(picking), Some((_, scene))) = (self.work_plane_picking(), &self.orbit.scene) {
+            let look = Look::of_3d(m);
+            let aim = |at: Pos2| crate::workplane::aim(scene, &cam, px(at), picking, &look, ppp);
+            if let Picking::Points(picked) = picking {
+                for q in picked {
+                    p.circle_filled(screen(*q), 4.0, pal().accent);
+                }
+            }
+            if let Some(a) = hover.and_then(aim) {
+                crate::workplane::draw_aim(&p, &a, screen);
+            }
+            if let Some(at) = click {
+                let aimed = aim(at);
+                self.work_plane_pick(aimed);
+            }
         }
         self.context_menu(&response);
         if let Some((id, [lo, hi])) = moved {
@@ -592,27 +1474,39 @@ impl BimApp {
         if let Some((lo, hi)) = boxed_to {
             self.run("section_box", json!({"min": lo, "max": hi}));
         }
-        // The navigation bar, at the view's top right: Home (Revit's default orientation), fit, zoom.
-        let bar = Rect::from_min_size(self.nav_corner(rect), vec2(32.0, 104.0));
-        p.rect(bar, 6.0, pal().surface, Stroke::new(1.0, pal().border), StrokeKind::Inside);
-        ui.scope_builder(UiBuilder::new().max_rect(bar.shrink(3.0)).layout(Layout::top_down(Align::Center)), |ui| {
-            ui.spacing_mut().item_spacing.y = 2.0;
-            if icon_button(ui, Icon::View3D, "Home View").clicked() {
-                self.orbit.camera = None;
-                self.orbit.built = None;
-            }
-            if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
-                self.fit3d();
-            }
-            for (icon, label, factor) in [(Icon::ZoomIn, "Zoom In", 1.25), (Icon::ZoomOut, "Zoom Out", 0.8)] {
-                if icon_button(ui, icon, label).clicked()
-                    && let Some(c) = self.orbit.camera
-                {
-                    self.orbit.camera = Some(c.zoom(factor, (f64::from(c.width) / 2.0, f64::from(c.height) / 2.0)));
+        // This view's drag's preview, while it lasts; a plan's is its own.
+        if lift_held {
+            self.shape_preview = preview.filter(|_| still);
+        }
+        if shaping.is_none() {
+            self.shape_label_edit = None;
+        }
+        for (at, q, ends, text) in labels {
+            self.shape_label(ui, at, q, &ends, &text);
+        }
+        if let Some((qs, by)) = raise {
+            self.shape_raise_all(&qs, by);
+        }
+        if let Some((landed, at)) = landed {
+            match (&self.tool, landed) {
+                (Tool::ModifySubElements, _) => {
+                    let mods = click_modifiers(ui);
+                    self.shape_select(|f| shape_pick_3d(&model, f, &cam, at, shape_reach), mods.shift || mods.command);
                 }
+                (Tool::AddPoint, Some(q)) => self.shape_add_point(q),
+                (Tool::AddSplitLine(_), Some(q)) => self.shape_split(q),
+                _ => self.status = Status { text: crate::lang::t("click on the floor's top").into(), error: true },
             }
-        });
-        // A camera view remembers where the hand and the wheel left it: once they let it be, its eye and target are written
+        }
+        self.nav_bar3d(ui, &p, rect);
+        // The navigation triad, over the picture whichever painter made it; Alt and a click on it sets the work plane.
+        self.triad_draw(&p, rect, &cam);
+        match asked {
+            Some(Ask::Plane(end)) => self.triad_plane(end, cam.target),
+            Some(Ask::Level) => self.triad_level(),
+            _ => {}
+        }
+        // A camera view remembers where the hand, the wheel and the 3D mouse left it: once they let it be, its eye and target are written
         // back, so leaving the view and returning comes back to the same place (and Properties shows them). A view drawn
         // beside the active one (a floating window) writes nothing: the hand is working in the active view.
         if settled
@@ -632,6 +1526,520 @@ impl BimApp {
                 // What the model holds now is what the picture shows.
                 self.orbit.built = Some((id, ViewCamera { eye, target: cam.target }, Some(lens)));
             }
+        }
+    }
+
+    /// Home View: a camera view back where its camera stands; another turned to Revit's default orientation and fitted over
+    /// the model on the worker, the picture as it was meanwhile.
+    pub(crate) fn home3d(&mut self) {
+        let view = self.active_3d().and_then(|id| match self.session.model.elements.get(id) {
+            Some(bimcraft_core::model::Element::View3D(v)) => Some((v.camera, v.lens())),
+            _ => None,
+        });
+        match (view, self.orbit.camera) {
+            (Some((Some(_), Some(_))), _) | (_, None) => {
+                self.orbit.camera = None;
+                self.orbit.built = None;
+            }
+            (view, Some(c)) => {
+                let lens = view.and_then(|(_, l)| l);
+                self.orbit.fit_target = Some(Camera { azimuth: AZIMUTH, elevation: ELEVATION, lens, ..c });
+                self.orbit.fit_requested = None;
+                self.orbit.fit_from = None;
+            }
+        }
+    }
+
+    /// The view while its scene or mesh is made: the last picture, still at first so that a short wait doesn't flicker, then faded
+    /// with `words` over it, and its bar as ever. With none yet, or with something wrong (`now`), the words at once.
+    fn wait3d(&mut self, ui: &mut Ui, rect: Rect, words: &str, now: bool) {
+        let p = ui.painter_at(rect);
+        p.rect_filled(rect, 0.0, color(render::PAPER));
+        let o = &mut self.orbit;
+        let since = *o.waiting_since.get_or_insert_with(std::time::Instant::now);
+        let picture = match o.picture_size {
+            Some(size) if o.on_card => self.card.gpu.as_ref().and_then(|g| g.texture()).map(|id| (id, size)),
+            Some(size) => o.texture.as_ref().map(|t| (t.id(), size)),
+            None => None,
+        };
+        if let Some((id, size)) = picture {
+            p.image(id, Rect::from_min_size(rect.min, size), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+        }
+        let shown = Waiting::after(since.elapsed(), picture.is_some(), now);
+        o.waiting = Some(shown);
+        if shown == Waiting::Quiet {
+            ui.ctx().request_repaint_after(WAIT_QUIET);
+        } else {
+            if shown == Waiting::Faded {
+                let c = color(render::PAPER);
+                p.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), WAIT_FADE));
+            }
+            let galley = p.layout_no_wrap(words.to_string(), egui::FontId::proportional(14.0), pal().text);
+            let at = rect.center() - galley.size() / 2.0;
+            let card = Rect::from_min_size(at, galley.size()).expand2(vec2(12.0, 7.0));
+            p.rect(card, 6.0, pal().surface, Stroke::new(1.0, pal().border), StrokeKind::Inside);
+            p.galley(at, galley, pal().text);
+        }
+        self.nav_bar3d(ui, &p, rect);
+    }
+
+    /// The navigation bar, at the view's top right: Home (Revit's default orientation), fit, zoom.
+    fn nav_bar3d(&mut self, ui: &mut Ui, p: &egui::Painter, rect: Rect) {
+        let bar = Rect::from_min_size(self.nav_corner(rect), vec2(32.0, 104.0));
+        p.rect(bar, 6.0, pal().surface, Stroke::new(1.0, pal().border), StrokeKind::Inside);
+        ui.scope_builder(UiBuilder::new().max_rect(bar.shrink(3.0)).layout(Layout::top_down(Align::Center)), |ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            if icon_button(ui, Icon::View3D, "Home View").clicked() {
+                self.home3d();
+            }
+            if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
+                self.fit3d();
+            }
+            for (icon, label, factor) in [(Icon::ZoomIn, "Zoom In", 1.25), (Icon::ZoomOut, "Zoom Out", 0.8)] {
+                if icon_button(ui, icon, label).clicked()
+                    && let Some(c) = self.orbit.camera
+                {
+                    self.orbit.camera = Some(c.zoom(factor, (f64::from(c.width) / 2.0, f64::from(c.height) / 2.0)));
+                }
+            }
+        });
+    }
+}
+
+#[cfg(test)]
+mod edits {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn after_an_edit_the_worker_brings_the_last_scene_up_to_date_and_draws_the_whole_scene_s_picture() {
+        let mut s = bimcraft_core::engine::Session::new();
+        s.script(
+            r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+               door {"at": [2000, 0]}
+               floor {}"#,
+        )
+        .unwrap();
+        let before = Arc::clone(&s.model);
+        let scene = Arc::new(Scene::new(&before));
+        let wall = s.model.elements.iter().find(|(_, e)| e.category() == "wall").map(|(id, _)| *id).unwrap();
+        s.execute("move", &json!({"ids": [wall], "by": [0, -500]})).unwrap();
+        let after = Arc::clone(&s.model);
+        let (send, receive) = mpsc::channel();
+        let worker = crate::view_worker::Latest::new(build_scene, move || {
+            let _ = send.send(());
+        });
+        worker.request(SceneJob {
+            model: Arc::clone(&after),
+            scene: None,
+            from: Some((before, scene)),
+            width: 320,
+            height: 240,
+            lens: None,
+            card: false,
+        });
+        worker.start().unwrap();
+        let done = loop {
+            receive.recv_timeout(Duration::from_secs(60)).unwrap();
+            assert!(worker.take_error().is_none());
+            if let Some(done) = worker.take() {
+                break done;
+            }
+        };
+        let whole = Scene::new(&after);
+        assert!(Arc::ptr_eq(&done.model, &after));
+        let cam = whole.fit(AZIMUTH, ELEVATION, 320, 240);
+        assert_eq!(done.scene.render(&cam, &[]).png().unwrap(), whole.render(&cam, &[]).png().unwrap());
+    }
+}
+
+#[cfg(test)]
+mod worker_measurements {
+    use super::*;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    #[ignore]
+    fn tower_on_a_card_that_holds_little() {
+        let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
+        let model = bimcraft_core::sample::tower::annotated(bimcraft_core::sample::tower::Plate::REFERENCE, 10).unwrap();
+        let scene = bimcraft_core::view3d::Scene::new(&model);
+        let look = Look::of_3d(&model);
+        let mesh = Arc::new(bimcraft_core::view3d::gpu::Mesh::new(&scene, &look).unwrap());
+        let fitted = scene.fit_in(30.0, 30.0, 1920, 1080, &look);
+        eprintln!("{} MB of vertices of their own, in {} groups", (mesh.vertices.len() * 44) >> 20, mesh.groups.len());
+        eprintln!(
+            "on the card: shapes {} MB, copies {} MB ({}), copies' planes {} MB, texels {} MB, owners {} MB",
+            (mesh.shape_vertices.len() * 44) >> 20,
+            (mesh.instances.len() * 60) >> 20,
+            mesh.instances.len(),
+            (mesh.instance_planes.len() * 4) >> 20,
+            (mesh.texels.len() * 4) >> 20,
+            (mesh.owners.len() * 32) >> 20
+        );
+        for (chunk, room) in [(256u64, u64::MAX >> 20), (16, 64), (16, 32)] {
+            let Some(mut gpu) = crate::gpu::headless() else { return };
+            gpu.vertex_bytes = chunk << 20;
+            gpu.card_bytes = if room == u64::MAX >> 20 { u64::MAX } else { room << 20 };
+            let t = Instant::now();
+            gpu.draw(&mesh, &fitted, &[], bimcraft_core::render::PAPER).unwrap();
+            gpu.wait();
+            eprintln!("{chunk} MB buffers, room for {room} MB: first frame {:.0} ms", ms(t));
+            let mut frames = Vec::new();
+            for i in 0..30 {
+                let cam = Camera { azimuth: fitted.azimuth + f64::from(i) * 3.0, ..fitted };
+                let t = Instant::now();
+                gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+                gpu.wait();
+                if i >= 5 {
+                    frames.push(ms(t));
+                }
+            }
+            frames.sort_by(f64::total_cmp);
+            eprintln!(
+                "  moving: median {:.1} ms, p95 {:.1} ms, worst {:.1} ms",
+                frames[frames.len() / 2],
+                frames[frames.len() * 95 / 100],
+                frames[frames.len() - 1]
+            );
+            let cam = Camera { azimuth: fitted.azimuth + 100.0, ..fitted };
+            let (t, mut settle, mut worst) = (Instant::now(), 0, 0.0f64);
+            loop {
+                let one = Instant::now();
+                let whole = gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+                gpu.wait();
+                worst = worst.max(ms(one));
+                settle += 1;
+                if whole {
+                    break;
+                }
+            }
+            eprintln!("  settling: {settle} frames, {:.0} ms in all, the longest {worst:.1} ms", ms(t));
+        }
+        // A wireframe's lines, the most of a view the card holds.
+        let mut session = bimcraft_core::engine::Session::new();
+        session.model = model.into();
+        session.execute("visual_style", &serde_json::json!({"style": "wireframe"})).unwrap();
+        let look = Look::of_3d(&session.model);
+        let mesh = Arc::new(bimcraft_core::view3d::gpu::Mesh::new(&scene, &look).unwrap());
+        eprintln!("wireframe: {} MB of lines", (mesh.wires.len() * 28) >> 20);
+        for (chunk, room) in [(256u64, u64::MAX >> 20), (16, 64), (16, 32)] {
+            let Some(mut gpu) = crate::gpu::headless() else { return };
+            gpu.vertex_bytes = chunk << 20;
+            gpu.card_bytes = if room == u64::MAX >> 20 { u64::MAX } else { room << 20 };
+            gpu.draw(&mesh, &fitted, &[], bimcraft_core::render::PAPER).unwrap();
+            gpu.wait();
+            let mut frames = Vec::new();
+            for i in 0..30 {
+                let cam = Camera { azimuth: fitted.azimuth + f64::from(i) * 3.0, ..fitted };
+                let t = Instant::now();
+                gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+                gpu.wait();
+                if i >= 5 {
+                    frames.push(ms(t));
+                }
+            }
+            frames.sort_by(f64::total_cmp);
+            eprintln!(
+                "{chunk} MB buffers, room for {room} MB: moving median {:.1} ms, worst {:.1} ms",
+                frames[frames.len() / 2],
+                frames[frames.len() - 1]
+            );
+            let cam = Camera { azimuth: fitted.azimuth + 100.0, ..fitted };
+            let (t, mut settle, mut worst) = (Instant::now(), 0, 0.0f64);
+            loop {
+                let one = Instant::now();
+                let whole = gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+                gpu.wait();
+                worst = worst.max(ms(one));
+                settle += 1;
+                if whole {
+                    break;
+                }
+            }
+            eprintln!("  settling: {settle} frames, {:.0} ms in all, the longest {worst:.1} ms", ms(t));
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn tower_with_a_scan_on_the_card() {
+        let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
+        let mut session = bimcraft_core::engine::Session::new();
+        session.model = bimcraft_core::sample::tower::annotated(bimcraft_core::sample::tower::Plate::REFERENCE, 10).unwrap().into();
+        // As many points as a picture draws, on a sheet across the tower's plate.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("scan.xyz");
+        let mut text = String::new();
+        for i in 0..2000 {
+            for k in 0..1000 {
+                text += &format!("{} {} {} 220 30 30\n", f64::from(i) * 0.04, f64::from(k) * 0.06, f64::from((i + k) % 7) * 0.5);
+            }
+        }
+        std::fs::write(&path, text).unwrap();
+        session.execute("point_cloud", &serde_json::json!({"path": path, "at": [0, 0]})).unwrap();
+        let Some(mut gpu) = crate::gpu::headless() else { return };
+        let scene = bimcraft_core::view3d::Scene::new(&session.model);
+        let look = Look::of_3d(&session.model);
+        let t = Instant::now();
+        let mesh = Arc::new(bimcraft_core::view3d::gpu::Mesh::new(&scene, &look).unwrap());
+        eprintln!("mesh {:.0} ms, {} triangles, {} points", ms(t), mesh.triangles(), mesh.dots.len());
+        let t = Instant::now();
+        mesh.prepare_picking();
+        eprintln!("picking hierarchies: {:.0} ms", ms(t));
+        let fitted = scene.fit_in(30.0, 30.0, 1920, 1080, &look);
+        let t = Instant::now();
+        gpu.draw(&mesh, &fitted, &[], bimcraft_core::render::PAPER).unwrap();
+        gpu.wait();
+        eprintln!("first frame, with the upload: {:.0} ms", ms(t));
+        let inside = bimcraft_core::view3d::inside(&session.model, Camera { lens: Some(bimcraft_core::view3d::LENS), ..fitted });
+        let plain = gpu.budget;
+        for (name, base, budget) in
+            [("whole, moving", fitted, plain), ("whole, all of it a frame", fitted, usize::MAX), ("inside", inside, plain)]
+        {
+            gpu.budget = budget;
+            let mut frames = Vec::new();
+            for i in 0..30 {
+                let cam = Camera { azimuth: base.azimuth + f64::from(i) * 3.0, ..base };
+                let t = Instant::now();
+                gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+                gpu.wait();
+                if i >= 5 {
+                    frames.push(ms(t));
+                }
+            }
+            frames.sort_by(f64::total_cmp);
+            eprintln!("frame, {name}: median {:.1} ms, p95 {:.1} ms", frames[frames.len() / 2], frames[frames.len() * 95 / 100]);
+        }
+        let t = Instant::now();
+        for i in 0..100 {
+            std::hint::black_box(mesh.pick(&fitted, &[], 400.0 + f64::from(i) * 10.0, 540.0));
+        }
+        eprintln!("pick: {:.3} ms each", ms(t) / 100.0);
+        let t = Instant::now();
+        std::hint::black_box(scene.render_in(&fitted, &[], &look));
+        eprintln!("the processor's picture: {:.0} ms", ms(t));
+        // The points alone.
+        let mut alone = bimcraft_core::engine::Session::new();
+        alone.execute("point_cloud", &serde_json::json!({"path": path, "at": [0, 0]})).unwrap();
+        let scene = bimcraft_core::view3d::Scene::new(&alone.model);
+        let look = Look::of_3d(&alone.model);
+        let mesh = Arc::new(bimcraft_core::view3d::gpu::Mesh::new(&scene, &look).unwrap());
+        let fitted = scene.fit_in(30.0, 30.0, 1920, 1080, &look);
+        gpu.budget = plain;
+        gpu.draw(&mesh, &fitted, &[], bimcraft_core::render::PAPER).unwrap();
+        gpu.wait();
+        let mut frames = Vec::new();
+        for i in 0..30 {
+            let cam = Camera { azimuth: fitted.azimuth + f64::from(i) * 3.0, ..fitted };
+            let t = Instant::now();
+            gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+            gpu.wait();
+            if i >= 5 {
+                frames.push(ms(t));
+            }
+        }
+        frames.sort_by(f64::total_cmp);
+        eprintln!("frame, the points alone: median {:.1} ms, p95 {:.1} ms", frames[frames.len() / 2], frames[frames.len() * 95 / 100]);
+    }
+
+    #[test]
+    #[ignore]
+    fn tower_in_the_styles_of_lines() {
+        let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
+        let mut session = bimcraft_core::engine::Session::new();
+        let storeys = std::env::var("STOREYS").ok().and_then(|s| s.parse().ok()).unwrap_or(10);
+        session.model = bimcraft_core::sample::tower::annotated(bimcraft_core::sample::tower::Plate::REFERENCE, storeys).unwrap().into();
+        let Some(mut gpu) = crate::gpu::headless() else { return };
+        let t = Instant::now();
+        let scene = bimcraft_core::view3d::Scene::new(&session.model);
+        eprintln!("scene: {:.0} ms", ms(t));
+        for style in ["hidden_line", "wireframe"] {
+            session.execute("visual_style", &serde_json::json!({"style": style})).unwrap();
+            let look = Look::of_3d(&session.model);
+            let t = Instant::now();
+            let mesh = Arc::new(bimcraft_core::view3d::gpu::Mesh::new(&scene, &look).unwrap());
+            eprintln!("{style}: mesh {:.0} ms, {} triangles, {} lines", ms(t), mesh.triangles(), mesh.wires.len());
+            if std::env::var("MESH_ONLY").is_ok() {
+                let t = Instant::now();
+                std::hint::black_box(bimcraft_core::view3d::gpu::Mesh::new(&scene, &look).unwrap());
+                eprintln!("  mesh again, its edges kept: {:.0} ms", ms(t));
+                let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+                eprintln!("  {}", status.lines().filter(|l| l.starts_with("VmHWM")).collect::<String>());
+                continue;
+            }
+            let t = Instant::now();
+            mesh.prepare_picking();
+            eprintln!("  picking hierarchy: {:.0} ms", ms(t));
+            let fitted = scene.fit_in(30.0, 30.0, 1920, 1080, &look);
+            let t = Instant::now();
+            gpu.draw(&mesh, &fitted, &[], bimcraft_core::render::PAPER).unwrap();
+            gpu.wait();
+            eprintln!("  first frame, with the upload: {:.0} ms", ms(t));
+            let inside = bimcraft_core::view3d::inside(&session.model, Camera { lens: Some(bimcraft_core::view3d::LENS), ..fitted });
+            let wall = session.model.elements.iter().find(|(_, e)| e.category() == "wall").map(|(id, _)| *id);
+            let tinted: Vec<(Id, Rgb)> = wall.into_iter().map(|id| (id, Rgb(255, 160, 0))).collect();
+            for (name, base, tints) in
+                [("whole", fitted, &[][..]), ("whole, a wall selected", fitted, &tinted[..]), ("inside", inside, &[][..])]
+            {
+                let mut frames = Vec::new();
+                for i in 0..30 {
+                    let cam = Camera { azimuth: base.azimuth + f64::from(i) * 3.0, ..base };
+                    let t = Instant::now();
+                    while !gpu.draw(&mesh, &cam, tints, bimcraft_core::render::PAPER).unwrap() {}
+                    gpu.wait();
+                    if i >= 5 {
+                        frames.push(ms(t));
+                    }
+                }
+                frames.sort_by(f64::total_cmp);
+                eprintln!("  frame, {name}: median {:.1} ms, p95 {:.1} ms", frames[frames.len() / 2], frames[frames.len() * 95 / 100]);
+            }
+            let t = Instant::now();
+            for i in 0..100 {
+                std::hint::black_box(mesh.pick(&fitted, &[], 400.0 + f64::from(i) * 10.0, 540.0));
+            }
+            eprintln!("  pick: {:.3} ms each", ms(t) / 100.0);
+            let t = Instant::now();
+            std::hint::black_box(scene.render_in(&fitted, &[], &look));
+            eprintln!("  the processor's picture: {:.0} ms", ms(t));
+            if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+                eprintln!(
+                    "  {}",
+                    status.lines().filter(|l| l.starts_with("VmHWM") || l.starts_with("VmRSS")).collect::<Vec<_>>().join(", ")
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "measures the annotated ten-storey tower in release"]
+    fn tower_scene_and_upload_leave_the_requesting_thread_free() {
+        let model = Arc::new(bimcraft_core::sample::tower::annotated(bimcraft_core::sample::tower::Plate::REFERENCE, 10).unwrap());
+        let model_for_inside = Arc::clone(&model);
+        let (send, receive) = mpsc::channel();
+        let worker = crate::view_worker::Latest::new(build_scene, move || {
+            let _ = send.send(());
+        });
+        let started = Instant::now();
+        worker.request(SceneJob { model, scene: None, from: None, width: 1920, height: 1080, lens: None, card: true });
+        worker.start().unwrap();
+        eprintln!("scene request and start: {:.2} ms", started.elapsed().as_secs_f64() * 1000.0);
+        let done = loop {
+            receive.recv_timeout(Duration::from_secs(120)).unwrap();
+            if let Some(error) = worker.take_error() {
+                panic!("scene worker: {error}");
+            }
+            if let Some(done) = worker.take() {
+                break done;
+            }
+        };
+        eprintln!("scene, fit, mesh and picking hierarchy complete: {:.2} s", started.elapsed().as_secs_f64());
+        let mesh = done.mesh.unwrap().unwrap();
+        let Some(mut gpu) = crate::gpu::headless() else { return };
+        let ctx = egui::Context::default();
+        let started = Instant::now();
+        assert!(!gpu.prepare_upload(&ctx, &mesh).unwrap());
+        eprintln!("upload request and start: {:.2} ms", started.elapsed().as_secs_f64() * 1000.0);
+        loop {
+            if gpu.prepare_upload(&ctx, &mesh).unwrap() {
+                break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(120), "upload did not finish");
+            std::thread::sleep(Duration::from_millis(16));
+        }
+        eprintln!("upload complete: {:.2} s", started.elapsed().as_secs_f64());
+        let unique: usize = mesh.shapes.iter().map(|s| s.vertices.len() / 3).sum();
+        eprintln!(
+            "{} triangles drawn: {} of their own, {} copies of {} shapes ({unique} triangles)",
+            mesh.triangles(),
+            mesh.vertices.len() / 3,
+            mesh.instances.len(),
+            mesh.shapes.len()
+        );
+        eprintln!("{} groups of their own triangles, and {} copies each on its own", mesh.groups.len(), mesh.instances.len());
+        // Frames as an orbit draws them, timed back to back once the card is awake: the whole tower, then nearer, then from inside.
+        let ms = |t: Instant| t.elapsed().as_secs_f64() * 1000.0;
+        let fitted = done.fitted;
+        let corner = [fitted.target[0] - 15000.0, fitted.target[1] - 10000.0, fitted.target[2]];
+        let inside = bimcraft_core::view3d::inside(&model_for_inside, Camera { lens: Some(bimcraft_core::view3d::LENS), ..fitted });
+        for (name, base, cull) in [
+            ("whole, all drawn", fitted, false),
+            ("4x nearer, all drawn", Camera { scale: fitted.scale * 4.0, target: corner, ..fitted }, false),
+            ("inside, all drawn", inside, false),
+            ("whole", fitted, true),
+            ("4x nearer", Camera { scale: fitted.scale * 4.0, target: corner, ..fitted }, true),
+            ("16x nearer", Camera { scale: fitted.scale * 16.0, target: corner, ..fitted }, true),
+            ("inside", inside, true),
+            ("nothing", Camera { target: [fitted.target[0] + 1e7, fitted.target[1], fitted.target[2]], ..fitted }, true),
+        ] {
+            gpu.cull = cull;
+            let mut frames = Vec::new();
+            let mut drawn = 0usize;
+            for i in 0..40 {
+                let cam = Camera { azimuth: base.azimuth + f64::from(i) * 3.0, ..base };
+                let t = Instant::now();
+                gpu.draw(&mesh, &cam, &[], bimcraft_core::render::PAPER).unwrap();
+                gpu.wait();
+                if i >= 5 {
+                    frames.push(ms(t));
+                }
+                if i == 0 {
+                    let t = Instant::now();
+                    for _ in 0..20 {
+                        std::hint::black_box(mesh.visible(&cam));
+                    }
+                    let seen = mesh.visible(&cam);
+                    eprintln!("  visible: {:.2} ms, {} runs of own, {} of copies", ms(t) / 21.0, seen.vertices.len(), seen.instances.len());
+                    let own: usize = seen.vertices.iter().map(|r| r.len() / 3).sum();
+                    let copies: usize = seen.instances.iter().map(|r| r.len()).sum();
+                    drawn = own + copies;
+                }
+            }
+            frames.sort_by(f64::total_cmp);
+            eprintln!(
+                "frame, {name}: median {:.1} ms, p95 {:.1} ms; drawn {drawn} of {} triangles and copies",
+                frames[frames.len() / 2],
+                frames[frames.len() * 95 / 100],
+                mesh.vertices.len() / 3 + mesh.instances.len()
+            );
+        }
+        // A section box: a storey's height through the middle, half the tower across, and a face dragged a little each frame.
+        gpu.cull = true;
+        let (o, far) = (mesh.origin, 1e7);
+        let storey = ([o[0] - far, o[1] - far, o[2]], [o[0] + far, o[1] + far, o[2] + 3700.0]);
+        let half = ([o[0] - far, o[1] - far, o[2] - far], [o[0], o[1] + far, o[2] + far]);
+        for (name, cut, drags) in [("a storey", storey, false), ("half the tower", half, false), ("a face dragged", half, true)] {
+            let mut frames = Vec::new();
+            for i in 0..40 {
+                let cam = if drags { fitted } else { Camera { azimuth: fitted.azimuth + f64::from(i) * 3.0, ..fitted } };
+                let at = if drags { ([cut.0[0], cut.0[1], cut.0[2]], [cut.1[0] + f64::from(i) * 200.0, cut.1[1], cut.1[2]]) } else { cut };
+                let t = Instant::now();
+                gpu.draw_cut(&mesh, &cam, &[], bimcraft_core::render::PAPER, Some(at)).unwrap();
+                gpu.wait();
+                if i >= 5 {
+                    frames.push(ms(t));
+                }
+            }
+            frames.sort_by(f64::total_cmp);
+            let seen = mesh.visible_cut(&fitted, Some(cut));
+            eprintln!(
+                "frame, section box, {name}: median {:.1} ms, p95 {:.1} ms; drawn {} of {} triangles",
+                frames[frames.len() / 2],
+                frames[frames.len() * 95 / 100],
+                mesh.cost(&seen),
+                mesh.triangles()
+            );
+        }
+        let t = Instant::now();
+        for i in 0..100 {
+            std::hint::black_box(mesh.pick(&done.fitted, &[], 400.0 + f64::from(i) * 10.0, 540.0));
+        }
+        eprintln!("pick: {:.3} ms each", ms(t) / 100.0);
+        if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+            eprintln!("{}", status.lines().filter(|l| l.starts_with("VmHWM") || l.starts_with("VmRSS")).collect::<Vec<_>>().join(", "));
         }
     }
 }

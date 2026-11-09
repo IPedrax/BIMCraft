@@ -43,7 +43,22 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   guessed at: its placed elements come in as boxes too, of a family named by the category's id (`Category -2008123`), and the note
   says its category has no name here; one whose box is the box of an element of a named category is that element's companion (every
   pipe, fitting and duct has one in such a file), so it is left out and listed. The categories that have a name and no reader (model
-  lines, rebar) are listed in the notes with how many there are.
+  lines, rebar, areas, assemblies, wall reveals) are listed in the notes with how many there are.
+
+  The categories the name table knows that had no reader come in from the survey's own records, their category and box, with no
+  new finding in an element's data (`framing.rs`, `generic.rs`'s `KINDS`). Structural framing is a beam along its box's longer side,
+  through the middle of the box across it, its top the box's top on the level at or below it, its section the box across it; a member
+  whose box runs across the axes in plan (wider than a third of its length) or stands (as deep as it is long) is left out, since its
+  line is not read and its box would make a beam of another width and direction. Structural foundations are isolated footings of their
+  box (a wall foundation or a mat too). Stairs' runs, landings and supports, railings, curtain panels and mullions, wall sweeps, slab
+  edges, conduits, furniture systems (of the furniture category), site pads, masses, trusses, beam systems, stiffeners and
+  connections come in as boxes of a family of their category, as fittings do, each saying so, but a box is a fair stand-in only for
+  some (`generic::Shape`): a path's (a railing, a mullion, a sweep, a slab edge, a conduit) only where it runs along an axis, so one
+  that turns a corner or runs across the axes, whose box is a block where there is none, is left out with that; and a whole (a stair,
+  a truss, a beam system) is left out where its box holds a box of its parts' categories, which come in on their own. Conduits come
+  in as boxes and not as runs: the finding that a duct's or a cable tray's data holds its line (below) was made on those two
+  categories, and no conduit was looked at. A curtain wall still comes in as the plane of its box, its panels and mullions as boxes
+  over it.
 
   Every note of an element left out reads `N kinds left out, why (ids …)` (`Import::left_out`; an element the model's rules drop
   after it was made goes through `Import::dropped`), because the desktop adds those numbers up for its status line
