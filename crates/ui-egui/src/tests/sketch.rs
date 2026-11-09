@@ -183,7 +183,7 @@ fn a_picked_lines_end_is_a_grip_that_takes_the_lines_joined_there_with_it() {
 }
 
 #[test]
-fn arcs_and_picked_walls_close_loops_too() {
+fn an_arc_and_a_line_close_a_floor_loop() {
     let mut h = app(BOX);
     press(&mut h, "Floor");
     click(&mut h, P2(1000.0, 1000.0));
@@ -199,16 +199,28 @@ fn arcs_and_picked_walls_close_loops_too() {
     assert_eq!(half.len(), 1, "{}", h.state().status.text);
     let area = field(&h, half[0], "area_m2").as_f64().unwrap();
     assert!((area - std::f64::consts::TAU).abs() < 0.1, "{area}");
-    // Pick Walls: a line along each wall clicked.
-    press(&mut h, "Architecture");
+}
+
+#[test]
+fn pick_walls_closes_a_floor_on_the_authored_location_lines() {
+    let mut h = app(include_str!("../../../../samples/floor-pick-walls.txt"));
     press(&mut h, "Floor");
     press(&mut h, "Pick Walls");
-    for p in [P2(4000.0, 0.0), P2(8000.0, 3000.0), P2(4000.0, 6000.0), P2(0.0, 3000.0)] {
-        click(&mut h, p);
+    // Click alternately just inside and just outside the reference rectangle.
+    for (pick, a, b) in [
+        (P2(4000., 50.), P2(0., 0.), P2(8000., 0.)),
+        (P2(8050., 3000.), P2(8000., 0.), P2(8000., 6000.)),
+        (P2(4000., 5950.), P2(8000., 6000.), P2(0., 6000.)),
+        (P2(-50., 3000.), P2(0., 6000.), P2(0., 0.)),
+    ] {
+        click(&mut h, pick);
+        assert!(line_of(&h, a, b).is_some(), "picked at {pick:?}");
     }
     assert_eq!(lines(&h).len(), 4);
     press(&mut h, "Finish Edit Mode");
-    assert_eq!(ids(&h, "floor").len(), 2, "{}", h.state().status.text);
+    let floors = ids(&h, "floor");
+    assert_eq!(floors.len(), 1, "{}", h.state().status.text);
+    assert_eq!(field(&h, floors[0], "area_m2"), json!(48.0));
 }
 
 #[test]
