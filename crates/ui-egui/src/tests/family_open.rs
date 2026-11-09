@@ -1,5 +1,6 @@
 //! New Family and Open Family, as Revit's File > New > Family and File > Open > Family, and the start page's Families: a
-//! family's document opened from each, with the project behind it left as it was; Manage has no New Family.
+//! family's document opened from each, with the project behind it left as it was; and Edit Family on the contextual tab's Mode
+//! panel, as Revit's Modify | <Category> and Modify | Place Component have it. Manage has neither.
 use super::*;
 
 /// The system's file dialog the last press began, answered with `path`.
@@ -122,4 +123,32 @@ fn manage_has_no_new_family() {
     let mut h = app(BOX);
     press(&mut h, "Manage");
     assert!(h.query_by_label("New Family").is_none(), "it is on the start page and in File > New");
+}
+
+#[test]
+fn edit_family_is_on_the_contextual_tab_of_a_family_instance_and_of_place_component_not_on_manage() {
+    let mut h = app(&format!("{BOX}\ncomponent {{\"family\": \"Table\", \"type\": \"1600 x 900\", \"at\": [3000, 3000]}}"));
+    h.set_size(vec2(1800.0, 900.0));
+    press(&mut h, "Manage");
+    assert!(h.query_by_label("Edit Family").is_none(), "not on Manage");
+    // A wall selected: its tab has no Edit Family.
+    click(&mut h, P2(2000.0, 0.0));
+    assert_eq!(h.state().tab, Tab::Context);
+    assert!(h.query_by_label("Edit Family").is_none(), "a wall is of no family");
+    key(&mut h, Key::Escape);
+    // The table selected: Modify | Furniture, its Mode panel's Edit Family.
+    click(&mut h, P2(3800.0, 3000.0));
+    assert_eq!(h.state().tab, Tab::Context);
+    assert_eq!(h.state().context().as_deref(), Some("Modify | Furniture"));
+    press(&mut h, "Edit Family");
+    assert_eq!(open_family(&h).as_deref(), Some("Table"));
+    press(&mut h, "Close Family");
+    key(&mut h, Key::Escape);
+    // Placing a component: Modify | Place Component has Load Family and Edit Family, of the family being placed.
+    h.state_mut().set_tool(Tool::Component);
+    h.run();
+    let placing = h.state().placing().map(|(f, _)| f).expect("a family to place");
+    assert!(h.query_by_label("Load Family").is_some());
+    press(&mut h, "Edit Family");
+    assert_eq!(open_family(&h), Some(placing));
 }

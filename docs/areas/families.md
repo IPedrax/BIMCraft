@@ -142,7 +142,9 @@ the project's: Load into Project loads it, asking first (Family Already Exists) 
 project is left as it is. The family document stands over a project, which the window always has: the blank one it starts with
 when given no file, so a family opened from the start page needs nothing more; closed, it goes back to the start page
 (`family_from_home`) unless the page was over a project or the family was loaded into the blank one. A file that isn't a family
-opens nothing and says why. Manage has no New Family.
+opens nothing and says why. Edit Family (`edit_family`) is on the contextual tab's Mode panel, as Revit's: a family's instance
+selected (the tab named for its family's category, Modify | Furniture), or a component being placed (Modify | Place Component,
+beside Load Family, the family being placed); and on the right-click menu. Manage has neither New Family nor Edit Family.
 
 A form selected in the document (from the Project Browser's Forms list, or Select in the Forms tab; Escape, a click in the view or
 Modify lets it go) shows its own Properties in place of the family's tabs, as Revit's do for an Extrusion (`editor/extrusion.rs`):

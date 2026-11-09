@@ -3299,7 +3299,8 @@ component {"family": "Stool", "at": [3000, 2000]}"#;
     // Picked by its outline.
     click(&mut h, P2(3200.0, 2000.0));
     assert_eq!(h.state().selection, [c]);
-    assert!(h.query_by_label("Modify | Components").is_some());
+    // Named for its family's category, as Revit's.
+    assert!(h.query_by_label("Modify | Furniture").is_some());
     // Its instance parameter, in Properties.
     type_into(&mut h, "Seat", "500");
     key(&mut h, Key::Enter);
@@ -5709,7 +5710,7 @@ fn the_family_editor_edits_a_family_says_what_wont_build_and_starts_a_new_one_of
     click(&mut h, P2(3800.0, 3000.0));
     assert_eq!(h.state().selection, [table]);
     h.set_size(vec2(1800.0, 900.0));
-    press(&mut h, "Manage");
+    // Modify | Furniture's Mode panel, as Revit's.
     press(&mut h, "Edit Family");
     assert!(h.state().family_editor.is_some(), "the window is open on the table's family");
     // The table's parameters, a row each: its top's Thickness, 40 mm, here the first type's, 1200 x 800.
