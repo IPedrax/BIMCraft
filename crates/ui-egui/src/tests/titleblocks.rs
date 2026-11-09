@@ -116,3 +116,52 @@ fn each_text_in_the_texts_tab_is_made_a_field_and_back_showing_what_it_says() {
     assert_eq!(tb.texts[2].text, "Planta Baixa Térreo");
     assert!(tb.field("PLANTA_BAIXA_TERREO").is_none());
 }
+
+#[test]
+fn tb_opens_manage_title_blocks_and_ks_lists_it() {
+    let mut h = app(&format!("{BOX}\n{SELO}"));
+    shortcut(&mut h, "TB");
+    assert!(h.state().title_blocks_dialog.is_some(), "TB opens Manage > Title Blocks, as its tooltip says");
+    assert!(crate::shortcuts().contains(&("TB", "Title Blocks")), "and Keyboard Shortcuts (KS) lists it");
+}
+
+/// The same flow in BIMCraft's own profile: Manage > Title Blocks is a row of the Tools palette, and a sheet's title block
+/// is picked in the Inspector, as Rev's Properties picks it.
+#[test]
+fn the_tools_palette_opens_title_blocks_and_the_inspector_picks_a_sheets() {
+    let mut h = bimcraft(&format!("{BOX}\n{SELO}"));
+    assert!(h.query_by_label("Title Blocks").is_none(), "the palette shows its first tab's tools");
+    let manage = h.get_all_by_label("Manage").map(|n| n.rect()).find(|r| r.left() < 60.0).unwrap();
+    click_at(&mut h, manage.center());
+    assert_eq!(h.state().tab, Tab::Manage);
+    press(&mut h, "Title Blocks");
+    assert!(h.state().title_blocks_dialog.is_some(), "the palette's Title Blocks opens the dialog");
+    // A project field's value, typed in the dialog, is the project's on Apply; New and Add Field make another.
+    h.state_mut().title_blocks_dialog.as_mut().unwrap().set_value("CLIENTE", "Henrique Güths");
+    press_near(&mut h, "Apply", "Cancel");
+    assert_eq!(h.state().session.model.title_values["CLIENTE"], "Henrique Güths");
+    press(&mut h, "New");
+    press(&mut h, "Add Field");
+    press(&mut h, "OK");
+    assert!(h.state().title_blocks_dialog.is_none(), "OK closes it");
+    assert_eq!(h.state().session.model.title_blocks["Title Block 1"].fields.len(), 1);
+    // TB opens it here too.
+    shortcut(&mut h, "TB");
+    assert!(h.state().title_blocks_dialog.is_some(), "TB in BIMCraft's profile");
+    press(&mut h, "Cancel");
+    // The sheet on the built-in one picks ESCRITORIO in the Inspector, and fills in its sheet field there.
+    let sheets = ids(&h, "sheet");
+    h.state_mut().open_sheet(Sheet::Paper(sheets[1]));
+    h.run();
+    assert_eq!(h.get_by_role_and_label(Role::ComboBox, "Title Block").value().as_deref(), Some("Built-in"));
+    choose(&mut h, "Title Block", "ESCRITORIO");
+    assert_eq!(h.state().session.model.sheet(sheets[1]).unwrap().title_block, "ESCRITORIO");
+    assert!(h.query_by_label("Cliente").is_none(), "a project field isn't the sheet's to fill in");
+    type_into(&mut h, "Desenhista", "M.S.");
+    h.key_press(Key::Enter);
+    h.run();
+    assert_eq!(h.state().session.model.sheet(sheets[1]).unwrap().fields["DESENHO"], "M.S.");
+    h.get_by_label("Edit Title Blocks…").click_accesskit();
+    h.run();
+    assert!(h.state().title_blocks_dialog.is_some(), "Edit Title Blocks… opens the dialog from the Inspector");
+}

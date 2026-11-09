@@ -710,7 +710,7 @@ object (code 101 on, written since 2018) is read past (`dxf.rs`), so its 10s and
 formatting, as `\C` is. `TitleBlock::make_field` turns a text into a field of a key (`key_for` suggests one from what it says) whose
 default is what it said.
 A single line of DXF text keeps its braces (`dxf::decode`), as AutoCAD shows them; only multi-line text's braces are formatting.
-`title_values` gives the project's values. In the desktop, Manage > Title Blocks lists them (New, Duplicate, Delete, Import DXF…) and
+`title_values` gives the project's values. In the desktop, Manage > Title Blocks (TB, in either profile) lists them (New, Duplicate, Delete, Import DXF…) and
 edits the one picked, with a preview drawn by the core (`titleblock::preview`) as the first sheet that names it fills it in: its fields,
 with the project's values, its texts, its straight lines and its size; a sheet's Properties pick its title block and fill in its sheet
 fields. The preview is the editor: a click picks a text (`Text::outline`), a drag moves it, the arrow keys nudge it half a
