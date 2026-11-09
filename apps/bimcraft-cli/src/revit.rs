@@ -19,6 +19,11 @@ pub fn info(path: &str) -> Result<Value, String> {
 }
 
 #[cfg(not(feature = "rvt"))]
+pub fn info_with_options(path: &str, _include_detail: bool) -> Result<Value, String> {
+    Err(format!("{path}: {WITHOUT}"))
+}
+
+#[cfg(not(feature = "rvt"))]
 pub fn open(_: &mut Session, path: &str) -> Result<Value, String> {
     Err(format!("{path}: {WITHOUT}"))
 }
@@ -45,6 +50,11 @@ pub fn open(s: &mut Session, path: &str) -> Result<Value, String> {
 /// it was saved to are in the file and shown here; nothing writes them into a project or an IFC file.
 #[cfg(feature = "rvt")]
 pub fn info(path: &str) -> Result<Value, String> {
+    info_with_options(path, false)
+}
+
+#[cfg(feature = "rvt")]
+pub fn info_with_options(path: &str, include_detail: bool) -> Result<Value, String> {
     use bimcraft_rvt::inventory::category_name;
     use bimcraft_rvt::{Limits, Revit};
     use serde_json::json;
@@ -52,28 +62,75 @@ pub fn info(path: &str) -> Result<Value, String> {
     let failed = |e: bimcraft_rvt::Error| format!("{path}: {e}");
     let mut revit = Revit::open(std::path::Path::new(path), Limits::default()).map_err(failed)?;
     let basic = revit.basic_file_info().map_err(failed)?;
+    let partition_streams: Vec<String> =
+        revit.stream_names().into_iter().filter(|n| n.starts_with("Partitions/")).map(String::from).collect();
     // The Atom entry is a bonus: a file whose entry is damaged still shows the rest.
     let atom = revit.document_atom().ok().flatten();
     let mm = |feet: f64| (feet * 304.8 * 1000.0).round() / 1000.0;
-    let elements = match revit.inventory() {
-        Ok(inv) => {
-            let categories: Vec<Value> = inv
-                .counts()
-                .iter()
-                .map(|c| json!({"category": c.category, "name": category_name(c.category), "elements": c.elements, "placed": c.placed}))
-                .collect();
-            json!({
-                "declared": inv.declared,
-                "total": inv.elements.len(),
-                "placed": inv.elements.iter().filter(|e| e.placed).count(),
-                "categories": categories,
-                "levels": inv.levels.iter().map(|l| json!({"id": l.id, "name": l.name, "elevation": mm(l.elevation_feet), "building_story": l.building_story})).collect::<Vec<_>>(),
-                "unread_levels": inv.unread_levels,
-                "owned_levels": inv.owned_levels,
-            })
+    let elements = if include_detail {
+        match revit.detailed_inventory() {
+            Ok(det) => {
+                let inv = det.inventory;
+                let categories: Vec<Value> = inv
+                    .counts()
+                    .iter()
+                    .map(|c| json!({"category": c.category, "name": category_name(c.category), "elements": c.elements, "placed": c.placed}))
+                    .collect();
+                let detail_json: Vec<Value> = det
+                    .elements_detail
+                    .iter()
+                    .filter(|e| e.placed)
+                    .map(|e| {
+                        json!({
+                            "id": e.id,
+                            "category": e.category,
+                            "category_name": category_name(e.category),
+                            "class_tag": e.class_tag,
+                            "class_name": e.class_name,
+                            "placed": e.placed,
+                            "level_id": e.level_id,
+                            "bbox_min_mm": e.bbox_min_mm,
+                            "bbox_max_mm": e.bbox_max_mm,
+                            "location_mm": e.location_mm,
+                        })
+                    })
+                    .collect();
+                json!({
+                    "declared": inv.declared,
+                    "total": inv.elements.len(),
+                    "placed": inv.elements.iter().filter(|e| e.placed).count(),
+                    "partitions_count": partition_streams.len(),
+                    "categories": categories,
+                    "levels": inv.levels.iter().map(|l| json!({"id": l.id, "name": l.name, "elevation": mm(l.elevation_feet), "building_story": l.building_story})).collect::<Vec<_>>(),
+                    "unread_levels": inv.unread_levels,
+                    "owned_levels": inv.owned_levels,
+                    "elements_detail_placed_count": detail_json.len(),
+                    "elements_detail": detail_json,
+                })
+            }
+            Err(e) => json!({"error": e.to_string()}),
         }
-        // A family or a release the reader does not know: say why, and still show the rest.
-        Err(e) => json!({"error": e.to_string()}),
+    } else {
+        match revit.inventory() {
+            Ok(inv) => {
+                let categories: Vec<Value> = inv
+                    .counts()
+                    .iter()
+                    .map(|c| json!({"category": c.category, "name": category_name(c.category), "elements": c.elements, "placed": c.placed}))
+                    .collect();
+                json!({
+                    "declared": inv.declared,
+                    "total": inv.elements.len(),
+                    "placed": inv.elements.iter().filter(|e| e.placed).count(),
+                    "categories": categories,
+                    "levels": inv.levels.iter().map(|l| json!({"id": l.id, "name": l.name, "elevation": mm(l.elevation_feet), "building_story": l.building_story})).collect::<Vec<_>>(),
+                    "unread_levels": inv.unread_levels,
+                    "owned_levels": inv.owned_levels,
+                })
+            }
+            // A family or a release the reader does not know: say why, and still show the rest.
+            Err(e) => json!({"error": e.to_string()}),
+        }
     };
     Ok(json!({
         "revit": {

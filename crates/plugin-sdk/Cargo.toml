@@ -1,0 +1,18 @@
+[package]
+name = "bimcraft-plugin-sdk"
+description = "The guest SDK of BIMCraft's WASM plugins: the host ABI's typed calls, the entry points and the manifest's shape"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde_json = { workspace = true }
+
+# The SDK is the one crate of the workspace that may hold `unsafe`: a WebAssembly guest's entry points and host calls
+# are raw linear-memory pointers, which no safe Rust API reads. The block is one, at the ABI boundary, and the rest of
+# the workspace stays `unsafe`-free; `docs/areas/plugins.md` says why.
+
+[lib]
+# A plugin is a module: the SDK is linked into it as an ordinary library.
+path = "src/lib.rs"
