@@ -10309,6 +10309,103 @@ msgctxt "side"
 msgid "Top"
 msgstr ""
 
+#: crates/ui-egui/src/plugins.rs:390
+msgid "1 function"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:296
+msgid "A plugin is a folder with plugin.json and its module; BIMCraft runs its functions in a sandbox, through commands."
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:425
+msgid "Allow file access"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:435
+msgid "Allowed"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:311
+msgid "Couldn't be read: {}"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:395
+msgid "Disable"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:404
+msgid "Disabled"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:401 crates/ui-egui/src/plugins.rs:407
+msgid "Enable"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:418
+msgid "File access"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:291
+msgid "Folder"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:316
+msgid "Log"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:303
+msgid "No plugins in the folder."
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:435
+msgid "Not allowed"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:321
+msgid "Nothing yet."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4107 crates/ui-egui/src/plugins.rs:148
+#: crates/ui-egui/src/plugins.rs:288
+msgid "Plugins"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4106
+msgid "Plugins: the WASM extensions in your plugin folder, what became of each, their log, and switching them on and off"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:332
+msgid "Refresh"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:425
+msgid "Revoke file access"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:160
+msgid "Runs the plugin's command"
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:103
+msgid "The plugin folder was read again."
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:129
+msgid "The plugin may no longer use files."
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:127
+msgid "The plugin may now use files."
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:419
+msgid "This plugin asks to read and write files on your computer. Its commands reach the disk only while you allow it."
+msgstr ""
+
+#: crates/ui-egui/src/plugins.rs:390
+msgid "{} functions"
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Un motivo del file sostituisce quello con lo stesso nome in questo elenco; altrimenti viene escluso"

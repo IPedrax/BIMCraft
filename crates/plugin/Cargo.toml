@@ -1,0 +1,23 @@
+[package]
+name = "bimcraft-plugin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "The WASM sandbox BIMCraft runs its plugins in: manifests, the host ABI, limits and the command bridge"
+
+[dependencies]
+bimcraft-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# The interpreter the plugins run in: pure Rust, MIT/Apache-2.0, fuel metering and a memory limiter.
+wasmi = { version = "2", default-features = false, features = ["std", "validate", "auto-dispatch"] }
+
+[dev-dependencies]
+# The test modules are written as WAT: no WebAssembly toolchain is needed to build them.
+wasmi = { version = "2", default-features = false, features = ["std", "validate", "wat", "auto-dispatch"] }
+wat = "1"
+tempfile.workspace = true
+
+[lints]
+workspace = true

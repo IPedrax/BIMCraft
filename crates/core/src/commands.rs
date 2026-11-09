@@ -12,7 +12,7 @@ use serde_json::{Map, Value, json};
 
 use crate::cad::{Cad, Colors};
 use crate::cloud::{self, Cloud};
-use crate::engine::{Command, Run, Session};
+use crate::engine::{Command, Files, Run, Session};
 use crate::favorites::{self, FamilyEntry, Favorites, MaterialEntry};
 use crate::fills::{FillPattern, FilledRegion, FilledRegionType, Target};
 use crate::geom::{self, P2};
@@ -43,12 +43,29 @@ use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 type R = Result<Value, String>;
 
 const fn edit(id: &'static str, label: &'static str, aliases: &'static [&'static str], params: &'static str, run: Run) -> Command {
-    Command { id, label, aliases, params, run, undoable: true, menu: None }
+    Command { id, label, aliases, params, run, undoable: true, menu: None, files: Files::None }
 }
 
 /// A command that is no undo step: it only reads, or replaces the whole project.
 const fn other(id: &'static str, label: &'static str, params: &'static str, run: Run) -> Command {
-    Command { id, label, aliases: &[], params, run, undoable: false, menu: None }
+    Command { id, label, aliases: &[], params, run, undoable: false, menu: None, files: Files::None }
+}
+
+/// An [`edit`] that touches the disk.
+const fn edit_files(
+    id: &'static str,
+    label: &'static str,
+    aliases: &'static [&'static str],
+    params: &'static str,
+    run: Run,
+    files: Files,
+) -> Command {
+    Command { id, label, aliases, params, run, undoable: true, menu: None, files }
+}
+
+/// An [`other`] that touches the disk.
+const fn other_files(id: &'static str, label: &'static str, params: &'static str, run: Run, files: Files) -> Command {
+    Command { id, label, aliases: &[], params, run, undoable: false, menu: None, files }
 }
 
 pub static ALL: &[Command] = &[
@@ -59,12 +76,13 @@ pub static ALL: &[Command] = &[
          Nível 2 in Portuguese; Nivel 1, Nivel 2 in Spanish; Nivå 1, Nivå 2 in Swedish; Niveau 1, Niveau 2 in Dutch)",
         new,
     ),
-    other(
+other_files(
         "open",
         "Open",
         "{path} a .bimcraft project (under 256 MiB), or an .ifc (under 512 MiB) read into a new one (its `elements` by \
          category, `generic` the components of IFC classes BIMCraft has no element for, `skipped` what was left out and why)",
         open,
+        Files::Read,
     ),
     other("highrise", "Synthetic Highrise", "{storeys?: 20} replace the project with an original 1–80 storey performance sample", highrise),
     other(
@@ -79,19 +97,21 @@ pub static ALL: &[Command] = &[
          section and schedules (A0-000, A5- to A7-)",
         tower,
     ),
-    other(
+    other_files(
         "autosave",
         ui_msg!("Autosave"),
         "{path} atomically write a recovery snapshot, keeping the project path and undo history",
         autosave,
+        Files::Write,
     ),
-    other(
+    other_files(
         "recover",
         "Recover Autosave",
         "{path, project?} open and validate a recovery snapshot; Save targets `project`, or asks for Save As without it",
         recover,
+        Files::Read,
     ),
-    edit(
+    edit_files(
         "insert",
         "Insert from File",
         &[],
@@ -104,8 +124,9 @@ pub static ALL: &[Command] = &[
          patterns), fill patterns, filled region types and detail groups a detail line, a filled region or a group uses. Returns `ids` {there: here}, \
          `copies`, `library`, `left_out`",
         insert_from,
+        Files::Read,
     ),
-    edit(
+    edit_files(
         "link",
         "Link Model",
         &["LK"],
@@ -116,22 +137,25 @@ pub static ALL: &[Command] = &[
          elevations, on this project's levels at the same height. `path` is read now and again by `reload`, and kept as given: \
          a relative one is relative to this project's file. `name` defaults to the file's. Returns `id`, `name`, `elements`",
         link_model,
+        Files::Read,
     )
     .menu("Manage > Link Model"),
-    other(
+    other_files(
         "reload",
         "Reload Links",
         "{id?} read the file of the link `id`, or of every link, again: for a project that changed on disk. Returns `reloaded` \
          (the names) and `failed` ({name, error})",
         reload,
+        Files::Read,
     ),
-    other(
+    other_files(
         "save",
         "Save",
         "{path?} .bimcraft saves the project (Save As with a path); .ifc exports IFC4; .glb exports the default 3D view's scene as \
          glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns `elements` and \
          `triangles`); .svg or .png exports the lowest level's plan; .pdf prints every sheet, a page each",
         save,
+        Files::Write,
     ),
     other("undo", "Undo", "{count?} takes back the last `count` steps (1 by default)", undo),
     other("redo", "Redo", "{count?} does again the last `count` steps undone (1 by default)", redo),
@@ -146,7 +170,7 @@ pub static ALL: &[Command] = &[
     )
     .menu("Architecture > Level"),
     edit("grid", ui_msg!("Grid"), &["GR"], "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", grid).menu("Architecture > Grid"),
-    edit(
+    edit_files(
         "point_cloud",
         "Point Cloud",
         &[],
@@ -157,8 +181,9 @@ pub static ALL: &[Command] = &[
          where its file's coordinates put it; `offset` raises its middle over the level, `angle` turns it. Returns its id, the \
          scan's name, the points kept and read, and where its middle was in the file",
         point_cloud,
+        Files::Read,
     ),
-    edit(
+    edit_files(
         "import_cad",
         "Import CAD",
         &[],
@@ -172,6 +197,7 @@ pub static ALL: &[Command] = &[
          and opening the project read it again. Returns its id, the drawing's name, its unit, entities and layers, its extents \
          in the model, how many entities lie far from the rest (they're left out of its extents) and what was left out, with `notes` on what a DWG's read left out",
         import_cad,
+        Files::Read,
     ),
     edit(
         "cad_layers",
@@ -182,13 +208,14 @@ pub static ALL: &[Command] = &[
          Visibility/Graphics, by the drawing's name)",
         cad_layers,
     ),
-    edit(
+    edit_files(
         "reload_cad",
         "Reload CAD",
         &[],
         "{cad} reads a linked CAD drawing's file again, so every import of it shows what the file holds now (opening the project \
          does too). Returns whether it changed",
         reload_cad,
+        Files::Read,
     ),
     other(
         "cad_query",
@@ -943,7 +970,7 @@ pub static ALL: &[Command] = &[
          have `layers` too, from the top down; a layer's `material` is one of the library's (see `material`)",
         edit_type,
     ),
-    edit(
+    edit_files(
         "material",
         "Materials",
         &[],
@@ -961,9 +988,10 @@ pub static ALL: &[Command] = &[
          takes the texture away. `rename` renames it, the layers using it following; `delete` takes it away, while no layer \
          uses it. `inspect` lists the library and the pictures",
         material,
+        Files::Conditional,
     )
     .menu("Manage > Materials"),
-    edit(
+    edit_files(
         "favorite",
         "Favorites",
         &[],
@@ -973,6 +1001,7 @@ pub static ALL: &[Command] = &[
          made of), under another name with `as`; `load` a favorite into the project, under another name with `as`, or over \
          one it has already with `replace`; `delete` one from the favorites; `list` them (the default)",
         favorite,
+        Files::Conditional,
     )
     .menu("Manage > Favorites"),
     edit(
@@ -997,7 +1026,7 @@ pub static ALL: &[Command] = &[
         parameter,
     )
     .menu("Manage > Project Parameters"),
-    edit(
+    edit_files(
         "family",
         "Load Family",
         &[],
@@ -1060,6 +1089,7 @@ pub static ALL: &[Command] = &[
          a solid disc in ink of a radius above zero. Symbols draw in the plan and ceiling plan of the component's level whatever height \
          it has, and on no other level's. IFC leaves symbols out",
         family,
+        Files::Conditional,
     )
     .menu("Manage > Family Editor"),
     edit(
@@ -1321,7 +1351,7 @@ pub static ALL: &[Command] = &[
          edge, `from` and `to`, or with `remove` how many were `removed`",
         linework,
     ),
-    edit(
+    edit_files(
         "import_fill_patterns",
         "Import Fill Patterns",
         &[],
@@ -1332,16 +1362,18 @@ pub static ALL: &[Command] = &[
          up to its first 2000 patterns. It returns those `imported`, those `left_out` (the first 100, each with why) and \
          `left_out_count`, all of them",
         import_fill_patterns,
+        Files::Read,
     ),
-    other(
+    other_files(
         "export_crosscheck",
         "Export Cross-Check",
         "{path?} the project's levels, walls (by their centre lines), floors, shafts, doors, windows and rooms as plain \
          numbers in mm, which tools/revit-crosscheck builds again in another BIM tool to hold its numbers against ours \
          (compare_crosscheck): written to `path`, or returned as `description` without it",
         export_crosscheck,
+        Files::Write,
     ),
-    other(
+    other_files(
         "compare_crosscheck",
         "Compare Cross-Check",
         "{path? | text?} another tool's numbers of the project export_crosscheck described, a table `kind,id,quantity,value` \
@@ -1349,13 +1381,15 @@ pub static ALL: &[Command] = &[
          `path` or `text`, held against the project's own: how many were `compared`, those that `differ` (ours and \
          theirs), and those `only_ours` and `only_theirs`, the first 100 of each with their counts",
         compare_crosscheck,
+        Files::Read,
     ),
-    other(
+    other_files(
         "export_fill_patterns",
         "Export Fill Patterns",
         "{path?, names?: [name, …]} the project's fill patterns (those `names` says, else all but the solid ones, which a PAT \
          file can't hold) as a PAT file in mm, written to `path`, or returned as `text` without it",
         export_fill_patterns,
+        Files::Write,
     ),
     edit(
         "filled_region_type",
@@ -1562,8 +1596,14 @@ pub static ALL: &[Command] = &[
         standard,
     )
     .menu("Manage > Technical Standards"),
-    other("inspect", "Inspect", "{} levels, element counts, types, warnings and undo history", inspect),
     other(
+        "inspect",
+        "Inspect",
+        "{brief?} levels, element counts, types, warnings and undo history; with `brief` the library is its size only \
+         (`library`), not its types, materials, families, parameters and images, which is most of the answer",
+        inspect,
+    ),
+    other_files(
         "render",
         "Render",
         "{family?, type?, mode?: 3d|plan|elevation, wall_thickness?, view?: a level's, section's or elevation's name or id, a sheet's \
@@ -1579,8 +1619,9 @@ pub static ALL: &[Command] = &[
          elevation or sheet that could not draw something as asked (a fill pattern too dense for the view, more ink behind \
          a region than is kept above it) says so in the reply's `notes`",
         render_view,
+        Files::Conditional,
     ),
-    edit(
+    edit_files(
         "schedule",
         ui_msg!("Schedule"),
         &[],
@@ -1604,6 +1645,7 @@ pub static ALL: &[Command] = &[
          `grouped`, a row for each set of the sort fields' values: Count and totals summed, and a field whose values differ \
          left empty. Each one given replaces the last; `fields: []` goes back to its category's",
         schedule,
+        Files::Write,
     ),
     edit(
         "graphics",
@@ -1794,6 +1836,7 @@ pub static ALL: &[Command] = &[
         run: measure,
         undoable: false,
         menu: None,
+        files: Files::None,
     },
     other(
         "circuit",
@@ -13386,7 +13429,12 @@ fn object_styles(s: &mut Session, p: &Value) -> R {
     Ok(json!({"categories": all}))
 }
 
-fn inspect(s: &mut Session, _: &Value) -> R {
+fn inspect(s: &mut Session, p: &Value) -> R {
+    let c = "inspect";
+    only(c, p, &["brief"])?;
+    // `brief`: everything but the library, whose maps are most of the answer and are its size here instead. A
+    // plugin pays for every byte of the answer in fuel, so a summary that needs no type or material asks for this.
+    let brief = p.get("brief").and_then(Value::as_bool).unwrap_or(false);
     let m = &s.model;
     let mut counts: BTreeMap<&str, u64> = BTreeMap::new();
     for e in m.elements.values() {
@@ -13394,15 +13442,45 @@ fn inspect(s: &mut Session, _: &Value) -> R {
     }
     let levels: Vec<Value> = m.levels().iter().map(|(id, l)| json!({"id": id, "name": l.name, "elevation": l.elevation})).collect();
     let warnings = m.warnings();
-    Ok(json!({
+    let mut out = json!({
         "name": m.name, "units": "mm", "project_units": m.units.name(), "room_area": m.room_area.name(), "language": m.language.code(), "standard": m.standard().code(), "path": s.path, "levels": levels,
         "counts": counts,
-        "types": m.types, "materials": m.materials, "images": images(m), "families": families(m), "parameters": m.parameters,
-        "view_filters": m.view_filters, "view_templates": m.view_templates, "phases": m.phases, "phase_filters": m.phase_filters,
-        "phase_overrides": m.phase_overrides, "option_sets": m.option_sets, "warnings": warnings,
-        "voltages": m.voltages, "distribution_systems": m.distribution_systems, "wire_types": m.wire_types,
+        "warnings": warnings,
         "history": s.history(),
-    }))
+    });
+    if brief {
+        let types = m.types.wall.len()
+            + m.types.floor.len()
+            + m.types.door.len()
+            + m.types.window.len()
+            + m.types.column.len()
+            + m.types.roof.len()
+            + m.types.ceiling.len()
+            + m.types.railing.len()
+            + m.types.structural_column.len()
+            + m.types.footing.len()
+            + m.types.runs.values().map(BTreeMap::len).sum::<usize>();
+        out["library"] = json!({
+            "types": types, "materials": m.materials.len(), "families": m.families.len(),
+            "parameters": m.parameters.len(), "images": m.images.len(),
+        });
+        return Ok(out);
+    }
+    out["types"] = json!(m.types);
+    out["materials"] = json!(m.materials);
+    out["images"] = images(m);
+    out["families"] = families(m);
+    out["parameters"] = json!(m.parameters);
+    out["view_filters"] = json!(m.view_filters);
+    out["view_templates"] = json!(m.view_templates);
+    out["phases"] = json!(m.phases);
+    out["phase_filters"] = json!(m.phase_filters);
+    out["phase_overrides"] = json!(m.phase_overrides);
+    out["option_sets"] = json!(m.option_sets);
+    out["voltages"] = json!(m.voltages);
+    out["distribution_systems"] = json!(m.distribution_systems);
+    out["wire_types"] = json!(m.wire_types);
+    Ok(out)
 }
 
 fn elements(s: &mut Session, p: &Value) -> R {

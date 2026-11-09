@@ -51,6 +51,13 @@ Third-party dependencies
 
 See each dependency's own licence for its terms.
 
+Plugins run in wasmi, a WebAssembly interpreter in Rust (MIT OR Apache-2.0);
+its own dependencies are wasmi_core, wasmi_ir and wasmi_collections (MIT OR
+Apache-2.0), wasmparser (Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT),
+hashbrown (MIT OR Apache-2.0), foldhash (Zlib), spin (MIT), string-interner
+(MIT OR Apache-2.0), leb128fmt (MIT OR Apache-2.0), bumpalo (MIT OR Apache-2.0)
+and libm (MIT). The guest SDK (crates/plugin-sdk) has no runtime of its own.
+
 ==============================================================================
 DWG drawings: acadrust and ACadSharp
 ==============================================================================
