@@ -620,10 +620,15 @@ To do: shared coordinates, a link's graphics overrides and visibility per view, 
 ## Dimensions
 
 A dimension (`Dimension`, the `dimension` command) measures the model as it is, so it follows what it measures. Its `refs` are lines
-(`Reference {id, face}`: a wall's centre line, faces and ends, a door's or window's centre and jambs, a grid, a straight detail line) or, with
+(`Reference {id, face}`: a wall's centre line, faces and ends, a door's or window's centre and jambs, a column's or structural column's two
+centre lines, along its angle and across it (`Face::Across`), its left and right faces and its start and end caps (`Model::column_reference_line`;
+a round one has only its centre lines), a grid, a straight detail line) or, with
 `point: start|end`, the point at that end of one (`Model::reference_point`: a wall's centre line ends where its location line does, a face where
 the outline turns off it, so at the mitred corner; a detail line of any shape at its ends; `reference_points` lists them, `endpoint_at` finds the
-nearest, `{endpoint: [x, y]}` in a command). `reference_geometry` gives either as a line, a point as a line of no length, and `crossings` lays
+nearest, `{endpoint: [x, y]}` in a command). A point given to the command finds what the plan of its level draws (`commands::near_point`): the
+walls its cut plane passes through (`Model::cut_by`) and the columns (`Model::column_cut_by`, the plan's own test, so a column standing on a level
+below that runs up through the cut is one), their doors and windows, the grids and the plan's detail lines. `reference_geometry` gives either as
+a line, a point as a line of no length, and `crossings` lays
 them along the way the dimension measures (`measured_along`): a linear one's `orient` (horizontal or vertical), else square to its first line,
 else from its first point to the next elsewhere. `Model::check` refuses a line not parallel to the first, or not square to a linear one's line,
 and points all in one place. Mirror keeps the end of a line along the element and flips the one across it (`Reference::mirrored`); Flip swaps

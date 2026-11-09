@@ -3806,6 +3806,18 @@ impl Model {
         self.spans(w, self.plan_range(level).cut)
     }
 
+    /// Whether a plan of `level` cuts column `c` (a structural one, a footing), as the plan draws it cut: it spans the
+    /// plan's cut plane, whatever level it stands on.
+    pub fn column_cut_by(&self, c: &Column, level: impl Key) -> bool {
+        self.column_spans(c, self.plan_range(level).cut)
+    }
+
+    /// Whether column `c` (a structural one, a footing) spans height `z`: from its bottom, `z` or below, to its top, above.
+    pub(crate) fn column_spans(&self, c: &Column, z: f64) -> bool {
+        let (bottom, top) = self.span(c.level, c.base_offset, c.top_level, c.height);
+        bottom <= z && z < top
+    }
+
     /// Whether the wall bounds the rooms of `level`: it spans the height rooms are found at, the level's Computation Height
     /// ([`CUT_HEIGHT`] unless set) above it, whatever the level's plan cuts at.
     pub fn bounding(&self, w: &Wall, level: impl Key) -> bool {
@@ -3829,12 +3841,7 @@ impl Model {
         ids.sort_unstable();
         ids.into_iter()
             .filter_map(|id| self.elements.get(id))
-            .filter(|e| {
-                matches!(e, Element::Column(c) | Element::StructuralColumn(c) if c.room_bounding && {
-                    let (bottom, top) = self.span(c.level, c.base_offset, c.top_level, c.height);
-                    bottom <= z && z < top
-                })
-            })
+            .filter(|e| matches!(e, Element::Column(c) | Element::StructuralColumn(c) if c.room_bounding && self.column_spans(c, z)))
             .map(|e| self.column_outline(e))
             .filter(|o| o.len() >= 3)
             .collect()
@@ -5195,7 +5202,7 @@ impl Model {
                     }
                 }
             }
-            (Some(e), _) => Err(format!("{} {} isn't a wall, a door, a window, a grid or a detail line", e.category(), r.id)),
+            (Some(e), _) => Err(format!("{} {} isn't a wall, a door, a window, a column, a grid or a detail line", e.category(), r.id)),
             (None, _) => Err(format!("element {} doesn't exist", r.id)),
         }
     }

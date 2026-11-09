@@ -514,3 +514,43 @@ fn a_dimension_measures_between_structural_column_faces_and_centre_lines() {
     assert_eq!(values(&mut s, faces), json!([4700.0]));
     assert_eq!(values(&mut s, along), json!([2000.0]));
 }
+
+#[test]
+fn a_column_running_up_through_a_plan_is_dimensioned_on_it_as_the_plan_draws_it() {
+    let mut s = Session::new();
+    // Two storeys tall, standing on Level 1: Level 2's plan cuts it, and draws it.
+    let tall = id_of(&run(&mut s, "structural_column", json!({"at": [3000, 3000], "height": 7000})));
+    let own = id_of(&run(&mut s, "structural_column", json!({"at": [7000, 5000], "level": "Level 2"})));
+    // One storey tall, up to Level 2: its plan's cut is above it.
+    run(&mut s, "structural_column", json!({"at": [12_000, 3000]}));
+    let upper = json!({"level": "Level 2", "at": [5000, 4000]});
+    let on = |refs: Value| {
+        let mut p = upper.clone();
+        p["refs"] = refs;
+        p
+    };
+    // A point on each one's face finds it on Level 2's plan: the east face of the tall one, the west face of its own.
+    let d = run(&mut s, "dimension", on(json!([[3150, 3050], [6850, 5050]])));
+    assert_eq!(d["values"], json!([3700.0]));
+    let refs = crate::commands::element_json(&s.model, id_of(&d))["refs"].clone();
+    let (tall, own) = (s.model.guid(tall), s.model.guid(own));
+    assert_eq!(refs, json!([{"id": tall, "face": "end"}, {"id": own, "face": "start"}]));
+    // A corner of it, as an endpoint.
+    let mut ends = on(json!([{"endpoint": [3140, 3140]}, {"endpoint": [6860, 5140]}]));
+    ends["kind"] = json!("linear");
+    ends["orient"] = json!("horizontal");
+    assert_eq!(run(&mut s, "dimension", ends)["values"], json!([3700.0]));
+    // The one-storey column is not in Level 2's plan, nor is Level 2's own column in Level 1's.
+    let e = err(&mut s, "dimension", on(json!([[11_850, 3050], [6850, 5050]])));
+    assert!(e.contains("column"), "{e}");
+    let e = err(&mut s, "dimension", json!({"refs": [[3150, 3050], [6850, 5050]], "at": [5000, 4000]}));
+    assert!(e.contains("[6850, 5050]"), "{e}");
+}
+
+#[test]
+fn a_round_column_running_up_through_a_plan_takes_a_diameter_dimension_on_it() {
+    let mut s = Session::new();
+    run(&mut s, "column", json!({"at": [5000, 3000], "type": "Round 300", "height": 7000}));
+    let d = run(&mut s, "dimension", json!({"kind": "diameter", "level": "Level 2", "refs": [[5150, 3000]], "at": [5600, 2400]}));
+    assert_eq!(d["values"], json!([300.0]));
+}
