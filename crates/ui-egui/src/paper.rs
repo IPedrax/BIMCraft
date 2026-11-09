@@ -149,6 +149,16 @@ impl BimApp {
             }
             return;
         }
+        if let Tool::ExportRegion(first) = self.tool {
+            if let Some(cursor) = ui.input(|i| i.pointer.latest_pos()).filter(|c| rect.contains(*c)) {
+                let screen = |a: P2| rect.min + vec2(view.px(a).0, view.px(a).1);
+                crate::export::region_band(&p, first.map(screen), cursor);
+            }
+            if let Some(q) = self.clicked_at(&response) {
+                self.export_region_at(view.mm((q.x - rect.min.x, q.y - rect.min.y)));
+            }
+            return;
+        }
         if let Some(q) = self.clicked_at(&response) {
             match pick(q) {
                 found if modify => self.pick_up(found.into_iter().collect(), click_modifiers(ui)),

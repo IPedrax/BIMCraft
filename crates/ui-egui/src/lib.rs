@@ -185,6 +185,9 @@ pub enum Tool {
     /// Specify Coordinates at a Point: the point the shared coordinates typed in the Location window are at, picked in the
     /// view (snapped) while the window steps aside.
     SpecifyPoint,
+    /// The rectangle an export is cut to, drawn in the view while the Export dialog steps aside: its first corner, once
+    /// clicked, in the view's own coordinates.
+    ExportRegion(Option<P2>),
     /// Acquire Coordinates: the link or CAD drawing clicked gives the project its shared coordinates.
     Acquire,
     /// Mirror the selection across a line picked, or with `draw`, a line drawn from `start`.
@@ -999,6 +1002,8 @@ pub struct BimApp {
     /// The format the last export was to, and each format's settings, for the next export while the window is open.
     export_format: Option<String>,
     export_last: std::collections::BTreeMap<String, bimcraft_core::export::Options>,
+    /// What prints: the system's spooler, or in a test one that only remembers.
+    spooler: std::sync::Arc<dyn export::print::Spooler>,
 }
 
 /// The Options Bar's Height: up to a level above the plan's `level` (by default the next one up),
@@ -1687,6 +1692,7 @@ impl BimApp {
             export_job: None,
             export_format: None,
             export_last: Default::default(),
+            spooler: std::sync::Arc::new(export::print::System),
             opens: Vec::new(),
             dialog: None,
             revit_report: None,
@@ -1804,6 +1810,7 @@ impl BimApp {
             | Tool::SketchPick
             | Tool::PatternCorner(_)
             | Tool::SpecifyPoint
+            | Tool::ExportRegion(_)
             | Tool::Acquire => None,
             Tool::Wall(_) => Some(msg!("Place Wall")),
             Tool::Paint => Some("Paint"),
@@ -2274,7 +2281,7 @@ impl BimApp {
             || self.installing()
             || self.importing()
             || self.report_open()
-            || self.export_dialog.is_some()
+            || self.export_dialog.as_ref().is_some_and(|d| !d.picking)
             // An open menu takes the keys: Esc closes it, not the tool.
             || egui::Popup::is_any_open(ctx)
     }
@@ -5497,6 +5504,11 @@ impl BimApp {
                         self.stop_specify_pick();
                     }
                 }
+                Tool::ExportRegion(_) => {
+                    if ui.button(t("Back to Export")).clicked() {
+                        self.set_tool(Tool::Modify);
+                    }
+                }
                 Tool::Mirror { .. } => {
                     ui.checkbox(&mut self.mirror_copy, t("Copy"));
                 }
@@ -5840,6 +5852,8 @@ impl BimApp {
             Tool::Acquire => msg!("Click a linked model or a CAD drawing: this project takes its shared coordinates. Esc cancels."),
             Tool::SpotCoordinate(None) => msg!("Click the point the spot coordinate reads; it snaps."),
             Tool::SpotCoordinate(Some(_)) => msg!("Click where its leader ends. Esc cancels."),
+            Tool::ExportRegion(None) => msg!("Click a corner of the region to export. Esc goes back to Export."),
+            Tool::ExportRegion(Some(_)) => msg!("Click the region's opposite corner. Esc goes back to Export."),
             Tool::SpecifyPoint => {
                 msg!(
                     "Click the point the shared coordinates typed are at: it snaps, and a wall's corner is its bottom, a slab's its top. Esc goes back."
