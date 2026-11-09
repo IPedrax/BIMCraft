@@ -696,6 +696,12 @@ pub struct BimApp {
     /// A selected element's temporary dimension being typed: the element, which of its dimensions (a wall has one, a
     /// door or window two: from its wall's start, from its end), the length so far.
     dim_edit: Option<(Id, usize, String)>,
+    /// The pointer is over a selected element's dimension number, whose click the field takes rather than the canvas.
+    over_dimension_number: bool,
+    /// A number field was left by Esc: the key's own Esc handling must not clear the selection then.
+    dim_edit_escaped: bool,
+    /// Edit Dimension References, while it's on: the dimension, its references being picked, and where its line goes.
+    dimension_refs_edit: Option<canvas::DimensionRefsEdit>,
     /// A selected wall's angle being typed: the wall, whether it turns about its start (else its
     /// end), the angle so far.
     angle_edit: Option<(Id, bool, String)>,
@@ -1360,6 +1366,9 @@ impl BimApp {
             font_finder: lang::cjk_fonts,
             typed_length: String::new(),
             dim_edit: None,
+            over_dimension_number: false,
+            dim_edit_escaped: false,
+            dimension_refs_edit: None,
             temporary: HashMap::new(),
             shadow: None,
             linked_3d: None,
@@ -1989,10 +1998,13 @@ impl BimApp {
         if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() {
             self.escape();
         }
-        // Enter places a typed length, else builds the wall chain.
-        if pressed(Modifiers::NONE, Key::Enter)
-            && let Some(level) = self.plan_level()
-        {
+        // Enter confirms Edit Dimension References; else it places a typed length, else builds the wall chain.
+        let mut enter = pressed(Modifiers::NONE, Key::Enter);
+        if enter && self.dimension_refs_edit.is_some() {
+            self.commit_dimension_refs();
+            enter = false;
+        }
+        if enter && let Some(level) = self.plan_level() {
             match (&self.tool, self.typed_length.is_empty() && self.drawing.other.is_empty()) {
                 _ if self.picking_pattern_lines() => self.finish_pattern_lines(),
                 (Tool::Railing(_), true) => self.finish_railing(level),
@@ -2007,6 +2019,15 @@ impl BimApp {
         }
         if !self.typed_length.is_empty() && pressed(Modifiers::NONE, Key::Backspace) {
             self.typed_length.pop();
+        }
+        // Backspace while a dimension is being picked takes its last reference out.
+        if pressed(Modifiers::NONE, Key::Backspace)
+            && self.typed_length.is_empty()
+            && self.dim_edit.is_none()
+            && self.dimension_refs_edit.is_none()
+            && let Tool::Dimension(_, refs) = &mut self.tool
+        {
+            refs.pop();
         }
         if pressed(Modifiers::NONE, Key::Delete) {
             self.delete();
@@ -2738,6 +2759,14 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
+        // Edit Dimension References goes first: the dimension stays as it was.
+        if self.dimension_refs_edit.take().is_some() {
+            return;
+        }
+        // A number field left by Esc keeps the selection it was typed for.
+        if std::mem::take(&mut self.dim_edit_escaped) || self.dim_edit.take().is_some() {
+            return;
+        }
         // Pick in View goes back to its dialog.
         if self.stop_work_plane_pick() {
             return;
@@ -4900,6 +4929,11 @@ impl BimApp {
         {
             return prompt;
         }
+        if self.dimension_refs_edit.is_some() {
+            return msg!(
+                "Click a reference to add it or take it out; click away from them to place the line. Enter confirms, Esc cancels."
+            );
+        }
         match &self.tool {
             Tool::Modify => msg!("Click to select, Tab for what's underneath, Ctrl adds, Shift takes away; drag to box or to move."),
             Tool::Wall(chain) if chain.is_empty() => msg!("Click to enter the wall's start point."),
@@ -4948,8 +4982,8 @@ impl BimApp {
             }
             Tool::Dimension(_, refs) if refs.len() == 1 => msg!("Pick the next reference or endpoint."),
             Tool::Dimension(..) => msg!(
-                "Pick more references, or click away from them where the dimension line goes; Space steps Auto, Aligned, Horizontal, \
-                 Vertical. Esc cancels."
+                "Pick more references, or click away from them where the dimension line goes; click a picked reference again to \
+                 take it out, Backspace takes out the last, Esc starts over. Space steps Auto, Aligned, Horizontal, Vertical."
             ),
             Tool::Measure(None) => msg!("Click the ruler's start: points snap as they do drawing."),
             Tool::Measure(Some(_)) => msg!("Click its end: its length and angle read beside it. Esc cancels."),

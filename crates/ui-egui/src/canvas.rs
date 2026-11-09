@@ -60,6 +60,21 @@ enum Drag {
     Box((f32, f32)),
 }
 
+/// Edit Dimension References: the dimension being edited, its references as they are being picked, and where its line goes.
+#[derive(Clone, Debug)]
+pub(crate) struct DimensionRefsEdit {
+    pub(crate) id: Id,
+    pub(crate) refs: Vec<Reference>,
+    pub(crate) at: P2,
+}
+
+/// How a dimension's number is drawn: its size, and the ink of the numbers a click turns into a field.
+#[derive(Clone, Copy)]
+struct NumberInk {
+    size: f32,
+    color: Color32,
+}
+
 /// Geometry does not change when the pointer, selection, tool or theme changes.
 /// Keep one drawing per canvas, bounded to its latest model and framing.
 #[derive(Default, Clone)]
@@ -1685,7 +1700,7 @@ impl BimApp {
         }
         // A click on a shape point's height label is the label's.
         let on_label = |at: &Pos2| self.shape_label_rects.iter().any(|r| r.contains(*at));
-        if let Some(at) = self.clicked_at(&response).filter(|at| !dragged && !writing && !on_label(at)) {
+        if let Some(at) = self.clicked_at(&response).filter(|at| !dragged && !writing && !on_label(at) && !self.over_dimension_number) {
             let q = (at.x - rect.min.x, at.y - rect.min.y);
             // What lay under the press, which the hand may have left by the time the button came up.
             let found = if Some(q) == local { hovered } else { under_at(q) };
@@ -1811,6 +1826,7 @@ impl BimApp {
         self.line_grip_overlay(&ui.painter_at(rect), rect, &view, cursor);
         self.shape_overlay(ui, &model, &view, rect, level);
         self.temporary_dimension(ui, &model, &view, rect);
+        self.dimension_overlays(ui, &model, &view, rect, key);
         self.locks(ui, &model, &view, rect, key);
         self.context_menu(&response);
         self.nav_bar(ui, rect, key);
@@ -2019,6 +2035,11 @@ impl BimApp {
     }
 
     fn click(&mut self, m: &Model, (level, key): (Id, Id), v: &View, at: (f32, f32), hovered: Option<Id>, mods: Modifiers) {
+        // Edit Dimension References: picks take references out or put them in, a click away fixes the line.
+        if self.dimension_refs_edit.is_some() {
+            self.dimension_refs_click(m, key, v, at, hovered);
+            return;
+        }
         match &self.tool {
             &Tool::Vertex { delete } if self.sketch.is_some() => self.vertex_click(None, v.mm(at), f64::from(PICK) / v.scale, delete),
             Tool::Split | Tool::Trim(_) | Tool::TrimTo { .. } | Tool::Offset if self.sketch.is_some() => {
@@ -2214,7 +2235,10 @@ impl BimApp {
                 let (mode, mut refs) = (*mode, refs.clone());
                 match hovered.and_then(|id| dimension_pick(m, &refs, id, v.mm(at), 2.0 * f64::from(PICK) / v.scale)) {
                     Some(r) => {
-                        if !refs.contains(&r) {
+                        // A reference picked again is taken out, as Revit's dimension tool does.
+                        if let Some(i) = refs.iter().position(|x| *x == r) {
+                            refs.remove(i);
+                        } else {
                             refs.push(r);
                         }
                         self.tool = Tool::Dimension(mode, refs);
@@ -3249,20 +3273,24 @@ impl BimApp {
     /// A temporary dimension's number at `at`, which a click turns into a field to type a new one: what was typed once
     /// the field is left (None inside it for Esc). `key` is the element and which of its dimensions.
     fn dimension_number(&mut self, ui: &mut Ui, at: Rect, key: (Id, usize), text: &str) -> Option<Option<String>> {
-        self.number_field(ui, at, key, text, bimcraft_i18n::msg!("Temporary dimension {}"))
+        let look = NumberInk { size: 12.0, color: pal().accent };
+        self.number_field(ui, at, key, text, bimcraft_i18n::msg!("Temporary dimension {}"), look)
     }
 
     /// A dimension's number at `at`, as [`dimension_number`](Self::dimension_number) shows one, named `name` (with the number
-    /// in it) for the screen reader.
-    fn number_field(&mut self, ui: &mut Ui, at: Rect, key: (Id, usize), text: &str, name: &str) -> Option<Option<String>> {
-        let font = FontId::proportional(12.0);
+    /// in it) for the screen reader. A field opens empty: what was typed once it is left (None for Esc, an empty one, or a
+    /// click elsewhere), and a null for a number left empty.
+    fn number_field(&mut self, ui: &mut Ui, at: Rect, key: (Id, usize), text: &str, name: &str, look: NumberInk) -> Option<Option<String>> {
+        let font = FontId::proportional(look.size);
         let field = ui.id().with(("temporary dimension", key));
-        let (mut done, mut start) = (None, false);
+        let (mut done, mut start, mut escaped) = (None, false, false);
         match &mut self.dim_edit {
             Some((id, n, typed)) if (*id, *n) == key => {
                 let edit = ui.put(at.expand2(vec2(18.0, 2.0)), TextEdit::singleline(typed).id(field).horizontal_align(Align::Center));
                 if edit.lost_focus() {
-                    done = Some(ui.input(|i| !i.key_pressed(Key::Escape)).then(|| typed.clone()));
+                    escaped = ui.input(|i| i.key_pressed(Key::Escape));
+                    let typed = typed.trim().to_string();
+                    done = Some((!escaped && !typed.is_empty()).then_some(typed));
                 } else if !edit.has_focus() {
                     edit.request_focus();
                 }
@@ -3271,12 +3299,16 @@ impl BimApp {
                 let r = ui.interact(at, field.with("number"), Sense::click());
                 r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf(name, &[text])));
                 ui.painter().rect_filled(at, 2.0, pal().surface);
-                ui.painter().text(at.center(), Align2::CENTER_CENTER, text, font, if r.hovered() { pal().hover } else { pal().accent });
+                let ink = if r.hovered() { pal().hover } else { look.color };
+                ui.painter().text(at.center(), Align2::CENTER_CENTER, text, font, ink);
                 start = r.clicked();
             }
         }
         if start {
-            self.dim_edit = Some((key.0, key.1, text.to_string()));
+            self.dim_edit = Some((key.0, key.1, String::new()));
+        }
+        if escaped {
+            self.dim_edit_escaped = true;
         }
         if done.is_some() {
             self.dim_edit = None;
@@ -3326,13 +3358,30 @@ impl BimApp {
             }
         }
         // Each segment's number, which a click turns into a field: a length typed there moves what the segment ends at
-        // (`dimension_value`), as a temporary dimension's does.
+        // (`dimension_value`), as a temporary dimension's does; under it, a small T opens the number's Dimension Text.
         if m.dimension_type(d).string == bimcraft_core::dims::DimString::Continuous {
             for (i, (pair, label)) in cross.windows(2).zip(m.dimension_labels(d)).enumerate() {
                 let [(s0, _), (s1, _)] = pair else { continue };
                 let size = p.layout_no_wrap(label.clone(), FontId::proportional(12.0), pal().accent).size() + vec2(10.0, 4.0);
                 let at = Rect::from_center_size(on((s0 + s1) / 2.0) - side * 12.0, size);
-                let Some(Some(typed)) = self.number_field(ui, at, (id, i), &label, bimcraft_i18n::msg!("Dimension {}")) else { continue };
+                // A small T under the number, which opens the same Dimension Text the double click does.
+                let icon = Rect::from_center_size(at.center() + vec2(0.0, at.height() / 2.0 + 8.0), vec2(16.0, 14.0));
+                let r = ui.interact(icon, ui.id().with(("dimension text", id, i)), Sense::click());
+                r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, t("Dimension text")));
+                p.text(
+                    icon.center(),
+                    Align2::CENTER_CENTER,
+                    "Aa",
+                    FontId::proportional(9.0),
+                    if r.hovered() { pal().hover } else { pal().accent_ink },
+                );
+                if r.clicked() {
+                    self.dimension_text_dialog = Some(crate::dimtypes::DimensionTextDialog::new(m, id, i));
+                }
+                let look = NumberInk { size: 12.0, color: pal().accent };
+                let Some(Some(typed)) = self.number_field(ui, at, (id, i), &label, bimcraft_i18n::msg!("Dimension {}"), look) else {
+                    continue;
+                };
                 match m.units.parse(&typed) {
                     Some(value) => {
                         self.run("dimension_value", json!({"id": id, "segment": i, "value": value}));
@@ -3360,6 +3409,151 @@ impl BimApp {
             if r.clicked() {
                 self.run("dimension_constraint", json!({"id": id, "equal": !d.equal}));
             }
+        }
+    }
+
+    /// A selected element's dimensions, whose numbers are picked to type a value into: shown smaller and in the accent's
+    /// ink (Revit's own), a click opening an empty field. What is typed moves the selected element, the far reference
+    /// staying where it is; an equal dimension takes its value at the end opposite the element.
+    fn dimension_highlights(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, key: Id) {
+        if self.tool != Tool::Modify || self.canvas.drag.is_some() || self.canvas.grip.is_some() || self.drawing.grip.is_some() {
+            return;
+        }
+        let &[sel] = self.selection.as_slice() else { return };
+        if matches!(m.elements.get(sel), Some(Element::Dimension(_))) {
+            return;
+        }
+        let Some(sel_guid) = m.elements.guid(sel) else { return };
+        let screen = |q: P2| pos(rect.min, v.px(q));
+        let pointer = ui.input(|i| i.pointer.hover_pos());
+        let p = ui.painter_at(rect);
+        let dims: Vec<(Id, Dimension)> = m
+            .elements
+            .iter()
+            .filter_map(|(&id, e)| match e {
+                Element::Dimension(d)
+                    if matches!(d.kind, DimKind::Aligned | DimKind::Linear)
+                        && !d.alignment
+                        && m.annotation_in(e, key)
+                        && d.refs.iter().any(|r| r.id == sel_guid) =>
+                {
+                    Some((id, d.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        for (id, d) in dims {
+            let (n, cross) = m.crossings(&d);
+            if cross.len() < 2 {
+                continue;
+            }
+            let side = (screen(d.at - n.perp()) - screen(d.at)).normalized();
+            let on = |s: f64| screen(d.at + n * s);
+            let labels = m.dimension_labels(&d);
+            for (i, (pair, label)) in cross.windows(2).zip(labels).enumerate() {
+                let [(s0, _), (s1, _)] = pair else { continue };
+                let size = p.layout_no_wrap(label.clone(), FontId::proportional(11.0), pal().accent_ink).size() + vec2(10.0, 4.0);
+                let at = Rect::from_center_size(on((s0 + s1) / 2.0) - side * 12.0, size);
+                let editing = matches!(&self.dim_edit, Some((eid, ei, _)) if (*eid, *ei) == (id, i));
+                if pointer.is_some_and(|q| at.expand2(vec2(18.0, 2.0)).contains(q)) || editing {
+                    self.over_dimension_number = true;
+                }
+                let look = NumberInk { size: 11.0, color: pal().accent_ink };
+                let Some(Some(typed)) = self.number_field(ui, at, (id, i), &label, bimcraft_i18n::msg!("Dimension {}"), look) else {
+                    continue;
+                };
+                let Some(value) = m.units.parse(&typed) else {
+                    self.status = Status { text: tf("`{}` is not a length", &[typed.trim()]), error: true };
+                    continue;
+                };
+                // The far reference stays: the clicked segment's other station, or an equal dimension's opposite end.
+                let (_, st) = m.stations(&d);
+                let hold = if d.equal {
+                    let k = st.len().saturating_sub(1);
+                    let near = st.iter().position(|(_, _, r)| r.id == sel_guid).unwrap_or(0);
+                    st.get(if near * 2 <= k { k } else { 0 }).map(|(_, _, r)| *r)
+                } else {
+                    match (st.get(i), st.get(i + 1)) {
+                        (Some((_, _, a)), Some((_, _, b))) if a.id == sel_guid => Some(*b),
+                        (Some((_, _, a)), Some((_, _, b))) if b.id == sel_guid => Some(*a),
+                        _ => None,
+                    }
+                };
+                let mut params = json!({"id": id, "segment": i, "value": value});
+                if let Some(hold) = hold {
+                    params["hold"] = json!(hold);
+                }
+                self.run("dimension_value", params);
+            }
+        }
+    }
+
+    /// A selected element's dimensions, each number picked as [`dimension_highlights`](Self::dimension_highlights) says.
+    fn dimension_overlays(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, key: Id) {
+        self.over_dimension_number = false;
+        if let Some(edit) = &self.dimension_refs_edit {
+            // The references picked so far, each marked where it crosses the line being edited.
+            if let Some(Element::Dimension(old)) = m.elements.get(edit.id) {
+                let d = Dimension { refs: edit.refs.clone(), at: edit.at, ..old.clone() };
+                let (_, st) = m.stations(&d);
+                let p = ui.painter_at(rect);
+                for (_, _, r) in st {
+                    if let Ok((a, b)) = m.reference_geometry(&r) {
+                        let c = pos(rect.min, v.px((a + b) * 0.5));
+                        p.circle_stroke(c, 7.0, Stroke::new(2.0, pal().accent));
+                    }
+                }
+                let line = pos(rect.min, v.px(edit.at));
+                p.circle_filled(line, 4.0, pal().accent);
+            }
+            return;
+        }
+        self.dimension_highlights(ui, m, v, rect, key);
+    }
+
+    /// Starts Edit Dimension References on the selected dimension, if it is one.
+    pub(crate) fn start_dimension_refs_edit(&mut self) {
+        let &[id] = self.selection.as_slice() else { return };
+        let Some(Element::Dimension(d)) = self.session.model.elements.get(id) else { return };
+        if d.alignment {
+            return;
+        }
+        self.tool = Tool::Modify;
+        self.dimension_refs_edit = Some(DimensionRefsEdit { id, refs: d.refs.clone(), at: d.at });
+    }
+
+    /// Confirms Edit Dimension References: one command, one undo step; nothing while fewer than two references are left.
+    pub(crate) fn commit_dimension_refs(&mut self) {
+        let Some(edit) = self.dimension_refs_edit.take() else { return };
+        if edit.refs.len() < 2 {
+            self.status = Status { text: bimcraft_i18n::msg!("A dimension has two references at least.").to_string(), error: true };
+            return;
+        }
+        if self.run("dimension", json!({"id": edit.id, "refs": edit.refs, "at": point(edit.at)})).is_none() {
+            self.dimension_refs_edit = Some(edit);
+        }
+    }
+
+    /// A click while editing a dimension's references: one picked again goes, another is added, and a click away fixes
+    /// the dimension line and confirms.
+    fn dimension_refs_click(&mut self, m: &Model, _key: Id, v: &View, at: (f32, f32), hovered: Option<Id>) {
+        let Some(mut edit) = self.dimension_refs_edit.take() else { return };
+        let q = v.mm(at);
+        let pick = hovered.and_then(|id| dimension_pick(m, &edit.refs, id, q, 2.0 * f64::from(PICK) / v.scale));
+        if let Some(r) = pick {
+            if let Some(i) = edit.refs.iter().position(|x| *x == r) {
+                edit.refs.remove(i);
+            } else {
+                edit.refs.push(r);
+            }
+            self.dimension_refs_edit = Some(edit);
+        } else if edit.refs.len() >= 2 {
+            edit.at = round(q);
+            if self.run("dimension", json!({"id": edit.id, "refs": edit.refs, "at": point(edit.at)})).is_none() {
+                self.dimension_refs_edit = Some(edit);
+            }
+        } else {
+            self.dimension_refs_edit = Some(edit);
         }
     }
 

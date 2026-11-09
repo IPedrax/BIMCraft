@@ -42,6 +42,8 @@ pub(crate) enum Action {
     /// The selected walls' and runs' joins refused (Revit's Disallow Join), or taken up again.
     DisallowJoin,
     AllowJoin,
+    /// Edit Dimension References: the selected dimension's references picked again.
+    EditDimensionReferences,
 }
 
 impl Action {
@@ -68,6 +70,7 @@ impl Action {
             Action::WorkPlane => msg!("Set Work Plane…"),
             Action::DisallowJoin => msg!("Disallow Join"),
             Action::AllowJoin => msg!("Allow Join"),
+            Action::EditDimensionReferences => msg!("Edit Dimension References"),
         }
     }
 
@@ -183,6 +186,13 @@ impl BimApp {
                     Item::new(Action::AllowJoin, joins.iter().any(|j| !*j)),
                 ]);
             }
+            // A dimension selected alone may have its references edited.
+            if let [id] = self.selection.as_slice()
+                && let Some(bimcraft_core::model::Element::Dimension(d)) = m.elements.get(*id)
+                && !d.alignment
+            {
+                groups.push(vec![Item::new(Action::EditDimensionReferences, true)]);
+            }
         }
         let zoom = vec![Item::new(Action::ZoomToFit, true), Item::new(Action::ZoomIn, true), Item::new(Action::ZoomOut, true)];
         match self.sheet {
@@ -227,6 +237,7 @@ impl BimApp {
             }
             Action::DisallowJoin => self.set_joins(false),
             Action::AllowJoin => self.set_joins(true),
+            Action::EditDimensionReferences => self.start_dimension_refs_edit(),
         }
     }
 

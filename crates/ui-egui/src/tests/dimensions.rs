@@ -270,3 +270,210 @@ fn aligned_dimensions_pick_structural_column_faces_and_centre_lines() {
     let dims = ids(&h, "dimension");
     assert_eq!((dims.len(), field(&h, dims[2], "values")), (3, json!([2000.0])));
 }
+
+/// Three walls running north at `x`, and a dimension across their centre lines below them.
+const THREE_WALLS: &str = r#"wall {"points": [[0, 0], [0, 4000]]}
+wall {"points": [[2000, 0], [2000, 4000]]}
+wall {"points": [[5000, 0], [5000, 4000]]}
+dimension {"refs": [[0, 2000], [2000, 2000], [5000, 2000]], "at": [2500, -1000]}"#;
+
+fn pick_dimension_tool(h: &mut Harness<BimApp>) {
+    press(h, "Annotate");
+    if h.query_by_label("Linear").is_none() {
+        press(h, "Dimension ▾");
+    }
+    press(h, "Linear");
+}
+
+#[test]
+fn clicking_a_picked_reference_takes_it_out() {
+    let mut h = app(THREE_WALLS);
+    pick_dimension_tool(&mut h);
+    click(&mut h, P2(0.0, 2000.0));
+    click(&mut h, P2(2000.0, 2000.0));
+    click(&mut h, P2(5000.0, 2000.0));
+    assert!(matches!(&h.state().tool, Tool::Dimension(_, refs) if refs.len() == 3));
+    // The third again goes, and the two left make the dimension.
+    click(&mut h, P2(5000.0, 2000.0));
+    assert!(matches!(&h.state().tool, Tool::Dimension(_, refs) if refs.len() == 2), "{:?}", h.state().tool);
+    click(&mut h, P2(1000.0, -1000.0));
+    let dims = ids(&h, "dimension");
+    assert_eq!(dims.len(), 2, "the script's and the one made");
+    assert_eq!(dimension(&h, dims[1]).refs.len(), 2);
+}
+
+#[test]
+fn backspace_takes_out_the_last_reference() {
+    let mut h = app(THREE_WALLS);
+    pick_dimension_tool(&mut h);
+    click(&mut h, P2(0.0, 2000.0));
+    click(&mut h, P2(2000.0, 2000.0));
+    click(&mut h, P2(5000.0, 2000.0));
+    key(&mut h, Key::Backspace);
+    assert!(matches!(&h.state().tool, Tool::Dimension(_, refs) if refs.len() == 2), "{:?}", h.state().tool);
+    click(&mut h, P2(1000.0, -1000.0));
+    assert_eq!(ids(&h, "dimension").len(), 2);
+}
+
+#[test]
+fn esc_clears_the_whole_chain() {
+    let mut h = app(THREE_WALLS);
+    pick_dimension_tool(&mut h);
+    click(&mut h, P2(0.0, 2000.0));
+    click(&mut h, P2(2000.0, 2000.0));
+    key(&mut h, Key::Escape);
+    assert!(matches!(&h.state().tool, Tool::Dimension(_, refs) if refs.is_empty()), "{:?}", h.state().tool);
+}
+
+/// The dimension of `TWO_WALLS`, selected.
+fn two_walls_selected() -> (Harness<'static, BimApp>, Id) {
+    let mut h = app(TWO_WALLS);
+    let id = ids(&h, "dimension")[0];
+    h.state_mut().selection = vec![id];
+    h.run();
+    (h, id)
+}
+
+#[test]
+fn selecting_a_wall_highlights_its_dimension_and_enter_moves_it() {
+    let mut h = app(TWO_WALLS);
+    let walls = ids(&h, "wall");
+    // The west wall, whose number of the dimension across is highlighted.
+    click(&mut h, P2(0.0, 2000.0));
+    assert_eq!(h.state().selection, vec![walls[0]]);
+    h.get_by_label("Dimension 2000").click();
+    h.run();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.event(Event::Text("3000".into()));
+    h.run();
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, walls[0], "start"), json!([-1000.0, 0.0]), "{}", h.state().status.text);
+    assert_eq!(field(&h, walls[1], "start"), json!([2000.0, 0.0]), "the second wall stayed");
+    assert_eq!(h.state().selection, vec![walls[0]], "the selection stays on the element");
+}
+
+#[test]
+fn selecting_a_dimension_does_not_highlight_its_numbers() {
+    let (mut h, id) = two_walls_selected();
+    // Numbers show as ever for a selected dimension, and typing one works.
+    assert!(h.query_by_label("Dimension 2000").is_some());
+    h.get_by_label("Dimension 2000").click();
+    h.run();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.event(Event::Text("3000".into()));
+    h.run();
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, id, "values"), json!([3000.0]), "{}", h.state().status.text);
+    let walls = ids(&h, "wall");
+    assert_eq!((field(&h, walls[0], "start"), field(&h, walls[1], "start")), (json!([0.0, 0.0]), json!([3000.0, 0.0])));
+}
+
+#[test]
+fn pressing_eq_on_a_wall_chain_moves_inner_walls_and_keeps_ends() {
+    let mut h = app(THREE_WALLS);
+    let id = ids(&h, "dimension")[0];
+    h.state_mut().selection = vec![id];
+    h.run();
+    press(&mut h, "Equal");
+    assert!(dimension(&h, id).equal, "{}", h.state().status.text);
+    let walls = ids(&h, "wall");
+    assert_eq!((field(&h, walls[0], "start")[0].as_f64(), field(&h, walls[2], "start")[0].as_f64()), (Some(0.0), Some(5000.0)));
+    assert_eq!(field(&h, walls[1], "start")[0].as_f64(), Some(2500.0));
+    assert_eq!(field(&h, id, "values"), json!([2500.0, 2500.0]));
+}
+
+#[test]
+fn typing_a_value_on_an_equal_chain_updates_every_number() {
+    let mut h = app(THREE_WALLS);
+    let id = ids(&h, "dimension")[0];
+    h.state_mut().selection = vec![id];
+    h.run();
+    press(&mut h, "Equal");
+    let first = h.get_all_by_label("Dimension EQ").next().map(|n| n.rect().center()).unwrap();
+    click_at(&mut h, first);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.event(Event::Text("4000".into()));
+    h.run();
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, id, "values"), json!([4000.0, 4000.0]), "{}", h.state().status.text);
+    let walls = ids(&h, "wall");
+    assert_eq!(field(&h, walls[0], "start")[0].as_f64(), Some(0.0));
+    assert_eq!(field(&h, walls[2], "start")[0].as_f64(), Some(8000.0));
+}
+
+#[test]
+fn text_icon_under_the_number_opens_the_text_dialog() {
+    let (mut h, id) = two_walls_selected();
+    let before = dimension(&h, id);
+    press(&mut h, "Dimension text");
+    assert!(h.state().dimension_text_dialog.is_some());
+    press(&mut h, "Cancel");
+    assert!(h.state().dimension_text_dialog.is_none());
+    assert_eq!(dimension(&h, id), before, "cancelling changes nothing");
+}
+
+#[test]
+fn clearing_replace_restores_the_true_number() {
+    let (mut h, id) = two_walls_selected();
+    press(&mut h, "Dimension text");
+    type_into(&mut h, "Replace With Text:", "X");
+    press(&mut h, "OK");
+    assert_eq!(field(&h, id, "labels"), json!(["X"]), "{}", h.state().status.text);
+    press(&mut h, "Dimension text");
+    h.get_by_label("Replace With Text:").focus();
+    h.run();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.key_press(Key::Backspace);
+    h.run();
+    press(&mut h, "OK");
+    assert_eq!(field(&h, id, "labels"), json!(["2000"]), "{}", h.state().status.text);
+}
+
+#[test]
+fn edit_dimension_references_from_the_context_menu() {
+    let mut h = app(THREE_WALLS);
+    let id = ids(&h, "dimension")[0];
+    h.state_mut().selection = vec![id];
+    h.run();
+    h.state_mut().start_dimension_refs_edit();
+    h.run();
+    assert!(h.state().dimension_refs_edit.is_some());
+    // The west wall's reference goes; a click away confirms the line where it is clicked.
+    click(&mut h, P2(0.0, 2000.0));
+    click(&mut h, P2(1000.0, -1500.0));
+    assert!(h.state().dimension_refs_edit.is_none(), "{}", h.state().status.text);
+    let dim = dimension(&h, id);
+    assert_eq!(dim.refs.len(), 2);
+    assert_eq!(field(&h, id, "values"), json!([3000.0]), "{}", h.state().status.text);
+}
+
+#[test]
+fn esc_leaves_an_edited_dimension_as_it_was() {
+    let mut h = app(THREE_WALLS);
+    let id = ids(&h, "dimension")[0];
+    let before = dimension(&h, id);
+    h.state_mut().selection = vec![id];
+    h.run();
+    h.state_mut().start_dimension_refs_edit();
+    h.run();
+    click(&mut h, P2(0.0, 2000.0));
+    key(&mut h, Key::Escape);
+    assert!(h.state().dimension_refs_edit.is_none());
+    assert_eq!(dimension(&h, id), before);
+}
+
+#[test]
+fn esc_cancels_a_typed_value_and_keeps_the_selection() {
+    let mut h = app(TWO_WALLS);
+    let walls = ids(&h, "wall");
+    let id = ids(&h, "dimension")[0];
+    click(&mut h, P2(0.0, 2000.0));
+    h.get_by_label("Dimension 2000").click();
+    h.run();
+    h.event(Event::Text("3000".into()));
+    h.run();
+    key(&mut h, Key::Escape);
+    assert_eq!(h.state().selection, vec![walls[0]], "the element stays selected");
+    assert_eq!(field(&h, id, "values"), json!([2000.0]), "nothing changed");
+    assert_eq!(field(&h, walls[0], "start"), json!([0.0, 0.0]));
+}
