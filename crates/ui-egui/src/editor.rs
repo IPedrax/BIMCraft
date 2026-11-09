@@ -34,8 +34,8 @@ use bimcraft_core::family::{
 use bimcraft_core::model::{Model, Operation};
 use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
 use egui::{
-    Align, CollapsingHeader, Color32, ColorImage, ComboBox, Context, Grid, Id as UiId, Layout, PointerButton, Rect, RichText, ScrollArea,
-    Sense, Stroke, StrokeKind, TextEdit, TextureHandle, TextureOptions, Ui, WidgetInfo, WidgetType, pos2, vec2,
+    Align, Color32, ColorImage, ComboBox, Context, Grid, Id as UiId, Layout, PointerButton, Rect, RichText, ScrollArea, Sense, Stroke,
+    StrokeKind, TextEdit, TextureHandle, TextureOptions, Ui, WidgetInfo, WidgetType, pos2, vec2,
 };
 use serde_json::{Value, json};
 
@@ -171,6 +171,7 @@ impl FormText {
     }
 
     /// A form of a profile swept up from nothing to a metre.
+    #[cfg(test)]
     fn blank() -> FormText {
         let corners = [("-500", "-500"), ("500", "-500"), ("500", "500"), ("-500", "500")];
         let profile = corners.iter().map(|(a, b)| format!("{a}, {b}")).collect::<Vec<_>>().join("\n");
@@ -330,7 +331,7 @@ impl ParamText {
 
 /// Which part a symbol is.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Part {
+pub(crate) enum Part {
     Line,
     Arc,
     Text,
@@ -484,8 +485,8 @@ pub(crate) struct FamilyEditor {
     operation: Option<Operation>,
     /// Its options (Family Category and Parameters, Properties' Other group), as the document edits them (`options.rs`).
     options: options::OptionsText,
-    /// The Properties palette's tab, for a family that isn't adaptive: its forms, its symbols, or making it adaptive.
-    pub(crate) tab: Tab,
+    /// The plan symbol selected (from the Project Browser's Symbols, or made by the Detail panel), whose Properties show.
+    pub(crate) symbol: Option<usize>,
     /// What Family Types keeps while it is open: its search, the groups folded, the row selected, its own dialogs.
     types_dialog: types_dialog::TypesDialog,
     /// The type shown in Types and on the preview.
@@ -534,6 +535,7 @@ pub(crate) enum DocTab {
     #[default]
     Create,
     Insert,
+    Annotate,
     View,
     Manage,
     Modify,
@@ -571,14 +573,6 @@ pub(crate) struct Asked {
     pub(crate) redo: bool,
 }
 
-/// What the Properties palette shows of a family that isn't adaptive.
-#[derive(Clone, Copy, PartialEq)]
-pub(crate) enum Tab {
-    Forms,
-    Symbols,
-    Adaptive,
-}
-
 impl FamilyEditor {
     /// Its reference planes and lines, as the family has them: what an adaptive point's work plane is worked out from.
     pub(crate) fn plane_set(&self) -> bimcraft_core::family::Planes<'_> {
@@ -614,7 +608,7 @@ impl FamilyEditor {
             ifc: f.ifc.clone(),
             operation: f.operation,
             options: options::OptionsText::of(f),
-            tab: Tab::Forms,
+            symbol: None,
             types_dialog: Default::default(),
             picked: 0,
             look: (AZIMUTH, ELEVATION),
@@ -1099,184 +1093,6 @@ fn shows(visible: &str, values: &BTreeMap<String, bimcraft_core::family::Val>) -
     typed.is_empty() || crate::adaptive_editor::worth(&text_expr(typed), values).is_some_and(|x| x != 0.0)
 }
 
-/// One form's fields, its Visible tied to the type previewed's `values`. Whether Visible's "=" was pressed. `held`, the form as
-/// its dimensions and locks put it for the type previewed (`type_name`) where that isn't how it is drawn: its corners, circle,
-/// axis, From and To are shown so, greyed, as Revit greys what a constraint sets; Edit Extrusion or the dimensions change them.
-#[allow(clippy::too_many_arguments)]
-fn form_fields(
-    ui: &mut Ui,
-    f: &mut FormText,
-    held: Option<&FormText>,
-    type_name: &str,
-    i: usize,
-    options: &[String],
-    values: &BTreeMap<String, bimcraft_core::family::Val>,
-    links: &mut association::Controls,
-    hosted: bool,
-) -> bool {
-    use crate::adaptive_editor::{Field, Slot};
-    let n = i + 1;
-    let mut pressed = false;
-    // The datums, by the planes they are; a form on a plane of the family's own keeps it until a datum is picked.
-    let planes = [
-        (PlaneRef::Plane(REF_LEVEL), msg!("Plane XY")),
-        (PlaneRef::Plane(CENTER_FRONT_BACK), msg!("Plane XZ")),
-        (PlaneRef::Plane(CENTER_LEFT_RIGHT), msg!("Plane YZ")),
-    ];
-    if held.is_some() {
-        let note = tf("Set by its dimensions and locks for the type {}: Edit Extrusion or the dimensions change it.", &[type_name]);
-        ui.add(egui::Label::new(RichText::new(note).color(pal().muted)).wrap());
-    }
-    Grid::new(("fe-form-grid", i)).num_columns(2).spacing(vec2(12.0, 5.0)).show(ui, |ui| {
-        if f.mesh() {
-            ui.label(t("Mesh"));
-            ui.label(RichText::new(tf("{} triangles, from a file", &[&f.original.mesh.len().to_string()])).color(pal().muted));
-            ui.end_row();
-        } else {
-            ui.label(t("Plane"));
-            ComboBox::from_id_salt(("fe-plane", i))
-                .selected_text(planes.iter().find(|(p, _)| *p == f.host).map_or_else(|| "…".to_string(), |(_, l)| t(l).to_string()))
-                .width(110.0)
-                .show_ui(ui, |ui| {
-                    for (p, label) in planes {
-                        ui.selectable_value(&mut f.host, p, t(label));
-                    }
-                });
-            ui.end_row();
-            ui.label(t("Shape"));
-            let named = match f.shape {
-                Shape::Profile => t("Profile"),
-                Shape::Circle => t("Circle"),
-                Shape::Sketch => t("Sketch"),
-            };
-            ComboBox::from_id_salt(("fe-shape", i)).selected_text(named).width(110.0).show_ui(ui, |ui| {
-                ui.selectable_value(&mut f.shape, Shape::Profile, t("Profile"));
-                ui.selectable_value(&mut f.shape, Shape::Circle, t("Circle"));
-            });
-            ui.end_row();
-            // What its constraints set, as the type previewed has it: shown greyed, field by field, never typed over (the drawn
-            // numbers stay); what they leave as drawn stays typed.
-            let (shape_free, from_free, to_free) = match held {
-                Some(h) => (h.profile == f.profile && h.circle == f.circle && h.axis == f.axis, h.from == f.from, h.to == f.to),
-                None => (true, true, true),
-            };
-            let mut copy = held.cloned();
-            let g: &mut FormText = match copy.as_mut() {
-                Some(c) if !shape_free => c,
-                _ => &mut *f,
-            };
-            if g.shape == Shape::Sketch {
-                // Lines, arcs or loops the corners can't say: sketch mode draws them (Edit Extrusion).
-                ui.label(t("Sketch"));
-                let n = g.original.boundary().count().to_string();
-                ui.label(RichText::new(tf("{} lines and arcs, drawn in sketch mode", &[&n])).color(pal().muted));
-            } else if g.shape == Shape::Profile {
-                ui.label(t("Corners"));
-                let r = ui.add_enabled(
-                    shape_free,
-                    TextEdit::multiline(&mut g.profile).desired_rows(4).desired_width(300.0).id_salt(("fe-profile", i)),
-                );
-                r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, format!("{} {n}", t("Form Corners"))));
-            } else {
-                ui.label(t("Circle centre and radius"));
-                ui.add_enabled_ui(shape_free, |ui| {
-                    for (k, what) in [msg!("Form Circle X"), msg!("Form Circle Y"), msg!("Form Circle Radius")].into_iter().enumerate() {
-                        links.field(
-                            ui,
-                            format!("{} {n}", t(what)),
-                            &mut g.circle[k],
-                            80.0,
-                            Holds::Length,
-                            (Field::Form(Slot::Centre(k)), i),
-                        );
-                    }
-                });
-            }
-            ui.end_row();
-            ui.label(t("Revolve"));
-            ui.add_enabled(shape_free, egui::Checkbox::new(&mut g.revolve, t("turned about an axis")));
-            ui.end_row();
-            if g.revolve {
-                ui.label(t("Axis"));
-                ui.add_enabled_ui(shape_free, |ui| {
-                    for (k, what) in
-                        [msg!("Form Axis X1"), msg!("Form Axis Y1"), msg!("Form Axis X2"), msg!("Form Axis Y2")].into_iter().enumerate()
-                    {
-                        links.field(ui, format!("{} {n}", t(what)), &mut g.axis[k], 60.0, Holds::Length, (Field::Form(Slot::Axis(k)), i));
-                    }
-                });
-                ui.end_row();
-            }
-            let revolve = g.revolve;
-            let angle = if revolve { Holds::Angle } else { Holds::Length };
-            // From and To: what the constraints set, else what is typed (the form's own, though its outline is held).
-            let (mut from_set, mut to_set) = (copy.as_ref().map(|c| c.from.clone()), copy.as_ref().map(|c| c.to.clone()));
-            let from = match (&mut from_set, from_free) {
-                (Some(c), false) => c,
-                _ => &mut f.from,
-            };
-            ui.label(if revolve { t("Start Angle") } else { t("From") });
-            ui.add_enabled_ui(from_free, |ui| {
-                links.field(ui, format!("{} {n}", t("Form From")), from, 120.0, angle, (Field::Form(Slot::From), i))
-            });
-            ui.end_row();
-            let to = match (&mut to_set, to_free) {
-                (Some(c), false) => c,
-                _ => &mut f.to,
-            };
-            ui.label(if revolve { t("End Angle") } else { t("To") });
-            ui.add_enabled_ui(to_free, |ui| links.field(ui, format!("{} {n}", t("Form To")), to, 120.0, angle, (Field::Form(Slot::To), i)));
-            ui.end_row();
-        }
-        ui.label(t("Material"));
-        if links.bound(&f.material, Holds::Material) {
-            links.field(
-                ui,
-                format!("{} {n}", t("Form Material")),
-                &mut f.material,
-                120.,
-                Holds::Material,
-                (Field::Form(Slot::Material), i),
-            );
-        } else {
-            ui.horizontal(|ui| {
-                if let Some(m) = pick(ui, format!("{} {n}", t("Form Material")), &f.material, options) {
-                    f.material = m;
-                }
-                links.button(ui, format!("{} {n}", t("Form Material")), &f.material, Holds::Material, (Field::Form(Slot::Material), i));
-            });
-        }
-        ui.end_row();
-        pressed = visible_row(ui, &mut f.visible, format!("{} {n}", t("Form Visible")), values);
-        ui.label(t("Void"));
-        // A door's or a window's void cuts what its Cuts says (F10d): the forms listed above it and the wall, unless said.
-        let says = if hosted { t("cuts what Cuts says") } else { t("cuts the forms listed above it") };
-        let r = ui.checkbox(&mut f.void, says);
-        r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, f.void, format!("{} {n}", t("Form Void"))));
-        ui.end_row();
-        if f.void && hosted {
-            use bimcraft_core::family::Cuts;
-            ui.label(t("Cuts"));
-            let name = |c: Cuts| match c {
-                Cuts::Both => t("Forms and Host"),
-                Cuts::Host => t("Host"),
-                Cuts::Forms => t("Forms"),
-            };
-            let now = f.original.cuts();
-            let c = ComboBox::from_id_salt(("fe-form-cuts", i)).selected_text(name(now)).show_ui(ui, |ui| {
-                for c in [Cuts::Both, Cuts::Host, Cuts::Forms] {
-                    if ui.selectable_label(now == c, name(c)).clicked() {
-                        f.original.cuts = (c != Cuts::Both).then_some(c);
-                    }
-                }
-            });
-            c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, format!("{} {n}", t("Form Cuts"))));
-            ui.end_row();
-        }
-    });
-    pressed
-}
-
 /// Each form of the draft as `values` (the type previewed) flex it, where that differs from how it is drawn in the shapes the
 /// Forms tab types (corners, circle, axis, From and To): what its dimensions and locks set. None for one they leave as drawn.
 fn held_forms(ed: &FamilyEditor, values: &BTreeMap<String, bimcraft_core::family::Val>) -> Vec<Option<FormText>> {
@@ -1299,67 +1115,159 @@ fn held_forms(ed: &FamilyEditor, values: &BTreeMap<String, bimcraft_core::family
         .collect()
 }
 
-fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
-    let hosted = ed.category.hosted();
-    // What a form may be made of: nothing, a library material, or a material parameter.
-    let mut options = vec![String::new()];
-    options.extend(ed.params.iter().filter(|p| p.kind == Holds::Material).map(|p| p.name.clone()));
-    options.extend(materials.iter().cloned());
-    let mut act: Option<(usize, i8)> = None;
-    let mut select = None;
-    let (values, params) = (ed.values(), ed.parameter_kinds());
+/// The selected symbol's Properties (symbol `i`): what it is drawn from, as typed, each number with "=" (Associate Family
+/// Parameter); Visible with "="; its subcategory and its Visibility Settings. Symbols are drawn in plan only, so they have no
+/// shape in the family's views to drag: their numbers are typed here.
+fn symbol_properties(ed: &mut FamilyEditor, ui: &mut Ui, i: usize) {
+    use crate::adaptive_editor::{Field, Slot};
     let mut links = association::Controls::new(ed);
-    // A form picked in the Project Browser opens.
-    let reveal = ed.document.reveal.take();
-    // Each form as the type previewed flexes it, where its dimensions and locks put it otherwise than it is drawn.
-    let held = held_forms(ed, &values);
-    let type_name = ed.types.get(ed.picked).map(|(n, _)| n.clone()).unwrap_or_default();
-    for i in 0..ed.forms.len() {
-        let heading = format!("{}. {}", i + 1, ed.forms[i].describe());
-        let header = CollapsingHeader::new(heading).id_salt(("fe-form", i)).default_open(ed.forms.len() == 1);
-        let header = if reveal == Some(i) { header.open(Some(true)) } else { header };
-        header.show(ui, |ui| {
-            if form_fields(ui, &mut ed.forms[i], held.get(i).and_then(Option::as_ref), &type_name, i, &options, &values, &mut links, hosted)
+    let (values, params) = (ed.values(), ed.parameter_kinds());
+    let mut open_visibility = false;
+    // The subcategories a symbol may be drawn in: its family's category's (a door's and a window's Opening).
+    let subs: Vec<&'static str> = bimcraft_core::graphics::subcategories(ed.category.graphics_category()).map(|s| s.name).collect();
+    let Some(y) = ed.symbols.get_mut(i) else { return };
+    let n = i + 1;
+    let w = (ui.available_width() / 2.0 - 16.0).max(60.0);
+    document::group(ui, msg!("Constraints"), |ui| {
+        if y.part == Part::Line {
+            ui.label(t("Points"));
+            let r = ui.add(TextEdit::multiline(&mut y.line).desired_rows(3).desired_width(w).id_salt(("fe-symbol-line", i)));
+            r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, format!("{} {n}", t("Symbol Points"))));
+            ui.end_row();
+            return;
+        }
+        let centre = if y.part == Part::Text { msg!("Middle of the text") } else { msg!("Centre") };
+        for (k, what) in [msg!("Symbol Centre X"), msg!("Symbol Centre Y")].into_iter().enumerate() {
+            ui.label(format!("{} {}", t(centre), ["X", "Y"][k]));
+            links.field(ui, format!("{} {n}", t(what)), &mut y.centre[k], w - 30.0, Holds::Length, (Field::Symbol(Slot::Centre(k)), i));
+            ui.end_row();
+        }
+        let size = if y.part == Part::Text { msg!("Height") } else { msg!("Radius") };
+        ui.label(t(size));
+        links.field(
+            ui,
+            format!("{} {n}", t(msg!("Symbol Radius"))),
+            &mut y.radius,
+            w - 30.0,
+            Holds::Length,
+            (Field::Symbol(Slot::Radius), i),
+        );
+        ui.end_row();
+        if y.part == Part::Arc {
+            for (label, what, text) in
+                [(msg!("From (degrees)"), msg!("Symbol From"), &mut y.from), (msg!("To (degrees)"), msg!("Symbol To"), &mut y.to)]
             {
-                let typed = ed.forms[i].visible.trim().to_string();
-                ed.associating = Some(crate::adaptive_editor::associating(
-                    &i.to_string(),
-                    crate::adaptive_editor::Field::Form(crate::adaptive_editor::Slot::Visible),
-                    Holds::YesNo,
-                    msg!("Visible"),
-                    Some(typed.as_str()),
-                    &params,
-                ));
+                ui.label(t(label));
+                let slot = if what == "Symbol From" { Slot::From } else { Slot::To };
+                links.field(ui, format!("{} {n}", t(what)), text, w - 30.0, Holds::Angle, (Field::Symbol(slot), i));
+                ui.end_row();
             }
-            // Wrapped, as the palette is narrower than the row (F10: Delete was cut off at its edge).
+        }
+        if y.part == Part::Text {
+            ui.label(t("Text"));
+            field(ui, format!("{} {n}", t("Symbol Text")), &mut y.value, w);
+            ui.end_row();
+            ui.label(t("Align"));
             ui.horizontal_wrapped(|ui| {
-                // Selected, Properties show it as Revit's do an Extrusion.
-                if ui.button(t("Select")).clicked() {
-                    select = Some(i);
-                }
-                if ui.add_enabled(i > 0, egui::Button::new(t("Move Up"))).clicked() {
-                    act = Some((i, -1));
-                }
-                if ui.add_enabled(i + 1 < ed.forms.len(), egui::Button::new(t("Move Down"))).clicked() {
-                    act = Some((i, 1));
-                }
-                if ui.button(t("Delete")).clicked() {
-                    act = Some((i, 0));
+                for (a, label) in
+                    [(LabelAlign::Left, msg!("Left")), (LabelAlign::Center, msg!("Centre")), (LabelAlign::Right, msg!("Right"))]
+                {
+                    ui.selectable_value(&mut y.align, a, t(label));
                 }
             });
-        });
-    }
+            ui.end_row();
+        }
+    });
+    document::group(ui, msg!("Graphics"), |ui| {
+        if visible_row(ui, &mut y.visible, format!("{} {n}", t("Symbol Visible")), &values) {
+            let typed = y.visible.trim().to_string();
+            links.request = Some(crate::adaptive_editor::associating(
+                &i.to_string(),
+                Field::Symbol(Slot::Visible),
+                Holds::YesNo,
+                msg!("Visible"),
+                Some(&typed),
+                &params,
+            ));
+        }
+        // Drawn in a subcategory a view hides or restyles apart (a door's swing in Doors > Opening), or the category.
+        if !subs.is_empty() || !y.subcategory.is_empty() {
+            ui.label(t("Subcategory"));
+            let shown = if y.subcategory.is_empty() { t("None").to_string() } else { t(&y.subcategory).to_string() };
+            let c = ComboBox::from_id_salt(("fe-symbol-sub", i)).selected_text(shown).width(w).truncate().show_ui(ui, |ui| {
+                ui.selectable_value(&mut y.subcategory, String::new(), t("None"));
+                for name in &subs {
+                    ui.selectable_value(&mut y.subcategory, name.to_string(), t(name));
+                }
+            });
+            c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, format!("{} {n}", t("Symbol Subcategory"))));
+            ui.end_row();
+        }
+        // F8: the detail levels it is drawn at (Family Element Visibility Settings), named short so the column stays narrow.
+        ui.label(t("Detail Levels"));
+        let r = ui.button(t("Edit…"));
+        r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, format!("{} {n}", t("Symbol Visibility Settings"))));
+        open_visibility = r.clicked();
+        ui.end_row();
+    });
     if links.request.is_some() {
         ed.associating = links.request;
     }
-    if select.is_some() {
-        ed.form = select;
+    if open_visibility {
+        ed.open_visibility(visibility::Target::Symbol(i));
     }
-    // The form selected stays selected as it moves; one deleted takes the dimensions and locks measuring to it along, as
-    // the ribbon's Delete does (F10: a dimension left measuring to nothing refused Load into Project).
-    let swap = |ed: &mut FamilyEditor, i: usize, j: usize| {
-        ed.forms.swap(i, j);
-        ed.form = ed.form.map(|f| {
+}
+
+impl FamilyEditor {
+    /// The symbol selected, while it is there.
+    pub(crate) fn selected_symbol(&self) -> Option<usize> {
+        self.symbol.filter(|i| *i < self.symbols.len())
+    }
+
+    /// Symbol `i` alone selected, as the Project Browser selects it: whatever else was selected let go.
+    pub(crate) fn select_symbol(&mut self, i: usize) {
+        self.let_everything_go();
+        self.symbol = Some(i);
+    }
+
+    /// Form `i` alone selected, as the Project Browser selects it: whatever else was selected let go.
+    pub(crate) fn select_only_form(&mut self, i: usize) {
+        self.let_everything_go();
+        self.form = Some(i);
+    }
+
+    /// Nothing selected: Properties show the family's own.
+    pub(crate) fn let_everything_go(&mut self) {
+        (self.form, self.symbol, self.nested_sel) = (None, None, None);
+        (self.views.plane, self.views.line, self.views.dim) = (None, None, None);
+    }
+
+    /// A symbol of `part` added, as the Detail panel draws one, and selected so Properties show its rows.
+    pub(crate) fn add_symbol(&mut self, part: Part) {
+        self.symbols.push(SymbolText::blank(part));
+        self.select_symbol(self.symbols.len() - 1);
+    }
+
+    /// The selected symbol's name, as Properties and the Project Browser give it.
+    pub(crate) fn symbol_name(&self, i: usize) -> String {
+        let what = match self.symbols.get(i).map(|y| y.part) {
+            Some(Part::Arc) => t("Symbolic Arc"),
+            Some(Part::Text) => t("Text"),
+            Some(Part::Dot) => t("Dot"),
+            _ => t("Symbolic Line"),
+        };
+        format!("{}. {what}", i + 1)
+    }
+
+    /// Form `i` taken one place up (`by` -1) or down (1) the list, which says what a void cuts (the forms listed above it),
+    /// staying selected if it was.
+    pub(crate) fn move_form(&mut self, i: usize, by: isize) {
+        let Some(j) = i.checked_add_signed(by).filter(|j| *j < self.forms.len()) else { return };
+        if i >= self.forms.len() {
+            return;
+        }
+        self.forms.swap(i, j);
+        self.form = self.form.map(|f| {
             if f == i {
                 j
             } else if f == j {
@@ -1368,193 +1276,35 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
                 f
             }
         });
-    };
-    match act {
-        Some((i, -1)) => swap(ed, i, i - 1),
-        Some((i, 1)) => swap(ed, i, i + 1),
-        Some((i, _)) => {
-            let gone = ed.forms.remove(i).original.guid;
-            if !gone.is_nil() {
-                ed.forget_reference(gone);
-            }
-            ed.form = ed.form.and_then(|f| {
-                if f == i {
-                    None
-                } else if f > i {
-                    Some(f - 1)
-                } else {
-                    Some(f)
-                }
-            });
-        }
-        None => {}
     }
-    ui.horizontal_wrapped(|ui| {
-        if ui.button(t("Add Box")).clicked() {
-            ed.forms.push(FormText::blank());
-        }
-        if ui.button(t("Add Cylinder")).clicked() {
-            let circle = ["0".into(), "0".into(), "200".into()];
-            ed.forms.push(FormText { shape: Shape::Circle, circle, ..FormText::blank() });
-        }
-        if ui.button(t("Add Revolve")).clicked() {
-            let profile = "100, 0\n300, 0\n300, 500\n100, 500".to_string();
-            ed.forms.push(FormText {
-                host: PlaneRef::Plane(CENTER_FRONT_BACK),
-                profile,
-                revolve: true,
-                to: "360".into(),
-                ..FormText::blank()
-            });
-        }
-        if ui.button(t("Add Void")).clicked() {
-            ed.forms.push(FormText { void: true, ..FormText::blank() });
-        }
-    });
-}
 
-fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
-    use crate::adaptive_editor::{Field, Slot};
-    let mut links = association::Controls::new(ed);
-    let (values, params) = (ed.values(), ed.parameter_kinds());
-    ui.label(
-        RichText::new(t("Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."))
-            .color(pal().muted),
-    );
-    let (mut remove, mut open_visibility) = (None, None);
-    // The subcategories a symbol may be drawn in: its family's category's (a door's and a window's Opening).
-    let subs: Vec<&'static str> = bimcraft_core::graphics::subcategories(ed.category.graphics_category()).map(|s| s.name).collect();
-    for (i, y) in ed.symbols.iter_mut().enumerate() {
-        let n = i + 1;
-        let kind = match y.part {
-            Part::Line => t("Line"),
-            Part::Arc => t("Arc"),
-            Part::Text => t("Text"),
-            Part::Dot => t("Dot"),
-        };
-        let heading = format!("{n}. {kind}");
-        CollapsingHeader::new(heading).id_salt(("fe-symbol", i)).default_open(true).show(ui, |ui| {
-            Grid::new(("fe-symbol-grid", i)).num_columns(2).spacing(vec2(12.0, 5.0)).show(ui, |ui| {
-                if y.part == Part::Line {
-                    ui.label(t("Points"));
-                    let r = ui.add(TextEdit::multiline(&mut y.line).desired_rows(3).desired_width(300.0).id_salt(("fe-symbol-line", i)));
-                    r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, format!("{} {n}", t("Symbol Points"))));
-                    ui.end_row();
-                } else {
-                    ui.label(t(if y.part == Part::Text { msg!("Middle of the text") } else { msg!("Centre") }));
-                    ui.horizontal(|ui| {
-                        for (k, what) in [msg!("Symbol Centre X"), msg!("Symbol Centre Y")].into_iter().enumerate() {
-                            links.field(
-                                ui,
-                                format!("{} {n}", t(what)),
-                                &mut y.centre[k],
-                                90.0,
-                                Holds::Length,
-                                (Field::Symbol(Slot::Centre(k)), i),
-                            );
-                        }
-                    });
-                    ui.end_row();
-                    let size = if y.part == Part::Text { msg!("Height") } else { msg!("Radius") };
-                    ui.label(t(size));
-                    links.field(
-                        ui,
-                        format!("{} {n}", t(msg!("Symbol Radius"))),
-                        &mut y.radius,
-                        120.0,
-                        Holds::Length,
-                        (Field::Symbol(Slot::Radius), i),
-                    );
-                    ui.end_row();
-                    if y.part == Part::Arc {
-                        for (label, what, text) in [
-                            (msg!("From (degrees)"), msg!("Symbol From"), &mut y.from),
-                            (msg!("To (degrees)"), msg!("Symbol To"), &mut y.to),
-                        ] {
-                            ui.label(t(label));
-                            links.field(
-                                ui,
-                                format!("{} {n}", t(what)),
-                                text,
-                                120.0,
-                                Holds::Angle,
-                                (Field::Symbol(if what == "Symbol From" { Slot::From } else { Slot::To }), i),
-                            );
-                            ui.end_row();
-                        }
-                    }
-                    if y.part == Part::Text {
-                        ui.label(t("Text"));
-                        field(ui, format!("{} {n}", t("Symbol Text")), &mut y.value, 300.0);
-                        ui.end_row();
-                        ui.label(t("Align"));
-                        ui.horizontal(|ui| {
-                            for (a, label) in
-                                [(LabelAlign::Left, msg!("Left")), (LabelAlign::Center, msg!("Centre")), (LabelAlign::Right, msg!("Right"))]
-                            {
-                                ui.selectable_value(&mut y.align, a, t(label));
-                            }
-                        });
-                        ui.end_row();
-                    }
-                }
-                if visible_row(ui, &mut y.visible, format!("{} {n}", t("Symbol Visible")), &values) {
-                    let typed = y.visible.trim().to_string();
-                    let field = Field::Symbol(Slot::Visible);
-                    links.request = Some(crate::adaptive_editor::associating(
-                        &i.to_string(),
-                        field,
-                        Holds::YesNo,
-                        msg!("Visible"),
-                        Some(&typed),
-                        &params,
-                    ));
-                }
-                // Drawn in a subcategory a view hides or restyles apart (a door's swing in Doors > Opening), or the category.
-                if !subs.is_empty() || !y.subcategory.is_empty() {
-                    ui.label(t("Subcategory"));
-                    let shown = if y.subcategory.is_empty() { t("None").to_string() } else { t(&y.subcategory).to_string() };
-                    let c = ComboBox::from_id_salt(("fe-symbol-sub", i)).selected_text(shown).width(200.0).show_ui(ui, |ui| {
-                        ui.selectable_value(&mut y.subcategory, String::new(), t("None"));
-                        for name in &subs {
-                            ui.selectable_value(&mut y.subcategory, name.to_string(), t(name));
-                        }
-                    });
-                    c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, format!("{} {n}", t("Symbol Subcategory"))));
-                    ui.end_row();
-                }
-                // F8: the detail levels it is drawn at (Family Element Visibility Settings), named short so the column stays narrow.
-                ui.label(t("Detail Levels"));
-                let r = ui.button(t("Edit…"));
-                r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, format!("{} {n}", t("Symbol Visibility Settings"))));
-                if r.clicked() {
-                    open_visibility = Some(i);
-                }
-                ui.end_row();
-            });
-            if ui.button(t("Delete")).clicked() {
-                remove = Some(i);
-            }
+    /// Form `i` taken away, with the dimensions and locks measuring to it, as the ribbon's Delete does.
+    pub(crate) fn remove_form(&mut self, i: usize) {
+        if i >= self.forms.len() {
+            return;
+        }
+        let gone = self.forms.remove(i).original.guid;
+        if !gone.is_nil() {
+            self.forget_reference(gone);
+        }
+        self.form = self.form.and_then(|f| match f.cmp(&i) {
+            std::cmp::Ordering::Equal => None,
+            std::cmp::Ordering::Greater => Some(f - 1),
+            std::cmp::Ordering::Less => Some(f),
         });
     }
-    if links.request.is_some() {
-        ed.associating = links.request;
-    }
-    if let Some(i) = open_visibility {
-        ed.open_visibility(visibility::Target::Symbol(i));
-    }
-    if let Some(i) = remove {
-        ed.symbols.remove(i);
-    }
-    ui.horizontal(|ui| {
-        for (part, label) in
-            [(Part::Line, msg!("Add Line")), (Part::Arc, msg!("Add Arc")), (Part::Text, msg!("Add Text")), (Part::Dot, msg!("Add Dot"))]
-        {
-            if ui.button(t(label)).clicked() {
-                ed.symbols.push(SymbolText::blank(part));
-            }
+
+    /// Symbol `i` taken away.
+    pub(crate) fn remove_symbol(&mut self, i: usize) {
+        if i < self.symbols.len() {
+            self.symbols.remove(i);
+            self.symbol = self.symbol.and_then(|s| match s.cmp(&i) {
+                std::cmp::Ordering::Equal => None,
+                std::cmp::Ordering::Greater => Some(s - 1),
+                std::cmp::Ordering::Less => Some(s),
+            });
         }
-    });
+    }
 }
 
 /// The family in the file at `path`: its name (its own, else the file's), and what it holds.
@@ -1581,7 +1331,6 @@ impl BimApp {
             {
                 editor.source = Some(id);
                 editor.picked = editor.types.iter().position(|(n, _)| n == &c.type_name).unwrap_or(0);
-                editor.tab = Tab::Adaptive;
             }
             self.family_editor = Some(editor);
             // A document opened anew has no family under it.

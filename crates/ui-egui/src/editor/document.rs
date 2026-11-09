@@ -27,8 +27,6 @@ pub(crate) struct State {
     mark: Option<Draft>,
     /// The draft when the dialog open was, which its Cancel goes back to.
     pub(super) dialog_saved: Option<Draft>,
-    /// A form picked in the Project Browser, which Properties opens.
-    pub(super) reveal: Option<usize>,
     /// What Load into Project was refused for: said until the draft changes.
     pub(super) refused: Option<String>,
     /// The draft as it was opened, last saved to a file or the Favorites, or last loaded into the project: any other has
@@ -56,7 +54,6 @@ impl Default for State {
             redo: Vec::new(),
             mark: None,
             dialog_saved: None,
-            reveal: None,
             refused: None,
             clean: None,
             preview_visibility: false,
@@ -146,6 +143,7 @@ impl FamilyEditor {
             || self.selected_dimension().is_some()
             || self.selected_nested().is_some()
             || self.selected_line().is_some()
+            || self.selected_symbol().is_some()
     }
 
     /// Delete (DE, the Delete key, the ribbon's Delete): what is selected taken away, with what depends on it, or why not.
@@ -160,11 +158,9 @@ impl FamilyEditor {
         } else if let Some(g) = self.selected_plane().filter(|g| self.planes.iter().any(|p| p.guid == *g && !p.datum())) {
             self.delete_plane(g)?;
         } else if let Some(i) = self.selected_form() {
-            let gone = self.forms.remove(i).original.guid;
-            if !gone.is_nil() {
-                self.forget_reference(gone);
-            }
-            self.form = None;
+            self.remove_form(i);
+        } else if let Some(i) = self.selected_symbol() {
+            self.remove_symbol(i);
         } else if let Some(d) = self.adaptive.as_mut() {
             adaptive_view::delete(d, &mut self.modeller);
         }
@@ -291,6 +287,9 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         if ed.selected_line().is_some() {
             return Some(msg!("Modify | Reference Lines"));
         }
+        if ed.selected_symbol().is_some() {
+            return Some(msg!("Modify | Symbols"));
+        }
         return ed.selected_form().map(|_| msg!("Modify | Form"));
     }
     let d = ed.adaptive.as_ref()?;
@@ -348,6 +347,7 @@ impl BimApp {
                 for (tab, label) in [
                     (DocTab::Create, msg!("Create")),
                     (DocTab::Insert, msg!("Insert")),
+                    (DocTab::Annotate, "Annotate"),
                     (DocTab::View, msg!("View")),
                     (DocTab::Manage, msg!("Manage")),
                     (DocTab::Modify, "Modify"),
@@ -531,6 +531,33 @@ impl BimApp {
                     self.test_placement_panel(ui, ed);
                 }
             }
+            DocTab::Annotate => {
+                // What the family's plans draw besides its forms (a door's swing): Revit's Symbolic Line and Text, and a dot. Each
+                // is made selected, its numbers typed in Properties.
+                if !adaptive {
+                    use super::Part;
+                    ribbon::panel(ui, msg!("Detail"), |ui| {
+                        let tip = msg!("Symbolic Line: a line or an arc the family's plans draw, not part of its forms (a door's swing)");
+                        let r = big_button(ui, Icon::Line, msg!("Symbolic Line"), false, tip);
+                        ribbon::choices(ui, &r, false, |ui| {
+                            for (part, label) in [(Part::Line, msg!("Line")), (Part::Arc, msg!("Arc"))] {
+                                if ui.button(t(label)).clicked() {
+                                    ed.add_symbol(part);
+                                    ui.close();
+                                }
+                            }
+                        });
+                        let tip = msg!("Text: a label the family's plans draw");
+                        if big_button(ui, Icon::Text, "Text", false, tip).clicked() {
+                            ed.add_symbol(Part::Text);
+                        }
+                        let tip = msg!("Dot: a filled circle the family's plans draw");
+                        if big_button(ui, Icon::PointElement, msg!("Dot"), false, tip).clicked() {
+                            ed.add_symbol(Part::Dot);
+                        }
+                    });
+                }
+            }
             DocTab::Insert => {
                 ribbon::panel(ui, msg!("Family"), |ui| {
                     let tip = msg!("Load Family: a family file loaded into this family, to place with Component");
@@ -565,6 +592,22 @@ impl BimApp {
                     later(ui, Icon::Materials, "Materials");
                     later(ui, Icon::Units, msg!("Project Units"));
                 });
+                // An adaptive family is placed by its points, as Revit's Generic Model Adaptive: made so here, its forms then
+                // drawn through its points in the modelling view.
+                if !adaptive {
+                    ribbon::panel(ui, msg!("Adaptive Component"), |ui| {
+                        let tip = msg!(
+                            "Make Family Adaptive: its points are placed where each instance is clicked, as Revit's Generic Model Adaptive"
+                        );
+                        if big_button(ui, Icon::MakeAdaptive, msg!("Make Family Adaptive"), false, tip).clicked() {
+                            ed.adaptive = Some(bimcraft_core::adaptive::Definition::default());
+                        }
+                        let tip = msg!("Four-Point Panel: the family made adaptive, as a panel on four placement points");
+                        if big_button(ui, Icon::MakeAdaptive, msg!("Four-Point Panel"), false, tip).clicked() {
+                            ed.adaptive = Some(bimcraft_core::adaptive::four_point_panel());
+                        }
+                    });
+                }
             }
             DocTab::Modify | DocTab::Context => {
                 if tab == DocTab::Context && drawing {
@@ -717,6 +760,7 @@ impl BimApp {
                 ed.modeller.tool = Draw::Modify;
                 ed.modeller.picking_plane = false;
                 ed.form = None;
+                ed.symbol = None;
                 ed.views.drawing = None;
                 ed.views.picking = None;
                 ed.views.plane = None;
@@ -866,30 +910,20 @@ impl BimApp {
             self.family_editor = Some(ed);
             return;
         }
+        // A symbol selected: its own rows.
+        if let Some(i) = ed.selected_symbol() {
+            selector(ui, Icon::Line, &ed.symbol_name(i));
+            ui.add_space(6.0);
+            super::symbol_properties(&mut ed, ui, i);
+            self.family_editor = Some(ed);
+            return;
+        }
+        // Nothing selected: the family's own, as Revit's Properties show them (Identity Data, then Family Category and
+        // Parameters' Other). Its forms and symbols are in the Project Browser, made on the Create tab.
         if ed.adaptive.is_none() {
-            let materials: Vec<String> = self.session.model.materials.keys().cloned().collect();
             selector(ui, Icon::FamilyEditor, &tf("Family: {}", &[&category]));
             ui.add_space(6.0);
             identity(ui, &mut ed.name, &category);
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                for (tab, label) in [(Tab::Forms, msg!("Forms")), (Tab::Symbols, msg!("Symbols")), (Tab::Adaptive, msg!("Adaptive"))] {
-                    if ui.selectable_label(ed.tab == tab, t(label)).clicked() {
-                        ed.tab = tab;
-                    }
-                }
-            });
-            ui.separator();
-            match ed.tab {
-                Tab::Forms => forms_tab(&mut ed, ui, &materials),
-                Tab::Symbols => symbols_tab(&mut ed, ui),
-                Tab::Adaptive => {
-                    if let Some(a) = crate::adaptive_editor::show(ui, &mut ed.adaptive, &values, &params) {
-                        ed.associating = Some(a);
-                    }
-                }
-            }
-            // Last, as Revit's palette lists Other.
             ui.add_space(6.0);
             other(ui, &mut ed, self.session.model.units);
             self.family_editor = Some(ed);
@@ -968,14 +1002,37 @@ impl BimApp {
         self.family_editor = Some(ed);
     }
 
-    /// The family document's Project Browser: its views, as a family template has them, and the forms of a family that isn't
-    /// adaptive, each opening its Properties.
+    /// The family document's Project Browser: its views, as a family template has them, and the forms and plan symbols of a
+    /// family that isn't adaptive. A click selects one, so Properties show it; its right-click menu has Select, Delete, and for a
+    /// form Move Up and Move Down (the order says which forms a void cuts: those listed above it) and Edit Extrusion and the like.
     pub(crate) fn family_browser(&mut self, ui: &mut Ui) {
+        /// What a row of Forms or Symbols asked for, done once the browser is drawn.
+        enum Asked {
+            Form(usize),
+            Symbol(usize),
+            Move(usize, isize),
+            DeleteForm(usize),
+            DeleteSymbol(usize),
+            Edit(usize),
+        }
         let picked = self.family_editor.as_ref().and_then(FamilyEditor::selected_form);
-        let forms: Vec<String> = match &self.family_editor {
-            Some(ed) if ed.adaptive.is_none() => ed.forms.iter().enumerate().map(|(i, f)| format!("{}. {}", i + 1, f.describe())).collect(),
-            _ => Vec::new(),
+        let picked_symbol = self.family_editor.as_ref().and_then(FamilyEditor::selected_symbol);
+        type Row = (String, bool, &'static str);
+        let (forms, symbols): (Vec<Row>, Vec<String>) = match &self.family_editor {
+            Some(ed) if ed.adaptive.is_none() => (
+                ed.forms
+                    .iter()
+                    .enumerate()
+                    .map(|(i, f)| {
+                        let edit = f.form().map(|x| super::extrusion::edit_label(x.kind())).unwrap_or(msg!("Edit Extrusion"));
+                        (format!("{}. {}", i + 1, f.describe()), f.mesh(), edit)
+                    })
+                    .collect(),
+                (0..ed.symbols.len()).map(|i| ed.symbol_name(i)).collect(),
+            ),
+            _ => (Vec::new(), Vec::new()),
         };
+        let mut asked = None;
         ScrollArea::vertical().id_salt("family-browser").auto_shrink([false, false]).show(ui, |ui| {
             Frame::new().inner_margin(8.0).show(ui, |ui| {
                 egui::CollapsingHeader::new(t("Views (all)")).id_salt("family-views").default_open(true).show(ui, |ui| {
@@ -1004,21 +1061,70 @@ impl BimApp {
                 self.nested_browser(ui);
                 if !forms.is_empty() {
                     egui::CollapsingHeader::new(t("Forms")).id_salt("family-forms").default_open(true).show(ui, |ui| {
-                        for (i, form) in forms.iter().enumerate() {
-                            if ui.selectable_label(picked == Some(i), form).clicked()
-                                && let Some(ed) = self.family_editor.as_mut()
-                            {
-                                // Selected, as Revit's browser selects what it lists; its own row in the Forms tab opens for
-                                // when it is let go.
-                                ed.tab = Tab::Forms;
-                                ed.document.reveal = Some(i);
-                                ed.form = Some(i);
+                        let last = forms.len() - 1;
+                        for (i, (form, mesh, edit)) in forms.iter().enumerate() {
+                            let r = ui.selectable_label(picked == Some(i), form);
+                            if r.clicked() {
+                                asked = Some(Asked::Form(i));
                             }
+                            r.context_menu(|ui| {
+                                if ui.button(t("Select")).clicked() {
+                                    asked = Some(Asked::Form(i));
+                                }
+                                if ui.add_enabled(!mesh, egui::Button::new(t(edit))).clicked() {
+                                    asked = Some(Asked::Edit(i));
+                                }
+                                ui.separator();
+                                if ui.add_enabled(i > 0, egui::Button::new(t("Move Up"))).clicked() {
+                                    asked = Some(Asked::Move(i, -1));
+                                }
+                                if ui.add_enabled(i < last, egui::Button::new(t("Move Down"))).clicked() {
+                                    asked = Some(Asked::Move(i, 1));
+                                }
+                                ui.separator();
+                                if ui.button(t("Delete")).clicked() {
+                                    asked = Some(Asked::DeleteForm(i));
+                                }
+                            });
+                        }
+                    });
+                }
+                if !symbols.is_empty() {
+                    egui::CollapsingHeader::new(t("Symbols")).id_salt("family-symbols").default_open(true).show(ui, |ui| {
+                        for (i, symbol) in symbols.iter().enumerate() {
+                            let r = ui.selectable_label(picked_symbol == Some(i), symbol);
+                            if r.clicked() {
+                                asked = Some(Asked::Symbol(i));
+                            }
+                            r.context_menu(|ui| {
+                                if ui.button(t("Select")).clicked() {
+                                    asked = Some(Asked::Symbol(i));
+                                }
+                                if ui.button(t("Delete")).clicked() {
+                                    asked = Some(Asked::DeleteSymbol(i));
+                                }
+                            });
                         }
                     });
                 }
             });
         });
+        let Some(ed) = self.family_editor.as_mut() else { return };
+        match asked {
+            // Selected, as Revit's browser selects what it lists: its Properties show.
+            Some(Asked::Form(i)) => ed.select_only_form(i),
+            Some(Asked::Symbol(i)) => ed.select_symbol(i),
+            Some(Asked::Move(i, by)) => ed.move_form(i, by),
+            Some(Asked::DeleteForm(i)) => ed.remove_form(i),
+            Some(Asked::DeleteSymbol(i)) => ed.remove_symbol(i),
+            Some(Asked::Edit(i)) => {
+                ed.select_only_form(i);
+                if let Err(e) = ed.edit_form_sketch(i) {
+                    self.status = Status { text: e, error: true };
+                }
+            }
+            None => {}
+        }
     }
 
     /// The family document's view: the modelling view (an adaptive family's) or the 3D preview (another's, turned by a drag, or

@@ -6844,6 +6844,7 @@ mod family_document;
 mod family_exit;
 mod family_open;
 mod family_pivots;
+mod family_properties;
 mod family_sketch;
 mod family_sketch_locks;
 mod family_temporary_hide;

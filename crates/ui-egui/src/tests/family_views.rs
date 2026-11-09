@@ -102,11 +102,8 @@ pub(super) fn click_family(h: &mut Harness<BimApp>, p: [f64; 3]) {
     click_at(h, at);
 }
 
-/// Form `n` (from 1) selected from the Project Browser's Forms list, the Properties' Symbols tab in front.
+/// Form `n` (from 1) selected from the Project Browser's Forms list.
 pub(super) fn select_form(h: &mut Harness<BimApp>, n: usize) {
-    if h.query_by_label("Symbols").is_some() {
-        press(h, "Symbols");
-    }
     let label = format!("{n}. Extrusion");
     h.get_by_label(&label).scroll_to_me();
     h.run();

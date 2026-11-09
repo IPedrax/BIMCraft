@@ -78,7 +78,6 @@ impl Rows<'_> {
                     Slot::Visible => Some(&mut f.visible),
                     Slot::Material => Some(&mut f.material),
                     Slot::Centre(k) => f.circle.get_mut(k),
-                    Slot::Axis(k) => f.axis.get_mut(k),
                     Slot::Radius => f.circle.get_mut(2),
                 }
             }
@@ -90,7 +89,7 @@ impl Rows<'_> {
                     Slot::Visible => Some(&mut y.visible),
                     Slot::Centre(k) => y.centre.get_mut(k),
                     Slot::Radius => Some(&mut y.radius),
-                    Slot::Material | Slot::Axis(_) => None,
+                    Slot::Material => None,
                 }
             }
             _ => None,

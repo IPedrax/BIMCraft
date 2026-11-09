@@ -21,8 +21,6 @@ fn selected() -> Harness<'static, BimApp> {
     assert!(made.is_some());
     h.state_mut().edit_family("Plinth");
     h.run();
-    // The Forms tab lists the form too: the browser's is the one picked.
-    press(&mut h, "Symbols");
     press(&mut h, "1. Extrusion");
     h
 }
@@ -64,8 +62,8 @@ fn a_selected_form_shows_revits_extrusion_properties() {
     // The contextual tab and the Options Bar's Depth come with it.
     assert!(h.query_all_by_label("Modify | Form").count() > 0);
     assert_eq!(h.get_by_label("Depth").value().as_deref(), Some("50"));
-    // The Forms tab is not shown under it, as Revit's Properties show only what is selected.
-    assert!(h.query_by_label("Form From 1").is_none());
+    // The family's own are not shown under it, as Revit's Properties show only what is selected.
+    assert!(h.query_by_label("Family name").is_none());
 }
 
 #[test]
@@ -167,11 +165,9 @@ fn escape_or_a_click_in_the_view_lets_the_form_go() {
     h.key_press(Key::Escape);
     h.run();
     assert!(h.query_by_label("Extrusion End").is_none());
-    assert!(h.query_by_label("Form From 1").is_some(), "the family's tabs are back, the form's own row open in its Forms tab");
-    // Selected again, from the Forms tab, and let go by a click in the view on nothing (one on a form selects it, T11).
-    h.get_by_label("Select").scroll_to_me();
-    h.run();
-    press(&mut h, "Select");
+    assert!(h.query_by_label("Family name").is_some(), "nothing selected, Properties show the family's own");
+    // Selected again, from the browser, and let go by a click in the view on nothing (one on a form selects it, T11).
+    press(&mut h, "1. Extrusion");
     assert!(h.query_by_label("Extrusion End").is_some());
     let nothing = h.state().pane.min + vec2(40.0, 120.0);
     click_at(&mut h, nothing);
