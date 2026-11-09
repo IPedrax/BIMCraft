@@ -2511,7 +2511,7 @@ msgstr "Zbourané"
 msgid "Demolition"
 msgstr "Demolice"
 
-#: crates/core/src/commands.rs:9897
+#: crates/core/src/commands.rs:10022
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -3033,7 +3033,7 @@ msgstr "Elektrotechnická nastavení"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrotechnická nastavení: napětí, rozvodné soustavy a typy vodičů, na které se odkazují obvody a rozváděče; průřezy v mm²"
 
-#: crates/core/src/commands.rs:2168
+#: crates/core/src/commands.rs:2191
 msgid "Elements"
 msgstr "Prvky"
 
@@ -8889,7 +8889,7 @@ msgstr "Formát jednotek"
 msgid "Unlock alignment"
 msgstr "Odemknout zarovnání"
 
-#: crates/core/src/commands.rs:10038
+#: crates/core/src/commands.rs:10163
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
