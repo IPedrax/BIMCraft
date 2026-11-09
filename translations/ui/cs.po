@@ -2288,7 +2288,7 @@ msgstr "Rovina řezu"
 msgid "Cylinder"
 msgstr "Válec"
 
-#: crates/core/src/render.rs:3666
+#: crates/core/src/render.rs:3724
 msgid "DN"
 msgstr "DOLŮ"
 
@@ -4909,7 +4909,7 @@ msgstr "NBR 17068: přesah 2 až 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: terč v půdorysu (±0,00), rovnostranný trojúhelník v řezu"
 
-#: crates/core/src/render.rs:2904
+#: crates/core/src/render.rs:2948
 msgid "NOT ENCLOSED"
 msgstr "NEUZAVŘENÝ OBVOD"
 
@@ -6360,7 +6360,7 @@ msgstr "Umístit pohled na tento výkres: pohled, který dosud není na žádné
 msgid "Quadrant"
 msgstr "Kvadrant"
 
-#: crates/core/src/render.rs:2904
+#: crates/core/src/render.rs:2948
 msgid "REDUNDANT"
 msgstr "NADBYTEČNÁ"
 
@@ -8559,7 +8559,7 @@ msgstr "Typ:"
 msgid "Types"
 msgstr "Typy"
 
-#: crates/core/src/render.rs:3666
+#: crates/core/src/render.rs:3724
 msgid "UP"
 msgstr "NAHORU"
 

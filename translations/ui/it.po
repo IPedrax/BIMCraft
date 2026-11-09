@@ -2289,7 +2289,7 @@ msgstr "Piano di taglio"
 msgid "Cylinder"
 msgstr "Cilindro"
 
-#: crates/core/src/render.rs:3666
+#: crates/core/src/render.rs:3724
 msgid "DN"
 msgstr "GIÙ"
 
@@ -4910,7 +4910,7 @@ msgstr "NBR 17068: prolungamento da 2 a 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: bersaglio in pianta (±0,00), triangolo equilatero in sezione"
 
-#: crates/core/src/render.rs:2904
+#: crates/core/src/render.rs:2948
 msgid "NOT ENCLOSED"
 msgstr "NON CHIUSA"
 
@@ -6361,7 +6361,7 @@ msgstr "Inserisci una vista in questo layout: una non ancora su un layout"
 msgid "Quadrant"
 msgstr "Quadrante"
 
-#: crates/core/src/render.rs:2904
+#: crates/core/src/render.rs:2948
 msgid "REDUNDANT"
 msgstr ""
 
@@ -8560,7 +8560,7 @@ msgstr "Tipo:"
 msgid "Types"
 msgstr "Tipi"
 
-#: crates/core/src/render.rs:3666
+#: crates/core/src/render.rs:3724
 msgid "UP"
 msgstr "SU"
 

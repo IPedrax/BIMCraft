@@ -2289,7 +2289,7 @@ msgstr "Plan de coupe"
 msgid "Cylinder"
 msgstr "Cylindre"
 
-#: crates/core/src/render.rs:3666
+#: crates/core/src/render.rs:3724
 msgid "DN"
 msgstr "DN"
 
@@ -4910,7 +4910,7 @@ msgstr "NBR 17068: prolongement de 2 à 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: cible en plan (±0,00), triangle équilatéral en coupe"
 
-#: crates/core/src/render.rs:2904
+#: crates/core/src/render.rs:2948
 msgid "NOT ENCLOSED"
 msgstr "NON DÉLIMITÉE"
 
@@ -6361,7 +6361,7 @@ msgstr "Placer sur cette feuille une vue qui n'est pas encore sur une feuille"
 msgid "Quadrant"
 msgstr "Quadrant"
 
-#: crates/core/src/render.rs:2904
+#: crates/core/src/render.rs:2948
 msgid "REDUNDANT"
 msgstr "REDONDANTE"
 
@@ -8560,7 +8560,7 @@ msgstr "Type:"
 msgid "Types"
 msgstr "Types"
 
-#: crates/core/src/render.rs:3666
+#: crates/core/src/render.rs:3724
 msgid "UP"
 msgstr "HAUT"
 
