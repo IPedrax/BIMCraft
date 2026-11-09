@@ -402,15 +402,17 @@ pub(crate) fn unzip(b: &[u8]) -> std::collections::BTreeMap<String, String> {
         let (crc, packed, size, name_len) = (u32_at(i + 14), u32_at(i + 18) as usize, u32_at(i + 22) as usize, u16_at(i + 26));
         let name = String::from_utf8(b[i + 30..i + 30 + name_len].to_vec()).unwrap();
         let start = i + 30 + name_len + u16_at(i + 28);
-        let mut text = String::new();
+        // Stored as it is, or deflated; a binary part (a picture) comes back as text a test can only look for words in.
+        let mut raw = Vec::new();
         if u16_at(i + 8) == 0 {
-            text = String::from_utf8_lossy(&b[start..start + packed]).to_string();
+            raw = b[start..start + packed].to_vec();
         } else {
-            flate2::read::DeflateDecoder::new(&b[start..start + packed]).read_to_string(&mut text).unwrap();
+            flate2::read::DeflateDecoder::new(&b[start..start + packed]).read_to_end(&mut raw).unwrap();
         }
         let mut c = flate2::Crc::new();
-        c.update(text.as_bytes());
-        assert_eq!((c.sum(), text.len()), (crc, size), "{name}");
+        c.update(&raw);
+        assert_eq!((c.sum(), raw.len()), (crc, size), "{name}");
+        let text = String::from_utf8_lossy(&raw).to_string();
         out.insert(name, text);
         i = start + packed;
     }

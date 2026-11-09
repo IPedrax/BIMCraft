@@ -204,6 +204,8 @@ pub struct Options {
     pub quality: Option<u8>,
     /// Where an IFC file's coordinates have their origin: internal (the default), base, survey or shared.
     pub ifc_origin: crate::ifc::Origin,
+    /// The elements selected, by GUID: what a BCF topic is about.
+    pub selected: Vec<crate::ids::Guid>,
 }
 
 /// What a running export is told and asked.
