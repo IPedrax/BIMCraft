@@ -997,6 +997,18 @@ impl Reference {
         let along = !opening && matches!(self.face, Face::Centre | Face::Left | Face::Right);
         Reference { face: self.face.mirrored(), point: self.point.map(|p| if along { p.other() } else { p }), ..self }
     }
+
+    /// The same of a mirrored column, which Mirror turns by its reflection (its angle's direction reflected, not run back
+    /// the other way as a wall's is): its left and right faces swap, and the end of a line across it (`across`, a cap) swaps.
+    pub fn mirrored_column(self) -> Reference {
+        let face = match self.face {
+            Face::Left => Face::Right,
+            Face::Right => Face::Left,
+            other => other,
+        };
+        let across = matches!(self.face, Face::Across | Face::Start | Face::End);
+        Reference { face, point: self.point.map(|p| if across { p.other() } else { p }), ..self }
+    }
 }
 
 /// Which end of a line.

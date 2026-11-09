@@ -11307,9 +11307,17 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             })
             .collect();
         let turned = |id: &Guid| moving_guids.contains(id) || hosts.get(id).is_some_and(|h| moving_guids.contains(h));
+        let columns: BTreeSet<Guid> = moving_guids
+            .iter()
+            .copied()
+            .filter(|g| matches!(m.elements.get(*g), Some(Element::Column(_) | Element::StructuralColumn(_))))
+            .collect();
         for e in m.elements.values_mut() {
             if let Element::Dimension(d) = e {
-                d.refs.iter_mut().filter(|r| turned(&r.id)).for_each(|r| *r = r.mirrored(hosts.contains_key(&r.id)));
+                d.refs
+                    .iter_mut()
+                    .filter(|r| turned(&r.id))
+                    .for_each(|r| *r = if columns.contains(&r.id) { r.mirrored_column() } else { r.mirrored(hosts.contains_key(&r.id)) });
             }
         }
     }
@@ -11409,9 +11417,10 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
                 for r in &mut d.refs {
                     if let Some(&to) = hosts.get(&r.id) {
                         let opening = matches!(m.elements.get(r.id), Some(Element::Door(_) | Element::Window(_)));
+                        let column = matches!(m.elements.get(r.id), Some(Element::Column(_) | Element::StructuralColumn(_)));
                         r.id = to;
                         if mo.mirror {
-                            *r = r.mirrored(opening);
+                            *r = if column { r.mirrored_column() } else { r.mirrored(opening) };
                         }
                     }
                 }

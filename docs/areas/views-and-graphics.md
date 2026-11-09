@@ -632,7 +632,8 @@ a line, a point as a line of no length, and `crossings` lays
 them along the way the dimension measures (`measured_along`): a linear one's `orient` (horizontal or vertical), else square to its first line,
 else from its first point to the next elsewhere. `Model::check` refuses a line not parallel to the first, or not square to a linear one's line,
 and points all in one place. Mirror keeps the end of a line along the element and flips the one across it (`Reference::mirrored`); Flip swaps
-both. A linear one given no `orient` runs vertical where `at` is east or west of everything it measures, else horizontal; the desktop's Auto
+both. A column, which Mirror turns by its reflection rather than running it back, swaps its left and right faces and the ends of what runs across
+it instead (`Reference::mirrored_column`). A linear one given no `orient` runs vertical where `at` is east or west of everything it measures, else horizontal; the desktop's Auto
 (`dims::Placing::kind`) also lays an aligned one where the cursor is among the points (`Orient::follow`), as Archicad does. Radial and diameter
 dimensions measure round columns, curved walls (centre line or a face) and circles and arcs (`reference_arc`); arc length, a curved wall's or an
 arc's length along it (`reference_sweep`), all of it or, with two point references after the arc, between them (`Model::arc_span`), its line an arc through `at` round the same centre. `dims::round_at` picks the face nearest a click.

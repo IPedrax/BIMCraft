@@ -554,3 +554,31 @@ fn a_round_column_running_up_through_a_plan_takes_a_diameter_dimension_on_it() {
     let d = run(&mut s, "dimension", json!({"kind": "diameter", "level": "Level 2", "refs": [[5150, 3000]], "at": [5600, 2400]}));
     assert_eq!(d["values"], json!([300.0]));
 }
+
+#[test]
+fn a_mirrored_column_keeps_its_dimensions_on_the_same_faces_and_ends() {
+    let mut s = Session::new();
+    let a = id_of(&run(&mut s, "structural_column", json!({"at": [3000, 3000]})));
+    let b = id_of(&run(&mut s, "structural_column", json!({"at": [7000, 5000]})));
+    // Their facing caps, 3700 apart; their north and south faces, 1700; their across lines' near ends, 1700 north.
+    let faces = run(&mut s, "dimension", json!({"refs": [{"id": a, "face": "end"}, {"id": b, "face": "start"}], "at": [5000, 4000]}));
+    let sides = run(&mut s, "dimension", json!({"refs": [{"id": a, "face": "left"}, {"id": b, "face": "right"}], "at": [5000, 4000]}));
+    let ends = run(
+        &mut s,
+        "dimension",
+        json!({"kind": "linear", "orient": "vertical", "refs": [{"id": a, "face": "across", "point": "end"}, {"id": b, "face": "across", "point": "start"}], "at": [9000, 4000]}),
+    );
+    let dims = [id_of(&faces), id_of(&sides), id_of(&ends)];
+    let all = |s: &mut Session, dims: &[Id]| dims.iter().map(|&d| values(s, d)).collect::<Vec<_>>();
+    let kept = vec![json!([3700.0]), json!([1700.0]), json!([1700.0])];
+    assert_eq!(all(&mut s, &dims), kept);
+    // Mirror turns a column by its reflection: its angle's direction is reflected, so its left and right swap, and the ends
+    // of what runs across it; the dimensions stay on the faces that face each other.
+    let mirrored = run(&mut s, "mirror", json!({"ids": [a, b, dims[0], dims[1], dims[2]], "axis": [[0, 0], [0, 1000]], "copy": true}));
+    let copies: Vec<Id> = mirrored["ids"].as_array().map(|v| v.iter().filter_map(Value::as_u64).collect()).unwrap_or_default();
+    let copied: Vec<Id> =
+        copies.into_iter().filter(|id| matches!(s.model.elements.get(*id), Some(crate::model::Element::Dimension(_)))).collect();
+    assert_eq!(all(&mut s, &copied), kept, "{mirrored}");
+    run(&mut s, "mirror", json!({"ids": [a, b], "axis": [[0, 0], [0, 1000]]}));
+    assert_eq!(all(&mut s, &dims), kept);
+}
