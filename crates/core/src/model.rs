@@ -5651,7 +5651,7 @@ impl Model {
 
     /// What bounds the rooms of `level`: the centre lines of its walls, arcs as chords, and its room separation lines. A
     /// separation line drawn to a wall's face, as one drawn on a plan usually is, runs on to the wall's centre line, so it
-    /// splits rooms measured there too. A parallel continuation at a wall's end joins across its cap instead.
+    /// splits rooms measured there too. A parallel continuation at a straight wall's end joins across its cap instead.
     pub fn bounding_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
         self.bounding_lines_in(level, Some(&walls::Index::new(self)))
     }
@@ -5692,17 +5692,26 @@ impl Model {
         candidates.filter(move |&id| self.wall(id).is_some_and(|w| self.bounding(w, level) && (!rooms || w.room_bounding)))
     }
 
-    /// The segments of [`Model::wall_lines`], each with half its wall's thickness and its actual end caps.
+    /// The segments of [`Model::wall_lines`], each with half its wall's thickness and its eligible straight-wall end caps.
     /// With `rooms`, of the walls whose Room Bounding is on.
     fn wall_segments(&self, level: &impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<WallSegment> {
         self.bounding_walls(level, rooms)
-            .filter_map(|id| Some((id, self.thickness(self.wall(id)?) / 2.0)))
-            .flat_map(|(id, half)| {
+            .filter_map(|id| {
+                let wall = self.wall(id)?;
+                Some((id, self.thickness(wall) / 2.0, wall.arc == 0.0))
+            })
+            .flat_map(|(id, half, straight)| {
                 let line = walls::centre_line_in(self, id, index);
                 line.windows(2)
                     .enumerate()
                     .filter_map(|(i, s)| {
-                        s.first().zip(s.get(1)).map(|(a, b)| WallSegment { start: *a, end: *b, half, caps: [i == 0, i + 2 == line.len()] })
+                        s.first().zip(s.get(1)).map(|(a, b)| WallSegment {
+                            start: *a,
+                            end: *b,
+                            half,
+                            // A curved wall's chord direction is not its actual end-cap tangent.
+                            caps: [straight && i == 0, straight && i + 2 == line.len()],
+                        })
                     })
                     .collect::<Vec<_>>()
             })
@@ -7735,7 +7744,7 @@ struct OpeningSpan {
     id: Id,
 }
 
-/// A room-bounding wall's centreline segment. Arc chord junctions are not wall end caps.
+/// A room-bounding wall's centreline segment. Only straight walls have eligible parallel-connection caps.
 struct WallSegment {
     start: P2,
     end: P2,
@@ -7762,7 +7771,7 @@ fn to_centre(from: P2, end: P2, walls: &[WallSegment]) -> P2 {
         .map_or(end, |d| end + way * d)
 }
 
-/// A parallel separator continuing a wall's end can meet its cap without ever crossing its centre line.
+/// A parallel separator continuing a straight wall's end can meet its cap without ever crossing its centre line.
 /// Join only there, within the wall's thickness: never along its side, across a gap, or pointing back over the wall.
 fn parallel_wall_end(from: P2, end: P2, walls: &[WallSegment]) -> Option<P2> {
     let way = (end - from).unit();

@@ -1,4 +1,4 @@
-//! A separator drawn along an offset wall's face must meet its end without moving the drawn line.
+//! A separator along a straight offset wall meets its end without moving the line; curved cap gaps stay open.
 #[cfg(test)]
 mod tests {
     use bimcraft_core::engine::Session;
@@ -77,6 +77,30 @@ mod tests {
             assert_eq!(got[1]["enclosed"], false, "{start:?} {bounding}: {got:?}");
             assert_eq!(got[1]["shares_space_with"], got[0]["id"]);
         }
+    }
+
+    #[test]
+    fn a_curved_wall_end_gap_is_not_closed_by_a_parallel_chord() {
+        let mut s = Session::new();
+        run(&mut s, "wall", json!({"points": [[0,0],[9600,0],[9600,6400],[0,6400]], "closed": true}));
+        run(&mut s, "wall", json!({"points": [[0,3200],[4200,3200]], "arc": 90, "location": "exterior-finish"}));
+        // The start is 2.533271 mm beyond the real end cap along its true 45-degree tangent.
+        // It is parallel to the final approximation chord, which must not supply a false cap connection.
+        let start = [4201.813986211087, 3201.7686006042572];
+        let end = [7461.151567268631, 6300.0];
+        run(&mut s, "room_separator", json!({"points": [start, end]}));
+        run(&mut s, "room", json!({"point": [2000,1600], "name": "South"}));
+        let north = run(&mut s, "room", json!({"point": [2000,4800], "name": "North"}));
+        assert_eq!(north["area_m2"], 0.0, "the real cap gap must stay open: {north}");
+        assert!(north["warning"].as_str().is_some_and(|warning| warning.contains("already in this space")), "{north}");
+        let got = rooms(&mut s);
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0]["area_m2"], 61.44, "{got:?}");
+        assert_eq!(got[1]["enclosed"], false, "{got:?}");
+        assert_eq!(got[1]["shares_space_with"], got[0]["id"]);
+        let separator = run(&mut s, "elements", json!({"category": "roomseparator"}));
+        assert_eq!(separator["elements"][0]["start"], json!(start));
+        assert_eq!(separator["elements"][0]["end"], json!(end));
     }
 
     #[test]
