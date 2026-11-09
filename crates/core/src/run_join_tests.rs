@@ -311,6 +311,25 @@ fn moving_a_footing_whole_lets_a_wall_at_its_angle_extend_along_its_own_axis() {
 }
 
 #[test]
+fn moving_a_footing_whole_slides_its_end_along_an_angled_walls_line() {
+    let mut s = session(
+        r#"wall {"points": [[4000, 0], [6000, 3000]]}
+           strip_footing {"points": [[0, 0], [4000, 0]]}"#,
+    );
+    let wall_id = runs(&s, "wall")[0];
+    let footing = runs(&s, "stripfooting")[0];
+    s.execute("move", &json!({"ids": [footing], "by": [0.0, 1000.0]})).unwrap();
+    // The footing's end slides along the wall's line to their new crossing; the wall keeps its own line and only
+    // stretches to that crossing.
+    assert_eq!(run(&s, footing).start, P2(0.0, 1000.0));
+    assert!((run(&s, footing).end.0 - 4666.667).abs() < 0.01, "its end found the crossing: {:?}", run(&s, footing).end);
+    assert_eq!(run(&s, footing).end.1, 1000.0);
+    assert!((wall(&s, wall_id).start.0 - 4666.667).abs() < 0.01, "the wall's end slid along its own axis: {:?}", wall(&s, wall_id).start);
+    assert_eq!(wall(&s, wall_id).start.1, 1000.0);
+    assert_eq!(wall(&s, wall_id).end, P2(6000.0, 3000.0), "its free end stayed");
+}
+
+#[test]
 fn moving_a_wall_whole_lets_a_footing_at_its_angle_extend_along_its_own_axis() {
     let mut s = session(
         r#"wall {"points": [[0, 0], [4000, 0]]}
