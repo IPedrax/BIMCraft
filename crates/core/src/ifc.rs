@@ -2182,7 +2182,7 @@ mod tests {
     /// What `f` holds from its DATA section on: the header's FILE_NAME carries the time to the second, so two exports a
     /// second apart differ there, and a test comparing whole files would fail on a slow machine.
     fn data(f: &str) -> &str {
-        f.split_once("DATA;").map_or(f, |(_, d)| d)
+        f.split_once("DATA;").expect("an IFC file has a DATA section").1
     }
 
     /// The entity lines of kind `class` in `f`, as written.
