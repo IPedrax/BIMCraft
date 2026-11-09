@@ -134,3 +134,12 @@ fn a_standard_whose_title_block_no_longer_fits_a_sheet_is_refused_naming_the_she
     session.execute("modify", &json!({"id": id, "size": "ANSI A"})).unwrap();
     session.execute("standard", &json!({"set": "ansi"})).unwrap();
 }
+
+#[test]
+fn a_sheet_with_no_title_block_may_be_smaller_than_one() {
+    // Nothing is drawn in its corner, so only custom paper's own bounds hold it.
+    let mut session = Session::new();
+    let id = session.execute("sheet", &json!({"size": "150x100", "title_block": "none"})).unwrap()["id"].as_u64().unwrap();
+    let error = session.execute("modify", &json!({"id": id, "title_block": ""})).unwrap_err();
+    assert!(error.contains("at least 210 mm wide"), "the built-in one back needs its width again: {error}");
+}

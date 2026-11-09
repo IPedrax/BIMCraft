@@ -1950,7 +1950,7 @@ impl Sheet {
 }
 
 /// Minimum custom paper side in mm. `Model::check` also asks a sheet's paper to hold its standard's title block inside its
-/// margins (`SheetMargins::least_paper`): 210 mm wide, 211.75 under ANSI.
+/// margins (`SheetMargins::least_paper`): 210 mm wide, 211.75 under ANSI, unless it has none.
 pub const MIN_PAPER: f64 = 100.0;
 /// Maximum custom paper side in mm: the longest named side (ARCH E, 48 in).
 pub const MAX_PAPER: f64 = 1219.2;
@@ -7303,11 +7303,12 @@ impl Model {
                     ));
                 };
                 // The title block is drawn its standard's size in the bottom right corner, inside the border: paper
-                // smaller than that would squeeze it until the sheet's name runs over its number.
+                // smaller than that would squeeze it until the sheet's name runs over its number. A sheet with none has
+                // nothing there to squeeze.
                 let std = self.standard();
                 let m = std.sheet_margins(&sh.size);
                 let (least_width, least_height) = m.least_paper();
-                if width < least_width - 1e-6 || height < least_height - 1e-6 {
+                if !sh.has_no_title_block() && (width < least_width - 1e-6 || height < least_height - 1e-6) {
                     let mm = |x: f64| (x * 100.0).round() / 100.0;
                     return Err(format!(
                         "{who} `{}`: paper {} x {} mm is too small for {}'s title block, {} x {} mm inside margins of {} mm left, {} mm \
