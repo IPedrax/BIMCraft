@@ -2023,7 +2023,8 @@ impl BimApp {
         if matches!(self.tool, Tool::Component | Tool::Fixture(_)) && pressed(Modifiers::NONE, Key::Space) {
             self.component_angle = (self.component_angle + 90.0) % 360.0;
         }
-        if pressed(Modifiers::NONE, Key::F8) || pressed(Modifiers::NONE, Key::F11) {
+        // F8 is the one function key for the guides. F11 is free: the system may use it for full screen.
+        if pressed(Modifiers::NONE, Key::F8) {
             self.toggle_alignment_guides();
         }
         let typed: String = ctx.input(|i| {
