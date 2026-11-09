@@ -1629,6 +1629,14 @@ other_files(
     )
     .menu("Manage > Technical Standards"),
     other(
+        "timber_framing",
+        "Timber Wall Framing",
+        "{wall, layer, window, spacing, thickness, depth, header_height} read the framing members and clear bays of a straight isolated wall. \
+         Select its structural layer and one rectangular window by id or GUID. Supply lengths in mm. Dimensions are measured from the interior layer face. \
+         Each xz rectangle [left,right,bottom,top] spans the layer depth. Keys are local to the returned wall and layer GUIDs.",
+        crate::timber::query,
+    ),
+    other(
         "inspect",
         "Inspect",
         "{brief?} levels, element counts, types, warnings and undo history; with `brief` the library is its size only \

@@ -179,3 +179,19 @@ connector `PowerFactor` and `RatedVoltage`) and `BIMCraft_Connector` (`System`, 
 import doesn't read them back.
 
 **The fixtures library** (`plumbing.rs`, `data/plumbing.json`) holds what the sizing commands know of each kind of fixture, the way `data/electrical.json` holds the electrical settings: its design flows in L/s (cold, and hot where a source gives one; `hot_flow` is `null` until one does, never guessed), its weight (the method of weights of `water_size`), its units of contribution and the smallest DN of its drain (`drain_size`), each with the source it comes from (`water_source`, `drain_source`). `plumbing::validate` refuses a row with no source, an empty or repeated kind, or a number that is not positive and finite, and a test runs it over the shipped file; the library reads as empty if the file fails it, so a bad row shows as "no fixture" and never as a wrong number. `water::fixture` and `drain_size`'s `drainage::fixture` are views of it, and the commands list its kinds in their errors. A project's own values are a later step.
+
+### Timber wall framing
+
+`timber_framing` reads one isolated straight wall, its chosen structural layer and its only hosted rectangular window.
+Supply their ids or GUIDs as `wall`, `layer` and `window`. Supply `spacing`, stud/plate `thickness`, layer `depth` and
+`header_height` in mm. The window cut provides the rough opening. The layout uses flush end studs, a grid measured
+from the wall start, one bottom and two top plates, one king and jack per jamb, a sill, and a header over the jacks.
+Only whole grid pieces that fit between the adjacent framing faces are included. Attached walls, wall junctions and
+layouts above 4096 grid stations are outside this command.
+
+Each member and clear bay has a `key` scoped to the returned wall and layer GUIDs. Its `xz` is
+`[left, right, bottom, top]` in mm, measured along the wall and up from its base. Every rectangle spans the returned
+`depth`. For model coordinates, start at `origin` on the interior face of the framing layer, move along `x_axis`,
+into the layer along `depth_axis`, and up. Repeating the query creates no project elements or Undo steps.
+A bay key names its vertical region and adjacent members. A placement whose bay disappears on a new query
+keeps its last intended position for conflict review. Outlet and niche placement are exercised as test consumers.

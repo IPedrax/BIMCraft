@@ -109,6 +109,7 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 - `conduit.rs`: the `conduit_fill` command, a conduit's fill by NBR 5410 (makers' catalogues in `conduit/tables.rs`).
 - `electrical.rs`: the electrical settings, the project's voltages, distribution systems and wire types (the `voltage`, `distribution_system` and `wire_type` commands; starter set in `data/electrical.json`; [structure and MEP](docs/areas/structure-and-mep.md)).
 - `nbr5410.rs`: the `circuit` command's sizing of a circuit by NBR 5410 (tables in `nbr5410/tables.rs`; [structure and MEP](docs/areas/structure-and-mep.md)).
+- `timber.rs`: the `timber_framing` command, a straight isolated wall's studs, plates and clear bays round one window, read and never built ([structure and MEP](docs/areas/structure-and-mep.md)).
 - `tests.rs`, `mep_tests.rs`, `structure_tests.rs`, `eberick_tests.rs`, `reinforce_tests.rs`, `autosave_tests.rs`: the engine driven through commands, as a front end drives it.
 
 Plugins: [notes](crates/plugin/CLAUDE.md), [sdk](crates/plugin-sdk/CLAUDE.md), [area](docs/areas/plugins.md), one `unsafe`.
