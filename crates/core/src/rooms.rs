@@ -138,11 +138,22 @@ impl<'a> Rooms<'a> {
         rooms.iter().find(|(id, r)| self.cached_region(*id, r).is_some_and(|g| region_holds(&g, point))).map(|(id, _)| *id)
     }
 
-    /// The room component `c` is in: the one holding its family's room calculation point, placed where it stands
-    /// ([`Model::component_room_point`]), on its level; its insertion point's where its family has none.
+    /// The room on `level` whose volume holds `point`, the first by id: its boundary in plan, as [`Rooms::room_at`], and its
+    /// height from its bottom up to its top ([`Model::room_span`]), each end included.
+    pub fn room_holding(&self, level: Guid, [x, y, z]: [f64; 3]) -> Option<Id> {
+        let rooms = self.placed(level);
+        let within = |r: &Room| {
+            let (bottom, top) = self.m.room_span(r);
+            bottom - TOL <= z && z <= top + TOL
+        };
+        rooms.iter().find(|(id, r)| within(r) && self.cached_region(*id, r).is_some_and(|g| region_holds(&g, P2(x, y)))).map(|(id, _)| *id)
+    }
+
+    /// The room component `c` is in: the one on its level whose volume holds its family's room calculation point, placed
+    /// where it stands ([`Model::component_room_point`]); its insertion point's where its family has none. A point over a
+    /// room's top or under its bottom (a ceiling luminaire hung above it, a component raised to a mezzanine) is not in it.
     pub fn component(&self, c: &crate::model::Component) -> Option<Id> {
-        let [x, y, _] = self.m.component_room_point(c);
-        self.room_at(c.level, P2(x, y))
+        self.room_holding(c.level, self.m.component_room_point(c))
     }
 
     fn cached_region(&self, id: Id, r: &Room) -> Option<Rc<Region>> {

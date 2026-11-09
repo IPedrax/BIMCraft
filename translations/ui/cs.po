@@ -525,7 +525,7 @@ msgstr "Agenti: připojeno {}, jen pro čtení"
 msgid "Aggressiveness class"
 msgstr "Třída agresivity"
 
-#: crates/core/src/fixtures.rs:369
+#: crates/core/src/fixtures.rs:382
 msgid "Air Terminal"
 msgstr "Vyústka"
 
@@ -1379,7 +1379,7 @@ msgstr "Kategorie:"
 msgid "Ceiling"
 msgstr "Podhled"
 
-#: crates/core/src/fixtures.rs:281
+#: crates/core/src/fixtures.rs:291
 msgid "Ceiling Luminaire"
 msgstr "Stropní svítidlo"
 
@@ -2703,7 +2703,7 @@ msgstr "Čárkovaná"
 msgid "Data"
 msgstr "Data"
 
-#: crates/core/src/fixtures.rs:427
+#: crates/core/src/fixtures.rs:440
 msgid "Data Outlet"
 msgstr "Datová zásuvka"
 
@@ -2976,7 +2976,7 @@ msgstr "Úhlopříčně dolů"
 msgid "Diagonal Up"
 msgstr "Úhlopříčně nahoru"
 
-#: crates/core/src/fixtures.rs:189
+#: crates/core/src/fixtures.rs:198
 #: crates/ui-egui/src/editor/document.rs:513
 #: crates/ui-egui/src/lib.rs:3759
 #: crates/ui-egui/src/reinforce.rs:51
@@ -3088,7 +3088,7 @@ msgstr "Zrušit přidružení: referenční rovinu sleduje jen pracovní rovina,
 msgid "Dissociate: the work plane left where its reference plane is now, no longer following it"
 msgstr "Zrušit přidružení: pracovní rovina zůstane tam, kde je nyní její referenční rovina, a přestane ji sledovat"
 
-#: crates/core/src/fixtures.rs:261
+#: crates/core/src/fixtures.rs:270
 msgid "Distribution Board"
 msgstr "Rozváděč"
 
@@ -3308,7 +3308,7 @@ msgstr "Zemnicí vodič"
 msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
 msgstr "Zemnicí vodič (GC): klikněte na začátek a konec; řetězec kliknutí vytvoří obvodové vedení nebo mříž pod podlažím"
 
-#: crates/core/src/fixtures.rs:382
+#: crates/core/src/fixtures.rs:395
 msgid "Earthing Electrode"
 msgstr "Zemnicí elektroda"
 
@@ -3486,7 +3486,7 @@ msgstr "Úpravy"
 msgid "Edit…"
 msgstr "Upravit…"
 
-#: crates/core/src/fixtures.rs:209
+#: crates/core/src/fixtures.rs:218
 msgid "Elbow 90"
 msgstr "Koleno 90°"
 
@@ -4088,7 +4088,7 @@ msgstr "Plovoucí"
 msgid "Floor"
 msgstr "Podlaha"
 
-#: crates/core/src/fixtures.rs:169
+#: crates/core/src/fixtures.rs:178
 msgid "Floor Drain"
 msgstr "Podlahová vpusť"
 
@@ -4322,7 +4322,7 @@ msgstr "Mezera"
 msgid "Gap to Element"
 msgstr "Mezera od prvku"
 
-#: crates/core/src/fixtures.rs:229
+#: crates/core/src/fixtures.rs:238
 msgid "Gate Valve"
 msgstr "Šoupátko"
 
@@ -4751,7 +4751,7 @@ msgstr "Vložit před"
 msgid "Insert Layer"
 msgstr "Vložit vrstvu"
 
-#: crates/core/src/fixtures.rs:392
+#: crates/core/src/fixtures.rs:405
 msgid "Inspection Box"
 msgstr "Revizní šachta"
 
@@ -4914,7 +4914,7 @@ msgstr "Klávesové zkratky"
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "Klávesové zkratky (KS): přizpůsobení, úprava a načtení klávesových zkratek"
 
-#: crates/core/src/fixtures.rs:128
+#: crates/core/src/fixtures.rs:137
 msgid "Kitchen Sink"
 msgstr "Kuchyňský dřez"
 
@@ -5260,7 +5260,7 @@ msgstr "Výpis {}"
 msgid "Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}"
 msgstr "Naslouchá na 127.0.0.1, port {}: agenti se připojují příkazem bimcraft-cli mcp --connect {}"
 
-#: crates/core/src/fixtures.rs:252
+#: crates/core/src/fixtures.rs:261
 msgid "Load"
 msgstr "Zatížení"
 
@@ -5855,7 +5855,7 @@ msgstr "Upravit | Tažení s přechodem > Upravit profil 2"
 msgid "Modify | Swept Blend > Sketch Path"
 msgstr "Upravit | Tažení s přechodem > Načrtnout cestu"
 
-#: crates/core/src/fixtures.rs:250
+#: crates/core/src/fixtures.rs:259
 msgid "Mounting Height"
 msgstr "Montážní výška"
 
@@ -6544,7 +6544,7 @@ msgstr "Ostatní okraje (horní, pravý, dolní):"
 msgid "Out"
 msgstr "Výstup"
 
-#: crates/core/src/fixtures.rs:319
+#: crates/core/src/fixtures.rs:329
 msgid "Outlet"
 msgstr "Zásuvka"
 
@@ -6605,7 +6605,7 @@ msgstr "Přepsat existující verzi a hodnoty jejích parametrů"
 msgid "PNG image"
 msgstr "Obrázek PNG"
 
-#: crates/core/src/fixtures.rs:190
+#: crates/core/src/fixtures.rs:199
 msgid "PVC"
 msgstr "PVC"
 
@@ -6681,7 +6681,7 @@ msgstr "Částečná elipsa: klikněte na konce její osy a poté určete její 
 msgid "Paste"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:446
+#: crates/core/src/fixtures.rs:461
 msgid "Patch Panel"
 msgstr "Patch panel"
 
@@ -7391,7 +7391,7 @@ msgstr "Rovina YZ"
 msgid "Plans"
 msgstr "Půdorysy"
 
-#: crates/core/src/fixtures.rs:251
+#: crates/core/src/fixtures.rs:260
 msgid "Plaster"
 msgstr "Omítka"
 
@@ -7754,7 +7754,7 @@ msgstr "Čte kótu a nikdy ji neřídí: délku nebo úhel"
 msgid "Recent"
 msgstr "Nedávné"
 
-#: crates/core/src/fixtures.rs:296
+#: crates/core/src/fixtures.rs:306
 msgid "Recessed Luminaire"
 msgstr "Zápustné svítidlo"
 
@@ -8865,7 +8865,7 @@ msgstr ""
 msgid "Show: the work plane tinted in the view, on or off"
 msgstr "Zobrazit: pracovní rovina barevně zvýrazněná v pohledu, zapnuto nebo vypnuto"
 
-#: crates/core/src/fixtures.rs:146
+#: crates/core/src/fixtures.rs:155
 msgid "Shower"
 msgstr "Sprcha"
 
@@ -9424,7 +9424,7 @@ msgstr "Otočné"
 msgid "Swing Angle"
 msgstr "Úhel natočení"
 
-#: crates/core/src/fixtures.rs:344
+#: crates/core/src/fixtures.rs:356
 msgid "Switch"
 msgstr "Vypínač"
 
@@ -9605,7 +9605,7 @@ msgstr "Technické normy"
 msgid "Technical Standards: configure drawing standards (NBR, ISO, ANSI, EU); now {}"
 msgstr "Technické normy: nastavení norem výkresů (NBR, ISO, ANSI, EU); nyní {}"
 
-#: crates/core/src/fixtures.rs:219
+#: crates/core/src/fixtures.rs:228
 msgid "Tee"
 msgstr "T-kus"
 
@@ -10042,7 +10042,7 @@ msgstr "V jednom bodě se setkávají tři nebo více čar ({}): smyčka musí k
 msgid "Three points, {}°"
 msgstr "Tři body, {}°"
 
-#: crates/core/src/fixtures.rs:331
+#: crates/core/src/fixtures.rs:342
 msgid "Three-Phase Outlet"
 msgstr "Třífázová zásuvka"
 
@@ -10689,7 +10689,7 @@ msgstr "Vizuální styl"
 msgid "Visual Style: how the 3D view draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe"
 msgstr "Vizuální styl: jak 3D pohled vykresluje povrchy: Stínovaný, Skryté čáry (klávesové zkratky WF, HL a SD) nebo Drátový model"
 
-#: crates/core/src/fixtures.rs:436
+#: crates/core/src/fixtures.rs:450
 msgid "Voice Outlet"
 msgstr "Telefonní zásuvka"
 

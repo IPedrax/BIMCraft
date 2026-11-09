@@ -526,7 +526,7 @@ msgstr "智能體：已連接 {} 個，唯讀"
 msgid "Aggressiveness class"
 msgstr "侵蝕性等級"
 
-#: crates/core/src/fixtures.rs:369
+#: crates/core/src/fixtures.rs:382
 msgid "Air Terminal"
 msgstr "接閃器"
 
@@ -1380,7 +1380,7 @@ msgstr "類別："
 msgid "Ceiling"
 msgstr "天花板"
 
-#: crates/core/src/fixtures.rs:281
+#: crates/core/src/fixtures.rs:291
 msgid "Ceiling Luminaire"
 msgstr "吸頂燈"
 
@@ -2704,7 +2704,7 @@ msgstr "虛線"
 msgid "Data"
 msgstr "數據"
 
-#: crates/core/src/fixtures.rs:427
+#: crates/core/src/fixtures.rs:440
 msgid "Data Outlet"
 msgstr "數據插座"
 
@@ -2977,7 +2977,7 @@ msgstr "向下對角線"
 msgid "Diagonal Up"
 msgstr "向上對角線"
 
-#: crates/core/src/fixtures.rs:189
+#: crates/core/src/fixtures.rs:198
 #: crates/ui-egui/src/editor/document.rs:513
 #: crates/ui-egui/src/lib.rs:3759
 #: crates/ui-egui/src/reinforce.rs:51
@@ -3089,7 +3089,7 @@ msgstr "取消關聯：只有位於參照平面上的工作平面才會跟隨該
 msgid "Dissociate: the work plane left where its reference plane is now, no longer following it"
 msgstr "取消關聯：工作平面留在其參照平面目前所在位置，不再跟隨它"
 
-#: crates/core/src/fixtures.rs:261
+#: crates/core/src/fixtures.rs:270
 msgid "Distribution Board"
 msgstr "配電箱"
 
@@ -3309,7 +3309,7 @@ msgstr "接地線"
 msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
 msgstr "接地線 (GC)：單擊起點和終點；連續單擊可形成標高下方的接地環或接地網"
 
-#: crates/core/src/fixtures.rs:382
+#: crates/core/src/fixtures.rs:395
 msgid "Earthing Electrode"
 msgstr "接地極"
 
@@ -3487,7 +3487,7 @@ msgstr "編輯"
 msgid "Edit…"
 msgstr "編輯…"
 
-#: crates/core/src/fixtures.rs:209
+#: crates/core/src/fixtures.rs:218
 msgid "Elbow 90"
 msgstr "90° 彎頭"
 
@@ -4089,7 +4089,7 @@ msgstr "浮動"
 msgid "Floor"
 msgstr "樓板"
 
-#: crates/core/src/fixtures.rs:169
+#: crates/core/src/fixtures.rs:178
 msgid "Floor Drain"
 msgstr "地漏"
 
@@ -4323,7 +4323,7 @@ msgstr "間隙"
 msgid "Gap to Element"
 msgstr "圖元間隙"
 
-#: crates/core/src/fixtures.rs:229
+#: crates/core/src/fixtures.rs:238
 msgid "Gate Valve"
 msgstr "閘閥"
 
@@ -4752,7 +4752,7 @@ msgstr "插入到之前"
 msgid "Insert Layer"
 msgstr "插入構造層"
 
-#: crates/core/src/fixtures.rs:392
+#: crates/core/src/fixtures.rs:405
 msgid "Inspection Box"
 msgstr "檢查井"
 
@@ -4915,7 +4915,7 @@ msgstr "鍵盤快速鍵"
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "快速鍵 (KS)：自定義、編輯和載入快速鍵"
 
-#: crates/core/src/fixtures.rs:128
+#: crates/core/src/fixtures.rs:137
 msgid "Kitchen Sink"
 msgstr "廚房水槽"
 
@@ -5261,7 +5261,7 @@ msgstr "列出 {}"
 msgid "Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}"
 msgstr "正在監聽 127.0.0.1，連接埠 {}：智能體使用 bimcraft-cli mcp --connect {} 連接"
 
-#: crates/core/src/fixtures.rs:252
+#: crates/core/src/fixtures.rs:261
 msgid "Load"
 msgstr "負載"
 
@@ -5856,7 +5856,7 @@ msgstr "修改 | 放樣融合 > 編輯輪廓 2"
 msgid "Modify | Swept Blend > Sketch Path"
 msgstr "修改 | 放樣融合 > 繪製路徑"
 
-#: crates/core/src/fixtures.rs:250
+#: crates/core/src/fixtures.rs:259
 msgid "Mounting Height"
 msgstr "安裝高度"
 
@@ -6545,7 +6545,7 @@ msgstr "其他圖框邊距 (上、右、下):"
 msgid "Out"
 msgstr "外"
 
-#: crates/core/src/fixtures.rs:319
+#: crates/core/src/fixtures.rs:329
 msgid "Outlet"
 msgstr "插座"
 
@@ -6606,7 +6606,7 @@ msgstr "覆寫現有版本及其參數值"
 msgid "PNG image"
 msgstr "PNG 圖像"
 
-#: crates/core/src/fixtures.rs:190
+#: crates/core/src/fixtures.rs:199
 msgid "PVC"
 msgstr "PVC"
 
@@ -6682,7 +6682,7 @@ msgstr "半橢圓：單擊軸的兩端，然後單擊其凸出的距離"
 msgid "Paste"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:446
+#: crates/core/src/fixtures.rs:461
 msgid "Patch Panel"
 msgstr "配線架"
 
@@ -7392,7 +7392,7 @@ msgstr "YZ 平面"
 msgid "Plans"
 msgstr "平面視圖"
 
-#: crates/core/src/fixtures.rs:251
+#: crates/core/src/fixtures.rs:260
 msgid "Plaster"
 msgstr "抹灰"
 
@@ -7755,7 +7755,7 @@ msgstr "讀取尺寸標注，但從不驅動它：長度或角度"
 msgid "Recent"
 msgstr "最近"
 
-#: crates/core/src/fixtures.rs:296
+#: crates/core/src/fixtures.rs:306
 msgid "Recessed Luminaire"
 msgstr "嵌入式燈具"
 
@@ -8866,7 +8866,7 @@ msgstr ""
 msgid "Show: the work plane tinted in the view, on or off"
 msgstr "顯示：在視圖中以著色顯示工作平面，開或關"
 
-#: crates/core/src/fixtures.rs:146
+#: crates/core/src/fixtures.rs:155
 msgid "Shower"
 msgstr "淋浴"
 
@@ -9425,7 +9425,7 @@ msgstr "平開"
 msgid "Swing Angle"
 msgstr "擺動角度"
 
-#: crates/core/src/fixtures.rs:344
+#: crates/core/src/fixtures.rs:356
 msgid "Switch"
 msgstr "開關"
 
@@ -9606,7 +9606,7 @@ msgstr "技術製圖標準"
 msgid "Technical Standards: configure drawing standards (NBR, ISO, ANSI, EU); now {}"
 msgstr "技術製圖標準：配置製圖標準 (NBR、ISO、ANSI、EU)；目前為 {}"
 
-#: crates/core/src/fixtures.rs:219
+#: crates/core/src/fixtures.rs:228
 msgid "Tee"
 msgstr "三通"
 
@@ -10043,7 +10043,7 @@ msgstr "三條或更多線交於一點（{}）：環只經過每個點一次。"
 msgid "Three points, {}°"
 msgstr "三點，{}°"
 
-#: crates/core/src/fixtures.rs:331
+#: crates/core/src/fixtures.rs:342
 msgid "Three-Phase Outlet"
 msgstr "三相插座"
 
@@ -10690,7 +10690,7 @@ msgstr "視覺樣式"
 msgid "Visual Style: how the 3D view draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe"
 msgstr "視覺樣式：3D視圖繪製表面的方式：著色、隱藏線（WF、HL 和 SD 設置它們）或線框"
 
-#: crates/core/src/fixtures.rs:436
+#: crates/core/src/fixtures.rs:450
 msgid "Voice Outlet"
 msgstr "語音插座"
 

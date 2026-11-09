@@ -3,7 +3,7 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nLanguage: cs\nLast-Translator: Smatli\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
 
-#: crates/core/src/fixtures.rs:369
+#: crates/core/src/fixtures.rs:382
 msgid "Air Terminal"
 msgstr "Vyústka"
 
@@ -48,7 +48,7 @@ msgstr "Křídlové okno"
 msgid "Category"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:281
+#: crates/core/src/fixtures.rs:291
 msgid "Ceiling Luminaire"
 msgstr "Stropní svítidlo"
 
@@ -108,7 +108,7 @@ msgstr "Čárkovaná"
 msgid "Dash Dot"
 msgstr "Čerchovaná"
 
-#: crates/core/src/fixtures.rs:427
+#: crates/core/src/fixtures.rs:440
 msgid "Data Outlet"
 msgstr "Datová zásuvka"
 
@@ -136,11 +136,11 @@ msgstr "Úhlopříčně dolů"
 msgid "Diagonal Up"
 msgstr "Úhlopříčně nahoru"
 
-#: crates/core/src/fixtures.rs:189
+#: crates/core/src/fixtures.rs:198
 msgid "Diameter"
 msgstr "Průměr"
 
-#: crates/core/src/fixtures.rs:261
+#: crates/core/src/fixtures.rs:270
 msgid "Distribution Board"
 msgstr "Rozváděč"
 
@@ -164,7 +164,7 @@ msgstr "Dvoukřídlé posuvné"
 msgid "Double Swing"
 msgstr "Dvoukřídlé otočné"
 
-#: crates/core/src/fixtures.rs:382
+#: crates/core/src/fixtures.rs:395
 msgid "Earthing Electrode"
 msgstr "Zemnicí elektroda"
 
@@ -172,7 +172,7 @@ msgstr "Zemnicí elektroda"
 msgid "East"
 msgstr "Východ"
 
-#: crates/core/src/fixtures.rs:209
+#: crates/core/src/fixtures.rs:218
 msgid "Elbow 90"
 msgstr "Koleno 90°"
 
@@ -213,7 +213,7 @@ msgstr "Pevné"
 msgid "Fixed Window"
 msgstr "Fixní okno"
 
-#: crates/core/src/fixtures.rs:169
+#: crates/core/src/fixtures.rs:178
 msgid "Floor Drain"
 msgstr "Podlahová vpusť"
 
@@ -237,7 +237,7 @@ msgstr "Materiál rámu"
 msgid "Frame Width"
 msgstr "Šířka rámu"
 
-#: crates/core/src/fixtures.rs:229
+#: crates/core/src/fixtures.rs:238
 msgid "Gate Valve"
 msgstr "Šoupátko"
 
@@ -278,7 +278,7 @@ msgstr "Skryté čáry"
 msgid "Horizontal"
 msgstr "Vodorovná"
 
-#: crates/core/src/fixtures.rs:392
+#: crates/core/src/fixtures.rs:405
 msgid "Inspection Box"
 msgstr "Revizní šachta"
 
@@ -286,7 +286,7 @@ msgstr "Revizní šachta"
 msgid "Insulation"
 msgstr "Tepelná izolace"
 
-#: crates/core/src/fixtures.rs:128
+#: crates/core/src/fixtures.rs:137
 msgid "Kitchen Sink"
 msgstr "Kuchyňský dřez"
 
@@ -315,7 +315,7 @@ msgstr "Podlaží"
 msgid "Level Schedule"
 msgstr "Výkaz podlaží"
 
-#: crates/core/src/fixtures.rs:252
+#: crates/core/src/fixtures.rs:261
 msgid "Load"
 msgstr "Zatížení"
 
@@ -351,7 +351,7 @@ msgstr "Hydroizolační fólie"
 msgid "Metal"
 msgstr "Kov"
 
-#: crates/core/src/fixtures.rs:250
+#: crates/core/src/fixtures.rs:259
 msgid "Mounting Height"
 msgstr "Montážní výška"
 
@@ -387,7 +387,7 @@ msgstr "Odsazení"
 msgid "Operation"
 msgstr "Způsob otevírání"
 
-#: crates/core/src/fixtures.rs:319
+#: crates/core/src/fixtures.rs:329
 msgid "Outlet"
 msgstr "Zásuvka"
 
@@ -395,11 +395,11 @@ msgstr "Zásuvka"
 msgid "Overhead Lines"
 msgstr "Promítnuté horní obrysy"
 
-#: crates/core/src/fixtures.rs:190
+#: crates/core/src/fixtures.rs:199
 msgid "PVC"
 msgstr "PVC"
 
-#: crates/core/src/fixtures.rs:446
+#: crates/core/src/fixtures.rs:461
 msgid "Patch Panel"
 msgstr "Patch panel"
 
@@ -411,7 +411,7 @@ msgstr "Obvod"
 msgid "Plan Area"
 msgstr "Plocha v půdorysu"
 
-#: crates/core/src/fixtures.rs:251
+#: crates/core/src/fixtures.rs:260
 msgid "Plaster"
 msgstr "Omítka"
 
@@ -431,7 +431,7 @@ msgstr "NADBYTEČNÁ"
 msgid "Rack"
 msgstr "Datový rozvaděč (Rack)"
 
-#: crates/core/src/fixtures.rs:296
+#: crates/core/src/fixtures.rs:306
 msgid "Recessed Luminaire"
 msgstr "Zápustné svítidlo"
 
@@ -500,7 +500,7 @@ msgstr "Zobrazit předchozí + bourané"
 msgid "Show Previous + New"
 msgstr "Zobrazit předchozí + nové"
 
-#: crates/core/src/fixtures.rs:146
+#: crates/core/src/fixtures.rs:155
 msgid "Shower"
 msgstr "Sprcha"
 
@@ -548,7 +548,7 @@ msgstr "Jih"
 msgid "Swing"
 msgstr "Otočné"
 
-#: crates/core/src/fixtures.rs:344
+#: crates/core/src/fixtures.rs:356
 msgid "Switch"
 msgstr "Vypínač"
 
@@ -556,7 +556,7 @@ msgstr "Vypínač"
 msgid "Table"
 msgstr "Stůl"
 
-#: crates/core/src/fixtures.rs:219
+#: crates/core/src/fixtures.rs:228
 msgid "Tee"
 msgstr "T-kus"
 
@@ -568,7 +568,7 @@ msgstr "Tloušťka"
 msgid "Thin Lines"
 msgstr "Tenké čáry"
 
-#: crates/core/src/fixtures.rs:331
+#: crates/core/src/fixtures.rs:342
 msgid "Three-Phase Outlet"
 msgstr "Třífázová zásuvka"
 
@@ -608,7 +608,7 @@ msgstr "Nepojmenovaný"
 msgid "Vertical"
 msgstr "Svislá"
 
-#: crates/core/src/fixtures.rs:436
+#: crates/core/src/fixtures.rs:450
 msgid "Voice Outlet"
 msgstr "Telefonní zásuvka"
 

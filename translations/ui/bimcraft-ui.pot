@@ -526,7 +526,7 @@ msgstr ""
 msgid "Aggressiveness class"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:369
+#: crates/core/src/fixtures.rs:382
 msgid "Air Terminal"
 msgstr ""
 
@@ -1380,7 +1380,7 @@ msgstr ""
 msgid "Ceiling"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:281
+#: crates/core/src/fixtures.rs:291
 msgid "Ceiling Luminaire"
 msgstr ""
 
@@ -2704,7 +2704,7 @@ msgstr ""
 msgid "Data"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:427
+#: crates/core/src/fixtures.rs:440
 msgid "Data Outlet"
 msgstr ""
 
@@ -2977,7 +2977,7 @@ msgstr ""
 msgid "Diagonal Up"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:189
+#: crates/core/src/fixtures.rs:198
 #: crates/ui-egui/src/editor/document.rs:513
 #: crates/ui-egui/src/lib.rs:3759
 #: crates/ui-egui/src/reinforce.rs:51
@@ -3089,7 +3089,7 @@ msgstr ""
 msgid "Dissociate: the work plane left where its reference plane is now, no longer following it"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:261
+#: crates/core/src/fixtures.rs:270
 msgid "Distribution Board"
 msgstr ""
 
@@ -3309,7 +3309,7 @@ msgstr ""
 msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:382
+#: crates/core/src/fixtures.rs:395
 msgid "Earthing Electrode"
 msgstr ""
 
@@ -3487,7 +3487,7 @@ msgstr ""
 msgid "Edit…"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:209
+#: crates/core/src/fixtures.rs:218
 msgid "Elbow 90"
 msgstr ""
 
@@ -4089,7 +4089,7 @@ msgstr ""
 msgid "Floor"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:169
+#: crates/core/src/fixtures.rs:178
 msgid "Floor Drain"
 msgstr ""
 
@@ -4323,7 +4323,7 @@ msgstr ""
 msgid "Gap to Element"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:229
+#: crates/core/src/fixtures.rs:238
 msgid "Gate Valve"
 msgstr ""
 
@@ -4752,7 +4752,7 @@ msgstr ""
 msgid "Insert Layer"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:392
+#: crates/core/src/fixtures.rs:405
 msgid "Inspection Box"
 msgstr ""
 
@@ -4915,7 +4915,7 @@ msgstr ""
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:128
+#: crates/core/src/fixtures.rs:137
 msgid "Kitchen Sink"
 msgstr ""
 
@@ -5261,7 +5261,7 @@ msgstr ""
 msgid "Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:252
+#: crates/core/src/fixtures.rs:261
 msgid "Load"
 msgstr ""
 
@@ -5856,7 +5856,7 @@ msgstr ""
 msgid "Modify | Swept Blend > Sketch Path"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:250
+#: crates/core/src/fixtures.rs:259
 msgid "Mounting Height"
 msgstr ""
 
@@ -6545,7 +6545,7 @@ msgstr ""
 msgid "Out"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:319
+#: crates/core/src/fixtures.rs:329
 msgid "Outlet"
 msgstr ""
 
@@ -6606,7 +6606,7 @@ msgstr ""
 msgid "PNG image"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:190
+#: crates/core/src/fixtures.rs:199
 msgid "PVC"
 msgstr ""
 
@@ -6682,7 +6682,7 @@ msgstr ""
 msgid "Paste"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:446
+#: crates/core/src/fixtures.rs:461
 msgid "Patch Panel"
 msgstr ""
 
@@ -7392,7 +7392,7 @@ msgstr ""
 msgid "Plans"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:251
+#: crates/core/src/fixtures.rs:260
 msgid "Plaster"
 msgstr ""
 
@@ -7755,7 +7755,7 @@ msgstr ""
 msgid "Recent"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:296
+#: crates/core/src/fixtures.rs:306
 msgid "Recessed Luminaire"
 msgstr ""
 
@@ -8866,7 +8866,7 @@ msgstr ""
 msgid "Show: the work plane tinted in the view, on or off"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:146
+#: crates/core/src/fixtures.rs:155
 msgid "Shower"
 msgstr ""
 
@@ -9425,7 +9425,7 @@ msgstr ""
 msgid "Swing Angle"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:344
+#: crates/core/src/fixtures.rs:356
 msgid "Switch"
 msgstr ""
 
@@ -9606,7 +9606,7 @@ msgstr ""
 msgid "Technical Standards: configure drawing standards (NBR, ISO, ANSI, EU); now {}"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:219
+#: crates/core/src/fixtures.rs:228
 msgid "Tee"
 msgstr ""
 
@@ -10043,7 +10043,7 @@ msgstr ""
 msgid "Three points, {}°"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:331
+#: crates/core/src/fixtures.rs:342
 msgid "Three-Phase Outlet"
 msgstr ""
 
@@ -10690,7 +10690,7 @@ msgstr ""
 msgid "Visual Style: how the 3D view draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:436
+#: crates/core/src/fixtures.rs:450
 msgid "Voice Outlet"
 msgstr ""
 

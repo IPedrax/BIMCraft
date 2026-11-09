@@ -525,7 +525,7 @@ msgstr "Agenten: {} verbunden, schreibgeschützt"
 msgid "Aggressiveness class"
 msgstr "Aggressivitätsklasse"
 
-#: crates/core/src/fixtures.rs:369
+#: crates/core/src/fixtures.rs:382
 msgid "Air Terminal"
 msgstr "Luftauslass"
 
@@ -1379,7 +1379,7 @@ msgstr "Kategorie:"
 msgid "Ceiling"
 msgstr "Decke"
 
-#: crates/core/src/fixtures.rs:281
+#: crates/core/src/fixtures.rs:291
 msgid "Ceiling Luminaire"
 msgstr "Deckenleuchte"
 
@@ -2703,7 +2703,7 @@ msgstr "Gestrichelt"
 msgid "Data"
 msgstr "Daten"
 
-#: crates/core/src/fixtures.rs:427
+#: crates/core/src/fixtures.rs:440
 msgid "Data Outlet"
 msgstr "Datenauslass"
 
@@ -2976,7 +2976,7 @@ msgstr "Diagonal abwärts"
 msgid "Diagonal Up"
 msgstr "Diagonal aufwärts"
 
-#: crates/core/src/fixtures.rs:189
+#: crates/core/src/fixtures.rs:198
 #: crates/ui-egui/src/editor/document.rs:513
 #: crates/ui-egui/src/lib.rs:3759
 #: crates/ui-egui/src/reinforce.rs:51
@@ -3088,7 +3088,7 @@ msgstr "Lösen: nur eine Arbeitsebene auf einer Referenzebene folgt dieser; dies
 msgid "Dissociate: the work plane left where its reference plane is now, no longer following it"
 msgstr "Lösen: die Arbeitsebene bleibt, wo ihre Referenzebene jetzt ist, und folgt ihr nicht mehr"
 
-#: crates/core/src/fixtures.rs:261
+#: crates/core/src/fixtures.rs:270
 msgid "Distribution Board"
 msgstr "Verteiler"
 
@@ -3308,7 +3308,7 @@ msgstr "Erdungsleiter"
 msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
 msgstr "Erdungsleiter (GC): Anfang und Ende anklicken; eine Kette von Klicks ergibt Ring oder Maschen, unter dem Geschoss"
 
-#: crates/core/src/fixtures.rs:382
+#: crates/core/src/fixtures.rs:395
 msgid "Earthing Electrode"
 msgstr "Erdungselektrode"
 
@@ -3486,7 +3486,7 @@ msgstr "Bearbeitung"
 msgid "Edit…"
 msgstr "Bearbeiten…"
 
-#: crates/core/src/fixtures.rs:209
+#: crates/core/src/fixtures.rs:218
 msgid "Elbow 90"
 msgstr "Bogen 90°"
 
@@ -4088,7 +4088,7 @@ msgstr "Schwebend"
 msgid "Floor"
 msgstr "Boden"
 
-#: crates/core/src/fixtures.rs:169
+#: crates/core/src/fixtures.rs:178
 msgid "Floor Drain"
 msgstr "Bodenablauf"
 
@@ -4322,7 +4322,7 @@ msgstr "Lücke"
 msgid "Gap to Element"
 msgstr "Lücke zum Element"
 
-#: crates/core/src/fixtures.rs:229
+#: crates/core/src/fixtures.rs:238
 msgid "Gate Valve"
 msgstr "Absperrventil"
 
@@ -4751,7 +4751,7 @@ msgstr "Davor einfügen"
 msgid "Insert Layer"
 msgstr "Schicht einfügen"
 
-#: crates/core/src/fixtures.rs:392
+#: crates/core/src/fixtures.rs:405
 msgid "Inspection Box"
 msgstr "Abzweigdose"
 
@@ -4914,7 +4914,7 @@ msgstr "Tastenkürzel"
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "Tastenkürzel (KS): Tastenkürzel anpassen, bearbeiten und laden"
 
-#: crates/core/src/fixtures.rs:128
+#: crates/core/src/fixtures.rs:137
 msgid "Kitchen Sink"
 msgstr "Küchenspüle"
 
@@ -5260,7 +5260,7 @@ msgstr "Liste {}"
 msgid "Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}"
 msgstr "Lauscht auf 127.0.0.1, Port {}: Agenten verbinden sich mit bimcraft-cli mcp --connect {}"
 
-#: crates/core/src/fixtures.rs:252
+#: crates/core/src/fixtures.rs:261
 msgid "Load"
 msgstr "Last"
 
@@ -5855,7 +5855,7 @@ msgstr "Bearbeiten | Sweep-Verschmelzung > Profil 2 bearbeiten"
 msgid "Modify | Swept Blend > Sketch Path"
 msgstr "Bearbeiten | Sweep-Verschmelzung > Pfad skizzieren"
 
-#: crates/core/src/fixtures.rs:250
+#: crates/core/src/fixtures.rs:259
 msgid "Mounting Height"
 msgstr "Montagehöhe"
 
@@ -6544,7 +6544,7 @@ msgstr "Weitere Ränder (oben, rechts, unten):"
 msgid "Out"
 msgstr "Außen"
 
-#: crates/core/src/fixtures.rs:319
+#: crates/core/src/fixtures.rs:329
 msgid "Outlet"
 msgstr "Auslass"
 
@@ -6605,7 +6605,7 @@ msgstr "Vorhandene Version und ihre Parameterwerte überschreiben"
 msgid "PNG image"
 msgstr "PNG-Bild"
 
-#: crates/core/src/fixtures.rs:190
+#: crates/core/src/fixtures.rs:199
 msgid "PVC"
 msgstr "PVC"
 
@@ -6681,7 +6681,7 @@ msgstr "Teilellipse: Enden der Achse anklicken, dann die Wölbung"
 msgid "Paste"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:446
+#: crates/core/src/fixtures.rs:461
 msgid "Patch Panel"
 msgstr "Patchpanel"
 
@@ -7391,7 +7391,7 @@ msgstr "Ebene YZ"
 msgid "Plans"
 msgstr "Grundrisse"
 
-#: crates/core/src/fixtures.rs:251
+#: crates/core/src/fixtures.rs:260
 msgid "Plaster"
 msgstr "Putz"
 
@@ -7754,7 +7754,7 @@ msgstr "Liest eine Bemaßung und steuert nie eine: eine Länge oder einen Winkel
 msgid "Recent"
 msgstr "Zuletzt verwendet"
 
-#: crates/core/src/fixtures.rs:296
+#: crates/core/src/fixtures.rs:306
 msgid "Recessed Luminaire"
 msgstr "Einbauleuchte"
 
@@ -8865,7 +8865,7 @@ msgstr ""
 msgid "Show: the work plane tinted in the view, on or off"
 msgstr "Anzeigen: die Arbeitsebene eingefärbt in der Ansicht, ein oder aus"
 
-#: crates/core/src/fixtures.rs:146
+#: crates/core/src/fixtures.rs:155
 msgid "Shower"
 msgstr "Dusche"
 
@@ -9424,7 +9424,7 @@ msgstr "Aufschlagrichtung"
 msgid "Swing Angle"
 msgstr "Schwenkwinkel"
 
-#: crates/core/src/fixtures.rs:344
+#: crates/core/src/fixtures.rs:356
 msgid "Switch"
 msgstr "Schalter"
 
@@ -9605,7 +9605,7 @@ msgstr "Technische Normen"
 msgid "Technical Standards: configure drawing standards (NBR, ISO, ANSI, EU); now {}"
 msgstr "Technische Normen: Zeichnungsnormen konfigurieren (NBR, ISO, ANSI, EU); aktuell {}"
 
-#: crates/core/src/fixtures.rs:219
+#: crates/core/src/fixtures.rs:228
 msgid "Tee"
 msgstr "Abzweig"
 
@@ -10042,7 +10042,7 @@ msgstr "Drei oder mehr Linien treffen sich in einem Punkt ({}): Eine Schleife du
 msgid "Three points, {}°"
 msgstr "Drei Punkte, {}°"
 
-#: crates/core/src/fixtures.rs:331
+#: crates/core/src/fixtures.rs:342
 msgid "Three-Phase Outlet"
 msgstr "Drehstromsteckdose"
 
@@ -10689,7 +10689,7 @@ msgstr "Darstellungsstil"
 msgid "Visual Style: how the 3D view draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe"
 msgstr "Darstellungsstil: wie die 3D-Ansicht Flächen darstellt: Schattiert, Verdeckte Linien (WF, HL und SD legen sie fest) oder Drahtmodell"
 
-#: crates/core/src/fixtures.rs:436
+#: crates/core/src/fixtures.rs:450
 msgid "Voice Outlet"
 msgstr "Fernmeldeauslass"
 

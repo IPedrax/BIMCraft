@@ -526,7 +526,7 @@ msgstr "Agents: {} verbonden, alleen-lezen"
 msgid "Aggressiveness class"
 msgstr "Agressiviteitsklasse"
 
-#: crates/core/src/fixtures.rs:369
+#: crates/core/src/fixtures.rs:382
 msgid "Air Terminal"
 msgstr "Luchtuitlaat"
 
@@ -1380,7 +1380,7 @@ msgstr "Categorie:"
 msgid "Ceiling"
 msgstr "Plafond"
 
-#: crates/core/src/fixtures.rs:281
+#: crates/core/src/fixtures.rs:291
 msgid "Ceiling Luminaire"
 msgstr "Plafondarmatuur"
 
@@ -2704,7 +2704,7 @@ msgstr "Gestreept"
 msgid "Data"
 msgstr "Data"
 
-#: crates/core/src/fixtures.rs:427
+#: crates/core/src/fixtures.rs:440
 msgid "Data Outlet"
 msgstr "Data-aansluiting"
 
@@ -2977,7 +2977,7 @@ msgstr "Diagonaal omlaag"
 msgid "Diagonal Up"
 msgstr "Diagonaal omhoog"
 
-#: crates/core/src/fixtures.rs:189
+#: crates/core/src/fixtures.rs:198
 #: crates/ui-egui/src/editor/document.rs:513
 #: crates/ui-egui/src/lib.rs:3759
 #: crates/ui-egui/src/reinforce.rs:51
@@ -3089,7 +3089,7 @@ msgstr "Ontkoppelen: alleen een werkvlak op een referentievlak volgt dat vlak; d
 msgid "Dissociate: the work plane left where its reference plane is now, no longer following it"
 msgstr "Ontkoppelen: het werkvlak blijft waar zijn referentievlak nu is en volgt het niet meer"
 
-#: crates/core/src/fixtures.rs:261
+#: crates/core/src/fixtures.rs:270
 msgid "Distribution Board"
 msgstr "Verdeelbord"
 
@@ -3309,7 +3309,7 @@ msgstr "Aardingsgeleider"
 msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
 msgstr "Aardingsgeleider (GC): klik op het begin en het einde; een reeks klikken maakt de ring of het net, onder het niveau"
 
-#: crates/core/src/fixtures.rs:382
+#: crates/core/src/fixtures.rs:395
 msgid "Earthing Electrode"
 msgstr "Aardingselektrode"
 
@@ -3487,7 +3487,7 @@ msgstr "Bewerken"
 msgid "Edit…"
 msgstr "Bewerken…"
 
-#: crates/core/src/fixtures.rs:209
+#: crates/core/src/fixtures.rs:218
 msgid "Elbow 90"
 msgstr "Bocht 90"
 
@@ -4089,7 +4089,7 @@ msgstr "Zwevend"
 msgid "Floor"
 msgstr "Vloer"
 
-#: crates/core/src/fixtures.rs:169
+#: crates/core/src/fixtures.rs:178
 msgid "Floor Drain"
 msgstr "Vloerput"
 
@@ -4323,7 +4323,7 @@ msgstr "Spleet"
 msgid "Gap to Element"
 msgstr "Afstand tot element"
 
-#: crates/core/src/fixtures.rs:229
+#: crates/core/src/fixtures.rs:238
 msgid "Gate Valve"
 msgstr "Schuifafsluiter"
 
@@ -4752,7 +4752,7 @@ msgstr "Invoegen voor"
 msgid "Insert Layer"
 msgstr "Laag invoegen"
 
-#: crates/core/src/fixtures.rs:392
+#: crates/core/src/fixtures.rs:405
 msgid "Inspection Box"
 msgstr "Controleput"
 
@@ -4915,7 +4915,7 @@ msgstr "Sneltoetsen"
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "Sneltoetsen (KS): sneltoetsen aanpassen, bewerken en laden"
 
-#: crates/core/src/fixtures.rs:128
+#: crates/core/src/fixtures.rs:137
 msgid "Kitchen Sink"
 msgstr "Keukenspoelbak"
 
@@ -5261,7 +5261,7 @@ msgstr "{} weergeven"
 msgid "Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}"
 msgstr "Luistert op 127.0.0.1, poort {}: agents verbinden met bimcraft-cli mcp --connect {}"
 
-#: crates/core/src/fixtures.rs:252
+#: crates/core/src/fixtures.rs:261
 msgid "Load"
 msgstr "Belasting"
 
@@ -5856,7 +5856,7 @@ msgstr "Wijzigen | Sweep-overgang > Profiel 2 bewerken"
 msgid "Modify | Swept Blend > Sketch Path"
 msgstr "Wijzigen | Sweep-overgang > Pad schetsen"
 
-#: crates/core/src/fixtures.rs:250
+#: crates/core/src/fixtures.rs:259
 msgid "Mounting Height"
 msgstr "Montagehoogte"
 
@@ -6545,7 +6545,7 @@ msgstr "Andere randen (boven, rechts, onder):"
 msgid "Out"
 msgstr "Uit"
 
-#: crates/core/src/fixtures.rs:319
+#: crates/core/src/fixtures.rs:329
 msgid "Outlet"
 msgstr "Contactdoos"
 
@@ -6606,7 +6606,7 @@ msgstr "Bestaande versie en haar parameterwaarden overschrijven"
 msgid "PNG image"
 msgstr "PNG-afbeelding"
 
-#: crates/core/src/fixtures.rs:190
+#: crates/core/src/fixtures.rs:199
 msgid "PVC"
 msgstr "PVC"
 
@@ -6682,7 +6682,7 @@ msgstr "Gedeeltelijke ellips: klik op de uiteinden van de as, daarna hoe ver ze 
 msgid "Paste"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:446
+#: crates/core/src/fixtures.rs:461
 msgid "Patch Panel"
 msgstr "Patchpaneel"
 
@@ -7392,7 +7392,7 @@ msgstr "Vlak YZ"
 msgid "Plans"
 msgstr "Plattegronden"
 
-#: crates/core/src/fixtures.rs:251
+#: crates/core/src/fixtures.rs:260
 msgid "Plaster"
 msgstr "Pleister"
 
@@ -7755,7 +7755,7 @@ msgstr "Leest een maatlijn en stuurt er nooit een aan: een lengte of een hoek"
 msgid "Recent"
 msgstr "Recent"
 
-#: crates/core/src/fixtures.rs:296
+#: crates/core/src/fixtures.rs:306
 msgid "Recessed Luminaire"
 msgstr "Inbouwarmatuur"
 
@@ -8866,7 +8866,7 @@ msgstr ""
 msgid "Show: the work plane tinted in the view, on or off"
 msgstr "Weergeven: het werkvlak ingekleurd in de weergave, aan of uit"
 
-#: crates/core/src/fixtures.rs:146
+#: crates/core/src/fixtures.rs:155
 msgid "Shower"
 msgstr "Douche"
 
@@ -9425,7 +9425,7 @@ msgstr "Draaiend"
 msgid "Swing Angle"
 msgstr "Zwenkhoek"
 
-#: crates/core/src/fixtures.rs:344
+#: crates/core/src/fixtures.rs:356
 msgid "Switch"
 msgstr "Schakelaar"
 
@@ -9606,7 +9606,7 @@ msgstr "Technische normen"
 msgid "Technical Standards: configure drawing standards (NBR, ISO, ANSI, EU); now {}"
 msgstr "Technische normen: stel tekennormen in (NBR, ISO, ANSI, EU); nu {}"
 
-#: crates/core/src/fixtures.rs:219
+#: crates/core/src/fixtures.rs:228
 msgid "Tee"
 msgstr "T-stuk"
 
@@ -10043,7 +10043,7 @@ msgstr "Drie of meer lijnen komen samen in een punt ({}): een lus passeert elk p
 msgid "Three points, {}°"
 msgstr "Drie punten, {}°"
 
-#: crates/core/src/fixtures.rs:331
+#: crates/core/src/fixtures.rs:342
 msgid "Three-Phase Outlet"
 msgstr "Driefasecontactdoos"
 
@@ -10690,7 +10690,7 @@ msgstr "Visuele stijl"
 msgid "Visual Style: how the 3D view draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe"
 msgstr "Visuele stijl: hoe de 3D-weergave oppervlakken tekent: Gearceerd, Verborgen lijn (WF, HL en SD stellen ze in) of Draadmodel"
 
-#: crates/core/src/fixtures.rs:436
+#: crates/core/src/fixtures.rs:450
 msgid "Voice Outlet"
 msgstr "Telefoonaansluiting"
 

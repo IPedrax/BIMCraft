@@ -526,7 +526,7 @@ msgstr ""
 msgid "Aggressiveness class"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:369
+#: crates/core/src/fixtures.rs:382
 msgid "Air Terminal"
 msgstr "Bocchetta aria"
 
@@ -1380,7 +1380,7 @@ msgstr "Categoria:"
 msgid "Ceiling"
 msgstr "Controsoffitto"
 
-#: crates/core/src/fixtures.rs:281
+#: crates/core/src/fixtures.rs:291
 msgid "Ceiling Luminaire"
 msgstr "Plafoniera"
 
@@ -2704,7 +2704,7 @@ msgstr "Tratteggiata"
 msgid "Data"
 msgstr "Dati"
 
-#: crates/core/src/fixtures.rs:427
+#: crates/core/src/fixtures.rs:440
 msgid "Data Outlet"
 msgstr "Presa dati"
 
@@ -2977,7 +2977,7 @@ msgstr "Diagonale discendente"
 msgid "Diagonal Up"
 msgstr "Diagonale ascendente"
 
-#: crates/core/src/fixtures.rs:189
+#: crates/core/src/fixtures.rs:198
 #: crates/ui-egui/src/editor/document.rs:513
 #: crates/ui-egui/src/lib.rs:3759
 #: crates/ui-egui/src/reinforce.rs:51
@@ -3089,7 +3089,7 @@ msgstr "Dissocia: solo un piano di lavoro su un piano di riferimento lo segue; q
 msgid "Dissociate: the work plane left where its reference plane is now, no longer following it"
 msgstr "Dissocia: il piano di lavoro resta dove si trova ora il suo piano di riferimento, senza più seguirlo"
 
-#: crates/core/src/fixtures.rs:261
+#: crates/core/src/fixtures.rs:270
 msgid "Distribution Board"
 msgstr "Quadro elettrico"
 
@@ -3309,7 +3309,7 @@ msgstr "Conduttore di terra"
 msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
 msgstr "Conduttore di terra (GC): clicca l'inizio e la fine; una serie di clic crea l'anello o la maglia, sotto il piano"
 
-#: crates/core/src/fixtures.rs:382
+#: crates/core/src/fixtures.rs:395
 msgid "Earthing Electrode"
 msgstr "Dispersore"
 
@@ -3487,7 +3487,7 @@ msgstr ""
 msgid "Edit…"
 msgstr "Modifica…"
 
-#: crates/core/src/fixtures.rs:209
+#: crates/core/src/fixtures.rs:218
 msgid "Elbow 90"
 msgstr "Curva 90°"
 
@@ -4089,7 +4089,7 @@ msgstr "Mobile"
 msgid "Floor"
 msgstr "Solaio"
 
-#: crates/core/src/fixtures.rs:169
+#: crates/core/src/fixtures.rs:178
 msgid "Floor Drain"
 msgstr "Piletta a pavimento"
 
@@ -4323,7 +4323,7 @@ msgstr "Distanza"
 msgid "Gap to Element"
 msgstr "Distanza dall'elemento"
 
-#: crates/core/src/fixtures.rs:229
+#: crates/core/src/fixtures.rs:238
 msgid "Gate Valve"
 msgstr "Saracinesca"
 
@@ -4752,7 +4752,7 @@ msgstr "Inserisci prima"
 msgid "Insert Layer"
 msgstr "Inserisci strato"
 
-#: crates/core/src/fixtures.rs:392
+#: crates/core/src/fixtures.rs:405
 msgid "Inspection Box"
 msgstr "Pozzetto di ispezione"
 
@@ -4915,7 +4915,7 @@ msgstr "Scorciatoie da tastiera"
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "Scorciatoie da tastiera (KS): personalizza, modifica e carica le scorciatoie"
 
-#: crates/core/src/fixtures.rs:128
+#: crates/core/src/fixtures.rs:137
 msgid "Kitchen Sink"
 msgstr "Lavello cucina"
 
@@ -5261,7 +5261,7 @@ msgstr "Elenca {}"
 msgid "Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:252
+#: crates/core/src/fixtures.rs:261
 msgid "Load"
 msgstr ""
 
@@ -5856,7 +5856,7 @@ msgstr "Modifica | Unione su percorso > Modifica profilo 2"
 msgid "Modify | Swept Blend > Sketch Path"
 msgstr "Modifica | Unione su percorso > Disegna percorso"
 
-#: crates/core/src/fixtures.rs:250
+#: crates/core/src/fixtures.rs:259
 msgid "Mounting Height"
 msgstr "Altezza di installazione"
 
@@ -6545,7 +6545,7 @@ msgstr "Altri margini (superiore, destro, inferiore):"
 msgid "Out"
 msgstr "Esterno"
 
-#: crates/core/src/fixtures.rs:319
+#: crates/core/src/fixtures.rs:329
 msgid "Outlet"
 msgstr "Presa"
 
@@ -6606,7 +6606,7 @@ msgstr "Sovrascrivi la versione esistente e i valori dei suoi parametri"
 msgid "PNG image"
 msgstr "Immagine PNG"
 
-#: crates/core/src/fixtures.rs:190
+#: crates/core/src/fixtures.rs:199
 msgid "PVC"
 msgstr "PVC"
 
@@ -6682,7 +6682,7 @@ msgstr "Ellisse parziale: clicca gli estremi dell'asse, poi quanto si incurva"
 msgid "Paste"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:446
+#: crates/core/src/fixtures.rs:461
 msgid "Patch Panel"
 msgstr "Pannello di permutazione"
 
@@ -7392,7 +7392,7 @@ msgstr "Piano YZ"
 msgid "Plans"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:251
+#: crates/core/src/fixtures.rs:260
 msgid "Plaster"
 msgstr "Intonaco"
 
@@ -7755,7 +7755,7 @@ msgstr "Legge una quota e non la pilota mai: una lunghezza o un angolo"
 msgid "Recent"
 msgstr "Recenti"
 
-#: crates/core/src/fixtures.rs:296
+#: crates/core/src/fixtures.rs:306
 msgid "Recessed Luminaire"
 msgstr "Apparecchio da incasso"
 
@@ -8866,7 +8866,7 @@ msgstr ""
 msgid "Show: the work plane tinted in the view, on or off"
 msgstr "Mostra: il piano di lavoro colorato nella vista, attivo o no"
 
-#: crates/core/src/fixtures.rs:146
+#: crates/core/src/fixtures.rs:155
 msgid "Shower"
 msgstr "Doccia"
 
@@ -9425,7 +9425,7 @@ msgstr "Battente"
 msgid "Swing Angle"
 msgstr "Angolo di rotazione"
 
-#: crates/core/src/fixtures.rs:344
+#: crates/core/src/fixtures.rs:356
 msgid "Switch"
 msgstr "Interruttore"
 
@@ -9606,7 +9606,7 @@ msgstr "Norme tecniche"
 msgid "Technical Standards: configure drawing standards (NBR, ISO, ANSI, EU); now {}"
 msgstr "Norme tecniche: configura le norme di disegno (NBR, ISO, ANSI, EU); ora {}"
 
-#: crates/core/src/fixtures.rs:219
+#: crates/core/src/fixtures.rs:228
 msgid "Tee"
 msgstr "Raccordo a T"
 
@@ -10043,7 +10043,7 @@ msgstr "Tre o più linee si incontrano in un punto ({}): un contorno passa per o
 msgid "Three points, {}°"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:331
+#: crates/core/src/fixtures.rs:342
 msgid "Three-Phase Outlet"
 msgstr ""
 
@@ -10690,7 +10690,7 @@ msgstr "Stile di visualizzazione"
 msgid "Visual Style: how the 3D view draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe"
 msgstr "Stile di visualizzazione: come la vista 3D disegna le superfici: Ombreggiato, Linee nascoste (impostati con WF, HL e SD) o Fil di ferro"
 
-#: crates/core/src/fixtures.rs:436
+#: crates/core/src/fixtures.rs:450
 msgid "Voice Outlet"
 msgstr "Presa telefonica"
 

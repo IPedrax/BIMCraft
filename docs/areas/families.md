@@ -331,8 +331,8 @@ A shared parameters file (`shared_parameters.rs`, the `shared_parameters` comman
 file of the user's own, outside any project or family, as Revit keeps one: groups, and in them parameters, each a GUID, a name,
 a data type, a description, whether it is visible and whether the user may change it. The command takes the file's `path` on
 every call (Revit keeps it per user, never in the project; an agent says which file it means, and a front end remembers its
-own), and only `load` changes the project. The layout is Revit's tab-separated one, from what is publicly documented and
-commonly seen: `#` comments, a `*META`/`*GROUP`/`*PARAM` header naming the columns of the `META`/`GROUP`/`PARAM` lines after
+own), and only `load` changes the project. The layout is Revit's tab-separated one, from what Autodesk documents publicly
+in the Revit API guide's [Definition File](https://help.autodesk.com/cloudhelp/2015/ENU/Revit-API/files/GUID-9C7F6E02-05C2-4F72-8108-60F2175FB9E3.htm) page and what such files commonly hold: `#` comments, a `*META`/`*GROUP`/`*PARAM` header naming the columns of the `META`/`GROUP`/`PARAM` lines after
 it, read by column name so version 1 (no `DESCRIPTION`, `USERMODIFIABLE`) and version 2 (with them and `HIDEWHENNOVALUE`) both
 read, and a column this version doesn't know passed over; a reader must be at least `MINVERSION`, so a file asking for more
 than 2 is refused. It is written as version 2, UTF-8 with a byte order mark and Windows line ends, groups and their
@@ -774,10 +774,16 @@ family is on a plane is refused by the project on Load into Project, said in the
   always cut before.
 - `room_calculation_point`: `[x, y, z]` in the family's axes, mm, numbers or formulas that read only its length
   parameters (a door's or a window's `Wall Thickness` too), worked out for each type by `Family::check` (finite, within
-  `MAX_COORD`) and renamed with them. `Model::component_room_point` places it with the component (mirrored, turned, moved;
-  its height over its level's base is kept but not yet read), else takes the insertion point, and `Rooms::component` finds
-  the room on the component's level whose boundary, where the project measures rooms, holds it (the first by id; none
-  in a wall or outside every room). Nothing in BIMCraft put a component in a room before, so this is that rule: `elements`
+  `MAX_COORD`) and renamed with them. `Model::component_room_point` places it with the component (mirrored, turned, moved,
+  its height included), else takes the insertion point, and `Rooms::component` finds the room on the component's level
+  whose volume holds it, as Revit's point has to fall inside the room's volume: its boundary, where the project measures
+  rooms, holds it in plan, and its height lies from the room's bottom (its level plus `base_offset`) up to its top (its
+  `top_level`, else its own, plus `limit_offset`), both ends included (`Rooms::room_holding`; the first by id; none in a
+  wall, outside every room, or over or under it, as a ceiling luminaire hung over a room's top). The starter wall devices
+  (the outlets, the switch, the distribution board, the data and voice outlets, the patch panel: `fixtures.rs`) have a
+  point as Revit's do, `ROOM_POINT_OUT` (150 mm) in front of the wall's face at the middle of their height, so one on a
+  wall's face is in the room on its side however rooms are measured; a component without a point is where its insertion
+  point is, as before. Nothing in BIMCraft put a component in a room before, so this is that rule: `elements`
   gives each component's `room` (its GUID, or null). IFC keeps every component contained in its storey, as before, and
   adds one `IfcRelReferencedInSpatialStructure` for each room's `IfcSpace`, listing the components in it, after every other
   entity, so the rest of the file is as it was (`ifc::export_with` without them is the test's oracle); the import finds the
@@ -1110,3 +1116,35 @@ The follow-ups it left open, done after it: Pick Lines' Lock and Trim/Extend to 
 `a_sill_plane_on_ref_level_…`); a void cutting the host whatever its place in the list, and Cuts (F10d,
 `host_void_tests`). What they found: in a plan or an elevation, Pick Lines put a line where a plane is drawn rather than where
 the type previewed puts it, as the view shows it; it takes the one shown now.
+
+## Where the code lives
+
+Moved from the root `CLAUDE.md`'s module map, which names the files and points here for what each owns.
+
+In `crates/core`: `family.rs`, `family/validate.rs`, `csg.rs`, `fixtures.rs`, `favorites.rs`, `shared_parameters.rs`:
+families, what's wrong with one and what's worth knowing about it (its formulas, its checks, its forms' boxes), solids cut
+from solids, the starter fixtures, the user's favorites, the shared parameters file. `hosting.rs`: the project's reference
+planes, components hosted on them or on faces (Place on Face), and where a component's family axes are. The rest of
+`family/`:
+
+- `family/planes.rs`: reference planes and lines, forms' hosts.
+- `family/options.rs`: Family Category and Parameters' options.
+- `family/views.rs`: a family's plans and elevations.
+- `family/sketch.rs`: forms' sketches.
+- `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
+- `family/constraints.rs`: its dimensions, labels, locks and EQ, solved as a type flexes; `family/constraints/pivot.rs`,
+  lines and planes that turn about a pivot.
+- `family/nested.rs`: nested families and their instances, built into the host.
+- `family/visibility.rs`: Visibility Settings: which views and detail levels draw a form, a symbol or a nested instance.
+
+In `crates/ui-egui`, the Family Editor:
+
+- `editor.rs`: family drafts. `editor/document.rs`: the family document every family opens as.
+- `editor/association.rs`: parameter associations. `editor/extrusion.rs`: a selected form's Properties.
+- `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
+- `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
+- `editor/sketch.rs`: sketch mode. `editor/dimensions.rs`: their dimensions and Align.
+- `editor/work_plane.rs`: its Work Plane dialog and Go To View.
+- `editor/options.rs`: the family's options (Family Category and Parameters, Properties' Other).
+- `editor/nested.rs`: its nested families (Load Family, Component, Edit Family). `editor/pivot.rs`: its pivots and grips.
+- `editor/lit3d.rs`: {3D}'s selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.
