@@ -2414,7 +2414,7 @@ msgstr "Đã phá dỡ"
 msgid "Demolition"
 msgstr "Phá dỡ"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9566
 msgid "Dependent"
 msgstr "Phụ thuộc"
 
@@ -8531,7 +8531,7 @@ msgstr "Định dạng đơn vị"
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9707
 msgid "Unnamed"
 msgstr "Chưa đặt tên"
 

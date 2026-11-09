@@ -112,7 +112,7 @@ msgstr "Streckpunkt"
 msgid "Data Outlet"
 msgstr "Datauttag"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9566
 msgid "Dependent"
 msgstr "Beroende"
 
@@ -188,8 +188,8 @@ msgstr "Elbelysning"
 msgid "Electrical Power"
 msgstr "Elkraft"
 
-#: crates/core/src/commands.rs:9354
-#: crates/core/src/commands.rs:11352
+#: crates/core/src/commands.rs:9350
+#: crates/core/src/commands.rs:11348
 msgid "Elevation"
 msgstr "Fasad"
 
@@ -306,7 +306,7 @@ msgstr "Benbredd"
 msgid "Length"
 msgstr "Längd"
 
-#: crates/core/src/commands.rs:6120
+#: crates/core/src/commands.rs:6116
 #: crates/core/src/model.rs:3085
 msgid "Level"
 msgstr "Nivå"
@@ -331,7 +331,7 @@ msgstr "Beteckning"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:7378
+#: crates/core/src/commands.rs:7374
 msgid "Mass"
 msgstr "Volymmodell"
 
@@ -447,7 +447,7 @@ msgstr "Sättsteg"
 msgid "Roof tiles"
 msgstr "Takpannor"
 
-#: crates/core/src/commands.rs:7603
+#: crates/core/src/commands.rs:7599
 msgid "Room"
 msgstr "Rum"
 
@@ -475,8 +475,8 @@ msgstr "Avjämningsmassa"
 msgid "Seat Height"
 msgstr "Sitthöjd"
 
-#: crates/core/src/commands.rs:9331
-#: crates/core/src/commands.rs:11351
+#: crates/core/src/commands.rs:9327
+#: crates/core/src/commands.rs:11347
 msgid "Section"
 msgstr "Sektion"
 
@@ -600,7 +600,7 @@ msgstr "UPP"
 msgid "Unbounded Height"
 msgstr "Obegränsad höjd"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9707
 msgid "Unnamed"
 msgstr "Namnlös"
 

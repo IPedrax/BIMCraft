@@ -112,7 +112,7 @@ msgstr "Tiret point"
 msgid "Data Outlet"
 msgstr "Prise de données"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9566
 msgid "Dependent"
 msgstr "Dépendant"
 
@@ -188,8 +188,8 @@ msgstr "Éclairage électrique"
 msgid "Electrical Power"
 msgstr "Alimentation électrique"
 
-#: crates/core/src/commands.rs:9354
-#: crates/core/src/commands.rs:11352
+#: crates/core/src/commands.rs:9350
+#: crates/core/src/commands.rs:11348
 msgid "Elevation"
 msgstr "Élévation"
 
@@ -306,7 +306,7 @@ msgstr "Largeur du pied"
 msgid "Length"
 msgstr "Longueur"
 
-#: crates/core/src/commands.rs:6120
+#: crates/core/src/commands.rs:6116
 #: crates/core/src/model.rs:3085
 msgid "Level"
 msgstr "Niveau"
@@ -331,7 +331,7 @@ msgstr "Repère"
 msgid "Masking"
 msgstr "Masque"
 
-#: crates/core/src/commands.rs:7378
+#: crates/core/src/commands.rs:7374
 msgid "Mass"
 msgstr "Volume"
 
@@ -447,7 +447,7 @@ msgstr "Contremarches"
 msgid "Roof tiles"
 msgstr "Tuiles"
 
-#: crates/core/src/commands.rs:7603
+#: crates/core/src/commands.rs:7599
 msgid "Room"
 msgstr "Pièce"
 
@@ -475,8 +475,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Hauteur assise"
 
-#: crates/core/src/commands.rs:9331
-#: crates/core/src/commands.rs:11351
+#: crates/core/src/commands.rs:9327
+#: crates/core/src/commands.rs:11347
 msgid "Section"
 msgstr "Coupe"
 
@@ -600,7 +600,7 @@ msgstr "MONTE"
 msgid "Unbounded Height"
 msgstr "Hauteur non délimitée"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9707
 msgid "Unnamed"
 msgstr "Sans nom"
 

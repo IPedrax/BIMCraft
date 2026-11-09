@@ -2413,7 +2413,7 @@ msgstr "Abgebrochen"
 msgid "Demolition"
 msgstr "Abbruch"
 
-#: crates/core/src/commands.rs:9570
+#: crates/core/src/commands.rs:9566
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -8530,7 +8530,7 @@ msgstr "Einheitenformat"
 msgid "Unlock alignment"
 msgstr "Ausrichtung entsperren"
 
-#: crates/core/src/commands.rs:9711
+#: crates/core/src/commands.rs:9707
 msgid "Unnamed"
 msgstr "Unbenannt"
 
