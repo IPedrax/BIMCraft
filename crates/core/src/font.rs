@@ -145,6 +145,14 @@ fn known(c: char) -> Option<Glyph> {
         '–' | '—' => &[&[(0, 6), (8, 6)]],
         '‘' | '’' => &[&[(4, 12), (4, 9)]],
         '“' | '”' | '„' => &[&[(3, 12), (3, 9)], &[(5, 12), (5, 9)]],
+        // Primes lean, distinct from the upright apostrophe and quotation mark.
+        '′' => &[&[(5, 12), (3, 8)]],
+        '″' => &[&[(3, 12), (1, 8)], &[(7, 12), (5, 8)]],
+        '…' => &[
+            &[(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)],
+            &[(3, 0), (4, 0), (4, 1), (3, 1), (3, 0)],
+            &[(6, 0), (7, 0), (7, 1), (6, 1), (6, 0)],
+        ],
         _ => return None,
     })
 }
@@ -250,6 +258,23 @@ pub fn strokes(text: &str, x: f32, y: f32, height: f32) -> Vec<Vec<(f32, f32)>> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn engineering_primes_lean_at_the_top_and_ellipsis_has_three_baseline_dots() {
+        for (mark, lines) in [("′", 1), ("″", 2)] {
+            let strokes = strokes(mark, 0.0, 0.0, 12.0);
+            assert!(mark.chars().all(has));
+            assert_eq!(strokes.len(), lines);
+            for stroke in strokes {
+                assert!(stroke.iter().all(|&(x, y)| (0.0..=8.0).contains(&x) && (-12.0..=-8.0).contains(&y)));
+                assert!(stroke[0].0 > stroke[1].0 && stroke[0].1 < stroke[1].1, "a prime leans, unlike an apostrophe");
+            }
+        }
+        let dots = strokes("…", 0.0, 0.0, 12.0);
+        assert!(has('…'));
+        assert_eq!(dots.len(), 3);
+        assert!(dots.iter().flatten().all(|&(x, y)| (0.0..=8.0).contains(&x) && (-1.0..=0.0).contains(&y)));
+    }
 
     #[test]
     fn lower_case_is_drawn_as_capitals_and_unknown_characters_as_a_question_mark() {

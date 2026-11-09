@@ -2289,7 +2289,7 @@ msgstr "Plano de corte"
 msgid "Cylinder"
 msgstr "Cilindro"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3636
 msgid "DN"
 msgstr "DESCE"
 
@@ -4910,7 +4910,7 @@ msgstr "NBR 17068: prolongamento de 2 a 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: Alvo em planta (±0,00), triângulo equilátero em corte"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2875
 msgid "NOT ENCLOSED"
 msgstr "NÃO DELIMITADO"
 
@@ -6355,7 +6355,7 @@ msgstr "Colocar nesta folha uma vista que ainda não está em nenhuma"
 msgid "Quadrant"
 msgstr "Quadrante"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2875
 msgid "REDUNDANT"
 msgstr "REDUNDANTE"
 
@@ -8554,7 +8554,7 @@ msgstr "Tipo:"
 msgid "Types"
 msgstr "Tipos"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3636
 msgid "UP"
 msgstr "SOBE"
 
