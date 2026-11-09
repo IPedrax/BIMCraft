@@ -718,6 +718,10 @@ pub struct BimApp {
     family_editor: Option<editor::FamilyEditor>,
     /// The family documents under the open one, which was opened by Edit Family on a family nested in the last (T6a).
     family_hosts: Vec<editor::FamilyEditor>,
+    /// File > New > Family…'s dialog, while it is open: the category picked.
+    pub(crate) new_family_dialog: Option<bimcraft_core::family::Category>,
+    /// The family document was opened from the start page with no project behind it: closed, the start page comes back.
+    pub(crate) family_from_home: bool,
     /// A family being loaded into the project, waiting on "Family Already Exists" (`editor::exists`).
     family_loading: Option<editor::exists::Loading>,
     /// What the last family load decided: how the project's family was overwritten, and its shared nested families.
@@ -1309,6 +1313,8 @@ impl BimApp {
             favorites_dialog: None,
             family_editor: None,
             family_hosts: Vec::new(),
+            new_family_dialog: None,
+            family_from_home: false,
             family_loading: None,
             family_decided: None,
             favorites_path: None,
@@ -3474,12 +3480,23 @@ impl BimApp {
             .clicked()
         };
         let cmd = |k: Key| Some(KeyboardShortcut::new(Modifiers::COMMAND, k));
-        if item(ui, "New", cmd(Key::N)) {
-            self.guard(Pending::New, ctx);
-        }
-        if item(ui, msg!("Open…"), cmd(Key::O)) {
-            self.guard(Pending::Open, ctx);
-        }
+        // As Revit's: New and Open, each of a project or a family.
+        SubMenuButton::new(t("New")).ui(ui, |ui| {
+            if item(ui, msg!("Project"), cmd(Key::N)) {
+                self.guard(Pending::New, ctx);
+            }
+            if item(ui, msg!("Family…"), None) {
+                self.new_family_dialog = Some(bimcraft_core::family::Category::Generic);
+            }
+        });
+        SubMenuButton::new(t("Open")).ui(ui, |ui| {
+            if item(ui, msg!("Project…"), cmd(Key::O)) {
+                self.guard(Pending::Open, ctx);
+            }
+            if item(ui, msg!("Family…"), None) {
+                self.open_family(ctx);
+            }
+        });
         self.recent_menu(ui, ctx);
         if item(ui, "Save", cmd(Key::S)) {
             self.save(ctx, None);
@@ -4158,15 +4175,6 @@ impl BimApp {
             }
         });
         panel(ui, "Family Editor", |ui| {
-            let tip = msg!("New Family: start a family of your own, of a category, to edit its parameters, types and forms");
-            let r = big_button(ui, Icon::FamilyEditor, "New Family", false, tip);
-            ribbon::choices(ui, &r, false, |ui| {
-                for c in editor::CATEGORIES {
-                    if ui.button(editor::category_label(c)).clicked() {
-                        self.new_family(c);
-                    }
-                }
-            });
             let tip = msg!("Edit Family: the family of what is selected, or of the component being placed");
             let family = self.family_in_hand();
             if ui.add_enabled_ui(family.is_some(), |ui| big_button(ui, Icon::FamilyEditor, "Edit Family", false, tip)).inner.clicked()
@@ -5304,7 +5312,9 @@ impl BimApp {
         self.materials_window(ctx);
         self.favorites_window(ctx);
         self.family_editor_window(ctx);
+        self.new_family_window(ctx);
         self.family_load_dialog(ctx);
+        self.family_closed_from_home();
         self.snaps_window(ctx);
         self.parameters_window(ctx);
         self.new_schedule_window(ctx);

@@ -1595,6 +1595,95 @@ impl BimApp {
         self.family_hosts.clear();
     }
 
+    /// The start page's New Family and Open Family: the document over the page, which comes back when it closes unless a
+    /// project is behind it (the page brought up over one, or a family loaded into the blank one meanwhile).
+    pub(crate) fn family_from_start_page(&mut self) {
+        if self.family_editor.is_some() {
+            self.family_from_home = !self.home.over;
+            self.home.shown = false;
+        }
+    }
+
+    /// Closed, a family document opened from the start page with no project behind it goes back to the page, as Revit's goes
+    /// back to Home; a family it loaded into the blank project leaves the project on screen.
+    pub(crate) fn family_closed_from_home(&mut self) {
+        if self.family_from_home && self.family_editor.is_none() {
+            self.family_from_home = false;
+            if !self.dirty() {
+                self.home.shown = true;
+            }
+        }
+    }
+
+    /// File > Open > Family… and the start page's Open Family: a family file (BIMCraft's own JSON, as Load Family reads it)
+    /// asked for, then opened as its document.
+    pub(crate) fn open_family(&mut self, ctx: &Context) {
+        let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]);
+        let home = self.home.shown;
+        self.ask_file(ctx, dialog, false, move |app, path| {
+            app.open_family_file(&path);
+            if home {
+                app.family_from_start_page();
+            }
+        });
+    }
+
+    /// The family in the file at `path` open in its document, as Revit's File > Open > Family: not the project's (Load into
+    /// Project loads it, asking first when the project has a family of its name), the project left as it is. A file that isn't
+    /// a family says why.
+    pub(crate) fn open_family_file(&mut self, path: &std::path::Path) {
+        match read_family_file(path) {
+            Ok((name, family)) => {
+                let mut editor = FamilyEditor::of(&name, &family);
+                editor.original = None;
+                self.family_editor = Some(editor);
+                self.family_hosts.clear();
+                self.status = Status::default();
+            }
+            Err(text) => self.status = Status { text, error: true },
+        }
+    }
+
+    /// File > New > Family…: the family's category picked, as Revit's New Family picks a template, then its document opens.
+    pub(crate) fn new_family_window(&mut self, ctx: &Context) {
+        let Some(mut picked) = self.new_family_dialog else { return };
+        let (mut ok, mut close) = (false, false);
+        let r = Modal::new(UiId::new("new-family"), t("New Family")).width(360.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                ui.add_space(6.0);
+                ui.label(t("Category:"));
+                // The body scrolls past the window's height: the list needs no scrolling of its own.
+                for c in CATEGORIES {
+                    let row = ui.selectable_label(picked == c, category_label(c));
+                    if row.clicked() {
+                        picked = c;
+                    }
+                    if row.double_clicked() {
+                        ok = true;
+                    }
+                }
+            });
+            crate::popup::footer(ui, |ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                    close = ui.button(t("Cancel")).clicked();
+                    ok |= ui.button(t("OK")).clicked();
+                });
+            });
+        });
+        if ok {
+            self.new_family_dialog = None;
+            let home = self.home.shown;
+            self.new_family(picked);
+            if home {
+                self.family_from_start_page();
+            }
+        } else if close || r.should_close() {
+            self.new_family_dialog = None;
+        } else {
+            self.new_family_dialog = Some(picked);
+        }
+    }
+
     /// The family the selection is of, else the one the Component tool places.
     pub(crate) fn family_in_hand(&self) -> Option<String> {
         let m = &self.session.model;

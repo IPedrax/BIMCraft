@@ -134,6 +134,16 @@ prepare a private `Session`, so saving never implicitly loads the draft into the
 `Session` of its own; errors appear inside the document or its dialog. Connectors, reference planes and lines, form hosts,
 parameter metadata and symbols remain in the draft even when their dedicated tools are not yet available.
 
+A family document opens as Revit's does (`editor.rs`): File > New > Family… (`new_family_window`: the category picked, as Revit's
+New Family picks a template, then `new_family`) and the start page's Families group, under Models, with New Family (the
+categories dropped down) and Open Family…; File > Open > Family… and Open Family… (`open_family`, `open_family_file`) open a
+family file, BIMCraft's own JSON as Save Family writes it and Load Family reads it (`read_family_file`), as a document that isn't
+the project's: Load into Project loads it, asking first (Family Already Exists) when the project has a family of its name, and the
+project is left as it is. The family document stands over a project, which the window always has: the blank one it starts with
+when given no file, so a family opened from the start page needs nothing more; closed, it goes back to the start page
+(`family_from_home`) unless the page was over a project or the family was loaded into the blank one. A file that isn't a family
+opens nothing and says why. Manage has no New Family.
+
 A form selected in the document (from the Project Browser's Forms list, or Select in the Forms tab; Escape, a click in the view or
 Modify lets it go) shows its own Properties in place of the family's tabs, as Revit's do for an Extrusion (`editor/extrusion.rs`):
 Constraints (Extrusion End and Start in the project's units, each with `=`, a revolve's angles instead; the Work Plane, read-only,
@@ -597,7 +607,7 @@ whose Delete takes away a plane of the family's own unless something is drawn on
 window's Sill on Ref. Level, as Revit's window template has it): each is drawn, and where the pointer is over several
 (`Views::under`, each once, nearest first) the one a click takes is lit and Tab steps to the next, as Revit's Tab does, for
 selecting, Aligned Dimension, Align, Pick Lines and the Work Plane dialog's Pick alike; Ref. Level is picked by its level. The
-app's Tab hook leaves Tab to the family document while it is open. The blank window (Manage > New Family > Window) has Sill: a
+app's Tab hook leaves Tab to the family document while it is open. The blank window (File > New > Family… > Window) has Sill: a
 plane on Ref. Level seen edge on in the elevations, Align-locked to it, so a Height dimensioned from it moves its head alone (a
 window's axes rise from its sill, so the sill's plane and Ref. Level are one; without the lock the least-change solve would
 share a Height's change between them); a door's blank has none, as Revit's door template. The selected form is outlined, the
@@ -1080,7 +1090,7 @@ Align-locked to the planes, listed after the frame: it cuts the wall wherever it
 (F10d). Three types (900 x 1200, 1200 x 1500, 600 x 600), loaded, placed in a wall, flexed through its types, a window
 schedule, IFC.
 
-- **The desktop** (`crates/ui-egui/src/tests/family_exit.rs`): every step through the window, from Manage > New Family > Window
+- **The desktop** (`crates/ui-egui/src/tests/family_exit.rs`): every step through the window, from File > New > Family… > Window
   to File > Export's IFC: the Reference Plane tool and Properties' Name, Aligned Dimension (Tab onto Sill) and the Options Bar's
   Label, EQ, Extrusion with Pick Lines, its Lock and Trim/Extend to Corner, Rectangle, Void Extrusion with Rectangle and Align's
   padlocks, the dimensions' padlocks, the void's Cuts in Properties, the Forms tab, Family Types, Load into Project and Close,

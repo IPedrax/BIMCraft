@@ -42,7 +42,7 @@ point, the view's buttons by label).
 
 ## Try it
 
-1. Manage > New Family, any category; on the **Adaptive** tab of its Properties, **Make this family adaptive** (or **Create four-point adaptive
+1. File > New > Family…, any category; on the **Adaptive** tab of its Properties, **Make this family adaptive** (or **Create four-point adaptive
    panel** for a ready-made one). The family opens as a document of its own, taking the window.
 2. Create > **Point Element**: click four points on the work plane. **Line**: click them in turn and the first again, closing
    a profile.

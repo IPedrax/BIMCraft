@@ -110,10 +110,8 @@ fn aligned_dimension(h: &mut Harness<BimApp>, refs: &[[f64; 3]], at: [f64; 3]) -
 #[test]
 fn a_parametric_window_drawn_from_blank_is_placed_flexed_scheduled_and_exported() {
     let mut h = project();
-    // New family: a Window, from the ribbon.
-    press(&mut h, "Manage");
-    press(&mut h, "New Family");
-    press(&mut h, "Window");
+    // New family: a Window, from File > New > Family…, as Revit's.
+    new_family_of(&mut h, "Window");
     assert!(h.state().family_editor.is_some(), "the family document is open");
     type_into(&mut h, "Family name", NAME);
     key(&mut h, Key::Enter);
