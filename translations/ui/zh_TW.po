@@ -162,7 +162,7 @@ msgstr "門或窗位於其所在的牆中：不能基於工作平面。"
 
 #: crates/ui-egui/src/start.rs:350
 msgid "A family file, to edit."
-msgstr ""
+msgstr "一個族檔案，用於編輯。"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:647
 msgid "A family type parameter needs the category of the families whose types it picks."
@@ -735,7 +735,7 @@ msgstr "其他顏色"
 
 #: crates/ui-egui/src/editor/connectors.rs:310
 msgid "Apparent Load (VA)"
-msgstr ""
+msgstr "視在負載 (VA)"
 
 #: crates/ui-egui/src/footer.rs:466
 #: crates/ui-egui/src/properties.rs:2684
@@ -1528,7 +1528,7 @@ msgstr "外接多邊形：單擊中心，然後單擊一條邊的中點；邊數
 
 #: crates/ui-egui/src/editor/connectors.rs:317
 msgid "Classification"
-msgstr ""
+msgstr "分類"
 
 #: crates/ui-egui/src/graphics.rs:1009
 msgid "Clear Overrides"
@@ -1584,7 +1584,7 @@ msgstr "單擊樓板、屋頂、樓梯或牆：高程點讀取其頂部在該處
 
 #: crates/ui-egui/src/editor/document.rs:1409
 msgid "Click a form or a nested instance to select it. A drag or Shift and the middle button orbit, the middle button pans, the wheel zooms."
-msgstr ""
+msgstr "單擊形狀或巢狀實例以選擇它。拖動或按住 Shift 加中鍵可環繞觀察，中鍵平移，滾輪縮放。"
 
 #: crates/ui-egui/src/editor/document.rs:1405
 msgid "Click a form, a nested instance, a reference plane, a reference line or a dimension to select it; drag a selected plane to move it, a grip to turn or stretch."
@@ -1640,7 +1640,7 @@ msgstr "單擊參照平面或基準作為工作平面。按 Esc 返回對話框�
 
 #: crates/ui-egui/src/editor/sketch.rs:1292
 msgid "Click a reference plane, a reference line or a form's edge: a line along it, locked to it."
-msgstr ""
+msgstr "單擊參照平面、參照線或形狀的邊：沿其生成一條線，並鎖定到其上。"
 
 #: crates/ui-egui/src/editor/sketch.rs:1294
 msgid "Click a reference plane, a reference line or a form's edge: a line along it."
@@ -2192,7 +2192,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/tabs.rs:290
 msgid "Close Without Loading"
-msgstr ""
+msgstr "關閉而不載入"
 
 #: crates/ui-egui/src/popup.rs:94
 msgid "Close dialog"
@@ -2316,59 +2316,59 @@ msgstr "配置國家與國際技術製圖標準 (NBR、ISO、ANSI、EU)。調整
 #: crates/ui-egui/src/editor/connectors.rs:161
 #: crates/ui-egui/src/editor/document.rs:1723
 msgid "Connector"
-msgstr ""
+msgstr "連接件"
 
 #: crates/ui-egui/src/editor/connectors.rs:318
 msgid "Connector Classification"
-msgstr ""
+msgstr "連接件分類"
 
 #: crates/ui-egui/src/editor/connectors.rs:294
 msgid "Connector Direction"
-msgstr ""
+msgstr "連接件方向"
 
 #: crates/ui-egui/src/editor/connectors.rs:257
 msgid "Connector Domain"
-msgstr ""
+msgstr "連接件域"
 
 #: crates/ui-egui/src/editor/connectors.rs:275
 msgid "Connector Flow"
-msgstr ""
+msgstr "連接件流向"
 
 #: crates/ui-egui/src/editor/connectors.rs:311
 msgid "Connector Load"
-msgstr ""
+msgstr "連接件負載"
 
 #: crates/ui-egui/src/editor/connectors.rs:289
 msgid "Connector Location"
-msgstr ""
+msgstr "連接件位置"
 
 #: crates/ui-egui/src/editor/connectors.rs:225
 msgid "Connector Name"
-msgstr ""
+msgstr "連接件名稱"
 
 #: crates/ui-egui/src/editor/connectors.rs:303
 msgid "Connector Poles"
-msgstr ""
+msgstr "連接件極數"
 
 #: crates/ui-egui/src/editor/connectors.rs:314
 msgid "Connector Power Factor"
-msgstr ""
+msgstr "連接件功率因數"
 
 #: crates/ui-egui/src/editor/connectors.rs:281
 msgid "Connector Size"
-msgstr ""
+msgstr "連接件尺寸"
 
 #: crates/ui-egui/src/editor/connectors.rs:239
 msgid "Connector System"
-msgstr ""
+msgstr "連接件系統"
 
 #: crates/ui-egui/src/editor/connectors.rs:307
 msgid "Connector Voltage"
-msgstr ""
+msgstr "連接件電壓"
 
 #: crates/ui-egui/src/editor/document.rs:1722
 msgid "Connector: a pipe, power, switch, data or earthing connector, where the family joins a system"
-msgstr ""
+msgstr "連接件：管道、電源、開關、數據或接地連接件，族在此接入系統"
 
 #: crates/ui-egui/src/editor/document.rs:1148
 #: crates/ui-egui/src/editor/document.rs:1721
@@ -2730,7 +2730,7 @@ msgstr "載入時剪切的空心"
 
 #: crates/ui-egui/src/editor/extrusion.rs:266
 msgid "Cuts"
-msgstr ""
+msgstr "剪切"
 
 #: crates/ui-egui/src/editor.rs:198
 msgid "Cylinder"
@@ -2771,11 +2771,11 @@ msgstr "數據"
 
 #: crates/ui-egui/src/editor/connectors.rs:33
 msgid "Data Connector"
-msgstr ""
+msgstr "數據連接件"
 
 #: crates/ui-egui/src/editor/connectors.rs:33
 msgid "Data Connector: where a data cable meets the family"
-msgstr ""
+msgstr "數據連接件：數據線纜與族的連接處"
 
 #: crates/core/src/fixtures.rs:468
 msgid "Data Outlet"
@@ -3133,7 +3133,7 @@ msgstr "無法保留您正在載入的族的尺寸標注：{}"
 
 #: crates/ui-egui/src/editor/connectors.rs:293
 msgid "Direction"
-msgstr ""
+msgstr "方向"
 
 #: crates/ui-egui/src/plugins.rs:395
 msgid "Disable"
@@ -3207,7 +3207,7 @@ msgstr "停靠 {}"
 
 #: crates/ui-egui/src/editor/connectors.rs:246
 msgid "Domain"
-msgstr ""
+msgstr "域"
 
 #: crates/ui-egui/src/lib.rs:5606
 msgid "Don't Save"
@@ -3252,7 +3252,7 @@ msgstr "點"
 
 #: crates/ui-egui/src/editor/document.rs:561
 msgid "Dot: a filled circle the family's plans draw"
-msgstr ""
+msgstr "點：族的平面中繪製的實心圓"
 
 #: crates/ui-egui/src/graphics.rs:1462
 msgid "Dotted"
@@ -3403,11 +3403,11 @@ msgstr "接地線 (GC)：單擊起點和終點；連續單擊可形成標高下�
 
 #: crates/ui-egui/src/editor/connectors.rs:34
 msgid "Earthing Connector"
-msgstr ""
+msgstr "接地連接件"
 
 #: crates/ui-egui/src/editor/connectors.rs:34
 msgid "Earthing Connector: where an earthing conductor meets the family"
-msgstr ""
+msgstr "接地連接件：接地線與族的連接處"
 
 #: crates/core/src/fixtures.rs:423
 msgid "Earthing Electrode"
@@ -3922,7 +3922,7 @@ msgstr "族類型：族的參數、參數公式及其類型"
 
 #: crates/ui-egui/src/lib.rs:5388
 msgid "Family document: {}"
-msgstr ""
+msgstr "族文件：{}"
 
 #: crates/ui-egui/src/editor/document.rs:1604
 #: crates/ui-egui/src/editor/document.rs:1817
@@ -3949,7 +3949,7 @@ msgstr ""
 #: crates/ui-egui/src/lib.rs:3698
 #: crates/ui-egui/src/lib.rs:3706
 msgid "Family…"
-msgstr ""
+msgstr "族…"
 
 #: crates/ui-egui/src/properties.rs:372
 msgid "Far Clip Offset"
@@ -4264,7 +4264,7 @@ msgstr "樓板：在牆內單擊，為其創建樓板"
 
 #: crates/ui-egui/src/editor/connectors.rs:273
 msgid "Flow"
-msgstr ""
+msgstr "流向"
 
 #: crates/ui-egui/src/camera.rs:83
 msgid "Focal Length"
@@ -4311,7 +4311,7 @@ msgstr "形狀"
 
 #: crates/ui-egui/src/editor/extrusion.rs:268
 msgid "Forms and Host"
-msgstr ""
+msgstr "形狀和主體"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:254
 #: crates/ui-egui/src/properties.rs:3195
@@ -4325,11 +4325,11 @@ msgstr "基礎"
 
 #: crates/ui-egui/src/editor/document.rs:613
 msgid "Four-Point Panel"
-msgstr ""
+msgstr "四點面板"
 
 #: crates/ui-egui/src/editor/document.rs:612
 msgid "Four-Point Panel: the family made adaptive, as a panel on four placement points"
-msgstr ""
+msgstr "四點面板：將族設為自適應，作為基於四個放置點的面板"
 
 #: crates/core/src/family.rs:3330
 msgid "Frame Depth"
@@ -5374,20 +5374,20 @@ msgstr "載入檔案..."
 
 #: crates/ui-egui/src/editor/document.rs:750
 msgid "Load into Family"
-msgstr ""
+msgstr "載入到族"
 
 #: crates/ui-egui/src/editor/document.rs:761
 #: crates/ui-egui/src/editor/tabs.rs:283
 msgid "Load into Family and Close"
-msgstr ""
+msgstr "載入到族並關閉"
 
 #: crates/ui-egui/src/editor/document.rs:761
 msgid "Load into Family and Close: the family it is nested in takes it, and it closes"
-msgstr ""
+msgstr "載入到族並關閉：其所巢狀的族接收它，然後它關閉"
 
 #: crates/ui-egui/src/editor/document.rs:750
 msgid "Load into Family: the family it is nested in takes it as it is here, and it stays open"
-msgstr ""
+msgstr "載入到族：其所巢狀的族按此處的狀態接收它，它保持開啟"
 
 #: crates/ui-egui/src/editor/document.rs:753
 msgid "Load into Project"
@@ -5449,7 +5449,7 @@ msgstr "鎖定對齊"
 
 #: crates/ui-egui/src/editor/sketch.rs:1356
 msgid "Lock locks a line picked with no Offset, in a plan or an elevation"
-msgstr ""
+msgstr "鎖定僅鎖定在無偏移時拾取的線，適用於平面或立面"
 
 #: crates/ui-egui/src/canvas.rs:3225
 msgid "Lock segment {}"
@@ -5457,7 +5457,7 @@ msgstr "鎖定第 {} 段"
 
 #: crates/ui-egui/src/editor/sketch.rs:1354
 msgid "Lock: each line picked is locked to what it was picked from, as Align's padlock locks it"
-msgstr ""
+msgstr "鎖定：每條拾取的線都鎖定到其拾取來源上，如同“對齊”的鎖"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:23
 msgid "Lock: the dimensions this parameter labels keep its value when planes are dragged"
@@ -5515,11 +5515,11 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:609
 msgid "Make Family Adaptive"
-msgstr ""
+msgstr "使族自適應"
 
 #: crates/ui-egui/src/editor/document.rs:607
 msgid "Make Family Adaptive: its points are placed where each instance is clicked, as Revit's Generic Model Adaptive"
-msgstr ""
+msgstr "使族自適應：其點放置在每個實例的單擊位置，如 Revit 的“自適應公制常規模型”"
 
 #: crates/ui-egui/src/phasing.rs:386
 msgid "Make Primary"
@@ -5805,7 +5805,7 @@ msgstr ""
 
 #: crates/ui-egui/src/start.rs:311
 msgid "Models"
-msgstr ""
+msgstr "模型"
 
 #: crates/ui-egui/src/editor/document.rs:627
 #: crates/ui-egui/src/editor/document.rs:778
@@ -5850,11 +5850,11 @@ msgstr "修改 | 對齊"
 
 #: crates/ui-egui/src/editor/document.rs:307
 msgid "Modify | Blend"
-msgstr ""
+msgstr "修改 | 融合"
 
 #: crates/ui-egui/src/editor/document.rs:278
 msgid "Modify | Connectors"
-msgstr ""
+msgstr "修改 | 連接件"
 
 #: crates/ui-egui/src/editor/sketch.rs:179
 msgid "Modify | Create Blend Base Boundary"
@@ -5902,7 +5902,7 @@ msgstr "修改 | 編輯旋轉"
 
 #: crates/ui-egui/src/editor/document.rs:306
 msgid "Modify | Extrusion"
-msgstr ""
+msgstr "修改 | 拉伸"
 
 #: crates/ui-egui/src/editor/document.rs:296
 #: crates/ui-egui/src/editor/document.rs:304
@@ -5959,11 +5959,11 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:308
 msgid "Modify | Revolve"
-msgstr ""
+msgstr "修改 | 旋轉"
 
 #: crates/ui-egui/src/editor/document.rs:309
 msgid "Modify | Sweep"
-msgstr ""
+msgstr "修改 | 放樣"
 
 #: crates/ui-egui/src/editor/sketch.rs:182
 msgid "Modify | Sweep > Edit Profile"
@@ -5975,7 +5975,7 @@ msgstr "修改 | 放樣 > 繪製路徑"
 
 #: crates/ui-egui/src/editor/document.rs:310
 msgid "Modify | Swept Blend"
-msgstr ""
+msgstr "修改 | 放樣融合"
 
 #: crates/ui-egui/src/editor/sketch.rs:185
 msgid "Modify | Swept Blend > Edit Profile 1"
@@ -5991,27 +5991,27 @@ msgstr "修改 | 放樣融合 > 繪製路徑"
 
 #: crates/ui-egui/src/editor/document.rs:275
 msgid "Modify | Symbols"
-msgstr ""
+msgstr "修改 | 符號"
 
 #: crates/ui-egui/src/editor/document.rs:312
 msgid "Modify | Void Blend"
-msgstr ""
+msgstr "修改 | 空心融合"
 
 #: crates/ui-egui/src/editor/document.rs:311
 msgid "Modify | Void Extrusion"
-msgstr ""
+msgstr "修改 | 空心拉伸"
 
 #: crates/ui-egui/src/editor/document.rs:313
 msgid "Modify | Void Revolve"
-msgstr ""
+msgstr "修改 | 空心旋轉"
 
 #: crates/ui-egui/src/editor/document.rs:314
 msgid "Modify | Void Sweep"
-msgstr ""
+msgstr "修改 | 空心放樣"
 
 #: crates/ui-egui/src/editor/document.rs:315
 msgid "Modify | Void Swept Blend"
-msgstr ""
+msgstr "修改 | 空心放樣融合"
 
 #: crates/core/src/fixtures.rs:287
 msgid "Mounting Height"
@@ -6447,7 +6447,7 @@ msgstr "編號"
 
 #: crates/ui-egui/src/editor/connectors.rs:300
 msgid "Number of Poles"
-msgstr ""
+msgstr "極數"
 
 #: crates/ui-egui/src/adaptive_editor.rs:760
 #: crates/ui-egui/src/background_grid.rs:113
@@ -6499,7 +6499,7 @@ msgstr "對像樣式…"
 
 #: crates/ui-egui/src/start.rs:339
 msgid "Of a category you pick."
-msgstr ""
+msgstr "屬於所選的類別。"
 
 #: crates/ui-egui/src/properties.rs:2659
 #: crates/ui-egui/src/properties.rs:2662
@@ -6603,7 +6603,7 @@ msgstr "開啟相機視圖"
 
 #: crates/ui-egui/src/start.rs:350
 msgid "Open Family…"
-msgstr ""
+msgstr "開啟族…"
 
 #: crates/ui-egui/src/recent.rs:130
 #: crates/ui-egui/src/recent.rs:134
@@ -6879,7 +6879,7 @@ msgstr "配線架"
 
 #: crates/ui-egui/src/editor/extrusion.rs:195
 msgid "Path"
-msgstr ""
+msgstr "路徑"
 
 #: crates/ui-egui/src/fillpatterns.rs:263
 #: crates/ui-egui/src/fillpatterns.rs:618
@@ -7073,7 +7073,7 @@ msgstr "拾取一條線並使用繪製該線所在的工作平面"
 
 #: crates/ui-egui/src/editor/sketch.rs:251
 msgid "Pick a line of the sketch, on the part to keep."
-msgstr ""
+msgstr "在要保留的部分上拾取一條草圖線。"
 
 #: crates/ui-egui/src/editor/views.rs:1004
 msgid "Pick a line that crosses the one before."
@@ -7203,7 +7203,7 @@ msgstr "拾取要倒圓角的第一條線。"
 
 #: crates/ui-egui/src/editor/sketch.rs:1278
 msgid "Pick the first line, on the part to keep."
-msgstr ""
+msgstr "在要保留的部分上拾取第一條線。"
 
 #: crates/ui-egui/src/sketch.rs:953
 msgid "Pick the first sketch line, on the part to keep."
@@ -7231,7 +7231,7 @@ msgstr "拾取下一個參照或端點。"
 
 #: crates/ui-egui/src/editor/sketch.rs:1279
 msgid "Pick the second line, on the part to keep."
-msgstr ""
+msgstr "在要保留的部分上拾取第二條線。"
 
 #: crates/ui-egui/src/draw.rs:601
 msgid "Pick the second line."
@@ -7299,11 +7299,11 @@ msgstr "管路附件 (PA)：在單擊處、管道的高度放置閥門；按空�
 
 #: crates/ui-egui/src/editor/connectors.rs:30
 msgid "Pipe Connector"
-msgstr ""
+msgstr "管道連接件"
 
 #: crates/ui-egui/src/editor/connectors.rs:30
 msgid "Pipe Connector: where a pipe meets the family, its domain, flow and size"
-msgstr ""
+msgstr "管道連接件：管道與族的連接處，及其域、流向和尺寸"
 
 #: crates/ui-egui/src/mep.rs:47
 msgid "Pipe Fitting"
@@ -7686,15 +7686,15 @@ msgstr "稍後"
 
 #: crates/ui-egui/src/editor/connectors.rs:31
 msgid "Power Connector"
-msgstr ""
+msgstr "電源連接件"
 
 #: crates/ui-egui/src/editor/connectors.rs:31
 msgid "Power Connector: what an electrical device draws, its voltage and load"
-msgstr ""
+msgstr "電源連接件：電氣設備的用電，及其電壓和負載"
 
 #: crates/ui-egui/src/editor/connectors.rs:313
 msgid "Power Factor"
-msgstr ""
+msgstr "功率因數"
 
 #: crates/ui-egui/src/properties.rs:224
 msgid "Prefix"
@@ -7843,7 +7843,7 @@ msgstr "投影/表面"
 
 #: crates/ui-egui/src/lib.rs:3703
 msgid "Project…"
-msgstr ""
+msgstr "項目…"
 
 #: crates/ui-egui/src/editor/document.rs:793
 #: crates/ui-egui/src/editor/document.rs:794
@@ -8845,7 +8845,7 @@ msgstr "設置工作平面…"
 
 #: crates/ui-egui/src/editor/extrusion.rs:171
 msgid "Set by its dimensions and locks for the type {}: {} or the dimensions change it."
-msgstr ""
+msgstr "由類型 {} 的尺寸標注和鎖定確定：可通過 {} 或尺寸標注更改。"
 
 #: crates/ui-egui/src/graphics.rs:154
 msgid "Set by view template {}: change the template, or stop following it."
@@ -9173,7 +9173,7 @@ msgstr "請先繪製路徑：{}"
 
 #: crates/ui-egui/src/editor/extrusion.rs:193
 msgid "Sketch, {} lines and arcs"
-msgstr ""
+msgstr "草圖，{} 條線和弧"
 
 #: crates/ui-egui/src/reinforce.rs:88
 msgid "Skin bars"
@@ -9654,11 +9654,11 @@ msgstr "開關"
 
 #: crates/ui-egui/src/editor/connectors.rs:32
 msgid "Switch Connector"
-msgstr ""
+msgstr "開關連接件"
 
 #: crates/ui-egui/src/editor/connectors.rs:32
 msgid "Switch Connector: what a switch controls"
-msgstr ""
+msgstr "開關連接件：開關所控制的對象"
 
 #: crates/ui-egui/src/editor.rs:929
 msgid "Switches"
@@ -9706,16 +9706,16 @@ msgstr "符號可見"
 
 #: crates/ui-egui/src/editor.rs:1178
 msgid "Symbolic Arc"
-msgstr ""
+msgstr "符號弧"
 
 #: crates/ui-egui/src/editor/document.rs:548
 #: crates/ui-egui/src/editor.rs:1181
 msgid "Symbolic Line"
-msgstr ""
+msgstr "符號線"
 
 #: crates/ui-egui/src/editor/document.rs:547
 msgid "Symbolic Line: a line or an arc the family's plans draw, not part of its forms (a door's swing)"
-msgstr ""
+msgstr "符號線：族的平面中繪製的線或弧，不屬於其形狀（如門的開啟線）"
 
 #: crates/ui-egui/src/editor/document.rs:1129
 #: crates/ui-egui/src/mep.rs:189
@@ -9941,7 +9941,7 @@ msgstr "文字：IBM Plex Sans（內置）。文字會縮小以適應其所在�
 
 #: crates/ui-egui/src/editor/document.rs:557
 msgid "Text: a label the family's plans draw"
-msgstr ""
+msgstr "文字：族的平面中繪製的標籤"
 
 #: crates/ui-egui/src/properties.rs:2264
 msgid "Texture"
@@ -10005,7 +10005,7 @@ msgstr "牆、軸網及其他已繪製對象的端點，以及迄今已拾取的
 
 #: crates/ui-egui/src/editor/exists.rs:516
 msgid "The family document was closed before the load finished: nothing was loaded."
-msgstr ""
+msgstr "族文件在載入完成前已關閉：未載入任何內容。"
 
 #: crates/ui-egui/src/adaptive_editor.rs:734
 #: crates/ui-egui/src/editor/types_dialog.rs:650
@@ -10018,7 +10018,7 @@ msgstr "該族已有名為 {} 的類型。"
 
 #: crates/ui-egui/src/editor/tabs.rs:286
 msgid "The family has changes that are not loaded. If you close it without loading, they are lost."
-msgstr ""
+msgstr "族中有尚未載入的更改。如果不載入就關閉，這些更改將會遺失。"
 
 #: crates/ui-egui/src/editor/exists.rs:206
 msgid "The family it was nested in is closed."
@@ -10239,7 +10239,7 @@ msgstr "這些線無法圓角：請拾取兩條相交的直線。"
 
 #: crates/ui-egui/src/editor/sketch.rs:264
 msgid "These lines don't meet: pick two that would, on the parts to keep."
-msgstr ""
+msgstr "這些線不相交：請在要保留的部分上拾取兩條可相交的線。"
 
 #: crates/ui-egui/src/fillpatterns.rs:625
 msgid "These patterns to a PAT file, but the solid ones"
@@ -10494,7 +10494,7 @@ msgstr "修剪/延伸為角"
 
 #: crates/ui-egui/src/editor/sketch.rs:1514
 msgid "Trim/Extend to Corner (TR): pick two lines, on the parts to keep"
-msgstr ""
+msgstr "修剪/延伸為角 (TR)：拾取兩條線，在要保留的部分上"
 
 #: crates/ui-egui/src/lib.rs:4548
 #: crates/ui-egui/src/sketch.rs:742
@@ -11011,7 +11011,7 @@ msgstr "空心放樣融合"
 
 #: crates/ui-egui/src/editor/connectors.rs:306
 msgid "Voltage"
-msgstr ""
+msgstr "電壓"
 
 #: crates/ui-egui/src/electrical.rs:126
 msgid "Voltage {} is supplied by distribution system {}: change that first."
@@ -11148,7 +11148,7 @@ msgstr "視圖繪製於其上；圖線在深色畫布上變淺，在淺色畫布
 
 #: crates/ui-egui/src/editor/extrusion.rs:273
 msgid "What the void cuts: the solid forms listed before it, and the wall the door or window stands in"
-msgstr ""
+msgstr "空心剪切的對象：列在其前面的實心形狀，以及門窗所在的牆"
 
 #: crates/ui-egui/src/phasing.rs:82
 msgid "What the work builds, over what stood before"
