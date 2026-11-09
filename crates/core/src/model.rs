@@ -70,7 +70,9 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 18: a family's connector may be a `pipe`,
+/// The version of the project file this build writes, and the newest it reads. 19: a project holds circuits (an element of the
+/// `circuit` category); nothing in a file of 18 changes, but a build that reads up to 18 would answer one of 19 with a serde
+/// error ("unknown variant"), not "saved by a newer BIMCraft". 18: a family's connector may be a `pipe`,
 /// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
 /// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
 /// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
@@ -117,7 +119,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 18;
+pub const FORMAT: u32 = 19;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -2120,6 +2122,12 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? ci.view { f(g) }
             }
             Element::RoomSeparator(rs) => f(& $($m)? rs.level),
+            Element::Circuit(c) => {
+                f(& $($m)? c.panel);
+                for g in & $($m)? c.devices {
+                    f(g)
+                }
+            }
             Element::Rebar(rb) => {
                 f(& $($m)? rb.level);
                 if let Some(g) = & $($m)? rb.host { f(g) }
@@ -2196,6 +2204,8 @@ pub enum Element {
     PointCloud(PointCloud),
     /// A CAD drawing placed in the model.
     CadImport(CadImport),
+    /// An electrical circuit: devices on a distribution board, behind one breaker.
+    Circuit(crate::electrical::Circuit),
 }
 
 impl Element {
@@ -2393,6 +2403,7 @@ impl Element {
             Element::Dimension(_) => "dimension",
             Element::Dimension3D(_) => "dimension3d",
             Element::Tag(_) => "tag",
+            Element::Circuit(_) => "circuit",
             Element::Section(_) => "section",
             Element::Elevation(_) => "elevation",
             Element::Sheet(_) => "sheet",
@@ -3542,6 +3553,7 @@ impl Model {
         // either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
         // file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
         // did, and none of its dimensions measures `across`.
+        // 18 to 19 (circuits) has no step: a file of 18 holds none.
         self.format = FORMAT;
     }
 
@@ -4305,6 +4317,8 @@ impl Model {
             Element::Roof(r) => Some(r.level),
             Element::Door(o) | Element::Window(o) => wall_level(o),
             Element::Tag(t) => self.elements.get(t.host).filter(|h| !matches!(h, Element::Tag(_))).and_then(|h| self.level_of(h)),
+            // On the board's level: its plan is where it is drawn.
+            Element::Circuit(c) => self.elements.get(c.panel).filter(|h| matches!(h, Element::Component(_))).and_then(|h| self.level_of(h)),
             // Notes and spot elevations in a level's plan.
             Element::Text(Note { view, .. })
             | Element::Spot(Spot { view, .. })
@@ -6066,6 +6080,7 @@ impl Model {
                 if k == 1 { "s" } else { "" }
             )
         }));
+        out.extend(crate::electrical::circuit_warnings(self));
         out
     }
 
@@ -6333,6 +6348,9 @@ impl Model {
     /// checked with the whole drawing set.
     pub fn check_changed(&self, before: &Model) -> Result<(), String> {
         let Changed::Ids(changed) = self.changed_since(before) else { return self.check_all() };
+        // Circuits are held to each other, their boards and their devices, so all of them are checked, as `check` does before
+        // the elements.
+        crate::electrical::check_circuits(self)?;
         let shared = |e: &Element| {
             matches!(
                 e,
@@ -6502,6 +6520,8 @@ impl Model {
         }
         phasing::check_order(self, &who, e)?;
         match e {
+            // Its rules are held between circuits, boards and devices, in one place: `electrical::check_circuits`.
+            Element::Circuit(_) => {}
             Element::Level(l) => {
                 text(&who, "name", &l.name)?;
                 coord(&format!("{who} elevation"), l.elevation)?;

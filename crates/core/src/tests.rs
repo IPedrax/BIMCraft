@@ -2475,8 +2475,52 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"id": footing, "join": null}),
         json!({"id": 100002, "join": "no"}),
     ];
-    let hostile: Vec<Value> =
-        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(grips).collect();
+    // A distribution board with a circuit of a luminaire, and a second luminaire and an outlet out of it, which the circuit payloads
+    // name: made after the views, so that no id the other payloads use moves.
+    let place = |s: &mut Session, family: &str| {
+        s.execute("component", &json!({"family": family, "at": [1500, 1500]})).ok().and_then(|r| r["id"].as_u64())
+    };
+    let ids = [
+        place(&mut base, "Distribution Board"),
+        place(&mut base, "Ceiling Luminaire"),
+        place(&mut base, "Ceiling Luminaire"),
+        place(&mut base, "Outlet"),
+    ];
+    let mut circuits: Vec<Value> = Vec::new();
+    if let [Some(b), Some(a), Some(l), Some(o)] = ids {
+        let _ = base.execute("panel", &json!({"id": b, "distribution": "127/220 V", "mains": 63, "slots": 24}));
+        if let Some(c) = base.execute("circuit", &json!({"devices": [a], "panel": b})).ok().and_then(|r| r["id"].as_u64()) {
+            circuits = vec![
+                json!({"id": c, "add": [a]}),
+                json!({"id": c, "add": [l]}),
+                json!({"id": c, "add": [b]}),
+                json!({"id": c, "remove": [l, o]}),
+                json!({"id": c, "rating": 1e300}),
+                json!({"id": c, "rating": 5e-324, "poles": 3}),
+                json!({"id": c, "panel": l}),
+                json!({"id": c, "voltage": "220 V", "demand_factor": 0}),
+                json!({"id": c, "wires": {"hot": {"wire_type": "Cu PVC 70 °C", "section": 1e-9}}}),
+                json!({"id": c, "wires": {"hot": {"wire_type": "Nope", "section": -1}, "neutral": 5}}),
+                json!({"id": c, "delete": true, "add": [l]}),
+                json!({"id": c, "delete": true}),
+                json!({"devices": [a, l, o, b], "panel": b}),
+                json!({"devices": [l], "panel": b, "voltage": "220 V", "poles": 3, "number": u32::MAX}),
+                json!({"devices": [l, l], "panel": b, "name": "x".repeat(300)}),
+                json!({"panel": b}),
+                json!({"list": true}),
+                json!({"id": b, "distribution": "nope"}),
+                json!({"ids": [c], "by": [1000, 0]}),
+            ];
+        }
+    }
+    let hostile: Vec<Value> = hostile
+        .into_iter()
+        .chain(detailing.into_iter().map(|(_, p)| p))
+        .chain(slopes)
+        .chain(offsets)
+        .chain(grips)
+        .chain(circuits)
+        .collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -5948,7 +5992,7 @@ fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_i
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch;
     // 13 floors' and flat roofs' shapes; 14 the categories of family components, which the starter view templates name; 15 a roof's slope for each
     // edge and a wall's top offset; 16 dimensions in 3D views and the locks Align leaves; 17 multi-category schedules and Italian projects; 18 a wall or a run
-    // that refuses to join. Nothing in a file of 4
+    // that refuses to join; 19 circuits. Nothing in a file of 4
     // to 7 that holds no notes changes.
     let mut s = Session::new();
     let empty = serde_json::to_value(&*s.model).unwrap();
