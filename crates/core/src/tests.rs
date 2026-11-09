@@ -2397,7 +2397,7 @@ fn hostile_params_never_panic_or_break_the_model() {
     let _ = base.execute("mass", &json!({"boundary": block(), "height": 9000, "lean": [1500, 500]}));
     // Detailing, one of each (detail lines, regions, a group, a repeating detail, a sketch floor, Linework), and the payloads
     // that name them: some for every command, some for the one they are for.
-    let (detailing, targeted) = crate::detail_tests::sweep_payloads(&mut base);
+    let (detailing, mut targeted) = crate::detail_tests::sweep_payloads(&mut base);
     // A section and an elevation of it, after those, so that no id the payloads name moves: their views are drawn too.
     let _ = base.execute("section", &json!({"start": [-1000, 3000], "end": [9000, 3000]}));
     let _ = base.execute("elevation", &json!({"facing": "south"}));
@@ -2462,6 +2462,11 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"ids": [100002, 100003], "top_offset": 1e-300, "top_level": null, "height": -1}),
         wall,
     ];
+    // A sheet holding the plan, last so that no id moves, and the exports of it, of the plan and of the project.
+    let _ = base.execute("sheet", &json!({"name": "Plans"}));
+    let _ = base.execute("place", &json!({"sheet": "A101", "view": "Level 1"}));
+    let exports = temp("sweep-exports");
+    targeted.extend(crate::export_tests::sweep_payloads(&exports));
     let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
@@ -2505,6 +2510,7 @@ fn hostile_params_never_panic_or_break_the_model() {
             draw_plans(&s.model);
         }
     }
+    let _ = std::fs::remove_dir_all(&exports);
     // A family's connectors, each field of one given every hostile value, on a starter family (placed in the base, if the
     // house has any) and on a new one; and far more connectors than a family may hold.
     let values = [

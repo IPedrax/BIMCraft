@@ -47,6 +47,8 @@ pub mod electrical;
 mod electrical_tests;
 pub mod engine;
 pub mod export;
+#[cfg(test)]
+mod export_tests;
 pub mod falls;
 pub mod family;
 pub mod favorites;

@@ -32,7 +32,6 @@ use crate::model::{
 use crate::paint;
 use crate::phasing;
 use crate::rebar;
-use crate::render::Drawing;
 use crate::sketch::{self, SketchLine};
 use crate::texture::{self, Kind, Picture, Texture};
 use crate::units::Units;
@@ -167,7 +166,8 @@ other_files(
     other_files(
         "export",
         "Export",
-        "{format, view?, views?, path?, folder?, name?, folders?: flat|by_format, combine?, overwrite?: false, page?, quality?} \
+        "{format, view?, views?, path?, folder?, name?, folders?: flat|by_format, combine?, overwrite?: false, page?, quality?, \
+         ifc_origin?} \
          writes views, sheets, schedules or the project out as `format` (an id or an extension from `export_formats`: pdf, svg, \
          png, ifc4, glb, csv, xlsx…). `view` (or a list, `views`) is an element's id or GUID, a view's name or a sheet's number; \
          none or `project` is the whole project (model formats only). `path` writes one file there (several views to a PDF go \
@@ -176,7 +176,8 @@ other_files(
          than written over unless `overwrite`; `combine` names the one file each format that holds pages puts them all in. \
          `page`: {paper?: A3|ARCH D|Letter…, size?: [w,h] mm, orientation?: auto|landscape|portrait, margin?: mm, scale?: \
          original|fit|{custom: n}, anchor?: centre|top_left…, colour?: colour|grey|black, hairlines?, dpi?: 150, pages?: [first, \
-         last]}. Returns `written` ({path, format, of}) and `failed` ({of, format, error})",
+         last]}. `ifc_origin` is IFC's, as `save` takes it. Returns `written` ({path, format, of}) and `failed` ({of, format, \
+         error})",
         export,
         Files::Write,
     ),
@@ -3325,14 +3326,9 @@ fn save(s: &mut Session, p: &Value) -> R {
         None => s.path.clone().ok_or_else(|| bad(c, "`path` is required: this project hasn't been saved yet"))?,
     };
     let format = ext(&path);
-    let ifc_origin = match string(c, p, "ifc_origin")? {
-        None => crate::ifc::Origin::Internal,
-        Some(o) => {
-            crate::ifc::Origin::parse(&o).ok_or_else(|| bad(c, format!("`ifc_origin` is {}, not `{o}`", crate::ifc::Origin::NAMES)))?
-        }
-    };
+    let options = crate::export::Options { ifc_origin: ifc_origin(c, p)?, ..Default::default() };
     if format == "ifc" {
-        std::fs::write(&path, crate::ifc::export_at(&s.model, ifc_origin)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        save_through(s, c, "ifc4", &[None], &options, &path)?;
         return Ok(json!({"path": path, "format": "IFC4"}));
     }
     if format == "glb" {
@@ -3341,13 +3337,13 @@ fn save(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"path": path, "format": "glTF 2.0", "elements": out.nodes, "triangles": out.triangles}));
     }
     if format == "pdf" {
+        // Every sheet that can be drawn, a page each on its own paper, in the order of their numbers.
         let seen = crate::link::seen(&s.model);
-        let m = &*seen;
-        let mut sheets: Vec<(&str, Drawing, P2)> = m
+        let mut sheets: Vec<(&str, Id)> = seen
             .elements
             .iter()
             .filter_map(|(id, e)| match e {
-                Element::Sheet(sh) => Some((sh.number.as_str(), sheet::draw(m, *id)?, paper(&sh.size)?)),
+                Element::Sheet(sh) if paper(&sh.size).is_some() && sheet::draw(&seen, *id).is_some() => Some((sh.number.as_str(), *id)),
                 _ => None,
             })
             .collect();
@@ -3355,9 +3351,9 @@ fn save(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, "there are no sheets to print; make one with `sheet` and `place` views on it"));
         }
         sheets.sort_by(|a, b| a.0.cmp(b.0));
-        let pages: Vec<(&Drawing, P2)> = sheets.iter().map(|(_, d, p)| (d, *p)).collect();
-        std::fs::write(&path, pdf::pdf(&pages)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-        return Ok(json!({"path": path, "format": "PDF", "pages": pages.len()}));
+        let ids: Vec<Option<Id>> = sheets.iter().map(|(_, id)| Some(*id)).collect();
+        let pages = save_through(s, c, "pdf", &ids, &options, &path)?;
+        return Ok(json!({"path": path, "format": "PDF", "pages": pages}));
     }
     if matches!(format.as_str(), "svg" | "png") {
         let level = level_param(c, &s.model, &json!({}), "view")?;
@@ -3368,6 +3364,39 @@ fn save(s: &mut Session, p: &Value) -> R {
     crate::autosave::atomic_write(&path, &text).map_err(|e| bad(c, e))?;
     s.path = Some(path.clone());
     Ok(json!({"path": path, "format": "bimcraft"}))
+}
+
+/// `ifc_origin`: where an IFC file's coordinates have their origin; internal where it isn't given.
+fn ifc_origin(c: &str, p: &Value) -> Result<crate::ifc::Origin, String> {
+    match string(c, p, "ifc_origin")? {
+        None => Ok(crate::ifc::Origin::Internal),
+        Some(o) => crate::ifc::Origin::parse(&o).ok_or_else(|| bad(c, format!("`ifc_origin` is {}, not `{o}`", crate::ifc::Origin::NAMES))),
+    }
+}
+
+/// `ids` (none: the project) written as the registry's `format` to the one file at `path`, as `save` writes its exports: the
+/// number of sources written.
+fn save_through(
+    s: &Session,
+    c: &str,
+    format: &str,
+    ids: &[Option<Id>],
+    options: &crate::export::Options,
+    path: &Path,
+) -> Result<usize, String> {
+    let f = s.exports.find(format).map_err(|e| bad(c, e))?.clone();
+    let seen = crate::link::seen(&s.model);
+    let prepared = ids
+        .iter()
+        .map(|id| crate::export::prepare_for(&s.model, &seen, *id, f.as_ref()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| bad(c, e))?;
+    let out = f.write(&prepared, options, &crate::export::Ctx::quiet()).map_err(|e| bad(c, e))?;
+    let [out] = out.as_slice() else {
+        return Err(bad(c, format!("{} made {} files where one was asked for", f.label(), out.len())));
+    };
+    std::fs::write(path, &out.bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    Ok(prepared.len())
 }
 
 /// What `export` is asked to export: an element by id or GUID, a view by name, a sheet by number; none or `project`, the
@@ -3418,6 +3447,7 @@ fn export(s: &mut Session, p: &Value) -> R {
             Some(q) => return Err(bad(c, format!("`quality` is 1 to 100, not {q}"))),
             None => None,
         },
+        ifc_origin: ifc_origin(c, p)?,
     };
     let folders = match read("folders") {
         Some(v) => serde_json::from_value(v).map_err(|e| bad(c, format!("`folders`: {e}")))?,

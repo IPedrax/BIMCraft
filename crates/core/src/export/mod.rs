@@ -190,6 +190,8 @@ pub struct Options {
     pub page: page::PageSetup,
     /// A JPEG's quality, 1 to 100; none, 90.
     pub quality: Option<u8>,
+    /// Where an IFC file's coordinates have their origin: internal (the default), base, survey or shared.
+    pub ifc_origin: crate::ifc::Origin,
 }
 
 /// What a running export is told and asked.
@@ -344,7 +346,11 @@ impl naming::Tokens for ModelTokens<'_> {
         let (date, time) = naming::date_and_time(self.now);
         Some(match name {
             "ProjectName" => m.name.clone(),
-            "ViewName" => kind.map(|k| title(m, self.id, k)).unwrap_or_default(),
+            // A sheet's is its name: its number is `SheetNumber`'s.
+            "ViewName" => match sheet {
+                Some(s) => s.name.clone(),
+                None => kind.map(|k| title(m, self.id, k)).unwrap_or_default(),
+            },
             "ViewType" => kind.map(|k| k.name().to_string()).unwrap_or_default(),
             "SheetNumber" => sheet.map(|s| s.number.clone()).unwrap_or_default(),
             "SheetName" => sheet.map(|s| s.name.clone()).unwrap_or_default(),
