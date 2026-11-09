@@ -32,6 +32,8 @@ pub struct SystemFace {
     pub weight: u16,
     pub italic: bool,
     pub variable: bool,
+    /// How wide it is, 1 (ultra-condensed) to 9 (ultra-expanded), 5 normal: OS/2's `usWidthClass`, or its style's name.
+    pub width: u16,
 }
 
 /// The faces found, by family in lower case.
@@ -151,9 +153,10 @@ fn face(f: &mut std::fs::File, start: u32, path: &Arc<Path>, index: u32) -> Opti
     }
     let name = tables.get(b"name").and_then(|&(o, l)| read_at(f, o, l.min(MAX_NAME)))?;
     let family = name_of(&name, &[16, 1])?;
-    let (mut weight, mut italic) = (400, false);
+    let (mut weight, mut italic, mut width) = (400, false, 5);
     if let Some(os2) = tables.get(b"OS/2").and_then(|&(o, l)| read_at(f, o, l.min(96))) {
         weight = be16(&os2, 4).filter(|w| (1..=1000).contains(w)).unwrap_or(400);
+        width = be16(&os2, 6).filter(|w| (1..=9).contains(w)).unwrap_or(5);
         italic = be16(&os2, 62).is_some_and(|s| s & 0x201 != 0);
     } else if let Some(head) = tables.get(b"head").and_then(|&(o, l)| read_at(f, o, l.min(54))) {
         let style = be16(&head, 44).unwrap_or(0);
@@ -161,7 +164,10 @@ fn face(f: &mut std::fs::File, start: u32, path: &Arc<Path>, index: u32) -> Opti
     }
     let sub = name_of(&name, &[17, 2]).unwrap_or_default().to_lowercase();
     italic |= sub.contains("italic") || sub.contains("oblique");
-    Some(SystemFace { family, path: path.clone(), index, weight, italic, variable: tables.contains_key(b"fvar") })
+    if width == 5 && ["narrow", "condensed", "compressed", "cond"].iter().any(|w| sub.split_whitespace().any(|x| x == *w)) {
+        width = 3;
+    }
+    Some(SystemFace { family, path: path.clone(), index, weight, italic, variable: tables.contains_key(b"fvar"), width })
 }
 
 /// The first of the names `ids` a `name` table has, in English where it says which: Windows' or Unicode's (UTF-16), else

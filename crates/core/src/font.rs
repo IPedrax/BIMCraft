@@ -92,6 +92,9 @@ fn known(c: char) -> Option<Glyph> {
         '²' => &[&[(2, 11), (3, 12), (5, 12), (6, 11), (6, 10), (2, 7), (6, 7)]],
         '°' => &[&[(3, 12), (5, 12), (6, 11), (6, 9), (5, 8), (3, 8), (2, 9), (2, 11), (3, 12)]],
         '±' => &[&[(4, 5), (4, 11)], &[(1, 8), (7, 8)], &[(1, 2), (7, 2)]],
+        // The ordinals (nº, 1ª): a small raised o or a, underlined, as Portuguese and Spanish write them.
+        'º' => &[&[(3, 12), (5, 12), (6, 11), (6, 9), (5, 8), (3, 8), (2, 9), (2, 11), (3, 12)], &[(2, 6), (6, 6)]],
+        'ª' => &[&[(6, 8), (6, 11), (5, 12), (3, 12), (2, 11), (2, 9), (3, 8), (6, 8)], &[(2, 6), (6, 6)]],
         // Cyrillic: the capitals the Latin alphabet shares are its strokes.
         'А' => glyph('A'),
         'В' => glyph('B'),
@@ -256,6 +259,12 @@ mod tests {
         assert_eq!(strokes("living", 0.0, 0.0, 12.0), strokes("LIVING", 0.0, 0.0, 12.0));
         assert_eq!(strokes("ω", 0.0, 0.0, 12.0), strokes("?", 0.0, 0.0, 12.0));
         assert!(strokes(" ", 0.0, 0.0, 12.0).is_empty());
+    }
+
+    #[test]
+    fn ordinals_are_drawn_not_asked_about() {
+        assert!(has('º') && has('ª'));
+        assert_ne!(strokes("º", 0.0, 0.0, 12.0), strokes("?", 0.0, 0.0, 12.0));
     }
 
     #[test]

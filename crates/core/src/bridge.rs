@@ -5,6 +5,7 @@
 //! - `{"token": T, "op": "hello"}` asks which app is there, what project it has open and whether agents may only read it;
 //! - `{"token": T, "op": "execute", "command": "wall", "params": {...}}` runs a command, as `Session::execute` does;
 //! - `{"token": T, "op": "script", "text": "...", "atomic": false}` runs a script (`Session::script`, or all or nothing);
+//!   with `"dry_run": true` it is tried and taken back, and the reply says what it would do (`Session::script_dry_run`);
 //! - `{"token": T, "op": "catalog"}` is the command catalog, with the window's plugin commands (`Session::catalog`).
 //!
 //! `execute` and `script` may say `"read_only": true`: the agent's side asks to only read (`bimcraft-cli mcp --connect
@@ -57,9 +58,11 @@ pub enum Request {
         params: Value,
         read_only: bool,
     },
+    /// `dry_run`: tried and taken back ([`Session::script_dry_run`]), what it would do said and nothing of it kept.
     Script {
         text: String,
         atomic: bool,
+        dry_run: bool,
         read_only: bool,
     },
     /// The command catalog, with the session's plugin commands.
@@ -121,7 +124,12 @@ pub fn parse(line: &str, token: &str) -> Result<Request, Error> {
                 Some(Value::Bool(b)) => *b,
                 Some(_) => return Err(bad("`atomic` is true or false")),
             };
-            Ok(Request::Script { text: text.to_string(), atomic, read_only })
+            let dry_run = match o.get("dry_run") {
+                None | Some(Value::Null) => false,
+                Some(Value::Bool(b)) => *b,
+                Some(_) => return Err(bad("`dry_run` is true or false")),
+            };
+            Ok(Request::Script { text: text.to_string(), atomic, dry_run, read_only })
         }
         Some(other) => Err(Error::Request(format!("unknown op `{other}`: hello, execute, script or catalog"))),
         None => Err(bad("a request has an `op`")),
@@ -168,11 +176,14 @@ fn answer(session: &mut Session, request: &Request, access: Access) -> Result<Va
             session.execute(command, params)
         }
         Request::Catalog => Ok(session.catalog()),
-        Request::Script { text, atomic, .. } => {
+        Request::Script { text, atomic, dry_run, .. } => {
             for (n, line) in text.lines().map(str::trim).enumerate() {
                 if let Some(id) = line.split_whitespace().next().filter(|id| !id.starts_with('#')) {
                     refuse(id).map_err(|e| format!("line {}: {e}", n + 1))?;
                 }
+            }
+            if *dry_run {
+                return session.script_dry_run(text);
             }
             let results = if *atomic { session.script_atomic(text) } else { session.script(text) }?;
             Ok(json!(results))
@@ -267,7 +278,7 @@ mod tests {
         );
         assert_eq!(
             parse(&line(json!({"token": T, "op": "script", "text": "inspect", "atomic": true})), T),
-            Ok(Request::Script { text: "inspect".into(), atomic: true, read_only: false })
+            Ok(Request::Script { text: "inspect".into(), atomic: true, dry_run: false, read_only: false })
         );
         // The token first: a request without it, or with another, says nothing else.
         for request in [
@@ -344,14 +355,20 @@ mod tests {
         // A script with one such line runs none of its lines, and says which.
         let text = "wall {\"points\": [[0, 5000], [4000, 5000]]}\n# a comment\nnew {}\n";
         for atomic in [false, true] {
-            let e = run(&mut s, &Request::Script { text: text.into(), atomic, read_only: false }, Access::Edit).unwrap_err();
+            let e =
+                run(&mut s, &Request::Script { text: text.into(), atomic, dry_run: false, read_only: false }, Access::Edit).unwrap_err();
             assert!(e.starts_with("line 3: ") && e.contains("`new`"), "{e}");
         }
         assert!(std::sync::Arc::ptr_eq(&kept, &s.model), "nothing ran");
         // The rest of a script runs, and the reply is each line's.
         let ok = run(
             &mut s,
-            &Request::Script { text: "wall {\"points\": [[0, 5000], [4000, 5000]]}\ninspect".into(), atomic: true, read_only: false },
+            &Request::Script {
+                text: "wall {\"points\": [[0, 5000], [4000, 5000]]}\ninspect".into(),
+                atomic: true,
+                dry_run: false,
+                read_only: false,
+            },
             Access::Edit,
         )
         .unwrap();
@@ -367,7 +384,7 @@ mod tests {
         // The hello says so, and an edit, an undo, a script holding one, by any name, are refused and name the Settings box.
         assert_eq!(run(&mut s, &Request::Hello, Access::Read).unwrap()["read_only"], true);
         assert_eq!(run(&mut s, &Request::Hello, Access::Edit).unwrap()["read_only"], false);
-        let script = |text: &str, atomic| Request::Script { text: text.into(), atomic, read_only: false };
+        let script = |text: &str, atomic| Request::Script { text: text.into(), atomic, dry_run: false, read_only: false };
         for request in [
             wall(5000),
             execute("WA", json!({"points": [[0, 5000], [4000, 5000]]})),
@@ -403,12 +420,32 @@ mod tests {
             matches!(parse(&line(json!({"token": T, "op": "execute", "command": "x", "read_only": "yes"})), T), Err(Error::Request(why)) if why.contains("`read_only`"))
         );
         let script = parse(&line(json!({"token": T, "op": "script", "text": "inspect", "read_only": true})), T).unwrap();
-        assert_eq!(script, Request::Script { text: "inspect".into(), atomic: false, read_only: true });
+        assert_eq!(script, Request::Script { text: "inspect".into(), atomic: false, dry_run: false, read_only: true });
         let ask = Request::Execute { command: "wall".into(), params: json!({"points": [[0, 0], [4000, 0]]}), read_only: true };
         let e = run(&mut s, &ask, Access::Edit).unwrap_err();
         assert!(e.contains("read-only for agents") && e.contains("--read-only"), "it says the agent's side asked: {e}");
         assert_eq!(walls(&s), 0);
         assert!(run(&mut s, &script, Access::Edit).is_ok());
+    }
+
+    #[test]
+    fn a_dry_run_says_what_a_script_would_do_even_where_agents_only_read_and_keeps_nothing() {
+        let mut s = Session::new();
+        let text = "wall {\"points\": [[0, 5000], [4000, 5000]]}";
+        let request = parse(&line(json!({"token": T, "op": "script", "text": text, "dry_run": true})), T).unwrap();
+        assert_eq!(request, Request::Script { text: text.into(), atomic: false, dry_run: true, read_only: false });
+        assert!(
+            matches!(parse(&line(json!({"token": T, "op": "script", "text": "x", "dry_run": 1})), T), Err(Error::Request(why)) if why.contains("`dry_run`"))
+        );
+        for access in [Access::Edit, Access::Read] {
+            let r = run(&mut s, &request, access).unwrap();
+            assert_eq!(r["made"][0]["category"], "wall", "{r}");
+            assert_eq!(walls(&s), 0, "nothing of it stays");
+            assert!(s.history().is_empty());
+        }
+        // A line that would replace the project stops it as it stops any script.
+        let replace = Request::Script { text: "new".into(), atomic: false, dry_run: true, read_only: false };
+        assert!(run(&mut s, &replace, Access::Edit).unwrap_err().contains("replace the project"));
     }
 
     #[test]

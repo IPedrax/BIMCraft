@@ -229,7 +229,7 @@ pub struct Drawing {
     pub(crate) weights: Weights,
     /// The element being drawn now, and the part of it.
     owner: Option<Id>,
-    part: Part,
+    pub(crate) part: Part,
     /// How big annotation is drawn, times the pixels it is drawn in: see [`annotation`].
     pub(crate) k: f32,
     /// How many times [`sheet::DENSITY`] pixels a mm of the paper the view stands for is, so the pens' size: `k`, not
@@ -446,7 +446,7 @@ impl Drawing {
 
     /// `text` centred on `(x, y)` px, capitals `height` px tall, turned `angle` radians clockwise
     /// on screen (y runs down).
-    fn text_turned(&mut self, text: &str, (x, y): (f32, f32), height: f32, angle: f32, color: Rgb) {
+    pub(crate) fn text_turned(&mut self, text: &str, (x, y): (f32, f32), height: f32, angle: f32, color: Rgb) {
         let (s, c) = angle.sin_cos();
         let w = font::width(text, height);
         let part = std::mem::replace(&mut self.part, Part::Text);
@@ -571,21 +571,22 @@ fn cut_outlines(m: &Model, elements: &[(Id, &Element)], z: f64, look: &Look, ind
         .filter(|(id, _)| look.shows(*id))
         .filter_map(|&(id, e)| match e {
             Element::Wall(w) if m.spans(w, z) => Some((id, walls::outline_in(m, id, index))),
-            _ => stands(m, e).filter(|(_, bottom, top)| *bottom <= z && z < *top).map(|(outline, ..)| (id, outline)),
+            _ => stands(m, id, e, index).filter(|(_, bottom, top)| *bottom <= z && z < *top).map(|(outline, ..)| (id, outline)),
         })
         .collect()
 }
 
-/// What a column (a structural one, a footing) or a run (a beam, a strip footing) takes in plan, and the heights it reaches:
-/// its outline, its bottom and its top.
-fn stands(m: &Model, e: &Element) -> Option<(Vec<P2>, f64, f64)> {
+/// What a column (a structural one, a footing) or a run (a beam, a strip footing) `id` of `e` takes in plan, and the
+/// heights it reaches: its outline, its bottom and its top. A run's outline is its joined one, through `index`, as a
+/// wall's is in a plan.
+fn stands(m: &Model, id: Id, e: &Element, index: Option<&walls::Index>) -> Option<(Vec<P2>, f64, f64)> {
     if let Some(col) = e.column() {
         let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
         return Some((m.column_outline(e), bottom, top));
     }
     let g = m.run_geom(e)?;
     let (bottom, top) = g.z_span();
-    Some((g.footprint(), bottom, top))
+    Some((crate::runs::outline_in(m, id, index), bottom, top))
 }
 
 /// The walls and columns a plan sees below its cut plane, down to its view depth: their outlines,
@@ -595,6 +596,8 @@ fn seen_below(m: &Model, elements: &[(Id, &Element)], r: &PlanRange, look: &Look
         .iter()
         .filter(|(id, _)| look.shows(*id))
         .filter_map(|&(id, e)| {
+            // A footing or a run hangs under the level it is drawn on, its top flush with the view's bottom: that is seen.
+            let flush = if matches!(e, Element::Footing(_) | crate::model::run_arm!(_)) { TOL } else { 0.0 };
             let (outline, top) = match e {
                 Element::Wall(w) => {
                     let top = m.top_z(w);
@@ -605,13 +608,20 @@ fn seen_below(m: &Model, elements: &[(Id, &Element)], r: &PlanRange, look: &Look
                     }
                     (walls::outline_in(m, id, index), top)
                 }
+                _ if e.run().is_some() => {
+                    let top = m.run_geom(e)?.z_span().1;
+                    // Joining a run scans its neighbours too: reject what the plan doesn't see first.
+                    if !(r.depth - flush < top && top <= r.cut) {
+                        return None;
+                    }
+                    let (outline, _, top) = stands(m, id, e, index)?;
+                    (outline, top)
+                }
                 _ => {
-                    let (outline, _, top) = stands(m, e)?;
+                    let (outline, _, top) = stands(m, id, e, index)?;
                     (outline, top)
                 }
             };
-            // A footing or a run hangs under the level it is drawn on, its top flush with the view's bottom: that is seen.
-            let flush = if matches!(e, Element::Footing(_) | crate::model::run_arm!(_)) { TOL } else { 0.0 };
             (r.depth - flush < top && top <= r.cut).then_some((id, outline, top))
         })
         .collect()
@@ -732,7 +742,7 @@ fn plan_filter<'a>(
     // What reaches from the view depth (and a hair under it: a footing's or a run's top flush with it) to the range's top.
     let reaches = |bottom: f64, top: f64| bottom <= r.top && top > r.depth - TOL;
     candidates
-        .filter(|(_, e)| match e {
+        .filter(|(id, e)| match e {
             Element::Wall(w) => m.base_z(w) <= r.cut && m.top_z(w) > r.depth - TOL,
             Element::Door(o) | Element::Window(o) => m.wall(o.host).is_some_and(|w| m.spans(w, r.cut)),
             Element::Component(c) => {
@@ -754,7 +764,7 @@ fn plan_filter<'a>(
             | Element::Spot(_)
             | Element::DetailGroup(_)
             | Element::RepeatingDetail(_) => m.annotation_in(e, key),
-            _ if e.column().is_some() => stands(m, e).is_none_or(|(_, bottom, top)| reaches(bottom, top)),
+            _ if e.column().is_some() => stands(m, *id, e, None).is_none_or(|(_, bottom, top)| reaches(bottom, top)),
             _ if e.run().is_some() => m.run_geom(e).is_none_or(|g| {
                 let (bottom, top) = g.z_span();
                 reaches(bottom, top)
@@ -1132,9 +1142,7 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
                 }
             }
             Element::Railing(rl) if m.level_of(e) == Some(level) => extent.extend(stairs::railing(m, rl).into_iter().map(|(p, _)| p)),
-            crate::model::run_arm!(_) if m.level_of(e) == Some(level) => {
-                extent.extend(m.run_geom(e).map(|g| g.footprint()).unwrap_or_default())
-            }
+            crate::model::run_arm!(_) if m.level_of(e) == Some(level) => extent.extend(crate::runs::outline_in(m, *id, index)),
             Element::Roof(r) if r.level == level || m.level_above(level) == Some(r.level) => extent.extend(m.roof_outline(r)),
             Element::Text(n) if m.annotation_in(e, key) => extent.extend([Some(n.at), n.leader].into_iter().flatten()),
             Element::DetailLine(l) if m.annotation_in(e, key) => extent.extend(l.curve.points()),
@@ -1174,7 +1182,10 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => d.line(&m.column_outline(e), Pen::HEAVY, INK, true),
         crate::model::run_arm!(_) => {
             if let Some(g) = m.run_geom(e) {
-                d.line(&g.footprint(), Pen::HEAVY, INK, true)
+                // What is already in the model joins as the plan draws it; an element a tool previews before
+                // creating it has no neighbours yet and takes its plain rectangle.
+                let ring = if m.elements.get(id) == Some(e) { crate::runs::outline(m, id) } else { g.footprint() };
+                d.line(&ring, Pen::HEAVY, INK, true)
             }
         }
         Element::Component(c) => {
@@ -2535,7 +2546,7 @@ fn cad_imports(d: &mut Drawing, m: &Model, key: crate::ids::Guid, level: crate::
             }
             let color = cad.color(ent, ci.colors).unwrap_or(INK);
             match &ent.shape {
-                Shape::Text { at, height, angle, text, align } => {
+                Shape::Text { at, height, angle, text, align, .. } => {
                     let px = (height * k) as f32;
                     if px < 1.0 {
                         continue;
@@ -2737,7 +2748,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             if !matches!(e, Element::Beam(_)) && e.column().is_none() {
                 continue;
             }
-            let Some((outline, bottom, _)) = stands(m, e) else { continue };
+            let Some((outline, bottom, _)) = stands(m, id, e, index) else { continue };
             if !(range.cut < bottom && bottom <= range.top) || outline.is_empty() {
                 continue;
             }
@@ -2946,8 +2957,8 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             }
             // Overhead too: a run over the cut plane and under the view range's top, dashed.
             crate::model::run_arm!(_) => {
-                if let Some(g) = m.run_geom(e).filter(|g| range.cut < g.z_span().0 && g.z_span().0 <= range.top) {
-                    let pts = g.footprint().iter().map(|p| d.view.px(*p)).collect();
+                if m.run_geom(e).is_some_and(|g| range.cut < g.z_span().0 && g.z_span().0 <= range.top) {
+                    let pts = crate::runs::outline_in(m, id, index).iter().map(|p| d.view.px(*p)).collect();
                     d.stroke(pts, BY_CATEGORY, INK, Some(vec![10.0, 5.0]), true);
                 }
             }
@@ -4102,8 +4113,27 @@ pub(crate) fn note(d: &mut Drawing, m: &Model, n: &Note) {
     let t = m.text_types.get(&n.type_name).cloned().unwrap_or_default();
     let layout = note_layout(m, n);
     let frame = d.note_frame(n);
-    let f = |(x, y): (f32, f32)| frame.px((f64::from(x), f64::from(y)));
     let color = Rgb(t.color[0], t.color[1], t.color[2]);
+    lettering(d, &layout, frame, color);
+    let off = if t.border { t.border_offset } else { 0.4 * t.size };
+    if t.border {
+        let [l, top, r, b] = layout.frame(t.border_offset);
+        let ring = [(l, top), (r, top), (r, b), (l, b)].into_iter().map(|p| frame.px(p)).collect();
+        d.stroke(ring, t.border_pen, color, None, true);
+    }
+    if let Some(to) = n.leader {
+        // From the side nearer where it points.
+        let to = d.view.px(to);
+        let right = frame.mm(to).0 > layout.width / 2.0;
+        let from = frame.px((if right { layout.width + off } else { -off }, t.size / 2.0));
+        d.stroke(vec![from, to], Pen::PROJECTION, INK, None, false);
+        arrow(d, from, to);
+    }
+}
+
+/// `layout` lettered where `frame` puts it, in `color`: a note's text, or a title block's.
+pub(crate) fn lettering(d: &mut Drawing, layout: &crate::text::Layout, frame: NoteFrame, color: Rgb) {
+    let f = |(x, y): (f32, f32)| frame.px((f64::from(x), f64::from(y)));
     let k = frame.k;
     let part = std::mem::replace(&mut d.part, Part::Text);
     let drawn = layout.drawn();
@@ -4123,20 +4153,11 @@ pub(crate) fn note(d: &mut Drawing, m: &Model, n: &Note) {
         });
     }
     d.part = part;
-    let off = if t.border { t.border_offset } else { 0.4 * t.size };
-    if t.border {
-        let [l, top, r, b] = layout.frame(t.border_offset);
-        let ring = [(l, top), (r, top), (r, b), (l, b)].into_iter().map(|p| frame.px(p)).collect();
-        d.stroke(ring, t.border_pen, color, None, true);
-    }
-    if let Some(to) = n.leader {
-        // From the side nearer where it points.
-        let to = d.view.px(to);
-        let right = frame.mm(to).0 > layout.width / 2.0;
-        let from = frame.px((if right { layout.width + off } else { -off }, t.size / 2.0));
-        d.stroke(vec![from, to], Pen::PROJECTION, INK, None, false);
-        arrow(d, from, to);
-    }
+}
+
+/// Where lettering with its top left at paper point `top_left`, turned `angle` degrees counter-clockwise, lands in `d`.
+pub(crate) fn frame_at(d: &Drawing, top_left: P2, angle: f64) -> NoteFrame {
+    NoteFrame { at: d.view.px(top_left), k: d.px(sheet::DENSITY as f32), angle: -(angle.to_radians() as f32) }
 }
 
 /// A spot elevation's mark at pixel `at`: a triangle standing on the point, and the height it
@@ -5135,8 +5156,8 @@ mod tests {
         assert!(!d.owners.contains(&Some(over)), "hidden by the ceiling under it");
         assert!(d.owners.contains(&Some(outside)), "over no ceiling, seen");
         // Its outline, not its centre line: an edge picks it, its middle doesn't.
-        let half = s.model.elements.values().find_map(|e| match e {
-            Element::Beam(_) => stands(&s.model, e).map(|(o, ..)| {
+        let half = s.model.elements.iter().find_map(|(id, e)| match e {
+            Element::Beam(_) => stands(&s.model, *id, e, None).map(|(o, ..)| {
                 let ys = o.iter().map(|p| p.1);
                 (ys.clone().fold(f64::NEG_INFINITY, f64::max) - ys.fold(f64::INFINITY, f64::min)) / 2.0
             }),
