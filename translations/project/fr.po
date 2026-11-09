@@ -455,11 +455,11 @@ msgstr "Pièce"
 msgid "Room Schedule"
 msgstr "Nomenclature des pièces"
 
-#: crates/core/src/sheet.rs:265
+#: crates/core/src/sheet.rs:321
 msgid "SCALE"
 msgstr "ÉCHELLE"
 
-#: crates/core/src/sheet.rs:267
+#: crates/core/src/sheet.rs:323
 msgid "SCALE AS INDICATED"
 msgstr "ÉCHELLE INDIQUÉE"
 
@@ -580,7 +580,7 @@ msgstr "Carrelage 300"
 msgid "Timber"
 msgstr "Bois"
 
-#: crates/core/src/sheet.rs:204
+#: crates/core/src/sheet.rs:260
 msgid "Total"
 msgstr "Total"
 

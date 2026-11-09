@@ -2681,6 +2681,48 @@ fn a_plans_view_range_is_in_its_properties() {
 }
 
 #[test]
+fn place_view_menu_keeps_long_view_titles_separate_on_the_sheet() {
+    let names = ["A".repeat(80), "B".repeat(80)];
+    let script = format!(
+        r#"wall {{"points":[[0,0],[1000,0],[1000,1000],[0,1000]],"closed":true}}
+        crop {{"view":"Level 1","region":[[0,0],[1000,1000]]}}
+        duplicate_view {{"view":"Level 1","name":"{}"}}
+        duplicate_view {{"view":"Level 1","name":"{}"}}"#,
+        names[0], names[1]
+    );
+    let mut h = app(&script);
+    press(&mut h, "View");
+    press(&mut h, "Sheet");
+    for name in &names {
+        press(&mut h, "View");
+        press(&mut h, "Place View");
+        press(&mut h, &format!("Floor Plan: {name}"));
+    }
+    let viewports = ids(&h, "viewport");
+    assert_eq!(viewports.len(), 2);
+    let Sheet::Paper(id) = h.state().sheet else { panic!("placing a view must keep the sheet open") };
+    let d = bimcraft_core::sheet::draw(&h.state().session.model, id).unwrap();
+    let bounds: Vec<_> = viewports
+        .iter()
+        .map(|id| {
+            d.prims
+                .iter()
+                .zip(&d.owners)
+                .filter(|(_, owner)| **owner == Some(*id))
+                .flat_map(|(prim, _)| prim.points())
+                .fold([f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY], |b, (x, y)| {
+                    [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)]
+                })
+        })
+        .collect();
+    let (a, b) = (bounds[0], bounds[1]);
+    assert!(
+        a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1],
+        "the sheet opened through Place View must show separate titles: {a:?}, {b:?}"
+    );
+}
+
+#[test]
 fn place_view_puts_schedules_and_the_3d_view_on_sheets() {
     let mut h = app_at(&format!("{BOX}\nroom {{\"point\": [4000, 3000], \"name\": \"Hall\"}}"), 0.05);
     press(&mut h, "View");

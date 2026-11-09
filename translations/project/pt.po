@@ -455,11 +455,11 @@ msgstr "Ambiente"
 msgid "Room Schedule"
 msgstr "Tabela de ambientes"
 
-#: crates/core/src/sheet.rs:265
+#: crates/core/src/sheet.rs:321
 msgid "SCALE"
 msgstr "ESCALA"
 
-#: crates/core/src/sheet.rs:267
+#: crates/core/src/sheet.rs:323
 msgid "SCALE AS INDICATED"
 msgstr "ESCALA CONFORME INDICADO"
 
@@ -580,7 +580,7 @@ msgstr "Ladrilho 300"
 msgid "Timber"
 msgstr "Madeira"
 
-#: crates/core/src/sheet.rs:204
+#: crates/core/src/sheet.rs:260
 msgid "Total"
 msgstr "Total"
 

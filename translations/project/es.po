@@ -455,11 +455,11 @@ msgstr "Habitación"
 msgid "Room Schedule"
 msgstr "Tabla de habitaciones"
 
-#: crates/core/src/sheet.rs:265
+#: crates/core/src/sheet.rs:321
 msgid "SCALE"
 msgstr "ESCALA"
 
-#: crates/core/src/sheet.rs:267
+#: crates/core/src/sheet.rs:323
 msgid "SCALE AS INDICATED"
 msgstr "ESCALA SEGÚN SE INDICA"
 
@@ -580,7 +580,7 @@ msgstr "Baldosa 300"
 msgid "Timber"
 msgstr "Madera"
 
-#: crates/core/src/sheet.rs:204
+#: crates/core/src/sheet.rs:260
 msgid "Total"
 msgstr "Total"
 

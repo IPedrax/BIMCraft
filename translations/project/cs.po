@@ -455,11 +455,11 @@ msgstr "Místnost"
 msgid "Room Schedule"
 msgstr "Výkaz místností"
 
-#: crates/core/src/sheet.rs:265
+#: crates/core/src/sheet.rs:321
 msgid "SCALE"
 msgstr "MĚŘÍTKO"
 
-#: crates/core/src/sheet.rs:267
+#: crates/core/src/sheet.rs:323
 msgid "SCALE AS INDICATED"
 msgstr "MĚŘÍTKO DLE VÝKRESŮ"
 
@@ -580,7 +580,7 @@ msgstr "Dlažba 300"
 msgid "Timber"
 msgstr "Dřevo"
 
-#: crates/core/src/sheet.rs:204
+#: crates/core/src/sheet.rs:260
 msgid "Total"
 msgstr "Celkem"
 

@@ -2,6 +2,14 @@
 
 Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the map, and this file is read when the area is touched.
 
+`place` without `at` keeps the complete view and its title, rule and scale clear of other viewports,
+the sheet border and the built-in title block, using the active technical standard's margins. It
+keeps the usual middle for the first view when it fits, then tries beside or below existing views
+and the paper's corners. Long titles reserve their actual lettering width; schedules keep their
+title inside their table. When no candidate fits, placement continues right of the other views,
+off the paper without stacking them. Give `at` to choose a position yourself; existing viewports
+are not rearranged.
+
 A view's scale, detail level and visual style are in its `Graphics` (`scale`, `detail`, `style`; the `scale`, `detail` and `visual_style`
 commands, which the view control bar's menus, Properties' View Scale, Scale Value 1:, Detail Level and Visual Style, and WF, HL and SD run). A
 view template controls them as groups of their own (`Group::Scale`, `Detail`, `Style`, in `Graphics::resolved`, `check_followed` and the three

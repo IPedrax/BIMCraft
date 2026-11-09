@@ -895,7 +895,7 @@ other_files(
         &[],
         "{sheet: number or id, view: a level's, section's, elevation's, schedule's or 3D view's name or id, at?: [x, y], \
          scale?, azimuth?, elevation?} puts the view on the sheet at 1 : `scale` (by default the view's own, see `scale`, 1 : 100 when it has none of its own; a schedule keeps its size), \
-         its middle `at` mm from the paper's bottom left corner (by default right of the views there, or in the middle); a \
+         its middle `at` mm from the paper's bottom left corner (by default in a free spot, titles included; right of all views when full); a \
          view goes on one sheet. A schedule (Room Schedule, Door Schedule…) or the 3D view ({3D}, seen from `azimuth` and \
          `elevation` degrees) comes to be as it's first placed",
         place,

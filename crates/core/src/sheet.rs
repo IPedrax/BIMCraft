@@ -93,9 +93,28 @@ fn frame_in(m: &Model, work: &Work, id: impl Key) -> Option<(View, (f32, f32))> 
     Some((view, (x - view.width as f32 / 2.0, y - view.height as f32 / 2.0)))
 }
 
-/// Where view `view` at 1 : `scale` goes on sheet `sheet` by default: right of the views on it,
-/// else in the middle of the paper above the title box; when there's no room left on the right,
-/// in the paper's top right corner.
+/// Clearance between automatically placed views and the title block, mm.
+const GAP: f64 = 10.0;
+/// Room under a view for its name, rule and scale, mm. Schedules have their title inside the table.
+const UNDER: f64 = 15.0;
+
+/// The complete view and title on paper: left, bottom, right and top relative to the view's centre.
+fn footprint(m: &Model, view: impl Key, scale: f64) -> Option<[f64; 4]> {
+    let P2(w, h) = size(m, view, scale)?;
+    if matches!(m.elements.get(view), Some(Element::Schedule(_))) {
+        return Some([-w / 2.0, -h / 2.0, w / 2.0, h / 2.0]);
+    }
+    let name = m.view_name(view).unwrap_or_default();
+    // Lettering uppercases the name while drawing it (a character may expand to more than one).
+    let name_width = f64::from(font::width(&name.to_uppercase(), (3.0 * DENSITY) as f32)) / DENSITY;
+    let rule = f64::from(font::width(name, (3.0 * DENSITY) as f32)) / DENSITY + 10.0;
+    let scale_width = f64::from(font::width(&m.units.scale(scale), (2.0 * DENSITY) as f32)) / DENSITY;
+    Some([-w / 2.0, -h / 2.0 - UNDER, (w / 2.0).max(-w / 2.0 + ROOM + name_width.max(rule).max(scale_width)), h / 2.0])
+}
+
+/// Where view `view` at 1 : `scale` goes on sheet `sheet` by default: in its usual middle when
+/// free, otherwise beside or below another view or in a corner, clear of their titles and the
+/// title block. When no candidate fits, continue right of all the views, off the paper without stacking.
 pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
     let sheet = m.guid(sheet);
     let sh = m.sheet(sheet);
@@ -103,22 +122,59 @@ pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
     let paper = sh.and_then(|s| paper(&s.size)).unwrap_or(P2(420.0, 297.0));
     let margins = m.standard().sheet_margins(size_name);
     let middle = P2((margins.left + paper.0 - margins.right) / 2.0, (margins.bottom + margins.title_height + paper.1 - margins.top) / 2.0);
-    let taken = size(m, view, scale).unwrap_or(P2(0.0, 0.0));
-    let right = m
+    let taken = footprint(m, view, scale).unwrap_or([0.0; 4]);
+    let at = |b: [f64; 4], p: P2| [b[0] + p.0, b[1] + p.1, b[2] + p.0, b[3] + p.1];
+    let placed: Vec<[f64; 4]> = m
         .on_sheet(sheet)
         .into_iter()
         .filter_map(|id| match m.elements.get(id) {
-            Some(Element::Viewport(v)) if v.sheet == sheet => Some(v.at.0 + size(m, v.view, v.scale)?.0 / 2.0),
+            Some(Element::Viewport(v)) if v.sheet == sheet => Some(at(footprint(m, v.view, v.scale)?, v.at)),
             _ => None,
         })
-        .fold(None, |r: Option<f64>, x| Some(r.map_or(x, |r| r.max(x))));
-    // Inside the border, 5 mm clear of it.
-    let (east, north) = (paper.0 - margins.right - 5.0, paper.1 - margins.top - 5.0);
-    match right {
-        None => middle,
-        Some(r) if r + 10.0 + taken.0 <= east => P2(r + 10.0 + taken.0 / 2.0, middle.1),
-        Some(_) => P2(east - taken.0 / 2.0, north - taken.1 / 2.0),
+        .collect();
+    // Inside the active standard's border, 5 mm clear of it.
+    let (west, south, east, north) = (margins.left + 5.0, margins.bottom + 5.0, paper.0 - margins.right - 5.0, paper.1 - margins.top - 5.0);
+    let title = [
+        paper.0 - margins.right - margins.title_width.min(paper.0 - margins.left - margins.right),
+        margins.bottom,
+        paper.0 - margins.right,
+        margins.bottom + margins.title_height,
+    ];
+    // Candidate coordinates subtract and add half sizes; tolerate only their floating-point roundoff.
+    let eps = 1e-9;
+    let apart = |a: [f64; 4], b: &[f64; 4]| {
+        a[2] + GAP <= b[0] + eps || b[2] + GAP <= a[0] + eps || a[3] + GAP <= b[1] + eps || b[3] + GAP <= a[1] + eps
+    };
+    let free = |p: &P2| {
+        let b = at(taken, *p);
+        b[0] + eps >= west
+            && b[1] + eps >= south
+            && b[2] <= east + eps
+            && b[3] <= north + eps
+            && placed.iter().chain([&title]).all(|o| apart(b, o))
+    };
+    if placed.is_empty() && free(&middle) {
+        return middle;
     }
+    let right = placed.iter().map(|b| b[2]).reduce(f64::max).unwrap_or(east);
+    let beside = P2(right + GAP - taken[0], middle.1);
+    if free(&beside) {
+        return beside;
+    }
+    let mut spots: Vec<P2> = placed
+        .iter()
+        .chain([&title])
+        .flat_map(|o| [P2(o[2] + GAP - taken[0], o[3] - taken[3]), P2(o[0] - taken[0], o[1] - GAP - taken[3])])
+        .chain([
+            P2(west - taken[0], north - taken[3]),
+            P2(west - taken[0], south - taken[1]),
+            P2(east - taken[2], north - taken[3]),
+            P2(east - taken[2], south - taken[1]),
+        ])
+        .collect();
+    // Prefer the topmost free candidate, then the leftmost.
+    spots.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.total_cmp(&b.0)));
+    spots.into_iter().find(free).unwrap_or(beside)
 }
 
 /// `text` with its left end at paper point `at` (mm), capitals `height` mm tall.
