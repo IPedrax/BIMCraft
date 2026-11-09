@@ -105,3 +105,22 @@ fn a_dry_run_of_something_that_changes_no_element_says_so() {
     let r = s.script_dry_run("inspect").unwrap();
     assert_eq!(r["other_changes"], false);
 }
+
+#[test]
+fn a_dry_run_looks_at_each_command_as_it_runs_with_the_params_it_is_given() {
+    // A file a command reaches only deep in its params, which no look at the line's first word finds: refused as the line
+    // comes, before it runs, and the line before it is taken back with the rest.
+    let mut s = house();
+    let (model, history) = (Arc::clone(&s.model), s.history());
+    let picture = std::env::temp_dir().join(format!("bimcraft-dry-run-texture-{}.png", std::process::id()));
+    let text = format!(
+        "level {{\"elevation\": 3000}}\nmaterial {{\"name\": \"Brick\", \"texture\": {{\"path\": {}}}}}",
+        json!(picture)
+    );
+    let e = s.script_dry_run(&text).unwrap_err();
+    assert!(e.contains("line 2") && e.contains("a file") && e.contains("dry run"), "{e}");
+    assert!(Arc::ptr_eq(&s.model, &model));
+    assert_eq!(s.history(), history);
+    // And once the dry run is over, the session runs every command again.
+    s.execute("level", &json!({"elevation": 3000})).unwrap();
+}

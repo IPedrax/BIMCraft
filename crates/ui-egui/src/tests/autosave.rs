@@ -41,14 +41,14 @@ fn background_autosave_keeps_the_editing_session_dirty_and_moves_out_of_temp_on_
     until(&mut h, |h| h.state().autosave.discovering == 0);
     h.state_mut().session.execute("wall", &json!({"points": [[0,0],[4000,0]]})).unwrap();
     let model = Arc::clone(&h.state().session.model);
-    let history = h.state().session.history();
+    let history: Vec<String> = h.state().session.history().into_iter().map(str::to_string).collect();
     due(&mut h);
     until(&mut h, |h| !h.state().autosave.busy);
     let temp = h.state().autosave.active.clone().unwrap();
     assert!(temp.starts_with(dir.path().join("temp")) && temp.exists());
     assert!(h.state().dirty());
     assert!(Arc::ptr_eq(&model, &h.state().session.model));
-    assert_eq!(history, h.state().session.history());
+    assert_eq!(history, h.state().session.history().into_iter().map(str::to_string).collect::<Vec<_>>());
     let project = dir.path().join("house.bimcraft");
     assert!(h.state_mut().save_to(&project));
     until(&mut h, |_| !temp.exists());

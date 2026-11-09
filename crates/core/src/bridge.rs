@@ -5,7 +5,8 @@
 //! - `{"token": T, "op": "hello"}` asks which app is there, what project it has open and whether agents may only read it;
 //! - `{"token": T, "op": "execute", "command": "wall", "params": {...}}` runs a command, as `Session::execute` does;
 //! - `{"token": T, "op": "script", "text": "...", "atomic": false}` runs a script (`Session::script`, or all or nothing);
-//!   with `"dry_run": true` it is tried and taken back, and the reply says what it would do (`Session::script_dry_run`).
+//!   with `"dry_run": true` it is tried and taken back, and the reply says what it would do (`Session::script_dry_run`);
+//! - `{"token": T, "op": "catalog"}` is the command catalog, with the window's plugin commands (`Session::catalog`).
 //!
 //! `execute` and `script` may say `"read_only": true`: the agent's side asks to only read (`bimcraft-cli mcp --connect
 //! --read-only`). The reply is `{"ok": value}` or `{"error": text}`. The token is made when the window starts and kept in a file
@@ -64,6 +65,8 @@ pub enum Request {
         dry_run: bool,
         read_only: bool,
     },
+    /// The command catalog, with the session's plugin commands.
+    Catalog,
 }
 
 /// Why a request line was not taken.
@@ -113,6 +116,7 @@ pub fn parse(line: &str, token: &str) -> Result<Request, Error> {
             };
             Ok(Request::Execute { command: command.to_string(), params, read_only })
         }
+        Some("catalog") => Ok(Request::Catalog),
         Some("script") => {
             let text = o.get("text").and_then(Value::as_str).ok_or_else(|| bad("`script` needs `text`, a string"))?;
             let atomic = match o.get("atomic") {
@@ -127,7 +131,7 @@ pub fn parse(line: &str, token: &str) -> Result<Request, Error> {
             };
             Ok(Request::Script { text: text.to_string(), atomic, dry_run, read_only })
         }
-        Some(other) => Err(Error::Request(format!("unknown op `{other}`: hello, execute or script"))),
+        Some(other) => Err(Error::Request(format!("unknown op `{other}`: hello, execute, script or catalog"))),
         None => Err(bad("a request has an `op`")),
     }
 }
@@ -171,6 +175,7 @@ fn answer(session: &mut Session, request: &Request, access: Access) -> Result<Va
             refuse(command)?;
             session.execute(command, params)
         }
+        Request::Catalog => Ok(session.catalog()),
         Request::Script { text, atomic, dry_run, .. } => {
             for (n, line) in text.lines().map(str::trim).enumerate() {
                 if let Some(id) = line.split_whitespace().next().filter(|id| !id.starts_with('#')) {
@@ -320,6 +325,9 @@ mod tests {
         // hello says what is there.
         let hello = run(&mut s, &Request::Hello, Access::Edit).unwrap();
         assert_eq!((hello["app"].as_str(), hello["project"].as_str()), (Some("bimcraft"), Some(s.model.name.as_str())));
+        // catalog is the engine's list, and the window's plugin commands with it.
+        let catalog = run(&mut s, &Request::Catalog, Access::Edit).unwrap();
+        assert!(catalog.as_array().is_some_and(|list| list.iter().any(|c| c["id"] == json!("wall"))));
         // undo is a step like the others.
         run(&mut s, &execute("undo", json!({})), Access::Edit).unwrap();
         assert_eq!(walls(&s), 0);
