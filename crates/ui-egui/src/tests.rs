@@ -5746,6 +5746,36 @@ fn the_family_editor_edits_a_family_says_what_wont_build_and_starts_a_new_one_of
 }
 
 #[test]
+fn the_family_editor_shows_a_familys_connectors_and_keeps_them() {
+    let mut h = app(&format!("{BOX}\ncomponent {{\"family\": \"WC\", \"at\": [3000, 3000]}}"));
+    let wc = find(&h, |e| matches!(e, Element::Component(_)));
+    h.state_mut().selection = vec![wc];
+    h.state_mut().tab = Tab::Context;
+    h.set_size(vec2(1800.0, 900.0));
+    h.run();
+    // Modify | Plumbing Fixtures' Mode panel; the family document's Project Browser lists its connectors as it does its forms.
+    press(&mut h, "Edit Family");
+    assert!(h.query_by_label_contains("pipe · waste · out · Size 100").is_some(), "the waste outlet, its DN");
+    let ed = h.state().family_editor.as_ref().expect("the family document");
+    let waste = (0..9).map(|i| ed.connector_name(i)).find(|n| n.contains("waste")).expect("listed");
+    assert!(h.query_by_label_contains("cold · in").is_some(), "the cistern's cold water");
+    // Selected there, Properties show it.
+    h.get_by_label(&waste).scroll_to_me();
+    h.run();
+    press(&mut h, &waste);
+    assert!(h.state().family_editor.as_ref().and_then(|ed| ed.selected_connector()).is_some());
+    assert!(h.query_all_by_label_contains("Connector Domain").next().is_some_and(|n| n.value().as_deref() == Some("waste")));
+    // Loaded into the project, the family keeps them as they were.
+    let before = h.state().session.model.families["WC"].connectors.clone();
+    press(&mut h, "Load into Project");
+    if h.query_by_label("Overwrite the existing version and its parameter values").is_some() {
+        press(&mut h, "Overwrite the existing version and its parameter values");
+    }
+    assert_eq!(h.state().session.model.families["WC"].connectors, before);
+    assert!(h.state().status.text.is_empty() || !h.state().status.error, "{}", h.state().status.text);
+}
+
+#[test]
 fn the_door_tool_places_the_projects_single_door_of_a_family_and_the_type_selector_offers_both_kinds() {
     let mut h = app(BOX);
     tool(&mut h, "Door");
@@ -5889,6 +5919,7 @@ mod origin;
 mod patterns;
 mod perspective;
 mod planviews;
+mod plugins;
 mod popup;
 mod presets;
 mod profile;
@@ -5902,6 +5933,7 @@ mod shortcuts_kept;
 mod sketch;
 mod sketch3d;
 mod smallest;
+mod spacemouse;
 mod standards;
 mod start;
 mod templates;

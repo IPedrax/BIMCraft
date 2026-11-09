@@ -886,6 +886,7 @@ impl FamilyEditor {
         self.sketch = None;
         self.form = Some(at);
         self.symbol = None;
+        self.connector = None;
         Ok(())
     }
 

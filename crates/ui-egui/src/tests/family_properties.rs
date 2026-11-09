@@ -1,8 +1,8 @@
 //! Properties in the family document show what is selected, as Revit's do: nothing selected, the family's own (Identity Data,
 //! Family Category and Parameters' Other); a form, its own (Constraints, Graphics, Materials and Finishes, Identity Data); a
 //! plan symbol, its rows. The forms and symbols are listed in the Project Browser, whose right-click menu selects, deletes,
-//! moves a form up and down and edits its sketch; Annotate's Detail panel makes symbols, Manage's Adaptive Component makes the
-//! family adaptive.
+//! moves a form up and down and edits its sketch; Annotate's Detail panel makes symbols, Create's Connectors panel places
+//! connectors, Manage's Adaptive Component makes the family adaptive.
 use super::family_views::editor;
 use super::*;
 use bimcraft_core::family::Category;
@@ -207,4 +207,46 @@ fn rv2_screenshots() {
     h.get_by_label("2. Extrusion").click_secondary();
     h.run();
     save(&mut h, "browser-forms-menu", [16, 700, 280, 250]);
+}
+
+#[test]
+fn creates_connectors_panel_places_connectors_the_browser_lists_and_properties_types() {
+    use bimcraft_core::family::{ConnectorKind, Domain, Expr};
+    let mut h = document(Category::Plumbing);
+    press(&mut h, "Connector");
+    press(&mut h, "Pipe Connector");
+    assert_eq!(editor(&h).selected_connector(), Some(0), "placed selected, as Revit's");
+    assert!(h.query_all_by_label("Modify | Connectors").count() > 0, "its contextual tab");
+    // Its rows in Properties: where it is and faces, in the family's axes, and what it carries.
+    type_into(&mut h, "Connector Location Z 1", "400");
+    type_into(&mut h, "Connector Size 1", "50");
+    choose(&mut h, "Connector Domain 1", "waste");
+    choose(&mut h, "Connector Flow 1", "out");
+    let f = editor(&h).draft_family().unwrap();
+    let c = &f.connectors[0];
+    assert_eq!((c.kind, c.domain, c.flow), (ConnectorKind::Pipe, Some(Domain::Waste), bimcraft_core::family::Flow::Out));
+    assert_eq!(c.at.as_ref().map(|p| p[2].clone()), Some(Expr::Number(400.0)));
+    assert_eq!(c.size, Some(Expr::Number(50.0)));
+    // An electrical one from the same list; the browser lists both and a click selects one.
+    press(&mut h, "Create");
+    press(&mut h, "Connector");
+    press(&mut h, "Power Connector");
+    assert_eq!(editor(&h).selected_connector(), Some(1));
+    type_into(&mut h, "Connector Load 2", "1200");
+    let row = editor(&h).connector_name(0);
+    assert!(row.starts_with("1. pipe · waste · out"), "{row}");
+    browse(&mut h, &row);
+    assert_eq!(editor(&h).selected_connector(), Some(0));
+    assert_eq!(h.get_by_label("Connector Size 1").value().as_deref(), Some("50"));
+    // What is typed builds: the family checks it as the `family` command would.
+    let f = editor(&h).draft_family().unwrap();
+    assert_eq!(f.connectors[1].kind, ConnectorKind::Power);
+    assert_eq!(f.check(&|_| true), Ok(()));
+    // Delete takes the selected one, as the ribbon's does; the browser's menu the other.
+    key(&mut h, Key::Delete);
+    assert_eq!(editor(&h).draft_family().unwrap().connectors.len(), 1);
+    let row = editor(&h).connector_name(0);
+    assert!(row.starts_with("1. power"), "{row}");
+    browser_menu(&mut h, &row, "Delete");
+    assert!(editor(&h).draft_family().unwrap().connectors.is_empty());
 }

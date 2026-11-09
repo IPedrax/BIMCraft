@@ -716,6 +716,12 @@ impl BimApp {
             let hover = i.pointer.hover_pos().filter(|_| response.hovered());
             (hover, i.smooth_scroll_delta.y, i.zoom_delta(), i.modifiers.shift, i.pointer.latest_pos())
         });
+        // The 3D mouse's cap, while it is held off rest (`spacemouse.rs`), moves the camera below when this is the active view
+        // and the window has focus; a 3D view drawn beside the active one it leaves alone, as the hand does. Meanwhile the
+        // wheel turns 3DxWare may make of the cap are left alone.
+        let (focused, frame) = ui.input(|i| (i.focused, f64::from(i.stable_dt)));
+        let device = self.space_mouse.as_ref().and_then(crate::spacemouse::SpaceMouse::motion).filter(|_| focused && !self.passive);
+        let wheel = if device.is_some() { 0.0 } else { wheel };
         let model = self.view_model();
         // An Edit Boundary begun here: its lines on the element's plane, a drag from a picked one's end holding its grip.
         let sketch_z = self.sketch_surface();
@@ -783,7 +789,7 @@ impl BimApp {
             (Some((id, cam, l)), Some(active), Some(stored)) => id != active || cam != stored || l != lens,
             _ => false,
         };
-        if elsewhere && o.camera.is_some() && o.drag.is_none() && wheel == 0.0 && pinch == 1.0 {
+        if elsewhere && o.camera.is_some() && o.drag.is_none() && wheel == 0.0 && pinch == 1.0 && device.is_none() {
             o.camera = None;
         }
         // The view stands from the model anew: a camera view where its camera looks from, which needs no fitting; another is
@@ -828,6 +834,10 @@ impl BimApp {
                     None => cam.zoom(factor, px(at)),
                 };
             }
+        }
+        if let Some(motion) = device {
+            cam = crate::spacemouse::navigate(cam, motion, frame);
+            ui.ctx().request_repaint();
         }
         // A level selected alone has a grip at the middle of each edge of its plane: a drag from one
         // moves that edge over the plane, rather than turning the view.
@@ -989,8 +999,8 @@ impl BimApp {
             cam = bimcraft_core::triad::turned(cam, end);
         }
         o.camera = Some(cam);
-        // The hand and the wheel have let the camera be: a camera view's position is written back then (below).
-        let settled = o.drag.is_none() && wheel == 0.0 && pinch == 1.0;
+        // The hand, the wheel and the 3D mouse have let the camera be: a camera view's position is written back then (below).
+        let settled = o.drag.is_none() && wheel == 0.0 && pinch == 1.0 && device.is_none();
         // A box let go: what it picks, as the picture is now.
         let boxed_ids = selected_box
             .filter(|_| sketch_z.is_none())
@@ -1560,7 +1570,7 @@ impl BimApp {
             Some(Ask::Level) => self.triad_level(),
             _ => {}
         }
-        // A camera view remembers where the hand and the wheel left it: once they let it be, its eye and target are written
+        // A camera view remembers where the hand, the wheel and the 3D mouse left it: once they let it be, its eye and target are written
         // back, so leaving the view and returning comes back to the same place (and Properties shows them). A view drawn
         // beside the active one (a floating window) writes nothing: the hand is working in the active view.
         if settled

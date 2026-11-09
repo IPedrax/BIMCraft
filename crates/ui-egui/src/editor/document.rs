@@ -79,6 +79,7 @@ pub(super) struct Draft {
     types: Vec<(String, BTreeMap<String, String>)>,
     forms: Vec<FormText>,
     symbols: Vec<SymbolText>,
+    connectors: Vec<super::connectors::ConnectorText>,
     adaptive: Option<Definition>,
     picked: usize,
     /// Its reference planes: drawn and moved in its plans and elevations.
@@ -102,6 +103,7 @@ impl Draft {
             types: ed.types.clone(),
             forms: ed.forms.clone(),
             symbols: ed.symbols.clone(),
+            connectors: ed.connectors.clone(),
             adaptive: ed.adaptive.clone(),
             picked: ed.picked,
             planes: ed.planes.clone(),
@@ -144,6 +146,7 @@ impl FamilyEditor {
             || self.selected_nested().is_some()
             || self.selected_line().is_some()
             || self.selected_symbol().is_some()
+            || self.selected_connector().is_some()
     }
 
     /// Delete (DE, the Delete key, the ribbon's Delete): what is selected taken away, with what depends on it, or why not.
@@ -161,6 +164,8 @@ impl FamilyEditor {
             self.remove_form(i);
         } else if let Some(i) = self.selected_symbol() {
             self.remove_symbol(i);
+        } else if let Some(i) = self.selected_connector() {
+            self.remove_connector(i);
         } else if let Some(d) = self.adaptive.as_mut() {
             adaptive_view::delete(d, &mut self.modeller);
         }
@@ -289,6 +294,9 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         }
         if ed.selected_symbol().is_some() {
             return Some(msg!("Modify | Symbols"));
+        }
+        if ed.selected_connector().is_some() {
+            return Some(msg!("Modify | Connectors"));
         }
         return ed.selected_form().map(|i| form_context(ed, i));
     }
@@ -749,6 +757,16 @@ impl BimApp {
                 }
             }
         }
+        // Where the family joins a system (#269), as Revit's Connectors panel, before Family Editor: each placed at the family's
+        // origin and selected, its place and what it carries typed in Properties. Only in the families of the categories that
+        // join a system (plumbing, fittings, electrical and data devices, lighting…): the Create tab is full at 1600 pixels,
+        // and one more panel there folds Family Editor's, so a furniture's, a casework's, a door's, a window's and a generic
+        // model's leave it out. Connectors such a family came with are still listed in the browser and shown selected.
+        let joins =
+            !matches!(ed.category, Category::Furniture | Category::Casework | Category::Door | Category::Window | Category::Generic);
+        if tab == DocTab::Create && ed.adaptive.is_none() && joins {
+            connectors_panel(ui, ed);
+        }
         let into_host = ed.into_host;
         ribbon::panel(ui, msg!("Family Editor"), |ui| {
             // Opened from a family it is nested in, it loads back into that one (T6a), as Revit's does into the open family.
@@ -780,6 +798,7 @@ impl BimApp {
                 ed.modeller.picking_plane = false;
                 ed.form = None;
                 ed.symbol = None;
+                ed.connector = None;
                 ed.views.drawing = None;
                 ed.views.picking = None;
                 ed.views.plane = None;
@@ -937,8 +956,17 @@ impl BimApp {
             self.family_editor = Some(ed);
             return;
         }
+        // A connector selected (#269): its own rows, as Revit's Connector Element shows them.
+        if let Some(i) = ed.selected_connector() {
+            let icon = if ed.connectors[i].kind() == bimcraft_core::family::ConnectorKind::Pipe { Icon::Pipe } else { Icon::Device };
+            selector(ui, icon, t(super::connectors::kind_name(ed.connectors[i].kind())));
+            ui.add_space(6.0);
+            super::connectors::connector_properties(&mut ed, ui, i);
+            self.family_editor = Some(ed);
+            return;
+        }
         // Nothing selected: the family's own, as Revit's Properties show them (Identity Data, then Family Category and
-        // Parameters' Other). Its forms and symbols are in the Project Browser, made on the Create tab.
+        // Parameters' Other). Its forms, symbols and connectors are in the Project Browser, made on the Create tab.
         if ed.adaptive.is_none() {
             selector(ui, Icon::FamilyEditor, &tf("Family: {}", &[&category]));
             ui.add_space(6.0);
@@ -1032,10 +1060,17 @@ impl BimApp {
             Move(usize, isize),
             DeleteForm(usize),
             DeleteSymbol(usize),
+            Connector(usize),
+            DeleteConnector(usize),
             Edit(usize),
         }
         let picked = self.family_editor.as_ref().and_then(FamilyEditor::selected_form);
         let picked_symbol = self.family_editor.as_ref().and_then(FamilyEditor::selected_symbol);
+        let picked_connector = self.family_editor.as_ref().and_then(FamilyEditor::selected_connector);
+        let connectors: Vec<String> = match &self.family_editor {
+            Some(ed) if ed.adaptive.is_none() => (0..ed.connectors.len()).map(|i| ed.connector_name(i)).collect(),
+            _ => Vec::new(),
+        };
         type Row = (String, bool, &'static str);
         let (forms, symbols): (Vec<Row>, Vec<String>) = match &self.family_editor {
             Some(ed) if ed.adaptive.is_none() => (
@@ -1126,6 +1161,25 @@ impl BimApp {
                         }
                     });
                 }
+                // Its connectors, as Revit's browser lists none but its Properties show each: a click selects one.
+                if !connectors.is_empty() {
+                    egui::CollapsingHeader::new(t("Connectors")).id_salt("family-connectors").default_open(true).show(ui, |ui| {
+                        for (i, connector) in connectors.iter().enumerate() {
+                            let r = ui.selectable_label(picked_connector == Some(i), connector);
+                            if r.clicked() {
+                                asked = Some(Asked::Connector(i));
+                            }
+                            r.context_menu(|ui| {
+                                if ui.button(t("Select")).clicked() {
+                                    asked = Some(Asked::Connector(i));
+                                }
+                                if ui.button(t("Delete")).clicked() {
+                                    asked = Some(Asked::DeleteConnector(i));
+                                }
+                            });
+                        }
+                    });
+                }
             });
         });
         let Some(ed) = self.family_editor.as_mut() else { return };
@@ -1136,6 +1190,8 @@ impl BimApp {
             Some(Asked::Move(i, by)) => ed.move_form(i, by),
             Some(Asked::DeleteForm(i)) => ed.remove_form(i),
             Some(Asked::DeleteSymbol(i)) => ed.remove_symbol(i),
+            Some(Asked::Connector(i)) => ed.select_connector(i),
+            Some(Asked::DeleteConnector(i)) => ed.remove_connector(i),
             Some(Asked::Edit(i)) => {
                 ed.select_only_form(i);
                 if let Err(e) = ed.edit_form_sketch(i) {
@@ -1723,6 +1779,23 @@ pub(crate) fn work_planes(d: &bimcraft_core::adaptive::Definition, planes: bimcr
 /// A tool Revit's family editor has and BIMCraft does not yet: where Revit has it, greyed.
 fn later(ui: &mut Ui, icon: Icon, label: &str) {
     ui.add_enabled_ui(false, |ui| big_button(ui, icon, label, false, msg!("Not in BIMCraft yet")));
+}
+
+/// Create > Connectors: one Connector button whose list places a pipe, power, switch, data or earthing connector. One button,
+/// not Revit's five, so the Create tab still fits a 1600-pixel window.
+fn connectors_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
+    ribbon::panel(ui, msg!("Connectors"), |ui| {
+        let tip = msg!("Connector: a pipe, power, switch, data or earthing connector, where the family joins a system");
+        let r = big_button(ui, Icon::Pipe, msg!("Connector"), false, tip);
+        ribbon::choices(ui, &r, false, |ui| {
+            for (kind, label, tip) in super::connectors::KINDS {
+                if ui.button(t(label)).on_hover_text(t(tip)).clicked() {
+                    ed.add_connector(kind);
+                    ui.close();
+                }
+            }
+        });
+    });
 }
 
 /// The same, a small button.

@@ -1128,6 +1128,7 @@ impl FamilyEditor {
         if let Some((form, plane)) = select {
             self.nested_sel = None;
             self.symbol = None;
+            self.connector = None;
             self.views.dim = None;
             self.form = form;
             self.views.plane = plane;

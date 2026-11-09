@@ -103,6 +103,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 ///   (Doors > Opening, Windows > Opening), and a family's symbol the subcategory it is drawn in (`subcategory`).
 /// - Adaptive families: a family may be adaptive (`adaptive`: its points, lines and forms), and a component may hold its
 ///   adaptive points' frames (`adaptive`).
+/// - Connectors with a place (upstream's 18): a family's connector may be a `pipe`, `data` or `earthing` one, with no
+///   `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`); the starter fixtures and
+///   fittings have them.
 /// - Work planes and hosts (T4, T16): the project has reference planes (`refplane`); a work plane-based component may be
 ///   hosted on one (`host`), its `at` and `offset` following the plane and its family's axes tilted with it, or on a face of a
 ///   wall, a floor, a ceiling or a roof (`host` `{"face": {"element", "face"}}`, Place on Face), its `uv` that face's own.
@@ -3379,6 +3382,27 @@ impl Model {
         placed.place([x, if c.mirrored { -y } else { y }, z])
     }
 
+    /// Component `c`'s connectors, worked out for its type and values, with their place and the way they face in the
+    /// model: mirrored if it is, then placed as its family's axes are ([`Model::component_placement`]), so one hosted on a
+    /// tilted plane or a face carries them with it (a connector without a place has neither). None for a component whose
+    /// family has none or doesn't work out.
+    pub fn component_connectors(&self, c: &Component) -> Vec<crate::family::PlacedConnector> {
+        let Some(f) = self.families.get(&c.family) else { return Vec::new() };
+        let Ok(connectors) = f.connector_values(&c.type_name, &c.params) else { return Vec::new() };
+        let placed = self.component_placement(c);
+        let flip = |p: [f64; 3]| [p[0], if c.mirrored { -p[1] } else { p[1] }, p[2]];
+        let [a, b, z] = placed.axes;
+        let turn = |p: [f64; 3]| -> [f64; 3] { std::array::from_fn(|i| p[0] * a[i] + p[1] * b[i] + p[2] * z[i]) };
+        connectors
+            .into_iter()
+            .map(|k| {
+                let at = k.at.map(|p| placed.place(flip(p)));
+                let dir = k.direction.map(|d| turn(flip(d)));
+                (k, at, dir)
+            })
+            .collect()
+    }
+
     /// Component `c`'s solids in the model: its own, placed where it stands ([`Model::component_placement`]).
     pub fn component_pieces(&self, c: &Component) -> Vec<Piece> {
         let placed = self.component_placement(c);
@@ -3585,6 +3609,8 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
+        // Also in 18 (pipe, data and earthing connectors, a connector's place) needs nothing: a file of 17's connectors are
+        // a power or a switch one, each with its system, which 18 reads as they were.
         // 17 to 18 (the Family Editor, and what places its families): one step, in this order.
         // 1. A form's `plane` becomes its `host`, a datum: `xy` Ref. Level and `yz` Center (Left/Right) as they were; `xz`
         //    Center (Front/Back), its `from` and `to` negated and swapped (a formula wrapped as `-(…)`), since it swept along
@@ -7806,10 +7832,25 @@ fn ccw(ring: &[P2]) -> Vec<P2> {
 }
 
 /// What lies inside `loops` (an outline, then holes in it) and outside `holes`: the outline as it
-/// is, or convex pieces once a hole cuts it.
+/// is, or convex pieces once a hole cuts it: the triangles round the holes (`triangulation::constrained`); or, where that
+/// refuses them or its triangles miss some of the area (a hole over or along the outline's edge), the outline cut by each
+/// hole in turn, which leaves thousands of slivers round finely curved ones.
 fn solid(loops: &[Vec<P2>], holes: &[Vec<P2>]) -> Vec<Vec<P2>> {
     let Some((outline, inner)) = loops.split_first() else { return Vec::new() };
-    inner.iter().chain(holes).fold(vec![outline.clone()], |parts, hole| walls::minus(&parts, hole))
+    let cuts: Vec<Vec<P2>> = inner.iter().chain(holes).cloned().collect();
+    if cuts.is_empty() {
+        return vec![outline.clone()];
+    }
+    if let Ok(t) = crate::triangulation::constrained(outline, &cuts, &[], &[]) {
+        let corner = |i: usize| t.points.get(i).copied().unwrap_or_default();
+        let tris: Vec<Vec<P2>> = t.triangles.iter().map(|k| k.map(corner).to_vec()).collect();
+        let area = |rings: &[Vec<P2>]| rings.iter().map(|r| geom::area(r).abs()).sum::<f64>();
+        let whole = geom::area(outline).abs() - area(&cuts);
+        if (area(&tris) - whole).abs() <= 1.0 + whole.abs() * 1e-9 {
+            return tris;
+        }
+    }
+    cuts.iter().fold(vec![outline.clone()], |parts, hole| walls::minus(&parts, hole))
 }
 
 /// A floor's shape: no more points and lines than it may have, each point finite and in range, inside the outline and in

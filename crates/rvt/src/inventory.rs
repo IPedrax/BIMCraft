@@ -31,13 +31,15 @@ use crate::data::{Data, category_materials, column_bottoms, column_nodes, elemen
 use crate::error::{Error, Result};
 use crate::names::{Latest, entries_32, entries_64};
 use crate::records::{
-    CATEGORY_AT, CONTAINER_AT, KIND_AT, KIND_PLACED, MARKER_AT, NO_CONTAINER, Record, Tags, TypeRecord, chain, declared, enclosing, f64_at,
-    id_before, no_id, records_32, records_64, types_32, types_64, u16_at, u32_at, u64_at,
+    CATEGORY_AT, CONTAINER_AT, HEADER_TAG_AFTER_ID, KIND_AT, KIND_PLACED, MARKER_AT, NO_CONTAINER, Record, Tags, TypeRecord, chain,
+    chain_32, declared, enclosing, f64_at, id_before, no_id, records_32, records_64, types_32, types_64, u16_at, u32_at, u64_at,
 };
 use crate::types::first_name;
 
 /// `OST_Levels`.
 pub const OST_LEVELS: i64 = -2_000_240;
+/// `OST_Grids`.
+pub const OST_GRIDS: i64 = -2_000_220;
 
 /// The kind Revit 2015 to 2018 write on a Level.
 const LEVEL_KIND_2015: u32 = 0xffff_ef6f;
@@ -196,6 +198,28 @@ const NAMES: &[(i64, &str)] = &[
     (-2_000_011, "Walls"),
 ];
 
+/// Detailed element record extracted from `Partitions/*` streams (with bounding box in mm).
+#[derive(Debug, Clone, PartialEq)]
+pub struct DetailedElement {
+    pub id: u32,
+    pub category: i64,
+    pub class_tag: u16,
+    pub class_name: Option<String>,
+    pub placed: bool,
+    pub level_id: Option<u32>,
+    pub bbox_min_mm: [f64; 3],
+    pub bbox_max_mm: [f64; 3],
+    pub location_mm: [f64; 3],
+    pub refs: Vec<u32>,
+}
+
+/// Inventory plus per-element bounding box and reference details from the single partition pass.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct DetailedInventory {
+    pub inventory: Inventory,
+    pub elements_detail: Vec<DetailedElement>,
+}
+
 /// What a scan of one partition finds.
 #[derive(Default)]
 struct Found {
@@ -226,8 +250,8 @@ impl Found {
     }
 }
 
-/// Level records of a 2024 and later partition: found by their category, with the marker's last six bytes at `+0x50`.
-fn levels_64(buf: &[u8], tags: &Tags, release: u32, ids: &[u32], found: &mut Found) {
+/// Level and Grid (`DatumPlane`) records of a 2024 and later partition: found by their category, with the marker's last six bytes at `+0x50`.
+fn levels_64(buf: &[u8], tags: &Tags, release: u32, ids: &[u32], include_grids: bool, found: &mut Found) {
     let marker = tags.marker();
     let spans = chain(buf, &marker);
     for hit in memchr::memmem::find_iter(buf, &OST_LEVELS.to_le_bytes()) {
@@ -239,23 +263,86 @@ fn levels_64(buf: &[u8], tags: &Tags, release: u32, ids: &[u32], found: &mut Fou
         let id = if no_id(raw) { enclosing(&spans, f).and_then(|s| u32::try_from(s.id).ok()) } else { Some(raw as u32) };
         let Some(id) = id.filter(|&id| declared(ids, id)) else { continue };
         let container = u64_at(buf, f + CONTAINER_AT).unwrap_or(0);
+        let no_host = container == NO_CONTAINER || u32::try_from(container).map_or(true, |c| !declared(ids, c));
         let kind = u64_at(buf, f + KIND_AT).map_or(0, |v| v as u32);
-        found.level(id, container == NO_CONTAINER && is_placed_level(kind, release));
+        found.level(id, no_host && is_placed_level(kind, release));
+    }
+    if !include_grids {
+        return;
+    }
+    for hit in memchr::memmem::find_iter(buf, &OST_GRIDS.to_le_bytes()) {
+        let Some(f) = hit.checked_sub(CATEGORY_AT) else { continue };
+        if f + MARKER_AT + 8 > buf.len() || u16_at(buf, f + 0x10) != Some(0) || buf[f + MARKER_AT..f + MARKER_AT + 6] != marker[2..] {
+            continue;
+        }
+        let raw = u64_at(buf, f).unwrap_or(0);
+        let id = if no_id(raw) { enclosing(&spans, f).and_then(|s| u32::try_from(s.id).ok()) } else { Some(raw as u32) };
+        let Some(id) = id.filter(|&id| declared(ids, id)) else { continue };
+        let container = u64_at(buf, f + CONTAINER_AT).unwrap_or(0);
+        let no_host = container == NO_CONTAINER || u32::try_from(container).map_or(true, |c| !declared(ids, c));
+        let kind = u64_at(buf, f + KIND_AT).map_or(0, |v| v as u32);
+        let class_tag = u16_at(buf, f + 0x4a).unwrap_or(0);
+        found.element(OST_GRIDS, id, class_tag, no_host && is_placed_level(kind, release));
     }
 }
 
 /// Level records of a partition up to 2023: the id 14 bytes before the category (and 14 more for each item of a workshared file's
 /// list), the marker 38 after it.
-fn levels_32(buf: &[u8], tags: &Tags, release: u32, ids: &[u32], found: &mut Found) {
+fn levels_32(buf: &[u8], tags: &Tags, release: u32, ids: &[u32], include_grids: bool, found: &mut Found) {
     let marker = tags.marker();
+    let spans = chain_32(buf, &marker);
     for hit in memchr::memmem::find_iter(buf, &OST_LEVELS.to_le_bytes()) {
-        let Some((id, _)) = id_before(buf, hit, tags.header, ids) else { continue };
         if buf.get(hit + 38..hit + 44) != Some(&marker[2..]) {
+            continue;
+        }
+        let id = if let Some((id, _)) = id_before(buf, hit, tags.header, ids) {
+            id
+        } else if let Some(id_at) = hit.checked_sub(14) {
+            let Some(span) = enclosing(&spans, id_at) else { continue };
+            if u16_at(buf, hit - 2) != Some(0) {
+                continue;
+            }
+            let Some(host_id) = u32::try_from(span.id).ok().filter(|&id| declared(ids, id)) else { continue };
+            host_id
+        } else {
+            continue;
+        };
+        let container = u32_at(buf, hit + 16);
+        let kind = u32_at(buf, hit + 24).unwrap_or(0);
+        found.level(id, container == Some(u32::MAX) && is_placed_level(kind, release));
+    }
+    if !include_grids {
+        return;
+    }
+    for hit in memchr::memmem::find_iter(buf, &OST_GRIDS.to_le_bytes()) {
+        let Some(id_at) = hit.checked_sub(14) else { continue };
+        if buf.get(hit + 38..hit + 44) != Some(&marker[2..]) {
+            continue;
+        }
+        let raw = u32_at(buf, id_at).unwrap_or(0);
+        let id = if let Some(span) = enclosing(&spans, id_at) {
+            if u16_at(buf, hit - 2) != Some(0) {
+                continue;
+            }
+            let Some(host_id) = u32::try_from(span.id).ok() else { continue };
+            if raw == host_id || (declared(ids, raw) && u16_at(buf, id_at + HEADER_TAG_AFTER_ID) == Some(tags.header)) {
+                raw
+            } else {
+                host_id
+            }
+        } else {
+            if u16_at(buf, id_at + HEADER_TAG_AFTER_ID) != Some(tags.header) {
+                continue;
+            }
+            raw
+        };
+        if !declared(ids, id) {
             continue;
         }
         let container = u32_at(buf, hit + 16);
         let kind = u32_at(buf, hit + 24).unwrap_or(0);
-        found.level(id, container == Some(u32::MAX) && is_placed_level(kind, release));
+        let class_tag = u16_at(buf, hit + 32).unwrap_or(0);
+        found.element(OST_GRIDS, id, class_tag, container == Some(u32::MAX) && is_placed_level(kind, release));
     }
 }
 
@@ -407,6 +494,72 @@ impl crate::Revit {
         Ok(self.survey(&|_| false)?.inventory)
     }
 
+    /// Reads the inventory and keeps deduplicated per-element records (with `bbox_mm`, `location_mm`, `class_name`, and `level_id`)
+    /// from the single `Partitions/*` stream pass.
+    pub fn detailed_inventory(&mut self) -> Result<DetailedInventory> {
+        let survey = self.survey(&|_| true)?;
+        let schema = self.schema()?;
+        let level_ids: BTreeSet<u32> = survey.inventory.levels.iter().map(|l| l.id).collect();
+        let mut by_key: BTreeMap<(i64, u32), Record> = BTreeMap::new();
+        for r in survey.records {
+            let key = (r.category, r.id);
+            let rank = |rec: &Record| (rec.placed, rec.extent()[2].to_bits(), rec.partition, rec.offset);
+            match by_key.get(&key) {
+                Some(prev) if rank(prev) >= rank(&r) => {}
+                _ => {
+                    by_key.insert(key, r);
+                }
+            }
+        }
+        let round_mm = |ft: f64| (ft * 304.8 * 1000.0).round() / 1000.0;
+        let mut elements_detail: Vec<DetailedElement> = by_key
+            .into_values()
+            .map(|r| {
+                let bbox_min_mm = [round_mm(r.bbox[0]), round_mm(r.bbox[1]), round_mm(r.bbox[2])];
+                let bbox_max_mm = [round_mm(r.bbox[3]), round_mm(r.bbox[4]), round_mm(r.bbox[5])];
+                let location_mm = [
+                    round_mm((r.bbox[0] + r.bbox[3]) * 0.5),
+                    round_mm((r.bbox[1] + r.bbox[4]) * 0.5),
+                    round_mm((r.bbox[2] + r.bbox[5]) * 0.5),
+                ];
+                let refs: Vec<u32> = r.refs.iter().filter_map(|&v| u32::try_from(v).ok()).collect();
+                let level_id = refs.iter().copied().find(|id| level_ids.contains(id));
+                let class_name = schema.by_tag(r.class_tag).map(|c| c.name.clone());
+                DetailedElement {
+                    id: r.id,
+                    category: r.category,
+                    class_tag: r.class_tag,
+                    class_name,
+                    placed: r.placed,
+                    level_id,
+                    bbox_min_mm,
+                    bbox_max_mm,
+                    location_mm,
+                    refs,
+                }
+            })
+            .collect();
+        let seen_ids: BTreeSet<(i64, u32)> = elements_detail.iter().map(|e| (e.category, e.id)).collect();
+        for el in &survey.inventory.elements {
+            if el.category == OST_GRIDS && el.placed && !seen_ids.contains(&(el.category, el.id)) {
+                let class_name = schema.by_tag(el.class_tag).map(|c| c.name.clone());
+                elements_detail.push(DetailedElement {
+                    id: el.id,
+                    category: el.category,
+                    class_tag: el.class_tag,
+                    class_name,
+                    placed: el.placed,
+                    level_id: None,
+                    bbox_min_mm: [0.0, 0.0, 0.0],
+                    bbox_max_mm: [0.0, 0.0, 0.0],
+                    location_mm: [0.0, 0.0, 0.0],
+                    refs: Vec::new(),
+                });
+            }
+        }
+        Ok(DetailedInventory { inventory: survey.inventory, elements_detail })
+    }
+
     /// The data of the `wanted` elements, every copy, and the names of the project's materials: a second pass over the
     /// partitions, for what the records name.
     pub(crate) fn gather(&mut self, release: u32, tags: &Tags, ids: &[u32], wants: &Wants) -> Result<Gathered> {
@@ -518,12 +671,12 @@ impl crate::Revit {
             if wide {
                 records_64(&buf, &tags, &ids, number, &mut seen);
                 types_64(&buf, &tags, &ids, number, &mut |t| types.push(t));
-                levels_64(&buf, &tags, release, &ids, &mut found);
+                levels_64(&buf, &tags, release, &ids, keep(OST_GRIDS), &mut found);
                 owned_64(&buf, &ids, &mut found);
             } else {
                 records_32(&buf, &tags, &ids, number, &mut seen);
                 types_32(&buf, &tags, &ids, number, &mut |t| types.push(t));
-                levels_32(&buf, &tags, release, &ids, &mut found);
+                levels_32(&buf, &tags, release, &ids, keep(OST_GRIDS), &mut found);
             }
             blocks(&buf, &tags, &ids, wide, &mut found);
             drop(buf);

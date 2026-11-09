@@ -3,6 +3,7 @@
 //! Every change to the project is a `family` command, so it's checked, and undone, like any other.
 
 mod association;
+pub(crate) mod connectors;
 pub(crate) mod dimensions;
 pub(crate) mod document;
 pub(crate) mod exists;
@@ -28,8 +29,8 @@ use std::sync::Arc;
 
 use bimcraft_core::engine::Session;
 use bimcraft_core::family::{
-    Align as LabelAlign, CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, Category, Circle, Connector, Curve, Expr, Family, Form, IfcClass,
-    Kind as Holds, Label, Parameter, PlaneRef, REF_LEVEL, RefLine, RefPlane, Symbol,
+    Align as LabelAlign, CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, Category, Circle, Curve, Expr, Family, Form, IfcClass, Kind as Holds, Label,
+    Parameter, PlaneRef, REF_LEVEL, RefLine, RefPlane, Symbol,
 };
 use bimcraft_core::model::{Model, Operation};
 use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
@@ -470,8 +471,8 @@ pub(crate) struct FamilyEditor {
     /// Associate Family Parameter, open on a row of Properties its "=" was pressed on.
     pub(crate) associating: Option<crate::adaptive_editor::Associating>,
     symbols: Vec<SymbolText>,
-    /// Its connectors, as the family has them: the editor has no tab for them yet, and keeps them as they are.
-    connectors: Vec<Connector>,
+    /// Its connectors (#269), placed from Create > Connectors, listed in the Project Browser and typed in Properties.
+    connectors: Vec<connectors::ConnectorText>,
     /// Its reference planes and lines, as the family has them: the editor has no tab for them yet, and keeps them as they are.
     pub(crate) planes: Vec<RefPlane>,
     pub(crate) lines: Vec<RefLine>,
@@ -487,6 +488,8 @@ pub(crate) struct FamilyEditor {
     options: options::OptionsText,
     /// The plan symbol selected (from the Project Browser's Symbols, or made by the Detail panel), whose Properties show.
     pub(crate) symbol: Option<usize>,
+    /// The connector selected: Properties show its rows.
+    pub(crate) connector: Option<usize>,
     /// What Family Types keeps while it is open: its search, the groups folded, the row selected, its own dialogs.
     types_dialog: types_dialog::TypesDialog,
     /// The type shown in Types and on the preview.
@@ -600,7 +603,7 @@ impl FamilyEditor {
             preview_params: BTreeMap::new(),
             associating: None,
             symbols: f.symbols.iter().map(SymbolText::of).collect(),
-            connectors: f.connectors.clone(),
+            connectors: f.connectors.iter().map(connectors::ConnectorText::of).collect(),
             planes: f.planes.clone(),
             lines: f.lines.clone(),
             dimensions: f.dimensions.clone(),
@@ -609,6 +612,7 @@ impl FamilyEditor {
             operation: f.operation,
             options: options::OptionsText::of(f),
             symbol: None,
+            connector: None,
             types_dialog: Default::default(),
             picked: 0,
             look: (AZIMUTH, ELEVATION),
@@ -769,7 +773,7 @@ impl FamilyEditor {
             forms,
             symbols,
             operation,
-            connectors: self.connectors.clone(),
+            connectors: self.connectors.iter().map(connectors::ConnectorText::connector).collect(),
             adaptive: self.adaptive.clone(),
             planes: self.planes.clone(),
             lines: self.lines.clone(),
@@ -1238,7 +1242,7 @@ impl FamilyEditor {
 
     /// Nothing selected: Properties show the family's own.
     pub(crate) fn let_everything_go(&mut self) {
-        (self.form, self.symbol, self.nested_sel) = (None, None, None);
+        (self.form, self.symbol, self.connector, self.nested_sel) = (None, None, None, None);
         (self.views.plane, self.views.line, self.views.dim) = (None, None, None);
     }
 

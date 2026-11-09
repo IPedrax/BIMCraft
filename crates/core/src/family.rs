@@ -56,7 +56,7 @@ pub enum Category {
     Plumbing,
     /// A floor drain.
     Drain,
-    /// An elbow, a tee: what joins pipes, carried by a component until fittings have connectors.
+    /// An elbow, a tee: what joins pipes, a component with a connector at each end.
     PipeFitting,
     /// A valve, a cleanout.
     PipeAccessory,
@@ -598,14 +598,57 @@ pub struct Symbol {
     pub visibility: Option<Visibility>,
 }
 
-/// What a connector joins: `power` carries a load, `switch` only switches one.
+/// What a connector joins: `power` carries a load, `switch` only switches one, `pipe` joins a pipe of its `domain`, `data`
+/// a data cable and `earthing` an earthing conductor.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ConnectorKind {
     #[default]
     Power,
     Switch,
+    Pipe,
+    Data,
+    Earthing,
 }
+
+impl ConnectorKind {
+    /// Whether it is an electrical device's, which has a `system` and draws (or switches) a load.
+    pub fn electrical(self) -> bool {
+        matches!(self, ConnectorKind::Power | ConnectorKind::Switch)
+    }
+}
+
+/// What a pipe connector carries: cold or hot water, waste (sewage), vent, storm water or gas.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Domain {
+    Cold,
+    Hot,
+    Waste,
+    Vent,
+    Storm,
+    Gas,
+}
+
+/// Which way what it carries goes through it: into the family (`in`, as water into a basin), out of it (`out`, as waste
+/// from a WC) or either way (`both`, the default).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Flow {
+    In,
+    Out,
+    #[default]
+    Both,
+}
+
+impl Flow {
+    fn is_both(&self) -> bool {
+        *self == Flow::Both
+    }
+}
+
+/// The largest connector size, mm.
+pub const MAX_CONNECTOR_SIZE: f64 = 2000.0;
 
 /// How a connector's load is shared among its poles: the same on each (`power-balanced`), or each its own
 /// (`power-unbalanced`); a `switch` has none.
@@ -633,11 +676,10 @@ impl Default for Load {
     }
 }
 
-/// Where a family joins a system, as Revit's connector does: what an electrical device draws, what a switch controls.
-/// It has no place yet: upstream #269 gives it `at` and `direction`, and then it takes an optional `host` ([`PlaneRef`]),
-/// `at` read in that plane's axes and `direction` its normal by default.
-/// `voltage`, `load_va` and `power_factor` are numbers or formulas over the family's parameters, so a type or a
-/// component can set them.
+/// Where a family joins a system, as Revit's connector does: what an electrical device draws, what a switch controls, where
+/// a pipe or a cable meets it. `voltage`, `load_va` and `power_factor` are numbers or formulas over the family's parameters,
+/// so a type or a component can set them, and so are its place (`at`, in the family's axes: x along it, y to its left, z up
+/// from its base), the way it faces (`direction`, out of the family: the way a pipe leaves it) and its `size`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Connector {
@@ -646,8 +688,27 @@ pub struct Connector {
     pub id: crate::ids::Id,
     #[serde(default, skip_serializing_if = "crate::ids::Guid::is_nil")]
     pub guid: crate::ids::Guid,
+    /// What it's called in its family (`Waste`, `Cold water`), for people; none is fine.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
     pub kind: ConnectorKind,
-    pub system: ConnectorSystem,
+    /// How a `power` connector shares its load, or `switch`; the other kinds have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system: Option<ConnectorSystem>,
+    /// What a `pipe` connector carries; none on a pipe fitting or accessory, which takes its pipe's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<Domain>,
+    #[serde(default, skip_serializing_if = "Flow::is_both")]
+    pub flow: Flow,
+    /// Where it is, mm, in the family's axes. A `pipe`, `data` or `earthing` connector has one; an electrical device's may.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<[Expr; 3]>,
+    /// The way it faces, out of the family, in its axes: any length but none. A `pipe` connector has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direction: Option<[Expr; 3]>,
+    /// Its size, mm: a pipe connector's nominal diameter, which it has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<Expr>,
     #[serde(default = "one_pole")]
     pub poles: u8,
     /// Volts.
@@ -670,13 +731,25 @@ fn unity() -> Expr {
     Expr::Number(1.0)
 }
 
+/// A component's connector, worked out, with its place and the way it faces in the model (none for one without a place).
+pub type PlacedConnector = (ConnectorValues, Option<[f64; 3]>, Option<[f64; 3]>);
+
 /// A connector, worked out for one type and one component's values.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ConnectorValues {
     pub id: crate::ids::Id,
     pub guid: crate::ids::Guid,
+    pub name: String,
     pub kind: ConnectorKind,
-    pub system: ConnectorSystem,
+    pub system: Option<ConnectorSystem>,
+    pub domain: Option<Domain>,
+    pub flow: Flow,
+    /// In the family's axes, mm.
+    pub at: Option<[f64; 3]>,
+    /// A unit vector, in the family's axes.
+    pub direction: Option<[f64; 3]>,
+    /// mm.
+    pub size: Option<f64>,
     pub poles: u8,
     pub voltage: f64,
     /// The whole load, VA: the phases' sum.
@@ -2197,8 +2270,46 @@ impl Family {
         let long = |e: &Expr| matches!(e, Expr::Formula(f) if f.chars().count() > MAX_FORMULA);
         for (i, c) in self.connectors.iter().enumerate() {
             let who = format!("connector {}", i + 1);
-            if c.classification.chars().count() > MAX_TEXT {
-                return Err(format!("{who}: its classification is longer than {MAX_TEXT} characters"));
+            if c.classification.chars().count() > MAX_TEXT || c.name.chars().count() > MAX_TEXT {
+                return Err(format!("{who}: its name or classification is longer than {MAX_TEXT} characters"));
+            }
+            let placed = c.at.iter().flatten().chain(c.direction.iter().flatten()).chain(c.size.iter());
+            if placed.into_iter().any(long) {
+                return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
+            }
+            if c.kind != ConnectorKind::Pipe && c.domain.is_some() {
+                return Err(format!("{who}: a `domain` is a pipe connector's: cold, hot, waste, vent, storm or gas"));
+            }
+            if c.kind.electrical() {
+                if c.flow != Flow::Both {
+                    return Err(format!("{who}: a `flow` is a pipe's, data's or earthing's connector's, not an electrical device's"));
+                }
+                if c.size.is_some() {
+                    return Err(format!("{who}: a `size` is a pipe's, data's or earthing's connector's, not an electrical device's"));
+                }
+            } else {
+                if c.system.is_some() {
+                    return Err(format!("{who}: a `system` is a power or a switch connector's, not a {:?} one's", c.kind).to_lowercase());
+                }
+                if c.at.is_none() {
+                    return Err(format!("{who}: a pipe, data or earthing connector needs `at`, where it is in the family's axes"));
+                }
+                if !matches!(&c.load_va, Load::One(Expr::Number(x)) if *x == 0.0) {
+                    return Err(format!("{who}: only a power connector carries a load; leave `load_va` out"));
+                }
+            }
+            if c.kind == ConnectorKind::Pipe {
+                // A fitting's or a valve's takes the domain of the pipe it joins, as its system is the pipe's.
+                if c.domain.is_none() && !matches!(self.category, Category::PipeFitting | Category::PipeAccessory) {
+                    return Err(format!(
+                        "{who}: a pipe connector needs its `domain`: cold, hot, waste, vent, storm or gas (only a pipe fitting's or accessory's takes its pipe's)"
+                    ));
+                }
+                if c.direction.is_none() || c.size.is_none() {
+                    return Err(format!(
+                        "{who}: a pipe connector needs its `direction` (the way the pipe leaves it) and its `size` (DN, mm)"
+                    ));
+                }
             }
             let loads: &[Expr] = match &c.load_va {
                 Load::One(e) => std::slice::from_ref(e),
@@ -2208,20 +2319,21 @@ impl Family {
                 return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
             }
             match (c.kind, c.system) {
-                (ConnectorKind::Power, ConnectorSystem::PowerBalanced | ConnectorSystem::PowerUnbalanced)
-                | (ConnectorKind::Switch, ConnectorSystem::Switch) => {}
+                (ConnectorKind::Power, Some(ConnectorSystem::PowerBalanced | ConnectorSystem::PowerUnbalanced))
+                | (ConnectorKind::Switch, Some(ConnectorSystem::Switch)) => {}
                 (ConnectorKind::Power, _) => {
-                    return Err(format!("{who}: a power connector's system is `power-balanced` or `power-unbalanced`, not `switch`"));
+                    return Err(format!("{who}: a power connector's system is `power-balanced` or `power-unbalanced`"));
                 }
                 (ConnectorKind::Switch, _) => {
                     return Err(format!("{who}: a switch connector's system is `switch`"));
                 }
+                _ => {}
             }
             if !(1..=3).contains(&c.poles) {
                 return Err(format!("{who}: poles are 1, 2 or 3, not {}", c.poles));
             }
             if let Load::PerPhase(v) = &c.load_va
-                && (c.system != ConnectorSystem::PowerUnbalanced || v.len() != usize::from(c.poles))
+                && (c.system != Some(ConnectorSystem::PowerUnbalanced) || v.len() != usize::from(c.poles))
             {
                 return Err(format!(
                     "{who}: a load per phase is a list of one for each pole ({}) on a `power-unbalanced` connector; a balanced one takes a single load",
@@ -2275,11 +2387,42 @@ impl Family {
                     return Err(format!("{who}: its load is {x} VA; it takes 0 up to {MAX_LOAD_VA}"));
                 }
             }
+            let at = match &c.at {
+                None => None,
+                Some(v) => Some(point(v, &values, &mut read).map_err(|e| said("place", e))?),
+            };
+            let direction = match &c.direction {
+                None => None,
+                Some(v) => {
+                    let d = point(v, &values, &mut read).map_err(|e| said("direction", e))?;
+                    let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                    if len < 1e-9 {
+                        return Err(format!("{who}: its direction has no length: give the way it faces"));
+                    }
+                    Some(d.map(|x| x / len))
+                }
+            };
+            let size = match &c.size {
+                None => None,
+                Some(e) => {
+                    let x = number(e, &values, &mut read).map_err(|e| said("size", e))?;
+                    if x <= 0.0 || x > MAX_CONNECTOR_SIZE {
+                        return Err(format!("{who}: its size is {x} mm; it takes more than 0 and up to {MAX_CONNECTOR_SIZE}"));
+                    }
+                    Some(x)
+                }
+            };
             out.push(ConnectorValues {
                 id: c.id,
                 guid: c.guid,
+                name: c.name.clone(),
                 kind: c.kind,
                 system: c.system,
+                domain: c.domain,
+                flow: c.flow,
+                at,
+                direction,
+                size,
                 poles: c.poles,
                 voltage,
                 load_va: by_phase.iter().sum(),
@@ -2765,6 +2908,15 @@ fn number<'a>(e: &'a Expr, values: &BTreeMap<String, Val>, read: &mut HashMap<&'
     if x.is_finite() && x.abs() <= MAX_COORD { Ok(x) } else { Err(format!("{x} is not a usable number")) }
 }
 
+/// Three numbers or formulas, worked out.
+fn point<'a>(
+    v: &'a [Expr; 3],
+    values: &BTreeMap<String, Val>,
+    read: &mut HashMap<&'a str, Result<Node, String>>,
+) -> Result<[f64; 3], String> {
+    Ok([number(&v[0], values, read)?, number(&v[1], values, read)?, number(&v[2], values, read)?])
+}
+
 /// How low and how high `tris` reach.
 fn heights(tris: &[[P3; 3]]) -> (f64, f64) {
     tris.iter().flatten().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[2]), hi.max(p[2])))
@@ -3113,6 +3265,11 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
                 block([n(-200.0), n(-180.0), n(200.0), n(0.0)], n(380.0), n(800.0), &porcelain),
                 block([n(-160.0), n(-380.0), n(160.0), n(-150.0)], n(0.0), n(400.0), &porcelain),
                 {"circle": {"centre": [0, -470], "radius": 180}, "from": 0, "to": 400, "material": porcelain}
+            ],
+            // Its waste through the floor under the bowl, and the cistern's cold water in the wall.
+            "connectors": [
+                crate::fixtures::pipe("waste", "out", [n(0.0), n(-300.0), n(0.0)], [0.0, 0.0, -1.0], 100.0),
+                crate::fixtures::pipe("cold", "in", [n(150.0), n(0.0), n(200.0)], [0.0, 1.0, 0.0], 20.0)
             ]
         }),
     ));
@@ -3127,6 +3284,11 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
             "forms": [
                 block([neg(&half_w), neg(&depth), f(half_w.clone()), n(0.0)], f(format!("{height} - 160")), f(height.clone()), &porcelain),
                 {"circle": {"centre": [0, -150], "radius": 90}, "from": 0, "to": format!("{height} - 160"), "material": porcelain}
+            ],
+            // Its waste and its cold water in the wall behind the pedestal.
+            "connectors": [
+                crate::fixtures::pipe("waste", "out", [n(0.0), n(0.0), f(format!("{height} - 300"))], [0.0, 1.0, 0.0], 40.0),
+                crate::fixtures::pipe("cold", "in", [n(-100.0), n(0.0), f(format!("{height} - 200"))], [0.0, 1.0, 0.0], 20.0)
             ]
         }),
     ));
@@ -3145,7 +3307,13 @@ pub fn library(language: crate::language::Language) -> BTreeMap<String, Family> 
                 block([neg(&half_l), n(-60.0), f(half_l.clone()), n(0.0)], n(120.0), f(rim.clone()), &porcelain),
                 block([neg(&half_l), neg(&width), f(half_l.clone()), f(inner.clone())], n(120.0), f(rim.clone()), &porcelain),
                 block([neg(&half_l), f(inner.clone()), f(format!("-({length}) / 2 + 60")), n(-60.0)], n(120.0), f(rim.clone()), &porcelain),
-                block([f(format!("{length} / 2 - 60")), f(inner), f(half_l), n(-60.0)], n(120.0), f(rim), &porcelain)
+                block([f(format!("{length} / 2 - 60")), f(inner.clone()), f(half_l), n(-60.0)], n(120.0), f(rim), &porcelain)
+            ],
+            // Its waste through the floor at one end, and the mixer's cold and hot water in the wall above that end.
+            "connectors": [
+                crate::fixtures::pipe("waste", "out", [f(format!("-({length}) / 2 + 150")), f(format!("-({width}) / 2")), n(0.0)], [0.0, 0.0, -1.0], 40.0),
+                crate::fixtures::pipe("cold", "in", [f(format!("-({length}) / 2 + 100")), n(0.0), f(format!("{height} + 200"))], [0.0, 1.0, 0.0], 20.0),
+                crate::fixtures::pipe("hot", "in", [f(format!("-({length}) / 2 + 250")), n(0.0), f(format!("{height} + 200"))], [0.0, 1.0, 0.0], 20.0)
             ]
         }),
     ));
@@ -3728,7 +3896,7 @@ mod tests {
         for (t, load) in [("9 W", 9.0), ("18 W", 18.0)] {
             let c = f.connector_values(t, &BTreeMap::new()).unwrap();
             assert_eq!(c.len(), 1);
-            assert_eq!((c[0].kind, c[0].system, c[0].poles), (ConnectorKind::Power, ConnectorSystem::PowerBalanced, 1));
+            assert_eq!((c[0].kind, c[0].system, c[0].poles), (ConnectorKind::Power, Some(ConnectorSystem::PowerBalanced), 1));
             assert_eq!((c[0].voltage, c[0].load_va, c[0].power_factor), (127.0, load, 0.9));
             assert_eq!((c[0].load_va_by_phase.clone(), c[0].classification.as_str()), (vec![load], "lighting"));
         }
