@@ -44,7 +44,7 @@ fn page(paper: P2) -> View {
 
 /// View `view` at 1 : `scale` on paper: the frame its drawing gets, `ROOM` mm around what it shows
 /// (a 3D view's picture, as large as the model comes out); a schedule's, its table's.
-fn framing(m: &Model, view: impl Key, scale: f64) -> Option<View> {
+pub(crate) fn framing(m: &Model, view: impl Key, scale: f64) -> Option<View> {
     framing_in(m, &Work::new(), view, scale)
 }
 
@@ -533,7 +533,10 @@ pub fn title_values(m: &Model, id: impl Key) -> std::collections::BTreeMap<Strin
 
 /// View `id` drawn into `d` in its frame `view`, whose top left corner is at `(ox, oy)` of `d`: a plan's or a section's lines,
 /// a section's and a 3D view's pictures, or a schedule's table; its own title left out (a sheet titles it under the frame).
-/// Whether it takes a title under its frame (a schedule's is its first row); none when it is no view a sheet holds.
+/// Whether it takes a title under its frame (a schedule's is its first row); none when it is no view a sheet holds. `drawn`
+/// gets the place in `d` of each primitive an element of the view draws, and the element, which `d` doesn't own (a sheet's
+/// viewport does).
+#[allow(clippy::too_many_arguments)]
 fn view_into(
     d: &mut Drawing,
     m: &Model,
@@ -542,6 +545,7 @@ fn view_into(
     id: crate::ids::Guid,
     view: View,
     (ox, oy): (f32, f32),
+    drawn: &mut Vec<(usize, Id)>,
 ) -> Option<bool> {
     let inner = match m.elements.get(id) {
         Some(Element::Level(_) | Element::PlanView(_)) => render::draw_at(m, id, view, 1.0),
@@ -593,7 +597,8 @@ fn view_into(
     }
     // Its own title, owned by no element, gives way to the viewport's.
     for ((prim, owner), part) in inner.prims.into_iter().zip(inner.owners).zip(inner.parts) {
-        if owner.is_some() {
+        if let Some(owner) = owner {
+            drawn.push((d.prims.len(), owner));
             d.part(part);
             d.push(prim.moved(ox, oy));
         }
@@ -618,7 +623,14 @@ pub fn draw_view(m: &Model, id: impl Key, scale: f64) -> Option<Drawing> {
     });
     d.weights = m.line_weights().at(m.units.default_scale());
     let mut scene = None;
-    view_into(&mut d, m, &work, &mut scene, guid, view, (0.0, 0.0))?;
+    let mut drawn = Vec::new();
+    view_into(&mut d, m, &work, &mut scene, guid, view, (0.0, 0.0), &mut drawn)?;
+    // Alone, its elements own what they draw.
+    for (i, owner) in drawn {
+        if let Some(o) = d.owners.get_mut(i) {
+            *o = Some(owner);
+        }
+    }
     d.own(None);
     d.weigh(|_| true);
     Some(d)
@@ -626,6 +638,12 @@ pub fn draw_view(m: &Model, id: impl Key, scale: f64) -> Option<Drawing> {
 
 /// Sheet `id` on its paper: its title block, then each view on it, at its scale and titled.
 pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
+    draw_traced(m, id).map(|(d, _)| d)
+}
+
+/// [`draw`], with the place of each primitive an element on a view draws and the element (which its viewport owns, for a
+/// pick): how an export puts it on the element's layer.
+pub(crate) fn draw_traced(m: &Model, id: impl Key) -> Option<(Drawing, Vec<(usize, Id)>)> {
     let sheet = m.sheet(id)?;
     let guid = m.guid(id);
     let paper = paper(&sheet.size)?;
@@ -650,6 +668,7 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
         .collect();
     title_block(&mut d, m, id, paper, &scaled);
     let mut scene = None;
+    let mut drawn = Vec::new();
     let work = Work::new();
     for (vid, vp) in views {
         let Some((view, (ox, oy))) = frame_in(m, &work, vid) else { continue };
@@ -658,7 +677,7 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
         let (w, h) = (view.width as f32, view.height as f32);
         d.push(Prim::Fill { rings: vec![vec![(ox, oy), (ox + w, oy), (ox + w, oy + h), (ox, oy + h)]], color: PAPER });
         // A schedule's title is its first row; it has no view title under it.
-        if view_into(&mut d, m, &work, &mut scene, vp.view, view, (ox, oy)) != Some(true) {
+        if view_into(&mut d, m, &work, &mut scene, vp.view, view, (ox, oy), &mut drawn) != Some(true) {
             continue;
         }
         d.part(Part::Projection);
@@ -707,7 +726,7 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
     }
     d.own(None);
     d.weigh(|_| true);
-    Some(d)
+    Some((d, drawn))
 }
 
 #[cfg(test)]

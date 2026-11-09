@@ -15,7 +15,7 @@ pub mod formats;
 pub mod naming;
 pub mod page;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -130,6 +130,18 @@ pub struct Paged {
     pub drawing: Drawing,
     pub n: f64,
     pub own: Option<P2>,
+    /// What a pixel of the drawing is in the model, for a plan, a section or an elevation: its frame's view, so a line format
+    /// writes model millimetres where they are. None for a sheet and a schedule, whose pixels are the paper's.
+    pub world: Option<crate::render::View>,
+    /// The element each primitive draws, by place: its owner, or on a sheet the element in a viewport (which owns it for a pick).
+    pub drawn: Vec<Option<Id>>,
+    /// The category of each element drawn, for a line format's layers.
+    pub categories: BTreeMap<Id, &'static str>,
+}
+
+/// The category of each element in `drawn`.
+fn categories(m: &Model, drawn: &[Option<Id>]) -> BTreeMap<Id, &'static str> {
+    drawn.iter().flatten().filter_map(|id| Some((*id, m.elements.get(*id)?.category()))).collect()
 }
 
 impl Paged {
@@ -300,15 +312,28 @@ pub fn prepare(project: &Arc<Model>, m: &Arc<Model>, id: Option<Id>, takes: Take
         },
         (Takes::Drawing, Some(id)) if kind == Kind::Sheet => {
             let own = m.sheet(id).and_then(|s| crate::model::paper(&s.size));
-            let drawing = crate::sheet::draw(m, id).ok_or_else(|| format!("sheet {title} can't be drawn"))?;
-            Content::Drawing(Box::new(Paged { drawing, n: 1.0, own }))
+            let (drawing, traced) = crate::sheet::draw_traced(m, id).ok_or_else(|| format!("sheet {title} can't be drawn"))?;
+            let mut drawn = drawing.owners.clone();
+            for (i, element) in traced {
+                if let Some(d) = drawn.get_mut(i) {
+                    *d = Some(element);
+                }
+            }
+            let categories = categories(m, &drawn);
+            Content::Drawing(Box::new(Paged { drawing, n: 1.0, own, world: None, drawn, categories }))
         }
         (Takes::Drawing, Some(id)) => {
             // A schedule keeps its own size; a view is drawn at its scale.
             let n = if kind == Kind::Schedule { 1.0 } else { crate::graphics::scale_of(m, id) };
             let n = if n.is_finite() && n > 0.0 { n } else { 100.0 };
             let drawing = crate::sheet::draw_view(m, id, n).ok_or_else(|| format!("{title} has nothing to draw"))?;
-            Content::Drawing(Box::new(Paged { drawing, n, own: None }))
+            let world = match kind {
+                Kind::Plan | Kind::Section | Kind::Elevation => crate::sheet::framing(m, id, n),
+                _ => None,
+            };
+            let drawn = drawing.owners.clone();
+            let categories = categories(m, &drawn);
+            Content::Drawing(Box::new(Paged { drawing, n, own: None, world, drawn, categories }))
         }
         (_, None) => return Err("the whole project exports only as a model (IFC, glTF, OBJ, STL)".to_string()),
     };
@@ -460,7 +485,14 @@ pub fn write_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write as _;
     let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
     std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
-    let mut staged = tempfile::NamedTempFile::new_in(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+    // Made as any file is, readable as the user's umask lets: a temporary file's own are the owner's alone.
+    let mut builder = tempfile::Builder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        builder.permissions(std::fs::Permissions::from_mode(0o666));
+    }
+    let mut staged = builder.tempfile_in(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     staged.write_all(bytes).map_err(|e| format!("{}: {e}", path.display()))?;
     staged.persist(path).map_err(|e| format!("{}: {}", path.display(), e.error))?;
     Ok(())
