@@ -75,9 +75,16 @@ fn new_family_of(h: &mut Harness<BimApp>, name: &str) {
     press_near(h, "OK", "Category:");
 }
 
+/// Ctrl+N (Cmd+N) as the File menu reads it out: what the window's context makes of the shortcut, which a test's context
+/// spells the same on every system.
+fn cmd_n(h: &Harness<BimApp>) -> String {
+    h.ctx.format_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::N))
+}
+
 /// File > New > Project.
 fn new_project(h: &mut Harness<BimApp>) {
-    file_menu(h, "New", &format!("{} {}", "Project", if cfg!(target_os = "macos") { "⌘N" } else { "Ctrl+N" }));
+    let n = cmd_n(h);
+    file_menu(h, "New", &format!("Project {n}"));
 }
 
 /// One of Manage > Annotation Settings' dialogs (Line Weights, Line Styles, Line Patterns, Fill Patterns), from its list.
@@ -2783,7 +2790,10 @@ fn the_interface_speaks_portuguese() {
     h.get_by_label_contains("Novo").click();
     h.run();
     // Its Project, in the interface's language, read out with its shortcut.
-    h.get_by_label_contains(if cfg!(target_os = "macos") { "⌘N" } else { "Ctrl+N" }).click();
+    {
+        let n = cmd_n(&h);
+        h.get_by_label_contains(&n).click();
+    }
     h.run();
     let levels: Vec<String> = h.state().session.model.levels().iter().map(|(_, l)| l.name.clone()).collect();
     assert_eq!(levels, ["Nível 1", "Nível 2"]);
@@ -2808,7 +2818,10 @@ fn the_interface_speaks_spanish() {
     h.get_by_label_contains("Nuevo").click();
     h.run();
     // Its Project, in the interface's language, read out with its shortcut.
-    h.get_by_label_contains(if cfg!(target_os = "macos") { "⌘N" } else { "Ctrl+N" }).click();
+    {
+        let n = cmd_n(&h);
+        h.get_by_label_contains(&n).click();
+    }
     h.run();
     let levels: Vec<String> = h.state().session.model.levels().iter().map(|(_, l)| l.name.clone()).collect();
     assert_eq!(levels, ["Nivel 1", "Nivel 2"]);
@@ -2830,7 +2843,10 @@ fn the_interface_speaks_dutch() {
     h.get_by_label_contains("Nieuw").click();
     h.run();
     // Its Project, in the interface's language, read out with its shortcut.
-    h.get_by_label_contains(if cfg!(target_os = "macos") { "⌘N" } else { "Ctrl+N" }).click();
+    {
+        let n = cmd_n(&h);
+        h.get_by_label_contains(&n).click();
+    }
     h.run();
     let levels: Vec<String> = h.state().session.model.levels().iter().map(|(_, l)| l.name.clone()).collect();
     assert_eq!(levels, ["Niveau 1", "Niveau 2"]);
