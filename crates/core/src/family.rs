@@ -2778,31 +2778,23 @@ impl Family {
     }
 
     /// The voids a component of it placed on a face cuts its host with (Place on Face), sized by `values`, in its own axes:
-    /// each void that cuts none of its forms, by their boxes, as [`Family::host_voids`] finds a door's. Whether one reaches
-    /// its host is for where it stands to say: one that doesn't cuts nothing. Revit's face-based families always cut their
-    /// host with such voids, whatever `cut_with_voids_when_loaded` says (that is the project's voids cutting it).
+    /// each void that cuts the host ([`Cuts::host`]: `both` or `host`), whatever its place in the list, as a door's cuts its
+    /// wall ([`Family::host_voids`], F10d); never one that cuts the forms alone. Whether one reaches its host is for where it
+    /// stands to say: one that doesn't cuts nothing. Revit's face-based families always cut their host with such voids,
+    /// whatever `cut_with_voids_when_loaded` says (that is the project's voids cutting it). Before, a `both` void listed after
+    /// a solid it overlapped, by their boxes, cut the face no more: a face-hosted component came only with 19, so no file
+    /// holds one placed by that rule, and none needs a step.
     pub fn face_voids(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Vec<[P3; 3]>>, String> {
-        if self.adaptive.is_some() || !self.forms.iter().any(|f| f.void) {
+        if self.adaptive.is_some() || !self.forms.iter().any(|f| f.void && f.cuts().host()) {
             return Ok(Vec::new());
         }
-        self.free_voids(values, |_| true)
-    }
-
-    /// The voids that cut none of the solid forms listed before them, by their boxes (or cut their host alone, F10d), and
-    /// that `reach` takes; never one that cuts the forms alone.
-    fn free_voids(&self, values: &BTreeMap<String, Val>, reach: impl Fn(&Shape) -> bool) -> Result<Vec<Vec<[P3; 3]>>, String> {
         let f = self.flexed(values).map_err(|e| e.to_string())?;
         let mut read = HashMap::new();
-        let (mut solids, mut out): (Vec<Shape>, Vec<Vec<[P3; 3]>>) = (Vec::new(), Vec::new());
-        for i in 0..f.forms.len() {
-            let Some(piece) = f.solid(i, values, &mut read).map_err(|e| format!("form {}: {e}", i + 1))? else {
-                continue;
-            };
-            let Some(shape) = Shape::of(i, f.forms[i].void, &piece.tris) else { continue };
-            let cuts = f.forms[i].cuts();
-            if !shape.void {
-                solids.push(shape);
-            } else if cuts.host() && (!cuts.forms() || !solids.iter().any(|solid| shape.over(solid))) && reach(&shape) {
+        let mut out = Vec::new();
+        for i in (0..f.forms.len()).filter(|i| f.forms[*i].void && f.forms[*i].cuts().host()) {
+            if let Some(piece) = f.solid(i, values, &mut read).map_err(|e| format!("form {}: {e}", i + 1))?
+                && Shape::of(i, true, &piece.tris).is_some()
+            {
                 out.push(piece.tris);
             }
         }

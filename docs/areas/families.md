@@ -57,8 +57,9 @@ the wall alone, never the family's forms (the opening's void round its frame, wh
 Uncut Geometry, as one setting); `forms` the forms alone, leaving the wall to the rest (a sash's light, as the Casement
 Window's starter has its two). Before `cuts`, a void cut the wall only if it cut none of the solid forms listed before it, by
 their boxes, so the order mattered: a void had to be put first. `Family::check` refuses `cuts` on a solid; the "cuts
-nothing" warning reads it (a void of `host` in a generic family cuts nothing); a work plane-based family's face voids take a
-`host` void whatever it overlaps and leave out a `forms` one (`free_voids`). In the family document, a void's Properties
+nothing" warning reads it (a void of `host` in a generic family cuts nothing); a work plane-based family's face voids follow
+the same rule as a door's wall: a `both` or a `host` void whatever it overlaps and wherever it is listed, never a `forms`
+one (`Family::face_voids`). In the family document, a void's Properties
 (Identity Data) has Cuts (Forms and Host, Host, Forms) in a door's or a window's family.
 `Model::migrate` takes a file of 17 or 18 to 19 (`Family::pin_cuts`; upstream's 18 changed only connectors, and its step
 needs nothing): each void of a door's or a window's family that the old rule didn't cut the wall with, though it reaches into
@@ -928,8 +929,11 @@ in the 3D view on the face clicked (`Model::face_role`). A wall's top and ends, 
 models are not here.
 
 A face-hosted component's voids cut its host (T16b), as a Revit face-based family's do: each void of its family that cuts
-none of its own forms (T22's rule, `Family::face_voids`; one listed before them all) and reaches into its host makes an
-opening, a recess or a penetration there. There is no option: any face-hosted component's such voids cut, whatever
+the host (`cuts` `both`, the default, or `host`), whatever its place in the family's list and whatever it overlaps (F10d's
+rule, as a door's in its wall; `Family::face_voids`), and reaches into its host makes an opening, a recess or a penetration
+there; a `forms` void cuts the family's own forms alone. Before, a `both` void listed after a solid it overlapped cut the
+face no more (T22's order rule, which F10d dropped for walls only); Place on Face came with 19, so no file needs a step.
+There is no option: any face-hosted component's such voids cut, whatever
 `cut_with_voids_when_loaded` says, which is about the project's voids cutting a component; and a work plane-based family's
 void that cuts none of its forms is not warned of as cutting nothing. `Model::face_voids` gives a component's voids placed
 where it stands (mirrored, on its face's frame), `Model::hosted_voids` those of everything on a host's faces (found through
