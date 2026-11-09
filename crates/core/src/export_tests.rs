@@ -185,11 +185,7 @@ fn save_prints_every_sheet_through_the_pdf_format() {
     assert_eq!((r["format"].as_str(), r["pages"].as_u64()), (Some("PDF"), Some(2)), "{r}");
     let pdf = String::from_utf8_lossy(&std::fs::read(&to).unwrap_or_default()).to_string();
     // A page each, and a bookmark each, in the order of their numbers.
-    assert_eq!(
-        pdf.matches("/Type /Page ").count() + pdf.matches("/Type /Page\n").count() + pdf.matches("/Type /Page>").count(),
-        2,
-        "{pdf}"
-    );
+    assert_eq!(pdf.matches("/Type/Page/").count(), 2, "{pdf}");
     assert!(pdf.contains("/Outlines"));
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -271,4 +267,61 @@ pub(crate) fn sweep_payloads(dir: &Path) -> Vec<(&'static str, Value)> {
         ("export_formats", json!({"anything": 1e300})),
     ]);
     out
+}
+
+#[test]
+fn a_region_of_a_view_is_all_an_export_holds_and_a_region_outside_it_is_refused() {
+    let mut s = project();
+    let dir = folder("region");
+    let whole = run(&mut s, "export", json!({"format": "png", "view": "Level 1", "path": dir.join("whole.png"), "page": {"dpi": 72}}));
+    // The box's west half: its pixels a little over half as wide, the plan's height.
+    let half = run(
+        &mut s,
+        "export",
+        json!({"format": "png", "view": "Level 1", "path": dir.join("half.png"), "page": {"dpi": 72, "region": [-1000, -1000, 4000, 7000]}}),
+    );
+    let size = |r: &Value| {
+        let path = r["written"][0]["path"].as_str().unwrap().to_string();
+        let img = tiny_skia::Pixmap::decode_png(&std::fs::read(path).unwrap()).unwrap();
+        (img.width(), img.height())
+    };
+    let ((ww, _), (hw, _)) = (size(&whole), size(&half));
+    assert!(hw < ww * 3 / 4, "{hw} of {ww}");
+    // A DXF of it is in the model's millimetres, inside the region.
+    let r = run(
+        &mut s,
+        "export",
+        json!({"format": "dxf", "view": "Level 1", "path": dir.join("half.dxf"), "page": {"region": [-1000, -1000, 4000, 7000]}}),
+    );
+    let dxf = std::fs::read_to_string(r["written"][0]["path"].as_str().unwrap()).unwrap();
+    let max_x: f64 = dxf[dxf.find("$EXTMAX").unwrap()..].lines().nth(2).unwrap().trim().parse().unwrap();
+    assert!(max_x <= 4000.0 + 1e-6, "{max_x}");
+    let e = s
+        .execute("export", &json!({"format": "png", "view": "Level 1", "folder": dir, "page": {"region": [90000, 90000, 99000, 99000]}}))
+        .unwrap_err();
+    assert!(e.contains("holds nothing of the view"), "{e}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_pdf_is_written_as_an_archive_or_as_pictures_as_its_settings_say() {
+    let mut s = project();
+    let dir = folder("pdfa");
+    let r = run(
+        &mut s,
+        "export",
+        json!({"format": "pdf", "view": "A101", "path": dir.join("a.pdf"), "pdf": {"archive": "a2b", "title": "Plans", "author": "Office"}}),
+    );
+    let pdf = String::from_utf8_lossy(&std::fs::read(r["written"][0]["path"].as_str().unwrap()).unwrap()).into_owned();
+    assert!(pdf.contains("<pdfaid:part>2</pdfaid:part>") && pdf.contains("/OutputIntents") && pdf.contains("Office"));
+    let r = run(
+        &mut s,
+        "export",
+        json!({"format": "pdf", "view": "A101", "path": dir.join("r.pdf"), "pdf": {"raster": true}, "page": {"dpi": 50}}),
+    );
+    let pdf = String::from_utf8_lossy(&std::fs::read(r["written"][0]["path"].as_str().unwrap()).unwrap()).into_owned();
+    assert!(pdf.contains("/Subtype/Image"), "the page is a picture");
+    let e = s.execute("export", &json!({"format": "pdf", "view": "A101", "folder": dir, "pdf": {"archive": "a9"}})).unwrap_err();
+    assert!(e.contains("`pdf`"), "{e}");
+    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -34,6 +34,7 @@ pub use crate::view3d::{FragmentStats, SectionCache};
 use crate::walls::{self, Axis};
 use crate::{font, massing, sheet, stairs};
 
+mod crop;
 mod dimensions;
 use dimensions::dimension;
 mod regions;
@@ -6843,7 +6844,10 @@ mod tests {
         assert_eq!(joins.last(), Some(&"miter"), "the pen's line");
         assert!(joins.len() > 2 && joins[..joins.len() - 1].iter().all(|j| *j == "round"), "{joins:?}");
         let (pdf, _) = crate::pdf::contents(&d, P2(100.0, 50.0));
-        assert!(pdf.contains(" 1 j ") && pdf.trim_end().rsplit('\n').next().is_some_and(|l| l.contains(" 0 j ")), "{pdf}");
+        // Round is ` 1 j`; mitred is the PDF's own join, so it is said by saying none.
+        let strokes: Vec<&str> = pdf.lines().filter(|l| l.contains(" RG ")).collect();
+        assert!(strokes.len() > 2 && strokes[..strokes.len() - 1].iter().all(|l| l.contains(" 1 j ")), "{pdf}");
+        assert!(strokes.last().is_some_and(|l| !l.contains(" j ")), "{pdf}");
     }
 
     #[test]

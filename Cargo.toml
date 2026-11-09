@@ -6,7 +6,7 @@ members = ["crates/*", "apps/*"]
 version = "0.11.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-rust-version = "1.90"
+rust-version = "1.92"
 
 [workspace.dependencies]
 # GUIDs: the system's random numbers.
@@ -21,6 +21,7 @@ serde_json = "1"
 tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd", "png-format"] }
 # Deflates PDF streams; png, under tiny-skia, already builds it.
 flate2 = "1"
+krilla = { version = "0.8.2", default-features = false, features = ["raster-images"] }
 # Reads the JPEGs a texture is made of; the PNGs come in through tiny-skia.
 zune-jpeg = "0.5"
 zune-jpegxl = "0.5"

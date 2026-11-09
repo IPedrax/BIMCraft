@@ -151,6 +151,32 @@ impl Paged {
         P2(f64::from(v.width) / v.scale * self.n, f64::from(v.height) / v.scale * self.n)
     }
 
+    /// What of it lies inside `region`, two opposite corners in its own coordinates (a plan's model mm, a section's along its
+    /// line and up, a sheet's paper mm): cut there, each point where it was ([`Drawing::cropped`]).
+    pub fn cropped(&self, region: [f64; 4]) -> Result<Paged, String> {
+        if !region.iter().all(|v| v.is_finite()) {
+            return Err(format!("`region` is two corners, four numbers, not {region:?}"));
+        }
+        let map = self.world.unwrap_or(self.drawing.view);
+        let (a, b) = (map.px(P2(region[0], region[1])), map.px(P2(region[2], region[3])));
+        let (w, h) = (self.drawing.view.width as f32, self.drawing.view.height as f32);
+        let lo = (a.0.min(b.0).max(0.0), a.1.min(b.1).max(0.0));
+        let hi = (a.0.max(b.0).min(w), a.1.max(b.1).min(h));
+        if hi.0 - lo.0 < 1.0 || hi.1 - lo.1 < 1.0 {
+            return Err("the region holds nothing of the view: it lies outside it, or has no size".to_string());
+        }
+        let (drawing, from) = self.drawing.cropped(lo, hi);
+        let drawn = from.iter().map(|i| self.drawn.get(*i).copied().flatten()).collect();
+        Ok(Paged {
+            drawing,
+            n: self.n,
+            own: self.own,
+            world: self.world.map(|v| v.cropped(lo, hi)),
+            drawn,
+            categories: self.categories.clone(),
+        })
+    }
+
     /// How it lies on the pages `setup` asks for.
     pub fn layout(&self, setup: &page::PageSetup) -> Result<page::Layout, String> {
         page::layout(setup, self.extent(), self.n, self.own)
@@ -206,6 +232,8 @@ pub struct Options {
     pub ifc_origin: crate::ifc::Origin,
     /// The elements selected, by GUID: what a BCF topic is about.
     pub selected: Vec<crate::ids::Guid>,
+    /// A PDF's own: an archive standard, its version, pages as pictures, cut marks, and the document's title and author.
+    pub pdf: crate::pdf::Settings,
 }
 
 /// What a running export is told and asked.
@@ -502,6 +530,14 @@ pub fn write_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
 
 /// The job's exports, written under its folder. A source that can't be exported is reported and the rest go on; the job
 /// fails only when it can't start (no folder, an unknown format, a bad template).
+/// `p` cut to `region`, when there is one and it is a drawing.
+fn region(p: Prepared, region: Option<[f64; 4]>) -> Result<Prepared, String> {
+    match (region, p.content) {
+        (Some(r), Content::Drawing(paged)) => Ok(Prepared { content: Content::Drawing(Box::new(paged.cropped(r)?)), ..p }),
+        (_, content) => Ok(Prepared { content, ..p }),
+    }
+}
+
 /// One format and the sources it writes, together where it combines them.
 type Group = (Arc<dyn Format>, Vec<Option<Id>>);
 
@@ -551,7 +587,7 @@ pub fn run(model: &Arc<Model>, registry: &Registry, job: &Job, ctx: &Ctx) -> Res
                 report.cancelled = true;
                 break;
             }
-            match prepare_for(model, &m, *id, format.as_ref()) {
+            match prepare_for(model, &m, *id, format.as_ref()).and_then(|p| region(p, job.options.page.region)) {
                 Ok(p) => prepared.push(p),
                 Err(error) => report.failed.push(Failed { of: what, format: format.id().to_string(), error }),
             }
