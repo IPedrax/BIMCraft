@@ -706,8 +706,9 @@ other_files(
         &[],
         "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…] | sketch?: [[[x,y],[x,y]],…], slope?, slopes?: [degrees, …], overhang?, gables?: [edge, …], gable?, offset?, \
          extrusion?, openings?: [[[x,y],…],…], join?, type?} a roof on `level` (by default the one above the lowest), its \
-         base `offset` mm above it. Over `boundary` or else the walls of the level below, `overhang` mm (500) past their \
-         faces, round any `courtyards` (holes in it, inside it and apart, with eaves of their own; over the walls, by \
+         base `offset` mm above it. Over the walls of the level below, `overhang` mm (500) past their faces; over an explicit \
+         `boundary` or `sketch`, eaves `overhang` mm (0) beyond the drawn wall line, the base at it. Round any `courtyards` \
+         (holes in it, inside it and apart, with eaves of their own; over the walls, by \
          default each loop of them standing free inside, joined to none of the outer ones and with no room in it): flat \
          at `slope` 0, else every edge sloping up at `slope` degrees (30), hips, valleys and ridges where the slopes meet, \
          but the edges in `gables` (edge i runs from point i to the next, the courtyards' edges numbered on after the \
@@ -8811,6 +8812,24 @@ fn roof(s: &mut Session, p: &Value) -> R {
     if absent(p.get("slopes")) {
         r.slopes = slopes_of_edges(&r, &lines, &[]);
     }
+    // Match sketch slopes before moving the edges: offsets keep their numbers, not their locations.
+    // An edited boundary is already the eave outline, so this applies only at creation.
+    if given && r.extrusion.is_none() {
+        r.boundary = roof_eaves(&r.boundary, overhang)
+            .ok_or_else(|| bad(c, format!("`boundary` is too small for an overhang of {overhang} mm; make it less")))?;
+        r.courtyards = r
+            .courtyards
+            .iter()
+            .map(|ring| {
+                roof_eaves(ring, -overhang)
+                    .ok_or_else(|| bad(c, format!("a courtyard is too small for an overhang of {overhang} mm; make it less")))
+            })
+            .collect::<Result<_, _>>()?;
+        if overhang != 0.0 {
+            // The input curves describe the wall line, not the eaves. Picking and Edit Boundary must use the actual outline.
+            r.sketch.clear();
+        }
+    }
     let id = s.model_mut().insert(Element::Roof(r));
     Ok(json!({"id": id}))
 }
@@ -9430,6 +9449,17 @@ fn shaped<T: serde::de::DeserializeOwned>(c: &str, p: &Value, key: &str, shape: 
         Some(_) => Err(bad(c, format!("`{key}` lists more than {MAX_POINTS}"))),
         None => Ok(None),
     }
+}
+
+/// Move a roof's wall-line ring outward by `d` (inward when negative), preserving winding and edge numbers.
+/// A collapsing or reversed edge cannot carry the requested overhang; model validation checks the resulting outline too.
+pub(crate) fn roof_eaves(ring: &[P2], d: f64) -> Option<Vec<P2>> {
+    if d == 0.0 || ring.len() < 3 {
+        return Some(ring.to_vec());
+    }
+    let grown: Vec<P2> = geom::grow(ring, if geom::area(ring) < 0.0 { -d } else { d }).into_iter().map(micron).collect();
+    let kept = geom::ring_edges(ring).zip(geom::ring_edges(&grown)).all(|((p, q), (r, s))| (q - p).dot(s - r) > 0.0);
+    (kept && grown.iter().all(|p| p.is_finite())).then_some(grown)
 }
 
 /// The footprint `roof` gives a roof on `level` by default, over the walls of the level below: their
