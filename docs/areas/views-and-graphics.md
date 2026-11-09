@@ -16,6 +16,10 @@ placed with no scale takes the view's. The units name the scales and list the on
 1" = 200'-0"), and 1 : n for any other. The Scale menu, Properties, templates and sheets' titles name them so, and a scale is typed
 as n, 1 : n, or two lengths (`1/4" = 1'-0"`).
 
+The built-in sheet title block fits each complete project name, sheet name, scale and sheet number within its own cell,
+with 4 mm clear at either side. Long values shrink uniformly; short values keep their usual lettering size and alignment.
+The full values remain in the project file. The desktop, rendered sheet images and PDF share this lettering.
+
 Background grids are view-owned graphics (`Graphics::background_grid`), controlled by a view template through the
 `background_grid` group. `graphics` and `template` accept a grid patch (spacing in millimetres, divisions, rotation, two
 styles and visibility), or null to reset it. `Graphics::resolved` supplies the effective grid, and both the
