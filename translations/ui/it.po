@@ -162,11 +162,11 @@ msgstr "Una porta o una finestra sta nel suo muro: non può essere basata su pia
 
 #: crates/ui-egui/src/start.rs:350
 msgid "A family file, to edit."
-msgstr "Un file di oggetto, da modificare."
+msgstr "Un file di famiglia, da modificare."
 
 #: crates/ui-egui/src/editor/types_dialog.rs:647
 msgid "A family type parameter needs the category of the families whose types it picks."
-msgstr "Un parametro Tipo di oggetto deve avere la categoria degli oggetti di cui sceglie i tipi."
+msgstr "Un parametro Tipo di famiglia deve avere la categoria delle famiglie di cui sceglie i tipi."
 
 #: crates/ui-egui/src/graphics.rs:1143
 msgid "A filter is made in View > Filters"
@@ -670,7 +670,7 @@ msgstr "Ampiezza"
 
 #: crates/ui-egui/src/editor/document.rs:1381
 msgid "An adaptive family's plans and elevations show its test placement; model it in {3D}."
-msgstr "Le piante e i prospetti di un oggetto adattivo mostrano il suo posizionamento di prova; modellalo in {3D}."
+msgstr "Le piante e i prospetti di una famiglia adattiva mostrano il suo posizionamento di prova; modellala in {3D}."
 
 #: crates/ui-egui/src/adaptive_editor.rs:164
 msgid "An adaptive family's points are placed where each instance is clicked, as Revit's Generic Model Adaptive."
@@ -964,7 +964,7 @@ msgstr "Impossibile avviare BIMCraft"
 #: crates/ui-egui/src/editor.rs:1458
 #: crates/ui-egui/src/sketch.rs:814
 msgid "BIMCraft family"
-msgstr "Oggetto BIMCraft"
+msgstr "Famiglia BIMCraft"
 
 #: crates/ui-egui/src/lib.rs:3171
 msgid "BIMCraft project"
@@ -2339,11 +2339,11 @@ msgstr "Componente"
 
 #: crates/ui-egui/src/lib.rs:3880
 msgid "Component (CM): a family's type, where you click; Space turns it"
-msgstr "Componente (CM): un tipo di oggetto, dove clicchi; Spazio lo ruota"
+msgstr "Componente (CM): un tipo di famiglia, dove clicchi; Spazio lo ruota"
 
 #: crates/ui-egui/src/editor/document.rs:465
 msgid "Component (CM): an instance of a family loaded into this one, placed by a click in a plan or an elevation"
-msgstr "Componente (CM): un'istanza di un oggetto caricato in questo, posizionata con un clic in una pianta o in un prospetto"
+msgstr "Componente (CM): un'istanza di una famiglia caricata in questa, posizionata con un clic in una pianta o in un prospetto"
 
 #: crates/ui-egui/src/properties.rs:219
 msgid "Computation Height"
@@ -2432,7 +2432,7 @@ msgstr "Tensione connettore"
 
 #: crates/ui-egui/src/editor/document.rs:1722
 msgid "Connector: a pipe, power, switch, data or earthing connector, where the family joins a system"
-msgstr "Connettore: un connettore tubazione, alimentazione, interruttore, dati o messa a terra, dove l'oggetto si collega a un sistema"
+msgstr "Connettore: un connettore tubazione, alimentazione, interruttore, dati o messa a terra, dove la famiglia si collega a un sistema"
 
 #: crates/ui-egui/src/editor/document.rs:1148
 #: crates/ui-egui/src/editor/document.rs:1721
@@ -2839,7 +2839,7 @@ msgstr "Connettore dati"
 
 #: crates/ui-egui/src/editor/connectors.rs:33
 msgid "Data Connector: where a data cable meets the family"
-msgstr "Connettore dati: dove un cavo dati raggiunge l'oggetto"
+msgstr "Connettore dati: dove un cavo dati raggiunge la famiglia"
 
 #: crates/core/src/fixtures.rs:468
 msgid "Data Outlet"
@@ -3074,11 +3074,11 @@ msgstr "Livello di dettaglio: Basso disegna ciò che è tagliato con un'unica ca
 
 #: crates/ui-egui/src/footer.rs:385
 msgid "Detail Level: the family forms the 3D view draws, as their Visibility Settings say"
-msgstr "Livello di dettaglio: le forme dell'oggetto che la vista 3D disegna, secondo le loro impostazioni di visibilità"
+msgstr "Livello di dettaglio: le forme della famiglia che la vista 3D disegna, secondo le loro impostazioni di visibilità"
 
 #: crates/ui-egui/src/editor/document.rs:1234
 msgid "Detail Level: the forms and symbols each view of the family draws, as their Visibility Settings say"
-msgstr "Livello di dettaglio: le forme e i simboli che ogni vista dell'oggetto disegna, secondo le loro impostazioni di visibilità"
+msgstr "Livello di dettaglio: le forme e i simboli che ogni vista della famiglia disegna, secondo le loro impostazioni di visibilità"
 
 #: crates/ui-egui/src/editor/visibility.rs:96
 #: crates/ui-egui/src/editor.rs:1131
@@ -3195,7 +3195,7 @@ msgstr "Quote"
 
 #: crates/ui-egui/src/editor/exists.rs:424
 msgid "Dimensions of the family you are loading can't be kept: {}"
-msgstr "Le quote dell'oggetto che stai caricando non si possono mantenere: {}"
+msgstr "Le quote della famiglia che stai caricando non si possono mantenere: {}"
 
 #: crates/ui-egui/src/editor/connectors.rs:293
 msgid "Direction"
@@ -3236,7 +3236,7 @@ msgstr "Dissocia: un componente resta sul suo ospite, con cui si sposta"
 
 #: crates/ui-egui/src/editor/work_plane.rs:204
 msgid "Dissociate: a family's work plane is always one of its planes or lines, which forms are drawn on"
-msgstr "Dissocia: il piano di lavoro di un oggetto è sempre uno dei suoi piani o linee, su cui si disegnano le forme"
+msgstr "Dissocia: il piano di lavoro di una famiglia è sempre uno dei suoi piani o linee, su cui si disegnano le forme"
 
 #: crates/ui-egui/src/workplane.rs:279
 msgid "Dissociate: only a work plane on a reference plane follows it; this one follows nothing"
@@ -3322,7 +3322,7 @@ msgstr "Punto"
 
 #: crates/ui-egui/src/editor/document.rs:561
 msgid "Dot: a filled circle the family's plans draw"
-msgstr "Punto: un cerchio pieno che disegnano le piante dell'oggetto"
+msgstr "Punto: un cerchio pieno che disegnano le piante della famiglia"
 
 #: crates/ui-egui/src/graphics.rs:1462
 msgid "Dotted"
@@ -3478,7 +3478,7 @@ msgstr "Connettore messa a terra"
 
 #: crates/ui-egui/src/editor/connectors.rs:34
 msgid "Earthing Connector: where an earthing conductor meets the family"
-msgstr "Connettore messa a terra: dove un conduttore di terra raggiunge l'oggetto"
+msgstr "Connettore messa a terra: dove un conduttore di terra raggiunge la famiglia"
 
 #: crates/core/src/fixtures.rs:423
 msgid "Earthing Electrode"
@@ -3544,15 +3544,15 @@ msgstr "Modifica estrusione: ridisegna il profilo"
 #: crates/ui-egui/src/editor/nested.rs:389
 #: crates/ui-egui/src/sketch.rs:821
 msgid "Edit Family"
-msgstr "Modifica oggetto"
+msgstr "Modifica famiglia"
 
 #: crates/ui-egui/src/sketch.rs:820
 msgid "Edit Family: the family of what is selected, or of the component being placed"
-msgstr "Modifica oggetto: l'oggetto di ciò che è selezionato, o del componente in corso di inserimento"
+msgstr "Modifica famiglia: la famiglia di ciò che è selezionato, o del componente in corso di inserimento"
 
 #: crates/ui-egui/src/editor/nested.rs:364
 msgid "Edit Family: the nested family opens over this one; its Load into Project loads it back here"
-msgstr "Modifica oggetto: l'oggetto annidato si apre sopra questo; il suo Carica nel progetto lo ricarica qui"
+msgstr "Modifica famiglia: la famiglia annidata si apre sopra questa; il suo Carica nel progetto la ricarica qui"
 
 #: crates/ui-egui/src/fillpatterns.rs:527
 #: crates/ui-egui/src/fillpatterns.rs:574
@@ -3643,7 +3643,7 @@ msgstr "Modifica piano di lavoro: i componenti su un piano, un piano di riferime
 
 #: crates/ui-egui/src/editor/extrusion.rs:312
 msgid "Edit Work Plane: the form onto another of the family's planes, moving with it (the Work Plane dialog)"
-msgstr "Modifica piano di lavoro: la forma su un altro dei piani dell'oggetto, spostandosi con esso (la finestra Piano di lavoro)"
+msgstr "Modifica piano di lavoro: la forma su un altro dei piani della famiglia, spostandosi con esso (la finestra Piano di lavoro)"
 
 #: crates/ui-egui/src/lib.rs:4463
 msgid "Edit the type"
@@ -3939,7 +3939,7 @@ msgstr "Impossibile leggere il file: {}"
 #: crates/ui-egui/src/editor/nested.rs:381
 #: crates/ui-egui/src/start.rs:337
 msgid "Families"
-msgstr "Oggetti"
+msgstr "Famiglie"
 
 #: crates/ui-egui/src/fillpatterns.rs:520
 msgid "Families of parallel lines: drafting ones mm on paper, the same at any scale; model ones mm in the building."
@@ -3948,15 +3948,15 @@ msgstr "Famiglie di linee parallele: quelle di disegno in mm sulla carta, uguali
 #: crates/core/src/schedule.rs:192
 #: crates/ui-egui/src/editor/document.rs:569
 msgid "Family"
-msgstr "Oggetto"
+msgstr "Famiglia"
 
 #: crates/ui-egui/src/editor/exists.rs:521
 msgid "Family Already Exists"
-msgstr "Oggetto già esistente"
+msgstr "Famiglia già esistente"
 
 #: crates/ui-egui/src/editor/document.rs:1609
 msgid "Family Category"
-msgstr "Categoria di oggetto"
+msgstr "Categoria di famiglia"
 
 #: crates/ui-egui/src/editor/document.rs:798
 #: crates/ui-egui/src/editor/document.rs:1532
@@ -3969,19 +3969,19 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:747
 msgid "Family Editor"
-msgstr "Editor oggetti"
+msgstr "Editor di famiglie"
 
 #: crates/ui-egui/src/editor/visibility.rs:72
 msgid "Family Element Visibility Settings"
-msgstr "Impostazioni di visibilità elementi oggetto"
+msgstr "Impostazioni di visibilità elementi famiglia"
 
 #: crates/ui-egui/src/editor/extrusion.rs:219
 msgid "Family Element Visibility Settings: the views and detail levels it is drawn in"
-msgstr "Impostazioni di visibilità elementi oggetto: le viste e i livelli di dettaglio in cui è disegnato"
+msgstr "Impostazioni di visibilità elementi famiglia: le viste e i livelli di dettaglio in cui è disegnato"
 
 #: crates/ui-egui/src/editor/document.rs:1624
 msgid "Family Parameters"
-msgstr "Parametri di oggetto"
+msgstr "Parametri di famiglia"
 
 #: crates/ui-egui/src/editor.rs:260
 msgid "Family Type"
@@ -3990,24 +3990,24 @@ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:804
 #: crates/ui-egui/src/editor/document.rs:1531
 msgid "Family Types"
-msgstr "Tipi di oggetto"
+msgstr "Tipi di famiglia"
 
 #: crates/ui-egui/src/editor/document.rs:803
 msgid "Family Types: the family's parameters, their formulas, and its types"
-msgstr "Tipi di oggetto: i parametri dell'oggetto, le loro formule e i suoi tipi"
+msgstr "Tipi di famiglia: i parametri della famiglia, le loro formule e i suoi tipi"
 
 #: crates/ui-egui/src/lib.rs:5413
 msgid "Family document: {}"
-msgstr "Documento oggetto: {}"
+msgstr "Documento famiglia: {}"
 
 #: crates/ui-egui/src/editor/document.rs:1604
 #: crates/ui-egui/src/editor/document.rs:1817
 msgid "Family name"
-msgstr "Nome oggetto"
+msgstr "Nome famiglia"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:529
 msgid "Family parameter"
-msgstr "Parametro dell'oggetto"
+msgstr "Parametro famiglia"
 
 #: crates/ui-egui/src/adaptive_editor.rs:737
 msgid "Family parameter: {}"
@@ -4015,7 +4015,7 @@ msgstr ""
 
 #: crates/ui-egui/src/typeprops.rs:69
 msgid "Family:"
-msgstr "Oggetto:"
+msgstr "Famiglia:"
 
 #: crates/ui-egui/src/editor/document.rs:953
 #: crates/ui-egui/src/editor/document.rs:964
@@ -4025,7 +4025,7 @@ msgstr ""
 #: crates/ui-egui/src/lib.rs:3719
 #: crates/ui-egui/src/lib.rs:3727
 msgid "Family…"
-msgstr "Oggetto…"
+msgstr "Famiglia…"
 
 #: crates/ui-egui/src/properties.rs:373
 msgid "Far Clip Offset"
@@ -4042,7 +4042,7 @@ msgstr "Preferiti"
 
 #: crates/ui-egui/src/lib.rs:4304
 msgid "Favorites: the materials and families you keep for every project; add one to this project with a click"
-msgstr "Preferiti: i materiali e gli oggetti che conservi per tutti i progetti; aggiungine uno a questo progetto con un clic"
+msgstr "Preferiti: i materiali e le famiglie che conservi per tutti i progetti; aggiungine uno a questo progetto con un clic"
 
 #: crates/ui-egui/src/properties.rs:2418
 msgid "Favorites…"
@@ -4426,7 +4426,7 @@ msgstr "Pannello a quattro punti"
 
 #: crates/ui-egui/src/editor/document.rs:612
 msgid "Four-Point Panel: the family made adaptive, as a panel on four placement points"
-msgstr "Pannello a quattro punti: l'oggetto reso adattivo, come un pannello su quattro punti di posizionamento"
+msgstr "Pannello a quattro punti: la famiglia resa adattiva, come un pannello su quattro punti di posizionamento"
 
 #: crates/core/src/family.rs:3330
 msgid "Frame Depth"
@@ -4968,7 +4968,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/nested.rs:87
 msgid "Instances of {} are placed in the family: delete them first."
-msgstr "Nell'oggetto sono posizionate istanze di {}: eliminale prima."
+msgstr "Nella famiglia sono posizionate istanze di {}: eliminale prima."
 
 #: crates/core/src/import.rs:1364
 #: crates/ui-egui/src/draw.rs:664
@@ -5479,15 +5479,15 @@ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:571
 #: crates/ui-egui/src/sketch.rs:813
 msgid "Load Family"
-msgstr "Carica oggetto"
+msgstr "Carica famiglia"
 
 #: crates/ui-egui/src/editor/document.rs:570
 msgid "Load Family: a family file loaded into this family, to place with Component"
-msgstr "Carica oggetto: un file di oggetto caricato in questo oggetto, da posizionare con Componente"
+msgstr "Carica famiglia: un file di famiglia caricato in questa famiglia, da posizionare con Componente"
 
 #: crates/ui-egui/src/sketch.rs:812
 msgid "Load Family: a family saved as a .json file, BIMCraft's own"
-msgstr "Carica oggetto: un oggetto salvato come file .json, il formato di BIMCraft"
+msgstr "Carica famiglia: una famiglia salvata come file .json, il formato di BIMCraft"
 
 #: crates/ui-egui/src/shortcuts.rs:398
 msgid "Load File..."
@@ -5495,20 +5495,20 @@ msgstr "Carica file..."
 
 #: crates/ui-egui/src/editor/document.rs:750
 msgid "Load into Family"
-msgstr "Carica nell'oggetto"
+msgstr "Carica nella famiglia"
 
 #: crates/ui-egui/src/editor/document.rs:761
 #: crates/ui-egui/src/editor/tabs.rs:283
 msgid "Load into Family and Close"
-msgstr "Carica nell'oggetto e chiudi"
+msgstr "Carica nella famiglia e chiudi"
 
 #: crates/ui-egui/src/editor/document.rs:761
 msgid "Load into Family and Close: the family it is nested in takes it, and it closes"
-msgstr "Carica nell'oggetto e chiudi: l'oggetto in cui è annidato lo riceve, e si chiude"
+msgstr "Carica nella famiglia e chiudi: la famiglia in cui è annidata la riceve, e si chiude"
 
 #: crates/ui-egui/src/editor/document.rs:750
 msgid "Load into Family: the family it is nested in takes it as it is here, and it stays open"
-msgstr "Carica nell'oggetto: l'oggetto in cui è annidato lo riceve così com'è qui, e resta aperto"
+msgstr "Carica nella famiglia: la famiglia in cui è annidata la riceve così com'è qui, e resta aperta"
 
 #: crates/ui-egui/src/editor/document.rs:753
 msgid "Load into Project"
@@ -5636,11 +5636,11 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:609
 msgid "Make Family Adaptive"
-msgstr "Rendi adattivo l'oggetto"
+msgstr "Rendi adattiva la famiglia"
 
 #: crates/ui-egui/src/editor/document.rs:607
 msgid "Make Family Adaptive: its points are placed where each instance is clicked, as Revit's Generic Model Adaptive"
-msgstr "Rendi adattivo l'oggetto: i suoi punti sono posizionati dove si clicca ogni istanza, come il Modello generico adattivo di Revit"
+msgstr "Rendi adattiva la famiglia: i suoi punti sono posizionati dove si clicca ogni istanza, come il Modello generico adattivo di Revit"
 
 #: crates/ui-egui/src/titleblocks.rs:221
 #: crates/ui-egui/src/titleblocks.rs:484
@@ -6301,7 +6301,7 @@ msgstr ""
 #: crates/ui-egui/src/editor.rs:1331
 #: crates/ui-egui/src/start.rs:339
 msgid "New Family"
-msgstr "Nuovo oggetto"
+msgstr "Nuova famiglia"
 
 #: crates/ui-egui/src/phasing.rs:596
 msgid "New Filter"
@@ -6403,7 +6403,7 @@ msgstr "Nessun elemento è nascosto o sostituito qui: selezionane alcuni e usa A
 
 #: crates/ui-egui/src/favorites.rs:155
 msgid "No favorite families yet: save one from the Family Editor."
-msgstr "Nessun oggetto preferito: salvane uno dall'editor degli oggetti."
+msgstr "Nessuna famiglia preferita: salvane una dall'editor di famiglie."
 
 #: crates/ui-egui/src/favorites.rs:130
 msgid "No favorite materials yet: save one from Manage > Materials."
@@ -6745,7 +6745,7 @@ msgstr ""
 
 #: crates/ui-egui/src/start.rs:350
 msgid "Open Family…"
-msgstr "Apri oggetto…"
+msgstr "Apri famiglia…"
 
 #: crates/ui-egui/src/recent.rs:130
 #: crates/ui-egui/src/recent.rs:134
@@ -6917,7 +6917,7 @@ msgstr "Sostituisci…"
 
 #: crates/ui-egui/src/editor/exists.rs:527
 msgid "Overwrite it with the version in this family"
-msgstr "Sovrascrivila con la versione di questo oggetto"
+msgstr "Sovrascrivila con la versione di questa famiglia"
 
 #: crates/ui-egui/src/editor/exists.rs:522
 msgid "Overwrite the existing version"
@@ -7407,7 +7407,7 @@ msgstr "Scegli due o più riferimenti, poi clicca dove va la quota."
 
 #: crates/ui-egui/src/editor/work_plane.rs:308
 msgid "Pick works in a plan or an elevation, where the family's planes and lines are drawn"
-msgstr "Scegli funziona in una pianta o in un prospetto, dove sono disegnati i piani e le linee dell'oggetto"
+msgstr "Scegli funziona in una pianta o in un prospetto, dove sono disegnati i piani e le linee della famiglia"
 
 #: crates/ui-egui/src/editor/document.rs:1688
 msgid "Pick…"
@@ -7447,7 +7447,7 @@ msgstr "Connettore tubazione"
 
 #: crates/ui-egui/src/editor/connectors.rs:30
 msgid "Pipe Connector: where a pipe meets the family, its domain, flow and size"
-msgstr "Connettore tubazione: dove una tubazione raggiunge l'oggetto, il suo dominio, flusso e dimensione"
+msgstr "Connettore tubazione: dove una tubazione raggiunge la famiglia, il suo dominio, flusso e dimensione"
 
 #: crates/ui-egui/src/mep.rs:47
 msgid "Pipe Fitting"
@@ -8019,7 +8019,7 @@ msgstr "Elimina inutilizzati"
 
 #: crates/ui-egui/src/lib.rs:4343
 msgid "Purge Unused (PU): take out the types, families and the rest nothing in the project uses; each category keeps a type"
-msgstr "Elimina inutilizzati (PU): elimina tipi, oggetti e il resto che nessun elemento del progetto usa; ogni categoria conserva un tipo"
+msgstr "Elimina inutilizzati (PU): elimina tipi, famiglie e il resto che nessun elemento del progetto usa; ogni categoria conserva un tipo"
 
 #: crates/ui-egui/src/purge.rs:74
 msgid "Purge {}"
@@ -9101,7 +9101,7 @@ msgstr "Condiviso"
 
 #: crates/ui-egui/src/editor/exists.rs:524
 msgid "Shared Family Already Loaded"
-msgstr "Oggetto condiviso già caricato"
+msgstr "Famiglia condivisa già caricata"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:530
 #: crates/ui-egui/src/editor/types_dialog.rs:543
@@ -9917,7 +9917,7 @@ msgstr "Linea simbolica"
 
 #: crates/ui-egui/src/editor/document.rs:547
 msgid "Symbolic Line: a line or an arc the family's plans draw, not part of its forms (a door's swing)"
-msgstr "Linea simbolica: una linea o un arco che disegnano le piante dell'oggetto, non parte delle sue forme (l'apertura di una porta)"
+msgstr "Linea simbolica: una linea o un arco che disegnano le piante della famiglia, non parte delle sue forme (l'apertura di una porta)"
 
 #: crates/ui-egui/src/editor/document.rs:1129
 #: crates/ui-egui/src/mep.rs:189
@@ -9935,7 +9935,7 @@ msgstr "Sistema"
 #: crates/ui-egui/src/notes.rs:503
 #: crates/ui-egui/src/properties.rs:2142
 msgid "System Family: {}"
-msgstr "Oggetto di sistema: {}"
+msgstr "Famiglia di sistema: {}"
 
 #: crates/ui-egui/src/electrical.rs:376
 msgid "System {} earthing"
@@ -10146,7 +10146,7 @@ msgstr "Testo: IBM Plex Sans (incluso). Il testo si riduce per stare nel suo seg
 
 #: crates/ui-egui/src/editor/document.rs:557
 msgid "Text: a label the family's plans draw"
-msgstr "Testo: un'etichetta che disegnano le piante dell'oggetto"
+msgstr "Testo: un'etichetta che disegnano le piante della famiglia"
 
 #: crates/ui-egui/src/titleblocks.rs:22
 msgid "Texts"
@@ -10214,32 +10214,32 @@ msgstr "Gli estremi di muri, griglie e altri elementi disegnati, e i punti scelt
 
 #: crates/ui-egui/src/editor/exists.rs:516
 msgid "The family document was closed before the load finished: nothing was loaded."
-msgstr "Il documento oggetto è stato chiuso prima che il caricamento finisse: non è stato caricato nulla."
+msgstr "Il documento famiglia è stato chiuso prima che il caricamento finisse: non è stato caricato nulla."
 
 #: crates/ui-egui/src/adaptive_editor.rs:734
 #: crates/ui-egui/src/editor/types_dialog.rs:650
 msgid "The family has a parameter named {} already."
-msgstr "L'oggetto ha già un parametro chiamato {}."
+msgstr "La famiglia ha già un parametro chiamato {}."
 
 #: crates/ui-egui/src/editor/types_dialog.rs:496
 msgid "The family has a type named {} already."
-msgstr "L'oggetto ha già un tipo chiamato {}."
+msgstr "La famiglia ha già un tipo chiamato {}."
 
 #: crates/ui-egui/src/editor/tabs.rs:286
 msgid "The family has changes that are not loaded. If you close it without loading, they are lost."
-msgstr "L'oggetto ha modifiche non caricate. Se lo chiudi senza caricarlo, andranno perse."
+msgstr "La famiglia ha modifiche non caricate. Se la chiudi senza caricarla, andranno perse."
 
 #: crates/ui-egui/src/editor/exists.rs:206
 msgid "The family it was nested in is closed."
-msgstr "L'oggetto in cui era annidato è chiuso."
+msgstr "La famiglia in cui era annidata è chiusa."
 
 #: crates/ui-egui/src/editor/exists.rs:394
 msgid "The family {} you are loading is already in this family, defined differently. What would you like to do?"
-msgstr "L'oggetto {} che stai caricando è già presente in questo oggetto, con una definizione diversa. Cosa vuoi fare?"
+msgstr "La famiglia {} che stai caricando è già presente in questa famiglia, con una definizione diversa. Cosa vuoi fare?"
 
 #: crates/ui-egui/src/editor/exists.rs:402
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
-msgstr "L'oggetto {} che stai caricando è già presente in questo progetto, con una definizione diversa. Cosa vuoi fare?"
+msgstr "La famiglia {} che stai caricando è già presente in questo progetto, con una definizione diversa. Cosa vuoi fare?"
 
 #: crates/ui-egui/src/properties.rs:2728
 msgid "The foot of the perpendicular from the last point to a wall or grid"
@@ -10259,7 +10259,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/types_dialog.rs:239
 msgid "The last type can't be deleted: a family needs a type to place."
-msgstr "L'ultimo tipo non si può eliminare: un oggetto ha bisogno di un tipo da posizionare."
+msgstr "L'ultimo tipo non si può eliminare: una famiglia ha bisogno di un tipo da posizionare."
 
 #: crates/ui-egui/src/sketch.rs:317
 msgid "The lines are shown in red."
@@ -10371,11 +10371,11 @@ msgstr "L'elemento selezionato non ha un tipo da copiare"
 
 #: crates/ui-egui/src/editor/exists.rs:410
 msgid "The shared family {} nested in the family you are loading is already in this family. Which version should it use?"
-msgstr "L'oggetto condiviso {} annidato nell'oggetto che stai caricando è già in questo oggetto. Quale versione deve usare?"
+msgstr "La famiglia condivisa {} annidata nella famiglia che stai caricando è già in questa famiglia. Quale versione deve usare?"
 
 #: crates/ui-egui/src/editor/exists.rs:418
 msgid "The shared family {} nested in this family is already loaded in the project. Which version should the project use?"
-msgstr "L'oggetto condiviso {} annidato in questo oggetto è già caricato nel progetto. Quale versione deve usare il progetto?"
+msgstr "La famiglia condivisa {} annidata in questa famiglia è già caricata nel progetto. Quale versione deve usare il progetto?"
 
 #: crates/ui-egui/src/shortcuts.rs:453
 #: crates/ui-egui/src/shortcuts.rs:556
@@ -10505,7 +10505,7 @@ msgstr "Questa copia non ha una scheda grafica con cui disegnare la vista 3D"
 #: crates/ui-egui/src/editor/sketch.rs:1268
 #: crates/ui-egui/src/editor/views.rs:901
 msgid "This end is tied to a parameter or worked out by a formula: change it in Family Types."
-msgstr "Questo estremo è legato a un parametro o calcolato da una formula: modificalo in Tipi di oggetto."
+msgstr "Questo estremo è legato a un parametro o calcolato da una formula: modificalo in Tipi di famiglia."
 
 #: crates/ui-egui/src/plugins.rs:419
 msgid "This plugin asks to read and write files on your computer. Its commands reach the disk only while you allow it."
@@ -11013,7 +11013,7 @@ msgstr "Usa la barra del titolo del sistema"
 
 #: crates/ui-egui/src/editor/exists.rs:526
 msgid "Use this family's version"
-msgstr "Usa la versione di questo oggetto"
+msgstr "Usa la versione di questa famiglia"
 
 #: crates/ui-egui/src/lib.rs:4246
 msgid "User Interface"
@@ -11725,11 +11725,11 @@ msgstr "un elemento di riferimento resta: non si può eliminare"
 
 #: crates/ui-egui/src/editor.rs:799
 msgid "a family needs a name"
-msgstr "un oggetto deve avere un nome"
+msgstr "una famiglia deve avere un nome"
 
 #: crates/ui-egui/src/editor.rs:842
 msgid "a family needs a type"
-msgstr "un oggetto deve avere un tipo"
+msgstr "una famiglia deve avere un tipo"
 
 #: crates/ui-egui/src/lib.rs:4910
 msgid "a field, such as Type or Height"
@@ -11909,7 +11909,7 @@ msgstr ""
 
 #: crates/core/src/library.rs:78
 msgid "family"
-msgstr "oggetto"
+msgstr "famiglia"
 
 #: crates/ui-egui/src/reinforce.rs:515
 msgid "fck (MPa)"
@@ -12127,11 +12127,11 @@ msgstr "inizio"
 
 #: crates/ui-egui/src/editor/extrusion.rs:64
 msgid "the family has no form {}"
-msgstr "l'oggetto non ha la forma {}"
+msgstr "la famiglia non ha la forma {}"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:670
 msgid "the family has no parameter `{}`"
-msgstr "l'oggetto non ha il parametro `{}`"
+msgstr "la famiglia non ha il parametro `{}`"
 
 #: crates/ui-egui/src/editor/sketch.rs:568
 msgid "the form is gone"
@@ -12287,7 +12287,7 @@ msgstr "Impossibile eliminare {}: {}"
 
 #: crates/ui-egui/src/editor/nested.rs:79
 msgid "{} can't be loaded into itself, nor into a family it nests"
-msgstr "{} non può essere caricato in se stesso né in un oggetto annidato in esso"
+msgstr "{} non può essere caricata in se stessa né in una famiglia annidata in essa"
 
 #: crates/ui-egui/src/editor/sketch.rs:492
 msgid "{} can't be worked out"
