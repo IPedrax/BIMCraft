@@ -53,7 +53,7 @@ pub(super) fn view(h: &mut Harness<BimApp>, which: Option<Which>) {
 }
 
 pub(super) fn editor<'a>(h: &'a Harness<'_, BimApp>) -> &'a crate::editor::FamilyEditor {
-    h.state().family_editor.as_ref().expect("a family open")
+    h.state().active_family().expect("a family open")
 }
 
 /// The view's last picture.
@@ -129,14 +129,14 @@ fn each_browser_entry_opens_its_view_and_the_tab_names_it() {
     ] {
         view(&mut h, which);
         assert_eq!(editor(&h).views.shown, which);
-        assert!(h.query_all_by_label(&format!("Box · {title}")).count() > 0, "the tab names {title}");
+        assert!(h.query_all_by_label(&format!("Box - {title}")).count() > 0, "the tab names {title}");
         let p = picture(&h, &pictures);
         assert!(!seen.contains(&p.pixels), "{title} is a picture of its own");
         seen.push(p.pixels);
     }
     view(&mut h, None);
     assert_eq!(editor(&h).views.shown, None);
-    assert!(h.query_all_by_label("Box · {3D}").count() > 0);
+    assert!(h.query_all_by_label("Box - {3D}").count() > 0);
 }
 
 #[test]
@@ -360,7 +360,7 @@ fn work_plane_show_draws_the_work_plane_into_3d_hidden_by_the_forms_in_front_of_
     assert_ne!(preview_at(&h, &pictures, ON_PLANE), plane, "Ref. Level tinted where it is seen");
     assert_eq!(preview_at(&h, &pictures, ON_BOX), front, "the box in front of it keeps its colours");
     // Set to Center (Front/Back), upright through the origin, in front of the box: the box behind it is tinted.
-    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+    if let Some(ed) = h.state_mut().active_family_mut() {
         ed.views.set_work_plane(bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK));
     }
     h.run();
@@ -395,7 +395,7 @@ fn a_reference_line_shows_in_plan_and_in_an_elevation() {
 fn a_form_the_type_hides_is_halftone_until_preview_visibility_and_a_form_hidden_for_now_is_gone() {
     let (mut h, pictures) = open(&format!("{BOX}\n{CABINET}"), "Cabinet");
     // Type B hides the second form (2000 to 3000 east).
-    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+    if let Some(ed) = h.state_mut().active_family_mut() {
         ed.preview_type("B");
     }
     view(&mut h, Some(Which::Plan));

@@ -5714,7 +5714,7 @@ fn the_family_editor_edits_a_family_says_what_wont_build_and_starts_a_new_one_of
     h.run();
     // Modify | Furniture's Mode panel, as Revit's.
     press(&mut h, "Edit Family");
-    assert!(h.state().family_editor.is_some(), "the window is open on the table's family");
+    assert!(h.state().active_family().is_some(), "the window is open on the table's family");
     // The table's parameters, a row each: its top's Thickness, 40 mm, here the first type's, 1200 x 800.
     press(&mut h, "Family Types");
     type_into(&mut h, "Parameter Value Thickness", "55");
@@ -5732,9 +5732,9 @@ fn the_family_editor_edits_a_family_says_what_wont_build_and_starts_a_new_one_of
     assert_eq!(h.query_all_by_label_contains("Nope").count(), 1, "the window says what's wrong, once");
     assert_eq!(h.state().session.model.families["Table"].parameters[3].formula, None);
     press(&mut h, "Cancel");
-    assert!(h.state().family_editor.is_some(), "Cancel closes Family Types and restores its draft");
+    assert!(h.state().active_family().is_some(), "Cancel closes Family Types and restores its draft");
     press(&mut h, "Close Family");
-    assert!(h.state().family_editor.is_none());
+    assert!(h.state().active_family().is_none());
     // A new family of a category (File > New > Family…): its name, then OK; a door's has the opening's Width and Height.
     key(&mut h, Key::Escape);
     new_family_of(&mut h, "Door");
@@ -5756,14 +5756,14 @@ fn the_family_editor_shows_a_familys_connectors_and_keeps_them() {
     // Modify | Plumbing Fixtures' Mode panel; the family document's Project Browser lists its connectors as it does its forms.
     press(&mut h, "Edit Family");
     assert!(h.query_by_label_contains("pipe · waste · out · Size 100").is_some(), "the waste outlet, its DN");
-    let ed = h.state().family_editor.as_ref().expect("the family document");
+    let ed = h.state().active_family().expect("the family document");
     let waste = (0..9).map(|i| ed.connector_name(i)).find(|n| n.contains("waste")).expect("listed");
     assert!(h.query_by_label_contains("cold · in").is_some(), "the cistern's cold water");
     // Selected there, Properties show it.
     h.get_by_label(&waste).scroll_to_me();
     h.run();
     press(&mut h, &waste);
-    assert!(h.state().family_editor.as_ref().and_then(|ed| ed.selected_connector()).is_some());
+    assert!(h.state().active_family().and_then(|ed| ed.selected_connector()).is_some());
     assert!(h.query_all_by_label_contains("Connector Domain").next().is_some_and(|n| n.value().as_deref() == Some("waste")));
     // Loaded into the project, the family keeps them as they were.
     let before = h.state().session.model.families["WC"].connectors.clone();
@@ -6517,7 +6517,7 @@ fn a_family_instance_selected_offers_edit_family_on_the_right_click_as_revit_doe
     h.run();
     assert_eq!(offered(&mut h, at, &["Edit Family"]), ["Edit Family"]);
     choose_item(&mut h, "Edit Family");
-    assert!(h.state().family_editor.is_some(), "the Family Editor is open");
+    assert!(h.state().active_family().is_some(), "the Family Editor is open");
     h.set_size(vec2(1800., 1000.));
     h.run();
     assert!(h.query_by_label("Load into Project").is_some(), "it opens as a family document");
@@ -6806,7 +6806,7 @@ fn adaptive_family_editor_reopens_exact_failed_instance_and_keeps_valid_dependen
     assert!(r.failed());
     assert!(r.values.contains_key("p1"));
     press(&mut h, "Close Family");
-    assert!(h.state().family_editor.is_none());
+    assert!(h.state().active_family().is_none());
 }
 
 #[test]
@@ -6852,7 +6852,7 @@ fn adaptive_editor_visual_preview_in_three_looks() {
         h.run();
         h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-create-{name}.png"))).unwrap();
         // Point 1 selected, so Properties shows its Revit fields.
-        if let Some(ed) = h.state_mut().family_editor.as_mut() {
+        if let Some(ed) = h.state_mut().active_family_mut() {
             ed.modeller.selection = vec!["p1".into()];
         }
         h.run();
@@ -6882,6 +6882,7 @@ mod family_pivots;
 mod family_properties;
 mod family_sketch;
 mod family_sketch_locks;
+mod family_tabs;
 mod family_temporary_hide;
 mod family_types_dialog;
 mod family_views;

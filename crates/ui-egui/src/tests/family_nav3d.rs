@@ -14,7 +14,7 @@ const PLINTH: [f64; 3] = [500.0, 0.0, 250.0];
 const TOP: [f64; 3] = [2500.0, 0.0, 300.0];
 
 fn camera(h: &Harness<BimApp>) -> Camera {
-    h.state().family_editor.as_ref().and_then(|ed| ed.orbit.camera).expect("{3D} drawn")
+    h.state().active_family().and_then(|ed| ed.orbit.camera).expect("{3D} drawn")
 }
 
 fn at(h: &Harness<BimApp>, p: [f64; 3]) -> Pos2 {
@@ -85,7 +85,7 @@ fn a_primary_drag_orbits_about_the_point_under_the_pointer_where_it_began() {
     let after = camera(&h);
     assert!((after.azimuth - before.azimuth).abs() > 20.0 && after.elevation != before.elevation, "{after:?}");
     assert!(at(&h, TOP).distance(from) < 6.0, "the top's front stays where the drag began: {:?} from {from:?}", at(&h, TOP));
-    assert_eq!(h.state().family_editor.as_ref().unwrap().selected_form(), None, "a drag selects nothing");
+    assert_eq!(h.state().active_family().unwrap().selected_form(), None, "a drag selects nothing");
 }
 
 #[test]
@@ -93,7 +93,7 @@ fn the_triad_and_the_viewcube_turn_the_family_s_3d() {
     let (mut h, _) = opened();
     let pane = h.state().view_rect;
     let corner = Orbit::cube_rect(pane).left_top();
-    let top = h.state().family_editor.as_ref().unwrap().orbit.triad_at(End::PlusZ, corner).expect("the triad shows");
+    let top = h.state().active_family().unwrap().orbit.triad_at(End::PlusZ, corner).expect("the triad shows");
     assert!(pane.contains(top) && !Orbit::cube_rect(pane).contains(top), "beside the ViewCube: {top:?}");
     click_at(&mut h, top);
     assert!(triad::looks_from(&camera(&h), End::PlusZ), "seen from the top: {:?}", camera(&h));
@@ -110,7 +110,7 @@ fn the_triad_and_the_viewcube_turn_the_family_s_3d() {
     click_at(&mut h, centre);
     let now = camera(&h);
     assert_eq!((now.azimuth, now.elevation), (-90.0, 0.0), "seen from the front");
-    assert_eq!(h.state().family_editor.as_ref().unwrap().selected_form(), None, "the cube's clicks select nothing");
+    assert_eq!(h.state().active_family().unwrap().selected_form(), None, "the cube's clicks select nothing");
     click_at(&mut h, home);
     let now = camera(&h);
     assert_eq!((now.azimuth, now.elevation), (bimcraft_core::view3d::AZIMUTH, bimcraft_core::view3d::ELEVATION), "home again");
@@ -156,14 +156,14 @@ mod gpu {
     #[test]
     fn the_family_s_3d_is_drawn_on_the_card_picked_through_its_mesh_and_moved_by_the_hand() {
         let Some(mut h) = on_card() else { return };
-        let ed = h.state().family_editor.as_ref().unwrap();
+        let ed = h.state().active_family().unwrap();
         assert!(ed.orbit.on_card, "{{3D}} on the card");
         // The project's mesh is kept on the card beside the family's.
         let project = h.state().orbit.mesh.as_ref().and_then(|(_, m)| m.as_ref().ok()).cloned().expect("the project's mesh");
         assert!(h.state().card.gpu.as_ref().unwrap().parks(&project), "the project's mesh parked");
         let at = at(&h, PLINTH);
         click_at(&mut h, at);
-        assert_eq!(h.state().family_editor.as_ref().unwrap().selected_form(), Some(0), "a click on the card's picture picks the first box");
+        assert_eq!(h.state().active_family().unwrap().selected_form(), Some(0), "a click on the card's picture picks the first box");
         let before = camera(&h);
         h.hover_at(at);
         h.event(Event::MouseWheel {

@@ -14,6 +14,7 @@ mod nested;
 pub(crate) mod options;
 mod pivot;
 pub(crate) mod sketch;
+pub(crate) mod tabs;
 mod temp_hide;
 mod types_dialog;
 pub(crate) mod views;
@@ -1241,8 +1242,13 @@ fn read_family_file(path: &std::path::Path) -> Result<(String, Family), String> 
 }
 
 impl BimApp {
-    /// Open the Family Editor on family `name` of the project.
+    /// Open the Family Editor on family `name` of the project: its document, in a tab of its own beside the project's; the one
+    /// open brought forward, if it is.
     pub(crate) fn edit_family(&mut self, name: &str) {
+        if let Some(id) = self.doc_of_family(name) {
+            self.activate_doc(id);
+            return;
+        }
         if let Some(f) = self.session.model.families.get(name) {
             let mut editor = FamilyEditor::of(name, f);
             // As Revit's: the family as it is defined, its points on its own axes, whatever instance it was opened from; that
@@ -1255,22 +1261,21 @@ impl BimApp {
                 editor.source = Some(id);
                 editor.picked = editor.types.iter().position(|(n, _)| n == &c.type_name).unwrap_or(0);
             }
-            self.family_editor = Some(editor);
-            // A document opened anew has no family under it.
-            self.family_hosts.clear();
+            self.open_family_document(editor, None);
         }
     }
 
-    /// Open the Family Editor on a new family of `category`.
+    /// Open the Family Editor on a new family of `category`: "Family1", "Family2" and so on.
     pub(crate) fn new_family(&mut self, category: Category) {
-        self.family_editor = Some(FamilyEditor::blank(category));
-        self.family_hosts.clear();
+        let mut editor = FamilyEditor::blank(category);
+        editor.name = self.next_family_name();
+        self.open_family_document(editor, None);
     }
 
     /// The start page's New Family and Open Family: the document over the page, which comes back when it closes unless a
     /// project is behind it (the page brought up over one, or a family loaded into the blank one meanwhile).
     pub(crate) fn family_from_start_page(&mut self) {
-        if self.family_editor.is_some() {
+        if self.active_family().is_some() {
             self.family_from_home = !self.home.over;
             self.home.shown = false;
         }
@@ -1279,7 +1284,7 @@ impl BimApp {
     /// Closed, a family document opened from the start page with no project behind it goes back to the page, as Revit's goes
     /// back to Home; a family it loaded into the blank project leaves the project on screen.
     pub(crate) fn family_closed_from_home(&mut self) {
-        if self.family_from_home && self.family_editor.is_none() {
+        if self.family_from_home && self.families.is_empty() {
             self.family_from_home = false;
             if !self.dirty() {
                 self.home.shown = true;
@@ -1304,12 +1309,15 @@ impl BimApp {
     /// Project loads it, asking first when the project has a family of its name), the project left as it is. A file that isn't
     /// a family says why.
     pub(crate) fn open_family_file(&mut self, path: &std::path::Path) {
+        if let Some(id) = self.doc_of_file(path) {
+            self.activate_doc(id);
+            return;
+        }
         match read_family_file(path) {
             Ok((name, family)) => {
                 let mut editor = FamilyEditor::of(&name, &family);
                 editor.original = None;
-                self.family_editor = Some(editor);
-                self.family_hosts.clear();
+                self.open_family_document(editor, Some(path.to_path_buf()));
                 self.status = Status::default();
             }
             Err(text) => self.status = Status { text, error: true },
@@ -1390,7 +1398,7 @@ impl BimApp {
     /// The family document, while one is open: what its ribbon asked for and the dialogs it opened, the window drawing the
     /// rest; then a step of its own history for what changed this frame.
     pub(crate) fn family_editor_window(&mut self, ctx: &Context) {
-        let Some(mut ed) = self.family_editor.take() else { return };
+        let Some(mut ed) = self.take_family() else { return };
         let materials: Vec<String> = self.session.model.materials.keys().cloned().collect();
         self.document_dialogs(ctx, &mut ed, &materials);
         let ask = std::mem::take(&mut ed.ask);
@@ -1426,7 +1434,7 @@ impl BimApp {
             let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]);
             // Loaded into this family (T6a), as Revit's Insert > Load Family in a family; closed meanwhile, nothing to load into.
             self.ask_file(ctx, dialog, false, |app, path| {
-                if app.family_editor.is_some() {
+                if app.active_family().is_some() {
                     app.nest_family_file(&path);
                 }
             });
@@ -1450,7 +1458,7 @@ impl BimApp {
                             match draft.execute("family", &json!({"name":name,"save":path.to_string_lossy()})) {
                                 // Still open, the document has nothing unsaved but what changed meanwhile.
                                 Ok(_) => {
-                                    if let Some(open) = app.family_editor.as_mut() {
+                                    if let Some(open) = app.active_family_mut() {
                                         open.saved_as(saved);
                                     }
                                 }
@@ -1479,12 +1487,12 @@ impl BimApp {
             match family {
                 Ok(family) => {
                     let name = ed.name.trim().to_string();
-                    self.family_editor = Some(ed);
+                    self.put_family(ed);
                     self.nest_family(name, family, exists::After::IntoHost { close: ok });
                 }
                 Err(e) => {
                     ed.document.refused = Some(e);
-                    self.family_editor = Some(ed);
+                    self.put_family(ed);
                 }
             }
             return;
@@ -1492,12 +1500,15 @@ impl BimApp {
         if !cancel && (apply || ok || place_adaptive || apply_placement) {
             self.load_draft(&mut ed, exists::After::Document { close: ok, place: place_adaptive, apply_placement });
         }
-        let closed = cancel || std::mem::take(&mut ed.document.loaded_to_close);
-        if !closed {
-            self.family_editor = Some(ed);
-        } else if ed.into_host {
-            // Closed, a nested family's document goes back to the family under it.
-            self.family_editor = self.family_hosts.pop();
+        // Loaded and closed: its tabs go, and the one it was opened from comes back (a nested family's, the family under it).
+        // Close Family asks first while it has unsaved changes.
+        let loaded = std::mem::take(&mut ed.document.loaded_to_close);
+        let id = self.active_doc();
+        self.put_family(ed);
+        match id {
+            Some(id) if loaded => self.close_family_document(id),
+            Some(id) if cancel => self.ask_close_family(id, tabs::Then::Nothing),
+            _ => {}
         }
     }
 }

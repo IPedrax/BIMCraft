@@ -19,11 +19,11 @@ fn opened() -> Harness<'static, BimApp> {
 
 /// The draft as it stands, built.
 fn draft(h: &Harness<BimApp>) -> Family {
-    h.state().family_editor.as_ref().unwrap().draft_family().unwrap()
+    h.state().active_family().unwrap().draft_family().unwrap()
 }
 
 fn open(h: &Harness<BimApp>) -> bool {
-    h.state().family_editor.as_ref().is_some_and(|e| e.dialog.is_some())
+    h.state().active_family().is_some_and(|e| e.dialog.is_some())
 }
 
 fn disabled(h: &Harness<BimApp>, label: &str) -> bool {

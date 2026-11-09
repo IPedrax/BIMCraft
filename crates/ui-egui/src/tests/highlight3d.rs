@@ -31,7 +31,7 @@ fn nest_box(h: &mut Harness<BimApp>, dir: &std::path::Path) {
     let at = editor(h).views.screen_of([-150.0, -100.0, 0.0]).expect("the floor plan shows");
     click_at(h, at);
     h.run();
-    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+    if let Some(ed) = h.state_mut().active_family_mut() {
         ed.nested_instances[0].offset = bimcraft_core::family::Expr::Number(300.0);
     }
     key(h, Key::Escape);
@@ -57,7 +57,7 @@ fn cabinet_kept(dir: &std::path::Path) -> (Harness<'static, BimApp>, Pictures) {
 }
 
 fn ed_mut<'a>(h: &'a mut Harness<'_, BimApp>) -> &'a mut crate::editor::FamilyEditor {
-    h.state_mut().family_editor.as_mut().expect("a family open")
+    h.state_mut().active_family_mut().expect("a family open")
 }
 
 /// The last picture kept of the texture named `name` (`family-preview`, `view3d`).

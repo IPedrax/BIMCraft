@@ -29,11 +29,11 @@ fn open() -> Harness<'static, BimApp> {
 }
 
 fn editor<'a>(h: &'a Harness<'_, BimApp>) -> &'a crate::editor::FamilyEditor {
-    h.state().family_editor.as_ref().expect("a family open")
+    h.state().active_family().expect("a family open")
 }
 
 fn editor_mut<'a>(h: &'a mut Harness<'_, BimApp>) -> &'a mut crate::editor::FamilyEditor {
-    h.state_mut().family_editor.as_mut().expect("a family open")
+    h.state_mut().active_family_mut().expect("a family open")
 }
 
 /// The Project Browser's entry for `which` clicked.

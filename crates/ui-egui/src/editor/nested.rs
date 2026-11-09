@@ -371,7 +371,7 @@ impl BimApp {
     /// The Project Browser's Families: the families nested in the open one, each with its types; its right-click menu has Edit
     /// Family and Delete.
     pub(super) fn nested_browser(&mut self, ui: &mut Ui) {
-        let Some(ed) = self.family_editor.as_ref() else { return };
+        let Some(ed) = self.active_family() else { return };
         if ed.nested.is_empty() {
             return;
         }
@@ -397,7 +397,7 @@ impl BimApp {
                 });
             }
         });
-        let Some(ed) = self.family_editor.as_mut() else { return };
+        let Some(ed) = self.active_family_mut() else { return };
         match asked {
             Some((name, true)) => ed.open_nested = Some(name),
             Some((name, false)) => {
@@ -411,15 +411,24 @@ impl BimApp {
 
     /// Edit Family on nested family `name` of `host`: its own document opens over the host's, which waits under it.
     pub(super) fn open_nested_family(&mut self, mut host: FamilyEditor, name: &str) {
-        let Some(n) = nested::find(&host.nested, name) else {
-            self.family_editor = Some(host);
-            return;
-        };
-        let mut child = FamilyEditor::of(name, &n.family);
-        child.into_host = true;
+        let parent = self.active_doc();
+        let found = nested::find(&host.nested, name).map(|n| n.family.clone());
         host.placing = None;
-        self.family_hosts.push(host);
-        self.family_editor = Some(child);
+        self.put_family(host);
+        let Some(family) = found else { return };
+        // Open already over this family: brought forward.
+        if let Some(open) =
+            self.families.iter().find(|d| d.host == parent && d.ed.as_ref().is_some_and(|ed| ed.title() == name)).map(|d| d.id)
+        {
+            self.activate_doc(open);
+            return;
+        }
+        let mut child = FamilyEditor::of(name, &family);
+        child.into_host = true;
+        let id = self.open_family_document(child, None);
+        if let Some(d) = self.families.iter_mut().find(|d| d.id == id) {
+            d.host = parent;
+        }
     }
 
     /// Insert > Load Family in a family document: the family in the file at `path` loaded into it, asking first when it nests

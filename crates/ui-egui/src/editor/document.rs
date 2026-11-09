@@ -322,18 +322,18 @@ pub(crate) const VIEW: &str = "{3D}";
 impl BimApp {
     /// Whether a family document has the window: a family open in the Family Editor.
     pub(crate) fn family_doc(&self) -> bool {
-        self.family_editor.is_some()
+        self.active_family().is_some()
     }
 
     /// The title the window and its title bar give a family document: the family and its view.
     pub(crate) fn family_title(&self) -> Option<String> {
-        let ed = self.family_editor.as_ref()?;
+        let ed = self.active_family()?;
         Some(format!("{} · {}", ed.title(), super::views::view_title(ed.views.shown)))
     }
 
     /// The family document's ribbon: its tabs, then the active tab's panels, folding to fit as the project's do.
     pub(crate) fn family_ribbon(&mut self, ui: &mut Ui) {
-        let Some(mut ed) = self.family_editor.take() else { return };
+        let Some(mut ed) = self.take_family() else { return };
         // The contextual tab comes up when it appears or changes, and goes back to the tab it came from when it goes.
         let now = context(&ed);
         let seen = UiId::new("family-context");
@@ -381,7 +381,7 @@ impl BimApp {
                 });
             });
         });
-        self.family_editor = Some(ed);
+        self.put_family(ed);
     }
 
     /// The panels of the family document's active tab, as Revit's family editor lays them out: Create (drawing), Insert, View,
@@ -746,20 +746,26 @@ impl BimApp {
         // Kept whole while the tab makes room, as Revit's: the family's way back into the project stays in sight.
         ribbon::kept(ui, msg!("Family Editor"), |ui| {
             // Opened from a family it is nested in, it loads back into that one (T6a), as Revit's does into the open family.
-            let tip = if into_host {
-                msg!("Load into Project: the family it is nested in takes it as it is here, and it stays open")
+            let (load, tip) = if into_host {
+                (msg!("Load into Family"), msg!("Load into Family: the family it is nested in takes it as it is here, and it stays open"))
             } else {
-                msg!("Load into Project: the project takes the family as it is here, and the family stays open")
+                (
+                    msg!("Load into Project"),
+                    msg!("Load into Project: the project takes the family as it is here, and the family stays open"),
+                )
             };
-            if big_button(ui, Icon::LoadIntoProject, msg!("Load into Project"), false, tip).clicked() {
+            if big_button(ui, Icon::LoadIntoProject, load, false, tip).clicked() {
                 ed.ask.apply = true;
             }
-            let tip = if into_host {
-                msg!("Load into Project and Close: the family it is nested in takes it, and it closes")
+            let (load, tip) = if into_host {
+                (msg!("Load into Family and Close"), msg!("Load into Family and Close: the family it is nested in takes it, and it closes"))
             } else {
-                msg!("Load into Project and Close: the project takes the family, and the family closes")
+                (
+                    msg!("Load into Project and Close"),
+                    msg!("Load into Project and Close: the project takes the family, and the family closes"),
+                )
             };
-            if big_button(ui, Icon::LoadIntoProjectClose, msg!("Load into Project and Close"), false, tip).clicked() {
+            if big_button(ui, Icon::LoadIntoProjectClose, load, false, tip).clicked() {
                 ed.ask.ok = true;
             }
         });
@@ -863,11 +869,11 @@ impl BimApp {
     /// The family document's Properties palette: what is selected in its view, with Revit's groups, or the family itself; for a
     /// family that isn't adaptive, the family and its forms and symbols.
     pub(crate) fn family_properties(&mut self, ui: &mut Ui) {
-        let Some(mut ed) = self.family_editor.take() else { return };
+        let Some(mut ed) = self.take_family() else { return };
         // A form being sketched: what it will be.
         if ed.sketching() {
             self.form_sketch_properties(ui, &mut ed);
-            self.family_editor = Some(ed);
+            self.put_family(ed);
             return;
         }
         let values = ed.values();
@@ -882,7 +888,7 @@ impl BimApp {
             if let Some(e) = ed.pivot_properties(ui, g, self.session.model.units) {
                 self.status = Status { text: e, error: true };
             }
-            self.family_editor = Some(ed);
+            self.put_family(ed);
             return;
         }
         // A reference plane selected in a plan or an elevation: its name, and its pivot (F7d).
@@ -904,7 +910,7 @@ impl BimApp {
                     self.status = Status { text: e, error: true };
                 }
             }
-            self.family_editor = Some(ed);
+            self.put_family(ed);
             return;
         }
         // A nested instance selected: its type, where it stands and its family's parameters (T6a).
@@ -913,7 +919,7 @@ impl BimApp {
             selector(ui, Icon::Component, &what);
             ui.add_space(6.0);
             self.nested_properties(ui, &mut ed, i);
-            self.family_editor = Some(ed);
+            self.put_family(ed);
             return;
         }
         // A form selected: its own Properties, as Revit's show only what is selected.
@@ -921,7 +927,7 @@ impl BimApp {
             selector(ui, Icon::CreateForm, &ed.forms[i].describe());
             ui.add_space(6.0);
             self.form_properties(ui, &mut ed, i);
-            self.family_editor = Some(ed);
+            self.put_family(ed);
             return;
         }
         // A symbol selected: its own rows.
@@ -929,7 +935,7 @@ impl BimApp {
             selector(ui, Icon::Line, &ed.symbol_name(i));
             ui.add_space(6.0);
             super::symbol_properties(&mut ed, ui, i);
-            self.family_editor = Some(ed);
+            self.put_family(ed);
             return;
         }
         // A connector selected (#269): its own rows, as Revit's Connector Element shows them.
@@ -938,7 +944,7 @@ impl BimApp {
             selector(ui, icon, t(super::connectors::kind_name(ed.connectors[i].kind())));
             ui.add_space(6.0);
             super::connectors::connector_properties(&mut ed, ui, i);
-            self.family_editor = Some(ed);
+            self.put_family(ed);
             return;
         }
         // Nothing selected: the family's own, as Revit's Properties show them (Identity Data, then Family Category and
@@ -949,7 +955,7 @@ impl BimApp {
             identity(ui, &mut ed.name, &category);
             ui.add_space(6.0);
             other(ui, &mut ed, self.session.model.units);
-            self.family_editor = Some(ed);
+            self.put_family(ed);
             return;
         }
         if let Some(d) = ed.adaptive.as_ref() {
@@ -1022,7 +1028,7 @@ impl BimApp {
         {
             ed.associating = Some(a);
         }
-        self.family_editor = Some(ed);
+        self.put_family(ed);
     }
 
     /// The family document's Project Browser: its views, as a family template has them, and the forms and plan symbols of a
@@ -1040,15 +1046,15 @@ impl BimApp {
             DeleteConnector(usize),
             Edit(usize),
         }
-        let picked = self.family_editor.as_ref().and_then(FamilyEditor::selected_form);
-        let picked_symbol = self.family_editor.as_ref().and_then(FamilyEditor::selected_symbol);
-        let picked_connector = self.family_editor.as_ref().and_then(FamilyEditor::selected_connector);
-        let connectors: Vec<String> = match &self.family_editor {
+        let picked = self.active_family().and_then(FamilyEditor::selected_form);
+        let picked_symbol = self.active_family().and_then(FamilyEditor::selected_symbol);
+        let picked_connector = self.active_family().and_then(FamilyEditor::selected_connector);
+        let connectors: Vec<String> = match self.active_family() {
             Some(ed) if ed.adaptive.is_none() => (0..ed.connectors.len()).map(|i| ed.connector_name(i)).collect(),
             _ => Vec::new(),
         };
         type Row = (String, bool, &'static str);
-        let (forms, symbols): (Vec<Row>, Vec<String>) = match &self.family_editor {
+        let (forms, symbols): (Vec<Row>, Vec<String>) = match self.active_family() {
             Some(ed) if ed.adaptive.is_none() => (
                 ed.forms
                     .iter()
@@ -1075,12 +1081,12 @@ impl BimApp {
                         (msg!("3D Views"), vec![(None, VIEW)]),
                         (msg!("Elevations"), elevations),
                     ];
-                    let shown = self.family_editor.as_ref().and_then(|ed| ed.views.shown);
+                    let shown = self.active_family().and_then(|ed| ed.views.shown);
                     for (group, views) in groups {
                         egui::CollapsingHeader::new(t(group)).id_salt(("family-views", group)).default_open(true).show(ui, |ui| {
                             for (which, view) in views {
                                 if ui.selectable_label(shown == which, t(view)).clicked()
-                                    && let Some(ed) = self.family_editor.as_mut()
+                                    && let Some(ed) = self.active_family_mut()
                                 {
                                     ed.views.show(which);
                                 }
@@ -1158,7 +1164,7 @@ impl BimApp {
                 }
             });
         });
-        let Some(ed) = self.family_editor.as_mut() else { return };
+        let Some(ed) = self.active_family_mut() else { return };
         match asked {
             // Selected, as Revit's browser selects what it lists: its Properties show.
             Some(Asked::Form(i)) => ed.select_only_form(i),
@@ -1182,7 +1188,7 @@ impl BimApp {
     /// as Revit's by Shift and the middle button) filling the pane, its tab over its top left corner with the family's close
     /// button, and its view control bar at the bottom.
     pub(crate) fn family_central(&mut self, ui: &mut Ui) {
-        let Some(mut ed) = self.family_editor.take() else { return };
+        let Some(mut ed) = self.take_family() else { return };
         ed.snaps = self.snaps_now();
         let pane = ui.available_rect_before_wrap();
         self.view_rect = pane;
@@ -1207,16 +1213,16 @@ impl BimApp {
         } else {
             self.family_3d(ui, &mut ed, pane);
         }
+        // The window's tabs, the project's and each family document's, over the view's top left corner.
         let card = crate::style::card([true, false, true, false]).inner_margin(Margin::same(2));
         let mut over = ui.new_child(UiBuilder::new().id_salt("family-view-tabs").max_rect(pane));
-        let foot = card.show(&mut over, |ui| {
-            ui.horizontal(|ui| {
-                crate::tab_button(ui, &format!("{} · {}", ed.title(), super::views::view_tab(ed.views.shown)), true, false);
-                if icon_button(ui, Icon::Close, msg!("Close Family")).clicked() {
-                    ed.ask.cancel = true;
-                }
-            });
-        });
+        // While the bar is drawn the document is in its place, so its tabs are named.
+        self.put_family(ed);
+        let foot = card.show(&mut over, |ui| self.view_tabs(ui));
+        let Some(mut ed) = self.take_family() else {
+            self.tabs_foot = foot.response.rect.bottom();
+            return;
+        };
         self.tabs_foot = foot.response.rect.bottom();
         // The view control bar, at the view's bottom left.
         let mut bar = ui.new_child(UiBuilder::new().id_salt("family-view-bar").max_rect(pane).layout(Layout::bottom_up(Align::Min)));
@@ -1280,14 +1286,14 @@ impl BimApp {
                 });
             });
         }
-        self.family_editor = Some(ed);
+        self.put_family(ed);
     }
 
     /// The family document's Options Bar: the contextual tab's name; drawing, Revit's Placement Plane; with lines selected, the
     /// depth Create Form gives a solid or a void.
     pub(crate) fn family_options(&mut self, ui: &mut Ui) -> bool {
         let units = self.session.model.units;
-        let Some(ed) = self.family_editor.as_mut() else { return false };
+        let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet) else { return false };
         let Some(name) = context(ed) else { return false };
         if ed.sketching() {
             ui.horizontal(|ui| {
@@ -1355,12 +1361,12 @@ impl BimApp {
 
     /// Whether the family document's Options Bar has anything to show: only with a contextual tab, as Revit's.
     pub(crate) fn family_has_options(&self) -> bool {
-        self.family_editor.as_ref().is_some_and(|ed| context(ed).is_some())
+        self.active_family().is_some_and(|ed| context(ed).is_some())
     }
 
     /// What the family document's status bar asks for: an adaptive family's modelling view's tool, or how another's preview turns.
     pub(crate) fn family_prompt(&self) -> Option<&'static str> {
-        let ed = self.family_editor.as_ref()?;
+        let ed = self.active_family()?;
         if let Some(s) = ed.sketch.as_ref() {
             // Align on the sketch's lines (F7b).
             if ed.views.aligning.is_some() {
@@ -1407,7 +1413,7 @@ impl BimApp {
 
     /// Undo in a family document: one step back through its own history, done when the frame ends; the project's is not touched.
     pub(crate) fn family_undo(&mut self) {
-        if let Some(ed) = self.family_editor.as_mut() {
+        if let Some(ed) = self.active_family_mut() {
             // While sketching, the sketch's own last change.
             if ed.sketching() {
                 ed.undo_sketch();
@@ -1419,7 +1425,7 @@ impl BimApp {
 
     /// Redo in a family document: a step undone done again.
     pub(crate) fn family_redo(&mut self) {
-        if let Some(ed) = self.family_editor.as_mut().filter(|ed| !ed.sketching()) {
+        if let Some(ed) = self.active_family_mut().filter(|ed| !ed.sketching()) {
             ed.ask.redo = true;
         }
     }
@@ -1427,7 +1433,7 @@ impl BimApp {
     /// The family document's keys: Ctrl+Z undoes a step of its own, Ctrl+Y and Ctrl+Shift+Z redo one, and the two letters of
     /// Temporary Hide/Isolate (`temp_hide.rs`), unless a field being typed in (whose own they are) or a dialog has them.
     pub(crate) fn family_keys(&mut self, ctx: &Context) {
-        let Some(ed) = self.family_editor.as_ref() else { return };
+        let Some(ed) = self.active_family() else { return };
         if ed.modal() || ctx.text_edit_focused() {
             return;
         }
@@ -1435,7 +1441,7 @@ impl BimApp {
         if !egui::Popup::is_any_open(ctx) {
             self.family_typed(ctx);
         }
-        let Some(ed) = self.family_editor.as_mut() else { return };
+        let Some(ed) = self.active_family_mut() else { return };
         // Sketch mode: Escape lets the shape's points go, then its tool; Delete takes the lines picked away; Ctrl+Z takes back
         // the sketch's own last change. The document's history waits for Finish.
         if let Some(s) = ed.sketch.as_mut() {

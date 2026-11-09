@@ -1120,7 +1120,7 @@ impl BimApp {
 
     /// Where point `p` of the family open shows on screen, in its {3D} as last shown (its axes are the scratch model's).
     pub fn family_screen3(&self, p: P3) -> Option<Pos2> {
-        let o = &self.family_editor.as_ref()?.orbit;
+        let o = &self.active_family()?.orbit;
         o.camera.map(|c| on_screen(&c, o.rect, o.ppp, p))
     }
 

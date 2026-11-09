@@ -37,7 +37,7 @@ fn in_plan(dims: &str) -> Harness<'static, BimApp> {
 }
 
 fn ed_mut<'a>(h: &'a mut Harness<'_, BimApp>) -> &'a mut crate::editor::FamilyEditor {
-    h.state_mut().family_editor.as_mut().unwrap()
+    h.state_mut().active_family_mut().unwrap()
 }
 
 fn status(h: &Harness<BimApp>) -> String {

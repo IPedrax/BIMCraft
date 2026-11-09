@@ -892,7 +892,8 @@ impl BimApp {
             ([], _, Sheet::Plan(level)) => Subject::Plan(level),
             ([], _, Sheet::Ceiling(_)) => Subject::CeilingPlan,
             ([], _, Sheet::View3D) => Subject::View3D,
-            ([], _, Sheet::Schedule(_) | Sheet::Table(_)) => Subject::Schedule,
+            // A family document's Properties are its own (`family_properties`).
+            ([], _, Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..)) => Subject::Schedule,
         }
     }
 

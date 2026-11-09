@@ -112,7 +112,7 @@ fn a_parametric_window_drawn_from_blank_is_placed_flexed_scheduled_and_exported(
     let mut h = project();
     // New family: a Window, from File > New > Family…, as Revit's.
     new_family_of(&mut h, "Window");
-    assert!(h.state().family_editor.is_some(), "the family document is open");
+    assert!(h.state().active_family().is_some(), "the family document is open");
     type_into(&mut h, "Family name", NAME);
     key(&mut h, Key::Enter);
     // The blank window's starter frame (three boxes) goes: this one is drawn.
@@ -304,6 +304,20 @@ fn a_parametric_window_drawn_from_blank_is_placed_flexed_scheduled_and_exported(
     assert_eq!(numbers(&f), [[-450.0, 0.0], [450.0, 0.0], [450.0, 1200.0], [-450.0, 1200.0]], "as drawn");
     h.get_by_label_contains("Set by its dimensions and locks for the type 1200 x 1500").scroll_to_me();
     h.run();
+    // A round trip to the project mid-way: its floor plan's tab shows the project's ribbon, and the family's tab comes back
+    // with the draft as it was.
+    let (before, back) = (draft(&h), h.state().sheet);
+    let tab = |h: &Harness<BimApp>, sheet: &dyn Fn(&Sheet) -> bool| {
+        h.state().tab_rects.iter().find(|(s, _)| sheet(s)).map(|(_, r)| r.center()).expect("its tab")
+    };
+    let at = tab(&h, &|s| matches!(s, Sheet::Plan(_)));
+    click_at(&mut h, at);
+    assert!(h.state().active_family().is_none() && matches!(h.state().sheet, Sheet::Plan(_)), "the project's floor plan");
+    assert!(h.query_by_label("Architecture").is_some() && h.query_by_label("Load into Project").is_none(), "the project's ribbon");
+    let at = tab(&h, &|s| *s == back);
+    click_at(&mut h, at);
+    assert_eq!(h.state().sheet, back, "back on {}", h.state().view_name(back));
+    assert_eq!(draft(&h), before, "the draft as it was");
     // The family's views, its dimensions labelled, as the window shows them.
     view(&mut h, Some(Which::Plan));
     dump(&mut h, "family-plan");
@@ -312,7 +326,8 @@ fn a_parametric_window_drawn_from_blank_is_placed_flexed_scheduled_and_exported(
     // Load into Project and Close: the project's family is the draft, every dimension and lock with it.
     let drawn = draft(&h);
     press(&mut h, "Load into Project and Close");
-    assert!(h.state().family_editor.is_none(), "{}", status(&h));
+    assert!(h.state().active_family().is_none(), "{}", status(&h));
+    assert!(matches!(h.state().sheet, Sheet::Plan(_)), "back on the project's floor plan tab it was opened from");
     let loaded = h.state().session.model.families.get(NAME).cloned().expect("loaded");
     assert_eq!((loaded.dimensions.len(), loaded.forms.len(), loaded.types.len()), (drawn.dimensions.len(), 2, 3));
     // Placed in the south wall, from the Architecture tab's Window, its first type picked in the Type Selector.

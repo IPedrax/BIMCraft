@@ -179,7 +179,7 @@ impl BimApp {
                 groups.push(vec![Item::new(Action::WorkPlane, self.sketch.is_none())]);
                 groups.push([vec![Item::new(Action::HomeView, true)], zoom].concat());
             }
-            Sheet::Schedule(_) | Sheet::Table(_) => {}
+            Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => {}
         }
         groups
     }

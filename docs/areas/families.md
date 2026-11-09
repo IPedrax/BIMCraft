@@ -116,9 +116,21 @@ name: a triangle's face is read from its winding, so every solid emits triangles
 `Image::face` says which face a pixel is on. Favorites (`favorites.rs`) are a file of the user's own (`default_path`:
 `BIMCRAFT_FAVORITES`, else the configuration folder) with materials and their pictures, families and their materials; they change
 a project only through the `favorite` command (`load` never overwrites without `replace`). The desktop's Family Editor
-(`editor.rs`, `editor/document.rs`) opens every family in a document occupying the window, with a family ribbon,
+(`editor.rs`, `editor/document.rs`) opens every family in a document of its own, with a family ribbon,
 docked Properties and Project Browser, and a 3D view: an adaptive family's modelling view and tools
-([adaptive families](adaptive-families.md)), another's 3D preview. Properties show what is selected, as Revit's do: nothing
+([adaptive families](adaptive-families.md)), another's {3D}. Each document's views are tabs of the window's, after the
+project's (`Sheet::Family`, `editor/tabs.rs`), titled "{family} - {view}" with the family's icon; any number of documents may be
+open, each with its own draft, history (Undo on its tabs undoes its steps, never the project's), selection and tool, and the
+project's tab shows the project's ribbon, Properties, Browser and tool again. A view the document goes to (its Project Browser,
+Go To View) opens its tab; closing a tab that isn't the document's last only closes it. The last one, or Close Family (that
+tab's ×), closes the document: with changes not loaded, "Save changes to {family}?" asks first (Load into Project and Close,
+Close Without Loading, Cancel), and a nested family's document open over it closes first. File > New, Open and Close, and
+quitting, ask about each document before the project's own question. Load into Project leaves the document open and clean;
+Load into Project and Close goes back to the tab it was opened from. Edit Family on a family whose document is open, or opening
+a file that is, brings that document forward: a family is never open twice. A new blank family is "Family1", "Family2" and so
+on. A nested family's document (Edit Family in a family) reads Load into Family; it loads into the document it came from. A
+family opened from the start page with no project behind it shows no project tabs until something is loaded into the blank
+project. Family tabs neither float nor tile. Properties show what is selected, as Revit's do: nothing
 selected, the family's own (Identity Data, then Family Category and Parameters' Other group); a form, a symbol, a reference
 plane or line, a dimension or a nested instance, its own. The forms and the plan symbols of a family that isn't adaptive are
 listed in the Project Browser (Forms and Symbols, `family_browser`): a click selects one, and its right-click menu has Select,
@@ -1198,7 +1210,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 
 In `crates/ui-egui`, the Family Editor:
 
-- `editor.rs`: family drafts. `editor/document.rs`: the family document every family opens as.
+- `editor.rs`: family drafts. `editor/document.rs`: the family document every family opens as. `editor/tabs.rs`: the documents open, as tabs beside the project's, and the rules for closing them.
 - `editor/association.rs`: parameter associations. `editor/extrusion.rs`: a selected form's Properties.
 - `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
