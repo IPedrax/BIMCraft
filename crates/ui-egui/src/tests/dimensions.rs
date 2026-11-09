@@ -212,6 +212,9 @@ fn a_locked_segment_shows_its_lock_when_its_dimension_isnt_selected() {
     h.run();
     assert!(h.state().selection.is_empty());
     assert!(h.query_by_label("Locked segment 1").is_some(), "shown, though nothing is selected");
+    // A click on it unlocks the segment then, as Revit's padlock does.
+    press(&mut h, "Locked segment 1");
+    assert!(dimension(&h, id).locked.is_empty(), "{}", h.state().status.text);
 }
 
 #[test]

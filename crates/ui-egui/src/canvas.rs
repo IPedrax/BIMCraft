@@ -3364,17 +3364,14 @@ impl BimApp {
                 let [(s0, _), (s1, _)] = pair else { continue };
                 let size = p.layout_no_wrap(label.clone(), FontId::proportional(12.0), pal().accent).size() + vec2(10.0, 4.0);
                 let at = Rect::from_center_size(on((s0 + s1) / 2.0) - side * 12.0, size);
-                // A small T under the number, which opens the same Dimension Text the double click does.
-                let icon = Rect::from_center_size(at.center() + vec2(0.0, at.height() / 2.0 + 8.0), vec2(16.0, 14.0));
+                // A larger button over the number, which opens the same Dimension Text the double click does.
+                let icon = Rect::from_center_size(at.center() - vec2(0.0, at.height() / 2.0 + 12.0), vec2(24.0, 20.0));
                 let r = ui.interact(icon, ui.id().with(("dimension text", id, i)), Sense::click());
                 r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, t("Dimension text")));
-                p.text(
-                    icon.center(),
-                    Align2::CENTER_CENTER,
-                    "Aa",
-                    FontId::proportional(9.0),
-                    if r.hovered() { pal().hover } else { pal().accent_ink },
-                );
+                let ink = if r.hovered() { pal().hover } else { pal().accent_ink };
+                p.rect_filled(icon, 3.0, pal().surface);
+                p.rect_stroke(icon, 3.0, Stroke::new(1.0, ink), StrokeKind::Inside);
+                p.text(icon.center(), Align2::CENTER_CENTER, "Aa", FontId::proportional(12.0), ink);
                 if r.clicked() {
                     self.dimension_text_dialog = Some(crate::dimtypes::DimensionTextDialog::new(m, id, i));
                 }
@@ -3569,6 +3566,7 @@ impl BimApp {
             _ => None,
         };
         let mut unlock = None;
+        let mut unlocked: Vec<(Id, usize)> = Vec::new();
         for (&id, e) in m.elements.iter() {
             let Element::Dimension(d) = e else { continue };
             if d.locked.is_empty() || Some(id) == alone || !m.annotation_in(e, key) {
@@ -3591,11 +3589,20 @@ impl BimApp {
                 let [(s0, _), (s1, _)] = pair else { continue };
                 if d.locked.iter().any(|l| l.segment == i) {
                     let at = on((s0 + s1) / 2.0) + side * 14.0;
-                    let r = ui.interact(Rect::from_center_size(at, vec2(16.0, 18.0)), ui.id().with(("shown lock", id, i)), Sense::hover());
-                    r.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, tf("Locked segment {}", &[&(i + 1).to_string()])));
-                    padlock(&p, at, true, pal().muted);
+                    let r = ui.interact(Rect::from_center_size(at, vec2(18.0, 20.0)), ui.id().with(("shown lock", id, i)), Sense::click());
+                    let name = tf("Locked segment {}", &[&(i + 1).to_string()]);
+                    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, true, name.clone()));
+                    padlock(&p, at, true, if r.hovered() { pal().hover } else { pal().muted });
+                    if r.clicked() {
+                        unlocked.push((id, i));
+                    }
                 }
             }
+        }
+        for (id, i) in unlocked {
+            let Some(Element::Dimension(d)) = self.session.model.elements.get(id) else { continue };
+            let segments: Vec<usize> = d.locked.iter().map(|l| l.segment).filter(|&s| s != i).collect();
+            self.run("dimension_constraint", json!({"id": id, "locked": segments}));
         }
         if let Some(id) = unlock {
             self.run("delete", json!({"ids": [id]}));
