@@ -3,6 +3,8 @@
 //! Revit 2027.3 (27.3.0.28), Fine plan: in the default Butt order the masonry extends through,
 //! giving a 120 mm horizontal seam. Next Butt order puts the concrete through instead, giving a
 //! 160 mm vertical seam at x = -60. The command fixture exercises the automatic order only.
+//! Here that order is the walls' GUIDs': the lower runs through. The fixture gives the wall
+//! placed first the lower one, so H runs through, as above.
 #[cfg(test)]
 mod tests {
     use bimcraft_core::engine::Session;
@@ -19,7 +21,26 @@ mod tests {
         let mut walls = results.iter().filter_map(|r| r["ids"].as_array()).flatten().map(|id| id.as_u64().unwrap());
         let (h, v) = (walls.next().unwrap(), walls.next().unwrap());
         assert!(walls.next().is_none());
+        lower_guid_first(&mut session, h, v);
         (session, h, v)
+    }
+
+    /// Walls `a` and `b` with each other's GUID, as a project could have drawn them.
+    fn swap_guids(s: &mut Session, a: Id, b: Id) {
+        let m = s.model_mut();
+        let (ga, gb) = (m.guid(a), m.guid(b));
+        let (ea, eb) = (m.elements.get(a).cloned().unwrap(), m.elements.get(b).cloned().unwrap());
+        let spare = m.elements.fresh();
+        m.elements.insert_as(a, spare, ea.clone()).unwrap();
+        m.elements.insert_as(b, ga, eb).unwrap();
+        m.elements.insert_as(a, gb, ea).unwrap();
+    }
+
+    /// Wall `a` given the lower GUID of the two, so it runs through.
+    fn lower_guid_first(s: &mut Session, a: Id, b: Id) {
+        if s.model.guid(b) < s.model.guid(a) {
+            swap_guids(s, a, b);
+        }
     }
 
     fn plan() -> (Drawing, Id, Id) {
@@ -117,6 +138,7 @@ mod tests {
             };
             let h = place("H", map(-4000.0, 0.0), map(0.0, 0.0));
             let v = place("V", map(0.0, 0.0), map(0.0, -4000.0));
+            lower_guid_first(&mut s, h, v);
             for (id, end) in [(h, true), (v, false)] {
                 let cap = walls::cap(&s.model, id, end);
                 assert_eq!(cap.len(), 5);
@@ -137,17 +159,24 @@ mod tests {
     }
 
     #[test]
-    fn type_widths_and_wall_order_determine_the_butt() {
+    fn type_widths_and_guid_order_determine_the_butt() {
         let wider = CORNER.replace(r#""thickness":120"#, r#""thickness":180"#).replace(r#""thickness":20"#, r#""thickness":30"#);
         let (s, h, _) = fixture(&wider);
         assert_eq!(walls::cap(&s.model, h, true), [P2(130., 110.), P2(90., 80.), P2(90., -80.), P2(-90., -80.), P2(-130., -110.)]);
+        // V placed first, with the lower GUID: the concrete runs through. Neither the order the walls were
+        // placed in nor their ids count, only their GUIDs: given V's, H runs through.
         let mut lines: Vec<_> = CORNER.lines().collect();
         let n = lines.len();
         lines.swap(n - 1, n - 2);
-        let (s, v, h) = fixture(&lines.join("\n"));
-        let expected = [P2(100., 100.), P2(60., 80.), P2(-60., 80.), P2(-60., -80.), P2(-100., -100.)];
-        assert_eq!(walls::cap(&s.model, h, true), expected);
-        assert_eq!(walls::cap(&s.model, v, false), expected.into_iter().rev().collect::<Vec<_>>());
+        let (mut s, v, h) = fixture(&lines.join("\n"));
+        assert!(v < h);
+        let concrete = [P2(100., 100.), P2(60., 80.), P2(-60., 80.), P2(-60., -80.), P2(-100., -100.)];
+        assert_eq!(walls::cap(&s.model, h, true), concrete);
+        assert_eq!(walls::cap(&s.model, v, false), concrete.into_iter().rev().collect::<Vec<_>>());
+        swap_guids(&mut s, v, h);
+        let masonry = [P2(100., 100.), P2(60., 80.), P2(60., -80.), P2(-60., -80.), P2(-100., -100.)];
+        assert_eq!(walls::cap(&s.model, h, true), masonry);
+        assert_eq!(walls::cap(&s.model, v, false), masonry.into_iter().rev().collect::<Vec<_>>());
     }
 
     #[test]
@@ -192,6 +221,36 @@ mod tests {
         s.execute("undo", &serde_json::json!({})).unwrap();
         assert_eq!(walls::cap(&s.model, h, true).len(), 5);
         assert_eq!(walls::cap(&s.model, v, false).len(), 5);
+    }
+
+    #[test]
+    fn an_inserted_corner_keeps_the_core_that_ran_through() {
+        // Insert from File gives an element whose id this project has the next one free and leaves its GUID as it was.
+        // Here H's id is taken and V's is free, so the corner comes in with its ids the other way round.
+        for swap in [false, true] {
+            let (mut s, h, v) = fixture(CORNER);
+            if swap {
+                swap_guids(&mut s, h, v);
+            }
+            let caps = |s: &Session, h, v| (walls::cap(&s.model, h, true), walls::cap(&s.model, v, false));
+            let before = caps(&s, h, v);
+            assert_eq!(before.0.len(), 5);
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("corner.bimcraft");
+            s.execute("save", &serde_json::json!({"path": path})).unwrap();
+            let mut t = Session::new();
+            let mut far =
+                |y: i32| t.execute("wall", &serde_json::json!({"points": [[0, y], [4000, y]]})).unwrap()["ids"][0].as_u64().unwrap();
+            let (a, b) = (far(20000), far(30000));
+            assert_eq!((a, b), (h, v));
+            t.execute("delete", &serde_json::json!({"ids": [b]})).unwrap();
+            let ids = t.execute("insert", &serde_json::json!({"path": path})).unwrap()["ids"].clone();
+            let here = |id: Id| ids[id.to_string()].as_u64().unwrap();
+            let (h2, v2) = (here(h), here(v));
+            assert!(v2 < h2, "V came in as {v2}, H as {h2}");
+            assert_eq!((t.model.guid(h2), t.model.guid(v2)), (s.model.guid(h), s.model.guid(v)));
+            assert_eq!(caps(&t, h2, v2), before, "the other core runs through once H is {h2} and V {v2}");
+        }
     }
 
     #[test]

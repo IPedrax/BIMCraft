@@ -64,9 +64,10 @@ pub(super) fn corner(m: &Model, me: &Arm, other: &Arm) -> Option<WallEnd> {
     let core_ccw = cross(me.ccw - normal * mine[ccw_finish].thickness, other.cw + other_normal * theirs[other_cw].thickness)?;
     let cw_is_outer = (core_cw - core_ccw).dot(me.way) < 0.0;
     let (outer, inner) = if cw_is_outer { (core_cw, core_ccw) } else { (core_ccw, core_cw) };
-    // The first wall (stable element id) carries its structure to the return's far core face.
-    // The return stops at the near core face of the through wall.
-    let through = me.id < other.id;
+    // The wall of the lower GUID carries its structure to the return's far core face, and the return
+    // stops at the near core face of the through wall. An id is given anew when the corner comes in
+    // from another file; a GUID never changes, so the same core runs through wherever the corner goes.
+    let through = m.guid(me.id) < m.guid(other.id);
     let (through_way, return_way) = if through { (me.way, other.way) } else { (other.way, me.way) };
     let elbow = geom::line_intersection(outer, outer + return_way, inner, inner + through_way)?;
     let mut core = if through == cw_is_outer { [core_cw, elbow] } else { [elbow, core_ccw] };
