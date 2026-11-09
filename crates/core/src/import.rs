@@ -1278,6 +1278,14 @@ fn highest(pts: &[P3]) -> P3 {
     pts.iter().copied().max_by(|a, b| a[2].total_cmp(&b[2])).unwrap_or_default()
 }
 
+/// The three authored wall fields, fixed-size even when a property set has many unknown values or targets.
+#[derive(Clone, Copy, Default)]
+struct WallProps<'a> {
+    location: Option<Location>,
+    attach_top: Option<&'a str>,
+    attach_base: Option<&'a str>,
+}
+
 /// A wall as the file has it, before walls that nearly meet are made to meet.
 struct RawWall {
     ifc: u64,
@@ -1744,24 +1752,29 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         .collect();
 
     // A wall's authored location line and attachment GlobalIds. Unknown or non-text values do not replace geometry.
-    let mut wall_props: HashMap<u64, HashMap<&str, &str>> = HashMap::new();
+    let mut wall_props: HashMap<u64, WallProps<'_>> = HashMap::new();
     for rel in named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e) {
         let Some(set) =
             reference(rel.args.get(5)).and_then(e).filter(|x| x.name == "IFCPROPERTYSET" && text(x.args.get(2)) == Some(crate::ifc::WALL))
         else {
             continue;
         };
-        let said: HashMap<&str, &str> = refs(set.args.get(4))
-            .into_iter()
-            .filter_map(e)
-            .filter(|p| p.name == "IFCPROPERTYSINGLEVALUE")
-            .filter_map(|p| Some((text(p.args.first())?, text(p.args.get(2))?)))
-            .collect();
-        for product in refs(rel.args.get(4)) {
-            wall_props.insert(product, said.clone());
+        // Fixed-size borrowed fields prevent unknown-property count from multiplying the target fan-out.
+        let mut said = WallProps::default();
+        for p in refs(set.args.get(4)).into_iter().filter_map(e).filter(|p| p.name == "IFCPROPERTYSINGLEVALUE") {
+            let Some(value) = text(p.args.get(2)) else { continue };
+            match text(p.args.first()) {
+                Some("Location") => said.location = Location::from_name(value),
+                Some("AttachTop") => said.attach_top = Some(value),
+                Some("AttachBase") => said.attach_base = Some(value),
+                _ => {}
+            }
+        }
+        for product in refs(rel.args.get(4)).into_iter().filter(|id| e(*id).is_some_and(|x| WALLS.contains(&x.name.as_str()))) {
+            wall_props.insert(product, said);
         }
     }
-    let located = |id: u64| wall_props.get(&id)?.get("Location").and_then(|name| Location::from_name(name));
+    let located = |id: u64| wall_props.get(&id)?.location;
 
     // What BIMCraft's property set on a run says: its justification and its category, by product.
     let mut run_props: HashMap<u64, (Option<Justify>, Option<String>)> = HashMap::new();
@@ -2360,11 +2373,11 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     let by_global: HashMap<&str, Id> = origin.iter().filter_map(|(step, id)| Some((text(e(*step)?.args.first())?, *id))).collect();
     for (ifc, (wid, ..)) in &walls {
         let Some(said) = wall_props.get(ifc).filter(|_| located(*ifc).is_some()) else { continue };
-        let to = |name: &str| {
-            let id = *by_global.get(said.get(name)?)?;
+        let to = |name: Option<&str>| {
+            let id = *by_global.get(name?)?;
             matches!(m.elements.get(id), Some(Element::Roof(_) | Element::Floor(_))).then(|| Guid::of_id(id))
         };
-        let (top, base) = (to("AttachTop"), to("AttachBase"));
+        let (top, base) = (to(said.attach_top), to(said.attach_base));
         if let Some(Element::Wall(w)) = m.elements.get_mut(*wid) {
             w.attach_top = top;
             w.attach_base = base;

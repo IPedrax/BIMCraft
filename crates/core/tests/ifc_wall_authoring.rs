@@ -174,4 +174,49 @@ mod tests {
         assert_eq!((actual.start, actual.end, actual.location), (expected.start, expected.end, Location::Centre));
         assert!(actual.start.0 > actual.end.0);
     }
+
+    #[test]
+    fn opening_wall_metadata_with_many_unknown_properties_and_targets_keeps_only_the_real_wall_intent() {
+        let mut s = roof_wall();
+        let (guid, expected) = walls(&s).remove(0);
+        let file = export(&mut s);
+        let parsed = bimcraft_core::step::parse(file.as_bytes()).unwrap();
+        let wall = *parsed.entities.iter().find(|(_, e)| e.name == "IFCWALL").unwrap().0;
+        let roof = *parsed.entities.iter().find(|(_, e)| e.name == "IFCROOF").unwrap().0;
+        let mut next = parsed.entities.keys().max().unwrap() + 1;
+        let mut extra = String::new();
+        let mut properties = Vec::new();
+        // Bounded synthetic amplification probe: 1024 unused values and 1024 distinct missing targets, plus a real
+        // non-wall target. Keep the actual wall last so a target-list cutoff cannot accidentally pass this journey.
+        for i in 0..1024 {
+            extra.push_str(&format!("#{next}=IFCPROPERTYSINGLEVALUE('Unused{i}',$,IFCTEXT('ignored'),$);\n"));
+            properties.push(format!("#{next}"));
+            next += 1;
+        }
+        for (name, value) in
+            [("Location", "centre".to_string()), ("AttachTop", bimcraft_core::ifc::compress(expected.attach_top.unwrap().as_u128()))]
+        {
+            extra.push_str(&format!("#{next}=IFCPROPERTYSINGLEVALUE('{name}',$,IFCTEXT('{value}'),$);\n"));
+            properties.push(format!("#{next}"));
+            next += 1;
+        }
+        let set = next;
+        extra.push_str(&format!("#{set}=IFCPROPERTYSET('0AAAAAAAAAAAAAAAAAAAAA',$,'BIMCraft_Wall',$,({}));\n", properties.join(",")));
+        let mut targets: Vec<String> = (0..1024).map(|i| format!("#{}", 1_000_000 + i)).collect();
+        targets.extend([format!("#{roof}"), format!("#{wall}")]);
+        extra.push_str(&format!(
+            "#{}=IFCRELDEFINESBYPROPERTIES('0BBBBBBBBBBBBBBBBBBBBB',$,$,$,({}),#{set});\n",
+            set + 1,
+            targets.join(",")
+        ));
+        let file = file.replacen("ENDSEC;\nEND-ISO-10303-21;", &format!("{extra}ENDSEC;\nEND-ISO-10303-21;"), 1);
+        assert!(file.contains("Unused1023"));
+        let mut read = open_ifc(&file);
+        let actual = read.model.wall(guid).unwrap();
+        assert_eq!((actual.location, actual.attach_top, actual.attach_base), (expected.location, expected.attach_top, None));
+        assert_eq!((actual.start, actual.end), (expected.start, expected.end));
+        assert_eq!(walls(&read).len(), 1);
+        assert_eq!(read.execute("elements", &json!({"category":"wall"})).unwrap()["count"], 1);
+        assert_eq!(walls(&read), walls(&reopen(&mut read, "bimcraft")));
+    }
 }
