@@ -559,13 +559,17 @@ seven segment kinds, paper units, text fitting and centerline semantics.
 
 Annotate > Dimension has Aligned (DI) and Linear, and Angular, Radial, Diameter, Arc Length, Spot Elevation and Spot Slope small beside
 them (`BimApp::dimension_panel`); Spot Slope (`Tool::SpotSlope`) runs `spot_slope` where a floor or a roof is clicked in a plan. Aligned and Linear are one tool, `Tool::Dimension(mode, refs)`: a click near an endpoint picks it before the line
-it ends (`canvas::dimension_pick`), marked with a square; after two, a click away places the dimension the Options Bar's Place says (Auto,
+it ends (`canvas::dimension_pick`), marked with a square; a click on a reference already picked takes it out, Backspace the last, and Esc starts the chain over; after two, a click away places the dimension the Options Bar's Place says (Auto,
 Aligned, Horizontal, Vertical; Space steps them), drawn as it would be while the cursor moves. `Tool::Round(kind, picked)` is Radial, Diameter
 and Arc Length; after its arc, Arc Length takes two ends on it to measure between (`dims::arc_point`), or a click places the whole arc's. A new dimension takes the type the Type Selector names, else its kind's (`dimtypes::dimension_type_for`); Edit Type on one opens
 Dimension Type Properties (`dimtypes.rs`), and Properties edits its prefix, suffix, text above and below, Replace With Text and Equality Display.
-A double click on one of its numbers opens Dimension Text for that segment (`DimensionTextDialog`). Selected, an aligned or linear one shows
+With one element selected, the numbers of the dimensions that measure to it are drawn smaller in `accent_ink`; a click on one opens an empty
+field (`canvas::dimension_highlights`), and Enter moves the selected element, the opposite reference staying (an equal chain's far end stays). A double click on a number, or a click on the small T under a selected dimension's numbers, opens Dimension Text for that segment
+(`DimensionTextDialog`); a segment's Replace With Text beats its EQ. Selected, an aligned or linear one shows
 a padlock under each segment and, over a string of two or more, EQ past its end (`dimension_constraints`): a click locks or unlocks, or makes
-it equal or not.
+it equal or not — its ends staying, the inner references spreading evenly; a value typed into an equal chain makes every segment it. A
+placed dimension's references are changed from the right-click menu's Edit Dimension References: a click on an element adds or takes out its
+reference, a click away places the line, Enter confirms and Esc leaves it as it was (`dimension {id, refs, at}`).
 
 ## Background grids
 
