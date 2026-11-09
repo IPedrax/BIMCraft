@@ -3808,6 +3808,32 @@ fn shafts_cut_the_floors_ceilings_and_roofs_they_pass_through() {
 }
 
 #[test]
+fn a_floor_with_curved_openings_is_cut_round_them_into_few_pieces() {
+    // A wavy floor with two round openings dented here and there, as finely curved as the Leuven library's: each concave,
+    // so in triangles, every piece of the floor cut by every piece of one opening and then the other, it came to tens of
+    // thousands of slivers, each a slab with sides of its own.
+    let ring = |x: f64, r: f64, n: usize, dent: f64, every: usize| -> Vec<[f64; 2]> {
+        let at = |i: usize| (std::f64::consts::TAU * i as f64 / n as f64, if i.is_multiple_of(every) { r - dent } else { r });
+        (0..n).map(at).map(|(a, r)| [x + r * a.cos(), r * a.sin()]).collect()
+    };
+    let mut s = Session::new();
+    let holes = [ring(-4500.0, 3000.0, 141, 200.0, 12), ring(4500.0, 3000.0, 141, 200.0, 12)];
+    let id = run(&mut s, "floor", json!({"boundary": ring(0.0, 10000.0, 158, 600.0, 2), "openings": holes}))["id"].as_u64().unwrap();
+    // Triangles round its holes: as many as its corners, and two for each hole less two.
+    let corners = 158 + 2 * 141 + 2;
+    let Some(crate::model::Element::Floor(f)) = s.model.elements.get(id) else { panic!("{id} is a floor") };
+    let pieces = s.model.floor_faces(f);
+    let shown = crate::view3d::Scene::new(&s.model).shown(&crate::graphics::Look::of_3d(&s.model));
+    assert!(pieces.len() <= corners && shown <= 8 * corners, "{} pieces, {shown} triangles", pieces.len());
+    // All of it but the openings, open through each and whole between and round them.
+    let area: f64 = pieces.iter().map(|(r, _)| crate::geom::area(r)).sum();
+    let whole = crate::geom::area(&f.boundary).abs() - f.openings.iter().map(|o| crate::geom::area(o).abs()).sum::<f64>();
+    assert!((area - whole).abs() < 1000.0, "{area} mm² of {whole}");
+    let over = |x: f64| crate::view3d::tops_at(&s.model, P2(x, 0.0)).contains_key(&id);
+    assert_eq!([-4500.0, 4500.0, 0.0, 9000.0].map(over), [false, false, true, true]);
+}
+
+#[test]
 fn stairs_turn_at_landings_into_several_runs() {
     let mut s = Session::new();
     house(&mut s);
