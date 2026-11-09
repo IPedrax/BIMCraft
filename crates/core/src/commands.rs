@@ -166,18 +166,18 @@ other_files(
     other_files(
         "export",
         "Export",
-        "{format, view?, views?, path?, folder?, name?, folders?: flat|by_format, combine?, overwrite?: false, page?, quality?, \
+        "{format, view?, views?, print_set?, path?, folder?, name?, folders?: flat|by_format, combine?, overwrite?: false, page?, quality?, \
          ifc_origin?, selected?, pdf?} \
          writes views, sheets, schedules or the project out as `format` (an id or an extension from `export_formats`: pdf, svg, \
          png, ifc4, glb, csv, xlsx…). `view` (or a list, `views`) is an element's id or GUID, a view's name or a sheet's number; \
-         none or `project` is the whole project (model formats only). `path` writes one file there (several views to a PDF go \
+         none or `project` is the whole project (model formats only); `print_set` names a set's views and sheets (`print_set`). `path` writes one file there (several views to a PDF go \
          in it as pages); or `folder` takes a file each, named by the `name` template (`{SheetNumber} - {SheetName}`, `{ViewName}`, \
          `{ProjectName}`, `{ViewType}`, `{Level}`, `{Scale}`, `{Format}`, `{Date}`, `{Time}`; `/` makes folders), numbered rather \
          than written over unless `overwrite`; `combine` names the one file each format that holds pages puts them all in. \
          `page`: {paper?: A3|ARCH D|Letter…, size?: [w,h] mm, orientation?: auto|landscape|portrait, margin?: mm, scale?: \
          original|fit|{custom: n}, anchor?: centre|top_left…, colour?: colour|grey|black, hairlines?, dpi?: 150, region?: [x1, y1, \
          x2, y2] (only what lies inside: a plan's model mm, a sheet's paper mm; every drawing format), pages?: [first, \
-         last]}. `pdf`: {archive?: none|a1b|a2b|a2u|a3b|a4 (PDF/A, checked as it is written: a file that wouldn't be one \
+         last] or \"1, 3, 5-7\"}. `pdf`: {archive?: none|a1b|a2b|a2u|a3b|a4 (PDF/A, checked as it is written: a file that wouldn't be one \
          isn't written), version?: \"1.4\" to \"2.0\" (1.7), raster? (each page a picture at `page.dpi`), cut_marks? (the pages \
          of a tiled drawing get hairlines in the margin where they meet), title?, author?, subject?, keywords?: [..]}. \
          `ifc_origin` is IFC's, as `save` takes it; `selected` (ids or GUIDs) the elements a BCF topic is about. Returns `written` ({path, format, of}) and `failed` ({of, format, \
@@ -556,6 +556,16 @@ other_files(
          the project; `reinforce` with `preset` takes it and lets what is given with it replace its own. Without `name`, lists them. \
          It is not checked against any host until it arms one",
         reinforcement_preset,
+    ),
+    edit(
+        "print_set",
+        "View/Sheet Set",
+        &[],
+        "{name?, views?: [id, GUID, view name or sheet number, …], add?: [...], remove?: [...], rename?, delete?: true} a print set, as Revit's View/Sheet \
+         Set: a named list of views and sheets (plans, sections, elevations, 3D views, schedules and sheets, any mix) printed or \
+         exported together, in the order given. `views` gives the whole list (a new set needs it, empty or not), `add` and \
+         `remove` change it. A view deleted leaves every set. Without `name`, lists the sets, each its views' ids and titles",
+        print_set,
     ),
     edit(
         "voltage",
@@ -3427,7 +3437,19 @@ fn export(s: &mut Session, p: &Value) -> R {
     let format = string(c, p, "format")?.ok_or_else(|| bad(c, "`format` is required: an id or an extension from `export_formats`"))?;
     let format = s.exports.find(&format).map_err(|e| bad(c, e))?.id().to_string();
     let mut sources = Vec::new();
+    let set = name_param(c, p, "print_set")?;
     match (p.get("view"), p.get("views")) {
+        _ if set.is_some() && (!absent(p.get("view")) || !absent(p.get("views"))) => {
+            return Err(bad(c, "give `print_set`, `view` or `views`, one of them"));
+        }
+        _ if set.is_some() => {
+            let name = set.unwrap_or_default();
+            let set = m.print_sets.get(&name).ok_or_else(|| bad(c, format!("there's no print set `{name}`")))?;
+            sources.extend(set.views.iter().filter_map(|g| m.elements.id(*g)).map(Some));
+            if sources.is_empty() {
+                return Err(bad(c, format!("print set `{name}` holds no views")));
+            }
+        }
         (Some(v), Some(vs)) if !v.is_null() && !vs.is_null() => return Err(bad(c, "give `view` or `views`, not both")),
         (_, Some(Value::Array(vs))) => {
             if vs.is_empty() || vs.len() > 10_000 {
@@ -7421,6 +7443,95 @@ fn reinforcement_preset(s: &mut Session, p: &Value) -> R {
     }
     m.reinforcement.insert(name.clone(), preset.clone());
     Ok(json!({"name": name, "preset": preset}))
+}
+
+fn print_set(s: &mut Session, p: &Value) -> R {
+    let c = "print_set";
+    only(c, p, &["name", "views", "add", "remove", "rename", "delete"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        let m = &s.model;
+        let sets: Vec<Value> = m
+            .print_sets
+            .iter()
+            .map(|(name, set)| {
+                let views: Vec<Value> = set
+                    .views
+                    .iter()
+                    .filter_map(|g| {
+                        let id = m.elements.id(*g)?;
+                        let kind = crate::export::kind_of(m, Some(id))?;
+                        Some(json!({"id": id, "title": crate::export::title(m, Some(id), kind)}))
+                    })
+                    .collect();
+                json!({"name": name, "id": m.library.id(&LibKind::PrintSet, name), "views": views})
+            })
+            .collect();
+        return Ok(json!({"print_sets": sets}));
+    };
+    // A list of views, each a printable element, as GUIDs.
+    let list = |m: &Model, key: &str| -> Result<Option<Vec<Guid>>, String> {
+        match p.get(key) {
+            v if absent(v) => Ok(None),
+            Some(Value::Array(a)) if a.len() <= crate::printset::MAX_VIEWS => a
+                .iter()
+                .map(|v| {
+                    let id = export_source(c, m, v)?.ok_or_else(|| bad(c, "the whole project isn't a view a print set can hold"))?;
+                    let g = m.elements.guid(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
+                    if !crate::printset::printable(m, g) {
+                        return Err(bad(c, format!("element {id} isn't a view, a sheet or a schedule a print set can hold")));
+                    }
+                    Ok(g)
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(Some),
+            Some(v) => Err(bad(c, format!("`{key}` must be a list of up to {} view ids, got {v}", crate::printset::MAX_VIEWS))),
+            None => Ok(None),
+        }
+    };
+    let views = list(&s.model, "views")?;
+    let add = list(&s.model, "add")?;
+    let remove = list(&s.model, "remove")?;
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if m.print_sets.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no print set `{name}`")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let was = m.print_sets.get(&name).cloned();
+    let mut set = match (views, was) {
+        (Some(views), _) => crate::printset::PrintSet { views },
+        (None, Some(was)) => was,
+        (None, None) => return Err(bad(c, format!("there's no print set `{name}`; a new one needs `views`"))),
+    };
+    for g in add.unwrap_or_default() {
+        if !set.views.contains(&g) {
+            set.views.push(g);
+        }
+    }
+    if let Some(remove) = remove {
+        set.views.retain(|g| !remove.contains(g));
+    }
+    let mut seen = BTreeSet::new();
+    set.views.retain(|g| seen.insert(*g));
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.print_sets.contains_key(&to) {
+                return Err(bad(c, format!("there's already a print set `{to}`")));
+            }
+            m.print_sets.remove(&name);
+            rename_entry(m, &LibKind::PrintSet, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    set.check(&name).map_err(|e| bad(c, e))?;
+    if !m.print_sets.contains_key(&name) && m.print_sets.len() >= crate::printset::MAX_SETS {
+        return Err(bad(c, format!("the project holds up to {} print sets", crate::printset::MAX_SETS)));
+    }
+    let count = set.views.len();
+    m.print_sets.insert(name.clone(), set);
+    Ok(json!({"name": name, "views": count}))
 }
 
 /// A number of `unit` under `key`, finite and of any size: the setting's own check says how large it may be.

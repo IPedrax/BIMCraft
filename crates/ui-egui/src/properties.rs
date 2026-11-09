@@ -1027,6 +1027,11 @@ impl BimApp {
             self.point_properties(ui, p);
             return;
         }
+        // Views picked in the Project Browser, several of them: what they share.
+        if self.selection.is_empty() && self.browser_picked.len() > 1 {
+            self.picked_views_properties(ui);
+            return;
+        }
         let model = Arc::clone(&self.session.model);
         let subject = self.subject();
         // A camera view picked on a plan: its Properties are its camera's, the same panel the 3D tab shows for it.
@@ -1132,6 +1137,61 @@ impl BimApp {
         if view_shown {
             self.graphics_properties(ui);
             self.phasing_properties(ui);
+        }
+        ui.add_space(8.0);
+        ui.with_layout(Layout::right_to_left(Align::Min), apply);
+    }
+
+    /// Several views picked in the Project Browser: of one kind, its parameters, those they share filled in and a change
+    /// made to all of them; of several, how many of each.
+    fn picked_views_properties(&mut self, ui: &mut Ui) {
+        let model = Arc::clone(&self.session.model);
+        // Each one's kind, as the palette names it, its element and its rows.
+        let mut kinds: BTreeMap<&'static str, (Vec<Id>, Vec<&'static [Row]>)> = BTreeMap::new();
+        let mut other = 0;
+        for pick in &self.browser_picked {
+            let (kind, id, rows): (&'static str, Option<Id>, &'static [Row]) = match *pick {
+                crate::browser::Pick::View(Sheet::Plan(id)) => match model.plan_view(id) {
+                    Some(v) if v.parent.is_some() => (msg!("Floor Plans"), Some(id), PLAN_DEPENDENT),
+                    Some(_) => (msg!("Floor Plans"), Some(id), PLAN_VIEW),
+                    None => (msg!("Floor Plans"), Some(id), PLAN),
+                },
+                crate::browser::Pick::View(Sheet::Ceiling(id)) => (msg!("Ceiling Plans"), Some(id), &[]),
+                crate::browser::Pick::View(Sheet::Section(id)) => match model.elements.get(id).map(|e| e.category()) {
+                    Some("elevation") => (msg!("Elevations"), Some(id), rows("elevation")),
+                    _ => (msg!("Sections"), Some(id), rows("section")),
+                },
+                crate::browser::Pick::View(Sheet::Paper(id)) => (msg!("Sheets"), Some(id), rows("sheet")),
+                crate::browser::Pick::View(Sheet::Table(id)) => (msg!("Schedules"), Some(id), rows("schedule")),
+                crate::browser::Pick::View3D(Some(id)) => (msg!("3D Views"), Some(id), rows("view3d")),
+                _ => (msg!("Schedules"), None, &[]),
+            };
+            match id {
+                Some(id) => {
+                    let entry = kinds.entry(kind).or_default();
+                    entry.0.push(id);
+                    entry.1.push(rows);
+                }
+                None => other += 1,
+            }
+        }
+        let n = self.browser_picked.len();
+        if kinds.len() != 1 || other > 0 {
+            ui.label(tf("Multiple Categories ({})", &[&n.to_string()]));
+            ui.add_space(4.0);
+            for (kind, (ids, _)) in &kinds {
+                ui.label(RichText::new(format!("{} ({})", t(kind), ids.len())).color(pal().muted));
+            }
+            return;
+        }
+        let Some((kind, (ids, all_rows))) = kinds.into_iter().next() else { return };
+        ui.label(format!("{} ({})", t(kind), ids.len()));
+        ui.add_space(4.0);
+        // The rows every one of them has: a level's own plan and a plan view share most, not their level's.
+        let first = all_rows.first().copied().unwrap_or_default();
+        let shared: Vec<Row> = first.iter().copied().filter(|r| all_rows.iter().all(|rs| rs.iter().any(|o| o.1 == r.1))).collect();
+        if !shared.is_empty() {
+            self.parameters(ui, &model, &ids, &shared);
         }
         ui.add_space(8.0);
         ui.with_layout(Layout::right_to_left(Align::Min), apply);

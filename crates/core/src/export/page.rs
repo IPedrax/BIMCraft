@@ -47,6 +47,52 @@ pub enum Scale {
     Custom(f64),
 }
 
+/// Which of a drawing's pages are printed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Pages {
+    /// The first and the last, counted from 1.
+    Range([u32; 2]),
+    /// Page numbers and runs of them, by commas: `1, 3, 5-7`.
+    List(String),
+}
+
+/// The longest list of pages typed, in characters.
+pub const MAX_PAGE_LIST: usize = 1024;
+
+impl Pages {
+    /// The page numbers it names, from 1, of `count` pages: those past the last are left out.
+    pub fn numbers(&self, count: u32) -> Result<std::collections::BTreeSet<u32>, String> {
+        let mut out = std::collections::BTreeSet::new();
+        match self {
+            Pages::Range([a, b]) if *a >= 1 && a <= b => out.extend(*a..=(*b).min(count)),
+            Pages::Range([a, b]) => return Err(format!("`pages` is a first and a last page from 1, not {a} to {b}")),
+            Pages::List(text) => {
+                if text.chars().count() > MAX_PAGE_LIST {
+                    return Err(format!("a list of pages is up to {MAX_PAGE_LIST} characters"));
+                }
+                let number = |s: &str| -> Result<u32, String> {
+                    s.trim().parse::<u32>().ok().filter(|n| *n >= 1).ok_or_else(|| format!("`{}` isn't a page number from 1", s.trim()))
+                };
+                for part in text.split([',', ';']).map(str::trim).filter(|s| !s.is_empty()) {
+                    let (a, b) = match part.split_once('-') {
+                        Some((a, b)) => (number(a)?, number(b)?),
+                        None => (number(part)?, number(part)?),
+                    };
+                    if a > b {
+                        return Err(format!("`{part}` runs backwards: write it {b}-{a}"));
+                    }
+                    out.extend(a..=b.min(count));
+                }
+                if text.trim().is_empty() {
+                    return Err("the list of pages is empty: type page numbers, as 1, 3, 5-7".to_string());
+                }
+            }
+        }
+        Ok(out)
+    }
+}
+
 /// How a page's colours are printed.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -113,8 +159,8 @@ pub struct PageSetup {
     pub hairlines: bool,
     /// Pictures made of a page (PNG, JPEG), dots per inch; none, 150. A PDF's shaded views are made at it too.
     pub dpi: Option<u32>,
-    /// Which pages, first and last, counted from 1; none, all.
-    pub pages: Option<[u32; 2]>,
+    /// Which pages, counted from 1: the first and the last, or a list; none, all.
+    pub pages: Option<Pages>,
     /// Only what lies inside this rectangle of the view, two opposite corners `[x1, y1, x2, y2]` in its own coordinates (a
     /// plan's model mm, a section's along its line and up, a sheet's paper mm from its bottom left); none, all of it. Every
     /// drawing format takes it, not only those of pages.
@@ -214,9 +260,12 @@ pub fn layout(setup: &PageSetup, extent: P2, original: f64, own: Option<P2>) -> 
     }
     let factor = if factor > 0.0 { factor } else { (printable.0 / extent.0).min(printable.1 / extent.1) };
     let printed = P2(extent.0 * factor, extent.1 * factor);
-    // A hair over a page's edge is not a second page.
-    let count = |printed: f64, page: f64| ((printed / page) - 1e-6).ceil().max(1.0);
-    let (cols, rows) = (count(printed.0, printable.0), count(printed.1, printable.1));
+    // A hair over a page's edge is not a second page; nor is a drawing that fits the paper itself (a sheet on its own size):
+    // the margin takes its edge, as a printer's border does, rather than tiling it.
+    let count = |printed: f64, page: f64, paper: f64| {
+        if printed <= paper + 1e-6 { 1.0 } else { ((printed / page) - 1e-6).ceil().max(1.0) }
+    };
+    let (cols, rows) = (count(printed.0, printable.0, paper.0), count(printed.1, printable.1, paper.1));
     if cols * rows > f64::from(MAX_PAGES) {
         return Err(format!(
             "at 1 : {:.0} the drawing takes {cols} × {rows} pages, more than {MAX_PAGES}: print it smaller or on larger paper",
@@ -228,15 +277,14 @@ pub fn layout(setup: &PageSetup, extent: P2, original: f64, own: Option<P2>) -> 
     let (ax, ay) = setup.anchor.cell();
     let offset = |anchor: u8, room: f64| f64::from(anchor) * room / 2.0;
     let at = P2(offset(ax, grid.0 - printed.0), offset(ay, grid.1 - printed.1));
-    let (first, last) = match setup.pages {
-        None => (1, cols * rows),
-        Some([a, b]) if a >= 1 && a <= b => (a, b.min(cols * rows)),
-        Some([a, b]) => return Err(format!("`pages` is a first and a last page from 1, not {a} to {b}")),
+    let wanted = match &setup.pages {
+        None => (1..=cols * rows).collect(),
+        Some(p) => p.numbers(cols * rows)?,
     };
     let pages: Vec<Tile> = (0..rows)
         .flat_map(|row| (0..cols).map(move |col| (col, row)))
         .enumerate()
-        .filter(|(i, _)| (first..=last).contains(&(*i as u32 + 1)))
+        .filter(|(i, _)| wanted.contains(&(*i as u32 + 1)))
         .map(|(_, (col, row))| Tile {
             col,
             row,
@@ -245,7 +293,12 @@ pub fn layout(setup: &PageSetup, extent: P2, original: f64, own: Option<P2>) -> 
         })
         .collect();
     if pages.is_empty() {
-        return Err(format!("the drawing takes {} pages; there is no page {first}", cols * rows));
+        let asked = match &setup.pages {
+            Some(Pages::Range([a, _])) => a.to_string(),
+            Some(Pages::List(list)) => list.trim().to_string(),
+            None => "1".to_string(),
+        };
+        return Err(format!("the drawing takes {} pages; there is no page {asked}", cols * rows));
     }
     Ok(Layout { paper, margin, factor, ratio: 1.0 / factor, cols, rows, placed: (at, printed), pages })
 }
@@ -300,6 +353,19 @@ mod tests {
     }
 
     #[test]
+    fn a_drawing_the_size_of_its_paper_is_one_page_whatever_the_margin() {
+        // An A3 sheet at 1 : 1 on its own paper, and on A3 named: one page, the margin over its edge.
+        let setup = PageSetup { margin: 5.0, ..PageSetup::default() };
+        let l = layout(&setup, P2(420.0, 297.0), 1.0, Some(P2(420.0, 297.0))).unwrap();
+        assert_eq!((l.cols, l.rows, l.paper), (1, 1, P2(420.0, 297.0)));
+        assert_eq!(l.pages[0].at, P2(5.0, 5.0), "centred: the page prints from 5 mm in, the rest under the margin");
+        let named = PageSetup { paper: Some("A3".into()), ..setup.clone() };
+        assert_eq!(layout(&named, P2(420.0, 297.0), 1.0, None).unwrap().pages.len(), 1);
+        // Larger than the paper, it tiles.
+        assert_eq!(layout(&named, P2(430.0, 297.0), 1.0, None).unwrap().cols, 2);
+    }
+
+    #[test]
     fn a_tall_drawing_turns_a_named_paper_upright() {
         let setup = PageSetup { paper: Some("A3".into()), scale: Scale::Fit, ..PageSetup::default() };
         assert_eq!(layout(&setup, P2(100.0, 300.0), 1.0, None).unwrap().paper, P2(297.0, 420.0));
@@ -309,13 +375,29 @@ mod tests {
 
     #[test]
     fn a_typed_scale_and_a_page_range() {
-        let setup = PageSetup { paper: Some("A4".into()), scale: Scale::Custom(50.0), pages: Some([2, 3]), ..PageSetup::default() };
+        let setup =
+            PageSetup { paper: Some("A4".into()), scale: Scale::Custom(50.0), pages: Some(Pages::Range([2, 3])), ..PageSetup::default() };
         // 30 m × 10 m at 1:50 is 600 × 200 mm: three A4 landscape pages across, one down.
         let l = layout(&setup, P2(30_000.0, 10_000.0), 100.0, None).unwrap();
         assert_eq!((l.cols, l.rows), (3, 1));
         assert_eq!(l.pages.iter().map(|t| t.col).collect::<Vec<_>>(), vec![1, 2]);
-        let past = PageSetup { pages: Some([4, 9]), ..setup };
+        let past = PageSetup { pages: Some(Pages::Range([4, 9])), ..setup.clone() };
         assert!(layout(&past, P2(30_000.0, 10_000.0), 100.0, None).unwrap_err().contains("no page 4"));
+        // A list: the first and the third of the three, in reading order; a page past the last is left out.
+        let list = PageSetup { pages: Some(Pages::List("3, 1, 7".into())), ..setup.clone() };
+        let l = layout(&list, P2(30_000.0, 10_000.0), 50.0, None).unwrap();
+        assert_eq!(l.pages.iter().map(|t| t.col).collect::<Vec<_>>(), vec![0, 2]);
+        let run = PageSetup { pages: Some(Pages::List("2-3".into())), ..setup.clone() };
+        assert_eq!(layout(&run, P2(30_000.0, 10_000.0), 50.0, None).unwrap().pages.len(), 2);
+        for bad in ["", "0", "x", "3-1", "1,,a"] {
+            let wrong = PageSetup { pages: Some(Pages::List(bad.into())), ..setup.clone() };
+            assert!(layout(&wrong, P2(30_000.0, 10_000.0), 50.0, None).is_err(), "{bad:?}");
+        }
+        // As JSON: a range, or a list as text.
+        let read: PageSetup = serde_json::from_value(serde_json::json!({"pages": "1, 3"})).unwrap();
+        assert_eq!(read.pages, Some(Pages::List("1, 3".into())));
+        let read: PageSetup = serde_json::from_value(serde_json::json!({"pages": [1, 3]})).unwrap();
+        assert_eq!(read.pages, Some(Pages::Range([1, 3])));
     }
 
     #[test]
@@ -338,6 +420,6 @@ mod tests {
         // A whole city at 1:1 on A4 would be millions of pages.
         let huge = PageSetup { paper: Some("A4".into()), ..d.clone() };
         assert!(layout(&huge, P2(1e7, 1e7), 1.0, None).unwrap_err().contains("more than"));
-        assert!(layout(&PageSetup { pages: Some([0, 1]), ..d }, P2(100.0, 100.0), 1.0, None).is_err());
+        assert!(layout(&PageSetup { pages: Some(Pages::Range([0, 1])), ..d }, P2(100.0, 100.0), 1.0, None).is_err());
     }
 }
