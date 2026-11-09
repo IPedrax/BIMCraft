@@ -181,7 +181,10 @@ other_files(
     other_files(
         "save",
         "Save",
-        "{path?} .bimc saves the project (Save As with a path), as does .bimt (a template); .ifc exports IFC4; .glb exports the default 3D view's scene as \
+        "{path?, ifc_origin?} .bimc saves the project (Save As with a path), as does .bimt (a template); .ifc exports IFC4, its \
+         coordinates' origin at `ifc_origin`: internal (the default), base (the Project Base Point), survey (the Survey Point) or \
+         shared (the map's coordinates themselves), with the active location's IfcMapConversion and IfcProjectedCRS, true north, \
+         and the site's latitude and longitude where the project has a CRS; .glb exports the default 3D view's scene as \
          glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns `elements` and \
          `triangles`); .svg or .png exports the lowest level's plan; .pdf prints every sheet, a page each",
         save,
@@ -3952,8 +3955,14 @@ fn save(s: &mut Session, p: &Value) -> R {
         None => s.path.clone().ok_or_else(|| bad(c, "`path` is required: this project hasn't been saved yet"))?,
     };
     let format = ext(&path);
+    let ifc_origin = match string(c, p, "ifc_origin")? {
+        None => crate::ifc::Origin::Internal,
+        Some(o) => {
+            crate::ifc::Origin::parse(&o).ok_or_else(|| bad(c, format!("`ifc_origin` is {}, not `{o}`", crate::ifc::Origin::NAMES)))?
+        }
+    };
     if format == "ifc" {
-        std::fs::write(&path, crate::ifc::export(&s.model)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        std::fs::write(&path, crate::ifc::export_at(&s.model, ifc_origin)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         return Ok(json!({"path": path, "format": "IFC4"}));
     }
     if format == "glb" {

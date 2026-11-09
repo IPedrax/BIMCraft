@@ -28,6 +28,8 @@ pub mod conduit;
 mod constraints;
 pub mod coordinates;
 #[cfg(test)]
+mod coordinates_io_tests;
+#[cfg(test)]
 mod coordinates_tests;
 pub mod cowork;
 #[cfg(test)]
