@@ -51,20 +51,28 @@ edge the cut's line runs along already is left to it (`render::below_cut`). So a
 between its cut jambs, and a sill board outside the wall its edge; nothing above the cut is drawn. A family's plan is the
 project's drawing of its scratch model, so it shows the same. Past `MAX_BELOW` triangles, each form's outline stands for it.
 
-F10d, part of FORMAT 18: a void's `cuts` (`family::Cuts`): `both` (left out of the file) cuts the solid forms listed before it that it
+F10d, part of FORMAT 19: a void's `cuts` (`family::Cuts`): `both` (left out of the file) cuts the solid forms listed before it that it
 reaches and, in a door's or a window's family, the wall wherever it reaches into it, whatever its place in the list; `host`
 the wall alone, never the family's forms (the opening's void round its frame, which it would otherwise cut away: Revit's
 Uncut Geometry, as one setting); `forms` the forms alone, leaving the wall to the rest (a sash's light, as the Casement
 Window's starter has its two). Before `cuts`, a void cut the wall only if it cut none of the solid forms listed before it, by
 their boxes, so the order mattered: a void had to be put first. `Family::check` refuses `cuts` on a solid; the "cuts
-nothing" warning reads it (a void of `host` in a generic family cuts nothing); a work plane-based family's face voids take a
-`host` void whatever it overlaps and leave out a `forms` one (`free_voids`). In the family document, a void's Properties
-(Identity Data) and its row of the Forms tab have Cuts (Forms and Host, Host, Forms) in a door's or a window's family.
-`Model::migrate` takes a file of 17 to 18 (`Family::pin_cuts`): each void of a door's or a window's family that the old rule
-didn't cut the wall with, though it reaches into it (it overlapped a solid listed before it in any of the family's types), says
-`forms`, so it cuts what it did; one that cut the wall cut none of the forms, and reads as it did. A build that reads up to 17
-would leave `cuts` out and cut the wall with a `host` void listed after its frame no more. A family file carries no FORMAT,
-so it is read as 18 reads it.
+nothing" warning reads it (a void of `host` in a generic family cuts nothing); a work plane-based family's face voids follow
+the same rule as a door's wall: a `both` or a `host` void whatever it overlaps and wherever it is listed, never a `forms`
+one (`Family::face_voids`). In the family document, a void's Properties
+(Identity Data) has Cuts (Forms and Host, Host, Forms) in a door's or a window's family.
+`Model::migrate` takes a file of 17 or 18 to 19 (`Family::pin_cuts`; upstream's 18 changed only connectors, and its step
+needs nothing): each void of a door's or a window's family that the old rule didn't cut the wall with, though it reaches into
+it (it overlapped a solid listed before it in any of the family's types), says `forms`, so it cuts what it did; one that cut
+the wall cut none of the forms, and reads as it did. The old rule was only ever in unreleased builds of the Family Editor:
+upstream's 17 and 18 never cut a wall with a family's void, only with the opening's rectangle. Its limit: one `cuts` is a
+void's for every type, and the old rule decided type by type. Where the types differ (a Window whose `Shift` puts its void
+over its sill in one type and clear of it in another), or an instance parameter moves the void onto a solid or off it, the
+union wins: overlapping in any type, as the type's values and the instance parameters' defaults have it, the void says
+`forms` for all of them, so a type whose void was clear and cut the wall cuts it no more and keeps the opening's rectangle,
+as upstream's 17 drew it (`host_void_tests`' Shift window). Pick `both` or `host` on that void to cut the wall again. A build
+that reads up to 18 would leave `cuts` out and cut the wall with a `host` void listed after its frame no more. A family file
+carries no FORMAT, so it is read as 19 reads it.
 
 How a door or a window opens is its family's `operation` (`model::Operation`: swing, double-swing, sliding, double-sliding,
 folding, fixed), or for one of the project's own types the type's (`OpeningType::operation`); none, a door swings. IFC writes
@@ -110,8 +118,15 @@ name: a triangle's face is read from its winding, so every solid emits triangles
 a project only through the `favorite` command (`load` never overwrites without `replace`). The desktop's Family Editor
 (`editor.rs`, `editor/document.rs`) opens every family in a document occupying the window, with a family ribbon,
 docked Properties and Project Browser, and a 3D view: an adaptive family's modelling view and tools
-([adaptive families](adaptive-families.md)), another's 3D preview. For a family that isn't adaptive, Forms and Symbols are
-edited in Properties (whose Adaptive tab makes it adaptive); Family Types and Family Category and Parameters open dialogs
+([adaptive families](adaptive-families.md)), another's 3D preview. Properties show what is selected, as Revit's do: nothing
+selected, the family's own (Identity Data, then Family Category and Parameters' Other group); a form, a symbol, a reference
+plane or line, a dimension or a nested instance, its own. The forms and the plan symbols of a family that isn't adaptive are
+listed in the Project Browser (Forms and Symbols, `family_browser`): a click selects one, and its right-click menu has Select,
+Delete and, for a form, Move Up and Move Down (the list's order is what a void's "the forms listed above it" means) and Edit
+Extrusion, Edit Blend and the like (a mesh from a file has no sketch, and so none). Forms are made on the Create tab (Extrusion,
+Blend, Revolve, Sweep, Swept Blend, Void Forms), symbols on Annotate's Detail panel (Symbolic Line, a line or an arc; Text; Dot),
+each made selected so Properties show its rows, and Manage's Adaptive Component makes the family adaptive (Make Family Adaptive,
+or Four-Point Panel for a ready-made one); Family Types and Family Category and Parameters open dialogs
 (Apply, OK, and Cancel putting back what the dialog began from). Extrusion, Blend, Revolve, Sweep, Swept Blend and Void Forms
 sketch forms (F5 and F6, below). Undo and Redo are the document's own (`Draft`), and never undo the project.
 Family Types is Revit's (`editor/types_dialog.rs`): Type name, a drop-down of the types with New Type (a name asked, the type
@@ -134,15 +149,34 @@ prepare a private `Session`, so saving never implicitly loads the draft into the
 `Session` of its own; errors appear inside the document or its dialog. Connectors, reference planes and lines, form hosts,
 parameter metadata and symbols remain in the draft even when their dedicated tools are not yet available.
 
-A form selected in the document (from the Project Browser's Forms list, or Select in the Forms tab; Escape, a click in the view or
-Modify lets it go) shows its own Properties in place of the family's tabs, as Revit's do for an Extrusion (`editor/extrusion.rs`):
-Constraints (Extrusion End and Start in the project's units, each with `=`, a revolve's angles instead; the Work Plane, read-only,
-named as `Planes::listed` names it), Graphics (Visible with `=`; Visibility/Graphics Overrides' Edit… opens F8's Visibility Settings, *Visibility Settings* below), Materials
+A family document opens as Revit's does (`editor.rs`): File > New > Family… (`new_family_window`: the category picked, as Revit's
+New Family picks a template, then `new_family`) and the start page's Families group, under Models, with New Family (the
+categories dropped down) and Open Family…; File > Open > Family… and Open Family… (`open_family`, `open_family_file`) open a
+family file, BIMCraft's own JSON as Save Family writes it and Load Family reads it (`read_family_file`), as a document that isn't
+the project's: Load into Project loads it, asking first (Family Already Exists) when the project has a family of its name, and the
+project is left as it is. The family document stands over a project, which the window always has: the blank one it starts with
+when given no file, so a family opened from the start page needs nothing more; closed, it goes back to the start page
+(`family_from_home`) unless the page was over a project or the family was loaded into the blank one. A file that isn't a family
+opens nothing and says why. Edit Family (`edit_family`) is on the contextual tab's Mode panel, at its right end as Revit's (`mode_panel`): a family's instance
+selected (the tab named for its family's category, Modify | Furniture), or a component being placed (Modify | Place Component,
+beside Load Family, the family being placed); and on the right-click menu. Manage has neither New Family nor Edit Family.
+
+A form selected in the document (from the Project Browser's Forms, or by a click in a view; Escape, a click in the view on
+nothing or Modify lets it go) shows its own Properties in place of the family's, as Revit's do for an Extrusion (`editor/extrusion.rs`):
+Constraints (Extrusion End and Start in the project's units, each with `=`; a Blend's Second End and First End; a revolve's
+End Angle and Start Angle; a Sweep's Path and Profile, a Swept Blend's Path, Profile 1 and Profile 2, each the sketch Edit Sweep
+or Edit Swept Blend draws, by its count of lines; the Work Plane, read-only, named as `Planes::listed` names it), Graphics (Visible with `=`; Visibility/Graphics Overrides' Edit… opens F8's Visibility Settings, *Visibility Settings* below), Materials
 and Finishes (Material with `=`) and Identity Data (Solid/Void). A value tied to a parameter or worked out by a formula is greyed. The
-contextual tab is "Modify | Form", with Delete and Edit Work Plane, which opens the Work Plane dialog for the form (T12, below); the Options Bar shows
+contextual tab, and the Options Bar, are named for its kind as Revit's (Modify | Extrusion, Modify | Blend, Modify | Revolve,
+Modify | Sweep, Modify | Swept Blend, and Modify | Void Extrusion and so on; a mesh from a file, Modify | Form), with Delete and Edit Work Plane, which opens the Work Plane dialog for the form (T12, below); the Options Bar shows
 Depth (End less Start: typed, Start stays and End moves; greyed while End is tied). Edits go to the draft and its history. Solid/Void
 and Edit Work Plane run `family` (its `form` patch) and `edit_work_plane` on a private session holding the draft, as Save Family
-does, and take the form back with the id and GUID it had: the form moves with the plane. Sketch mode (Edit Extrusion, Finish and
+does, and take the form back with the id and GUID it had: the form moves with the plane. Its shape is its sketch's: Edit
+Extrusion and the like draw it again, and its dimensions flex it; Properties have no field of its corners. A symbol selected (from
+the browser's Symbols) shows its rows (`symbol_properties`): Constraints (a line's points, as typed; an arc's, a text's or a dot's
+centre, radius or height and angles, each with `=`; a text's words and alignment), Graphics (Visible with `=`, its Subcategory
+and Detail Levels' Edit…), on the contextual tab "Modify | Symbols" (Delete). Symbols draw in plan only, so their numbers are
+typed rather than dragged in a view. Sketch mode (Edit Extrusion, Finish and
 Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's (below); its Visibility panel's Visibility Settings is F8's (below).
 
 {3D} shows what is selected as the project's 3D view does (T11, `editor/lit3d.rs`): a form, a void or a nested instance selected
@@ -152,6 +186,15 @@ it still hides it; a void, never seen, is drawn see-through while selected. The 
 in the hover colour (`family::views::part_at_3d`, the one whose surface there is nearest the eye), and a click selects it, a click
 on nothing letting the selection go. A reference plane or line selected in a plan or an elevation is drawn into {3D}'s picture in
 the selection's colour, depth tested as the work plane is (`view3d::PlaneMark`, `Image::draw_line`).
+
+A family's connectors (#269) are elements of its document, as Revit's: Create > Connectors places a pipe, power, switch, data
+or earthing one at the origin, selected; the browser lists them under Connectors, and a selected one's Properties type its name,
+domain, flow, size, place and direction (numbers or formulas), and a device's poles, voltage, load, power factor and
+classification. Each with a place is drawn over {3D}, the plans and the elevations as a symbol the same size on screen at any
+zoom (a pipe's a circle, a power, switch or data connector's a square, an earthing one's the earthing sign) and an arrow the
+way it faces (none where it faces the eye), in amber; the one under the pointer lit in the hover colour and a click selecting
+it, before what lies behind it; the selected one in the selection's (`editor/connector_marks.rs`). It is an overlay drawn
+through the view's projection alone, so it is not hidden by the forms in front of it.
 
 Expression-valued form and symbol properties (their numbers, Visible and a form's Material) offer `=` (`editor/association.rs`),
 which opens the Associate Family Parameter an adaptive element's rows open (`adaptive_editor::associate`, through the `Tied`
@@ -216,7 +259,7 @@ values following. `instance` switched moves values, not loses them (`patch_param
 component takes its type's value (a type with nothing placed loses it, as Revit's does); to type, each type takes the value its
 components agree on, refused naming the components where they don't. `delete_parameter` takes parameters away with their
 values; whatever still names one is `Family::problems`'s to refuse. A file of 17 reads unchanged (every parameter the family's,
-grouped by its kind); FORMAT 18 says an older build can't read the new kinds and fields.
+grouped by its kind); FORMAT 19 says an older build can't read the new kinds and fields.
 
 ### Formulas
 
@@ -252,7 +295,7 @@ type picked), the project's Properties and Type Properties.
 A form's `visible` is a yes/no parameter (`group: "visibility"` lists it under Visibility, as Revit's) or a formula; worked out
 as zero, the form is left out of what the family builds for that type or component (`Family::solid`), so a plan, the 3D view,
 a section and IFC leave it out alike, and a change of type, of the type's tick or of the component's own value follows. The
-family document's Properties (its Forms tab) show it as Revit's do: a Visible tick with "=" at its end (Associate Family Parameter,
+family document's Properties (a selected form's, or a symbol's) show it as Revit's do: a Visible tick with "=" at its end (Associate Family Parameter,
 the same dialog an adaptive element's rows open, through `adaptive_editor::Tied`), which ties it to a yes/no parameter or, with
 <None>, unties it keeping what it came to; tied, or given a formula, the tick is greyed, showing what the type previewed comes
 to, the formula beside it. As Revit's family editor, the document's preview draws a solid form the type previewed hides ghosted
@@ -273,14 +316,14 @@ points and lines are selected, so they are what HC hides; IC hides every other c
 planes or the wall with the other elements. The preview leaves a hidden solid form out of what it draws (`temp_hide::without`; a
 hidden void still cuts, being never drawn) and hides the wall by its category; the modelling view neither draws nor picks a
 hidden element (`adaptive_view::Hidden`), the datums staying placed round everything. A form is known by a `tag` the document
-gives it, so a hidden one stays hidden as forms move in the list. A hidden form stays in the Forms list. What is hidden is the
+gives it, so a hidden one stays hidden as forms move in the list. A hidden form stays in the browser's Forms. What is hidden is the
 document's (`document::State::temp`), as Preview Visibility: not saved, no step of the history, no unsaved change, gone when the
 family closes. While it hides anything the view wears the project's cyan frame (`footer::FRAME`) and the bar says
 "Temporary Hide/Isolate (HR resets)"; Preview Visibility's orange frame is then drawn just inside it, so both show.
 
 ### Visibility Settings (F8)
 
-F8, part of FORMAT 18 (`family/visibility.rs`). Revit's Family Element Visibility Settings: a form's, a void's and a nested instance's
+F8, part of FORMAT 19 (`family/visibility.rs`). Revit's Family Element Visibility Settings: a form's, a void's and a nested instance's
 `visibility` is `{plan, front_back, left_right, coarse, medium, fine, only_when_cut}`, each true by default but `only_when_cut`,
 and a file or a command writes only what differs (`{"plan": false}`); a symbol's takes only `coarse`, `medium` and `fine`
 (`Visibility::check_symbol`, refused in `Family::check` naming the symbol), as Revit's symbolic lines do. They are drawing
@@ -315,7 +358,7 @@ Revit's, its leaf `{plan: false}` and its swing a symbol, shows the swing in pla
 
 In the family document (`editor/visibility.rs`), Family Element Visibility Settings opens from a form's or a nested instance's
 contextual tab (Visibility > Visibility Settings), from a form's Properties (Graphics > Visibility/Graphics Overrides, Edit…)
-and from a symbol's row in the Symbols tab (Detail Levels, Edit…; only its detail levels can be changed):
+and from a selected symbol's Properties (Detail Levels, Edit…; only its detail levels can be changed):
 View Specific Display (Plan/RCP, Front/Back, Left/Right, Only shown when cut), Detail Levels (Coarse, Medium, Fine), Default,
 OK (into the draft, a step of its history) and Cancel. The document's view control bar has a Detail Level menu (`Views::detail`,
 the session's, Fine when a family opens). Its views draw a form its settings leave out of that view (`views::hidden_in`)
@@ -331,8 +374,8 @@ A shared parameters file (`shared_parameters.rs`, the `shared_parameters` comman
 file of the user's own, outside any project or family, as Revit keeps one: groups, and in them parameters, each a GUID, a name,
 a data type, a description, whether it is visible and whether the user may change it. The command takes the file's `path` on
 every call (Revit keeps it per user, never in the project; an agent says which file it means, and a front end remembers its
-own), and only `load` changes the project. The layout is Revit's tab-separated one, from what is publicly documented and
-commonly seen: `#` comments, a `*META`/`*GROUP`/`*PARAM` header naming the columns of the `META`/`GROUP`/`PARAM` lines after
+own), and only `load` changes the project. The layout is Revit's tab-separated one, from what Autodesk documents publicly
+in the Revit API guide's [Definition File](https://help.autodesk.com/cloudhelp/2015/ENU/Revit-API/files/GUID-9C7F6E02-05C2-4F72-8108-60F2175FB9E3.htm) page and what such files commonly hold: `#` comments, a `*META`/`*GROUP`/`*PARAM` header naming the columns of the `META`/`GROUP`/`PARAM` lines after
 it, read by column name so version 1 (no `DESCRIPTION`, `USERMODIFIABLE`) and version 2 (with them and `HIDEWHENNOVALUE`) both
 read, and a column this version doesn't know passed over; a reader must be at least `MINVERSION`, so a file asking for more
 than 2 is refused. It is written as version 2, UTF-8 with a byte order mark and Windows line ends, groups and their
@@ -394,7 +437,7 @@ drawn in the host's axes and `from` and `to` run along its normal (Revit's Extru
 shorthand from before (`family::Plane`), read as it always was by the command and by a file of 17 (`FormIn`): `xy` and `yz`
 are Ref. Level and Center (Left/Right) as they were; `xz` swept along +y and Center (Front/Back)'s normal is -y, so its
 `from` and `to` are negated and swap places (a formula wrapped as `-(…)`), a revolve's angles kept. The starter families
-still say `plane`, and build the same triangles (`family_plane_tests`); FORMAT 18 holds this change. The `family` command
+still say `plane`, and build the same triangles (`family_plane_tests`); FORMAT 19 holds this change. The `family` command
 replaces the lists with `ref_planes` and `ref_lines` (datums given back as they are are kept), patches one with `ref_plane`
 and `ref_line` and deletes with `delete_ref_plane` and `delete_ref_line` by id or GUID, as forms; deleting one a form or a
 line is drawn on is refused, naming them. A new plane or line may carry a GUID of its own, so forms are drawn on it in the
@@ -439,7 +482,7 @@ Remove Constraints. `constraints::align` is Align. Deleting a plane or a form ta
 it (`forget_reference`; one left with a single reference goes). The `family` command takes `dimensions`, `dimension` (added,
 or patched by id or GUID) and `delete_dimension`, and reads a type's solve with `solve`. A dimension measuring to what the
 family hasn't is refused, unless `invalid_dimensions: "delete"` (T14's Delete Dimension(s)); a file opened leaves it out and
-lists it in `left_out` (`Model::read`). Part of FORMAT 18.
+lists it in `left_out` (`Model::read`). Part of FORMAT 19.
 
 In the family document (`editor/dimensions.rs`), Create > Dimension > Aligned Dimension (DI) picks reference planes (by the
 view's drawing) and extrusion ends seen edge on (`constraints::end_faces`), parallel to the first, and a click on nothing
@@ -457,7 +500,7 @@ Properties and the Options Bar's Depth. A reload whose family has dimensions mea
 Dimensions first: Delete Dimension(s) or Cancel, and nothing passes it over. Angular dimensions and reference lines that turn
 are F7c's (below).
 
-F7b, part of FORMAT 18: sketch lines locked. A dimension may also measure to a straight line of a form's sketch, `{"form": guid,
+F7b, part of FORMAT 19: sketch lines locked. A dimension may also measure to a straight line of a form's sketch, `{"form": guid,
 "line": guid}` (the plane through it square to the form's plane: Revit's sketch line seen edge on), to a line's end or a
 circle's centre, `{"form", "line", "point": "start" | "end" | "centre"}` (measured along the dimension's other references, so
 one of them must face a way), and to a reference line's face, `{"line": guid, "face": …}` (fixed but for moving with the plane
@@ -488,7 +531,7 @@ Align's offered padlock too. Edit Extrusion opens the sketch as the type preview
 (`sketch::kept` against the lines shown). Every line gets a GUID of its own at Finish, a new form its GUID at once, so a lock or
 a dimension can name them before the family is loaded.
 
-F7c, part of FORMAT 18: angles, turning reference lines and arcs. `kind: "angular"` measures the angles
+F7c, part of FORMAT 19: angles, turning reference lines and arcs. `kind: "angular"` measures the angles
 between 2 to `MAX_DIM_REFS` lines seen as lines in its view: reference planes seen edge on (their traces), reference lines
 (`{"line": guid, "face": …}`, any face: the line's way counts) and straight sketch lines on a plane seen flat. Segment *i* is the
 angle from reference *i* to *i + 1*, in degrees; the sector is the one `at` lies in as drawn (each line's half on `at`'s side of
@@ -526,7 +569,7 @@ of what it measures. Radial and Diameter also pick an arc by its edge within its
 centre is picked as a circle's. Turning a reference line with the mouse is F7d's pivot and its rotate grip (below), with
 T18's line grips.
 
-F7d, part of FORMAT 18: pivots (`family/constraints/pivot.rs`). A reference line or a reference plane
+F7d, part of FORMAT 19: pivots (`family/constraints/pivot.rs`). A reference line or a reference plane
 may carry a `pivot` (`Pivot`), one each: it keeps a point of its element (`at`: `start`, `end` or `{"along": mm}`; a plane's
 along the line it is drawn as) on a point (`to`, `PivotPoint`: where two planes holding the pivot's axis cross, a reference
 line's end, a point of a sketch, or a fixed point), and turns about it; the axis is the normal of what a line is drawn on
@@ -556,7 +599,7 @@ names takes the pivot off (`forget_pivots`); a file's pivot naming what the fami
 45° snapped to it, stopped at the limits) as `Edit::Parameter`, or as `Edit::PivotAngle` with no parameter; a formula's
 parameter refuses. A pivoted plane can't be dragged square to itself. `drag_line_end` is T18's end grip. `pivot_marks` and
 `pivot_targets` are what a view draws and snaps to. The `family` command patches `pivot` through `ref_line` and `ref_plane`
-(`null` takes it off) and `solve` lists each plane's ends. FORMAT 18: a build that reads up to 17 would leave `pivot` out of the file.
+(`null` takes it off) and `solve` lists each plane's ends. FORMAT 19: a build that reads up to 18 would leave `pivot` out of the file.
 
 In the family document (`editor/pivot.rs`), a click on a reference line selects it ("Modify | Reference Lines", Delete,
 over a plane's trace beneath it). Rotation > Pivot, on a selected line or plane of the family's own, waits for a click: the
@@ -597,7 +640,7 @@ whose Delete takes away a plane of the family's own unless something is drawn on
 window's Sill on Ref. Level, as Revit's window template has it): each is drawn, and where the pointer is over several
 (`Views::under`, each once, nearest first) the one a click takes is lit and Tab steps to the next, as Revit's Tab does, for
 selecting, Aligned Dimension, Align, Pick Lines and the Work Plane dialog's Pick alike; Ref. Level is picked by its level. The
-app's Tab hook leaves Tab to the family document while it is open. The blank window (Manage > New Family > Window) has Sill: a
+app's Tab hook leaves Tab to the family document while it is open. The blank window (File > New > Family… > Window) has Sill: a
 plane on Ref. Level seen edge on in the elevations, Align-locked to it, so a Height dimensioned from it moves its head alone (a
 window's axes rise from its sill, so the sill's plane and Ref. Level are one; without the lock the least-change solve would
 share a Height's change between them); a door's blank has none, as Revit's door template. The selected form is outlined, the
@@ -636,7 +679,7 @@ plans and elevations show its test placement and nothing more (no selection, no 
 
 ## Sketches of forms
 
-F5, part of FORMAT 18. A form's profile is its `sketch` (`family/sketch.rs`): lines (`start`, `end`), arcs (`turn` degrees
+F5, part of FORMAT 19. A form's profile is its `sketch` (`family/sketch.rs`): lines (`start`, `end`), arcs (`turn` degrees
 counter-clockwise from start to end) and whole circles (`centre`, `radius`) in its host plane's own axes, each number a number or a
 formula, each line a part of the family (an id and a GUID, `parts_now`'s "sketch line", kept by place when a form is given again,
 `Form::keep_lines`) so F7 can dimension and lock it. A revolve's axis is a line of its sketch with `axis: true`, one at most. The
@@ -669,8 +712,8 @@ Offset, and for Pick Lines Revit's Lock (F10a, kept for the session, off to begi
 Offset and in a plan or an elevation, is locked to what it was picked from (a plane, a reference line, another form's line: what
 Align would take there, `dimensions::reference_at`), the same lock Align's padlock leaves (`alignment`, written at Finish,
 dropped by Cancel, its padlock shown closed beside the line, a click unlocking it); greyed with an Offset and in {3D}, where
-Align isn't either. Properties the Start and End (a revolve's Start Angle and End Angle, as a selected one's Properties and the
-Forms tab name them), Material and Solid/Void. Finish checks the lines as the core does
+Align isn't either. Properties the Start and End (a revolve's Start Angle and End Angle, as a selected one's Properties name
+them), Material and Solid/Void. Finish checks the lines as the core does
 (`family::sketch::finish_check`): open loops, crossing or overlapping lines, a revolve with no axis or a profile across it are
 refused, said in the project's words with the lines shown red, the draft left as it was; then each type is built with the form,
 and a fault of this form refuses it too. On success the form is in the draft, one step of its history, and selected. Cancel leaves
@@ -679,14 +722,14 @@ the draft (and so its Unsaved mark) as it was. A selected form's contextual tab 
 out for the type shown, in the view shown if it sees the plane flat, else {3D}; a line that keeps its GUID and comes to where it
 was keeps its formulas (`family::sketch::kept`), one moved holds numbers. A selected extrusion's Start and End show shape handles
 in a plan or an elevation that sees its plane edge-on; dragged, they move along the normal, a step of the history; an end tied to a
-parameter or a formula is greyed and a drag on it is refused, saying why. The Forms tab keeps the typed corners, circle and axis as
-an advanced view; a sketch they can't say shows as "Sketch" with its count of lines. Where a form's dimensions and locks put
-its outline, From or To otherwise for the type previewed than it is drawn, the tab shows those fields as they come to, greyed
-under a note naming the type (F10, `held_forms`): the drawn numbers stay, and Edit Extrusion or the dimensions change them.
+parameter or a formula is greyed and a drag on it is refused, saying why. Where a form's dimensions and locks put its outline,
+Start or End otherwise for the type previewed than it is drawn, its Properties say so under a note naming the type (F10,
+`held_forms`), its ends a dimension sets greyed as they come to: the drawn numbers stay, and its Edit tool or the dimensions
+change them.
 
 ## Blends, sweeps and swept blends
 
-F6, part of FORMAT 18 (`family/forms.rs`). A form's `sketch` is always drawn in its host plane's axes: an extrusion's or a revolve's
+F6, part of FORMAT 19 (`family/forms.rs`). A form's `sketch` is always drawn in its host plane's axes: an extrusion's or a revolve's
 profile, a Blend's base, a Sweep's or a Swept Blend's path. What a form is follows from what it holds (`Form::kind`,
 `FormKind`): a `top` (lines in the host's axes) makes it a Blend, its base at `from` (First End) and its top at `to` (Second
 End) along the normal; a `sweep` (`{profile, end?}`) a Sweep, or with `end` a Swept Blend. A profile is drawn in the profile
@@ -697,8 +740,8 @@ Twist) moves the top's, or the second profile's, first vertex on. `Family::check
 a `sweep`, either with an axis or a mesh, a twist on anything but a blend or a swept blend or past `MAX_TWIST`, and a swept
 blend's path of more than one line. Every line of `top`, `sweep.profile` and `sweep.end` is a part ("sketch line"), kept by
 place within its group (`Form::keep_lines`); `rename_parameter`, `every_formula` and the formula checks reach them
-(`Form::all_lines`). A build that reads up to 17 would drop the three fields and build a Blend as an extrusion of its base, so it
-must refuse 18 as newer; a file of 17 holds none, and the step to 18 has nothing to do for them.
+(`Form::all_lines`). A build that reads up to 18 would drop the three fields and build a Blend as an extrusion of its base, so it
+must refuse 19 as newer; a file of 17 or 18 holds none, and the step to 19 has nothing to do for them.
 
 Built (`forms::build`, from `Family::solid`): a Blend's ends and a Swept Blend's profiles are one loop each (several, or a
 hole, refused, as Revit's); a Sweep's profile may have several loops and holes. `forms::mapped` pairs two rings: each starts
@@ -774,10 +817,16 @@ family is on a plane is refused by the project on Load into Project, said in the
   always cut before.
 - `room_calculation_point`: `[x, y, z]` in the family's axes, mm, numbers or formulas that read only its length
   parameters (a door's or a window's `Wall Thickness` too), worked out for each type by `Family::check` (finite, within
-  `MAX_COORD`) and renamed with them. `Model::component_room_point` places it with the component (mirrored, turned, moved;
-  its height over its level's base is kept but not yet read), else takes the insertion point, and `Rooms::component` finds
-  the room on the component's level whose boundary, where the project measures rooms, holds it (the first by id; none
-  in a wall or outside every room). Nothing in BIMCraft put a component in a room before, so this is that rule: `elements`
+  `MAX_COORD`) and renamed with them. `Model::component_room_point` places it with the component (mirrored, turned, moved,
+  its height included), else takes the insertion point, and `Rooms::component` finds the room on the component's level
+  whose volume holds it, as Revit's point has to fall inside the room's volume: its boundary at its walls' centre lines
+  holds it in plan (whatever the project measures areas at, as #280 counts components too), and its height lies from the room's bottom (its level plus `base_offset`) up to its top (its
+  `top_level`, else its own, plus `limit_offset`), both ends included (`Rooms::room_holding`; the first by id; none outside
+  every room, or over or under it, as a ceiling luminaire hung over a room's top). The starter wall devices
+  (the outlets, the switch, the distribution board, the data and voice outlets, the patch panel: `fixtures.rs`) have a
+  point as Revit's do, `ROOM_POINT_OUT` (150 mm) in front of the wall's face at the middle of their height, so one on a
+  wall's face is in the room on its side however rooms are measured; a component without a point is where its insertion
+  point is, as before. Nothing in BIMCraft put a component in a room before, so this is that rule: `elements`
   gives each component's `room` (its GUID, or null). IFC keeps every component contained in its storey, as before, and
   adds one `IfcRelReferencedInSpatialStructure` for each room's `IfcSpace`, listing the components in it, after every other
   entity, so the rest of the file is as it was (`ifc::export_with` without them is the test's oracle); the import finds the
@@ -835,8 +884,8 @@ their points"), so `component` and `edit_work_plane` can't put one on a plane. `
 (its host's offset, or its height over its level), which `modify` also takes; component schedules have Elevation from
 Level, Work Plane and Offset from Host besides Level, its Schedule Level. IFC keeps it in its Schedule Level's storey, its
 `IfcAxis2Placement3D` taking the tilt as its Axis and RefDirection; the project's reference planes aren't exported. FORMAT
-18 holds this change: a build that reads up to 17 would stand a tilted component upright and lose its plane; a file of 17
-holds neither.
+19 holds this change: a build that reads up to 18 would stand a tilted component upright and lose its plane; a file of 17
+or 18 holds neither.
 
 The desktop's Component tool, placing a work plane-based family, shows Place on Work Plane and a Placement Plane (the plan's
 level, or a reference plane of the project) on its Options Bar, and for any family Rotate after placement, which selects what
@@ -881,16 +930,19 @@ goes up it. `component {…, host: {face: {element, face}}}` takes `at` [x, y] o
 and [x, y, z] onto a wall's side (its nearest point; [x, y] alone is refused there), `offset` along the face's normal;
 `edit_work_plane {ids, host: {face: …}}` puts components on one. Work Plane reads `Floor : Generic - 200mm : Top`, `elements`
 gives `host_element` and component schedules a Host field. IFC keeps the placement and writes no host relation (IFC4 has
-none for an element that fills nothing). FORMAT 18 holds this change: a build that reads up to 17 knows no `host`, and a file
-of 17 holds none.
+none for an element that fills nothing). FORMAT 19 holds this change: a build that reads up to 18 knows no `host`, and a file
+of 17 or 18 holds none.
 The desktop's Component tool offers Place on Face beside Place on Work Plane: in plan it places on the top of the highest
 floor or roof of the level under the click, in a ceiling plan on the underside of the lowest ceiling (`Model::face_in_plan`),
 in the 3D view on the face clicked (`Model::face_role`). A wall's top and ends, the faces of other elements and of linked
 models are not here.
 
 A face-hosted component's voids cut its host (T16b), as a Revit face-based family's do: each void of its family that cuts
-none of its own forms (T22's rule, `Family::face_voids`; one listed before them all) and reaches into its host makes an
-opening, a recess or a penetration there. There is no option: any face-hosted component's such voids cut, whatever
+the host (`cuts` `both`, the default, or `host`), whatever its place in the family's list and whatever it overlaps (F10d's
+rule, as a door's in its wall; `Family::face_voids`), and reaches into its host makes an opening, a recess or a penetration
+there; a `forms` void cuts the family's own forms alone. Before, a `both` void listed after a solid it overlapped cut the
+face no more (T22's order rule, which F10d dropped for walls only); Place on Face came with 19, so no file needs a step.
+There is no option: any face-hosted component's such voids cut, whatever
 `cut_with_voids_when_loaded` says, which is about the project's voids cutting a component; and a work plane-based family's
 void that cuts none of its forms is not warned of as cutting nothing. `Model::face_voids` gives a component's voids placed
 where it stands (mirrored, on its face's frame), `Model::hosted_voids` those of everything on a host's faces (found through
@@ -922,7 +974,7 @@ numeric is checked finite and within `MAX_COORD`; a label's height and a dot's r
 A symbol may name the subcategory of its family's category it is drawn in (`subcategory`, by its English name, any case:
 `Opening` for a door or a window; `Family::check` refuses a name its category has none of, saying which it has); a view hides and
 restyles it apart from the rest (Doors > Opening, [views and graphics](views-and-graphics.md)). The starter doors' swings and the
-windows' opening lines are in Opening. The Family Editor's Symbols tab picks it from the category's subcategories.
+windows' opening lines are in Opening. A selected symbol's Properties pick it from the category's subcategories.
 
 `Model::component_marks` places a component's marks (mirrored, then turned and moved) and `Model::opening_marks` an opening's,
 and `render::marks` draws them: lines in the category's pen (`BY_CATEGORY`, so Object Styles and Visibility/Graphics apply), dots
@@ -931,7 +983,7 @@ letters never are: they are always drawn at 0 degrees in the view, left to right
 stands (the simplest rule; no flipping by quadrant). Symbols are annotation of the component's level: they draw in that level's
 plan and its ceiling plan whatever height the component's forms reach (a ceiling light shows its symbols in the floor plan) and
 on no other level's; the forms are outlined by the old rule (whole while any of them is between the view's depth and cut plane,
-and not in ceiling plans). A component with no forms draws its symbols the same way. IFC export ignores symbols (they are plan notation, not geometry); the Family Editor's Symbols tab lists
+and not in ceiling plans). A component with no forms draws its symbols the same way. IFC export ignores symbols (they are plan notation, not geometry); the Family Editor's Annotate > Detail makes
 all four parts. Library parts: a symbol of any kind has its own id and GUID (`HasPart`, `keep_parts`). A file written with
 `text` or `dot` symbols, or symbols on a category other than a door or a window, is read by an older version only with them left
 out or refused, so the file format is unchanged.
@@ -997,7 +1049,10 @@ nests to itself, `Family::shared_within`): one the target hasn't is added to it;
 ("Shared Family Already Loaded", `nested::reconcile_shared`; `shared_nested: {name: project | family}` in the command): `project` gives the family loaded the target's (the default when
 unanswered), `family` overwrites the target's with the family's, its values too. One definition of a shared family is kept
 across the target: after one changes in the project, every family of the project that nests it, at any depth, takes the same
-(`Family::replace_shared`). A shared nested instance is built into its host as any other: its own element in the project
+(`Family::replace_shared`). Within the family loaded, too: before it is reconciled, every copy of a shared family nested in
+it is made the first one met going down its nested families in order (`Family::unify_shared`: two branches P and Q each
+holding Leaf, defined otherwise, load with P's Leaf in both and in the project's), and what the target takes is read once
+the answers are applied, so no definition taken brings back a copy another replaced. A shared nested instance is built into its host as any other: its own element in the project
 (Tab-select, schedules, tags, IFC aggregated into its host) is T6b's. A nested family's type chosen by a family type parameter
 is T24's. A door's leaf on a hinge (T26) is a nested instance on a pivoted line's face or on a pivoted plane, placed on its
 host's flexed frame, so it turns with the pivot (F7d, *Dimensions and constraints*): `family_pivot_tests` swings a nested leaf
@@ -1013,7 +1068,7 @@ their groups, each with Revit's "=" (`Field::Nested`, `NestedRows`). The Project
 and their types, with Edit Family and Delete on the right-click. Edit Family (also on the instance's contextual tab) opens the
 nested family's own document over the host's (`BimApp::family_hosts`): its Load into Project and Load into Project and Close load
 it back into the host, asking Family Already Exists in the family's words; Close Family goes back without loading. The project is
-untouched until the host is loaded. A nested instance is moved by its Properties; dragging it in a view is T6b's. FORMAT 18
+untouched until the host is loaded. A nested instance is moved by its Properties; dragging it in a view is T6b's. FORMAT 19
 says an older build would leave both fields out of a file.
 
 ## Reloading a family
@@ -1080,10 +1135,10 @@ Align-locked to the planes, listed after the frame: it cuts the wall wherever it
 (F10d). Three types (900 x 1200, 1200 x 1500, 600 x 600), loaded, placed in a wall, flexed through its types, a window
 schedule, IFC.
 
-- **The desktop** (`crates/ui-egui/src/tests/family_exit.rs`): every step through the window, from Manage > New Family > Window
+- **The desktop** (`crates/ui-egui/src/tests/family_exit.rs`): every step through the window, from File > New > Family… > Window
   to File > Export's IFC: the Reference Plane tool and Properties' Name, Aligned Dimension (Tab onto Sill) and the Options Bar's
   Label, EQ, Extrusion with Pick Lines, its Lock and Trim/Extend to Corner, Rectangle, Void Extrusion with Rectangle and Align's
-  padlocks, the dimensions' padlocks, the void's Cuts in Properties, the Forms tab, Family Types, Load into Project and Close,
+  padlocks, the dimensions' padlocks, the void's Cuts in Properties, the void picked in the browser's Forms, Family Types, Load into Project and Close,
   the Window tool and the Type Selector, View > Schedules. At each type it measures what is
   built: the frame's pieces (`Model::opening_pieces`) and a picture of the 3D view probed across the opening's edges (the wall
   just outside, the frame just inside, through the light). The IFC is read back for each IfcWindow's size, its
@@ -1110,3 +1165,38 @@ The follow-ups it left open, done after it: Pick Lines' Lock and Trim/Extend to 
 `a_sill_plane_on_ref_level_…`); a void cutting the host whatever its place in the list, and Cuts (F10d,
 `host_void_tests`). What they found: in a plan or an elevation, Pick Lines put a line where a plane is drawn rather than where
 the type previewed puts it, as the view shows it; it takes the one shown now.
+
+## Where the code lives
+
+Moved from the root `CLAUDE.md`'s module map, which names the files and points here for what each owns.
+
+In `crates/core`: `family.rs`, `family/validate.rs`, `csg.rs`, `fixtures.rs`, `favorites.rs`, `shared_parameters.rs`:
+families, what's wrong with one and what's worth knowing about it (its formulas, its checks, its forms' boxes), solids cut
+from solids, the starter fixtures, the user's favorites, the shared parameters file. `hosting.rs`: the project's reference
+planes, components hosted on them or on faces (Place on Face), and where a component's family axes are. The rest of
+`family/`:
+
+- `family/planes.rs`: reference planes and lines, forms' hosts.
+- `family/options.rs`: Family Category and Parameters' options.
+- `family/views.rs`: a family's plans and elevations.
+- `family/sketch.rs`: forms' sketches.
+- `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
+- `family/constraints.rs`: its dimensions, labels, locks and EQ, solved as a type flexes; `family/constraints/pivot.rs`,
+  lines and planes that turn about a pivot.
+- `family/nested.rs`: nested families and their instances, built into the host.
+- `family/visibility.rs`: Visibility Settings: which views and detail levels draw a form, a symbol or a nested instance.
+
+In `crates/ui-egui`, the Family Editor:
+
+- `editor.rs`: family drafts. `editor/document.rs`: the family document every family opens as.
+- `editor/association.rs`: parameter associations. `editor/extrusion.rs`: a selected form's Properties.
+- `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
+- `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
+- `editor/sketch.rs`: sketch mode. `editor/dimensions.rs`: their dimensions and Align.
+- `editor/work_plane.rs`: its Work Plane dialog and Go To View.
+- `editor/options.rs`: the family's options (Family Category and Parameters, Properties' Other).
+- `editor/nested.rs`: its nested families (Load Family, Component, Edit Family). `editor/pivot.rs`: its pivots and grips.
+- `editor/connectors.rs`: a family's connectors in the document, placed from Create > Connectors, listed in the browser, typed
+  in Properties. `editor/connector_marks.rs`: their symbols and arrows over {3D}, plans and elevations, lit and picked (an
+  overlay drawn through a view's projection alone).
+- `editor/lit3d.rs`: {3D}'s selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.

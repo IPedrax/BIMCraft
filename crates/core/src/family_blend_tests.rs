@@ -249,8 +249,8 @@ fn blends_and_sweeps_save_read_again_and_go_out_to_ifc() {
     let ifc = crate::ifc::export(&s.model);
     let sets = ifc.matches("IFCTRIANGULATEDFACESET").count() + ifc.matches("IFCPOLYGONALFACESET").count();
     assert!(sets >= 3, "{sets} face sets");
-    // A build of 17 must refuse it: it says 18 or later.
-    const { assert!(crate::model::FORMAT >= 18) };
+    // A build of 17 must refuse it: it says 19 or later.
+    const { assert!(crate::model::FORMAT >= 19) };
     let f = crate::model::FORMAT;
     assert!(text.contains(&format!("\"format\": {f}")) || text.contains(&format!("\"format\":{f}")));
 }

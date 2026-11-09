@@ -1,5 +1,5 @@
 //! A face-hosted family's voids cut its host (T16b), as Revit's face-based families do: a component placed on a face of a
-//! floor, a ceiling, a roof or a wall whose voids reach into its host and cut none of its own forms makes a hole there, in
+//! floor, a ceiling, a roof or a wall whose voids reach into its host and cut it (`both` or `host`, wherever listed) makes a hole there, in
 //! the host's solids (so the 3D view and sections), in plan and in a ceiling plan, and as an IFC opening voiding the host.
 //! A component with no such void leaves its host as it was, and the hole follows its host.
 
@@ -338,4 +338,39 @@ fn a_compound_floors_layers_follow_the_hole_in_3d_and_section() {
     };
     assert!(between(1000.0) && between(5000.0), "the layers' line either side");
     assert!(!between(3000.0), "none across the hole");
+}
+
+/// A face-hosted family of a solid 200 square from 0 to 20 and a void 100 square from -300 to 10 that cuts `cuts`, listed
+/// after the solid (`first`: before it).
+fn recess(s: &mut Session, name: &str, cuts: &str, first: bool) {
+    let solid = json!({"profile": [[-100, -100], [100, -100], [100, 100], [-100, 100]], "from": 0, "to": 20});
+    let void = json!({"void": true, "cuts": cuts, "profile": [[-50, -50], [50, -50], [50, 50], [-50, 50]], "from": -300, "to": 10});
+    let forms = if first { json!([void, solid]) } else { json!([solid, void]) };
+    run(
+        s,
+        "family",
+        json!({"name": name, "category": "generic", "types": {"A": {}},
+               "options": {"work_plane_based": true, "always_vertical": false}, "forms": forms}),
+    );
+}
+
+/// F10d's rule on a face, as in a wall: a void that cuts `both` cuts the host whatever its place in the list, so one listed
+/// after a solid it overlaps still makes its hole in the floor it is placed on; `host` does too, and `forms` never does.
+#[test]
+fn a_both_void_listed_after_a_solid_it_overlaps_cuts_the_face_it_stands_on() {
+    let mut s = Session::new();
+    let floor = floor(&mut s);
+    for (k, (name, cuts, first, want)) in
+        [("Both", "both", false, 1), ("Host", "host", false, 1), ("Forms", "forms", false, 0), ("BothFirst", "both", true, 1)]
+            .into_iter()
+            .enumerate()
+    {
+        recess(&mut s, name, cuts, first);
+        let f = s.model.families[name].clone();
+        let voids = f.face_voids(&f.values("A", &Default::default()).unwrap()).unwrap();
+        assert_eq!(voids.len(), want, "{name}: the family's face voids");
+        let c = put(&mut s, name, floor, "top", json!([1000 + 1200 * k, 2000]));
+        let crate::model::Element::Component(placed) = &s.model.elements[&c] else { panic!("a component") };
+        assert_eq!(s.model.face_voids(placed).len(), want, "{name}: placed on the floor's top");
+    }
 }

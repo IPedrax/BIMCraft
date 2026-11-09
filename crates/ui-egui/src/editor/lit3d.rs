@@ -58,16 +58,10 @@ impl FamilyEditor {
         self.views.line = None;
         match part {
             Some(Part::Form(i)) => {
-                self.nested_sel = None;
-                self.select_form_at(i);
-                self.tab = Tab::Forms;
-                self.document.reveal = Some(i);
+                self.select_only_form(i);
             }
             Some(Part::Nested(i)) => self.select_nested(Some(i)),
-            None => {
-                self.nested_sel = None;
-                self.form = None;
-            }
+            None => self.let_everything_go(),
         }
     }
 

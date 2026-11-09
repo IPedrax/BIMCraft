@@ -102,11 +102,8 @@ pub(super) fn click_family(h: &mut Harness<BimApp>, p: [f64; 3]) {
     click_at(h, at);
 }
 
-/// Form `n` (from 1) selected from the Project Browser's Forms list, the Properties' Symbols tab in front.
+/// Form `n` (from 1) selected from the Project Browser's Forms list.
 pub(super) fn select_form(h: &mut Harness<BimApp>, n: usize) {
-    if h.query_by_label("Symbols").is_some() {
-        press(h, "Symbols");
-    }
     let label = format!("{n}. Extrusion");
     h.get_by_label(&label).scroll_to_me();
     h.run();
@@ -228,7 +225,7 @@ fn a_click_selects_a_form_or_a_plane_and_a_selected_plane_moves_by_a_drag() {
     view(&mut h, Some(Which::Elevation(Side::Front)));
     click_family(&mut h, [750.0, 0.0, 1000.0]);
     assert_eq!(editor(&h).selected_form(), Some(0), "the box");
-    assert!(h.query_all_by_label("Modify | Form").count() > 0, "its contextual tab, as in {{3D}}");
+    assert!(h.query_all_by_label("Modify | Extrusion").count() > 0, "its contextual tab, as in {{3D}}");
     view(&mut h, Some(Which::Plan));
     assert_eq!(editor(&h).selected_form(), Some(0), "a view opened keeps the selection");
     let edge = plane(&h, "Edge").guid;
@@ -510,4 +507,36 @@ mod gpu {
         assert_ne!(at(&before, on), at(&after, on), "tinted where Ref. Level is");
         assert_eq!(at(&before, front), at(&after, front), "the box in front of it keeps its colour");
     }
+}
+
+/// A family's connectors are drawn in {3D} and in its plans (#269), each at its place: the pointer over one lights it, a click
+/// selects it (Properties show it), as a form is; in a plan too.
+#[test]
+fn a_connector_is_lit_under_the_pointer_and_selected_by_a_click_in_3d_and_in_a_plan() {
+    let (mut h, _) = open("", "WC");
+    let marks = editor(&h).connector_marks();
+    assert_eq!(marks.len(), 2, "the WC's waste and cold water");
+    let (waste, cold) = (marks[0].at, marks[1].at);
+    // {3D}: over the waste outlet, it is lit; a click selects it.
+    h.hover_at(in_3d(&h, waste));
+    h.run();
+    assert_eq!(editor(&h).connector_hover, Some(0));
+    let at = in_3d(&h, waste);
+    click_at(&mut h, at);
+    assert_eq!(editor(&h).selected_connector(), Some(0));
+    assert!(h.query_all_by_label("Modify | Connectors").count() > 0, "its contextual tab");
+    // A click on the cold water's selects that one instead.
+    let at = in_3d(&h, cold);
+    click_at(&mut h, at);
+    assert_eq!(editor(&h).selected_connector(), Some(1));
+    // The plan: the same.
+    key(&mut h, Key::Escape);
+    view(&mut h, Some(Which::Plan));
+    hover_family(&mut h, cold);
+    assert_eq!(editor(&h).connector_hover, Some(1));
+    click_family(&mut h, cold);
+    assert_eq!(editor(&h).selected_connector(), Some(1));
+    // Off it, a click on the bowl selects a form, and lets the connector go.
+    click_family(&mut h, [0.0, -150.0, 0.0]);
+    assert_eq!(editor(&h).selected_connector(), None);
 }

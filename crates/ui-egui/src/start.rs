@@ -129,6 +129,10 @@ fn ago(when: SystemTime) -> String {
 enum Click {
     New,
     Open,
+    /// The start page's New Family: a family of the category picked, in its document.
+    NewFamily(bimcraft_core::family::Category),
+    /// The start page's Open Family…: a family file, in its document.
+    OpenFamily,
     /// The sample house, as an unsaved project.
     Sample,
     Recent(PathBuf),
@@ -260,6 +264,11 @@ impl BimApp {
         match click {
             Click::New => self.guard(Pending::New, &ctx),
             Click::Open => self.guard(Pending::Open, &ctx),
+            Click::NewFamily(c) => {
+                self.new_family(c);
+                self.family_from_start_page();
+            }
+            Click::OpenFamily => self.open_family(&ctx),
             Click::Sample => self.guard(Pending::Sample, &ctx),
             Click::Recent(path) => self.guard(Pending::OpenPath(path), &ctx),
             Click::Forget(path) => {
@@ -297,9 +306,9 @@ impl BimApp {
         });
     }
 
-    /// New, Open, and back to the project open behind the page.
+    /// Models (New, Open, the sample and back to the project open behind the page) and Families (New and Open), as Revit's Home.
     fn start_actions(&self, ui: &mut Ui, click: &mut Option<Click>) {
-        heading(ui, "Start");
+        heading(ui, msg!("Models"));
         let cmd = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl+" };
         if action(ui, Icon::NewFile, msg!("New Project"), msg!("An empty project to model in."), &format!("{cmd}N")).clicked() {
             *click = Some(Click::New);
@@ -310,7 +319,7 @@ impl BimApp {
         } else {
             msg!("A BIMCraft project or an IFC file.")
         };
-        if action(ui, Icon::Open, "Open…", what, &format!("{cmd}O")).clicked() {
+        if action(ui, Icon::Open, msg!("Open…"), what, &format!("{cmd}O")).clicked() {
             *click = Some(Click::Open);
         }
         ui.add_space(10.0);
@@ -323,6 +332,23 @@ impl BimApp {
             if action(ui, Icon::Back, &back, msg!("The project stays as you left it."), &format!("{cmd}D")).clicked() {
                 *click = Some(Click::Back);
             }
+        }
+        ui.add_space(26.0);
+        heading(ui, msg!("Families"));
+        // A family of a category, as the category picked says what it is and what it starts with.
+        let r = action(ui, Icon::FamilyEditor, msg!("New Family"), msg!("Of a category you pick."), "");
+        egui::Popup::menu(&r).width(r.rect.width()).show(|ui| {
+            ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+                for c in crate::editor::CATEGORIES {
+                    if ui.button(crate::editor::category_label(c)).clicked() {
+                        *click = Some(Click::NewFamily(c));
+                    }
+                }
+            });
+        });
+        ui.add_space(10.0);
+        if action(ui, Icon::LoadFamily, msg!("Open Family…"), msg!("A family file, to edit."), "").clicked() {
+            *click = Some(Click::OpenFamily);
         }
     }
 

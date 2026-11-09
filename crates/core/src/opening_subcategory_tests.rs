@@ -306,7 +306,7 @@ fn a_project_that_restyles_a_subcategory_is_saved_as_a_newer_format_and_read_bac
     let _ = std::fs::remove_file(&path);
     let v: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(v["format"], json!(crate::model::FORMAT));
-    const { assert!(crate::model::FORMAT >= 18) };
+    const { assert!(crate::model::FORMAT >= 19) };
     let (m, left_out) = crate::model::Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
     let g = crate::graphics::graphics_of(&m, 100000).unwrap();

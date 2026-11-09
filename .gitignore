@@ -1,4 +1,6 @@
 /target
+# The sample plugin's own build, and any other nested crate's.
+target/
 .compliance/
 /dist
 # Private local performance fixtures; never publish project files or derived results.

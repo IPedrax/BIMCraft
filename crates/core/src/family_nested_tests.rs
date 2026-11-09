@@ -282,3 +282,41 @@ fn deleting_a_plane_that_hosts_a_nested_instance_is_refused() {
     let e = err(&mut s, "family", json!({"name": "Cabinet", "delete_ref_plane": [plane.to_string()]}));
     assert!(e.contains("nested instance 1"), "{e}");
 }
+
+/// A shared family `Leaf` whose extrusion runs to `to`.
+fn leaf(to: f64) -> Value {
+    json!({"category": "generic", "shared": true, "types": {"B": {}},
+           "forms": [{"profile": [[0, 0], [100, 0], [100, 100], [0, 100]], "to": to}]})
+}
+
+/// A shared family nesting `child` as `Leaf`.
+fn branch(child: Value) -> Value {
+    json!({"category": "generic", "shared": true, "types": {"A": {}},
+           "forms": [{"profile": [[0, 0], [50, 0], [50, 50], [0, 50]], "to": 5}], "nested": [{"name": "Leaf", "family": child}]})
+}
+
+/// A family whose two shared branches, P and Q, each hold a copy of the shared Leaf, defined otherwise (P's to 10, Q's to
+/// 20), is loaded with one definition of Leaf: the first met, P's, everywhere, in the project and in every copy, whatever
+/// order the shared families are taken in.
+#[test]
+fn a_shared_family_nested_twice_otherwise_loads_as_one_definition_the_first_met() {
+    let root = json!({"category": "furniture", "types": {"A": {}},
+        "forms": [{"profile": [[0, 0], [10, 0], [10, 10], [0, 10]], "to": 10}],
+        "nested": [{"name": "P", "family": branch(leaf(10.0))}, {"name": "Q", "family": branch(leaf(20.0))}]});
+    let mut s = Session::new();
+    run(&mut s, "family", json!({"name": "Root", "definition": root, "overwrite": "version_and_values"}));
+    let m = &s.model;
+    let to = |f: &Family| serde_json::to_value(f).unwrap()["forms"][0]["to"].as_f64();
+    let nested = |f: &Family, name: &str| f.nested.iter().find(|n| n.name == name).map(|n| n.family.clone()).unwrap();
+    // Every copy as the project's Leaf: P's, to 10 (ids and GUIDs aside, which the project's own entries are given).
+    assert_eq!(to(&m.families["Leaf"]), Some(10.0), "the project's Leaf, the first copy met");
+    let root = &m.families["Root"];
+    for (who, f) in [
+        ("Root.P.Leaf", nested(&nested(root, "P"), "Leaf")),
+        ("Root.Q.Leaf", nested(&nested(root, "Q"), "Leaf")),
+        ("P.Leaf", nested(&m.families["P"], "Leaf")),
+        ("Q.Leaf", nested(&m.families["Q"], "Leaf")),
+    ] {
+        assert_eq!(to(&f), Some(10.0), "{who}");
+    }
+}

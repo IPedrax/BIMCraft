@@ -13,7 +13,6 @@ fn modelling() -> Harness<'static, BimApp> {
     h.set_size(vec2(1800., 1000.));
     h.state_mut().new_family(Category::Generic);
     if let Some(ed) = h.state_mut().family_editor.as_mut() {
-        ed.tab = crate::editor::Tab::Adaptive;
         ed.adaptive = Some(Definition::default());
     }
     h.run();

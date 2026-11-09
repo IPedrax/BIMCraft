@@ -28,6 +28,7 @@ impl FamilyEditor {
         self.nested_sel = i;
         if i.is_some() {
             self.form = None;
+            self.connector = None;
             self.views.plane = None;
             self.views.dim = None;
         }

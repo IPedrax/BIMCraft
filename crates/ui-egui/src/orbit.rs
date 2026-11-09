@@ -202,6 +202,10 @@ pub(crate) struct Input {
     pub(crate) latest: Option<Pos2>,
     /// What a click on the triad asked for.
     pub(crate) asked: Option<Ask>,
+    /// The 3D mouse's cap off rest, while the window has focus (the wheel is left alone meanwhile: 3DxWare may make wheel turns
+    /// of the cap), and how long a frame lasts, seconds.
+    pub(crate) motion: Option<crate::spacemouse::Motion>,
+    pub(crate) frame: f64,
 }
 
 impl Input {
@@ -742,7 +746,15 @@ impl Orbit {
     }
     /// The frame's input over the view in `rect` (its navigation bar's corner at `nav`), `response` its widget's: the triad's widget
     /// laid over the view's first, so a click or a drag on it is its own and the model behind never sees it.
-    pub(crate) fn input(&mut self, ui: &Ui, rect: Rect, response: &egui::Response, nav: Pos2) -> Input {
+    /// `device` is the 3D mouse's cap, which counts only while the window has focus.
+    pub(crate) fn input(
+        &mut self,
+        ui: &Ui,
+        rect: Rect,
+        response: &egui::Response,
+        nav: Pos2,
+        device: Option<crate::spacemouse::Motion>,
+    ) -> Input {
         let asked = self.triad_input(ui, rect, nav);
         let ppp = ui.ctx().pixels_per_point();
         let side = |v: f32| ((v * ppp).round().max(1.0) as u32).min(MAX_SIDE);
@@ -750,22 +762,31 @@ impl Orbit {
             let hover = i.pointer.hover_pos().filter(|_| response.hovered());
             (hover, i.smooth_scroll_delta.y, i.zoom_delta(), i.modifiers.shift, i.pointer.latest_pos())
         });
-        Input { rect, ppp, size: (side(rect.width()), side(rect.height())), hover, wheel, pinch, shift, latest, asked }
+        let (focused, frame) = ui.input(|i| (i.focused, f64::from(i.stable_dt)));
+        let motion = device.filter(|_| focused);
+        let wheel = if motion.is_some() { 0.0 } else { wheel };
+        Input { rect, ppp, size: (side(rect.width()), side(rect.height())), hover, wheel, pinch, shift, latest, asked, motion, frame }
     }
 
     /// `cam` zoomed by the wheel and a pinch, a notch (about 50 points) a fifth, toward what the picture on screen shows under the
     /// cursor (found in `scene`, the one it was drawn from; none while it is of another model), else toward the cursor.
-    pub(crate) fn zoom(&self, input: &Input, cam: Camera, scene: Option<&Scene>) -> Camera {
-        let Some(at) = input.hover else { return cam };
-        let factor = (f64::from(input.wheel) * 0.004).exp() * f64::from(input.pinch);
-        if !factor.is_finite() || factor == 1.0 {
-            return cam;
+    /// Then the 3D mouse's cap moves it, and asks for the next frame.
+    pub(crate) fn zoom(&self, ctx: &egui::Context, input: &Input, mut cam: Camera, scene: Option<&Scene>) -> Camera {
+        if let Some(at) = input.hover {
+            let factor = (f64::from(input.wheel) * 0.004).exp() * f64::from(input.pinch);
+            if factor.is_finite() && factor != 1.0 {
+                let factor = factor.clamp(0.2, 5.0);
+                cam = match self.picker.as_ref().and_then(|p| p.surface(scene, &cam, input.px(at))) {
+                    Some(s) => cam.zoom_about(factor, s.at),
+                    None => cam.zoom(factor, input.px(at)),
+                };
+            }
         }
-        let factor = factor.clamp(0.2, 5.0);
-        match self.picker.as_ref().and_then(|p| p.surface(scene, &cam, input.px(at))) {
-            Some(s) => cam.zoom_about(factor, s.at),
-            None => cam.zoom(factor, input.px(at)),
+        if let Some(motion) = input.motion {
+            cam = crate::spacemouse::navigate(cam, motion, input.frame);
+            ctx.request_repaint();
         }
+        cam
     }
 
     /// The hand's drag, from `cam` (zoomed already): the primary button, or Shift and the middle button, orbit, 0.4° a point,
@@ -827,8 +848,8 @@ impl Orbit {
             cam = bimcraft_core::triad::turned(cam, end);
         }
         self.camera = Some(cam);
-        // The hand and the wheel have let the camera be.
-        let settled = self.drag.is_none() && input.wheel == 0.0 && input.pinch == 1.0;
+        // The hand, the wheel and the 3D mouse have let the camera be.
+        let settled = self.drag.is_none() && input.wheel == 0.0 && input.pinch == 1.0 && input.motion.is_none();
         Nav { cam, settled, selected_box }
     }
 
@@ -1096,9 +1117,12 @@ impl BimApp {
     pub(crate) fn view3d(&mut self, ui: &mut Ui) {
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::click_and_drag());
         self.canvas.track(ui, &response);
-        // What the hand, the wheel and the navigation triad did; what the triad asks for is done below.
+        // What the hand, the wheel, the 3D mouse and the navigation triad did; what the triad asks for is done below. The 3D
+        // mouse's cap, while it is held off rest (`spacemouse.rs`), moves the camera when this is the active view and the window
+        // has focus; a 3D view drawn beside the active one it leaves alone, as the hand does.
         let nav_corner = self.nav_corner(rect);
-        let input = self.orbit.input(ui, rect, &response, nav_corner);
+        let device = self.space_mouse.as_ref().and_then(crate::spacemouse::SpaceMouse::motion).filter(|_| !self.passive);
+        let input = self.orbit.input(ui, rect, &response, nav_corner, device);
         let Input { ppp, size: (w, h), hover, wheel, pinch, shift, latest, asked, .. } = input;
         let px = |p: Pos2| input.px(p);
         let model = self.view_model();
@@ -1168,7 +1192,7 @@ impl BimApp {
             (Some((id, cam, l)), Some(active), Some(stored)) => id != active || cam != stored || l != lens,
             _ => false,
         };
-        if elsewhere && o.camera.is_some() && o.drag.is_none() && wheel == 0.0 && pinch == 1.0 {
+        if elsewhere && o.camera.is_some() && o.drag.is_none() && wheel == 0.0 && pinch == 1.0 && input.motion.is_none() {
             o.camera = None;
         }
         // The view stands from the model anew: a camera view where its camera looks from, which needs no fitting; another is
@@ -1203,8 +1227,8 @@ impl BimApp {
         // What the picture on screen shows at a point, as the view picks: its scene is this model's while it's of this model.
         let fresh = o.shown.as_ref().is_some_and(|s| Arc::ptr_eq(&s.0, &model));
         let surface = |picker: &Option<Picker>, cam: &Camera, at: Pos2| picker.as_ref()?.surface(fresh.then_some(scene), cam, px(at));
-        // The wheel and a pinch zoom toward what's under the cursor.
-        cam = o.zoom(&input, cam, fresh.then_some(scene));
+        // The wheel and a pinch zoom toward what's under the cursor; the 3D mouse moves the camera.
+        cam = o.zoom(ui.ctx(), &input, cam, fresh.then_some(scene));
         // A level selected alone has a grip at the middle of each edge of its plane: a drag from one
         // moves that edge over the plane, rather than turning the view.
         let level = match selection.as_slice() {
@@ -1785,7 +1809,7 @@ impl BimApp {
             Some(Ask::Level) => self.triad_level(),
             _ => {}
         }
-        // A camera view remembers where the hand and the wheel left it: once they let it be, its eye and target are written
+        // A camera view remembers where the hand, the wheel and the 3D mouse left it: once they let it be, its eye and target are written
         // back, so leaving the view and returning comes back to the same place (and Properties shows them). A view drawn
         // beside the active one (a floating window) writes nothing: the hand is working in the active view.
         if settled

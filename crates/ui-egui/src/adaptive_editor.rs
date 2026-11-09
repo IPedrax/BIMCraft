@@ -339,8 +339,6 @@ pub(crate) enum Slot {
     Material,
     /// A circle's (or a symbol's) centre, x or y; a form's circle's radius is its third.
     Centre(usize),
-    /// A revolve's axis: its two points' x and y.
-    Axis(usize),
     /// A symbol's radius or text height.
     Radius,
 }

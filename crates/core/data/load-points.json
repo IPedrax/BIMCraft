@@ -1,0 +1,71 @@
+{
+ "about": "The least lighting and general-use outlets of a dwelling's rooms, one rule set for each standard, read by `load_points` (loads.rs). Each row names its source, the standard's item; a test fails on one that does not. The numbers are the standard's, the words are ours. A country's set is added as a new entry, never as code. Room kinds: bath, kitchen (kitchen, pantry), service (service area, laundry), dry (living room, bedroom), veranda, other. `least` is the fewest outlets; `per_perimeter_m` asks one for each so many metres of perimeter, a whole number up, and only above `above_m2` when it is given; `counter` the outlets over a kitchen's sink counter; `first` points at `first_va` each and every other at `va`. The lighting is `va` up to `up_to_m2` and `step_va` more for each whole `step_m2` above. `alternative` lets `first` points be paid at `first_va` where the rooms that have `first` hold more than `above` points together.",
+ "rule_sets": [
+  {
+   "standard": "NBR 5410:2004",
+   "source": "ABNT NBR 5410:2004 (corrected version 2008), item 9.5.2, dwellings. Equivalents: IEC 60364 leaves the number of outlets of a dwelling to national rules; the US NEC, article 210.52, places receptacles by spacing along the walls instead; BS 7671 sets no count.",
+   "lighting": {
+    "va": 100,
+    "up_to_m2": 6,
+    "step_m2": 4,
+    "step_va": 60,
+    "source": "NBR 5410:2004, 9.5.2.1.2 a) and b)"
+   },
+   "alternative": {
+    "above": 6,
+    "first": 2,
+    "source": "NBR 5410:2004, 9.5.2.2.2 a), the alternative allowed where those rooms together have more than six points"
+   },
+   "rooms": [
+    {
+     "kind": "bath",
+     "least": 1,
+     "first": 3,
+     "first_va": 600,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 a) (count) and 9.5.2.2.2 a) (power)"
+    },
+    {
+     "kind": "kitchen",
+     "least": 1,
+     "per_perimeter_m": 3.5,
+     "counter": 2,
+     "first": 3,
+     "first_va": 600,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 b) (count, two over the sink's counter) and 9.5.2.2.2 a) (power)"
+    },
+    {
+     "kind": "service",
+     "least": 1,
+     "per_perimeter_m": 3.5,
+     "first": 3,
+     "first_va": 600,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 b) (count) and 9.5.2.2.2 a) (power)"
+    },
+    {
+     "kind": "dry",
+     "least": 1,
+     "per_perimeter_m": 5,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 d) (count) and 9.5.2.2.2 b) (power)"
+    },
+    {
+     "kind": "veranda",
+     "least": 1,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 c) (count) and 9.5.2.2.2 b) (power)"
+    },
+    {
+     "kind": "other",
+     "least": 1,
+     "above_m2": 6,
+     "per_perimeter_m": 5,
+     "va": 100,
+     "source": "NBR 5410:2004, 9.5.2.2.1 e) (count) and 9.5.2.2.2 b) (power)"
+    }
+   ]
+  }
+ ]
+}

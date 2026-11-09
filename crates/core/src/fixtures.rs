@@ -55,12 +55,27 @@ fn load(name: &str, value: f64) -> Value {
     json!({"name": name, "kind": "number", "value": value})
 }
 
+/// How far into the room, out from the wall's face, a wall device's room calculation point stands, mm.
+pub const ROOM_POINT_OUT: f64 = 150.0;
+
+/// A wall device's room calculation point, as Revit's wall-mounted families have one: [`ROOM_POINT_OUT`] in front of the
+/// wall's face (its front is toward -y) at `z`, so a device on the face is in the room on its side.
+fn room_point(z: Value) -> Value {
+    json!([0, -ROOM_POINT_OUT, z])
+}
+
 /// A one-pole power connector of 127 V that draws the load `load_va` names (a parameter, or a number), as `classification`.
 fn power(load_va: Value, power_factor: f64, classification: &str) -> Value {
     json!({
         "kind": "power", "system": "power-balanced", "poles": 1, "voltage": 127, "load_va": load_va, "power_factor": power_factor,
         "classification": classification
     })
+}
+
+/// A pipe connector of `domain` (`cold`, `hot`, `waste`…) and `flow`, at `at` in the family's axes, facing `direction` (the way
+/// its pipe leaves it), of nominal diameter `dn` mm.
+pub(crate) fn pipe(domain: &str, flow: &str, at: [Value; 3], direction: [f64; 3], dn: f64) -> Value {
+    json!({"kind": "pipe", "domain": domain, "flow": flow, "at": at, "direction": direction, "size": dn})
 }
 
 /// Sanitary fixtures: a kitchen sink, a shower, a floor drain (the WC, the washbasin and the bathtub are in the furniture's
@@ -131,7 +146,12 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
             "kind": "sink",
             "parameters": [size(&width, 1200.0), size(&depth, 550.0), size(&height, 900.0), material(&mat, &metal)],
             "types": {"1200 x 550": {}, "800 x 500": {&width: 800, &depth: 500}},
-            "forms": forms
+            "forms": forms,
+            // Its waste under the bowl and its cold water beside it, both in the wall behind.
+            "connectors": [
+                pipe("waste", "out", [n(tap_x), n(0.0), f(format!("{height} - 400"))], [0.0, 1.0, 0.0], 50.0),
+                pipe("cold", "in", [n(tap_x - 150.0), n(0.0), f(format!("{height} - 300"))], [0.0, 1.0, 0.0], 20.0)
+            ]
         }),
     ));
 
@@ -155,6 +175,12 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
                 post(n(0.0), n(-60.0), n(12.0), n(50.0), n(2100.0), &metal),
                 block([n(-12.0), n(-300.0), n(12.0), n(-48.0)], n(2070.0), n(2100.0), &metal),
                 post(n(0.0), n(-300.0), n(90.0), n(2040.0), n(2070.0), &metal)
+            ],
+            // Its waste in the middle of the tray, and the mixer's cold and hot water in the wall.
+            "connectors": [
+                pipe("waste", "out", [n(0.0), f(format!("-({depth}) / 2")), n(0.0)], [0.0, 0.0, -1.0], 40.0),
+                pipe("cold", "in", [n(-100.0), n(0.0), n(1100.0)], [0.0, 1.0, 0.0], 20.0),
+                pipe("hot", "in", [n(100.0), n(0.0), n(1100.0)], [0.0, 1.0, 0.0], 20.0)
             ]
         }),
     ));
@@ -176,14 +202,15 @@ fn plumbing(language: Language) -> Vec<(String, Value)> {
                 block([f(format!("-({side}) / 2")), f(format!("-({side}) / 2")), f(format!("{side} / 2")), f(format!("{side} / 2"))], n(-50.0), n(0.0), &metal),
                 opening,
                 slat(-20.0), slat(0.0), slat(20.0)
-            ]
+            ],
+            "connectors": [pipe("waste", "out", [n(0.0), n(0.0), n(-50.0)], [0.0, 0.0, -1.0], 40.0)]
         }),
     ));
     out
 }
 
-/// Pipe fittings and a valve, centred on the pipe they join (its centre line at their z = 0, along x, and a branch toward +y):
-/// they are components until fittings have connectors.
+/// Pipe fittings and a valve, centred on the pipe they join (its centre line at their z = 0, along x, and a branch toward +y),
+/// with a connector at each end, of their diameter and the domain of the pipe they join.
 pub fn pipework(language: Language) -> Vec<(String, Value)> {
     let w = |s: &str| language.word(s).to_string();
     let (diameter, mat) = (w(msg!("Diameter")), w("Material"));
@@ -204,6 +231,9 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
             .into()
     };
     let neg = |e: &str| format!("-({e})");
+    // An end of it: where its pipe goes in, the way it leaves, its diameter, any domain.
+    let end = |at: [Value; 3], direction: [f64; 3]| json!({"kind": "pipe", "at": at, "direction": direction, "size": diameter});
+    let zero = || json!(0);
     vec![
         (
             w(msg!("Elbow 90")),
@@ -212,7 +242,8 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
                 "kind": "bend",
                 "parameters": [size(&diameter, 50.0), material(&mat, &pvc)],
                 "types": sizes(&["25", "50", "110"]),
-                "forms": [along_x(&neg(&hub), &r, &mat), along_y(&neg(&r), &hub, &mat)]
+                "forms": [along_x(&neg(&hub), &r, &mat), along_y(&neg(&r), &hub, &mat)],
+                "connectors": [end([f(neg(&hub)), zero(), zero()], [-1.0, 0.0, 0.0]), end([zero(), f(hub.clone()), zero()], [0.0, 1.0, 0.0])]
             }),
         ),
         (
@@ -222,7 +253,12 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
                 "kind": "tee",
                 "parameters": [size(&diameter, 50.0), material(&mat, &pvc)],
                 "types": sizes(&["25", "50", "110"]),
-                "forms": [along_x(&neg(&hub), &hub, &mat), along_y("0", &hub, &mat)]
+                "forms": [along_x(&neg(&hub), &hub, &mat), along_y("0", &hub, &mat)],
+                "connectors": [
+                    end([f(neg(&hub)), zero(), zero()], [-1.0, 0.0, 0.0]),
+                    end([f(hub.clone()), zero(), zero()], [1.0, 0.0, 0.0]),
+                    end([zero(), f(hub.clone()), zero()], [0.0, 1.0, 0.0])
+                ]
             }),
         ),
         (
@@ -236,7 +272,8 @@ pub fn pipework(language: Language) -> Vec<(String, Value)> {
                     post(json!(0), json!(0), f(format!("{diameter} * 0.7")), f(neg(&r)), f(format!("{diameter} * 0.7")), &mat),
                     post(json!(0), json!(0), f(format!("{diameter} * 0.25")), f(format!("{diameter} * 0.7")), f(format!("{diameter} * 1.6")), &mat),
                     post(json!(0), json!(0), f(format!("{diameter} * 0.8")), f(format!("{diameter} * 1.6")), f(format!("{diameter} * 1.7")), &mat)
-                ]
+                ],
+                "connectors": [end([f(neg(&hub)), zero(), zero()], [-1.0, 0.0, 0.0]), end([f(hub.clone()), zero(), zero()], [1.0, 0.0, 0.0])]
             }),
         ),
     ]
@@ -263,6 +300,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
             "category": "equipment",
             "parameters": [size(&width, 400.0), size(&height, 500.0), size(&depth, 120.0), size(&mounting, 1300.0), material(&mat, &metal)],
             "types": {"12 circuits": {}, "24 circuits": {&width: 500, &height: 700}, "36 circuits": {&width: 600, &height: 900}},
+            "room_calculation_point": room_point(f(format!("{mounting} + {height} / 2"))),
             "forms": [
                 block([f(minus_half_w.clone()), f(format!("-({depth})")), f(half_w.clone()), n(0.0)], f(mounting.clone()), f(format!("{mounting} + {height}")), &mat),
                 block(
@@ -322,6 +360,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
             "parameters": [size(&mounting, 300.0), load(&load_name, 100.0)],
             "types": {"Low 300": {}, "Medium 1100": {&mounting: 1100}, "High 2100": {&mounting: 2100}},
             "connectors": [power(f(load_name.clone()), 0.8, "receptacle")],
+            "room_calculation_point": room_point(f(mounting.clone())),
             "forms": [plate.clone(), socket.clone()]
         }),
     ));
@@ -337,6 +376,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
                 "kind": "power", "system": "power-unbalanced", "poles": 3, "voltage": 220, "power_factor": 0.8,
                 "load_va": phases.iter().map(|p| f(p.clone())).collect::<Vec<_>>(), "classification": "receptacle"
             }],
+            "room_calculation_point": room_point(f(mounting.clone())),
             "forms": [plate.clone(), socket]
         }),
     ));
@@ -347,6 +387,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
             "parameters": [size(&mounting, 1100.0)],
             "types": {"Medium 1100": {}, "Low 300": {&mounting: 300}},
             "connectors": [{"kind": "switch", "system": "switch", "classification": "switching"}],
+            "room_calculation_point": room_point(f(mounting.clone())),
             "forms": [plate, block([n(-12.0), n(-18.0), n(12.0), n(-12.0)], up(-30.0), up(30.0), &plaster)]
         }),
     ));
@@ -429,6 +470,7 @@ fn telecom(language: Language) -> Vec<(String, Value)> {
                 "category": "dataoutlet",
                 "parameters": [size(&mounting, 300.0)],
                 "types": {"Low 300": {}, "Medium 1100": {&mounting: 1100}},
+                "room_calculation_point": room_point(up(42.5)),
                 "forms": plate(2)
             }),
         ),
@@ -438,6 +480,7 @@ fn telecom(language: Language) -> Vec<(String, Value)> {
                 "category": "voiceoutlet",
                 "parameters": [size(&mounting, 300.0)],
                 "types": {"Low 300": {}, "Medium 1100": {&mounting: 1100}},
+                "room_calculation_point": room_point(up(42.5)),
                 "forms": plate(1)
             }),
         ),
@@ -448,6 +491,7 @@ fn telecom(language: Language) -> Vec<(String, Value)> {
                 "category": "patchpanel",
                 "parameters": [size(&mounting, 1500.0), material(&mat, &metal)],
                 "types": {"24 ports": {}, "48 ports": {}},
+                "room_calculation_point": room_point(up(22.0)),
                 "forms": [block([n(-241.5), n(-50.0), n(241.5), n(0.0)], f(mounting.clone()), up(44.0), &mat)]
             }),
         ),

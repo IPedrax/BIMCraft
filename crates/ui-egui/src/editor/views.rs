@@ -767,6 +767,13 @@ impl FamilyEditor {
         if let Some(at) = align_lock {
             dims::padlock(&painter, at, false, pal().accent);
         }
+        // The connectors (#269), at their places in the family's axes as the view sees them; the one under the pointer lit, as a
+        // click would pick it.
+        let connector_marks = if editable { self.connector_marks() } else { Vec::new() };
+        let project = |q: [f64; 3]| Some(screen(c.staged.to_view(which, q)));
+        self.connector_hover = response.hover_pos().and_then(|p| super::connector_marks::pick(&connector_marks, &project, p));
+        let lit = (PICKED, crate::style::canvas_pal().hover);
+        super::connector_marks::paint(&painter, &connector_marks, &project, self.selected_connector(), self.connector_hover, lit);
         // What is selected, over the picture.
         if editable && let (Some(i), Some(f)) = (self.selected_form(), family.as_ref()) {
             let ring: Vec<egui::Pos2> = fv::outline(f, &values, &c.staged, which, i).into_iter().map(screen).collect();
@@ -901,6 +908,7 @@ impl FamilyEditor {
             self.views.grip = Some((grip, now));
         }
         let mut select_nested: Option<usize> = None;
+        let mut select_connector: Option<usize> = None;
         let mut place_at: Option<(PlaneRef, (f64, f64), f64)> = None;
         let mut moved: Option<(Guid, [f64; 3])> = None;
         let mut new_plane = None;
@@ -1016,6 +1024,8 @@ impl FamilyEditor {
                     _ => Vec::new(),
                 };
                 on_dims = Some((hit, lengths));
+            } else if let Some(i) = super::connector_marks::pick(&connector_marks, &project, p) {
+                select_connector = Some(i);
             } else if let Some(i) = family.as_ref().and_then(|f| fv::nested_at(f, &values, &c.staged, which, q)) {
                 select_nested = Some(i);
             } else {
@@ -1112,6 +1122,9 @@ impl FamilyEditor {
         if let Some((host, at, offset)) = place_at {
             self.place_nested(host, at, offset);
         }
+        if let Some(i) = select_connector {
+            self.select_connector(i);
+        }
         if let Some(i) = select_nested {
             self.select_nested(Some(i));
         }
@@ -1127,14 +1140,12 @@ impl FamilyEditor {
         }
         if let Some((form, plane)) = select {
             self.nested_sel = None;
+            self.symbol = None;
+            self.connector = None;
             self.views.dim = None;
             self.form = form;
             self.views.plane = plane;
             self.views.line = select_line.flatten();
-            if let Some(i) = form {
-                self.tab = Tab::Forms;
-                self.document.reveal = Some(i);
-            }
         }
         // A plane its dimensions hold is dragged through them: a label it changes takes the new length, what is locked to it
         // follows, and what can't hold says so.

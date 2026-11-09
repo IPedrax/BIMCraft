@@ -30,12 +30,8 @@ fn hiding(h: &Harness<BimApp>) -> bool {
     h.state().family_editor.as_ref().is_some_and(|ed| ed.temporary().hides())
 }
 
-/// Form `n` (from 1) of a family that isn't adaptive selected from the Project Browser's Forms list, as a user picks it; the
-/// Properties' Symbols tab in front, so the Forms tab's own rows aren't there too.
+/// Form `n` (from 1) of a family that isn't adaptive selected from the Project Browser's Forms list, as a user picks it.
 fn select_form(h: &mut Harness<BimApp>, n: usize) {
-    if h.query_by_label("Symbols").is_some() {
-        press(h, "Symbols");
-    }
     press(h, &format!("{n}. Extrusion"));
 }
 

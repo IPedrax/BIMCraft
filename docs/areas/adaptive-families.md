@@ -30,7 +30,7 @@ frames are the project's and `adaptive_place` converts them.
 **Testing while working:** `cargo test -p bimcraft-core --lib adaptive` (the core's adaptive tests, about a second once built)
 and `cargo test -p bimcraft-ui-egui adaptive` (the window's). The core is optimised even in a dev build, which makes each build
 take minutes; `cargo --config 'profile.dev.package.bimcraft-core.opt-level=0' test …` builds it faster. The whole workspace's tests
-take about 25 minutes. To look at the Adaptive tab in the three looks, set `BIMCRAFT_ADAPTIVE_UI_DUMP` to a folder (under
+take about 25 minutes. To look at an adaptive family's Properties in the three looks, set `BIMCRAFT_ADAPTIVE_UI_DUMP` to a folder (under
 `target/`) and run `cargo test -p bimcraft-ui-egui adaptive_editor_visual_preview_in_three_looks`; to try it by hand,
 `cargo run -p bimcraft`.
 
@@ -42,8 +42,8 @@ point, the view's buttons by label).
 
 ## Try it
 
-1. Manage > New Family, any category; on the **Adaptive** tab of its Properties, **Make this family adaptive** (or **Create four-point adaptive
-   panel** for a ready-made one). The family opens as a document of its own, taking the window.
+1. File > New > Family…, any category; Manage > Adaptive Component > **Make Family Adaptive** (or **Four-Point Panel** for a
+   ready-made one). The family opens as a document of its own, taking the window.
 2. Create > **Point Element**: click four points on the work plane. **Line**: click them in turn and the first again, closing
    a profile.
 3. **Create Form** > **Solid Form** with the profile selected. **Modify**: select the points (Ctrl adds) in the order they should
@@ -186,7 +186,7 @@ follows.
 
 ## Status and next steps
 
-Done: the definition and its evaluator (frames, hosts, curves, forms, diagnostics), persistence (file format 12), the commands
+Done: the definition and its evaluator (frames, hosts, curves, forms, diagnostics), persistence (file format 19, the Family Editor's), the commands
 (`adaptive_capture`, `adaptive_place`, `adaptive_move`, `adaptive_evaluate`), the modelling view with Point, Line, Make Adaptive,
 Create Form, the gizmo, Delete and Undo, Properties, and placing and reshaping instances in a plan. Of the parity study's step 1:
 point types with shape handles, Revit's numbering, Orients to as measured in Revit, the six measurement types, and the show
@@ -251,6 +251,6 @@ An adaptive component (frames of its own, or its family's test placement) is pla
 
 `adaptive_evaluate {id}` returns the containing family, definition, exact placement, raw instance parameter overrides, selected type and evaluation with fully resolved parameters. `Evaluation::replay` uses the saved resolved parameters and frames for standalone reproduction. The ordered results and diagnostics identify node, error code, dependency path and cause; valid independent and upstream results survive missing dependencies, cycles and geometric failures. Structural invalidity is previewable while editing, but a committed definition must have unique IDs/numbers, existing dependencies and no cycles. Failed geometric instance placements remain saveable and reopenable.
 
-Limits: 1024 nodes, dependency depth 128, polyline up to 256 points, 64 loft sections, 256 correspondence samples, per-mesh 4096 vertices/20000 triangles and per-evaluation 400000 triangles. Frames must be finite, orthonormal and within the coordinate budget. New projects use file format 12 so older builds cannot silently discard adaptive definitions; existing projects migrate with empty adaptive fields.
+Limits: 1024 nodes, dependency depth 128, polyline up to 256 points, 64 loft sections, 256 correspondence samples, per-mesh 4096 vertices/20000 triangles and per-evaluation 400000 triangles. Frames must be finite, orthonormal and within the coordinate budget. New projects use file format 19 so older builds cannot silently discard adaptive definitions; existing projects migrate with empty adaptive fields.
 
 The initial scope deliberately has no graph editor, nested adaptive families, live cross-instance constraints or analytic host surfaces. Future editing must continue using this canonical definition rather than adding a disconnected geometry recipe.

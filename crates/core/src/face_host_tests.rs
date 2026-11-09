@@ -301,7 +301,7 @@ fn a_file_keeps_its_face_hosts_and_a_file_of_17_reads_as_it_did() {
     light(&mut s, false);
     let w = first(&run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]], "height": 3000})));
     let c = on(&mut s, w, "exterior", json!([2000, 100, 1500]));
-    const { assert!(FORMAT >= 18) };
+    const { assert!(FORMAT >= 19) };
     let text = s.model.to_json().unwrap();
     let (m, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");

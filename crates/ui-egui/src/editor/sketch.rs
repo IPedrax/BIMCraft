@@ -885,7 +885,8 @@ impl FamilyEditor {
         self.views.aligning = None;
         self.sketch = None;
         self.form = Some(at);
-        self.tab = Tab::Forms;
+        self.symbol = None;
+        self.connector = None;
         Ok(())
     }
 

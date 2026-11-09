@@ -110,10 +110,8 @@ fn aligned_dimension(h: &mut Harness<BimApp>, refs: &[[f64; 3]], at: [f64; 3]) -
 #[test]
 fn a_parametric_window_drawn_from_blank_is_placed_flexed_scheduled_and_exported() {
     let mut h = project();
-    // New family: a Window, from the ribbon.
-    press(&mut h, "Manage");
-    press(&mut h, "New Family");
-    press(&mut h, "Window");
+    // New family: a Window, from File > New > Family…, as Revit's.
+    new_family_of(&mut h, "Window");
     assert!(h.state().family_editor.is_some(), "the family document is open");
     type_into(&mut h, "Family name", NAME);
     key(&mut h, Key::Enter);
@@ -285,19 +283,25 @@ fn a_parametric_window_drawn_from_blank_is_placed_flexed_scheduled_and_exported(
         assert!(near(b.min, [-w / 2.0, -40.0, 0.0]) && near(b.max, [w / 2.0, 40.0, ht]), "{name}: the frame {b:?}");
         assert_eq!(f.host_voids(&v).unwrap().len(), 1, "{name}: the void cuts the wall");
     }
-    // The Forms tab shows the void as this type's planes put it, greyed and saying so, not as it was drawn at 900 x 1200.
-    use egui_kittest::kittest::NodeT;
-    press_near(&mut h, "Forms", "Symbols");
-    // The void's, under its heading in the tab (the Project Browser lists it too).
-    let heading =
-        h.get_all_by_label("2. Extrusion (void)").min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).map(|n| n.accesskit_node().id());
-    h.get_by(|n| Some(n.id()) == heading).scroll_to_me();
+    // The void, picked in the Project Browser's Forms: its Properties (Void, Cuts Host) say its outline is set by this type's
+    // planes, not as it was drawn at 900 x 1200; the type flexes it there, the drawn numbers staying.
+    h.get_by_label("2. Extrusion (void)").scroll_to_me();
     h.run();
-    h.get_by(|n| Some(n.id()) == heading).click();
-    h.run();
-    let corners = h.get_by_label("Form Corners 2").accesskit_node();
-    assert_eq!(corners.value().as_deref(), Some("-600, 0\n600, 0\n600, 1500\n-600, 1500"));
-    assert!(corners.is_disabled());
+    press(&mut h, "2. Extrusion (void)");
+    let void = f.forms.iter().position(|x| x.void).unwrap();
+    assert_eq!(editor(&h).selected_form(), Some(void));
+    assert_eq!(h.get_by_label("Solid/Void").value().as_deref(), Some("Void"));
+    assert_eq!(h.get_by_label("Cuts").value().as_deref(), Some("Host"));
+    let numbers = |f: &Family| {
+        let n = |e: &bimcraft_core::family::Expr| match e {
+            bimcraft_core::family::Expr::Number(x) => *x,
+            other => panic!("{other:?}"),
+        };
+        f.forms[void].corners().unwrap().iter().map(|c| [n(&c[0]), n(&c[1])]).collect::<Vec<_>>()
+    };
+    let flexed = f.flexed(&f.values(TYPES[1].0, &BTreeMap::new()).unwrap()).unwrap();
+    assert_eq!(numbers(&flexed), [[-600.0, 0.0], [600.0, 0.0], [600.0, 1500.0], [-600.0, 1500.0]]);
+    assert_eq!(numbers(&f), [[-450.0, 0.0], [450.0, 0.0], [450.0, 1200.0], [-450.0, 1200.0]], "as drawn");
     h.get_by_label_contains("Set by its dimensions and locks for the type 1200 x 1500").scroll_to_me();
     h.run();
     // The family's views, its dimensions labelled, as the window shows them.

@@ -67,11 +67,14 @@ fn equals_associates_a_form_property_and_can_create_and_remove_a_parameter() {
     let mut h = wide("");
     h.state_mut().new_family(bimcraft_core::family::Category::Generic);
     h.run();
-    associate(&mut h, "Associate Family Parameter: Form To 1");
+    // The form selected in the Project Browser: its Properties' Extrusion End.
+    super::family_views::select_form(&mut h, 1);
+    assert_eq!(h.state().family_editor.as_ref().unwrap().selected_form(), Some(0));
+    associate(&mut h, "Associate Family Parameter: Extrusion End");
     assert!(h.query_by_label("Width").is_some());
     press(&mut h, "Height");
     press(&mut h, "OK");
-    associate(&mut h, "Associate Family Parameter: Form To 1");
+    associate(&mut h, "Associate Family Parameter: Extrusion End");
     press(&mut h, "New Parameter");
     type_into(&mut h, "Name:", "Overall height");
     press(&mut h, "OK");
@@ -80,7 +83,7 @@ fn equals_associates_a_form_property_and_can_create_and_remove_a_parameter() {
     let f = &h.state().session.model.families["New Family"];
     assert_eq!(f.forms[0].to, bimcraft_core::family::Expr::Formula("Overall height".into()));
     assert!(f.parameters.iter().any(|p| p.name == "Overall height" && p.kind == bimcraft_core::family::Kind::Length));
-    associate(&mut h, "Associate Family Parameter: Form To 1");
+    associate(&mut h, "Associate Family Parameter: Extrusion End");
     press(&mut h, "<None>");
     press(&mut h, "OK");
     press(&mut h, "Load into Project");
@@ -97,17 +100,19 @@ fn associations_filter_yesno_and_material_and_preserve_the_project_until_load() 
     let before = h.state().session.model.to_json().unwrap();
     h.state_mut().edit_family("Associations");
     h.run();
+    super::family_views::select_form(&mut h, 1);
     associate(&mut h, "Associate Family Parameter: Visible");
     assert!(h.query_by_label("Lit").is_some());
-    assert!(h.query_by_label("Finish").is_none() && h.query_by_label("Depth").is_none());
+    // Depth is the Options Bar's own, the form being selected; the dialog lists neither parameter.
+    assert!(h.query_by_label("Finish").is_none() && h.query_all_by_label("Depth").count() == 1);
     press(&mut h, "Lit");
     press(&mut h, "OK");
-    associate(&mut h, "Associate Family Parameter: Form Material 1");
+    associate(&mut h, "Associate Family Parameter: Material");
     assert!(h.query_by_label("Finish").is_some());
     assert_eq!(h.query_all_by_label("Lit").count(), 1, "only the Visible row's own, tied to it");
     press(&mut h, "Finish");
     press(&mut h, "OK");
-    assert_eq!(h.get_by_label("Form Material 1").value().as_deref(), Some(material.as_str()));
+    assert_eq!(h.get_by_label("Material").value().as_deref(), Some(material.as_str()));
     assert_eq!(h.state().session.model.to_json().unwrap(), before);
     press(&mut h, "Load into Project");
     press(&mut h, "Overwrite the existing version");
@@ -245,7 +250,6 @@ fn family_browser_scrolls_to_forms_in_a_short_window() {
     h.set_size(vec2(900., 640.));
     h.state_mut().new_family(bimcraft_core::family::Category::Generic);
     h.run();
-    press(&mut h, "Symbols");
     h.get_by_label("1. Extrusion").scroll_to_me();
     h.run();
     press(&mut h, "1. Extrusion");
@@ -258,8 +262,11 @@ fn a_symbols_rows_are_tied_through_the_dialog_adaptive_rows_and_form_visibility_
     h.set_size(vec2(1600., 1000.));
     h.state_mut().new_family(bimcraft_core::family::Category::Generic);
     h.run();
-    press(&mut h, "Symbols");
-    press(&mut h, "Add Arc");
+    // Annotate > Detail > Symbolic Line's Arc: made selected, its rows in Properties.
+    press(&mut h, "Annotate");
+    press(&mut h, "Symbolic Line");
+    press(&mut h, "Arc");
+    assert_eq!(h.state().family_editor.as_ref().unwrap().selected_symbol(), Some(0));
     // Its radius tied to Width: greyed, showing what Width comes to.
     associate(&mut h, "Associate Family Parameter: Symbol Radius 1");
     press(&mut h, "Width");
@@ -474,24 +481,21 @@ fn the_delete_key_takes_a_selected_form_or_plane_away() {
     assert_eq!(editor(&h).planes.len(), 3, "the datums stay");
 }
 
-/// F10: the Forms tab's Delete takes the dimensions measuring to the form along, as the ribbon's does; a dimension left
-/// measuring to nothing refused Load into Project. Its row wraps in the palette, so Delete isn't cut off at its edge.
+/// F10: the Project Browser's Delete (a form's right-click menu) takes the dimensions measuring to the form along, as the
+/// ribbon's does; a dimension left measuring to nothing refused Load into Project.
 #[test]
-fn the_forms_tabs_delete_forgets_the_dimensions_to_the_form() {
+fn the_browsers_delete_forgets_the_dimensions_to_the_form() {
     use super::family_views::editor;
     let script = r#"family {"name": "Box", "category": "generic", "types": {"T": {}}, "ref_planes": [{"guid": "11111111-1111-4111-8111-000000000001", "name": "Edge", "start": [-400, -2000, 0], "end": [-400, 2000, 0], "up": [0, 0, 1]}], "forms": [{"guid": "22222222-2222-4222-8222-000000000001", "host": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, "profile": [[0, 0], [300, 0], [300, 500], [0, 500]], "to": 400}], "dimensions": [{"refs": [{"plane": "11111111-1111-4111-8111-000000000001"}, {"form": "22222222-2222-4222-8222-000000000001", "end": "end"}], "view": "front", "at": [0, 0, 700]}]}"#;
     let mut h = wide(script);
     h.set_size(vec2(1600.0, 1200.0));
     h.state_mut().edit_family("Box");
     h.run();
-    // The Forms tab's only form is open: its Delete.
-    use egui_kittest::kittest::NodeT;
-    let entry = h.get_all_by_label("Delete").filter(|n| n.rect().left() < 300.0).map(|n| n.accesskit_node().id()).next();
-    h.get_by(|n| Some(n.id()) == entry).scroll_to_me();
+    h.get_by_label("1. Extrusion").click_secondary();
     h.run();
-    let at = h.get_by(|n| Some(n.id()) == entry).rect();
-    assert!(at.right() <= 290.0, "within the palette: {at:?}");
-    click_at(&mut h, at.center());
+    // The menu's Delete: the one drawn last, over the palette.
+    h.get_all_by_label("Delete").last().unwrap().click();
+    h.run();
     let f = editor(&h).draft_family().unwrap();
     assert!(f.forms.is_empty(), "the form deleted");
     assert!(f.dimensions.is_empty(), "and the dimension measuring to it");
@@ -529,23 +533,32 @@ fn the_forms_tab_shows_a_locked_forms_corners_as_the_type_previewed_flexes_it() 
     h.set_size(vec2(1600.0, 1200.0));
     h.state_mut().edit_family("Slab");
     h.run();
-    let corners = |h: &Harness<BimApp>| {
-        let n = h.get_by_label("Form Corners 1");
-        (n.accesskit_node().value().map(|v| v.to_string()), n.accesskit_node().is_disabled())
+    // Selected in the Project Browser: its Properties.
+    press(&mut h, "1. Extrusion");
+    // The draft's form as type `t` flexes it: its corners' x.
+    let xs = |h: &Harness<BimApp>, t: &str| {
+        let f = editor(h).draft_family().unwrap();
+        let v = f.values(t, &Default::default()).unwrap();
+        let flexed = f.flexed(&v).unwrap();
+        let x = |e: &bimcraft_core::family::Expr| match e {
+            bimcraft_core::family::Expr::Number(x) => *x,
+            other => panic!("{other:?}"),
+        };
+        flexed.forms[0].corners().unwrap().iter().map(|c| x(&c[0])).collect::<Vec<f64>>()
     };
-    // Large, as drawn: typed as before.
-    assert_eq!(corners(&h), (Some("-500, 0\n500, 0\n500, 300\n-500, 300".into()), false));
+    // Large, as drawn: nothing said.
+    assert_eq!(xs(&h, "Large"), [-500.0, 500.0, 500.0, -500.0]);
     assert!(h.query_by_label_contains("Set by its dimensions and locks").is_none());
-    // Small: as its locks put it, greyed, saying why; the draft keeps what was drawn.
+    // Small: as its locks put it, and Properties say so; the draft keeps what was drawn.
     h.state_mut().family_editor.as_mut().unwrap().preview_type("Small");
     h.run();
-    assert_eq!(corners(&h), (Some("-300, 0\n300, 0\n300, 300\n-300, 300".into()), true));
-    assert!(h.query_by_label_contains("Set by its dimensions and locks for the type Small").is_some());
+    assert_eq!(xs(&h, "Small"), [-300.0, 300.0, 300.0, -300.0]);
+    assert!(h.query_by_label_contains("Set by its dimensions and locks for the type Small: Edit Extrusion").is_some());
     let drawn = editor(&h).draft_family().unwrap();
     assert_eq!(drawn.forms[0].corners().unwrap()[0][0], bimcraft_core::family::Expr::Number(-500.0), "the drawn numbers stay");
-    // Its To, which no constraint sets, stays typed: a value typed there goes to the form.
-    assert!(!h.get_by_label("Form To 1").accesskit_node().is_disabled());
-    type_into(&mut h, "Form To 1", "150");
+    // Its End, which no constraint sets, stays typed: a value typed there goes to the form.
+    assert!(!h.get_by_label("Extrusion End").accesskit_node().is_disabled());
+    type_into(&mut h, "Extrusion End", "150");
     key(&mut h, Key::Enter);
     assert_eq!(editor(&h).draft_family().unwrap().forms[0].to, bimcraft_core::family::Expr::Number(150.0));
     // The note wraps inside the palette.
