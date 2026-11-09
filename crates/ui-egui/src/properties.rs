@@ -1085,6 +1085,7 @@ impl BimApp {
             }
             self.component_parameters(ui, &model, &ids);
             self.project_parameters(ui, &model, &ids);
+            self.sheet_title_block(ui, &model, &ids);
             self.element_phasing(ui, &model, &ids);
         }
         if subject == Subject::Schedule {
@@ -1945,6 +1946,62 @@ impl BimApp {
             Some((name, Err(e))) => self.status = Status { text: format!("{name}: {e}"), error: true },
             None => {}
         }
+    }
+
+    /// A sheet's title block, as Revit's palette has a sheet's: which one it's drawn with (the built-in one, or one of the
+    /// project's), and its values of that one's sheet fields; Edit Title Blocks… and the project's values a click away.
+    fn sheet_title_block(&mut self, ui: &mut Ui, model: &Model, ids: &[Id]) {
+        let &[id] = ids else { return };
+        let Some(sheet) = model.sheet(id) else { return };
+        let group = "Title Block";
+        let open = !self.collapsed.contains(group);
+        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
+            self.collapsed.insert(group);
+        }
+        if !open {
+            return;
+        }
+        let built_in = t("Built-in");
+        let mut chosen = sheet.title_block.clone();
+        let mut change: Option<Value> = None;
+        let tb = model.title_blocks.get(&sheet.title_block);
+        let values = bimcraft_core::sheet::title_values(model, id);
+        grid(ui, ("sheet-title-block", id), |ui| {
+            let label = ui.label(t("Title Block"));
+            let shown = if chosen.is_empty() { built_in.to_string() } else { chosen.clone() };
+            let r =
+                ComboBox::from_id_salt(("sheet-title-block-pick", id)).selected_text(shown).width(ui.available_width()).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut chosen, String::new(), built_in);
+                    for n in model.title_blocks.keys() {
+                        ui.selectable_value(&mut chosen, n.clone(), n);
+                    }
+                });
+            r.response.labelled_by(label.id);
+            ui.end_row();
+            for f in tb.iter().flat_map(|tb| tb.fields.iter()).filter(|f| f.scope == bimcraft_core::titleblock::Scope::Sheet) {
+                let key = f.key.to_ascii_uppercase();
+                let label = ui.label(f.shown());
+                let current = sheet.fields.get(&key).cloned().unwrap_or_default();
+                let hint = values.get(&key).filter(|_| current.is_empty()).cloned().unwrap_or_default();
+                if let Some(typed) = self.field(ui, id, &format!("title.{key}"), current, label.id, &hint) {
+                    let v = if typed.trim().is_empty() { Value::Null } else { json!(typed) };
+                    change = Some(json!({"id": id, "fields": {key: v}}));
+                }
+                ui.end_row();
+            }
+        });
+        if chosen != sheet.title_block {
+            change = Some(json!({"id": id, "title_block": chosen}));
+        }
+        if let Some(p) = change {
+            self.run("modify", p);
+        }
+        ui.horizontal(|ui| {
+            let name = (!sheet.title_block.is_empty()).then(|| sheet.title_block.clone());
+            if ui.button(t("Edit Title Blocks…")).clicked() {
+                self.open_title_blocks(name.as_deref());
+            }
+        });
     }
 
     /// A schedule view's own parameters, as Revit's palette has them: its name and category, and

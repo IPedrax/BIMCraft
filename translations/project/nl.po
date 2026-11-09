@@ -1,14 +1,19 @@
 # BIMCraft translations: Dutch (Nederlands, Belgian usage).
 # SPDX-License-Identifier: MIT OR Apache-2.0
 msgid ""
-msgstr "Project-Id-Version: BIMCraft\nLanguage: nl\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
+msgstr ""
+"Project-Id-Version: BIMCraft\n"
+"Language: nl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 #: crates/core/src/fixtures.rs:397
 msgid "Air Terminal"
 msgstr "Luchtuitlaat"
 
-#: crates/core/src/schedule.rs:194
-#: crates/core/src/schedule.rs:230
+#: crates/core/src/schedule.rs:194 crates/core/src/schedule.rs:230
 msgid "Area"
 msgstr "Oppervlakte"
 
@@ -188,8 +193,7 @@ msgstr "Elektrische verlichting"
 msgid "Electrical Power"
 msgstr "Elektrische voeding"
 
-#: crates/core/src/commands.rs:9500
-#: crates/core/src/commands.rs:11533
+#: crates/core/src/commands.rs:9500 crates/core/src/commands.rs:11533
 msgid "Elevation"
 msgstr "Gevel"
 
@@ -241,8 +245,7 @@ msgstr "Kozijnbreedte"
 msgid "Gate Valve"
 msgstr "Schuifafsluiter"
 
-#: crates/core/src/family.rs:2205
-#: crates/core/src/view3d.rs:994
+#: crates/core/src/family.rs:2205 crates/core/src/view3d.rs:994
 msgid "Glass"
 msgstr "Glas"
 
@@ -306,8 +309,7 @@ msgstr "Breedte poot"
 msgid "Length"
 msgstr "Lengte"
 
-#: crates/core/src/commands.rs:6266
-#: crates/core/src/model.rs:3088
+#: crates/core/src/commands.rs:6266 crates/core/src/model.rs:3088
 msgid "Level"
 msgstr "Niveau"
 
@@ -475,8 +477,7 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Zithoogte"
 
-#: crates/core/src/commands.rs:9477
-#: crates/core/src/commands.rs:11532
+#: crates/core/src/commands.rs:9477 crates/core/src/commands.rs:11532
 msgid "Section"
 msgstr "Doorsnede"
 
@@ -676,3 +677,6 @@ msgstr "bwc"
 msgid "wc"
 msgstr "wc"
 
+#: crates/core/src/sheet.rs:290
+msgid "AS INDICATED"
+msgstr ""

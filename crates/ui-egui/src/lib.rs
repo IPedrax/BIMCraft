@@ -74,6 +74,7 @@ mod templates;
 #[cfg(test)]
 mod tests;
 mod titlebar;
+mod titleblocks;
 mod triad;
 mod typeprops;
 mod updates;
@@ -363,7 +364,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 54] = [
+const SHORTCUTS: [(&str, &str); 55] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -418,6 +419,8 @@ const SHORTCUTS: [(&str, &str); 54] = [
     ("KS", "Keyboard Shortcuts"),
     ("BX", "Section Box"),
     ("GD", "Graphic Display Options"),
+    // Revit has none for its title blocks; no command or tool takes TB.
+    ("TB", "Title Blocks"),
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
@@ -761,6 +764,8 @@ pub struct BimApp {
     object_styles_dialog: Option<objectstyles::ObjectStylesDialog>,
     /// Manage > Line Styles, while open.
     line_styles_dialog: Option<linestyles::LineStylesDialog>,
+    /// Manage > Title Blocks, while open.
+    title_blocks_dialog: Option<titleblocks::TitleBlocksDialog>,
     fill_patterns_dialog: Option<fillpatterns::FillPatternsDialog>,
     /// Sketch mode: the lines of an outline being drawn, until Finish or Cancel.
     pub sketch: Option<sketch::Sketch>,
@@ -1401,6 +1406,7 @@ impl BimApp {
             line_weights_dialog: None,
             object_styles_dialog: None,
             line_styles_dialog: None,
+            title_blocks_dialog: None,
             fill_patterns_dialog: None,
             sketch: None,
             mode_width: 0.0,
@@ -2153,6 +2159,10 @@ impl BimApp {
             }
             "GD" => {
                 self.open_display();
+                return true;
+            }
+            "TB" => {
+                self.open_title_blocks(None);
                 return true;
             }
             "EU" | "UE" => {
@@ -4142,6 +4152,10 @@ impl BimApp {
                     self.fill_patterns_dialog = Some(fillpatterns::FillPatternsDialog::new(&self.session.model));
                 }
             });
+            let tip = msg!("Title Blocks (TB): your own, read from a DXF or typed, with fields each sheet or the whole project fills in");
+            if big_button(ui, Icon::Sheet, "Title Blocks", self.title_blocks_dialog.is_some(), tip).clicked() {
+                self.open_title_blocks(None);
+            }
             let tip = msg!(
                 "Purge Unused (PU): take out the types, families and the rest nothing in the project uses; each category keeps a type"
             );
@@ -5236,6 +5250,7 @@ impl BimApp {
         self.line_weights_window(ctx);
         self.object_styles_window(ctx);
         self.line_styles_window(ctx);
+        self.title_blocks_window(ctx);
         self.fill_patterns_window(ctx);
         self.text_type_window(ctx);
         self.dimension_type_window(ctx);

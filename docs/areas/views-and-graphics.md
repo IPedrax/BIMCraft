@@ -168,9 +168,11 @@ with 2.5mm, 3.5mm and 5mm in Arial; `text_type` makes, renames and deletes them 
 any font the system has, or one we carry (IBM Plex Sans, IBM Plex Mono, BIMCraft Lettering: `font.rs`'s single-stroke
 capitals). `text/system.rs` lists the system's fonts once (`system::index`): it looks through the folders Linux, Windows
 and macOS keep them in and reads each file only as far as its OpenType table directory and its `name`, `OS/2` and `head`
-tables (family, weight, italic, whether it varies its weight), from the public specification, every offset checked; a face
+tables (family, weight, width, italic, whether it varies its weight), from the public specification, every offset checked; a face
 is read whole (`system::load`, kept, up to `MAX_FONT`) only when a note is lettered in it. `text::resolve` turns a type's font
-and a character's bold and italic into a `Face`: ours by name; else the family; else its stand-ins (`system::substitutes`:
+and a character's bold and italic into a `Face` (of a family, the face upright or italic as asked, then of normal width, so
+Windows' Arial Narrow, which names its family Arial, doesn't letter Arial, then of the nearest weight): ours by name; else the
+family; else its stand-ins (`system::substitutes`:
 Arial by Liberation Sans, Arimo, Helvetica, Nimbus Sans, DejaVu Sans…, Times New Roman and Courier New likewise); else Plex
 Sans. So Arial, the default, letters on any system, and a file naming a font this one hasn't opens (`TextType::check`
 takes any name) and draws with what stands in; the `text_type` command refuses a font the system can't letter, unless the
@@ -680,3 +682,46 @@ corner seen within the snap's reach (`Scene::corner_near`), else an edge within 
 cursor), else the point of the face there; after two, a click places the line where it meets the plane through the two that faces the
 camera most (`dims3d::line_through`), and the status line says how long it is. In Modify a click on a dimension's lines picks it before what
 the picture shows under them (`dims3d::pick`).
+
+## Title blocks
+
+A sheet is drawn with the built-in title box unless it names a title block of the project's own (`Sheet::title_block`, a library
+entry of kind `title-block`, held by GUID in a file like any other name; FORMAT 18). A title block (`titleblock.rs`) is a box, `width`
+by `height` mm, that stands in the sheet's bottom right corner inside the border, where the built-in one stands, with lines (in pens),
+solid fills (a logo) and lettering, all in mm on paper from its own bottom left corner; the border and NBR 17067's folding marks are
+drawn as before, and a view placed by default goes above its height (`sheet::spot`). Lettering may name fields as `{KEY}`: a field the
+title block defines (`fields`: a key, a label for the desktop, a default) is the project's (`scope: project`, one value in
+`Model::title_values`, the same on every sheet) or each sheet's (`scope: sheet`, `Sheet::fields`); the automatic ones (`titleblock::AUTO`:
+PROJECT, SHEET_NAME, SHEET_NUMBER, SCALE (`1 : 100`, or AS INDICATED when the views' differ), DATE in the project's language, SHEET_INDEX and SHEET_COUNT by
+sheet number in reading order, and REVISION, the latest of the revision clouds on the sheet and on the views placed on it) need no
+definition, and a value given to one (DATE, to issue on) is said instead. A key no value fills stays as written, so a missing field
+shows on the sheet. `titleblock::values` works them out, `sheet::title_values` with the sheet's scale, and `elements` gives a sheet's
+as `title_values`, with the keys that are its own to give as `sheet_fields`.
+
+`title_block` makes, edits, renames and deletes them (one a sheet is drawn with can't go), starting a new one as the built-in box drawn
+as one; with `path` it reads a DXF (or a DWG, through the session's reader) drawn at full size on paper in its model space: lines, arcs,
+circles and polylines as lines, in the pen nearest their weight, solid hatches as fills, texts as texts, moved to the corner of their
+extents, which become the box, and each key the texts name a sheet field, keeping a field it already had (its label, scope and default).
+A block's attribute (ATTRIB) becomes a field of its tag, what it says the field's default, as offices' CAD title blocks hold their
+fields; a drawing that names no unit is read in mm, and the reply's `notes` say so with the size that made.
+Lines, fills and texts keep their colour (the entity's or its layer's; the drawing's ink, index 7, is none), and a text that
+hangs from its point or is centred on it (DXF vertical alignment) comes in on its baseline where it showed. An MTEXT's embedded
+object (code 101 on, written since 2018) is read past (`dxf.rs`), so its 10s and 11s don't turn it, and `\c` true colour is
+formatting, as `\C` is. `TitleBlock::make_field` turns a text into a field of a key (`key_for` suggests one from what it says) whose
+default is what it said.
+A single line of DXF text keeps its braces (`dxf::decode`), as AutoCAD shows them; only multi-line text's braces are formatting.
+`title_values` gives the project's values. In the desktop, Manage > Title Blocks (TB, in either profile) lists them (New, Duplicate, Delete, Import DXF…) and
+edits the one picked, with a preview drawn by the core (`titleblock::preview`) as the first sheet that names it fills it in: its fields,
+with the project's values, its texts, its straight lines and its size; a sheet's Properties pick its title block and fill in its sheet
+fields. The preview is the editor: a click picks a text (`Text::outline`), a drag moves it, the arrow keys nudge it half a
+millimetre, and the text picked is edited below it (what it says, size, angle, justification) or made a field (Make Field); it zooms
+and scrolls. Its lettering is in a font (`TitleBlock::font`, Arial unless it says, a system font as a text type names one, stood in for where
+the system hasn't it), each text at its size as a capital's height (the font's OS/2 says it; an older font's, its H's) and with a
+width factor, laid out and drawn as notes are
+(`render::lettering`). A fill's rings that lie inside an odd number of the others are holes (a hatch's islands), drawn empty: wound
+the other way and, when it has more than one, pushed as `Part::Text`, so the desktop's canvas fills it by the non-zero rule as it
+does lettering rather than each ring on its own. The Texts tab shows a field's text as what it says (its default, edited there), its
+key beside it, with Make Text (`TitleBlock::make_text`: back to plain text, the field gone when no other text names it); a plain
+text has Make Field, keyed by what it says (`TitleBlock::free_key`, numbered past the keys there are) as each sheet's. An
+MTEXT's colour is the one its formatting sets before its first word (`\C`, `\c`), over the entity's. The stroke lettering has the
+ordinals º and ª.

@@ -127,8 +127,12 @@ pub fn resolve_in(index: &system::Index, font: &str, bold: bool, italic: bool) -
 /// Of a family's faces, the one nearest bold or italic as asked, and what it is made to be the rest.
 fn pick(faces: &[system::SystemFace], bold: bool, italic: bool) -> Option<Face> {
     let target: u16 = if bold { 700 } else { 400 };
-    let off =
-        |f: &system::SystemFace| u32::from(f.italic != italic) * 10_000 + if f.variable { 0 } else { u32::from(f.weight.abs_diff(target)) };
+    let off = |f: &system::SystemFace| {
+        // Upright or italic as asked first, then of normal width (not a Narrow listed in the family), then the weight.
+        u32::from(f.italic != italic) * 100_000
+            + u32::from(f.width.abs_diff(5)) * 1_000
+            + if f.variable { 0 } else { u32::from(f.weight.abs_diff(target)) }
+    };
     let f = faces.iter().min_by_key(|f| off(f))?;
     Some(Face {
         source: Source::File { path: f.path.clone(), index: f.index, family: Arc::from(f.family.as_str()) },
@@ -482,7 +486,9 @@ fn drawn(face: &Face, c: char) -> Option<Shape> {
     }
     let glyph = parsed.glyph_index(c).filter(|g| g.0 != 0)?;
     let em = f32::from(parsed.units_per_em().max(16));
-    let cap = f32::from(parsed.capital_height().filter(|&h| h > 0).unwrap_or(0)).max(em * 0.5);
+    // Its capitals' height as it says, else as its H stands (an older font's OS/2 table doesn't say), else half its em.
+    let h = || parsed.glyph_index('H').and_then(|g| parsed.glyph_bounding_box(g)).map(|b| b.y_max);
+    let cap = f32::from(parsed.capital_height().filter(|&h| h > 0).or_else(h).unwrap_or(0)).max(em * 0.5);
     let advance = f32::from(parsed.glyph_hor_advance(glyph).unwrap_or(0)) / cap;
     let mut out = Outline { k: 1.0 / cap, rings: Vec::new(), at: (0.0, 0.0) };
     parsed.outline_glyph(glyph, &mut out);
@@ -833,6 +839,42 @@ mod tests {
         assert_eq!(known_in(&index, "arial").as_deref(), Some("Arial"));
         assert_eq!(known_in(&index, "liberation SANS").as_deref(), Some("Liberation Sans"));
         assert_eq!(known_in(&system::Index::default(), "Futura"), None);
+    }
+
+    #[test]
+    fn a_font_that_doesnt_say_its_capitals_height_is_measured_by_its_h() {
+        // Plex Sans with its OS/2 table made version 1, which has no capital height: as an older font is.
+        let mut bytes = PLEX_SANS.to_vec();
+        let n = usize::from(u16::from_be_bytes([bytes[4], bytes[5]]));
+        let os2 = (0..n).map(|i| 12 + i * 16).find(|&r| &bytes[r..r + 4] == b"OS/2").unwrap();
+        let at = u32::from_be_bytes(bytes[os2 + 8..os2 + 12].try_into().unwrap()) as usize;
+        bytes[at..at + 2].copy_from_slice(&1u16.to_be_bytes());
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("old.ttf"), &bytes).unwrap();
+        let index = system::scan(&[dir.path().to_path_buf()]);
+        let face = pick(index.family("IBM Plex Sans").unwrap(), false, false).unwrap();
+        assert!(ttf_parser::Face::parse(&bytes, 0).unwrap().capital_height().is_none());
+        let h = shape(&face, 'H').fill.iter().flatten().map(|p| p.1).fold(f32::MIN, f32::max);
+        assert!((h - 1.0).abs() < 0.02, "its H is the text size high: {h}");
+    }
+
+    #[test]
+    fn a_family_letters_in_its_face_of_normal_width_before_a_narrow_one_listed_first() {
+        // Windows' Arial Narrow calls its family Arial (its typographic family), a face as regular as Arial's own.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.ttf"), PLEX_SANS).unwrap();
+        let mut index = system::scan(&[dir.path().to_path_buf()]);
+        let mut faces = index.families.remove("ibm plex sans").unwrap();
+        faces.iter_mut().for_each(|f| f.family = "Arial".into());
+        let normal = faces[0].clone();
+        assert_eq!(normal.width, 5, "Plex Sans is of normal width");
+        let narrow = system::SystemFace { width: 3, index: 9, ..normal.clone() };
+        index.families.insert("arial".into(), vec![narrow.clone(), normal]);
+        assert!(matches!(resolve_in(&index, "Arial", false, false).source, Source::File { index: 0, .. }));
+        assert!(matches!(resolve_in(&index, "Arial", true, false).source, Source::File { index: 0, .. }));
+        // Narrow alone, it's what there is.
+        index.families.insert("arial".into(), vec![narrow]);
+        assert!(matches!(resolve_in(&index, "Arial", false, false).source, Source::File { index: 9, .. }));
     }
 
     #[test]
