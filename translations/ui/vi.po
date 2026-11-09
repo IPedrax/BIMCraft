@@ -728,11 +728,11 @@ msgstr "Gán mẫu khung nhìn"
 msgid "Associated Level"
 msgstr "Tầng liên kết"
 
-#: crates/core/src/model.rs:2644
+#: crates/core/src/model.rs:2682
 msgid "At wall centre line"
 msgstr "Tại đường tim tường"
 
-#: crates/core/src/model.rs:2645
+#: crates/core/src/model.rs:2683
 msgid "At wall finish"
 msgstr "Tại mặt hoàn thiện tường"
 
@@ -1026,7 +1026,7 @@ msgstr "Đường biên: phác thảo hình chiếu bằng của mái, trên t�
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Đường biên: phác thảo đường bao của lỗ mở thông tầng"
 
-#: crates/core/src/model.rs:2942
+#: crates/core/src/model.rs:2980
 msgid "Brick"
 msgstr "Gạch"
 
@@ -1246,7 +1246,7 @@ msgstr "Tâm"
 msgid "Centre Lines"
 msgstr "Đường tâm"
 
-#: crates/core/src/model.rs:2950
+#: crates/core/src/model.rs:2988
 msgid "Ceramic tile"
 msgstr "Gạch men"
 
@@ -1954,7 +1954,7 @@ msgstr "Khối ý tưởng"
 msgid "Concrete"
 msgstr "Bê tông"
 
-#: crates/core/src/model.rs:2944
+#: crates/core/src/model.rs:2982
 msgid "Concrete block"
 msgstr "Gạch block bê tông"
 
@@ -2044,7 +2044,7 @@ msgstr "Đã sao chép {} IFC GlobalId."
 msgid "Copied {} rows, tab-separated."
 msgstr "Đã sao chép {} hàng, phân tách bằng tab."
 
-#: crates/core/src/model.rs:2958
+#: crates/core/src/model.rs:2996
 msgid "Copper"
 msgstr "Đồng"
 
@@ -2289,7 +2289,7 @@ msgstr "Mặt phẳng cắt"
 msgid "Cylinder"
 msgstr "Hình trụ"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3667
 msgid "DN"
 msgstr "XUỐNG"
 
@@ -2702,11 +2702,11 @@ msgstr "Nét chấm"
 msgid "Double Door"
 msgstr "Cửa đi hai cánh"
 
-#: crates/core/src/model.rs:2475
+#: crates/core/src/model.rs:2489
 msgid "Double Sliding"
 msgstr "Trượt hai cánh"
 
-#: crates/core/src/model.rs:2473
+#: crates/core/src/model.rs:2487
 msgid "Double Swing"
 msgstr "Mở quay hai chiều"
 
@@ -3352,7 +3352,7 @@ msgstr "Hãy hoàn tất hoặc hủy phác thảo trước khi rời mặt bằ
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "Hãy hoàn tất hoặc hủy phác thảo trước: các đường của mẫu được chọn trên mặt bằng."
 
-#: crates/core/src/model.rs:2477
+#: crates/core/src/model.rs:2491
 msgid "Fixed"
 msgstr "Cố định"
 
@@ -3475,7 +3475,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr "Thư mục cho dự án mới"
 
-#: crates/core/src/model.rs:2476
+#: crates/core/src/model.rs:2490
 msgid "Folding"
 msgstr "Gấp"
 
@@ -3714,7 +3714,7 @@ msgstr "Nhóm"
 msgid "Group:"
 msgstr "Nhóm:"
 
-#: crates/core/src/model.rs:2949
+#: crates/core/src/model.rs:2987
 msgid "Gypsum board"
 msgstr "Tấm thạch cao"
 
@@ -4910,7 +4910,7 @@ msgstr "NBR 17068: kéo dài 2 đến 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: dấu tâm trên mặt bằng (±0.00), tam giác đều trên mặt cắt"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2876
 msgid "NOT ENCLOSED"
 msgstr "KHÔNG KHÉP KÍN"
 
@@ -5640,7 +5640,7 @@ msgstr "Giai đoạn phá dỡ"
 msgid "Phase Filter"
 msgstr "Bộ lọc giai đoạn"
 
-#: crates/core/src/ifc.rs:1659
+#: crates/core/src/ifc.rs:1661
 msgid "Phase Filters"
 msgstr "Bộ lọc giai đoạn"
 
@@ -6355,7 +6355,7 @@ msgstr "Đặt một khung nhìn lên bản vẽ này: một khung nhìn chưa n
 msgid "Quadrant"
 msgstr "Góc phần tư"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2876
 msgid "REDUNDANT"
 msgstr "THỪA"
 
@@ -6741,6 +6741,10 @@ msgstr "Chiều cao bậc đứng"
 msgid "Risers"
 msgstr "Bậc đứng"
 
+#: crates/core/src/model.rs:2493
+msgid "Roller"
+msgstr ""
+
 #: crates/core/src/commands.rs:705
 msgid "Roof"
 msgstr "Mái"
@@ -6765,7 +6769,7 @@ msgstr "Mái theo mặt (RB): một mái trên mặt trên của các khối đ�
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Mái theo hình chiếu bằng: nhấp vào trong các tường để lợp mái, trên tầng phía trên"
 
-#: crates/core/src/model.rs:2951
+#: crates/core/src/model.rs:2989
 msgid "Roof tiles"
 msgstr "Ngói"
 
@@ -6960,7 +6964,7 @@ msgstr "Bảng thống kê"
 msgid "Schedules/Quantities (all)"
 msgstr "Bảng thống kê/Khối lượng (tất cả)"
 
-#: crates/core/src/model.rs:2947
+#: crates/core/src/model.rs:2985
 msgid "Screed"
 msgstr "Lớp vữa láng"
 
@@ -7001,6 +7005,10 @@ msgstr "Hộp cắt: cắt khung nhìn 3D theo một hộp, mỗi mặt được
 #: crates/ui-egui/src/lib.rs:2915
 msgid "Section: {}"
 msgstr "Mặt cắt: {}"
+
+#: crates/core/src/model.rs:2492
+msgid "Sectional"
+msgstr ""
 
 #: crates/ui-egui/src/browser.rs:466
 msgid "Sections (Building Section)"
@@ -7370,7 +7378,7 @@ msgstr "Bỏ qua phiên bản này"
 msgid "Sky"
 msgstr "Xanh da trời"
 
-#: crates/core/src/model.rs:2474
+#: crates/core/src/model.rs:2488
 msgid "Sliding"
 msgstr "Trượt"
 
@@ -7760,7 +7768,7 @@ msgstr "Độ trong suốt bề mặt"
 msgid "Surface, {}°"
 msgstr "Bề mặt, {}°"
 
-#: crates/core/src/model.rs:2472
+#: crates/core/src/model.rs:2486
 msgid "Swing"
 msgstr "Mở quay"
 
@@ -8554,7 +8562,7 @@ msgstr "Kiểu:"
 msgid "Types"
 msgstr "Kiểu"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3667
 msgid "UP"
 msgstr "LÊN"
 

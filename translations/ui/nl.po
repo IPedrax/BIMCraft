@@ -728,11 +728,11 @@ msgstr "Weergavesjabloon toewijzen"
 msgid "Associated Level"
 msgstr "Gekoppeld niveau"
 
-#: crates/core/src/model.rs:2644
+#: crates/core/src/model.rs:2682
 msgid "At wall centre line"
 msgstr "Op de hartlijn van de muur"
 
-#: crates/core/src/model.rs:2645
+#: crates/core/src/model.rs:2683
 msgid "At wall finish"
 msgstr "Op de afwerking van de muur"
 
@@ -1026,7 +1026,7 @@ msgstr "Randlijn: schets de projectie van het dak, op het niveau erboven, en eve
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Randlijn: schets de omtrek van de schachtopening"
 
-#: crates/core/src/model.rs:2942
+#: crates/core/src/model.rs:2980
 msgid "Brick"
 msgstr "Baksteen"
 
@@ -1246,7 +1246,7 @@ msgstr "Hartlijn"
 msgid "Centre Lines"
 msgstr "Hartlijnen"
 
-#: crates/core/src/model.rs:2950
+#: crates/core/src/model.rs:2988
 msgid "Ceramic tile"
 msgstr "Keramische tegel"
 
@@ -1954,7 +1954,7 @@ msgstr "Conceptuele massa"
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:2944
+#: crates/core/src/model.rs:2982
 msgid "Concrete block"
 msgstr "Betonblok"
 
@@ -2044,7 +2044,7 @@ msgstr "{} IFC-GlobalId's gekopieerd."
 msgid "Copied {} rows, tab-separated."
 msgstr "{} rijen gekopieerd, gescheiden door tabs."
 
-#: crates/core/src/model.rs:2958
+#: crates/core/src/model.rs:2996
 msgid "Copper"
 msgstr "Koper"
 
@@ -2289,7 +2289,7 @@ msgstr "Snijvlak"
 msgid "Cylinder"
 msgstr "Cilinder"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3667
 msgid "DN"
 msgstr "DN"
 
@@ -2702,11 +2702,11 @@ msgstr "Gestippeld"
 msgid "Double Door"
 msgstr "Dubbele deur"
 
-#: crates/core/src/model.rs:2475
+#: crates/core/src/model.rs:2489
 msgid "Double Sliding"
 msgstr "Dubbel schuivend"
 
-#: crates/core/src/model.rs:2473
+#: crates/core/src/model.rs:2487
 msgid "Double Swing"
 msgstr "Dubbel draaiend"
 
@@ -3352,7 +3352,7 @@ msgstr "Voltooi of annuleer de schets voor je het plan verlaat."
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "Voltooi of annuleer eerst de schets: de lijnen van een patroon worden in de plattegrond gekozen."
 
-#: crates/core/src/model.rs:2477
+#: crates/core/src/model.rs:2491
 msgid "Fixed"
 msgstr "Vast"
 
@@ -3475,7 +3475,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr "Map voor nieuwe projecten"
 
-#: crates/core/src/model.rs:2476
+#: crates/core/src/model.rs:2490
 msgid "Folding"
 msgstr "Vouwend"
 
@@ -3714,7 +3714,7 @@ msgstr "Groep"
 msgid "Group:"
 msgstr "Groep:"
 
-#: crates/core/src/model.rs:2949
+#: crates/core/src/model.rs:2987
 msgid "Gypsum board"
 msgstr "Gipsplaat"
 
@@ -4910,7 +4910,7 @@ msgstr "NBR 17068: 2 tot 3 mm verlenging"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: doelwit in plattegrond (±0,00), gelijkzijdige driehoek in doorsnede"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2876
 msgid "NOT ENCLOSED"
 msgstr "NIET OMSLOTEN"
 
@@ -5640,7 +5640,7 @@ msgstr "Fase van sloop"
 msgid "Phase Filter"
 msgstr "Fasefilter"
 
-#: crates/core/src/ifc.rs:1659
+#: crates/core/src/ifc.rs:1661
 msgid "Phase Filters"
 msgstr "Fasefilters"
 
@@ -6355,7 +6355,7 @@ msgstr "Zet een weergave op dit blad: een die nog op geen blad staat"
 msgid "Quadrant"
 msgstr "Kwadrant"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2876
 msgid "REDUNDANT"
 msgstr "OVERBODIG"
 
@@ -6741,6 +6741,10 @@ msgstr "Hoogte optrede"
 msgid "Risers"
 msgstr "Optreden"
 
+#: crates/core/src/model.rs:2493
+msgid "Roller"
+msgstr ""
+
 #: crates/core/src/commands.rs:705
 msgid "Roof"
 msgstr "Dak"
@@ -6765,7 +6769,7 @@ msgstr "Dak op vlak (RB): een dak op de bovenvlakken van de geselecteerde massa'
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Dak door voetafdruk: klik binnen de muren om ze te voorzien van een dak, op het niveau erboven"
 
-#: crates/core/src/model.rs:2951
+#: crates/core/src/model.rs:2989
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
@@ -6960,7 +6964,7 @@ msgstr "Lijsten"
 msgid "Schedules/Quantities (all)"
 msgstr "Lijsten/hoeveelheden (alle)"
 
-#: crates/core/src/model.rs:2947
+#: crates/core/src/model.rs:2985
 msgid "Screed"
 msgstr "Chape"
 
@@ -7001,6 +7005,10 @@ msgstr "Sectiekader: snij de 3D-weergave tot een kader, elk vlak verplaatst met 
 #: crates/ui-egui/src/lib.rs:2915
 msgid "Section: {}"
 msgstr "Doorsnede: {}"
+
+#: crates/core/src/model.rs:2492
+msgid "Sectional"
+msgstr ""
 
 #: crates/ui-egui/src/browser.rs:466
 msgid "Sections (Building Section)"
@@ -7370,7 +7378,7 @@ msgstr "Deze versie overslaan"
 msgid "Sky"
 msgstr "Lucht"
 
-#: crates/core/src/model.rs:2474
+#: crates/core/src/model.rs:2488
 msgid "Sliding"
 msgstr "Schuivend"
 
@@ -7760,7 +7768,7 @@ msgstr "Doorzichtigheid van het oppervlak"
 msgid "Surface, {}°"
 msgstr "Oppervlak, {}°"
 
-#: crates/core/src/model.rs:2472
+#: crates/core/src/model.rs:2486
 msgid "Swing"
 msgstr "Draaiend"
 
@@ -8554,7 +8562,7 @@ msgstr "Type:"
 msgid "Types"
 msgstr "Types"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3667
 msgid "UP"
 msgstr "OMHOOG"
 

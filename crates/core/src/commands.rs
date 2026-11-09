@@ -1035,7 +1035,7 @@ other_files(
          profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, \
          void?}], symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to} | text?: {at: [x, y], height, value, align?: left|center|right} | dot?: {centre: [x, y], radius}, visible?}], form?: {id | guid, …a \
          form's fields}, symbol?: {id | guid, …a symbol's fields}, delete_form?: [id | guid, …], delete_symbol?: [id | guid, …], \
-         operation?: swing|double-swing|sliding|double-sliding|folding|fixed (a door's or window's, for IFC and schedules), \
+         operation?: swing|double-swing|sliding|double-sliding|folding|fixed|sectional|roller (a door's or window's, for IFC and schedules), \
          kind?: which fixture or fitting it is, for IFC's predefined type (plumbing: wc|lav|sink|laundry|shower|bath|bidet|urinal; \
          drain: floor_drain|floor_waste|roof_drain; pipefitting: bend|tee|cross|transition|coupling; \"\" clears it), \
          ifc?: {class, predefined?, object_type?} | null (the IFC class a generic family's components go out as, which one \

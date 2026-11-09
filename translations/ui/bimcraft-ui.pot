@@ -728,11 +728,11 @@ msgstr ""
 msgid "Associated Level"
 msgstr ""
 
-#: crates/core/src/model.rs:2644
+#: crates/core/src/model.rs:2682
 msgid "At wall centre line"
 msgstr ""
 
-#: crates/core/src/model.rs:2645
+#: crates/core/src/model.rs:2683
 msgid "At wall finish"
 msgstr ""
 
@@ -1026,7 +1026,7 @@ msgstr ""
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr ""
 
-#: crates/core/src/model.rs:2942
+#: crates/core/src/model.rs:2980
 msgid "Brick"
 msgstr ""
 
@@ -1246,7 +1246,7 @@ msgstr ""
 msgid "Centre Lines"
 msgstr ""
 
-#: crates/core/src/model.rs:2950
+#: crates/core/src/model.rs:2988
 msgid "Ceramic tile"
 msgstr ""
 
@@ -1954,7 +1954,7 @@ msgstr ""
 msgid "Concrete"
 msgstr ""
 
-#: crates/core/src/model.rs:2944
+#: crates/core/src/model.rs:2982
 msgid "Concrete block"
 msgstr ""
 
@@ -2044,7 +2044,7 @@ msgstr ""
 msgid "Copied {} rows, tab-separated."
 msgstr ""
 
-#: crates/core/src/model.rs:2958
+#: crates/core/src/model.rs:2996
 msgid "Copper"
 msgstr ""
 
@@ -2289,7 +2289,7 @@ msgstr ""
 msgid "Cylinder"
 msgstr ""
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3667
 msgid "DN"
 msgstr ""
 
@@ -2702,11 +2702,11 @@ msgstr ""
 msgid "Double Door"
 msgstr ""
 
-#: crates/core/src/model.rs:2475
+#: crates/core/src/model.rs:2489
 msgid "Double Sliding"
 msgstr ""
 
-#: crates/core/src/model.rs:2473
+#: crates/core/src/model.rs:2487
 msgid "Double Swing"
 msgstr ""
 
@@ -3352,7 +3352,7 @@ msgstr ""
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr ""
 
-#: crates/core/src/model.rs:2477
+#: crates/core/src/model.rs:2491
 msgid "Fixed"
 msgstr ""
 
@@ -3475,7 +3475,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr ""
 
-#: crates/core/src/model.rs:2476
+#: crates/core/src/model.rs:2490
 msgid "Folding"
 msgstr ""
 
@@ -3714,7 +3714,7 @@ msgstr ""
 msgid "Group:"
 msgstr ""
 
-#: crates/core/src/model.rs:2949
+#: crates/core/src/model.rs:2987
 msgid "Gypsum board"
 msgstr ""
 
@@ -4910,7 +4910,7 @@ msgstr ""
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr ""
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2876
 msgid "NOT ENCLOSED"
 msgstr ""
 
@@ -5640,7 +5640,7 @@ msgstr ""
 msgid "Phase Filter"
 msgstr ""
 
-#: crates/core/src/ifc.rs:1659
+#: crates/core/src/ifc.rs:1661
 msgid "Phase Filters"
 msgstr ""
 
@@ -6355,7 +6355,7 @@ msgstr ""
 msgid "Quadrant"
 msgstr ""
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2876
 msgid "REDUNDANT"
 msgstr ""
 
@@ -6741,6 +6741,10 @@ msgstr ""
 msgid "Risers"
 msgstr ""
 
+#: crates/core/src/model.rs:2493
+msgid "Roller"
+msgstr ""
+
 #: crates/core/src/commands.rs:705
 msgid "Roof"
 msgstr ""
@@ -6765,7 +6769,7 @@ msgstr ""
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr ""
 
-#: crates/core/src/model.rs:2951
+#: crates/core/src/model.rs:2989
 msgid "Roof tiles"
 msgstr ""
 
@@ -6960,7 +6964,7 @@ msgstr ""
 msgid "Schedules/Quantities (all)"
 msgstr ""
 
-#: crates/core/src/model.rs:2947
+#: crates/core/src/model.rs:2985
 msgid "Screed"
 msgstr ""
 
@@ -7000,6 +7004,10 @@ msgstr ""
 
 #: crates/ui-egui/src/lib.rs:2915
 msgid "Section: {}"
+msgstr ""
+
+#: crates/core/src/model.rs:2492
+msgid "Sectional"
 msgstr ""
 
 #: crates/ui-egui/src/browser.rs:466
@@ -7370,7 +7378,7 @@ msgstr ""
 msgid "Sky"
 msgstr ""
 
-#: crates/core/src/model.rs:2474
+#: crates/core/src/model.rs:2488
 msgid "Sliding"
 msgstr ""
 
@@ -7760,7 +7768,7 @@ msgstr ""
 msgid "Surface, {}°"
 msgstr ""
 
-#: crates/core/src/model.rs:2472
+#: crates/core/src/model.rs:2486
 msgid "Swing"
 msgstr ""
 
@@ -8554,7 +8562,7 @@ msgstr ""
 msgid "Types"
 msgstr ""
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3667
 msgid "UP"
 msgstr ""
 

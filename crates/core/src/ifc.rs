@@ -1390,7 +1390,7 @@ pub fn export(m: &Model) -> String {
         // The door or window itself: a 50 mm panel centred in the wall; of a family, its forms as a component's are,
         // closed face sets in their materials' colours, standing at the middle of the opening.
         let mut made_of: Vec<u64> = Vec::new();
-        let (fill_at, shape) = match m.opening_local(e).filter(|_| o.family.is_some()) {
+        let (fill_at, shape) = match m.opening_local(e) {
             Some((pieces, _)) => {
                 let mut items = Vec::new();
                 for piece in &pieces {
@@ -1418,11 +1418,12 @@ pub fn export(m: &Model) -> String {
         // Named `Family:Type` as Revit names them; a project's own type, by its name.
         let label = o.family.as_ref().map_or_else(|| o.type_name.clone(), |f| format!("{f}:{}", o.type_name));
         let name = s(&label);
+        let user_operation = t.operation.and_then(Operation::ifc_door_user).map_or_else(|| "$".into(), s);
         // How it opens, as its family or its type says; a door that says nothing swings.
         let ent = if matches!(e, Element::Door(_)) {
             let operation = Operation::ifc_door(t.operation, o.flip_hand);
             w.add(format!(
-                "IFCDOOR({},$,{name},$,{name},#{fill_at},#{shape},{},{h},{wd},.DOOR.,{operation},$)",
+                "IFCDOOR({},$,{name},$,{name},#{fill_at},#{shape},{},{h},{wd},.DOOR.,{operation},{user_operation})",
                 w.guid(ELEMENT, id),
                 s(&o.mark)
             ))
@@ -1435,13 +1436,14 @@ pub fn export(m: &Model) -> String {
             ))
         };
         // Its type object: after its PredefinedType, the operation (a door's) or partitioning (a window's) its type has, that
-        // the occurrence's own sizes take precedence over the type's, and no user-defined operation.
+        // the occurrence's own sizes take precedence over the type's, and the custom operation where IFC has no enum.
         let (class, predefined, how) = if matches!(e, Element::Door(_)) {
             ("IFCDOORTYPE", ".DOOR.", Operation::ifc_door(t.operation, false))
         } else {
             ("IFCWINDOWTYPE", ".WINDOW.", Operation::ifc_window_partitioning(t.operation))
         };
-        w.typed_with(class, "", predefined, &format!(",{how},.T.,$"), &label, ent);
+        let user_operation = if matches!(e, Element::Door(_)) { user_operation } else { "$".into() };
+        w.typed_with(class, "", predefined, &format!(",{how},.T.,{user_operation}"), &label, ent);
         w.add(format!("IFCRELFILLSELEMENT({},$,$,$,#{opening},#{ent})", w.guid(FILLS, id)));
         let qto = if matches!(e, Element::Door(_)) { "Qto_DoorBaseQuantities" } else { "Qto_WindowBaseQuantities" };
         let values = [

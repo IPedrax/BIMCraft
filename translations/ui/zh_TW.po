@@ -728,11 +728,11 @@ msgstr "指定視圖樣板"
 msgid "Associated Level"
 msgstr "關聯標高"
 
-#: crates/core/src/model.rs:2644
+#: crates/core/src/model.rs:2682
 msgid "At wall centre line"
 msgstr "在牆中心線"
 
-#: crates/core/src/model.rs:2645
+#: crates/core/src/model.rs:2683
 msgid "At wall finish"
 msgstr "在牆面層"
 
@@ -1026,7 +1026,7 @@ msgstr "邊界線：在上一標高繪製屋頂的跡線及其中的天井"
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "邊界線：繪製豎井洞口的輪廓"
 
-#: crates/core/src/model.rs:2942
+#: crates/core/src/model.rs:2980
 msgid "Brick"
 msgstr "磚"
 
@@ -1246,7 +1246,7 @@ msgstr "中心"
 msgid "Centre Lines"
 msgstr "中心線"
 
-#: crates/core/src/model.rs:2950
+#: crates/core/src/model.rs:2988
 msgid "Ceramic tile"
 msgstr "瓷磚"
 
@@ -1954,7 +1954,7 @@ msgstr "概念體量"
 msgid "Concrete"
 msgstr "混凝土"
 
-#: crates/core/src/model.rs:2944
+#: crates/core/src/model.rs:2982
 msgid "Concrete block"
 msgstr "混凝土砌塊"
 
@@ -2044,7 +2044,7 @@ msgstr "已複製 {} 個 IFC GlobalId。"
 msgid "Copied {} rows, tab-separated."
 msgstr "已複製 {} 行，以製表符分隔。"
 
-#: crates/core/src/model.rs:2958
+#: crates/core/src/model.rs:2996
 msgid "Copper"
 msgstr "銅"
 
@@ -2289,7 +2289,7 @@ msgstr "剖切面"
 msgid "Cylinder"
 msgstr "圓柱體"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3667
 msgid "DN"
 msgstr "下"
 
@@ -2702,11 +2702,11 @@ msgstr "點線"
 msgid "Double Door"
 msgstr "雙扇門"
 
-#: crates/core/src/model.rs:2475
+#: crates/core/src/model.rs:2489
 msgid "Double Sliding"
 msgstr "雙扇推拉"
 
-#: crates/core/src/model.rs:2473
+#: crates/core/src/model.rs:2487
 msgid "Double Swing"
 msgstr "雙扇平開"
 
@@ -3352,7 +3352,7 @@ msgstr "離開草圖所在平面之前，請先完成或取消草圖。"
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "請先完成或取消草圖：圖案的線需在平面中拾取。"
 
-#: crates/core/src/model.rs:2477
+#: crates/core/src/model.rs:2491
 msgid "Fixed"
 msgstr "固定"
 
@@ -3475,7 +3475,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr "新項目的資料夾"
 
-#: crates/core/src/model.rs:2476
+#: crates/core/src/model.rs:2490
 msgid "Folding"
 msgstr "折疊"
 
@@ -3714,7 +3714,7 @@ msgstr "組"
 msgid "Group:"
 msgstr "組："
 
-#: crates/core/src/model.rs:2949
+#: crates/core/src/model.rs:2987
 msgid "Gypsum board"
 msgstr "石膏板"
 
@@ -4910,7 +4910,7 @@ msgstr "NBR 17068：延伸 2 至 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492：平面採用圓環靶心 (±0.00)，剖面採用等邊三角形"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2876
 msgid "NOT ENCLOSED"
 msgstr "未封閉"
 
@@ -5640,7 +5640,7 @@ msgstr "拆除的階段"
 msgid "Phase Filter"
 msgstr "階段過濾器"
 
-#: crates/core/src/ifc.rs:1659
+#: crates/core/src/ifc.rs:1661
 msgid "Phase Filters"
 msgstr "階段過濾器列表"
 
@@ -6355,7 +6355,7 @@ msgstr "將一個視圖放到此圖紙上：尚未上圖紙的視圖"
 msgid "Quadrant"
 msgstr "象限點"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2876
 msgid "REDUNDANT"
 msgstr "冗餘"
 
@@ -6741,6 +6741,10 @@ msgstr "踢面高度"
 msgid "Risers"
 msgstr "踢面"
 
+#: crates/core/src/model.rs:2493
+msgid "Roller"
+msgstr ""
+
 #: crates/core/src/commands.rs:705
 msgid "Roof"
 msgstr "屋頂"
@@ -6765,7 +6769,7 @@ msgstr "面屋頂 (RB)：在所選體量的頂面上創建屋頂"
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "跡線屋頂：單擊牆內部，在上一標高為其創建屋頂"
 
-#: crates/core/src/model.rs:2951
+#: crates/core/src/model.rs:2989
 msgid "Roof tiles"
 msgstr "屋面瓦"
 
@@ -6960,7 +6964,7 @@ msgstr "明細表"
 msgid "Schedules/Quantities (all)"
 msgstr "明細表/數量（全部）"
 
-#: crates/core/src/model.rs:2947
+#: crates/core/src/model.rs:2985
 msgid "Screed"
 msgstr "找平層"
 
@@ -7001,6 +7005,10 @@ msgstr "剖面框：將3D視圖剪下到一個框內，每個面可在視圖中�
 #: crates/ui-egui/src/lib.rs:2915
 msgid "Section: {}"
 msgstr "剖面：{}"
+
+#: crates/core/src/model.rs:2492
+msgid "Sectional"
+msgstr ""
 
 #: crates/ui-egui/src/browser.rs:466
 msgid "Sections (Building Section)"
@@ -7370,7 +7378,7 @@ msgstr "跳過此版本"
 msgid "Sky"
 msgstr "天空"
 
-#: crates/core/src/model.rs:2474
+#: crates/core/src/model.rs:2488
 msgid "Sliding"
 msgstr "推拉"
 
@@ -7760,7 +7768,7 @@ msgstr "表面透明度"
 msgid "Surface, {}°"
 msgstr "表面，{}°"
 
-#: crates/core/src/model.rs:2472
+#: crates/core/src/model.rs:2486
 msgid "Swing"
 msgstr "平開"
 
@@ -8554,7 +8562,7 @@ msgstr "類型："
 msgid "Types"
 msgstr "類型"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3667
 msgid "UP"
 msgstr "上"
 

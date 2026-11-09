@@ -727,11 +727,11 @@ msgstr "Ansichtsvorlage zuweisen"
 msgid "Associated Level"
 msgstr "Zugeordnetes Geschoss"
 
-#: crates/core/src/model.rs:2644
+#: crates/core/src/model.rs:2682
 msgid "At wall centre line"
 msgstr "An Wandmittellinie"
 
-#: crates/core/src/model.rs:2645
+#: crates/core/src/model.rs:2683
 msgid "At wall finish"
 msgstr "An Wandoberfläche"
 
@@ -1025,7 +1025,7 @@ msgstr "Begrenzungslinie: Grundriss des Dachs im Geschoss darüber und darin lie
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Begrenzungslinie: Umriss des Schachtdurchbruchs skizzieren"
 
-#: crates/core/src/model.rs:2942
+#: crates/core/src/model.rs:2980
 msgid "Brick"
 msgstr "Ziegel"
 
@@ -1245,7 +1245,7 @@ msgstr "Mittelpunkt"
 msgid "Centre Lines"
 msgstr "Mittellinien"
 
-#: crates/core/src/model.rs:2950
+#: crates/core/src/model.rs:2988
 msgid "Ceramic tile"
 msgstr "Keramikfliese"
 
@@ -1953,7 +1953,7 @@ msgstr "Konzeptioneller Volumenkörper"
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:2944
+#: crates/core/src/model.rs:2982
 msgid "Concrete block"
 msgstr "Betonblock"
 
@@ -2043,7 +2043,7 @@ msgstr "{} IFC GlobalIds kopiert."
 msgid "Copied {} rows, tab-separated."
 msgstr "{} Zeilen kopiert, tabgetrennt."
 
-#: crates/core/src/model.rs:2958
+#: crates/core/src/model.rs:2996
 msgid "Copper"
 msgstr "Kupfer"
 
@@ -2288,7 +2288,7 @@ msgstr "Schnittebene"
 msgid "Cylinder"
 msgstr "Zylinder"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3667
 msgid "DN"
 msgstr "DN"
 
@@ -2701,11 +2701,11 @@ msgstr "Gepunktet"
 msgid "Double Door"
 msgstr "Zweiflügelige Tür"
 
-#: crates/core/src/model.rs:2475
+#: crates/core/src/model.rs:2489
 msgid "Double Sliding"
 msgstr "Doppelt schiebend"
 
-#: crates/core/src/model.rs:2473
+#: crates/core/src/model.rs:2487
 msgid "Double Swing"
 msgstr "Doppelt aufschlagend"
 
@@ -3351,7 +3351,7 @@ msgstr "Skizze abschließen oder abbrechen, bevor der zugehörige Plan verlassen
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "Zuerst die Skizze abschließen oder abbrechen: die Linien eines Musters werden im Grundriss gewählt."
 
-#: crates/core/src/model.rs:2477
+#: crates/core/src/model.rs:2491
 msgid "Fixed"
 msgstr "Fest"
 
@@ -3474,7 +3474,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr "Ordner für neue Projekte"
 
-#: crates/core/src/model.rs:2476
+#: crates/core/src/model.rs:2490
 msgid "Folding"
 msgstr "Falt-"
 
@@ -3713,7 +3713,7 @@ msgstr "Gruppe"
 msgid "Group:"
 msgstr "Gruppe:"
 
-#: crates/core/src/model.rs:2949
+#: crates/core/src/model.rs:2987
 msgid "Gypsum board"
 msgstr "Gipskartonplatte"
 
@@ -4909,7 +4909,7 @@ msgstr "NBR 17068: 2 bis 3 mm Überstand"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: Zielmarke im Plan (±0.00), gleichseitiges Dreieck im Schnitt"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2876
 msgid "NOT ENCLOSED"
 msgstr "NICHT UMSCHLOSSEN"
 
@@ -5639,7 +5639,7 @@ msgstr "Phase abgebrochen"
 msgid "Phase Filter"
 msgstr "Phasenfilter"
 
-#: crates/core/src/ifc.rs:1659
+#: crates/core/src/ifc.rs:1661
 msgid "Phase Filters"
 msgstr "Phasenfilter"
 
@@ -6354,7 +6354,7 @@ msgstr "Eine Ansicht auf diesen Plan legen: eine, die noch auf keinem Plan liegt
 msgid "Quadrant"
 msgstr "Quadrant"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2876
 msgid "REDUNDANT"
 msgstr "REDUNDANT"
 
@@ -6740,6 +6740,10 @@ msgstr "Steigungshöhe"
 msgid "Risers"
 msgstr "Steigungen"
 
+#: crates/core/src/model.rs:2493
+msgid "Roller"
+msgstr ""
+
 #: crates/core/src/commands.rs:705
 msgid "Roof"
 msgstr "Dach"
@@ -6764,7 +6768,7 @@ msgstr "Dach über Fläche (RB): ein Dach auf den oberen Flächen der ausgewähl
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Dach über Grundriss: innerhalb der Wände anklicken, um sie im Geschoss darüber zu überdachen"
 
-#: crates/core/src/model.rs:2951
+#: crates/core/src/model.rs:2989
 msgid "Roof tiles"
 msgstr "Dachziegel"
 
@@ -6959,7 +6963,7 @@ msgstr "Tabellen"
 msgid "Schedules/Quantities (all)"
 msgstr "Tabellen/Mengen (alle)"
 
-#: crates/core/src/model.rs:2947
+#: crates/core/src/model.rs:2985
 msgid "Screed"
 msgstr "Estrich"
 
@@ -7000,6 +7004,10 @@ msgstr "Schnittkasten: 3D-Ansicht auf einen Kasten zuschneiden; jede Fläche üb
 #: crates/ui-egui/src/lib.rs:2915
 msgid "Section: {}"
 msgstr "Schnitt: {}"
+
+#: crates/core/src/model.rs:2492
+msgid "Sectional"
+msgstr ""
 
 #: crates/ui-egui/src/browser.rs:466
 msgid "Sections (Building Section)"
@@ -7369,7 +7377,7 @@ msgstr "Diese Version überspringen"
 msgid "Sky"
 msgstr "Himmel"
 
-#: crates/core/src/model.rs:2474
+#: crates/core/src/model.rs:2488
 msgid "Sliding"
 msgstr "Schiebe-"
 
@@ -7759,7 +7767,7 @@ msgstr "Oberflächentransparenz"
 msgid "Surface, {}°"
 msgstr "Fläche, {}°"
 
-#: crates/core/src/model.rs:2472
+#: crates/core/src/model.rs:2486
 msgid "Swing"
 msgstr "Aufschlagrichtung"
 
@@ -8553,7 +8561,7 @@ msgstr "Typ:"
 msgid "Types"
 msgstr "Typen"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3667
 msgid "UP"
 msgstr "OBEN"
 

@@ -29,6 +29,7 @@ pub mod demand;
 pub mod derived;
 pub mod dims;
 pub mod dims3d;
+mod doors;
 pub mod dps;
 pub mod dr;
 pub mod drainage;

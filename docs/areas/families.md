@@ -24,11 +24,19 @@ exterior, z up from the sill) and its formulas read `Wall Thickness`; its `symbo
 (`opening_type` returns it by value), its flips are mirrors (`opening_local`), and `Element::family()` is the one way to ask what
 family a component or an opening is of. Sections show a family opening's forms beyond their line and never cut them.
 How a door or a window opens is its family's `operation` (`model::Operation`: swing, double-swing, sliding, double-sliding,
-folding, fixed), or for one of the project's own types the type's (`OpeningType::operation`); none, a door swings. IFC writes
+folding, fixed, sectional, roller), or for one of the project's own types the type's (`OpeningType::operation`); none, a door swings. IFC writes
 it as the door's `OperationType` (`Operation::ifc_door`, its side from `flip_hand`: `SLIDING_TO_RIGHT`) and a window's
 `PartitioningType` (two leaves, `DOUBLE_PANEL_VERTICAL`); the import reads a door's back, or its `IfcDoorType`'s (IFC4) or
 `IfcDoorStyle`'s (IFC2x3), onto the type it makes. Schedules have it as the `Operation` field, in the project's language. A
 window's panel operation (`IfcWindowPanelProperties`, a sliding sash) needs an `IfcWindowType`, which the export doesn't write yet.
+The Family Editor's Operation selector uses the same choices; changing the operation preserves authored forms and symbols.
+Project-owned sectional door types generate roughly 600 mm closed panels, jamb guides and overhead tracks; roller types generate
+a closed curtain, guides and a 450 mm coil box (`doors.rs`). These reuse `opening_local`'s pieces for 3D, sections and IFC; plans draw
+cut equipment solid and overhead equipment dashed, including it in Zoom to Fit. The equipment follows Facing Flip; Hand Flip keeps
+its mirrored faces outward. Quantities and the wall cut remain the clear opening size, excluding the equipment. IFC4 writes a sectional
+operation as `USERDEFINED` with `UserDefinedOperationType` `SECTIONAL` on both the door and its type; a roller is `ROLLINGUP`.
+The import reads both, including type fallback, and recovers the equipment's facing from its body. Native format 18 and old-file defaults
+are unchanged: unknown operation enum variants are refused by older readers, rather than being left out and interpreted as swing.
 What BIMCraft has no element for comes in from IFC as a component of a generic family that remembers the class it came in as
 (`Family::ifc`, an `IfcClass`: `{"class": "IFCPLATE", "predefined": "CURTAIN_PANEL"}`): a covering that is no ceiling, a curtain
 wall's panels and mullions, members that don't frame as a beam ([IFC import](ifc-import.md)), plates, duct fittings, terrain (`IfcGeographicElement`), a lift, anything the file builds

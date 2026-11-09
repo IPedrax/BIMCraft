@@ -1853,7 +1853,7 @@ fn cap(ring: &[P2]) -> Result<Vec<[usize; 3]>, String> {
 
 /// `ring`, counter-clockwise in `plane`, swept across it from `from` to `to`: its caps, then its
 /// sides, every triangle turned out; and how many the caps take.
-fn sweep(ring: &[P2], from: f64, to: f64, plane: Plane) -> Result<(Vec<[P3; 3]>, usize), String> {
+pub(crate) fn sweep(ring: &[P2], from: f64, to: f64, plane: Plane) -> Result<(Vec<[P3; 3]>, usize), String> {
     let at = |p: P2, t: f64| embed(plane, p, t);
     let pt = |i: usize| ring.get(i).copied().unwrap_or_default();
     let caps = cap(ring)?;

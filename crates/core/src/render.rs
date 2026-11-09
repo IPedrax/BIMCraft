@@ -1081,6 +1081,19 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
         if among { plan_elements(m, key, level, &r, false, &mut components) } else { m.elements.iter().map(|(id, e)| (*id, e)).collect() };
     let mut extent: Vec<P2> = cut_outlines(m, &elements, r.cut, &look, index).into_iter().flat_map(|(_, o)| o).collect();
     extent.extend(seen_below(m, &elements, &r, &look, index).into_iter().flat_map(|(_, o, _)| o));
+    // Industrial doors include equipment above and off the opening: Zoom to Fit must retain those dashed outlines too.
+    for (_, e) in elements.iter().filter(|(id, _)| look.shows(*id)) {
+        if let Element::Door(o) = e
+            && let (Some(t), Some(w)) = (m.opening_type(e), m.wall(o.host))
+            && t.operation.is_some_and(crate::model::Operation::industrial)
+            && o.family.is_none()
+            && m.spans(w, r.cut)
+            && m.own_base(w) + o.sill <= r.cut
+            && r.cut < m.own_base(w) + o.sill + t.height
+        {
+            extent.extend(m.opening_pieces(e).into_iter().flat_map(|p| p.outline));
+        }
+    }
     // What it shows besides what is cut and seen: of its level, in it, or of the kinds a plan looks for among all.
     let rest: Vec<(Id, &Element)> = if among {
         let lookup = m.lookup();
@@ -3502,6 +3515,36 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
         return;
     }
     if matches!(e, Element::Door(_)) {
+        if t.operation.is_some_and(crate::model::Operation::industrial) {
+            // Identical panel footprints are drawn once, cut in preference to seen or overhead equipment.
+            let mut outlines: Vec<(Vec<P2>, u8)> = Vec::new();
+            for piece in m.opening_pieces(e) {
+                let how = if piece.bottom <= cut && cut < piece.top {
+                    0
+                } else if piece.top <= cut {
+                    1
+                } else {
+                    2
+                };
+                if let Some((_, previous)) = outlines.iter_mut().find(|(ring, _)| *ring == piece.outline) {
+                    *previous = (*previous).min(how);
+                } else {
+                    outlines.push((piece.outline, how));
+                }
+            }
+            for (ring, how) in outlines {
+                if how > 0 {
+                    d.part(Part::Projection);
+                }
+                if how == 2 {
+                    d.dashed(&ring, BY_CATEGORY, INK, true);
+                } else {
+                    d.line(&ring, BY_CATEGORY, INK, true);
+                }
+                d.part(Part::Cut);
+            }
+            return;
+        }
         // Swinging to the wall's left (its exterior side), or flipped, its right; hung on the jamb
         // toward its start, or flipped, its end.
         let side = if o.flip_facing { int } else { ext };

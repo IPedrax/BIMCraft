@@ -2448,11 +2448,23 @@ pub enum Operation {
     Folding,
     /// Nothing opens.
     Fixed,
+    /// Hinged horizontal panels run up and overhead on tracks.
+    Sectional,
+    /// A curtain winds onto a coil above the opening.
+    Roller,
 }
 
 impl Operation {
-    pub const ALL: [Operation; 6] =
-        [Operation::Swing, Operation::DoubleSwing, Operation::Sliding, Operation::DoubleSliding, Operation::Folding, Operation::Fixed];
+    pub const ALL: [Operation; 8] = [
+        Operation::Swing,
+        Operation::DoubleSwing,
+        Operation::Sliding,
+        Operation::DoubleSliding,
+        Operation::Folding,
+        Operation::Fixed,
+        Operation::Sectional,
+        Operation::Roller,
+    ];
 
     /// Its name, as files and commands spell it.
     pub fn name(self) -> &'static str {
@@ -2463,6 +2475,8 @@ impl Operation {
             Operation::DoubleSliding => "double-sliding",
             Operation::Folding => "folding",
             Operation::Fixed => "fixed",
+            Operation::Sectional => "sectional",
+            Operation::Roller => "roller",
         }
     }
 
@@ -2475,11 +2489,23 @@ impl Operation {
             Operation::DoubleSliding => msg!("Double Sliding"),
             Operation::Folding => msg!("Folding"),
             Operation::Fixed => msg!("Fixed"),
+            Operation::Sectional => msg!("Sectional"),
+            Operation::Roller => msg!("Roller"),
         }
     }
 
     pub fn parse(name: &str) -> Option<Operation> {
         Operation::ALL.into_iter().find(|o| o.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    /// Project-owned industrial door types have generated panels and equipment.
+    pub fn industrial(self) -> bool {
+        matches!(self, Operation::Sectional | Operation::Roller)
+    }
+
+    /// IFC4 has no sectional-door enumeration, so the user-defined operation carries its meaning.
+    pub fn ifc_door_user(self) -> Option<&'static str> {
+        (self == Operation::Sectional).then_some("SECTIONAL")
     }
 
     /// A door's `IfcDoorTypeOperationEnum`, its leaf to the right with `right`; a door that says
@@ -2493,6 +2519,8 @@ impl Operation {
             Operation::DoubleSliding => ".DOUBLE_DOOR_SLIDING.",
             Operation::Folding => side(".FOLDING_TO_LEFT.", ".FOLDING_TO_RIGHT."),
             Operation::Fixed => ".NOTDEFINED.",
+            Operation::Sectional => ".USERDEFINED.",
+            Operation::Roller => ".ROLLINGUP.",
         }
     }
 
@@ -2511,9 +2539,19 @@ impl Operation {
             "SLIDING_TO_LEFT" | "SLIDING_TO_RIGHT" => Operation::Sliding,
             "DOUBLE_DOOR_SLIDING" => Operation::DoubleSliding,
             "FOLDING_TO_LEFT" | "FOLDING_TO_RIGHT" | "DOUBLE_DOOR_FOLDING" => Operation::Folding,
+            "ROLLINGUP" => Operation::Roller,
             _ => return None,
         };
         Some((op, right))
+    }
+
+    /// Read an IFC4 custom operation as well as the standard operation enumeration.
+    pub fn from_ifc_door_with_user(e: &str, user: Option<&str>) -> Option<(Operation, bool)> {
+        if e.trim_matches('.') == "USERDEFINED" && user.is_some_and(|u| u.trim().eq_ignore_ascii_case("SECTIONAL")) {
+            Some((Operation::Sectional, false))
+        } else {
+            Self::from_ifc_door(e)
+        }
     }
 
     /// A window's `IfcWindowTypePartitioningEnum`: two panels side by side where two leaves meet, else one.
@@ -4127,12 +4165,20 @@ impl Model {
 
     /// A door's or window's family's solids and the lines its plan draws, in the family's own axes, turned out with
     /// the opening's flips as mirror images (its hinge on the other jamb, its swing to the wall's other side);
-    /// none for one that isn't of a family, or doesn't build.
+    /// Project-owned industrial doors use the same pieces for their generated equipment; none for an ordinary project type
+    /// or a family that doesn't build.
     pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Mark>)> {
         let (Element::Door(o) | Element::Window(o)) = e else { return None };
-        let f = self.families.get(o.family.as_ref()?)?;
-        let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
-        let (pieces, marks) = (f.pieces(&values).ok()?, f.marks(&values).ok()?);
+        let (pieces, marks) = if let Some(name) = &o.family {
+            let f = self.families.get(name)?;
+            let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
+            (f.pieces(&values).ok()?, f.marks(&values).ok()?)
+        } else {
+            let t = self.opening_type(e)?;
+            let operation = t.operation.filter(|op| matches!(e, Element::Door(_)) && op.industrial())?;
+            let face = self.thickness(self.wall(o.host)?) / 2.0;
+            (crate::doors::pieces(operation, t.width, t.height, face, self.language.word("Metal")).ok()?, Vec::new())
+        };
         let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
         let mirrored = fx * fy < 0.0;
         let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];

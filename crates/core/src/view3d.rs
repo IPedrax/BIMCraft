@@ -975,9 +975,10 @@ fn solids_in_with(
             // Of a family: each form in its material's colour, shown beyond a section's line and never cut, as a
             // component's are. Else a door's leaf or a window's glass: a 50 mm panel in the middle of the wall, square to it.
             Element::Door(o) | Element::Window(o) => {
-                if o.family.is_some() {
+                let pieces = m.opening_pieces(e);
+                if o.family.is_some() || !pieces.is_empty() {
                     let fallback = if matches!(e, Element::Door(_)) { DOOR } else { GLASS };
-                    for piece in m.opening_pieces(e) {
+                    for piece in pieces {
                         let color = m.materials.get(&piece.material).map_or(fallback, |x| Rgb(x.color[0], x.color[1], x.color[2]));
                         out.push(Solid::Mesh {
                             owner: id,

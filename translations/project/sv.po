@@ -28,7 +28,7 @@ msgstr "Badkar"
 msgid "Bed"
 msgstr "Säng"
 
-#: crates/core/src/model.rs:2942
+#: crates/core/src/model.rs:2980
 msgid "Brick"
 msgstr "Tegel"
 
@@ -52,7 +52,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Takarmatur"
 
-#: crates/core/src/render.rs:3032
+#: crates/core/src/render.rs:3045
 msgid "Ceiling Plan"
 msgstr "Undertaksplan"
 
@@ -64,7 +64,7 @@ msgstr "Centrum"
 msgid "Centre Lines"
 msgstr "Centrumlinjer"
 
-#: crates/core/src/model.rs:2950
+#: crates/core/src/model.rs:2988
 msgid "Ceramic tile"
 msgstr "Keramisk platta"
 
@@ -76,11 +76,11 @@ msgstr "Stol"
 msgid "Concrete"
 msgstr "Betong"
 
-#: crates/core/src/model.rs:2944
+#: crates/core/src/model.rs:2982
 msgid "Concrete block"
 msgstr "Betongblock"
 
-#: crates/core/src/model.rs:2958
+#: crates/core/src/model.rs:2996
 msgid "Copper"
 msgstr "Koppar"
 
@@ -96,7 +96,7 @@ msgstr "Antal"
 msgid "Crosshatch"
 msgstr "Korsskraffering"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3667
 msgid "DN"
 msgstr "NED"
 
@@ -156,11 +156,11 @@ msgstr "Punkt"
 msgid "Double Door"
 msgstr "Pardörr"
 
-#: crates/core/src/model.rs:2475
+#: crates/core/src/model.rs:2489
 msgid "Double Sliding"
 msgstr "Dubbelskjut"
 
-#: crates/core/src/model.rs:2473
+#: crates/core/src/model.rs:2487
 msgid "Double Swing"
 msgstr "Dubbelslag"
 
@@ -205,7 +205,7 @@ msgstr "Tyg"
 msgid "Family"
 msgstr "Familj"
 
-#: crates/core/src/model.rs:2477
+#: crates/core/src/model.rs:2491
 msgid "Fixed"
 msgstr "Fast"
 
@@ -221,7 +221,7 @@ msgstr "Golvbrunn"
 msgid "Floor Schedule"
 msgstr "Bjälklagsförteckning"
 
-#: crates/core/src/model.rs:2476
+#: crates/core/src/model.rs:2490
 msgid "Folding"
 msgstr "Vik"
 
@@ -242,7 +242,7 @@ msgid "Gate Valve"
 msgstr "Slidventil"
 
 #: crates/core/src/family.rs:2205
-#: crates/core/src/view3d.rs:994
+#: crates/core/src/view3d.rs:995
 msgid "Glass"
 msgstr "Glas"
 
@@ -250,7 +250,7 @@ msgstr "Glas"
 msgid "Gross Floor Area"
 msgstr "Bruttoarea"
 
-#: crates/core/src/model.rs:2949
+#: crates/core/src/model.rs:2987
 msgid "Gypsum board"
 msgstr "Gipsskiva"
 
@@ -307,7 +307,7 @@ msgid "Length"
 msgstr "Längd"
 
 #: crates/core/src/commands.rs:6266
-#: crates/core/src/model.rs:3088
+#: crates/core/src/model.rs:3126
 msgid "Level"
 msgstr "Nivå"
 
@@ -348,6 +348,7 @@ msgid "Membrane"
 msgstr "Membran"
 
 #: crates/core/src/family.rs:2205
+#: crates/core/src/model.rs:4180
 msgid "Metal"
 msgstr "Metall"
 
@@ -355,7 +356,7 @@ msgstr "Metall"
 msgid "Mounting Height"
 msgstr "Montagehöjd"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2876
 msgid "NOT ENCLOSED"
 msgstr "EJ OMSLUTET"
 
@@ -423,7 +424,7 @@ msgstr "Porslin"
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/render.rs:2863
+#: crates/core/src/render.rs:2876
 msgid "REDUNDANT"
 msgstr "ÖVERFLÖDIGT"
 
@@ -443,7 +444,11 @@ msgstr "Sättstegshöjd"
 msgid "Risers"
 msgstr "Sättsteg"
 
-#: crates/core/src/model.rs:2951
+#: crates/core/src/model.rs:2493
+msgid "Roller"
+msgstr ""
+
+#: crates/core/src/model.rs:2989
 msgid "Roof tiles"
 msgstr "Takpannor"
 
@@ -467,7 +472,7 @@ msgstr "SKALA ENLIGT ANGIVELSE"
 msgid "Sand"
 msgstr "Sand"
 
-#: crates/core/src/model.rs:2947
+#: crates/core/src/model.rs:2985
 msgid "Screed"
 msgstr "Avjämningsmassa"
 
@@ -479,6 +484,10 @@ msgstr "Sitthöjd"
 #: crates/core/src/commands.rs:11532
 msgid "Section"
 msgstr "Sektion"
+
+#: crates/core/src/model.rs:2492
+msgid "Sectional"
+msgstr ""
 
 #: crates/core/src/phasing.rs:129
 msgid "Show All"
@@ -512,7 +521,7 @@ msgstr "Bröstningshöjd"
 msgid "Single Door"
 msgstr "Enkeldörr"
 
-#: crates/core/src/model.rs:2474
+#: crates/core/src/model.rs:2488
 msgid "Sliding"
 msgstr "Skjut"
 
@@ -544,7 +553,7 @@ msgstr "Helfyllning"
 msgid "South"
 msgstr "Söder"
 
-#: crates/core/src/model.rs:2472
+#: crates/core/src/model.rs:2486
 msgid "Swing"
 msgstr "Slag"
 
@@ -592,7 +601,7 @@ msgstr "Plansteg"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:3624
+#: crates/core/src/render.rs:3667
 msgid "UP"
 msgstr "UPP"
 
@@ -676,3 +685,4 @@ msgstr "bwc"
 msgid "wc"
 msgstr "wc"
 
+#: crates/core/src/model.rs:4180
