@@ -1655,9 +1655,20 @@ const OPENINGS: &[&str] = &["IFCDOOR", "IFCDOORSTANDARDCASE", "IFCWINDOW", "IFCW
 const SLABS: &[&str] = &["IFCSLAB", "IFCSLABSTANDARDCASE", "IFCSLABELEMENTEDCASE"];
 const COLUMNS: &[&str] = &["IFCCOLUMN", "IFCCOLUMNSTANDARDCASE"];
 
+/// The seed a file's own GUIDs are made from: the same text reads the same every time.
+pub(crate) fn seed(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xCBF2_9CE4_8422_2325_u64, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01B3))
+}
+
 /// Reads IFC text into a model, named after the project (or `name`).
 pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     let file = step::parse(bytes)?;
+    from_step(file, name, seed(bytes))
+}
+
+/// What `ifc` does, from a file already parsed: `seed` is the hash of the text it was parsed from,
+/// which names the elements the file leaves unnamed.
+pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, String> {
     if !file.schema.starts_with("IFC") {
         let schema = if file.schema.is_empty() { "no schema" } else { &file.schema };
         return Err(format!("this STEP file is in {schema}, not IFC"));
@@ -3462,7 +3473,6 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     let mut globals: HashMap<Id, u128> =
         origin.iter().filter_map(|(step, id)| Some((*id, crate::ifc::expand(text(e(*step)?.args.first())?)?))).collect();
     // The rest, GUIDs the file makes: the same file reads the same every time.
-    let seed = bytes.iter().fold(0xCBF2_9CE4_8422_2325_u64, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01B3));
     for id in m.elements.keys() {
         globals.entry(*id).or_insert_with(|| Guid::seeded(seed, *id).as_u128());
     }
@@ -4472,6 +4482,41 @@ ENDSEC;END-ISO-10303-21;",
             assert_eq!(roof.openings, [[P2(1000.0, 1000.0), P2(1000.0, 2000.0), P2(2500.0, 2000.0), P2(2500.0, 1000.0)]]);
             assert_eq!(only(&i.model, "shaft").len(), 1);
         }
+    }
+
+    #[test]
+    fn from_step_names_elements_as_ifc_does() {
+        // A file's text, and the file already parsed with the seed of that text, make one model:
+        // the text may be freed once it is parsed.
+        let file = holed("#35=IFCSLAB('f',$,'Slab',$,$,#6,#34,$,.FLOOR.);", 35);
+        let text = file.as_bytes();
+        let hash = seed(text);
+        let parsed = step::parse(text).unwrap();
+        let from_text = Model { uid: 0, ..ifc(text, "x").unwrap().model };
+        let from_file = Model { uid: 0, ..from_step(parsed, "x", hash).unwrap().model };
+        assert_eq!(from_file, from_text);
+        // The seed names the elements the file leaves unnamed: another seed is another model.
+        let other = Model { uid: 0, ..from_step(step::parse(text).unwrap(), "x", hash ^ 1).unwrap().model };
+        assert_ne!(other, from_text);
+    }
+
+    #[test]
+    fn open_seeds_elements_as_ifc_does() {
+        // The command path hashes, parses, drops the text and imports: the model is `ifc`'s, GUIDs and all.
+        let text = holed("#35=IFCSLAB('f',$,'Slab',$,$,#6,#34,$,.FLOOR.);", 35);
+        let dir = std::env::temp_dir().join(format!("bimcraft-test-{}-open-seeds-elements", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("holes.ifc");
+        std::fs::write(&path, &text).unwrap();
+        let mut s = crate::engine::Session::new();
+        s.execute("open", &json!({"path": path})).unwrap();
+        let guids = |m: &Model| {
+            let mut out: Vec<Guid> = m.elements.with_guids().map(|(_, g, _)| g).collect();
+            out.sort_unstable();
+            out
+        };
+        assert_eq!(guids(&s.model), guids(&ifc(text.as_bytes(), "holes").unwrap().model));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
