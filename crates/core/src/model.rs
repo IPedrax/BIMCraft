@@ -7582,10 +7582,25 @@ fn ccw(ring: &[P2]) -> Vec<P2> {
 }
 
 /// What lies inside `loops` (an outline, then holes in it) and outside `holes`: the outline as it
-/// is, or convex pieces once a hole cuts it.
+/// is, or convex pieces once a hole cuts it: the triangles round the holes (`triangulation::constrained`); or, where that
+/// refuses them or its triangles miss some of the area (a hole over or along the outline's edge), the outline cut by each
+/// hole in turn, which leaves thousands of slivers round finely curved ones.
 fn solid(loops: &[Vec<P2>], holes: &[Vec<P2>]) -> Vec<Vec<P2>> {
     let Some((outline, inner)) = loops.split_first() else { return Vec::new() };
-    inner.iter().chain(holes).fold(vec![outline.clone()], |parts, hole| walls::minus(&parts, hole))
+    let cuts: Vec<Vec<P2>> = inner.iter().chain(holes).cloned().collect();
+    if cuts.is_empty() {
+        return vec![outline.clone()];
+    }
+    if let Ok(t) = crate::triangulation::constrained(outline, &cuts, &[], &[]) {
+        let corner = |i: usize| t.points.get(i).copied().unwrap_or_default();
+        let tris: Vec<Vec<P2>> = t.triangles.iter().map(|k| k.map(corner).to_vec()).collect();
+        let area = |rings: &[Vec<P2>]| rings.iter().map(|r| geom::area(r).abs()).sum::<f64>();
+        let whole = geom::area(outline).abs() - area(&cuts);
+        if (area(&tris) - whole).abs() <= 1.0 + whole.abs() * 1e-9 {
+            return tris;
+        }
+    }
+    cuts.iter().fold(vec![outline.clone()], |parts, hole| walls::minus(&parts, hole))
 }
 
 /// A floor's shape: no more points and lines than it may have, each point finite and in range, inside the outline and in
