@@ -8,6 +8,141 @@ mod tests {
         s.execute(command, &params).unwrap_or_else(|e| panic!("{command}: {e}"))
     }
 
+    // Bounds include the actual output strokes, not guessed name lengths or private layout state.
+    fn text_ink(d: &render::Drawing, id: u64) -> Vec<((f32, f32), f32)> {
+        d.prims
+            .iter()
+            .zip(&d.owners)
+            .zip(&d.parts)
+            .filter_map(|((p, owner), part)| {
+                if *owner == Some(id) && *part == render::Part::Text {
+                    if let render::Prim::Line { pts, width, .. } = p {
+                        return Some(pts.iter().map(|p| (*p, *width)).collect::<Vec<_>>());
+                    }
+                }
+                None
+            })
+            .flatten()
+            .collect()
+    }
+
+    fn ink_box(ink: &[((f32, f32), f32)]) -> [f32; 4] {
+        assert!(!ink.is_empty(), "both label lines must remain drawn");
+        ink.iter().fold([f32::MAX, f32::MAX, f32::MIN, f32::MIN], |b, &((x, y), w)| {
+            [b[0].min(x - w / 2.0), b[1].min(y - w / 2.0), b[2].max(x + w / 2.0), b[3].max(y + w / 2.0)]
+        })
+    }
+
+    fn assert_separate(a: [f32; 4], b: [f32; 4]) {
+        assert!(
+            a[2] + 1.0 < b[0] || b[2] + 1.0 < a[0] || a[3] + 1.0 < b[1] || b[3] + 1.0 < a[1],
+            "property and room label ink must be separated: property={a:?}, room={b:?}"
+        );
+    }
+
+    fn centered_room() -> (Session, u64, u64) {
+        let mut s = Session::new();
+        run(&mut s, "wall", json!({"points":[[0,0],[18000,0],[18000,10000],[0,10000]],"closed":true}));
+        let room = run(&mut s, "room", json!({"point":[9000,5000],"name":"Synthetic Assembly"}))["id"].as_u64().unwrap();
+        let level = s.model.levels()[0].0;
+        (s, room, level)
+    }
+
+    fn centered_plot(s: &mut Session, name: &str) -> u64 {
+        run(s, "property_line", json!({"name":name,"points":[[-2000,-2000],[20000,-2000],[20000,12000],[-2000,12000]]}))["id"]
+            .as_u64()
+            .unwrap()
+    }
+
+    #[test]
+    fn property_and_centered_room_labels_remain_readable_at_different_scales_and_name_widths() {
+        for (scale, name) in [(0.015, "Plot"), (0.03, "Synthetic boundary"), (0.05, "Long synthetic property boundary gyp 123")] {
+            let (mut s, room, level) = centered_room();
+            let view = render::View { cx: 9000.0, cy: 5000.0, scale, width: 1600, height: 1000 };
+            let original_room = text_ink(&render::draw(&s.model, level, view), room);
+            let plot = centered_plot(&mut s, name);
+            let native = s.model.to_json().unwrap();
+            let elements = run(&mut s, "elements", json!({}));
+            let drawing = render::draw(&s.model, level, view);
+            assert_eq!(text_ink(&drawing, room), original_room, "adding a plot must not move the room tag");
+            assert_separate(ink_box(&text_ink(&drawing, plot)), ink_box(&original_room));
+            assert_eq!(s.model.to_json().unwrap(), native, "drawing cannot change model geometry");
+            assert_eq!(run(&mut s, "elements", json!({})), elements);
+            let (reopened, left) = Model::read(&native).unwrap();
+            assert!(left.is_empty());
+            assert_eq!(reopened.elements, s.model.elements);
+            assert_eq!(render::png(&render::draw(&reopened, level, view)).unwrap(), render::png(&drawing).unwrap());
+        }
+    }
+
+    #[test]
+    fn printed_sheet_preserves_room_pixels_when_a_centered_property_is_added_and_reopened() {
+        use bimcraft_core::sheet;
+        for scale in [100, 200] {
+            let (mut s, room, level) = centered_room();
+            let sh =
+                run(&mut s, "sheet", json!({"number":"S-01","name":"Synthetic label coexistence","size":"A3"}))["id"].as_u64().unwrap();
+            let vp = run(&mut s, "place", json!({"sheet":"S-01","view":"Level 1","scale":scale,"at":[210,165]}))["id"].as_u64().unwrap();
+            let (frame, offset) = sheet::frame(&s.model, vp).unwrap();
+            let room_anchor_x = offset.0 + frame.px(bimcraft_core::geom::P2(9000.0, 5000.0)).0;
+            let original_room = text_ink(&render::draw_at(&s.model, level, frame, 1.0), room);
+            let b = ink_box(&original_room);
+            let before = tiny_skia::Pixmap::decode_png(&render::png(&sheet::draw(&s.model, sh).unwrap()).unwrap()).unwrap();
+            let plot = centered_plot(&mut s, "Synthetic boundary");
+            let path = tempfile::tempdir().unwrap();
+            run(&mut s, "save", json!({"path":path.path().join("coexisting.bimcraft")}));
+            let mut reopened = Session::new();
+            run(&mut reopened, "open", json!({"path":path.path().join("coexisting.bimcraft")}));
+            assert_eq!(reopened.model.elements, s.model.elements);
+            let (frame, new_offset) = sheet::frame(&reopened.model, vp).unwrap();
+            // The plot expands the viewport framing, but the sheet center and room anchor stay fixed.
+            let after = tiny_skia::Pixmap::decode_png(&render::png(&sheet::draw(&reopened.model, sh).unwrap()).unwrap()).unwrap();
+            let room_box = [b[0] + offset.0, b[1] + offset.1, b[2] + offset.0, b[3] + offset.1];
+            for y in room_box[1].floor() as u32..=room_box[3].ceil() as u32 {
+                for x in room_box[0].floor() as u32..=room_box[2].ceil() as u32 {
+                    assert_eq!(
+                        before.pixel(x, y),
+                        after.pixel(x, y),
+                        "printed room name/number/area pixels changed at {x},{y}, scale {scale}"
+                    );
+                }
+            }
+            let inner = render::draw_at(&reopened.model, level, frame, 1.0);
+            assert_separate(ink_box(&text_ink(&inner, plot)), ink_box(&text_ink(&inner, room)));
+            assert!((new_offset.0 + frame.px(bimcraft_core::geom::P2(9000.0, 5000.0)).0 - room_anchor_x).abs() < 1.0);
+            run(&mut reopened, "render", json!({"view":"S-01","path":path.path().join("sheet.pdf")}));
+            assert!(std::fs::read(path.path().join("sheet.pdf")).unwrap().starts_with(b"%PDF-"));
+        }
+    }
+
+    #[test]
+    fn property_labels_clear_multiple_room_tags_but_ignore_hidden_other_level_and_distant_tags() {
+        let mut s = Session::new();
+        let plot = centered_plot(&mut s, "Synthetic boundary");
+        let level = s.model.levels()[0].0;
+        let view = render::View { cx: 9000.0, cy: 5000.0, scale: 0.03, width: 1200, height: 800 };
+        let alone = text_ink(&render::draw(&s.model, level, view), plot);
+        run(&mut s, "wall", json!({"points":[[0,0],[18000,0],[18000,10000],[0,10000]],"closed":true}));
+        run(&mut s, "room_separator", json!({"points":[[0,6000],[18000,6000]]}));
+        let lower = run(&mut s, "room", json!({"point":[9000,5000],"name":"Assembly"}))["id"].as_u64().unwrap();
+        let upper = run(&mut s, "room", json!({"point":[9300,6500],"name":"Upper synthetic room with long name"}))["id"].as_u64().unwrap();
+        let drawing = render::draw(&s.model, level, view);
+        let property = ink_box(&text_ink(&drawing, plot));
+        for room in [lower, upper] {
+            assert_separate(property, ink_box(&text_ink(&drawing, room)));
+        }
+        run(&mut s, "graphics", json!({"view":level,"hide":["room"]}));
+        assert_eq!(text_ink(&render::draw(&s.model, level, view), plot), alone, "hidden tags must not displace the property");
+        run(&mut s, "graphics", json!({"view":level,"show":["room"]}));
+        run(&mut s, "modify", json!({"id":lower,"point":[15000,3000]}));
+        run(&mut s, "modify", json!({"id":upper,"level":"Level 2","top_level":null,"limit_offset":2500}));
+        assert_eq!(
+            text_ink(&render::draw(&s.model, level, view), plot),
+            alone,
+            "distant and other-level tags must not displace the property"
+        );
+    }
+
     #[test]
     fn property_boundary_command_draw_schedule_native_and_ifc_round_trip() {
         let mut s = Session::new();
