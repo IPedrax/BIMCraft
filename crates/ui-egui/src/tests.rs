@@ -934,6 +934,8 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
 #[test]
 fn manage_tab_opens_keyboard_shortcuts_dialog() {
     let mut h = app(BOX);
+    // Wide enough that the Manage tab shows every panel unfolded.
+    h.set_size(vec2(1800.0, 900.0));
     press(&mut h, "Manage");
     press(&mut h, "Shortcuts");
     assert!(h.state().show_shortcuts);
