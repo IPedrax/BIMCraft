@@ -1881,7 +1881,8 @@ pub static ALL: &[Command] = &[
          connectors that meet nothing, as Revit's Show Disconnects marks) and `warnings`, which never refuse the model: \
          `systems_meet` (pipes of two systems in one network), `domains_meet` (connectors of two domains, waste and cold water), \
          `joined_mid_run` (a pipe met along its length, with no fitting) and `smaller_downstream` (in a network with a waste \
-         connector, a pipe leaving a node downhill narrower than one coming down to it). It changes nothing",
+         connector, a pipe leaving a node downhill narrower than one coming down to it). It has no shortcut: Revit has no tool for it. \
+         It changes nothing",
         network,
     ),
     other(
