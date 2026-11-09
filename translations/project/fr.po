@@ -1,14 +1,18 @@
 # BIMCraft project translations.
 # SPDX-License-Identifier: MIT OR Apache-2.0
 msgid ""
-msgstr "Project-Id-Version: BIMCraft\nLanguage: fr\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
+msgstr ""
+"Project-Id-Version: BIMCraft\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
 
 #: crates/core/src/fixtures.rs:397
 msgid "Air Terminal"
 msgstr "Bouche de soufflage"
 
-#: crates/core/src/schedule.rs:194
-#: crates/core/src/schedule.rs:230
+#: crates/core/src/schedule.rs:194 crates/core/src/schedule.rs:230
 msgid "Area"
 msgstr "Surface"
 
@@ -188,8 +192,7 @@ msgstr "Éclairage électrique"
 msgid "Electrical Power"
 msgstr "Alimentation électrique"
 
-#: crates/core/src/commands.rs:9361
-#: crates/core/src/commands.rs:11394
+#: crates/core/src/commands.rs:9361 crates/core/src/commands.rs:11394
 msgid "Elevation"
 msgstr "Élévation"
 
@@ -241,8 +244,7 @@ msgstr "Largeur du cadre"
 msgid "Gate Valve"
 msgstr "Vanne à opercule"
 
-#: crates/core/src/family.rs:2205
-#: crates/core/src/view3d.rs:994
+#: crates/core/src/family.rs:2205 crates/core/src/view3d.rs:994
 msgid "Glass"
 msgstr "Verre"
 
@@ -306,8 +308,7 @@ msgstr "Largeur du pied"
 msgid "Length"
 msgstr "Longueur"
 
-#: crates/core/src/commands.rs:6127
-#: crates/core/src/model.rs:3088
+#: crates/core/src/commands.rs:6127 crates/core/src/model.rs:3088
 msgid "Level"
 msgstr "Niveau"
 
@@ -475,8 +476,7 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Hauteur assise"
 
-#: crates/core/src/commands.rs:9338
-#: crates/core/src/commands.rs:11393
+#: crates/core/src/commands.rs:9338 crates/core/src/commands.rs:11393
 msgid "Section"
 msgstr "Coupe"
 
@@ -675,4 +675,3 @@ msgstr "sdb wc"
 #: crates/core/src/loads.rs:78
 msgid "wc"
 msgstr "wc"
-

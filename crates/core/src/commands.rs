@@ -1928,13 +1928,18 @@ pub static ALL: &[Command] = &[
     other(
         "demand",
         "Demand and Service Category",
-        "{utility: CPFL|ENEL, building?: residential|other, system?: 127/220|220/380, area?, outlets?, lighting_points?, \
+        "{utility: CPFL|ENEL|CELESC, building?: residential|other, system?: 127/220|220/380, area?, outlets?, lighting_points?, \
          lighting_outlets?: {use, kw, pf?}, heaters?, boilers?, appliances?, stoves?: [{w, count?}], air_conditioners?: [{btu | va and w, \
          count?}], air_use?: residential|commercial, motors?: [{cv, phases: 1|3 | kva and kw, count?}], special?: [{kind: arc_weld|\
          resistance_weld|xray, kw, count?}], hydromassage?: [{w, count?}]} the demand D (kVA) of an installation and the category of \
          service it asks of the `utility`, by that utility's own standard, since NBR 5410 gives no demand factors. `utility` is \
          required: CPFL (GED 13 version 2.24, 18/09/2020: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (ET 1569 version 01, \
-         29/01/2024); any other is refused until its tables are added. ENEL does not work out a demand, for its specification leaves it \
+         29/01/2024) or CELESC (N-321.0001, revision of December 2025); any other is refused until its tables are added. \
+         CELESC, too, leaves the demand to the designer: `{utility: CELESC, network?: 220/380|220/440, installed_kw, phases?: \
+         1|2|3, demand_kva?}` gives the category of Tabela 01 by the installed load (A single-phase 220 V, M single-phase \
+         220/440 V, B two-phase, C three-phase), its breaker, phases and wires, the connection and entry branches and the \
+         earthing conductor; `phases` picks the supply an appliance asks for whatever the load. ENEL does not work out a \
+         demand, for its specification leaves it \
          to the designer (item 7.7.2): `{utility: ENEL, network: aerial|aerial_120_240|underground|underground_submersible, installed_kw, \
          phases?: 1|2|3, demand_kva?}` frames the supply by the installed load in kW: Anexo A (aerial, 127/220 V), C (aerial, 120/240 V), \
          D (underground, surface, 127/220 V) or E (underground, submersible): the category, the power it makes available (E prints none and \
@@ -5112,6 +5117,78 @@ fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
     }))
 }
 
+/// `demand` for Celesc: N-321.0001 classes a unit by its installed load (items 5.3.2.1 to 5.3.2.4, Tabela 01) and leaves a demand to
+/// the designer where a three-phase unit needs one (Tabela 01, note 1), so it frames the supply and carries the designer's demand.
+fn demand_celesc(p: &Value, utility: &str, source: &str) -> R {
+    use crate::demand::{self as d, CELESC_NETWORKS};
+    let c = "demand";
+    const KEYS: &[&str] = &["utility", "network", "installed_kw", "phases", "demand_kva"];
+    if let Some(k) = p.as_object().and_then(|o| o.keys().find(|k| !KEYS.contains(&k.as_str()))) {
+        return Err(bad(c, format!("`{k}` isn't one of CELESC's parameters: {}", KEYS.join(", "))));
+    }
+    let network = choice(c, p, "network", CELESC_NETWORKS, "220/380")?;
+    let phases = match p.get("phases").filter(|v| !v.is_null()) {
+        None => None,
+        Some(v) => match v.as_u64() {
+            Some(n @ 1..=3) => Some(n as u8),
+            _ => return Err(bad(c, format!("`phases` is 1, 2 or 3, got {v}"))),
+        },
+    };
+    if phases == Some(3) && network == "220/440" {
+        return Err(bad(c, "a 220/440 V network serves single-phase units only (Tabela 01: A and M); take `network: 220/380`"));
+    }
+    if absent(p.get("installed_kw")) {
+        return Err(bad(c, "`installed_kw` (the installed load in kW) is required"));
+    }
+    let kw = within(c, p, "installed_kw", 0.0, 0.0, 1.0e6)?;
+    let demand_kva = match p.get("demand_kva").filter(|v| !v.is_null()) {
+        None => None,
+        Some(_) => Some(within(c, p, "demand_kva", 0.0, 0.0, 1.0e6)?),
+    };
+    let row = d::celesc_pick(network, kw, phases);
+    let (category, note) = match row {
+        Some(r) => {
+            let cat = json!({
+                "name": r.name,
+                "installed_kw": {"over": r.lo, "up_to": r.hi},
+                "demand_kva": r.demand.map(|(lo, hi)| json!({"over": lo, "up_to": hi})),
+                "breaker_a": r.breaker,
+                "phases": r.phases,
+                "wires": r.wires,
+                "connection_mm2": {"copper": r.connection.0, "aluminium": r.connection.1},
+                "entry_mm2": r.entry,
+                "earthing_mm2": {"copper": r.earth.0, "copper_clad_steel": r.earth.1},
+            });
+            let note = match (r.demand, demand_kva) {
+                (Some((_, hi)), Some(dk)) if dk > hi => {
+                    json!(format!("the designer's demand, {dk} kVA, is above the {hi} kVA printed beside {}", r.name))
+                }
+                _ if r.breaker >= 125.0 => json!("a 125 A three-phase supply asks the designer for a demand (Tabela 01, note 1)"),
+                _ => Value::Null,
+            };
+            (cat, note)
+        }
+        None if network == "220/440" => (Value::Null, json!("above 50 kW a 220/440 V unit is past Tabela 01")),
+        None => (
+            Value::Null,
+            json!("above 75 kW the unit may be served in low voltage only as item 5.2.2.8 allows, with the designer's demand study"),
+        ),
+    };
+    Ok(json!({
+        "utility": utility,
+        "source": source,
+        "table": "01",
+        "network": network,
+        "installed_kw": kw,
+        "phases": phases,
+        "category": category,
+        "category_note": note,
+        "demand_kva": demand_kva,
+        "demand_note": "N-321.0001 gives no demand formula for a unit: Tabela 01 goes by the installed load, and a demand where one is needed is the designer's, carried as given",
+        "not_covered": "Tabela 01's conduits, galvanized steel mast and load branch, Tabela 02 (220 V without a neutral), and the probable demand of a building of several units (N-321.0003)",
+    }))
+}
+
 fn demand(_: &mut Session, p: &Value) -> R {
     use crate::demand::{self as d, Air, Load, Motor, OtherUse, SPECIAL_KINDS, Special, SpecialKind, System, USES};
     let c = "demand";
@@ -5159,10 +5236,15 @@ fn demand(_: &mut Session, p: &Value) -> R {
     if utility == "ENEL" {
         return demand_enel(p, &utility, source);
     }
+    if utility == "CELESC" {
+        return demand_celesc(p, &utility, source);
+    }
     if let Some(k) = ["network", "installed_kw", "demand_current_a", "phases", "demand_kva"].iter().find(|k| p.get(**k).is_some()) {
         return Err(bad(
             c,
-            format!("`{k}` is for utility ENEL: {utility}'s standard takes the loads of its examples, not a category by installed load"),
+            format!(
+                "`{k}` is for utilities ENEL and CELESC: {utility}'s standard takes the loads of its examples, not a category by installed load"
+            ),
         ));
     }
     let system = System::parse(choice(c, p, "system", &["127/220", "220/380"], "127/220")?).unwrap_or(System::S127_220);
