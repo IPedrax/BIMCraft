@@ -164,6 +164,30 @@ other_files(
         save,
         Files::Write,
     ),
+    other_files(
+        "export",
+        "Export",
+        "{format, view?, views?, path?, folder?, name?, folders?: flat|by_format, combine?, overwrite?: false, page?, quality?} \
+         writes views, sheets, schedules or the project out as `format` (an id or an extension from `export_formats`: pdf, svg, \
+         png, ifc4, glb, csv, xlsx…). `view` (or a list, `views`) is an element's id or GUID, a view's name or a sheet's number; \
+         none or `project` is the whole project (model formats only). `path` writes one file there (several views to a PDF go \
+         in it as pages); or `folder` takes a file each, named by the `name` template (`{SheetNumber} - {SheetName}`, `{ViewName}`, \
+         `{ProjectName}`, `{ViewType}`, `{Level}`, `{Scale}`, `{Format}`, `{Date}`, `{Time}`; `/` makes folders), numbered rather \
+         than written over unless `overwrite`; `combine` names the one file each format that holds pages puts them all in. \
+         `page`: {paper?: A3|ARCH D|Letter…, size?: [w,h] mm, orientation?: auto|landscape|portrait, margin?: mm, scale?: \
+         original|fit|{custom: n}, anchor?: centre|top_left…, colour?: colour|grey|black, hairlines?, dpi?: 150, pages?: [first, \
+         last]}. Returns `written` ({path, format, of}) and `failed` ({of, format, error})",
+        export,
+        Files::Write,
+    ),
+    other(
+        "export_formats",
+        "Export Formats",
+        "{} the formats `export` writes: each one's `id`, `label`, `extension`, `family`, `status` (stable, experimental or \
+         planned: listed, not written yet), what it `takes` (drawing, table, model), whether it `combines` sources in one \
+         file and lays drawings on pages (`paged`); and the `tokens` a file name template may hold",
+        export_formats,
+    ),
     other("undo", "Undo", "{count?} takes back the last `count` steps (1 by default)", undo),
     other("redo", "Redo", "{count?} does again the last `count` steps undone (1 by default)", redo),
     edit(
@@ -3344,6 +3368,113 @@ fn save(s: &mut Session, p: &Value) -> R {
     crate::autosave::atomic_write(&path, &text).map_err(|e| bad(c, e))?;
     s.path = Some(path.clone());
     Ok(json!({"path": path, "format": "bimcraft"}))
+}
+
+/// What `export` is asked to export: an element by id or GUID, a view by name, a sheet by number; none or `project`, the
+/// project.
+fn export_source(c: &str, m: &Model, v: &Value) -> Result<Option<Id>, String> {
+    match v {
+        Value::Null => Ok(None),
+        Value::String(s) if s.eq_ignore_ascii_case("project") => Ok(None),
+        Value::String(s) if Guid::parse(s).is_none() => m
+            .view_named(s)
+            .or_else(|| m.elements.iter().find_map(|(id, e)| matches!(e, Element::Sheet(sh) if sh.number == *s).then_some(*id)))
+            .map(Some)
+            .ok_or_else(|| bad(c, format!("there's no view or sheet `{s}`"))),
+        v => {
+            let g: Guid = serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`{v}` isn't a view, a sheet or `project`")))?;
+            m.elements.id(g).map(Some).ok_or_else(|| bad(c, format!("there's no element {v}")))
+        }
+    }
+}
+
+fn export(s: &mut Session, p: &Value) -> R {
+    let c = "export";
+    let m = &s.model;
+    let format = string(c, p, "format")?.ok_or_else(|| bad(c, "`format` is required: an id or an extension from `export_formats`"))?;
+    let format = s.exports.find(&format).map_err(|e| bad(c, e))?.id().to_string();
+    let mut sources = Vec::new();
+    match (p.get("view"), p.get("views")) {
+        (Some(v), Some(vs)) if !v.is_null() && !vs.is_null() => return Err(bad(c, "give `view` or `views`, not both")),
+        (_, Some(Value::Array(vs))) => {
+            if vs.is_empty() || vs.len() > 10_000 {
+                return Err(bad(c, "`views` is a list of 1 to 10000 views and sheets"));
+            }
+            for v in vs {
+                sources.push(export_source(c, m, v)?);
+            }
+        }
+        (_, Some(v)) if !v.is_null() => return Err(bad(c, format!("`views` is a list, not {v}"))),
+        (v, _) => sources.push(export_source(c, m, v.unwrap_or(&Value::Null))?),
+    }
+    let read = |key: &str| p.get(key).filter(|v| !v.is_null()).cloned();
+    let options = crate::export::Options {
+        page: match read("page") {
+            Some(v) => serde_json::from_value(v).map_err(|e| bad(c, format!("`page`: {e}")))?,
+            None => Default::default(),
+        },
+        quality: match num(c, p, "quality")? {
+            Some(q) if (1.0..=100.0).contains(&q) => Some(q as u8),
+            Some(q) => return Err(bad(c, format!("`quality` is 1 to 100, not {q}"))),
+            None => None,
+        },
+    };
+    let folders = match read("folders") {
+        Some(v) => serde_json::from_value(v).map_err(|e| bad(c, format!("`folders`: {e}")))?,
+        None => Default::default(),
+    };
+    let items: Vec<crate::export::Item> =
+        sources.iter().map(|id| crate::export::Item { view: id.map(|id| m.guid(id)), format: format.clone() }).collect();
+    // One file at `path`: its folder and its name as they are, a PDF's several sources its pages.
+    let job = match (string(c, p, "path")?, string(c, p, "folder")?) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `path` (one file) or `folder` (a file each), not both")),
+        (Some(path), None) => {
+            let path = PathBuf::from(path);
+            let stem = path.file_stem().map(|s| s.to_string_lossy().replace('{', "{{").replace('}', "}}")).unwrap_or_default();
+            if stem.is_empty() {
+                return Err(bad(c, "`path` names no file"));
+            }
+            let folder = path.parent().filter(|f| !f.as_os_str().is_empty()).map_or_else(|| PathBuf::from("."), PathBuf::from);
+            crate::export::Job {
+                items,
+                folder,
+                name: Some(stem.clone()),
+                combine: Some(stem),
+                overwrite: true,
+                options,
+                ..Default::default()
+            }
+        }
+        (None, Some(folder)) => crate::export::Job {
+            items,
+            folder: PathBuf::from(folder),
+            name: string(c, p, "name")?,
+            folders,
+            combine: string(c, p, "combine")?,
+            overwrite: flag(c, p, "overwrite")?,
+            options,
+        },
+        (None, None) => return Err(bad(c, "`path` (one file) or `folder` (a file each) is required")),
+    };
+    let report = crate::export::run(&s.model, &s.exports, &job, &crate::export::Ctx::quiet()).map_err(|e| bad(c, e))?;
+    if report.written.is_empty() {
+        let why: Vec<String> = report.failed.iter().map(|f| format!("{}: {}", f.of, f.error)).collect();
+        return Err(bad(c, format!("nothing was written; {}", why.join("; "))));
+    }
+    Ok(json!(report))
+}
+
+fn export_formats(s: &mut Session, _: &Value) -> R {
+    let formats: Vec<Value> = s
+        .exports
+        .all()
+        .iter()
+        .map(|f| {
+            json!({"id": f.id(), "label": f.label(), "extension": f.extension(), "family": f.family(), "status": f.status(),
+                "takes": f.takes(), "combines": f.combines(), "paged": f.paged()})
+        })
+        .collect();
+    Ok(json!({"formats": formats, "tokens": crate::export::ModelTokens::NAMES}))
 }
 
 fn autosave(s: &mut Session, p: &Value) -> R {

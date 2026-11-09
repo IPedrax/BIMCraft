@@ -178,7 +178,7 @@ fn fold(g: Guid) -> u64 {
 }
 
 /// UTC date and time of a Unix time, ISO 8601.
-fn utc(secs: u64) -> String {
+pub(crate) fn utc(secs: u64) -> String {
     // Days to civil date: Howard Hinnant's algorithm.
     let z = (secs / 86_400) as i64 + 719_468;
     let (era, doe) = (z.div_euclid(146_097), z.rem_euclid(146_097));
