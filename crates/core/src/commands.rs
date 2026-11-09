@@ -859,8 +859,8 @@ pub static ALL: &[Command] = &[
         "Sheet",
         &[],
         "{number?, name?, size?: ISO A0–A4|ISO B1–B4|ARCH A–E|ARCH E1–E3|ANSI A–E|SUPER B|width x height in mm} a sheet \
-         of paper (A3 by default), with a title block; named sizes landscape, custom ones as given, 100 to 1219.2 mm a side; \
-         numbers run A101, A102…",
+         of paper (A3 by default), with a title block; named sizes landscape, custom ones as given, 100 to 1219.2 mm a side \
+         and wide enough for the standard's title block and margins (210 mm, 211.75 under ANSI); numbers run A101, A102…",
         new_sheet,
     ),
     edit(

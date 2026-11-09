@@ -14,8 +14,9 @@ fn custom_paper_keeps_its_order_and_exact_media_box_after_reopening() {
         ("482.6x330.2", "1368.000 936.000"),
         ("482.6 X 330.2", "1368.000 936.000"),
         ("482.6 × 330.2", "1368.000 936.000"),
-        ("100x100", "283.465 283.465"),
-        ("100x1219.2", "283.465 3456.000"),
+        // As narrow as ISO's title block and its margins let paper be, and as low as custom paper goes.
+        ("210x100", "595.276 283.465"),
+        ("210x1219.2", "595.276 3456.000"),
         ("1219.2x100", "3456.000 283.465"),
         ("1219.2x1219.2", "3456.000 3456.000"),
     ] {
@@ -83,7 +84,7 @@ fn invalid_custom_paper_refuses_creation_and_edits_without_changing_the_model() 
 #[test]
 fn the_largest_named_and_custom_pages_render_within_the_existing_image_side_limit() {
     let dir = tempfile::tempdir().unwrap();
-    for (size, width, height) in [("A0", 5945, 4205), ("ARCH E", 6096, 4572), ("1219.2x1219.2", 6096, 6096), ("100x100", 500, 500)] {
+    for (size, width, height) in [("A0", 5945, 4205), ("ARCH E", 6096, 4572), ("1219.2x1219.2", 6096, 6096), ("210x100", 1050, 500)] {
         let mut session = Session::new();
         session.execute("sheet", &json!({"size": size})).unwrap();
         let path = dir.path().join("paper.png");
@@ -94,4 +95,42 @@ fn the_largest_named_and_custom_pages_render_within_the_existing_image_side_limi
         assert_eq!(actual, (width, height), "{size}");
         assert!(actual.0 <= 8192 && actual.1 <= 8192, "{size}");
     }
+}
+
+#[test]
+fn paper_narrower_than_the_title_block_is_refused_saying_how_wide_it_must_be() {
+    // Each standard's title block and the margins either side of it: the least width a sheet's paper may have.
+    for (standard, least, short) in
+        [("iso", "210", "209.9"), ("eu", "210", "209.9"), ("jis", "210", "209.9"), ("nbr", "210", "209.9"), ("ansi", "211.75", "211.7")]
+    {
+        let mut session = Session::new();
+        session.execute("standard", &json!({"set": standard})).unwrap();
+        let id = session.execute("sheet", &json!({})).unwrap()["id"].as_u64().unwrap();
+        let before = session.model.to_json().unwrap();
+        for size in ["100x100", "150x300", &format!("{short}x297")] {
+            let error = session.execute("sheet", &json!({"size": size})).unwrap_err();
+            assert!(error.contains("title block") && error.contains(&format!("at least {least} mm wide")), "{standard} {size}: {error}");
+            assert_eq!(session.model.to_json().unwrap(), before, "create {standard} {size}");
+            let error = session.execute("modify", &json!({"id": id, "size": size})).unwrap_err();
+            assert!(error.contains(&format!("at least {least} mm wide")), "{standard} {size}: {error}");
+            assert_eq!(session.model.to_json().unwrap(), before, "edit {standard} {size}");
+        }
+        // Exactly as wide as the title block and its margins, and as low as custom paper goes.
+        session.execute("sheet", &json!({"size": format!("{least}x100")})).unwrap();
+    }
+}
+
+#[test]
+fn a_standard_whose_title_block_no_longer_fits_a_sheet_is_refused_naming_the_sheet() {
+    let mut session = Session::new();
+    session.execute("standard", &json!({"set": "iso"})).unwrap();
+    let id = session.execute("sheet", &json!({"size": "210x297", "number": "S1"})).unwrap()["id"].as_u64().unwrap();
+    let before = session.model.to_json().unwrap();
+    // ANSI's margins are 19.05 and 12.7 mm either side of a 180 mm title block.
+    let error = session.execute("standard", &json!({"set": "ansi"})).unwrap_err();
+    assert!(error.contains("S1") && error.contains("at least 211.75 mm wide"), "{error}");
+    assert_eq!(session.model.to_json().unwrap(), before);
+    assert_eq!(session.execute("standard", &json!({})).unwrap()["standard"], "iso");
+    session.execute("modify", &json!({"id": id, "size": "ANSI A"})).unwrap();
+    session.execute("standard", &json!({"set": "ansi"})).unwrap();
 }

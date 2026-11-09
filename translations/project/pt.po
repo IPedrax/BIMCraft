@@ -28,7 +28,7 @@ msgstr "Banheira"
 msgid "Bed"
 msgstr "Cama"
 
-#: crates/core/src/model.rs:2962
+#: crates/core/src/model.rs:2963
 msgid "Brick"
 msgstr "Tijolo"
 
@@ -64,7 +64,7 @@ msgstr "Eixo"
 msgid "Centre Lines"
 msgstr "Linhas de eixo"
 
-#: crates/core/src/model.rs:2970
+#: crates/core/src/model.rs:2971
 msgid "Ceramic tile"
 msgstr "Cerâmica"
 
@@ -76,11 +76,11 @@ msgstr "Cadeira"
 msgid "Concrete"
 msgstr "Concreto"
 
-#: crates/core/src/model.rs:2964
+#: crates/core/src/model.rs:2965
 msgid "Concrete block"
 msgstr "Bloco de concreto"
 
-#: crates/core/src/model.rs:2978
+#: crates/core/src/model.rs:2979
 msgid "Copper"
 msgstr "Cobre"
 
@@ -156,11 +156,11 @@ msgstr "Pontilhado"
 msgid "Double Door"
 msgstr "Porta dupla"
 
-#: crates/core/src/model.rs:2495
+#: crates/core/src/model.rs:2496
 msgid "Double Sliding"
 msgstr "De correr, duas folhas"
 
-#: crates/core/src/model.rs:2493
+#: crates/core/src/model.rs:2494
 msgid "Double Swing"
 msgstr "De abrir, duas folhas"
 
@@ -205,7 +205,7 @@ msgstr "Tecido"
 msgid "Family"
 msgstr "Família"
 
-#: crates/core/src/model.rs:2497
+#: crates/core/src/model.rs:2498
 msgid "Fixed"
 msgstr "Fixa"
 
@@ -221,7 +221,7 @@ msgstr "Ralo"
 msgid "Floor Schedule"
 msgstr "Tabela de pisos"
 
-#: crates/core/src/model.rs:2496
+#: crates/core/src/model.rs:2497
 msgid "Folding"
 msgstr "Camarão"
 
@@ -250,7 +250,7 @@ msgstr "Vidro"
 msgid "Gross Floor Area"
 msgstr "Área bruta de piso"
 
-#: crates/core/src/model.rs:2969
+#: crates/core/src/model.rs:2970
 msgid "Gypsum board"
 msgstr "Placa de gesso"
 
@@ -307,7 +307,7 @@ msgid "Length"
 msgstr "Comprimento"
 
 #: crates/core/src/commands.rs:6121
-#: crates/core/src/model.rs:3108
+#: crates/core/src/model.rs:3109
 msgid "Level"
 msgstr "Nível"
 
@@ -443,7 +443,7 @@ msgstr "Altura do espelho"
 msgid "Risers"
 msgstr "Espelhos"
 
-#: crates/core/src/model.rs:2971
+#: crates/core/src/model.rs:2972
 msgid "Roof tiles"
 msgstr "Telhas"
 
@@ -467,7 +467,7 @@ msgstr "ESCALA CONFORME INDICADO"
 msgid "Sand"
 msgstr "Areia"
 
-#: crates/core/src/model.rs:2967
+#: crates/core/src/model.rs:2968
 msgid "Screed"
 msgstr "Contrapiso"
 
@@ -512,7 +512,7 @@ msgstr "Peitoril"
 msgid "Single Door"
 msgstr "Porta simples"
 
-#: crates/core/src/model.rs:2494
+#: crates/core/src/model.rs:2495
 msgid "Sliding"
 msgstr "De correr"
 
@@ -544,7 +544,7 @@ msgstr "Preenchimento sólido"
 msgid "South"
 msgstr "Sul"
 
-#: crates/core/src/model.rs:2492
+#: crates/core/src/model.rs:2493
 msgid "Swing"
 msgstr "De abrir"
 

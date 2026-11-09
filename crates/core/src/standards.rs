@@ -79,6 +79,13 @@ pub struct SheetMargins {
     pub folding_marks: bool,
 }
 
+impl SheetMargins {
+    /// The least paper, width and height in mm, that holds the title block inside these margins.
+    pub fn least_paper(&self) -> (f64, f64) {
+        (self.left + self.title_width + self.right, self.bottom + self.title_height + self.top)
+    }
+}
+
 /// Dimension terminator style.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Terminator {

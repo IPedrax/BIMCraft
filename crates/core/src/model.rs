@@ -1902,7 +1902,8 @@ pub struct Sheet {
     pub size: String,
 }
 
-/// Minimum custom paper side in mm: keeps the border and title-block frame on the paper.
+/// Minimum custom paper side in mm. `Model::check` also asks a sheet's paper to hold its standard's title block inside its
+/// margins (`SheetMargins::least_paper`): 210 mm wide, 211.75 under ANSI.
 pub const MIN_PAPER: f64 = 100.0;
 /// Maximum custom paper side in mm: the longest named side (ARCH E, 48 in).
 pub const MAX_PAPER: f64 = 1219.2;
@@ -7160,10 +7161,34 @@ impl Model {
                 if !sheet_numbers.insert(sh.number.as_str()) {
                     return Err(format!("{who}: another sheet is already numbered `{}`", sh.number));
                 }
-                if paper(&sh.size).is_none() {
+                let Some(P2(width, height)) = paper(&sh.size) else {
                     return Err(format!(
                         "{who}: size `{}` isn't a paper size: ISO A0–A4 or B1–B4, ARCH A–E or E1–E3, ANSI A–E, SUPER B, or width x height in mm, {MIN_PAPER} to {MAX_PAPER} a side",
                         sh.size
+                    ));
+                };
+                // The title block is drawn its standard's size in the bottom right corner, inside the border: paper
+                // smaller than that would squeeze it until the sheet's name runs over its number.
+                let std = self.standard();
+                let m = std.sheet_margins(&sh.size);
+                let (least_width, least_height) = m.least_paper();
+                if width < least_width - 1e-6 || height < least_height - 1e-6 {
+                    let mm = |x: f64| (x * 100.0).round() / 100.0;
+                    return Err(format!(
+                        "{who} `{}`: paper {} x {} mm is too small for {}'s title block, {} x {} mm inside margins of {} mm left, {} mm \
+                         right, {} mm top and {} mm bottom: make it at least {} mm wide and {} mm tall, or pick a named size",
+                        sh.number,
+                        mm(width),
+                        mm(height),
+                        std.short_name(),
+                        mm(m.title_width),
+                        mm(m.title_height),
+                        mm(m.left),
+                        mm(m.right),
+                        mm(m.top),
+                        mm(m.bottom),
+                        mm(least_width),
+                        mm(least_height),
                     ));
                 }
             }

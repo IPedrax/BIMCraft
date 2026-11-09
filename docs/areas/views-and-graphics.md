@@ -60,12 +60,16 @@ are case-insensitive and ignore surrounding spaces; ISO aliases have the same ma
 size string is kept in the project file.
 
 A custom `size`, such as `"500x300"` or `"500 × 300"`, is width × height in millimetres, in that order; it is not rotated. `x`, `X`
-or `×` separates two finite numbers, each from 100 to 1219.2 mm inclusive (`MIN_PAPER`, `MAX_PAPER`). The minimum keeps the border
-and title-block frame on the paper; below about 210 mm wide the title block narrows and long sheet names overlap the sheet number.
-The maximum is the ARCH E long side, 48 in: at the sheet drawing's 5 px/mm, a custom page is at most 6096 × 6096 px, below the
-render command's ordinary 8192 px side limit. Sheet images use paper dimensions rather than its width/height parameters. A0 is 5945
-× 4205 px and ARCH E 6096 × 4572 px; longer roll sheets are not supported. `Model::check` refuses malformed or out-of-range
-dimensions on creation and editing alike.
+or `×` separates two finite numbers, each from 100 to 1219.2 mm inclusive (`MIN_PAPER`, `MAX_PAPER`). The paper must also hold the
+title block, which is drawn its standard's size in the bottom right corner, inside the border: `Model::check` asks for the left
+margin, the block and the right margin across (`SheetMargins::least_paper`: 210 mm under ISO, EU, JIS and NBR, 211.75 under ANSI)
+and the bottom margin, the block and the top margin up (at most 65.4 mm, so any custom height does), and its error says how wide and
+tall to make the paper. Narrower paper would squeeze the block until the sheet's name ran over its number. The check runs again when
+the project's standard changes, so a change to ANSI is refused while a 210 mm wide sheet could not hold ANSI's block, and the error
+names the sheet. The maximum is the ARCH E long side, 48 in: at the sheet drawing's 5 px/mm, a custom page is at most 6096 × 6096
+px, below the render command's ordinary 8192 px side limit. Sheet images use paper dimensions rather than its width/height
+parameters. A0 is 5945 × 4205 px and ARCH E 6096 × 4572 px; longer roll sheets are not supported. `Model::check` refuses malformed
+or out-of-range dimensions on creation and editing alike.
 
 The sizes come from public standards. The A and B series are ISO 216's: A0 841 × 1189 to A4 210 × 297 mm, and B1 707 × 1000, B2
 500 × 707, B3 353 × 500 and B4 250 × 353 mm. ANSI A to E are ANSI/ASME Y14.1's (Decimal Inch Drawing Sheet Size and Format): 8.5 × 11,

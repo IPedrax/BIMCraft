@@ -711,11 +711,11 @@ msgstr "Přiřadit šablonu pohledu"
 msgid "Associated Level"
 msgstr "Přidružené podlaží"
 
-#: crates/core/src/model.rs:2664
+#: crates/core/src/model.rs:2665
 msgid "At wall centre line"
 msgstr "V ose stěny"
 
-#: crates/core/src/model.rs:2665
+#: crates/core/src/model.rs:2666
 msgid "At wall finish"
 msgstr "Na povrchové úpravě stěny"
 
@@ -1009,7 +1009,7 @@ msgstr "Čára hranice: načrtněte půdorysnou stopu střechy na podlaží vý�
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Čára hranice: načrtněte obrys šachtového otvoru"
 
-#: crates/core/src/model.rs:2962
+#: crates/core/src/model.rs:2963
 msgid "Brick"
 msgstr "Cihla"
 
@@ -1229,7 +1229,7 @@ msgstr "Osa"
 msgid "Centre Lines"
 msgstr "Osové čáry"
 
-#: crates/core/src/model.rs:2970
+#: crates/core/src/model.rs:2971
 msgid "Ceramic tile"
 msgstr "Keramická dlažba"
 
@@ -1935,7 +1935,7 @@ msgstr "Koncepční objem"
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:2964
+#: crates/core/src/model.rs:2965
 msgid "Concrete block"
 msgstr "Betonová tvárnice"
 
@@ -2016,7 +2016,7 @@ msgstr "Zkopírováno {} globálních ID IFC."
 msgid "Copied {} rows, tab-separated."
 msgstr "Zkopírováno {} řádků oddělených tabulátory."
 
-#: crates/core/src/model.rs:2978
+#: crates/core/src/model.rs:2979
 msgid "Copper"
 msgstr "Měď"
 
@@ -2661,11 +2661,11 @@ msgstr "Tečkovaná"
 msgid "Double Door"
 msgstr "Dvoukřídlé dveře"
 
-#: crates/core/src/model.rs:2495
+#: crates/core/src/model.rs:2496
 msgid "Double Sliding"
 msgstr "Dvoukřídlé posuvné"
 
-#: crates/core/src/model.rs:2493
+#: crates/core/src/model.rs:2494
 msgid "Double Swing"
 msgstr "Dvoukřídlé otočné"
 
@@ -3301,7 +3301,7 @@ msgstr "Před opuštěním půdorysu dokončete nebo zrušte náčrt."
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "Nejprve dokončete nebo zrušte náčrt: čáry vzoru se vybírají v půdorysu."
 
-#: crates/core/src/model.rs:2497
+#: crates/core/src/model.rs:2498
 msgid "Fixed"
 msgstr "Pevné"
 
@@ -3420,7 +3420,7 @@ msgstr "Sbalit"
 msgid "Folder for new projects"
 msgstr "Složka pro nové projekty"
 
-#: crates/core/src/model.rs:2496
+#: crates/core/src/model.rs:2497
 msgid "Folding"
 msgstr "Skládací"
 
@@ -3659,7 +3659,7 @@ msgstr "Skupina"
 msgid "Group:"
 msgstr "Skupina:"
 
-#: crates/core/src/model.rs:2969
+#: crates/core/src/model.rs:2970
 msgid "Gypsum board"
 msgstr "Sádrokarton"
 
@@ -6674,7 +6674,7 @@ msgstr "Střecha podle plochy (RB): střecha na horních plochách vybraných ob
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Střecha půdorysem: klikněte uvnitř stěn pro jejich zastřešení v podlaží nad nimi"
 
-#: crates/core/src/model.rs:2971
+#: crates/core/src/model.rs:2972
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
@@ -6865,7 +6865,7 @@ msgstr "Výkazy"
 msgid "Schedules/Quantities (all)"
 msgstr "Výkazy/množství (vše)"
 
-#: crates/core/src/model.rs:2967
+#: crates/core/src/model.rs:2968
 msgid "Screed"
 msgstr "Potěr"
 
@@ -7274,7 +7274,7 @@ msgstr "Přeskočit tuto verzi"
 msgid "Sky"
 msgstr "Obloha"
 
-#: crates/core/src/model.rs:2494
+#: crates/core/src/model.rs:2495
 msgid "Sliding"
 msgstr "Posuvné"
 
@@ -7664,7 +7664,7 @@ msgstr "Průhlednost povrchu"
 msgid "Surface, {}°"
 msgstr "Povrch, {}°"
 
-#: crates/core/src/model.rs:2492
+#: crates/core/src/model.rs:2493
 msgid "Swing"
 msgstr "Otočné"
 

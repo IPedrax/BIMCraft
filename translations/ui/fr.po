@@ -712,11 +712,11 @@ msgstr "Appliquer un modèle de vue"
 msgid "Associated Level"
 msgstr "Niveau associé"
 
-#: crates/core/src/model.rs:2664
+#: crates/core/src/model.rs:2665
 msgid "At wall centre line"
 msgstr "À l'axe du mur"
 
-#: crates/core/src/model.rs:2665
+#: crates/core/src/model.rs:2666
 msgid "At wall finish"
 msgstr "À la finition du mur"
 
@@ -1010,7 +1010,7 @@ msgstr "Ligne de limite: esquisser l'emprise du toit, au niveau supérieur, et s
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Ligne de limite: esquisser le contour de l'ouverture de la trémie"
 
-#: crates/core/src/model.rs:2962
+#: crates/core/src/model.rs:2963
 msgid "Brick"
 msgstr "Brique"
 
@@ -1230,7 +1230,7 @@ msgstr "Axe"
 msgid "Centre Lines"
 msgstr "Lignes d'axe"
 
-#: crates/core/src/model.rs:2970
+#: crates/core/src/model.rs:2971
 msgid "Ceramic tile"
 msgstr "Carrelage en céramique"
 
@@ -1936,7 +1936,7 @@ msgstr "Volume conceptuel"
 msgid "Concrete"
 msgstr "Béton"
 
-#: crates/core/src/model.rs:2964
+#: crates/core/src/model.rs:2965
 msgid "Concrete block"
 msgstr "Bloc de béton"
 
@@ -2017,7 +2017,7 @@ msgstr "{} GlobalId IFC copiés."
 msgid "Copied {} rows, tab-separated."
 msgstr "{} lignes copiées, séparées par des tabulations."
 
-#: crates/core/src/model.rs:2978
+#: crates/core/src/model.rs:2979
 msgid "Copper"
 msgstr "Cuivre"
 
@@ -2662,11 +2662,11 @@ msgstr "Pointillé"
 msgid "Double Door"
 msgstr "Porte double"
 
-#: crates/core/src/model.rs:2495
+#: crates/core/src/model.rs:2496
 msgid "Double Sliding"
 msgstr "Double coulissante"
 
-#: crates/core/src/model.rs:2493
+#: crates/core/src/model.rs:2494
 msgid "Double Swing"
 msgstr "Double battante"
 
@@ -3302,7 +3302,7 @@ msgstr "Terminer ou annuler l'esquisse avant de quitter son plan."
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "Terminez ou annulez d'abord l'esquisse : les lignes d'un motif se choisissent dans le plan."
 
-#: crates/core/src/model.rs:2497
+#: crates/core/src/model.rs:2498
 msgid "Fixed"
 msgstr "Fixe"
 
@@ -3421,7 +3421,7 @@ msgstr "Replier"
 msgid "Folder for new projects"
 msgstr "Dossier des nouveaux projets"
 
-#: crates/core/src/model.rs:2496
+#: crates/core/src/model.rs:2497
 msgid "Folding"
 msgstr "Pliante"
 
@@ -3660,7 +3660,7 @@ msgstr "Groupe"
 msgid "Group:"
 msgstr "Groupe:"
 
-#: crates/core/src/model.rs:2969
+#: crates/core/src/model.rs:2970
 msgid "Gypsum board"
 msgstr "Plaque de plâtre"
 
@@ -6675,7 +6675,7 @@ msgstr "Toit par face (RB): un toit sur les faces supérieures des volumes séle
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Toit par tracé: cliquer à l'intérieur des murs pour les couvrir, au niveau au-dessus"
 
-#: crates/core/src/model.rs:2971
+#: crates/core/src/model.rs:2972
 msgid "Roof tiles"
 msgstr "Tuiles"
 
@@ -6866,7 +6866,7 @@ msgstr "Nomenclatures"
 msgid "Schedules/Quantities (all)"
 msgstr "Nomenclatures/Quantités (toutes)"
 
-#: crates/core/src/model.rs:2967
+#: crates/core/src/model.rs:2968
 msgid "Screed"
 msgstr "Chape"
 
@@ -7275,7 +7275,7 @@ msgstr "Ignorer cette version"
 msgid "Sky"
 msgstr "Ciel"
 
-#: crates/core/src/model.rs:2494
+#: crates/core/src/model.rs:2495
 msgid "Sliding"
 msgstr "Coulissant"
 
@@ -7665,7 +7665,7 @@ msgstr "Transparence de surface"
 msgid "Surface, {}°"
 msgstr "Surface, {}°"
 
-#: crates/core/src/model.rs:2492
+#: crates/core/src/model.rs:2493
 msgid "Swing"
 msgstr "Battant"
 

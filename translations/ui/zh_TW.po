@@ -712,11 +712,11 @@ msgstr "指定視圖樣板"
 msgid "Associated Level"
 msgstr "關聯標高"
 
-#: crates/core/src/model.rs:2664
+#: crates/core/src/model.rs:2665
 msgid "At wall centre line"
 msgstr "在牆中心線"
 
-#: crates/core/src/model.rs:2665
+#: crates/core/src/model.rs:2666
 msgid "At wall finish"
 msgstr "在牆面層"
 
@@ -1010,7 +1010,7 @@ msgstr "邊界線：在上一標高繪製屋頂的跡線及其中的天井"
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "邊界線：繪製豎井洞口的輪廓"
 
-#: crates/core/src/model.rs:2962
+#: crates/core/src/model.rs:2963
 msgid "Brick"
 msgstr "磚"
 
@@ -1230,7 +1230,7 @@ msgstr "中心"
 msgid "Centre Lines"
 msgstr "中心線"
 
-#: crates/core/src/model.rs:2970
+#: crates/core/src/model.rs:2971
 msgid "Ceramic tile"
 msgstr "瓷磚"
 
@@ -1936,7 +1936,7 @@ msgstr "概念體量"
 msgid "Concrete"
 msgstr "混凝土"
 
-#: crates/core/src/model.rs:2964
+#: crates/core/src/model.rs:2965
 msgid "Concrete block"
 msgstr "混凝土砌塊"
 
@@ -2017,7 +2017,7 @@ msgstr "已複製 {} 個 IFC GlobalId。"
 msgid "Copied {} rows, tab-separated."
 msgstr "已複製 {} 行，以製表符分隔。"
 
-#: crates/core/src/model.rs:2978
+#: crates/core/src/model.rs:2979
 msgid "Copper"
 msgstr "銅"
 
@@ -2662,11 +2662,11 @@ msgstr "點線"
 msgid "Double Door"
 msgstr "雙扇門"
 
-#: crates/core/src/model.rs:2495
+#: crates/core/src/model.rs:2496
 msgid "Double Sliding"
 msgstr "雙扇推拉"
 
-#: crates/core/src/model.rs:2493
+#: crates/core/src/model.rs:2494
 msgid "Double Swing"
 msgstr "雙扇平開"
 
@@ -3302,7 +3302,7 @@ msgstr "離開草圖所在平面之前，請先完成或取消草圖。"
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "請先完成或取消草圖：圖案的線需在平面中拾取。"
 
-#: crates/core/src/model.rs:2497
+#: crates/core/src/model.rs:2498
 msgid "Fixed"
 msgstr "固定"
 
@@ -3421,7 +3421,7 @@ msgstr "折疊"
 msgid "Folder for new projects"
 msgstr "新項目的資料夾"
 
-#: crates/core/src/model.rs:2496
+#: crates/core/src/model.rs:2497
 msgid "Folding"
 msgstr "折疊"
 
@@ -3660,7 +3660,7 @@ msgstr "組"
 msgid "Group:"
 msgstr "組："
 
-#: crates/core/src/model.rs:2969
+#: crates/core/src/model.rs:2970
 msgid "Gypsum board"
 msgstr "石膏板"
 
@@ -6675,7 +6675,7 @@ msgstr "面屋頂 (RB)：在所選體量的頂面上創建屋頂"
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "跡線屋頂：單擊牆內部，在上一標高為其創建屋頂"
 
-#: crates/core/src/model.rs:2971
+#: crates/core/src/model.rs:2972
 msgid "Roof tiles"
 msgstr "屋面瓦"
 
@@ -6866,7 +6866,7 @@ msgstr "明細表"
 msgid "Schedules/Quantities (all)"
 msgstr "明細表/數量（全部）"
 
-#: crates/core/src/model.rs:2967
+#: crates/core/src/model.rs:2968
 msgid "Screed"
 msgstr "找平層"
 
@@ -7275,7 +7275,7 @@ msgstr "跳過此版本"
 msgid "Sky"
 msgstr "天空"
 
-#: crates/core/src/model.rs:2494
+#: crates/core/src/model.rs:2495
 msgid "Sliding"
 msgstr "推拉"
 
@@ -7665,7 +7665,7 @@ msgstr "表面透明度"
 msgid "Surface, {}°"
 msgstr "表面，{}°"
 
-#: crates/core/src/model.rs:2492
+#: crates/core/src/model.rs:2493
 msgid "Swing"
 msgstr "平開"
 

@@ -518,7 +518,7 @@ for a headless server that opens the file and then only reads it.
 | `spot` | EL | `at`, `view?`, `host?`: in a plan, the top of what stands there; in a section or an elevation, the point's height |
 | `section` | CR | `start`, `end` (it looks to the left of the line), `depth?`, `name?` |
 | `elevation` | | `facing?` (north, south, east or west: the side it shows), `at?`, or `start` and `end`; none of them: the four building elevations |
-| `sheet` | | `number?` (A101, A102… by default), `name?`, `size?` (ISO A0–A4, ISO B1–B4, ARCH A–E/E1–E3, ANSI A–E, SUPER B, or width x height in mm (100–1219.2 a side); A3 by default) |
+| `sheet` | | `number?` (A101, A102… by default), `name?`, `size?` (ISO A0–A4, ISO B1–B4, ARCH A–E/E1–E3, ANSI A–E, SUPER B, or width x height in mm (100–1219.2 a side, and at least 210 wide, 211.75 under ANSI, for the title block); A3 by default) |
 | `place` | | `sheet` (its number), `view` (a level's, section's, elevation's, schedule's or 3D view's name: Room Schedule, `{3D}`…), `at?` (mm on the paper), `scale?` (100 for 1 : 100), `azimuth?` and `elevation?` for the 3D view |
 | `delete_type` | | `category` and `type`, or `family`, or `family` and `type`: deletes a type of a category, a family, or one of a family's types; refused while an element uses it (it says how many) and for the last type of a category or of a family |
 | `rename_type` | | `category` and `type`, or `family` and `type`, and `name`: renames a type of a category or one of a family's types; what's of it and what names it follow, and it keeps its GUID; refused for a name another type of it has |
