@@ -5,7 +5,7 @@
 //! - `{"token": T, "op": "hello"}` asks which app is there, what project it has open and whether agents may only read it;
 //! - `{"token": T, "op": "execute", "command": "wall", "params": {...}}` runs a command, as `Session::execute` does;
 //! - `{"token": T, "op": "script", "text": "...", "atomic": false}` runs a script (`Session::script`, or all or nothing);
-//!   with `"dry_run": true` it is tried and taken back, and the reply says what it would do (`Session::script_dry_run`).
+//!   with `"dry_run": true` it is tried and taken back, and the reply says what it would do (`Session::script_dry_run`);
 //! - `{"token": T, "op": "catalog"}` is the command catalog, with the window's plugin commands (`Session::catalog`).
 //!
 //! `execute` and `script` may say `"read_only": true`: the agent's side asks to only read (`bimcraft-cli mcp --connect

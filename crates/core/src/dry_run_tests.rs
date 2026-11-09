@@ -18,6 +18,11 @@ fn house() -> Session {
     s
 }
 
+/// The undo history's labels, owned, so the session may run on while they're held.
+fn history(s: &Session) -> Vec<String> {
+    s.history().into_iter().map(str::to_string).collect()
+}
+
 fn ids(v: &Value) -> Vec<u64> {
     v.as_array().unwrap().iter().map(|e| e["id"].as_u64().unwrap()).collect()
 }
@@ -29,7 +34,7 @@ fn categories(v: &Value) -> Vec<&str> {
 #[test]
 fn a_dry_run_says_what_a_script_would_do_and_leaves_the_project_as_it_was() {
     let mut s = house();
-    let (model, history) = (Arc::clone(&s.model), s.history().into_iter().map(str::to_owned).collect::<Vec<_>>());
+    let (model, steps) = (Arc::clone(&s.model), history(&s));
     let wall = s.model.elements.iter().find(|(_, e)| e.category() == "wall").map(|(id, _)| *id).unwrap();
     let room = s.model.elements.iter().find(|(_, e)| e.category() == "room").map(|(id, _)| *id).unwrap();
     let text = format!(
@@ -48,7 +53,7 @@ fn a_dry_run_says_what_a_script_would_do_and_leaves_the_project_as_it_was() {
     assert!(warnings.iter().any(|w| w.as_str().unwrap().contains("not enclosed")), "{r}");
     // Nothing of it stays: the very model, the history, and the next id.
     assert!(Arc::ptr_eq(&s.model, &model));
-    assert_eq!(s.history(), history);
+    assert_eq!(history(&s), steps);
     assert!(s.model.warnings().is_empty());
     // Undo still takes back the step before the dry run.
     s.execute("undo", &json!({})).unwrap();
@@ -67,7 +72,7 @@ fn a_dry_run_that_fails_names_the_line_and_changes_nothing() {
 #[test]
 fn a_dry_run_opens_and_writes_no_file_and_keeps_the_history() {
     let mut s = house();
-    let (model, history) = (Arc::clone(&s.model), s.history().into_iter().map(str::to_owned).collect::<Vec<_>>());
+    let (model, steps) = (Arc::clone(&s.model), history(&s));
     let dir = std::env::temp_dir().join(format!("bimcraft-dry-run-{}", std::process::id()));
     let file = dir.join("never.bimcraft");
     for line in [
@@ -82,7 +87,7 @@ fn a_dry_run_opens_and_writes_no_file_and_keeps_the_history() {
     }
     assert!(!file.exists() && !dir.join("never.ifc").exists());
     assert!(Arc::ptr_eq(&s.model, &model));
-    assert_eq!(s.history(), history);
+    assert_eq!(history(&s), steps);
 }
 
 #[test]
@@ -106,6 +111,22 @@ fn a_dry_run_of_something_that_changes_no_element_says_so() {
     assert_eq!(r["other_changes"], false);
 }
 
+#[test]
+fn a_dry_run_looks_at_each_command_as_it_runs_with_the_params_it_is_given() {
+    // A file a command reaches only deep in its params, which no look at the line's first word finds: refused as the line
+    // comes, before it runs, and the line before it is taken back with the rest.
+    let mut s = house();
+    let (model, steps) = (Arc::clone(&s.model), history(&s));
+    let picture = std::env::temp_dir().join(format!("bimcraft-dry-run-texture-{}.png", std::process::id()));
+    let text = format!("level {{\"elevation\": 3000}}\nmaterial {{\"name\": \"Brick\", \"texture\": {{\"path\": {}}}}}", json!(picture));
+    let e = s.script_dry_run(&text).unwrap_err();
+    assert!(e.contains("line 2") && e.contains("a file") && e.contains("dry run"), "{e}");
+    assert!(Arc::ptr_eq(&s.model, &model));
+    assert_eq!(history(&s), steps);
+    // And once the dry run is over, the session runs every command again.
+    s.execute("level", &json!({"elevation": 3000})).unwrap();
+}
+
 /// What the favorites are where no `path` is given ([`crate::favorites::default_path`]): in the user's own folder, outside the
 /// project. Run in a child of this test with `BIMCRAFT_FAVORITES` at a file of the test's own, so the user's are never touched,
 /// even by a dry run that wrongly let a line through.
@@ -121,15 +142,12 @@ fn a_dry_run_leaves_the_users_favorites_as_they_were() {
         let save = s.model.library.guid(&crate::library::Kind::Material, "save").unwrap().to_string();
         let refused = |s: &mut Session, line: &str| {
             let e = s.script_dry_run(&format!("level {{\"elevation\": 3000}}\n{line}")).unwrap_err();
-            assert!(
-                e.contains("line 2 (favorite)") && e.contains("favorites file, outside the project") && e.contains("dry run"),
-                "{line}: {e}"
-            );
+            assert!(e.contains("line 2 (favorite)") && e.contains("would write a file") && e.contains("dry run"), "{line}: {e}");
             e
         };
         // None kept yet: saving one is refused and makes no file.
         let e = refused(&mut s, "favorite {\"action\": \"save\", \"name\": \"My Oak\"}");
-        assert!(e.contains("would save a favorite") && e.contains("only `list`"), "it says why, and what may run: {e}");
+        assert!(e.contains("run the script without `dry_run`"), "it says what to do: {e}");
         refused(&mut s, "favorite {\"action\": \"save\", \"kind\": \"material\", \"name\": \"My Oak\", \"as\": \"Oak\"}");
         assert!(!file.exists(), "a dry run wrote the favorites");
         // One kept: deleting it, or saving over it, is refused and leaves the file as it was.
@@ -137,8 +155,8 @@ fn a_dry_run_leaves_the_users_favorites_as_they_were() {
         let saved = s.execute("favorite", &json!({"action": save, "name": "My Oak", "as": "Oak by GUID"})).unwrap();
         assert_eq!(saved["saved"], "Oak by GUID", "the GUID saves, run for real: {saved}");
         let kept = std::fs::read(&file).unwrap();
-        let (model, history) = (Arc::clone(&s.model), s.history().into_iter().map(str::to_owned).collect::<Vec<_>>());
-        assert!(refused(&mut s, "favorite {\"action\": \"delete\", \"name\": \"My Oak\"}").contains("would delete a favorite"));
+        let (model, steps) = (Arc::clone(&s.model), history(&s));
+        assert!(refused(&mut s, "favorite {\"action\": \"delete\", \"name\": \"My Oak\"}").contains("would write a file"));
         refused(&mut s, "favorite {\"action\": \"save\", \"name\": \"My Oak\"}");
         // Whatever else a line asks of them (bringing one in, an action spelt otherwise) is refused too: a dry run only lists.
         refused(&mut s, "favorite {\"action\": \"load\", \"name\": \"My Oak\", \"as\": \"Oak 2\"}");
@@ -146,7 +164,7 @@ fn a_dry_run_leaves_the_users_favorites_as_they_were() {
         refused(&mut s, &format!("favorite {{\"action\": \"{save}\", \"name\": \"My Oak\", \"as\": \"Oak again\"}}"));
         assert_eq!(std::fs::read(&file).unwrap(), kept, "a dry run changed the favorites");
         assert!(Arc::ptr_eq(&s.model, &model));
-        assert_eq!(s.history(), history);
+        assert_eq!(history(&s), steps);
         // Listing them only reads, which a dry run may.
         let r = s.script_dry_run("favorite\nfavorite {\"action\": \"list\", \"kind\": \"material\"}").unwrap();
         assert_eq!(r["results"][0]["materials"][0]["name"], "My Oak", "{r}");

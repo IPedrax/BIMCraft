@@ -176,6 +176,9 @@ pub struct Session {
     /// What reads it (inspect, schedules, render, exports to new files, the sheets to PDF) answers; a copy saved as another file
     /// leaves the session with its own.
     pub read_only: Option<&'static str>,
+    /// Whether a dry run is under way ([`Session::script_dry_run`]): then each command is looked at as it is about to run, with
+    /// the params it is given, and one that would touch a file or the history is refused ([`dry_run_refuses`]).
+    dry_run: bool,
     /// The last model a command left that passed [`Model::check`]. Held here, it is never changed in place: a change
     /// outside a command copies it first, so a model still this one is one that passed, and the next command need only
     /// check what it changes ([`Model::check_changed`]).
@@ -245,6 +248,7 @@ impl Session {
             dwg: None,
             external: Vec::new(),
             read_only: None,
+            dry_run: false,
             verified: None,
         }
     }
@@ -339,6 +343,12 @@ impl Session {
 
     /// [`Session::execute`] of a command in the static list, refused or taken back when the session may only read.
     fn execute_found(&mut self, cmd: &'static Command, params: &Value) -> Result<Value, String> {
+        if let Some(what) = dry_run_refuses(cmd, params).filter(|_| self.dry_run) {
+            return Err(format!(
+                "`{}` would {what}, and a dry run touches no file and keeps the history: run the script without `dry_run`",
+                cmd.id
+            ));
+        }
         let Some(how) = self.read_only else { return self.perform(cmd, params) };
         self.may_read(cmd, params).map_err(|what| format!("`{}` would {what}, {READ_ONLY}: {how}", cmd.id))?;
         let kept = Kept::of(self);
@@ -586,40 +596,16 @@ impl Session {
     /// whether it would change anything else (the library, the phases, the settings), and the warnings the model would then
     /// have, with each line's result. The project, its history, the phase and option things are made in and its file are left
     /// as they were, and the next id with them. A dry run touches no file and keeps the history: a line that would open, write
-    /// or name a file (a `path` or `save`), start or replace the project, save, undo or redo is refused before any line runs,
-    /// and so is a `favorite` that does more than list the user's favorites ([`favorite_past_listing`]), whose file is outside
-    /// the project. It only reads the project, so a session that may only read ([`Session::read_only`]) may try a script too.
+    /// or name a file (a `path` or `save`), start or replace the project, save, undo or redo is refused as it comes, with the params
+    /// it is given (a named line's and a reference's too), before it runs; the lines before it are taken back with the rest.
+    /// It only reads the project, so a session that may only read ([`Session::read_only`]) may try a script too.
     pub fn script_dry_run(&mut self, text: &str) -> Result<Value, String> {
-        for (n, line) in text.lines().map(str::trim).enumerate() {
-            let Some(id) = line.split_whitespace().next().filter(|id| !id.starts_with('#')) else { continue };
-            let Some(cmd) = find(id) else { continue };
-            let rest = line[id.len()..].trim();
-            let params: Value = if rest.is_empty() { json!({}) } else { serde_json::from_str(rest).unwrap_or(Value::Null) };
-            let files = ["path", "save"].into_iter().find(|key| params.get(key).is_some_and(|v| !v.is_null()));
-            let what = if REPLACES.contains(&cmd.id) {
-                Some("replace the project".to_string())
-            } else if matches!(cmd.id, "save" | "autosave" | "undo" | "redo") {
-                Some(format!("{} the project", if cmd.id == "autosave" { "save" } else { cmd.id }))
-            } else {
-                files.map(|key| format!("name a file (`{key}`)")).or_else(|| match cmd.id {
-                    "favorite" => favorite_past_listing(&params),
-                    _ => None,
-                })
-            };
-            if let Some(what) = what {
-                return Err(format!(
-                    "line {} ({id}): `{}` would {what}, and a dry run touches no file and keeps the history: run the script \
-                     without `dry_run`",
-                    n + 1,
-                    cmd.id
-                ));
-            }
-        }
         let kept = Kept::of(self);
         let read_only = self.read_only.take();
+        let dry_run = std::mem::replace(&mut self.dry_run, true);
         let result = self.script_atomic(text);
         let after = Arc::clone(&self.model);
-        self.read_only = read_only;
+        (self.read_only, self.dry_run) = (read_only, dry_run);
         // The project as it was, whatever the script did to it; what a dry run says is only what it would do.
         let _ = kept.keep(self);
         let results = result?;
@@ -753,6 +739,24 @@ impl Session {
 
 /// What a session that may only read keeps through a command: its project, its history, its file, the phase and option it makes
 /// things in, and how many times it was replaced.
+/// What a dry run refuses `cmd` with `params` for, before it runs: replacing the project, saving it, stepping through its history,
+/// or any file read or written ([`touches_files`], and a `path` or `save` any command is given).
+fn dry_run_refuses(cmd: &Command, params: &Value) -> Option<String> {
+    if REPLACES.contains(&cmd.id) {
+        return Some("replace the project".into());
+    }
+    if matches!(cmd.id, "save" | "autosave" | "undo" | "redo") {
+        return Some(format!("{} the project", if cmd.id == "autosave" { "save" } else { cmd.id }));
+    }
+    if let Some(key) = ["path", "save"].into_iter().find(|key| params.get(key).is_some_and(|v| !v.is_null())) {
+        return Some(format!("name a file (`{key}`)"));
+    }
+    touches_files(cmd, params).map(|files| match files {
+        Files::Read => "read a file".to_string(),
+        _ => "write a file".to_string(),
+    })
+}
+
 struct Kept {
     model: Arc<Model>,
     /// The model the last command left that passed the check, as it was: put back with the model, the next command checks
@@ -798,25 +802,6 @@ fn same_file(a: &Path, b: &Path) -> bool {
         (Ok(a), Ok(b)) => a == b,
         _ => a == b,
     }
-}
-
-/// What a `favorite` line would do past listing the user's favorites, said for a dry run that refuses it. With no `path`, the
-/// favorites are a file of the user's own ([`crate::favorites::default_path`]), outside the project: `save` and `delete` write
-/// it. Only `list` (or no `action`) passes; anything else is refused, `load` too, and a library entry's GUID, which [`named`]
-/// would put as its name before the command reads it (an entry may be called `save`).
-fn favorite_past_listing(params: &Value) -> Option<String> {
-    let action = match params.get("action") {
-        None | Some(Value::Null) => return None,
-        Some(Value::String(a)) if a == "list" => return None,
-        Some(Value::String(a)) => a.clone(),
-        Some(other) => other.to_string(),
-    };
-    let what = match action.as_str() {
-        "save" | "delete" => format!("{action} a favorite in the user's favorites file, outside the project"),
-        "load" => "bring a favorite in from the user's favorites file, outside the project".to_string(),
-        _ => format!("use the user's favorites file, outside the project, for `action` {action}"),
-    };
-    Some(format!("{what} (only `list` may run)"))
 }
 
 /// `params` with every string that is a library entry's GUID put as the entry's name; none when there's no such string.
