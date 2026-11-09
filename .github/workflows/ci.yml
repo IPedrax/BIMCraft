@@ -93,9 +93,10 @@ jobs:
         run: |
           cargo run -q -p bimcraft-cli -- run --sample --save house.ifc
           cargo run -q -p bimcraft-cli -- run --script ci/ifc-coverage.txt --save coverage.ifc
+          cargo run -q -p bimcraft-cli -- run --script ci/ifc-coverage.txt --cmd 'export {"format": "ifc4x3", "path": "coverage-4x3.ifc"}'
 
       - name: Validate
-        run: python ci/validate_ifc.py house.ifc coverage.ifc
+        run: python ci/validate_ifc.py house.ifc coverage.ifc coverage-4x3.ifc
 
   # What CLAUDE.md asks after touching packaging/: shellcheck on the scripts and actionlint on the workflows (which runs shellcheck
   # on their `run:` steps too). The runner image has shellcheck; actionlint is a pinned release, checked against its sum.

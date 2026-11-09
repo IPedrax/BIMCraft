@@ -1,4 +1,4 @@
-//! The model in 3D: IFC (`ifc::export`) and glTF binary (`gltf::export`, what the default 3D view shows, links and all).
+//! The model in 3D: IFC4 and IFC4.3 (`ifc::export_as`) and glTF binary (`gltf::export`, what the default 3D view shows, links and all).
 
 use super::super::{Content, Ctx, Family, Format, Options, Out, Prepared, Takes};
 use crate::model::Model;
@@ -14,14 +14,21 @@ fn model(items: &[Prepared]) -> Result<&std::sync::Arc<Model>, String> {
     }
 }
 
-pub struct Ifc;
+/// IFC in its schema.
+pub struct Ifc(pub crate::ifc::Schema);
 
 impl Format for Ifc {
     fn id(&self) -> &'static str {
-        "ifc4"
+        match self.0 {
+            crate::ifc::Schema::Ifc4 => "ifc4",
+            crate::ifc::Schema::Ifc4x3 => "ifc4x3",
+        }
     }
     fn label(&self) -> &'static str {
-        "IFC4"
+        match self.0 {
+            crate::ifc::Schema::Ifc4 => "IFC4",
+            crate::ifc::Schema::Ifc4x3 => "IFC4.3",
+        }
     }
     fn extension(&self) -> &'static str {
         "ifc"
@@ -33,7 +40,7 @@ impl Format for Ifc {
         &[Takes::Model]
     }
     fn write(&self, items: &[Prepared], options: &Options, _: &Ctx) -> Result<Vec<Out>, String> {
-        Ok(vec![Out { suffix: None, bytes: crate::ifc::export_at(model(items)?, options.ifc_origin).into_bytes() }])
+        Ok(vec![Out { suffix: None, bytes: crate::ifc::export_as(model(items)?, options.ifc_origin, self.0).into_bytes() }])
     }
 }
 
