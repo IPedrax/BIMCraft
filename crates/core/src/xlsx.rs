@@ -28,7 +28,15 @@ pub fn workbook(name: &str, headings: &[String], rows: &[Vec<Cell>]) -> Vec<u8> 
         ("xl/styles.xml", STYLES.to_string()),
         ("xl/worksheets/sheet1.xml", sheet(headings, rows)),
     ];
+    let parts: Vec<Part> = parts.iter().map(|(name, body)| Part { name, data: body.as_bytes(), store: false }).collect();
     zip(&parts)
+}
+
+/// A part of a zip: its name, its bytes, and whether it goes in as it is (stored) rather than deflated.
+pub(crate) struct Part<'a> {
+    pub name: &'a str,
+    pub data: &'a [u8],
+    pub store: bool,
 }
 
 fn workbook_xml(name: &str) -> String {
@@ -250,7 +258,7 @@ fn zip_entries(b: &[u8], budget: u64) -> Result<Vec<(String, Vec<u8>)>, String> 
 }
 
 /// What a sheet may be called: no `[]:*?/\`, not empty, at most 31 characters.
-fn sheet_name(name: &str) -> String {
+pub(crate) fn sheet_name(name: &str) -> String {
     let n: String = name.chars().filter(|c| !"[]:*?/\\".contains(*c) && !c.is_control()).take(MAX_NAME).collect();
     let n = n.trim().trim_matches('\'').to_string();
     if n.is_empty() { "Sheet1".into() } else { n }
@@ -297,7 +305,7 @@ fn sheet(headings: &[String], rows: &[Vec<Cell>]) -> String {
 }
 
 /// Text as XML holds it: the five entities escaped, and the control characters XML 1.0 can't hold left out.
-fn escape(s: &str) -> String {
+pub(crate) fn escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
@@ -314,17 +322,20 @@ fn escape(s: &str) -> String {
     out
 }
 
-/// The parts as a zip, each deflated.
-fn zip(parts: &[(&str, String)]) -> Vec<u8> {
+/// The parts as a zip, in their order, each deflated or stored as it says.
+pub(crate) fn zip(parts: &[Part]) -> Vec<u8> {
     let mut out = Vec::new();
     let mut central = Vec::new();
-    for (name, body) in parts {
-        let data = body.as_bytes();
+    for &Part { name, data, store } in parts {
         let mut crc = flate2::Crc::new();
         crc.update(data);
-        let mut enc = DeflateEncoder::new(Vec::new(), Compression::default());
-        // Writing to a Vec doesn't fail.
-        let packed = enc.write_all(data).and_then(|_| enc.finish()).unwrap_or_default();
+        let packed = if store {
+            data.to_vec()
+        } else {
+            let mut enc = DeflateEncoder::new(Vec::new(), Compression::default());
+            // Writing to a Vec doesn't fail.
+            enc.write_all(data).and_then(|_| enc.finish()).unwrap_or_default()
+        };
         let offset = out.len() as u32;
         let header = |sig: u32, central: bool| {
             let mut h = Vec::new();
@@ -334,7 +345,7 @@ fn zip(parts: &[(&str, String)]) -> Vec<u8> {
             }
             h.extend(20u16.to_le_bytes()); // version needed
             h.extend(0x0800u16.to_le_bytes()); // names in UTF-8
-            h.extend(8u16.to_le_bytes()); // deflated
+            h.extend(if store { 0u16 } else { 8u16 }.to_le_bytes()); // stored or deflated
             h.extend(0u16.to_le_bytes()); // time
             h.extend(0x0021u16.to_le_bytes()); // date: 1980-01-01
             h.extend(crc.sum().to_le_bytes());
@@ -392,7 +403,11 @@ pub(crate) fn unzip(b: &[u8]) -> std::collections::BTreeMap<String, String> {
         let name = String::from_utf8(b[i + 30..i + 30 + name_len].to_vec()).unwrap();
         let start = i + 30 + name_len + u16_at(i + 28);
         let mut text = String::new();
-        flate2::read::DeflateDecoder::new(&b[start..start + packed]).read_to_string(&mut text).unwrap();
+        if u16_at(i + 8) == 0 {
+            text = String::from_utf8_lossy(&b[start..start + packed]).to_string();
+        } else {
+            flate2::read::DeflateDecoder::new(&b[start..start + packed]).read_to_string(&mut text).unwrap();
+        }
         let mut c = flate2::Crc::new();
         c.update(text.as_bytes());
         assert_eq!((c.sum(), text.len()), (crc, size), "{name}");

@@ -19,7 +19,7 @@ pub use line::Dxf;
 pub use mesh::{Obj, Stl};
 pub use model::{Glb, Ifc};
 pub use picture::{Png, Svg};
-pub use table::{Csv, Xlsx};
+pub use table::{Csv, Ods, Xlsx};
 
 /// Every format the core writes or plans to, in the order the dialog lists them.
 pub fn builtin() -> Vec<Arc<dyn Format>> {
@@ -41,7 +41,7 @@ pub fn builtin() -> Vec<Arc<dyn Format>> {
         Arc::new(Planned { id: "u3d", label: "U3D", extension: "u3d", family: Family::Model, takes: &[Takes::Model] }),
         Arc::new(Csv),
         Arc::new(Xlsx),
-        Arc::new(Planned { id: "ods", label: "ODS", extension: "ods", family: Family::Schedule, takes: &[Takes::Table] }),
+        Arc::new(Ods),
         Arc::new(Planned { id: "bcf", label: "BCF", extension: "bcfzip", family: Family::Coordination, takes: &[Takes::Model] }),
     ]
 }
