@@ -549,6 +549,17 @@ other_files(
         wire_type,
     ),
     edit(
+        "panel",
+        "Panel",
+        &[],
+        "{id?, distribution?, mains?, slots?, supply_from?} the electrical data of a distribution board, an equipment component: \
+         `distribution` one of the project's distribution systems (`distribution_system` lists them), `mains` the main breaker in \
+         amperes, `slots` how many single-pole breakers it takes (Max #1 Pole Breakers) and `supply_from` the board that supplies it, \
+         by id or GUID: boards make a tree, and a supply loop is refused. What isn't given stays; \"\" takes one away. Without `id`, \
+         lists the boards with what each feeds. A board's `12 circuits`, `24 circuits` and `36 circuits` are its size, not its slots",
+        panel,
+    ),
+    edit(
         "column",
         ui_msg!("Column"),
         &["CL"],
@@ -2596,6 +2607,21 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         extra.insert("room".into(), json!(m.guid(id)));
         extra.insert("room_number".into(), json!(r.number));
         extra.insert("room_name".into(), json!(r.name));
+    }
+    // A distribution board's data, by the names of Revit's parameters, which schedules and agents read it by.
+    if let Element::Component(Component { panel: Some(p), .. }) = e {
+        if let Some(d) = &p.distribution {
+            extra.insert("distribution_system".into(), json!(d));
+        }
+        if let Some(a) = p.mains {
+            extra.insert("mains".into(), json!(a));
+        }
+        if let Some(n) = p.slots {
+            extra.insert("slots".into(), json!(n));
+        }
+        if let Some(g) = p.supply_from {
+            extra.insert("supply_from".into(), json!(g));
+        }
     }
     match e {
         Element::CadImport(ci) => {
@@ -7235,9 +7261,15 @@ fn distribution_system(s: &mut Session, p: &Value) -> R {
     };
     let m = s.model_mut();
     if flag(c, p, "delete")? {
-        if m.distribution_systems.remove(&name).is_none() {
+        if !m.distribution_systems.contains_key(&name) {
             return Err(bad(c, format!("there's no distribution system `{name}`")));
         }
+        let boards = m.panels_in(&name);
+        if let Some(first) = boards.first() {
+            let more = if boards.len() > 1 { format!(" and {} more", boards.len() - 1) } else { String::new() };
+            return Err(bad(c, format!("distribution system `{name}` is the one board {first}{more} is on: change that first")));
+        }
+        m.distribution_systems.remove(&name);
         return Ok(json!({"deleted": name}));
     }
     let was = m.distribution_systems.get(&name).cloned();
@@ -7336,6 +7368,84 @@ fn wire_type(s: &mut Session, p: &Value) -> R {
     }
     m.wire_types.insert(name.clone(), w.clone());
     Ok(json!({"name": name, "wire_type": w}))
+}
+
+/// What a command is asked to do with a value that may be unset: leave it, take it away (`""`) or set it.
+enum Change<T> {
+    Keep,
+    Clear,
+    Set(T),
+}
+
+impl<T> Change<T> {
+    fn apply(self, to: &mut Option<T>) {
+        match self {
+            Change::Keep => {}
+            Change::Clear => *to = None,
+            Change::Set(v) => *to = Some(v),
+        }
+    }
+}
+
+/// `key` of `p` as a [`Change`]: not given, `""`, or what `parse` makes of it (`what`, said when it makes nothing).
+fn change<T>(c: &str, p: &Value, key: &str, what: &str, parse: impl FnOnce(&Value) -> Option<T>) -> Result<Change<T>, String> {
+    match p.get(key) {
+        v if absent(v) => Ok(Change::Keep),
+        Some(Value::String(t)) if t.trim().is_empty() => Ok(Change::Clear),
+        Some(v) => parse(v).map(Change::Set).ok_or_else(|| bad(c, format!("`{key}` must be {what}, or \"\" to take it away, got {v}"))),
+        None => Ok(Change::Keep),
+    }
+}
+
+fn panel(s: &mut Session, p: &Value) -> R {
+    use crate::electrical;
+    let c = "panel";
+    only(c, p, &["id", "distribution", "mains", "slots", "supply_from"])?;
+    let m = &s.model;
+    let Some(given) = p.get("id").filter(|v| !absent(Some(v))) else {
+        if p.as_object().is_some_and(|o| !o.is_empty()) {
+            return Err(bad(c, "`id` is required: the board to change (give none to list the boards)"));
+        }
+        let boards: Vec<Value> =
+            m.elements.iter().filter_map(|(id, _)| electrical::board(m, *id)).map(|(id, _)| board_json(m, id)).collect();
+        return Ok(json!({"panels": boards}));
+    };
+    let id = serde_json::from_value::<Guid>(given.clone())
+        .ok()
+        .and_then(|g| m.elements.id(g))
+        .ok_or_else(|| bad(c, format!("no element {given}")))?;
+    let Some((_, board)) = electrical::board(m, id) else {
+        let what = match m.elements.get(id) {
+            Some(Element::Component(comp)) => comp.family.clone(),
+            Some(e) => e.category().to_string(),
+            None => String::new(),
+        };
+        return Err(bad(c, format!("element {id} is a {what}, not electrical equipment: `panel` is for distribution boards")));
+    };
+    let mut data = board.panel.clone().unwrap_or_default();
+    change(c, p, "distribution", "the name of a distribution system", |v| v.as_str().map(|t| t.trim().to_string()))?
+        .apply(&mut data.distribution);
+    change(c, p, "mains", "amperes", |v| v.as_f64().filter(|x| x.is_finite()))?.apply(&mut data.mains);
+    change(c, p, "slots", "a whole number of breakers", |v| v.as_u64().and_then(|n| u32::try_from(n).ok()))?.apply(&mut data.slots);
+    change(c, p, "supply_from", "the id or GUID of a board", |v| {
+        serde_json::from_value::<Guid>(v.clone()).ok().and_then(|g| m.elements.id(g)).map(|i| m.guid(i))
+    })?
+    .apply(&mut data.supply_from);
+    if let Some(Element::Component(comp)) = s.model_mut().elements.get_mut(id) {
+        comp.panel = Some(data.clone()).filter(|d| !d.is_empty());
+    }
+    Ok(board_json(&s.model, id))
+}
+
+/// A distribution board as `panel` says it: its data, the board that supplies it by id, and the boards it feeds.
+fn board_json(m: &Model, id: Id) -> Value {
+    let Some((_, comp)) = crate::electrical::board(m, id) else { return Value::Null };
+    let data = comp.panel.clone().unwrap_or_default();
+    json!({
+        "id": id, "family": comp.family, "type": comp.type_name,
+        "distribution": data.distribution, "mains": data.mains, "slots": data.slots,
+        "supply_from": data.supply_from.and_then(|g| m.elements.id(g)), "feeds": m.panel_feeds(id),
+    })
 }
 
 fn wall(s: &mut Session, p: &Value) -> R {
@@ -10986,6 +11096,7 @@ fn component(s: &mut Session, p: &Value) -> R {
         offset: num(c, p, "offset")?.unwrap_or(0.0),
         mirrored: flag(c, p, "mirrored")?,
         params,
+        panel: None,
     };
     let id = s.model_mut().insert(Element::Component(comp));
     Ok(json!({"id": id}))
@@ -13093,6 +13204,8 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
             Some(Element::Roof(r)) => r.join.is_some_and(|g| gone.contains(&g)),
             // A 3D view whose work plane's level goes sketches on the lowest level again.
             Some(Element::View3D(v)) => v.work_plane.as_ref().is_some_and(|wp| wp.level.is_some_and(|l| gone.contains(&l))),
+            // A board supplied by one that goes is left without a supply.
+            Some(Element::Component(c)) => c.panel.as_ref().and_then(|p| p.supply_from).is_some_and(|up| gone.contains(&up)),
             _ => false,
         })
         .collect();
@@ -13136,6 +13249,13 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
             Some(Element::Roof(r)) if r.join.is_some_and(|g| gone.contains(&g)) => r.join = None,
             Some(Element::View3D(v)) if v.work_plane.as_ref().is_some_and(|wp| wp.level.is_some_and(|l| gone.contains(&l))) => {
                 v.work_plane = None
+            }
+            Some(Element::Component(c)) => {
+                if let Some(p) = &mut c.panel
+                    && p.supply_from.is_some_and(|up| gone.contains(&up))
+                {
+                    p.supply_from = None;
+                }
             }
             _ => {}
         }
@@ -13201,6 +13321,20 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
             }
         }
     }
+    // A board that was supplied by one that goes is left without a supply, with the rest of its data.
+    let mut unfed = Vec::new();
+    for (id, guid, e) in m.elements.with_guids() {
+        if let Element::Component(c) = e
+            && !gone.contains(&guid)
+            && c.panel.as_ref().and_then(|p| p.supply_from).is_some_and(|up| gone.contains(&up))
+        {
+            let mut c = c.clone();
+            if let Some(p) = &mut c.panel {
+                p.supply_from = None;
+            }
+            unfed.push((id, c));
+        }
+    }
     let deleted: Vec<Id> = m.elements.with_guids().filter(|(_, g, _)| gone.contains(g)).map(|(id, ..)| id).collect();
     let m = s.model_mut();
     // A 3D view whose work plane's level goes sketches on the lowest level again.
@@ -13213,6 +13347,9 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     }
     for id in &gone {
         m.elements.remove(id);
+    }
+    for (id, c) in unfed {
+        m.elements.insert(id, Element::Component(c));
     }
     // What was made from a mass that goes is ordinary from then on.
     massing::forget_from_scratch(m, &gone);

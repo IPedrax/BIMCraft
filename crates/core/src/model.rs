@@ -1627,6 +1627,9 @@ pub struct Component {
     pub mirrored: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// A distribution board's electrical data: its distribution system, its mains and slots and the board that supplies it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel: Option<crate::electrical::Panel>,
 }
 
 /// A stair from `level` up to `top_level` (or `height` mm), climbing from the middle of its first
@@ -2086,7 +2089,14 @@ macro_rules! visit_refs {
                 f(& $($m)? v.view);
             }
             run_arm!(r) => f(& $($m)? r.level),
-            Element::Component(c) => f(& $($m)? c.level),
+            Element::Component(c) => {
+                f(& $($m)? c.level);
+                if let Some(p) = & $($m)? c.panel
+                    && let Some(g) = & $($m)? p.supply_from
+                {
+                    f(g)
+                }
+            }
             Element::Railing(r) => {
                 f(& $($m)? r.level);
                 if let Some(g) = & $($m)? r.host { f(g) }
@@ -7095,6 +7105,7 @@ impl Model {
                     let names: Vec<&str> = self.families.keys().map(String::as_str).collect();
                     format!("{who}: family `{}` doesn't exist (there are: {})", c.family, names.join(", "))
                 })?;
+                crate::electrical::check_panel(self, id, c)?;
                 if f.category.hosted() {
                     return Err(format!(
                         "{who}: family `{}` is a door's or a window's: it stands in a wall, placed with `door` or `window`",
