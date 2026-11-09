@@ -74,9 +74,10 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
 /// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
 /// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
-/// values of its fields (`fields`). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a
-/// connector with a serde error ("unknown variant", "missing field `system`") and would leave the title blocks out as fields it
-/// doesn't know, drawing every sheet with the built-in title box, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
+/// values of its fields (`fields`), or name `none` to have no title block at all (no border, title box or folding marks).
+/// Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a connector with a serde error
+/// ("unknown variant", "missing field `system`") and would leave the title blocks out as fields it doesn't know, drawing
+/// every sheet with the built-in title box, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -1899,19 +1900,27 @@ impl Facing {
     }
 }
 
-/// A sheet: named landscape paper or custom width by height in mm, with a title block and views on it.
+/// A sheet: named landscape paper or custom width by height in mm, with an optional title block and views on it.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Sheet {
     pub number: String,
     pub name: String,
     pub size: String,
-    /// The project's title block it's drawn with (`Model::title_blocks`), by name; none, the built-in title box.
+    /// The project's title block it's drawn with (`Model::title_blocks`), by name; empty, the built-in title box; `none`
+    /// ([`crate::titleblock::NONE`]), no title block at all: no border, title box or folding marks.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub title_block: String,
     /// Its values of its title block's sheet fields (and of an automatic field it gives one to), by uppercase key.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub fields: BTreeMap<String, String>,
+}
+
+impl Sheet {
+    /// Whether it's drawn with no title block at all ([`crate::titleblock::NONE`]): no border, title box or folding marks.
+    pub fn has_no_title_block(&self) -> bool {
+        self.title_block == crate::titleblock::NONE
+    }
 }
 
 /// Minimum custom paper side in mm. `Model::check` also asks a sheet's paper to hold its standard's title block inside its
@@ -3492,9 +3501,9 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
-        // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own and their
-        // fields' values) has none either: a file of 17's connectors are a power or a switch one, each with its system, which 18
-        // reads as they were, and a file of 17 holds no title blocks.
+        // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, their fields'
+        // values, and sheets with none) has none either: a file of 17's connectors are a power or a switch one, each with its
+        // system, which 18 reads as they were, and a file of 17 holds no title blocks, its sheets keeping the built-in one.
         self.format = FORMAT;
     }
 
@@ -7242,12 +7251,13 @@ impl Model {
                         mm(least_height),
                     ));
                 }
-                if !sh.title_block.is_empty() && !self.title_blocks.contains_key(&sh.title_block) {
+                if !sh.title_block.is_empty() && !sh.has_no_title_block() && !self.title_blocks.contains_key(&sh.title_block) {
                     let there: Vec<&str> = self.title_blocks.keys().map(String::as_str).collect();
                     return Err(format!(
-                        "{who}: there's no title block `{}` (the project has: {}); `title_block` makes one",
+                        "{who}: there's no title block `{}` (the project has {}); `title_block` makes one, \"\" is the built-in one \
+                         and `none` none at all",
                         sh.title_block,
-                        if there.is_empty() { "none".to_string() } else { there.join(", ") }
+                        if there.is_empty() { "none of its own".to_string() } else { there.join(", ") }
                     ));
                 }
                 crate::titleblock::check_values(&who, &sh.fields)?;

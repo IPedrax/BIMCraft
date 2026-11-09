@@ -724,6 +724,16 @@ definition, and a value given to one (DATE, to issue on) is said instead. A key 
 shows on the sheet. `titleblock::values` works them out, `sheet::title_values` with the sheet's scale, and `elements` gives a sheet's
 as `title_values`, with the keys that are its own to give as `sheet_fields`.
 
+A sheet may also have no title block at all: `sheet {"title_block": "none"}` (`titleblock::NONE`, in any case, or `false`; `true` or
+`""` is the built-in one), for one drawn on the sheet itself. It leaves out the border, the title box and its lettering and the folding
+marks, not viewports, their titles, schedules, text notes or detail lines. Properties > Title Block offers None beside Built-in and
+the project's own (`modify` with `title_block`); `elements` always reports it, `""` for the built-in one, which the file leaves out.
+The desktop and exports share `sheet::draw`. Paper size and automatic viewport placement stay the same, including the room above
+the built-in title box. A frame not drawn can't be picked; viewport and annotation picking are unchanged, and Properties shows the
+sheet when nothing is selected. No title block of the project's may be called `none` (`TitleBlock::check`), and none is no library
+entry, so renaming and Purge Unused pass it by. A file of 17 holds no `none`, so its sheets keep the built-in title box; FORMAT 18,
+shared with the title blocks, keeps a build that reads up to 17 from printing the frame again on a sheet with none.
+
 `title_block` makes, edits, renames and deletes them (one a sheet is drawn with can't go), starting a new one as the built-in box drawn
 as one; with `path` it reads a DXF (or a DWG, through the session's reader) drawn at full size on paper in its model space: lines, arcs,
 circles and polylines as lines, in the pen nearest their weight, solid hatches as fills, texts as texts, moved to the corner of their

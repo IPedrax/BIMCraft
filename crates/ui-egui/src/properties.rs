@@ -1948,8 +1948,9 @@ impl BimApp {
         }
     }
 
-    /// A sheet's title block, as Revit's palette has a sheet's: which one it's drawn with (the built-in one, or one of the
-    /// project's), and its values of that one's sheet fields; Edit Title Blocks… and the project's values a click away.
+    /// A sheet's title block, as Revit's palette has a sheet's: which one it's drawn with (the built-in one, none at all, or
+    /// one of the project's), and its values of that one's sheet fields; Edit Title Blocks… and the project's values a click
+    /// away.
     fn sheet_title_block(&mut self, ui: &mut Ui, model: &Model, ids: &[Id]) {
         let &[id] = ids else { return };
         let Some(sheet) = model.sheet(id) else { return };
@@ -1961,17 +1962,23 @@ impl BimApp {
         if !open {
             return;
         }
-        let built_in = t("Built-in");
+        let (built_in, none) = (t("Built-in"), t("None"));
         let mut chosen = sheet.title_block.clone();
         let mut change: Option<Value> = None;
         let tb = model.title_blocks.get(&sheet.title_block);
         let values = bimcraft_core::sheet::title_values(model, id);
         grid(ui, ("sheet-title-block", id), |ui| {
             let label = ui.label(t("Title Block"));
-            let shown = if chosen.is_empty() { built_in.to_string() } else { chosen.clone() };
+            let shown = match chosen.as_str() {
+                "" => built_in.to_string(),
+                bimcraft_core::titleblock::NONE => none.to_string(),
+                _ => chosen.clone(),
+            };
             let r =
                 ComboBox::from_id_salt(("sheet-title-block-pick", id)).selected_text(shown).width(ui.available_width()).show_ui(ui, |ui| {
                     ui.selectable_value(&mut chosen, String::new(), built_in);
+                    // No border, title box or folding marks, for one drawn on the sheet itself.
+                    ui.selectable_value(&mut chosen, bimcraft_core::titleblock::NONE.to_string(), none);
                     for n in model.title_blocks.keys() {
                         ui.selectable_value(&mut chosen, n.clone(), n);
                     }
@@ -1997,7 +2004,7 @@ impl BimApp {
             self.run("modify", p);
         }
         ui.horizontal(|ui| {
-            let name = (!sheet.title_block.is_empty()).then(|| sheet.title_block.clone());
+            let name = tb.is_some().then(|| sheet.title_block.clone());
             if ui.button(t("Edit Title Blocks…")).clicked() {
                 self.open_title_blocks(name.as_deref());
             }

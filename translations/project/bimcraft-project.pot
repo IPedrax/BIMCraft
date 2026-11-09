@@ -1,7 +1,11 @@
 # BIMCraft project translation template.
 # SPDX-License-Identifier: MIT OR Apache-2.0
 msgid ""
-msgstr "Project-Id-Version: BIMCraft\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
+msgstr ""
+"Project-Id-Version: BIMCraft\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
 
 #: crates/core/src/sheet.rs:290
 msgid "AS INDICATED"
@@ -11,8 +15,7 @@ msgstr ""
 msgid "Air Terminal"
 msgstr ""
 
-#: crates/core/src/schedule.rs:194
-#: crates/core/src/schedule.rs:230
+#: crates/core/src/schedule.rs:194 crates/core/src/schedule.rs:230
 msgid "Area"
 msgstr ""
 
@@ -192,8 +195,7 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:9543
-#: crates/core/src/commands.rs:11729
+#: crates/core/src/commands.rs:9543 crates/core/src/commands.rs:11729
 msgid "Elevation"
 msgstr ""
 
@@ -245,8 +247,7 @@ msgstr ""
 msgid "Gate Valve"
 msgstr ""
 
-#: crates/core/src/family.rs:2205
-#: crates/core/src/view3d.rs:994
+#: crates/core/src/family.rs:2205 crates/core/src/view3d.rs:994
 msgid "Glass"
 msgstr ""
 
@@ -310,8 +311,7 @@ msgstr ""
 msgid "Length"
 msgstr ""
 
-#: crates/core/src/commands.rs:6309
-#: crates/core/src/model.rs:3130
+#: crates/core/src/commands.rs:6309 crates/core/src/model.rs:3130
 msgid "Level"
 msgstr ""
 
@@ -479,8 +479,7 @@ msgstr ""
 msgid "Seat Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:9520
-#: crates/core/src/commands.rs:11728
+#: crates/core/src/commands.rs:9520 crates/core/src/commands.rs:11728
 msgid "Section"
 msgstr ""
 
@@ -679,4 +678,3 @@ msgstr ""
 #: crates/core/src/loads.rs:79
 msgid "wc"
 msgstr ""
-
