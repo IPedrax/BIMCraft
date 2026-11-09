@@ -70,7 +70,9 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 18: a family's connector may be a `pipe`,
+/// The version of the project file this build writes, and the newest it reads. 19: stairs may be open, with treads,
+/// stringers and thin landings; older readers would discard `open` and turn them solid. Existing stairs remain solid.
+/// 18: a family's connector may be a `pipe`,
 /// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
 /// the starter fixtures and fittings have them; nothing in a file of 17 changes, but a build that reads up to 17 would answer
 /// such a connector with a serde error ("unknown variant", "missing field `system`"), not "saved by a newer BIMCraft". 17: a schedule may list several categories
@@ -111,7 +113,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 18;
+pub const FORMAT: u32 = 19;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -1618,6 +1620,9 @@ pub struct Stair {
     pub tread: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub landings: Vec<Landing>,
+    /// Thin treads and landings carried by side stringers; false keeps solid construction.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub open: bool,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -3452,6 +3457,15 @@ impl Model {
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
         // 17 to 18 (pipe, data and earthing connectors, a connector's place) has none either: a file of 17's connectors are
         // a power or a switch one, each with its system, which 18 reads as they were.
+        // 18 to 19: open stair construction. Older readers discard `open`, turning the stair solid.
+        // Files of 18 and earlier authored only solid stairs; their missing field defaults to false.
+        if self.format < 19 {
+            for (_, element) in self.elements.iter_mut() {
+                if let Element::Stair(stair) = element {
+                    stair.open = false;
+                }
+            }
+        }
         self.format = FORMAT;
     }
 
@@ -7027,7 +7041,12 @@ impl Model {
                 for (what, v) in [("width", st.width), ("riser", st.riser), ("tread", st.tread)] {
                     size(&format!("{who} {what}"), v)?;
                 }
-                let (n, _, _) = self.flight(st);
+                let (n, each, _) = self.flight(st);
+                if st.open && (st.width <= 2.0 * crate::stairs::STRINGER.0 || each <= crate::stairs::OPEN_TREAD) {
+                    return Err(format!(
+                        "{who}: open construction needs width greater than 30 mm and actual riser height greater than 40 mm"
+                    ));
+                }
                 if !(2..=200).contains(&n) {
                     return Err(format!("{who}: {n} risers; a stair takes 2 to 200, so check its height and its riser ({} mm)", st.riser));
                 }

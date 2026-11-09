@@ -69,6 +69,11 @@ const CONNECTOR: u64 = 55;
 const CONNECTOR_DEFINES: u64 = 56;
 const TYPE_MATERIALS: u64 = 57;
 const USAGE_MATERIALS: u64 = 58;
+const STAIR_CONSTRUCTION: u64 = 67;
+const STAIR_CONSTRUCTION_DEFINES: u64 = 68;
+
+/// Open-stair construction marker, read into the native stair field on IFC import.
+pub const STAIR_SET: &str = "BIMCraft_Stair";
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
@@ -576,14 +581,15 @@ impl Step {
     }
 
     /// Landings: each a slab from `base` up to its top, placed in `at`.
-    fn landings(&mut self, l: &stairs::Layout, at: u64, base: f64, id: Id) -> Vec<u64> {
+    fn landings(&mut self, l: &stairs::Layout, at: u64, base: f64, id: Id, open: bool) -> Vec<u64> {
         l.pads
             .iter()
             .enumerate()
             .map(|(i, p)| {
                 let pat = self.place(Some(at), (0.0, 0.0, 0.0), None);
                 let profile = self.profile(&p.ring, &[]);
-                let shape = self.body(profile, 0.0, p.z - base, &[]);
+                let bottom = if open { p.z - base - stairs::STRINGER.1 } else { 0.0 };
+                let shape = self.body(profile, bottom, p.z - base - bottom, &[]);
                 self.add(format!("IFCSLAB({},$,'Landing',$,$,#{pat},#{shape},$,.LANDING.)", self.guid(LANDING, self.part(id, i))))
             })
             .collect()
@@ -1185,17 +1191,33 @@ pub fn export(m: &Model) -> String {
                     w.add(format!("IFCSTAIR({},$,'Stair',$,$,#{at},$,'{id}',{})", w.guid(ELEMENT, id), shape_of(&st.landings, "STAIR")));
                 contained.entry(st.level).or_default().push(ent);
                 products.insert(id, ent);
-                // Its flights, each tread a block from the floor up to it, as in 3D; its landings.
+                if st.open {
+                    let prop = w.add("IFCPROPERTYSINGLEVALUE('Open',$,IFCBOOLEAN(.T.),$)");
+                    let set = w.add(format!("IFCPROPERTYSET({},$,'{STAIR_SET}',$,(#{prop}))", w.guid(STAIR_CONSTRUCTION, id)));
+                    w.add(format!("IFCRELDEFINESBYPROPERTIES({},$,$,$,(#{ent}),#{set})", w.guid(STAIR_CONSTRUCTION_DEFINES, id)));
+                }
+                // Keep closed construction's geometry and identities; open flights share the view's solids.
                 let mut parts = Vec::new();
                 for (i, run) in l.runs.iter().enumerate() {
                     let fat = w.place(Some(at), (run.start.0, run.start.1, run.z.0 - base), Some(run.u));
-                    let steps: Vec<(u64, f64, f64)> = (1..run.risers)
-                        .map(|k| {
-                            let k = f64::from(k);
-                            (w.rectangle(P2((k - 0.5) * st.tread, 0.0), P2(st.tread, st.width)), base - run.z.0, run.z.0 - base + k * each)
-                        })
-                        .collect();
-                    let shape = w.bodies(&steps, &[], None);
+                    let shape = if st.open {
+                        let local = stairs::Run { start: P2(0.0, 0.0), u: P2(1.0, 0.0), z: (0.0, run.z.1 - run.z.0), ..*run };
+                        let solids = stairs::open_flight(&local, st.width, st.tread, each);
+                        let breps: Vec<u64> = solids.iter().map(|(ring, bottom, top)| w.prism(ring, bottom, top, 0.0)).collect();
+                        w.solid(&breps, &[])
+                    } else {
+                        let steps: Vec<(u64, f64, f64)> = (1..run.risers)
+                            .map(|k| {
+                                let k = f64::from(k);
+                                (
+                                    w.rectangle(P2((k - 0.5) * st.tread, 0.0), P2(st.tread, st.width)),
+                                    base - run.z.0,
+                                    run.z.0 - base + k * each,
+                                )
+                            })
+                            .collect();
+                        w.bodies(&steps, &[], None)
+                    };
                     parts.push(w.add(format!(
                         "IFCSTAIRFLIGHT({},$,'Flight',$,$,#{fat},#{shape},$,{},{},{},{},.STRAIGHT.)",
                         w.guid(FLIGHT, w.part(id, i)),
@@ -1205,7 +1227,7 @@ pub fn export(m: &Model) -> String {
                         real(st.tread)
                     )));
                 }
-                parts.extend(w.landings(&l, at, base, id));
+                parts.extend(w.landings(&l, at, base, id, st.open));
                 wholes.insert(id, (ent, at, base, parts));
             }
             Element::Ramp(r) => {
@@ -1227,7 +1249,7 @@ pub fn export(m: &Model) -> String {
                         w.add(format!("IFCRAMPFLIGHT({},$,'Flight',$,$,#{fat},#{shape},$,.STRAIGHT.)", w.guid(FLIGHT, w.part(id, i)))),
                     );
                 }
-                parts.extend(w.landings(&l, at, base, id));
+                parts.extend(w.landings(&l, at, base, id, false));
                 wholes.insert(id, (ent, at, base, parts));
             }
             // On a stair or a ramp, it's one of its parts; see below.

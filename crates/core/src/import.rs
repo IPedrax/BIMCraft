@@ -2783,6 +2783,24 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     let of_file: HashSet<String> = made.keys().cloned().collect();
     settle(made, placed, &mut m, &mut skipped, &mut seen, &mut from, &mut origin, &mut elements_from);
 
+    // Construction is explicit: do not infer open stairs from arbitrary foreign flight bounds.
+    let open_stairs: HashSet<u64> = named(&["IFCRELDEFINESBYPROPERTIES"])
+        .into_iter()
+        .filter_map(e)
+        .filter_map(|rel| {
+            let set = reference(rel.args.get(5))
+                .and_then(e)
+                .filter(|x| x.name == "IFCPROPERTYSET" && text(x.args.get(2)) == Some(crate::ifc::STAIR_SET))?;
+            let open = refs(set.args.get(4)).into_iter().filter_map(e).any(|p| {
+                p.name == "IFCPROPERTYSINGLEVALUE"
+                    && text(p.args.first()) == Some("Open")
+                    && matches!(p.args.get(2), Some(V::Typed(t, v)) if t == "IFCBOOLEAN" && matches!(&**v, V::Enum(b) if b == "T"))
+            });
+            open.then(|| refs(rel.args.get(4)))
+        })
+        .flatten()
+        .collect();
+
     // Stairs: each flight measured from its treads, a landing between each two and the way the next
     // one turns there. The railings among a stair's parts come in along it.
     let mut railings_on: HashMap<u64, Id> = HashMap::new();
@@ -2794,7 +2812,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let of = |name: &str| parts.iter().copied().filter(|p| e(*p).is_some_and(|x| x.name == name)).collect::<Vec<u64>>();
         let flights = of("IFCSTAIRFLIGHT");
         let sources = if flights.is_empty() { vec![id] } else { flights };
-        let measured: Result<Vec<Flight>, String> = sources.iter().filter_map(|f| e(*f)).map(|s| stair_from(&r, s, &r.body(s))).collect();
+        let measured: Result<Vec<Flight>, String> =
+            sources.iter().filter_map(|f| e(*f)).map(|s| stair_from(&r, s, &r.body(s), open_stairs.contains(&id))).collect();
         let mut fl = match measured {
             Ok(fl) if !fl.is_empty() => fl,
             Ok(_) => {
@@ -2843,6 +2862,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             riser: climb / f64::from(risers),
             tread: (tread(&first) * 1000.0).round() / 1000.0,
             landings,
+            open: open_stairs.contains(&id),
         };
         let sid = m.insert(Element::Stair(stair));
         from.insert(sid, who(id));
@@ -3830,13 +3850,13 @@ fn ramp_from(r: &Reader, faces: &[Vec<P3>]) -> Result<RampRun, String> {
     Ok((r.flat([foot.0, foot.1, 0.0]), angle, c1 - c0, s1 - s0, tan * 100.0, top.at(foot)))
 }
 
-fn stair_from(r: &Reader, s: &Entity, faces: &[Vec<P3>]) -> Result<Flight, String> {
+fn stair_from(r: &Reader, s: &Entity, faces: &[Vec<P3>], open: bool) -> Result<Flight, String> {
     let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
         return Err(NO_BODY.into());
     };
     // The treads: faces turned up, above the floor, one height each.
     let mut treads: Vec<(f64, P2)> = Vec::new();
-    for f in faces.iter().filter(|f| normal(f)[2] > 0.99) {
+    for f in faces.iter().filter(|f| normal(f)[2] > 0.99 && (!open || span(f.iter().map(|p| p[2])).is_some_and(|(a, b)| b - a < 0.01))) {
         let z = f.iter().map(|p| p[2]).sum::<f64>() / f.len() as f64;
         let c = f.iter().fold(P2(0.0, 0.0), |c, p| c + r.flat(*p)) * (1.0 / f.len() as f64);
         if z > z0 + 1.0 && !treads.iter().any(|(tz, _)| (tz - z).abs() < 1.0) {
@@ -3855,8 +3875,13 @@ fn stair_from(r: &Reader, s: &Entity, faces: &[Vec<P3>]) -> Result<Flight, Strin
     let f = r.frame(s);
     let axes = [P2(f.x[0], f.x[1]).unit(), P2(f.y[0], f.y[1]).unit()];
     let spread = |u: &P2| span(treads.iter().map(|(_, c)| c.dot(*u))).map_or(0.0, |(lo, hi)| hi - lo);
-    let mut u =
-        axes.into_iter().filter(|u| u.length() > 0.5).max_by(|a, b| spread(a).total_cmp(&spread(b))).ok_or("it doesn't stand upright")?;
+    // An explicitly marked flight has its run on local x, including a two-riser flight whose
+    // single tread cannot establish a direction from the spread of tread centres.
+    let mut u = if open {
+        axes[0]
+    } else {
+        axes.into_iter().filter(|u| u.length() > 0.5).max_by(|a, b| spread(a).total_cmp(&spread(b))).ok_or("it doesn't stand upright")?
+    };
     if let (Some((_, low)), Some((_, high))) = (treads.first(), treads.last())
         && (*high - *low).dot(u) < 0.0
     {

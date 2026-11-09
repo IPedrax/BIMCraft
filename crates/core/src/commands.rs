@@ -670,11 +670,12 @@ other_files(
         ui_msg!("Stair"),
         &[],
         "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, riser?, tread?, landings?: [{at, turn?}, …], \
-         railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
+         railings?, open?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
          as many risers as keep each at most `riser` mm (180), treads `tread` deep (280), `width` wide (1000). One straight \
          run, as long as that makes it; or with landings (each as deep as the stair is wide) after `at` risers, the next run \
          going on as `turn` says: 0 straight on, 90 or -90 turned left or right, 180 or -180 back beside it, to its left or right. \
-         With `railings`, a railing down each side too",
+         With `railings`, a railing down each side too. With `open`, 40 mm treads on two 15 by 250 mm side stringers and \
+         250 mm landings leave room underneath; solid construction is the default",
         stair,
     )
     .menu("Architecture > Stair"),
@@ -8678,6 +8679,7 @@ fn stair(s: &mut Session, p: &Value) -> R {
         riser: dim("riser", RISER)?,
         tread: dim("tread", TREAD)?,
         landings: landings_param(c, p)?,
+        open: flag(c, p, "open")?,
     };
     let (n, _, length) = m.flight(&st);
     let level = st.level;

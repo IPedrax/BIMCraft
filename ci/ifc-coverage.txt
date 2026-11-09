@@ -70,3 +70,6 @@ beam {"points": [[0,9500],[6000,9500]], "offset": 3000, "type": "B 150x600", "ju
 beam {"points": [[0,10000],[6000,10000]], "offset": 3000, "type": "B 150x600"}
 beam {"points": [[0,10500],[6000,10500]], "offset": 3000, "end_offset": 3500, "type": "Steel Tube 150", "justify": "centre"}
 beam {"points": [[0,11000],[6000,11000]], "offset": 3000, "type": "B 120x300"}
+
+# Open construction includes side supports and a thin landing.
+stair {"start":[40000,20000],"height":2880,"open":true,"landings":[{"at":8,"turn":90}]}
