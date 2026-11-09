@@ -64,7 +64,7 @@ object style, and `Look::dress` the view's row for it (`Look::sub_paint`: the ro
 the element's own override). Object Styles has a row for each (`styles::model_sub`, `model_subs`; the desktop's dialog lists it as
 Doors > Opening), drawing in its category's pens until given its own (`styles::inherited`). Rooms' subcategories have no Object
 Styles row. Revit's Plan Swing and Elevation Swing aren't rows: BIMCraft has no elevation symbols, and the swing is Opening. A view,
-template or Object Styles naming either key is part of what FORMAT 18 says an older build would refuse.
+template or Object Styles naming either key is part of what FORMAT 19 says an older build would refuse.
 
 Family components are split by category. A component is of its family's category (`graphics::category_of`; `component_category` names
 each `family::Category`: `furniture`, `casework`, `plumbing`, `drain`, `pipefitting`, `pipeaccessory`, `equipment`, `outlet`, `switch`,

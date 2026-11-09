@@ -340,7 +340,7 @@ fn a_file_keeps_its_sketch_dimensions_and_a_copy_of_the_family_measures_its_own_
     assert!(
         text.contains(&format!("\"format\": {}", crate::model::FORMAT)) || text.contains(&format!("\"format\":{}", crate::model::FORMAT))
     );
-    const { assert!(crate::model::FORMAT >= 18) };
+    const { assert!(crate::model::FORMAT >= 19) };
     let (back, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
     assert_eq!(back.families["Slab"].dimensions, s.model.families["Slab"].dimensions);

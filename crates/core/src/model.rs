@@ -71,11 +71,12 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 18: the Family Editor, and what places its
-/// families in a project. A build that reads up to 17 would leave most of it out as fields it doesn't know (a family's planes,
+/// The version of the project file this build writes, and the newest it reads. 19: the Family Editor, and what places its
+/// families in a project. A build that reads up to 18 would leave most of it out as fields it doesn't know (a family's planes,
 /// sketches, dimensions, nested families, pivots and settings, a component's host), drawing a family without them or failing
 /// to build it, and losing them on saving, and refuse the rest on opening ("unknown variant", "isn't a category views draw"),
-/// not say "saved by a newer BIMCraft". A file of 17 is brought up to 18 by one step of [`Model::migrate`]. What 18 adds:
+/// not say "saved by a newer BIMCraft". A file of 18 or older is brought up to 19 by one step of [`Model::migrate`], after
+/// 18's, which needs none. What 19 adds:
 ///
 /// - Family parameters: text, whole numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a
 ///   GUID) or reporting (`reporting`); a family type parameter names its category (`of`).
@@ -103,14 +104,14 @@ pub const MAX_SLOPE: f64 = 75.0;
 ///   (Doors > Opening, Windows > Opening), and a family's symbol the subcategory it is drawn in (`subcategory`).
 /// - Adaptive families: a family may be adaptive (`adaptive`: its points, lines and forms), and a component may hold its
 ///   adaptive points' frames (`adaptive`).
-/// - Connectors with a place (upstream's 18): a family's connector may be a `pipe`, `data` or `earthing` one, with no
-///   `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`); the starter fixtures and
-///   fittings have them.
 /// - Work planes and hosts (T4, T16): the project has reference planes (`refplane`); a work plane-based component may be
 ///   hosted on one (`host`), its `at` and `offset` following the plane and its family's axes tilted with it, or on a face of a
 ///   wall, a floor, a ceiling or a roof (`host` `{"face": {"element", "face"}}`, Place on Face), its `uv` that face's own.
 ///
-/// 17: a schedule may list several categories
+/// 18: a family's connector may be a `pipe`, `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`),
+/// and any may have a place (`at`, `direction`); the starter fixtures and fittings have them; nothing in a file of 17 changes,
+/// but a build that reads up to 17 would answer such a connector with a serde error ("unknown variant", "missing field
+/// `system`"), not "saved by a newer BIMCraft". 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -148,7 +149,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 18;
+pub const FORMAT: u32 = 19;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3609,9 +3610,11 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
-        // Also in 18 (pipe, data and earthing connectors, a connector's place) needs nothing: a file of 17's connectors are
+        // 17 to 18 (pipe, data and earthing connectors, a connector's place) has none either: a file of 17's connectors are
         // a power or a switch one, each with its system, which 18 reads as they were.
-        // 17 to 18 (the Family Editor, and what places its families): one step, in this order.
+        // 18 to 19 (the Family Editor, and what places its families): one step, in this order, for a file of 17 or 18 alike
+        // (18 changed only connectors, which this step leaves alone: a connector's `at` is in the family's axes, which the
+        // datums are whatever plane `defines_origin`, and a connector has no `host` that 1 below would move).
         // 1. A form's `plane` becomes its `host`, a datum: `xy` Ref. Level and `yz` Center (Left/Right) as they were; `xz`
         //    Center (Front/Back), its `from` and `to` negated and swapped (a formula wrapped as `-(…)`), since it swept along
         //    +y and the datum's normal is -y, a revolve's angles as they were. Its `profile`, `circle` and `axis` become lines
@@ -3620,20 +3623,25 @@ impl Model {
         //    and a family read without its datums is given them (`Family::planes`).
         // 2. Every family's datums are put first and its origin settled, whatever the file held (`Family::settle_planes`).
         // 3. A door's or a window's void cuts its wall wherever it reaches into it, whatever its place in the family's list,
-        //    unless its `cuts` says `forms`. Before 18, only one that cut none of the solid forms listed before it cut the
-        //    wall, in its own shape in place of the opening's rectangle (a rule that took no step, so a file of 17 is drawn
-        //    by it too). Each void that rule didn't cut the wall with, though it reaches into it, says `forms`
+        //    unless its `cuts` says `forms`. Before 19, only one that cut none of the solid forms listed before it cut the
+        //    wall, in its own shape in place of the opening's rectangle (a rule only unreleased builds of the Family Editor
+        //    had: upstream's 17 and 18 cut the wall with the opening's rectangle alone, and a file of either reads by it). Each void that rule didn't cut the wall with, though it reaches into it, says `forms`
         //    (`Family::pin_cuts`), so it cuts what it did. It runs after 2, as it did, the family flexed on its settled planes.
-        // The rest of 18 needs nothing of a file of 17, which holds none of it: an adaptive family and a component's
+        //    A limit: one `cuts` is a void's for every type, and the old rule decided type by type. A void that overlapped a
+        //    solid in any type, or by the default of an instance parameter that moves it, says `forms` for all of them, so a
+        //    type whose void was clear of the solids and cut the wall with the old rule cuts it no more. That is the
+        //    conservative side: the wall keeps the opening's rectangle, as upstream's 17 and 18 drew it, and one value per
+        //    void can't hold both outcomes.
+        // The rest of 19 needs nothing of a file of 17 or 18, which holds none of it: an adaptive family and a component's
         // adaptive frames, a family parameter's group, shared GUID and reporting (each defaults to what a file of 17 means:
         // grouped by its kind, the family's own, set), Doors > Opening and Windows > Opening, the project's reference planes
         // and components hosted on them or on faces (a hosted component's `at` and `offset` are worked out from its host
         // whatever the file says), a family's dimensions of every kind, nested families, Blends and Sweeps (every form of 17
-        // is an extrusion or a revolve, built as it was), pivots, and Visibility Settings (a part without them draws as it
+        // or 18 is an extrusion or a revolve, built as it was), pivots, and Visibility Settings (a part without them draws as it
         // did, `family::visibility`). An adaptive point's `"datum": "level" | "front_back" | "left_right"`, the name the
         // Family Editor's first adaptive points gave their work plane, is still read as the datum plane of the same frame
-        // (`Host::World`'s `plane_or_datum`); a file of 17 holds no adaptive family, so it takes no part in this step.
-        if self.format < 18 {
+        // (`Host::World`'s `plane_or_datum`); a file of 17 or 18 holds no adaptive family, so it takes no part in this step.
+        if self.format < 19 {
             self.families.values_mut().for_each(crate::family::Family::settle_planes);
             self.families.values_mut().for_each(crate::family::Family::pin_cuts);
         }

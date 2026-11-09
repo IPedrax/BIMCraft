@@ -186,7 +186,7 @@ follows.
 
 ## Status and next steps
 
-Done: the definition and its evaluator (frames, hosts, curves, forms, diagnostics), persistence (file format 12), the commands
+Done: the definition and its evaluator (frames, hosts, curves, forms, diagnostics), persistence (file format 19, the Family Editor's), the commands
 (`adaptive_capture`, `adaptive_place`, `adaptive_move`, `adaptive_evaluate`), the modelling view with Point, Line, Make Adaptive,
 Create Form, the gizmo, Delete and Undo, Properties, and placing and reshaping instances in a plan. Of the parity study's step 1:
 point types with shape handles, Revit's numbering, Orients to as measured in Revit, the six measurement types, and the show
@@ -251,6 +251,6 @@ An adaptive component (frames of its own, or its family's test placement) is pla
 
 `adaptive_evaluate {id}` returns the containing family, definition, exact placement, raw instance parameter overrides, selected type and evaluation with fully resolved parameters. `Evaluation::replay` uses the saved resolved parameters and frames for standalone reproduction. The ordered results and diagnostics identify node, error code, dependency path and cause; valid independent and upstream results survive missing dependencies, cycles and geometric failures. Structural invalidity is previewable while editing, but a committed definition must have unique IDs/numbers, existing dependencies and no cycles. Failed geometric instance placements remain saveable and reopenable.
 
-Limits: 1024 nodes, dependency depth 128, polyline up to 256 points, 64 loft sections, 256 correspondence samples, per-mesh 4096 vertices/20000 triangles and per-evaluation 400000 triangles. Frames must be finite, orthonormal and within the coordinate budget. New projects use file format 12 so older builds cannot silently discard adaptive definitions; existing projects migrate with empty adaptive fields.
+Limits: 1024 nodes, dependency depth 128, polyline up to 256 points, 64 loft sections, 256 correspondence samples, per-mesh 4096 vertices/20000 triangles and per-evaluation 400000 triangles. Frames must be finite, orthonormal and within the coordinate budget. New projects use file format 19 so older builds cannot silently discard adaptive definitions; existing projects migrate with empty adaptive fields.
 
 The initial scope deliberately has no graph editor, nested adaptive families, live cross-instance constraints or analytic host surfaces. Future editing must continue using this canonical definition rather than adding a disconnected geometry recipe.

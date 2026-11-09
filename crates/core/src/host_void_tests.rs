@@ -367,7 +367,7 @@ fn cuts_is_a_voids_and_a_file_of_17_keeps_what_its_voids_cut() {
         )
         .unwrap_err();
     assert!(e.contains("`cuts` says what a void cuts"), "{e}");
-    // FORMAT 17 to 18: a file of 17 whose void, listed after the member it overlaps, cut the member and not the wall, reads
+    // FORMAT 17 (or 18) to 19: a file of 17 whose void, listed after the member it overlaps, cut the member and not the wall, reads
     // `cuts: forms` and cuts what it did; one listed first, which cut the wall, reads as it was.
     framed(&mut s, None);
     arched(&mut s);
@@ -388,4 +388,88 @@ fn cuts_is_a_voids_and_a_file_of_17_keeps_what_its_voids_cut() {
     assert_eq!(arched.host_voids(&arched.values("A", &Default::default()).unwrap()).unwrap().len(), 1);
     let saved: Value = serde_json::from_str(&t.model.to_json().unwrap()).unwrap();
     assert_eq!(saved["format"], json!(crate::model::FORMAT));
+}
+
+/// A file of 18, upstream's (connectors with a place), goes through the same step as one of 17: its door's and window's
+/// voids pinned as the old rule cut, its families given their datums, and its connectors, which 18 added and the step leaves
+/// alone, where they were in the family's axes and so in the project.
+#[test]
+fn a_file_of_18_with_connectors_goes_through_the_family_editors_step_its_connectors_as_they_were() {
+    let mut s = Session::new();
+    framed(&mut s, None);
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Basin", "category": "plumbing", "types": {"A": {}},
+        "forms": [{"profile": [[-250, -200], [250, -200], [250, 200], [-250, 200]], "from": 700, "to": 850}],
+        "connectors": [
+            {"kind": "pipe", "name": "Waste", "domain": "waste", "flow": "out", "at": [0, 150, 700], "direction": [0, 0, -1], "size": 40},
+            {"kind": "pipe", "name": "Cold", "domain": "cold", "flow": "in", "at": [-100, 180, 600], "direction": [0, 1, 0], "size": 20}
+        ]}),
+    );
+    let basin = id_of(run(&mut s, "component", json!({"family": "Basin", "at": [2000, 1000], "angle": 90})));
+    let crate::model::Element::Component(c) = &s.model.elements[&basin] else { panic!("a component") };
+    let placed = s.model.component_connectors(c);
+    let connectors = s.model.families["Basin"].connectors.clone();
+    // As upstream's 18 writes it: no planes, a form on `plane` with its `profile` (the reader takes both as shorthands).
+    let mut file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    file["format"] = json!(18);
+    for f in file["families"].as_object_mut().unwrap().values_mut() {
+        f.as_object_mut().unwrap().remove("planes");
+    }
+    let m = crate::model::Model::from_json(&file.to_string()).unwrap();
+    assert_eq!(m.format, crate::model::FORMAT);
+    assert_eq!(m.families["Framed"].forms[1].cuts, Some(crate::family::Cuts::Forms), "the step ran on a file of 18");
+    assert!(m.families["Basin"].planes.iter().filter(|p| p.datum()).count() == 3, "its datums");
+    assert_eq!(m.families["Basin"].connectors, connectors);
+    let crate::model::Element::Component(c) = &m.elements[&basin] else { panic!("a component") };
+    let after = m.component_connectors(c);
+    assert_eq!(after.len(), 2);
+    for ((k, at, dir), (k0, at0, dir0)) in after.iter().zip(&placed) {
+        assert_eq!(k, k0);
+        let near = |a: &Option<[f64; 3]>, b: &Option<[f64; 3]>| match (a, b) {
+            (Some(a), Some(b)) => a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-9),
+            _ => a == b,
+        };
+        assert!(near(at, at0) && near(dir, dir0), "{at:?} {dir:?} against {at0:?} {dir0:?}");
+    }
+    // Turned a quarter: the waste outlet 150 to the family's left is 150 west of the basin, 700 up, still facing down.
+    let (_, at, dir) = &after[0];
+    let at = at.unwrap();
+    assert!((at[0] - 1850.0).abs() < 1e-9 && (at[1] - 1000.0).abs() < 1e-9 && (at[2] - 700.0).abs() < 1e-9, "{at:?}");
+    assert!(dir.is_some_and(|d| (d[2] + 1.0).abs() < 1e-9));
+}
+
+/// The 18 to 19 step's limit (`Family::pin_cuts`): one `cuts` is a void's for every type, and the old rule decided by type.
+/// A window whose void overlaps its solid in one type (Overlap) and is clear of it in another (Clear) had the old rule cut
+/// the wall in Clear alone; read from a file of 17, its void says `forms` and neither type cuts the wall, which keeps the
+/// opening's rectangle, as upstream's 17 drew it.
+#[test]
+fn the_step_pins_a_void_that_overlapped_in_any_type_so_no_type_cuts_the_wall() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Shifted", "category": "window", "types": {"Overlap": {"Shift": 0}, "Clear": {"Shift": 300}},
+        "parameters": [{"name": "Width", "value": 1000}, {"name": "Height", "value": 1000}, {"name": "Sill Height", "value": 900},
+            {"name": "Shift", "value": 0}],
+        "forms": [
+            {"plane": "xz", "profile": [[-100, 0], [100, 0], [100, 50], [-100, 50]], "from": -40, "to": 40, "material": ""},
+            {"void": true, "plane": "xz", "profile": [["Shift - 50", 0], ["Shift + 50", 0], ["Shift + 50", 1000], ["Shift - 50", 1000]],
+             "from": -300, "to": 300}
+        ]}),
+    );
+    // Today's rule, `cuts` left out (both): each type cuts the wall with it.
+    let f = &s.model.families["Shifted"];
+    for t in ["Overlap", "Clear"] {
+        assert_eq!(f.host_voids(&f.values(t, &Default::default()).unwrap()).unwrap().len(), 1, "{t}, today");
+    }
+    let mut file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    file["format"] = json!(17);
+    let m = crate::model::Model::from_json(&file.to_string()).unwrap();
+    let f = &m.families["Shifted"];
+    assert_eq!(f.forms[1].cuts, Some(crate::family::Cuts::Forms), "overlapping in Overlap pins it for both");
+    for t in ["Overlap", "Clear"] {
+        assert!(f.host_voids(&f.values(t, &Default::default()).unwrap()).unwrap().is_empty(), "{t}: no wall cutter");
+    }
 }

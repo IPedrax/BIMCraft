@@ -2734,9 +2734,12 @@ impl Family {
         Ok(out)
     }
 
-    /// FORMAT 17 to 18 (F10d), a door's or a window's family: each void that a file of 17 didn't cut the wall with, though
+    /// FORMAT 18 to 19 (F10d), a door's or a window's family: each void that the old rule didn't cut the wall with, though
     /// it reaches into it (it cut a solid form listed before it, by their boxes, in any of the family's types), now says
     /// `forms`, so it cuts what it did and nothing more; one that did cut the wall cut none of the forms, and reads as it did.
+    /// The union over the types is a limit: the old rule decided type by type, and one `cuts` is the void's for all of them,
+    /// so a type whose void was clear of the solids (another type's, or another default of an instance parameter, overlapping)
+    /// no longer cuts the wall. It keeps the opening's rectangle there, as upstream's 17 and 18, which had no such rule, drew it.
     pub(crate) fn pin_cuts(&mut self) {
         for n in &mut self.nested {
             n.family.pin_cuts();

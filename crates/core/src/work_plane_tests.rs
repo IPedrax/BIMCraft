@@ -1,7 +1,7 @@
 //! Work planes for families and their components (T4, T13): Edit Work Plane on a family's forms and reference lines, the
 //! project's reference planes, work plane-based components hosted on them (tilted with the plane or kept upright by Always
 //! Vertical), following the plane when it moves, their Schedule Level, Elevation from Level, Work Plane and Offset from Host,
-//! a family's Default Elevation, and files of 17 read by 18.
+//! a family's Default Elevation, and files of 17 read by 19.
 
 use std::collections::BTreeMap;
 
@@ -425,7 +425,7 @@ fn a_hosted_component_goes_through_a_file_and_ifc_tilted() {
     let text = s.model.to_json().unwrap();
     let v: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(v["format"], json!(FORMAT));
-    const { assert!(FORMAT >= 18) };
+    const { assert!(FORMAT >= 19) };
     let (m, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
     // As it was, but for the last bit a file's decimals may lose.
