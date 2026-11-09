@@ -243,7 +243,8 @@ other_files(
         ui_msg!("Door"),
         &["DR"],
         "{at: [x,y] | wall: id, offset?, type?, family?, level?, mark?, flip_facing?, flip_hand?} in the wall under `at`, \
-         or in `wall` centred `offset` mm from its start; with `family`, a door family's `type` (its first by default), \
+         or in `wall` centred `offset` mm from its start; without `level`, prefer the lowest level at or above elevation 0 \
+         whose plan cuts a wall there, then the highest below 0; with `family`, a door family's `type` (its first by default), \
          which sizes the opening and draws the door; it may rise past a low wall's top, as Revit lets it",
         door,
     )
@@ -2362,7 +2363,7 @@ fn off_centre(m: &Model, w: &Wall, p: P2) -> f64 {
 }
 
 /// The nearest wall at `at` on any level, with the heights it spans: what a level that does not cut it should be told about.
-fn wall_elsewhere(m: &Model, at: P2) -> Option<(Id, f64, f64)> {
+fn wall_elsewhere(m: &Model, at: P2) -> Option<(Id, Guid, f64, f64)> {
     m.elements
         .iter()
         .filter_map(|(id, e)| match e {
@@ -2371,7 +2372,32 @@ fn wall_elsewhere(m: &Model, at: P2) -> Option<(Id, f64, f64)> {
         })
         .filter(|(_, w, d)| *d <= m.thickness(w) / 2.0 + 100.0)
         .min_by(|a, b| a.2.total_cmp(&b.2))
-        .map(|(id, w, _)| (*id, m.base_z(w), m.top_z(w)))
+        .map(|(id, w, _)| (*id, w.level, m.base_z(w), m.top_z(w)))
+}
+
+/// Keep the nearby wall's span and the relevant plan cut in both explicit and inferred-level failures.
+fn opening_host_error(c: &str, m: &Model, at: P2, level: Option<Guid>) -> String {
+    let where_on = level.map_or_else(|| "any level".into(), |level| level_name(m, level));
+    let none = format!("no wall at [{}, {}] on {where_on}", at.0, at.1);
+    let fix = if level.is_some() {
+        "give the wall that level, or a view range that cuts it"
+    } else {
+        "give `wall` with `offset`, or a view range that cuts it"
+    };
+    match wall_elsewhere(m, at) {
+        Some((id, host_level, bottom, top)) => {
+            let level = level.unwrap_or(host_level);
+            bad(
+                c,
+                format!(
+                    "{none}; wall {id} stands there but spans {bottom} to {top} mm and {} cuts at {} mm: {fix}",
+                    level_name(m, level),
+                    m.plan_range(level).cut
+                ),
+            )
+        }
+        None => bad(c, if level.is_some() { none } else { format!("{none}; {fix}") }),
+    }
 }
 
 /// The wall a plan of `level` cuts nearest `at`, within its half thickness plus 100 mm of its centre
@@ -2386,6 +2412,13 @@ fn wall_at(m: &Model, level: impl Key, at: P2) -> Option<(Guid, f64)> {
         .filter(|(_, w, d)| *d <= m.thickness(w) / 2.0 + 100.0)
         .min_by(|a, b| a.2.total_cmp(&b.2))
         .map(|(id, w, _)| (id, along(w, at)))
+}
+
+/// The same plan-cut lookup as an explicit level, ordered from ground upwards, then downwards below ground.
+fn wall_on_any_level(m: &Model, at: P2) -> Option<(Guid, f64)> {
+    let levels = m.levels();
+    let ground = levels.partition_point(|(_, level)| level.elevation < 0.0);
+    levels[ground..].iter().chain(levels[..ground].iter().rev()).find_map(|(id, _)| wall_at(m, *id, at))
 }
 
 /// The outline `floor` gives a floor on `level` by default, along the centre lines of the walls
@@ -7340,23 +7373,14 @@ fn build_opening(m: &Model, p: &Value, is_door: bool) -> Result<Opening, String>
             let w = m.wall(h).ok_or_else(|| bad(c, format!("{h} is not a wall")))?;
             (m.guid(h), at.map_or(w.start.dist(w.end) / 2.0, |a| along(w, a)))
         }
+        None if absent(p.get("level")) => {
+            let at = at.ok_or_else(|| bad(c, "give `at` [x, y] on a wall, or `wall` with `offset`"))?;
+            wall_on_any_level(m, at).ok_or_else(|| opening_host_error(c, m, at, None))?
+        }
         None => {
             let at = at.ok_or_else(|| bad(c, "give `at` [x, y] on a wall, or `wall` with `offset`"))?;
             let level = level_param(c, m, p, "level")?;
-            wall_at(m, level, at).ok_or_else(|| {
-                let none = format!("no wall at [{}, {}] on {}", at.0, at.1, level_name(m, level));
-                match wall_elsewhere(m, at) {
-                    Some((id, bottom, top)) => bad(
-                        c,
-                        format!(
-                            "{none}; wall {id} stands there but spans {bottom} to {top} mm and {} cuts at {} mm: give the wall that level, or a view range that cuts it",
-                            level_name(m, level),
-                            m.plan_range(level).cut
-                        ),
-                    ),
-                    None => bad(c, none),
-                }
-            })?
+            wall_at(m, level, at).ok_or_else(|| opening_host_error(c, m, at, Some(level)))?
         }
     };
     let offset = num(c, p, "offset")?.unwrap_or(along_at);
