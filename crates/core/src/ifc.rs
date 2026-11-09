@@ -208,8 +208,16 @@ fn classify(w: &mut Step, m: &Model, products: &BTreeMap<Id, u64>) {
                 continue;
             }
             let Some(item) = cls::current(m, b, &Target::Element(id)).and_then(|c| table.find(c)) else { continue };
-            // One for each system, shared with a family's OmniClass and a parameter's own classification.
-            let edition = Some(table.edition.as_str()).filter(|e| !e.is_empty());
+            // One for each system, shared with a family's OmniClass and a parameter's own classification; one edition for
+            // it, or none when its tables disagree: NBR 15965's parts came out years apart.
+            let mut editions = m
+                .classification
+                .tables
+                .values()
+                .filter(|t| if def.is_some() { t.system == table.system } else { std::ptr::eq(*t, table) })
+                .map(|t| t.edition.as_str());
+            let first = editions.next().unwrap_or_default();
+            let edition = (!first.is_empty() && editions.all(|e| e == first)).then_some(first);
             let system = w.classification_by(&name, def.map(|d| d.publisher), edition);
             let entry = codes.entry((name.clone(), item.code.clone())).or_insert_with(|| {
                 let r = w.add(format!("IFCCLASSIFICATIONREFERENCE($,{},{},#{system},$,$)", s(&item.code), s(&item.title)));

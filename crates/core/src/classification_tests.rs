@@ -262,9 +262,16 @@ fn every_system_says_what_it_fills_and_none_ships_a_table() {
     }
     for sys in classification::SYSTEMS {
         for t in sys.tables {
-            assert!(!t.why.is_empty() && !t.example.is_empty(), "{} {}", sys.id, t.key);
-            let made =
-                classification::plan(&classification::Ask { system: sys.id.into(), tables: vec![t.key.into()], ..Default::default() });
+            assert!(!t.why.is_empty(), "{} {}", sys.id, t.key);
+            // A table for no category here is made for the categories named.
+            let categories =
+                if t.categories.is_empty() { [(t.key.to_string(), vec!["wall".to_string()])].into() } else { Default::default() };
+            let made = classification::plan(&classification::Ask {
+                system: sys.id.into(),
+                tables: vec![t.key.into()],
+                categories,
+                ..Default::default()
+            });
             let made = made.unwrap_or_else(|e| panic!("{e}"));
             assert!(
                 made.definitions
@@ -358,4 +365,91 @@ fn another_programs_classification_comes_in_as_its_systems_parameters_or_named_f
     assert_eq!(classification::imported_parameters("Uniformat II", "B2010").0, "UniFormat Number");
     assert_eq!(classification::imported_parameters("NBR 15965", "3E 20 02").1, "NBR 15965 3E Title");
     assert_eq!(classification::imported_parameters("Our Office Codes", "X1").0, "Our Office Codes Number");
+}
+
+#[test]
+fn nbr_codes_of_six_pairs_and_of_fewer_are_one_code_and_their_parents_are_by_position() {
+    // The newer parts write two characters and six pairs, the older fewer; unused levels are 00, and 99 is "other".
+    assert_eq!(normal("3E 14 00 00 00 00 00"), "3E14");
+    assert_eq!(normal("3E 14 02 00 00 00 00"), normal("3E 14 02"));
+    assert_eq!(normal("4A 19 99 00 00 00 00"), "4A1999");
+    let t = Table {
+        system: "nbr15965".into(),
+        key: "3E".into(),
+        items: ["3E 14 00 00 00 00 00", "3E 14 02", "3E 14 02 04 00 00 00", "3E 14 99 00 00 00 00", "3E 16"]
+            .iter()
+            .map(|c| classification::Item { code: c.to_string(), title: c.to_string(), parent: None })
+            .collect(),
+        ..Table::default()
+    };
+    let p = t.parents();
+    let parent = |i: usize| p[i].map(|q| t.items[q].code.as_str());
+    assert_eq!(parent(0), None);
+    assert_eq!(parent(1), Some("3E 14 00 00 00 00 00"));
+    assert_eq!(parent(2), Some("3E 14 02"));
+    assert_eq!(parent(3), Some("3E 14 00 00 00 00 00"));
+    assert_eq!(parent(4), None);
+    // Either form finds the code as the table writes it.
+    assert_eq!(t.find("3E 14 02 00 00 00 00").map(|i| i.code.as_str()), Some("3E 14 02"));
+    assert_eq!(t.find("3E 16 00 00 00 00 00").map(|i| i.code.as_str()), Some("3E 16"));
+}
+
+#[test]
+fn nbr_15965_lists_its_thirteen_tables_and_those_with_no_element_here_wait_for_their_categories() {
+    let sys = classification::system("nbr15965").unwrap();
+    let keys: Vec<&str> = sys.tables.iter().map(|t| t.key).collect();
+    for k in ["0M", "0P", "1F", "1S", "1D", "2N", "2Q", "2C", "3E", "3R", "4A", "4U", "5I"] {
+        assert!(keys.contains(&k), "{k}");
+    }
+    assert_eq!(sys.tables.len(), 13);
+    assert_eq!(sys.table("3R").unwrap().name, "Resultados");
+    // Examples are real codes of the published tables, or none.
+    for t in sys.tables {
+        assert!(t.example.is_empty() || normal(t.example).starts_with(t.key), "{}", t.example);
+    }
+    assert_eq!(sys.table("4A").unwrap().example, "4A 19 00 00 00 00 00");
+    assert!(sys.table("2C").unwrap().example.is_empty());
+    assert!(sys.table("4U").unwrap().why.contains("unit"));
+    assert!(sys.table("3R").unwrap().why.contains("scope"));
+
+    // All of them: the tables with no category here are left out, and the notes say how to have them.
+    let all = classification::plan(&classification::Ask { system: "nbr15965".into(), ..Default::default() }).unwrap();
+    assert!(all.bindings.iter().any(|b| b.table == "NBR 15965 3E"));
+    assert!(!all.bindings.iter().any(|b| b.table == "NBR 15965 0M"));
+    assert!(all.notes.iter().any(|n| n.contains("0M") && n.contains("categories")), "{:?}", all.notes);
+    // Asked for by name, one wants its categories, and has them.
+    let e = classification::plan(&classification::Ask { system: "nbr15965".into(), tables: vec!["1D".into()], ..Default::default() });
+    assert!(e.err().unwrap().contains("categories"));
+    let ask = classification::Ask {
+        system: "nbr15965".into(),
+        tables: vec!["1D".into()],
+        categories: [("1D".to_string(), vec!["wall".to_string()])].into(),
+        ..Default::default()
+    };
+    assert_eq!(classification::plan(&ask).unwrap().bindings[0].table, "NBR 15965 1D");
+    // A table loaded from a file that holds them all is cut to its own codes, by its key, example or not.
+    let mut s = Session::new();
+    let both = "Código,Descrição\n0M 10 00 00 00 00 00,Um material\n1D 10 00 00 00 00 00,Uma disciplina\n";
+    let r = run(&mut s, "classification_table", json!({"path": file("nbr.csv", both), "system": "nbr15965", "table": "1D"}));
+    assert_eq!(r["codes"], 1);
+}
+
+#[test]
+fn ifc_leaves_a_systems_edition_out_when_its_tables_are_of_different_editions() {
+    let (mut s, wall, _) = house();
+    uniclass(&mut s);
+    let pr = "Code,Title\nPr_20,Structural products\nPr_20_93,Unit structural products\n";
+    run(&mut s, "classification_table", json!({"path": file("pr.csv", pr), "system": "uniclass", "table": "Pr", "edition": "2023-01"}));
+    run(&mut s, "classification_parameters", json!({"system": "uniclass", "tables": ["Ss", "Pr"]}));
+    run(
+        &mut s,
+        "classify",
+        json!({"assign": [
+        {"target": wall.to_string(), "table": "Uniclass Ss", "code": "Ss_25_10_30_35"},
+        {"target": wall.to_string(), "table": "Uniclass Pr", "code": "Pr_20_93"}]}),
+    );
+    let f = crate::ifc::export(&s.model);
+    let systems: Vec<&str> = f.lines().filter(|l| l.contains("=IFCCLASSIFICATION(")).collect();
+    assert_eq!(systems.len(), 1);
+    assert!(systems[0].contains("'NBS',$,$,'Uniclass 2015'"), "{}", systems[0]);
 }

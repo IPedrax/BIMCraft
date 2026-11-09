@@ -16,6 +16,9 @@ value each one is. It **ships no table**, because their publishers own them. The
   Benämning, Omschrijving…). With no heading it knows, the first two columns are the code and the title.
 - A file that holds several tables (Uniclass's in one sheet) is cut to the one asked for, by the table's key as a prefix.
 - Codes are compared by their letters and digits (`normal`): `Ss_25_10` is `SS 25 10`, and `23-13 00 00` is `2313`.
+  NBR 15965 writes two characters and six pairs, its older parts fewer; trailing `00` pairs go, so `3E 14 02` and
+  `3E 14 02 00 00 00 00` are one code, and its hierarchy by position is the prefix rule below.
+- A table's example (`TableDef::example`) is a real code of the published table, or none where none was checked.
 - A code's parent is its file's Parent column, or else the longest other code of the table it begins with. This one rule
   serves every system's way of writing a hierarchy (pairs of digits, letters, dots).
 - Loading again with a newer edition replaces the table, and `dry_run` says what it adds, removes and retitles.
@@ -29,7 +32,15 @@ Decided table by table, with the reason kept beside each (`TableDef::why`, shown
 - **What a thing is** (a product, a system, an element's function, a work result) is the same for every element of a type,
   so it's a **type** parameter, and a type is classified once. Stairs and ramps have no types here, so type tables leave
   them out, and the parameters command says so.
-- **A space's** classification (Uniclass SL, OmniClass 13, NBR 4A and 4U) is **each room's**.
+- **A space's** classification (Uniclass SL, OmniClass 13, NBR 4A) is **each room's**. NBR 4U classifies a unit (an
+  apartment, a shop), not its rooms; with no unit or zone here it is each room's too, and every room of a unit carries the
+  same code.
+- **A work result** (OmniClass 22, MasterFormat, NBR 3R) fits a task, a specification or a budget item best; with none of
+  those here it is the type's, and `scopes` moves it.
+- **A table whose subject isn't an element here** (NBR 15965's 0M materials, 0P properties, 1F phases, 1S services,
+  1D disciplines, 2N functions, 2Q equipment, 5I information) is listed, so `classification_table` names it and cuts a
+  file of all the tables to its codes, but it has no category: asking for all a system's tables leaves it out with a note,
+  and it makes its parameters for the categories named in `categories`.
 - **COBie**:
   - The Type sheet's fields are the type's: maker, model, warranty, expected life, nominal sizes.
   - The Component sheet's fields are each element's: serial number, installation date, warranty start date, tag, bar
@@ -118,7 +129,8 @@ default.
 ## IFC
 
 - **Export** (`ifc::classify`, ISO 16739's classification resource):
-  - an `IfcClassification` for each system (its publisher, the table's edition, its name)
+  - an `IfcClassification` for each system (its publisher, its tables' edition, left out when they disagree, as NBR
+    15965's parts, published from 2011 to 2022, do; its name)
   - an `IfcClassificationReference` for each code held (code, title, system)
   - an `IfcRelAssociatesClassification` from each code to the elements holding it, their own or their type's
 - IfcOpenShell validates the file and reads the references back (`ifcopenshell.util.classification.get_references`).

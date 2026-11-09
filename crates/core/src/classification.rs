@@ -90,7 +90,8 @@ pub struct TableDef {
     pub categories: &'static [&'static str],
     /// Why it is each element's or each type's.
     pub why: &'static str,
-    /// A code of the table as its publisher writes them, for agents and the window.
+    /// A code of the table as its publisher writes them, for agents and the window; empty where none was checked against
+    /// the published table.
     pub example: &'static str,
 }
 
@@ -167,6 +168,14 @@ const fn table(
 const WHY_TYPE: &str =
     "what it is (its product, system or function) is the same for every element of a type, so it's the type's: classify a type once";
 const WHY_SPACE: &str = "each room is used its own way and rooms have no types here, so it's each room's";
+const WHY_WORK_RESULT: &str = "a work result is what a piece of work leaves behind, so it fits a task, a specification or a budget item \
+     best; with none of those here it's the type's, as the work its elements leave is, and `scopes` makes it each element's";
+const WHY_UNIT: &str = "it classifies a unit (an apartment, a shop), not a room; with no units here it's each room's, and every room \
+     of a unit carries the same code";
+const WHY_NO_HOME: &str = "what it classifies (materials, properties, phases, services, disciplines, functions, equipment, \
+     information) has no category of its own here: load the table, and name the categories it's for to make its parameters";
+/// No category: a table whose subject isn't an element here, made only for the categories the user names.
+const NONE: &[&str] = &[];
 
 /// The systems BIMCraft knows. None of their tables is shipped: the user loads the edition they hold.
 pub const SYSTEMS: &[SystemDef] = &[
@@ -230,14 +239,23 @@ pub const SYSTEMS: &[SystemDef] = &[
         short: "NBR 15965",
         publisher: "ABNT",
         region: "Brasil (ISO 12006-2)",
-        note: "Sistema de classificação da informação da construção, em sete partes e tabelas de dois caracteres (3E, 3R, 4A…). As \
-               tabelas são da ABNT, compradas com a norma; carregue a edição que o projeto segue. Códigos em pares: 3E 20 02 02 02 00 00.",
+        note: "Sistema de classificação da informação da construção, em sete partes e treze tabelas de dois caracteres (0M, 3E, 3R, \
+               4A…). As tabelas são da ABNT, compradas com a norma; carregue a edição que o projeto segue. Códigos em pares: \
+               3E 20 02 02 02 00 00; as partes mais antigas imprimem menos pares, e 00 e o fim do código são o mesmo.",
         tables: &[
-            table("2C", "Produtos", Scope::Type, BUILT, WHY_TYPE, "2C 15 10 00 00 00 00"),
+            table("0M", "Materiais", Scope::Type, NONE, WHY_NO_HOME, ""),
+            table("0P", "Propriedades", Scope::Type, NONE, WHY_NO_HOME, ""),
+            table("1F", "Fases", Scope::Instance, NONE, WHY_NO_HOME, ""),
+            table("1S", "Serviços", Scope::Instance, NONE, WHY_NO_HOME, ""),
+            table("1D", "Disciplinas", Scope::Instance, NONE, WHY_NO_HOME, ""),
+            table("2N", "Funções", Scope::Type, NONE, WHY_NO_HOME, ""),
+            table("2Q", "Equipamentos", Scope::Type, NONE, WHY_NO_HOME, ""),
+            table("2C", "Produtos", Scope::Type, BUILT, WHY_TYPE, ""),
             table("3E", "Elementos", Scope::Type, BUILT, WHY_TYPE, "3E 20 02 02 02 00 00"),
-            table("3R", "Resultados da construção", Scope::Type, BUILT, WHY_TYPE, "3R 10 20 00 00 00 00"),
-            table("4A", "Espaços", Scope::Instance, SPACES, WHY_SPACE, "4A 10 20 00 00 00 00"),
-            table("4U", "Unidades", Scope::Instance, SPACES, WHY_SPACE, "4U 10 10 00 00 00 00"),
+            table("3R", "Resultados", Scope::Type, BUILT, WHY_WORK_RESULT, ""),
+            table("4A", "Espaços", Scope::Instance, SPACES, WHY_SPACE, "4A 19 00 00 00 00 00"),
+            table("4U", "Unidades", Scope::Instance, SPACES, WHY_UNIT, ""),
+            table("5I", "Informação", Scope::Instance, NONE, WHY_NO_HOME, ""),
         ],
         fields: &[],
     },
@@ -726,11 +744,19 @@ pub fn plan(ask: &Ask) -> Result<Plan, String> {
             cats
         };
         if cats.is_empty() {
-            return Err(bad(c, format!("`{key}` is for no category")));
+            return Err(bad(c, format!("`{key}` is for no category: name the categories it's for in `categories`")));
         }
         Ok(cats)
     };
     for t in wanted {
+        if ask.tables.is_empty() && t.categories.is_empty() && !ask.categories.contains_key(t.key) {
+            out.notes.push(format!(
+                "{} ({}) is for no category here: name its categories in `categories` to make its parameters.",
+                sys.table_name(t),
+                t.name
+            ));
+            continue;
+        }
         let scope = ask.scopes.get(t.key).copied().unwrap_or(t.scope);
         let cats = categories_for(t.key, scope, t.categories)?;
         let note = "Stairs and ramps have no types here, so the tables classified by type leave them out.";
@@ -779,6 +805,12 @@ pub fn plan(ask: &Ask) -> Result<Plan, String> {
         return Err(bad(c, format!("`cobie` names the tables of COBie's Type and Space Category, not `{k}`")));
     }
     Ok(out)
+}
+
+/// Whether table `t`'s codes begin with its key (`Ss_25`, `3E 20`), so a file of all the system's tables is cut by it: its
+/// example says so, and a table with no example is taken to (a prefix that leaves nothing is taken back).
+fn prefixed(t: &TableDef) -> bool {
+    !t.key.is_empty() && !t.key.contains(' ') && (t.example.is_empty() || t.example.contains(t.key))
 }
 
 fn ids() -> String {
@@ -876,7 +908,7 @@ pub(crate) fn load_table(s: &mut Session, p: &Value) -> R {
     // A file that holds every table of a system (Uniclass's in one sheet) is cut down to the one asked for.
     let prefix = match string(c, p, "prefix")? {
         Some(x) => Some(x),
-        None => def.filter(|t| t.example.contains(t.key) && !t.key.is_empty() && !t.key.contains(' ')).map(|t| t.key.to_string()),
+        None => def.filter(|t| prefixed(t)).map(|t| t.key.to_string()),
     };
     let mut read = read_table_file(&path, prefix.as_deref()).map_err(|e| bad(c, e))?;
     // A prefix guessed from the table's key that leaves nothing is taken back: the file's codes are written another way.
@@ -1375,7 +1407,7 @@ pub fn brief(m: &Model, ask: &BriefAsk) -> Result<Brief, String> {
             let sys = system(&t.system);
             let q = m.parameters.get(&b.parameter)?;
             Some(json!({"table": n, "system": sys.map_or(t.system.as_str(), |s| s.name), "edition": t.edition, "codes": t.items.len(),
-                        "scope": q.scope, "example": sys.and_then(|s| s.table(&t.key)).map(|d| d.example),
+                        "scope": q.scope, "example": sys.and_then(|s| s.table(&t.key)).map(|d| d.example).filter(|e| !e.is_empty()),
                         "file": format!("{}.csv", file_stem(n))}))
         })
         .collect();
