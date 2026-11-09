@@ -8,12 +8,13 @@ use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
-use bimcraft_core::element_json;
+use bimcraft_core::element_json_with;
 use bimcraft_core::family::{Group, Kind as Holds, Val};
 use bimcraft_core::model::{Element, Function, Guid, Id, Layer, Location, Model, PARAMETER_CATEGORIES, ParameterKind, Pattern};
+use bimcraft_core::rooms::Rooms;
 use bimcraft_core::schedule::{self, Field, Filter, Op, Sort};
 use bimcraft_core::snap::Kind as Snap;
 use bimcraft_core::texture::{Kind as TextureKind, Texture};
@@ -836,6 +837,22 @@ impl BimApp {
         if narrowed.is_empty() { self.selection.clone() } else { narrowed }
     }
 
+    /// What `element_json` says of each of `ids`, kept for the model it was found in: the palette reads it every frame, and a
+    /// component's room costs its level's room boundaries. What isn't kept yet is found together, among one `Rooms`; of a
+    /// model other than the window's (a copy a frame took before a change), found and not kept.
+    pub(crate) fn elements_json(&self, model: &Model, ids: &[Id]) -> Vec<Arc<Value>> {
+        let rooms = Rooms::new(model);
+        let found = |id: &Id| Arc::new(element_json_with(model, *id, &rooms));
+        let current = &self.session.model;
+        let kept = self.palette_json.try_borrow_mut().ok().filter(|_| std::ptr::eq(model, Arc::as_ptr(current)));
+        let Some(mut kept) = kept else { return ids.iter().map(found).collect() };
+        if !kept.as_ref().is_some_and(|(m, _)| std::ptr::eq(m.as_ptr(), Arc::as_ptr(current))) {
+            *kept = None;
+        }
+        let (_, json) = kept.get_or_insert_with(|| (Arc::downgrade(current), HashMap::new()));
+        ids.iter().map(|id| Arc::clone(json.entry(*id).or_insert_with(|| found(id)))).collect()
+    }
+
     /// The selection's categories and how many of each.
     fn selection_categories(&self) -> BTreeMap<&'static str, usize> {
         let mut counts = BTreeMap::new();
@@ -900,7 +917,7 @@ impl BimApp {
     /// The type the elements the palette shows share, if they do.
     fn shared_type(&self, m: &Model) -> Option<String> {
         let names: BTreeSet<String> =
-            self.palette_ids().iter().filter_map(|id| element_json(m, *id)["type"].as_str().map(String::from)).collect();
+            self.elements_json(m, &self.palette_ids()).iter().filter_map(|j| j["type"].as_str().map(String::from)).collect();
         if names.len() == 1 { names.into_iter().next() } else { None }
     }
 
@@ -1102,6 +1119,7 @@ impl BimApp {
             }
             self.component_parameters(ui, &model, &ids);
             self.project_parameters(ui, &model, &ids);
+            self.sheet_title_block(ui, &model, &ids);
             self.element_phasing(ui, &model, &ids);
         }
         if subject == Subject::Schedule {
@@ -1171,8 +1189,8 @@ impl BimApp {
         // The line the selected walls share, dashed where it runs; a click puts it at the line nearest.
         let depth = |loc: Location| bimcraft_core::walls::depth(thickness, layers, loc);
         let x = |d: f64| rect.left() + (d / thickness) as f32 * rect.width();
-        let shared = ids.iter().map(|id| element_json(model, *id)["location"].as_str().and_then(Location::from_name).unwrap_or_default());
-        let shared: Vec<Location> = shared.collect();
+        let json = self.elements_json(model, &ids);
+        let shared: Vec<Location> = json.iter().map(|j| j["location"].as_str().and_then(Location::from_name).unwrap_or_default()).collect();
         if let Some(&loc) = shared.first().filter(|l| shared.iter().all(|m| m == *l)) {
             let line = [pos2(x(depth(loc)), rect.top() - 3.0), pos2(x(depth(loc)), rect.bottom() + 3.0)];
             p.extend(Shape::dashed_line(&line, Stroke::new(2.0, pal().accent_ink), 4.0, 3.0));
@@ -1197,8 +1215,9 @@ impl BimApp {
         if ids.is_empty() {
             return;
         }
-        let flag = |id: Id, key: &str| element_json(model, id)[key].as_bool().unwrap_or(false);
-        let now: Vec<(bool, bool)> = ids.iter().map(|id| (flag(*id, "flip_hand"), flag(*id, "flip_facing"))).collect();
+        let flag = |j: &Value, key: &str| j[key].as_bool().unwrap_or(false);
+        let now: Vec<(bool, bool)> =
+            self.elements_json(model, &ids).iter().map(|j| (flag(j, "flip_hand"), flag(j, "flip_facing"))).collect();
         let shared = now.first().copied().filter(|f| now.iter().all(|g| g == f));
         ui.label(RichText::new(t("Opens")).strong());
         let mut pick = None;
@@ -1387,7 +1406,7 @@ impl BimApp {
     fn type_selector(&mut self, ui: &mut Ui, model: &Model, subject: Subject) {
         let (category, mut current) = match subject {
             Subject::Element(id) => match model.elements.get(id) {
-                Some(e) => (e.category(), element_json(model, id)["type"].as_str().map(String::from)),
+                Some(e) => (e.category(), self.elements_json(model, &[id]).first().and_then(|j| j["type"].as_str().map(String::from))),
                 None => return,
             },
             Subject::Elements(category) => (category, self.shared_type(model)),
@@ -1529,8 +1548,8 @@ impl BimApp {
     /// An edit changes all of them, in one step.
     fn parameters(&mut self, ui: &mut Ui, model: &Model, ids: &[Id], rows: &[Row]) {
         let Some(&id) = ids.first() else { return };
-        let all: Vec<Value> = ids.iter().map(|id| element_json(model, *id)).collect();
-        let first = element_json(model, id);
+        let all = self.elements_json(model, ids);
+        let Some(first) = all.first().map(Arc::clone) else { return };
         let v: serde_json::Map<String, Value> = rows
             .iter()
             .map(|r| (r.1, r.3))
@@ -1847,7 +1866,7 @@ impl BimApp {
         else {
             return;
         };
-        let values: Vec<Value> = ids.iter().map(|i| element_json(model, *i)["values"].clone()).collect();
+        let values: Vec<Value> = self.elements_json(model, ids).iter().map(|j| j["values"].clone()).collect();
         let shared = |k: &str| {
             let v = values.first().map_or(&Value::Null, |v| &v[k]);
             if values.iter().all(|x| &x[k] == v) { v.clone() } else { Value::Null }
@@ -1984,6 +2003,69 @@ impl BimApp {
             Some((name, Err(e))) => self.status = Status { text: format!("{name}: {e}"), error: true },
             None => {}
         }
+    }
+
+    /// A sheet's title block, as Revit's palette has a sheet's: which one it's drawn with (the built-in one, none at all, or
+    /// one of the project's), and its values of that one's sheet fields; Edit Title Blocks… and the project's values a click
+    /// away.
+    fn sheet_title_block(&mut self, ui: &mut Ui, model: &Model, ids: &[Id]) {
+        let &[id] = ids else { return };
+        let Some(sheet) = model.sheet(id) else { return };
+        let group = "Title Block";
+        let open = !self.collapsed.contains(group);
+        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
+            self.collapsed.insert(group);
+        }
+        if !open {
+            return;
+        }
+        let (built_in, none) = (t("Built-in"), t("None"));
+        let mut chosen = sheet.title_block.clone();
+        let mut change: Option<Value> = None;
+        let tb = model.title_blocks.get(&sheet.title_block);
+        let values = bimcraft_core::sheet::title_values(model, id);
+        grid(ui, ("sheet-title-block", id), |ui| {
+            let label = ui.label(t("Title Block"));
+            let shown = match chosen.as_str() {
+                "" => built_in.to_string(),
+                bimcraft_core::titleblock::NONE => none.to_string(),
+                _ => chosen.clone(),
+            };
+            let r =
+                ComboBox::from_id_salt(("sheet-title-block-pick", id)).selected_text(shown).width(ui.available_width()).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut chosen, String::new(), built_in);
+                    // No border, title box or folding marks, for one drawn on the sheet itself.
+                    ui.selectable_value(&mut chosen, bimcraft_core::titleblock::NONE.to_string(), none);
+                    for n in model.title_blocks.keys() {
+                        ui.selectable_value(&mut chosen, n.clone(), n);
+                    }
+                });
+            r.response.labelled_by(label.id);
+            ui.end_row();
+            for f in tb.iter().flat_map(|tb| tb.fields.iter()).filter(|f| f.scope == bimcraft_core::titleblock::Scope::Sheet) {
+                let key = f.key.to_ascii_uppercase();
+                let label = ui.label(f.shown());
+                let current = sheet.fields.get(&key).cloned().unwrap_or_default();
+                let hint = values.get(&key).filter(|_| current.is_empty()).cloned().unwrap_or_default();
+                if let Some(typed) = self.field(ui, id, &format!("title.{key}"), current, label.id, &hint) {
+                    let v = if typed.trim().is_empty() { Value::Null } else { json!(typed) };
+                    change = Some(json!({"id": id, "fields": {key: v}}));
+                }
+                ui.end_row();
+            }
+        });
+        if chosen != sheet.title_block {
+            change = Some(json!({"id": id, "title_block": chosen}));
+        }
+        if let Some(p) = change {
+            self.run("modify", p);
+        }
+        ui.horizontal(|ui| {
+            let name = tb.is_some().then(|| sheet.title_block.clone());
+            if ui.button(t("Edit Title Blocks…")).clicked() {
+                self.open_title_blocks(name.as_deref());
+            }
+        });
     }
 
     /// A schedule view's own parameters, as Revit's palette has them: its name and category, and
@@ -2160,7 +2242,7 @@ impl BimApp {
             let m = &self.session.model;
             if d.elements.is_empty() {
                 self.types.insert(d.category, d.name.clone());
-            } else if d.elements.iter().any(|id| element_json(m, *id)["type"].as_str() != Some(d.name.as_str())) {
+            } else if self.elements_json(m, &d.elements).iter().any(|j| j["type"].as_str() != Some(d.name.as_str())) {
                 self.run("modify", json!({"ids": d.elements, "type": d.name}));
             }
         }
@@ -2612,7 +2694,7 @@ impl BimApp {
             let m = &self.session.model;
             if d.elements.is_empty() {
                 self.component = Some((d.family.clone(), d.name.clone()));
-            } else if d.elements.iter().any(|id| element_json(m, *id)["type"].as_str() != Some(d.name.as_str())) {
+            } else if self.elements_json(m, &d.elements).iter().any(|j| j["type"].as_str() != Some(d.name.as_str())) {
                 self.run("modify", json!({"ids": d.elements, "type": d.name}));
             }
         }

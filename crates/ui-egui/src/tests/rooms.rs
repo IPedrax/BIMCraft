@@ -145,3 +145,40 @@ fn a_3d_views_rooms_are_unticked_until_ticked_in_visibility_graphics() {
     press(&mut h, "OK");
     assert!(shown(&h));
 }
+
+/// The palette reads its elements' JSON every frame, and a component's says the room it stands in, which costs its level's room
+/// boundaries: it is found once a model, for the whole selection together, and found again after a change.
+#[test]
+fn the_palette_finds_the_room_its_components_stand_in_once_a_model() {
+    let script = format!(
+        "{BOX}\nwall {{\"points\": [[4000, 0], [4000, 6000]]}}\nroom {{\"point\": [2000, 3000], \"name\": \"West\"}}\n\
+         room {{\"point\": [6000, 3000], \"name\": \"East\"}}\ncomponent {{\"family\": \"Chair\", \"at\": [1000, 1000]}}\n\
+         component {{\"family\": \"Chair\", \"at\": [3000, 1000]}}"
+    );
+    let mut h = app(&script);
+    let chairs = ids(&h, "component");
+    h.state_mut().selection = chairs.clone();
+    h.run();
+    // What the palette keeps of the model the window holds now.
+    let kept = |h: &Harness<BimApp>| -> Vec<Arc<Value>> {
+        let app = h.state();
+        let kept = app.palette_json.borrow();
+        match kept.as_ref() {
+            Some((m, json)) if m.ptr_eq(&Arc::downgrade(&app.session.model)) => {
+                chairs.iter().filter_map(|id| json.get(id).cloned()).collect()
+            }
+            _ => Vec::new(),
+        }
+    };
+    let first = kept(&h);
+    assert_eq!(first.len(), 2, "both found in the frame that showed them");
+    assert!(first.iter().all(|j| j["room_name"] == "West"), "{first:?}");
+    h.run();
+    let again = kept(&h);
+    assert!(again.len() == 2 && first.iter().zip(&again).all(|(a, b)| Arc::ptr_eq(a, b)), "a frame that changes nothing finds none again");
+    // Moved into the east room: found again, in it.
+    h.state_mut().session.execute("move", &json!({"ids": chairs, "by": [4000, 0]})).unwrap();
+    h.run();
+    let moved = kept(&h);
+    assert!(moved.len() == 2 && moved.iter().all(|j| j["room_name"] == "East"), "{moved:?}");
+}

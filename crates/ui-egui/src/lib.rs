@@ -77,6 +77,7 @@ mod templates;
 #[cfg(test)]
 mod tests;
 mod titlebar;
+mod titleblocks;
 mod triad;
 mod typeprops;
 mod updates;
@@ -84,9 +85,10 @@ mod view_worker;
 pub mod window;
 mod workplane;
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use bimcraft_core::dims::Placing as DimMode;
 use bimcraft_core::engine::{self, Session};
@@ -370,7 +372,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 54] = [
+const SHORTCUTS: [(&str, &str); 55] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -425,6 +427,8 @@ const SHORTCUTS: [(&str, &str); 54] = [
     ("KS", "Keyboard Shortcuts"),
     ("BX", "Section Box"),
     ("GD", "Graphic Display Options"),
+    // Revit has none for its title blocks; no command or tool takes TB.
+    ("TB", "Title Blocks"),
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
@@ -463,6 +467,9 @@ fn import_note(file: &str, reply: &Value) -> String {
     }
     text
 }
+
+/// Elements' JSON (`element_json`) by id, and the model it was found in.
+type KeptJson = (Weak<Model>, HashMap<Id, Arc<Value>>);
 
 pub struct BimApp {
     pub session: Session,
@@ -533,6 +540,9 @@ pub struct BimApp {
     /// The category the Properties palette's filter narrows a selection of several to, and the selection it was picked for: a new
     /// selection drops it (`BimApp::palette_ids`).
     palette_filter: Option<(&'static str, Vec<Id>)>,
+    /// What `element_json` says of the elements the palette has shown, of the model it was found in (`BimApp::elements_json`):
+    /// the palette reads it every frame, and a component's room costs its level's room boundaries.
+    palette_json: RefCell<Option<KeptJson>>,
     /// File > Settings, while open, at its page; the settings file, when the app was given one, and what it holds; the
     /// theme it asks for, put in force on the next frame.
     settings_page: Option<settings::Page>,
@@ -781,6 +791,8 @@ pub struct BimApp {
     object_styles_dialog: Option<objectstyles::ObjectStylesDialog>,
     /// Manage > Line Styles, while open.
     line_styles_dialog: Option<linestyles::LineStylesDialog>,
+    /// View > Title Blocks, while open.
+    title_blocks_dialog: Option<titleblocks::TitleBlocksDialog>,
     fill_patterns_dialog: Option<fillpatterns::FillPatternsDialog>,
     /// Sketch mode: the lines of an outline being drawn, until Finish or Cancel.
     pub sketch: Option<sketch::Sketch>,
@@ -1286,6 +1298,7 @@ impl BimApp {
             canvas_colour: None,
             text_colour: None,
             palette_filter: None,
+            palette_json: RefCell::new(None),
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
             background_grid_dialog: None,
@@ -1443,6 +1456,7 @@ impl BimApp {
             line_weights_dialog: None,
             object_styles_dialog: None,
             line_styles_dialog: None,
+            title_blocks_dialog: None,
             fill_patterns_dialog: None,
             sketch: None,
             mode_width: 0.0,
@@ -2099,7 +2113,8 @@ impl BimApp {
         if matches!(self.tool, Tool::Component | Tool::Fixture(_)) && pressed(Modifiers::NONE, Key::Space) {
             self.component_angle = (self.component_angle + 90.0) % 360.0;
         }
-        if pressed(Modifiers::NONE, Key::F8) || pressed(Modifiers::NONE, Key::F11) {
+        // F8 is the one function key for the guides. F11 is free: the system may use it for full screen.
+        if pressed(Modifiers::NONE, Key::F8) {
             self.toggle_alignment_guides();
         }
         let typed: String = ctx.input(|i| {
@@ -2243,6 +2258,10 @@ impl BimApp {
             }
             "GD" => {
                 self.open_display();
+                return true;
+            }
+            "TB" => {
+                self.open_title_blocks(None);
                 return true;
             }
             "EU" | "UE" => {
@@ -2477,8 +2496,10 @@ impl BimApp {
     /// component's type being its family's.
     fn select_all_instances(&mut self) {
         let m = Arc::clone(&self.session.model);
+        // One look at every element the view shows: a component's room is found among its level's rooms once.
+        let rooms = bimcraft_core::rooms::Rooms::new(&m);
         let type_of = |id: &Id| {
-            let e = element_json(&m, *id);
+            let e = bimcraft_core::element_json_with(&m, *id, &rooms);
             e["type"].is_string().then(|| [e["category"].clone(), e["family"].clone(), e["type"].clone()])
         };
         let types: Vec<[Value; 3]> = self.selection.iter().filter_map(type_of).collect();
@@ -4186,6 +4207,10 @@ impl BimApp {
             {
                 self.open_sheet(Sheet::Paper(id));
             }
+            let tip = msg!("Title Blocks (TB): your own, read from a DXF or typed, with fields each sheet or the whole project fills in");
+            if big_button(ui, Icon::Sheet, "Title Blocks", self.title_blocks_dialog.is_some(), tip).clicked() {
+                self.open_title_blocks(None);
+            }
             let sheet = match self.sheet {
                 Sheet::Paper(id) => Some(id),
                 _ => None,
@@ -5554,6 +5579,7 @@ impl BimApp {
         self.line_weights_window(ctx);
         self.object_styles_window(ctx);
         self.line_styles_window(ctx);
+        self.title_blocks_window(ctx);
         self.fill_patterns_window(ctx);
         self.text_type_window(ctx);
         self.dimension_type_window(ctx);

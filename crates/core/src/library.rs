@@ -62,6 +62,8 @@ pub enum Kind {
     DistributionSystem,
     /// A wire type, with the ampacity of each section.
     WireType,
+    /// A title block a sheet may be drawn with.
+    TitleBlock,
 }
 
 impl Kind {
@@ -94,6 +96,7 @@ impl Kind {
             Kind::Voltage => "voltage".into(),
             Kind::DistributionSystem => "distribution system".into(),
             Kind::WireType => "wire type".into(),
+            Kind::TitleBlock => "title block".into(),
         }
     }
 
@@ -124,6 +127,7 @@ impl Kind {
             "voltage" => Kind::Voltage,
             "distribution-system" => Kind::DistributionSystem,
             "wire-type" => Kind::WireType,
+            "title-block" => Kind::TitleBlock,
             _ => Kind::Type(s.strip_prefix("type:")?.to_string()),
         })
     }
@@ -158,6 +162,7 @@ impl fmt::Display for Kind {
             Kind::Voltage => f.write_str("voltage"),
             Kind::DistributionSystem => f.write_str("distribution-system"),
             Kind::WireType => f.write_str("wire-type"),
+            Kind::TitleBlock => f.write_str("title-block"),
         }
     }
 }
@@ -623,7 +628,7 @@ impl<'de> Deserialize<'de> for Library {
 
 /// What Purge Unused may take out, as a command names it: `type` (every kind of type, and a family's types), `family`, `material`,
 /// `picture`, `filter` and `template`.
-pub const PURGE_KINDS: [&str; 6] = ["type", "family", "material", "picture", "filter", "template"];
+pub const PURGE_KINDS: [&str; 7] = ["type", "family", "material", "picture", "filter", "template", "titleblock"];
 
 impl Model {
     /// How many times something names each library entry: an element its type or family, a type's layer its material, a material
@@ -662,6 +667,7 @@ impl Model {
             Kind::Picture => self.images.remove(name).is_some(),
             Kind::ViewFilter => self.view_filters.remove(name).is_some(),
             Kind::ViewTemplate => self.view_templates.remove(name).is_some(),
+            Kind::TitleBlock => self.title_blocks.remove(name).is_some(),
             _ => false,
         }
     }
@@ -754,6 +760,7 @@ impl Model {
                     Kind::Picture => "picture",
                     Kind::ViewFilter => "filter",
                     Kind::ViewTemplate => "template",
+                    Kind::TitleBlock => "titleblock",
                     _ => return None,
                 },
             ))
@@ -815,6 +822,7 @@ impl Model {
         add(Kind::Voltage, &mut self.voltages.keys());
         add(Kind::DistributionSystem, &mut self.distribution_systems.keys());
         add(Kind::WireType, &mut self.wire_types.keys());
+        add(Kind::TitleBlock, &mut self.title_blocks.keys());
         out
     }
 
@@ -1469,6 +1477,8 @@ impl crate::model::Element {
             Element::Text(n) => f(&Kind::TextType, &mut n.type_name),
             Element::Dimension(d) => f(&Kind::DimensionType, &mut d.type_name),
             Element::Dimension3D(d) => f(&Kind::DimensionType, &mut d.type_name),
+            // Neither the built-in one nor none is an entry of the library.
+            Element::Sheet(sh) if !sh.title_block.is_empty() && !sh.has_no_title_block() => f(&Kind::TitleBlock, &mut sh.title_block),
             Element::Schedule(sc) => {
                 let mut fields: Vec<&mut String> =
                     sc.fields.iter_mut().map(|x| &mut x.name).chain(sc.sort.iter_mut().map(|x| &mut x.field)).collect();

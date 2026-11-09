@@ -852,11 +852,12 @@ family is on a plane is refused by the project on Load into Project, said in the
   (the outlets, the switch, the distribution board, the data and voice outlets, the patch panel: `fixtures.rs`) have a
   point as Revit's do, `ROOM_POINT_OUT` (150 mm) in front of the wall's face at the middle of their height, so one on a
   wall's face is in the room on its side however rooms are measured; a component without a point is where its insertion
-  point is, as before. Nothing in BIMCraft put a component in a room before, so this is that rule: `elements`
-  gives each component's `room` (its GUID, or null). IFC keeps every component contained in its storey, as before, and
+  point is, as before. It is the one rule for which room a component is in: `elements` (and `element_json`) gives each
+  component's `room` (its GUID; left out outside every room) with its `room_number` and `room_name`, schedules show them
+  as Room Number and Room Name, and `load_points` counts outlets and luminaires by it. IFC keeps every component contained in its storey, as before, and
   adds one `IfcRelReferencedInSpatialStructure` for each room's `IfcSpace`, listing the components in it, after every other
   entity, so the rest of the file is as it was (`ifc::export_with` without them is the test's oracle); the import finds the
-  storey by containment and passes the references over. Schedules have no Room field yet, and doors and
+  storey by containment and passes the references over. Doors and
   windows have no From Room and To Room: a door's or a window's point is stored and checked but placed nowhere.
 - `omniclass`: `{number, title}`, plain text, no table bundled: the number digits in groups between single dots
   (`23.30.20.17`), at most 64; the title one line of at most `MAX_TEXT`. `elements` shows it on each element of the family,

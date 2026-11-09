@@ -14,18 +14,18 @@ use crate::lang::{t, tf};
 use crate::style::pal;
 
 /// What the window names each kind it can purge.
-const LABELS: [&str; 6] = ["Types", "Families", "Materials", "Pictures", msg!("View Filters"), "View Templates"];
+const LABELS: [&str; 7] = ["Types", "Families", "Materials", "Pictures", msg!("View Filters"), "View Templates", msg!("Title Blocks")];
 
 /// The Purge Unused window: which kinds are checked, and what that would take out (kind and name).
 pub struct PurgeDialog {
-    pub(crate) kinds: [bool; 6],
+    pub(crate) kinds: [bool; 7],
     pub(crate) listed: Vec<(String, String)>,
 }
 
 impl BimApp {
     /// Opens Purge Unused, as Revit's does: types and families checked.
     pub(crate) fn open_purge(&mut self) {
-        let mut d = PurgeDialog { kinds: [true, true, false, false, false, false], listed: Vec::new() };
+        let mut d = PurgeDialog { kinds: [true, true, false, false, false, false, false], listed: Vec::new() };
         self.relist_purge(&mut d);
         self.purge_dialog = Some(d);
     }

@@ -176,6 +176,9 @@ pub struct Session {
     /// What reads it (inspect, schedules, render, exports to new files, the sheets to PDF) answers; a copy saved as another file
     /// leaves the session with its own.
     pub read_only: Option<&'static str>,
+    /// Whether a dry run is under way ([`Session::script_dry_run`]): then each command is looked at as it is about to run, with
+    /// the params it is given, and one that would touch a file or the history is refused ([`dry_run_refuses`]).
+    dry_run: bool,
     /// The last model a command left that passed [`Model::check`]. Held here, it is never changed in place: a change
     /// outside a command copies it first, so a model still this one is one that passed, and the next command need only
     /// check what it changes ([`Model::check_changed`]).
@@ -245,6 +248,7 @@ impl Session {
             dwg: None,
             external: Vec::new(),
             read_only: None,
+            dry_run: false,
             verified: None,
         }
     }
@@ -339,6 +343,12 @@ impl Session {
 
     /// [`Session::execute`] of a command in the static list, refused or taken back when the session may only read.
     fn execute_found(&mut self, cmd: &'static Command, params: &Value) -> Result<Value, String> {
+        if let Some(what) = dry_run_refuses(cmd, params).filter(|_| self.dry_run) {
+            return Err(format!(
+                "`{}` would {what}, and a dry run touches no file and keeps the history: run the script without `dry_run`",
+                cmd.id
+            ));
+        }
         let Some(how) = self.read_only else { return self.perform(cmd, params) };
         self.may_read(cmd, params).map_err(|what| format!("`{}` would {what}, {READ_ONLY}: {how}", cmd.id))?;
         let kept = Kept::of(self);
@@ -596,6 +606,55 @@ impl Session {
         self.transaction("Script", |s| s.script(text))
     }
 
+    /// [`Session::script_atomic`] tried and taken back: what the script would make, change and take away, element by element,
+    /// whether it would change anything else (the library, the phases, the settings), and the warnings the model would then
+    /// have, with each line's result. The project, its history, the phase and option things are made in and its file are left
+    /// as they were, and the next id with them. A dry run touches no file and keeps the history: a line that would open, write
+    /// or name a file (a `path` or `save`), start or replace the project, save, undo or redo is refused as it comes, with the params
+    /// it is given (a named line's and a reference's too), before it runs; the lines before it are taken back with the rest.
+    /// It only reads the project, so a session that may only read ([`Session::read_only`]) may try a script too.
+    pub fn script_dry_run(&mut self, text: &str) -> Result<Value, String> {
+        let kept = Kept::of(self);
+        let read_only = self.read_only.take();
+        let dry_run = std::mem::replace(&mut self.dry_run, true);
+        let result = self.script_atomic(text);
+        let after = Arc::clone(&self.model);
+        (self.read_only, self.dry_run) = (read_only, dry_run);
+        // The project as it was, whatever the script did to it; what a dry run says is only what it would do.
+        let _ = kept.keep(self);
+        let results = result?;
+        let before = &self.model;
+        let (mut made, mut changed, mut removed) = (Vec::new(), Vec::new(), Vec::new());
+        let ids: Vec<Id> = match after.elements.changed_since(&before.elements) {
+            crate::ids::Changed::Ids(ids) => ids.into_iter().collect(),
+            crate::ids::Changed::All => {
+                let mut all: Vec<Id> = before.elements.iter().map(|(id, _)| *id).chain(after.elements.iter().map(|(id, _)| *id)).collect();
+                all.sort_unstable();
+                all.dedup();
+                all
+            }
+        };
+        for id in ids {
+            match (before.elements.get(id), after.elements.get(id)) {
+                (None, Some(e)) => made.push(json!({"id": id, "category": e.category()})),
+                (Some(a), Some(b)) if a != b || before.elements.guid(id) != after.elements.guid(id) => {
+                    changed.push(json!({"id": id, "guid": before.elements.guid(id), "category": b.category()}))
+                }
+                (Some(a), None) => removed.push(json!({"id": id, "guid": before.elements.guid(id), "category": a.category()})),
+                _ => {}
+            }
+        }
+        let other = {
+            let mut rest = (*after).clone();
+            (rest.elements, rest.next_id) = (before.elements.clone(), before.next_id);
+            rest != **before
+        };
+        Ok(json!({
+            "dry_run": true, "results": results, "made": made, "changed": changed, "removed": removed, "other_changes": other,
+            "warnings": after.warnings(),
+        }))
+    }
+
     /// Run `f` as one undo step named `label`, all or nothing: when it fails, the model, the path, the session's phase
     /// and option and the undo and redo history are as they were before it. Inside, undo reaches back no further than
     /// its start. Files a command wrote meanwhile (`save`, `export`) stay written, and one that replaced the project (`new`,
@@ -694,6 +753,24 @@ impl Session {
 
 /// What a session that may only read keeps through a command: its project, its history, its file, the phase and option it makes
 /// things in, and how many times it was replaced.
+/// What a dry run refuses `cmd` with `params` for, before it runs: replacing the project, saving it, stepping through its history,
+/// or any file read or written ([`touches_files`], and a `path` or `save` any command is given).
+fn dry_run_refuses(cmd: &Command, params: &Value) -> Option<String> {
+    if REPLACES.contains(&cmd.id) {
+        return Some("replace the project".into());
+    }
+    if matches!(cmd.id, "save" | "autosave" | "undo" | "redo") {
+        return Some(format!("{} the project", if cmd.id == "autosave" { "save" } else { cmd.id }));
+    }
+    if let Some(key) = ["path", "save"].into_iter().find(|key| params.get(key).is_some_and(|v| !v.is_null())) {
+        return Some(format!("name a file (`{key}`)"));
+    }
+    touches_files(cmd, params).map(|files| match files {
+        Files::Read => "read a file".to_string(),
+        _ => "write a file".to_string(),
+    })
+}
+
 struct Kept {
     model: Arc<Model>,
     /// The model the last command left that passed the check, as it was: put back with the model, the next command checks

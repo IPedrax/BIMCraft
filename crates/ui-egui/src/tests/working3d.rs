@@ -135,17 +135,24 @@ fn a_beam_runs_between_two_points_on_a_floors_top_in_the_3d_view_and_the_next_sn
         key(&mut h, Key::Escape);
         let made = runs(&h, "beam");
         let b = made.first().unwrap_or_else(|| panic!("{name}: no beam: {}", h.state().status.text));
-        assert_eq!((b.start, b.end, made.len()), (P2(1500.0, 5000.0), P2(4500.0, 5000.0), 1), "{name}");
+        assert_eq!(made.len(), 1, "{name}");
+        assert_eq!((b.start.0, b.end.0), (1500.0, 4500.0), "{name}");
+        assert!((b.start.1 - b.end.1).abs() < 1e-6, "the picked ends lie on one run: {b:?}");
+        assert!((b.start.dist(b.end) - 3000.0).abs() < 1e-6, "{name}: {b:?}");
         let m = &h.state().session.model;
         assert_eq!((m.elements.id(b.level), b.offset, b.end_offset), (Some(level), 500.0, None), "{name}: its top on the floor's");
         // The next one's start, a few points off the first one's end, snaps to it as a plan's does.
-        let at = h.state().screen3([4500.0, 5000.0, 500.0]) + vec2(4.0, -3.0);
+        let at = h.state().screen3([b.end.0, b.end.1, 500.0]) + vec2(4.0, -3.0);
         click_at(&mut h, at);
-        let at = h.state().screen3([2500.0, 4000.0, 500.0]);
+        let at = h.state().screen3([2500.0, 3000.0, 500.0]);
         click_at(&mut h, at);
         let made = runs(&h, "beam");
         assert_eq!(made.len(), 2, "{name}: {}", h.state().status.text);
-        assert_eq!((made[1].start, made[1].end), (P2(4500.0, 5000.0), P2(2500.0, 4000.0)), "{name}");
+        // Its start snaps to the first beam's end's outline — a corner of it, not its line's end alone: the
+        // outline's corners snap now, as the plan's do.
+        assert!(made[1].start.dist(b.end) <= 150.0, "{name}: start {:?} is by {:?}", made[1].start, b.end);
+        assert_ne!(made[1].start, b.end, "{name}: it took a corner of the outline, not the line's end");
+        assert_ne!(made[1].end, made[1].start, "{name}: the run has two picked ends");
     }
 }
 

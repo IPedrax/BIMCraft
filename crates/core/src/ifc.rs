@@ -1115,16 +1115,16 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                 }
             }
             // A run: its section swept along its axis, in its material, a member of the system it is in.
+            // See the plan and the 3D view for its joints: the file keeps the line and the section a reader
+            // comes back to, whatever the mitres show on screen.
             crate::model::run_arm!(r) => {
                 let (Some(&(_, storey)), Some(t), Some(g), Some((class, kind))) =
                     (storeys.get(&r.level), m.run_type(e), m.run_geom(e), crate::runs::ifc(e.category()))
                 else {
                     continue;
                 };
-                let axis = crate::view3d::unit(crate::view3d::sub(g.b, g.a));
                 // Placed at the start of its centre line; its section's x across it, level, its y up.
                 let at = w.place(Some(storey), (g.a[0], g.a[1], g.a[2] - m.elevation(r.level)), None);
-                let across = if g.vertical() { [1.0, 0.0, 0.0] } else { crate::view3d::unit([-axis[1], axis[0], 0.0]) };
                 // A beam's section is its type's, which the type's material profile set holds too.
                 let section = Section::new(g.width, g.depth, g.round);
                 let profile = if matches!(e, Element::Beam(_)) {
@@ -1136,6 +1136,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                 } else {
                     w.rectangle(P2(0.0, 0.0), P2(g.width, g.depth))
                 };
+                let axis = crate::view3d::unit(crate::view3d::sub(g.b, g.a));
+                let across = if g.vertical() { [1.0, 0.0, 0.0] } else { crate::view3d::unit([-axis[1], axis[0], 0.0]) };
                 let along = w.aim(axis, across);
                 let shape = w.body_along(profile, along, g.length());
                 let ent = w.add(format!(

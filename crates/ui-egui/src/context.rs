@@ -41,6 +41,9 @@ pub(crate) enum Action {
     OpenView,
     /// The 3D view's Work Plane dialog.
     WorkPlane,
+    /// The selected walls' and runs' joins refused (Revit's Disallow Join), or taken up again.
+    DisallowJoin,
+    AllowJoin,
 }
 
 impl Action {
@@ -66,6 +69,8 @@ impl Action {
             Action::ReloadCad => msg!("Reload CAD"),
             Action::OpenView => msg!("Open Camera View"),
             Action::WorkPlane => msg!("Set Work Plane…"),
+            Action::DisallowJoin => msg!("Disallow Join"),
+            Action::AllowJoin => msg!("Allow Join"),
         }
     }
 
@@ -160,6 +165,17 @@ impl BimApp {
                     groups.push(vec![Item::new(Action::CreateGroup, groupable), Item::new(Action::Ungroup, self.group_selected())]);
                 }
             }
+            // Walls and runs mitre against what they meet; any of them may refuse (Revit's Disallow
+            // Join). Each item is offered when some selected element would change by taking it.
+            let joins: Vec<bool> = self
+                .selection
+                .iter()
+                .filter_map(|id| match m.elements.get(*id) {
+                    Some(bimcraft_core::model::Element::Wall(w)) => Some(w.join),
+                    Some(e) => e.run().map(|r| r.join),
+                    _ => None,
+                })
+                .collect();
             if !self.linked_cads().is_empty() {
                 groups.push(vec![Item::new(Action::ReloadCad, true)]);
             }
@@ -169,6 +185,12 @@ impl BimApp {
                     Item::new(Action::HideElement, true),
                     Item::new(Action::HideCategory, true),
                     Item::new(Action::OverrideGraphics, true),
+                ]);
+            }
+            if !joins.is_empty() {
+                groups.push(vec![
+                    Item::new(Action::DisallowJoin, joins.iter().any(|j| *j)),
+                    Item::new(Action::AllowJoin, joins.iter().any(|j| !*j)),
                 ]);
             }
         }
@@ -218,6 +240,28 @@ impl BimApp {
                     self.open_3d(Some(id));
                 }
             }
+            Action::DisallowJoin => self.set_joins(false),
+            Action::AllowJoin => self.set_joins(true),
+        }
+    }
+
+    /// Turn the joins of every selected wall and run off or on, as one command: the flag acts on the
+    /// whole element, both ends alike, and is saved with it.
+    fn set_joins(&mut self, join: bool) {
+        let ids: Vec<bimcraft_core::model::Id> = self
+            .selection
+            .iter()
+            .copied()
+            .filter(|id| {
+                self.session
+                    .model
+                    .elements
+                    .get(*id)
+                    .is_some_and(|e| matches!(e, bimcraft_core::model::Element::Wall(_)) || e.run().is_some())
+            })
+            .collect();
+        if !ids.is_empty() {
+            self.run("modify", serde_json::json!({"ids": ids, "join": join}));
         }
     }
 

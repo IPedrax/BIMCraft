@@ -207,6 +207,9 @@ const COUNT: Own = (msg!("Count"), Kind::Number, From::Count);
 const PHASE_CREATED: Own = ("Phase Created", Kind::Text, From::Param);
 const PHASE_DEMOLISHED: Own = ("Phase Demolished", Kind::Text, From::Param);
 const DESIGN_OPTION: Own = ("Design Option", Kind::Text, From::Param);
+/// The room a component stands in (`room_number`, `room_name` in its JSON), as Revit's Room: Number and Room: Name.
+const ROOM_NUMBER: Own = (msg!("Room Number"), Kind::Text, From::Key("room_number"));
+const ROOM_NAME: Own = (msg!("Room Name"), Kind::Text, From::Key("room_name"));
 const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
 
 /// A multi-category schedule's category: a row for each element of the categories it lists (`Schedule::categories`),
@@ -442,6 +445,8 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            ROOM_NUMBER,
+            ROOM_NAME,
             // Its height over its level (its Schedule Level, for one on a plane), what it is on, and how far off that.
             ("Elevation from Level", Kind::Length, From::Key("offset")),
             ("Work Plane", Kind::Text, From::Key("work_plane")),

@@ -1149,16 +1149,24 @@ fn solids_in_with(
             Element::StructuralColumn(col) | Element::Footing(col) => {
                 out.push(slab(id, STRUCTURE, &m.column_outline(e), m.span(col.level, col.base_offset, col.top_level, col.height)))
             }
-            // A rectangular run is a sloped prism, which a section cuts; a round one a tube, shown beyond its line.
+            // A rectangular run is a prism of its outline — mitred where it joins, as the plan fills it — which a
+            // section cuts; a round one a tube, its ends cut by the same planes, shown beyond its line.
             crate::model::run_arm!(_) => {
                 if let (Some(t), Some(g)) = (m.run_type(e), m.run_geom(e)) {
                     let color = m.materials.get(&t.material).map_or(STRUCTURE, |x| Rgb(x.color[0], x.color[1], x.color[2]));
                     let tex = skin(m, &t.material);
                     if g.round {
                         let (tris, caps) = g.tube();
+                        let cuts: Vec<_> = [false, true]
+                            .into_iter()
+                            .filter_map(|at_end| crate::runs::end_cuts(m, id, at_end, &g, index))
+                            .flatten()
+                            .collect();
+                        let (tris, caps) = if cuts.is_empty() { (tris, caps) } else { crate::runs::clip_tube(tris, caps, &cuts) };
                         out.push(Solid::Mesh { owner: id, color, tex, tris, caps, round: true, cut: true, vis: 0 });
                     } else {
-                        let (ring, bottom, top) = g.prism();
+                        let (_, bottom, top) = g.prism();
+                        let ring = crate::runs::outline_in(m, id, index);
                         out.push(Solid::Prism { owner: id, color, tex, ring, bottom, top, curve: None });
                     }
                 }
