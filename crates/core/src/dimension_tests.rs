@@ -582,3 +582,18 @@ fn a_mirrored_column_keeps_its_dimensions_on_the_same_faces_and_ends() {
     run(&mut s, "mirror", json!({"ids": [a, b], "axis": [[0, 0], [0, 1000]]}));
     assert_eq!(all(&mut s, &dims), kept);
 }
+
+#[test]
+fn a_project_with_a_dimension_across_a_column_is_saved_in_format_18_and_opens_as_it_was() {
+    let mut s = Session::new();
+    let a = id_of(&run(&mut s, "structural_column", json!({"at": [3000, 3000]})));
+    let b = id_of(&run(&mut s, "structural_column", json!({"at": [7000, 5000]})));
+    let d =
+        id_of(&run(&mut s, "dimension", json!({"refs": [{"id": a, "face": "across"}, {"id": b, "face": "across"}], "at": [5000, 4000]})));
+    // `across` is new in 18: a build that reads up to 17 refuses the file as one from a newer BIMCraft, not with "unknown variant".
+    let file: Value = serde_json::from_str(&s.model.to_json().unwrap_or_default()).unwrap_or_default();
+    assert!(file["format"].as_u64().is_some_and(|f| f >= 18), "{}", file["format"]);
+    let (m, left_out) = Model::read(&file.to_string()).unwrap_or_else(|e| panic!("{e}"));
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(crate::commands::element_json(&m, d)["values"], json!([4000.0]));
+}

@@ -72,8 +72,9 @@ pub const CEILING_HEIGHT: f64 = 2600.0;
 pub const MAX_SLOPE: f64 = 75.0;
 /// The version of the project file this build writes, and the newest it reads. 18: a family's connector may be a `pipe`,
 /// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
-/// the starter fixtures and fittings have them; nothing in a file of 17 changes, but a build that reads up to 17 would answer
-/// such a connector with a serde error ("unknown variant", "missing field `system`"), not "saved by a newer BIMCraft". 17: a schedule may list several categories
+/// the starter fixtures and fittings have them; and a dimension may measure to the line across a column, square to its angle
+/// (`across`); nothing in a file of 17 changes, but a build that reads up to 17 would answer such a connector or dimension with a
+/// serde error ("unknown variant", "missing field `system`"), not "saved by a newer BIMCraft". 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -935,7 +936,7 @@ pub enum Face {
     #[default]
     #[serde(alias = "center")]
     Centre,
-    /// A column's centre line square to its angle: the one across it.
+    /// A column's centre line square to its angle: the one across it. New in file format 18.
     Across,
     Left,
     Right,
@@ -3466,8 +3467,9 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
-        // 17 to 18 (pipe, data and earthing connectors, a connector's place) has none either: a file of 17's connectors are
-        // a power or a switch one, each with its system, which 18 reads as they were.
+        // 17 to 18 (pipe, data and earthing connectors, a connector's place; a dimension to the line across a column) has none
+        // either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were, and
+        // none of its dimensions measures `across`.
         self.format = FORMAT;
     }
 
