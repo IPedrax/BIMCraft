@@ -720,9 +720,9 @@ fn member_quantities(width: f64, depth: f64, round: bool, length: f64) -> Vec<(&
 
 /// What a wall measures, for its `Qto_WallBaseQuantities`: its length along its axis, its thickness and height, its side
 /// (length by height, m²) and that less the doors and windows in it (`holes`, as (width, height, sill), each cut to the
-/// wall's height), and both through its thickness (m³), its joins aside. A wall attached to a roof or a floor has no single
-/// height, so only its length and thickness.
-fn wall_quantities(m: &Model, wl: &crate::model::Wall, holes: &[(f64, f64, f64)]) -> Vec<(&'static str, &'static str, f64)> {
+/// wall's height), and both through its thickness (m³), its joins aside. An attached wall has no single height; its
+/// volumes follow its clipped prisms, its side areas those volumes over its thickness.
+fn wall_quantities(m: &Model, id: Id, wl: &crate::model::Wall, holes: &[(f64, f64, f64)]) -> Vec<(&'static str, &'static str, f64)> {
     let (length, width) = (Axis::of(wl).length(), m.thickness(wl));
     let mut values = vec![("Length", "LENGTH", length), ("Width", "LENGTH", width)];
     if wl.attach_top.is_none() && wl.attach_base.is_none() {
@@ -737,8 +737,24 @@ fn wall_quantities(m: &Model, wl: &crate::model::Wall, holes: &[(f64, f64, f64)]
             ("GrossVolume", "VOLUME", gross * width / 1e9),
             ("NetVolume", "VOLUME", net * width / 1e9),
         ]);
+    } else {
+        let volume = |openings| walls::prisms(m, id, openings).iter().map(|p| prism_volume(&p.ring, &p.bottom, &p.top)).sum::<f64>();
+        let (gross, net) = (volume(false), volume(true));
+        values.extend([
+            ("GrossSideArea", "AREA", gross / width / 1e6),
+            ("NetSideArea", "AREA", net / width / 1e6),
+            ("GrossVolume", "VOLUME", gross / 1e9),
+            ("NetVolume", "VOLUME", net / 1e9),
+        ]);
     }
     values
+}
+
+/// A prism's volume, mm³: signed triangles of its plan ring times their mean height between the planes.
+fn prism_volume(ring: &[P2], bottom: &walls::Plane, top: &walls::Plane) -> f64 {
+    let Some(&o) = ring.first() else { return 0.0 };
+    let rise = |p| top.at(p) - bottom.at(p);
+    ring.windows(2).skip(1).map(|w| (w[0] - o).cross(w[1] - o) / 2.0 * (rise(o) + rise(w[0]) + rise(w[1])) / 3.0).sum::<f64>().abs()
 }
 
 pub fn export(m: &Model) -> String {
@@ -888,7 +904,7 @@ pub fn export(m: &Model) -> String {
                 products.insert(id, ent);
                 placed.insert(id, (ent, at));
                 w.typed("IFCWALLTYPE", ".STANDARD.", &wl.type_name, ent);
-                let values = wall_quantities(m, wl, holes.get(&id).map_or(&[][..], |h| h.as_slice()));
+                let values = wall_quantities(m, id, wl, holes.get(&id).map_or(&[][..], |h| h.as_slice()));
                 w.quantities(ent, "Qto_WallBaseQuantities", &values, id);
             }
             Element::Floor(f) => {
@@ -964,6 +980,14 @@ pub fn export(m: &Model) -> String {
                 products.insert(id, ent);
                 w.typed("IFCCOVERINGTYPE", ".CEILING.", &c.type_name, ent);
                 hosts.insert(id, (ent, at, m.elevation(c.level)));
+                let net: f64 =
+                    m.ceiling_slabs(c).iter().flat_map(|(face, rise)| m.less_shafts(face, *rise).0).map(|r| geom::area(&r).abs()).sum();
+                let values = [
+                    ("Width", "LENGTH", m.types.ceiling.get(&c.type_name).map_or(0.0, |t| t.thickness)),
+                    ("GrossArea", "AREA", geom::area(&c.boundary).abs() / 1e6),
+                    ("NetArea", "AREA", net / 1e6),
+                ];
+                w.quantities(ent, "Qto_CoveringBaseQuantities", &values, id);
             }
             Element::Room(r) => {
                 let Some(&(_, storey)) = storeys.get(&r.level) else { continue };
@@ -1056,6 +1080,16 @@ pub fn export(m: &Model) -> String {
                 // Placed by the middle of its section: the mid-depth centre, 5.
                 if matches!(e, Element::Footing(_)) {
                     w.typed_member("IFCFOOTINGTYPE", ".PAD_FOOTING.", &col.type_name, (section, String::new()), 5, ent);
+                    let area = if t.round { std::f64::consts::PI * t.width * t.width / 4.0 } else { t.width * t.depth };
+                    let volume = area * (top - bottom) / 1e9;
+                    let values = [
+                        ("Length", "LENGTH", t.width),
+                        ("Width", "LENGTH", if t.round { t.width } else { t.depth }),
+                        ("Height", "LENGTH", top - bottom),
+                        ("GrossVolume", "VOLUME", volume),
+                        ("NetVolume", "VOLUME", volume),
+                    ];
+                    w.quantities(ent, "Qto_FootingBaseQuantities", &values, id);
                 } else {
                     w.typed_member("IFCCOLUMNTYPE", ".COLUMN.", &col.type_name, (section, String::new()), 5, ent);
                     let values = member_quantities(t.width, t.depth, t.round, top - bottom);
@@ -1103,7 +1137,20 @@ pub fn export(m: &Model) -> String {
                         let values = member_quantities(g.width, g.depth, g.round, g.length());
                         w.quantities(ent, "Qto_BeamBaseQuantities", &values, id);
                     }
-                    Element::StripFooting(_) => w.load_bearing(ent, "Pset_FootingCommon", id),
+                    Element::StripFooting(_) => {
+                        w.load_bearing(ent, "Pset_FootingCommon", id);
+                        let area = if g.round { std::f64::consts::PI * g.width * g.width / 4.0 } else { g.width * g.depth };
+                        let volume = area * g.length() / 1e9;
+                        let values = [
+                            ("Length", "LENGTH", g.length()),
+                            ("Width", "LENGTH", g.width),
+                            ("Height", "LENGTH", g.depth),
+                            ("CrossSectionArea", "AREA", area / 1e6),
+                            ("GrossVolume", "VOLUME", volume),
+                            ("NetVolume", "VOLUME", volume),
+                        ];
+                        w.quantities(ent, "Qto_FootingBaseQuantities", &values, id);
+                    }
                     // A pipe, duct, conduit, tray, wire or cable: its type is of the segment class it is written as.
                     _ => w.typed(&format!("{class}TYPE"), kind, &r.type_name, ent),
                 }
@@ -1311,6 +1358,31 @@ pub fn export(m: &Model) -> String {
                 let flat = r.extrusion.is_none() && r.slope == 0.0;
                 w.typed("IFCROOFTYPE", if flat { ".FLAT_ROOF." } else { ".NOTDEFINED." }, &r.type_name, ent);
                 hosts.insert(id, (ent, at, m.elevation(r.level)));
+                // Gross follows the actual planes with authored openings filled; courtyards and joins remain.
+                // Net follows the same roof geometry used for export, less its openings and intersecting shafts.
+                let mut gross_roof = r.clone();
+                gross_roof.openings.clear();
+                let mut gross = 0.0;
+                let mut projected = 0.0;
+                for (loops, plane) in m.roof_faces(&gross_roof).unwrap_or_default() {
+                    if let Some((outer, holes)) = loops.split_first() {
+                        let area = geom::area(outer).abs() - holes.iter().map(|h| geom::area(h).abs()).sum::<f64>();
+                        projected += area;
+                        gross += area * (1.0 + plane.g.dot(plane.g)).sqrt();
+                    }
+                }
+                let net: f64 = m
+                    .roof_prisms(r)
+                    .iter()
+                    .map(|(ring, bottom, top)| {
+                        let rise = ring.iter().map(|p| top.at(*p) - bottom.at(*p)).fold(0.0, f64::max);
+                        let area: f64 = m.less_shafts(&bottom.lift(ring), rise).0.iter().map(|p| geom::area(p).abs()).sum();
+                        area * (1.0 + top.g.dot(top.g)).sqrt()
+                    })
+                    .sum();
+                let values =
+                    [("GrossArea", "AREA", gross / 1e6), ("NetArea", "AREA", net / 1e6), ("ProjectedArea", "AREA", projected / 1e6)];
+                w.quantities(ent, "Qto_RoofBaseQuantities", &values, id);
             }
             _ => {}
         }
@@ -2678,11 +2750,6 @@ mod tests {
         assert!(near(q["GrossArea"], 48.0) && near(q["NetArea"], 47.0) && near(q["Perimeter"], 28000.0), "{q:?}");
         assert!(near(q["NetVolume"], 47.0 * q["Width"] / 1e3), "{q:?}");
         dangling(&f);
-        // Attached to a roof or a floor, a wall has no single height: only its length and thickness.
-        let mut attached = wl.clone();
-        attached.attach_top = Some(m.guid(walls[1]));
-        let names: Vec<&str> = wall_quantities(m, &attached, &[]).iter().map(|(n, _, _)| *n).collect();
-        assert_eq!(names, ["Length", "Width"]);
     }
 
     /// Every closed shell in `f` is closed: each edge of its faces, from one point to the next round a bound, is run once
