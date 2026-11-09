@@ -2446,7 +2446,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:9716
+#: crates/core/src/commands.rs:9717
 msgid "Dependent"
 msgstr "相关"
 
@@ -8646,7 +8646,7 @@ msgstr "单位格式"
 msgid "Unlock alignment"
 msgstr "解锁对齐"
 
-#: crates/core/src/commands.rs:9857
+#: crates/core/src/commands.rs:9858
 msgid "Unnamed"
 msgstr "未命名"
 
