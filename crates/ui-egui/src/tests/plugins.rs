@@ -9,9 +9,9 @@ use serde_json::json;
 use super::*;
 
 /// A folder whose module is the sample plugin's build named beside it: the app's own `refresh` then finds it,
-/// as it would a plugin a user built. Without the build the window's tests are skipped.
-fn folder(path: &Path) {
-    let Some(module) = bimcraft_plugin::testing::sample_wasm_or_skip() else { return };
+/// as it would a plugin a user built. Without the build it writes nothing and says so: the window's tests then skip.
+fn folder(path: &Path) -> Option<()> {
+    let module = bimcraft_plugin::testing::sample_wasm_or_skip()?;
     let plugin = path.join("sample");
     std::fs::create_dir_all(&plugin).unwrap();
     std::fs::write(plugin.join("sample_plugin.wasm"), module).unwrap();
@@ -27,6 +27,7 @@ fn folder(path: &Path) {
         ]
     });
     std::fs::write(plugin.join("plugin.json"), serde_json::to_string_pretty(&manifest).unwrap()).unwrap();
+    Some(())
 }
 
 /// The window's plugins for `path`, read as the app reads them.
@@ -63,7 +64,7 @@ fn app_with_plugins(path: &Path) -> Harness<'static, BimApp> {
 fn the_plugins_window_asks_for_file_access_and_the_user_grants_it() {
     // The row is built from the manifest alone: it needs no built module.
     let dir = tempfile::tempdir().unwrap();
-    folder(dir.path());
+    let Some(()) = folder(dir.path()) else { return };
     // The manifest asks for the permission; nothing is granted until the user says so.
     let manifest = dir.path().join("sample").join("plugin.json");
     let mut value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
@@ -115,7 +116,7 @@ fn find_lists_a_plugin_s_function_and_runs_it_as_its_button_does() {
 #[test]
 fn a_plugin_function_that_needs_a_file_asks_for_it_in_the_system_dialog() {
     let dir = tempfile::tempdir().unwrap();
-    folder(dir.path());
+    let Some(()) = folder(dir.path()) else { return };
     // The same as the plugin's own `open_file`: a function whose manifest makes `path` required.
     let manifest = dir.path().join("sample").join("plugin.json");
     let mut value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
