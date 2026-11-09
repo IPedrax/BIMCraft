@@ -49,7 +49,8 @@ fn export_formats_lists_each_format_and_what_it_takes() {
     assert_eq!(of("ifc4")["takes"], json!(["model"]));
     assert_eq!(of("csv")["family"], "schedule");
     // Listed before it is written, so a dialog shows it and an agent knows it's coming.
-    assert_eq!(of("jpeg")["status"], "planned");
+    assert_eq!(of("u3d")["status"], "planned");
+    assert_eq!(of("jxl")["status"], "stable");
     for token in ["SheetNumber", "SheetName", "ViewName", "ProjectName", "Date"] {
         assert!(r["tokens"].as_array().is_some_and(|t| t.contains(&json!(token))), "{token}: {r}");
     }
@@ -179,7 +180,7 @@ fn what_export_cant_do_it_says() {
     let refused = [
         (json!({"view": "A101", "path": to}), "`format` is required"),
         (json!({"format": "doc", "view": "A101", "path": to}), "doc"),
-        (json!({"format": "jpeg", "view": "A101", "path": to}), "isn't written yet"),
+        (json!({"format": "u3d", "path": to}), "isn't written yet"),
         (json!({"format": "pdf", "view": "Nowhere", "path": to}), "no view or sheet `Nowhere`"),
         (json!({"format": "pdf", "view": "A101"}), "`path` (one file) or `folder` (a file each) is required"),
         (json!({"format": "pdf", "view": "A101", "path": to, "folder": dir}), "not both"),
@@ -235,6 +236,13 @@ pub(crate) fn sweep_payloads(dir: &Path) -> Vec<(&'static str, Value)> {
         ("export", json!({"format": "pdf", "views": ["A101", "Level 1"], "folder": dir, "combine": "{ViewName}"})),
         ("export", json!({"format": "pdf", "view": "A101", "folder": "", "overwrite": "yes"})),
         ("export", json!({"format": "glb", "view": "Level 1", "path": dir.join("sweep.glb")})),
+        ("export", json!({"format": "jpeg", "view": "A101", "path": dir.join("sweep.jpg"), "quality": 100, "page": {"dpi": 1200, "paper": "A0"}})),
+        ("export", json!({"format": "jpeg", "view": "Level 1", "path": dir.join("sweep.jpg"), "quality": 0.5, "page": {"dpi": 36, "colour": "black"}})),
+        ("export", json!({"format": "jxl", "view": "Level 1", "path": dir.join("sweep.jxl"), "page": {"dpi": 36, "size": [20, 20]}})),
+        ("export", json!({"format": "dxf", "views": ["Level 1", "{3D}", "A101"], "folder": dir, "page": {"colour": "grey", "hairlines": true}})),
+        ("export", json!({"format": "obj", "view": "{3D}", "path": dir.join("sweep.obj")})),
+        ("export", json!({"format": "stl", "path": dir.join("sweep.stl")})),
+        ("export", json!({"format": "ods", "view": "Room Schedule", "path": dir.join("sweep.ods")})),
         ("export", json!({"format": "ifc4", "path": dir.join("sweep.ifc"), "ifc_origin": 5})),
         ("export", json!({"format": "csv", "view": "{3D}", "path": dir.join("sweep.csv"), "quality": 1e300})),
         ("export", json!({"format": "x".repeat(100_000), "view": "A101", "path": to})),
