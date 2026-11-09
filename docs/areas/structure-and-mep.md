@@ -195,6 +195,23 @@ pipe connectors is no electrical device; IFC ports (`IfcDistributionPort`) come 
 from before reads as it did; file format 18 is the one that has these connectors, so a build that reads up to 17 refuses a
 project saved by this one, saying it is from a newer BIMCraft, instead of failing on a `pipe` connector it doesn't know.
 
+**The pipe network** (`network.rs`, the `network` command; piece 3 of #169) is worked out from the model each time it is asked
+for and never stored, as wall joins are, so it can't go stale and changes no file. Pipes' centre-line ends and the components'
+pipe connectors within `tolerance` (1 mm by default) are one node; a node on another pipe's length, away from its ends, splits
+that pipe into two edges without splitting the element. A pipe fitting's or accessory's connectors are joined through it (as a
+fitting's linked connectors carry a system through it in Revit); a fixture's are not, since its waste and its water are networks of
+their own. The reply has the nodes (what meets at each), the edges, the groups of joined elements with their pipes' systems and
+their connectors' domains, the open ends (an end or a connector meeting nothing, as Revit's Show Disconnects marks) and warnings
+that never refuse the model, since a drawing in progress has open ends: two pipe systems in one network, two connector domains in
+one, a pipe met along its length with no fitting, and, in a network with a waste connector, a pipe leaving a node downhill narrower
+than one coming down to it. A query works on 200,000 pipe ends and connectors at most (`MAX_POINTS`), and looks for nodes along
+pipes through the plan's metre squares each lies across, 4,000,000 of them for all the pipes together (`MAX_CELLS`): a small file
+of pipes kilometres long on the diagonal would fill billions, so past it the query is refused, naming the pipe across the most and
+saying to ask for one `level`. It has no shortcut, since Revit has no tool for it. IFC's ports say the same with
+`IfcRelConnectsPorts` between two `IfcDistributionPort`s; writing them is piece 8. A pipe's `width` is its outside diameter and a
+connector's `size` its DN, so they aren't compared. Conduits and the other electrical runs are not in it yet: their routes are
+piece 6.
+
 **The fixtures library** (`plumbing.rs`, `data/plumbing.json`) holds what the sizing commands know of each kind of fixture, the way `data/electrical.json` holds the electrical settings: its design flows in L/s (cold, and hot where a source gives one; `hot_flow` is `null` until one does, never guessed), its weight (the method of weights of `water_size`), its units of contribution and the smallest DN of its drain (`drain_size`), each with the source it comes from (`water_source`, `drain_source`). `plumbing::validate` refuses a row with no source, an empty or repeated kind, or a number that is not positive and finite, and a test runs it over the shipped file; the library reads as empty if the file fails it, so a bad row shows as "no fixture" and never as a wrong number. `water::fixture` and `drain_size`'s `drainage::fixture` are views of it, and the commands list its kinds in their errors. A project's own values are a later step.
 
 ### Timber wall framing

@@ -1953,6 +1953,24 @@ other_files(
         hydrant_size,
     ),
     other(
+        "network",
+        "Pipe Network",
+        "{system?, level?, tolerance?} the pipe network, worked out from the model and never stored: where pipes' ends and the \
+         pipe connectors of fixtures, fittings and valves meet. Points within `tolerance` mm (1 by default, 50 at most) are one node; a \
+         pipe's end or a connector on another pipe's length is a node too, splitting that pipe into two edges (the element stays \
+         whole); a fitting's or a valve's connectors are joined through it, a fixture's are not (its waste and its water are \
+         networks of their own). `system` keeps the networks that pipe system's pipes are in; `level` (a name, id or GUID) only \
+         that level's pipes and components. It replies `nodes` (`at`, what meets there: a pipe's `start` or `end`, a pipe `along` \
+         which it lies, a component's `connector` and its `domain`), `edges` (a pipe's piece and its `length`, or `through` a \
+         fitting), `groups` (the elements joined together, their pipes' systems and their connectors' domains), `open` (ends and \
+         connectors that meet nothing, as Revit's Show Disconnects marks) and `warnings`, which never refuse the model: \
+         `systems_meet` (pipes of two systems in one network), `domains_meet` (connectors of two domains, waste and cold water), \
+         `joined_mid_run` (a pipe met along its length, with no fitting) and `smaller_downstream` (in a network with a waste \
+         connector, a pipe leaving a node downhill narrower than one coming down to it). It has no shortcut: Revit has no tool for it. \
+         It changes nothing",
+        network,
+    ),
+    other(
         "load_points",
         "Residential Load Points",
         "{rooms?: [{name, area, perimeter, kind?: bath|kitchen|service|dry|veranda|other, points?}], alternative?, standard?} the lighting \
@@ -5692,6 +5710,40 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
         "signal": signals,
         "not_covered": "the overcurrent device of the DPS and where it stands (6.3.5.2.5), and the coordination between DPS",
     }))
+}
+
+fn network(s: &mut Session, p: &Value) -> R {
+    let c = "network";
+    if !p.is_object() {
+        return Err(bad(c, "params must be an object"));
+    }
+    only(c, p, &["system", "level", "tolerance"])?;
+    let m = &s.model;
+    let system = string(c, p, "system")?;
+    let level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
+    let tolerance = within(c, p, "tolerance", crate::network::TOLERANCE, 0.01, crate::network::MAX_TOLERANCE)?;
+    let n = crate::network::network(m, system.as_deref(), level, tolerance).map_err(|e| bad(c, e))?;
+    let round = |p: [f64; 3]| p.map(|x| (x * 100.0).round() / 100.0 + 0.0);
+    use crate::network::Joint;
+    let joint = |j: &Joint| match j {
+        Joint::RunEnd { run, end } => json!({"pipe": run, "end": if *end { "end" } else { "start" }}),
+        Joint::RunSide { run } => json!({"pipe": run, "along": true}),
+        Joint::Connector { element, index, domain } => json!({"component": element, "connector": index, "domain": domain}),
+    };
+    let nodes: Vec<Value> =
+        n.nodes.iter().map(|x| json!({"at": round(x.at), "joins": x.joints.iter().map(joint).collect::<Vec<_>>()})).collect();
+    let edges: Vec<Value> = n
+        .edges
+        .iter()
+        .map(|e| match e.length {
+            Some(l) => json!({"pipe": e.element, "from": e.from, "to": e.to, "length": (l * 100.0).round() / 100.0}),
+            None => json!({"through": e.element, "from": e.from, "to": e.to}),
+        })
+        .collect();
+    let groups: Vec<Value> = n.groups.iter().map(|g| json!({"elements": g.elements, "systems": g.systems, "domains": g.domains})).collect();
+    let warnings: Vec<Value> =
+        n.warnings.iter().map(|w| json!({"kind": w.kind, "at": w.at.map(round), "elements": w.elements, "message": w.message})).collect();
+    Ok(json!({"nodes": nodes, "edges": edges, "groups": groups, "open": n.open, "warnings": warnings}))
 }
 
 fn load_points(s: &mut Session, p: &Value) -> R {
