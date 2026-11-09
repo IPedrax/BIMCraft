@@ -116,9 +116,21 @@ name: a triangle's face is read from its winding, so every solid emits triangles
 `Image::face` says which face a pixel is on. Favorites (`favorites.rs`) are a file of the user's own (`default_path`:
 `BIMCRAFT_FAVORITES`, else the configuration folder) with materials and their pictures, families and their materials; they change
 a project only through the `favorite` command (`load` never overwrites without `replace`). The desktop's Family Editor
-(`editor.rs`, `editor/document.rs`) opens every family in a document occupying the window, with a family ribbon,
+(`editor.rs`, `editor/document.rs`) opens every family in a document of its own, with a family ribbon,
 docked Properties and Project Browser, and a 3D view: an adaptive family's modelling view and tools
-([adaptive families](adaptive-families.md)), another's 3D preview. Properties show what is selected, as Revit's do: nothing
+([adaptive families](adaptive-families.md)), another's {3D}. Each document's views are tabs of the window's, after the
+project's (`Sheet::Family`, `editor/tabs.rs`), titled "{family} - {view}" with the family's icon; any number of documents may be
+open, each with its own draft, history (Undo on its tabs undoes its steps, never the project's), selection and tool, and the
+project's tab shows the project's ribbon, Properties, Browser and tool again. A view the document goes to (its Project Browser,
+Go To View) opens its tab; closing a tab that isn't the document's last only closes it. The last one, or Close Family (that
+tab's ×), closes the document: with changes not loaded, "Save changes to {family}?" asks first (Load into Project and Close,
+Close Without Loading, Cancel), and a nested family's document open over it closes first. File > New, Open and Close, and
+quitting, ask about each document before the project's own question. Load into Project leaves the document open and clean;
+Load into Project and Close goes back to the tab it was opened from. Edit Family on a family whose document is open, or opening
+a file that is, brings that document forward: a family is never open twice. A new blank family is "Family1", "Family2" and so
+on. A nested family's document (Edit Family in a family) reads Load into Family; it loads into the document it came from. A
+family opened from the start page with no project behind it shows no project tabs until something is loaded into the blank
+project. Family tabs neither float nor tile. Properties show what is selected, as Revit's do: nothing
 selected, the family's own (Identity Data, then Family Category and Parameters' Other group); a form, a symbol, a reference
 plane or line, a dimension or a nested instance, its own. The forms and the plan symbols of a family that isn't adaptive are
 listed in the Project Browser (Forms and Symbols, `family_browser`): a click selects one, and its right-click menu has Select,
@@ -179,13 +191,23 @@ and Detail Levels' Edit…), on the contextual tab "Modify | Symbols" (Delete). 
 typed rather than dragged in a view. Sketch mode (Edit Extrusion, Finish and
 Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's (below); its Visibility panel's Visibility Settings is F8's (below).
 
-{3D} shows what is selected as the project's 3D view does (T11, `editor/lit3d.rs`): a form, a void or a nested instance selected
-is tinted halfway in the selection's colour with its edges whole, through the project's own tints (`Scene::render_in`), the part a
-family of its own in the scratch model placed where the family is, the rest of the family without it, so what stands in front of
-it still hides it; a void, never seen, is drawn see-through while selected. The form or nested instance under the pointer is lit
-in the hover colour (`family::views::part_at_3d`, the one whose surface there is nearest the eye), and a click selects it, a click
-on nothing letting the selection go. A reference plane or line selected in a plan or an elevation is drawn into {3D}'s picture in
-the selection's colour, depth tested as the work plane is (`view3d::PlaneMark`, `Image::draw_line`).
+{3D} is drawn by the project's 3D view (`orbit.rs`, `editor/lit3d.rs`, `BimApp::family_3d`): the document owns an `Orbit`, whose
+worker makes the scene and the card's mesh of a scratch model in which every solid form and every nested instance is placed as
+a family of its own where the family is (`FamilyEditor::stage_3d`, staged again only when the draft, the type, Preview
+Visibility, the Detail Level, Temporary Hide/Isolate or a void selected changes; a door's or a window's opening stays in its
+wall with its solids hidden, its parts generic copies at the opening's frame, as the views' ghosts are). Its picture is the
+card's or the processor's, as the project's is, and the card keeps the project's mesh parked beside it (`Gpu::hold_for`), so
+neither is uploaded again when the other view shows. It is moved as the project's 3D view is: a primary drag orbits about the
+point under the pointer, the middle button pans, Shift and the middle button orbit, the wheel zooms toward the point under the
+cursor, the 3D mouse moves it, the triad (left of the ViewCube) and Revit's ViewCube turn it, and Zoom to Fit fits it; while
+nothing has moved it, it fits itself again as its pane is resized. It shows what is selected as the project's 3D view does (T11):
+a form, a void or a nested instance selected is tinted halfway in the selection's colour with its edges whole, through the
+project's own tints, so what stands in front of it still hides it; a void, never seen, is drawn see-through while selected
+(staged again when the selection changes). The form or nested instance under the pointer, picked in the picture on screen
+(`Picker`, its element mapped back to its part), is lit in the hover colour, and a click selects it, a click on nothing letting
+the selection go. A reference plane selected in a plan or an elevation, and Work Plane > Show, are laid over the picture as
+marks depth tested as the project's work plane is (`view3d::PlaneMark`); a reference line selected, as a strip a few pixels wide.
+The connectors' symbols, the sketch and its padlocks are drawn over it through the `Orbit`'s camera.
 
 A family's connectors (#269) are elements of its document, as Revit's: Create > Connectors places a pipe, power, switch, data
 or earthing one at the origin, selected; the browser lists them under Connectors, and a selected one's Properties type its name,
@@ -628,6 +650,10 @@ zoomed (the wheel; the middle button moves it). The plan is `render::draw` with,
 at any height and, where a form crosses the level's cut plane (1200), its outline there in the cut pen (`render::family_plan`,
 `plan_cut`, the section's slicing turned on its side); a project's plans never cut a component. The ceiling plan is the project's.
 An elevation is a section's picture and drawing (`section_picture`, `section_over`): forms seen, Ref. Level a level with its name.
+The window paints each view's drawing as vectors, as it paints a project's plan (`Staged::draw_lines`, `canvas::paint`; egui
+tessellates it and draws it on the card where there is one), an elevation's hidden-line picture under its lines as a section's
+is; picking goes through the drawing as before. A test reads the same pixels rasterized from the drawing kept
+(`FamilyEditor::view_pixels`).
 The planes are drawn with the rules in [views and graphics](views-and-graphics.md#reference-planes-in-views). The family's reference
 lines (`Family.lines`) are drawn over each plan and elevation as the view sees them, solid in the planes' green and the thinnest
 pen, as Revit's: true length where their plane is square to the view, foreshortened where it isn't, nothing for one seen end on
@@ -1188,7 +1214,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 
 In `crates/ui-egui`, the Family Editor:
 
-- `editor.rs`: family drafts. `editor/document.rs`: the family document every family opens as.
+- `editor.rs`: family drafts. `editor/document.rs`: the family document every family opens as. `editor/tabs.rs`: the documents open, as tabs beside the project's, and the rules for closing them.
 - `editor/association.rs`: parameter associations. `editor/extrusion.rs`: a selected form's Properties.
 - `editor/exists.rs`: Family Already Exists. `editor/types_dialog.rs`: Family Types.
 - `editor/temp_hide.rs`: the document's Temporary Hide/Isolate. `editor/views.rs`: its plans and elevations.
@@ -1199,4 +1225,4 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/connectors.rs`: a family's connectors in the document, placed from Create > Connectors, listed in the browser, typed
   in Properties. `editor/connector_marks.rs`: their symbols and arrows over {3D}, plans and elevations, lit and picked (an
   overlay drawn through a view's projection alone).
-- `editor/lit3d.rs`: {3D}'s selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.
+- `editor/lit3d.rs`: {3D} staged for the project's 3D view (`FamilyScene`), its selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.

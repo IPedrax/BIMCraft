@@ -15,6 +15,7 @@ use serde_json::json;
 
 use crate::canvas::{click_modifiers, tag};
 use crate::lang::{t, tc, tf};
+use crate::orbit::Orbit;
 use crate::style::canvas_pal;
 use crate::{BimApp, Status};
 
@@ -56,21 +57,20 @@ fn axis_color(axis: usize) -> Color32 {
     [Color32::from_rgb(222, 74, 68), Color32::from_rgb(86, 178, 90), Color32::from_rgb(64, 132, 232)][axis.min(2)]
 }
 
-impl BimApp {
-    /// Where the triad stands in the 3D view `view`: left of the navigation bar, level with its top. None where the view is too
-    /// small to hold it.
-    pub(crate) fn triad_rect(&self, view: Rect) -> Option<Rect> {
-        let nav = self.nav_corner(view);
+impl Orbit {
+    /// Where the triad stands in the 3D view `view`: left of the navigation bar, whose corner is `nav`, level with its top. None
+    /// where the view is too small to hold it.
+    pub(crate) fn triad_rect(view: Rect, nav: Pos2) -> Option<Rect> {
         let rect = Rect::from_min_size(pos2(nav.x - GAP - SIZE, nav.y), vec2(SIZE, SIZE));
         view.shrink(4.0).contains_rect(rect).then_some(rect)
     }
 
-    /// The triad's widget for the frame, over the view's own: what the pointer is over, and what a click there asks for. The
-    /// camera it works from is the one on screen, which the user sees.
-    pub(crate) fn triad_input(&mut self, ui: &Ui, view: Rect) -> Option<Ask> {
-        self.orbit.triad = Over::default();
-        let cam = self.orbit.camera?;
-        let rect = self.triad_rect(view)?;
+    /// The triad's widget for the frame, over the view's own in `view` (its navigation bar's corner at `nav`): what the pointer is
+    /// over, and what a click there asks for. The camera it works from is the one on screen, which the user sees.
+    pub(crate) fn triad_input(&mut self, ui: &Ui, view: Rect, nav: Pos2) -> Option<Ask> {
+        self.triad = Over::default();
+        let cam = self.camera?;
+        let rect = Self::triad_rect(view, nav)?;
         // Over the view's widget, which senses clicks and drags: both are the triad's here and not the view's.
         let response = ui.interact(rect, ui.id().with("triad"), Sense::click_and_drag());
         let placed = triad::layout(&cam);
@@ -80,7 +80,7 @@ impl BimApp {
         };
         if let Some(at) = response.hover_pos() {
             let end = end_at(at);
-            self.orbit.triad = Over { inside: true, end, alt: ui.input(|i| i.modifiers.alt) };
+            self.triad = Over { inside: true, end, alt: ui.input(|i| i.modifiers.alt) };
             if end.is_some() {
                 ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
             }
@@ -101,7 +101,7 @@ impl BimApp {
     /// What hovering the triad says: the view a click on the end turns to, with Alt the work plane it sets, and on empty space with
     /// Alt that it goes back to the level.
     pub(crate) fn triad_label(&self) -> Option<String> {
-        let (over, cam) = (self.orbit.triad, self.orbit.camera?);
+        let (over, cam) = (self.triad, self.camera?);
         match (over.end, over.alt) {
             (Some(end), false) => Some(tc("side", triad::side_after(&cam, end).name()).to_string()),
             (Some(end), true) => Some(tf("Work plane square to the {} axis", &[end.axis_name()])),
@@ -110,35 +110,11 @@ impl BimApp {
         }
     }
 
-    /// Alt and a click on `end`: the work plane square to its axis, through the point of the plane the view was on nearest `target`.
-    pub(crate) fn triad_plane(&mut self, end: End, target: P3) {
-        let m = &self.session.model;
-        let current = m.work_plane(m.default_3d()).resolve(m).ok();
-        let surface = triad::plane(current.as_ref(), target, end);
-        if self.run("work_plane", json!({"surface": surface})).is_some() {
-            self.status = Status { text: tf("Work plane square to the {} axis", &[end.axis_name()]), error: false };
-        }
-    }
-
-    /// Alt and a click on the triad's empty space: the work plane back to the level, the lowest as a 3D view with none of its own
-    /// sketches on. Nothing to do (and no undo step) where it is there already.
-    pub(crate) fn triad_level(&mut self) {
-        let m = &self.session.model;
-        let own = m
-            .default_3d()
-            .is_some_and(|v| matches!(m.elements.get(v), Some(bimcraft_core::model::Element::View3D(v3)) if v3.work_plane.is_some()));
-        if !own {
-            self.status = Status { text: t("The work plane is on the level already").into(), error: false };
-        } else if self.run("work_plane", json!({})).is_some() {
-            self.status = Status { text: t("Work plane back to the level").into(), error: false };
-        }
-    }
-
-    /// The triad drawn on `p` over the 3D view in `view`, as the camera `cam` shows it, the farthest end first, and what hovering
-    /// it names.
-    pub(crate) fn triad_draw(&self, p: &Painter, view: Rect, cam: &Camera) {
-        let Some(rect) = self.triad_rect(view) else { return };
-        let over = self.orbit.triad;
+    /// The triad drawn on `p` over the 3D view in `view` (its navigation bar's corner at `nav`), as the camera `cam` shows it, the
+    /// farthest end first, and what hovering it names.
+    pub(crate) fn triad_draw(&self, p: &Painter, view: Rect, nav: Pos2, cam: &Camera) {
+        let Some(rect) = Self::triad_rect(view, nav) else { return };
+        let over = self.triad;
         let ink = canvas_pal();
         let middle = rect.center();
         // A faint ground under it, firmer while the pointer is over it, so the axes read on any model behind.
@@ -173,18 +149,18 @@ impl BimApp {
         }
     }
 
-    /// Where `end` shows on screen in the 3D view as last drawn.
+    /// Where `end` shows on screen in the 3D view as last drawn (its navigation bar's corner at `nav`).
     #[cfg(test)]
-    pub(crate) fn triad_at(&self, end: End) -> Option<Pos2> {
-        let (cam, rect) = (self.orbit.camera?, self.triad_rect(self.orbit.rect)?);
+    pub(crate) fn triad_at(&self, end: End, nav: Pos2) -> Option<Pos2> {
+        let (cam, rect) = (self.camera?, Self::triad_rect(self.rect, nav)?);
         let p = triad::layout(&cam).into_iter().find(|p| p.end == end)?;
         Some(rect.center() + vec2(p.x as f32, p.y as f32) * RADIUS)
     }
 
     /// A point on the triad's square that no end is near, for a click on its empty space.
     #[cfg(test)]
-    pub(crate) fn triad_empty(&self) -> Option<Pos2> {
-        let (cam, rect) = (self.orbit.camera?, self.triad_rect(self.orbit.rect)?);
+    pub(crate) fn triad_empty(&self, nav: Pos2) -> Option<Pos2> {
+        let (cam, rect) = (self.camera?, Self::triad_rect(self.rect, nav)?);
         let placed = triad::layout(&cam);
         // The square's corners, which the circle of the axes leaves clear.
         let (far, d) = (f64::from(REACH * 2.0 / RADIUS), SIZE / 2.0 - 4.0);
@@ -192,5 +168,57 @@ impl BimApp {
             triad::pick(&placed, (f64::from((at.x - rect.center().x) / RADIUS), f64::from((at.y - rect.center().y) / RADIUS)), far)
                 .is_none()
         })
+    }
+}
+
+/// The project's 3D view's triad: the `Orbit`'s, placed beside the window's navigation bar, and what Alt and a click on it do to
+/// the project's work plane.
+impl BimApp {
+    /// Where the triad stands in the project's 3D view `view`.
+    #[cfg(test)]
+    pub(crate) fn triad_rect(&self, view: Rect) -> Option<Rect> {
+        Orbit::triad_rect(view, self.nav_corner(view))
+    }
+
+    /// What hovering the project's triad says.
+    #[cfg(test)]
+    pub(crate) fn triad_label(&self) -> Option<String> {
+        self.orbit.triad_label()
+    }
+
+    /// Alt and a click on `end`: the work plane square to its axis, through the point of the plane the view was on nearest `target`.
+    pub(crate) fn triad_plane(&mut self, end: End, target: P3) {
+        let m = &self.session.model;
+        let current = m.work_plane(m.default_3d()).resolve(m).ok();
+        let surface = triad::plane(current.as_ref(), target, end);
+        if self.run("work_plane", json!({"surface": surface})).is_some() {
+            self.status = Status { text: tf("Work plane square to the {} axis", &[end.axis_name()]), error: false };
+        }
+    }
+
+    /// Alt and a click on the triad's empty space: the work plane back to the level, the lowest as a 3D view with none of its own
+    /// sketches on. Nothing to do (and no undo step) where it is there already.
+    pub(crate) fn triad_level(&mut self) {
+        let m = &self.session.model;
+        let own = m
+            .default_3d()
+            .is_some_and(|v| matches!(m.elements.get(v), Some(bimcraft_core::model::Element::View3D(v3)) if v3.work_plane.is_some()));
+        if !own {
+            self.status = Status { text: t("The work plane is on the level already").into(), error: false };
+        } else if self.run("work_plane", json!({})).is_some() {
+            self.status = Status { text: t("Work plane back to the level").into(), error: false };
+        }
+    }
+
+    /// Where `end` shows on screen in the project's 3D view as last drawn.
+    #[cfg(test)]
+    pub(crate) fn triad_at(&self, end: End) -> Option<Pos2> {
+        self.orbit.triad_at(end, self.nav_corner(self.orbit.rect))
+    }
+
+    /// A point on the project's triad's square that no end is near, for a click on its empty space.
+    #[cfg(test)]
+    pub(crate) fn triad_empty(&self) -> Option<Pos2> {
+        self.orbit.triad_empty(self.nav_corner(self.orbit.rect))
     }
 }

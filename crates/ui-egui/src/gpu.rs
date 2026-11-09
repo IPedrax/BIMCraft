@@ -448,6 +448,12 @@ pub struct Gpu {
     globals: wgpu::Buffer,
     segments: (wgpu::Buffer, u64),
     mesh: Option<Uploaded>,
+    /// A second mesh kept on the card beside the one drawn: what [`park`](Self::park) set aside, so that a view showing it again
+    /// (another document's tab gone back to) draws it without uploading it again. The two share [`card_bytes`](Self::card_bytes).
+    parked: Option<Uploaded>,
+    /// The views the mesh drawn and the parked one are of ([`hold_for`](Self::hold_for)).
+    owner: Option<u64>,
+    parked_owner: Option<u64>,
     upload_worker: Option<crate::view_worker::Latest<UploadJob, UploadDone>>,
     upload_requested: Option<Arc<Mesh>>,
     targets: Option<Targets>,
@@ -986,6 +992,9 @@ impl Gpu {
             globals,
             segments,
             mesh: None,
+            parked: None,
+            owner: None,
+            parked_owner: None,
             upload_worker: None,
             upload_requested: None,
             targets: None,
@@ -1043,7 +1052,7 @@ impl Gpu {
         let drawn = self.encode(mesh, cam, tints, ground, cut);
         let full = out_of_memory(guard);
         if let Some(up) = &self.mesh {
-            self.card_bytes = self.card_bytes.min(up.room);
+            self.card_bytes = self.card_bytes.min(up.room.saturating_add(self.parked_bytes()));
         }
         // The card ran out in the frame's own work: hold less and draw again, rather than give it up.
         if matches!(full, Ok(true)) && drawn.is_ok() && self.hold_less() {
@@ -1055,13 +1064,18 @@ impl Gpu {
             Err(e) => Err(e),
         };
         if drawn.is_err() || caught.is_err() {
-            (self.mesh, self.targets) = (None, None);
+            (self.mesh, self.parked, self.parked_owner, self.targets) = (None, None, None, None);
         }
         caught.and(drawn)
     }
 
-    /// Asks the card to hold half of what it does, and starts the picture again. False where it holds no more than one buffer.
+    /// Asks the card to hold half of what it does, and starts the picture again: a parked mesh is let go of first. False where it
+    /// holds no more than one buffer.
     pub(crate) fn hold_less(&mut self) -> bool {
+        if self.parked.take().is_some() {
+            self.parked_owner = None;
+            return true;
+        }
         let Some(up) = &mut self.mesh else { return false };
         let buffers = |up: &Uploaded| KINDS.iter().map(|kind| up.store(*kind).held()).sum::<usize>();
         if buffers(up) < 2 {
@@ -1072,6 +1086,7 @@ impl Gpu {
         up.room = up.room.max(up.held);
         up.progress = None;
         up.wire_stream = None;
+        // Nothing is parked here: it went first.
         self.card_bytes = self.card_bytes.min(up.room);
         true
     }
@@ -1079,14 +1094,14 @@ impl Gpu {
     /// Starts the large first upload away from the interface thread. A result belongs to its exact mesh snapshot.
     /// Tests that call `draw` directly retain the synchronous path there.
     pub(crate) fn prepare_upload(&mut self, ctx: &egui::Context, mesh: &Arc<Mesh>) -> Result<bool, String> {
-        if self.mesh.as_ref().is_some_and(|u| Arc::ptr_eq(&u.mesh, mesh)) {
+        if self.mesh.as_ref().is_some_and(|u| Arc::ptr_eq(&u.mesh, mesh)) || self.unpark(mesh) {
             return Ok(true);
         }
         if let Some(done) = self.upload_worker.as_ref().and_then(crate::view_worker::Latest::take)
             && Arc::ptr_eq(&done.mesh, mesh)
         {
             let up = done.uploaded?;
-            self.card_bytes = self.card_bytes.min(up.room);
+            self.card_bytes = self.card_bytes.min(up.room.saturating_add(self.parked_bytes()));
             self.mesh = Some(up);
             return Ok(true);
         }
@@ -1096,7 +1111,7 @@ impl Gpu {
                 device: self.device.clone(),
                 queue: self.queue.clone(),
                 vertex_bytes: self.vertex_bytes,
-                room: Room { bytes: self.card_bytes, full_at: self.full_at },
+                room: self.room(),
                 mesh: Arc::clone(mesh),
             };
             let wake = ctx.clone();
@@ -1137,6 +1152,71 @@ impl Gpu {
     pub(crate) fn forget_mesh(&mut self) {
         self.suspend_upload();
         self.mesh = None;
+    }
+
+    /// Sets the mesh drawn now aside, kept on the card in place of any parked before, for a view that will show it again: the
+    /// next mesh drawn is another's. Drawing it again brings it back without an upload.
+    pub(crate) fn park(&mut self) {
+        self.suspend_upload();
+        if let Some(up) = self.mesh.take() {
+            self.parked = Some(up);
+            self.parked_owner = self.owner.take();
+        }
+    }
+
+    /// The card made ready for view `owner` to draw on: its own mesh back where it was parked (the other view's parked in turn),
+    /// else another view's set aside. Whether the card held another's: the picture on it is not the view's, which draws again.
+    pub(crate) fn hold_for(&mut self, owner: u64) -> bool {
+        if self.owner == Some(owner) {
+            return false;
+        }
+        if self.parked_owner == Some(owner) {
+            self.suspend_upload();
+            std::mem::swap(&mut self.mesh, &mut self.parked);
+            std::mem::swap(&mut self.owner, &mut self.parked_owner);
+            self.forget_progress();
+            return true;
+        }
+        if self.mesh.is_some() {
+            self.park();
+        }
+        self.owner = Some(owner);
+        true
+    }
+
+    /// The parked mesh back in place of the one drawn, which is parked in turn, where it is `mesh`: whether it was.
+    fn unpark(&mut self, mesh: &Arc<Mesh>) -> bool {
+        if !self.parked.as_ref().is_some_and(|u| Arc::ptr_eq(&u.mesh, mesh)) {
+            return false;
+        }
+        std::mem::swap(&mut self.mesh, &mut self.parked);
+        std::mem::swap(&mut self.owner, &mut self.parked_owner);
+        self.forget_progress();
+        true
+    }
+
+    /// The targets hold another mesh's surfaces: the one drawn starts its picture again.
+    fn forget_progress(&mut self) {
+        if let Some(up) = &mut self.mesh {
+            up.progress = None;
+            up.wire_stream = None;
+        }
+    }
+
+    /// How many bytes of its own vertices the parked mesh holds.
+    fn parked_bytes(&self) -> u64 {
+        self.parked.as_ref().map_or(0, |up| up.held)
+    }
+
+    /// The room a mesh uploaded now has: what the card holds at most, less what the parked one holds.
+    fn room(&self) -> Room {
+        Room { bytes: self.card_bytes.saturating_sub(self.parked_bytes()), full_at: self.full_at }
+    }
+
+    /// Whether the card keeps `mesh` parked, for a test.
+    #[cfg(test)]
+    pub(crate) fn parks(&self, mesh: &Arc<Mesh>) -> bool {
+        self.parked.as_ref().is_some_and(|u| Arc::ptr_eq(&u.mesh, mesh))
     }
 
     fn encode(&mut self, mesh: &Arc<Mesh>, cam: &Camera, tints: &[(Id, Rgb)], ground: Rgb, cut: Cut) -> Result<bool, String> {
@@ -1621,11 +1701,11 @@ fn mark(marking: &wgpu::RenderPipeline, targets: &Targets, encoder: &mut wgpu::C
 impl Gpu {
     /// Puts `mesh` on the card, unless it's there already.
     fn upload(&mut self, mesh: &Arc<Mesh>) -> Result<(), String> {
-        if self.mesh.as_ref().is_some_and(|u| Arc::ptr_eq(&u.mesh, mesh)) {
+        if self.mesh.as_ref().is_some_and(|u| Arc::ptr_eq(&u.mesh, mesh)) || self.unpark(mesh) {
             return Ok(());
         }
         self.mesh = None;
-        let room = Room { bytes: self.card_bytes, full_at: self.full_at };
+        let room = self.room();
         self.mesh = Some(Self::make_uploaded(&self.device, &self.queue, self.vertex_bytes, room, mesh, &|| false)?);
         Ok(())
     }
@@ -2031,6 +2111,61 @@ mod tests {
         let mut s = Session::new();
         s.script(bimcraft_core::sample::SAMPLE).unwrap();
         s
+    }
+
+    #[test]
+    fn a_parked_mesh_comes_back_without_an_upload_and_draws_the_same_pixels() {
+        let Some(mut gpu) = headless() else { return };
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let project = Arc::new(Mesh::new(&scene, &look).unwrap());
+        let other = Arc::new(Mesh::new(&scene, &look).unwrap());
+        gpu.draw(&project, &cam, &[], PAPER).unwrap();
+        let pixels = read(&gpu);
+        let owners = gpu.mesh.as_ref().unwrap().owners.clone();
+        // Another view's mesh drawn: the project's is kept aside.
+        gpu.park();
+        gpu.draw(&other, &cam, &[], PAPER).unwrap();
+        assert!(gpu.parks(&project));
+        // Back to the project's: the same buffers, the same picture, and the other's parked in turn.
+        assert!(gpu.prepare_upload(&egui::Context::default(), &project).unwrap());
+        assert!(gpu.mesh.as_ref().is_some_and(|up| up.owners == owners));
+        assert!(gpu.parks(&other));
+        gpu.draw(&project, &cam, &[], PAPER).unwrap();
+        assert_eq!(read(&gpu), pixels);
+        // A mesh of neither replaces the one drawn and leaves the parked one be; the card short of room lets the parked go first.
+        let third = Arc::new(Mesh::new(&scene, &look).unwrap());
+        gpu.draw(&third, &cam, &[], PAPER).unwrap();
+        assert!(gpu.parks(&other));
+        assert!(gpu.hold_less());
+        assert!(!gpu.parks(&other));
+        assert!(gpu.mesh.as_ref().is_some_and(|up| Arc::ptr_eq(&up.mesh, &third)));
+    }
+
+    #[test]
+    fn two_views_take_turns_on_the_card_each_finding_its_own_mesh_where_it_left_it() {
+        let Some(mut gpu) = headless() else { return };
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let (project, family) = (Arc::new(Mesh::new(&scene, &look).unwrap()), Arc::new(Mesh::new(&scene, &look).unwrap()));
+        assert!(gpu.hold_for(1), "the card was no view's");
+        gpu.draw(&project, &cam, &[], PAPER).unwrap();
+        let owners = gpu.mesh.as_ref().unwrap().owners.clone();
+        assert!(!gpu.hold_for(1), "the same view again");
+        // The family's view: the project's set aside.
+        assert!(gpu.hold_for(2));
+        assert!(gpu.parks(&project) && gpu.mesh.is_none());
+        gpu.draw(&family, &cam, &[], PAPER).unwrap();
+        // An edit of the family's: its own mesh replaced, the project's still kept.
+        let edited = Arc::new(Mesh::new(&scene, &look).unwrap());
+        assert!(!gpu.hold_for(2));
+        gpu.draw(&edited, &cam, &[], PAPER).unwrap();
+        assert!(gpu.parks(&project));
+        // Back to the project's: its own buffers, not uploaded again; the family's parked in turn.
+        assert!(gpu.hold_for(1));
+        assert!(gpu.mesh.as_ref().is_some_and(|up| up.owners == owners) && gpu.parks(&edited));
     }
 
     #[test]

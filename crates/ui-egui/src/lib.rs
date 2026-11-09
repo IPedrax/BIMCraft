@@ -128,6 +128,8 @@ pub enum Sheet {
     Schedule(&'static str),
     /// Another schedule of the project's, by id.
     Table(Id),
+    /// A view of an open family document: its {3D} (none), or a plan or an elevation (`editor/tabs.rs`).
+    Family(editor::tabs::DocId, Option<bimcraft_core::family::views::Which>),
 }
 
 /// What clicks on the plan do.
@@ -738,10 +740,13 @@ pub struct BimApp {
     family_dialog: Option<properties::FamilyDialog>,
     /// The Favorites window, while it's open; where the favorites file is, when the app was told (else the usual place).
     favorites_dialog: Option<favorites::FavoritesDialog>,
-    /// The Family Editor, while it's open.
-    family_editor: Option<editor::FamilyEditor>,
-    /// The family documents under the open one, which was opened by Edit Family on a family nested in the last (T6a).
-    family_hosts: Vec<editor::FamilyEditor>,
+    /// The family documents open, each a tab or more beside the project's (`editor/tabs.rs`), and the next one's id.
+    families: Vec<editor::tabs::FamilyDoc>,
+    next_doc: u32,
+    /// A family document being closed, asked about first while it has unsaved changes.
+    doc_closing: Option<editor::tabs::Closing>,
+    /// File > New, Open, Close or quitting, its family documents closed: the project's question next.
+    after_documents: Option<Pending>,
     /// File > New > Family…'s dialog, while it is open: the category picked.
     pub(crate) new_family_dialog: Option<bimcraft_core::family::Category>,
     /// The family document was opened from the start page with no project behind it: closed, the start page comes back.
@@ -1176,15 +1181,16 @@ fn step_name(st: &engine::Step) -> String {
 
 /// A tab, of the ribbon or of a view. Contextual tabs are green, as Revit's are.
 fn tab_button(ui: &mut Ui, label: &str, active: bool, contextual: bool) -> Response {
-    tab_button_with(ui, label, active, contextual, Sense::click(), 0.0)
+    tab_button_with(ui, label, active, contextual, Sense::click(), (0.0, 0.0))
 }
 
 /// A tab that senses what `sense` says (a view's drags too), `room` px wider on its right for what's drawn in it (a view's ×).
-fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sense: Sense, room: f32) -> Response {
+/// `room`: points kept clear left of the label (an icon's) and right of it (a close button's).
+fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sense: Sense, (lead, room): (f32, f32)) -> Response {
     let label = t(label);
     let font = if active { style::semibold(13.0) } else { FontId::proportional(13.0) };
     let size = ui.painter().layout_no_wrap(label.to_string(), font.clone(), pal().text).size();
-    let (rect, r) = ui.allocate_exact_size(vec2(size.x + 24.0 + room, 24.0), sense);
+    let (rect, r) = ui.allocate_exact_size(vec2(size.x + 24.0 + lead + room, 24.0), sense);
     r.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, active, label));
     // A pill: the open tab in the accent's soft tint, a contextual one solid green when open and tinted green when not.
     let (fill, stroke, ink) = match (contextual, active, r.hovered()) {
@@ -1200,7 +1206,7 @@ fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sen
     if r.has_focus() {
         p.rect_stroke(rect, radius, style::focus_ring(), StrokeKind::Inside);
     }
-    p.text(rect.center() - vec2(room / 2.0, 0.0), Align2::CENTER_CENTER, label, font, ink);
+    p.text(rect.center() + vec2((lead - room) / 2.0, 0.0), Align2::CENTER_CENTER, label, font, ink);
     r
 }
 
@@ -1412,8 +1418,10 @@ impl BimApp {
             materials_dialog: None,
             family_dialog: None,
             favorites_dialog: None,
-            family_editor: None,
-            family_hosts: Vec::new(),
+            families: Vec::new(),
+            next_doc: 1,
+            doc_closing: None,
+            after_documents: None,
             new_family_dialog: None,
             family_from_home: false,
             family_loading: None,
@@ -1625,6 +1633,7 @@ impl BimApp {
                 Some(Element::Schedule(sc)) => sc.name.clone(),
                 _ => "Schedule".into(),
             },
+            Sheet::Family(..) => self.family_tab_name(sheet),
         }
     }
 
@@ -1638,6 +1647,9 @@ impl BimApp {
             Sheet::Section(_) => "Section",
             Sheet::Paper(_) => "Sheet",
             Sheet::Schedule(_) | Sheet::Table(_) => "Schedule",
+            Sheet::Family(id, view) => {
+                return self.family_of(id).map(|ed| format!("{} - {}", ed.title(), editor::views::view_title(view))).unwrap_or_default();
+            }
         };
         format!("{}: {}", t(kind), self.view_name(sheet))
     }
@@ -1705,14 +1717,20 @@ impl BimApp {
             ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
             self.title = title;
         }
-        if ctx.input(|i| i.viewport().close_requested()) && !self.closing && (self.installing() || self.dirty()) {
+        let documents = self.families.iter().any(|d| d.ed.as_ref().is_some_and(editor::FamilyEditor::unsaved));
+        if ctx.input(|i| i.viewport().close_requested()) && !self.closing && (self.installing() || self.dirty() || documents) {
             ctx.send_viewport_cmd(ViewportCommand::CancelClose);
-            // An update being put in place holds the window: it closes it when it's in.
+            // An update being put in place holds the window: it closes it when it's in. The family documents are asked about
+            // first.
             if !self.installing() {
-                self.pending = Some(Pending::Close);
+                if documents {
+                    self.pending_after_documents(Pending::Close);
+                } else {
+                    self.pending = Some(Pending::Close);
+                }
             }
         }
-        if ctx.input(|i| i.viewport().close_requested()) && !self.dirty() && !self.installing() {
+        if ctx.input(|i| i.viewport().close_requested()) && !self.dirty() && !self.installing() && !documents {
             self.retire_autosave();
         }
         if self.home.shown {
@@ -1864,6 +1882,8 @@ impl BimApp {
             Sheet::Section(id) => self.section_view(ui, id),
             Sheet::Paper(id) => self.paper_view(ui, id),
             Sheet::Schedule(_) | Sheet::Table(_) => self.schedule(ui),
+            // A family document's views are its own (`family_central`).
+            Sheet::Family(..) => {}
         }
         if floating {
             self.view_control_bar(ui);
@@ -1912,7 +1932,9 @@ impl BimApp {
         let m = &self.session.model;
         self.selection.retain(|id| m.elements.contains_key(id));
         self.active_option = self.active_option.take().filter(|o| bimcraft_core::phasing::option_exists(m, o));
+        let docs: Vec<editor::tabs::DocId> = self.families.iter().map(|d| d.id).collect();
         let exists = |s: &Sheet| match s {
+            Sheet::Family(id, _) => docs.contains(id),
             Sheet::Plan(key) | Sheet::Ceiling(key) => m.plan_level(*key).is_some(),
             Sheet::Section(id) => m.section(*id).is_some(),
             Sheet::Paper(id) => m.sheet(*id).is_some(),
@@ -1962,7 +1984,7 @@ impl BimApp {
             || self.materials_dialog.is_some()
             || self.family_dialog.is_some()
             || self.favorites_dialog.is_some()
-            || self.family_editor.is_some()
+            || self.active_family().is_some()
             || self.parameters_dialog.is_some()
             || self.schedule_dialog.is_some()
             || self.vg_dialog.is_some()
@@ -2522,7 +2544,7 @@ impl BimApp {
                 let look = bimcraft_core::graphics::Look::of_3d(&m);
                 m.elements.keys().copied().filter(|id| look.shows(*id)).collect()
             }
-            Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) => BTreeSet::new(),
+            Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => BTreeSet::new(),
         }
     }
 
@@ -2790,7 +2812,7 @@ impl BimApp {
     /// selection.
     fn escape(&mut self) {
         // A form selected in a family document goes first.
-        if let Some(ed) = self.family_editor.as_mut()
+        if let Some(ed) = self.active_family_mut()
             && ed.let_form_go()
         {
             return;
@@ -2891,7 +2913,14 @@ impl BimApp {
                     self.orbit.camera = Some(c.zoom(factor, (f64::from(c.width) / 2.0, f64::from(c.height) / 2.0)));
                 }
             }
-            Sheet::Schedule(_) | Sheet::Table(_) => {}
+            Sheet::Family(_, None) => {
+                if let Some(o) = self.active_family_mut().map(|ed| &mut ed.orbit)
+                    && let Some(c) = o.camera
+                {
+                    o.camera = Some(c.zoom(factor, (f64::from(c.width) / 2.0, f64::from(c.height) / 2.0)));
+                }
+            }
+            Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => {}
         }
     }
 
@@ -2899,7 +2928,12 @@ impl BimApp {
         match self.sheet {
             Sheet::Plan(id) | Sheet::Ceiling(id) | Sheet::Section(id) | Sheet::Paper(id) => self.canvas.fit(id),
             Sheet::View3D => self.fit3d(),
-            Sheet::Schedule(_) | Sheet::Table(_) => {}
+            Sheet::Family(_, None) => {
+                if let Some(ed) = self.active_family_mut() {
+                    ed.orbit.fit();
+                }
+            }
+            Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => {}
         }
     }
 
@@ -2921,6 +2955,19 @@ impl BimApp {
 
     /// Open a view in a tab, or bring its tab forward.
     fn open_sheet(&mut self, sheet: Sheet) {
+        // A family document's view: its tab after the document's others (after the project's and the documents' before it),
+        // and the document showing it. The project's tool, selection and views are left as they are.
+        if let Sheet::Family(id, view) = sheet {
+            if !self.views.contains(&sheet) {
+                let at = self.views.iter().position(|s| matches!(s, Sheet::Family(d, _) if *d > id)).unwrap_or(self.views.len());
+                self.views.insert(at, sheet);
+            }
+            (self.sheet, self.front) = (sheet, sheet);
+            if let Some(ed) = self.family_of_mut(id) {
+                ed.views.shown = view;
+            }
+            return;
+        }
         if !matches!(sheet, Sheet::Section(_)) {
             self.cut.suspend();
         }
@@ -3028,6 +3075,10 @@ impl BimApp {
 
     /// Close a view's tab; the last one stays open.
     fn close_view(&mut self, sheet: Sheet) {
+        if matches!(sheet, Sheet::Family(..)) {
+            self.close_family_tab(sheet);
+            return;
+        }
         if self.floats(sheet) {
             self.floating.retain(|f| f.sheet != sheet);
             if self.sheet == sheet {
@@ -3035,7 +3086,8 @@ impl BimApp {
             }
             return;
         }
-        if self.views.len() < 2 {
+        // The project keeps a tab of its own.
+        if self.views.iter().filter(|v| !matches!(v, Sheet::Family(..))).count() < 2 {
             return;
         }
         self.views.retain(|v| *v != sheet);
@@ -3065,7 +3117,7 @@ impl BimApp {
                         (p["azimuth"], p["elevation"]) = (json!(c.azimuth), json!(c.elevation));
                     }
                 }
-                (Sheet::Schedule(_) | Sheet::Table(_), _) => {}
+                (Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..), _) => {}
             }
             return self.run("render", p).is_some();
         }
@@ -3236,6 +3288,11 @@ impl BimApp {
 
     /// Do `p` now, or first ask about unsaved changes.
     fn guard(&mut self, p: Pending, ctx: &Context) {
+        // The family documents first, each asked about while it has unsaved changes; then the project.
+        if !self.families.is_empty() {
+            self.pending_after_documents(p);
+            return;
+        }
         if self.dirty() { self.pending = Some(p) } else { self.proceed(p, ctx) }
     }
 
@@ -5247,7 +5304,7 @@ impl BimApp {
                     ui.label(RichText::new(note).color(pal().accent_ink));
                 }
                 // The active document's: an open family's draft, else the project.
-                let unsaved = self.family_editor.as_ref().map_or_else(|| self.dirty(), |ed| ed.unsaved());
+                let unsaved = self.active_family().map_or_else(|| self.dirty(), |ed| ed.unsaved());
                 if unsaved {
                     ui.label(RichText::new(t("Unsaved changes")).color(pal().muted));
                 }
@@ -5301,18 +5358,44 @@ impl BimApp {
     fn view_tabs(&mut self, ui: &mut Ui) {
         self.tab_rects.clear();
         let mut closed = None;
+        // A family opened from the start page with no project behind it: the blank project's tabs aren't shown, until something
+        // is loaded into it.
+        let alone = self.family_from_home && !self.families.is_empty() && !self.dirty();
         let bar = ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
-            for sheet in self.views.clone() {
+            for sheet in self.views.clone().into_iter().filter(|s| !alone || matches!(s, Sheet::Family(..))) {
                 // A ceiling plan's tab says so: its level's plan has the level's name too.
                 let name = if matches!(sheet, Sheet::Ceiling(_)) { self.view_title(sheet) } else { self.view_name(sheet) };
+                // A family document's tabs: the family's icon, the document named over it; they neither float nor tile, and the
+                // last of a document closes it.
+                let family = match sheet {
+                    Sheet::Family(id, _) => Some(self.family_of(id).map(|ed| ed.title().to_string()).unwrap_or_default()),
+                    _ => None,
+                };
                 let many = self.views.len() > 1;
-                let r = tab_button_with(ui, &name, sheet == self.front, false, Sense::click_and_drag(), if many { 18.0 } else { 0.0 });
+                let sense = if family.is_some() { Sense::click() } else { Sense::click_and_drag() };
+                let lead = if family.is_some() { 18.0 } else { 0.0 };
+                let r = tab_button_with(ui, &name, sheet == self.front, false, sense, (lead, if many { 18.0 } else { 0.0 }));
+                let r = match &family {
+                    Some(doc) => {
+                        let icon = Rect::from_center_size(pos2(r.rect.left() + 14.0, r.rect.center().y), vec2(14.0, 14.0));
+                        icons::paint(
+                            ui.painter(),
+                            Icon::FamilyEditor,
+                            icon,
+                            if sheet == self.front { pal().accent_ink } else { pal().icon },
+                        );
+                        r.on_hover_text(tf("Family document: {}", &[doc]))
+                    }
+                    None => r,
+                };
                 self.tab_rects.push((sheet, r.rect));
                 // The × is part of the tab, at its right end.
                 if many {
                     let x = Rect::from_center_size(pos2(r.rect.right() - 16.0, r.rect.center().y), vec2(16.0, 16.0));
-                    let label = tf("Close {}", &[&name]);
+                    // A family document's last tab closes the document: Close Family, as its × said before it had tabs.
+                    let last = matches!(sheet, Sheet::Family(id, _) if self.doc_tabs(id).len() == 1);
+                    let label = if last { t(msg!("Close Family")).to_string() } else { tf("Close {}", &[&name]) };
                     let c = ui.interact(x, ui.id().with(("close view", sheet)), Sense::click());
                     c.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
                     if c.hovered() {
@@ -5334,7 +5417,7 @@ impl BimApp {
                     self.dragging = Some(dock::Drag::View(sheet));
                 }
                 r.context_menu(|ui| {
-                    if ui.add_enabled(many, egui::Button::new(t("Float"))).clicked() {
+                    if ui.add_enabled(many && family.is_none(), egui::Button::new(t("Float"))).clicked() {
                         let at = self.view_rect.left_top() + vec2(60.0, 60.0);
                         self.float_view(sheet, at);
                     }
@@ -5450,6 +5533,11 @@ impl BimApp {
         self.materials_window(ctx);
         self.favorites_window(ctx);
         self.family_editor_window(ctx);
+        self.sync_family_tab();
+        self.closing_window(ctx);
+        if let Some(p) = self.after_documents.take() {
+            self.guard(p, ctx);
+        }
         self.new_family_window(ctx);
         self.family_load_dialog(ctx);
         self.family_closed_from_home();
@@ -5561,7 +5649,7 @@ impl eframe::App for BimApp {
     fn raw_input_hook(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
         self.pace(&mut raw.events);
         // The family document's views take Tab themselves (F10c), the project's canvas being out of sight.
-        if self.canvas.hovering() && self.family_editor.is_none() && !ctx.egui_wants_keyboard_input() {
+        if self.canvas.hovering() && self.active_family().is_none() && !ctx.egui_wants_keyboard_input() {
             self.tab_cycle |= raw.events.iter().any(|e| matches!(e, Event::Key { key: Key::Tab, pressed: true, .. }));
             raw.events.retain(|e| !matches!(e, Event::Key { key: Key::Tab, .. }));
         }

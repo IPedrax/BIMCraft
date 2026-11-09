@@ -69,7 +69,7 @@ pub(super) fn toggle(h: &mut Harness<BimApp>) {
 
 /// Whether Preview Visibility is on in the family document.
 fn previewing(h: &Harness<BimApp>) -> bool {
-    h.state().family_editor.as_ref().is_some_and(|ed| ed.preview_visibility())
+    h.state().active_family().is_some_and(|ed| ed.preview_visibility())
 }
 
 /// The colours of the closed outlines the last frame stroked.
@@ -158,7 +158,7 @@ fn preview_visibility_is_no_change_to_the_family_and_no_step() {
     let (mut h, _) = cabinet();
     toggle(&mut h);
     assert!(previewing(&h));
-    assert!(!h.state().family_editor.as_ref().unwrap().unsaved(), "the toggle is not saved in the family");
+    assert!(!h.state().active_family().unwrap().unsaved(), "the toggle is not saved in the family");
     // Undo: nothing to undo, so Preview Visibility stays on.
     press(&mut h, "Undo");
     assert!(previewing(&h), "the toggle is no step of the history");

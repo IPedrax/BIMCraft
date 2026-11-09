@@ -152,8 +152,8 @@ impl BimApp {
     /// or a shared family `family` nests otherwise.
     pub(super) fn nest_family(&mut self, name: String, family: Family, after: After) {
         let target = match after {
-            After::IntoHost { .. } => self.family_hosts.last(),
-            _ => self.family_editor.as_ref(),
+            After::IntoHost { .. } => self.active_doc().and_then(|id| self.doc(id)?.host).and_then(|h| self.family_of(h)),
+            _ => self.active_family(),
         };
         let Some(target) = target else { return };
         let (exists, shared) = target.nest_conflicts(&name, &family);
@@ -185,7 +185,7 @@ impl BimApp {
         let answers = loading.decided.answers();
         let name = loading.name.clone();
         let done = if into_host {
-            match self.family_hosts.last_mut() {
+            match self.active_doc().and_then(|id| self.doc(id)?.host).and_then(|h| self.family_of_mut(h)) {
                 Some(host) => host.nest(&name, family, overwrite, &answers),
                 None => Err(t("The family it was nested in is closed.").to_string()),
             }
@@ -232,9 +232,17 @@ impl BimApp {
     }
 
     /// Loads the family document's draft into the project, asking first when the project has it otherwise; `after` says
-    /// what follows. The document is the window's (`family_editor`) while it waits.
+    /// what follows. The document is the active tab's while it waits.
     pub(super) fn load_draft(&mut self, ed: &mut FamilyEditor, after: After) {
         let base = Arc::clone(&self.session.model);
+        // The project may have changed under the open document (an agent, Purge, a project undo): a family it no longer has
+        // loads as new, and an instance it was opened from that is gone no longer replays.
+        if ed.original.as_ref().is_some_and(|was| !base.families.contains_key(was)) {
+            ed.original = None;
+        }
+        if ed.source.is_some_and(|id| !base.elements.contains_key(id)) {
+            (ed.source, ed.replay) = (None, None);
+        }
         let prepared = ed.command(&base).and_then(|legacy| {
             let family = ed.family()?;
             let definition = serde_json::to_value(&family).map_err(|e| e.to_string())?;
@@ -456,29 +464,32 @@ impl BimApp {
         match loading.after {
             After::Component => self.finish_component_load(loading),
             After::Nest => {
-                let Some(mut ed) = self.family_editor.take() else { return };
+                let Some(mut ed) = self.take_family() else { return };
                 self.finish_nest(&mut ed, &mut loading, false);
-                self.family_editor = Some(ed);
+                self.put_family(ed);
             }
             After::IntoHost { close } => {
-                let Some(mut ed) = self.family_editor.take() else { return };
+                let Some(mut ed) = self.take_family() else { return };
                 let made = self.finish_nest(&mut ed, &mut loading, true);
-                // Load into Project and Close: back to the family it was nested in.
+                let id = self.active_doc();
+                self.put_family(ed);
+                // Load into Family and Close: back to the family it was nested in.
                 if made
                     && close
-                    && let Some(host) = self.family_hosts.pop()
+                    && let Some(id) = id
                 {
-                    self.family_editor = Some(host);
-                } else {
-                    self.family_editor = Some(ed);
+                    self.close_family_document(id);
                 }
             }
             After::Document { .. } => {
                 // Closed meanwhile, the document has nothing to load.
-                let Some(mut ed) = self.family_editor.take() else { return };
+                let Some(mut ed) = self.take_family() else { return };
                 self.finish_family_load(&mut ed, &mut loading);
-                if !std::mem::take(&mut ed.document.loaded_to_close) {
-                    self.family_editor = Some(ed);
+                let closed = std::mem::take(&mut ed.document.loaded_to_close);
+                let id = self.active_doc();
+                self.put_family(ed);
+                if closed && let Some(id) = id {
+                    self.close_family_document(id);
                 }
             }
         }

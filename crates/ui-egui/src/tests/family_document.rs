@@ -38,7 +38,7 @@ fn closing_a_new_family_document_does_not_change_the_project() {
     h.state_mut().new_family(bimcraft_core::family::Category::Generic);
     h.run();
     press(&mut h, "Close Family");
-    assert!(h.state().family_editor.is_none());
+    assert!(h.state().active_family().is_none());
     assert!(h.state().session.model.to_json().unwrap() == before);
 }
 
@@ -53,13 +53,13 @@ fn family_draft_history_never_undoes_the_project() {
     h.get_by_label("Close Family").focus();
     h.run();
     press(&mut h, "Undo");
-    assert!(h.query_all_by_label("New Family · {3D}").count() > 0);
+    assert!(h.query_all_by_label("Family1 - {3D}").count() > 0);
     press(&mut h, "Redo");
-    assert!(h.query_all_by_label("Draft · {3D}").count() > 0);
+    assert!(h.query_all_by_label("Draft - {3D}").count() > 0);
     assert_eq!(h.state().session.model.to_json().unwrap(), before);
     press(&mut h, "Load into Project and Close");
     assert!(h.state().session.model.families.contains_key("Draft"));
-    assert!(h.state().family_editor.is_none());
+    assert!(h.state().active_family().is_none());
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn equals_associates_a_form_property_and_can_create_and_remove_a_parameter() {
     h.run();
     // The form selected in the Project Browser: its Properties' Extrusion End.
     super::family_views::select_form(&mut h, 1);
-    assert_eq!(h.state().family_editor.as_ref().unwrap().selected_form(), Some(0));
+    assert_eq!(h.state().active_family().unwrap().selected_form(), Some(0));
     associate(&mut h, "Associate Family Parameter: Extrusion End");
     assert!(h.query_by_label("Width").is_some());
     press(&mut h, "Height");
@@ -80,7 +80,7 @@ fn equals_associates_a_form_property_and_can_create_and_remove_a_parameter() {
     press(&mut h, "OK");
     press(&mut h, "OK");
     press(&mut h, "Load into Project");
-    let f = &h.state().session.model.families["New Family"];
+    let f = &h.state().session.model.families["Family1"];
     assert_eq!(f.forms[0].to, bimcraft_core::family::Expr::Formula("Overall height".into()));
     assert!(f.parameters.iter().any(|p| p.name == "Overall height" && p.kind == bimcraft_core::family::Kind::Length));
     associate(&mut h, "Associate Family Parameter: Extrusion End");
@@ -89,7 +89,7 @@ fn equals_associates_a_form_property_and_can_create_and_remove_a_parameter() {
     press(&mut h, "Load into Project");
     // Loaded once already, the project has it otherwise now.
     press(&mut h, "Overwrite the existing version");
-    assert_eq!(h.state().session.model.families["New Family"].forms[0].to, bimcraft_core::family::Expr::Number(750.));
+    assert_eq!(h.state().session.model.families["Family1"].forms[0].to, bimcraft_core::family::Expr::Number(750.));
 }
 
 #[test]
@@ -185,7 +185,7 @@ fn canceling_family_types_does_not_leave_changes_in_document_history() {
     type_into(&mut h, "Parameter Value Width", "1200");
     press(&mut h, "Cancel");
     press(&mut h, "Undo");
-    assert!(h.query_all_by_label("New Family · {3D}").count() > 0, "Cancel does not create a step that reintroduces canceled text");
+    assert!(h.query_all_by_label("Family1 - {3D}").count() > 0, "Cancel does not create a step that reintroduces canceled text");
 }
 
 #[derive(Clone, Default)]
@@ -266,7 +266,7 @@ fn a_symbols_rows_are_tied_through_the_dialog_adaptive_rows_and_form_visibility_
     press(&mut h, "Annotate");
     press(&mut h, "Symbolic Line");
     press(&mut h, "Arc");
-    assert_eq!(h.state().family_editor.as_ref().unwrap().selected_symbol(), Some(0));
+    assert_eq!(h.state().active_family().unwrap().selected_symbol(), Some(0));
     // Its radius tied to Width: greyed, showing what Width comes to.
     associate(&mut h, "Associate Family Parameter: Symbol Radius 1");
     press(&mut h, "Width");
@@ -279,7 +279,7 @@ fn a_symbols_rows_are_tied_through_the_dialog_adaptive_rows_and_form_visibility_
     press(&mut h, "OK");
     press(&mut h, "OK");
     press(&mut h, "Load into Project");
-    let f = &h.state().session.model.families["New Family"];
+    let f = &h.state().session.model.families["Family1"];
     let arc = f.symbols[0].arc.as_ref().unwrap();
     assert_eq!(arc.radius, bimcraft_core::family::Expr::Formula("Width".into()));
     assert_eq!(f.symbols[0].visible, Some(bimcraft_core::family::Expr::Formula("Swing".into())));
@@ -368,7 +368,7 @@ fn every_family_comes_back_from_the_document_as_it_went_in() {
         h.state_mut().edit_family(&name);
         h.run();
         press(&mut h, "Load into Project and Close");
-        assert!(h.state().family_editor.is_none(), "{name}: loaded and closed");
+        assert!(h.state().active_family().is_none(), "{name}: loaded and closed");
         // The same numbers, whether a file wrote them whole (1200) or the editor as numbers (1200.0), and a formula that is a
         // number ("-40") as that number, as the editor's own round trip has them.
         fn alike(v: Value) -> Value {
@@ -440,7 +440,7 @@ fn the_unsaved_mark_is_the_active_documents() {
     assert!(!marked(&h), "the family loaded");
     // Closed: the project's mark.
     press(&mut h, "Close Family");
-    assert!(h.state().family_editor.is_none());
+    assert!(h.state().active_family().is_none());
     assert!(marked(&h), "the project's changes");
     // Opened again on a changed project: the family's, which has none; closed, the project's again.
     h.state_mut().edit_family("Kitchen Table");
@@ -550,7 +550,7 @@ fn the_forms_tab_shows_a_locked_forms_corners_as_the_type_previewed_flexes_it() 
     assert_eq!(xs(&h, "Large"), [-500.0, 500.0, 500.0, -500.0]);
     assert!(h.query_by_label_contains("Set by its dimensions and locks").is_none());
     // Small: as its locks put it, and Properties say so; the draft keeps what was drawn.
-    h.state_mut().family_editor.as_mut().unwrap().preview_type("Small");
+    h.state_mut().active_family_mut().unwrap().preview_type("Small");
     h.run();
     assert_eq!(xs(&h, "Small"), [-300.0, 300.0, 300.0, -300.0]);
     assert!(h.query_by_label_contains("Set by its dimensions and locks for the type Small: Edit Extrusion").is_some());

@@ -79,7 +79,7 @@ fn a_family_loaded_into_a_family_is_placed_associated_and_loaded_into_the_projec
     let x = f.pieces(&v).unwrap().iter().flat_map(|p| p.tris.iter().flatten()).map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max);
     assert!((x - 1500.0).abs() < 3.0, "the box reaches 300 + 1200: {x}");
     // Delete takes the instance away; the family it placed stays loaded.
-    h.state_mut().family_editor.as_mut().unwrap().select_nested(Some(0));
+    h.state_mut().active_family_mut().unwrap().select_nested(Some(0));
     h.run();
     press(&mut h, "Delete");
     assert!(editor(&h).nested_instances.is_empty());
@@ -98,15 +98,15 @@ fn edit_family_on_a_nested_family_loads_it_back_into_the_host_asking_family_alre
     press(&mut h, "Family Types");
     type_into(&mut h, "Parameter Value D", "250");
     press(&mut h, "OK");
-    // Load into Project goes into the cabinet, asking: Overwrite the existing version keeps the cabinet's value of D.
-    press(&mut h, "Load into Project");
+    // Load into Family goes into the cabinet, asking: Overwrite the existing version keeps the cabinet's value of D.
+    press(&mut h, "Load into Family");
     assert!(h.query_by_label(EXISTS).is_some(), "the cabinet has the box defined otherwise");
     assert!(h.query_all_by_label_contains("already in this family").count() > 0, "said of the family, not the project");
     press(&mut h, VERSION);
-    assert_eq!(editor(&h).title(), "Box", "Load into Project leaves it open");
+    assert_eq!(editor(&h).title(), "Box", "Load into Family leaves it open");
     let project = h.state().session.model.to_json().unwrap();
-    // Load into Project and Close, with its values: back to the cabinet, whose box now has D 250.
-    press(&mut h, "Load into Project and Close");
+    // Load into Family and Close, with its values: back to the cabinet, whose box now has D 250.
+    press(&mut h, "Load into Family and Close");
     assert!(h.query_by_label(EXISTS).is_some());
     press(&mut h, VALUES);
     assert_eq!(editor(&h).title(), "Cabinet", "back in the cabinet");
@@ -114,17 +114,19 @@ fn edit_family_on_a_nested_family_loads_it_back_into_the_host_asking_family_alre
     assert_eq!(d(&h), Some(250.0), "type B's D");
     assert_eq!(editor(&h).nested_instances.len(), 1, "its instance stays");
     assert_eq!(h.state().session.model.to_json().unwrap(), project, "the project is untouched until the cabinet is loaded");
-    // Cancel on a load into the host changes nothing; Close Family goes back without loading.
-    h.state_mut().family_editor.as_mut().unwrap().select_nested(Some(0));
+    // Cancel on a load into the host changes nothing; Close Family asks, and Close Without Loading goes back without loading.
+    h.state_mut().active_family_mut().unwrap().select_nested(Some(0));
     h.run();
     press(&mut h, "Edit Family");
     press(&mut h, "Family Types");
     type_into(&mut h, "Parameter Value D", "999");
     press(&mut h, "OK");
-    press(&mut h, "Load into Project and Close");
+    press(&mut h, "Load into Family and Close");
     press(&mut h, "Cancel");
     assert_eq!(editor(&h).title(), "Box", "Cancel: it stays open");
     press(&mut h, "Close Family");
+    assert!(h.query_by_label("Save changes to Box?").is_some(), "the box has changes not loaded");
+    press(&mut h, "Close Without Loading");
     assert_eq!(editor(&h).title(), "Cabinet");
     assert_eq!(d(&h), Some(250.0), "closed without loading: the cabinet's box as it was");
 }
@@ -137,7 +139,7 @@ fn nested_families_screenshots() {
     std::fs::create_dir_all(&folder).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let mut h = placed(dir.path());
-    h.state_mut().family_editor.as_mut().unwrap().select_nested(Some(0));
+    h.state_mut().active_family_mut().unwrap().select_nested(Some(0));
     h.run();
     associate_w(&mut h);
     press(&mut h, "Width");
@@ -147,7 +149,7 @@ fn nested_families_screenshots() {
     key(&mut h, Key::Escape);
     h.run();
     h.render().unwrap().save(std::path::Path::new(&folder).join("t6-plan.png")).unwrap();
-    h.state_mut().family_editor.as_mut().unwrap().select_nested(Some(0));
+    h.state_mut().active_family_mut().unwrap().select_nested(Some(0));
     h.run();
     view(&mut h, None);
     h.run();
