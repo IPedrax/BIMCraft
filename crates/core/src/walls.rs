@@ -205,6 +205,18 @@ pub fn stacked(m: &Model, a: &Wall, b: &Wall) -> bool {
     m.base_z(a) < m.top_z(b) && m.base_z(b) < m.top_z(a)
 }
 
+/// Whether wall `id`'s start, or with `at_end` its end, is joined to another wall there: one whose body reaches the node
+/// and overlaps it in height (see [`stacked`]). A wall refusing to join, a column's or a grid's meeting it, and nothing at
+/// all, are no join.
+pub(crate) fn joined_at(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> bool {
+    let Some(w) = m.wall(id) else { return false };
+    if !w.join {
+        return false;
+    }
+    let (arms, _) = arms(m, id, at_end, index);
+    arms.iter().any(|a| a.id != id)
+}
+
 /// A wall where it leaves a node: the way it goes, and where its faces' lines and its centre line
 /// are there (each running that way): the face on the counter-clockwise side of that way, the one
 /// on the clockwise side, and which wall's end it is (`id`, `at_end`). A run's arm at its end is one too ([`crate::runs`]),

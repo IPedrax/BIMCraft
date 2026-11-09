@@ -5679,8 +5679,8 @@ impl Model {
             .into_iter()
             .enumerate()
             .map(|(i, v)| match d.text(i, "replace") {
-                _ if equal => t.equality_text.clone(),
                 r if !r.is_empty() => r.to_string(),
+                _ if equal => t.equality_text.clone(),
                 _ => format!("{}{v}{}", d.text(i, "prefix"), d.text(i, "suffix")),
             })
             .collect()
