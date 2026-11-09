@@ -1650,14 +1650,16 @@ pub fn export(m: &Model) -> String {
         let key = key_of(&format!("{name}\u{0}{code}"));
         w.add(format!("IFCRELASSOCIATESCLASSIFICATION({},$,$,$,({}),#{reference})", w.guid(CLASSIFIED, key), refs(ents)));
     }
-    // A placed device's connector (the power one, else the first): `Pset_ElectricalDeviceCommon`, with the poles, and for a power
+    // A placed device's connector (the power one, else the first electrical one; a pipe's waits for IFC's ports): `Pset_ElectricalDeviceCommon`, with the poles, and for a power
     // connector the power factor and the voltage (IFC4's types: a ratio, and a bounded value with its set point), and `BIMCraft_Connector` with what IFC has no property for.
     for (&id, &ent) in &products {
         let Some(Element::Component(cp)) = m.elements.get(id) else { continue };
         let Some(connectors) = m.families.get(&cp.family).and_then(|f| f.connector_values(&cp.type_name, &cp.params).ok()) else {
             continue;
         };
-        let Some(c) = connectors.iter().find(|c| c.kind == ConnectorKind::Power).or(connectors.first()) else { continue };
+        let Some(c) = connectors.iter().find(|c| c.kind == ConnectorKind::Power).or(connectors.iter().find(|c| c.kind.electrical())) else {
+            continue;
+        };
         let power = c.kind == ConnectorKind::Power;
         let mut device = vec![w.add(format!("IFCPROPERTYSINGLEVALUE('NumberOfPoles',$,IFCINTEGER({}),$)", c.poles))];
         if power {
