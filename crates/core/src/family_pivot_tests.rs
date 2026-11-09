@@ -355,6 +355,11 @@ fn a_file_keeps_its_pivots_and_a_file_of_28_reads_unchanged() {
 /// T26: a door whose leaf is a nested family placed on the vertical face of a hinge line, the line pivoted where Hinge
 /// crosses Center (Front/Back), its swing the instance parameter `Swing Angle`, 0 to 90.
 fn door(pivoted: bool, drawn_at: f64) -> Session {
+    door_leaf(pivoted, drawn_at, true)
+}
+
+/// [`door`], its leaf family's Always Vertical as `always_vertical` (Revit's door lesson turns it off on the leaf).
+fn door_leaf(pivoted: bool, drawn_at: f64, always_vertical: bool) -> Session {
     let mut s = Session::new();
     let (c, sn) = (drawn_at.to_radians().cos(), drawn_at.to_radians().sin());
     let mut line = json!({"guid": LEAF, "start": [-450, 0, 0], "end": [-450.0 + 900.0 * c, 900.0 * sn, 0]});
@@ -376,6 +381,7 @@ fn door(pivoted: bool, drawn_at: f64) -> Session {
         "family",
         json!({"name": "Swing Door", "nest": {"name": "Leaf", "definition": {"category": "generic",
                "parameters": [{"name": "W", "value": 900}, {"name": "H", "value": 2100}], "types": {"Leaf": {}},
+               "work_plane_based": true, "always_vertical": always_vertical,
                "forms": [{"profile": [[0, 0], ["W", 0], ["W", "H"], [0, "H"]], "to": 40}]}}}),
     );
     run(
@@ -425,4 +431,39 @@ fn t26_a_nested_leaf_on_a_hinge_swings_by_an_instance_parameter_as_drawn_by_hand
     // Past its limits an instance's value is refused, naming them.
     let e = err(&mut pivoted, "modify", json!({"ids": [door_id], "params": {"Swing Angle": 120}}));
     assert!(e.contains("`Swing Angle` is 120°; reference line 1's pivot turns from 0° to 90°"), "{e}");
+}
+
+/// T26 as the lesson builds it: the leaf family's Always Vertical off. The leaf still stands on the hinge line's vertical
+/// face and swings to the hand-drawn 45°, and its IFC body is the same as with Always Vertical on.
+#[test]
+fn t26_the_leaf_with_always_vertical_off_swings_the_same() {
+    for pivoted in [true, false] {
+        let off = door_leaf(pivoted, if pivoted { 0.0 } else { 45.0 }, false);
+        let leaf = off.model.families["Swing Door"].nested.iter().find(|n| n.name == "Leaf").expect("the nested leaf");
+        assert!(!leaf.family.always_vertical, "the leaf's Always Vertical is off");
+    }
+    let mut off = door_leaf(true, 0.0, false);
+    let f = off.model.families["Swing Door"].clone();
+    let mut inst = BTreeMap::new();
+    inst.insert("Swing Angle".to_string(), json!(45));
+    let leaf = |f: &Family, v: &BTreeMap<String, crate::family::Val>| f.pieces(v).unwrap().into_iter().map(|p| p.tris).collect::<Vec<_>>();
+    let by_hand = door(false, 45.0);
+    let hand = &by_hand.model.families["Swing Door"];
+    let hand_values = hand.values("900 x 2100", &BTreeMap::new()).unwrap();
+    assert!(same(&leaf(&f, &f.values("900 x 2100", &inst).unwrap()), &leaf(hand, &hand_values)), "the leaf at 45° as drawn by hand");
+    let mut on = door(true, 0.0);
+    for s in [&mut off, &mut on] {
+        let wall = *s.model.elements.keys().next_back().unwrap();
+        run(s, "door", json!({"wall": wall, "offset": 3000, "family": "Swing Door"}));
+        let id = *s.model.elements.keys().next_back().unwrap();
+        run(s, "modify", json!({"ids": [id], "params": {"Swing Angle": 45}}));
+    }
+    let points = |s: &Session| -> Vec<String> {
+        crate::ifc::export(&s.model)
+            .lines()
+            .filter(|l| l.contains("IFCCARTESIANPOINTLIST3D"))
+            .map(|l| l.split_once('=').map_or(l, |x| x.1).to_string())
+            .collect()
+    };
+    assert_eq!(points(&off), points(&on), "Always Vertical off on the leaf changes nothing at 45°");
 }
