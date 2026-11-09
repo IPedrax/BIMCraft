@@ -718,6 +718,10 @@ pub struct BimApp {
     family_editor: Option<editor::FamilyEditor>,
     /// The family documents under the open one, which was opened by Edit Family on a family nested in the last (T6a).
     family_hosts: Vec<editor::FamilyEditor>,
+    /// File > New > Family…'s dialog, while it is open: the category picked.
+    pub(crate) new_family_dialog: Option<bimcraft_core::family::Category>,
+    /// The family document was opened from the start page with no project behind it: closed, the start page comes back.
+    pub(crate) family_from_home: bool,
     /// A family being loaded into the project, waiting on "Family Already Exists" (`editor::exists`).
     family_loading: Option<editor::exists::Loading>,
     /// What the last family load decided: how the project's family was overwritten, and its shared nested families.
@@ -1309,6 +1313,8 @@ impl BimApp {
             favorites_dialog: None,
             family_editor: None,
             family_hosts: Vec::new(),
+            new_family_dialog: None,
+            family_from_home: false,
             family_loading: None,
             family_decided: None,
             favorites_path: None,
@@ -1467,10 +1473,22 @@ impl BimApp {
             return Some(format!("{} | {}", t("Modify"), t(what)));
         }
         let m = &self.session.model;
-        let categories: BTreeSet<&str> = self.selection.iter().filter_map(|id| m.elements.get(id)).map(|e| e.category()).collect();
+        // A component goes by its family's category, as Revit's Modify | Furniture.
+        let categories: BTreeSet<String> = self
+            .selection
+            .iter()
+            .filter_map(|id| m.elements.get(id))
+            .map(|e| {
+                match e {
+                    Element::Component(c) => m.families.get(&c.family).map(|f| editor::category_label(f.category)),
+                    _ => None,
+                }
+                .unwrap_or_else(|| lang::category(e.category(), true))
+            })
+            .collect();
         match categories.len() {
             0 => None,
-            1 => categories.first().map(|c| format!("{} | {}", t("Modify"), lang::category(c, true))),
+            1 => categories.first().map(|c| format!("{} | {}", t("Modify"), c)),
             _ => Some(format!("{} | {}", t("Modify"), t("Multi-Select"))),
         }
     }
@@ -3474,12 +3492,23 @@ impl BimApp {
             .clicked()
         };
         let cmd = |k: Key| Some(KeyboardShortcut::new(Modifiers::COMMAND, k));
-        if item(ui, "New", cmd(Key::N)) {
-            self.guard(Pending::New, ctx);
-        }
-        if item(ui, msg!("Open…"), cmd(Key::O)) {
-            self.guard(Pending::Open, ctx);
-        }
+        // As Revit's: New and Open, each of a project or a family.
+        SubMenuButton::new(t("New")).ui(ui, |ui| {
+            if item(ui, msg!("Project"), cmd(Key::N)) {
+                self.guard(Pending::New, ctx);
+            }
+            if item(ui, msg!("Family…"), None) {
+                self.new_family_dialog = Some(bimcraft_core::family::Category::Generic);
+            }
+        });
+        SubMenuButton::new(t("Open")).ui(ui, |ui| {
+            if item(ui, msg!("Project…"), cmd(Key::O)) {
+                self.guard(Pending::Open, ctx);
+            }
+            if item(ui, msg!("Family…"), None) {
+                self.open_family(ctx);
+            }
+        });
         self.recent_menu(ui, ctx);
         if item(ui, "Save", cmd(Key::S)) {
             self.save(ctx, None);
@@ -4157,24 +4186,6 @@ impl BimApp {
                 self.link_dialog = true;
             }
         });
-        panel(ui, "Family Editor", |ui| {
-            let tip = msg!("New Family: start a family of your own, of a category, to edit its parameters, types and forms");
-            let r = big_button(ui, Icon::FamilyEditor, "New Family", false, tip);
-            ribbon::choices(ui, &r, false, |ui| {
-                for c in editor::CATEGORIES {
-                    if ui.button(editor::category_label(c)).clicked() {
-                        self.new_family(c);
-                    }
-                }
-            });
-            let tip = msg!("Edit Family: the family of what is selected, or of the component being placed");
-            let family = self.family_in_hand();
-            if ui.add_enabled_ui(family.is_some(), |ui| big_button(ui, Icon::FamilyEditor, "Edit Family", false, tip)).inner.clicked()
-                && let Some(f) = family
-            {
-                self.edit_family(&f);
-            }
-        });
         panel(ui, msg!("Inquiry"), |ui| {
             let tip = msg!("Select by ID: select elements by their IDs, GUIDs or IFC GlobalIds, as many as you paste, and show them");
             if big_button(ui, Icon::SelectById, "Select by ID", self.select_by_id.is_some(), tip).clicked() {
@@ -4352,17 +4363,6 @@ impl BimApp {
             Tool::Wall(_) => self.draw_panel(ui, draw::Target::Wall),
             Tool::DetailLine(_) => self.draw_panel(ui, draw::Target::Detail),
             _ => {}
-        }
-        // Placing a component: Revit's Mode panel, which loads a family from a file.
-        if matches!(self.tool, Tool::Component | Tool::Fixture(_)) {
-            panel(ui, msg!("Mode"), |ui| {
-                let tip = msg!("Load Family: a family saved as a .json file, BIMCraft's own");
-                if big_button(ui, Icon::LoadFamily, "Load Family", false, tip).clicked() {
-                    let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]);
-                    // A family the project has otherwise asks first: Family Already Exists.
-                    self.ask_file(ui.ctx(), dialog, false, |app, path| app.load_family_file(&path));
-                }
-            });
         }
         // Detail lines selected, or sketch lines picked: Join into Polyline and Explode Polyline.
         let picked = self.sketch.as_ref().map(|sk| sk.picked.len());
@@ -5304,7 +5304,9 @@ impl BimApp {
         self.materials_window(ctx);
         self.favorites_window(ctx);
         self.family_editor_window(ctx);
+        self.new_family_window(ctx);
         self.family_load_dialog(ctx);
+        self.family_closed_from_home();
         self.snaps_window(ctx);
         self.parameters_window(ctx);
         self.new_schedule_window(ctx);

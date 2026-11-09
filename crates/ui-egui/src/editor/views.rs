@@ -1127,14 +1127,11 @@ impl FamilyEditor {
         }
         if let Some((form, plane)) = select {
             self.nested_sel = None;
+            self.symbol = None;
             self.views.dim = None;
             self.form = form;
             self.views.plane = plane;
             self.views.line = select_line.flatten();
-            if let Some(i) = form {
-                self.tab = Tab::Forms;
-                self.document.reveal = Some(i);
-            }
         }
         // A plane its dimensions hold is dragged through them: a label it changes takes the new length, what is locked to it
         // follows, and what can't hold says so.

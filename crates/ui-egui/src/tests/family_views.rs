@@ -102,11 +102,8 @@ pub(super) fn click_family(h: &mut Harness<BimApp>, p: [f64; 3]) {
     click_at(h, at);
 }
 
-/// Form `n` (from 1) selected from the Project Browser's Forms list, the Properties' Symbols tab in front.
+/// Form `n` (from 1) selected from the Project Browser's Forms list.
 pub(super) fn select_form(h: &mut Harness<BimApp>, n: usize) {
-    if h.query_by_label("Symbols").is_some() {
-        press(h, "Symbols");
-    }
     let label = format!("{n}. Extrusion");
     h.get_by_label(&label).scroll_to_me();
     h.run();
@@ -228,7 +225,7 @@ fn a_click_selects_a_form_or_a_plane_and_a_selected_plane_moves_by_a_drag() {
     view(&mut h, Some(Which::Elevation(Side::Front)));
     click_family(&mut h, [750.0, 0.0, 1000.0]);
     assert_eq!(editor(&h).selected_form(), Some(0), "the box");
-    assert!(h.query_all_by_label("Modify | Form").count() > 0, "its contextual tab, as in {{3D}}");
+    assert!(h.query_all_by_label("Modify | Extrusion").count() > 0, "its contextual tab, as in {{3D}}");
     view(&mut h, Some(Which::Plan));
     assert_eq!(editor(&h).selected_form(), Some(0), "a view opened keeps the selection");
     let edge = plane(&h, "Edge").guid;

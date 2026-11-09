@@ -59,7 +59,7 @@ Window's starter has its two). Before `cuts`, a void cut the wall only if it cut
 their boxes, so the order mattered: a void had to be put first. `Family::check` refuses `cuts` on a solid; the "cuts
 nothing" warning reads it (a void of `host` in a generic family cuts nothing); a work plane-based family's face voids take a
 `host` void whatever it overlaps and leave out a `forms` one (`free_voids`). In the family document, a void's Properties
-(Identity Data) and its row of the Forms tab have Cuts (Forms and Host, Host, Forms) in a door's or a window's family.
+(Identity Data) has Cuts (Forms and Host, Host, Forms) in a door's or a window's family.
 `Model::migrate` takes a file of 17 to 18 (`Family::pin_cuts`): each void of a door's or a window's family that the old rule
 didn't cut the wall with, though it reaches into it (it overlapped a solid listed before it in any of the family's types), says
 `forms`, so it cuts what it did; one that cut the wall cut none of the forms, and reads as it did. A build that reads up to 17
@@ -110,8 +110,15 @@ name: a triangle's face is read from its winding, so every solid emits triangles
 a project only through the `favorite` command (`load` never overwrites without `replace`). The desktop's Family Editor
 (`editor.rs`, `editor/document.rs`) opens every family in a document occupying the window, with a family ribbon,
 docked Properties and Project Browser, and a 3D view: an adaptive family's modelling view and tools
-([adaptive families](adaptive-families.md)), another's 3D preview. For a family that isn't adaptive, Forms and Symbols are
-edited in Properties (whose Adaptive tab makes it adaptive); Family Types and Family Category and Parameters open dialogs
+([adaptive families](adaptive-families.md)), another's 3D preview. Properties show what is selected, as Revit's do: nothing
+selected, the family's own (Identity Data, then Family Category and Parameters' Other group); a form, a symbol, a reference
+plane or line, a dimension or a nested instance, its own. The forms and the plan symbols of a family that isn't adaptive are
+listed in the Project Browser (Forms and Symbols, `family_browser`): a click selects one, and its right-click menu has Select,
+Delete and, for a form, Move Up and Move Down (the list's order is what a void's "the forms listed above it" means) and Edit
+Extrusion, Edit Blend and the like (a mesh from a file has no sketch, and so none). Forms are made on the Create tab (Extrusion,
+Blend, Revolve, Sweep, Swept Blend, Void Forms), symbols on Annotate's Detail panel (Symbolic Line, a line or an arc; Text; Dot),
+each made selected so Properties show its rows, and Manage's Adaptive Component makes the family adaptive (Make Family Adaptive,
+or Four-Point Panel for a ready-made one); Family Types and Family Category and Parameters open dialogs
 (Apply, OK, and Cancel putting back what the dialog began from). Extrusion, Blend, Revolve, Sweep, Swept Blend and Void Forms
 sketch forms (F5 and F6, below). Undo and Redo are the document's own (`Draft`), and never undo the project.
 Family Types is Revit's (`editor/types_dialog.rs`): Type name, a drop-down of the types with New Type (a name asked, the type
@@ -134,15 +141,34 @@ prepare a private `Session`, so saving never implicitly loads the draft into the
 `Session` of its own; errors appear inside the document or its dialog. Connectors, reference planes and lines, form hosts,
 parameter metadata and symbols remain in the draft even when their dedicated tools are not yet available.
 
-A form selected in the document (from the Project Browser's Forms list, or Select in the Forms tab; Escape, a click in the view or
-Modify lets it go) shows its own Properties in place of the family's tabs, as Revit's do for an Extrusion (`editor/extrusion.rs`):
-Constraints (Extrusion End and Start in the project's units, each with `=`, a revolve's angles instead; the Work Plane, read-only,
-named as `Planes::listed` names it), Graphics (Visible with `=`; Visibility/Graphics Overrides' Edit… opens F8's Visibility Settings, *Visibility Settings* below), Materials
+A family document opens as Revit's does (`editor.rs`): File > New > Family… (`new_family_window`: the category picked, as Revit's
+New Family picks a template, then `new_family`) and the start page's Families group, under Models, with New Family (the
+categories dropped down) and Open Family…; File > Open > Family… and Open Family… (`open_family`, `open_family_file`) open a
+family file, BIMCraft's own JSON as Save Family writes it and Load Family reads it (`read_family_file`), as a document that isn't
+the project's: Load into Project loads it, asking first (Family Already Exists) when the project has a family of its name, and the
+project is left as it is. The family document stands over a project, which the window always has: the blank one it starts with
+when given no file, so a family opened from the start page needs nothing more; closed, it goes back to the start page
+(`family_from_home`) unless the page was over a project or the family was loaded into the blank one. A file that isn't a family
+opens nothing and says why. Edit Family (`edit_family`) is on the contextual tab's Mode panel, at its right end as Revit's (`mode_panel`): a family's instance
+selected (the tab named for its family's category, Modify | Furniture), or a component being placed (Modify | Place Component,
+beside Load Family, the family being placed); and on the right-click menu. Manage has neither New Family nor Edit Family.
+
+A form selected in the document (from the Project Browser's Forms, or by a click in a view; Escape, a click in the view on
+nothing or Modify lets it go) shows its own Properties in place of the family's, as Revit's do for an Extrusion (`editor/extrusion.rs`):
+Constraints (Extrusion End and Start in the project's units, each with `=`; a Blend's Second End and First End; a revolve's
+End Angle and Start Angle; a Sweep's Path and Profile, a Swept Blend's Path, Profile 1 and Profile 2, each the sketch Edit Sweep
+or Edit Swept Blend draws, by its count of lines; the Work Plane, read-only, named as `Planes::listed` names it), Graphics (Visible with `=`; Visibility/Graphics Overrides' Edit… opens F8's Visibility Settings, *Visibility Settings* below), Materials
 and Finishes (Material with `=`) and Identity Data (Solid/Void). A value tied to a parameter or worked out by a formula is greyed. The
-contextual tab is "Modify | Form", with Delete and Edit Work Plane, which opens the Work Plane dialog for the form (T12, below); the Options Bar shows
+contextual tab, and the Options Bar, are named for its kind as Revit's (Modify | Extrusion, Modify | Blend, Modify | Revolve,
+Modify | Sweep, Modify | Swept Blend, and Modify | Void Extrusion and so on; a mesh from a file, Modify | Form), with Delete and Edit Work Plane, which opens the Work Plane dialog for the form (T12, below); the Options Bar shows
 Depth (End less Start: typed, Start stays and End moves; greyed while End is tied). Edits go to the draft and its history. Solid/Void
 and Edit Work Plane run `family` (its `form` patch) and `edit_work_plane` on a private session holding the draft, as Save Family
-does, and take the form back with the id and GUID it had: the form moves with the plane. Sketch mode (Edit Extrusion, Finish and
+does, and take the form back with the id and GUID it had: the form moves with the plane. Its shape is its sketch's: Edit
+Extrusion and the like draw it again, and its dimensions flex it; Properties have no field of its corners. A symbol selected (from
+the browser's Symbols) shows its rows (`symbol_properties`): Constraints (a line's points, as typed; an arc's, a text's or a dot's
+centre, radius or height and angles, each with `=`; a text's words and alignment), Graphics (Visible with `=`, its Subcategory
+and Detail Levels' Edit…), on the contextual tab "Modify | Symbols" (Delete). Symbols draw in plan only, so their numbers are
+typed rather than dragged in a view. Sketch mode (Edit Extrusion, Finish and
 Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's (below); its Visibility panel's Visibility Settings is F8's (below).
 
 {3D} shows what is selected as the project's 3D view does (T11, `editor/lit3d.rs`): a form, a void or a nested instance selected
@@ -252,7 +278,7 @@ type picked), the project's Properties and Type Properties.
 A form's `visible` is a yes/no parameter (`group: "visibility"` lists it under Visibility, as Revit's) or a formula; worked out
 as zero, the form is left out of what the family builds for that type or component (`Family::solid`), so a plan, the 3D view,
 a section and IFC leave it out alike, and a change of type, of the type's tick or of the component's own value follows. The
-family document's Properties (its Forms tab) show it as Revit's do: a Visible tick with "=" at its end (Associate Family Parameter,
+family document's Properties (a selected form's, or a symbol's) show it as Revit's do: a Visible tick with "=" at its end (Associate Family Parameter,
 the same dialog an adaptive element's rows open, through `adaptive_editor::Tied`), which ties it to a yes/no parameter or, with
 <None>, unties it keeping what it came to; tied, or given a formula, the tick is greyed, showing what the type previewed comes
 to, the formula beside it. As Revit's family editor, the document's preview draws a solid form the type previewed hides ghosted
@@ -273,7 +299,7 @@ points and lines are selected, so they are what HC hides; IC hides every other c
 planes or the wall with the other elements. The preview leaves a hidden solid form out of what it draws (`temp_hide::without`; a
 hidden void still cuts, being never drawn) and hides the wall by its category; the modelling view neither draws nor picks a
 hidden element (`adaptive_view::Hidden`), the datums staying placed round everything. A form is known by a `tag` the document
-gives it, so a hidden one stays hidden as forms move in the list. A hidden form stays in the Forms list. What is hidden is the
+gives it, so a hidden one stays hidden as forms move in the list. A hidden form stays in the browser's Forms. What is hidden is the
 document's (`document::State::temp`), as Preview Visibility: not saved, no step of the history, no unsaved change, gone when the
 family closes. While it hides anything the view wears the project's cyan frame (`footer::FRAME`) and the bar says
 "Temporary Hide/Isolate (HR resets)"; Preview Visibility's orange frame is then drawn just inside it, so both show.
@@ -315,7 +341,7 @@ Revit's, its leaf `{plan: false}` and its swing a symbol, shows the swing in pla
 
 In the family document (`editor/visibility.rs`), Family Element Visibility Settings opens from a form's or a nested instance's
 contextual tab (Visibility > Visibility Settings), from a form's Properties (Graphics > Visibility/Graphics Overrides, Edit…)
-and from a symbol's row in the Symbols tab (Detail Levels, Edit…; only its detail levels can be changed):
+and from a selected symbol's Properties (Detail Levels, Edit…; only its detail levels can be changed):
 View Specific Display (Plan/RCP, Front/Back, Left/Right, Only shown when cut), Detail Levels (Coarse, Medium, Fine), Default,
 OK (into the draft, a step of its history) and Cancel. The document's view control bar has a Detail Level menu (`Views::detail`,
 the session's, Fine when a family opens). Its views draw a form its settings leave out of that view (`views::hidden_in`)
@@ -597,7 +623,7 @@ whose Delete takes away a plane of the family's own unless something is drawn on
 window's Sill on Ref. Level, as Revit's window template has it): each is drawn, and where the pointer is over several
 (`Views::under`, each once, nearest first) the one a click takes is lit and Tab steps to the next, as Revit's Tab does, for
 selecting, Aligned Dimension, Align, Pick Lines and the Work Plane dialog's Pick alike; Ref. Level is picked by its level. The
-app's Tab hook leaves Tab to the family document while it is open. The blank window (Manage > New Family > Window) has Sill: a
+app's Tab hook leaves Tab to the family document while it is open. The blank window (File > New > Family… > Window) has Sill: a
 plane on Ref. Level seen edge on in the elevations, Align-locked to it, so a Height dimensioned from it moves its head alone (a
 window's axes rise from its sill, so the sill's plane and Ref. Level are one; without the lock the least-change solve would
 share a Height's change between them); a door's blank has none, as Revit's door template. The selected form is outlined, the
@@ -669,8 +695,8 @@ Offset, and for Pick Lines Revit's Lock (F10a, kept for the session, off to begi
 Offset and in a plan or an elevation, is locked to what it was picked from (a plane, a reference line, another form's line: what
 Align would take there, `dimensions::reference_at`), the same lock Align's padlock leaves (`alignment`, written at Finish,
 dropped by Cancel, its padlock shown closed beside the line, a click unlocking it); greyed with an Offset and in {3D}, where
-Align isn't either. Properties the Start and End (a revolve's Start Angle and End Angle, as a selected one's Properties and the
-Forms tab name them), Material and Solid/Void. Finish checks the lines as the core does
+Align isn't either. Properties the Start and End (a revolve's Start Angle and End Angle, as a selected one's Properties name
+them), Material and Solid/Void. Finish checks the lines as the core does
 (`family::sketch::finish_check`): open loops, crossing or overlapping lines, a revolve with no axis or a profile across it are
 refused, said in the project's words with the lines shown red, the draft left as it was; then each type is built with the form,
 and a fault of this form refuses it too. On success the form is in the draft, one step of its history, and selected. Cancel leaves
@@ -679,10 +705,10 @@ the draft (and so its Unsaved mark) as it was. A selected form's contextual tab 
 out for the type shown, in the view shown if it sees the plane flat, else {3D}; a line that keeps its GUID and comes to where it
 was keeps its formulas (`family::sketch::kept`), one moved holds numbers. A selected extrusion's Start and End show shape handles
 in a plan or an elevation that sees its plane edge-on; dragged, they move along the normal, a step of the history; an end tied to a
-parameter or a formula is greyed and a drag on it is refused, saying why. The Forms tab keeps the typed corners, circle and axis as
-an advanced view; a sketch they can't say shows as "Sketch" with its count of lines. Where a form's dimensions and locks put
-its outline, From or To otherwise for the type previewed than it is drawn, the tab shows those fields as they come to, greyed
-under a note naming the type (F10, `held_forms`): the drawn numbers stay, and Edit Extrusion or the dimensions change them.
+parameter or a formula is greyed and a drag on it is refused, saying why. Where a form's dimensions and locks put its outline,
+Start or End otherwise for the type previewed than it is drawn, its Properties say so under a note naming the type (F10,
+`held_forms`), its ends a dimension sets greyed as they come to: the drawn numbers stay, and its Edit tool or the dimensions
+change them.
 
 ## Blends, sweeps and swept blends
 
@@ -928,7 +954,7 @@ numeric is checked finite and within `MAX_COORD`; a label's height and a dot's r
 A symbol may name the subcategory of its family's category it is drawn in (`subcategory`, by its English name, any case:
 `Opening` for a door or a window; `Family::check` refuses a name its category has none of, saying which it has); a view hides and
 restyles it apart from the rest (Doors > Opening, [views and graphics](views-and-graphics.md)). The starter doors' swings and the
-windows' opening lines are in Opening. The Family Editor's Symbols tab picks it from the category's subcategories.
+windows' opening lines are in Opening. A selected symbol's Properties pick it from the category's subcategories.
 
 `Model::component_marks` places a component's marks (mirrored, then turned and moved) and `Model::opening_marks` an opening's,
 and `render::marks` draws them: lines in the category's pen (`BY_CATEGORY`, so Object Styles and Visibility/Graphics apply), dots
@@ -937,7 +963,7 @@ letters never are: they are always drawn at 0 degrees in the view, left to right
 stands (the simplest rule; no flipping by quadrant). Symbols are annotation of the component's level: they draw in that level's
 plan and its ceiling plan whatever height the component's forms reach (a ceiling light shows its symbols in the floor plan) and
 on no other level's; the forms are outlined by the old rule (whole while any of them is between the view's depth and cut plane,
-and not in ceiling plans). A component with no forms draws its symbols the same way. IFC export ignores symbols (they are plan notation, not geometry); the Family Editor's Symbols tab lists
+and not in ceiling plans). A component with no forms draws its symbols the same way. IFC export ignores symbols (they are plan notation, not geometry); the Family Editor's Annotate > Detail makes
 all four parts. Library parts: a symbol of any kind has its own id and GUID (`HasPart`, `keep_parts`). A file written with
 `text` or `dot` symbols, or symbols on a category other than a door or a window, is read by an older version only with them left
 out or refused, so the file format is unchanged.
@@ -1086,10 +1112,10 @@ Align-locked to the planes, listed after the frame: it cuts the wall wherever it
 (F10d). Three types (900 x 1200, 1200 x 1500, 600 x 600), loaded, placed in a wall, flexed through its types, a window
 schedule, IFC.
 
-- **The desktop** (`crates/ui-egui/src/tests/family_exit.rs`): every step through the window, from Manage > New Family > Window
+- **The desktop** (`crates/ui-egui/src/tests/family_exit.rs`): every step through the window, from File > New > Family… > Window
   to File > Export's IFC: the Reference Plane tool and Properties' Name, Aligned Dimension (Tab onto Sill) and the Options Bar's
   Label, EQ, Extrusion with Pick Lines, its Lock and Trim/Extend to Corner, Rectangle, Void Extrusion with Rectangle and Align's
-  padlocks, the dimensions' padlocks, the void's Cuts in Properties, the Forms tab, Family Types, Load into Project and Close,
+  padlocks, the dimensions' padlocks, the void's Cuts in Properties, the void picked in the browser's Forms, Family Types, Load into Project and Close,
   the Window tool and the Type Selector, View > Schedules. At each type it measures what is
   built: the frame's pieces (`Model::opening_pieces`) and a picture of the 3D view probed across the opening's edges (the wall
   just outside, the frame just inside, through the light). The IFC is read back for each IfcWindow's size, its

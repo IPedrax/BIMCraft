@@ -242,9 +242,7 @@ fn new_and_open_keep_the_look_and_the_settings_file_does_too() {
     let want = ((ThemePreference::Dark, true, true, false), json!("dark"), json!(true));
     assert_eq!(looks(&h), want);
     // File > New starts a window over again; the look is the user's and stays, in the window and in the file.
-    press(&mut h, "File");
-    h.get_by_label_contains("New").click();
-    h.run();
+    new_project(&mut h);
     assert!(ids(&h, "wall").is_empty(), "a new project");
     assert_eq!(looks(&h), want, "after New");
     // And File > Open.

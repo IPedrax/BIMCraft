@@ -185,9 +185,7 @@ fn the_reader_stays_attached_after_a_project_comes_in() {
     r.done();
     assert_eq!(r.asked.lock().unwrap().len(), 2, "a new window state would have lost it");
     // And New, which starts over too, keeps it.
-    press(&mut r.h, "File");
-    r.h.get_by_label_contains("New").click();
-    r.h.run();
+    new_project(&mut r.h);
     r.open("/projects/c.rvt");
     r.done();
     assert_eq!(r.asked.lock().unwrap().len(), 3);
@@ -316,9 +314,7 @@ fn what_was_left_out_is_listed_in_a_report_that_closes_and_comes_back_from_the_f
     assert!(r.h.query_by_label_contains("Left out: 7").is_some());
     press(&mut r.h, "Close");
     // Another project replaces it, and the report is not about that one.
-    press(&mut r.h, "File");
-    r.h.get_by_label_contains("New").click();
-    r.h.run();
+    new_project(&mut r.h);
     press(&mut r.h, "File");
     assert!(r.h.query_by_label_contains("Revit import report").is_none(), "the menu item goes with the project it was about");
 }
