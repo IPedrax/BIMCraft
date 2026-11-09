@@ -70,7 +70,9 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 19: a project holds circuits (an element of the
+/// The version of the project file this build writes, and the newest it reads. 20: a project holds panel schedules (an element of
+/// the `panelschedule` category) and `demand_factors`, and a circuit's number is its first slot; nothing in a file of 19
+/// changes, but a build that reads up to 19 would answer one of 20 with a serde error, not "saved by a newer BIMCraft". 19: a project holds circuits (an element of the
 /// `circuit` category); nothing in a file of 18 changes, but a build that reads up to 18 would answer one of 19 with a serde
 /// error ("unknown variant"), not "saved by a newer BIMCraft". 18: a family's connector may be a `pipe`,
 /// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
@@ -119,7 +121,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 19;
+pub const FORMAT: u32 = 20;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -2048,6 +2050,7 @@ macro_rules! visit_refs {
                 }
             }
             Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
+            Element::PanelSchedule(ps) => f(& $($m)? ps.panel),
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
@@ -2206,6 +2209,8 @@ pub enum Element {
     CadImport(CadImport),
     /// An electrical circuit: devices on a distribution board, behind one breaker.
     Circuit(crate::electrical::Circuit),
+    /// A distribution board's load schedule, a view of its own.
+    PanelSchedule(crate::panel_schedule::PanelSchedule),
 }
 
 impl Element {
@@ -2404,6 +2409,7 @@ impl Element {
             Element::Dimension3D(_) => "dimension3d",
             Element::Tag(_) => "tag",
             Element::Circuit(_) => "circuit",
+            Element::PanelSchedule(_) => "panelschedule",
             Element::Section(_) => "section",
             Element::Elevation(_) => "elevation",
             Element::Sheet(_) => "sheet",
@@ -2931,6 +2937,10 @@ pub struct Model {
     /// opens the rest, so it took no `FORMAT` step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub georeference: Option<Georeference>,
+    /// The factor that counts of the load of the circuits of a classification (above 0 up to 1), applied in a board's totals and
+    /// its panel schedule on top of each circuit's own; a classification with none counts whole.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub demand_factors: BTreeMap<String, f64>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -3030,6 +3040,7 @@ impl Model {
             distribution_systems: crate::electrical::distribution_systems(),
             wire_types: crate::electrical::wire_types(),
             georeference: None,
+            demand_factors: BTreeMap::new(),
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -3554,6 +3565,7 @@ impl Model {
         // file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
         // did, and none of its dimensions measures `across`.
         // 18 to 19 (circuits) has no step: a file of 18 holds none.
+        // 19 to 20 (panel schedules and `demand_factors`) has no step: a file of 19 holds none, and a circuit's slots are its number as ever.
         self.format = FORMAT;
     }
 
@@ -4335,6 +4347,7 @@ impl Model {
             | Element::Sheet(_)
             | Element::Viewport(_)
             | Element::Schedule(_)
+            | Element::PanelSchedule(_)
             | Element::Link(_)
             | Element::Dimension3D(_)
             | Element::View3D(_) => None,
@@ -5081,6 +5094,7 @@ impl Model {
             Some(Element::Level(l)) => Some(&l.name),
             Some(Element::Section(v) | Element::Elevation(v)) => Some(&v.name),
             Some(Element::Schedule(sc)) => Some(&sc.name),
+            Some(Element::PanelSchedule(ps)) => Some(&ps.name),
             Some(Element::View3D(v)) => Some(&v.name),
             Some(Element::PlanView(v)) => Some(&v.name),
             _ => None,
@@ -5091,7 +5105,7 @@ impl Model {
     pub fn views(&self) -> BTreeSet<Id> {
         let lookup = self.lookup();
         let mut ids: BTreeSet<Id> = lookup.levels().collect();
-        for cat in ["planview", "section", "elevation", "schedule", "view3d"] {
+        for cat in ["planview", "section", "elevation", "schedule", "panelschedule", "view3d"] {
             ids.extend(lookup.rare(cat));
         }
         ids
@@ -6351,6 +6365,7 @@ impl Model {
         // Circuits are held to each other, their boards and their devices, so all of them are checked, as `check` does before
         // the elements.
         crate::electrical::check_circuits(self)?;
+        crate::electrical::check_demand_factors(self)?;
         let shared = |e: &Element| {
             matches!(
                 e,
@@ -6522,6 +6537,12 @@ impl Model {
         match e {
             // Its rules are held between circuits, boards and devices, in one place: `electrical::check_circuits`.
             Element::Circuit(_) => {}
+            Element::PanelSchedule(ps) => {
+                crate::panel_schedule::check(self, &who, ps)?;
+                if !view_names.insert(ps.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", ps.name));
+                }
+            }
             Element::Level(l) => {
                 text(&who, "name", &l.name)?;
                 coord(&format!("{who} elevation"), l.elevation)?;
@@ -7485,6 +7506,7 @@ impl Model {
             distribution_systems,
             wire_types,
             georeference,
+            demand_factors,
             elements: _,
             library,
             loaded,
@@ -7526,6 +7548,7 @@ impl Model {
             && *distribution_systems == o.distribution_systems
             && *wire_types == o.wire_types
             && *georeference == o.georeference
+            && *demand_factors == o.demand_factors
             && *library == o.library
             && loaded.len() == o.loaded.len()
             && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))

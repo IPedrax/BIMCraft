@@ -7,42 +7,42 @@ use crate::element_json;
 use crate::engine::Session;
 use crate::model::{Element, Id};
 
-fn run(s: &mut Session, id: &str, p: Value) -> Value {
+pub(crate) fn run(s: &mut Session, id: &str, p: Value) -> Value {
     s.execute(id, &p).unwrap_or_else(|e| panic!("{id} {p}: {e}"))
 }
 
-fn fails(s: &mut Session, id: &str, p: Value) -> String {
+pub(crate) fn fails(s: &mut Session, id: &str, p: Value) -> String {
     let before = s.model.clone();
     let e = s.execute(id, &p).expect_err(&format!("{id} {p} should fail"));
     assert_eq!(*s.model, *before, "a refused {id} changes nothing");
     e
 }
 
-fn place(s: &mut Session, family: &str, at: [i32; 2]) -> Id {
+pub(crate) fn place(s: &mut Session, family: &str, at: [i32; 2]) -> Id {
     run(s, "component", json!({"family": family, "at": at}))["id"].as_u64().unwrap()
 }
 
 /// A distribution board on `system` (127/220 V unless said), taking 24 single-pole breakers and 63 A.
-fn board_on(s: &mut Session, system: &str) -> Id {
+pub(crate) fn board_on(s: &mut Session, system: &str) -> Id {
     let b = place(s, "Distribution Board", [0, 0]);
     run(s, "panel", json!({"id": b, "distribution": system, "mains": 63, "slots": 24}));
     b
 }
 
-fn board(s: &mut Session) -> Id {
+pub(crate) fn board(s: &mut Session) -> Id {
     board_on(s, "127/220 V")
 }
 
 /// Ceiling luminaires of 12 VA each (127 V, one pole), placed in a row.
-fn lamps(s: &mut Session, n: i32) -> Vec<Id> {
+pub(crate) fn lamps(s: &mut Session, n: i32) -> Vec<Id> {
     (0..n).map(|i| place(s, "Ceiling Luminaire", [1000 + 1000 * i, 1000])).collect()
 }
 
-fn circuits(s: &Session) -> Vec<Id> {
+pub(crate) fn circuits(s: &Session) -> Vec<Id> {
     s.model.elements.iter().filter(|(_, e)| matches!(e, Element::Circuit(_))).map(|(id, _)| *id).collect()
 }
 
-fn make(s: &mut Session, p: Value) -> Id {
+pub(crate) fn make(s: &mut Session, p: Value) -> Id {
     run(s, "circuit", p)["id"].as_u64().unwrap()
 }
 
@@ -617,7 +617,7 @@ fn a_plan_draws_a_circuits_home_run_marker_and_a_tag_with_its_number() {
         let d = crate::render::draw(&t.model, 100000, plan_view());
         d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(cc)).map(|(p, _)| p.points().len()).sum::<usize>()
     };
-    assert!(points(88) > points(1), "a tag lettered {} vs {}", points(88), points(1));
+    assert!(points(22) > points(1), "a tag lettered {} vs {}", points(22), points(1));
     // It is picked where it is drawn: a click on its line is on the circuit.
     let drawing = crate::render::draw(&s.model, 100000, plan_view());
     let on = drawing

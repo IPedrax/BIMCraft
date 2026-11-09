@@ -2513,6 +2513,48 @@ fn hostile_params_never_panic_or_break_the_model() {
             ];
         }
     }
+    // A panel schedule of that board, after the circuit, and what is thrown at it and at the demand factors.
+    let mut schedules: Vec<Value> = vec![
+        json!({"class": "lighting", "factor": 1e300}),
+        json!({"class": "lighting", "factor": 0}),
+        json!({"class": "", "factor": 0.5}),
+        json!({"class": "x".repeat(300), "factor": 0.5}),
+        json!({"class": "lighting", "delete": true}),
+    ];
+    if let Some(b) = ids[0] {
+        let v = base.execute("panel_schedule", &json!({"panel": b})).ok().and_then(|r| r["id"].as_u64());
+        schedules.extend([
+            json!({"panel": b, "template": "nope"}),
+            json!({"panel": b, "scale": 1e300}),
+            json!({"panel": b, "scale": 0}),
+            json!({"panel": b, "notes": "x".repeat(5000)}),
+            json!({"panel": b, "name": ""}),
+            json!({"panel": ids[1], "name": "x"}),
+            json!({"circuit": b, "description": "x"}),
+        ]);
+        if let Some(v) = v {
+            let c = circuits.first().and_then(|c| c["id"].as_u64());
+            schedules.extend([
+                json!({"id": v, "slot": u32::MAX, "mark": "spare"}),
+                json!({"id": v, "slot": 0, "mark": "space"}),
+                json!({"id": v, "slot": 1, "mark": "spare", "poles": 255}),
+                json!({"id": v, "slot": 1, "mark": 5}),
+                json!({"id": v, "template": "list", "show_spare": "yes"}),
+                json!({"id": v, "scale": 4, "phase_columns": false, "show_space": false}),
+                json!({"id": v, "panel": ids[1]}),
+                json!({"id": v, "circuit": c, "slot": u32::MAX}),
+                json!({"id": v, "circuit": c, "phase": "Z"}),
+                json!({"id": v, "circuit": c, "phase": 1e300}),
+                json!({"id": v, "circuit": c, "breaker": 1e300}),
+                json!({"id": v, "circuit": c, "demand_factor": -1}),
+                json!({"id": v, "circuit": c, "description": "x".repeat(300)}),
+                json!({"id": v, "circuit": b}),
+                json!({"id": v, "circuit": c, "slot": 2, "mark": "space"}),
+                json!({"id": b}),
+                json!({"id": v}),
+            ]);
+        }
+    }
     let hostile: Vec<Value> = hostile
         .into_iter()
         .chain(detailing.into_iter().map(|(_, p)| p))
@@ -2520,6 +2562,7 @@ fn hostile_params_never_panic_or_break_the_model() {
         .chain(offsets)
         .chain(grips)
         .chain(circuits)
+        .chain(schedules)
         .collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
@@ -5992,7 +6035,7 @@ fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_i
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch;
     // 13 floors' and flat roofs' shapes; 14 the categories of family components, which the starter view templates name; 15 a roof's slope for each
     // edge and a wall's top offset; 16 dimensions in 3D views and the locks Align leaves; 17 multi-category schedules and Italian projects; 18 a wall or a run
-    // that refuses to join; 19 circuits. Nothing in a file of 4
+    // that refuses to join; 19 circuits; 20 panel schedules. Nothing in a file of 4
     // to 7 that holds no notes changes.
     let mut s = Session::new();
     let empty = serde_json::to_value(&*s.model).unwrap();

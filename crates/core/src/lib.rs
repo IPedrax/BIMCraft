@@ -88,6 +88,7 @@ mod openings_past_top_tests;
 #[cfg(test)]
 mod oracle_tests;
 pub mod paint;
+pub mod panel_schedule;
 pub mod pat;
 pub mod pdf;
 pub mod pen;
@@ -172,6 +173,8 @@ mod line_tests;
 mod mep_tests;
 #[cfg(test)]
 mod network_tests;
+#[cfg(test)]
+mod panel_schedule_tests;
 #[cfg(test)]
 mod panel_tests;
 #[cfg(test)]

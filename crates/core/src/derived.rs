@@ -144,12 +144,13 @@ pub const RARE: &[&str] = &[
     "section",
     "elevation",
     "schedule",
+    "panelschedule",
     "view3d",
 ];
 
 /// The categories of a drawing set: views, sheets and what places a view on a sheet. Their names and numbers are kept
 /// apart, and a view goes on one sheet, so they are checked together ([`crate::model::Model::check_changed`]).
-pub const DRAWING_SET: &[&str] = &["sheet", "viewport", "planview", "section", "elevation", "schedule", "view3d"];
+pub const DRAWING_SET: &[&str] = &["sheet", "viewport", "planview", "section", "elevation", "schedule", "panelschedule", "view3d"];
 
 /// Banded elements' groups and bands, by id.
 type Banded = BTreeMap<Id, (Arc<Group>, [i64; 2])>;
