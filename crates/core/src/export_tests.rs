@@ -153,6 +153,28 @@ fn the_project_exports_as_ifc_from_the_origin_asked_for() {
 }
 
 #[test]
+fn the_project_exports_as_ifc4x3_with_the_attributes_it_added() {
+    // The sample house, furnished: its families' shapes are meshes, each a point list.
+    let mut s = Session::new();
+    s.script(crate::sample::SAMPLE).unwrap_or_else(|e| panic!("{e}"));
+    run(&mut s, "room_separator", json!({"points": [[4000, 0], [4000, 6000]]}));
+    let dir = folder("ifc4x3");
+    let to = dir.join("house.ifc");
+    run(&mut s, "export", json!({"format": "ifc4x3", "path": to}));
+    let text = std::fs::read_to_string(&to).unwrap_or_default();
+    assert!(text.contains("FILE_SCHEMA(('IFC4X3_ADD2'))"), "{text}");
+    // A point list's tags, none; a room separation line a boundary.
+    let lists: Vec<&str> = text.lines().filter(|l| l.contains("=IFCCARTESIANPOINTLIST3D(")).collect();
+    assert!(!lists.is_empty() && lists.iter().all(|l| l.ends_with(",$);")), "{lists:?}");
+    assert!(text.lines().any(|l| l.contains("=IFCVIRTUALELEMENT(") && l.ends_with(",.BOUNDARY.);")), "{text}");
+    // IFC4's has neither.
+    run(&mut s, "export", json!({"format": "ifc", "path": to}));
+    let text = std::fs::read_to_string(&to).unwrap_or_default();
+    assert!(text.contains("FILE_SCHEMA(('IFC4'))") && !text.contains(".BOUNDARY."));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn save_prints_every_sheet_through_the_pdf_format() {
     let mut s = project();
     run(&mut s, "sheet", json!({"name": "More"}));

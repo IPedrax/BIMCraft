@@ -298,6 +298,29 @@ struct Step {
     classified: BTreeMap<(String, String), Vec<u64>>,
     /// The `IfcClassification` of each system by its name, written the first time a family or a parameter asks for it.
     systems: BTreeMap<String, u64>,
+    /// The schema written.
+    schema: Schema,
+}
+
+/// The IFC schema a file is written in: IFC4 (ISO 16739-1:2018), or IFC4.3 (ISO 16739-1:2024, `IFC4X3_ADD2`), which IFC4's
+/// entities are written in as they are, but for the attributes 4.3 added (a point list's tags, a virtual element's type).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Schema {
+    #[default]
+    #[serde(rename = "ifc4")]
+    Ifc4,
+    #[serde(rename = "ifc4x3")]
+    Ifc4x3,
+}
+
+impl Schema {
+    /// Its name in a file's `FILE_SCHEMA`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Schema::Ifc4 => "IFC4",
+            Schema::Ifc4x3 => "IFC4X3_ADD2",
+        }
+    }
 }
 
 /// A member's section as its type gives it: `width` and `depth` in mm (a round section is `width` across, so its depth is
@@ -577,7 +600,9 @@ impl Step {
             }
         }
         let coords: Vec<String> = pts.iter().map(|p| format!("({},{},{})", real(p[0]), real(p[1]), real(p[2]))).collect();
-        let list = self.add(format!("IFCCARTESIANPOINTLIST3D(({}))", coords.join(",")));
+        // IFC4.3's has its points' tags after them, none here.
+        let tags = if self.schema == Schema::Ifc4x3 { ",$" } else { "" };
+        let list = self.add(format!("IFCCARTESIANPOINTLIST3D(({}){tags})", coords.join(",")));
         self.add(format!("IFCTRIANGULATEDFACESET(#{list},$,.T.,({}),$)", faces.join(",")))
     }
 
@@ -1027,11 +1052,16 @@ fn compound(deg: f64) -> String {
 /// The model as IFC4, its coordinates' origin at `at`, with the active site's true north and, where it names a coordinate
 /// reference system, its map conversion from that origin (`IfcMapConversion`, `IfcProjectedCRS`).
 pub fn export_at(m: &Model, at: Origin) -> String {
-    export_with(m, true, at)
+    export_as(m, at, Schema::Ifc4)
 }
 
-/// [`export_at`], with or without the components referenced in the rooms they stand in.
-pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin) -> String {
+/// [`export_at`], in `schema`.
+pub fn export_as(m: &Model, at: Origin, schema: Schema) -> String {
+    export_with(m, true, at, schema)
+}
+
+/// [`export_as`], with or without the components referenced in the rooms they stand in.
+pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: Schema) -> String {
     let rooms = crate::rooms::Rooms::new(m);
     let own = m.elements.with_guids().map(|(id, g, _)| (id, g)).collect();
     let mut w = Step {
@@ -1050,6 +1080,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin) -> Strin
         sections: BTreeMap::new(),
         classified: BTreeMap::new(),
         systems: BTreeMap::new(),
+        schema,
     };
     let origin = w.add("IFCCARTESIANPOINT((0.,0.,0.))");
     w.z = w.add("IFCDIRECTION((0.,0.,1.))");
@@ -1746,8 +1777,10 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin) -> Strin
                 let line = w.add(format!("IFCPOLYLINE((#{a},#{b}))"));
                 let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{axis},'Axis','Curve2D',(#{line}))"));
                 let shape = w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))"));
+                // IFC4.3's says what it is: a boundary.
+                let kind = if w.schema == Schema::Ifc4x3 { ",.BOUNDARY." } else { "" };
                 let ent = w.add(format!(
-                    "IFCVIRTUALELEMENT({},$,'Room Separation Line',$,'{SEPARATION}',#{at},#{shape},'{id}')",
+                    "IFCVIRTUALELEMENT({},$,'Room Separation Line',$,'{SEPARATION}',#{at},#{shape},'{id}'{kind})",
                     w.guid(ELEMENT, id)
                 ));
                 contained.entry(rs.level).or_default().push(ent);
@@ -2364,9 +2397,10 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin) -> Strin
     let app = s(&format!("BIMCraft {}", env!("CARGO_PKG_VERSION")));
     format!(
         "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [DesignTransferView]'),'2;1');\n\
-         FILE_NAME({},'{}',(''),(''),{app},{app},'');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{}ENDSEC;\nEND-ISO-10303-21;\n",
+         FILE_NAME({},'{}',(''),(''),{app},{app},'');\nFILE_SCHEMA(('{}'));\nENDSEC;\nDATA;\n{}ENDSEC;\nEND-ISO-10303-21;\n",
         s(&format!("{}.ifc", m.name)),
         utc(now),
+        schema.name(),
         w.out
     )
 }
