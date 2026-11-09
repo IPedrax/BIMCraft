@@ -273,6 +273,26 @@ fn ifc_whose_scale_carries_the_unit_comes_in_with_its_ground_to_grid_scale() {
 }
 
 #[test]
+fn shared_ifc_with_a_scale_warns_that_it_goes_out_at_ground_size() {
+    // Scale 0.9996: the site's placement can't scale, so the file is at ground size, off the grid by 0.4 mm a metre.
+    let mut s = surveyed();
+    let path = file("ifc-shared-warn", "out.ifc", "");
+    let r = run(&mut s, "save", json!({"path": path, "ifc_origin": "shared"}));
+    let w = r["warning"].as_str().unwrap_or_else(|| panic!("a warning: {r}"));
+    assert!(w.contains("0.9996") && w.contains("0.4 mm") && w.contains("internal"), "{w}");
+    // Every other origin carries the scale in the map conversion: no warning.
+    for o in ["internal", "base", "survey"] {
+        let r = run(&mut s, "save", json!({"path": path, "ifc_origin": o}));
+        assert!(r.get("warning").is_none(), "{o}: {r}");
+    }
+    // Scale 1: shared is exact.
+    let mut s = Session::new();
+    run(&mut s, "location", json!({"name": "Internal", "east": 500_000_000.0, "north": 7_000_000_000.0}));
+    let r = run(&mut s, "save", json!({"path": path, "ifc_origin": "shared"}));
+    assert!(r.get("warning").is_none(), "{r}");
+}
+
+#[test]
 fn ifc_out_at_map_coordinates_comes_in_near_the_origin_and_keeps_where_it_was() {
     let mut s = Session::new();
     run(&mut s, "location", json!({"name": "Internal", "east": 500_000_000.0, "north": 7_000_000_000.0}));

@@ -134,7 +134,7 @@ pub static ALL: &[Command] = &[
         "Save",
         "{path?, ifc_origin?} .bimcraft saves the project (Save As with a path); .ifc exports IFC4, its coordinates' origin at \
          `ifc_origin`: internal (the default), base (the Project Base Point), survey (the Survey Point) or shared (the map's \
-         coordinates themselves), with the active location's IfcMapConversion and IfcProjectedCRS, true north, and the site's \
+         coordinates themselves; at ground size, with a `warning`, where the location's scale isn't 1), with the active location's IfcMapConversion and IfcProjectedCRS, true north, and the site's \
          latitude and longitude where the project has a CRS; .glb exports the default 3D view's scene as \
          glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns `elements` and \
          `triangles`); .svg or .png exports the lowest level's plan; .pdf prints every sheet, a page each",
@@ -3233,7 +3233,18 @@ fn save(s: &mut Session, p: &Value) -> R {
     };
     if format == "ifc" {
         std::fs::write(&path, crate::ifc::export_at(&s.model, ifc_origin)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-        return Ok(json!({"path": path, "format": "IFC4"}));
+        let mut reply = json!({"path": path, "format": "IFC4"});
+        // At the map's coordinates the site's placement moves and turns but can't scale: the file is at ground size.
+        let scale = s.model.coordinates.location().scale;
+        if ifc_origin == crate::ifc::Origin::Shared && (scale - 1.0).abs() > 1e-9 {
+            reply["warning"] = json!(format!(
+                "the location's scale is {scale}, and at `ifc_origin` shared the file can't apply it: the model goes out at its \
+                 size on the ground, {:.1} mm a metre off the map's grid away from the internal origin. Export at internal, base \
+                 or survey for the map conversion to carry the scale",
+                ((1.0 - scale) * 1000.0).abs()
+            ));
+        }
+        return Ok(reply);
     }
     if format == "glb" {
         let out = crate::gltf::export(&crate::link::seen(&s.model)).map_err(|e| bad(c, e))?;
