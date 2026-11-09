@@ -8,7 +8,7 @@
 use bimcraft_i18n::msg;
 
 use crate::geom::P2;
-use crate::graphics::Look;
+use crate::graphics::{self, Look};
 use crate::language::Language;
 use crate::model::{Element, Id, Key, Model, Schedule, Sheet, Viewport, paper};
 use crate::pen::Pen;
@@ -77,6 +77,34 @@ fn framing_in(m: &Model, work: &Work, view: impl Key, scale: f64) -> Option<View
 /// How much paper view `view` takes at 1 : `scale`, mm.
 pub fn size(m: &Model, view: impl Key, scale: f64) -> Option<P2> {
     framing(m, view, scale).map(|v| P2(f64::from(v.width) / DENSITY, f64::from(v.height) / DENSITY))
+}
+
+/// A placed view's scale when none is given: its own, or, for an unscaled 3D view, the finest
+/// offered project scale from the default up that fits above the title block. If none fits,
+/// use the coarsest offered scale. Assigned view and template scales are kept.
+pub fn default_scale(m: &Model, sheet: impl Key, view: impl Key) -> f64 {
+    let own = graphics::scale_of(m, view);
+    let assigned = graphics::graphics_of(m, view).is_some_and(|g| g.resolved(m).scale.is_some());
+    if assigned || !matches!(m.elements.get(view), Some(Element::View3D(_))) {
+        return own;
+    }
+    let sh = m.sheet(sheet);
+    let size_name = sh.map(|s| s.size.as_str()).unwrap_or("A3");
+    let paper = sh.and_then(|s| paper(&s.size)).unwrap_or(P2(420.0, 297.0));
+    let margins = m.standard().sheet_margins(size_name);
+    // Five mm clear of the borders/title box, and room for the title below the frame.
+    // The existing default position centers the frame above the title block, so leave
+    // the title's height on both sides of that center.
+    let room =
+        P2(paper.0 - margins.left - margins.right - 10.0, paper.1 - margins.bottom - margins.top - margins.title_height - 10.0 - 30.0);
+    let mut scales: Vec<f64> = m.units.scales().iter().copied().filter(|n| *n >= own).collect();
+    scales.sort_by(f64::total_cmp);
+    scales
+        .iter()
+        .copied()
+        .find(|n| size(m, view, *n).is_some_and(|taken| taken.0 <= room.0 && taken.1 <= room.1))
+        .or_else(|| scales.last().copied())
+        .unwrap_or(own)
 }
 
 /// Viewport `id`'s view frame, and where that frame's top left corner sits in its sheet's drawing,

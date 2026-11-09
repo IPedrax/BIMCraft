@@ -6834,11 +6834,11 @@ msgstr "Tròn"
 msgid "Runs the plugin's command"
 msgstr ""
 
-#: crates/core/src/sheet.rs:265
+#: crates/core/src/sheet.rs:293
 msgid "SCALE"
 msgstr "TỶ LỆ"
 
-#: crates/core/src/sheet.rs:267
+#: crates/core/src/sheet.rs:295
 msgid "SCALE AS INDICATED"
 msgstr "TỶ LỆ NHƯ GHI CHÚ"
 
