@@ -679,3 +679,11 @@ msgstr "BWC"
 #: crates/core/src/loads.rs:79
 msgid "wc"
 msgstr "sanitário"
+
+#: crates/core/src/schedule.rs:212
+msgid "Room Name"
+msgstr "Nome do ambiente"
+
+#: crates/core/src/schedule.rs:211
+msgid "Room Number"
+msgstr "Número do ambiente"

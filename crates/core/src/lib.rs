@@ -107,6 +107,8 @@ mod room_bounds_tests;
 mod room_freeze_tests;
 #[cfg(test)]
 mod room_height_tests;
+#[cfg(test)]
+mod room_of_tests;
 pub mod rooms;
 pub mod runs;
 pub mod sample;
@@ -146,7 +148,9 @@ pub mod workplane;
 mod workplane_tests;
 pub mod xlsx;
 
-pub use commands::{command_of, element_json, floor_outline, opening_of, roof_footprint, run_category_of, runs_of, stood_of};
+pub use commands::{
+    command_of, element_json, element_json_with, floor_outline, opening_of, roof_footprint, run_category_of, runs_of, stood_of,
+};
 
 #[cfg(test)]
 mod connector_tests;

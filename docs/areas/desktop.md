@@ -298,6 +298,12 @@ Properties' filter. With a selection of several categories, the line under the T
 and edits, the selection staying as it is: `BimApp::palette_ids` is the selection narrowed to it, and the palette's subject, the Type
 Selector, Edit Type (from the palette, the ribbon or the right-click menu) and every edit the palette sends read it, never the selection.
 `palette_filter` keeps the selection it was picked for, so a new selection starts it over.
+What the palette reads of its elements, `element_json`, it reads several times a frame (the Type Selector, the rows, a family's
+parameters), and a component's says the room it stands in, which costs its level's room boundaries: `BimApp::elements_json` keeps
+each element's for the model it was found in (`palette_json`, by a `Weak<Model>` as the canvas keeps room outlines) and finds what it
+lacks together, among one `Rooms`, so a level's rooms are found once for the whole selection. On the 20-storey highrise with two rooms
+a storey, 50 selected components cost 180 ms a frame read afresh; kept, 0.004 ms, and the frame after a change 3 ms on one level, 27 ms
+over all twenty. Select All Instances shares one `Rooms` over what the view shows the same way.
 
 View Templates (`templates.rs`). VT and View > View Templates open it as Revit's does, in the look Type Properties has: on the left a tab for each
 kind of view (`ViewKind`: Plan, Elevation/Section, 3D; a template of no kind is on every tab), the templates of the one showing, and Duplicate…,
