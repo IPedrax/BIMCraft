@@ -455,11 +455,11 @@ msgstr "Rum"
 msgid "Room Schedule"
 msgstr "Rumsförteckning"
 
-#: crates/core/src/sheet.rs:321
+#: crates/core/src/sheet.rs:322
 msgid "SCALE"
 msgstr "SKALA"
 
-#: crates/core/src/sheet.rs:323
+#: crates/core/src/sheet.rs:324
 msgid "SCALE AS INDICATED"
 msgstr "SKALA ENLIGT ANGIVELSE"
 
@@ -580,7 +580,7 @@ msgstr "Platta 300"
 msgid "Timber"
 msgstr "Trä"
 
-#: crates/core/src/sheet.rs:260
+#: crates/core/src/sheet.rs:261
 msgid "Total"
 msgstr "Totalt"
 

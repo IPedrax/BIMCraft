@@ -128,6 +128,29 @@ mod tests {
     }
 
     #[test]
+    fn overflowing_views_preserve_the_printed_border_and_title_block() {
+        let mut s = project("A3");
+        place(&mut s, "Plan 1", 10.0);
+        let before = tiny_skia::Pixmap::decode_png(&render::png(&drawing(&s)).unwrap()).unwrap();
+        // The same four-plan A3 journey as the public CLI reproduction.
+        for n in 2..=4 {
+            place(&mut s, &format!("Plan {n}"), 10.0);
+        }
+        let after = tiny_skia::Pixmap::decode_png(&render::png(&drawing(&s)).unwrap()).unwrap();
+        // ISO A3 at 5 px/mm: borders x=20/410, y=10/287; the title block is x=230..410, y=10..50.
+        // Include the stroke's antialiased edges in the comparison, with raster y increasing downwards.
+        for [left, top, right, bottom] in
+            [[98, 48, 103, 1438], [2048, 48, 2053, 1438], [98, 48, 2053, 53], [98, 1433, 2053, 1438], [1148, 1233, 2053, 1438]]
+        {
+            for y in top..bottom {
+                for x in left..right {
+                    assert_eq!(after.pixel(x, y), before.pixel(x, y), "overflow must preserve sheet graphics at ({x}, {y})");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn a_first_long_title_fits_and_manual_positions_are_preserved() {
         let mut s = project("A3");
         let first = place(&mut s, &"W".repeat(100), 100.0);

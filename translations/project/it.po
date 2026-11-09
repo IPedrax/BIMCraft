@@ -455,11 +455,11 @@ msgstr "Zona"
 msgid "Room Schedule"
 msgstr "Abaco zone"
 
-#: crates/core/src/sheet.rs:321
+#: crates/core/src/sheet.rs:322
 msgid "SCALE"
 msgstr "SCALA"
 
-#: crates/core/src/sheet.rs:323
+#: crates/core/src/sheet.rs:324
 msgid "SCALE AS INDICATED"
 msgstr "SCALA COME INDICATO"
 
@@ -580,7 +580,7 @@ msgstr "Piastrella 300"
 msgid "Timber"
 msgstr "Legno"
 
-#: crates/core/src/sheet.rs:260
+#: crates/core/src/sheet.rs:261
 msgid "Total"
 msgstr "Totale"
 

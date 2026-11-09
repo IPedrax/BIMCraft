@@ -6833,11 +6833,11 @@ msgstr "Rund"
 msgid "Runs the plugin's command"
 msgstr ""
 
-#: crates/core/src/sheet.rs:321
+#: crates/core/src/sheet.rs:322
 msgid "SCALE"
 msgstr "MASSSTAB"
 
-#: crates/core/src/sheet.rs:323
+#: crates/core/src/sheet.rs:324
 msgid "SCALE AS INDICATED"
 msgstr "MASSSTAB WIE ANGEGEBEN"
 

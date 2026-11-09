@@ -174,7 +174,8 @@ pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
         .collect();
     // Prefer the topmost free candidate, then the leftmost.
     spots.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.total_cmp(&b.0)));
-    spots.into_iter().find(free).unwrap_or(beside)
+    // Keep overflow backgrounds wholly beyond the paper so they cannot erase its border or title block.
+    spots.into_iter().find(free).unwrap_or(P2(right.max(paper.0) + GAP - taken[0], middle.1))
 }
 
 /// `text` with its left end at paper point `at` (mm), capitals `height` mm tall.
