@@ -96,7 +96,8 @@ are off; a click opens Settings at Agents.
 A script request may ask for a dry run (`"dry_run": true`, `Session::script_dry_run`): the window runs it all or nothing, takes it
 back and replies with what it would make, change and remove and the warnings the model would have, so the user's project and
 undo history are as they were. It only reads, so it answers where agents may only read too, and a line that names a file or
-would save, undo, redo or replace the project is refused.
+would save, undo, redo or replace the project is refused, as is a `favorite` other than `list`: saving or deleting one writes the
+user's favorites file, outside the project, even with no `path` given.
 
 The interface's language is `lang::Lang`: a project's language, or Simplified Chinese (issue 38), which only the window speaks
 (a drawing's lettering, `font.rs`, is drawn in code and has no hanzi, so a project is never in Chinese and `Lang::project()` gives

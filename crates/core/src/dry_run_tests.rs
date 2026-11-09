@@ -105,3 +105,67 @@ fn a_dry_run_of_something_that_changes_no_element_says_so() {
     let r = s.script_dry_run("inspect").unwrap();
     assert_eq!(r["other_changes"], false);
 }
+
+/// What the favorites are where no `path` is given ([`crate::favorites::default_path`]): in the user's own folder, outside the
+/// project. Run in a child of this test with `BIMCRAFT_FAVORITES` at a file of the test's own, so the user's are never touched,
+/// even by a dry run that wrongly let a line through.
+#[test]
+fn a_dry_run_leaves_the_users_favorites_as_they_were() {
+    const CHILD: &str = "BIMCRAFT_DRY_RUN_FAVORITES_TEST";
+    if let Some(file) = std::env::var_os(CHILD).map(std::path::PathBuf::from) {
+        assert_eq!(crate::favorites::default_path(), Some(file.clone()), "the favorites are the test's, not the user's");
+        let mut s = house();
+        s.execute("material", &json!({"name": "My Oak", "color": "#a0703c"})).unwrap();
+        // A material called `save`, whose GUID a command reads as its name: an `action` that is `save` once it runs.
+        s.execute("material", &json!({"name": "save", "color": "#808080"})).unwrap();
+        let save = s.model.library.guid(&crate::library::Kind::Material, "save").unwrap().to_string();
+        let refused = |s: &mut Session, line: &str| {
+            let e = s.script_dry_run(&format!("level {{\"elevation\": 3000}}\n{line}")).unwrap_err();
+            assert!(
+                e.contains("line 2 (favorite)") && e.contains("favorites file, outside the project") && e.contains("dry run"),
+                "{line}: {e}"
+            );
+            e
+        };
+        // None kept yet: saving one is refused and makes no file.
+        let e = refused(&mut s, "favorite {\"action\": \"save\", \"name\": \"My Oak\"}");
+        assert!(e.contains("would save a favorite") && e.contains("only `list`"), "it says why, and what may run: {e}");
+        refused(&mut s, "favorite {\"action\": \"save\", \"kind\": \"material\", \"name\": \"My Oak\", \"as\": \"Oak\"}");
+        assert!(!file.exists(), "a dry run wrote the favorites");
+        // One kept: deleting it, or saving over it, is refused and leaves the file as it was.
+        s.execute("favorite", &json!({"action": "save", "name": "My Oak"})).unwrap();
+        let saved = s.execute("favorite", &json!({"action": save, "name": "My Oak", "as": "Oak by GUID"})).unwrap();
+        assert_eq!(saved["saved"], "Oak by GUID", "the GUID saves, run for real: {saved}");
+        let kept = std::fs::read(&file).unwrap();
+        let (model, history) = (Arc::clone(&s.model), s.history());
+        assert!(refused(&mut s, "favorite {\"action\": \"delete\", \"name\": \"My Oak\"}").contains("would delete a favorite"));
+        refused(&mut s, "favorite {\"action\": \"save\", \"name\": \"My Oak\"}");
+        // Whatever else a line asks of them (bringing one in, an action spelt otherwise) is refused too: a dry run only lists.
+        refused(&mut s, "favorite {\"action\": \"load\", \"name\": \"My Oak\", \"as\": \"Oak 2\"}");
+        refused(&mut s, "favorite {\"action\": \"Delete\", \"name\": \"My Oak\"}");
+        refused(&mut s, &format!("favorite {{\"action\": \"{save}\", \"name\": \"My Oak\", \"as\": \"Oak again\"}}"));
+        assert_eq!(std::fs::read(&file).unwrap(), kept, "a dry run changed the favorites");
+        assert!(Arc::ptr_eq(&s.model, &model));
+        assert_eq!(s.history(), history);
+        // Listing them only reads, which a dry run may.
+        let r = s.script_dry_run("favorite\nfavorite {\"action\": \"list\", \"kind\": \"material\"}").unwrap();
+        assert_eq!(r["results"][0]["materials"][0]["name"], "My Oak", "{r}");
+        assert_eq!(r["results"][1]["materials"][0]["name"], "My Oak", "{r}");
+        assert_eq!(std::fs::read(&file).unwrap(), kept);
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("bimcraft-dry-run-favorites-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("favorites.json");
+    let out = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "dry_run_tests::a_dry_run_leaves_the_users_favorites_as_they_were", "--nocapture", "--test-threads=1"])
+        .env(CHILD, &file)
+        .env("BIMCRAFT_FAVORITES", &file)
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    let said = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{said}{}", String::from_utf8_lossy(&out.stderr));
+    assert!(said.contains("1 passed"), "the child ran the test: {said}");
+}

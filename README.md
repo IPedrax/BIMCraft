@@ -324,7 +324,8 @@ A script stops at its first failing line and names it. Through MCP, `script {"te
 a line that fails takes back the lines before it, and one that goes through is a single undo step. With `"dry_run": true` it
 is tried that way and taken back: the reply lists what it would make, change and remove, whether it would change anything else,
 and the warnings the model would have, and the project and its history stay as they were. A dry run touches no file, so it
-refuses a line that names one or would save, undo, redo or replace the project; it only reads, so a read-only agent may use it.
+refuses a line that names one or would save, undo, redo or replace the project, and a `favorite` that does more than list the
+user's favorites, which are kept in a file of their own; it only reads, so a read-only agent may use it.
 
 ```sh
 bimcraft-cli run --script house.txt --save house.ifc

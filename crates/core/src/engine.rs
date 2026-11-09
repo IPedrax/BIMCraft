@@ -398,8 +398,9 @@ impl Session {
     /// whether it would change anything else (the library, the phases, the settings), and the warnings the model would then
     /// have, with each line's result. The project, its history, the phase and option things are made in and its file are left
     /// as they were, and the next id with them. A dry run touches no file and keeps the history: a line that would open, write
-    /// or name a file (a `path` or `save`), start or replace the project, save, undo or redo is refused before any line runs.
-    /// It only reads the project, so a session that may only read ([`Session::read_only`]) may try a script too.
+    /// or name a file (a `path` or `save`), start or replace the project, save, undo or redo is refused before any line runs,
+    /// and so is a `favorite` that does more than list the user's favorites ([`favorite_past_listing`]), whose file is outside
+    /// the project. It only reads the project, so a session that may only read ([`Session::read_only`]) may try a script too.
     pub fn script_dry_run(&mut self, text: &str) -> Result<Value, String> {
         for (n, line) in text.lines().map(str::trim).enumerate() {
             let Some(id) = line.split_whitespace().next().filter(|id| !id.starts_with('#')) else { continue };
@@ -412,7 +413,10 @@ impl Session {
             } else if matches!(cmd.id, "save" | "autosave" | "undo" | "redo") {
                 Some(format!("{} the project", if cmd.id == "autosave" { "save" } else { cmd.id }))
             } else {
-                files.map(|key| format!("name a file (`{key}`)"))
+                files.map(|key| format!("name a file (`{key}`)")).or_else(|| match cmd.id {
+                    "favorite" => favorite_past_listing(&params),
+                    _ => None,
+                })
             };
             if let Some(what) = what {
                 return Err(format!(
@@ -606,6 +610,25 @@ fn same_file(a: &Path, b: &Path) -> bool {
         (Ok(a), Ok(b)) => a == b,
         _ => a == b,
     }
+}
+
+/// What a `favorite` line would do past listing the user's favorites, said for a dry run that refuses it. With no `path`, the
+/// favorites are a file of the user's own ([`crate::favorites::default_path`]), outside the project: `save` and `delete` write
+/// it. Only `list` (or no `action`) passes; anything else is refused, `load` too, and a library entry's GUID, which [`named`]
+/// would put as its name before the command reads it (an entry may be called `save`).
+fn favorite_past_listing(params: &Value) -> Option<String> {
+    let action = match params.get("action") {
+        None | Some(Value::Null) => return None,
+        Some(Value::String(a)) if a == "list" => return None,
+        Some(Value::String(a)) => a.clone(),
+        Some(other) => other.to_string(),
+    };
+    let what = match action.as_str() {
+        "save" | "delete" => format!("{action} a favorite in the user's favorites file, outside the project"),
+        "load" => "bring a favorite in from the user's favorites file, outside the project".to_string(),
+        _ => format!("use the user's favorites file, outside the project, for `action` {action}"),
+    };
+    Some(format!("{what} (only `list` may run)"))
 }
 
 /// `params` with every string that is a library entry's GUID put as the entry's name; none when there's no such string.

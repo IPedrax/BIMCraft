@@ -113,7 +113,7 @@ fn tools() -> Value {
         {"name": "script", "description": "Run several commands, one per line: `wall {\"points\": [[0,0],[4000,0]]}`. Stops at the first failing line and names it; the lines before it stay done, each its own undo step. \
             With `atomic`, all or nothing: a failing line takes back the lines before it, and a script that goes through is one undo step. \
             With `dry_run`, tried all or nothing and taken back: the reply lists what it would make, change and remove (`made`, `changed`, `removed`, by id and category), \
-            whether it would change anything else (`other_changes`) and the model's `warnings` after it, and nothing of it stays. A dry run refuses a line that names a file or would save, undo, redo or replace the project.",
+            whether it would change anything else (`other_changes`) and the model's `warnings` after it, and nothing of it stays. A dry run refuses a line that names a file or would save, undo, redo or replace the project, and a `favorite` other than `list`, which would use the user's favorites file.",
          "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "atomic": {"type": "boolean"}, "dry_run": {"type": "boolean"}}, "required": ["text"]}},
         {"name": "list_commands", "description": "Every command with its id, label, Revit-style shortcut, parameters and the menu it sits in (`menu`, null when the interface has no place for it). `filter` matches part of an id, label or shortcut.",
          "inputSchema": {"type": "object", "properties": {"filter": {"type": "string"}}}},
