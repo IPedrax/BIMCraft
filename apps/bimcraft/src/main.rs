@@ -122,6 +122,9 @@ fn main() -> ExitCode {
     session.reset(model, path);
     let mut app = BimApp::new(session);
     app.lang = language;
+    // The plugin folder is read on a thread of its own: the window comes up at once, and the plugins' tabs and commands
+    // are in place a frame or two later (BIMCRAFT_PLUGINS overrides the folder; empty disables them).
+    app.load_plugins_soon(bimcraft_plugin::default_folder());
     // Given nothing to open, the window opens on the start page.
     if args.is_empty() {
         app.show_start_page();
@@ -213,6 +216,9 @@ fn main() -> ExitCode {
         if let Some(updates) = app.updates.as_mut() {
             updates.check_at_startup();
         }
+        // The 3D mouse is read on a thread of its own too, which wakes the window as its cap moves.
+        let ctx = cc.egui_ctx.clone();
+        app.space_mouse = bimcraft_ui_egui::spacemouse::SpaceMouse::start(move || ctx.request_repaint());
         Ok(Box::new(app))
     };
     match eframe::run_native("BIMCraft", options, Box::new(start)) {

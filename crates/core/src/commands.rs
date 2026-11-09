@@ -12,7 +12,7 @@ use serde_json::{Map, Value, json};
 
 use crate::cad::{Cad, Colors};
 use crate::cloud::{self, Cloud};
-use crate::engine::{Command, Run, Session};
+use crate::engine::{Command, Files, Run, Session};
 use crate::favorites::{self, FamilyEntry, Favorites, MaterialEntry};
 use crate::fills::{FillPattern, FilledRegion, FilledRegionType, Target};
 use crate::geom::{self, P2};
@@ -43,12 +43,29 @@ use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
 type R = Result<Value, String>;
 
 const fn edit(id: &'static str, label: &'static str, aliases: &'static [&'static str], params: &'static str, run: Run) -> Command {
-    Command { id, label, aliases, params, run, undoable: true, menu: None }
+    Command { id, label, aliases, params, run, undoable: true, menu: None, files: Files::None }
 }
 
 /// A command that is no undo step: it only reads, or replaces the whole project.
 const fn other(id: &'static str, label: &'static str, params: &'static str, run: Run) -> Command {
-    Command { id, label, aliases: &[], params, run, undoable: false, menu: None }
+    Command { id, label, aliases: &[], params, run, undoable: false, menu: None, files: Files::None }
+}
+
+/// An [`edit`] that touches the disk.
+const fn edit_files(
+    id: &'static str,
+    label: &'static str,
+    aliases: &'static [&'static str],
+    params: &'static str,
+    run: Run,
+    files: Files,
+) -> Command {
+    Command { id, label, aliases, params, run, undoable: true, menu: None, files }
+}
+
+/// An [`other`] that touches the disk.
+const fn other_files(id: &'static str, label: &'static str, params: &'static str, run: Run, files: Files) -> Command {
+    Command { id, label, aliases: &[], params, run, undoable: false, menu: None, files }
 }
 
 pub static ALL: &[Command] = &[
@@ -59,12 +76,13 @@ pub static ALL: &[Command] = &[
          Nível 2 in Portuguese; Nivel 1, Nivel 2 in Spanish; Nivå 1, Nivå 2 in Swedish; Niveau 1, Niveau 2 in Dutch)",
         new,
     ),
-    other(
+other_files(
         "open",
         "Open",
         "{path} a .bimcraft project (under 256 MiB), or an .ifc (under 512 MiB) read into a new one (its `elements` by \
          category, `generic` the components of IFC classes BIMCraft has no element for, `skipped` what was left out and why)",
         open,
+        Files::Read,
     ),
     other("highrise", "Synthetic Highrise", "{storeys?: 20} replace the project with an original 1–80 storey performance sample", highrise),
     other(
@@ -79,19 +97,21 @@ pub static ALL: &[Command] = &[
          section and schedules (A0-000, A5- to A7-)",
         tower,
     ),
-    other(
+    other_files(
         "autosave",
         ui_msg!("Autosave"),
         "{path} atomically write a recovery snapshot, keeping the project path and undo history",
         autosave,
+        Files::Write,
     ),
-    other(
+    other_files(
         "recover",
         "Recover Autosave",
         "{path, project?} open and validate a recovery snapshot; Save targets `project`, or asks for Save As without it",
         recover,
+        Files::Read,
     ),
-    edit(
+    edit_files(
         "insert",
         "Insert from File",
         &[],
@@ -104,8 +124,9 @@ pub static ALL: &[Command] = &[
          patterns), fill patterns, filled region types and detail groups a detail line, a filled region or a group uses. Returns `ids` {there: here}, \
          `copies`, `library`, `left_out`",
         insert_from,
+        Files::Read,
     ),
-    edit(
+    edit_files(
         "link",
         "Link Model",
         &["LK"],
@@ -120,16 +141,18 @@ pub static ALL: &[Command] = &[
          (its active location, or `location`), by this project's active location: worked out each time it is drawn, never \
          written into its file. Returns `id`, `name`, `elements`, and where it stands: `at`, `angle`, `raised`",
         link_model,
+        Files::Read,
     )
     .menu("Manage > Link Model"),
-    other(
+    other_files(
         "reload",
         "Reload Links",
         "{id?} read the file of the link `id`, or of every link, again: for a project that changed on disk. Returns `reloaded` \
          (the names) and `failed` ({name, error})",
         reload,
+        Files::Read,
     ),
-    other(
+    other_files(
         "save",
         "Save",
         "{path?, ifc_origin?} .bimcraft saves the project (Save As with a path); .ifc exports IFC4, its coordinates' origin at \
@@ -139,6 +162,7 @@ pub static ALL: &[Command] = &[
          glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns `elements` and \
          `triangles`); .svg or .png exports the lowest level's plan; .pdf prints every sheet, a page each",
         save,
+        Files::Write,
     ),
     other("undo", "Undo", "{count?} takes back the last `count` steps (1 by default)", undo),
     other("redo", "Redo", "{count?} does again the last `count` steps undone (1 by default)", redo),
@@ -154,7 +178,7 @@ pub static ALL: &[Command] = &[
     )
     .menu("Architecture > Level"),
     edit("grid", ui_msg!("Grid"), &["GR"], "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", grid).menu("Architecture > Grid"),
-    edit(
+    edit_files(
         "point_cloud",
         "Point Cloud",
         &[],
@@ -166,8 +190,9 @@ pub static ALL: &[Command] = &[
          (`acquire: true` first sets the location from the scan, so its middle lands at the origin and its foot on 0); `offset` raises its middle over the level, `angle` turns it. Returns its id, the \
          scan's name, the points kept and read, and where its middle was in the file",
         point_cloud,
+        Files::Read,
     ),
-    edit(
+    edit_files(
         "import_cad",
         "Import CAD",
         &[],
@@ -183,6 +208,7 @@ pub static ALL: &[Command] = &[
          and opening the project read it again. Returns its id, the drawing's name, its unit, entities and layers, its extents \
          in the model, how many entities lie far from the rest (they're left out of its extents) and what was left out, with `notes` on what a DWG's read left out",
         import_cad,
+        Files::Read,
     ),
     edit(
         "cad_layers",
@@ -193,13 +219,14 @@ pub static ALL: &[Command] = &[
          Visibility/Graphics, by the drawing's name)",
         cad_layers,
     ),
-    edit(
+    edit_files(
         "reload_cad",
         "Reload CAD",
         &[],
         "{cad} reads a linked CAD drawing's file again, so every import of it shows what the file holds now (opening the project \
          does too). Returns whether it changed",
         reload_cad,
+        Files::Read,
     ),
     other(
         "cad_query",
@@ -1065,7 +1092,7 @@ pub static ALL: &[Command] = &[
          have `layers` too, from the top down; a layer's `material` is one of the library's (see `material`)",
         edit_type,
     ),
-    edit(
+    edit_files(
         "material",
         "Materials",
         &[],
@@ -1083,9 +1110,10 @@ pub static ALL: &[Command] = &[
          takes the texture away. `rename` renames it, the layers using it following; `delete` takes it away, while no layer \
          uses it. `inspect` lists the library and the pictures",
         material,
+        Files::Conditional,
     )
     .menu("Manage > Materials"),
-    edit(
+    edit_files(
         "favorite",
         "Favorites",
         &[],
@@ -1095,6 +1123,7 @@ pub static ALL: &[Command] = &[
          made of), under another name with `as`; `load` a favorite into the project, under another name with `as`, or over \
          one it has already with `replace`; `delete` one from the favorites; `list` them (the default)",
         favorite,
+        Files::Conditional,
     )
     .menu("Manage > Favorites"),
     edit(
@@ -1119,7 +1148,7 @@ pub static ALL: &[Command] = &[
         parameter,
     )
     .menu("Manage > Project Parameters"),
-    edit(
+    edit_files(
         "family",
         "Load Family",
         &[],
@@ -1133,8 +1162,9 @@ pub static ALL: &[Command] = &[
          drain: floor_drain|floor_waste|roof_drain; pipefitting: bend|tee|cross|transition|coupling; \"\" clears it), \
          ifc?: {class, predefined?, object_type?} | null (the IFC class a generic family's components go out as, which one \
          opened from IFC remembers: `IFCPLATE`, `CURTAIN_PANEL`; one IFC4 lacks goes out as a proxy that names it), \
-         connectors?: [{kind: power|switch, system: power-balanced|power-unbalanced|switch, poles?: 1-3, voltage?, load_va?, \
-         power_factor?, classification?}], rename?, delete?: true, dry_run?, path?, save?} a family of \
+         connectors?: [{kind: power|switch|pipe|data|earthing, name?, system?: power-balanced|power-unbalanced|switch, \
+         domain?: cold|hot|waste|vent|storm|gas, flow?: in|out|both, at?: [x, y, z], direction?: [x, y, z], size?, poles?: 1-3, \
+         voltage?, load_va?, power_factor?, classification?}], rename?, delete?: true, dry_run?, path?, save?} a family of \
          the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .json file at `path` (a \
          family as `inspect` shows it, with its `name`). Without `name` it lists the project's families, each its category and \
          how many types, forms and symbols it has; with only a `name` it reads one — its definition, each of its types' \
@@ -1162,7 +1192,13 @@ pub static ALL: &[Command] = &[
          `inspect` lists the families. A device's `connectors` say what it draws: one `power` connector at most (a second is \
          refused), `voltage` in volts, `load_va` in VA (a number or a formula over its parameters, so each type has its load; \
          `power-unbalanced` may take a list, one load for each pole), `power_factor` over 0 up to 1, and its `classification` \
-         (`lighting`…); a `switch` connector carries no load. A component reports them as `connectors` in `elements`; a \
+         (`lighting`…); a `switch` connector carries no load; both have a `system`. A `pipe` connector is where a pipe \
+         meets the family: its `domain` (cold or hot water, waste, vent, storm, gas), its `flow` (`in` as water into a basin, `out` as \
+         waste from a WC, `both` the default), `at` (where it is, mm, in the family's axes: x along it, y to its left, z up from its \
+         base), `direction` (the way the pipe leaves it, any length but none) and `size` (its DN, mm); a `data` or `earthing` \
+         connector has `at` and may have `direction` and `size`; an electrical one may have `at` and `direction`. Each of `at`, \
+         `direction` and `size` is a number or a formula over the family's parameters. A component reports them as \
+         `connectors` in `elements`, with `at` and `direction` in the model, where it stands; a \
          lighting, outlet or switch family without one counts as zero load, which `inspect` warns of; `connectors` replace \
          their own, as `parameters`, `forms` and `symbols` do. The `symbols` of a family of any category are what its plan \
          draws besides its forms, in its own axes, turned and moved (and mirrored) with the component or opening and hidden at \
@@ -1175,6 +1211,7 @@ pub static ALL: &[Command] = &[
          a solid disc in ink of a radius above zero. Symbols draw in the plan and ceiling plan of the component's level whatever height \
          it has, and on no other level's. IFC leaves symbols out",
         family,
+        Files::Conditional,
     )
     .menu("Manage > Family Editor"),
     edit(
@@ -1436,7 +1473,7 @@ pub static ALL: &[Command] = &[
          edge, `from` and `to`, or with `remove` how many were `removed`",
         linework,
     ),
-    edit(
+    edit_files(
         "import_fill_patterns",
         "Import Fill Patterns",
         &[],
@@ -1447,16 +1484,18 @@ pub static ALL: &[Command] = &[
          up to its first 2000 patterns. It returns those `imported`, those `left_out` (the first 100, each with why) and \
          `left_out_count`, all of them",
         import_fill_patterns,
+        Files::Read,
     ),
-    other(
+    other_files(
         "export_crosscheck",
         "Export Cross-Check",
         "{path?} the project's levels, walls (by their centre lines), floors, shafts, doors, windows and rooms as plain \
          numbers in mm, which tools/revit-crosscheck builds again in another BIM tool to hold its numbers against ours \
          (compare_crosscheck): written to `path`, or returned as `description` without it",
         export_crosscheck,
+        Files::Write,
     ),
-    other(
+    other_files(
         "compare_crosscheck",
         "Compare Cross-Check",
         "{path? | text?} another tool's numbers of the project export_crosscheck described, a table `kind,id,quantity,value` \
@@ -1464,13 +1503,15 @@ pub static ALL: &[Command] = &[
          `path` or `text`, held against the project's own: how many were `compared`, those that `differ` (ours and \
          theirs), and those `only_ours` and `only_theirs`, the first 100 of each with their counts",
         compare_crosscheck,
+        Files::Read,
     ),
-    other(
+    other_files(
         "export_fill_patterns",
         "Export Fill Patterns",
         "{path?, names?: [name, …]} the project's fill patterns (those `names` says, else all but the solid ones, which a PAT \
          file can't hold) as a PAT file in mm, written to `path`, or returned as `text` without it",
         export_fill_patterns,
+        Files::Write,
     ),
     edit(
         "filled_region_type",
@@ -1642,6 +1683,20 @@ pub static ALL: &[Command] = &[
     )
     .menu("Manage > Room Area Computation"),
     edit(
+        "georeference",
+        "Project Location",
+        &[],
+        "{crs?, eastings?, northings?, height?, rotation?, scale?, description?, geodetic_datum?, vertical_datum?, map_projection?, \
+         map_zone?, clear?: true} where the project lies on a map, as IFC's map conversion to a projected coordinate reference \
+         system: the CRS by name (an EPSG code, `EPSG:31983`) and what else is known of it, the map point of the project's origin \
+         (`eastings`, `northings`, `height`, mm), how far the project's x axis is turned from the map's east (`rotation`, degrees \
+         counterclockwise) and a distance on the map over the same in the project (`scale`, 1 as it starts). A project with none \
+         takes one with `crs`; what isn't given keeps its value. `clear` takes it away. With nothing, it says it (null for none). \
+         IFC import keeps the file's (moved with the model where the import brings it near the origin) and export writes it back as \
+         IfcMapConversion to an IfcProjectedCRS in metres; the model's own coordinates and drawings don't move",
+        georeference,
+    ),
+    edit(
         "language",
         "Project Language",
         &[],
@@ -1663,8 +1718,14 @@ pub static ALL: &[Command] = &[
         standard,
     )
     .menu("Manage > Technical Standards"),
-    other("inspect", "Inspect", "{} levels, element counts, types, warnings and undo history", inspect),
     other(
+        "inspect",
+        "Inspect",
+        "{brief?} levels, element counts, types, warnings and undo history; with `brief` the library is its size only \
+         (`library`), not its types, materials, families, parameters and images, which is most of the answer",
+        inspect,
+    ),
+    other_files(
         "render",
         "Render",
         "{family?, type?, mode?: 3d|plan|elevation, wall_thickness?, view?: a level's, section's or elevation's name or id, a sheet's \
@@ -1680,8 +1741,9 @@ pub static ALL: &[Command] = &[
          elevation or sheet that could not draw something as asked (a fill pattern too dense for the view, more ink behind \
          a region than is kept above it) says so in the reply's `notes`",
         render_view,
+        Files::Conditional,
     ),
-    edit(
+    edit_files(
         "schedule",
         ui_msg!("Schedule"),
         &[],
@@ -1705,6 +1767,7 @@ pub static ALL: &[Command] = &[
          `grouped`, a row for each set of the sort fields' values: Count and totals summed, and a field whose values differ \
          left empty. Each one given replaces the last; `fields: []` goes back to its category's",
         schedule,
+        Files::Write,
     ),
     edit(
         "graphics",
@@ -1896,6 +1959,7 @@ pub static ALL: &[Command] = &[
         run: measure,
         undoable: false,
         menu: None,
+        files: Files::None,
     },
     other(
         "circuit",
@@ -1972,8 +2036,11 @@ pub static ALL: &[Command] = &[
     other(
         "load_points",
         "Residential Load Points",
-        "{rooms?: [{name, area, perimeter, kind?: bath|kitchen|service|dry|veranda|other, points?}], alternative?} the lighting and the \
-         general-use outlets (TUG) of a dwelling's rooms as NBR 5410:2004 item 9.5.2 asks. The rooms are `rooms` (`area` in m², \
+        "{rooms?: [{name, area, perimeter, kind?: bath|kitchen|service|dry|veranda|other, points?}], alternative?, standard?} the lighting \
+         and the general-use outlets (TUG) of a dwelling's rooms as NBR 5410:2004 item 9.5.2 asks. The numbers are data \
+         (`data/load-points.json`, one rule set for each standard, every row naming its source): `standard` names the set, \
+         `NBR 5410:2004` the default and only one so far, and the answer gives `standard`, `standard_source`, `lighting_source` and \
+         each room's `source`. The rooms are `rooms` (`area` in m², \
          `perimeter` in millimetres, `points` the outlets the room has, the least it needs when absent) or, without it, the rooms of the \
          model, measured inside the walls' finish. A room's kind is known by its name (Portuguese or English: banheiro, cozinha, copa, \
          área de serviço, lavanderia, sala, dormitório, varanda…) unless `kind` gives it; a name that says none is `other`. Lighting: 1 \
@@ -2030,13 +2097,18 @@ pub static ALL: &[Command] = &[
     other(
         "demand",
         "Demand and Service Category",
-        "{utility: CPFL|ENEL, building?: residential|other, system?: 127/220|220/380, area?, outlets?, lighting_points?, \
+        "{utility: CPFL|ENEL|CELESC, building?: residential|other, system?: 127/220|220/380, area?, outlets?, lighting_points?, \
          lighting_outlets?: {use, kw, pf?}, heaters?, boilers?, appliances?, stoves?: [{w, count?}], air_conditioners?: [{btu | va and w, \
          count?}], air_use?: residential|commercial, motors?: [{cv, phases: 1|3 | kva and kw, count?}], special?: [{kind: arc_weld|\
          resistance_weld|xray, kw, count?}], hydromassage?: [{w, count?}]} the demand D (kVA) of an installation and the category of \
          service it asks of the `utility`, by that utility's own standard, since NBR 5410 gives no demand factors. `utility` is \
          required: CPFL (GED 13 version 2.24, 18/09/2020: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (ET 1569 version 01, \
-         29/01/2024); any other is refused until its tables are added. ENEL does not work out a demand, for its specification leaves it \
+         29/01/2024) or CELESC (N-321.0001, revision of December 2025); any other is refused until its tables are added. \
+         CELESC, too, leaves the demand to the designer: `{utility: CELESC, network?: 220/380|220/440, installed_kw, phases?: \
+         1|2|3, demand_kva?}` gives the category of Tabela 01 by the installed load (A single-phase 220 V, M single-phase \
+         220/440 V, B two-phase, C three-phase), its breaker, phases and wires, the connection and entry branches and the \
+         earthing conductor; `phases` picks the supply an appliance asks for whatever the load. ENEL does not work out a \
+         demand, for its specification leaves it \
          to the designer (item 7.7.2): `{utility: ENEL, network: aerial|aerial_120_240|underground|underground_submersible, installed_kw, \
          phases?: 1|2|3, demand_kva?}` frames the supply by the installed load in kW: Anexo A (aerial, 127/220 V), C (aerial, 120/240 V), \
          D (underground, surface, 127/220 V) or E (underground, submersible): the category, the power it makes available (E prints none and \
@@ -2643,10 +2715,10 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             if let Some(v) = m.families.get(&cp.family).and_then(|f| f.values(&cp.type_name, &cp.params).ok()) {
                 extra.insert("values".into(), values_json(v));
             }
-            // What it draws, as its family's connectors say, for its type: none for a family with none.
-            if let Some(cs) = m.families.get(&cp.family).and_then(|f| f.connector_values(&cp.type_name, &cp.params).ok())
-                && !cs.is_empty()
-            {
+            // What it draws and where it joins a system, as its family's connectors say for its type, placed where it
+            // stands: none for a family with none.
+            let cs = m.component_connectors(cp);
+            if !cs.is_empty() {
                 extra.insert("connectors".into(), Value::Array(cs.iter().map(connector_json).collect()));
             }
             let base = m.elevation(cp.level) + cp.offset;
@@ -2942,7 +3014,11 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     if ext(&path) == "ifc" {
         let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let stem = path.file_stem().map_or_else(|| "Project".into(), |s| s.to_string_lossy().into_owned());
-        let i = crate::import::ifc(&bytes, &stem).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let file = crate::step::parse(&bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let seed = crate::import::seed(&bytes);
+        // The text is freed before the model is built from it, so the two are not both held at the peak.
+        drop(bytes);
+        let i = crate::import::from_step(file, &stem, seed).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
         for e in i.model.elements.values() {
             *counts.entry(e.category()).or_default() += 1;
@@ -5271,6 +5347,78 @@ fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
     }))
 }
 
+/// `demand` for Celesc: N-321.0001 classes a unit by its installed load (items 5.3.2.1 to 5.3.2.4, Tabela 01) and leaves a demand to
+/// the designer where a three-phase unit needs one (Tabela 01, note 1), so it frames the supply and carries the designer's demand.
+fn demand_celesc(p: &Value, utility: &str, source: &str) -> R {
+    use crate::demand::{self as d, CELESC_NETWORKS};
+    let c = "demand";
+    const KEYS: &[&str] = &["utility", "network", "installed_kw", "phases", "demand_kva"];
+    if let Some(k) = p.as_object().and_then(|o| o.keys().find(|k| !KEYS.contains(&k.as_str()))) {
+        return Err(bad(c, format!("`{k}` isn't one of CELESC's parameters: {}", KEYS.join(", "))));
+    }
+    let network = choice(c, p, "network", CELESC_NETWORKS, "220/380")?;
+    let phases = match p.get("phases").filter(|v| !v.is_null()) {
+        None => None,
+        Some(v) => match v.as_u64() {
+            Some(n @ 1..=3) => Some(n as u8),
+            _ => return Err(bad(c, format!("`phases` is 1, 2 or 3, got {v}"))),
+        },
+    };
+    if phases == Some(3) && network == "220/440" {
+        return Err(bad(c, "a 220/440 V network serves single-phase units only (Tabela 01: A and M); take `network: 220/380`"));
+    }
+    if absent(p.get("installed_kw")) {
+        return Err(bad(c, "`installed_kw` (the installed load in kW) is required"));
+    }
+    let kw = within(c, p, "installed_kw", 0.0, 0.0, 1.0e6)?;
+    let demand_kva = match p.get("demand_kva").filter(|v| !v.is_null()) {
+        None => None,
+        Some(_) => Some(within(c, p, "demand_kva", 0.0, 0.0, 1.0e6)?),
+    };
+    let row = d::celesc_pick(network, kw, phases);
+    let (category, note) = match row {
+        Some(r) => {
+            let cat = json!({
+                "name": r.name,
+                "installed_kw": {"over": r.lo, "up_to": r.hi},
+                "demand_kva": r.demand.map(|(lo, hi)| json!({"over": lo, "up_to": hi})),
+                "breaker_a": r.breaker,
+                "phases": r.phases,
+                "wires": r.wires,
+                "connection_mm2": {"copper": r.connection.0, "aluminium": r.connection.1},
+                "entry_mm2": r.entry,
+                "earthing_mm2": {"copper": r.earth.0, "copper_clad_steel": r.earth.1},
+            });
+            let note = match (r.demand, demand_kva) {
+                (Some((_, hi)), Some(dk)) if dk > hi => {
+                    json!(format!("the designer's demand, {dk} kVA, is above the {hi} kVA printed beside {}", r.name))
+                }
+                _ if r.breaker >= 125.0 => json!("a 125 A three-phase supply asks the designer for a demand (Tabela 01, note 1)"),
+                _ => Value::Null,
+            };
+            (cat, note)
+        }
+        None if network == "220/440" => (Value::Null, json!("above 50 kW a 220/440 V unit is past Tabela 01")),
+        None => (
+            Value::Null,
+            json!("above 75 kW the unit may be served in low voltage only as item 5.2.2.8 allows, with the designer's demand study"),
+        ),
+    };
+    Ok(json!({
+        "utility": utility,
+        "source": source,
+        "table": "01",
+        "network": network,
+        "installed_kw": kw,
+        "phases": phases,
+        "category": category,
+        "category_note": note,
+        "demand_kva": demand_kva,
+        "demand_note": "N-321.0001 gives no demand formula for a unit: Tabela 01 goes by the installed load, and a demand where one is needed is the designer's, carried as given",
+        "not_covered": "Tabela 01's conduits, galvanized steel mast and load branch, Tabela 02 (220 V without a neutral), and the probable demand of a building of several units (N-321.0003)",
+    }))
+}
+
 fn demand(_: &mut Session, p: &Value) -> R {
     use crate::demand::{self as d, Air, Load, Motor, OtherUse, SPECIAL_KINDS, Special, SpecialKind, System, USES};
     let c = "demand";
@@ -5318,10 +5466,15 @@ fn demand(_: &mut Session, p: &Value) -> R {
     if utility == "ENEL" {
         return demand_enel(p, &utility, source);
     }
+    if utility == "CELESC" {
+        return demand_celesc(p, &utility, source);
+    }
     if let Some(k) = ["network", "installed_kw", "demand_current_a", "phases", "demand_kva"].iter().find(|k| p.get(**k).is_some()) {
         return Err(bad(
             c,
-            format!("`{k}` is for utility ENEL: {utility}'s standard takes the loads of its examples, not a category by installed load"),
+            format!(
+                "`{k}` is for utilities ENEL and CELESC: {utility}'s standard takes the loads of its examples, not a category by installed load"
+            ),
         ));
     }
     let system = System::parse(choice(c, p, "system", &["127/220", "220/380"], "127/220")?).unwrap_or(System::S127_220);
@@ -5665,8 +5818,11 @@ fn load_points(s: &mut Session, p: &Value) -> R {
     if !p.is_object() {
         return Err(bad(c, "params must be an object"));
     }
-    only(c, p, &["rooms", "alternative"])?;
+    only(c, p, &["rooms", "alternative", "standard"])?;
     let alternative = flag(c, p, "alternative")?;
+    let names: Vec<&str> = loads::rule_sets().iter().map(|r| r.standard.as_str()).collect();
+    let standard = choice(c, p, "standard", &names, loads::DEFAULT)?;
+    let set = loads::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/load-points.json")))?;
     let round = |x: f64| (x * 100.0).round() / 100.0 + 0.0;
     // (name, kind, area m2, perimeter m, points, kind given)
     let mut input: Vec<(String, Kind, f64, f64, Option<u32>, bool)> = Vec::new();
@@ -5717,7 +5873,7 @@ fn load_points(s: &mut Session, p: &Value) -> R {
     }
     let rooms: Vec<loads::Room> =
         input.iter().map(|r| loads::Room { name: &r.0, kind: r.1, area: r.2, perimeter: r.3, provided: r.4 }).collect();
-    let t = loads::total(&rooms, alternative);
+    let t = set.total(&rooms, alternative);
     let mut list = Vec::new();
     for (r, sh) in input.iter().zip(&t.rooms) {
         let mut o = Map::new();
@@ -5734,12 +5890,16 @@ fn load_points(s: &mut Session, p: &Value) -> R {
             o.insert("counter_outlets".into(), json!(sh.counter_outlets));
         }
         o.insert("ok".into(), json!(sh.points >= sh.minimum));
+        o.insert("source".into(), json!(set.room(r.1).source));
         if r.1 == Kind::Other && !r.5 {
             o.insert("note".into(), json!("the name says no kind of room: treated as `other`; give `kind`"));
         }
         list.push(Value::Object(o));
     }
     Ok(json!({
+        "standard": set.standard,
+        "standard_source": set.source,
+        "lighting_source": set.lighting.source,
         "rooms": list,
         "skipped": skipped,
         "lighting_va": t.lighting_va,
@@ -11451,13 +11611,42 @@ fn favorite(s: &mut Session, p: &Value) -> R {
 }
 
 /// The families, each its category, its types and its parameters' names.
-/// A connector, worked out, as JSON: its load in VA in all and in each phase.
-fn connector_json(c: &crate::family::ConnectorValues) -> Value {
-    json!({
-        "id": c.id, "guid": c.guid, "kind": c.kind, "system": c.system, "poles": c.poles, "voltage": c.voltage,
-        "load_va": c.load_va, "load_va_by_phase": c.load_va_by_phase, "power_factor": c.power_factor,
-        "classification": c.classification,
-    })
+/// A connector, worked out, as JSON: an electrical one's load in VA in all and in each phase; a pipe one's domain, flow and
+/// size; and, placed, where it is and the way it faces in the model.
+fn connector_json((c, at, direction): &crate::family::PlacedConnector) -> Value {
+    let mut o = json!({"id": c.id, "guid": c.guid, "kind": c.kind});
+    if !c.name.is_empty() {
+        o["name"] = json!(c.name);
+    }
+    if c.kind.electrical() {
+        for (k, v) in [
+            ("system", json!(c.system)),
+            ("poles", json!(c.poles)),
+            ("voltage", json!(c.voltage)),
+            ("load_va", json!(c.load_va)),
+            ("load_va_by_phase", json!(c.load_va_by_phase)),
+            ("power_factor", json!(c.power_factor)),
+            ("classification", json!(c.classification)),
+        ] {
+            o[k] = v;
+        }
+    }
+    if let Some(d) = c.domain {
+        o["domain"] = json!(d);
+    }
+    if c.kind == crate::family::ConnectorKind::Pipe || c.flow != crate::family::Flow::Both {
+        o["flow"] = json!(c.flow);
+    }
+    if let Some(x) = c.size {
+        o["size"] = json!(x);
+    }
+    if let Some(p) = at {
+        o["at"] = json!(p);
+    }
+    if let Some(d) = direction {
+        o["direction"] = json!(d);
+    }
+    o
 }
 
 fn families(m: &Model) -> Value {
@@ -11470,7 +11659,13 @@ fn families(m: &Model) -> Value {
                 n.clone(),
                 json!({
                     "category": f.category, "types": f.types.keys().collect::<Vec<_>>(), "parameters": parameters,
-                    "connectors": f.connectors.iter().map(|c| json!({"kind": c.kind, "system": c.system})).collect::<Vec<_>>(),
+                    "connectors": f.connectors.iter().map(|c| {
+                        let mut o = json!({"kind": c.kind});
+                        if let Some(x) = c.system { o["system"] = json!(x); }
+                        if let Some(x) = c.domain { o["domain"] = json!(x); }
+                        if !c.name.is_empty() { o["name"] = json!(c.name); }
+                        o
+                    }).collect::<Vec<_>>(),
                 }),
             )
         })
@@ -13292,6 +13487,58 @@ fn room_area(s: &mut Session, p: &Value) -> R {
     Ok(json!({"at": s.model.room_area.name()}))
 }
 
+fn georeference(s: &mut Session, p: &Value) -> R {
+    let c = "georeference";
+    const TEXTS: [&str; 5] = ["description", "geodetic_datum", "vertical_datum", "map_projection", "map_zone"];
+    const NUMBERS: [&str; 5] = ["eastings", "northings", "height", "rotation", "scale"];
+    let keys: Vec<&str> = ["crs", "clear"].into_iter().chain(TEXTS).chain(NUMBERS).collect();
+    only(c, p, &keys)?;
+    let given = keys.iter().filter(|k| **k != "clear").any(|k| !absent(p.get(*k)));
+    match p.get("clear") {
+        None | Some(Value::Null) => {}
+        Some(Value::Bool(true)) if !given => {
+            if s.model.georeference.is_some() {
+                s.model_mut().georeference = None;
+            }
+            return Ok(json!({"georeference": null}));
+        }
+        Some(Value::Bool(true)) => return Err(bad(c, "`clear` takes the georeference away, and nothing else with it")),
+        Some(Value::Bool(false)) => {}
+        Some(_) => return Err(bad(c, "`clear` is true or false")),
+    }
+    if given {
+        let crs = string(c, p, "crs")?;
+        let mut g = match (&s.model.georeference, &crs) {
+            (Some(g), _) => g.clone(),
+            (None, Some(_)) => crate::model::Georeference { scale: 1.0, ..Default::default() },
+            (None, None) => {
+                return Err(bad(c, "the project has no georeference yet: give its coordinate reference system's name, `crs` (EPSG:31983)"));
+            }
+        };
+        if let Some(crs) = crs {
+            g.crs = crs;
+        }
+        let mut texts = [&mut g.description, &mut g.geodetic_datum, &mut g.vertical_datum, &mut g.map_projection, &mut g.map_zone];
+        for (key, field) in TEXTS.into_iter().zip(texts.iter_mut()) {
+            if let Some(t) = string(c, p, key)? {
+                **field = Some(t).filter(|t| !t.trim().is_empty());
+            }
+        }
+        // Map coordinates run past the model's own (`num`'s `MAX_COORD`): `Georeference::check` bounds them.
+        let mut numbers = [&mut g.eastings, &mut g.northings, &mut g.height, &mut g.rotation, &mut g.scale];
+        for (key, field) in NUMBERS.into_iter().zip(numbers.iter_mut()) {
+            if let Some(v) = p.get(key).filter(|v| !v.is_null()) {
+                **field = v.as_f64().filter(|x| x.is_finite()).ok_or_else(|| bad(c, format!("`{key}` must be a number, got {v}")))?;
+            }
+        }
+        g.check().map_err(|e| bad(c, e))?;
+        if s.model.georeference.as_ref() != Some(&g) {
+            s.model_mut().georeference = Some(g);
+        }
+    }
+    Ok(json!({"georeference": s.model.georeference}))
+}
+
 /// `kind` `from` is called `to` now: its library entry, and everything that names it.
 fn rename_entry(m: &mut Model, kind: &LibKind, from: &str, to: &str) {
     m.library.renamed(kind, from, to);
@@ -14079,7 +14326,12 @@ fn object_styles(s: &mut Session, p: &Value) -> R {
     Ok(json!({"categories": all}))
 }
 
-fn inspect(s: &mut Session, _: &Value) -> R {
+fn inspect(s: &mut Session, p: &Value) -> R {
+    let c = "inspect";
+    only(c, p, &["brief"])?;
+    // `brief`: everything but the library, whose maps are most of the answer and are its size here instead. A
+    // plugin pays for every byte of the answer in fuel, so a summary that needs no type or material asks for this.
+    let brief = p.get("brief").and_then(Value::as_bool).unwrap_or(false);
     let m = &s.model;
     let mut counts: BTreeMap<&str, u64> = BTreeMap::new();
     for e in m.elements.values() {
@@ -14087,15 +14339,45 @@ fn inspect(s: &mut Session, _: &Value) -> R {
     }
     let levels: Vec<Value> = m.levels().iter().map(|(id, l)| json!({"id": id, "name": l.name, "elevation": l.elevation})).collect();
     let warnings = m.warnings();
-    Ok(json!({
+    let mut out = json!({
         "name": m.name, "units": "mm", "project_units": m.units.name(), "room_area": m.room_area.name(), "language": m.language.code(), "standard": m.standard().code(), "path": s.path, "levels": levels,
         "counts": counts,
-        "types": m.types, "materials": m.materials, "images": images(m), "families": families(m), "parameters": m.parameters,
-        "view_filters": m.view_filters, "view_templates": m.view_templates, "phases": m.phases, "phase_filters": m.phase_filters,
-        "phase_overrides": m.phase_overrides, "option_sets": m.option_sets, "warnings": warnings,
-        "voltages": m.voltages, "distribution_systems": m.distribution_systems, "wire_types": m.wire_types,
+        "warnings": warnings,
         "history": s.history(),
-    }))
+    });
+    if brief {
+        let types = m.types.wall.len()
+            + m.types.floor.len()
+            + m.types.door.len()
+            + m.types.window.len()
+            + m.types.column.len()
+            + m.types.roof.len()
+            + m.types.ceiling.len()
+            + m.types.railing.len()
+            + m.types.structural_column.len()
+            + m.types.footing.len()
+            + m.types.runs.values().map(BTreeMap::len).sum::<usize>();
+        out["library"] = json!({
+            "types": types, "materials": m.materials.len(), "families": m.families.len(),
+            "parameters": m.parameters.len(), "images": m.images.len(),
+        });
+        return Ok(out);
+    }
+    out["types"] = json!(m.types);
+    out["materials"] = json!(m.materials);
+    out["images"] = images(m);
+    out["families"] = families(m);
+    out["parameters"] = json!(m.parameters);
+    out["view_filters"] = json!(m.view_filters);
+    out["view_templates"] = json!(m.view_templates);
+    out["phases"] = json!(m.phases);
+    out["phase_filters"] = json!(m.phase_filters);
+    out["phase_overrides"] = json!(m.phase_overrides);
+    out["option_sets"] = json!(m.option_sets);
+    out["voltages"] = json!(m.voltages);
+    out["distribution_systems"] = json!(m.distribution_systems);
+    out["wire_types"] = json!(m.wire_types);
+    Ok(out)
 }
 
 fn elements(s: &mut Session, p: &Value) -> R {

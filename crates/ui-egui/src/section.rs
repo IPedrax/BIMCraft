@@ -436,9 +436,11 @@ mod worker_tests {
     fn settle(harness: &mut egui_kittest::Harness<BimApp>, id: Id) {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
+            // Idle before the step, whose poll then takes what the worker finished: idle after it, a frame may wait unpolled.
+            let idle = harness.state().cut.worker.as_ref().is_some_and(|w| !w.busy());
             harness.step();
             let cut = &harness.state().cut;
-            if cut.shown.as_ref().is_some_and(|(_, shown, ..)| *shown == id) && cut.worker.as_ref().is_some_and(|w| !w.busy()) {
+            if idle && cut.shown.as_ref().is_some_and(|(_, shown, ..)| *shown == id) {
                 break;
             }
             assert!(Instant::now() < deadline, "worker did not publish a frame: {}", harness.state().status.text);

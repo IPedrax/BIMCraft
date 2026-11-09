@@ -11,6 +11,7 @@
 
 use bimcraft_i18n::{msg, ui_msg};
 
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::f64::consts::PI;
 use std::sync::Arc;
@@ -31,6 +32,11 @@ use crate::step::{self, Entity, File, V};
 use crate::view3d::{P3, add, cross, dot, mul, sub, unit};
 use crate::walls::{self, Axis, Plane};
 use serde_json::json;
+
+mod shapes;
+
+/// What a product whose body builds nothing is left out with; where the reader knows why, the note says that too.
+const NO_BODY: &str = "it has no body BIMCraft can read";
 
 /// The most project parameter values an import reads: a set related to many elements hands each
 /// all its values.
@@ -76,6 +82,10 @@ const NOT_GENERIC: &[&str] = &[
     "IFCMARINEFACILITY",
     "IFCMARINEPART",
 ];
+
+/// The predefined types of an `IfcMember` that frames, as a beam does: what comes in as a beam where it runs along a line. A
+/// mullion, a plate, a post, a stud, a stringer and a user's own type stay what they are.
+const FRAMING: &[&str] = &["BRACE", "STRUT", "CHORD", "COLLAR", "PURLIN", "RAFTER", "MEMBER", "STIFFENING_MEMBER"];
 
 /// The spatial elements an element may be part of, which make it no part of another element.
 const SPATIAL: &[&str] = &["IFCSITE", "IFCBUILDING", "IFCBUILDINGSTOREY", "IFCSPACE", "IFCFACILITY", "IFCFACILITYPART"];
@@ -529,9 +539,17 @@ struct Reader<'a> {
     /// Taken off every plan point: brings a model placed far out (a site at its map
     /// coordinates) near the origin.
     shift: P2,
+    /// Why the representation item being read builds nothing, or less than it holds (`give_up`); and, by item, why each
+    /// that did so, once read.
+    why: Cell<Option<&'static str>>,
+    unread: RefCell<HashMap<u64, &'static str>>,
 }
 
 impl<'a> Reader<'a> {
+    fn new(f: &'a File, mm: f64, rad: f64, shift: P2) -> Reader<'a> {
+        Reader { f, mm, rad, shift, why: Cell::new(None), unread: RefCell::new(HashMap::new()) }
+    }
+
     fn get(&self, id: u64) -> Option<&'a Entity> {
         self.f.entities.get(&id)
     }
@@ -667,10 +685,11 @@ impl<'a> Reader<'a> {
                 Some(out)
             }
             "IFCTRIMMEDCURVE" => self.trimmed(e),
-            "IFCCIRCLE" => {
-                let (f, r) = (self.axes(reference(a(0))), self.len(a(1))?);
-                Some((0..24).map(|i| f64::from(i) * PI / 12.0).map(|t| f.at([r * t.cos(), r * t.sin(), 0.0])).collect())
+            "IFCCIRCLE" | "IFCELLIPSE" => {
+                let (f, ra, rb) = self.conic(e)?;
+                Some((0..24).map(|i| f64::from(i) * PI / 12.0).map(|t| f.at([ra * t.cos(), rb * t.sin(), 0.0])).collect())
             }
+            "IFCBSPLINECURVEWITHKNOTS" | "IFCRATIONALBSPLINECURVEWITHKNOTS" => self.bspline(e),
             _ => None,
         }
     }
@@ -700,15 +719,15 @@ impl<'a> Reader<'a> {
                 let at = |(p, t): (Option<P3>, Option<f64>)| p.or_else(|| t.map(|t| add(p0, mul(d, k * t))));
                 Some(vec![at(t1)?, at(t2)?])
             }
-            "IFCCIRCLE" => {
-                let (f, r) = (self.axes(reference(basis.args.first())), self.len(basis.args.get(1))?);
+            "IFCCIRCLE" | "IFCELLIPSE" => {
+                let (f, ra, rb) = self.conic(basis)?;
                 let angle = |(p, t): (Option<P3>, Option<f64>)| {
-                    p.map(|p| dot(sub(p, f.o), f.y).atan2(dot(sub(p, f.o), f.x))).or_else(|| t.map(|t| t * self.rad))
+                    p.map(|p| (dot(sub(p, f.o), f.y) / rb).atan2(dot(sub(p, f.o), f.x) / ra)).or_else(|| t.map(|t| t * self.rad))
                 };
                 let (a1, a2) = (angle(t1)?, angle(t2)?);
                 let ccw = (a2 - a1).rem_euclid(2.0 * PI);
                 let sweep = if enumeration(e.args.get(3)) == Some("F") { ccw - 2.0 * PI } else { ccw };
-                Some((0..=12).map(|i| a1 + sweep * f64::from(i) / 12.0).map(|t| f.at([r * t.cos(), r * t.sin(), 0.0])).collect())
+                Some((0..=12).map(|i| a1 + sweep * f64::from(i) / 12.0).map(|t| f.at([ra * t.cos(), rb * t.sin(), 0.0])).collect())
             }
             _ => Some(vec![t1.0?, t2.0?]),
         }
@@ -798,14 +817,21 @@ impl<'a> Reader<'a> {
                     }
                 }
             }
+            "IFCREVOLVEDAREASOLID" | "IFCREVOLVEDAREASOLIDTAPERED" => self.revolved(e, depth, out),
+            "IFCFIXEDREFERENCESWEPTAREASOLID" | "IFCSURFACECURVESWEPTAREASOLID" => self.along(e, depth, out),
+            "IFCADVANCEDBREP" | "IFCADVANCEDBREPWITHVOIDS" => self.advanced(e, out),
+            "IFCADVANCEDFACE" => match self.advanced_face(e) {
+                Ok(faces) => out.extend(faces),
+                Err(why) => self.give_up(why),
+            },
             // A disk swept along a curve, a cable's or a pipe's: a tube of 24 sides along each of its segments; a hollow one
             // as if solid.
-            "IFCSWEPTDISKSOLID" => {
+            "IFCSWEPTDISKSOLID" | "IFCSWEPTDISKSOLIDPOLYGONAL" => {
                 let (Some(line), Some(r)) = (self.curve(reference(a(0)), depth + 1), self.len(a(1))) else { return };
                 // A tube is 26 faces a segment, so a curve of millions of points would fill the memory: past MAX_POINTS segments'
                 // worth of faces in the item, the disk is left out.
                 if out.len() + 26 * line.len().saturating_sub(1) > 26 * MAX_POINTS {
-                    return;
+                    return self.give_up(shapes::TOO_MANY);
                 }
                 for w in line.windows(2) {
                     let &[p, q] = w else { continue };
@@ -857,20 +883,8 @@ impl<'a> Reader<'a> {
                 }
             }
             "IFCTRIANGULATEDFACESET" | "IFCTRIANGULATEDIRREGULARNETWORK" | "IFCPOLYGONALFACESET" => {
-                let pts = self.point_list(reference(a(0)));
-                let triangles = e.name != "IFCPOLYGONALFACESET";
-                let pn = indices(a(if triangles { 4 } else { 3 }));
-                let at = |i: usize| {
-                    let i = if pn.is_empty() { i } else { i.checked_sub(1).and_then(|k| pn.get(k)).copied()? };
-                    i.checked_sub(1).and_then(|k| pts.get(k)).copied()
-                };
-                let polys: Vec<Vec<usize>> = if triangles {
-                    list(a(3)).iter().map(|t| indices(Some(t))).collect()
-                } else {
-                    refs(a(2)).into_iter().filter_map(|f| self.get(f)).map(|f| indices(f.args.first())).collect()
-                };
-                for poly in polys {
-                    polygon(out, poly.into_iter().filter_map(at).collect());
+                for face in self.face_set(e) {
+                    polygon(out, face);
                 }
             }
             "IFCMAPPEDITEM" => {
@@ -903,6 +917,82 @@ impl<'a> Reader<'a> {
         }
     }
 
+    /// A tessellated face set's faces in order, each its corners: one for each face it lists, so a colour map's index reads
+    /// them.
+    fn face_set(&self, e: &Entity) -> Vec<Vec<P3>> {
+        let a = |i: usize| e.args.get(i);
+        let pts = self.point_list(reference(a(0)));
+        let triangles = e.name != "IFCPOLYGONALFACESET";
+        let pn = indices(a(if triangles { 4 } else { 3 }));
+        let at = |i: usize| {
+            let i = if pn.is_empty() { i } else { i.checked_sub(1).and_then(|k| pn.get(k)).copied()? };
+            i.checked_sub(1).and_then(|k| pts.get(k)).copied()
+        };
+        let polys: Vec<Vec<usize>> = if triangles {
+            list(a(3)).iter().map(|t| indices(Some(t))).collect()
+        } else {
+            refs(a(2)).into_iter().filter_map(|f| self.get(f)).map(|f| indices(f.args.first())).collect()
+        };
+        polys.into_iter().map(|poly| poly.into_iter().filter_map(at).collect()).collect()
+    }
+
+    /// A product's body as `body_items` reads it, by look: each item's faces with the look its styled item gives it, or
+    /// the styled item of what it is inside does (a mapped representation's item is styled in it, as Revit writes a type's
+    /// geometry), and a face set's faces each with its colour map's colour; none for what nothing styles.
+    fn looked_items(&self, product: &Entity, looks: &Looks) -> Vec<(Option<Look>, Vec<Vec<P3>>)> {
+        let mut out = Vec::new();
+        for item in self.chosen(product) {
+            self.why.set(None);
+            self.looked(item, 0, None, looks, &mut out);
+            if let Some(why) = self.why.take() {
+                self.unread.borrow_mut().insert(item, why);
+            }
+        }
+        out
+    }
+
+    fn looked(&self, id: u64, depth: usize, inherited: Option<&Look>, looks: &Looks, out: &mut Vec<(Option<Look>, Vec<Vec<P3>>)>) {
+        let Some(e) = self.get(id) else { return };
+        if depth > 16 {
+            return;
+        }
+        let look = looks.items.get(&id).or(inherited);
+        match e.name.as_str() {
+            "IFCMAPPEDITEM" => {
+                let Some(map) = self.at(e.args.first()) else { return };
+                let mut inner = Vec::new();
+                if let Some(rep) = self.at(map.args.get(1)) {
+                    for item in refs(rep.args.get(3)) {
+                        self.looked(item, depth + 1, look, looks, &mut inner);
+                    }
+                }
+                let f = self.operator(reference(e.args.get(1))).then(self.axes(reference(map.args.first())));
+                out.extend(
+                    inner
+                        .into_iter()
+                        .map(|(l, faces)| (l, faces.into_iter().map(|face| face.into_iter().map(|p| f.at(p)).collect()).collect())),
+                );
+            }
+            "IFCTRIANGULATEDFACESET" | "IFCTRIANGULATEDIRREGULARNETWORK" | "IFCPOLYGONALFACESET" if looks.maps.contains_key(&id) => {
+                let Some((colours, index)) = looks.maps.get(&id) else { return };
+                let mut by: Vec<(Option<Look>, Vec<Vec<P3>>)> = Vec::new();
+                for (k, face) in self.face_set(e).into_iter().enumerate().filter(|(_, f)| f.len() >= 3) {
+                    let l = index.get(k).and_then(|i| i.checked_sub(1)).and_then(|i| colours.get(i)).or(look).cloned();
+                    match by.iter_mut().find(|(o, _)| *o == l) {
+                        Some((_, faces)) => faces.push(face),
+                        None => by.push((l, vec![face])),
+                    }
+                }
+                out.extend(by);
+            }
+            _ => {
+                let mut faces = Vec::new();
+                self.faces(id, depth, &mut faces);
+                out.push((look.cloned(), faces));
+            }
+        }
+    }
+
     /// A product's shape representations: their identifiers and items.
     fn reps(&self, product: &Entity) -> Vec<(&'a str, Vec<u64>)> {
         let Some(shape) = self.at(product.args.get(6)) else { return Vec::new() };
@@ -927,22 +1017,38 @@ impl<'a> Reader<'a> {
     /// A product's body item by item, each its faces in the product's own coordinates: its Body
     /// representation's, else any but a line or a footprint's.
     fn body_items(&self, product: &Entity) -> Vec<(u64, Vec<Vec<P3>>)> {
+        self.chosen(product)
+            .into_iter()
+            .map(|item| {
+                let mut out = Vec::new();
+                self.why.set(None);
+                self.faces(item, 0, &mut out);
+                if let Some(why) = self.why.take() {
+                    self.unread.borrow_mut().insert(item, why);
+                }
+                (item, out)
+            })
+            .collect()
+    }
+
+    /// The items of a product's body: its Body representation's, else any but a line or a footprint's.
+    fn chosen(&self, product: &Entity) -> Vec<u64> {
         let reps = self.reps(product);
         let items = |keep: &dyn Fn(&str) -> bool| {
             reps.iter().filter(|(i, _)| keep(&i.to_ascii_lowercase())).flat_map(|(_, it)| it.clone()).collect::<Vec<_>>()
         };
-        let mut chosen = items(&|i| i == "body" || i == "facetation");
+        let chosen = items(&|i| i == "body" || i == "facetation");
         if chosen.is_empty() {
-            chosen = items(&|i| !matches!(i, "axis" | "footprint" | "annotation" | "plan" | "profile" | "reference" | "surface"));
+            items(&|i| !matches!(i, "axis" | "footprint" | "annotation" | "plan" | "profile" | "reference" | "surface"))
+        } else {
+            chosen
         }
-        chosen
-            .into_iter()
-            .map(|item| {
-                let mut out = Vec::new();
-                self.faces(item, 0, &mut out);
-                (item, out)
-            })
-            .collect()
+    }
+
+    /// Why an item of a product's body, read, built nothing or less than it holds: the first's.
+    fn unread(&self, product: &Entity) -> Option<&'static str> {
+        let unread = self.unread.borrow();
+        self.chosen(product).into_iter().find_map(|item| unread.get(&item).copied())
     }
 
     /// A product's Axis representation, in model coordinates.
@@ -990,7 +1096,6 @@ impl<'a> Reader<'a> {
     }
 }
 
-/// The project's length unit in mm, and its plane angle unit in radians.
 fn si(prefix: Option<&str>) -> f64 {
     match prefix {
         Some("EXA") => 1e18,
@@ -1009,7 +1114,8 @@ fn si(prefix: Option<&str>) -> f64 {
         _ => 1.0,
     }
 }
-// A unit's kind, and its size in SI base units (metres, radians).
+
+/// A unit's kind, and its size in SI base units (metres, radians).
 fn unit_of(f: &File, id: Option<u64>, depth: usize) -> Option<(String, f64)> {
     let e = f.entities.get(&id?)?;
     let kind = enumeration(e.args.get(1)).unwrap_or("").to_string();
@@ -1024,10 +1130,51 @@ fn unit_of(f: &File, id: Option<u64>, depth: usize) -> Option<(String, f64)> {
     }
 }
 
+/// Where the file puts the project on a map: its first map conversion (IFC4's `IfcMapConversion`, IFC4X3's scaled one by its x
+/// factor) to a projected coordinate reference system that has a name. Its eastings, northings and height in mm of the map, which
+/// is the CRS's map unit, else the project's length unit; its scale a distance on the map over the same in the project (the file's
+/// scale takes the project's length unit to the map's, as IFC4 and IfcOpenShell read it). The model is moved near the origin by
+/// `r.shift`, so the map point of its origin is the one the file's origin put that far along.
+fn georeference(r: &Reader, ids: &[u64]) -> Option<crate::model::Georeference> {
+    let named = |e: &&Entity| r.at(e.args.get(1)).is_some_and(|c| c.name == "IFCPROJECTEDCRS" && text(c.args.first()).is_some());
+    let conversion = ids
+        .iter()
+        .filter_map(|id| r.get(*id))
+        .filter(|e| matches!(e.name.as_str(), "IFCMAPCONVERSION" | "IFCMAPCONVERSIONSCALED"))
+        .find(named)?;
+    let crs = r.at(conversion.args.get(1))?;
+    let a = |i: usize| conversion.args.get(i);
+    let map = reference(crs.args.get(6))
+        .and_then(|u| unit_of(r.f, Some(u), 0))
+        .filter(|(kind, size)| kind == "LENGTHUNIT" && size.is_finite() && *size > 0.0)
+        .map_or(r.mm, |(_, metres)| metres * 1000.0);
+    let (abscissa, ordinate) = (real(a(5)).unwrap_or(1.0), real(a(6)).unwrap_or(0.0));
+    let rotation = if abscissa.hypot(ordinate) > 1e-12 { ordinate.atan2(abscissa).to_degrees() } else { 0.0 };
+    let factor = if conversion.name == "IFCMAPCONVERSIONSCALED" { real(a(8)).unwrap_or(1.0) } else { 1.0 };
+    let scale = real(a(7)).unwrap_or(1.0) * factor * map / r.mm;
+    let label = |i: usize| text(crs.args.get(i)).map(clip);
+    let (sin, cos) = rotation.to_radians().sin_cos();
+    let (dx, dy) = (r.shift.0, r.shift.1);
+    Some(crate::model::Georeference {
+        crs: clip(text(crs.args.first())?),
+        description: label(1),
+        geodetic_datum: label(2),
+        vertical_datum: label(3),
+        map_projection: label(4),
+        map_zone: label(5),
+        eastings: real(a(2))? * map + scale * (cos * dx - sin * dy),
+        northings: real(a(3))? * map + scale * (sin * dx + cos * dy),
+        height: real(a(4)).unwrap_or(0.0) * map,
+        rotation,
+        scale,
+    })
+}
+
+/// The project's length unit in mm, and its plane angle unit in radians.
 /// Where a file stands in the world, as the location of a model read from it whose internal coordinates are the file's less
 /// `shift` (mm): its `IfcMapConversion` (to its `IfcProjectedCRS`, in its map unit, else the project's), else its context's true
 /// north; and the CRS, where the target's name is an EPSG code this version knows. None where it says nothing and wasn't moved.
-fn georeference(f: &File, mm: f64, shift: P2) -> Option<(crate::coordinates::Location, Option<u32>)> {
+fn location_of(f: &File, mm: f64, shift: P2) -> Option<(crate::coordinates::Location, Option<u32>)> {
     use crate::coordinates::Location;
     let first = |name: &str| f.entities.iter().filter(|(_, e)| e.name == name).min_by_key(|(id, _)| **id).map(|(_, e)| e);
     let conversion = first("IFCMAPCONVERSION");
@@ -1352,25 +1499,82 @@ fn item_colours(r: &Reader, ids: &[u64]) -> HashMap<u64, [u8; 3]> {
     styled.filter_map(|e| Some((reference(e.args.first())?, colour(r, refs(e.args.get(1)))?.0))).collect()
 }
 
-/// The name of the surface style each representation item is styled with: what a component's
-/// form made of it is made of.
-fn item_styles(r: &Reader, ids: &[u64]) -> HashMap<u64, String> {
-    let mut out = HashMap::new();
-    for e in ids.iter().filter_map(|id| r.get(*id)).filter(|e| e.name == "IFCSTYLEDITEM") {
-        let Some(item) = reference(e.args.first()) else { continue };
-        let mut styles = refs(e.args.get(1));
-        let mut seen = HashSet::new();
-        while let Some(id) = styles.pop() {
-            let Some(x) = r.get(id).filter(|_| seen.insert(id)) else { continue };
-            match x.name.as_str() {
-                "IFCPRESENTATIONSTYLEASSIGNMENT" => styles.extend(refs(x.args.first())),
-                "IFCSURFACESTYLE" => {
-                    if let Some(n) = text(x.args.first()) {
-                        out.entry(item).or_insert_with(|| clip(n));
+/// How a representation item is shaded: by a surface style of a name, which a material of that name takes the colour of;
+/// or by a colour and how see-through, percent (a style of no name, a colour map's colour).
+#[derive(Clone, Debug, PartialEq)]
+enum Look {
+    Named(String),
+    Colour([u8; 3], u8),
+}
+
+impl Look {
+    /// The material a form of this look is made of: the style's name, or one named for the colour (`Colour FF8000`, and
+    /// `25%` after it where it is see-through).
+    fn material(&self) -> String {
+        match self {
+            Look::Named(n) => n.clone(),
+            Look::Colour([r, g, b], 0) => format!("Colour {r:02X}{g:02X}{b:02X}"),
+            Look::Colour([r, g, b], t) => format!("Colour {r:02X}{g:02X}{b:02X} {t}%"),
+        }
+    }
+}
+
+/// The looks a file gives: each representation item's, from the styled item that names it, and each tessellated face set's
+/// colour map, its colours and each face's index into them (from 1).
+#[derive(Default)]
+struct Looks {
+    items: HashMap<u64, Look>,
+    maps: HashMap<u64, (Vec<Look>, Vec<usize>)>,
+}
+
+/// The looks of the file's styled items (a surface style straight, as IFC4 lets one say, or through IFC2x3's style
+/// assignments; a named one by its name, one of no name by its colour) and of its indexed colour maps (each colour, as
+/// see-through as the map's opacity leaves it: 1 opaque, none opaque).
+fn looks(r: &Reader, ids: &[u64]) -> Looks {
+    let mut out = Looks::default();
+    for e in ids.iter().filter_map(|id| r.get(*id)) {
+        match e.name.as_str() {
+            "IFCSTYLEDITEM" => {
+                let Some(item) = reference(e.args.first()) else { continue };
+                let mut styles = refs(e.args.get(1));
+                let mut seen = HashSet::new();
+                while let Some(id) = styles.pop() {
+                    let Some(x) = r.get(id).filter(|_| seen.insert(id)) else { continue };
+                    match x.name.as_str() {
+                        "IFCPRESENTATIONSTYLEASSIGNMENT" => styles.extend(refs(x.args.first())),
+                        "IFCSURFACESTYLE" => {
+                            let look = match text(x.args.first()) {
+                                Some(n) => Some(Look::Named(clip(n))),
+                                None => colour(r, vec![id]).map(|(c, t)| Look::Colour(c, t)),
+                            };
+                            if let Some(look) = look {
+                                out.items.entry(item).or_insert(look);
+                            }
+                        }
+                        _ => {}
                     }
                 }
-                _ => {}
             }
+            "IFCINDEXEDCOLOURMAP" => {
+                let Some(set) = reference(e.args.first()) else { continue };
+                let clear = real(e.args.get(1)).map_or(0, |o| ((1.0 - o.clamp(0.0, 1.0)) * 100.0).round() as u8);
+                let rgb = r.at(e.args.get(2)).map(|l| list(l.args.first())).unwrap_or_default();
+                let colours: Vec<Look> = rgb
+                    .iter()
+                    .take(MAX_POINTS)
+                    .filter_map(|c| match r.coords(Some(c)).as_slice() {
+                        [red, green, blue] => {
+                            Some(Look::Colour([*red, *green, *blue].map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8), clear))
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                // A colour that isn't three numbers leaves the index past it pointing at another: none of them is read.
+                if colours.len() == rgb.len().min(MAX_POINTS) {
+                    out.maps.insert(set, (colours, indices(e.args.get(3))));
+                }
+            }
+            _ => {}
         }
     }
     out
@@ -1496,9 +1700,20 @@ const OPENINGS: &[&str] = &["IFCDOOR", "IFCDOORSTANDARDCASE", "IFCWINDOW", "IFCW
 const SLABS: &[&str] = &["IFCSLAB", "IFCSLABSTANDARDCASE", "IFCSLABELEMENTEDCASE"];
 const COLUMNS: &[&str] = &["IFCCOLUMN", "IFCCOLUMNSTANDARDCASE"];
 
+/// The seed a file's own GUIDs are made from: the same text reads the same every time.
+pub(crate) fn seed(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xCBF2_9CE4_8422_2325_u64, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01B3))
+}
+
 /// Reads IFC text into a model, named after the project (or `name`).
 pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     let file = step::parse(bytes)?;
+    from_step(file, name, seed(bytes))
+}
+
+/// What `ifc` does, from a file already parsed: `seed` is the hash of the text it was parsed from,
+/// which names the elements the file leaves unnamed.
+pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, String> {
     if !file.schema.starts_with("IFC") {
         let schema = if file.schema.is_empty() { "no schema" } else { &file.schema };
         return Err(format!("this STEP file is in {schema}, not IFC"));
@@ -1508,7 +1723,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     ids.sort_unstable();
     let l = Links::read(&file, &ids);
     // Far from the origin (a site at its map coordinates), the model comes nearer.
-    let probe = Reader { f: &file, mm, rad, shift: P2(0.0, 0.0) };
+    let probe = Reader::new(&file, mm, rad, P2(0.0, 0.0));
     let origins: Vec<P3> = l.within.keys().filter_map(|id| probe.get(*id)).map(|x| probe.frame(x).o).collect();
     let shift = match (span(origins.iter().map(|p| p[0])), span(origins.iter().map(|p| p[1]))) {
         (Some((x0, x1)), Some((y0, y1))) if x0.abs().max(x1.abs()).max(y0.abs()).max(y1.abs()) > 1e8 => {
@@ -1516,7 +1731,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
         _ => P2(0.0, 0.0),
     };
-    let r = Reader { f: &file, mm, rad, shift };
+    let r = Reader::new(&file, mm, rad, shift);
     // What an element is made of: its layers, when they add up to how thick it is, and so how thick.
     let made_of = |id: u64, t: f64| {
         let layers = layers_of(&r, &l, id, t);
@@ -1655,7 +1870,10 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
     };
     let leave = |skipped: &mut Vec<String>, seen: &mut HashSet<u64>, id: u64, why: &str| {
-        skipped.push(format!("{}: {why}", who(id)));
+        match e(id).and_then(|x| r.unread(x)).filter(|_| why == NO_BODY) {
+            Some(because) => skipped.push(format!("{}: {why}: {because}", who(id))),
+            None => skipped.push(format!("{}: {why}", who(id))),
+        }
         seen.insert(id);
     };
 
@@ -1687,7 +1905,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             let arc = walls::sweep_through(p, mid, q);
             let radii = Axis::new(p, q, arc).centre().and_then(|c| Some((c, arc_faces(pts.iter().map(|x| r.flat(*x).dist(c)))?)));
             let (Some((c, (r0, r1))), Some((z0, z1))) = (radii, span(pts.iter().map(|x| x[2]))) else {
-                leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+                leave(&mut skipped, &mut seen, id, NO_BODY);
                 continue;
             };
             let t = ((r1 - r0) * 100.0).round() / 100.0;
@@ -1729,7 +1947,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let (a, b) = faced(a, b);
         let (u, n) = ((b - a).unit(), (b - a).unit().perp());
         let (Some((c0, c1)), Some((z0, z1))) = (span(pts.iter().map(|p| (r.flat(*p) - a).dot(n))), span(pts.iter().map(|p| p[2]))) else {
-            leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+            leave(&mut skipped, &mut seen, id, NO_BODY);
             continue;
         };
         if a.dist(b) <= TOL || c1 - c0 <= 0.0 || u.length() < 0.5 {
@@ -1839,7 +2057,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         }
         let faces = r.body(s);
         let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
-            leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+            leave(&mut skipped, &mut seen, id, NO_BODY);
             continue;
         };
         // A top of several planes: a level floor at its highest point, its shape's points under it and its creases.
@@ -1948,7 +2166,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let Some(c) = e(id).filter(|c| enumeration(c.args.get(8)) == Some("CEILING")) else { continue };
         let faces = r.body(c);
         let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
-            leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+            leave(&mut skipped, &mut seen, id, NO_BODY);
             continue;
         };
         let Some(geom::Region { outer: ring, holes }) = outline(&faces, Plane::flat(z1), true) else {
@@ -2196,7 +2414,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let Some(x) = e(id).filter(|x| text(x.args.get(4)) == Some("Mass")) else { continue };
         let faces = r.body(x);
         let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
-            leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+            leave(&mut skipped, &mut seen, id, NO_BODY);
             continue;
         };
         let flat = |g: geom::Region| -> Vec<P2> { g.outer.into_iter().map(|p| micron(r.flat([p.0, p.1, 0.0]))).collect() };
@@ -2253,7 +2471,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let Some(c) = e(id) else { continue };
         let faces = r.body(c);
         let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
-            leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+            leave(&mut skipped, &mut seen, id, NO_BODY);
             continue;
         };
         // Square to its longest outline edge: a level edge of one of its upright faces (a top
@@ -2330,21 +2548,49 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     // Runs (beams, strip footings, pipes): found in their bodies as the longest direction they run along and the section
     // square to it. A run rolled about its axis reads as the box round it. A product's class and type say which, or, where
     // it is one of BIMCraft's, its property set.
-    let classes: Vec<&str> = crate::runs::IFC.iter().map(|(_, class, _)| *class).chain(["IFCBEAMSTANDARDCASE"]).collect();
+    // A member that frames (its predefined type, else its type object's, one of `FRAMING`, or none), part of nothing but the
+    // building's spaces or an element assembly (a truss), is a beam where it runs along a line as a beam may; any other stays
+    // for the generic components, which remember it was a member.
+    let framing = |id: u64, x: &Entity| {
+        let own = enumeration(x.args.get(8)).filter(|p| *p != "NOTDEFINED");
+        let of_type = l.typed.get(&id).and_then(|t| e(*t)).and_then(|t| enumeration(t.args.get(9))).filter(|p| *p != "NOTDEFINED");
+        let mut at = id;
+        let alone = (0..MAX_DEPTH).all(|_| match l.whole.get(&at) {
+            Some(&whole) => {
+                at = whole;
+                e(whole).is_some_and(|w| SPATIAL.contains(&w.name.as_str()) || w.name == "IFCELEMENTASSEMBLY")
+            }
+            None => true,
+        });
+        own.or(of_type).is_none_or(|k| FRAMING.contains(&k)) && alone
+    };
+    let classes: Vec<&str> =
+        crate::runs::IFC.iter().map(|(_, class, _)| *class).chain(["IFCBEAMSTANDARDCASE", "IFCMEMBER", "IFCMEMBERSTANDARDCASE"]).collect();
     for id in named(&classes).into_iter().filter(|id| e(*id).is_some_and(|x| x.name != "IFCFOOTING") || strip(*id)) {
         let Some(b) = e(id) else { continue };
+        let member = matches!(b.name.as_str(), "IFCMEMBER" | "IFCMEMBERSTANDARDCASE");
+        if member && !framing(id, b) {
+            continue;
+        }
         let declared = run_props.get(&id).and_then(|(_, c)| c.as_deref());
-        let Some(category) = crate::runs::from_ifc(&b.name, enumeration(b.args.get(8)), declared) else { continue };
+        let category = if member { Some("beam") } else { crate::runs::from_ifc(&b.name, enumeration(b.args.get(8)), declared) };
+        let Some(category) = category else { continue };
         let pts: Vec<P3> = r.body(b).into_iter().flatten().collect();
         // A body extruded along anything but up runs along it, however short that is for its section (a beam between two columns
         // may be shallower than it is deep); one extruded up is read by its shape, as a strip footing's outline stood up is.
         let along = r.extrusion(b).filter(|d| d[0].hypot(d[1]) > 1e-6);
-        let Some(found) = run_in(&pts, along) else {
+        let found = run_in(&pts, along);
+        let geom = found.as_ref().map(|f| crate::runs::Geom { a: f.start, b: f.end, width: f.width, depth: f.depth, round: f.round });
+        let ruled = geom.map(|g| crate::runs::check(&who(id), category, &g));
+        // A member that is no beam's line is left for the generic components.
+        if member && !matches!(ruled, Some(Ok(()))) {
+            continue;
+        }
+        let Some(found) = found else {
             leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read, or it stands (a column) or lies flat");
             continue;
         };
-        let geom = crate::runs::Geom { a: found.start, b: found.end, width: found.width, depth: found.depth, round: found.round };
-        if let Err(why) = crate::runs::check(&who(id), category, &geom) {
+        if let Some(Err(why)) = ruled {
             leave(&mut skipped, &mut seen, id, why.split_once(": ").map_or(why.as_str(), |(_, w)| w));
             continue;
         }
@@ -2401,7 +2647,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     // their bodies, each a mesh in its own axes stood upright, its faces grouped by what they're made
     // of. A family for each name the file gives them ("Family:Type", as Revit and BIMCraft name
     // them), a type for each type; the file's family over the library's of its name.
-    let styles = item_styles(&r, &ids);
+    let looks = looks(&r, &ids);
     // Each family: its category, the IFC class a generic one remembers, its types in the order they came (each its forms and its
     // shapes' key), the types by the name the file gives them, and how many forms it has.
     #[derive(Default)]
@@ -2440,8 +2686,8 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         };
         let fallback = element_material(&r, &l, id).unwrap_or_default();
         let mut groups: BTreeMap<String, Vec<[P3; 3]>> = BTreeMap::new();
-        for (item, faces) in r.body_items(x) {
-            let tris = groups.entry(styles.get(&item).cloned().unwrap_or_else(|| fallback.clone())).or_default();
+        for (look, faces) in r.looked_items(x, &looks) {
+            let tris = groups.entry(look.map_or_else(|| fallback.clone(), |l| l.material())).or_default();
             for face in faces {
                 tris.extend(triangles(&face.into_iter().map(local).collect::<Vec<_>>()).into_iter().map(settled));
             }
@@ -2574,7 +2820,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
                 continue;
             }
             if !component(id, x, category, None, &HashSet::new(), &mut made, &mut placed, &mut skipped, &mut seen) {
-                leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+                leave(&mut skipped, &mut seen, id, NO_BODY);
             }
         }
     }
@@ -2597,7 +2843,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let mut fl = match measured {
             Ok(fl) if !fl.is_empty() => fl,
             Ok(_) => {
-                leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+                leave(&mut skipped, &mut seen, id, NO_BODY);
                 continue;
             }
             Err(why) => {
@@ -2662,7 +2908,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let mut fl = match measured {
             Ok(fl) if !fl.is_empty() => fl,
             Ok(_) => {
-                leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+                leave(&mut skipped, &mut seen, id, NO_BODY);
                 continue;
             }
             Err(why) => {
@@ -2875,7 +3121,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
         let (Some((s0, s1)), Some((z0, z1))) =
             (span(faces.iter().flatten().map(|p| (r.flat(*p) - a).dot(u))), span(faces.iter().flatten().map(|p| p[2])))
         else {
-            leave(&mut skipped, &mut seen, id, "it has no body BIMCraft can read");
+            leave(&mut skipped, &mut seen, id, NO_BODY);
             continue;
         };
         let size = |x: f64| (x * 100.0).round() / 100.0;
@@ -3252,11 +3498,26 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             x.transparency = clear;
         }
     }
+    // Where it lies on a map, where the file says and the project can keep it.
+    if let Some(g) = georeference(&r, &ids) {
+        match g.check() {
+            Ok(()) => m.georeference = Some(g),
+            Err(why) => skipped.push(format!("its map conversion: {why}; the project has no georeference")),
+        }
+    }
+    // And those named for a colour, in it.
+    for look in looks.items.values().chain(looks.maps.values().flat_map(|(c, _)| c)) {
+        if let Look::Colour(colour, clear) = look
+            && let Some(x) = m.materials.get_mut(&look.material())
+        {
+            x.color = *colour;
+            x.transparency = *clear;
+        }
+    }
     // Each element's GUID is the GlobalId of what it was made of, where that's one; what points at an element points at it.
     let mut globals: HashMap<Id, u128> =
         origin.iter().filter_map(|(step, id)| Some((*id, crate::ifc::expand(text(e(*step)?.args.first())?)?))).collect();
     // The rest, GUIDs the file makes: the same file reads the same every time.
-    let seed = bytes.iter().fold(0xCBF2_9CE4_8422_2325_u64, |h, b| (h ^ u64::from(*b)).wrapping_mul(0x0100_0000_01B3));
     for id in m.elements.keys() {
         globals.entry(*id).or_insert_with(|| Guid::seeded(seed, *id).as_u128());
     }
@@ -3316,7 +3577,7 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
 
     // The rest of what's in the building, by kind: an assembly whose parts came in, what has no body BIMCraft can read, and
     // what it has no element for.
-    let mut left: BTreeMap<(&str, u8), usize> = BTreeMap::new();
+    let mut left: BTreeMap<(&str, u8, Option<&str>), usize> = BTreeMap::new();
     let held = wholes_of(&mut elements_from.keys().copied());
     for id in l.within.keys().filter(|id| !seen.contains(id)) {
         if let Some(x) = e(*id) {
@@ -3327,22 +3588,34 @@ pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
             } else {
                 2
             };
-            *left.entry((x.name.as_str(), why)).or_default() += 1;
+            let because = if why == 1 { r.unread(x) } else { None };
+            *left.entry((x.name.as_str(), why, because)).or_default() += 1;
         }
     }
-    skipped.extend(left.into_iter().map(|((name, why), n)| {
+    skipped.extend(left.into_iter().map(|((name, why, because), n)| {
         let why = match (why, n == 1) {
             (0, true) => "its parts came in; BIMCraft has no element for the whole",
             (0, false) => "their parts came in; BIMCraft has no element for the wholes",
-            (1, true) => "it has no body BIMCraft can read",
+            (1, true) => NO_BODY,
             (1, false) => "they have no body BIMCraft can read",
             (_, true) => "BIMCraft has no element for it",
             (_, false) => "BIMCraft has no element for them",
         };
-        format!("{n} {name}: {why}")
+        match because {
+            Some(because) => format!("{n} {name}: {why}: {because}"),
+            None => format!("{n} {name}: {why}"),
+        }
     }));
+    // What came in without part of its body, and why.
+    let mut came: Vec<u64> = elements_from.keys().copied().collect();
+    came.sort_unstable();
+    for id in came {
+        if let Some(because) = e(id).and_then(|x| r.unread(x)) {
+            skipped.push(format!("{}: part of its body was left out, {because}", who(id)));
+        }
+    }
     let moved = (r.shift != P2(0.0, 0.0)).then_some(r.shift * -1.0);
-    if let Some((l, crs)) = georeference(&file, mm, r.shift) {
+    if let Some((l, crs)) = location_of(&file, mm, r.shift) {
         let active = m.coordinates.active.clone();
         m.coordinates.locations.insert(active, l);
         m.coordinates.crs = crs;
@@ -3378,7 +3651,7 @@ fn roof_from(r: &Reader, faces: &[Vec<P3>], cut: &[Vec<P2>]) -> Result<RoofRead,
         })
         .collect();
     let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
-        return Err("it has no body BIMCraft can read".into());
+        return Err(NO_BODY.into());
     };
     // Its faces turned up, each with its plane (none for a sliver of a mesh's): their loops its
     // outline and its openings.
@@ -3515,7 +3788,7 @@ fn roof_from(r: &Reader, faces: &[Vec<P3>], cut: &[Vec<P2>]) -> Result<RoofRead,
     }
     let across: Vec<f64> = up.iter().flat_map(|(f, _)| f.iter().map(|q| P2(q[0], q[1]).dot(u.perp()))).collect();
     let (Some((c0, c1)), Some(first), Some(last)) = (span(across.into_iter()), profile.first().copied(), profile.last().copied()) else {
-        return Err("it has no body BIMCraft can read".into());
+        return Err(NO_BODY.into());
     };
     if ((last.0 - first.0) * (c1 - c0) - geom::area(&boundary)).abs() > 0.01 * geom::area(&boundary)
         || !openings.is_empty()
@@ -3600,7 +3873,7 @@ fn ramp_from(r: &Reader, faces: &[Vec<P3>]) -> Result<RampRun, String> {
     }
     let (u, n) = (top.g * (1.0 / tan), (top.g * (1.0 / tan)).perp());
     let (Some((s0, s1)), Some((c0, c1))) = (span(ring.iter().map(|p| p.dot(u))), span(ring.iter().map(|p| p.dot(n)))) else {
-        return Err("it has no body BIMCraft can read".into());
+        return Err(NO_BODY.into());
     };
     let foot = u * s0 + n * ((c0 + c1) / 2.0);
     let angle = (u.1.atan2(u.0).to_degrees() * 1e6).round() / 1e6 + 0.0;
@@ -3609,7 +3882,7 @@ fn ramp_from(r: &Reader, faces: &[Vec<P3>]) -> Result<RampRun, String> {
 
 fn stair_from(r: &Reader, s: &Entity, faces: &[Vec<P3>]) -> Result<Flight, String> {
     let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
-        return Err("it has no body BIMCraft can read".into());
+        return Err(NO_BODY.into());
     };
     // The treads: faces turned up, above the floor, one height each.
     let mut treads: Vec<(f64, P2)> = Vec::new();
@@ -3642,7 +3915,7 @@ fn stair_from(r: &Reader, s: &Entity, faces: &[Vec<P3>]) -> Result<Flight, Strin
     let plan: Vec<P2> = faces.iter().flatten().map(|p| r.flat(*p)).collect();
     let n = u.perp();
     let (Some((s0, s1)), Some((c0, c1))) = (span(plan.iter().map(|p| p.dot(u))), span(plan.iter().map(|p| p.dot(n)))) else {
-        return Err("it has no body BIMCraft can read".into());
+        return Err(NO_BODY.into());
     };
     let start = u * s0 + n * ((c0 + c1) / 2.0);
     let angle = (u.1.atan2(u.0).to_degrees() * 1e6).round() / 1e6 + 0.0;
@@ -4259,6 +4532,41 @@ ENDSEC;END-ISO-10303-21;",
             assert_eq!(roof.openings, [[P2(1000.0, 1000.0), P2(1000.0, 2000.0), P2(2500.0, 2000.0), P2(2500.0, 1000.0)]]);
             assert_eq!(only(&i.model, "shaft").len(), 1);
         }
+    }
+
+    #[test]
+    fn from_step_names_elements_as_ifc_does() {
+        // A file's text, and the file already parsed with the seed of that text, make one model:
+        // the text may be freed once it is parsed.
+        let file = holed("#35=IFCSLAB('f',$,'Slab',$,$,#6,#34,$,.FLOOR.);", 35);
+        let text = file.as_bytes();
+        let hash = seed(text);
+        let parsed = step::parse(text).unwrap();
+        let from_text = Model { uid: 0, ..ifc(text, "x").unwrap().model };
+        let from_file = Model { uid: 0, ..from_step(parsed, "x", hash).unwrap().model };
+        assert_eq!(from_file, from_text);
+        // The seed names the elements the file leaves unnamed: another seed is another model.
+        let other = Model { uid: 0, ..from_step(step::parse(text).unwrap(), "x", hash ^ 1).unwrap().model };
+        assert_ne!(other, from_text);
+    }
+
+    #[test]
+    fn open_seeds_elements_as_ifc_does() {
+        // The command path hashes, parses, drops the text and imports: the model is `ifc`'s, GUIDs and all.
+        let text = holed("#35=IFCSLAB('f',$,'Slab',$,$,#6,#34,$,.FLOOR.);", 35);
+        let dir = std::env::temp_dir().join(format!("bimcraft-test-{}-open-seeds-elements", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("holes.ifc");
+        std::fs::write(&path, &text).unwrap();
+        let mut s = crate::engine::Session::new();
+        s.execute("open", &json!({"path": path})).unwrap();
+        let guids = |m: &Model| {
+            let mut out: Vec<Guid> = m.elements.with_guids().map(|(_, g, _)| g).collect();
+            out.sort_unstable();
+            out
+        };
+        assert_eq!(guids(&s.model), guids(&ifc(text.as_bytes(), "holes").unwrap().model));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -328,6 +328,13 @@ fn same_point(a: [f64; 3], b: [f64; 3]) -> bool {
 }
 
 #[test]
+fn the_window_draws_a_thin_stroke_s_soft_edge_past_a_clip_as_the_kept_triangles_do() {
+    for h in [app(""), bimcraft("")] {
+        assert!(!h.ctx.tessellation_options(|o| o.coarse_tessellation_culling), "style::tessellation");
+    }
+}
+
+#[test]
 fn clicking_the_plan_selects_the_element_drawn_nearest_the_cursor() {
     let mut h = app(SAMPLE);
     let door = find(&h, |e| matches!(e, Element::Door(o) if o.mark == "1"));
@@ -893,8 +900,13 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
     assert!(matches!(h.state().tool, Tool::Modify), "the dialog takes the keys while it's open");
     press(&mut h, "Close");
     assert!(h.query_by_label("Create Similar").is_none());
-    // UN, as Revit's opens Project Units: Manage's Project Units menu.
+    // UN, as Revit's opens Project Units: Manage's Project Units menu, or the Settings panel's list where the panel is folded to
+    // fit the window, with Project Units in it.
     shortcut(&mut h, "UN");
+    if h.query_by_label("Feet and inches").is_none() {
+        let row = h.get_by_label("Project Units").rect().center();
+        click_at(&mut h, row);
+    }
     press(&mut h, "Feet and inches");
     assert_eq!(h.state().session.model.units.name(), "ft-in");
     // Any two letters do something exactly when the dialog lists them, and it names each in every language.
@@ -2701,7 +2713,8 @@ fn place_view_puts_schedules_and_the_3d_view_on_sheets() {
 fn project_units_show_and_read_lengths_in_feet_and_inches() {
     let mut h = app(BOX);
     press(&mut h, "Manage");
-    press(&mut h, "Project Units");
+    // From the Settings panel's list, which has it whether the panel fits the window or is folded.
+    from_list(&mut h, "Settings", "Project Units");
     press(&mut h, "Feet and inches");
     assert_eq!(h.state().session.model.units.name(), "ft-in");
     // The bottom wall, 8000 mm long, in Properties; a base offset typed in feet and inches.
@@ -5737,6 +5750,23 @@ fn the_family_editor_edits_a_family_says_what_wont_build_and_starts_a_new_one_of
 }
 
 #[test]
+fn the_family_editor_shows_a_familys_connectors_and_keeps_them() {
+    let mut h = app(&format!("{BOX}\ncomponent {{\"family\": \"WC\", \"at\": [3000, 3000]}}"));
+    let wc = find(&h, |e| matches!(e, Element::Component(_)));
+    h.state_mut().selection = vec![wc];
+    h.set_size(vec2(1800.0, 900.0));
+    press(&mut h, "Manage");
+    press(&mut h, "Edit Family");
+    press(&mut h, "Connectors");
+    assert!(h.query_by_label_contains("pipe · waste · out · Size 100").is_some(), "the waste outlet, its DN");
+    assert!(h.query_by_label_contains("cold · in").is_some(), "the cistern's cold water");
+    // Applied, the family keeps them as they were.
+    let before = h.state().session.model.families["WC"].connectors.clone();
+    press_near(&mut h, "Apply", "Cancel");
+    assert_eq!(h.state().session.model.families["WC"].connectors, before);
+}
+
+#[test]
 fn the_door_tool_places_the_projects_single_door_of_a_family_and_the_type_selector_offers_both_kinds() {
     let mut h = app(BOX);
     tool(&mut h, "Door");
@@ -5879,6 +5909,7 @@ mod origin;
 mod patterns;
 mod perspective;
 mod planviews;
+mod plugins;
 mod popup;
 mod presets;
 mod profile;
@@ -5892,6 +5923,7 @@ mod shortcuts_kept;
 mod sketch;
 mod sketch3d;
 mod smallest;
+mod spacemouse;
 mod spots;
 mod standards;
 mod start;

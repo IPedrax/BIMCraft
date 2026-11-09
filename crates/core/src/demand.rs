@@ -1,7 +1,7 @@
 //! The demand of an installation, and the category of service it asks of the utility, as the utility's own standard works them out.
 //! A pure function of its input, with no model behind it: the `demand` command is its only caller. The numbers are those of the
 //! utility's document, which is not an ABNT standard (NBR 5410 gives no demand factors), so each is named by its utility and its
-//! edition. Only one is here:
+//! edition. CPFL works out a demand; ENEL and CELESC leave it to the designer and frame a supply by the installed load:
 //!
 //! - **CPFL** (CPFL Paulista, Piratininga, Santa Cruz and RGE): Norma Técnica GED 13, "Fornecimento em Tensão Secundária de
 //!   Distribuição", version 2.24, 18/09/2020. `D = a + b + c + d + e + f + g + h + i` (item 6.25.1): a lighting and outlets
@@ -15,7 +15,7 @@
 //! beyond the one given.
 
 /// The utilities there are tables for.
-pub const UTILITIES: &[&str] = &["CPFL", "ENEL"];
+pub const UTILITIES: &[&str] = &["CPFL", "ENEL", "CELESC"];
 
 /// Where the numbers come from, for each utility.
 pub fn source(utility: &str) -> Option<&'static str> {
@@ -23,6 +23,9 @@ pub fn source(utility: &str) -> Option<&'static str> {
         "CPFL" => Some("CPFL Energia, Norma Técnica GED 13 'Fornecimento em Tensão Secundária de Distribuição', version 2.24, 18/09/2020"),
         "ENEL" => Some(
             "Enel Grids Brasil, Especificação Técnica 1569 (CNC-OMBR-MAT-24-1569-EDBR) 'Fornecimento de Energia Elétrica em Tensão Secundária de Distribuição até 1 kV - Conexão Individual', version 01, 29/01/2024: Anexos A and D",
+        ),
+        "CELESC" => Some(
+            "Celesc Distribuição, Norma Técnica N-321.0001 'Fornecimento de Energia Elétrica em Tensão de Distribuição Baixa Tensão', revision of December 2025 (RES. DCL nº 143/2025, 12/11/2025): Tabela 01",
         ),
         _ => None,
     }
@@ -735,6 +738,86 @@ pub fn compute(i: &Input) -> Result<Output, String> {
     t.i = v.iter().enumerate().map(|(r, kw)| kw * motor_factor(r as u32 + 1)).sum();
     let demand_kva = t.a + t.b + t.c + t.d + t.e + t.f + t.g + t.h + t.i;
     Ok(Output { installed_kw: installed, lighting_outlets_w, terms: t, demand_kva })
+}
+
+/// The networks of Celesc's Tabela 01 (N-321.0001): 220/380 V, whose units are single-phase at 220 V (A), two-phase (B) or
+/// three-phase (C), and 220/440 V, whose single-phase units take 220 V (A) or 220/440 V on three wires (M).
+pub const CELESC_NETWORKS: &[&str] = &["220/380", "220/440"];
+
+/// One row of Celesc's Tabela 01: a category of supply for a range of installed load, as printed.
+#[derive(Clone, Copy, Debug)]
+pub struct CelescRow {
+    pub name: &'static str,
+    /// The installed load (kW) it covers: over `lo`, up to `hi`.
+    pub lo: f64,
+    pub hi: f64,
+    /// The demand (kVA) a three-phase row is printed with beside its load: over the first, up to the second.
+    pub demand: Option<(f64, f64)>,
+    /// The unit's general breaker, A.
+    pub breaker: f64,
+    pub phases: u8,
+    pub wires: u8,
+    /// The aerial connection branch, multiplexed XLPE 90 °C: copper and aluminium, mm².
+    pub connection: (f64, f64),
+    /// The entry, exit and load branch, single-core HEPR/EPR/XLPE 90 °C in conduit (method B1) or buried (D), copper, mm².
+    pub entry: f64,
+    /// The earthing conductor, single-core HEPR/EPR/XLPE 90 °C: copper and copper-clad steel, mm².
+    pub earth: (f64, f64),
+}
+
+#[allow(clippy::too_many_arguments)]
+const fn celesc(
+    name: &'static str,
+    lo: f64,
+    hi: f64,
+    demand: Option<(f64, f64)>,
+    breaker: f64,
+    phases: u8,
+    wires: u8,
+    connection: (f64, f64),
+    entry: f64,
+    earth: (f64, f64),
+) -> CelescRow {
+    CelescRow { name, lo, hi, demand, breaker, phases, wires, connection, entry, earth }
+}
+
+/// Tabela 01 of N-321.0001 (rev. December 2025), in its printed order.
+const CELESC_01: &[CelescRow] = &[
+    celesc("A1", 0.0, 11.0, None, 50.0, 1, 2, (10.0, 10.0), 10.0, (10.0, 16.0)),
+    celesc("A2", 11.0, 13.0, None, 63.0, 1, 2, (10.0, 10.0), 10.0, (10.0, 16.0)),
+    celesc("M1", 0.0, 22.0, None, 50.0, 2, 3, (10.0, 10.0), 10.0, (10.0, 16.0)),
+    celesc("M2", 22.0, 28.0, None, 63.0, 2, 3, (10.0, 10.0), 10.0, (10.0, 16.0)),
+    celesc("M3", 28.0, 37.0, None, 90.0, 2, 3, (16.0, 25.0), 16.0, (16.0, 16.0)),
+    celesc("M4", 37.0, 50.0, None, 100.0, 2, 3, (16.0, 25.0), 25.0, (16.0, 25.0)),
+    celesc("B1", 13.0, 20.0, None, 50.0, 2, 3, (10.0, 10.0), 10.0, (10.0, 16.0)),
+    celesc("B2", 20.0, 25.0, None, 63.0, 2, 3, (10.0, 10.0), 10.0, (10.0, 16.0)),
+    celesc("C1", 25.0, 30.0, Some((0.0, 30.0)), 50.0, 3, 4, (10.0, 10.0), 10.0, (10.0, 16.0)),
+    celesc("C2", 30.0, 42.0, Some((30.0, 40.0)), 63.0, 3, 4, (10.0, 25.0), 16.0, (16.0, 16.0)),
+    celesc("C3", 42.0, 50.0, Some((40.0, 45.0)), 80.0, 3, 4, (16.0, 25.0), 16.0, (16.0, 16.0)),
+    celesc("C4", 50.0, 65.0, Some((45.0, 60.0)), 100.0, 3, 4, (25.0, 35.0), 25.0, (16.0, 25.0)),
+    celesc("C5", 65.0, 75.0, Some((60.0, 75.0)), 125.0, 3, 4, (35.0, 50.0), 50.0, (16.0, 35.0)),
+];
+
+/// A row of Celesc's Tabela 01 by its name.
+pub fn celesc_row(name: &str) -> Option<&'static CelescRow> {
+    CELESC_01.iter().find(|r| r.name == name)
+}
+
+/// The rows of Tabela 01 a unit on `network` (`220/380` or `220/440`) may take: A, B and C on the first, A and M on the second.
+fn celesc_rows(network: &str) -> impl Iterator<Item = &'static CelescRow> {
+    let m = network == "220/440";
+    CELESC_01.iter().filter(move |r| r.name.starts_with('A') || r.name.starts_with('M') == m)
+}
+
+/// The row of Tabela 01 for an installed load of `kw` on `network`: the one whose range holds it, of `phases` phases if given
+/// (a unit with a two- or three-phase appliance takes that supply whatever its load, items 5.3.2.2 and 5.3.2.3), else the first of
+/// those phases that goes higher. `None` above the table (75 kW, or 50 kW on 220/440 V).
+pub fn celesc_pick(network: &str, kw: f64, phases: Option<u8>) -> Option<&'static CelescRow> {
+    let fits = |r: &&CelescRow| phases.is_none_or(|p| r.phases == p);
+    celesc_rows(network)
+        .filter(fits)
+        .find(|r| kw > r.lo && kw <= r.hi || (r.lo == 0.0 && kw <= r.hi))
+        .or_else(|| phases.and_then(|_| celesc_rows(network).filter(fits).find(|r| r.hi >= kw)))
 }
 
 #[cfg(test)]

@@ -59,8 +59,8 @@ thread_local! {
     static LAID: Cell<(f32, f32, f32)> = const { Cell::new((0.0, 0.0, 0.0)) };
     /// A tool's choices were asked for (a shortcut's) while it has no button, being handed over or folded: its panel opens its list.
     static OPEN_LIST: Cell<bool> = const { Cell::new(false) };
-    /// Whether the tab being drawn has been drawn before, so its panels' fit (which tools show) is known: its first frame lays out
-    /// every tool, whatever the room.
+    /// Whether the tab being drawn has settled, so its panels' fit (which tools show) is known: its first frame lays out every tool,
+    /// whatever the room, and the next few may still ask more of its panels until it fits.
     static FITTED: Cell<bool> = const { Cell::new(true) };
 }
 
@@ -150,10 +150,11 @@ pub(crate) fn handed_over(ui: &mut Ui) -> Option<Response> {
 pub(crate) fn tab(ui: &mut Ui, key: Id, room: f32, add: impl FnOnce(&mut Ui)) {
     // The last frame's panels, how wide the whole tab would have been with every tool shown, and what the tools' average widths
     // missed at the room it had then: asked of the panels again, so a tab they misjudged still ends up fitting.
-    let (seen, whole, missed, then): (Vec<Seen>, f32, f32, f32) = ui.ctx().data(|d| d.get_temp(key)).unwrap_or_default();
+    let (seen, whole, missed, then, settled): (Vec<Seen>, f32, f32, f32, bool) = ui.ctx().data(|d| d.get_temp(key)).unwrap_or_default();
     let missed = if (then - room).abs() < 0.5 { missed } else { 0.0 };
     let fitted = !seen.is_empty();
-    FITTED.with(|f| f.set(fitted));
+    // Settled: drawn before at this room, and that frame asked nothing more of the panels.
+    FITTED.with(|f| f.set(fitted && settled && (then - room).abs() < 0.5));
     FITS.with(|f| *f.borrow_mut() = fits(&seen, whole + missed, room - SLACK));
     SEEN.with(|s| s.borrow_mut().clear());
     let left = ui.cursor().left();
@@ -169,10 +170,11 @@ pub(crate) fn tab(ui: &mut Ui, key: Id, room: f32, add: impl FnOnce(&mut Ui)) {
     // there is to ask is asked.
     let over = if fitted { (drawn - (room - SLACK)).max(0.0) } else { 0.0 };
     let missed = (missed + over).min(whole);
-    if over > 0.0 && missed < whole {
+    let refitting = over > 0.0 && missed < whole;
+    if refitting {
         ui.ctx().request_repaint();
     }
-    ui.ctx().data_mut(|d| d.insert_temp(key, (seen, whole, missed, room)));
+    ui.ctx().data_mut(|d| d.insert_temp(key, (seen, whole, missed, room, fitted && !refitting)));
     FITS.with(|f| f.borrow_mut().clear());
     FITTED.with(|f| f.set(true));
 }
@@ -292,8 +294,8 @@ fn open_if_asked(ui: &Ui, r: &Response) {
 }
 
 /// The choices a tool drops down from its button `r` (a ribbon button or, in a panel's list, its row), `open` asking for them at
-/// once (a shortcut's): true when that is done, or handed to the panel (a tab's first frame lays out every tool, so what shows
-/// is not known until the next). egui keeps one popup open: a popup of the row's own would close the list that holds the row, and
+/// once (a shortcut's): true when that is done, or handed to the panel (a tab's first frames lay out every tool and then ask
+/// tools of its panels until it fits, so what shows is not known until it has settled). egui keeps one popup open: a popup of the row's own would close the list that holds the row, and
 /// with it itself, so in a list the choices are a submenu of it. A tool the panel has handed over or folded has no button on the
 /// ribbon to hang them from: a request to open them opens the panel's list, where its row is.
 pub(crate) fn choices(ui: &Ui, r: &Response, open: bool, content: impl FnOnce(&mut Ui)) -> bool {

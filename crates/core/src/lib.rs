@@ -53,6 +53,8 @@ pub mod fills;
 mod fixtures;
 mod font;
 pub mod geom;
+#[cfg(test)]
+mod georef_tests;
 pub mod gltf;
 pub mod graphics;
 pub mod groups;
@@ -60,7 +62,13 @@ pub mod hydrant;
 pub mod ids;
 pub mod ifc;
 #[cfg(test)]
+mod ifc_colour_tests;
+#[cfg(test)]
 mod ifc_generic_tests;
+#[cfg(test)]
+mod ifc_geometry_tests;
+#[cfg(test)]
+mod ifc_member_tests;
 pub mod import;
 pub mod inquiry;
 pub mod insert;
@@ -144,6 +152,8 @@ pub mod xlsx;
 
 pub use commands::{command_of, element_json, floor_outline, opening_of, roof_footprint, run_category_of, runs_of, stood_of};
 
+#[cfg(test)]
+mod connector_tests;
 #[cfg(test)]
 mod detail_tests;
 #[cfg(test)]

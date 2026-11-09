@@ -35,10 +35,10 @@ fn autosave_and_recover_are_commands_and_preserve_the_project() {
     let original = std::fs::read(&project).unwrap();
     s.execute("wall", &json!({"points": [[0,0],[4000,0]]})).unwrap();
     let snapshot = Arc::clone(&s.model);
-    let history = s.history();
+    let history = s.history().len();
     s.execute("autosave", &json!({"path": backup})).unwrap();
     assert!(Arc::ptr_eq(&snapshot, &s.model));
-    assert_eq!(s.history(), history);
+    assert_eq!(s.history().len(), history);
     assert_eq!(s.path.as_ref(), Some(&project));
     assert_eq!(std::fs::read(&project).unwrap(), original);
     let mut recovered = Session::new();

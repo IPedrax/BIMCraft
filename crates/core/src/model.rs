@@ -70,7 +70,10 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 17: a schedule may list several categories
+/// The version of the project file this build writes, and the newest it reads. 18: a family's connector may be a `pipe`,
+/// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
+/// the starter fixtures and fittings have them; nothing in a file of 17 changes, but a build that reads up to 17 would answer
+/// such a connector with a serde error ("unknown variant", "missing field `system`"), not "saved by a newer BIMCraft". 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -108,7 +111,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 17;
+pub const FORMAT: u32 = 18;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -2711,6 +2714,85 @@ impl RoomArea {
     }
 }
 
+/// The farthest a map point of the project's origin may be from the map's own, mm: ten million kilometres, past any projected
+/// coordinate reference system's.
+pub const MAX_MAP: f64 = 1.0e13;
+
+/// Where the project lies on a map, as IFC's `IfcMapConversion` to a projected coordinate reference system: a point of the
+/// project at (x, y, z) mm is on the map at `eastings + scale * (x cos r - y sin r)`, `northings + scale * (x sin r + y cos r)`,
+/// `height + scale * z`, r the `rotation`. A file keeps it as it is; the drawings and the model's own coordinates don't move.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Georeference {
+    /// The map's coordinate reference system by its name, as IFC's `IfcProjectedCRS` names it (an EPSG code: `EPSG:31983`).
+    pub crs: String,
+    /// What else IFC says of it, where the file did: a description, its geodetic and vertical datums, map projection and zone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub geodetic_datum: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vertical_datum: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map_projection: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map_zone: Option<String>,
+    /// The map point of the project's origin, mm: its eastings, northings and height.
+    #[serde(default)]
+    pub eastings: f64,
+    #[serde(default)]
+    pub northings: f64,
+    #[serde(default)]
+    pub height: f64,
+    /// How far the project's x axis is turned from the map's east, degrees counterclockwise.
+    #[serde(default)]
+    pub rotation: f64,
+    /// A distance on the map over the same distance in the project, both in mm: 1, or the grid's scale factor.
+    #[serde(default = "one")]
+    pub scale: f64,
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+impl Georeference {
+    /// What's wrong with it, if anything: its texts too long or its name empty, a number not finite or out of range.
+    pub fn check(&self) -> Result<(), String> {
+        if self.crs.trim().is_empty() {
+            return Err("its coordinate reference system needs a name (`crs`: an EPSG code, `EPSG:31983`)".into());
+        }
+        let texts = [
+            ("crs", Some(&self.crs)),
+            ("description", self.description.as_ref()),
+            ("geodetic_datum", self.geodetic_datum.as_ref()),
+            ("vertical_datum", self.vertical_datum.as_ref()),
+            ("map_projection", self.map_projection.as_ref()),
+            ("map_zone", self.map_zone.as_ref()),
+        ];
+        for (what, t) in texts {
+            if t.is_some_and(|t| t.chars().count() > MAX_TEXT || t.contains(['\n', '\r'])) {
+                return Err(format!("`{what}` is one line of up to {MAX_TEXT} characters"));
+            }
+        }
+        for (what, v) in [("eastings", self.eastings), ("northings", self.northings), ("height", self.height)] {
+            if !(v.is_finite() && v.abs() <= MAX_MAP) {
+                return Err(format!("`{what}` must be a finite length within {MAX_MAP} mm of the map's origin, not {v}"));
+            }
+        }
+        if !(self.rotation.is_finite() && self.rotation.abs() <= 360.0) {
+            return Err(format!("`rotation` is degrees, -360 to 360, not {}", self.rotation));
+        }
+        if !(self.scale.is_finite() && (1e-6..=1e6).contains(&self.scale)) {
+            return Err(format!(
+                "`scale` is a distance on the map over the same in the project, above zero (1e-6 to 1e6), not {}",
+                self.scale
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Model {
@@ -2818,6 +2900,10 @@ pub struct Model {
     /// Where it stands in the world: its Project Base Point, its Survey Point and its locations.
     #[serde(default, skip_serializing_if = "crate::coordinates::Coordinates::is_default")]
     pub coordinates: crate::coordinates::Coordinates,
+    /// Where it lies on a map, where a file or the `georeference` command says: an older BIMCraft leaves it out of a file and
+    /// opens the rest, so it took no `FORMAT` step.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub georeference: Option<Georeference>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -2916,6 +3002,7 @@ impl Model {
             distribution_systems: crate::electrical::distribution_systems(),
             wire_types: crate::electrical::wire_types(),
             coordinates: crate::coordinates::Coordinates::named(language.word(crate::coordinates::INTERNAL)),
+            georeference: None,
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -3214,6 +3301,29 @@ impl Model {
         marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
     }
 
+    /// Component `c`'s connectors, worked out for its type and values, with their place and the way they face in the
+    /// model: mirrored if it is, turned and moved to where it stands (a connector without a place has neither). None for a
+    /// component whose family has none or doesn't work out.
+    pub fn component_connectors(&self, c: &Component) -> Vec<crate::family::PlacedConnector> {
+        let Some(f) = self.families.get(&c.family) else { return Vec::new() };
+        let Ok(connectors) = f.connector_values(&c.type_name, &c.params) else { return Vec::new() };
+        let base = self.elevation(c.level) + c.offset;
+        let (sin, cos) = c.angle.to_radians().sin_cos();
+        let flip = if c.mirrored { -1.0 } else { 1.0 };
+        let turn = |p: [f64; 3]| [p[0] * cos - flip * p[1] * sin, p[0] * sin + flip * p[1] * cos, p[2]];
+        connectors
+            .into_iter()
+            .map(|k| {
+                let at = k.at.map(|p| {
+                    let q = turn(p);
+                    [c.at.0 + q[0], c.at.1 + q[1], base + q[2]]
+                });
+                let dir = k.direction.map(turn);
+                (k, at, dir)
+            })
+            .collect()
+    }
+
     /// Component `c`'s solids in the model: its own, turned and moved to where it stands.
     pub fn component_pieces(&self, c: &Component) -> Vec<Piece> {
         let base = self.elevation(c.level) + c.offset;
@@ -3411,6 +3521,8 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
+        // 17 to 18 (pipe, data and earthing connectors, a connector's place) has none either: a file of 17's connectors are
+        // a power or a switch one, each with its system, which 18 reads as they were.
         self.format = FORMAT;
     }
 
@@ -6013,6 +6125,9 @@ impl Model {
         }
         crate::electrical::check(self)?;
         self.coordinates.check()?;
+        if let Some(g) = &self.georeference {
+            g.check().map_err(|e| format!("the project's georeference: {e}"))?;
+        }
         for (n, x) in &self.materials {
             for p in [&x.cut_pattern, &x.surface_pattern].into_iter().flatten() {
                 if !self.fill_patterns.contains_key(p) {
@@ -7335,6 +7450,7 @@ impl Model {
             distribution_systems,
             wire_types,
             coordinates,
+            georeference,
             elements: _,
             library,
             loaded,
@@ -7375,6 +7491,7 @@ impl Model {
             && *distribution_systems == o.distribution_systems
             && *wire_types == o.wire_types
             && *coordinates == o.coordinates
+            && *georeference == o.georeference
             && *library == o.library
             && loaded.len() == o.loaded.len()
             && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))
@@ -7548,10 +7665,25 @@ fn ccw(ring: &[P2]) -> Vec<P2> {
 }
 
 /// What lies inside `loops` (an outline, then holes in it) and outside `holes`: the outline as it
-/// is, or convex pieces once a hole cuts it.
+/// is, or convex pieces once a hole cuts it: the triangles round the holes (`triangulation::constrained`); or, where that
+/// refuses them or its triangles miss some of the area (a hole over or along the outline's edge), the outline cut by each
+/// hole in turn, which leaves thousands of slivers round finely curved ones.
 fn solid(loops: &[Vec<P2>], holes: &[Vec<P2>]) -> Vec<Vec<P2>> {
     let Some((outline, inner)) = loops.split_first() else { return Vec::new() };
-    inner.iter().chain(holes).fold(vec![outline.clone()], |parts, hole| walls::minus(&parts, hole))
+    let cuts: Vec<Vec<P2>> = inner.iter().chain(holes).cloned().collect();
+    if cuts.is_empty() {
+        return vec![outline.clone()];
+    }
+    if let Ok(t) = crate::triangulation::constrained(outline, &cuts, &[], &[]) {
+        let corner = |i: usize| t.points.get(i).copied().unwrap_or_default();
+        let tris: Vec<Vec<P2>> = t.triangles.iter().map(|k| k.map(corner).to_vec()).collect();
+        let area = |rings: &[Vec<P2>]| rings.iter().map(|r| geom::area(r).abs()).sum::<f64>();
+        let whole = geom::area(outline).abs() - area(&cuts);
+        if (area(&tris) - whole).abs() <= 1.0 + whole.abs() * 1e-9 {
+            return tris;
+        }
+    }
+    cuts.iter().fold(vec![outline.clone()], |parts, hole| walls::minus(&parts, hole))
 }
 
 /// A floor's shape: no more points and lines than it may have, each point finite and in range, inside the outline and in

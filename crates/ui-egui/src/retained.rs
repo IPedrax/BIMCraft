@@ -550,6 +550,7 @@ mod tests {
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).ok()?;
+        crate::gpu::alone_on(adapter.get_info().device_type);
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).ok()
     }
 
@@ -562,6 +563,7 @@ mod tests {
         mut draw: impl FnMut(&Painter, &Context),
     ) -> Vec<u8> {
         let ctx = Context::default();
+        ctx.options_mut(crate::style::tessellation);
         let mut raw = RawInput {
             screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(SIDE[0] as f32, SIDE[1] as f32) / ppp)),
             ..RawInput::default()
@@ -720,6 +722,47 @@ mod tests {
         crate::style::set_canvas(false, None);
     }
 
+    /// Lettering a third of a pixel below the clip: its outline, a stroke thinner than a pixel, is drawn with a soft edge a pixel
+    /// wide, which reaches the clip's last row. egui's coarse culling measured it by half its width and left it out, so the kept
+    /// triangles, made for more than the clip, drew a row egui didn't (a fallback font on Linux ARM put a room tag there).
+    #[test]
+    fn lettering_just_past_the_clip_shows_its_soft_edge_as_egui_draws_it() {
+        let Some(card) = card() else {
+            eprintln!("no card: the comparison needs one");
+            return;
+        };
+        let (m, level, view, _) = drawing();
+        let clip = Rect::from_min_max(pos2(37.0, 21.0), pos2(611.0, 503.0));
+        let mut d = render::draw(&m, level, view);
+        // In the drawing's pixels, which the canvas puts at the clip's corner.
+        let (left, top) = (400.0, clip.max.y - clip.min.y + 0.3);
+        d.prims.push(render::Prim::Fill {
+            rings: vec![vec![(left, top), (left + 10.0, top), (left + 10.0, top + 10.0), (left, top + 10.0)]],
+            color: render::Rgb(0, 0, 0),
+        });
+        d.owners.push(None);
+        d.parts.push(render::Part::Text);
+        d.pens.push(None);
+        let d = Arc::new(d);
+        let at = Place::at(clip.min);
+        crate::style::set_canvas(false, None);
+        for format in [wgpu::TextureFormat::Rgba8Unorm, wgpu::TextureFormat::Rgba8UnormSrgb] {
+            let pipeline = Arc::new(Pipeline::new(&card.0, &card.1, format));
+            let today = frame(&card, format, 1.0, clip, |p, _| canvas::paint(p, at, &d, &[], None, false, &[]));
+            let mut retained = Retained::default();
+            let kept = frame(&card, format, 1.0, clip, |p, ctx| {
+                retained.paint(ctx, &pipeline, p, at, at.origin, &d, &[], None, false);
+            });
+            let last = |v: &[u8]| {
+                let row = (clip.max.y as usize - 1) * SIDE[0] as usize * 4;
+                v[row + (clip.min.x + left) as usize * 4..row + (clip.min.x + left + 10.0) as usize * 4].to_vec()
+            };
+            assert!(last(&today).chunks(4).any(|px| px[0] < 250), "{format:?}: the soft edge shows on the clip's last row");
+            let differs = today.chunks(4).zip(kept.chunks(4)).filter(|(a, b)| a != b).count();
+            assert_eq!(differs, 0, "{format:?}: {differs} pixels differ from egui's");
+        }
+    }
+
     /// The whole app's window on a plan, with a wall selected: `card` given or not.
     fn window(
         card: &(wgpu::Device, wgpu::Queue),
@@ -739,12 +782,16 @@ mod tests {
         app.card.canvas = pipeline;
         app.theme_wanted = Some(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
         let ctx = Context::default();
-        let side = Rect::from_min_size(Pos2::ZERO, vec2(SIDE[0] as f32, SIDE[1] as f32));
-        let mut outputs = Vec::new();
-        for i in 0..6 {
-            let mut raw = RawInput { screen_rect: Some(side), time: Some(f64::from(i) * 10.0), ..RawInput::default() };
-            raw.viewports.entry(ViewportId::ROOT).or_default().native_pixels_per_point = Some(1.0);
-            outputs.push(ctx.run_ui(raw, |ui| app.show(ui)));
+        let mut outputs: Vec<_> = (0..6).map(|i| step(&mut app, &ctx, i)).collect();
+        // The layout settles over the first frames, which moves the plan's view: on the card the frame shows the last drawing moved,
+        // which may round a pixel otherwise, until a worker brings the one for where it settled.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let mut i = 6;
+        while app.canvas.drawing.shown_drawing().map(|d| d.view) != app.canvas.current_view(level) {
+            assert!(std::time::Instant::now() < deadline, "the worker published nothing");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+            outputs.push(step(&mut app, &ctx, i));
+            i += 1;
         }
         assert_eq!(
             (crate::style::dark(), crate::style::canvas_dark()),
