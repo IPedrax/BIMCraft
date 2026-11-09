@@ -24,12 +24,12 @@ fn dark(png: &[u8], (x, y): (f32, f32)) -> bool {
 
 /// A title block 100 by 30 mm: its outline, a solid square in its top left corner (a logo), a client field of the project's
 /// and a drawn-by field of each sheet's.
-fn civiltec(s: &mut Session) {
+fn escritorio(s: &mut Session) {
     run(
         s,
         "title_block",
         json!({
-            "name": "CIVILTEC",
+            "name": "ESCRITORIO",
             "width": 100, "height": 30,
             "lines": [{"points": [[0, 0], [100, 0], [100, 30], [0, 30]], "closed": true, "pen": 8}],
             "fills": [{"rings": [[[2, 20], [10, 20], [10, 28], [2, 28]]]}],
@@ -40,7 +40,7 @@ fn civiltec(s: &mut Session) {
             ],
             "fields": [
                 {"key": "cliente", "label": "Cliente", "scope": "project"},
-                {"key": "DESENHO", "label": "Desenhista", "default": "B.R."}
+                {"key": "DESENHO", "label": "Desenhista", "default": "A.B."}
             ]
         }),
     );
@@ -49,8 +49,8 @@ fn civiltec(s: &mut Session) {
 #[test]
 fn a_sheet_draws_the_title_block_it_names_in_its_corner_in_place_of_the_built_in_one() {
     let mut s = Session::new();
-    civiltec(&mut s);
-    run(&mut s, "sheet", json!({"number": "A101", "name": "Plantas", "title_block": "CIVILTEC"}));
+    escritorio(&mut s);
+    run(&mut s, "sheet", json!({"number": "A101", "name": "Plantas", "title_block": "ESCRITORIO"}));
     run(&mut s, "sheet", json!({"number": "A102", "name": "Cortes"}));
     let (own, built_in) = (sheet_id(&s, "A101"), sheet_id(&s, "A102"));
     // A3, ABNT's margins: the border's bottom right corner 10 mm in from the paper's on the right and at the bottom.
@@ -70,15 +70,15 @@ fn a_sheet_draws_the_title_block_it_names_in_its_corner_in_place_of_the_built_in
 fn its_fields_are_filled_in_from_the_project_the_sheet_and_the_automatic_ones() {
     let mut s = Session::new();
     s.execute("new", &json!({"name": "Casa Güths", "language": "pt"})).unwrap();
-    civiltec(&mut s);
-    run(&mut s, "sheet", json!({"number": "A102", "name": "Cortes", "title_block": "CIVILTEC", "fields": {"desenho": "M.S."}}));
-    run(&mut s, "sheet", json!({"number": "A101", "name": "Plantas", "title_block": "CIVILTEC"}));
+    escritorio(&mut s);
+    run(&mut s, "sheet", json!({"number": "A102", "name": "Cortes", "title_block": "ESCRITORIO", "fields": {"desenho": "M.S."}}));
+    run(&mut s, "sheet", json!({"number": "A101", "name": "Plantas", "title_block": "ESCRITORIO"}));
     run(&mut s, "title_values", json!({"values": {"CLIENTE": "Henrique Güths"}}));
     let a101 = sheet::title_values(&s.model, sheet_id(&s, "A101"));
     let a102 = sheet::title_values(&s.model, sheet_id(&s, "A102"));
     assert_eq!(a101["CLIENTE"], "Henrique Güths");
     assert_eq!(a102["CLIENTE"], "Henrique Güths", "a project field is the same on every sheet");
-    assert_eq!((a101["DESENHO"].as_str(), a102["DESENHO"].as_str()), ("B.R.", "M.S."), "a sheet field is each sheet's, else its default");
+    assert_eq!((a101["DESENHO"].as_str(), a102["DESENHO"].as_str()), ("A.B.", "M.S."), "a sheet field is each sheet's, else its default");
     assert_eq!((a101["SHEET_INDEX"].as_str(), a102["SHEET_INDEX"].as_str(), a101["SHEET_COUNT"].as_str()), ("01", "02", "02"));
     assert_eq!((a101["PROJECT"].as_str(), a101["SHEET_NAME"].as_str(), a101["SHEET_NUMBER"].as_str()), ("Casa Güths", "Plantas", "A101"));
     assert_eq!(a101["DATE"].len(), 10);
@@ -90,7 +90,7 @@ fn its_fields_are_filled_in_from_the_project_the_sheet_and_the_automatic_ones() 
     let a101 = sheet::title_values(&s.model, sheet_id(&s, "A101"));
     let a102 = sheet::title_values(&s.model, sheet_id(&s, "A102"));
     assert_eq!((a101["DATE"].as_str(), a102["DATE"].as_str()), ("10/11/2026", "12/11/2026"));
-    assert_eq!(a102["DESENHO"], "B.R.", "a value taken away gives the default again");
+    assert_eq!(a102["DESENHO"], "A.B.", "a value taken away gives the default again");
     // What `elements` says of a sheet: its fields filled in, and which are its own to give.
     let e = run(&mut s, "elements", json!({"category": "sheet"}));
     let e = e["elements"].as_array().unwrap().iter().find(|e| e["id"] == json!(a102_id)).unwrap().clone();
@@ -134,18 +134,18 @@ fn the_revision_is_the_latest_of_the_clouds_on_the_sheet_and_its_views() {
 #[test]
 fn a_title_block_is_named_by_its_sheets_through_renames_undo_and_a_file() {
     let mut s = Session::new();
-    civiltec(&mut s);
-    run(&mut s, "sheet", json!({"number": "A101", "title_block": "CIVILTEC", "fields": {"DESENHO": "B.R."}}));
+    escritorio(&mut s);
+    run(&mut s, "sheet", json!({"number": "A101", "title_block": "ESCRITORIO", "fields": {"DESENHO": "A.B."}}));
     let id = sheet_id(&s, "A101");
     // A sheet can't name one the project hasn't, nor can one a sheet names go.
     let e = s.execute("sheet", &json!({"number": "A102", "title_block": "Nope"})).unwrap_err();
     assert!(e.contains("no title block `Nope`"), "{e}");
-    let e = s.execute("title_block", &json!({"name": "CIVILTEC", "delete": true})).unwrap_err();
+    let e = s.execute("title_block", &json!({"name": "ESCRITORIO", "delete": true})).unwrap_err();
     assert!(e.contains("sheet A101"), "{e}");
-    run(&mut s, "title_block", json!({"name": "CIVILTEC", "rename": "CIVILTEC A3"}));
-    assert_eq!(s.model.sheet(id).unwrap().title_block, "CIVILTEC A3");
+    run(&mut s, "title_block", json!({"name": "ESCRITORIO", "rename": "ESCRITORIO A3"}));
+    assert_eq!(s.model.sheet(id).unwrap().title_block, "ESCRITORIO A3");
     s.execute("undo", &json!({})).unwrap();
-    assert_eq!(s.model.sheet(id).unwrap().title_block, "CIVILTEC");
+    assert_eq!(s.model.sheet(id).unwrap().title_block, "ESCRITORIO");
     run(&mut s, "title_values", json!({"values": {"CLIENTE": "ACME"}}));
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("p.bimcraft");
@@ -154,17 +154,17 @@ fn a_title_block_is_named_by_its_sheets_through_renames_undo_and_a_file() {
     let text = std::fs::read_to_string(&path).unwrap();
     let file: Value = serde_json::from_str(&text).unwrap();
     let named = file["elements"].as_object().unwrap().values().find(|e| e["category"] == "sheet").unwrap()["title_block"].clone();
-    assert_ne!(named, json!("CIVILTEC"), "{named}");
+    assert_ne!(named, json!("ESCRITORIO"), "{named}");
     let mut t = Session::new();
     run(&mut t, "open", json!({"path": path}));
     assert_eq!(t.model.title_blocks, s.model.title_blocks);
     assert_eq!(t.model.title_values["CLIENTE"], "ACME");
     let sh = t.model.sheet(sheet_id(&t, "A101")).unwrap();
-    assert_eq!((sh.title_block.as_str(), sh.fields["DESENHO"].as_str()), ("CIVILTEC", "B.R."));
+    assert_eq!((sh.title_block.as_str(), sh.fields["DESENHO"].as_str()), ("ESCRITORIO", "A.B."));
     // Back to the built-in, and then it may go.
     let a101 = sheet_id(&t, "A101");
     run(&mut t, "modify", json!({"id": a101, "title_block": ""}));
-    run(&mut t, "title_block", json!({"name": "CIVILTEC", "delete": true}));
+    run(&mut t, "title_block", json!({"name": "ESCRITORIO", "delete": true}));
     assert!(t.model.title_blocks.is_empty());
 }
 
@@ -211,8 +211,8 @@ fn a_title_block_is_read_from_a_dxf_and_keeps_its_fields_when_read_again() {
     };
     std::fs::write(&path, dxf("Cliente: {CLIENTE}")).unwrap();
     let mut s = Session::new();
-    let r = run(&mut s, "title_block", json!({"name": "CIVILTEC", "path": path}));
-    let tb = &s.model.title_blocks["CIVILTEC"];
+    let r = run(&mut s, "title_block", json!({"name": "ESCRITORIO", "path": path}));
+    let tb = &s.model.title_blocks["ESCRITORIO"];
     assert_eq!((tb.width, tb.height), (178.0, 60.0), "{r}");
     assert_eq!(tb.lines.len(), 1);
     assert_eq!(tb.texts[1].at, P2(5.0, 40.0));
@@ -222,11 +222,11 @@ fn a_title_block_is_read_from_a_dxf_and_keeps_its_fields_when_read_again() {
     run(
         &mut s,
         "title_block",
-        json!({"name": "CIVILTEC", "fields": [{"key": "ART", "label": "ART nº"}, {"key": "CLIENTE", "scope": "project"}]}),
+        json!({"name": "ESCRITORIO", "fields": [{"key": "ART", "label": "ART nº"}, {"key": "CLIENTE", "scope": "project"}]}),
     );
     std::fs::write(&path, dxf("Obra: {OBRA}")).unwrap();
-    run(&mut s, "title_block", json!({"name": "CIVILTEC", "path": path}));
-    let tb = &s.model.title_blocks["CIVILTEC"];
+    run(&mut s, "title_block", json!({"name": "ESCRITORIO", "path": path}));
+    let tb = &s.model.title_blocks["ESCRITORIO"];
     let fields: Vec<(&str, &str)> = tb.fields.iter().map(|f| (f.key.as_str(), f.label.as_str())).collect();
     assert_eq!(fields, [("ART", "ART nº"), ("OBRA", "")]);
     // A file that isn't a DXF, or draws nothing, is refused.
@@ -254,8 +254,8 @@ fn a_new_title_block_starts_as_the_built_in_one_and_another_like_it() {
 #[test]
 fn a_sheets_fields_take_keys_in_any_case_through_modify_too() {
     let mut s = Session::new();
-    civiltec(&mut s);
-    run(&mut s, "sheet", json!({"number": "A101", "title_block": "CIVILTEC", "fields": {"desenho": "J.P."}}));
+    escritorio(&mut s);
+    run(&mut s, "sheet", json!({"number": "A101", "title_block": "ESCRITORIO", "fields": {"desenho": "J.P."}}));
     let id = sheet_id(&s, "A101");
     assert_eq!(s.model.sheet(id).unwrap().fields["DESENHO"], "J.P.");
     run(&mut s, "modify", json!({"id": id, "fields": {"Desenho": "M.S."}}));
@@ -312,14 +312,14 @@ fn a_blocks_attributes_are_fields_of_their_tags_and_a_drawing_of_no_unit_says_so
 #[test]
 fn purge_takes_out_a_title_block_no_sheet_names_when_asked() {
     let mut s = Session::new();
-    civiltec(&mut s);
+    escritorio(&mut s);
     run(&mut s, "title_block", json!({"name": "Spare"}));
-    run(&mut s, "sheet", json!({"number": "A101", "title_block": "CIVILTEC"}));
+    run(&mut s, "sheet", json!({"number": "A101", "title_block": "ESCRITORIO"}));
     run(&mut s, "purge", json!({}));
     assert_eq!(s.model.title_blocks.len(), 2, "types and families by default");
     let r = run(&mut s, "purge", json!({"kinds": ["titleblock"]}));
     assert_eq!(r["removed"], json!([{"kind": "title block", "name": "Spare"}]));
-    assert!(s.model.title_blocks.contains_key("CIVILTEC"));
+    assert!(s.model.title_blocks.contains_key("ESCRITORIO"));
 }
 
 #[test]

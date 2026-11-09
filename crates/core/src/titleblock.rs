@@ -954,7 +954,7 @@ mod tests {
         assert_eq!(tb.fields.iter().map(|f| f.key.as_str()).collect::<Vec<_>>(), ["CLIENTE"]);
         assert_eq!(tb.texts[0].text, "Cliente: {CLIENTE}", "a single line's braces are its own");
         assert_eq!(tb.texts[0].color, None, "the drawing's ink is the ink");
-        assert!(tb.check("CIVILTEC").is_ok());
+        assert!(tb.check("ESCRITORIO").is_ok());
         // In cm, it's ten times the size.
         let tb = read_dxf(dxf.as_bytes(), Some(10.0)).unwrap().title_block;
         assert_eq!((tb.width, tb.height), (1800.0, 500.0));
