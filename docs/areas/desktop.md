@@ -569,7 +569,11 @@ field (`canvas::dimension_highlights`), and Enter moves the selected element, th
 a padlock under each segment and, over a string of two or more, EQ past its end (`dimension_constraints`): a click locks or unlocks, or makes
 it equal or not — its ends staying, the inner references spreading evenly; a value typed into an equal chain makes every segment it. A
 placed dimension's references are changed from the right-click menu's Edit Dimension References: a click on an element adds or takes out its
-reference, a click away places the line, Enter confirms and Esc leaves it as it was (`dimension {id, refs, at}`).
+reference, a click away places the line, Enter confirms and Esc leaves it as it was (`dimension {id, refs, at}`). A selected wall's
+temporary length dimension (`temporary_dimension`) has a dimension-line button under its number that makes it a permanent dimension between
+the wall's ends, and typing its number resizes the wall through `wall_length`: both free ends or both joined ends move evenly, one joined
+moves its free end alone. Tab over a dimension chain steps through its segments, a click picks one, and Delete takes only that segment out
+(`dimension_segment`).
 
 ## Background grids
 

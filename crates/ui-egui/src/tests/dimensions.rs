@@ -495,3 +495,50 @@ fn esc_cancels_a_typed_value_and_keeps_the_selection() {
     assert_eq!(field(&h, id, "values"), json!([2000.0]), "nothing changed");
     assert_eq!(field(&h, walls[0], "start"), json!([0.0, 0.0]));
 }
+
+#[test]
+fn the_temporary_wall_dimension_has_a_button_that_makes_it_permanent() {
+    let mut h = app(r#"wall {"points": [[0, 0], [4000, 0]]}"#);
+    click(&mut h, P2(2000.0, 0.0));
+    assert!(h.query_by_label("Make Dimension Permanent").is_some(), "the button is under the temporary number");
+    press(&mut h, "Make Dimension Permanent");
+    let dims = ids(&h, "dimension");
+    assert_eq!(dims.len(), 1, "{}", h.state().status.text);
+    assert_eq!(dimension(&h, dims[0]).refs.len(), 2);
+    assert_eq!(field(&h, dims[0], "values"), json!([4000.0]));
+}
+
+#[test]
+fn typing_a_temporary_wall_dimension_moves_both_joined_ends_evenly() {
+    let script = r#"wall {"points": [[0, 0], [4000, 0]]}
+wall {"points": [[0, 0], [0, 3000]]}
+wall {"points": [[4000, 0], [4000, 3000]]}"#;
+    let mut h = app(script);
+    let walls = ids(&h, "wall");
+    click(&mut h, P2(2000.0, 0.0));
+    h.get_by_label("Temporary dimension 4000").click();
+    h.run();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.event(Event::Text("6000".into()));
+    h.run();
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, walls[0], "start"), json!([-1000.0, 0.0]), "{}", h.state().status.text);
+    assert_eq!(field(&h, walls[0], "end"), json!([5000.0, 0.0]));
+}
+
+#[test]
+fn tab_picks_a_dimension_segment_and_delete_takes_it_out() {
+    let mut h = app(THREE_WALLS);
+    let id = ids(&h, "dimension")[0];
+    // Over the first segment, Tab highlights it; a click selects it.
+    h.hover_at(h.state().screen(P2(1000.0, -1000.0)));
+    h.run();
+    key(&mut h, Key::Tab);
+    assert!(h.state().dimension_segment_hover.is_some(), "Tab picked the segment under the cursor");
+    click(&mut h, P2(1000.0, -1000.0));
+    assert_eq!(h.state().dimension_segment, Some((id, 0)));
+    // Delete takes the segment out: the chain measures across where it was.
+    key(&mut h, Key::Delete);
+    assert_eq!(dimension(&h, id).refs.len(), 2, "{}", h.state().status.text);
+    assert_eq!(field(&h, id, "values"), json!([5000.0]));
+}

@@ -40,7 +40,7 @@ msgstr "Cihla"
 msgid "Brick 225 x 75"
 msgstr "Cihla 225 x 75"
 
-#: crates/core/src/commands.rs:4227
+#: crates/core/src/commands.rs:4245
 msgid "Camera"
 msgstr "Kamera"
 
@@ -88,7 +88,7 @@ msgstr "Betonová tvárnice"
 msgid "Copper"
 msgstr "Měď"
 
-#: crates/core/src/commands.rs:1228
+#: crates/core/src/commands.rs:1246
 msgid "Copy"
 msgstr "Kopie"
 
@@ -116,7 +116,7 @@ msgstr "Čerchovaná"
 msgid "Data Outlet"
 msgstr "Datová zásuvka"
 
-#: crates/core/src/commands.rs:10047
+#: crates/core/src/commands.rs:10065
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -192,8 +192,8 @@ msgstr "Elektroinstalace – osvětlení"
 msgid "Electrical Power"
 msgstr "Elektroinstalace – napájení"
 
-#: crates/core/src/commands.rs:9831
-#: crates/core/src/commands.rs:12396
+#: crates/core/src/commands.rs:9849
+#: crates/core/src/commands.rs:12414
 msgid "Elevation"
 msgstr "Pohled"
 
@@ -310,7 +310,7 @@ msgstr "Šířka nohy"
 msgid "Length"
 msgstr "Délka"
 
-#: crates/core/src/commands.rs:6438
+#: crates/core/src/commands.rs:6456
 #: crates/core/src/model.rs:3165
 msgid "Level"
 msgstr "Podlaží"
@@ -335,7 +335,7 @@ msgstr "Označení"
 msgid "Masking"
 msgstr "Maskovací"
 
-#: crates/core/src/commands.rs:7697
+#: crates/core/src/commands.rs:7715
 msgid "Mass"
 msgstr "Objem"
 
@@ -423,7 +423,7 @@ msgstr "Omítka"
 msgid "Porcelain"
 msgstr "Porcelán"
 
-#: crates/core/src/commands.rs:2914
+#: crates/core/src/commands.rs:2932
 msgid "Project"
 msgstr "Projekt"
 
@@ -451,7 +451,7 @@ msgstr "Počet stupňů"
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
-#: crates/core/src/commands.rs:7922
+#: crates/core/src/commands.rs:7940
 msgid "Room"
 msgstr "Místnost"
 
@@ -487,8 +487,8 @@ msgstr "Potěr"
 msgid "Seat Height"
 msgstr "Výška sedáku"
 
-#: crates/core/src/commands.rs:9808
-#: crates/core/src/commands.rs:12395
+#: crates/core/src/commands.rs:9826
+#: crates/core/src/commands.rs:12413
 msgid "Section"
 msgstr "Řez"
 
@@ -612,7 +612,7 @@ msgstr "NAHORU"
 msgid "Unbounded Height"
 msgstr "Neohraničená výška"
 
-#: crates/core/src/commands.rs:10188
+#: crates/core/src/commands.rs:10206
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 

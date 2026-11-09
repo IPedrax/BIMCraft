@@ -816,6 +816,15 @@ other_files(
         dimension_constraint,
     ),
     edit(
+        "dimension_segment",
+        ui_msg!("Delete Dimension Segment"),
+        &[],
+        "{id, segment} takes one segment out of an aligned or a linear dimension's chain: the reference bounding it goes, so \
+         what lay on either side measures as one, or its last segment goes; a chain's only segment takes the dimension away. \
+         Its locks and segment texts follow the references that remain. Returns {id, deleted, values}, or {deleted: id}",
+        dimension_segment,
+    ),
+    edit(
         "dimension_text",
         "Dimension Text",
         &[],
@@ -1222,6 +1231,15 @@ other_files(
         "{ids: [id,…], by: [dx, dy], end?: start|end} moves elements in plan; walls joined to a moved wall stretch to stay \
          joined, and doors and windows slide along their walls. With `end`, only that end of one wall or one run moves",
         move_elements,
+    ),
+    edit(
+        "wall_length",
+        ui_msg!("Wall Length"),
+        &[],
+        "{id, value} gives one wall a length, as a temporary dimension beside it types one: both ends free or both joined \
+         move evenly, one joined moves its free end alone; a curved wall keeps its turn, its end moving along its chord. \
+         Returns {moved, by, length}",
+        wall_length,
     ),
     edit(
         "copy",
@@ -12822,6 +12840,89 @@ fn resize_wall(s: &mut Session, c: &str, id: Id, growth: &WallGrowth) -> Result<
         }
     }
     Ok(())
+}
+
+/// A wall given its length, as a temporary dimension beside it types one: both ends free or both joined move apart
+/// evenly, one joined moves its free end alone; a curved wall keeps its turn, its end moving along its chord.
+fn wall_length(s: &mut Session, p: &Value) -> R {
+    let c = "wall_length";
+    only(c, p, &["id", "value"])?;
+    let id = element_id(c, &s.model, p.get("id").unwrap_or(&Value::Null))?;
+    let Some(w) = s.model.wall(id).cloned() else {
+        return Err(bad(c, format!("{} {id} isn't a wall", s.model.elements.get(id).map_or("nothing", |e| e.category()))));
+    };
+    let value = num(c, p, "value")?.ok_or_else(|| bad(c, "`value`, the length in mm, is required"))?;
+    if !(value > TOL && value <= MAX_COORD) {
+        return Err(bad(c, format!("`value` is a length above 0 and at most {MAX_COORD} mm, not {value}")));
+    }
+    let before = Arc::clone(&s.model);
+    let by;
+    if w.arc != 0.0 {
+        let length = Axis::of(&w).length();
+        if length <= TOL {
+            return Err(bad(c, "the wall has no length"));
+        }
+        let chord = (w.end - w.start) * (value / length - 1.0);
+        by = chord.length();
+        if chord.length() > 1e-9 {
+            move_elements(s, &json!({"ids": [id], "by": [chord.0, chord.1], "end": "end"}))?;
+        }
+    } else {
+        let u = (w.end - w.start).unit();
+        let signed = value - (w.end - w.start).length();
+        by = signed;
+        if signed.abs() > 1e-9 {
+            resize_wall(s, c, id, &WallGrowth { wall_id: id, wall: &w, signed, n: u, segment: 0 })?;
+        }
+    }
+    crate::constraints::keep(s, &before)?;
+    let Some(now) = s.model.wall(id) else { return Err(bad(c, "the wall is gone")) };
+    let length = Axis::of(now).length();
+    if (length - value).abs() > 0.01 {
+        return Err(bad(c, format!("the wall can't be {value}: what keeps it is joined to something that stays")));
+    }
+    Ok(json!({"moved": id, "by": hundredth(by), "length": hundredth(length)}))
+}
+
+/// Takes one segment out of an aligned or a linear dimension's chain: the reference bounding it goes, so what lies on
+/// either side of it measures as one, or its last segment goes; a segment alone takes the whole dimension away. Its locks
+/// and segment texts follow the pairs of references that remain.
+fn dimension_segment(s: &mut Session, p: &Value) -> R {
+    let c = "dimension_segment";
+    only(c, p, &["id", "segment"])?;
+    let id = element_id(c, &s.model, p.get("id").unwrap_or(&Value::Null))?;
+    let Some(Element::Dimension(d)) = s.model.elements.get(id) else {
+        return Err(bad(c, format!("{} {id} isn't a dimension", s.model.elements.get(id).map_or("nothing", |e| e.category()))));
+    };
+    if !matches!(d.kind, DimKind::Aligned | DimKind::Linear) || d.alignment {
+        return Err(bad(c, format!("dimension {id} isn't an aligned or a linear one: only their segments are taken out")));
+    }
+    let d = d.clone();
+    let (_, st) = s.model.stations(&d);
+    let count = st.len().saturating_sub(1);
+    let segment = count_opt(c, p, "segment", 0)?;
+    if count == 0 || segment >= count {
+        return Err(bad(c, format!("dimension {id} has segments 0 to {}, not {segment}", count.saturating_sub(1))));
+    }
+    // One segment alone: the dimension goes with it.
+    if count == 1 {
+        s.model_mut().elements.remove(id);
+        return Ok(json!({"deleted": id}));
+    }
+    // The station the segment ends at goes, merging it with the next segment; the last merges back with the one before.
+    let drop = if segment + 1 < count { segment + 1 } else { segment };
+    let refs: Vec<Reference> = st.iter().enumerate().filter(|(i, _)| *i != drop).map(|(_, (_, _, r))| *r).collect();
+    // An equal chain needs two segments at least; one left, its equality goes.
+    if refs.len() < 3
+        && let Some(Element::Dimension(mut d)) = s.model.elements.get(id).cloned()
+    {
+        d.equal = false;
+        d.equality = false;
+        s.model_mut().elements.insert(id, Element::Dimension(d));
+    }
+    let guid = s.model.guid(id);
+    let out = dimension_edit(s, &json!({"id": id, "refs": refs}), guid)?;
+    Ok(json!({"id": id, "deleted": segment, "values": out["values"]}))
 }
 
 /// Element `id` moved `by` in plan, as `move` moves it: what keeps a dimension's constraints.

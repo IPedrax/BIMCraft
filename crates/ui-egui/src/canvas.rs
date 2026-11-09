@@ -1522,6 +1522,11 @@ impl BimApp {
             (Tool::Modify, Some(q)) if !sketching => d.pick_all(q, PICK),
             _ => Vec::new(),
         };
+        // A dimension under the cursor: Tab steps through its segments before its element.
+        let dim_under = under.iter().copied().find(|id| {
+            matches!(model.elements.get(*id), Some(Element::Dimension(d))
+                if matches!(d.kind, DimKind::Aligned | DimKind::Linear) && !d.alignment)
+        });
         if under != c.under {
             (c.under, c.cycle) = (under, 0);
         }
@@ -1534,7 +1539,27 @@ impl BimApp {
             });
         }
         let tabbed = std::mem::take(&mut self.tab_cycle) || tab;
-        if tabbed && !c.under.is_empty() {
+        if self.dimension_segment_hover.is_some_and(|(id, _)| Some(id) != dim_under) {
+            self.dimension_segment_hover = None;
+        }
+        let mut segment_tabbed = false;
+        if tabbed
+            && let Some(id) = dim_under
+            && let Some(Element::Dimension(d)) = model.elements.get(id)
+        {
+            let (_, st) = model.stations(d);
+            let count = st.len().saturating_sub(1);
+            if count > 0 {
+                let at = local.map(|q| model.dimension_segment_at(d, view.mm(q))).unwrap_or(0).min(count - 1);
+                let next = match self.dimension_segment_hover {
+                    Some((held, i)) if held == id => (i + 1) % count,
+                    _ => at,
+                };
+                self.dimension_segment_hover = Some((id, next));
+                segment_tabbed = true;
+            }
+        }
+        if tabbed && !segment_tabbed && !c.under.is_empty() {
             c.cycle = (c.cycle + 1) % c.under.len();
         }
         // While a rectangle is drawn, Tab moves between its width and its height; a line's or a wall's, its length and its angle.
@@ -1700,13 +1725,35 @@ impl BimApp {
         }
         // A click on a shape point's height label is the label's.
         let on_label = |at: &Pos2| self.shape_label_rects.iter().any(|r| r.contains(*at));
-        if let Some(at) = self.clicked_at(&response).filter(|at| !dragged && !writing && !on_label(at) && !self.over_dimension_control) {
+        if let Some(at) = self.clicked_at(&response).filter(|at| !dragged && !writing && !on_label(at)) {
             let q = (at.x - rect.min.x, at.y - rect.min.y);
             // What lay under the press, which the hand may have left by the time the button came up.
             let found = if Some(q) == local { hovered } else { under_at(q) };
-            self.click(&model, (level, key), &view, q, found, click_modifiers(ui));
-            // A snap override typed was for that point.
-            self.snap_once = None;
+            // A dimension's control keeps a click over it (its number, EQ, padlock or text button), but a mark that
+            // opens a view or a note, or is written in, is the click's: a double click there must not be held back.
+            let opens = found.is_some_and(|id| {
+                model.section(id).is_some()
+                    || matches!(model.elements.get(id), Some(Element::View3D(_)))
+                    || crate::notes::is_note(&model, id)
+            });
+            if self.over_dimension_control && !opens {
+                self.snap_once = None;
+            } else {
+                // Tab has picked a segment of the dimension under the cursor: a click selects that segment.
+                if let Some((dim, segment)) = self.dimension_segment_hover
+                    && (found == Some(dim) || d.pick_all(q, PICK).contains(&dim))
+                {
+                    self.selection = vec![dim];
+                    self.dimension_segment = Some((dim, segment));
+                    self.dimension_segment_hover = None;
+                } else {
+                    self.dimension_segment = None;
+                    self.dimension_segment_hover = None;
+                    self.click(&model, (level, key), &view, q, found, click_modifiers(ui));
+                }
+                // A snap override typed was for that point.
+                self.snap_once = None;
+            }
         }
         // A double click ends a spline or a polyline at the point clicked, as Enter does.
         if response.double_clicked() && !dragged && !writing && self.finishable() {
@@ -3517,7 +3564,25 @@ impl BimApp {
             }
             return;
         }
+        self.dimension_segment_highlight(ui, m, v, rect);
         self.dimension_highlights(ui, m, v, rect, key);
+    }
+
+    /// The segment Tab picked, or a click selected, drawn over the dimension line: brighter while it is the picked one.
+    fn dimension_segment_highlight(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect) {
+        let Some((id, segment)) = self.dimension_segment.or(self.dimension_segment_hover) else { return };
+        let Some(Element::Dimension(d)) = m.elements.get(id) else {
+            self.dimension_segment = None;
+            self.dimension_segment_hover = None;
+            return;
+        };
+        let (n, st) = m.stations(d);
+        let (Some(a), Some(b)) = (st.get(segment), st.get(segment + 1)) else { return };
+        let on = |s: f64| pos(rect.min, v.px(d.at + n * s));
+        let p = ui.painter_at(rect);
+        let (ink, width) = if self.dimension_segment == Some((id, segment)) { (pal().accent, 5.0) } else { (pal().hover, 3.0) };
+        p.line_segment([on(a.0), on(b.0)], Stroke::new(width, ink));
+        p.circle_filled(on((a.0 + b.0) / 2.0), 5.0, ink);
     }
 
     /// Starts Edit Dimension References on the selected dimension, if it is one.
@@ -3694,14 +3759,34 @@ impl BimApp {
         };
         let text = m.units.length(length);
         let size = p.layout_no_wrap(text.clone(), FontId::proportional(12.0), pal().accent).size() + vec2(10.0, 4.0);
-        if let Some(typed) = self.dimension_number(ui, Rect::from_center_size(middle, size), (id, 0), &text) {
+        let number = Rect::from_center_size(middle, size);
+        // Under the number, a small dimension-line button makes the temporary dimension a real one: a dimension between
+        // the wall's ends, where the temporary line is. A curved wall's length along its arc is no aligned dimension's.
+        if w.arc == 0.0 {
+            let icon = Rect::from_center_size(middle + vec2(0.0, size.y / 2.0 + 10.0), vec2(22.0, 16.0));
+            let r = ui.interact(icon, ui.id().with(("permanent dimension", id)), Sense::click());
+            if r.hovered() {
+                self.over_dimension_control = true;
+            }
+            r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, t("Make Dimension Permanent")));
+            let ink = if r.hovered() { pal().hover } else { pal().accent_ink };
+            p.rect_filled(icon, 3.0, pal().surface);
+            p.rect_stroke(icon, 3.0, Stroke::new(1.0, ink), StrokeKind::Inside);
+            let y = icon.center().y;
+            let (left, right) = (icon.left() + 4.0, icon.right() - 4.0);
+            p.line_segment([pos2(left, y), pos2(right, y)], Stroke::new(1.0, ink));
+            for x in [left, right] {
+                p.line_segment([pos2(x, y - 3.0), pos2(x, y + 3.0)], Stroke::new(1.0, ink));
+            }
+            if r.clicked() {
+                let at = v.mm((icon.center().x - rect.min.x, icon.center().y - rect.min.y));
+                self.run("dimension", json!({"refs": [{"id": id, "point": "start"}, {"id": id, "point": "end"}], "at": point(at)}));
+            }
+        }
+        if let Some(typed) = self.dimension_number(ui, number, (id, 0), &text) {
             match typed.map(|t| (m.units.parse(&t), t)) {
-                // Its end moved along its chord: an arc keeps its turn, its length as typed.
                 Some((Some(len), _)) if len > 0.0 => {
-                    let by = (w.end - w.start) * (len / length - 1.0);
-                    if by.length() > 1e-6 {
-                        self.run("move", json!({"ids": [id], "by": point(by), "end": "end"}));
-                    }
+                    self.run("wall_length", json!({"id": id, "value": len}));
                 }
                 Some((_, typed)) => self.status = Status { text: tf("`{}` is not a length", &[typed.trim()]), error: true },
                 None => {}

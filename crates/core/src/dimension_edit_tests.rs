@@ -296,3 +296,71 @@ fn every_edit_leaves_a_model_that_checks() {
     run(&mut s, "dimension_text", json!({"id": d, "segment": 1, "prefix": "~"}));
     assert_eq!(s.model.check(), Ok(()));
 }
+
+#[test]
+fn wall_length_resizes_a_free_wall_evenly() {
+    let mut s = Session::new();
+    let w = wall(&mut s, json!([[0, 0], [4000, 0]]));
+    let out = run(&mut s, "wall_length", json!({"id": w, "value": 6000}));
+    assert_eq!((wall_start(&s, w), wall_end(&s, w)), (-1000.0, 5000.0));
+    assert_eq!(out["length"], json!(6000.0));
+}
+
+#[test]
+fn wall_length_moves_only_the_free_end_when_one_is_joined() {
+    let mut s = Session::new();
+    let w = wall(&mut s, json!([[0, 0], [4000, 0]]));
+    wall(&mut s, json!([[0, 0], [0, 3000]]));
+    run(&mut s, "wall_length", json!({"id": w, "value": 6000}));
+    assert_eq!((wall_start(&s, w), wall_end(&s, w)), (0.0, 6000.0));
+}
+
+#[test]
+fn wall_length_moves_both_joined_ends_evenly() {
+    let mut s = Session::new();
+    let w = wall(&mut s, json!([[0, 0], [4000, 0]]));
+    wall(&mut s, json!([[0, 0], [0, 3000]]));
+    wall(&mut s, json!([[4000, 0], [4000, 3000]]));
+    run(&mut s, "wall_length", json!({"id": w, "value": 6000}));
+    assert_eq!((wall_start(&s, w), wall_end(&s, w)), (-1000.0, 5000.0));
+}
+
+#[test]
+fn deleting_a_segment_merges_the_references_either_side_of_it() {
+    let mut s = Session::new();
+    let (_, d) = chain(&mut s, &[0.0, 2000.0, 5000.0, 9000.0]);
+    let out = run(&mut s, "dimension_segment", json!({"id": d, "segment": 1}));
+    assert_eq!(out["values"], json!([2000.0, 7000.0]));
+    assert_eq!(dim_of(&s, d).refs.len(), 3);
+}
+
+#[test]
+fn deleting_the_last_segment_of_a_chain_takes_its_first_reference() {
+    let mut s = Session::new();
+    let (_, d) = chain(&mut s, &[0.0, 2000.0, 5000.0, 9000.0]);
+    let out = run(&mut s, "dimension_segment", json!({"id": d, "segment": 2}));
+    assert_eq!(out["values"], json!([2000.0, 7000.0]));
+    assert_eq!(dim_of(&s, d).refs.len(), 3);
+}
+
+#[test]
+fn deleting_a_single_segment_dimension_takes_the_dimension_away() {
+    let mut s = Session::new();
+    let a = wall(&mut s, json!([[0, 0], [0, 4000]]));
+    let b = wall(&mut s, json!([[2000, 0], [2000, 4000]]));
+    let d = dimension(&mut s, json!([{"id": a}, {"id": b}]), json!([1000, -1000]));
+    run(&mut s, "dimension_segment", json!({"id": d, "segment": 0}));
+    assert!(s.model.elements.get(d).is_none());
+}
+
+#[test]
+fn deleting_a_segment_of_an_equal_chain_turns_its_equality_off_when_one_is_left() {
+    let mut s = Session::new();
+    let (_, d) = chain(&mut s, &[0.0, 2000.0, 5000.0]);
+    run(&mut s, "dimension_constraint", json!({"id": d, "equal": true}));
+    run(&mut s, "dimension_segment", json!({"id": d, "segment": 0}));
+    let edited = dim_of(&s, d);
+    assert_eq!(edited.refs.len(), 2);
+    assert!(!edited.equal);
+    assert_eq!(values(&s, d), vec![5000.0]);
+}

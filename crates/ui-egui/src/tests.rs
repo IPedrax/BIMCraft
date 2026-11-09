@@ -1254,8 +1254,10 @@ fn a_selected_walls_temporary_dimension_sets_its_length() {
     h.event(Event::Text("9000".into()));
     h.run();
     key(&mut h, Key::Enter);
-    assert_eq!(walls(&h)[0], (P2(0.0, 0.0), P2(9000.0, 0.0)));
-    assert_eq!(walls(&h)[1].0, P2(9000.0, 0.0), "the wall joined at that end followed");
+    // Both ends of the south wall are joined: both move evenly, and the walls joined there follow.
+    assert_eq!(walls(&h)[0], (P2(-500.0, 0.0), P2(8500.0, 0.0)));
+    assert_eq!(walls(&h)[1].0, P2(8500.0, 0.0), "the wall joined at that end followed");
+    assert_eq!(walls(&h)[3].1, P2(-500.0, 0.0), "the wall joined at the other end followed too");
 }
 
 #[test]

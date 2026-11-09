@@ -702,6 +702,10 @@ pub struct BimApp {
     dim_edit_escaped: bool,
     /// Edit Dimension References, while it's on: the dimension, its references being picked, and where its line goes.
     dimension_refs_edit: Option<canvas::DimensionRefsEdit>,
+    /// The dimension segment picked out of a chain, by Tab and a click: the dimension and which segment.
+    dimension_segment: Option<(Id, usize)>,
+    /// The segment Tab is stepping over now, highlighted until a click picks it.
+    dimension_segment_hover: Option<(Id, usize)>,
     /// A selected wall's angle being typed: the wall, whether it turns about its start (else its
     /// end), the angle so far.
     angle_edit: Option<(Id, bool, String)>,
@@ -1369,6 +1373,8 @@ impl BimApp {
             over_dimension_control: false,
             dim_edit_escaped: false,
             dimension_refs_edit: None,
+            dimension_segment: None,
+            dimension_segment_hover: None,
             temporary: HashMap::new(),
             shadow: None,
             linked_3d: None,
@@ -2763,6 +2769,10 @@ impl BimApp {
         if self.dimension_refs_edit.take().is_some() {
             return;
         }
+        // A dimension segment picked goes, leaving its dimension as it was.
+        if self.dimension_segment.take().is_some() || self.dimension_segment_hover.take().is_some() {
+            return;
+        }
         // A number field left by Esc keeps the selection it was typed for.
         if std::mem::take(&mut self.dim_edit_escaped) || self.dim_edit.take().is_some() {
             return;
@@ -2834,6 +2844,14 @@ impl BimApp {
     }
 
     fn delete(&mut self) {
+        // A dimension segment picked out of a chain goes, not the whole dimension.
+        if let Some((id, segment)) = self.dimension_segment.take() {
+            self.dimension_segment_hover = None;
+            if self.run("dimension_segment", json!({"id": id, "segment": segment})).is_some() {
+                self.selection = if self.session.model.elements.get(id).is_some() { vec![id] } else { Vec::new() };
+            }
+            return;
+        }
         // Under Modify Sub Elements, what of the shape is selected.
         if self.shape_delete() {
             return;
