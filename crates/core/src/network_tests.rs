@@ -195,3 +195,22 @@ fn a_stack_standing_upright_joins_the_drain_at_its_foot() {
     assert!(pipes.contains(&&json!(stack)) && pipes.contains(&&json!(drain)), "{foot}");
     assert_eq!(n["edges"][0]["length"], 2500.0, "a standing pipe's length is its height");
 }
+
+#[test]
+fn pipes_kilometres_across_are_refused_saying_what_to_fix_not_run_out_of_memory() {
+    let mut s = Session::new();
+    // A small project of three thousand pipes 1.4 km long on the diagonal: each would go in a million of the plan's
+    // squares that are searched for branches along it, and all of them in billions.
+    let points: Vec<Value> = (0..3000).map(|i| if i % 2 == 0 { json!([i * 10, 0]) } else { json!([i * 10 + 999_000, 999_000]) }).collect();
+    let ids = pipe(&mut s, json!(points), json!({"offset": 500}));
+    assert_eq!(ids.len(), 2999);
+    let before = s.model.clone();
+    let t = std::time::Instant::now();
+    let e = s.execute("network", &json!({})).unwrap_err();
+    assert!(t.elapsed().as_secs_f64() < 10.0, "{} s: a hang, not a slow machine", t.elapsed().as_secs_f64());
+    assert!(e.contains(&crate::network::MAX_CELLS.to_string()) && e.contains("`level`"), "{e}");
+    assert!(ids.iter().any(|id| e.contains(&format!("pipe {id}"))), "it names a pipe to look at: {e}");
+    assert_eq!(*s.model, *before);
+    // What it says to do works: another level's network is worked out.
+    assert_eq!(net(&mut s, json!({"level": "Level 2"}))["groups"], json!([]));
+}

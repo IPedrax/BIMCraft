@@ -204,6 +204,10 @@ their own. The reply has the nodes (what meets at each), the edges, the groups o
 their connectors' domains, the open ends (an end or a connector meeting nothing, as Revit's Show Disconnects marks) and warnings
 that never refuse the model, since a drawing in progress has open ends: two pipe systems in one network, two connector domains in
 one, a pipe met along its length with no fitting, and, in a network with a waste connector, a pipe leaving a node downhill narrower
-than one coming down to it. IFC's ports say the same with `IfcRelConnectsPorts` between two `IfcDistributionPort`s; writing them is
-piece 8. A pipe's `width` is its outside diameter and a connector's `size` its DN, so they aren't compared. Conduits and the other
-electrical runs are not in it yet: their routes are piece 6.
+than one coming down to it. A query works on 200,000 pipe ends and connectors at most (`MAX_POINTS`), and looks for nodes along
+pipes through the plan's metre squares each lies across, 4,000,000 of them for all the pipes together (`MAX_CELLS`): a small file
+of pipes kilometres long on the diagonal would fill billions, so past it the query is refused, naming the pipe across the most and
+saying to ask for one `level`. IFC's ports say the same with
+`IfcRelConnectsPorts` between two `IfcDistributionPort`s; writing them is piece 8. A pipe's `width` is its outside diameter and a
+connector's `size` its DN, so they aren't compared. Conduits and the other electrical runs are not in it yet: their routes are
+piece 6.

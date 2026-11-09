@@ -25,6 +25,13 @@ pub const TOLERANCE: f64 = 1.0;
 pub const MAX_TOLERANCE: f64 = 50.0;
 /// The most points (pipes' ends and connectors) one query works on.
 pub const MAX_POINTS: usize = 200_000;
+/// The plan's squares, mm on a side, that the pipes are found by when a node may lie along one.
+const SPAN: f64 = 1000.0;
+/// The most squares one pipe goes in: a longer one across is not looked along.
+const MAX_PIPE_CELLS: f64 = 1.0e6;
+/// The most squares all the pipes of one query go in together: a few thousand pipes kilometres long on the diagonal would
+/// otherwise fill billions.
+pub const MAX_CELLS: usize = 4_000_000;
 
 /// What meets at a node.
 #[derive(Clone, Debug, PartialEq)]
@@ -126,6 +133,25 @@ impl Sets {
     }
 }
 
+/// The squares a pipe from `a` to `b` goes in, grown by `tol`: the first and last across x, then y. None when it goes in more
+/// than `MAX_PIPE_CELLS`.
+fn squares(a: [f64; 3], b: [f64; 3], tol: f64) -> Option<[i64; 4]> {
+    let (x0, x1) = (a[0].min(b[0]) - tol, a[0].max(b[0]) + tol);
+    let (y0, y1) = (a[1].min(b[1]) - tol, a[1].max(b[1]) + tol);
+    let cells = ((x1 - x0) / SPAN + 1.0) * ((y1 - y0) / SPAN + 1.0);
+    if cells > MAX_PIPE_CELLS {
+        return None;
+    }
+    let k = |v: f64| (v / SPAN).floor() as i64;
+    Some([k(x0), k(x1), k(y0), k(y1)])
+}
+
+/// How many squares those are.
+fn square_count([x0, x1, y0, y1]: [i64; 4]) -> usize {
+    let n = |lo: i64, hi: i64| usize::try_from(hi.saturating_sub(lo).saturating_add(1)).unwrap_or(0);
+    n(x0, x1).saturating_mul(n(y0, y1))
+}
+
 /// The cell of a grid of `size` a point is in.
 fn cell(p: [f64; 3], size: f64) -> (i64, i64, i64) {
     let k = |x: f64| (x / size).floor() as i64;
@@ -209,18 +235,24 @@ pub fn network(m: &Model, system: Option<&str>, level: Option<Guid>, tolerance: 
         nodes[n].joints.push(j.clone());
         at_point[i] = n;
     }
-    // A node on a pipe's length, away from its ends, splits it: found through a coarse grid of the pipes in plan.
-    const SPAN: f64 = 1000.0;
+    // A node on a pipe's length, away from its ends, splits it: found through a coarse grid of the pipes in plan. The squares
+    // are counted before any is filled, so pipes that would fill too many are refused before they take the memory.
+    let spans: Vec<Option<[i64; 4]>> = runs.iter().map(|(_, a, b, _, _, _)| squares(*a, *b, tol)).collect();
+    let counts: Vec<usize> = spans.iter().map(|s| s.map_or(0, square_count)).collect();
+    let total = counts.iter().fold(0usize, |t, n| t.saturating_add(*n));
+    if total > MAX_CELLS {
+        let (k, most) = counts.iter().enumerate().fold((0, 0), |best, (k, n)| if *n > best.1 { (k, *n) } else { best });
+        let id = runs.get(k).map_or(0, |r| r.0);
+        return Err(format!(
+            "the pipes lie across {total} of the plan's {SPAN} mm squares, more than the {MAX_CELLS} one query looks through for \
+             nodes along them (pipe {id} alone lies across {most}): shorten or delete pipes kilometres long, or ask for one `level`"
+        ));
+    }
     let mut by_plan: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
-    for (k, (_, a, b, _, _, _)) in runs.iter().enumerate() {
-        let (x0, x1) = (a[0].min(b[0]) - tol, a[0].max(b[0]) + tol);
-        let (y0, y1) = (a[1].min(b[1]) - tol, a[1].max(b[1]) + tol);
-        let cells = ((x1 - x0) / SPAN + 1.0) * ((y1 - y0) / SPAN + 1.0);
-        if cells > 1.0e6 {
-            continue;
-        }
-        for cx in (x0 / SPAN).floor() as i64..=(x1 / SPAN).floor() as i64 {
-            for cy in (y0 / SPAN).floor() as i64..=(y1 / SPAN).floor() as i64 {
+    for (k, span) in spans.iter().enumerate() {
+        let Some([x0, x1, y0, y1]) = *span else { continue };
+        for cx in x0..=x1 {
+            for cy in y0..=y1 {
                 by_plan.entry((cx, cy)).or_default().push(k);
             }
         }
