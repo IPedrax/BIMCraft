@@ -5449,7 +5449,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/sketch.rs:1356
 msgid "Lock locks a line picked with no Offset, in a plan or an elevation"
-msgstr "Blocca blocca una linea scelta senza Scostamento, in una pianta o un prospetto"
+msgstr "Blocca vale per una linea scelta senza Scostamento, in una pianta o un prospetto"
 
 #: crates/ui-egui/src/canvas.rs:3225
 msgid "Lock segment {}"
