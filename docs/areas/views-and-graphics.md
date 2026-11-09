@@ -67,10 +67,13 @@ render command's ordinary 8192 px side limit. Sheet images use paper dimensions 
 × 4205 px and ARCH E 6096 × 4572 px; longer roll sheets are not supported. `Model::check` refuses malformed or out-of-range
 dimensions on creation and editing alike.
 
-The additional Revit dimensions follow the numerical sizes in the [Revit 2026 ExportPaperFormat
-reference](https://help.autodesk.com/cloudhelp/2026/ENU/Revit-API-MainReference/files/html/9ad6f7ad-a4d2-e471-e8f3-5f5d3c4f7405.htm):
-ARCH E2 26 × 38 in, ARCH E3 27 × 39 in; ISO B1 707 × 1000, B2 500 × 707, B3 353 × 500 and B4 250 × 353 mm. Super B is separate from
-that list.
+The sizes come from public standards. The A and B series are ISO 216's: A0 841 × 1189 to A4 210 × 297 mm, and B1 707 × 1000, B2
+500 × 707, B3 353 × 500 and B4 250 × 353 mm. ANSI A to E are ANSI/ASME Y14.1's (Decimal Inch Drawing Sheet Size and Format): 8.5 × 11,
+11 × 17, 17 × 22, 22 × 34 and 34 × 44 in. Y14.1's own sizes are lettered flat sizes A to F and roll sizes G to K, and the ARCH series
+is not among them, so the ARCH sizes and Super B follow PWG 5101.1-2023, the Printer Working Group's Media Standardized Names, whose
+Table 3 lists ARCH A 9 × 12, B 12 × 18, C 18 × 24, D 24 × 36, E 36 × 48, E2 26 × 38 and E3 27 × 39 in, 30 × 42 in (ARCH E1) as
+`wide-format`, and Super B 13 × 19 in; its Table 4 lists the ISO sizes again. An inch is 25.4 mm exactly, so the inch
+sizes go into millimetres with no rounding.
 
 Family components are split by category. A component is of its family's category (`graphics::category_of`; `component_category` names
 each `family::Category`: `furniture`, `casework`, `plumbing`, `drain`, `pipefitting`, `pipeaccessory`, `equipment`, `outlet`, `switch`,
