@@ -194,7 +194,8 @@ pub(crate) fn primitive(m: &Model, id: Id) -> Bounds {
         if g.width <= 0.0 || g.depth <= 0.0 {
             return Bounds::Unknown;
         }
-        if g.round {
+        // Steel sections have upright ends, enclosed by prism(); plain round runs use tube().
+        if g.round && m.run_type(e).is_some_and(|t| t.profile.is_none()) {
             // The exact same basis as tube(), but bound all angles without triangles.
             let d = crate::view3d::unit(crate::view3d::sub(g.b, g.a));
             let u = if g.vertical() { [1.0, 0.0, 0.0] } else { crate::view3d::unit([-d[1], d[0], 0.0]) };

@@ -161,3 +161,118 @@ mod native_versions {
         assert!(error.contains("saved by a newer BIMCraft"), "{error}");
     }
 }
+
+#[cfg(test)]
+mod sloped_hollow_bounds {
+    use bimcraft_core::{
+        bounds::{Bounds, BoundsCache},
+        engine::Session,
+        render::{self, SectionOverlay, SectionWork},
+        runs::Swept,
+    };
+    use serde_json::json;
+
+    fn beam(profile: bool, end: [f64; 2], rise: f64, justify: &str) -> (Session, u64) {
+        let mut s = Session::new();
+        let mut params = json!({"category":"beam","name":"Slope","width":200});
+        if profile {
+            params["shape"] = json!("CHS");
+            params["thickness"] = json!(10);
+        } else {
+            params["round"] = json!(true);
+        }
+        s.execute("type", &params).unwrap();
+        let id =
+            s.execute("beam", &json!({"points":[[0,0],end],"type":"Slope","offset":0,"end_offset":rise,"justify":justify})).unwrap()["ids"]
+                [0]
+            .as_u64()
+            .unwrap();
+        (s, id)
+    }
+
+    #[test]
+    fn sloped_chs_bounds_enclose_the_actual_upright_end_sweep_in_every_direction() {
+        for (end, rise, justify) in [
+            ([3000.0, 0.0], 4000.0, "centre"),
+            ([-1800.0, 2400.0], -4000.0, "top"),
+            ([0.0, 3000.0], 4000.0, "bottom"),
+            ([3000.0, 0.0], 0.0, "centre"),
+        ] {
+            let (s, id) = beam(true, end, rise, justify);
+            let e = s.model.elements.get(id).unwrap();
+            let t = s.model.run_type(e).unwrap();
+            let g = s.model.run_geom(e).unwrap();
+            let points: Vec<_> = g
+                .swept(&t.profile.as_ref().unwrap().pieces(t.width, t.depth))
+                .into_iter()
+                .flat_map(|piece| match piece {
+                    Swept::Mesh(tris, _) => tris.into_iter().flatten().collect::<Vec<_>>(),
+                    Swept::Prism(..) => panic!("CHS must use its hollow mesh"),
+                })
+                .collect();
+            assert!(!points.is_empty());
+            let Bounds::Box([lo, hi]) = BoundsCache::default().get(&s.model, id) else { panic!("finite bounds") };
+            let outside = points.iter().filter(|p| (0..3).any(|i| p[i] < lo[i] || p[i] > hi[i])).count();
+            let min = points.iter().map(|p| p[2]).fold(f64::INFINITY, f64::min);
+            let max = points.iter().map(|p| p[2]).fold(f64::NEG_INFINITY, f64::max);
+            println!(
+                "CHS end={end:?} rise={rise} justify={justify}: cached_z=[{},{}] native_z=[{min},{max}] outside={outside}",
+                lo[2], hi[2]
+            );
+            assert_eq!(outside, 0, "a conservative box must contain every actual steel sweep vertex: {lo:?}..{hi:?}");
+        }
+    }
+
+    #[test]
+    fn plain_round_slopes_keep_the_existing_perpendicular_tube_envelope() {
+        let (s, id) = beam(false, [3000.0, 0.0], 4000.0, "centre");
+        let g = s.model.run_geom(s.model.elements.get(id).unwrap()).unwrap();
+        let Bounds::Box([lo, hi]) = BoundsCache::default().get(&s.model, id) else { panic!("finite bounds") };
+        assert!(
+            (lo[2] + 60.0).abs() < 1e-7 && (hi[2] - 4060.0).abs() < 1e-7,
+            "the plain tube keeps its perpendicular 60 mm vertical radius: {lo:?}..{hi:?}"
+        );
+        let (triangles, _) = g.tube();
+        assert!(triangles.iter().flatten().all(|p| (0..3).all(|i| lo[i] <= p[i] && p[i] <= hi[i])));
+        println!("plain round cached_z=[{},{}] contains every perpendicular tube vertex", lo[2], hi[2]);
+    }
+
+    #[test]
+    fn a_sloped_chs_section_keeps_full_extents_and_pixels_when_neighbour_heights_hide_the_old_box() {
+        let (mut s, beam) = beam(true, [3000.0, 0.0], 4000.0, "centre");
+        // This column spans -100..4100: it hides the old -60..4060 box,
+        // but not the steel's actual -165.24..4165.24 extremities.
+        s.execute("column", &json!({"at":[4500,200],"base_offset":-100,"height":4200})).unwrap();
+        let section = s.execute("section", &json!({"start":[-500,-300],"end":[5000,-300]})).unwrap()["id"].as_u64().unwrap();
+        let full = SectionWork::new(&s.model);
+        let deferred = SectionWork::new_deferred(&s.model);
+        assert_eq!(deferred.preparation_stats().deferred_runs, 1, "exercise the real deferred round-run path");
+        let expected = render::section_fit_with(&s.model, &full, section, 800, 600);
+        let actual = render::section_fit_with(&s.model, &deferred, section, 800, 600);
+        println!("full section fit={expected:?}; deferred section fit={actual:?}");
+        assert_eq!(actual, expected, "nearby geometry must not conceal the CHS extremities while fitting the section");
+        let a = render::section_picture_with(&s.model, &deferred, section, actual, &[]).unwrap();
+        let b = render::section_picture_with(&s.model, &full, section, expected, &[]).unwrap();
+        assert_eq!(a.rgba, b.rgba, "deferred rendering must show the full native geometry");
+        assert!(
+            (0..actual.height).any(|y| (0..actual.width).any(|x| a.pick(f64::from(x), f64::from(y)) == Some(beam))),
+            "the section must actually show the beam"
+        );
+        let da = SectionOverlay::new(&s.model, &deferred, section, actual);
+        let db = SectionOverlay::new(&s.model, &full, section, expected);
+        assert_eq!(da.levels(), db.levels(), "datum endpoints must keep the full model extent");
+        assert_eq!(render::png(&da.draw(&s.model, Some(&a))).unwrap(), render::png(&db.draw(&s.model, Some(&b))).unwrap());
+        for y in 0..actual.height {
+            for x in 0..actual.width {
+                let (x, y) = (f64::from(x), f64::from(y));
+                assert_eq!((a.pick(x, y), a.face(x, y), a.covered(x, y)), (b.pick(x, y), b.face(x, y), b.covered(x, y)));
+            }
+        }
+        if let Some(directory) = std::env::var_os("BIMCRAFT_STEEL_BOUNDS_EVIDENCE") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            std::fs::write(directory.join("sloped-chs-deferred.png"), a.png().unwrap()).unwrap();
+            std::fs::write(directory.join("sloped-chs-section.png"), render::section_png(&s.model, section, expected).unwrap()).unwrap();
+        }
+    }
+}
