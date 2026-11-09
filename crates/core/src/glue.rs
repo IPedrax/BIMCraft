@@ -84,6 +84,12 @@ pub(crate) fn on_base(m: &Model, r: &Run, category: &str, base: f64) -> Option<R
     Some(Run { offset, end_offset: r.end_offset.map(|_| offset), ..r.clone() })
 }
 
+thread_local! {
+    /// The walls [`wall_of`] has looked at on this thread: the tests assert on it, not on time, which varies with the load of
+    /// the machine.
+    pub(crate) static LOOKED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// The wall footing `id` is glued to, if it is glued to one: the nearest wall, where several stacked walls lie under
 /// the same footing, whose line is the footing's and whose base the footing's top meets.
 pub(crate) fn wall_of(m: &Model, id: Id) -> Option<Id> {
@@ -93,16 +99,19 @@ pub(crate) fn wall_of(m: &Model, id: Id) -> Option<Id> {
         return None;
     }
     let top = top(m, f, category)?;
+    // Only walls near the footing can hold it: a wall that holds runs within `TOL` of the footing's line in plan, and
+    // its base is within `TOL` of the footing's top. The heights asked reach past that, so that a base a touch away
+    // across the edge of a band of height still shares one with them (the lookup's heights overlap only strictly).
     let reach = [f.start.0.min(f.end.0), f.start.1.min(f.end.1), f.start.0.max(f.end.0), f.start.1.max(f.end.1)];
     let mut best: Option<(f64, Id)> = None;
-    for w in m.lookup().walls_between(top, top) {
+    for w in m.lookup().walls_near_at(&[(reach, top - 2.0 * TOL, top + 2.0 * TOL)], 2.0 * TOL) {
+        LOOKED.with(|n| n.set(n.get() + 1));
         let Some(wall) = m.wall(w) else { continue };
         let d = (m.base_z(wall) - top).abs();
         if best.is_none_or(|(bd, _)| d < bd) && holds(m, wall, f, category) {
             best = Some((d, w));
         }
     }
-    let _ = reach;
     best.map(|(_, w)| w)
 }
 

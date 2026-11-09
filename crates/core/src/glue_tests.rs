@@ -195,6 +195,33 @@ fn a_wall_deleted_leaves_its_footing_where_it_is_and_the_model_sound() {
 }
 
 #[test]
+fn a_footing_glues_within_the_tolerance_across_a_tile_and_a_band_edge() {
+    // A millimetre south of the wall's line and a millimetre under its base: the footing's line in the tile south of
+    // the wall's, its top in the band of height under the wall's base. Still glued: the search looks past both edges.
+    let s = session(
+        r#"wall {"points": [[0, 0], [6000, 0]]}
+           strip_footing {"points": [[0, -1], [6000, -1]], "offset": -1}"#,
+    );
+    let wall_id = walls(&s)[0];
+    let footing = s.model.elements.iter().find(|(_, e)| e.category() == "stripfooting").map(|(id, _)| *id).unwrap();
+    assert_eq!(top(&s, footing), -1.0);
+    assert_eq!(crate::glue::wall_of(&s.model, footing), Some(wall_id));
+}
+
+#[test]
+fn the_wall_a_footing_is_glued_to_is_found_among_the_walls_near_it() {
+    // Twenty walls a storey has at the footing's height, ten metres apart: the one over it is found looking at the
+    // walls near the footing, not at all twenty.
+    let script: Vec<String> = (0..20).map(|i| format!(r#"wall {{"points": [[0, {y}], [6000, {y}]]}}"#, y = i * 10_000)).collect();
+    let s = session(&format!("{}\nstrip_footing {{\"points\": [[0, 0], [6000, 0]]}}", script.join("\n")));
+    let footing = s.model.elements.iter().find(|(_, e)| e.category() == "stripfooting").map(|(id, _)| *id).unwrap();
+    let before = crate::glue::LOOKED.with(std::cell::Cell::get);
+    assert_eq!(crate::glue::wall_of(&s.model, footing), Some(walls(&s)[0]));
+    let looked = crate::glue::LOOKED.with(std::cell::Cell::get) - before;
+    assert!(looked <= 2, "{looked} walls looked at of 20");
+}
+
+#[test]
 fn only_a_flat_strip_footing_glues() {
     // A sloped footing (an `end_offset`) has no flat top to meet a base: no glue, its heights left as typed.
     let mut s = session(
