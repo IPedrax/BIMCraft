@@ -718,7 +718,7 @@ the picture shows under them (`dims3d::pick`).
 ## Title blocks
 
 A sheet is drawn with the built-in title box unless it names a title block of the project's own (`Sheet::title_block`, a library
-entry of kind `title-block`, held by GUID in a file like any other name; FORMAT 18). A title block (`titleblock.rs`) is a box, `width`
+entry of kind `title-block`, held by GUID in a file like any other name; FORMAT 19). A title block (`titleblock.rs`) is a box, `width`
 by `height` mm, that stands in the sheet's bottom right corner inside the border, where the built-in one stands, with lines (in pens),
 solid fills (a logo) and lettering, all in mm on paper from its own bottom left corner; the border and NBR 17067's folding marks are
 drawn as before, and a view placed by default goes above its height (`sheet::spot`). Lettering may name fields as `{KEY}`: a field the
@@ -752,7 +752,7 @@ object (code 101 on, written since 2018) is read past (`dxf.rs`), so its 10s and
 formatting, as `\C` is. `TitleBlock::make_field` turns a text into a field of a key (`key_for` suggests one from what it says) whose
 default is what it said.
 A single line of DXF text keeps its braces (`dxf::decode`), as AutoCAD shows them; only multi-line text's braces are formatting.
-`title_values` gives the project's values. In the desktop, Manage > Title Blocks (TB, in either profile) lists them (New, Duplicate, Delete, Import DXF…) and
+`title_values` gives the project's values. In the desktop, View > Title Blocks (TB, in either profile) lists them (New, Duplicate, Delete, Import DXF…) and
 edits the one picked, with a preview drawn by the core (`titleblock::preview`) as the first sheet that names it fills it in: its fields,
 with the project's values, its texts, its straight lines and its size; a sheet's Properties pick its title block and fill in its sheet
 fields. The preview is the editor: a click picks a text (`Text::outline`), a drag moves it, the arrow keys nudge it half a

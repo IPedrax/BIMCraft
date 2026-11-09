@@ -10631,3 +10631,7 @@ msgstr ""
 msgctxt "side"
 msgid "Top"
 msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4021
+msgid "Title Blocks: your own, read from a DXF or typed, with fields each sheet or the whole project fills in"
+msgstr ""

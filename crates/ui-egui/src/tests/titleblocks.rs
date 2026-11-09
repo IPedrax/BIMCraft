@@ -1,4 +1,4 @@
-//! Title blocks of the project's own: Manage > Title Blocks makes and edits them, and a sheet's Properties picks one and
+//! Title blocks of the project's own: View > Title Blocks makes and edits them, and a sheet's Properties picks one and
 //! fills in its sheet fields.
 
 use super::*;
@@ -38,16 +38,16 @@ fn a_sheets_properties_pick_its_title_block_and_fill_in_its_sheet_fields() {
 #[test]
 fn manage_title_blocks_makes_one_and_gives_the_projects_values() {
     let mut h = app(&format!("{BOX}\n{SELO}"));
-    press(&mut h, "Manage");
+    press(&mut h, "View");
     press(&mut h, "Title Blocks");
-    assert!(h.state().title_blocks_dialog.is_some(), "Manage > Title Blocks opens the dialog");
+    assert!(h.state().title_blocks_dialog.is_some(), "View > Title Blocks opens the dialog");
     // A project field's value, typed in the dialog, is the project's on OK.
     {
         let d = h.state_mut().title_blocks_dialog.as_mut().unwrap();
-        d.set_value("CLIENTE", "Henrique Güths");
+        d.set_value("CLIENTE", "Maria Conceição");
     }
     press_near(&mut h, "Apply", "Cancel");
-    assert_eq!(h.state().session.model.title_values["CLIENTE"], "Henrique Güths");
+    assert_eq!(h.state().session.model.title_values["CLIENTE"], "Maria Conceição");
     // New makes another, the built-in one drawn as one; Add Field gives it a field.
     press(&mut h, "New");
     let m = &h.state().session.model;
@@ -118,28 +118,28 @@ fn each_text_in_the_texts_tab_is_made_a_field_and_back_showing_what_it_says() {
 }
 
 #[test]
-fn tb_opens_manage_title_blocks_and_ks_lists_it() {
+fn tb_opens_view_title_blocks_and_ks_lists_it() {
     let mut h = app(&format!("{BOX}\n{SELO}"));
     shortcut(&mut h, "TB");
-    assert!(h.state().title_blocks_dialog.is_some(), "TB opens Manage > Title Blocks, as its tooltip says");
+    assert!(h.state().title_blocks_dialog.is_some(), "TB opens View > Title Blocks, as its tooltip says");
     assert!(crate::shortcuts().contains(&("TB", "Title Blocks")), "and Keyboard Shortcuts (KS) lists it");
 }
 
-/// The same flow in BIMCraft's own profile: Manage > Title Blocks is a row of the Tools palette, and a sheet's title block
+/// The same flow in BIMCraft's own profile: View > Title Blocks is a row of the Tools palette, and a sheet's title block
 /// is picked in the Inspector, as Rev's Properties picks it.
 #[test]
 fn the_tools_palette_opens_title_blocks_and_the_inspector_picks_a_sheets() {
     let mut h = bimcraft(&format!("{BOX}\n{SELO}"));
     assert!(h.query_by_label("Title Blocks").is_none(), "the palette shows its first tab's tools");
-    let manage = h.get_all_by_label("Manage").map(|n| n.rect()).find(|r| r.left() < 60.0).unwrap();
-    click_at(&mut h, manage.center());
-    assert_eq!(h.state().tab, Tab::Manage);
+    let view = h.get_all_by_label("View").map(|n| n.rect()).find(|r| r.left() < 60.0).unwrap();
+    click_at(&mut h, view.center());
+    assert_eq!(h.state().tab, Tab::View);
     press(&mut h, "Title Blocks");
     assert!(h.state().title_blocks_dialog.is_some(), "the palette's Title Blocks opens the dialog");
     // A project field's value, typed in the dialog, is the project's on Apply; New and Add Field make another.
-    h.state_mut().title_blocks_dialog.as_mut().unwrap().set_value("CLIENTE", "Henrique Güths");
+    h.state_mut().title_blocks_dialog.as_mut().unwrap().set_value("CLIENTE", "Maria Conceição");
     press_near(&mut h, "Apply", "Cancel");
-    assert_eq!(h.state().session.model.title_values["CLIENTE"], "Henrique Güths");
+    assert_eq!(h.state().session.model.title_values["CLIENTE"], "Maria Conceição");
     press(&mut h, "New");
     press(&mut h, "Add Field");
     press(&mut h, "OK");

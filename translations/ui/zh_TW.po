@@ -10636,6 +10636,10 @@ msgctxt "side"
 msgid "Top"
 msgstr "上"
 
+#: crates/ui-egui/src/lib.rs:4021
+msgid "Title Blocks: your own, read from a DXF or typed, with fields each sheet or the whole project fills in"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "單擊圓弧經過的一點：由此確定半徑。按 Esc 取消。"

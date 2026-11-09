@@ -771,7 +771,7 @@ pub struct BimApp {
     object_styles_dialog: Option<objectstyles::ObjectStylesDialog>,
     /// Manage > Line Styles, while open.
     line_styles_dialog: Option<linestyles::LineStylesDialog>,
-    /// Manage > Title Blocks, while open.
+    /// View > Title Blocks, while open.
     title_blocks_dialog: Option<titleblocks::TitleBlocksDialog>,
     fill_patterns_dialog: Option<fillpatterns::FillPatternsDialog>,
     /// Sketch mode: the lines of an outline being drawn, until Finish or Cancel.
@@ -4034,6 +4034,10 @@ impl BimApp {
             {
                 self.open_sheet(Sheet::Paper(id));
             }
+            let tip = msg!("Title Blocks (TB): your own, read from a DXF or typed, with fields each sheet or the whole project fills in");
+            if big_button(ui, Icon::Sheet, "Title Blocks", self.title_blocks_dialog.is_some(), tip).clicked() {
+                self.open_title_blocks(None);
+            }
             let sheet = match self.sheet {
                 Sheet::Paper(id) => Some(id),
                 _ => None,
@@ -4162,10 +4166,6 @@ impl BimApp {
                     self.fill_patterns_dialog = Some(fillpatterns::FillPatternsDialog::new(&self.session.model));
                 }
             });
-            let tip = msg!("Title Blocks (TB): your own, read from a DXF or typed, with fields each sheet or the whole project fills in");
-            if big_button(ui, Icon::Sheet, "Title Blocks", self.title_blocks_dialog.is_some(), tip).clicked() {
-                self.open_title_blocks(None);
-            }
             let tip = msg!(
                 "Purge Unused (PU): take out the types, families and the rest nothing in the project uses; each category keeps a type"
             );

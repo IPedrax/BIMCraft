@@ -10638,6 +10638,10 @@ msgctxt "side"
 msgid "Top"
 msgstr ""
 
+#: crates/ui-egui/src/lib.rs:4021
+msgid "Title Blocks: your own, read from a DXF or typed, with fields each sheet or the whole project fills in"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4503
 #~ msgid "Click to select. Drag to orbit (or Shift and the middle button), the middle button pans, the wheel zooms."
 #~ msgstr "Nhấp để chọn. Kéo để xoay quanh (hoặc Shift và nút giữa), nút giữa để kéo, con lăn để thu phóng."
