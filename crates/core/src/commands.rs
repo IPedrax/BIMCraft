@@ -960,9 +960,14 @@ other_files(
         &[],
         "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|beam|stripfooting|pipe|duct|conduit|\
          cabletray|wire|downconductor|groundconductor|cable, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
-         material? | height?, spacing?} creates the type, or changes it everywhere it's used. A column's, a structural column's or \
+         material?, profile?, shape?, web?, flange?, radius? | height?, spacing?} creates the type, or changes it everywhere it's used. A column's, a structural column's or \
          a footing's type is a `width` by `depth`, or `round` (`width` across); a run's (a beam's, a pipe's, a cable tray's…) too, \
-         made of a `material` of the library. A wall type may have `layers` [{function?: structure|\
+         made of a `material` of the library. Steel beam/structural-column types accept `profile` (IPE 80-600, HEA/HEB 100-600, \
+         e.g. IPE 300) or `shape` I/H, U, L, RHS/SHS or CHS plus `width`, `depth` and plates. I/U take `web`, `flange`, \
+         `radius`; L takes `thickness`, `radius`; RHS/CHS take `thickness` (CHS width is its diameter). `shape: rectangle` \
+         removes the profile. Beam/structural-column creation auto-adds a catalogue type when its given name is absent. \
+         Catalogue beams default to Metal. Schedules expose Profile, Section Area (cm²), Weight per Metre (kg/m), Weight (kg; \
+         assumes steel at 7850 kg/m³). A wall type may have `layers` [{function?: structure|\
          substrate|thermal|membrane|finish, material?, thickness}, …] from its exterior side in: it's as thick as they are, \
          its core from its first structure layer to its last, and a new `thickness` goes to its structure. A ceiling type may \
          have `grid`: its square tiles' width, mm, which reflected ceiling plans draw (0, none); a railing type, `height` (its \
@@ -2604,6 +2609,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 extra.insert("width".into(), json!(t.width));
                 extra.insert("depth".into(), json!(t.depth));
                 extra.insert("round".into(), json!(t.round));
+                if let Some(pr) = &t.profile {
+                    steel_take_off(&mut extra, pr, (t.width, t.depth), top - bottom);
+                }
             }
         }
         // Its section, how long it runs along its axis, and the heights of its centre line's ends.
@@ -2614,6 +2622,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 extra.insert("round".into(), json!(t.round));
                 extra.insert("length".into(), json!(hundredth(g.length())));
                 extra.insert("axis".into(), json!([g.a, g.b].map(|p| p.map(hundredth))));
+                if let Some(pr) = &t.profile {
+                    steel_take_off(&mut extra, pr, (t.width, t.depth), g.length());
+                }
             }
         }
         Element::Stair(st) => {
@@ -8469,6 +8480,7 @@ fn column(s: &mut Session, p: &Value) -> R {
 }
 
 fn structural_column(s: &mut Session, p: &Value) -> R {
+    from_catalogue(s, p, "structuralcolumn");
     let e = stood_of(&s.model, p, "structuralcolumn")?;
     Ok(json!({"id": s.model_mut().insert(e)}))
 }
@@ -8562,10 +8574,48 @@ fn cabling(s: &mut Session, p: &Value) -> R {
 }
 
 fn chain(s: &mut Session, p: &Value, category: &str) -> R {
+    from_catalogue(s, p, category);
     let made = runs_of(&s.model, p, category)?;
     let m = s.model_mut();
     let ids: Vec<Id> = made.into_iter().map(|e| m.insert(e)).collect();
     Ok(json!({"ids": ids}))
+}
+
+/// A steel member's take-off for its JSON (and so its schedule): its section's name, its area (cm²), its weight per metre
+/// (kg/m, in steel) and its weight (kg) over `length` mm.
+fn steel_take_off(extra: &mut Map<String, Value>, p: &crate::model::Profile, (width, depth): (f64, f64), length: f64) {
+    let name = if p.name.is_empty() {
+        let size = |x: f64| format!("{}", hundredth(x));
+        format!("{} {} x {}", p.shape.word(), size(depth), size(width))
+    } else {
+        p.name.clone()
+    };
+    let area = p.area(width, depth);
+    let per_metre = area * 1e-6 * crate::profiles::STEEL_DENSITY;
+    extra.insert("profile".into(), json!(name));
+    extra.insert("section_area_cm2".into(), json!(hundredth(area / 100.0)));
+    extra.insert("weight_kg_m".into(), json!(hundredth(per_metre)));
+    extra.insert("weight_kg".into(), json!(hundredth(per_metre * length / 1000.0)));
+}
+
+/// A structural column's or a beam's `type` that the project hasn't got and the catalogue has (`IPE 300`): made, under the
+/// name it was given, before the elements of it are (a beam's in the library's steel). The command rolls it back with them.
+fn from_catalogue(s: &mut Session, p: &Value, category: &str) {
+    let Some(name) = p.get("type").and_then(Value::as_str) else { return };
+    let has = match category {
+        "structuralcolumn" => s.model.types.structural_column.contains_key(name),
+        "beam" => s.model.types.runs.get("beam").is_some_and(|t| t.contains_key(name)),
+        _ => return,
+    };
+    let Some((width, depth, profile)) = crate::profiles::catalogue(name).filter(|_| !has) else { return };
+    let m = s.model_mut();
+    if category == "beam" {
+        let material = steel_material(&m.language, &m.materials).unwrap_or_default();
+        let t = crate::model::RunType { width, depth, round: false, material, profile: Some(profile) };
+        m.types.runs.entry("beam".into()).or_default().insert(name.to_string(), t);
+    } else {
+        m.types.structural_column.insert(name.to_string(), ColumnType { width, depth, round: false, profile: Some(profile) });
+    }
 }
 
 /// The run category a command makes, if it makes runs (`pipe`, `cable_tray`): `command_of`'s other way.
@@ -10830,6 +10880,11 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
     let cat = category(&string(c, p, "category")?.ok_or_else(|| bad(c, "`category` is required: wall, floor, ceiling, door or window"))?);
     let name = string(c, p, "name")?.filter(|n| !n.trim().is_empty()).ok_or_else(|| bad(c, "`name` is required"))?;
     let (thickness, width, height, sill) = (num(c, p, "thickness")?, num(c, p, "width")?, num(c, p, "height")?, num(c, p, "sill")?);
+    if !matches!(cat.as_str(), "structuralcolumn" | "beam")
+        && ["profile", "shape", "web", "flange", "radius"].iter().any(|key| !absent(p.get(key)))
+    {
+        return Err(bad(c, "a steel section is for a structural column's or a beam's type"));
+    }
     let need = |what: &str| bad(c, format!("a new {cat} type needs `{what}`"));
     let m = s.model_mut();
     let t = match cat.as_str() {
@@ -10869,13 +10924,19 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
                 _ => &mut m.types.column,
             };
             let old = types.get(&name).cloned();
+            let section = steel(c, p, &cat, old.as_ref().and_then(|t| t.profile.as_ref()))?;
+            let (width, depth) = section.size(width, num(c, p, "depth")?);
             let width = width.or(old.as_ref().map(|t| t.width)).ok_or_else(|| need("width"))?;
-            let round = match p.get("round") {
-                v if absent(v) => old.as_ref().is_some_and(|t| t.round),
-                _ => flag(c, p, "round")?,
+            let round = match section.round() {
+                Some(r) => r,
+                None => match p.get("round") {
+                    v if absent(v) => old.as_ref().is_some_and(|t| t.round),
+                    _ => flag(c, p, "round")?,
+                },
             };
-            let depth = if round { width } else { num(c, p, "depth")?.or(old.as_ref().map(|t| t.depth)).unwrap_or(width) };
-            let t = ColumnType { width, depth, round };
+            let depth = if round { width } else { depth.or(old.as_ref().map(|t| t.depth)).unwrap_or(width) };
+            let profile = section.profile(old.as_ref().map(|t| (t.width, t.depth)), (width, depth));
+            let t = ColumnType { width, depth, round, profile };
             types.insert(name.clone(), t.clone());
             json!(t)
         }
@@ -10883,14 +10944,22 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
         run if crate::model::RUN_CATEGORIES.contains(&run) => {
             let types = m.types.runs.entry(cat.clone()).or_default();
             let old = types.get(&name).cloned();
+            let section = steel(c, p, &cat, old.as_ref().and_then(|t| t.profile.as_ref()))?;
+            let (width, depth) = section.size(width, num(c, p, "depth")?);
             let width = width.or(old.as_ref().map(|t| t.width)).ok_or_else(|| need("width"))?;
-            let round = match p.get("round") {
-                v if absent(v) => old.as_ref().is_some_and(|t| t.round),
-                _ => flag(c, p, "round")?,
+            let round = match section.round() {
+                Some(r) => r,
+                None => match p.get("round") {
+                    v if absent(v) => old.as_ref().is_some_and(|t| t.round),
+                    _ => flag(c, p, "round")?,
+                },
             };
-            let depth = if round { width } else { num(c, p, "depth")?.or(old.as_ref().map(|t| t.depth)).ok_or_else(|| need("depth"))? };
-            let material = string(c, p, "material")?.or(old.map(|t| t.material)).unwrap_or_default();
-            let t = crate::model::RunType { width, depth, round, material };
+            let depth = if round { width } else { depth.or(old.as_ref().map(|t| t.depth)).ok_or_else(|| need("depth"))? };
+            // A section from the catalogue is steel unless it says.
+            let steel_by_default = matches!(section, Steel::Catalogue(..)).then(|| steel_material(&m.language, &m.materials));
+            let profile = section.profile(old.as_ref().map(|t| (t.width, t.depth)), (width, depth));
+            let material = string(c, p, "material")?.or(old.map(|t| t.material)).or(steel_by_default.flatten()).unwrap_or_default();
+            let t = crate::model::RunType { width, depth, round, material, profile };
             types.insert(name.clone(), t.clone());
             json!(t)
         }
@@ -10927,6 +10996,137 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
         }
     };
     Ok(json!({"category": cat, "name": name, "type": t}))
+}
+
+/// What `type`'s params say of a structural type's steel section (`profiles.rs`).
+enum Steel {
+    /// Nothing but, perhaps, plates: it keeps the section it has, those plates changed.
+    Unsaid(Option<crate::model::Profile>),
+    /// `shape: rectangle`: none, a plain rectangle (or round).
+    Plain(bool),
+    /// `profile`: one of the catalogue's, its width and depth with it.
+    Catalogue(f64, f64, crate::model::Profile),
+    /// `shape` and its plates.
+    Shape(crate::model::Profile),
+}
+
+impl Steel {
+    /// The width and depth the type takes: the catalogue's, else those given.
+    fn size(&self, width: Option<f64>, depth: Option<f64>) -> (Option<f64>, Option<f64>) {
+        match self {
+            Steel::Catalogue(w, d, _) => (Some(*w), Some(*d)),
+            _ => (width, depth),
+        }
+    }
+
+    /// Whether the section makes the type round (a pipe) or not; none when it says nothing.
+    fn round(&self) -> Option<bool> {
+        match self {
+            Steel::Unsaid(_) => None,
+            Steel::Plain(round) => Some(*round),
+            Steel::Catalogue(..) => Some(false),
+            Steel::Shape(p) => Some(p.shape == crate::profiles::Shape::Chs),
+        }
+    }
+
+    /// The type's section once its size is `now` (it was `was`): a catalogue's name stays only while its size does.
+    fn profile(self, was: Option<(f64, f64)>, now: (f64, f64)) -> Option<crate::model::Profile> {
+        match self {
+            Steel::Unsaid(Some(mut p)) => {
+                if was != Some(now) {
+                    p.name.clear();
+                }
+                Some(p)
+            }
+            Steel::Unsaid(None) | Steel::Plain(_) => None,
+            Steel::Catalogue(_, _, p) | Steel::Shape(p) => Some(p),
+        }
+    }
+}
+
+/// The library's steel, `Metal` in the project's language, if it has it: what a section of the catalogue is made of.
+fn steel_material(language: &Language, materials: &BTreeMap<String, crate::model::Material>) -> Option<String> {
+    Some(language.word("Metal").to_string()).filter(|x| materials.contains_key(x))
+}
+
+/// A structural column's or a beam's steel section from `type`'s params, over the one it has (`old`): `profile` names one of
+/// the catalogue's, `shape` makes one with its plates (`web`, `flange`, `thickness`, `radius`), `shape: rectangle` takes it
+/// away; plates alone change the one it has.
+fn steel(c: &str, p: &Value, cat: &str, old: Option<&crate::model::Profile>) -> Result<Steel, String> {
+    use crate::profiles::{Shape, catalogue};
+    let plates = ["web", "flange", "thickness", "radius"];
+    let said = |k: &str| !absent(p.get(k));
+    if !matches!(cat, "structuralcolumn" | "beam") {
+        if said("profile") || said("shape") {
+            return Err(bad(
+                c,
+                format!("a steel section (`profile`, `shape`) is for a structural column's or a beam's type, not a {cat}'s"),
+            ));
+        }
+        return Ok(Steel::Unsaid(None));
+    }
+    let plate = |k: &str| -> Result<Option<f64>, String> {
+        match num(c, p, k)? {
+            Some(x) if x < 0.0 => Err(bad(c, format!("`{k}` must be a length of 0 or more, got {x}"))),
+            x => Ok(x),
+        }
+    };
+    if let Some(name) = string(c, p, "profile")? {
+        if said("shape") || plates.iter().any(|k| said(k)) {
+            return Err(bad(c, "`profile` names a section of the catalogue: give it alone, or `shape` and its plates"));
+        }
+        let (w, d, profile) = catalogue(&name).ok_or_else(|| {
+            bad(
+                c,
+                format!("`{name}` isn't in the catalogue (IPE 80 to 600, HEA and HEB 100 to 600); give `shape` and its plates to make it"),
+            )
+        })?;
+        return Ok(Steel::Catalogue(w, d, profile));
+    }
+    let shape = match string(c, p, "shape")? {
+        None => None,
+        Some(w) if matches!(w.trim().to_lowercase().as_str(), "rectangle" | "rectangular" | "none" | "round") => {
+            if let Some(k) = plates.iter().find(|k| said(k)) {
+                return Err(bad(c, format!("a {w} section has no `{k}`; give `shape` I, U, L, RHS or CHS")));
+            }
+            return Ok(Steel::Plain(w.trim().eq_ignore_ascii_case("round")));
+        }
+        Some(w) => Some(Shape::parse(&w).ok_or_else(|| bad(c, format!("`shape` is I, U, L, RHS, CHS or rectangle, not `{w}`")))?),
+    };
+    let base = match (shape, old) {
+        (Some(shape), _) => crate::model::Profile { shape, name: String::new(), web: 0.0, flange: 0.0, thickness: 0.0, radius: 0.0 },
+        (None, Some(o)) => o.clone(),
+        (None, None) => {
+            if let Some(k) = plates.iter().find(|k| said(k)) {
+                return Err(bad(c, format!("`{k}` is a steel section's: give `shape` (I, U, L, RHS or CHS) or `profile`")));
+            }
+            return Ok(Steel::Unsaid(None));
+        }
+    };
+    let takes: &[&str] = match base.shape {
+        Shape::I | Shape::U => &["web", "flange", "radius"],
+        Shape::L => &["thickness", "radius"],
+        Shape::Rhs | Shape::Chs => &["thickness"],
+    };
+    if let Some(k) = plates.iter().find(|k| said(k) && !takes.contains(k)) {
+        let list: Vec<String> = takes.iter().map(|t| format!("`{t}`")).collect();
+        return Err(bad(c, format!("a {} section takes {}, not `{k}`", base.shape.word(), list.join(", "))));
+    }
+    let changed = plates.iter().any(|k| said(k));
+    let mut profile = base;
+    profile.web = plate("web")?.unwrap_or(profile.web);
+    profile.flange = plate("flange")?.unwrap_or(profile.flange);
+    profile.thickness = plate("thickness")?.unwrap_or(profile.thickness);
+    profile.radius = plate("radius")?.unwrap_or(profile.radius);
+    Ok(match shape {
+        Some(_) => Steel::Shape(profile),
+        None => {
+            if changed {
+                profile.name.clear();
+            }
+            Steel::Unsaid(Some(profile))
+        }
+    })
 }
 
 /// A layered type's thickness and layers from `type`'s params, over the one named that way already

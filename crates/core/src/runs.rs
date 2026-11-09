@@ -5,7 +5,8 @@
 
 use crate::geom::P2;
 use crate::model::{Justify, MAX_SLOPE, Model, Run, RunType, TOL, heading};
-use crate::view3d::{P3, cross, mul, sub, unit};
+use crate::profiles::Piece;
+use crate::view3d::{P3, add, cross, mul, sub, unit};
 use crate::walls::Plane;
 
 /// Sides a round run's tube is drawn with.
@@ -163,6 +164,50 @@ impl Geom {
         (ring, Plane { z: z - self.half(), g }, Plane { z: z + self.half(), g })
     }
 
+    /// A steel section's pieces (`profiles::Profile::pieces`) swept along it, its x across it (to the left of the way it
+    /// runs) and its y up, square to its line, its ends cut upright as a prism's are: a rectangle as a prism between two
+    /// planes, which a section cuts as it cuts any; a convex piece (a fillet's triangle, a pipe's segment) as a closed mesh,
+    /// which a section cuts where its edges cross the plane. None upright.
+    pub fn swept(&self, pieces: &[Piece]) -> Vec<Swept> {
+        if self.vertical() {
+            return Vec::new();
+        }
+        let (a, b) = (P2(self.a[0], self.a[1]), P2(self.b[0], self.b[1]));
+        let n = self.along().perp();
+        // Up the plane at its start, a section's y is y / cos θ: as far again as the line is longer than its plan.
+        let k = self.length() / self.plan_length();
+        let g = self.along() * ((self.b[2] - self.a[2]) / self.plan_length());
+        let z = self.a[2] - g.dot(a);
+        let run = sub(self.b, self.a);
+        pieces
+            .iter()
+            .map(|piece| match piece {
+                Piece::Rect(lo, hi) => {
+                    let ring = vec![a + n * lo.0, b + n * lo.0, b + n * hi.0, a + n * hi.0];
+                    Swept::Prism(ring, Plane { z: z + lo.1 * k, g }, Plane { z: z + hi.1 * k, g })
+                }
+                Piece::Convex(pts) => {
+                    let start: Vec<P3> = pts.iter().map(|q| [a.0 + n.0 * q.0, a.1 + n.1 * q.0, self.a[2] + q.1 * k]).collect();
+                    let end: Vec<P3> = start.iter().map(|p| add(*p, run)).collect();
+                    let at = |ring: &[P3], i: usize| ring.get(i).copied().unwrap_or_default();
+                    let mut tris = Vec::with_capacity(4 * pts.len());
+                    // Its ends first, the start turned back along it, then its sides.
+                    for i in 1..pts.len().saturating_sub(1) {
+                        tris.push([at(&start, 0), at(&start, i + 1), at(&start, i)]);
+                        tris.push([at(&end, 0), at(&end, i), at(&end, i + 1)]);
+                    }
+                    let caps = tris.len();
+                    for i in 0..pts.len() {
+                        let j = (i + 1) % pts.len();
+                        tris.push([at(&start, i), at(&start, j), at(&end, j)]);
+                        tris.push([at(&start, i), at(&end, j), at(&end, i)]);
+                    }
+                    Swept::Mesh(tris, caps)
+                }
+            })
+            .collect()
+    }
+
     /// A round run as a tube of triangles turned out: its two caps' first, and how many they are. It is [`unit_tube`]
     /// placed by [`Geom::tube_place`], to the last bit, so the 3D view's card can draw every round run from one tube.
     pub fn tube(&self) -> (Vec<[P3; 3]>, usize) {
@@ -206,6 +251,14 @@ pub fn unit_tube() -> (Vec<[P3; 3]>, usize) {
     (tris, 2 * SIDES)
 }
 
+/// A piece of a section swept along a run: a prism, its footprint between a bottom plane and a top one; or a closed mesh of
+/// triangles turned out, its ends' first, and how many they are.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Swept {
+    Prism(Vec<P2>, Plane, Plane),
+    Mesh(Vec<[P3; 3]>, usize),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,7 +284,7 @@ mod tests {
     }
 
     fn rect(width: f64, depth: f64) -> RunType {
-        RunType { width, depth, round: false, material: String::new() }
+        RunType { width, depth, round: false, material: String::new(), profile: None }
     }
 
     fn volume(tris: &[[P3; 3]]) -> f64 {
@@ -305,7 +358,7 @@ mod tests {
     #[test]
     fn a_round_run_is_a_closed_tube_turned_out() {
         let (m, level) = model();
-        let round = RunType { width: 200.0, depth: 200.0, round: true, material: String::new() };
+        let round = RunType { width: 200.0, depth: 200.0, round: true, material: String::new(), profile: None };
         // From a point off the origin, where a cap turned the wrong way doesn't cancel in the volume.
         let from = P2(1000.0, -2000.0);
         for (by, end_offset) in

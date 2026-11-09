@@ -462,7 +462,10 @@ fn a_floor_too_big_for_one_command_is_refused_not_cut_short() {
 #[test]
 fn hostile_parameters_for_every_kind_of_host_are_refused_or_made_never_a_crash() {
     let mut s = Session::new();
-    s.model_mut().types.footing.insert("Round 1000".into(), crate::model::ColumnType { width: 1000.0, depth: 1000.0, round: true });
+    s.model_mut()
+        .types
+        .footing
+        .insert("Round 1000".into(), crate::model::ColumnType { width: 1000.0, depth: 1000.0, round: true, profile: None });
     let round_column =
         run(&mut s, "structural_column", json!({"at": [9000, 0], "type": "Concrete Round 400", "height": 3000}))["id"].as_u64().unwrap();
     let round_footing = run(&mut s, "footing", json!({"at": [9000, 5000], "type": "Round 1000"}))["id"].as_u64().unwrap();
@@ -873,7 +876,10 @@ fn a_round_column_takes_a_count_and_a_rectangular_one_takes_x_and_y() {
 #[test]
 fn a_round_footing_gets_a_mesh_whose_bars_stop_at_its_circle() {
     let mut s = Session::new();
-    s.model_mut().types.footing.insert("Round 1000".into(), crate::model::ColumnType { width: 1000.0, depth: 1000.0, round: true });
+    s.model_mut()
+        .types
+        .footing
+        .insert("Round 1000".into(), crate::model::ColumnType { width: 1000.0, depth: 1000.0, round: true, profile: None });
     let host = run(&mut s, "footing", json!({"at": [3000, 3000], "type": "Round 1000"}))["id"].as_u64().unwrap();
     run(
         &mut s,

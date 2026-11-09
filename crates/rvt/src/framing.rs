@@ -60,7 +60,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts) {
         };
         let (width, depth) = (mm(across), mm(r.bbox[5] - r.bbox[2]));
         let types = cx.model.types.runs.entry("beam".to_string()).or_default();
-        let new = RunType { width, depth, round: false, material: String::new() };
+        let new = RunType { width, depth, round: false, material: String::new(), profile: None };
         let same = |t: &RunType| !t.round && (t.width - width).abs() < 0.05 && (t.depth - depth).abs() < 0.05 && t.material.is_empty();
         let type_name = kind(types, &format!("Imported {} x {}", size(width), size(depth)), same, new);
         let run = Run {
@@ -94,7 +94,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts) {
         };
         let (width, depth) = (mm(r.bbox[3] - r.bbox[0]), mm(r.bbox[4] - r.bbox[1]));
         let same = |t: &ColumnType| !t.round && (t.width - width).abs() < 0.05 && (t.depth - depth).abs() < 0.05;
-        let new = ColumnType { width, depth, round: false };
+        let new = ColumnType { width, depth, round: false, profile: None };
         let type_name = kind(&mut cx.model.types.footing, &format!("Imported {} x {}", size(width), size(depth)), same, new);
         let footing = Column {
             room_bounding: true,

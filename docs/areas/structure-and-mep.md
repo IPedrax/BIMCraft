@@ -177,3 +177,31 @@ there are no circuits, panels or fitting-to-pipe joins yet, and the connector ho
 count as zero load. IFC writes each device with a connector `Pset_ElectricalDeviceCommon` (`NumberOfPoles`, and for a power
 connector `PowerFactor` and `RatedVoltage`) and `BIMCraft_Connector` (`System`, `Classification`, `LoadVA`, `LoadVAPhase1`…); IFC
 import doesn't read them back.
+
+
+## Steel sections
+
+`profiles.rs` gives beam and structural-column types an optional `profile`. The public `type` command accepts a catalogue
+name (`profile: "IPE 300"`; IPE 80–600, HEA/HEB 100–600), or `shape` I/H, U, L, RHS/SHS, CHS and plate dimensions in mm.
+I/U use `width`, `depth`, `web`, `flange`, and optional root `radius`; L uses `width`, `depth`, `thickness`, optional root
+`radius`; RHS uses `width`, `depth`, `thickness`; CHS uses `width` (diameter) and `thickness`. Plates must fit, or the
+command rolls back. Creating a `beam` or `structural_column` with a missing catalogue-named `type` adds it first; existing
+project types take precedence. A catalogue beam defaults to Metal. Editing dimensions/plates clears a catalogue designation
+when it no longer describes the section. `shape: rectangle` removes a profile.
+
+Plans cut columns as their actual sections, including hollow interiors. Sections and 3D sweep their plates and root fillets;
+sloped members retain the existing upright-end drawing convention. Fillets are circular arcs approximated by four chords per
+quarter in native drawings/meshes; circular hollow sections use 24 sides. RHS sections have sharp corners. This is geometric
+section support, not a steel connection, fabrication, structural sizing or code-compliance model.
+
+Schedules expose `Profile`, `Section Area` (cm²), `Weight per Metre` (kg/m) and `Weight` (kg). Mass assumes steel density
+7850 kg/m³ for every profiled member; it does not infer density from an assigned material. Areas and quantities use analytical
+plate/fillet/ring areas. IFC writes the corresponding I/U/L/rectangle-hollow/circle-hollow profile shared by the body and the
+existing type material profile set. Existing cardinal points and quantity conventions remain: length, cross-section area,
+lateral surface area (including hollow interiors), gross volume, without inventing net deductions or adding end faces.
+Native files use format 19: a format-18 reader rejects them before lenient field removal, preventing a steel section
+from becoming its solid bounding rectangle/circle. Older format-18 files migrate without data conversion: absent profiles
+keep their original plain sections. GUID references and prior migrations stay unchanged. Existing desktop Edit Type dimensions and Duplicate retain the
+section; the CLI/MCP `type` command is the entry point for profile authoring. IFC section recognition currently reads direct
+parameterized extruded Body representations; mapped or otherwise unsupported representations retain the existing import
+fallback. Columns retain steel metadata when IFC marks them load-bearing.

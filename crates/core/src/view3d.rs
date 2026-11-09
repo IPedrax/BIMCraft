@@ -870,15 +870,30 @@ fn solids_in_with(
             Element::Column(col) => {
                 out.push(slab(id, WALL, &m.column_outline(e), m.span(col.level, col.base_offset, col.top_level, col.height)))
             }
+            // A steel section's: its outline up its height, or a tube's pieces round its hole.
             Element::StructuralColumn(col) | Element::Footing(col) => {
-                out.push(slab(id, STRUCTURE, &m.column_outline(e), m.span(col.level, col.base_offset, col.top_level, col.height)))
+                let span = m.span(col.level, col.base_offset, col.top_level, col.height);
+                out.extend(m.column_pieces(e).iter().map(|ring| slab(id, STRUCTURE, ring, span)));
             }
-            // A rectangular run is a sloped prism, which a section cuts; a round one a tube, shown beyond its line.
+            // A rectangular run is a sloped prism, which a section cuts; a round one a tube, shown beyond its line; a steel
+            // section, its pieces swept along it, which a section cuts.
             crate::model::run_arm!(_) => {
                 if let (Some(t), Some(g)) = (m.run_type(e), m.run_geom(e)) {
                     let color = m.materials.get(&t.material).map_or(STRUCTURE, |x| Rgb(x.color[0], x.color[1], x.color[2]));
                     let tex = skin(m, &t.material);
-                    if g.round {
+                    let swept = t.profile.as_ref().map(|p| g.swept(&p.pieces(t.width, t.depth))).unwrap_or_default();
+                    if !swept.is_empty() {
+                        for piece in swept {
+                            out.push(match piece {
+                                crate::runs::Swept::Prism(ring, bottom, top) => {
+                                    Solid::Prism { owner: id, color, tex, ring, bottom, top, curve: None }
+                                }
+                                crate::runs::Swept::Mesh(tris, caps) => {
+                                    Solid::Mesh { owner: id, color, tex, tris, caps, round: false, cut: true }
+                                }
+                            });
+                        }
+                    } else if g.round {
                         let (tris, caps) = g.tube();
                         out.push(Solid::Mesh { owner: id, color, tex, tris, caps, round: true, cut: true });
                     } else {
@@ -1746,7 +1761,7 @@ fn placements(
             return None;
         }
         let (Some(t), Some(g)) = (m.run_type(e), m.run_geom(e)) else { continue };
-        if !g.round {
+        if !g.round || t.profile.is_some() {
             continue;
         }
         let shape = *tubes.entry(t.material.as_str()).or_insert_with(|| {

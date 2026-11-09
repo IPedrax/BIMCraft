@@ -207,6 +207,12 @@ const COUNT: Own = (msg!("Count"), Kind::Number, From::Count);
 const PHASE_CREATED: Own = ("Phase Created", Kind::Text, From::Param);
 const PHASE_DEMOLISHED: Own = ("Phase Demolished", Kind::Text, From::Param);
 const DESIGN_OPTION: Own = ("Design Option", Kind::Text, From::Param);
+// A steel member's take-off: its section's name, its area (cm²), its weight per metre (kg/m) and its weight (kg).
+const PROFILE: Own = (msg!("Profile"), Kind::Text, From::Key("profile"));
+const SECTION_AREA: Own = (msg!("Section Area"), Kind::Number, From::Key("section_area_cm2"));
+const WEIGHT_PER_METRE: Own = (msg!("Weight per Metre"), Kind::Number, From::Key("weight_kg_m"));
+const WEIGHT: Own = (msg!("Weight"), Kind::Number, From::Key("weight_kg"));
+
 const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
 
 /// A multi-category schedule's category: a row for each element of the categories it lists (`Schedule::categories`),
@@ -329,7 +335,26 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("structuralcolumn", 6, &[ID, TYPE, LEVEL, WIDTH, DEPTH, HEIGHT, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "structuralcolumn",
+        6,
+        &[
+            ID,
+            TYPE,
+            LEVEL,
+            WIDTH,
+            DEPTH,
+            HEIGHT,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            PROFILE,
+            SECTION_AREA,
+            WEIGHT_PER_METRE,
+            WEIGHT,
+        ],
+    ),
     (
         "footing",
         6,
@@ -346,7 +371,27 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("beam", 6, &[ID, TYPE, LEVEL, LENGTH, WIDTH, DEPTH, SYSTEM, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "beam",
+        6,
+        &[
+            ID,
+            TYPE,
+            LEVEL,
+            LENGTH,
+            WIDTH,
+            DEPTH,
+            SYSTEM,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            PROFILE,
+            SECTION_AREA,
+            WEIGHT_PER_METRE,
+            WEIGHT,
+        ],
+    ),
     (
         "rebar",
         7,
