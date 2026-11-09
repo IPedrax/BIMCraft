@@ -72,6 +72,8 @@ pub enum Kind {
     Location,
     /// The Project Base Point or the Survey Point.
     CoordinatePoint,
+    /// A print set: views and sheets printed together.
+    PrintSet,
 }
 
 impl Kind {
@@ -109,6 +111,7 @@ impl Kind {
             Kind::Dictionary => "parameter dictionary".into(),
             Kind::Location => ui_msg!("location").into(),
             Kind::CoordinatePoint => "coordinate point".into(),
+            Kind::PrintSet => ui_msg!("print set").into(),
         }
     }
 
@@ -144,6 +147,7 @@ impl Kind {
             "title-block" => Kind::TitleBlock,
             "location" => Kind::Location,
             "coordinate-point" => Kind::CoordinatePoint,
+            "print-set" => Kind::PrintSet,
             _ => Kind::Type(s.strip_prefix("type:")?.to_string()),
         })
     }
@@ -183,6 +187,7 @@ impl fmt::Display for Kind {
             Kind::Dictionary => f.write_str("dictionary"),
             Kind::Location => f.write_str("location"),
             Kind::CoordinatePoint => f.write_str("coordinate-point"),
+            Kind::PrintSet => f.write_str("print-set"),
         }
     }
 }
@@ -851,6 +856,7 @@ impl Model {
         add(Kind::Location, &mut std::iter::once(&self.coordinates.active).chain(self.coordinates.sites.keys()));
         let points = crate::coordinates::Point::ALL.map(|p| p.name().to_string());
         add(Kind::CoordinatePoint, &mut points.iter());
+        add(Kind::PrintSet, &mut self.print_sets.keys());
         out
     }
 

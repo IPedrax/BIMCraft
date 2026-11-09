@@ -164,6 +164,7 @@ mod project_info_tests;
 mod pset_tests;
 #[cfg(test)]
 mod raised_wall_room_tests;
+pub mod printset;
 #[cfg(test)]
 mod read_only_tests;
 pub mod rebar;

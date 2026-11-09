@@ -3421,6 +3421,9 @@ pub struct Model {
     /// Its reinforcement presets, by name: the parameters `reinforce` takes for a kind of host, kept to arm others alike.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub reinforcement: BTreeMap<String, crate::reinforce::Preset>,
+    /// Its print sets, by name: the views and sheets printed or exported together.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub print_sets: BTreeMap<String, crate::printset::PrintSet>,
     /// Its electrical voltages, by name, each with the band a device may read within.
     #[serde(default = "crate::electrical::voltages")]
     pub voltages: BTreeMap<String, crate::electrical::Voltage>,
@@ -3544,6 +3547,7 @@ impl Model {
             title_values: BTreeMap::new(),
             pinned: BTreeSet::new(),
             reinforcement: BTreeMap::new(),
+            print_sets: BTreeMap::new(),
             voltages: crate::electrical::voltages(),
             distribution_systems: crate::electrical::distribution_systems(),
             wire_types: crate::electrical::wire_types(),
@@ -7133,6 +7137,12 @@ impl Model {
         for (n, p) in &self.reinforcement {
             p.check(n)?;
         }
+        if self.print_sets.len() > crate::printset::MAX_SETS {
+            return Err(format!("the project has {} print sets; it holds up to {}", self.print_sets.len(), crate::printset::MAX_SETS));
+        }
+        for (n, p) in &self.print_sets {
+            p.check(n)?;
+        }
         for (n, t) in &self.dimension_types {
             t.check(n)?;
         }
@@ -8797,6 +8807,7 @@ impl Model {
             title_blocks,
             title_values,
             reinforcement,
+            print_sets,
             voltages,
             distribution_systems,
             wire_types,
@@ -8844,6 +8855,7 @@ impl Model {
             && *title_blocks == o.title_blocks
             && *title_values == o.title_values
             && *reinforcement == o.reinforcement
+            && *print_sets == o.print_sets
             && *voltages == o.voltages
             && *distribution_systems == o.distribution_systems
             && *wire_types == o.wire_types

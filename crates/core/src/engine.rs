@@ -478,6 +478,10 @@ impl Session {
                 } else {
                     self.model_mut().resolve();
                 }
+                // A view deleted leaves the print sets it was in.
+                if self.model.print_sets_dangle() {
+                    self.model_mut().prune_print_sets();
+                }
                 // A library in step needs nothing; after a verified model, what the command changed says whether it is.
                 let in_step = if verified { self.model.library_in_step_since(&before) } else { self.model.library_in_step() };
                 #[cfg(test)]
@@ -605,6 +609,9 @@ impl Session {
                     return Ok(v);
                 }
                 self.model_mut().resolve();
+                if self.model.print_sets_dangle() {
+                    self.model_mut().prune_print_sets();
+                }
                 self.model_mut().sync_library();
                 self.model.check().map(|()| v)
             });

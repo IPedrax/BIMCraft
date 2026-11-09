@@ -2204,6 +2204,8 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"wall": 100002, "offset": -5e8, "sill": 1e9}),
         json!({"id": u64::MAX}),
         json!({"ids": [99999, 100000, 100001, 100002, 100002]}),
+        json!({"name": "Set", "views": [100000, 100000, "x", null], "add": 5, "remove": [[]]}),
+        json!({"name": "Set", "views": [100000, 100002], "rename": "", "print_set": "Set", "format": "pdf"}),
         json!({"point": [f64::MAX, 0]}),
         json!({"point": [2000, 2000], "frozen": "x", "top_level": [], "limit_offset": 1e308, "base_offset": -1e308}),
         json!({"point": [2000, 2000], "frozen": true, "limit_offset": -2500}),

@@ -408,3 +408,49 @@ fn a_pdf_is_written_as_an_archive_or_as_pictures_as_its_settings_say() {
     assert!(e.contains("`pdf`"), "{e}");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_print_set_holds_views_and_sheets_by_guid_and_exports_as_one_pdf() {
+    let mut s = project();
+    let level = s.model.levels().first().map(|(id, _)| *id).unwrap_or_default();
+    let sheet = s.model.sheets().first().copied().unwrap_or_default();
+    run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000], "name": "A-A"}));
+    let section = s.model.rare("section").first().copied().unwrap_or_default();
+    let r = run(&mut s, "print_set", json!({"name": "Issue 1", "views": [sheet, level, section]}));
+    assert_eq!(r["views"], 3, "{r}");
+    // A set is a library entry: an id and a GUID; its views are held by GUID.
+    let id = s.model.library.id(&crate::library::Kind::PrintSet, "Issue 1");
+    assert!(id.is_some());
+    let held = &s.model.print_sets["Issue 1"].views;
+    assert_eq!(held[0], s.model.guid(sheet));
+    // A name is unique; a wall isn't something it prints.
+    run(&mut s, "print_set", json!({"name": "Other", "views": []}));
+    assert!(s.execute("print_set", &json!({"name": "Other", "rename": "Issue 1"})).is_err());
+    let wall =
+        s.model.rare("wall").first().copied().or_else(|| s.model.elements.iter().find(|(_, e)| e.category() == "wall").map(|(id, _)| *id));
+    assert!(s.execute("print_set", &json!({"name": "Other", "add": [wall]})).unwrap_err().contains("isn't a view"));
+    // Renamed, it keeps its id.
+    run(&mut s, "print_set", json!({"name": "Issue 1", "rename": "Issue A"}));
+    assert_eq!(s.model.library.id(&crate::library::Kind::PrintSet, "Issue A"), id);
+    // Exported as one PDF, a page for each.
+    let dir = folder("print-set");
+    let to = dir.join("issue.pdf");
+    run(&mut s, "export", json!({"format": "pdf", "print_set": "Issue A", "path": to}));
+    let pdf = String::from_utf8_lossy(&std::fs::read(&to).unwrap_or_default()).to_string();
+    assert_eq!(pdf.matches("/Type/Page/").count(), 3);
+    // A view deleted leaves the set.
+    run(&mut s, "delete", json!({"ids": [section]}));
+    assert_eq!(s.model.print_sets["Issue A"].views.len(), 2);
+    let listed = run(&mut s, "print_set", json!({}));
+    assert_eq!(listed["print_sets"][0]["name"], "Issue A", "{listed}");
+    assert_eq!(listed["print_sets"][0]["views"].as_array().map(Vec::len), Some(2));
+    // Saved and opened, it is the same.
+    let file = dir.join("p.bimcraft");
+    run(&mut s, "save", json!({"path": file}));
+    let mut t = Session::new();
+    run(&mut t, "open", json!({"path": file}));
+    assert_eq!(t.model.print_sets, s.model.print_sets);
+    run(&mut s, "print_set", json!({"name": "Issue A", "delete": true}));
+    assert!(!s.model.print_sets.contains_key("Issue A"));
+    let _ = std::fs::remove_dir_all(dir);
+}

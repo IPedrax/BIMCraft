@@ -38,6 +38,7 @@ mod find;
 mod finishes;
 mod footer;
 mod gpu;
+mod printsets;
 pub use gpu::limits_for;
 mod graphics;
 mod groups;
@@ -997,6 +998,15 @@ pub struct BimApp {
     revit_report: Option<revit::Report>,
     /// File > Export…, while it is open.
     export_dialog: Option<export::Dialog>,
+    /// Print Sets, while it is open.
+    print_sets: Option<printsets::Dialog>,
+    /// The name asked for a print set of the views picked in the Project Browser.
+    name_set: Option<printsets::NameSet>,
+    /// The views and sheets picked in the Project Browser (Ctrl and Shift pick more than one), and the one a Shift-click runs from.
+    browser_picked: Vec<browser::Pick>,
+    browser_anchor: Option<browser::Pick>,
+    /// Expand All or Collapse All, for the next frame's groups.
+    browser_fold: Option<bool>,
     /// The export being written, on a thread of its own.
     export_job: Option<export::worker::Running>,
     /// The format the last export was to, and each format's settings, for the next export while the window is open.
@@ -1689,6 +1699,11 @@ impl BimApp {
             cowork_quit: None,
             revit_job: None,
             export_dialog: None,
+            print_sets: None,
+            name_set: None,
+            browser_picked: Vec::new(),
+            browser_anchor: None,
+            browser_fold: None,
             export_job: None,
             export_format: None,
             export_last: Default::default(),
@@ -4263,6 +4278,9 @@ impl BimApp {
             if ui.add(egui::Button::new(t("Export…")).shortcut_text(shortcut)).clicked() {
                 self.open_export(None);
             }
+            if ui.button(t("Print Sets…")).clicked() {
+                self.open_print_sets(None);
+            }
             ui.separator();
             if ui.button(t("IFC…")).clicked() {
                 self.export(ctx, "IFC4", "ifc");
@@ -6296,6 +6314,8 @@ impl BimApp {
         self.importing_box(ctx);
         self.report_window(ctx);
         self.export_window(ctx);
+        self.print_sets_window(ctx);
+        self.name_set_window(ctx);
         if self.pending.is_none() {
             self.recovery_window(ctx);
         }

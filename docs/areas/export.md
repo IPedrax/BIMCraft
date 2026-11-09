@@ -59,6 +59,14 @@ ezdxf's audit, IFC4.3 with IfcOpenShell (CI validates `coverage-4x3.ifc`), and O
   the margin, along each edge of the printable area that meets another page of a tiled drawing. The `a` levels (tagged) are
   not offered: a drawing has no reading order to tag.
 
+- **Pages** (`page::Pages`) are all of them, a range (`[first, last]`), or a typed list (`"1, 3, 5-7"`); a page past the last is
+  left out. A drawing no larger than its paper is one page whatever the margin: the margin takes its edge, as a printer's
+  border does, rather than tiling an A3 sheet onto four A3 pages.
+- **Print sets** (`printset.rs`, the `print_set` command) are Revit's View/Sheet Sets: a named list of views and sheets, any
+  kind and any mix, in the order they print. A set is a library entry (`Kind::PrintSet`, `Model::print_sets`): a unique name,
+  an id and a GUID; it holds its views by GUID, and a view deleted leaves every set it was in (the engine prunes them after
+  each command). `export` with `print_set` writes its views, one PDF of them all at `path`.
+
 ## The desktop (`crates/ui-egui/src/export/`)
 
 - **File > Export > Export…** (Ctrl+P) opens the dialog on what the window shows. Its **Destination** is a file or a
@@ -72,8 +80,12 @@ ezdxf's audit, IFC4.3 with IfcOpenShell (CI validates `coverage-4x3.ifc`), and O
   schedule, or the active 3D view; a model format from a view that isn't 3D writes the whole project. The format list is
   grouped by family. Formats the source can't be written as are greyed out, and so are planned ones. Experimental ones
   say so.
-- **The page** is set as a print dialog sets it, a paper of its own size among the papers, with the preview beside it and a
-  PDF's settings under the preview. The preview draws every page, greys those
+- **Of**: what the window shows, every sheet (PDF), or a print set, picked by name, with Print Sets… beside it. A set to a
+  format that doesn't combine writes a file each, named after the file asked for and the view.
+- **The page** is set as a print dialog sets it, a paper of its own size among the papers, a 5 mm margin to start with, with
+  the preview beside it. A PDF's Content (vector or raster) and Draw cut marks sit under the colours; its document settings
+  (archive, version, title, author, subject) are in the PDF Settings… window under the preview. Pages are all, a range, or
+  Custom, a list typed. The preview draws every page, numbers each in light grey when there are several, greys those
   outside the range and draws the drawing on each with `canvas::paint`, in the colours and lines the setup asks for
   (`formats::styled`). The preview's drawing is made on a thread of its own and kept while the source and the project stay
   the same. Under the form, the dialog says how many pages it makes, their size and the scale.
@@ -82,12 +94,19 @@ ezdxf's audit, IFC4.3 with IfcOpenShell (CI validates `coverage-4x3.ifc`), and O
   `poll_export` puts what was written, what wasn't and why, and whether it was cancelled in the status box. The file's name
   is the one given, its braces doubled so they aren't tokens. A picture of several pages writes a file a page beside it.
   Each format's settings are kept for the next export while the window is open.
+- **Print Sets** (`printsets.rs`; File > Export > Print Sets…, or the dialog's button) is Revit's View/Sheet Set window: Name
+  picks a set, the list checks its views and sheets (Show: Sheets, Views; a search; Check All, Check None), and Save, Save
+  As…, Revert, Rename… and Delete each run `print_set`. In the **Project Browser** Ctrl picks views one by one and Shift a
+  run of them; the right-click menu makes a print set of those picked, or of a group's views, asking its name, and has
+  Expand All and Collapse All. Several views picked show in Properties: of one kind, the parameters they share (blank
+  where they differ, a change made to all); of several, Multiple Categories and how many of each.
 - The other File > Export items (IFC…, View as PNG…, Plan as SVG…, Sheets as PDF…, glTF) still save at once with the
   defaults.
 - Tests: `tests/export.rs`. They cover the dialog on a plan and a PDF written while the project is edited (and the dialog no
   taller than its form), a cancelled job (a gate holds the thread until Cancel is pressed), the format list and an IFC of the
   whole project, a region drawn in the plan and the DXF it makes, printing to a fake spooler (`print::Fake`), and a PDF/A-2b
-  with cut marks.
+  with cut marks. `tests/printsets.rs` covers picking in the browser with Ctrl and Shift, a set made from its menu, the
+  Print Sets window, a set exported as one PDF, and a list of pages.
 
 ## Still to come
 

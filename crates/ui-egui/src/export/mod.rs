@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 use std::time::Duration;
 
-use bimcraft_core::export::page::{self, Anchor, Colour, Orientation, PageSetup, Scale};
+use bimcraft_core::export::page::{self, Anchor, Colour, Orientation, PageSetup, Pages, Scale};
 use bimcraft_core::export::{self, Content, Family, Format, Item, Job, Kind, Options, Paged, Status as Ready, Takes};
 use bimcraft_core::geom::P2;
 use bimcraft_core::ifc::Origin;
@@ -51,14 +51,34 @@ pub(crate) enum Destination {
     Printer(String),
 }
 
+/// What is exported: what the window shows, every sheet, or a print set.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Of {
+    #[default]
+    Shown,
+    /// Every sheet, in one file (a format that combines them: PDF).
+    AllSheets,
+    /// A print set's views and sheets, by its name.
+    Set(String),
+}
+
+/// The margin a new page setup starts at, mm.
+pub(crate) const MARGIN: f64 = 5.0;
+
 /// The Export dialog, while it is open.
 pub(crate) struct Dialog {
     /// The format's id.
     pub(crate) format: String,
     /// What the window shows: the view, sheet or schedule exported, or none for the project.
     pub(crate) source: Option<Id>,
-    /// Every sheet, in one file (a format that combines them: PDF), instead of the source.
-    pub(crate) all_sheets: bool,
+    /// The source, every sheet, or a print set.
+    pub(crate) of: Of,
+    /// The PDF Settings window is open.
+    pub(crate) pdf_open: bool,
+    /// Print Sets… was pressed: the window opens on the next frame.
+    edit_sets: bool,
+    /// The pages typed as a list, kept while another choice is picked.
+    page_list: String,
     pub(crate) options: Options,
     /// The scale typed, 1 : n, kept while another scale is picked.
     pub(crate) ratio: f64,
@@ -199,7 +219,11 @@ impl BimApp {
                 None => return,
             },
         };
-        let mut options = self.export_last.get(&format).cloned().unwrap_or_default();
+        let mut options = self.export_last.get(&format).cloned().unwrap_or_else(|| {
+            let mut o = Options::default();
+            o.page.margin = MARGIN;
+            o
+        });
         // A region is of the view it was drawn in.
         options.page.region = None;
         let ratio = match options.page.scale {
@@ -210,7 +234,10 @@ impl BimApp {
         self.export_dialog = Some(Dialog {
             format,
             source,
-            all_sheets: false,
+            of: Of::Shown,
+            pdf_open: false,
+            edit_sets: false,
+            page_list: String::new(),
             options,
             ratio,
             custom: false,
@@ -271,23 +298,43 @@ impl BimApp {
         let Ok(format) = registry.find(&d.format).cloned() else { return };
         let given = source_for(format.as_ref(), kind, d.source).unwrap_or(None);
         let sheets = sheets_by_number(&model);
-        let all_sheets = d.all_sheets && format.combines() && !sheets.is_empty();
+        // A set gone (deleted, renamed) is no choice.
+        if let Of::Set(name) = &d.of
+            && !model.print_sets.contains_key(name)
+        {
+            d.of = Of::Shown;
+        }
+        // Several sources: every sheet, or a set's views; none, the one shown.
+        let many: Option<Vec<Id>> = match &d.of {
+            Of::AllSheets if format.combines() && !sheets.is_empty() => Some(sheets.clone()),
+            Of::Set(name) => {
+                let views = model.print_sets.get(name).map(|s| s.views.iter().filter_map(|g| model.elements.id(*g)).collect());
+                let fits = |id: &Id| source_for(format.as_ref(), export::kind_of(&model, Some(*id)), Some(*id)).flatten().is_some();
+                views.map(|v: Vec<Id>| v.into_iter().filter(fits).collect())
+            }
+            _ => None,
+        };
+        let all_sheets = many.is_some();
         // The region is the view's, not every sheet's.
         d.options.page.region = if d.custom && !all_sheets && has_region(kind) { d.region } else { None };
-        // The preview's drawing: the source's, or the first sheet's when they all go.
-        let shown = if all_sheets { sheets.first().copied() } else { given };
+        // The preview's drawing: the source's, or the first of several.
+        let shown = match &many {
+            Some(ids) => ids.first().copied(),
+            None => given,
+        };
         if format.paged() {
             d.preview.ask(ctx, &model, shown);
         }
         let printing = matches!(d.destination, Destination::Printer(_));
         let waiting = d.custom && d.options.page.region.is_none() && has_region(kind) && !all_sheets;
+        let empty = many.as_ref().is_some_and(Vec::is_empty);
         let (mut close, mut go) = (false, false);
         let r = Modal::new(egui::Id::new("export-dialog"), t("Export")).width(780.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 ui.horizontal_top(|ui| {
                     ui.vertical(|ui| {
                         ui.set_width(400.0);
-                        self.export_options(ui, &mut d, &registry, format.as_ref(), kind, given, &model, sheets.len());
+                        self.export_options(ui, &mut d, &registry, format.as_ref(), kind, given, &model, sheets.len(), many.as_deref());
                     });
                     // A separator here would take all the height the form may scroll to: a gap instead.
                     ui.add_space(12.0);
@@ -316,9 +363,11 @@ impl BimApp {
                 ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                     let busy = self.exporting();
                     let label = if printing { t("Print") } else { t("Export…") };
-                    let button = ui.add_enabled(!busy && !waiting, egui::Button::new(label));
+                    let button = ui.add_enabled(!busy && !waiting && !empty, egui::Button::new(label));
                     let button = if busy {
                         button.on_disabled_hover_text(t("An export is being written"))
+                    } else if empty {
+                        button.on_disabled_hover_text(t("The print set holds nothing this format writes"))
                     } else {
                         button.on_disabled_hover_text(t("Draw the region first"))
                     };
@@ -327,16 +376,35 @@ impl BimApp {
                 });
             });
         });
+        if d.pdf_open {
+            let mut done = false;
+            let r = Modal::new(egui::Id::new("export-pdf-settings"), t("PDF Settings")).width(380.0).show(ctx, |ui| {
+                crate::popup::body(ui, |ui| pdf_settings(ui, &mut d.options.pdf));
+                crate::popup::footer(ui, |ui| {
+                    ui.with_layout(Layout::right_to_left(Align::Min), |ui| done = ui.button(t("OK")).clicked());
+                });
+            });
+            if done || r.should_close() {
+                d.pdf_open = false;
+            }
+        }
         if d.picking {
             self.export_dialog = Some(d);
             self.set_tool(Tool::ExportRegion(None));
             return;
         }
+        if d.edit_sets {
+            d.edit_sets = false;
+            let set = match &d.of {
+                Of::Set(name) => Some(name.clone()),
+                _ => None,
+            };
+            self.open_print_sets(set);
+        }
         if go {
-            let items: Vec<Item> = if all_sheets {
-                sheets.iter().map(|id| Item { view: Some(model.guid(*id)), format: format.id().to_string() }).collect()
-            } else {
-                vec![Item { view: given.map(|id| model.guid(id)), format: format.id().to_string() }]
+            let items: Vec<Item> = match &many {
+                Some(ids) => ids.iter().map(|id| Item { view: Some(model.guid(*id)), format: format.id().to_string() }).collect(),
+                None => vec![Item { view: given.map(|id| model.guid(id)), format: format.id().to_string() }],
             };
             let mut kept = d.options.clone();
             kept.page.region = None;
@@ -346,7 +414,10 @@ impl BimApp {
             match &d.destination {
                 Destination::Printer(printer) => {
                     let title = match given {
-                        _ if all_sheets => model.name.clone(),
+                        _ if all_sheets => match &d.of {
+                            Of::Set(name) => format!("{} - {name}", model.name),
+                            _ => model.name.clone(),
+                        },
                         Some(id) => export::title(&model, Some(id), kind.unwrap_or(Kind::Project)),
                         None => model.name.clone(),
                     };
@@ -354,8 +425,11 @@ impl BimApp {
                 }
                 Destination::File => {
                     let what = format_name(format.as_ref());
+                    // Several sources to a format that doesn't combine them: a file each, named after the one asked for.
+                    let combine = combine && format.combines();
+                    let each = all_sheets && !combine;
                     self.ask_path(ctx, &what, format.extension(), move |app, path| {
-                        app.export_to(path, items, options, combine);
+                        app.export_to(path, items, options, combine, each);
                     });
                 }
             }
@@ -367,13 +441,15 @@ impl BimApp {
     }
 
     /// Writes `items` to the file `path` (a picture of several pages, a file a page beside it).
-    pub(crate) fn export_to(&mut self, path: PathBuf, items: Vec<Item>, options: Options, combine: bool) {
+    /// `each`: a file for each item, named after `path` and the item's view.
+    pub(crate) fn export_to(&mut self, path: PathBuf, items: Vec<Item>, options: Options, combine: bool, each: bool) {
         let folder = path.parent().map(PathBuf::from).unwrap_or_default();
         let stem = path.file_stem().map(|s| literal(&s.to_string_lossy())).unwrap_or_default();
+        let name = if each { format!("{stem} - {{SheetNumber}} {{ViewName}}") } else { stem.clone() };
         let job = Job {
             items,
             folder,
-            name: Some(stem.clone()),
+            name: Some(name),
             combine: combine.then_some(stem),
             // The system's dialog asked before a file was written over.
             overwrite: true,
@@ -413,6 +489,7 @@ impl BimApp {
         given: Option<Id>,
         model: &Model,
         sheets: usize,
+        many: Option<&[Id]>,
     ) {
         let printing = matches!(d.destination, Destination::Printer(_));
         egui::Grid::new("export-what").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
@@ -476,17 +553,46 @@ impl BimApp {
                     Some(id) => export::title(model, Some(id), kind.unwrap_or(Kind::Project)),
                     None => tf(msg!("The whole project: {}"), &[&model.name]),
                 };
+                ui.radio_value(&mut d.of, Of::Shown, what);
                 if format.combines() && sheets > 0 {
-                    ui.radio_value(&mut d.all_sheets, false, what);
-                    ui.radio_value(&mut d.all_sheets, true, tf(msg!("All sheets ({}), in one file"), &[&sheets.to_string()]));
-                } else {
-                    ui.label(what);
+                    ui.radio_value(&mut d.of, Of::AllSheets, tf(msg!("All sheets ({}), in one file"), &[&sheets.to_string()]));
+                }
+                // A print set: its views and sheets, one file of them where the format combines them.
+                ui.horizontal(|ui| {
+                    let names: Vec<&String> = model.print_sets.keys().collect();
+                    let on = matches!(d.of, Of::Set(_));
+                    let first = names.first().map(|n| n.to_string());
+                    let radio = ui.add_enabled(first.is_some(), egui::RadioButton::new(on, t("Print set")));
+                    if radio.on_disabled_hover_text(t("The project has no print sets yet")).clicked()
+                        && let Some(first) = first
+                        && !on
+                    {
+                        d.of = Of::Set(first);
+                    }
+                    if let Of::Set(current) = &mut d.of {
+                        ComboBox::from_id_salt("export-print-set").width(150.0).selected_text(current.as_str()).show_ui(ui, |ui| {
+                            for name in &names {
+                                ui.selectable_value(current, name.to_string(), name.as_str());
+                            }
+                        });
+                    }
+                    if ui.button(t("Print Sets…")).on_hover_text(t("Make and change the sets of views and sheets")).clicked() {
+                        d.edit_sets = true;
+                    }
+                });
+                if let (Of::Set(_), Some(ids)) = (&d.of, many) {
+                    let text = if format.combines() {
+                        tf(msg!("{} views and sheets, in one file"), &[&ids.len().to_string()])
+                    } else {
+                        tf(msg!("{} views and sheets, a file each"), &[&ids.len().to_string()])
+                    };
+                    ui.label(RichText::new(text).color(pal().muted));
                 }
             });
             ui.end_row();
             // A drawing's extents: all of it, or a region drawn in the view.
             let drawing = format.takes().contains(&Takes::Drawing) && given.is_some();
-            if drawing && has_region(kind) && !(d.all_sheets && format.combines()) {
+            if drawing && has_region(kind) && many.is_none() {
                 ui.label(t("Extents"));
                 ui.vertical(|ui| {
                     ui.radio_value(&mut d.custom, false, t("All elements in view"));
@@ -565,8 +671,11 @@ impl BimApp {
             return;
         }
         let picture = format.family() == Family::Raster || (format.id() == "pdf" && o.pdf.raster);
-        let own = d.preview.layout(&o.page).and_then(Result::ok).map(|l| l.paper);
-        page_setup(ui, &mut o.page, &mut d.ratio, picture, own);
+        let laid = d.preview.layout(&o.page).and_then(Result::ok);
+        let own = laid.as_ref().map(|l| l.paper);
+        let pages = laid.as_ref().map_or(1, |l| l.cols * l.rows);
+        let pdf = (format.id() == "pdf").then_some(&mut o.pdf);
+        page_setup(ui, &mut o.page, &mut d.ratio, picture, own, pdf, pages, &mut d.page_list);
     }
 
     /// Beside the form: the preview, a PDF's own settings under it, and what the pages come to.
@@ -597,8 +706,15 @@ impl BimApp {
             _ => {}
         }
         if format.id() == "pdf" {
-            let pages = d.preview.layout(&d.options.page).and_then(Result::ok).map_or(1, |l| l.cols * l.rows);
-            pdf_settings(ui, &mut d.options.pdf, pages);
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                if ui.button(t("PDF Settings…")).on_hover_text(t("Archive (PDF/A), version, and the document's title")).clicked() {
+                    d.pdf_open = true;
+                }
+                let s = &d.options.pdf;
+                let said = format!("{} · PDF {}", archive_name(s.archive), s.version.label());
+                ui.label(RichText::new(said).color(pal().muted));
+            });
         }
     }
 }
@@ -622,8 +738,19 @@ fn colour_rows(ui: &mut Ui, p: &mut PageSetup) {
     ui.end_row();
 }
 
-/// The page setup's controls. `own` is the paper the layout has now: what a paper of its own starts at.
-fn page_setup(ui: &mut Ui, p: &mut PageSetup, ratio: &mut f64, picture: bool, own: Option<P2>) {
+/// The page setup's controls. `own` is the paper the layout has now: what a paper of its own starts at; `pdf`, a PDF's
+/// settings, whose content and cut marks go under the colours; `pages`, how many the drawing takes; `list`, the pages typed.
+#[allow(clippy::too_many_arguments)]
+fn page_setup(
+    ui: &mut Ui,
+    p: &mut PageSetup,
+    ratio: &mut f64,
+    picture: bool,
+    own: Option<P2>,
+    pdf: Option<&mut bimcraft_core::pdf::Settings>,
+    pages: u32,
+    list: &mut String,
+) {
     ui.add_space(8.0);
     ui.label(RichText::new(t("Page")).strong());
     egui::Grid::new("export-page").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
@@ -689,6 +816,19 @@ fn page_setup(ui: &mut Ui, p: &mut PageSetup, ratio: &mut f64, picture: bool, ow
         anchor_picker(ui, &mut p.anchor);
         ui.end_row();
         colour_rows(ui, p);
+        if let Some(s) = pdf {
+            ui.label(t("Content"));
+            ui.horizontal(|ui| {
+                ui.radio_value(&mut s.raster, false, t("Vector"));
+                ui.radio_value(&mut s.raster, true, t("Raster"));
+            });
+            ui.end_row();
+            ui.label("");
+            ui.add_enabled(pages > 1, egui::Checkbox::new(&mut s.cut_marks, t("Draw cut marks")))
+                .on_hover_text(t("A hairline in the margin where pages meet, to show where to cut them to put them together"))
+                .on_disabled_hover_text(t("For a drawing printed across several pages"));
+            ui.end_row();
+        }
         if picture {
             ui.label(t("Resolution"));
             let mut dpi = p.dpi();
@@ -697,26 +837,41 @@ fn page_setup(ui: &mut Ui, p: &mut PageSetup, ratio: &mut f64, picture: bool, ow
             ui.end_row();
         }
         ui.label(t("Pages"));
-        ui.horizontal(|ui| {
-            let mut all = p.pages.is_none();
-            if ui.checkbox(&mut all, t("All")).changed() {
-                p.pages = if all { None } else { Some([1, 1]) };
-            }
-            if let Some([first, last]) = &mut p.pages {
-                ui.add(DragValue::new(first).range(1..=page::MAX_PAGES));
-                ui.label(t("to"));
-                ui.add(DragValue::new(last).range(*first..=page::MAX_PAGES));
-            }
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                if ui.radio(p.pages.is_none(), t("All")).clicked() {
+                    p.pages = None;
+                }
+                let range = matches!(p.pages, Some(Pages::Range(_)));
+                if ui.radio(range, t("From")).clicked() && !range {
+                    p.pages = Some(Pages::Range([1, pages.max(1)]));
+                }
+                if let Some(Pages::Range([first, last])) = &mut p.pages {
+                    ui.add(DragValue::new(first).range(1..=page::MAX_PAGES));
+                    ui.label(t("to"));
+                    ui.add(DragValue::new(last).range(*first..=page::MAX_PAGES));
+                }
+            });
+            ui.horizontal(|ui| {
+                let custom = matches!(p.pages, Some(Pages::List(_)));
+                if ui.radio(custom, t("Custom")).clicked() && !custom {
+                    p.pages = Some(Pages::List(if list.trim().is_empty() { "1".to_string() } else { list.clone() }));
+                }
+                if let Some(Pages::List(text)) = &mut p.pages {
+                    let edit = egui::TextEdit::singleline(text).hint_text("1, 3, 5-7").char_limit(page::MAX_PAGE_LIST).desired_width(150.0);
+                    ui.add(edit)
+                        .on_hover_text(t("Page numbers and runs of them, by commas: 1, 3, 5-7"))
+                        .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::TextEdit, true, t("Pages to print")));
+                    list.clone_from(text);
+                }
+            });
         });
         ui.end_row();
     });
 }
 
-/// A PDF's own settings: the archive standard, the version, lines or pictures, cut marks, and the document's title.
-/// `pages` is how many pages the drawing takes (cut marks are for more than one).
-fn pdf_settings(ui: &mut Ui, s: &mut bimcraft_core::pdf::Settings, pages: u32) {
-    ui.add_space(8.0);
-    ui.label(RichText::new(t("PDF")).strong());
+/// A PDF's document settings, in their own window: the archive standard, the version, and the document's title.
+fn pdf_settings(ui: &mut Ui, s: &mut bimcraft_core::pdf::Settings) {
     egui::Grid::new("export-pdf").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
         ui.label(t("Archive"));
         ComboBox::from_id_salt("export-archive")
@@ -741,17 +896,6 @@ fn pdf_settings(ui: &mut Ui, s: &mut bimcraft_core::pdf::Settings, pages: u32) {
                 .response
                 .on_disabled_hover_text(t("An archive has its standard's version"));
         });
-        ui.end_row();
-        ui.label(t("Content"));
-        ui.horizontal(|ui| {
-            ui.radio_value(&mut s.raster, false, t("Vector"));
-            ui.radio_value(&mut s.raster, true, t("Raster"));
-        });
-        ui.end_row();
-        ui.label("");
-        ui.add_enabled(pages > 1, egui::Checkbox::new(&mut s.cut_marks, t("Draw cut marks")))
-            .on_hover_text(t("A hairline in the margin where pages meet, to show where to cut them to put them together"))
-            .on_disabled_hover_text(t("For a drawing printed across several pages"));
         ui.end_row();
         let text_row = |ui: &mut Ui, label: &str, value: &mut Option<String>, id: &str| {
             ui.label(t(label));
@@ -972,6 +1116,18 @@ impl Preview {
             crate::canvas::paint(&painter.with_clip_rect(clip), at, drawing, &[], None, setup.hairlines, &[]);
             if layout.margin > 0.0 {
                 painter.rect_stroke(clip, 0.0, Stroke::new(0.5, pal().accent.gamma_multiply(0.5)), StrokeKind::Outside);
+            }
+        }
+        // Each page's number, light over it, to tell them apart (and to type in Pages).
+        if layout.cols * layout.rows > 1 {
+            let size = (w.min(h) * s * 0.4).clamp(9.0, 48.0);
+            for r in 0..layout.rows {
+                for c in 0..layout.cols {
+                    let page = Rect::from_min_size(page_at(c, r), vec2(w * s, h * s));
+                    let n = r * layout.cols + c + 1;
+                    let ink = egui::Color32::from_rgba_unmultiplied(120, 120, 120, 110);
+                    painter.text(page.center(), egui::Align2::CENTER_CENTER, n.to_string(), egui::FontId::proportional(size), ink);
+                }
             }
         }
     }
