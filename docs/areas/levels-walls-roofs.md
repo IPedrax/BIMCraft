@@ -153,7 +153,14 @@ are, and `Model::ceiling_slabs` what's left. A shaft cuts each floor,
 ceiling and roof its span reaches into over its outline, all the way through (`Model::less_shafts`). A stair or a ramp
 is runs and landings laid out from its start (`stairs::stair`, `stairs::ramp`): a landing after `at` risers (a ramp's, `at`
 mm up), as deep as the runs are wide, the next run turning by its `turn`; a railing on one follows its walk line moved out to
-its side (`stairs::railing`), so it goes wherever its host goes. `modify` merges into fields that are objects (JSON Merge Patch), so `{"view_range": {"cut": 1500}}` keeps the rest; an element's own field can't be
+its side (`stairs::railing`), so it goes wherever its host goes. A stair's `open` flag (`stair` or `modify`) selects
+40 mm tread plates, two 15 by 250 mm side stringers per run, and 250 mm landing slabs. `stairs::open_flight` supplies the same
+solids to 3D/sections and IFC; the side stringers slope toward the next tread and meet the landing. Width must exceed 30 mm
+and actual riser height must exceed 40 mm so this construction leaves an opening. These fixed dimensions describe geometry,
+not an engineered stair type. Solid construction remains the default, including desktop placement. Native format 19 gates the
+new field because older readers would drop it and turn an open stair solid; migration preserves existing solid stairs and GUIDs.
+IFC writes `BIMCraft_Stair.Open` as `IfcBoolean` on the stair and includes the supports inside each flight's body. Import reads
+that marker explicitly, preserving construction on save/reopen; unmarked foreign stairs retain the existing solid interpretation. `modify` merges into fields that are objects (JSON Merge Patch), so `{"view_range": {"cut": 1500}}` keeps the rest; an element's own field can't be
 called `category`, the tag every element carries.
 
 Sketches (`sketch.rs`) are how an outline is drawn, the one solver everything with an outline and holes uses: floors,

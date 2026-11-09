@@ -922,6 +922,20 @@ fn solids_in_with(
                 let (_, each, _) = m.flight(st);
                 let (base, l) = (m.elevation(st.level), stairs::stair(m, st));
                 for run in &l.runs {
+                    if st.open {
+                        out.extend(stairs::open_flight(run, st.width, st.tread, each).into_iter().enumerate().map(
+                            |(i, (ring, bottom, top))| Solid::Prism {
+                                owner: id,
+                                color: if i < run.risers.saturating_sub(1) as usize { SLAB } else { STRUCTURE },
+                                tex: 0,
+                                ring,
+                                bottom,
+                                top,
+                                curve: None,
+                            },
+                        ));
+                        continue;
+                    }
                     let frame = Frame { o: run.start, u: run.u, n: run.u.perp() };
                     for k in 1..run.risers {
                         let k = f64::from(k);
@@ -929,7 +943,7 @@ fn solids_in_with(
                         out.push(Solid::Box { owner: id, color: SLAB, tex: 0, frame, a, c, z: (base, run.z.0 + k * each) });
                     }
                 }
-                out.extend(l.pads.iter().map(|p| slab(id, SLAB, &p.ring, (base, p.z))));
+                out.extend(l.pads.iter().map(|p| slab(id, SLAB, &p.ring, (if st.open { p.z - stairs::STRINGER.1 } else { base }, p.z))));
             }
             // Each run solid from its level up to its slope, each landing up to its top.
             Element::Ramp(r) => {

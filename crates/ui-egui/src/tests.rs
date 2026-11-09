@@ -2241,6 +2241,7 @@ fn stairs_start_where_clicked_and_climb_toward_the_second_click() {
     );
     assert_eq!(ids(&h, "railing").len(), 2, "with its railings, as the Options Bar says");
     assert_eq!(h.state().tool, Tool::Stair(Vec::new()), "ready for the next one");
+    assert_ne!(field(&h, st[0], "open"), json!(true), "desktop placement keeps solid construction by default");
 }
 
 #[test]
@@ -6700,3 +6701,4 @@ fn room_area_computation_is_set_from_manage_and_undone() {
 }
 
 mod background_grid;
+mod open_stairs;

@@ -81,6 +81,30 @@ fn ccw(ring: Vec<P2>) -> Vec<P2> {
     if geom::area(&ring) < 0.0 { ring.into_iter().rev().collect() } else { ring }
 }
 
+/// Open construction uses tread plates and two flat side stringers; dimensions are millimetres.
+pub const OPEN_TREAD: f64 = 40.0;
+pub const STRINGER: (f64, f64) = (15.0, 250.0);
+
+/// Open flight solids, shared by the desktop/section geometry and IFC. Treads come first,
+/// then the two stringers. Side stringers rise toward the next tread and meet the landing's slab.
+pub(crate) fn open_flight(run: &Run, width: f64, tread: f64, each: f64) -> Vec<(Vec<P2>, Plane, Plane)> {
+    let mut parts = Vec::new();
+    for k in 1..run.risers {
+        let step = Run { start: run.start + run.u * (f64::from(k - 1) * tread), length: tread, ..*run };
+        let top = run.z.0 + f64::from(k) * each;
+        parts.push((step.ring(width), Plane::flat(top - OPEN_TREAD), Plane::flat(top)));
+    }
+    let g = run.u * (each / tread);
+    let top = Plane { z: run.z.0 + each - OPEN_TREAD - g.dot(run.start), g };
+    let bottom = Plane { z: top.z - STRINGER.1, g };
+    let n = run.u.perp();
+    for side in [-1.0, 1.0] {
+        let (outer, inner) = (n * (side * width / 2.0), n * (side * (width / 2.0 - STRINGER.0)));
+        parts.push((ccw(vec![run.start + inner, run.end() + inner, run.end() + outer, run.start + outer]), bottom, top));
+    }
+    parts
+}
+
 /// A stair's runs: its risers split at its landings, each run a tread shorter than its risers.
 pub fn stair(m: &Model, st: &Stair) -> Layout {
     let (n, each, _) = m.flight(st);
