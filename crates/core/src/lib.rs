@@ -10,6 +10,7 @@ pub mod autosave;
 #[cfg(test)]
 mod autosave_tests;
 pub mod background_grid;
+pub mod bath;
 pub mod bounds;
 pub mod bridge;
 pub mod cad;
