@@ -68,6 +68,7 @@ fn main() -> ExitCode {
     };
     let mut session = Session::new();
     session.dwg = dwg_reader();
+    dwg_writer(&mut session);
     // A blank project starts in the interface's language: its levels named in it.
     if args.is_empty() {
         let _ = session.execute("new", &json!({"language": language.project().code()}));
@@ -248,6 +249,18 @@ fn dwg_reader() -> Option<DwgReader> {
 fn dwg_reader() -> Option<DwgReader> {
     None
 }
+
+/// The DWG writer a session's exports are given: `bimcraft-dwg`'s, which writes a drawing in a child process of this program,
+/// behind the `dwg` feature. A build without it leaves DWG listed as planned.
+#[cfg(feature = "dwg")]
+fn dwg_writer(session: &mut Session) {
+    if let Some(w) = bimcraft_dwg::writer() {
+        session.exports.register(w);
+    }
+}
+
+#[cfg(not(feature = "dwg"))]
+fn dwg_writer(_: &mut Session) {}
 
 /// What this program does when it's started as the child that reads a DWG (`bimcraft_dwg::CHILD_ARG`): none when it isn't.
 #[cfg(feature = "dwg")]

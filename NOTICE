@@ -63,11 +63,11 @@ DWG drawings: acadrust and ACadSharp
 ==============================================================================
 
 The desktop app and the command line, built with their default `dwg` feature,
-read DWG drawings through BIMCraft's bridge (crates/dwg, MIT OR Apache-2.0),
+read and write DWG drawings through BIMCraft's bridge (crates/dwg, MIT OR Apache-2.0),
 which uses the acadrust crate, version 0.6.6, unmodified, as a separate
 library:
 
-  acadrust  MPL-2.0  reads DWG files
+  acadrust  MPL-2.0  reads and writes DWG files
     by Hakan AK (its authors, as its manifest names them)
     https://github.com/hakanaktt/acadrust
     https://crates.io/crates/acadrust/0.6.6

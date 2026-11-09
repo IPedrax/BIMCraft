@@ -142,6 +142,7 @@ impl Server {
     pub fn new() -> Self {
         let mut session = Session::new();
         session.dwg = crate::dwg_reader();
+        crate::dwg_writer(&mut session);
         let plugins = crate::load_plugins(&mut session);
         let seen = plugins.log().len();
         Server { backend: Backend::Own(session), plugins: Some(plugins), seen }
