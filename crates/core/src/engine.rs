@@ -343,13 +343,11 @@ impl Session {
 
     /// [`Session::execute`] of a command in the static list, refused or taken back when the session may only read.
     fn execute_found(&mut self, cmd: &'static Command, params: &Value) -> Result<Value, String> {
-        if self.dry_run {
-            if let Some(what) = dry_run_refuses(cmd, params) {
-                return Err(format!(
-                    "`{}` would {what}, and a dry run touches no file and keeps the history: run the script without `dry_run`",
-                    cmd.id
-                ));
-            }
+        if let Some(what) = dry_run_refuses(cmd, params).filter(|_| self.dry_run) {
+            return Err(format!(
+                "`{}` would {what}, and a dry run touches no file and keeps the history: run the script without `dry_run`",
+                cmd.id
+            ));
         }
         let Some(how) = self.read_only else { return self.perform(cmd, params) };
         self.may_read(cmd, params).map_err(|what| format!("`{}` would {what}, {READ_ONLY}: {how}", cmd.id))?;

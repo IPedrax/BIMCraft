@@ -18,6 +18,11 @@ fn house() -> Session {
     s
 }
 
+/// The undo history's labels, owned, so the session may run on while they're held.
+fn history(s: &Session) -> Vec<String> {
+    s.history().into_iter().map(str::to_string).collect()
+}
+
 fn ids(v: &Value) -> Vec<u64> {
     v.as_array().unwrap().iter().map(|e| e["id"].as_u64().unwrap()).collect()
 }
@@ -29,7 +34,7 @@ fn categories(v: &Value) -> Vec<&str> {
 #[test]
 fn a_dry_run_says_what_a_script_would_do_and_leaves_the_project_as_it_was() {
     let mut s = house();
-    let (model, history) = (Arc::clone(&s.model), s.history());
+    let (model, steps) = (Arc::clone(&s.model), history(&s));
     let wall = s.model.elements.iter().find(|(_, e)| e.category() == "wall").map(|(id, _)| *id).unwrap();
     let room = s.model.elements.iter().find(|(_, e)| e.category() == "room").map(|(id, _)| *id).unwrap();
     let text = format!(
@@ -48,7 +53,7 @@ fn a_dry_run_says_what_a_script_would_do_and_leaves_the_project_as_it_was() {
     assert!(warnings.iter().any(|w| w.as_str().unwrap().contains("not enclosed")), "{r}");
     // Nothing of it stays: the very model, the history, and the next id.
     assert!(Arc::ptr_eq(&s.model, &model));
-    assert_eq!(s.history(), history);
+    assert_eq!(history(&s), steps);
     assert!(s.model.warnings().is_empty());
     // Undo still takes back the step before the dry run.
     s.execute("undo", &json!({})).unwrap();
@@ -67,7 +72,7 @@ fn a_dry_run_that_fails_names_the_line_and_changes_nothing() {
 #[test]
 fn a_dry_run_opens_and_writes_no_file_and_keeps_the_history() {
     let mut s = house();
-    let (model, history) = (Arc::clone(&s.model), s.history());
+    let (model, steps) = (Arc::clone(&s.model), history(&s));
     let dir = std::env::temp_dir().join(format!("bimcraft-dry-run-{}", std::process::id()));
     let file = dir.join("never.bimcraft");
     for line in [
@@ -82,7 +87,7 @@ fn a_dry_run_opens_and_writes_no_file_and_keeps_the_history() {
     }
     assert!(!file.exists() && !dir.join("never.ifc").exists());
     assert!(Arc::ptr_eq(&s.model, &model));
-    assert_eq!(s.history(), history);
+    assert_eq!(history(&s), steps);
 }
 
 #[test]
@@ -111,16 +116,13 @@ fn a_dry_run_looks_at_each_command_as_it_runs_with_the_params_it_is_given() {
     // A file a command reaches only deep in its params, which no look at the line's first word finds: refused as the line
     // comes, before it runs, and the line before it is taken back with the rest.
     let mut s = house();
-    let (model, history) = (Arc::clone(&s.model), s.history());
+    let (model, steps) = (Arc::clone(&s.model), history(&s));
     let picture = std::env::temp_dir().join(format!("bimcraft-dry-run-texture-{}.png", std::process::id()));
-    let text = format!(
-        "level {{\"elevation\": 3000}}\nmaterial {{\"name\": \"Brick\", \"texture\": {{\"path\": {}}}}}",
-        json!(picture)
-    );
+    let text = format!("level {{\"elevation\": 3000}}\nmaterial {{\"name\": \"Brick\", \"texture\": {{\"path\": {}}}}}", json!(picture));
     let e = s.script_dry_run(&text).unwrap_err();
     assert!(e.contains("line 2") && e.contains("a file") && e.contains("dry run"), "{e}");
     assert!(Arc::ptr_eq(&s.model, &model));
-    assert_eq!(s.history(), history);
+    assert_eq!(history(&s), steps);
     // And once the dry run is over, the session runs every command again.
     s.execute("level", &json!({"elevation": 3000})).unwrap();
 }
