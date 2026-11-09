@@ -985,7 +985,8 @@ fn prism_volume(ring: &[P2], bottom: &walls::Plane, top: &walls::Plane) -> f64 {
 
 /// Where an IFC file's coordinates have their origin: the internal origin (geometry as the model holds it), the Project Base
 /// Point, the Survey Point, or the shared coordinates themselves (map coordinates in the file, turned to true north).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Origin {
     #[default]
     Internal,

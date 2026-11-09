@@ -2987,6 +2987,11 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"point": [2000, 2000], "type": 5}),
         json!({"point": [2000, 2000], "type": "No such"}),
     ];
+    // A sheet holding the plan, last so that no id moves, and the exports of it, of the plan and of the project.
+    let _ = base.execute("sheet", &json!({"name": "Plans"}));
+    let _ = base.execute("place", &json!({"sheet": "A101", "view": "Level 1"}));
+    let exports = temp("sweep-exports");
+    targeted.extend(crate::export_tests::sweep_payloads(&exports));
     let hostile: Vec<Value> = hostile.into_iter().chain(finishes).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
@@ -3030,6 +3035,7 @@ fn hostile_params_never_panic_or_break_the_model() {
             draw_plans(&s.model);
         }
     }
+    let _ = std::fs::remove_dir_all(&exports);
     // A family's connectors, each field of one given every hostile value, on a starter family (placed in the base, if the
     // house has any) and on a new one; and far more connectors than a family may hold.
     let values = [

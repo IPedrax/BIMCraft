@@ -32,8 +32,8 @@ impl Format for Ifc {
     fn takes(&self) -> &'static [Takes] {
         &[Takes::Model]
     }
-    fn write(&self, items: &[Prepared], _: &Options, _: &Ctx) -> Result<Vec<Out>, String> {
-        Ok(vec![Out { suffix: None, bytes: crate::ifc::export(model(items)?).into_bytes() }])
+    fn write(&self, items: &[Prepared], options: &Options, _: &Ctx) -> Result<Vec<Out>, String> {
+        Ok(vec![Out { suffix: None, bytes: crate::ifc::export_at(model(items)?, options.ifc_origin).into_bytes() }])
     }
 }
 

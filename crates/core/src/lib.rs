@@ -62,6 +62,8 @@ mod face_host_tests;
 #[cfg(test)]
 mod face_void_tests;
 pub mod export;
+#[cfg(test)]
+mod export_tests;
 pub mod falls;
 pub mod family;
 #[cfg(test)]
