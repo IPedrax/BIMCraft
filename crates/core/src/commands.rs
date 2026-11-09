@@ -3438,21 +3438,22 @@ fn render_view(s: &mut Session, p: &Value) -> R {
         }
         return png_reply(c, p, render::png(&d)?, info);
     }
-    let level = level_param(c, m, p, "view")?;
+    let (level, plan) = plan_param(c, m, p, "view")?;
+    let plan = plan.unwrap_or(level);
+    let name = m.view_name(plan).unwrap_or_default();
     let (d, kind) = match flag(c, p, "ceiling")? {
-        true => (render::ceiling_plan(m, level, w, h), "ceiling plan"),
-        false => (render::plan(m, level, w, h), "plan"),
+        true => (render::ceiling_plan(m, plan, w, h), "ceiling plan"),
+        false => (render::plan(m, plan, w, h), "plan"),
     };
     match string(c, p, "path")? {
         Some(path) => {
             let path = PathBuf::from(path);
             write_plan(&d, &path)?;
-            Ok(with_notes(json!({"path": path, "width": w, "height": h, "view": level_name(m, level), "kind": kind}), &d.notes))
+            Ok(with_notes(json!({"path": path, "width": w, "height": h, "view": name, "kind": kind}), &d.notes))
         }
-        None => Ok(with_notes(
-            json!({"pngBase64": base64(&render::png(&d)?), "width": w, "height": h, "view": level_name(m, level), "kind": kind}),
-            &d.notes,
-        )),
+        None => {
+            Ok(with_notes(json!({"pngBase64": base64(&render::png(&d)?), "width": w, "height": h, "view": name, "kind": kind}), &d.notes))
+        }
     }
 }
 
