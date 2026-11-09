@@ -3,7 +3,7 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nLanguage: nl\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: crates/core/src/fixtures.rs:369
+#: crates/core/src/fixtures.rs:382
 msgid "Air Terminal"
 msgstr "Luchtuitlaat"
 
@@ -48,7 +48,7 @@ msgstr "Draairaam"
 msgid "Category"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:281
+#: crates/core/src/fixtures.rs:291
 msgid "Ceiling Luminaire"
 msgstr "Plafondarmatuur"
 
@@ -108,7 +108,7 @@ msgstr "Streep"
 msgid "Dash Dot"
 msgstr "Streep-punt"
 
-#: crates/core/src/fixtures.rs:427
+#: crates/core/src/fixtures.rs:440
 msgid "Data Outlet"
 msgstr "Data-aansluiting"
 
@@ -136,11 +136,11 @@ msgstr "Diagonaal omlaag"
 msgid "Diagonal Up"
 msgstr "Diagonaal omhoog"
 
-#: crates/core/src/fixtures.rs:189
+#: crates/core/src/fixtures.rs:198
 msgid "Diameter"
 msgstr "Diameter"
 
-#: crates/core/src/fixtures.rs:261
+#: crates/core/src/fixtures.rs:270
 msgid "Distribution Board"
 msgstr "Verdeelbord"
 
@@ -164,7 +164,7 @@ msgstr "Dubbele schuifdeur"
 msgid "Double Swing"
 msgstr "Dubbele draaideur"
 
-#: crates/core/src/fixtures.rs:382
+#: crates/core/src/fixtures.rs:395
 msgid "Earthing Electrode"
 msgstr "Aardingselektrode"
 
@@ -172,7 +172,7 @@ msgstr "Aardingselektrode"
 msgid "East"
 msgstr "Oost"
 
-#: crates/core/src/fixtures.rs:209
+#: crates/core/src/fixtures.rs:218
 msgid "Elbow 90"
 msgstr "Bocht 90"
 
@@ -213,7 +213,7 @@ msgstr "Vast"
 msgid "Fixed Window"
 msgstr "Vast raam"
 
-#: crates/core/src/fixtures.rs:169
+#: crates/core/src/fixtures.rs:178
 msgid "Floor Drain"
 msgstr "Vloerputje"
 
@@ -237,7 +237,7 @@ msgstr "Kozijnmateriaal"
 msgid "Frame Width"
 msgstr "Kozijnbreedte"
 
-#: crates/core/src/fixtures.rs:229
+#: crates/core/src/fixtures.rs:238
 msgid "Gate Valve"
 msgstr "Schuifafsluiter"
 
@@ -278,7 +278,7 @@ msgstr "Verborgen lijnen"
 msgid "Horizontal"
 msgstr "Horizontaal"
 
-#: crates/core/src/fixtures.rs:392
+#: crates/core/src/fixtures.rs:405
 msgid "Inspection Box"
 msgstr "Controleputje"
 
@@ -286,7 +286,7 @@ msgstr "Controleputje"
 msgid "Insulation"
 msgstr "Isolatie"
 
-#: crates/core/src/fixtures.rs:128
+#: crates/core/src/fixtures.rs:137
 msgid "Kitchen Sink"
 msgstr "Keukenspoelbak"
 
@@ -315,7 +315,7 @@ msgstr "Niveau"
 msgid "Level Schedule"
 msgstr "Niveaulijst"
 
-#: crates/core/src/fixtures.rs:252
+#: crates/core/src/fixtures.rs:261
 msgid "Load"
 msgstr "Belasting"
 
@@ -351,7 +351,7 @@ msgstr "Membraan"
 msgid "Metal"
 msgstr "Metaal"
 
-#: crates/core/src/fixtures.rs:250
+#: crates/core/src/fixtures.rs:259
 msgid "Mounting Height"
 msgstr "Montagehoogte"
 
@@ -387,7 +387,7 @@ msgstr "Verschuiving"
 msgid "Operation"
 msgstr "Bediening"
 
-#: crates/core/src/fixtures.rs:319
+#: crates/core/src/fixtures.rs:329
 msgid "Outlet"
 msgstr "Contactdoos"
 
@@ -395,11 +395,11 @@ msgstr "Contactdoos"
 msgid "Overhead Lines"
 msgstr "Bovenliggende lijnen"
 
-#: crates/core/src/fixtures.rs:190
+#: crates/core/src/fixtures.rs:199
 msgid "PVC"
 msgstr "PVC"
 
-#: crates/core/src/fixtures.rs:446
+#: crates/core/src/fixtures.rs:461
 msgid "Patch Panel"
 msgstr "Patchpaneel"
 
@@ -411,7 +411,7 @@ msgstr "Omtrek"
 msgid "Plan Area"
 msgstr "Oppervlakte in plattegrond"
 
-#: crates/core/src/fixtures.rs:251
+#: crates/core/src/fixtures.rs:260
 msgid "Plaster"
 msgstr "Pleister"
 
@@ -431,7 +431,7 @@ msgstr "OVERBODIG"
 msgid "Rack"
 msgstr "Rack"
 
-#: crates/core/src/fixtures.rs:296
+#: crates/core/src/fixtures.rs:306
 msgid "Recessed Luminaire"
 msgstr "Inbouwarmatuur"
 
@@ -500,7 +500,7 @@ msgstr "Vorige + gesloopt tonen"
 msgid "Show Previous + New"
 msgstr "Vorige + nieuw tonen"
 
-#: crates/core/src/fixtures.rs:146
+#: crates/core/src/fixtures.rs:155
 msgid "Shower"
 msgstr "Douche"
 
@@ -548,7 +548,7 @@ msgstr "Zuid"
 msgid "Swing"
 msgstr "Draaiend"
 
-#: crates/core/src/fixtures.rs:344
+#: crates/core/src/fixtures.rs:356
 msgid "Switch"
 msgstr "Schakelaar"
 
@@ -556,7 +556,7 @@ msgstr "Schakelaar"
 msgid "Table"
 msgstr "Tafel"
 
-#: crates/core/src/fixtures.rs:219
+#: crates/core/src/fixtures.rs:228
 msgid "Tee"
 msgstr "T-stuk"
 
@@ -568,7 +568,7 @@ msgstr "Dikte"
 msgid "Thin Lines"
 msgstr "Dunne lijnen"
 
-#: crates/core/src/fixtures.rs:331
+#: crates/core/src/fixtures.rs:342
 msgid "Three-Phase Outlet"
 msgstr "Driefasecontactdoos"
 
@@ -608,7 +608,7 @@ msgstr "Naamloos"
 msgid "Vertical"
 msgstr "Verticaal"
 
-#: crates/core/src/fixtures.rs:436
+#: crates/core/src/fixtures.rs:450
 msgid "Voice Outlet"
 msgstr "Telefoonaansluiting"
 

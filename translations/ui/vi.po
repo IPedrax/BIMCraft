@@ -526,7 +526,7 @@ msgstr "Tác nhân: {} đã kết nối, chỉ đọc"
 msgid "Aggressiveness class"
 msgstr "Cấp độ xâm thực"
 
-#: crates/core/src/fixtures.rs:369
+#: crates/core/src/fixtures.rs:382
 msgid "Air Terminal"
 msgstr "Kim thu sét"
 
@@ -1380,7 +1380,7 @@ msgstr "Danh mục:"
 msgid "Ceiling"
 msgstr "Trần"
 
-#: crates/core/src/fixtures.rs:281
+#: crates/core/src/fixtures.rs:291
 msgid "Ceiling Luminaire"
 msgstr "Đèn trần"
 
@@ -2704,7 +2704,7 @@ msgstr "Nét đứt"
 msgid "Data"
 msgstr "Dữ liệu"
 
-#: crates/core/src/fixtures.rs:427
+#: crates/core/src/fixtures.rs:440
 msgid "Data Outlet"
 msgstr "Ổ cắm dữ liệu"
 
@@ -2977,7 +2977,7 @@ msgstr "Xiên xuống"
 msgid "Diagonal Up"
 msgstr "Xiên lên"
 
-#: crates/core/src/fixtures.rs:189
+#: crates/core/src/fixtures.rs:198
 #: crates/ui-egui/src/editor/document.rs:513
 #: crates/ui-egui/src/lib.rs:3759
 #: crates/ui-egui/src/reinforce.rs:51
@@ -3089,7 +3089,7 @@ msgstr "Hủy liên kết: chỉ mặt phẳng làm việc nằm trên mặt ph�
 msgid "Dissociate: the work plane left where its reference plane is now, no longer following it"
 msgstr "Hủy liên kết: mặt phẳng làm việc được giữ tại vị trí hiện tại của mặt phẳng tham chiếu, không còn đi theo nó"
 
-#: crates/core/src/fixtures.rs:261
+#: crates/core/src/fixtures.rs:270
 msgid "Distribution Board"
 msgstr "Tủ điện phân phối"
 
@@ -3309,7 +3309,7 @@ msgstr "Dây nối đất"
 msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
 msgstr "Dây nối đất (GC): nhấp điểm đầu và điểm cuối; một chuỗi lần nhấp tạo thành mạch vòng hoặc lưới, bên dưới tầng"
 
-#: crates/core/src/fixtures.rs:382
+#: crates/core/src/fixtures.rs:395
 msgid "Earthing Electrode"
 msgstr "Cọc nối đất"
 
@@ -3487,7 +3487,7 @@ msgstr "Chỉnh sửa"
 msgid "Edit…"
 msgstr "Sửa…"
 
-#: crates/core/src/fixtures.rs:209
+#: crates/core/src/fixtures.rs:218
 msgid "Elbow 90"
 msgstr "Cút 90"
 
@@ -4089,7 +4089,7 @@ msgstr "Nổi"
 msgid "Floor"
 msgstr "Sàn"
 
-#: crates/core/src/fixtures.rs:169
+#: crates/core/src/fixtures.rs:178
 msgid "Floor Drain"
 msgstr "Phễu thu sàn"
 
@@ -4323,7 +4323,7 @@ msgstr "Khe hở"
 msgid "Gap to Element"
 msgstr "Khe hở tới cấu kiện"
 
-#: crates/core/src/fixtures.rs:229
+#: crates/core/src/fixtures.rs:238
 msgid "Gate Valve"
 msgstr "Van cổng"
 
@@ -4752,7 +4752,7 @@ msgstr "Chèn trước"
 msgid "Insert Layer"
 msgstr "Chèn lớp"
 
-#: crates/core/src/fixtures.rs:392
+#: crates/core/src/fixtures.rs:405
 msgid "Inspection Box"
 msgstr "Hộp kiểm tra"
 
@@ -4915,7 +4915,7 @@ msgstr "Phím tắt"
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "Phím tắt (KS): tùy chỉnh, sửa và nạp phím tắt"
 
-#: crates/core/src/fixtures.rs:128
+#: crates/core/src/fixtures.rs:137
 msgid "Kitchen Sink"
 msgstr "Chậu rửa bếp"
 
@@ -5261,7 +5261,7 @@ msgstr "Danh sách {}"
 msgid "Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}"
 msgstr "Đang lắng nghe trên 127.0.0.1, cổng {}: tác nhân kết nối bằng bimcraft-cli mcp --connect {}"
 
-#: crates/core/src/fixtures.rs:252
+#: crates/core/src/fixtures.rs:261
 msgid "Load"
 msgstr "Phụ tải"
 
@@ -5856,7 +5856,7 @@ msgstr "Sửa đổi | Khối quét chuyển tiếp > Sửa biên dạng 2"
 msgid "Modify | Swept Blend > Sketch Path"
 msgstr "Sửa đổi | Khối quét chuyển tiếp > Phác thảo đường dẫn"
 
-#: crates/core/src/fixtures.rs:250
+#: crates/core/src/fixtures.rs:259
 msgid "Mounting Height"
 msgstr "Chiều cao lắp đặt"
 
@@ -6545,7 +6545,7 @@ msgstr "Các lề khác (trên, phải, dưới):"
 msgid "Out"
 msgstr "Ngoài"
 
-#: crates/core/src/fixtures.rs:319
+#: crates/core/src/fixtures.rs:329
 msgid "Outlet"
 msgstr "Ổ cắm"
 
@@ -6606,7 +6606,7 @@ msgstr "Ghi đè phiên bản hiện có và các giá trị tham số của nó
 msgid "PNG image"
 msgstr "Ảnh PNG"
 
-#: crates/core/src/fixtures.rs:190
+#: crates/core/src/fixtures.rs:199
 msgid "PVC"
 msgstr "PVC"
 
@@ -6682,7 +6682,7 @@ msgstr "Elip một phần: nhấp hai đầu trục, rồi độ phồng của n
 msgid "Paste"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:446
+#: crates/core/src/fixtures.rs:461
 msgid "Patch Panel"
 msgstr "Patch panel"
 
@@ -7392,7 +7392,7 @@ msgstr "Mặt phẳng YZ"
 msgid "Plans"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:251
+#: crates/core/src/fixtures.rs:260
 msgid "Plaster"
 msgstr "Thạch cao"
 
@@ -7755,7 +7755,7 @@ msgstr "Đọc một kích thước và không bao giờ điều khiển nó: m�
 msgid "Recent"
 msgstr "Gần đây"
 
-#: crates/core/src/fixtures.rs:296
+#: crates/core/src/fixtures.rs:306
 msgid "Recessed Luminaire"
 msgstr "Đèn âm trần"
 
@@ -8866,7 +8866,7 @@ msgstr ""
 msgid "Show: the work plane tinted in the view, on or off"
 msgstr "Hiển thị: mặt phẳng làm việc được tô màu trong khung nhìn, bật hoặc tắt"
 
-#: crates/core/src/fixtures.rs:146
+#: crates/core/src/fixtures.rs:155
 msgid "Shower"
 msgstr "Vòi sen"
 
@@ -9425,7 +9425,7 @@ msgstr "Mở quay"
 msgid "Swing Angle"
 msgstr "Góc xoay"
 
-#: crates/core/src/fixtures.rs:344
+#: crates/core/src/fixtures.rs:356
 msgid "Switch"
 msgstr "Công tắc"
 
@@ -9606,7 +9606,7 @@ msgstr "Tiêu chuẩn kỹ thuật"
 msgid "Technical Standards: configure drawing standards (NBR, ISO, ANSI, EU); now {}"
 msgstr "Tiêu chuẩn kỹ thuật: cấu hình tiêu chuẩn bản vẽ (NBR, ISO, ANSI, EU); hiện là {}"
 
-#: crates/core/src/fixtures.rs:219
+#: crates/core/src/fixtures.rs:228
 msgid "Tee"
 msgstr "Tê"
 
@@ -10043,7 +10043,7 @@ msgstr "Ba đường trở lên gặp nhau tại một điểm ({}): một vòng
 msgid "Three points, {}°"
 msgstr "Ba điểm, {}°"
 
-#: crates/core/src/fixtures.rs:331
+#: crates/core/src/fixtures.rs:342
 msgid "Three-Phase Outlet"
 msgstr "Ổ cắm ba pha"
 
@@ -10690,7 +10690,7 @@ msgstr "Kiểu hiển thị"
 msgid "Visual Style: how the 3D view draws surfaces: Shaded, Hidden Line (WF, HL and SD set them) or Wireframe"
 msgstr "Kiểu hiển thị: cách khung nhìn 3D vẽ bề mặt: Tô bóng, Ẩn nét (WF, HL và SD để đặt) hoặc Khung dây"
 
-#: crates/core/src/fixtures.rs:436
+#: crates/core/src/fixtures.rs:450
 msgid "Voice Outlet"
 msgstr "Ổ cắm thoại"
 

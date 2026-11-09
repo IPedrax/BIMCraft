@@ -3,7 +3,7 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nLanguage: pt\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
 
-#: crates/core/src/fixtures.rs:369
+#: crates/core/src/fixtures.rs:382
 msgid "Air Terminal"
 msgstr "Captor"
 
@@ -48,7 +48,7 @@ msgstr "Janela de abrir"
 msgid "Category"
 msgstr ""
 
-#: crates/core/src/fixtures.rs:281
+#: crates/core/src/fixtures.rs:291
 msgid "Ceiling Luminaire"
 msgstr "Luminária de teto"
 
@@ -108,7 +108,7 @@ msgstr "Tracejado"
 msgid "Dash Dot"
 msgstr "Traço e ponto"
 
-#: crates/core/src/fixtures.rs:427
+#: crates/core/src/fixtures.rs:440
 msgid "Data Outlet"
 msgstr "Ponto de dados"
 
@@ -136,11 +136,11 @@ msgstr "Diagonal para baixo"
 msgid "Diagonal Up"
 msgstr "Diagonal para cima"
 
-#: crates/core/src/fixtures.rs:189
+#: crates/core/src/fixtures.rs:198
 msgid "Diameter"
 msgstr "Diâmetro"
 
-#: crates/core/src/fixtures.rs:261
+#: crates/core/src/fixtures.rs:270
 msgid "Distribution Board"
 msgstr "Quadro de distribuição"
 
@@ -164,7 +164,7 @@ msgstr "De correr, duas folhas"
 msgid "Double Swing"
 msgstr "De abrir, duas folhas"
 
-#: crates/core/src/fixtures.rs:382
+#: crates/core/src/fixtures.rs:395
 msgid "Earthing Electrode"
 msgstr "Haste de aterramento"
 
@@ -172,7 +172,7 @@ msgstr "Haste de aterramento"
 msgid "East"
 msgstr "Leste"
 
-#: crates/core/src/fixtures.rs:209
+#: crates/core/src/fixtures.rs:218
 msgid "Elbow 90"
 msgstr "Joelho 90"
 
@@ -213,7 +213,7 @@ msgstr "Fixa"
 msgid "Fixed Window"
 msgstr "Janela fixa"
 
-#: crates/core/src/fixtures.rs:169
+#: crates/core/src/fixtures.rs:178
 msgid "Floor Drain"
 msgstr "Ralo"
 
@@ -237,7 +237,7 @@ msgstr "Material do batente"
 msgid "Frame Width"
 msgstr "Largura do batente"
 
-#: crates/core/src/fixtures.rs:229
+#: crates/core/src/fixtures.rs:238
 msgid "Gate Valve"
 msgstr "Registro de gaveta"
 
@@ -278,7 +278,7 @@ msgstr "Linhas ocultas"
 msgid "Horizontal"
 msgstr "Horizontal"
 
-#: crates/core/src/fixtures.rs:392
+#: crates/core/src/fixtures.rs:405
 msgid "Inspection Box"
 msgstr "Caixa de inspeção"
 
@@ -286,7 +286,7 @@ msgstr "Caixa de inspeção"
 msgid "Insulation"
 msgstr "Isolamento"
 
-#: crates/core/src/fixtures.rs:128
+#: crates/core/src/fixtures.rs:137
 msgid "Kitchen Sink"
 msgstr "Pia de cozinha"
 
@@ -315,7 +315,7 @@ msgstr "Nível"
 msgid "Level Schedule"
 msgstr "Tabela de níveis"
 
-#: crates/core/src/fixtures.rs:252
+#: crates/core/src/fixtures.rs:261
 msgid "Load"
 msgstr "Carga"
 
@@ -351,7 +351,7 @@ msgstr "Manta impermeável"
 msgid "Metal"
 msgstr "Metal"
 
-#: crates/core/src/fixtures.rs:250
+#: crates/core/src/fixtures.rs:259
 msgid "Mounting Height"
 msgstr "Altura de instalação"
 
@@ -387,7 +387,7 @@ msgstr "Deslocamento"
 msgid "Operation"
 msgstr "Operação"
 
-#: crates/core/src/fixtures.rs:319
+#: crates/core/src/fixtures.rs:329
 msgid "Outlet"
 msgstr "Tomada"
 
@@ -395,11 +395,11 @@ msgstr "Tomada"
 msgid "Overhead Lines"
 msgstr "Linhas superiores"
 
-#: crates/core/src/fixtures.rs:190
+#: crates/core/src/fixtures.rs:199
 msgid "PVC"
 msgstr "PVC"
 
-#: crates/core/src/fixtures.rs:446
+#: crates/core/src/fixtures.rs:461
 msgid "Patch Panel"
 msgstr "Patch panel"
 
@@ -411,7 +411,7 @@ msgstr "Perímetro"
 msgid "Plan Area"
 msgstr "Área em planta"
 
-#: crates/core/src/fixtures.rs:251
+#: crates/core/src/fixtures.rs:260
 msgid "Plaster"
 msgstr "Reboco"
 
@@ -431,7 +431,7 @@ msgstr "REDUNDANTE"
 msgid "Rack"
 msgstr "Rack"
 
-#: crates/core/src/fixtures.rs:296
+#: crates/core/src/fixtures.rs:306
 msgid "Recessed Luminaire"
 msgstr "Luminária embutida"
 
@@ -500,7 +500,7 @@ msgstr "Mostrar anterior + demolido"
 msgid "Show Previous + New"
 msgstr "Mostrar anterior + novo"
 
-#: crates/core/src/fixtures.rs:146
+#: crates/core/src/fixtures.rs:155
 msgid "Shower"
 msgstr "Chuveiro"
 
@@ -548,7 +548,7 @@ msgstr "Sul"
 msgid "Swing"
 msgstr "De abrir"
 
-#: crates/core/src/fixtures.rs:344
+#: crates/core/src/fixtures.rs:356
 msgid "Switch"
 msgstr "Interruptor"
 
@@ -556,7 +556,7 @@ msgstr "Interruptor"
 msgid "Table"
 msgstr "Mesa"
 
-#: crates/core/src/fixtures.rs:219
+#: crates/core/src/fixtures.rs:228
 msgid "Tee"
 msgstr "Tê"
 
@@ -568,7 +568,7 @@ msgstr "Espessura"
 msgid "Thin Lines"
 msgstr "Linhas finas"
 
-#: crates/core/src/fixtures.rs:331
+#: crates/core/src/fixtures.rs:342
 msgid "Three-Phase Outlet"
 msgstr "Tomada trifásica"
 
@@ -608,7 +608,7 @@ msgstr "Sem nome"
 msgid "Vertical"
 msgstr "Vertical"
 
-#: crates/core/src/fixtures.rs:436
+#: crates/core/src/fixtures.rs:450
 msgid "Voice Outlet"
 msgstr "Ponto de voz"
 
