@@ -1040,7 +1040,10 @@ nests to itself, `Family::shared_within`): one the target hasn't is added to it;
 ("Shared Family Already Loaded", `nested::reconcile_shared`; `shared_nested: {name: project | family}` in the command): `project` gives the family loaded the target's (the default when
 unanswered), `family` overwrites the target's with the family's, its values too. One definition of a shared family is kept
 across the target: after one changes in the project, every family of the project that nests it, at any depth, takes the same
-(`Family::replace_shared`). A shared nested instance is built into its host as any other: its own element in the project
+(`Family::replace_shared`). Within the family loaded, too: before it is reconciled, every copy of a shared family nested in
+it is made the first one met going down its nested families in order (`Family::unify_shared`: two branches P and Q each
+holding Leaf, defined otherwise, load with P's Leaf in both and in the project's), and what the target takes is read once
+the answers are applied, so no definition taken brings back a copy another replaced. A shared nested instance is built into its host as any other: its own element in the project
 (Tab-select, schedules, tags, IFC aggregated into its host) is T6b's. A nested family's type chosen by a family type parameter
 is T24's. A door's leaf on a hinge (T26) is a nested instance on a pivoted line's face or on a pivoted plane, placed on its
 host's flexed frame, so it turns with the pivot (F7d, *Dimensions and constraints*): `family_pivot_tests` swings a nested leaf
