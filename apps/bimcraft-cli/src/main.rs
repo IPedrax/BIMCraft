@@ -72,6 +72,7 @@ pub(crate) fn note_plugins(plugins: &Plugins, seen: &mut usize) {
 fn cli(args: &[String], out: &mut impl Write) -> Result<(), String> {
     let mut s = Session::new();
     s.dwg = dwg_reader();
+    dwg_writer(&mut s);
     let plugins = load_plugins(&mut s);
     let mut seen = plugins.log().len();
     match args {
@@ -187,6 +188,18 @@ fn dwg_reader() -> Option<DwgReader> {
 fn dwg_reader() -> Option<DwgReader> {
     None
 }
+
+/// The DWG writer a session's exports are given: `bimcraft-dwg`'s, which writes a drawing in a child process of this program,
+/// behind the `dwg` feature. A build without it leaves DWG listed as planned.
+#[cfg(feature = "dwg")]
+pub(crate) fn dwg_writer(session: &mut Session) {
+    if let Some(w) = bimcraft_dwg::writer() {
+        session.exports.register(w);
+    }
+}
+
+#[cfg(not(feature = "dwg"))]
+pub(crate) fn dwg_writer(_: &mut Session) {}
 
 /// What this program does when it's started as the child that reads a DWG (`bimcraft_dwg::CHILD_ARG`): none when it isn't.
 #[cfg(feature = "dwg")]
