@@ -868,9 +868,11 @@ pub fn export_at(m: &Model, at: Origin) -> String {
         };
         let target = w.add(format!("IFCPROJECTEDCRS({},{description},$,$,$,$,#{unit})", s(&name)));
         let mm = to_meter * 1000.0;
+        // IFC4's scale takes the file's length unit (mm) to the map's, so it carries the unit with the ground-to-grid scale:
+        // 0.9996 in metres is 0.0009996.
         let (q, axis, scale) = match from {
-            Some(o) => (co.to_shared(o), (turn_c, turn_s), loc.scale),
-            None => ([0.0; 3], (1.0, 0.0), 1.0),
+            Some(o) => (co.to_shared(o), (turn_c, turn_s), loc.scale / mm),
+            None => ([0.0; 3], (1.0, 0.0), 1.0 / mm),
         };
         w.add(format!(
             "IFCMAPCONVERSION(#{ctx},#{target},{},{},{},{},{},{})",

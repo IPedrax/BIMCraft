@@ -1042,7 +1042,10 @@ fn georeference(f: &File, mm: f64, shift: P2) -> Option<(crate::coordinates::Loc
                 .filter(|code| crate::crs::lookup(*code).is_ok());
             let (xa, xo) = (real(c.args.get(5)).unwrap_or(1.0), real(c.args.get(6)).unwrap_or(0.0));
             let angle = if xa.hypot(xo) > 1e-12 { xo.atan2(xa).to_degrees() } else { 0.0 };
-            let scale = real(c.args.get(7)).filter(|k| crate::coordinates::SCALE.contains(k)).unwrap_or(1.0);
+            // IFC4's scale carries the unit, the file's to the map's (0.001 from mm to m): the ground-to-grid scale is what's
+            // left without it. A scale already without it (as IFC4.3 has it) is taken as it is.
+            let ground = |k: f64| Some(k).filter(|k| crate::coordinates::SCALE.contains(k));
+            let scale = real(c.args.get(7)).and_then(|k| ground(k * unit / mm).or_else(|| ground(k))).unwrap_or(1.0);
             let at = |k: usize| real(c.args.get(k)).unwrap_or(0.0) * unit;
             (Location { east: at(2), north: at(3), elevation: at(4), angle, scale }, crs)
         }
