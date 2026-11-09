@@ -214,3 +214,21 @@ fn pipes_kilometres_across_are_refused_saying_what_to_fix_not_run_out_of_memory(
     // What it says to do works: another level's network is worked out.
     assert_eq!(net(&mut s, json!({"level": "Level 2"}))["groups"], json!([]));
 }
+
+#[test]
+fn a_drain_as_long_as_a_query_takes_is_checked_in_time() {
+    let mut s = Session::new();
+    made(&mut s, "component", json!({"family": "WC", "at": [0, 0]}));
+    // From the WC's waste outlet, a drain of nearly 100,000 pipes of a metre, close to the 200,000 points a query takes:
+    // each node's pipes are found once, not by looking through all the drain's pipes for each of its nodes.
+    for k in 0..10 {
+        let points: Vec<Value> = (0..10_000).map(|i| json!([(k * 9_999 + i) * 1000, -300])).collect();
+        pipe(&mut s, json!(points), json!({"offset": 0}));
+    }
+    let t = std::time::Instant::now();
+    let n = net(&mut s, json!({}));
+    assert!(t.elapsed().as_secs_f64() < 10.0, "{} s: a hang, not a slow machine", t.elapsed().as_secs_f64());
+    assert_eq!(n["groups"][0]["elements"].as_array().map(Vec::len), Some(99_991), "the WC and its drain");
+    assert_eq!(n["groups"][0]["domains"], json!(["waste"]));
+    assert_eq!(kinds(&n), Vec::<String>::new());
+}

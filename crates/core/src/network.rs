@@ -371,6 +371,16 @@ pub fn network(m: &Model, system: Option<&str>, level: Option<Guid>, tolerance: 
     }
     // A drain (a group with a waste connector) flows down: no pipe leaving a node downhill is narrower than one coming down to it.
     let width: HashMap<Id, f64> = runs.iter().map(|(id, _, _, w, _, _)| (*id, *w)).collect();
+    // Each node's pipe pieces, in the edges' order, found once for all the nodes.
+    let mut pieces: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
+    for (i, e) in edges.iter().enumerate() {
+        if e.length.is_some() {
+            pieces[e.from].push(i);
+            if e.to != e.from {
+                pieces[e.to].push(i);
+            }
+        }
+    }
     let mut seen_drop = BTreeSet::new();
     for (n, node) in nodes.iter().enumerate() {
         let g = group_of[&joined.find(n)];
@@ -379,7 +389,7 @@ pub fn network(m: &Model, system: Option<&str>, level: Option<Guid>, tolerance: 
         }
         let mut down: Vec<(Id, f64)> = Vec::new();
         let mut up: Vec<(Id, f64)> = Vec::new();
-        for e in edges.iter().filter(|e| e.length.is_some() && (e.from == n || e.to == n)) {
+        for e in pieces[n].iter().map(|&i| &edges[i]) {
             let other = if e.from == n { e.to } else { e.from };
             let dz = nodes[other].at[2] - node.at[2];
             let w = width.get(&e.element).copied().unwrap_or(0.0);
