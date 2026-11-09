@@ -1,6 +1,7 @@
 //! The built-in formats, a file each for each kind of writer, and what they share: a drawing in the page setup's colours and
 //! lines. A format not written yet is [`Planned`], listed so the dialog can show it and an export to it says so.
 
+mod coordination;
 mod document;
 mod line;
 mod mesh;
@@ -14,6 +15,7 @@ use super::page::{Colour, PageSetup};
 use super::{Family, Format, Options, Out, Prepared, Status, Takes};
 use crate::render::{Drawing, Prim, Rgb};
 
+pub use coordination::Bcf;
 pub use document::Pdf;
 pub use line::Dxf;
 pub use mesh::{Obj, Stl};
@@ -42,7 +44,7 @@ pub fn builtin() -> Vec<Arc<dyn Format>> {
         Arc::new(Csv),
         Arc::new(Xlsx),
         Arc::new(Ods),
-        Arc::new(Planned { id: "bcf", label: "BCF", extension: "bcfzip", family: Family::Coordination, takes: &[Takes::Model] }),
+        Arc::new(Bcf),
     ]
 }
 
