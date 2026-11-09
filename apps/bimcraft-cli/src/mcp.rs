@@ -117,6 +117,10 @@ fn tools() -> Value {
             room {point: [x, y], name}, modify {id, …fields}, delete {ids}, undo. list_commands shows them all with their parameters.",
          "inputSchema": {"type": "object", "properties": {"command": {"type": "string"}, "params": {"type": "object"}}, "required": ["command"]}},
         {"name": "script", "description": "Run several commands, one per line: `wall {\"points\": [[0,0],[4000,0]]}`. Stops at the first failing line and names it; the lines before it stay done, each its own undo step. \
+            Name a line `@name = command {json}`; later whole-string values `@name`, `$last`, `$-2` stand for an earlier result's id; \
+            a field path such as `@walls.ids.0` reads that field or array item. Names are unique within one script; comments and blank lines do not count. \
+            Double a leading @ or $ for literal text (`@@home`, `$$last`); strings are not interpolated. \
+            Expanded params are limited per line to 16 MiB (128 bytes/value plus UTF-8 string/key bytes) and 128 levels deep, checked before copying references. \
             With `atomic`, all or nothing: a failing line takes back the lines before it, and a script that goes through is one undo step.",
          "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "atomic": {"type": "boolean"}}, "required": ["text"]}},
         {"name": "list_commands", "description": "Every command with its id, label, Revit-style shortcut, parameters and the menu it sits in (`menu`, null when the interface has no place for it). `filter` matches part of an id, label or shortcut.",
@@ -528,6 +532,32 @@ mod tests {
         assert_eq!(call(&mut s, 4, "tools/call", json!({"name": "script", "arguments": "x"}))["error"]["code"], -32602);
         assert!(s.handle_line("{not json").unwrap().contains("-32700"));
         assert!(s.handle_line("[]").unwrap().contains("-32600"));
+    }
+
+    #[test]
+    fn script_result_references_through_mcp_roll_back_and_retry_atomically() {
+        let mut s = Server::new();
+        let failed = call(
+            &mut s,
+            1,
+            "tools/call",
+            json!({"name":"script", "arguments":{"atomic":true,"text":
+                "@walls = wall {\"points\":[[0,0],[8000,0]]}\ndoor {\"wall\":\"@walls.ids.9\",\"offset\":3000}"}}),
+        );
+        assert_eq!(failed["result"]["isError"], true);
+        assert!(failed["result"]["content"][0]["text"].as_str().unwrap().contains("line 2 (door)"));
+        assert!(tool(&mut s, "inspect_model", json!({}))["counts"].get("wall").is_none());
+        let results = tool(
+            &mut s,
+            "script",
+            json!({"atomic":true,"text":
+            "@walls = wall {\"points\":[[0,0],[8000,0]]}\ndoor {\"wall\":\"@walls.ids.0\",\"offset\":3000}\nmodify {\"id\":\"$last\",\"mark\":\"Entry\"}"}),
+        );
+        assert!(results["results"][1]["id"].is_number(), "{results}");
+        let doors = tool(&mut s, "query_elements", json!({"category":"doors"}));
+        assert_eq!(doors["elements"][0]["mark"], "Entry");
+        tool(&mut s, "execute", json!({"command":"undo"}));
+        assert!(tool(&mut s, "inspect_model", json!({}))["counts"].get("wall").is_none());
     }
 
     #[test]

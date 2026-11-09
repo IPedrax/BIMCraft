@@ -169,9 +169,9 @@ fn answer(session: &mut Session, request: &Request, access: Access) -> Result<Va
         }
         Request::Catalog => Ok(session.catalog()),
         Request::Script { text, atomic, .. } => {
-            for (n, line) in text.lines().map(str::trim).enumerate() {
-                if let Some(id) = line.split_whitespace().next().filter(|id| !id.starts_with('#')) {
-                    refuse(id).map_err(|e| format!("line {}: {e}", n + 1))?;
+            for (n, line) in text.lines().enumerate() {
+                if let Ok(Some(line)) = crate::engine::script_line(line) {
+                    refuse(line.command).map_err(|e| format!("line {}: {e}", n + 1))?;
                 }
             }
             let results = if *atomic { session.script_atomic(text) } else { session.script(text) }?;
