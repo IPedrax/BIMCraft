@@ -745,11 +745,17 @@ other_files(
          across, through its centre; arc_length: how long a curved wall's centre line or face, or an arc, is along it \
          (all of it, or with two point refs after it, between them), its line an arc through `at`. A ref is {id, face?}: a wall's centre (the default), left or right face (of its \
          start-to-end direction), start or end; a door's or window's centre, or its jamb toward its wall's start or end; \
+         a column's or structural column's centre line along its angle (the default; west to east at angle 0), `across`, \
+         its centre line square to that (south to north), its left or right face (of its angle's direction: north or \
+         south), or its start or end cap (west or east); a round column has only its two centre lines (radial: its edge); \
          a grid's line; a straight detail line, or its start or end (radial: a circle or an arc of one). With `point: \
          start|end`, {id, face?, point} is the point at that end of the line: a wall's centre line's end, a face's \
-         corner, a grid's, a detail line's (of any shape) or a jamb's end. Or a point [x, y] on one of those lines (for \
-         radial and diameter, on a round edge; for arc_length, on the arc), or {endpoint: [x, y]}, the end of one nearest \
-         it, within 100 mm. It follows what it measures",
+         corner, a column's corner or centre line's end, a grid's, a detail line's (of any shape) or a jamb's end. Or a \
+         point [x, y] on one of those lines (for radial and diameter, on a round edge; for arc_length, on the arc), or \
+         {endpoint: [x, y]}, the end of one nearest it, within 100 mm, found in the plan of `level` as it draws it: among \
+         the walls and columns its cut plane passes through, whatever level they stand on (a column from a level below \
+         that runs up through it too), their doors and windows, the grids and the plan's detail lines. It follows what it \
+         measures",
         dimension,
     ),
     edit(
@@ -7970,8 +7976,8 @@ fn room(s: &mut Session, p: &Value) -> R {
 
 /// The elements whose reference lines may come within `reach` mm of `p` in a plan of `level`, by id: the walls near it
 /// that span the plan's cut height (a wall's faces and caps stay within twice the thickest wall's thickness of its location
-/// line: a cap runs on no farther than the thickest wall meeting it, [`walls::cap`]), the doors and windows in them, and
-/// the grids.
+/// line: a cap runs on no farther than the thickest wall meeting it, [`walls::cap`]), the doors and windows in them, the
+/// grids, and the columns (and structural columns) near it that the plan cuts, from whatever level they stand on.
 fn near_point(m: &Model, level: Guid, p: P2, reach: f64) -> BTreeSet<Id> {
     let look = m.lookup();
     let thickest = m.types.wall.values().map(|t| t.thickness).filter(|t| t.is_finite()).fold(0.0, f64::max);
@@ -7987,11 +7993,20 @@ fn near_point(m: &Model, level: Guid, p: P2, reach: f64) -> BTreeSet<Id> {
     }
     out.extend(walls);
     out.extend(look.grids());
+    // A column's lines stay within its width or depth, the greater, of its centre.
+    out.extend(look.rare("column").chain(look.rare("structuralcolumn")).filter(|&id| match m.elements.get(id) {
+        Some(e @ (Element::Column(c) | Element::StructuralColumn(c))) => {
+            let size = m.column_type(e).map_or(0.0, |t| t.width.max(t.depth));
+            m.column_cut_by(c, level) && c.at.dist(p) <= reach + size
+        }
+        _ => false,
+    }));
     out
 }
 
 /// Of the lines a plan of `level` shows that `keep` takes (walls' faces, centre lines and ends,
-/// doors' and windows' centres and jambs, grids), the nearest `p`, within 100 mm.
+/// doors' and windows' centres and jambs, grids, the centre lines and faces of the columns it cuts), the nearest `p`,
+/// within 100 mm.
 pub(crate) fn reference_near(m: &Model, level: impl Key, p: P2, keep: impl Fn(Line) -> bool) -> Option<Reference> {
     let level = m.guid(level);
     nearest_reference(m, level, p, keep, near_point(m, level, p, 100.0).into_iter())
@@ -8009,6 +8024,7 @@ fn nearest_reference(m: &Model, level: Guid, p: P2, keep: impl Fn(Line) -> bool,
     ids.filter(|id| match m.elements.get(*id) {
         Some(Element::Wall(w)) => cut(Some(w)),
         Some(Element::Door(o) | Element::Window(o)) => cut(m.wall(o.host)),
+        Some(Element::Column(c) | Element::StructuralColumn(c)) => m.column_cut_by(c, level),
         Some(Element::Grid(_)) => true,
         _ => false,
     })
@@ -8019,7 +8035,8 @@ fn nearest_reference(m: &Model, level: Guid, p: P2, keep: impl Fn(Line) -> bool,
 }
 
 /// Of the ends of the lines a plan of `level` (`view`, when not the level's own) shows (walls' centre lines and faces,
-/// doors' and windows' jambs, grids, its detail lines), the nearest `p`, within 100 mm.
+/// doors' and windows' jambs, grids, the corners and centre lines of the columns it cuts, its detail lines), the nearest
+/// `p`, within 100 mm.
 pub(crate) fn endpoint_near(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Reference> {
     let plan = view.unwrap_or(level);
     let mut ids = near_point(m, level, p, 100.0);
@@ -8040,6 +8057,7 @@ fn nearest_end(m: &Model, level: Guid, view: Option<Guid>, p: P2, ids: impl Iter
     ids.filter(|id| match m.elements.get(*id) {
         Some(Element::Wall(w)) => cut(Some(w)),
         Some(Element::Door(o) | Element::Window(o)) => cut(m.wall(o.host)),
+        Some(Element::Column(c) | Element::StructuralColumn(c)) => m.column_cut_by(c, level),
         Some(Element::Grid(_)) => true,
         Some(Element::DetailLine(l)) => m.same(l.view, plan),
         _ => false,
@@ -8082,15 +8100,17 @@ fn sweep_near(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Refer
         .map(|(r, _)| r)
 }
 
-/// Of what a plan of `level` (`view`, when not the level's own) shows round (its round columns, its curved walls' centre
-/// lines and faces, its detail lines that are circles or arcs), the one whose edge passes nearest `p`, within 100 mm.
+/// Of what a plan of `level` (`view`, when not the level's own) shows round (the round columns it cuts, its round footings,
+/// its curved walls' centre lines and faces, its detail lines that are circles or arcs), the one whose edge passes nearest
+/// `p`, within 100 mm.
 fn arc_near(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Reference> {
     let plan = view.unwrap_or(level);
     m.elements
         .with_guids()
         .flat_map(|(_, id, e)| {
             match e {
-                e if e.column().is_some_and(|col| col.level == level) => vec![Face::Centre],
+                Element::Column(col) | Element::StructuralColumn(col) if m.column_cut_by(col, level) => vec![Face::Centre],
+                Element::Footing(f) if f.level == level => vec![Face::Centre],
                 Element::Wall(w) if w.arc != 0.0 && m.cut_by(w, level) => vec![Face::Centre, Face::Left, Face::Right],
                 Element::DetailLine(l) if m.same(l.view, plan) => vec![Face::Centre],
                 _ => Vec::new(),
@@ -8179,7 +8199,7 @@ fn dimension(s: &mut Session, p: &Value) -> R {
             let q = point(e).ok_or_else(|| bad(c, format!("`endpoint` is a point [x, y], not {e}")))?;
             refs.push(
                 endpoint_near(m, level, view, q)
-                    .ok_or_else(|| near(q, "end of a wall, a wall face, a door, a window, a grid or a detail line"))?,
+                    .ok_or_else(|| near(q, "end of a wall, a wall face, a door, a window, a column, a grid or a detail line"))?,
             );
             continue;
         }
@@ -8193,7 +8213,7 @@ fn dimension(s: &mut Session, p: &Value) -> R {
                 let first = refs.first().and_then(|r| m.reference_line(r).ok());
                 let keep = |l: Line| first.is_none_or(|(a, b)| geom::parallel(a, b, l.0, l.1) == (kind == DimKind::Aligned));
                 reference_near(m, level, q, keep)
-                    .ok_or_else(|| near(q, "wall face, wall centre line, wall end, door, window or grid line"))?
+                    .ok_or_else(|| near(q, "wall face, wall centre line, wall end, door, window, column or grid line"))?
             }
             None => serde_json::from_value::<Reference>(v.clone())
                 .map_err(|e| bad(c, format!("{v} is not a reference {{id, face?}} or a point [x, y]: {e}")))?,
@@ -12153,9 +12173,17 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             })
             .collect();
         let turned = |id: &Guid| moving_guids.contains(id) || hosts.get(id).is_some_and(|h| moving_guids.contains(h));
+        let columns: BTreeSet<Guid> = moving_guids
+            .iter()
+            .copied()
+            .filter(|g| matches!(m.elements.get(*g), Some(Element::Column(_) | Element::StructuralColumn(_))))
+            .collect();
         for e in m.elements.values_mut() {
             if let Element::Dimension(d) = e {
-                d.refs.iter_mut().filter(|r| turned(&r.id)).for_each(|r| *r = r.mirrored(hosts.contains_key(&r.id)));
+                d.refs
+                    .iter_mut()
+                    .filter(|r| turned(&r.id))
+                    .for_each(|r| *r = if columns.contains(&r.id) { r.mirrored_column() } else { r.mirrored(hosts.contains_key(&r.id)) });
             }
         }
     }
@@ -12255,9 +12283,10 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
                 for r in &mut d.refs {
                     if let Some(&to) = hosts.get(&r.id) {
                         let opening = matches!(m.elements.get(r.id), Some(Element::Door(_) | Element::Window(_)));
+                        let column = matches!(m.elements.get(r.id), Some(Element::Column(_) | Element::StructuralColumn(_)));
                         r.id = to;
                         if mo.mirror {
-                            *r = r.mirrored(opening);
+                            *r = if column { r.mirrored_column() } else { r.mirrored(opening) };
                         }
                     }
                 }

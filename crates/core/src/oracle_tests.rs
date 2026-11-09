@@ -142,8 +142,8 @@ fn random_2d_edits_of_an_annotated_plan_check_and_sync_the_same_by_what_changed_
     }
 }
 
-/// What a point given to a dimension measures to, found among the walls near it, is what every wall, door, window and
-/// grid of the project would give: at the ends, faces, jambs and corners of a small tower's storey, and between them.
+/// What a point given to a dimension measures to, found among the walls near it, is what every wall, door, window, column
+/// and grid of the project would give: at the ends, faces, jambs and corners of a small tower's storey, and between them.
 #[test]
 fn a_point_finds_the_reference_and_the_end_near_it_that_every_element_would_give() {
     use crate::commands::{endpoint_near, endpoint_near_everywhere, reference_near, reference_near_everywhere};
@@ -165,14 +165,22 @@ fn a_point_finds_the_reference_and_the_end_near_it_that_every_element_would_give
         };
         points.push(near + P2(dice.mm(400) as f64, dice.mm(400) as f64));
     }
+    // Round its columns, one at every grid crossing.
+    let columns: Vec<P2> =
+        m.elements.values().filter_map(|e| if let Element::StructuralColumn(c) = e { Some(c.at) } else { None }).collect();
+    assert!(columns.len() > 10);
+    for at in columns.into_iter().step_by(4) {
+        points.push(at + P2(dice.mm(400) as f64, dice.mm(400) as f64));
+    }
     points.push(P2(9000.0, 18_100.0));
     points.push(P2(16_050.0, 30_380.0));
     assert!(points.len() > 40);
-    let (mut found, mut ends) = (0, 0);
+    let (mut found, mut ends, mut on_columns) = (0, 0, 0);
     for p in points {
         let first = reference_near(m, level, p, |_| true);
         assert_eq!(first, reference_near_everywhere(m, level, p, |_| true), "at {p:?}");
         found += usize::from(first.is_some());
+        on_columns += usize::from(first.is_some_and(|r| matches!(m.elements.get(r.id), Some(Element::StructuralColumn(_)))));
         // Then one parallel to it, as a dimension's second reference is found.
         if let Some(line) = first.and_then(|r| m.reference_line(&r).ok()) {
             let keep = |l: crate::model::Line| crate::geom::parallel(line.0, line.1, l.0, l.1);
@@ -183,7 +191,7 @@ fn a_point_finds_the_reference_and_the_end_near_it_that_every_element_would_give
         assert_eq!(end, endpoint_near_everywhere(m, level, None, p), "the end at {p:?}");
         ends += usize::from(end.is_some());
     }
-    assert!(found > 20 && ends > 5, "{found} references and {ends} ends found");
+    assert!(found > 20 && ends > 5 && on_columns > 2, "{found} references ({on_columns} on columns) and {ends} ends found");
 }
 
 /// An edit of the kinds the other mixes leave out: 3D dimensions and camera views, how a 3D view draws and

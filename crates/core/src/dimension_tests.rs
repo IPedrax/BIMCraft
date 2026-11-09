@@ -488,3 +488,112 @@ fn an_equal_dimension_spreads_its_inner_references_evenly_and_keeps_them_so() {
     let e = err(&mut s, "dimension_constraint", json!({"id": one, "equal": true}));
     assert!(e.contains("segments"), "{e}");
 }
+
+#[test]
+fn a_dimension_measures_between_structural_column_faces_and_centre_lines() {
+    let mut s = Session::new();
+    let a = id_of(&run(&mut s, "structural_column", json!({"at": [3000, 3000]})));
+    let b = id_of(&run(&mut s, "structural_column", json!({"at": [7000, 5000]})));
+    // Across the column (its line running north): centre to centre is 4000 east.
+    let across =
+        id_of(&run(&mut s, "dimension", json!({"refs": [{"id": a, "face": "across"}, {"id": b, "face": "across"}], "at": [5000, 4000]})));
+    assert_eq!(values(&mut s, across), json!([4000.0]));
+    // Its east and west faces: 3700 between them.
+    let faces =
+        id_of(&run(&mut s, "dimension", json!({"refs": [{"id": a, "face": "end"}, {"id": b, "face": "start"}], "at": [5000, 4000]})));
+    assert_eq!(values(&mut s, faces), json!([3700.0]));
+    // Its centre line running east: 2000 north.
+    let along = id_of(&run(&mut s, "dimension", json!({"refs": [{"id": a}, {"id": b}], "at": [5000, 4000]})));
+    assert_eq!(values(&mut s, along), json!([2000.0]));
+    // A point on a face finds it, as a wall's face does.
+    let near = id_of(&run(&mut s, "dimension", json!({"refs": [[3150, 3050], [6850, 5050]], "at": [5000, 4000]})));
+    assert_eq!(values(&mut s, near), json!([3700.0]));
+    // The column moves: the dimensions follow it.
+    run(&mut s, "move", json!({"ids": [b], "by": [1000, 0]}));
+    assert_eq!(values(&mut s, across), json!([5000.0]));
+    assert_eq!(values(&mut s, faces), json!([4700.0]));
+    assert_eq!(values(&mut s, along), json!([2000.0]));
+}
+
+#[test]
+fn a_column_running_up_through_a_plan_is_dimensioned_on_it_as_the_plan_draws_it() {
+    let mut s = Session::new();
+    // Two storeys tall, standing on Level 1: Level 2's plan cuts it, and draws it.
+    let tall = id_of(&run(&mut s, "structural_column", json!({"at": [3000, 3000], "height": 7000})));
+    let own = id_of(&run(&mut s, "structural_column", json!({"at": [7000, 5000], "level": "Level 2"})));
+    // One storey tall, up to Level 2: its plan's cut is above it.
+    run(&mut s, "structural_column", json!({"at": [12_000, 3000]}));
+    let upper = json!({"level": "Level 2", "at": [5000, 4000]});
+    let on = |refs: Value| {
+        let mut p = upper.clone();
+        p["refs"] = refs;
+        p
+    };
+    // A point on each one's face finds it on Level 2's plan: the east face of the tall one, the west face of its own.
+    let d = run(&mut s, "dimension", on(json!([[3150, 3050], [6850, 5050]])));
+    assert_eq!(d["values"], json!([3700.0]));
+    let refs = crate::commands::element_json(&s.model, id_of(&d))["refs"].clone();
+    let (tall, own) = (s.model.guid(tall), s.model.guid(own));
+    assert_eq!(refs, json!([{"id": tall, "face": "end"}, {"id": own, "face": "start"}]));
+    // A corner of it, as an endpoint.
+    let mut ends = on(json!([{"endpoint": [3140, 3140]}, {"endpoint": [6860, 5140]}]));
+    ends["kind"] = json!("linear");
+    ends["orient"] = json!("horizontal");
+    assert_eq!(run(&mut s, "dimension", ends)["values"], json!([3700.0]));
+    // The one-storey column is not in Level 2's plan, nor is Level 2's own column in Level 1's.
+    let e = err(&mut s, "dimension", on(json!([[11_850, 3050], [6850, 5050]])));
+    assert!(e.contains("column"), "{e}");
+    let e = err(&mut s, "dimension", json!({"refs": [[3150, 3050], [6850, 5050]], "at": [5000, 4000]}));
+    assert!(e.contains("[6850, 5050]"), "{e}");
+}
+
+#[test]
+fn a_round_column_running_up_through_a_plan_takes_a_diameter_dimension_on_it() {
+    let mut s = Session::new();
+    run(&mut s, "column", json!({"at": [5000, 3000], "type": "Round 300", "height": 7000}));
+    let d = run(&mut s, "dimension", json!({"kind": "diameter", "level": "Level 2", "refs": [[5150, 3000]], "at": [5600, 2400]}));
+    assert_eq!(d["values"], json!([300.0]));
+}
+
+#[test]
+fn a_mirrored_column_keeps_its_dimensions_on_the_same_faces_and_ends() {
+    let mut s = Session::new();
+    let a = id_of(&run(&mut s, "structural_column", json!({"at": [3000, 3000]})));
+    let b = id_of(&run(&mut s, "structural_column", json!({"at": [7000, 5000]})));
+    // Their facing caps, 3700 apart; their north and south faces, 1700; their across lines' near ends, 1700 north.
+    let faces = run(&mut s, "dimension", json!({"refs": [{"id": a, "face": "end"}, {"id": b, "face": "start"}], "at": [5000, 4000]}));
+    let sides = run(&mut s, "dimension", json!({"refs": [{"id": a, "face": "left"}, {"id": b, "face": "right"}], "at": [5000, 4000]}));
+    let ends = run(
+        &mut s,
+        "dimension",
+        json!({"kind": "linear", "orient": "vertical", "refs": [{"id": a, "face": "across", "point": "end"}, {"id": b, "face": "across", "point": "start"}], "at": [9000, 4000]}),
+    );
+    let dims = [id_of(&faces), id_of(&sides), id_of(&ends)];
+    let all = |s: &mut Session, dims: &[Id]| dims.iter().map(|&d| values(s, d)).collect::<Vec<_>>();
+    let kept = vec![json!([3700.0]), json!([1700.0]), json!([1700.0])];
+    assert_eq!(all(&mut s, &dims), kept);
+    // Mirror turns a column by its reflection: its angle's direction is reflected, so its left and right swap, and the ends
+    // of what runs across it; the dimensions stay on the faces that face each other.
+    let mirrored = run(&mut s, "mirror", json!({"ids": [a, b, dims[0], dims[1], dims[2]], "axis": [[0, 0], [0, 1000]], "copy": true}));
+    let copies: Vec<Id> = mirrored["ids"].as_array().map(|v| v.iter().filter_map(Value::as_u64).collect()).unwrap_or_default();
+    let copied: Vec<Id> =
+        copies.into_iter().filter(|id| matches!(s.model.elements.get(*id), Some(crate::model::Element::Dimension(_)))).collect();
+    assert_eq!(all(&mut s, &copied), kept, "{mirrored}");
+    run(&mut s, "mirror", json!({"ids": [a, b], "axis": [[0, 0], [0, 1000]]}));
+    assert_eq!(all(&mut s, &dims), kept);
+}
+
+#[test]
+fn a_project_with_a_dimension_across_a_column_is_saved_in_format_18_and_opens_as_it_was() {
+    let mut s = Session::new();
+    let a = id_of(&run(&mut s, "structural_column", json!({"at": [3000, 3000]})));
+    let b = id_of(&run(&mut s, "structural_column", json!({"at": [7000, 5000]})));
+    let d =
+        id_of(&run(&mut s, "dimension", json!({"refs": [{"id": a, "face": "across"}, {"id": b, "face": "across"}], "at": [5000, 4000]})));
+    // `across` is new in 18: a build that reads up to 17 refuses the file as one from a newer BIMCraft, not with "unknown variant".
+    let file: Value = serde_json::from_str(&s.model.to_json().unwrap_or_default()).unwrap_or_default();
+    assert!(file["format"].as_u64().is_some_and(|f| f >= 18), "{}", file["format"]);
+    let (m, left_out) = Model::read(&file.to_string()).unwrap_or_else(|e| panic!("{e}"));
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(crate::commands::element_json(&m, d)["values"], json!([4000.0]));
+}
