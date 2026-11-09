@@ -105,3 +105,10 @@ model's own coordinates and drawings don't move with it.
   `Model::check` does for a file.
 - **The file**: an older BIMCraft leaves `georeference` out of a project and opens the rest (`lenient`), so it took no `FORMAT`
   step. The desktop doesn't show it yet.
+
+Native files with the legacy `georeference.orthogonal_height` field are read with that value as `height` and their clockwise
+`rotation` negated into the current counterclockwise convention. A supplied `scale` stays; absent scale defaults to 1.
+The marker is required: modern `height` payloads are unchanged. Both height names together are ambiguous and refused, even
+when their values agree. Malformed values still fail validation, other unknown fields remain in the open report, and a newer
+file format is refused before migration. Saving writes the current fields. This handles only these georeference fields, not
+unrelated legacy element dialects; it adds no saved schema and needs no format bump. Tests: `tests/legacy_georeference.rs`.

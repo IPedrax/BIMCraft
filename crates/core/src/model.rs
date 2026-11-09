@@ -3342,6 +3342,23 @@ impl Model {
                 "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}): update BIMCraft to open it"
             ));
         }
+        // This legacy field identifies a clockwise rotation convention as well as the old height name.
+        // Normalize before the lenient reader drops unknown fields; modern georeferences keep their convention.
+        if let Some(g) = v.get_mut("georeference").and_then(Value::as_object_mut)
+            && let Some(height) = g.remove("orthogonal_height")
+        {
+            if g.contains_key("height") {
+                return Err(
+                    "the georeference has both `height` and legacy `orthogonal_height`: keep one height field and its rotation convention"
+                        .into(),
+                );
+            }
+            g.insert("height".into(), height);
+            if let Some(rotation) = g.get_mut("rotation") {
+                let angle = rotation.as_f64().ok_or("the legacy georeference `rotation` must be a number of clockwise degrees")?;
+                *rotation = serde_json::json!(-angle);
+            }
+        }
         if format < 4 {
             pens_from_pixels(&mut v);
         }
