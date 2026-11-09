@@ -432,23 +432,23 @@ msgstr "已连接的智能体：{}"
 msgid "Agents may only read this project."
 msgstr "智能体只能读取此项目。"
 
-#: crates/ui-egui/src/control.rs:356
+#: crates/ui-egui/src/control.rs:357
 msgid "Agents: off"
 msgstr "智能体：已关闭"
 
-#: crates/ui-egui/src/control.rs:359
+#: crates/ui-egui/src/control.rs:360
 msgid "Agents: port {}"
 msgstr "智能体：端口 {}"
 
-#: crates/ui-egui/src/control.rs:360
+#: crates/ui-egui/src/control.rs:361
 msgid "Agents: port {}, read-only"
 msgstr "智能体：端口 {}，只读"
 
-#: crates/ui-egui/src/control.rs:361
+#: crates/ui-egui/src/control.rs:362
 msgid "Agents: {} connected"
 msgstr "智能体：已连接 {} 个"
 
-#: crates/ui-egui/src/control.rs:362
+#: crates/ui-egui/src/control.rs:363
 msgid "Agents: {} connected, read-only"
 msgstr "智能体：已连接 {} 个，只读"
 
@@ -560,7 +560,7 @@ msgstr "载流量"
 msgid "Amplitude"
 msgstr "振幅"
 
-#: crates/ui-egui/src/control.rs:307
+#: crates/ui-egui/src/control.rs:308
 msgid "An agent can work on this project: bimcraft-cli mcp --connect {}"
 msgstr "智能体可以在此项目上工作：bimcraft-cli mcp --connect {}"
 
@@ -2121,7 +2121,7 @@ msgstr "无法下载更新：{}"
 msgid "Couldn't install the update: {}"
 msgstr "无法安装更新：{}"
 
-#: crates/ui-egui/src/control.rs:337
+#: crates/ui-egui/src/control.rs:338
 msgid "Couldn't listen on port {} for agents: {}"
 msgstr "无法为智能体监听端口 {}：{}"
 
@@ -8054,7 +8054,7 @@ msgstr "圆弧放不下：请拾取两条以一定角度相交、且足够长的
 msgid "The centre of a curved wall, a column or a component"
 msgstr "弧形墙、柱或构件的中心"
 
-#: crates/ui-egui/src/control.rs:375
+#: crates/ui-egui/src/control.rs:376
 msgid "The control port, through which an agent works on this project (bimcraft-cli mcp --connect): whether it is open, how many agents are connected, and whether they may only read. Click for File > Settings > Agents"
 msgstr "控制端口，智能体通过它在此项目上工作 (bimcraft-cli mcp --connect)：是否已打开、已连接多少个智能体，以及它们是否只能读取。单击可打开“文件”>“设置”>“智能体”"
 

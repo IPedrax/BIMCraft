@@ -432,23 +432,23 @@ msgstr ""
 msgid "Agents may only read this project."
 msgstr ""
 
-#: crates/ui-egui/src/control.rs:356
+#: crates/ui-egui/src/control.rs:357
 msgid "Agents: off"
 msgstr ""
 
-#: crates/ui-egui/src/control.rs:359
+#: crates/ui-egui/src/control.rs:360
 msgid "Agents: port {}"
 msgstr ""
 
-#: crates/ui-egui/src/control.rs:360
+#: crates/ui-egui/src/control.rs:361
 msgid "Agents: port {}, read-only"
 msgstr ""
 
-#: crates/ui-egui/src/control.rs:361
+#: crates/ui-egui/src/control.rs:362
 msgid "Agents: {} connected"
 msgstr ""
 
-#: crates/ui-egui/src/control.rs:362
+#: crates/ui-egui/src/control.rs:363
 msgid "Agents: {} connected, read-only"
 msgstr ""
 
@@ -560,7 +560,7 @@ msgstr ""
 msgid "Amplitude"
 msgstr "Ampiezza"
 
-#: crates/ui-egui/src/control.rs:307
+#: crates/ui-egui/src/control.rs:308
 msgid "An agent can work on this project: bimcraft-cli mcp --connect {}"
 msgstr "Un agente può lavorare su questo progetto: bimcraft-cli mcp --connect {}"
 
@@ -2121,7 +2121,7 @@ msgstr "Impossibile scaricare l'aggiornamento: {}"
 msgid "Couldn't install the update: {}"
 msgstr "Impossibile installare l'aggiornamento: {}"
 
-#: crates/ui-egui/src/control.rs:337
+#: crates/ui-egui/src/control.rs:338
 msgid "Couldn't listen on port {} for agents: {}"
 msgstr ""
 
@@ -8054,7 +8054,7 @@ msgstr "L'arco non ci sta: scegli due linee rette che si incontrano ad angolo, a
 msgid "The centre of a curved wall, a column or a component"
 msgstr "Il centro di un muro curvo, di un pilastro o di un componente"
 
-#: crates/ui-egui/src/control.rs:375
+#: crates/ui-egui/src/control.rs:376
 msgid "The control port, through which an agent works on this project (bimcraft-cli mcp --connect): whether it is open, how many agents are connected, and whether they may only read. Click for File > Settings > Agents"
 msgstr ""
 

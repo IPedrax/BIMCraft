@@ -432,23 +432,23 @@ msgstr "Tác nhân đã kết nối: {}"
 msgid "Agents may only read this project."
 msgstr "Tác nhân chỉ được đọc dự án này."
 
-#: crates/ui-egui/src/control.rs:356
+#: crates/ui-egui/src/control.rs:357
 msgid "Agents: off"
 msgstr "Tác nhân: tắt"
 
-#: crates/ui-egui/src/control.rs:359
+#: crates/ui-egui/src/control.rs:360
 msgid "Agents: port {}"
 msgstr "Tác nhân: cổng {}"
 
-#: crates/ui-egui/src/control.rs:360
+#: crates/ui-egui/src/control.rs:361
 msgid "Agents: port {}, read-only"
 msgstr "Tác nhân: cổng {}, chỉ đọc"
 
-#: crates/ui-egui/src/control.rs:361
+#: crates/ui-egui/src/control.rs:362
 msgid "Agents: {} connected"
 msgstr "Tác nhân: {} đã kết nối"
 
-#: crates/ui-egui/src/control.rs:362
+#: crates/ui-egui/src/control.rs:363
 msgid "Agents: {} connected, read-only"
 msgstr "Tác nhân: {} đã kết nối, chỉ đọc"
 
@@ -560,7 +560,7 @@ msgstr "Khả năng chịu dòng"
 msgid "Amplitude"
 msgstr "Biên độ"
 
-#: crates/ui-egui/src/control.rs:307
+#: crates/ui-egui/src/control.rs:308
 msgid "An agent can work on this project: bimcraft-cli mcp --connect {}"
 msgstr "Một tác tử có thể làm việc trên dự án này: bimcraft-cli mcp --connect {}"
 
@@ -2121,7 +2121,7 @@ msgstr "Không thể tải xuống bản cập nhật: {}"
 msgid "Couldn't install the update: {}"
 msgstr "Không thể cài đặt bản cập nhật: {}"
 
-#: crates/ui-egui/src/control.rs:337
+#: crates/ui-egui/src/control.rs:338
 msgid "Couldn't listen on port {} for agents: {}"
 msgstr "Không thể lắng nghe cổng {} cho tác nhân: {}"
 
@@ -8054,7 +8054,7 @@ msgstr "Cung không vừa: hãy chọn hai đường thẳng gặp nhau theo m�
 msgid "The centre of a curved wall, a column or a component"
 msgstr "Tâm của tường cong, cột hoặc thành phần"
 
-#: crates/ui-egui/src/control.rs:375
+#: crates/ui-egui/src/control.rs:376
 msgid "The control port, through which an agent works on this project (bimcraft-cli mcp --connect): whether it is open, how many agents are connected, and whether they may only read. Click for File > Settings > Agents"
 msgstr "Cổng điều khiển, nơi tác nhân làm việc trên dự án này (bimcraft-cli mcp --connect): cổng có đang mở không, có bao nhiêu tác nhân đã kết nối, và chúng có chỉ được đọc hay không. Nhấp để mở Tệp > Cài đặt > Tác nhân"
 

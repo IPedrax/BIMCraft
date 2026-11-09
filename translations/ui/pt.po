@@ -432,23 +432,23 @@ msgstr "Agentes conectados: {}"
 msgid "Agents may only read this project."
 msgstr "Os agentes só podem ler este projeto."
 
-#: crates/ui-egui/src/control.rs:356
+#: crates/ui-egui/src/control.rs:357
 msgid "Agents: off"
 msgstr "Agentes: desativados"
 
-#: crates/ui-egui/src/control.rs:359
+#: crates/ui-egui/src/control.rs:360
 msgid "Agents: port {}"
 msgstr "Agentes: porta {}"
 
-#: crates/ui-egui/src/control.rs:360
+#: crates/ui-egui/src/control.rs:361
 msgid "Agents: port {}, read-only"
 msgstr "Agentes: porta {}, somente leitura"
 
-#: crates/ui-egui/src/control.rs:361
+#: crates/ui-egui/src/control.rs:362
 msgid "Agents: {} connected"
 msgstr "Agentes conectados: {}"
 
-#: crates/ui-egui/src/control.rs:362
+#: crates/ui-egui/src/control.rs:363
 msgid "Agents: {} connected, read-only"
 msgstr "Agentes conectados: {}, somente leitura"
 
@@ -560,7 +560,7 @@ msgstr "Capacidade de corrente"
 msgid "Amplitude"
 msgstr "Amplitude"
 
-#: crates/ui-egui/src/control.rs:307
+#: crates/ui-egui/src/control.rs:308
 msgid "An agent can work on this project: bimcraft-cli mcp --connect {}"
 msgstr "Um agente pode trabalhar neste projeto: bimcraft-cli mcp --connect {}"
 
@@ -2121,7 +2121,7 @@ msgstr "Não foi possível baixar a atualização: {}"
 msgid "Couldn't install the update: {}"
 msgstr "Não foi possível instalar a atualização: {}"
 
-#: crates/ui-egui/src/control.rs:337
+#: crates/ui-egui/src/control.rs:338
 msgid "Couldn't listen on port {} for agents: {}"
 msgstr "Não foi possível abrir a porta {} para os agentes: {}"
 
@@ -8054,7 +8054,7 @@ msgstr "O arco não cabe: escolha duas linhas retas que se encontram num ângulo
 msgid "The centre of a curved wall, a column or a component"
 msgstr "O centro de uma parede curva, de um pilar ou de um componente"
 
-#: crates/ui-egui/src/control.rs:375
+#: crates/ui-egui/src/control.rs:376
 msgid "The control port, through which an agent works on this project (bimcraft-cli mcp --connect): whether it is open, how many agents are connected, and whether they may only read. Click for File > Settings > Agents"
 msgstr "A porta de controle, por onde um agente trabalha neste projeto (bimcraft-cli mcp --connect): se está aberta, quantos agentes estão conectados e se podem apenas ler. Clique para abrir Arquivo > Configurações > Agentes"
 

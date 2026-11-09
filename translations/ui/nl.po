@@ -432,23 +432,23 @@ msgstr "Verbonden agents: {}"
 msgid "Agents may only read this project."
 msgstr "Agents mogen dit project alleen lezen."
 
-#: crates/ui-egui/src/control.rs:356
+#: crates/ui-egui/src/control.rs:357
 msgid "Agents: off"
 msgstr "Agents: uit"
 
-#: crates/ui-egui/src/control.rs:359
+#: crates/ui-egui/src/control.rs:360
 msgid "Agents: port {}"
 msgstr "Agents: poort {}"
 
-#: crates/ui-egui/src/control.rs:360
+#: crates/ui-egui/src/control.rs:361
 msgid "Agents: port {}, read-only"
 msgstr "Agents: poort {}, alleen-lezen"
 
-#: crates/ui-egui/src/control.rs:361
+#: crates/ui-egui/src/control.rs:362
 msgid "Agents: {} connected"
 msgstr "Agents: {} verbonden"
 
-#: crates/ui-egui/src/control.rs:362
+#: crates/ui-egui/src/control.rs:363
 msgid "Agents: {} connected, read-only"
 msgstr "Agents: {} verbonden, alleen-lezen"
 
@@ -560,7 +560,7 @@ msgstr "Stroomdraagvermogen"
 msgid "Amplitude"
 msgstr "Amplitude"
 
-#: crates/ui-egui/src/control.rs:307
+#: crates/ui-egui/src/control.rs:308
 msgid "An agent can work on this project: bimcraft-cli mcp --connect {}"
 msgstr "Een agent kan aan dit project werken: bimcraft-cli mcp --connect {}"
 
@@ -2121,7 +2121,7 @@ msgstr "Kon de update niet downloaden: {}"
 msgid "Couldn't install the update: {}"
 msgstr "Kon de update niet installeren: {}"
 
-#: crates/ui-egui/src/control.rs:337
+#: crates/ui-egui/src/control.rs:338
 msgid "Couldn't listen on port {} for agents: {}"
 msgstr "Kon niet luisteren op poort {} voor agents: {}"
 
@@ -8054,7 +8054,7 @@ msgstr "De boog past niet: kies twee rechte lijnen die onder een hoek samenkomen
 msgid "The centre of a curved wall, a column or a component"
 msgstr "Het midden van een gebogen muur, een kolom of een onderdeel"
 
-#: crates/ui-egui/src/control.rs:375
+#: crates/ui-egui/src/control.rs:376
 msgid "The control port, through which an agent works on this project (bimcraft-cli mcp --connect): whether it is open, how many agents are connected, and whether they may only read. Click for File > Settings > Agents"
 msgstr "De besturingspoort waarlangs een agent aan dit project werkt (bimcraft-cli mcp --connect): of ze open is, hoeveel agents verbonden zijn en of ze alleen mogen lezen. Klik voor Bestand > Instellingen > Agents"
 
