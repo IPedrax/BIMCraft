@@ -192,3 +192,20 @@ raster map data @ naturalearthdata.com. Natural Earth is in the public domain.
 The places a map system is found by (assets/map/places.tsv) are Natural Earth's
 1:50m countries (with their names in several languages) and 1:10m populated
 places, their names and positions only. Made with Natural Earth.
+
+==============================================================================
+Pictures: jpeg-encoder and zune-jpegxl
+==============================================================================
+
+The core (bimcraft-core) writes JPEG and JPEG XL pictures of views and sheets
+through two crates, unmodified:
+
+  jpeg-encoder  (MIT OR Apache-2.0) AND IJG  JPEG
+    https://crates.io/crates/jpeg-encoder/0.7.1
+  zune-jpegxl   MIT OR Apache-2.0 OR Zlib    JPEG XL, lossless
+    https://crates.io/crates/zune-jpegxl/0.5.2
+
+This software is based in part on the work of the Independent JPEG Group.
+jpeg-encoder's forward DCT (src/fdct.rs, src/avx2/fdct.rs) is ported from
+mozjpeg and carries the IJG's terms; the rest of the crate is MIT OR
+Apache-2.0.

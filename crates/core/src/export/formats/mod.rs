@@ -18,7 +18,7 @@ pub use document::Pdf;
 pub use line::Dxf;
 pub use mesh::{Obj, Stl};
 pub use model::{Glb, Ifc};
-pub use picture::{Png, Svg};
+pub use picture::{Jpeg, Jxl, Png, Svg};
 pub use table::{Csv, Ods, Xlsx};
 
 /// Every format the core writes or plans to, in the order the dialog lists them.
@@ -27,8 +27,8 @@ pub fn builtin() -> Vec<Arc<dyn Format>> {
         Arc::new(Pdf),
         Arc::new(Svg),
         Arc::new(Png),
-        Arc::new(Planned { id: "jpeg", label: "JPEG", extension: "jpg", family: Family::Raster, takes: &[Takes::Drawing] }),
-        Arc::new(Planned { id: "jxl", label: "JPEG XL", extension: "jxl", family: Family::Raster, takes: &[Takes::Drawing] }),
+        Arc::new(Jpeg),
+        Arc::new(Jxl),
         Arc::new(Dxf),
         // Written by an app that has the DWG bridge; the core can't.
         Arc::new(Planned { id: "dwg", label: "DWG", extension: "dwg", family: Family::Line, takes: &[Takes::Drawing] }),
