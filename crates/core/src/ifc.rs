@@ -2175,8 +2175,14 @@ mod tests {
         assert_eq!(of_kind(&f, "IFCWALLTYPE").len(), walls.len());
         assert_eq!(of_kind(&f, "IFCSLABTYPE").len(), 1, "one type for the floor");
         // The same on every export, so a diff of two shows only what changed.
-        assert_eq!(f, export(&s.model));
+        assert_eq!(data(&f), data(&export(&s.model)));
         dangling(&f);
+    }
+
+    /// What `f` holds from its DATA section on: the header's FILE_NAME carries the time to the second, so two exports a
+    /// second apart differ there, and a test comparing whole files would fail on a slow machine.
+    fn data(f: &str) -> &str {
+        f.split_once("DATA;").map_or(f, |(_, d)| d)
     }
 
     /// The entity lines of kind `class` in `f`, as written.
@@ -2451,7 +2457,7 @@ mod tests {
         assert_eq!(swept, 2, "both bodies sweep the type's profile");
         // The material is in the set, so a beam has no other: one for the type, one for each cardinal point's usage.
         assert_eq!(of_kind(&f, "IFCRELASSOCIATESMATERIAL").len(), 3);
-        assert_eq!(f, export(&s.model), "the same on every export");
+        assert_eq!(data(&f), data(&export(&s.model)), "the same on every export");
     }
 
     #[test]
