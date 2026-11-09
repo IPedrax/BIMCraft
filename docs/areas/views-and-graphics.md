@@ -53,16 +53,6 @@ would: a compound element's layer lines, an opening's jambs and glass, a stair's
 holds only the categories set apart from `styles::default_of` (which draws as before: cut pen 10, seen pen 4). What's next on this
 foundation: annotation categories' object styles and subcategories, viewports as windows onto their views, and printing.
 
-A sheet has a built-in title block unless `sheet {"title_block": false}` omits it, for one drawn on the sheet itself. The switch
-hides the stock border, title box, lettering and folding marks, not viewports, viewport titles, schedules, text notes or detail
-lines. Properties > Title Block switches it too (`modify` with `title_block`); `elements` always reports it. The desktop and exports
-share `sheet::draw`. Paper size and automatic viewport placement stay the same, including the space above the reserved title box. A
-hidden frame cannot be picked; viewport and annotation picking are unchanged, and Properties shows the sheet when nothing is
-selected.
-
-A file writes `title_block` only when false; sheets without it read as true. Format 18 protects the setting: an older build would
-otherwise leave it out and print the stock frame again. Migration from 17 has no conversion beyond the field's default.
-
 Family components are split by category. A component is of its family's category (`graphics::category_of`; `component_category` names
 each `family::Category`: `furniture`, `casework`, `plumbing`, `drain`, `pipefitting`, `pipeaccessory`, `equipment`, `outlet`, `switch`,
 `airterminal`, `earthing`, `inspectionbox`, `lighting`, `generic`, `dataoutlet`, `voiceoutlet`, `patchpanel`, `rack`; `graphics::COMPONENTS`),
@@ -707,6 +697,16 @@ sheet number in reading order, and REVISION, the latest of the revision clouds o
 definition, and a value given to one (DATE, to issue on) is said instead. A key no value fills stays as written, so a missing field
 shows on the sheet. `titleblock::values` works them out, `sheet::title_values` with the sheet's scale, and `elements` gives a sheet's
 as `title_values`, with the keys that are its own to give as `sheet_fields`.
+
+A sheet may also have no title block at all: `sheet {"title_block": "none"}` (`titleblock::NONE`, in any case, or `false`; `true` or
+`""` is the built-in one), for one drawn on the sheet itself. It leaves out the border, the title box and its lettering and the folding
+marks, not viewports, their titles, schedules, text notes or detail lines. Properties > Title Block offers None beside Built-in and
+the project's own (`modify` with `title_block`); `elements` always reports it, `""` for the built-in one, which the file leaves out.
+The desktop and exports share `sheet::draw`. Paper size and automatic viewport placement stay the same, including the room above
+the built-in title box. A frame not drawn can't be picked; viewport and annotation picking are unchanged, and Properties shows the
+sheet when nothing is selected. No title block of the project's may be called `none` (`TitleBlock::check`), and none is no library
+entry, so renaming and Purge Unused pass it by. A file of 17 holds no `none`, so its sheets keep the built-in title box; FORMAT 18,
+shared with the title blocks, keeps a build that reads up to 17 from printing the frame again on a sheet with none.
 
 `title_block` makes, edits, renames and deletes them (one a sheet is drawn with can't go), starting a new one as the built-in box drawn
 as one; with `path` it reads a DXF (or a DWG, through the session's reader) drawn at full size on paper in its model space: lines, arcs,

@@ -102,7 +102,7 @@ pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
     let size_name = sh.map(|s| s.size.as_str()).unwrap_or("A3");
     let paper = sh.and_then(|s| paper(&s.size)).unwrap_or(P2(420.0, 297.0));
     let margins = m.standard().sheet_margins(size_name);
-    // Above its title block: the project's it names, else the built-in one.
+    // Above its title block: the project's it names, else the built-in one, whose room a sheet with none keeps too.
     let title = sh.and_then(|s| m.title_blocks.get(&s.title_block)).map_or(margins.title_height, |t| t.height);
     let middle = P2((margins.left + paper.0 - margins.right) / 2.0, (margins.bottom + title + paper.1 - margins.top) / 2.0);
     let taken = size(m, view, scale).unwrap_or(P2(0.0, 0.0));
@@ -162,9 +162,10 @@ fn draw_folding_marks(d: &mut Drawing, paper: P2, size: &str, margins: crate::st
 
 /// The border, filing margin on the left and borders on the other sides, and the title
 /// box in the bottom right corner, adapted to `std`: the project, the sheet's name, its scale, and its number. A sheet that
-/// names a title block of the project's has that one there instead, its fields filled in.
+/// names a title block of the project's has that one there instead, its fields filled in; one with none
+/// ([`crate::titleblock::NONE`]) has nothing of it, border and folding marks included, for one drawn on the sheet itself.
 fn title_block(d: &mut Drawing, m: &Model, id: impl Key, paper: P2, views: &[&Viewport]) {
-    let Some(sheet) = m.sheet(id) else { return };
+    let Some(sheet) = m.sheet(id).filter(|sh| !sh.has_no_title_block()) else { return };
     let (project, std) = (&m.name, m.standard());
     let margins = std.sheet_margins(&sheet.size);
     let rect = |a: P2, b: P2| vec![a, P2(b.0, a.1), b, P2(a.0, b.1)];

@@ -33,6 +33,15 @@ pub const MAX_TEXT: usize = 1024;
 pub const MIN_LETTERING: f64 = 0.5;
 pub const MAX_LETTERING: f64 = 100.0;
 
+/// What a sheet's `title_block` says to be drawn with no title block at all: no border, title box or folding marks, for one
+/// drawn on the sheet itself. No title block of the project's may take the name.
+pub const NONE: &str = "none";
+
+/// Whether `name` is [`NONE`], in any case and with spaces round it, as `sheet` and `modify` take it.
+pub fn means_none(name: &str) -> bool {
+    name.trim().eq_ignore_ascii_case(NONE)
+}
+
 /// The fields every title block has without defining them, each with what it gives, as `title_block` lists them.
 pub const AUTO: &[(&str, &str)] = &[
     ("PROJECT", "the project's name"),
@@ -307,6 +316,9 @@ impl TitleBlock {
     /// Why it isn't one `name` may be, if it isn't.
     pub fn check(&self, name: &str) -> Result<(), String> {
         let who = format!("title block `{name}`");
+        if means_none(name) {
+            return Err(format!("{who}: `{NONE}` is what a sheet names to have no title block; call it something else"));
+        }
         let size = |what: &str, x: f64| {
             if x.is_finite() && x > 0.0 && x <= MAX_SIZE {
                 Ok(())

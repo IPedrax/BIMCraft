@@ -860,8 +860,9 @@ pub static ALL: &[Command] = &[
         &[],
         "{number?, name?, size?: A0|A1|A2|A3|A4, title_block?, fields?: {KEY: text}} a sheet of paper, landscape (A3 by \
          default), with a title block: the built-in one, or the project's `title_block` of that name (see `title_block`), its \
-         sheet fields filled in from `fields`; numbers run A101, A102…. `modify` changes them later: `title_block` (\"\" for \
-         the built-in), `fields` (a key's value null to clear it)",
+         sheet fields filled in from `fields`, or with `title_block` \"none\" (or false) none at all: no border, title box or \
+         folding marks, for one drawn on the sheet itself; numbers run A101, A102…. `modify` changes them later: \
+         `title_block` (\"\" or true for the built-in, \"none\" or false for none), `fields` (a key's value null to clear it)",
         new_sheet,
     ),
     edit(
@@ -2623,6 +2624,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("outline".into(), json!(outline.into_iter().map(micron).collect::<Vec<_>>()));
         }
         Element::Sheet(sh) => {
+            // Which title block it's drawn with, the built-in one ("") too, which the file leaves out.
             extra.insert("title_block".into(), json!(sh.title_block));
             extra.insert("paper".into(), json!(paper(&sh.size)));
             // What its title block's fields say, filled in; and which of them are its own to give.
@@ -9748,7 +9750,11 @@ fn new_sheet(s: &mut Session, p: &Value) -> R {
     };
     let name = string(c, p, "name")?.unwrap_or_else(|| m.language.word(msg!("Unnamed")).into());
     let size = string(c, p, "size")?.map_or_else(|| "A3".into(), |z| z.trim().to_ascii_uppercase());
-    let title_block = name_param(c, p, "title_block")?.unwrap_or_default();
+    let title_block = match p.get("title_block") {
+        v if absent(v) => String::new(),
+        Some(v) => sheet_title_block(c, v)?,
+        None => String::new(),
+    };
     let fields = match p.get("fields") {
         v if absent(v) => BTreeMap::new(),
         Some(v) => field_values(c, "fields", v, &BTreeMap::new())?,
@@ -9756,6 +9762,22 @@ fn new_sheet(s: &mut Session, p: &Value) -> R {
     };
     let id = s.model_mut().insert(Element::Sheet(Sheet { number: number.clone(), name, size, title_block, fields }));
     Ok(json!({"id": id, "number": number}))
+}
+
+/// A sheet's `title_block` as `sheet` and `modify` take it: `""` or true the built-in one, `none` in any case or false none
+/// at all ([`crate::titleblock::NONE`]), else the name of a title block of the project's (`Model::check` sees it's there).
+fn sheet_title_block(c: &str, v: &Value) -> Result<String, String> {
+    use crate::titleblock::{NONE, means_none};
+    match v {
+        Value::Bool(true) => Ok(String::new()),
+        Value::Bool(false) => Ok(NONE.into()),
+        Value::String(n) if means_none(n) => Ok(NONE.into()),
+        Value::String(n) => Ok(n.trim().to_string()),
+        _ => Err(bad(
+            c,
+            format!("`title_block` is a title block's name, \"\" (or true) for the built-in one or \"{NONE}\" (or false), not {v}"),
+        )),
+    }
 }
 
 /// `v`, fields' values by key (`{KEY: text or null}`), over `old`: each key uppercase, a null taking the key's value away.
@@ -11002,6 +11024,8 @@ fn modify(s: &mut Session, p: &Value) -> R {
                 "category" if obj.get("category") == Some(val) => continue,
                 "category" => return Err(bad(c, "`category` can't change; delete the element and create another")),
                 "level" | "top_level" if val.is_string() => json!(level_param(c, m, p, k)?),
+                // A sheet's title block as `sheet` takes it: none as `none` or false, the built-in one as "" or true.
+                "title_block" if matches!(e, Element::Sheet(_)) => json!(sheet_title_block(c, val)?),
                 // A sheet's fields by their keys in capitals, as its title block names them, whatever case they're given in.
                 "fields" if matches!(e, Element::Sheet(_)) && val.is_object() => {
                     Value::Object(val.as_object().into_iter().flatten().map(|(k, v)| (k.to_ascii_uppercase(), v.clone())).collect())

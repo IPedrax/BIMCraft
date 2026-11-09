@@ -2264,6 +2264,9 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"name": "T", "fields": [{"key": "A", "scope": "everyone", "default": []}], "texts": "x"}),
         json!({"values": {"A": [], "B C": "x", "SHEET_COUNT": 1e300}}),
         json!({"number": "Z1", "title_block": "nope", "fields": {"a": {}, "": "x"}}),
+        // A sheet's title block that's neither a name nor true or false, and a title block that would be called none.
+        json!({"number": "Z2", "title_block": [false], "name": "none", "rename": " NONE "}),
+        json!({"id": 100000, "title_block": {"none": true}}),
     ];
     let mut base = Session::new();
     house(&mut base);
