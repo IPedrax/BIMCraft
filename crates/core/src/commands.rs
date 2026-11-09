@@ -4984,7 +4984,7 @@ fn conduit_fill(_: &mut Session, p: &Value) -> R {
 }
 
 fn drain_size(_: &mut Session, p: &Value) -> R {
-    use crate::drainage::{self, FIXTURES, Role};
+    use crate::drainage::{self, Role};
     let c = "drain_size";
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["units", "fixtures", "role", "slope", "floors", "min_dn"];
@@ -4999,9 +4999,8 @@ fn drain_size(_: &mut Session, p: &Value) -> R {
         Some(Value::Object(f)) => {
             let mut sum = 0.0;
             for (kind, n) in f {
-                let (u, dn) = drainage::fixture(kind).ok_or_else(|| {
-                    bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", FIXTURES.iter().map(|x| x.0).collect::<Vec<_>>().join(", ")))
-                })?;
+                let (u, dn) = drainage::fixture(kind)
+                    .ok_or_else(|| bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", crate::plumbing::kinds().join(", "))))?;
                 let n = n
                     .as_f64()
                     .filter(|n| n.is_finite() && *n >= 0.0 && *n <= 10_000.0 && n.fract() == 0.0)
@@ -5962,7 +5961,7 @@ fn hydrant_size(_: &mut Session, p: &Value) -> R {
 }
 
 fn water_size(_: &mut Session, p: &Value) -> R {
-    use crate::water::{self, FITTINGS, FIXTURES, MAX_SPEED, MIN_USE_KPA, Method};
+    use crate::water::{self, FITTINGS, MAX_SPEED, MIN_USE_KPA, Method};
     let c = "water_size";
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["fixtures", "flow", "method", "dn", "length", "fittings", "pressure", "rise"];
@@ -5982,10 +5981,7 @@ fn water_size(_: &mut Session, p: &Value) -> R {
             let mut list: Vec<(&str, f64)> = Vec::new();
             for (kind, n) in f {
                 if water::fixture(kind).is_none() {
-                    return Err(bad(
-                        c,
-                        format!("`fixtures`: no fixture `{kind}`, use {}", FIXTURES.iter().map(|x| x.0).collect::<Vec<_>>().join(", ")),
-                    ));
+                    return Err(bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", crate::plumbing::kinds().join(", "))));
                 }
                 let n = whole("fixtures", kind, n)?;
                 list.push((kind.as_str(), n));
