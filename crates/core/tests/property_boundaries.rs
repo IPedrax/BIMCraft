@@ -15,10 +15,11 @@ mod tests {
             .zip(&d.owners)
             .zip(&d.parts)
             .filter_map(|((p, owner), part)| {
-                if *owner == Some(id) && *part == render::Part::Text {
-                    if let render::Prim::Line { pts, width, .. } = p {
-                        return Some(pts.iter().map(|p| (*p, *width)).collect::<Vec<_>>());
-                    }
+                if *owner == Some(id)
+                    && *part == render::Part::Text
+                    && let render::Prim::Line { pts, width, .. } = p
+                {
+                    return Some(pts.iter().map(|p| (*p, *width)).collect::<Vec<_>>());
                 }
                 None
             })
