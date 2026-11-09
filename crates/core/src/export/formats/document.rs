@@ -3,9 +3,45 @@
 
 use super::super::{Content, Ctx, Family, Format, Options, Out, Prepared, Takes};
 use super::styled;
+use crate::export::page::{Layout, Tile};
+use crate::geom::P2;
 use crate::pdf::{Page, document};
 
 pub struct Pdf;
+
+/// Where to cut a page of a drawing tiled across several: on each edge of its printable area that meets another page, a
+/// hairline in the margin at both ends of that edge, clear of the paper's edge and of the drawing. None without a margin to
+/// put them in.
+pub(crate) fn cut_marks(layout: &Layout, tile: &Tile) -> Vec<[P2; 2]> {
+    let (m, P2(w, h)) = (layout.margin, layout.paper);
+    if m < 2.0 {
+        return Vec::new();
+    }
+    // From a fifth of the margin off the paper's edge to a fifth of it short of the drawing.
+    let (near, far) = (m * 0.2, m * 0.8);
+    let mut marks = Vec::new();
+    let across = |x: f64, marks: &mut Vec<[P2; 2]>| {
+        marks.push([P2(x, near), P2(x, far)]);
+        marks.push([P2(x, h - far), P2(x, h - near)]);
+    };
+    let down = |y: f64, marks: &mut Vec<[P2; 2]>| {
+        marks.push([P2(near, y), P2(far, y)]);
+        marks.push([P2(w - far, y), P2(w - near, y)]);
+    };
+    if tile.col > 0 {
+        across(m, &mut marks);
+    }
+    if tile.col + 1 < layout.cols {
+        across(w - m, &mut marks);
+    }
+    if tile.row > 0 {
+        down(m, &mut marks);
+    }
+    if tile.row + 1 < layout.rows {
+        down(h - m, &mut marks);
+    }
+    marks
+}
 
 impl Format for Pdf {
     fn id(&self) -> &'static str {
@@ -44,23 +80,37 @@ impl Format for Pdf {
             let restyled = styled(&paged.drawing, &options.page);
             laid.push((item, paged, layout, restyled));
         }
+        // Pages made pictures, when asked: each source's at the setup's resolution, in its layout's order.
+        let mut pictures = Vec::new();
+        for (_, paged, ..) in &laid {
+            pictures.push(if options.pdf.raster { Some(super::picture::pages(paged, &options.page, ctx)?) } else { None });
+        }
         let mut pages = Vec::new();
-        for (item, paged, layout, restyled) in &laid {
+        for ((item, paged, layout, restyled), pictures) in laid.iter().zip(pictures) {
             let drawing = restyled.as_ref().unwrap_or(&paged.drawing);
+            let mut pictures = pictures.map(Vec::into_iter);
             for (i, tile) in layout.pages.iter().enumerate() {
                 // A source's bookmark is on its first page; a source of many pages has one on each, numbered.
                 let title = match layout.pages.len() {
                     1 => Some(item.title.clone()),
                     _ => Some(format!("{} ({})", item.title, i + 1)),
                 };
-                pages.push(Page { drawing, paper: layout.paper, place: Some(paged.place(layout, tile)), title });
+                let marks = if options.pdf.cut_marks { cut_marks(layout, tile) } else { Vec::new() };
+                let picture = pictures.as_mut().and_then(Iterator::next);
+                pages.push(Page { drawing, paper: layout.paper, place: Some(paged.place(layout, tile)), title, marks, picture });
             }
         }
         // No bookmarks for a single page: there is nothing to go to.
         if pages.len() == 1 {
             pages.iter_mut().for_each(|p| p.title = None);
         }
-        Ok(vec![Out { suffix: None, bytes: document(&pages) }])
+        let mut settings = options.pdf.clone();
+        if settings.title.as_deref().is_none_or(|t| t.trim().is_empty()) {
+            settings.title = items.first().map(|i| i.title.clone());
+        }
+        settings.created =
+            settings.created.or_else(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs()));
+        Ok(vec![Out { suffix: None, bytes: document(&pages, &settings)? }])
     }
 }
 
@@ -96,11 +146,11 @@ mod tests {
         let sheets: Vec<_> = [100006, 100008].iter().map(|id| prepare(&m, &m, Some(*id), Takes::Drawing).unwrap()).collect();
         let out = Pdf.write(&sheets, &Options::default(), &Ctx::quiet()).unwrap();
         let bytes = &out[0].bytes;
-        assert_eq!(count(bytes, "/Type /Page "), 2);
-        assert_eq!(count(bytes, "/Type /Outlines"), 1);
-        assert!(count(bytes, "/Dest [") == 2, "a bookmark for each sheet");
+        assert_eq!(count(bytes, "/Type/Page/"), 2);
+        assert_eq!(count(bytes, "/Type/Outlines"), 1);
+        assert!(count(bytes, "/Dest ") == 2, "a bookmark for each sheet");
         // A3, as the sheets are: 420 × 297 mm.
-        assert_eq!(count(bytes, "/MediaBox [0 0 1190.551 841.890]"), 2);
+        assert_eq!(count(bytes, "/MediaBox[0 0 1190.5511 841.8898]"), 2);
     }
 
     #[test]
@@ -114,8 +164,8 @@ mod tests {
         };
         let out = Pdf.write(&[sheet], &options, &Ctx::quiet()).unwrap();
         let bytes = &out[0].bytes;
-        assert_eq!(count(bytes, "/MediaBox [0 0 841.890 595.276]"), 1);
-        assert_eq!(count(bytes, "/Type /Outlines"), 0, "one page needs no bookmarks");
+        assert_eq!(count(bytes, "/MediaBox[0 0 841.8898 595.2756]"), 1);
+        assert_eq!(count(bytes, "/Type/Outlines"), 0, "one page needs no bookmarks");
     }
 
     #[test]
@@ -129,6 +179,6 @@ mod tests {
             ..Options::default()
         };
         let out = Pdf.write(&[plan], &options, &Ctx::quiet()).unwrap();
-        assert!(count(&out[0].bytes, "/Type /Page ") >= 4);
+        assert!(count(&out[0].bytes, "/Type/Page/") >= 4);
     }
 }

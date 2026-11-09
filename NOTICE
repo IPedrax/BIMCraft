@@ -209,3 +209,22 @@ This software is based in part on the work of the Independent JPEG Group.
 jpeg-encoder's forward DCT (src/fdct.rs, src/avx2/fdct.rs) is ported from
 mozjpeg and carries the IJG's terms; the rest of the crate is MIT OR
 Apache-2.0.
+
+==============================================================================
+PDF: krilla
+==============================================================================
+
+The core (bimcraft-core) writes PDF files, PDF/A among them, through krilla,
+unmodified:
+
+  krilla  MIT OR Apache-2.0  PDF writing and PDF/A checks
+    by Laurenz Stampfl and its contributors
+    https://github.com/LaurenzV/krilla
+    https://crates.io/crates/krilla/0.8.2
+
+Its own dependencies are all permissive: MIT or Apache-2.0 for most
+(pdf-writer, xmp-writer, subsetter, skrifa, png, zune-jpeg, gif, image-webp),
+Zlib, BSD-2-Clause (arrayref), BSD-3-Clause (tiny-skia-path, as tiny-skia
+already is) and Unicode-3.0 (yoke, zerofrom). The sRGB and grey colour profiles it puts in a file's
+output intent are from Compact-ICC-Profiles
+(https://github.com/saucecontrol/Compact-ICC-Profiles), released under CC0 1.0.

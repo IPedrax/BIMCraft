@@ -115,6 +115,10 @@ pub struct PageSetup {
     pub dpi: Option<u32>,
     /// Which pages, first and last, counted from 1; none, all.
     pub pages: Option<[u32; 2]>,
+    /// Only what lies inside this rectangle of the view, two opposite corners `[x1, y1, x2, y2]` in its own coordinates (a
+    /// plan's model mm, a section's along its line and up, a sheet's paper mm from its bottom left); none, all of it. Every
+    /// drawing format takes it, not only those of pages.
+    pub region: Option<[f64; 4]>,
 }
 
 impl PageSetup {

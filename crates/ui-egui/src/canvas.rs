@@ -2120,6 +2120,7 @@ impl BimApp {
                     }
                 };
             }
+            Tool::ExportRegion(_) => self.export_region_at(v.mm(at)),
             Tool::SpecifyPoint => {
                 // Snapped as any point; its height by what it snapped to.
                 let f = self.snap(m, level, v, at, &[], false);
@@ -3790,6 +3791,10 @@ impl BimApp {
                     }
                     (None, None) => {}
                 }
+                return;
+            }
+            &Tool::ExportRegion(first) => {
+                crate::export::region_band(p, first.map(|a| sc.screen(a)), cursor);
                 return;
             }
             Tool::SpecifyPoint => {

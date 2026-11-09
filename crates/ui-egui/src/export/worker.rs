@@ -20,11 +20,24 @@ use crate::{BimApp, Status};
 /// How far an export is: steps done, steps there are, and what it is on.
 type Progress = (usize, usize, String);
 
+/// A job printed rather than kept: the spooler, the printer, how many copies, the paper's name if it has one the
+/// spooler knows, and the title the printer's queue shows. Its files are written in a folder of their own, removed after.
+pub(crate) struct PrintTo {
+    pub(crate) spooler: Arc<dyn super::print::Spooler>,
+    pub(crate) printer: String,
+    pub(crate) copies: u32,
+    pub(crate) media: Option<&'static str>,
+    pub(crate) title: String,
+}
+
+/// What a job did, and when it was printed, whether the printer took it (its name) or why not.
+type Answer = Result<(Report, Option<Result<String, String>>), String>;
+
 /// An export under way.
 pub(crate) struct Running {
     cancel: Arc<AtomicBool>,
     progress: Arc<Mutex<Progress>>,
-    answer: Receiver<Result<Report, String>>,
+    answer: Receiver<Answer>,
     /// Where its files go, for the note when it is done.
     folder: PathBuf,
 }
@@ -68,6 +81,15 @@ impl BimApp {
 
     /// [`start_export`](Self::start_export), the thread waiting for `gate` first: a test's way to cancel it before it begins.
     pub(crate) fn start_export_after(&mut self, job: Job, gate: Option<Receiver<()>>) -> bool {
+        self.spawn_export(job, gate, None)
+    }
+
+    /// Writes `job` on a thread of its own, then prints what it wrote as `print` says and removes it.
+    pub(crate) fn start_print(&mut self, job: Job, print: PrintTo) -> bool {
+        self.spawn_export(job, None, Some(print))
+    }
+
+    fn spawn_export(&mut self, job: Job, gate: Option<Receiver<()>>, print: Option<PrintTo>) -> bool {
         if self.export_job.is_some() {
             return false;
         }
@@ -93,7 +115,26 @@ impl BimApp {
             // The writers read a project that may be anyone's: whatever they do, the window gets an answer.
             let report = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| export::run(&model, &registry, &job, &ctx)))
                 .unwrap_or_else(|p| Err(stopped(&*p)));
-            let _ = send.send(report);
+            let answer = report.map(|report| {
+                let printed = print.map(|to| {
+                    let sent = if report.cancelled {
+                        Err("cancelled: nothing was sent to the printer".to_string())
+                    } else if report.written.is_empty() {
+                        Err("nothing was made to print".to_string())
+                    } else {
+                        report
+                            .written
+                            .iter()
+                            .try_for_each(|w| to.spooler.print(&to.printer, &w.path, to.copies, to.media, &to.title))
+                            .map(|()| to.printer.clone())
+                    };
+                    // The spooler has its own copy: the file was only for it.
+                    let _ = std::fs::remove_dir_all(&job.folder);
+                    sent
+                });
+                (report, printed)
+            });
+            let _ = send.send(answer);
         });
         if let Err(e) = spawned {
             self.status = Status { text: tf("Couldn't export: {}", &[&e.to_string()]), error: true };
@@ -116,7 +157,15 @@ impl BimApp {
         };
         let Some(job) = self.export_job.take() else { return };
         self.status = match answer {
-            Ok(report) => said(&report, &job.folder),
+            Ok((report, None)) => said(&report, &job.folder),
+            Ok((report, Some(Ok(printer)))) => {
+                let mut status = said(&report, &job.folder);
+                // What wasn't made stays said, under it.
+                let failed = status.text.split_once('\n').map(|(_, rest)| format!("\n{rest}")).unwrap_or_default();
+                status.text = tf(msg!("Sent to {}."), &[&printer]) + &failed;
+                status
+            }
+            Ok((_, Some(Err(why)))) => Status { text: tf(msg!("Couldn't print: {}"), &[&why]), error: true },
             Err(e) => Status { text: tf("Couldn't export: {}", &[&e]), error: true },
         };
     }

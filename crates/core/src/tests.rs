@@ -2859,7 +2859,7 @@ fn sheets_hold_views_at_a_scale_and_print_to_pdf() {
     run(&mut s, "save", json!({"path": pdf}));
     let bytes = std::fs::read(&pdf).unwrap();
     assert!(bytes.starts_with(b"%PDF-"));
-    assert_eq!(bytes.windows(6).filter(|w| *w == b"/Page ").count(), 2, "a page a sheet");
+    assert_eq!(bytes.windows(11).filter(|w| *w == b"/Type/Page/").count(), 2, "a page a sheet");
     // Deleting a view takes it off its sheet; deleting a sheet takes its views off.
     run(&mut s, "delete", json!({"ids": [section]}));
     assert_eq!(count(&mut s, "viewport"), 1);

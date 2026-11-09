@@ -361,7 +361,7 @@ mod tests {
         let strokes = |s: &Session| {
             let d = crate::sheet::draw(&s.model, sheet).unwrap();
             let lines = d.prims.iter().filter(|p| matches!(p, crate::render::Prim::Line { .. })).count();
-            (lines, crate::pdf::contents(&d, paper).0.matches(" S\n").count())
+            (lines, crate::pdf::contents(&d, paper).0.lines().filter(|l| *l == "S").count())
         };
         let (lines, with) = strokes(&s);
         run(&mut s, "delete", json!({"ids": [id]}));

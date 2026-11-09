@@ -167,7 +167,7 @@ other_files(
         "export",
         "Export",
         "{format, view?, views?, path?, folder?, name?, folders?: flat|by_format, combine?, overwrite?: false, page?, quality?, \
-         ifc_origin?, selected?} \
+         ifc_origin?, selected?, pdf?} \
          writes views, sheets, schedules or the project out as `format` (an id or an extension from `export_formats`: pdf, svg, \
          png, ifc4, glb, csv, xlsx…). `view` (or a list, `views`) is an element's id or GUID, a view's name or a sheet's number; \
          none or `project` is the whole project (model formats only). `path` writes one file there (several views to a PDF go \
@@ -175,8 +175,12 @@ other_files(
          `{ProjectName}`, `{ViewType}`, `{Level}`, `{Scale}`, `{Format}`, `{Date}`, `{Time}`; `/` makes folders), numbered rather \
          than written over unless `overwrite`; `combine` names the one file each format that holds pages puts them all in. \
          `page`: {paper?: A3|ARCH D|Letter…, size?: [w,h] mm, orientation?: auto|landscape|portrait, margin?: mm, scale?: \
-         original|fit|{custom: n}, anchor?: centre|top_left…, colour?: colour|grey|black, hairlines?, dpi?: 150, pages?: [first, \
-         last]}. `ifc_origin` is IFC's, as `save` takes it; `selected` (ids or GUIDs) the elements a BCF topic is about. Returns `written` ({path, format, of}) and `failed` ({of, format, \
+         original|fit|{custom: n}, anchor?: centre|top_left…, colour?: colour|grey|black, hairlines?, dpi?: 150, region?: [x1, y1, \
+         x2, y2] (only what lies inside: a plan's model mm, a sheet's paper mm; every drawing format), pages?: [first, \
+         last]}. `pdf`: {archive?: none|a1b|a2b|a2u|a3b|a4 (PDF/A, checked as it is written: a file that wouldn't be one \
+         isn't written), version?: \"1.4\" to \"2.0\" (1.7), raster? (each page a picture at `page.dpi`), cut_marks? (the pages \
+         of a tiled drawing get hairlines in the margin where they meet), title?, author?, subject?, keywords?: [..]}. \
+         `ifc_origin` is IFC's, as `save` takes it; `selected` (ids or GUIDs) the elements a BCF topic is about. Returns `written` ({path, format, of}) and `failed` ({of, format, \
          error})",
         export,
         Files::Write,
@@ -3448,6 +3452,10 @@ fn export(s: &mut Session, p: &Value) -> R {
             None => None,
         },
         ifc_origin: ifc_origin(c, p)?,
+        pdf: match read("pdf") {
+            Some(v) => serde_json::from_value(v).map_err(|e| bad(c, format!("`pdf`: {e}")))?,
+            None => Default::default(),
+        },
         selected: match p.get("selected") {
             None | Some(Value::Null) => Vec::new(),
             Some(Value::Array(ids)) if ids.len() <= 50_000 => {
