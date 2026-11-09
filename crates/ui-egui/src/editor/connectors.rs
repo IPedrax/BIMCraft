@@ -199,9 +199,10 @@ impl FamilyEditor {
 }
 
 /// A drop-down of the file's words for `options`, named `label`: what was picked, if it was.
-fn choose<T: Copy + PartialEq>(ui: &mut Ui, label: String, now: T, options: &[T], name: impl Fn(T) -> String) -> Option<T> {
+/// `w` wide, as the text fields beside it, so the palette's column holds it.
+fn choose<T: Copy + PartialEq>(ui: &mut Ui, label: String, now: T, options: &[T], w: f32, name: impl Fn(T) -> String) -> Option<T> {
     let mut picked = None;
-    let c = ComboBox::from_id_salt(&label).selected_text(name(now)).width(150.0).show_ui(ui, |ui| {
+    let c = ComboBox::from_id_salt(&label).selected_text(name(now)).width(w).truncate().show_ui(ui, |ui| {
         for o in options {
             if ui.selectable_label(*o == now, name(*o)).clicked() {
                 picked = Some(*o);
@@ -235,7 +236,7 @@ pub(crate) fn connector_properties(ed: &mut FamilyEditor, ui: &mut Ui, i: usize)
                 ui.label(t("System"));
                 let all = [ConnectorSystem::PowerBalanced, ConnectorSystem::PowerUnbalanced];
                 if let Some(s) =
-                    choose(ui, format!("{} {n}", t("Connector System")), c.base.system.unwrap_or_default(), &all, |s| word(json!(s)))
+                    choose(ui, format!("{} {n}", t("Connector System")), c.base.system.unwrap_or_default(), &all, w, |s| word(json!(s)))
                 {
                     c.base.system = Some(s);
                 }
@@ -255,7 +256,7 @@ pub(crate) fn connector_properties(ed: &mut FamilyEditor, ui: &mut Ui, i: usize)
                 ];
                 let label = format!("{} {n}", t("Connector Domain"));
                 let shown = c.base.domain.map_or_else(|| t("(none)").to_string(), |d| word(json!(d)));
-                let r = ComboBox::from_id_salt(&label).selected_text(shown).width(150.0).show_ui(ui, |ui| {
+                let r = ComboBox::from_id_salt(&label).selected_text(shown).width(w).truncate().show_ui(ui, |ui| {
                     for d in all {
                         let name = d.map_or_else(|| t("(none)").to_string(), |d| word(json!(d)));
                         if ui.selectable_label(c.base.domain == d, name).clicked() {
@@ -271,7 +272,7 @@ pub(crate) fn connector_properties(ed: &mut FamilyEditor, ui: &mut Ui, i: usize)
         if !kind.electrical() {
             ui.label(t("Flow"));
             if let Some(f) =
-                choose(ui, format!("{} {n}", t("Connector Flow")), c.base.flow, &[Flow::In, Flow::Out, Flow::Both], |f| word(json!(f)))
+                choose(ui, format!("{} {n}", t("Connector Flow")), c.base.flow, &[Flow::In, Flow::Out, Flow::Both], w, |f| word(json!(f)))
             {
                 c.base.flow = f;
             }

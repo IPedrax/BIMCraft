@@ -15,8 +15,8 @@ msgstr " 已移動 {}（{} 毫米），使其靠近原點。"
 msgid "(default)"
 msgstr "（預設）"
 
-#: crates/ui-egui/src/editor/connectors.rs:257
-#: crates/ui-egui/src/editor/connectors.rs:260
+#: crates/ui-egui/src/editor/connectors.rs:258
+#: crates/ui-egui/src/editor/connectors.rs:261
 #: crates/ui-egui/src/editor/document.rs:1710
 #: crates/ui-egui/src/editor/document.rs:1712
 #: crates/ui-egui/src/editor/extrusion.rs:235
@@ -733,7 +733,7 @@ msgstr "註釋筆 {}"
 msgid "Another colour"
 msgstr "其他顏色"
 
-#: crates/ui-egui/src/editor/connectors.rs:309
+#: crates/ui-egui/src/editor/connectors.rs:310
 msgid "Apparent Load (VA)"
 msgstr ""
 
@@ -1525,7 +1525,7 @@ msgstr "外接多邊形"
 msgid "Circumscribed Polygon: click its centre, then the middle of a side; Sides on the Options Bar"
 msgstr "外接多邊形：單擊中心，然後單擊一條邊的中點；邊數在選項欄中設置"
 
-#: crates/ui-egui/src/editor/connectors.rs:316
+#: crates/ui-egui/src/editor/connectors.rs:317
 msgid "Classification"
 msgstr ""
 
@@ -2309,51 +2309,51 @@ msgstr "配置國家與國際技術製圖標準 (NBR、ISO、ANSI、EU)。調整
 msgid "Connector"
 msgstr ""
 
-#: crates/ui-egui/src/editor/connectors.rs:317
+#: crates/ui-egui/src/editor/connectors.rs:318
 msgid "Connector Classification"
 msgstr ""
 
-#: crates/ui-egui/src/editor/connectors.rs:293
+#: crates/ui-egui/src/editor/connectors.rs:294
 msgid "Connector Direction"
 msgstr ""
 
-#: crates/ui-egui/src/editor/connectors.rs:256
+#: crates/ui-egui/src/editor/connectors.rs:257
 msgid "Connector Domain"
 msgstr ""
 
-#: crates/ui-egui/src/editor/connectors.rs:274
+#: crates/ui-egui/src/editor/connectors.rs:275
 msgid "Connector Flow"
 msgstr ""
 
-#: crates/ui-egui/src/editor/connectors.rs:310
+#: crates/ui-egui/src/editor/connectors.rs:311
 msgid "Connector Load"
 msgstr ""
 
-#: crates/ui-egui/src/editor/connectors.rs:288
+#: crates/ui-egui/src/editor/connectors.rs:289
 msgid "Connector Location"
 msgstr ""
 
-#: crates/ui-egui/src/editor/connectors.rs:224
+#: crates/ui-egui/src/editor/connectors.rs:225
 msgid "Connector Name"
 msgstr ""
 
-#: crates/ui-egui/src/editor/connectors.rs:302
+#: crates/ui-egui/src/editor/connectors.rs:303
 msgid "Connector Poles"
 msgstr ""
 
-#: crates/ui-egui/src/editor/connectors.rs:313
+#: crates/ui-egui/src/editor/connectors.rs:314
 msgid "Connector Power Factor"
 msgstr ""
 
-#: crates/ui-egui/src/editor/connectors.rs:280
+#: crates/ui-egui/src/editor/connectors.rs:281
 msgid "Connector Size"
 msgstr ""
 
-#: crates/ui-egui/src/editor/connectors.rs:238
+#: crates/ui-egui/src/editor/connectors.rs:239
 msgid "Connector System"
 msgstr ""
 
-#: crates/ui-egui/src/editor/connectors.rs:306
+#: crates/ui-egui/src/editor/connectors.rs:307
 msgid "Connector Voltage"
 msgstr ""
 
@@ -2377,7 +2377,7 @@ msgstr ""
 
 #: crates/core/src/family.rs:349
 #: crates/ui-egui/src/adaptive_editor.rs:585
-#: crates/ui-egui/src/editor/connectors.rs:285
+#: crates/ui-egui/src/editor/connectors.rs:286
 #: crates/ui-egui/src/editor/extrusion.rs:176
 #: crates/ui-egui/src/editor/nested.rs:271
 #: crates/ui-egui/src/editor/pivot.rs:281
@@ -3121,7 +3121,7 @@ msgstr "尺寸標注"
 msgid "Dimensions of the family you are loading can't be kept: {}"
 msgstr "無法保留您正在載入的族的尺寸標注：{}"
 
-#: crates/ui-egui/src/editor/connectors.rs:292
+#: crates/ui-egui/src/editor/connectors.rs:293
 msgid "Direction"
 msgstr ""
 
@@ -3195,7 +3195,7 @@ msgstr "停靠到視圖區"
 msgid "Dock {}"
 msgstr "停靠 {}"
 
-#: crates/ui-egui/src/editor/connectors.rs:245
+#: crates/ui-egui/src/editor/connectors.rs:246
 msgid "Domain"
 msgstr ""
 
@@ -3592,7 +3592,7 @@ msgid "Elbow 90"
 msgstr "90° 彎頭"
 
 #: crates/core/src/family.rs:357
-#: crates/ui-egui/src/editor/connectors.rs:298
+#: crates/ui-egui/src/editor/connectors.rs:299
 #: crates/ui-egui/src/lib.rs:1215
 msgid "Electrical"
 msgstr "電氣"
@@ -4252,7 +4252,7 @@ msgstr "樓板：結構 (SB)：在牆內單擊，為其創建承重樓板"
 msgid "Floor: click inside the walls to floor them"
 msgstr "樓板：在牆內單擊，為其創建樓板"
 
-#: crates/ui-egui/src/editor/connectors.rs:272
+#: crates/ui-egui/src/editor/connectors.rs:273
 msgid "Flow"
 msgstr ""
 
@@ -4715,7 +4715,7 @@ msgstr "ISO 7200：180 mm"
 #: crates/core/src/family.rs:353
 #: crates/ui-egui/src/adaptive_editor.rs:568
 #: crates/ui-egui/src/adaptive_editor.rs:664
-#: crates/ui-egui/src/editor/connectors.rs:221
+#: crates/ui-egui/src/editor/connectors.rs:222
 #: crates/ui-egui/src/editor/document.rs:918
 #: crates/ui-egui/src/editor/document.rs:1882
 #: crates/ui-egui/src/editor/extrusion.rs:249
@@ -4983,7 +4983,7 @@ msgstr "鍵盤快速鍵"
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "快速鍵 (KS)：自定義、編輯和載入快速鍵"
 
-#: crates/ui-egui/src/editor/connectors.rs:230
+#: crates/ui-egui/src/editor/connectors.rs:231
 msgid "Kind"
 msgstr "種類"
 
@@ -5399,7 +5399,7 @@ msgstr "已從檔案載入 {} 個快速鍵。"
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
-#: crates/ui-egui/src/editor/connectors.rs:287
+#: crates/ui-egui/src/editor/connectors.rs:288
 #: crates/ui-egui/src/properties.rs:180
 msgid "Location"
 msgstr "位置"
@@ -5639,7 +5639,7 @@ msgid "Measure (ME): click two points; their length and angle read beside the ru
 msgstr "測量 (ME)：單擊兩點；其長度和角度顯示在兩點之間的標尺旁"
 
 #: crates/core/src/family.rs:358
-#: crates/ui-egui/src/editor/connectors.rs:228
+#: crates/ui-egui/src/editor/connectors.rs:229
 msgid "Mechanical"
 msgstr ""
 
@@ -6083,7 +6083,7 @@ msgstr "未封閉"
 #: crates/ui-egui/src/adaptive_editor.rs:804
 #: crates/ui-egui/src/cad.rs:85
 #: crates/ui-egui/src/clouds.rs:59
-#: crates/ui-egui/src/editor/connectors.rs:222
+#: crates/ui-egui/src/editor/connectors.rs:223
 #: crates/ui-egui/src/editor/dimensions.rs:941
 #: crates/ui-egui/src/editor/document.rs:919
 #: crates/ui-egui/src/editor/types_dialog.rs:469
@@ -6424,7 +6424,7 @@ msgstr ""
 msgid "Number"
 msgstr "編號"
 
-#: crates/ui-egui/src/editor/connectors.rs:299
+#: crates/ui-egui/src/editor/connectors.rs:300
 msgid "Number of Poles"
 msgstr ""
 
@@ -7671,7 +7671,7 @@ msgstr ""
 msgid "Power Connector: what an electrical device draws, its voltage and load"
 msgstr ""
 
-#: crates/ui-egui/src/editor/connectors.rs:312
+#: crates/ui-egui/src/editor/connectors.rs:313
 msgid "Power Factor"
 msgstr ""
 
@@ -9107,7 +9107,7 @@ msgid "Single Door"
 msgstr "單扇門"
 
 #: crates/ui-egui/src/editor/connectors.rs:148
-#: crates/ui-egui/src/editor/connectors.rs:279
+#: crates/ui-egui/src/editor/connectors.rs:280
 #: crates/ui-egui/src/linestyles/creator.rs:191
 #: crates/ui-egui/src/properties.rs:286
 msgid "Size"
@@ -9701,8 +9701,8 @@ msgid "Symbols"
 msgstr "符號"
 
 #: crates/core/src/schedule.rs:200
-#: crates/ui-egui/src/editor/connectors.rs:228
-#: crates/ui-egui/src/editor/connectors.rs:235
+#: crates/ui-egui/src/editor/connectors.rs:229
+#: crates/ui-egui/src/editor/connectors.rs:236
 msgid "System"
 msgstr "系統"
 
@@ -10981,7 +10981,7 @@ msgstr "空心放樣"
 msgid "Void Swept Blend"
 msgstr "空心放樣融合"
 
-#: crates/ui-egui/src/editor/connectors.rs:305
+#: crates/ui-egui/src/editor/connectors.rs:306
 msgid "Voltage"
 msgstr ""
 
