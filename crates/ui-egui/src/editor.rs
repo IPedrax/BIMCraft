@@ -34,7 +34,7 @@ use bimcraft_core::family::{
     Parameter, PlaneRef, REF_LEVEL, RefLine, RefPlane, Symbol,
 };
 use bimcraft_core::model::{Model, Operation};
-use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
+use bimcraft_core::view3d::{AZIMUTH, ELEVATION};
 use egui::{
     Align, Color32, ColorImage, ComboBox, Context, Grid, Id as UiId, Layout, PointerButton, Rect, RichText, ScrollArea, Sense, Stroke,
     StrokeKind, TextEdit, TextureHandle, TextureOptions, Ui, WidgetInfo, WidgetType, pos2, vec2,
@@ -427,19 +427,16 @@ impl SymbolText {
     }
 }
 
-/// The family's {3D} preview: its picture and what it was drawn of (`key`); for a test, the camera it was drawn through and
-/// its size in pixels.
-pub(crate) struct Preview {
-    key: u64,
-    pub(crate) tile: TextureHandle,
-    /// The camera it was taken through and its size: what a sketch in {3D} is drawn and clicked through.
+/// What {3D} drew last, for a test: the camera its picture was taken through and its size in pixels.
+#[cfg(test)]
+pub(crate) struct Drawn3d {
     pub(crate) cam: bimcraft_core::view3d::Camera,
     pub(crate) size: [u32; 2],
 }
 
 #[cfg(test)]
-impl Preview {
-    /// Where point `q` of the family is on screen, the picture stretched over `pane`.
+impl Drawn3d {
+    /// Where point `q` of the family is on screen, the picture over `pane`.
     pub(crate) fn screen(&self, pane: Rect, q: [f64; 3]) -> egui::Pos2 {
         let (x, y, _) = self.cam.project(q);
         pane.min + vec2(x as f32 * pane.width() / self.size[0].max(1) as f32, y as f32 * pane.height() / self.size[1].max(1) as f32)
@@ -448,9 +445,15 @@ impl Preview {
 
 #[cfg(test)]
 impl FamilyEditor {
-    /// The {3D} preview, once drawn.
-    pub(crate) fn preview(&self) -> Option<&Preview> {
-        self.preview.as_ref()
+    /// What {3D} drew last, once it has.
+    pub(crate) fn drawn_3d(&self) -> Option<Drawn3d> {
+        let cam = self.orbit.camera?;
+        let (w, h) = (self.orbit.rect.width() * self.orbit.ppp, self.orbit.rect.height() * self.orbit.ppp);
+        let size = [
+            (w.round().max(1.0) as u32).min(bimcraft_core::view3d::MAX_SIDE),
+            (h.round().max(1.0) as u32).min(bimcraft_core::view3d::MAX_SIDE),
+        ];
+        Some(Drawn3d { cam: bimcraft_core::view3d::Camera { width: size[0], height: size[1], ..cam }, size })
     }
 }
 
@@ -497,10 +500,9 @@ pub(crate) struct FamilyEditor {
     types_dialog: types_dialog::TypesDialog,
     /// The type shown in Types and on the preview.
     picked: usize,
-    /// How the preview looks at it: azimuth and elevation, degrees.
-    look: (f64, f64),
-    /// The preview, and what it was drawn of.
-    preview: Option<Preview>,
+    /// {3D}: the project's 3D view's camera, navigation and painters, and the family staged for it (`lit3d.rs`).
+    pub(crate) orbit: crate::orbit::Orbit,
+    pub(crate) scene3d: Option<lit3d::FamilyScene>,
     /// Why the family can't be tried or made: shown under the preview.
     problem: Option<String>,
     /// The document's own state: its history, its preview's size, an association being made.
@@ -619,8 +621,8 @@ impl FamilyEditor {
             connector_hover: None,
             types_dialog: Default::default(),
             picked: 0,
-            look: (AZIMUTH, ELEVATION),
-            preview: None,
+            orbit: crate::orbit::Orbit::named("family-preview"),
+            scene3d: None,
             problem: None,
             document: Default::default(),
             doc_tab: DocTab::Create,
@@ -862,93 +864,6 @@ impl FamilyEditor {
         }
         Ok(Arc::unwrap_or_clone(s.model))
     }
-
-    /// The preview, drawn again when what it shows or how it's looked at changes. A form the type previewed hides is drawn
-    /// ghosted (`ghosted`), as Revit's family editor draws it, unless Preview Visibility is on: then the family is drawn as it
-    /// is placed, without it. The camera is fitted to every form either way, so turning Preview Visibility on doesn't move it,
-    /// nor does Temporary Hide/Isolate leaving forms or a door's wall out (`temp_hide.rs`).
-    fn refresh(&mut self, ctx: &Context, base: &Model) {
-        let ground = crate::canvas::color(bimcraft_core::render::PAPER);
-        let placed_only = self.document.preview_visibility;
-        // Work Plane > Show: the plane drawn into the picture, so the forms in front of it hide it.
-        let work_plane = self.shown_work_plane_3d();
-        // What is selected, and what is under the pointer, highlighted as the project's 3D view does (T11).
-        let lit = self.lit_3d();
-        let result = self.family().and_then(|f| {
-            let key = {
-                let mut h = DefaultHasher::new();
-                (
-                    serde_json::to_string(&f).unwrap_or_default(),
-                    self.picked,
-                    self.name.trim(),
-                    self.look.0.to_bits(),
-                    self.look.1.to_bits(),
-                    self.document.preview_size,
-                    ground.to_array(),
-                    placed_only,
-                    self.temporary(),
-                    self.views.detail,
-                    format!("{work_plane:?} {:?} {lit:?}", (pal().muted, pal().accent)),
-                )
-                    .hash(&mut h);
-                (base.materials.len(), base.images.len()).hash(&mut h);
-                h.finish()
-            };
-            if self.preview.as_ref().is_some_and(|p| p.key == key) {
-                return Ok(None);
-            }
-            let by_view = bimcraft_core::family::views::hidden_in(&f, &self.values(), None, self.views.detail, 0.0);
-            let ghosts = ghosted(&f, &self.values(), &by_view);
-            let every = self.scratch(base, ghosts.as_ref().unwrap_or(&f))?;
-            let mut graphics = bimcraft_core::graphics::Graphics { detail: self.views.detail, ..Default::default() };
-            graphics.categories.insert("level".into(), bimcraft_core::graphics::Override { hidden: true, ..Default::default() });
-            let [w, h] = self.document.preview_size;
-            let scene = Scene::new(&every);
-            let cam = scene.fit_in(self.look.0, self.look.1, w, h, &bimcraft_core::graphics::Look::with(&every, &graphics));
-            // What Temporary Hide/Isolate hides for now: forms, and a door's or a window's wall.
-            let shown = if placed_only { &f } else { ghosts.as_ref().unwrap_or(&f) };
-            let hidden = temp_hide::without(shown, |i| self.temp_hidden_form(i));
-            if self.temp_hidden_host() {
-                graphics.categories.insert("wall".into(), bimcraft_core::graphics::Override { hidden: true, ..Default::default() });
-            }
-            let mut image = if !lit.is_empty() {
-                // The parts lit, each a family of its own placed where the family is, tinted; the rest without them.
-                let shown = hidden.as_ref().unwrap_or(shown);
-                let (rest, parts) = lit3d::split(shown, &lit);
-                let mut drawn = self.scratch(base, &rest)?;
-                let tints = lit3d::place(&mut drawn, self.name.trim(), parts);
-                Scene::new(&drawn).render_in(&cam, &tints, &bimcraft_core::graphics::Look::with(&drawn, &graphics))
-            } else if hidden.is_some() || (placed_only && ghosts.is_some()) {
-                let drawn = self.scratch(base, hidden.as_ref().unwrap_or(shown))?;
-                Scene::new(&drawn).render_in(&cam, &[], &bimcraft_core::graphics::Look::with(&drawn, &graphics))
-            } else {
-                scene.render_in(&cam, &[], &bimcraft_core::graphics::Look::with(&every, &graphics))
-            };
-            // The canvas's ground where nothing is, before the work plane is laid over it.
-            for p in image.rgba.as_chunks_mut::<4>().0.iter_mut().filter(|p| p[..3] == [255; 3]) {
-                p[..3].copy_from_slice(&ground.to_array()[..3]);
-            }
-            let extents = bimcraft_core::family::views::extents(&f, &self.values());
-            if let Some(shown) = &work_plane {
-                views::draw_work_plane_3d(&mut image, &cam, shown, extents);
-            }
-            // A reference plane or line selected, drawn over the picture where nothing stands in front of it.
-            if let Some((datum, c)) = lit.iter().find(|(l, _)| !matches!(l, lit3d::Lit::Part(_))) {
-                let values = self.values();
-                let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
-                lit3d::draw_datum(&mut image, &cam, &flexed, *datum, Color32::from_rgb(c.0, c.1, c.2), extents);
-            }
-            let pixels = image.rgba.as_chunks::<4>().0.iter().map(|p| Color32::from_rgb(p[0], p[1], p[2])).collect();
-            let picture = ColorImage { size: [w as usize, h as usize], pixels, source_size: Default::default() };
-            let tile = ctx.load_texture("family-preview", picture, TextureOptions::LINEAR);
-            Ok(Some(Preview { key, tile, cam, size: [w, h] }))
-        });
-        match result {
-            Ok(Some(drawn)) => (self.preview, self.problem) = (Some(drawn), None),
-            Ok(None) => self.problem = None,
-            Err(e) => self.problem = Some(e),
-        }
-    }
 }
 
 /// The material the preview draws a ghosted form in: grey and see-through. The scratch project's own, never the family's.
@@ -961,7 +876,7 @@ pub(crate) const PREVIEW_FRAME: Color32 = Color32::from_rgb(232, 128, 0);
 /// Visibility Settings leave out of {3D} at the document's Detail Level (`by_view`, F8), shown, in
 /// the ghost's material, as Revit's family editor greys a form hidden in a type so it can still be edited. A void stays as it
 /// builds: never seen, it cuts only where it is there. None when the type hides no form.
-fn ghosted(f: &Family, values: &BTreeMap<String, bimcraft_core::family::Val>, by_view: &[bool]) -> Option<Family> {
+pub(super) fn ghosted(f: &Family, values: &BTreeMap<String, bimcraft_core::family::Val>, by_view: &[bool]) -> Option<Family> {
     let mut g = f.clone();
     let mut any = false;
     for (i, form) in g.forms.iter_mut().enumerate().filter(|(_, form)| !form.void) {

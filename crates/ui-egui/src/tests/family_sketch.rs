@@ -70,7 +70,7 @@ fn screen(h: &Harness<BimApp>, p: [f64; 3]) -> Pos2 {
     let ed = editor(h);
     match ed.views.shown {
         Some(_) => ed.views.screen_of(p).expect("a view shown"),
-        None => ed.preview().expect("the preview drawn").screen(h.state().view_rect, p),
+        None => ed.drawn_3d().expect("{3D} drawn").screen(h.state().view_rect, p),
     }
 }
 

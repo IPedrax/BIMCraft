@@ -332,13 +332,13 @@ fn work_plane_set_picks_a_plane_and_show_tints_it() {
 
 /// Where family point `p` is on screen in {3D}.
 fn in_3d(h: &Harness<BimApp>, p: [f64; 3]) -> egui::Pos2 {
-    editor(h).preview().expect("the preview drawn").screen(h.state().view_rect, p)
+    editor(h).drawn_3d().expect("{3D} drawn").screen(h.state().view_rect, p)
 }
 
 /// The {3D} preview's last picture's colour at family point `p`.
 fn preview_at(h: &Harness<BimApp>, pictures: &Pictures, p: [f64; 3]) -> Color32 {
     let img = super::preview_visibility::preview(h, pictures);
-    let (x, y, _) = editor(h).preview().expect("the preview drawn").cam.project(p);
+    let (x, y, _) = editor(h).drawn_3d().expect("{3D} drawn").cam.project(p);
     img.pixels[y as usize * img.size[0] + x as usize]
 }
 

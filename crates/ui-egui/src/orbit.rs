@@ -209,6 +209,32 @@ pub(crate) struct Input {
 }
 
 impl Input {
+    /// The frame's input over a view in `rect` that draws in points, a pixel a point (the adaptive modelling view's), its widget's
+    /// `response`; with no triad.
+    pub(crate) fn in_points(ui: &Ui, rect: Rect, response: &egui::Response) -> Input {
+        Input::read(ui, rect, response, 1.0, None, None)
+    }
+
+    /// The frame's input over a view in `rect`, `ppp` pixels a point, its widget's `response`; `asked`, what the triad was; and
+    /// `device`, the 3D mouse's cap, which counts only while the window has focus.
+    fn read(
+        ui: &Ui,
+        rect: Rect,
+        response: &egui::Response,
+        ppp: f32,
+        asked: Option<Ask>,
+        device: Option<crate::spacemouse::Motion>,
+    ) -> Input {
+        let side = |v: f32| ((v * ppp).round().max(1.0) as u32).min(MAX_SIDE);
+        let (hover, wheel, pinch, shift, latest, focused, frame) = ui.input(|i| {
+            let hover = i.pointer.hover_pos().filter(|_| response.hovered());
+            (hover, i.smooth_scroll_delta.y, i.zoom_delta(), i.modifiers.shift, i.pointer.latest_pos(), i.focused, f64::from(i.stable_dt))
+        });
+        let motion = device.filter(|_| focused);
+        let wheel = if motion.is_some() { 0.0 } else { wheel };
+        Input { rect, ppp, size: (side(rect.width()), side(rect.height())), hover, wheel, pinch, shift, latest, asked, motion, frame }
+    }
+
     /// Screen point `p` as a pixel of the picture.
     pub(crate) fn px(&self, p: Pos2) -> (f64, f64) {
         (f64::from((p.x - self.rect.min.x) * self.ppp), f64::from((p.y - self.rect.min.y) * self.ppp))
@@ -277,7 +303,7 @@ pub struct Orbit {
     requested_card: bool,
     /// Whether a job asked of the worker for the model shown is still to come back with a camera fitted to it.
     fitting: bool,
-    loading_error: Option<String>,
+    pub(crate) loading_error: Option<String>,
     /// How big the last picture was drawn, points, which a wait shows it at.
     picture_size: Option<egui::Vec2>,
     fit_worker: Option<crate::view_worker::Latest<FitJob, FitDone>>,
@@ -321,7 +347,17 @@ pub struct Orbit {
     pub(crate) triad: crate::triad::Over,
     /// What the Aligned Dimension tool has picked in the 3D view so far: its references, before a click places its line.
     pub(crate) dim3: Vec<Ref3>,
+    /// The picture's size the camera was fitted to, while nothing has moved it since: a view that fits itself again as it is
+    /// resized (a family's {3D}) looks at it.
+    pub(crate) fitted: Option<(u32, u32)>,
+    /// Which view this is to the card, which keeps one mesh of another view's beside its own (`Gpu::hold_for`).
+    slot: u64,
+    /// What its processor picture's texture is called.
+    name: &'static str,
 }
+
+/// The next view's slot on the card.
+static NEXT_SLOT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// A room as the 3D view draws it: its outline in plan (an unbounded one's square), swept from `bottom` to `top`.
 type RoomSolid = (Vec<P2>, f64, f64);
@@ -367,6 +403,9 @@ impl Default for Orbit {
             wall_base: None,
             triad: Default::default(),
             dim3: Vec::new(),
+            fitted: None,
+            slot: NEXT_SLOT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            name: "view3d",
         }
     }
 }
@@ -587,6 +626,75 @@ impl Orbit {
 }
 
 impl Orbit {
+    /// A view whose processor picture's texture is called `name`.
+    pub(crate) fn named(name: &'static str) -> Orbit {
+        Orbit { name, ..Orbit::default() }
+    }
+
+    /// Zoom to Fit: all the view shows of its model, from where the camera is, fitted on the worker.
+    pub(crate) fn fit(&mut self) {
+        if let Some(c) = self.camera {
+            self.fit_target = Some(c);
+            self.fit_requested = None;
+            self.fit_from = None;
+        }
+    }
+
+    /// Home: the camera turned to Revit's default orientation and fitted over the model on the worker, through `lens`.
+    pub(crate) fn home(&mut self, lens: Option<f64>) {
+        if let Some(c) = self.camera {
+            self.fit_target = Some(Camera { azimuth: AZIMUTH, elevation: ELEVATION, lens, ..c });
+            self.fit_requested = None;
+            self.fit_from = None;
+        }
+    }
+
+    /// What the picture on screen shows at screen point `at` (`input` the frame's), through `cam`.
+    pub(crate) fn hit(&self, input: &Input, cam: &Camera, at: Pos2) -> Option<Hit> {
+        let (x, y) = input.px(at);
+        self.picker.as_ref()?.at(cam, x, y)
+    }
+
+    /// Whether the hand is turning or panning the view.
+    pub(crate) fn turning(&self) -> bool {
+        self.drag.is_some()
+    }
+
+    /// Whether the picture on screen is of `model`.
+    pub(crate) fn shows(&self, model: &Arc<Model>) -> bool {
+        self.shown.as_ref().is_some_and(|s| Arc::ptr_eq(&s.0, model))
+    }
+
+    /// The view in `rect` while its scene or mesh is made, on `p`: the last picture, still at first so that a short wait doesn't
+    /// flicker, then faded with `words` over it. With none yet, or with something wrong (`now`), the words at once.
+    pub(crate) fn wait(&mut self, ctx: &egui::Context, p: &egui::Painter, card: &crate::gpu::Card, rect: Rect, words: &str, now: bool) {
+        p.rect_filled(rect, 0.0, color(render::PAPER));
+        let since = *self.waiting_since.get_or_insert_with(std::time::Instant::now);
+        let picture = match self.picture_size {
+            Some(size) if self.on_card => card.gpu.as_ref().and_then(|g| g.texture()).map(|id| (id, size)),
+            Some(size) => self.texture.as_ref().map(|t| (t.id(), size)),
+            None => None,
+        };
+        if let Some((id, size)) = picture {
+            p.image(id, Rect::from_min_size(rect.min, size), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+        }
+        let shown = Waiting::after(since.elapsed(), picture.is_some(), now);
+        self.waiting = Some(shown);
+        if shown == Waiting::Quiet {
+            ctx.request_repaint_after(WAIT_QUIET);
+        } else {
+            if shown == Waiting::Faded {
+                let c = color(render::PAPER);
+                p.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), WAIT_FADE));
+            }
+            let galley = p.layout_no_wrap(words.to_string(), egui::FontId::proportional(14.0), pal().text);
+            let at = rect.center() - galley.size() / 2.0;
+            let card = Rect::from_min_size(at, galley.size()).expand2(vec2(12.0, 7.0));
+            p.rect(card, 6.0, pal().surface, Stroke::new(1.0, pal().border), StrokeKind::Inside);
+            p.galley(at, galley, pal().text);
+        }
+    }
+
     pub(crate) fn suspend(&mut self) {
         self.worker = None;
         self.requested = None;
@@ -616,7 +724,14 @@ impl Orbit {
     /// Install a whole snapshot at once, so the picture and its picker cannot refer to different models.
     /// The scene of `model` (and its mesh, for a `card`) made or brought up to date on the worker, and a camera fitted to it
     /// through `lens` while the view has none (a view the user sent home, or opened anew): whether both are ready to draw.
-    fn prepare(&mut self, ctx: &egui::Context, model: &Arc<Model>, (width, height): (u32, u32), lens: Option<f64>, card: bool) -> bool {
+    pub(crate) fn prepare(
+        &mut self,
+        ctx: &egui::Context,
+        model: &Arc<Model>,
+        (width, height): (u32, u32),
+        lens: Option<f64>,
+        card: bool,
+    ) -> bool {
         if let Some(done) = self.worker.as_ref().and_then(crate::view_worker::Latest::take)
             && Arc::ptr_eq(&done.model, model)
         {
@@ -683,6 +798,7 @@ impl Orbit {
     fn install(&mut self, done: SceneDone) {
         if self.camera.is_none() {
             self.camera = Some(done.fitted);
+            self.fitted = Some((done.fitted.width, done.fitted.height));
         }
         if let Some(mesh) = done.mesh {
             self.mesh = Some((Arc::clone(&done.model), mesh));
@@ -692,7 +808,7 @@ impl Orbit {
         self.fitting = false;
     }
 
-    fn prepare_fit(&mut self, ctx: &egui::Context, model: &Arc<Model>) -> Option<String> {
+    pub(crate) fn prepare_fit(&mut self, ctx: &egui::Context, model: &Arc<Model>) -> Option<String> {
         if self.fit_from.is_some_and(|from| self.camera != Some(from)) {
             self.fit_worker = None;
             self.fit_target = None;
@@ -756,16 +872,9 @@ impl Orbit {
         device: Option<crate::spacemouse::Motion>,
     ) -> Input {
         let asked = self.triad_input(ui, rect, nav);
-        let ppp = ui.ctx().pixels_per_point();
-        let side = |v: f32| ((v * ppp).round().max(1.0) as u32).min(MAX_SIDE);
-        let (hover, wheel, pinch, shift, latest) = ui.input(|i| {
-            let hover = i.pointer.hover_pos().filter(|_| response.hovered());
-            (hover, i.smooth_scroll_delta.y, i.zoom_delta(), i.modifiers.shift, i.pointer.latest_pos())
-        });
-        let (focused, frame) = ui.input(|i| (i.focused, f64::from(i.stable_dt)));
-        let motion = device.filter(|_| focused);
-        let wheel = if motion.is_some() { 0.0 } else { wheel };
-        Input { rect, ppp, size: (side(rect.width()), side(rect.height())), hover, wheel, pinch, shift, latest, asked, motion, frame }
+        let input = Input::read(ui, rect, response, ui.ctx().pixels_per_point(), asked, device);
+        (self.rect, self.ppp) = (rect, input.ppp);
+        input
     }
 
     /// `cam` zoomed by the wheel and a pinch, a notch (about 50 points) a fifth, toward what the picture on screen shows under the
@@ -856,7 +965,13 @@ impl Orbit {
     /// The mesh the card draws the picture from, where the card is `ready` and the mesh is made: put on the card off the
     /// interface's thread first (meanwhile [`OnCard::Loading`]). One the card can't take gives the card up. The card's note says
     /// why a card wanted draws nothing, as the mesh says.
-    pub(crate) fn card_mesh(&self, ctx: &egui::Context, card: &mut crate::gpu::Card, ready: bool) -> OnCard {
+    pub(crate) fn card_mesh(&mut self, ctx: &egui::Context, card: &mut crate::gpu::Card, ready: bool) -> OnCard {
+        // Another view's mesh on the card is set aside, and this one's brought back: the picture on the card is not this view's.
+        if let Some(gpu) = card.gpu.as_mut()
+            && gpu.hold_for(self.slot)
+        {
+            self.shown = None;
+        }
         let mut mesh = match ready.then(|| self.mesh.as_ref().map(|(_, m)| m)).flatten() {
             Some(Ok(mesh)) => Some(Arc::clone(mesh)),
             _ => None,
@@ -973,7 +1088,7 @@ impl Orbit {
                 let pixels = ColorImage { size: [image.width as usize, image.height as usize], pixels, source_size: Default::default() };
                 match &mut self.texture {
                     Some(t) => t.set(pixels, TextureOptions::NEAREST),
-                    None => self.texture = Some(ctx.load_texture("view3d", pixels, TextureOptions::NEAREST)),
+                    None => self.texture = Some(ctx.load_texture(self.name, pixels, TextureOptions::NEAREST)),
                 }
             }
             self.marked = Some(plane_marks.to_vec());
@@ -1003,13 +1118,15 @@ impl BimApp {
         }
     }
 
+    /// Where point `p` of the family open shows on screen, in its {3D} as last shown (its axes are the scratch model's).
+    pub fn family_screen3(&self, p: P3) -> Option<Pos2> {
+        let o = &self.family_editor.as_ref()?.orbit;
+        o.camera.map(|c| on_screen(&c, o.rect, o.ppp, p))
+    }
+
     /// Zoom to Fit: all the view shows of the model, from where the camera is.
     pub(crate) fn fit3d(&mut self) {
-        if let Some(c) = self.orbit.camera {
-            self.orbit.fit_target = Some(c);
-            self.orbit.fit_requested = None;
-            self.orbit.fit_from = None;
-        }
+        self.orbit.fit();
     }
 
     /// Paint (PT): the face clicked of element `id` takes the material in the Options Bar, or with `remove` loses its paint.
@@ -1844,12 +1961,7 @@ impl BimApp {
                 self.orbit.camera = None;
                 self.orbit.built = None;
             }
-            (view, Some(c)) => {
-                let lens = view.and_then(|(_, l)| l);
-                self.orbit.fit_target = Some(Camera { azimuth: AZIMUTH, elevation: ELEVATION, lens, ..c });
-                self.orbit.fit_requested = None;
-                self.orbit.fit_from = None;
-            }
+            (view, Some(_)) => self.orbit.home(view.and_then(|(_, l)| l)),
         }
     }
 
@@ -1857,32 +1969,7 @@ impl BimApp {
     /// with `words` over it, and its bar as ever. With none yet, or with something wrong (`now`), the words at once.
     fn wait3d(&mut self, ui: &mut Ui, rect: Rect, words: &str, now: bool) {
         let p = ui.painter_at(rect);
-        p.rect_filled(rect, 0.0, color(render::PAPER));
-        let o = &mut self.orbit;
-        let since = *o.waiting_since.get_or_insert_with(std::time::Instant::now);
-        let picture = match o.picture_size {
-            Some(size) if o.on_card => self.card.gpu.as_ref().and_then(|g| g.texture()).map(|id| (id, size)),
-            Some(size) => o.texture.as_ref().map(|t| (t.id(), size)),
-            None => None,
-        };
-        if let Some((id, size)) = picture {
-            p.image(id, Rect::from_min_size(rect.min, size), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-        }
-        let shown = Waiting::after(since.elapsed(), picture.is_some(), now);
-        o.waiting = Some(shown);
-        if shown == Waiting::Quiet {
-            ui.ctx().request_repaint_after(WAIT_QUIET);
-        } else {
-            if shown == Waiting::Faded {
-                let c = color(render::PAPER);
-                p.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), WAIT_FADE));
-            }
-            let galley = p.layout_no_wrap(words.to_string(), egui::FontId::proportional(14.0), pal().text);
-            let at = rect.center() - galley.size() / 2.0;
-            let card = Rect::from_min_size(at, galley.size()).expand2(vec2(12.0, 7.0));
-            p.rect(card, 6.0, pal().surface, Stroke::new(1.0, pal().border), StrokeKind::Inside);
-            p.galley(at, galley, pal().text);
-        }
+        self.orbit.wait(ui.ctx(), &p, &self.card, rect, words, now);
         self.nav_bar3d(ui, &p, rect);
     }
 

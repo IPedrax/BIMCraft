@@ -451,6 +451,9 @@ pub struct Gpu {
     /// A second mesh kept on the card beside the one drawn: what [`park`](Self::park) set aside, so that a view showing it again
     /// (another document's tab gone back to) draws it without uploading it again. The two share [`card_bytes`](Self::card_bytes).
     parked: Option<Uploaded>,
+    /// The views the mesh drawn and the parked one are of ([`hold_for`](Self::hold_for)).
+    owner: Option<u64>,
+    parked_owner: Option<u64>,
     upload_worker: Option<crate::view_worker::Latest<UploadJob, UploadDone>>,
     upload_requested: Option<Arc<Mesh>>,
     targets: Option<Targets>,
@@ -990,6 +993,8 @@ impl Gpu {
             segments,
             mesh: None,
             parked: None,
+            owner: None,
+            parked_owner: None,
             upload_worker: None,
             upload_requested: None,
             targets: None,
@@ -1059,7 +1064,7 @@ impl Gpu {
             Err(e) => Err(e),
         };
         if drawn.is_err() || caught.is_err() {
-            (self.mesh, self.parked, self.targets) = (None, None, None);
+            (self.mesh, self.parked, self.parked_owner, self.targets) = (None, None, None, None);
         }
         caught.and(drawn)
     }
@@ -1068,6 +1073,7 @@ impl Gpu {
     /// holds no more than one buffer.
     pub(crate) fn hold_less(&mut self) -> bool {
         if self.parked.take().is_some() {
+            self.parked_owner = None;
             return true;
         }
         let Some(up) = &mut self.mesh else { return false };
@@ -1150,12 +1156,32 @@ impl Gpu {
 
     /// Sets the mesh drawn now aside, kept on the card in place of any parked before, for a view that will show it again: the
     /// next mesh drawn is another's. Drawing it again brings it back without an upload.
-    #[cfg_attr(not(test), expect(dead_code, reason = "a family document's 3D view parks the project's mesh as its tab opens"))]
     pub(crate) fn park(&mut self) {
         self.suspend_upload();
         if let Some(up) = self.mesh.take() {
             self.parked = Some(up);
+            self.parked_owner = self.owner.take();
         }
+    }
+
+    /// The card made ready for view `owner` to draw on: its own mesh back where it was parked (the other view's parked in turn),
+    /// else another view's set aside. Whether the card held another's: the picture on it is not the view's, which draws again.
+    pub(crate) fn hold_for(&mut self, owner: u64) -> bool {
+        if self.owner == Some(owner) {
+            return false;
+        }
+        if self.parked_owner == Some(owner) {
+            self.suspend_upload();
+            std::mem::swap(&mut self.mesh, &mut self.parked);
+            std::mem::swap(&mut self.owner, &mut self.parked_owner);
+            self.forget_progress();
+            return true;
+        }
+        if self.mesh.is_some() {
+            self.park();
+        }
+        self.owner = Some(owner);
+        true
     }
 
     /// The parked mesh back in place of the one drawn, which is parked in turn, where it is `mesh`: whether it was.
@@ -1164,12 +1190,17 @@ impl Gpu {
             return false;
         }
         std::mem::swap(&mut self.mesh, &mut self.parked);
-        // The targets hold the other mesh's surfaces.
+        std::mem::swap(&mut self.owner, &mut self.parked_owner);
+        self.forget_progress();
+        true
+    }
+
+    /// The targets hold another mesh's surfaces: the one drawn starts its picture again.
+    fn forget_progress(&mut self) {
         if let Some(up) = &mut self.mesh {
             up.progress = None;
             up.wire_stream = None;
         }
-        true
     }
 
     /// How many bytes of its own vertices the parked mesh holds.
@@ -2110,6 +2141,31 @@ mod tests {
         assert!(gpu.hold_less());
         assert!(!gpu.parks(&other));
         assert!(gpu.mesh.as_ref().is_some_and(|up| Arc::ptr_eq(&up.mesh, &third)));
+    }
+
+    #[test]
+    fn two_views_take_turns_on_the_card_each_finding_its_own_mesh_where_it_left_it() {
+        let Some(mut gpu) = headless() else { return };
+        let s = sample();
+        let (scene, look) = (Scene::new(&s.model), Look::of_3d(&s.model));
+        let cam = scene.fit_in(AZIMUTH, ELEVATION, 640, 480, &look);
+        let (project, family) = (Arc::new(Mesh::new(&scene, &look).unwrap()), Arc::new(Mesh::new(&scene, &look).unwrap()));
+        assert!(gpu.hold_for(1), "the card was no view's");
+        gpu.draw(&project, &cam, &[], PAPER).unwrap();
+        let owners = gpu.mesh.as_ref().unwrap().owners.clone();
+        assert!(!gpu.hold_for(1), "the same view again");
+        // The family's view: the project's set aside.
+        assert!(gpu.hold_for(2));
+        assert!(gpu.parks(&project) && gpu.mesh.is_none());
+        gpu.draw(&family, &cam, &[], PAPER).unwrap();
+        // An edit of the family's: its own mesh replaced, the project's still kept.
+        let edited = Arc::new(Mesh::new(&scene, &look).unwrap());
+        assert!(!gpu.hold_for(2));
+        gpu.draw(&edited, &cam, &[], PAPER).unwrap();
+        assert!(gpu.parks(&project));
+        // Back to the project's: its own buffers, not uploaded again; the family's parked in turn.
+        assert!(gpu.hold_for(1));
+        assert!(gpu.mesh.as_ref().is_some_and(|up| up.owners == owners) && gpu.parks(&edited));
     }
 
     #[test]

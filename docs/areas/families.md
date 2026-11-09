@@ -179,13 +179,23 @@ and Detail Levels' Edit…), on the contextual tab "Modify | Symbols" (Delete). 
 typed rather than dragged in a view. Sketch mode (Edit Extrusion, Finish and
 Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's (below); its Visibility panel's Visibility Settings is F8's (below).
 
-{3D} shows what is selected as the project's 3D view does (T11, `editor/lit3d.rs`): a form, a void or a nested instance selected
-is tinted halfway in the selection's colour with its edges whole, through the project's own tints (`Scene::render_in`), the part a
-family of its own in the scratch model placed where the family is, the rest of the family without it, so what stands in front of
-it still hides it; a void, never seen, is drawn see-through while selected. The form or nested instance under the pointer is lit
-in the hover colour (`family::views::part_at_3d`, the one whose surface there is nearest the eye), and a click selects it, a click
-on nothing letting the selection go. A reference plane or line selected in a plan or an elevation is drawn into {3D}'s picture in
-the selection's colour, depth tested as the work plane is (`view3d::PlaneMark`, `Image::draw_line`).
+{3D} is drawn by the project's 3D view (`orbit.rs`, `editor/lit3d.rs`, `BimApp::family_3d`): the document owns an `Orbit`, whose
+worker makes the scene and the card's mesh of a scratch model in which every solid form and every nested instance is placed as
+a family of its own where the family is (`FamilyEditor::stage_3d`, staged again only when the draft, the type, Preview
+Visibility, the Detail Level, Temporary Hide/Isolate or a void selected changes; a door's or a window's opening stays in its
+wall with its solids hidden, its parts generic copies at the opening's frame, as the views' ghosts are). Its picture is the
+card's or the processor's, as the project's is, and the card keeps the project's mesh parked beside it (`Gpu::hold_for`), so
+neither is uploaded again when the other view shows. It is moved as the project's 3D view is: a primary drag orbits about the
+point under the pointer, the middle button pans, Shift and the middle button orbit, the wheel zooms toward the point under the
+cursor, the 3D mouse moves it, the triad (left of the ViewCube) and Revit's ViewCube turn it, and Zoom to Fit fits it; while
+nothing has moved it, it fits itself again as its pane is resized. It shows what is selected as the project's 3D view does (T11):
+a form, a void or a nested instance selected is tinted halfway in the selection's colour with its edges whole, through the
+project's own tints, so what stands in front of it still hides it; a void, never seen, is drawn see-through while selected
+(staged again when the selection changes). The form or nested instance under the pointer, picked in the picture on screen
+(`Picker`, its element mapped back to its part), is lit in the hover colour, and a click selects it, a click on nothing letting
+the selection go. A reference plane selected in a plan or an elevation, and Work Plane > Show, are laid over the picture as
+marks depth tested as the project's work plane is (`view3d::PlaneMark`); a reference line selected, as a strip a few pixels wide.
+The connectors' symbols, the sketch and its padlocks are drawn over it through the `Orbit`'s camera.
 
 A family's connectors (#269) are elements of its document, as Revit's: Create > Connectors places a pipe, power, switch, data
 or earthing one at the origin, selected; the browser lists them under Connectors, and a selected one's Properties type its name,
@@ -1199,4 +1209,4 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/connectors.rs`: a family's connectors in the document, placed from Create > Connectors, listed in the browser, typed
   in Properties. `editor/connector_marks.rs`: their symbols and arrows over {3D}, plans and elevations, lit and picked (an
   overlay drawn through a view's projection alone).
-- `editor/lit3d.rs`: {3D}'s selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.
+- `editor/lit3d.rs`: {3D} staged for the project's 3D view (`FamilyScene`), its selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.

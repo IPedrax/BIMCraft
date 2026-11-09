@@ -101,7 +101,7 @@ The modelling view (`adaptive_view.rs`) is a 3D view drawn as Revit's of a famil
 the drawing's own ground: lighter in a dark interface when the canvas is kept light), Ref. Level a dash-dot outline, the
 reference planes dashed green, forms light grey with their edges where their faces fold (`Mesh::folds`), points as black dots,
 placement numbers in blue; and Revit's **ViewCube** at the top right (a face clicked looks from that side, `cube_faces`; the house
-over it is the default view; a drag on it orbits). It opens framing the family and its datums, and is orbited by Shift and the middle button (as Revit's), panned with the middle button, zoomed with the wheel; a drag on
+over it is the default view; a drag on it orbits; `Orbit::cube_faces`, shared with the family's {3D}). It opens framing the family and its datums, and is orbited by Shift and the middle button (as Revit's), panned with the middle button, zoomed with the wheel toward the cursor, through the project's 3D view's navigation (`Orbit::zoom` and `Orbit::navigate`, in the view's points); a drag on
 empty space draws a selection box, as Revit's: left to right it takes what lies wholly inside it (a solid outline), right to
 left what it touches (dashed), Ctrl adding to the selection and Shift taking away (`Evaluation::in_box`). It draws the family's
 datums: Ref. Level and the reference planes Center (Front/Back) and Center (Left/Right), each the outline of a rectangle

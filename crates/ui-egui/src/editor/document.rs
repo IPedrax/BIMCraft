@@ -16,10 +16,9 @@ use bimcraft_core::adaptive::{Definition, Evaluated, Plane, PointType, WorkPlane
 use bimcraft_core::units::Units;
 use egui::{Align2, FontId, Frame, Margin, UiBuilder};
 
-/// What the family document keeps of its own: its history and its preview's size.
+/// What the family document keeps of its own: its history.
+#[derive(Default)]
 pub(crate) struct State {
-    /// The 3D preview's size, in pixels: the view's.
-    pub(super) preview_size: [u32; 2],
     /// The draft before each step, newest last, and the steps undone.
     undo: Vec<Draft>,
     redo: Vec<Draft>,
@@ -44,26 +43,6 @@ pub(crate) struct State {
     /// What Family Category and Parameters' category list is filtered by, and whether the list has been shown since it opened.
     category_filter: String,
     category_shown: bool,
-}
-
-impl Default for State {
-    fn default() -> State {
-        State {
-            preview_size: [360, 300],
-            undo: Vec::new(),
-            redo: Vec::new(),
-            mark: None,
-            dialog_saved: None,
-            refused: None,
-            clean: None,
-            preview_visibility: false,
-            temp: Default::default(),
-            loaded_to_close: false,
-            options_refused: None,
-            category_filter: String::new(),
-            category_shown: false,
-        }
-    }
 }
 
 /// The most steps the document's history keeps.
@@ -1226,85 +1205,7 @@ impl BimApp {
                 self.status = Status { text: e, error: true };
             }
         } else {
-            let response = ui.interact(pane, UiId::new("family-preview"), Sense::click_and_drag());
-            // Where a point of the pane is in the picture last drawn, through the camera it was drawn with.
-            let drawn = ed.preview.as_ref().map(|p| (p.cam, p.size));
-            let in_picture = |p: egui::Pos2, size: [u32; 2]| {
-                (
-                    f64::from((p.x - pane.min.x) * size[0] as f32 / pane.width().max(1.0)),
-                    f64::from((p.y - pane.min.y) * size[1] as f32 / pane.height().max(1.0)),
-                )
-            };
-            // A click selects the form or the nested instance under it, and on nothing lets the selection go, as in Revit
-            // and the project's 3D view; the pointer over one lights it first (T11).
-            // The connectors' symbols are over the picture, so a click near one picks it first (#269).
-            if let Some((cam, size)) = drawn
-                && !ed.sketching()
-            {
-                let marks = ed.connector_marks();
-                let project = on_pane(cam, size, pane);
-                if response.clicked()
-                    && let Some(p) = response.interact_pointer_pos()
-                {
-                    match super::connector_marks::pick(&marks, &project, p) {
-                        Some(i) => ed.select_connector(i),
-                        None => ed.click_3d(&cam, in_picture(p, size)),
-                    }
-                }
-                let still = !response.dragged() && ui.input(|i| !i.pointer.any_down());
-                let at = response.hover_pos().filter(|_| still).map(|p| (p, in_picture(p, size)));
-                ed.connector_hover = at.and_then(|(p, _)| super::connector_marks::pick(&marks, &project, p));
-                if ed.connector_hover.is_some() {
-                    ed.views.hover3d = None;
-                } else {
-                    ed.hover_3d(at, &cam);
-                }
-            } else {
-                ed.views.hover3d = None;
-                ed.connector_hover = None;
-            }
-            ed.document.preview_size = [pane.width().clamp(64.0, 1600.0) as u32, pane.height().clamp(64.0, 1200.0) as u32];
-            // While sketching, a drag drags a picked line's end rather than turn the view, unless none is held.
-            let gripped = ed.sketch.as_ref().is_some_and(|s| s.sketch.drag.is_some());
-            let orbit = (response.dragged_by(PointerButton::Primary) && !gripped)
-                || (response.dragged_by(PointerButton::Middle) && ui.input(|i| i.modifiers.shift));
-            if orbit {
-                let d = response.drag_delta();
-                ed.look = (ed.look.0 - f64::from(d.x) * 0.5, (ed.look.1 + f64::from(d.y) * 0.5).clamp(-89.0, 89.0));
-            }
-            let base = Arc::clone(&self.session.model);
-            ed.refresh(ui.ctx(), &base);
-            // A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
-            if response.double_clicked()
-                && !ed.sketching()
-                && let (Some(p), Some((cam, size))) = (response.interact_pointer_pos(), ed.preview.as_ref().map(|p| (p.cam, p.size)))
-            {
-                let px = in_picture(p, size);
-                let values = ed.values();
-                let hit = ed.family().ok().and_then(|f| bimcraft_core::family::views::form_at_3d(&f, &values, &cam, px));
-                if let Some(i) = hit {
-                    ed.select_form_at(i);
-                    if let Err(e) = ed.edit_form_sketch(i) {
-                        self.status = Status { text: e, error: true };
-                    }
-                }
-            }
-            if let Some(p) = &ed.preview {
-                ui.painter().image(p.tile.id(), pane, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-            }
-            // The connectors over it, at their places in the family's axes, through the camera it was drawn with.
-            if let Some((cam, size)) = ed.preview.as_ref().map(|p| (p.cam, p.size)) {
-                let marks = ed.connector_marks();
-                let lit = (crate::style::canvas_pal().accent, crate::style::canvas_pal().hover);
-                let project = on_pane(cam, size, pane);
-                super::connector_marks::paint(&ui.painter_at(pane), &marks, &project, ed.selected_connector(), ed.connector_hover, lit);
-            }
-            // A form being sketched on its plane, over the picture (F5).
-            if let Some((cam, size)) = ed.preview.as_ref().map(|p| (p.cam, p.size))
-                && let Some(e) = ed.sketch_in_3d(ui, &response, &ui.painter_at(pane), &cam, size, pane)
-            {
-                self.status = Status { text: e, error: true };
-            }
+            self.family_3d(ui, &mut ed, pane);
         }
         let card = crate::style::card([true, false, true, false]).inner_margin(Margin::same(2));
         let mut over = ui.new_child(UiBuilder::new().id_salt("family-view-tabs").max_rect(pane));
@@ -1337,7 +1238,7 @@ impl BimApp {
                 ui.label(RichText::new(t("Shaded")).color(pal().muted));
                 if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
                     ed.modeller.camera = None;
-                    ed.look = (AZIMUTH, ELEVATION);
+                    ed.orbit.fit();
                 }
                 // Revit's Preview Visibility: the family as placed, the forms its type hides left out rather than ghosted.
                 if ed.adaptive.is_none() {
@@ -1498,7 +1399,9 @@ impl BimApp {
                 "Click a form, a nested instance, a reference plane, a reference line or a dimension to select it; drag a selected plane to move it, a grip to turn or stretch."
             ),
             (None, true) => adaptive_view::prompt(&ed.modeller),
-            (None, false) => msg!("Drag the picture to turn it."),
+            (None, false) => msg!(
+                "Click a form or a nested instance to select it. A drag or Shift and the middle button orbit, the middle button pans, the wheel zooms."
+            ),
         })
     }
 
@@ -1960,4 +1863,131 @@ fn visibility_panel(ui: &mut Ui, ed: &mut FamilyEditor, target: super::visibilit
             ed.open_visibility(target);
         }
     });
+}
+
+impl BimApp {
+    /// The family's {3D} in `pane`, drawn as the project's 3D view is (`orbit.rs`): its scene and mesh made on the document's own
+    /// worker, its picture on the card or the processor, and turned, panned and zoomed by the hand, the wheel, the 3D mouse, the
+    /// triad and the ViewCube. A click selects the form or the nested instance under it (the connectors' symbols first, which lie
+    /// over it), and on nothing lets the selection go, as in Revit and the project's 3D view; the pointer over one lights it
+    /// first (T11). A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
+    fn family_3d(&mut self, ui: &mut Ui, ed: &mut FamilyEditor, pane: Rect) {
+        let response = ui.interact(pane, UiId::new("family-preview"), Sense::click_and_drag());
+        self.canvas.track(ui, &response);
+        // The triad stands left of the ViewCube, which is in the top right corner; both are laid over the view, so a click on
+        // either is theirs.
+        let cube_at = crate::orbit::Orbit::cube_rect(pane);
+        let device = self.space_mouse.as_ref().and_then(crate::spacemouse::SpaceMouse::motion);
+        let input = ed.orbit.input(ui, pane, &response, cube_at.left_top(), device);
+        let cube = ui.interact(cube_at.union(crate::orbit::Orbit::home_rect(pane)), UiId::new("family-viewcube"), Sense::click());
+        let base = Arc::clone(&self.session.model);
+        ed.stage_3d(&base);
+        let p = ui.painter_at(pane);
+        let Some(model) = ed.scene3d.as_ref().map(|s| Arc::clone(&s.model)) else {
+            p.rect_filled(pane, 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
+            return;
+        };
+        // On the card, unless the project's 3D view floats beside it: the card's picture is one, which that view draws in the same
+        // frame.
+        let card_ready = !self.floats(crate::Sheet::View3D) && self.card.ready().is_some();
+        let (w, h) = input.size;
+        // Fitted and not moved since, the view fits itself again as its pane settles or is resized.
+        if ed.orbit.fitted.is_some_and(|at| at != (w, h)) {
+            (ed.orbit.camera, ed.orbit.fitted) = (None, None);
+        }
+        if !ed.orbit.prepare(ui.ctx(), &model, (w, h), None, card_ready) {
+            let error = ed.orbit.loading_error.clone();
+            ed.orbit.wait(ui.ctx(), &p, &self.card, pane, error.as_deref().unwrap_or(t("Building 3D view…")), error.is_some());
+            return;
+        }
+        if let Some(error) = ed.orbit.prepare_fit(ui.ctx(), &model) {
+            self.status = Status { text: crate::lang::tf("Could not fit the 3D view: {}", &[&error]), error: true };
+        }
+        let (Some((_, scene)), Some(camera)) = (ed.orbit.scene.clone(), ed.orbit.camera) else { return };
+        let fresh = ed.orbit.shows(&model);
+        let cam = ed.orbit.zoom(ui.ctx(), &input, camera.sized(w, h, None), fresh.then_some(&*scene));
+        // A face of the ViewCube looks at the family from its side; the house, Revit's default 3D view.
+        let cam = match cube
+            .clicked()
+            .then(|| cube.interact_pointer_pos())
+            .flatten()
+            .and_then(|at| crate::orbit::Orbit::cube_click(&cam, pane, at))
+        {
+            Some(crate::orbit::Cube::Look(azimuth, elevation)) => bimcraft_core::view3d::Camera { azimuth, elevation, ..cam },
+            Some(crate::orbit::Cube::Home) => {
+                ed.orbit.home(None);
+                cam
+            }
+            None => cam,
+        };
+        // While sketching, a drag from a picked line's end drags it rather than turn the view.
+        let gripped = ed.sketch.as_ref().is_some_and(|s| s.sketch.drag.is_some());
+        let quick = self.canvas.quick();
+        let nav = ed.orbit.navigate(ui, &response, &input, cam, gripped, false, quick, fresh.then_some(&*scene));
+        let cam = nav.cam;
+        if cam != camera.sized(w, h, None) {
+            ed.orbit.fitted = None;
+        }
+        let size = [w, h];
+        let project = on_pane(cam, size, pane);
+        let part_at = |ed: &FamilyEditor, at: egui::Pos2| {
+            let id = ed.orbit.hit(&input, &cam, at)?.id;
+            ed.scene3d.as_ref()?.part.get(&id).copied()
+        };
+        // What the pointer is over and what a click picks, in the picture on screen: the connectors' symbols first.
+        let marks = ed.connector_marks();
+        if ed.sketching() {
+            ed.views.hover3d = None;
+            ed.connector_hover = None;
+        } else {
+            let still = !response.dragged() && ui.input(|i| !i.pointer.any_down());
+            let at = input.hover.filter(|_| still && !cube.hovered());
+            ed.connector_hover = at.and_then(|p| super::connector_marks::pick(&marks, &project, p));
+            ed.views.hover3d = at.filter(|_| ed.connector_hover.is_none()).map(|p| (p, cam, part_at(ed, p)));
+            let click = response.clicked().then(|| response.interact_pointer_pos()).flatten().or(self.canvas.quick_press());
+            if let Some(p) = click.filter(|p| !crate::orbit::Orbit::on_cube(pane, *p)) {
+                match super::connector_marks::pick(&marks, &project, p) {
+                    Some(i) => ed.select_connector(i),
+                    None => ed.click_3d(part_at(ed, p)),
+                }
+            }
+            if response.double_clicked()
+                && let Some(p) = response.interact_pointer_pos()
+                && let Some(bimcraft_core::family::views::Part::Form(i)) = part_at(ed, p)
+            {
+                ed.select_form_at(i);
+                if let Err(e) = ed.edit_form_sketch(i) {
+                    self.status = Status { text: e, error: true };
+                }
+            }
+        }
+        // The picture: what is selected and under the pointer tinted, the work plane and a datum selected laid over it.
+        let tints = ed.scene3d.as_ref().map(|s| s.tints(&ed.lit_3d())).unwrap_or_default();
+        let plane_marks = ed.marks_3d(&cam);
+        let mesh = match ed.orbit.card_mesh(ui.ctx(), &mut self.card, card_ready) {
+            crate::orbit::OnCard::Loading => {
+                ed.orbit.wait(ui.ctx(), &p, &self.card, pane, t("Loading 3D view onto the card…"), false);
+                return;
+            }
+            crate::orbit::OnCard::Ready(mesh, failed) => {
+                if let Some(status) = failed {
+                    self.status = status;
+                }
+                mesh
+            }
+        };
+        let shot = crate::orbit::Shown { model: &model, scene: &scene, cam, tints: &tints, marks: &plane_marks, dragged: None, cut: None };
+        if let Some(status) = ed.orbit.paint(ui.ctx(), &p, &mut self.card, mesh.as_ref(), shot) {
+            self.status = status;
+        }
+        // The connectors over it, at their places in the family's axes.
+        let lit = (crate::style::canvas_pal().accent, crate::style::canvas_pal().hover);
+        super::connector_marks::paint(&p, &marks, &project, ed.selected_connector(), ed.connector_hover, lit);
+        // A form being sketched on its plane, over the picture (F5), with its padlocks.
+        if let Some(e) = ed.sketch_in_3d(ui, &response, &p, &cam, size, pane) {
+            self.status = Status { text: e, error: true };
+        }
+        crate::orbit::Orbit::draw_cube(&p, &cam, pane, input.hover.or_else(|| cube.hover_pos()));
+        ed.orbit.triad_draw(&p, pane, cube_at.left_top(), &cam);
+    }
 }

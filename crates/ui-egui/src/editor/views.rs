@@ -1221,20 +1221,15 @@ impl FamilyEditor {
     }
 }
 
-/// Work Plane > Show in the family's {3D}: plane `f` drawn into its picture `image` (taken through `cam`), as the project's 3D
-/// view lays out its work plane (`workplane::patch`) over what the family takes up (`extents`) and [`WORK_PLANE_MARGIN`]
-/// round, tinted as the plans tint it, with a grid through the family's origin about 5 to 20 lines across
-/// (`workplane::grid_step`) and its outline; depth tested, so a form in front of it hides it.
-pub(crate) fn draw_work_plane_3d(
-    image: &mut bimcraft_core::view3d::Image,
-    cam: &bimcraft_core::view3d::Camera,
-    f: &bimcraft_core::family::Frame,
-    extents: ([f64; 3], [f64; 3]),
-) {
+/// Work Plane > Show in the family's {3D}: plane `f` as a mark over its picture, as the project's 3D view lays out its work plane
+/// (`workplane::patch`) over what the family takes up (`extents`) and [`WORK_PLANE_MARGIN`] round, tinted as the plans tint it,
+/// with a grid through the family's origin about 5 to 20 lines across (`workplane::grid_step`) and its outline; depth tested,
+/// so a form in front of it hides it.
+pub(crate) fn work_plane_mark(f: &bimcraft_core::family::Frame, extents: ([f64; 3], [f64; 3])) -> Option<bimcraft_core::view3d::PlaneMark> {
     let plane = bimcraft_core::workplane::Frame { origin: f.origin, normal: f.z };
-    let Some(p) = crate::workplane::patch(plane, extents, WORK_PLANE_MARGIN, [0.0; 3]) else { return };
+    let p = crate::workplane::patch(plane, extents, WORK_PLANE_MARGIN, [0.0; 3])?;
     let step = bimcraft_core::workplane::grid_step((p.hi.0 - p.lo.0).max(p.hi.1 - p.lo.1));
-    image.draw_marks(cam, &[crate::workplane::plane_mark(p, step)]);
+    Some(crate::workplane::plane_mark(p, step))
 }
 
 /// The solid forms the type previewed (`values`) hides, and those the view's Visibility Settings leave out (`by_view`, F8),

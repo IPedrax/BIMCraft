@@ -61,7 +61,7 @@ fn click_plane(h: &mut Harness<BimApp>, q: P2) {
     let p = ed.sketch_frame().expect("sketching on a plane").point(q, 0.0);
     let at = match ed.views.shown {
         Some(_) => ed.views.screen_of(p).expect("a view shown"),
-        None => ed.preview().expect("the preview drawn").screen(h.state().view_rect, p),
+        None => ed.drawn_3d().expect("{3D} drawn").screen(h.state().view_rect, p),
     };
     click_at(h, at);
     h.run();

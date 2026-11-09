@@ -6,7 +6,7 @@
 //! its edits in `adaptive/edit.rs`); Undo here steps back through this editor's edits, and Apply or OK makes the family the
 //! project's.
 use crate::lang::t;
-use crate::orbit::{Cube, Orbit};
+use crate::orbit::{Cube, Input, Orbit};
 use crate::style::pal;
 use bimcraft_core::adaptive::{Definition, Evaluated, Evaluation, Host, Operation, Picked, Plane, PointType, Show, WorkPlane, gizmo_end};
 use bimcraft_core::family::{CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, PlaneRef, Planes, REF_LEVEL, Val};
@@ -38,8 +38,6 @@ pub(crate) enum Draw {
 /// A drag under way in the view.
 #[derive(Clone, Debug)]
 enum Drag {
-    Orbit(Pos2),
-    Pan(Pos2),
     /// A point dragged over the horizontal plane at its height.
     Plane(String, f64),
     /// A point dragged along a gizmo axis: which, where the drag began, and where the point was then.
@@ -55,6 +53,8 @@ pub(crate) struct Modeller {
     pub(crate) tool: Draw,
     pub(crate) selection: Vec<String>,
     drag: Option<Drag>,
+    /// How the view turns, pans and zooms: the project's 3D view's navigation (`Orbit::navigate`), in the view's points.
+    nav: Orbit,
     /// The solid or void Create Form makes: its depth, mm.
     pub(crate) depth: f64,
     /// Where Point Element and Line draw: Revit's Placement Plane, Ref. Level to begin with.
@@ -73,6 +73,7 @@ impl Default for Modeller {
             tool: Draw::Modify,
             selection: Vec::new(),
             drag: None,
+            nav: Orbit::default(),
             depth: 300.,
             work_plane: WorkPlane::default(),
             picking_plane: false,
@@ -312,22 +313,10 @@ pub(crate) fn show(
         None => fit(&r, rect.width(), rect.height()),
     };
     let px = |p: Pos2| (f64::from(p.x - rect.min.x), f64::from(p.y - rect.min.y));
-    let (hover, wheel, pinch, latest, mods, middle) = ui.input(|i| {
-        (
-            i.pointer.hover_pos().filter(|p| rect.contains(*p)),
-            i.smooth_scroll_delta.y,
-            i.zoom_delta(),
-            i.pointer.latest_pos(),
-            i.modifiers,
-            i.pointer.button_down(PointerButton::Middle),
-        )
-    });
-    if let Some(at) = hover {
-        let factor = (f64::from(wheel) * 0.004).exp() * f64::from(pinch);
-        if factor.is_finite() && factor != 1.0 {
-            cam = cam.zoom(factor.clamp(0.2, 5.0), px(at));
-        }
-    }
+    let (hover, latest, mods) = ui.input(|i| (i.pointer.hover_pos().filter(|p| rect.contains(*p)), i.pointer.latest_pos(), i.modifiers));
+    // The wheel and a pinch zoom toward the cursor, as in the project's 3D view; the view is drawn in points.
+    let input = Input::in_points(ui, rect, &response);
+    cam = m.nav.zoom(ui.ctx(), &input, cam, None);
     let screen_of = |cam: &Camera, p: P3| -> Option<(f64, f64, f64)> {
         let (x, y, z) = cam.project(p);
         (x.is_finite() && y.is_finite()).then_some((x, y, z))
@@ -359,9 +348,10 @@ pub(crate) fn show(
                 .map(|k| (id.clone(), k, *o))
         });
         let on_cube = Orbit::cube_rect(rect).contains(origin);
-        m.drag = Some(match (primary && !on_cube, m.tool == Draw::Modify, on_arrow) {
-            (true, true, Some((id, k, o))) => Drag::Axis(id, k, origin, o),
-            (true, true, None) => match hidden.seen(&r).pick(&|p| screen_of(&cam, p), px(origin)) {
+        // Else the view's navigation turns or pans it (below).
+        m.drag = match (primary && !on_cube, m.tool == Draw::Modify, on_arrow) {
+            (true, true, Some((id, k, o))) => Some(Drag::Axis(id, k, origin, o)),
+            (true, true, None) => Some(match hidden.seen(&r).pick(&|p| screen_of(&cam, p), px(origin)) {
                 Some(Picked::Point(id)) if movable(d, &id) => {
                     m.selection = vec![id.clone()];
                     let z = r.origin(&id).map_or(0., |o| o[2]);
@@ -369,24 +359,16 @@ pub(crate) fn show(
                 }
                 // On empty space, as Revit's: a selection box.
                 _ => Drag::Box(origin),
-            },
-            _ if middle && !mods.shift => Drag::Pan(origin),
-            _ => Drag::Orbit(origin),
-        });
+            }),
+            _ => None,
+        };
     }
+    // Shift and the middle button, or a drag the tool doesn't take, orbit; the middle button pans.
+    cam = m.nav.navigate(ui, &response, &input, cam, m.drag.is_some(), false, false, None).cam;
     if response.dragged()
         && let (Some(drag), Some(now)) = (m.drag.clone(), latest)
     {
         match drag {
-            Drag::Orbit(last) => {
-                let delta = now - last;
-                cam = cam.orbit(-f64::from(delta.x) * 0.4, f64::from(delta.y) * 0.4);
-                m.drag = Some(Drag::Orbit(now));
-            }
-            Drag::Pan(last) => {
-                cam = cam.pan(px(last), px(now));
-                m.drag = Some(Drag::Pan(now));
-            }
             Drag::Plane(id, z) => {
                 if let Some(to) = cam.on_plane(px(now), z) {
                     let _ = d.move_point(&id, &r, to);
@@ -422,7 +404,7 @@ pub(crate) fn show(
     }
     m.camera = Some(cam);
     let seen = hidden.seen(&r);
-    let hovered = hover.filter(|_| m.drag.is_none()).and_then(|at| seen.pick(&|p| screen_of(&cam, p), px(at)));
+    let hovered = hover.filter(|_| m.drag.is_none() && !m.nav.turning()).and_then(|at| seen.pick(&|p| screen_of(&cam, p), px(at)));
     // Placement Plane's Pick: the plane under the pointer lights up, and a click makes it the work plane; Escape gives up.
     let plane_at = |at: Pos2| {
         let half = PLANE_REACH / cam.scale.max(1e-9);
