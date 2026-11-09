@@ -1,0 +1,8 @@
+material {"name":"Outer render"}
+material {"name":"Inner plaster"}
+material {"name":"Masonry","cut":"diagonal"}
+material {"name":"Concrete","cut":"horizontal"}
+type {"category":"wall","name":"H","layers":[{"function":"finish","material":"Outer render","thickness":20},{"function":"structure","material":"Masonry","thickness":160},{"function":"finish","material":"Inner plaster","thickness":20}]}
+type {"category":"wall","name":"V","layers":[{"function":"finish","material":"Outer render","thickness":40},{"function":"structure","material":"Concrete","thickness":120},{"function":"finish","material":"Inner plaster","thickness":40}]}
+wall {"points":[[-4000,0],[0,0]],"location":"centre","type":"H","height":3000}
+wall {"points":[[0,0],[0,-4000]],"location":"centre","type":"V","height":3000}
