@@ -125,7 +125,7 @@ msgstr "De punten van een cirkel, een ellips of een boog op de assen: oost, noor
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
 msgstr "Het materiaal, de isolatie en de werktemperatuur van een geleider, en het stroomdraagvermogen van elke doorsnede, in mm²."
 
-#: crates/ui-egui/src/canvas.rs:3526
+#: crates/ui-egui/src/canvas.rs:3538
 msgid "A dimension has two references at least."
 msgstr ""
 
@@ -2674,12 +2674,12 @@ msgstr "Maatwaarde"
 msgid "Dimension lines, witness lines, terminators, text placement, and level marker symbols."
 msgstr "Maatlijnen, hulplijnen, begrenzers, plaatsing van de tekst en niveausymbolen."
 
-#: crates/ui-egui/src/canvas.rs:3370
+#: crates/ui-egui/src/canvas.rs:3380
 msgid "Dimension text"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3379
-#: crates/ui-egui/src/canvas.rs:3459
+#: crates/ui-egui/src/canvas.rs:3389
+#: crates/ui-egui/src/canvas.rs:3472
 msgid "Dimension {}"
 msgstr "Maatlijn {}"
 
@@ -3141,7 +3141,7 @@ msgstr "Geef elk type en elk patroon een naam."
 msgid "Entities"
 msgstr "Entiteiten"
 
-#: crates/ui-egui/src/canvas.rs:3393
+#: crates/ui-egui/src/canvas.rs:3406
 msgid "Equal"
 msgstr "Gelijk"
 
@@ -4667,15 +4667,15 @@ msgstr "Locatielijn:"
 msgid "Location line: {}"
 msgstr "Locatielijn: {}"
 
-#: crates/ui-egui/src/canvas.rs:3614
+#: crates/ui-egui/src/canvas.rs:3632
 msgid "Lock alignment"
 msgstr "Uitlijning vergrendelen"
 
-#: crates/ui-egui/src/canvas.rs:3342
+#: crates/ui-egui/src/canvas.rs:3349
 msgid "Lock segment {}"
 msgstr "Segment {} vergrendelen"
 
-#: crates/ui-egui/src/canvas.rs:3593
+#: crates/ui-egui/src/canvas.rs:3611
 msgid "Locked segment {}"
 msgstr "Vergrendeld segment {}"
 
@@ -8903,7 +8903,7 @@ msgstr "Eenheden"
 msgid "Units Format"
 msgstr "Eenhedenformaat"
 
-#: crates/ui-egui/src/canvas.rs:3578
+#: crates/ui-egui/src/canvas.rs:3593
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
@@ -9501,11 +9501,11 @@ msgstr "`{}` is geen hoogte"
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
 #: crates/ui-egui/src/canvas.rs:3023
-#: crates/ui-egui/src/canvas.rs:3386
-#: crates/ui-egui/src/canvas.rs:3463
-#: crates/ui-egui/src/canvas.rs:3687
-#: crates/ui-egui/src/canvas.rs:3780
-#: crates/ui-egui/src/canvas.rs:3800
+#: crates/ui-egui/src/canvas.rs:3396
+#: crates/ui-egui/src/canvas.rs:3476
+#: crates/ui-egui/src/canvas.rs:3706
+#: crates/ui-egui/src/canvas.rs:3799
+#: crates/ui-egui/src/canvas.rs:3819
 #: crates/ui-egui/src/draw.rs:270
 #: crates/ui-egui/src/draw.rs:271
 #: crates/ui-egui/src/draw.rs:272
@@ -9969,7 +9969,7 @@ msgstr "het model heeft geen niveaus"
 msgid "the next free name"
 msgstr "de volgende vrije naam"
 
-#: crates/ui-egui/src/canvas.rs:3779
+#: crates/ui-egui/src/canvas.rs:3798
 msgid "the opening has to stay on its wall"
 msgstr "de opening moet op haar muur blijven"
 
@@ -10152,7 +10152,7 @@ msgstr "{} mm voor A2-A4"
 msgid "{} months ago"
 msgstr "{} maanden geleden"
 
-#: crates/ui-egui/src/canvas.rs:3870
+#: crates/ui-egui/src/canvas.rs:3889
 msgid "{} of {} risers"
 msgstr "{} van {} optreden"
 
@@ -10198,7 +10198,7 @@ msgstr "{} geselecteerd."
 msgid "{} triangles, from a file"
 msgstr "{} driehoeken, uit een bestand"
 
-#: crates/ui-egui/src/canvas.rs:3872
+#: crates/ui-egui/src/canvas.rs:3891
 msgid "{} up"
 msgstr "{} omhoog"
 

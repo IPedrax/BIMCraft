@@ -466,6 +466,21 @@ fn esc_leaves_an_edited_dimension_as_it_was() {
 }
 
 #[test]
+fn clicking_eq_with_the_pointer_keeps_the_dimension_selected_and_evens_the_chain() {
+    let mut h = app(THREE_WALLS);
+    let id = ids(&h, "dimension")[0];
+    h.state_mut().selection = vec![id];
+    h.run();
+    let at = h.get_by_label("Equal").rect().center();
+    click_at(&mut h, at);
+    assert_eq!(h.state().selection, vec![id], "the dimension stays selected, so the click is the button's");
+    assert!(dimension(&h, id).equal, "{}", h.state().status.text);
+    let walls = ids(&h, "wall");
+    assert_eq!(field(&h, walls[1], "start")[0].as_f64(), Some(2500.0));
+    assert_eq!(field(&h, id, "values"), json!([2500.0, 2500.0]));
+}
+
+#[test]
 fn esc_cancels_a_typed_value_and_keeps_the_selection() {
     let mut h = app(TWO_WALLS);
     let walls = ids(&h, "wall");

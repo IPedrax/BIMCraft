@@ -696,8 +696,8 @@ pub struct BimApp {
     /// A selected element's temporary dimension being typed: the element, which of its dimensions (a wall has one, a
     /// door or window two: from its wall's start, from its end), the length so far.
     dim_edit: Option<(Id, usize, String)>,
-    /// The pointer is over a selected element's dimension number, whose click the field takes rather than the canvas.
-    over_dimension_number: bool,
+    /// The pointer is over a dimension's number, padlock, EQ or text button: the canvas leaves the click to it.
+    over_dimension_control: bool,
     /// A number field was left by Esc: the key's own Esc handling must not clear the selection then.
     dim_edit_escaped: bool,
     /// Edit Dimension References, while it's on: the dimension, its references being picked, and where its line goes.
@@ -1366,7 +1366,7 @@ impl BimApp {
             font_finder: lang::cjk_fonts,
             typed_length: String::new(),
             dim_edit: None,
-            over_dimension_number: false,
+            over_dimension_control: false,
             dim_edit_escaped: false,
             dimension_refs_edit: None,
             temporary: HashMap::new(),

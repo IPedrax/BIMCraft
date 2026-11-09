@@ -1700,7 +1700,7 @@ impl BimApp {
         }
         // A click on a shape point's height label is the label's.
         let on_label = |at: &Pos2| self.shape_label_rects.iter().any(|r| r.contains(*at));
-        if let Some(at) = self.clicked_at(&response).filter(|at| !dragged && !writing && !on_label(at) && !self.over_dimension_number) {
+        if let Some(at) = self.clicked_at(&response).filter(|at| !dragged && !writing && !on_label(at) && !self.over_dimension_control) {
             let q = (at.x - rect.min.x, at.y - rect.min.y);
             // What lay under the press, which the hand may have left by the time the button came up.
             let found = if Some(q) == local { hovered } else { under_at(q) };
@@ -3286,6 +3286,7 @@ impl BimApp {
         let (mut done, mut start, mut escaped) = (None, false, false);
         match &mut self.dim_edit {
             Some((id, n, typed)) if (*id, *n) == key => {
+                self.over_dimension_control = true;
                 let edit = ui.put(at.expand2(vec2(18.0, 2.0)), TextEdit::singleline(typed).id(field).horizontal_align(Align::Center));
                 if edit.lost_focus() {
                     escaped = ui.input(|i| i.key_pressed(Key::Escape));
@@ -3297,6 +3298,9 @@ impl BimApp {
             }
             _ => {
                 let r = ui.interact(at, field.with("number"), Sense::click());
+                if r.hovered() {
+                    self.over_dimension_control = true;
+                }
                 r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf(name, &[text])));
                 ui.painter().rect_filled(at, 2.0, pal().surface);
                 let ink = if r.hovered() { pal().hover } else { look.color };
@@ -3339,6 +3343,9 @@ impl BimApp {
             let at = on((s0 + s1) / 2.0) + side * 14.0;
             let locked = d.locked.iter().any(|l| l.segment == i);
             let r = ui.interact(Rect::from_center_size(at, vec2(16.0, 18.0)), ui.id().with(("dimension lock", id, i)), Sense::click());
+            if r.hovered() {
+                self.over_dimension_control = true;
+            }
             let name = tf("Lock segment {}", &[&(i + 1).to_string()]);
             r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, locked, name.clone()));
             let ink = if r.hovered() {
@@ -3367,6 +3374,9 @@ impl BimApp {
                 // A larger button over the number, which opens the same Dimension Text the double click does.
                 let icon = Rect::from_center_size(at.center() - vec2(0.0, at.height() / 2.0 + 12.0), vec2(24.0, 20.0));
                 let r = ui.interact(icon, ui.id().with(("dimension text", id, i)), Sense::click());
+                if r.hovered() {
+                    self.over_dimension_control = true;
+                }
                 r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, t("Dimension text")));
                 let ink = if r.hovered() { pal().hover } else { pal().accent_ink };
                 p.rect_filled(icon, 3.0, pal().surface);
@@ -3390,6 +3400,9 @@ impl BimApp {
         if cross.len() > 2 {
             let at = on(last.max(first)) + along * 22.0;
             let r = ui.interact(Rect::from_center_size(at, vec2(26.0, 18.0)), ui.id().with(("dimension equal", id)), Sense::click());
+            if r.hovered() {
+                self.over_dimension_control = true;
+            }
             r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, d.equal, t("Equal")));
             let ink = if r.hovered() {
                 pal().hover
@@ -3453,7 +3466,7 @@ impl BimApp {
                 let at = Rect::from_center_size(on((s0 + s1) / 2.0) - side * 12.0, size);
                 let editing = matches!(&self.dim_edit, Some((eid, ei, _)) if (*eid, *ei) == (id, i));
                 if pointer.is_some_and(|q| at.expand2(vec2(18.0, 2.0)).contains(q)) || editing {
-                    self.over_dimension_number = true;
+                    self.over_dimension_control = true;
                 }
                 let look = NumberInk { size: 11.0, color: pal().accent_ink };
                 let Some(Some(typed)) = self.number_field(ui, at, (id, i), &label, bimcraft_i18n::msg!("Dimension {}"), look) else {
@@ -3487,7 +3500,6 @@ impl BimApp {
 
     /// A selected element's dimensions, each number picked as [`dimension_highlights`](Self::dimension_highlights) says.
     fn dimension_overlays(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, key: Id) {
-        self.over_dimension_number = false;
         if let Some(edit) = &self.dimension_refs_edit {
             // The references picked so far, each marked where it crosses the line being edited.
             if let Some(Element::Dimension(old)) = m.elements.get(edit.id) {
@@ -3575,6 +3587,9 @@ impl BimApp {
             if d.alignment {
                 let at = screen(d.at) + vec2(12.0, -12.0);
                 let r = ui.interact(Rect::from_center_size(at, vec2(16.0, 18.0)), ui.id().with(("alignment lock", id)), Sense::click());
+                if r.hovered() {
+                    self.over_dimension_control = true;
+                }
                 r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, true, t("Unlock alignment")));
                 padlock(&p, at, true, if r.hovered() { pal().hover } else { pal().accent });
                 if r.clicked() {
@@ -3590,6 +3605,9 @@ impl BimApp {
                 if d.locked.iter().any(|l| l.segment == i) {
                     let at = on((s0 + s1) / 2.0) + side * 14.0;
                     let r = ui.interact(Rect::from_center_size(at, vec2(18.0, 20.0)), ui.id().with(("shown lock", id, i)), Sense::click());
+                    if r.hovered() {
+                        self.over_dimension_control = true;
+                    }
                     let name = tf("Locked segment {}", &[&(i + 1).to_string()]);
                     r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, true, name.clone()));
                     padlock(&p, at, true, if r.hovered() { pal().hover } else { pal().muted });
@@ -3629,6 +3647,7 @@ impl BimApp {
     /// to the ends of its wall. A click on a number types a new length: a wall's end moves (the walls joined there
     /// follow), an opening slides along its wall.
     fn temporary_dimension(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect) {
+        self.over_dimension_control = false;
         let &[id] = self.selection.as_slice() else {
             self.dim_edit = None;
             return;
