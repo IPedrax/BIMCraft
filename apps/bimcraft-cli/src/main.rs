@@ -99,6 +99,9 @@ fn cli(args: &[String], out: &mut impl Write) -> Result<(), String> {
             Ok(())
         }
         [cmd, file] if cmd == "info" && revit::is_revit(file) => print_pretty(out, &revit::info(file)?),
+        [cmd, file, flag] if cmd == "info" && revit::is_revit(file) && (flag == "--elements-detail" || flag == "--json") => {
+            print_pretty(out, &revit::info_with_options(file, true)?)
+        }
         [cmd, file] if cmd == "info" => {
             s.execute("open", &json!({ "path": file }))?;
             print_pretty(out, &s.execute("inspect", &json!({}))?)
@@ -364,6 +367,12 @@ mod tests {
         cli(&["run".into(), path.clone(), "--save".into(), format!("{path}.bimcraft")], &mut opened).unwrap();
         let project = std::fs::read_to_string(format!("{path}.bimcraft")).unwrap();
         assert!(!project.contains("jdoe") && !project.contains(&path), "the saver's name or the path got into the project");
+        let detail: Value = serde_json::from_str(&cli_out(&["info", &path, "--elements-detail"]).unwrap()).unwrap();
+        assert_eq!(detail["elements"]["elements_detail_placed_count"], 4);
+        assert_eq!(detail["elements"]["partitions_count"], 1);
+        let wall_det = detail["elements"]["elements_detail"].as_array().unwrap().iter().find(|e| e["id"] == 100).unwrap();
+        assert_eq!(wall_det["category_name"], "Walls");
+        assert!(wall_det["bbox_min_mm"].is_array() && wall_det["bbox_max_mm"].is_array() && wall_det["location_mm"].is_array());
     }
 
     #[cfg(feature = "rvt")]
