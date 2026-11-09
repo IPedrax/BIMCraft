@@ -244,7 +244,9 @@ other_files(
         &["DR"],
         "{at: [x,y] | wall: id, offset?, type?, family?, level?, mark?, flip_facing?, flip_hand?} in the wall under `at`, \
          or in `wall` centred `offset` mm from its start; with `family`, a door family's `type` (its first by default), \
-         which sizes the opening and draws the door; it may rise past a low wall's top, as Revit lets it",
+         which sizes the opening and draws the door; it may rise past a low wall's top, as Revit lets it. At a point, prefer \
+         a wall cut by the plan; otherwise use a unique nearby wall on `level` whose base is above the cut. For stacked \
+         raised walls give `wall` explicitly",
         door,
     )
     .menu("Architecture > Door"),
@@ -7343,7 +7345,27 @@ fn build_opening(m: &Model, p: &Value, is_door: bool) -> Result<Opening, String>
         None => {
             let at = at.ok_or_else(|| bad(c, "give `at` [x, y] on a wall, or `wall` with `offset`"))?;
             let level = level_param(c, m, p, "level")?;
-            wall_at(m, level, at).ok_or_else(|| {
+            let host = if let Some(host) = wall_at(m, level, at) {
+                Some(host)
+            } else {
+                // A raised wall belongs to its level even when the plan cuts below it. Never choose between
+                // stacked raised hosts by iteration order, or change the lookup policy for low walls.
+                let cut = m.plan_range(level).cut;
+                let mut raised = m.elements.with_guids().filter_map(|(_, id, e)| match e {
+                    Element::Wall(w)
+                        if m.same(w.level, level) && m.base_z(w) > cut && off_centre(m, w, at) <= m.thickness(w) / 2.0 + 100.0 =>
+                    {
+                        Some((id, along(w, at)))
+                    }
+                    _ => None,
+                });
+                let first = raised.next();
+                if raised.next().is_some() {
+                    return Err(bad(c, "ambiguous raised walls at `at` on this level; give `wall` explicitly"));
+                }
+                first
+            };
+            host.ok_or_else(|| {
                 let none = format!("no wall at [{}, {}] on {}", at.0, at.1, level_name(m, level));
                 match wall_elsewhere(m, at) {
                     Some((id, bottom, top)) => bad(

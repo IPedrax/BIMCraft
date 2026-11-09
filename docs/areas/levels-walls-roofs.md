@@ -70,6 +70,11 @@ takes it, or what the wall is attached to): its `top_level`'s elevation plus its
 mm, negative below the level), or its base plus its `height` when it has no top level, which an offset does not touch.
 `Model::check` refuses a wall whose top does not come out above its base, saying how tall it comes out and by how much to raise it.
 The Properties palette shows Top Offset under Top Constraint for a wall that has one.
+Point-based Door and Window placement first uses the nearest wall intersected by the requested level's plan cut.
+If none is found, one nearby wall assigned to that level may host it when the wall's lowest base is above the cut.
+Two or more such raised walls are ambiguous: name `wall` explicitly to choose. Low walls below the cut and walls
+assigned only to another level keep the off-cut diagnostic. This lookup does not change plan visibility or an opening's
+sill relative to its host base; normal width, sill and overlap validation still applies.
 A door or a window stands in its wall from its `sill` up its type's height (issue #215): `Model::check` keeps its width within the
 wall's length, its sill at or over the wall's base and under its top all across it (`walls::top_at`, which a roof the wall is
 attached to may raise; within `TOL` of the top is at it), and the openings in one wall apart; its head may rise past the top, as
