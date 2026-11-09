@@ -53,6 +53,32 @@ would: a compound element's layer lines, an opening's jambs and glass, a stair's
 holds only the categories set apart from `styles::default_of` (which draws as before: cut pen 10, seen pen 4). What's next on this
 foundation: annotation categories' object styles and subcategories, viewports as windows onto their views, and printing.
 
+The `sheet` command takes a named `size` (A3 by default), landscape: ISO A0–A4 and B1–B4, ARCH A–E and E1–E3, ANSI A–E and Super B
+(13 × 19 in). ISO, ARCH and ANSI accept a space or none (`ISO A4`, `ISOA4`, `ARCH E2`, `ARCHE2`); ISO also accepts the bare name
+(`A4`, `B1`). ANSI A also accepts `LETTER`, ANSI B `TABLOID` or `LEDGER`. Super B accepts `SUPER B`, `SUPERB` or `SUPER-B`. Names
+are case-insensitive and ignore surrounding spaces; ISO aliases have the same margins and folding marks as their bare names. The
+size string is kept in the project file.
+
+A custom `size`, such as `"500x300"` or `"500 × 300"`, is width × height in millimetres, in that order; it is not rotated. `x`, `X`
+or `×` separates two finite numbers, each from 100 to 1219.2 mm inclusive (`MIN_PAPER`, `MAX_PAPER`). The paper must also hold the
+title block, which is drawn its standard's size in the bottom right corner, inside the border: `Model::check` asks for the left
+margin, the block and the right margin across (`SheetMargins::least_paper`: 210 mm under ISO, EU, JIS and NBR, 211.75 under ANSI)
+and the bottom margin, the block and the top margin up (at most 65.4 mm, so any custom height does), and its error says how wide and
+tall to make the paper. Narrower paper would squeeze the block until the sheet's name ran over its number. The check runs again when
+the project's standard changes, so a change to ANSI is refused while a 210 mm wide sheet could not hold ANSI's block, and the error
+names the sheet. The maximum is the ARCH E long side, 48 in: at the sheet drawing's 5 px/mm, a custom page is at most 6096 × 6096
+px, below the render command's ordinary 8192 px side limit. Sheet images use paper dimensions rather than its width/height
+parameters. A0 is 5945 × 4205 px and ARCH E 6096 × 4572 px; longer roll sheets are not supported. `Model::check` refuses malformed
+or out-of-range dimensions on creation and editing alike.
+
+The sizes come from public standards. The A and B series are ISO 216's: A0 841 × 1189 to A4 210 × 297 mm, and B1 707 × 1000, B2
+500 × 707, B3 353 × 500 and B4 250 × 353 mm. ANSI A to E are ANSI/ASME Y14.1's (Decimal Inch Drawing Sheet Size and Format): 8.5 × 11,
+11 × 17, 17 × 22, 22 × 34 and 34 × 44 in. Y14.1's own sizes are lettered flat sizes A to F and roll sizes G to K, and the ARCH series
+is not among them, so the ARCH sizes and Super B follow PWG 5101.1-2023, the Printer Working Group's Media Standardized Names, whose
+Table 3 lists ARCH A 9 × 12, B 12 × 18, C 18 × 24, D 24 × 36, E 36 × 48, E2 26 × 38 and E3 27 × 39 in, 30 × 42 in (ARCH E1) as
+`wide-format`, and Super B 13 × 19 in; its Table 4 lists the ISO sizes again. An inch is 25.4 mm exactly, so the inch
+sizes go into millimetres with no rounding.
+
 Family components are split by category. A component is of its family's category (`graphics::category_of`; `component_category` names
 each `family::Category`: `furniture`, `casework`, `plumbing`, `drain`, `pipefitting`, `pipeaccessory`, `equipment`, `outlet`, `switch`,
 `airterminal`, `earthing`, `inspectionbox`, `lighting`, `generic`, `dataoutlet`, `voiceoutlet`, `patchpanel`, `rack`; `graphics::COMPONENTS`),

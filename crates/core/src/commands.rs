@@ -885,10 +885,12 @@ other_files(
         "sheet",
         "Sheet",
         &[],
-        "{number?, name?, size?: A0|A1|A2|A3|A4, title_block?, fields?: {KEY: text}} a sheet of paper, landscape (A3 by \
-         default), with a title block: the built-in one, or the project's `title_block` of that name (see `title_block`), its \
-         sheet fields filled in from `fields`; numbers run A101, A102…. `modify` changes them later: `title_block` (\"\" for \
-         the built-in), `fields` (a key's value null to clear it)",
+        "{number?, name?, size?: ISO A0–A4|ISO B1–B4|ARCH A–E|ARCH E1–E3|ANSI A–E|SUPER B|width x height in mm, title_block?, \
+         fields?: {KEY: text}} a sheet of paper (A3 by default), with a title block: the built-in one, or the project's \
+         `title_block` of that name (see `title_block`), its sheet fields filled in from `fields`; named sizes landscape, \
+         custom ones as given, 100 to 1219.2 mm a side and wide enough for the standard's title block and margins (210 mm, \
+         211.75 under ANSI); numbers run A101, A102…. `modify` changes them later: `title_block` (\"\" for the built-in), \
+         `fields` (a key's value null to clear it)",
         new_sheet,
     ),
     edit(
