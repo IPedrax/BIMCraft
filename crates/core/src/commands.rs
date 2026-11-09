@@ -11223,6 +11223,12 @@ fn same_way(a: (P2, P2), b: (P2, P2)) -> bool {
     u.length() > TOL && v.length() > TOL && u.unit().cross(v.unit()).abs() <= 1e-9
 }
 
+/// The line of the first of `candidates` that `line_of` gives one for and whose span holds `was`, within `TOL`: the
+/// staying wall or run a taken end lay on, along which that end slides to the new crossing.
+fn host_line(was: P2, candidates: impl IntoIterator<Item = Id>, line_of: impl FnMut(Id) -> Option<(P2, P2)>) -> Option<(P2, P2)> {
+    candidates.into_iter().filter_map(line_of).find(|&(a, b)| geom::dist_to_segment(was, a, b) <= TOL)
+}
+
 /// Take elements by `mo`, keeping walls joined: walls joined to a taken wall stretch to stay
 /// joined, and doors and windows in walls that changed keep their place or go with their wall.
 /// With `end` (`Some(true)` the start, `Some(false)` the end), only that end of one wall or one run goes.
@@ -11287,6 +11293,8 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
     }
     let index = crate::walls::Index::new(m);
     let thickest = m.types.wall.values().map(|t| t.thickness).filter(|t| t.is_finite()).fold(0.0, f64::max);
+    // What a taken end may slide along: neither taken nor riding a taken wall.
+    let staying = |other: Id| !moving.contains(&other) && !glued_moving.contains(&other);
     // A taken line's end that was on a staying line slides along that line to the new crossing, as two
     // walls' ends do: the staying element keeps its own axis and only runs on or is cut back. An end taken
     // on its own (with `end`) goes where it is told. Runs of one category meet each other; a strip footing
@@ -11296,47 +11304,20 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             let Some(before) = old(id).filter(|b| b.arc == 0.0) else { continue };
             let line = (w.start, w.end);
             for (end, was) in [(&mut w.start, before.start), (&mut w.end, before.end)] {
-                let mut host = None;
-                let at = ([was.0, was.1, was.0, was.1], m.base_z(before), m.top_z(before));
-                for other in lookup.walls_near_at(&[at], 2.0 * TOL) {
-                    let Some(Element::Wall(o)) = m.elements.get(other) else { continue };
-                    if !moving.contains(&other)
-                        && !glued_moving.contains(&other)
-                        && o.join
-                        && before.join
-                        && o.arc == 0.0
-                        && stacked(m, o, before)
-                        && geom::dist_to_segment(was, o.start, o.end) <= TOL
-                    {
-                        host = Some((o.start, o.end));
-                        break;
-                    }
-                }
-                if host.is_none() {
-                    let (lo, hi) = (m.base_z(before), m.top_z(before));
-                    for other in index.runs_near(was, lo - TOL, hi + TOL) {
-                        if moving.contains(&other) || glued_moving.contains(&other) {
-                            continue;
-                        }
-                        let Some(e) = m.elements.get(other) else { continue };
-                        if e.category() != "stripfooting" {
-                            continue;
-                        }
-                        let Some(r) = e.run() else { continue };
-                        if !r.join || !before.join || !crate::runs::flat(r) {
-                            continue;
-                        }
-                        let Some(g) = m.run_geom(e) else { continue };
-                        let (rlo, rhi) = g.z_span();
-                        if !(rlo - TOL <= m.top_z(before) && m.base_z(before) - TOL <= rhi) {
-                            continue;
-                        }
-                        if geom::dist_to_segment(was, r.start, r.end) <= TOL {
-                            host = Some((r.start, r.end));
-                            break;
-                        }
-                    }
-                }
+                let (lo, hi) = (m.base_z(before), m.top_z(before));
+                let at = ([was.0, was.1, was.0, was.1], lo, hi);
+                let host = host_line(was, lookup.walls_near_at(&[at], 2.0 * TOL), |other| {
+                    let o = m.wall(other).filter(|o| staying(other) && o.join && before.join && o.arc == 0.0 && stacked(m, o, before))?;
+                    Some((o.start, o.end))
+                })
+                .or_else(|| {
+                    host_line(was, index.runs_near(was, lo - TOL, hi + TOL), |other| {
+                        let e = m.elements.get(other).filter(|e| staying(other) && e.category() == "stripfooting")?;
+                        let r = e.run().filter(|r| r.join && before.join && crate::runs::flat(r))?;
+                        let (rlo, rhi) = m.run_geom(e)?.z_span();
+                        (rlo - TOL <= hi && lo - TOL <= rhi).then_some((r.start, r.end))
+                    })
+                });
                 if let Some((a, b)) = host {
                     *end = geom::line_intersection(line.0, line.1, a, b).map_or(*end, micron);
                 }
@@ -11351,42 +11332,22 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             let Some((lo, hi)) = m.run_geom(e).map(|g| g.z_span()) else { continue };
             let line = (after.start, after.end);
             for (end, was) in [(&mut after.start, before.start), (&mut after.end, before.end)] {
-                let mut host = None;
-                for other in index.runs_near(was, lo - TOL, hi + TOL) {
-                    if other == *id || moving.contains(&other) || glued_moving.contains(&other) {
-                        continue;
+                let host = host_line(was, index.runs_near(was, lo - TOL, hi + TOL), |other| {
+                    let oe = m.elements.get(other).filter(|oe| other != *id && staying(other) && oe.category() == category)?;
+                    let r = oe.run().filter(|r| r.join && crate::runs::flat(r))?;
+                    let (olo, ohi) = m.run_geom(oe)?.z_span();
+                    (lo < ohi && olo < hi).then_some((r.start, r.end))
+                })
+                .or_else(|| {
+                    if category != "stripfooting" {
+                        return None;
                     }
-                    let Some(oe) = m.elements.get(other) else { continue };
-                    let (Some(r), other_category) = (oe.run(), oe.category()) else { continue };
-                    if other_category != category || !r.join || !crate::runs::flat(r) {
-                        continue;
-                    }
-                    let Some(g) = m.run_geom(oe) else { continue };
-                    let (olo, ohi) = g.z_span();
-                    if !(lo < ohi && olo < hi) {
-                        continue;
-                    }
-                    if geom::dist_to_segment(was, r.start, r.end) <= TOL {
-                        host = Some((r.start, r.end));
-                        break;
-                    }
-                }
-                if host.is_none() && category == "stripfooting" {
                     let at = ([was.0, was.1, was.0, was.1], lo - TOL, hi + TOL);
-                    for other in lookup.walls_near_at(&[at], thickest + 1.0) {
-                        if moving.contains(&other) {
-                            continue;
-                        }
-                        let Some(Element::Wall(w)) = m.elements.get(other) else { continue };
-                        if !w.join || w.arc != 0.0 || !(lo - TOL <= m.top_z(w) && m.base_z(w) - TOL <= hi) {
-                            continue;
-                        }
-                        if geom::dist_to_segment(was, w.start, w.end) <= TOL {
-                            host = Some((w.start, w.end));
-                            break;
-                        }
-                    }
-                }
+                    host_line(was, lookup.walls_near_at(&[at], thickest + 1.0), |other| {
+                        let w = m.wall(other).filter(|w| !moving.contains(&other) && w.join && w.arc == 0.0)?;
+                        (lo - TOL <= m.top_z(w) && m.base_z(w) - TOL <= hi).then_some((w.start, w.end))
+                    })
+                });
                 if let Some((a, b)) = host {
                     *end = geom::line_intersection(line.0, line.1, a, b).map_or(*end, micron);
                 }
