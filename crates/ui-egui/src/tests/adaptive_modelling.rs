@@ -468,13 +468,13 @@ fn the_viewcube_looks_from_the_face_clicked_and_its_house_goes_home_as_in_revit(
         let m = &h.state().family_editor.as_ref().unwrap().modeller;
         (m.camera.expect("a camera"), m.rect)
     };
-    let faces = crate::adaptive_view::cube_faces(&cam, rect);
+    let faces = crate::orbit::Orbit::cube_faces(&cam, rect);
     let front = faces.iter().find(|(_, label, ..)| *label == "FRONT").expect("the front face shows");
     let centre = front.0.iter().fold(Pos2::ZERO, |a, q| a + q.to_vec2() / 4.0);
     click_at(&mut h, centre);
     let now = h.state().family_editor.as_ref().unwrap().modeller.camera.unwrap();
     assert_eq!((now.azimuth, now.elevation), (-90., 0.), "seen from the front");
-    click_at(&mut h, crate::adaptive_view::home_rect(rect).center());
+    click_at(&mut h, crate::orbit::Orbit::home_rect(rect).center());
     let home = h.state().family_editor.as_ref().unwrap().modeller.camera.unwrap();
     assert_eq!((home.azimuth, home.elevation), (bimcraft_core::view3d::AZIMUTH, bimcraft_core::view3d::ELEVATION), "home again");
     assert!(definition(&h).nodes.is_empty(), "the cube's clicks select and place nothing");

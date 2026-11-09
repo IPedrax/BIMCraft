@@ -586,7 +586,7 @@ msgstr "Kích thước căn thẳng (DI): chọn các mặt tường song song, 
 msgid "Aligned Dimension in 3D"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:668
+#: crates/ui-egui/src/orbit.rs:1059
 msgid "Aligned dimension: {}"
 msgstr ""
 
@@ -926,7 +926,7 @@ msgstr "Trục đo"
 msgid "Azimuth (°)"
 msgstr "Góc phương vị (°)"
 
-#: crates/ui-egui/src/adaptive_view.rs:137
+#: crates/ui-egui/src/orbit.rs:491
 msgid "BACK"
 msgstr ""
 
@@ -980,7 +980,7 @@ msgstr "BIMCraft {} đã là bản mới nhất."
 msgid "BIMCraft's own: the tools in a palette, the Inspector and the Navigator on the right"
 msgstr ""
 
-#: crates/ui-egui/src/adaptive_view.rs:135
+#: crates/ui-egui/src/orbit.rs:489
 msgid "BOTTOM"
 msgstr ""
 
@@ -1194,7 +1194,7 @@ msgstr "Gạch 225 x 75"
 msgid "Build"
 msgstr "Xây dựng"
 
-#: crates/ui-egui/src/orbit.rs:806
+#: crates/ui-egui/src/orbit.rs:1191
 msgid "Building 3D view…"
 msgstr ""
 
@@ -1504,7 +1504,7 @@ msgstr "Kiểm tra: fck"
 msgid "Checking for updates…"
 msgstr "Đang kiểm tra cập nhật…"
 
-#: crates/ui-egui/src/adaptive_view.rs:933
+#: crates/ui-egui/src/adaptive_view.rs:864
 msgid "Choose Point and click on the work plane."
 msgstr ""
 
@@ -1778,7 +1778,7 @@ msgstr "Nhấp trên mô hình: một điểm trên bề mặt của nó."
 msgid "Click on the top: a point there, the Options Bar's offset over the surface, or at its Absolute elevation."
 msgstr "Nhấp trên mặt trên: một điểm tại đó, cao hơn bề mặt một khoảng bằng độ lệch trên thanh tùy chọn, hoặc ở cao độ Tuyệt đối của nó."
 
-#: crates/ui-egui/src/adaptive_view.rs:277
+#: crates/ui-egui/src/adaptive_view.rs:222
 msgid "Click on the work plane for a reference point, on a line for a point hosted on it."
 msgstr ""
 
@@ -1790,7 +1790,7 @@ msgstr "Nhấp một đầu trục của nó."
 msgid "Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes."
 msgstr "Nhấp các mặt phẳng tham chiếu song song, đầu khối đùn hoặc đường của khối, rồi nhấp vào vị trí đặt kích thước."
 
-#: crates/ui-egui/src/adaptive_view.rs:278
+#: crates/ui-egui/src/adaptive_view.rs:223
 msgid "Click points or the work plane; click the first point again to close the profile."
 msgstr ""
 
@@ -1870,7 +1870,7 @@ msgstr "Nhấp góc tiếp theo; Enter, hoặc nhấp lại góc đầu tiên, �
 msgid "Click the next point it passes through; Enter finishes it. Esc cancels."
 msgstr "Nhấp điểm tiếp theo mà nó đi qua; Enter để kết thúc. Esc để hủy."
 
-#: crates/ui-egui/src/adaptive_view.rs:279
+#: crates/ui-egui/src/adaptive_view.rs:224
 msgid "Click the next point; the first again closes the profile; Enter or Escape finishes it open."
 msgstr ""
 
@@ -1998,7 +1998,7 @@ msgstr "Nhấp để đặt móng đơn: mặt trên ở độ lệch và chiề
 msgid "Click to select what the view cuts or sees; the middle button pans, the wheel zooms."
 msgstr "Nhấp để chọn những gì khung nhìn cắt hoặc nhìn thấy; nút giữa để kéo, con lăn để thu phóng."
 
-#: crates/ui-egui/src/adaptive_view.rs:275
+#: crates/ui-egui/src/adaptive_view.rs:220
 msgid "Click to select, Ctrl adds; drag a box to select (left to right what is inside it, right to left what it touches); drag a point or a gizmo arrow to move it; Shift and the middle button orbit."
 msgstr ""
 
@@ -2046,7 +2046,7 @@ msgstr "Nhấp chỗ kết thúc: nhóm lặp lại dọc theo đường sau m�
 msgid "Click where it ends: the top folds along it. Esc cancels."
 msgstr "Nhấp nơi nó kết thúc: mặt trên gấp dọc theo nó. Esc để hủy."
 
-#: crates/ui-egui/src/adaptive_view.rs:282
+#: crates/ui-egui/src/adaptive_view.rs:227
 msgid "Click where it goes."
 msgstr ""
 
@@ -2058,7 +2058,7 @@ msgstr "Nhấp chỗ vế thang kết thúc: vượt qua bậc đứng cuối c�
 msgid "Click where its run ends: past its top, one run, as high as the Options Bar says; short of it, a landing. Esc cancels."
 msgstr "Nhấp chỗ vế thang kết thúc: vượt qua đỉnh là một vế, với chiều cao theo thanh tùy chọn; chưa tới là một chiếu nghỉ. Esc để hủy."
 
-#: crates/ui-egui/src/adaptive_view.rs:284
+#: crates/ui-egui/src/adaptive_view.rs:229
 msgid "Click where the angle ends."
 msgstr ""
 
@@ -2436,7 +2436,7 @@ msgstr "Sao chép báo cáo"
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "Sao chép ID, GUID và IFC GlobalId của nó"
 
-#: crates/ui-egui/src/adaptive_view.rs:281
+#: crates/ui-egui/src/adaptive_view.rs:226
 msgid "Copy: click the point to copy from."
 msgstr ""
 
@@ -2456,7 +2456,7 @@ msgstr "Mặt lõi: phía trong"
 msgid "Corners"
 msgstr "Các góc"
 
-#: crates/ui-egui/src/orbit.rs:810
+#: crates/ui-egui/src/orbit.rs:1195
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
@@ -3730,7 +3730,7 @@ msgstr "Cao độ mắt nhìn"
 msgid "Eye Height:"
 msgstr "Chiều cao mắt nhìn:"
 
-#: crates/ui-egui/src/adaptive_view.rs:136
+#: crates/ui-egui/src/orbit.rs:490
 msgid "FRONT"
 msgstr ""
 
@@ -4548,7 +4548,7 @@ msgstr "Tô sáng đối tượng dưới con trỏ"
 msgid "Home"
 msgstr "Trang chủ"
 
-#: crates/ui-egui/src/orbit.rs:1646
+#: crates/ui-egui/src/orbit.rs:1871
 msgid "Home View"
 msgstr "Khung nhìn mặc định"
 
@@ -4919,7 +4919,7 @@ msgstr "Phím tắt (KS): tùy chỉnh, sửa và nạp phím tắt"
 msgid "Kitchen Sink"
 msgstr "Chậu rửa bếp"
 
-#: crates/ui-egui/src/adaptive_view.rs:139
+#: crates/ui-egui/src/orbit.rs:493
 msgid "LEFT"
 msgstr ""
 
@@ -5322,7 +5322,7 @@ msgstr "Đã nạp"
 msgid "Loaded {} shortcuts from file."
 msgstr "Đã nạp {} phím tắt từ tệp."
 
-#: crates/ui-egui/src/orbit.rs:1009
+#: crates/ui-egui/src/orbit.rs:1332
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
@@ -5885,7 +5885,7 @@ msgstr "Chuyển xuống"
 msgid "Move Up"
 msgstr "Chuyển lên"
 
-#: crates/ui-egui/src/adaptive_view.rs:280
+#: crates/ui-egui/src/adaptive_view.rs:225
 msgid "Move: click the point to move from."
 msgstr ""
 
@@ -6863,7 +6863,7 @@ msgstr "Chọn tường: một đường biên dọc theo mỗi tường đượ
 msgid "Pick a circle or an arc, then click where the dimension goes."
 msgstr "Chọn một đường tròn hoặc một cung, rồi nhấp vào vị trí đặt kích thước."
 
-#: crates/ui-egui/src/orbit.rs:672
+#: crates/ui-egui/src/orbit.rs:1063
 msgid "Pick a corner, an edge or a face of the model to dimension."
 msgstr ""
 
@@ -6871,7 +6871,7 @@ msgstr ""
 msgid "Pick a curved wall or an arc."
 msgstr "Chọn một tường cong hoặc một cung."
 
-#: crates/ui-egui/src/orbit.rs:1467
+#: crates/ui-egui/src/orbit.rs:1692
 msgid "Pick a face of a wall, a floor, a ceiling or a roof to place it on."
 msgstr "Chọn một mặt của tường, sàn, trần hoặc mái để đặt nó lên."
 
@@ -6929,7 +6929,7 @@ msgstr "Chọn một mặt phẳng: sau khi nhấn OK, nhấp một mặt của 
 msgid "Pick a plane: click a reference plane or a datum in the view."
 msgstr "Chọn một mặt phẳng: nhấp một mặt phẳng tham chiếu hoặc một mốc tham chiếu trong khung nhìn."
 
-#: crates/ui-egui/src/adaptive_view.rs:271
+#: crates/ui-egui/src/adaptive_view.rs:216
 msgid "Pick a plane: one of a point's planes, the level or a reference plane; Escape gives up."
 msgstr ""
 
@@ -7156,12 +7156,12 @@ msgid "Place Centre"
 msgstr "Đặt tâm"
 
 #: crates/ui-egui/src/lib.rs:1451
-#: crates/ui-egui/src/orbit.rs:687
+#: crates/ui-egui/src/orbit.rs:1078
 msgid "Place Column"
 msgstr "Đặt cột"
 
 #: crates/ui-egui/src/lib.rs:1453
-#: crates/ui-egui/src/orbit.rs:689
+#: crates/ui-egui/src/orbit.rs:1080
 msgid "Place Component"
 msgstr "Đặt thành phần"
 
@@ -7306,7 +7306,7 @@ msgid "Place Voice Outlet"
 msgstr "Đặt ổ cắm thoại"
 
 #: crates/ui-egui/src/lib.rs:1427
-#: crates/ui-egui/src/orbit.rs:686
+#: crates/ui-egui/src/orbit.rs:1077
 msgid "Place Wall"
 msgstr "Đặt tường"
 
@@ -7679,7 +7679,7 @@ msgstr "Góc phần tư"
 msgid "REDUNDANT"
 msgstr "THỪA"
 
-#: crates/ui-egui/src/adaptive_view.rs:138
+#: crates/ui-egui/src/orbit.rs:492
 msgid "RIGHT"
 msgstr ""
 
@@ -8276,7 +8276,7 @@ msgstr "Xoay sau khi đặt"
 msgid "Rotate local X / Y / Z (degrees)"
 msgstr ""
 
-#: crates/ui-egui/src/adaptive_view.rs:283
+#: crates/ui-egui/src/adaptive_view.rs:228
 msgid "Rotate: click where the angle starts, about the centre shown."
 msgstr ""
 
@@ -9521,7 +9521,7 @@ msgstr "Số pha của hệ thống {}"
 msgid "System {} wires"
 msgstr "Số dây của hệ thống {}"
 
-#: crates/ui-egui/src/adaptive_view.rs:134
+#: crates/ui-egui/src/orbit.rs:488
 msgid "TOP"
 msgstr ""
 
@@ -9781,9 +9781,7 @@ msgstr "Họ {} bạn đang nạp đã có trong dự án này nhưng được �
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "Chân đường vuông góc từ điểm cuối cùng tới một tường hoặc lưới trục"
 
-#: crates/ui-egui/src/orbit.rs:1014
-#: crates/ui-egui/src/orbit.rs:1094
-#: crates/ui-egui/src/orbit.rs:1141
+#: crates/ui-egui/src/orbit.rs:245
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "Card đồ họa không thể vẽ khung nhìn 3D ({}): khung nhìn được vẽ bằng bộ xử lý"
 
@@ -9924,7 +9922,7 @@ msgstr "Mặt trên"
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr "Khung nhìn đang nhìn ngang mép mặt phẳng phác thảo: hãy xoay khung nhìn để chọn trên đó."
 
-#: crates/ui-egui/src/orbit.rs:658
+#: crates/ui-egui/src/orbit.rs:1049
 msgid "The view runs along the dimension: turn it to place its line."
 msgstr ""
 
@@ -9936,7 +9934,7 @@ msgstr "Khung nhìn thấy mặt phẳng làm việc theo cạnh: hãy phác th�
 msgid "The voltages of the project, in volts, and the band a device may read within. A distribution system names them."
 msgstr "Các điện áp của dự án, tính bằng vôn, và khoảng mà thiết bị có thể đọc trong đó. Một hệ thống phân phối sẽ đặt tên cho chúng."
 
-#: crates/ui-egui/src/triad.rs:131
+#: crates/ui-egui/src/triad.rs:207
 msgid "The work plane is on the level already"
 msgstr ""
 
@@ -11053,12 +11051,12 @@ msgid "Work Plane: {}"
 msgstr "Mặt phẳng làm việc: {}"
 
 #: crates/ui-egui/src/triad.rs:108
-#: crates/ui-egui/src/triad.rs:133
+#: crates/ui-egui/src/triad.rs:209
 msgid "Work plane back to the level"
 msgstr ""
 
 #: crates/ui-egui/src/triad.rs:107
-#: crates/ui-egui/src/triad.rs:119
+#: crates/ui-egui/src/triad.rs:195
 msgid "Work plane square to the {} axis"
 msgstr ""
 
@@ -11132,7 +11130,7 @@ msgstr "Thu nhỏ"
 
 #: crates/ui-egui/src/canvas.rs:1792
 #: crates/ui-egui/src/editor/document.rs:1141
-#: crates/ui-egui/src/orbit.rs:1649
+#: crates/ui-egui/src/orbit.rs:1874
 msgid "Zoom to Fit"
 msgstr "Thu phóng vừa khít"
 
@@ -11280,7 +11278,7 @@ msgstr "đường tròn"
 msgid "click its line's end"
 msgstr "nhấp điểm cuối của đường"
 
-#: crates/ui-egui/src/orbit.rs:1552
+#: crates/ui-egui/src/orbit.rs:1777
 msgid "click on the floor's top"
 msgstr "nhấp trên mặt trên của sàn"
 
@@ -11635,7 +11633,7 @@ msgstr "đã có tham số `{}`"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "chưa có nhóm chi tiết nào: hãy chọn các đường chi tiết rồi Tạo nhóm"
 
-#: crates/ui-egui/src/orbit.rs:606
+#: crates/ui-egui/src/orbit.rs:997
 msgid "there's no face to paint there"
 msgstr "không có mặt nào để sơn ở đó"
 
@@ -11643,7 +11641,7 @@ msgstr "không có mặt nào để sơn ở đó"
 msgid "there's no folder to keep favorites in here"
 msgstr "không có thư mục nào để lưu mục yêu thích ở đây"
 
-#: crates/ui-egui/src/orbit.rs:1477
+#: crates/ui-egui/src/orbit.rs:1702
 #: crates/ui-egui/src/paper.rs:158
 #: crates/ui-egui/src/section.rs:409
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -11840,7 +11838,7 @@ msgstr "{} trên {} bậc đứng"
 
 #: crates/ui-egui/src/canvas.rs:1404
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-#: crates/ui-egui/src/orbit.rs:1304
+#: crates/ui-egui/src/orbit.rs:1529
 msgid "{} of {} {}"
 msgstr "{} của {} {}"
 
@@ -11964,11 +11962,11 @@ msgstr "{}: `{}` không phải là số"
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` không phải là số"
 
-#: crates/ui-egui/src/orbit.rs:700
+#: crates/ui-egui/src/orbit.rs:1091
 msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:696
+#: crates/ui-egui/src/orbit.rs:1087
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
 msgstr ""
 

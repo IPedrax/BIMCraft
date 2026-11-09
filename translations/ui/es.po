@@ -586,7 +586,7 @@ msgstr "Cota alineada (DI): elija caras de muro paralelas, extremos de muro, pue
 msgid "Aligned Dimension in 3D"
 msgstr "Cota alineada en 3D"
 
-#: crates/ui-egui/src/orbit.rs:668
+#: crates/ui-egui/src/orbit.rs:1059
 msgid "Aligned dimension: {}"
 msgstr "Cota alineada: {}"
 
@@ -926,7 +926,7 @@ msgstr "Axonométrica"
 msgid "Azimuth (°)"
 msgstr "Acimut (°)"
 
-#: crates/ui-egui/src/adaptive_view.rs:137
+#: crates/ui-egui/src/orbit.rs:491
 msgid "BACK"
 msgstr ""
 
@@ -980,7 +980,7 @@ msgstr "BIMCraft {} está actualizado."
 msgid "BIMCraft's own: the tools in a palette, the Inspector and the Navigator on the right"
 msgstr ""
 
-#: crates/ui-egui/src/adaptive_view.rs:135
+#: crates/ui-egui/src/orbit.rs:489
 msgid "BOTTOM"
 msgstr ""
 
@@ -1194,7 +1194,7 @@ msgstr "Ladrillo 225 x 75"
 msgid "Build"
 msgstr "Construir"
 
-#: crates/ui-egui/src/orbit.rs:806
+#: crates/ui-egui/src/orbit.rs:1191
 msgid "Building 3D view…"
 msgstr ""
 
@@ -1504,7 +1504,7 @@ msgstr "Verificación: fck"
 msgid "Checking for updates…"
 msgstr "Buscando actualizaciones…"
 
-#: crates/ui-egui/src/adaptive_view.rs:933
+#: crates/ui-egui/src/adaptive_view.rs:864
 msgid "Choose Point and click on the work plane."
 msgstr ""
 
@@ -1778,7 +1778,7 @@ msgstr "Haga clic en el modelo: un punto de su superficie."
 msgid "Click on the top: a point there, the Options Bar's offset over the surface, or at its Absolute elevation."
 msgstr "Haz clic en la cara superior: un punto ahí, con el desfase de la barra de opciones sobre la superficie o a su elevación Absoluta."
 
-#: crates/ui-egui/src/adaptive_view.rs:277
+#: crates/ui-egui/src/adaptive_view.rs:222
 msgid "Click on the work plane for a reference point, on a line for a point hosted on it."
 msgstr ""
 
@@ -1790,7 +1790,7 @@ msgstr "Haga clic en un extremo del eje."
 msgid "Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes."
 msgstr "Haz clic en planos de referencia paralelos, extremos de extrusiones o líneas de formas y luego donde va la cota."
 
-#: crates/ui-egui/src/adaptive_view.rs:278
+#: crates/ui-egui/src/adaptive_view.rs:223
 msgid "Click points or the work plane; click the first point again to close the profile."
 msgstr ""
 
@@ -1870,7 +1870,7 @@ msgstr "Haz clic en la siguiente esquina; Enter, o la primera esquina otra vez, 
 msgid "Click the next point it passes through; Enter finishes it. Esc cancels."
 msgstr "Haga clic en el siguiente punto por el que pasa; Intro termina. Esc cancela."
 
-#: crates/ui-egui/src/adaptive_view.rs:279
+#: crates/ui-egui/src/adaptive_view.rs:224
 msgid "Click the next point; the first again closes the profile; Enter or Escape finishes it open."
 msgstr ""
 
@@ -1998,7 +1998,7 @@ msgstr "Haz clic para colocar una zapata aislada: la cara superior en el desfase
 msgid "Click to select what the view cuts or sees; the middle button pans, the wheel zooms."
 msgstr "Haz clic para seleccionar lo que la vista corta o ve; el botón central desplaza la vista, la rueda hace zoom."
 
-#: crates/ui-egui/src/adaptive_view.rs:275
+#: crates/ui-egui/src/adaptive_view.rs:220
 msgid "Click to select, Ctrl adds; drag a box to select (left to right what is inside it, right to left what it touches); drag a point or a gizmo arrow to move it; Shift and the middle button orbit."
 msgstr ""
 
@@ -2046,7 +2046,7 @@ msgstr "Haga clic donde termina: el grupo se repite a lo largo de la línea a ca
 msgid "Click where it ends: the top folds along it. Esc cancels."
 msgstr "Haz clic donde termina: la cara superior se pliega a lo largo de ella. Esc cancela."
 
-#: crates/ui-egui/src/adaptive_view.rs:282
+#: crates/ui-egui/src/adaptive_view.rs:227
 msgid "Click where it goes."
 msgstr ""
 
@@ -2058,7 +2058,7 @@ msgstr "Haz clic donde termina el tramo: más allá de su última contrahuella, 
 msgid "Click where its run ends: past its top, one run, as high as the Options Bar says; short of it, a landing. Esc cancels."
 msgstr "Haz clic donde termina el tramo: más allá de su parte superior, un tramo, a la altura que indica la barra de opciones; antes, un descanso. Esc cancela."
 
-#: crates/ui-egui/src/adaptive_view.rs:284
+#: crates/ui-egui/src/adaptive_view.rs:229
 msgid "Click where the angle ends."
 msgstr ""
 
@@ -2436,7 +2436,7 @@ msgstr "Copiar informe"
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "Copiar su ID, GUID y GlobalId IFC"
 
-#: crates/ui-egui/src/adaptive_view.rs:281
+#: crates/ui-egui/src/adaptive_view.rs:226
 msgid "Copy: click the point to copy from."
 msgstr ""
 
@@ -2456,7 +2456,7 @@ msgstr "Cara del núcleo: interior"
 msgid "Corners"
 msgstr "Vértices"
 
-#: crates/ui-egui/src/orbit.rs:810
+#: crates/ui-egui/src/orbit.rs:1195
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
@@ -3730,7 +3730,7 @@ msgstr "Altura del ojo"
 msgid "Eye Height:"
 msgstr "Altura del ojo:"
 
-#: crates/ui-egui/src/adaptive_view.rs:136
+#: crates/ui-egui/src/orbit.rs:490
 msgid "FRONT"
 msgstr ""
 
@@ -4548,7 +4548,7 @@ msgstr "Resaltar lo que está bajo el cursor"
 msgid "Home"
 msgstr "Inicio"
 
-#: crates/ui-egui/src/orbit.rs:1646
+#: crates/ui-egui/src/orbit.rs:1871
 msgid "Home View"
 msgstr "Vista inicial"
 
@@ -4919,7 +4919,7 @@ msgstr "Atajos de teclado (KS): personalizar, editar y cargar teclas de atajo"
 msgid "Kitchen Sink"
 msgstr "Fregadero de cocina"
 
-#: crates/ui-egui/src/adaptive_view.rs:139
+#: crates/ui-egui/src/orbit.rs:493
 msgid "LEFT"
 msgstr ""
 
@@ -5322,7 +5322,7 @@ msgstr "Cargado"
 msgid "Loaded {} shortcuts from file."
 msgstr "Cargados {} atajos del archivo."
 
-#: crates/ui-egui/src/orbit.rs:1009
+#: crates/ui-egui/src/orbit.rs:1332
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
@@ -5885,7 +5885,7 @@ msgstr "Bajar"
 msgid "Move Up"
 msgstr "Subir"
 
-#: crates/ui-egui/src/adaptive_view.rs:280
+#: crates/ui-egui/src/adaptive_view.rs:225
 msgid "Move: click the point to move from."
 msgstr ""
 
@@ -6863,7 +6863,7 @@ msgstr "Designar muros: una línea de contorno a lo largo de cada muro pulsado"
 msgid "Pick a circle or an arc, then click where the dimension goes."
 msgstr "Designa un círculo o un arco y luego haz clic donde va la cota."
 
-#: crates/ui-egui/src/orbit.rs:672
+#: crates/ui-egui/src/orbit.rs:1063
 msgid "Pick a corner, an edge or a face of the model to dimension."
 msgstr "Elige una esquina, una arista o una cara del modelo para acotar."
 
@@ -6871,7 +6871,7 @@ msgstr "Elige una esquina, una arista o una cara del modelo para acotar."
 msgid "Pick a curved wall or an arc."
 msgstr "Elija un muro curvo o un arco."
 
-#: crates/ui-egui/src/orbit.rs:1467
+#: crates/ui-egui/src/orbit.rs:1692
 msgid "Pick a face of a wall, a floor, a ceiling or a roof to place it on."
 msgstr "Elige una cara de un muro, un piso, un cielo raso o una cubierta donde colocarlo."
 
@@ -6929,7 +6929,7 @@ msgstr "Designar un plano: tras Aceptar, haz clic en una cara del modelo en la v
 msgid "Pick a plane: click a reference plane or a datum in the view."
 msgstr "Designar un plano: haz clic en un plano de referencia o una referencia en la vista."
 
-#: crates/ui-egui/src/adaptive_view.rs:271
+#: crates/ui-egui/src/adaptive_view.rs:216
 msgid "Pick a plane: one of a point's planes, the level or a reference plane; Escape gives up."
 msgstr ""
 
@@ -7156,12 +7156,12 @@ msgid "Place Centre"
 msgstr "Colocar centro"
 
 #: crates/ui-egui/src/lib.rs:1451
-#: crates/ui-egui/src/orbit.rs:687
+#: crates/ui-egui/src/orbit.rs:1078
 msgid "Place Column"
 msgstr "Colocar columna"
 
 #: crates/ui-egui/src/lib.rs:1453
-#: crates/ui-egui/src/orbit.rs:689
+#: crates/ui-egui/src/orbit.rs:1080
 msgid "Place Component"
 msgstr "Colocar componente"
 
@@ -7306,7 +7306,7 @@ msgid "Place Voice Outlet"
 msgstr "Colocar punto de voz"
 
 #: crates/ui-egui/src/lib.rs:1427
-#: crates/ui-egui/src/orbit.rs:686
+#: crates/ui-egui/src/orbit.rs:1077
 msgid "Place Wall"
 msgstr "Colocar muro"
 
@@ -7679,7 +7679,7 @@ msgstr "Cuadrante"
 msgid "REDUNDANT"
 msgstr "REDUNDANTE"
 
-#: crates/ui-egui/src/adaptive_view.rs:138
+#: crates/ui-egui/src/orbit.rs:492
 msgid "RIGHT"
 msgstr ""
 
@@ -8276,7 +8276,7 @@ msgstr "Rotar tras la colocación"
 msgid "Rotate local X / Y / Z (degrees)"
 msgstr ""
 
-#: crates/ui-egui/src/adaptive_view.rs:283
+#: crates/ui-egui/src/adaptive_view.rs:228
 msgid "Rotate: click where the angle starts, about the centre shown."
 msgstr ""
 
@@ -9521,7 +9521,7 @@ msgstr "Fases del sistema {}"
 msgid "System {} wires"
 msgstr "Hilos del sistema {}"
 
-#: crates/ui-egui/src/adaptive_view.rs:134
+#: crates/ui-egui/src/orbit.rs:488
 msgid "TOP"
 msgstr ""
 
@@ -9781,9 +9781,7 @@ msgstr "La familia {} que está cargando ya existe en este proyecto, con una def
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "El pie de la perpendicular desde el último punto a un muro o eje"
 
-#: crates/ui-egui/src/orbit.rs:1014
-#: crates/ui-egui/src/orbit.rs:1094
-#: crates/ui-egui/src/orbit.rs:1141
+#: crates/ui-egui/src/orbit.rs:245
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "La tarjeta gráfica no pudo dibujar la vista 3D ({}): se dibuja en el procesador"
 
@@ -9924,7 +9922,7 @@ msgstr "La parte superior"
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr "La vista está de canto respecto al plano del boceto: gírela para elegir en él."
 
-#: crates/ui-egui/src/orbit.rs:658
+#: crates/ui-egui/src/orbit.rs:1049
 msgid "The view runs along the dimension: turn it to place its line."
 msgstr "La vista mira a lo largo de la cota: gírala para colocar su línea."
 
@@ -9936,7 +9934,7 @@ msgstr "La vista ve el plano de trabajo de canto: dibuja en una vista que lo vea
 msgid "The voltages of the project, in volts, and the band a device may read within. A distribution system names them."
 msgstr "Las tensiones del proyecto, en voltios, y el margen dentro del cual puede leer un dispositivo. Un sistema de distribución las nombra."
 
-#: crates/ui-egui/src/triad.rs:131
+#: crates/ui-egui/src/triad.rs:207
 msgid "The work plane is on the level already"
 msgstr "El plano de trabajo ya está en el nivel"
 
@@ -11053,12 +11051,12 @@ msgid "Work Plane: {}"
 msgstr "Plano de trabajo: {}"
 
 #: crates/ui-egui/src/triad.rs:108
-#: crates/ui-egui/src/triad.rs:133
+#: crates/ui-egui/src/triad.rs:209
 msgid "Work plane back to the level"
 msgstr "Plano de trabajo de vuelta al nivel"
 
 #: crates/ui-egui/src/triad.rs:107
-#: crates/ui-egui/src/triad.rs:119
+#: crates/ui-egui/src/triad.rs:195
 msgid "Work plane square to the {} axis"
 msgstr "Plano de trabajo perpendicular al eje {}"
 
@@ -11132,7 +11130,7 @@ msgstr "Alejar"
 
 #: crates/ui-egui/src/canvas.rs:1792
 #: crates/ui-egui/src/editor/document.rs:1141
-#: crates/ui-egui/src/orbit.rs:1649
+#: crates/ui-egui/src/orbit.rs:1874
 msgid "Zoom to Fit"
 msgstr "Zoom para ajustar"
 
@@ -11280,7 +11278,7 @@ msgstr "círculo"
 msgid "click its line's end"
 msgstr "haz clic en el final de la línea"
 
-#: crates/ui-egui/src/orbit.rs:1552
+#: crates/ui-egui/src/orbit.rs:1777
 msgid "click on the floor's top"
 msgstr "haz clic en la cara superior del piso"
 
@@ -11635,7 +11633,7 @@ msgstr "ya hay un parámetro `{}`"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "aún no hay grupo de detalle: seleccione líneas de detalle y Crear grupo"
 
-#: crates/ui-egui/src/orbit.rs:606
+#: crates/ui-egui/src/orbit.rs:997
 msgid "there's no face to paint there"
 msgstr "no hay cara que pintar ahí"
 
@@ -11643,7 +11641,7 @@ msgstr "no hay cara que pintar ahí"
 msgid "there's no folder to keep favorites in here"
 msgstr "no hay carpeta donde guardar favoritos aquí"
 
-#: crates/ui-egui/src/orbit.rs:1477
+#: crates/ui-egui/src/orbit.rs:1702
 #: crates/ui-egui/src/paper.rs:158
 #: crates/ui-egui/src/section.rs:409
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -11840,7 +11838,7 @@ msgstr "{} de {} contrahuellas"
 
 #: crates/ui-egui/src/canvas.rs:1404
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-#: crates/ui-egui/src/orbit.rs:1304
+#: crates/ui-egui/src/orbit.rs:1529
 msgid "{} of {} {}"
 msgstr "{} de {} {}"
 
@@ -11964,11 +11962,11 @@ msgstr "{}: `{}` no es un número"
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` no es un número"
 
-#: crates/ui-egui/src/orbit.rs:700
+#: crates/ui-egui/src/orbit.rs:1091
 msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
 msgstr "{}: en la vista 3D se apoya en una cara horizontal (la parte superior de un piso, una cubierta plana o un nivel): señala una"
 
-#: crates/ui-egui/src/orbit.rs:696
+#: crates/ui-egui/src/orbit.rs:1087
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
 msgstr "{}: en la vista 3D sus puntos van sobre una cara horizontal (la parte superior de un piso, una columna, una cubierta plana o un nivel): señala una"
 
