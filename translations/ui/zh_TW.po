@@ -125,7 +125,7 @@ msgstr "圓、橢圓或圓弧沿其軸線的點：東、北、西、南"
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
 msgstr "導線的材質、絕緣和工作溫度，以及各截面積的載流量；截面積以 mm² 計。"
 
-#: crates/ui-egui/src/canvas.rs:3741
+#: crates/ui-egui/src/canvas.rs:3739
 msgid "A dimension has two references at least."
 msgstr ""
 
@@ -3151,7 +3151,7 @@ msgstr "請為每個類型和圖案輸入名稱。"
 msgid "Entities"
 msgstr "圖元數"
 
-#: crates/ui-egui/src/canvas.rs:3672
+#: crates/ui-egui/src/canvas.rs:3670
 msgid "Equal"
 msgstr "相等"
 
@@ -4677,7 +4677,7 @@ msgstr "定位線："
 msgid "Location line: {}"
 msgstr "定位線：{}"
 
-#: crates/ui-egui/src/canvas.rs:3843
+#: crates/ui-egui/src/canvas.rs:3845
 msgid "Lock alignment"
 msgstr "鎖定對齊"
 
@@ -4685,7 +4685,7 @@ msgstr "鎖定對齊"
 msgid "Lock segment {}"
 msgstr "鎖定第 {} 段"
 
-#: crates/ui-egui/src/canvas.rs:3822
+#: crates/ui-egui/src/canvas.rs:3824
 msgid "Locked segment {}"
 msgstr "已鎖定第 {} 段"
 
@@ -4727,7 +4727,7 @@ msgstr "主間距 X"
 msgid "Main spacing Y"
 msgstr "主間距 Y"
 
-#: crates/ui-egui/src/canvas.rs:3917
+#: crates/ui-egui/src/canvas.rs:3919
 msgid "Make Dimension Permanent"
 msgstr ""
 
@@ -8917,7 +8917,7 @@ msgstr "單位"
 msgid "Units Format"
 msgstr "單位格式"
 
-#: crates/ui-egui/src/canvas.rs:3804
+#: crates/ui-egui/src/canvas.rs:3806
 msgid "Unlock alignment"
 msgstr "解鎖對齊"
 
@@ -9521,9 +9521,9 @@ msgstr "`{}` 不是有效的高度"
 #: crates/ui-egui/src/canvas.rs:3159
 #: crates/ui-egui/src/canvas.rs:3530
 #: crates/ui-egui/src/canvas.rs:3587
-#: crates/ui-egui/src/canvas.rs:3947
-#: crates/ui-egui/src/canvas.rs:4040
-#: crates/ui-egui/src/canvas.rs:4060
+#: crates/ui-egui/src/canvas.rs:3949
+#: crates/ui-egui/src/canvas.rs:4042
+#: crates/ui-egui/src/canvas.rs:4062
 #: crates/ui-egui/src/draw.rs:270
 #: crates/ui-egui/src/draw.rs:271
 #: crates/ui-egui/src/draw.rs:272
@@ -9987,7 +9987,7 @@ msgstr "模型中沒有標高"
 msgid "the next free name"
 msgstr "下一個可用名稱"
 
-#: crates/ui-egui/src/canvas.rs:4039
+#: crates/ui-egui/src/canvas.rs:4041
 msgid "the opening has to stay on its wall"
 msgstr "洞口必須保留在其所在的牆上"
 
@@ -10170,7 +10170,7 @@ msgstr "A2-A4 為 {} mm"
 msgid "{} months ago"
 msgstr "{} 個月前"
 
-#: crates/ui-egui/src/canvas.rs:4130
+#: crates/ui-egui/src/canvas.rs:4132
 msgid "{} of {} risers"
 msgstr "{} 個踢面（共 {} 個）"
 
@@ -10216,7 +10216,7 @@ msgstr "已選擇 {}。"
 msgid "{} triangles, from a file"
 msgstr "來自檔案的 {} 個三角形"
 
-#: crates/ui-egui/src/canvas.rs:4132
+#: crates/ui-egui/src/canvas.rs:4134
 msgid "{} up"
 msgstr "上行 {}"
 

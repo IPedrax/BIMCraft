@@ -3624,8 +3624,6 @@ impl BimApp {
                         p.circle_stroke(c, 7.0, Stroke::new(2.0, pal().accent));
                     }
                 }
-                let line = pos(rect.min, v.px(old.at));
-                p.circle_filled(line, 4.0, pal().accent);
             }
             return;
         }
@@ -3742,17 +3740,21 @@ impl BimApp {
             return;
         }
         // The line may have been dragged while its references were picked: commit where the dimension is now.
-        let at = match self.session.model.elements.get(edit.id) {
-            Some(Element::Dimension(d)) => d.at,
-            _ => edit.at,
+        let (at, same) = match self.session.model.elements.get(edit.id) {
+            Some(Element::Dimension(d)) => (d.at, d.refs == edit.refs),
+            _ => (edit.at, false),
         };
+        // Nothing picked differently: leaving the mode is enough, and makes no undo step.
+        if same {
+            return;
+        }
         if self.run("dimension", json!({"id": edit.id, "refs": edit.refs, "at": point(at)})).is_none() {
             self.dimension_refs_edit = Some(edit);
         }
     }
 
-    /// A click while editing a dimension's references: one picked again goes, another is added; a click in the open leaves
-    /// the line where it is. Enter confirms, Esc cancels.
+    /// A click while editing a dimension's references: one picked again goes, another is added; a click in the open confirms
+    /// and leaves the mode. The line moves only by dragging.
     fn dimension_refs_click(&mut self, m: &Model, _key: Id, v: &View, at: (f32, f32), hovered: Option<Id>) {
         let Some(mut edit) = self.dimension_refs_edit.take() else { return };
         let q = v.mm(at);
@@ -3772,9 +3774,9 @@ impl BimApp {
             self.dimension_refs_edit = Some(edit);
             return;
         }
-        // No reference to add there: a click in the open leaves the line where it is, and the dimension is moved by
-        // dragging, not by editing references.
+        // A click in the open confirms the edit and leaves the mode; the line itself is moved by dragging, not here.
         self.dimension_refs_edit = Some(edit);
+        self.commit_dimension_refs();
     }
 
     /// The locks of the dimensions in plan `key`, shown whether they're selected or not, as Revit shows them: a shut padlock

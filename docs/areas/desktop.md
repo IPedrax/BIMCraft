@@ -574,11 +574,13 @@ placed dimension's references are changed from the right-click menu's Edit Dimen
 temporary length dimension (`temporary_dimension`) has a dimension-line button under its number that makes it a permanent dimension between
 the wall's ends or, where an end is joined to a perpendicular wall, between those walls' centre lines (`walls::joined_perpendicular`; a
 wall merely near it isn't a join), so changing it moves that whole wall; typing its number resizes the wall through `wall_length`: both free
-ends or both joined ends move evenly, one joined moves its free end alone. Tab over a dimension chain steps through its segments, a click picks one, and Delete takes only that segment out
+ends or both joined ends move evenly, one joined moves its free end alone. A dimension measured along one wall resizes it wherever its references stand — side
+faces, corner handles, end faces or a mix — the wall being nudged until the measured value is reached (`dimension_value`), so face
+corners at joined ends no longer leave it short. Tab over a dimension chain steps through its segments, a click picks one, and Delete takes only that segment out
 (`dimension_segment`): the chains either side stay on their own references, the left keeping the dimension and the right becoming a new one.
 A dimension selected also offers Edit Dimension References on the Modify tab, as its right-click menu does: a click on a picked reference
-takes it out, a click on another face, axis or corner of the same element adds it (faces are independent), a click in the open does nothing,
-and Enter confirms (Esc cancels). Tab over an element steps through its faces, axes and corners, highlighting the reference a click would
+takes it out, a click on another face, axis or corner of the same element adds it (faces are independent), a click in the open confirms
+and leaves the edit (Enter too), and Esc cancels. Tab over an element steps through its faces, axes and corners, highlighting the reference a click would
 bind, while creating a chain or editing one (`dimension_references`). Dragging a dimension moves it only square to its line (`dragged`
 projects onto the line's normal); it never slides along itself.
 

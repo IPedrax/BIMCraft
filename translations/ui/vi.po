@@ -125,7 +125,7 @@ msgstr "Các điểm của đường tròn, elip hoặc cung trên các trục c
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
 msgstr "Vật liệu, lớp cách điện và nhiệt độ làm việc của dây dẫn, cùng khả năng chịu dòng của từng tiết diện, tính bằng mm²."
 
-#: crates/ui-egui/src/canvas.rs:3741
+#: crates/ui-egui/src/canvas.rs:3739
 msgid "A dimension has two references at least."
 msgstr ""
 
@@ -3151,7 +3151,7 @@ msgstr "Hãy nhập tên cho mọi kiểu và mẫu."
 msgid "Entities"
 msgstr "Thực thể"
 
-#: crates/ui-egui/src/canvas.rs:3672
+#: crates/ui-egui/src/canvas.rs:3670
 msgid "Equal"
 msgstr "Bằng nhau"
 
@@ -4677,7 +4677,7 @@ msgstr "Đường định vị:"
 msgid "Location line: {}"
 msgstr "Đường định vị: {}"
 
-#: crates/ui-egui/src/canvas.rs:3843
+#: crates/ui-egui/src/canvas.rs:3845
 msgid "Lock alignment"
 msgstr ""
 
@@ -4685,7 +4685,7 @@ msgstr ""
 msgid "Lock segment {}"
 msgstr "Khóa đoạn {}"
 
-#: crates/ui-egui/src/canvas.rs:3822
+#: crates/ui-egui/src/canvas.rs:3824
 msgid "Locked segment {}"
 msgstr ""
 
@@ -4727,7 +4727,7 @@ msgstr "Khoảng cách chính X"
 msgid "Main spacing Y"
 msgstr "Khoảng cách chính Y"
 
-#: crates/ui-egui/src/canvas.rs:3917
+#: crates/ui-egui/src/canvas.rs:3919
 msgid "Make Dimension Permanent"
 msgstr ""
 
@@ -8917,7 +8917,7 @@ msgstr "Đơn vị"
 msgid "Units Format"
 msgstr "Định dạng đơn vị"
 
-#: crates/ui-egui/src/canvas.rs:3804
+#: crates/ui-egui/src/canvas.rs:3806
 msgid "Unlock alignment"
 msgstr ""
 
@@ -9521,9 +9521,9 @@ msgstr "`{}` không phải là chiều cao"
 #: crates/ui-egui/src/canvas.rs:3159
 #: crates/ui-egui/src/canvas.rs:3530
 #: crates/ui-egui/src/canvas.rs:3587
-#: crates/ui-egui/src/canvas.rs:3947
-#: crates/ui-egui/src/canvas.rs:4040
-#: crates/ui-egui/src/canvas.rs:4060
+#: crates/ui-egui/src/canvas.rs:3949
+#: crates/ui-egui/src/canvas.rs:4042
+#: crates/ui-egui/src/canvas.rs:4062
 #: crates/ui-egui/src/draw.rs:270
 #: crates/ui-egui/src/draw.rs:271
 #: crates/ui-egui/src/draw.rs:272
@@ -9987,7 +9987,7 @@ msgstr "mô hình không có tầng nào"
 msgid "the next free name"
 msgstr "tên chưa dùng tiếp theo"
 
-#: crates/ui-egui/src/canvas.rs:4039
+#: crates/ui-egui/src/canvas.rs:4041
 msgid "the opening has to stay on its wall"
 msgstr "lỗ mở phải nằm trên tường của nó"
 
@@ -10170,7 +10170,7 @@ msgstr "{} mm cho A2-A4"
 msgid "{} months ago"
 msgstr "{} tháng trước"
 
-#: crates/ui-egui/src/canvas.rs:4130
+#: crates/ui-egui/src/canvas.rs:4132
 msgid "{} of {} risers"
 msgstr "{} trên {} bậc đứng"
 
@@ -10216,7 +10216,7 @@ msgstr "Đã chọn {}."
 msgid "{} triangles, from a file"
 msgstr "{} tam giác, từ một tệp"
 
-#: crates/ui-egui/src/canvas.rs:4132
+#: crates/ui-egui/src/canvas.rs:4134
 msgid "{} up"
 msgstr "lên {}"
 

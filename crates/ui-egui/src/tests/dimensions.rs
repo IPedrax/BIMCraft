@@ -635,7 +635,7 @@ fn the_modify_tab_edits_a_selected_dimensions_references() {
 }
 
 #[test]
-fn a_click_in_the_open_does_not_move_a_dimension_being_edited() {
+fn a_click_in_the_open_leaves_the_edit_and_does_not_move_the_line() {
     let mut h = app(THREE_WALLS);
     let id = ids(&h, "dimension")[0];
     h.state_mut().selection = vec![id];
@@ -643,11 +643,9 @@ fn a_click_in_the_open_does_not_move_a_dimension_being_edited() {
     h.state_mut().start_dimension_refs_edit();
     h.run();
     let before = dimension(&h, id);
-    click(&mut h, P2(2500.0, -3000.0));
-    assert!(h.state().dimension_refs_edit.is_some(), "editing goes on");
-    assert_eq!(dimension(&h, id).at, before.at, "a click in the open leaves the line where it is");
-    key(&mut h, Key::Enter);
-    assert!(h.state().dimension_refs_edit.is_none());
+    click(&mut h, P2(2500.0, 2000.0));
+    assert!(h.state().dimension_refs_edit.is_none(), "a click in the open leaves the mode: {}", h.state().status.text);
+    assert_eq!(dimension(&h, id).at, before.at, "it leaves the line where it is");
 }
 
 #[test]

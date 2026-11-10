@@ -124,7 +124,7 @@ msgstr "Body kružnice, elipsy nebo oblouku podél jejích os: východ, sever, z
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
 msgstr "Materiál vodiče, izolace a provozní teplota a proudová zatížitelnost jednotlivých průřezů v mm²."
 
-#: crates/ui-egui/src/canvas.rs:3741
+#: crates/ui-egui/src/canvas.rs:3739
 msgid "A dimension has two references at least."
 msgstr ""
 
@@ -3150,7 +3150,7 @@ msgstr "Zadejte název pro každý typ a vzor."
 msgid "Entities"
 msgstr "Entity"
 
-#: crates/ui-egui/src/canvas.rs:3672
+#: crates/ui-egui/src/canvas.rs:3670
 msgid "Equal"
 msgstr "Rovnost"
 
@@ -4676,7 +4676,7 @@ msgstr "Čára umístění:"
 msgid "Location line: {}"
 msgstr "Čára umístění: {}"
 
-#: crates/ui-egui/src/canvas.rs:3843
+#: crates/ui-egui/src/canvas.rs:3845
 msgid "Lock alignment"
 msgstr "Zamknout zarovnání"
 
@@ -4684,7 +4684,7 @@ msgstr "Zamknout zarovnání"
 msgid "Lock segment {}"
 msgstr "Zamknout segment {}"
 
-#: crates/ui-egui/src/canvas.rs:3822
+#: crates/ui-egui/src/canvas.rs:3824
 msgid "Locked segment {}"
 msgstr "Zamknutý segment {}"
 
@@ -4726,7 +4726,7 @@ msgstr "Hlavní rozteč X"
 msgid "Main spacing Y"
 msgstr "Hlavní rozteč Y"
 
-#: crates/ui-egui/src/canvas.rs:3917
+#: crates/ui-egui/src/canvas.rs:3919
 msgid "Make Dimension Permanent"
 msgstr ""
 
@@ -8916,7 +8916,7 @@ msgstr "Jednotky"
 msgid "Units Format"
 msgstr "Formát jednotek"
 
-#: crates/ui-egui/src/canvas.rs:3804
+#: crates/ui-egui/src/canvas.rs:3806
 msgid "Unlock alignment"
 msgstr "Odemknout zarovnání"
 
@@ -9520,9 +9520,9 @@ msgstr "`{}` není platná výška"
 #: crates/ui-egui/src/canvas.rs:3159
 #: crates/ui-egui/src/canvas.rs:3530
 #: crates/ui-egui/src/canvas.rs:3587
-#: crates/ui-egui/src/canvas.rs:3947
-#: crates/ui-egui/src/canvas.rs:4040
-#: crates/ui-egui/src/canvas.rs:4060
+#: crates/ui-egui/src/canvas.rs:3949
+#: crates/ui-egui/src/canvas.rs:4042
+#: crates/ui-egui/src/canvas.rs:4062
 #: crates/ui-egui/src/draw.rs:270
 #: crates/ui-egui/src/draw.rs:271
 #: crates/ui-egui/src/draw.rs:272
@@ -9986,7 +9986,7 @@ msgstr "model nemá žádná podlaží"
 msgid "the next free name"
 msgstr "další volný název"
 
-#: crates/ui-egui/src/canvas.rs:4039
+#: crates/ui-egui/src/canvas.rs:4041
 msgid "the opening has to stay on its wall"
 msgstr "otvor musí zůstat na své stěně"
 
@@ -10169,7 +10169,7 @@ msgstr "{} mm pro A2-A4"
 msgid "{} months ago"
 msgstr "Před {} měsíci"
 
-#: crates/ui-egui/src/canvas.rs:4130
+#: crates/ui-egui/src/canvas.rs:4132
 msgid "{} of {} risers"
 msgstr "{} z {} stupňů"
 
@@ -10215,7 +10215,7 @@ msgstr "Vybráno: {}."
 msgid "{} triangles, from a file"
 msgstr "{} trojúhelníků, ze souboru"
 
-#: crates/ui-egui/src/canvas.rs:4132
+#: crates/ui-egui/src/canvas.rs:4134
 msgid "{} up"
 msgstr "{} nahoru"
 

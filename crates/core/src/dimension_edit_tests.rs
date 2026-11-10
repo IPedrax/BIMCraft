@@ -378,3 +378,44 @@ fn deleting_a_segment_of_an_equal_chain_turns_its_equality_off_when_one_is_left(
     assert!(!edited.equal);
     assert_eq!(values(&s, d), vec![2500.0]);
 }
+
+#[test]
+fn resizing_by_a_walls_face_corners_works_where_its_ends_are_joined() {
+    let mut s = Session::new();
+    let w = wall(&mut s, json!([[0, 0], [4000, 0]]));
+    wall(&mut s, json!([[0, 0], [0, 3000]]));
+    wall(&mut s, json!([[4000, 0], [4000, 3000]]));
+    let d = dimension(
+        &mut s,
+        json!([{"id": w, "face": "left", "point": "start"}, {"id": w, "face": "left", "point": "end"}]),
+        json!([2000, -1000]),
+    );
+    run(&mut s, "dimension_value", json!({"id": d, "value": 3500}));
+    let v = values(&s, d)[0];
+    assert!((v - 3500.0).abs() < 0.02, "{v}");
+    assert!(wall_start(&s, w) > 0.0 && wall_end(&s, w) < 4000.0, "both joined ends moved in");
+}
+
+#[test]
+fn a_dimension_between_a_walls_end_faces_resizes_it() {
+    let mut s = Session::new();
+    let w = wall(&mut s, json!([[0, 0], [4000, 0]]));
+    wall(&mut s, json!([[0, 0], [0, 3000]]));
+    wall(&mut s, json!([[4000, 0], [4000, 3000]]));
+    let d = dimension(&mut s, json!([{"id": w, "face": "start"}, {"id": w, "face": "end"}]), json!([2000, -1000]));
+    run(&mut s, "dimension_value", json!({"id": d, "value": 3500}));
+    let v = values(&s, d)[0];
+    assert!((v - 3500.0).abs() < 0.02, "{v}");
+}
+
+#[test]
+fn a_dimension_from_an_end_face_to_the_other_end_resizes_it() {
+    let mut s = Session::new();
+    let w = wall(&mut s, json!([[0, 0], [4000, 0]]));
+    wall(&mut s, json!([[0, 0], [0, 3000]]));
+    wall(&mut s, json!([[4000, 0], [4000, 3000]]));
+    let d = dimension(&mut s, json!([{"id": w, "face": "start"}, {"id": w, "point": "end"}]), json!([2000, -1000]));
+    run(&mut s, "dimension_value", json!({"id": d, "value": 3500}));
+    let v = values(&s, d)[0];
+    assert!((v - 3500.0).abs() < 0.02, "{v}");
+}

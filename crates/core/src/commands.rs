@@ -12687,14 +12687,31 @@ fn dimension_value(s: &mut Session, p: &Value) -> R {
                 ),
             ));
         };
-        if r_anchor.point.is_some() && r_mover.point.is_some() && r_anchor.point != r_mover.point {
-            resize_wall(s, c, id, &WallGrowth { wall_id: moved_id, wall: &w, signed, n, segment })?;
+        let u = (w.end - w.start).unit();
+        if u.cross(n).abs() <= 1e-6 {
+            // Along the wall: its two ends are the segment's. Face corners and ends move a little differently where
+            // walls join, so nudge the wall until what the dimension measures is the value (the first try is exact for
+            // the location line's own points).
+            for _ in 0..6 {
+                let now = current_dimension(s, c, id)?;
+                let (_, st_now) = s.model.stations(&now);
+                let (Some(a), Some(b)) = (st_now.get(anchor), st_now.get(mover)) else { break };
+                let distance = (b.0 - a.0).abs();
+                let need = if b.0 >= a.0 { value - distance } else { distance - value };
+                if need.abs() <= 0.01 {
+                    break;
+                }
+                let Some(w) = s.model.wall(moved_id).cloned() else { break };
+                resize_wall(s, c, id, &WallGrowth { wall_id: moved_id, wall: &w, signed: need, n, segment })?;
+            }
             moved_id
-        } else {
+        } else if u.dot(n).abs() <= 1e-6 {
             return Err(bad(
                 c,
                 format!("segment {segment} lies across one wall: its thickness is its Wall Type's, not the dimension's to set"),
             ));
+        } else {
+            return Err(bad(c, format!("segment {segment} spans one wall at an angle; type its length along the wall")));
         }
     } else {
         if signed.abs() > 1e-9 {
