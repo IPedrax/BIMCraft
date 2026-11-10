@@ -386,11 +386,59 @@ pub struct ModelTokens<'a> {
     pub format: &'a str,
     /// Seconds since 1970, UTC.
     pub now: u64,
+    /// What a job adds, by name: a publishing set's `PrintSet` and `PublishSet`.
+    pub extra: &'a BTreeMap<String, String>,
+}
+
+/// A parameter's value as a file name holds it: text as it is, a number without a needless fraction, Yes or No.
+fn said(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Bool(b) => if *b { "Yes" } else { "No" }.to_string(),
+        serde_json::Value::Number(n) => match n.as_f64() {
+            Some(f) if f.fract() == 0.0 && f.abs() < 1e15 => format!("{f:.0}"),
+            _ => n.to_string(),
+        },
+        _ => String::new(),
+    }
 }
 
 impl ModelTokens<'_> {
-    pub const NAMES: [&'static str; 10] =
-        ["ProjectName", "ViewName", "ViewType", "SheetNumber", "SheetName", "Level", "Scale", "Format", "Date", "Time"];
+    /// The tokens every project has.
+    pub const NAMES: [&'static str; 12] = [
+        "ProjectName",
+        "ViewName",
+        "ViewType",
+        "SheetNumber",
+        "SheetName",
+        "Level",
+        "Scale",
+        "Format",
+        "Date",
+        "Time",
+        "PrintSet",
+        "PublishSet",
+    ];
+
+    /// The tokens Project Information answers, by the names Revit gives its fields: `{Project Number}`, `{Client Name}`.
+    pub fn information() -> Vec<&'static str> {
+        crate::project_info::FIELDS.iter().map(|(_, label)| *label).collect()
+    }
+
+    /// The tokens the project's own parameters answer, by their names: those not taken by a token above.
+    pub fn parameters(m: &Model) -> Vec<String> {
+        let taken = |n: &str| Self::NAMES.contains(&n) || Self::information().contains(&n);
+        m.parameters.keys().filter(|n| !taken(n) && !n.contains(['{', '}', '/', '\\'])).cloned().collect()
+    }
+
+    /// A project parameter's value: the source's own (or its type's), else the project's, in Project Information.
+    fn parameter(&self, name: &str) -> Option<String> {
+        let m = self.model;
+        let p = m.parameters.get(name)?;
+        let of = |id: Id| m.elements.get(id).and_then(|e| crate::parameters::value_of(m, e, name, p)).map(said).filter(|v| !v.is_empty());
+        let own = self.id.and_then(of);
+        Some(own.or_else(|| m.project_info().and_then(|(id, _)| of(id))).unwrap_or_default())
+    }
 }
 
 impl naming::Tokens for ModelTokens<'_> {
@@ -426,13 +474,26 @@ impl naming::Tokens for ModelTokens<'_> {
             "Format" => self.format.to_string(),
             "Date" => date,
             "Time" => time,
-            // Project parameters, by name, will answer here.
-            _ => return None,
+            "PrintSet" | "PublishSet" => self.extra.get(name).cloned().unwrap_or_default(),
+            _ => {
+                // Project Information's fields by their names, then the project's parameters by theirs.
+                let field = crate::project_info::FIELDS.iter().find(|(_, label)| *label == name);
+                return match field {
+                    Some((key, _)) => {
+                        let info = m.project_info();
+                        let text = info.and_then(|(_, i)| i.get(key)).unwrap_or_default();
+                        // An address has lines; a file name has one.
+                        Some(text.lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(", "))
+                    }
+                    None => self.parameter(name),
+                };
+            }
         })
     }
 
     fn names(&self) -> Vec<String> {
-        Self::NAMES.iter().map(|n| n.to_string()).collect()
+        let all = Self::NAMES.into_iter().chain(Self::information()).map(String::from);
+        all.chain(Self::parameters(self.model)).collect()
     }
 }
 
@@ -473,6 +534,8 @@ pub struct Job {
     /// Whether a file already there is written over; otherwise the new one is numbered.
     pub overwrite: bool,
     pub options: Options,
+    /// Tokens of its own, by name, beside the project's: a publishing set's `PrintSet` and `PublishSet`.
+    pub tokens: BTreeMap<String, String>,
 }
 
 /// A file a job wrote.
@@ -499,6 +562,8 @@ pub struct Report {
     pub failed: Vec<Failed>,
     /// Whether it was stopped before the end; what it wrote by then is whole and kept.
     pub cancelled: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub published: Vec<crate::publish::TimedEntry>,
 }
 
 /// The default file name template of a source of `kind`.
@@ -611,7 +676,7 @@ pub fn run(model: &Arc<Model>, registry: &Registry, job: &Job, ctx: &Ctx) -> Res
             };
             // The source of a lone one names it; a combined file's are many, so only the project's tokens mean anything.
             let id = if combined { None } else { batch_id(&m, &batch, &ids) };
-            let tokens = ModelTokens { model: &m, id, format: format.label(), now };
+            let tokens = ModelTokens { model: &m, id, format: format.label(), now, extra: &job.tokens };
             let mut path = naming::expand(&template, &tokens, format.extension())?;
             if job.folders == Folders::ByFormat {
                 path = Path::new(&naming::safe(format.label())).join(path);

@@ -1,4 +1,4 @@
-//! Print Sets (File > Export > Print Sets…, and the Export dialog's Print Sets… button), as Revit's View/Sheet Set: one window
+//! Print Sets (File > Export > Print Set…, the Publisher, and the Export dialog's Print Sets… button), as Revit's View/Sheet Set: one window
 //! where a set is picked by name, its views and sheets checked in a list of every one the project has (Show: Sheets, Views),
 //! and saved, saved as a new set, reverted, renamed or deleted. Every change is the `print_set` command; a set's name is
 //! unique, and it has an id and a GUID as every library entry has.
@@ -84,6 +84,19 @@ impl BimApp {
             Dialog { current: None, checked: BTreeSet::new(), sheets: true, views: true, find: String::new(), naming: None, error: None };
         d.show_set(m, current);
         self.print_sets = Some(d);
+    }
+
+    /// Opens Print Sets on a set not made yet: nothing checked, its name asked for (the Publisher's New Print Set…).
+    pub(crate) fn open_new_print_set(&mut self) {
+        self.print_sets = Some(Dialog {
+            current: None,
+            checked: BTreeSet::new(),
+            sheets: true,
+            views: true,
+            find: String::new(),
+            naming: Some((Naming::New, String::new())),
+            error: None,
+        });
     }
 
     /// The Print Sets window, while it is open.

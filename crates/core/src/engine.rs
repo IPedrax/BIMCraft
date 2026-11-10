@@ -434,6 +434,10 @@ impl Session {
                 if self.model.print_sets_dangle() {
                     self.model_mut().prune_print_sets();
                 }
+                // A print set deleted leaves the publishing sets it was in.
+                if self.model.publish_sets_dangle() {
+                    self.model_mut().prune_publish_sets();
+                }
                 // A library in step needs nothing; after a verified model, what the command changed says whether it is.
                 let in_step = if verified { self.model.library_in_step_since(&before) } else { self.model.library_in_step() };
                 #[cfg(test)]
@@ -532,6 +536,10 @@ impl Session {
                 self.model_mut().resolve();
                 if self.model.print_sets_dangle() {
                     self.model_mut().prune_print_sets();
+                }
+                // A print set deleted leaves the publishing sets it was in.
+                if self.model.publish_sets_dangle() {
+                    self.model_mut().prune_publish_sets();
                 }
                 self.model_mut().sync_library();
                 self.model.check().map(|()| v)

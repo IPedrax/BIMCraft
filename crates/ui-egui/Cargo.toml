@@ -16,6 +16,8 @@ bimcraft-core = { workspace = true }
 bimcraft-plugin = { workspace = true }
 bimcraft-update = { workspace = true }
 serde_json = { workspace = true }
+serde = { workspace = true }
+quick-xml = { version = "0.41", features = ["serialize"] }
 egui = { workspace = true }
 eframe = { workspace = true }
 pollster = "1"

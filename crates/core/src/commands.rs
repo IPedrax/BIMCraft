@@ -185,6 +185,16 @@ other_files(
         export,
         Files::Write,
     ),
+    other_files(
+        "publish",
+        "Publish",
+        "{name, folder?} writes publishing set `name` (`publish_set`) out: each of its folders' print sets as its format, \
+         under the set's own folder (beside the project's file unless absolute) or under `folder` when given. Returns what \
+         `export` returns: `written` (each file's path, format and what it is of), `failed` (what wasn't written and why; \
+         the rest go on) and `cancelled`",
+        publish,
+        Files::Write,
+    ),
     other(
         "export_formats",
         "Export Formats",
@@ -566,6 +576,23 @@ other_files(
          exported together, in the order given. `views` gives the whole list (a new set needs it, empty or not), `add` and \
          `remove` change it. A view deleted leaves every set. Without `name`, lists the sets, each its views' ids and titles",
         print_set,
+    ),
+    edit(
+        "publish_set",
+        "Publisher",
+        &[],
+        "{name?, folder?, folders?: [{name, entries: [{print_set, format, name?, combine?, options?}]}], overwrite?: true, timings?, rename?, \
+         duplicate?, delete?: true} a publishing set, the Publisher's preset: folders that hold print sets (`print_set`), each \
+         written as a `format` (an id or an extension from `export_formats`). A print set may be in a folder once for each \
+         format. `folder` is where the set is written: beside the project's file unless absolute. A folder's `name` is under \
+         it (a `/` nests, none is the destination itself). An entry's `name` is its files' template (the tokens `export` \
+         takes, and `{PrintSet}`, `{PublishSet}`, Project Information's fields as `{Project Number}`, `{Client Name}`…, and \
+         any project parameter by its name); `combine` names the one file all of the set's views go in (PDF); `options`: \
+         {page?, pdf?, quality?, ifc_origin?} as `export` takes them. `folders` gives them all (a new set may have none); \
+         `duplicate` makes a copy of `name` called that. A print set deleted leaves every folder. Without `name`, lists the \
+         sets. `timings` records completed entry exports, each with folder, print_set, format and time \
+         {started_ms, ended_ms, duration_ms}. `publish` writes one",
+        publish_set,
     ),
     edit(
         "voltage",
@@ -3653,6 +3680,7 @@ fn export(s: &mut Session, p: &Value) -> R {
             combine: string(c, p, "combine")?,
             overwrite: flag(c, p, "overwrite")?,
             options,
+            ..Default::default()
         },
         (None, None) => return Err(bad(c, "`path` (one file) or `folder` (a file each) is required")),
     };
@@ -3674,7 +3702,10 @@ fn export_formats(s: &mut Session, _: &Value) -> R {
                 "takes": f.takes(), "combines": f.combines(), "paged": f.paged()})
         })
         .collect();
-    Ok(json!({"formats": formats, "tokens": crate::export::ModelTokens::NAMES}))
+    let mut tokens: Vec<String> = crate::export::ModelTokens::NAMES.iter().map(|n| n.to_string()).collect();
+    tokens.extend(crate::export::ModelTokens::information().iter().map(|n| n.to_string()));
+    tokens.extend(crate::export::ModelTokens::parameters(&s.model));
+    Ok(json!({"formats": formats, "tokens": tokens}))
 }
 
 fn autosave(s: &mut Session, p: &Value) -> R {
@@ -7659,6 +7690,131 @@ fn print_set(s: &mut Session, p: &Value) -> R {
     let count = set.views.len();
     m.print_sets.insert(name.clone(), set);
     Ok(json!({"name": name, "views": count}))
+}
+
+fn publish_set(s: &mut Session, p: &Value) -> R {
+    let c = "publish_set";
+    only(c, p, &["name", "folder", "folders", "overwrite", "rename", "duplicate", "delete", "timings"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        let m = &s.model;
+        let sets: Vec<Value> = m
+            .publish_sets
+            .iter()
+            .map(|(name, set)| {
+                json!({"name": name, "id": m.library.id(&LibKind::PublishSet, name), "folder": set.folder, "overwrite": set.overwrite,
+                    "folders": set.folders})
+            })
+            .collect();
+        return Ok(json!({"publish_sets": sets}));
+    };
+    // The folders given: each print set one the project has, each format one this exports to, by its id.
+    let folders = match p.get("folders") {
+        v if absent(v) => None,
+        Some(v) => {
+            let mut folders: Vec<crate::publish::Folder> =
+                serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`folders` is a list of {{name, entries}}: {e}")))?;
+            for e in folders.iter_mut().flat_map(|f| &mut f.entries) {
+                e.print_set = e.print_set.trim().to_string();
+                if !s.model.print_sets.contains_key(&e.print_set) {
+                    return Err(bad(c, format!("there's no print set `{}`; `print_set` makes one", e.print_set)));
+                }
+                let format = s.exports.find(&e.format).map_err(|why| bad(c, why))?;
+                if format.status() == crate::export::Status::Planned {
+                    return Err(bad(c, format!("{} export isn't written yet", format.label())));
+                }
+                e.format = format.id().to_string();
+            }
+            Some(folders)
+        }
+        None => None,
+    };
+    let folder = string(c, p, "folder")?;
+    let overwrite = if absent(p.get("overwrite")) { None } else { Some(flag(c, p, "overwrite")?) };
+    let rename = name_param(c, p, "rename")?;
+    let duplicate = name_param(c, p, "duplicate")?;
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if m.publish_sets.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no publishing set `{name}`")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let room = |m: &Model| {
+        if m.publish_sets.len() >= crate::publish::MAX_SETS {
+            return Err(bad(c, format!("the project holds up to {} publishing sets", crate::publish::MAX_SETS)));
+        }
+        Ok(())
+    };
+    if let Some(to) = duplicate {
+        let set = m.publish_sets.get(&name).cloned().ok_or_else(|| bad(c, format!("there's no publishing set `{name}`")))?;
+        if m.publish_sets.contains_key(&to) {
+            return Err(bad(c, format!("there's already a publishing set `{to}`")));
+        }
+        room(m)?;
+        set.check(&to).map_err(|e| bad(c, e))?;
+        let entries = set.len();
+        m.publish_sets.insert(to.clone(), set);
+        return Ok(json!({"name": to, "entries": entries}));
+    }
+    let mut set = match m.publish_sets.get(&name) {
+        Some(was) => was.clone(),
+        None => {
+            room(m)?;
+            crate::publish::PublishSet::default()
+        }
+    };
+    if let Some(folders) = folders {
+        set.folders = folders;
+    }
+    if let Some(folder) = folder {
+        set.folder = folder.trim().to_string();
+    }
+    if let Some(overwrite) = overwrite {
+        set.overwrite = overwrite;
+    }
+    if let Some(timings) = p.get("timings") {
+        let timings: Vec<crate::publish::TimedEntry> =
+            serde_json::from_value(timings.clone()).map_err(|e| bad(c, format!("`timings` is a list of completed exports: {e}")))?;
+        set.record_times(&timings);
+    }
+    let name = match rename {
+        Some(to) if to != name => {
+            if m.publish_sets.contains_key(&to) {
+                return Err(bad(c, format!("there's already a publishing set `{to}`")));
+            }
+            if m.publish_sets.remove(&name).is_none() {
+                return Err(bad(c, format!("there's no publishing set `{name}` to rename")));
+            }
+            rename_entry(m, &LibKind::PublishSet, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    set.check(&name).map_err(|e| bad(c, e))?;
+    let entries = set.len();
+    m.publish_sets.insert(name.clone(), set);
+    Ok(json!({"name": name, "entries": entries}))
+}
+
+fn publish(s: &mut Session, p: &Value) -> R {
+    let c = "publish";
+    only(c, p, &["name", "folder"])?;
+    let name = name_param(c, p, "name")?.ok_or_else(|| bad(c, "`name` is required: a publishing set (`publish_set` lists them)"))?;
+    let set = s.model.publish_sets.get(&name).ok_or_else(|| bad(c, format!("there's no publishing set `{name}`")))?;
+    let given = string(c, p, "folder")?.map(PathBuf::from);
+    let root = set.root(s.path.as_deref(), given.as_deref()).map_err(|e| bad(c, e))?;
+    let report = crate::publish::run(&s.model, &s.exports, &name, &root, &crate::export::Ctx::quiet()).map_err(|e| bad(c, e))?;
+    if report.written.is_empty() {
+        let why: Vec<String> = report.failed.iter().map(|f| format!("{}: {}", f.of, f.error)).collect();
+        return Err(bad(c, format!("nothing was written; {}", why.join("; "))));
+    }
+    if s.read_only.is_none()
+        && !report.published.is_empty()
+        && let Some(set) = s.model_mut().publish_sets.get_mut(&name)
+    {
+        set.record_times(&report.published);
+    }
+    Ok(json!(report))
 }
 
 /// A number of `unit` under `key`, finite and of any size: the setting's own check says how large it may be.

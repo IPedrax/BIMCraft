@@ -109,6 +109,8 @@ enum Act {
     Choose(Pick, bool, bool),
     /// Create Print Set…, of these.
     NewSet(Vec<Pick>),
+    /// Open the Publisher from the browser's right-click menu.
+    Publisher,
     /// Expand All, or Collapse All.
     Fold(bool),
 }
@@ -395,6 +397,7 @@ impl BimApp {
                 }
             }
             Some(Act::Fold(open)) => self.browser_fold = Some(open),
+            Some(Act::Publisher) => self.open_publisher(),
             Some(Act::Place(family, ty)) => {
                 self.component = Some((family, ty));
                 self.set_tool(Tool::Component);
@@ -441,6 +444,11 @@ impl BimApp {
                 }
                 ui.separator();
             }
+            if ui.button(t("Publisher…")).clicked() {
+                *act = Some(Act::Publisher);
+                ui.close();
+            }
+            ui.separator();
             if ui.button(t("Expand All")).clicked() {
                 *act = Some(Act::Fold(true));
                 ui.close();

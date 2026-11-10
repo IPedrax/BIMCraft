@@ -147,7 +147,7 @@ fn literal(name: &str) -> String {
     name.replace('{', "{{").replace('}', "}}")
 }
 
-fn family_name(f: Family) -> &'static str {
+pub(crate) fn family_name(f: Family) -> &'static str {
     match f {
         Family::Document => msg!("Document"),
         Family::Vector => msg!("Vector"),
@@ -160,7 +160,7 @@ fn family_name(f: Family) -> &'static str {
 }
 
 /// A format as the list names it: its label, and how ready it is.
-fn format_name(f: &dyn Format) -> String {
+pub(crate) fn format_name(f: &dyn Format) -> String {
     match f.status() {
         Ready::Stable => f.label().to_string(),
         Ready::Experimental => tf(msg!("{} (experimental)"), &[f.label()]),
@@ -168,7 +168,7 @@ fn format_name(f: &dyn Format) -> String {
     }
 }
 
-fn archive_name(a: Archive) -> String {
+pub(crate) fn archive_name(a: Archive) -> String {
     match a {
         Archive::None => t("None").to_string(),
         a => a.label().to_string(),
@@ -230,7 +230,6 @@ impl BimApp {
             Scale::Custom(n) => n,
             _ => source.map_or(100.0, |id| bimcraft_core::graphics::scale_of(&self.session.model, id)).max(1.0),
         };
-        let printers = Printers::ask(Arc::clone(&self.spooler));
         self.export_dialog = Some(Dialog {
             format,
             source,
@@ -245,7 +244,7 @@ impl BimApp {
             picking: false,
             destination: Destination::File,
             copies: 1,
-            printers,
+            printers: Printers::default(),
             preview: Preview::default(),
         });
     }
@@ -287,7 +286,7 @@ impl BimApp {
         let model = Arc::clone(&self.session.model);
         let registry = self.session.exports.clone();
         let kind = export::kind_of(&model, d.source);
-        d.printers.poll(ctx);
+        d.printers.poll(ctx, Arc::clone(&self.spooler));
         // A printer prints PDF.
         if matches!(d.destination, Destination::Printer(_)) && d.format != "pdf" {
             d.format = "pdf".to_string();
@@ -492,6 +491,8 @@ impl BimApp {
         many: Option<&[Id]>,
     ) {
         let printing = matches!(d.destination, Destination::Printer(_));
+        let (line_left, line_width) = (ui.cursor().left(), ui.available_width());
+        let mut lines = Vec::new();
         egui::Grid::new("export-what").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
             ui.label(t("Destination"));
             ui.horizontal(|ui| {
@@ -546,7 +547,7 @@ impl BimApp {
                     }
                 });
             });
-            ui.end_row();
+            line_after_row(ui, &mut lines);
             ui.label(t("Of"));
             ui.vertical(|ui| {
                 let what = match given {
@@ -589,7 +590,7 @@ impl BimApp {
                     ui.label(RichText::new(text).color(pal().muted));
                 }
             });
-            ui.end_row();
+            line_after_row(ui, &mut lines);
             // A drawing's extents: all of it, or a region drawn in the view.
             let drawing = format.takes().contains(&Takes::Drawing) && given.is_some();
             if drawing && has_region(kind) && many.is_none() {
@@ -619,63 +620,17 @@ impl BimApp {
                         ui.label(RichText::new(text).color(pal().muted));
                     }
                 });
-                ui.end_row();
+                line_after_row(ui, &mut lines);
             }
         });
+        paint_lines(ui, line_left, line_width, &lines);
         if format.status() == Ready::Experimental {
             ui.label(
                 RichText::new(t("Experimental: its files have not yet been proven in the programs that read them.")).color(pal().muted),
             );
         }
-        let o = &mut d.options;
-        if format.id().starts_with("ifc") {
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                ui.label(t("Coordinates from"));
-                let name = |o: Origin| match o {
-                    Origin::Internal => t("Internal origin"),
-                    Origin::Base => t("Project Base Point"),
-                    Origin::Survey => t("Survey Point"),
-                    Origin::Shared => t("Shared coordinates"),
-                };
-                ComboBox::from_id_salt("export-origin").selected_text(name(o.ifc_origin)).show_ui(ui, |ui| {
-                    for origin in [Origin::Internal, Origin::Base, Origin::Survey, Origin::Shared] {
-                        ui.selectable_value(&mut o.ifc_origin, origin, name(origin));
-                    }
-                });
-            });
-        }
-        if format.id() == "jpeg" {
-            let mut quality = o.quality.unwrap_or(90);
-            ui.horizontal(|ui| {
-                ui.label(t("Quality"));
-                ui.add(egui::Slider::new(&mut quality, 1..=100));
-            });
-            o.quality = Some(quality);
-        }
-        if format.id() == "bcf" {
-            ui.label(
-                RichText::new(tf(msg!("The topic is about the {} elements selected."), &[&o.selected.len().to_string()]))
-                    .color(pal().muted),
-            );
-        }
-        if format.takes().contains(&Takes::Drawing) && !format.paged() {
-            // A drawing of no pages (SVG, DXF, DWG) still takes its colours and lines.
-            ui.add_space(8.0);
-            egui::Grid::new("export-look").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
-                colour_rows(ui, &mut o.page);
-            });
-            return;
-        }
-        if !format.paged() {
-            return;
-        }
-        let picture = format.family() == Family::Raster || (format.id() == "pdf" && o.pdf.raster);
-        let laid = d.preview.layout(&o.page).and_then(Result::ok);
-        let own = laid.as_ref().map(|l| l.paper);
-        let pages = laid.as_ref().map_or(1, |l| l.cols * l.rows);
-        let pdf = (format.id() == "pdf").then_some(&mut o.pdf);
-        page_setup(ui, &mut o.page, &mut d.ratio, picture, own, pdf, pages, &mut d.page_list);
+        let laid = d.preview.layout(&d.options.page).and_then(Result::ok);
+        format_options(ui, format, &mut d.options, &mut d.ratio, &mut d.page_list, laid.as_ref());
     }
 
     /// Beside the form: the preview, a PDF's own settings under it, and what the pages come to.
@@ -719,20 +674,83 @@ impl BimApp {
     }
 }
 
+/// What a format's writer is asked, as a form: an IFC's origin, a JPEG's quality, a drawing's colours and lines, and for a
+/// format of pages the page setup (with a PDF's content and cut marks). `ratio` and `list` are the scale and the pages
+/// typed, kept while another choice is picked; `laid`, how the drawing lies on its pages now, when that is known. The
+/// Export dialog's form and the Publisher's settings of an entry.
+pub(crate) fn format_options(
+    ui: &mut Ui,
+    format: &dyn Format,
+    o: &mut Options,
+    ratio: &mut f64,
+    list: &mut String,
+    laid: Option<&page::Layout>,
+) {
+    if format.id().starts_with("ifc") {
+        ui.add_space(6.0);
+        ui.horizontal(|ui| {
+            ui.label(t("Coordinates from"));
+            let name = |o: Origin| match o {
+                Origin::Internal => t("Internal origin"),
+                Origin::Base => t("Project Base Point"),
+                Origin::Survey => t("Survey Point"),
+                Origin::Shared => t("Shared coordinates"),
+            };
+            ComboBox::from_id_salt("export-origin").selected_text(name(o.ifc_origin)).show_ui(ui, |ui| {
+                for origin in [Origin::Internal, Origin::Base, Origin::Survey, Origin::Shared] {
+                    ui.selectable_value(&mut o.ifc_origin, origin, name(origin));
+                }
+            });
+        });
+    }
+    if format.id() == "jpeg" {
+        let mut quality = o.quality.unwrap_or(90);
+        ui.horizontal(|ui| {
+            ui.label(t("Quality"));
+            ui.add(egui::Slider::new(&mut quality, 1..=100));
+        });
+        o.quality = Some(quality);
+    }
+    if format.id() == "bcf" {
+        ui.label(
+            RichText::new(tf(msg!("The topic is about the {} elements selected."), &[&o.selected.len().to_string()])).color(pal().muted),
+        );
+    }
+    if format.takes().contains(&Takes::Drawing) && !format.paged() {
+        // A drawing of no pages (SVG, DXF, DWG) still takes its colours and lines.
+        ui.add_space(8.0);
+        let (line_left, line_width) = (ui.cursor().left(), ui.available_width());
+        let mut lines = Vec::new();
+        egui::Grid::new("export-look").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
+            colour_rows(ui, &mut o.page, &mut lines);
+        });
+        paint_lines(ui, line_left, line_width, &lines);
+        return;
+    }
+    if !format.paged() {
+        return;
+    }
+    let picture = format.family() == Family::Raster || (format.id() == "pdf" && o.pdf.raster);
+    let own = laid.map(|l| l.paper);
+    let pages = laid.map_or(1, |l| l.cols * l.rows);
+    let pdf = (format.id() == "pdf").then_some(&mut o.pdf);
+    page_setup(ui, &mut o.page, ratio, picture, own, pdf, pages, list);
+}
+
 /// A scale's n as it reads: whole when it is near enough, else to two places.
 fn ratio_text(n: f64) -> String {
     if (n - n.round()).abs() < 0.005 { format!("{}", n.round()) } else { format!("{n:.2}") }
 }
 
 /// The colour and hairline rows, in a two-column grid.
-fn colour_rows(ui: &mut Ui, p: &mut PageSetup) {
+fn colour_rows(ui: &mut Ui, p: &mut PageSetup, lines: &mut Vec<f32>) {
     ui.label(t("Colour"));
     ui.horizontal(|ui| {
         ui.radio_value(&mut p.colour, Colour::Colour, t("Colour"));
         ui.radio_value(&mut p.colour, Colour::Grey, t("Greyscale"));
         ui.radio_value(&mut p.colour, Colour::Black, t("Black and white"));
     });
-    ui.end_row();
+    line_after_row(ui, lines);
     ui.label("");
     ui.checkbox(&mut p.hairlines, t("Hairlines"));
     ui.end_row();
@@ -753,6 +771,8 @@ fn page_setup(
 ) {
     ui.add_space(8.0);
     ui.label(RichText::new(t("Page")).strong());
+    let (line_left, line_width) = (ui.cursor().left(), ui.available_width());
+    let mut lines = Vec::new();
     egui::Grid::new("export-page").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
         ui.label(t("Paper"));
         ui.horizontal(|ui| {
@@ -783,14 +803,14 @@ fn page_setup(
                 ui.add(DragValue::new(&mut size.1).range(side).suffix(" mm"));
             }
         });
-        ui.end_row();
+        line_after_row(ui, &mut lines);
         ui.label(t("Orientation"));
         ui.horizontal(|ui| {
             ui.radio_value(&mut p.orientation, Orientation::Auto, t("Auto"));
             ui.radio_value(&mut p.orientation, Orientation::Portrait, t("Portrait"));
             ui.radio_value(&mut p.orientation, Orientation::Landscape, t("Landscape"));
         });
-        ui.end_row();
+        line_after_row(ui, &mut lines);
         ui.label(t("Scale"));
         ui.horizontal(|ui| {
             let custom = matches!(p.scale, Scale::Custom(_));
@@ -808,14 +828,14 @@ fn page_setup(
                 p.scale = Scale::Custom(*ratio);
             }
         });
-        ui.end_row();
+        line_after_row(ui, &mut lines);
         ui.label(t("Margin"));
         ui.add(DragValue::new(&mut p.margin).range(0.0..=page::MAX_MARGIN).suffix(" mm"));
-        ui.end_row();
+        line_after_row(ui, &mut lines);
         ui.label(t("Placement"));
         anchor_picker(ui, &mut p.anchor);
-        ui.end_row();
-        colour_rows(ui, p);
+        line_after_row(ui, &mut lines);
+        colour_rows(ui, p, &mut lines);
         if let Some(s) = pdf {
             ui.label(t("Content"));
             ui.horizontal(|ui| {
@@ -836,6 +856,7 @@ fn page_setup(
             p.dpi = Some(dpi);
             ui.end_row();
         }
+        lines.push(ui.cursor().top() - 3.0);
         ui.label(t("Pages"));
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
@@ -868,10 +889,24 @@ fn page_setup(
         });
         ui.end_row();
     });
+    paint_lines(ui, line_left, line_width, &lines);
+}
+
+/// A divider in the gap after a grid row, without making the form any taller.
+fn line_after_row(ui: &mut Ui, lines: &mut Vec<f32>) {
+    ui.end_row();
+    lines.push(ui.cursor().top() - 3.0);
+}
+
+fn paint_lines(ui: &Ui, left: f32, width: f32, lines: &[f32]) {
+    let stroke = Stroke::new(1.0, pal().border);
+    for &y in lines {
+        ui.painter().hline(left..=left + width, y, stroke);
+    }
 }
 
 /// A PDF's document settings, in their own window: the archive standard, the version, and the document's title.
-fn pdf_settings(ui: &mut Ui, s: &mut bimcraft_core::pdf::Settings) {
+pub(crate) fn pdf_settings(ui: &mut Ui, s: &mut bimcraft_core::pdf::Settings) {
     egui::Grid::new("export-pdf").num_columns(2).spacing([10.0, 6.0]).show(ui, |ui| {
         ui.label(t("Archive"));
         ComboBox::from_id_salt("export-archive")
@@ -966,26 +1001,27 @@ impl Dialog {
 }
 
 impl Printers {
-    /// Looks for the printers on a thread: the spooler may be slow to answer.
-    fn ask(spooler: Arc<dyn print::Spooler>) -> Printers {
-        let (send, answer) = channel();
-        let spawned = std::thread::Builder::new().name("printers".into()).spawn(move || {
-            let _ = send.send(spooler.printers());
-        });
-        match spawned {
-            Ok(_) => Printers { answer: Some(answer), found: None },
-            Err(e) => Printers { answer: None, found: Some(Err(e.to_string())) },
+    /// Looks for printers on a thread, and repaints once when the answer arrives.
+    fn poll(&mut self, ctx: &Context, spooler: Arc<dyn print::Spooler>) {
+        if self.answer.is_none() && self.found.is_none() {
+            let (send, answer) = channel();
+            let repaint = ctx.clone();
+            let spawned = std::thread::Builder::new().name("printers".into()).spawn(move || {
+                let _ = send.send(spooler.printers());
+                repaint.request_repaint();
+            });
+            match spawned {
+                Ok(_) => self.answer = Some(answer),
+                Err(e) => self.found = Some(Err(e.to_string())),
+            }
         }
-    }
-
-    fn poll(&mut self, ctx: &Context) {
         let Some(answer) = &self.answer else { return };
         match answer.try_recv() {
             Ok(found) => {
                 self.found = Some(found);
                 self.answer = None;
             }
-            Err(TryRecvError::Empty) => ctx.request_repaint_after(Duration::from_millis(100)),
+            Err(TryRecvError::Empty) => {}
             Err(TryRecvError::Disconnected) => {
                 self.found = Some(Err("the spooler didn't answer".to_string()));
                 self.answer = None;

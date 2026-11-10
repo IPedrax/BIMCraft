@@ -70,6 +70,8 @@ pub enum Kind {
     CoordinatePoint,
     /// A print set: views and sheets printed together.
     PrintSet,
+    /// A publishing set: print sets in folders, each written as a format.
+    PublishSet,
     /// A dictionary project parameters came from.
     Dictionary,
 }
@@ -108,6 +110,7 @@ impl Kind {
             Kind::Location => ui_msg!("location").into(),
             Kind::CoordinatePoint => "coordinate point".into(),
             Kind::PrintSet => ui_msg!("print set").into(),
+            Kind::PublishSet => ui_msg!("publishing set").into(),
             Kind::Dictionary => "parameter dictionary".into(),
         }
     }
@@ -144,6 +147,7 @@ impl Kind {
             "location" => Kind::Location,
             "coordinate-point" => Kind::CoordinatePoint,
             "print-set" => Kind::PrintSet,
+            "publish-set" => Kind::PublishSet,
             _ => Kind::Type(s.strip_prefix("type:")?.to_string()),
         })
     }
@@ -182,6 +186,7 @@ impl fmt::Display for Kind {
             Kind::Location => f.write_str("location"),
             Kind::CoordinatePoint => f.write_str("coordinate-point"),
             Kind::PrintSet => f.write_str("print-set"),
+            Kind::PublishSet => f.write_str("publish-set"),
             Kind::Dictionary => f.write_str("dictionary"),
         }
     }
@@ -816,6 +821,7 @@ impl Model {
         let points = crate::coordinates::Point::ALL.map(|p| p.name().to_string());
         add(Kind::CoordinatePoint, &mut points.iter());
         add(Kind::PrintSet, &mut self.print_sets.keys());
+        add(Kind::PublishSet, &mut self.publish_sets.keys());
         out
     }
 
@@ -1546,6 +1552,9 @@ impl Model {
             }
         }
         f(&Kind::Location, &mut self.coordinates.active);
+        for e in self.publish_sets.values_mut().flat_map(|s| &mut s.folders).flat_map(|x| &mut x.entries) {
+            f(&Kind::PrintSet, &mut e.print_set);
+        }
         for d in self.distribution_systems.values_mut() {
             for v in d.voltages_mut() {
                 f(&Kind::Voltage, v);
