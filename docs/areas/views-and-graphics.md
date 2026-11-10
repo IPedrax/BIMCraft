@@ -53,6 +53,32 @@ would: a compound element's layer lines, an opening's jambs and glass, a stair's
 holds only the categories set apart from `styles::default_of` (which draws as before: cut pen 10, seen pen 4). What's next on this
 foundation: annotation categories' object styles and subcategories, viewports as windows onto their views, and printing.
 
+The `sheet` command takes a named `size` (A3 by default), landscape: ISO A0–A4 and B1–B4, ARCH A–E and E1–E3, ANSI A–E and Super B
+(13 × 19 in). ISO, ARCH and ANSI accept a space or none (`ISO A4`, `ISOA4`, `ARCH E2`, `ARCHE2`); ISO also accepts the bare name
+(`A4`, `B1`). ANSI A also accepts `LETTER`, ANSI B `TABLOID` or `LEDGER`. Super B accepts `SUPER B`, `SUPERB` or `SUPER-B`. Names
+are case-insensitive and ignore surrounding spaces; ISO aliases have the same margins and folding marks as their bare names. The
+size string is kept in the project file.
+
+A custom `size`, such as `"500x300"` or `"500 × 300"`, is width × height in millimetres, in that order; it is not rotated. `x`, `X`
+or `×` separates two finite numbers, each from 100 to 1219.2 mm inclusive (`MIN_PAPER`, `MAX_PAPER`). The paper must also hold the
+title block, which is drawn its standard's size in the bottom right corner, inside the border: `Model::check` asks for the left
+margin, the block and the right margin across (`SheetMargins::least_paper`: 210 mm under ISO, EU, JIS and NBR, 211.75 under ANSI)
+and the bottom margin, the block and the top margin up (at most 65.4 mm, so any custom height does), and its error says how wide and
+tall to make the paper. Narrower paper would squeeze the block until the sheet's name ran over its number. The check runs again when
+the project's standard changes, so a change to ANSI is refused while a 210 mm wide sheet could not hold ANSI's block, and the error
+names the sheet. The maximum is the ARCH E long side, 48 in: at the sheet drawing's 5 px/mm, a custom page is at most 6096 × 6096
+px, below the render command's ordinary 8192 px side limit. Sheet images use paper dimensions rather than its width/height
+parameters. A0 is 5945 × 4205 px and ARCH E 6096 × 4572 px; longer roll sheets are not supported. `Model::check` refuses malformed
+or out-of-range dimensions on creation and editing alike.
+
+The sizes come from public standards. The A and B series are ISO 216's: A0 841 × 1189 to A4 210 × 297 mm, and B1 707 × 1000, B2
+500 × 707, B3 353 × 500 and B4 250 × 353 mm. ANSI A to E are ANSI/ASME Y14.1's (Decimal Inch Drawing Sheet Size and Format): 8.5 × 11,
+11 × 17, 17 × 22, 22 × 34 and 34 × 44 in. Y14.1's own sizes are lettered flat sizes A to F and roll sizes G to K, and the ARCH series
+is not among them, so the ARCH sizes and Super B follow PWG 5101.1-2023, the Printer Working Group's Media Standardized Names, whose
+Table 3 lists ARCH A 9 × 12, B 12 × 18, C 18 × 24, D 24 × 36, E 36 × 48, E2 26 × 38 and E3 27 × 39 in, 30 × 42 in (ARCH E1) as
+`wide-format`, and Super B 13 × 19 in; its Table 4 lists the ISO sizes again. An inch is 25.4 mm exactly, so the inch
+sizes go into millimetres with no rounding.
+
 Family components are split by category. A component is of its family's category (`graphics::category_of`; `component_category` names
 each `family::Category`: `furniture`, `casework`, `plumbing`, `drain`, `pipefitting`, `pipeaccessory`, `equipment`, `outlet`, `switch`,
 `airterminal`, `earthing`, `inspectionbox`, `lighting`, `generic`, `dataoutlet`, `voiceoutlet`, `patchpanel`, `rack`; `graphics::COMPONENTS`),
@@ -168,9 +194,11 @@ with 2.5mm, 3.5mm and 5mm in Arial; `text_type` makes, renames and deletes them 
 any font the system has, or one we carry (IBM Plex Sans, IBM Plex Mono, BIMCraft Lettering: `font.rs`'s single-stroke
 capitals). `text/system.rs` lists the system's fonts once (`system::index`): it looks through the folders Linux, Windows
 and macOS keep them in and reads each file only as far as its OpenType table directory and its `name`, `OS/2` and `head`
-tables (family, weight, italic, whether it varies its weight), from the public specification, every offset checked; a face
+tables (family, weight, width, italic, whether it varies its weight), from the public specification, every offset checked; a face
 is read whole (`system::load`, kept, up to `MAX_FONT`) only when a note is lettered in it. `text::resolve` turns a type's font
-and a character's bold and italic into a `Face`: ours by name; else the family; else its stand-ins (`system::substitutes`:
+and a character's bold and italic into a `Face` (of a family, the face upright or italic as asked, then of normal width, so
+Windows' Arial Narrow, which names its family Arial, doesn't letter Arial, then of the nearest weight): ours by name; else the
+family; else its stand-ins (`system::substitutes`:
 Arial by Liberation Sans, Arimo, Helvetica, Nimbus Sans, DejaVu Sans…, Times New Roman and Courier New likewise); else Plex
 Sans. So Arial, the default, letters on any system, and a file naming a font this one hasn't opens (`TextType::check`
 takes any name) and draws with what stands in; the `text_type` command refuses a font the system can't letter, unless the
@@ -620,14 +648,20 @@ To do: shared coordinates, a link's graphics overrides and visibility per view, 
 ## Dimensions
 
 A dimension (`Dimension`, the `dimension` command) measures the model as it is, so it follows what it measures. Its `refs` are lines
-(`Reference {id, face}`: a wall's centre line, faces and ends, a door's or window's centre and jambs, a grid, a straight detail line) or, with
+(`Reference {id, face}`: a wall's centre line, faces and ends, a door's or window's centre and jambs, a column's or structural column's two
+centre lines, along its angle and across it (`Face::Across`, file format 18), its left and right faces and its start and end caps (`Model::column_reference_line`;
+a round one has only its centre lines), a grid, a straight detail line) or, with
 `point: start|end`, the point at that end of one (`Model::reference_point`: a wall's centre line ends where its location line does, a face where
 the outline turns off it, so at the mitred corner; a detail line of any shape at its ends; `reference_points` lists them, `endpoint_at` finds the
-nearest, `{endpoint: [x, y]}` in a command). `reference_geometry` gives either as a line, a point as a line of no length, and `crossings` lays
+nearest, `{endpoint: [x, y]}` in a command). A point given to the command finds what the plan of its level draws (`commands::near_point`): the
+walls its cut plane passes through (`Model::cut_by`) and the columns (`Model::column_cut_by`, the plan's own test, so a column standing on a level
+below that runs up through the cut is one), their doors and windows, the grids and the plan's detail lines. `reference_geometry` gives either as
+a line, a point as a line of no length, and `crossings` lays
 them along the way the dimension measures (`measured_along`): a linear one's `orient` (horizontal or vertical), else square to its first line,
 else from its first point to the next elsewhere. `Model::check` refuses a line not parallel to the first, or not square to a linear one's line,
 and points all in one place. Mirror keeps the end of a line along the element and flips the one across it (`Reference::mirrored`); Flip swaps
-both. A linear one given no `orient` runs vertical where `at` is east or west of everything it measures, else horizontal; the desktop's Auto
+both. A column, which Mirror turns by its reflection rather than running it back, swaps its left and right faces and the ends of what runs across
+it instead (`Reference::mirrored_column`). A linear one given no `orient` runs vertical where `at` is east or west of everything it measures, else horizontal; the desktop's Auto
 (`dims::Placing::kind`) also lays an aligned one where the cursor is among the points (`Orient::follow`), as Archicad does. Radial and diameter
 dimensions measure round columns, curved walls (centre line or a face) and circles and arcs (`reference_arc`); arc length, a curved wall's or an
 arc's length along it (`reference_sweep`), all of it or, with two point references after the arc, between them (`Model::arc_span`), its line an arc through `at` round the same centre. `dims::round_at` picks the face nearest a click.
@@ -680,3 +714,56 @@ corner seen within the snap's reach (`Scene::corner_near`), else an edge within 
 cursor), else the point of the face there; after two, a click places the line where it meets the plane through the two that faces the
 camera most (`dims3d::line_through`), and the status line says how long it is. In Modify a click on a dimension's lines picks it before what
 the picture shows under them (`dims3d::pick`).
+
+## Title blocks
+
+A sheet is drawn with the built-in title box unless it names a title block of the project's own (`Sheet::title_block`, a library
+entry of kind `title-block`, held by GUID in a file like any other name; FORMAT 19). A title block (`titleblock.rs`) is a box, `width`
+by `height` mm, that stands in the sheet's bottom right corner inside the border, where the built-in one stands, with lines (in pens),
+solid fills (a logo) and lettering, all in mm on paper from its own bottom left corner; the border and NBR 17067's folding marks are
+drawn as before, and a view placed by default goes above its height (`sheet::spot`). Lettering may name fields as `{KEY}`: a field the
+title block defines (`fields`: a key, a label for the desktop, a default) is the project's (`scope: project`, one value in
+`Model::title_values`, the same on every sheet) or each sheet's (`scope: sheet`, `Sheet::fields`); the automatic ones (`titleblock::AUTO`:
+PROJECT, SHEET_NAME, SHEET_NUMBER, SCALE (`1 : 100`, or AS INDICATED when the views' differ), DATE in the project's language, SHEET_INDEX and SHEET_COUNT by
+sheet number in reading order, and REVISION, the latest of the revision clouds on the sheet and on the views placed on it) need no
+definition, and a value given to one (DATE, to issue on) is said instead. A key no value fills stays as written, so a missing field
+shows on the sheet. `titleblock::values` works them out, `sheet::title_values` with the sheet's scale, and `elements` gives a sheet's
+as `title_values`, with the keys that are its own to give as `sheet_fields`.
+
+A sheet may also have no title block at all: `sheet {"title_block": "none"}` (`titleblock::NONE`, in any case, or `false`; `true` or
+`""` is the built-in one), for one drawn on the sheet itself. It leaves out the border, the title box and its lettering and the folding
+marks, not viewports, their titles, schedules, text notes or detail lines. Properties > Title Block offers None beside Built-in and
+the project's own (`modify` with `title_block`); `elements` always reports it, `""` for the built-in one, which the file leaves out.
+The desktop and exports share `sheet::draw`. Paper size and automatic viewport placement stay the same, including the room above
+the built-in title box. A frame not drawn can't be picked; viewport and annotation picking are unchanged, and Properties shows the
+sheet when nothing is selected. No title block of the project's may be called `none` (`TitleBlock::check`), and none is no library
+entry, so renaming and Purge Unused pass it by. A file of 17 holds no `none`, so its sheets keep the built-in title box; FORMAT 18,
+shared with the title blocks, keeps a build that reads up to 17 from printing the frame again on a sheet with none.
+
+`title_block` makes, edits, renames and deletes them (one a sheet is drawn with can't go), starting a new one as the built-in box drawn
+as one; with `path` it reads a DXF (or a DWG, through the session's reader) drawn at full size on paper in its model space: lines, arcs,
+circles and polylines as lines, in the pen nearest their weight, solid hatches as fills, texts as texts, moved to the corner of their
+extents, which become the box, and each key the texts name a sheet field, keeping a field it already had (its label, scope and default).
+A block's attribute (ATTRIB) becomes a field of its tag, what it says the field's default, as offices' CAD title blocks hold their
+fields; a drawing that names no unit is read in mm, and the reply's `notes` say so with the size that made.
+Lines, fills and texts keep their colour (the entity's or its layer's; the drawing's ink, index 7, is none), and a text that
+hangs from its point or is centred on it (DXF vertical alignment) comes in on its baseline where it showed. An MTEXT's embedded
+object (code 101 on, written since 2018) is read past (`dxf.rs`), so its 10s and 11s don't turn it, and `\c` true colour is
+formatting, as `\C` is. `TitleBlock::make_field` turns a text into a field of a key (`key_for` suggests one from what it says) whose
+default is what it said.
+A single line of DXF text keeps its braces (`dxf::decode`), as AutoCAD shows them; only multi-line text's braces are formatting.
+`title_values` gives the project's values. In the desktop, View > Title Blocks (TB, in either profile) lists them (New, Duplicate, Delete, Import DXF…) and
+edits the one picked, with a preview drawn by the core (`titleblock::preview`) as the first sheet that names it fills it in: its fields,
+with the project's values, its texts, its straight lines and its size; a sheet's Properties pick its title block and fill in its sheet
+fields. The preview is the editor: a click picks a text (`Text::outline`), a drag moves it, the arrow keys nudge it half a
+millimetre, and the text picked is edited below it (what it says, size, angle, justification) or made a field (Make Field); it zooms
+and scrolls. Its lettering is in a font (`TitleBlock::font`, Arial unless it says, a system font as a text type names one, stood in for where
+the system hasn't it), each text at its size as a capital's height (the font's OS/2 says it; an older font's, its H's) and with a
+width factor, laid out and drawn as notes are
+(`render::lettering`). A fill's rings that lie inside an odd number of the others are holes (a hatch's islands), drawn empty: wound
+the other way and, when it has more than one, pushed as `Part::Text`, so the desktop's canvas fills it by the non-zero rule as it
+does lettering rather than each ring on its own. The Texts tab shows a field's text as what it says (its default, edited there), its
+key beside it, with Make Text (`TitleBlock::make_text`: back to plain text, the field gone when no other text names it); a plain
+text has Make Field, keyed by what it says (`TitleBlock::free_key`, numbered past the keys there are) as each sheet's. An
+MTEXT's colour is the one its formatting sets before its first word (`\C`, `\c`), over the entity's. The stroke lettering has the
+ordinals º and ª.

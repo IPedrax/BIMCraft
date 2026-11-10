@@ -11,6 +11,10 @@ m²), a field with no value leaving it with none (an unset yes or no is no). Fil
 them, so two that show the same are equal. The six schedules every project has (`schedule::VIEWS`) aren't elements
 until changed or placed (`schedule::standard`), and a schedule named as one of them, in any language or case, is that one; renaming a parameter renames it in schedules, but a formula naming it holds
 the rename back.
+A component's Room Number and Room Name (as Revit's Room: Number and Room: Name) are the room it stands in, found where it is
+read and never stored (`Rooms::room_at`): the room whose boundary at the walls' centre lines holds the
+component's point on its level, so an outlet on a wall's face is in the room on that side whatever the project measures rooms
+at. `element_json` gives it as `room` (the room's GUID), `room_number` and `room_name`; a component outside every room has none.
 A multi-category schedule (`of: "multicategory"`, `schedule::MULTI`, as Revit's Multi-Category Schedule) has a row for each
 element of the categories it lists (`Schedule::categories`; none, every built one, `schedule::built`: not rooms, levels and
 masses) and the fields they share (`SHARED`): Category (the element's, as elements name theirs), Family, Type, Level, Count,

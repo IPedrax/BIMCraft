@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 bimcraft-i18n = { workspace = true }
 bimcraft-core = { workspace = true }
+bimcraft-plugin = { workspace = true }
 bimcraft-update = { workspace = true }
 serde_json = { workspace = true }
 egui = { workspace = true }
@@ -22,6 +23,10 @@ rayon = { workspace = true }
 bytemuck = "1"
 rfd = { workspace = true }
 sys-locale = { workspace = true }
+
+# The 3D mouse (`spacemouse.rs`), read from its HID reports through hidapi's own Windows backend: pure Rust, MIT.
+[target.'cfg(windows)'.dependencies]
+hidapi = { version = "2.6.7", default-features = false, features = ["windows-native"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

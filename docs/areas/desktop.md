@@ -93,6 +93,11 @@ user's own commands are never read-only. An agent may ask to only read as well (
 `mcp --connect --read-only` sends). The view control bar ends with the port's state, in both profiles (`agents_indicator`): Agents:
 off, Agents: port N, or Agents: N connected (a connection counts once it has said a request with the token), with read-only when edits
 are off; a click opens Settings at Agents.
+A script request may ask for a dry run (`"dry_run": true`, `Session::script_dry_run`): the window runs it all or nothing, takes it
+back and replies with what it would make, change and remove and the warnings the model would have, so the user's project and
+undo history are as they were. It only reads, so it answers where agents may only read too, and a line that names a file or
+would save, undo, redo or replace the project is refused, as is a `favorite` other than `list`: saving or deleting one writes the
+user's favorites file, outside the project, even with no `path` given.
 
 The interface's language is `lang::Lang`: a project's language, or Simplified Chinese (issue 38), which only the window speaks
 (a drawing's lettering, `font.rs`, is drawn in code and has no hanzi, so a project is never in Chinese and `Lang::project()` gives
@@ -159,7 +164,8 @@ a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and
 Enter places the point along it; a point lined up with a wall says which: "Lines up with wall 100231", the core's
 `AlignmentResult::wall_id`), and a point that moves with the cursor goes through them. A selected wall's ends are
 grips (`grip_drag`): a drag runs `move` with `end`, Ctrl keeps the length; the angle beside each end runs `rotate` about it. A
-wall joined at the end that moves keeps its joint, which slides along the wall it meets, so lengths change.
+wall joined at the end that moves keeps its joint, which slides along the wall it meets, so lengths change. At a corner where
+a strip footing ends with it and another element also ends there, the footing's end goes with the wall's, as another wall's would.
 
 A click is made where the button was, not where the hand has got to. egui reads a click's position, and what lay under it, from the
 pointer's last position in the frame, and counts two clicks in a frame as one, so a hand that moves on in the time between frames
@@ -175,6 +181,14 @@ a quick press is a click whatever the tool, and a camera the hand turned meanwhi
 Revit, Shift and the middle button orbit and the middle button alone pans; a primary drag orbits too, round the point under the
 pointer, and with Shift held in Modify it is a selection box, as in a plan (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
 inside, from the right what it touches, by where the model is rather than what's in front, so what's behind is boxed too.
+A 3D mouse (a 3Dconnexion SpaceMouse, SpaceNavigator, SpacePilot) moves the active 3D view as 3DxWare's object mode moves a
+model (`spacemouse.rs`): the cap pans, pulling it toward you zooms in, twisting it turns the view about the vertical and tilting
+it raises or lowers the eye, about the middle of the picture, while the window has focus. Like the hand it moves only the active
+view, and only a 3D one: plans, sections and sheets it leaves alone, and a 3D view drawn beside the active one too. A camera
+view's position is written back once the cap rests, and wheel turns 3DxWare may make of the cap are ignored while it moves. The
+desktop app starts its reader (`BimApp::space_mouse`, Windows only for now), which reads the device's HID reports itself (with
+3DxWare running too, while its profile for BIMCraft passes the axes on as `HIDMultiAxis_*`), the axes found in its report
+descriptor (`spacemouse/descriptor.rs`). With `BIMCRAFT_SPACEMOUSE_LOG=<file>` the reader logs what it found and every report.
 
 Startup (`apps/bimcraft/src/startup.rs`). A release build on Windows has no console, so a start that fails must say itself: `bimcraft.log`
 and `graphics.json` sit beside the favorites (`startup::Files::beside`). `startup::begin` runs once the arguments are read (never for
@@ -285,6 +299,12 @@ Properties' filter. With a selection of several categories, the line under the T
 and edits, the selection staying as it is: `BimApp::palette_ids` is the selection narrowed to it, and the palette's subject, the Type
 Selector, Edit Type (from the palette, the ribbon or the right-click menu) and every edit the palette sends read it, never the selection.
 `palette_filter` keeps the selection it was picked for, so a new selection starts it over.
+What the palette reads of its elements, `element_json`, it reads several times a frame (the Type Selector, the rows, a family's
+parameters), and a component's says the room it stands in, which costs its level's room boundaries: `BimApp::elements_json` keeps
+each element's for the model it was found in (`palette_json`, by a `Weak<Model>` as the canvas keeps room outlines) and finds what it
+lacks together, among one `Rooms`, so a level's rooms are found once for the whole selection. On the 20-storey highrise with two rooms
+a storey, 50 selected components cost 180 ms a frame read afresh; kept, 0.004 ms, and the frame after a change 3 ms on one level, 27 ms
+over all twenty. Select All Instances shares one `Rooms` over what the view shows the same way.
 
 View Templates (`templates.rs`). VT and View > View Templates open it as Revit's does, in the look Type Properties has: on the left a tab for each
 kind of view (`ViewKind`: Plan, Elevation/Section, 3D; a template of no kind is on every tab), the templates of the one showing, and Duplicate…,

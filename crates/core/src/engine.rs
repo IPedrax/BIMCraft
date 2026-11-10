@@ -11,6 +11,31 @@ use crate::model::{Element, Id, Model};
 
 pub type Run = fn(&mut Session, &Value) -> Result<Value, String>;
 
+/// How a command from outside the binary runs: a plugin's function, which needs the instance it lives in.
+/// The core knows nothing of WASM; it only keeps the closure a plugin crate hands it.
+pub type ExternalRun = Arc<dyn Fn(&mut Session, &Value) -> Result<Value, String> + Send + Sync>;
+
+/// A command registered at run time, by a plugin: the same shape as [`Command`], with the texts owned,
+/// and a closure in place of the static function.
+#[derive(Clone)]
+pub struct ExternalCommand {
+    pub id: String,
+    pub label: String,
+    pub aliases: Vec<String>,
+    pub params: String,
+    pub menu: Option<String>,
+    /// The plugin it belongs to, as the catalog marks it.
+    pub plugin: String,
+    pub run: ExternalRun,
+}
+
+impl ExternalCommand {
+    /// Whether `name` is this command's id or one of its aliases, in any case.
+    pub fn matches(&self, name: &str) -> bool {
+        self.id.eq_ignore_ascii_case(name) || self.aliases.iter().any(|a| a.eq_ignore_ascii_case(name))
+    }
+}
+
 pub struct Command {
     /// Lower-case id, after Revit's tool name.
     pub id: &'static str,
@@ -26,6 +51,37 @@ pub struct Command {
     /// place in the interface (a shortcut, or a command no menu reaches) — the field is always
     /// read, filled in as the catalog learns the interface.
     pub menu: Option<&'static str>,
+    /// Whether it reads or writes files, and so needs a plugin's `files` permission. A command that only
+    /// touches the disk with some parameters says [`Files::Conditional`] here and decides in
+    /// [`touches_files`].
+    pub files: Files,
+}
+
+/// What a command does with the disk. A plugin call may only reach the disk when its plugin is given the
+/// `files` permission, so every command that does is marked here, next to its parameters, rather than in a
+/// list somewhere else that a new command would forget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Files {
+    /// It never touches the disk.
+    None,
+    /// It reads files.
+    Read,
+    /// It writes, moves or replaces files.
+    Write,
+    /// It may: [`touches_files`] reads the parameters to say which.
+    Conditional,
+}
+
+impl Files {
+    /// The catalog's word for it, or `None` for a command that never touches the disk.
+    pub fn as_str(self) -> Option<&'static str> {
+        match self {
+            Files::None => None,
+            Files::Read => Some("read"),
+            Files::Write => Some("write"),
+            Files::Conditional => Some("conditional"),
+        }
+    }
 }
 
 impl Command {
@@ -39,6 +95,7 @@ impl Command {
             run: self.run,
             undoable: self.undoable,
             menu: Some(menu),
+            files: self.files,
         }
     }
 }
@@ -49,7 +106,7 @@ pub const UNDO_LIMIT: usize = 200;
 /// counted in the order of its first element's id, so a list can name it: Create Walls, Delete Door.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Step {
-    pub label: &'static str,
+    pub label: String,
     pub made: Vec<(&'static str, usize)>,
     pub removed: Vec<(&'static str, usize)>,
     /// Whether the model the step goes back to passed [`Model::check`]: going back to it needs no check.
@@ -59,7 +116,7 @@ pub struct Step {
 impl Step {
     /// Without a look at every element: what's new has an id past every one `before` had (ids only go up), and only when
     /// the counts say something went is `before` searched for what.
-    fn new(label: &'static str, before: &Model, after: &Model) -> Step {
+    fn new(label: &str, before: &Model, after: &Model) -> Step {
         let tally = |elements: &mut dyn Iterator<Item = &Element>| {
             let mut counts: Vec<(&'static str, usize)> = Vec::new();
             for e in elements {
@@ -78,7 +135,7 @@ impl Step {
         } else {
             Vec::new()
         };
-        Step { label, made, removed, checked: false }
+        Step { label: label.to_string(), made, removed, checked: false }
     }
 }
 
@@ -109,6 +166,9 @@ pub struct Session {
     resets: usize,
     /// What reads a DWG drawing, when the app has one (`cad::DwgReader`); none says to save it as DXF.
     pub dwg: Option<crate::cad::DwgReader>,
+    /// The commands plugins registered, beside the static [`commands`]. They belong to this session, not the
+    /// process, so two sessions and the tests never share them.
+    external: Vec<ExternalCommand>,
     /// Whether the session may only read its project, and if so what would let it edit, which each refusal ends with: an agent's,
     /// when the user lets agents only read (the window's File > Settings > Agents, `bimcraft-cli mcp --read-only`). Then a command
     /// that would replace the project, undo or redo, or write over its own file is refused before it runs, and one that changed the
@@ -116,6 +176,9 @@ pub struct Session {
     /// What reads it (inspect, schedules, render, exports to new files, the sheets to PDF) answers; a copy saved as another file
     /// leaves the session with its own.
     pub read_only: Option<&'static str>,
+    /// Whether a dry run is under way ([`Session::script_dry_run`]): then each command is looked at as it is about to run, with
+    /// the params it is given, and one that would touch a file or the history is refused ([`dry_run_refuses`]).
+    dry_run: bool,
     /// The last model a command left that passed [`Model::check`]. Held here, it is never changed in place: a change
     /// outside a command copies it first, so a model still this one is one that passed, and the next command need only
     /// check what it changes ([`Model::check_changed`]).
@@ -139,7 +202,35 @@ pub fn find(name: &str) -> Option<&'static Command> {
 
 /// The command catalog as agents read it.
 pub fn catalog() -> Value {
-    commands().iter().map(|c| json!({"id": c.id, "label": c.label, "aliases": c.aliases, "params": c.params, "menu": c.menu})).collect()
+    commands()
+        .iter()
+        .map(|c| {
+            let mut entry = json!({"id": c.id, "label": c.label, "aliases": c.aliases, "params": c.params, "menu": c.menu});
+            if let Some(files) = c.files.as_str() {
+                entry["files"] = json!(files);
+            }
+            entry
+        })
+        .collect()
+}
+
+/// Whether a call of `cmd` with `params` reads or writes a file, which a plugin may only do with the `files`
+/// permission. A command marked at the [`Command`] is the answer, unless [`Files::Conditional`] says the
+/// parameters decide: a command that only sometimes takes a path. The plugin does not keep a list of its own.
+pub fn touches_files(cmd: &Command, params: &Value) -> Option<Files> {
+    let given = |key: &str| params.get(key).is_some_and(|v| !v.is_null());
+    match cmd.files {
+        Files::None => None,
+        Files::Read => Some(Files::Read),
+        Files::Write => Some(Files::Write),
+        Files::Conditional => {
+            // A texture's picture is a file of its own, nested in the material's parameters.
+            let texture = params.get("texture").is_some_and(|t| t.get("path").is_some_and(|p| !p.is_null()));
+            // The favorites are a file of their own: saving, loading or deleting one writes it, listing only reads it.
+            let favorites = params.get("action").and_then(Value::as_str).is_some_and(|a| a != "list");
+            if given("path") || given("save") || texture || favorites { Some(Files::Write) } else { None }
+        }
+    }
 }
 
 impl Session {
@@ -155,7 +246,9 @@ impl Session {
             checks: 0,
             resets: 0,
             dwg: None,
+            external: Vec::new(),
             read_only: None,
+            dry_run: false,
             verified: None,
         }
     }
@@ -176,8 +269,8 @@ impl Session {
     }
 
     /// Labels of the undo steps, oldest first.
-    pub fn history(&self) -> Vec<&'static str> {
-        self.undo.iter().map(|(st, _)| st.label).collect()
+    pub fn history(&self) -> Vec<&str> {
+        self.undo.iter().map(|(st, _)| st.label.as_str()).collect()
     }
 
     /// The undo steps, or with `redo` the redo steps, the next to go first.
@@ -186,11 +279,76 @@ impl Session {
         from.iter().rev().map(|(st, _)| st).collect()
     }
 
+    /// Registers a plugin's command. A command may not take the id or an alias of one there already, static
+    /// or of another plugin: a plugin is refused, not allowed to shadow BIMCraft.
+    pub fn register(&mut self, command: ExternalCommand) -> Result<(), String> {
+        let taken = |s: &str| {
+            find(s).is_some()
+                || self.external.iter().any(|c| c.id.eq_ignore_ascii_case(s) || c.aliases.iter().any(|a| a.eq_ignore_ascii_case(s)))
+        };
+        if taken(&command.id) {
+            return Err(format!("the command `{}` is already taken", command.id));
+        }
+        if let Some(alias) = command.aliases.iter().find(|a| taken(a)) {
+            return Err(format!("the command `{}` would take the alias `{alias}`, already taken", command.id));
+        }
+        self.external.push(command);
+        Ok(())
+    }
+
+    /// Takes out every command a plugin registered.
+    pub fn unregister_plugin(&mut self, plugin: &str) {
+        self.external.retain(|c| c.plugin != plugin);
+    }
+
+    /// Takes out every command from outside, as a plugin folder is read again.
+    pub fn clear_external(&mut self) {
+        self.external.clear();
+    }
+
+    /// The commands from outside, as a front end lists them.
+    pub fn external(&self) -> &[ExternalCommand] {
+        &self.external
+    }
+
+    /// The command catalog as agents read it: [`catalog`] with this session's plugin commands, each marked
+    /// with the plugin it belongs to. Without plugins it is exactly [`catalog`].
+    pub fn catalog(&self) -> Value {
+        let mut all = catalog();
+        if let (Some(list), false) = (all.as_array_mut(), self.external.is_empty()) {
+            list.extend(self.external.iter().map(
+                |c| json!({"id": c.id, "label": c.label, "aliases": c.aliases, "params": c.params, "menu": c.menu, "plugin": c.plugin}),
+            ));
+        }
+        all
+    }
+
+    /// A command from outside by id or alias, in any case.
+    pub fn external_command(&self, name: &str) -> Option<&ExternalCommand> {
+        self.external.iter().find(|c| c.matches(name))
+    }
+
     /// Run a command by id or alias with JSON parameters. A command that fails, panics, or leaves
     /// the model failing [`Model::check`] changes nothing. In a session that may only read ([`Session::read_only`]), one that would
     /// change the project is refused, and changes nothing either.
     pub fn execute(&mut self, name: &str, params: &Value) -> Result<Value, String> {
-        let cmd = find(name).ok_or_else(|| format!("unknown command `{name}`; list_commands shows them"))?;
+        if let Some(cmd) = find(name) {
+            return self.execute_found(cmd, params);
+        }
+        let Some(cmd) = self.external.iter().find(|c| c.matches(name)).cloned() else {
+            return Err(format!("unknown command `{name}`; list_commands shows them"));
+        };
+        self.execute_external_checked(cmd, name, params)
+    }
+
+    /// [`Session::execute`] of a command in the static list, refused or taken back when the session may only read.
+    fn execute_found(&mut self, cmd: &'static Command, params: &Value) -> Result<Value, String> {
+        if let Some(what) = dry_run_refuses(cmd, params).filter(|_| self.dry_run) {
+            return Err(format!(
+                "`{}` would {what}, and a dry run touches no file and keeps the history: run the script without `dry_run`",
+                cmd.id
+            ));
+        }
         let Some(how) = self.read_only else { return self.perform(cmd, params) };
         self.may_read(cmd, params).map_err(|what| format!("`{}` would {what}, {READ_ONLY}: {how}", cmd.id))?;
         let kept = Kept::of(self);
@@ -349,6 +507,46 @@ impl Session {
         }
     }
 
+    /// [`Session::execute`] of a command a plugin registered. The plugin's closure runs the function in its
+    /// sandbox and wraps it in its own transaction; here the model is only guarded, as for any command.
+    fn execute_external(&mut self, cmd: ExternalCommand, name: &str, params: &Value) -> Result<Value, String> {
+        let named = named(&self.model, params);
+        let params = named.as_ref().unwrap_or(params);
+        let before = Arc::clone(&self.model);
+        let verified = self.verified.clone();
+        let (undo, redo, session) = (self.undo.clone(), self.redo.clone(), (self.phase.clone(), self.option.clone()));
+        let result = catch_unwind(AssertUnwindSafe(|| (cmd.run)(self, params)))
+            .unwrap_or_else(|p| Err(format!("internal error in `{name}`: {}", panic_text(p.as_ref()))))
+            .and_then(|v| {
+                if Arc::ptr_eq(&before, &self.model) {
+                    return Ok(v);
+                }
+                self.model_mut().resolve();
+                self.model_mut().sync_library();
+                self.model.check().map(|()| v)
+            });
+        match result {
+            Err(e) => {
+                (self.model, self.phase, self.option) = (before, session.0, session.1);
+                (self.undo, self.redo) = (undo, redo);
+                self.verified = verified;
+                Err(e)
+            }
+            Ok(v) => {
+                self.verified = Some(Arc::clone(&self.model));
+                Ok(v)
+            }
+        }
+    }
+
+    /// [`Session::execute_external`] of a session that may only read: what the plugin changed is taken back and refused.
+    fn execute_external_checked(&mut self, cmd: ExternalCommand, name: &str, params: &Value) -> Result<Value, String> {
+        let Some(how) = self.read_only else { return self.execute_external(cmd, name, params) };
+        let kept = Kept::of(self);
+        let result = self.execute_external(cmd, name, params);
+        kept.keep(self).map_err(|()| format!("`{name}` would change the project, {READ_ONLY}: {how}")).and(result)
+    }
+
     /// Whether the model now is the one the last command left that passed the check, so the next checks only what it changes.
     #[cfg(test)]
     pub(crate) fn verified_now(&self) -> bool {
@@ -394,11 +592,60 @@ impl Session {
         self.transaction("Script", |s| s.script(text))
     }
 
+    /// [`Session::script_atomic`] tried and taken back: what the script would make, change and take away, element by element,
+    /// whether it would change anything else (the library, the phases, the settings), and the warnings the model would then
+    /// have, with each line's result. The project, its history, the phase and option things are made in and its file are left
+    /// as they were, and the next id with them. A dry run touches no file and keeps the history: a line that would open, write
+    /// or name a file (a `path` or `save`), start or replace the project, save, undo or redo is refused as it comes, with the params
+    /// it is given (a named line's and a reference's too), before it runs; the lines before it are taken back with the rest.
+    /// It only reads the project, so a session that may only read ([`Session::read_only`]) may try a script too.
+    pub fn script_dry_run(&mut self, text: &str) -> Result<Value, String> {
+        let kept = Kept::of(self);
+        let read_only = self.read_only.take();
+        let dry_run = std::mem::replace(&mut self.dry_run, true);
+        let result = self.script_atomic(text);
+        let after = Arc::clone(&self.model);
+        (self.read_only, self.dry_run) = (read_only, dry_run);
+        // The project as it was, whatever the script did to it; what a dry run says is only what it would do.
+        let _ = kept.keep(self);
+        let results = result?;
+        let before = &self.model;
+        let (mut made, mut changed, mut removed) = (Vec::new(), Vec::new(), Vec::new());
+        let ids: Vec<Id> = match after.elements.changed_since(&before.elements) {
+            crate::ids::Changed::Ids(ids) => ids.into_iter().collect(),
+            crate::ids::Changed::All => {
+                let mut all: Vec<Id> = before.elements.iter().map(|(id, _)| *id).chain(after.elements.iter().map(|(id, _)| *id)).collect();
+                all.sort_unstable();
+                all.dedup();
+                all
+            }
+        };
+        for id in ids {
+            match (before.elements.get(id), after.elements.get(id)) {
+                (None, Some(e)) => made.push(json!({"id": id, "category": e.category()})),
+                (Some(a), Some(b)) if a != b || before.elements.guid(id) != after.elements.guid(id) => {
+                    changed.push(json!({"id": id, "guid": before.elements.guid(id), "category": b.category()}))
+                }
+                (Some(a), None) => removed.push(json!({"id": id, "guid": before.elements.guid(id), "category": a.category()})),
+                _ => {}
+            }
+        }
+        let other = {
+            let mut rest = (*after).clone();
+            (rest.elements, rest.next_id) = (before.elements.clone(), before.next_id);
+            rest != **before
+        };
+        Ok(json!({
+            "dry_run": true, "results": results, "made": made, "changed": changed, "removed": removed, "other_changes": other,
+            "warnings": after.warnings(),
+        }))
+    }
+
     /// Run `f` as one undo step named `label`, all or nothing: when it fails, the model, the path, the session's phase
     /// and option and the undo and redo history are as they were before it. Inside, undo reaches back no further than
     /// its start. Files a command wrote meanwhile (`save`, `export`) stay written, and one that replaced the project (`new`,
     /// `open`) left the history it began, so what came after it stays the steps it was.
-    pub fn transaction<T>(&mut self, label: &'static str, f: impl FnOnce(&mut Session) -> Result<T, String>) -> Result<T, String> {
+    pub fn transaction<T>(&mut self, label: &str, f: impl FnOnce(&mut Session) -> Result<T, String>) -> Result<T, String> {
         let before = Arc::clone(&self.model);
         let checked = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &before));
         let (path, phase, option) = (self.path.clone(), self.phase.clone(), self.option.clone());
@@ -474,12 +721,12 @@ impl Session {
         if count == 0 || count > from.len() {
             return Err(format!("`count` must be from 1 to {}, the steps there are to {what}", from.len()));
         }
-        let mut label = "";
+        let mut label = String::new();
         // Whether the model now passed: the step that comes back to it says so.
         let mut checked = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &self.model));
         for _ in 0..count {
             let Some((mut step, model)) = from.pop() else { break };
-            label = step.label;
+            label = step.label.clone();
             std::mem::swap(&mut step.checked, &mut checked);
             to.push((step, std::mem::replace(&mut self.model, model)));
         }
@@ -492,6 +739,24 @@ impl Session {
 
 /// What a session that may only read keeps through a command: its project, its history, its file, the phase and option it makes
 /// things in, and how many times it was replaced.
+/// What a dry run refuses `cmd` with `params` for, before it runs: replacing the project, saving it, stepping through its history,
+/// or any file read or written ([`touches_files`], and a `path` or `save` any command is given).
+fn dry_run_refuses(cmd: &Command, params: &Value) -> Option<String> {
+    if REPLACES.contains(&cmd.id) {
+        return Some("replace the project".into());
+    }
+    if matches!(cmd.id, "save" | "autosave" | "undo" | "redo") {
+        return Some(format!("{} the project", if cmd.id == "autosave" { "save" } else { cmd.id }));
+    }
+    if let Some(key) = ["path", "save"].into_iter().find(|key| params.get(key).is_some_and(|v| !v.is_null())) {
+        return Some(format!("name a file (`{key}`)"));
+    }
+    touches_files(cmd, params).map(|files| match files {
+        Files::Read => "read a file".to_string(),
+        _ => "write a file".to_string(),
+    })
+}
+
 struct Kept {
     model: Arc<Model>,
     /// The model the last command left that passed the check, as it was: put back with the model, the next command checks

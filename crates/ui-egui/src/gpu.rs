@@ -1781,6 +1781,24 @@ pub(crate) fn pixels_that_may_differ() -> usize {
         .map_or(0, |adapter| pixels_that_may_differ_on(adapter.get_info().device_type))
 }
 
+/// Gives a test on a software card that card alone until the test's thread ends; a real card is shared. D3D12 hands every device
+/// made on one adapter the same one, so the tests' cards on Windows' CI were one WARP device, its pipelines made and drawn from
+/// four threads at once, which a window's one card never is; and WARP's shader compiler read out of bounds
+/// (`PixelJitProgram::ClassifyVars`) and took the test binary down in about one run in five.
+#[cfg(test)]
+pub(crate) fn alone_on(kind: wgpu::DeviceType) {
+    use std::sync::{Mutex, MutexGuard, PoisonError};
+    static SOFTWARE: Mutex<()> = Mutex::new(());
+    thread_local!(static HELD: std::cell::RefCell<Option<MutexGuard<'static, ()>>> = const { std::cell::RefCell::new(None) });
+    if kind == wgpu::DeviceType::Cpu {
+        HELD.with_borrow_mut(|held| {
+            if held.is_none() {
+                *held = Some(SOFTWARE.lock().unwrap_or_else(PoisonError::into_inner));
+            }
+        });
+    }
+}
+
 /// The machine's graphics card with no window to show on, for tests; none on a runner that has no adapter (those tests say so
 /// and pass).
 #[cfg(test)]
@@ -1796,6 +1814,7 @@ pub(crate) fn headless() -> Option<Gpu> {
     if adapter.get_info().backend == wgpu::Backend::Gl {
         return None;
     }
+    alone_on(adapter.get_info().device_type);
     let (device, queue) =
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             required_limits: limits_for(&adapter, wgpu::Limits::default()),
@@ -1824,6 +1843,32 @@ mod tests {
             assert_eq!(pixels_that_may_differ_on(real), 0, "{real:?}");
         }
         assert_eq!(pixels_that_may_differ_on(wgpu::DeviceType::Cpu), 4);
+    }
+
+    #[test]
+    fn a_software_card_is_one_test_s_until_its_thread_ends_and_a_real_one_is_shared() {
+        use std::sync::mpsc::channel;
+        use std::time::Duration;
+        let (held, holding) = channel();
+        let (end, ending) = channel::<()>();
+        let first = std::thread::spawn(move || {
+            alone_on(wgpu::DeviceType::Cpu);
+            alone_on(wgpu::DeviceType::Cpu);
+            held.send(()).unwrap();
+            ending.recv().ok();
+        });
+        holding.recv().unwrap();
+        std::thread::spawn(|| alone_on(wgpu::DeviceType::DiscreteGpu)).join().unwrap();
+        let (got, getting) = channel();
+        let second = std::thread::spawn(move || {
+            alone_on(wgpu::DeviceType::Cpu);
+            got.send(()).unwrap();
+        });
+        assert!(getting.recv_timeout(Duration::from_millis(200)).is_err(), "two tests held the software card");
+        end.send(()).unwrap();
+        first.join().unwrap();
+        getting.recv_timeout(Duration::from_secs(10)).unwrap();
+        second.join().unwrap();
     }
 
     /// DirectX 12's FXC compiler refuses a function that can end without returning a value, and a last `discard` is such an end:

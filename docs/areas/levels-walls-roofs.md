@@ -21,7 +21,25 @@ layers over, by the way its layer set's usage stacks them). A layer's material i
 (`Model::materials`): its colour shades the layer in 3D, its cut pattern is a drafting pattern (`GAP` px apart on screen and
 paper, where the layer is `PATTERN_ROOM` px wide), its surface pattern a model pattern (`MODULE` mm, its real size). A curved wall turns `arc` degrees, counter-clockwise positive (`walls::Axis`). Where walls meet,
 their faces meet in mitred caps at any angle, and a wall ending on another stops at its face (`walls::cap`); plans, 3D,
-sections and IFC all draw that outline (`walls::outline`, `walls::prisms`). Room areas are measured at the walls' centre
+sections and IFC all draw that outline (`walls::outline`, `walls::prisms`). A wall's `join` (on unless turned off, written in
+a file only when it is off) says it joins at its ends, Revit's Allow Join: a wall refusing to join neither mitres against a
+neighbour nor stretches with one whose end is dragged (`walls::arms` leaves it out of both; `relocate` passes it by), and a
+footing under such a wall stops at its face as if it were a wall too. The desktop's right-click menu offers Disallow Join and
+Allow Join for the walls and runs selected (`context::Action`, a `modify {join}` command).
+
+At a square corner of two compound walls, one core runs through and the other stops on it (`walls/compound.rs`). It takes
+two walls and nothing else joined there, ending at the same point square to each other, straight, on their centre lines,
+unattached, with the same base and top; each type three layers, finish, structure and finish, each with a material and a
+thickness and none variable; on each face of the corner the same finish material in both walls; each wall longer than twice
+the thicker one's thickness; and no door or window within that thickness of the corner. Any other corner keeps the mitred
+cap. The wall with the lower GUID runs through: its core reaches the far face of the other's, whose core stops at the near
+face of it, and the finishes on each face meet on the diagonal, as in a mitred cap. By GUID, not id, since a GUID never
+changes: a corner brought in by Insert from File, whose ids can come in the other way round, keeps the same core through.
+A copy is new walls with new GUIDs, so a copied corner can run the other core through. Where the cores' materials differ the return draws a seam along its core's end; where they are the same the
+core reads as one. The cap is then five points, a step round the core (`walls::cap`), and plans and sections draw each
+layer to where it ends (`walls::layer_geometry`, `LayerGeometry::band`, `LayerGeometry::interfaces`).
+
+Room areas are measured at the walls' centre
 lines, run on or back to meet at joins (`walls::centre_line`). A room separator (`roomseparator`, made by `room_separator` a line per segment) bounds rooms as a wall's centre line
 would and nothing else: it is no edge of a floor, a ceiling or a roof (`Model::bounding_lines` takes it, `wall_lines` and
 `face_lines` don't; an end drawn to a wall's face runs on to its centre line there, so the line splits rooms measured at

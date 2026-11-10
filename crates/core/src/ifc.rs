@@ -1063,16 +1063,16 @@ pub fn export(m: &Model) -> String {
                 }
             }
             // A run: its section swept along its axis, in its material, a member of the system it is in.
+            // See the plan and the 3D view for its joints: the file keeps the line and the section a reader
+            // comes back to, whatever the mitres show on screen.
             crate::model::run_arm!(r) => {
                 let (Some(&(_, storey)), Some(t), Some(g), Some((class, kind))) =
                     (storeys.get(&r.level), m.run_type(e), m.run_geom(e), crate::runs::ifc(e.category()))
                 else {
                     continue;
                 };
-                let axis = crate::view3d::unit(crate::view3d::sub(g.b, g.a));
                 // Placed at the start of its centre line; its section's x across it, level, its y up.
                 let at = w.place(Some(storey), (g.a[0], g.a[1], g.a[2] - m.elevation(r.level)), None);
-                let across = if g.vertical() { [1.0, 0.0, 0.0] } else { crate::view3d::unit([-axis[1], axis[0], 0.0]) };
                 // A beam's section is its type's, which the type's material profile set holds too.
                 let section = Section::new(g.width, g.depth, g.round);
                 let profile = if matches!(e, Element::Beam(_)) {
@@ -1084,6 +1084,8 @@ pub fn export(m: &Model) -> String {
                 } else {
                     w.rectangle(P2(0.0, 0.0), P2(g.width, g.depth))
                 };
+                let axis = crate::view3d::unit(crate::view3d::sub(g.b, g.a));
+                let across = if g.vertical() { [1.0, 0.0, 0.0] } else { crate::view3d::unit([-axis[1], axis[0], 0.0]) };
                 let along = w.aim(axis, across);
                 let shape = w.body_along(profile, along, g.length());
                 let ent = w.add(format!(
@@ -1582,14 +1584,16 @@ pub fn export(m: &Model) -> String {
             w.define(ent, PARAMETERS, &props, (PROPERTIES, DEFINES), id);
         }
     }
-    // A placed device's connector (the power one, else the first): `Pset_ElectricalDeviceCommon`, with the poles, and for a power
+    // A placed device's connector (the power one, else the first electrical one; a pipe's waits for IFC's ports): `Pset_ElectricalDeviceCommon`, with the poles, and for a power
     // connector the power factor and the voltage (IFC4's types: a ratio, and a bounded value with its set point), and `BIMCraft_Connector` with what IFC has no property for.
     for (&id, &ent) in &products {
         let Some(Element::Component(cp)) = m.elements.get(id) else { continue };
         let Some(connectors) = m.families.get(&cp.family).and_then(|f| f.connector_values(&cp.type_name, &cp.params).ok()) else {
             continue;
         };
-        let Some(c) = connectors.iter().find(|c| c.kind == ConnectorKind::Power).or(connectors.first()) else { continue };
+        let Some(c) = connectors.iter().find(|c| c.kind == ConnectorKind::Power).or(connectors.iter().find(|c| c.kind.electrical())) else {
+            continue;
+        };
         let power = c.kind == ConnectorKind::Power;
         let mut device = vec![w.add(format!("IFCPROPERTYSINGLEVALUE('NumberOfPoles',$,IFCINTEGER({}),$)", c.poles))];
         if power {

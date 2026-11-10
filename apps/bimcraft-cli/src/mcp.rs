@@ -5,7 +5,8 @@
 
 use std::io::{BufRead, Write};
 
-use bimcraft_core::engine::{Session, catalog};
+use bimcraft_core::engine::Session;
+use bimcraft_plugin::Plugins;
 use serde_json::{Value, json};
 
 use crate::window::Window;
@@ -55,8 +56,14 @@ impl Backend {
         }
     }
 
-    /// A script's results, as `{results: [...]}`.
-    fn script(&mut self, text: &str, atomic: bool) -> Result<Value, String> {
+    /// A script's results, as `{results: [...]}`; a dry run's report as [`Session::script_dry_run`] gives it.
+    fn script(&mut self, text: &str, atomic: bool, dry_run: bool) -> Result<Value, String> {
+        if dry_run {
+            return match self {
+                Backend::Own(s) => s.script_dry_run(text),
+                Backend::Window(w) => w.ask(json!({"op": "script", "text": text, "dry_run": true})),
+            };
+        }
         let results = match self {
             Backend::Own(s) if atomic => s.script_atomic(text).map(Value::from),
             Backend::Own(s) => s.script(text).map(Value::from),
@@ -75,10 +82,21 @@ impl Backend {
                 .into()),
         }
     }
+
+    /// The command catalog, with the session's plugin commands: agents see a plugin without a tool of its own.
+    fn catalog(&mut self) -> Result<Value, String> {
+        match self {
+            Backend::Own(s) => Ok(s.catalog()),
+            Backend::Window(w) => w.ask(json!({"op": "catalog"})),
+        }
+    }
 }
 
 pub struct Server {
     backend: Backend,
+    /// The plugins of a headless server's own session, and how much of their log has been said.
+    plugins: Option<Plugins>,
+    seen: usize,
 }
 
 impl Default for Server {
@@ -105,8 +123,10 @@ fn tools() -> Value {
             room {point: [x, y], name}, modify {id, …fields}, delete {ids}, undo. list_commands shows them all with their parameters.",
          "inputSchema": {"type": "object", "properties": {"command": {"type": "string"}, "params": {"type": "object"}}, "required": ["command"]}},
         {"name": "script", "description": "Run several commands, one per line: `wall {\"points\": [[0,0],[4000,0]]}`. Stops at the first failing line and names it; the lines before it stay done, each its own undo step. \
-            With `atomic`, all or nothing: a failing line takes back the lines before it, and a script that goes through is one undo step.",
-         "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "atomic": {"type": "boolean"}}, "required": ["text"]}},
+            With `atomic`, all or nothing: a failing line takes back the lines before it, and a script that goes through is one undo step. \
+            With `dry_run`, tried all or nothing and taken back: the reply lists what it would make, change and remove (`made`, `changed`, `removed`, by id and category), \
+            whether it would change anything else (`other_changes`) and the model's `warnings` after it, and nothing of it stays. A dry run refuses a line that names a file or would save, undo, redo or replace the project, and a `favorite` other than `list`, which would use the user's favorites file.",
+         "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "atomic": {"type": "boolean"}, "dry_run": {"type": "boolean"}}, "required": ["text"]}},
         {"name": "list_commands", "description": "Every command with its id, label, Revit-style shortcut, parameters and the menu it sits in (`menu`, null when the interface has no place for it). `filter` matches part of an id, label or shortcut.",
          "inputSchema": {"type": "object", "properties": {"filter": {"type": "string"}}}},
         {"name": "inspect_model", "description": "The model at a glance: levels, element counts, types, warnings (such as rooms no longer enclosed) and undo history.",
@@ -115,7 +135,7 @@ fn tools() -> Value {
          "inputSchema": {"type": "object", "properties": {"category": {"type": "string"}, "level": {"type": ["string", "integer"]}, "limit": {"type": "integer"}, "offset": {"type": "integer"}}}},
         {"name": "schedule", "description": "A schedule's columns, rows and totals, and the fields it could show (`available`). `category` alone reads that category's own: rooms (number, name, level, area, perimeter), doors, windows, walls, floors, levels; ceilings, roofs, columns, components, stairs, ramps and railings too. `name` and `category` make a new one; category `multicategory` lists the elements of several categories at once, as Revit's Multi-Category Schedule (`categories`: [\"walls\", \"doors\"…], none for every built one), with the fields they share: Category, Family, Type, Level, Count, Width, Height, Length, Thickness, Area, Material. `fields` (names, or {name, formula, kind, heading, total}: a calculated one such as Area * 120, lengths in mm and areas in m²), `filters` ([{field, op: equals, greater, contains, has-value…, value}]), `sort` ([field or {field, descending}]) and `grouped` change it, each list replacing the last.",
          "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}, "category": {"type": "string"}, "categories": {"type": "array", "items": {"type": "string"}}, "fields": {"type": "array"}, "filters": {"type": "array"}, "sort": {"type": "array"}, "grouped": {"type": "boolean"}}}},
-        {"name": "render", "description": "Look at the model as a PNG: a level's floor plan (walls and columns with poché, doors with swings, windows, stairs, ramps and railings, roofs, room tags with areas, grids, dimensions, door and window tags), or with ceiling true its reflected ceiling plan, a section or elevation by name (the cut in poché, what's beyond, levels and grids), a sheet by number (its title block and the views on it), or with view \"{3D}\" the 3D view, seen from azimuth degrees round from east (counter-clockwise) and elevation degrees up; by default from the south-east, 30° up. With `family`, that family alone instead of the model: its `type` (the first by default) in a model of its own — in a wall `wall_thickness` mm thick (200) if it's a door's or a window's, on a floor of its own footprint if it isn't — mode \"3d\" (default), \"plan\" (what its symbols draw) or \"elevation\" (front-on); the project is touched by none of it and keeps no elements and no undo steps from it. `path` writes a .png there instead of sending it back.",
+        {"name": "render", "description": "Look at the model as a PNG: a level's floor plan (walls and columns with poché, doors with swings, windows, stairs, ramps and railings, roofs, room tags with areas, grids, dimensions, door and window tags), or with ceiling true its reflected ceiling plan, a section or elevation by name (the cut in poché, what's beyond, levels and grids), a sheet by number (its title block, unless it has none, and the views on it), or with view \"{3D}\" the 3D view, seen from azimuth degrees round from east (counter-clockwise) and elevation degrees up; by default from the south-east, 30° up. With `family`, that family alone instead of the model: its `type` (the first by default) in a model of its own — in a wall `wall_thickness` mm thick (200) if it's a door's or a window's, on a floor of its own footprint if it isn't — mode \"3d\" (default), \"plan\" (what its symbols draw) or \"elevation\" (front-on); the project is touched by none of it and keeps no elements and no undo steps from it. `path` writes a .png there instead of sending it back.",
          "inputSchema": {"type": "object", "properties": {"view": {"type": ["string", "integer"]}, "family": {"type": "string"}, "type": {"type": "string"}, "mode": {"type": "string", "enum": ["3d", "plan", "elevation"]}, "wall_thickness": {"type": "number"}, "ceiling": {"type": "boolean"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "azimuth": {"type": "number"}, "elevation": {"type": "number"}, "path": {"type": "string"}}}},
         {"name": "new_model", "description": "Start an empty project with Level 1 and Level 2.",
          "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}}},
@@ -130,12 +150,14 @@ impl Server {
     pub fn new() -> Self {
         let mut session = Session::new();
         session.dwg = crate::dwg_reader();
-        Server { backend: Backend::Own(session) }
+        let plugins = crate::load_plugins(&mut session);
+        let seen = plugins.log().len();
+        Server { backend: Backend::Own(session), plugins: Some(plugins), seen }
     }
 
     /// A server whose tools work on the project `window` has open.
     pub fn attached(window: Window) -> Self {
-        Server { backend: Backend::Window(window) }
+        Server { backend: Backend::Window(window), plugins: None, seen: 0 }
     }
 
     /// Opens `path` as the server's own project (before it answers: `bimcraft-cli mcp FILE`), a Revit file as `open` imports one.
@@ -269,12 +291,17 @@ impl Server {
                     Some(Value::Bool(b)) => *b,
                     Some(v) => return Err((INVALID_PARAMS, format!("`atomic` is true or false, not {v}"))),
                 };
-                b.script(text, atomic)
+                let dry_run = match args.get("dry_run") {
+                    None | Some(Value::Null) => false,
+                    Some(Value::Bool(b)) => *b,
+                    Some(v) => return Err((INVALID_PARAMS, format!("`dry_run` is true or false, not {v}"))),
+                };
+                b.script(text, atomic, dry_run)
             }
             "list_commands" => {
                 let filter = args["filter"].as_str().map(str::to_ascii_lowercase).unwrap_or_default();
                 let has = |v: &Value| v.as_str().is_some_and(|t| t.to_ascii_lowercase().contains(&filter));
-                let all = catalog();
+                let all = b.catalog().map_err(|e| (INVALID_PARAMS, e))?;
                 Ok(all
                     .as_array()
                     .map(|cmds| {
@@ -328,6 +355,11 @@ impl Server {
             }
             _ => return Err((INVALID_PARAMS, format!("unknown tool `{name}`"))),
         };
+        if let Some(plugins) = &self.plugins {
+            let mut seen = self.seen;
+            crate::note_plugins(plugins, &mut seen);
+            self.seen = seen;
+        }
         Ok(match result {
             Ok(v) => text(&v),
             Err(e) => tool_error(&e),
@@ -529,6 +561,17 @@ mod tests {
         tool(&mut s, "execute", json!({"command": "undo"}));
         assert_eq!(levels(&mut s), 2, "one undo takes back the whole script");
         let r = call(&mut s, 2, "tools/call", json!({"name": "script", "arguments": {"text": "inspect", "atomic": "yes"}}));
+        assert_eq!(r["error"]["code"], -32602);
+    }
+
+    #[test]
+    fn a_dry_run_through_mcp_says_what_a_script_would_do_and_keeps_nothing() {
+        let mut s = Server::new();
+        let levels = |s: &mut Server| tool(s, "inspect_model", json!({}))["counts"]["level"].clone();
+        let r = tool(&mut s, "script", json!({"text": "level {\"elevation\": 6000}", "dry_run": true}));
+        assert_eq!((r["dry_run"].as_bool(), r["made"][0]["category"].as_str()), (Some(true), Some("level")), "{r}");
+        assert_eq!(levels(&mut s), 2, "nothing of it stays");
+        let r = call(&mut s, 2, "tools/call", json!({"name": "script", "arguments": {"text": "inspect", "dry_run": "yes"}}));
         assert_eq!(r["error"]["code"], -32602);
     }
 
