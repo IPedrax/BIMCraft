@@ -124,7 +124,7 @@ msgstr "Die Punkte eines Kreises, einer Ellipse oder eines Bogens entlang ihrer 
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
 msgstr "Material, Isolierung und Betriebstemperatur eines Leiters sowie die Strombelastbarkeit jedes Querschnitts, in mm²."
 
-#: crates/ui-egui/src/canvas.rs:3603
+#: crates/ui-egui/src/canvas.rs:3640
 msgid "A dimension has two references at least."
 msgstr ""
 
@@ -2673,6 +2673,10 @@ msgstr "Platzierung des Bemaßungstexts:"
 msgid "Dimension Value"
 msgstr "Bemaßungswert"
 
+#: crates/ui-egui/src/canvas.rs:3602
+msgid "Dimension equality"
+msgstr ""
+
 #: crates/ui-egui/src/standards.rs:210
 msgid "Dimension lines, witness lines, terminators, text placement, and level marker symbols."
 msgstr "Maßlinien, Hilfslinien, Abschlüsse, Textplatzierung und Geschossmarkierungssymbole."
@@ -4670,7 +4674,7 @@ msgstr "Positionslinie:"
 msgid "Location line: {}"
 msgstr "Positionslinie: {}"
 
-#: crates/ui-egui/src/canvas.rs:3697
+#: crates/ui-egui/src/canvas.rs:3734
 msgid "Lock alignment"
 msgstr "Ausrichtung sperren"
 
@@ -4678,7 +4682,7 @@ msgstr "Ausrichtung sperren"
 msgid "Lock segment {}"
 msgstr "Segment {} sperren"
 
-#: crates/ui-egui/src/canvas.rs:3676
+#: crates/ui-egui/src/canvas.rs:3713
 msgid "Locked segment {}"
 msgstr "Gesperrtes Segment {}"
 
@@ -4720,7 +4724,7 @@ msgstr "Hauptabstand X"
 msgid "Main spacing Y"
 msgstr "Hauptabstand Y"
 
-#: crates/ui-egui/src/canvas.rs:3771
+#: crates/ui-egui/src/canvas.rs:3808
 msgid "Make Dimension Permanent"
 msgstr ""
 
@@ -8910,7 +8914,7 @@ msgstr "Einheiten"
 msgid "Units Format"
 msgstr "Einheitenformat"
 
-#: crates/ui-egui/src/canvas.rs:3658
+#: crates/ui-egui/src/canvas.rs:3695
 msgid "Unlock alignment"
 msgstr "Ausrichtung entsperren"
 
@@ -9514,9 +9518,9 @@ msgstr "`{}` ist keine Höhe"
 #: crates/ui-egui/src/canvas.rs:3070
 #: crates/ui-egui/src/canvas.rs:3443
 #: crates/ui-egui/src/canvas.rs:3523
-#: crates/ui-egui/src/canvas.rs:3791
-#: crates/ui-egui/src/canvas.rs:3884
-#: crates/ui-egui/src/canvas.rs:3904
+#: crates/ui-egui/src/canvas.rs:3828
+#: crates/ui-egui/src/canvas.rs:3921
+#: crates/ui-egui/src/canvas.rs:3941
 #: crates/ui-egui/src/draw.rs:270
 #: crates/ui-egui/src/draw.rs:271
 #: crates/ui-egui/src/draw.rs:272
@@ -9980,7 +9984,7 @@ msgstr "das Modell hat keine Geschosse"
 msgid "the next free name"
 msgstr "der nächste freie Name"
 
-#: crates/ui-egui/src/canvas.rs:3883
+#: crates/ui-egui/src/canvas.rs:3920
 msgid "the opening has to stay on its wall"
 msgstr "die Öffnung muss auf ihrer Wand bleiben"
 
@@ -10163,7 +10167,7 @@ msgstr "{} mm für A2-A4"
 msgid "{} months ago"
 msgstr "vor {} Monaten"
 
-#: crates/ui-egui/src/canvas.rs:3974
+#: crates/ui-egui/src/canvas.rs:4011
 msgid "{} of {} risers"
 msgstr "{} von {} Steigungen"
 
@@ -10209,7 +10213,7 @@ msgstr "{} ausgewählt."
 msgid "{} triangles, from a file"
 msgstr "{} Dreiecke, aus einer Datei"
 
-#: crates/ui-egui/src/canvas.rs:3976
+#: crates/ui-egui/src/canvas.rs:4013
 msgid "{} up"
 msgstr "{} nach oben"
 

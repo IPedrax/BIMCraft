@@ -5652,7 +5652,8 @@ impl Model {
     /// What a dimension's numbers read, as its type and its own text say: each segment's length (a baseline string's
     /// from its first reference; an ordinate's, each witness line's, the first 0), an angle in degrees, a radius or a
     /// diameter after its type's symbol, an arc's length. Its prefix and suffix round each; its replacement stands for
-    /// each; with equality, a string of more than one segment shows its type's equality text.
+    /// each. A string kept equal shows its lengths, not its type's equality text: that shows on screen while the pointer
+    /// is over the dimension.
     pub fn dimension_labels(&self, d: &Dimension) -> Vec<String> {
         let t = self.dimension_type(d);
         let values = self.dimension_values(d);
@@ -5674,13 +5675,11 @@ impl Model {
             DimKind::Diameter => values.iter().map(|&v| format!("{} {}", t.diameter_symbol, length(v)).trim().to_string()).collect(),
             DimKind::ArcLength => values.iter().map(|&v| length(v)).collect(),
         };
-        let equal = d.equality && values.len() > 1 && t.string == crate::dims::DimString::Continuous;
         shown
             .into_iter()
             .enumerate()
             .map(|(i, v)| match d.text(i, "replace") {
                 r if !r.is_empty() => r.to_string(),
-                _ if equal => t.equality_text.clone(),
                 _ => format!("{}{v}{}", d.text(i, "prefix"), d.text(i, "suffix")),
             })
             .collect()

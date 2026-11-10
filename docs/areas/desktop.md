@@ -565,7 +565,8 @@ and Arc Length; after its arc, Arc Length takes two ends on it to measure betwee
 Dimension Type Properties (`dimtypes.rs`), and Properties edits its prefix, suffix, text above and below, Replace With Text and Equality Display.
 With one element selected, the numbers of the dimensions that measure to it are drawn smaller in `accent_ink`; a click on one opens an empty
 field (`canvas::dimension_highlights`), and Enter moves the selected element, the opposite reference staying (an equal chain's far end stays). A double click on a number, or a click on the Aa button over a selected dimension's numbers, opens Dimension Text for that segment
-(`DimensionTextDialog`); a segment's Replace With Text beats its EQ. Selected, an aligned or linear one shows
+(`DimensionTextDialog`); a segment's Replace With Text beats its number, and an equal chain shows its lengths while EQ appears over
+it as the pointer is on it. Selected, an aligned or linear one shows
 a padlock under each segment and, over a string of two or more, EQ past its end (`dimension_constraints`): a click locks or unlocks, or makes
 it equal or not — its ends staying, the inner references spreading evenly; a value typed into an equal chain makes every segment it. A
 placed dimension's references are changed from the right-click menu's Edit Dimension References: a click on an element adds or takes out its

@@ -392,7 +392,7 @@ fn typing_a_value_on_an_equal_chain_updates_every_number() {
     h.state_mut().selection = vec![id];
     h.run();
     press(&mut h, "Equal");
-    let first = h.get_all_by_label("Dimension EQ").next().map(|n| n.rect().center()).unwrap();
+    let first = h.get_all_by_label("Dimension 2500").next().map(|n| n.rect().center()).unwrap();
     click_at(&mut h, first);
     h.key_press_modifiers(Modifiers::COMMAND, Key::A);
     h.event(Event::Text("4000".into()));
@@ -541,4 +541,28 @@ fn tab_picks_a_dimension_segment_and_delete_takes_it_out() {
     key(&mut h, Key::Delete);
     assert_eq!(dimension(&h, id).refs.len(), 2, "{}", h.state().status.text);
     assert_eq!(field(&h, id, "values"), json!([5000.0]));
+}
+
+#[test]
+fn an_equal_chain_shows_its_numbers_and_eq_only_while_hovered() {
+    let mut h = app(THREE_WALLS);
+    let id = ids(&h, "dimension")[0];
+    h.state_mut().run("dimension_constraint", json!({"id": id, "equal": true}));
+    h.state_mut().selection = vec![id];
+    h.run();
+    // Its numbers are numbers, not EQ.
+    assert_eq!(field(&h, id, "labels"), json!(["2500", "2500"]));
+    assert_eq!(h.state().selection, vec![id]);
+    assert!(h.query_by_label("Equal").is_some(), "the dimension's controls are drawn");
+    assert!(h.get_all_by_label("Dimension 2500").next().is_some());
+    // Over the chain, EQ shows above it.
+    h.hover_at(h.state().screen(P2(2500.0, -1000.0)));
+    h.run();
+    h.run();
+    assert!(h.query_by_label("Dimension equality").is_some(), "EQ pops up while the dimension is hovered");
+    // Away from it, the hint goes.
+    h.hover_at(h.state().screen(P2(2500.0, 2000.0)));
+    h.run();
+    h.run();
+    assert!(h.query_by_label("Dimension equality").is_none(), "the hint goes when the pointer leaves the line");
 }

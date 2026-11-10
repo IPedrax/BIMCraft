@@ -3565,7 +3565,44 @@ impl BimApp {
             return;
         }
         self.dimension_segment_highlight(ui, m, v, rect);
+        self.dimension_eq_hint(ui, m, v, rect);
         self.dimension_highlights(ui, m, v, rect, key);
+    }
+
+    /// An equal dimension's EQ over the middle of its chain, while the pointer is near its line: a hint on screen only,
+    /// never drawn in a plan, a PNG or on paper.
+    fn dimension_eq_hint(&self, ui: &Ui, m: &Model, v: &View, rect: Rect) {
+        let Some(cursor) = ui.input(|i| i.pointer.hover_pos()) else { return };
+        if !rect.contains(cursor) {
+            return;
+        }
+        let q = v.mm((cursor.x - rect.min.x, cursor.y - rect.min.y));
+        let near = 25.0 / v.scale;
+        let Some((id, d, at)) = m.elements.iter().find_map(|(&id, e)| {
+            let Element::Dimension(d) = e else { return None };
+            if d.alignment || !matches!(d.kind, DimKind::Aligned | DimKind::Linear) || !(d.equal || d.equality) {
+                return None;
+            }
+            let (n, st) = m.stations(d);
+            let (first, last) = (st.first()?, st.last()?);
+            let s = (q - d.at).dot(n);
+            if s < first.0 - near || s > last.0 + near {
+                return None;
+            }
+            ((q - (d.at + n * s)).length() <= near).then(|| (id, d, d.at + n * ((first.0 + last.0) / 2.0)))
+        }) else {
+            return;
+        };
+        let text = m.dimension_type(d).equality_text;
+        let p = ui.painter_at(rect);
+        let at = pos(rect.min, v.px(at)) + vec2(0.0, -22.0);
+        let size = p.layout_no_wrap(text.clone(), FontId::proportional(12.0), pal().accent_ink).size() + vec2(10.0, 4.0);
+        let chip = Rect::from_center_size(at, size);
+        let hint = ui.interact(chip, ui.id().with(("dimension eq", id)), Sense::hover());
+        hint.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, t("Dimension equality")));
+        p.rect_filled(chip, 3.0, pal().surface);
+        p.rect_stroke(chip, 3.0, Stroke::new(1.0, pal().accent_ink), StrokeKind::Inside);
+        p.text(at, Align2::CENTER_CENTER, text, FontId::proportional(12.0), pal().accent_ink);
     }
 
     /// The segment Tab picked, or a click selected, drawn over the dimension line: brighter while it is the picked one.

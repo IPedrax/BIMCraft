@@ -269,17 +269,17 @@ fn editing_refs_keeps_equal_and_its_segments() {
 }
 
 #[test]
-fn a_segment_text_override_replaces_the_number_and_beats_eq() {
+fn a_segment_text_override_replaces_the_number() {
     let mut s = Session::new();
     let (_, d) = chain(&mut s, &[0.0, 2000.0, 5000.0]);
     run(&mut s, "dimension_constraint", json!({"id": d, "equal": true}));
     let labels = crate::commands::element_json(&s.model, d)["labels"].clone();
-    assert_eq!(labels, json!(["EQ", "EQ"]));
+    assert_eq!(labels, json!(["2500", "2500"]), "an equal chain still shows its lengths");
     let out = run(&mut s, "dimension_text", json!({"id": d, "segment": 0, "replace": "X"}));
-    assert_eq!(out["labels"], json!(["X", "EQ"]), "the replacement beats EQ");
+    assert_eq!(out["labels"], json!(["X", "2500"]), "the replacement beats the number");
     // Clearing it brings back the true number.
     let out = run(&mut s, "dimension_text", json!({"id": d, "segment": 0, "replace": ""}));
-    assert_eq!(out["labels"], json!(["EQ", "EQ"]));
+    assert_eq!(out["labels"], json!(["2500", "2500"]));
     run(&mut s, "dimension_constraint", json!({"id": d, "equal": false}));
     let labels = crate::commands::element_json(&s.model, d)["labels"].clone();
     assert_eq!(labels, json!(["2500", "2500"]));

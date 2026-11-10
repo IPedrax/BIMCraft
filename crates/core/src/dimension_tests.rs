@@ -288,9 +288,9 @@ fn a_dimension_s_own_text_goes_round_its_value_or_replaces_it() {
     let shown = crate::commands::element_json(&s.model, d);
     assert_eq!(shown["labels"], json!(["(4000)", "(4000)"]));
     assert_eq!((shown["above"].clone(), shown["below"].clone()), (json!("TYP."), json!("CL")));
-    // Equal segments show EQ, Revit's Equality Display.
+    // Equal segments keep their numbers; EQ shows on screen while the pointer is over the dimension.
     run(&mut s, "modify", json!({"id": d, "equality": true}));
-    assert_eq!(crate::commands::element_json(&s.model, d)["labels"], json!(["EQ", "EQ"]));
+    assert_eq!(crate::commands::element_json(&s.model, d)["labels"], json!(["(4000)", "(4000)"]));
     run(&mut s, "modify", json!({"id": d, "equality": false, "replace": "VARIES"}));
     assert_eq!(crate::commands::element_json(&s.model, d)["labels"], json!(["VARIES", "VARIES"]));
     let e = err(&mut s, "modify", json!({"id": d, "prefix": "a\nb"}));
