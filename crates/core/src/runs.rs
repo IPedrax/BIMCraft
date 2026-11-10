@@ -215,7 +215,7 @@ fn run_arm_at(g: &Geom, s: f64, forward: bool, mine: bool) -> walls::Arm {
     let n = t.perp() * (g.width / 2.0);
     let p = a + t * s;
     let (way, ccw, cw) = if forward { (t, p + n, p - n) } else { (t * -1.0, p - n, p + n) };
-    walls::Arm { mine, way, ccw, cw, centre: p, thick: g.width }
+    walls::Arm { mine, way, ccw, cw, centre: p, thick: g.width, ..Default::default() }
 }
 
 /// A wall's arm at `s` mm along its line, as [`walls::arm`] makes one at an end: left of its way first.
@@ -224,7 +224,15 @@ fn wall_arm_at(m: &Model, w: &Wall, s: f64, forward: bool, mine: bool) -> walls:
     let (ext, int) = walls::faces(m, w);
     let t = axis.tangent(s);
     let (way, ccw, cw) = if forward { (t, ext, int) } else { (t * -1.0, int, ext) };
-    walls::Arm { mine, way, ccw: axis.at(s, ccw), cw: axis.at(s, cw), centre: axis.at(s, (ext + int) / 2.0), thick: ext - int }
+    walls::Arm {
+        mine,
+        way,
+        ccw: axis.at(s, ccw),
+        cw: axis.at(s, cw),
+        centre: axis.at(s, (ext + int) / 2.0),
+        thick: ext - int,
+        ..Default::default()
+    }
 }
 
 /// How far along `g` the node lies where its body takes it: over [`TOL`] from either end and within its half
