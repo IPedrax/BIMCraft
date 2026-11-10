@@ -12,6 +12,7 @@
 use bimcraft_i18n::ui_msg;
 
 pub mod classes;
+mod v2x3;
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -96,6 +97,10 @@ const CIRCUIT_MEMBERS: u64 = 82;
 const CLASSIFIED: u64 = 83;
 const INFO: u64 = 84;
 const INFO_DEFINES: u64 = 85;
+const MAP: u64 = 86;
+const MAP_DEFINES: u64 = 87;
+const CRS: u64 = 88;
+const CRS_DEFINES: u64 = 89;
 
 /// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
 pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
@@ -300,10 +305,17 @@ struct Step {
     systems: BTreeMap<String, u64>,
     /// The schema written.
     schema: Schema,
+    /// IFC2x3's owner history, which every rooted entity there has; 0 in the others, which do without.
+    owner: u64,
+    /// IFC2x3's map conversion and its CRS, said before there's a project to hold them: each set's name, GlobalId roles and
+    /// properties.
+    mapped: Vec<(&'static str, (u64, u64), Vec<u64>)>,
 }
 
-/// The IFC schema a file is written in: IFC4 (ISO 16739-1:2018), or IFC4.3 (ISO 16739-1:2024, `IFC4X3_ADD2`), which IFC4's
-/// entities are written in as they are, but for the attributes 4.3 added (a point list's tags, a virtual element's type).
+/// The IFC schema a file is written in: IFC4 (ISO 16739-1:2018); IFC4.3 (ISO 16739-1:2024, `IFC4X3_ADD2`), which IFC4's
+/// entities are written in as they are, but for the attributes 4.3 added (a point list's tags, a virtual element's type); or
+/// IFC2x3 (ISO/PAS 16739:2005, TC1), for the programs that read nothing newer, which each entity is turned into as it is
+/// written (`v2x3`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Schema {
     #[default]
@@ -311,6 +323,8 @@ pub enum Schema {
     Ifc4,
     #[serde(rename = "ifc4x3")]
     Ifc4x3,
+    #[serde(rename = "ifc2x3")]
+    Ifc2x3,
 }
 
 impl Schema {
@@ -319,6 +333,15 @@ impl Schema {
         match self {
             Schema::Ifc4 => "IFC4",
             Schema::Ifc4x3 => "IFC4X3_ADD2",
+            Schema::Ifc2x3 => "IFC2X3",
+        }
+    }
+
+    /// The view its file says it is of: IFC4's design transfer view, IFC2x3's coordination view.
+    fn view(self) -> &'static str {
+        match self {
+            Schema::Ifc2x3 => "CoordinationView_V2.0",
+            Schema::Ifc4 | Schema::Ifc4x3 => "DesignTransferView",
         }
     }
 }
@@ -394,11 +417,77 @@ fn cardinal_point(justify: crate::model::Justify, upright: bool) -> u8 {
 }
 
 impl Step {
-    /// Writes `#n=ENTITY;` and returns n.
+    /// Writes `#n=ENTITY;` and returns n. `entity` is IFC4's; in IFC2x3 it is written as that has it (`v2x3::downgrade`),
+    /// a styled item's styles in the assignment they go in there.
     fn add(&mut self, entity: impl AsRef<str>) -> u64 {
+        let entity = entity.as_ref();
+        if self.schema != Schema::Ifc2x3 {
+            return self.write(entity);
+        }
+        if let Some(("IFCSTYLEDITEM", [item, styles, name])) = v2x3::split(entity).as_ref().map(|(n, a)| (*n, a.as_slice())) {
+            let assignment = self.write(&format!("IFCPRESENTATIONSTYLEASSIGNMENT({styles})"));
+            return self.write(&format!("IFCSTYLEDITEM({item},(#{assignment}),{name})"));
+        }
+        let entity = v2x3::downgrade(entity, self.owner);
+        self.write(&entity)
+    }
+
+    /// Writes `#n=ENTITY;` as it is and returns n.
+    fn write(&mut self, entity: &str) -> u64 {
         self.next += 1;
-        let _ = writeln!(self.out, "#{}={};", self.next, entity.as_ref());
+        let _ = writeln!(self.out, "#{}={};", self.next, entity);
         self.next
+    }
+
+    /// Where the file's coordinates lie on a map: the projected CRS (its name, description, geodetic datum, vertical datum,
+    /// projection and zone, in `unit`) and the conversion of the context `ctx` to it (eastings, northings, height, the x
+    /// axis's abscissa and ordinate, scale). IFC2x3 has neither entity, so there they are the project's `ePSet_ProjectedCRS`
+    /// and `ePSet_MapConversion`, as buildingSMART's guide to georeferencing has them, with the same values; `project` is
+    /// none while it isn't written yet.
+    fn map_conversion(&mut self, ctx: u64, project: Option<u64>, crs: [String; 6], unit: u64, conversion: [String; 6]) {
+        if self.schema != Schema::Ifc2x3 {
+            let target = self.add(format!("IFCPROJECTEDCRS({},#{unit})", crs.join(",")));
+            self.add(format!("IFCMAPCONVERSION(#{ctx},#{target},{})", conversion.join(",")));
+            return;
+        }
+        let named = |w: &mut Step, names: [(&str, &str); 6], values: [String; 6]| -> Vec<u64> {
+            names
+                .iter()
+                .zip(values)
+                .filter(|(_, v)| v != "$")
+                .map(|((name, kind), v)| w.add(format!("IFCPROPERTYSINGLEVALUE('{name}',$,{kind}({v}),$)")))
+                .collect()
+        };
+        let crs_names = [
+            ("Name", "IFCLABEL"),
+            ("Description", "IFCTEXT"),
+            ("GeodeticDatum", "IFCIDENTIFIER"),
+            ("VerticalDatum", "IFCIDENTIFIER"),
+            ("MapProjection", "IFCIDENTIFIER"),
+            ("MapZone", "IFCIDENTIFIER"),
+        ];
+        let conversion_names = [
+            ("Eastings", "IFCLENGTHMEASURE"),
+            ("Northings", "IFCLENGTHMEASURE"),
+            ("OrthogonalHeight", "IFCLENGTHMEASURE"),
+            ("XAxisAbscissa", "IFCREAL"),
+            ("XAxisOrdinate", "IFCREAL"),
+            ("Scale", "IFCREAL"),
+        ];
+        let crs = named(self, crs_names, crs);
+        let conversion = named(self, conversion_names, conversion);
+        self.mapped.push(("ePSet_ProjectedCRS", (CRS, CRS_DEFINES), crs));
+        self.mapped.push(("ePSet_MapConversion", (MAP, MAP_DEFINES), conversion));
+        if let Some(project) = project {
+            self.map_sets(project);
+        }
+    }
+
+    /// The sets `map_conversion` is holding for `project`, written on it.
+    fn map_sets(&mut self, project: u64) {
+        for (name, roles, props) in std::mem::take(&mut self.mapped) {
+            self.define(project, name, &props, roles, 0);
+        }
     }
 
     /// The GlobalId of what plays `role` for `id`: an element's or a storey's own is its GUID; what else an element writes
@@ -485,6 +574,24 @@ impl Step {
                 .fold(0xCBF2_9CE4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
             // Six attributes after the name (description to element type), then `before`, the predefined type and `after`.
             let predefined = if predefined.is_empty() { predefined } else { format!(",{predefined}") };
+            // IFC2x3 has no profile sets, and no type object for some classes (a roof's, a footing's): a member's material is
+            // its occurrences' own there, and its section is in their bodies alone.
+            if self.schema == Schema::Ifc2x3 {
+                if v2x3::has_type(&class) {
+                    let kind =
+                        self.add(format!("{class}({},$,{},$,$,$,$,$,${before}{predefined}{after})", self.guid(TYPES, key), s(&name)));
+                    self.add(format!("IFCRELDEFINESBYTYPE({},$,$,$,({}),#{kind})", self.guid(TYPE_DEFINES, key), refs(&occurrences)));
+                }
+                if let Some((_, material)) = member.filter(|(_, material)| !material.is_empty()) {
+                    let material = self.material(m, &material);
+                    self.add(format!(
+                        "IFCRELASSOCIATESMATERIAL({},$,$,$,({}),#{material})",
+                        self.guid(USAGE_MATERIALS, key),
+                        refs(&occurrences)
+                    ));
+                }
+                continue;
+            }
             let kind = self.add(format!("{class}({},$,{},$,$,$,$,$,${before}{predefined}{after})", self.guid(TYPES, key), s(&name)));
             self.add(format!("IFCRELDEFINESBYTYPE({},$,$,$,({}),#{kind})", self.guid(TYPE_DEFINES, key), refs(&occurrences)));
             if let Some(o) = omniclass {
@@ -596,9 +703,26 @@ impl Step {
                 && b != c
                 && a != c
             {
-                faces.push(format!("({a},{b},{c})"));
+                faces.push([a, b, c]);
             }
         }
+        // IFC2x3 has no face sets: the triangles are the faces of a closed shell, each corner a point written once.
+        if self.schema == Schema::Ifc2x3 {
+            let points: Vec<u64> =
+                pts.iter().map(|p| self.add(format!("IFCCARTESIANPOINT(({},{},{}))", real(p[0]), real(p[1]), real(p[2])))).collect();
+            let faces: Vec<u64> = faces
+                .iter()
+                .map(|face| {
+                    let corners: Vec<u64> = face.iter().filter_map(|i| points.get(i - 1).copied()).collect();
+                    let lp = self.add(format!("IFCPOLYLOOP(({}))", refs(&corners)));
+                    let bound = self.add(format!("IFCFACEOUTERBOUND(#{lp},.T.)"));
+                    self.add(format!("IFCFACE((#{bound}))"))
+                })
+                .collect();
+            let shell = self.add(format!("IFCCLOSEDSHELL(({}))", refs(&faces)));
+            return self.add(format!("IFCFACETEDBREP(#{shell})"));
+        }
+        let faces: Vec<String> = faces.iter().map(|[a, b, c]| format!("({a},{b},{c})")).collect();
         let coords: Vec<String> = pts.iter().map(|p| format!("({},{},{})", real(p[0]), real(p[1]), real(p[2]))).collect();
         // IFC4.3's has its points' tags after them, none here.
         let tags = if self.schema == Schema::Ifc4x3 { ",$" } else { "" };
@@ -606,9 +730,24 @@ impl Step {
         self.add(format!("IFCTRIANGULATEDFACESET(#{list},$,.T.,({}),$)", faces.join(",")))
     }
 
+    /// What a representation of `faceset`s is: a tessellation, or IFC2x3's B-reps.
+    fn meshed(&self) -> &'static str {
+        if self.schema == Schema::Ifc2x3 { "'Brep'" } else { "'Tessellation'" }
+    }
+
+    /// The material a product is made of, where it is of several (`name` the set's, a STEP string): IFC4's constituent set,
+    /// IFC2x3's list.
+    fn made_of(&mut self, name: &str, materials: &[u64]) -> u64 {
+        if self.schema == Schema::Ifc2x3 {
+            return self.add(format!("IFCMATERIALLIST(({}))", refs(materials)));
+        }
+        let parts: Vec<u64> = materials.iter().map(|x| self.add(format!("IFCMATERIALCONSTITUENT($,$,#{x},$,$)"))).collect();
+        self.add(format!("IFCMATERIALCONSTITUENTSET({name},$,({}))", refs(&parts)))
+    }
+
     /// A body of tessellated `items`, the closed face sets.
     fn tessellated(&mut self, items: &[u64]) -> u64 {
-        let rep = self.add(format!("IFCSHAPEREPRESENTATION(#{},'Body','Tessellation',({}))", self.body, refs(items)));
+        let rep = self.add(format!("IFCSHAPEREPRESENTATION(#{},'Body',{},({}))", self.body, self.meshed(), refs(items)));
         self.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))"))
     }
 
@@ -1081,7 +1220,22 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         classified: BTreeMap::new(),
         systems: BTreeMap::new(),
         schema,
+        owner: 0,
+        mapped: Vec::new(),
     };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    // IFC2x3 requires an owner history of every rooted entity: one for the file, by the project's author with BIMCraft.
+    if schema == Schema::Ifc2x3 {
+        let info = m.project_info().map(|(_, i)| i);
+        let author = info.map(|i| i.author.trim()).filter(|a| !a.is_empty()).unwrap_or("Unknown");
+        let organization = info.map(|i| i.organization.trim()).filter(|o| !o.is_empty()).unwrap_or("Unknown");
+        let person = w.add(format!("IFCPERSON($,{},$,$,$,$,$,$)", s(author)));
+        let organization = w.add(format!("IFCORGANIZATION($,{},$,$,$)", s(organization)));
+        let by = w.add(format!("IFCPERSONANDORGANIZATION(#{person},#{organization},$)"));
+        let maker = w.add("IFCORGANIZATION($,'BIMCraft',$,$,$)");
+        let app = w.add(format!("IFCAPPLICATION(#{maker},'{}','BIMCraft','BIMCraft')", env!("CARGO_PKG_VERSION")));
+        w.owner = w.add(format!("IFCOWNERHISTORY(#{by},#{app},$,.NOCHANGE.,$,$,$,{now})"));
+    }
     let origin = w.add("IFCCARTESIANPOINT((0.,0.,0.))");
     w.z = w.add("IFCDIRECTION((0.,0.,1.))");
     w.world = w.add(format!("IFCAXIS2PLACEMENT3D(#{origin},$,$)"));
@@ -1125,29 +1279,21 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
             w.add(format!("IFCCONVERSIONBASEDUNIT(#{dims},.LENGTHUNIT.,'{name}',#{measure})"))
         };
         let or_none = |t: &Option<String>| t.as_deref().map_or_else(|| "$".to_string(), s);
-        let crs = w.add(format!(
-            "IFCPROJECTEDCRS({},{},{},{},{},{},#{unit})",
+        let crs = [
             s(&g.crs),
             or_none(&g.description),
             or_none(&g.geodetic_datum),
             or_none(&g.vertical_datum),
             or_none(&g.map_projection),
-            or_none(&g.map_zone)
-        ));
+            or_none(&g.map_zone),
+        ];
         let mm = to_meter * 1000.0;
         let (q, axis, scale) = match from {
             Some(o) => (g.to_shared(o), (turn_c, turn_s), g.scale / mm),
             None => ([0.0; 3], (1.0, 0.0), 1.0 / mm),
         };
-        w.add(format!(
-            "IFCMAPCONVERSION(#{ctx},#{crs},{},{},{},{},{},{})",
-            real(q[0] / mm),
-            real(q[1] / mm),
-            real(q[2] / mm),
-            ratio(axis.0),
-            ratio(axis.1),
-            ratio(scale)
-        ));
+        let conversion = [real(q[0] / mm), real(q[1] / mm), real(q[2] / mm), ratio(axis.0), ratio(axis.1), ratio(scale)];
+        w.map_conversion(ctx, None, crs, unit, conversion);
     }
     let units = [
         "IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)",
@@ -1162,6 +1308,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
     let said = |t: &str| if t.is_empty() { "$".to_string() } else { s(t) };
     let phase = said(info.map_or("", |(_, i)| i.status.as_str()));
     let project = w.add(format!("IFCPROJECT({},$,{},$,$,$,{phase},(#{ctx}),#{units})", w.guid(PROJECT, 0), s(&m.name)));
+    w.map_sets(project);
     let site_at = match from {
         Some(o) => w.place(None, (-o[0], -o[1], -o[2]), None),
         None => {
@@ -1203,28 +1350,15 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         (Some(w), None) => (compound(w[1]), compound(w[0]), real(0.0)),
         (None, _) => ("$".into(), "$".into(), "$".into()),
     };
-    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},{footprint},$,.ELEMENT.,{lat},{lon},{elevation},$,$)", w.guid(SITE, 0)));
-    if !plots.is_empty() {
-        let total = plots.iter().map(|(_, pl)| geom::area(&pl.points).abs()).sum::<f64>() / 1e6;
-        let area = w.add(format!("IFCPROPERTYSINGLEVALUE('TotalArea',$,IFCAREAMEASURE({}),$)", real(total)));
-        w.define(site, "Pset_SiteCommon", &[area], (PLOT_PROPERTIES, PLOT_DEFINES), 0);
-        let mut metadata = Vec::new();
-        for key in ["Names", "Guids", "Levels"] {
-            let values: Vec<String> = plots
-                .iter()
-                .map(|(id, pl)| {
-                    let value = match key {
-                        "Names" => pl.name.clone(),
-                        "Guids" => m.guid(*id).to_string(),
-                        _ => pl.level.to_string(),
-                    };
-                    let kind = if key == "Names" { "IFCTEXT" } else { "IFCLABEL" };
-                    format!("{kind}({})", s(&value))
-                })
-                .collect();
-            metadata.push(w.add(format!("IFCPROPERTYLISTVALUE({},$,({}),$)", s(key), values.join(","))));
-        }
-        w.define(site, PROPERTY_LINES, &metadata, (PLOT_NAMES, PLOT_NAMES_DEFINES), 0);
+            or_none(&g.map_zone),
+        ];
+        let mm = to_meter * 1000.0;
+        let (q, axis, scale) = match from {
+            Some(o) => (g.to_shared(o), (turn_c, turn_s), g.scale / mm),
+            None => ([0.0; 3], (1.0, 0.0), 1.0 / mm),
+        };
+        let conversion = [real(q[0] / mm), real(q[1] / mm), real(q[2] / mm), ratio(axis.0), ratio(axis.1), ratio(scale)];
+        w.map_conversion(ctx, None, crs, unit, conversion);
     }
     let building_at = w.place(Some(site_at), (0.0, 0.0, 0.0), None);
     let building_name = info.map(|(_, i)| i.building.as_str()).filter(|b| !b.is_empty()).unwrap_or(&m.name);
@@ -1681,10 +1815,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 let relating = match made_of.as_slice() {
                     [] => None,
                     [one] => Some(*one),
-                    many => {
-                        let parts: Vec<u64> = many.iter().map(|x| w.add(format!("IFCMATERIALCONSTITUENT($,$,#{x},$,$)"))).collect();
-                        Some(w.add(format!("IFCMATERIALCONSTITUENTSET({},$,({}))", name, refs(&parts))))
-                    }
+                    many => Some(w.made_of(&name, many)),
                 };
                 if let Some(r) = relating {
                     w.add(format!("IFCRELASSOCIATESMATERIAL({},$,$,$,(#{ent}),#{r})", w.guid(COMPONENT_MATERIALS, id)));
@@ -1800,7 +1931,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                         && crate::rebar::length(&[*p, *q]) > crate::model::TOL
                     {
                         let line = w.add(format!("IFCPOLYLINE((#{a},#{b}))"));
-                        disks.push(w.add(format!("IFCSWEPTDISKSOLID(#{line},{radius},$,$,$)")));
+                        // IFC2x3 requires where the sweep starts and ends: the whole of its one segment, 0 to 1.
+                        let ends = if w.schema == Schema::Ifc2x3 { "0.,1." } else { "$,$" };
+                        disks.push(w.add(format!("IFCSWEPTDISKSOLID(#{line},{radius},$,{ends})")));
                     }
                 }
                 let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body','AdvancedSweptSolid',({}))", w.body, refs(&disks)));
@@ -2013,7 +2146,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                     }
                     items.push(set);
                 }
-                let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body','Tessellation',({}))", w.body, refs(&items)));
+                let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{},'Body',{},({}))", w.body, w.meshed(), refs(&items)));
                 (w.place(Some(at), (t.width / 2.0, 0.0, 0.0), None), w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
             }
             None => {
@@ -2064,10 +2197,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         let relating = match made_of.as_slice() {
             [] => None,
             [one] => Some(*one),
-            many => {
-                let parts: Vec<u64> = many.iter().map(|x| w.add(format!("IFCMATERIALCONSTITUENT($,$,#{x},$,$)"))).collect();
-                Some(w.add(format!("IFCMATERIALCONSTITUENTSET({},$,({}))", s(&o.type_name), refs(&parts))))
-            }
+            many => Some(w.made_of(&s(&o.type_name), many)),
         };
         if let Some(r) = relating {
             w.add(format!("IFCRELASSOCIATESMATERIAL({},$,$,$,(#{ent}),#{r})", w.guid(COMPONENT_MATERIALS, id)));
@@ -2383,21 +2513,20 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         w.define(project, PHASING, &props, (PHASED, PHASED_DEFINES), 0);
     }
 
-    // The components standing in each room, referenced in its space (IFC4's "also in"), after everything else, so the rest
-    // of the file is as it was without them.
-    if reference_rooms {
-        for (room, items) in in_rooms {
-            if let Some(space) = products.get(&room) {
-                w.add(format!("IFCRELREFERENCEDINSPATIALSTRUCTURE({},$,$,$,({}),#{space})", w.guid(REFERENCED, room), refs(&items)));
-            }
-        }
-    }
-
-    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+            or_none(&g.map_zone),
+        ];
+        let mm = to_meter * 1000.0;
+        let (q, axis, scale) = match from {
+            Some(o) => (g.to_shared(o), (turn_c, turn_s), g.scale / mm),
+            None => ([0.0; 3], (1.0, 0.0), 1.0 / mm),
+        };
+        let conversion = [real(q[0] / mm), real(q[1] / mm), real(q[2] / mm), ratio(axis.0), ratio(axis.1), ratio(scale)];
+        w.map_conversion(ctx, None, crs, unit, conversion);
     let app = s(&format!("BIMCraft {}", env!("CARGO_PKG_VERSION")));
     format!(
-        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [DesignTransferView]'),'2;1');\n\
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [{}]'),'2;1');\n\
          FILE_NAME({},'{}',(''),(''),{app},{app},'');\nFILE_SCHEMA(('{}'));\nENDSEC;\nDATA;\n{}ENDSEC;\nEND-ISO-10303-21;\n",
+        schema.view(),
         s(&format!("{}.ifc", m.name)),
         utc(now),
         schema.name(),

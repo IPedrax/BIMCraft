@@ -1,4 +1,4 @@
-//! The model in 3D: IFC4 and IFC4.3 (`ifc::export_as`) and glTF binary (`gltf::export`, what the default 3D view shows, links and all).
+//! The model in 3D: IFC4, IFC4.3 and IFC2x3 (`ifc::export_as`) and glTF binary (`gltf::export`, what the default 3D view shows, links and all).
 
 use super::super::{Content, Ctx, Family, Format, Options, Out, Prepared, Takes};
 use crate::model::Model;
@@ -22,12 +22,14 @@ impl Format for Ifc {
         match self.0 {
             crate::ifc::Schema::Ifc4 => "ifc4",
             crate::ifc::Schema::Ifc4x3 => "ifc4x3",
+            crate::ifc::Schema::Ifc2x3 => "ifc2x3",
         }
     }
     fn label(&self) -> &'static str {
         match self.0 {
             crate::ifc::Schema::Ifc4 => "IFC4",
             crate::ifc::Schema::Ifc4x3 => "IFC4.3",
+            crate::ifc::Schema::Ifc2x3 => "IFC2x3",
         }
     }
     fn extension(&self) -> &'static str {

@@ -34,9 +34,10 @@ pub fn builtin() -> Vec<Arc<dyn Format>> {
         Arc::new(Dxf),
         // Written by an app that has the DWG bridge; the core can't.
         Arc::new(Planned { id: "dwg", label: "DWG", extension: "dwg", family: Family::Line, takes: &[Takes::Drawing] }),
-        Arc::new(Planned { id: "ifc2x3", label: "IFC2x3", extension: "ifc", family: Family::Model, takes: &[Takes::Model] }),
         Arc::new(Ifc(crate::ifc::Schema::Ifc4)),
         Arc::new(Ifc(crate::ifc::Schema::Ifc4x3)),
+        // After IFC4, which an `.ifc` with no schema said is.
+        Arc::new(Ifc(crate::ifc::Schema::Ifc2x3)),
         Arc::new(Glb),
         Arc::new(Obj),
         Arc::new(Stl),

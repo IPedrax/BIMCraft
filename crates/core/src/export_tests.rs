@@ -174,6 +174,89 @@ fn the_project_exports_as_ifc4x3_with_the_attributes_it_added() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+/// The entities of `class` in a STEP file's text.
+fn entities<'a>(text: &'a str, class: &str) -> Vec<&'a str> {
+    text.lines().filter(|l| l.split_once('=').is_some_and(|(_, e)| e.starts_with(&format!("{class}(")))).collect()
+}
+
+#[test]
+fn the_project_exports_as_ifc2x3_with_what_that_schema_has() {
+    // The sample house, furnished (its families' shapes are meshes), with a room separation line, on a map.
+    let mut s = Session::new();
+    s.script(crate::sample::SAMPLE).unwrap_or_else(|e| panic!("{e}"));
+    run(&mut s, "room_separator", json!({"points": [[4000, 0], [4000, 6000]]}));
+    run(&mut s, "georeference", json!({"crs": "EPSG:31983", "eastings": 333_000_000, "northings": 7_394_000_000i64, "map_zone": "23S"}));
+    let dir = folder("ifc2x3");
+    let to = dir.join("house.ifc");
+    run(&mut s, "export", json!({"format": "ifc2x3", "path": to}));
+    let text = std::fs::read_to_string(&to).unwrap_or_default();
+    assert!(text.contains("FILE_SCHEMA(('IFC2X3'))") && text.contains("ViewDefinition [CoordinationView_V2.0]"), "{text}");
+    // Nothing only IFC4 has: its face sets, material sets, map conversion and type objects.
+    for class in [
+        "IFCTRIANGULATEDFACESET",
+        "IFCCARTESIANPOINTLIST3D",
+        "IFCMATERIALCONSTITUENTSET",
+        "IFCMATERIALPROFILESET",
+        "IFCMAPCONVERSION",
+        "IFCPROJECTEDCRS",
+        "IFCDOORTYPE",
+        "IFCWINDOWTYPE",
+        "IFCROOFTYPE",
+        "IFCFURNITURE",
+    ] {
+        assert!(entities(&text, class).is_empty(), "{class} isn't IFC2x3's");
+    }
+    // One owner history, which every rooted entity has: the walls, their type, the relations.
+    let [owner] = entities(&text, "IFCOWNERHISTORY")[..] else { panic!("one owner history: {text}") };
+    let owner = format!(",#{},", owner.split_once('=').map_or("", |(n, _)| n.trim_start_matches('#')));
+    for class in ["IFCWALL", "IFCWALLTYPE", "IFCRELAGGREGATES", "IFCPROPERTYSET", "IFCPROJECT", "IFCBUILDINGSTOREY", "IFCDOOR"] {
+        let all = entities(&text, class);
+        assert!(!all.is_empty() && all.iter().all(|l| l.contains(&owner)), "{class}: {all:?}");
+    }
+    // A wall has no predefined type there, a door no operation: the door's is its style's.
+    assert!(entities(&text, "IFCWALL").iter().all(|l| !l.contains(".STANDARD.")));
+    let styles = entities(&text, "IFCDOORSTYLE");
+    assert!(!styles.is_empty() && styles.iter().all(|l| l.ends_with(",.NOTDEFINED.,.F.,.F.);")), "{styles:?}");
+    assert!(!entities(&text, "IFCWINDOWSTYLE").is_empty());
+    // Furniture is a furnishing element, its mesh a faceted B-rep, its styles in an assignment.
+    assert!(!entities(&text, "IFCFURNISHINGELEMENT").is_empty() && text.contains("'Body','Brep'"));
+    assert!(!text.contains("'Tessellation'"));
+    assert_eq!(entities(&text, "IFCSTYLEDITEM").len(), entities(&text, "IFCPRESENTATIONSTYLEASSIGNMENT").len());
+    // Where it lies on a map is the project's two property sets, with the map conversion's own values (metres).
+    assert!(text.contains("'ePSet_MapConversion'") && text.contains("'ePSet_ProjectedCRS'"), "{text}");
+    assert!(text.contains("IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(333000.),$)"), "{text}");
+    assert!(text.contains("IFCPROPERTYSINGLEVALUE('MapZone',$,IFCIDENTIFIER('23S'),$)"), "{text}");
+    // It reads back as the project it was: its levels and as many walls, doors and windows.
+    let count = |s: &Session, category: &str| s.model.elements.values().filter(|e| e.category() == category).count();
+    let mut back = Session::new();
+    run(&mut back, "open", json!({"path": to}));
+    for category in ["level", "wall", "door", "window", "floor", "roof"] {
+        assert_eq!(count(&back, category), count(&s, category), "{category}");
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_bar_and_a_structural_frame_export_as_ifc2x3() {
+    // A swept disk says where it starts and ends there; a beam's and a footing's material is its own, with no profile set.
+    let mut s = Session::new();
+    s.script(include_str!("../../../ci/ifc-coverage.txt")).unwrap_or_else(|e| panic!("{e}"));
+    let dir = folder("ifc2x3-frame");
+    let to = dir.join("frame.ifc");
+    run(&mut s, "export", json!({"format": "ifc2x3", "path": to}));
+    let text = std::fs::read_to_string(&to).unwrap_or_default();
+    let disks = entities(&text, "IFCSWEPTDISKSOLID");
+    assert!(!disks.is_empty() && disks.iter().all(|l| l.ends_with(",$,0.,1.);")), "{:?}", disks.first());
+    let bars = entities(&text, "IFCREINFORCINGBAR");
+    assert!(!bars.is_empty() && bars.iter().all(|l| l.ends_with(",.NOTDEFINED.,.PLAIN.);")), "{:?}", bars.first());
+    // IFC4's pipe, duct and cable segments are flow segments, each still of its own segment type.
+    assert!(entities(&text, "IFCPIPESEGMENT").is_empty() && !entities(&text, "IFCFLOWSEGMENT").is_empty());
+    assert!(!entities(&text, "IFCPIPESEGMENTTYPE").is_empty() && !entities(&text, "IFCBEAMTYPE").is_empty());
+    assert!(entities(&text, "IFCFOOTINGTYPE").is_empty() && !entities(&text, "IFCFOOTING").is_empty());
+    assert!(!text.contains("IFCMATERIALPROFILE"));
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 #[test]
 fn save_prints_every_sheet_through_the_pdf_format() {
     let mut s = project();
