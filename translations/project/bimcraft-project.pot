@@ -100,7 +100,7 @@ msgstr ""
 msgid "Crosshatch"
 msgstr ""
 
-#: crates/core/src/render.rs:3644
+#: crates/core/src/render.rs:3643
 msgid "DN"
 msgstr ""
 
@@ -246,7 +246,7 @@ msgid "Gate Valve"
 msgstr ""
 
 #: crates/core/src/family.rs:2205
-#: crates/core/src/view3d.rs:1002
+#: crates/core/src/view3d.rs:1004
 msgid "Glass"
 msgstr ""
 
@@ -604,7 +604,7 @@ msgstr ""
 msgid "Type"
 msgstr ""
 
-#: crates/core/src/render.rs:3644
+#: crates/core/src/render.rs:3643
 msgid "UP"
 msgstr ""
 
