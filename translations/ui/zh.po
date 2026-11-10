@@ -20,7 +20,7 @@ msgstr " 已移动 {}（{} 毫米），使其靠近原点。"
 msgid "(none)"
 msgstr "（无）"
 
-#: crates/ui-egui/src/settings.rs:741
+#: crates/ui-egui/src/settings.rs:745
 msgid "0 for any port that is free; an open port moves to a new one"
 msgstr "0 表示任意空闲端口；已打开的端口会移到新端口"
 
@@ -28,7 +28,7 @@ msgstr "0 表示任意空闲端口；已打开的端口会移到新端口"
 msgid "0.75 in (19.05 mm) binding margin"
 msgstr "0.75 英寸 (19.05 mm) 装订边距"
 
-#: crates/ui-egui/src/settings.rs:745
+#: crates/ui-egui/src/settings.rs:749
 msgid "0: any free port"
 msgstr "0：任意空闲端口"
 
@@ -62,7 +62,7 @@ msgstr "三维视图：{3D}"
 msgid "3D Views"
 msgstr "三维视图"
 
-#: crates/ui-egui/src/settings.rs:648
+#: crates/ui-egui/src/settings.rs:652
 msgid "3D view resolution"
 msgstr "三维视图分辨率"
 
@@ -173,6 +173,10 @@ msgstr ""
 msgid "A preset needs a name, of at most 64 letters"
 msgstr "预设需要一个名称，最多 64 个字符"
 
+#: crates/ui-egui/src/assistant.rs:120
+msgid "A saved key is locked. Type its passphrase to use it in this session."
+msgstr ""
+
 #: crates/ui-egui/src/properties.rs:2696
 msgid "A scan's points where the plan's cut plane cuts it, to trace what was measured"
 msgstr "平面的剖切面切过扫描处的点，用于描绘测得的内容"
@@ -181,7 +185,7 @@ msgstr "平面的剖切面切过扫描处的点，用于描绘测得的内容"
 msgid "A small house to look around in."
 msgstr "一座可以四处查看的小住宅。"
 
-#: crates/ui-egui/src/settings.rs:600
+#: crates/ui-egui/src/settings.rs:604
 msgid "A small marker at the project's 0, 0 with the directions of x (east) and y (north). It is drawn on the screen only: never in a printed drawing, a sheet or an export"
 msgstr "位于项目 0, 0 处的小标记，标明 x（东）和 y（北）的方向。仅绘制在屏幕上：绝不会出现在打印的图样、图纸或导出内容中"
 
@@ -205,11 +209,11 @@ msgstr "墙的中心线，使绘制在其上的墙与之相接"
 msgid "A {} needs a name."
 msgstr "{}需要名称。"
 
-#: crates/ui-egui/src/assistant.rs:228
+#: crates/ui-egui/src/assistant.rs:323
 msgid "API key"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:100
+#: crates/ui-egui/src/assistant.rs:152
 msgid "API key:"
 msgstr ""
 
@@ -247,7 +251,7 @@ msgstr "上方："
 msgid "Absolute"
 msgstr "绝对"
 
-#: crates/ui-egui/src/settings.rs:522
+#: crates/ui-egui/src/settings.rs:526
 msgid "Accent colour"
 msgstr "强调色"
 
@@ -454,11 +458,11 @@ msgstr "已将 {} 添加到项目"
 msgid "Agents"
 msgstr "智能体"
 
-#: crates/ui-egui/src/settings.rs:757
+#: crates/ui-egui/src/settings.rs:761
 msgid "Agents connected: {}"
 msgstr "已连接的智能体：{}"
 
-#: crates/ui-egui/src/settings.rs:766
+#: crates/ui-egui/src/settings.rs:770
 msgid "Agents may only read this project."
 msgstr "智能体只能读取此项目。"
 
@@ -486,7 +490,7 @@ msgstr "智能体：已连接 {} 个，只读"
 msgid "Aggressiveness class"
 msgstr "环境侵蚀等级"
 
-#: crates/ui-egui/src/assistant.rs:260
+#: crates/ui-egui/src/assistant.rs:357
 msgid "Agree and send"
 msgstr ""
 
@@ -562,7 +566,7 @@ msgstr "全部"
 msgid "Allow Join"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:760
+#: crates/ui-egui/src/settings.rs:764
 msgid "Allow agents to edit this project"
 msgstr "允许智能体编辑此项目"
 
@@ -589,6 +593,10 @@ msgstr "沿顶面长度"
 #: crates/ui-egui/src/reinforce.rs:101
 msgid "Along width"
 msgstr "沿宽度"
+
+#: crates/ui-egui/src/assistant.rs:167
+msgid "Also protect it with a passphrase"
+msgstr ""
 
 #: crates/ui-egui/src/electrical.rs:444
 msgid "Ampacity"
@@ -748,7 +756,7 @@ msgstr "箭头"
 msgid "As placed"
 msgstr "原样"
 
-#: crates/ui-egui/src/settings.rs:451
+#: crates/ui-egui/src/settings.rs:455
 msgid "As the System"
 msgstr "跟随系统"
 
@@ -760,7 +768,7 @@ msgstr "按单位显示"
 msgid "Ascending"
 msgstr "升序"
 
-#: crates/ui-egui/src/assistant.rs:254
+#: crates/ui-egui/src/assistant.rs:351
 msgid "Ask the assistant to look at or change the project"
 msgstr ""
 
@@ -772,24 +780,28 @@ msgstr "如有未保存的更改，会先询问是否保存，然后关闭 BIMCr
 msgid "Assign View Template"
 msgstr "指定视图样板"
 
-#: crates/ui-egui/src/assistant.rs:321
+#: crates/ui-egui/src/assistant.rs:423
 #: crates/ui-egui/src/dock.rs:46
 #: crates/ui-egui/src/lib.rs:422
 #: crates/ui-egui/src/settings.rs:297
 msgid "Assistant"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:179
+#: crates/ui-egui/src/assistant.rs:274
 msgid "Assistant settings"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:336
+#: crates/ui-egui/src/assistant.rs:438
 msgid "Assistant: {}"
 msgstr ""
 
 #: crates/ui-egui/src/properties.rs:401
 msgid "Associated Level"
 msgstr "关联标高"
+
+#: crates/ui-egui/src/assistant.rs:189
+msgid "At least {} characters"
+msgstr ""
 
 #: crates/core/src/model.rs:2712
 msgid "At wall centre line"
@@ -837,7 +849,7 @@ msgstr "自动检测"
 msgid "Autosave"
 msgstr "自动保存"
 
-#: crates/ui-egui/src/settings.rs:695
+#: crates/ui-egui/src/settings.rs:699
 msgid "Autosave in the background"
 msgstr "在后台自动保存"
 
@@ -903,7 +915,7 @@ msgstr "BIMCraft {} 已是最新版本"
 msgid "BIMCraft {} is up to date."
 msgstr "BIMCraft {} 已是最新版本。"
 
-#: crates/ui-egui/src/settings.rs:503
+#: crates/ui-egui/src/settings.rs:507
 msgid "BIMCraft's own: the tools in a palette, the Inspector and the Navigator on the right"
 msgstr ""
 
@@ -947,7 +959,7 @@ msgstr "背景网格"
 msgid "Background Pattern"
 msgstr "背景填充图案"
 
-#: crates/ui-egui/src/settings.rs:684
+#: crates/ui-egui/src/settings.rs:688
 msgid "Background of the 3D view"
 msgstr "三维视图背景"
 
@@ -1215,7 +1227,7 @@ msgstr "取消编辑模式：放弃这些线，保持原样"
 msgid "Cancel Pattern"
 msgstr "取消线型图案"
 
-#: crates/ui-egui/src/settings.rs:538
+#: crates/ui-egui/src/settings.rs:542
 msgid "Canvas colour"
 msgstr "画布颜色"
 
@@ -1223,7 +1235,7 @@ msgstr "画布颜色"
 msgid "Capture & Descent"
 msgstr "接闪和引下"
 
-#: crates/ui-egui/src/settings.rs:638
+#: crates/ui-egui/src/settings.rs:642
 msgid "Card: {}"
 msgstr "显卡：{}"
 
@@ -1940,7 +1952,7 @@ msgstr "单击平台之后下一梯段的走向：直行、左转、右转，或
 #: crates/ui-egui/src/properties.rs:3027
 #: crates/ui-egui/src/properties.rs:3351
 #: crates/ui-egui/src/revit.rs:259
-#: crates/ui-egui/src/settings.rs:440
+#: crates/ui-egui/src/settings.rs:444
 #: crates/ui-egui/src/shortcuts.rs:568
 msgid "Close"
 msgstr "关闭"
@@ -2010,7 +2022,7 @@ msgid "Combine: what was made, taken down and shown in this phase goes to the ne
 msgstr "合并：此阶段中创建、拆除和显示的内容归入相邻阶段，本阶段随即删除"
 
 #: crates/ui-egui/src/browser.rs:236
-#: crates/ui-egui/src/settings.rs:780
+#: crates/ui-egui/src/settings.rs:784
 msgid "Coming in a later version"
 msgstr "将在后续版本中推出"
 
@@ -2018,7 +2030,7 @@ msgstr "将在后续版本中推出"
 msgid "Command / Tool:"
 msgstr "命令 / 工具："
 
-#: crates/ui-egui/src/settings.rs:572
+#: crates/ui-egui/src/settings.rs:576
 msgid "Compact"
 msgstr "紧凑"
 
@@ -2091,7 +2103,7 @@ msgstr "构造"
 msgid "Continuous"
 msgstr "连续"
 
-#: crates/ui-egui/src/settings.rs:723
+#: crates/ui-egui/src/settings.rs:727
 msgid "Control port"
 msgstr "控制端口"
 
@@ -2223,7 +2235,7 @@ msgid "Couldn't open {}: {}"
 msgstr "无法打开 {}：{}"
 
 #: crates/ui-egui/src/recent.rs:123
-#: crates/ui-egui/src/settings.rs:403
+#: crates/ui-egui/src/settings.rs:407
 #: crates/ui-egui/src/updates.rs:146
 #: crates/ui-egui/src/updates.rs:162
 msgid "Couldn't save the setting: {}"
@@ -2385,7 +2397,7 @@ msgstr "圆柱体"
 msgid "DN"
 msgstr "下"
 
-#: crates/ui-egui/src/settings.rs:453
+#: crates/ui-egui/src/settings.rs:457
 msgid "Dark"
 msgstr "深色"
 
@@ -2393,7 +2405,7 @@ msgstr "深色"
 msgid "Dark Mode"
 msgstr "深色模式"
 
-#: crates/ui-egui/src/settings.rs:454
+#: crates/ui-egui/src/settings.rs:458
 msgid "Dark UI, Light Canvas"
 msgstr "深色界面，浅色画布"
 
@@ -2811,7 +2823,7 @@ msgstr "双扇推拉"
 msgid "Double Swing"
 msgstr "双扇平开"
 
-#: crates/ui-egui/src/settings.rs:584
+#: crates/ui-egui/src/settings.rs:588
 msgid "Double-clicking a tab's name does the same; a click on a tab then shows its tools until one is picked"
 msgstr "双击选项卡名称也有同样效果；之后单击选项卡会显示其工具，直到选取其中一个"
 
@@ -2861,7 +2873,7 @@ msgstr "绘制坡度箭头"
 msgid "Draw one outline, with any openings inside it: these lines make {} separate outlines."
 msgstr "请绘制一个轮廓，洞口画在其内部：这些线构成了 {} 个独立的轮廓。"
 
-#: crates/ui-egui/src/settings.rs:632
+#: crates/ui-egui/src/settings.rs:636
 msgid "Draw the 3D view on the graphics card"
 msgstr "使用显卡绘制三维视图"
 
@@ -3017,7 +3029,7 @@ msgstr "编辑类型"
 msgid "Edit {}"
 msgstr "编辑 {}"
 
-#: crates/ui-egui/src/settings.rs:759
+#: crates/ui-egui/src/settings.rs:763
 msgid "Editing"
 msgstr "编辑"
 
@@ -3273,7 +3285,7 @@ msgstr "族："
 msgid "Far Clip Offset"
 msgstr "远剪裁偏移"
 
-#: crates/ui-egui/src/settings.rs:633
+#: crates/ui-egui/src/settings.rs:637
 msgid "Faster for large models. If the card fails, the 3D view is drawn on the processor"
 msgstr "大型模型更快。显卡失败时，三维视图由处理器绘制"
 
@@ -3530,7 +3542,7 @@ msgstr "已翻转左右"
 msgid "Float"
 msgstr "浮动"
 
-#: crates/ui-egui/src/settings.rs:570
+#: crates/ui-egui/src/settings.rs:574
 msgid "Floating"
 msgstr "浮动"
 
@@ -3595,7 +3607,7 @@ msgstr "折叠"
 msgid "Folder"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:711
+#: crates/ui-egui/src/settings.rs:715
 msgid "Folder for new projects"
 msgstr "新项目的文件夹"
 
@@ -3618,6 +3630,10 @@ msgstr "前景颜色"
 #: crates/ui-egui/src/fillpatterns.rs:466
 msgid "Foreground Pattern"
 msgstr "前景填充图案"
+
+#: crates/ui-egui/src/assistant.rs:143
+msgid "Forget the saved key"
+msgstr ""
 
 #: crates/ui-egui/src/editor.rs:791
 msgid "Form Axis X1"
@@ -3712,8 +3728,8 @@ msgstr "起始角（度）"
 msgid "Frozen"
 msgstr "冻结"
 
-#: crates/ui-egui/src/settings.rs:650
-#: crates/ui-egui/src/settings.rs:651
+#: crates/ui-egui/src/settings.rs:654
+#: crates/ui-egui/src/settings.rs:655
 msgid "Full"
 msgstr "完整"
 
@@ -3765,11 +3781,11 @@ msgstr "常规"
 msgid "Geometry"
 msgstr "几何图形"
 
-#: crates/ui-egui/src/assistant.rs:288
+#: crates/ui-egui/src/assistant.rs:386
 msgid "Give a model id: letters, digits, dots and dashes only."
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:293
+#: crates/ui-egui/src/assistant.rs:394
 msgid "Give an API key in the Assistant settings, or set {} in the environment."
 msgstr ""
 
@@ -3805,7 +3821,7 @@ msgstr "以图纸毫米计的图形段，沿中心线重复。"
 msgid "Graphics"
 msgstr "图形"
 
-#: crates/ui-egui/src/settings.rs:630
+#: crates/ui-egui/src/settings.rs:634
 msgid "Graphics card"
 msgstr "显卡"
 
@@ -3859,7 +3875,7 @@ msgstr "石膏板"
 msgid "Hairline"
 msgstr "发丝线"
 
-#: crates/ui-egui/src/settings.rs:651
+#: crates/ui-egui/src/settings.rs:655
 msgid "Half"
 msgstr "一半"
 
@@ -3951,11 +3967,11 @@ msgstr "高对比度点云"
 msgid "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours. A scan given a colour of its own in Visibility/Graphics keeps it."
 msgstr "高对比度点云：以一种醒目的颜色绘制此视图中的扫描，使其内容清晰可读；再次点击恢复其原有颜色。在“可见性/图形”中被赋予专属颜色的扫描会保留该颜色。"
 
-#: crates/ui-egui/src/settings.rs:663
+#: crates/ui-egui/src/settings.rs:667
 msgid "High contrast colour"
 msgstr "高对比度颜色"
 
-#: crates/ui-egui/src/settings.rs:682
+#: crates/ui-egui/src/settings.rs:686
 msgid "Highlight what's under the cursor"
 msgstr "高亮显示光标下的对象"
 
@@ -4187,7 +4203,7 @@ msgstr "绝缘层："
 msgid "Insulation: batt insulation drawn along each line, its width on the Options Bar"
 msgstr "隔热层：沿每条线绘制的毡状隔热层，宽度在选项栏中设置"
 
-#: crates/ui-egui/src/settings.rs:610
+#: crates/ui-egui/src/settings.rs:614
 msgid "Interface scale"
 msgstr "界面缩放"
 
@@ -4281,8 +4297,12 @@ msgstr "对正："
 msgid "Kept for every project: add one to this project with a click."
 msgstr "为所有项目保存：单击即可将其添加到此项目。"
 
-#: crates/ui-egui/src/assistant.rs:112
-msgid "Kept in settings.json scrambled with a key built into BIMCraft: it can't be read at a glance, but anyone who has BIMCraft can unscramble it. Leave this off on a computer others use."
+#: crates/ui-egui/src/assistant.rs:179
+msgid "Kept in settings.json encrypted with the passphrase alone (AES-256-GCM, PBKDF2 with 600,000 rounds): it is as safe as the passphrase is hard to guess, and it opens in any build. You type it once a session. If you forget it, the key can't be recovered: type the key again."
+msgstr ""
+
+#: crates/ui-egui/src/assistant.rs:173
+msgid "Kept in settings.json scrambled with a key built into BIMCraft: it can't be read at a glance, but anyone who has BIMCraft can unscramble it. A passphrase makes it encryption. Leave Remember off on a computer others use."
 msgstr ""
 
 #: crates/ui-egui/src/titleblocks.rs:140
@@ -4335,7 +4355,7 @@ msgstr "此视图显示的各图纸图层"
 msgid "Layers, top down"
 msgstr "构造层，自上而下"
 
-#: crates/ui-egui/src/settings.rs:567
+#: crates/ui-egui/src/settings.rs:571
 msgid "Layout"
 msgstr "布局"
 
@@ -4406,7 +4426,7 @@ msgstr "长度和尺寸以图纸毫米计。中心线决定几何和尺寸标注
 msgid "Lens:"
 msgstr "镜头："
 
-#: crates/ui-egui/src/settings.rs:728
+#: crates/ui-egui/src/settings.rs:732
 msgid "Let agents work on this project"
 msgstr "允许智能体在此项目上工作"
 
@@ -4437,7 +4457,7 @@ msgstr "标高符号:"
 msgid "Level Schedule"
 msgstr "标高明细表"
 
-#: crates/ui-egui/src/settings.rs:452
+#: crates/ui-egui/src/settings.rs:456
 msgid "Light"
 msgstr "浅色"
 
@@ -4632,7 +4652,7 @@ msgstr "链接"
 msgid "List {}"
 msgstr "列出 {}"
 
-#: crates/ui-egui/src/settings.rs:750
+#: crates/ui-egui/src/settings.rs:754
 msgid "Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}"
 msgstr "正在监听 127.0.0.1，端口 {}：智能体通过 bimcraft-cli mcp --connect {} 连接"
 
@@ -4940,7 +4960,7 @@ msgstr "最小化"
 msgid "Minimize the Ribbon"
 msgstr "最小化功能区"
 
-#: crates/ui-egui/src/settings.rs:583
+#: crates/ui-egui/src/settings.rs:587
 msgid "Minimize the ribbon to its tabs"
 msgstr "将功能区最小化为选项卡"
 
@@ -4972,7 +4992,7 @@ msgstr "已镜像"
 msgid "Mode"
 msgstr "模式"
 
-#: crates/ui-egui/src/assistant.rs:215
+#: crates/ui-egui/src/assistant.rs:310
 #: crates/ui-egui/src/fillpatterns.rs:548
 msgid "Model"
 msgstr "模型"
@@ -5180,7 +5200,7 @@ msgstr "新建电压"
 msgid "New Wire Type"
 msgstr "新建导线类型"
 
-#: crates/ui-egui/src/assistant.rs:270
+#: crates/ui-egui/src/assistant.rs:367
 msgid "New chat"
 msgstr ""
 
@@ -5224,7 +5244,7 @@ msgstr "新建{}"
 msgid "No"
 msgstr "否"
 
-#: crates/ui-egui/src/assistant.rs:171
+#: crates/ui-egui/src/assistant.rs:266
 msgid "No API key yet. Add one in the Assistant settings."
 msgstr ""
 
@@ -5346,6 +5366,10 @@ msgstr "未找到"
 msgid "Not on this system: drawn with {}"
 msgstr "本系统没有此字体：以 {} 绘制"
 
+#: crates/ui-egui/src/assistant.rs:203
+msgid "Not saved with the passphrase yet."
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:5079
 msgid "Note"
 msgstr "提示"
@@ -5446,11 +5470,11 @@ msgstr "对象样式…"
 msgid "Off"
 msgstr "关"
 
-#: crates/ui-egui/src/settings.rs:761
+#: crates/ui-egui/src/settings.rs:765
 msgid "Off, agents only read the project: they inspect it, read its schedules, render its views and export it to new files (its sheets to PDF among them), and whatever they ask that would change it, undo it, replace it or save over its file is refused"
 msgstr "关闭时，智能体只能读取项目：它们可以查看项目、读取其明细表、渲染其视图并将其导出为新文件（包括将图纸导出为 PDF）；凡是会更改项目、撤销操作、替换项目或覆盖保存其文件的请求，一律被拒绝"
 
-#: crates/ui-egui/src/settings.rs:753
+#: crates/ui-egui/src/settings.rs:757
 msgid "Off: no agent can reach this window"
 msgstr "已关闭：没有智能体可以访问此窗口"
 
@@ -5523,7 +5547,7 @@ msgstr "打开该类视图（{}），即可由其创建样板。"
 msgid "Open the default 3D view"
 msgstr "打开默认三维视图"
 
-#: crates/ui-egui/src/settings.rs:614
+#: crates/ui-egui/src/settings.rs:618
 msgid "Open the last project at startup"
 msgstr "启动时打开上次的项目"
 
@@ -5548,7 +5572,7 @@ msgstr "洞口"
 msgid "Opens"
 msgstr "开启方向"
 
-#: crates/ui-egui/src/settings.rs:726
+#: crates/ui-egui/src/settings.rs:730
 msgid "Opens the control port now and whenever BIMCraft starts: an agent connects with bimcraft-cli mcp --connect. Only this machine can reach it, and only with the token in bridge.json beside your favorites"
 msgstr "立即打开控制端口，此后每次 BIMCraft 启动时也会打开：智能体通过 bimcraft-cli mcp --connect 连接。只有本机可以访问，并且必须使用与您的收藏夹存放在一起的 bridge.json 中的令牌"
 
@@ -5671,11 +5695,11 @@ msgid "Paint (PT): lay a material, and its texture, over the face you click in t
 msgstr "油漆 (PT)：在三维视图中为您单击的面铺上材质及其纹理"
 
 #: crates/ui-egui/src/lib.rs:3285
-#: crates/ui-egui/src/settings.rs:596
+#: crates/ui-egui/src/settings.rs:600
 msgid "Palettes"
 msgstr "面板"
 
-#: crates/ui-egui/src/settings.rs:531
+#: crates/ui-egui/src/settings.rs:535
 msgid "Panel colour"
 msgstr "面板颜色"
 
@@ -5731,6 +5755,11 @@ msgstr "半椭圆"
 #: crates/ui-egui/src/draw.rs:166
 msgid "Partial Ellipse: click the ends of its axis, then how far it bulges"
 msgstr "半椭圆：单击轴的两端，然后单击其凸出的距离"
+
+#: crates/ui-egui/src/assistant.rs:123
+#: crates/ui-egui/src/assistant.rs:184
+msgid "Passphrase:"
+msgstr ""
 
 #: crates/core/src/fixtures.rs:474
 msgid "Patch Panel"
@@ -6260,8 +6289,8 @@ msgstr "放置导线"
 msgid "Place:"
 msgstr "放置："
 
-#: crates/ui-egui/src/settings.rs:686
-#: crates/ui-egui/src/settings.rs:687
+#: crates/ui-egui/src/settings.rs:690
+#: crates/ui-egui/src/settings.rs:691
 msgid "Plain"
 msgstr "纯色"
 
@@ -6293,7 +6322,7 @@ msgstr "XZ 平面"
 msgid "Plane YZ"
 msgstr "YZ 平面"
 
-#: crates/ui-egui/src/settings.rs:598
+#: crates/ui-egui/src/settings.rs:602
 msgid "Plans"
 msgstr "平面"
 
@@ -6372,7 +6401,7 @@ msgstr "多段线：一条线经过所有单击的点；按 Enter 完成，再�
 msgid "Porcelain"
 msgstr "瓷"
 
-#: crates/ui-egui/src/settings.rs:737
+#: crates/ui-egui/src/settings.rs:741
 msgid "Port"
 msgstr "端口"
 
@@ -6414,7 +6443,7 @@ msgid "Preset: Name"
 msgstr "模板：名称"
 
 #: crates/ui-egui/src/presets.rs:167
-#: crates/ui-egui/src/settings.rs:513
+#: crates/ui-egui/src/settings.rs:517
 msgid "Presets"
 msgstr "预设"
 
@@ -6438,7 +6467,7 @@ msgstr "主选项（{}）"
 
 #: crates/ui-egui/src/editor.rs:764
 #: crates/ui-egui/src/editor.rs:767
-#: crates/ui-egui/src/settings.rs:499
+#: crates/ui-egui/src/settings.rs:503
 msgid "Profile"
 msgstr "轮廓"
 
@@ -6530,15 +6559,15 @@ msgstr "属性"
 msgid "Properties (PP): show or hide the palette"
 msgstr "属性 (PP)：显示或隐藏面板"
 
-#: crates/ui-egui/src/settings.rs:491
+#: crates/ui-egui/src/settings.rs:495
 msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "“属性”在“项目浏览器”之上、位于左侧，与最初一样"
 
-#: crates/ui-egui/src/assistant.rs:201
+#: crates/ui-egui/src/assistant.rs:296
 msgid "Provider"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:199
+#: crates/ui-egui/src/assistant.rs:294
 msgid "Provider and model"
 msgstr ""
 
@@ -6653,7 +6682,7 @@ msgstr "恢复自动保存…"
 msgid "Recover opens the backup as unsaved work. Discard deletes it. Postpone keeps it for later without replacing it."
 msgstr "“恢复”会将备份作为未保存的工作打开。“放弃”会将其删除。“稍后”会保留备份以便以后处理，不会替换它。"
 
-#: crates/ui-egui/src/settings.rs:707
+#: crates/ui-egui/src/settings.rs:711
 msgid "Recovery copies are kept beside saved projects; untitled projects use the temporary folder."
 msgstr "恢复副本保存在已保存项目的旁边；未命名项目使用临时文件夹。"
 
@@ -6694,7 +6723,7 @@ msgstr "重做 {}"
 msgid "Redo {} steps"
 msgstr "重做 {} 步"
 
-#: crates/ui-egui/src/settings.rs:654
+#: crates/ui-egui/src/settings.rs:658
 msgid "Redraw views in the background"
 msgstr "在后台重绘视图"
 
@@ -6751,7 +6780,7 @@ msgstr "全部重新载入"
 msgid "Reload CAD"
 msgstr "重新载入 CAD"
 
-#: crates/ui-egui/src/assistant.rs:107
+#: crates/ui-egui/src/assistant.rs:160
 msgid "Remember the key"
 msgstr ""
 
@@ -6833,7 +6862,7 @@ msgstr "改造"
 msgid "Renovation: which phase of the work this view shows: all of it, what stood before, what comes down, or what is built"
 msgstr "改造：此视图显示工程的哪个阶段：全部内容、先前已有的内容、将被拆除的内容，或新建的内容"
 
-#: crates/ui-egui/src/settings.rs:615
+#: crates/ui-egui/src/settings.rs:619
 msgid "Reopen the views that were open"
 msgstr "重新打开之前打开的视图"
 
@@ -6863,23 +6892,23 @@ msgstr "替换同名导入项"
 msgid "Reset"
 msgstr "重设"
 
-#: crates/ui-egui/src/settings.rs:526
+#: crates/ui-egui/src/settings.rs:530
 msgid "Reset Accent"
 msgstr "重置强调色"
 
-#: crates/ui-egui/src/settings.rs:540
+#: crates/ui-egui/src/settings.rs:544
 msgid "Reset Canvas"
 msgstr "重置画布"
 
-#: crates/ui-egui/src/settings.rs:667
+#: crates/ui-egui/src/settings.rs:671
 msgid "Reset Colour"
 msgstr "重置颜色"
 
-#: crates/ui-egui/src/settings.rs:493
+#: crates/ui-egui/src/settings.rs:497
 msgid "Reset Palette Layout"
 msgstr "重设面板布局"
 
-#: crates/ui-egui/src/settings.rs:533
+#: crates/ui-egui/src/settings.rs:537
 msgid "Reset Panels"
 msgstr "重置面板"
 
@@ -6899,7 +6928,7 @@ msgstr "重设临时隐藏/隔离"
 msgid "Reset Temporary Hide/Isolate (HR)"
 msgstr "重设临时隐藏/隔离 (HR)"
 
-#: crates/ui-egui/src/settings.rs:547
+#: crates/ui-egui/src/settings.rs:551
 msgid "Reset Text"
 msgstr "重置文字"
 
@@ -6966,7 +6995,7 @@ msgstr "旋转"
 msgid "Revolved Circle"
 msgstr "旋转圆"
 
-#: crates/ui-egui/src/settings.rs:582
+#: crates/ui-egui/src/settings.rs:586
 msgid "Ribbon"
 msgstr "功能区"
 
@@ -7142,7 +7171,7 @@ msgstr "保存图案"
 msgid "Save Preset"
 msgstr "保存模板"
 
-#: crates/ui-egui/src/settings.rs:700
+#: crates/ui-egui/src/settings.rs:704
 msgid "Save a recovery copy every"
 msgstr "每隔多久保存一次恢复副本"
 
@@ -7158,6 +7187,10 @@ msgstr "另存为："
 msgid "Save changes to {}?"
 msgstr "是否将更改保存到 {}？"
 
+#: crates/ui-egui/src/assistant.rs:187
+msgid "Save the key"
+msgstr ""
+
 #: crates/ui-egui/src/properties.rs:2376
 msgid "Save to Favorites"
 msgstr "保存到收藏夹"
@@ -7166,6 +7199,10 @@ msgstr "保存到收藏夹"
 #: crates/ui-egui/src/properties.rs:2397
 msgid "Saved {} to your Favorites"
 msgstr "已将 {} 保存到您的收藏夹"
+
+#: crates/ui-egui/src/assistant.rs:202
+msgid "Saved, encrypted with the passphrase."
+msgstr ""
 
 #: crates/ui-egui/src/footer.rs:291
 msgid "Scale"
@@ -7361,11 +7398,11 @@ msgstr "已选择 {}。"
 msgid "Selected {}; nothing has these: {}"
 msgstr "已选择 {}；以下没有对应的图元：{}"
 
-#: crates/ui-egui/src/settings.rs:679
+#: crates/ui-egui/src/settings.rs:683
 msgid "Selection colour"
 msgstr "选择颜色"
 
-#: crates/ui-egui/src/assistant.rs:260
+#: crates/ui-egui/src/assistant.rs:357
 msgid "Send"
 msgstr ""
 
@@ -7386,7 +7423,7 @@ msgid "Set by view template {}: change the template, or stop following it."
 msgstr "由视图样板 {} 设定：请修改样板，或取消跟随。"
 
 #: crates/ui-egui/src/lib.rs:3264
-#: crates/ui-egui/src/settings.rs:412
+#: crates/ui-egui/src/settings.rs:416
 msgid "Settings"
 msgstr "设置"
 
@@ -7537,7 +7574,7 @@ msgstr "显示网格"
 msgid "Show or hide the palettes, and pick the interface's language"
 msgstr "显示或隐藏面板，并选择界面语言"
 
-#: crates/ui-egui/src/settings.rs:613
+#: crates/ui-egui/src/settings.rs:617
 msgid "Show shortcut keys in tooltips"
 msgstr "在工具提示中显示快捷键"
 
@@ -7545,11 +7582,11 @@ msgstr "在工具提示中显示快捷键"
 msgid "Show temporary alignment guides (smart snapping) when drawing"
 msgstr "在绘制时显示临时对齐参考线（智能捕捉）"
 
-#: crates/ui-egui/src/settings.rs:599
+#: crates/ui-egui/src/settings.rs:603
 msgid "Show the origin marker in plans"
 msgstr "在平面中显示原点标记"
 
-#: crates/ui-egui/src/settings.rs:603
+#: crates/ui-egui/src/settings.rs:607
 msgid "Show the view's name in the corner of plans"
 msgstr "在平面的角落显示视图名称"
 
@@ -7635,7 +7672,7 @@ msgid "Skip this version"
 msgstr "跳过此版本"
 
 #: crates/ui-egui/src/properties.rs:1253
-#: crates/ui-egui/src/settings.rs:687
+#: crates/ui-egui/src/settings.rs:691
 msgid "Sky"
 msgstr "天空"
 
@@ -7683,7 +7720,7 @@ msgstr "坡度："
 msgid "Slope: a number of degrees from 0 to {}, or blank for the roof's"
 msgstr "坡度：0 到 {} 之间的度数，留空则取屋顶的坡度"
 
-#: crates/ui-egui/src/settings.rs:653
+#: crates/ui-egui/src/settings.rs:657
 msgid "Smooth lines (anti-aliasing)"
 msgstr "平滑线条（抗锯齿）"
 
@@ -7947,7 +7984,7 @@ msgstr "箍筋钢种"
 msgid "Stirrups"
 msgstr "箍筋"
 
-#: crates/ui-egui/src/assistant.rs:263
+#: crates/ui-egui/src/assistant.rs:360
 msgid "Stop"
 msgstr ""
 
@@ -8279,7 +8316,7 @@ msgstr "文字偏移"
 msgid "Text Size"
 msgstr "文字大小"
 
-#: crates/ui-egui/src/settings.rs:545
+#: crates/ui-egui/src/settings.rs:549
 msgid "Text colour"
 msgstr "文字颜色"
 
@@ -8323,7 +8360,7 @@ msgstr "已达到可保存的预设数量上限：请先删除一个"
 msgid "That is too big to be a shortcuts file."
 msgstr "这个文件太大，不是快捷键文件。"
 
-#: crates/ui-egui/src/settings.rs:636
+#: crates/ui-egui/src/settings.rs:640
 msgid "The 3D view is drawn on the processor: {}"
 msgstr "三维视图由处理器绘制：{}"
 
@@ -8331,11 +8368,11 @@ msgstr "三维视图由处理器绘制：{}"
 msgid "The arc doesn't fit: pick two straight lines that meet at an angle, long enough for it."
 msgstr "圆弧放不下：请拾取两条以一定角度相交、且足够长的直线。"
 
-#: crates/ui-egui/src/assistant.rs:164
+#: crates/ui-egui/src/assistant.rs:259
 msgid "The assistant needs the network, which this window was started without."
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:236
+#: crates/ui-egui/src/assistant.rs:333
 msgid "The assistant sends your messages, and what it reads of the open project, to this provider, and only when you send a message. The Assistant palette (AI) asks once before the first."
 msgstr ""
 
@@ -8360,11 +8397,11 @@ msgstr "从上一点向墙或轴网所作垂线的垂足"
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "显卡无法绘制三维视图（{}）：改由处理器绘制"
 
-#: crates/ui-egui/src/settings.rs:532
+#: crates/ui-egui/src/settings.rs:536
 msgid "The ground of the ribbon, the palettes, the bars and the dialogs; their bands and buttons are a step off it"
 msgstr "功能区、选项板、工具栏和对话框的底色；其中的条带和按钮与它相差一个色阶"
 
-#: crates/ui-egui/src/settings.rs:546
+#: crates/ui-egui/src/settings.rs:550
 msgid "The interface's lettering, made darker or lighter where it would not read at 4.5:1 on the panels"
 msgstr "界面文字；若在面板上的对比度达不到 4.5:1 而难以辨读，则会调深或调浅"
 
@@ -8395,7 +8432,7 @@ msgstr "墙的中点，沿其弧线"
 msgid "The name `{}` is already in use."
 msgstr "名称“{}”已被使用。"
 
-#: crates/ui-egui/src/settings.rs:604
+#: crates/ui-egui/src/settings.rs:608
 msgid "The name of the floor plan or ceiling plan in its bottom left corner. It is drawn on the screen only, and the view's tab names it too"
 msgstr "楼层平面或天花板平面的名称，显示在其左下角。仅绘制在屏幕上，视图的选项卡上也会标明该名称"
 
@@ -8448,17 +8485,21 @@ msgstr "项目保持您离开时的状态。"
 msgid "The projects you open or save show here."
 msgstr "您打开或保存的项目会显示在这里。"
 
-#: crates/ui-egui/src/settings.rs:504
+#: crates/ui-egui/src/settings.rs:508
 msgid "The ribbon over the view, Properties and the Project Browser on the left"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:569
+#: crates/ui-egui/src/settings.rs:573
 msgid "The ribbon, the palettes and the bars as cards floating over the view"
 msgstr "功能区、选项板和工具栏以卡片形式浮在视图上方"
 
-#: crates/ui-egui/src/settings.rs:571
+#: crates/ui-egui/src/settings.rs:575
 msgid "The ribbon, the palettes and the bars flush to the window's edges"
 msgstr "功能区、选项板和工具栏紧贴窗口边缘"
+
+#: crates/ui-egui/src/assistant.rs:28
+msgid "The saved API key is locked: unlock it in the Assistant settings."
+msgstr ""
 
 #: crates/ui-egui/src/lib.rs:2446
 msgid "The selected element has no type to match"
@@ -8473,7 +8514,7 @@ msgstr "快捷键 '{}' 已存在用于 '{}'。"
 msgid "The sketch has too many lines."
 msgstr "草图中的线太多。"
 
-#: crates/ui-egui/src/settings.rs:590
+#: crates/ui-egui/src/settings.rs:594
 msgid "The system's own title bar and frame, rather than the window's: the app bar then sits under it"
 msgstr "使用系统自带的标题栏和边框，而非窗口自己的：应用栏随之位于其下方"
 
@@ -8490,7 +8531,7 @@ msgstr ""
 msgid "The title block stands in the sheet's bottom right corner, inside the border; views go above it."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:489
+#: crates/ui-egui/src/settings.rs:493
 msgid "The tools on the left, the Inspector over the Navigator on the right, as at first"
 msgstr "工具位于左侧，“检查器”在“导航器”之上、位于右侧，与最初一样"
 
@@ -8514,7 +8555,7 @@ msgstr "工作平面已在标高上"
 msgid "The work plane must be horizontal: a floor, a ceiling, a roof or a shaft is sketched on a level plane. Set the Work Plane (the 3D view's control bar) on a level, a level surface or three points at one height."
 msgstr "工作平面必须是水平的：楼板、天花板、屋顶或竖井需在水平面上绘制。请将工作平面（三维视图的控制栏）设在标高、水平面或同一高度的三点上。"
 
-#: crates/ui-egui/src/settings.rs:515
+#: crates/ui-egui/src/settings.rs:519
 msgid "Theme"
 msgstr "主题"
 
@@ -8555,12 +8596,12 @@ msgstr "细线"
 msgid "Thin Lines (TL): every line one pixel wide"
 msgstr "细线 (TL)：所有线条均为一个像素宽"
 
-#: crates/ui-egui/src/settings.rs:623
+#: crates/ui-egui/src/settings.rs:627
 #: crates/ui-egui/src/start.rs:454
 msgid "This copy doesn't look for updates."
 msgstr "此副本不检查更新。"
 
-#: crates/ui-egui/src/settings.rs:637
+#: crates/ui-egui/src/settings.rs:641
 msgid "This copy has no graphics card it can draw the 3D view on"
 msgstr "此副本没有可用于绘制三维视图的显卡"
 
@@ -8677,7 +8718,7 @@ msgstr ""
 msgid "Title Blocks (TB): your own, read from a DXF or typed, with fields each sheet or the whole project fills in"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:586
+#: crates/ui-egui/src/settings.rs:590
 msgid "Title bar"
 msgstr "标题栏"
 
@@ -8918,7 +8959,7 @@ msgstr "撤销"
 msgid "Undo History"
 msgstr "撤销历史"
 
-#: crates/ui-egui/src/settings.rs:644
+#: crates/ui-egui/src/settings.rs:648
 msgid "Undo steps kept"
 msgstr "保留的撤销步数"
 
@@ -8965,6 +9006,10 @@ msgstr "单位"
 #: crates/ui-egui/src/dimtypes.rs:179
 msgid "Units Format"
 msgstr "单位格式"
+
+#: crates/ui-egui/src/assistant.rs:127
+msgid "Unlock"
+msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:3386
 msgid "Unlock alignment"
@@ -9028,7 +9073,7 @@ msgstr "使用"
 msgid "Use Project Settings"
 msgstr "使用项目设置"
 
-#: crates/ui-egui/src/settings.rs:589
+#: crates/ui-egui/src/settings.rs:593
 msgid "Use the system's title bar"
 msgstr "使用系统标题栏"
 
@@ -9036,7 +9081,7 @@ msgstr "使用系统标题栏"
 msgid "User Interface"
 msgstr "用户界面"
 
-#: crates/ui-egui/src/assistant.rs:230
+#: crates/ui-egui/src/assistant.rs:325
 msgid "Using the key in {}"
 msgstr ""
 
@@ -9312,7 +9357,7 @@ msgstr "重量"
 msgid "West"
 msgstr "西"
 
-#: crates/ui-egui/src/settings.rs:666
+#: crates/ui-egui/src/settings.rs:670
 msgid "What High Contrast Point Clouds, on the view control bar, draws a view's scans in"
 msgstr "视图控制栏上的“高对比度点云”用来绘制视图中扫描的颜色"
 
@@ -9324,7 +9369,7 @@ msgstr "详图线的绘制方式：一支笔、一种颜色和一种线型图案
 msgid "What field {} says until a sheet or the project gives it a value"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:524
+#: crates/ui-egui/src/settings.rs:528
 msgid "What is picked and what has focus are drawn in it, in every theme; its lettering is made dark or light enough to read"
 msgstr "选中的内容和获得焦点的内容以此色绘制，适用于所有主题；其上的文字会调深或调浅以便阅读"
 
@@ -9340,7 +9385,7 @@ msgstr "工程前已有的内容：项目的第一个阶段"
 msgid "What the 3D view sketches on."
 msgstr "三维视图在其上绘制草图的平面。"
 
-#: crates/ui-egui/src/settings.rs:539
+#: crates/ui-egui/src/settings.rs:543
 msgid "What the views are drawn on; the drawing's lines turn light on a dark one and dark on a light one"
 msgstr "视图绘制所在的底色；深色底色上图线变浅，浅色底色上图线变深"
 
@@ -9507,7 +9552,7 @@ msgstr "工作平面回到标高上"
 msgid "Work plane square to the {} axis"
 msgstr "工作平面垂直于 {} 轴"
 
-#: crates/ui-egui/src/assistant.rs:269
+#: crates/ui-egui/src/assistant.rs:366
 msgid "Working…"
 msgstr ""
 
@@ -9535,15 +9580,15 @@ msgstr "是/否"
 msgid "Yesterday"
 msgstr "昨天"
 
-#: crates/ui-egui/src/assistant.rs:317
+#: crates/ui-egui/src/assistant.rs:419
 msgid "You"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:247
+#: crates/ui-egui/src/assistant.rs:344
 msgid "Your messages, and what the assistant reads of this project (its levels, elements, schedules), are sent to {}. Nothing is sent until you send a message."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:564
+#: crates/ui-egui/src/settings.rs:568
 msgid "Your text colour was too close to the panels: it is made darker or lighter to read at 4.5:1"
 msgstr "您的文字颜色与面板过于接近：已调深或调浅，使对比度达到 4.5:1"
 
@@ -11336,4 +11381,7 @@ msgstr "上"
 #~ msgstr ""
 #: crates/ui-egui/src/assistant.rs:210
 #~ msgid "Remember keeps the key as plain text in settings.json, on this computer: anyone who can read your files can read it."
+#~ msgstr ""
+#: crates/ui-egui/src/assistant.rs:112
+#~ msgid "Kept in settings.json scrambled with a key built into BIMCraft: it can't be read at a glance, but anyone who has BIMCraft can unscramble it. Leave this off on a computer others use."
 #~ msgstr ""

@@ -24,6 +24,14 @@ server's agents do, and it is the second code that reaches the network (the firs
   was changed) is dropped and typed again. Nothing else keeps it, and it is never written to a project, a log or the chat (`Secret`
   prints as nothing, `net::Request`'s `Debug` has no headers, and tests search every request, the log and the settings for it). Something
   stronger (the system's keychain, or a passphrase the user types) is a change in `seal.rs` and the page, and nowhere else.
+- **A passphrase, if the user wants one.** Under Remember, "Also protect it with a passphrase" keeps the key encrypted under a passphrase the
+  user types, and nothing else (AES-256-GCM, PBKDF2 with 600,000 rounds, the `bc2` format of `seal.rs`; at least 8 characters), so it opens
+  in any build and is as strong as the passphrase is hard to guess. It is sealed when the user presses Save the key (stretching it takes a
+  moment, so not on every keystroke), and the passphrase is stored nowhere and cleared as soon as it is used. The next window starts with
+  the key locked: the palette says so, a send is refused, and Unlock on the Assistant page opens it for the session (a wrong passphrase says
+  so and changes nothing; Forget the saved key drops it). Unticking the passphrase returns the key to the built-in scrambling. A forgotten
+  passphrase cannot be recovered: the key is typed again. What it does not do: the key is plain in memory while it is unlocked, and nothing
+  zeroes it afterwards.
 - **The secret.** `BIMCRAFT_KEY_SECRET`, read when BIMCRAFT is compiled (`option_env!`). The release workflow gets it from a repository
   secret of that name (`gh secret set BIMCRAFT_KEY_SECRET`, a long random value: `openssl rand -base64 32`), so its text is not in
   the source; it is still in every release binary, which is the point above. A build without it (a source build, a pull request's CI,

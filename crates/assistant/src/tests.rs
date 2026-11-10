@@ -706,3 +706,85 @@ fn a_release_is_built_with_its_own_secret() {
         );
     }
 }
+
+// ---------- the saved key, under a passphrase ----------
+
+const PASSPHRASE: &str = "correct horse battery";
+
+#[test]
+fn a_key_sealed_with_a_passphrase_is_the_standard_pbkdf2_and_aes_gcm_too() {
+    // Made by Python's hashlib.pbkdf2_hmac and cryptography's AESGCM, from the same passphrase, salt, nonce, iterations and associated data.
+    let known = "bc2:1000:000102030405060708090a0b0c0d0e0f:a0a1a2a3a4a5a6a7a8a9aaab:1aa41a32de7c6c9b027a51f888b267496b05424b7bcbc2e537752aa2aed4b277b826908f57a0";
+    assert_eq!(seal::open_passphrase(PASSPHRASE, known).unwrap(), ADDED);
+    let salt: Vec<u8> = (0..16).collect();
+    let nonce: Vec<u8> = (0xa0..0xac).collect();
+    assert_eq!(seal::seal_passphrase_with(PASSPHRASE, ADDED, &salt, &nonce, 1000).unwrap(), known);
+    assert!(seal::needs_passphrase(known) && seal::well_formed(known));
+}
+
+#[test]
+fn a_key_under_a_passphrase_opens_with_it_alone_and_only_with_it() {
+    let sealed = seal::seal_passphrase(PASSPHRASE, ADDED).unwrap();
+    assert!(sealed.starts_with("bc2:600000:") && seal::needs_passphrase(&sealed) && seal::well_formed(&sealed));
+    assert!(!sealed.contains(ADDED) && !sealed.contains(&hex_of(ADDED)) && !sealed.contains(PASSPHRASE));
+    assert_eq!(seal::open_passphrase(PASSPHRASE, &sealed).unwrap(), ADDED);
+    for wrong in ["", "correct horse batter", "Correct horse battery", " correct horse battery", seal::DEV_SECRET] {
+        assert!(seal::open_passphrase(wrong, &sealed).is_err(), "{wrong:?}");
+    }
+    // It does not open without the passphrase, whatever the build's secret is, and a key sealed under the build's is not a passphrase's.
+    assert!(seal::open(&sealed).unwrap_err().contains("passphrase"));
+    let built_in = seal::seal(ADDED).unwrap();
+    assert!(!seal::needs_passphrase(&built_in) && seal::open_passphrase(PASSPHRASE, &built_in).is_err());
+    assert_ne!(sealed, seal::seal_passphrase(PASSPHRASE, ADDED).unwrap(), "a salt and a nonce of its own");
+    // A passphrase in any script, a key as long as keys come, and a key pasted with its line break.
+    let long = "k".repeat(crate::KEY_MAX);
+    for (p, k) in [("пароль-у-мене-є", ADDED), ("pass phrase with spaces", long.as_str())] {
+        assert_eq!(seal::open_passphrase(p, &seal::seal_passphrase(p, k).unwrap()).unwrap(), k);
+    }
+    assert_eq!(seal::open_passphrase(PASSPHRASE, &seal::seal_passphrase(PASSPHRASE, &format!(" {ADDED}\n")).unwrap()).unwrap(), ADDED);
+    // Nothing to keep, or nothing to keep it with.
+    for (p, k) in [("short", ADDED), ("", ADDED), (PASSPHRASE, ""), (PASSPHRASE, "short")] {
+        assert!(seal::seal_passphrase(p, k).is_err(), "{p:?} {k:?}");
+    }
+    assert!(seal::seal_passphrase(&"p".repeat(seal::PASSPHRASE_MAX + 1), ADDED).is_err());
+    assert!(seal::seal_passphrase(PASSPHRASE, &"k".repeat(crate::KEY_MAX + 1)).is_err());
+}
+
+#[test]
+fn a_key_under_a_passphrase_that_was_changed_is_refused_and_a_bad_text_never_panics() {
+    let salt: Vec<u8> = (0..16).collect();
+    let nonce: Vec<u8> = (0xa0..0xac).collect();
+    let sealed = seal::seal_passphrase_with(PASSPHRASE, ADDED, &salt, &nonce, 1000).unwrap();
+    let parts: Vec<&str> = sealed.split(':').collect();
+    for part in 2..5 {
+        for at in [0, parts[part].len() / 2, parts[part].len() - 1] {
+            let mut p: Vec<String> = parts.iter().map(|s| s.to_string()).collect();
+            let other = if p[part].as_bytes()[at] == b'0' { "1" } else { "0" };
+            p[part].replace_range(at..=at, other);
+            assert!(seal::open_passphrase(PASSPHRASE, &p.join(":")).is_err(), "part {part} at {at}");
+        }
+    }
+    assert!(seal::open_passphrase(PASSPHRASE, &sealed.replacen(":1000:", ":1001:", 1)).is_err());
+    // A text of the format's name that is not that format's, or any other, is refused before anything is derived.
+    let (salt, nonce, text) = (parts[2], parts[3], parts[4]);
+    let huge = format!("bc2:4294967295:{salt}:{nonce}:{text}");
+    let started = std::time::Instant::now();
+    for bad in [
+        "bc2",
+        "bc2:::::",
+        "bc3:1000:00:00:00",
+        &format!("bc2:1000:{}:{nonce}:{text}", &salt[..30]),
+        &format!("bc2:1000:{salt}:{}:{text}", &nonce[..22]),
+        &format!("bc2:1000:{salt}:{nonce}:00"),
+        &format!("bc2:1000:{salt}:{nonce}:{text}:extra"),
+        &sealed.to_uppercase(),
+        &format!("bc2:0:{salt}:{nonce}:{text}"),
+        &format!("bc2:99999999999:{salt}:{nonce}:{text}"),
+        huge.as_str(),
+    ] {
+        assert!(!seal::well_formed(bad), "{bad:?}");
+        assert!(seal::open_passphrase(PASSPHRASE, bad).is_err(), "{bad:?}");
+    }
+    assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+    assert!(!seal::needs_passphrase("") && !seal::needs_passphrase("bc1:1000:00:00:00") && !seal::needs_passphrase("garbage"));
+}

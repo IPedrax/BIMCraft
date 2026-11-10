@@ -24,6 +24,9 @@ use crate::lang::{t, tf};
 use crate::settings::{Page, heading};
 use crate::style::pal;
 
+/// What the palette and a refused send say of a key that is saved under a passphrase and not yet opened.
+const LOCKED: &str = msg!("The saved API key is locked: unlock it in the Assistant settings.");
+
 /// A key: `Debug` shows nothing of it, so it cannot reach a log or a failed assertion by accident.
 #[derive(Clone, Default, PartialEq)]
 pub struct Secret(pub String);
@@ -41,11 +44,20 @@ pub struct State {
     pub model: String,
     /// The key typed in the palette; the environment's comes before it.
     pub key: Secret,
-    /// Keep the key between sessions: in `settings.json`, scrambled (`sealed`), which is as private as a program that carries its own
-    /// secret can make it (`bimcraft_assistant::seal`).
+    /// Keep the key between sessions: in `settings.json`, scrambled under the secret built into BIMCraft, or, with `protect`, encrypted
+    /// under a passphrase (`bimcraft_assistant::seal`).
     pub remember: bool,
+    /// Also protect the saved key with a passphrase the user types, once a session, and not only with the built-in secret.
+    pub protect: bool,
     /// The key as `settings.json` keeps it; none when the user does not ask for it to be kept.
     pub sealed: Option<String>,
+    /// The passphrase being typed, to seal the key or to open it: cleared as soon as it is used, and never kept.
+    pub passphrase: Secret,
+    /// Whether `sealed` is the key now in the box, at the level asked for: it is not once the key is edited, or while a passphrase is
+    /// asked for and not yet saved.
+    pub(crate) key_saved: bool,
+    /// What the last Save or Unlock said when it failed.
+    problem: Option<String>,
     pub(crate) input: String,
     /// The providers the user has agreed to send the project's contents to, this session.
     agreed: BTreeSet<&'static str>,
@@ -61,7 +73,11 @@ impl Default for State {
             model: Provider::Anthropic.default_model().into(),
             key: Secret::default(),
             remember: false,
+            protect: false,
             sealed: None,
+            passphrase: Secret::default(),
+            key_saved: false,
+            problem: None,
             input: String::new(),
             agreed: BTreeSet::new(),
             env: |name| std::env::var(name).ok(),
@@ -94,30 +110,109 @@ impl State {
         self.input.clear();
     }
 
-    /// The key box, and Remember: with it ticked the key is kept in `settings.json`, scrambled, and comes back at the next start.
+    /// A key saved under a passphrase and not yet opened: nothing to send with, but one the passphrase opens.
+    fn locked(&self) -> bool {
+        self.key.0.is_empty() && self.sealed.as_deref().is_some_and(seal::needs_passphrase)
+    }
+
+    /// The saved key is locked: its passphrase opens it for this session, or it is forgotten.
+    fn unlock_ui(&mut self, ui: &mut Ui) {
+        ui.label(t("A saved key is locked. Type its passphrase to use it in this session."));
+        let mut go = false;
+        ui.horizontal(|ui| {
+            let l = ui.label(t("Passphrase:"));
+            // From the right, so the field takes what the button leaves and the row never outgrows its page.
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let typed = !self.passphrase.0.is_empty();
+                go = ui.add_enabled(typed, egui::Button::new(t("Unlock"))).clicked();
+                let width = ui.available_width().max(40.0);
+                let r = ui.add_sized([width, 20.0], TextEdit::singleline(&mut self.passphrase.0).password(true)).labelled_by(l.id);
+                go |= typed && r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+            });
+        });
+        if go && let Some(sealed) = self.sealed.clone() {
+            match seal::open_passphrase(&self.passphrase.0, &sealed) {
+                Ok(key) => (self.key, self.key_saved, self.remember, self.protect, self.problem) = (Secret(key), true, true, true, None),
+                Err(e) => self.problem = Some(e),
+            }
+            self.passphrase = Secret::default();
+        }
+        if let Some(problem) = &self.problem {
+            ui.label(RichText::new(problem).color(pal().error));
+        }
+        if ui.small_button(t("Forget the saved key")).clicked() {
+            (self.sealed, self.remember, self.protect, self.problem, self.passphrase) = (None, false, false, None, Secret::default());
+        }
+    }
+
+    /// The key box, Remember, and the passphrase that may go with it: Remember keeps the key in `settings.json`, scrambled and coming back
+    /// at the next start; the passphrase makes that encryption, which the user opens once a session.
     fn key_ui(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             let l = ui.label(t("API key:"));
             let width = ui.available_width();
             let edit = TextEdit::singleline(&mut self.key.0).password(true).hint_text(self.provider.env());
             if ui.add_sized([width, 20.0], edit).labelled_by(l.id).changed() {
+                self.key_saved = false;
                 self.resave();
             }
         });
         if ui.checkbox(&mut self.remember, t("Remember the key")).changed() {
+            self.protect &= self.remember;
             self.resave();
         }
-        if self.remember {
+        if !self.remember {
+            return;
+        }
+        if ui.checkbox(&mut self.protect, t("Also protect it with a passphrase")).changed() {
+            (self.passphrase, self.problem, self.key_saved) = (Secret::default(), None, false);
+            self.resave();
+        }
+        if !self.protect {
             let said = msg!(
-                "Kept in settings.json scrambled with a key built into BIMCraft: it can't be read at a glance, but anyone who has BIMCraft can unscramble it. Leave this off on a computer others use."
+                "Kept in settings.json scrambled with a key built into BIMCraft: it can't be read at a glance, but anyone who has BIMCraft can unscramble it. A passphrase makes it encryption. Leave Remember off on a computer others use."
             );
             ui.label(RichText::new(t(said)).small().color(pal().muted));
+            return;
         }
+        let said = msg!(
+            "Kept in settings.json encrypted with the passphrase alone (AES-256-GCM, PBKDF2 with 600,000 rounds): it is as safe as the passphrase is hard to guess, and it opens in any build. You type it once a session. If you forget it, the key can't be recovered: type the key again."
+        );
+        ui.label(RichText::new(t(said)).small().color(pal().muted));
+        let mut save = false;
+        ui.horizontal(|ui| {
+            let l = ui.label(t("Passphrase:"));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let ready = key_ok(self.key.0.trim()) && self.passphrase.0.chars().count() >= seal::PASSPHRASE_MIN;
+                save = ui.add_enabled(ready, egui::Button::new(t("Save the key"))).clicked();
+                let width = ui.available_width().max(40.0);
+                let hint = tf("At least {} characters", &[&seal::PASSPHRASE_MIN.to_string()]);
+                ui.add_sized([width, 20.0], TextEdit::singleline(&mut self.passphrase.0).password(true).hint_text(hint)).labelled_by(l.id);
+            });
+        });
+        if save {
+            match seal::seal_passphrase(&self.passphrase.0, &self.key.0) {
+                Ok(sealed) => (self.sealed, self.key_saved, self.problem) = (Some(sealed), true, None),
+                Err(e) => self.problem = Some(e),
+            }
+            self.passphrase = Secret::default();
+        }
+        match (&self.problem, self.key_saved) {
+            (Some(problem), _) => ui.label(RichText::new(problem).color(pal().error)),
+            (None, true) => ui.label(RichText::new(t("Saved, encrypted with the passphrase.")).color(pal().muted)),
+            (None, false) => ui.label(RichText::new(t("Not saved with the passphrase yet.")).color(pal().muted)),
+        };
     }
 
-    /// What `settings.json` keeps of the key follows the box: sealed when Remember is ticked and there is a key, else nothing.
+    /// What `settings.json` keeps of the key follows the box: nothing unless Remember is ticked; with it, the key scrambled under the
+    /// built-in secret, as it is edited. With a passphrase it is sealed only when the user presses Save (stretching it takes time).
     fn resave(&mut self) {
-        self.sealed = if self.remember { seal::seal(&self.key.0).ok() } else { None };
+        if !self.remember {
+            (self.sealed, self.protect, self.key_saved, self.passphrase, self.problem) = (None, false, false, Secret::default(), None);
+        } else if !self.protect {
+            self.sealed = seal::seal(&self.key.0).ok();
+            self.key_saved = self.sealed.is_some();
+        }
     }
 
     /// Whether the chat is working on a message.
@@ -167,8 +262,8 @@ impl BimApp {
         }
         let a = &self.assistant;
         let summary = format!("{} · {}", a.provider.name(), a.model);
-        let no_key =
-            (a.env_key().is_none() && !key_ok(a.key.0.trim())).then(|| t("No API key yet. Add one in the Assistant settings.").to_string());
+        let no_key = (a.env_key().is_none() && !key_ok(a.key.0.trim()))
+            .then(|| if a.locked() { t(LOCKED) } else { t("No API key yet. Add one in the Assistant settings.") }.to_string());
         // Sticking to the bottom is for a conversation under way: before it, the palette shows its top.
         let talking = !a.log().is_empty();
         ScrollArea::vertical().id_salt("assistant").auto_shrink([false, false]).stick_to_bottom(talking).show(ui, |ui| {
@@ -228,6 +323,8 @@ impl BimApp {
         heading(ui, msg!("API key"));
         if let Some(var) = a.env_key().map(|_| a.provider.env()) {
             ui.label(RichText::new(tf("Using the key in {}", &[var])).color(pal().muted));
+        } else if a.locked() {
+            a.unlock_ui(ui);
         } else {
             a.key_ui(ui);
         }
@@ -282,6 +379,7 @@ impl BimApp {
     fn send_assistant(&mut self, ctx: &Context) {
         let a = &mut self.assistant;
         let key = a.key();
+        let locked = a.locked() && a.env_key().is_none();
         let text = std::mem::take(&mut a.input);
         let Some(chat) = a.chat.as_mut() else { return };
         if !model_ok(a.model.trim()) {
@@ -290,7 +388,11 @@ impl BimApp {
             return;
         }
         if !key_ok(&key) {
-            let note = tf("Give an API key in the Assistant settings, or set {} in the environment.", &[a.provider.env()]);
+            let note = if locked {
+                t(LOCKED).to_string()
+            } else {
+                tf("Give an API key in the Assistant settings, or set {} in the environment.", &[a.provider.env()])
+            };
             chat.log.push(Line::Note(note));
             a.input = text;
             return;

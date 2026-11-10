@@ -77,3 +77,6 @@ opt-level = 2
 opt-level = 2
 [profile.dev.package.cfb]
 opt-level = 2
+# A key saved under a passphrase is stretched with 600,000 rounds of PBKDF2, which a debug build takes most of a second over.
+[profile.dev.package.ring]
+opt-level = 3

@@ -6,7 +6,7 @@
 //! window's size, the background autosave interval, the colour High Contrast Point Clouds draws scans in, whether plans show the
 //! origin marker and their view's name in the corner, the shortcuts the user made, and the control port
 //! for agents (whether the window opens it, on which port, and whether agents may edit the project or only read it), and the
-//! assistant's provider, model and, only if the user asks, key (scrambled: never as typed).
+//! assistant's provider, model and, only if the user asks, key (scrambled, or encrypted under a passphrase: never as typed).
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
 use crate::popup::Modal;
@@ -129,7 +129,7 @@ pub struct Settings {
     pub agents_listen: bool,
     pub agents_port: u16,
     pub agents_edit: bool,
-    /// The Assistant's provider and model, and the key if the user asked for it to be kept: scrambled (`seal`), never as typed.
+    /// The Assistant's provider and model, and the key if the user asked for it to be kept: scrambled or under a passphrase (`seal`), never as typed.
     pub assistant_provider: Provider,
     pub assistant_model: String,
     pub assistant_sealed: Option<String>,
@@ -338,11 +338,15 @@ impl BimApp {
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
         let a = &mut self.assistant;
         (a.provider, a.model, a.sealed) = (kept.assistant_provider, kept.assistant_model.clone(), kept.assistant_sealed.clone());
-        // A saved key is opened for the session; one this build cannot open (another kind of build saved it, or the file was changed) is
-        // forgotten, and the user types it again.
-        match a.sealed.as_deref().map(seal::open) {
-            Some(Ok(key)) => (a.key, a.remember) = (Secret(key), true),
-            Some(Err(_)) => (a.sealed, a.remember) = (None, false),
+        // A saved key is opened for the session, unless it is under a passphrase: then it stays locked until the user types it. One this build
+        // cannot open (another kind of build saved it, or the file was changed) is forgotten, and the user types it again.
+        (a.protect, a.key_saved) = (false, false);
+        match a.sealed.as_deref() {
+            Some(sealed) if seal::needs_passphrase(sealed) => (a.remember, a.protect) = (true, true),
+            Some(sealed) => match seal::open(sealed) {
+                Ok(key) => (a.key, a.remember, a.key_saved) = (Secret(key), true, true),
+                Err(_) => (a.sealed, a.remember) = (None, false),
+            },
             None => a.remember = false,
         }
         self.settings_kept = Some(kept);

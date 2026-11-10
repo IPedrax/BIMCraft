@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use bimcraft_assistant::net::Net;
 use bimcraft_assistant::testing::Fake;
+use egui_kittest::kittest::NodeT;
 use serde_json::json;
 
 use super::*;
@@ -495,4 +496,121 @@ fn the_palette_points_at_the_settings_and_says_when_there_is_no_key() {
         set_key(&mut h, KEY);
         assert!(h.query_by_label_contains("No API key yet").is_none(), "{profile}");
     }
+}
+
+const PASSPHRASE: &str = "correct horse battery";
+
+/// A check box of the Assistant page, ticked or unticked as a user does.
+fn tick(h: &mut Harness<BimApp>, label: &str) {
+    h.get_by_role_and_label(Role::CheckBox, label).click();
+    h.run();
+}
+
+#[test]
+fn a_key_protected_with_a_passphrase_is_saved_encrypted_and_comes_back_locked() {
+    for (profile, build) in BOTH {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("settings.json");
+        let mut h = build("");
+        h.state_mut().use_settings(file.clone());
+        set_key(&mut h, KEY);
+        tick_remember(&mut h);
+        assert!(
+            !bimcraft_assistant::seal::needs_passphrase(written(&file)["assistant"]["key_sealed"].as_str().unwrap()),
+            "{profile}: scrambled first"
+        );
+        assert!(h.query_by_label("Passphrase:").is_none(), "{profile}: asked for only when the user wants one");
+        tick(&mut h, "Also protect it with a passphrase");
+        h.get_by_label("Passphrase:");
+        h.get_by_label("Not saved with the passphrase yet.");
+        assert!(h.get_by_label("Save the key").accesskit_node().is_disabled(), "{profile}: no passphrase yet");
+        type_into(&mut h, "Passphrase:", "short");
+        assert!(h.get_by_label("Save the key").accesskit_node().is_disabled(), "{profile}: at least 8 characters");
+        type_into(&mut h, "Passphrase:", PASSPHRASE);
+        press(&mut h, "Save the key");
+        h.get_by_label("Saved, encrypted with the passphrase.");
+        let text = std::fs::read_to_string(&file).unwrap();
+        let sealed = written(&file)["assistant"]["key_sealed"].as_str().unwrap().to_string();
+        assert!(bimcraft_assistant::seal::needs_passphrase(&sealed), "{profile}: {sealed}");
+        assert!(
+            !text.contains(KEY) && !text.contains(&hex_of(KEY)) && !text.contains(PASSPHRASE),
+            "{profile}: not as typed, nor the passphrase"
+        );
+        assert!(h.state().assistant.passphrase.0.is_empty(), "{profile}: the passphrase is not kept");
+        close_settings(&mut h);
+
+        // The next window has the choices and a key that is locked: nothing to send with until the passphrase opens it.
+        let net = Arc::new(Fake::default().reply(200, anthropic(json!([{"type": "text", "text": "Hi."}]), "end_turn")));
+        let mut next = build("");
+        next.state_mut().assistant.attach(net.clone());
+        next.state_mut().assistant.env = |_| None;
+        next.state_mut().use_settings(file.clone());
+        next.run();
+        let a = &next.state().assistant;
+        assert!(a.key.0.is_empty() && a.remember && a.protect, "{profile}");
+        shortcut(&mut next, "AI");
+        next.get_by_label_contains("saved API key is locked");
+        write(&mut next, "hello");
+        click_in_palette(&mut next, "Agree and send");
+        assert!(
+            matches!(next.state().assistant.log().last(), Some(bimcraft_assistant::Line::Note(n)) if n.contains("locked")),
+            "{profile}"
+        );
+        assert!(net.seen().is_empty(), "{profile}: nothing was sent");
+
+        // A wrong passphrase says so and keeps it locked; the right one opens it for the session.
+        settings(&mut next);
+        next.get_by_label_contains("A saved key is locked");
+        type_into(&mut next, "Passphrase:", "not the passphrase");
+        press(&mut next, "Unlock");
+        next.get_by_label_contains("Wrong passphrase");
+        assert!(next.state().assistant.key.0.is_empty() && next.state().assistant.passphrase.0.is_empty(), "{profile}");
+        type_into(&mut next, "Passphrase:", PASSPHRASE);
+        press(&mut next, "Unlock");
+        assert_eq!(next.state().assistant.key.0, KEY, "{profile}");
+        close_settings(&mut next);
+        // The refusal from before is in the conversation, as history; cleared, nothing in the palette says locked.
+        click_in_palette(&mut next, "New chat");
+        assert!(next.query_by_label_contains("saved API key is locked").is_none(), "{profile}");
+        write(&mut next, "hello again");
+        // The refused send did not count as the agreement: the first message that goes is the one that is agreed to.
+        click_in_palette(&mut next, "Agree and send");
+        finish(&mut next);
+        assert!(net.seen()[0].headers.contains(&("x-api-key".into(), KEY.into())), "{profile}: sent with the key it unlocked");
+
+        // No passphrase any more: the key goes back to being scrambled, and then to not being kept.
+        settings(&mut next);
+        tick(&mut next, "Also protect it with a passphrase");
+        let back = written(&file)["assistant"]["key_sealed"].as_str().unwrap().to_string();
+        assert!(!bimcraft_assistant::seal::needs_passphrase(&back), "{profile}");
+        assert_eq!(bimcraft_assistant::seal::open(&back).unwrap(), KEY, "{profile}");
+        tick(&mut next, "Remember the key");
+        assert_eq!(written(&file)["assistant"]["key_sealed"], json!(null), "{profile}");
+        assert_eq!(next.state().assistant.key.0, KEY, "{profile}: this session's key is still in use");
+    }
+}
+
+#[test]
+fn a_locked_key_may_be_forgotten_and_one_under_a_passphrase_opens_in_any_build() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    // Sealed by a passphrase alone, so no build's own secret is part of it: it opens here, whichever build made it.
+    let sealed = bimcraft_assistant::seal::seal_passphrase(PASSPHRASE, KEY).unwrap();
+    std::fs::write(&file, json!({"assistant": {"provider": "openai", "model": "gpt-6-astra", "key_sealed": sealed}}).to_string()).unwrap();
+    let mut h = app("");
+    h.state_mut().assistant.attach(Arc::new(Fake::default()));
+    h.state_mut().use_settings(file.clone());
+    assert!(h.state().assistant.key.0.is_empty() && h.state().assistant.remember && h.state().assistant.protect);
+    settings(&mut h);
+    type_into(&mut h, "Passphrase:", PASSPHRASE);
+    press(&mut h, "Unlock");
+    assert_eq!(h.state().assistant.key.0, KEY);
+    // Locked again in the next window, and forgotten there: the file keeps nothing.
+    let mut again = app("");
+    again.state_mut().assistant.attach(Arc::new(Fake::default()));
+    again.state_mut().use_settings(file.clone());
+    settings(&mut again);
+    press(&mut again, "Forget the saved key");
+    assert!(again.state().assistant.sealed.is_none() && !again.state().assistant.remember && !again.state().assistant.protect);
+    assert_eq!(written(&file)["assistant"]["key_sealed"], json!(null));
 }
