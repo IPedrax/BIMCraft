@@ -2084,6 +2084,7 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"sheet": "A101", "view": "nowhere", "scale": 0}),
         json!({"size": "A9", "number": ""}),
         json!({"view": 100000, "scale": 1e300, "at": [1e300, 0]}),
+        json!({"id": 100000, "follow_scale": "x"}),
         json!({"at": [0, 0], "height": -5, "angle": 1e300}),
         json!({"start": [0, 0], "end": [0, 0], "width": 0, "tread": 1e300}),
         json!({"slope": 89.99, "overhang": -1e9}),

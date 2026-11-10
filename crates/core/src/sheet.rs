@@ -79,6 +79,31 @@ pub fn size(m: &Model, view: impl Key, scale: f64) -> Option<P2> {
     framing(m, view, scale).map(|v| P2(f64::from(v.width) / DENSITY, f64::from(v.height) / DENSITY))
 }
 
+/// Whether any viewport of `view` takes its view's scale and hasn't `scale` yet: what `scale` asks before it
+/// changes the model, so a scale a view already has leaves it as it was, with no undo step of its own.
+pub fn follows_scale(m: &Model, view: impl Key, scale: f64) -> bool {
+    let view = m.guid(view);
+    m.elements.values().any(|e| matches!(e, Element::Viewport(vp) if vp.view == view && vp.follow_scale && vp.scale != scale))
+}
+
+/// Every viewport of `view` that takes its view's scale takes `scale`: a viewport placed at its view's own scale
+/// follows it as it changes, as it does in Revit, and one placed at a scale of its own keeps that one.
+pub fn follow_scale(m: &mut Model, view: impl Key, scale: f64) {
+    let view = m.guid(view);
+    // Only those that differ, so a command that changes nothing leaves the model as it was.
+    let placed: Vec<Id> = m
+        .elements
+        .iter()
+        .filter(|(_, e)| matches!(e, Element::Viewport(vp) if vp.view == view && vp.follow_scale && vp.scale != scale))
+        .map(|(id, _)| *id)
+        .collect();
+    for id in placed {
+        if let Some(Element::Viewport(vp)) = m.elements.get_mut(id) {
+            vp.scale = scale;
+        }
+    }
+}
+
 /// Viewport `id`'s view frame, and where that frame's top left corner sits in its sheet's drawing,
 /// px: a point `p` of the view is at `frame.px(p)` plus that corner.
 pub fn frame(m: &Model, id: impl Key) -> Option<(View, (f32, f32))> {
@@ -474,6 +499,54 @@ mod tests {
         // What a viewport draws is the viewport's to pick; the title block is the sheet's.
         assert_eq!(d.pick(at(P2(4000.0, 0.0)), 2.0), Some(100007));
         assert_eq!(d.pick(d.view.px(P2(20.0, 150.0)), 2.0), Some(100006));
+    }
+
+    #[test]
+    fn a_viewport_follows_its_views_scale_unless_it_was_given_one() {
+        let mut s = Session::new();
+        s.script(
+            r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+               section {"start": [-1000, 3000], "end": [9000, 3000]}
+               sheet {"name": "Plans"}
+               sheet {"name": "Sections"}
+               place {"sheet": "A101", "view": "Level 1"}
+               place {"sheet": "A102", "view": "Section 1", "scale": 50}"#,
+        )
+        .unwrap();
+        let vp = |s: &Session, name: &str| -> (Id, Viewport) {
+            s.model
+                .elements
+                .iter()
+                .find_map(|(id, e)| match e {
+                    Element::Viewport(v) if s.model.view_name(v.view) == Some(name) => Some((*id, v.clone())),
+                    _ => None,
+                })
+                .expect("a viewport of that view")
+        };
+        let paper = |s: &Session, id: Id| {
+            let (v, _) = frame(&s.model, id).unwrap();
+            P2(f64::from(v.width) / DENSITY, f64::from(v.height) / DENSITY)
+        };
+        let (plan, placed) = vp(&s, "Level 1");
+        assert_eq!((placed.scale, placed.follow_scale), (100.0, true), "placed at the view's own scale");
+        let before = paper(&s, plan);
+        // The view's scale changes: its viewport takes it, and the sheet's title gives it.
+        s.execute("scale", &serde_json::json!({"view": "Level 1", "scale": 50})).unwrap();
+        let (plan, now) = vp(&s, "Level 1");
+        assert_eq!(now.scale, 50.0, "the viewport takes the view's new scale");
+        assert_eq!(paper(&s, plan), size(&s.model, s.model.elements.id(now.view).unwrap(), 50.0).unwrap(), "and is drawn at it");
+        assert!(paper(&s, plan).0 > before.0 * 1.5, "{:?} against {before:?}", paper(&s, plan));
+        let sheet = s.model.sheet_numbered("A101").unwrap();
+        assert_eq!(title_values(&s.model, sheet).get("SCALE").map(String::as_str), Some("1 : 50"));
+        // One placed at a scale of its own keeps it: its view's scale no longer moves it.
+        let (section, pinned) = vp(&s, "Section 1");
+        assert_eq!((pinned.scale, pinned.follow_scale), (50.0, false), "told a scale of its own");
+        s.execute("scale", &serde_json::json!({"view": "Section 1", "scale": 20})).unwrap();
+        let (_, kept) = vp(&s, "Section 1");
+        assert_eq!(kept.scale, 50.0, "it keeps the scale it was placed at");
+        assert_eq!(paper(&s, section), size(&s.model, s.model.elements.id(kept.view).unwrap(), 50.0).unwrap());
+        let sheet = s.model.sheet_numbered("A102").unwrap();
+        assert_eq!(title_values(&s.model, sheet).get("SCALE").map(String::as_str), Some("1 : 50"));
     }
 
     #[test]

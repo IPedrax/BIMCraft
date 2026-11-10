@@ -2195,6 +2195,50 @@ fn sheets_take_views_from_the_view_tab_and_viewports_move_and_open() {
 }
 
 #[test]
+fn a_viewport_follows_its_views_scale_until_it_is_given_one() {
+    use egui_kittest::kittest::NodeT;
+    let mut h = app(BOX);
+    press(&mut h, "View");
+    press(&mut h, "Sheet");
+    let sheet = ids(&h, "sheet")[0];
+    press(&mut h, "View");
+    press(&mut h, "Place View");
+    press(&mut h, "Floor Plan: Level 1");
+    let vp = ids(&h, "viewport")[0];
+    let size = |h: &Harness<BimApp>| field(h, vp, "size");
+    let at = field(&h, vp, "at");
+    let (x, y) = (at[0].as_f64().unwrap(), at[1].as_f64().unwrap());
+    let at_a_hundred = size(&h);
+    // The view's own scale, from its control bar: the viewport on the sheet takes it.
+    h.state_mut().open_sheet(Sheet::Plan(100000));
+    h.run();
+    press(&mut h, "Scale");
+    press(&mut h, "1 : 50");
+    h.state_mut().open_sheet(Sheet::Paper(sheet));
+    h.run();
+    assert_ne!(size(&h), at_a_hundred, "the viewport takes the view's new scale");
+    // Its Properties say so: placed at the view's scale, it follows it.
+    click(&mut h, P2(x, y));
+    assert_eq!(
+        h.get_by_role_and_label(Role::CheckBox, "Follow View Scale").accesskit_node().toggled(),
+        Some(egui::accesskit::Toggled::True),
+        "placed at the view's scale, it follows it"
+    );
+    // Given a scale of its own (Follow View Scale unticked): it keeps it, whatever the view's scale.
+    pick(&mut h, Role::CheckBox, "Follow View Scale");
+    assert_eq!(field(&h, vp, "follow_scale"), json!(false));
+    let pinned = size(&h);
+    h.state_mut().run("scale", json!({"view": 100000, "scale": 20}));
+    h.run();
+    assert_eq!(size(&h), pinned, "given a scale of its own, it keeps it");
+    // Told to follow again, it takes the view's scale now.
+    pick(&mut h, Role::CheckBox, "Follow View Scale");
+    assert_eq!(field(&h, vp, "follow_scale"), json!(true));
+    assert_eq!(field(&h, vp, "scale"), json!(20.0));
+    assert_ne!(size(&h), pinned);
+}
+
+#[test]
 fn columns_go_where_clicked_up_to_the_options_bars_height() {
     let mut h = app(BOX);
     tool(&mut h, "Column");

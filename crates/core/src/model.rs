@@ -2008,6 +2008,10 @@ pub struct Viewport {
     pub view: Guid,
     pub at: P2,
     pub scale: f64,
+    /// Whether it takes its view's scale as that changes, as a viewport placed without one does; one placed at a
+    /// scale of its own (`place` with `scale`) keeps it, and `scale` leaves it where it is. Written only when off.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub follow_scale: bool,
 }
 
 /// A pattern for the element of any run category, its run bound as `$r`: a tab adds its categories here, and every place
