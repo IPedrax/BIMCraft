@@ -5,7 +5,8 @@
 //! the profile, the layout, interface language, ribbon, palettes, the
 //! window's size, the background autosave interval, the colour High Contrast Point Clouds draws scans in, whether plans show the
 //! origin marker and their view's name in the corner, the shortcuts the user made, and the control port
-//! for agents (whether the window opens it, on which port, and whether agents may edit the project or only read it).
+//! for agents (whether the window opens it, on which port, and whether agents may edit the project or only read it), and the
+//! assistant's provider, model and, only if the user asks, key.
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
 use crate::popup::Modal;
@@ -284,11 +285,13 @@ pub enum Page {
     Graphics,
     Files,
     Agents,
+    Assistant,
     Updates,
 }
 
 impl Page {
-    pub const ALL: [Page; 6] = [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Agents, Page::Updates];
+    pub const ALL: [Page; 7] =
+        [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Agents, Page::Assistant, Page::Updates];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -297,6 +300,7 @@ impl Page {
             Page::Graphics => "Graphics",
             Page::Files => msg!("Files"),
             Page::Agents => msg!("Agents"),
+            Page::Assistant => msg!("Assistant"),
             Page::Updates => msg!("Updates"),
         }
     }
@@ -428,6 +432,7 @@ impl BimApp {
                             Page::Graphics => self.graphics_page(ui),
                             Page::Files => self.files_page(ui),
                             Page::Agents => self.agents_page(ui),
+                            Page::Assistant => self.assistant_page(ui),
                             Page::Updates => self.updates_page(ui),
                         });
                     });
@@ -766,7 +771,7 @@ impl BimApp {
 }
 
 /// A group's heading on a page.
-fn heading(ui: &mut Ui, text: &str) {
+pub(crate) fn heading(ui: &mut Ui, text: &str) {
     ui.add_space(6.0);
     ui.label(RichText::new(t(text)).strong());
 }

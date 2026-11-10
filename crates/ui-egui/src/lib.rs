@@ -1648,7 +1648,6 @@ impl BimApp {
         lang::set(self.lang);
         // What agents asked of the project comes before the tidying, which puts right what a command left stale.
         self.answer_agents(&ctx);
-        self.poll_assistant(&ctx);
         // A project put in the session's place under the window (the control port turns an agent's New and Open away, but a
         // script or an embedder may do them) starts it over, as File > New does: its sketch and dialogs were of the old one, and
         // it gets a recovery copy of its own. (The old one's stays until that is written: nobody was asked about its changes.)
@@ -1656,6 +1655,8 @@ impl BimApp {
             self.reopened();
             self.autosave_document();
         }
+        // After that check: a reply that came as the project was replaced is not for the new one (`State::project_replaced`).
+        self.poll_assistant(&ctx);
         self.tidy();
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
@@ -3137,6 +3138,9 @@ impl BimApp {
         (fresh.settings_path, fresh.settings_kept) = (self.settings_path.take(), self.settings_kept.take());
         fresh.window = std::mem::take(&mut self.window);
         (fresh.updates, fresh.revit) = (self.updates.take(), self.revit.take());
+        // The assistant's network and the user's choices are the window's, not the project's: its conversation ends with the project.
+        fresh.assistant = std::mem::take(&mut self.assistant);
+        fresh.assistant.project_replaced();
         // The 3D mouse's reader runs for the window, not the project: without it the cap would move nothing once a project is open.
         fresh.space_mouse = self.space_mouse.take();
         fresh.control = self.control.take();

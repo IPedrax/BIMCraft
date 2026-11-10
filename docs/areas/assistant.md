@@ -9,11 +9,13 @@ server's agents do, and it is the second code that reaches the network (the firs
 - **The palette.** Assistant, in View > User Interface and the app bar's Palettes menu, and AI (Keyboard Shortcuts lists it), in both
   profiles. It is closed until asked for, and opens as a tab of the Project Browser's stack (the Navigator's in BIMCraft), which has
   the height a chat needs.
-- **Provider and model.** Anthropic Claude, OpenAI or Google Gemini, and a model id: a box that takes any id and a button for each model
+- **File > Settings > Assistant** holds the API config, on a tab of its own, and the palette has a button that opens it (and says when
+  there is no key yet), so there is one place to set it.
+- **Provider and model.** Anthropic Claude, OpenAI or Google Gemini, and a model id: a box that takes any id and a drop-down of the models
   the app suggests (`Provider::models`; Claude Sonnet 5.5 is the default for Anthropic). The ids are checked (`model_ok`) because
   Gemini's goes into an address.
-- **The key.** The provider's own environment variable first (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`), and the palette
-  then says it is using it and asks for none; else a box that hides what is typed. A typed key lives in memory for the session. Remember
+- **The key.** The provider's own environment variable first (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`), and the page
+  then says it is using it and asks for none; else a box that hides what is typed (a hidden box cannot be copied from: egui blocks it). A typed key lives in memory for the session. Remember
   the key writes it to `settings.json`, as plain text, which the palette says in words next to the box: nothing else keeps it, and it
   is never written to a project, a log or the chat (`Secret` prints as nothing, `net::Request`'s `Debug` has no headers, and a test
   searches every request, the log and the settings for it).
@@ -21,6 +23,10 @@ server's agents do, and it is the second code that reaches the network (the firs
   the assistant reads of the project (levels, elements, schedules), are sent to that provider, and that nothing is sent until the user
   sends a message. The button says Agree and send; after the first it says Send. Nothing is requested at start, when a palette opens or
   when a key is typed.
+- **A project replaced.** File > New, Open and Recover start the window over (`BimApp::reopened`); the assistant's network and the user's
+  choices (provider, model, key, the agreement) carry over, and the conversation and any request in flight are dropped: the conversation
+  was about the other project, and a reply on its way must not run its tools on the new one. The reply is taken after that check, in the
+  same frame (`poll_assistant`), for the same reason.
 - **The conversation.** What the user wrote, what the model said, and each tool call with its arguments and its result in a small type
   (errors in red). Ctrl+Enter sends, Stop ends the turn, New chat forgets the conversation (not the project).
 - **Undo.** Everything the assistant changes in answer to one message is one undo step, named `Assistant: <the message, cut at 40

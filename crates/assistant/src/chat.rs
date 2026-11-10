@@ -188,6 +188,15 @@ impl Chat {
         }
     }
 
+    /// Forgets the conversation and whatever is in flight, for a window whose project was replaced: the reply to a request made about
+    /// the old one must not run its tools on the new one, and nothing of the old turn is left to merge. The provider, the model and
+    /// the network stay.
+    pub fn reset(&mut self) {
+        (self.flight, self.turn) = (None, None);
+        self.log.clear();
+        self.history.clear();
+    }
+
     /// Ends the turn: its batches become one undo step.
     fn finish(&mut self, session: &mut Session) {
         if let Some(turn) = self.turn.take() {
