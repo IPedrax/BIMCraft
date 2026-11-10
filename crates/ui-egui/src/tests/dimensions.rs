@@ -540,7 +540,7 @@ fn tab_picks_a_dimension_segment_and_delete_takes_it_out() {
     // Delete takes the segment out: the chain measures across where it was.
     key(&mut h, Key::Delete);
     assert_eq!(dimension(&h, id).refs.len(), 2, "{}", h.state().status.text);
-    assert_eq!(field(&h, id, "values"), json!([5000.0]));
+    assert_eq!(field(&h, id, "values"), json!([3000.0]), "the neighbour keeps its own references");
 }
 
 #[test]
@@ -596,4 +596,40 @@ fn a_permanent_dimension_at_a_joined_end_measures_to_the_perpendicular_wall() {
     assert_eq!(field(&h, walls[1], "end"), json!([9000.0, 6000.0]), "the whole wall moved and stays square");
     assert_eq!(field(&h, walls[3], "start"), json!([0.0, 6000.0]), "the west wall stayed");
     assert_eq!(field(&h, d, "values"), json!([9000.0]));
+}
+
+#[test]
+fn deleting_an_inner_segment_leaves_two_chains_on_their_own_references() {
+    let script = r#"wall {"points": [[0, 0], [0, 4000]]}
+wall {"points": [[2000, 0], [2000, 4000]]}
+wall {"points": [[5000, 0], [5000, 4000]]}
+wall {"points": [[9000, 0], [9000, 4000]]}
+dimension {"refs": [[0, 2000], [2000, 2000], [5000, 2000], [9000, 2000]], "at": [4500, -1000]}"#;
+    let mut h = app(script);
+    let id = ids(&h, "dimension")[0];
+    // The segment between the second and third walls goes; the chains either side keep their references.
+    h.state_mut().run("dimension_segment", json!({"id": id, "segment": 1}));
+    h.run();
+    assert_eq!(field(&h, id, "values"), json!([2000.0]));
+    let made: Vec<Id> = ids(&h, "dimension").into_iter().filter(|d| *d != id).collect();
+    assert_eq!(made.len(), 1, "the right chain is a dimension of its own");
+    assert_eq!(field(&h, made[0], "values"), json!([4000.0]));
+}
+
+#[test]
+fn the_modify_tab_edits_a_selected_dimensions_references() {
+    let mut h = app(THREE_WALLS);
+    let id = ids(&h, "dimension")[0];
+    // A click on its line selects the dimension and brings the Modify tab up.
+    click(&mut h, P2(2500.0, -1000.0));
+    assert_eq!(h.state().selection, vec![id]);
+    assert!(h.query_by_label("Edit Dimension References").is_some(), "the Modify tab offers it");
+    press(&mut h, "Edit Dimension References");
+    assert!(h.state().dimension_refs_edit.is_some());
+    // A click on a wall already measured to takes its reference out; a click away confirms.
+    click(&mut h, P2(0.0, 2000.0));
+    assert_eq!(h.state().dimension_refs_edit.as_ref().map(|e| e.refs.len()), Some(2));
+    click(&mut h, P2(1000.0, -1500.0));
+    assert!(h.state().dimension_refs_edit.is_none(), "{}", h.state().status.text);
+    assert_eq!(dimension(&h, id).refs.len(), 2);
 }

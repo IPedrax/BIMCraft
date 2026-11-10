@@ -326,20 +326,34 @@ fn wall_length_moves_both_joined_ends_evenly() {
 }
 
 #[test]
-fn deleting_a_segment_merges_the_references_either_side_of_it() {
+fn deleting_a_segment_leaves_the_chains_either_side_measuring_their_own_references() {
     let mut s = Session::new();
     let (_, d) = chain(&mut s, &[0.0, 2000.0, 5000.0, 9000.0]);
     let out = run(&mut s, "dimension_segment", json!({"id": d, "segment": 1}));
-    assert_eq!(out["values"], json!([2000.0, 7000.0]));
+    assert_eq!(out["values"], json!([2000.0]), "the left chain keeps its own references");
+    let right = out["right"].as_u64().unwrap_or_default();
+    assert_eq!(dim_of(&s, right).refs.len(), 2);
+    assert_eq!(out["right_values"], json!([4000.0]), "the right chain keeps its own references");
+    assert_eq!(dim_of(&s, d).refs.len(), 2);
+}
+
+#[test]
+fn deleting_the_last_segment_of_a_chain_keeps_the_other_references() {
+    let mut s = Session::new();
+    let (_, d) = chain(&mut s, &[0.0, 2000.0, 5000.0, 9000.0]);
+    let out = run(&mut s, "dimension_segment", json!({"id": d, "segment": 2}));
+    assert_eq!(out["values"], json!([2000.0, 3000.0]));
+    assert!(out.get("right").is_none());
     assert_eq!(dim_of(&s, d).refs.len(), 3);
 }
 
 #[test]
-fn deleting_the_last_segment_of_a_chain_takes_its_first_reference() {
+fn deleting_the_first_segment_of_a_chain_keeps_the_other_references() {
     let mut s = Session::new();
     let (_, d) = chain(&mut s, &[0.0, 2000.0, 5000.0, 9000.0]);
-    let out = run(&mut s, "dimension_segment", json!({"id": d, "segment": 2}));
-    assert_eq!(out["values"], json!([2000.0, 7000.0]));
+    let out = run(&mut s, "dimension_segment", json!({"id": d, "segment": 0}));
+    assert_eq!(out["values"], json!([3000.0, 4000.0]));
+    assert!(out.get("right").is_none());
     assert_eq!(dim_of(&s, d).refs.len(), 3);
 }
 
@@ -362,5 +376,5 @@ fn deleting_a_segment_of_an_equal_chain_turns_its_equality_off_when_one_is_left(
     let edited = dim_of(&s, d);
     assert_eq!(edited.refs.len(), 2);
     assert!(!edited.equal);
-    assert_eq!(values(&s, d), vec![5000.0]);
+    assert_eq!(values(&s, d), vec![2500.0]);
 }

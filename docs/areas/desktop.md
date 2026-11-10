@@ -575,7 +575,9 @@ temporary length dimension (`temporary_dimension`) has a dimension-line button u
 the wall's ends or, where an end is joined to a perpendicular wall, between those walls' centre lines (`walls::joined_perpendicular`), so
 changing it moves that whole wall; typing its number resizes the wall through `wall_length`: both free ends or both joined ends move
 evenly, one joined moves its free end alone. Tab over a dimension chain steps through its segments, a click picks one, and Delete takes only that segment out
-(`dimension_segment`).
+(`dimension_segment`): the chains either side stay on their own references, the left keeping the dimension and the right becoming a new one.
+A dimension selected also offers Edit Dimension References on the Modify tab, as its right-click menu does: a click on a bound element takes
+its reference out (the chain rebuilds), a click on another adds it, and a click away confirms.
 
 ## Background grids
 

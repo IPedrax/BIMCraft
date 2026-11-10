@@ -40,7 +40,7 @@ msgstr "Ladrillo"
 msgid "Brick 225 x 75"
 msgstr "Ladrillo 225 x 75"
 
-#: crates/core/src/commands.rs:4245
+#: crates/core/src/commands.rs:4247
 msgid "Camera"
 msgstr "Cámara"
 
@@ -88,7 +88,7 @@ msgstr "Bloque de hormigón"
 msgid "Copper"
 msgstr "Cobre"
 
-#: crates/core/src/commands.rs:1246
+#: crates/core/src/commands.rs:1248
 msgid "Copy"
 msgstr "Copia"
 
@@ -116,7 +116,7 @@ msgstr "Trazo y punto"
 msgid "Data Outlet"
 msgstr "Punto de datos"
 
-#: crates/core/src/commands.rs:10065
+#: crates/core/src/commands.rs:10067
 msgid "Dependent"
 msgstr "Dependiente"
 
@@ -192,8 +192,8 @@ msgstr "Iluminación eléctrica"
 msgid "Electrical Power"
 msgstr "Fuerza eléctrica"
 
-#: crates/core/src/commands.rs:9849
-#: crates/core/src/commands.rs:12414
+#: crates/core/src/commands.rs:9851
+#: crates/core/src/commands.rs:12416
 msgid "Elevation"
 msgstr "Elevación"
 
@@ -310,7 +310,7 @@ msgstr "Ancho de la pata"
 msgid "Length"
 msgstr "Longitud"
 
-#: crates/core/src/commands.rs:6456
+#: crates/core/src/commands.rs:6458
 #: crates/core/src/model.rs:3165
 msgid "Level"
 msgstr "Nivel"
@@ -335,7 +335,7 @@ msgstr "Marca"
 msgid "Masking"
 msgstr "Máscara"
 
-#: crates/core/src/commands.rs:7715
+#: crates/core/src/commands.rs:7717
 msgid "Mass"
 msgstr "Masa"
 
@@ -423,7 +423,7 @@ msgstr "Enlucido"
 msgid "Porcelain"
 msgstr "Porcelana"
 
-#: crates/core/src/commands.rs:2932
+#: crates/core/src/commands.rs:2934
 msgid "Project"
 msgstr "Proyecto"
 
@@ -451,7 +451,7 @@ msgstr "Contrahuellas"
 msgid "Roof tiles"
 msgstr "Tejas"
 
-#: crates/core/src/commands.rs:7940
+#: crates/core/src/commands.rs:7942
 msgid "Room"
 msgstr "Habitación"
 
@@ -487,8 +487,8 @@ msgstr "Recrecido"
 msgid "Seat Height"
 msgstr "Altura del asiento"
 
-#: crates/core/src/commands.rs:9826
-#: crates/core/src/commands.rs:12413
+#: crates/core/src/commands.rs:9828
+#: crates/core/src/commands.rs:12415
 msgid "Section"
 msgstr "Sección"
 
@@ -612,7 +612,7 @@ msgstr "SUBE"
 msgid "Unbounded Height"
 msgstr "Altura no delimitada"
 
-#: crates/core/src/commands.rs:10206
+#: crates/core/src/commands.rs:10208
 msgid "Unnamed"
 msgstr "Sin nombre"
 

@@ -3655,6 +3655,21 @@ impl BimApp {
     fn dimension_refs_click(&mut self, m: &Model, _key: Id, v: &View, at: (f32, f32), hovered: Option<Id>) {
         let Some(mut edit) = self.dimension_refs_edit.take() else { return };
         let q = v.mm(at);
+        // An element already measured to is taken out by a click on it, wherever on it the click fell.
+        let near = |r: &Reference| m.reference_geometry(r).map_or(f64::INFINITY, |(a, b)| geom::dist_to_segment(q, a, b));
+        let bound = hovered.and_then(|element| {
+            edit.refs
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| m.elements.id(r.id) == Some(element))
+                .min_by(|(_, a), (_, b)| near(a).total_cmp(&near(b)))
+                .map(|(i, _)| i)
+        });
+        if let Some(i) = bound {
+            edit.refs.remove(i);
+            self.dimension_refs_edit = Some(edit);
+            return;
+        }
         let pick = hovered.and_then(|id| dimension_pick(m, &edit.refs, id, q, 2.0 * f64::from(PICK) / v.scale));
         if let Some(r) = pick {
             if let Some(i) = edit.refs.iter().position(|x| *x == r) {

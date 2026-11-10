@@ -4360,6 +4360,24 @@ impl BimApp {
                 self.edit_type();
             }
         });
+        // A dimension selected: its references are picked again from the Modify tab, as from its right-click menu.
+        let dimension = matches!(self.selection.as_slice(), [id]
+            if matches!(self.session.model.elements.get(*id), Some(Element::Dimension(d)) if !d.alignment));
+        if dimension {
+            panel(ui, msg!("Dimension"), |ui| {
+                let active = self.dimension_refs_edit.is_some();
+                let tip = msg!(
+                    "Edit Dimension References: click a picked reference to take it out, another element to add it; click away places the line. Enter confirms, Esc cancels"
+                );
+                if big_button(ui, Icon::Dimension, "Edit Dimension References", active, tip).clicked() {
+                    if active {
+                        self.dimension_refs_edit = None;
+                    } else {
+                        self.start_dimension_refs_edit();
+                    }
+                }
+            });
+        }
         // Hide in View, and Override Graphics: what the selection does in the view on screen.
         if !self.selection.is_empty() && self.graphic_view().is_some() {
             panel(ui, "View", |ui| {

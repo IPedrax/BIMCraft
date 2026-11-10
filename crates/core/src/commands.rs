@@ -819,9 +819,11 @@ other_files(
         "dimension_segment",
         ui_msg!("Delete Dimension Segment"),
         &[],
-        "{id, segment} takes one segment out of an aligned or a linear dimension's chain: the reference bounding it goes, so \
-         what lay on either side measures as one, or its last segment goes; a chain's only segment takes the dimension away. \
-         Its locks and segment texts follow the references that remain. Returns {id, deleted, values}, or {deleted: id}",
+        "{id, segment} takes one segment out of an aligned or a linear dimension's chain: the chains either side of it stay, \
+         each measured to the references it had, so the deleted segment's measures are not made one with a neighbour; the left \
+         chain keeps this dimension, the right one is new at the same line. A chain left with one segment loses its equality, \
+         and a chain's only segment takes the dimension away. Locks and segment texts follow the references that remain. \
+         Returns {id, deleted, values, right?, right_values?}, or {deleted: id}",
         dimension_segment,
     ),
     edit(
@@ -12884,9 +12886,10 @@ fn wall_length(s: &mut Session, p: &Value) -> R {
     Ok(json!({"moved": id, "by": hundredth(by), "length": hundredth(length)}))
 }
 
-/// Takes one segment out of an aligned or a linear dimension's chain: the reference bounding it goes, so what lies on
-/// either side of it measures as one, or its last segment goes; a segment alone takes the whole dimension away. Its locks
-/// and segment texts follow the pairs of references that remain.
+/// Takes one segment out of an aligned or a linear dimension's chain, leaving what lay on either side of it as chains of their
+/// own, each measured to the references it had: the left chain keeps the original dimension, the right one is a new dimension
+/// at the same line. Its locks and segment texts follow the pairs of references that remain; a chain left with one segment
+/// loses its equality, and a segment alone takes the whole dimension away.
 fn dimension_segment(s: &mut Session, p: &Value) -> R {
     let c = "dimension_segment";
     only(c, p, &["id", "segment"])?;
@@ -12909,20 +12912,60 @@ fn dimension_segment(s: &mut Session, p: &Value) -> R {
         s.model_mut().elements.remove(id);
         return Ok(json!({"deleted": id}));
     }
-    // The station the segment ends at goes, merging it with the next segment; the last merges back with the one before.
-    let drop = if segment + 1 < count { segment + 1 } else { segment };
-    let refs: Vec<Reference> = st.iter().enumerate().filter(|(i, _)| *i != drop).map(|(_, (_, _, r))| *r).collect();
-    // An equal chain needs two segments at least; one left, its equality goes.
-    if refs.len() < 3
-        && let Some(Element::Dimension(mut d)) = s.model.elements.get(id).cloned()
-    {
-        d.equal = false;
-        d.equality = false;
-        s.model_mut().elements.insert(id, Element::Dimension(d));
+    // The stations either side of the segment are the two chains' ends; the deleted segment's own two stay apart.
+    let refs_of = |part: &[(f64, Line, Reference)]| part.iter().map(|(_, _, r)| *r).collect::<Vec<_>>();
+    let part = |refs: Vec<Reference>| {
+        let mut part = d.clone();
+        part.refs = refs;
+        let (_, new_st) = s.model.stations(&part);
+        part.locked = d
+            .locked
+            .iter()
+            .filter_map(|l| {
+                let (a, b) = (st.get(l.segment)?.2, st.get(l.segment + 1)?.2);
+                Some(crate::model::Lock { segment: segment_of(&new_st, &a, &b)?, length: l.length })
+            })
+            .collect();
+        part.texts = d
+            .texts
+            .iter()
+            .filter_map(|t| {
+                let (a, b) = (st.get(t.segment)?.2, st.get(t.segment + 1)?.2);
+                Some(crate::model::SegmentText { segment: segment_of(&new_st, &a, &b)?, ..t.clone() })
+            })
+            .collect();
+        part.texts.sort_by_key(|t| t.segment);
+        if new_st.len() < 3 {
+            part.equal = false;
+            part.equality = false;
+        }
+        part
+    };
+    let left = (segment > 0).then(|| part(refs_of(&st[..=segment])));
+    let right = (segment + 1 < count).then(|| part(refs_of(&st[segment + 1..])));
+    let mut right_id: Option<Id> = None;
+    match (left, right) {
+        (Some(left), Some(right)) => {
+            s.model_mut().elements.insert(id, Element::Dimension(left));
+            right_id = Some(s.model_mut().insert(Element::Dimension(right)));
+        }
+        (Some(left), None) => {
+            s.model_mut().elements.insert(id, Element::Dimension(left));
+        }
+        (None, Some(right)) => {
+            s.model_mut().elements.insert(id, Element::Dimension(right));
+        }
+        (None, None) => return Err(bad(c, "the segment is the whole dimension: nothing is left to keep")),
     }
-    let guid = s.model.guid(id);
-    let out = dimension_edit(s, &json!({"id": id, "refs": refs}), guid)?;
-    Ok(json!({"id": id, "deleted": segment, "values": out["values"]}))
+    let now = current_dimension(s, c, id)?;
+    let values = s.model.dimension_values(&now).into_iter().map(hundredth).collect::<Vec<_>>();
+    let mut reply = json!({"id": id, "deleted": segment, "values": values});
+    if let Some(right) = right_id {
+        let values = current_dimension(s, c, right).map(|d| s.model.dimension_values(&d))?;
+        reply["right"] = json!(right);
+        reply["right_values"] = json!(values.into_iter().map(hundredth).collect::<Vec<_>>());
+    }
+    Ok(reply)
 }
 
 /// Element `id` moved `by` in plan, as `move` moves it: what keeps a dimension's constraints.
