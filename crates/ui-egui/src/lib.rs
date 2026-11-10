@@ -9,6 +9,7 @@ use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
+mod assistant;
 mod background_grid;
 mod browser;
 mod cad;
@@ -365,7 +366,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 55] = [
+const SHORTCUTS: [(&str, &str); 56] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -418,6 +419,7 @@ const SHORTCUTS: [(&str, &str); 55] = [
     ("HL", "Hidden Line"),
     ("SD", "Shaded"),
     ("KS", "Keyboard Shortcuts"),
+    ("AI", msg!("Assistant")),
     ("BX", "Section Box"),
     ("GD", "Graphic Display Options"),
     // Revit has none for its title blocks; no command or tool takes TB.
@@ -829,6 +831,8 @@ pub struct BimApp {
     styled: bool,
     /// The updater, which the desktop app attaches: a window starts without one, and so never phones home.
     pub updates: Option<bimcraft_update::Updater>,
+    /// The Assistant palette's: the user's provider, model and key, and the chat, which the desktop app gives a network (`assistant::State::attach`): a window starts without one.
+    pub assistant: assistant::State,
     /// The 3D mouse's reader, which the desktop app attaches: a window starts without one, so a test never opens a device.
     pub space_mouse: Option<spacemouse::SpaceMouse>,
     /// The reader of Revit files, which the desktop app attaches (`bimcraft-rvt` is Apache-2.0 only, so this crate never depends on
@@ -1149,6 +1153,9 @@ fn step_name(st: &engine::Step) -> String {
         [(c, n)] => Some(lang::category(c, *n > 1)),
         _ => None,
     };
+    if let Some(asked) = assistant::step_label(&st.label) {
+        return asked;
+    }
     let named = match (st.made.as_slice(), st.removed.as_slice()) {
         (made, []) if !made.is_empty() => one(made).map(|c| tf("Create {}", &[&c])),
         ([], removed) if !removed.is_empty() => one(removed).map(|c| tf("Delete {}", &[&c])),
@@ -1446,6 +1453,7 @@ impl BimApp {
             title: String::new(),
             styled: false,
             updates: None,
+            assistant: assistant::State::default(),
             space_mouse: None,
             revit: None,
             control: None,
@@ -1640,6 +1648,7 @@ impl BimApp {
         lang::set(self.lang);
         // What agents asked of the project comes before the tidying, which puts right what a command left stale.
         self.answer_agents(&ctx);
+        self.poll_assistant(&ctx);
         // A project put in the session's place under the window (the control port turns an agent's New and Open away, but a
         // script or an embedder may do them) starts it over, as File > New does: its sketch and dialogs were of the old one, and
         // it gets a recovery copy of its own. (The old one's stays until that is written: nobody was asked about its changes.)
@@ -2097,6 +2106,10 @@ impl BimApp {
             }
             "NP" => {
                 self.toggle_browser();
+                return true;
+            }
+            "AI" => {
+                self.toggle_assistant();
                 return true;
             }
             "SA" => {

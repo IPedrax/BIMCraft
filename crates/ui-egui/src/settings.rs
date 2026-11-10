@@ -18,7 +18,10 @@ use std::path::{Path, PathBuf};
 use egui::{Align, Color32, ComboBox, Context, Id as UiId, Layout, RichText, ScrollArea, ThemePreference, Ui, vec2};
 use serde_json::{Value, json};
 
+use bimcraft_assistant::{Provider, key_ok, model_ok};
+
 use crate::BimApp;
+use crate::assistant::Secret;
 use crate::dock::{Docking, Palette};
 use crate::lang::{Lang, t, tf};
 use crate::presets::{Preset, Scale, hidden_from_json, presets_from_json};
@@ -125,6 +128,11 @@ pub struct Settings {
     pub agents_listen: bool,
     pub agents_port: u16,
     pub agents_edit: bool,
+    /// The Assistant palette's provider and model, and whether it keeps the key typed in it, which is then written here as plain text.
+    pub assistant_provider: Provider,
+    pub assistant_model: String,
+    pub assistant_remember: bool,
+    pub assistant_key: Secret,
 }
 
 impl Settings {
@@ -160,6 +168,11 @@ impl Settings {
             "shortcuts": self.shortcuts,
             "system_title_bar": self.system_title_bar,
             "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
+            // The key is written only when the user asked for it to be kept.
+            "assistant": {
+                "provider": self.assistant_provider.key(), "model": self.assistant_model, "remember": self.assistant_remember,
+                "key": if self.assistant_remember { self.assistant_key.0.as_str() } else { "" },
+            },
         })
     }
 
@@ -174,6 +187,7 @@ impl Settings {
         };
         // A colour of the user's: none (the scheme's) when the file has one this can't read.
         let own = |key: &str, base: Option<[u8; 3]>| if v.get(key).is_some() { colour(&v[key]) } else { base };
+        let remember = v["assistant"]["remember"].as_bool().unwrap_or(base.assistant_remember);
         Settings {
             theme,
             light_canvas: theme == ThemePreference::Dark && v["light_canvas"].as_bool().unwrap_or(base.light_canvas),
@@ -206,6 +220,14 @@ impl Settings {
             agents_listen: v["agents"]["listen"].as_bool().unwrap_or(base.agents_listen),
             agents_port: v["agents"]["port"].as_u64().and_then(|p| u16::try_from(p).ok()).unwrap_or(base.agents_port),
             agents_edit: v["agents"]["edit"].as_bool().unwrap_or(base.agents_edit),
+            assistant_provider: v["assistant"]["provider"].as_str().and_then(Provider::from_key).unwrap_or(base.assistant_provider),
+            assistant_model: v["assistant"]["model"].as_str().filter(|m| model_ok(m)).map_or(base.assistant_model, str::to_string),
+            assistant_remember: remember,
+            assistant_key: match v["assistant"]["key"].as_str() {
+                Some(k) if remember && key_ok(k) => Secret(k.to_string()),
+                _ if remember => base.assistant_key,
+                _ => Secret::default(),
+            },
         }
     }
 }
@@ -316,6 +338,9 @@ impl BimApp {
         self.custom_shortcuts = kept.shortcuts.clone();
         self.system_title_bar = kept.system_title_bar;
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
+        let a = &mut self.assistant;
+        (a.provider, a.model, a.remember, a.key) =
+            (kept.assistant_provider, kept.assistant_model.clone(), kept.assistant_remember, kept.assistant_key.clone());
         self.settings_kept = Some(kept);
         self.settings_path = Some(path);
     }
@@ -354,6 +379,11 @@ impl BimApp {
             agents_listen: self.agents.listen,
             agents_port: self.agents.port,
             agents_edit: self.agents.edit,
+            assistant_provider: self.assistant.provider,
+            assistant_model: self.assistant.model.clone(),
+            assistant_remember: self.assistant.remember,
+            // Only a key that is to be kept is part of what the file holds, so typing one without Remember writes nothing.
+            assistant_key: if self.assistant.remember { self.assistant.key.clone() } else { Secret::default() },
         }
     }
 
