@@ -301,7 +301,7 @@ impl BimApp {
             }
             Some(Act::Duplicate(view, mode)) => self.duplicate_view_of(view, mode),
             Some(Act::Delete(ids)) => {
-                self.run("delete", serde_json::json!({"ids": ids}));
+                self.delete_elements(ids);
             }
             Some(Act::Do(command, params)) => {
                 self.run(command, params);

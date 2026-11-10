@@ -769,9 +769,15 @@ impl BimApp {
                     {
                         self.cancel_sketch();
                     }
-                } else if big_button(ui, Icon::Line, "Edit Boundary", false, "Edit Boundary: sketch its outline and holes again").clicked()
-                {
-                    self.edit_boundary();
+                } else {
+                    // A floor or a ceiling that follows a room has the room's outline.
+                    let followed = self.follows_a_room(&self.selection);
+                    let tip = "Edit Boundary: sketch its outline and holes again";
+                    let why = msg!("Its outline is its room's: disconnect it in Properties to sketch it");
+                    let r = ui.add_enabled_ui(!followed, |ui| big_button(ui, Icon::Line, "Edit Boundary", false, tip)).inner;
+                    if r.on_disabled_hover_text(t(why)).clicked() {
+                        self.edit_boundary();
+                    }
                 }
             });
         });

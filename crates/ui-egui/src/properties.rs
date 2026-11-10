@@ -621,7 +621,7 @@ pub(crate) fn wide_button(ui: &mut Ui, text: impl Into<egui::WidgetText>) -> egu
 }
 
 /// Element `id` as a link, by its category and its id: whether it was clicked, to select it.
-fn link(ui: &mut Ui, model: &Model, id: Id) -> bool {
+pub(crate) fn link(ui: &mut Ui, model: &Model, id: Id) -> bool {
     let category = model.elements.get(id).map_or("element", |e| e.category());
     let text = format!("{} {id}", lang::category(category, false));
     let r = ui.link(&text);
@@ -896,7 +896,103 @@ pub(crate) struct TypeDialog {
     shape: Option<(bool, String)>,
     /// The type's values of the project's type parameters, as typed.
     project: Vec<TypeValue>,
+    /// A room type's own: its rooms' floor and ceiling, and their colour on plans.
+    pub(crate) room: Option<RoomRows>,
 }
+
+/// A room type's parameters, as picked and typed: the floor type and the ceiling type its rooms have of their own ("" for
+/// none) and how far from the room's level each is, and the colour its rooms are filled with on plans, while `fill` is on.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct RoomRows {
+    pub(crate) floor: String,
+    pub(crate) floor_offset: String,
+    pub(crate) ceiling: String,
+    pub(crate) ceiling_offset: String,
+    pub(crate) fill: bool,
+    pub(crate) colour: [u8; 3],
+}
+
+/// The colours a room type's fill is picked from, beside any other.
+const SWATCHES: [(&str, [u8; 3]); 5] = [
+    (msg!("Sand"), [239, 227, 200]),
+    (msg!("Sage"), [214, 229, 210]),
+    (msg!("Sky"), [211, 227, 244]),
+    (msg!("Rose"), [241, 217, 214]),
+    (msg!("Lilac"), [226, 218, 240]),
+];
+
+impl RoomRows {
+    fn new(m: &Model, name: &str) -> RoomRows {
+        let t = m.types.room.get(name).cloned().unwrap_or_default();
+        RoomRows {
+            floor: t.floor.unwrap_or_default(),
+            floor_offset: m.units.length(t.floor_offset),
+            ceiling: t.ceiling.unwrap_or_default(),
+            ceiling_offset: m.units.length(t.ceiling_offset),
+            fill: t.colour.is_some(),
+            colour: t.colour.unwrap_or(SWATCHES[0].1),
+        }
+    }
+
+    /// Its rows in the table, under `group`: the finishes its rooms have, or how they look on plans.
+    fn rows(&mut self, tb: &mut typeprops::Table, group: &str, m: &Model) {
+        let none = t("None").to_string();
+        if group == ROOM_FINISHES {
+            let parts = [
+                (msg!("Floor"), msg!("Floor Offset"), "floor", &mut self.floor, &mut self.floor_offset),
+                (msg!("Ceiling"), msg!("Ceiling Height"), "ceiling", &mut self.ceiling, &mut self.ceiling_offset),
+            ];
+            for (label, offset, category, of, typed) in parts {
+                let options: Vec<String> =
+                    std::iter::once(none.clone()).chain(m.type_names(category).into_iter().map(String::from)).collect();
+                let mut shown = if of.is_empty() { none.clone() } else { of.clone() };
+                tb.pick(t(label), &mut shown, &options);
+                *of = if shown == none { String::new() } else { shown };
+                // No floor, no offset to give it.
+                if !of.is_empty() {
+                    tb.text(t(offset), typed, m.units.name());
+                }
+            }
+        } else if group == GRAPHICS {
+            tb.check(t("Colour on plans"), &mut self.fill);
+            let (fill, colour) = (&mut self.fill, &mut self.colour);
+            tb.row(t("Colour"), |ui, l| {
+                for (label, c) in SWATCHES {
+                    let (rect, r) = ui.allocate_exact_size(vec2(24.0, 18.0), Sense::click());
+                    let on = *fill && *colour == c;
+                    r.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, true, on, t(label)));
+                    let edge = if on { Stroke::new(2.0, pal().accent_ink) } else { Stroke::new(1.0, pal().border) };
+                    ui.painter().rect(rect, 4.0, egui::Color32::from_rgb(c[0], c[1], c[2]), edge, StrokeKind::Inside);
+                    if r.on_hover_text(t(label)).clicked() {
+                        (*fill, *colour) = (true, c);
+                    }
+                }
+                if ui.color_edit_button_srgb(colour).on_hover_text(t("Another colour")).labelled_by(l).changed() {
+                    *fill = true;
+                }
+            });
+        }
+    }
+
+    /// What the `type` command is given for them, or why an offset isn't a length.
+    fn params(&self, p: &mut Value, units: Units) -> Result<(), String> {
+        for (key, of, offset, label, typed) in [
+            ("floor", &self.floor, "floor_offset", msg!("Floor Offset"), &self.floor_offset),
+            ("ceiling", &self.ceiling, "ceiling_offset", msg!("Ceiling Height"), &self.ceiling_offset),
+        ] {
+            p[key] = if of.is_empty() { Value::Null } else { json!(of) };
+            if !of.is_empty() {
+                p[offset] = json!(units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[t(label), typed]))?);
+            }
+        }
+        p["colour"] = if self.fill { json!(self.colour) } else { Value::Null };
+        Ok(())
+    }
+}
+
+/// The groups a room type's parameters are under.
+const ROOM_FINISHES: &str = msg!("Floor and Ceiling");
+const GRAPHICS: &str = msg!("Graphics");
 
 impl TypeDialog {
     pub(crate) fn new(m: &Model, category: &'static str, name: String, elements: Vec<Id>) -> TypeDialog {
@@ -906,6 +1002,7 @@ impl TypeDialog {
             (t.is_some_and(|t| t.round), t.map(|t| t.material.clone()).unwrap_or_default())
         });
         let project = type_values(m, category, m.library.guid(&LibKind::Type(category.to_string()), &name));
+        let name_of = name.clone();
         TypeDialog {
             category,
             name,
@@ -917,6 +1014,7 @@ impl TypeDialog {
             layers,
             shape,
             project,
+            room: (category == "room").then(|| RoomRows::new(m, &name_of)),
         }
     }
 
@@ -966,6 +1064,9 @@ impl TypeDialog {
         if let Some((round, material)) = &self.shape {
             p["round"] = json!(round);
             p["material"] = json!(material);
+        }
+        if let Some(room) = &self.room {
+            room.params(&mut p, units)?;
         }
         Ok(p)
     }
@@ -1238,9 +1339,11 @@ impl BimApp {
             });
         });
         ui.add_space(4.0);
+        if let Subject::Element(id) = subject {
+            self.connected_finishes(ui, &model, id);
+        }
         self.layer_picture(ui, &model);
         self.opening_picker(ui, &model);
-        self.room_colour(ui, &model);
         self.floor_slope(ui, &model);
         self.sketch_slope(ui);
         if !ids.is_empty() {
@@ -1386,54 +1489,6 @@ impl BimApp {
         });
         if let Some((hand, facing)) = pick {
             self.run("modify", json!({"ids": ids, "flip_hand": hand, "flip_facing": facing}));
-        }
-    }
-
-    /// The colour the rooms the palette shows are filled with on plans: swatches, none first, and any other colour; the one they
-    /// share is ringed, and a pick sets it through `modify`.
-    fn room_colour(&mut self, ui: &mut Ui, model: &Model) {
-        const SWATCHES: [(&str, Option<[u8; 3]>); 6] = [
-            (msg!("No fill"), None),
-            (msg!("Sand"), Some([239, 227, 200])),
-            (msg!("Sage"), Some([214, 229, 210])),
-            (msg!("Sky"), Some([211, 227, 244])),
-            (msg!("Rose"), Some([241, 217, 214])),
-            (msg!("Lilac"), Some([226, 218, 240])),
-        ];
-        let ids = self.palette_ids();
-        let colour = |id: &Id| match model.elements.get(id) {
-            Some(Element::Room(r)) => Some(r.colour),
-            _ => None,
-        };
-        let Some(colours) = ids.iter().map(colour).collect::<Option<Vec<_>>>().filter(|c| !c.is_empty()) else { return };
-        let shared = colours.first().copied().filter(|c| colours.iter().all(|d| d == c));
-        ui.label(RichText::new(t("Colour on plans")).strong());
-        let mut pick = None;
-        ui.horizontal(|ui| {
-            for (label, c) in SWATCHES {
-                let (rect, r) = ui.allocate_exact_size(vec2(28.0, 22.0), Sense::click());
-                let on = shared == Some(c);
-                r.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, true, on, t(label)));
-                let fill = c.map_or(pal().surface, |[red, green, blue]| egui::Color32::from_rgb(red, green, blue));
-                let edge = if on { Stroke::new(2.0, pal().accent_ink) } else { Stroke::new(1.0, pal().border) };
-                ui.painter().rect(rect, 4.0, fill, edge, StrokeKind::Inside);
-                if c.is_none() {
-                    ui.painter().line_segment(
-                        [rect.left_bottom() + vec2(4.0, -4.0), rect.right_top() + vec2(-4.0, 4.0)],
-                        Stroke::new(1.0, pal().muted),
-                    );
-                }
-                if r.on_hover_text(t(label)).clicked() {
-                    pick = Some(c);
-                }
-            }
-            let mut rgb = shared.flatten().unwrap_or([239, 227, 200]);
-            if ui.color_edit_button_srgb(&mut rgb).on_hover_text(t("Another colour")).changed() {
-                pick = Some(Some(rgb));
-            }
-        });
-        if let Some(c) = pick {
-            self.run("modify", json!({"ids": ids, "colour": c}));
         }
     }
 
@@ -1584,7 +1639,9 @@ impl BimApp {
         } else {
             model.type_names(category).into_iter().map(String::from).chain(pairs.iter().map(label)).collect()
         };
-        let enabled = !names.is_empty();
+        // A floor or a ceiling that follows a room is of the type the room's type names.
+        let followed = matches!(subject, Subject::Element(_) | Subject::Elements(_)) && self.follows_a_room(&self.palette_ids());
+        let enabled = !names.is_empty() && !followed;
         let (rect, r) = ui.allocate_exact_size(vec2(ui.available_width(), 50.0), if enabled { Sense::click() } else { Sense::hover() });
         r.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, enabled, t("Type Selector")));
         let p = ui.painter();
@@ -1709,6 +1766,8 @@ impl BimApp {
         let units = model.units;
         // A note on a sheet sits in paper mm.
         let paper = matches!(model.elements.get(id), Some(Element::Text(n)) if model.sheet(n.view).is_some());
+        // A floor or a ceiling that follows a room: its level and offset are the room's, shown and not typed.
+        let followed = self.follows_a_room(ids);
         for group in groups {
             let open = !self.collapsed.contains(group);
             if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
@@ -1730,6 +1789,7 @@ impl BimApp {
                     let kind = match kind {
                         Height if !v["top_level"].is_null() => LengthShown,
                         Point if paper => PaperPoint,
+                        Length if followed && key == "offset" => LengthShown,
                         kind => kind,
                     };
                     let label = t(label);
@@ -1769,6 +1829,9 @@ impl BimApp {
                             if r.labelled_by(name.id).changed() {
                                 change = Some((key, Ok(json!(on))));
                             }
+                        }
+                        Level if followed && key == "level" => {
+                            ui.label(RichText::new(level_name(val)).color(pal().muted));
                         }
                         Level => {
                             if let Some(l) = combo(ui, (id, key), name.id, &level_name(val), &levels) {
@@ -2243,8 +2306,13 @@ impl BimApp {
                 let round = d.shape.as_ref().is_some_and(|(round, _)| *round);
                 // The groups in the order their first row comes; a run's roundness is a dimension, its material its own group.
                 let mut groups: Vec<&str> = Vec::new();
-                let extra =
-                    [(layered, "Construction"), (d.shape.is_some(), "Dimensions"), (d.shape.is_some(), msg!("Materials and Finishes"))];
+                let extra = [
+                    (layered, "Construction"),
+                    (d.shape.is_some(), "Dimensions"),
+                    (d.shape.is_some(), msg!("Materials and Finishes")),
+                    (d.room.is_some(), ROOM_FINISHES),
+                    (d.room.is_some(), GRAPHICS),
+                ];
                 for g in d.fields.iter().map(|f| f.0).chain(extra.iter().filter(|(on, _)| *on).map(|(_, g)| *g)) {
                     if !groups.contains(&g) {
                         groups.push(g);
@@ -2264,6 +2332,9 @@ impl BimApp {
                             ("Dimensions", Some((round, _))) => tb.check(t("Round"), round),
                             ("Materials and Finishes", Some((_, material))) => tb.pick(t("Material"), material, &materials),
                             _ => {}
+                        }
+                        if let Some(room) = &mut d.room {
+                            room.rows(tb, g, &model);
                         }
                         if g == "Construction" && layered {
                             let (out, inward) = if d.category == "wall" { (msg!("Out"), msg!("In")) } else { ("Up", "Down") };

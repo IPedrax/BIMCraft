@@ -107,6 +107,8 @@ mod room_area_tests;
 #[cfg(test)]
 mod room_bounds_tests;
 #[cfg(test)]
+mod room_finish_tests;
+#[cfg(test)]
 mod room_freeze_tests;
 #[cfg(test)]
 mod room_height_tests;

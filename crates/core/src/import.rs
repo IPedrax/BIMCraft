@@ -3164,7 +3164,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let level = level_for(id, floor.unwrap_or(0.0));
         let mut room = Room::new(level, micron(point), clip(&room_name), clip(&number));
         // Its colour on plans: the colour its body is styled in.
-        room.colour = r.reps(s).into_iter().flat_map(|(_, items)| items).find_map(|item| colours.get(&item).copied());
+        // (A room type's, so a type of that colour.)
+        if let Some(colour) = r.reps(s).into_iter().flat_map(|(_, items)| items).find_map(|item| colours.get(&item).copied()) {
+            room.type_name = m.coloured_room_type(&room.type_name, colour);
+        }
         let rid = m.insert(Element::Room(room));
         from.insert(rid, who(id));
         origin.entry(id).or_insert(rid);
@@ -4361,13 +4364,14 @@ ENDSEC;END-ISO-10303-21;",
         )
         .unwrap();
         let kitchen = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Room(r) if r.name == "Kitchen")).map(|(id, _)| *id);
-        s.execute("modify", &json!({"id": kitchen, "colour": [214, 229, 210]})).unwrap();
+        s.execute("type", &json!({"category": "room", "name": "Sage", "colour": [214, 229, 210]})).unwrap();
+        s.execute("modify", &json!({"id": kitchen, "type": "Sage"})).unwrap();
         let i = ifc(crate::ifc::export(&s.model).as_bytes(), "x").unwrap();
         let colours: BTreeMap<String, Option<[u8; 3]>> = i
             .model
             .elements
             .values()
-            .filter_map(|e| if let Element::Room(r) = e { Some((r.name.clone(), r.colour)) } else { None })
+            .filter_map(|e| if let Element::Room(r) = e { Some((r.name.clone(), i.model.room_colour(r))) } else { None })
             .collect();
         assert_eq!(colours, BTreeMap::from([("Kitchen".to_string(), Some([214, 229, 210])), ("Hall".to_string(), None)]));
     }

@@ -2044,7 +2044,8 @@ impl BimApp {
                 self.run(cat, p);
             }
             Tool::Room => {
-                self.run("room", json!({"point": point(round(v.mm(at))), "level": level}));
+                let p = self.typed("room", json!({"point": point(round(v.mm(at))), "level": level}));
+                self.run("room", p);
             }
             Tool::Level => {}
             Tool::Elevation => {

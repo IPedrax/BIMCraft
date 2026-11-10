@@ -2855,7 +2855,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                     },
                 };
                 // Its colour, a fill of its region under its name.
-                if let (Some([red, green, blue]), Some(g)) = (r.colour, &region) {
+                if let (Some([red, green, blue]), Some(g)) = (m.room_colour(r), &region) {
                     let rings: Vec<Vec<P2>> = std::iter::once(g.outer.clone()).chain(g.holes.iter().cloned()).collect();
                     d.fill(&rings, Rgb(red, green, blue));
                 }
@@ -4510,7 +4510,7 @@ mod tests {
     use super::*;
     use crate::engine::Session;
 
-    /// A room's colour fills its region on the plan, under its name, and a project file keeps it.
+    /// A room type's colour fills its rooms' regions on the plan, under their names, and a project file keeps it.
     #[test]
     fn a_rooms_colour_fills_its_region_on_the_plan_and_the_file_keeps_it() {
         let mut s = house();
@@ -4521,7 +4521,9 @@ mod tests {
             draw(m, level, view).prims.iter().filter(|p| matches!(p, Prim::Fill { color, .. } if *color == Rgb(200, 120, 40))).count()
         };
         assert_eq!(fills(&s.model), 0);
-        s.execute("modify", &serde_json::json!({"ids": [room], "colour": [200, 120, 40]})).unwrap();
+        // The colour is its type's; a room has none of its own.
+        assert!(s.execute("modify", &serde_json::json!({"ids": [room], "colour": [200, 120, 40]})).unwrap_err().contains("its type's"));
+        s.execute("type", &serde_json::json!({"category": "room", "name": "Standard", "colour": [200, 120, 40]})).unwrap();
         assert_eq!(fills(&s.model), 1, "its region, in its colour");
         let (back, left_out) = Model::read(&s.model.to_json().unwrap()).unwrap();
         assert!(left_out.is_empty() && fills(&back) == 1, "{left_out:?}");

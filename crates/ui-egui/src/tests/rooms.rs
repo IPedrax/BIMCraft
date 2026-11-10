@@ -2,6 +2,7 @@
 //! reference cross Visibility/Graphics shows.
 
 use super::*;
+use egui_kittest::kittest::NodeT;
 
 fn separators(h: &Harness<BimApp>) -> Vec<(P2, P2)> {
     h.state()
@@ -144,4 +145,120 @@ fn a_3d_views_rooms_are_unticked_until_ticked_in_visibility_graphics() {
     pick(&mut h, Role::CheckBox, "Rooms");
     press(&mut h, "OK");
     assert!(shown(&h));
+}
+
+/// A room of a type with a floor and a ceiling, each made for it at the walls' faces.
+const FINISHED: &str = r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+room {"point": [4000, 3000]}
+type {"category": "room", "name": "Standard", "floor": "Generic - 200mm", "ceiling": "Generic - 20mm"}"#;
+
+fn finish_of_room(h: &Harness<BimApp>, room: Id, part: bimcraft_core::model::Part) -> bimcraft_core::model::Finish {
+    match h.state().session.model.elements.get(room) {
+        Some(Element::Room(r)) => r.finish(part),
+        _ => panic!("no room {room}"),
+    }
+}
+
+#[test]
+fn a_rooms_floor_and_ceiling_head_its_properties_with_disconnect_then_regenerate_in_both_profiles() {
+    use bimcraft_core::model::{Finish, Part};
+    for rev in [false, true] {
+        let mut h = if rev { app(FINISHED) } else { bimcraft(FINISHED) };
+        let room = ids(&h, "room")[0];
+        let (floor, ceiling) = (ids(&h, "floor")[0], ids(&h, "ceiling")[0]);
+        h.state_mut().selection = vec![room];
+        h.run();
+        // Each with its type and its id, a link that selects it.
+        assert!(h.query_by_label("Generic - 200mm").is_some() && h.query_by_label("Generic - 20mm").is_some(), "rev {rev}");
+        assert!(h.query_by_role_and_label(Role::Link, &format!("Floor {floor}")).is_some(), "rev {rev}");
+        assert!(h.query_by_role_and_label(Role::Link, &format!("Ceiling {ceiling}")).is_some(), "rev {rev}");
+        press(&mut h, "Disconnect Floor");
+        assert_eq!(finish_of_room(&h, room, Part::Floor), Finish::Disconnected, "rev {rev}");
+        assert!(matches!(finish_of_room(&h, room, Part::Ceiling), Finish::Connected(_)), "rev {rev}");
+        assert_eq!(h.state().session.model.finish_of(floor), None, "rev {rev}: an ordinary floor now");
+        // No way back to it: the button makes another.
+        assert!(h.query_by_label("Disconnect Floor").is_none(), "rev {rev}");
+        press(&mut h, "Regenerate Floor");
+        assert!(matches!(finish_of_room(&h, room, Part::Floor), Finish::Connected(_)), "rev {rev}");
+        assert_eq!(ids(&h, "floor").len(), 2, "rev {rev}: the one let go, and the room's new one");
+        // The link selects the ceiling, which names its room.
+        h.get_by_role_and_label(Role::Link, &format!("Ceiling {ceiling}")).click();
+        h.run();
+        assert_eq!(h.state().selection, [ceiling], "rev {rev}");
+        assert!(h.query_by_label("Connected to").is_some(), "rev {rev}");
+    }
+}
+
+#[test]
+fn a_room_without_a_floor_or_a_ceiling_of_its_own_has_no_such_rows() {
+    let mut h = app(&format!("{BOX}\nroom {{\"point\": [4000, 3000]}}\nfloor {{}}"));
+    for category in ["room", "floor"] {
+        h.state_mut().selection = vec![ids(&h, category)[0]];
+        h.run();
+        for label in ["Connected Floor and Ceiling", "Connected Room", "Connected to", "Disconnect", "Disconnect Floor"] {
+            assert!(h.query_by_label(label).is_none(), "{category}: {label}");
+        }
+    }
+}
+
+#[test]
+fn a_floor_that_follows_a_room_names_it_and_is_its_rooms_until_disconnected() {
+    let mut h = app(FINISHED);
+    let (room, floor) = (ids(&h, "room")[0], ids(&h, "floor")[0]);
+    h.state_mut().selection = vec![floor];
+    h.run();
+    assert!(h.query_by_label("Connected to").is_some());
+    assert!(h.query_by_role_and_label(Role::Link, &format!("Room {room}")).is_some());
+    // Its outline, its type and its height are the room's.
+    press(&mut h, "Modify | Floors");
+    assert!(h.get_by_label("Edit Boundary").accesskit_node().is_disabled());
+    assert!(h.get_by_label("Type Selector").accesskit_node().is_disabled());
+    assert!(h.query_by_role_and_label(Role::TextInput, "Height Offset From Level").is_none());
+    press(&mut h, "Disconnect");
+    assert_eq!(h.state().session.model.finish_of(floor), None);
+    assert_eq!(finish_of_room(&h, room, bimcraft_core::model::Part::Floor), bimcraft_core::model::Finish::Disconnected);
+    assert!(h.query_by_label("Connected to").is_none());
+    assert!(!h.get_by_label("Edit Boundary").accesskit_node().is_disabled());
+    assert!(!h.get_by_label("Type Selector").accesskit_node().is_disabled());
+}
+
+#[test]
+fn deleting_a_room_asks_whether_its_floor_and_ceiling_go_with_it() {
+    for (answer, rooms, finishes) in [("Cancel", 1, 2), ("Keep Them", 0, 2), ("Delete Them Too", 0, 0)] {
+        let mut h = app(FINISHED);
+        h.state_mut().selection = ids(&h, "room");
+        h.run();
+        key(&mut h, Key::Delete);
+        assert_eq!(ids(&h, "room").len(), 1, "{answer}: asked first");
+        press(&mut h, answer);
+        assert!(h.state().deleting_rooms.is_none(), "{answer}");
+        assert_eq!(ids(&h, "room").len(), rooms, "{answer}");
+        assert_eq!(ids(&h, "floor").len() + ids(&h, "ceiling").len(), finishes, "{answer}");
+        let m = &h.state().session.model;
+        assert!(ids(&h, "floor").iter().all(|id| m.finish_of(*id).is_none() || rooms == 1), "{answer}: kept as ordinary ones");
+    }
+    // A room with none, and a room whose floor and ceiling are selected with it, go without a question.
+    let mut h = app(&format!("{BOX}\nroom {{\"point\": [4000, 3000]}}"));
+    h.state_mut().selection = ids(&h, "room");
+    h.run();
+    key(&mut h, Key::Delete);
+    assert!(ids(&h, "room").is_empty());
+    let mut h = app(FINISHED);
+    h.state_mut().selection = [ids(&h, "room"), ids(&h, "floor"), ids(&h, "ceiling")].concat();
+    h.run();
+    key(&mut h, Key::Delete);
+    assert!(h.state().deleting_rooms.is_none() && ids(&h, "room").is_empty() && ids(&h, "floor").is_empty());
+}
+
+#[test]
+fn the_room_tool_places_rooms_of_the_type_its_selector_shows_with_their_floor() {
+    let script = format!("{BOX}\ntype {{\"category\": \"room\", \"name\": \"Wet\", \"floor\": \"Generic - 200mm\"}}");
+    let mut h = app(&script);
+    tool(&mut h, "Room");
+    h.state_mut().types.insert("room", "Wet".into());
+    h.run();
+    click(&mut h, P2(4000.0, 3000.0));
+    let room = ids(&h, "room")[0];
+    assert_eq!(field(&h, room, "type"), json!("Wet"));
+    assert_eq!((ids(&h, "floor").len(), ids(&h, "ceiling").len()), (1, 0));
 }

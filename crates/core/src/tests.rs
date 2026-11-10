@@ -2440,7 +2440,42 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"ids": [100002, 100003], "top_offset": 1e-300, "top_level": null, "height": -1}),
         wall,
     ];
-    let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).collect();
+    // A room with a floor and a ceiling of its own, last so that no id moves: one placed in the house and the starter room
+    // type given both, and the payloads that name a room, its floor and its ceiling.
+    let _ = base.execute("room", &json!({"point": [2000, 2000]}));
+    let _ = base.execute("type", &json!({"category": "room", "name": "Standard", "floor": "Generic - 200mm", "ceiling": "Generic - 20mm"}));
+    let finished = base.model.elements.iter().find_map(|(id, e)| match e {
+        crate::model::Element::Room(r) => {
+            Some((id, base.model.elements.id(r.floor.connected()?)?, base.model.elements.id(r.ceiling.connected()?)?))
+        }
+        _ => None,
+    });
+    let Some((room, floor, ceiling)) = finished else { panic!("the sweep's base has a room with a floor and a ceiling of its own") };
+    let finishes = [
+        json!({"id": room, "part": "floor", "action": "disconnect"}),
+        json!({"id": room, "part": "ceiling", "action": "regenerate"}),
+        json!({"id": room, "part": "wall", "action": []}),
+        json!({"id": room, "action": "disconnect"}),
+        json!({"id": floor, "part": "ceiling", "action": "disconnect"}),
+        json!({"id": ceiling, "action": "disconnect"}),
+        json!({"id": floor, "action": 1e300, "part": null}),
+        json!({"id": floor, "offset": 1e300, "boundary": [[0, 0], [1, 0], [0, 0]]}),
+        json!({"id": room, "floor": {"connected": ceiling}, "ceiling": "disconnected"}),
+        json!({"id": room, "type": "No such", "floor": 5}),
+        json!({"ids": [room, floor], "keep_finishes": "x"}),
+        json!({"ids": [room], "keep_finishes": true}),
+        json!({"ids": [floor, ceiling], "by": [1e8, 0]}),
+        json!({"ids": [room, floor], "by": [5000, 0], "copy": true}),
+        json!({"category": "room", "name": "Standard", "floor": null, "ceiling": 5}),
+        json!({"category": "room", "name": "Standard", "floor": "Generic - 200mm", "floor_offset": 1e300, "ceiling_offset": -1e300}),
+        json!({"category": "room", "name": "Standard", "floor": null, "ceiling": "Tile 600 x 600", "ceiling_offset": f64::MAX}),
+        json!({"category": "room", "name": "", "floor": [], "ceiling": {}, "floor_offset": "x"}),
+        json!({"category": "room", "name": "R", "floor": "Generic - 200mm", "ceiling": "Generic - 20mm", "ceiling_offset": -1e9}),
+        json!({"point": [2000, 2000], "type": 5}),
+        json!({"point": [2000, 2000], "type": "No such"}),
+    ];
+    let hostile: Vec<Value> =
+        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(finishes).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
