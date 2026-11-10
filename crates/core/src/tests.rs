@@ -843,6 +843,30 @@ fn a_failed_transaction_puts_back_the_history_the_phase_and_the_path_too() {
 }
 
 #[test]
+fn the_steps_of_one_label_on_top_merge_into_one_named_step() {
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"elevation": 6000}));
+    // Two transactions of the same label, each a step of its own (what an assistant's batches of tool calls are).
+    for at in [[0, 0], [5000, 0]] {
+        s.transaction("Working", |s| s.execute("wall", &json!({"points": [at, [at[0] + 3000, 3000]]}))).unwrap();
+    }
+    assert_eq!(s.history(), vec!["Level", "Working", "Working"]);
+    s.merge_steps("Working", "Assistant: two walls");
+    assert_eq!(s.history(), vec!["Level", "Assistant: two walls"]);
+    assert_eq!(s.steps(false).first().map(|st| st.made.clone()), Some(vec![("wall", 2)]));
+    // One undo takes back both.
+    run(&mut s, "undo", json!({}));
+    assert_eq!(count(&mut s, "wall"), 0);
+    run(&mut s, "redo", json!({}));
+    assert_eq!(count(&mut s, "wall"), 2);
+    // A run that stops at a step of another label merges only what is on top; none, or one, is only renamed.
+    s.merge_steps("Nothing here", "x");
+    assert_eq!(s.history(), vec!["Level", "Assistant: two walls"]);
+    s.merge_steps("Assistant: two walls", "Renamed");
+    assert_eq!(s.history(), vec!["Level", "Renamed"]);
+}
+
+#[test]
 fn dimensions_measure_between_parallel_walls_and_grids_and_follow_them() {
     let mut s = Session::new();
     let ids = house(&mut s);
