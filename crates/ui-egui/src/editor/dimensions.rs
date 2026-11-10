@@ -170,8 +170,9 @@ pub(crate) fn crosses(a: Pos2, b: Pos2, r: Rect) -> bool {
 
 /// Where an Align padlock goes on screen: beside the aligned line through `base` (running along `dir`), a few pixels off it
 /// to its outer side (away from what `inside` says is a form's inside, where one is), slid along the line as little as
-/// takes it clear of every line of `lines` and of the padlocks `taken`; on the other side only where the outer one has no
-/// room. So a padlock never covers a line, the one it locks among them, or another padlock.
+/// takes it clear of every line of `lines`, of the padlocks `taken` and of the inside; on the other side only where the
+/// outer one has no room. So a padlock never covers a line, the one it locks among them, or another padlock, and a plane's
+/// through a form is slid out past the form's outline, where it can be clicked.
 pub(super) fn padlock_spot(base: Pos2, dir: Vec2, inside: &dyn Fn(Pos2) -> bool, lines: &[[Pos2; 2]], taken: &[Pos2]) -> Pos2 {
     let dir = if dir.is_finite() && dir.length_sq() > 0.0 { dir.normalized() } else { vec2(1.0, 0.0) };
     let n = vec2(-dir.y, dir.x);
@@ -180,20 +181,24 @@ pub(super) fn padlock_spot(base: Pos2, dir: Vec2, inside: &dyn Fn(Pos2) -> bool,
         let r = lock_rect(c);
         !lines.iter().any(|[a, b]| crosses(*a, *b, r)) && taken.iter().all(|t| !lock_rect(*t).intersects(r))
     };
-    let mut first = None;
-    for side in [out, -out] {
+    let spot = |side: Vec2, k: usize| {
         // Off the line by half the padlock's width along `side` and a gap, whatever way the line runs.
         let off = 4.0 + 7.0 * side.x.abs() + 12.0 * side.y.abs();
-        for k in 0..13 {
-            let slide = if k % 2 == 0 { (k / 2) as f32 } else { -((k / 2 + 1) as f32) } * 14.0;
-            let c = base + side * off + dir * slide;
-            first.get_or_insert(c);
-            if free(c) {
-                return c;
+        let slide = if k.is_multiple_of(2) { (k / 2) as f32 } else { -((k / 2 + 1) as f32) } * 14.0;
+        base + side * off + dir * slide
+    };
+    // Outside every form first, near, then slid further (a plane through a box: past its outline); then anywhere clear.
+    for (reach, outside) in [(13, true), (61, true), (13, false)] {
+        for side in [out, -out] {
+            for k in 0..reach {
+                let c = spot(side, k);
+                if free(c) && (!outside || !inside(c)) {
+                    return c;
+                }
             }
         }
     }
-    first.unwrap_or(base)
+    spot(out, 0)
 }
 
 /// Whether `p` is inside the closed ring `ring` (even-odd).

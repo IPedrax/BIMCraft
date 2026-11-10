@@ -710,17 +710,20 @@ impl FamilyEditor {
             let (Some(base), Some(f)) = (m.points.first(), family.as_ref()) else { continue };
             let base_at = on_screen(*base);
             let dir = on_screen(*base + m.across) - base_at;
-            // A form one of its references belongs to: its outline is the inside the padlock keeps out of.
-            let ring: Vec<egui::Pos2> = refs
-                .iter()
-                .find_map(|r| match r {
-                    DimRef::Form(g, _) | DimRef::Sketch(g, _) | DimRef::Point(g, ..) => f.forms.iter().position(|x| x.guid == *g),
-                    _ => None,
-                })
-                .map(|i| fv::outline(f, &values, &c.staged, which, i).into_iter().map(&on_screen).collect())
-                .unwrap_or_default();
+            // A form one of its references belongs to: its outline is the inside the padlock keeps out of. Planes and lines
+            // alone: every solid form's, so a plane's padlock isn't left inside a form it runs through.
+            let ring = |i: usize| -> Vec<egui::Pos2> { fv::outline(f, &values, &c.staged, which, i).into_iter().map(&on_screen).collect() };
+            let own = refs.iter().find_map(|r| match r {
+                DimRef::Form(g, _) | DimRef::Sketch(g, _) | DimRef::Point(g, ..) => f.forms.iter().position(|x| x.guid == *g),
+                _ => None,
+            });
+            let rings: Vec<Vec<egui::Pos2>> = match own {
+                Some(i) => vec![ring(i)],
+                None => (0..f.forms.len()).filter(|i| !f.forms[*i].void).map(ring).collect(),
+            };
             let taken: Vec<egui::Pos2> = locks.iter().map(|(_, p)| *p).collect();
-            let at = dims::padlock_spot(base_at, dir, &|p| ring.len() > 2 && dims::within(&ring, p), &lines, &taken);
+            let inside = |p: egui::Pos2| rings.iter().any(|r| r.len() > 2 && dims::within(r, p));
+            let at = dims::padlock_spot(base_at, dir, &inside, &lines, &taken);
             locks.push((m.index, at));
         }
         let offered = offer.as_ref().and_then(|o| locks.iter().find(|(i, _)| *i == o.index).map(|(_, p)| *p));

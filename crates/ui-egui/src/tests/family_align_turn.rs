@@ -99,6 +99,12 @@ fn a_slanted_plane_aligned_to_center_left_right_turns_onto_it_with_what_is_drawn
     for (a, b) in pane0.iter().zip(&pane1) {
         assert!((a.0 - b.0).abs() < 1e-6 && (a.1 - b.1).abs() < 1e-6, "{pane0:?} {pane1:?}");
     }
+    // Its padlock, offered on the plane where it runs through the box, sits outside the box, where it can be clicked.
+    h.run();
+    let at = editor(&h).views.offer_shown.expect("the padlock shown");
+    let corner = |x: f64, y: f64| editor(&h).views.screen_of([x, y, 0.0]).unwrap();
+    let inside = egui::Rect::from_two_pos(corner(-300.0, -200.0), corner(500.0, 200.0)).expand(4.0);
+    assert!(!inside.contains(at), "{at:?} inside {inside:?}");
     lock(&mut h);
     let locks: Vec<_> = editor(&h).dimensions.iter().filter(|d| d.alignment).map(|d| d.refs.clone()).collect();
     assert!(locks.contains(&vec![DimRef::Plane(CENTER_LEFT_RIGHT), DimRef::Plane(g(SLANT))]), "{locks:?}");
