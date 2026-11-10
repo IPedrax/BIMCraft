@@ -47,3 +47,31 @@ fn select_instances_keeps_same_named_types_in_other_families_separate_and_accept
     assert!(s.execute("select_instances", &json!({"ids":[]})).is_err());
     assert!(s.execute("select_instances", &json!({"family":"First","type":"missing"})).is_err());
 }
+
+#[test]
+fn select_instances_accepts_a_selection_larger_than_the_drawing_point_limit() {
+    use std::sync::Arc;
+    let mut s = Session::new();
+    let id = s.execute("text", &json!({"at":[0,0],"text":"Repeated note"})).unwrap()["id"].as_u64().unwrap();
+    let note = s.model.elements.get(id).unwrap().clone();
+    let mut ids = vec![id];
+    // A large but valid project fixture; the command under test still goes through Session.
+    let model = Arc::make_mut(&mut s.model);
+    for _ in 0..bimcraft_core::model::MAX_POINTS {
+        ids.push(model.insert(note.clone()));
+    }
+    model.check().unwrap();
+    let reply = s.execute("select_instances", &json!({"ids":ids,"within":ids})).unwrap();
+    assert_eq!(reply["ids"].as_array().unwrap().len(), ids.len());
+}
+
+#[test]
+fn select_instances_treats_null_optional_selectors_as_omitted() {
+    let mut s = Session::new();
+    let ids = s.execute("wall", &json!({"points":[[0,0],[4000,0]]})).unwrap()["ids"].clone();
+    let reply = s.execute("select_instances", &json!({"ids":ids,"category":null,"family":null,"type":null,"within":null})).unwrap();
+    assert_eq!(reply["ids"], ids);
+    let reply =
+        s.execute("select_instances", &json!({"ids":null,"category":"wall","type":"Generic - 200mm","family":null,"within":null})).unwrap();
+    assert_eq!(reply["ids"], ids);
+}

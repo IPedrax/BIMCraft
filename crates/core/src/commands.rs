@@ -2682,10 +2682,15 @@ fn element_id(c: &str, m: &Model, v: &Value) -> Result<Id, String> {
 
 /// `ids` [id, …], or one `id`: elements of the model, by id or GUID, each once, in the order given.
 fn ids_param(c: &str, m: &Model, p: &Value) -> Result<Vec<Id>, String> {
+    ids_param_with_limit(c, m, p, MAX_POINTS)
+}
+
+/// Queries may name an entire large project's selection rather than a drawing's points.
+fn ids_param_with_limit(c: &str, m: &Model, p: &Value, limit: usize) -> Result<Vec<Id>, String> {
     let as_id = |v: &Value| element_id(c, m, v);
     let ids: Vec<Id> = match (p.get("ids"), p.get("id")) {
-        (Some(Value::Array(a)), _) if a.len() <= MAX_POINTS => a.iter().map(as_id).collect::<Result<_, _>>()?,
-        (Some(Value::Array(_)), _) => return Err(bad(c, format!("`ids` lists more than {MAX_POINTS} elements"))),
+        (Some(Value::Array(a)), _) if a.len() <= limit => a.iter().map(as_id).collect::<Result<_, _>>()?,
+        (Some(Value::Array(_)), _) => return Err(bad(c, format!("`ids` lists more than {limit} elements"))),
         (v, Some(one)) if absent(v) => vec![as_id(one)?],
         _ => return Err(bad(c, "`ids` [id, …] is required")),
     };
@@ -3554,9 +3559,10 @@ fn select_by_id(s: &mut Session, p: &Value) -> R {
 fn select_instances(s: &mut Session, p: &Value) -> R {
     let c = "select_instances";
     let m = &s.model;
-    let explicit = p.get("category").is_some() || p.get("family").is_some() || p.get("type").is_some();
+    let limit = m.elements.len().max(MAX_POINTS);
+    let explicit = ["category", "family", "type"].iter().any(|key| !absent(p.get(key)));
     let types = if explicit {
-        if p.get("ids").is_some() || p.get("id").is_some() {
+        if !absent(p.get("ids")) || !absent(p.get("id")) {
             return Err(bad(c, "give selected ids or a library type, not both"));
         }
         let entry = entry_of(c, m, p)?;
@@ -3565,14 +3571,17 @@ fn select_instances(s: &mut Session, p: &Value) -> R {
         }
         BTreeSet::from([entry])
     } else {
-        let ids = ids_param(c, m, p)?;
+        let ids = ids_param_with_limit(c, m, p, limit)?;
         let types: BTreeSet<_> = ids.iter().filter_map(|id| m.elements.get(*id)).filter_map(crate::selection::instance_type).collect();
         if types.is_empty() {
             return Err(bad(c, "select an element that has a type first"));
         }
         types
     };
-    let within = p.get("within").map(|v| ids_param(c, m, &json!({"ids": v}))).transpose()?;
+    let within = match p.get("within") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(ids_param_with_limit(c, m, &json!({"ids": v}), limit)?),
+    };
     Ok(json!({"ids": crate::selection::instances(m, &types, within.as_deref())}))
 }
 
