@@ -1154,13 +1154,20 @@ fn saving_writes_the_project_and_exports_by_extension() {
 }
 
 #[test]
-fn file_export_lists_the_3d_scene_as_gltf_in_both_profiles_and_an_export_leaves_the_project_unsaved() {
+fn file_export_lists_export_publisher_and_print_set_in_both_profiles_and_an_export_leaves_the_project_unsaved() {
     for (name, mut h) in [("Rev", app(SAMPLE)), ("BIMCraft", bimcraft(SAMPLE))] {
         press(&mut h, "File");
         // The submenu's label carries its arrow too.
         h.get_by_label_contains("Export").click();
         h.run();
-        assert!(h.query_by_label("3D Scene as glTF…").is_some(), "{name}: File > Export lists glTF");
+        for item in ["Export…", "Publisher…", "Print Set…"] {
+            // Export…'s label carries its shortcut too.
+            assert!(h.query_all_by_label_contains(item).next().is_some(), "{name}: File > Export lists {item}");
+        }
+        // The exports that saved at once with the defaults are gone: the dialog and the Publisher write them.
+        for gone in ["IFC…", "View as PNG…", "Plan as SVG…", "Sheets as PDF…", "3D Scene as glTF…", "Print Sets…"] {
+            assert!(h.query_by_label(gone).is_none(), "{name}: File > Export no longer lists {gone}");
+        }
     }
     let mut h = app(SAMPLE);
     let dir = std::env::temp_dir().join(format!("bimcraft-ui-gltf-{}", std::process::id()));
@@ -6305,6 +6312,7 @@ mod presets;
 mod printsets;
 mod profile;
 mod projectinfo;
+mod publisher;
 mod purge;
 mod qol;
 mod reinforce;

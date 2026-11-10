@@ -36,7 +36,12 @@ reaches every front end.
   desktop's preview both use these two, so the preview is what the file holds.
 - **File names** (`naming.rs`): templates with tokens (`{SheetNumber} - {SheetName}`, `{ViewName}`, `{Level}`, `{Scale}`,
   `{Format}`, `{Date}` and others: `ModelTokens::NAMES`). A `/` makes folders. Names are made safe for every system, and a
-  file already there is numbered unless `overwrite` is set. Project parameters will answer as tokens by their names.
+  file already there is numbered unless `overwrite` is set. Beside the built-in tokens, Project Information answers by
+  the names Revit gives its fields (`{Project Number}`, `{Client Name}`, `{Project Status}`…) and every project parameter
+  by its own name: the view's or sheet's value when it has one, else the project's (Project Information's); empty when not
+  set. A job may add tokens of its own (`Job::tokens`): a publishing set's `{PrintSet}` and `{PublishSet}`.
+  `export_formats` lists them all. Views and sheets hold no project parameters yet, so today a parameter's value is the
+  project's.
 
 | Family | Formats |
 |---|---|
@@ -67,8 +72,22 @@ ezdxf's audit, IFC4.3 with IfcOpenShell (CI validates `coverage-4x3.ifc`), and O
   an id and a GUID; it holds its views by GUID, and a view deleted leaves every set it was in (the engine prunes them after
   each command). `export` with `print_set` writes its views, one PDF of them all at `path`.
 
+- **Publishing sets** (`publish.rs`, the `publish_set` and `publish` commands) are the Publisher's presets, ProSheets'
+  profiles laid out as Archicad's publisher sets: a named set (a library entry, `Kind::PublishSet`,
+  `Model::publish_sets`) with a destination folder, an overwrite flag and folders; a folder holds print sets, each with
+  the format it is written as, its file name template, one combined file's name (PDF) and the format's `Options`. A
+  print set is in a folder once for each format (`PublishSet::check`). Each completed entry records its start, end and
+  elapsed time in the project for the next publish estimate. An entry names its print set (its GUID in a file,
+  `Model::lib_refs_mut`), so a rename is followed, and a print set deleted leaves every folder (the engine prunes after
+  each command). The destination is beside the project's file unless absolute (`PublishSet::root`); `publish` takes
+  another as `folder`. `publish::run` is one `export::Job` for each entry, in order, with the steps of the whole set told
+  to `Ctx::progress`; an entry that can't be written (nothing its format takes, a token no project has) is reported and
+  the rest go on. A set overwrites what it wrote before unless told not to. Tests: `publish_tests.rs`.
+
 ## The desktop (`crates/ui-egui/src/export/`)
 
+- **File > Export** holds Export…, Publisher… and Print Set…, and nothing else: the exports that saved at once with the
+  defaults are gone.
 - **File > Export > Export…** (Ctrl+P) opens the dialog on what the window shows. Its **Destination** is a file or a
   printer: the printers are listed on a thread (`print.rs`: CUPS's `lpstat` on Linux and macOS, PowerShell on Windows). A
   printer prints PDF: Print writes it, as an export does, in a folder of its own, hands it to the spooler (`lp`, with the
@@ -83,7 +102,8 @@ ezdxf's audit, IFC4.3 with IfcOpenShell (CI validates `coverage-4x3.ifc`), and O
 - **Of**: what the window shows, every sheet (PDF), or a print set, picked by name, with Print Sets… beside it. A set to a
   format that doesn't combine writes a file each, named after the file asked for and the view.
 - **The page** is set as a print dialog sets it, a paper of its own size among the papers, a 5 mm margin to start with, with
-  the preview beside it. A PDF's Content (vector or raster) and Draw cut marks sit under the colours; its document settings
+  the preview beside it. Subtle gray rules separate the form's choices. A PDF's Content (vector or raster) and Draw cut marks
+  sit under the colours; its document settings
   (archive, version, title, author, subject) are in the PDF Settings… window under the preview. Pages are all, a range, or
   Custom, a list typed. The preview draws every page, numbers each in light grey when there are several, greys those
   outside the range and draws the drawing on each with `canvas::paint`, in the colours and lines the setup asks for
@@ -94,14 +114,28 @@ ezdxf's audit, IFC4.3 with IfcOpenShell (CI validates `coverage-4x3.ifc`), and O
   `poll_export` puts what was written, what wasn't and why, and whether it was cancelled in the status box. The file's name
   is the one given, its braces doubled so they aren't tokens. A picture of several pages writes a file a page beside it.
   Each format's settings are kept for the next export while the window is open.
-- **Print Sets** (`printsets.rs`; File > Export > Print Sets…, or the dialog's button) is Revit's View/Sheet Set window: Name
+- **Print Sets** (`printsets.rs`; File > Export > Print Set…, the Export dialog's button, or the Publisher) is Revit's View/Sheet Set window: Name
   picks a set, the list checks its views and sheets (Show: Sheets, Views; a search; Check All, Check None), and Save, Save
   As…, Revert, Rename… and Delete each run `print_set`. In the **Project Browser** Ctrl picks views one by one and Shift a
   run of them; the right-click menu makes a print set of those picked, or of a group's views, asking its name, and has
   Expand All and Collapse All. Several views picked show in Properties: of one kind, the parameters they share (blank
   where they differ, a change made to all); of several, Multiple Categories and how many of each.
-- The other File > Export items (IFC…, View as PNG…, Plan as SVG…, Sheets as PDF…, glTF) still save at once with the
-  defaults.
+- **The Publisher** (`publisher.rs`; File > Export > Publisher…, View tab, or Project Browser menu) lists the project's publishing sets on the left (New…,
+  Duplicate…, Rename…, Delete, Revert changes, Import… and Export…) and shows the one picked on the right: its destination (Browse…, or typed; empty
+  is asked for at Publish), Overwrite existing files, and its folders. Each folder is a separate rounded card with a corner
+  X to delete it. A folder has a name (a `/` nests it; none is the destination itself), Add Print Set,
+  and a row for each print set: the print set (New Print Set…
+  opens Print Sets on a set not made yet, and the row takes the set made), the format (grouped by family; one the print
+  set holds nothing for, or one the folder already has for that print set, is greyed), a sample of the file name, File
+  Names…, Settings… and Remove. The sample file name sits on a separate line below these controls, truncated to the card's
+  width with its full name on hover. File Names… puts a template together: tokens in three groups (views and sheets, Project
+  Information, project parameters) are added by a click with the separator between them, the template can be typed, a
+  sample shows what it makes, and a format that combines can be one file with its own name. Settings… is the Export
+  dialog's form for that format (`export::format_options`, and a PDF's document settings); Cancel puts them back. The
+  set is a working copy until Save; Publish saves what changed and writes the set on the export's thread
+  (`worker::Work::Publish`), with its bar, Cancel Export and note. Completed entries retain their start and end times,
+  and the dialog shows their combined reexport estimate beside the print set and file counts. XML transfer includes the
+  publishing sets and their referenced print sets; views match by GUID or, in another project, by unique title. Tests: `tests/publisher.rs`.
 - Tests: `tests/export.rs`. They cover the dialog on a plan and a PDF written while the project is edited (and the dialog no
   taller than its form), a cancelled job (a gate holds the thread until Cancel is pressed), the format list and an IFC of the
   whole project, a region drawn in the plan and the DXF it makes, printing to a fake spooler (`print::Fake`), and a PDF/A-2b
@@ -110,7 +144,10 @@ ezdxf's audit, IFC4.3 with IfcOpenShell (CI validates `coverage-4x3.ifc`), and O
 
 ## Still to come
 
-- The Publisher (View tab): saved export sets, sheets picked by set or parameter, foldered output in one go.
+- The Publisher: a tree of nested folders (a folder's name takes a `/` today),
+  a set sent to a printer, folder names from tokens, a page preview in an entry's settings, and sheets picked by a
+  parameter's value rather than by print set.
+- Project parameters on views and sheets, so a file name can take a sheet's own value.
 - IFC2x3 (a port of the IFC writer: owner history, IFC4-only entities), U3D and 3D PDF.
 - DWG and DXF export setups as Revit's: layers, colours, linetypes, lineweights, real hatch patterns rather than exploded
   lines and solid fills, text, coordinates, paper space (the ROADMAP's row).

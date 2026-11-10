@@ -160,6 +160,9 @@ pub mod plumbing;
 pub mod project_info;
 #[cfg(test)]
 mod project_info_tests;
+pub mod publish;
+#[cfg(test)]
+mod publish_tests;
 #[cfg(test)]
 mod pset_tests;
 #[cfg(test)]

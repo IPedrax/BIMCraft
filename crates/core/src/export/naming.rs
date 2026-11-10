@@ -71,6 +71,43 @@ pub fn expand(template: &str, tokens: &dyn Tokens, extension: &str) -> Result<Pa
     Ok(path)
 }
 
+/// What is wrong with `template` as it is written, whatever its tokens stand for: a brace that closes nothing, a climb out
+/// of its folder, too long or too deep. A token no project knows is found when it is filled in ([`expand`]).
+pub fn check(template: &str) -> Result<(), String> {
+    struct Any;
+    impl Tokens for Any {
+        fn token(&self, _: &str) -> Option<String> {
+            Some("x".to_string())
+        }
+        fn names(&self) -> Vec<String> {
+            Vec::new()
+        }
+    }
+    expand(template, &Any, "x").map(|_| ())
+}
+
+/// The tokens `template` names, in the order written, each once.
+pub fn tokens_of(template: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut chars = template.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '{' | '}' if chars.peek() == Some(&c) => {
+                chars.next();
+            }
+            '{' => {
+                let name: String = chars.by_ref().take_while(|c| *c != '}').collect();
+                let name = name.trim().to_string();
+                if !out.contains(&name) {
+                    out.push(name);
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 /// `name` as a folder's or file's name any system takes: no characters Windows refuses, no control characters, no trailing
 /// dot or space, not a name Windows keeps for devices, not empty, and at most [`MAX_NAME`] characters.
 pub fn safe(name: &str) -> String {

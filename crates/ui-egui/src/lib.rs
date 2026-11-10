@@ -39,6 +39,7 @@ mod finishes;
 mod footer;
 mod gpu;
 mod printsets;
+mod publisher;
 pub use gpu::limits_for;
 mod graphics;
 mod groups;
@@ -1000,6 +1001,8 @@ pub struct BimApp {
     export_dialog: Option<export::Dialog>,
     /// Print Sets, while it is open.
     print_sets: Option<printsets::Dialog>,
+    /// The Publisher, while it is open.
+    publisher: Option<publisher::Dialog>,
     /// The name asked for a print set of the views picked in the Project Browser.
     name_set: Option<printsets::NameSet>,
     /// The views and sheets picked in the Project Browser (Ctrl and Shift pick more than one), and the one a Shift-click runs from.
@@ -1700,6 +1703,7 @@ impl BimApp {
             revit_job: None,
             export_dialog: None,
             print_sets: None,
+            publisher: None,
             name_set: None,
             browser_picked: Vec::new(),
             browser_anchor: None,
@@ -4278,24 +4282,11 @@ impl BimApp {
             if ui.add(egui::Button::new(t("Export…")).shortcut_text(shortcut)).clicked() {
                 self.open_export(None);
             }
-            if ui.button(t("Print Sets…")).clicked() {
+            if ui.button(t("Publisher…")).clicked() {
+                self.open_publisher();
+            }
+            if ui.button(t("Print Set…")).clicked() {
                 self.open_print_sets(None);
-            }
-            ui.separator();
-            if ui.button(t("IFC…")).clicked() {
-                self.export(ctx, "IFC4", "ifc");
-            }
-            if ui.button(t("View as PNG…")).clicked() {
-                self.export(ctx, msg!("PNG image"), "png");
-            }
-            if ui.button(t("Plan as SVG…")).clicked() {
-                self.export(ctx, msg!("SVG drawing"), "svg");
-            }
-            if ui.button(t("Sheets as PDF…")).clicked() {
-                self.export(ctx, "PDF", "pdf");
-            }
-            if ui.button(t("3D Scene as glTF…")).clicked() {
-                self.export(ctx, msg!("glTF binary"), "glb");
             }
         });
         self.report_menu(ui);
@@ -4789,6 +4780,11 @@ impl BimApp {
             }
         });
         panel(ui, "Windows", |ui| {
+            if big_button(ui, Icon::Sheet, "Publisher", self.publisher.is_some(), "Open publishing sets and export their print sets")
+                .clicked()
+            {
+                self.open_publisher();
+            }
             if big_button(ui, Icon::CloseInactive, "Close Inactive", false, "Close every view but this one").clicked() {
                 let active = self.sheet;
                 self.views.retain(|v| *v == active);
@@ -6314,6 +6310,7 @@ impl BimApp {
         self.importing_box(ctx);
         self.report_window(ctx);
         self.export_window(ctx);
+        self.publisher_window(ctx);
         self.print_sets_window(ctx);
         self.name_set_window(ctx);
         if self.pending.is_none() {

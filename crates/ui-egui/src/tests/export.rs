@@ -29,7 +29,7 @@ fn ctrl_p_opens_the_export_dialog_on_the_plan_and_export_writes_the_pdf_on_a_thr
     let mut h = app(SAMPLE);
     assert!(matches!(h.state().sheet, Sheet::Plan(_)), "the sample opens on a plan");
     h.key_press_modifiers(Modifiers::COMMAND, Key::P);
-    h.run();
+    h.step(); // The preview is still rendering; `until` waits for it below.
     let d = h.state().export_dialog.as_ref().expect("Ctrl+P opens the Export dialog");
     assert_eq!(d.format, "pdf");
     assert_eq!(d.source, h.state().export_source());
@@ -39,13 +39,17 @@ fn ctrl_p_opens_the_export_dialog_on_the_plan_and_export_writes_the_pdf_on_a_thr
     // As tall as its form, not the window: the button sits under the form, not at the screen's foot.
     let (top, bottom) = (h.get_by_label("Format").rect().top(), h.get_by_label("Export…").rect().bottom());
     assert!(bottom - top < 600.0, "the dialog is {} tall", bottom - top);
-    pick(&mut h, Role::RadioButton, "Fit to page");
+    h.get_by_role_and_label(Role::RadioButton, "Fit to page").click();
+    h.step();
     assert_eq!(h.state().export_dialog.as_ref().unwrap().options.page.scale, bimcraft_core::export::page::Scale::Fit);
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("plan {1}.pdf");
-    press(&mut h, "Export…");
+    h.get_by_label("Export…").click();
+    h.step();
     assert!(h.state().export_dialog.is_none(), "Export… closes the dialog and asks where");
-    answer(&mut h, &file);
+    let tx = crate::dialog::BEGUN.with(|b| b.borrow_mut().pop()).expect("a file dialog was begun");
+    tx.send(Some(vec![file.clone()])).unwrap();
+    h.step();
     assert!(h.state().exporting(), "the file is written on a thread of its own");
     // The project can be edited while it is written: the export is of the project as it was.
     h.state_mut().session.execute("level", &json!({"elevation": 9000})).unwrap();
@@ -55,7 +59,7 @@ fn ctrl_p_opens_the_export_dialog_on_the_plan_and_export_writes_the_pdf_on_a_thr
     assert!(!h.state().status.error && h.state().status.text.contains("plan {1}.pdf"), "{}", h.state().status.text);
     // Its settings are kept for the next export.
     h.key_press_modifiers(Modifiers::COMMAND, Key::P);
-    h.run();
+    h.step();
     assert_eq!(h.state().export_dialog.as_ref().unwrap().options.page.scale, bimcraft_core::export::page::Scale::Fit);
 }
 

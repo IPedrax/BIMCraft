@@ -16,6 +16,7 @@ use egui::{Context, ProgressBar, Ui};
 use crate::lang::{t, tf};
 use crate::style::pal;
 use crate::{BimApp, Status};
+use serde_json::json;
 
 /// How far an export is: steps done, steps there are, and what it is on.
 type Progress = (usize, usize, String);
@@ -40,6 +41,7 @@ pub(crate) struct Running {
     answer: Receiver<Answer>,
     /// Where its files go, for the note when it is done.
     folder: PathBuf,
+    publish_set: Option<String>,
 }
 
 impl Running {
@@ -56,6 +58,22 @@ impl Running {
         let Ok(p) = self.progress.lock() else { return (0.0, String::new()) };
         let fraction = if p.1 == 0 { 0.0 } else { p.0 as f32 / p.1 as f32 };
         (fraction.clamp(0.0, 1.0), p.2.clone())
+    }
+}
+
+/// What a thread writes: one job, or a publishing set, each of its entries a job, under a folder.
+pub(crate) enum Work {
+    Job(Box<Job>),
+    Publish { set: String, root: PathBuf },
+}
+
+impl Work {
+    /// Where its files go.
+    fn folder(&self) -> &Path {
+        match self {
+            Work::Job(job) => &job.folder,
+            Work::Publish { root, .. } => root,
+        }
     }
 }
 
@@ -81,24 +99,38 @@ impl BimApp {
 
     /// [`start_export`](Self::start_export), the thread waiting for `gate` first: a test's way to cancel it before it begins.
     pub(crate) fn start_export_after(&mut self, job: Job, gate: Option<Receiver<()>>) -> bool {
-        self.spawn_export(job, gate, None)
+        self.spawn_export(Work::Job(Box::new(job)), gate, None)
+    }
+
+    /// Publishes publishing set `set` under `root` on a thread of its own, as an export is written: the same bar, the same
+    /// Cancel, the same note when it is done.
+    pub(crate) fn start_publish(&mut self, set: String, root: PathBuf) -> bool {
+        self.spawn_export(Work::Publish { set, root }, None, None)
     }
 
     /// Writes `job` on a thread of its own, then prints what it wrote as `print` says and removes it.
     pub(crate) fn start_print(&mut self, job: Job, print: PrintTo) -> bool {
-        self.spawn_export(job, None, Some(print))
+        self.spawn_export(Work::Job(Box::new(job)), None, Some(print))
     }
 
-    fn spawn_export(&mut self, job: Job, gate: Option<Receiver<()>>, print: Option<PrintTo>) -> bool {
+    fn spawn_export(&mut self, work: Work, gate: Option<Receiver<()>>, print: Option<PrintTo>) -> bool {
         if self.export_job.is_some() {
             return false;
         }
         let model = Arc::clone(&self.session.model);
         let registry = self.session.exports.clone();
         let cancel = Arc::new(AtomicBool::new(false));
-        let progress = Arc::new(Mutex::new((0, job.items.len(), String::new())));
+        let steps = match &work {
+            Work::Job(job) => job.items.len(),
+            Work::Publish { .. } => 0,
+        };
+        let progress = Arc::new(Mutex::new((0, steps, String::new())));
         let (send, answer) = channel();
-        let folder = job.folder.clone();
+        let folder = work.folder().to_path_buf();
+        let publish_set = match &work {
+            Work::Publish { set, .. } => Some(set.clone()),
+            Work::Job(_) => None,
+        };
         // The window looks again every tenth of a second while it runs (`poll_export`).
         let (stop, tell) = (Arc::clone(&cancel), Arc::clone(&progress));
         let spawned = std::thread::Builder::new().name("export".into()).spawn(move || {
@@ -113,8 +145,11 @@ impl BimApp {
             };
             let ctx = Ctx { cancelled: &cancelled, progress: &progress };
             // The writers read a project that may be anyone's: whatever they do, the window gets an answer.
-            let report = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| export::run(&model, &registry, &job, &ctx)))
-                .unwrap_or_else(|p| Err(stopped(&*p)));
+            let report = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match &work {
+                Work::Job(job) => export::run(&model, &registry, job, &ctx),
+                Work::Publish { set, root } => bimcraft_core::publish::run(&model, &registry, set, root, &ctx),
+            }))
+            .unwrap_or_else(|p| Err(stopped(&*p)));
             let answer = report.map(|report| {
                 let printed = print.map(|to| {
                     let sent = if report.cancelled {
@@ -129,7 +164,7 @@ impl BimApp {
                             .map(|()| to.printer.clone())
                     };
                     // The spooler has its own copy: the file was only for it.
-                    let _ = std::fs::remove_dir_all(&job.folder);
+                    let _ = std::fs::remove_dir_all(work.folder());
                     sent
                 });
                 (report, printed)
@@ -140,7 +175,7 @@ impl BimApp {
             self.status = Status { text: tf("Couldn't export: {}", &[&e.to_string()]), error: true };
             return false;
         }
-        self.export_job = Some(Running { cancel, progress, answer, folder });
+        self.export_job = Some(Running { cancel, progress, answer, folder, publish_set });
         true
     }
 
@@ -156,6 +191,14 @@ impl BimApp {
             Err(TryRecvError::Disconnected) => Err("the export stopped without an answer".to_string()),
         };
         let Some(job) = self.export_job.take() else { return };
+        if let (Some(name), Ok((report, _))) = (&job.publish_set, &answer)
+            && !report.published.is_empty()
+            && self.session.model.publish_sets.contains_key(name)
+        {
+            // Only update completed entries. The command applies these to the current set, so edits made
+            // while the background export ran are kept.
+            let _ = self.session.execute("publish_set", &json!({"name": name, "timings": report.published}));
+        }
         self.status = match answer {
             Ok((report, None)) => said(&report, &job.folder),
             Ok((report, Some(Ok(printer)))) => {
