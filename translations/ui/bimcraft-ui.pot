@@ -3407,7 +3407,7 @@ msgstr ""
 msgid "Fine"
 msgstr ""
 
-#: crates/core/src/import.rs:1365
+#: crates/core/src/import.rs:1429
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:719
 msgid "Finish"
@@ -4131,7 +4131,7 @@ msgstr ""
 msgid "Instance"
 msgstr ""
 
-#: crates/core/src/import.rs:1364
+#: crates/core/src/import.rs:1428
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr ""
@@ -4843,7 +4843,7 @@ msgstr ""
 msgid "Medium Lines"
 msgstr ""
 
-#: crates/core/src/import.rs:1367
+#: crates/core/src/import.rs:1431
 #: crates/ui-egui/src/properties.rs:718
 msgid "Membrane"
 msgstr ""
@@ -7933,7 +7933,7 @@ msgstr ""
 msgid "Subgrid pen"
 msgstr ""
 
-#: crates/core/src/import.rs:1366
+#: crates/core/src/import.rs:1430
 #: crates/ui-egui/src/properties.rs:716
 msgid "Substrate"
 msgstr ""

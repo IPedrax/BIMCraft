@@ -27,6 +27,11 @@ fn id_of(s: &Session, v: &Value) -> Option<u64> {
     serde_json::from_value::<crate::model::Guid>(v.clone()).ok().and_then(|g| s.model.elements.id(g))
 }
 
+/// Whether two paths are the same, point by point, to a micron.
+fn near(a: &[[f64; 3]], b: &[[f64; 3]]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(p, q)| (0..3).all(|i| (p[i] - q[i]).abs() < 1e-3))
+}
+
 /// A beam 200 x 500 and 6 m long with its top at the level, so its section spans z -500 to 0 and y -100 to 100.
 fn beam(s: &mut Session) -> u64 {
     ids(&run(s, "beam", json!({"points": [[0, 0], [6000, 0]]})))[0]
@@ -157,8 +162,6 @@ fn a_bar_survives_ifc_as_a_reinforcing_bar_with_its_points_and_its_host() {
     let (long, hoop) = (&bars[0].1, &bars[1].1);
     assert_eq!((long.diameter, long.grade.as_str()), (12.5, "CA-50"));
     assert_eq!((hoop.diameter, hoop.grade.as_str()), (8.0, "CA-60"));
-    let near =
-        |a: &[[f64; 3]], b: &[[f64; 3]]| a.len() == b.len() && a.iter().zip(b).all(|(p, q)| (0..3).all(|i| (p[i] - q[i]).abs() < 1e-3));
     assert!(near(&long.path, &[[50.0, -40.0, -450.0], [5950.0, -40.0, -450.0]]), "{:?}", long.path);
     assert!(near(
         &hoop.path,
@@ -186,8 +189,9 @@ fn the_3d_view_draws_a_bar_as_a_tube_along_each_straight_piece_of_its_path() {
 }
 
 #[test]
-fn a_bar_of_another_tool_comes_in_when_its_disks_make_one_line_and_is_left_out_when_they_do_not() {
-    // Centimetres, a bar bent once from two disks end to end, one whose second disk starts elsewhere, one of two radii.
+fn a_bar_of_another_tool_comes_in_from_disks_a_mapped_body_or_an_extruded_circle_and_is_left_out_otherwise() {
+    // Centimetres, a bar bent once from two disks end to end, one whose second disk starts elsewhere, one of two radii,
+    // one extruded from a circle, and one whose body maps the first bar's disks.
     let text = "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
 #1=IFCSIUNIT(*,.LENGTHUNIT.,.CENTI.,.METRE.);
 #2=IFCUNITASSIGNMENT((#1));
@@ -216,7 +220,30 @@ fn a_bar_of_another_tool_comes_in_when_its_disks_make_one_line_and_is_left_out_w
 #30=IFCREINFORCINGBAR('a',$,'Bent',$,$,#6,#24,$,'CA-60',12.,113.,150.,.NOTDEFINED.,.PLAIN.);
 #31=IFCREINFORCINGBAR('b',$,'Apart',$,$,#6,#25,$,$,12.,113.,150.,.NOTDEFINED.,.PLAIN.);
 #32=IFCREINFORCINGBAR('c',$,'Two radii',$,$,#6,#26,$,$,12.,113.,150.,.NOTDEFINED.,.PLAIN.);
-#40=IFCRELCONTAINEDINSPATIALSTRUCTURE('r',$,$,$,(#30,#31,#32),#7);
+#50=IFCCARTESIANPOINT((0.,0.));
+#51=IFCAXIS2PLACEMENT2D(#50,$);
+#52=IFCCIRCLEPROFILEDEF(.AREA.,'12 mm',#51,0.6);
+#53=IFCCARTESIANPOINT((0.,50.,0.));
+#54=IFCAXIS2PLACEMENT3D(#53,$,$);
+#55=IFCDIRECTION((1.,0.,0.));
+#56=IFCEXTRUDEDAREASOLID(#52,#54,#55,200.);
+#57=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#56));
+#58=IFCPRODUCTDEFINITIONSHAPE($,$,(#57));
+#59=IFCREINFORCINGBAR('e',$,'Extruded',$,$,#6,#58,$,$,12.,113.,200.,.NOTDEFINED.,.PLAIN.);
+#66=IFCCARTESIANPOINT((100.,0.,0.));
+#67=IFCAXIS2PLACEMENT3D(#66,$,$);
+#60=IFCSHAPEREPRESENTATION($,'Body','AdvancedSweptSolid',(#17,#18));
+#61=IFCREPRESENTATIONMAP(#67,#60);
+#71=IFCDIRECTION((0.,1.,0.));
+#72=IFCCARTESIANTRANSFORMATIONOPERATOR3D(#71,$,$,1.,$);
+#62=IFCMAPPEDITEM(#61,#72);
+#63=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#62));
+#64=IFCPRODUCTDEFINITIONSHAPE($,$,(#63));
+#68=IFCCARTESIANPOINT((0.,0.,100.));
+#69=IFCAXIS2PLACEMENT3D(#68,$,$);
+#70=IFCLOCALPLACEMENT($,#69);
+#65=IFCREINFORCINGBAR('f',$,'Mapped',$,$,#70,#64,$,$,12.,113.,150.,.NOTDEFINED.,.PLAIN.);
+#40=IFCRELCONTAINEDINSPATIALSTRUCTURE('r',$,$,$,(#30,#31,#32,#59,#65),#7);
 ENDSEC;END-ISO-10303-21;";
     let back = crate::import::ifc(text.as_bytes(), "t").unwrap();
     let bars: Vec<_> = back
@@ -228,13 +255,20 @@ ENDSEC;END-ISO-10303-21;";
             _ => None,
         })
         .collect();
-    assert_eq!(bars.len(), 1);
-    assert_eq!(
-        (bars[0].path.clone(), bars[0].diameter, bars[0].grade.as_str()),
-        (vec![[0.0, 0.0, 0.0], [1000.0, 0.0, 0.0], [1000.0, 500.0, 0.0]], 12.0, "CA-60")
-    );
+    assert_eq!(bars.len(), 3, "{:?}", back.skipped);
+    let paths: Vec<_> = bars.iter().map(|b| (b.path.clone(), b.diameter)).collect();
+    // The bar bent from the disks, the one whose body maps the same disks a quarter turn about an origin 1000 east and
+    // whose own placement stands it 1000 over Level 0, and the one extruded from a circle; the two other shapes are left
+    // out.
+    let direct = [[0.0, 0.0, 0.0], [1000.0, 0.0, 0.0], [1000.0, 500.0, 0.0]];
+    let mapped = [[0.0, 1000.0, 1000.0], [0.0, 2000.0, 1000.0], [-500.0, 2000.0, 1000.0]];
+    let straight = [[0.0, 500.0, 0.0], [2000.0, 500.0, 0.0]];
+    assert!(paths.iter().all(|(_, d)| *d == 12.0), "{paths:?}");
+    assert_eq!(paths.iter().filter(|(p, _)| near(p, &direct)).count(), 1, "{paths:?}");
+    assert_eq!(paths.iter().filter(|(p, _)| near(p, &mapped)).count(), 1, "{paths:?}");
+    assert_eq!(paths.iter().filter(|(p, _)| near(p, &straight)).count(), 1, "{paths:?}");
     assert_eq!(back.skipped.len(), 2, "{:?}", back.skipped);
-    assert!(back.skipped.iter().all(|s| s.contains("disk swept along a line")), "{:?}", back.skipped);
+    assert!(back.skipped.iter().all(|s| s.contains("no swept disk or extruded circle")), "{:?}", back.skipped);
     back.model.check().unwrap();
 }
 

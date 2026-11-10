@@ -33,6 +33,10 @@ rest that BIMCraft builds:
   pole) and one that won't triangulate leave the whole B-rep out, saying which.
 - **B-spline curves** (`IfcBSplineCurveWithKnots`, rational or not) as 12 points a knot span, the control points of a curve
   of degree 1, wherever a curve is read: profiles, directrices, edges. One whose knots don't fit its control points is none.
+- **Reinforcing bars** (`IfcReinforcingBar`): a bar of one radius whose body is a disk swept along a polyline, a disk behind
+  an `IfcMappedItem`, or a circle extruded straight, each piece starting where the last ended, is one line. Disks of several
+  radii, disks that do not meet end to end, and a body of several separate bars make no one line: the bar is left out, and
+  the import's `skipped` messages say so.
 
 An item builds at most `shapes::MAX_FACES` (a family mesh's `MAX_TRIANGLES`) faces; past them it builds none. A curved face
 takes at most `MAX_ROUND` points round it and `MAX_INSIDE` inside. Why an item built nothing, or less than it holds, is
