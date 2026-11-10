@@ -144,6 +144,17 @@ impl FormText {
     }
 
     fn of(f: &Form) -> FormText {
+        // A form the document holds has a GUID, and so has each line of its sketches, as the project's sync gives them: Align,
+        // dimensions and locks name them by it, and a form or a line without one (a blank family's starter box, a profile
+        // typed as numbers) would be drawn but never picked.
+        let mut f = f.clone();
+        if f.guid.is_nil() {
+            f.guid = bimcraft_core::ids::Guid::new();
+        }
+        for l in f.all_lines_mut().filter(|l| l.guid.is_nil()) {
+            l.guid = bimcraft_core::ids::Guid::new();
+        }
+        let f = &f;
         let axis =
             f.axis().map_or_else(Default::default, |[a, b]| [expr_text(&a[0]), expr_text(&a[1]), expr_text(&b[0]), expr_text(&b[1])]);
         let round = f.circle();

@@ -16,6 +16,7 @@ use crate::model::{Lock, TOL};
 use crate::view3d::{dot, sub};
 
 mod pivot;
+mod turn;
 pub use pivot::{MAX_SWING, Pivot, PivotAt, PivotFrom, PivotMark, PivotPoint, Pivoted, Rotation, pivot_marks, pivot_targets};
 
 /// Dimensions one family may hold, and references one dimension may measure between.
@@ -633,6 +634,10 @@ pub enum Edit {
     Turn(usize, usize, f64),
     /// A pivot's own angle (degrees), where no parameter labels it (F7d): the line's or the plane's GUID.
     PivotAngle(Guid, f64),
+    /// A plane of the family's own turned by Align (FE-10): its new start, end and up.
+    PlaneTurn(Guid, [P3; 3]),
+    /// Form `i`'s sketch on a turned plane slid along that plane's axes (x, y), so it keeps its place on it.
+    FormShift(usize, [f64; 2]),
 }
 
 /// What a solve holds where it is told, besides the constraints: a plane at an offset along its normal, or a reference at a
@@ -3088,12 +3093,17 @@ pub fn view_way(flexed: &Family, r: &DimRef, values: &BTreeMap<String, Val>, vie
 /// Align (AL): `target` moved onto `reference` (parallel to it), as Revit's Align moves it, for `values`: the edits that
 /// do it. A plane is dragged ([`Family::drag_plane`]); an extrusion end the constraints don't set takes the new value; a
 /// sketch's line or circle centre moves there and the lines joined to it follow, through the constraints (refused where they
-/// hold it); a reference line moves, and what is drawn on it with it.
+/// hold it); a reference line moves, and what is drawn on it with it. A reference that isn't parallel turns a plane or a line
+/// onto it (`turn.rs`).
 pub fn align(f: &Family, values: &BTreeMap<String, Val>, reference: &DimRef, target: &DimRef) -> Result<Vec<Edit>, Unsat> {
     let flexed = f.flexed(values)?;
     let (a, b) = (direction(&flexed, reference, values).map_err(Unsat::from)?, direction(&flexed, target, values).map_err(Unsat::from)?);
     let m = match (a, b) {
-        (Some(n), Some(m)) if !parallel(n, m) => return Err("Align takes a reference parallel to the first".to_string().into()),
+        (Some(n), Some(m)) if !parallel(n, m) => {
+            // Not parallel: what can turn turns onto it (FE-10).
+            let at = place(&flexed, reference, values, n).map_err(Unsat::from)?;
+            return f.turn_onto(values, target, n, at, m);
+        }
         (Some(n), _) | (None, Some(n)) => n,
         (None, None) => return Err("Align takes a plane or a line: two points face no way to align along".to_string().into()),
     };

@@ -1039,7 +1039,21 @@ impl FamilyEditor {
                         align = Some((a, r, q));
                         self.views.aligning = Some(None);
                     }
-                    _ => problem = Some(t("Pick a reference plane, an extrusion's end or a line of a form.").to_string()),
+                    (Some(_), Some(_)) => {
+                        problem = Some(t("That is the reference: pick what moves onto it.").to_string());
+                    }
+                    (None, _) => {
+                        // Over a form but on none of its faces: say what of a form Align takes.
+                        let form = family.as_ref().and_then(|f| fv::form_at(f, &values, &c.staged, which, q).and_then(|i| f.forms.get(i)));
+                        problem = Some(match form {
+                            Some(f) if !f.mesh.is_empty() => {
+                                t("A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form.")
+                            }
+                            Some(_) => t("Align takes a form's straight edge, a side the view sees edge on, or its end: click on its outline."),
+                            None => t("Pick a reference plane, an extrusion's end or a line of a form."),
+                        }
+                        .to_string());
+                    }
                 }
             } else if let Some(hit) = dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, p, &on_screen) {
                 let lengths = match &hit {
