@@ -551,7 +551,22 @@ Cancel. An Align padlock, on a finished form and while sketching, sits beside th
 form's inside, slid along it as little as keeps it off every line drawn and every other padlock (`dimensions::padlock_spot`);
 Align's offered padlock too. Edit Extrusion opens the sketch as the type previewed flexes it, and a line that comes back there keeps its formulas
 (`sketch::kept` against the lines shown). Every line gets a GUID of its own at Finish, a new form its GUID at once, so a lock or
-a dimension can name them before the family is loaded.
+a dimension can name them before the family is loaded; a form the document takes in without them (a blank family's starter box,
+a profile typed as numbers) is given them as it comes in (`FormText::of`), since `sketch_faces` and `end_faces` leave out a form
+or a line without one, and Align, Aligned Dimension and Pick Lines' Lock would find nothing on its outline.
+
+Align onto a reference that isn't parallel (`constraints/turn.rs`) turns what can turn, where Revit's help says nothing either
+way: a reference plane of the family's own or a reference line turns about where it crosses the reference, or, where it doesn't
+reach that far, about its end nearer the crossing and is slid square onto it (`align::Placement::onto`, which sketch mode's Align
+of a line uses too), and Align's padlock is offered as for a parallel one. A form drawn on a turned plane keeps its place on it
+(`Edit::PlaneTurn`, its sketch slid by `Edit::FormShift`, formulas kept); a form's line Align-locked to it is carried, the lines
+joined to it following; what a dimension measures otherwise, a reference line, a nested instance or an adaptive point drawn on
+it, and a datum are refused, naming them ("Align can't turn `Held`: dimension 1, labelled `Depth` measures to it …"). A line
+turns only about its host's normal. A pivoted plane or line turns about its pivot instead, when the reference runs through the
+pivot point: its parameter (in the type previewed) or its own angle is set, within its limits, and no padlock is offered (the
+swing holds it). A form's face doesn't turn: "Align turns a plane or a line onto the reference; a form's face must be parallel
+to it". A click on a form that hits none of its faces says what Align takes of a form. What a turn leaves must still build, or
+the draft stays as it was; a padlock whose lock the family can't keep is refused.
 
 F7c, part of FORMAT 19: angles, turning reference lines and arcs. `kind: "angular"` measures the angles
 between 2 to `MAX_DIM_REFS` lines seen as lines in its view: reference planes seen edge on (their traces), reference lines
@@ -1209,7 +1224,8 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 - `family/sketch.rs`: forms' sketches.
 - `family/forms.rs`: Blend, Sweep and Swept Blend: their kinds, paths, vertex mapping and triangles.
 - `family/constraints.rs`: its dimensions, labels, locks and EQ, solved as a type flexes; `family/constraints/pivot.rs`,
-  lines and planes that turn about a pivot.
+  lines and planes that turn about a pivot; `family/constraints/turn.rs`, Align turning a plane or a line onto a reference that
+  isn't parallel.
 - `family/nested.rs`: nested families and their instances, built into the host.
 - `family/visibility.rs`: Visibility Settings: which views and detail levels draw a form, a symbol or a nested instance.
 

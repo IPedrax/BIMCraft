@@ -24,8 +24,8 @@ msgstr "(výchozí)"
 #: crates/ui-egui/src/editor/sketch.rs:1625
 #: crates/ui-egui/src/editor/types_dialog.rs:308
 #: crates/ui-egui/src/editor/types_dialog.rs:594
-#: crates/ui-egui/src/editor.rs:955
-#: crates/ui-egui/src/editor.rs:958
+#: crates/ui-egui/src/editor.rs:966
+#: crates/ui-egui/src/editor.rs:969
 #: crates/ui-egui/src/filter.rs:35
 #: crates/ui-egui/src/properties.rs:2493
 msgid "(none)"
@@ -170,6 +170,10 @@ msgstr "Parametr typu rodiny potřebuje kategorii rodin, jejichž typy vybírá.
 #: crates/ui-egui/src/graphics.rs:1143
 msgid "A filter is made in View > Filters"
 msgstr "Filtr se vytváří v nabídce Pohled > Filtry"
+
+#: crates/ui-egui/src/editor/views.rs:1053
+msgid "A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form."
+msgstr ""
 
 #: crates/ui-egui/src/sketch.rs:293
 msgid "A line has a point too far out to draw."
@@ -540,14 +544,14 @@ msgstr "Vyústka"
 msgid "Air Terminal (AT): a captor, where you click on the roof; Space turns it"
 msgstr "Jímač (AT): jímací prvek v místě kliknutí na střeše; Mezerník jej otočí"
 
-#: crates/ui-egui/src/editor.rs:930
+#: crates/ui-egui/src/editor.rs:941
 msgid "Air Terminals"
 msgstr "Jímače"
 
 #: crates/core/src/commands.rs:1393
 #: crates/ui-egui/src/editor/document.rs:633
 #: crates/ui-egui/src/editor/sketch.rs:1520
-#: crates/ui-egui/src/editor.rs:1094
+#: crates/ui-egui/src/editor.rs:1105
 #: crates/ui-egui/src/lib.rs:382
 #: crates/ui-egui/src/sketch.rs:738
 msgid "Align"
@@ -566,9 +570,17 @@ msgstr "Zarovnat (AL): vyberte referenci, potom čáru skici, která se k ní p�
 msgid "Align (AL): pick a reference, then what moves onto it; its padlock locks them"
 msgstr "Zarovnat (AL): vyberte referenci, potom prvek, který se k ní přesune; její zámek je spojí"
 
+#: crates/ui-egui/src/editor/dimensions.rs:878
+msgid "Align can't put it there: {}"
+msgstr ""
+
 #: crates/ui-egui/src/sketch3d.rs:281
 msgid "Align lines up with what a plan shows: in the 3D view, drag a line's end or draw it again."
 msgstr "Zarovnání čar probíhá podle toho, co ukazuje půdorys: ve 3D pohledu přetáhněte konec čáry nebo ji nakreslete znovu."
+
+#: crates/ui-egui/src/editor/views.rs:1055
+msgid "Align takes a form's straight edge, a side the view sees edge on, or its end: click on its outline."
+msgstr ""
 
 #: crates/ui-egui/src/lib.rs:3975
 #: crates/ui-egui/src/lib.rs:4919
@@ -830,7 +842,7 @@ msgstr "Architektura"
 
 #: crates/core/src/schedule.rs:194
 #: crates/core/src/schedule.rs:233
-#: crates/ui-egui/src/editor.rs:257
+#: crates/ui-egui/src/editor.rs:268
 msgid "Area"
 msgstr "Plocha"
 
@@ -958,9 +970,9 @@ msgstr ""
 msgid "BIMCraft couldn't start"
 msgstr "Aplikaci BIMCraft se nepodařilo spustit"
 
-#: crates/ui-egui/src/editor.rs:1298
-#: crates/ui-egui/src/editor.rs:1439
-#: crates/ui-egui/src/editor.rs:1458
+#: crates/ui-egui/src/editor.rs:1309
+#: crates/ui-egui/src/editor.rs:1450
+#: crates/ui-egui/src/editor.rs:1469
 #: crates/ui-egui/src/sketch.rs:814
 msgid "BIMCraft family"
 msgstr "Rodina BIMCraft"
@@ -1135,7 +1147,7 @@ msgstr "Černobíle"
 #: crates/ui-egui/src/editor/document.rs:423
 #: crates/ui-egui/src/editor/sketch.rs:1385
 #: crates/ui-egui/src/editor/sketch.rs:1595
-#: crates/ui-egui/src/editor.rs:194
+#: crates/ui-egui/src/editor.rs:205
 msgid "Blend"
 msgstr ""
 
@@ -1309,8 +1321,8 @@ msgstr "Kamera: klikněte na místo, kde stojí její oko, a potom na to, na co 
 #: crates/ui-egui/src/clouds.rs:87
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
-#: crates/ui-egui/src/editor/dimensions.rs:903
-#: crates/ui-egui/src/editor/dimensions.rs:960
+#: crates/ui-egui/src/editor/dimensions.rs:967
+#: crates/ui-egui/src/editor/dimensions.rs:1024
 #: crates/ui-egui/src/editor/document.rs:1546
 #: crates/ui-egui/src/editor/exists.rs:442
 #: crates/ui-egui/src/editor/types_dialog.rs:482
@@ -1318,7 +1330,7 @@ msgstr "Kamera: klikněte na místo, kde stojí její oko, a potom na to, na co 
 #: crates/ui-egui/src/editor/visibility.rs:108
 #: crates/ui-egui/src/editor/work_plane.rs:237
 #: crates/ui-egui/src/editor/work_plane.rs:287
-#: crates/ui-egui/src/editor.rs:1348
+#: crates/ui-egui/src/editor.rs:1359
 #: crates/ui-egui/src/electrical.rs:502
 #: crates/ui-egui/src/filter.rs:115
 #: crates/ui-egui/src/graphics.rs:391
@@ -1379,7 +1391,7 @@ msgstr "Karta: {}"
 msgid "Casement Window"
 msgstr "Křídlové okno"
 
-#: crates/ui-egui/src/editor.rs:922
+#: crates/ui-egui/src/editor.rs:933
 msgid "Casework"
 msgstr "Vestavěný nábytek"
 
@@ -1405,7 +1417,7 @@ msgid "Category name search:"
 msgstr "Hledat název kategorie:"
 
 #: crates/ui-egui/src/editor/types_dialog.rs:593
-#: crates/ui-egui/src/editor.rs:1334
+#: crates/ui-egui/src/editor.rs:1345
 #: crates/ui-egui/src/properties.rs:3091
 msgid "Category:"
 msgstr "Kategorie:"
@@ -1477,8 +1489,8 @@ msgid "Centimetres"
 msgstr "Centimetry"
 
 #: crates/core/src/lines.rs:182
-#: crates/ui-egui/src/editor.rs:1063
-#: crates/ui-egui/src/editor.rs:1097
+#: crates/ui-egui/src/editor.rs:1074
+#: crates/ui-egui/src/editor.rs:1108
 msgid "Centre"
 msgstr "Osa"
 
@@ -2455,7 +2467,7 @@ msgstr ""
 #: crates/ui-egui/src/editor/pivot.rs:281
 #: crates/ui-egui/src/editor/pivot.rs:301
 #: crates/ui-egui/src/editor/sketch.rs:1607
-#: crates/ui-egui/src/editor.rs:1055
+#: crates/ui-egui/src/editor.rs:1066
 #: crates/ui-egui/src/properties.rs:140
 msgid "Constraints"
 msgstr "Vazby"
@@ -2795,7 +2807,7 @@ msgstr "Při načtení oříznout vybráními"
 msgid "Cuts"
 msgstr "Řeže"
 
-#: crates/ui-egui/src/editor.rs:198
+#: crates/ui-egui/src/editor.rs:209
 msgid "Cylinder"
 msgstr "Válec"
 
@@ -2848,7 +2860,7 @@ msgstr "Datová zásuvka"
 msgid "Data Outlet (DT): a data point, where you click on the wall; Space turns it"
 msgstr "Datová zásuvka (DT): datový bod v místě kliknutí na stěně; Mezerník jej otočí"
 
-#: crates/ui-egui/src/editor.rs:933
+#: crates/ui-egui/src/editor.rs:944
 msgid "Data Outlets"
 msgstr "Datové zásuvky"
 
@@ -3080,7 +3092,7 @@ msgid "Detail Level: the forms and symbols each view of the family draws, as the
 msgstr "Úroveň detailu: tvary a symboly, které každý pohled rodiny vykreslí podle jejich nastavení viditelnosti"
 
 #: crates/ui-egui/src/editor/visibility.rs:96
-#: crates/ui-egui/src/editor.rs:1131
+#: crates/ui-egui/src/editor.rs:1142
 msgid "Detail Levels"
 msgstr "Úrovně detailu"
 
@@ -3315,7 +3327,7 @@ msgstr "Vikýř: klikněte na střešní rovinu v místě čelní stěny; střec
 #: crates/core/src/lines.rs:179
 #: crates/ui-egui/src/dimtypes.rs:121
 #: crates/ui-egui/src/editor/document.rs:562
-#: crates/ui-egui/src/editor.rs:1180
+#: crates/ui-egui/src/editor.rs:1191
 msgid "Dot"
 msgstr "Tečkovaná"
 
@@ -3437,8 +3449,8 @@ msgstr "Duplikovat s detaily"
 msgid "Duplicate…"
 msgstr "Duplikovat…"
 
-#: crates/ui-egui/src/editor/dimensions.rs:295
-#: crates/ui-egui/src/editor/dimensions.rs:388
+#: crates/ui-egui/src/editor/dimensions.rs:300
+#: crates/ui-egui/src/editor/dimensions.rs:393
 msgid "EQ"
 msgstr "EQ"
 
@@ -3487,7 +3499,7 @@ msgstr "Zemnicí elektroda"
 msgid "Earthing Electrode (EG): a rod driven down from the level, where you click; Space turns it"
 msgstr "Zemnič (EG): zemnicí tyč zaražená pod úroveň v místě kliknutí; Mezerník prvek otočí"
 
-#: crates/ui-egui/src/editor.rs:931
+#: crates/ui-egui/src/editor.rs:942
 msgid "Earthing Electrodes"
 msgstr "Zemniče"
 
@@ -3659,7 +3671,7 @@ msgid "Editing"
 msgstr "Úpravy"
 
 #: crates/ui-egui/src/editor/extrusion.rs:220
-#: crates/ui-egui/src/editor.rs:1132
+#: crates/ui-egui/src/editor.rs:1143
 #: crates/ui-egui/src/graphics.rs:608
 #: crates/ui-egui/src/graphics.rs:630
 #: crates/ui-egui/src/properties.rs:2107
@@ -3681,7 +3693,7 @@ msgstr "Elektroinstalace"
 msgid "Electrical Ceiling"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:927
+#: crates/ui-egui/src/editor.rs:938
 msgid "Electrical Equipment"
 msgstr "Elektrická zařízení"
 
@@ -3885,7 +3897,7 @@ msgstr "Meze"
 
 #: crates/ui-egui/src/editor/document.rs:419
 #: crates/ui-egui/src/editor/sketch.rs:1593
-#: crates/ui-egui/src/editor.rs:200
+#: crates/ui-egui/src/editor.rs:211
 msgid "Extrusion"
 msgstr "Vysunutí"
 
@@ -3982,7 +3994,7 @@ msgstr "Nastavení viditelnosti prvků rodiny: pohledy a úrovně detailu, ve kt
 msgid "Family Parameters"
 msgstr "Parametry rodiny"
 
-#: crates/ui-egui/src/editor.rs:260
+#: crates/ui-egui/src/editor.rs:271
 msgid "Family Type"
 msgstr ""
 
@@ -4443,7 +4455,7 @@ msgstr "Šířka rámu"
 msgid "Frequency (cycles per segment)"
 msgstr "Frekvence (cyklů na segment)"
 
-#: crates/ui-egui/src/editor.rs:1082
+#: crates/ui-egui/src/editor.rs:1093
 msgid "From (degrees)"
 msgstr "Od (stupně)"
 
@@ -4464,7 +4476,7 @@ msgstr "Úplný"
 msgid "Function"
 msgstr "Funkce"
 
-#: crates/ui-egui/src/editor.rs:921
+#: crates/ui-egui/src/editor.rs:932
 msgid "Furniture"
 msgstr "Nábytek"
 
@@ -4500,7 +4512,7 @@ msgstr "Mezera od prvku"
 msgid "Gate Valve"
 msgstr "Šoupátko"
 
-#: crates/ui-egui/src/editor.rs:938
+#: crates/ui-egui/src/editor.rs:949
 msgid "Generic"
 msgstr "Obecný"
 
@@ -4554,7 +4566,7 @@ msgstr "Grafické segmenty v mm na papíře, opakující se podél osy."
 #: crates/ui-egui/src/editor/document.rs:588
 #: crates/ui-egui/src/editor/extrusion.rs:215
 #: crates/ui-egui/src/editor/nested.rs:299
-#: crates/ui-egui/src/editor.rs:1105
+#: crates/ui-egui/src/editor.rs:1116
 #: crates/ui-egui/src/graphics.rs:537
 msgid "Graphics"
 msgstr "Grafika"
@@ -4636,7 +4648,7 @@ msgid "Heading"
 msgstr "Záhlaví"
 
 #: crates/core/src/family.rs:256
-#: crates/ui-egui/src/editor.rs:1069
+#: crates/ui-egui/src/editor.rs:1080
 #: crates/ui-egui/src/properties.rs:464
 #: crates/ui-egui/src/properties.rs:465
 #: crates/ui-egui/src/properties.rs:470
@@ -4939,7 +4951,7 @@ msgstr "Revizní šachta"
 msgid "Inspection Box (IB): over an electrode, flush with the level, where you click; Space turns it"
 msgstr "Zkušební svorka (IB): nad zemničem, v rovině podlaží v místě kliknutí; Mezerník prvek otočí"
 
-#: crates/ui-egui/src/editor.rs:932
+#: crates/ui-egui/src/editor.rs:943
 msgid "Inspection Boxes"
 msgstr "Zkušební svorky"
 
@@ -4952,7 +4964,7 @@ msgid "Installing BIMCraft {}…"
 msgstr "Instalace aplikace BIMCraft {}…"
 
 #: crates/ui-egui/src/adaptive_editor.rs:725
-#: crates/ui-egui/src/editor/dimensions.rs:947
+#: crates/ui-egui/src/editor/dimensions.rs:1011
 #: crates/ui-egui/src/editor/types_dialog.rs:567
 msgid "Instance"
 msgstr "Instance"
@@ -4986,7 +4998,7 @@ msgstr "Izolace:"
 msgid "Insulation: batt insulation drawn along each line, its width on the Options Bar"
 msgstr "Tepelná izolace: měkká izolace kreslená podél každé čáry, šířka na panelu možností"
 
-#: crates/ui-egui/src/editor.rs:256
+#: crates/ui-egui/src/editor.rs:267
 msgid "Integer"
 msgstr ""
 
@@ -5118,7 +5130,7 @@ msgstr "Kuchyňský dřez"
 msgid "LEFT"
 msgstr ""
 
-#: crates/ui-egui/src/editor/dimensions.rs:1024
+#: crates/ui-egui/src/editor/dimensions.rs:1088
 #: crates/ui-egui/src/electrical.rs:444
 #: crates/ui-egui/src/titleblocks.rs:140
 msgid "Label"
@@ -5173,7 +5185,7 @@ msgstr "Materiál křídla"
 msgid "Leaf Thickness"
 msgstr "Tloušťka křídla"
 
-#: crates/ui-egui/src/editor.rs:1097
+#: crates/ui-egui/src/editor.rs:1108
 #: crates/ui-egui/src/titleblocks.rs:231
 #: crates/ui-egui/src/titleblocks.rs:236
 #: crates/ui-egui/src/titleblocks.rs:459
@@ -5263,7 +5275,7 @@ msgstr "Výkaz podlaží"
 msgid "Light"
 msgstr "Světlý"
 
-#: crates/ui-egui/src/editor.rs:937
+#: crates/ui-egui/src/editor.rs:948
 msgid "Lighting"
 msgstr "Osvětlení"
 
@@ -5812,7 +5824,7 @@ msgid "Membrane"
 msgstr "Hydroizolační fólie"
 
 #: crates/ui-egui/src/editor/extrusion.rs:178
-#: crates/ui-egui/src/editor.rs:193
+#: crates/ui-egui/src/editor.rs:204
 msgid "Mesh"
 msgstr "Mříž"
 
@@ -5832,7 +5844,7 @@ msgstr "Kov"
 msgid "Metres"
 msgstr "Metry"
 
-#: crates/ui-egui/src/editor.rs:1063
+#: crates/ui-egui/src/editor.rs:1074
 msgid "Middle of the text"
 msgstr "Střed textu"
 
@@ -6238,7 +6250,7 @@ msgstr "NEUZAVŘENÝ OBVOD"
 #: crates/ui-egui/src/cad.rs:85
 #: crates/ui-egui/src/clouds.rs:59
 #: crates/ui-egui/src/editor/connectors.rs:223
-#: crates/ui-egui/src/editor/dimensions.rs:941
+#: crates/ui-egui/src/editor/dimensions.rs:1005
 #: crates/ui-egui/src/editor/document.rs:901
 #: crates/ui-egui/src/editor/types_dialog.rs:469
 #: crates/ui-egui/src/editor/work_plane.rs:211
@@ -6296,8 +6308,8 @@ msgstr "Nová výstavba"
 msgid "New Distribution System"
 msgstr "Nová rozvodná soustava"
 
-#: crates/ui-egui/src/editor.rs:745
-#: crates/ui-egui/src/editor.rs:1331
+#: crates/ui-egui/src/editor.rs:756
+#: crates/ui-egui/src/editor.rs:1342
 #: crates/ui-egui/src/start.rs:339
 msgid "New Family"
 msgstr "Nová rodina"
@@ -6471,8 +6483,8 @@ msgstr ""
 #: crates/ui-egui/src/adaptive_editor.rs:271
 #: crates/ui-egui/src/dimtypes.rs:122
 #: crates/ui-egui/src/editor/pivot.rs:283
-#: crates/ui-egui/src/editor.rs:1120
-#: crates/ui-egui/src/editor.rs:1122
+#: crates/ui-egui/src/editor.rs:1131
+#: crates/ui-egui/src/editor.rs:1133
 #: crates/ui-egui/src/plugins.rs:279
 #: crates/ui-egui/src/properties.rs:2022
 #: crates/ui-egui/src/properties.rs:2348
@@ -6595,13 +6607,13 @@ msgstr "Počet pólů"
 #: crates/ui-egui/src/clouds.rs:88
 #: crates/ui-egui/src/dimtypes.rs:318
 #: crates/ui-egui/src/display.rs:82
-#: crates/ui-egui/src/editor/dimensions.rs:961
+#: crates/ui-egui/src/editor/dimensions.rs:1025
 #: crates/ui-egui/src/editor/document.rs:1545
 #: crates/ui-egui/src/editor/types_dialog.rs:483
 #: crates/ui-egui/src/editor/types_dialog.rs:621
 #: crates/ui-egui/src/editor/visibility.rs:109
 #: crates/ui-egui/src/editor/work_plane.rs:238
-#: crates/ui-egui/src/editor.rs:1349
+#: crates/ui-egui/src/editor.rs:1360
 #: crates/ui-egui/src/electrical.rs:503
 #: crates/ui-egui/src/filter.rs:116
 #: crates/ui-egui/src/graphics.rs:392
@@ -6708,7 +6720,7 @@ msgstr "Číslo OmniClass"
 msgid "OmniClass Title"
 msgstr "Název OmniClass"
 
-#: crates/ui-egui/src/editor/dimensions.rs:1042
+#: crates/ui-egui/src/editor/dimensions.rs:1106
 msgid "Only a dimension of one segment takes a label."
 msgstr "Popisek lze přiřadit jen kótě s jedním segmentem."
 
@@ -6873,7 +6885,7 @@ msgstr "Výstup"
 msgid "Outlet"
 msgstr "Zásuvka"
 
-#: crates/ui-egui/src/editor.rs:928
+#: crates/ui-egui/src/editor.rs:939
 msgid "Outlets"
 msgstr "Zásuvky"
 
@@ -6972,7 +6984,7 @@ msgid "Parameter Formula"
 msgstr "Vzorec parametru"
 
 #: crates/ui-egui/src/adaptive_editor.rs:714
-#: crates/ui-egui/src/editor/dimensions.rs:938
+#: crates/ui-egui/src/editor/dimensions.rs:1002
 #: crates/ui-egui/src/editor/types_dialog.rs:525
 msgid "Parameter Properties"
 msgstr "Vlastnosti parametru"
@@ -7014,7 +7026,7 @@ msgstr "Patch panel"
 msgid "Patch Panel (PN): a panel on the wall, where you click; Space turns it"
 msgstr "Propojovací panel (PN): panel na stěně v místě kliknutí; mezerník jej otočí"
 
-#: crates/ui-egui/src/editor.rs:935
+#: crates/ui-egui/src/editor.rs:946
 msgid "Patch Panels"
 msgstr "Propojovací panely"
 
@@ -7189,7 +7201,7 @@ msgstr "Vybrat stěny"
 msgid "Pick Walls: a boundary line along each wall clicked"
 msgstr "Vybrat stěny: hraniční čára podél každé kliknuté stěny"
 
-#: crates/ui-egui/src/editor/views.rs:997
+#: crates/ui-egui/src/editor/views.rs:1000
 msgid "Pick a circle or an arc, then click where the dimension goes."
 msgstr "Vyberte kružnici nebo oblouk a potom klikněte do místa kóty."
 
@@ -7218,7 +7230,7 @@ msgstr "Vybrat čáru a použít pracovní rovinu, ve které byla načrtnuta"
 msgid "Pick a line of the sketch, on the part to keep."
 msgstr "Vyberte čáru skici na části, kterou chcete zachovat."
 
-#: crates/ui-egui/src/editor/views.rs:1004
+#: crates/ui-egui/src/editor/views.rs:1007
 msgid "Pick a line that crosses the one before."
 msgstr "Vyberte čáru, která protíná předchozí."
 
@@ -7243,7 +7255,7 @@ msgstr "Vyberte parametr ze souboru sdílených parametrů."
 msgid "Pick a plane"
 msgstr "Vybrat rovinu"
 
-#: crates/ui-egui/src/editor/views.rs:1030
+#: crates/ui-egui/src/editor/views.rs:1033
 msgid "Pick a plane or a line too: points alone face no way to measure along."
 msgstr "Vyberte také rovinu nebo čáru: samotné body neurčují směr, ve kterém měřit."
 
@@ -7267,7 +7279,7 @@ msgstr ""
 msgid "Pick a reference edge or centre line; the line under the cursor is highlighted."
 msgstr "Vyberte referenční hranu nebo osu; čára pod kurzorem je zvýrazněna."
 
-#: crates/ui-egui/src/editor/views.rs:1020
+#: crates/ui-egui/src/editor/views.rs:1023
 msgid "Pick a reference parallel to the first."
 msgstr "Vyberte referenci rovnoběžnou s první."
 
@@ -7280,7 +7292,7 @@ msgstr "Vyberte v pohledu referenční rovinu, referenční čáru nebo hranu tv
 msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
 msgstr "Vyberte referenční rovinu, referenční čáru nebo čáru a potom čáru skici."
 
-#: crates/ui-egui/src/editor/views.rs:1042
+#: crates/ui-egui/src/editor/views.rs:1056
 msgid "Pick a reference plane, an extrusion's end or a line of a form."
 msgstr "Vyberte referenční rovinu, konec vysunutí nebo čáru tvaru."
 
@@ -7320,7 +7332,7 @@ msgstr "Vyberte stěnu nebo osnovu, podle které se má zrcadlit."
 msgid "Pick a wall, a grid or another line; then one that meets it."
 msgstr "Vyberte stěnu, osnovu nebo jinou čáru; poté čáru, která se s ní protíná."
 
-#: crates/ui-egui/src/editor/views.rs:1013
+#: crates/ui-egui/src/editor/views.rs:1016
 msgid "Pick lines that cross, then click where the dimension goes."
 msgstr "Vyberte protínající se čáry a potom klikněte do místa kóty."
 
@@ -7400,7 +7412,7 @@ msgstr "Vybrat tři body"
 msgid "Pick three points: after OK, click three points on the model, each snapping to a corner near the pointer"
 msgstr "Vybrat tři body: po OK klikněte na tři body modelu, každý se přichytí k rohu poblíž ukazatele"
 
-#: crates/ui-egui/src/editor/views.rs:1032
+#: crates/ui-egui/src/editor/views.rs:1035
 msgid "Pick two references or more, then click where the dimension goes."
 msgstr "Vyberte dvě nebo více referencí a potom klikněte na místo kóty."
 
@@ -7748,7 +7760,7 @@ msgstr "Zařizovací předmět"
 msgid "Plumbing Fixture (PX): a basin, a WC, a sink, a shower or a drain, where you click; Space turns it"
 msgstr "Zařizovací předmět (PX): umyvadlo, WC, dřez, sprcha nebo vpusť v místě kliknutí; mezerník jej otočí"
 
-#: crates/ui-egui/src/editor.rs:923
+#: crates/ui-egui/src/editor.rs:934
 msgid "Plumbing Fixtures"
 msgstr "Zařizovací předměty"
 
@@ -7789,7 +7801,7 @@ msgstr "Bod skici"
 msgid "Point to a wall or a line: the offset goes to the cursor's side. Click to place it."
 msgstr "Najeďte na stěnu nebo čáru: odsazení směřuje na stranu kurzoru. Kliknutím umístěte."
 
-#: crates/ui-egui/src/editor.rs:1057
+#: crates/ui-egui/src/editor.rs:1068
 msgid "Points"
 msgstr "Body"
 
@@ -8052,7 +8064,7 @@ msgstr "Datový rozvaděč (Rack)"
 msgid "Rack (RK): a floor rack, where you click; Space turns it"
 msgstr "Rozvaděč (RK): stojanový rozvaděč v místě kliknutí; mezerník jej otočí"
 
-#: crates/ui-egui/src/editor.rs:936
+#: crates/ui-egui/src/editor.rs:947
 msgid "Racks"
 msgstr "Rozvaděče"
 
@@ -8071,7 +8083,7 @@ msgstr "Radiální kóta: vyberte kruhový sloup, zakřivenou stěnu, kružnici 
 
 #: crates/ui-egui/src/draw.rs:342
 #: crates/ui-egui/src/editor/sketch.rs:1341
-#: crates/ui-egui/src/editor.rs:1069
+#: crates/ui-egui/src/editor.rs:1080
 msgid "Radius"
 msgstr "Poloměr"
 
@@ -8301,7 +8313,7 @@ msgstr "Odebrat"
 msgid "Remove Bars"
 msgstr "Odebrat pruty"
 
-#: crates/ui-egui/src/editor/dimensions.rs:904
+#: crates/ui-egui/src/editor/dimensions.rs:968
 msgid "Remove Constraints"
 msgstr "Odebrat vazby"
 
@@ -8417,7 +8429,7 @@ msgstr ""
 msgid "Replaying instance {} with its exact parameters and placement"
 msgstr ""
 
-#: crates/ui-egui/src/editor/dimensions.rs:951
+#: crates/ui-egui/src/editor/dimensions.rs:1015
 #: crates/ui-egui/src/editor/types_dialog.rs:569
 msgid "Reporting Parameter"
 msgstr "Parametr výkazu"
@@ -8529,7 +8541,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:427
 #: crates/ui-egui/src/editor/sketch.rs:1594
-#: crates/ui-egui/src/editor.rs:199
+#: crates/ui-egui/src/editor.rs:210
 msgid "Revolve"
 msgstr "Rotace"
 
@@ -8537,7 +8549,7 @@ msgstr "Rotace"
 msgid "Revolve: sketch a profile and an axis line on the work plane, turned about the axis"
 msgstr "Rotace: načrtněte na pracovní rovině profil a čáru osy, profil se otočí kolem osy"
 
-#: crates/ui-egui/src/editor.rs:197
+#: crates/ui-egui/src/editor.rs:208
 msgid "Revolved Circle"
 msgstr "Rotační kružnice"
 
@@ -8545,7 +8557,7 @@ msgstr "Rotační kružnice"
 msgid "Ribbon"
 msgstr "Pás karet"
 
-#: crates/ui-egui/src/editor.rs:1097
+#: crates/ui-egui/src/editor.rs:1108
 #: crates/ui-egui/src/titleblocks.rs:233
 #: crates/ui-egui/src/titleblocks.rs:238
 #: crates/ui-egui/src/titleblocks.rs:461
@@ -8793,7 +8805,7 @@ msgstr "Uložit změny v {}?"
 msgid "Save to Favorites"
 msgstr "Uložit do oblíbených"
 
-#: crates/ui-egui/src/editor.rs:1476
+#: crates/ui-egui/src/editor.rs:1487
 #: crates/ui-egui/src/properties.rs:2436
 msgid "Saved {} to your Favorites"
 msgstr "Položka {} byla uložena do vašich oblíbených"
@@ -9305,7 +9317,7 @@ msgid "Silhouettes"
 msgstr "Siluety"
 
 #: crates/core/src/schedule.rs:273
-#: crates/ui-egui/src/editor.rs:1527
+#: crates/ui-egui/src/editor.rs:1538
 msgid "Sill"
 msgstr "Parapet"
 
@@ -9761,7 +9773,7 @@ msgstr "Styl"
 msgid "Styles"
 msgstr "Styly"
 
-#: crates/ui-egui/src/editor.rs:1119
+#: crates/ui-egui/src/editor.rs:1130
 msgid "Subcategory"
 msgstr ""
 
@@ -9822,7 +9834,7 @@ msgstr "Povrch, {}°"
 #: crates/ui-egui/src/editor/document.rs:431
 #: crates/ui-egui/src/editor/sketch.rs:1396
 #: crates/ui-egui/src/editor/sketch.rs:1596
-#: crates/ui-egui/src/editor.rs:195
+#: crates/ui-egui/src/editor.rs:206
 msgid "Sweep"
 msgstr ""
 
@@ -9833,7 +9845,7 @@ msgstr "Tažení: načrtněte nebo vyberte cestu na pracovní rovině, potom k n
 #: crates/ui-egui/src/editor/document.rs:435
 #: crates/ui-egui/src/editor/sketch.rs:1396
 #: crates/ui-egui/src/editor/sketch.rs:1597
-#: crates/ui-egui/src/editor.rs:196
+#: crates/ui-egui/src/editor.rs:207
 msgid "Swept Blend"
 msgstr ""
 
@@ -9861,56 +9873,56 @@ msgstr "Konektor vypínače"
 msgid "Switch Connector: what a switch controls"
 msgstr "Konektor vypínače: co vypínač ovládá"
 
-#: crates/ui-egui/src/editor.rs:929
+#: crates/ui-egui/src/editor.rs:940
 msgid "Switches"
 msgstr "Spínače"
 
-#: crates/ui-egui/src/editor.rs:1064
+#: crates/ui-egui/src/editor.rs:1075
 msgid "Symbol Centre X"
 msgstr "Střed symbolu X"
 
-#: crates/ui-egui/src/editor.rs:1064
+#: crates/ui-egui/src/editor.rs:1075
 msgid "Symbol Centre Y"
 msgstr "Střed symbolu Y"
 
-#: crates/ui-egui/src/editor.rs:1082
+#: crates/ui-egui/src/editor.rs:1093
 msgid "Symbol From"
 msgstr "Symbol od"
 
-#: crates/ui-egui/src/editor.rs:1059
+#: crates/ui-egui/src/editor.rs:1070
 msgid "Symbol Points"
 msgstr "Body symbolu"
 
-#: crates/ui-egui/src/editor.rs:1073
+#: crates/ui-egui/src/editor.rs:1084
 msgid "Symbol Radius"
 msgstr "Poloměr symbolu"
 
-#: crates/ui-egui/src/editor.rs:1127
+#: crates/ui-egui/src/editor.rs:1138
 msgid "Symbol Subcategory"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:1092
+#: crates/ui-egui/src/editor.rs:1103
 msgid "Symbol Text"
 msgstr "Text symbolu"
 
-#: crates/ui-egui/src/editor.rs:1082
+#: crates/ui-egui/src/editor.rs:1093
 msgid "Symbol To"
 msgstr "Symbol do"
 
-#: crates/ui-egui/src/editor.rs:1133
+#: crates/ui-egui/src/editor.rs:1144
 msgid "Symbol Visibility Settings"
 msgstr "Nastavení viditelnosti symbolu"
 
-#: crates/ui-egui/src/editor.rs:1106
+#: crates/ui-egui/src/editor.rs:1117
 msgid "Symbol Visible"
 msgstr "Symbol viditelný"
 
-#: crates/ui-egui/src/editor.rs:1178
+#: crates/ui-egui/src/editor.rs:1189
 msgid "Symbolic Arc"
 msgstr "Symbolický oblouk"
 
 #: crates/ui-egui/src/editor/document.rs:548
-#: crates/ui-egui/src/editor.rs:1181
+#: crates/ui-egui/src/editor.rs:1192
 msgid "Symbolic Line"
 msgstr "Symbolická čára"
 
@@ -10099,9 +10111,9 @@ msgstr ""
 #: crates/core/src/commands.rs:829
 #: crates/core/src/family.rs:355
 #: crates/ui-egui/src/editor/document.rs:558
-#: crates/ui-egui/src/editor.rs:255
-#: crates/ui-egui/src/editor.rs:1091
-#: crates/ui-egui/src/editor.rs:1179
+#: crates/ui-egui/src/editor.rs:266
+#: crates/ui-egui/src/editor.rs:1102
+#: crates/ui-egui/src/editor.rs:1190
 #: crates/ui-egui/src/notes.rs:503
 #: crates/ui-egui/src/titleblocks.rs:197
 #: crates/ui-egui/src/titleblocks.rs:261
@@ -10174,6 +10186,10 @@ msgstr "Nelze vykreslit: poloměr oblouku musí být alespoň polovina vzdáleno
 #: crates/ui-egui/src/presets.rs:146
 msgid "That is as many presets as are kept: delete one first"
 msgstr "Je uložen největší možný počet předvoleb: nejprve jednu odstraňte"
+
+#: crates/ui-egui/src/editor/views.rs:1046
+msgid "That is the reference: pick what moves onto it."
+msgstr ""
 
 #: crates/ui-egui/src/shortcuts.rs:233
 msgid "That is too big to be a shortcuts file."
@@ -10502,7 +10518,7 @@ msgid "This copy has no graphics card it can draw the 3D view on"
 msgstr "Tato instalace nemá grafickou kartu, na které by bylo možné vykreslit 3D pohled"
 
 #: crates/ui-egui/src/editor/sketch.rs:1268
-#: crates/ui-egui/src/editor/views.rs:901
+#: crates/ui-egui/src/editor/views.rs:904
 msgid "This end is tied to a parameter or worked out by a formula: change it in Family Types."
 msgstr "Tento konec je svázán s parametrem nebo vypočten vzorcem: změňte jej v okně Typy rodiny."
 
@@ -10619,7 +10635,7 @@ msgstr ""
 msgid "Title bar"
 msgstr "Záhlaví okna"
 
-#: crates/ui-egui/src/editor.rs:1082
+#: crates/ui-egui/src/editor.rs:1093
 msgid "To (degrees)"
 msgstr "Do (stupně)"
 
@@ -10778,7 +10794,7 @@ msgstr "Dvě položky ({}) mají stejný název: {}."
 
 #: crates/core/src/model.rs:1555
 #: crates/ui-egui/src/adaptive_editor.rs:724
-#: crates/ui-egui/src/editor/dimensions.rs:946
+#: crates/ui-egui/src/editor/dimensions.rs:1010
 #: crates/ui-egui/src/editor/nested.rs:273
 #: crates/ui-egui/src/editor/nested.rs:454
 #: crates/ui-egui/src/editor/types_dialog.rs:566
@@ -10852,7 +10868,7 @@ msgstr "Typ:"
 msgid "UP"
 msgstr "NAHORU"
 
-#: crates/ui-egui/src/editor.rs:259
+#: crates/ui-egui/src/editor.rs:270
 msgid "URL"
 msgstr ""
 
@@ -11184,8 +11200,8 @@ msgstr "Přepsání viditelnosti/zobrazení pro {}"
 #: crates/ui-egui/src/editor/extrusion.rs:216
 #: crates/ui-egui/src/editor/extrusion.rs:288
 #: crates/ui-egui/src/editor/nested.rs:300
-#: crates/ui-egui/src/editor.rs:991
-#: crates/ui-egui/src/editor.rs:1112
+#: crates/ui-egui/src/editor.rs:1002
+#: crates/ui-egui/src/editor.rs:1123
 msgid "Visible"
 msgstr "Viditelný"
 
@@ -11206,7 +11222,7 @@ msgstr "Telefonní zásuvka"
 msgid "Voice Outlet (VO): a telephone point, where you click on the wall; Space turns it"
 msgstr "Telefonní zásuvka (VO): telefonní přípojka v místě kliknutí na stěnu; Mezerník ji otočí"
 
-#: crates/ui-egui/src/editor.rs:934
+#: crates/ui-egui/src/editor.rs:945
 msgid "Voice Outlets"
 msgstr "Telefonní zásuvky"
 
@@ -11282,7 +11298,7 @@ msgid "Voltages"
 msgstr "Napětí"
 
 #: crates/core/src/schedule.rs:213
-#: crates/ui-egui/src/editor.rs:258
+#: crates/ui-egui/src/editor.rs:269
 msgid "Volume"
 msgstr "Objem"
 
@@ -11607,7 +11623,7 @@ msgstr ""
 msgid "Yes"
 msgstr "Ano"
 
-#: crates/ui-egui/src/editor.rs:253
+#: crates/ui-egui/src/editor.rs:264
 msgid "Yes/No"
 msgstr "Ano/Ne"
 
@@ -11722,11 +11738,11 @@ msgstr "`{}` není úhel"
 msgid "a datum stays: it can't be deleted"
 msgstr "základní prvek zůstává: nelze jej odstranit"
 
-#: crates/ui-egui/src/editor.rs:799
+#: crates/ui-egui/src/editor.rs:810
 msgid "a family needs a name"
 msgstr "rodina musí mít název"
 
-#: crates/ui-egui/src/editor.rs:842
+#: crates/ui-egui/src/editor.rs:853
 msgid "a family needs a type"
 msgstr "rodina musí mít typ"
 
@@ -11742,7 +11758,7 @@ msgstr "délka"
 msgid "a number"
 msgstr "číslo"
 
-#: crates/ui-egui/src/editor/dimensions.rs:982
+#: crates/ui-egui/src/editor/dimensions.rs:1046
 msgid "a parameter needs a name"
 msgstr "parametr musí mít název"
 
@@ -12156,7 +12172,7 @@ msgstr "otvor musí zůstat na své stěně"
 msgid "the plane can't go while {} is drawn on it"
 msgstr "rovinu nelze odstranit, dokud je na ní nakresleno {}"
 
-#: crates/ui-egui/src/editor/dimensions.rs:985
+#: crates/ui-egui/src/editor/dimensions.rs:1049
 msgid "there's a parameter `{}` already"
 msgstr "parametr `{}` již existuje"
 
@@ -12179,7 +12195,7 @@ msgstr "zde není žádná složka pro ukládání oblíbených položek"
 msgid "this tool works in plan views: open one from the Project Browser"
 msgstr "tento nástroj funguje v půdorysných pohledech: otevřete některý z Prohlížeče projektu"
 
-#: crates/ui-egui/src/editor.rs:758
+#: crates/ui-egui/src/editor.rs:769
 msgid "two types are named `{}`"
 msgstr "dva typy mají název `{}`"
 
@@ -12199,7 +12215,7 @@ msgstr "šablona pohledu"
 msgid "visual styles are for the 3D view: open it from the Project Browser"
 msgstr "vizuální styly jsou určeny pro 3D pohled: otevřete jej z Prohlížeče projektu"
 
-#: crates/ui-egui/src/editor.rs:202
+#: crates/ui-egui/src/editor.rs:213
 msgid "void"
 msgstr "vybrání"
 
@@ -12485,7 +12501,7 @@ msgstr "{}: `{}` není platná délka"
 msgid "{}: `{}` is not a number"
 msgstr "{}: `{}` není číslo"
 
-#: crates/ui-egui/src/editor.rs:299
+#: crates/ui-egui/src/editor.rs:310
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` není číslo"
 

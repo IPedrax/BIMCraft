@@ -6967,6 +6967,8 @@ fn adaptive_editor_visual_preview_in_three_looks() {
 mod background_grid;
 
 mod extrusion_properties;
+mod family_align_forms;
+mod family_align_turn;
 mod family_already_exists;
 mod family_angles;
 mod family_blend;
