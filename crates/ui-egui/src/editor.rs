@@ -585,7 +585,11 @@ pub(crate) struct Asked {
     pub(crate) ok: bool,
     /// Close, forgetting what was not loaded.
     pub(crate) cancel: bool,
+    /// Save Family and Save As (File > Save Family As…, Ctrl+Shift+S): the family to a file asked for.
     pub(crate) save: bool,
+    /// Save on a family tab (the Quick Access Toolbar's Save, File > Save Family, Ctrl+S): to the document's file, without
+    /// asking, once it has one; asked for, as `save`, until then.
+    pub(crate) save_in_place: bool,
     pub(crate) favorite: bool,
     pub(crate) load: bool,
     /// The document's own Undo and Redo, done when the frame ends.
@@ -1433,7 +1437,22 @@ impl BimApp {
             return;
         };
         let base = Arc::clone(&self.session.model);
-        let Asked { capture: capture_context, place: place_adaptive, apply_placement, apply, ok, cancel, save, favorite, load, .. } = ask;
+        let Asked {
+            capture: capture_context,
+            place: place_adaptive,
+            apply_placement,
+            apply,
+            ok,
+            cancel,
+            save,
+            save_in_place,
+            favorite,
+            load,
+            ..
+        } = ask;
+        // Save writes to the document's file once it has one (opened from it, or saved to it), else asks as Save As does.
+        let in_place = if save { None } else { self.doc(doc).and_then(|d| d.path.clone()).filter(|_| save_in_place) };
+        let save = save || save_in_place;
         let capture_sources = self.capture_sources();
         if capture_context && let Some(value) = self.run("adaptive_capture", json!({"sources":capture_sources})) {
             match serde_json::from_value(value) {
@@ -1464,18 +1483,19 @@ impl BimApp {
                 Ok(mut draft) => {
                     let name = ed.name.trim().to_string();
                     let saved = ed.draft();
-                    if save {
+                    if let Some(path) = in_place {
+                        match draft.execute("family", &json!({"name":name,"save":path.to_string_lossy()})) {
+                            Ok(_) => ed.saved_as(saved),
+                            Err(text) => self.status = Status { text, error: true },
+                        }
+                    } else if save {
                         let dialog =
                             rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]).set_file_name(format!("{name}.json"));
                         self.ask_file(ctx, dialog, true, move |app, path| {
                             match draft.execute("family", &json!({"name":name,"save":path.to_string_lossy()})) {
                                 // Still open, the document that saved has nothing unsaved but what changed meanwhile, whichever
-                                // tab is active; closed, the file is all there is.
-                                Ok(_) => {
-                                    if let Some(open) = app.family_of_mut(doc) {
-                                        open.saved_as(saved);
-                                    }
-                                }
+                                // tab is active, and Save writes to this file from now on; closed, the file is all there is.
+                                Ok(_) => app.family_saved_to(doc, saved, path),
                                 Err(text) => app.status = Status { text, error: true },
                             }
                         });

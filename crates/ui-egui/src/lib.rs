@@ -1980,25 +1980,15 @@ impl BimApp {
         }
     }
 
-    fn keys(&mut self, ctx: &Context) {
-        // A note being written takes the keys, but for a field's that has them; another tool finishes it.
-        if self.note_edit.is_some() {
-            if !matches!(self.tool, Tool::Text | Tool::Modify) {
-                self.finish_note();
-            } else if !ctx.egui_wants_keyboard_input() && self.text_type_dialog.is_none() {
-                self.note_keys(ctx);
-                return;
-            }
-        }
-        // A dialog takes the keys while it's open.
-        if self.type_dialog.is_some()
+    /// Whether a dialog, Find or a menu has the keys: the window's shortcuts wait.
+    pub(crate) fn keys_taken(&self, ctx: &Context) -> bool {
+        self.type_dialog.is_some()
             || self.text_type_dialog.is_some()
             || self.dimension_type_dialog.is_some()
             || self.dimension_text_dialog.is_some()
             || self.materials_dialog.is_some()
             || self.family_dialog.is_some()
             || self.favorites_dialog.is_some()
-            || self.active_family().is_some()
             || self.parameters_dialog.is_some()
             || self.schedule_dialog.is_some()
             || self.vg_dialog.is_some()
@@ -2031,7 +2021,20 @@ impl BimApp {
             || self.report_open()
             // An open menu takes the keys: Esc closes it, not the tool.
             || egui::Popup::is_any_open(ctx)
-        {
+    }
+
+    fn keys(&mut self, ctx: &Context) {
+        // A note being written takes the keys, but for a field's that has them; another tool finishes it.
+        if self.note_edit.is_some() {
+            if !matches!(self.tool, Tool::Text | Tool::Modify) {
+                self.finish_note();
+            } else if !ctx.egui_wants_keyboard_input() && self.text_type_dialog.is_none() {
+                self.note_keys(ctx);
+                return;
+            }
+        }
+        // A dialog takes the keys while it's open, and a family document's tab has its own (`family_keys`).
+        if self.keys_taken(ctx) || self.active_family().is_some() {
             return;
         }
         let pressed = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_key(m, k));
@@ -3366,8 +3369,13 @@ impl BimApp {
                 if icon_button(ui, Icon::Open, "Open").clicked() {
                     self.guard(Pending::Open, &ctx);
                 }
+                // On a family tab, the family document's Save, as Revit saves the active document: never the project.
                 if icon_button(ui, Icon::Save, "Save").clicked() {
-                    self.save(&ctx, None);
+                    if self.active_family().is_some() {
+                        self.family_save(false);
+                    } else {
+                        self.save(&ctx, None);
+                    }
                 }
                 ui.separator();
                 ui.spacing_mut().item_spacing.x = 0.0;
@@ -3729,11 +3737,22 @@ impl BimApp {
             }
         });
         self.recent_menu(ui, ctx);
-        if item(ui, "Save", cmd(Key::S)) {
-            self.save(ctx, None);
-        }
-        if item(ui, msg!("Save As…"), Some(KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::S))) {
-            self.save_as(ctx, None);
+        // On a family tab, Save and Save As are the family document's, and say so: the project is never saved from there.
+        let save_as = Some(KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::S));
+        if self.active_family().is_some() {
+            if item(ui, msg!("Save Family"), cmd(Key::S)) {
+                self.family_save(false);
+            }
+            if item(ui, msg!("Save Family As…"), save_as) {
+                self.family_save(true);
+            }
+        } else {
+            if item(ui, "Save", cmd(Key::S)) {
+                self.save(ctx, None);
+            }
+            if item(ui, msg!("Save As…"), save_as) {
+                self.save_as(ctx, None);
+            }
         }
         if !self.autosave.candidates.is_empty() && item(ui, msg!("Recover Autosave…"), None) {
             self.autosave.show_recovery = true;

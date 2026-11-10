@@ -204,3 +204,146 @@ fn a_document_closed_before_the_answer_leaves_the_other_as_it_was() {
     assert!(nested_names(&h, crate_id).is_empty(), "nothing loaded into Crate");
     assert!(!unsaved(&h, crate_id));
 }
+
+/// Whether no file dialog is waiting for an answer.
+fn no_dialog_begun() -> bool {
+    crate::dialog::BEGUN.with(|b| b.borrow().is_empty())
+}
+
+/// The project saved to `dir/House.bimcraft`, then changed so it is unsaved; Box open as a document, renamed `name`. The
+/// project's file and what it held when saved.
+fn saved_project_and_a_changed_family(dir: &std::path::Path, name: &str) -> (Harness<'static, BimApp>, std::path::PathBuf, Vec<u8>) {
+    let mut h = app(&format!("{BOX}\n{FAMILIES}"));
+    h.set_size(vec2(1600.0, 1000.0));
+    h.run();
+    let project = dir.join("House.bimcraft");
+    assert!(h.state_mut().save_to(&project));
+    let held = std::fs::read(&project).unwrap();
+    h.state_mut().run("wall", json!({"points": [[0, 8000], [4000, 8000]]}));
+    assert!(h.state().dirty());
+    h.state_mut().edit_family("Box");
+    h.run();
+    rename(&mut h, name);
+    (h, project, held)
+}
+
+/// What a family file at `path` names its family.
+fn name_in(path: &std::path::Path) -> String {
+    let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+    v["name"].as_str().unwrap_or_default().to_string()
+}
+
+#[test]
+fn save_on_a_family_tab_saves_the_family_and_never_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    // The Quick Access Toolbar's Save.
+    let (mut h, project, held) = saved_project_and_a_changed_family(dir.path(), "Box Q");
+    let doc = h.state().active_doc().unwrap();
+    press(&mut h, "Save");
+    let file = dir.path().join("Box Q.json");
+    answer(&mut h, &file);
+    assert_eq!(name_in(&file), "Box Q", "the family's file written");
+    assert!(!unsaved(&h, doc), "the document is clean");
+    assert_eq!(std::fs::read(&project).unwrap(), held, "the project's file as it was");
+    assert!(h.state().dirty(), "the project still unsaved");
+    // Saved once, it has a file: Save writes there without asking.
+    rename(&mut h, "Box R");
+    press(&mut h, "Save");
+    assert!(no_dialog_begun(), "nothing asked");
+    assert_eq!(name_in(&file), "Box R");
+    assert!(!unsaved(&h, doc));
+    assert_eq!(std::fs::read(&project).unwrap(), held);
+    // File > Save Family: the same.
+    rename(&mut h, "Box S");
+    let keys = |h: &Harness<BimApp>, m| h.ctx.format_shortcut(&egui::KeyboardShortcut::new(m, Key::S));
+    press(&mut h, "File");
+    let item = format!("Save Family {}", keys(&h, Modifiers::COMMAND));
+    press(&mut h, &item);
+    assert!(no_dialog_begun());
+    assert_eq!(name_in(&file), "Box S");
+    assert!(!unsaved(&h, doc));
+    // File > Save Family As…: asked, always.
+    rename(&mut h, "Box T");
+    press(&mut h, "File");
+    let item = format!("Save Family As… {}", keys(&h, Modifiers::COMMAND | Modifiers::SHIFT));
+    press(&mut h, &item);
+    let other = dir.path().join("Box T.json");
+    answer(&mut h, &other);
+    assert_eq!(name_in(&other), "Box T");
+    assert_eq!(name_in(&file), "Box S", "the first file left as it was");
+    assert!(!unsaved(&h, doc));
+    assert_eq!(std::fs::read(&project).unwrap(), held, "the project's file as it was");
+    assert!(h.state().dirty(), "the project still unsaved");
+}
+
+#[test]
+fn ctrl_s_on_a_family_tab_saves_the_family_and_never_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut h, project, held) = saved_project_and_a_changed_family(dir.path(), "Box K");
+    let doc = h.state().active_doc().unwrap();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    h.run();
+    let file = dir.path().join("Box K.json");
+    answer(&mut h, &file);
+    assert_eq!(name_in(&file), "Box K");
+    assert!(!unsaved(&h, doc));
+    assert_eq!(std::fs::read(&project).unwrap(), held);
+    assert!(h.state().dirty());
+    // Again, to the same file without asking.
+    rename(&mut h, "Box L");
+    h.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    h.run();
+    assert!(no_dialog_begun());
+    assert_eq!(name_in(&file), "Box L");
+    assert!(!unsaved(&h, doc));
+    // Ctrl+Shift+S asks.
+    h.key_press_modifiers(Modifiers::COMMAND | Modifiers::SHIFT, Key::S);
+    h.run();
+    let other = dir.path().join("Box M.json");
+    answer(&mut h, &other);
+    assert_eq!(name_in(&other), "Box L");
+    assert_eq!(std::fs::read(&project).unwrap(), held);
+    assert!(h.state().dirty());
+}
+
+#[test]
+fn a_family_opened_from_a_file_saves_there_without_asking() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = stool(dir.path(), "Stool.json", 400);
+    let mut h = app(BOX);
+    h.set_size(vec2(1600.0, 1000.0));
+    h.run();
+    h.state_mut().open_family_file(&file);
+    h.run();
+    let doc = h.state().active_doc().expect("Stool open");
+    rename(&mut h, "Stool B");
+    assert!(unsaved(&h, doc));
+    h.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    h.run();
+    assert!(no_dialog_begun(), "nothing asked");
+    assert_eq!(name_in(&file), "Stool B");
+    assert!(!unsaved(&h, doc));
+    assert!(h.state().session.path.is_none(), "the project never saved");
+}
+
+#[test]
+fn save_on_a_project_tab_still_saves_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let (mut h, project, held) = saved_project_and_a_changed_family(dir.path(), "Box P");
+    let doc = h.state().active_doc().unwrap();
+    press(&mut h, "Level 1");
+    assert!(h.state().active_doc().is_none());
+    press(&mut h, "Save");
+    assert!(no_dialog_begun());
+    assert_ne!(std::fs::read(&project).unwrap(), held, "the project's file written");
+    assert!(!h.state().dirty());
+    assert!(unsaved(&h, doc), "the family's draft left as it was");
+    // And Ctrl+S.
+    h.state_mut().run("wall", json!({"points": [[0, 9000], [4000, 9000]]}));
+    assert!(h.state().dirty());
+    h.key_press_modifiers(Modifiers::COMMAND, Key::S);
+    h.run();
+    assert!(no_dialog_begun());
+    assert!(!h.state().dirty());
+    assert!(unsaved(&h, doc));
+}

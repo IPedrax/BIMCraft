@@ -12,6 +12,9 @@
 //! one first, asking the same. File > New, Open, Close and quitting ask for each unsaved document before the project's own
 //! question. A family is never open twice: Edit Family on one whose document is open, or opening a file that is open, brings
 //! that document's last tab forward.
+//!
+//! Save and Save As on a family tab are the document's (`family_save`): Save writes to its file once it has one
+//! (`FamilyDoc::path`, set when it is saved), else asks; the project is never saved from a family tab.
 use super::*;
 use crate::{Pending, Sheet};
 use std::path::PathBuf;
@@ -140,6 +143,16 @@ impl BimApp {
         if let Some(sheet) = last.or_else(|| shown.map(|v| Sheet::Family(id, v))) {
             self.open_sheet(sheet);
         }
+    }
+
+    /// Document `id` saved to file `path` as draft `saved`: clean as against it, and its file from now on, which Save writes
+    /// to without asking. Nothing, when it was closed meanwhile.
+    pub(super) fn family_saved_to(&mut self, id: DocId, saved: super::document::Draft, path: PathBuf) {
+        let Some(d) = self.doc_mut(id) else { return };
+        if let Some(ed) = d.ed.as_mut() {
+            ed.saved_as(saved);
+        }
+        d.path = Some(path);
     }
 
     /// The document whose family is the project's `name`, opened from it; none open.

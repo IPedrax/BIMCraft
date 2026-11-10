@@ -130,7 +130,10 @@ Load into Project and Close goes back to the tab it was opened from. Edit Family
 a file that is, brings that document forward: a family is never open twice. A new blank family is "Family1", "Family2" and so
 on. A nested family's document (Edit Family in a family) reads Load into Family; it loads into the document it came from. A
 family opened from the start page with no project behind it shows no project tabs until something is loaded into the blank
-project. Family tabs neither float nor tile. Properties show what is selected, as Revit's do: nothing
+project. Family tabs neither float nor tile. On a family tab, Save (the Quick Access Toolbar's, File > Save Family, Ctrl+S) and
+Save As (File > Save Family As…, Ctrl+Shift+S) are the document's, as Revit saves the active document: the project is never
+saved from a family tab. Save writes to the document's file once it has one (opened from it, or saved to it once,
+`FamilyDoc::path`) and asks otherwise; Save As always asks. Either leaves the document clean. Properties show what is selected, as Revit's do: nothing
 selected, the family's own (Identity Data, then Family Category and Parameters' Other group); a form, a symbol, a reference
 plane or line, a dimension or a nested instance, its own. The forms and the plan symbols of a family that isn't adaptive are
 listed in the Project Browser (Forms and Symbols, `family_browser`): a click selects one, and its right-click menu has Select,

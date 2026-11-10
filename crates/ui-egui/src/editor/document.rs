@@ -1430,11 +1430,35 @@ impl BimApp {
         }
     }
 
-    /// The family document's keys: Ctrl+Z undoes a step of its own, Ctrl+Y and Ctrl+Shift+Z redo one, and the two letters of
-    /// Temporary Hide/Isolate (`temp_hide.rs`), unless a field being typed in (whose own they are) or a dialog has them.
+    /// Save and Save As on a family tab (the Quick Access Toolbar's Save, File > Save Family and Save Family As…, Ctrl+S and
+    /// Ctrl+Shift+S): the active family document to its file, as Revit saves the active document; the project never.
+    pub(crate) fn family_save(&mut self, ask: bool) {
+        if let Some(ed) = self.active_family_mut() {
+            if ask {
+                ed.ask.save = true;
+            } else {
+                ed.ask.save_in_place = true;
+            }
+        }
+    }
+
+    /// The family document's keys: Ctrl+S saves it (Ctrl+Shift+S asks where), Ctrl+Z undoes a step of its own, Ctrl+Y and
+    /// Ctrl+Shift+Z redo one, and the two letters of Temporary Hide/Isolate (`temp_hide.rs`), unless a field being typed in
+    /// (whose own they are) or a dialog has them; Ctrl+S works while a field has the keyboard, as on a project's tab.
     pub(crate) fn family_keys(&mut self, ctx: &Context) {
         let Some(ed) = self.active_family() else { return };
-        if ed.modal() || ctx.text_edit_focused() {
+        if ed.modal() {
+            return;
+        }
+        if !self.keys_taken(ctx) {
+            let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
+            if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::S) {
+                self.family_save(true);
+            } else if pressed(egui::Modifiers::COMMAND, egui::Key::S) {
+                self.family_save(false);
+            }
+        }
+        if ctx.text_edit_focused() {
             return;
         }
         // Letters typed, but not while a menu has the keys.
