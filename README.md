@@ -205,7 +205,7 @@ transparent), in hidden line and in wireframe too, and point clouds. Sections an
 - **A real building model.** Doors and windows live in their walls, rooms find their boundaries from the walls around
   them, walls joined at a corner stay joined when one moves, dimensions and tags follow what they measure and name, and
   every change is checked against the model's rules and can be undone.
-- **Open files.** IFC2x3 and IFC4 come in from Revit and other BIM tools, and IFC4 goes back out, checked with
+- **Open files.** IFC2x3 and IFC4 come in from Revit and other BIM tools, and IFC4, IFC4.3 and IFC2x3 go back out, checked with
   IfcOpenShell. Sheets print to PDF; any view saves as PNG, plans as SVG. Revit's own `.rvt` format has no public
   specification; `bimcraft-cli` reads a `.rvt` file with a reader fenced in [docs/rvt-provenance.md](docs/rvt-provenance.md):
   `info` shows its release, levels and element counts by category, and `run` and `convert` (and the MCP server's `open`) import
