@@ -1192,6 +1192,39 @@ fn dimension_pick(m: &Model, refs: &[Reference], id: Id, p: P2, near: f64) -> Op
     reference_for(m, DimKind::Aligned, refs.iter().find(|r| r.point.is_none()), id, p, near)
 }
 
+/// The references of element `id` a dimension after `refs` may take at `p`, nearest first, apart from those it has already:
+/// its corners and ends, and its lines parallel to the first line picked. What Tab steps through as the pointer is over an
+/// element, so the one a click would take is seen before it is.
+fn dimension_references(m: &Model, refs: &[Reference], id: Id, p: P2, near: f64) -> Vec<Reference> {
+    let first = refs.iter().find(|r| r.point.is_none()).and_then(|r| m.reference_line(r).ok());
+    let mut out: Vec<(f64, Reference)> = Vec::new();
+    for (r, q) in m.reference_points(id) {
+        if refs.contains(&r) {
+            continue;
+        }
+        let d = q.dist(p);
+        if d <= near {
+            out.push((d, r));
+        }
+    }
+    for (r, l) in m.reference_lines(id) {
+        if refs.contains(&r) {
+            continue;
+        }
+        if let Some((a, b)) = first
+            && !geom::parallel(a, b, l.0, l.1)
+        {
+            continue;
+        }
+        let d = geom::dist_to_segment(p, l.0, l.1);
+        if d <= near {
+            out.push((d, r));
+        }
+    }
+    out.sort_by(|a, b| a.0.total_cmp(&b.0));
+    out.into_iter().map(|(_, r)| r).collect()
+}
+
 /// Of element `id`'s lines that a dimension of `kind` can take after `first` (for an aligned one,
 /// parallel to it; for an angular one, across it), the nearest `p`, if it's within `near` mm: a
 /// wall's far end isn't picked by a click on its middle.
@@ -1547,11 +1580,47 @@ impl BimApp {
             });
         }
         let tabbed = std::mem::take(&mut self.tab_cycle) || tab;
+        // A dimension being picked or edited: Tab steps through the references of the element under the cursor, so the one a
+        // click takes is seen first: its corners and ends, and its faces and centre lines.
+        let reference_refs: Option<Vec<Reference>> = match (&self.dimension_refs_edit, &self.tool) {
+            (Some(edit), _) => Some(edit.refs.clone()),
+            (None, Tool::Dimension(_, refs)) => Some(refs.clone()),
+            _ => None,
+        };
+        let element_under =
+            local.and_then(|q| d.pick_all(q, PICK).into_iter().find(|id| !matches!(model.elements.get(*id), Some(Element::Dimension(_)))));
+        let reference_context: Option<(Id, Vec<Reference>)> = match (local, reference_refs, element_under) {
+            (Some(q), Some(refs), Some(id)) => {
+                let candidates = dimension_references(&model, &refs, id, view.mm(q), 2.0 * f64::from(PICK) / view.scale);
+                (!candidates.is_empty()).then_some((id, candidates))
+            }
+            _ => None,
+        };
+        if self
+            .dimension_reference_hover
+            .as_ref()
+            .is_some_and(|(id, r)| !reference_context.as_ref().is_some_and(|(held, cands)| held == id && cands.contains(r)))
+        {
+            self.dimension_reference_hover = None;
+        }
+        let mut reference_tabbed = false;
+        if tabbed && let Some((id, candidates)) = &reference_context {
+            let next = match &self.dimension_reference_hover {
+                Some((held, r)) if held == id => {
+                    let i = candidates.iter().position(|x| x == r).unwrap_or(0);
+                    candidates[(i + 1) % candidates.len()]
+                }
+                _ => candidates[0],
+            };
+            self.dimension_reference_hover = Some((*id, next));
+            reference_tabbed = true;
+        }
         if self.dimension_segment_hover.is_some_and(|(id, _)| Some(id) != dim_under) {
             self.dimension_segment_hover = None;
         }
         let mut segment_tabbed = false;
-        if tabbed
+        if !reference_tabbed
+            && tabbed
             && let Some(id) = dim_under
             && let Some(Element::Dimension(d)) = model.elements.get(id)
         {
@@ -1567,7 +1636,7 @@ impl BimApp {
                 segment_tabbed = true;
             }
         }
-        if tabbed && !segment_tabbed && !c.under.is_empty() {
+        if tabbed && !reference_tabbed && !segment_tabbed && !c.under.is_empty() {
             c.cycle = (c.cycle + 1) % c.under.len();
         }
         // While a rectangle is drawn, Tab moves between its width and its height; a line's or a wall's, its length and its angle.
@@ -2082,6 +2151,12 @@ impl BimApp {
     fn dragged(&self, m: &Model, v: &View, from: P2, to: P2) -> P2 {
         let by = round(to - from);
         let &[id] = self.selection.as_slice() else { return by };
+        // A dimension's line moves only square to itself, as far as the drag goes that way: along it, it stays put.
+        if let Some(Element::Dimension(d)) = m.elements.get(id) {
+            let (n, _) = m.crossings(d);
+            let off = n.perp();
+            return if off.length() > 1e-9 { off * by.dot(off) } else { P2(0.0, 0.0) };
+        }
         let Some(Element::Door(o) | Element::Window(o)) = m.elements.get(id) else { return by };
         let Some(w) = m.wall(o.host).filter(|w| w.arc == 0.0) else { return by };
         let u = (w.end - w.start).unit();
@@ -2288,7 +2363,13 @@ impl BimApp {
             // its mode says.
             Tool::Dimension(mode, refs) => {
                 let (mode, mut refs) = (*mode, refs.clone());
-                match hovered.and_then(|id| dimension_pick(m, &refs, id, v.mm(at), 2.0 * f64::from(PICK) / v.scale)) {
+                let picked = self
+                    .dimension_reference_hover
+                    .filter(|(id, _)| Some(*id) == hovered)
+                    .map(|(_, r)| r)
+                    .or_else(|| hovered.and_then(|id| dimension_pick(m, &refs, id, v.mm(at), 2.0 * f64::from(PICK) / v.scale)));
+                self.dimension_reference_hover = None;
+                match picked {
                     Some(r) => {
                         // A reference picked again is taken out, as Revit's dimension tool does.
                         if let Some(i) = refs.iter().position(|x| *x == r) {
@@ -3530,10 +3611,11 @@ impl BimApp {
 
     /// A selected element's dimensions, each number picked as [`dimension_highlights`](Self::dimension_highlights) says.
     fn dimension_overlays(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, key: Id) {
+        self.dimension_reference_highlight(ui, m, v, rect);
         if let Some(edit) = &self.dimension_refs_edit {
             // The references picked so far, each marked where it crosses the line being edited.
             if let Some(Element::Dimension(old)) = m.elements.get(edit.id) {
-                let d = Dimension { refs: edit.refs.clone(), at: edit.at, ..old.clone() };
+                let d = Dimension { refs: edit.refs.clone(), ..old.clone() };
                 let (_, st) = m.stations(&d);
                 let p = ui.painter_at(rect);
                 for (_, _, r) in st {
@@ -3542,7 +3624,7 @@ impl BimApp {
                         p.circle_stroke(c, 7.0, Stroke::new(2.0, pal().accent));
                     }
                 }
-                let line = pos(rect.min, v.px(edit.at));
+                let line = pos(rect.min, v.px(old.at));
                 p.circle_filled(line, 4.0, pal().accent);
             }
             return;
@@ -3610,6 +3692,18 @@ impl BimApp {
         }
     }
 
+    /// The reference Tab picked on the element under the cursor, drawn over the plan: a line brightened, or a corner ringed.
+    fn dimension_reference_highlight(&self, ui: &Ui, m: &Model, v: &View, rect: Rect) {
+        let Some((_, r)) = self.dimension_reference_hover else { return };
+        let Ok((a, b)) = m.reference_geometry(&r) else { return };
+        let p = ui.painter_at(rect);
+        if a.dist(b) > 1e-9 {
+            p.line_segment([pos(rect.min, v.px(a)), pos(rect.min, v.px(b))], Stroke::new(3.5, pal().accent));
+        } else {
+            p.circle_stroke(pos(rect.min, v.px(a)), 6.0, Stroke::new(2.0, pal().accent));
+        }
+    }
+
     /// The segment Tab picked, or a click selected, drawn over the dimension line: brighter while it is the picked one.
     fn dimension_segment_highlight(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect) {
         let Some((id, segment)) = self.dimension_segment.or(self.dimension_segment_hover) else { return };
@@ -3635,57 +3729,52 @@ impl BimApp {
             return;
         }
         self.tool = Tool::Modify;
+        self.dimension_reference_hover = None;
         self.dimension_refs_edit = Some(DimensionRefsEdit { id, refs: d.refs.clone(), at: d.at });
     }
 
     /// Confirms Edit Dimension References: one command, one undo step; nothing while fewer than two references are left.
     pub(crate) fn commit_dimension_refs(&mut self) {
         let Some(edit) = self.dimension_refs_edit.take() else { return };
+        self.dimension_reference_hover = None;
         if edit.refs.len() < 2 {
             self.status = Status { text: bimcraft_i18n::msg!("A dimension has two references at least.").to_string(), error: true };
             return;
         }
-        if self.run("dimension", json!({"id": edit.id, "refs": edit.refs, "at": point(edit.at)})).is_none() {
+        // The line may have been dragged while its references were picked: commit where the dimension is now.
+        let at = match self.session.model.elements.get(edit.id) {
+            Some(Element::Dimension(d)) => d.at,
+            _ => edit.at,
+        };
+        if self.run("dimension", json!({"id": edit.id, "refs": edit.refs, "at": point(at)})).is_none() {
             self.dimension_refs_edit = Some(edit);
         }
     }
 
-    /// A click while editing a dimension's references: one picked again goes, another is added, and a click away fixes
-    /// the dimension line and confirms.
+    /// A click while editing a dimension's references: one picked again goes, another is added; a click in the open leaves
+    /// the line where it is. Enter confirms, Esc cancels.
     fn dimension_refs_click(&mut self, m: &Model, _key: Id, v: &View, at: (f32, f32), hovered: Option<Id>) {
         let Some(mut edit) = self.dimension_refs_edit.take() else { return };
         let q = v.mm(at);
-        // An element already measured to is taken out by a click on it, wherever on it the click fell.
-        let near = |r: &Reference| m.reference_geometry(r).map_or(f64::INFINITY, |(a, b)| geom::dist_to_segment(q, a, b));
-        let bound = hovered.and_then(|element| {
-            edit.refs
-                .iter()
-                .enumerate()
-                .filter(|(_, r)| m.elements.id(r.id) == Some(element))
-                .min_by(|(_, a), (_, b)| near(a).total_cmp(&near(b)))
-                .map(|(i, _)| i)
-        });
-        if let Some(i) = bound {
-            edit.refs.remove(i);
-            self.dimension_refs_edit = Some(edit);
-            return;
-        }
-        let pick = hovered.and_then(|id| dimension_pick(m, &edit.refs, id, q, 2.0 * f64::from(PICK) / v.scale));
-        if let Some(r) = pick {
+        // The reference Tab picked, else the one nearest the cursor: a face, an axis or a corner.
+        let picked = self
+            .dimension_reference_hover
+            .filter(|(id, _)| Some(*id) == hovered)
+            .map(|(_, r)| r)
+            .or_else(|| hovered.and_then(|id| dimension_pick(m, &edit.refs, id, q, 2.0 * f64::from(PICK) / v.scale)));
+        self.dimension_reference_hover = None;
+        if let Some(r) = picked {
             if let Some(i) = edit.refs.iter().position(|x| *x == r) {
                 edit.refs.remove(i);
             } else {
                 edit.refs.push(r);
             }
             self.dimension_refs_edit = Some(edit);
-        } else if edit.refs.len() >= 2 {
-            edit.at = round(q);
-            if self.run("dimension", json!({"id": edit.id, "refs": edit.refs, "at": point(edit.at)})).is_none() {
-                self.dimension_refs_edit = Some(edit);
-            }
-        } else {
-            self.dimension_refs_edit = Some(edit);
+            return;
         }
+        // No reference to add there: a click in the open leaves the line where it is, and the dimension is moved by
+        // dragging, not by editing references.
+        self.dimension_refs_edit = Some(edit);
     }
 
     /// The locks of the dimensions in plan `key`, shown whether they're selected or not, as Revit shows them: a shut padlock
@@ -4192,7 +4281,11 @@ impl BimApp {
             }
             // The references and endpoints picked, the one under the cursor, else the dimension a click places.
             Tool::Dimension(mode, refs) => {
-                let candidate = hovered.and_then(|id| dimension_pick(m, refs, id, v.mm(q), 2.0 * f64::from(PICK) / v.scale));
+                let candidate = self
+                    .dimension_reference_hover
+                    .filter(|(id, _)| Some(*id) == hovered)
+                    .map(|(_, r)| r)
+                    .or_else(|| hovered.and_then(|id| dimension_pick(m, refs, id, v.mm(q), 2.0 * f64::from(PICK) / v.scale)));
                 for r in refs.iter().chain(&candidate) {
                     match (r.point, m.reference_geometry(r)) {
                         (Some(_), Ok((a, _))) => {

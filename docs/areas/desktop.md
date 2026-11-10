@@ -569,15 +569,18 @@ field (`canvas::dimension_highlights`), and Enter moves the selected element, th
 the middle of the chain. Selected, an aligned or linear one shows
 a padlock under each segment (open while the segment is free, shut while locked), which a click locks or unlocks, and the EQ over the chain, struck through until a click makes it
 equal or not — its ends staying, the inner references spreading evenly; a value typed into an equal chain makes every segment it. A
-placed dimension's references are changed from the right-click menu's Edit Dimension References: a click on an element adds or takes out its
-reference, a click away places the line, Enter confirms and Esc leaves it as it was (`dimension {id, refs, at}`). A selected wall's
+placed dimension's references are changed from the right-click menu's Edit Dimension References or the Modify tab's button (`dimension
+{id, refs, at}`): a picked reference clicked is taken out, another face, axis or corner added, and Enter confirms. A selected wall's
 temporary length dimension (`temporary_dimension`) has a dimension-line button under its number that makes it a permanent dimension between
-the wall's ends or, where an end is joined to a perpendicular wall, between those walls' centre lines (`walls::joined_perpendicular`), so
-changing it moves that whole wall; typing its number resizes the wall through `wall_length`: both free ends or both joined ends move
-evenly, one joined moves its free end alone. Tab over a dimension chain steps through its segments, a click picks one, and Delete takes only that segment out
+the wall's ends or, where an end is joined to a perpendicular wall, between those walls' centre lines (`walls::joined_perpendicular`; a
+wall merely near it isn't a join), so changing it moves that whole wall; typing its number resizes the wall through `wall_length`: both free
+ends or both joined ends move evenly, one joined moves its free end alone. Tab over a dimension chain steps through its segments, a click picks one, and Delete takes only that segment out
 (`dimension_segment`): the chains either side stay on their own references, the left keeping the dimension and the right becoming a new one.
-A dimension selected also offers Edit Dimension References on the Modify tab, as its right-click menu does: a click on a bound element takes
-its reference out (the chain rebuilds), a click on another adds it, and a click away confirms.
+A dimension selected also offers Edit Dimension References on the Modify tab, as its right-click menu does: a click on a picked reference
+takes it out, a click on another face, axis or corner of the same element adds it (faces are independent), a click in the open does nothing,
+and Enter confirms (Esc cancels). Tab over an element steps through its faces, axes and corners, highlighting the reference a click would
+bind, while creating a chain or editing one (`dimension_references`). Dragging a dimension moves it only square to its line (`dragged`
+projects onto the line's normal); it never slides along itself.
 
 ## Background grids
 

@@ -706,6 +706,8 @@ pub struct BimApp {
     dimension_segment: Option<(Id, usize)>,
     /// The segment Tab is stepping over now, highlighted until a click picks it.
     dimension_segment_hover: Option<(Id, usize)>,
+    /// The reference of an element Tab is stepping over while a dimension is picked or its references are edited.
+    dimension_reference_hover: Option<(Id, Reference)>,
     /// A selected wall's angle being typed: the wall, whether it turns about its start (else its
     /// end), the angle so far.
     angle_edit: Option<(Id, bool, String)>,
@@ -1375,6 +1377,7 @@ impl BimApp {
             dimension_refs_edit: None,
             dimension_segment: None,
             dimension_segment_hover: None,
+            dimension_reference_hover: None,
             temporary: HashMap::new(),
             shadow: None,
             linked_3d: None,
@@ -2773,6 +2776,7 @@ impl BimApp {
         if self.dimension_segment.take().is_some() || self.dimension_segment_hover.take().is_some() {
             return;
         }
+        self.dimension_reference_hover = None;
         // A number field left by Esc keeps the selection it was typed for.
         if std::mem::take(&mut self.dim_edit_escaped) || self.dim_edit.take().is_some() {
             return;
@@ -4371,7 +4375,7 @@ impl BimApp {
                 );
                 if big_button(ui, Icon::Dimension, "Edit Dimension References", active, tip).clicked() {
                     if active {
-                        self.dimension_refs_edit = None;
+                        self.commit_dimension_refs();
                     } else {
                         self.start_dimension_refs_edit();
                     }
@@ -4967,7 +4971,7 @@ impl BimApp {
         }
         if self.dimension_refs_edit.is_some() {
             return msg!(
-                "Click a reference to add it or take it out; click away from them to place the line. Enter confirms, Esc cancels."
+                "Click a face, an axis or a corner to add it, the same one again to take it out; Tab steps over the references of the element under the cursor. Enter or the button confirms, Esc cancels."
             );
         }
         match &self.tool {
@@ -5018,8 +5022,9 @@ impl BimApp {
             }
             Tool::Dimension(_, refs) if refs.len() == 1 => msg!("Pick the next reference or endpoint."),
             Tool::Dimension(..) => msg!(
-                "Pick more references, or click away from them where the dimension line goes; click a picked reference again to \
-                 take it out, Backspace takes out the last, Esc starts over. Space steps Auto, Aligned, Horizontal, Vertical."
+                "Pick more references, or click away from them where the dimension line goes; Tab steps over the faces, axes and \
+                 corners of the element under the cursor. A picked reference clicked again is taken out, Backspace takes out the \
+                 last, Esc starts over. Space steps Auto, Aligned, Horizontal, Vertical."
             ),
             Tool::Measure(None) => msg!("Click the ruler's start: points snap as they do drawing."),
             Tool::Measure(Some(_)) => msg!("Click its end: its length and angle read beside it. Esc cancels."),

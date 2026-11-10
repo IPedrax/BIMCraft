@@ -441,9 +441,9 @@ fn edit_dimension_references_from_the_context_menu() {
     h.state_mut().start_dimension_refs_edit();
     h.run();
     assert!(h.state().dimension_refs_edit.is_some());
-    // The west wall's reference goes; a click away confirms the line where it is clicked.
+    // The west wall's reference goes; Enter confirms.
     click(&mut h, P2(0.0, 2000.0));
-    click(&mut h, P2(1000.0, -1500.0));
+    key(&mut h, Key::Enter);
     assert!(h.state().dimension_refs_edit.is_none(), "{}", h.state().status.text);
     let dim = dimension(&h, id);
     assert_eq!(dim.refs.len(), 2);
@@ -626,10 +626,72 @@ fn the_modify_tab_edits_a_selected_dimensions_references() {
     assert!(h.query_by_label("Edit Dimension References").is_some(), "the Modify tab offers it");
     press(&mut h, "Edit Dimension References");
     assert!(h.state().dimension_refs_edit.is_some());
-    // A click on a wall already measured to takes its reference out; a click away confirms.
+    // A click on a wall already measured to takes its reference out; Enter confirms.
     click(&mut h, P2(0.0, 2000.0));
     assert_eq!(h.state().dimension_refs_edit.as_ref().map(|e| e.refs.len()), Some(2));
-    click(&mut h, P2(1000.0, -1500.0));
+    key(&mut h, Key::Enter);
     assert!(h.state().dimension_refs_edit.is_none(), "{}", h.state().status.text);
     assert_eq!(dimension(&h, id).refs.len(), 2);
+}
+
+#[test]
+fn a_click_in_the_open_does_not_move_a_dimension_being_edited() {
+    let mut h = app(THREE_WALLS);
+    let id = ids(&h, "dimension")[0];
+    h.state_mut().selection = vec![id];
+    h.run();
+    h.state_mut().start_dimension_refs_edit();
+    h.run();
+    let before = dimension(&h, id);
+    click(&mut h, P2(2500.0, -3000.0));
+    assert!(h.state().dimension_refs_edit.is_some(), "editing goes on");
+    assert_eq!(dimension(&h, id).at, before.at, "a click in the open leaves the line where it is");
+    key(&mut h, Key::Enter);
+    assert!(h.state().dimension_refs_edit.is_none());
+}
+
+#[test]
+fn dragging_a_dimension_moves_it_only_square_to_its_line() {
+    let mut h = app(THREE_WALLS);
+    let id = ids(&h, "dimension")[0];
+    click(&mut h, P2(2500.0, -1000.0));
+    assert_eq!(h.state().selection, vec![id]);
+    let before = dimension(&h, id).at;
+    let a = h.state().screen(P2(2500.0, -1000.0));
+    let b = h.state().screen(P2(3500.0, -2000.0));
+    flick(&mut h, a, b, Modifiers::NONE);
+    let after = dimension(&h, id).at;
+    assert!((after.0 - before.0).abs() < 0.01, "no sideways movement: {before:?} to {after:?}");
+    assert!((after.1 - before.1).abs() > 1.0, "it moved square to its line: {before:?} to {after:?}");
+}
+
+#[test]
+fn a_second_face_of_a_bound_wall_is_added_not_taken_out() {
+    let mut h = app(TWO_WALLS);
+    let id = ids(&h, "dimension")[0];
+    h.state_mut().selection = vec![id];
+    h.run();
+    h.state_mut().start_dimension_refs_edit();
+    h.run();
+    // The west wall's left face joins its centre line: three references, none of them dropped.
+    click(&mut h, P2(-95.0, 2000.0));
+    assert_eq!(h.state().dimension_refs_edit.as_ref().map(|e| e.refs.len()), Some(3));
+}
+
+#[test]
+fn a_free_wall_makes_a_dimension_to_its_own_ends_not_to_a_wall_nearby() {
+    // The vertical wall is near the horizontal one's free end, but not joined to it: its end is a metre away.
+    let script = r#"wall {"points": [[0, 0], [4000, 0]]}
+wall {"points": [[4000, 1000], [4000, 5000]]}"#;
+    let mut h = app(script);
+    let walls = ids(&h, "wall");
+    click(&mut h, P2(2000.0, 0.0));
+    press(&mut h, "Make Dimension Permanent");
+    let d = ids(&h, "dimension")[0];
+    let refs = dimension(&h, d).refs;
+    assert!(
+        refs.iter().filter_map(|r| h.state().session.model.elements.id(r.id)).all(|id| id == walls[0]),
+        "the dimension measures to the wall's own ends"
+    );
+    assert_eq!(refs.len(), 2);
 }

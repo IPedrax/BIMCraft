@@ -243,14 +243,8 @@ pub(crate) fn joined_perpendicular_in(m: &Model, id: Id, at_end: bool, index: Op
         .filter_map(|other| Some((other, m.wall(other)?)))
         .filter(|(other, o)| *other != id && o.join && stacked(m, w, o))
         .filter(|(_, o)| u.dot((o.end - o.start).unit()).abs() <= 0.05)
-        .filter(|(_, o)| {
-            // It meets here: an end at the node, or the node lies within its body (a T-junction).
-            o.start.dist(node) <= TOL || o.end.dist(node) <= TOL || {
-                let ax = Axis::of(o);
-                let (s, across) = ax.project(node);
-                s >= 0.0 && s <= ax.length() && across.abs() <= m.thickness(o) / 2.0 + TOL
-            }
-        })
+        // Its own end must meet this wall's end: a wall merely running near the free end is no join.
+        .filter(|(_, o)| o.start.dist(node) <= TOL || o.end.dist(node) <= TOL)
         .map(|(other, _)| other)
         .min()
 }
