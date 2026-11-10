@@ -217,6 +217,44 @@ pub(crate) fn joined_at(m: &Model, id: Id, at_end: bool, index: Option<&Index>) 
     arms.iter().any(|a| a.id != id)
 }
 
+/// The wall joined to wall `id` at its start, or with `at_end` its end, that runs square to it, if one does: what a
+/// dimension made permanent there measures to, so that changing it moves that whole wall, not just its joined end.
+pub fn joined_perpendicular(m: &Model, id: Id, at_end: bool) -> Option<Id> {
+    joined_perpendicular_in(m, id, at_end, None)
+}
+
+/// [`joined_perpendicular`], its joins found through `index` when there is one.
+pub(crate) fn joined_perpendicular_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Option<Id> {
+    let w = m.wall(id)?;
+    if !w.join {
+        return None;
+    }
+    let node = if at_end { w.end } else { w.start };
+    let u = (w.end - w.start).unit();
+    let near: Vec<Id> = match index {
+        Some(index) => index.neighbours_at(id, node),
+        None => {
+            let thickest = m.types.wall.values().map(|t| t.thickness).filter(|t| t.is_finite()).fold(0.0, f64::max);
+            let at = ([node.0, node.1, node.0, node.1], m.base_z(w), m.top_z(w));
+            m.lookup().walls_near_at(&[at], thickest + 1.0).into_iter().collect()
+        }
+    };
+    near.into_iter()
+        .filter_map(|other| Some((other, m.wall(other)?)))
+        .filter(|(other, o)| *other != id && o.join && stacked(m, w, o))
+        .filter(|(_, o)| u.dot((o.end - o.start).unit()).abs() <= 0.05)
+        .filter(|(_, o)| {
+            // It meets here: an end at the node, or the node lies within its body (a T-junction).
+            o.start.dist(node) <= TOL || o.end.dist(node) <= TOL || {
+                let ax = Axis::of(o);
+                let (s, across) = ax.project(node);
+                s >= 0.0 && s <= ax.length() && across.abs() <= m.thickness(o) / 2.0 + TOL
+            }
+        })
+        .map(|(other, _)| other)
+        .min()
+}
+
 /// A wall where it leaves a node: the way it goes, and where its faces' lines and its centre line
 /// are there (each running that way): the face on the counter-clockwise side of that way, the one
 /// on the clockwise side, and which wall's end it is (`id`, `at_end`). A run's arm at its end is one too ([`crate::runs`]),

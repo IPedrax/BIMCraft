@@ -544,25 +544,56 @@ fn tab_picks_a_dimension_segment_and_delete_takes_it_out() {
 }
 
 #[test]
-fn an_equal_chain_shows_its_numbers_and_eq_only_while_hovered() {
+fn an_equal_chain_shows_its_numbers_and_eq_over_it() {
     let mut h = app(THREE_WALLS);
     let id = ids(&h, "dimension")[0];
     h.state_mut().run("dimension_constraint", json!({"id": id, "equal": true}));
-    h.state_mut().selection = vec![id];
     h.run();
     // Its numbers are numbers, not EQ.
     assert_eq!(field(&h, id, "labels"), json!(["2500", "2500"]));
-    assert_eq!(h.state().selection, vec![id]);
-    assert!(h.query_by_label("Equal").is_some(), "the dimension's controls are drawn");
-    assert!(h.get_all_by_label("Dimension 2500").next().is_some());
-    // Over the chain, EQ shows above it.
+    // Over an equal chain, EQ shows above its middle; away from it, with nothing selected, it goes.
     h.hover_at(h.state().screen(P2(2500.0, -1000.0)));
     h.run();
     h.run();
-    assert!(h.query_by_label("Dimension equality").is_some(), "EQ pops up while the dimension is hovered");
-    // Away from it, the hint goes.
+    assert!(h.query_by_label("Equal").is_some(), "EQ shows while the equal chain is hovered");
     h.hover_at(h.state().screen(P2(2500.0, 2000.0)));
     h.run();
     h.run();
-    assert!(h.query_by_label("Dimension equality").is_none(), "the hint goes when the pointer leaves the line");
+    assert!(h.query_by_label("Equal").is_none(), "EQ goes when the pointer leaves, nothing selected");
+    // Selected, it stays over the chain: struck through when the chain isn't equal, and a click turns it on.
+    h.state_mut().selection = vec![id];
+    h.run();
+    h.state_mut().run("dimension_constraint", json!({"id": id, "equal": false}));
+    h.run();
+    assert!(h.query_by_label("Equal").is_some(), "a selected dimension shows its EQ even when it isn't equal");
+    h.get_by_label("Equal").click();
+    h.run();
+    assert!(dimension(&h, id).equal, "{}", h.state().status.text);
+    assert_eq!(h.state().selection, vec![id], "clicking EQ keeps the dimension selected");
+    // A click on the equal one turns it off.
+    h.get_by_label("Equal").click();
+    h.run();
+    assert!(!dimension(&h, id).equal);
+}
+
+#[test]
+fn a_permanent_dimension_at_a_joined_end_measures_to_the_perpendicular_wall() {
+    let mut h = app(BOX);
+    let walls = ids(&h, "wall");
+    // The south wall, both of whose ends are joined to the west and east walls.
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Make Dimension Permanent");
+    let d = ids(&h, "dimension")[0];
+    let mut refs: Vec<Id> = dimension(&h, d).refs.iter().filter_map(|r| h.state().session.model.elements.id(r.id)).collect();
+    refs.sort();
+    let mut sides = vec![walls[1], walls[3]];
+    sides.sort();
+    assert_eq!(refs, sides, "the dimension measures to the perpendicular walls");
+    // Changing it moves the whole east wall, which stays square, and the west wall stays put.
+    h.state_mut().run("dimension_value", json!({"id": d, "value": 9000}));
+    h.run();
+    assert_eq!(field(&h, walls[1], "start"), json!([9000.0, 0.0]), "{}", h.state().status.text);
+    assert_eq!(field(&h, walls[1], "end"), json!([9000.0, 6000.0]), "the whole wall moved and stays square");
+    assert_eq!(field(&h, walls[3], "start"), json!([0.0, 6000.0]), "the west wall stayed");
+    assert_eq!(field(&h, d, "values"), json!([9000.0]));
 }

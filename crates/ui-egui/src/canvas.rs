@@ -896,14 +896,22 @@ fn padlock(p: &Painter, at: Pos2, locked: bool, ink: Color32) {
     let body = Rect::from_center_size(at + vec2(0.0, 3.0), vec2(10.0, 8.0));
     p.rect_filled(body, 1.5, pal().surface);
     p.rect_stroke(body, 1.5, Stroke::new(1.5, ink), StrokeKind::Middle);
-    let lift = if locked { 0.0 } else { -3.0 };
-    let top = body.top() + lift;
-    let shackle: Vec<Pos2> = (0..=8)
+    let top = body.top();
+    let mut shackle: Vec<Pos2> = (0..=8)
         .map(|k| {
             let t = std::f32::consts::PI * k as f32 / 8.0;
             pos2(body.center().x - 3.0 * t.cos(), top - 4.0 * t.sin())
         })
         .collect();
+    if !locked {
+        // An open shackle, swung up and out about the foot it keeps on the body: clearly not shut.
+        let pivot = pos2(body.center().x - 3.0, top);
+        let turn = -0.7_f32;
+        for pt in &mut shackle {
+            let d = *pt - pivot;
+            *pt = pivot + vec2(d.x * turn.cos() - d.y * turn.sin(), d.x * turn.sin() + d.y * turn.cos());
+        }
+    }
     p.add(Shape::line(shackle, Stroke::new(1.5, ink)));
 }
 
@@ -3375,14 +3383,12 @@ impl BimApp {
             return;
         }
         let (n, cross) = m.crossings(d);
-        let (Some(&(first, _)), Some(&(last, _))) = (cross.first(), cross.last()) else { return };
         if cross.len() < 2 {
             return;
         }
         let screen = |q: P2| pos(rect.min, v.px(q));
         let on = |s: f64| screen(d.at + n * s);
-        // On screen: along the line, and off it to the side its numbers aren't.
-        let along = (on(1.0) - on(0.0)).normalized();
+        // On screen: off the line to the side its numbers aren't.
         let side = (screen(d.at - n.perp()) - screen(d.at)).normalized();
         let p = ui.painter_at(rect);
         for (i, pair) in cross.windows(2).enumerate() {
@@ -3442,29 +3448,6 @@ impl BimApp {
                     }
                     None => self.status = Status { text: tf("`{}` is not a length", &[typed.trim()]), error: true },
                 }
-            }
-        }
-        if cross.len() > 2 {
-            let at = on(last.max(first)) + along * 22.0;
-            let r = ui.interact(Rect::from_center_size(at, vec2(26.0, 18.0)), ui.id().with(("dimension equal", id)), Sense::click());
-            if r.hovered() {
-                self.over_dimension_control = true;
-            }
-            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, d.equal, t("Equal")));
-            let ink = if r.hovered() {
-                pal().hover
-            } else if d.equal {
-                pal().accent
-            } else {
-                pal().muted
-            };
-            p.rect_filled(r.rect, 3.0, pal().surface);
-            p.text(at, Align2::CENTER_CENTER, "EQ", FontId::proportional(12.0), ink);
-            if !d.equal {
-                p.line_segment([r.rect.left_bottom() + vec2(4.0, -3.0), r.rect.right_top() + vec2(-4.0, 3.0)], Stroke::new(1.2, ink));
-            }
-            if r.clicked() {
-                self.run("dimension_constraint", json!({"id": id, "equal": !d.equal}));
             }
         }
     }
@@ -3569,40 +3552,62 @@ impl BimApp {
         self.dimension_highlights(ui, m, v, rect, key);
     }
 
-    /// An equal dimension's EQ over the middle of its chain, while the pointer is near its line: a hint on screen only,
-    /// never drawn in a plan, a PNG or on paper.
-    fn dimension_eq_hint(&self, ui: &Ui, m: &Model, v: &View, rect: Rect) {
-        let Some(cursor) = ui.input(|i| i.pointer.hover_pos()) else { return };
-        if !rect.contains(cursor) {
-            return;
-        }
-        let q = v.mm((cursor.x - rect.min.x, cursor.y - rect.min.y));
+    /// The equality control over the middle of a dimension's chain: over an equal chain while the pointer is near it, and
+    /// always while the dimension is selected. A click makes the chain equal or not, as Revit's EQ; one that isn't equal
+    /// wears it struck through. Screen only: never drawn in a plan, a PNG or on paper.
+    fn dimension_eq_hint(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect) {
+        let cursor = ui.input(|i| i.pointer.hover_pos()).filter(|p| rect.contains(*p));
+        let q = cursor.map(|p| v.mm((p.x - rect.min.x, p.y - rect.min.y)));
         let near = 25.0 / v.scale;
-        let Some((id, d, at)) = m.elements.iter().find_map(|(&id, e)| {
-            let Element::Dimension(d) = e else { return None };
-            if d.alignment || !matches!(d.kind, DimKind::Aligned | DimKind::Linear) || !(d.equal || d.equality) {
-                return None;
+        let mut toggle: Option<(Id, bool)> = None;
+        let p = ui.painter_at(rect);
+        for (&id, e) in m.elements.iter() {
+            let Element::Dimension(d) = e else { continue };
+            if d.alignment || !matches!(d.kind, DimKind::Aligned | DimKind::Linear) {
+                continue;
             }
             let (n, st) = m.stations(d);
-            let (first, last) = (st.first()?, st.last()?);
-            let s = (q - d.at).dot(n);
-            if s < first.0 - near || s > last.0 + near {
-                return None;
+            if st.len() < 3 {
+                continue;
             }
-            ((q - (d.at + n * s)).length() <= near).then(|| (id, d, d.at + n * ((first.0 + last.0) / 2.0)))
-        }) else {
-            return;
-        };
-        let text = m.dimension_type(d).equality_text;
-        let p = ui.painter_at(rect);
-        let at = pos(rect.min, v.px(at)) + vec2(0.0, -22.0);
-        let size = p.layout_no_wrap(text.clone(), FontId::proportional(12.0), pal().accent_ink).size() + vec2(10.0, 4.0);
-        let chip = Rect::from_center_size(at, size);
-        let hint = ui.interact(chip, ui.id().with(("dimension eq", id)), Sense::hover());
-        hint.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, t("Dimension equality")));
-        p.rect_filled(chip, 3.0, pal().surface);
-        p.rect_stroke(chip, 3.0, Stroke::new(1.0, pal().accent_ink), StrokeKind::Inside);
-        p.text(at, Align2::CENTER_CENTER, text, FontId::proportional(12.0), pal().accent_ink);
+            let (first, last) = (st[0].0, st[st.len() - 1].0);
+            let selected = matches!(self.selection.as_slice(), [one] if *one == id) && self.tool == Tool::Modify;
+            let hovered = q.is_some_and(|q| {
+                let s = (q - d.at).dot(n);
+                s >= first - near && s <= last + near && (q - (d.at + n * s)).length() <= near
+            });
+            if !selected && !(hovered && d.equal) {
+                continue;
+            }
+            let at = pos(rect.min, v.px(d.at + n * ((first + last) / 2.0))) + vec2(0.0, -30.0);
+            let text = m.dimension_type(d).equality_text;
+            let size = p.layout_no_wrap(text.clone(), FontId::proportional(12.0), pal().accent_ink).size() + vec2(10.0, 4.0);
+            let chip = Rect::from_center_size(at, size);
+            let r = ui.interact(chip, ui.id().with(("dimension eq", id)), Sense::click());
+            if r.hovered() {
+                self.over_dimension_control = true;
+            }
+            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, d.equal, t("Equal")));
+            let ink = if r.hovered() {
+                pal().hover
+            } else if d.equal {
+                pal().accent
+            } else {
+                pal().muted
+            };
+            p.rect_filled(chip, 3.0, pal().surface);
+            p.rect_stroke(chip, 3.0, Stroke::new(1.0, ink), StrokeKind::Inside);
+            p.text(at, Align2::CENTER_CENTER, text, FontId::proportional(12.0), ink);
+            if !d.equal {
+                p.line_segment([chip.left_bottom() + vec2(4.0, -3.0), chip.right_top() + vec2(-4.0, 3.0)], Stroke::new(1.2, ink));
+            }
+            if r.clicked() {
+                toggle = Some((id, !d.equal));
+            }
+        }
+        if let Some((id, equal)) = toggle {
+            self.run("dimension_constraint", json!({"id": id, "equal": equal}));
+        }
     }
 
     /// The segment Tab picked, or a click selected, drawn over the dimension line: brighter while it is the picked one.
@@ -3817,7 +3822,17 @@ impl BimApp {
             }
             if r.clicked() {
                 let at = v.mm((icon.center().x - rect.min.x, icon.center().y - rect.min.y));
-                self.run("dimension", json!({"refs": [{"id": id, "point": "start"}, {"id": id, "point": "end"}], "at": point(at)}));
+                // A perpendicular wall joined at an end is what the dimension is measured to there: changing it moves
+                // that whole wall, not just its joined end (which would leave it out of square).
+                let start = walls::joined_perpendicular(m, id, false);
+                let end = walls::joined_perpendicular(m, id, true);
+                let refs = match (start, end) {
+                    (Some(a), Some(b)) if a != b => json!([{"id": a}, {"id": b}]),
+                    (Some(a), None) => json!([{"id": a}, {"id": id, "point": "end"}]),
+                    (None, Some(b)) => json!([{"id": id, "point": "start"}, {"id": b}]),
+                    _ => json!([{"id": id, "point": "start"}, {"id": id, "point": "end"}]),
+                };
+                self.run("dimension", json!({"refs": refs, "at": point(at)}));
             }
         }
         if let Some(typed) = self.dimension_number(ui, number, (id, 0), &text) {
