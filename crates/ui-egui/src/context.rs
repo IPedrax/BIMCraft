@@ -11,6 +11,33 @@ use egui::{Button, Response};
 use crate::lang::t;
 use crate::{BimApp, Sheet, Tool};
 
+/// The two scopes offered wherever a type can select its instances.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum InstanceScope {
+    View,
+    Project,
+}
+
+/// Shared submenu for canvas selections and Project Browser types.
+pub(crate) fn instances_menu(ui: &mut egui::Ui, enabled: bool) -> Option<InstanceScope> {
+    let mut chosen = None;
+    ui.add_enabled_ui(enabled, |ui| {
+        ui.menu_button(t(msg!("Select All Instances")), |ui| {
+            for (scope, label) in [(InstanceScope::View, msg!("Visible in View")), (InstanceScope::Project, msg!("In Entire Project"))] {
+                let mut button = Button::new(t(label));
+                if scope == InstanceScope::View {
+                    button = button.shortcut_text("SA");
+                }
+                if ui.add(button).clicked() {
+                    chosen = Some(scope);
+                    ui.close();
+                }
+            }
+        });
+    });
+    chosen
+}
+
 /// What an item of the menu does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Action {
@@ -29,6 +56,7 @@ pub(crate) enum Action {
     EditFamily,
     EditType,
     SelectAllInstances,
+    SelectInstances(InstanceScope),
     HideElement,
     HideCategory,
     OverrideGraphics,
@@ -65,6 +93,8 @@ impl Action {
             Action::EditFamily => "Edit Family",
             Action::EditType => "Edit Type",
             Action::SelectAllInstances => msg!("Select All Instances"),
+            Action::SelectInstances(InstanceScope::View) => msg!("Visible in View"),
+            Action::SelectInstances(InstanceScope::Project) => msg!("In Entire Project"),
             Action::HideElement => "Hide Element",
             Action::HideCategory => "Hide Category",
             Action::OverrideGraphics => "Override Graphics",
@@ -88,7 +118,7 @@ impl Action {
             Action::Cancel => Some("Esc"),
             Action::Finish | Action::FinishPick => Some("Enter"),
             Action::ZoomToFit => Some("ZF"),
-            Action::SelectAllInstances => Some("SA"),
+            Action::SelectAllInstances | Action::SelectInstances(InstanceScope::View) => Some("SA"),
             Action::HideElement => Some("EH"),
             Action::HideCategory => Some("VH"),
             Action::CreateGroup => Some("GP"),
@@ -123,6 +153,12 @@ pub(crate) fn menu(response: &Response, groups: &[Vec<Item>], chosen: &mut Optio
                 ui.separator();
             }
             for item in group {
+                if item.action == Action::SelectAllInstances {
+                    if let Some(scope) = instances_menu(ui, item.enabled) {
+                        *chosen = Some(Action::SelectInstances(scope));
+                    }
+                    continue;
+                }
                 let mut button = Button::new(t(item.action.label()));
                 if let Some(keys) = item.action.shortcut() {
                     button = button.shortcut_text(keys);
@@ -165,7 +201,13 @@ impl BimApp {
                 }
                 edits.extend([
                     Item::new(Action::EditType, self.type_subject().is_some()),
-                    Item::new(Action::SelectAllInstances, true),
+                    Item::new(
+                        Action::SelectAllInstances,
+                        self.selection
+                            .iter()
+                            .filter_map(|id| m.elements.get(*id))
+                            .any(|e| bimcraft_core::selection::instance_type(e).is_some()),
+                    ),
                     Item::new(Action::Delete, true),
                 ]);
                 groups.push(edits);
@@ -243,6 +285,7 @@ impl BimApp {
             }
             Action::EditType => self.edit_type(),
             Action::SelectAllInstances => self.select_all_instances(),
+            Action::SelectInstances(scope) => self.select_instances(serde_json::json!({"ids": self.selection}), scope),
             Action::HideElement => self.hide_selection(false),
             Action::HideCategory => self.hide_selection(true),
             Action::OverrideGraphics => self.override_selection(),

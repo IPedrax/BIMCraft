@@ -71,6 +71,48 @@ pub fn kept(m: &Model, ids: &[Id], by: &str, keep: &[String]) -> Vec<Id> {
     out
 }
 
+/// The library type an instance belongs to. Family types include their family name,
+/// so equal type names from different families never select each other.
+pub fn instance_type(e: &crate::model::Element) -> Option<(crate::library::Kind, String)> {
+    use crate::library::Kind;
+    use crate::model::Element;
+    if let Some((family, ty)) = e.family() {
+        return Some((Kind::FamilyType, format!("{family}: {ty}")));
+    }
+    if let Some(run) = e.run() {
+        return Some((Kind::Type(e.category().into()), run.type_name.clone()));
+    }
+    let (kind, name) = match e {
+        Element::Wall(x) => (Kind::Type(e.category().into()), &x.type_name),
+        Element::Floor(x) => (Kind::Type(e.category().into()), &x.type_name),
+        Element::Roof(x) => (Kind::Type(e.category().into()), &x.type_name),
+        Element::Ceiling(x) => (Kind::Type(e.category().into()), &x.type_name),
+        Element::Railing(x) => (Kind::Type(e.category().into()), &x.type_name),
+        Element::Column(x) | Element::StructuralColumn(x) | Element::Footing(x) => (Kind::Type(e.category().into()), &x.type_name),
+        Element::Door(x) | Element::Window(x) => (Kind::Type(e.category().into()), &x.type_name),
+        Element::Text(x) => (Kind::TextType, &x.type_name),
+        Element::Dimension(x) => (Kind::DimensionType, &x.type_name),
+        Element::Dimension3D(x) => (Kind::DimensionType, &x.type_name),
+        Element::FilledRegion(x) => (Kind::FilledRegionType, &x.type_name),
+        Element::DetailGroup(x) => (Kind::DetailGroup, &x.type_name),
+        Element::RepeatingDetail(x) => (Kind::DetailGroup, &x.type_name),
+        _ => return None,
+    };
+    Some((kind, name.clone()))
+}
+
+/// Instances of the requested library types, in model order. `within` restricts the query
+/// to a front end's visible candidates; an empty candidate set selects nothing.
+pub fn instances(m: &Model, types: &std::collections::BTreeSet<(crate::library::Kind, String)>, within: Option<&[Id]>) -> Vec<Id> {
+    let within = within.map(|ids| ids.iter().copied().collect::<std::collections::BTreeSet<_>>());
+    m.elements
+        .iter()
+        .filter_map(|(&id, e)| {
+            (within.as_ref().is_none_or(|ids| ids.contains(&id)) && instance_type(e).is_some_and(|ty| types.contains(&ty))).then_some(id)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;

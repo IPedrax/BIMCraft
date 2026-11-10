@@ -2540,6 +2540,15 @@ other_files(
     )
     .menu("Manage > IDs of Selection"),
     other(
+        "select_instances",
+        "Select All Instances",
+        "{ids?: [id or GUID, ...], category?, family?, type?, within?: [id or GUID, ...]} \
+         instances of the selected elements' types, or of a browser type (`category` and `type`, or `family` and `type`). \
+         Returns `ids` in model order. With `within`, only those candidates are considered (empty means none); \
+         omit it for the entire project. This query changes neither the model nor undo history",
+        select_instances,
+    ),
+    other(
         "filter_selection",
         "Filter",
         "{ids: [id or GUID, …], by?, keep?: [value, …]} Revit's Filter on a selection: `groups` [{value, count, ids}, …], \
@@ -3540,6 +3549,31 @@ fn select_by_id(s: &mut Session, p: &Value) -> R {
         "plan": shown.map(|(level, _)| level),
         "extent": shown.map(|(_, [lo, hi])| [micron(lo), micron(hi)]),
     }))
+}
+
+fn select_instances(s: &mut Session, p: &Value) -> R {
+    let c = "select_instances";
+    let m = &s.model;
+    let explicit = p.get("category").is_some() || p.get("family").is_some() || p.get("type").is_some();
+    let types = if explicit {
+        if p.get("ids").is_some() || p.get("id").is_some() {
+            return Err(bad(c, "give selected ids or a library type, not both"));
+        }
+        let entry = entry_of(c, m, p)?;
+        if !matches!(entry.0, LibKind::Type(_) | LibKind::FamilyType) {
+            return Err(bad(c, "give a type as well as its family"));
+        }
+        BTreeSet::from([entry])
+    } else {
+        let ids = ids_param(c, m, p)?;
+        let types: BTreeSet<_> = ids.iter().filter_map(|id| m.elements.get(*id)).filter_map(crate::selection::instance_type).collect();
+        if types.is_empty() {
+            return Err(bad(c, "select an element that has a type first"));
+        }
+        types
+    };
+    let within = p.get("within").map(|v| ids_param(c, m, &json!({"ids": v}))).transpose()?;
+    Ok(json!({"ids": crate::selection::instances(m, &types, within.as_deref())}))
 }
 
 fn filter_selection(s: &mut Session, p: &Value) -> R {

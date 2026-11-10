@@ -87,6 +87,9 @@ enum Act {
     Pick(&'static str, String),
     /// A link: it is the selection, for Properties.
     Select(Id),
+    /// A type's Select All Instances submenu, followed by its chosen scope.
+    Instances(serde_json::Value),
+    SelectInstances(serde_json::Value, crate::context::InstanceScope),
 }
 
 /// An entry of the tree, or a group of them.
@@ -310,6 +313,7 @@ impl BimApp {
                 self.types.insert(category, name);
             }
             Some(Act::Select(id)) => self.selection = vec![id],
+            Some(Act::SelectInstances(params, scope)) => self.select_instances(params, scope),
             _ => {}
         }
     }
@@ -325,12 +329,7 @@ impl BimApp {
             }
             if !node.menu.is_empty() {
                 r.context_menu(|ui| {
-                    for (label, item) in &node.menu {
-                        if ui.button(t(label)).clicked() {
-                            *act = Some(item.clone());
-                            ui.close();
-                        }
-                    }
+                    browser_menu(ui, &node.menu, act);
                 });
             }
             return;
@@ -347,12 +346,7 @@ impl BimApp {
         });
         if !node.menu.is_empty() {
             shown.header_response.context_menu(|ui| {
-                for (label, item) in &node.menu {
-                    if ui.button(t(label)).clicked() {
-                        *act = Some(item.clone());
-                        ui.close();
-                    }
-                }
+                browser_menu(ui, &node.menu, act);
             });
         }
     }
@@ -536,6 +530,9 @@ impl BimApp {
     fn families_node(&self, open: bool) -> Node {
         let m = &self.session.model;
         let delete = |params: serde_json::Value| vec![("Delete", Act::Do("delete_type", params))];
+        let type_menu = |params: serde_json::Value| {
+            vec![(msg!("Select All Instances"), Act::Instances(params.clone())), ("Delete", Act::Do("delete_type", params))]
+        };
         let system = SYSTEM_FAMILIES.iter().chain(&bimcraft_core::model::RUN_CATEGORIES).filter_map(|category| {
             let names = m.type_names(category);
             let leaves = names
@@ -543,7 +540,7 @@ impl BimApp {
                 .map(|ty| {
                     let on = self.types.get(category).is_some_and(|t| t == ty);
                     Node::leaf(ty, Act::Pick(category, ty.to_string()), on)
-                        .with_menu(delete(serde_json::json!({"category": category, "type": ty})))
+                        .with_menu(type_menu(serde_json::json!({"category": category, "type": ty})))
                 })
                 .collect();
             (!names.is_empty()).then(|| Node::group(&crate::lang::category(category, true), false, leaves))
@@ -555,12 +552,26 @@ impl BimApp {
                 .map(|ty| {
                     let on = self.tool == Tool::Component && self.component.as_ref() == Some(&(name.clone(), ty.clone()));
                     Node::leaf(ty, Act::Place(name.clone(), ty.clone()), on)
-                        .with_menu(delete(serde_json::json!({"family": name, "type": ty})))
+                        .with_menu(type_menu(serde_json::json!({"family": name, "type": ty})))
                 })
                 .collect();
             Node::group(name, false, types).with_menu(delete(serde_json::json!({"family": name})))
         });
         Node::group(t("Families"), open, system.chain(components).collect())
+    }
+}
+
+/// One menu renderer for leaf entries and groups.
+fn browser_menu(ui: &mut Ui, entries: &[(&'static str, Act)], act: &mut Option<Act>) {
+    for (label, item) in entries {
+        if let Act::Instances(params) = item {
+            if let Some(scope) = crate::context::instances_menu(ui, true) {
+                *act = Some(Act::SelectInstances(params.clone(), scope));
+            }
+        } else if ui.button(t(label)).clicked() {
+            *act = Some(item.clone());
+            ui.close();
+        }
     }
 }
 
