@@ -403,6 +403,19 @@ other_files(
         edit_boundary,
     ),
     edit(
+        "room_finish",
+        "Room Finish",
+        &[],
+        "{id, part?: floor|ceiling, action: disconnect|regenerate} a room's own floor or ceiling, the one its type makes for it \
+         (`type {category: room, floor, ceiling}`) and keeps along its boundary at the walls' faces. `id` is the room (then \
+         `part` says which) or the floor or the ceiling itself. `disconnect` lets it go: it stays as it is, an ordinary floor \
+         or ceiling that can be edited freely, and nothing connects it again. `regenerate` makes a new one for a room whose \
+         own was disconnected or deleted. While connected, its outline, level, type and offset are the room's: `edit_boundary` \
+         and `modify` of those are refused, and moved, it is put back. `elements` gives a room's `floor` and `ceiling` \
+         ({connected: guid}, or disconnected) and a connected floor's or ceiling's `room`",
+        room_finish,
+    ),
+    edit(
         "edit_shape",
         "Modify Sub Elements",
         &[],
@@ -531,7 +544,7 @@ other_files(
         "room",
         ui_msg!("Room"),
         &["RM"],
-        "{point: [x,y], level?, name?, number?, top_level?, limit_offset?, base_offset?, frozen?} bounded by the walls and the \
+        "{point: [x,y], level?, type?, name?, number?, top_level?, limit_offset?, base_offset?, frozen?} bounded by the walls and the \
          room separation lines around the point (walls the level's `computation_height` cuts; separation lines whatever their \
          height). Placed where nothing encloses it, or in a space another room has (two rooms can't share one; the first \
          keeps it), it is placed unbounded, a 1000 mm square, and the reply has a `warning`. Its height is Revit's: from \
@@ -1164,9 +1177,16 @@ other_files(
         "type",
         "Edit Type",
         &[],
-        "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|beam|stripfooting|pipe|duct|conduit|\
+        "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|room|beam|stripfooting|pipe|duct|conduit|\
          cabletray|wire|downconductor|groundconductor|cable, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
-         material?, profile?, shape?, web?, flange?, radius? | height?, spacing?} creates the type, or changes it everywhere it's used. A column's, a structural column's or \
+         material?, profile?, shape?, web?, flange?, radius? | height?, spacing? | floor?, floor_offset?, ceiling?, ceiling_offset?, colour?} creates the type, or changes it everywhere it's used. \
+         A room type may name a `floor` type and a `ceiling` type (null, none; a new project's Standard has neither): each of its \
+         rooms then has a floor (its top `floor_offset` mm over the room's level, 0) and a ceiling (its underside \
+         `ceiling_offset` mm over it, 2600) of its own, made when the room is bounded and kept along its boundary at the walls' \
+         faces after every command, wherever the project measures rooms (`room_area`); a room not enclosed keeps the ones it has \
+         as they are until it is enclosed again, and a frozen room's stay as it was frozen. At the centre lines that is a second \
+         boundary found for each level a command changes. See `room_finish`. A room type's `colour` ([red, green, blue], or null \
+         for none) fills its rooms on plans and styles their spaces in IFC. A column's, a structural column's or \
          a footing's type is a `width` by `depth`, or `round` (`width` across); a run's (a beam's, a pipe's, a cable tray's…) too, \
          made of a `material` of the library. Steel beam/structural-column types accept `profile` (IPE 80-600, HEA/HEB 100-600, \
          e.g. IPE 300) or `shape` I/H, U, L, T, RHS/SHS or CHS plus `width`, `depth` and plates. I/U/T take `web`, `flange`, \
@@ -1677,8 +1697,9 @@ other_files(
         "delete",
         "Delete",
         &["DE"],
-        "{ids: [id,…]} deleting a wall deletes its doors and windows, deleting those their tags; a view takes its notes and \
-         spot elevations, and what a spot elevation reads takes it; dimensions lose what's deleted",
+        "{ids: [id,…], keep_finishes?} deleting a wall deletes its doors and windows, deleting those their tags; a view takes its notes and \
+         spot elevations, and what a spot elevation reads takes it; dimensions lose what's deleted. A room takes the floor and \
+         the ceiling connected to it (see `room_finish`), unless `keep_finishes`: then they stay, as ordinary ones",
         delete,
     ),
     edit(
@@ -3266,6 +3287,10 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             // Where its top's model pattern starts and how far it's turned: shown at their defaults too, to be set by modify.
             extra.insert("pattern_origin".into(), json!(f.pattern_origin));
             extra.insert("pattern_angle".into(), json!(f.pattern_angle));
+            // The room it follows, when it is a room's own.
+            if let Some((room, _)) = m.finish_of(id) {
+                extra.insert("room".into(), json!(room));
+            }
         }
         Element::Ceiling(cl) => {
             let left: f64 = m.ceiling_slabs(cl).iter().map(|(face, rise)| area(&m.less_shafts(face, *rise).0)).sum();
@@ -3273,6 +3298,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             if let Some(t) = m.types.ceiling.get(&cl.type_name) {
                 extra.insert("thickness".into(), json!(t.thickness));
                 extra.insert("grid".into(), json!(t.grid));
+            }
+            if let Some((room, _)) = m.finish_of(id) {
+                extra.insert("room".into(), json!(room));
             }
         }
         Element::Shaft(sh) => {
@@ -5416,7 +5444,7 @@ fn design_options(s: &mut Session, p: &Value) -> R {
 }
 
 /// Delete elements `ids` as the `delete` command does: what hangs on them goes too. The reply's ids.
-fn delete_elements(s: &mut Session, ids: &[Id]) -> Result<Value, String> {
+pub(crate) fn delete_elements(s: &mut Session, ids: &[Id]) -> Result<Value, String> {
     delete(s, &json!({"ids": ids})).map(|r| r["deleted"].clone())
 }
 
@@ -9317,6 +9345,11 @@ fn room(s: &mut Session, p: &Value) -> R {
         })),
     };
     let mut r = Room::new(level, point, name, number.clone());
+    r.type_name = type_param(c, p, m, "room")?;
+    if !m.types.room.contains_key(&r.type_name) {
+        let names: Vec<&str> = m.types.room.keys().map(String::as_str).collect();
+        return Err(bad(c, format!("there is no room type `{}` (there are: {}); `type` makes one", r.type_name, names.join(", "))));
+    }
     r.frozen = flag(c, p, "frozen")?;
     r.base_offset = num(c, p, "base_offset")?.unwrap_or(0.0);
     let limit_offset = num(c, p, "limit_offset")?;
@@ -10870,6 +10903,12 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
     }
     let now =
         boundary_now(&e).ok_or_else(|| bad(c, format!("{id} isn't a floor, a ceiling, a roof's footprint, a shaft or a filled region")))?;
+    if !absent(p.get("sketch"))
+        && let Some((room, part)) = m.finish_of(id)
+    {
+        let at = m.elements.id(id).unwrap_or_default();
+        return Err(bad(c, connected(m, at, part, room, "its outline is the room's boundary at the walls' faces")));
+    }
     let Some((r, lines)) = sketched(c, p, "", &now)? else {
         return Ok(json!({"id": id, "sketch": now}));
     };
@@ -10915,7 +10954,12 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
 /// or enters an opening, the pieces inside kept; and at each end of a piece, and each new corner of the outline or an
 /// opening, a point at the height the top had there, unless one is there or it was 0. And what changed, as `dropped`
 /// (`{points: [[x, y], …], lines: [[[x, y], [x, y]], …]}`, what went), `cut` (the lines cut) and `added` (the points made).
-fn shape_within(m: &Model, old: &Floor, outline: &[P2], holes: &[Vec<P2>]) -> (crate::model::Shape, serde_json::Map<String, Value>) {
+pub(crate) fn shape_within(
+    m: &Model,
+    old: &Floor,
+    outline: &[P2],
+    holes: &[Vec<P2>],
+) -> (crate::model::Shape, serde_json::Map<String, Value>) {
     let sh = &old.shape;
     let mut said = serde_json::Map::new();
     if sh.is_empty() {
@@ -14192,6 +14236,32 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
             m.types.railing.insert(name.clone(), t.clone());
             json!(t)
         }
+        // A room type: the floor and the ceiling its rooms have of their own (`null`, none), and how far from their level.
+        "room" => {
+            let mut t = m.types.room.get(&name).cloned().unwrap_or_default();
+            for (key, types, of) in [("floor", m.type_names("floor"), &mut t.floor), ("ceiling", m.type_names("ceiling"), &mut t.ceiling)] {
+                match p.get(key) {
+                    None => {}
+                    Some(Value::Null) => *of = None,
+                    Some(Value::String(n)) if types.contains(&n.as_str()) => *of = Some(n.clone()),
+                    Some(v) => {
+                        return Err(bad(
+                            c,
+                            format!("`{key}` is a {key} type of the project ({}) or null for none, not {v}", types.join(", ")),
+                        ));
+                    }
+                }
+            }
+            // The colour its rooms are filled with on plans: red, green and blue, or null for no fill.
+            if let Some(v) = p.get("colour") {
+                t.colour = serde_json::from_value(v.clone())
+                    .map_err(|_| bad(c, format!("`colour` is [red, green, blue], each 0 to 255, or null for no fill, not {v}")))?;
+            }
+            t.floor_offset = num(c, p, "floor_offset")?.unwrap_or(t.floor_offset);
+            t.ceiling_offset = num(c, p, "ceiling_offset")?.unwrap_or(t.ceiling_offset);
+            m.types.room.insert(name.clone(), t.clone());
+            json!(t)
+        }
         "ceiling" => {
             let old = m.types.ceiling.get(&name).cloned();
             let (thickness, layers) = layered(c, p, old.as_ref().map(|t| (t.thickness, t.layers.as_slice())), thickness, &need)?;
@@ -14204,7 +14274,7 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
                 c,
                 format!(
                     "`{other}` has no types; use wall, floor, ceiling, door, window, column, structural column, footing, beam, \
-                     strip footing, pipe, conduit, cable tray, wire, down conductor, earthing conductor, cable, roof or railing"
+                     strip footing, pipe, conduit, cable tray, wire, down conductor, earthing conductor, cable, roof, railing or room"
                 ),
             ));
         }
@@ -14454,6 +14524,74 @@ const PLACED_BY: &[&str] = &[
     "parent",
 ];
 
+/// What a floor or a ceiling that follows a room has from the room: `modify` leaves them alone.
+const FOLLOWED: [&str; 6] = ["boundary", "openings", "sketch", "offset", "level", "type"];
+
+/// Why a floor or a ceiling that follows a room can't be changed that way, and what to do first.
+fn connected(m: &Model, id: Id, part: crate::model::Part, room: Id, why: &str) -> String {
+    let name = match m.elements.get(room) {
+        Some(Element::Room(r)) => format!("{} {}", r.number, r.name),
+        _ => String::new(),
+    };
+    format!(
+        "{} {id} is connected to room {room} ({}): {why}; disconnect it first (`room_finish {{id: {id}, action: disconnect}}`), \
+         or change the room's type",
+        part.name(),
+        name.trim()
+    )
+}
+
+fn room_finish(s: &mut Session, p: &Value) -> R {
+    use crate::model::{Finish, Part};
+    let c = "room_finish";
+    only(c, p, &["id", "part", "action"])?;
+    let m = &s.model;
+    let id =
+        id_opt(c, p, "id")?.and_then(|g| m.elements.id(g)).ok_or_else(|| bad(c, "`id`, a room or its floor or ceiling, is required"))?;
+    let part = match choice(c, p, "part", &["floor", "ceiling", ""], "")? {
+        "floor" => Some(Part::Floor),
+        "ceiling" => Some(Part::Ceiling),
+        _ => None,
+    };
+    // A floor or a ceiling names its room, and which of the two it is.
+    let (room, part) = match (m.elements.get(id), m.finish_of(id), part) {
+        (Some(Element::Room(_)), _, Some(part)) => (id, part),
+        (Some(Element::Room(_)), _, None) => return Err(bad(c, "`part` is required with a room: floor or ceiling")),
+        (_, Some((room, own)), given) if given.is_none_or(|g| g == own) => (room, own),
+        (_, Some((_, own)), _) => return Err(bad(c, format!("{id} is its room's {}", own.name()))),
+        _ => return Err(bad(c, format!("{id} is not a room, nor a floor or a ceiling connected to one"))),
+    };
+    let Some(Element::Room(r)) = m.elements.get(room) else { return Err(bad(c, format!("no room {room}"))) };
+    let wanted = m.types.room.get(&r.type_name).and_then(|t| t.finish(part)).is_some();
+    let now = r.finish(part);
+    let then = match (choice(c, p, "action", &["disconnect", "regenerate", ""], "")?, now) {
+        ("disconnect", Finish::Connected(_)) => Finish::Disconnected,
+        ("disconnect", _) => return Err(bad(c, format!("room {room} has no {} connected to it", part.name()))),
+        ("regenerate", Finish::Disconnected) if wanted => Finish::None,
+        ("regenerate", Finish::Disconnected) => {
+            return Err(bad(c, format!("room {room}'s type `{}` has no {} to make", r.type_name, part.name())));
+        }
+        ("regenerate", Finish::Connected(g)) => {
+            return Err(bad(c, format!("room {room} has its {} already ({}); disconnect it first", part.name(), m.shown(g))));
+        }
+        ("regenerate", Finish::None) if wanted => {
+            return Err(bad(
+                c,
+                format!("room {room} isn't enclosed, so it has no {} yet: it is made when walls close round it", part.name()),
+            ));
+        }
+        ("regenerate", Finish::None) => return Err(bad(c, format!("room {room}'s type `{}` has no {}", r.type_name, part.name()))),
+        _ => return Err(bad(c, "`action` is required: disconnect or regenerate")),
+    };
+    let was = now.connected().and_then(|g| m.elements.id(g));
+    if let Some(Element::Room(r)) = s.model_mut().elements.get_mut(room) {
+        *r.finish_mut(part) = then;
+    }
+    Ok(
+        json!({"room": room, "part": part.name(), "was": was, "state": if then == Finish::Disconnected { "disconnected" } else { "regenerating" }}),
+    )
+}
+
 fn modify(s: &mut Session, p: &Value) -> R {
     let c = "modify";
     let fields = p.as_object().ok_or_else(|| bad(c, "params must be {id | ids, …fields}"))?;
@@ -14475,6 +14613,18 @@ fn modify(s: &mut Session, p: &Value) -> R {
             ));
         }
         let e = m.elements.get(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
+        // A room's floor and ceiling are its room's: `room_finish` lets one go or makes it again, and one that follows a
+        // room is where and what the room's type says.
+        if matches!(e, Element::Room(_))
+            && let Some(k) = ["floor", "ceiling"].into_iter().find(|k| fields.contains_key(*k))
+        {
+            return Err(bad(c, format!("room {id}: its `{k}` is made by its type; use `room_finish` to disconnect it or make it again")));
+        }
+        if let Some((room, part)) = m.finish_of(id)
+            && let Some(k) = FOLLOWED.iter().find(|k| fields.contains_key(**k))
+        {
+            return Err(bad(c, connected(m, id, part, room, &format!("its `{k}` is its room's"))));
+        }
         let mut v = serde_json::to_value(e).map_err(|e| bad(c, e))?;
         let obj = v.as_object_mut().ok_or_else(|| bad(c, format!("element {id} can't be edited")))?;
         for (k, val) in fields {
@@ -16774,6 +16924,9 @@ fn purge(s: &mut Session, p: &Value) -> R {
 }
 
 fn delete(s: &mut Session, p: &Value) -> R {
+    // A room's own floor and ceiling go with it, unless they are to be kept: then they stay, ordinary ones.
+    let with = with_finishes(s, p)?;
+    let p = with.as_ref().unwrap_or(p);
     #[cfg(test)]
     let mut twin = s.clone();
     let result = delete_indexed(s, p);
@@ -16784,6 +16937,31 @@ fn delete(s: &mut Session, p: &Value) -> R {
         assert_eq!(s.model, twin.model, "indexed deletion left a different model");
     }
     result
+}
+
+/// `delete`'s params with the floors and ceilings of the rooms among them added, when there are any and `keep_finishes`
+/// isn't given.
+fn with_finishes(s: &Session, p: &Value) -> Result<Option<Value>, String> {
+    let c = "delete";
+    let keep = flag(c, p, "keep_finishes")?;
+    let m = &s.model;
+    let Ok(mut ids) = ids_param(c, m, p) else { return Ok(None) };
+    let own: Vec<Id> = ids
+        .iter()
+        .filter_map(|id| match m.elements.get(*id) {
+            Some(Element::Room(r)) => Some([r.floor, r.ceiling]),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|f| m.elements.id(f.connected()?))
+        .filter(|id| !ids.contains(id))
+        .collect();
+    if own.is_empty() || keep {
+        // (The key is `delete`'s own: what deletes is given the ids alone.)
+        return Ok(keep.then(|| json!({"ids": ids})));
+    }
+    ids.extend(own);
+    Ok(Some(json!({"ids": ids})))
 }
 
 fn delete_indexed(s: &mut Session, p: &Value) -> R {

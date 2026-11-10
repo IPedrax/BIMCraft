@@ -55,15 +55,31 @@ click from the point before until Esc. A room's height is Revit's: from `base_of
 its Upper Limit, `top_level` (none: Not Bounded, the offset then over its own level). A new room reaches 300 mm under the
 level above (`ROOM_BELOW_ABOVE`), or with none above is Not Bounded and 2500 mm tall; a room read from a file without them is
 Not Bounded, 2500 mm. `Model::room_span` and `room_height` give it, `elements` its `unbounded_height` and `volume_m3` (the area times that height, not cut by floors or roofs), and the IFC
-space is swept that tall. A room's colour on plans (`Room::colour`) styles that solid in IFC as other elements' colours do: an
+space is swept that tall. A room's colour on plans (its type's, `RoomType::colour`, `Model::room_colour`) styles that solid in IFC as other elements' colours do: an
 `IfcStyledItem` on the swept solid, its unnamed `IfcSurfaceStyle` shading in the colour (`IfcSurfaceStyleShading`, which IFC4's
 rendering style extends; `Step::surface_style`, which a material's style shares), so a viewer shades the space in it. The import
-reads it back from the colour the space's body is styled in (`import::item_colours`), so a round trip keeps it and a space
+reads it back from the colour the space's body is styled in (`import::item_colours`) as a room type of that colour (`Model::coloured_room_type`), so a round trip keeps it and a space
 another program styled comes in filled in its colour; a room that isn't enclosed has no body, so no colour, in IFC. A frozen room (`frozen`, an instance parameter: `room {frozen}` or `modify {id, frozen}`) keeps the
 boundary it has when frozen, both ways it can be measured (`Room::kept`, given after the command that froze it by
 `Model::keep_rooms`, which the engine calls after every command, and let go when it is thawed): `room_region_at` returns it
 and the plan draws it without finding the level's lines, so the walls are never searched for it again, which saves the time
-of many rooms; moved, rotated or mirrored, its boundary goes with it, and only a bounded room can be frozen. Walls and columns (and structural columns) bound
+of many rooms; moved, rotated or mirrored, its boundary goes with it, and only a bounded room can be frozen. A room has a type (`Room::type_name`, `types.room`, `RoomType`; a new
+project's `Standard`, which a file from before format 20 is given by `Model::migrate`), and a room type may name a floor type and a
+ceiling type (`type {category: room, floor, floor_offset, ceiling, ceiling_offset}`): each of its rooms then has a floor and a
+ceiling of its own (`Room::floor`, `Room::ceiling`, a `Finish`: none, `Connected` to the element by its GUID, or `Disconnected`),
+ordinary `Floor` and `Ceiling` elements, so plans, sections, the 3D view, schedules and IFC read them with no room found.
+`rooms::follow`, which the engine calls after every undoable command, makes them when the room is bounded and keeps their
+outline, level, type and offset the room's: the outline is the boundary at the walls' faces however the project measures rooms,
+found only on the levels the command may have changed (`dirty_levels`; in tests the engine holds that to `follow_all`, every
+level). Measured on the tower's ten storeys (104,081 elements, 195 rooms a storey, `--example room_finishes`, release): a
+wall move takes 2.9 ms with no room type naming one and 42 ms with every room having both, the same whether rooms are measured at
+wall centres or faces (the faces are the one boundary the step finds, so centres cost no second one); a text note takes 0.5 ms and
+0.7 ms; naming both on the type of all 1,950 rooms makes 3,900 elements in 0.5 s. A room not enclosed keeps the ones it has as they are, a frozen room's stay as it was frozen, a copy of a room gets its
+own, and a connected one moved is put back. While connected, `modify` of what the room gives and `edit_boundary` are refused with
+what to do; `room_finish {id, part?, action: disconnect|regenerate}` lets one go, an ordinary floor or ceiling from then on, or
+makes a new one for a room whose own was disconnected or deleted (a connected one deleted is let go the same way). `delete` of a
+room takes its connected floor and ceiling unless `keep_finishes`; a type that no longer names one takes it out. `elements` gives
+a connected floor's or ceiling's `room`. Walls and columns (and structural columns) bound
 rooms while their Room Bounding is on (`Wall::room_bounding`, `Column::room_bounding`, on unless set; `Model::room_bounding`,
 `bounding_columns`, `room_lines`): a column's outline either way rooms are measured, a free one an island. A wall with it off
 still bounds floors and roofs picked by their walls. Walls and columns bound a level's rooms where its

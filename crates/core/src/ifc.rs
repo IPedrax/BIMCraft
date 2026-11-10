@@ -1283,7 +1283,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                 let shape = match rooms.region(r) {
                     Some(region) => {
                         let profile = w.profile(&region.outer, &region.holes);
-                        let style = r.colour.map(|c| w.surface_style("$", c, "$"));
+                        let style = m.room_colour(r).map(|c| w.surface_style("$", c, "$"));
                         format!("#{}", w.bodies(&[(profile, r.base_offset, height)], &[], style))
                     }
                     None => "$".into(),
@@ -2401,7 +2401,8 @@ mod tests {
         let styled = |f: &str| f.matches("=IFCSTYLEDITEM(").count();
         let plain = styled(&export(&s.model));
         let room = s.model.elements.iter().find(|(_, e)| e.category() == "room").map(|(id, _)| *id).unwrap();
-        s.execute("modify", &json!({"id": room, "colour": [214, 229, 210]})).unwrap();
+        assert!(room >= crate::ids::FIRST_ID);
+        s.execute("type", &json!({"category": "room", "name": "Standard", "colour": [214, 229, 210]})).unwrap();
         let f = export(&s.model);
         dangling(&f);
         assert_eq!(styled(&f), plain + 1, "one style, for the one room with a colour");

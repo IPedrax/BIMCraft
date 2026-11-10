@@ -1,7 +1,13 @@
 # BIMCraft translations: Dutch (Nederlands, Belgian usage).
 # SPDX-License-Identifier: MIT OR Apache-2.0
 msgid ""
-msgstr "Project-Id-Version: BIMCraft\nLanguage: nl\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
+msgstr ""
+"Project-Id-Version: BIMCraft\n"
+"Language: nl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 #: crates/core/src/sheet.rs:489
 msgid "AS INDICATED"
@@ -11,8 +17,7 @@ msgstr ""
 msgid "Air Terminal"
 msgstr "Luchtuitlaat"
 
-#: crates/core/src/schedule.rs:195
-#: crates/core/src/schedule.rs:240
+#: crates/core/src/schedule.rs:195 crates/core/src/schedule.rs:240
 msgid "Area"
 msgstr "Oppervlakte"
 
@@ -40,7 +45,7 @@ msgstr "Baksteen"
 msgid "Brick 225 x 75"
 msgstr "Baksteen 225 x 75"
 
-#: crates/core/src/commands.rs:4740
+#: crates/core/src/commands.rs:4738
 msgid "Camera"
 msgstr "Camera"
 
@@ -76,8 +81,7 @@ msgstr "Keramische tegel"
 msgid "Chair"
 msgstr "Stoel"
 
-#: crates/core/src/panel_schedule.rs:268
-#: crates/core/src/panel_schedule.rs:276
+#: crates/core/src/panel_schedule.rs:268 crates/core/src/panel_schedule.rs:276
 #: crates/core/src/panel_schedule.rs:380
 msgid "Classification"
 msgstr ""
@@ -90,8 +94,7 @@ msgstr "Beton"
 msgid "Concrete block"
 msgstr "Betonblok"
 
-#: crates/core/src/panel_schedule.rs:380
-#: crates/core/src/panel_schedule.rs:391
+#: crates/core/src/panel_schedule.rs:380 crates/core/src/panel_schedule.rs:391
 msgid "Connected Load (VA)"
 msgstr ""
 
@@ -127,12 +130,11 @@ msgstr "Streep-punt"
 msgid "Data Outlet"
 msgstr "Data-aansluiting"
 
-#: crates/core/src/panel_schedule.rs:273
-#: crates/core/src/panel_schedule.rs:380
+#: crates/core/src/panel_schedule.rs:273 crates/core/src/panel_schedule.rs:380
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:11582
+#: crates/core/src/commands.rs:11578
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -140,8 +142,7 @@ msgstr "Afhankelijk"
 msgid "Depth"
 msgstr "Diepte"
 
-#: crates/core/src/panel_schedule.rs:267
-#: crates/core/src/panel_schedule.rs:276
+#: crates/core/src/panel_schedule.rs:267 crates/core/src/panel_schedule.rs:276
 msgid "Description"
 msgstr ""
 
@@ -217,9 +218,8 @@ msgstr "Elektrische verlichting"
 msgid "Electrical Power"
 msgstr "Elektrische voeding"
 
-#: crates/core/src/commands.rs:11329
-#: crates/core/src/commands.rs:11344
-#: crates/core/src/commands.rs:15548
+#: crates/core/src/commands.rs:11325 crates/core/src/commands.rs:11340
+#: crates/core/src/commands.rs:15544
 msgid "Elevation"
 msgstr "Gevel"
 
@@ -227,8 +227,7 @@ msgstr "Gevel"
 msgid "Estimated Current (A)"
 msgstr ""
 
-#: crates/core/src/panel_schedule.rs:380
-#: crates/core/src/panel_schedule.rs:391
+#: crates/core/src/panel_schedule.rs:380 crates/core/src/panel_schedule.rs:391
 msgid "Estimated Demand (VA)"
 msgstr ""
 
@@ -280,8 +279,7 @@ msgstr "Kozijnbreedte"
 msgid "Gate Valve"
 msgstr "Schuifafsluiter"
 
-#: crates/core/src/family.rs:3338
-#: crates/core/src/view3d.rs:1297
+#: crates/core/src/family.rs:3338 crates/core/src/view3d.rs:1297
 msgid "Glass"
 msgstr "Glas"
 
@@ -345,8 +343,7 @@ msgstr "Breedte poot"
 msgid "Length"
 msgstr "Lengte"
 
-#: crates/core/src/commands.rs:7316
-#: crates/core/src/model.rs:3409
+#: crates/core/src/commands.rs:7314 crates/core/src/model.rs:3409
 msgid "Level"
 msgstr "Niveau"
 
@@ -386,7 +383,7 @@ msgstr "Merkteken"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:9080
+#: crates/core/src/commands.rs:9078
 msgid "Mass"
 msgstr "Massa"
 
@@ -402,9 +399,7 @@ msgstr "Middeldikke lijnen"
 msgid "Membrane"
 msgstr "Membraan"
 
-#: crates/core/src/commands.rs:3185
-#: crates/core/src/commands.rs:14251
-#: crates/core/src/family.rs:3338
+#: crates/core/src/commands.rs:14247 crates/core/src/family.rs:3338
 #: crates/core/src/model.rs:4658
 msgid "Metal"
 msgstr "Metaal"
@@ -465,8 +460,7 @@ msgstr ""
 msgid "Patch Panel"
 msgstr "Patchpaneel"
 
-#: crates/core/src/schedule.rs:254
-#: crates/core/src/schedule.rs:263
+#: crates/core/src/schedule.rs:254 crates/core/src/schedule.rs:263
 msgid "Perimeter"
 msgstr "Omtrek"
 
@@ -486,8 +480,7 @@ msgstr "Oppervlakte in plattegrond"
 msgid "Plaster"
 msgstr "Pleister"
 
-#: crates/core/src/panel_schedule.rs:269
-#: crates/core/src/panel_schedule.rs:276
+#: crates/core/src/panel_schedule.rs:269 crates/core/src/panel_schedule.rs:276
 msgid "Poles"
 msgstr ""
 
@@ -499,11 +492,11 @@ msgstr "Porselein"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:3420
+#: crates/core/src/commands.rs:3418
 msgid "Project"
 msgstr "Project"
 
-#: crates/core/src/commands.rs:7957
+#: crates/core/src/commands.rs:7955
 msgid "Property Line"
 msgstr ""
 
@@ -535,7 +528,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
-#: crates/core/src/commands.rs:9305
+#: crates/core/src/commands.rs:9303
 msgid "Room"
 msgstr "Ruimte"
 
@@ -571,8 +564,7 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Zithoogte"
 
-#: crates/core/src/commands.rs:11264
-#: crates/core/src/commands.rs:15547
+#: crates/core/src/commands.rs:11260 crates/core/src/commands.rs:15543
 msgid "Section"
 msgstr "Doorsnede"
 
@@ -636,8 +628,7 @@ msgstr "Schuifraam"
 msgid "Slope"
 msgstr "Helling"
 
-#: crates/core/src/panel_schedule.rs:266
-#: crates/core/src/panel_schedule.rs:276
+#: crates/core/src/panel_schedule.rs:266 crates/core/src/panel_schedule.rs:276
 msgid "Slot"
 msgstr ""
 
@@ -709,8 +700,7 @@ msgstr "Totaal"
 msgid "Tread"
 msgstr "Aantrede"
 
-#: crates/core/src/panel_schedule.rs:271
-#: crates/core/src/panel_schedule.rs:276
+#: crates/core/src/panel_schedule.rs:271 crates/core/src/panel_schedule.rs:276
 msgid "Trip"
 msgstr ""
 
@@ -730,7 +720,7 @@ msgstr "Onbegrensde hoogte"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:11753
+#: crates/core/src/commands.rs:11749
 msgid "Unnamed"
 msgstr "Naamloos"
 
@@ -746,8 +736,7 @@ msgstr "Verticaal"
 msgid "Voice Outlet"
 msgstr "Telefoonaansluiting"
 
-#: crates/core/src/panel_schedule.rs:270
-#: crates/core/src/panel_schedule.rs:354
+#: crates/core/src/panel_schedule.rs:270 crates/core/src/panel_schedule.rs:354
 msgid "Voltage"
 msgstr ""
 
@@ -775,8 +764,7 @@ msgstr "Kleerkast"
 msgid "Washbasin"
 msgstr "Wastafel"
 
-#: crates/core/src/schedule.rs:215
-#: crates/core/src/schedule.rs:410
+#: crates/core/src/schedule.rs:215 crates/core/src/schedule.rs:410
 msgid "Weight"
 msgstr "Gewicht"
 
@@ -819,4 +807,3 @@ msgstr "bwc"
 #: crates/core/src/loads.rs:79
 msgid "wc"
 msgstr "wc"
-

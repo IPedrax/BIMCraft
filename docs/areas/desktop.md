@@ -316,9 +316,20 @@ type without layers as one band. A wall's run from its exterior face to its inte
 dashed where it runs (`walls::depth`, the core's own rule) and named under it; a click on the picture sets the line nearest it, through
 `modify`. A floor's, a roof's or a ceiling's run from the top down. Under it, for doors, which way they open (`opening_picker`): four plans of a door in
 its wall (as placed, hand flipped, facing flipped, both), the one the selected doors share lit, a click setting their `flip_hand` and
-`flip_facing` through `modify`. For rooms, their colour on plans (`room_colour`): swatches, No fill first, and any
-other colour; a pick sets the room's `colour` (`Room::colour`, red, green and blue, none for no fill), which plans draw as a fill of
-the room's region under its name (`render.rs`) and a file keeps (an optional field an older version leaves out, so no format step).
+`flip_facing` through `modify`. A room's colour on plans is its type's, so it is set in the room type's Type Properties
+(`properties::RoomRows`, Edit Type with a room selected): under Floor and Ceiling, the floor type and the ceiling type its rooms have
+of their own (None first) and each one's offset from the room's level; under Graphics, Colour on plans and its swatches or any other
+colour (`RoomType::colour`, red, green and blue, none for no fill), which plans draw as a fill of each of its rooms' regions under
+the name (`render.rs`). OK and Apply give them to the `type` command; a file from before format 20, whose rooms held a colour of
+their own, opens with each on a type of its colour (`Model::coloured_room_type`).
+A room that has a floor or a ceiling of its own shows them first in Properties
+(`finishes.rs`, `connected_finishes`, under the Edit Type row): for each, its type, a link of its id that selects it, and Disconnect
+(`room_finish`), after which the row says Disconnected and the button is Regenerate, which makes another; a room with neither has no
+such rows. A floor or a ceiling that follows a room shows Connected to, the room's number and name, its link and Disconnect, and while
+it follows, its Type Selector is off, its level and offset are shown and not typed, and the ribbon's Edit Boundary is off with the
+reason as its tip. Delete (`delete_elements`, from the key, the menu and the browser) asks first when a room among what goes has a
+floor or a ceiling that isn't going with it: Delete Them Too, Keep Them (`keep_finishes`) or Cancel. The Room tool places rooms of
+the type its Type Selector shows.
 For floors, their slope (`floor_slope`): a short section of the slab at its true angle from its slope arrow's tail, a dashed line
 level with the tail, and the angle written on it in degrees and percent (its accessible label too); under it the steps Flat, 1%, 2%
 and 5%, the one they share lit, a click setting `slope` through `modify` as the Slope field does, a falling floor kept falling. A

@@ -654,6 +654,7 @@ impl Model {
                 "roof" => self.types.roof.remove(name).is_some(),
                 "ceiling" => self.types.ceiling.remove(name).is_some(),
                 "railing" => self.types.railing.remove(name).is_some(),
+                "room" => self.types.room.remove(name).is_some(),
                 "structuralcolumn" => self.types.structural_column.remove(name).is_some(),
                 "footing" => self.types.footing.remove(name).is_some(),
                 run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| t.remove(name).is_some()),
@@ -695,6 +696,7 @@ impl Model {
                 "roof" => mv(&mut self.types.roof, from, to),
                 "ceiling" => mv(&mut self.types.ceiling, from, to),
                 "railing" => mv(&mut self.types.railing, from, to),
+                "room" => mv(&mut self.types.room, from, to),
                 "structuralcolumn" => mv(&mut self.types.structural_column, from, to),
                 "footing" => mv(&mut self.types.footing, from, to),
                 run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| mv(t, from, to)),
@@ -787,6 +789,7 @@ impl Model {
         add(Kind::Type("roof".into()), &mut t.roof.keys());
         add(Kind::Type("ceiling".into()), &mut t.ceiling.keys());
         add(Kind::Type("railing".into()), &mut t.railing.keys());
+        add(Kind::Type("room".into()), &mut t.room.keys());
         add(Kind::Type("structuralcolumn".into()), &mut t.structural_column.keys());
         add(Kind::Type("footing".into()), &mut t.footing.keys());
         for (cat, types) in &t.runs {
@@ -1453,6 +1456,7 @@ impl crate::model::Element {
             Element::Ceiling(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Roof(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Railing(x) => f(&Kind::Type(category), &mut x.type_name),
+            Element::Room(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => f(&Kind::Type(category), &mut c.type_name),
             run_arm!(r) => f(&Kind::Type(category), &mut r.type_name),
             Element::Door(o) | Element::Window(o) => match &mut o.family {
@@ -1547,6 +1551,15 @@ impl Model {
         }
         for r in t.runs.values_mut().flat_map(|x| x.values_mut()).filter(|r| !r.material.is_empty()) {
             f(&Kind::Material, &mut r.material);
+        }
+        // A room type's floor and ceiling are types of the project's.
+        for r in t.room.values_mut() {
+            if let Some(floor) = &mut r.floor {
+                f(&Kind::Type("floor".into()), floor);
+            }
+            if let Some(ceiling) = &mut r.ceiling {
+                f(&Kind::Type("ceiling".into()), ceiling);
+            }
         }
         for m in self.materials.values_mut() {
             if let Some(tx) = m.texture.as_mut().filter(|tx| !tx.image.is_empty()) {
