@@ -12,6 +12,7 @@ use crate::graphics::Look;
 use crate::language::Language;
 use crate::model::{Element, Id, Key, Model, Schedule, Sheet, Viewport, paper};
 use crate::pen::Pen;
+use crate::project_info::ProjectInfo;
 use crate::render::{self, Drawing, PAPER, Part, Prim, Rgb, View};
 use crate::{font, schedule, view3d};
 
@@ -139,6 +140,13 @@ fn left(d: &mut Drawing, text: &str, at: P2, height: f64) {
     d.text(text, (x + font::width(text, h) / 2.0, y), h, INK);
 }
 
+/// `text` lettered `height` mm tall, its right end at `at`.
+fn right(d: &mut Drawing, text: &str, at: P2, height: f64) {
+    let h = (height * DENSITY) as f32;
+    let (x, y) = d.view.px(at);
+    d.text(text, (x - font::width(text, h) / 2.0, y), h, INK);
+}
+
 /// Draw standard folding marks (marcas de dobramento) as specified in NBR 17067.
 fn draw_folding_marks(d: &mut Drawing, paper: P2, size: &str, margins: crate::standards::SheetMargins) {
     let s = size.trim().to_ascii_uppercase();
@@ -170,8 +178,16 @@ fn draw_folding_marks(d: &mut Drawing, paper: P2, size: &str, margins: crate::st
 }
 
 /// The border, filing margin on the left and borders on the other sides, and the title
-/// box in the bottom right corner, adapted to `std`: the project, the sheet's name, its scale, and its number.
-fn title_block(d: &mut Drawing, project: &str, sheet: &Sheet, paper: P2, scale: &str, std: crate::standards::TechnicalStandard) {
+/// box in the bottom right corner, adapted to `std`: the project, the sheet's name, its scale, and its number; and right of
+/// the project, what its information says of the client, and its number, status and issue date.
+fn title_block(
+    d: &mut Drawing,
+    (project, info): (&str, Option<&ProjectInfo>),
+    sheet: &Sheet,
+    paper: P2,
+    scale: &str,
+    std: crate::standards::TechnicalStandard,
+) {
     let margins = std.sheet_margins(&sheet.size);
     let rect = |a: P2, b: P2| vec![a, P2(b.0, a.1), b, P2(a.0, b.1)];
     d.line(&rect(P2(margins.left, margins.bottom), P2(paper.0 - margins.right, paper.1 - margins.top)), Pen::BORDER, INK, true);
@@ -182,6 +198,12 @@ fn title_block(d: &mut Drawing, project: &str, sheet: &Sheet, paper: P2, scale: 
     d.line(&[P2(x0, y0 + 26.0), P2(x1, y0 + 26.0)], Pen::PROJECTION, INK, false);
     d.line(&[P2(x1 - 50.0, y0), P2(x1 - 50.0, y0 + 26.0)], Pen::PROJECTION, INK, false);
     left(d, project, P2(x0 + 4.0, y0 + 33.0), 5.0);
+    if let Some(info) = info {
+        right(d, &info.client, P2(x1 - 4.0, y0 + 36.0), 2.5);
+        let said: Vec<&str> =
+            [&info.number, &info.status, &info.issue_date].into_iter().map(String::as_str).filter(|t| !t.is_empty()).collect();
+        right(d, &said.join("   "), P2(x1 - 4.0, y0 + 30.0), 2.0);
+    }
     left(d, &sheet.name, P2(x0 + 4.0, y0 + 17.0), 3.5);
     left(d, scale, P2(x0 + 4.0, y0 + 7.0), 2.0);
     let number = (7.0 * DENSITY) as f32;
@@ -403,7 +425,7 @@ pub(crate) fn draw_traced(m: &Model, id: impl Key) -> Option<(Drawing, Vec<(usiz
     // Schedules keep their own size: no scale of theirs.
     let scaled: Vec<&Viewport> =
         views.iter().filter(|(_, v)| !matches!(m.elements.get(v.view), Some(Element::Schedule(_)))).map(|(_, v)| *v).collect();
-    title_block(&mut d, &m.name, sheet, paper, &scale_note(&scaled, m.language, m.units), m.standard());
+    title_block(&mut d, (&m.name, m.project_info().map(|(_, i)| i)), sheet, paper, &scale_note(&scaled, m.language, m.units), m.standard());
     let mut scene = None;
     let mut drawn = Vec::new();
     let work = Work::new();

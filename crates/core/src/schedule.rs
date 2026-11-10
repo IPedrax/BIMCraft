@@ -588,8 +588,9 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
             n,
             match p.kind {
                 ParameterKind::Text => Kind::Text,
-                ParameterKind::Number => Kind::Number,
+                ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => Kind::Number,
                 ParameterKind::Length => Kind::Length,
+                ParameterKind::Area => Kind::Area,
                 ParameterKind::YesNo => Kind::YesNo,
             },
         );
@@ -602,7 +603,7 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
                     family::Kind::Length => Kind::Length,
                     family::Kind::Number | family::Kind::Angle => Kind::Number,
                     family::Kind::YesNo => Kind::YesNo,
-                    family::Kind::Material => Kind::Text,
+                    family::Kind::Material | family::Kind::Text => Kind::Text,
                 },
             );
         }
@@ -948,22 +949,24 @@ impl Row<'_> {
                 From::Shared => self.shared(name, *kind),
             };
         }
-        if let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == cat)) {
-            return match self.e.params().and_then(|ps| ps.get(name)) {
-                Some(v) => v.clone(),
-                // Unset, a yes or no is no, as the palette shows it.
-                None if p.kind == ParameterKind::YesNo => Value::Bool(false),
-                None => Value::Null,
-            };
-        }
+        // A family's own first: where a project parameter has the name too, the family's is tied to it, and is its value here.
         if let Some((family, _)) = self.e.family()
             && let Some(p) = m.families.get(family).and_then(|f| f.parameters.iter().find(|p| p.name == name))
         {
             let v = j.get("values").and_then(|v| v.get(name)).cloned().unwrap_or(Value::Null);
             return match (p.kind, v.as_f64()) {
                 (family::Kind::YesNo, Some(x)) => Value::Bool(x != 0.0),
-                (family::Kind::Material, _) if v.as_str() == Some("") => Value::Null,
+                (family::Kind::Material | family::Kind::Text, _) if v.as_str() == Some("") => Value::Null,
                 _ => v,
+            };
+        }
+        let cat = self.cat;
+        if let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == cat)) {
+            return match crate::parameters::value_of(m, self.e, name, p) {
+                Some(v) => v.clone(),
+                // Unset, a yes or no is no, as the palette shows it.
+                None if p.kind == ParameterKind::YesNo => Value::Bool(false),
+                None => Value::Null,
             };
         }
         Value::Null

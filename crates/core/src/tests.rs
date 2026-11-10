@@ -2018,6 +2018,26 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"start": [0, 0], "end": [0, 0]}),
         json!({"level": "nowhere"}),
         json!({"path": 5}),
+        json!({"ops": "x", "dry_run": 5}),
+        json!({"ops": [{"op": "rename", "names": ["x"], "prefix": 1e300}, {"op": "zap"}, 5, {"op": "duplicate", "name": []}]}),
+        json!({"ops": [{"op": "duplicate", "name": "Rating", "as": "\u{1}"}, {"op": "rename", "names": [5]}], "dry_run": true}),
+        json!({"path": "/nonexistent/x.csv", "map": {"a": 5}, "resolve": {"a": "zap"}, "categories": [1], "names": "x", "replace_categories": 3}),
+        json!({"path": "/nonexistent/x.bimparams", "add": [{"name": 5}], "merge": [1], "remove": {}, "names": 5, "version": []}),
+        json!({"from": [], "into": 5, "overwrite": "x"}),
+        json!({"from": "a", "to": [1], "names": "x", "prefix": 5, "find": []}),
+        json!({"name": "P", "description": 5, "group": [], "read_only": 1, "scope": "x", "dictionary": "d", "kind": "plasma"}),
+        json!({"name": "P", "scope": 5, "categories": ["room"]}),
+        json!({"name": 5, "number": [], "client": "x\n", "address": "a".repeat(5000), "params": {"Nope": 1}, "issue_date": 1e300}),
+        json!({"number": "1", "params": "x", "building": "\u{1}", "status": "a\rb", "organization": {}}),
+        json!({"client": "c", "params": {"P": [], "Phase Created": "x"}, "author": null}),
+        json!({"category": "wall", "type": "x", "values": {"P": 1e300}, "copy_to": 5}),
+        json!({"family": [], "type": {}, "values": 5}),
+        json!({"category": "wall", "type": "Generic - 200mm", "values": {"Nope": []}}),
+        json!({"families": "x", "parameters": 5}),
+        json!({"path": 5, "name": [], "remove": "x"}),
+        json!({"name": "nope", "remove": true}),
+        json!({"families": ["x"], "parameters": [{"name": 5, "kind": "plasma", "definition": "x"}]}),
+        json!({"path": "/nonexistent/x.csv", "definitions": 5, "scopes": {"a": "zap"}}),
         json!({"path": "/nonexistent/scan.las", "units": "furlong", "spacing": -1}),
         json!({"cloud": "nope", "origin": "file", "at": [1e300, 0]}),
         json!({"path": "/nonexistent/plan.dxf", "units": "furlong", "scale": -1, "position": 3}),
@@ -5946,7 +5966,7 @@ fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_i
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch;
     // 13 floors' and flat roofs' shapes; 14 the categories of family components, which the starter view templates name; 15 a roof's slope for each
-    // edge and a wall's top offset; 16 dimensions in 3D views and the locks Align leaves; 17 multi-category schedules and Italian projects. Nothing in a file of 4
+    // edge and a wall's top offset; 16 dimensions in 3D views and the locks Align leaves; 17 multi-category schedules and Italian projects; 18 pipe, data and earthing connectors; 19 dictionaries and project parameters' kinds and scopes. Nothing in a file of 4
     // to 7 that holds no notes changes.
     let mut s = Session::new();
     let empty = serde_json::to_value(&*s.model).unwrap();

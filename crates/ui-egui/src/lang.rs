@@ -311,6 +311,7 @@ pub fn category(category: &str, several: bool) -> String {
         "pointcloud" => (msg!("category", "Point Cloud"), msg!("category-plural", "Point Clouds")),
         "cadimport" => (msg!("category", "CAD Import"), msg!("category-plural", "CAD Imports")),
         "multicategory" => (msg!("category", "Multi-Category"), msg!("category-plural", "Multi-Category")),
+        "project" => (msg!("category", "Project Information"), msg!("category-plural", "Project Information")),
         other => return other.to_string(),
     };
     let (context, english) = if several { ("category-plural", many) } else { ("category", one) };

@@ -69,6 +69,8 @@ const CONNECTOR: u64 = 55;
 const CONNECTOR_DEFINES: u64 = 56;
 const TYPE_MATERIALS: u64 = 57;
 const USAGE_MATERIALS: u64 = 58;
+const INFO: u64 = 59;
+const INFO_DEFINES: u64 = 60;
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
@@ -86,6 +88,11 @@ pub const SEPARATION: &str = "RoomSeparation";
 /// The property set what a placed device's connector says that IFC's `Pset_ElectricalDeviceCommon` has no property for goes
 /// in: its load in VA (in all, and `LoadVAPhase1`… for each phase), its system and its classification.
 pub const CONNECTOR_SET: &str = "BIMCraft_Connector";
+
+/// The property set on the project its information goes in, each field under the name Revit gives it
+/// (`project_info::FIELDS`): what IFC's own attributes (the project's phase, the building's name and address) don't hold, and
+/// those too, as typed, so they come back as they were.
+pub const PROJECT_INFO: &str = "BIMCraft_ProjectInformation";
 
 /// The property set an element's phase and design option go in; on the project, its phases and design option sets.
 pub const PHASING: &str = "BIMCraft_Phasing";
@@ -888,7 +895,11 @@ pub fn export_as(m: &Model, at: Origin, schema: Schema) -> String {
     ]
     .map(|u| w.add(u));
     let units = w.add(format!("IFCUNITASSIGNMENT(({}))", refs(&units)));
-    let project = w.add(format!("IFCPROJECT({},$,{},$,$,$,$,(#{ctx}),#{units})", w.guid(PROJECT, 0), s(&m.name)));
+    // The project's information: its status is the project's phase, and its building's name and address the building's.
+    let info = m.project_info();
+    let said = |t: &str| if t.is_empty() { "$".to_string() } else { s(t) };
+    let phase = said(info.map_or("", |(_, i)| i.status.as_str()));
+    let project = w.add(format!("IFCPROJECT({},$,{},$,$,$,{phase},(#{ctx}),#{units})", w.guid(PROJECT, 0), s(&m.name)));
     let site_at = match from {
         Some(o) => w.place(None, (-o[0], -o[1], -o[2]), None),
         None => {
@@ -943,7 +954,26 @@ pub fn export_as(m: &Model, at: Origin, schema: Schema) -> String {
         ));
     }
     let building_at = w.place(Some(site_at), (0.0, 0.0, 0.0), None);
-    let building = w.add(format!("IFCBUILDING({},$,{},$,$,#{building_at},$,$,.ELEMENT.,$,$,$)", w.guid(BUILDING, 0), s(&m.name)));
+    let building_name = info.map(|(_, i)| i.building.as_str()).filter(|b| !b.is_empty()).unwrap_or(&m.name);
+    let address = match info.map(|(_, i)| i.address.as_str()).filter(|a| !a.trim().is_empty()) {
+        Some(a) => {
+            let lines: Vec<String> = a.lines().map(str::trim).filter(|l| !l.is_empty()).map(s).collect();
+            format!("#{}", w.add(format!("IFCPOSTALADDRESS($,$,$,$,({}),$,$,$,$,$)", lines.join(","))))
+        }
+        None => "$".to_string(),
+    };
+    let building =
+        w.add(format!("IFCBUILDING({},$,{},$,$,#{building_at},$,$,.ELEMENT.,$,$,{address})", w.guid(BUILDING, 0), s(building_name)));
+    if let Some((_, i)) = info {
+        let props: Vec<u64> = crate::project_info::FIELDS
+            .iter()
+            .filter_map(|(key, label)| Some((*label, i.get(key).filter(|v| !v.is_empty())?)))
+            .map(|(label, v)| w.text_property(label, None, v))
+            .collect();
+        if !props.is_empty() {
+            w.define(project, PROJECT_INFO, &props, (INFO, INFO_DEFINES), 0);
+        }
+    }
     w.add(format!("IFCRELAGGREGATES({},$,$,$,#{project},(#{site}))", w.guid(AGGREGATES, PROJECT)));
     w.add(format!("IFCRELAGGREGATES({},$,$,$,#{site},(#{building}))", w.guid(AGGREGATES, SITE)));
 
@@ -963,6 +993,10 @@ pub fn export_as(m: &Model, at: Origin, schema: Schema) -> String {
     let mut spaces: BTreeMap<Guid, Vec<u64>> = BTreeMap::new();
     // Each element's own entity, for what it holds of the project's parameters.
     let mut products: BTreeMap<Id, u64> = BTreeMap::new();
+    // The project's information is the project, for its values of the project's parameters.
+    if let Some((id, _)) = info {
+        products.insert(id, project);
+    }
     // Walls as (entity, placement), for the openings in them.
     let mut placed: BTreeMap<Id, (u64, u64)> = BTreeMap::new();
     // Floors, ceilings and roofs as (entity, placement, its height), for the shafts through them.
@@ -1706,8 +1740,14 @@ pub fn export_as(m: &Model, at: Origin, schema: Schema) -> String {
     for (&id, &ent) in &products {
         let Some(e) = m.elements.get(id) else { continue };
         let Some(params) = e.params() else { continue };
+        // A type parameter goes out on each element of the type: IFC has it where a reader of the element looks.
+        let of_type = m.parameters.iter().filter(|(_, p)| p.scope == crate::model::Scope::Type).filter_map(|(n, p)| {
+            let mine = p.categories.iter().any(|c| c == e.category());
+            Some((n, mine.then(|| crate::parameters::value_of(m, e, n, p)).flatten()?))
+        });
         let props: Vec<u64> = params
             .iter()
+            .chain(of_type)
             .filter_map(|(name, v)| {
                 // The project's parameters for its category: a component's family's values are its family's.
                 let p = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == e.category()))?;
@@ -1715,6 +1755,10 @@ pub fn export_as(m: &Model, at: Origin, schema: Schema) -> String {
                     (ParameterKind::Text, Value::String(t)) => format!("IFCTEXT({})", s(t)),
                     (ParameterKind::Number, v) => format!("IFCREAL({})", real(v.as_f64()?)),
                     (ParameterKind::Length, v) => format!("IFCLENGTHMEASURE({})", real(v.as_f64()?)),
+                    (ParameterKind::Integer, v) => format!("IFCINTEGER({})", v.as_f64()? as i64),
+                    (ParameterKind::Area, v) => format!("IFCAREAMEASURE({})", real(v.as_f64()?)),
+                    (ParameterKind::Volume, v) => format!("IFCVOLUMEMEASURE({})", real(v.as_f64()?)),
+                    (ParameterKind::Angle, v) => format!("IFCPLANEANGLEMEASURE({})", real(v.as_f64()?.to_radians())),
                     (ParameterKind::YesNo, Value::Bool(b)) => format!("IFCBOOLEAN({})", if *b { ".T." } else { ".F." }),
                     _ => return None,
                 };

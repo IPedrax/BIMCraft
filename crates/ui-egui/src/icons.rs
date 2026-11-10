@@ -137,6 +137,7 @@ icon_names! {
     ImportCad,
     LinkCad,
     Parameters,
+    ProjectInfo,
     Measure,
     Snaps,
     Visibility,
@@ -1186,6 +1187,12 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.circle((11.0, 6.0), 2.0);
             g.circle((16.0, 12.0), 2.0);
             g.circle((8.0, 18.0), 2.0);
+        }
+        Icon::ProjectInfo => {
+            // A house's outline with an "i" inside: what the project is.
+            g.closed(&[(4.0, 21.0), (4.0, 9.0), (12.0, 3.0), (20.0, 9.0), (20.0, 21.0)]);
+            g.circle((12.0, 10.5), 1.0);
+            g.line(&[(12.0, 14.0), (12.0, 18.5)]);
         }
         Icon::Measure => {
             // A diagonal ruler with ticks perpendicular to its top edge, distinct from Units.

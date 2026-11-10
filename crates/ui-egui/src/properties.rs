@@ -13,7 +13,8 @@ use std::sync::Arc;
 
 use bimcraft_core::element_json;
 use bimcraft_core::family::{Kind as Holds, Val};
-use bimcraft_core::model::{Element, Function, Guid, Id, Layer, Location, Model, PARAMETER_CATEGORIES, ParameterKind, Pattern};
+use bimcraft_core::library::Kind as LibKind;
+use bimcraft_core::model::{Element, Function, Guid, Id, Layer, Location, Model, ParameterKind, Pattern, ProjectParameter, Scope};
 use bimcraft_core::schedule::{self, Field, Filter, Op, Sort};
 use bimcraft_core::snap::Kind as Snap;
 use bimcraft_core::texture::{Kind as TextureKind, Texture};
@@ -530,6 +531,40 @@ pub(crate) fn number(s: &str) -> Option<f64> {
 }
 
 /// A value of `kind` as the palette shows it, lengths and areas in `units`.
+/// An area parameter's value, m² in the model, in the project's units.
+fn area_shown(v: &Value, units: Units) -> String {
+    v.as_f64().map_or_else(String::new, |x| format!("{:.2}", units.area(x * 1e6).0))
+}
+
+/// An area typed in the project's units, as the m² it is in the model.
+fn area_parsed(s: &str, units: Units) -> Result<Value, String> {
+    let per_m2 = units.area(1e6).0;
+    number(s).map(|x| json!(x / per_m2)).ok_or_else(|| tf("`{}` is not a number", &[s]))
+}
+
+/// A project parameter's value of `kind` as a field shows it: lengths and areas in `units`. Not for yes or no, a checkbox.
+pub(crate) fn parameter_shown(kind: ParameterKind, v: &Value, units: Units) -> String {
+    match kind {
+        ParameterKind::Area => area_shown(v, units),
+        ParameterKind::Length => shown(Length, v, units),
+        ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => shown(Number, v, units),
+        ParameterKind::Text | ParameterKind::YesNo => shown(Text, v, units),
+    }
+}
+
+/// What was typed for a project parameter of `kind`, as the value commands take; blank, none.
+pub(crate) fn parameter_parsed(kind: ParameterKind, typed: &str, units: Units) -> Result<Value, String> {
+    if typed.trim().is_empty() {
+        return Ok(Value::Null);
+    }
+    match kind {
+        ParameterKind::Area => area_parsed(typed, units),
+        ParameterKind::Length => parse(Length, typed, units),
+        ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => parse(Number, typed, units),
+        ParameterKind::Text | ParameterKind::YesNo => parse(Text, typed, units),
+    }
+}
+
 fn shown(kind: Kind, v: &Value, units: Units) -> String {
     let each = |f: &dyn Fn(f64) -> String| match v {
         Value::Array(a) => a.iter().filter_map(Value::as_f64).map(f).collect::<Vec<_>>().join(", "),
@@ -735,6 +770,122 @@ fn function_name(f: Function) -> &'static str {
 /// A type's parameter as typed: its group, its field, its label, the text.
 type TypeField = (&'static str, &'static str, &'static str, String);
 
+/// A type's value of one of the project's type parameters, as typed.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TypeValue {
+    name: String,
+    kind: ParameterKind,
+    group: String,
+    read_only: bool,
+    was: String,
+    typed: String,
+}
+
+/// The palette's groups for what a family's parameter holds, by the names [`BimApp::component_parameters`] lists.
+fn static_group(group: &str) -> &'static str {
+    match group {
+        "Dimensions" => "Dimensions",
+        "Other" => "Other",
+        _ => msg!("Materials and Finishes"),
+    }
+}
+
+/// A parameter's value as the palette and Type Properties show it.
+fn value_shown(kind: ParameterKind, v: &Value, units: Units) -> String {
+    match kind {
+        ParameterKind::YesNo if v.as_bool().unwrap_or(false) => t("Yes").to_string(),
+        ParameterKind::YesNo => t("No").to_string(),
+        ParameterKind::Length => shown(Length, v, units),
+        ParameterKind::Area => area_shown(v, units),
+        ParameterKind::Text => shown(Text, v, units),
+        _ => shown(Number, v, units),
+    }
+}
+
+/// The project's type parameters for types of `category`, with what the type `guid` holds of each.
+fn type_values(m: &Model, category: &str, guid: Option<Guid>) -> Vec<TypeValue> {
+    m.parameters
+        .iter()
+        .filter(|(_, p)| p.scope == Scope::Type && p.categories.iter().any(|c| c == category))
+        .map(|(n, p)| {
+            let v = guid.and_then(|g| p.type_values.get(&g)).cloned().unwrap_or(Value::Null);
+            let typed = match p.kind {
+                ParameterKind::YesNo => (if v.as_bool().unwrap_or(false) { "1" } else { "0" }).to_string(),
+                ParameterKind::Area => area_shown(&v, m.units),
+                ParameterKind::Length => shown(Length, &v, m.units),
+                ParameterKind::Text => shown(Text, &v, m.units),
+                _ => shown(Number, &v, m.units),
+            };
+            TypeValue { name: n.clone(), kind: p.kind, group: p.group.clone(), read_only: p.read_only, was: typed.clone(), typed }
+        })
+        .collect()
+}
+
+/// The rows of a Type Properties table for `values`, each under its group, or Project Parameters.
+fn type_value_rows(tb: &mut typeprops::Table, values: &mut [TypeValue], units: Units) {
+    let mut groups: Vec<String> = values.iter().map(|v| v.group.clone()).collect();
+    groups.sort();
+    groups.dedup();
+    for g in groups {
+        tb.group(if g.is_empty() { "Project Parameters" } else { g.as_str() });
+        for v in values.iter_mut().filter(|v| v.group == g) {
+            match v.kind {
+                _ if v.read_only && v.kind == ParameterKind::YesNo => tb.shown(&v.name, t(if v.typed == "1" { "Yes" } else { "No" })),
+                _ if v.read_only => tb.shown(&v.name, &v.typed),
+                ParameterKind::YesNo => {
+                    let mut on = v.typed == "1";
+                    tb.check(&v.name, &mut on);
+                    v.typed = (if on { "1" } else { "0" }).to_string();
+                }
+                ParameterKind::Length => tb.text(&v.name, &mut v.typed, units.name()),
+                _ => tb.text(&v.name, &mut v.typed, ""),
+            }
+        }
+    }
+}
+
+/// What `type_parameter` takes for the values changed: emptied, a value is taken away. Or why one isn't what it holds.
+fn type_value_changes(values: &[TypeValue], units: Units) -> Result<serde_json::Map<String, Value>, String> {
+    let mut out = serde_json::Map::new();
+    for v in values.iter().filter(|v| v.typed != v.was && !v.read_only) {
+        let value = match v.kind {
+            _ if v.typed.trim().is_empty() => Value::Null,
+            ParameterKind::YesNo => json!(v.typed == "1"),
+            ParameterKind::Area => area_parsed(&v.typed, units).map_err(|e| format!("{}: {e}", v.name))?,
+            ParameterKind::Length => parse(Length, &v.typed, units).map_err(|e| format!("{}: {e}", v.name))?,
+            ParameterKind::Text => json!(v.typed),
+            _ => parse(Number, &v.typed, units).map_err(|e| format!("{}: {e}", v.name))?,
+        };
+        out.insert(v.name.clone(), value);
+    }
+    Ok(out)
+}
+
+impl BimApp {
+    /// Commands a Type Properties dialog runs together: one undo step. Whether they were done; why not in `error`.
+    fn run_type_commands(&mut self, commands: Vec<(&'static str, Value)>, error: &mut Option<String>) -> bool {
+        if let [(id, p)] = commands.as_slice() {
+            return self.run_for_type(id, p.clone(), error);
+        }
+        self.made_in();
+        let done = self.session.transaction("Type Properties", |s: &mut bimcraft_core::engine::Session| {
+            commands.iter().try_for_each(|(c, p)| s.execute(c, p).map(|_| ()))
+        });
+        match done {
+            Ok(()) => {
+                self.status = Status::default();
+                *error = None;
+                true
+            }
+            Err(e) => {
+                self.status = Status { text: e.clone(), error: true };
+                *error = Some(e);
+                false
+            }
+        }
+    }
+}
+
 /// The Type Properties dialog: a type of a category, and its parameters as typed; a layered
 /// type's layers, too.
 pub(crate) struct TypeDialog {
@@ -753,6 +904,8 @@ pub(crate) struct TypeDialog {
     layers_were: Vec<LayerRow>,
     /// A run type's section: whether it is round (then it has a diameter and no depth) and what it is made of ("" for nothing).
     shape: Option<(bool, String)>,
+    /// The type's values of the project's type parameters, as typed.
+    project: Vec<TypeValue>,
 }
 
 impl TypeDialog {
@@ -762,7 +915,19 @@ impl TypeDialog {
             let t = m.types.runs.get(category).and_then(|t| t.get(&name));
             (t.is_some_and(|t| t.round), t.map(|t| t.material.clone()).unwrap_or_default())
         });
-        TypeDialog { category, name, elements, fields, naming: Naming::None, error: None, layers_were: layers.clone(), layers, shape }
+        let project = type_values(m, category, m.library.guid(&LibKind::Type(category.to_string()), &name));
+        TypeDialog {
+            category,
+            name,
+            elements,
+            fields,
+            naming: Naming::None,
+            error: None,
+            layers_were: layers.clone(),
+            layers,
+            shape,
+            project,
+        }
     }
 
     /// The dialog showing type `name` as the model has it now.
@@ -1902,15 +2067,27 @@ impl BimApp {
         };
         let (units, materials): (Units, Vec<String>) = (model.units, model.materials.keys().cloned().collect());
         let mut change: Option<(String, Result<Value, String>)> = None;
+        let own_groups: BTreeSet<String> =
+            f.parameters.iter().filter(|p| p.instance && !p.group.is_empty()).map(|p| p.group.clone()).collect();
         for (group, kinds) in [
             ("Dimensions", &[Holds::Length, Holds::Number, Holds::Angle][..]),
             (msg!("Materials and Finishes"), &[Holds::Material][..]),
-            ("Other", &[Holds::YesNo][..]),
-        ] {
-            let params: Vec<_> = f.parameters.iter().filter(|p| p.instance && kinds.contains(&p.kind)).collect();
+            ("Other", &[Holds::YesNo, Holds::Text][..]),
+        ]
+        .into_iter()
+        .map(|(g, k)| (g, Some(k)))
+        .chain(own_groups.iter().map(|g| (g.as_str(), None)))
+        {
+            // A group the family names, or the one for what it holds.
+            let params: Vec<_> = f
+                .parameters
+                .iter()
+                .filter(|p| p.instance && kinds.map_or(p.group == group, |k| p.group.is_empty() && k.contains(&p.kind)))
+                .collect();
             if params.is_empty() {
                 continue;
             }
+            let group: &'static str = if kinds.is_some() { static_group(group) } else { self.collapse_key(group) };
             let open = !self.collapsed.contains(group);
             if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
                 self.collapsed.insert(group);
@@ -1941,6 +2118,11 @@ impl BimApp {
                                     change = Some((p.name.clone(), Ok(json!(m))));
                                 }
                             }
+                            Holds::Text => {
+                                if let Some(typed) = self.field(ui, id, &p.name, shown(Text, &val, units), name.id, "") {
+                                    change = Some((p.name.clone(), Ok(json!(typed))));
+                                }
+                            }
                             Holds::Length | Holds::Number | Holds::Angle => {
                                 if let Some(typed) = self.field(ui, id, &p.name, shown(kind, &val, units), name.id, "") {
                                     change = Some((p.name.clone(), parse(kind, &typed, units)));
@@ -1967,64 +2149,99 @@ impl BimApp {
     fn project_parameters(&mut self, ui: &mut Ui, model: &Model, ids: &[Id]) {
         let cats: BTreeSet<&str> = ids.iter().filter_map(|id| model.elements.get(id)).map(Element::category).collect();
         let (Some(&id), Some(&cat)) = (ids.first(), cats.first()) else { return };
-        let params: Vec<(&String, ParameterKind)> = model
-            .parameters
-            .iter()
-            .filter(|(_, p)| cats.len() == 1 && p.categories.iter().any(|c| c == cat))
-            .map(|(n, p)| (n, p.kind))
-            .collect();
-        if params.is_empty() {
-            return;
-        }
         // Blank across a selection may be values that differ, not none.
         let value = |name: &str| -> Value {
             let of = |i: &Id| model.elements.get(i).and_then(Element::params).and_then(|p| p.get(name)).cloned().unwrap_or(Value::Null);
             let first = of(&id);
             if ids.iter().all(|i| of(i) == first) { first } else { Value::Null }
         };
-        let group = "Project Parameters";
-        let open = !self.collapsed.contains(group);
-        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
-            self.collapsed.insert(group);
-        }
-        if !open {
-            return;
+        // Each group, its own name or Project Parameters. A type parameter's value is in Type Properties, and one a family has
+        // tied to it is the family's, above.
+        let familys = |n: &str| {
+            ids.iter().any(|i| {
+                let family = model.elements.get(i).and_then(Element::family).and_then(|(f, _)| model.families.get(f));
+                family.is_some_and(|f| f.parameters.iter().any(|q| q.name == n))
+            })
+        };
+        let mut groups: BTreeMap<&str, Vec<(&String, &ProjectParameter)>> = BTreeMap::new();
+        for (n, p) in &model.parameters {
+            if cats.len() == 1 && p.categories.iter().any(|c| c == cat) && p.scope == Scope::Instance && !familys(n) {
+                groups.entry(if p.group.is_empty() { "Project Parameters" } else { p.group.as_str() }).or_default().push((n, p));
+            }
         }
         let units = model.units;
-        let mut change: Option<(String, Result<Value, String>)> = None;
-        grid(ui, ("project-parameters", id), |ui| {
-            for (name, kind) in &params {
-                let val = value(name);
-                let label = ui.label(name.as_str());
-                let field = match kind {
-                    ParameterKind::YesNo => {
-                        let mut on = val.as_bool().unwrap_or(false);
-                        let r = ui.checkbox(&mut on, "");
-                        r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, name.as_str()));
-                        if r.labelled_by(label.id).changed() {
-                            change = Some((name.to_string(), Ok(json!(on))));
-                        }
+        for (group, params) in groups {
+            let key: &'static str = if group == "Project Parameters" { "Project Parameters" } else { self.collapse_key(group) };
+            let open = !self.collapsed.contains(key);
+            if group_header(ui, t(group), open) && !self.collapsed.remove(key) {
+                self.collapsed.insert(key);
+            }
+            if !open {
+                continue;
+            }
+            let mut change: Option<(String, Result<Value, String>)> = None;
+            grid(ui, ("project-parameters", id, group), |ui| {
+                for &(name, p) in &params {
+                    let val = value(name);
+                    let label = if p.description.is_empty() {
+                        ui.label(name.as_str())
+                    } else {
+                        ui.label(name.as_str()).on_hover_text(&p.description)
+                    };
+                    if p.read_only {
+                        // Shown, and changed only by a command.
+                        ui.add_enabled(false, egui::Label::new(value_shown(p.kind, &val, units)));
                         ui.end_row();
                         continue;
                     }
-                    ParameterKind::Length => Length,
-                    ParameterKind::Number => Number,
-                    ParameterKind::Text => Text,
-                };
-                if let Some(typed) = self.field(ui, id, &format!("params.{name}"), shown(field, &val, units), label.id, "") {
-                    let v = if typed.trim().is_empty() { Ok(Value::Null) } else { parse(field, &typed, units) };
-                    change = Some((name.to_string(), v));
+                    let field = match p.kind {
+                        ParameterKind::YesNo => {
+                            let mut on = val.as_bool().unwrap_or(false);
+                            let r = ui.checkbox(&mut on, "");
+                            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, name.as_str()));
+                            if r.labelled_by(label.id).changed() {
+                                change = Some((name.to_string(), Ok(json!(on))));
+                            }
+                            ui.end_row();
+                            continue;
+                        }
+                        ParameterKind::Area => {
+                            if let Some(typed) = self.field(ui, id, &format!("params.{name}"), area_shown(&val, units), label.id, "") {
+                                let v = if typed.trim().is_empty() { Ok(Value::Null) } else { area_parsed(&typed, units) };
+                                change = Some((name.to_string(), v));
+                            }
+                            ui.end_row();
+                            continue;
+                        }
+                        ParameterKind::Length => Length,
+                        ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => Number,
+                        ParameterKind::Text => Text,
+                    };
+                    if let Some(typed) = self.field(ui, id, &format!("params.{name}"), shown(field, &val, units), label.id, "") {
+                        let v = if typed.trim().is_empty() { Ok(Value::Null) } else { parse(field, &typed, units) };
+                        change = Some((name.to_string(), v));
+                    }
+                    ui.end_row();
                 }
-                ui.end_row();
+            });
+            match change {
+                Some((name, Ok(v))) => {
+                    self.run("modify", json!({"ids": ids, "params": {name: v}}));
+                }
+                Some((name, Err(e))) => self.status = Status { text: format!("{name}: {e}"), error: true },
+                None => {}
             }
-        });
-        match change {
-            Some((name, Ok(v))) => {
-                self.run("modify", json!({"ids": ids, "params": {name: v}}));
-            }
-            Some((name, Err(e))) => self.status = Status { text: format!("{name}: {e}"), error: true },
-            None => {}
         }
+    }
+
+    /// The name a group of a project's or a family's own keeps its folding under.
+    fn collapse_key(&mut self, group: &str) -> &'static str {
+        if let Some(k) = self.collapse_keys.iter().find(|k| **k == group) {
+            return k;
+        }
+        let k: &'static str = Box::leak(group.to_string().into_boxed_str());
+        self.collapse_keys.push(k);
+        k
     }
 
     /// A schedule view's own parameters, as Revit's palette has them: its name and category, and
@@ -2134,6 +2351,7 @@ impl BimApp {
                             tb.full(|ui| layer_editor(ui, &mut d.layers, model.units, &materials, (out, inward), variable));
                         }
                     }
+                    type_value_rows(tb, &mut d.project, model.units);
                 });
                 typeprops::error(ui, d.error.as_deref());
             });
@@ -2172,7 +2390,10 @@ impl BimApp {
                             }
                         }
                     }
-                    self.run_for_type("type", p, &mut d.error)
+                    // A duplicate has the values the type it copies has.
+                    let copy = json!({"category": d.category, "type": d.name, "copy_to": new});
+                    let more = (!d.project.is_empty()).then_some(("type_parameter", copy));
+                    self.run_type_commands(std::iter::once(("type", p)).chain(more).collect(), &mut d.error)
                 }
                 Err(e) => {
                     d.error = Some(e);
@@ -2184,8 +2405,13 @@ impl BimApp {
             }
         }
         if apply || ok {
-            let applied = match d.params(&d.name, model.units, false) {
-                Ok(p) => self.run_for_type("type", p, &mut d.error),
+            let values = type_value_changes(&d.project, model.units);
+            let applied = match d.params(&d.name, model.units, false).and_then(|p| Ok((p, values?))) {
+                Ok((p, values)) => {
+                    let set = json!({"category": d.category, "type": d.name, "values": values});
+                    let more = (!values.is_empty()).then_some(("type_parameter", set));
+                    self.run_type_commands(std::iter::once(("type", p)).chain(more).collect(), &mut d.error)
+                }
                 Err(e) => {
                     d.error = Some(e);
                     false
@@ -2517,6 +2743,8 @@ pub(crate) struct FamilyDialog {
     naming: Naming,
     /// What stopped OK, Apply, Duplicate or Rename.
     error: Option<String>,
+    /// The type's values of the project's type parameters, as typed.
+    project: Vec<TypeValue>,
 }
 
 impl FamilyDialog {
@@ -2536,7 +2764,12 @@ impl FamilyDialog {
                 f.parameters.iter().filter(|p| !p.instance).map(|p| (p.name.clone(), p.kind, typed(p), p.formula.is_some())).collect()
             })
             .unwrap_or_default();
-        FamilyDialog { family, name, elements, fields, naming: Naming::None, error: None }
+        // A family's parameter tied to a project's is the family's; the rest of the project's type parameters are as for any type.
+        let category = m.families.get(&family).map_or("component", |f| bimcraft_core::parameters::family_category(f.category));
+        let guid = m.library.guid(&LibKind::FamilyType, &format!("{family}: {name}"));
+        let own = |n: &str| m.families.get(&family).is_some_and(|f| f.parameters.iter().any(|q| q.name == n));
+        let project = type_values(m, category, guid).into_iter().filter(|v| !own(&v.name)).collect();
+        FamilyDialog { family, name, elements, fields, naming: Naming::None, error: None, project }
     }
 
     /// The dialog showing type `name` as the model has it now.
@@ -2553,7 +2786,7 @@ impl FamilyDialog {
                 Holds::Length => json!(units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[key, typed]))?),
                 Holds::Number | Holds::Angle => json!(number(typed).ok_or_else(|| tf("{}: `{}` is not a number", &[key, typed]))?),
                 Holds::YesNo => json!(typed == "1"),
-                Holds::Material => json!(typed),
+                Holds::Material | Holds::Text => json!(typed),
             };
             set.insert(key.clone(), v);
         }
@@ -2573,23 +2806,34 @@ impl BimApp {
             crate::popup::body(ui, |ui| {
                 asked = typeprops::head(ui, "family-type", &d.family, &names, &d.name, &mut d.naming, true);
                 let below = typeprops::foot_height(ui, d.error.is_some());
-                // Each parameter under the group Revit gives what it holds: lengths and angles are dimensions.
-                let group = |kind: &Holds| match kind {
-                    Holds::Length | Holds::Angle => "Dimensions",
-                    Holds::Material => msg!("Materials and Finishes"),
-                    Holds::Number | Holds::YesNo => "Other",
+                // Each parameter under the group the family names, or the one Revit gives what it holds: lengths and angles are dimensions.
+                let named: BTreeMap<String, String> = model
+                    .families
+                    .get(&d.family)
+                    .map(|f| f.parameters.iter().filter(|p| !p.group.is_empty()).map(|p| (p.name.clone(), p.group.clone())).collect())
+                    .unwrap_or_default();
+                let group = |name: &str, kind: &Holds| -> String {
+                    named.get(name).cloned().unwrap_or_else(|| {
+                        match kind {
+                            Holds::Length | Holds::Angle => "Dimensions",
+                            Holds::Material => msg!("Materials and Finishes"),
+                            Holds::Number | Holds::YesNo | Holds::Text => "Other",
+                        }
+                        .to_string()
+                    })
                 };
-                let mut groups: Vec<&str> = Vec::new();
-                for (_, kind, ..) in &d.fields {
-                    if !groups.contains(&group(kind)) {
-                        groups.push(group(kind));
+                let mut groups: Vec<String> = Vec::new();
+                for (name, kind, ..) in &d.fields {
+                    let g = group(name, kind);
+                    if !groups.contains(&g) {
+                        groups.push(g);
                     }
                 }
-                groups.sort_by_key(|g| ["Materials and Finishes", "Dimensions", "Other"].iter().position(|x| x == g));
+                groups.sort_by_key(|g| ["Materials and Finishes", "Dimensions", "Other"].iter().position(|x| x == g).unwrap_or(3));
                 typeprops::table(ui, "family-type", below, |tb| {
                     for g in groups {
-                        tb.group(g);
-                        for (key, kind, typed, computed) in d.fields.iter_mut().filter(|f| group(&f.1) == g) {
+                        tb.group(&g);
+                        for (key, kind, typed, computed) in d.fields.iter_mut().filter(|f| group(&f.0, &f.1) == g) {
                             match kind {
                                 // What a formula works out, shown as Revit greys it.
                                 _ if *computed => tb.shown(key, typed),
@@ -2599,12 +2843,14 @@ impl BimApp {
                                     *typed = (if on { "1" } else { "0" }).to_string();
                                 }
                                 Holds::Material => tb.pick(key, typed, &materials),
+                                Holds::Text => tb.text(key, typed, ""),
                                 Holds::Length => tb.text(key, typed, model.units.name()),
                                 Holds::Angle => tb.text(key, typed, "°"),
                                 Holds::Number => tb.text(key, typed, ""),
                             }
                         }
                     }
+                    type_value_rows(tb, &mut d.project, model.units);
                 });
                 typeprops::error(ui, d.error.as_deref());
             });
@@ -2616,7 +2862,11 @@ impl BimApp {
             Some(Head::Switch(n)) => d.show(&model, n),
             Some(Head::Duplicate(new)) => {
                 let made = match d.params(&new, model.units) {
-                    Ok(p) => self.run_for_type("family", p, &mut d.error),
+                    Ok(p) => {
+                        let copy = json!({"family": d.family, "type": d.name, "copy_to": new});
+                        let more = (!d.project.is_empty()).then_some(("type_parameter", copy));
+                        self.run_type_commands(std::iter::once(("family", p)).chain(more).collect(), &mut d.error)
+                    }
                     Err(e) => {
                         d.error = Some(e);
                         false
@@ -2638,8 +2888,13 @@ impl BimApp {
             None => {}
         }
         if apply || ok {
-            let applied = match d.params(&d.name, model.units) {
-                Ok(p) => self.run_for_type("family", p, &mut d.error),
+            let values = type_value_changes(&d.project, model.units);
+            let applied = match d.params(&d.name, model.units).and_then(|p| Ok((p, values?))) {
+                Ok((p, values)) => {
+                    let set = json!({"family": d.family, "type": d.name, "values": values});
+                    let more = (!values.is_empty()).then_some(("type_parameter", set));
+                    self.run_type_commands(std::iter::once(("family", p)).chain(more).collect(), &mut d.error)
+                }
                 Err(e) => {
                     d.error = Some(e);
                     false
@@ -2842,24 +3097,6 @@ impl BimApp {
     }
 }
 
-/// What a project parameter holds, as Project Parameters names it.
-const KINDS: [(ParameterKind, &str); 4] =
-    [(ParameterKind::Text, "Text"), (ParameterKind::Number, "Number"), (ParameterKind::Length, "Length"), (ParameterKind::YesNo, "Yes/No")];
-
-/// Manage > Project Parameters: the project's parameters, the one picked to edit, and its name as
-/// typed (a rename once typed in).
-pub(crate) struct ParametersDialog {
-    picked: String,
-    name: String,
-}
-
-impl ParametersDialog {
-    pub(crate) fn new(m: &Model) -> ParametersDialog {
-        let picked = m.parameters.keys().next().cloned().unwrap_or_default();
-        ParametersDialog { name: picked.clone(), picked }
-    }
-}
-
 /// View > Schedules > Schedule/Quantities: the category picked, and the name typed.
 #[derive(Default)]
 pub(crate) struct NewSchedule {
@@ -2940,106 +3177,6 @@ fn blank(kind: schedule::Kind) -> Value {
 }
 
 impl BimApp {
-    /// Manage > Project Parameters: each project parameter, what it holds and the categories it's
-    /// for, as Revit's dialog has them. Each change is a `parameter` command, undone like any other.
-    pub(crate) fn parameters_window(&mut self, ctx: &Context) {
-        let Some(mut d) = self.parameters_dialog.take() else { return };
-        let model = Arc::clone(&self.session.model);
-        let (mut close, mut run, mut picked): (bool, Option<Value>, Option<String>) = (false, None, None);
-        let r = Modal::new(UiId::new("project-parameters"), t("Project Parameters")).width(460.0).show(ctx, |ui| {
-            crate::popup::body(ui, |ui| {
-                ui.add_space(6.0);
-                Grid::new("parameter-head").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
-                    let l = ui.label(t("Parameter:"));
-                    ui.horizontal(|ui| {
-                        let c = ComboBox::from_id_salt("parameter-name").selected_text(&d.picked).width(200.0).show_ui(ui, |ui| {
-                            for name in model.parameters.keys() {
-                                if ui.selectable_label(*name == d.picked, name).clicked() {
-                                    picked = Some(name.clone());
-                                }
-                            }
-                        });
-                        c.response.labelled_by(l.id);
-                        if ui.button(t("New")).clicked() {
-                            let fresh = (1..)
-                                .map(|n| format!("{} {n}", t("Parameter")))
-                                .find(|n| !model.parameters.contains_key(n))
-                                .unwrap_or_default();
-                            run = Some(json!({"name": fresh, "categories": ["wall"]}));
-                            picked = Some(fresh);
-                        }
-                        if ui.add_enabled(model.parameters.contains_key(&d.picked), Button::new(t("Delete"))).clicked() {
-                            run = Some(json!({"name": d.picked, "delete": true}));
-                            picked = model.parameters.keys().find(|n| **n != d.picked).cloned().or_else(|| Some(String::new()));
-                        }
-                    });
-                    ui.end_row();
-                });
-                match model.parameters.get(&d.picked) {
-                    Some(p) => {
-                        ui.add_space(6.0);
-                        Grid::new("parameter").num_columns(2).striped(true).spacing(vec2(12.0, 6.0)).min_col_width(130.0).show(ui, |ui| {
-                            let l = ui.label(t("Name"));
-                            let r = ui.add(TextEdit::singleline(&mut d.name).desired_width(200.0)).labelled_by(l.id);
-                            if r.lost_focus() && !d.name.trim().is_empty() && d.name.trim() != d.picked {
-                                run = Some(json!({"name": d.picked, "rename": d.name.trim()}));
-                                picked = Some(d.name.trim().to_string());
-                            }
-                            ui.end_row();
-                            let l = ui.label(t("Type of Parameter"));
-                            let now = KINDS.iter().find(|(k, _)| *k == p.kind).map_or("Text", |(_, n)| n);
-                            let c = ComboBox::from_id_salt("parameter-kind").selected_text(t(now)).width(160.0).show_ui(ui, |ui| {
-                                for (k, label) in KINDS {
-                                    if ui.selectable_label(k == p.kind, t(label)).clicked() && k != p.kind {
-                                        run = Some(json!({"name": d.picked, "kind": k}));
-                                    }
-                                }
-                            });
-                            c.response.labelled_by(l.id);
-                            ui.end_row();
-                        });
-                        ui.add_space(6.0);
-                        ui.label(RichText::new(t("Categories")).strong());
-                        Grid::new("parameter-categories").num_columns(3).spacing(vec2(16.0, 4.0)).show(ui, |ui| {
-                            for (i, cat) in PARAMETER_CATEGORIES.iter().enumerate() {
-                                let mut on = p.categories.iter().any(|c| c == cat);
-                                if ui.checkbox(&mut on, lang::category(cat, true)).changed() {
-                                    let mut list: Vec<&str> = p.categories.iter().map(String::as_str).filter(|c| c != cat).collect();
-                                    if on {
-                                        list.push(cat);
-                                    }
-                                    run = Some(json!({"name": d.picked, "categories": list}));
-                                }
-                                if i % 3 == 2 {
-                                    ui.end_row();
-                                }
-                            }
-                        });
-                    }
-                    None => {
-                        ui.label(RichText::new(t("No project parameters yet: New makes one.")).color(pal().muted));
-                    }
-                }
-            });
-            crate::popup::footer(ui, |ui| {
-                ui.with_layout(Layout::right_to_left(Align::Min), |ui| close = ui.button(t("Close")).clicked());
-            });
-        });
-        if let Some(p) = run
-            && self.run("parameter", p).is_none()
-        {
-            picked = None;
-        }
-        if let Some(n) = picked {
-            (d.name, d.picked) = (n.clone(), n);
-        } else if !self.session.model.parameters.contains_key(&d.picked) {
-            d = ParametersDialog::new(&self.session.model);
-        }
-        if !(close || r.should_close()) {
-            self.parameters_dialog = Some(d);
-        }
-    }
-
     /// View > Schedules > Schedule/Quantities: a category and a name, and OK makes the schedule,
     /// opens it, and opens its properties on Fields.
     pub(crate) fn new_schedule_window(&mut self, ctx: &Context) {

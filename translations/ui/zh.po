@@ -12598,3 +12598,644 @@ msgstr "上"
 #: crates/ui-egui/src/export/mod.rs:719
 #~ msgid "PDF"
 #~ msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1587
+msgid "A dictionary is a file of parameter definitions to share between projects: keep it on a shared drive or in a Git repository."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1596
+msgid "A name of your own for this state, such as 2026 standard. Nothing compares it."
+msgstr ""
+
+#: crates/ui-egui/src/settings.rs:567
+msgid "A small marker at the project's 0, 0 with the directions of x (east) and y (north). It is drawn on the screen only: never in a printed drawing, a sheet or an export"
+msgstr "位于项目 0, 0 处的小标记，标明 x（东）和 y（北）的方向。仅绘制在屏幕上：绝不会出现在打印的图样、图纸或导出内容中"
+
+#: crates/ui-egui/src/parameters.rs:1618
+msgid "Add Checked Project Parameters"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1660
+msgid "Add Checked to Project"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1367
+msgid "Add Parameter makes one for the families checked. A type parameter's value goes on all their types; each type can then change it in Type Properties."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:725
+msgid "Applied."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:492
+msgid "Apply copies each type's value of {} to its elements."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:489
+msgid "Apply wipes the values {} elements have of {}."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:843
+msgid "As the project has it"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:909
+#: crates/ui-egui/src/parameters.rs:1226
+msgid "Batch Actions"
+msgstr ""
+
+#: crates/core/src/project_info.rs:63
+msgid "Building Name"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:773
+#: crates/ui-egui/src/parameters.rs:1220
+msgid "CSV table"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1124
+msgid "Cancel Import"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1020
+msgid "Categories for rows that name none"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1635
+msgid "Categories of Checked"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1739
+msgid "Categories of {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:984
+msgid "Category Mapping"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1272
+#: crates/ui-egui/src/parameters.rs:1422
+msgid "Category Name"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1682
+msgid "Check All Definitions"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1268
+msgid "Check All Families"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1300
+msgid "Check All Parameters"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1279
+msgid "Check family {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1815
+msgid "Check parameters to give them categories."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1619
+msgid "Check them on the Parameters tab first."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:838
+#: crates/ui-egui/src/parameters.rs:1320
+#: crates/ui-egui/src/parameters.rs:1402
+#: crates/ui-egui/src/parameters.rs:1516
+#: crates/ui-egui/src/parameters.rs:1716
+#: crates/ui-egui/src/parameters.rs:1795
+msgid "Check {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:992
+#: crates/ui-egui/src/parameters.rs:1086
+msgid "Choose..."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4914
+msgid "Click the start of the angle, or type an angle in the Options Bar."
+msgstr "单击角度的起始边，或在选项栏中输入角度。"
+
+#: crates/core/src/project_info.rs:56
+msgid "Client Name"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1068
+msgid "Conflict"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1822
+msgid "Copy Categories From"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1595
+msgid "Counts up by itself each time the file is saved, so a project can tell it is behind."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1057
+msgid "Decision"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1098
+msgid "Decision for {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:919
+#: crates/ui-egui/src/parameters.rs:1244
+msgid "Delete Checked"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:934
+msgid "Delete the parameters no value, schedule, filter, tag or formula uses."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:822
+#: crates/ui-egui/src/parameters.rs:1690
+msgid "Description"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:871
+#: crates/ui-egui/src/parameters.rs:1733
+msgid "Description of {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:673
+msgid "Dictionaries"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:774
+#: crates/ui-egui/src/parameters.rs:1221
+#: crates/ui-egui/src/parameters.rs:1494
+#: crates/ui-egui/src/parameters.rs:1556
+#: crates/ui-egui/src/parameters.rs:1560
+msgid "Dictionary"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1548
+msgid "Dictionary in use"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1535
+msgid "Dictionary:"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:727
+msgid "Discard Changes"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:911
+#: crates/ui-egui/src/parameters.rs:1228
+msgid "Duplicate Checked"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:823
+#: crates/ui-egui/src/parameters.rs:1691
+msgid "Editable"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:772
+#: crates/ui-egui/src/parameters.rs:1219
+msgid "Excel workbook"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1271
+#: crates/ui-egui/src/parameters.rs:1421
+msgid "Family Name"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1172
+msgid "Family Parameter"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:792
+#: crates/ui-egui/src/parameters.rs:1444
+msgid "Find:"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1360
+msgid "Formula of {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1180
+msgid "From a Project Parameter"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1197
+msgid "From {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:821
+#: crates/ui-egui/src/parameters.rs:1307
+#: crates/ui-egui/src/parameters.rs:1689
+msgid "Group Under"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:859
+#: crates/ui-egui/src/parameters.rs:1344
+#: crates/ui-egui/src/parameters.rs:1732
+msgid "Group of {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1057
+msgid "Here"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1255
+msgid "Hide Unchecked"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1811
+msgid "Hide Unselected"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:970
+msgid "Import from {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:761
+#: crates/ui-egui/src/parameters.rs:1210
+msgid "Import/Export"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1504
+msgid "Imported from this file"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1135
+msgid "Imported: {} made, {} changed."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1485
+msgid "In This Project"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1057
+msgid "In the File"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:857
+#: crates/ui-egui/src/parameters.rs:1075
+#: crates/ui-egui/src/parameters.rs:1346
+#: crates/ui-egui/src/parameters.rs:1729
+msgid "Instance or Type of {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:820
+#: crates/ui-egui/src/parameters.rs:1057
+#: crates/ui-egui/src/parameters.rs:1308
+#: crates/ui-egui/src/parameters.rs:1396
+#: crates/ui-egui/src/parameters.rs:1688
+msgid "Instance/Type"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:30
+msgid "Integer"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1084
+#: crates/ui-egui/src/parameters.rs:1090
+msgid "Keep Separate"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:991
+#: crates/ui-egui/src/parameters.rs:995
+msgid "Leave Out"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1112
+msgid "Left out or changed ({})"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1506
+msgid "Loaded; nothing taken from it yet"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1045
+msgid "Make All:"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1248
+msgid "Make Checked Instance"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1248
+msgid "Make Checked Type"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:925
+msgid "Make Project Parameters"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1006
+msgid "Map {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:954
+msgid "Merge"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:944
+msgid "Merge Checked Into:"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1625
+msgid "Merge File..."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:846
+#: crates/ui-egui/src/parameters.rs:1326
+#: crates/ui-egui/src/parameters.rs:1717
+msgid "Name of {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1554
+msgid "New Dictionary..."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1487
+msgid "No dictionary is loaded in this project yet."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:926
+msgid "No longer from a dictionary. They keep their GUIDs."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:902
+msgid "No project parameters yet: Add Parameter makes one, Import/Export brings them from a file."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1057
+msgid "Notes"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1559
+msgid "Open Dictionary..."
+msgstr ""
+
+#: crates/core/src/project_info.rs:62
+msgid "Organization Description"
+msgstr ""
+
+#: crates/core/src/project_info.rs:61
+msgid "Organization Name"
+msgstr ""
+
+#: crates/core/src/project_info.rs:57
+msgid "Project Address"
+msgstr ""
+
+#: crates/core/src/commands.rs:1140
+#: crates/ui-egui/src/projectinfo.rs:111
+msgid "Project Information"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4127
+msgid "Project Information: the project's name, number, client, address, status and issue date, and its parameters"
+msgstr ""
+
+#: crates/core/src/project_info.rs:59
+msgid "Project Issue Date"
+msgstr ""
+
+#: crates/ui-egui/src/projectinfo.rs:116
+msgid "Project Name"
+msgstr ""
+
+#: crates/core/src/project_info.rs:55
+msgid "Project Number"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4132
+msgid "Project Parameters: project and shared parameters in one place, their categories, dictionaries, import and export"
+msgstr ""
+
+#: crates/core/src/project_info.rs:58
+msgid "Project Status"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1630
+msgid "Remove Checked"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1564
+msgid "Remove from Project"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:786
+msgid "Rename Checked"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:795
+#: crates/ui-egui/src/parameters.rs:1447
+msgid "Replace"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:794
+#: crates/ui-egui/src/parameters.rs:1446
+msgid "Replace:"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1594
+msgid "Revision {}, changed {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:766
+msgid "Revit shared parameters"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1656
+msgid "Save Dictionary"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1550
+msgid "Save Dictionary first: there are changes not saved."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:782
+msgid "Search"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1257
+msgid "Search parameters"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:783
+#: crates/ui-egui/src/parameters.rs:1258
+msgid "Search:"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:847
+#: crates/ui-egui/src/parameters.rs:1330
+#: crates/ui-egui/src/parameters.rs:1797
+msgid "Shared: {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:780
+msgid "Show Existing Parameters"
+msgstr ""
+
+#: crates/ui-egui/src/settings.rs:566
+msgid "Show the origin marker in plans"
+msgstr "在平面中显示原点标记"
+
+#: crates/ui-egui/src/parameters.rs:1517
+msgid "Show what its file would change."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1672
+msgid "Show what the project's copies of these parameters would change to match this dictionary, categories too."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1069
+#: crates/ui-egui/src/parameters.rs:1085
+#: crates/ui-egui/src/parameters.rs:1090
+msgid "Skip"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1040
+msgid "Skip rows that need a decision"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:818
+#: crates/ui-egui/src/parameters.rs:1305
+#: crates/ui-egui/src/parameters.rs:1789
+msgid "Source"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1057
+msgid "Status"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1039
+msgid "Take off categories the file doesn't list"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1083
+#: crates/ui-egui/src/parameters.rs:1090
+msgid "The Same Parameter"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1167
+#: crates/ui-egui/src/parameters.rs:1377
+msgid "The project has no families."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1565
+msgid "The project stops loading this dictionary. Its file stays where it is."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1015
+msgid "These go on every component, the nearest category there is here: {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1508
+msgid "This project has {}, the file {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:842
+msgid "To be changed"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:840
+msgid "To be deleted"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:841
+msgid "To be made"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:672
+msgid "Transfer"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1450
+msgid "Transfer Checked"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1417
+msgid "Transfer To"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1426
+msgid "Transfer to {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:855
+#: crates/ui-egui/src/parameters.rs:1341
+#: crates/ui-egui/src/parameters.rs:1726
+msgid "Type of {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1670
+msgid "Update Project"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:824
+msgid "Used"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1351
+#: crates/ui-egui/src/parameters.rs:1355
+msgid "Value of {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:974
+msgid "create {} | modify {} | existing {} | conflict {} | skip {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1159
+#: crates/ui-egui/src/parameters.rs:1466
+msgid "{} added, {} skipped: their names are taken."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1586
+msgid "{} can't be read. Open Dictionary finds it again where it is now."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:873
+#: crates/ui-egui/src/parameters.rs:1735
+msgid "{} editable"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:567
+#: crates/ui-egui/src/parameters.rs:617
+msgid "{} parameters exported."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:940
+msgid "{} parameters purged."
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:699
+msgid "{} parameters will be created in {} families"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:715
+msgid "{} parameters | create {} | modify {} | existing {} | delete {}"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:879
+msgid "{} values, {} schedules, {} filters, {} tags, {} formulas"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1511
+msgid "{}, up to date"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:1505
+msgid "{}; the file can't be read"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:312
+msgctxt "category"
+msgid "Project Information"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:312
+msgctxt "category-plural"
+msgid "Project Information"
+msgstr ""

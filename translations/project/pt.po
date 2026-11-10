@@ -691,4 +691,3 @@ msgstr "BWC"
 #: crates/core/src/loads.rs:79
 msgid "wc"
 msgstr "sanitário"
-

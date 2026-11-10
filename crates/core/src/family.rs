@@ -208,6 +208,8 @@ pub enum Kind {
     Angle,
     YesNo,
     Material,
+    /// Words: a mark, a rating. It takes no formula, and a formula can't read it.
+    Text,
 }
 
 /// A parameter: a type's (each type its own value) or, `instance`, each component's.
@@ -225,6 +227,12 @@ pub struct Parameter {
     /// Computed from the others, as Revit's formulas are.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub formula: Option<String>,
+    /// The group Properties shows it under; none for the one its kind goes in.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub group: String,
+    /// The GUID of the definition it is tied to, from a dictionary or a project parameter: then it and the project's are one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub definition: Option<crate::ids::Guid>,
 }
 
 /// A number, or a formula over the family's parameters.
@@ -1047,6 +1055,11 @@ pub(crate) fn read(p: &Parameter, v: &Value) -> Result<Val, String> {
             Value::Null => Ok(Val::Text(String::new())),
             _ => Err(bad("a material's name")),
         },
+        Kind::Text => match v {
+            Value::String(s) if s.chars().count() <= MAX_TEXT => Ok(Val::Text(s.clone())),
+            Value::Null => Ok(Val::Text(String::new())),
+            _ => Err(bad("text")),
+        },
         Kind::YesNo => match v {
             Value::Bool(b) => Ok(Val::Number(truth(*b))),
             Value::Null => Ok(Val::Number(0.0)),
@@ -1257,10 +1270,13 @@ impl Family {
             }
             match (&p.formula, p.kind) {
                 (Some(_), Kind::Material) => return Err(format!("{who}: a material takes no formula")),
+                (Some(_), Kind::Text) => return Err(format!("{who}: text takes no formula")),
                 (Some(f), _) if long(f) => return Err(format!("{who}: its formula is longer than {MAX_FORMULA} characters")),
                 _ => {}
             }
-            if let Val::Text(m) = read(p, &p.value)? {
+            if let Val::Text(m) = read(p, &p.value)?
+                && p.kind == Kind::Material
+            {
                 material_ok(&who, &m)?;
             }
         }
@@ -1277,7 +1293,9 @@ impl Family {
                 if p.formula.is_some() {
                     return Err(format!("{who}: `{k}` is worked out by its formula"));
                 }
-                if let Val::Text(m) = read(p, v)? {
+                if let Val::Text(m) = read(p, v)?
+                    && p.kind == Kind::Material
+                {
                     material_ok(&who, &m)?;
                 }
             }
