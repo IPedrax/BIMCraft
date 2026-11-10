@@ -17,3 +17,5 @@ testing = []
 bimcraft-core = { workspace = true }
 serde_json = { workspace = true }
 ureq = { workspace = true }
+# The saved key's encryption: the same ring the updater's SHA-256 is.
+ring = { workspace = true }

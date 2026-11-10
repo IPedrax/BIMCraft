@@ -590,3 +590,119 @@ fn stopping_ends_the_turn_and_keeps_what_was_done() {
     assert!(!chat.poll(&mut s, Access::Edit));
     assert_eq!((count(&mut s, "wall"), s.history()), (1, vec!["Assistant: a wall"]));
 }
+
+// ---------- the saved key, scrambled ----------
+
+use crate::seal;
+
+/// A secret for the test of the format: the build's own is not the test's to know.
+const SECRET: &str = "correct horse battery";
+const ADDED: &str = "sk-ant-test-0123456789";
+
+fn hex_of(text: &str) -> String {
+    text.bytes().map(|b| format!("{b:02x}")).collect()
+}
+
+#[test]
+fn a_sealed_key_is_the_standard_pbkdf2_and_aes_gcm_that_another_program_reads() {
+    // Made by Python's hashlib.pbkdf2_hmac and cryptography's AESGCM, from the same secret, salt, nonce and iterations: the format is
+    // the standards', not just something this code can read back.
+    let known = "bc1:1000:000102030405060708090a0b0c0d0e0f:a0a1a2a3a4a5a6a7a8a9aaab:1aa41a32de7c6c9b027a51f888b267496b05424b7bcb042e180176d81381304cd41de8ace4eb";
+    assert_eq!(seal::open_with(SECRET, known).unwrap(), ADDED);
+    let salt: Vec<u8> = (0..16).collect();
+    let nonce: Vec<u8> = (0xa0..0xac).collect();
+    assert_eq!(seal::seal_with(SECRET, ADDED, &salt, &nonce, 1000).unwrap(), known);
+}
+
+#[test]
+fn a_key_sealed_opens_under_the_builds_secret_and_under_no_other() {
+    let sealed = seal::seal(ADDED).unwrap();
+    assert!(sealed.starts_with("bc1:") && seal::well_formed(&sealed));
+    assert!(!sealed.contains(ADDED) && !sealed.contains(&hex_of(ADDED)), "the key is not in it, in any form a reader would see");
+    assert_eq!(seal::open(&sealed).unwrap(), ADDED);
+    for other in ["", "another secret", SECRET, seal::DEV_SECRET.to_uppercase().as_str()] {
+        if other != if seal::built_with_secret() { "" } else { seal::DEV_SECRET } {
+            assert!(seal::open_with(other, &sealed).is_err(), "{other:?}");
+        }
+    }
+    // The same key seals differently each time: a salt and a nonce of its own. A key pasted with its line break is the key.
+    assert_ne!(sealed, seal::seal(ADDED).unwrap());
+    assert_eq!(seal::open(&seal::seal(&format!("  {ADDED}\n")).unwrap()).unwrap(), ADDED);
+    let long = "k".repeat(crate::KEY_MAX);
+    assert_eq!(seal::open(&seal::seal(&long).unwrap()).unwrap(), long);
+    for no_key in ["", "short", "has a space in it", "line\nbreak-in-it-0123"] {
+        assert!(seal::seal(no_key).is_err(), "{no_key:?}");
+    }
+    assert!(seal::seal(&"k".repeat(crate::KEY_MAX + 1)).is_err());
+}
+
+#[test]
+fn a_sealed_key_that_was_changed_is_refused() {
+    let sealed = seal::seal(ADDED).unwrap();
+    let parts: Vec<&str> = sealed.split(':').collect();
+    // Any hex digit of the salt, the nonce or the text, changed, is a key that does not open: the tag says so.
+    for part in 2..5 {
+        for at in [0, parts[part].len() / 2, parts[part].len() - 1] {
+            let mut p: Vec<String> = parts.iter().map(|s| s.to_string()).collect();
+            let other = if p[part].as_bytes()[at] == b'0' { "1" } else { "0" };
+            p[part].replace_range(at..=at, other);
+            assert!(seal::open(&p.join(":")).is_err(), "part {part} at {at}");
+        }
+    }
+    // The iterations are not covered by the tag: they only decide the key derived, so a changed number is the wrong key.
+    let slower = sealed.replacen(&format!(":{}:", seal::ITERATIONS), &format!(":{}:", seal::ITERATIONS + 1), 1);
+    assert_ne!(slower, sealed);
+    assert!(seal::open(&slower).is_err());
+}
+
+#[test]
+fn what_is_not_a_sealed_key_is_refused_quickly_and_never_panics() {
+    let sealed = seal::seal(ADDED).unwrap();
+    let parts: Vec<&str> = sealed.split(':').collect();
+    let (salt, nonce, text) = (parts[2], parts[3], parts[4]);
+    let huge = format!("bc1:4294967295:{salt}:{nonce}:{text}");
+    let zero = format!("bc1:0:{salt}:{nonce}:{text}");
+    let started = std::time::Instant::now();
+    for bad in [
+        "",
+        "bc1",
+        "bc1:::::",
+        "bc2:10000:00:00:00",
+        "x:10000:00:00:00",
+        &sealed[..sealed.len() - 3],
+        &format!("{sealed}0"),
+        &format!("{sealed}:extra"),
+        &sealed.to_uppercase(),
+        &format!("bc1:10000:{}:{nonce}:{text}", "zz".repeat(16)),
+        &format!("bc1:10000:{}:{nonce}:{text}", &salt[..30]),
+        &format!("bc1:10000:{salt}:{}:{text}", &nonce[..22]),
+        &format!("bc1:10000:{salt}:{nonce}:"),
+        &format!("bc1:10000:{salt}:{nonce}:00"),
+        "\u{0}\u{0}",
+        huge.as_str(),
+        zero.as_str(),
+        &format!("bc1:{}:{salt}:{nonce}:{text}", "9".repeat(40)),
+    ] {
+        assert!(!seal::well_formed(bad), "{bad:?}");
+        assert!(seal::open(bad).is_err(), "{bad:?}");
+    }
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "a hostile file does not make the window derive a key for minutes: {:?}",
+        started.elapsed()
+    );
+    assert!(seal::seal_with("", ADDED, &[0; 16], &[0; 12], 1000).is_err(), "a secret to seal with");
+}
+
+#[test]
+fn a_release_is_built_with_its_own_secret() {
+    // `built_with_secret` is what the build was given. The release workflow says a release must have one (`BIMCRAFT_REQUIRE_KEY_SECRET`),
+    // and this is the test that fails it when the GitHub secret is missing or empty: it would otherwise seal with the public one.
+    assert_eq!(seal::built_with_secret(), option_env!("BIMCRAFT_KEY_SECRET").is_some_and(|s| !s.trim().is_empty()));
+    if std::env::var_os("BIMCRAFT_REQUIRE_KEY_SECRET").is_some() {
+        assert!(
+            seal::built_with_secret(),
+            "this build has no BIMCRAFT_KEY_SECRET: set the repository secret of that name before a release"
+        );
+    }
+}

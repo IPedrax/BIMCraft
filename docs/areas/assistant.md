@@ -16,9 +16,20 @@ server's agents do, and it is the second code that reaches the network (the firs
   Gemini's goes into an address.
 - **The key.** The provider's own environment variable first (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`), and the page
   then says it is using it and asks for none; else a box that hides what is typed (a hidden box cannot be copied from: egui blocks it). A typed key lives in memory for the session. Remember
-  the key writes it to `settings.json`, as plain text, which the palette says in words next to the box: nothing else keeps it, and it
-  is never written to a project, a log or the chat (`Secret` prints as nothing, `net::Request`'s `Debug` has no headers, and a test
-  searches every request, the log and the settings for it).
+  the key keeps it in `settings.json`, **scrambled and not encrypted in any way that matters against someone with the program**: sealed
+  with AES-256-GCM under a key made from a secret that is built into BIMCraft (`seal.rs`), so it cannot be read at a glance in a file
+  that gets copied (a backup, a synced folder, a settings file sent for support), and anyone who has BIMCraft can unscramble it. The page
+  says so in words next to the box. The key in the box is what is kept (sealed again as it is edited, taken out of the file when
+  Remember is unticked), a saved key is opened at the start, and one this build cannot open (another kind of build saved it, or the file
+  was changed) is dropped and typed again. Nothing else keeps it, and it is never written to a project, a log or the chat (`Secret`
+  prints as nothing, `net::Request`'s `Debug` has no headers, and tests search every request, the log and the settings for it). Something
+  stronger (the system's keychain, or a passphrase the user types) is a change in `seal.rs` and the page, and nowhere else.
+- **The secret.** `BIMCRAFT_KEY_SECRET`, read when BIMCRAFT is compiled (`option_env!`). The release workflow gets it from a repository
+  secret of that name (`gh secret set BIMCRAFT_KEY_SECRET`, a long random value: `openssl rand -base64 32`), so its text is not in
+  the source; it is still in every release binary, which is the point above. A build without it (a source build, a pull request's CI,
+  the tests) uses a public development secret, so a key saved by an official build does not open in one of those and the reverse. The
+  release workflow also sets `BIMCRAFT_REQUIRE_KEY_SECRET`, and `a_release_is_built_with_its_own_secret` fails the release's tests when
+  the secret is missing or empty, instead of letting an installer seal keys with the public one.
 - **What is sent, said first.** Until the first message goes to a provider in this session, the palette says that the messages, and what
   the assistant reads of the project (levels, elements, schedules), are sent to that provider, and that nothing is sent until the user
   sends a message. The button says Agree and send; after the first it says Send. Nothing is requested at start, when a palette opens or

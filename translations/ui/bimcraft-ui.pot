@@ -20,7 +20,7 @@ msgstr ""
 msgid "(none)"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:743
+#: crates/ui-egui/src/settings.rs:741
 msgid "0 for any port that is free; an open port moves to a new one"
 msgstr ""
 
@@ -28,7 +28,7 @@ msgstr ""
 msgid "0.75 in (19.05 mm) binding margin"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:747
+#: crates/ui-egui/src/settings.rs:745
 msgid "0: any free port"
 msgstr ""
 
@@ -62,7 +62,7 @@ msgstr ""
 msgid "3D Views"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:650
+#: crates/ui-egui/src/settings.rs:648
 msgid "3D view resolution"
 msgstr ""
 
@@ -181,7 +181,7 @@ msgstr ""
 msgid "A small house to look around in."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:602
+#: crates/ui-egui/src/settings.rs:600
 msgid "A small marker at the project's 0, 0 with the directions of x (east) and y (north). It is drawn on the screen only: never in a printed drawing, a sheet or an export"
 msgstr ""
 
@@ -205,11 +205,11 @@ msgstr ""
 msgid "A {} needs a name."
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:198
+#: crates/ui-egui/src/assistant.rs:228
 msgid "API key"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:203
+#: crates/ui-egui/src/assistant.rs:100
 msgid "API key:"
 msgstr ""
 
@@ -247,7 +247,7 @@ msgstr ""
 msgid "Absolute"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:524
+#: crates/ui-egui/src/settings.rs:522
 msgid "Accent colour"
 msgstr ""
 
@@ -450,15 +450,15 @@ msgstr ""
 msgid "Added {} to the project"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:302
+#: crates/ui-egui/src/settings.rs:296
 msgid "Agents"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:759
+#: crates/ui-egui/src/settings.rs:757
 msgid "Agents connected: {}"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:768
+#: crates/ui-egui/src/settings.rs:766
 msgid "Agents may only read this project."
 msgstr ""
 
@@ -486,7 +486,7 @@ msgstr ""
 msgid "Aggressiveness class"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:239
+#: crates/ui-egui/src/assistant.rs:260
 msgid "Agree and send"
 msgstr ""
 
@@ -562,7 +562,7 @@ msgstr ""
 msgid "Allow Join"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:762
+#: crates/ui-egui/src/settings.rs:760
 msgid "Allow agents to edit this project"
 msgstr ""
 
@@ -748,7 +748,7 @@ msgstr ""
 msgid "As placed"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:453
+#: crates/ui-egui/src/settings.rs:451
 msgid "As the System"
 msgstr ""
 
@@ -760,7 +760,7 @@ msgstr ""
 msgid "Ascending"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:233
+#: crates/ui-egui/src/assistant.rs:254
 msgid "Ask the assistant to look at or change the project"
 msgstr ""
 
@@ -772,18 +772,18 @@ msgstr ""
 msgid "Assign View Template"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:299
+#: crates/ui-egui/src/assistant.rs:321
 #: crates/ui-egui/src/dock.rs:46
 #: crates/ui-egui/src/lib.rs:422
-#: crates/ui-egui/src/settings.rs:303
+#: crates/ui-egui/src/settings.rs:297
 msgid "Assistant"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:149
+#: crates/ui-egui/src/assistant.rs:179
 msgid "Assistant settings"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:314
+#: crates/ui-egui/src/assistant.rs:336
 msgid "Assistant: {}"
 msgstr ""
 
@@ -837,7 +837,7 @@ msgstr ""
 msgid "Autosave"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:697
+#: crates/ui-egui/src/settings.rs:695
 msgid "Autosave in the background"
 msgstr ""
 
@@ -903,7 +903,7 @@ msgstr ""
 msgid "BIMCraft {} is up to date."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:505
+#: crates/ui-egui/src/settings.rs:503
 msgid "BIMCraft's own: the tools in a palette, the Inspector and the Navigator on the right"
 msgstr ""
 
@@ -947,7 +947,7 @@ msgstr ""
 msgid "Background Pattern"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:686
+#: crates/ui-egui/src/settings.rs:684
 msgid "Background of the 3D view"
 msgstr ""
 
@@ -1215,7 +1215,7 @@ msgstr ""
 msgid "Cancel Pattern"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:540
+#: crates/ui-egui/src/settings.rs:538
 msgid "Canvas colour"
 msgstr ""
 
@@ -1223,7 +1223,7 @@ msgstr ""
 msgid "Capture & Descent"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:640
+#: crates/ui-egui/src/settings.rs:638
 msgid "Card: {}"
 msgstr ""
 
@@ -1940,7 +1940,7 @@ msgstr ""
 #: crates/ui-egui/src/properties.rs:3027
 #: crates/ui-egui/src/properties.rs:3351
 #: crates/ui-egui/src/revit.rs:259
-#: crates/ui-egui/src/settings.rs:442
+#: crates/ui-egui/src/settings.rs:440
 #: crates/ui-egui/src/shortcuts.rs:568
 msgid "Close"
 msgstr ""
@@ -2010,7 +2010,7 @@ msgid "Combine: what was made, taken down and shown in this phase goes to the ne
 msgstr ""
 
 #: crates/ui-egui/src/browser.rs:236
-#: crates/ui-egui/src/settings.rs:782
+#: crates/ui-egui/src/settings.rs:780
 msgid "Coming in a later version"
 msgstr ""
 
@@ -2018,7 +2018,7 @@ msgstr ""
 msgid "Command / Tool:"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:574
+#: crates/ui-egui/src/settings.rs:572
 msgid "Compact"
 msgstr ""
 
@@ -2091,7 +2091,7 @@ msgstr ""
 msgid "Continuous"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:725
+#: crates/ui-egui/src/settings.rs:723
 msgid "Control port"
 msgstr ""
 
@@ -2223,7 +2223,7 @@ msgid "Couldn't open {}: {}"
 msgstr ""
 
 #: crates/ui-egui/src/recent.rs:123
-#: crates/ui-egui/src/settings.rs:405
+#: crates/ui-egui/src/settings.rs:403
 #: crates/ui-egui/src/updates.rs:146
 #: crates/ui-egui/src/updates.rs:162
 msgid "Couldn't save the setting: {}"
@@ -2385,7 +2385,7 @@ msgstr ""
 msgid "DN"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:455
+#: crates/ui-egui/src/settings.rs:453
 msgid "Dark"
 msgstr ""
 
@@ -2393,7 +2393,7 @@ msgstr ""
 msgid "Dark Mode"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:456
+#: crates/ui-egui/src/settings.rs:454
 msgid "Dark UI, Light Canvas"
 msgstr ""
 
@@ -2811,7 +2811,7 @@ msgstr ""
 msgid "Double Swing"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:586
+#: crates/ui-egui/src/settings.rs:584
 msgid "Double-clicking a tab's name does the same; a click on a tab then shows its tools until one is picked"
 msgstr ""
 
@@ -2861,7 +2861,7 @@ msgstr ""
 msgid "Draw one outline, with any openings inside it: these lines make {} separate outlines."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:634
+#: crates/ui-egui/src/settings.rs:632
 msgid "Draw the 3D view on the graphics card"
 msgstr ""
 
@@ -3017,7 +3017,7 @@ msgstr ""
 msgid "Edit {}"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:761
+#: crates/ui-egui/src/settings.rs:759
 msgid "Editing"
 msgstr ""
 
@@ -3273,7 +3273,7 @@ msgstr ""
 msgid "Far Clip Offset"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:635
+#: crates/ui-egui/src/settings.rs:633
 msgid "Faster for large models. If the card fails, the 3D view is drawn on the processor"
 msgstr ""
 
@@ -3319,7 +3319,7 @@ msgstr ""
 msgid "File access"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:301
+#: crates/ui-egui/src/settings.rs:295
 msgid "Files"
 msgstr ""
 
@@ -3530,7 +3530,7 @@ msgstr ""
 msgid "Float"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:572
+#: crates/ui-egui/src/settings.rs:570
 msgid "Floating"
 msgstr ""
 
@@ -3595,7 +3595,7 @@ msgstr ""
 msgid "Folder"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:713
+#: crates/ui-egui/src/settings.rs:711
 msgid "Folder for new projects"
 msgstr ""
 
@@ -3712,8 +3712,8 @@ msgstr ""
 msgid "Frozen"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:652
-#: crates/ui-egui/src/settings.rs:653
+#: crates/ui-egui/src/settings.rs:650
+#: crates/ui-egui/src/settings.rs:651
 msgid "Full"
 msgstr ""
 
@@ -3765,11 +3765,11 @@ msgstr ""
 msgid "Geometry"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:267
+#: crates/ui-egui/src/assistant.rs:288
 msgid "Give a model id: letters, digits, dots and dashes only."
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:272
+#: crates/ui-egui/src/assistant.rs:293
 msgid "Give an API key in the Assistant settings, or set {} in the environment."
 msgstr ""
 
@@ -3805,7 +3805,7 @@ msgstr ""
 msgid "Graphics"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:632
+#: crates/ui-egui/src/settings.rs:630
 msgid "Graphics card"
 msgstr ""
 
@@ -3859,7 +3859,7 @@ msgstr ""
 msgid "Hairline"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:653
+#: crates/ui-egui/src/settings.rs:651
 msgid "Half"
 msgstr ""
 
@@ -3951,11 +3951,11 @@ msgstr ""
 msgid "High Contrast Point Clouds: draw this view's scans in one strong colour, so what they show reads; again for their own colours. A scan given a colour of its own in Visibility/Graphics keeps it."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:665
+#: crates/ui-egui/src/settings.rs:663
 msgid "High contrast colour"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:684
+#: crates/ui-egui/src/settings.rs:682
 msgid "Highlight what's under the cursor"
 msgstr ""
 
@@ -4187,7 +4187,7 @@ msgstr ""
 msgid "Insulation: batt insulation drawn along each line, its width on the Options Bar"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:612
+#: crates/ui-egui/src/settings.rs:610
 msgid "Interface scale"
 msgstr ""
 
@@ -4281,6 +4281,10 @@ msgstr ""
 msgid "Kept for every project: add one to this project with a click."
 msgstr ""
 
+#: crates/ui-egui/src/assistant.rs:112
+msgid "Kept in settings.json scrambled with a key built into BIMCraft: it can't be read at a glance, but anyone who has BIMCraft can unscramble it. Leave this off on a computer others use."
+msgstr ""
+
 #: crates/ui-egui/src/titleblocks.rs:140
 msgid "Key"
 msgstr ""
@@ -4331,7 +4335,7 @@ msgstr ""
 msgid "Layers, top down"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:569
+#: crates/ui-egui/src/settings.rs:567
 msgid "Layout"
 msgstr ""
 
@@ -4402,7 +4406,7 @@ msgstr ""
 msgid "Lens:"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:730
+#: crates/ui-egui/src/settings.rs:728
 msgid "Let agents work on this project"
 msgstr ""
 
@@ -4433,7 +4437,7 @@ msgstr ""
 msgid "Level Schedule"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:454
+#: crates/ui-egui/src/settings.rs:452
 msgid "Light"
 msgstr ""
 
@@ -4628,7 +4632,7 @@ msgstr ""
 msgid "List {}"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:752
+#: crates/ui-egui/src/settings.rs:750
 msgid "Listening on 127.0.0.1, port {}: agents connect with bimcraft-cli mcp --connect {}"
 msgstr ""
 
@@ -4936,7 +4940,7 @@ msgstr ""
 msgid "Minimize the Ribbon"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:585
+#: crates/ui-egui/src/settings.rs:583
 msgid "Minimize the ribbon to its tabs"
 msgstr ""
 
@@ -4968,7 +4972,7 @@ msgstr ""
 msgid "Mode"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:185
+#: crates/ui-egui/src/assistant.rs:215
 #: crates/ui-egui/src/fillpatterns.rs:548
 msgid "Model"
 msgstr ""
@@ -5176,7 +5180,7 @@ msgstr ""
 msgid "New Wire Type"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:249
+#: crates/ui-egui/src/assistant.rs:270
 msgid "New chat"
 msgstr ""
 
@@ -5220,7 +5224,7 @@ msgstr ""
 msgid "No"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:141
+#: crates/ui-egui/src/assistant.rs:171
 msgid "No API key yet. Add one in the Assistant settings."
 msgstr ""
 
@@ -5442,11 +5446,11 @@ msgstr ""
 msgid "Off"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:763
+#: crates/ui-egui/src/settings.rs:761
 msgid "Off, agents only read the project: they inspect it, read its schedules, render its views and export it to new files (its sheets to PDF among them), and whatever they ask that would change it, undo it, replace it or save over its file is refused"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:755
+#: crates/ui-egui/src/settings.rs:753
 msgid "Off: no agent can reach this window"
 msgstr ""
 
@@ -5519,7 +5523,7 @@ msgstr ""
 msgid "Open the default 3D view"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:616
+#: crates/ui-egui/src/settings.rs:614
 msgid "Open the last project at startup"
 msgstr ""
 
@@ -5544,7 +5548,7 @@ msgstr ""
 msgid "Opens"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:728
+#: crates/ui-egui/src/settings.rs:726
 msgid "Opens the control port now and whenever BIMCraft starts: an agent connects with bimcraft-cli mcp --connect. Only this machine can reach it, and only with the token in bridge.json beside your favorites"
 msgstr ""
 
@@ -5667,11 +5671,11 @@ msgid "Paint (PT): lay a material, and its texture, over the face you click in t
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:3285
-#: crates/ui-egui/src/settings.rs:598
+#: crates/ui-egui/src/settings.rs:596
 msgid "Palettes"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:533
+#: crates/ui-egui/src/settings.rs:531
 msgid "Panel colour"
 msgstr ""
 
@@ -5794,7 +5798,7 @@ msgstr ""
 msgid "Pen {} at {}"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:299
+#: crates/ui-egui/src/settings.rs:293
 msgid "Performance"
 msgstr ""
 
@@ -6256,8 +6260,8 @@ msgstr ""
 msgid "Place:"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:688
-#: crates/ui-egui/src/settings.rs:689
+#: crates/ui-egui/src/settings.rs:686
+#: crates/ui-egui/src/settings.rs:687
 msgid "Plain"
 msgstr ""
 
@@ -6289,7 +6293,7 @@ msgstr ""
 msgid "Plane YZ"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:600
+#: crates/ui-egui/src/settings.rs:598
 msgid "Plans"
 msgstr ""
 
@@ -6368,7 +6372,7 @@ msgstr ""
 msgid "Porcelain"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:739
+#: crates/ui-egui/src/settings.rs:737
 msgid "Port"
 msgstr ""
 
@@ -6410,7 +6414,7 @@ msgid "Preset: Name"
 msgstr ""
 
 #: crates/ui-egui/src/presets.rs:167
-#: crates/ui-egui/src/settings.rs:515
+#: crates/ui-egui/src/settings.rs:513
 msgid "Presets"
 msgstr ""
 
@@ -6434,7 +6438,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor.rs:764
 #: crates/ui-egui/src/editor.rs:767
-#: crates/ui-egui/src/settings.rs:501
+#: crates/ui-egui/src/settings.rs:499
 msgid "Profile"
 msgstr ""
 
@@ -6526,15 +6530,15 @@ msgstr ""
 msgid "Properties (PP): show or hide the palette"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:493
+#: crates/ui-egui/src/settings.rs:491
 msgid "Properties over the Project Browser, on the left, as at first"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:171
+#: crates/ui-egui/src/assistant.rs:201
 msgid "Provider"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:169
+#: crates/ui-egui/src/assistant.rs:199
 msgid "Provider and model"
 msgstr ""
 
@@ -6649,7 +6653,7 @@ msgstr ""
 msgid "Recover opens the backup as unsaved work. Discard deletes it. Postpone keeps it for later without replacing it."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:709
+#: crates/ui-egui/src/settings.rs:707
 msgid "Recovery copies are kept beside saved projects; untitled projects use the temporary folder."
 msgstr ""
 
@@ -6690,7 +6694,7 @@ msgstr ""
 msgid "Redo {} steps"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:656
+#: crates/ui-egui/src/settings.rs:654
 msgid "Redraw views in the background"
 msgstr ""
 
@@ -6747,11 +6751,7 @@ msgstr ""
 msgid "Reload CAD"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:210
-msgid "Remember keeps the key as plain text in settings.json, on this computer: anyone who can read your files can read it."
-msgstr ""
-
-#: crates/ui-egui/src/assistant.rs:208
+#: crates/ui-egui/src/assistant.rs:107
 msgid "Remember the key"
 msgstr ""
 
@@ -6833,7 +6833,7 @@ msgstr ""
 msgid "Renovation: which phase of the work this view shows: all of it, what stood before, what comes down, or what is built"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:617
+#: crates/ui-egui/src/settings.rs:615
 msgid "Reopen the views that were open"
 msgstr ""
 
@@ -6863,23 +6863,23 @@ msgstr ""
 msgid "Reset"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:528
+#: crates/ui-egui/src/settings.rs:526
 msgid "Reset Accent"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:542
+#: crates/ui-egui/src/settings.rs:540
 msgid "Reset Canvas"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:669
+#: crates/ui-egui/src/settings.rs:667
 msgid "Reset Colour"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:495
+#: crates/ui-egui/src/settings.rs:493
 msgid "Reset Palette Layout"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:535
+#: crates/ui-egui/src/settings.rs:533
 msgid "Reset Panels"
 msgstr ""
 
@@ -6899,7 +6899,7 @@ msgstr ""
 msgid "Reset Temporary Hide/Isolate (HR)"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:549
+#: crates/ui-egui/src/settings.rs:547
 msgid "Reset Text"
 msgstr ""
 
@@ -6966,7 +6966,7 @@ msgstr ""
 msgid "Revolved Circle"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:584
+#: crates/ui-egui/src/settings.rs:582
 msgid "Ribbon"
 msgstr ""
 
@@ -7142,7 +7142,7 @@ msgstr ""
 msgid "Save Preset"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:702
+#: crates/ui-egui/src/settings.rs:700
 msgid "Save a recovery copy every"
 msgstr ""
 
@@ -7361,11 +7361,11 @@ msgstr ""
 msgid "Selected {}; nothing has these: {}"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:681
+#: crates/ui-egui/src/settings.rs:679
 msgid "Selection colour"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:239
+#: crates/ui-egui/src/assistant.rs:260
 msgid "Send"
 msgstr ""
 
@@ -7386,7 +7386,7 @@ msgid "Set by view template {}: change the template, or stop following it."
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:3264
-#: crates/ui-egui/src/settings.rs:414
+#: crates/ui-egui/src/settings.rs:412
 msgid "Settings"
 msgstr ""
 
@@ -7537,7 +7537,7 @@ msgstr ""
 msgid "Show or hide the palettes, and pick the interface's language"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:615
+#: crates/ui-egui/src/settings.rs:613
 msgid "Show shortcut keys in tooltips"
 msgstr ""
 
@@ -7545,11 +7545,11 @@ msgstr ""
 msgid "Show temporary alignment guides (smart snapping) when drawing"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:601
+#: crates/ui-egui/src/settings.rs:599
 msgid "Show the origin marker in plans"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:605
+#: crates/ui-egui/src/settings.rs:603
 msgid "Show the view's name in the corner of plans"
 msgstr ""
 
@@ -7635,7 +7635,7 @@ msgid "Skip this version"
 msgstr ""
 
 #: crates/ui-egui/src/properties.rs:1253
-#: crates/ui-egui/src/settings.rs:689
+#: crates/ui-egui/src/settings.rs:687
 msgid "Sky"
 msgstr ""
 
@@ -7683,7 +7683,7 @@ msgstr ""
 msgid "Slope: a number of degrees from 0 to {}, or blank for the roof's"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:655
+#: crates/ui-egui/src/settings.rs:653
 msgid "Smooth lines (anti-aliasing)"
 msgstr ""
 
@@ -7947,7 +7947,7 @@ msgstr ""
 msgid "Stirrups"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:242
+#: crates/ui-egui/src/assistant.rs:263
 msgid "Stop"
 msgstr ""
 
@@ -8279,7 +8279,7 @@ msgstr ""
 msgid "Text Size"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:547
+#: crates/ui-egui/src/settings.rs:545
 msgid "Text colour"
 msgstr ""
 
@@ -8323,7 +8323,7 @@ msgstr ""
 msgid "That is too big to be a shortcuts file."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:638
+#: crates/ui-egui/src/settings.rs:636
 msgid "The 3D view is drawn on the processor: {}"
 msgstr ""
 
@@ -8331,11 +8331,11 @@ msgstr ""
 msgid "The arc doesn't fit: pick two straight lines that meet at an angle, long enough for it."
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:134
+#: crates/ui-egui/src/assistant.rs:164
 msgid "The assistant needs the network, which this window was started without."
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:215
+#: crates/ui-egui/src/assistant.rs:236
 msgid "The assistant sends your messages, and what it reads of the open project, to this provider, and only when you send a message. The Assistant palette (AI) asks once before the first."
 msgstr ""
 
@@ -8360,11 +8360,11 @@ msgstr ""
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:534
+#: crates/ui-egui/src/settings.rs:532
 msgid "The ground of the ribbon, the palettes, the bars and the dialogs; their bands and buttons are a step off it"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:548
+#: crates/ui-egui/src/settings.rs:546
 msgid "The interface's lettering, made darker or lighter where it would not read at 4.5:1 on the panels"
 msgstr ""
 
@@ -8395,7 +8395,7 @@ msgstr ""
 msgid "The name `{}` is already in use."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:606
+#: crates/ui-egui/src/settings.rs:604
 msgid "The name of the floor plan or ceiling plan in its bottom left corner. It is drawn on the screen only, and the view's tab names it too"
 msgstr ""
 
@@ -8448,15 +8448,15 @@ msgstr ""
 msgid "The projects you open or save show here."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:506
+#: crates/ui-egui/src/settings.rs:504
 msgid "The ribbon over the view, Properties and the Project Browser on the left"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:571
+#: crates/ui-egui/src/settings.rs:569
 msgid "The ribbon, the palettes and the bars as cards floating over the view"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:573
+#: crates/ui-egui/src/settings.rs:571
 msgid "The ribbon, the palettes and the bars flush to the window's edges"
 msgstr ""
 
@@ -8473,7 +8473,7 @@ msgstr ""
 msgid "The sketch has too many lines."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:592
+#: crates/ui-egui/src/settings.rs:590
 msgid "The system's own title bar and frame, rather than the window's: the app bar then sits under it"
 msgstr ""
 
@@ -8490,7 +8490,7 @@ msgstr ""
 msgid "The title block stands in the sheet's bottom right corner, inside the border; views go above it."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:491
+#: crates/ui-egui/src/settings.rs:489
 msgid "The tools on the left, the Inspector over the Navigator on the right, as at first"
 msgstr ""
 
@@ -8514,7 +8514,7 @@ msgstr ""
 msgid "The work plane must be horizontal: a floor, a ceiling, a roof or a shaft is sketched on a level plane. Set the Work Plane (the 3D view's control bar) on a level, a level surface or three points at one height."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:517
+#: crates/ui-egui/src/settings.rs:515
 msgid "Theme"
 msgstr ""
 
@@ -8555,12 +8555,12 @@ msgstr ""
 msgid "Thin Lines (TL): every line one pixel wide"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:625
+#: crates/ui-egui/src/settings.rs:623
 #: crates/ui-egui/src/start.rs:454
 msgid "This copy doesn't look for updates."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:639
+#: crates/ui-egui/src/settings.rs:637
 msgid "This copy has no graphics card it can draw the 3D view on"
 msgstr ""
 
@@ -8677,7 +8677,7 @@ msgstr ""
 msgid "Title Blocks (TB): your own, read from a DXF or typed, with fields each sheet or the whole project fills in"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:588
+#: crates/ui-egui/src/settings.rs:586
 msgid "Title bar"
 msgstr ""
 
@@ -8918,7 +8918,7 @@ msgstr ""
 msgid "Undo History"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:646
+#: crates/ui-egui/src/settings.rs:644
 msgid "Undo steps kept"
 msgstr ""
 
@@ -9011,7 +9011,7 @@ msgstr ""
 msgid "Update to Face (UF): the walls, floors and roofs made by face from the selected masses follow them again"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:304
+#: crates/ui-egui/src/settings.rs:298
 #: crates/ui-egui/src/updates.rs:72
 msgid "Updates"
 msgstr ""
@@ -9028,7 +9028,7 @@ msgstr ""
 msgid "Use Project Settings"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:591
+#: crates/ui-egui/src/settings.rs:589
 msgid "Use the system's title bar"
 msgstr ""
 
@@ -9036,7 +9036,7 @@ msgstr ""
 msgid "User Interface"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:200
+#: crates/ui-egui/src/assistant.rs:230
 msgid "Using the key in {}"
 msgstr ""
 
@@ -9312,7 +9312,7 @@ msgstr ""
 msgid "West"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:668
+#: crates/ui-egui/src/settings.rs:666
 msgid "What High Contrast Point Clouds, on the view control bar, draws a view's scans in"
 msgstr ""
 
@@ -9324,7 +9324,7 @@ msgstr ""
 msgid "What field {} says until a sheet or the project gives it a value"
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:526
+#: crates/ui-egui/src/settings.rs:524
 msgid "What is picked and what has focus are drawn in it, in every theme; its lettering is made dark or light enough to read"
 msgstr ""
 
@@ -9340,7 +9340,7 @@ msgstr ""
 msgid "What the 3D view sketches on."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:541
+#: crates/ui-egui/src/settings.rs:539
 msgid "What the views are drawn on; the drawing's lines turn light on a dark one and dark on a light one"
 msgstr ""
 
@@ -9507,7 +9507,7 @@ msgstr ""
 msgid "Work plane square to the {} axis"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:248
+#: crates/ui-egui/src/assistant.rs:269
 msgid "Working…"
 msgstr ""
 
@@ -9535,15 +9535,15 @@ msgstr ""
 msgid "Yesterday"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:295
+#: crates/ui-egui/src/assistant.rs:317
 msgid "You"
 msgstr ""
 
-#: crates/ui-egui/src/assistant.rs:226
+#: crates/ui-egui/src/assistant.rs:247
 msgid "Your messages, and what the assistant reads of this project (its levels, elements, schedules), are sent to {}. Nothing is sent until you send a message."
 msgstr ""
 
-#: crates/ui-egui/src/settings.rs:566
+#: crates/ui-egui/src/settings.rs:564
 msgid "Your text colour was too close to the panels: it is made darker or lighter to read at 4.5:1"
 msgstr ""
 

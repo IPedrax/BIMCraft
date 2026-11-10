@@ -18,6 +18,9 @@ What comes from the network is hostile, and what goes out is the user's:
 - The tools run on the window's session through `bridge::run`, as a connected agent's do, and refuse what reads or writes a file, what
   replaces the project and what makes a picture: a note inside the project must not steer the model into the user's disk.
 
+- The saved key (`seal.rs`) is sealed with AES-256-GCM under a key made from `BIMCRAFT_KEY_SECRET`, which the release workflow builds in from a
+  repository secret (a public development secret otherwise): it is no secret from anyone who has the program, and the docs and the page say
+  so. A change to the format keeps `well_formed` strict (the file is hostile) and the known-answer test, made with Python's `cryptography`.
 - A provider is a pure pair: `request(model, key, history) -> net::Request` and `parse(status, body) -> Result<Reply, String>`. A new
   provider or a changed request shape is a test on a recorded reply first (`tests.rs`: text, one call, two calls, malformed, refusal).
   The conversation (`Msg`) is in no provider's form; the model's own turn goes back whole as `Reply::raw`, because thinking blocks,

@@ -17,6 +17,7 @@ pub mod chat;
 pub mod gemini;
 pub mod net;
 pub mod openai;
+pub mod seal;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 #[cfg(test)]
@@ -41,6 +42,8 @@ pub const MAX_ROUNDS: usize = 24;
 pub const MAX_CALLS: usize = 16;
 /// The longest message the user may send, in characters.
 pub const MAX_TEXT: usize = 8_000;
+/// The longest key accepted, in bytes.
+pub const KEY_MAX: usize = 512;
 
 /// What the model is told it is, and how to work. The last line is the guard against what the project's own text says.
 pub const SYSTEM: &str = "You are BIMCraft's built-in assistant. You manage the project the user has open in this window, a \
@@ -157,7 +160,7 @@ impl Msg {
 /// Whether `key` could be an API key: printable ASCII, no spaces, a sane length. A pasted line break or a stray quote is
 /// refused before it reaches a header.
 pub fn key_ok(key: &str) -> bool {
-    (8..=512).contains(&key.len()) && key.bytes().all(|b| b.is_ascii_graphic())
+    (8..=KEY_MAX).contains(&key.len()) && key.bytes().all(|b| b.is_ascii_graphic())
 }
 
 /// Whether `model` could be a model id: letters, digits, dots, dashes and underscores. It goes into an address for Gemini.

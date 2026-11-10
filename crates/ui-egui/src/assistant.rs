@@ -14,7 +14,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use bimcraft_assistant::net::Net;
-use bimcraft_assistant::{Chat, Line, Provider, key_ok, model_ok};
+use bimcraft_assistant::{Chat, Line, Provider, key_ok, model_ok, seal};
 use bimcraft_core::bridge::Access;
 use bimcraft_i18n::msg;
 use egui::{Context, Frame, Key, RichText, ScrollArea, TextEdit, Ui};
@@ -41,8 +41,11 @@ pub struct State {
     pub model: String,
     /// The key typed in the palette; the environment's comes before it.
     pub key: Secret,
-    /// Keep the key in `settings.json` between sessions.
+    /// Keep the key between sessions: in `settings.json`, scrambled (`sealed`), which is as private as a program that carries its own
+    /// secret can make it (`bimcraft_assistant::seal`).
     pub remember: bool,
+    /// The key as `settings.json` keeps it; none when the user does not ask for it to be kept.
+    pub sealed: Option<String>,
     pub(crate) input: String,
     /// The providers the user has agreed to send the project's contents to, this session.
     agreed: BTreeSet<&'static str>,
@@ -58,6 +61,7 @@ impl Default for State {
             model: Provider::Anthropic.default_model().into(),
             key: Secret::default(),
             remember: false,
+            sealed: None,
             input: String::new(),
             agreed: BTreeSet::new(),
             env: |name| std::env::var(name).ok(),
@@ -88,6 +92,32 @@ impl State {
             chat.reset();
         }
         self.input.clear();
+    }
+
+    /// The key box, and Remember: with it ticked the key is kept in `settings.json`, scrambled, and comes back at the next start.
+    fn key_ui(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            let l = ui.label(t("API key:"));
+            let width = ui.available_width();
+            let edit = TextEdit::singleline(&mut self.key.0).password(true).hint_text(self.provider.env());
+            if ui.add_sized([width, 20.0], edit).labelled_by(l.id).changed() {
+                self.resave();
+            }
+        });
+        if ui.checkbox(&mut self.remember, t("Remember the key")).changed() {
+            self.resave();
+        }
+        if self.remember {
+            let said = msg!(
+                "Kept in settings.json scrambled with a key built into BIMCraft: it can't be read at a glance, but anyone who has BIMCraft can unscramble it. Leave this off on a computer others use."
+            );
+            ui.label(RichText::new(t(said)).small().color(pal().muted));
+        }
+    }
+
+    /// What `settings.json` keeps of the key follows the box: sealed when Remember is ticked and there is a key, else nothing.
+    fn resave(&mut self) {
+        self.sealed = if self.remember { seal::seal(&self.key.0).ok() } else { None };
     }
 
     /// Whether the chat is working on a message.
@@ -199,16 +229,7 @@ impl BimApp {
         if let Some(var) = a.env_key().map(|_| a.provider.env()) {
             ui.label(RichText::new(tf("Using the key in {}", &[var])).color(pal().muted));
         } else {
-            ui.horizontal(|ui| {
-                let l = ui.label(t("API key:"));
-                let width = ui.available_width();
-                let edit = TextEdit::singleline(&mut a.key.0).password(true).hint_text(a.provider.env());
-                ui.add_sized([width, 20.0], edit).labelled_by(l.id);
-            });
-            ui.checkbox(&mut a.remember, t("Remember the key"));
-            if a.remember {
-                ui.label(RichText::new(t("Remember keeps the key as plain text in settings.json, on this computer: anyone who can read your files can read it.")).color(pal().error));
-            }
+            a.key_ui(ui);
         }
         ui.add_space(10.0);
         ui.label(
@@ -269,7 +290,8 @@ impl BimApp {
             return;
         }
         if !key_ok(&key) {
-            chat.log.push(Line::Note(tf("Give an API key in the Assistant settings, or set {} in the environment.", &[a.provider.env()])));
+            let note = tf("Give an API key in the Assistant settings, or set {} in the environment.", &[a.provider.env()]);
+            chat.log.push(Line::Note(note));
             a.input = text;
             return;
         }

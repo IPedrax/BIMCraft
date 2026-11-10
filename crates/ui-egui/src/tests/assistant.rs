@@ -232,32 +232,119 @@ fn written(file: &std::path::Path) -> serde_json::Value {
     serde_json::from_slice(&std::fs::read(file).unwrap()).unwrap()
 }
 
+/// Remember, ticked on the Assistant page of Settings, as a user ticks it.
+fn tick_remember(h: &mut Harness<BimApp>) {
+    settings(h);
+    h.get_by_role_and_label(Role::CheckBox, "Remember the key").click();
+    h.run();
+}
+
+fn hex_of(text: &str) -> String {
+    text.bytes().map(|b| format!("{b:02x}")).collect()
+}
+
 #[test]
-fn the_key_is_written_to_the_settings_only_when_remembered_and_read_back_with_care() {
+fn a_typed_key_is_written_nowhere_and_a_remembered_one_only_scrambled() {
+    for (profile, build) in BOTH {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("settings.json");
+        let mut h = build("");
+        h.state_mut().use_settings(file.clone());
+        h.state_mut().assistant.provider = bimcraft_assistant::Provider::Gemini;
+        h.state_mut().assistant.model = "gemini-3.8-flash".into();
+        set_key(&mut h, KEY);
+        assert_eq!(
+            written(&file)["assistant"],
+            json!({"provider": "gemini", "model": "gemini-3.8-flash", "key_sealed": null}),
+            "{profile}"
+        );
+        assert!(!std::fs::read_to_string(&file).unwrap().contains(KEY), "{profile}: typed, not remembered: nowhere on disk");
+
+        // Remember: what the file gets is the key scrambled, and not the key as typed, nor in hex.
+        assert!(h.query_by_label_contains("built into BIMCraft").is_none(), "{profile}: said when it applies");
+        tick_remember(&mut h);
+        h.get_by_label_contains("anyone who has BIMCraft can unscramble it");
+        let text = std::fs::read_to_string(&file).unwrap();
+        let sealed = written(&file)["assistant"]["key_sealed"].as_str().unwrap().to_string();
+        assert!(bimcraft_assistant::seal::well_formed(&sealed), "{profile}: {sealed}");
+        assert!(!text.contains(KEY) && !text.contains(&hex_of(KEY)), "{profile}: not as typed, nor as hex");
+        assert_eq!(bimcraft_assistant::seal::open(&sealed).unwrap(), KEY, "{profile}");
+        close_settings(&mut h);
+
+        // The next window opens it at the start, with the choices, and sends with it.
+        let net = Arc::new(Fake::default().reply(200, anthropic(json!([{"type": "text", "text": "Hi."}]), "end_turn")));
+        let mut next = build("");
+        next.state_mut().assistant.attach(net.clone());
+        next.state_mut().assistant.env = |_| None;
+        next.state_mut().use_settings(file.clone());
+        next.run();
+        let a = &next.state().assistant;
+        assert_eq!(
+            (a.provider, a.model.as_str(), a.key.0.as_str(), a.remember),
+            (bimcraft_assistant::Provider::Gemini, "gemini-3.8-flash", KEY, true),
+            "{profile}"
+        );
+        next.state_mut().assistant.provider = bimcraft_assistant::Provider::Anthropic;
+        shortcut(&mut next, "AI");
+        assert!(next.query_by_label_contains("No API key yet").is_none(), "{profile}");
+        write(&mut next, "hello");
+        click_in_palette(&mut next, "Agree and send");
+        finish(&mut next);
+        assert!(net.seen()[0].headers.contains(&("x-api-key".into(), KEY.into())), "{profile}: sent with the key that came back");
+
+        // Edited, the key is kept as edited; not remembering takes it out of the file at once.
+        settings(&mut next);
+        type_into(&mut next, "API key:", "sk-test-another-key-0123456789");
+        let kept = written(&file)["assistant"]["key_sealed"].as_str().map(str::to_string);
+        assert_eq!(bimcraft_assistant::seal::open(&kept.unwrap()).unwrap(), "sk-test-another-key-0123456789", "{profile}");
+        next.get_by_role_and_label(Role::CheckBox, "Remember the key").click();
+        next.run();
+        assert_eq!(written(&file)["assistant"]["key_sealed"], json!(null), "{profile}");
+        assert!(!std::fs::read_to_string(&file).unwrap().contains("bc1:"), "{profile}");
+        assert_eq!(next.state().assistant.key.0, "sk-test-another-key-0123456789", "{profile}: this session's key is still in use");
+    }
+}
+
+#[test]
+fn remember_keeps_what_is_in_the_key_box_and_nothing_when_there_is_no_key() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("settings.json");
-    let mut h = app("");
+    let (mut h, _net) = open(app, Fake::default());
     h.state_mut().use_settings(file.clone());
-    h.state_mut().assistant.key = crate::assistant::Secret(KEY.into());
-    h.state_mut().assistant.provider = bimcraft_assistant::Provider::Gemini;
-    h.state_mut().assistant.model = "gemini-3.8-flash".into();
+    tick_remember(&mut h);
+    assert!(!file.exists(), "no key to keep yet: nothing the settings did not already hold");
+    type_into(&mut h, "API key:", KEY);
+    assert!(written(&file)["assistant"]["key_sealed"].is_string());
+    // Emptied as a user empties it: all of it selected, and deleted.
+    h.get_by_label("API key:").focus();
     h.run();
-    let kept = written(&file);
-    assert_eq!(kept["assistant"], json!({"provider": "gemini", "model": "gemini-3.8-flash", "remember": false, "key": ""}));
-    assert!(!std::fs::read_to_string(&file).unwrap().contains(KEY), "typed, not remembered: nowhere on disk");
-    h.state_mut().assistant.remember = true;
-    h.run();
-    assert_eq!(written(&file)["assistant"]["key"], KEY);
-    // The next window has it all, and the key does not show in a debug print of the settings.
-    let mut again = app("");
-    again.state_mut().use_settings(file.clone());
-    assert_eq!(again.state().assistant.key.0, KEY);
-    assert_eq!(again.state().assistant.provider, bimcraft_assistant::Provider::Gemini);
-    assert!(!format!("{:?}", crate::assistant::Secret(KEY.into())).contains(KEY), "a key prints as nothing");
-    // A file edited by hand or damaged: what is no provider, model or key is left out.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    key(&mut h, Key::Backspace);
+    assert_eq!(written(&file)["assistant"]["key_sealed"], json!(null), "a box emptied keeps nothing");
+}
+
+#[test]
+fn a_saved_key_this_build_cannot_open_or_a_damaged_or_plain_one_is_not_used() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    let sealed = bimcraft_assistant::seal::seal(KEY).unwrap();
+    let another = bimcraft_assistant::seal::seal_with("another build's secret", KEY, &[1; 16], &[2; 12], 1000).unwrap();
+    // A good one comes back; one another kind of build sealed does not open here, and is dropped, not shown as a key.
+    for (key_sealed, opens) in [(sealed.clone(), true), (another, false)] {
+        std::fs::write(&file, json!({"assistant": {"provider": "openai", "model": "gpt-6-astra", "key_sealed": key_sealed}}).to_string())
+            .unwrap();
+        let mut h = app("");
+        h.state_mut().use_settings(file.clone());
+        let a = &h.state().assistant;
+        assert_eq!((a.key.0 == KEY, a.remember, a.sealed.is_some()), (opens, opens, opens));
+        assert_eq!(a.provider, bimcraft_assistant::Provider::OpenAi);
+    }
+    // Files edited by hand, damaged, or from a build that kept the key as typed: what is no sealed key is none, and a plain key is not read.
     for bad in [
-        json!({"assistant": {"provider": "nope", "model": "bad model!", "remember": true, "key": "short"}}),
-        json!({"assistant": {"provider": 5, "model": null, "remember": "yes", "key": 7}}),
+        json!({"assistant": {"provider": "nope", "model": "bad model!", "key_sealed": "short"}}),
+        json!({"assistant": {"provider": 5, "model": null, "key_sealed": 7}}),
+        json!({"assistant": {"remember": true, "key": KEY}}),
+        json!({"assistant": {"key_sealed": format!("{sealed}0")}}),
         json!({"assistant": []}),
     ] {
         std::fs::write(&file, bad.to_string()).unwrap();
@@ -265,8 +352,9 @@ fn the_key_is_written_to_the_settings_only_when_remembered_and_read_back_with_ca
         h.state_mut().use_settings(file.clone());
         let a = &h.state().assistant;
         assert_eq!((a.provider, a.model.as_str()), (bimcraft_assistant::Provider::Anthropic, "claude-sonnet-5-5"), "{bad}");
-        assert!(a.key.0.is_empty(), "{bad}");
+        assert!(a.key.0.is_empty() && a.sealed.is_none() && !a.remember, "{bad}");
     }
+    assert!(!format!("{:?}", crate::assistant::Secret(KEY.into())).contains(KEY), "a key prints as nothing");
 }
 
 #[test]
@@ -385,11 +473,11 @@ fn the_api_config_has_its_own_tab_in_settings_in_both_profiles() {
         assert_eq!(h.state().assistant.model, "gemini-3.5-flash", "{profile}");
         type_into(&mut h, "API key:", KEY);
         assert_eq!(h.state().assistant.key.0, KEY, "{profile}");
-        assert!(h.query_by_label_contains("plain text in settings.json").is_none(), "{profile}: said only when it is true");
+        assert!(h.query_by_label_contains("built into BIMCraft").is_none(), "{profile}: said only when Remember is ticked");
         h.get_by_role_and_label(Role::CheckBox, "Remember the key").click();
         h.run();
         assert!(h.state().assistant.remember, "{profile}");
-        h.get_by_label_contains("plain text in settings.json");
+        h.get_by_label_contains("built into BIMCraft");
     }
 }
 

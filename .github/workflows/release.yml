@@ -17,6 +17,14 @@ on:
 permissions:
   contents: write
 
+# The secret a user's saved API key is scrambled with (crates/assistant/src/seal.rs) is built into the program, and comes from this
+# repository secret, so its text is not in the source (`gh secret set BIMCRAFT_KEY_SECRET`). Every job that compiles has it; the Flatpak
+# and Arch jobs only repackage the Linux tarball. A release whose build has none (the secret missing, or empty) fails its tests here,
+# rather than sealing keys with the public development key.
+env:
+  BIMCRAFT_KEY_SECRET: ${{ secrets.BIMCRAFT_KEY_SECRET }}
+  BIMCRAFT_REQUIRE_KEY_SECRET: "1"
+
 jobs:
   windows:
     name: Windows installer

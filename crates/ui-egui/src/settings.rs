@@ -6,7 +6,7 @@
 //! window's size, the background autosave interval, the colour High Contrast Point Clouds draws scans in, whether plans show the
 //! origin marker and their view's name in the corner, the shortcuts the user made, and the control port
 //! for agents (whether the window opens it, on which port, and whether agents may edit the project or only read it), and the
-//! assistant's provider, model and, only if the user asks, key.
+//! assistant's provider, model and, only if the user asks, key (scrambled: never as typed).
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
 use crate::popup::Modal;
@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use egui::{Align, Color32, ComboBox, Context, Id as UiId, Layout, RichText, ScrollArea, ThemePreference, Ui, vec2};
 use serde_json::{Value, json};
 
-use bimcraft_assistant::{Provider, key_ok, model_ok};
+use bimcraft_assistant::{Provider, model_ok, seal};
 
 use crate::BimApp;
 use crate::assistant::Secret;
@@ -129,11 +129,10 @@ pub struct Settings {
     pub agents_listen: bool,
     pub agents_port: u16,
     pub agents_edit: bool,
-    /// The Assistant palette's provider and model, and whether it keeps the key typed in it, which is then written here as plain text.
+    /// The Assistant's provider and model, and the key if the user asked for it to be kept: scrambled (`seal`), never as typed.
     pub assistant_provider: Provider,
     pub assistant_model: String,
-    pub assistant_remember: bool,
-    pub assistant_key: Secret,
+    pub assistant_sealed: Option<String>,
 }
 
 impl Settings {
@@ -169,11 +168,8 @@ impl Settings {
             "shortcuts": self.shortcuts,
             "system_title_bar": self.system_title_bar,
             "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
-            // The key is written only when the user asked for it to be kept.
-            "assistant": {
-                "provider": self.assistant_provider.key(), "model": self.assistant_model, "remember": self.assistant_remember,
-                "key": if self.assistant_remember { self.assistant_key.0.as_str() } else { "" },
-            },
+            // The key, only when the user asked for it to be kept, and then only sealed.
+            "assistant": {"provider": self.assistant_provider.key(), "model": self.assistant_model, "key_sealed": self.assistant_sealed},
         })
     }
 
@@ -188,7 +184,6 @@ impl Settings {
         };
         // A colour of the user's: none (the scheme's) when the file has one this can't read.
         let own = |key: &str, base: Option<[u8; 3]>| if v.get(key).is_some() { colour(&v[key]) } else { base };
-        let remember = v["assistant"]["remember"].as_bool().unwrap_or(base.assistant_remember);
         Settings {
             theme,
             light_canvas: theme == ThemePreference::Dark && v["light_canvas"].as_bool().unwrap_or(base.light_canvas),
@@ -223,11 +218,10 @@ impl Settings {
             agents_edit: v["agents"]["edit"].as_bool().unwrap_or(base.agents_edit),
             assistant_provider: v["assistant"]["provider"].as_str().and_then(Provider::from_key).unwrap_or(base.assistant_provider),
             assistant_model: v["assistant"]["model"].as_str().filter(|m| model_ok(m)).map_or(base.assistant_model, str::to_string),
-            assistant_remember: remember,
-            assistant_key: match v["assistant"]["key"].as_str() {
-                Some(k) if remember && key_ok(k) => Secret(k.to_string()),
-                _ if remember => base.assistant_key,
-                _ => Secret::default(),
+            // A text that is no sealed key (a damaged file, a hand's edit, the plain key an earlier build kept) is none.
+            assistant_sealed: match v["assistant"].get("key_sealed") {
+                None => base.assistant_sealed,
+                Some(sealed) => sealed.as_str().filter(|s| seal::well_formed(s)).map(str::to_string),
             },
         }
     }
@@ -343,8 +337,14 @@ impl BimApp {
         self.system_title_bar = kept.system_title_bar;
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
         let a = &mut self.assistant;
-        (a.provider, a.model, a.remember, a.key) =
-            (kept.assistant_provider, kept.assistant_model.clone(), kept.assistant_remember, kept.assistant_key.clone());
+        (a.provider, a.model, a.sealed) = (kept.assistant_provider, kept.assistant_model.clone(), kept.assistant_sealed.clone());
+        // A saved key is opened for the session; one this build cannot open (another kind of build saved it, or the file was changed) is
+        // forgotten, and the user types it again.
+        match a.sealed.as_deref().map(seal::open) {
+            Some(Ok(key)) => (a.key, a.remember) = (Secret(key), true),
+            Some(Err(_)) => (a.sealed, a.remember) = (None, false),
+            None => a.remember = false,
+        }
         self.settings_kept = Some(kept);
         self.settings_path = Some(path);
     }
@@ -385,9 +385,7 @@ impl BimApp {
             agents_edit: self.agents.edit,
             assistant_provider: self.assistant.provider,
             assistant_model: self.assistant.model.clone(),
-            assistant_remember: self.assistant.remember,
-            // Only a key that is to be kept is part of what the file holds, so typing one without Remember writes nothing.
-            assistant_key: if self.assistant.remember { self.assistant.key.clone() } else { Secret::default() },
+            assistant_sealed: self.assistant.sealed.clone(),
         }
     }
 
