@@ -1430,6 +1430,74 @@ impl BimApp {
         }
     }
 
+    /// What Find lists on a family tab, by name in `shortcuts::ACTIONS`: what the family document does itself (Delete, Align and
+    /// Aligned Dimension in a plan or an elevation, Temporary Hide/Isolate, Zoom to Fit in {3D}, its {3D} view) and what is the
+    /// window's (Properties, Project Browser, Keyboard Shortcuts). The project's tools are left out: from a family tab they
+    /// would change the project out of sight.
+    pub(crate) fn family_find_actions(&self) -> Vec<&'static str> {
+        let Some(ed) = self.active_family() else { return Vec::new() };
+        let mut out = vec!["Delete"];
+        if ed.editing_2d() && ed.sketch.is_none() {
+            out.extend(["Aligned Dimension", "Align"]);
+        }
+        out.extend([
+            "Temporary Hide Element",
+            "Temporary Hide Category",
+            "Temporary Isolate Element",
+            "Temporary Isolate Category",
+            "Reset Temporary Hide/Isolate",
+            "3D View",
+        ]);
+        if matches!(self.sheet, crate::Sheet::Family(_, None)) {
+            out.push("Zoom to Fit");
+        }
+        out.extend(["Properties", "Project Browser", "Keyboard Shortcuts"]);
+        out
+    }
+
+    /// One of `family_find_actions` done on the active family document, as its own keys and ribbon do it; whether it was one.
+    pub(crate) fn family_find_action(&mut self, action: &str) -> bool {
+        if !self.family_find_actions().contains(&action) {
+            return false;
+        }
+        let temp = |category| super::temp_hide::Asked::Hide { category };
+        let isolate = |category| super::temp_hide::Asked::Isolate { category };
+        match action {
+            "Delete" => {
+                let Some(ed) = self.active_family_mut() else { return false };
+                // A sketch's lines picked, else what is selected, as the Delete key does.
+                if let Some(s) = ed.sketch.as_mut() {
+                    s.delete_picked();
+                } else if ed.deletable()
+                    && let Err(text) = ed.delete_selected()
+                {
+                    self.status = Status { text, error: true };
+                }
+            }
+            "Aligned Dimension" | "Align" => {
+                let Some(ed) = self.active_family_mut() else { return false };
+                if action == "Align" {
+                    ed.align_tool();
+                } else {
+                    ed.dimension_tool();
+                }
+            }
+            "Temporary Hide Element" => self.family_temp(temp(false)),
+            "Temporary Hide Category" => self.family_temp(temp(true)),
+            "Temporary Isolate Element" => self.family_temp(isolate(false)),
+            "Temporary Isolate Category" => self.family_temp(isolate(true)),
+            "Reset Temporary Hide/Isolate" => self.family_temp(super::temp_hide::Asked::Reset),
+            "3D View" => {
+                if let Some(ed) = self.active_family_mut() {
+                    ed.views.show(None);
+                }
+            }
+            // The family's {3D}, the window's palettes and dialogs: as anywhere.
+            _ => return self.execute_shortcut_action(action),
+        }
+        true
+    }
+
     /// Save and Save As on a family tab (the Quick Access Toolbar's Save, File > Save Family and Save Family As…, Ctrl+S and
     /// Ctrl+Shift+S): the active family document to its file, as Revit saves the active document; the project never.
     pub(crate) fn family_save(&mut self, ask: bool) {
@@ -1442,9 +1510,10 @@ impl BimApp {
         }
     }
 
-    /// The family document's keys: Ctrl+S saves it (Ctrl+Shift+S asks where), Ctrl+Z undoes a step of its own, Ctrl+Y and
-    /// Ctrl+Shift+Z redo one, and the two letters of Temporary Hide/Isolate (`temp_hide.rs`), unless a field being typed in
-    /// (whose own they are) or a dialog has them; Ctrl+S works while a field has the keyboard, as on a project's tab.
+    /// The family document's keys: Ctrl+S saves it (Ctrl+Shift+S asks where), Ctrl+K opens Find, Ctrl+Z undoes a step of its
+    /// own, Ctrl+Y and Ctrl+Shift+Z redo one, and the two letters of Temporary Hide/Isolate (`temp_hide.rs`), unless a field
+    /// being typed in (whose own they are) or a dialog has them; Ctrl+S and Ctrl+K work while a field has the keyboard, as on
+    /// a project's tab.
     pub(crate) fn family_keys(&mut self, ctx: &Context) {
         let Some(ed) = self.active_family() else { return };
         if ed.modal() {
@@ -1456,6 +1525,9 @@ impl BimApp {
                 self.family_save(true);
             } else if pressed(egui::Modifiers::COMMAND, egui::Key::S) {
                 self.family_save(false);
+            }
+            if pressed(egui::Modifiers::COMMAND, egui::Key::K) {
+                self.find = Some(String::new());
             }
         }
         if ctx.text_edit_focused() {

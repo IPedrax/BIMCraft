@@ -133,7 +133,10 @@ family opened from the start page with no project behind it shows no project tab
 project. Family tabs neither float nor tile. On a family tab, Save (the Quick Access Toolbar's, File > Save Family, Ctrl+S) and
 Save As (File > Save Family As…, Ctrl+Shift+S) are the document's, as Revit saves the active document: the project is never
 saved from a family tab. Save writes to the document's file once it has one (opened from it, or saved to it once,
-`FamilyDoc::path`) and asks otherwise; Save As always asks. Either leaves the document clean. Properties show what is selected, as Revit's do: nothing
+`FamilyDoc::path`) and asks otherwise; Save As always asks. Either leaves the document clean. Find (Ctrl+K) on a family tab lists the document's own commands
+(Delete, Align and Aligned Dimension in a plan or an elevation, Temporary Hide/Isolate, Zoom to Fit in {3D}), the window's
+(Properties, Project Browser, Keyboard Shortcuts) and the document's views, and runs them on the document
+(`family_find_actions`); the project's tools are left out, so nothing changes the project out of sight. Properties show what is selected, as Revit's do: nothing
 selected, the family's own (Identity Data, then Family Category and Parameters' Other group); a form, a symbol, a reference
 plane or line, a dimension or a nested instance, its own. The forms and the plan symbols of a family that isn't adaptive are
 listed in the Project Browser (Forms and Symbols, `family_browser`): a click selects one, and its right-click menu has Select,

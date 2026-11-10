@@ -173,3 +173,60 @@ fn new_families_are_named_family1_family2_and_open_side_by_side() {
     assert!(h.query_by_label("Family1 - {3D}").is_some() && h.query_by_label("Family2 - {3D}").is_some());
     assert_eq!(active_title(&h).as_deref(), Some("Family2"));
 }
+
+/// Find opened from its button, `what` typed and Enter pressed: the first row run.
+fn find_and_run(h: &mut Harness<BimApp>, what: &str) {
+    press(h, "Find");
+    assert!(h.state().find.is_some(), "Find open");
+    h.event(egui::Event::Text(what.to_string()));
+    h.run();
+    key(h, Key::Enter);
+    h.run();
+}
+
+#[test]
+fn delete_in_find_on_a_family_tab_never_touches_the_project() {
+    let mut h = project();
+    let wall = h.state().session.model.elements.iter().find(|(_, e)| matches!(e, Element::Wall(_))).map(|(id, _)| *id).expect("a wall");
+    h.state_mut().selection = vec![wall];
+    let project = h.state().session.model.to_json().unwrap();
+    h.state_mut().edit_family("Box");
+    h.run();
+    find_and_run(&mut h, "delete");
+    assert_eq!(h.state().session.model.to_json().unwrap(), project, "the project is as it was");
+    assert_eq!(h.state().selection, vec![wall], "and its selection");
+    assert_eq!(
+        h.state().active_family().unwrap().draft_family().unwrap().forms.len(),
+        1,
+        "nothing selected in the family: nothing deleted"
+    );
+}
+
+#[test]
+fn find_on_a_family_tab_lists_and_runs_the_familys_own_commands() {
+    let mut h = project();
+    let project = h.state().session.model.to_json().unwrap();
+    h.state_mut().edit_family("Box");
+    h.run();
+    // Only what the family document does: no project tool, no project view.
+    let listed = |h: &Harness<BimApp>, q: &str| h.state().find_matches(q).into_iter().map(|(l, ..)| l).collect::<Vec<_>>();
+    assert!(listed(&h, "wall").is_empty(), "{:?}", listed(&h, "wall"));
+    assert!(listed(&h, "level 1").is_empty(), "{:?}", listed(&h, "level 1"));
+    assert!(listed(&h, "delete").contains(&"Delete".to_string()));
+    assert!(listed(&h, "properties").contains(&"Properties".to_string()), "a palette stays");
+    assert!(listed(&h, "ref. level").iter().any(|l| l.contains("Floor Plan")), "the family's views");
+    // Delete on the family's form selected: the form goes from the family, not the project.
+    super::family_views::select_form(&mut h, 1);
+    assert_eq!(h.state().active_family().unwrap().selected_form(), Some(0));
+    find_and_run(&mut h, "delete");
+    assert!(h.state().active_family().unwrap().draft_family().unwrap().forms.is_empty(), "the family's form deleted");
+    assert_eq!(h.state().session.model.to_json().unwrap(), project, "the project is as it was");
+    // A family view opened from Find opens its tab; Ctrl+K opens it on a family tab too.
+    chord(&mut h, Modifiers::COMMAND, Key::K);
+    assert!(h.state().find.is_some(), "Ctrl+K opens Find");
+    key(&mut h, Key::Escape);
+    assert!(h.state().find.is_none());
+    find_and_run(&mut h, "floor plan ref");
+    assert_eq!(h.state().active_family().unwrap().views.shown, Some(bimcraft_core::family::views::Which::Plan));
+    assert!(h.query_by_label("Box - Floor Plan: Ref. Level").is_some());
+}
