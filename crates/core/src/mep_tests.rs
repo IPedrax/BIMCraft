@@ -384,7 +384,10 @@ fn points_picked_snap_to_the_ends_and_middle_of_a_run() {
             let f = snap(&s.model, 100000, p, reach, &[], false, &Snaps::default());
             (f.at, f.kind)
         };
-        assert_eq!(at(P2(6040.0, 30.0)), (P2(6000.0, 0.0), Kind::Endpoint), "{}", c.category);
+        // On the line at its ends and middle, as they were. The corners of the outline snap too now
+        // (the outline every view fills), so these stand on the axis itself, where the end and the
+        // middle are the nearest points whatever the run is wide.
+        assert_eq!(at(P2(6040.0, 0.0)), (P2(6000.0, 0.0), Kind::Endpoint), "{}", c.category);
         assert_eq!(at(P2(3040.0, 30.0)), (P2(3000.0, 0.0), Kind::Midpoint), "{}", c.category);
     }
 }

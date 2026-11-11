@@ -1,4 +1,4 @@
-//! Sheets: paper with a title block, and views placed on it at a scale. A sheet is drawn once,
+//! Sheets: paper with an optional title block, and views placed on it at a scale. A sheet is drawn once,
 //! at [`DENSITY`] px per paper mm, as a display list in paper pixels: what the PNG, the PDF and the
 //! desktop's sheet view show. Each view on it is drawn as its own view draws it, moved onto the
 //! paper and made the viewport's to pick, and titled under it; a section's picture of what lies
@@ -10,7 +10,7 @@ use bimcraft_i18n::msg;
 use crate::geom::P2;
 use crate::graphics::Look;
 use crate::language::Language;
-use crate::model::{Element, Id, Key, Model, Schedule, Sheet, Viewport, paper};
+use crate::model::{Element, Id, Key, Model, Schedule, Viewport, paper};
 use crate::pen::Pen;
 use crate::render::{self, Drawing, PAPER, Part, Prim, Rgb, View};
 use crate::{font, schedule, view3d};
@@ -178,6 +178,36 @@ pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
     spots.into_iter().find(free).unwrap_or(P2(right.max(paper.0) + GAP - taken[0], middle.1))
 }
 
+/// The rightmost existing viewport frame edge, in paper millimetres.
+fn rightmost_viewport_edge(m: &Model, sheet: impl Key) -> Option<f64> {
+    let sheet = m.guid(sheet);
+    m.on_sheet(sheet)
+        .into_iter()
+        .filter_map(|id| match m.elements.get(id) {
+            Some(Element::Viewport(v)) if v.sheet == sheet => Some(v.at.0 + size(m, v.view, v.scale)?.0 / 2.0),
+            _ => None,
+        })
+        .fold(None, |r: Option<f64>, x| Some(r.map_or(x, |r| r.max(x))))
+}
+
+/// Default placement uses the sheet's standard unless its template defines a drawing rectangle.
+pub fn automatic_center(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> Result<P2, String> {
+    let area = m.sheet(sheet).and_then(|s| m.title_blocks.get(&s.title_block)).and_then(|t| t.drawing_area);
+    let Some([lo, hi]) = area else { return Ok(spot(m, sheet, view, scale)) };
+    let frame = size(m, view, scale).ok_or_else(|| "the viewport frame cannot be measured at this scale".to_string())?;
+    let available = hi - lo;
+    if frame.0 > available.0 || frame.1 > available.1 {
+        return Err(format!(
+            "viewport frame is {} × {} mm at 1:{scale}; drawing area is {} × {} mm. Choose a smaller view scale or an explicit center",
+            frame.0, frame.1, available.0, available.1
+        ));
+    }
+    let middle = (lo + hi) * 0.5;
+    let Some(edge) = rightmost_viewport_edge(m, sheet) else { return Ok(middle) };
+    let left = (edge + 10.0).max(lo.0);
+    if left + frame.0 <= hi.0 { Ok(P2(left + frame.0 / 2.0, middle.1)) } else { Ok(hi - frame * 0.5) }
+}
+
 /// `text` with its left end at paper point `at` (mm), capitals `height` mm tall.
 fn left(d: &mut Drawing, text: &str, at: P2, height: f64) {
     let h = (height * DENSITY) as f32;
@@ -185,9 +215,15 @@ fn left(d: &mut Drawing, text: &str, at: P2, height: f64) {
     d.text(text, (x + font::width(text, h) / 2.0, y), h, INK);
 }
 
+/// Keep lettering at its usual height, or shrink it to its title-block cell's width, mm.
+fn fitted_height(text: &str, height: f64, width: f64) -> f64 {
+    let taken = f64::from(font::width(text, (height * DENSITY) as f32)) / DENSITY;
+    if taken > width { height * width / taken } else { height }
+}
+
 /// Draw standard folding marks (marcas de dobramento) as specified in NBR 17067.
 fn draw_folding_marks(d: &mut Drawing, paper: P2, size: &str, margins: crate::standards::SheetMargins) {
-    let s = size.trim().to_ascii_uppercase();
+    let s = crate::model::paper_name(size);
     let x_folds: &[f64] = match s.as_str() {
         "A3" => &[210.0],
         "A2" => &[210.0, 402.0],
@@ -216,23 +252,46 @@ fn draw_folding_marks(d: &mut Drawing, paper: P2, size: &str, margins: crate::st
 }
 
 /// The border, filing margin on the left and borders on the other sides, and the title
-/// box in the bottom right corner, adapted to `std`: the project, the sheet's name, its scale, and its number.
-fn title_block(d: &mut Drawing, project: &str, sheet: &Sheet, paper: P2, scale: &str, std: crate::standards::TechnicalStandard) {
+/// box in the bottom right corner, adapted to `std`: the project, the sheet's name, its scale, and its number. A sheet that
+/// names a title block of the project's has that one there instead, its fields filled in; one with none
+/// ([`crate::titleblock::NONE`]) has nothing of it, border and folding marks included, for one drawn on the sheet itself.
+fn title_block(d: &mut Drawing, m: &Model, id: impl Key, paper: P2, views: &[&Viewport]) {
+    let Some(sheet) = m.sheet(id).filter(|sh| !sh.has_no_title_block()) else { return };
+    let (project, std) = (&m.name, m.standard());
     let margins = std.sheet_margins(&sheet.size);
     let rect = |a: P2, b: P2| vec![a, P2(b.0, a.1), b, P2(a.0, b.1)];
-    d.line(&rect(P2(margins.left, margins.bottom), P2(paper.0 - margins.right, paper.1 - margins.top)), Pen::BORDER, INK, true);
+    let template = m.title_blocks.get(&sheet.title_block);
+    if !template.is_some_and(|t| t.template_border) {
+        d.line(&rect(P2(margins.left, margins.bottom), P2(paper.0 - margins.right, paper.1 - margins.top)), Pen::BORDER, INK, true);
+    }
+    if let Some(tb) = template {
+        let at = P2(paper.0 - margins.right - tb.width, margins.bottom);
+        let scale = scale_value(views, m.language, m.units);
+        crate::titleblock::draw(d, tb, at, &crate::titleblock::values(m, id, &scale));
+        if margins.folding_marks {
+            draw_folding_marks(d, paper, &sheet.size, margins);
+        }
+        return;
+    }
     let width = margins.title_width.min(paper.0 - margins.left - margins.right);
     let height = margins.title_height;
     let (x0, x1, y0, y1) = (paper.0 - margins.right - width, paper.0 - margins.right, margins.bottom, margins.bottom + height);
     d.line(&rect(P2(x0, y0), P2(x1, y1)), Pen::BORDER, INK, true);
     d.line(&[P2(x0, y0 + 26.0), P2(x1, y0 + 26.0)], Pen::PROJECTION, INK, false);
     d.line(&[P2(x1 - 50.0, y0), P2(x1 - 50.0, y0 + 26.0)], Pen::PROJECTION, INK, false);
-    left(d, project, P2(x0 + 4.0, y0 + 33.0), 5.0);
-    left(d, &sheet.name, P2(x0 + 4.0, y0 + 17.0), 3.5);
-    left(d, scale, P2(x0 + 4.0, y0 + 7.0), 2.0);
-    let number = (7.0 * DENSITY) as f32;
+    // Measure the capitals that are drawn, including expansions such as ß to SS.
+    let (project, name, scale, number) = (
+        project.to_uppercase(),
+        sheet.name.to_uppercase(),
+        scale_note(views, m.language, m.units).to_uppercase(),
+        sheet.number.to_uppercase(),
+    );
+    left(d, &project, P2(x0 + 4.0, y0 + 33.0), fitted_height(&project, 5.0, width - 8.0));
+    left(d, &name, P2(x0 + 4.0, y0 + 17.0), fitted_height(&name, 3.5, width - 58.0));
+    left(d, &scale, P2(x0 + 4.0, y0 + 7.0), fitted_height(&scale, 2.0, width - 58.0));
+    let number_height = (fitted_height(&number, 7.0, 42.0) * DENSITY) as f32;
     let at = d.view.px(P2(x1 - 25.0, y0 + 13.0));
-    d.text(&sheet.number, at, number, INK);
+    d.text(&number, at, number_height, INK);
 
     if margins.folding_marks {
         draw_folding_marks(d, paper, &sheet.size, margins);
@@ -325,6 +384,29 @@ fn scale_note(views: &[&Viewport], language: Language, units: crate::units::Unit
     }
 }
 
+/// The scale a title block's `{SCALE}` gives: its views' (`1 : 100`), when they share one, else "AS INDICATED", in `language`.
+fn scale_value(views: &[&Viewport], language: Language, units: crate::units::Units) -> String {
+    match views.split_first() {
+        None => String::new(),
+        Some((first, rest)) if rest.iter().all(|v| v.scale == first.scale) => units.scale(first.scale),
+        Some(_) => language.word(msg!("AS INDICATED")).into(),
+    }
+}
+
+/// What each field of sheet `id`'s title block says, by key: [`crate::titleblock::values`], its scale as its title box gives it.
+pub fn title_values(m: &Model, id: impl Key) -> std::collections::BTreeMap<String, String> {
+    let guid = m.guid(id);
+    let scaled: Vec<&Viewport> = m
+        .on_sheet(id)
+        .into_iter()
+        .filter_map(|v| match m.elements.get(v) {
+            Some(Element::Viewport(vp)) if vp.sheet == guid && !matches!(m.elements.get(vp.view), Some(Element::Schedule(_))) => Some(vp),
+            _ => None,
+        })
+        .collect();
+    crate::titleblock::values(m, id, &scale_value(&scaled, m.language, m.units))
+}
+
 /// Sheet `id` on its paper: its title block, then each view on it, at its scale and titled.
 pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
     let sheet = m.sheet(id)?;
@@ -346,7 +428,7 @@ pub fn draw(m: &Model, id: impl Key) -> Option<Drawing> {
     // Schedules keep their own size: no scale of theirs.
     let scaled: Vec<&Viewport> =
         views.iter().filter(|(_, v)| !matches!(m.elements.get(v.view), Some(Element::Schedule(_)))).map(|(_, v)| *v).collect();
-    title_block(&mut d, &m.name, sheet, paper, &scale_note(&scaled, m.language, m.units), m.standard());
+    title_block(&mut d, m, id, paper, &scaled);
     let mut scene = None;
     let work = Work::new();
     for (vid, vp) in views {

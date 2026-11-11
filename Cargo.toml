@@ -27,6 +27,8 @@ zune-jpeg = "0.5"
 encoding_rs = "0.8"
 bimcraft-ui-egui = { path = "crates/ui-egui" }
 bimcraft-update = { path = "crates/update" }
+# The assistant: an AI chat on the user's own key; the second code that reaches the network, desktop only.
+bimcraft-assistant = { path = "crates/assistant" }
 # The Revit reader: Apache-2.0 only, so the command line and the desktop take it through an optional feature.
 bimcraft-rvt = { path = "crates/rvt" }
 # The DWG bridge: MIT OR Apache-2.0 itself, over acadrust (MPL-2.0, unmodified); the core never depends on it.
@@ -75,3 +77,6 @@ opt-level = 2
 opt-level = 2
 [profile.dev.package.cfb]
 opt-level = 2
+# A key saved under a passphrase is stretched with 600,000 rounds of PBKDF2, which a debug build takes most of a second over.
+[profile.dev.package.ring]
+opt-level = 3

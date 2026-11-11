@@ -79,6 +79,13 @@ pub struct SheetMargins {
     pub folding_marks: bool,
 }
 
+impl SheetMargins {
+    /// The least paper, width and height in mm, that holds the title block inside these margins.
+    pub fn least_paper(&self) -> (f64, f64) {
+        (self.left + self.title_width + self.right, self.bottom + self.title_height + self.top)
+    }
+}
+
 /// Dimension terminator style.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Terminator {
@@ -293,7 +300,7 @@ impl TechnicalStandard {
 
     /// Sheet margins and title block constraints for `size`.
     pub fn sheet_margins(self, size: &str) -> SheetMargins {
-        let size_upper = size.trim().to_ascii_uppercase();
+        let size_upper = crate::model::paper_name(size);
         match self {
             TechnicalStandard::Nbr => {
                 // NBR 16752: Margem esquerda de 25 mm em todos os formatos.

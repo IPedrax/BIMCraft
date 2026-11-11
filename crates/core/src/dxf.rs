@@ -176,12 +176,14 @@ pub enum Shape {
     },
     Point(P2),
     /// One line of lettering: `height` is its capital height, `angle` its baseline's in degrees counter-clockwise from east.
+    /// An attribute's (ATTRIB) has its tag: what a title block reads it as a field of.
     Text {
         at: P2,
         height: f64,
         angle: f64,
         text: String,
         align: Align,
+        tag: Option<String>,
     },
     /// A hatch's boundaries, or a solid: `solid` when filled through, else patterned, which a view draws as it can.
     Fill {
@@ -614,11 +616,18 @@ impl<'a> Reader<'a> {
     fn entity(&mut self, kind: &'a str) -> Result<Ent<'a>, String> {
         let line = self.p.line;
         let mut codes = Vec::new();
+        // After a 101, an embedded object's data (an MTEXT's columns, written since 2018), whose 10s and 11s aren't the
+        // entity's: read past, not kept, or its point and direction would be the object's.
+        let mut embedded = false;
         while let Some((c, v)) = self.p.peek()? {
             if c == 0 {
                 break;
             }
             self.p.next()?;
+            embedded |= c == 101;
+            if embedded {
+                continue;
+            }
             codes.push((c, v));
             if codes.len() > MAX_PAIRS {
                 return Err(format!("line {line}: one {kind} holds more than {MAX_PAIRS} values"));
@@ -897,10 +906,13 @@ impl<'a> Reader<'a> {
                     text(e)?
                 }
                 "MTEXT" => {
+                    // A colour its formatting gives the whole of it, before its first word, over the entity's.
+                    let raw: String = e.codes.iter().filter(|(c, _)| *c == 3 || *c == 1).map(|(_, v)| *v).collect();
+                    let color = leading_color(&raw).unwrap_or(style.color);
                     for line in mtext(e)? {
                         out.push(Entity {
                             layer: style.layer.clone(),
-                            color: style.color,
+                            color,
                             linetype: style.linetype.clone(),
                             weight: style.weight,
                             shape: transformed(line, xf),
@@ -1015,9 +1027,9 @@ fn transformed(shape: Shape, xf: Xf) -> Shape {
             }
             None => Shape::Polyline { pts: arc_points(c, r, start, end - start).into_iter().map(at).collect(), closed: false },
         },
-        Shape::Text { at: p, height, angle, text, align } => {
+        Shape::Text { at: p, height, angle, text, align, tag } => {
             let (k, turn) = xf.similarity().map_or((xf.x.length(), xf.x.1.atan2(xf.x.0).to_degrees()), |(k, t, _)| (k, t));
-            Shape::Text { at: at(p), height: height * k, angle: angle + turn, text, align }
+            Shape::Text { at: at(p), height: height * k, angle: angle + turn, text, align, tag }
         }
     }
 }
@@ -1161,10 +1173,41 @@ fn de_boor(degree: usize, knots: &[f64], controls: &[(P2, f64)], u: f64) -> Opti
     (w.abs() > 1e-12).then(|| P2(x / w, y / w))
 }
 
+/// The colour a multi-line text's formatting sets before its first word (`\C1;` an index, `\c255;` a true colour as
+/// AutoCAD writes it, blue in the high byte): the last of them, if any.
+fn leading_color(raw: &str) -> Option<Color> {
+    let mut chars = raw.chars().peekable();
+    let mut color = None;
+    while let Some(c) = chars.next() {
+        match c {
+            '{' | '}' => {}
+            '\\' => {
+                let code = chars.next()?;
+                let body: String = chars.by_ref().take_while(|c| *c != ';').collect();
+                match code {
+                    'C' => color = body.trim().parse::<i64>().ok().map(index_color).or(color),
+                    'c' => {
+                        color = body.trim().parse::<i64>().ok().map(|v| {
+                            // AutoCAD's MTEXT true colour: red in the low byte.
+                            let (r, g, b) = ((v & 0xff) as u8, ((v >> 8) & 0xff) as u8, ((v >> 16) & 0xff) as u8);
+                            Color::True(r, g, b)
+                        });
+                    }
+                    'f' | 'F' | 'H' | 'W' | 'Q' | 'T' | 'A' | 'p' => {}
+                    _ => return color,
+                }
+            }
+            _ => return color,
+        }
+    }
+    color
+}
+
 /// A text's words as a file writes them: `%%d` is a degree sign, `%%p` plus or minus, `%%c` a diameter, `%%%` a
 /// percent, `%%u` and `%%o` underline and overline (dropped), `\U+XXXX` a character, and the formatting codes of
-/// multi-line text (`\P` a new line, `{…}` groups, `\f…;` fonts, `\H…;` heights and the rest) are dropped.
-fn decode(s: &str) -> String {
+/// multi-line text (`\P` a new line, `{…}` groups, `\f…;` fonts, `\H…;` heights and the rest) are dropped. A single line
+/// of text (`mtext` false) has no groups: its braces are its own, as a title block's fields (`{CLIENT}`) are.
+fn decode(s: &str, mtext: bool) -> String {
     let mut out = String::new();
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
@@ -1187,7 +1230,7 @@ fn decode(s: &str) -> String {
                     None => out.push_str("%%"),
                 }
             }
-            '{' | '}' => {}
+            '{' | '}' if mtext => {}
             '\\' => match chars.next() {
                 Some('P') => out.push('\n'),
                 Some('~') => out.push(' '),
@@ -1210,7 +1253,7 @@ fn decode(s: &str) -> String {
                     let body: String = chars.by_ref().take_while(|c| *c != ';').collect();
                     out.push_str(&body.replace(['^', '#'], "/"));
                 }
-                Some('A' | 'C' | 'F' | 'f' | 'H' | 'Q' | 'T' | 'W' | 'p') => {
+                Some('A' | 'C' | 'c' | 'F' | 'f' | 'H' | 'Q' | 'T' | 'W' | 'p') => {
                     chars.by_ref().take_while(|c| *c != ';').for_each(drop);
                 }
                 Some('L' | 'l' | 'O' | 'o' | 'K' | 'k' | 'N') => {}
@@ -1231,7 +1274,7 @@ fn text(e: &Ent) -> Result<Option<Shape>, String> {
     if height <= 0.0 {
         return Ok(None);
     }
-    let words = decode(words).replace('\n', " ");
+    let words = decode(words, false).replace('\n', " ");
     if words.trim().is_empty() {
         return Ok(None);
     }
@@ -1255,7 +1298,8 @@ fn text(e: &Ent) -> Result<Option<Shape>, String> {
             (p, Align { h, v })
         }
     };
-    Ok(Some(Shape::Text { at, height, angle: e.num(50)?.unwrap_or(0.0), text: words, align }))
+    let tag = (e.kind == "ATTRIB").then(|| e.str(2).map(|t| t.trim().to_string())).flatten().filter(|t| !t.is_empty());
+    Ok(Some(Shape::Text { at, height, angle: e.num(50)?.unwrap_or(0.0), text: words, align, tag }))
 }
 
 /// A multi-line text's lines, each a text of its own, stepped down from where its attachment point puts the block.
@@ -1271,7 +1315,7 @@ fn mtext(e: &Ent) -> Result<Vec<Shape>, String> {
         }
     }
     raw.push_str(e.str(1).unwrap_or(""));
-    let words = decode(&raw);
+    let words = decode(&raw, true);
     let lines: Vec<&str> = words.lines().collect();
     if lines.iter().all(|l| l.trim().is_empty()) {
         return Ok(Vec::new());
@@ -1305,6 +1349,7 @@ fn mtext(e: &Ent) -> Result<Vec<Shape>, String> {
             angle,
             text: line.to_string(),
             align: Align { h, v: Vertical::Baseline },
+            tag: None,
         })
         .collect())
 }
@@ -1891,21 +1936,24 @@ mod tests {
                     height: 2.5,
                     angle: 30.0,
                     text: "Room ° Ø ± % é x".into(),
-                    align: Align { h: Horizontal::Left, v: Vertical::Baseline }
+                    align: Align { h: Horizontal::Left, v: Vertical::Baseline },
+                    tag: None
                 },
                 &Shape::Text {
                     at: P2(8.0, 9.0),
                     height: 1.0,
                     angle: 0.0,
                     text: "Centred".into(),
-                    align: Align { h: Horizontal::Center, v: Vertical::Top }
+                    align: Align { h: Horizontal::Center, v: Vertical::Top },
+                    tag: None
                 },
                 &Shape::Text {
                     at: P2(8.0, 9.0),
                     height: 1.0,
                     angle: 0.0,
                     text: "Middle".into(),
-                    align: Align { h: Horizontal::Center, v: Vertical::Middle }
+                    align: Align { h: Horizontal::Center, v: Vertical::Middle },
+                    tag: None
                 },
             ]
         );
