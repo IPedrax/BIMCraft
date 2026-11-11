@@ -632,6 +632,11 @@ impl<'a> Reader<'a> {
         Frame { o: f.o, x: mul(f.x, k[0]), y: mul(f.y, k[1]), z: mul(f.z, k[2]) }
     }
 
+    /// Where a mapped item puts what it maps: its target, then the map's origin.
+    fn map_frame(&self, map: &Entity, item: &Entity) -> Frame {
+        self.operator(reference(item.args.get(1))).then(self.axes(reference(map.args.first())))
+    }
+
     fn point_list(&self, id: Option<u64>) -> Vec<P3> {
         let Some(e) = id.and_then(|i| self.get(i)) else { return Vec::new() };
         list(e.args.first())
@@ -895,7 +900,7 @@ impl<'a> Reader<'a> {
                         self.faces(item, depth + 1, &mut inner);
                     }
                 }
-                let f = self.operator(reference(a(1))).then(self.axes(reference(map.args.first())));
+                let f = self.map_frame(map, e);
                 out.extend(inner.into_iter().map(|face| face.into_iter().map(|p| f.at(p)).collect()));
             }
             // A box: its corner or its placement, and its three sizes.
@@ -966,7 +971,7 @@ impl<'a> Reader<'a> {
                         self.looked(item, depth + 1, look, looks, &mut inner);
                     }
                 }
-                let f = self.operator(reference(e.args.get(1))).then(self.axes(reference(map.args.first())));
+                let f = self.map_frame(map, e);
                 out.extend(
                     inner
                         .into_iter()
@@ -1051,21 +1056,58 @@ impl<'a> Reader<'a> {
         self.chosen(product).into_iter().find_map(|item| unread.get(&item).copied())
     }
 
-    /// A product's Axis representation, in model coordinates.
-    /// The disk a product's body sweeps along a line: the line's points in the world and the disk's radius, mm. A body of
-    /// several disks of one radius, each starting where the last ended, is one line bent between them, as BIMCraft writes a
-    /// bar; any other is no one line.
+    /// The line a product's body sweeps along: its points in the world and the radius of the section, mm. A disk swept along
+    /// a line, also through the map of an `IfcMappedItem`, or a circle extruded straight. A body of several such of one
+    /// radius, each starting where the last ended, is one line bent between them, as BIMCraft writes a bar; any other is no
+    /// one line.
     fn sweep(&self, product: &Entity) -> Option<(Vec<P3>, f64)> {
-        let (_, items) = self.reps(product).into_iter().find(|(i, _)| i.eq_ignore_ascii_case("Body"))?;
+        let (_, body) = self.reps(product).into_iter().find(|(i, _)| i.eq_ignore_ascii_case("Body"))?;
         let f = self.frame(product);
+        let mut items = Vec::new();
+        self.through_maps(&body, WORLD, 0, &mut items);
+        // The line each item sweeps along, in the product's own coordinates, and its radius.
+        let mut segments: Vec<(Vec<P3>, f64)> = Vec::new();
+        let mut points = 0;
+        for (item, at) in items {
+            let Some(e) = self.get(item) else { continue };
+            let (line, r): (Vec<P3>, f64) = match e.name.as_str() {
+                "IFCSWEPTDISKSOLID" | "IFCSWEPTDISKSOLIDPOLYGONAL" => {
+                    let r = self.len(e.args.get(1))?;
+                    let line = self.curve(reference(e.args.first()), 0)?;
+                    (line.into_iter().map(|p| f.at(at.at(p))).collect(), r)
+                }
+                // A straight bar: a circle extruded along a line.
+                "IFCEXTRUDEDAREASOLID" => {
+                    let Some(profile) = self.at(e.args.first()) else { continue };
+                    // Its profile type, not its name: a `.CURVE.` circle is a swept surface, not a bar.
+                    if profile.name != "IFCCIRCLEPROFILEDEF" || enumeration(profile.args.first()) != Some("AREA") {
+                        continue;
+                    }
+                    let r = self.len(profile.args.get(3))?;
+                    let pos = self.axes(reference(e.args.get(1)));
+                    // As `faces` reads the circle: the profile's own position, then the solid's.
+                    let at_profile = self.axes(reference(profile.args.get(2)));
+                    let along = self.direction(reference(e.args.get(2))).unwrap_or([0.0, 0.0, 1.0]);
+                    let length = self.len(e.args.get(3))?;
+                    let start = pos.at(at_profile.at([0.0, 0.0, 0.0]));
+                    let end = add(start, mul(pos.dir(along), length));
+                    (vec![start, end].into_iter().map(|p| f.at(at.at(p))).collect(), r)
+                }
+                _ => continue,
+            };
+            points += line.len();
+            if points > MAX_POINTS {
+                return None;
+            }
+            segments.push((line, r));
+        }
         let (mut path, mut radius): (Vec<P3>, Option<f64>) = (Vec::new(), None);
-        for disk in items.iter().filter_map(|i| self.get(*i)).filter(|d| d.name == "IFCSWEPTDISKSOLID") {
-            let r = self.len(disk.args.get(1))?;
+        for (line, r) in segments {
             if radius.is_some_and(|q| (q - r).abs() > 1e-6) {
                 return None;
             }
             radius = Some(r);
-            let mut line = self.curve(reference(disk.args.first()), 0)?.into_iter().map(|p| f.at(p));
+            let mut line = line.into_iter();
             match (path.last(), line.next()) {
                 (None, Some(p)) => path.push(p),
                 (Some(last), Some(p)) if dot(sub(*last, p), sub(*last, p)) < 1e-6 => {}
@@ -1079,6 +1121,27 @@ impl<'a> Reader<'a> {
         Some((path, radius?))
     }
 
+    /// A body's own items, through the map of any `IfcMappedItem`: in `frame`, each item's map being applied.
+    fn through_maps(&self, items: &[u64], frame: Frame, depth: usize, out: &mut Vec<(u64, Frame)>) {
+        for item in items {
+            if out.len() >= MAX_POINTS {
+                return;
+            }
+            let Some(e) = self.get(*item) else { continue };
+            // `faces`' limit.
+            if e.name == "IFCMAPPEDITEM" && depth < 16 {
+                let Some(map) = self.at(e.args.first()) else { continue };
+                // As `faces` composes it: the operator outside, the map's origin inside.
+                let f = frame.then(self.map_frame(map, e));
+                if let Some(rep) = self.at(map.args.get(1)) {
+                    self.through_maps(&refs(rep.args.get(3)), f, depth + 1, out);
+                }
+            } else {
+                out.push((*item, frame));
+            }
+        }
+    }
+
     /// The direction a product's body is extruded along, in the world, when the body is one extruded area solid.
     fn extrusion(&self, product: &Entity) -> Option<P3> {
         let items: Vec<u64> =
@@ -1089,6 +1152,7 @@ impl<'a> Reader<'a> {
         Some(self.frame(product).dir(self.axes(reference(solid.args.get(1))).dir(along)))
     }
 
+    /// A product's Axis representation, in model coordinates.
     fn axis(&self, product: &Entity) -> Option<Vec<P3>> {
         let (_, items) = self.reps(product).into_iter().find(|(i, _)| i.eq_ignore_ascii_case("Axis"))?;
         let f = self.frame(product);
@@ -3067,14 +3131,15 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         }
     }
 
-    // Reinforcing bars: a disk swept along a line, each a part of the beam, column, footing or floor it reinforces, in its level.
+    // Reinforcing bars: a swept disk or a circle extruded along a line, each a part of the beam, column, footing or floor it
+    // reinforces, in its level.
     for id in named(&["IFCREINFORCINGBAR"]) {
         let Some(x) = e(id) else { continue };
         seen.insert(id);
         let (thin, thick) = crate::rebar::DIAMETERS;
         let milli = |v: f64| (v * 1e3).round() / 1e3 + 0.0;
         let Some((world, radius)) = r.sweep(x) else {
-            leave(&mut skipped, &mut seen, id, "its body is no disk swept along a line");
+            leave(&mut skipped, &mut seen, id, "its body is no swept disk or extruded circle along one line");
             continue;
         };
         let diameter = milli(radius * 2.0);

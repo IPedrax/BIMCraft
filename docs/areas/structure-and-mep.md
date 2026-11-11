@@ -107,7 +107,8 @@ length of steel at 7850 kg/m³ (`rebar::weight_kg`). Nothing checks that it lies
 Length, Count, Weight and Host, and grouped by Grade, Diameter and Length with Count and Weight totalled it is a bar schedule. IFC
 writes each as an `IfcReinforcingBar` (`SteelGrade`, `NominalDiameter`, `CrossSectionArea`, `BarLength`) with a body of an
 `IfcSweptDiskSolid` along an `IfcPolyline`, aggregated (`IfcRelAggregates`) to its host, or contained in its storey when it has none;
-import reads the same back, with the host found by the aggregation. The 3D view draws a tube along each straight piece
+import reads the same back, and also a disk behind an `IfcMappedItem` and a circle extruded straight, with the host found by the
+aggregation, while a body of disks of several radii, of disks that do not meet end to end, or of several separate bars is left out. The 3D view draws a tube along each straight piece
 (`rebar::tubes`, built with a round run's tube), which the concrete round a bar hides: look at bars with their host hidden. A section draws each bar it cuts as a
 dot over the host's poché (`render::section_in` keeps them out of the host's pieces, which would swallow them); a plan draws them too (`render::bar_in_plan`).
 
