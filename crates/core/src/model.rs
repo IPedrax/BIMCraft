@@ -75,11 +75,13 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
 /// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
 /// values of its fields (`fields`), or name `none` to have no title block at all (no border, title box or folding marks); a
-/// wall or a run may refuse to join its neighbours (`join: false`, written only then); and a dimension may measure to the line
-/// across a column, square to its angle (`across`). Nothing in a file of 17 changes, but a build that reads up to 17 would
-/// answer such a connector or dimension with a serde error ("unknown variant", "missing field `system`"), would leave the
-/// title blocks out as fields it doesn't know, drawing every sheet with the built-in title box, and would silently drop
-/// `join: false` and join the element again, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
+/// wall or a run may refuse to join its neighbours (`join: false`, written only then); a dimension may measure to the line
+/// across a column, square to its angle (`across`); and a project may hold property lines (the `propertyline` category, a row
+/// of `graphics::MODEL` that views' graphics and Object Styles may name). Nothing in a file of 17 changes, but a build that
+/// reads up to 17 would answer such a connector, dimension or property line with a serde error ("unknown variant", "missing
+/// field `system`") and graphics or a style of `propertyline` as a category it doesn't have, would leave the title blocks
+/// out as fields it doesn't know, drawing every sheet with the built-in title box, and would silently drop `join: false` and
+/// join the element again, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -3541,10 +3543,11 @@ impl Model {
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
         // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, their fields'
-        // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column) has none
-        // either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
-        // file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
-        // did, and none of its dimensions measures `across`.
+        // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column; property
+        // lines) has none either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as
+        // they were; a file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining,
+        // as it always did, none of its dimensions measures `across`, and it holds no property line and names no `propertyline`
+        // in its graphics or styles.
         self.format = FORMAT;
     }
 
