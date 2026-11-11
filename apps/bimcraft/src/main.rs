@@ -216,6 +216,8 @@ fn main() -> ExitCode {
         if let Some(updates) = app.updates.as_mut() {
             updates.check_at_startup();
         }
+        // The assistant reaches the network only when the user gives it a key and sends a message (`bimcraft-assistant`).
+        app.assistant.attach(std::sync::Arc::new(bimcraft_assistant::net::Ureq::new()));
         // The 3D mouse is read on a thread of its own too, which wakes the window as its cap moves.
         let ctx = cc.egui_ctx.clone();
         app.space_mouse = bimcraft_ui_egui::spacemouse::SpaceMouse::start(move || ctx.request_repaint());

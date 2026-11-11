@@ -302,6 +302,7 @@ mod tests {
                                 offset: 100.0,
                                 end_offset,
                                 justify,
+                                join: true,
                                 system: String::new(),
                                 params: Default::default(),
                             }),

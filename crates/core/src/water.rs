@@ -16,10 +16,6 @@
 //! - Speed 3 m/s at most (the standard lets a pipe go faster where water hammer and noise are shown not to matter); at least
 //!   10 kPa dynamic at a point of use.
 
-/// The design flow (L/s) and the weight of each fixture, from Tigre's Manual Técnico (page 198): (kind, Q, P).
-pub const FIXTURES: &[(&str, f64, f64)] =
-    &[("wc", 0.15, 0.3), ("lav", 0.15, 0.3), ("sink", 0.25, 0.7), ("shower", 0.20, 0.4), ("laundry", 0.25, 0.7)];
-
 /// PVC soldável: (DN = outside diameter, wall) in mm, NBR 5648.
 pub const PVC: &[(f64, f64)] =
     &[(20.0, 1.5), (25.0, 1.7), (32.0, 2.1), (40.0, 2.4), (50.0, 3.0), (60.0, 3.3), (75.0, 4.2), (85.0, 4.7), (110.0, 6.1)];
@@ -70,7 +66,7 @@ impl Method {
 
 /// A fixture's (design flow L/s, weight), or `None` for a kind the table does not have.
 pub fn fixture(kind: &str) -> Option<(f64, f64)> {
-    FIXTURES.iter().find(|f| f.0 == kind).map(|f| (f.1, f.2))
+    crate::plumbing::fixture(kind).map(|f| (f.cold_flow, f.weight))
 }
 
 /// The design flow (L/s) of fixtures given as (kind, count).

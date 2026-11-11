@@ -1,0 +1,53 @@
+{
+ "about": "The circuits a standard asks additional protection by a high-sensitivity residual-current device for, one rule set for each standard, read by `dr_check` (dr.rs). Each rule names its source, the standard's item; a test fails on one that does not. The numbers are the standard's, the words are ours. A country's set is added as a new entry, never as code. A circuit needs the device when any point it serves meets a rule; the first rule a point meets gives its reason. A rule holds a point whose `place` is one of `places` (any place when empty: bath, external, kitchen, laundry, service, garage, wet, dry) and whose `kind` is one of `kinds` (any when empty: outlet, lighting, fixed), in a `building` that is `residential`, `other` or `any` (the default); `outdoor` asks the point to be an internal outlet that may feed equipment outdoors, and a light at `lights_from_mm` or higher is left out. `max_outlet_a` is the highest rated current of an outlet the rules reach (none above it, anywhere); `max_residual_ma` the most the device's rated residual current may be; `it_exempt` leaves out a circuit of an IT scheme that must not be cut.",
+ "rule_sets": [
+  {
+   "standard": "NBR 5410:2004",
+   "source": "ABNT NBR 5410:2004 (corrected version 2008), item 5.1.3.2.2, additional protection by a residual-current device. Equivalents: IEC 60364-4-41 (411.3.3) and BS 7671 (411.3.3) ask it for outlets up to 32 A whatever the room, and IEC 60364-7-701 and BS 7671 section 701 for every circuit of a room with a bath or a shower; the US NEC (210.8) asks a GFCI, a device of its own, by a list of places much like this one.",
+   "max_residual_ma": 30,
+   "max_outlet_a": 32,
+   "max_outlet_source": "NBR 5410:2004, 5.1.3.2.2, note 1: an outlet is reached up to a rated current of 32 A",
+   "it_exempt": true,
+   "it_source": "NBR 5410:2004, 5.1.3.2.2, note 2: a circuit or sector of an IT scheme that must not be cut, for the safety of persons or to keep lives, is left out",
+   "rules": [
+    {
+     "reason": "bath",
+     "says": "a point in a place with a bathtub or a shower",
+     "places": ["bath"],
+     "source": "NBR 5410:2004, 5.1.3.2.2 a)"
+    },
+    {
+     "reason": "external",
+     "says": "an outlet in an external area",
+     "places": ["external"],
+     "kinds": ["outlet"],
+     "source": "NBR 5410:2004, 5.1.3.2.2 b)"
+    },
+    {
+     "reason": "outdoor",
+     "says": "an internal outlet that may feed equipment outdoors",
+     "kinds": ["outlet"],
+     "outdoor": true,
+     "source": "NBR 5410:2004, 5.1.3.2.2 c)"
+    },
+    {
+     "reason": "wet",
+     "says": "a point in a kitchen, laundry, service area, garage or other wet internal area of a dwelling",
+     "places": ["kitchen", "laundry", "service", "garage", "wet"],
+     "building": "residential",
+     "lights_from_mm": 2500,
+     "source": "NBR 5410:2004, 5.1.3.2.2 d), and its note 3 for lights 2.5 m up or more"
+    },
+    {
+     "reason": "wet",
+     "says": "an outlet in a kitchen, laundry, service area, garage or other wet internal area",
+     "places": ["kitchen", "laundry", "service", "garage", "wet"],
+     "kinds": ["outlet"],
+     "building": "other",
+     "source": "NBR 5410:2004, 5.1.3.2.2 e)"
+    }
+   ],
+   "not_covered": "the further rules for the volumes of a bathroom and for swimming pools, and the other protections against shock, which the device does not replace"
+  }
+ ]
+}

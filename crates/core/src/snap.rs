@@ -391,12 +391,23 @@ impl<'a> Scene<'a> {
                             .extend(outline.iter().zip(outline.iter().cycle().skip(1)).map(|(a, b)| ((*a + *b) * 0.5, Kind::Midpoint, of)));
                     }
                 }
-                crate::model::run_arm!(r) if r.level == level && near(&[r.start, r.end]) => {
+                crate::model::run_arm!(r)
+                    if r.level == level && {
+                        // Its body may reach `width` past its line: a mitred corner lies there.
+                        let h = m.run_geom(e).map_or(0.0, |g| g.width / 2.0);
+                        let h = P2(h, h);
+                        near(&[r.start - h, r.start + h, r.end - h, r.end + h])
+                    } =>
+                {
                     s.points.extend([
                         (r.start, Kind::Endpoint, of),
                         (r.end, Kind::Endpoint, of),
                         (r.start + (r.end - r.start) * 0.5, Kind::Midpoint, of),
                     ]);
+                    // The corners of its outline as the plan fills it: mitred where it joins, so a click near a
+                    // mitre lands on the corner that is there, not in the air where the rectangle was. The axis
+                    // keeps its line, which is what a run is picked and turned by.
+                    s.points.extend(crate::runs::outline(m, id).into_iter().map(|q| (q, Kind::Endpoint, of)));
                     s.lines.push((r.start, r.end, of));
                 }
                 Element::Component(c) if c.level == level && near(&[c.at]) => s.points.push((c.at, Kind::Centre, of)),

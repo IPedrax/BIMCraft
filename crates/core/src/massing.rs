@@ -178,7 +178,10 @@ pub fn follow(e: &mut Element, ms: &Mass, mass: Id, face: Option<usize>) -> Resu
             Ok(())
         }
         (Element::Roof(r), None) => {
-            (r.boundary, (r.level, r.offset)) = (ms.top_ring(), ms.top_face());
+            let boundary = crate::commands::roof_eaves(&ms.top_ring(), r.overhang).ok_or_else(|| {
+                format!("cannot follow mass {mass}: its top face is too small for an overhang of {} mm; make it less", r.overhang)
+            })?;
+            (r.boundary, (r.level, r.offset)) = (boundary, ms.top_face());
             Ok(())
         }
         (e, _) => Err(format!("is a {}, which holds no such face of mass {mass}", e.category())),
