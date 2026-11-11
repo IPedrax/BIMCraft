@@ -43,7 +43,10 @@ Room areas are measured at the walls' centre
 lines, run on or back to meet at joins (`walls::centre_line`). A room separator (`roomseparator`, made by `room_separator` a line per segment) bounds rooms as a wall's centre line
 would and nothing else: it is no edge of a floor, a ceiling or a roof (`Model::bounding_lines` takes it, `wall_lines` and
 `face_lines` don't; an end drawn to a wall's face runs on to its centre line there, so the line splits rooms measured at
-the centre lines too), it is drawn in plan only, and it goes to IFC as an `IfcVirtualElement` of `ObjectType` `RoomSeparation`
+the centre lines too; a parallel continuation touching a straight wall's end cap joins across that cap to the centre line without
+moving or tilting the drawn separator, while a gap or a line along a wall's side is left open; curved walls retain the
+crossing rule, without the parallel-cap connection), it is drawn in plan only,
+and it goes to IFC as an `IfcVirtualElement` of `ObjectType` `RoomSeparation`
 with an `Axis` polyline on its storey, which the import reads back. The desktop's Room Separator, beside Room, lays one a
 click from the point before until Esc. A room's height is Revit's: from `base_offset` over its level up to `limit_offset` over
 its Upper Limit, `top_level` (none: Not Bounded, the offset then over its own level). A new room reaches 300 mm under the

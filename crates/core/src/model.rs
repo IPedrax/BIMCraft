@@ -5784,7 +5784,7 @@ impl Model {
 
     /// What bounds the rooms of `level`: the centre lines of its walls, arcs as chords, and its room separation lines. A
     /// separation line drawn to a wall's face, as one drawn on a plan usually is, runs on to the wall's centre line, so it
-    /// splits rooms measured there too.
+    /// splits rooms measured there too. A parallel continuation at a straight wall's end joins across its cap instead.
     pub fn bounding_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
         self.bounding_lines_in(level, Some(&walls::Index::new(self)))
     }
@@ -5792,14 +5792,26 @@ impl Model {
     /// [`Model::bounding_lines`], the walls' joins found through `index`, or among every wall without one.
     pub(crate) fn bounding_lines_in(&self, level: impl Key, index: Option<&walls::Index>) -> Vec<(P2, P2)> {
         let walls = self.wall_segments(&level, index, true);
-        let mut lines: Vec<(P2, P2)> = walls.iter().map(|&(a, b, _)| (a, b)).collect();
-        lines.extend(self.separators(level).into_iter().map(|(a, b)| (to_centre(b, a, &walls), to_centre(a, b, &walls))));
+        let mut lines: Vec<(P2, P2)> = walls.iter().map(|s| (s.start, s.end)).collect();
+        for (a, b) in self.separators(level) {
+            let (start, end) = (to_centre(b, a, &walls), to_centre(a, b, &walls));
+            lines.push((start, end));
+            for (from, drawn, extended) in [(b, a, start), (a, b, end)] {
+                // Keep crossing extensions as before. A parallel end gets a short cap connection, so the separator
+                // stays on its drawn line instead of tilting the whole room boundary towards the wall's centre.
+                if drawn == extended
+                    && let Some(centre) = parallel_wall_end(from, drawn, &walls)
+                {
+                    lines.push((drawn, centre));
+                }
+            }
+        }
         lines
     }
 
     /// Centre lines of the walls that bound the rooms of `level`, arcs as chords.
     pub fn wall_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
-        self.wall_segments(&level, Some(&walls::Index::new(self)), false).into_iter().map(|(a, b, _)| (a, b)).collect()
+        self.wall_segments(&level, Some(&walls::Index::new(self)), false).into_iter().map(|s| (s.start, s.end)).collect()
     }
 
     /// The walls that bound the rooms of `level` (with `rooms`, those whose Room Bounding is on), by id.
@@ -5813,14 +5825,28 @@ impl Model {
         candidates.filter(move |&id| self.wall(id).is_some_and(|w| self.bounding(w, level) && (!rooms || w.room_bounding)))
     }
 
-    /// The segments of [`Model::wall_lines`], each with half its wall's thickness.
+    /// The segments of [`Model::wall_lines`], each with half its wall's thickness and its eligible straight-wall end caps.
     /// With `rooms`, of the walls whose Room Bounding is on.
-    fn wall_segments(&self, level: &impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<(P2, P2, f64)> {
+    fn wall_segments(&self, level: &impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<WallSegment> {
         self.bounding_walls(level, rooms)
-            .filter_map(|id| Some((id, self.thickness(self.wall(id)?) / 2.0)))
-            .flat_map(|(id, half)| {
+            .filter_map(|id| {
+                let wall = self.wall(id)?;
+                Some((id, self.thickness(wall) / 2.0, wall.arc == 0.0))
+            })
+            .flat_map(|(id, half, straight)| {
                 let line = walls::centre_line_in(self, id, index);
-                line.windows(2).filter_map(|s| s.first().zip(s.get(1)).map(|(a, b)| (*a, *b, half))).collect::<Vec<_>>()
+                line.windows(2)
+                    .enumerate()
+                    .filter_map(|(i, s)| {
+                        s.first().zip(s.get(1)).map(|(a, b)| WallSegment {
+                            start: *a,
+                            end: *b,
+                            half,
+                            // A curved wall's chord direction is not its actual end-cap tangent.
+                            caps: [straight && i == 0, straight && i + 2 == line.len()],
+                        })
+                    })
+                    .collect::<Vec<_>>()
             })
             .collect()
     }
@@ -7897,28 +7923,70 @@ struct OpeningSpan {
     id: Id,
 }
 
+/// A room-bounding wall's centreline segment. Only straight walls have eligible parallel-connection caps.
+struct WallSegment {
+    start: P2,
+    end: P2,
+    half: f64,
+    caps: [bool; 2],
+}
+
 /// Where the line from `from` through `end` reaches the centre line of a wall that `end` lies inside (within half the wall's
 /// thickness of that line), carrying on the way it points; `end` itself when it lies in no wall or is on a centre line already.
-fn to_centre(from: P2, end: P2, walls: &[(P2, P2, f64)]) -> P2 {
+fn to_centre(from: P2, end: P2, walls: &[WallSegment]) -> P2 {
     let way = (end - from).unit();
     if !way.is_finite() {
         return end;
     }
     walls
         .iter()
-        .filter(|&&(a, b, half)| half > 0.0 && geom::dist_to_segment(end, a, b) <= half + TOL)
-        .filter_map(|&(a, b, half)| {
+        .filter(|s| s.half > 0.0 && geom::dist_to_segment(end, s.start, s.end) <= s.half + TOL)
+        .filter_map(|s| {
             // Far enough to cross a wall met at a slant, short of the wall beyond it.
-            let reach = 4.0 * half + TOL;
-            geom::crossing(end, end + way * reach, a, b).map(|t| t * reach)
+            let reach = 4.0 * s.half + TOL;
+            geom::crossing(end, end + way * reach, s.start, s.end).map(|t| t * reach)
         })
         .min_by(f64::total_cmp)
         .map_or(end, |d| end + way * d)
 }
 
+/// A parallel separator continuing a straight wall's end can meet its cap without ever crossing its centre line.
+/// Join only there, within the wall's thickness: never along its side, across a gap, or pointing back over the wall.
+fn parallel_wall_end(from: P2, end: P2, walls: &[WallSegment]) -> Option<P2> {
+    let way = (end - from).unit();
+    walls
+        .iter()
+        .filter(|s| s.half > 0.0 && (s.end - s.start).unit().cross(way).abs() <= 1e-9)
+        .flat_map(|s| [(s.start, s.end, s.half, s.caps[0]), (s.end, s.start, s.half, s.caps[1])])
+        .filter(|&(cap, other, half, actual_cap)| {
+            let inward = (other - cap).unit();
+            actual_cap && inward.dot(way) > 0.0 && (end - cap).dot(inward).abs() <= TOL && end.dist(cap) <= half + TOL
+        })
+        .map(|(cap, _, _, _)| cap)
+        .filter(|cap| end.dist(*cap) > TOL)
+        .min_by(|a, b| end.dist(*a).total_cmp(&end.dist(*b)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_parallel_separator_does_not_treat_internal_arc_chord_ends_as_wall_caps() {
+        let mut m = Model::new("Arc cap control");
+        let level = m.guid(100000);
+        let id = m.insert(wall(level, P2(0.0, 0.0), P2(8000.0, 0.0)));
+        if let Some(Element::Wall(w)) = m.elements.get_mut(id) {
+            w.arc = 90.0;
+        }
+        let segments = m.wall_segments(&level, None, true);
+        assert!(segments.len() > 3);
+        let s = &segments[1];
+        let (a, b, half) = (s.start, s.end, s.half);
+        let way = (b - a).unit();
+        let end = b + way.perp() * half;
+        assert_eq!(parallel_wall_end(end + way * 1000.0, end, &segments), None);
+    }
 
     fn wall(level: Guid, a: P2, b: P2) -> Element {
         Element::Wall(Wall {
