@@ -800,8 +800,8 @@ carried on; on the line itself it stays as it was. Moved alone (or with other ma
 turned, mirrored or copied together with anything else, the reference goes through the same motion (`transformed`), so a
 building moved with its elevations keeps them as they were. The desktop draws a mark dragged alone as it will stand, turned
 round past its line. `modify` with `reference` null lets the line go, and the elevation is then an ordinary one;
-the building elevations of `facing` and those of `start` and `end` never have one. A file's `reference` is a field an older
-BIMCraft leaves out, which reads the elevation as it stands.
+the building elevations of `facing` and those of `start` and `end` never have one. `reference` is one of FORMAT 18's: a build
+that reads up to 17 refuses the file, saying it is from a newer BIMCraft, rather than drop the line the elevation looks at.
 
 ## A section's and an elevation's extent in plan
 
@@ -821,4 +821,5 @@ An elevation's mark is apart from its line (`Section::mark`; none while it has n
 the line's middle). A drag of an elevation's mark runs `move` with `end: mark`: the mark alone goes anywhere. When it crosses
 the line the elevation looks at, the elevation turns round and its line comes over to the mark's side, as far from the
 reference as it was; moved whole across (the Move tool, or with other things), the line turns round where it stands. Changing
-the line (its grips, `crop`) pins the mark where it stood. An older BIMCraft leaves `mark` out and draws the mark at the middle.
+the line (its grips, `crop`) pins the mark where it stood. `mark` is FORMAT 18's too, so a build that reads up to 17 never draws
+the mark back at the middle.

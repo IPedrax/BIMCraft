@@ -9774,10 +9774,12 @@ fn elevation(s: &mut Session, p: &Value) -> R {
             let at = at.ok_or_else(|| bad(c, "`at` [x, y] is required with `on` or `reference`: the side to look from"))?;
             let line = match (on, given) {
                 (Some(on), _) => {
-                    let id = on.as_u64().ok_or_else(|| bad(c, format!("`on` is an element's id, not {on}")))?;
-                    // A link's element is in the model the views draw.
-                    let seen = if crate::link::is_linked(id) { crate::link::seen(&s.model) } else { Arc::clone(&s.model) };
-                    let e = seen.elements.get(id).ok_or_else(|| bad(c, format!("there is no element {id}")))?;
+                    let g = serde_json::from_value::<Guid>(on.clone())
+                        .map_err(|_| bad(c, format!("`on` is an element's id or GUID, not {on}")))?;
+                    // The project's element, or a link's, in the model the views draw.
+                    let seen = if s.model.elements.id(g).is_some() { Arc::clone(&s.model) } else { crate::link::seen(&s.model) };
+                    let id = seen.elements.id(g).ok_or_else(|| bad(c, format!("there is no element {on}")))?;
+                    let e = seen.elements.get(id).ok_or_else(|| bad(c, format!("there is no element {on}")))?;
                     crate::elevation::reference(&seen, id, at).ok_or_else(|| {
                         bad(
                             c,

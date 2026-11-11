@@ -274,6 +274,21 @@ mod tests {
     }
 
     #[test]
+    fn an_elevation_takes_what_it_looks_at_by_its_guid_as_by_its_id() {
+        let mut s = Session::new();
+        let wall = a_wall(&mut s, json!({"points": [[0, 0], [8000, 0]]}));
+        let guid = serde_json::to_value(s.model.guid(wall)).unwrap();
+        assert!(guid.is_string(), "{guid}");
+        let by_id = id(&run(&mut s, "elevation", json!({"on": wall, "at": [4000, -2000]})));
+        let by_guid = id(&run(&mut s, "elevation", json!({"on": guid, "at": [4000, -2000]})));
+        assert_eq!((reference(&s, by_guid), mark(&s, by_guid)), (reference(&s, by_id), mark(&s, by_id)));
+        let err = s.execute("elevation", &json!({"on": "no such thing", "at": [0, 0]})).unwrap_err();
+        assert!(err.contains("`on`"), "{err}");
+        let err = s.execute("elevation", &json!({"on": "00000000-0000-4000-8000-000000000000", "at": [0, 0]})).unwrap_err();
+        assert!(err.contains("00000000-0000-4000-8000-000000000000"), "{err}");
+    }
+
+    #[test]
     fn an_elevation_stands_where_it_is_asked_when_that_is_off_the_reference() {
         let mut s = Session::new();
         let wall = a_wall(&mut s, json!({"points": [[0, 0], [8000, 0]]}));
@@ -364,6 +379,10 @@ mod tests {
         let e = id(&run(&mut s, "elevation", json!({"on": wall, "at": [5000, 2050]})));
         assert_eq!(mark(&s, e), ((5000, 3500), (0, -1)));
         assert_eq!(reference(&s, e), json!([[1000.0, 2000.0], [9000.0, 2000.0]]));
+        // A link's element by its GUID, as by the id its view gives it.
+        let guid = serde_json::to_value(seen.guid(wall)).unwrap();
+        let by_guid = id(&run(&mut s, "elevation", json!({"on": guid, "at": [5000, 2050]})));
+        assert_eq!(reference(&s, by_guid), reference(&s, e));
         assert_eq!(s.model.check(), Ok(()));
     }
 
