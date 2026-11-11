@@ -365,6 +365,28 @@ impl Drawing {
             self.pens.push(pen);
         }
     }
+    /// The solid fills of a surface pushed since `from` (a floor's pattern or its background, filled), first, in the order they
+    /// were drawn in: under all else pushed since, so a room's colour lies over them and under their lines.
+    fn solid_fills_under(&mut self, from: usize) {
+        fn put<T>(v: &mut Vec<T>, from: usize, order: &[usize]) {
+            let mut tail: Vec<Option<T>> = v.drain(from.min(v.len())..).map(Some).collect();
+            v.extend(order.iter().filter_map(|&i| tail.get_mut(i.checked_sub(from)?).and_then(Option::take)));
+        }
+        let solid = |i: &usize| {
+            self.parts.get(*i) == Some(&Part::Pattern)
+                && matches!(self.pens.get(*i), Some(None))
+                && matches!(self.prims.get(*i), Some(Prim::Fill { .. }))
+        };
+        let mut order: Vec<usize> = (from..self.prims.len()).collect();
+        if !order.iter().any(solid) {
+            return;
+        }
+        order.sort_by_key(|i| !solid(i));
+        put(&mut self.prims, from, &order);
+        put(&mut self.owners, from, &order);
+        put(&mut self.parts, from, &order);
+        put(&mut self.pens, from, &order);
+    }
     /// Each line marked [`BY_CATEGORY`] in the pen its owner's object style gives, cut or in projection as its part is: before
     /// a view's overrides set theirs.
     pub(crate) fn by_category(&mut self, style: impl Fn(Option<Id>) -> ObjectStyle) {
@@ -2631,6 +2653,38 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         scans(&mut d, m, &range, &look);
         cad_imports(&mut d, m, key, level, &look);
     }
+    // A ceiling plan isn't cropped: the crop region is the floor plan's.
+    let crop = m.shown_crop(key).filter(|_| !up);
+    // Cropped, annotation shows whole while its anchor is inside the crop, and not at all outside it.
+    let inside = |p: P2| crop.is_none_or(|[lo, hi]| (lo.0..=hi.0).contains(&p.0) && (lo.1..=hi.1).contains(&p.1));
+    // Every room of the level is found among the same lines, which take each wall's joins and heights to find: once.
+    let rooms = crate::rooms::Rooms::new(m);
+    // Each room it shows: its region, or that it is redundant. Its colour is a fill of that region behind the model, as
+    // Revit's colour fill is: under whatever stands in the room and under a floor's lines, and over a floor's solid fill.
+    let mut bounded: std::collections::BTreeMap<Id, (Option<geom::Region>, bool)> = std::collections::BTreeMap::new();
+    let under = d.prims.len();
+    for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+        let Element::Room(r) = e else { continue };
+        if r.level != level || !inside(r.point) {
+            continue;
+        }
+        // A frozen room has its boundary: the level's lines are found only for those that don't.
+        let (region, redundant) = match &r.kept {
+            Some(k) => (k.at(m.room_area).cloned(), false),
+            // Two rooms can't share a space: the one placed later is left unbounded, Revit's redundant room.
+            None => match rooms.loop_at(r.level, m.room_area, r.point) {
+                Some(g) if rooms.before(r, &g).is_some() => (None, true),
+                g => (g, false),
+            },
+        };
+        if let (Some([red, green, blue]), Some(g)) = (m.room_colour(r), &region) {
+            let rings: Vec<Vec<P2>> = std::iter::once(g.outer.clone()).chain(g.holes.iter().cloned()).collect();
+            d.owner = Some(id);
+            d.fill(&rings, Rgb(red, green, blue));
+        }
+        bounded.insert(id, (region, redundant));
+    }
+    let coloured = d.prims.len() > under;
     // Floors whose tops it sees, from the cut plane down to the view depth: their outlines and their
     // openings', the holes shafts cut in them, and a sloped one's slope arrow.
     for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
@@ -2679,6 +2733,9 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         if let Some([tail, head]) = f.arrow.filter(|_| f.slope != 0.0) {
             slope_arrow(&mut d, tail, head, f.slope);
         }
+    }
+    if coloured {
+        d.solid_fills_under(under);
     }
     // Components it sees, in projection, as Revit draws furniture: whole while any of one is under
     // the cut plane and over the view depth; and the symbols of those on its level.
@@ -2824,12 +2881,6 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         }
     }
     d.part(Part::Projection);
-    // A ceiling plan isn't cropped: the crop region is the floor plan's.
-    let crop = m.shown_crop(key).filter(|_| !up);
-    // Cropped, annotation shows whole while its anchor is inside the crop, and not at all outside it.
-    let inside = |p: P2| crop.is_none_or(|[lo, hi]| (lo.0..=hi.0).contains(&p.0) && (lo.1..=hi.1).contains(&p.1));
-    // Every room of the level is found among the same lines, which take each wall's joins and heights to find: once.
-    let rooms = crate::rooms::Rooms::new(m);
     // Rooms > Reference: off unless the view shows it.
     let reference =
         !crate::graphics::graphics_of(m, key).map_or_else(Default::default, |g| g.resolved(m).into_owned()).hides("roomreference");
@@ -2845,20 +2896,8 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 }
             }
             Element::Room(r) if r.level == level && inside(r.point) && !up => {
-                // A frozen room has its boundary: the level's lines are found only for those that don't.
-                let (region, redundant) = match &r.kept {
-                    Some(k) => (k.at(m.room_area).cloned(), false),
-                    // Two rooms can't share a space: the one placed later is left unbounded, Revit's redundant room.
-                    None => match rooms.loop_at(r.level, m.room_area, r.point) {
-                        Some(g) if rooms.before(r, &g).is_some() => (None, true),
-                        g => (g, false),
-                    },
-                };
-                // Its colour, a fill of its region under its name.
-                if let (Some([red, green, blue]), Some(g)) = (m.room_colour(r), &region) {
-                    let rings: Vec<Vec<P2>> = std::iter::once(g.outer.clone()).chain(g.holes.iter().cloned()).collect();
-                    d.fill(&rings, Rgb(red, green, blue));
-                }
+                // Its region was found for its colour, which is drawn behind the model.
+                let (region, redundant) = bounded.remove(&id).unwrap_or_default();
                 let area = region.as_ref().map_or_else(
                     || m.language.word(if redundant { msg!("REDUNDANT") } else { msg!("NOT ENCLOSED") }).to_string(),
                     |g| {
@@ -4527,6 +4566,50 @@ mod tests {
         assert_eq!(fills(&s.model), 1, "its region, in its colour");
         let (back, left_out) = Model::read(&s.model.to_json().unwrap()).unwrap();
         assert!(left_out.is_empty() && fills(&back) == 1, "{left_out:?}");
+    }
+
+    /// A room's colour lies behind the model, as Revit's colour fill does: a floor's solid fill doesn't hide it, the floor's
+    /// pattern lines and whatever stands in the room are drawn over it.
+    #[test]
+    fn a_rooms_colour_is_under_the_model_and_over_a_floors_solid_fill() {
+        let mut s = house();
+        let level = s.model.levels()[0].0;
+        s.script(
+            r#"floor {"boundary": [[0,0],[8000,0],[8000,6000],[0,6000]]}
+               column {"at": [6000, 4500]}
+               type {"category": "room", "name": "Standard", "colour": [255, 0, 255]}"#,
+        )
+        .unwrap();
+        let style = serde_json::json!({
+            "foreground": {"pattern": "Horizontal", "color": [0, 0, 0]},
+            "background": {"pattern": "Solid fill", "color": [255, 128, 64]}
+        });
+        s.execute("graphics", &serde_json::json!({"view": "Level 1", "categories": {"floor": {"projection": style}}})).unwrap();
+        let d = draw(&s.model, level, View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 });
+        let pm = tiny_skia::Pixmap::decode_png(&png(&d).unwrap()).unwrap();
+        // The room's inside, clear of its walls, its name and the column.
+        let (lo, hi) = (d.view.px(P2(500.0, 2000.0)), d.view.px(P2(3000.0, 500.0)));
+        let (mut pink, mut orange, mut black) = (0, 0, 0);
+        for y in lo.1.min(hi.1) as u32..lo.1.max(hi.1) as u32 {
+            for x in lo.0 as u32..hi.0 as u32 {
+                let c = pm.pixel(x, y).unwrap();
+                match (c.red(), c.green(), c.blue()) {
+                    (255, 0, 255) => pink += 1,
+                    (255, 128, 64) => orange += 1,
+                    // A thin line's pixels are its ink mixed with what is under it.
+                    _ => black += 1,
+                }
+            }
+        }
+        assert_eq!(orange, 0, "the floor's solid fill is under the room's colour");
+        assert!(pink > 10_000, "the room's colour shows: {pink}");
+        assert!(black > 500, "the floor's pattern lines are over it: {black}");
+        let column = pixel(&png(&d).unwrap(), d.view.px(P2(6000.0, 4500.0)));
+        assert_ne!(column, (255, 0, 255), "a column in the room is over its colour");
+        // Where no room is, the floor's solid fill is seen as before.
+        s.execute("type", &serde_json::json!({"category": "room", "name": "Standard", "colour": null})).unwrap();
+        let d = draw(&s.model, level, d.view);
+        assert_eq!(pixel(&png(&d).unwrap(), d.view.px(P2(1000.0, 1020.0))), (255, 128, 64));
     }
 
     fn house() -> Session {
