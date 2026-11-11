@@ -3,7 +3,7 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
 
-#: crates/core/src/sheet.rs:429
+#: crates/core/src/sheet.rs:458
 msgid "AS INDICATED"
 msgstr ""
 
@@ -40,7 +40,7 @@ msgstr ""
 msgid "Brick 225 x 75"
 msgstr ""
 
-#: crates/core/src/commands.rs:4260
+#: crates/core/src/commands.rs:4262
 msgid "Camera"
 msgstr ""
 
@@ -88,7 +88,7 @@ msgstr ""
 msgid "Copper"
 msgstr ""
 
-#: crates/core/src/commands.rs:1224
+#: crates/core/src/commands.rs:1226
 msgid "Copy"
 msgstr ""
 
@@ -116,7 +116,7 @@ msgstr ""
 msgid "Data Outlet"
 msgstr ""
 
-#: crates/core/src/commands.rs:9976
+#: crates/core/src/commands.rs:9978
 msgid "Dependent"
 msgstr ""
 
@@ -192,8 +192,8 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:9760
-#: crates/core/src/commands.rs:12354
+#: crates/core/src/commands.rs:9762
+#: crates/core/src/commands.rs:12356
 msgid "Elevation"
 msgstr ""
 
@@ -310,7 +310,7 @@ msgstr ""
 msgid "Length"
 msgstr ""
 
-#: crates/core/src/commands.rs:6478
+#: crates/core/src/commands.rs:6480
 #: crates/core/src/model.rs:3166
 msgid "Level"
 msgstr ""
@@ -335,7 +335,7 @@ msgstr ""
 msgid "Masking"
 msgstr ""
 
-#: crates/core/src/commands.rs:7739
+#: crates/core/src/commands.rs:7741
 msgid "Mass"
 msgstr ""
 
@@ -423,7 +423,7 @@ msgstr ""
 msgid "Porcelain"
 msgstr ""
 
-#: crates/core/src/commands.rs:2946
+#: crates/core/src/commands.rs:2948
 msgid "Project"
 msgstr ""
 
@@ -451,7 +451,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr ""
 
-#: crates/core/src/commands.rs:7964
+#: crates/core/src/commands.rs:7966
 msgid "Room"
 msgstr ""
 
@@ -467,11 +467,11 @@ msgstr ""
 msgid "Room Schedule"
 msgstr ""
 
-#: crates/core/src/sheet.rs:418
+#: crates/core/src/sheet.rs:447
 msgid "SCALE"
 msgstr ""
 
-#: crates/core/src/sheet.rs:420
+#: crates/core/src/sheet.rs:449
 msgid "SCALE AS INDICATED"
 msgstr ""
 
@@ -487,8 +487,8 @@ msgstr ""
 msgid "Seat Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:9737
-#: crates/core/src/commands.rs:12353
+#: crates/core/src/commands.rs:9739
+#: crates/core/src/commands.rs:12355
 msgid "Section"
 msgstr ""
 
@@ -592,7 +592,7 @@ msgstr ""
 msgid "Timber"
 msgstr ""
 
-#: crates/core/src/sheet.rs:357
+#: crates/core/src/sheet.rs:386
 msgid "Total"
 msgstr ""
 
@@ -612,7 +612,7 @@ msgstr ""
 msgid "Unbounded Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:10117
+#: crates/core/src/commands.rs:10119
 msgid "Unnamed"
 msgstr ""
 

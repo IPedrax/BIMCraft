@@ -217,7 +217,7 @@ msgstr ""
 msgid "API key:"
 msgstr ""
 
-#: crates/core/src/sheet.rs:429
+#: crates/core/src/sheet.rs:458
 msgid "AS INDICATED"
 msgstr ""
 
@@ -506,7 +506,7 @@ msgstr "Vangstaaf (AT): een opvangpunt, waar je op het dak klikt; met de spatieb
 msgid "Air Terminals"
 msgstr "Vangstaven"
 
-#: crates/core/src/commands.rs:1194
+#: crates/core/src/commands.rs:1196
 #: crates/ui-egui/src/editor.rs:960
 #: crates/ui-egui/src/lib.rs:376
 #: crates/ui-egui/src/sketch.rs:709
@@ -1180,7 +1180,7 @@ msgstr "Berekende waarde…"
 msgid "Came in: {}"
 msgstr "Binnengekomen: {}"
 
-#: crates/core/src/commands.rs:1776
+#: crates/core/src/commands.rs:1778
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:4064
 #: crates/ui-egui/src/properties.rs:266
@@ -2042,7 +2042,7 @@ msgstr "Compact"
 msgid "Comparison"
 msgstr "Vergelijking"
 
-#: crates/core/src/commands.rs:1154
+#: crates/core/src/commands.rs:1156
 msgid "Component"
 msgstr "Onderdeel"
 
@@ -2156,7 +2156,7 @@ msgstr "{} rijen gekopieerd, gescheiden door tabs."
 msgid "Copper"
 msgstr "Koper"
 
-#: crates/core/src/commands.rs:1224
+#: crates/core/src/commands.rs:1226
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4793
 #: crates/ui-egui/src/lib.rs:4843
@@ -2559,7 +2559,7 @@ msgstr "Gesloopt"
 msgid "Demolition"
 msgstr "Sloop"
 
-#: crates/core/src/commands.rs:9976
+#: crates/core/src/commands.rs:9978
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -2705,7 +2705,7 @@ msgstr "Maattekst"
 msgid "Dimension Text Placement:"
 msgstr "Plaatsing van de maattekst:"
 
-#: crates/core/src/commands.rs:1206
+#: crates/core/src/commands.rs:1208
 msgid "Dimension Value"
 msgstr "Maatwaarde"
 
@@ -3081,7 +3081,7 @@ msgstr "Elektrische instellingen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrische instellingen: de spanningen, distributiesystemen en draadtypes waarnaar kringen en verdeelborden verwijzen; doorsneden in mm²"
 
-#: crates/core/src/commands.rs:2174
+#: crates/core/src/commands.rs:2176
 msgid "Elements"
 msgstr "Elementen"
 
@@ -3376,7 +3376,7 @@ msgstr "Gevuld gebied (FR): schets een gebied gevuld met een patroon, in deze we
 msgid "Filled region"
 msgstr "Gevuld gebied"
 
-#: crates/core/src/commands.rs:1293
+#: crates/core/src/commands.rs:1295
 msgid "Fillet Arc"
 msgstr "Afrondingsboog"
 
@@ -4833,7 +4833,7 @@ msgstr "Massavloeren (MF): een vloer op elk niveau dat de geselecteerde massa's 
 msgid "Massing"
 msgstr "Massastudie"
 
-#: crates/core/src/commands.rs:1186
+#: crates/core/src/commands.rs:1188
 msgid "Match Properties"
 msgstr "Eigenschappen overnemen"
 
@@ -4894,7 +4894,7 @@ msgstr "Maximum"
 msgid "Maximum Riser Height"
 msgstr "Maximale hoogte optrede"
 
-#: crates/core/src/commands.rs:1886
+#: crates/core/src/commands.rs:1888
 msgid "Measure"
 msgstr "Meten"
 
@@ -5049,7 +5049,7 @@ msgstr "Muur wijzigen"
 msgid "Mounting Height"
 msgstr "Montagehoogte"
 
-#: crates/core/src/commands.rs:1216
+#: crates/core/src/commands.rs:1218
 msgid "Move"
 msgstr "Verplaatsen"
 
@@ -7100,7 +7100,7 @@ msgstr "Ruimtescheiding: lijnen die ruimtes begrenzen zoals muren, om een open r
 msgid "Rose"
 msgstr "Roze"
 
-#: crates/core/src/commands.rs:1231
+#: crates/core/src/commands.rs:1233
 msgid "Rotate"
 msgstr "Roteren"
 
@@ -7120,11 +7120,11 @@ msgstr "Rond"
 msgid "Runs the plugin's command"
 msgstr ""
 
-#: crates/core/src/sheet.rs:418
+#: crates/core/src/sheet.rs:447
 msgid "SCALE"
 msgstr "SCHAAL"
 
-#: crates/core/src/sheet.rs:420
+#: crates/core/src/sheet.rs:449
 msgid "SCALE AS INDICATED"
 msgstr "SCHAAL ZOALS AANGEGEVEN"
 
@@ -7224,7 +7224,7 @@ msgstr "Schaal: het papier dat deze weergave voorstelt, 1 : n van het model: haa
 msgid "Scan"
 msgstr "Scan"
 
-#: crates/core/src/commands.rs:1680
+#: crates/core/src/commands.rs:1682
 msgid "Schedule"
 msgstr "Lijst"
 
@@ -7862,7 +7862,7 @@ msgstr "Spline door punten: klik op de punten waar ze doorheen loopt; Enter volt
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Spline: klik op de controlepunten; Enter voltooit ze"
 
-#: crates/core/src/commands.rs:1273
+#: crates/core/src/commands.rs:1275
 msgid "Split"
 msgstr "Splitsen"
 
@@ -8835,7 +8835,7 @@ msgstr "Eén element bijsnijden/verlengen"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Eén element bijsnijden/verlengen: kies de lijn om tot daar bij te snijden of te verlengen, daarna de lijn die verandert, op het deel dat blijft"
 
-#: crates/core/src/commands.rs:1247
+#: crates/core/src/commands.rs:1249
 #: crates/ui-egui/src/sketch.rs:712
 #: crates/ui-egui/src/sketch.rs:964
 msgid "Trim/Extend to Corner"
@@ -9023,7 +9023,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
-#: crates/core/src/commands.rs:10117
+#: crates/core/src/commands.rs:10119
 msgid "Unnamed"
 msgstr "Naamloos"
 

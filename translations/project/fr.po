@@ -3,7 +3,7 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nLanguage: fr\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
 
-#: crates/core/src/sheet.rs:429
+#: crates/core/src/sheet.rs:458
 msgid "AS INDICATED"
 msgstr ""
 
@@ -40,7 +40,7 @@ msgstr "Brique"
 msgid "Brick 225 x 75"
 msgstr "Brique 225 x 75"
 
-#: crates/core/src/commands.rs:4260
+#: crates/core/src/commands.rs:4262
 msgid "Camera"
 msgstr "Caméra"
 
@@ -88,7 +88,7 @@ msgstr "Bloc de béton"
 msgid "Copper"
 msgstr "Cuivre"
 
-#: crates/core/src/commands.rs:1224
+#: crates/core/src/commands.rs:1226
 msgid "Copy"
 msgstr "Copie"
 
@@ -116,7 +116,7 @@ msgstr "Tiret point"
 msgid "Data Outlet"
 msgstr "Prise de données"
 
-#: crates/core/src/commands.rs:9976
+#: crates/core/src/commands.rs:9978
 msgid "Dependent"
 msgstr "Dépendant"
 
@@ -192,8 +192,8 @@ msgstr "Éclairage électrique"
 msgid "Electrical Power"
 msgstr "Alimentation électrique"
 
-#: crates/core/src/commands.rs:9760
-#: crates/core/src/commands.rs:12354
+#: crates/core/src/commands.rs:9762
+#: crates/core/src/commands.rs:12356
 msgid "Elevation"
 msgstr "Élévation"
 
@@ -310,7 +310,7 @@ msgstr "Largeur du pied"
 msgid "Length"
 msgstr "Longueur"
 
-#: crates/core/src/commands.rs:6478
+#: crates/core/src/commands.rs:6480
 #: crates/core/src/model.rs:3166
 msgid "Level"
 msgstr "Niveau"
@@ -335,7 +335,7 @@ msgstr "Repère"
 msgid "Masking"
 msgstr "Masque"
 
-#: crates/core/src/commands.rs:7739
+#: crates/core/src/commands.rs:7741
 msgid "Mass"
 msgstr "Volume"
 
@@ -423,7 +423,7 @@ msgstr "Plâtre"
 msgid "Porcelain"
 msgstr "Porcelaine"
 
-#: crates/core/src/commands.rs:2946
+#: crates/core/src/commands.rs:2948
 msgid "Project"
 msgstr "Projet"
 
@@ -451,7 +451,7 @@ msgstr "Contremarches"
 msgid "Roof tiles"
 msgstr "Tuiles"
 
-#: crates/core/src/commands.rs:7964
+#: crates/core/src/commands.rs:7966
 msgid "Room"
 msgstr "Pièce"
 
@@ -467,11 +467,11 @@ msgstr ""
 msgid "Room Schedule"
 msgstr "Nomenclature des pièces"
 
-#: crates/core/src/sheet.rs:418
+#: crates/core/src/sheet.rs:447
 msgid "SCALE"
 msgstr "ÉCHELLE"
 
-#: crates/core/src/sheet.rs:420
+#: crates/core/src/sheet.rs:449
 msgid "SCALE AS INDICATED"
 msgstr "ÉCHELLE INDIQUÉE"
 
@@ -487,8 +487,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Hauteur assise"
 
-#: crates/core/src/commands.rs:9737
-#: crates/core/src/commands.rs:12353
+#: crates/core/src/commands.rs:9739
+#: crates/core/src/commands.rs:12355
 msgid "Section"
 msgstr "Coupe"
 
@@ -592,7 +592,7 @@ msgstr "Carrelage 300"
 msgid "Timber"
 msgstr "Bois"
 
-#: crates/core/src/sheet.rs:357
+#: crates/core/src/sheet.rs:386
 msgid "Total"
 msgstr "Total"
 
@@ -612,7 +612,7 @@ msgstr "MONTE"
 msgid "Unbounded Height"
 msgstr "Hauteur non délimitée"
 
-#: crates/core/src/commands.rs:10117
+#: crates/core/src/commands.rs:10119
 msgid "Unnamed"
 msgstr "Sans nom"
 
