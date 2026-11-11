@@ -2797,7 +2797,7 @@ msgstr ""
 msgid "Dimension lines, witness lines, terminators, text placement, and level marker symbols."
 msgstr "Linee di quota, linee di richiamo, terminali, posizione del testo e simboli di quota dei piani."
 
-#: crates/ui-egui/src/canvas.rs:3359
+#: crates/ui-egui/src/canvas.rs:3373
 msgid "Dimension {}"
 msgstr ""
 
@@ -3259,7 +3259,7 @@ msgstr "Inserisci un nome per ogni tipo e motivo."
 msgid "Entities"
 msgstr "Entità"
 
-#: crates/ui-egui/src/canvas.rs:3371
+#: crates/ui-egui/src/canvas.rs:3385
 msgid "Equal"
 msgstr "Uguale"
 
@@ -4853,15 +4853,15 @@ msgstr "Linea di riferimento:"
 msgid "Location line: {}"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3437
+#: crates/ui-egui/src/canvas.rs:3451
 msgid "Lock alignment"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3334
+#: crates/ui-egui/src/canvas.rs:3348
 msgid "Lock segment {}"
 msgstr "Blocca segmento {}"
 
-#: crates/ui-egui/src/canvas.rs:3425
+#: crates/ui-egui/src/canvas.rs:3439
 msgid "Locked segment {}"
 msgstr ""
 
@@ -8471,7 +8471,7 @@ msgstr "Isola categoria temporaneamente"
 msgid "Temporary Isolate Element"
 msgstr "Isola elemento temporaneamente"
 
-#: crates/ui-egui/src/canvas.rs:3276
+#: crates/ui-egui/src/canvas.rs:3290
 msgid "Temporary dimension {}"
 msgstr "Quota temporanea {}"
 
@@ -9069,7 +9069,7 @@ msgstr "Taglia/Estendi ad angolo (TR): scegli due muri o due linee, sulle parti 
 msgid "Turn Snap Override Off"
 msgstr "Disattiva l'aggancio forzato"
 
-#: crates/ui-egui/src/canvas.rs:3241
+#: crates/ui-egui/src/canvas.rs:3255
 msgid "Turn the wall about its {}: {}"
 msgstr "Ruota il muro attorno al suo {}: {}"
 
@@ -9242,7 +9242,7 @@ msgstr "Formato unità"
 msgid "Unlock"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3410
+#: crates/ui-egui/src/canvas.rs:3424
 msgid "Unlock alignment"
 msgstr ""
 
@@ -9871,11 +9871,11 @@ msgstr "`{}` non è un'altezza"
 
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
-#: crates/ui-egui/src/canvas.rs:3023
-#: crates/ui-egui/src/canvas.rs:3364
-#: crates/ui-egui/src/canvas.rs:3510
-#: crates/ui-egui/src/canvas.rs:3603
-#: crates/ui-egui/src/canvas.rs:3623
+#: crates/ui-egui/src/canvas.rs:3037
+#: crates/ui-egui/src/canvas.rs:3378
+#: crates/ui-egui/src/canvas.rs:3524
+#: crates/ui-egui/src/canvas.rs:3617
+#: crates/ui-egui/src/canvas.rs:3637
 #: crates/ui-egui/src/draw.rs:270
 #: crates/ui-egui/src/draw.rs:271
 #: crates/ui-egui/src/draw.rs:272
@@ -9924,8 +9924,8 @@ msgstr "`{}` non è una dimensione, un angolo o uno scostamento"
 msgid "`{}` is not a spacing"
 msgstr "`{}` non è un interasse"
 
-#: crates/ui-egui/src/canvas.rs:3008
-#: crates/ui-egui/src/canvas.rs:3268
+#: crates/ui-egui/src/canvas.rs:3022
+#: crates/ui-egui/src/canvas.rs:3282
 msgid "`{}` is not an angle"
 msgstr "`{}` non è un angolo"
 
@@ -10165,7 +10165,7 @@ msgstr "piano: `{}` non è una quota"
 msgid "line"
 msgstr "linea"
 
-#: crates/ui-egui/src/canvas.rs:2789
+#: crates/ui-egui/src/canvas.rs:2803
 msgid "mass: {}"
 msgstr "volume: {}"
 
@@ -10199,11 +10199,11 @@ msgid "not defined"
 msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:2177
-#: crates/ui-egui/src/canvas.rs:2872
+#: crates/ui-egui/src/canvas.rs:2886
 msgid "offset: `{}` is not a distance"
 msgstr "scostamento: `{}` non è una distanza"
 
-#: crates/ui-egui/src/canvas.rs:2868
+#: crates/ui-egui/src/canvas.rs:2882
 msgid "offset: it offsets straight walls"
 msgstr "scostamento: si applica ai muri dritti"
 
@@ -10343,7 +10343,7 @@ msgstr ""
 msgid "the next free name"
 msgstr "il prossimo nome libero"
 
-#: crates/ui-egui/src/canvas.rs:3602
+#: crates/ui-egui/src/canvas.rs:3616
 msgid "the opening has to stay on its wall"
 msgstr "l'apertura deve restare sul suo muro"
 
@@ -10402,7 +10402,7 @@ msgstr ""
 msgid "voltages"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3062
+#: crates/ui-egui/src/canvas.rs:3076
 msgid "wall: {}"
 msgstr "muro: {}"
 
@@ -10526,7 +10526,7 @@ msgstr "{} mm per A2-A4"
 msgid "{} months ago"
 msgstr "{} mesi fa"
 
-#: crates/ui-egui/src/canvas.rs:3693
+#: crates/ui-egui/src/canvas.rs:3707
 #: crates/ui-egui/src/stairgrips.rs:114
 msgid "{} of {} risers"
 msgstr "{} di {} alzate"
@@ -10573,7 +10573,7 @@ msgstr "{} selezionati."
 msgid "{} triangles, from a file"
 msgstr "{} triangoli, da un file"
 
-#: crates/ui-egui/src/canvas.rs:3695
+#: crates/ui-egui/src/canvas.rs:3709
 msgid "{} up"
 msgstr "{} su"
 

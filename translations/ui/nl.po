@@ -2797,7 +2797,7 @@ msgstr "Maatwaarde"
 msgid "Dimension lines, witness lines, terminators, text placement, and level marker symbols."
 msgstr "Maatlijnen, hulplijnen, begrenzers, plaatsing van de tekst en niveausymbolen."
 
-#: crates/ui-egui/src/canvas.rs:3359
+#: crates/ui-egui/src/canvas.rs:3373
 msgid "Dimension {}"
 msgstr "Maatlijn {}"
 
@@ -3259,7 +3259,7 @@ msgstr "Geef elk type en elk patroon een naam."
 msgid "Entities"
 msgstr "Entiteiten"
 
-#: crates/ui-egui/src/canvas.rs:3371
+#: crates/ui-egui/src/canvas.rs:3385
 msgid "Equal"
 msgstr "Gelijk"
 
@@ -4853,15 +4853,15 @@ msgstr "Locatielijn:"
 msgid "Location line: {}"
 msgstr "Locatielijn: {}"
 
-#: crates/ui-egui/src/canvas.rs:3437
+#: crates/ui-egui/src/canvas.rs:3451
 msgid "Lock alignment"
 msgstr "Uitlijning vergrendelen"
 
-#: crates/ui-egui/src/canvas.rs:3334
+#: crates/ui-egui/src/canvas.rs:3348
 msgid "Lock segment {}"
 msgstr "Segment {} vergrendelen"
 
-#: crates/ui-egui/src/canvas.rs:3425
+#: crates/ui-egui/src/canvas.rs:3439
 msgid "Locked segment {}"
 msgstr "Vergrendeld segment {}"
 
@@ -8471,7 +8471,7 @@ msgstr "Categorie tijdelijk isoleren"
 msgid "Temporary Isolate Element"
 msgstr "Element tijdelijk isoleren"
 
-#: crates/ui-egui/src/canvas.rs:3276
+#: crates/ui-egui/src/canvas.rs:3290
 msgid "Temporary dimension {}"
 msgstr "Tijdelijke maatlijn {}"
 
@@ -9069,7 +9069,7 @@ msgstr "Bijsnijden/verlengen tot hoek (TR): kies twee muren of twee lijnen, op d
 msgid "Turn Snap Override Off"
 msgstr "Snap-overschrijving uitschakelen"
 
-#: crates/ui-egui/src/canvas.rs:3241
+#: crates/ui-egui/src/canvas.rs:3255
 msgid "Turn the wall about its {}: {}"
 msgstr "Draai de muur rond zijn {}: {}"
 
@@ -9242,7 +9242,7 @@ msgstr "Eenhedenformaat"
 msgid "Unlock"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3410
+#: crates/ui-egui/src/canvas.rs:3424
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
@@ -9871,11 +9871,11 @@ msgstr "`{}` is geen hoogte"
 
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
-#: crates/ui-egui/src/canvas.rs:3023
-#: crates/ui-egui/src/canvas.rs:3364
-#: crates/ui-egui/src/canvas.rs:3510
-#: crates/ui-egui/src/canvas.rs:3603
-#: crates/ui-egui/src/canvas.rs:3623
+#: crates/ui-egui/src/canvas.rs:3037
+#: crates/ui-egui/src/canvas.rs:3378
+#: crates/ui-egui/src/canvas.rs:3524
+#: crates/ui-egui/src/canvas.rs:3617
+#: crates/ui-egui/src/canvas.rs:3637
 #: crates/ui-egui/src/draw.rs:270
 #: crates/ui-egui/src/draw.rs:271
 #: crates/ui-egui/src/draw.rs:272
@@ -9924,8 +9924,8 @@ msgstr "`{}` is geen grootte, hoek of verschuiving"
 msgid "`{}` is not a spacing"
 msgstr "`{}` is geen tussenafstand"
 
-#: crates/ui-egui/src/canvas.rs:3008
-#: crates/ui-egui/src/canvas.rs:3268
+#: crates/ui-egui/src/canvas.rs:3022
+#: crates/ui-egui/src/canvas.rs:3282
 msgid "`{}` is not an angle"
 msgstr "`{}` is geen hoek"
 
@@ -10165,7 +10165,7 @@ msgstr "niveau: `{}` is geen hoogte"
 msgid "line"
 msgstr "lijn"
 
-#: crates/ui-egui/src/canvas.rs:2789
+#: crates/ui-egui/src/canvas.rs:2803
 msgid "mass: {}"
 msgstr "massa: {}"
 
@@ -10199,11 +10199,11 @@ msgid "not defined"
 msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:2177
-#: crates/ui-egui/src/canvas.rs:2872
+#: crates/ui-egui/src/canvas.rs:2886
 msgid "offset: `{}` is not a distance"
 msgstr "verschuiving: `{}` is geen afstand"
 
-#: crates/ui-egui/src/canvas.rs:2868
+#: crates/ui-egui/src/canvas.rs:2882
 msgid "offset: it offsets straight walls"
 msgstr "verschuiving: ze verschuift rechte muren"
 
@@ -10343,7 +10343,7 @@ msgstr "het model heeft geen niveaus"
 msgid "the next free name"
 msgstr "de volgende vrije naam"
 
-#: crates/ui-egui/src/canvas.rs:3602
+#: crates/ui-egui/src/canvas.rs:3616
 msgid "the opening has to stay on its wall"
 msgstr "de opening moet op haar muur blijven"
 
@@ -10402,7 +10402,7 @@ msgstr "spanning"
 msgid "voltages"
 msgstr "spanningen"
 
-#: crates/ui-egui/src/canvas.rs:3062
+#: crates/ui-egui/src/canvas.rs:3076
 msgid "wall: {}"
 msgstr "muur: {}"
 
@@ -10526,7 +10526,7 @@ msgstr "{} mm voor A2-A4"
 msgid "{} months ago"
 msgstr "{} maanden geleden"
 
-#: crates/ui-egui/src/canvas.rs:3693
+#: crates/ui-egui/src/canvas.rs:3707
 #: crates/ui-egui/src/stairgrips.rs:114
 msgid "{} of {} risers"
 msgstr "{} van {} optreden"
@@ -10573,7 +10573,7 @@ msgstr "{} geselecteerd."
 msgid "{} triangles, from a file"
 msgstr "{} driehoeken, uit een bestand"
 
-#: crates/ui-egui/src/canvas.rs:3695
+#: crates/ui-egui/src/canvas.rs:3709
 msgid "{} up"
 msgstr "{} omhoog"
 

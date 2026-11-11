@@ -88,10 +88,21 @@ fn chain(start: P2, angle: f64, width: f64, runs: Vec<(f64, (f64, f64), u32)>, t
             let rings =
                 balanced(p, side, u, w, turn.abs(), winders, into, balance).unwrap_or_else(|| wind(p, side, u, w, turn.abs(), winders));
             out.winders += rings.len();
-            // The walk line climbs through the turn.
-            let (parts, top) = (via.len() as f64 + 1.0, (rings.len() as f64 - 1.0) * each);
+            // The walk line climbs through the turn: on into it, round the inside corner at the stair's middle, and on out.
+            let top = (rings.len() as f64 - 1.0) * each;
             out.pads.extend(rings.into_iter().enumerate().map(|(k, ring)| Pad { ring: ccw(ring), z: z.1 + k as f64 * each }));
-            out.walk.extend(via.into_iter().enumerate().map(|(k, p)| (p, z.1 + top * (k as f64 + 1.0) / parts)));
+            let (r, sweep) = (w / 2.0, turn.abs());
+            let total = 2.0 * into + r * sweep.to_radians();
+            let high = |d: f64| z.1 + if total > 0.0 { top * d / total } else { 0.0 };
+            if into > 0.0 {
+                out.walk.push((e, high(into)));
+            }
+            let steps = (sweep / 15.0).round().max(1.0) as u32;
+            for k in 1..=steps {
+                let a = (sweep * f64::from(k) / f64::from(steps)).to_radians();
+                out.walk.push((p - side * (r * a.cos()) + u * (r * a.sin()), high(into + r * a)));
+            }
+            let _ = via;
             (at, u) = (next + dir * into, dir);
             continue;
         } else {

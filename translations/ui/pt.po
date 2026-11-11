@@ -2797,7 +2797,7 @@ msgstr "Valor da cota"
 msgid "Dimension lines, witness lines, terminators, text placement, and level marker symbols."
 msgstr "Linhas de cota, linhas de extensão, terminadores, posicionamento de texto e símbolos de nível."
 
-#: crates/ui-egui/src/canvas.rs:3359
+#: crates/ui-egui/src/canvas.rs:3373
 msgid "Dimension {}"
 msgstr "Cota {}"
 
@@ -3259,7 +3259,7 @@ msgstr "Insira um nome para cada tipo e padrão."
 msgid "Entities"
 msgstr "Entidades"
 
-#: crates/ui-egui/src/canvas.rs:3371
+#: crates/ui-egui/src/canvas.rs:3385
 msgid "Equal"
 msgstr "Igual"
 
@@ -4853,15 +4853,15 @@ msgstr "Linha de localização:"
 msgid "Location line: {}"
 msgstr "Linha de localização: {}"
 
-#: crates/ui-egui/src/canvas.rs:3437
+#: crates/ui-egui/src/canvas.rs:3451
 msgid "Lock alignment"
 msgstr "Bloquear alinhamento"
 
-#: crates/ui-egui/src/canvas.rs:3334
+#: crates/ui-egui/src/canvas.rs:3348
 msgid "Lock segment {}"
 msgstr "Bloquear segmento {}"
 
-#: crates/ui-egui/src/canvas.rs:3425
+#: crates/ui-egui/src/canvas.rs:3439
 msgid "Locked segment {}"
 msgstr "Segmento {} bloqueado"
 
@@ -8471,7 +8471,7 @@ msgstr "Isolar Categoria Temporariamente"
 msgid "Temporary Isolate Element"
 msgstr "Isolar Elemento Temporariamente"
 
-#: crates/ui-egui/src/canvas.rs:3276
+#: crates/ui-egui/src/canvas.rs:3290
 msgid "Temporary dimension {}"
 msgstr "Cota temporária {}"
 
@@ -9069,7 +9069,7 @@ msgstr "Aparar/Estender para canto (TR): escolha duas paredes ou duas linhas, na
 msgid "Turn Snap Override Off"
 msgstr "Cancelar a exceção de snap"
 
-#: crates/ui-egui/src/canvas.rs:3241
+#: crates/ui-egui/src/canvas.rs:3255
 msgid "Turn the wall about its {}: {}"
 msgstr "Girar a parede em torno do seu {}: {}"
 
@@ -9242,7 +9242,7 @@ msgstr "Formato de unidades"
 msgid "Unlock"
 msgstr "Desbloquear"
 
-#: crates/ui-egui/src/canvas.rs:3410
+#: crates/ui-egui/src/canvas.rs:3424
 msgid "Unlock alignment"
 msgstr "Desbloquear alinhamento"
 
@@ -9871,11 +9871,11 @@ msgstr "`{}` não é uma altura"
 
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
-#: crates/ui-egui/src/canvas.rs:3023
-#: crates/ui-egui/src/canvas.rs:3364
-#: crates/ui-egui/src/canvas.rs:3510
-#: crates/ui-egui/src/canvas.rs:3603
-#: crates/ui-egui/src/canvas.rs:3623
+#: crates/ui-egui/src/canvas.rs:3037
+#: crates/ui-egui/src/canvas.rs:3378
+#: crates/ui-egui/src/canvas.rs:3524
+#: crates/ui-egui/src/canvas.rs:3617
+#: crates/ui-egui/src/canvas.rs:3637
 #: crates/ui-egui/src/draw.rs:270
 #: crates/ui-egui/src/draw.rs:271
 #: crates/ui-egui/src/draw.rs:272
@@ -9924,8 +9924,8 @@ msgstr "`{}` não é um tamanho, um ângulo nem um deslocamento"
 msgid "`{}` is not a spacing"
 msgstr "`{}` não é um espaçamento"
 
-#: crates/ui-egui/src/canvas.rs:3008
-#: crates/ui-egui/src/canvas.rs:3268
+#: crates/ui-egui/src/canvas.rs:3022
+#: crates/ui-egui/src/canvas.rs:3282
 msgid "`{}` is not an angle"
 msgstr "`{}` não é um ângulo"
 
@@ -10165,7 +10165,7 @@ msgstr "nível: `{}` não é uma elevação"
 msgid "line"
 msgstr "linha"
 
-#: crates/ui-egui/src/canvas.rs:2789
+#: crates/ui-egui/src/canvas.rs:2803
 msgid "mass: {}"
 msgstr "massa: {}"
 
@@ -10199,11 +10199,11 @@ msgid "not defined"
 msgstr "não definido"
 
 #: crates/ui-egui/src/canvas.rs:2177
-#: crates/ui-egui/src/canvas.rs:2872
+#: crates/ui-egui/src/canvas.rs:2886
 msgid "offset: `{}` is not a distance"
 msgstr "deslocamento: `{}` não é uma distância"
 
-#: crates/ui-egui/src/canvas.rs:2868
+#: crates/ui-egui/src/canvas.rs:2882
 msgid "offset: it offsets straight walls"
 msgstr "deslocamento: só desloca paredes retas"
 
@@ -10343,7 +10343,7 @@ msgstr "o modelo não tem níveis"
 msgid "the next free name"
 msgstr "o próximo nome livre"
 
-#: crates/ui-egui/src/canvas.rs:3602
+#: crates/ui-egui/src/canvas.rs:3616
 msgid "the opening has to stay on its wall"
 msgstr "a abertura tem de ficar na parede"
 
@@ -10402,7 +10402,7 @@ msgstr "tensão"
 msgid "voltages"
 msgstr "tensões"
 
-#: crates/ui-egui/src/canvas.rs:3062
+#: crates/ui-egui/src/canvas.rs:3076
 msgid "wall: {}"
 msgstr "parede: {}"
 
@@ -10526,7 +10526,7 @@ msgstr "{} mm para A2-A4"
 msgid "{} months ago"
 msgstr "há {} meses"
 
-#: crates/ui-egui/src/canvas.rs:3693
+#: crates/ui-egui/src/canvas.rs:3707
 #: crates/ui-egui/src/stairgrips.rs:114
 msgid "{} of {} risers"
 msgstr "{} de {} espelhos"
@@ -10573,7 +10573,7 @@ msgstr "{} selecionados."
 msgid "{} triangles, from a file"
 msgstr "{} triângulos, de um arquivo"
 
-#: crates/ui-egui/src/canvas.rs:3695
+#: crates/ui-egui/src/canvas.rs:3709
 msgid "{} up"
 msgstr "{} de subida"
 

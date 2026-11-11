@@ -199,3 +199,20 @@ fn the_stair_tool_balances_its_winders_into_the_flights() {
     let st = ids(&h, "stair");
     assert_eq!((st.len(), field(&h, st[0], "landings")), (1, json!([{"at": 8.0, "turn": -90.0, "winders": 3, "balance": 2}])));
 }
+
+#[test]
+fn the_stair_tool_gives_the_run_after_the_turn_the_landings_its_code_asks() {
+    let mut h = app(BOX);
+    // A code that lets a flight hold five risers.
+    h.state_mut().run("building_code", json!({"stairs": {"flight_risers_max": 5}}));
+    tool(&mut h, "Stair");
+    press(&mut h, "Railings");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(1000.0, 2960.0));
+    click(&mut h, P2(3000.0, 3500.0));
+    let st = ids(&h, "stair");
+    // 17 risers: the first run stops at 5, where a landing is due; the 12 after it in three flights.
+    assert_eq!(field(&h, st[0], "landings"), json!([{"at": 5.0, "turn": -90.0}, {"at": 9.0, "turn": 0.0}, {"at": 13.0, "turn": 0.0}]));
+    let found = h.state_mut().run("stair_check", json!({})).unwrap();
+    assert_eq!(found["count"], 0, "{found}");
+}

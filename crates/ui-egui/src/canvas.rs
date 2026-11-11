@@ -2683,6 +2683,20 @@ impl BimApp {
             } else if f64::from(n) - first >= 2.0 {
                 st.landings.push(Landing { at: first, turn, length, ..Landing::default() });
             }
+            // The run after the turn takes the rest of the risers, with the landings the building code says are due on the
+            // way, straight on.
+            if let Some(turned) = st.landings.last().copied() {
+                let from = turned.at + f64::from(turned.wound()) + f64::from(turned.balance);
+                let (rest, most) = (f64::from(n) - from, f64::from(rules.flight_risers(each)));
+                let flights = (rest / most).ceil().clamp(1.0, 50.0);
+                for i in 1..(flights as u32) {
+                    let at = from + (rest * f64::from(i) / flights).round();
+                    let last = st.landings.last().map_or(0.0, |l| l.at);
+                    if at >= last + 2.0 && at <= f64::from(n) - 2.0 {
+                        st.landings.push(Landing { at, length, ..Landing::default() });
+                    }
+                }
+            }
             let done = done(&st.landings);
             Ok((Element::Stair(st), done))
         }

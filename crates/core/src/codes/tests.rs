@@ -440,3 +440,21 @@ fn winders_balanced_into_the_flights_have_depth_at_the_narrow_end() {
         assert!(s.execute("stair", &p).is_err(), "{p}");
     }
 }
+
+#[test]
+fn the_walk_line_goes_round_a_winding_turn_at_the_stair_s_middle() {
+    let mut s = Session::new();
+    let p = json!({"start": [0, 0], "angle": 90, "width": 1000, "landings": [{"at": 7, "turn": 90, "winders": 3, "balance": 2}]});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    let l = crate::stairs::stair(&s.model, &stair_of(&s, id));
+    // The inside corner of the turn: every point of the arc is half the width from it, and the line only climbs.
+    let corner = crate::geom::P2(-500.0, 4.0 * 280.0 + 2.0 * 280.0);
+    let round: Vec<_> = l.walk.iter().filter(|(q, _)| (q.dist(corner) - 500.0).abs() < 1e-6).collect();
+    assert!(round.len() >= 7, "{:?}", l.walk);
+    assert!(l.walk.windows(2).all(|w| w[1].1 >= w[0].1 - 1e-9), "{:?}", l.walk);
+    let (first, last) = (l.walk.first().unwrap(), l.walk.last().unwrap());
+    assert_eq!((first.1, (last.1 - 3000.0).abs() < 1e-6), (0.0, true));
+    // A railing down its side goes round with it.
+    let r = run(&mut s, "railing", json!({"host": id, "side": "left"}));
+    assert_eq!(r["ids"].as_array().map(Vec::len), Some(1), "{r}");
+}
