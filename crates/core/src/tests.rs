@@ -2540,8 +2540,25 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"id": footing, "join": null}),
         json!({"id": 100002, "join": "no"}),
     ];
+    // A property line round the base, last so that no id moves, and payloads that give it a boundary that crosses itself or
+    // move it out of reach; and new ones that cross themselves, reach past any coordinate, have too few corners, a repeated
+    // one or a name or level that isn't one.
+    let plot = base
+        .execute("property_line", &json!({"points": [[-2000, -2000], [12000, -2000], [12000, 9000], [-2000, 9000]], "name": "Lot"}))
+        .map_or(Value::Null, |r| r["id"].clone());
+    let plots = [
+        json!({"id": plot, "points": [[0, 0], [4000, 4000], [4000, 0], [0, 4000]]}),
+        json!({"id": plot, "name": " ", "level": "nowhere"}),
+        json!({"ids": [plot], "by": [1e300, 0.0]}),
+        json!({"points": [[0, 0], [4000, 4000], [4000, 0], [0, 4000]], "name": "Crossed"}),
+        json!({"points": [[0, 0], [1e300, 0], [0, 1e300]], "name": "Far"}),
+        json!({"points": [[0, 0], [4000, 0], [0, 0]], "name": " "}),
+        json!({"points": [[0, 0], [4000, 0], [4000, 3000]], "name": "x".repeat(100_000), "level": 1e300}),
+        json!({"points": [[0, 0], [4000, 0], [4000, 3000], [0, 0]], "name": [], "level": []}),
+        json!({"points": [[0, 0], [4000, 0], [4000, 3000], [0, 3000], [0, 0], [0, 0]], "name": "Doubled"}),
+    ];
     let hostile: Vec<Value> =
-        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(grips).collect();
+        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(grips).chain(plots).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
