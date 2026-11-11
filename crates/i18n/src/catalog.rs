@@ -201,6 +201,12 @@ pub fn read(path: &Path) -> Result<Document, String> {
     document(&text).map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// Whether a file holds what [`render`] writes: the same text, whatever line endings the checkout
+/// gave it. A Windows checkout with `core.autocrlf` turns LF into CRLF, which is not a stale catalog.
+pub fn up_to_date(on_disk: &str, rendered: &str) -> bool {
+    on_disk.replace("\r\n", "\n") == rendered
+}
+
 pub fn render(document: &Document) -> String {
     let mut text = document.header_comments.join("\n");
     if !text.is_empty() {
@@ -348,6 +354,14 @@ mod tests {
         assert!(generated.contains("Salvar") && generated.contains("Guardar"));
         assert!(!generated.contains("Blank") && !generated.contains("Count") && !generated.contains("Antigo"));
         assert!(generated.find("es").unwrap() < generated.find("pt").unwrap());
+    }
+
+    #[test]
+    fn a_catalog_held_with_windows_line_endings_is_not_out_of_date() {
+        let rendered = render(&document("msgid \"Save\"\nmsgstr \"\"\n").unwrap());
+        assert!(up_to_date(&rendered, &rendered));
+        assert!(up_to_date(&rendered.replace('\n', "\r\n"), &rendered), "a Windows checkout is not a stale catalog");
+        assert!(!up_to_date(&rendered.replace("Save", "Open"), &rendered), "a different message is out of date");
     }
 
     #[test]

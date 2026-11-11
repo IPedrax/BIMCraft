@@ -387,3 +387,38 @@ fn a_supply_loop_in_a_file_is_broken_with_why_and_every_board_stays() {
     assert!(r["skipped"].to_string().contains("supply"), "{r}");
     assert_eq!(t.model.check(), Ok(()));
 }
+
+/// The STEP id of the `nth` board of `file`.
+fn step_id(file: &str, nth: usize) -> u64 {
+    let line = entities(file, "IFCELECTRICDISTRIBUTIONBOARD")[nth];
+    line.trim_start_matches('#').split('=').next().unwrap().parse().unwrap()
+}
+
+#[test]
+fn a_panel_set_on_many_products_is_read_once_however_many_the_file_names() {
+    // A small hostile file: one BIMCraft_Panel set of many properties related to many products, the file's two boards
+    // among them and the rest ids the file doesn't have. Read once for each product it would be held as many times as
+    // there are products, the properties times the products, more than memory holds; read once, the file opens.
+    let (mut s, main, sub) = two_boards();
+    let file = written(&mut s, "hostile");
+    let (props, products, base) = (50_000_u64, 100_000_u64, 800_000_u64);
+    let mut extra = String::new();
+    for k in 0..props {
+        extra.push_str(&format!("#{}=IFCPROPERTYSINGLEVALUE('Junk{k}',$,IFCINTEGER({k}),$);\n", base + k));
+    }
+    let set = base + props;
+    let listed: Vec<String> = (0..props).map(|k| format!("#{}", base + k)).collect();
+    extra.push_str(&format!("#{set}=IFCPROPERTYSET('0ccccccccccccccccccccc',$,'BIMCraft_Panel',$,({}));\n", listed.join(",")));
+    let mut named: Vec<String> = vec![format!("#{}", step_id(&file, 0)), format!("#{}", step_id(&file, 1))];
+    named.extend((0..products).map(|k| format!("#{}", 2_000_000 + k)));
+    extra.push_str(&format!("#{}=IFCRELDEFINESBYPROPERTIES('0ddddddddddddddddddddd',$,$,$,({}),#{set});\n", set + 1, named.join(",")));
+    let at = file.rfind("ENDSEC;").unwrap();
+    let hostile = format!("{}{extra}{}", &file[..at], &file[at..]);
+    assert!(hostile.len() < 8 << 20, "a small file: {} bytes", hostile.len());
+    let (t, r) = read(&hostile, "hostile");
+    // The boards keep what their own sets say: the junk set says nothing a board reads.
+    let (a, b) = (t.model.elements.id(s.model.guid(main)).unwrap(), t.model.elements.id(s.model.guid(sub)).unwrap());
+    assert_eq!((panel_of(&t, a).unwrap().mains, panel_of(&t, b).unwrap().mains), (Some(125.0), Some(40.0)), "{r}");
+    assert_eq!(panel_of(&t, b).unwrap().supply_from, Some(t.model.guid(a)));
+    assert_eq!(t.model.check(), Ok(()));
+}

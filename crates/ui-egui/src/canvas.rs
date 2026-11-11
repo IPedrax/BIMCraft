@@ -919,17 +919,6 @@ pub(crate) fn opening_dimensions(p: &Painter, m: &Model, v: &View, o: &bimcraft_
         .collect()
 }
 
-/// The parameters of the door or window `params` puts down, at the middle of its stretch of wall when it lands within
-/// `SNAP` px of it (`Model::centred`).
-fn centred_opening(m: &Model, v: &View, mut params: Value, door: bool) -> Value {
-    if let Ok(Element::Door(o) | Element::Window(o)) = opening_of(m, &params, door)
-        && let Some(middle) = m.centred(&o, SNAP / v.scale)
-    {
-        params["offset"] = json!(middle);
-    }
-    params
-}
-
 /// A column's or component's temporary dimensions, drawn on `p` beside it: how far it stands from the nearest wall centre
 /// line or grid east, north, west and south (`Model::clearances`), each as which of the four, where its number goes, its
 /// text and the clearance. None for any other element, and for a way with no line or a span too short to draw.
@@ -2006,6 +1995,26 @@ impl BimApp {
         p
     }
 
+    /// The opening both the ghost and the next click place. Measure facing from the physical centre
+    /// of the resolved host, even for an arc or a wall drawn on a face rather than its centre line.
+    fn opening_params(&self, m: &Model, v: &View, level: Id, at: (f32, f32), door: bool) -> Value {
+        let cursor = v.mm(at);
+        let mut params = self.typed(if door { "door" } else { "window" }, json!({"at": point(round(cursor)), "level": level}));
+        if let Ok(Element::Door(o) | Element::Window(o)) = opening_of(m, &params, door) {
+            if let Some(middle) = m.centred(&o, SNAP / v.scale) {
+                params["offset"] = json!(middle);
+            }
+            if door
+                && m.single_swing_door(o.family.as_deref(), &o.type_name)
+                && let Some(w) = m.wall(o.host)
+            {
+                params["flip_hand"] = json!(self.door_flip_hand);
+                params["flip_facing"] = json!(Axis::of(w).project(cursor).1 < walls::centre(m, w));
+            }
+        }
+        params
+    }
+
     /// How far dragging the selection from `from` to `to` moves it: a lone door or window slides to the middle of its
     /// stretch of wall when it comes within `SNAP` px of it.
     fn dragged(&self, m: &Model, v: &View, from: P2, to: P2) -> P2 {
@@ -2040,7 +2049,7 @@ impl BimApp {
             Tool::Door | Tool::Window => {
                 let door = matches!(self.tool, Tool::Door);
                 let cat = if door { "door" } else { "window" };
-                let p = centred_opening(m, v, self.typed(cat, json!({"at": point(round(v.mm(at))), "level": level})), door);
+                let p = self.opening_params(m, v, level, at, door);
                 self.run(cat, p);
             }
             Tool::Room => {
@@ -3917,8 +3926,8 @@ impl BimApp {
             // the wall's ends.
             Tool::Door | Tool::Window => {
                 let door = matches!(self.tool, Tool::Door);
-                let params = self.typed(if door { "door" } else { "window" }, json!({"at": point(round(v.mm(q))), "level": level}));
-                if let Ok(e) = opening_of(m, &centred_opening(m, v, params, door), door) {
+                let params = self.opening_params(m, v, level, q, door);
+                if let Ok(e) = opening_of(m, &params, door) {
                     sketched(&e);
                     if let Element::Door(o) | Element::Window(o) = &e {
                         for (at, text, _) in opening_dimensions(p, m, v, o) {
