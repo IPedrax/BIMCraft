@@ -130,6 +130,12 @@ fn left(d: &mut Drawing, text: &str, at: P2, height: f64) {
     d.text(text, (x + font::width(text, h) / 2.0, y), h, INK);
 }
 
+/// Keep lettering at its usual height, or shrink it to its title-block cell's width, mm.
+fn fitted_height(text: &str, height: f64, width: f64) -> f64 {
+    let taken = f64::from(font::width(text, (height * DENSITY) as f32)) / DENSITY;
+    if taken > width { height * width / taken } else { height }
+}
+
 /// Draw standard folding marks (marcas de dobramento) as specified in NBR 17067.
 fn draw_folding_marks(d: &mut Drawing, paper: P2, size: &str, margins: crate::standards::SheetMargins) {
     let s = crate::model::paper_name(size);
@@ -185,12 +191,19 @@ fn title_block(d: &mut Drawing, m: &Model, id: impl Key, paper: P2, views: &[&Vi
     d.line(&rect(P2(x0, y0), P2(x1, y1)), Pen::BORDER, INK, true);
     d.line(&[P2(x0, y0 + 26.0), P2(x1, y0 + 26.0)], Pen::PROJECTION, INK, false);
     d.line(&[P2(x1 - 50.0, y0), P2(x1 - 50.0, y0 + 26.0)], Pen::PROJECTION, INK, false);
-    left(d, project, P2(x0 + 4.0, y0 + 33.0), 5.0);
-    left(d, &sheet.name, P2(x0 + 4.0, y0 + 17.0), 3.5);
-    left(d, &scale_note(views, m.language, m.units), P2(x0 + 4.0, y0 + 7.0), 2.0);
-    let number = (7.0 * DENSITY) as f32;
+    // Measure the capitals that are drawn, including expansions such as ß to SS.
+    let (project, name, scale, number) = (
+        project.to_uppercase(),
+        sheet.name.to_uppercase(),
+        scale_note(views, m.language, m.units).to_uppercase(),
+        sheet.number.to_uppercase(),
+    );
+    left(d, &project, P2(x0 + 4.0, y0 + 33.0), fitted_height(&project, 5.0, width - 8.0));
+    left(d, &name, P2(x0 + 4.0, y0 + 17.0), fitted_height(&name, 3.5, width - 58.0));
+    left(d, &scale, P2(x0 + 4.0, y0 + 7.0), fitted_height(&scale, 2.0, width - 58.0));
+    let number_height = (fitted_height(&number, 7.0, 42.0) * DENSITY) as f32;
     let at = d.view.px(P2(x1 - 25.0, y0 + 13.0));
-    d.text(&sheet.number, at, number, INK);
+    d.text(&number, at, number_height, INK);
 
     if margins.folding_marks {
         draw_folding_marks(d, paper, &sheet.size, margins);

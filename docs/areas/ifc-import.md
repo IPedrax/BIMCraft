@@ -33,6 +33,10 @@ rest that BIMCraft builds:
   pole) and one that won't triangulate leave the whole B-rep out, saying which.
 - **B-spline curves** (`IfcBSplineCurveWithKnots`, rational or not) as 12 points a knot span, the control points of a curve
   of degree 1, wherever a curve is read: profiles, directrices, edges. One whose knots don't fit its control points is none.
+- **Reinforcing bars** (`IfcReinforcingBar`): a bar of one radius whose body is a disk swept along a polyline, a disk behind
+  an `IfcMappedItem`, or a circle extruded straight, each piece starting where the last ended, is one line. Disks of several
+  radii, disks that do not meet end to end, and a body of several separate bars make no one line: the bar is left out, and
+  the import's `skipped` messages say so.
 
 An item builds at most `shapes::MAX_FACES` (a family mesh's `MAX_TRIANGLES`) faces; past them it builds none. A curved face
 takes at most `MAX_ROUND` points round it and `MAX_INSIDE` inside. Why an item built nothing, or less than it holds, is
@@ -82,6 +86,20 @@ class where it hasn't ([families](families.md)); a class is never forced into an
   own would also need its place in Visibility/Graphics, Object Styles, the schedules' `OWN` table, the Family Editor's list, the
   discipline tabs, `lenient` and the translations; worth doing when BIMCraft has tools for those systems, not as an import's
   side effect.
+
+## Authored wall location and attachments
+
+BIMCraft exports a `BIMCraft_Wall` property set on each wall. `Location` names its native location line; the IFC Axis
+representation lies on that line. `AttachTop` and `AttachBase`, when present, are the GlobalIds of the roof or floor the
+wall follows. Reopening keeps those choices and the drawn endpoints, without extending them to nearby walls. A recognized
+location with no attachment property means unattached, so geometric roof inference does not add a link.
+
+Walls without a recognized location still come in from the body's centre line and retain the existing join and roof
+inference. A missing axis, or a layer usage that reverses it, also keeps the generic centre-line reconstruction. Attachment
+targets must have come in as roofs or floors; missing or other-kind targets are ignored. The axis is read through the file's
+placements and length units, so the metadata does not introduce a second coordinate system. Other native wall constraints
+(such as height and top offsets) continue to be inferred from geometry; this set does not preserve all native parameters.
+The native project schema and file format are unchanged.
 
 ## Georeference
 

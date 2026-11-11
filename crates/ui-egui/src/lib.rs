@@ -816,6 +816,8 @@ pub struct BimApp {
     /// The family and type the Component tool places, as picked, and how far it's turned, degrees.
     component: Option<(String, String)>,
     component_angle: f64,
+    /// Hinge hand for this run of the Door tool. Facing follows the pointer.
+    door_flip_hand: bool,
     /// The Properties palette's folded groups.
     collapsed: BTreeSet<&'static str>,
     /// Where views show, last frame.
@@ -1444,6 +1446,7 @@ impl BimApp {
             new_schedule: None,
             component: None,
             component_angle: 0.0,
+            door_flip_hand: false,
             collapsed: BTreeSet::new(),
             view_rect: Rect::ZERO,
             pane: Rect::ZERO,
@@ -2021,6 +2024,13 @@ impl BimApp {
         if pressed(Modifiers::NONE, Key::Delete) {
             self.delete();
         }
+        // consume_key also matches Alt/Shift and key repeats. Only an unmodified downstroke
+        // changes a door, so holding Space cannot fill the Undo history.
+        let plain_space =
+            |e: &Event| matches!(e, Event::Key { key: Key::Space, pressed: true, repeat: false, modifiers: Modifiers::NONE, .. });
+        if matches!(self.tool, Tool::Door | Tool::Modify) && ctx.input(|i| i.events.iter().any(plain_space)) && self.door_space() {
+            pressed(Modifiers::NONE, Key::Space);
+        }
         if self.tool == Tool::Modify && pressed(Modifiers::NONE, Key::Space) {
             self.flip();
         }
@@ -2574,6 +2584,7 @@ impl BimApp {
             self.measured = None;
         }
         self.snap_once = None;
+        self.door_flip_hand = false;
         self.tool = tool;
         // Floor sketches its outline at once, as Revit's does (Walls' Outline puts the walls' in the sketch).
         if self.tool == Tool::Floor
@@ -2676,6 +2687,32 @@ impl BimApp {
             &[id] if matches!(self.session.model.elements.get(id), Some(Element::Floor(_))) => Some(id),
             _ => None,
         }
+    }
+
+    /// While placing a swinging door Space changes only its pending hand. With one selected,
+    /// step through the four Opens tiles in order with the same instance edit as a tile click.
+    fn door_space(&mut self) -> bool {
+        let m = &self.session.model;
+        match self.tool {
+            Tool::Door if self.plan_level().is_some() => {
+                let (family, ty) = self.opening_pick("door");
+                if !ty.as_deref().is_some_and(|t| m.single_swing_door(family.as_deref(), t)) {
+                    return false;
+                }
+                self.door_flip_hand = !self.door_flip_hand;
+            }
+            Tool::Modify if self.sketch.is_none() => {
+                let &[id] = self.selection.as_slice() else { return false };
+                let Some(Element::Door(o)) = m.elements.get(id) else { return false };
+                if !m.single_swing_door(o.family.as_deref(), &o.type_name) {
+                    return false;
+                }
+                // Hand alternates every step; facing changes when hand wraps back to as placed.
+                self.run("modify", json!({"id": id, "flip_hand": !o.flip_hand, "flip_facing": o.flip_facing ^ o.flip_hand}));
+            }
+            _ => return false,
+        }
+        true
     }
 
     /// The selected walls turned round about their location lines: Revit's flip arrows, or Space.
