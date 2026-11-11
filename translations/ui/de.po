@@ -216,7 +216,7 @@ msgstr ""
 msgid "API key:"
 msgstr ""
 
-#: crates/core/src/sheet.rs:330
+#: crates/core/src/sheet.rs:429
 msgid "AS INDICATED"
 msgstr ""
 
@@ -505,7 +505,7 @@ msgstr "Luftauslass (AT): ein Fühler an der Stelle auf dem Dach; Leertaste dreh
 msgid "Air Terminals"
 msgstr "Luftauslässe"
 
-#: crates/core/src/commands.rs:1193
+#: crates/core/src/commands.rs:1194
 #: crates/ui-egui/src/editor.rs:960
 #: crates/ui-egui/src/lib.rs:376
 #: crates/ui-egui/src/sketch.rs:709
@@ -1179,7 +1179,7 @@ msgstr "Berechneter Wert…"
 msgid "Came in: {}"
 msgstr "Eingelesen: {}"
 
-#: crates/core/src/commands.rs:1775
+#: crates/core/src/commands.rs:1776
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:4064
 #: crates/ui-egui/src/properties.rs:266
@@ -2041,7 +2041,7 @@ msgstr "Kompakt"
 msgid "Comparison"
 msgstr "Vergleich"
 
-#: crates/core/src/commands.rs:1153
+#: crates/core/src/commands.rs:1154
 msgid "Component"
 msgstr "Bauteil"
 
@@ -2155,7 +2155,7 @@ msgstr "{} Zeilen kopiert, tabgetrennt."
 msgid "Copper"
 msgstr "Kupfer"
 
-#: crates/core/src/commands.rs:1223
+#: crates/core/src/commands.rs:1224
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4793
 #: crates/ui-egui/src/lib.rs:4843
@@ -2558,7 +2558,7 @@ msgstr "Abgebrochen"
 msgid "Demolition"
 msgstr "Abbruch"
 
-#: crates/core/src/commands.rs:9975
+#: crates/core/src/commands.rs:9976
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -2704,7 +2704,7 @@ msgstr "Bemaßungstext"
 msgid "Dimension Text Placement:"
 msgstr "Platzierung des Bemaßungstexts:"
 
-#: crates/core/src/commands.rs:1205
+#: crates/core/src/commands.rs:1206
 msgid "Dimension Value"
 msgstr "Bemaßungswert"
 
@@ -3080,7 +3080,7 @@ msgstr "Elektroeinstellungen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektroeinstellungen: die Spannungen, Verteilungssysteme und Leitungstypen, auf die sich Stromkreise und Verteiler beziehen; Querschnitte in mm²"
 
-#: crates/core/src/commands.rs:2173
+#: crates/core/src/commands.rs:2174
 msgid "Elements"
 msgstr "Elemente"
 
@@ -3375,7 +3375,7 @@ msgstr "Gefüllter Bereich (FR): in dieser Ansicht eine Fläche skizzieren, die 
 msgid "Filled region"
 msgstr "Gefüllter Bereich"
 
-#: crates/core/src/commands.rs:1292
+#: crates/core/src/commands.rs:1293
 msgid "Fillet Arc"
 msgstr "Bogen abrunden"
 
@@ -4832,7 +4832,7 @@ msgstr "Volumenkörpergeschosse (MF): ein Boden auf jedem Geschoss, das die ausg
 msgid "Massing"
 msgstr "Massenmodellierung"
 
-#: crates/core/src/commands.rs:1185
+#: crates/core/src/commands.rs:1186
 msgid "Match Properties"
 msgstr "Eigenschaften übertragen"
 
@@ -4893,7 +4893,7 @@ msgstr "Maximum"
 msgid "Maximum Riser Height"
 msgstr "Maximale Steigungshöhe"
 
-#: crates/core/src/commands.rs:1885
+#: crates/core/src/commands.rs:1886
 msgid "Measure"
 msgstr "Messen"
 
@@ -5048,7 +5048,7 @@ msgstr "Wand bearbeiten"
 msgid "Mounting Height"
 msgstr "Montagehöhe"
 
-#: crates/core/src/commands.rs:1215
+#: crates/core/src/commands.rs:1216
 msgid "Move"
 msgstr "Verschieben"
 
@@ -7099,7 +7099,7 @@ msgstr "Raumtrennlinie: Linien, die Räume wie Wände begrenzen, um einen offene
 msgid "Rose"
 msgstr "Rosa"
 
-#: crates/core/src/commands.rs:1230
+#: crates/core/src/commands.rs:1231
 msgid "Rotate"
 msgstr "Drehen"
 
@@ -7119,11 +7119,11 @@ msgstr "Rund"
 msgid "Runs the plugin's command"
 msgstr ""
 
-#: crates/core/src/sheet.rs:319
+#: crates/core/src/sheet.rs:418
 msgid "SCALE"
 msgstr "MASSSTAB"
 
-#: crates/core/src/sheet.rs:321
+#: crates/core/src/sheet.rs:420
 msgid "SCALE AS INDICATED"
 msgstr "MASSSTAB WIE ANGEGEBEN"
 
@@ -7223,7 +7223,7 @@ msgstr "Maßstab: das Papier, das diese Ansicht darstellt, 1 : n des Modells; Be
 msgid "Scan"
 msgstr "Scan"
 
-#: crates/core/src/commands.rs:1679
+#: crates/core/src/commands.rs:1680
 msgid "Schedule"
 msgstr "Tabelle"
 
@@ -7861,7 +7861,7 @@ msgstr "Spline durch Punkte: die Punkte anklicken, durch die sie verläuft; Ente
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Spline: die Kontrollpunkte anklicken; Enter schließt ab"
 
-#: crates/core/src/commands.rs:1272
+#: crates/core/src/commands.rs:1273
 msgid "Split"
 msgstr "Teilen"
 
@@ -8834,7 +8834,7 @@ msgstr "Einzelnes Element kürzen/verlängern"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Einzelnes Element kürzen/verlängern: die Ziellinie wählen, dann die zu ändernde Linie auf dem zu behaltenden Teil"
 
-#: crates/core/src/commands.rs:1246
+#: crates/core/src/commands.rs:1247
 #: crates/ui-egui/src/sketch.rs:712
 #: crates/ui-egui/src/sketch.rs:964
 msgid "Trim/Extend to Corner"
@@ -9022,7 +9022,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Ausrichtung entsperren"
 
-#: crates/core/src/commands.rs:10116
+#: crates/core/src/commands.rs:10117
 msgid "Unnamed"
 msgstr "Unbenannt"
 
