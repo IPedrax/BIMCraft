@@ -3,7 +3,7 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nLanguage: cs\nLast-Translator: Smatli\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
 
-#: crates/core/src/sheet.rs:330
+#: crates/core/src/sheet.rs:458
 msgid "AS INDICATED"
 msgstr ""
 
@@ -40,7 +40,7 @@ msgstr "Cihla"
 msgid "Brick 225 x 75"
 msgstr "Cihla 225 x 75"
 
-#: crates/core/src/commands.rs:4259
+#: crates/core/src/commands.rs:4262
 msgid "Camera"
 msgstr "Kamera"
 
@@ -88,7 +88,7 @@ msgstr "Betonová tvárnice"
 msgid "Copper"
 msgstr "Měď"
 
-#: crates/core/src/commands.rs:1223
+#: crates/core/src/commands.rs:1226
 msgid "Copy"
 msgstr "Kopie"
 
@@ -116,7 +116,7 @@ msgstr "Čerchovaná"
 msgid "Data Outlet"
 msgstr "Datová zásuvka"
 
-#: crates/core/src/commands.rs:9975
+#: crates/core/src/commands.rs:9978
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -192,8 +192,8 @@ msgstr "Elektroinstalace – osvětlení"
 msgid "Electrical Power"
 msgstr "Elektroinstalace – napájení"
 
-#: crates/core/src/commands.rs:9759
-#: crates/core/src/commands.rs:12347
+#: crates/core/src/commands.rs:9762
+#: crates/core/src/commands.rs:12356
 msgid "Elevation"
 msgstr "Pohled"
 
@@ -310,7 +310,7 @@ msgstr "Šířka nohy"
 msgid "Length"
 msgstr "Délka"
 
-#: crates/core/src/commands.rs:6477
+#: crates/core/src/commands.rs:6480
 #: crates/core/src/model.rs:3166
 msgid "Level"
 msgstr "Podlaží"
@@ -335,7 +335,7 @@ msgstr "Označení"
 msgid "Masking"
 msgstr "Maskovací"
 
-#: crates/core/src/commands.rs:7738
+#: crates/core/src/commands.rs:7741
 msgid "Mass"
 msgstr "Objem"
 
@@ -423,7 +423,7 @@ msgstr "Omítka"
 msgid "Porcelain"
 msgstr "Porcelán"
 
-#: crates/core/src/commands.rs:2945
+#: crates/core/src/commands.rs:2948
 msgid "Project"
 msgstr "Projekt"
 
@@ -451,7 +451,7 @@ msgstr "Počet stupňů"
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
-#: crates/core/src/commands.rs:7963
+#: crates/core/src/commands.rs:7966
 msgid "Room"
 msgstr "Místnost"
 
@@ -467,11 +467,11 @@ msgstr ""
 msgid "Room Schedule"
 msgstr "Výkaz místností"
 
-#: crates/core/src/sheet.rs:319
+#: crates/core/src/sheet.rs:447
 msgid "SCALE"
 msgstr "MĚŘÍTKO"
 
-#: crates/core/src/sheet.rs:321
+#: crates/core/src/sheet.rs:449
 msgid "SCALE AS INDICATED"
 msgstr "MĚŘÍTKO DLE VÝKRESŮ"
 
@@ -487,8 +487,8 @@ msgstr "Potěr"
 msgid "Seat Height"
 msgstr "Výška sedáku"
 
-#: crates/core/src/commands.rs:9736
-#: crates/core/src/commands.rs:12346
+#: crates/core/src/commands.rs:9739
+#: crates/core/src/commands.rs:12355
 msgid "Section"
 msgstr "Řez"
 
@@ -592,7 +592,7 @@ msgstr "Dlažba 300"
 msgid "Timber"
 msgstr "Dřevo"
 
-#: crates/core/src/sheet.rs:258
+#: crates/core/src/sheet.rs:386
 msgid "Total"
 msgstr "Celkem"
 
@@ -612,7 +612,7 @@ msgstr "NAHORU"
 msgid "Unbounded Height"
 msgstr "Neohraničená výška"
 
-#: crates/core/src/commands.rs:10116
+#: crates/core/src/commands.rs:10119
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
