@@ -3,7 +3,7 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nLanguage: it\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
 
-#: crates/core/src/sheet.rs:291
+#: crates/core/src/sheet.rs:304
 msgid "AS INDICATED"
 msgstr ""
 
@@ -40,7 +40,7 @@ msgstr "Mattone"
 msgid "Brick 225 x 75"
 msgstr "Mattone 225 x 75"
 
-#: crates/core/src/commands.rs:4242
+#: crates/core/src/commands.rs:4282
 msgid "Camera"
 msgstr ""
 
@@ -56,7 +56,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Plafoniera"
 
-#: crates/core/src/render.rs:3052
+#: crates/core/src/render.rs:3064
 msgid "Ceiling Plan"
 msgstr "Pianta controsoffitti"
 
@@ -88,7 +88,7 @@ msgstr "Blocco in calcestruzzo"
 msgid "Copper"
 msgstr "Rame"
 
-#: crates/core/src/commands.rs:1220
+#: crates/core/src/commands.rs:1223
 msgid "Copy"
 msgstr "Copia"
 
@@ -100,7 +100,7 @@ msgstr "Numero"
 msgid "Crosshatch"
 msgstr "Tratteggio incrociato"
 
-#: crates/core/src/render.rs:3644
+#: crates/core/src/render.rs:3655
 msgid "DN"
 msgstr "GIÙ"
 
@@ -116,7 +116,7 @@ msgstr "Tratto punto"
 msgid "Data Outlet"
 msgstr "Presa dati"
 
-#: crates/core/src/commands.rs:10022
+#: crates/core/src/commands.rs:10100
 msgid "Dependent"
 msgstr "Dipendente"
 
@@ -192,8 +192,8 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:9806
-#: crates/core/src/commands.rs:12371
+#: crates/core/src/commands.rs:9884
+#: crates/core/src/commands.rs:12449
 msgid "Elevation"
 msgstr "Prospetto"
 
@@ -246,7 +246,7 @@ msgid "Gate Valve"
 msgstr "Saracinesca"
 
 #: crates/core/src/family.rs:2205
-#: crates/core/src/view3d.rs:1002
+#: crates/core/src/view3d.rs:1004
 msgid "Glass"
 msgstr "Vetro"
 
@@ -286,7 +286,7 @@ msgstr "Orizzontale"
 msgid "Inspection Box"
 msgstr "Pozzetto di ispezione"
 
-#: crates/core/src/import.rs:1364
+#: crates/core/src/import.rs:1438
 msgid "Insulation"
 msgstr "Isolante"
 
@@ -310,7 +310,7 @@ msgstr "Larghezza gamba"
 msgid "Length"
 msgstr "Lunghezza"
 
-#: crates/core/src/commands.rs:6555
+#: crates/core/src/commands.rs:6602
 #: crates/core/src/model.rs:3165
 msgid "Level"
 msgstr "Piano"
@@ -335,7 +335,7 @@ msgstr "ID"
 msgid "Masking"
 msgstr "Mascheramento"
 
-#: crates/core/src/commands.rs:7814
+#: crates/core/src/commands.rs:7863
 msgid "Mass"
 msgstr "Volume"
 
@@ -347,7 +347,7 @@ msgstr ""
 msgid "Medium Lines"
 msgstr "Linee medie"
 
-#: crates/core/src/import.rs:1367
+#: crates/core/src/import.rs:1441
 msgid "Membrane"
 msgstr "Membrana"
 
@@ -359,7 +359,7 @@ msgstr "Metallo"
 msgid "Mounting Height"
 msgstr "Altezza di installazione"
 
-#: crates/core/src/render.rs:2883
+#: crates/core/src/render.rs:2895
 msgid "NOT ENCLOSED"
 msgstr "NON CHIUSA"
 
@@ -371,7 +371,7 @@ msgstr "Nome"
 msgid "New Construction"
 msgstr "Nuova costruzione"
 
-#: crates/core/src/schedule.rs:1191
+#: crates/core/src/schedule.rs:1205
 msgid "No"
 msgstr "No"
 
@@ -423,11 +423,11 @@ msgstr "Intonaco"
 msgid "Porcelain"
 msgstr "Porcellana"
 
-#: crates/core/src/commands.rs:2929
+#: crates/core/src/commands.rs:2968
 msgid "Project"
 msgstr "Progetto"
 
-#: crates/core/src/render.rs:2883
+#: crates/core/src/render.rs:2895
 msgid "REDUNDANT"
 msgstr ""
 
@@ -451,7 +451,7 @@ msgstr "Alzate"
 msgid "Roof tiles"
 msgstr "Tegole"
 
-#: crates/core/src/commands.rs:8039
+#: crates/core/src/commands.rs:8088
 msgid "Room"
 msgstr "Zona"
 
@@ -467,11 +467,11 @@ msgstr ""
 msgid "Room Schedule"
 msgstr "Abaco zone"
 
-#: crates/core/src/sheet.rs:280
+#: crates/core/src/sheet.rs:293
 msgid "SCALE"
 msgstr "SCALA"
 
-#: crates/core/src/sheet.rs:282
+#: crates/core/src/sheet.rs:295
 msgid "SCALE AS INDICATED"
 msgstr "SCALA COME INDICATO"
 
@@ -487,8 +487,8 @@ msgstr "Massetto"
 msgid "Seat Height"
 msgstr "Altezza seduta"
 
-#: crates/core/src/commands.rs:9783
-#: crates/core/src/commands.rs:12370
+#: crates/core/src/commands.rs:9861
+#: crates/core/src/commands.rs:12448
 msgid "Section"
 msgstr "Sezione"
 
@@ -592,7 +592,7 @@ msgstr "Piastrella 300"
 msgid "Timber"
 msgstr "Legno"
 
-#: crates/core/src/sheet.rs:219
+#: crates/core/src/sheet.rs:232
 msgid "Total"
 msgstr "Totale"
 
@@ -604,7 +604,7 @@ msgstr "Pedata"
 msgid "Type"
 msgstr "Tipo"
 
-#: crates/core/src/render.rs:3644
+#: crates/core/src/render.rs:3655
 msgid "UP"
 msgstr "SU"
 
@@ -612,7 +612,7 @@ msgstr "SU"
 msgid "Unbounded Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:10163
+#: crates/core/src/commands.rs:10241
 msgid "Unnamed"
 msgstr "Senza nome"
 
@@ -672,7 +672,7 @@ msgstr "Abaco finestre"
 msgid "Worktop"
 msgstr "Piano di lavoro cucina"
 
-#: crates/core/src/schedule.rs:1191
+#: crates/core/src/schedule.rs:1205
 msgid "Yes"
 msgstr "Sì"
 
