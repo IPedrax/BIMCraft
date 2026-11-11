@@ -2451,7 +2451,7 @@ msgstr "Đã phá dỡ"
 msgid "Demolition"
 msgstr "Phá dỡ"
 
-#: crates/core/src/commands.rs:9897
+#: crates/core/src/commands.rs:9906
 msgid "Dependent"
 msgstr "Phụ thuộc"
 
@@ -2947,7 +2947,7 @@ msgstr "Cài đặt điện"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Cài đặt điện: các điện áp, hệ thống phân phối và loại dây mà mạch điện và tủ điện tham chiếu; tiết diện tính bằng mm²"
 
-#: crates/core/src/commands.rs:2168
+#: crates/core/src/commands.rs:2170
 msgid "Elements"
 msgstr "Cấu kiện"
 
@@ -8663,7 +8663,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:10038
+#: crates/core/src/commands.rs:10047
 msgid "Unnamed"
 msgstr "Chưa đặt tên"
 

@@ -2008,9 +2008,11 @@ other_files(
     other(
         "dr_check",
         "Check Residual-Current Protection",
-        "{circuits: [{name, points: [{place, kind, rating?, height?, outdoor?}], residual?, it_continuity?}], building?: residential|other} \
+        "{circuits: [{name, points: [{place, kind, rating?, height?, outdoor?}], residual?, it_continuity?}], building?: residential|other, standard?} \
          which circuits NBR 5410:2004 asks additional protection by a high-sensitivity residual-current device (DR, 30 mA at most) \
-         for. A circuit's `points` are what it serves: `place` is bath (a place with a bathtub or a shower), external, kitchen (or \
+         for. The rules are data (`data/dr-check.json`, one rule set for each standard, every rule naming its source): `standard` \
+         names the set, `NBR 5410:2004` the default and only one so far, and the answer gives `standard`, `standard_source` and, \
+         for each circuit, the `sources` of its `reasons`. A circuit's `points` are what it serves: `place` is bath (a place with a bathtub or a shower), external, kitchen (or \
          pantry-kitchen), laundry, service (service area), garage, wet (another wet internal area) or dry; `kind` is outlet, lighting or \
          fixed (another point of use); `rating` an outlet's rated current in A (32 A at most is covered; unknown, it is taken as covered), \
          `height` a light's in mm (in a dwelling a light 2500 mm up or more in the wet rooms is left out), `outdoor` an internal outlet \
@@ -5942,7 +5944,10 @@ fn dr_check(_: &mut Session, p: &Value) -> R {
     if !p.is_object() {
         return Err(bad(c, "params must be an object"));
     }
-    only(c, p, &["circuits", "building"])?;
+    only(c, p, &["circuits", "building", "standard"])?;
+    let names: Vec<&str> = dr::rule_sets().iter().map(|r| r.standard.as_str()).collect();
+    let standard = choice(c, p, "standard", &names, dr::DEFAULT)?;
+    let set = dr::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/dr-check.json")))?;
     let residential = choice(c, p, "building", &["residential", "other"], "residential")? == "residential";
     let list = match p.get("circuits") {
         Some(Value::Array(a)) if !a.is_empty() && a.len() <= 5000 => a,
@@ -5995,7 +6000,7 @@ fn dr_check(_: &mut Session, p: &Value) -> R {
             Some(_) => Some(within(c, item, "residual", 0.0, 0.0, 1.0e6).map_err(at)?),
         };
         let circuit = dr::Circuit { points, residual, it_continuity: flag(c, item, "it_continuity").map_err(at)? };
-        let v = dr::check(&circuit, residential);
+        let v = set.check(&circuit, residential);
         if v.ok == Some(false) {
             missing.push(name.clone());
         }
@@ -6004,16 +6009,20 @@ fn dr_check(_: &mut Session, p: &Value) -> R {
             "required": v.required,
             "exempt": v.exempt,
             "reasons": v.reasons,
+            "sources": v.sources,
             "residual_ma": residual,
             "ok": v.ok,
         }));
     }
     Ok(json!({
+        "standard": set.standard,
+        "standard_source": set.source,
         "circuits": out,
         "missing": missing,
-        "max_residual_ma": dr::MAX_RESIDUAL,
+        "max_residual_ma": set.max_residual_ma,
+        "max_outlet_a": set.max_outlet_a,
         "building": if residential { "residential" } else { "other" },
-        "not_covered": "the further rules for the volumes of a bathroom and for swimming pools, and the other protections against shock, which the device does not replace",
+        "not_covered": set.not_covered,
     }))
 }
 
