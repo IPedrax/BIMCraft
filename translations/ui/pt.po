@@ -2774,7 +2774,7 @@ msgstr "Quadro de distribuição"
 
 #: crates/ui-egui/src/properties.rs:1938
 msgid "Distribution System"
-msgstr ""
+msgstr "Sistema de distribuição"
 
 #: crates/ui-egui/src/electrical.rs:21
 msgid "Distribution Systems"
@@ -4801,7 +4801,7 @@ msgstr "Espaçamento principal Y"
 #: crates/ui-egui/src/properties.rs:1944
 #: crates/ui-egui/src/properties.rs:1951
 msgid "Mains"
-msgstr ""
+msgstr "Disjuntor geral"
 
 #: crates/ui-egui/src/titleblocks.rs:221
 #: crates/ui-egui/src/titleblocks.rs:484
@@ -4913,7 +4913,7 @@ msgstr "Materiais: a biblioteca do projeto, a cor de cada material em 3D e os pa
 #: crates/ui-egui/src/properties.rs:1956
 #: crates/ui-egui/src/properties.rs:1964
 msgid "Max #1 Pole Breakers"
-msgstr ""
+msgstr "Máx. de disjuntores unipolares"
 
 #: crates/ui-egui/src/properties.rs:350
 msgid "Max Ridge Height"
@@ -8130,11 +8130,11 @@ msgstr "Unidades sugeridas:"
 
 #: crates/ui-egui/src/properties.rs:1976
 msgid "Supplies"
-msgstr ""
+msgstr "Alimenta"
 
 #: crates/ui-egui/src/properties.rs:1969
 msgid "Supply From"
-msgstr ""
+msgstr "Alimentado por"
 
 #: crates/ui-egui/src/properties.rs:2471
 msgid "Surface Pattern"
@@ -10477,13 +10477,13 @@ msgstr "{}: `{}` não é um número"
 #: crates/ui-egui/src/properties.rs:1951
 #: crates/ui-egui/src/properties.rs:2038
 msgid "{}: `{}` is not a number of amperes"
-msgstr ""
+msgstr "{}: `{}` não é um número de ampères"
 
 #: crates/ui-egui/src/properties.rs:1964
 #: crates/ui-egui/src/properties.rs:2023
 #: crates/ui-egui/src/properties.rs:2049
 msgid "{}: `{}` is not a whole number"
-msgstr ""
+msgstr "{}: `{}` não é um número inteiro"
 
 #: crates/ui-egui/src/editor.rs:223
 msgid "{}: `{}` isn't a number"
