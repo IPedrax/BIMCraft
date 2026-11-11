@@ -2414,6 +2414,22 @@ impl Family {
             Some(Val::Number(t)) => *t,
             _ => DEFAULT_WALL,
         };
+        self.free_voids(values, |shape| shape.max[1] > -wall / 2.0 && shape.min[1] < wall / 2.0)
+    }
+
+    /// The voids a component of it placed on a face cuts its host with (Place on Face), sized by `values`, in its own axes:
+    /// each void that cuts none of its forms, by their boxes, as [`Family::host_voids`] finds a door's. Whether one reaches
+    /// its host is for where it stands to say: one that doesn't cuts nothing. Revit's face-based families always cut their
+    /// host with such voids, whatever `cut_with_voids_when_loaded` says (that is the project's voids cutting it).
+    pub fn face_voids(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Vec<[P3; 3]>>, String> {
+        if self.adaptive.is_some() || !self.forms.iter().any(|f| f.void) {
+            return Ok(Vec::new());
+        }
+        self.free_voids(values, |_| true)
+    }
+
+    /// The voids that cut none of the solid forms listed before them, by their boxes, and that `reach` takes.
+    fn free_voids(&self, values: &BTreeMap<String, Val>, reach: impl Fn(&Shape) -> bool) -> Result<Vec<Vec<[P3; 3]>>, String> {
         let mut read = HashMap::new();
         let (mut solids, mut out): (Vec<Shape>, Vec<Vec<[P3; 3]>>) = (Vec::new(), Vec::new());
         for i in 0..self.forms.len() {
@@ -2423,7 +2439,7 @@ impl Family {
             let Some(shape) = Shape::of(i, self.forms[i].void, &piece.tris) else { continue };
             if !shape.void {
                 solids.push(shape);
-            } else if !solids.iter().any(|solid| shape.over(solid)) && shape.max[1] > -wall / 2.0 && shape.min[1] < wall / 2.0 {
+            } else if !solids.iter().any(|solid| shape.over(solid)) && reach(&shape) {
                 out.push(piece.tris);
             }
         }

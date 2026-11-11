@@ -306,6 +306,14 @@ impl Solid {
         }
     }
 
+    /// Its triangles, as the scene would take them.
+    #[cfg(test)]
+    pub(crate) fn triangles(&self) -> Vec<[P3; 3]> {
+        let mut made = Vec::new();
+        self.tris(&mut made);
+        made.into_iter().map(|t| t.p).collect()
+    }
+
     #[cfg(test)]
     pub(crate) fn color(&self) -> Rgb {
         match self {
@@ -725,6 +733,8 @@ fn solids_cancellable(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Optio
     if cancelled() {
         return None;
     }
+    // What is on each host's faces is found through it: made once, not by every job.
+    m.lookup();
     let elements: Vec<_> = m.elements.iter().map(|(&id, e)| (id, e)).collect();
     let index = walls::Index::new(m);
     if cancelled() {
@@ -935,20 +945,28 @@ pub(crate) fn lazy_points(m: &Model, id: Id, e: &Element, components: &mut crate
 }
 
 /// Wall `id`'s solids: its prisms, round the rectangles of its doors and windows; where the family of one cuts it with voids
-/// of its own ([`walls::host_voids_in`]), each prism they reach as triangles less them, a mesh a section cuts in its own
-/// shape. Should cutting fail (too many faces), every opening cuts its rectangle.
+/// of its own ([`walls::host_voids_in`]), or a component on one of its faces does ([`Model::hosted_voids`]), each prism they
+/// reach as triangles less them, a mesh a section cuts in its own shape. Should cutting fail (too many faces), every opening
+/// cuts its rectangle.
 fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
     let prism =
         |p: walls::Prism| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve };
     let voids = walls::host_voids_in(m, id, index);
+    let prisms = walls::prisms_in(m, id, true, index).into_iter().map(prism).collect();
     if voids.is_empty() {
-        return walls::prisms_in(m, id, true, index).into_iter().map(prism).collect();
+        return prisms;
     }
+    cut_by_voids(id, WALL, prisms, &voids).unwrap_or_else(|| walls::prisms_rect_in(m, id, index).into_iter().map(prism).collect())
+}
+
+/// `solids`, element `owner`'s, less `voids`: each solid a void's box reaches as its triangles less them, a mesh in `color`
+/// a section cuts in its own shape; the others as they are, so a host nothing reaches is drawn as before. None where cutting
+/// fails (too many faces).
+fn cut_by_voids(owner: Id, color: Rgb, solids: Vec<Solid>, voids: &[Vec<[P3; 3]>]) -> Option<Vec<Solid>> {
     let boxes: Vec<(P3, P3)> = voids.iter().map(|v| tri_box(v)).collect();
     let mut meter = crate::csg::Meter::default();
     let mut out = Vec::new();
-    for p in walls::prisms_in(m, id, true, index) {
-        let solid = prism(p);
+    for solid in solids {
         let mut made = Vec::new();
         solid.tris(&mut made);
         let mut tris: Vec<[P3; 3]> = made.into_iter().map(|t| t.p).collect();
@@ -959,16 +977,136 @@ fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
             continue;
         }
         for k in reached {
-            match crate::csg::subtract(&tris, &voids[k], &mut meter) {
-                Ok(left) => tris = left,
-                Err(_) => return walls::prisms_rect_in(m, id, index).into_iter().map(prism).collect(),
-            }
+            tris = crate::csg::subtract(&tris, &voids[k], &mut meter).ok()?;
         }
         if !tris.is_empty() {
-            out.push(Solid::Mesh { owner: id, color: WALL, tex: 0, caps: 0, round: false, cut: true, tris });
+            out.push(Solid::Mesh { owner, color, tex: 0, caps: 0, round: false, cut: true, tris });
+        }
+    }
+    Some(out)
+}
+
+/// A floor's, a ceiling's or a roof's solids, as its type and shape make them, before anything placed on its faces cuts it.
+fn slab_solids(m: &Model, id: Id, e: &Element) -> Vec<Solid> {
+    let mut out = Vec::new();
+    match e {
+        // Under a variable layer, a shaped floor's underside is level: each piece a prism from it up to its top.
+        Element::Floor(f) if m.floor_under(f).is_some() => {
+            for (ring, bottom, top) in m.floor_prisms(f) {
+                let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+                for piece in m.less_shafts(&bottom.lift(&ring), rise).0 {
+                    out.push(Solid::Prism { owner: id, color: SLAB, tex: 0, ring: piece, bottom, top, curve: None });
+                }
+            }
+        }
+        Element::Floor(f) => {
+            for (face, rise) in m.floor_slabs(f) {
+                slabs(&mut out, m, id, SLAB, face, rise);
+            }
+        }
+        Element::Ceiling(c) => {
+            for (face, rise) in m.ceiling_slabs(c) {
+                slabs(&mut out, m, id, CEILING, face, rise);
+            }
+        }
+        // Under a variable layer, a shaped roof's underside is level: each piece a prism from it up to its top.
+        Element::Roof(r) if m.roof_under(r).is_some() => {
+            for (ring, bottom, top) in m.roof_prisms(r) {
+                let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
+                for piece in m.less_shafts(&bottom.lift(&ring), rise).0 {
+                    out.push(Solid::Prism { owner: id, color: ROOF, tex: 0, ring: piece, bottom, top, curve: None });
+                }
+            }
+        }
+        Element::Roof(r) => {
+            for (face, rise) in m.roof_slabs(r) {
+                slabs(&mut out, m, id, ROOF, face, rise);
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+/// Floor, ceiling or roof `id`'s solids: [`slab_solids`], less the voids of the components on its faces that reach it
+/// ([`Model::hosted_voids`]); should cutting fail, uncut.
+fn host_slab_solids(m: &Model, id: Id, e: &Element) -> Vec<Solid> {
+    let solids = slab_solids(m, id, e);
+    let voids: Vec<Vec<[P3; 3]>> = m.hosted_voids(id).into_iter().flat_map(|(_, v)| v).collect();
+    if voids.is_empty() {
+        return solids;
+    }
+    let color = match e {
+        Element::Ceiling(_) => CEILING,
+        Element::Roof(_) => ROOF,
+        _ => SLAB,
+    };
+    cut_by_voids(id, color, solids.clone(), &voids).unwrap_or(solids)
+}
+
+/// The voids of what is on host `id`'s faces that reach it, as [`Model::hosted_voids`] gives them: those whose boxes reach
+/// into one of its solids' before anything cuts it (a wall's prisms, a floor's, a ceiling's or a roof's slabs), so an IFC
+/// opening is written for a hole there is.
+pub(crate) fn reaching_voids(m: &Model, id: Id) -> Vec<(Id, Vec<Vec<[P3; 3]>>)> {
+    let found = m.hosted_voids(id);
+    if found.is_empty() {
+        return found;
+    }
+    let solids = match m.elements.get(id) {
+        Some(Element::Wall(_)) => walls::prisms(m, id, true)
+            .into_iter()
+            .map(|p| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve })
+            .collect(),
+        Some(e) => slab_solids(m, id, e),
+        None => Vec::new(),
+    };
+    let boxes: Vec<(P3, P3)> = solids
+        .iter()
+        .map(|s| {
+            let mut made = Vec::new();
+            s.tris(&mut made);
+            tri_box(&made.into_iter().map(|t| t.p).collect::<Vec<_>>())
+        })
+        .collect();
+    found
+        .into_iter()
+        .filter_map(|(c, voids)| {
+            let voids: Vec<_> = voids
+                .into_iter()
+                .filter(|v| {
+                    let (lo, hi) = tri_box(v);
+                    boxes.iter().any(|(a, b)| (0..3).all(|k| lo[k] < b[k] && a[k] < hi[k]))
+                })
+                .collect();
+            (!voids.is_empty()).then_some((c, voids))
+        })
+        .collect()
+}
+
+/// The rings in plan where the level plane at height `z_at(centre)` cuts each void that a component on a face of `host`
+/// cuts it with: `z_at` given the middle of the void's box in plan, so a plan finds the hole just inside the face it sees.
+pub(crate) fn host_holes(m: &Model, host: Id, z_at: impl Fn(P2) -> Option<f64>) -> Vec<Vec<P2>> {
+    let mut out = Vec::new();
+    for (_, voids) in m.hosted_voids(host) {
+        for v in voids {
+            let (lo, hi) = tri_box(&v);
+            let Some(z) = z_at(P2((lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0)) else { continue };
+            if z <= lo[2] || z >= hi[2] {
+                continue;
+            }
+            out.extend(level_slice(&v, z).into_iter().filter(|r| r.len() >= 3));
         }
     }
     out
+}
+
+/// Where the level plane at height `z` cuts closed mesh `tris`, as rings in plan: [`slice`] of the mesh turned on its side,
+/// so its upright plane is the level one.
+pub(crate) fn level_slice(tris: &[[P3; 3]], z: f64) -> Vec<Vec<P2>> {
+    const FAR: f64 = 1.0e6;
+    let turned: Vec<[P3; 3]> = tris.iter().map(|t| t.map(|p| [p[0], p[2] - z, p[1]])).collect();
+    let rings = slice(&turned, P2(-FAR, 0.0), P2(1.0, 0.0), 2.0 * FAR).unwrap_or_default();
+    rings.into_iter().map(|r| r.into_iter().map(|q| P2(q.0 - FAR, q.1)).collect()).collect()
 }
 
 /// The corners of the box round `tris`.
@@ -993,25 +1131,7 @@ fn solids_in_with(
     for &(id, e) in elements {
         match e {
             Element::Wall(_) => out.extend(wall_solids(m, id, index)),
-            // Under a variable layer, a shaped floor's underside is level: each piece a prism from it up to its top.
-            Element::Floor(f) if m.floor_under(f).is_some() => {
-                for (ring, bottom, top) in m.floor_prisms(f) {
-                    let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
-                    for piece in m.less_shafts(&bottom.lift(&ring), rise).0 {
-                        out.push(Solid::Prism { owner: id, color: SLAB, tex: 0, ring: piece, bottom, top, curve: None });
-                    }
-                }
-            }
-            Element::Floor(f) => {
-                for (face, rise) in m.floor_slabs(f) {
-                    slabs(&mut out, m, id, SLAB, face, rise);
-                }
-            }
-            Element::Ceiling(c) => {
-                for (face, rise) in m.ceiling_slabs(c) {
-                    slabs(&mut out, m, id, CEILING, face, rise);
-                }
-            }
+            Element::Floor(_) | Element::Ceiling(_) | Element::Roof(_) => out.extend(host_slab_solids(m, id, e)),
             Element::Column(col) => {
                 out.push(slab(id, WALL, &m.column_outline(e), m.span(col.level, col.base_offset, col.top_level, col.height)))
             }
@@ -1112,20 +1232,6 @@ fn solids_in_with(
                 top,
                 curve: None,
             })),
-            // Under a variable layer, a shaped roof's underside is level: each piece a prism from it up to its top.
-            Element::Roof(r) if m.roof_under(r).is_some() => {
-                for (ring, bottom, top) in m.roof_prisms(r) {
-                    let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
-                    for piece in m.less_shafts(&bottom.lift(&ring), rise).0 {
-                        out.push(Solid::Prism { owner: id, color: ROOF, tex: 0, ring: piece, bottom, top, curve: None });
-                    }
-                }
-            }
-            Element::Roof(r) => {
-                for (face, rise) in m.roof_slabs(r) {
-                    slabs(&mut out, m, id, ROOF, face, rise);
-                }
-            }
             // Of a family: each form in its material's colour, cut where a section's line passes through it. Else a door's leaf or a window's glass: a 50 mm panel in the middle of the wall, square to it.
             Element::Door(o) | Element::Window(o) => {
                 if let Some(family) = o.family.as_ref() {
@@ -1359,6 +1465,36 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
                 if !inside.is_empty() {
                     let (color, tex) = (colour(l, color), over(skin(m, &l.material), tex));
                     out.push(Solid::Mesh { owner, color, tex, tris: inside, caps: 0, round: false, cut });
+                }
+            }
+            out
+        }
+        // A floor's, a ceiling's or a roof's piece the voids of what is on its faces cut: each layer the piece within that layer
+        // of its uncut solids, in its material. Should cutting fail, the piece in one.
+        Solid::Mesh { owner, color, tex, tris, caps, round, cut }
+            if let Some(e @ (Element::Floor(_) | Element::Ceiling(_) | Element::Roof(_))) = m.elements.get(owner) =>
+        {
+            let (lo, hi) = tri_box(&tris);
+            let mut meter = crate::csg::Meter::default();
+            let mut out = Vec::new();
+            for layer in slab_solids(m, owner, e).into_iter().flat_map(|whole| layered(m, whole)) {
+                let mut made = Vec::new();
+                layer.tris(&mut made);
+                let Some(first) = made.first() else { continue };
+                let (layer_color, layer_tex) = (first.color, first.tex);
+                let slab: Vec<[P3; 3]> = made.into_iter().map(|t| t.p).collect();
+                let (a, b) = tri_box(&slab);
+                if !(0..3).all(|c| a[c] < hi[c] && lo[c] < b[c]) {
+                    continue;
+                }
+                let inside = crate::csg::subtract(&tris, &slab, &mut meter).and_then(|outside| {
+                    if outside.is_empty() { Ok(tris.clone()) } else { crate::csg::subtract(&tris, &outside, &mut meter) }
+                });
+                let Ok(inside) = inside else {
+                    return vec![Solid::Mesh { owner, color, tex, tris, caps, round, cut }];
+                };
+                if !inside.is_empty() {
+                    out.push(Solid::Mesh { owner, color: layer_color, tex: layer_tex, tris: inside, caps: 0, round: false, cut });
                 }
             }
             out

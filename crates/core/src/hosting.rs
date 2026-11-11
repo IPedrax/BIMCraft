@@ -21,6 +21,9 @@ use crate::walls::{self, Axis};
 /// How far apart two numbers of a derived place may be and still be the same, mm.
 const SAME: f64 = 1e-9;
 
+/// A triangle in the model's axes.
+type P3Tri = [P3; 3];
+
 /// A reference plane of the project, as Revit's Reference Plane: the line it was drawn as, `start` to `end` (mm, the
 /// model's axes), and `up`, its other direction; a plane drawn in plan is upright (`up` the vertical). Its own axes, as a
 /// family's planes have them: x along the line, y `up` made square to it, z (its normal) `x × y`; its origin is `start`, so
@@ -515,6 +518,55 @@ impl Model {
                     }
                     _ => None,
                 },
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The voids face-hosted component `c` cuts its host with (T16b), in the model's axes: its family's voids that cut none
+    /// of its own forms ([`crate::family::Family::face_voids`]), mirrored if it is and placed where it stands. None for a
+    /// component on a level or a plane, of a family with none, or one that doesn't build. Whether each reaches its host is
+    /// for the host's solids to find: one that doesn't cuts nothing.
+    pub fn face_voids(&self, c: &Component) -> Vec<Vec<P3Tri>> {
+        if !matches!(c.host, Some(Hosted { host: HostRef::Face { .. }, .. })) || self.placed_by_points(c) {
+            return Vec::new();
+        }
+        let Some(f) = self.families.get(&c.family) else { return Vec::new() };
+        if !f.forms.iter().any(|x| x.void) {
+            return Vec::new();
+        }
+        let Ok(voids) = f.values(&c.type_name, &c.params).and_then(|v| f.face_voids(&v)) else { return Vec::new() };
+        let placed = self.component_placement(c);
+        let place = |p: P3| placed.place(if c.mirrored { [p[0], -p[1], p[2]] } else { p });
+        voids
+            .into_iter()
+            .map(|v| {
+                v.iter()
+                    .map(|[a, b, t]| if c.mirrored { [place(*a), place(*t), place(*b)] } else { [place(*a), place(*b), place(*t)] })
+                    .collect()
+            })
+            .filter(|v: &Vec<P3Tri>| v.iter().flatten().all(|p| p.iter().all(|x| x.is_finite())))
+            .collect()
+    }
+
+    /// The components on a face of wall, floor, ceiling or roof `host` whose voids cut it, each with its voids
+    /// ([`Model::face_voids`]); none for another kind of element, or one nothing with voids is placed on.
+    pub fn hosted_voids(&self, host: Id) -> Vec<(Id, Vec<Vec<P3Tri>>)> {
+        let (Some(e), Some(g)) = (self.elements.get(host), self.elements.guid(host)) else { return Vec::new() };
+        if !matches!(e.category(), "wall" | "floor" | "ceiling" | "roof") {
+            return Vec::new();
+        }
+        let lookup = self.lookup();
+        let mut ids: Vec<Id> = lookup.referrers(&g).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        ids.into_iter()
+            .filter_map(|id| match self.elements.get(id) {
+                Some(Element::Component(c)) if matches!(c.host, Some(Hosted { host: HostRef::Face { element, .. }, .. }) if element == g) =>
+                {
+                    let voids = self.face_voids(c);
+                    (!voids.is_empty()).then_some((id, voids))
+                }
                 _ => None,
             })
             .collect()

@@ -45,6 +45,8 @@ mod electrical_tests;
 pub mod engine;
 #[cfg(test)]
 mod face_host_tests;
+#[cfg(test)]
+mod face_void_tests;
 pub mod falls;
 pub mod family;
 #[cfg(test)]
