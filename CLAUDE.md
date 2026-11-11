@@ -104,12 +104,12 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 - `hydrant.rs`: the `hydrant_size` command, hydrants and hose reels by IT 22/2025 (Tabelas 1 to 3, Hazen-Williams).
 - `loads.rs`: the `load_points` command, a dwelling's lighting and outlets by room, by rule sets in `data/load-points.json` (NBR 5410 item 9.5.2 first).
 - `dr.rs`: the `dr_check` command, which circuits NBR 5410 asks a 30 mA residual-current device for.
-- `demand.rs`: the `demand` command, an installation's demand and service category by a utility's own standard (CPFL, Enel, Celesc).
+- `demand.rs`: the `demand` command, an installation's demand and service category by a utility's own standard (CPFL's GED 13; Enel's ET 1569 and Celesc's N-321.0001 by installed load).
 - `dps.rs`: the `dps_check` command, surge protection of a power line by NBR 5410 (when, where, connection, currents).
 - `water.rs`, `reservoir.rs`: `water_size`, cold water by NBR 5626, and `reservoir_size`, its reservation. `plumbing.rs`: the fixtures library (`data/plumbing.json`) they and `drain_size` read.
 - `storm.rs`: the `storm_size` command, storm drains by NBR 10844 (Manning, the downpipe abacuses).
 - `drainage.rs`: the `drain_size` and `vent_size` commands, sanitary drains and vents by NBR 8160's tables.
-- `network.rs`: the `network` command, the pipe network worked out from pipes' ends and pipe connectors, never stored.
+- `network.rs`: the `network` command, the pipe network worked out from pipes' ends and pipe connectors, never stored (nodes, edges, open ends, warnings).
 - `conduit.rs`: the `conduit_fill` command, a conduit's fill by NBR 5410 (makers' catalogues in `conduit/tables.rs`).
 - `panel_schedule.rs`, `sheet/panel.rs`: panel schedules, drawn on sheets.
 - `electrical.rs`: the electrical settings: voltages, distribution systems, wire types, panels and circuits (the `voltage`, `distribution_system`, `wire_type`, `panel` and `circuit` commands; starter set in `data/electrical.json`; [structure and MEP](docs/areas/structure-and-mep.md)).
