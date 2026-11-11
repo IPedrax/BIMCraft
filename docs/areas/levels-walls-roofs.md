@@ -115,6 +115,9 @@ A roof by footprint is the straight skeleton of its outline and its `courtyards`
 counter-clockwise, the courtyards clockwise, the roof to the left of every edge): each edge moves in at speed 1, a gable's at
 0, and its slope rises from it, reaching the roof's base `overhang` in from its eaves; a courtyard's edges number on after
 the outline's, and every ring keeps its numbers whichever way round it runs, so `gables` stay put through a mirror.
+At creation, an explicit `boundary` or `sketch` is the wall line: `overhang` (0 by default) moves the eaves outward and
+into each courtyard, preserving edge numbers and sketch slopes. A ring that collapses is refused. The stored boundary
+and Edit Boundary are the resulting eaves, so finishing an unchanged sketch does not apply the overhang again.
 `Roof::slopes` (file format 15) gives each edge a slope of its own, in degrees, numbered as `gables` are: 0 is the roof's `slope`,
 and an empty list, every edge. `Model::roof_faces` then moves an edge in at the run over the rise of its slope, scaled so the
 shallowest moves at 1 (every edge at one slope still moves at exactly 1), so edges of different slopes reach the same height
