@@ -49,6 +49,13 @@ enum Backend {
 }
 
 impl Backend {
+    fn desktop_context(&mut self) -> Result<Value, String> {
+        match self {
+            Backend::Own(_) => Err(bimcraft_core::bridge::NO_CONTEXT.into()),
+            Backend::Window(w) => w.ask(json!({"op": "context"})),
+        }
+    }
+
     fn execute(&mut self, command: &str, params: &Value) -> Result<Value, String> {
         match self {
             Backend::Own(s) => s.execute(command, params),
@@ -56,8 +63,14 @@ impl Backend {
         }
     }
 
-    /// A script's results, as `{results: [...]}`.
-    fn script(&mut self, text: &str, atomic: bool) -> Result<Value, String> {
+    /// A script's results, as `{results: [...]}`; a dry run's report as [`Session::script_dry_run`] gives it.
+    fn script(&mut self, text: &str, atomic: bool, dry_run: bool) -> Result<Value, String> {
+        if dry_run {
+            return match self {
+                Backend::Own(s) => s.script_dry_run(text),
+                Backend::Window(w) => w.ask(json!({"op": "script", "text": text, "dry_run": true})),
+            };
+        }
         let results = match self {
             Backend::Own(s) if atomic => s.script_atomic(text).map(Value::from),
             Backend::Own(s) => s.script(text).map(Value::from),
@@ -113,21 +126,25 @@ fn tool_error(e: &str) -> Value {
 
 fn tools() -> Value {
     json!([
+        {"name": "desktop_context", "description": "Read the connected desktop's current selection (element IDs, GUIDs and categories) and active view (kind, name, ID and GUID). Empty selection is []; Home has no active view (null). Built-in views without model elements have null IDs/GUIDs. Read-only; requires mcp --connect and never changes selection or navigation.",
+         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}, "annotations": {"readOnlyHint": true}},
         {"name": "execute", "description": "Run any BIMCraft command with JSON params, e.g. wall {points: [[0,0],[5000,0]]}, door {at: [2500, 0]}, \
             room {point: [x, y], name}, modify {id, …fields}, delete {ids}, undo. list_commands shows them all with their parameters.",
          "inputSchema": {"type": "object", "properties": {"command": {"type": "string"}, "params": {"type": "object"}}, "required": ["command"]}},
         {"name": "script", "description": "Run several commands, one per line: `wall {\"points\": [[0,0],[4000,0]]}`. Stops at the first failing line and names it; the lines before it stay done, each its own undo step. \
-            With `atomic`, all or nothing: a failing line takes back the lines before it, and a script that goes through is one undo step.",
-         "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "atomic": {"type": "boolean"}}, "required": ["text"]}},
+            With `atomic`, all or nothing: a failing line takes back the lines before it, and a script that goes through is one undo step. \
+            With `dry_run`, tried all or nothing and taken back: the reply lists what it would make, change and remove (`made`, `changed`, `removed`, by id and category), \
+            whether it would change anything else (`other_changes`) and the model's `warnings` after it, and nothing of it stays. A dry run refuses a line that names a file or would save, undo, redo or replace the project, and a `favorite` other than `list`, which would use the user's favorites file.",
+         "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}, "atomic": {"type": "boolean"}, "dry_run": {"type": "boolean"}}, "required": ["text"]}},
         {"name": "list_commands", "description": "Every command with its id, label, Revit-style shortcut, parameters and the menu it sits in (`menu`, null when the interface has no place for it). `filter` matches part of an id, label or shortcut.",
          "inputSchema": {"type": "object", "properties": {"filter": {"type": "string"}}}},
         {"name": "inspect_model", "description": "The model at a glance: levels, element counts, types, warnings (such as rooms no longer enclosed) and undo history.",
          "inputSchema": {"type": "object", "properties": {}}},
-        {"name": "query_elements", "description": "Elements with their six-digit `id` and their `guid` (never changes), fields and derived values (wall length and height, room area_m2 and enclosed, door position `at`); what an element points at (level, host, view) is a GUID, and commands take an element by id or GUID. Filter by category and level; page with limit and offset.",
-         "inputSchema": {"type": "object", "properties": {"category": {"type": "string"}, "level": {"type": ["string", "integer"]}, "limit": {"type": "integer"}, "offset": {"type": "integer"}}}},
+        {"name": "query_elements", "description": "Elements with their six-digit `id` and their `guid` (never changes), fields and derived values (wall length and height, room area_m2 and enclosed, door position `at`); what an element points at (level, host, view) is a GUID, and commands take an element by id or GUID. Filter by category and level, and by a field of the category's schedule (`Type`, `Mark`, a project parameter) with the value it holds: text in any case, a number (millimetres, m² for an area), true or false, or \"\" for none; `field` without `value` finds those holding any. Page with limit and offset.",
+         "inputSchema": {"type": "object", "properties": {"category": {"type": "string"}, "level": {"type": ["string", "integer"]}, "field": {"type": "string"}, "value": {"type": ["string", "number", "boolean"]}, "limit": {"type": "integer"}, "offset": {"type": "integer"}}}},
         {"name": "schedule", "description": "A schedule's columns, rows and totals, and the fields it could show (`available`). `category` alone reads that category's own: rooms (number, name, level, area, perimeter), doors, windows, walls, floors, levels; ceilings, roofs, columns, components, stairs, ramps and railings too. `name` and `category` make a new one; category `multicategory` lists the elements of several categories at once, as Revit's Multi-Category Schedule (`categories`: [\"walls\", \"doors\"…], none for every built one), with the fields they share: Category, Family, Type, Level, Count, Width, Height, Length, Thickness, Area, Material. `fields` (names, or {name, formula, kind, heading, total}: a calculated one such as Area * 120, lengths in mm and areas in m²), `filters` ([{field, op: equals, greater, contains, has-value…, value}]), `sort` ([field or {field, descending}]) and `grouped` change it, each list replacing the last.",
          "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}, "category": {"type": "string"}, "categories": {"type": "array", "items": {"type": "string"}}, "fields": {"type": "array"}, "filters": {"type": "array"}, "sort": {"type": "array"}, "grouped": {"type": "boolean"}}}},
-        {"name": "render", "description": "Look at the model as a PNG: a level's floor plan (walls and columns with poché, doors with swings, windows, stairs, ramps and railings, roofs, room tags with areas, grids, dimensions, door and window tags), or with ceiling true its reflected ceiling plan, a section or elevation by name (the cut in poché, what's beyond, levels and grids), a sheet by number (its title block and the views on it), or with view \"{3D}\" the 3D view, seen from azimuth degrees round from east (counter-clockwise) and elevation degrees up; by default from the south-east, 30° up. With `family`, that family alone instead of the model: its `type` (the first by default) in a model of its own — in a wall `wall_thickness` mm thick (200) if it's a door's or a window's, on a floor of its own footprint if it isn't — mode \"3d\" (default), \"plan\" (what its symbols draw) or \"elevation\" (front-on); the project is touched by none of it and keeps no elements and no undo steps from it. `path` writes a .png there instead of sending it back.",
+        {"name": "render", "description": "Look at the model as a PNG: a level's floor plan (walls and columns with poché, doors with swings, windows, stairs, ramps and railings, roofs, room tags with areas, grids, dimensions, door and window tags), or with ceiling true its reflected ceiling plan, a section or elevation by name (the cut in poché, what's beyond, levels and grids), a sheet by number (its title block, unless it has none, and the views on it), or with view \"{3D}\" the 3D view, seen from azimuth degrees round from east (counter-clockwise) and elevation degrees up; by default from the south-east, 30° up. With `family`, that family alone instead of the model: its `type` (the first by default) in a model of its own — in a wall `wall_thickness` mm thick (200) if it's a door's or a window's, on a floor of its own footprint if it isn't — mode \"3d\" (default), \"plan\" (what its symbols draw) or \"elevation\" (front-on); the project is touched by none of it and keeps no elements and no undo steps from it. `path` writes a .png there instead of sending it back.",
          "inputSchema": {"type": "object", "properties": {"view": {"type": ["string", "integer"]}, "family": {"type": "string"}, "type": {"type": "string"}, "mode": {"type": "string", "enum": ["3d", "plan", "elevation"]}, "wall_thickness": {"type": "number"}, "ceiling": {"type": "boolean"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "azimuth": {"type": "number"}, "elevation": {"type": "number"}, "path": {"type": "string"}}}},
         {"name": "new_model", "description": "Start an empty project with Level 1 and Level 2.",
          "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}}},
@@ -229,7 +246,7 @@ impl Server {
                 let mut instructions = match self.backend {
                     Backend::Own(_) => INSTRUCTIONS.to_string(),
                     Backend::Window(_) => format!(
-                        "{INSTRUCTIONS} You are attached to the window the user has open: what you make is in their project, to see and to undo. new_model and open are not available; the user starts and opens projects in the window."
+                        "{INSTRUCTIONS} You are attached to the window the user has open: what you make is in their project, to see and to undo. new_model and open are not available; the user starts and opens projects in the window. Use desktop_context to read their current selection and active view; request it again after they select or navigate."
                     ),
                 };
                 if self.reads_only() {
@@ -272,6 +289,12 @@ impl Server {
         }
         let b = &mut self.backend;
         let result = match name {
+            "desktop_context" => {
+                if args.as_object().is_some_and(|o| !o.is_empty()) {
+                    return Err((INVALID_PARAMS, "`desktop_context` takes no arguments".into()));
+                }
+                b.desktop_context()
+            }
             "execute" => {
                 let params = args.get("params").cloned().unwrap_or_else(|| json!({}));
                 b.execute(args["command"].as_str().unwrap_or_default(), &params)
@@ -283,7 +306,12 @@ impl Server {
                     Some(Value::Bool(b)) => *b,
                     Some(v) => return Err((INVALID_PARAMS, format!("`atomic` is true or false, not {v}"))),
                 };
-                b.script(text, atomic)
+                let dry_run = match args.get("dry_run") {
+                    None | Some(Value::Null) => false,
+                    Some(Value::Bool(b)) => *b,
+                    Some(v) => return Err((INVALID_PARAMS, format!("`dry_run` is true or false, not {v}"))),
+                };
+                b.script(text, atomic, dry_run)
             }
             "list_commands" => {
                 let filter = args["filter"].as_str().map(str::to_ascii_lowercase).unwrap_or_default();
@@ -370,6 +398,18 @@ mod tests {
         let content = &r["result"]["content"][0];
         assert_ne!(r["result"]["isError"], json!(true), "{name} failed: {content}");
         if content["type"] == "text" { serde_json::from_str(content["text"].as_str().unwrap()).unwrap() } else { content.clone() }
+    }
+
+    #[test]
+    fn desktop_context_is_discoverable_and_headless_sessions_report_why_it_is_unavailable() {
+        let mut s = Server::new();
+        let list = call(&mut s, 1, "tools/list", json!({}));
+        assert!(list["result"]["tools"].as_array().unwrap().iter().any(|t| t["name"] == "desktop_context"));
+        let reply = call(&mut s, 2, "tools/call", json!({"name": "desktop_context", "arguments": {}}));
+        assert_eq!(reply["result"]["isError"], true);
+        assert_eq!(reply["result"]["content"][0]["text"], bimcraft_core::bridge::NO_CONTEXT);
+        let bad = call(&mut s, 3, "tools/call", json!({"name": "desktop_context", "arguments": {"selection": [100002]}}));
+        assert_eq!(bad["error"]["code"], INVALID_PARAMS);
     }
 
     #[test]
@@ -548,6 +588,17 @@ mod tests {
         tool(&mut s, "execute", json!({"command": "undo"}));
         assert_eq!(levels(&mut s), 2, "one undo takes back the whole script");
         let r = call(&mut s, 2, "tools/call", json!({"name": "script", "arguments": {"text": "inspect", "atomic": "yes"}}));
+        assert_eq!(r["error"]["code"], -32602);
+    }
+
+    #[test]
+    fn a_dry_run_through_mcp_says_what_a_script_would_do_and_keeps_nothing() {
+        let mut s = Server::new();
+        let levels = |s: &mut Server| tool(s, "inspect_model", json!({}))["counts"]["level"].clone();
+        let r = tool(&mut s, "script", json!({"text": "level {\"elevation\": 6000}", "dry_run": true}));
+        assert_eq!((r["dry_run"].as_bool(), r["made"][0]["category"].as_str()), (Some(true), Some("level")), "{r}");
+        assert_eq!(levels(&mut s), 2, "nothing of it stays");
+        let r = call(&mut s, 2, "tools/call", json!({"name": "script", "arguments": {"text": "inspect", "dry_run": "yes"}}));
         assert_eq!(r["error"]["code"], -32602);
     }
 

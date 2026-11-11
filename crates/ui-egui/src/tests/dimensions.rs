@@ -239,3 +239,34 @@ wall {"points": [[500, 6000], [500, 9000]]}"#;
     press(&mut h, "Unlock alignment");
     assert!(ids(&h, "dimension").is_empty());
 }
+
+#[test]
+fn aligned_dimensions_pick_structural_column_faces_and_centre_lines() {
+    // Two columns 3000 x 3000, 5000 apart east and 2000 north: big enough to click a line away from its ends.
+    let script = format!(
+        "{BOX}\ntype {{\"category\": \"structuralcolumn\", \"name\": \"Big\", \"width\": 3000, \"depth\": 3000}}\n\
+         structural_column {{\"at\": [3000, 3000], \"type\": \"Big\"}}\n\
+         structural_column {{\"at\": [8000, 5000], \"type\": \"Big\"}}"
+    );
+    let mut h = app(&script);
+    press(&mut h, "Annotate");
+    press(&mut h, "Aligned");
+    // Their east and west faces: 2000.
+    click(&mut h, P2(4500.0, 3750.0));
+    click(&mut h, P2(6500.0, 5750.0));
+    click(&mut h, P2(5500.0, 4000.0));
+    let dims = ids(&h, "dimension");
+    assert_eq!((dims.len(), field(&h, dims[0], "values")), (1, json!([2000.0])));
+    // Their across lines: 5000.
+    click(&mut h, P2(3000.0, 3750.0));
+    click(&mut h, P2(8000.0, 5750.0));
+    click(&mut h, P2(5500.0, 4000.0));
+    let dims = ids(&h, "dimension");
+    assert_eq!((dims.len(), field(&h, dims[1], "values")), (2, json!([5000.0])));
+    // Their centre lines along: 2000.
+    click(&mut h, P2(3750.0, 3000.0));
+    click(&mut h, P2(8750.0, 5000.0));
+    click(&mut h, P2(5500.0, 4000.0));
+    let dims = ids(&h, "dimension");
+    assert_eq!((dims.len(), field(&h, dims[2], "values")), (3, json!([2000.0])));
+}
