@@ -44,12 +44,12 @@ impl Family {
                 }
                 continue;
             }
-            if form.axis.is_some() {
+            if form.revolves() {
                 return None;
             }
-            let profile: Vec<P2> = match &form.circle {
-                Some(circle) => {
-                    let (x, y, r) = (num(&circle.centre[0])?, num(&circle.centre[1])?, num(&circle.radius)?);
+            let profile: Vec<P2> = match form.circle_ref() {
+                Some((centre, radius)) => {
+                    let (x, y, r) = (num(&centre[0])?, num(&centre[1])?, num(radius)?);
                     if r <= 0.0 {
                         return None;
                     }
@@ -57,10 +57,28 @@ impl Family {
                     vec![P2(x - r, y - r), P2(x + r, y - r), P2(x + r, y + r), P2(x - r, y + r)]
                 }
                 None => {
-                    if form.profile.len() < 3 || form.profile.len() > MAX_PROFILE {
+                    // A sketch of arcs or of several loops: every point its lines reach, an arc by its chords' box.
+                    let mut pts = Vec::new();
+                    for l in form.boundary() {
+                        let drawn = l.curve(&mut |e| num(e).ok_or_else(String::new)).ok()?;
+                        let square =
+                            |c: P2, r: f64| [P2(c.0 - r, c.1 - r), P2(c.0 + r, c.1 - r), P2(c.0 + r, c.1 + r), P2(c.0 - r, c.1 + r)];
+                        match &drawn.curve {
+                            crate::curves::Curve::Circle { centre, radius } => pts.extend(square(*centre, *radius)),
+                            crate::curves::Curve::Poly { points, arcs, .. } => {
+                                pts.extend(points.iter().copied());
+                                if let ([a, b], Some(turn)) = (points.as_slice(), arcs.first()) {
+                                    let ax = crate::walls::Axis::new(*a, *b, *turn);
+                                    pts.extend(ax.centre().zip(ax.radius()).map(|(c, r)| square(c, r)).into_iter().flatten());
+                                }
+                            }
+                            _ => return None,
+                        }
+                    }
+                    if pts.is_empty() || pts.len() > 4 * crate::family::sketch::MAX_SKETCH {
                         return None;
                     }
-                    form.profile.iter().map(|[x, y]| Some(P2(num(x)?, num(y)?))).collect::<Option<_>>()?
+                    pts
                 }
             };
             let (from, to) = (num(&form.from)?, num(&form.to)?);
@@ -99,17 +117,12 @@ mod tests {
         let ring = vec![[n(-100.0), n(-50.0)], [n(700.0), n(-30.0)], [n(800.0), n(400.0)], [n(-80.0), n(300.0)]];
         for plane in [Plane::Xy, Plane::Xz, Plane::Yz] {
             for circle in [None, Some(Circle { centre: [n(-20.0), n(17.0)], radius: n(80.0) })] {
-                let f = Family {
-                    forms: vec![Form {
-                        host: plane.host(),
-                        profile: ring.clone(),
-                        circle,
-                        from: n(-25.0),
-                        to: n(900.0),
-                        ..Default::default()
-                    }],
-                    ..Default::default()
-                };
+                let mut form = Form { host: plane.host(), from: n(-25.0), to: n(900.0), ..Default::default() };
+                match &circle {
+                    Some(c) => form.set_circle(c),
+                    None => form.set_corners(&ring),
+                }
+                let f = Family { forms: vec![form], ..Default::default() };
                 encloses(&f, &BTreeMap::new());
             }
         }
@@ -147,7 +160,7 @@ mod tests {
         unsupported.forms.extend(f.forms.clone());
         encloses(&unsupported, &BTreeMap::new());
         unsupported = f.clone();
-        unsupported.forms[0].axis = Some([[Expr::Number(0.0), Expr::Number(0.0)], [Expr::Number(0.0), Expr::Number(1.0)]]);
+        unsupported.forms[0].set_axis(Some(&[[Expr::Number(0.0), Expr::Number(0.0)], [Expr::Number(0.0), Expr::Number(1.0)]]));
         assert!(unsupported.conservative_bounds(&BTreeMap::new()).is_none());
         unsupported = f;
         unsupported.forms[0].to = Expr::Number(f64::NAN);

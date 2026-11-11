@@ -16,7 +16,7 @@ const BOX_FAMILY: &str = r#"family {"name": "Box", "category": "generic", "types
 const LINES: &str = r#""ref_lines": [{"start": [-1300, -1000, 0], "end": [-700, -1000, 0]}, {"start": [-1300, 0, 300], "end": [-700, 0, 1100], "host": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}}]"#;
 
 /// Family `name` (of `script`) open in its document, the views' pictures kept.
-fn open(script: &str, name: &str) -> (Harness<'static, BimApp>, Pictures) {
+pub(super) fn open(script: &str, name: &str) -> (Harness<'static, BimApp>, Pictures) {
     let mut s = Session::new();
     s.script(script).unwrap();
     let pictures = Pictures::default();
@@ -36,7 +36,7 @@ fn boxed() -> (Harness<'static, BimApp>, Pictures) {
 }
 
 /// The Project Browser's entry for `which` clicked: Ref. Level is there twice, the floor plan's first.
-fn view(h: &mut Harness<BimApp>, which: Option<Which>) {
+pub(super) fn view(h: &mut Harness<BimApp>, which: Option<Which>) {
     let (label, nth) = match which {
         None => ("{3D}", 0),
         Some(Which::Plan) => ("Ref. Level", 0),
@@ -52,7 +52,7 @@ fn view(h: &mut Harness<BimApp>, which: Option<Which>) {
     h.run();
 }
 
-fn editor<'a>(h: &'a Harness<'_, BimApp>) -> &'a crate::editor::FamilyEditor {
+pub(super) fn editor<'a>(h: &'a Harness<'_, BimApp>) -> &'a crate::editor::FamilyEditor {
     h.state().family_editor.as_ref().expect("a family open")
 }
 
@@ -97,7 +97,7 @@ fn green_trace(h: &Harness<BimApp>, pictures: &Pictures, p: [f64; 3], d: [f64; 3
 }
 
 /// A click at family point `p` in the view shown.
-fn click_family(h: &mut Harness<BimApp>, p: [f64; 3]) {
+pub(super) fn click_family(h: &mut Harness<BimApp>, p: [f64; 3]) {
     let at = editor(h).views.screen_of(p).expect("a view shown");
     click_at(h, at);
 }

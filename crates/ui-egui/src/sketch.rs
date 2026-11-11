@@ -37,6 +37,9 @@ pub enum Of {
     Region { view: Id, masking: bool },
     /// The element's outline and holes, redrawn.
     Edit(Id),
+    /// A family's form (F5, the family document's own sketch: `editor/sketch.rs`): an extrusion, or a revolve, solid or void;
+    /// `edit`, one it has already, redrawn.
+    Form { revolve: bool, void: bool, edit: bool },
 }
 
 /// A drag with Modify while sketching: a grip at a line's end, or a selection box from a pixel.
@@ -89,6 +92,30 @@ impl Sketch {
             Of::Region { masking: false, .. } => msg!("Create Filled Region Boundary"),
             Of::Region { masking: true, .. } => msg!("Create Masking Region Boundary"),
             Of::Edit(_) => "Edit Boundary",
+            Of::Form { revolve: false, void: false, edit: false } => msg!("Modify | Create Extrusion"),
+            Of::Form { revolve: true, void: false, edit: false } => msg!("Modify | Create Revolve"),
+            Of::Form { revolve: false, void: true, edit: false } => msg!("Modify | Create Void Extrusion"),
+            Of::Form { revolve: true, void: true, edit: false } => msg!("Modify | Create Void Revolve"),
+            Of::Form { revolve: false, edit: true, .. } => msg!("Modify | Edit Extrusion"),
+            Of::Form { revolve: true, edit: true, .. } => msg!("Modify | Edit Revolve"),
+        }
+    }
+
+    /// A sketch of a family's form, `of` saying which: `lines` to begin with, drawn in the family document's view (`plan`, the
+    /// project's, is no part of it).
+    pub(crate) fn of_form(of: Of, lines: Vec<SketchLine>) -> Sketch {
+        Sketch {
+            of,
+            seen: lines.clone(),
+            lines,
+            picked: BTreeSet::new(),
+            wrong: Vec::new(),
+            drag: None,
+            region: (String::new(), None),
+            styled: false,
+            plan: Sheet::View3D,
+            surface: None,
+            history: Vec::new(),
         }
     }
 
@@ -433,6 +460,8 @@ impl BimApp {
                 ("filled_region", json!({"view": view, "sketch": lines, "type": sk.region.0, "line_style": sk.region.1}))
             }
             Of::Edit(id) => ("edit_boundary", json!({"id": id, "sketch": lines})),
+            // A family's form is the family document's to finish (`editor/sketch.rs`), never the project's.
+            Of::Form { .. } => return,
         };
         // Solved, it may still be refused for what it makes (a shaft with a hole): the command says why.
         if let Some(made) = self.run(id, p) {

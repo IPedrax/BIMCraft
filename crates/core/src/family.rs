@@ -19,13 +19,16 @@ use crate::model::{MAX_COORD, MAX_TEXT};
 use crate::view3d::{P3, add, cross, mul};
 
 mod bounds;
+pub mod constraints;
 mod options;
 mod planes;
+pub mod sketch;
 mod validate;
 pub mod views;
 
 pub(crate) use validate::check_family_edits;
 
+pub use constraints::{DimRef, DimView, Extent, FamilyDimension, MAX_DIMENSIONS, Unsat};
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 
 pub use planes::{
@@ -755,18 +758,16 @@ pub struct Form {
     /// (Revit's Extrusion Start and End); a revolve turns in it. Ref. Level unless said.
     #[serde(default)]
     pub host: PlaneRef,
+    /// Its profile's lines and arcs, and a revolve's axis line ([`sketch`]): in place of a file of 23's `profile`,
+    /// `circle` and `axis`, which are read as such lines.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub profile: Vec<[Expr; 2]>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub circle: Option<Circle>,
+    pub sketch: Vec<sketch::FormLine>,
+    /// Its start and end along its plane's normal; a revolve's, the angles it turns from and to, right-handed from its
+    /// axis' first point toward its second, a full turn at most.
     #[serde(default)]
     pub from: Expr,
     #[serde(default)]
     pub to: Expr,
-    /// A revolve: the line in the sketch plane its profile turns about, right-handed from the axis'
-    /// first point toward its second; its `from` and `to` are angles, a full turn at most.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub axis: Option<[[Expr; 2]; 2]>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub void: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -795,6 +796,8 @@ struct FormIn {
     #[serde(default)]
     plane: Option<Plane>,
     #[serde(default)]
+    sketch: Vec<sketch::FormLine>,
+    #[serde(default)]
     profile: Vec<[Expr; 2]>,
     #[serde(default)]
     circle: Option<Circle>,
@@ -822,18 +825,36 @@ impl TryFrom<FormIn> for Form {
             (Some(host), None) => (host, f.from, f.to),
             (None, None) => (PlaneRef::default(), f.from, f.to),
             // Across x and z it swept along +y; Center (Front/Back)'s normal is -y.
-            (None, Some(Plane::Xz)) if f.axis.is_none() => (Plane::Xz.host(), f.to.negated(), f.from.negated()),
+            (None, Some(Plane::Xz)) if f.axis.is_none() && !f.sketch.iter().any(|l| l.axis) => {
+                (Plane::Xz.host(), f.to.negated(), f.from.negated())
+            }
             (None, Some(plane)) => (plane.host(), f.from, f.to),
         };
+        // The shorthands from before sketches add to the sketch what it doesn't have: its profile, its axis.
+        let mut lines = f.sketch;
+        let profile = usize::from(!f.profile.is_empty()) + usize::from(f.circle.is_some());
+        if profile > 1 || (profile == 1 && lines.iter().any(|l| !l.axis)) {
+            return Err("a form's profile is its `sketch`, its `profile` or its `circle`, one of them".into());
+        }
+        if !f.profile.is_empty() {
+            lines.splice(0..0, sketch::profile_lines(&f.profile));
+        }
+        if let Some(c) = &f.circle {
+            lines.insert(0, sketch::circle_line(c));
+        }
+        if let Some(a) = &f.axis {
+            if lines.iter().any(|l| l.axis) {
+                return Err("a form's axis is its `axis` or its sketch's axis line, one of them".into());
+            }
+            lines.push(sketch::axis_line(a));
+        }
         Ok(Form {
             id: f.id,
             guid: f.guid,
             host,
-            profile: f.profile,
-            circle: f.circle,
+            sketch: lines,
             from,
             to,
-            axis: f.axis,
             void: f.void,
             material: f.material,
             visible: f.visible,
@@ -871,6 +892,10 @@ pub struct Family {
     pub lines: Vec<RefLine>,
     #[serde(default)]
     pub forms: Vec<Form>,
+    /// Its dimensions (F7): between its planes and its extrusions' ends, labelled, locked and EQ, and the locks Align leaves;
+    /// what they hold is solved when a type is built (`constraints.rs`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dimensions: Vec<FamilyDimension>,
     /// What its plan draws besides its forms: lines, arcs, labels and dots of its own, in any category.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub symbols: Vec<Symbol>,
@@ -921,6 +946,7 @@ impl Default for Family {
             planes: datums(),
             lines: Vec::new(),
             forms: Vec::new(),
+            dimensions: Vec::new(),
             symbols: Vec::new(),
             operation: None,
             connectors: Vec::new(),
@@ -1053,7 +1079,7 @@ const MAX_DEPTH: usize = 64;
 const SEGMENTS: usize = 32;
 /// Degrees a symbol's arc turns between the corners it is drawn with.
 const ARC_STEP: f64 = 3.75;
-/// Corners one profile may have.
+/// Points a symbol's line may have, and corners a face read from a file is cut into ears with.
 pub const MAX_PROFILE: usize = 64;
 /// Formulas one may take from in a row: `A` from `B` from `C`…
 pub const MAX_CHAIN: usize = 16;
@@ -1641,12 +1667,8 @@ impl Family {
             }
         }
         for form in &mut self.forms {
-            form.profile.iter_mut().flatten().for_each(&mut expr);
-            if let Some(c) = &mut form.circle {
-                c.centre.iter_mut().chain([&mut c.radius]).for_each(&mut expr);
-            }
+            form.sketch.iter_mut().flat_map(sketch::FormLine::exprs_mut).for_each(&mut expr);
             [&mut form.from, &mut form.to].into_iter().for_each(&mut expr);
-            form.axis.iter_mut().flatten().flatten().for_each(&mut expr);
             form.visible.iter_mut().for_each(&mut expr);
             if form.material == old {
                 form.material = new.to_string();
@@ -1667,6 +1689,11 @@ impl Family {
             sym.visible.iter_mut().for_each(&mut expr);
         }
         self.room_calculation_point.iter_mut().flatten().for_each(&mut expr);
+        for d in &mut self.dimensions {
+            if d.label.as_deref() == Some(old) {
+                d.label = Some(new.to_string());
+            }
+        }
         for c in &mut self.connectors {
             [&mut c.voltage, &mut c.power_factor].into_iter().for_each(&mut expr);
             match &mut c.load_va {
@@ -1735,8 +1762,19 @@ impl Family {
         if self.category.hosted() {
             done.insert(WALL.to_string(), Val::Number(wall));
         }
+        let seeded = done.clone();
         for p in &self.parameters {
             self.resolve(&p.name, set, instance, &mut done, &mut Vec::new())?;
+        }
+        // A reporting parameter a dimension measures is what it measures, and the formulas that read it are worked out again
+        // over it; no label reads one (`check_dimensions`), so the dimensions come out the same.
+        let reported = self.reported(&done);
+        if !reported.is_empty() {
+            done = seeded;
+            done.extend(reported.into_iter().map(|(name, v)| (name, Val::Number(v))));
+            for p in &self.parameters {
+                self.resolve(&p.name, set, instance, &mut done, &mut Vec::new())?;
+            }
         }
         Ok(done)
     }
@@ -1844,6 +1882,7 @@ impl Family {
             m.check()?;
         }
         self.check_planes()?;
+        self.check_dimensions()?;
         if self.category.hosted() {
             for name in [WIDTH, HEIGHT] {
                 if !self.parameters.iter().any(|p| p.name == name && p.kind == Kind::Length && !p.reporting) {
@@ -1916,12 +1955,15 @@ impl Family {
         }
         for (i, form) in self.forms.iter().enumerate() {
             let who = format!("form {}", i + 1);
-            let ways = usize::from(!form.profile.is_empty()) + usize::from(form.circle.is_some()) + usize::from(!form.mesh.is_empty());
+            let ways = usize::from(form.boundary().next().is_some()) + usize::from(!form.mesh.is_empty());
             if ways != 1 {
-                return Err(format!("{who}: it takes a `profile`, a `circle` or a `mesh`, one of them"));
+                return Err(format!("{who}: it takes a `sketch` (or its `profile` or `circle`) or a `mesh`, one of them"));
             }
-            if form.axis.is_some() && !form.mesh.is_empty() {
-                return Err(format!("{who}: a `mesh` is as it is; an `axis` turns a `profile` or a `circle`"));
+            if form.revolves() && !form.mesh.is_empty() {
+                return Err(format!("{who}: a `mesh` is as it is; an `axis` turns a `sketch`, a `profile` or a `circle`"));
+            }
+            if form.sketch.len() > sketch::MAX_SKETCH {
+                return Err(format!("{who}: its sketch has {} lines, more than {}", form.sketch.len(), sketch::MAX_SKETCH));
             }
             if form.mesh.is_empty() {
                 self.frame(&form.host).map_err(|e| format!("{who}: its host: {e}"))?;
@@ -1929,15 +1971,7 @@ impl Family {
             if !self.parameters.iter().any(|p| p.name == form.material && p.kind == Kind::Material) {
                 material_ok(&who, &form.material)?;
             }
-            let circle = form.circle.iter().flat_map(|c| c.centre.iter().chain([&c.radius]));
-            let mut exprs = form
-                .profile
-                .iter()
-                .flatten()
-                .chain([&form.from, &form.to])
-                .chain(&form.visible)
-                .chain(circle)
-                .chain(form.axis.iter().flatten().flatten());
+            let mut exprs = form.sketch_exprs().chain([&form.from, &form.to]).chain(&form.visible);
             if exprs.any(|e| matches!(e, Expr::Formula(f) if long(f))) {
                 return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
             }
@@ -1991,12 +2025,17 @@ impl Family {
         self.check_connectors()?;
         // Each formula read once across the types; past what a family may build, refused.
         let (mut read, mut built, mut cuts) = (HashMap::new(), 0, csg::Meter::default());
+        let mut solving = constraints::Meter::default();
         for t in self.types.keys() {
             let pieces = self
                 .values(t, &BTreeMap::new())
                 .and_then(|v| {
                     self.marks(&v)?;
-                    self.build(&v, &mut read, &mut cuts)
+                    // Its dimensions solved for the type: what they hold built where they put it.
+                    match self.flexed_with(&v, &mut solving).map_err(|e| e.to_string())? {
+                        Cow::Borrowed(_) => self.build(&v, &mut read, &mut cuts),
+                        Cow::Owned(f) => f.build(&v, &mut HashMap::new(), &mut cuts),
+                    }
                 })
                 .map_err(|e| format!("type `{t}`: {e}"))?;
             built += pieces.iter().map(|p| p.tris.len()).sum::<usize>();
@@ -2186,7 +2225,8 @@ impl Family {
     }
 
     pub fn pieces_at(&self, values: &BTreeMap<String, Val>, placement: Option<&crate::adaptive::Placement>) -> Result<Vec<Piece>, String> {
-        let mut pieces = self.build(values, &mut HashMap::new(), &mut csg::Meter::default())?;
+        let flexed = self.flexed(values).map_err(|e| e.to_string())?;
+        let mut pieces = flexed.build(values, &mut HashMap::new(), &mut csg::Meter::default())?;
         if let Some(definition) = &self.adaptive {
             pieces.extend(definition.evaluate(values, placement.unwrap_or(&definition.preview)).pieces());
         }
@@ -2330,55 +2370,38 @@ impl Family {
         let piece = if !form.mesh.is_empty() {
             mesh(&form.mesh, material)?
         } else {
-            let ring: Vec<P2> = match &form.circle {
-                Some(c) => {
-                    let (x, y, r) = (num(&c.centre[0])?, num(&c.centre[1])?, num(&c.radius)?);
-                    if r <= 0.0 {
-                        return Err(format!("its circle's radius is {r}; it needs one above zero"));
-                    }
-                    (0..SEGMENTS)
-                        .map(|k| (k as f64 * std::f64::consts::TAU / SEGMENTS as f64).sin_cos())
-                        .map(|(s, c)| P2(x + r * c, y + r * s))
-                        .collect()
-                }
-                None if form.profile.len() > MAX_PROFILE => return Err(format!("its profile has more than {MAX_PROFILE} corners")),
-                None => form.profile.iter().map(|[a, b]| Ok(P2(num(a)?, num(b)?))).collect::<Result<_, String>>()?,
-            };
+            let regions = form.loops(&mut num)?;
             let (from, to) = (num(&form.from)?, num(&form.to)?);
-            if ring.len() < 3 || crate::geom::area(&ring).abs() < 1.0 {
-                return Err("its profile has no area: it needs three corners or more, or a circle".into());
-            }
             if to <= from {
-                let unit = if form.axis.is_some() { " degrees" } else { "" };
+                let unit = if form.revolves() { " degrees" } else { "" };
                 return Err(format!("sweeps nothing: from {from} to {to}{unit}"));
             }
-            let ring = if crate::geom::area(&ring) < 0.0 { ring.into_iter().rev().collect() } else { ring };
             let frame = self.frame(&form.host).map_err(|e| format!("its host: {e}"))?;
-            match &form.axis {
+            match form.axis_ends() {
                 Some([p, q]) => {
                     if to - from > 360.0 {
                         return Err(format!("turns more than all the way round: from {from} to {to} degrees, 360 at most"));
                     }
-                    let mut corner = |c: &'a [Expr; 2]| -> Result<P2, String> { Ok(P2(num(&c[0])?, num(&c[1])?)) };
-                    let axis = [corner(p)?, corner(q)?];
-                    let (tris, outline) = revolve(&ring, axis, (from, to), &frame)?;
+                    let axis = [P2(num(&p[0])?, num(&p[1])?), P2(num(&q[0])?, num(&q[1])?)];
+                    let (tris, outline) = revolve(&regions, axis, (from, to), &frame)?;
                     let (bottom, top) = heights(&tris);
                     Piece { caps: tris.len(), tris, outline, bottom, top, material, round: false }
                 }
                 None => {
-                    let (tris, caps) = sweep(&ring, from, to, &frame)?;
+                    let (tris, caps) = sweep(&regions, from, to, &frame)?;
                     let (bottom, top) = heights(&tris);
-                    // Seen from above: on a level plane, the profile where it lies; else the hull of what it sweeps.
-                    let outline = if frame.z[0].abs() < 1e-12 && frame.z[1].abs() < 1e-12 {
-                        let mut ring: Vec<P2> = ring.iter().map(|p| frame.point(*p, 0.0)).map(|q| P2(q[0], q[1])).collect();
-                        if crate::geom::area(&ring) < 0.0 {
-                            ring.reverse();
+                    // Seen from above: on a level plane, the profile where it lies (one loop); else the hull of what it sweeps.
+                    let outline = match regions.as_slice() {
+                        [one] if frame.z[0].abs() < 1e-12 && frame.z[1].abs() < 1e-12 => {
+                            let mut ring: Vec<P2> = one.outer.iter().map(|p| frame.point(*p, 0.0)).map(|q| P2(q[0], q[1])).collect();
+                            if crate::geom::area(&ring) < 0.0 {
+                                ring.reverse();
+                            }
+                            ring
                         }
-                        ring
-                    } else {
-                        crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect())
+                        _ => crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect()),
                     };
-                    Piece { tris, caps, outline, bottom, top, material, round: form.circle.is_some() }
+                    Piece { tris, caps, outline, bottom, top, material, round: form.circle().is_some() }
                 }
             }
         };
@@ -2390,13 +2413,14 @@ impl Family {
     /// that builds to nothing on its own — a formula it can't read, a profile with no area — is left
     /// out: what a warning tells is best worked out around it, not stopped by it.
     pub fn shapes(&self, values: &BTreeMap<String, Val>) -> Vec<Shape> {
+        let Ok(f) = self.flexed(values) else { return Vec::new() };
         let mut read = HashMap::new();
         let mut out = Vec::new();
-        for i in 0..self.forms.len() {
-            let Some(piece) = self.solid(i, values, &mut read).ok().flatten() else {
+        for i in 0..f.forms.len() {
+            let Some(piece) = f.solid(i, values, &mut read).ok().flatten() else {
                 continue;
             };
-            out.extend(Shape::of(i, self.forms[i].void, &piece.tris));
+            out.extend(Shape::of(i, f.forms[i].void, &piece.tris));
         }
         out
     }
@@ -2431,13 +2455,14 @@ impl Family {
 
     /// The voids that cut none of the solid forms listed before them, by their boxes, and that `reach` takes.
     fn free_voids(&self, values: &BTreeMap<String, Val>, reach: impl Fn(&Shape) -> bool) -> Result<Vec<Vec<[P3; 3]>>, String> {
+        let f = self.flexed(values).map_err(|e| e.to_string())?;
         let mut read = HashMap::new();
         let (mut solids, mut out): (Vec<Shape>, Vec<Vec<[P3; 3]>>) = (Vec::new(), Vec::new());
-        for i in 0..self.forms.len() {
-            let Some(piece) = self.solid(i, values, &mut read).map_err(|e| format!("form {}: {e}", i + 1))? else {
+        for i in 0..f.forms.len() {
+            let Some(piece) = f.solid(i, values, &mut read).map_err(|e| format!("form {}: {e}", i + 1))? else {
                 continue;
             };
-            let Some(shape) = Shape::of(i, self.forms[i].void, &piece.tris) else { continue };
+            let Some(shape) = Shape::of(i, f.forms[i].void, &piece.tris) else { continue };
             if !shape.void {
                 solids.push(shape);
             } else if !solids.iter().any(|solid| shape.over(solid)) && reach(&shape) {
@@ -2570,45 +2595,84 @@ fn cap(ring: &[P2]) -> Result<Vec<[usize; 3]>, String> {
     Ok(caps)
 }
 
-/// `ring`, counter-clockwise in `frame`'s plane, swept along its normal from `from` to `to`: its caps,
-/// then its sides, every triangle turned out; and how many the caps take.
-fn sweep(ring: &[P2], from: f64, to: f64, frame: &Frame) -> Result<(Vec<[P3; 3]>, usize), String> {
+/// A loop's cap: its corners, and its triangles as three of them each.
+type Capped = (Vec<P2>, Vec<[usize; 3]>);
+
+/// The triangles that cap each loop of a profile, counter-clockwise, with the corners they index: a loop without holes as
+/// [`cap`] caps it (as a profile from before sketches was), one with holes by the constrained triangulation, round them.
+fn caps(regions: &[crate::geom::Region]) -> Result<Vec<Capped>, String> {
+    regions
+        .iter()
+        .map(|r| {
+            if r.holes.is_empty() {
+                Ok((r.outer.clone(), cap(&r.outer)?))
+            } else {
+                let t = crate::triangulation::constrained(&r.outer, &r.holes, &[], &[])
+                    .map_err(|e| format!("its profile can't be capped: {e}"))?;
+                Ok((t.points, t.triangles))
+            }
+        })
+        .collect()
+}
+
+/// Every ring of `regions`: each outline (counter-clockwise), then its holes (clockwise).
+fn rings(regions: &[crate::geom::Region]) -> impl Iterator<Item = &Vec<P2>> {
+    regions.iter().flat_map(|r| std::iter::once(&r.outer).chain(&r.holes))
+}
+
+/// `regions`, each outline counter-clockwise and its holes clockwise in `frame`'s plane, swept along its normal from `from`
+/// to `to`: their caps, then their sides, every triangle turned out; and how many the caps take.
+fn sweep(regions: &[crate::geom::Region], from: f64, to: f64, frame: &Frame) -> Result<(Vec<[P3; 3]>, usize), String> {
     // A normal that points down the family's axis it lies most along (Center (Front/Back)'s, -y) is swept the axis' own way,
     // in the frame mirrored: the same solid, its triangles as they were when such a form named `xz`.
     let k = (1..3).fold(0, |k, i| if frame.z[i].abs() > frame.z[k].abs() { i } else { k });
     let (frame, from, to) = if frame.z[k] < 0.0 { (Frame { z: frame.z.map(|x| -x), ..*frame }, -to, -from) } else { (*frame, from, to) };
     let at = |p: P2, t: f64| frame.point(p, t);
-    let pt = |i: usize| ring.get(i).copied().unwrap_or_default();
-    let caps = cap(ring)?;
-    let mut tris = Vec::with_capacity(caps.len() * 2 + ring.len() * 2);
-    for &[a, b, c] in &caps {
-        tris.push([at(pt(a), to), at(pt(b), to), at(pt(c), to)]);
-        tris.push([at(pt(a), from), at(pt(c), from), at(pt(b), from)]);
+    let capped = caps(regions)?;
+    let mut tris = Vec::new();
+    for (points, caps) in &capped {
+        let pt = |i: usize| points.get(i).copied().unwrap_or_default();
+        for &[a, b, c] in caps {
+            tris.push([at(pt(a), to), at(pt(b), to), at(pt(c), to)]);
+            tris.push([at(pt(a), from), at(pt(c), from), at(pt(b), from)]);
+        }
     }
-    for (a, b) in crate::geom::ring_edges(ring) {
-        let (a0, b0, a1, b1) = (at(a, from), at(b, from), at(a, to), at(b, to));
-        tris.push([a0, b0, b1]);
-        tris.push([a0, b1, a1]);
+    let count = tris.len();
+    for ring in rings(regions) {
+        for (a, b) in crate::geom::ring_edges(ring) {
+            let (a0, b0, a1, b1) = (at(a, from), at(b, from), at(a, to), at(b, to));
+            tris.push([a0, b0, b1]);
+            tris.push([a0, b1, a1]);
+        }
     }
     // A mirrored frame (its normal not x × y) turns its triangles the other way to face out.
     if !frame.right_handed() {
         tris.iter_mut().for_each(|t| t.swap(1, 2));
     }
-    Ok((tris, caps.len() * 2))
+    Ok((tris, count))
 }
 
-/// `ring`, counter-clockwise in `frame`'s plane, turned about the line through `axis` (in that plane) from
-/// `from` to `to` degrees, right-handed from the axis' first point toward its second: its triangles, every one
-/// turned out, a full turn's sides only and a part-turn's with its two ends capped; and its outline seen from above.
-fn revolve(ring: &[P2], [p0, p1]: [P2; 2], (from, to): (f64, f64), frame: &Frame) -> Result<(Vec<[P3; 3]>, Vec<P2>), String> {
+/// `regions`, each outline counter-clockwise and its holes clockwise in `frame`'s plane, turned about the line through
+/// `axis` (in that plane) from `from` to `to` degrees, right-handed from the axis' first point toward its second: its
+/// triangles, every one turned out, a full turn's sides only and a part-turn's with its two ends capped; and its outline
+/// seen from above.
+fn revolve(
+    regions: &[crate::geom::Region],
+    [p0, p1]: [P2; 2],
+    (from, to): (f64, f64),
+    frame: &Frame,
+) -> Result<(Vec<[P3; 3]>, Vec<P2>), String> {
     if p0.dist(p1) < 1e-6 {
         return Err("its axis starts and ends at one point: it needs a direction".into());
     }
-    let caps = cap(ring)?;
+    let capped = caps(regions)?;
     // Each corner's distance along the axis, and out from it to its left (none, on it).
     let (along, left) = ((p1 - p0).unit(), (p1 - p0).unit().perp());
-    let reach: Vec<(f64, f64)> =
-        ring.iter().map(|c| ((*c - p0).dot(along), (*c - p0).dot(left))).map(|(t, r)| (t, if r.abs() < 1e-6 { 0.0 } else { r })).collect();
+    let reach_of = |c: P2| {
+        let (t, r) = ((c - p0).dot(along), (c - p0).dot(left));
+        (t, if r.abs() < 1e-6 { 0.0 } else { r })
+    };
+    let reach: Vec<(f64, f64)> = rings(regions).flatten().map(|c| reach_of(*c)).collect();
     let (least, most) = reach.iter().fold((0.0_f64, 0.0_f64), |(lo, hi), (_, r)| (lo.min(*r), hi.max(*r)));
     if least < 0.0 && most > 0.0 {
         return Err("its profile crosses its axis: draw it to one side of it".into());
@@ -2624,8 +2688,8 @@ fn revolve(ring: &[P2], [p0, p1]: [P2; 2], (from, to): (f64, f64), frame: &Frame
     let full = turn > 360.0 - 1e-9;
     let steps = (turn / 360.0 * SEGMENTS as f64 - 1e-9).ceil().max(1.0) as usize;
     let angle = |k: usize| (from + turn * (if full { k % steps } else { k }) as f64 / steps as f64).to_radians().sin_cos();
-    let at = |i: usize, k: usize| -> P3 {
-        let (t, r) = reach.get(i).copied().unwrap_or_default();
+    let at = |c: P2, k: usize| -> P3 {
+        let (t, r) = reach_of(c);
         let (s, c) = angle(k);
         add(add(o, mul(u, t)), mul(add(mul(n, c), mul(w, s)), r)).map(|x| (x * 1e9).round() / 1e9 + 0.0)
     };
@@ -2637,17 +2701,22 @@ fn revolve(ring: &[P2], [p0, p1]: [P2; 2], (from, to): (f64, f64), frame: &Frame
         }
     };
     if !full {
-        for &[a, b, c] in &caps {
-            push([at(a, steps), at(b, steps), at(c, steps)]);
-            push([at(a, 0), at(c, 0), at(b, 0)]);
+        for (points, caps) in &capped {
+            let pt = |i: usize| points.get(i).copied().unwrap_or_default();
+            for &[a, b, c] in caps {
+                push([at(pt(a), steps), at(pt(b), steps), at(pt(c), steps)]);
+                push([at(pt(a), 0), at(pt(c), 0), at(pt(b), 0)]);
+            }
         }
     }
-    for i in 0..ring.len() {
-        let j = (i + 1) % ring.len();
-        for k in 0..steps {
-            let (a0, b0, a1, b1) = (at(i, k), at(j, k), at(i, k + 1), at(j, k + 1));
-            push([a0, b0, b1]);
-            push([a0, b1, a1]);
+    for ring in rings(regions) {
+        for i in 0..ring.len() {
+            let (a, b) = (ring[i], ring[(i + 1) % ring.len()]);
+            for k in 0..steps {
+                let (a0, b0, a1, b1) = (at(a, k), at(b, k), at(a, k + 1), at(b, k + 1));
+                push([a0, b0, b1]);
+                push([a0, b1, a1]);
+            }
         }
     }
     // Seen from above, a part-turn about an upright axis is a slice of a ring from the profile's widest to its
@@ -3247,8 +3316,8 @@ mod tests {
             (0..n).map(|k| (k as f64 * std::f64::consts::TAU / n as f64).sin_cos()).map(|(s, c)| json!([100.0 * c, 100.0 * s])).collect()
         };
         let f: Family =
-            serde_json::from_value(json!({"types": {"A": {}}, "forms": [{"profile": ring(MAX_PROFILE + 1), "to": 10}]})).unwrap();
-        assert!(f.check(&|_| true).unwrap_err().contains("corners"));
+            serde_json::from_value(json!({"types": {"A": {}}, "forms": [{"profile": ring(sketch::MAX_SKETCH + 1), "to": 10}]})).unwrap();
+        assert!(f.check(&|_| true).unwrap_err().contains("more than"));
         // Many types, each building a little: past what one family may build, refused.
         let types: serde_json::Map<String, Value> = (0..MAX_TYPES).map(|k| (format!("T{k}"), json!({}))).collect();
         let form = json!({"profile": ring(MAX_PROFILE), "to": 10});

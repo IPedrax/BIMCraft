@@ -128,16 +128,15 @@ fn box_family(category: Category) -> Family {
             })
             .collect(),
         types: BTreeMap::from([("Imported".to_string(), BTreeMap::new())]),
-        forms: vec![Form {
-            profile: vec![
+        forms: vec![{
+            let mut form = Form { from: Expr::Number(0.0), to: formula("Height"), ..Default::default() };
+            form.set_corners(&[
                 [formula("-(Width) / 2"), formula("-(Depth) / 2")],
                 [formula("Width / 2"), formula("-(Depth) / 2")],
                 [formula("Width / 2"), formula("Depth / 2")],
                 [formula("-(Width) / 2"), formula("Depth / 2")],
-            ],
-            from: Expr::Number(0.0),
-            to: formula("Height"),
-            ..Default::default()
+            ]);
+            form
         }],
         ..Default::default()
     }

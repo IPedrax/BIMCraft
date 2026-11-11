@@ -50,6 +50,8 @@ mod face_void_tests;
 pub mod falls;
 pub mod family;
 #[cfg(test)]
+mod family_constraint_tests;
+#[cfg(test)]
 mod family_options_tests;
 #[cfg(test)]
 mod family_parameter_tests;
@@ -57,6 +59,8 @@ mod family_parameter_tests;
 mod family_plane_tests;
 #[cfg(test)]
 mod family_section_tests;
+#[cfg(test)]
+mod family_sketch_tests;
 pub mod favorites;
 pub mod fills;
 mod fixtures;

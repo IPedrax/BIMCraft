@@ -23,9 +23,12 @@ pub(crate) fn problems(f: &Family, has_material: &dyn Fn(&str) -> bool) -> (Vec<
     }
     let mut warnings = Vec::new();
     geometry(f, &mut warnings);
-    // Labelled dimensions don't exist yet, so a reporting parameter holds what it was given.
+    // A reporting parameter no dimension is labelled with holds what it was given.
     warnings.extend(
-        f.parameters.iter().filter(|p| p.reporting).map(|p| format!("parameter `{}` reports no dimension yet: it holds its value", p.name)),
+        f.parameters
+            .iter()
+            .filter(|p| p.reporting && !f.dimensions.iter().any(|d| d.label.as_deref() == Some(p.name.as_str())))
+            .map(|p| format!("parameter `{}` reports no dimension: it holds its value", p.name)),
     );
     (errors, warnings)
 }
@@ -128,15 +131,7 @@ pub(crate) fn every_formula(f: &Family) -> Vec<(String, &str)> {
         }
     }
     for (i, form) in f.forms.iter().enumerate() {
-        let circle = form.circle.iter().flat_map(|c| c.centre.iter().chain([&c.radius]));
-        let exprs = form
-            .profile
-            .iter()
-            .flatten()
-            .chain([&form.from, &form.to])
-            .chain(&form.visible)
-            .chain(circle)
-            .chain(form.axis.iter().flatten().flatten());
+        let exprs = form.sketch_exprs().chain([&form.from, &form.to]).chain(&form.visible);
         for e in exprs {
             add(&mut out, &|| format!("form {}", i + 1), e);
         }

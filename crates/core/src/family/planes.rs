@@ -213,6 +213,12 @@ impl Frame {
         std::array::from_fn(|k| self.x[k] * p.0 + self.y[k] * p.1)
     }
 
+    /// Where point `p` of the family is in its own axes: along x and y, and how far along its normal.
+    pub fn local(&self, p: P3) -> (P2, f64) {
+        let d = sub(p, self.origin);
+        (P2(dot(d, self.x), dot(d, self.y)), dot(d, self.z))
+    }
+
     /// Whether x, y and the normal turn as the family's x, y and z do: a mirrored frame's triangles turn the other way.
     pub fn right_handed(&self) -> bool {
         dot(cross(self.x, self.y), self.z) > 0.0
@@ -473,6 +479,7 @@ impl Family {
         self.forms.iter_mut().for_each(|f| follow(&mut f.host));
         self.lines.iter_mut().for_each(|l| follow(&mut l.host));
         self.adaptive.iter_mut().for_each(|d| d.work_planes_mut(&mut |h| follow(h)));
+        self.resolve_dimension_refs(planes, &[]);
     }
 
     /// Each host given as an id (as a command may) given as the GUID of the plane or line of that id.
@@ -491,6 +498,7 @@ impl Family {
         self.forms.iter_mut().for_each(|f| resolve(&mut f.host));
         self.lines.iter_mut().for_each(|l| resolve(&mut l.host));
         self.adaptive.iter_mut().for_each(|d| d.work_planes_mut(&mut |h| resolve(h)));
+        self.resolve_dimension_refs(&[], &[]);
     }
 
     /// Whether its planes and lines are sound: its datums first and pinned; each plane drawable, named once, a level only

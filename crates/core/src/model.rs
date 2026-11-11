@@ -91,6 +91,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 ///   lines (`lines`), and a form is drawn on a `host`, one of them, where it named a `plane` (`xy`, `xz` or `yz`). A form on
 ///   `xz` swept along +y and its host, Center (Front/Back), has its normal toward -y, so such a form's `from` and `to` are
 ///   read negated and swapped.
+/// - Sketches (F5): a form is drawn by its `sketch`, lines and arcs on its host plane, each with an id and a GUID, a revolve's
+///   axis one of them; its `profile`, `circle` and `axis` are read as such lines and no longer written.
+/// - Constraints (F7): a family's `dimensions`, with labels, locks, EQ and Align's locks, solved as a type flexes. They may
+///   measure to its forms' sketch lines, their ends, circles' and arcs' centres, and to its reference lines' faces, starts and
+///   ends and the forms drawn on them, and measure a circle's or an arc's radius or diameter.
 /// - Subcategories: a view's graphics, a view template and the object styles may name `dooropening` and `windowopening`
 ///   (Doors > Opening, Windows > Opening), and a family's symbol the subcategory it is drawn in (`subcategory`).
 /// - Adaptive families: a family may be adaptive (`adaptive`: its points, lines and forms), and a component may hold its
@@ -3566,6 +3571,15 @@ impl Model {
         let mut m: Model = serde_json::from_value(v).map_err(|e| e.to_string())?;
         m.migrate();
         m.names_from_file();
+        // A family's dimension measuring to something it hasn't is left out, as what this version can't read is: a file is
+        // read kindly, and a command that would leave one is refused.
+        for (name, f) in m.families.iter_mut() {
+            let gone = f.dangling_dimensions();
+            for i in gone.iter().rev() {
+                f.dimensions.remove(*i);
+                left_out.push(format!("/families/{}/dimensions/{i}", crate::lenient::escaped(name)));
+            }
+        }
         Ok((m, left_out))
     }
 
@@ -3636,14 +3650,15 @@ impl Model {
         // 1. A form's `plane` becomes its `host`, a datum: `xy` Ref. Level and `yz` Center (Left/Right) as they were; `xz`
         //    Center (Front/Back), its `from` and `to` negated and swapped (a formula wrapped as `-(…)`), since it swept along
         //    +y and the datum's normal is -y, a revolve's angles as they were. Reading the file does it, as it reads a
-        //    command's shorthand (`Form`'s `FormIn`), whatever its format, and a family read without its datums is given them
-        //    (`Family::planes`).
+        //    command's shorthands (`Form`'s `FormIn`), whatever its format, and a family read without its datums is given
+        //    them (`Family::planes`). Its `profile`, `circle` and `axis` become lines of its `sketch` the same way, given their
+        //    ids and GUIDs by the library's sync as any new part is, building the triangles they did.
         // 2. Every family's datums are put first and its origin settled, whatever the file held (`Family::settle_planes`).
         // An adaptive point drawn on one of an adaptive family's own datums held `"datum": "level" | "front_back" |
         // "left_right"` in its `world` host, the name the Family Editor's first adaptive points gave their work plane; it
         // still reads as the datum plane of the same frame (`Host::World`'s `plane_or_datum`), so nothing moves.
         // The rest needs nothing of a file of 17, which holds none of it: an adaptive family and a component's adaptive
-        // frames, a family parameter's group, shared GUID and
+        // frames, a family's dimensions, labels, locks and Align's locks, a family parameter's group, shared GUID and
         // reporting (each defaults to what a file of 17 means: grouped by its kind, the family's own, set), Doors > Opening
         // and Windows > Opening, and the project's reference planes and components hosted on them or on faces (a hosted
         // component's `at` and `offset` are worked out from its host whatever the file says).
