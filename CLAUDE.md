@@ -38,9 +38,12 @@ and MCP server, and milestone 2, the egui desktop app, are done. What works and 
   the model. Logic any front end needs (what a plan shows, what's under the cursor) belongs in the core: the canvas draws
   `render::draw` and picks with `Drawing::pick`. UI behaviour is tested with egui_kittest: clicks at model points
   (`BimApp::screen`), buttons by label, keys (`crates/ui-egui/src/tests.rs`).
-- **Only the desktop app phones home, and only through `crates/update`**; what comes from the network is hostile. A `BimApp`
-  starts with `updates: None`, so no test reaches the network. The checks are in
-  [crates/update/CLAUDE.md](crates/update/CLAUDE.md).
+- **Only the desktop app reaches the network, and only through two crates.** `crates/update` is the updater: GitHub's releases,
+  checked at start unless the user turned it off. `crates/assistant` is the AI chat: the provider the user chose, only once they
+  have given a key and sent a message, and what the assistant reads of the open project goes with it. Neither is a dependency of
+  the core, the CLI or the MCP server, no other crate may use `ureq`, and a test reads every manifest. What comes from the network
+  is hostile. A `BimApp` starts with `updates: None` and no assistant network, so no test reaches it. The checks are in
+  [crates/update/CLAUDE.md](crates/update/CLAUDE.md) and [crates/assistant/CLAUDE.md](crates/assistant/CLAUDE.md).
 - **Test first.** Write the failing test, watch it fail, then write the code. Drawings and IFC are tested through their output:
   pixels of the PNG, entity references in the STEP file.
 - **Keep the agent docs layered.** This file stays short: the rules, the checks, the conventions and a map of the modules. A
@@ -117,16 +120,14 @@ Plugins: [notes](crates/plugin/CLAUDE.md), [sdk](crates/plugin-sdk/CLAUDE.md), [
 
 `crates/ui-egui` (`bimcraft-ui-egui`, a thin shell over the core; notes: [crates/ui-egui/CLAUDE.md](crates/ui-egui/CLAUDE.md); area: [the desktop](docs/areas/desktop.md)):
 
-- `lib.rs`: the app: ribbon, menus, tools, tabs, files. `canvas.rs`: the plan canvas (picks, tools, grips); `retained.rs`: its triangles kept on the card. `orbit.rs`: the 3D view; `gpu.rs` and `gpu.wgsl`: drawing it on the graphics card. `section.rs`, `paper.rs`: sections and sheets; `section_worker.rs`, `view_worker.rs`: views made off the interface's thread. `properties.rs`: the Properties palette. `browser.rs`: the Project Browser. `dock.rs`: docking palettes and floating views. `settings.rs`: File > Settings. `lineweights.rs`, `objectstyles.rs`, `linestyles.rs`, `fillpatterns.rs`: Manage > Line Weights, Object Styles, Line Styles and Fill Patterns. `sketch.rs`: sketch mode (Edit Boundary, Finish and Cancel); `sketch3d.rs`: the sketch in the 3D view, on its element's plane. `standards.rs`: Manage > Technical Standards. `shape.rs`: Shape Editing's actions, from a plan or the 3D view. `electrical.rs`: Manage > Electrical Settings. `notes.rs`: text notes written on the canvas, and Text Type Properties. `dimtypes.rs`: Dimension Type Properties. `typeprops.rs`: the look every Type Properties dialog shares. `draw.rs`: the Draw panel and its Options Bar. `groups.rs`: Create Group, Place Detail Group, Repeating Detail, Ungroup. `start.rs`: the start page. `context.rs`: the right-click menu. `find.rs`: Find (Ctrl+K), every tool and view by what is typed. `presets.rs`: the project's scale, the tools left out (Edit Tools) and named presets of the layout. `dialog.rs`: the file dialogs, on a thread of their own. `popup.rs`: movable dialog frames, scrolling forms and fixed bottom actions. `window.rs`: the window's size, kept and fitted to its screen. `control.rs`: the control port, agents working on the window's project.
-- `background_grid.rs`: the view/template grid editor and canvas layer.
-- `minimap.rs`: the Navigator's minimap. `display.rs`: Graphic Display Options (GD), the 3D view's edges and ambient shadows.
-- `graphics.rs`, `templates.rs`, `footer.rs`, `phasing.rs`: Visibility/Graphics, View Templates (and Assign View Template), the view control bar, Phasing. `filter.rs`: Filter on the selection. `inquiry.rs`, `recent.rs`, `autosave.rs`, `updates.rs`, `revit.rs`: Manage > Inquiry, Open Recent, autosave and recovery, the update banner, Revit files.
-- `links.rs`: Link Model. `clouds.rs`: Insert > Point Cloud. `cad.rs`: Insert > Import CAD and Link CAD. `section_box.rs`: the 3D view's section box, its Properties and grips, and Linked 3D View. `triad.rs`: the 3D view's navigation triad. `spacemouse.rs`: the 3D mouse, read on a thread of its own, moving the active 3D view. `camera.rs`: a 3D view's camera in Properties, bound to the view the 3D tab shows or one picked on a plan (perspective, lens, eye, and a camera view's name, eye and target). `structure.rs`, `mep.rs`: the Structure tab and the discipline tabs. `reinforce.rs`: the Reinforce dialog. `editor.rs`, `favorites.rs`: the Family Editor and Favorites. `style.rs`: look and feel, the BIMCraft and Rev profiles, light and dark, theme presets and the user's accent, floating cards or compact. `ribbon.rs`: the ribbon's panels, their lists, and folding them to fit. `titlebar.rs`: the window's own title bar and frame. `icons.rs`: the icons, drawn in code (`--example icon_catalog` exports them). `lang.rs`: language selection and the interface PO catalogs; `lang/font.rs`: Chinese and Korean font support. `tests.rs`, `tests/`: the app driven as a user does.
+- Its module map, a line for each file, is in [crates/ui-egui/CLAUDE.md](crates/ui-egui/CLAUDE.md): a new module of the window adds its line there.
 
 `crates/i18n` (`bimcraft-i18n`; [notes](crates/i18n/CLAUDE.md)): embedded lookup, build-time PO compilation and the
 `cargo i18n` extraction, merge and validation tools. Area: [translations](docs/areas/translations.md).
 
 `crates/update` (the updater, the only code that phones home; notes: [crates/update/CLAUDE.md](crates/update/CLAUDE.md); area: [updates](docs/areas/updates.md)): `updater.rs` the state the banner draws; `net.rs` HTTPS to GitHub; `detect.rs` which install this is; `install.rs` Windows, `appimage.rs` Linux, `macos.rs` macOS; `exec.rs`, `prefs.rs`, `testing.rs`.
+
+`crates/assistant` (`bimcraft-assistant`, the AI chat, which the core never depends on; notes: [crates/assistant/CLAUDE.md](crates/assistant/CLAUDE.md); area: [the assistant](docs/areas/assistant.md)): `anthropic.rs`, `openai.rs`, `gemini.rs` the provider clients (pure: a conversation to a request, a reply to a `Reply`); `net.rs` HTTPS to the three API hosts; `seal.rs` the saved key, scrambled under a secret built in; `tools.rs` the model's tools, run through `bridge::run`; `chat.rs` the turn loop on a `Session`; `testing.rs` a fake network.
 
 `crates/dwg` (`bimcraft-dwg`, the DWG bridge, which the core never depends on; notes: [crates/dwg/CLAUDE.md](crates/dwg/CLAUDE.md); area: [CAD import](docs/areas/cad-import.md)): a DWG as the DXF the core reads, through acadrust (MPL-2.0, unmodified), in a child process of the app (`in_child`, `child_main`); the apps hand a `Session` its `reader`.
 

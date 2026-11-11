@@ -149,3 +149,131 @@ fn a_walls_top_offset_is_a_row_under_its_top_constraint_in_both_profiles() {
         assert!(h.query_by_role_and_label(Role::TextInput, "Top Offset").is_none(), "rev {rev}");
     }
 }
+
+/// The 900 mm Single Door family draws its open leaf between the two jambs' inner faces (800 mm).
+fn preview_leaf(h: &Harness<BimApp>, hinge: P2, tip: P2) -> bool {
+    let (a, b) = (h.state().screen(hinge), h.state().screen(tip));
+    h.output().shapes.iter().any(|s| {
+        matches!(&s.shape, egui::Shape::Path(p)
+        if p.points.len() == 2 && p.points[0].distance(a) < 1.0 && p.points[1].distance(b) < 1.0)
+    })
+}
+
+#[test]
+fn door_space_and_pointer_choose_the_leaf_shown_before_and_after_a_click() {
+    // The south wall runs east; the north wall runs west. The same world-side pointer must
+    // therefore choose opposite facing flags. Neither hovering nor pressing Space places a door.
+    for (wall_y, along) in [(0.0, 1.0), (6000.0, -1.0)] {
+        let mut h = app(BOX);
+        tool(&mut h, "Door");
+        let x = 3000.0;
+        let point_at = |side: f64| P2(x, wall_y + side * 60.0);
+        let leaf = |hand: f64, side: f64| {
+            let hinge_x = x + hand * along * 400.0;
+            (P2(hinge_x, wall_y + side * 100.0), P2(hinge_x, wall_y + side * 900.0))
+        };
+        for (press_space, hand, side) in [(false, -1.0, 1.0), (true, 1.0, 1.0), (false, 1.0, -1.0)] {
+            h.hover_at(h.state().screen(point_at(side)));
+            h.run();
+            if press_space {
+                key(&mut h, Key::Space);
+            }
+            let (hinge, tip) = leaf(hand, side);
+            assert!(preview_leaf(&h, hinge, tip), "preview on wall {wall_y}: {hinge:?} to {tip:?}");
+        }
+        assert!(ids(&h, "door").is_empty());
+        click(&mut h, point_at(-1.0));
+        let door = ids(&h, "door")[0];
+        let model = &h.state().session.model;
+        let (hinge, tip) = leaf(1.0, -1.0);
+        assert!(model.opening_marks(&model.elements[&door]).iter().any(|mark| matches!(mark,
+            bimcraft_core::family::Mark::Line(p) if p.len() == 2 && p[0].dist(hinge) < 1.0 && p[1].dist(tip) < 1.0)));
+    }
+}
+
+#[test]
+fn door_space_cycles_the_opens_choices_with_one_undo_each_and_reopens() {
+    let mut h = app(&format!("{BOX}\ndoor {{\"at\":[2000,0]}}"));
+    click(&mut h, P2(2000.0, 0.0));
+    let door = ids(&h, "door")[0];
+    assert_eq!(h.state().selection, [door]);
+    let flips = |s: &Session| {
+        let Element::Door(o) = &s.model.elements[&door] else { panic!("door") };
+        (o.flip_hand, o.flip_facing)
+    };
+    let states = [(false, false), (true, false), (false, true), (true, true)];
+    for &want in states.iter().cycle().skip(1).take(4) {
+        key(&mut h, Key::Space);
+        assert_eq!(flips(&h.state().session), want);
+        assert_eq!(h.state().selection, [door]);
+    }
+    for &want in states.iter().rev() {
+        h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+        h.run();
+        assert_eq!(flips(&h.state().session), want);
+    }
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Y);
+    h.run();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("door.bimcraft");
+    h.state_mut().session.execute("save", &json!({"path":path})).unwrap();
+    let mut reopened = Session::new();
+    reopened.execute("open", &json!({"path":path})).unwrap();
+    assert_eq!(flips(&reopened), (true, false));
+}
+
+#[test]
+fn door_space_leaves_typing_other_operations_and_multiple_doors_alone() {
+    let mut h = app(&format!("{BOX}\ndoor {{\"at\":[2000,0]}}\ndoor {{\"at\":[6000,0],\"family\":\"Sliding Door\"}}"));
+    let [single, sliding] = ids(&h, "door")[..] else { panic!("two doors") };
+    click(&mut h, P2(2000.0, 0.0));
+    let before = h.state().session.model.clone();
+    h.key_press_modifiers(Modifiers::SHIFT, Key::Space);
+    h.run();
+    h.get_by_role_and_label(Role::TextInput, "Mark").focus();
+    h.run();
+    h.event(Event::Text(" ".into()));
+    key(&mut h, Key::Space);
+    assert!(h.get_by_role_and_label(Role::TextInput, "Mark").value().unwrap().contains(' '));
+    assert!(std::sync::Arc::ptr_eq(&before, &h.state().session.model));
+    // Discard the uncommitted field edit and select the sliding door, then both doors.
+    key(&mut h, Key::Escape);
+    click(&mut h, P2(6000.0, 0.0));
+    assert_eq!(h.state().selection, [sliding]);
+    let before = h.state().session.model.clone();
+    key(&mut h, Key::Space);
+    click_with(&mut h, P2(2000.0, 0.0), Modifiers::COMMAND);
+    assert_eq!(h.state().selection, [sliding, single]);
+    key(&mut h, Key::Space);
+    assert!(std::sync::Arc::ptr_eq(&before, &h.state().session.model));
+    // A wall keeps its original Space shortcut.
+    click(&mut h, P2(4000.0, 6000.0));
+    let wall = h.state().selection[0];
+    let end = field(&h, wall, "end");
+    key(&mut h, Key::Space);
+    assert_eq!(field(&h, wall, "start"), end);
+}
+
+#[test]
+fn door_space_placement_uses_the_physical_wall_centre_and_escape_discards_the_pending_hand() {
+    let mut h = app(&format!("{BOX}\nwall {{\"points\":[[1000,2500],[7000,2500]],\"location\":\"exterior-finish\"}}"));
+    tool(&mut h, "Door");
+    let before = h.state().session.model.clone();
+    key(&mut h, Key::Space);
+    key(&mut h, Key::Escape);
+    assert!(std::sync::Arc::ptr_eq(&before, &h.state().session.model));
+    tool(&mut h, "Door");
+    // Both clicks round to the same Y for placement, but fall on opposite sides of the physical centre at 2400.
+    click(&mut h, P2(2500.0, 2402.0));
+    click(&mut h, P2(5500.0, 2398.0));
+    let doors = ids(&h, "door");
+    assert_eq!(doors.len(), 2);
+    let states: Vec<_> = doors
+        .iter()
+        .map(|id| {
+            let Element::Door(o) = &h.state().session.model.elements[id] else { panic!("door") };
+            (o.flip_hand, o.flip_facing)
+        })
+        .collect();
+    assert_eq!(states, [(false, false), (false, true)]);
+}
