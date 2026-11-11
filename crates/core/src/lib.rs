@@ -44,6 +44,14 @@ mod electrical_tests;
 pub mod engine;
 pub mod falls;
 pub mod family;
+#[cfg(test)]
+mod family_options_tests;
+#[cfg(test)]
+mod family_parameter_tests;
+#[cfg(test)]
+mod family_plane_tests;
+#[cfg(test)]
+mod family_section_tests;
 pub mod favorites;
 pub mod fills;
 mod fixtures;
@@ -57,6 +65,9 @@ pub mod glue;
 mod glue_tests;
 pub mod graphics;
 pub mod groups;
+#[cfg(test)]
+mod host_void_tests;
+pub mod hosting;
 pub mod hydrant;
 pub mod ids;
 pub mod ifc;
@@ -81,6 +92,8 @@ pub mod massing;
 pub mod model;
 pub mod nbr5410;
 pub mod network;
+#[cfg(test)]
+mod opening_subcategory_tests;
 #[cfg(test)]
 mod openings_past_top_tests;
 #[cfg(test)]
@@ -125,6 +138,9 @@ pub mod selection;
 #[cfg(test)]
 mod shape_tests;
 pub mod shared;
+#[cfg(test)]
+mod shared_parameter_tests;
+pub mod shared_parameters;
 pub mod sheet;
 pub mod skeleton;
 pub mod sketch;
@@ -149,6 +165,8 @@ pub mod view3d;
 mod wall_top_offset_tests;
 pub mod walls;
 pub mod water;
+#[cfg(test)]
+mod work_plane_tests;
 pub mod workplane;
 #[cfg(test)]
 mod workplane_tests;

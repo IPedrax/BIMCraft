@@ -633,7 +633,7 @@ impl BimApp {
                 if let Some((family, ty)) = self.placing() {
                     let p = json!({"family": family, "type": ty, "at": [at.0, at.1], "level": plane.level, "offset": plane.offset,
                                    "angle": self.component_angle});
-                    self.run("component", p);
+                    self.place_component(p, plane.z);
                 }
             }
             _ => {}

@@ -119,7 +119,13 @@ fn box_family(category: Category) -> Family {
         category,
         parameters: ["Width", "Depth", "Height"]
             .into_iter()
-            .map(|name| Parameter { name: name.to_string(), kind: Kind::Length, instance: true, value: 100.0.into(), formula: None })
+            .map(|name| Parameter {
+                name: name.to_string(),
+                kind: Kind::Length,
+                instance: true,
+                value: 100.0.into(),
+                ..Parameter::default()
+            })
             .collect(),
         types: BTreeMap::from([("Imported".to_string(), BTreeMap::new())]),
         forms: vec![Form {
@@ -221,6 +227,7 @@ fn boxes(
                 offset: micron(mm(r.bbox[2]) - mm(elevation)),
                 mirrored: false,
                 params,
+                host: None,
             })
         })();
         match made {

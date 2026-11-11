@@ -82,6 +82,17 @@ is not among them, so the ARCH sizes and Super B follow PWG 5101.1-2023, the Pri
 Table 3 lists ARCH A 9 × 12, B 12 × 18, C 18 × 24, D 24 × 36, E 36 × 48, E2 26 × 38 and E3 27 × 39 in, 30 × 42 in (ARCH E1) as
 `wide-format`, and Super B 13 × 19 in; its Table 4 lists the ISO sizes again. An inch is 25.4 mm exactly, so the inch
 sizes go into millimetres with no rounding.
+Doors > Opening and Windows > Opening (`dooropening`, `windowopening`, rows of `graphics::SUBCATEGORIES`) are what Revit draws a
+door's swing and a window's opening lines in: a family symbol names its subcategory (`subcategory: "Opening"`, the English name,
+checked against its category's by `Family::check`), and a door of the project's own type draws its swing there too. The starter
+doors' and windows' symbols all name it. `Family::marks_tagged` and `Model::opening_marks` give each mark its subcategory's key,
+and the plan leaves out a mark whose subcategory the view hides (`Graphics::hides`, so the category hidden hides it too). A
+`Drawing` keeps the subcategory each primitive is drawn in (`subs`, beside `owners`): `by_category` gives it the subcategory's
+object style, and `Look::dress` the view's row for it (`Look::sub_paint`: the row laid over the category's, under the filters and
+the element's own override). Object Styles has a row for each (`styles::model_sub`, `model_subs`; the desktop's dialog lists it as
+Doors > Opening), drawing in its category's pens until given its own (`styles::inherited`). Rooms' subcategories have no Object
+Styles row. Revit's Plan Swing and Elevation Swing aren't rows: BIMCraft has no elevation symbols, and the swing is Opening. A view,
+template or Object Styles naming either key is what FORMAT 21 says an older build would refuse.
 
 Family components are split by category. A component is of its family's category (`graphics::category_of`; `component_category` names
 each `family::Category`: `furniture`, `casework`, `plumbing`, `drain`, `pipefitting`, `pipeaccessory`, `equipment`, `outlet`, `switch`,
@@ -267,6 +278,10 @@ labels them as they read (`shape_dimensions`). A spline or a polyline finishes w
 menu's Finish Drawing; Fillet Arc previews the arc nearest the cursor and its radius, Offset a dashed ghost of the copy, and
 Trim/Extend and Fillet's picks so far show in the selection's colour. Trim/Extend to Corner with two lines or walls selected (or
 two sketch lines picked) joins them at once, each keeping the part toward its middle.
+
+A wall a door's or a window's own voids cut ([families](families.md): `Family::host_voids`) is cut in their shape: its pieces
+there are meshes a section slices (`view3d::slice`), their layers split in plan, the lines between layers drawn up the cut alone;
+a plan clears the voids' slice at its cut plane within the wall's faces (`render::level_slice`).
 
 `Drawing::detail` is the level the plan or the section is drawn at: coarse leaves out a compound element's layers and an opening's
 symbols, medium its patterns (`cut_layer`, a floor's `surface`), fine draws as before. In the 3D view `Look::style` picks how

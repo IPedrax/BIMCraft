@@ -24,7 +24,17 @@ pub(crate) struct ObjectStylesDialog {
 impl ObjectStylesDialog {
     /// Open on the project's object styles.
     pub(crate) fn new(m: &Model) -> ObjectStylesDialog {
-        ObjectStylesDialog { draft: MODEL.iter().map(|c| (*c, m.object_style(c))).collect() }
+        // Every model category, and the subcategories that have rows of their own (Doors > Opening).
+        let keys = MODEL.iter().copied().chain(bimcraft_core::styles::model_subs());
+        ObjectStylesDialog { draft: keys.map(|c| (c, m.object_style(c))).collect() }
+    }
+}
+
+/// What a row is called: its category's name, a subcategory's under its category's (Doors > Opening), so it sorts beside it.
+fn row_name(key: &str) -> String {
+    match bimcraft_core::graphics::sub(key) {
+        Some(s) => format!("{} > {}", category(s.parent, true), t(s.name)),
+        None => category(key, true),
     }
 }
 
@@ -56,7 +66,7 @@ impl BimApp {
                         ui.label(RichText::new(t("Projection")).strong());
                         ui.label(RichText::new(t("Cut")).strong());
                         ui.end_row();
-                        let mut rows: Vec<(String, &mut ObjectStyle)> = d.draft.iter_mut().map(|(c, s)| (category(c, true), s)).collect();
+                        let mut rows: Vec<(String, &mut ObjectStyle)> = d.draft.iter_mut().map(|(c, s)| (row_name(c), s)).collect();
                         rows.sort_by(|a, b| a.0.cmp(&b.0));
                         for (name, style) in rows {
                             ui.label(&name);
@@ -71,7 +81,8 @@ impl BimApp {
                 ui.horizontal(|ui| {
                     if ui.button(t("Reset")).on_hover_text(t("Back to the pens a project starts with")).clicked() {
                         for (c, s) in &mut d.draft {
-                            *s = default_of(c);
+                            // A subcategory starts as its category does.
+                            *s = default_of(bimcraft_core::graphics::sub(c).map_or(c, |sub| sub.parent));
                         }
                     }
                     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
