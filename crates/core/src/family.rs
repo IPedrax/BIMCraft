@@ -441,7 +441,7 @@ impl Default for Expr {
     }
 }
 
-/// The shorthand a form (and a file of 19 or before) names its sketch plane by, from before reference planes: across the
+/// The shorthand a form (and a file of 17 or before) names its sketch plane by, from before reference planes: across the
 /// family's x and y, swept up (Ref. Level); upright, across x and z, swept along +y (Center (Front/Back), whose normal is
 /// -y, so its `from` and `to` are negated and swap places, a formula wrapped as `-(…)`; a revolve's angles stay as they
 /// are); or across y and z, swept along x (Center (Left/Right)).

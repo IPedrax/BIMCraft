@@ -312,7 +312,7 @@ origin the line's start (`end`'s its end), so what is drawn on one will turn wit
 A form's `host` is a `PlaneRef`, `{"plane": guid}` or `{"line": guid, "face": …}`, Ref. Level when none: its profile is
 drawn in the host's axes and `from` and `to` run along its normal (Revit's Extrusion Start and End); a revolve turns in it
 (`Family::frame`, `sweep`, `revolve`, whose triangles turn round where a frame is mirrored). `plane` (`xy`, `xz`, `yz`) is the
-shorthand from before (`family::Plane`), read as it always was by the command and by a file of 19 (`FormIn`): `xy` and `yz`
+shorthand from before (`family::Plane`), read as it always was by the command and by a file of 17 (`FormIn`): `xy` and `yz`
 are Ref. Level and Center (Left/Right) as they were; `xz` swept along +y and Center (Front/Back)'s normal is -y, so its
 `from` and `to` are negated and swap places (a formula wrapped as `-(…)`), a revolve's angles kept. The starter families
 still say `plane`, and build the same triangles (`family_plane_tests`); FORMAT 18 is this change. The `family` command
@@ -467,7 +467,7 @@ their points"), so `component` and `edit_work_plane` can't put one on a plane. `
 (its host's offset, or its height over its level), which `modify` also takes; component schedules have Elevation from
 Level, Work Plane and Offset from Host besides Level, its Schedule Level. IFC keeps it in its Schedule Level's storey, its
 `IfcAxis2Placement3D` taking the tilt as its Axis and RefDirection; the project's reference planes aren't exported. FORMAT
-22 is this change: a build of 21 would stand a tilted component upright and lose its plane; a file of 21 holds neither.
+18 is this change: a build that reads up to 17 would stand a tilted component upright and lose its plane; a file of 17 holds neither.
 
 The desktop's Component tool, placing a work plane-based family, shows Place on Work Plane and a Placement Plane (the plan's
 level, or a reference plane of the project) on its Options Bar, and for any family Rotate after placement, which selects what
@@ -507,7 +507,7 @@ goes up it. `component {…, host: {face: {element, face}}}` takes `at` [x, y] o
 and [x, y, z] onto a wall's side (its nearest point; [x, y] alone is refused there), `offset` along the face's normal;
 `edit_work_plane {ids, host: {face: …}}` puts components on one. Work Plane reads `Floor : Generic - 200mm : Top`, `elements`
 gives `host_element` and component schedules a Host field. IFC keeps the placement and writes no host relation (IFC4 has
-none for an element that fills nothing). FORMAT 23 is this change: a build of 22 reads `host` whole and knows no face.
+none for an element that fills nothing). FORMAT 18 is this change: a build that reads up to 17 reads `host` whole and knows no face.
 The desktop's Component tool offers Place on Face beside Place on Work Plane: in plan it places on the top of the highest
 floor or roof of the level under the click, in a ceiling plan on the underside of the lowest ceiling (`Model::face_in_plan`),
 in the 3D view on the face clicked (`Model::face_role`). A wall's top and ends, the faces of other elements and of linked

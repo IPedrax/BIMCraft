@@ -5802,9 +5802,12 @@ fn the_family_editor_shows_a_familys_connectors_and_keeps_them() {
     press(&mut h, "Connectors");
     assert!(h.query_by_label_contains("pipe · waste · out · Size 100").is_some(), "the waste outlet, its DN");
     assert!(h.query_by_label_contains("cold · in").is_some(), "the cistern's cold water");
-    // Applied, the family keeps them as they were.
+    // Loaded into the project, the family keeps them as they were.
     let before = h.state().session.model.families["WC"].connectors.clone();
-    press_near(&mut h, "Apply", "Cancel");
+    press(&mut h, "Load into Project");
+    if h.query_by_label("Overwrite the existing version and its parameter values").is_some() {
+        press(&mut h, "Overwrite the existing version and its parameter values");
+    }
     assert_eq!(h.state().session.model.families["WC"].connectors, before);
 }
 

@@ -645,7 +645,12 @@ impl BimApp {
             identity(ui, &mut ed.name, &category);
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                for (tab, label) in [(Tab::Forms, msg!("Forms")), (Tab::Symbols, msg!("Symbols")), (Tab::Adaptive, msg!("Adaptive"))] {
+                for (tab, label) in [
+                    (Tab::Forms, msg!("Forms")),
+                    (Tab::Symbols, msg!("Symbols")),
+                    (Tab::Connectors, msg!("Connectors")),
+                    (Tab::Adaptive, msg!("Adaptive")),
+                ] {
                     if ui.selectable_label(ed.tab == tab, t(label)).clicked() {
                         ed.tab = tab;
                     }
@@ -655,6 +660,7 @@ impl BimApp {
             match ed.tab {
                 Tab::Forms => forms_tab(&mut ed, ui, &materials),
                 Tab::Symbols => symbols_tab(&mut ed, ui),
+                Tab::Connectors => connectors_tab(&ed, ui),
                 Tab::Adaptive => {
                     if let Some(a) = crate::adaptive_editor::show(ui, &mut ed.adaptive, &values, &params) {
                         ed.associating = Some(a);
