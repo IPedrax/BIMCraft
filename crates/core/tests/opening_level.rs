@@ -117,7 +117,11 @@ mod tests {
     fn explicit_wall_remains_authoritative_even_with_a_different_level() {
         let mut s = fixture();
         let upper = wall(&mut s, "Level 2", 0.0);
-        assert_eq!(run(&mut s, "door", json!({"wall": upper, "offset": 2000, "level": "Foundation"}))["host"], upper);
+        // The wall stays the host: no other wall is looked for. The level sets the height (#343), and the Foundation's
+        // would put the door under that wall's base, so it is refused naming the wall, not moved to another.
+        let error = s.execute("door", &json!({"wall": upper, "offset": 2000, "level": "Foundation"})).unwrap_err();
+        assert!(error.contains(&format!("wall {upper}'s base")), "{error}");
+        assert_eq!(run(&mut s, "door", json!({"wall": upper, "offset": 2000, "level": "Level 2"}))["host"], upper);
     }
 
     #[test]
