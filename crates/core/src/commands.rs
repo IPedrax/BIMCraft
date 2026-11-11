@@ -674,7 +674,8 @@ other_files(
          as many risers as keep each at most `riser` mm, treads `tread` deep (the project's building code's, 180 and 280 with \
          none: `building_code`), `width` wide (1000). One straight \
          run, as long as that makes it (`landings`: \"auto\" gives it the landings its code says are due, straight on); or with landings (each as deep as the stair is wide) after `at` risers, the next run \
-         going on as `turn` says: 0 straight on, 90 or -90 turned left or right, 180 or -180 back beside it, to its left or right. \
+         going on as `turn` says: 0 straight on, 90 or -90 turned left or right (or any angle from 5 to 135, the runs sharing the \
+         turn's inside corner), 180 or -180 back beside it, to its left or right. \
          A turn with `winders` (1 to 30) has no landing: that many treads fanned round its inside corner, each a riser above the \
          last; a code that does not allow them still builds them, and `stair_check` says so. With `balance` (treads), the winders run that \
          many treads into the flight on each side, and those treads and the winders are redrawn as steps equal along the walk line \

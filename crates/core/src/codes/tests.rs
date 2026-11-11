@@ -458,3 +458,42 @@ fn the_walk_line_goes_round_a_winding_turn_at_the_stair_s_middle() {
     let r = run(&mut s, "railing", json!({"host": id, "side": "left"}));
     assert_eq!(r["ids"].as_array().map(Vec::len), Some(1), "{r}");
 }
+
+#[test]
+fn a_stair_turns_by_any_angle_on_a_landing_or_on_winders() {
+    use crate::geom::P2;
+    let mut s = Session::new();
+    // North, then 45 to the left on a landing.
+    let id = run(&mut s, "stair", json!({"start": [0, 0], "angle": 90, "width": 1000, "landings": [{"at": 6, "turn": 45}]}))["id"]
+        .as_u64()
+        .unwrap();
+    let l = crate::stairs::stair(&s.model, &stair_of(&s, id));
+    let (a, b) = (l.runs[0], l.runs[1]);
+    assert!((b.u.0 + 0.5f64.sqrt()).abs() < 1e-9 && (b.u.1 - 0.5f64.sqrt()).abs() < 1e-9, "north-west: {:?}", b.u);
+    // The runs share the inside corner of the turn, the left end of the first run's top.
+    let corner = a.end() + P2(-500.0, 0.0);
+    assert!(b.ring(1000.0).iter().any(|q| q.dist(corner) < 1e-6), "{:?}", b.ring(1000.0));
+    // The landing: a kite of w × w·tan(22.5°).
+    let kite = 1000.0 * 1000.0 * (22.5f64).to_radians().tan();
+    assert!((crate::geom::area(&l.pads[0].ring) - kite).abs() < 1e-3, "{}", crate::geom::area(&l.pads[0].ring));
+
+    // The same turn on winders, plain and balanced: the same ground and the flights' treads, no gaps.
+    for (winders, balance, ground) in [(2, 0, kite), (2, 2, kite + 2.0 * 2.0 * 280.0 * 1000.0)] {
+        let p = json!({"start": [0, 0], "angle": 90, "width": 1000, "landings": [{"at": 6, "turn": -45, "winders": winders, "balance": balance}]});
+        let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+        let l = crate::stairs::stair(&s.model, &stair_of(&s, id));
+        let area: f64 = l.pads.iter().map(|p| crate::geom::area(&p.ring)).sum();
+        assert!((area - ground).abs() < 1.0, "{winders} {balance}: {area} against {ground}");
+        assert_eq!(l.winders as u32, winders + 2 * balance);
+        assert!((l.walk.last().unwrap().1 - 3000.0).abs() < 1e-6);
+    }
+    // And flipped, over the same ground.
+    let before: f64 = crate::stairs::stair(&s.model, &stair_of(&s, id)).pads.iter().map(|p| crate::geom::area(&p.ring)).sum();
+    run(&mut s, "flip", json!({"ids": [id]}));
+    let l = crate::stairs::stair(&s.model, &stair_of(&s, id));
+    assert!((l.pads.iter().map(|p| crate::geom::area(&p.ring)).sum::<f64>() - before).abs() < 1.0);
+
+    for turn in [3, 140, 179, -200] {
+        assert!(s.execute("stair", &json!({"start": [0, 0], "angle": 90, "landings": [{"at": 6, "turn": turn}]})).is_err(), "{turn}");
+    }
+}

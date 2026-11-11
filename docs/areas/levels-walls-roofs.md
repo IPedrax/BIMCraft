@@ -173,7 +173,8 @@ is runs and landings laid out from its start (`stairs::stair`, `stairs::ramp`): 
 mm up), as deep as the runs are wide, the next run turning by its `turn`; a railing on one follows its walk line moved out to
 its side (`stairs::railing`), so it goes wherever its host goes. A stair's `start` is on its location line
 (`line`: its left edge, its middle or its right edge, and `offset` from it; `Stair::foot` is the middle of its first riser), so
-the line stays when the width changes. A landing has a `length` of its own (0: as deep as the stair is wide), and a turn may
+the line stays when the width changes. A turn is straight on, back beside the run, or any angle from 5 to 135 degrees (the runs then share the turn's inside
+corner). A landing has a `length` of its own (0: as deep as the stair is wide), and a turn may
 wind instead (`winders` treads fanned round the turn's inside corner, `stairs::wind`; they are `Layout::pads` too, the last
 `Layout::winders` of a turn's). With `balance`, the winders run that many treads into the flight on each side and all of the
 turn's steps are equal along the walk line and the inside string (`stairs::balanced`), so none comes to a point. A project's **building code** (`codes.rs`, `data/building-codes.json`: generic, NBR, IBC, DIN,

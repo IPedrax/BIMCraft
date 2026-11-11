@@ -216,3 +216,31 @@ fn the_stair_tool_gives_the_run_after_the_turn_the_landings_its_code_asks() {
     let found = h.state_mut().run("stair_check", json!({})).unwrap();
     assert_eq!(found["count"], 0, "{found}");
 }
+
+#[test]
+fn the_stair_tool_turns_by_any_angle_and_chains_run_after_run() {
+    let mut h = app(BOX);
+    tool(&mut h, "Stair");
+    press(&mut h, "Railings");
+    press(&mut h, "Any Angle");
+    // North, then toward the north-east: 45 to the right.
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(1000.0, 2960.0));
+    click(&mut h, P2(3000.0, 4960.0));
+    let st = ids(&h, "stair");
+    assert_eq!((st.len(), field(&h, st[0], "landings")), (1, json!([{"at": 8.0, "turn": -45.0}])));
+
+    // Chained: three risers north, eleven treads east, then south with the two risers left.
+    press(&mut h, "Any Angle");
+    press(&mut h, "Chain");
+    click(&mut h, P2(4000.0, 500.0));
+    click(&mut h, P2(4000.0, 1060.0));
+    assert_eq!(ids(&h, "stair").len(), 1, "a landing is due: the tool waits");
+    click(&mut h, P2(7580.0, 2060.0));
+    assert_eq!(ids(&h, "stair").len(), 1, "the second run stops short of the top");
+    click(&mut h, P2(7900.0, 1000.0));
+    let all = ids(&h, "stair");
+    assert_eq!(all.len(), 2);
+    let made = *all.iter().find(|id| **id != st[0]).unwrap();
+    assert_eq!(field(&h, made, "landings"), json!([{"at": 3.0, "turn": -90.0}, {"at": 15.0, "turn": -90.0}]));
+}

@@ -79,9 +79,17 @@ fn chain(start: P2, angle: f64, width: f64, runs: Vec<(f64, (f64, f64), u32)>, t
         } else if turn.abs() == 90.0 {
             let ring = vec![e - n * (w / 2.0), e - n * (w / 2.0) + u * d, e + n * (w / 2.0) + u * d, e + n * (w / 2.0)];
             (ring, vec![e + u * (d - w / 2.0)], e + u * (d - w / 2.0) + side * (w / 2.0), side)
-        } else {
+        } else if turn.abs() == 180.0 {
             let ring = vec![e - side * (w / 2.0), e - side * (w / 2.0) + u * d, e + side * (1.5 * w) + u * d, e + side * (1.5 * w)];
             (ring, vec![e + u * (d / 2.0), e + u * (d / 2.0) + side * w], e + side * w, u * -1.0)
+        } else {
+            // Any other angle: the two runs share the turn's inside corner, and the landing reaches to where their
+            // outside edges meet.
+            let (s, c) = turn.abs().to_radians().sin_cos();
+            let (p, reach) = (e + side * (w / 2.0), (turn.abs().to_radians() / 2.0).tan());
+            let (dir, out2) = (u * c + side * s, u * s - side * c);
+            let ring = vec![p, p - side * w, p - side * w + u * (w * reach), p + out2 * w];
+            (ring, vec![p + (u * reach - side) * (w / 2.0)], p + out2 * (w / 2.0), dir)
         };
         if winders > 0 && turn != 0.0 {
             let p = e + side * (w / 2.0);
@@ -165,8 +173,17 @@ fn balanced(p: P2, side: P2, u: P2, w: f64, sweep: f64, count: u32, into: f64, p
     let back = sweep == 180.0;
     let at = |x: f64, y: f64| p + side * x + u * y;
     // In the turn's own frame: x toward the side it turns to, y on along the first run, the inside corner at the origin.
-    let inner = if back { vec![(0.0, -into), (0.0, 0.0), (0.0, -into)] } else { vec![(0.0, -into), (0.0, 0.0), (into, 0.0)] };
-    let outer = if back { vec![(-w, -into), (-w, w), (w, w), (w, -into)] } else { vec![(-w, -into), (-w, w), (into, w)] };
+    // The way the next run goes, and the way out across it, in that frame.
+    let (sn, cs) = sweep.to_radians().sin_cos();
+    let (dir, out2) = ((sn, cs), (-cs, sn));
+    let reach = w * (sweep.to_radians() / 2.0).tan();
+    let inner =
+        if back { vec![(0.0, -into), (0.0, 0.0), (0.0, -into)] } else { vec![(0.0, -into), (0.0, 0.0), (dir.0 * into, dir.1 * into)] };
+    let outer = if back {
+        vec![(-w, -into), (-w, w), (w, w), (w, -into)]
+    } else {
+        vec![(-w, -into), (-w, reach), (out2.0 * w + dir.0 * into, out2.1 * w + dir.1 * into)]
+    };
     let (inner, outer): (Vec<P2>, Vec<P2>) =
         (inner.into_iter().map(|(x, y)| P2(x, y)).collect(), outer.into_iter().map(|(x, y)| P2(x, y)).collect());
     let r = w / 2.0;
@@ -180,7 +197,8 @@ fn balanced(p: P2, side: P2, u: P2, w: f64, sweep: f64, count: u32, into: f64, p
         } else if back {
             P2(r, -(d - into - arc))
         } else {
-            P2(d - into - arc, r)
+            let past = d - into - arc;
+            P2(out2.0 * r + dir.0 * past, out2.1 * r + dir.1 * past)
         }
     };
     let n = f64::from(count) + 2.0 * f64::from(per_side);
@@ -244,12 +262,19 @@ fn balanced(p: P2, side: P2, u: P2, w: f64, sweep: f64, count: u32, into: f64, p
 fn wind(p: P2, side: P2, u: P2, w: f64, sweep: f64, count: u32) -> Vec<Vec<P2>> {
     let at = |x: f64, y: f64| p + side * x + u * y;
     // Where the ray at `deg` from the first run's end line meets the landing's edge.
+    let back = sweep == 180.0;
     let hit = |deg: f64| {
         let (s, c) = deg.to_radians().sin_cos();
-        let t = (w / c.abs().max(1e-12)).min(w / s.abs().max(1e-12));
+        // Back beside the run, the landing is a rectangle; else it ends at the next run's outside edge.
+        let t = if back {
+            (w / c.abs().max(1e-12)).min(w / s.abs().max(1e-12))
+        } else {
+            (w / c.max(1e-12)).min(w / (sweep - deg).to_radians().cos().max(1e-12))
+        };
         at(-c * t, s * t)
     };
-    let corners = [(45.0, at(-w, w)), (135.0, at(w, w))];
+    let reach = w * (sweep.to_radians() / 2.0).tan();
+    let corners = if back { vec![(45.0, at(-w, w)), (135.0, at(w, w))] } else { vec![(sweep / 2.0, at(-w, reach))] };
     (0..count)
         .map(|k| {
             let (a, b) = (sweep * f64::from(k) / f64::from(count), sweep * f64::from(k + 1) / f64::from(count));
@@ -353,7 +378,7 @@ pub fn grips(m: &Model, st: &Stair) -> Vec<(Grip, P2)> {
     }
     for (i, (run, t)) in l.runs.iter().zip(&st.landings).enumerate() {
         out.push((Grip::Turn(i), run.end()));
-        if t.winders == 0 {
+        if t.winders == 0 && matches!(t.turn.abs(), 0.0 | 90.0 | 180.0) {
             let deep = if t.length > 0.0 { if t.turn.abs() == 90.0 { t.length.max(st.width) } else { t.length } } else { st.width };
             let side = run.u.perp() * if t.turn > 0.0 { 1.0 } else { -1.0 };
             let across = if t.turn.abs() == 180.0 { side * (st.width / 2.0) } else { P2(0.0, 0.0) };

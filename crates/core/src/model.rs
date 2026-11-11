@@ -1661,7 +1661,8 @@ pub struct Stair {
 
 /// A landing between two runs of a stair or a ramp: after `at` risers of a stair, or `at` mm up a
 /// ramp; then the next run goes on straight (`turn` 0), turned left (90) or right (-90), or back
-/// beside the last, to its left (180) or its right (-180). It's as deep as the runs are wide. A stair's turning
+/// beside the last, to its left (180) or its right (-180); or turned by any angle from 5 to 135 degrees, the two
+/// runs then sharing the turn's inside corner. It's as deep as the runs are wide. A stair's turning
 /// may wind instead: `winders` treads fanned round the inside corner of the turn, each a riser above the last,
 /// where the flat landing would be.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -7749,10 +7750,12 @@ fn landings(who: &str, landings: &[Landing], risers: Option<f64>) -> Result<(), 
     let mut last = 0.0;
     for l in landings {
         coord(&format!("{who} landing"), l.at)?;
-        if !matches!(l.turn, 0.0 | 90.0 | -90.0 | 180.0 | -180.0) {
+        // Straight on, back beside the run, or any angle between a slight turn and a sharp one: past 135 degrees the
+        // landing would reach far out to where the outside edges meet.
+        if !(l.turn == 0.0 || l.turn.abs() == 180.0 || (5.0..=135.0).contains(&l.turn.abs())) {
             return Err(format!(
-                "{who}: a landing turns 0 (straight on), 90 or -90 (left or right), or 180 or -180 (back beside the run, to its left or \
-                 its right), not {}",
+                "{who}: a landing turns 0 (straight on), 5 to 135 or -5 to -135 (left or right, 90 a square turn), or 180 or -180 \
+                 (back beside the run, to its left or its right), not {}",
                 l.turn
             ));
         }

@@ -1871,9 +1871,15 @@ impl BimApp {
                 ui.end_row();
 
                 let name = ui.label(t("Next Run Goes"));
-                let now = TURNS.iter().find(|(a, _)| *a == l.turn).map_or("", |(_, s)| s);
+                // A turn by an angle of its own reads as the angle, to the side it goes.
+                let own = if l.turn > 0.0 {
+                    tf("{}° to the Left", &[&l.turn.to_string()])
+                } else {
+                    tf("{}° to the Right", &[&(-l.turn).to_string()])
+                };
+                let now = TURNS.iter().find(|(a, _)| *a == l.turn).map_or(own, |(_, s)| t(s).to_string());
                 let options: Vec<String> = TURNS.iter().map(|(_, s)| t(s).to_string()).collect();
-                if let Some(picked) = combo(ui, (id, &format!("landing-{i}-turn")), name.id, t(now), &options)
+                if let Some(picked) = combo(ui, (id, &format!("landing-{i}-turn")), name.id, &now, &options)
                     && let Some((a, _)) = TURNS.iter().find(|(_, s)| t(s) == picked)
                 {
                     l.turn = *a;
@@ -1884,6 +1890,16 @@ impl BimApp {
                 }
                 ui.end_row();
 
+                if l.turn != 0.0 && l.turn.abs() != 180.0 {
+                    let name = ui.label(t("Turn Angle")).on_hover_text(t("Degrees, 5 to 135: to the left, or with a minus to the right"));
+                    if let Some(typed) = self.field(ui, id, &format!("landing-{i}-angle"), l.turn.to_string(), name.id, "°") {
+                        match number(typed.trim().trim_end_matches('°')) {
+                            Some(x) => (l.turn, changed) = (x, true),
+                            None => failed = Some(tf("`{}` is not a number", &[&typed])),
+                        }
+                    }
+                    ui.end_row();
+                }
                 if l.turn != 0.0 {
                     let name = ui.label(t("Winders")).on_hover_text(t("How many winder treads the turn is made of; 0 turns on a landing"));
                     if let Some(typed) = self.field(ui, id, &format!("landing-{i}-winders"), l.winders.to_string(), name.id, "") {

@@ -3937,7 +3937,7 @@ fn stairs_turn_at_landings_into_several_runs() {
     for (landings, why) in [
         (json!([{"at": 1, "turn": 0}]), "risers"),
         (json!([{"at": 16, "turn": 0}]), "risers"),
-        (json!([{"at": 8, "turn": 45}]), "turn"),
+        (json!([{"at": 8, "turn": 150}]), "turn"),
         (json!([{"at": 9, "turn": 0}, {"at": 8, "turn": 0}]), "risers"),
         (json!([{"at": 8.5, "turn": 0}]), "whole"),
     ] {

@@ -592,6 +592,9 @@ pub struct BimApp {
     stair_winders: u32,
     /// How many treads of the flight on each side the tool's winders are balanced into.
     stair_balance: u32,
+    /// The Stair tool turning by any angle, and drawing run after run.
+    stair_free: bool,
+    stair_chain: bool,
     /// The Stair tool's location line, the line of the stair the clicks are on, and how far the stair stands from it.
     stair_line: bimcraft_core::model::StairLine,
     stair_offset: String,
@@ -1322,6 +1325,8 @@ impl BimApp {
             stair_width: units.length(STAIR_WIDTH),
             stair_winders: 0,
             stair_balance: 0,
+            stair_free: false,
+            stair_chain: false,
             stair_line: Default::default(),
             stair_offset: units.length(0.0),
             roof_slope: "30".into(),
@@ -4797,6 +4802,11 @@ impl BimApp {
                             "This building code does not allow winders. The stair is still built, and marked outside the rules.",
                         ));
                     }
+                    ui.checkbox(&mut self.stair_free, t("Any Angle"))
+                        .on_hover_text(t("The next run turns by the angle clicked, not only square or back; near square, it is square"));
+                    ui.checkbox(&mut self.stair_chain, t("Chain")).on_hover_text(t(
+                        "Run after run: each click after the first run turns the next run and ends it; a run clicked to its top takes the risers left",
+                    ));
                     ui.checkbox(&mut self.railings, t("Railings"));
                 }
                 Tool::Ramp(_) => {
@@ -5090,6 +5100,11 @@ impl BimApp {
             Tool::Ramp(pts) if pts.len() == 1 => {
                 msg!(
                     "Click where its run ends: past its top, one run, as high as the Options Bar says; short of it, a landing. Esc cancels."
+                )
+            }
+            Tool::Stair(_) if self.stair_chain => {
+                msg!(
+                    "Click where the next run ends: which way it turns from the landing, and how far it goes. Past its top, it takes the risers left."
                 )
             }
             Tool::Stair(_) | Tool::Ramp(_) => {
