@@ -2668,12 +2668,20 @@ impl BimApp {
             // As many risers as the run clicked holds, a tread between each two, and no more than the project's building
             // code lets a flight hold before a landing is due.
             let first = ((run / rules.going).round() + 1.0).max(2.0).min(f64::from(rules.flight_risers(each)));
-            // A turn winds when the Options Bar asks for winders, and there are risers enough for them.
+            // A turn winds when the Options Bar asks for winders, balanced into the flights as it says, where there are
+            // risers enough: else fanned round the corner, else a landing.
             let winders = if turn == 0.0 { 0 } else { self.stair_winders.min(30) };
-            if f64::from(n) - first - f64::from(winders.saturating_sub(1)) >= 2.0 {
-                st.landings.push(Landing { at: first, turn, winders, length: if winders > 0 { 0.0 } else { length } });
+            let balance = if winders == 0 { 0 } else { self.stair_balance.min(30) };
+            let fits = |winders: u32, balance: u32| {
+                let into = f64::from(balance);
+                first - into >= 2.0 && f64::from(n) - first - f64::from(winders.saturating_sub(1)) - into >= 2.0
+            };
+            if winders > 0 && fits(winders, balance) {
+                st.landings.push(Landing { at: first, turn, winders, balance, ..Landing::default() });
+            } else if winders > 0 && fits(winders, 0) {
+                st.landings.push(Landing { at: first, turn, winders, ..Landing::default() });
             } else if f64::from(n) - first >= 2.0 {
-                st.landings.push(Landing { at: first, turn, winders: 0, length });
+                st.landings.push(Landing { at: first, turn, length, ..Landing::default() });
             }
             let done = done(&st.landings);
             Ok((Element::Stair(st), done))

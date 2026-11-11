@@ -185,3 +185,17 @@ fn a_selected_stair_s_grips_drag_its_width_its_turn_and_its_foot() {
     assert!((x - 3000.0).abs() < 30.0 && (y - 1200.0).abs() < 30.0, "{start}");
     assert_eq!(h.state().session.history(), ["Wall", "Stair", "Modify", "Modify", "Modify"], "a step for each drag");
 }
+
+#[test]
+fn the_stair_tool_balances_its_winders_into_the_flights() {
+    let mut h = app(BOX);
+    tool(&mut h, "Stair");
+    press(&mut h, "Railings");
+    h.state_mut().stair_winders = 3;
+    h.state_mut().stair_balance = 2;
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(1000.0, 2960.0));
+    click(&mut h, P2(3000.0, 3500.0));
+    let st = ids(&h, "stair");
+    assert_eq!((st.len(), field(&h, st[0], "landings")), (1, json!([{"at": 8.0, "turn": -90.0, "winders": 3, "balance": 2}])));
+}

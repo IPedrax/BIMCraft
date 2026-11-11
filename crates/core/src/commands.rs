@@ -669,14 +669,16 @@ other_files(
         "stair",
         ui_msg!("Stair"),
         &[],
-        "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, riser?, tread?, landings?: [{at, turn?, winders?, length?}, …], \
+        "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, riser?, tread?, landings?: [{at, turn?, winders?, balance?, length?}, …], \
          line?, offset?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
          as many risers as keep each at most `riser` mm, treads `tread` deep (the project's building code's, 180 and 280 with \
          none: `building_code`), `width` wide (1000). One straight \
          run, as long as that makes it (`landings`: \"auto\" gives it the landings its code says are due, straight on); or with landings (each as deep as the stair is wide) after `at` risers, the next run \
          going on as `turn` says: 0 straight on, 90 or -90 turned left or right, 180 or -180 back beside it, to its left or right. \
          A turn with `winders` (1 to 30) has no landing: that many treads fanned round its inside corner, each a riser above the \
-         last; a code that does not allow them still builds them, and `stair_check` says so. \
+         last; a code that does not allow them still builds them, and `stair_check` says so. With `balance` (treads), the winders run that \
+         many treads into the flight on each side, and those treads and the winders are redrawn as steps equal along the walk line \
+         and along the inside string, so none comes to a point. \
          A landing is `length` deep along the run that climbs onto it (0 or none: as deep as the stair is wide). \
          `line` says which line of the stair `start` is on, \"left\", \"centre\" (as it is with none) or \"right\" looking up it, \
          and `offset` moves the stair that far to the left of the line: the line stays when the width changes. \

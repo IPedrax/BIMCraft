@@ -1878,7 +1878,7 @@ impl BimApp {
                 {
                     l.turn = *a;
                     if l.turn == 0.0 {
-                        l.winders = 0;
+                        (l.winders, l.balance) = (0, 0);
                     }
                     changed = true;
                 }
@@ -1888,11 +1888,30 @@ impl BimApp {
                     let name = ui.label(t("Winders")).on_hover_text(t("How many winder treads the turn is made of; 0 turns on a landing"));
                     if let Some(typed) = self.field(ui, id, &format!("landing-{i}-winders"), l.winders.to_string(), name.id, "") {
                         match typed.trim().parse::<u32>() {
-                            Ok(x) => (l.winders, changed) = (x, true),
+                            Ok(x) => {
+                                (l.winders, changed) = (x, true);
+                                if x == 0 {
+                                    l.balance = 0;
+                                }
+                            }
                             Err(_) => failed = Some(tf("`{}` is not a number", &[&typed])),
                         }
                     }
                     ui.end_row();
+                    if l.winders > 0 {
+                        let name = ui.label(t("Balanced Treads")).on_hover_text(t(
+                            "How many treads of the flight on each side the winders run into, so that none comes to a point; 0 fans them round the corner",
+                        ));
+                        if let Some(typed) = self.field(ui, id, &format!("landing-{i}-balance"), l.balance.to_string(), name.id, "") {
+                            match typed.trim().parse::<u32>() {
+                                Ok(x) => (l.balance, changed) = (x, true),
+                                Err(_) => failed = Some(tf("`{}` is not a number", &[&typed])),
+                            }
+                        }
+                        ui.end_row();
+                    } else {
+                        l.balance = 0;
+                    }
                 }
                 if l.winders == 0 {
                     let name = ui

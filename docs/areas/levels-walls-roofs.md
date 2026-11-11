@@ -175,7 +175,8 @@ its side (`stairs::railing`), so it goes wherever its host goes. A stair's `star
 (`line`: its left edge, its middle or its right edge, and `offset` from it; `Stair::foot` is the middle of its first riser), so
 the line stays when the width changes. A landing has a `length` of its own (0: as deep as the stair is wide), and a turn may
 wind instead (`winders` treads fanned round the turn's inside corner, `stairs::wind`; they are `Layout::pads` too, the last
-`Layout::winders` of a turn's). A project's **building code** (`codes.rs`, `data/building-codes.json`: generic, NBR, IBC, DIN,
+`Layout::winders` of a turn's). With `balance`, the winders run that many treads into the flight on each side and all of the
+turn's steps are equal along the walk line and the inside string (`stairs::balanced`), so none comes to a point. A project's **building code** (`codes.rs`, `data/building-codes.json`: generic, NBR, IBC, DIN,
 Japan; the numbers typed from memory and unchecked) is the rules its stairs are held to: `building_code` names one and changes
 any rule of it for the project (`Model::building_code`, `Model::stair_rules`), a new stair starts with its riser, going and
 landing length, `landings: "auto"` places the landings due, and `stair_check` (and `code_check`, `code_findings` on a stair)

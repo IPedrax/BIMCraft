@@ -590,6 +590,8 @@ pub struct BimApp {
     stair_width: String,
     /// The Stair tool's winders: how many treads a turn is made of, none for a landing.
     stair_winders: u32,
+    /// How many treads of the flight on each side the tool's winders are balanced into.
+    stair_balance: u32,
     /// The Stair tool's location line, the line of the stair the clicks are on, and how far the stair stands from it.
     stair_line: bimcraft_core::model::StairLine,
     stair_offset: String,
@@ -1319,6 +1321,7 @@ impl BimApp {
             footing_top: units.length(0.0),
             stair_width: units.length(STAIR_WIDTH),
             stair_winders: 0,
+            stair_balance: 0,
             stair_line: Default::default(),
             stair_offset: units.length(0.0),
             roof_slope: "30".into(),
@@ -4783,6 +4786,11 @@ impl BimApp {
                     let l = ui.label(t("Winders:"));
                     let tip = t("How many winder treads a turn is made of; 0 turns on a landing");
                     ui.add(egui::DragValue::new(&mut self.stair_winders).range(0..=30)).labelled_by(l.id).on_hover_text(tip);
+                    if self.stair_winders > 0 {
+                        let l = ui.label(t("Balance:"));
+                        let tip = t("How many treads of the flight on each side the winders run into, so that none comes to a point; 0 fans them round the corner");
+                        ui.add(egui::DragValue::new(&mut self.stair_balance).range(0..=30)).labelled_by(l.id).on_hover_text(tip);
+                    }
                     if self.stair_winders > 0 && !self.session.model.stair_rules().winders {
                         let code = t(&self.session.model.building_code().name).to_string();
                         ui.label(RichText::new(tf("Against {}", &[&code])).color(codes::OUTSIDE)).on_hover_text(t(

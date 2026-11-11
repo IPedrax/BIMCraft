@@ -1672,6 +1672,10 @@ pub struct Landing {
     pub turn: f64,
     #[serde(default, skip_serializing_if = "no_winders")]
     pub winders: u32,
+    /// How many treads of the flight on each side its winders run into (0: the winders fan round the corner's point).
+    /// Balanced so, every tread of the turn has some depth at its narrow end.
+    #[serde(default, skip_serializing_if = "no_winders")]
+    pub balance: u32,
     /// How deep it is along the run that climbs onto it; 0 for as deep as the runs are wide. A landing that turns
     /// left or right is no shorter than that, the next run leaving from its far end.
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -4450,7 +4454,7 @@ impl Model {
         let n = (rise / st.riser - 1e-9).ceil().clamp(0.0, 1e6) as u32;
         let each = if n > 0 { rise / f64::from(n) } else { 0.0 };
         let runs = u32::try_from(st.landings.len()).unwrap_or(u32::MAX).saturating_add(1);
-        let wound = st.landings.iter().fold(0u32, |a, l| a.saturating_add(l.wound()));
+        let wound = st.landings.iter().fold(0u32, |a, l| a.saturating_add(l.wound()).saturating_add(l.balance.saturating_mul(2)));
         (n, each, f64::from(n.saturating_sub(runs).saturating_sub(wound)) * st.tread)
     }
 
@@ -7762,13 +7766,20 @@ fn landings(who: &str, landings: &[Landing], risers: Option<f64>) -> Result<(), 
         if l.length < 0.0 {
             return Err(format!("{who}: a landing's `length` is 0 (as deep as the stair is wide) or more, not {}", l.length));
         }
-        let wound = f64::from(l.wound());
+        if l.balance > 0 && l.winders == 0 {
+            return Err(format!("{who}: `balance` runs winders into the flights beside them, and this turn has no winders"));
+        }
+        if l.balance > 30 {
+            return Err(format!("{who}: winders balanced over {} treads of each flight; 30 at most", l.balance));
+        }
+        let (wound, into) = (f64::from(l.wound()), f64::from(l.balance));
         match risers {
             Some(_) if l.at.fract() != 0.0 => return Err(format!("{who}: a landing goes after a whole number of risers, not {}", l.at)),
-            Some(n) if l.at < last + 2.0 || l.at + wound > n - 2.0 => {
+            Some(n) if l.at - into < last + 2.0 || l.at + wound + into > n - 2.0 => {
                 return Err(format!(
-                    "{who}: a landing after {} risers leaves a run of fewer than 2 risers; each run needs 2 or more",
-                    l.at
+                    "{who}: a landing after {} risers leaves a run of fewer than 2 risers{}; each run needs 2 or more",
+                    l.at,
+                    if into > 0.0 { " once its winders are balanced into the flights" } else { "" }
                 ));
             }
             None if l.at <= last + TOL => {
@@ -7776,7 +7787,7 @@ fn landings(who: &str, landings: &[Landing], risers: Option<f64>) -> Result<(), 
             }
             _ => {}
         }
-        last = l.at + wound;
+        last = l.at + wound + into;
     }
     Ok(())
 }

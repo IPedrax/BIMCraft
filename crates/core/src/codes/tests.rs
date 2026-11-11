@@ -387,3 +387,56 @@ fn a_stair_s_grips_move_it_turn_it_widen_it_and_shift_its_landings() {
     assert_eq!(grips(m, &left).iter().filter(|(g, _)| matches!(g, Grip::Width(_))).count(), 1);
     assert_eq!(dragged(m, &left, Grip::Width(Side::Right), P2(1300.0, 0.0)).width, 1300.0);
 }
+
+#[test]
+fn winders_balanced_into_the_flights_have_depth_at_the_narrow_end() {
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"set": "din"}));
+    // 3000 up in 17 risers of 176.5, goings of 270: 6 up, 3 winders round a turn, and 3 treads of each flight with them.
+    let p = json!({"start": [0, 0], "angle": 90, "width": 1000, "landings": [{"at": 7, "turn": 90, "winders": 3, "balance": 3}]});
+    let id = run(&mut s, "stair", p.clone())["id"].as_u64().unwrap();
+    let st = stair_of(&s, id);
+    let l = crate::stairs::stair(&s.model, &st);
+    assert_eq!((l.runs[0].risers, l.runs[1].risers, l.winders), (4, 17 - 7 - 2 - 3, 9));
+    // The nine steps cover the corner and three treads each side, with no overlap.
+    let area: f64 = l.pads.iter().map(|p| crate::geom::area(&p.ring)).sum();
+    assert!((area - (1000.0 * 1000.0 + 2.0 * 3.0 * 270.0 * 1000.0)).abs() < 1.0, "{area}");
+    let each = 3000.0 / 17.0;
+    for (k, pad) in l.pads.iter().enumerate() {
+        assert!((pad.z - (4.0 + k as f64) * each).abs() < 1e-6, "{k}: {}", pad.z);
+        assert!(crate::geom::area(&pad.ring) > 1e4, "{k}: {:?}", pad.ring);
+    }
+    assert!((l.runs[1].z.0 - 12.0 * each).abs() < 1e-6 && (l.runs[1].z.1 - 3000.0).abs() < 1e-6);
+    // Every step is 2 × 3 × 270 / 9 = 180 deep on the inside string, and the middle one of the nine goes round the corner.
+    let corner = crate::geom::P2(-500.0, 3.0 * 270.0 + 3.0 * 270.0);
+    assert_eq!(
+        l.pads.iter().filter(|p| p.ring.iter().any(|q| q.dist(corner) < 1e-6)).count(),
+        1,
+        "one step holds the corner, none comes to a point there"
+    );
+    // DIN asks 100 at the narrow end: 180 holds it, where a point did not.
+    assert_eq!(broken(&mut s, id), Vec::<String>::new());
+    let mut point = p.clone();
+    point["landings"][0]["balance"] = json!(0);
+    let other = run(&mut s, "stair", point)["id"].as_u64().unwrap();
+    assert!(broken(&mut s, other).contains(&"winder_narrow_min".to_string()));
+
+    // Back beside the run, and flipped over the same ground.
+    let mut back = p;
+    back["landings"] = json!([{"at": 8, "turn": -180, "winders": 6, "balance": 2}]);
+    let id = run(&mut s, "stair", back)["id"].as_u64().unwrap();
+    let l = crate::stairs::stair(&s.model, &stair_of(&s, id));
+    let area: f64 = l.pads.iter().map(|p| crate::geom::area(&p.ring)).sum();
+    assert!((area - (2.0 * 1000.0 * 1000.0 + 2.0 * 2.0 * 270.0 * 1000.0)).abs() < 1.0, "{area}");
+    assert_eq!(l.winders, 10);
+
+    for bad in [
+        json!([{"at": 7, "turn": 90, "balance": 2}]),
+        json!([{"at": 7, "turn": 90, "winders": 3, "balance": 31}]),
+        json!([{"at": 3, "turn": 90, "winders": 3, "balance": 3}]),
+        json!([{"at": 12, "turn": 90, "winders": 3, "balance": 3}]),
+    ] {
+        let p = json!({"start": [0, 0], "angle": 90, "landings": bad});
+        assert!(s.execute("stair", &p).is_err(), "{p}");
+    }
+}

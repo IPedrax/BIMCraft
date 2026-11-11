@@ -589,14 +589,18 @@ pub fn stair_findings(m: &Model, st: &Stair) -> Vec<Finding> {
             WalkLine::Centre => st.width / 2.0,
             WalkLine::NarrowSide => rules.walk_line_offset.min(st.width),
         };
-        let going = radius * l.turn.abs().to_radians() / f64::from(l.winders);
+        // Balanced, the turn's steps are its winders and the treads it takes of the flights, equal along the walk line and
+        // along the inside string.
+        let (into, steps) = (f64::from(l.balance) * st.tread, f64::from(l.winders + 2 * l.balance));
+        let going = (2.0 * into + radius * l.turn.abs().to_radians()) / steps;
+        let narrow = 2.0 * into / steps;
         if going < rules.winder_going_min - EPS {
             out.push(Finding {
                 rule: "winder_going_min",
                 value: mm(going),
                 limit: rules.winder_going_min,
                 message: format!(
-                    "its {} winders are {} mm deep on the walk line, {} mm from the narrow side, under the least, {} mm: give the turn fewer winders, or widen it",
+                    "its {} winders are {} mm deep on the walk line, {} mm from the narrow side, under the least, {} mm: give the turn fewer winders, balance them into the flights (`balance`), or widen it",
                     l.winders,
                     mm(going),
                     mm(radius),
@@ -604,12 +608,23 @@ pub fn stair_findings(m: &Model, st: &Stair) -> Vec<Finding> {
                 ),
             });
         }
-        if rules.winder_narrow_min > EPS {
+        if narrow < rules.winder_narrow_min - EPS {
             out.push(Finding {
                 rule: "winder_narrow_min",
-                value: 0.0,
+                value: mm(narrow),
                 limit: rules.winder_narrow_min,
-                message: format!("its winders come to a point at the narrow end, where the least depth is {} mm", rules.winder_narrow_min),
+                message: if l.balance == 0 {
+                    format!(
+                        "its winders come to a point at the narrow end, where the least depth is {} mm: balance them into the flights (`balance`: treads of each flight)",
+                        rules.winder_narrow_min
+                    )
+                } else {
+                    format!(
+                        "its winders are {} mm deep at the narrow end, under the least, {} mm: balance them over more treads (`balance`), or give the turn fewer winders",
+                        mm(narrow),
+                        rules.winder_narrow_min
+                    )
+                },
             });
         }
     }

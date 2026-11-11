@@ -2065,6 +2065,7 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"start": [0, 0], "end": [0, 0]}),
         json!({"start": [0, 0], "angle": 0, "line": 5, "offset": 1e300, "landings": [{"at": 4, "turn": 90, "winders": 1e9, "length": -1e300}]}),
         json!({"start": [0, 0], "angle": 0, "width": 1e-300, "line": "left", "offset": -1e8, "landings": [{"at": 4, "turn": 180, "winders": 30, "length": 1e308}]}),
+        json!({"start": [0, 0], "angle": 0, "landings": [{"at": 8, "turn": 90, "winders": 3, "balance": 1e9}, {"at": 9, "turn": -180, "winders": 1, "balance": 30}]}),
         json!({"set": "nbr", "keep_rules": 5, "stairs": {"riser": 1e300, "going": -1, "flight_risers_max": 1e30, "walk_line": [], "winders": null}}),
         json!({"set": [], "reset": true, "stairs": {"riser_min": 1e-300, "riser_max": 5e-324, "walk_line_offset": f64::MAX}}),
         json!({"ids": [100002, 1e300, -1, "x"]}),
