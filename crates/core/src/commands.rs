@@ -244,8 +244,10 @@ other_files(
         ui_msg!("Door"),
         &["DR"],
         "{at: [x,y] | wall: id, offset?, type?, family?, level?, mark?, flip_facing?, flip_hand?} in the wall under `at`, \
-         or in `wall` centred `offset` mm from its start; with `family`, a door family's `type` (its first by default), \
-         which sizes the opening and draws the door; it may rise past a low wall's top, as Revit lets it",
+         or in `wall` centred `offset` mm from its start; without `level`, prefer the lowest level at or above elevation 0 \
+         whose plan cuts a wall there, then the highest below 0; with `family`, a door family's `type` (its first by default), \
+         which sizes the opening and draws the door; an explicit `level` different from the wall's places it at that \
+         level's elevation, otherwise at the wall's base; it may rise past a low wall's top, as Revit lets it",
         door,
     )
     .menu("Architecture > Door"),
@@ -707,8 +709,9 @@ other_files(
         &[],
         "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…] | sketch?: [[[x,y],[x,y]],…], slope?, slopes?: [degrees, …], overhang?, gables?: [edge, …], gable?, offset?, \
          extrusion?, openings?: [[[x,y],…],…], join?, type?} a roof on `level` (by default the one above the lowest), its \
-         base `offset` mm above it. Over `boundary` or else the walls of the level below, `overhang` mm (500) past their \
-         faces, round any `courtyards` (holes in it, inside it and apart, with eaves of their own; over the walls, by \
+         base `offset` mm above it. Over the walls of the level below, `overhang` mm (500) past their faces; over an explicit \
+         `boundary` or `sketch`, eaves `overhang` mm (0) beyond the drawn wall line, the base at it. Round any `courtyards` \
+         (holes in it, inside it and apart, with eaves of their own; over the walls, by \
          default each loop of them standing free inside, joined to none of the outer ones and with no room in it): flat \
          at `slope` 0, else every edge sloping up at `slope` degrees (30), hips, valleys and ridges where the slopes meet, \
          but the edges in `gables` (edge i runs from point i to the next, the courtyards' edges numbered on after the \
@@ -1668,7 +1671,7 @@ other_files(
          30° up), fitted; in perspective (see `perspective`) through its lens, and with `eye_elevation` from an eye that high \
          (mm) looking at the same point, as a PNG (pngBase64), or written to a path: .png, .svg for a plan, .pdf for a sheet. A plan, section, \
          elevation or sheet that could not draw something as asked (a fill pattern too dense for the view, more ink behind \
-         a region than is kept above it) says so in the reply's `notes`",
+         a region than is kept above it, or unsupported drawing lettering replaced with a question mark) says so in the reply's `notes`",
         render_view,
         Files::Conditional,
     ),
@@ -2006,9 +2009,11 @@ other_files(
     other(
         "dr_check",
         "Check Residual-Current Protection",
-        "{circuits: [{name, points: [{place, kind, rating?, height?, outdoor?}], residual?, it_continuity?}], building?: residential|other} \
+        "{circuits: [{name, points: [{place, kind, rating?, height?, outdoor?}], residual?, it_continuity?}], building?: residential|other, standard?} \
          which circuits NBR 5410:2004 asks additional protection by a high-sensitivity residual-current device (DR, 30 mA at most) \
-         for. A circuit's `points` are what it serves: `place` is bath (a place with a bathtub or a shower), external, kitchen (or \
+         for. The rules are data (`data/dr-check.json`, one rule set for each standard, every rule naming its source): `standard` \
+         names the set, `NBR 5410:2004` the default and only one so far, and the answer gives `standard`, `standard_source` and, \
+         for each circuit, the `sources` of its `reasons`. A circuit's `points` are what it serves: `place` is bath (a place with a bathtub or a shower), external, kitchen (or \
          pantry-kitchen), laundry, service (service area), garage, wet (another wet internal area) or dry; `kind` is outlet, lighting or \
          fixed (another point of use); `rating` an outlet's rated current in A (32 A at most is covered; unknown, it is taken as covered), \
          `height` a light's in mm (in a dwelling a light 2500 mm up or more in the wet rooms is left out), `outdoor` an internal outlet \
@@ -2167,9 +2172,11 @@ other_files(
     other(
         "elements",
         ui_msg!("Elements"),
-        "{category?, level?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, \
+        "{category?, level?, field?, value?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, \
          never changed), fields and derived values (length, height, area_m2…); what an element points at (its level, host, \
-         view…) it holds by GUID. Wherever a command takes an element, its id or its GUID will do",
+         view…) it holds by GUID. Wherever a command takes an element, its id or its GUID will do. `field` is one its category's \
+         schedule has (`Type`, `Mark`, a project parameter), and `value` what it holds: text in any case, a number (mm, m² for \
+         an area), yes or no, or `\"\"` for text holding none; without `value`, those holding one (a yes or no reads no when unset)",
         elements,
     ),
 ];
@@ -2434,7 +2441,7 @@ fn off_centre(m: &Model, w: &Wall, p: P2) -> f64 {
 }
 
 /// The nearest wall at `at` on any level, with the heights it spans: what a level that does not cut it should be told about.
-fn wall_elsewhere(m: &Model, at: P2) -> Option<(Id, f64, f64)> {
+fn wall_elsewhere(m: &Model, at: P2) -> Option<(Id, Guid, f64, f64)> {
     m.elements
         .iter()
         .filter_map(|(id, e)| match e {
@@ -2443,7 +2450,32 @@ fn wall_elsewhere(m: &Model, at: P2) -> Option<(Id, f64, f64)> {
         })
         .filter(|(_, w, d)| *d <= m.thickness(w) / 2.0 + 100.0)
         .min_by(|a, b| a.2.total_cmp(&b.2))
-        .map(|(id, w, _)| (*id, m.base_z(w), m.top_z(w)))
+        .map(|(id, w, _)| (*id, w.level, m.base_z(w), m.top_z(w)))
+}
+
+/// Keep the nearby wall's span and the relevant plan cut in both explicit and inferred-level failures.
+fn opening_host_error(c: &str, m: &Model, at: P2, level: Option<Guid>) -> String {
+    let where_on = level.map_or_else(|| "any level".into(), |level| level_name(m, level));
+    let none = format!("no wall at [{}, {}] on {where_on}", at.0, at.1);
+    let fix = if level.is_some() {
+        "give the wall that level, or a view range that cuts it"
+    } else {
+        "give `wall` with `offset`, or a view range that cuts it"
+    };
+    match wall_elsewhere(m, at) {
+        Some((id, host_level, bottom, top)) => {
+            let level = level.unwrap_or(host_level);
+            bad(
+                c,
+                format!(
+                    "{none}; wall {id} stands there but spans {bottom} to {top} mm and {} cuts at {} mm: {fix}",
+                    level_name(m, level),
+                    m.plan_range(level).cut
+                ),
+            )
+        }
+        None => bad(c, if level.is_some() { none } else { format!("{none}; {fix}") }),
+    }
 }
 
 /// The wall a plan of `level` cuts nearest `at`, within its half thickness plus 100 mm of its centre
@@ -2458,6 +2490,13 @@ fn wall_at(m: &Model, level: impl Key, at: P2) -> Option<(Guid, f64)> {
         .filter(|(_, w, d)| *d <= m.thickness(w) / 2.0 + 100.0)
         .min_by(|a, b| a.2.total_cmp(&b.2))
         .map(|(id, w, _)| (id, along(w, at)))
+}
+
+/// The same plan-cut lookup as an explicit level, ordered from ground upwards, then downwards below ground.
+fn wall_on_any_level(m: &Model, at: P2) -> Option<(Guid, f64)> {
+    let levels = m.levels();
+    let ground = levels.partition_point(|(_, level)| level.elevation < 0.0);
+    levels[ground..].iter().chain(levels[..ground].iter().rev()).find_map(|(id, _)| wall_at(m, *id, at))
 }
 
 /// The outline `floor` gives a floor on `level` by default, along the centre lines of the walls
@@ -3528,21 +3567,22 @@ fn render_view(s: &mut Session, p: &Value) -> R {
         }
         return png_reply(c, p, render::png(&d)?, info);
     }
-    let level = level_param(c, m, p, "view")?;
+    let (level, plan) = plan_param(c, m, p, "view")?;
+    let plan = plan.unwrap_or(level);
+    let name = m.view_name(plan).unwrap_or_default();
     let (d, kind) = match flag(c, p, "ceiling")? {
-        true => (render::ceiling_plan(m, level, w, h), "ceiling plan"),
-        false => (render::plan(m, level, w, h), "plan"),
+        true => (render::ceiling_plan(m, plan, w, h), "ceiling plan"),
+        false => (render::plan(m, plan, w, h), "plan"),
     };
     match string(c, p, "path")? {
         Some(path) => {
             let path = PathBuf::from(path);
             write_plan(&d, &path)?;
-            Ok(with_notes(json!({"path": path, "width": w, "height": h, "view": level_name(m, level), "kind": kind}), &d.notes))
+            Ok(with_notes(json!({"path": path, "width": w, "height": h, "view": name, "kind": kind}), &d.notes))
         }
-        None => Ok(with_notes(
-            json!({"pngBase64": base64(&render::png(&d)?), "width": w, "height": h, "view": level_name(m, level), "kind": kind}),
-            &d.notes,
-        )),
+        None => {
+            Ok(with_notes(json!({"pngBase64": base64(&render::png(&d)?), "width": w, "height": h, "view": name, "kind": kind}), &d.notes))
+        }
     }
 }
 
@@ -5907,7 +5947,10 @@ fn dr_check(_: &mut Session, p: &Value) -> R {
     if !p.is_object() {
         return Err(bad(c, "params must be an object"));
     }
-    only(c, p, &["circuits", "building"])?;
+    only(c, p, &["circuits", "building", "standard"])?;
+    let names: Vec<&str> = dr::rule_sets().iter().map(|r| r.standard.as_str()).collect();
+    let standard = choice(c, p, "standard", &names, dr::DEFAULT)?;
+    let set = dr::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/dr-check.json")))?;
     let residential = choice(c, p, "building", &["residential", "other"], "residential")? == "residential";
     let list = match p.get("circuits") {
         Some(Value::Array(a)) if !a.is_empty() && a.len() <= 5000 => a,
@@ -5960,7 +6003,7 @@ fn dr_check(_: &mut Session, p: &Value) -> R {
             Some(_) => Some(within(c, item, "residual", 0.0, 0.0, 1.0e6).map_err(at)?),
         };
         let circuit = dr::Circuit { points, residual, it_continuity: flag(c, item, "it_continuity").map_err(at)? };
-        let v = dr::check(&circuit, residential);
+        let v = set.check(&circuit, residential);
         if v.ok == Some(false) {
             missing.push(name.clone());
         }
@@ -5969,16 +6012,20 @@ fn dr_check(_: &mut Session, p: &Value) -> R {
             "required": v.required,
             "exempt": v.exempt,
             "reasons": v.reasons,
+            "sources": v.sources,
             "residual_ma": residual,
             "ok": v.ok,
         }));
     }
     Ok(json!({
+        "standard": set.standard,
+        "standard_source": set.source,
         "circuits": out,
         "missing": missing,
-        "max_residual_ma": dr::MAX_RESIDUAL,
+        "max_residual_ma": set.max_residual_ma,
+        "max_outlet_a": set.max_outlet_a,
         "building": if residential { "residential" } else { "other" },
-        "not_covered": "the further rules for the volumes of a bathroom and for swimming pools, and the other protections against shock, which the device does not replace",
+        "not_covered": set.not_covered,
     }))
 }
 
@@ -7477,6 +7524,7 @@ pub fn opening_of(m: &Model, p: &Value, is_door: bool) -> Result<Element, String
 
 fn build_opening(m: &Model, p: &Value, is_door: bool) -> Result<Opening, String> {
     let c = if is_door { "door" } else { "window" };
+    let requested_level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
     let types = if is_door { &m.types.door } else { &m.types.window };
     // Of a family's type, or one of the project's own.
     let family = string(c, p, "family")?;
@@ -7506,23 +7554,14 @@ fn build_opening(m: &Model, p: &Value, is_door: bool) -> Result<Opening, String>
             let w = m.wall(h).ok_or_else(|| bad(c, format!("{h} is not a wall")))?;
             (m.guid(h), at.map_or(w.start.dist(w.end) / 2.0, |a| along(w, a)))
         }
+        None if absent(p.get("level")) => {
+            let at = at.ok_or_else(|| bad(c, "give `at` [x, y] on a wall, or `wall` with `offset`"))?;
+            wall_on_any_level(m, at).ok_or_else(|| opening_host_error(c, m, at, None))?
+        }
         None => {
             let at = at.ok_or_else(|| bad(c, "give `at` [x, y] on a wall, or `wall` with `offset`"))?;
             let level = level_param(c, m, p, "level")?;
-            wall_at(m, level, at).ok_or_else(|| {
-                let none = format!("no wall at [{}, {}] on {}", at.0, at.1, level_name(m, level));
-                match wall_elsewhere(m, at) {
-                    Some((id, bottom, top)) => bad(
-                        c,
-                        format!(
-                            "{none}; wall {id} stands there but spans {bottom} to {top} mm and {} cuts at {} mm: give the wall that level, or a view range that cuts it",
-                            level_name(m, level),
-                            m.plan_range(level).cut
-                        ),
-                    ),
-                    None => bad(c, none),
-                }
-            })?
+            wall_at(m, level, at).ok_or_else(|| opening_host_error(c, m, at, Some(level)))?
         }
     };
     let offset = num(c, p, "offset")?.unwrap_or(along_at);
@@ -7532,6 +7571,16 @@ fn build_opening(m: &Model, p: &Value, is_door: bool) -> Result<Opening, String>
         None => types.get(&type_name).map_or(0.0, |t| t.sill),
     });
     let sill = if is_door { 0.0 } else { num(c, p, "sill")?.unwrap_or(default_sill) };
+    // Files and all geometry keep the sill relative to the host's own base. Only an explicitly requested different
+    // level changes the placement datum; same-level raised walls keep their host-relative placement.
+    let sill = if let Some(level) = requested_level
+        && let Some(w) = m.wall(host)
+        && level != w.level
+    {
+        m.elevation(level) + sill - m.own_base(w)
+    } else {
+        sill
+    };
     let mark = match string(c, p, "mark")? {
         Some(mk) => mk,
         None => next_number(m.elements.values().filter_map(|e| match e {
@@ -8992,6 +9041,24 @@ fn roof(s: &mut Session, p: &Value) -> R {
     if absent(p.get("slopes")) {
         r.slopes = slopes_of_edges(&r, &lines, &[]);
     }
+    // Match sketch slopes before moving the edges: offsets keep their numbers, not their locations.
+    // An edited boundary is already the eave outline, so this applies only at creation.
+    if given && r.extrusion.is_none() {
+        r.boundary = roof_eaves(&r.boundary, overhang)
+            .ok_or_else(|| bad(c, format!("`boundary` is too small for an overhang of {overhang} mm; make it less")))?;
+        r.courtyards = r
+            .courtyards
+            .iter()
+            .map(|ring| {
+                roof_eaves(ring, -overhang)
+                    .ok_or_else(|| bad(c, format!("a courtyard is too small for an overhang of {overhang} mm; make it less")))
+            })
+            .collect::<Result<_, _>>()?;
+        if overhang != 0.0 {
+            // The input curves describe the wall line, not the eaves. Picking and Edit Boundary must use the actual outline.
+            r.sketch.clear();
+        }
+    }
     let id = s.model_mut().insert(Element::Roof(r));
     Ok(json!({"id": id}))
 }
@@ -9612,6 +9679,17 @@ fn shaped<T: serde::de::DeserializeOwned>(c: &str, p: &Value, key: &str, shape: 
         Some(_) => Err(bad(c, format!("`{key}` lists more than {MAX_POINTS}"))),
         None => Ok(None),
     }
+}
+
+/// Move a roof's wall-line ring outward by `d` (inward when negative), preserving winding and edge numbers.
+/// A collapsing or reversed edge cannot carry the requested overhang; model validation checks the resulting outline too.
+pub(crate) fn roof_eaves(ring: &[P2], d: f64) -> Option<Vec<P2>> {
+    if d == 0.0 || ring.len() < 3 {
+        return Some(ring.to_vec());
+    }
+    let grown: Vec<P2> = geom::grow(ring, if geom::area(ring) < 0.0 { -d } else { d }).into_iter().map(micron).collect();
+    let kept = geom::ring_edges(ring).zip(geom::ring_edges(&grown)).all(|((p, q), (r, s))| (q - p).dot(s - r) > 0.0);
+    (kept && grown.iter().all(|p| p.is_finite())).then_some(grown)
 }
 
 /// The footprint `roof` gives a roof on `level` by default, over the walls of the level below: their
@@ -14202,20 +14280,106 @@ fn inspect(s: &mut Session, p: &Value) -> R {
     Ok(out)
 }
 
+/// `v` as a number: one, or a number written as text (`"300"`, `"2.5"`).
+fn number(v: &Value) -> Option<f64> {
+    match v {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.trim().parse().ok(),
+        _ => None,
+    }
+}
+
+/// Whether `v` is a value a field holding `kind` can hold: text, a number, or yes or no.
+fn value_fits(kind: schedule::Kind, v: &Value) -> bool {
+    match (kind, v) {
+        (schedule::Kind::Text, Value::String(s)) => s.chars().count() <= MAX_TEXT,
+        (schedule::Kind::YesNo, Value::Bool(_)) => true,
+        (schedule::Kind::Text | schedule::Kind::YesNo, _) => false,
+        (_, v) => number(v).is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD),
+    }
+}
+
+/// Whether a field holding `held` is the value `wanted`, as a schedule compares them: text in any
+/// case, numbers (or numbers written as text) equal, yes or no.
+fn holds(kind: schedule::Kind, held: &Value, wanted: &Value) -> bool {
+    match (kind, wanted) {
+        (schedule::Kind::Text, Value::String(s)) => held.as_str().is_some_and(|h| h.to_lowercase() == s.to_lowercase()),
+        (schedule::Kind::YesNo, Value::Bool(b)) => held.as_bool() == Some(*b),
+        (schedule::Kind::Text | schedule::Kind::YesNo, _) => false,
+        _ => number(held).zip(number(wanted)).is_some_and(|(a, b)| a == b),
+    }
+}
+
 fn elements(s: &mut Session, p: &Value) -> R {
     let c = "elements";
     let m = &s.model;
     let cat = string(c, p, "category")?.map(|k| category(&k));
     let level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
     let (limit, offset) = (count_opt(c, p, "limit", 500)?, count_opt(c, p, "offset", 0)?);
+    // A field of a schedule of the category, and the value it holds.
+    let field = string(c, p, "field")?.map(|f| f.trim().to_string()).filter(|f| !f.is_empty());
+    let value = match p.get("value") {
+        None | Some(Value::Null) => None,
+        Some(v @ (Value::String(_) | Value::Number(_) | Value::Bool(_))) => Some(v.clone()),
+        Some(v) => return Err(bad(c, format!("`value` is a value as a field holds it, not {v}"))),
+    };
+    if value.is_some() && field.is_none() {
+        return Err(bad(c, "`value` needs a `field`: the field whose value it is"));
+    }
+    let kinds: Option<(String, BTreeMap<String, schedule::Kind>)> = match &field {
+        None => None,
+        Some(name) => {
+            let mut kinds = BTreeMap::new();
+            if let Some(k) = &cat {
+                match schedule::fields(m, k).into_iter().find(|(n, _)| n == name) {
+                    Some((_, kind)) => {
+                        kinds.insert(k.clone(), kind);
+                    }
+                    None => return Err(bad(c, format!("a {k} has no field `{name}`"))),
+                }
+            } else {
+                for k in schedule::all_categories() {
+                    if let Some((_, kind)) = schedule::fields(m, k).into_iter().find(|(n, _)| n == name) {
+                        kinds.insert(k.to_string(), kind);
+                    }
+                }
+                if kinds.is_empty() {
+                    return Err(bad(c, format!("no category has a field `{name}`")));
+                }
+            }
+            Some((name.clone(), kinds))
+        }
+    };
+    if let (Some((name, kinds)), Some(v)) = (&kinds, &value)
+        && !kinds.values().any(|k| value_fits(*k, v))
+    {
+        let mut kind_names: Vec<&str> = kinds.values().map(|k| schedule::holding(*k)).collect();
+        kind_names.sort_unstable();
+        kind_names.dedup();
+        return Err(bad(c, format!("`{name}` holds {}, and `value` must be one: {v}", kind_names.join(" or "))));
+    }
+    let rooms = crate::rooms::Rooms::new(m);
     let hits: Vec<Id> = m
         .elements
         .iter()
         .filter(|(_, e)| cat.as_deref().is_none_or(|k| e.category() == k))
         .filter(|(_, e)| level.is_none_or(|l| m.level_of(e) == Some(l)))
+        .filter(|(id, e)| match &kinds {
+            None => true,
+            Some((name, kinds)) => kinds.get(e.category()).is_some_and(|kind| {
+                let held = schedule::field_value_with(m, **id, name, &rooms);
+                let empty = held.as_ref().is_none_or(|(_, v)| v.is_null() || v.as_str() == Some(""));
+                match &value {
+                    None => !empty,
+                    Some(wanted) => match &held {
+                        Some((_, v)) => holds(*kind, v, wanted),
+                        None => wanted.as_str() == Some(""),
+                    },
+                }
+            }),
+        })
         .map(|(id, _)| *id)
         .collect();
-    let rooms = crate::rooms::Rooms::new(m);
     let page: Vec<Value> = hits.iter().skip(offset).take(limit).map(|id| element_json_with(m, *id, &rooms)).collect();
     Ok(json!({"count": hits.len(), "returned": page.len(), "elements": page}))
 }
