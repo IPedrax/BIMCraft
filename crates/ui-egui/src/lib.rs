@@ -830,6 +830,9 @@ pub struct BimApp {
     /// The Component tool's Placement Plane for a work plane-based family: a reference plane of the project, by GUID; none,
     /// the view's level.
     placement_plane: Option<bimcraft_core::ids::Guid>,
+    /// The Component tool's Place on Face for a work plane-based family: a click places it on the face under it (in plan a
+    /// floor's or a roof's top, in a ceiling plan a ceiling's underside, in the 3D view any face that hosts).
+    pub(crate) place_on_face: bool,
     /// The Component tool's Rotate after placement: each component placed is selected and Rotate starts about its point.
     rotate_after: bool,
     /// The Properties palette's folded groups.
@@ -1464,6 +1467,7 @@ impl BimApp {
             adaptive_clicks: Vec::new(),
             adaptive_grip: None,
             placement_plane: None,
+            place_on_face: false,
             rotate_after: false,
             collapsed: BTreeSet::new(),
             view_rect: Rect::ZERO,
@@ -1550,7 +1554,7 @@ impl BimApp {
             Tool::RoomSeparator(_) => Some(msg!("Place Room Separation")),
             Tool::Level => Some(msg!("Place Level")),
             Tool::Grid(_) => Some(msg!("Place Grid")),
-            Tool::ReferencePlane(_) => Some("Place Reference Plane"),
+            Tool::ReferencePlane(_) => Some(msg!("Place Reference Plane")),
             Tool::Dimension(..) | Tool::Angular(_) | Tool::Round(..) => Some(msg!("Place Dimensions")),
             Tool::Text => Some(msg!("Place Text")),
             Tool::DetailGroup => Some(msg!("Place Detail Group")),
@@ -3881,7 +3885,7 @@ impl BimApp {
                 ),
             ],
         );
-        // Datum, and the Work Plane's Set beside its levels and grids.
+        // Datum, and the Work Plane's Set and Ref Plane beside its levels and grids, as Revit's Work Plane panel has them.
         let datum: Tools = &[
             (Icon::Level, "Level", msg!("Level (LL): a new level at an elevation"), Tool::Level),
             (Icon::Grid, "Grid", msg!("Grid (GR): click its two ends"), Tool::Grid(None)),
@@ -3894,6 +3898,11 @@ impl BimApp {
                 }
             }
             self.work_plane_set(ui);
+            let plane = Tool::ReferencePlane(None);
+            let tip = msg!("Reference Plane (RP): click its two ends; work plane-based components are placed on it and move with it");
+            if big_button(ui, Icon::RefPlane, msg!("Ref Plane"), structure::same_tool(&self.tool, &plane), tip).clicked() {
+                self.set_tool(plane);
+            }
         });
     }
 
@@ -4927,7 +4936,16 @@ impl BimApp {
             ui.checkbox(&mut self.rotate_after, t("Rotate after placement"));
             return;
         }
-        let _ = ui.selectable_label(true, t("Place on Work Plane"));
+        if ui.selectable_label(!self.place_on_face, t("Place on Work Plane")).clicked() {
+            self.place_on_face = false;
+        }
+        if ui.selectable_label(self.place_on_face, t("Place on Face")).clicked() {
+            self.place_on_face = true;
+        }
+        if self.place_on_face {
+            ui.checkbox(&mut self.rotate_after, t("Rotate after placement"));
+            return;
+        }
         let level = self.plan_level().and_then(|l| self.session.model.level(l).map(|l| l.name.clone())).unwrap_or_default();
         let on_level = format!("{} : {level}", t("Level"));
         let planes = self.placement_planes();
@@ -4943,6 +4961,25 @@ impl BimApp {
     /// A component placed with `params` (and its Placement Plane, for a work plane-based family placed in plan at height
     /// `z`): with Rotate after placement, it is selected and Rotate starts about its point.
     pub(crate) fn place_component(&mut self, mut params: Value, z: f64) {
+        if self.placing_on_work_plane() && self.place_on_face {
+            // On the face under the point: a ceiling plan's ceiling, a plan's floor or roof.
+            let at = params["at"].as_array().and_then(|a| Some(P2(a.first()?.as_f64()?, a.get(1)?.as_f64()?)));
+            let ceiling = matches!(self.sheet, Sheet::Ceiling(_));
+            let found = self.plan_level().zip(at).and_then(|(l, q)| self.session.model.face_in_plan(l, q, ceiling));
+            let Some((id, face)) = found else {
+                let text =
+                    if ceiling { t("There's no ceiling here to place it on.") } else { t("There's no floor or roof here to place it on.") };
+                self.status = Status { text: text.into(), error: true };
+                return;
+            };
+            params["host"] = json!({"face": {"element": id, "face": face.name()}});
+            if let Some(o) = params.as_object_mut() {
+                o.remove("offset");
+                o.remove("level");
+            }
+            self.place_made(params);
+            return;
+        }
         if self.placing_on_work_plane()
             && let Some(g) = self.placement_plane.filter(|g| self.placement_planes().iter().any(|(p, _)| p == g))
         {
@@ -4956,6 +4993,19 @@ impl BimApp {
                 o.remove("offset");
             }
         }
+        self.place_made(params);
+    }
+
+    /// Place on Face in the 3D view: the component on face `face` of element `id`, at point `at` there.
+    pub(crate) fn place_component_on_face(&mut self, id: Id, face: bimcraft_core::model::FaceRole, at: [f64; 3]) {
+        let Some((family, ty)) = self.placing() else { return };
+        let params = json!({"family": family, "type": ty, "at": at.map(|v| (v * 1e3).round() / 1e3 + 0.0),
+                            "angle": self.component_angle, "host": {"face": {"element": id, "face": face.name()}}});
+        self.place_made(params);
+    }
+
+    /// `component` run with `params`; with Rotate after placement, what it made is selected and Rotate starts about it.
+    fn place_made(&mut self, params: Value) {
         let at = params["at"].as_array().and_then(|a| Some(P2(a.first()?.as_f64()?, a.get(1)?.as_f64()?)));
         let Some(made) = self.run("component", params) else { return };
         if self.rotate_after
@@ -5105,8 +5155,8 @@ impl BimApp {
             Tool::Level => "Type the new level's elevation in the Options Bar, then Create.",
             Tool::Grid(None) => msg!("Click to enter the grid's start point."),
             Tool::Grid(Some(_)) => msg!("Click to enter the grid's end point."),
-            Tool::ReferencePlane(None) => "Click to enter the reference plane's start point.",
-            Tool::ReferencePlane(Some(_)) => "Click to enter the reference plane's end point.",
+            Tool::ReferencePlane(None) => msg!("Click to enter the reference plane's start point."),
+            Tool::ReferencePlane(Some(_)) => msg!("Click to enter the reference plane's end point."),
             Tool::Move(None) | Tool::Copy(None) => msg!("Click a base point to measure from."),
             Tool::Move(Some(_)) => msg!("Click where the base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Copy(Some(_)) => msg!("Click where the copy's base point goes, or type a distance and press Enter. Esc cancels."),

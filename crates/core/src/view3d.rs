@@ -1572,16 +1572,9 @@ impl Rule {
         match self {
             Rule::Wall(axis) => {
                 let c = P2((p[0][0] + p[1][0] + p[2][0]) / 3.0, (p[0][1] + p[1][1] + p[2][1]) / 3.0);
-                let left = axis.tangent(axis.project(c).0).perp();
-                match n[0] * left.0 + n[1] * left.1 {
-                    d if d > 0.5 => "exterior",
-                    d if d < -0.5 => "interior",
-                    _ => "",
-                }
+                crate::hosting::wall_side(n, axis.tangent(axis.project(c).0).perp()).map_or("", |f| f.name())
             }
-            Rule::Slab if n[2] > 0.5 => "top",
-            Rule::Slab if n[2] < -0.5 => "bottom",
-            Rule::Slab => "",
+            Rule::Slab => crate::hosting::slab_side(n).map_or("", |f| f.name()),
             Rule::Whole => "all",
         }
     }

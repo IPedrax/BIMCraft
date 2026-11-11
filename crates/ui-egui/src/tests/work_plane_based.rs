@@ -62,3 +62,98 @@ fn the_reference_plane_tool_draws_an_upright_plane_through_two_clicks() {
     assert_eq!(planes.len(), 1, "{:?}", h.state().status);
     assert_eq!(field(&h, planes[0], "up"), json!([0.0, 0.0, 1.0]));
 }
+
+#[test]
+fn place_on_face_puts_a_work_plane_based_family_on_the_floor_in_plan_and_the_ceiling_in_a_ceiling_plan() {
+    let script = format!(
+        "{BOX}\n{SIGN}\nfloor {{\"boundary\": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], \"offset\": 300}}\n\
+         ceiling {{\"boundary\": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}}"
+    );
+    let mut h = app(&script);
+    placing_sign(&mut h);
+    assert!(h.query_by_label("Place on Face").is_some());
+    press(&mut h, "Place on Face");
+    assert!(h.state().place_on_face);
+    // In plan: on the floor's top, 300 over Level 1.
+    click(&mut h, P2(2000.0, 3000.0));
+    let c = *ids(&h, "component").last().unwrap();
+    assert_eq!(field(&h, c, "work_plane"), json!("Floor : Generic - 200mm : Top"), "{:?}", h.state().status);
+    assert_eq!(field(&h, c, "offset"), json!(300.0));
+    // Off the floor: nothing to place on, said so.
+    let before = ids(&h, "component").len();
+    click(&mut h, P2(-3000.0, 3000.0));
+    assert_eq!(ids(&h, "component").len(), before);
+    assert!(h.state().status.error, "{:?}", h.state().status);
+    // In the ceiling plan: on the ceiling's underside.
+    let level = h.state().session.model.levels()[0].0;
+    h.state_mut().open_sheet(Sheet::Ceiling(level));
+    h.run();
+    placing_sign(&mut h);
+    click(&mut h, P2(4000.0, 3000.0));
+    let c = *ids(&h, "component").last().unwrap();
+    assert_eq!(field(&h, c, "work_plane"), json!("Ceiling : Generic - 20mm : Bottom"), "{:?}", h.state().status);
+}
+
+#[test]
+fn place_on_face_in_the_3d_view_puts_it_on_the_wall_face_clicked() {
+    let mut h = app(&format!("{BOX}\n{SIGN}"));
+    shortcut(&mut h, "3D");
+    placing_sign(&mut h);
+    press(&mut h, "Place on Face");
+    // The south wall's outer face, 1500 up.
+    let at = h.state().screen3([5000.0, -100.0, 1500.0]);
+    click_at(&mut h, at);
+    let placed = ids(&h, "component");
+    let c = *placed.last().unwrap_or_else(|| panic!("nothing placed: {:?}", h.state().status));
+    let plane = field(&h, c, "work_plane");
+    assert!(plane.as_str().is_some_and(|p| p.starts_with("Wall : Generic - 200mm : ")), "{plane}");
+    let at = field(&h, c, "at");
+    assert!((at[1].as_f64().unwrap() + 100.0).abs() < 1.0, "on the wall's outer face: {at}");
+    assert!((field(&h, c, "offset").as_f64().unwrap() - 1500.0).abs() < 20.0, "where it was clicked");
+}
+
+#[test]
+fn rp_starts_the_reference_plane_tool_as_revits_does() {
+    let mut h = app(BOX);
+    shortcut(&mut h, "RP");
+    assert!(matches!(h.state().tool, Tool::ReferencePlane(None)), "{:?}", h.state().tool);
+    assert!(h.query_by_label("Modify | Place Reference Plane").is_some());
+    // Keyboard Shortcuts lists it, by its name.
+    assert!(crate::shortcuts().iter().any(|(letters, name)| *letters == "RP" && *name == "Reference Plane"));
+}
+
+#[test]
+fn the_ref_plane_button_stands_beside_set_on_architecture_and_starts_the_reference_plane_tool() {
+    // Wide enough for the whole tab: the button itself, after Set.
+    let mut h = app(BOX);
+    h.set_size(vec2(2400.0, 900.0));
+    h.run();
+    press(&mut h, "Architecture");
+    let (set, rp) = (h.get_by_label("Set").rect(), h.get_by_label("Ref Plane").rect());
+    assert!(rp.left() >= set.right() - 1.0 && (rp.center().y - set.center().y).abs() < 2.0, "beside Set: {set:?} {rp:?}");
+    press(&mut h, "Ref Plane");
+    assert!(matches!(h.state().tool, Tool::ReferencePlane(None)), "{:?}", h.state().tool);
+    // Where the window folds the panel, its list has it.
+    let mut h = app(BOX);
+    press(&mut h, "Architecture");
+    from_list(&mut h, "Datum", "Ref Plane");
+    assert!(matches!(h.state().tool, Tool::ReferencePlane(None)), "{:?}", h.state().tool);
+}
+
+#[test]
+fn properties_show_revits_level_and_elevation_from_level_for_a_component_not_work_plane_based() {
+    let mut h = app(&format!(
+        "{BOX}\nfamily {{\"name\": \"Box\", \"types\": {{\"A\": {{}}}}, \"forms\": [{{\"profile\": [[0, 0], [600, 0], [600, 600], [0, 600]], \"to\": 50}}]}}\n\
+         component {{\"family\": \"Box\", \"at\": [2000, 3000], \"offset\": 450}}"
+    ));
+    let c = *ids(&h, "component").last().unwrap();
+    h.state_mut().selection = vec![c];
+    h.run();
+    assert!(h.query_by_label("Level").is_some());
+    assert!(h.query_by_label("Height Offset From Level").is_none());
+    let elevation = h.get_by_role_and_label(Role::TextInput, "Elevation from Level").value().unwrap_or_default();
+    assert_eq!(elevation, "450", "the same value, under Revit's name");
+    for gone in ["Schedule Level", "Work Plane", "Offset from Host"] {
+        assert!(h.query_by_label(gone).is_none(), "{gone}");
+    }
+}

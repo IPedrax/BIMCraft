@@ -23,11 +23,11 @@ use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
-    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, Id, Key, Landing, Layer, Level, Line, Location, MAX_COORD,
-    MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind, Pattern,
-    Perspective, PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Rebar, Ref3, Reference,
-    Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, TREAD,
-    Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
+    MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind,
+    Pattern, Perspective, PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Rebar, Ref3,
+    Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair,
+    TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -201,8 +201,8 @@ other_files(
     edit("grid", ui_msg!("Grid"), &["GR"], "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", grid).menu("Architecture > Grid"),
     edit(
         "reference_plane",
-        "Reference Plane",
-        &[],
+        ui_msg!("Reference Plane"),
+        &["RP"],
         "{start, end, up?: [x,y,z], name?, level?} a reference plane of the project: drawn along the line from `start` to `end` \
          ([x, y] on `level`, the lowest by default, or [x, y, z]), its other direction `up` (the vertical by default, so a line \
          drawn in plan makes an upright plane; tilt `up` for a sloped one). Work plane-based components are placed on it \
@@ -214,8 +214,9 @@ other_files(
         "edit_work_plane",
         "Edit Work Plane",
         &[],
-        "{ids, host: {level: name|id} | {plane: name|id|GUID}} puts components on a level (at their plan point, on it) or a \
-         reference plane of the project (taken onto it; one from another plane keeps its Offset from Host). \
+        "{ids, host: {level: name|id} | {plane: name|id|GUID} | {face: {element: id|GUID, face}}} puts components on a level \
+         (at their plan point, on it), a reference plane of the project or a face of a wall, a floor, a ceiling or a roof \
+         (taken onto it; one from another plane or face keeps its Offset from Host). \
          {family, form | ref_line: id|GUID, host: {plane: name|id|GUID} | {line, face}, keep?, dry_run?} puts a family's form \
          or reference line on another of its planes: it moves with the plane, as Revit's Edit Work Plane, keeping its profile \
          and start and end in the new plane's axes; with `keep` it stays where it is, which only a plane parallel to its old \
@@ -1276,13 +1277,20 @@ other_files(
         ui_msg!("Component"),
         &["CM"],
         "{family, type?, at: [x,y], level?, angle?, offset?, mirrored?, params?: {parameter: value}, adaptive?: {frames: {number: {origin,x,y,z}}, context?}, host?: {level: name|id} | \
-         {plane: name|id|GUID}} a family's type placed, its first by default: at a point on a level, turned `angle` degrees \
+         {plane: name|id|GUID} | {face: {element: id|GUID, face: exterior|interior|top|bottom}}} a family's type placed, its first by default: at a point on a level, turned `angle` degrees \
          counter-clockwise, `offset` mm up from the level (none: its family's Default Elevation, unless work plane-based), and \
          with `mirrored` flipped across its own x axis; `params` sets its instance parameters (`modify` merges into them, a null \
          taking one back to the family's). A work plane-based family may go on a reference plane (`host` `plane`, Place on Work \
          Plane): `at` [x, y] is taken straight onto the plane, [x, y, z] along its normal (an upright plane needs it), `offset` \
          is its Offset from Host along the normal, `level` its Schedule Level (by default the highest level at or below it); \
-         it follows the plane when the plane moves, upright or, its family not Always Vertical, tilted with the plane. An \
+         it follows the plane when the plane moves, upright or, its family not Always Vertical, tilted with the plane (a plane \
+         turned about the vertical turns it too). Or on a face (Place on Face): a wall's `exterior` or `interior` side, `at` \
+         [x, y, z] taken to its nearest point there; a floor's, a ceiling's or a roof's `top` or `bottom`, `at` [x, y] taken \
+         straight onto it (a roof's slope or a shaped floor's plane under it); it follows the face when its host moves, turns, \
+         or changes slope, thickness or type, goes with a floor, a ceiling or a roof moved or copied, and is deleted with its \
+         host; one its face no longer reaches stays on the face's plane, with a warning. Always Vertical keeps it plumb on \
+         every face; else it stands out along the face's normal (hanging from an underside), and on a wall's side `angle` \
+         turns it from the face's level direction, so it turns with the wall. An \
          adaptive family's component is placed by its points (`adaptive`, else the family's test placement) and takes no `host` \
          plane",
         work_plane::component,
@@ -2854,6 +2862,10 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             // Its work plane, as Properties shows it, and its Offset from Host: on a level, its height over it.
             extra.insert("work_plane".into(), json!(m.work_plane_name(cp)));
             extra.insert("offset_from_host".into(), json!(cp.host.map_or(cp.offset, |h| h.offset)));
+            // What it is hosted on, a face's element or a reference plane (Revit's Host); none on a level.
+            if let Some(h) = cp.host {
+                extra.insert("host_element".into(), json!(h.host.guid()));
+            }
         }
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
             let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
@@ -3182,6 +3194,12 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     let name = m.name.clone();
     s.reset(m, Some(path.clone()));
     let mut reply = json!({"path": path, "name": name});
+    // A formula saying a name its family lacks, which this BIMCraft refuses a command making: the file opens, saying so.
+    let warnings: Vec<String> =
+        s.model.families.iter().flat_map(|(n, f)| f.unknown_names().into_iter().map(move |w| format!("family `{n}`: {w}"))).collect();
+    if !warnings.is_empty() {
+        reply["warnings"] = json!(warnings);
+    }
     if !renamed.is_empty() {
         reply["renamed"] = json!(renamed);
     }
@@ -7610,6 +7628,15 @@ fn flip(s: &mut Session, p: &Value) -> R {
                 o.offset = lengths.get(&o.host).copied().unwrap_or_default() - o.offset;
                 (o.flip_facing, o.flip_hand) = (!o.flip_facing, !o.flip_hand);
             }
+            // On a side of the flipped wall: the same face, which is now its other side, as far from its other end.
+            Element::Component(cp) => {
+                if let Some(Hosted { host: HostRef::Face { element, face }, uv, .. }) = &mut cp.host
+                    && let Some(length) = lengths.get(element)
+                {
+                    uv[0] = length - uv[0];
+                    *face = face.other_side();
+                }
+            }
             _ => {}
         }
     }
@@ -10972,6 +10999,18 @@ fn patch_parameter(
             }
         }
     }
+    // Given a formula, it is worked out from then on, as Revit's is: what its types and its components held of it goes.
+    if now.driven().is_some() {
+        f.types.values_mut().for_each(|t| {
+            t.remove(&name);
+        });
+        patches.component_ops.retain(|op| !matches!(op, ComponentOp::Set(_, n, _) | ComponentOp::Remove(_, n) if *n == name));
+        for (id, _, own) in &users {
+            if own.is_some_and(|o| o.contains_key(&name)) {
+                patches.component_ops.push(ComponentOp::Remove(*id, name.clone()));
+            }
+        }
+    }
     if let Some(to) = rename
         && to != name
     {
@@ -11140,6 +11179,11 @@ fn family(s: &mut Session, p: &Value) -> R {
         let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}`")))?;
         let (_, warnings) = f.problems(&|m| s.model.materials.contains_key(m));
         let mut reply = family_reply(&name, f, &warnings);
+        // What a file from before may hold and a change to it refuses until it is mended.
+        let errors = f.unknown_names();
+        if !errors.is_empty() {
+            reply["errors"] = json!(errors);
+        }
         if dry {
             reply["dry_run"] = json!(true);
             reply["ok"] = json!(true);
@@ -12647,10 +12691,60 @@ fn host_line(was: P2, candidates: impl IntoIterator<Item = Id>, line_of: impl Fn
 /// Take elements by `mo`, keeping walls joined: walls joined to a taken wall stretch to stay
 /// joined, and doors and windows in walls that changed keep their place or go with their wall.
 /// With `end` (`Some(true)` the start, `Some(false)` the end), only that end of one wall or one run goes.
+/// The components on the faces of elements `ids` (Place on Face): those on a floor's, a ceiling's or a roof's, which a
+/// command taking their host whole takes too; and those on a wall's side, which their wall takes by itself.
+fn face_hosted(m: &Model, ids: &[Id]) -> (Vec<Id>, Vec<Id>) {
+    let lookup = m.lookup();
+    let (mut slabs, mut sides) = (Vec::new(), Vec::new());
+    for &id in ids {
+        let Some(e) = m.elements.get(id) else { continue };
+        if !matches!(e.category(), "wall" | "floor" | "ceiling" | "roof") {
+            continue;
+        }
+        let g = m.guid(id);
+        for r in lookup.referrers(&g) {
+            if let Some(Element::Component(cp)) = m.elements.get(r)
+                && let Some(Hosted { host: HostRef::Face { element, .. }, .. }) = cp.host
+                && element == g
+            {
+                if e.category() == "wall" { sides.push(r) } else { slabs.push(r) }
+            }
+        }
+    }
+    (slabs, sides)
+}
+
+/// Component `e`, on a wall's side, as it is once its wall is mirrored, which runs back the other way: as far from the
+/// wall's other end, turned the other way on the face and mirrored.
+fn side_mirrored(m: &Model, e: &Element) -> Option<Element> {
+    let Element::Component(cp) = e else { return None };
+    let mut cp = cp.clone();
+    let h = cp.host.as_mut()?;
+    let length = Axis::of(m.wall(h.host.guid())?).length();
+    h.uv[0] = length - h.uv[0];
+    cp.angle = 180.0 - cp.angle + 0.0;
+    cp.mirrored = !cp.mirrored;
+    Some(Element::Component(cp))
+}
+
 fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>) -> Result<(), String> {
     let m = &s.model;
     // The walls, and what points at each: found among those, not every element.
     let lookup = m.lookup();
+    // What is on a face of a floor, a ceiling or a roof taken whole goes with it, as Revit's hosted elements do; what is
+    // on a wall's side keeps its place along it, so the wall takes it (mirrored, from its other end).
+    let (carried_faces, on_sides) = face_hosted(m, ids);
+    let ids: Vec<Id> = if end.is_none() {
+        ids.iter().copied().filter(|id| !on_sides.contains(id)).chain(carried_faces.into_iter().filter(|id| !ids.contains(id))).collect()
+    } else {
+        ids.to_vec()
+    };
+    let ids = ids.as_slice();
+    let sides: Vec<(Id, Element)> = if end.is_none() && mo.mirror {
+        on_sides.iter().filter_map(|id| Some((*id, side_mirrored(m, m.elements.get(*id)?)?))).collect()
+    } else {
+        Vec::new()
+    };
     let f = mo.map;
     let moving: BTreeSet<Id> = ids.iter().copied().collect();
     let moving_guids: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
@@ -13035,6 +13129,9 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
     for (id, w) in walls {
         m.elements.insert(id, Element::Wall(w));
     }
+    for (id, e) in sides {
+        m.elements.insert(id, e);
+    }
     for (id, e) in others {
         if mo.mirror && matches!(e, Element::Mass(_)) {
             flipped.push(id);
@@ -13091,6 +13188,8 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
             // A copied wall brings its doors and windows, a stair or a ramp its railings; see below.
             Element::Door(o) | Element::Window(o) if copying_guids.contains(&o.host) => {}
             Element::Railing(Railing { host: Some(h), .. }) if copying_guids.contains(&h) => {}
+            Element::Component(cp)
+                if cp.host.is_some_and(|h| matches!(h.host, HostRef::Face { .. }) && copying_guids.contains(&h.host.guid())) => {}
             e @ (Element::Dimension(_) | Element::Tag(_) | Element::Spot(_)) => notes.push((id, e)),
             e => copies.push((id, e)),
         }
@@ -13117,11 +13216,22 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
             (id, e)
         })
         .collect();
+    // What is on the faces of copied hosts: a copy on the copy, taken as its host is (on a floor's, a ceiling's or a roof's),
+    // or at its place along the copied wall's side.
+    let (slabs, sides) = face_hosted(m, ids);
+    let mut on_faces: Vec<(Id, Element)> = Vec::new();
+    for id in slabs {
+        on_faces.push((id, transformed(c, m, id, mo, &copying)?));
+    }
+    for id in sides {
+        let Some(e) = m.elements.get(id) else { continue };
+        on_faces.push((id, if mo.mirror { side_mirrored(m, e).unwrap_or_else(|| e.clone()) } else { e.clone() }));
+    }
     let m = s.model_mut();
     let mut made = Vec::new();
     // Each copied element's copy.
     let mut hosts = BTreeMap::new();
-    for (from, mut e) in copies.into_iter().chain(hosted) {
+    for (from, mut e) in copies.into_iter().chain(hosted).chain(on_faces) {
         let door = matches!(e, Element::Door(_));
         match &mut e {
             Element::Grid(g) => g.name = next_grid_name(m),
@@ -13134,6 +13244,22 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
                 }))
             }
             Element::Railing(r) => r.host = r.host.map(|h| hosts.get(&h).copied().unwrap_or(h)),
+            // On the copy of its host's face, where its place there puts it.
+            Element::Component(cp)
+                if cp.host.is_some_and(|h| matches!(h.host, HostRef::Face { .. }) && hosts.contains_key(&h.host.guid())) =>
+            {
+                if let Some(h) = &mut cp.host {
+                    let g = h.host.guid_mut();
+                    *g = hosts.get(g).copied().unwrap_or(*g);
+                }
+                // On a wall's side its place along the copy puts it; on a floor's, a ceiling's or a roof's it went with it.
+                if let Some(h) = cp.host
+                    && m.wall(h.host.guid()).is_some()
+                    && let Some((at, offset)) = m.hosted_at(&h, cp.level)
+                {
+                    (cp.at, cp.offset) = (at, offset);
+                }
+            }
             Element::Door(o) | Element::Window(o) => {
                 o.host = hosts.get(&o.host).copied().unwrap_or(o.host);
                 o.mark = next_number(m.elements.values().filter_map(|e| match e {

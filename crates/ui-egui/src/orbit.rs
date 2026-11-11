@@ -773,6 +773,8 @@ impl BimApp {
             (Tool::Run(_, start), _) => start.iter().copied().collect(),
             _ => Vec::new(),
         };
+        // Place on Face: the Component tool placing a work plane-based family on the face clicked.
+        let placing_on_face = matches!(self.tool, Tool::Component) && self.place_on_face && self.placing_on_work_plane();
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
         // The camera changed elsewhere than by the hand in this view (dragged on a plan, a command, undo): the picture stands
@@ -1398,13 +1400,26 @@ impl BimApp {
         let dim_click = click.filter(|_| dimming).map(|at| (px(at), dim_pick(at)));
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
-        let target = click.filter(|_| drawing).and_then(|at| aimed(&o.picker, at));
+        // Place on Face: the face under the click, of what hosts components, by its role.
+        let on_face = drawing && placing_on_face;
+        let face_target = click.filter(|_| on_face).map(|at| {
+            let under = o.picker.as_ref().and_then(|k| k.surface(Some(scene), &cam, px(at)));
+            under.and_then(|u| Some((u.id, model.face_role(u.id, u.at, u.normal)?, u.at)))
+        });
+        let target = click.filter(|_| drawing && !on_face).and_then(|at| aimed(&o.picker, at));
         match clicked {
             Some(found) if modify => self.pick_up(found.into_iter().collect(), click_modifiers(ui)),
             Some(Some(id)) if demolish => self.demolish(id),
             Some(Some(id)) if paint || unpaint => self.paint_face(id, face, unpaint),
             // Nothing under the cursor: nothing to take down, or to paint.
             Some(None) if demolish || paint || unpaint => {}
+            Some(_) if on_face => match face_target.flatten() {
+                Some((id, face, at)) => self.place_component_on_face(id, face, at),
+                None => {
+                    self.status =
+                        Status { text: t("Pick a face of a wall, a floor, a ceiling or a roof to place it on.").into(), error: true }
+                }
+            },
             Some(_) if drawing => match target {
                 Some((q, plane, _)) => self.draw3d(q, plane),
                 None => self.status = Status { text: self.needs_face(), error: true },

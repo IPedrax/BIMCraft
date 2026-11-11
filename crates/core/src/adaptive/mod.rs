@@ -756,6 +756,28 @@ impl Definition {
             n.appearance.visible.iter_mut().for_each(&mut *f);
         }
     }
+    /// Each expression of it, as [`Definition::exprs_mut`] gives them, with the id of the element that holds it.
+    pub fn exprs(&self) -> Vec<(&str, &Expr)> {
+        let mut out = Vec::new();
+        for n in &self.nodes {
+            let id = n.id.as_str();
+            match &n.operation {
+                Operation::Point { host, transform } => {
+                    out.extend(transform.offset.iter().chain(&transform.rotation).map(|e| (id, e)));
+                    match host {
+                        Host::Curve { location, .. } => out.push((id, &location.value)),
+                        Host::Face { barycentric, .. } => out.extend(barycentric.iter().map(|e| (id, e))),
+                        Host::Edge { parameter, .. } => out.push((id, parameter)),
+                        _ => {}
+                    }
+                }
+                Operation::Extrude { distance, .. } => out.push((id, distance)),
+                _ => {}
+            }
+            out.extend(n.appearance.visible.iter().map(|e| (id, e)));
+        }
+        out
+    }
     /// Family parameter `old` named `new` wherever it names it: its formulas (`renamed` gives a formula's new text) and, when
     /// `old` is a material parameter (`material`), the forms made of it.
     pub fn rename_parameter(&mut self, old: &str, new: &str, material: bool, renamed: &dyn Fn(&str) -> String) {

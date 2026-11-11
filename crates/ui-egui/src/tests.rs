@@ -1007,7 +1007,7 @@ fn ma_gives_the_walls_selected_after_the_first_its_type_in_one_undo_step() {
 
 #[test]
 fn keys_for_tools_bimcraft_lacks_are_bound_to_nothing_rather_than_to_another_tool() {
-    for keys in ["SU", "LI", "SF", "BR", "BS", "RN", "RP", "CV", "TF", "DA", "FD"] {
+    for keys in ["SU", "LI", "SF", "BR", "BS", "RN", "CV", "TF", "DA", "FD"] {
         let mut app = BimApp::new(Session::new());
         app.typed = keys.into();
         assert!(!app.shortcut(), "{keys}");
@@ -5924,6 +5924,7 @@ mod display;
 mod dock;
 mod draw;
 mod electrical;
+mod family_formulas;
 mod fills;
 mod filter;
 mod fonts;

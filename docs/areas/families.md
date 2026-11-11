@@ -147,6 +147,46 @@ components agree on, refused naming the components where they don't. `delete_par
 values; whatever still names one is `Family::problems`'s to refuse. A file of 17 reads unchanged (every parameter the family's,
 grouped by its kind); FORMAT 18 says an older build can't read the new kinds and fields.
 
+### Formulas
+
+A formula (`family::eval`, `names`) reads numbers, comparisons, `if`, `and`, `or`, `not` and the functions `FUNCTIONS` lists, over
+the family's parameters by name (names hold spaces and are case sensitive). A number in it takes a unit right after it
+(`UNITS`): `mm`, `cm`, `dm`, `m`, `mm²`, `cm²`, `m²`, `mm³`, `cm³`, `m³`, and `°` (or `º`) for degrees, each worked out into the
+family's own (mm, mm², mm³, degrees), so `if(Swing Angle = 90°, …)` and `if(Width > 52.6 mm, 1.2 m, 300 mm)` read as Revit's do,
+in a comparison or a result. A word after a number is a unit or refused, naming it and the units there are; no units are
+checked against each other (Revit's "inconsistent units" is not asked), and imperial feet and inches are not read.
+`renamed_in_formula` leaves a unit alone, so a parameter named `m` renamed keeps `2 m` as it was.
+
+Every formula a family holds is listed in one place (`validate::every_formula`: its parameters', its forms' sizes, profile,
+circle, axis and `visible`, its symbols' sizes, labels' place and height and `visible`, its room calculation point's, its
+connectors' and its adaptive definition's, `adaptive::Definition::exprs`), and each name one says that isn't a parameter (nor a
+door's or window's `Wall Thickness`) is refused, in every branch of its `if`s, not only those worked out: "the following is not
+a valid parameter: X. Note that parameter names are case sensitive.", naming the parameter it differs from in case only
+(`family::not_a_parameter`). A label's `{X}` and a room calculation point say it in the same words. Where it is refused: the
+`family` command refuses any (`Family::problems`, so Edit Family and Load into Project too); every other command that is an undo
+step, but `insert`, is refused when it leaves a family it made or changed with a name it didn't have before
+(`family::check_family_edits`, run by the engine beside `check_edits`; a favorite loaded is such). `Family::check`, and so
+`Model::check`, doesn't ask it: a file from before this check may hold one in a branch never taken, and it still opens, `open`
+listing each as `warnings` and `family {name}` as `errors`, until a change to that family mends it. Refusing it on check would
+have left such a file unopenable, and every command on it refused.
+
+A parameter a formula works out (`Parameter::driven`) is set by nothing: a type that sets it is refused (`Family::check`), and
+a component's instance value of it (`Model::family_values_ok`), the refusal naming the formula. Edit Parameter giving a
+parameter a formula takes away what its types and its components held of it, as Revit's does. The desktop shows such a value,
+greyed and taking no typing, as what it comes to: the Family Editor's Parameters and Types tabs (for the type previewed, or the
+type picked), the project's Properties and Type Properties.
+
+### Visibility
+
+A form's `visible` is a yes/no parameter (`group: "visibility"` lists it under Visibility, as Revit's) or a formula; worked out
+as zero, the form is left out of what the family builds for that type or component (`Family::solid`), so a plan, the 3D view,
+a section and IFC leave it out alike, and a change of type, of the type's tick or of the component's own value follows. The
+Family Editor's Forms tab shows it as Revit's Properties do: a Visible tick with "=" at its end (Associate Family Parameter,
+the same dialog an adaptive element's rows open, through `adaptive_editor::Tied`), which ties it to a yes/no parameter or, with
+<None>, unties it keeping what it came to; tied, or given a formula, the tick is greyed, showing what the type previewed comes
+to, the formula beside it. Revit's "Preview Visibility" (forms hidden in a type drawn greyed in the family's own views) is left
+out: the editor's preview shows each type as it builds.
+
 ## Shared parameters file
 
 A shared parameters file (`shared_parameters.rs`, the `shared_parameters` command, Manage > Shared Parameters) is a plain-text
@@ -291,8 +331,8 @@ ends and its `up` (each end keeps its height). A name is one plane's.
 
 A component of a work plane-based family may be hosted on one (`Component::host`, a `Hosted`: the plane, `uv` its insertion
 point in the plane's axes, `offset` its Offset from Host along the normal). The host is a `HostRef` tagged by kind
-(`{"plane": guid}`), so Place on Face (T16) adds its own kind beside it without a `FORMAT` step; one on a level has no host,
-its level its work plane. `uv` is the truth: after every command `Model::settle_hosts` works the component's `at` and `offset`
+(`{"plane": guid}`), and a face is another kind beside it (*Place on Face*, below); one on a level has no host, its level
+its work plane. `uv` is the truth: after every command `Model::settle_hosts` works the component's `at` and `offset`
 (Elevation from Level, over its `level`, its Schedule Level) out from it, so whatever reads a component's `at` reads where it
 is, moving or turning the plane moves it, and a level moved under it changes its Elevation from Level and leaves it on its
 plane. A command that moves the component itself (`move`, `copy`, `rotate`, `mirror`, `modify` of `at` or `offset`) moves its
@@ -301,8 +341,9 @@ plane. A command that moves the component itself (`move`, `copy`, `rotate`, `mir
 [x, y, z], taken along its normal), `offset` as its Offset from Host and `level` as its Schedule Level (by default the
 highest level at or below it; Revit lets it change, and the component stays where it is); `edit_work_plane {ids, host}` puts
 components on a level (at their plan point, on it) or a plane (taken onto it; from another plane, its Offset from Host kept).
-Deleting a plane deletes what it hosts. `Model::check` refuses a host that isn't a reference plane and one on a family that
-isn't work plane-based.
+Deleting a plane deletes what it hosts. Turning a plane about the vertical turns what it hosts with it (`settle_hosts`
+adds the turn of the plane's line in plan to the component's `angle`, unless the same command turned the component too).
+`Model::check` refuses a host that isn't a reference plane and one on a family that isn't work plane-based.
 
 `Model::component_placement` is the one place a component's family axes are put in the model, for the plan, the 3D view and
 its graphics card's copies, sections, bounds, rooms and IFC: upright, turned `angle` about z, unless it is on a plane that
@@ -321,10 +362,46 @@ Level, Work Plane and Offset from Host besides Level, its Schedule Level. IFC ke
 The desktop's Component tool, placing a work plane-based family, shows Place on Work Plane and a Placement Plane (the plan's
 level, or a reference plane of the project) on its Options Bar, and for any family Rotate after placement, which selects what
 it placed and starts Rotate about its point. Properties shows a work plane-based family's component's Schedule Level,
-Elevation from Level (read only on a plane), Work Plane and Offset from Host (another's, its Level and Height Offset From
-Level as before). The Reference Plane tool (`Tool::ReferencePlane`, reached by Find or Create Similar: Revit's RP waits for
-its name in every language) draws an upright plane through two clicks in plan. Picking a sloped plane in plan, drawing
-planes in sections, the Work Plane dialog (T12) and Place on Face (T16) are not here.
+Elevation from Level (read only on a plane), Work Plane and Offset from Host; another's, as Revit's level-based ones, its
+Level and Elevation from Level (the same `offset`). The Reference Plane tool (`Tool::ReferencePlane`: RP, the `reference_plane`
+command's alias, as Revit's; Architecture > Datum's Ref Plane, beside Set, where Revit's Work Plane panel has it; Find or
+Create Similar) draws an upright plane through two clicks in plan. Picking a sloped plane in plan, drawing
+planes in sections and the Work Plane dialog (T12) are not here.
+
+### Place on Face
+
+Revit's Place on Face (T16): a work plane-based family's component hosted on a face of a wall, a floor, a ceiling or a roof,
+`host` `{"face": {"element": guid, "face": role}}` (`HostRef::Face`). No option of its own: Revit lets a work plane-based
+family take a face as its work plane, and its face-based families (a host block in the editor, voids that cut the host)
+are T16b's. A face is named by what it is to its element (`FaceRole`, paint's names): a wall's `exterior` (to the left of
+start to end) or `interior` side, a floor's, a ceiling's or a roof's `top` or `bottom`; never by its triangles, which every
+join, opening and shape point renumbers. `uv` is in the face's own terms (`Model::face_at`, `face_uv`): on a wall's side
+`[along, up]`, mm along its location line from its start (as a door's offset) and up from its own base (as a sill), the
+face found at that station (out from the centre on an arc), so a wall moved, turned, made thicker or of another type takes
+it along; on a floor's, a ceiling's or a roof's face `[x, y]`, the plan point, the face's height found again under it (the
+piece of a shaped floor, the roof's slope, the underside by its type's thickness or variable layer), so a change of offset,
+slope, thickness or type lifts and tilts it. `move`, `rotate`, `mirror` and `copy` of a floor, a ceiling or a roof take what
+is on its faces with it (`relocate` and `duplicate`, `face_hosted`); a wall's need nothing, but a mirrored or copied wall's
+are put as far from its other end, turned and mirrored (`side_mirrored`), and a flipped wall's go to its other side, the
+same face. Deleting the host deletes them. One its face no longer reaches (the floor's outline made smaller, an opening
+cut there, a wall shortened) stays on the face's plane carried on (`HostAt::on`) and `Model::warnings` names it, as Revit
+warns of a lost association; `check` refuses only a face its element doesn't have. `settle_hosts` looks at what a command
+changed, what points at it and what the walls, floors, ceilings and roofs among those host, so a level moved moves what is
+on its walls.
+
+Always Vertical is one rule, `hosting::vertical_z`: on, z stays up on every host, a ceiling's underside too; off, z is the
+face's normal, so it tilts with a slope, stands out from a wall and hangs from an underside. On a floor's, a ceiling's or a
+roof's face it then tilts as on a plane; on a wall's side `angle` turns it from the face's level direction (`HostAt::across`,
+to the right of someone facing the wall), about z or the normal, so it turns with its wall, and following the face its y
+goes up it. `component {…, host: {face: {element, face}}}` takes `at` [x, y] onto a floor's, a ceiling's or a roof's face
+and [x, y, z] onto a wall's side (its nearest point; [x, y] alone is refused there), `offset` along the face's normal;
+`edit_work_plane {ids, host: {face: …}}` puts components on one. Work Plane reads `Floor : Generic - 200mm : Top`, `elements`
+gives `host_element` and component schedules a Host field. IFC keeps the placement and writes no host relation (IFC4 has
+none for an element that fills nothing). FORMAT 23 is this change: a build of 22 reads `host` whole and knows no face.
+The desktop's Component tool offers Place on Face beside Place on Work Plane: in plan it places on the top of the highest
+floor or roof of the level under the click, in a ceiling plan on the underside of the lowest ceiling (`Model::face_in_plan`),
+in the 3D view on the face clicked (`Model::face_role`). Voids that cut the host (floors, ceilings, roofs and walls), a
+wall's top and ends, the faces of other elements and of linked models are not here.
 
 ## Plan symbols
 

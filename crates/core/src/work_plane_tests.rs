@@ -176,6 +176,32 @@ fn moving_or_turning_the_host_plane_moves_the_instance_and_moving_the_instance_k
 }
 
 #[test]
+fn turning_the_host_plane_about_the_vertical_turns_the_instance_with_it() {
+    for always_vertical in [true, false] {
+        let mut s = Session::new();
+        sign(&mut s, always_vertical);
+        let r = ramp(&mut s);
+        let c = id_of(&run(&mut s, "component", json!({"family": "Sign", "at": [2000, 2000], "host": {"plane": "Ramp"}, "angle": 10})));
+        let axes = |s: &Session| s.model.component_placement(component(s, c)).axes;
+        let before = axes(&s);
+        run(&mut s, "rotate", json!({"ids": [r], "about": [0, 0], "angle": 90}));
+        let same = |a: f64, b: f64| ((a - b + 180.0).rem_euclid(360.0) - 180.0).abs() < 1e-4;
+        assert!(same(component(&s, c).angle, 100.0), "{}", component(&s, c).angle);
+        // Every axis of it turned a quarter about the vertical, as the plane did.
+        let quarter = |v: [f64; 3]| [-v[1], v[0], v[2]];
+        for (a, b) in axes(&s).into_iter().zip(before) {
+            assert!(a.iter().zip(quarter(b)).all(|(x, y)| (x - y).abs() < 1e-9), "{a:?} against {b:?}");
+        }
+        // Turned with its plane in one command, it turns once.
+        run(&mut s, "rotate", json!({"ids": [r, c], "about": [0, 0], "angle": 90}));
+        assert!(same(component(&s, c).angle, 190.0), "{}", component(&s, c).angle);
+        // Moved, the plane doesn't turn it.
+        run(&mut s, "move", json!({"ids": [r], "by": [500, 0]}));
+        assert!(same(component(&s, c).angle, 190.0));
+    }
+}
+
+#[test]
 fn schedule_level_moves_nothing_and_a_level_moved_under_it_changes_its_elevation_from_level() {
     let mut s = Session::new();
     sign(&mut s, true);
