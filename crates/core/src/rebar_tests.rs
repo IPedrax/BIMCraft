@@ -145,6 +145,10 @@ fn a_bar_survives_ifc_as_a_reinforcing_bar_with_its_points_and_its_host() {
     let file = crate::ifc::export(&s.model);
     assert_eq!(file.matches("IFCREINFORCINGBAR(").count(), 2, "{file}");
     assert!(file.contains("IFCSWEPTDISKSOLID(") && file.contains("IFCRELAGGREGATES("), "{file}");
+    // The file's areas are square metres (its IFCSIUNIT), so a 12.5 mm bar's section is about 1.227e-4, not 122.7.
+    let bar = file.lines().find(|l| l.contains("IFCREINFORCINGBAR(") && l.contains("'Bar 12.5'")).unwrap();
+    let area: f64 = bar.split(',').nth(10).unwrap().parse().unwrap();
+    assert!((area - std::f64::consts::PI * 0.0125 * 0.0125 / 4.0).abs() < 1e-9, "{bar}");
 
     let back = crate::import::ifc(file.as_bytes(), "t").unwrap();
     assert_eq!(back.skipped, Vec::<String>::new());

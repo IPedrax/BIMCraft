@@ -1288,7 +1288,8 @@ pub fn export(m: &Model) -> String {
                     s(&format!("Bar {}", rb.diameter)),
                     s(&rb.grade),
                     real(rb.diameter),
-                    real(area),
+                    // In the file's square metres, to twelve places: a bar's section is a ten-thousandth of one.
+                    ratio(area / 1e6),
                     real(crate::rebar::length(&rb.path))
                 ));
                 bars.push((rb.level, rb.host.and_then(|h| m.elements.id(h)), ent));
