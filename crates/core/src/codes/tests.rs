@@ -352,3 +352,38 @@ fn a_stair_flipped_climbs_the_other_way_over_the_same_ground() {
     run(&mut s, "flip", json!({"ids": [id]}));
     assert_eq!(ground(&s).0, before);
 }
+
+#[test]
+fn a_stair_s_grips_move_it_turn_it_widen_it_and_shift_its_landings() {
+    use crate::geom::P2;
+    use crate::model::Side;
+    use crate::stairs::{Grip, dragged, grips};
+    let mut s = Session::new();
+    let p = json!({"start": [0, 0], "angle": 90, "width": 1000, "landings": [{"at": 6, "turn": 90}, {"at": 12, "turn": 0}]});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    let st = stair_of(&s, id);
+    let m = &s.model;
+    let at = |g: Grip| grips(m, &st).into_iter().find(|(k, _)| *k == g).map(|(_, p)| p).unwrap();
+    let near = |a: P2, b: P2| a.dist(b) < 1e-6;
+    assert!(near(at(Grip::Foot), P2(0.0, 0.0)));
+    assert!(near(at(Grip::Turn(0)), P2(0.0, 5.0 * 280.0)));
+    assert!(near(at(Grip::Landing(0)), P2(0.0, 5.0 * 280.0 + 1000.0)));
+    assert!((at(Grip::Width(Side::Right)).0 - 500.0).abs() < 1e-6);
+
+    assert_eq!(dragged(m, &st, Grip::Foot, P2(250.0, -40.0)).start, P2(250.0, -40.0));
+    // The first run two treads longer: its landing two risers on, and the next landing with it.
+    let longer = dragged(m, &st, Grip::Turn(0), P2(30.0, 7.0 * 280.0 + 20.0));
+    assert_eq!(longer.landings.iter().map(|l| l.at).collect::<Vec<_>>(), [8.0, 14.0]);
+    assert_eq!(dragged(m, &st, Grip::Turn(0), P2(0.0, -5000.0)).landings[0].at, 2.0, "a run keeps two risers");
+    assert_eq!(dragged(m, &st, Grip::Width(Side::Right), P2(700.0, 300.0)).width, 1400.0);
+    assert_eq!(dragged(m, &st, Grip::Landing(1), at(Grip::Landing(1)) + P2(-400.0, 0.0)).landings[1].length, 1400.0, "it runs west there");
+    // The top dragged a quarter turn round the foot.
+    let top = at(Grip::Top);
+    let turned = dragged(m, &st, Grip::Top, P2(top.1, -top.0));
+    assert!((turned.angle - 0.0).abs() < 1e-6, "{}", turned.angle);
+    // From a side that is its location line, the width is from that line.
+    let mut left = st.clone();
+    left.line = crate::model::StairLine::Left;
+    assert_eq!(grips(m, &left).iter().filter(|(g, _)| matches!(g, Grip::Width(_))).count(), 1);
+    assert_eq!(dragged(m, &left, Grip::Width(Side::Right), P2(1300.0, 0.0)).width, 1300.0);
+}

@@ -326,6 +326,8 @@ pub struct Canvas {
     crop_drag: Option<(Id, usize)>,
     /// A selected wall's end being dragged: the wall, and whether it's its start.
     grip: Option<(Id, bool)>,
+    /// A selected stair's grip being dragged: the stair, and which.
+    pub(crate) stair_grip: Option<(Id, bimcraft_core::stairs::Grip)>,
     /// A selected level's end being dragged in a section or an elevation: the level, and whether
     /// it's its far end.
     level_grip: Option<(Id, bool)>,
@@ -360,6 +362,7 @@ impl Default for Canvas {
             cycle: 0,
             crop_drag: None,
             grip: None,
+            stair_grip: None,
             level_grip: None,
             press: None,
             lifted: None,
@@ -1615,6 +1618,7 @@ impl BimApp {
         let dragged = self.sketch_drag(ui, &response, rect, &view, level);
         self.canvas.found.set(None);
         self.grip_drag(ui, &response, rect, &view, level);
+        self.stair_grip_drag(ui, &response, rect, &view, level);
         self.line_grip_drag(ui, &response, rect, &view, level);
         let dragged = self.shape_grip_drag(ui, &response, rect, &view, level) || dragged;
         // A drag from an element moves the selection; from empty floor, it draws a selection box.
@@ -1624,6 +1628,7 @@ impl BimApp {
             && !writing
             && self.canvas.crop_drag.is_none()
             && self.canvas.grip.is_none()
+            && self.canvas.stair_grip.is_none()
             && self.drawing.grip.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
         {
@@ -1802,6 +1807,7 @@ impl BimApp {
             }
         }
         self.grip_overlay(ui, &model, &view, rect, level, &d, d.place);
+        self.stair_grip_overlay(ui, &model, &view, rect, level);
         // Where the cursor snaps is worked out only while a grip is held to it.
         let cursor = self
             .drawing

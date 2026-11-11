@@ -32,6 +32,7 @@ mod filter;
 mod find;
 mod footer;
 mod gpu;
+mod stairgrips;
 pub use gpu::limits_for;
 mod graphics;
 mod groups;

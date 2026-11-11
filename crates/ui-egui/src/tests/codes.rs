@@ -163,3 +163,25 @@ fn a_stair_selected_flips_and_shows_its_code_check_from_the_ribbon() {
     press(&mut h, "Code Check");
     assert!(h.query_by_label("Building Code Check").is_some());
 }
+
+#[test]
+fn a_selected_stair_s_grips_drag_its_width_its_turn_and_its_foot() {
+    let mut h = app(BOX);
+    let p = json!({"start": [2000, 1000], "angle": 90, "width": 1000, "landings": [{"at": 6, "turn": -90}]});
+    let id = h.state_mut().run("stair", p).unwrap()["id"].as_u64().unwrap();
+    h.run();
+    click(&mut h, P2(2000.0, 1480.0));
+    assert_eq!(h.state().selection, [id]);
+    // Its right side, halfway up the first run, out 200: 400 wider about its middle.
+    drag(&mut h, P2(2500.0, 1700.0), P2(2700.0, 1700.0));
+    assert_eq!(field(&h, id, "width"), json!(1400.0));
+    // The end of the first run, two treads back: the landing after 4 risers.
+    drag(&mut h, P2(2000.0, 2400.0), P2(2000.0, 1840.0));
+    assert_eq!(field(&h, id, "landings"), json!([{"at": 4.0, "turn": -90.0}]));
+    // Its foot, to another place: the stair goes with it.
+    drag(&mut h, P2(2000.0, 1000.0), P2(3000.0, 1200.0));
+    let start = field(&h, id, "start");
+    let (x, y) = (start[0].as_f64().unwrap(), start[1].as_f64().unwrap());
+    assert!((x - 3000.0).abs() < 30.0 && (y - 1200.0).abs() < 30.0, "{start}");
+    assert_eq!(h.state().session.history(), ["Wall", "Stair", "Modify", "Modify", "Modify"], "a step for each drag");
+}

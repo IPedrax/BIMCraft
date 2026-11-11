@@ -180,6 +180,91 @@ pub fn flipped(m: &Model, st: &Stair) -> Option<Stair> {
     Some(out)
 }
 
+/// A handle on a stair, to drag: its foot (the whole stair moves), its top (it turns about its foot), the end of a run
+/// before a turn (the run takes or gives risers), a side (its width, from its location line) or a landing's far edge
+/// (the landing's length).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Grip {
+    Foot,
+    Top,
+    Turn(usize),
+    Width(Side),
+    Landing(usize),
+}
+
+/// Where each of a stair's grips is, in plan.
+pub fn grips(m: &Model, st: &Stair) -> Vec<(Grip, P2)> {
+    use crate::model::StairLine;
+    let l = stair(m, st);
+    let mut out = vec![(Grip::Foot, st.start)];
+    let Some(first) = l.runs.first() else { return out };
+    let (mid, n) = (first.start + first.u * (first.length / 2.0), first.u.perp() * (st.width / 2.0));
+    // A side that is not the location line is dragged for the width.
+    if st.line != StairLine::Left {
+        out.push((Grip::Width(Side::Left), mid + n));
+    }
+    if st.line != StairLine::Right {
+        out.push((Grip::Width(Side::Right), mid - n));
+    }
+    for (i, (run, t)) in l.runs.iter().zip(&st.landings).enumerate() {
+        out.push((Grip::Turn(i), run.end()));
+        if t.winders == 0 {
+            let deep = if t.length > 0.0 { if t.turn.abs() == 90.0 { t.length.max(st.width) } else { t.length } } else { st.width };
+            let side = run.u.perp() * if t.turn > 0.0 { 1.0 } else { -1.0 };
+            let across = if t.turn.abs() == 180.0 { side * (st.width / 2.0) } else { P2(0.0, 0.0) };
+            out.push((Grip::Landing(i), run.end() + run.u * deep + across));
+        }
+    }
+    if let Some(last) = l.runs.last() {
+        out.push((Grip::Top, last.end()));
+    }
+    out
+}
+
+/// `st` as it is with `grip` dragged to `to`. A run's end takes the whole risers that fit, and the landings after it
+/// keep their runs; a stair that cannot be (a run of one riser) is for `Model::check` to refuse.
+pub fn dragged(m: &Model, st: &Stair, grip: Grip, to: P2) -> Stair {
+    use crate::model::StairLine;
+    let mut out = st.clone();
+    let l = stair(m, st);
+    let whole = |x: f64| (x * 1000.0).round() / 1000.0 + 0.0;
+    match grip {
+        Grip::Foot => out.start = P2(whole(to.0), whole(to.1)),
+        Grip::Top => {
+            let Some(top) = l.runs.last().map(Run::end) else { return out };
+            let (was, now) = (top - st.start, to - st.start);
+            if was.length() > 1e-6 && now.length() > 1e-6 {
+                let turn = now.1.atan2(now.0).to_degrees() - was.1.atan2(was.0).to_degrees();
+                out.angle = whole((st.angle + turn + 540.0).rem_euclid(360.0) - 180.0);
+            }
+        }
+        Grip::Turn(i) => {
+            let (Some(run), Some(t)) = (l.runs.get(i), st.landings.get(i)) else { return out };
+            let from = t.at - f64::from(run.risers);
+            let risers = if st.tread > 0.0 { ((to - run.start).dot(run.u) / st.tread).round() + 1.0 } else { f64::from(run.risers) };
+            let by = (from + risers.max(2.0)) - t.at;
+            for t in out.landings.iter_mut().skip(i) {
+                t.at += by;
+            }
+        }
+        Grip::Width(_) => {
+            let n = heading(st.angle).perp();
+            let d = (to - (st.start + n * st.offset)).dot(n);
+            let w = match st.line {
+                StairLine::Centre => 2.0 * d.abs(),
+                StairLine::Left => -d,
+                StairLine::Right => d,
+            };
+            out.width = whole(w.max(100.0));
+        }
+        Grip::Landing(i) => {
+            let (Some(run), Some(t)) = (l.runs.get(i), out.landings.get_mut(i)) else { return out };
+            t.length = whole((to - run.end()).dot(run.u).max(100.0));
+        }
+    }
+    out
+}
+
 /// A ramp's runs: its rise split at its landings' heights, each run as long as its slope makes it.
 pub fn ramp(m: &Model, r: &Ramp) -> Layout {
     let (base, top) = m.span(r.level, 0.0, r.top_level, r.height);

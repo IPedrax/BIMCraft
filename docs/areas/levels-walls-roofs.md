@@ -183,7 +183,9 @@ lists what a stair is outside of, with the number and the fix. A project keeps c
 (`Model::building_codes`, found with BIMCraft's by `Model::code`): `building_code {save}` keeps the rules in force under a name,
 and `building_code_export` and `building_code_import` hand one on as XML (`BuildingCode::to_xml`, `from_xml`: a `<rule name
 value/>` each, a rule left out being the generic code's, what the file has that we don't know listed as `left_out`).
-`flip` on a stair makes it climb the other way over the same ground (`stairs::flipped`).
+`flip` on a stair makes it climb the other way over the same ground (`stairs::flipped`). A stair's grips, where they are and
+what a drag of one makes of the stair, are `stairs::grips` and `stairs::dragged`; the desktop's `stairgrips.rs` draws them on
+the plan and runs `modify` on release.
 Nothing is ever refused for breaking a rule: winders under a
 code without them are built and reported. The desktop's is Manage > Building Codes (`ui-egui/src/codes.rs`), apart from
 Technical Standards, which is about drafting. Where stairs are going, and why: [an advanced stair
