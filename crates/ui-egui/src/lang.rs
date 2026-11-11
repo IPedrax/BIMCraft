@@ -9,8 +9,8 @@
 //! in it. Chinese interface translations, including schedule headings, live in `translations/ui/zh.po`, one entry for each of
 //! the interface's messages: an entry it lacks shows in English. The window draws hanzi with a system font (`font.rs`).
 //!
-//! Vietnamese is the window's alone too, its catalog `translations/ui/vi.po`: the window's own fonts have its letters, but a
-//! project is not in it, so new projects are named in English.
+//! Vietnamese is a project's language too: the window's catalog is `translations/ui/vi.po`, the drawings'
+//! `translations/project/vi.po`, and the window's own fonts and a drawing's lettering both have its letters.
 
 use bimcraft_i18n::msg;
 
@@ -77,11 +77,10 @@ impl Lang {
         matches!(self, Lang::Chinese | Lang::TraditionalChinese)
     }
 
-    /// The project language that goes with it, which new projects are named in: Vietnamese and Chinese, either kind, have
-    /// none, so English.
+    /// The project language that goes with it, which new projects are named in: Chinese, either kind, has none, so English.
     pub fn project(self) -> Language {
         match self {
-            Lang::English | Lang::Vietnamese | Lang::Chinese | Lang::TraditionalChinese => Language::English,
+            Lang::English | Lang::Chinese | Lang::TraditionalChinese => Language::English,
             Lang::Portuguese => Language::Portuguese,
             Lang::Spanish => Language::Spanish,
             Lang::Czech => Language::Czech,
@@ -89,13 +88,13 @@ impl Lang {
             Lang::German => Language::German,
             Lang::Dutch => Language::Dutch,
             Lang::Italian => Language::Italian,
+            Lang::Vietnamese => Language::Vietnamese,
         }
     }
 
     /// Its code in the settings file: en, pt, es, vi, zh, zh_TW (also the name of its catalog).
     pub fn code(self) -> &'static str {
         match self {
-            Lang::Vietnamese => "vi",
             Lang::Chinese => "zh",
             Lang::TraditionalChinese => "zh_TW",
             other => other.project().code(),
@@ -109,7 +108,6 @@ impl Lang {
             Lang::Chinese => "Chinese (Simplified)",
             Lang::TraditionalChinese if get() == Lang::TraditionalChinese => "繁體中文",
             Lang::TraditionalChinese => "Chinese (Traditional)",
-            Lang::Vietnamese => "Tiếng Việt",
             other => other.project().label(),
         }
     }
@@ -141,6 +139,7 @@ impl From<Language> for Lang {
             Language::German => Lang::German,
             Language::Dutch => Lang::Dutch,
             Language::Italian => Lang::Italian,
+            Language::Vietnamese => Lang::Vietnamese,
         }
     }
 }
@@ -371,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn vietnamese_has_its_own_words_and_names_projects_in_english() {
+    fn vietnamese_has_its_own_words_and_names_projects_in_vietnamese() {
         set(Lang::Vietnamese);
         assert_eq!((t("File"), t("Copy"), t("Wall Schedule")), ("Tệp", "Sao chép", "Bảng thống kê tường"));
         assert_eq!(tf("Save changes to {}?", &["house"]), "Lưu các thay đổi vào house?");
@@ -379,8 +378,9 @@ mod tests {
         set(Lang::English);
         assert_eq!(
             (Lang::Vietnamese.code(), Lang::Vietnamese.label(), Lang::Vietnamese.project()),
-            ("vi", "Tiếng Việt", Language::English)
+            ("vi", "Tiếng Việt", Language::Vietnamese)
         );
+        assert_eq!(Lang::from(Language::Vietnamese), Lang::Vietnamese);
         for code in ["vi", "vi-VN", "vi_VN.UTF-8", "VI", "vietnamese", "Tiếng Việt"] {
             assert_eq!(Lang::from_code(code), Some(Lang::Vietnamese), "{code}");
         }

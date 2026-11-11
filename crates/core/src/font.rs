@@ -1,10 +1,20 @@
 //! Our own single-stroke lettering for plan annotation: capitals, Latin and Cyrillic, digits, a few marks and the
 //! accents of Latin languages (acute, grave, circumflex, tilde, diaeresis, double acute, caron, ring,
-//! macron, breve, dot, cedilla, ogonek and the stroke of Ł and Ø), drawn on an 8 x 12 grid (y up).
-//! Lower case is drawn as capitals, as architectural lettering is. What it has no letter for, a text
+//! macron, breve, dot, cedilla, ogonek and the stroke of Ł, Ø and Đ), and Vietnamese's horn (Ơ, Ư) and tones (a hook
+//! above and a dot below besides acute, grave and tilde, a tone over the vowel's own mark in Ấ or Ằ), drawn on an 8 x 12
+//! grid (y up). Lower case is drawn as capitals, as architectural lettering is. What it has no letter for, a text
 //! type in it letters from IBM Plex ([`crate::text`]).
 
 type Glyph = &'static [&'static [(i8, i8)]];
+
+const ACUTE: Glyph = &[&[(3, 13), (5, 15)]];
+const GRAVE: Glyph = &[&[(3, 15), (5, 13)]];
+const TILDE: Glyph = &[&[(1, 13), (3, 15), (5, 13), (7, 15)]];
+/// Vietnamese's hook above (dấu hỏi): a small question mark without its dot, open at the bottom left so that it doesn't
+/// read as a dot.
+const HOOK: Glyph = &[&[(2, 14), (3, 15), (5, 15), (6, 14), (4, 13)]];
+/// Vietnamese's dot below (dấu nặng).
+const DOT_BELOW: Glyph = &[&[(4, -2), (4, -1)]];
 
 const O: &[(i8, i8)] = &[(2, 0), (0, 2), (0, 10), (2, 12), (6, 12), (8, 10), (8, 2), (6, 0), (2, 0)];
 const P: &[(i8, i8)] = &[(0, 0), (0, 12), (6, 12), (8, 10), (8, 8), (6, 6), (0, 6)];
@@ -154,10 +164,7 @@ fn known(c: char) -> Option<Glyph> {
 
 /// An accented capital as its base letter and accent.
 fn accent(c: char) -> Option<(char, Glyph)> {
-    const ACUTE: Glyph = &[&[(3, 13), (5, 15)]];
-    const GRAVE: Glyph = &[&[(3, 15), (5, 13)]];
     const CIRCUMFLEX: Glyph = &[&[(2, 13), (4, 15), (6, 13)]];
-    const TILDE: Glyph = &[&[(1, 13), (3, 15), (5, 13), (7, 15)]];
     const DIAERESIS: Glyph = &[&[(2, 14), (2, 15)], &[(6, 14), (6, 15)]];
     const DOUBLE_ACUTE: Glyph = &[&[(1, 13), (3, 15)], &[(5, 13), (7, 15)]];
     const CARON: Glyph = &[&[(2, 15), (4, 13), (6, 15)]];
@@ -169,6 +176,10 @@ fn accent(c: char) -> Option<(char, Glyph)> {
     const OGONEK: Glyph = &[&[(6, 0), (5, -2), (7, -3)]];
     const SLASH: Glyph = &[&[(-1, -1), (9, 13)]];
     const BAR: Glyph = &[&[(-1, 4), (3, 8)]];
+    const CROSSBAR: Glyph = &[&[(-1, 6), (3, 6)]];
+    // The horn rises from the O's right shoulder and from the top of the U's right stem.
+    const HORN_O: Glyph = &[&[(7, 11), (9, 13)]];
+    const HORN_U: Glyph = &[&[(8, 11), (10, 13)]];
     let mark = match c {
         'Ё' => return Some(('Е', DIAERESIS)),
         'Й' => return Some(('И', BREVE)),
@@ -187,26 +198,37 @@ fn accent(c: char) -> Option<(char, Glyph)> {
         'Ą' | 'Ę' => OGONEK,
         'Ø' => SLASH,
         'Ł' => BAR,
+        'Đ' => CROSSBAR,
+        'Ơ' => HORN_O,
+        'Ư' => HORN_U,
         _ => return None,
     };
     Some((base(c)?, mark))
+}
+
+/// A Vietnamese vowel with a tone as the vowel, which may have a mark of its own (Ă, Â, Ê, Ô, Ơ, Ư), and the tone's mark.
+fn tone(c: char) -> Option<(char, Glyph)> {
+    const VOWELS: [char; 12] = ['A', 'Ă', 'Â', 'E', 'Ê', 'I', 'O', 'Ô', 'Ơ', 'U', 'Ư', 'Y'];
+    const TONES: [(Glyph, &str); 5] =
+        [(ACUTE, "ÁẮẤÉẾÍÓỐỚÚỨÝ"), (GRAVE, "ÀẰẦÈỀÌÒỒỜÙỪỲ"), (HOOK, "ẢẲẨẺỂỈỎỔỞỦỬỶ"), (TILDE, "ÃẴẪẼỄĨÕỖỠŨỮỸ"), (DOT_BELOW, "ẠẶẬẸỆỊỌỘỢỤỰỴ")];
+    TONES.iter().find_map(|&(mark, vowels)| vowels.chars().position(|v| v == c).map(|i| (VOWELS[i], mark)))
 }
 
 fn base(c: char) -> Option<char> {
     Some(match c {
         'Á' | 'À' | 'Â' | 'Ã' | 'Ä' | 'Å' | 'Ā' | 'Ă' | 'Ą' => 'A',
         'Ć' | 'Č' | 'Ç' => 'C',
-        'Ď' => 'D',
+        'Ď' | 'Đ' => 'D',
         'É' | 'È' | 'Ê' | 'Ë' | 'Ě' | 'Ē' | 'Ė' | 'Ę' => 'E',
         'Ğ' => 'G',
         'Í' | 'Ì' | 'Î' | 'Ï' | 'Ī' | 'İ' => 'I',
         'Ĺ' | 'Ł' => 'L',
         'Ñ' | 'Ń' | 'Ň' => 'N',
-        'Ó' | 'Ò' | 'Ô' | 'Õ' | 'Ö' | 'Ő' | 'Ō' | 'Ø' => 'O',
+        'Ó' | 'Ò' | 'Ô' | 'Õ' | 'Ö' | 'Ő' | 'Ō' | 'Ø' | 'Ơ' => 'O',
         'Ŕ' | 'Ř' => 'R',
         'Ś' | 'Š' | 'Ş' => 'S',
         'Ť' => 'T',
-        'Ú' | 'Ù' | 'Û' | 'Ü' | 'Ű' | 'Ů' | 'Ū' => 'U',
+        'Ú' | 'Ù' | 'Û' | 'Ü' | 'Ű' | 'Ů' | 'Ū' | 'Ư' => 'U',
         'Ý' | 'Ÿ' => 'Y',
         'Ź' | 'Ž' | 'Ż' => 'Z',
         _ => return None,
@@ -217,7 +239,7 @@ fn base(c: char) -> Option<char> {
 pub fn has(c: char) -> bool {
     let mut upper = c.to_uppercase();
     match (upper.next(), upper.next()) {
-        (Some(u), None) => accent(u).is_some() || known(u).is_some(),
+        (Some(u), None) => accent(u).is_some() || tone(u).is_some() || known(u).is_some(),
         // ß is SS.
         (Some(_), Some(_)) => c.to_uppercase().all(has),
         _ => false,
@@ -239,12 +261,19 @@ pub fn strokes(text: &str, x: f32, y: f32, height: f32) -> Vec<Vec<(f32, f32)>> 
     let mut out = Vec::new();
     for (i, c) in text.chars().flat_map(char::to_uppercase).enumerate() {
         let x0 = x + i as f32 * ADVANCE * k;
+        // A tone over a vowel's own mark (Ấ, Ằ, Ể) goes over that mark, a mark's height higher; the dot below stays below.
+        let (c, toned, raise): (char, Glyph, i8) = match tone(c) {
+            Some((v, t)) => (v, t, if matches!(v, 'Ă' | 'Â' | 'Ê' | 'Ô') && t != DOT_BELOW { 3 } else { 0 }),
+            None => (c, &[], 0),
+        };
         let (letter, mark): (Glyph, Glyph) = match accent(c) {
             Some((b, m)) => (glyph(b), m),
             None => (glyph(c), &[]),
         };
-        for line in letter.iter().chain(mark) {
-            out.push(line.iter().map(|&(gx, gy)| (x0 + f32::from(gx) * k, y - f32::from(gy) * k)).collect());
+        for (lines, up) in [(letter, 0), (mark, 0), (toned, raise)] {
+            for line in lines {
+                out.push(line.iter().map(|&(gx, gy)| (x0 + f32::from(gx) * k, y - f32::from(gy + up) * k)).collect());
+            }
         }
     }
     out
@@ -355,5 +384,36 @@ mod tests {
         // ë is E and a diaeresis, ï is I and one: two marks more than the plain letter.
         assert_eq!(strokes("ë", 0.0, 0.0, 12.0).len(), strokes("e", 0.0, 0.0, 12.0).len() + 2);
         assert_eq!(strokes("ï", 0.0, 0.0, 12.0).len(), strokes("i", 0.0, 0.0, 12.0).len() + 2);
+    }
+
+    #[test]
+    fn vietnamese_letters_are_all_drawn_each_its_own_with_tones_over_their_marks_or_under_the_vowel() {
+        let letters = "AĂÂEÊIOÔƠUƯYĐ\
+                       ÁẮẤÉẾÍÓỐỚÚỨÝÀẰẦÈỀÌÒỒỜÙỪỲẢẲẨẺỂỈỎỔỞỦỬỶÃẴẪẼỄĨÕỖỠŨỮỸẠẶẬẸỆỊỌỘỢỤỰỴ";
+        let unknown = strokes("?", 0.0, 0.0, 12.0);
+        let drawn: Vec<_> = letters.chars().map(|c| strokes(&c.to_string(), 0.0, 0.0, 12.0)).collect();
+        for (c, s) in letters.chars().zip(&drawn) {
+            assert!(has(c) && has(c.to_lowercase().next().unwrap_or(c)) && *s != unknown, "{c} is not drawn");
+            assert_eq!(strokes(&c.to_lowercase().to_string(), 0.0, 0.0, 12.0), *s, "{c} in lower case");
+        }
+        for (i, a) in drawn.iter().enumerate() {
+            assert!(drawn.iter().skip(i + 1).all(|b| b != a), "{} looks like another", letters.chars().nth(i).unwrap_or(' '));
+        }
+        for word in ["Tầng 1", "Mặt bằng", "Mặt cắt", "Phòng ngủ", "Cửa sổ", "Cửa đi", "LÊN", "XUỐNG", "Tỷ lệ", "Nhà vệ sinh"]
+        {
+            assert!(word.chars().all(has), "{word}");
+        }
+        let top = |s: &str| strokes(s, 0.0, 0.0, 12.0).iter().flatten().map(|p| p.1).fold(f32::MAX, f32::min);
+        let bottom = |s: &str| strokes(s, 0.0, 0.0, 12.0).iter().flatten().map(|p| p.1).fold(f32::MIN, f32::max);
+        // Ấ is Â with an acute over its circumflex, and Ạ is A with a dot under the baseline (y is down).
+        let (a, hat, a_hat_acute) = (strokes("A", 0.0, 0.0, 12.0), strokes("Â", 0.0, 0.0, 12.0), strokes("Ấ", 0.0, 0.0, 12.0));
+        assert_eq!((a_hat_acute.len(), a_hat_acute[..hat.len()].to_vec()), (a.len() + 2, hat));
+        assert!(top("Ấ") < top("Â") && top("Á") == top("Â"), "the acute rises over the circumflex, not into it");
+        assert!(bottom("Ạ") > 0.0 && bottom("Ậ") > 0.0 && top("Ậ") == top("Â"), "the dot goes under the baseline");
+        // Ơ and Ư are O and U with a horn, Đ is D crossed.
+        for (plain, marked) in [("O", "Ơ"), ("U", "Ư"), ("D", "Đ")] {
+            let (p, m) = (strokes(plain, 0.0, 0.0, 12.0), strokes(marked, 0.0, 0.0, 12.0));
+            assert_eq!((m.len(), m[..p.len()].to_vec()), (p.len() + 1, p), "{marked}");
+        }
     }
 }

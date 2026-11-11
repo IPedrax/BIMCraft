@@ -1,7 +1,7 @@
 //! A project's language: the words its drawings print (a stair's UP, a title block's SCALE, a
 //! schedule's headings) and the names commands give what they make (levels, views, sheets, rooms).
-//! English, Brazilian Portuguese, Spanish, Swedish, Czech, French, German, Dutch or Italian. Names already given stay as they
-//! are; the core's messages, which agents read, stay English.
+//! English, Brazilian Portuguese, Spanish, Swedish, Czech, French, German, Dutch, Italian or Vietnamese. Names already given
+//! stay as they are; the core's messages, which agents read, stay English.
 
 use serde::{Deserialize, Serialize};
 
@@ -28,10 +28,12 @@ pub enum Language {
     Dutch,
     #[serde(rename = "it")]
     Italian,
+    #[serde(rename = "vi")]
+    Vietnamese,
 }
 
 impl Language {
-    pub const ALL: [Language; 9] = [
+    pub const ALL: [Language; 10] = [
         Language::English,
         Language::Portuguese,
         Language::Spanish,
@@ -41,20 +43,32 @@ impl Language {
         Language::German,
         Language::Dutch,
         Language::Italian,
+        Language::Vietnamese,
     ];
 
-    /// Its code in commands and files: en, pt, es, sv, cs, fr, de, nl, it.
+    /// Its code in commands and files: en, pt, es, sv, cs, fr, de, nl, it, vi.
     pub fn code(self) -> &'static str {
-        self.of(["en", "pt", "es", "sv", "cs", "fr", "de", "nl", "it"])
+        self.of(["en", "pt", "es", "sv", "cs", "fr", "de", "nl", "it", "vi"])
     }
 
     /// Its name, in itself.
     pub fn label(self) -> &'static str {
-        self.of(["English", "Português (Brasil)", "Español", "Svenska", "Čeština", "Français", "Deutsch", "Nederlands", "Italiano"])
+        self.of([
+            "English",
+            "Português (Brasil)",
+            "Español",
+            "Svenska",
+            "Čeština",
+            "Français",
+            "Deutsch",
+            "Nederlands",
+            "Italiano",
+            "Tiếng Việt",
+        ])
     }
 
     /// Of one thing in each language, English first, this language's.
-    pub fn of<T>(self, [english, portuguese, spanish, swedish, czech, french, german, dutch, italian]: [T; 9]) -> T {
+    pub fn of<T>(self, [english, portuguese, spanish, swedish, czech, french, german, dutch, italian, vietnamese]: [T; 10]) -> T {
         match self {
             Language::English => english,
             Language::Portuguese => portuguese,
@@ -65,10 +79,11 @@ impl Language {
             Language::German => german,
             Language::Dutch => dutch,
             Language::Italian => italian,
+            Language::Vietnamese => vietnamese,
         }
     }
 
-    /// A language by its code or its name, or from a locale as systems give one: pt-BR, es_419.UTF-8, sv-SE, cs-CZ, fr-FR, de-DE, nl-BE, it-IT.
+    /// A language by its code or its name, or from a locale as systems give one: pt-BR, es_419.UTF-8, sv-SE, cs-CZ, fr-FR, de-DE, nl-BE, it-IT, vi-VN.
     pub fn from_code(code: &str) -> Option<Language> {
         let code = code.trim().to_lowercase();
         Some(match code.split(['-', '_', '.']).next().unwrap_or_default() {
@@ -81,6 +96,7 @@ impl Language {
             "de" | "german" | "deutsch" => Language::German,
             "nl" | "dutch" | "nederlands" | "vlaams" | "flemish" => Language::Dutch,
             "it" | "italian" | "italiano" => Language::Italian,
+            "vi" | "vietnamese" | "tiếng việt" | "tieng viet" => Language::Vietnamese,
             _ => return None,
         })
     }
@@ -181,5 +197,24 @@ mod tests {
         assert_eq!(it.find("ABACO PORTE", &["Room Schedule", "Door Schedule"]), Some("Door Schedule"));
         assert_eq!(["it", "it-IT", "it_CH.UTF-8", "italian", "Italiano", "IT"].map(Language::from_code), [Some(it); 6]);
         assert!(Language::ALL.contains(&it));
+    }
+
+    #[test]
+    fn vietnamese_words_and_locales_are_project_language() {
+        let vi = Language::Vietnamese;
+        assert_eq!((vi.code(), vi.label()), ("vi", "Tiếng Việt"));
+        assert_eq!([vi.word("Level"), vi.word("UP"), vi.word("Room Schedule")], ["Tầng", "LÊN", "Bảng thống kê phòng"]);
+        assert_eq!([vi.word("SCALE"), vi.word("DN"), vi.word("Room Name")], ["TỶ LỆ", "XUỐNG", "Tên phòng"]);
+        assert_eq!(vi.find("BẢNG THỐNG KÊ CỬA ĐI", &["Room Schedule", "Door Schedule"]), Some("Door Schedule"));
+        assert_eq!(["vi", "vi-VN", "vi_VN.UTF-8", "vietnamese", "Tiếng Việt", "VI"].map(Language::from_code), [Some(vi); 6]);
+        assert!(Language::ALL.contains(&vi));
+        // Every word its catalog has, the lettering draws, with no question marks.
+        let catalog = include_str!("../../../translations/project/vi.po");
+        let words: Vec<&str> =
+            catalog.lines().filter_map(|l| l.strip_prefix("msgstr \"")?.strip_suffix('"')).filter(|w| !w.contains('\\')).collect();
+        assert!(words.len() > 150 && words.contains(&"XUỐNG"), "{}", words.len());
+        for word in words {
+            assert!(word.chars().all(|c| c.is_whitespace() || crate::font::has(c)), "{word}");
+        }
     }
 }
