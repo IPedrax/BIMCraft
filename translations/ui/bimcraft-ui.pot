@@ -2555,7 +2555,7 @@ msgstr ""
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:9897
+#: crates/core/src/commands.rs:9899
 msgid "Dependent"
 msgstr ""
 
@@ -5240,7 +5240,7 @@ msgstr ""
 msgid "New {}"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1191
+#: crates/core/src/schedule.rs:1205
 msgid "No"
 msgstr ""
 
@@ -9015,7 +9015,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:10038
+#: crates/core/src/commands.rs:10040
 msgid "Unnamed"
 msgstr ""
 
@@ -9568,7 +9568,7 @@ msgstr ""
 msgid "Y"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1191
+#: crates/core/src/schedule.rs:1205
 msgid "Yes"
 msgstr ""
 
@@ -10187,7 +10187,7 @@ msgstr ""
 msgid "{} (primary)"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1181
+#: crates/core/src/schedule.rs:1195
 msgid "{} ({})"
 msgstr ""
 
