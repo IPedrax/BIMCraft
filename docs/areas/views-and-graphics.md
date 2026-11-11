@@ -16,6 +16,10 @@ placed with no scale takes the view's. The units name the scales and list the on
 1" = 200'-0"), and 1 : n for any other. The Scale menu, Properties, templates and sheets' titles name them so, and a scale is typed
 as n, 1 : n, or two lengths (`1/4" = 1'-0"`).
 
+The built-in sheet title block fits each complete project name, sheet name, scale and sheet number within its own cell,
+with 4 mm clear at either side. Long values shrink uniformly; short values keep their usual lettering size and alignment.
+The full values remain in the project file. The desktop, rendered sheet images and PDF share this lettering.
+
 Background grids are view-owned graphics (`Graphics::background_grid`), controlled by a view template through the
 `background_grid` group. `graphics` and `template` accept a grid patch (spacing in millimetres, divisions, rotation, two
 styles and visibility), or null to reset it. `Graphics::resolved` supplies the effective grid, and both the
@@ -185,6 +189,11 @@ drawn (`render::edges_at` lists the edges drawn). A view's linework is checked (
 at most `MAX_LINEWORK` (2,000) edges, ends within `MAX_COORD`, and a line style the project has. The drawing splits an element's
 lines along all its edges in one pass (`render::linework`: the cost is the prims plus the edges, not a pass over every prim for
 each edge). A line style a view's linework uses can't be deleted, and an element's entries go with it.
+
+Drawing labels (for example grid heads) use `font.rs`'s single-stroke capitals, including leaning prime and double-prime
+marks and the ellipsis. Unsupported characters retain the question-mark fallback; `Drawing::notes` and the `render`
+reply's `notes` name their Unicode code points once per drawing, up to the drawing's 32 diagnostic entries. Text notes
+use the separate font fallback below, so a character outside the drawing lettering does not by itself warn for a note.
 
 Text notes and text types (`text.rs`). A `Note` is drawn in one view, as a detail line is, and is of a text type
 (`Model::text_types`, library entries of `Kind::TextType`, so a file names a note's type by GUID and `rename_entry` follows a

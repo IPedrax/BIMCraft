@@ -6,7 +6,8 @@
 //! - `{"token": T, "op": "execute", "command": "wall", "params": {...}}` runs a command, as `Session::execute` does;
 //! - `{"token": T, "op": "script", "text": "...", "atomic": false}` runs a script (`Session::script`, or all or nothing);
 //!   with `"dry_run": true` it is tried and taken back, and the reply says what it would do (`Session::script_dry_run`);
-//! - `{"token": T, "op": "catalog"}` is the command catalog, with the window's plugin commands (`Session::catalog`).
+//! - `{"token": T, "op": "catalog"}` is the command catalog, with the window's plugin commands (`Session::catalog`);
+//! - `{"token": T, "op": "context"}` reads the desktop selection and active view, answered by the window in its frame.
 //!
 //! `execute` and `script` may say `"read_only": true`: the agent's side asks to only read (`bimcraft-cli mcp --connect
 //! --read-only`). The reply is `{"ok": value}` or `{"error": text}`. The token is made when the window starts and kept in a file
@@ -48,10 +49,15 @@ pub const ASKED: &str =
 /// The file the window leaves its port and token in, in the folder of the user's favorites.
 pub const FILE: &str = "bridge.json";
 
+/// A headless session has neither a desktop selection nor an active view.
+pub const NO_CONTEXT: &str = "desktop context requires a connected window: start bimcraft --control 0 and use bimcraft-cli mcp --connect";
+
 /// A request, read.
 #[derive(Debug, PartialEq)]
 pub enum Request {
     Hello,
+    /// The current desktop selection and active view; only a window can answer this.
+    Context,
     /// `read_only`: the agent's side asks to only read, whatever the window lets.
     Execute {
         command: String,
@@ -107,6 +113,7 @@ pub fn parse(line: &str, token: &str) -> Result<Request, Error> {
     };
     match o.get("op").and_then(Value::as_str) {
         Some("hello") => Ok(Request::Hello),
+        Some("context") => Ok(Request::Context),
         Some("execute") => {
             let command = o.get("command").and_then(Value::as_str).ok_or_else(|| bad("`execute` needs a `command`, a string"))?;
             let params = match o.get("params") {
@@ -131,7 +138,7 @@ pub fn parse(line: &str, token: &str) -> Result<Request, Error> {
             };
             Ok(Request::Script { text: text.to_string(), atomic, dry_run, read_only })
         }
-        Some(other) => Err(Error::Request(format!("unknown op `{other}`: hello, execute, script or catalog"))),
+        Some(other) => Err(Error::Request(format!("unknown op `{other}`: hello, execute, script, catalog or context"))),
         None => Err(bad("a request has an `op`")),
     }
 }
@@ -165,6 +172,7 @@ pub fn run(session: &mut Session, request: &Request, access: Access) -> Result<V
 
 fn answer(session: &mut Session, request: &Request, access: Access) -> Result<Value, String> {
     match request {
+        Request::Context => Err(NO_CONTEXT.into()),
         Request::Hello => Ok(json!({
             "app": "bimcraft",
             "version": env!("CARGO_PKG_VERSION"),
@@ -303,6 +311,19 @@ mod tests {
         assert!(matches!(parse("[1, 2]", T), Err(Error::Request(why)) if why.contains("object")));
         assert!(matches!(parse("{not json", T), Err(Error::Request(why)) if why.starts_with("not JSON")));
         assert!(matches!(parse("", T), Err(Error::Request(_))));
+    }
+
+    #[test]
+    fn context_requires_the_token_and_a_desktop_rather_than_inventing_session_state() {
+        assert_eq!(parse(&line(json!({"token": T, "op": "context"})), T), Ok(Request::Context));
+        assert_eq!(parse(&line(json!({"op": "context"})), T), Err(Error::Token));
+        let mut session = Session::new();
+        let kept = std::sync::Arc::clone(&session.model);
+        for access in [Access::Edit, Access::Read] {
+            assert_eq!(run(&mut session, &Request::Context, access), Err(NO_CONTEXT.into()));
+        }
+        assert!(std::sync::Arc::ptr_eq(&kept, &session.model));
+        assert!(session.history().is_empty());
     }
 
     #[test]
