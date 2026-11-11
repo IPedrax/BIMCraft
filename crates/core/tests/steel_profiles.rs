@@ -135,11 +135,11 @@ mod native_versions {
     use serde_json::json;
 
     #[test]
-    fn steel_files_require_a_reader_that_knows_sections_and_plain_format_18_files_keep_their_geometry() {
+    fn steel_files_require_a_reader_that_knows_sections_and_plain_format_17_files_keep_their_geometry() {
         let mut plain = Session::new();
         plain.execute("beam", &json!({"points":[[0,0],[6000,0]],"offset":3000})).unwrap();
         let mut legacy: serde_json::Value = serde_json::from_str(&plain.model.to_json().unwrap()).unwrap();
-        legacy["format"] = json!(18);
+        legacy["format"] = json!(17);
         let (migrated, left_out) = Model::read(&serde_json::to_string(&legacy).unwrap()).unwrap();
         assert!(left_out.is_empty(), "legacy fields must be retained: {left_out:?}");
         assert_eq!(migrated.types, plain.model.types);
@@ -148,7 +148,7 @@ mod native_versions {
         steel.execute("beam", &json!({"points":[[0,0],[6000,0]],"type":"IPE 300"})).unwrap();
         let file = steel.model.to_json().unwrap();
         let encoded: serde_json::Value = serde_json::from_str(&file).unwrap();
-        assert!(encoded["format"].as_u64().unwrap() > 18, "a format-18 reader would drop the section and reinterpret its bounding box");
+        assert!(encoded["format"].as_u64().unwrap() > 17, "a format-17 reader would drop the section and reinterpret its bounding box");
         assert_eq!(migrated.format, encoded["format"].as_u64().unwrap() as u32);
         let (reopened, left_out) = Model::read(&file).unwrap();
         assert!(left_out.is_empty());

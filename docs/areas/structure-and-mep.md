@@ -274,9 +274,9 @@ Schedules expose `Profile`, `Section Area` (cm²), `Weight per Metre` (kg/m) and
 plate/fillet/ring areas. IFC writes the corresponding I/U/L/rectangle-hollow/circle-hollow profile shared by the body and the
 existing type material profile set. Existing cardinal points and quantity conventions remain: length, cross-section area,
 lateral surface area (including hollow interiors), gross volume, without inventing net deductions or adding end faces.
-Native files use format 19: a format-18 reader rejects them before lenient field removal, preventing a steel section
-from becoming its solid bounding rectangle/circle. Older format-18 files migrate without data conversion: absent profiles
-keep their original plain sections. GUID references and prior migrations stay unchanged. Existing desktop Edit Type dimensions and Duplicate retain the
+Native files use format 18: a reader of 17 or before rejects them before lenient field removal, preventing a steel section
+from becoming its solid bounding rectangle/circle. Older files (format 17 and before) migrate without data conversion: absent
+profiles keep their original plain sections. GUID references and prior migrations stay unchanged. Existing desktop Edit Type dimensions and Duplicate retain the
 section; the CLI/MCP `type` command is the entry point for profile authoring. IFC section recognition currently reads direct
 parameterized extruded Body representations; mapped or otherwise unsupported representations retain the existing import
 fallback. Columns retain steel metadata when IFC marks them load-bearing.

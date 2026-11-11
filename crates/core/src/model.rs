@@ -71,9 +71,9 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 19: beam and structural-column types may
-/// have steel profiles; a reader of 18 would drop them and reinterpret their bounding rectangles/circles as material.
-/// Files of 18 retain their original sections without conversion. 18: a family's connector may be a `pipe`,
+/// The version of the project file this build writes, and the newest it reads. 18: a beam's or a structural column's type may
+/// have a steel section (`profile`), which a build that reads up to 17 would leave out as a field it doesn't know, drawing and
+/// scheduling the member as the solid rectangle or circle round its section; a family's connector may be a `pipe`,
 /// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
 /// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
 /// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
@@ -120,7 +120,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 19;
+pub const FORMAT: u32 = 18;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3536,13 +3536,13 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
+        // 17 to 18, for a type's steel section (`profile`), has none either: a file of 17 holds none, its types keeping the
+        // plain rectangle or circle they had.
         // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, their fields'
         // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column) has none
         // either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
         // file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
         // did, and none of its dimensions measures `across`.
-        // 18 to 19 (steel beam and structural-column sections) needs no data conversion: absent profiles retain the
-        // original rectangle/circle. The version gate prevents an older reader dropping a profile and changing geometry.
         self.format = FORMAT;
     }
 
