@@ -5888,6 +5888,7 @@ mod browser;
 mod cad;
 mod chinese;
 mod clouds;
+mod codes;
 mod control;
 mod dialog;
 mod dimensions;

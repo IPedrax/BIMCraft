@@ -1648,6 +1648,12 @@ pub struct Stair {
     pub tread: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub landings: Vec<Landing>,
+    /// The line `start` is on: the stair's left edge, its middle or its right edge.
+    #[serde(default, skip_serializing_if = "StairLine::is_centre")]
+    pub line: StairLine,
+    /// How far the stair stands to the left of that line.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub offset: f64,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -1655,13 +1661,63 @@ pub struct Stair {
 
 /// A landing between two runs of a stair or a ramp: after `at` risers of a stair, or `at` mm up a
 /// ramp; then the next run goes on straight (`turn` 0), turned left (90) or right (-90), or back
-/// beside the last, to its left (180) or its right (-180). It's as deep as the runs are wide.
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+/// beside the last, to its left (180) or its right (-180). It's as deep as the runs are wide. A stair's turning
+/// may wind instead: `winders` treads fanned round the inside corner of the turn, each a riser above the last,
+/// where the flat landing would be.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Landing {
     pub at: f64,
     #[serde(default)]
     pub turn: f64,
+    #[serde(default, skip_serializing_if = "no_winders")]
+    pub winders: u32,
+    /// How deep it is along the run that climbs onto it; 0 for as deep as the runs are wide. A landing that turns
+    /// left or right is no shorter than that, the next run leaving from its far end.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub length: f64,
+}
+
+/// The line a stair is drawn by, which stays where it is when the stair's width changes: its left edge, its middle or
+/// its right edge, looking up it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StairLine {
+    Left,
+    #[default]
+    #[serde(alias = "center")]
+    Centre,
+    Right,
+}
+
+impl StairLine {
+    fn is_centre(&self) -> bool {
+        *self == StairLine::Centre
+    }
+}
+
+impl Stair {
+    /// The middle of its first riser: `start` is on its location line, and the stair `offset` to the left of where
+    /// the line puts it, looking up (to the right when negative).
+    pub fn foot(&self) -> P2 {
+        let half = match self.line {
+            StairLine::Left => -self.width / 2.0,
+            StairLine::Centre => 0.0,
+            StairLine::Right => self.width / 2.0,
+        };
+        self.start + heading(self.angle).perp() * (half + self.offset)
+    }
+}
+
+fn no_winders(n: &u32) -> bool {
+    *n == 0
+}
+
+impl Landing {
+    /// The risers its winders climb past the first of them, which is where a landing would be.
+    pub fn wound(&self) -> u32 {
+        self.winders.saturating_sub(1)
+    }
 }
 
 /// A ramp from `level` up to `top_level` (or `height` mm), from the middle of its foot at `start`
@@ -2862,6 +2918,16 @@ pub struct Model {
     /// What technical standard (NBR, ISO, ANSI, EU, JIS) drawing conventions follow.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub standard: Option<crate::standards::TechnicalStandard>,
+    /// The building code its stairs and railings are held to, by what `data/building-codes.json` calls it; none until one
+    /// is chosen ([`Model::building_code`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub building_code: Option<String>,
+    /// Its own rules for stairs and railings, once it changed any of its code's ([`Model::stair_rules`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stair_rules: Option<crate::codes::StairRules>,
+    /// Building codes of the project's own, saved under names it gave them (`building_code {save}`), or read from a file.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub building_codes: Vec<crate::codes::BuildingCode>,
     /// The pens each model category draws in, cut and in projection (Manage > Object Styles), by category: only those it
     /// has set apart from what a project starts with ([`Model::object_style`]).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -2952,6 +3018,22 @@ impl Model {
         }
     }
 
+    /// The building code its stairs and railings are held to: the one it chose, else the generic one, as is one this
+    /// BIMCraft doesn't know.
+    pub fn building_code(&self) -> &crate::codes::BuildingCode {
+        self.building_code.as_deref().and_then(|c| self.code(c)).unwrap_or(crate::codes::generic())
+    }
+
+    /// A building code by what it is called: one of the project's own, else one BIMCraft has.
+    pub fn code(&self, name: &str) -> Option<&crate::codes::BuildingCode> {
+        self.building_codes.iter().find(|c| c.code == name).or_else(|| crate::codes::code(name))
+    }
+
+    /// The rules its stairs and railings are held to: its own, else its building code's.
+    pub fn stair_rules(&self) -> &crate::codes::StairRules {
+        self.stair_rules.as_ref().unwrap_or(&self.building_code().stairs)
+    }
+
     /// What its pens draw on paper: its own line weights, or those a project in its units starts with.
     pub fn line_weights(&self) -> std::borrow::Cow<'_, crate::pen::LineWeights> {
         match &self.line_weights {
@@ -2994,6 +3076,9 @@ impl Model {
             option_sets: BTreeMap::new(),
             line_weights: None,
             standard,
+            building_code: None,
+            stair_rules: None,
+            building_codes: Vec::new(),
             object_styles: BTreeMap::new(),
             line_patterns: lines::patterns(language),
             line_styles: lines::styles(language),
@@ -4365,7 +4450,8 @@ impl Model {
         let n = (rise / st.riser - 1e-9).ceil().clamp(0.0, 1e6) as u32;
         let each = if n > 0 { rise / f64::from(n) } else { 0.0 };
         let runs = u32::try_from(st.landings.len()).unwrap_or(u32::MAX).saturating_add(1);
-        (n, each, f64::from(n.saturating_sub(runs)) * st.tread)
+        let wound = st.landings.iter().fold(0u32, |a, l| a.saturating_add(l.wound()));
+        (n, each, f64::from(n.saturating_sub(runs).saturating_sub(wound)) * st.tread)
     }
 
     /// A roof's outline in plan: its footprint, or the rectangle its extrusion sweeps, counter-clockwise.
@@ -6065,6 +6151,21 @@ impl Model {
         if let Some(lw) = &self.line_weights {
             lw.check()?;
         }
+        if let Some(rules) = &self.stair_rules {
+            rules.check()?;
+        }
+        if self.building_code.as_ref().is_some_and(|c| c.chars().count() > 64) {
+            return Err("the building code's name is 64 characters at most".into());
+        }
+        if self.building_codes.len() > crate::codes::MAX_OWN {
+            return Err(format!("more than {} building codes of the project's own", crate::codes::MAX_OWN));
+        }
+        for (i, c) in self.building_codes.iter().enumerate() {
+            c.check()?;
+            if self.building_codes.iter().take(i).any(|o| o.code == c.code) {
+                return Err(format!("two building codes of the project's own are called `{}`", c.code));
+            }
+        }
         for (c, style) in &self.object_styles {
             crate::styles::known(c)?;
             style.check(c)?;
@@ -7151,6 +7252,7 @@ impl Model {
                 level_ok(st.level)?;
                 point(&who, st.start)?;
                 coord(&format!("{who} angle"), st.angle)?;
+                coord(&format!("{who} offset"), st.offset)?;
                 match st.top_level {
                     Some(t) => level_ok(t)?,
                     None => size(&format!("{who} height"), st.height)?,
@@ -7439,6 +7541,9 @@ impl Model {
             option_sets,
             line_weights,
             standard,
+            building_code,
+            stair_rules,
+            building_codes,
             object_styles,
             line_patterns,
             line_styles,
@@ -7480,6 +7585,9 @@ impl Model {
             && *option_sets == o.option_sets
             && *line_weights == o.line_weights
             && *standard == o.standard
+            && *building_code == o.building_code
+            && *stair_rules == o.stair_rules
+            && *building_codes == o.building_codes
             && *object_styles == o.object_styles
             && *line_patterns == o.line_patterns
             && *line_styles == o.line_styles
@@ -7644,9 +7752,20 @@ fn landings(who: &str, landings: &[Landing], risers: Option<f64>) -> Result<(), 
                 l.turn
             ));
         }
+        if l.winders > 0 && (risers.is_none() || l.turn == 0.0) {
+            return Err(format!("{who}: winders go round a stair's turn of 90 or 180, not straight on and not on a ramp"));
+        }
+        if l.winders > 30 {
+            return Err(format!("{who}: {} winders in one turn; 30 at most", l.winders));
+        }
+        coord(&format!("{who} landing length"), l.length)?;
+        if l.length < 0.0 {
+            return Err(format!("{who}: a landing's `length` is 0 (as deep as the stair is wide) or more, not {}", l.length));
+        }
+        let wound = f64::from(l.wound());
         match risers {
             Some(_) if l.at.fract() != 0.0 => return Err(format!("{who}: a landing goes after a whole number of risers, not {}", l.at)),
-            Some(n) if l.at < last + 2.0 || l.at > n - 2.0 => {
+            Some(n) if l.at < last + 2.0 || l.at + wound > n - 2.0 => {
                 return Err(format!(
                     "{who}: a landing after {} risers leaves a run of fewer than 2 risers; each run needs 2 or more",
                     l.at
@@ -7657,7 +7776,7 @@ fn landings(who: &str, landings: &[Landing], risers: Option<f64>) -> Result<(), 
             }
             _ => {}
         }
-        last = l.at;
+        last = l.at + wound;
     }
     Ok(())
 }

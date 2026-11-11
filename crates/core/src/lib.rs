@@ -18,6 +18,7 @@ mod cad_tests;
 pub mod cloud;
 #[cfg(test)]
 mod cloud_tests;
+pub mod codes;
 mod commands;
 mod component_geometry;
 pub mod conduit;
