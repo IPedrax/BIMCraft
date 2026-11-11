@@ -1103,7 +1103,7 @@ msgstr "Linha de limite: desenhar o contorno do shaft"
 
 #: crates/ui-egui/src/panelsched.rs:223
 msgid "Branch Panel"
-msgstr ""
+msgstr "Quadro de distribuição"
 
 #: crates/core/src/model.rs:3051
 msgid "Brick"
@@ -2097,7 +2097,7 @@ msgstr "Configure normas técnicas nacionais e internacionais de desenho (NBR, I
 #: crates/core/src/panel_schedule.rs:380
 #: crates/core/src/panel_schedule.rs:391
 msgid "Connected Load (VA)"
-msgstr ""
+msgstr "Carga instalada (VA)"
 
 #: crates/ui-egui/src/editor.rs:1077
 msgid "Connectors"
@@ -2612,7 +2612,7 @@ msgstr "Decrescente"
 #: crates/core/src/panel_schedule.rs:267
 #: crates/core/src/panel_schedule.rs:276
 msgid "Description"
-msgstr ""
+msgstr "Descrição"
 
 #: crates/ui-egui/src/phasing.rs:509
 msgid "Design Option"
@@ -3240,12 +3240,12 @@ msgstr "Erro"
 
 #: crates/core/src/panel_schedule.rs:391
 msgid "Estimated Current (A)"
-msgstr ""
+msgstr "Corrente estimada (A)"
 
 #: crates/core/src/panel_schedule.rs:380
 #: crates/core/src/panel_schedule.rs:391
 msgid "Estimated Demand (VA)"
-msgstr ""
+msgstr "Demanda estimada (VA)"
 
 #: crates/ui-egui/src/lib.rs:4114
 msgid "Every view is on a sheet."
@@ -4713,7 +4713,7 @@ msgstr "Vínculos"
 
 #: crates/ui-egui/src/panelsched.rs:224
 msgid "List"
-msgstr ""
+msgstr "Lista"
 
 #: crates/ui-egui/src/browser.rs:207
 msgid "List {}"
@@ -4754,11 +4754,11 @@ msgstr "Carregar arquivo..."
 
 #: crates/core/src/panel_schedule.rs:407
 msgid "Load Summary by Classification"
-msgstr ""
+msgstr "Resumo de carga por classificação"
 
 #: crates/core/src/panel_schedule.rs:407
 msgid "Load Summary by Phase"
-msgstr ""
+msgstr "Resumo de carga por fase"
 
 #: crates/ui-egui/src/plugins.rs:398
 #: crates/ui-egui/src/properties.rs:386
@@ -4881,11 +4881,11 @@ msgstr "Marca"
 
 #: crates/ui-egui/src/panelsched.rs:98
 msgid "Mark as Space"
-msgstr ""
+msgstr "Marcar como espaço"
 
 #: crates/ui-egui/src/panelsched.rs:94
 msgid "Mark as Spare"
-msgstr ""
+msgstr "Marcar como reserva"
 
 #: crates/core/src/fills.rs:396
 #: crates/ui-egui/src/fillpatterns.rs:479
@@ -5483,7 +5483,7 @@ msgstr "Anotações"
 
 #: crates/ui-egui/src/panelsched.rs:202
 msgid "Notes"
-msgstr ""
+msgstr "Notas"
 
 #: crates/ui-egui/src/reinforce.rs:520
 msgid "Notes of the check, the bars are made:"
@@ -5813,19 +5813,19 @@ msgstr "Quadro"
 
 #: crates/ui-egui/src/mep.rs:211
 msgid "Panel Schedule"
-msgstr ""
+msgstr "Quadro de cargas"
 
 #: crates/ui-egui/src/mep.rs:210
 msgid "Panel Schedule: the load schedule of the selected distribution board, a view that goes on a sheet"
-msgstr ""
+msgstr "Quadro de cargas: a vista do quadro de distribuição selecionado, que vai em prancha"
 
 #: crates/ui-egui/src/lib.rs:3003
 msgid "Panel Schedule: {}"
-msgstr ""
+msgstr "Quadro de cargas: {}"
 
 #: crates/ui-egui/src/browser.rs:499
 msgid "Panel Schedules"
-msgstr ""
+msgstr "Quadros de cargas"
 
 #: crates/ui-egui/src/settings.rs:535
 msgid "Panel colour"
@@ -5983,7 +5983,7 @@ msgstr "Fase"
 
 #: crates/ui-egui/src/panelsched.rs:87
 msgid "Phase Columns"
-msgstr ""
+msgstr "Colunas de fase"
 
 #: crates/ui-egui/src/phasing.rs:496
 msgid "Phase Created"
@@ -6012,7 +6012,7 @@ msgstr "Filtro de fase:"
 
 #: crates/ui-egui/src/panelsched.rs:104
 msgid "Phase {}"
-msgstr ""
+msgstr "Fase {}"
 
 #: crates/core/src/panel_schedule.rs:367
 #: crates/ui-egui/src/electrical.rs:345
@@ -6118,7 +6118,7 @@ msgstr "Escolha uma linha do esboço a aparar ou estender, na parte a manter. Es
 
 #: crates/ui-egui/src/panelsched.rs:92
 msgid "Pick a slot"
-msgstr ""
+msgstr "Escolha uma posição"
 
 #: crates/ui-egui/src/workplane.rs:218
 msgid "Pick a surface"
@@ -6530,7 +6530,7 @@ msgstr "Pontos"
 #: crates/core/src/panel_schedule.rs:269
 #: crates/core/src/panel_schedule.rs:276
 msgid "Poles"
-msgstr ""
+msgstr "Polos"
 
 #: crates/core/src/draw.rs:116
 msgid "Polyline"
@@ -7544,7 +7544,7 @@ msgstr "Selecione um quadro de distribuição e os dispositivos do seu circuito.
 
 #: crates/ui-egui/src/panelsched.rs:45
 msgid "Select one distribution board to make its panel schedule."
-msgstr ""
+msgstr "Selecione um quadro de distribuição para fazer o seu quadro de cargas."
 
 #: crates/ui-egui/src/fillpatterns.rs:810
 msgid "Select the detail lines the pattern is made of, then press Enter."
@@ -7727,11 +7727,11 @@ msgstr "Mostrar anterior + novo"
 
 #: crates/ui-egui/src/panelsched.rs:86
 msgid "Show Spaces"
-msgstr ""
+msgstr "Mostrar espaços"
 
 #: crates/ui-egui/src/panelsched.rs:85
 msgid "Show Spares"
-msgstr ""
+msgstr "Mostrar reservas"
 
 #: crates/ui-egui/src/footer.rs:437
 msgid "Show background grids, change their settings, or toggle grid snapping"
@@ -7895,11 +7895,11 @@ msgstr "Inclinação: um número de graus de 0 a {}, ou em branco para a do telh
 #: crates/core/src/panel_schedule.rs:266
 #: crates/core/src/panel_schedule.rs:276
 msgid "Slot"
-msgstr ""
+msgstr "Posição"
 
 #: crates/ui-egui/src/panelsched.rs:91
 msgid "Slot {}"
-msgstr ""
+msgstr "Posição {}"
 
 #: crates/ui-egui/src/settings.rs:657
 msgid "Smooth lines (anti-aliasing)"
@@ -8029,7 +8029,7 @@ msgstr "Espaçamento:"
 
 #: crates/core/src/panel_schedule.rs:328
 msgid "Spare"
-msgstr ""
+msgstr "Reserva"
 
 #: crates/core/src/draw.rs:112
 msgid "Spline"
@@ -8451,7 +8451,7 @@ msgstr "Temperatura:"
 
 #: crates/ui-egui/src/panelsched.rs:72
 msgid "Template"
-msgstr ""
+msgstr "Modelo"
 
 #: crates/ui-egui/src/phasing.rs:61
 msgid "Temporary"
@@ -9042,7 +9042,7 @@ msgstr "Aparar/Estender para canto (TR): escolha duas paredes ou duas linhas, na
 #: crates/core/src/panel_schedule.rs:271
 #: crates/core/src/panel_schedule.rs:276
 msgid "Trip"
-msgstr ""
+msgstr "Disjuntor"
 
 #: crates/ui-egui/src/lib.rs:400
 msgid "Turn Snap Override Off"
@@ -9140,7 +9140,7 @@ msgstr "Camadas desmarcadas herdam o padrão; <Nenhum> oculta uma camada."
 
 #: crates/core/src/panel_schedule.rs:383
 msgid "Unclassified"
-msgstr ""
+msgstr "Sem classificação"
 
 #: crates/ui-egui/src/lib.rs:866
 #: crates/ui-egui/src/lib.rs:874
@@ -9305,7 +9305,7 @@ msgstr "Substituições de V/G"
 
 #: crates/core/src/panel_schedule.rs:272
 msgid "VA"
-msgstr ""
+msgstr "VA"
 
 #: crates/ui-egui/src/templates.rs:567
 #: crates/ui-egui/src/titleblocks.rs:140
