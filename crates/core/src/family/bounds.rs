@@ -54,10 +54,12 @@ impl Family {
                 }
                 continue;
             }
-            if form.revolves() {
+            // A sweep's solid follows its path: no box of it without building it.
+            if form.revolves() || form.kind().swept() {
                 return None;
             }
-            let profile: Vec<P2> = match form.circle_ref() {
+            // A blend's box is its base's and its top's together, between its ends.
+            let profile: Vec<P2> = match form.circle_ref().filter(|_| form.top.is_empty()) {
                 Some((centre, radius)) => {
                     let (x, y, r) = (num(&centre[0])?, num(&centre[1])?, num(radius)?);
                     if r <= 0.0 {
@@ -69,7 +71,7 @@ impl Family {
                 None => {
                     // A sketch of arcs or of several loops: every point its lines reach, an arc by its chords' box.
                     let mut pts = Vec::new();
-                    for l in form.boundary() {
+                    for l in form.boundary().chain(&form.top) {
                         let drawn = l.curve(&mut |e| num(e).ok_or_else(String::new)).ok()?;
                         let square =
                             |c: P2, r: f64| [P2(c.0 - r, c.1 - r), P2(c.0 + r, c.1 - r), P2(c.0 + r, c.1 + r), P2(c.0 - r, c.1 + r)];

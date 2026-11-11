@@ -93,6 +93,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 ///   read negated and swapped.
 /// - Sketches (F5): a form is drawn by its `sketch`, lines and arcs on its host plane, each with an id and a GUID, a revolve's
 ///   axis one of them; its `profile`, `circle` and `axis` are read as such lines and no longer written.
+/// - Blends and sweeps (F6): a form may be a Blend (`top`, its top's sketch), a Sweep (`sweep.profile`, its `sketch` the
+///   path) or a Swept Blend (`sweep.profile` and `sweep.end`), and twist (`twist`).
 /// - Constraints (F7): a family's `dimensions`, with labels, locks, EQ and Align's locks, solved as a type flexes. They may
 ///   measure to its forms' sketch lines, their ends, circles' and arcs' centres, and to its reference lines' faces, starts and
 ///   ends and the forms drawn on them; measure a circle's or an arc's radius or diameter; and be angular, between reference
@@ -3405,6 +3407,7 @@ impl Model {
             .map(|pc| Piece {
                 tris: pc.tris.iter().map(|[a, b, t]| [flip(*a), flip(*t), flip(*b)]).collect(),
                 outline: pc.outline.iter().rev().map(|q| P2(q.0, -q.1)).collect(),
+                holes: pc.holes.iter().map(|h| h.iter().rev().map(|q| P2(q.0, -q.1)).collect()).collect(),
                 ..pc
             })
             .collect()
@@ -3681,8 +3684,8 @@ impl Model {
         // "left_right"` in its `world` host, the name the Family Editor's first adaptive points gave their work plane; it
         // still reads as the datum plane of the same frame (`Host::World`'s `plane_or_datum`), so nothing moves.
         // The rest needs nothing of a file of 17, which holds none of it: an adaptive family and a component's adaptive
-        // frames, a family's dimensions of every kind, labels, locks and Align's locks, pivots, nested families, a family
-        // parameter's group, shared GUID and reporting (each defaults to what a file of 17 means: grouped by its kind, the family's own, set), Doors > Opening
+        // frames, a family's dimensions of every kind, labels, locks and Align's locks, pivots, nested families, Blends
+        // and Sweeps (every form of 17 is an extrusion or a revolve, built as it was), a family parameter's group, shared GUID and reporting (each defaults to what a file of 17 means: grouped by its kind, the family's own, set), Doors > Opening
         // and Windows > Opening, and the project's reference planes and components hosted on them or on faces (a hosted
         // component's `at` and `offset` are worked out from its host whatever the file says).
         if self.format < 18 {
@@ -4407,7 +4410,15 @@ impl Model {
                 let tris =
                     pc.tris.iter().map(|[a, b, c]| if mirrored { [flip(*a), flip(*c), flip(*b)] } else { [flip(*a), flip(*b), flip(*c)] });
                 let outline: Vec<P2> = pc.outline.iter().map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)).collect();
-                Piece { tris: tris.collect(), outline: if mirrored { outline.into_iter().rev().collect() } else { outline }, ..pc }
+                let holes = pc
+                    .holes
+                    .iter()
+                    .map(|h| {
+                        let h: Vec<P2> = h.iter().map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)).collect();
+                        if mirrored { h.into_iter().rev().collect() } else { h }
+                    })
+                    .collect();
+                Piece { tris: tris.collect(), outline: if mirrored { outline.into_iter().rev().collect() } else { outline }, holes, ..pc }
             })
             .collect();
         let marks = marks.iter().map(|(k, sub)| (k.map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)), *sub)).collect();
@@ -4463,6 +4474,7 @@ impl Model {
             .map(|pc| Piece {
                 tris: pc.tris.iter().map(|t| t.map(place)).collect(),
                 outline: pc.outline.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect(),
+                holes: pc.holes.iter().map(|h| h.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect()).collect(),
                 bottom: z + pc.bottom,
                 top: z + pc.top,
                 ..pc

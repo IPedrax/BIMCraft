@@ -3415,13 +3415,14 @@ fn marks(d: &mut Drawing, marks: &[crate::family::Mark]) {
 fn component(d: &mut Drawing, m: &Model, pieces: &[crate::family::Piece]) {
     if pattern_style(d, false).is_some() {
         for p in pieces {
-            let visible =
-                pieces.iter().filter(|q| q.top > p.top + 1e-6).fold(vec![p.outline.clone()], |rings, q| walls::minus(&rings, &q.outline));
+            let own = p.holes.iter().fold(vec![p.outline.clone()], |rings, h| walls::minus(&rings, h));
+            let visible = pieces.iter().filter(|q| q.top > p.top + 1e-6).fold(own, |rings, q| walls::minus(&rings, &q.outline));
             override_patterns(d, m, &visible, false, (P2(0.0, 0.0), 0.0));
         }
     }
     for (i, p) in pieces.iter().enumerate() {
-        for (a, b) in geom::ring_edges(&p.outline) {
+        // Its outline and the holes in it (a sweep round a closed path).
+        for (a, b) in std::iter::once(&p.outline).chain(&p.holes).flat_map(|r| geom::ring_edges(r)) {
             let len = a.dist(b);
             if len < 1e-9 {
                 continue;

@@ -1,7 +1,13 @@
 # BIMCraft project translations.
 # SPDX-License-Identifier: MIT OR Apache-2.0
 msgid ""
-msgstr "Project-Id-Version: BIMCraft\nLanguage: cs\nLast-Translator: Smatli\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
+msgstr ""
+"Project-Id-Version: BIMCraft\n"
+"Language: cs\n"
+"Last-Translator: Smatli\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
 
 #: crates/core/src/sheet.rs:304
 msgid "AS INDICATED"
@@ -11,8 +17,7 @@ msgstr ""
 msgid "Air Terminal"
 msgstr "Vyústka"
 
-#: crates/core/src/schedule.rs:194
-#: crates/core/src/schedule.rs:233
+#: crates/core/src/schedule.rs:194 crates/core/src/schedule.rs:233
 msgid "Area"
 msgstr "Plocha"
 
@@ -192,8 +197,7 @@ msgstr "Elektroinstalace – osvětlení"
 msgid "Electrical Power"
 msgstr "Elektroinstalace – napájení"
 
-#: crates/core/src/commands.rs:10024
-#: crates/core/src/commands.rs:13799
+#: crates/core/src/commands.rs:10024 crates/core/src/commands.rs:13799
 msgid "Elevation"
 msgstr "Pohled"
 
@@ -245,8 +249,7 @@ msgstr "Šířka rámu"
 msgid "Gate Valve"
 msgstr "Šoupátko"
 
-#: crates/core/src/family.rs:3140
-#: crates/core/src/view3d.rs:1256
+#: crates/core/src/family.rs:3140 crates/core/src/view3d.rs:1256
 msgid "Glass"
 msgstr "Sklo"
 
@@ -310,8 +313,7 @@ msgstr "Šířka nohy"
 msgid "Length"
 msgstr "Délka"
 
-#: crates/core/src/commands.rs:6733
-#: crates/core/src/model.rs:3215
+#: crates/core/src/commands.rs:6733 crates/core/src/model.rs:3215
 msgid "Level"
 msgstr "Podlaží"
 
@@ -487,8 +489,7 @@ msgstr "Potěr"
 msgid "Seat Height"
 msgstr "Výška sedáku"
 
-#: crates/core/src/commands.rs:10001
-#: crates/core/src/commands.rs:13798
+#: crates/core/src/commands.rs:10001 crates/core/src/commands.rs:13798
 msgid "Section"
 msgstr "Řez"
 
@@ -687,4 +688,3 @@ msgstr "bwc"
 #: crates/core/src/loads.rs:79
 msgid "wc"
 msgstr "wc"
-

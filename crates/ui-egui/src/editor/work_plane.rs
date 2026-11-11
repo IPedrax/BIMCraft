@@ -31,8 +31,8 @@ pub(crate) enum Then {
     View,
     /// The form being sketched put on it too.
     Sketch,
-    /// Create > Extrusion or Revolve (`revolve`), solid or `void`: sketch mode on it (F5).
-    Create { revolve: bool, void: bool },
+    /// Create > Extrusion, Blend, Revolve, Sweep or Swept Blend (`kind`), solid or `void`: sketch mode on it (F5, F6).
+    Create { kind: bimcraft_core::family::forms::FormKind, void: bool },
 }
 
 /// How the dialog's Specify a new Work Plane takes it.
@@ -124,7 +124,7 @@ impl FamilyEditor {
                     s.host = plane;
                 }
             }
-            Then::Create { revolve, void } => self.start_form_sketch(None, revolve, void, plane, Vec::new()),
+            Then::Create { kind, void } => self.start_form_sketch(None, kind, void, plane, Vec::new()),
         }
     }
 

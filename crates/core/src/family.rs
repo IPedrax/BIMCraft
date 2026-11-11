@@ -20,6 +20,7 @@ use crate::view3d::{P3, add, cross, mul};
 
 mod bounds;
 pub mod constraints;
+pub mod forms;
 pub mod nested;
 mod options;
 mod planes;
@@ -782,6 +783,19 @@ pub struct Form {
     /// Shared, so an undo step's copy of the model doesn't copy it.
     #[serde(default, skip_serializing_if = "no_mesh")]
     pub mesh: Arc<Vec<[P3; 3]>>,
+    /// A Blend's top (F6): lines in its host plane's axes, at `to` along its normal; its `sketch` is then its base, at `from`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub top: Vec<sketch::FormLine>,
+    /// A Sweep's profile, or a Swept Blend's two (F6): its `sketch` is then the path they are swept along.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sweep: Option<forms::Swept>,
+    /// Edit Vertices' Twist (F6): a Blend's top's, or a Swept Blend's second profile's, first vertex moved on by so many.
+    #[serde(default, skip_serializing_if = "is_zero_i32")]
+    pub twist: i32,
+}
+
+fn is_zero_i32(x: &i32) -> bool {
+    *x == 0
 }
 
 fn no_mesh(mesh: &Arc<Vec<[P3; 3]>>) -> bool {
@@ -820,6 +834,12 @@ struct FormIn {
     visible: Option<Expr>,
     #[serde(default)]
     mesh: Arc<Vec<[P3; 3]>>,
+    #[serde(default)]
+    top: Vec<sketch::FormLine>,
+    #[serde(default)]
+    sweep: Option<forms::Swept>,
+    #[serde(default)]
+    twist: i32,
 }
 
 impl TryFrom<FormIn> for Form {
@@ -864,6 +884,9 @@ impl TryFrom<FormIn> for Form {
             material: f.material,
             visible: f.visible,
             mesh: f.mesh,
+            top: f.top,
+            sweep: f.sweep,
+            twist: f.twist,
         })
     }
 }
@@ -1041,6 +1064,8 @@ pub struct Piece {
     pub tris: Vec<[P3; 3]>,
     pub caps: usize,
     pub outline: Vec<P2>,
+    /// The holes in its outline seen from above (F6: a sweep round a closed path on a level plane), each clockwise.
+    pub holes: Vec<Vec<P2>>,
     pub bottom: f64,
     pub top: f64,
     pub material: String,
@@ -1702,7 +1727,7 @@ impl Family {
             }
         }
         for form in &mut self.forms {
-            form.sketch.iter_mut().flat_map(sketch::FormLine::exprs_mut).for_each(&mut expr);
+            form.all_lines_mut().flat_map(sketch::FormLine::exprs_mut).for_each(&mut expr);
             [&mut form.from, &mut form.to].into_iter().for_each(&mut expr);
             form.visible.iter_mut().for_each(&mut expr);
             if form.material == old {
@@ -2071,13 +2096,14 @@ impl Family {
             if form.sketch.len() > sketch::MAX_SKETCH {
                 return Err(format!("{who}: its sketch has {} lines, more than {}", form.sketch.len(), sketch::MAX_SKETCH));
             }
+            forms::check_kind(form).map_err(|e| format!("{who}: {e}"))?;
             if form.mesh.is_empty() {
                 self.frame(&form.host).map_err(|e| format!("{who}: its host: {e}"))?;
             }
             if !self.parameters.iter().any(|p| p.name == form.material && p.kind == Kind::Material) {
                 material_ok(&who, &form.material)?;
             }
-            let mut exprs = form.sketch_exprs().chain([&form.from, &form.to]).chain(&form.visible);
+            let mut exprs = form.all_lines().flat_map(sketch::FormLine::exprs).chain([&form.from, &form.to]).chain(&form.visible);
             if exprs.any(|e| matches!(e, Expr::Formula(f) if long(f))) {
                 return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
             }
@@ -2476,6 +2502,7 @@ impl Family {
                         top,
                         round: false,
                         outline: std::mem::take(&mut piece.outline),
+                        holes: std::mem::take(&mut piece.holes),
                         material: std::mem::take(&mut piece.material),
                     };
                 }
@@ -2506,6 +2533,14 @@ impl Family {
         };
         let piece = if !form.mesh.is_empty() {
             mesh(&form.mesh, material)?
+        } else if form.kind() != forms::FormKind::Extrusion && form.kind() != forms::FormKind::Revolve {
+            let frame = self.frame(&form.host).map_err(|e| format!("its host: {e}"))?;
+            let (tris, plan) = forms::build(form, &frame, &mut num)?.unwrap_or_default();
+            let (bottom, top) = heights(&tris);
+            // Seen from above: a sweep on a level plane, the band it covers; else the hull of what it builds.
+            let (outline, holes) =
+                plan.unwrap_or_else(|| (crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect()), Vec::new()));
+            Piece { caps: tris.len(), tris, outline, holes, bottom, top, material, round: false }
         } else {
             let regions = form.loops(&mut num)?;
             let (from, to) = (num(&form.from)?, num(&form.to)?);
@@ -2522,7 +2557,7 @@ impl Family {
                     let axis = [P2(num(&p[0])?, num(&p[1])?), P2(num(&q[0])?, num(&q[1])?)];
                     let (tris, outline) = revolve(&regions, axis, (from, to), &frame)?;
                     let (bottom, top) = heights(&tris);
-                    Piece { caps: tris.len(), tris, outline, bottom, top, material, round: false }
+                    Piece { caps: tris.len(), tris, outline, holes: Vec::new(), bottom, top, material, round: false }
                 }
                 None => {
                     let (tris, caps) = sweep(&regions, from, to, &frame)?;
@@ -2538,7 +2573,7 @@ impl Family {
                         }
                         _ => crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect()),
                     };
-                    Piece { tris, caps, outline, bottom, top, material, round: form.circle().is_some() }
+                    Piece { tris, caps, outline, holes: Vec::new(), bottom, top, material, round: form.circle().is_some() }
                 }
             }
         };
@@ -2898,7 +2933,7 @@ fn mesh(tris: &[[P3; 3]], material: String) -> Result<Piece, String> {
     let (bottom, top) = tris.iter().flatten().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[2]), hi.max(p[2])));
     // ponytail: the convex hull stands for its outline; trace its silhouette if hulls mislead.
     let outline = crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect());
-    Ok(Piece { tris: tris.to_vec(), caps: tris.len(), outline, bottom, top, material, round: false })
+    Ok(Piece { tris: tris.to_vec(), caps: tris.len(), outline, holes: Vec::new(), bottom, top, material, round: false })
 }
 
 /// The families a new project starts with, BIMCraft's own: tables, chairs, beds, sofas, desks,

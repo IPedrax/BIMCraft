@@ -165,13 +165,18 @@ impl BimApp {
                 ui.end_row();
                 return;
             }
-            let (end, start, u) = if f.revolve {
-                (msg!("End Angle"), msg!("Start Angle"), None)
-            } else {
-                (msg!("Extrusion End"), msg!("Extrusion Start"), Some(units))
+            use bimcraft_core::family::forms::FormKind;
+            let kind = f.original.kind();
+            let (end, start, u) = match kind {
+                _ if f.revolve => (msg!("End Angle"), msg!("Start Angle"), None),
+                FormKind::Blend => (msg!("Second End"), msg!("First End"), Some(units)),
+                _ => (msg!("Extrusion End"), msg!("Extrusion Start"), Some(units)),
             };
-            number_row(ui, u, end, &mut f.to, &values, &mut links, ((Field::Form(Slot::To), i), to));
-            number_row(ui, u, start, &mut f.from, &values, &mut links, ((Field::Form(Slot::From), i), from));
+            // A sweep has no ends of its own: its path says where it goes (F6).
+            if !kind.swept() {
+                number_row(ui, u, end, &mut f.to, &values, &mut links, ((Field::Form(Slot::To), i), to));
+                number_row(ui, u, start, &mut f.from, &values, &mut links, ((Field::Form(Slot::From), i), from));
+            }
             ui.label(t("Work Plane"));
             ui.label(&host);
             ui.end_row();
