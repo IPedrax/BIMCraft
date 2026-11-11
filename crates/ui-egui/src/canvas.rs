@@ -569,7 +569,7 @@ fn convex(r: &[(f32, f32)]) -> bool {
     turns.iter().all(|t| *t > 0.0) || turns.iter().all(|t| *t < 0.0)
 }
 
-fn pos(origin: Pos2, (x, y): (f32, f32)) -> Pos2 {
+pub(crate) fn pos(origin: Pos2, (x, y): (f32, f32)) -> Pos2 {
     origin + vec2(x, y)
 }
 
@@ -1606,6 +1606,7 @@ impl BimApp {
         self.canvas.found.set(None);
         self.grip_drag(ui, &response, rect, &view, level);
         self.line_grip_drag(ui, &response, rect, &view, level);
+        self.adaptive_grip_drag(ui, &response, rect, &view, level);
         let dragged = self.shape_grip_drag(ui, &response, rect, &view, level) || dragged;
         // A drag from an element moves the selection; from empty floor, it draws a selection box.
         if response.drag_started_by(PointerButton::Primary)
@@ -1615,6 +1616,7 @@ impl BimApp {
             && self.canvas.crop_drag.is_none()
             && self.canvas.grip.is_none()
             && self.drawing.grip.is_none()
+            && self.adaptive_grip.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
         {
             let o = (o.x - rect.min.x, o.y - rect.min.y);
@@ -1792,6 +1794,7 @@ impl BimApp {
             }
         }
         self.grip_overlay(ui, &model, &view, rect, level, &d, d.place);
+        self.adaptive_overlay(ui, rect, &view);
         // Where the cursor snaps is worked out only while a grip is held to it.
         let cursor = self
             .drawing
@@ -2333,7 +2336,9 @@ impl BimApp {
                 }
             }
             Tool::Component | Tool::Fixture(_) => {
-                if let Some((family, ty)) = self.placing() {
+                if self.adaptive_count().is_some() {
+                    self.adaptive_click(m, level, v, at);
+                } else if let Some((family, ty)) = self.placing() {
                     let at = self.snap_point(m, level, v, at, &[], false);
                     let z = m.elevation(level);
                     self.place_component(
@@ -3951,10 +3956,14 @@ impl BimApp {
                 return;
             }
             Tool::Component | Tool::Fixture(_) => {
-                if let Some((family, type_name)) = self.placing() {
+                // An adaptive instance shows only the points clicked for it (`adaptive_overlay`), until its last places it.
+                if self.adaptive_count().is_none()
+                    && let Some((family, type_name)) = self.placing()
+                {
                     let at = self.found(sc, q, &[], false);
                     let angle = self.component_angle;
                     let c = Component {
+                        adaptive: None,
                         family,
                         type_name,
                         level: m.guid(level),

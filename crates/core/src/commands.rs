@@ -72,6 +72,33 @@ const fn other_files(id: &'static str, label: &'static str, params: &'static str
 
 pub static ALL: &[Command] = &[
     other(
+        "adaptive_capture",
+        "Capture Adaptive Context",
+        "{sources:[{id,host:{type:frame,point}|{type:face|edge|vertex,...}}]} ordered project references captured as full world frames, with persistent source identities; a snapshot, not a live constraint",
+        adaptive_capture,
+    ),
+    edit(
+        "adaptive_place",
+        "Place Adaptive Instances",
+        &[],
+        "{family,type?,placements:[{adaptive:{frames,context?,bindings?},at?:[x,y],level?,angle?,offset?,params?}]} batch placement, up to 1000 instances, in one undo step. The frames are the project's (as adaptive_capture gives them): each instance builds on them wherever it stands, holding them in its own axes; `at` defaults to the first frame's point",
+        adaptive_place,
+    ),
+    edit(
+        "adaptive_move",
+        "Move Adaptive Point",
+        &[],
+        "{id, number, to: [x,y,z]} adaptive point `number` of adaptive component `id` moved to project point `to`, its axes kept: \
+         what dragging its grip does",
+        adaptive_move,
+    ),
+    other(
+        "adaptive_evaluate",
+        "Evaluate Adaptive Placement",
+        "{id} evaluate an adaptive component, returning exact local placement, ordered dependencies, valid geometry and diagnostics for replay",
+        adaptive_evaluate,
+    ),
+    other(
         "new",
         "New",
         "{name?, language?: en|pt|es|sv|cs|fr|nl} an empty project with Level 1 (0) and Level 2 (3000), named in its language (Nível 1, \
@@ -1147,7 +1174,7 @@ other_files(
          opened from IFC remembers: `IFCPLATE`, `CURTAIN_PANEL`; one IFC4 lacks goes out as a proxy that names it), \
          connectors?: [{kind: power|switch|pipe|data|earthing, name?, system?: power-balanced|power-unbalanced|switch, \
          domain?: cold|hot|waste|vent|storm|gas, flow?: in|out|both, at?: [x, y, z], direction?: [x, y, z], size?, poles?: 1-3, \
-         voltage?, load_va?, power_factor?, classification?}], options?: {work_plane_based?, always_vertical?, cut_with_voids_when_loaded?, \
+         voltage?, load_va?, power_factor?, classification?}], adaptive?: {nodes, preview?} | null, options?: {work_plane_based?, always_vertical?, cut_with_voids_when_loaded?, \
          shared?, room_calculation_point?: [x, y, z] | null, cut_in_views?: true|false|null, omniclass?: {number, title?} | \
          null} (Revit's Family Category and Parameters: each given merged over what it has, `null` back to its default; \
          `room_calculation_point` is a point in its own axes, mm, numbers or formulas over its length parameters, whose room a \
@@ -1248,14 +1275,16 @@ other_files(
         "component",
         ui_msg!("Component"),
         &["CM"],
-        "{family, type?, at: [x,y], level?, angle?, offset?, mirrored?, params?: {parameter: value}, host?: {level: name|id} | \
+        "{family, type?, at: [x,y], level?, angle?, offset?, mirrored?, params?: {parameter: value}, adaptive?: {frames: {number: {origin,x,y,z}}, context?}, host?: {level: name|id} | \
          {plane: name|id|GUID}} a family's type placed, its first by default: at a point on a level, turned `angle` degrees \
          counter-clockwise, `offset` mm up from the level (none: its family's Default Elevation, unless work plane-based), and \
          with `mirrored` flipped across its own x axis; `params` sets its instance parameters (`modify` merges into them, a null \
          taking one back to the family's). A work plane-based family may go on a reference plane (`host` `plane`, Place on Work \
          Plane): `at` [x, y] is taken straight onto the plane, [x, y, z] along its normal (an upright plane needs it), `offset` \
          is its Offset from Host along the normal, `level` its Schedule Level (by default the highest level at or below it); \
-         it follows the plane when the plane moves, upright or, its family not Always Vertical, tilted with the plane",
+         it follows the plane when the plane moves, upright or, its family not Always Vertical, tilted with the plane. An \
+         adaptive family's component is placed by its points (`adaptive`, else the family's test placement) and takes no `host` \
+         plane",
         work_plane::component,
     )
     .menu("Architecture > Component"),
@@ -11009,7 +11038,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         let name = p.get("name").filter(|v| !v.is_null()).cloned().or_else(|| fields.remove("name")).unwrap_or(json!(stem));
         // Only the family it holds: what a file says to rename or delete isn't for it to say.
         let mut family: Map<String, Value> =
-            ["category", "kind", "ifc", "parameters", "types", "forms", "symbols", "operation", "connectors"]
+            ["category", "kind", "ifc", "parameters", "types", "forms", "symbols", "operation", "connectors", "adaptive"]
                 .into_iter()
                 .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
                 .collect();
@@ -11155,6 +11184,9 @@ fn family(s: &mut Session, p: &Value) -> R {
                 format!("parameter `{}`: a component holds its phase and its design option under that name; name it otherwise", q.name),
             ));
         }
+    }
+    if let Some(v) = p.get("adaptive") {
+        f.adaptive = serde_json::from_value(v.clone()).map_err(|e| field("adaptive", e))?;
     }
     // Its reference planes and lines, before the forms that may be drawn on them: whole lists replaced (the datums, pinned,
     // stay first and as they are) or one patched by its id or GUID.
@@ -15158,4 +15190,100 @@ fn elements(s: &mut Session, p: &Value) -> R {
         .collect();
     let page: Vec<Value> = hits.iter().skip(offset).take(limit).map(|id| element_json_with(m, *id, &rooms)).collect();
     Ok(json!({"count": hits.len(), "returned": page.len(), "elements": page}))
+}
+
+fn adaptive_evaluate(s: &mut Session, p: &Value) -> R {
+    let id = element_id("adaptive_evaluate", &s.model, p.get("id").ok_or("adaptive_evaluate: id required")?)?;
+    let Some(Element::Component(c)) = s.model.elements.get(id) else { return Err("adaptive_evaluate: id must name a component".into()) };
+    let report = s.model.component_adaptive_evaluation(c)?;
+    Ok(
+        json!({"family":s.model.families[&c.family],"definition":s.model.families[&c.family].adaptive,"placement":report.placement,"parameters":c.params,"type":c.type_name,"evaluation":report}),
+    )
+}
+
+fn adaptive_capture(s: &mut Session, p: &Value) -> R {
+    let sources = p.get("sources").and_then(Value::as_array).ok_or("adaptive_capture: sources array required")?;
+    if sources.is_empty() || sources.len() > 1024 {
+        return Err("adaptive_capture: expected 1 to 1024 ordered sources".into());
+    }
+    let mut placement =
+        crate::adaptive::Placement { context: "Captured project host frames (world coordinates)".into(), ..Default::default() };
+    for (index, source) in sources.iter().enumerate() {
+        let id = element_id("adaptive_capture", &s.model, source.get("id").ok_or("adaptive_capture: source id required")?)?;
+        let Some(Element::Component(c)) = s.model.elements.get(id) else {
+            return Err(format!("adaptive_capture: {id} is not a component"));
+        };
+        let host: crate::adaptive::Host =
+            serde_json::from_value(source.get("host").cloned().ok_or("adaptive_capture: explicit host required")?)
+                .map_err(|e| e.to_string())?;
+        let local = s.model.component_adaptive_evaluation(c)?.host_frame(&host)?;
+        let frame = local.from_local(s.model.component_axes(c)?, c.mirrored)?;
+        let number = index as u32 + 1;
+        placement.frames.insert(number, frame);
+        placement.bindings.insert(number, crate::adaptive::ContextHost { component: s.model.guid(id), host });
+    }
+    Ok(json!(placement))
+}
+fn adaptive_move(s: &mut Session, p: &Value) -> R {
+    let c = "adaptive_move";
+    let id = element_id(c, &s.model, p.get("id").ok_or("adaptive_move: id required")?)?;
+    let number = p
+        .get("number")
+        .and_then(Value::as_u64)
+        .and_then(|n| u32::try_from(n).ok())
+        .filter(|n| *n > 0)
+        .ok_or("adaptive_move: number, an adaptive point's (1, 2, …), required")?;
+    let to: [f64; 3] = serde_json::from_value(p.get("to").cloned().unwrap_or(Value::Null)).map_err(|_| bad(c, "`to` is [x, y, z]"))?;
+    let Some(Element::Component(comp)) = s.model.elements.get(id) else { return Err(bad(c, format!("{id} is not a component"))) };
+    let placement = s.model.adaptive_placement(comp).ok_or_else(|| bad(c, format!("{id} is not of an adaptive family")))?;
+    let (axes, mirrored) = (s.model.component_axes(comp)?, comp.mirrored);
+    let local = placement.frames.get(&number).ok_or_else(|| bad(c, format!("{id} has no adaptive point {number}")))?;
+    let world = crate::adaptive::Frame { origin: to, ..local.from_local(axes, mirrored)? };
+    let mut next = placement;
+    next.frames.insert(number, world.into_local(axes, mirrored).map_err(|e| bad(c, e))?);
+    if let Some(Element::Component(comp)) = s.model_mut().elements.get_mut(id) {
+        comp.adaptive = Some(next);
+    }
+    Ok(json!({"id": id}))
+}
+
+fn adaptive_place(s: &mut Session, p: &Value) -> R {
+    let placements = p.get("placements").and_then(Value::as_array).ok_or("adaptive_place: placements array required")?;
+    if placements.is_empty() || placements.len() > 1000 {
+        return Err("adaptive_place: expected 1 to 1000 placements".into());
+    }
+    let family = string("adaptive_place", p, "family")?.ok_or("adaptive_place: family required")?;
+    if s.model.families.get(&family).and_then(|f| f.adaptive.as_ref()).is_none() {
+        return Err("adaptive_place: family must be adaptive".into());
+    }
+    let mut ids = Vec::new();
+    for placement in placements {
+        let mut args = placement.clone();
+        if !args.is_object() {
+            return Err("adaptive_place: each placement is an object".into());
+        }
+        args["family"] = json!(family);
+        if let Some(t) = p.get("type") {
+            args["type"] = t.clone();
+        }
+        let world: crate::adaptive::Placement = match args.get("adaptive") {
+            Some(v) if !v.is_null() => serde_json::from_value(v.clone()).map_err(|e| format!("adaptive_place: adaptive: {e}"))?,
+            _ => return Err("adaptive_place: each instance needs explicit adaptive frames".into()),
+        };
+        let Some(first) = world.frames.values().next() else { return Err("adaptive_place: adaptive frames are empty".into()) };
+        if args.get("at").is_none_or(Value::is_null) {
+            args["at"] = json!([first.origin[0], first.origin[1]]);
+        }
+        let id = work_plane::component(s, &args)?["id"].clone();
+        let Some(Element::Component(c)) = id.as_u64().and_then(|n| s.model.elements.get(n)) else {
+            return Err("adaptive_place: the instance was not made".into());
+        };
+        // The frames are the project's, as `adaptive_capture` gives them: the instance holds them in its own axes.
+        let local = world.into_local(s.model.component_axes(c)?, c.mirrored).map_err(|e| format!("adaptive_place: {e}"))?;
+        if let Some(Element::Component(c)) = id.as_u64().and_then(|n| s.model_mut().elements.get_mut(n)) {
+            c.adaptive = Some(local);
+        }
+        ids.push(id);
+    }
+    Ok(json!({"ids":ids}))
 }

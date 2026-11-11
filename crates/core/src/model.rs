@@ -93,6 +93,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 ///   read negated and swapped.
 /// - Subcategories: a view's graphics, a view template and the object styles may name `dooropening` and `windowopening`
 ///   (Doors > Opening, Windows > Opening), and a family's symbol the subcategory it is drawn in (`subcategory`).
+/// - Adaptive families: a family may be adaptive (`adaptive`: its points, lines and forms), and a component may hold its
+///   adaptive points' frames (`adaptive`).
 /// - Work planes and hosts (T4): the project has reference planes (`refplane`); a work plane-based component may be hosted
 ///   on one (`host`), its `at` and `offset` following the plane and its family's axes tilted with it.
 ///
@@ -1632,6 +1634,11 @@ pub struct Run {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Component {
+    /// Frames in component-local coordinates; None uses the definition test placement. A component whose frame comes from
+    /// its adaptive points (this set, or its family adaptive: `Model::placed_by_points`) takes no `host`: `Model::check`
+    /// refuses one, and `Model::component_placement` and `Model::settle_hosts` leave it as its points place it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adaptive: Option<crate::adaptive::Placement>,
     pub family: String,
     #[serde(rename = "type")]
     pub type_name: String,
@@ -3335,12 +3342,39 @@ impl Model {
         }
     }
 
+    /// Adaptive component `c`'s family evaluated on its frames (the family's test placement without frames of its own), in
+    /// its own axes, unmirrored.
+    pub fn component_adaptive_evaluation(&self, c: &Component) -> Result<crate::adaptive::Evaluation, String> {
+        let family = self.families.get(&c.family).ok_or("Unknown family")?;
+        let definition = family.adaptive.as_ref().ok_or("Family is not adaptive")?;
+        let values = family.values(&c.type_name, &c.params)?;
+        Ok(definition.evaluate(&values, c.adaptive.as_ref().unwrap_or(&definition.preview)))
+    }
+
+    /// Component `c`'s own axes in the project: at its point, up its level's elevation and its offset, turned by its angle.
+    pub fn component_axes(&self, c: &Component) -> Result<crate::adaptive::Frame, String> {
+        crate::adaptive::Frame::at([c.at.0, c.at.1, self.elevation(c.level) + c.offset]).transformed([0.; 3], [0., 0., c.angle])
+    }
+
+    /// Adaptive component `c`'s placement in its own axes, a frame for every adaptive point: its own, else the family's
+    /// test placement's, else the point's in the family. None for a component of a family that isn't adaptive.
+    pub fn adaptive_placement(&self, c: &Component) -> Option<crate::adaptive::Placement> {
+        let d = self.families.get(&c.family)?.adaptive.as_ref()?;
+        Some(d.completed(c.adaptive.as_ref().unwrap_or(&d.preview)))
+    }
+
+    /// Adaptive component `c`'s adaptive points in the project, by number: where its grips are and what a placement snaps to.
+    pub fn adaptive_points(&self, c: &Component) -> Vec<(u32, crate::adaptive::Frame)> {
+        let (Some(placement), Ok(axes)) = (self.adaptive_placement(c), self.component_axes(c)) else { return Vec::new() };
+        placement.frames.iter().filter_map(|(n, f)| f.from_local(axes, c.mirrored).ok().map(|f| (*n, f))).collect()
+    }
+
     /// Component `c`'s solids in its own axes, mirrored if it is: each visible form's triangles, its
     /// outline seen from above, from its bottom to its top over its base, what it's made of; none
     /// for one that doesn't build.
     pub fn component_local_pieces(&self, c: &Component) -> Vec<Piece> {
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
-        let Ok(pieces) = f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v)) else { return Vec::new() };
+        let Ok(pieces) = f.values(&c.type_name, &c.params).and_then(|v| f.pieces_at(&v, c.adaptive.as_ref())) else { return Vec::new() };
         if !c.mirrored {
             return pieces;
         }
@@ -3602,7 +3636,11 @@ impl Model {
         //    command's shorthand (`Form`'s `FormIn`), whatever its format, and a family read without its datums is given them
         //    (`Family::planes`).
         // 2. Every family's datums are put first and its origin settled, whatever the file held (`Family::settle_planes`).
-        // The rest needs nothing of a file of 17, which holds none of it: a family parameter's group, shared GUID and
+        // An adaptive point drawn on one of an adaptive family's own datums held `"datum": "level" | "front_back" |
+        // "left_right"` in its `world` host, the name the Family Editor's first adaptive points gave their work plane; it
+        // still reads as the datum plane of the same frame (`Host::World`'s `plane_or_datum`), so nothing moves.
+        // The rest needs nothing of a file of 17, which holds none of it: an adaptive family and a component's adaptive
+        // frames, a family parameter's group, shared GUID and
         // reporting (each defaults to what a file of 17 means: grouped by its kind, the family's own, set), Doors > Opening
         // and Windows > Opening, and the project's reference planes and components hosted on them (a hosted component's `at`
         // and `offset` are worked out from its host whatever the file says).
@@ -7278,9 +7316,18 @@ impl Model {
                 point(&who, c.at)?;
                 coord(&format!("{who} angle"), c.angle)?;
                 coord(&format!("{who} offset"), c.offset)?;
-                // On a reference plane, only a work plane-based family's component. (An adaptive component, when the
-                // adaptive branch's `adaptive` merges, is placed by its own points: a `host` on one is refused here too.)
+                // On a reference plane, only a work plane-based family's component, and never an adaptive one: it is placed
+                // by its own points.
                 if let Some(h) = &c.host {
+                    if self.placed_by_points(c) {
+                        return Err(format!(
+                            "{who}: it is hosted on {}, and adaptive components take their place from their points (family \
+                             `{}` is adaptive): move its points (`adaptive_move`, `adaptive_place`) instead, or put it on a level \
+                             (`edit_work_plane` with `host` `level`)",
+                            self.work_plane_name(c),
+                            c.family
+                        ));
+                    }
                     match self.elements.get(h.host.guid()) {
                         Some(Element::RefPlane(_)) => {}
                         Some(other) => {
@@ -7305,6 +7352,12 @@ impl Model {
                     coord(&format!("{who} offset from host"), h.offset)?;
                 }
                 self.family_values_ok(&who, &c.family, f, &c.params)?;
+                if let Some(placement) = &c.adaptive {
+                    if f.adaptive.is_none() {
+                        return Err(format!("{who}: adaptive placement requires an adaptive family"));
+                    }
+                    placement.check().map_err(|e| format!("{who}: {e}"))?;
+                }
                 // Its shape, built once for each family, type and values the project's components have.
                 let build = || f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v).and(f.marks(&v))).map(|_| ());
                 let built = match serde_json::to_string(&c.params) {

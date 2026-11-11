@@ -150,6 +150,10 @@ impl egui_kittest::TestRenderer for Pictures {
         }
         delta.clear();
     }
+
+    fn render(&mut self, _: &egui::Context, _: &egui::FullOutput) -> Result<image::RgbaImage, String> {
+        Err("this renderer only keeps pictures".into())
+    }
 }
 
 #[test]

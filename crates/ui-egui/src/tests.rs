@@ -5908,6 +5908,7 @@ fn the_massing_tab_makes_floors_walls_a_floor_and_a_roof_from_the_selected_mass(
     assert_eq!(h.state().tool, Tool::Mass(Vec::new()));
 }
 
+mod adaptive_modelling;
 mod align;
 mod assistant;
 mod autosave;
@@ -6562,6 +6563,34 @@ fn a_wall_or_a_run_selected_offers_to_refuse_or_take_up_its_joins() {
 }
 
 #[test]
+fn a_family_instance_selected_offers_edit_family_on_the_right_click_as_revit_does() {
+    let mut h = app("");
+    h.state_mut()
+        .session
+        .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
+        .unwrap();
+    let result = h.state_mut().session.execute("component", &json!({"family":"Adaptive panel","at":[0,0]})).unwrap();
+    let id = serde_json::from_value(result["id"].clone()).unwrap();
+    // Nothing selected: no family to edit.
+    let at = h.state().screen(P2(4000.0, 3000.0));
+    assert!(offered(&mut h, at, &["Edit Family"]).is_empty());
+    key(&mut h, Key::Escape);
+    // The panel selected: Edit Family opens the Family Editor on it, at its Adaptive tab.
+    h.state_mut().selection = vec![id];
+    h.run();
+    assert_eq!(offered(&mut h, at, &["Edit Family"]), ["Edit Family"]);
+    choose_item(&mut h, "Edit Family");
+    assert!(h.state().family_editor.is_some(), "the Family Editor is open");
+    h.set_size(vec2(1800., 1000.));
+    h.run();
+    assert!(h.query_by_label("Load into Project").is_some(), "it opens as a family document");
+    // As Revit's: the family as defined; the instance it was opened from is there to replay.
+    assert_eq!(h.query_all_by_label_contains("Replaying instance").count(), 0, "it opens on the family, not on the instance");
+    press(&mut h, "Replay Instance");
+    assert!(h.query_all_by_label_contains("Replaying instance").count() > 0, "replayed, it shows the instance selected");
+}
+
+#[test]
 fn every_view_has_the_right_click_menu() {
     let mut h = app(&format!(
         "{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}\nroom {{\"point\": [4000, 3000], \"name\": \"Hall\"}}"
@@ -6810,4 +6839,92 @@ fn room_area_computation_is_set_from_manage_and_undone() {
     assert_eq!(h.state().session.model.room_area, RoomArea::Centre);
 }
 
+#[test]
+fn adaptive_family_editor_reopens_exact_failed_instance_and_keeps_valid_dependencies() {
+    let mut h = app("");
+    h.state_mut()
+        .session
+        .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
+        .unwrap();
+    let p = bimcraft_core::adaptive::Placement {
+        frames: [(2, bimcraft_core::adaptive::Frame::at([0., 0., 0.]))].into(),
+        context: "Failed panel 7".into(),
+        ..Default::default()
+    };
+    let result = h.state_mut().session.execute("component", &json!({"family":"Adaptive panel","at":[0,0],"adaptive":p})).unwrap();
+    let id = serde_json::from_value(result["id"].clone()).unwrap();
+    h.state_mut().selection = vec![id];
+    h.state_mut().edit_family("Adaptive panel");
+    h.set_size(vec2(1800., 1000.));
+    h.run();
+    assert!(h.query_by_label("Load into Project").is_some());
+    press(&mut h, "Replay Instance");
+    assert!(h.query_all_by_label_contains("Replaying instance").count() > 0);
+    press(&mut h, "Load into Project");
+    let Element::Component(c) = &h.state().session.model.elements[&id] else { panic!() };
+    assert_eq!(c.adaptive.as_ref(), Some(&p));
+    let r = h.state().session.model.component_adaptive_evaluation(c).unwrap();
+    assert!(r.failed());
+    assert!(r.values.contains_key("p1"));
+    press(&mut h, "Close Family");
+    assert!(h.state().family_editor.is_none());
+}
+
+#[test]
+fn adaptive_test_frames_place_where_they_are_even_on_a_raised_level() {
+    let mut h = app("");
+    let level = h.state().session.model.levels()[0].0;
+    h.state_mut().session.execute("modify", &json!({"id": level, "elevation": 1000})).unwrap();
+    h.state_mut()
+        .session
+        .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
+        .unwrap();
+    h.set_size(vec2(1800., 1000.));
+    h.state_mut().edit_family("Adaptive panel");
+    h.run();
+    press(&mut h, "Place Instance");
+    let m = &h.state().session.model;
+    let mut placed = m.elements.values().filter_map(|e| if let Element::Component(c) = e { Some(c) } else { None });
+    let problem = h.state().status.text.clone();
+    let c = placed.next().unwrap_or_else(|| panic!("an instance is placed: {problem:?}"));
+    let f = &m.families["Adaptive panel"];
+    let d = f.adaptive.as_ref().unwrap();
+    let low = |pieces: Vec<bimcraft_core::family::Piece>| {
+        pieces.iter().flat_map(|p| p.tris.iter().flatten()).map(|q| q[2]).fold(f64::INFINITY, f64::min)
+    };
+    let want = low(d.evaluate(&f.values("A", &Default::default()).unwrap(), &d.preview).pieces());
+    assert!((low(m.component_pieces(c)) - want).abs() < 1e-6, "the test frames are the project's, whatever the level's elevation");
+}
+
+#[test]
+fn adaptive_editor_visual_preview_in_three_looks() {
+    let Ok(folder) = std::env::var("BIMCRAFT_ADAPTIVE_UI_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for (name, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
+        let mut h = app("");
+        h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        h.state_mut().light_canvas = light_canvas;
+        h.state_mut()
+            .session
+            .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
+            .unwrap();
+        h.set_size(vec2(1600., 1000.));
+        h.state_mut().edit_family("Adaptive panel");
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-create-{name}.png"))).unwrap();
+        // Point 1 selected, so Properties shows its Revit fields.
+        if let Some(ed) = h.state_mut().family_editor.as_mut() {
+            ed.modeller.selection = vec!["p1".into()];
+        }
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-{name}.png"))).unwrap();
+        // Its OffsetZ's "=": Associate Family Parameter.
+        h.get_by_label("Associate Family Parameter: OffsetZ (mm)").scroll_to_me();
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-relationship-{name}.png"))).unwrap();
+        press(&mut h, "Associate Family Parameter: OffsetZ (mm)");
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-associate-{name}.png"))).unwrap();
+    }
+}
 mod background_grid;

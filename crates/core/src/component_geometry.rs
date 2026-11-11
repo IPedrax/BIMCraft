@@ -84,7 +84,7 @@ impl SharedComponents {
         let params = model.families.get(&c.family).map(|family| {
             c.params.iter().filter(|(name, _)| family.parameters.iter().any(|p| p.name == **name)).collect::<BTreeMap<_, _>>()
         });
-        (c.family.clone(), c.type_name.clone(), c.mirrored, serde_json::to_string(&params).unwrap_or_default())
+        (c.family.clone(), c.type_name.clone(), c.mirrored, serde_json::to_string(&(&params, &c.adaptive)).unwrap_or_default())
     }
 
     /// Build each local shape once. No triangles are placed or copied for the instances here.
@@ -199,7 +199,7 @@ impl<'a> Components<'a> {
     }
 
     fn key(c: &Component) -> Key {
-        (c.family.clone(), c.type_name.clone(), c.mirrored, serde_json::to_string(&c.params).unwrap_or_default())
+        (c.family.clone(), c.type_name.clone(), c.mirrored, serde_json::to_string(&(&c.params, &c.adaptive)).unwrap_or_default())
     }
 
     fn local(&mut self, c: &Component) -> &[Piece] {
