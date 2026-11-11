@@ -2664,7 +2664,25 @@ impl BimApp {
                 landings: Vec::new(),
                 line: self.stair_line,
                 offset: m.units.parse(&self.stair_offset).unwrap_or(0.0),
+                spiral: None,
             };
+            // A spiral: the first click is its centre, the second the middle of its first riser; it winds counter-clockwise
+            // from there, or clockwise as the Options Bar says, with treads of the code's depth on its middle line.
+            if self.stair_spiral {
+                let (out, radius) = ((end - start).unit(), start.dist(end));
+                let way = if self.stair_clockwise { out.perp() * -1.0 } else { out.perp() };
+                st.start = end;
+                st.angle = (way.1.atan2(way.0).to_degrees() * 1e9).round() / 1e9;
+                (st.line, st.offset) = (Default::default(), 0.0);
+                if radius < width / 2.0 {
+                    return Err(tf(
+                        "stair: its centre is {} from its middle line at least, half its width",
+                        &[&m.units.with_unit(width / 2.0)],
+                    ));
+                }
+                st.spiral = Some(bimcraft_core::model::Spiral { radius: if self.stair_clockwise { -radius } else { radius }, sweep: 0.0 });
+                return Ok((Element::Stair(st), true));
+            }
             let (n, each, _) = m.flight(&st);
             // A landing as long as the building code asks.
             let length = rules.landing_length_for(width, each, rules.going);

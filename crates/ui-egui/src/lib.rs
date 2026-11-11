@@ -595,6 +595,9 @@ pub struct BimApp {
     /// The Stair tool turning by any angle, and drawing run after run.
     stair_free: bool,
     stair_chain: bool,
+    /// The Stair tool making a spiral, and which way it winds.
+    stair_spiral: bool,
+    stair_clockwise: bool,
     /// The Stair tool's location line, the line of the stair the clicks are on, and how far the stair stands from it.
     stair_line: bimcraft_core::model::StairLine,
     stair_offset: String,
@@ -1327,6 +1330,8 @@ impl BimApp {
             stair_balance: 0,
             stair_free: false,
             stair_chain: false,
+            stair_spiral: false,
+            stair_clockwise: false,
             stair_line: Default::default(),
             stair_offset: units.length(0.0),
             roof_slope: "30".into(),
@@ -4802,6 +4807,11 @@ impl BimApp {
                             "This building code does not allow winders. The stair is still built, and marked outside the rules.",
                         ));
                     }
+                    ui.checkbox(&mut self.stair_spiral, t("Spiral"))
+                        .on_hover_text(t("A spiral stair: click its centre, then the middle of its first riser"));
+                    if self.stair_spiral {
+                        ui.checkbox(&mut self.stair_clockwise, t("Clockwise"));
+                    }
                     ui.checkbox(&mut self.stair_free, t("Any Angle"))
                         .on_hover_text(t("The next run turns by the angle clicked, not only square or back; near square, it is square"));
                     ui.checkbox(&mut self.stair_chain, t("Chain")).on_hover_text(t(
@@ -5092,6 +5102,8 @@ impl BimApp {
             Tool::Column => msg!("Click to place a column, as high as the Options Bar says."),
             Tool::Run(..) | Tool::Stand(_) => structure::hint(&self.tool).unwrap_or_default(),
             Tool::Component | Tool::Fixture(_) => msg!("Click where the component goes; Space turns it a quarter turn."),
+            Tool::Stair(pts) if pts.is_empty() && self.stair_spiral => msg!("Click the centre the spiral stair winds about."),
+            Tool::Stair(_) if self.stair_spiral => msg!("Click where it starts: the middle of its first riser. Esc cancels."),
             Tool::Stair(pts) if pts.is_empty() => msg!("Click where the stair starts: the middle of its first riser."),
             Tool::Stair(pts) if pts.len() == 1 => {
                 msg!("Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels.")

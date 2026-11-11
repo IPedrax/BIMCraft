@@ -670,7 +670,7 @@ other_files(
         ui_msg!("Stair"),
         &[],
         "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, riser?, tread?, landings?: [{at, turn?, winders?, balance?, length?}, …], \
-         line?, offset?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
+         line?, offset?, spiral?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
          as many risers as keep each at most `riser` mm, treads `tread` deep (the project's building code's, 180 and 280 with \
          none: `building_code`), `width` wide (1000). One straight \
          run, as long as that makes it (`landings`: \"auto\" gives it the landings its code says are due, straight on); or with landings (each as deep as the stair is wide) after `at` risers, the next run \
@@ -683,6 +683,9 @@ other_files(
          A landing is `length` deep along the run that climbs onto it (0 or none: as deep as the stair is wide). \
          `line` says which line of the stair `start` is on, \"left\", \"centre\" (as it is with none) or \"right\" looking up it, \
          and `offset` moves the stair that far to the left of the line: the line stays when the width changes. \
+         With `spiral`: {radius, sweep?}, the stair winds about a centre `radius` from its middle line, to the left of its first \
+         riser looking up (to the right when negative): every tread a winder, as deep on the middle line as `tread`, or turning \
+         `sweep` degrees in all; a spiral has no landings. \
          With `railings`, a railing down each side too",
         stair,
     )
@@ -8950,6 +8953,11 @@ fn stair(s: &mut Session, p: &Value) -> R {
             None => Default::default(),
         },
         offset: dim("offset", 0.0)?,
+        spiral: match p.get("spiral") {
+            v if absent(v) => None,
+            Some(v) => Some(serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`spiral` is {{radius, sweep?}}: {e}")))?),
+            None => None,
+        },
     };
     if auto {
         let (n, each, _) = m.flight(&st);

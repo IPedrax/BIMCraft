@@ -290,10 +290,58 @@ fn ccw(ring: Vec<P2>) -> Vec<P2> {
     if geom::area(&ring) < 0.0 { ring.into_iter().rev().collect() } else { ring }
 }
 
+/// The angle each tread of spiral `sp` turns through, in radians, on a stair of `n` risers.
+pub fn spiral_step(st: &Stair, sp: crate::model::Spiral, n: u32) -> f64 {
+    let treads = f64::from(n.saturating_sub(1)).max(1.0);
+    if sp.sweep > 0.0 { sp.sweep.to_radians() / treads } else { st.tread / sp.radius.abs().max(1.0) }
+}
+
+/// A spiral stair: no runs, a tread for each riser but the last, each a piece of the ring about its centre, a riser
+/// above the one before; the walk line round its middle.
+fn spiral(st: &Stair, sp: crate::model::Spiral, n: u32, each: f64, base: f64) -> Layout {
+    let mut out = Layout { runs: Vec::new(), pads: Vec::new(), walk: Vec::new(), width: st.width, winders: 0 };
+    let (foot, side, r) = (st.foot(), if sp.radius < 0.0 { -1.0 } else { 1.0 }, sp.radius.abs());
+    let centre = foot + heading(st.angle).perp() * (side * r);
+    let out0 = (foot - centre).unit();
+    // The point `radius` from the centre, `a` radians round from the first riser.
+    let at = |radius: f64, a: f64| {
+        let (s, c) = (side * a).sin_cos();
+        centre + P2(out0.0 * c - out0.1 * s, out0.0 * s + out0.1 * c) * radius
+    };
+    let treads = n.saturating_sub(1).min(2000);
+    let step = spiral_step(st, sp, n);
+    let (inner, outer) = ((r - st.width / 2.0).max(0.0), r + st.width / 2.0);
+    let parts = ((step.to_degrees() / 10.0).ceil() as u32).clamp(1, 36);
+    for k in 0..treads {
+        let (a, b) = (f64::from(k) * step, f64::from(k + 1) * step);
+        let angles: Vec<f64> = (0..=parts).map(|i| a + (b - a) * f64::from(i) / f64::from(parts)).collect();
+        let mut ring: Vec<P2> = angles.iter().map(|x| at(outer, *x)).collect();
+        if inner > 1e-6 {
+            ring.extend(angles.iter().rev().map(|x| at(inner, *x)));
+        } else {
+            ring.push(centre);
+        }
+        out.pads.push(Pad { ring: ccw(ring), z: base + f64::from(k + 1) * each });
+    }
+    out.winders = out.pads.len();
+    let (end, rise) = (f64::from(treads) * step, f64::from(n) * each);
+    let points = (treads * parts).max(1);
+    out.walk = (0..=points)
+        .map(|i| {
+            let f = f64::from(i) / f64::from(points);
+            (at(r, end * f), base + rise * f)
+        })
+        .collect();
+    out
+}
+
 /// A stair's runs: its risers split at its landings, each run a tread shorter than its risers.
 pub fn stair(m: &Model, st: &Stair) -> Layout {
     let (n, each, _) = m.flight(st);
     let base = m.elevation(st.level);
+    if let Some(sp) = st.spiral {
+        return spiral(st, sp, n, each, base);
+    }
     // Each run from the riser it starts at to the one that climbs off it; winders climb some between two runs.
     let mut spans: Vec<(u32, u32)> = Vec::new();
     let mut from = 0u32;
@@ -327,6 +375,26 @@ pub fn stair(m: &Model, st: &Stair) -> Layout {
 pub fn flipped(m: &Model, st: &Stair) -> Option<Stair> {
     let (n, _, _) = m.flight(st);
     let l = stair(m, st);
+    if let Some(sp) = st.spiral {
+        // From its top round the other way: the centre on its other side.
+        let (&(top, _), &(before, _)) = (l.walk.last()?, l.walk.get(l.walk.len().checked_sub(2)?)?);
+        let centre = st.foot() + heading(st.angle).perp() * sp.radius;
+        let back = (centre - top).unit().perp() * if sp.radius < 0.0 { -1.0 } else { 1.0 };
+        let _ = before;
+        let mut out = st.clone();
+        out.angle = (back.1.atan2(back.0).to_degrees() * 1e9).round() / 1e9;
+        out.spiral = Some(crate::model::Spiral { radius: -sp.radius, sweep: sp.sweep });
+        out.offset = -st.offset + 0.0;
+        out.line = match st.line {
+            crate::model::StairLine::Left => crate::model::StairLine::Right,
+            crate::model::StairLine::Right => crate::model::StairLine::Left,
+            line => line,
+        };
+        out.start = top;
+        let off = out.foot() - out.start;
+        out.start = crate::commands::micron(out.start - off);
+        return Some(out);
+    }
     let last = l.runs.last()?;
     let u = last.u * -1.0;
     let mut out = st.clone();

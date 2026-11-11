@@ -326,6 +326,7 @@ fn rows(category: &str) -> &'static [Row] {
             ),
             ("Constraints", "offset", msg!("Location Line Offset"), Length),
             ("Dimensions", "width", msg!("Actual Run Width"), Length),
+            ("Dimensions", "spiral.radius", msg!("Spiral Radius"), LengthIf),
             ("Dimensions", "riser", msg!("Maximum Riser Height"), Length),
             ("Dimensions", "tread", msg!("Actual Tread Depth"), Length),
             ("Dimensions", "risers", msg!("Actual Number of Risers"), Shown),

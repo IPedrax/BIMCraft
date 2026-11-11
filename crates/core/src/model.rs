@@ -1654,6 +1654,9 @@ pub struct Stair {
     /// How far the stair stands to the left of that line.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub offset: f64,
+    /// A spiral: the stair winds about a centre, every tread a winder, and has no landings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spiral: Option<Spiral>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -1681,6 +1684,17 @@ pub struct Landing {
     /// left or right is no shorter than that, the next run leaving from its far end.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub length: f64,
+}
+
+/// A spiral stair's turning: `radius` from its centre to its middle line, the centre to the left of its first riser,
+/// looking up (to the right when negative); and through how many degrees it turns in all, `sweep`, or 0 for treads as
+/// deep on the middle line as the stair's `tread`.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Spiral {
+    pub radius: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub sweep: f64,
 }
 
 /// The line a stair is drawn by, which stays where it is when the stair's width changes: its left edge, its middle or
@@ -4455,6 +4469,12 @@ impl Model {
         let n = (rise / st.riser - 1e-9).ceil().clamp(0.0, 1e6) as u32;
         let each = if n > 0 { rise / f64::from(n) } else { 0.0 };
         let runs = u32::try_from(st.landings.len()).unwrap_or(u32::MAX).saturating_add(1);
+        // A spiral's length is its middle line's.
+        if let Some(sp) = st.spiral {
+            let treads = f64::from(n.saturating_sub(1));
+            let length = if sp.sweep > 0.0 { sp.radius.abs() * sp.sweep.to_radians() } else { treads * st.tread };
+            return (n, each, length);
+        }
         let wound = st.landings.iter().fold(0u32, |a, l| a.saturating_add(l.wound()).saturating_add(l.balance.saturating_mul(2)));
         (n, each, f64::from(n.saturating_sub(runs).saturating_sub(wound)) * st.tread)
     }
@@ -7258,6 +7278,25 @@ impl Model {
                 point(&who, st.start)?;
                 coord(&format!("{who} angle"), st.angle)?;
                 coord(&format!("{who} offset"), st.offset)?;
+                if let Some(sp) = st.spiral {
+                    coord(&format!("{who} spiral radius"), sp.radius)?;
+                    if sp.radius.abs() < st.width / 2.0 - TOL || sp.radius.abs() > 1e6 {
+                        return Err(format!(
+                            "{who}: a spiral's `radius` is to the stair's middle line, half its width ({}) or more, not {}",
+                            st.width / 2.0,
+                            sp.radius
+                        ));
+                    }
+                    if !(sp.sweep == 0.0 || (5.0..=3600.0).contains(&sp.sweep)) {
+                        return Err(format!(
+                            "{who}: a spiral turns through 5 to 3600 degrees (`sweep`), or 0 for treads of its `tread` on the middle line, not {}",
+                            sp.sweep
+                        ));
+                    }
+                    if !st.landings.is_empty() {
+                        return Err(format!("{who}: a spiral stair has no landings"));
+                    }
+                }
                 match st.top_level {
                     Some(t) => level_ok(t)?,
                     None => size(&format!("{who} height"), st.height)?,

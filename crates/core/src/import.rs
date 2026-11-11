@@ -2847,6 +2847,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             landings,
             line: Default::default(),
             offset: 0.0,
+            spiral: None,
         };
         let sid = m.insert(Element::Stair(stair));
         from.insert(sid, who(id));

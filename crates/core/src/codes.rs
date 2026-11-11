@@ -544,6 +544,68 @@ pub fn stair_findings(m: &Model, st: &Stair) -> Vec<Finding> {
             message: format!("it is {} mm wide, under the least, {} mm: widen it", mm(st.width), rules.width_min),
         });
     }
+    // A spiral is one flight, and every tread of it a winder.
+    if let Some(sp) = st.spiral {
+        let rise = f64::from(n) * riser;
+        if rise > rules.flight_rise_max + EPS {
+            out.push(Finding {
+                rule: "flight_rise_max",
+                value: mm(rise),
+                limit: rules.flight_rise_max,
+                message: format!(
+                    "the spiral rises {} mm in one flight, and a landing is due every {} mm at most",
+                    mm(rise),
+                    rules.flight_rise_max
+                ),
+            });
+        } else if n > rules.flight_risers_max {
+            out.push(Finding {
+                rule: "flight_risers_max",
+                value: f64::from(n),
+                limit: f64::from(rules.flight_risers_max),
+                message: format!("the spiral has {n} risers in one flight, and a landing is due after {} at most", rules.flight_risers_max),
+            });
+        }
+        if !rules.winders {
+            out.push(Finding {
+                rule: "winders",
+                value: f64::from(n.saturating_sub(1)),
+                limit: 0.0,
+                message: "it is a spiral, all winders, which this code does not allow".into(),
+            });
+        }
+        let (step, inside) = (stairs::spiral_step(st, sp, n), (sp.radius.abs() - st.width / 2.0).max(0.0));
+        let radius = match rules.walk_line {
+            WalkLine::Centre => sp.radius.abs(),
+            WalkLine::NarrowSide => inside + rules.walk_line_offset.min(st.width),
+        };
+        let (going, narrow) = (radius * step, inside * step);
+        if going < rules.winder_going_min - EPS {
+            out.push(Finding {
+                rule: "winder_going_min",
+                value: mm(going),
+                limit: rules.winder_going_min,
+                message: format!(
+                    "its treads are {} mm deep on the walk line, {} mm from the centre, under the least, {} mm: deepen its `tread`, give it a larger `radius`, or a wider `sweep`",
+                    mm(going),
+                    mm(radius),
+                    rules.winder_going_min
+                ),
+            });
+        }
+        if narrow < rules.winder_narrow_min - EPS {
+            out.push(Finding {
+                rule: "winder_narrow_min",
+                value: mm(narrow),
+                limit: rules.winder_narrow_min,
+                message: format!(
+                    "its treads are {} mm deep at the narrow end, under the least, {} mm: give it a larger `radius`, so it stands further from its centre",
+                    mm(narrow),
+                    rules.winder_narrow_min
+                ),
+            });
+        }
+    }
     for (i, run) in stairs::stair(m, st).runs.iter().enumerate() {
         let rise = run.z.1 - run.z.0;
         if rise > rules.flight_rise_max + EPS {

@@ -244,3 +244,27 @@ fn the_stair_tool_turns_by_any_angle_and_chains_run_after_run() {
     let made = *all.iter().find(|id| **id != st[0]).unwrap();
     assert_eq!(field(&h, made, "landings"), json!([{"at": 3.0, "turn": -90.0}, {"at": 15.0, "turn": -90.0}]));
 }
+
+#[test]
+fn the_stair_tool_makes_a_spiral_about_a_centre_clicked() {
+    let mut h = app(BOX);
+    tool(&mut h, "Stair");
+    press(&mut h, "Railings");
+    press(&mut h, "Spiral");
+    click(&mut h, P2(4000.0, 3000.0));
+    assert!(ids(&h, "stair").is_empty());
+    // Its first riser 1500 east of the centre: it winds counter-clockwise, north first.
+    click(&mut h, P2(5500.0, 3000.0));
+    let st = ids(&h, "stair");
+    assert_eq!((st.len(), field(&h, st[0], "spiral"), field(&h, st[0], "angle")), (1, json!({"radius": 1500.0}), json!(90.0)));
+    assert_eq!(field(&h, st[0], "start"), json!([5500.0, 3000.0]));
+    press(&mut h, "Clockwise");
+    click(&mut h, P2(4000.0, 3000.0));
+    click(&mut h, P2(4000.0, 4200.0));
+    let other = *ids(&h, "stair").iter().find(|id| **id != st[0]).unwrap();
+    assert_eq!(
+        (field(&h, other, "spiral"), field(&h, other, "angle")),
+        (json!({"radius": -1200.0}), json!(0.0)),
+        "north of the centre, east first"
+    );
+}

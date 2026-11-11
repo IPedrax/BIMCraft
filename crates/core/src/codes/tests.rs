@@ -497,3 +497,51 @@ fn a_stair_turns_by_any_angle_on_a_landing_or_on_winders() {
         assert!(s.execute("stair", &json!({"start": [0, 0], "angle": 90, "landings": [{"at": 6, "turn": turn}]})).is_err(), "{turn}");
     }
 }
+
+#[test]
+fn a_spiral_stair_winds_about_its_centre() {
+    use crate::geom::P2;
+    let mut s = Session::new();
+    // Starting east of its centre and climbing north, counter-clockwise: 3000 up in 17 risers, a quarter turn in all.
+    let p = json!({"start": [1500, 0], "angle": 90, "width": 1000, "spiral": {"radius": 1500, "sweep": 90}});
+    let id = run(&mut s, "stair", p.clone())["id"].as_u64().unwrap();
+    let st = stair_of(&s, id);
+    let l = crate::stairs::stair(&s.model, &st);
+    assert_eq!((l.runs.len(), l.pads.len(), l.winders), (0, 16, 16));
+    // A quarter of the ring between 1000 and 2000 from the centre.
+    let area: f64 = l.pads.iter().map(|p| crate::geom::area(&p.ring)).sum();
+    let ring = std::f64::consts::PI * (2000.0f64.powi(2) - 1000.0f64.powi(2)) / 4.0;
+    assert!((area - ring).abs() / ring < 0.002, "{area} against {ring}");
+    assert!(l.pads.iter().flat_map(|p| &p.ring).all(|q| (999.0..=2001.0).contains(&q.dist(P2(0.0, 0.0)))));
+    let (top, z) = *l.walk.last().unwrap();
+    assert!(top.dist(P2(0.0, 1500.0)) < 1e-6 && (z - 3000.0).abs() < 1e-6, "{top:?} {z}");
+    // The generic rules: 1500 × 90° / 16 = 147 on the middle line, under any going, and 98 at the narrow end.
+    assert_eq!(broken(&mut s, id), ["winder_going_min", "winder_narrow_min"]);
+
+    // By its tread on the middle line, it turns as far as that makes it; clockwise with the centre to its right.
+    let id = run(&mut s, "stair", json!({"start": [0, 0], "angle": 90, "width": 900, "tread": 280, "spiral": {"radius": -1100}}))["id"]
+        .as_u64()
+        .unwrap();
+    let l = crate::stairs::stair(&s.model, &stair_of(&s, id));
+    let centre = P2(1100.0, 0.0);
+    assert!(l.walk.iter().all(|(q, _)| (q.dist(centre) - 1100.0).abs() < 1e-6));
+    assert!(l.walk[1].0.1 > 0.0, "north first");
+    assert_eq!(broken(&mut s, id), Vec::<String>::new());
+    // Flipped, over the same ground.
+    let ground =
+        |s: &Session| crate::stairs::stair(&s.model, &stair_of(s, id)).pads.iter().map(|p| crate::geom::area(&p.ring)).sum::<f64>();
+    let (before, top) = (ground(&s), l.walk.last().unwrap().0);
+    run(&mut s, "flip", json!({"ids": [id]}));
+    assert!((ground(&s) - before).abs() < 1.0);
+    assert!(crate::stairs::stair(&s.model, &stair_of(&s, id)).walk[0].0.dist(top) < 0.01);
+    // NBR has no winders at all.
+    run(&mut s, "building_code", json!({"set": "nbr"}));
+    assert!(broken(&mut s, id).contains(&"winders".to_string()));
+
+    for bad in [json!({"radius": 100}), json!({"radius": 1500, "sweep": 2}), json!({"radius": 1e300}), json!({"sweep": 90}), json!(5)] {
+        assert!(s.execute("stair", &json!({"start": [0, 0], "angle": 90, "spiral": bad})).is_err(), "{bad}");
+    }
+    let mut landed = p;
+    landed["landings"] = json!([{"at": 8, "turn": 0}]);
+    assert!(s.execute("stair", &landed).unwrap_err().contains("landings"));
+}
