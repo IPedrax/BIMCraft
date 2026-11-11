@@ -1416,7 +1416,7 @@ msgstr "Círculo: clique no centro e depois num ponto dele (ou só no centro, co
 #: crates/ui-egui/src/properties.rs:2018
 #: crates/ui-egui/src/properties.rs:2023
 msgid "Circuit Number"
-msgstr ""
+msgstr "Número do circuito"
 
 #: crates/ui-egui/src/lib.rs:3790
 msgid "Circulation"
@@ -1435,7 +1435,7 @@ msgstr "Polígono circunscrito: clique no centro e depois no meio de um lado; La
 #: crates/core/src/panel_schedule.rs:380
 #: crates/ui-egui/src/properties.rs:2060
 msgid "Classification"
-msgstr ""
+msgstr "Classificação"
 
 #: crates/ui-egui/src/graphics.rs:999
 msgid "Clear Overrides"
@@ -2291,11 +2291,11 @@ msgstr "Criar limite do forro"
 
 #: crates/ui-egui/src/mep.rs:207
 msgid "Create Circuit"
-msgstr ""
+msgstr "Criar circuito"
 
 #: crates/ui-egui/src/mep.rs:206
 msgid "Create Circuit: the selected devices on the selected distribution board, behind one breaker"
-msgstr ""
+msgstr "Criar circuito: os dispositivos selecionados no quadro de distribuição selecionado, atrás de um disjuntor"
 
 #: crates/ui-egui/src/lib.rs:1561
 msgid "Create Extrusion Roof"
@@ -2380,7 +2380,7 @@ msgstr "Hachura cruzada"
 
 #: crates/ui-egui/src/properties.rs:2076
 msgid "Current"
-msgstr ""
+msgstr "Corrente"
 
 #: crates/ui-egui/src/cad.rs:122
 msgid "Current view only"
@@ -2577,7 +2577,7 @@ msgstr "Excluir {}"
 #: crates/ui-egui/src/properties.rs:2065
 #: crates/ui-egui/src/properties.rs:2069
 msgid "Demand Factor"
-msgstr ""
+msgstr "Fator de demanda"
 
 #: crates/ui-egui/src/lib.rs:4602
 msgid "Demolish"
@@ -2680,7 +2680,7 @@ msgstr "Dispositivo (DV): uma tomada ou um interruptor, onde você clicar na par
 
 #: crates/ui-egui/src/properties.rs:2077
 msgid "Devices"
-msgstr ""
+msgstr "Dispositivos"
 
 #: crates/ui-egui/src/dimtypes.rs:118
 #: crates/ui-egui/src/properties.rs:659
@@ -2794,7 +2794,7 @@ msgstr "Quadro de distribuição"
 #: crates/core/src/panel_schedule.rs:352
 #: crates/ui-egui/src/properties.rs:1938
 msgid "Distribution System"
-msgstr ""
+msgstr "Sistema de distribuição"
 
 #: crates/ui-egui/src/electrical.rs:21
 msgid "Distribution Systems"
@@ -4844,7 +4844,7 @@ msgstr "Espaçamento principal Y"
 #: crates/ui-egui/src/properties.rs:1944
 #: crates/ui-egui/src/properties.rs:1951
 msgid "Mains"
-msgstr ""
+msgstr "Disjuntor geral"
 
 #: crates/ui-egui/src/titleblocks.rs:221
 #: crates/ui-egui/src/titleblocks.rs:484
@@ -4964,7 +4964,7 @@ msgstr "Materiais: a biblioteca do projeto, a cor de cada material em 3D e os pa
 #: crates/ui-egui/src/properties.rs:1956
 #: crates/ui-egui/src/properties.rs:1964
 msgid "Max #1 Pole Breakers"
-msgstr ""
+msgstr "Máx. de disjuntores unipolares"
 
 #: crates/ui-egui/src/properties.rs:350
 msgid "Max Ridge Height"
@@ -5529,7 +5529,7 @@ msgstr "Número"
 #: crates/ui-egui/src/properties.rs:2043
 #: crates/ui-egui/src/properties.rs:2049
 msgid "Number of Poles"
-msgstr ""
+msgstr "Número de polos"
 
 #: crates/ui-egui/src/background_grid.rs:113
 #: crates/ui-egui/src/cad.rs:132
@@ -5809,7 +5809,7 @@ msgstr "Paletas"
 #: crates/core/src/panel_schedule.rs:351
 #: crates/ui-egui/src/properties.rs:2074
 msgid "Panel"
-msgstr ""
+msgstr "Quadro"
 
 #: crates/ui-egui/src/mep.rs:211
 msgid "Panel Schedule"
@@ -6804,7 +6804,7 @@ msgstr "Rampa: clique onde ela começa e depois onde o lance termina; um patamar
 #: crates/ui-egui/src/properties.rs:2033
 #: crates/ui-egui/src/properties.rs:2038
 msgid "Rating"
-msgstr ""
+msgstr "Corrente nominal"
 
 #: crates/ui-egui/src/dimtypes.rs:173
 msgid "Read Convention"
@@ -7540,7 +7540,7 @@ msgstr "Selecione as linhas do padrão de preenchimento e pressione Enter"
 
 #: crates/ui-egui/src/mep.rs:189
 msgid "Select one distribution board and the devices on its circuit."
-msgstr ""
+msgstr "Selecione um quadro de distribuição e os dispositivos do seu circuito."
 
 #: crates/ui-egui/src/panelsched.rs:45
 msgid "Select one distribution board to make its panel schedule."
@@ -7552,7 +7552,7 @@ msgstr "Selecione as linhas de detalhe de que o padrão é feito e pressione Ent
 
 #: crates/ui-egui/src/mep.rs:193
 msgid "Select the devices of the circuit along with its board."
-msgstr ""
+msgstr "Selecione os dispositivos do circuito junto com o quadro."
 
 #: crates/ui-egui/src/inquiry.rs:109
 msgid "Selected {}."
@@ -8250,11 +8250,11 @@ msgstr "Unidades sugeridas:"
 
 #: crates/ui-egui/src/properties.rs:1976
 msgid "Supplies"
-msgstr ""
+msgstr "Alimenta"
 
 #: crates/ui-egui/src/properties.rs:1969
 msgid "Supply From"
-msgstr ""
+msgstr "Alimentado por"
 
 #: crates/ui-egui/src/properties.rs:2471
 msgid "Surface Pattern"
@@ -9471,7 +9471,7 @@ msgstr "Vazio"
 #: crates/core/src/panel_schedule.rs:354
 #: crates/ui-egui/src/properties.rs:2054
 msgid "Voltage"
-msgstr ""
+msgstr "Tensão"
 
 #: crates/ui-egui/src/electrical.rs:126
 msgid "Voltage {} is supplied by distribution system {}: change that first."
@@ -10618,13 +10618,13 @@ msgstr "{}: `{}` não é um número"
 #: crates/ui-egui/src/properties.rs:1951
 #: crates/ui-egui/src/properties.rs:2038
 msgid "{}: `{}` is not a number of amperes"
-msgstr ""
+msgstr "{}: `{}` não é um número de ampères"
 
 #: crates/ui-egui/src/properties.rs:1964
 #: crates/ui-egui/src/properties.rs:2023
 #: crates/ui-egui/src/properties.rs:2049
 msgid "{}: `{}` is not a whole number"
-msgstr ""
+msgstr "{}: `{}` não é um número inteiro"
 
 #: crates/ui-egui/src/editor.rs:223
 msgid "{}: `{}` isn't a number"
@@ -10776,7 +10776,7 @@ msgstr "Forro"
 #: crates/ui-egui/src/lang.rs:312
 msgctxt "category"
 msgid "Circuit"
-msgstr ""
+msgstr "Circuito"
 
 #: crates/ui-egui/src/lang.rs:261
 msgctxt "category"
@@ -11101,7 +11101,7 @@ msgstr "Forros"
 #: crates/ui-egui/src/lang.rs:312
 msgctxt "category-plural"
 msgid "Circuits"
-msgstr ""
+msgstr "Circuitos"
 
 #: crates/ui-egui/src/lang.rs:261
 msgctxt "category-plural"
