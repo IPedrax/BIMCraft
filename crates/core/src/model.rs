@@ -96,6 +96,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// - Constraints (F7): a family's `dimensions`, with labels, locks, EQ and Align's locks, solved as a type flexes. They may
 ///   measure to its forms' sketch lines, their ends, circles' and arcs' centres, and to its reference lines' faces, starts and
 ///   ends and the forms drawn on them, and measure a circle's or an arc's radius or diameter.
+/// - Nested families (T6a): a family may nest families (`nested`, each its whole definition) and place their instances
+///   (`nested_instances`).
 /// - Subcategories: a view's graphics, a view template and the object styles may name `dooropening` and `windowopening`
 ///   (Doors > Opening, Windows > Opening), and a family's symbol the subcategory it is drawn in (`subcategory`).
 /// - Adaptive families: a family may be adaptive (`adaptive`: its points, lines and forms), and a component may hold its
@@ -3661,7 +3663,7 @@ impl Model {
         // "left_right"` in its `world` host, the name the Family Editor's first adaptive points gave their work plane; it
         // still reads as the datum plane of the same frame (`Host::World`'s `plane_or_datum`), so nothing moves.
         // The rest needs nothing of a file of 17, which holds none of it: an adaptive family and a component's adaptive
-        // frames, a family's dimensions, labels, locks and Align's locks, a family parameter's group, shared GUID and
+        // frames, a family's dimensions, labels, locks and Align's locks, nested families, a family parameter's group, shared GUID and
         // reporting (each defaults to what a file of 17 means: grouped by its kind, the family's own, set), Doors > Opening
         // and Windows > Opening, and the project's reference planes and components hosted on them or on faces (a hosted
         // component's `at` and `offset` are worked out from its host whatever the file says).
@@ -6408,7 +6410,7 @@ impl Model {
             if n.trim().is_empty() {
                 return Err("a family needs a name".into());
             }
-            f.check(&|m| self.materials.contains_key(m)).map_err(|e| format!("family `{n}`: {e}"))?;
+            f.check_in(&|m| self.materials.contains_key(m), &mut vec![n.clone()], &mut 0).map_err(|e| format!("family `{n}`: {e}"))?;
         }
         self.check_shared_parameters()?;
         if self.parameters.len() > MAX_PROJECT_PARAMETERS {

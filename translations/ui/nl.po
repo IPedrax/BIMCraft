@@ -9,6 +9,66 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+#: crates/ui-egui/src/editor/document.rs:1187
+msgid "Click a form, a nested instance, a reference plane or a dimension to select it; drag a selected plane to move it."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1185
+msgid "Click where the component goes, on the view's work plane."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:403
+msgid "Component (CM): an instance of a family loaded into this one, placed by a click in a plan or an elevation"
+msgstr ""
+
+#: crates/ui-egui/src/editor/nested.rs:363
+msgid "Edit Family: the nested family opens over this one; its Load into Project loads it back here"
+msgstr ""
+
+#: crates/ui-egui/src/editor/nested.rs:86
+msgid "Instances of {} are placed in the family: delete them first."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:472
+msgid "Load Family: a family file loaded into this family, to place with Component"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:638
+msgid "Load into Project and Close: the family it is nested in takes it, and it closes"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:630
+msgid "Load into Project: the family it is nested in takes it as it is here, and it stays open"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:241
+msgid "Modify | Nested Instance"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:238
+msgid "Modify | Place Component"
+msgstr ""
+
+#: crates/ui-egui/src/editor/exists.rs:190
+msgid "The family it was nested in is closed."
+msgstr ""
+
+#: crates/ui-egui/src/editor/exists.rs:365
+msgid "The family {} you are loading is already in this family, defined differently. What would you like to do?"
+msgstr ""
+
+#: crates/ui-egui/src/editor/exists.rs:381
+msgid "The shared family {} nested in the family you are loading is already in this family. Which version should it use?"
+msgstr ""
+
+#: crates/ui-egui/src/editor/exists.rs:494
+msgid "Use this family's version"
+msgstr ""
+
+#: crates/ui-egui/src/editor/nested.rs:78
+msgid "{} can't be loaded into itself, nor into a family it nests"
+msgstr ""
+
 #: crates/ui-egui/src/editor/sketch.rs:1064
 msgid "Align (AL): pick a reference, then a line of the sketch that moves onto it; its padlock locks them"
 msgstr ""

@@ -752,6 +752,8 @@ pub struct BimApp {
     favorites_dialog: Option<favorites::FavoritesDialog>,
     /// The Family Editor, while it's open.
     family_editor: Option<editor::FamilyEditor>,
+    /// The family documents under the open one, which was opened by Edit Family on a family nested in the last (T6a).
+    family_hosts: Vec<editor::FamilyEditor>,
     /// A family being loaded into the project, waiting on "Family Already Exists" (`editor::exists`).
     family_loading: Option<editor::exists::Loading>,
     /// What the last family load decided: how the project's family was overwritten, and its shared nested families.
@@ -1429,6 +1431,7 @@ impl BimApp {
             family_dialog: None,
             favorites_dialog: None,
             family_editor: None,
+            family_hosts: Vec::new(),
             family_loading: None,
             family_decided: None,
             favorites_path: None,

@@ -378,6 +378,35 @@ pub fn form_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, whi
     best.map(|(_, i)| i)
 }
 
+/// The nested instance of `family` drawn at point `at` of view `which` (sized by `values`), its place in `nested_instances`:
+/// the one nearest the eye there, as [`form_at`] finds a form. None where none is.
+pub fn nested_at(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, at: P2) -> Option<usize> {
+    let mut best: Option<(f64, usize)> = None;
+    for i in 0..family.nested_instances.len() {
+        for t in family.instance_pieces(i, values).iter().flat_map(|p| p.tris.iter()) {
+            let q = t.map(|p| st.to_view(which, p));
+            if !inside(&q, at) {
+                continue;
+            }
+            let near = match which {
+                Which::Plan => t.iter().map(|p| p[2]).fold(f64::NEG_INFINITY, f64::max),
+                Which::Ceiling => -t.iter().map(|p| p[2]).fold(f64::INFINITY, f64::min),
+                Which::Elevation(side) => -t.iter().map(|p| P2(p[0], p[1]).dot(side.looking())).fold(f64::INFINITY, f64::min),
+            };
+            if best.is_none_or(|(b, _)| near > b) {
+                best = Some((near, i));
+            }
+        }
+    }
+    best.map(|(_, i)| i)
+}
+
+/// The outline nested instance `i` of `family` is seen with in view `which`: the hull of its pieces' corners there.
+pub fn nested_outline(family: &Family, values: &BTreeMap<String, Val>, st: &Staged, which: Which, i: usize) -> Vec<P2> {
+    let corners = family.instance_pieces(i, values).iter().flat_map(|p| p.tris.iter().flatten().map(|q| st.to_view(which, *q))).collect();
+    crate::geom::hull(corners)
+}
+
 /// The solid form of `family` (sized by `values`) shown at pixel `px` of a picture taken through `cam`, the family at the
 /// origin as {3D} shows it: the one nearest the eye there.
 pub fn form_at_3d(family: &Family, values: &BTreeMap<String, Val>, cam: &view3d::Camera, px: (f64, f64)) -> Option<usize> {

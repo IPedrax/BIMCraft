@@ -203,11 +203,28 @@ fn a_family_file_the_project_has_otherwise_asks_before_load_family_loads_it() {
 
 #[test]
 fn a_shared_nested_family_asks_after_the_family_and_either_choice_loads() {
-    for (choice, want) in [("Use the project's version", Shared::Project), ("Overwrite it with the version in this family", Shared::Family)]
+    // The project has a shared Hinge, 70 wide; Reload's document loads a door nesting a shared Hinge 50 wide (T6a's real
+    // trigger: the core's dry run finds it).
+    let dir = tempfile::tempdir().unwrap();
+    let door = dir.path().join("Door.json");
+    let hinge = |w: u32| {
+        json!({"category":"generic","shared":true,"parameters":[{"name":"W","value":w}],"types":{"H":{}},
+                                "forms":[{"profile":[[0,0],["W",0],["W",10],[0,10]],"to":10}]})
+    };
+    let door_family = json!({"name":"Door","category":"generic","types":{"D":{}},"nested":[{"name":"Hinge","family":hinge(50)}],
+                             "nested_instances":[{"family":"Hinge","type":"H"}]});
+    std::fs::write(&door, door_family.to_string()).unwrap();
+    for (choice, want, width) in
+        [("Use the project's version", Shared::Project, 70.0), ("Overwrite it with the version in this family", Shared::Family, 50.0)]
     {
         let mut h = changed();
-        // What T6 will find: a shared family nested in Reload that the project has otherwise.
-        h.state_mut().family_editor.as_mut().unwrap().set_shared_nested(vec!["Hinge".into()]);
+        let mut own = hinge(70);
+        own["name"] = json!("Hinge");
+        assert!(h.state_mut().run("family", json!({"definition": own})).is_some());
+        // Loaded into the document: it has no Hinge, so nothing asks.
+        h.state_mut().nest_family_file(&door);
+        h.run();
+        assert!(!asked(&h, EXISTS) && !asked(&h, SHARED));
         press(&mut h, "Load into Project and Close");
         press(&mut h, VERSION);
         assert!(asked(&h, SHARED), "then the nested family's question");
@@ -220,15 +237,22 @@ fn a_shared_nested_family_asks_after_the_family_and_either_choice_loads() {
         assert_eq!(decided.shared, [("Hinge".to_string(), want)]);
         assert!(reload(&h).parameters.iter().any(|p| p.name == "Parameter 1"));
         assert!(h.state().family_editor.is_none());
+        // One Hinge across the project: the project's, and the one nested in Reload's door, as answered.
+        let m = &h.state().session.model;
+        assert_eq!(m.families["Hinge"].parameters[0].value.as_f64(), Some(width));
+        let nested = reload(&h).nested.iter().find(|n| n.name == "Hinge").map(|n| &n.family);
+        assert_eq!(nested, Some(&m.families["Hinge"]), "the shared Hinge Reload nests is the project's");
     }
-    // An identical family still asks about its nested one, and Cancel there loads nothing.
+    // Load Family from the file asks too, and Cancel there loads nothing.
     let mut h = project();
-    h.state_mut().edit_family("Reload");
+    let mut own = hinge(70);
+    own["name"] = json!("Hinge");
+    assert!(h.state_mut().run("family", json!({"definition": own})).is_some());
+    let was = h.state().session.model.to_json().unwrap();
+    h.state_mut().load_family_file(&door);
     h.run();
-    h.state_mut().family_editor.as_mut().unwrap().set_shared_nested(vec!["Hinge".into()]);
-    press(&mut h, "Load into Project and Close");
     assert!(!asked(&h, EXISTS) && asked(&h, SHARED));
     press(&mut h, "Cancel");
-    assert!(h.state().family_editor.is_some());
     assert!(h.state().family_decided.is_none());
+    assert_eq!(h.state().session.model.to_json().unwrap(), was);
 }

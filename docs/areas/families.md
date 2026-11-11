@@ -168,7 +168,7 @@ otherwise; its formula rounds half away from zero), an angle, an `area` (mm²) o
 lengths in mm needs no conversion (`Width * Depth` is an area), schedules and `{label}` text showing them in m² and m³;
 yes or no; or words: a material, `text`, a `url` (`MAX_URL`, one line) or a `familytype`. Words take no formula and no formula
 reads them (`Kind::text`; `family/validate.rs` refuses the formula, a material still where it is worked out). A family type
-parameter names the category of the families whose types it picks (`of`) and holds no value until nested families exist.
+parameter names the category of the families whose types it picks (`of`) and holds no value until T24 (a nested family's type chosen by it).
 `group` is the heading it is listed under (`Group`, 14 of them); none, its kind's (`Parameter::group`: Dimensions for lengths,
 areas, volumes and angles, Materials and Finishes for materials, else Other). `shared` is a shared parameter's GUID, the
 same wherever it is used and distinct from the parameter's library-entry GUID (which is per project and per family): two
@@ -537,8 +537,8 @@ family is on a plane is refused by the project on Load into Project, said in the
   when `component` is given no `offset` (Revit's Default Elevation); finite and within `MAX_COORD`. A component placed keeps
   its offset, so changing it moves nothing. An adaptive one (`Model::placed_by_points`, by `component` or `adaptive_place`)
   never takes it: Revit places it by its points alone.
-- `cut_with_voids_when_loaded` (off) and `shared` (off) are stored only: a project's voids cutting a component and nested
-  families will read them.
+- `cut_with_voids_when_loaded` (off) is stored only: a project's voids cutting a component will read it (T23).
+- `shared` (off) makes the family a shared nested family when another nests it (*Nested families*, below).
 - `cut_in_views`: none, a section cuts the family's forms as its category says (`Category::cut`); `true` or `false`
   overrides that. `Family::cuts_in_views` is the one place that decides, for a component's solids in the 3D scene
   (`view3d.rs`), the components a section cuts (`render.rs`) and a family door's or window's forms, which their category
@@ -726,6 +726,63 @@ the language of the family names; as given none, a French project gets the Frenc
 and every other language the English.
 
 
+## Nested families
+
+T6a (`family/nested.rs`). A family may nest families, as Revit's Insert > Load Family in the Family Editor does: `nested` holds
+each one's name and whole definition (`NestedFamily`), carried inside the host, so a family file and a project's family hold what
+they nest. `nested_instances` (`NestedInstance`) place their types: each on a plane of the host (`host`, a `PlaneRef`, Ref. Level
+when none) at `at` in that plane's axes, `offset` along its normal and turned `angle` degrees about it, `visible` a yes/no or a
+formula, and `params` setting the nested family's parameters, type or instance: a number, or a formula over the host's
+(Associate Family Parameter: `{"W": "Width"}`); a material, a text or a URL parameter names one of the host's of its kind, or
+holds the material's name or the words, as a form's `material` does. A parameter the nested family works out by a formula, a
+reporting one and a family type (T24's) can't be set. Both are parts (`HasPart`: ids and GUIDs, kept by place); the definition
+inside is the nested family's own, its forms' and planes' ids and GUIDs not the project library's (a nested copy of a project
+family holds the same GUIDs). Every walk that names a parameter or a material reaches them: `rename_parameter`, `every_formula`,
+`material_refs_mut`, `materials`, `rename_material` (into the definitions, at every depth), `hosted_on`, `rehost` and
+`resolve_hosts`; deleting a plane an instance stands on is refused, naming it.
+
+`Family::pieces_at` adds each visible instance's pieces (`nested_pieces`): the nested family's values for its type, the
+instance's `params` worked out over the host's values and seeded over the type's (`Family::values_seeded`), built (its own nested
+instances too), then placed on its host plane's frame, flexed with the host's type, so an instance follows a plane a label moves.
+Plans, sections, the 3D view, the family's own views, `render` and IFC all read `pieces_at`, so the nested geometry is in the
+host's triangles and in its IFC body with nothing else to do; an instance standing upright on a level plane adds its plan
+symbols to the host's marks. A host's voids don't cut nested instances and a nested void cuts its own family only (Revit's
+default; a void cutting the host is T23's). `Family::check` builds every type with them and checks each definition in turn: no
+family nested in itself or in one it is nested in (`Model::check` knows the project family's name), names unique, at most
+`MAX_NESTING` (5) levels, `MAX_NESTED` (32) families and `MAX_NESTED_INSTANCES` (256) instances to a family, `MAX_NESTED_TOTAL`
+(128) definitions in a tree, and a build meter of `MAX_NESTED_BUILDS` (2048) instance builds shared by the tree, so a hostile
+file ends in an error.
+
+The `family` command: `nest {path | definition, name?, overwrite?, shared_nested?}` loads a family into the family
+(`nested::nest_into`), refused over one it nests defined otherwise unless `overwrite` says `version` (its values kept where they
+fit, through the reload rules above) or `version_and_values`; `nested` replaces the list, `delete_nested` takes families away
+(refused while an instance places one); `nested_instance` patches one by id or GUID (none adds one; a `host` may be the Work
+Plane dialog's name), `nested_instances` replaces the list, `delete_nested_instance` takes them away; `dry_run`'s `changes` say
+`nested` and `nested_instances`.
+
+A nested family whose `shared` option is on is shared. Loaded into a target (the project's families, or a host's nested list),
+a family brings the shared families nested in it, reached through shared ones only (a family that isn't shared keeps what it
+nests to itself, `Family::shared_within`): one the target hasn't is added to it; one it has otherwise is asked about
+("Shared Family Already Loaded", `nested::reconcile_shared`; `shared_nested: {name: project | family}` in the command): `project` gives the family loaded the target's (the default when
+unanswered), `family` overwrites the target's with the family's, its values too. One definition of a shared family is kept
+across the target: after one changes in the project, every family of the project that nests it, at any depth, takes the same
+(`Family::replace_shared`). A shared nested instance is built into its host as any other: its own element in the project
+(Tab-select, schedules, tags, IFC aggregated into its host) is T6b's. A nested family's type chosen by a family type parameter
+is T24's; a door's leaf on a hinge line turned by an angular label is T26's (F7c), though an instance's `angle` may already
+read an instance parameter (`Swing Angle`).
+
+In the family document (`editor/nested.rs`): Insert > Load Family loads a family file into the family, asking Family Already
+Exists and Shared Family Already Loaded against its nested families (`exists.rs`'s `After::Nest`); Create > Component (CM) places
+an instance of one, picked in the Options Bar, by a click in a plan or an elevation, on that view's work plane (from {3D} the floor
+plan opens); a click on an instance selects it ("Modify | Nested Instance"), its outline drawn, and Delete takes it away. Its
+Properties: the type (any nested family's), the Work Plane, X, Y, Offset and Angle, Visible, and its family's parameters under
+their groups, each with Revit's "=" (`Field::Nested`, `NestedRows`). The Project Browser's Families lists the nested families
+and their types, with Edit Family and Delete on the right-click. Edit Family (also on the instance's contextual tab) opens the
+nested family's own document over the host's (`BimApp::family_hosts`): its Load into Project and Load into Project and Close load
+it back into the host, asking Family Already Exists in the family's words; Close Family goes back without loading. The project is
+untouched until the host is loaded. A nested instance is moved by its Properties; dragging it in a view is T6b's. FORMAT 27
+says an older build would leave both fields out of a file.
+
 ## Reloading a family
 
 `family {path, name?, overwrite?}` can choose how to load over a family already in the project:
@@ -768,9 +825,10 @@ document renamed renames the project's family as before, asking nothing. Load in
 family went in; on Cancel or a refusal the document stays open, a refusal said in it.
 
 A load asks its questions in turn (`Question`): the family's own, then "Shared Family Already Loaded" for each shared family
-nested in it that the project has otherwise (keep the project's version, or overwrite it with the family's). Nested families
-(T6) don't exist yet, so nothing detects the second question: the document's `shared_nested` is where T6 puts what it finds,
-and until then only tests inject it. The answers are kept as the load's `Decided`, for the command to take once it can.
+nested in it that the project has otherwise (keep the project's version, or overwrite it with the family's), as the core's dry
+run says them (`shared_conflicts`); the answers go into the command as `shared_nested` and are kept as the load's `Decided`. Loading
+into a family (Insert > Load Family in a family document, or Load into Project from a nested family's document) asks the same
+two questions against that family's nested families, in the family's words (*Nested families*).
 
 Load matches family and type names exactly, including case. The caller's `name` overrides the file's name. A new family name
 creates a separate library definition; imported part identities are reconciled by the normal library sync and do not rename

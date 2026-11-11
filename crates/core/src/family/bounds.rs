@@ -29,7 +29,8 @@ impl Family {
 
     /// [`Family::conservative_bounds`] of what is drawn, as it is drawn.
     fn bounds_as_drawn<'a>(&'a self, values: &BTreeMap<String, Val>) -> Option<[P3; 2]> {
-        if self.adaptive.is_some() {
+        // Nested instances (T6a) are boxed by what they build, as an adaptive family is.
+        if self.adaptive.is_some() || !self.nested_instances.is_empty() {
             return None;
         }
         let mut read = HashMap::new();
