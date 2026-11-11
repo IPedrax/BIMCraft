@@ -746,12 +746,11 @@ fn wall_quantities(m: &Model, id: Id, wl: &crate::model::Wall, holes: &[(f64, f6
     } else {
         let volume = |openings| walls::prisms(m, id, openings).iter().map(|p| prism_volume(&p.ring, &p.bottom, &p.top)).sum::<f64>();
         let (gross, net) = (volume(false), volume(true));
-        values.extend([
-            ("GrossSideArea", "AREA", gross / width / 1e6),
-            ("NetSideArea", "AREA", net / width / 1e6),
-            ("GrossVolume", "VOLUME", gross / 1e9),
-            ("NetVolume", "VOLUME", net / 1e9),
-        ]);
+        // Of a type the project doesn't have, it is 0 thick: no side is known from its volume.
+        if width > 0.0 {
+            values.extend([("GrossSideArea", "AREA", gross / width / 1e6), ("NetSideArea", "AREA", net / width / 1e6)]);
+        }
+        values.extend([("GrossVolume", "VOLUME", gross / 1e9), ("NetVolume", "VOLUME", net / 1e9)]);
     }
     values
 }
@@ -1377,29 +1376,32 @@ pub fn export(m: &Model) -> String {
                 hosts.insert(id, (ent, at, m.elevation(r.level)));
                 // Gross follows the actual planes with authored openings filled; courtyards and joins remain.
                 // Net follows the same roof geometry used for export, less its openings and intersecting shafts.
+                // A roof whose faces can't be found (a gable edge its footprint doesn't have) has no area to say: none is written.
                 let mut gross_roof = r.clone();
                 gross_roof.openings.clear();
-                let mut gross = 0.0;
-                let mut projected = 0.0;
-                for (loops, plane) in m.roof_faces(&gross_roof).unwrap_or_default() {
-                    if let Some((outer, holes)) = loops.split_first() {
-                        let area = geom::area(outer).abs() - holes.iter().map(|h| geom::area(h).abs()).sum::<f64>();
-                        projected += area;
-                        gross += area * (1.0 + plane.g.dot(plane.g)).sqrt();
+                if let Ok(faces) = m.roof_faces(&gross_roof) {
+                    let mut gross = 0.0;
+                    let mut projected = 0.0;
+                    for (loops, plane) in faces {
+                        if let Some((outer, holes)) = loops.split_first() {
+                            let area = geom::area(outer).abs() - holes.iter().map(|h| geom::area(h).abs()).sum::<f64>();
+                            projected += area;
+                            gross += area * (1.0 + plane.g.dot(plane.g)).sqrt();
+                        }
                     }
+                    let net: f64 = m
+                        .roof_prisms(r)
+                        .iter()
+                        .map(|(ring, bottom, top)| {
+                            let rise = ring.iter().map(|p| top.at(*p) - bottom.at(*p)).fold(0.0, f64::max);
+                            let area: f64 = m.less_shafts(&bottom.lift(ring), rise).0.iter().map(|p| geom::area(p).abs()).sum();
+                            area * (1.0 + top.g.dot(top.g)).sqrt()
+                        })
+                        .sum();
+                    let values =
+                        [("GrossArea", "AREA", gross / 1e6), ("NetArea", "AREA", net / 1e6), ("ProjectedArea", "AREA", projected / 1e6)];
+                    w.quantities(ent, "Qto_RoofBaseQuantities", &values, id);
                 }
-                let net: f64 = m
-                    .roof_prisms(r)
-                    .iter()
-                    .map(|(ring, bottom, top)| {
-                        let rise = ring.iter().map(|p| top.at(*p) - bottom.at(*p)).fold(0.0, f64::max);
-                        let area: f64 = m.less_shafts(&bottom.lift(ring), rise).0.iter().map(|p| geom::area(p).abs()).sum();
-                        area * (1.0 + top.g.dot(top.g)).sqrt()
-                    })
-                    .sum();
-                let values =
-                    [("GrossArea", "AREA", gross / 1e6), ("NetArea", "AREA", net / 1e6), ("ProjectedArea", "AREA", projected / 1e6)];
-                w.quantities(ent, "Qto_RoofBaseQuantities", &values, id);
             }
             _ => {}
         }
@@ -2767,6 +2769,48 @@ mod tests {
         assert!(near(q["GrossArea"], 48.0) && near(q["NetArea"], 47.0) && near(q["Perimeter"], 28000.0), "{q:?}");
         assert!(near(q["NetVolume"], 47.0 * q["Width"] / 1e3), "{q:?}");
         dangling(&f);
+    }
+
+    #[test]
+    fn an_attached_wall_of_no_known_thickness_has_no_side_areas() {
+        use crate::graphics::testing::{house, run};
+        let mut s = Session::new();
+        let walls = house(&mut s);
+        let roof = run(&mut s, "roof", json!({"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "slope": 30, "overhang": 0}));
+        run(&mut s, "modify", json!({"id": walls[0], "attach_top": roof["id"]}));
+        // A wall whose type the project doesn't have, as a file can hold: its thickness is 0, and its side is no volume over it.
+        let mut m = (*s.model).clone();
+        let Some(Element::Wall(wl)) = m.elements.get_mut(walls[0]) else { panic!("no wall") };
+        wl.type_name = "No Such Type".into();
+        let wl = wl.clone();
+        assert_eq!(m.thickness(&wl), 0.0);
+        let q = wall_quantities(&m, walls[0], &wl, &[]);
+        assert!(q.iter().all(|(_, _, v)| v.is_finite()), "{q:?}");
+        let names: Vec<&str> = q.iter().map(|(n, _, _)| *n).collect();
+        assert!(!names.contains(&"GrossSideArea") && !names.contains(&"NetSideArea"), "{names:?}");
+        assert!(names.contains(&"GrossVolume") && names.contains(&"NetVolume"), "{names:?}");
+    }
+
+    #[test]
+    fn a_roof_whose_faces_fail_has_no_area_quantities() {
+        use crate::graphics::testing::{house, run};
+        let mut s = Session::new();
+        house(&mut s);
+        let roof = run(&mut s, "roof", json!({"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "slope": 30, "overhang": 0}));
+        let id = roof["id"].as_u64().unwrap();
+        // A gable edge the footprint doesn't have, as a file can hold: its faces can't be found, so no area is known.
+        let mut m = (*s.model).clone();
+        let Some(Element::Roof(r)) = m.elements.get_mut(id) else { panic!("no roof") };
+        r.gables = vec![99];
+        let r = r.clone();
+        assert!(m.roof_faces(&r).is_err());
+        let f = export(&m);
+        let ent = of_kind(&f, "IFCROOF")[0];
+        assert_eq!(quantities_of(&f, ent, "Qto_RoofBaseQuantities"), BTreeMap::new(), "no zeros written as if measured");
+        // The same roof as drawn has them.
+        let f = export(&s.model);
+        let q = quantities_of(&f, of_kind(&f, "IFCROOF")[0], "Qto_RoofBaseQuantities");
+        assert!(q["GrossArea"] > q["ProjectedArea"] && q["ProjectedArea"] > 0.0, "{q:?}");
     }
 
     /// Every closed shell in `f` is closed: each edge of its faces, from one point to the next round a bound, is run once

@@ -86,12 +86,14 @@ takes that outline, and its `Qto_SpaceBaseQuantities` give both whichever is set
 the centre lines, `NetFloorArea` and `NetPerimeter` at the faces, `Height` (the room's Unbounded Height) and `GrossVolume` and `NetVolume`. Walls, slabs, doors and windows
 carry theirs too (`ifc::wall_quantities`): a wall its `Length` on its axis, `Width`, `Height` and side and volume, gross and less the
 doors and windows in it (each cut to its height; joins aside). An attached wall omits `Height`, as it varies; its gross/net
-volumes integrate the same clipped prisms as its geometry (including joins), and its side areas are those volumes over its thickness;
+volumes integrate the same clipped prisms as its geometry (including joins), and its side areas are those volumes over its thickness
+(none for a wall of a type the project lacks, which is 0 thick);
 a level slab its `Width` (depth), `Perimeter` and area and volume less its openings, a sloped or shaped one its `Width` and volumes; a door or window
 its `Width`, `Height`, `Perimeter` and `Area`. Ceilings carry `Qto_CoveringBaseQuantities`: their thickness (`Width`),
 `GrossArea` and `NetArea` less their openings and intersecting shafts. Roofs carry `Qto_RoofBaseQuantities`: `GrossArea`
 and `NetArea` along their planes (including shaped tops), and `ProjectedArea` in plan. Gross and projected areas exclude
-courtyards, net also openings and intersecting shafts; extruded and joined roofs measure their actual faces.
+courtyards, net also openings and intersecting shafts; extruded and joined roofs measure their actual faces. A roof whose faces
+can't be found (`Model::roof_faces` fails: a gable edge its footprint doesn't have) writes no area quantities, rather than zeros.
 Pad and strip footings carry `Qto_FootingBaseQuantities`: `Length`, `Width`, `Height`, `GrossVolume` and `NetVolume`
 (equal until geometry cuts are supported); a strip also gives its `CrossSectionArea`. Lengths are mm, areas m² and volumes m³.
 An attached top or base follows the roof's or floor's plane
