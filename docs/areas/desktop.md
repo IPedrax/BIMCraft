@@ -82,6 +82,21 @@ request wakes the window (`Context::request_repaint`, from the context the first
 most; ten seconds, in all, to say the first line whole (a byte now and then does not count), and what is not a request, a web page's
 HTTP say, is answered with an error and closed. A test (`tests/control.rs`) plays the agent on a real connection while the harness runs frames.
 
+A connected agent can read the current desktop context with the MCP tool `desktop_context` (no arguments), or the authenticated
+bridge request `{"token": T, "op": "context"}`. The window answers on its UI thread with `project` (the project name), `selection`
+(an array of `{id, guid, category}` for selected elements still present), and `active_view` (`{kind, name, id, guid}`). View kinds are
+`plan`, `ceiling`, `3d`, `section`, `elevation`, `sheet` and `schedule`; a default view or built-in schedule with no model element has
+null `id` and `guid`. A plan's ID identifies its actual level or plan view, including a dependent view, rather than its parent.
+Selection belongs to the project and can remain selected while navigating to another view. Clearing or deleting it returns `[]`.
+Home reports `selection: []` and `active_view: null`; a view removed before the next frame's cleanup also reports null.
+During replacement of the project between frames, context returns an error asking the agent to retry after the window catches up,
+rather than resolving old selected IDs against the new model. New/Open through the window clear the old context. A snapshot is
+current when answered: agents should request it again after the user selects or navigates. It does not change selection, navigate,
+edit the model, add an undo step, or access files, and is available through both window and connection read-only settings.
+This is desktop state, not a model command or a field saved in `.bimcraft`: headless MCP returns an explicit error explaining
+`--connect`. Without a listening window the existing connection error applies; an older window without this bridge operation
+reports unknown op. The active view is within the connected window, independent of which operating-system window has focus.
+
 File > Settings > Agents opens the same port without `--control`: Let agents work on this project, and its Port (0 for any free one),
 both kept in `settings.json` (`agents`), so the window opens it again at its next start once `--control` has had its say
 (`listen_as_kept`), with the same bridge file and the same rules. Unticked, the port is closed: a `Control` dropped stops listening
@@ -93,6 +108,11 @@ user's own commands are never read-only. An agent may ask to only read as well (
 `mcp --connect --read-only` sends). The view control bar ends with the port's state, in both profiles (`agents_indicator`): Agents:
 off, Agents: port N, or Agents: N connected (a connection counts once it has said a request with the token), with read-only when edits
 are off; a click opens Settings at Agents.
+A script request may ask for a dry run (`"dry_run": true`, `Session::script_dry_run`): the window runs it all or nothing, takes it
+back and replies with what it would make, change and remove and the warnings the model would have, so the user's project and
+undo history are as they were. It only reads, so it answers where agents may only read too, and a line that names a file or
+would save, undo, redo or replace the project is refused, as is a `favorite` other than `list`: saving or deleting one writes the
+user's favorites file, outside the project, even with no `path` given.
 
 The interface's language is `lang::Lang`: a project's language, or Simplified Chinese (issue 38), which only the window speaks
 (a drawing's lettering, `font.rs`, is drawn in code and has no hanzi, so a project is never in Chinese and `Lang::project()` gives
@@ -107,7 +127,9 @@ What a view hides or reveals for now (Temporary Hide/Isolate, Reveal Hidden Elem
 project's: the plan, the section and the 3D view draw `BimApp::view_model`, a copy of the model whose view graphics went through the `graphics`
 command on a scratch `Session`, made once for each model and each setting. A tool that needs the view's real model (select all, commands)
 still reads `session.model`. The Door and Window tools preview with `opening_of`, which the `door` and `window` commands insert too, so a
-sketch is the element the click makes (`render::sketch`). A selected door or window shows two temporary dimensions from its middle
+sketch is the element the click makes (`render::sketch`). When placing a single-swing door in plan, Space swaps its hinge jamb
+and moving the pointer across the wall centre swaps its facing. With one such door selected, Space steps through the four Opens
+pictures in Inspector order; each press is one `modify` and one Undo step. A selected door or window shows two temporary dimensions from its middle
 to the faces of the walls meeting its wall either side of it, or to its wall's ends where none does (`Model::opening_span`), as Revit's
 measure to wall faces; typing one counts from that face. Placed or dragged alone within `SNAP` px of the middle between those faces, a
 door or window lands on it (`Model::centred`): the click sends that `offset`, the drag slides by what reaches it.
@@ -159,7 +181,8 @@ a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and
 Enter places the point along it; a point lined up with a wall says which: "Lines up with wall 100231", the core's
 `AlignmentResult::wall_id`), and a point that moves with the cursor goes through them. A selected wall's ends are
 grips (`grip_drag`): a drag runs `move` with `end`, Ctrl keeps the length; the angle beside each end runs `rotate` about it. A
-wall joined at the end that moves keeps its joint, which slides along the wall it meets, so lengths change.
+wall joined at the end that moves keeps its joint, which slides along the wall it meets, so lengths change. At a corner where
+a strip footing ends with it and another element also ends there, the footing's end goes with the wall's, as another wall's would.
 
 A click is made where the button was, not where the hand has got to. egui reads a click's position, and what lay under it, from the
 pointer's last position in the frame, and counts two clicks in a frame as one, so a hand that moves on in the time between frames
@@ -293,6 +316,12 @@ Properties' filter. With a selection of several categories, the line under the T
 and edits, the selection staying as it is: `BimApp::palette_ids` is the selection narrowed to it, and the palette's subject, the Type
 Selector, Edit Type (from the palette, the ribbon or the right-click menu) and every edit the palette sends read it, never the selection.
 `palette_filter` keeps the selection it was picked for, so a new selection starts it over.
+What the palette reads of its elements, `element_json`, it reads several times a frame (the Type Selector, the rows, a family's
+parameters), and a component's says the room it stands in, which costs its level's room boundaries: `BimApp::elements_json` keeps
+each element's for the model it was found in (`palette_json`, by a `Weak<Model>` as the canvas keeps room outlines) and finds what it
+lacks together, among one `Rooms`, so a level's rooms are found once for the whole selection. On the 20-storey highrise with two rooms
+a storey, 50 selected components cost 180 ms a frame read afresh; kept, 0.004 ms, and the frame after a change 3 ms on one level, 27 ms
+over all twenty. Select All Instances shares one `Rooms` over what the view shows the same way.
 
 View Templates (`templates.rs`). VT and View > View Templates open it as Revit's does, in the look Type Properties has: on the left a tab for each
 kind of view (`ViewKind`: Plan, Elevation/Section, 3D; a template of no kind is on every tab), the templates of the one showing, and Duplicate…,
