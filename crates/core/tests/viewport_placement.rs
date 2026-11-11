@@ -216,4 +216,101 @@ mod tests {
         }
         assert!(!render::png(&d).unwrap().is_empty());
     }
+
+    /// The plan of a project with a title block of its own, `width` by `height` mm and, if given, a drawing area, on an A3
+    /// sheet; `none` for a sheet with no title block.
+    fn with_title_block(title_block: serde_json::Value) -> Session {
+        let mut s = project("A3");
+        let name = title_block["name"].as_str().unwrap_or("none").to_string();
+        if name != "none" {
+            s.execute("title_block", &title_block).unwrap();
+        }
+        s.execute("sheet", &json!({"number":"A102","name":"Own","title_block":name})).unwrap();
+        s
+    }
+
+    /// A box of paper mm (left, bottom, right, top) as the sheet drawing's pixels (y down), as `output_bounds` gives them.
+    fn px(d: &Drawing, [left, bottom, right, top]: [f64; 4]) -> [f32; 4] {
+        let (x0, y1) = d.view.px(bimcraft_core::geom::P2(left, bottom));
+        let (x1, y0) = d.view.px(bimcraft_core::geom::P2(right, top));
+        [x0, y0, x1, y1]
+    }
+
+    fn place_on(s: &mut Session, sheet: &str, name: &str, scale: f64) -> serde_json::Value {
+        s.execute("duplicate_view", &json!({"view":"Level 1","name":name})).unwrap();
+        s.execute("place", &json!({"sheet":sheet,"view":name,"scale":scale})).unwrap()
+    }
+
+    #[test]
+    fn automatic_views_clear_the_title_block_of_the_projects_own_the_sheet_names() {
+        // Taller and wider than the built-in box: the views keep clear of all of it, not of the built-in box's room.
+        let mut s = with_title_block(json!({"name":"Tall","width":200,"height":200}));
+        let ids: Vec<Id> =
+            (1..=6).map(|n| place_on(&mut s, "A102", &format!("Drawing {n}"), 50.0)["id"].as_u64().unwrap()).collect();
+        let d = sheet::draw(&s.model, s.model.sheet_numbered("A102").unwrap()).unwrap();
+        // ISO A3: the border's bottom right corner at (410, 10); the title block 200 mm square up and left of it.
+        let title = px(&d, [210.0, 10.0, 410.0, 210.0]);
+        for id in ids {
+            let b = output_bounds(&d, id);
+            assert!(apart(b, title), "the viewport must clear the project's title block: {b:?}");
+            assert_inside(&d, b);
+        }
+    }
+
+    #[test]
+    fn a_sheet_with_no_title_block_keeps_no_room_for_one() {
+        let mut s = with_title_block(json!("none"));
+        let at = place_on(&mut s, "A102", "Plan", 50.0)["at"].clone();
+        // ISO A3's border runs from 10 to 287 mm up: the first view goes in its middle, not above a title box.
+        assert_eq!(at[1], json!((10.0 + 287.0) / 2.0), "{at}");
+    }
+
+    #[test]
+    fn automatic_views_pack_inside_the_title_blocks_drawing_area() {
+        let area = [30.0, 150.0, 400.0, 280.0];
+        let mut s = with_title_block(json!({"name":"Area","drawing_area":[[area[0], area[1]], [area[2], area[3]]]}));
+        let ids: Vec<Id> =
+            (1..=6).map(|n| place_on(&mut s, "A102", &format!("Drawing {n}"), 50.0)["id"].as_u64().unwrap()).collect();
+        let d = sheet::draw(&s.model, s.model.sheet_numbered("A102").unwrap()).unwrap();
+        let inside = px(&d, area);
+        for (i, id) in ids.iter().enumerate() {
+            let b = output_bounds(&d, *id);
+            assert!(
+                b[0] >= inside[0] && b[1] >= inside[1] && b[2] <= inside[2] && b[3] <= inside[3],
+                "view {i} and its title must stay in the drawing area {inside:?}: {b:?}"
+            );
+            for other in &ids[..i] {
+                assert!(apart(b, output_bounds(&d, *other)), "views in the drawing area must not stack: {b:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn place_warns_when_a_view_goes_off_the_paper() {
+        let mut s = project("A3");
+        let mut warned = None;
+        for n in 1..=8 {
+            let placed = place_on(&mut s, "A101", &format!("Plan {n}"), 10.0);
+            let id = placed["id"].as_u64().unwrap();
+            let d = drawing(&s);
+            let b = output_bounds(&d, id);
+            let on_paper = b[0] >= 0.0 && b[1] >= 0.0 && b[2] <= d.view.width as f32 && b[3] <= d.view.height as f32;
+            match placed.get("warning") {
+                None => assert!(on_paper, "a view placed with no warning is on the paper: {b:?}"),
+                Some(w) => {
+                    assert!(!on_paper, "only a view off the paper is warned of: {placed}");
+                    assert!(w.as_str().unwrap().contains("paper"), "{w}");
+                    warned = Some(w.clone());
+                }
+            }
+        }
+        assert!(warned.is_some(), "eight plans at 1 : 10 don't fit A3");
+        // A spot given by hand is said too, when it is off the paper, and not otherwise.
+        s.execute("duplicate_view", &json!({"view":"Level 1","name":"By hand"})).unwrap();
+        let off = s.execute("place", &json!({"sheet":"A101","view":"By hand","at":[-200, 100]})).unwrap();
+        assert!(off["warning"].as_str().is_some_and(|w| w.contains("paper")), "{off}");
+        s.execute("duplicate_view", &json!({"view":"Level 1","name":"In the corner"})).unwrap();
+        let on = s.execute("place", &json!({"sheet":"A101","view":"In the corner","at":[100, 200]})).unwrap();
+        assert!(on.get("warning").is_none(), "{on}");
+    }
 }

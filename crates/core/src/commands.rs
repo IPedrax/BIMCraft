@@ -938,9 +938,10 @@ other_files(
         &[],
         "{sheet: number or id, view: a level's, section's, elevation's, schedule's or 3D view's name or id, at?: [x, y], \
          scale?, azimuth?, elevation?} puts the view on the sheet at 1 : `scale` (by default the view's own, see `scale`, 1 : 100 when it has none of its own; a schedule keeps its size), \
-         its middle `at` mm from the paper's bottom left corner (by default in a free spot, titles included; right of all views when full); a \
-         view goes on one sheet. A schedule (Room Schedule, Door Schedule…) or the 3D view ({3D}, seen from `azimuth` and \
-         `elevation` degrees) comes to be as it's first placed",
+         its middle `at` mm from the paper's bottom left corner (by default in a free spot clear of the other views, their titles \
+         and the title block, or in the title block's drawing area; right of all views when full); a view goes on one sheet. \
+         Returns {id, at}, and a `warning` when the view or its title reaches past the paper. A schedule (Room Schedule, Door \
+         Schedule…) or the 3D view ({3D}, seen from `azimuth` and `elevation` degrees) comes to be as it's first placed",
         place,
     ),
     edit(
@@ -10354,9 +10355,15 @@ fn place(s: &mut Session, p: &Value) -> R {
         Some(at) => at,
         None => sheet::automatic_center(&s.model, sheet, view, scale).map_err(|why| bad(c, why))?,
     };
+    // Off the paper, by hand or for want of room on it, it goes there all the same, and the reply says so.
+    let warning = sheet::off_paper(&s.model, sheet, view, scale, at);
     let (sheet, view) = (s.model.guid(sheet), s.model.guid(view));
     let id = s.model_mut().insert(Element::Viewport(Viewport { sheet, view, at, scale }));
-    Ok(json!({"id": id, "at": at}))
+    let mut out = json!({"id": id, "at": at});
+    if let Some(w) = warning {
+        out["warning"] = json!(w);
+    }
+    Ok(out)
 }
 
 fn material(s: &mut Session, p: &Value) -> R {

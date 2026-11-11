@@ -2,14 +2,6 @@
 
 Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the map, and this file is read when the area is touched.
 
-`place` without `at` keeps the complete view and its title, rule and scale clear of other viewports,
-the sheet border and the built-in title block, using the active technical standard's margins. It
-keeps the usual middle for the first view when it fits, then tries beside or below existing views
-and the paper's corners. Long titles reserve their actual lettering width; schedules keep their
-title inside their table. When no candidate fits, placement continues right of the other views,
-off the paper without stacking them. Give `at` to choose a position yourself; existing viewports
-are not rearranged.
-
 A view's scale, detail level and visual style are in its `Graphics` (`scale`, `detail`, `style`; the `scale`, `detail` and `visual_style`
 commands, which the view control bar's menus, Properties' View Scale, Scale Value 1:, Detail Level and Visual Style, and WF, HL and SD run). A
 view template controls them as groups of their own (`Group::Scale`, `Detail`, `Style`, in `Graphics::resolved`, `check_followed` and the three
@@ -748,18 +740,27 @@ shows on the sheet. `titleblock::values` works them out, `sheet::title_values` w
 as `title_values`, with the keys that are its own to give as `sheet_fields`.
 
 A definition may set `drawing_area: [[left,bottom],[right,top]]` in millimetres from the paper's bottom left. Each sheet using it
-must contain the rectangle. The first automatic viewport is centered there. Subsequent frames are placed to the right when they fit,
-otherwise at the rectangle's top right. An oversized frame reports both sizes. Explicit centers and existing viewports keep their
+must contain the rectangle, and views placed by default go inside it, the first in its middle. A view whose frame and title are
+larger than the area is refused, saying both sizes. Explicit centers and existing viewports keep their
 positions. Set `template_border: true` for a frame drawn by the template's own lines; standard fold marks still print.
 Both options are under Size in the title-block editor, and FORMAT 18 holds them; a definition without them keeps the standard
 border and placement.
+
+`place` without `at` (`sheet::spot`) keeps the complete view and its title, rule and scale (`footprint`) clear of other viewports
+and inside the sheet's room (`Room`): the title block's drawing area when it gives one, else the border 5 mm in, of the active
+technical standard's margins, clear of the title block the sheet names (the project's, the built-in one, or nothing for a sheet
+with none). It keeps the room's middle for the first view when it fits, then tries beside or below existing views and the room's
+corners. Long titles reserve their actual lettering width; schedules keep their title inside their table. When no candidate fits,
+placement continues right of the other views, off the paper without stacking them. Give `at` to choose a position yourself;
+existing viewports are not rearranged. Whenever a view or its title reaches past the paper, by hand or for want of room,
+`place` still places it and says so in its reply's `warning` (`sheet::off_paper`).
 
 A sheet may also have no title block at all: `sheet {"title_block": "none"}` (`titleblock::NONE`, in any case, or `false`; `true` or
 `""` is the built-in one), for one drawn on the sheet itself. It leaves out the border, the title box and its lettering and the folding
 marks, not viewports, their titles, schedules, text notes or detail lines. Properties > Title Block offers None beside Built-in and
 the project's own (`modify` with `title_block`); `elements` always reports it, `""` for the built-in one, which the file leaves out.
-The desktop and exports share `sheet::draw`. Paper size and automatic viewport placement stay the same, including the room above
-the built-in title box. A frame not drawn can't be picked; viewport and annotation picking are unchanged, and Properties shows the
+The desktop and exports share `sheet::draw`. Paper size stays the same, and automatic viewport placement keeps no room for a
+title box: the first view goes in the middle of the border. A frame not drawn can't be picked; viewport and annotation picking are unchanged, and Properties shows the
 sheet when nothing is selected. No title block of the project's may be called `none` (`TitleBlock::check`), and none is no library
 entry, so renaming and Purge Unused pass it by. A file of 17 holds no `none`, so its sheets keep the built-in title box; FORMAT 18,
 shared with the title blocks, keeps a build that reads up to 17 from printing the frame again on a sheet with none.
