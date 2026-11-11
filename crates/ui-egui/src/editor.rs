@@ -4,6 +4,12 @@
 
 mod association;
 pub(crate) mod document;
+pub(crate) mod exists;
+mod extrusion;
+pub(crate) mod options;
+mod temp_hide;
+mod types_dialog;
+pub(crate) mod views;
 
 use crate::popup::Modal;
 
@@ -111,7 +117,13 @@ struct FormText {
     material: String,
     visible: String,
     void: bool,
+    /// Which form it is while the document is open, whatever its place in the list: what Temporary Hide/Isolate hides it by
+    /// (`temp_hide.rs`). Given when it is made, never saved.
+    tag: u64,
 }
+
+/// The last form's `tag`.
+static TAGS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 impl FormText {
     fn of(f: &Form) -> FormText {
@@ -134,6 +146,7 @@ impl FormText {
             material: f.material.clone(),
             visible: f.visible.as_ref().map(expr_text).unwrap_or_default(),
             void: f.void,
+            tag: TAGS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1,
         }
     }
 
@@ -376,6 +389,34 @@ impl SymbolText {
     }
 }
 
+/// The family's {3D} preview: its picture and what it was drawn of (`key`); for a test, the camera it was drawn through and
+/// its size in pixels.
+pub(crate) struct Preview {
+    key: u64,
+    pub(crate) tile: TextureHandle,
+    #[cfg(test)]
+    pub(crate) cam: bimcraft_core::view3d::Camera,
+    #[cfg(test)]
+    pub(crate) size: [u32; 2],
+}
+
+#[cfg(test)]
+impl Preview {
+    /// Where point `q` of the family is on screen, the picture stretched over `pane`.
+    pub(crate) fn screen(&self, pane: Rect, q: [f64; 3]) -> egui::Pos2 {
+        let (x, y, _) = self.cam.project(q);
+        pane.min + vec2(x as f32 * pane.width() / self.size[0].max(1) as f32, y as f32 * pane.height() / self.size[1].max(1) as f32)
+    }
+}
+
+#[cfg(test)]
+impl FamilyEditor {
+    /// The {3D} preview, once drawn.
+    pub(crate) fn preview(&self) -> Option<&Preview> {
+        self.preview.as_ref()
+    }
+}
+
 /// What the editor shows of a family: its tabs' contents, as typed.
 pub(crate) struct FamilyEditor {
     /// The name the project has it under, when it has it.
@@ -405,18 +446,18 @@ pub(crate) struct FamilyEditor {
     ifc: Option<IfcClass>,
     /// How a door's or a window's leaves open; none, not said.
     operation: Option<Operation>,
-    /// Its options (Family Category and Parameters), as the family has them: set with the `family` command, kept as they are.
-    options: Value,
+    /// Its options (Family Category and Parameters, Properties' Other group), as the document edits them (`options.rs`).
+    options: options::OptionsText,
     /// The Properties palette's tab, for a family that isn't adaptive: its forms, its symbols, or making it adaptive.
     pub(crate) tab: Tab,
-    /// Family Types' tab: the parameters, or the types.
-    pub(crate) types_tab: TypesTab,
+    /// What Family Types keeps while it is open: its search, the groups folded, the row selected, its own dialogs.
+    types_dialog: types_dialog::TypesDialog,
     /// The type shown in Types and on the preview.
     picked: usize,
     /// How the preview looks at it: azimuth and elevation, degrees.
     look: (f64, f64),
     /// The preview, and what it was drawn of.
-    preview: Option<(u64, TextureHandle)>,
+    preview: Option<Preview>,
     /// Why the family can't be tried or made: shown under the preview.
     problem: Option<String>,
     /// The document's own state: its history, its preview's size, an association being made.
@@ -430,6 +471,10 @@ pub(crate) struct FamilyEditor {
     pub(crate) dialog: Option<DocDialog>,
     /// The instance it was opened from (Edit Family on it), whose placement Replay Instance takes.
     source: Option<bimcraft_core::model::Id>,
+    /// The form selected (a family that isn't adaptive), whose Properties show as Revit's for an Extrusion (`extrusion.rs`).
+    form: Option<usize>,
+    /// Its plans and elevations (`views.rs`): which one shows, and what each keeps for the session.
+    pub(crate) views: views::Views,
 }
 
 /// The tabs of a family document's ribbon, as Revit's family editor has them.
@@ -484,13 +529,6 @@ pub(crate) enum Tab {
     Adaptive,
 }
 
-/// Family Types' tabs.
-#[derive(Clone, Copy, PartialEq)]
-pub(crate) enum TypesTab {
-    Parameters,
-    Types,
-}
-
 impl FamilyEditor {
     /// Its reference planes and lines, as the family has them: what an adaptive point's work plane is worked out from.
     pub(crate) fn plane_set(&self) -> bimcraft_core::family::Planes<'_> {
@@ -524,9 +562,9 @@ impl FamilyEditor {
             kind: f.kind.clone(),
             ifc: f.ifc.clone(),
             operation: f.operation,
-            options: f.options_json(),
+            options: options::OptionsText::of(f),
             tab: Tab::Forms,
-            types_tab: TypesTab::Parameters,
+            types_dialog: Default::default(),
             picked: 0,
             look: (AZIMUTH, ELEVATION),
             preview: None,
@@ -537,6 +575,8 @@ impl FamilyEditor {
             ask: Asked::default(),
             dialog: None,
             source: None,
+            form: None,
+            views: Default::default(),
         }
     }
 
@@ -672,7 +712,7 @@ impl FamilyEditor {
             lines: self.lines.clone(),
             ..Family::default()
         };
-        family.merge_options(&self.options)?;
+        self.options.apply(&mut family);
         Ok(family)
     }
 
@@ -705,6 +745,14 @@ impl FamilyEditor {
                 for gone in project.families.get(was).iter().flat_map(|f| f.types.keys()).filter(|k| !family.types.contains_key(*k)) {
                     p["types"][gone] = Value::Null;
                 }
+                // And a value gone from a type that stays (a parameter renamed, deleted or no longer the type's) goes too.
+                for (name, set) in project.families.get(was).iter().flat_map(|f| f.types.iter()) {
+                    if let Some(now) = family.types.get(name) {
+                        for gone in set.keys().filter(|k| !now.contains_key(*k)) {
+                            p["types"][name][gone] = Value::Null;
+                        }
+                    }
+                }
             }
             None => p["name"] = json!(self.name.trim()),
         }
@@ -720,6 +768,9 @@ impl FamilyEditor {
             let m = s.model_mut();
             m.materials = base.materials.clone();
             m.images = base.images.clone();
+            // What a ghosted form is made of.
+            m.materials
+                .insert(GHOST.into(), bimcraft_core::model::Material { color: [150, 150, 150], transparency: 65, ..Default::default() });
             m.families.insert(name.to_string(), family.clone());
         }
         let place = |s: &mut Session, id: &str, p: Value| s.execute(id, &p).map(|_| ());
@@ -733,9 +784,15 @@ impl FamilyEditor {
         Ok(Arc::unwrap_or_clone(s.model))
     }
 
-    /// The preview, drawn again when what it shows or how it's looked at changes.
+    /// The preview, drawn again when what it shows or how it's looked at changes. A form the type previewed hides is drawn
+    /// ghosted (`ghosted`), as Revit's family editor draws it, unless Preview Visibility is on: then the family is drawn as it
+    /// is placed, without it. The camera is fitted to every form either way, so turning Preview Visibility on doesn't move it,
+    /// nor does Temporary Hide/Isolate leaving forms or a door's wall out (`temp_hide.rs`).
     fn refresh(&mut self, ctx: &Context, base: &Model) {
         let ground = crate::canvas::color(bimcraft_core::render::PAPER);
+        let placed_only = self.document.preview_visibility;
+        // Work Plane > Show: the plane drawn into the picture, so the forms in front of it hide it.
+        let work_plane = self.shown_work_plane_3d();
         let result = self.family().and_then(|f| {
             let key = {
                 let mut h = DefaultHasher::new();
@@ -747,31 +804,57 @@ impl FamilyEditor {
                     self.look.1.to_bits(),
                     self.document.preview_size,
                     ground.to_array(),
+                    placed_only,
+                    self.temporary(),
+                    format!("{work_plane:?} {:?}", (pal().muted, pal().accent)),
                 )
                     .hash(&mut h);
                 (base.materials.len(), base.images.len()).hash(&mut h);
                 h.finish()
             };
-            if self.preview.as_ref().is_some_and(|(k, _)| *k == key) {
+            if self.preview.as_ref().is_some_and(|p| p.key == key) {
                 return Ok(None);
             }
-            let model = self.scratch(base, &f)?;
-            let scene = Scene::new(&model);
-            let [w, h] = self.document.preview_size;
+            let ghosts = ghosted(&f, &self.values());
+            let every = self.scratch(base, ghosts.as_ref().unwrap_or(&f))?;
             let mut graphics = bimcraft_core::graphics::Graphics::default();
             graphics.categories.insert("level".into(), bimcraft_core::graphics::Override { hidden: true, ..Default::default() });
-            let look = bimcraft_core::graphics::Look::with(&model, &graphics);
-            let cam = scene.fit_in(self.look.0, self.look.1, w, h, &look);
-            let image = scene.render_in(&cam, &[], &look);
-            let pixels = image
-                .rgba
-                .as_chunks::<4>()
-                .0
-                .iter()
-                .map(|p| if p[..3] == [255; 3] { ground } else { Color32::from_rgb(p[0], p[1], p[2]) })
-                .collect();
+            let [w, h] = self.document.preview_size;
+            let scene = Scene::new(&every);
+            let cam = scene.fit_in(self.look.0, self.look.1, w, h, &bimcraft_core::graphics::Look::with(&every, &graphics));
+            // What Temporary Hide/Isolate hides for now: forms, and a door's or a window's wall.
+            let shown = if placed_only { &f } else { ghosts.as_ref().unwrap_or(&f) };
+            let hidden = temp_hide::without(shown, |i| self.temp_hidden_form(i));
+            if self.temp_hidden_host() {
+                graphics.categories.insert("wall".into(), bimcraft_core::graphics::Override { hidden: true, ..Default::default() });
+            }
+            let mut image = if hidden.is_some() || (placed_only && ghosts.is_some()) {
+                let drawn = self.scratch(base, hidden.as_ref().unwrap_or(shown))?;
+                Scene::new(&drawn).render_in(&cam, &[], &bimcraft_core::graphics::Look::with(&drawn, &graphics))
+            } else {
+                scene.render_in(&cam, &[], &bimcraft_core::graphics::Look::with(&every, &graphics))
+            };
+            // The canvas's ground where nothing is, before the work plane is laid over it.
+            for p in image.rgba.as_chunks_mut::<4>().0.iter_mut().filter(|p| p[..3] == [255; 3]) {
+                p[..3].copy_from_slice(&ground.to_array()[..3]);
+            }
+            if let Some(shown) = &work_plane {
+                let extents = bimcraft_core::family::views::extents(&f, &self.values());
+                views::draw_work_plane_3d(&mut image, &cam, shown, extents);
+            }
+            let pixels = image.rgba.as_chunks::<4>().0.iter().map(|p| Color32::from_rgb(p[0], p[1], p[2])).collect();
             let picture = ColorImage { size: [w as usize, h as usize], pixels, source_size: Default::default() };
-            Ok(Some((key, ctx.load_texture("family-preview", picture, TextureOptions::LINEAR))))
+            let tile = ctx.load_texture("family-preview", picture, TextureOptions::LINEAR);
+            #[cfg(test)]
+            let shown = (cam, [w, h]);
+            Ok(Some(Preview {
+                key,
+                tile,
+                #[cfg(test)]
+                cam: shown.0,
+                #[cfg(test)]
+                size: shown.1,
+            }))
         });
         match result {
             Ok(Some(drawn)) => (self.preview, self.problem) = (Some(drawn), None),
@@ -779,6 +862,28 @@ impl FamilyEditor {
             Err(e) => self.problem = Some(e),
         }
     }
+}
+
+/// The material the preview draws a ghosted form in: grey and see-through. The scratch project's own, never the family's.
+const GHOST: &str = "Preview Visibility ghost";
+
+/// The colour of the frame round the family document's view, and of its banner, while Preview Visibility is on.
+pub(crate) const PREVIEW_FRAME: Color32 = Color32::from_rgb(232, 128, 0);
+
+/// The family as the preview draws it while Preview Visibility is off: each solid form the type (its `values`) hides shown, in
+/// the ghost's material, as Revit's family editor greys a form hidden in a type so it can still be edited. A void stays as it
+/// builds: never seen, it cuts only where it is there. None when the type hides no form.
+fn ghosted(f: &Family, values: &BTreeMap<String, bimcraft_core::family::Val>) -> Option<Family> {
+    let mut g = f.clone();
+    let mut any = false;
+    for form in g.forms.iter_mut().filter(|form| !form.void) {
+        if form.visible.as_ref().is_some_and(|v| crate::adaptive_editor::worth(v, values) == Some(0.0)) {
+            form.visible = None;
+            form.material = GHOST.into();
+            any = true;
+        }
+    }
+    any.then_some(g)
 }
 
 /// The categories a family may be of, in the order they're offered.
@@ -871,145 +976,6 @@ fn computed(ui: &mut Ui, label: String, kind: Holds, value: Option<&bimcraft_cor
     let r =
         ui.add_enabled_ui(false, |ui| ui.add_sized([width, ui.spacing().interact_size.y], TextEdit::singleline(&mut text).id_salt(&label)));
     r.inner.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, false, label.as_str()));
-}
-
-fn parameters_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
-    // What the type previewed comes to: a value a formula works out is shown, greyed.
-    let values = ed.values();
-    if ed.category.hosted() {
-        let note = t("A door or a window needs lengths named Width and Height; its formulas can read Wall Thickness, the wall's.");
-        ui.label(RichText::new(note).color(pal().muted));
-    }
-    let mut remove = None;
-    Grid::new("fe-params").num_columns(6).striped(true).spacing(vec2(8.0, 4.0)).show(ui, |ui| {
-        for h in ["Name", msg!("Kind"), msg!("Instance"), "Value", "Formula", ""] {
-            ui.label(RichText::new(t(h)).color(pal().muted));
-        }
-        ui.end_row();
-        for (i, p) in ed.params.iter_mut().enumerate() {
-            let n = i + 1;
-            field(ui, format!("{} {n}", t("Parameter Name")), &mut p.name, 130.0);
-            ComboBox::from_id_salt(("fe-param-kind", i)).selected_text(t(kind_name(p.kind))).width(84.0).show_ui(ui, |ui| {
-                for k in KINDS {
-                    ui.selectable_value(&mut p.kind, k, t(kind_name(k)));
-                }
-            });
-            let r = ui.checkbox(&mut p.instance, "");
-            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, p.instance, format!("{} {n}", t("Parameter Instance"))));
-            match p.kind {
-                _ if !p.formula.trim().is_empty() => {
-                    computed(ui, format!("{} {n}", t("Parameter Value")), p.kind, values.get(p.name.trim()), 90.0);
-                }
-                Holds::YesNo => {
-                    let mut on = p.value == "1";
-                    let r = ui.checkbox(&mut on, "");
-                    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, format!("{} {n}", t("Parameter Value"))));
-                    p.value = (if on { "1" } else { "0" }).into();
-                }
-                Holds::Material => {
-                    let mut options = vec![String::new()];
-                    options.extend(materials.iter().cloned());
-                    if let Some(m) = pick(ui, format!("{} {n}", t("Parameter Value")), &p.value, &options) {
-                        p.value = m;
-                    }
-                }
-                _ => field(ui, format!("{} {n}", t("Parameter Value")), &mut p.value, 90.0),
-            }
-            field(ui, format!("{} {n}", t("Parameter Formula")), &mut p.formula, 150.0);
-            if ui.small_button(t("Delete")).clicked() {
-                remove = Some(i);
-            }
-            ui.end_row();
-        }
-    });
-    if let Some(i) = remove {
-        ed.params.remove(i);
-    }
-    if ui.button(t("Add Parameter")).clicked() {
-        let name = (1..).map(|k| format!("{} {k}", t("Parameter"))).find(|n| !ed.params.iter().any(|p| p.name == *n)).unwrap_or_default();
-        ed.params.push(ParamText {
-            original: Parameter::default(),
-            name,
-            kind: Holds::Length,
-            instance: false,
-            value: "0".into(),
-            formula: String::new(),
-        });
-    }
-}
-
-fn types_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
-    ed.picked = ed.picked.min(ed.types.len().saturating_sub(1));
-    ui.horizontal(|ui| {
-        let names: Vec<String> = ed.types.iter().map(|(n, _)| n.clone()).collect();
-        let now = names.get(ed.picked).cloned().unwrap_or_default();
-        if let Some(n) = pick(ui, t("Type").to_string(), &now, &names)
-            && let Some(i) = names.iter().position(|x| *x == n)
-        {
-            ed.picked = i;
-        }
-        if ui.button(t("Add Type")).clicked() {
-            let name = (1..).map(|k| format!("{} {k}", t("Type"))).find(|n| !names.contains(n)).unwrap_or_default();
-            ed.types.push((name, BTreeMap::new()));
-            ed.picked = ed.types.len() - 1;
-        }
-        if ui.button(t("Duplicate Type")).clicked()
-            && let Some((n, set)) = ed.types.get(ed.picked).cloned()
-        {
-            let name = (2..).map(|k| format!("{n} {k}")).find(|x| !names.contains(x)).unwrap_or_default();
-            ed.types.push((name, set));
-            ed.picked = ed.types.len() - 1;
-        }
-        if ui.add_enabled(ed.types.len() > 1, egui::Button::new(t("Delete Type"))).clicked() {
-            ed.types.remove(ed.picked);
-        }
-    });
-    // Each type parameter, and whether a formula works it out: shown then, greyed, as what the type comes to.
-    let own: Vec<(String, Holds, bool)> = ed
-        .params
-        .iter()
-        .filter(|p| !p.instance && !p.original.reporting)
-        .map(|p| (p.name.clone(), p.kind, !p.formula.trim().is_empty()))
-        .collect();
-    let values = ed.values();
-    let Some((name, set)) = ed.types.get_mut(ed.picked) else { return };
-    ui.add_space(4.0);
-    Grid::new("fe-type").num_columns(2).spacing(vec2(12.0, 5.0)).show(ui, |ui| {
-        ui.label(t("Type Name"));
-        field(ui, t("Type Name").to_string(), name, 200.0);
-        ui.end_row();
-        for (param, kind, driven) in &own {
-            ui.label(param);
-            let label = format!("{} {param}", t("Type Value"));
-            if *driven {
-                computed(ui, label, *kind, values.get(param.trim()), 120.0);
-                ui.end_row();
-                continue;
-            }
-            let text = set.entry(param.clone()).or_default();
-            match kind {
-                Holds::YesNo => {
-                    // Blank is the family's; a tick or a clear is the type's own.
-                    let mut on = text == "1";
-                    let r = ui.checkbox(&mut on, "");
-                    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, label.as_str()));
-                    if r.changed() {
-                        *text = (if on { "1" } else { "0" }).into();
-                    }
-                }
-                Holds::Material => {
-                    let mut options = vec![String::new()];
-                    options.extend(materials.iter().cloned());
-                    if let Some(m) = pick(ui, label, text, &options) {
-                        *text = m;
-                    }
-                }
-                _ => field(ui, label, text, 120.0),
-            }
-            ui.end_row();
-        }
-    });
-    ui.label(RichText::new(t("A blank value is the family's own, as the Parameters tab has it.")).color(pal().muted));
 }
 
 /// A form's or a symbol's Visible row, as Revit's Properties have it: a tick, and "=" at its end to tie it to a yes/no parameter;
@@ -1177,6 +1143,7 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     options.extend(ed.params.iter().filter(|p| p.kind == Holds::Material).map(|p| p.name.clone()));
     options.extend(materials.iter().cloned());
     let mut act: Option<(usize, i8)> = None;
+    let mut select = None;
     let (values, params) = (ed.values(), ed.parameter_kinds());
     let mut links = association::Controls::new(ed);
     // A form picked in the Project Browser opens.
@@ -1198,6 +1165,10 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
                 ));
             }
             ui.horizontal(|ui| {
+                // Selected, Properties show it as Revit's do an Extrusion.
+                if ui.button(t("Select")).clicked() {
+                    select = Some(i);
+                }
                 if ui.add_enabled(i > 0, egui::Button::new(t("Move Up"))).clicked() {
                     act = Some((i, -1));
                 }
@@ -1212,6 +1183,9 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     }
     if links.request.is_some() {
         ed.associating = links.request;
+    }
+    if select.is_some() {
+        ed.form = select;
     }
     match act {
         Some((i, -1)) => ed.forms.swap(i, i - 1),
@@ -1495,15 +1469,14 @@ impl BimApp {
         self.document_dialogs(ctx, &mut ed, &materials);
         let ask = std::mem::take(&mut ed.ask);
         ed.history(ctx, &ask);
-        let close = ask.cancel || ask.ok;
-        self.family_asked(ctx, ed, ask, close);
+        self.family_asked(ctx, ed, ask);
     }
 
     /// Does what the family document's ribbon asked for: capturing the selection's frames, loading a file, making the family the
     /// project's (Load into Project, placing the test frames), saving it to a file or the Favorites (from a session of its own,
-    /// which never touches the project), then closing it on `close` (Close Family) or on Load into Project and Close when it
-    /// was made. It stays open otherwise.
-    fn family_asked(&mut self, ctx: &Context, mut ed: FamilyEditor, ask: Asked, close: bool) {
+    /// which never touches the project), then closing it on Close Family, or on Load into Project and Close when the family
+    /// went in. It stays open otherwise.
+    fn family_asked(&mut self, ctx: &Context, mut ed: FamilyEditor, ask: Asked) {
         let base = Arc::clone(&self.session.model);
         let Asked { capture: capture_context, place: place_adaptive, apply_placement, apply, ok, cancel, save, favorite, load, .. } = ask;
         let capture_sources = self.capture_sources();
@@ -1531,36 +1504,6 @@ impl BimApp {
                 Err(text) => app.status = Status { text, error: true },
             });
         }
-        // Made the project's: Load into Project does it, and so does placing the test frames, which places the family's.
-        let mut made = false;
-        if apply || ok || place_adaptive || apply_placement {
-            match ed.command(&base) {
-                Ok(p) => {
-                    if self.run("family", p).is_some() {
-                        ed.original = Some(ed.name.trim().to_string());
-                        ed.document.refused = None;
-                        made = true;
-                    } else {
-                        // Said in the document; the box over the view's corner would lie on its buttons. Kept apart from
-                        // what the preview says, which is worked out again every frame, so drawing it never hides this.
-                        ed.document.refused = Some(std::mem::take(&mut self.status).text);
-                    }
-                }
-                Err(e) => ed.document.refused = Some(e),
-            }
-        }
-        if made && let Some(d) = &ed.adaptive {
-            if apply_placement && let Some(id) = ed.replay {
-                self.run("modify", json!({"id":id,"adaptive":d.preview}));
-            }
-            // The test frames are taken as the project's, so a captured context builds where it was captured.
-            if place_adaptive && let Some((type_name, _)) = ed.types.get(ed.picked) {
-                self.run(
-                    "adaptive_place",
-                    json!({"family":ed.name.trim(),"type":type_name,"placements":[{"params":ed.preview_params,"adaptive":d.completed(&d.preview)}]}),
-                );
-            }
-        }
         // Save and Favorites use a private Session: neither implicitly loads the draft into the project.
         if save || favorite {
             let prepared = ed.command(&base).and_then(|p| {
@@ -1572,18 +1515,28 @@ impl BimApp {
             match prepared {
                 Ok(mut draft) => {
                     let name = ed.name.trim().to_string();
+                    let saved = ed.draft();
                     if save {
                         let dialog =
                             rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]).set_file_name(format!("{name}.json"));
                         self.ask_file(ctx, dialog, true, move |app, path| {
-                            if let Err(text) = draft.execute("family", &json!({"name":name,"save":path.to_string_lossy()})) {
-                                app.status = Status { text, error: true };
+                            match draft.execute("family", &json!({"name":name,"save":path.to_string_lossy()})) {
+                                // Still open, the document has nothing unsaved but what changed meanwhile.
+                                Ok(_) => {
+                                    if let Some(open) = app.family_editor.as_mut() {
+                                        open.saved_as(saved);
+                                    }
+                                }
+                                Err(text) => app.status = Status { text, error: true },
                             }
                         });
                     } else {
                         let p = self.favorite_params("save", "family", &name);
                         match draft.execute("favorite", &p) {
-                            Ok(_) => self.status = Status { text: tf("Saved {} to your Favorites", &[&name]), error: false },
+                            Ok(_) => {
+                                ed.saved_as(saved);
+                                self.status = Status { text: tf("Saved {} to your Favorites", &[&name]), error: false }
+                            }
                             Err(e) => ed.problem = Some(e),
                         }
                     }
@@ -1591,7 +1544,12 @@ impl BimApp {
                 Err(e) => ed.problem = Some(e),
             }
         }
-        let closed = cancel || (ok && made) || (close && !ok);
+        // Made the project's: Load into Project does it, and so does placing the test frames, which places the family's. A
+        // family the project has otherwise asks first (`exists`); Load into Project and Close closes once it went in.
+        if !cancel && (apply || ok || place_adaptive || apply_placement) {
+            self.load_draft(&mut ed, exists::After::Document { close: ok, place: place_adaptive, apply_placement });
+        }
+        let closed = cancel || std::mem::take(&mut ed.document.loaded_to_close);
         if !closed {
             self.family_editor = Some(ed);
         }

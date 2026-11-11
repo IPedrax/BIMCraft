@@ -13,6 +13,7 @@ use crate::properties::group_header;
 use crate::ribbon;
 use crate::{big_button, icon_button, tab_button};
 use bimcraft_core::adaptive::{Definition, Evaluated, Plane, PointType, WorkPlane};
+use bimcraft_core::units::Units;
 use egui::{Align2, FontId, Frame, Margin, UiBuilder};
 
 /// What the family document keeps of its own: its history and its preview's size.
@@ -30,11 +31,45 @@ pub(crate) struct State {
     pub(super) reveal: Option<usize>,
     /// What Load into Project was refused for: said until the draft changes.
     pub(super) refused: Option<String>,
+    /// The draft as it was opened, last saved to a file or the Favorites, or last loaded into the project: any other has
+    /// unsaved changes.
+    clean: Option<Draft>,
+    /// Revit's Preview Visibility: the preview shows the family as placed, the forms its type hides left out, rather than
+    /// ghosted. The view's own: no part of the draft, so neither saved nor a step of its history.
+    pub(super) preview_visibility: bool,
+    /// Temporary Hide/Isolate: what the view hides for now (`temp_hide.rs`). The view's own, as Preview Visibility.
+    pub(super) temp: super::temp_hide::Temp,
+    /// Load into Project and Close went in: the document closes once the frame's work is done.
+    pub(super) loaded_to_close: bool,
+    /// The shared families nested in this one that the project already has, defined otherwise, which "Shared Family Already
+    /// Loaded" asks about on loading (`exists`). T6 (nested families) works them out; until then only a test puts them here.
+    pub(super) shared_nested: Vec<String>,
+    /// Why Family Category and Parameters' Apply or OK was refused, while the draft is as it was then.
+    options_refused: Option<(Draft, String)>,
+    /// What Family Category and Parameters' category list is filtered by, and whether the list has been shown since it opened.
+    category_filter: String,
+    category_shown: bool,
 }
 
 impl Default for State {
     fn default() -> State {
-        State { preview_size: [360, 300], undo: Vec::new(), redo: Vec::new(), mark: None, dialog_saved: None, reveal: None, refused: None }
+        State {
+            preview_size: [360, 300],
+            undo: Vec::new(),
+            redo: Vec::new(),
+            mark: None,
+            dialog_saved: None,
+            reveal: None,
+            refused: None,
+            clean: None,
+            preview_visibility: false,
+            temp: Default::default(),
+            loaded_to_close: false,
+            shared_nested: Vec::new(),
+            options_refused: None,
+            category_filter: String::new(),
+            category_shown: false,
+        }
     }
 }
 
@@ -53,6 +88,10 @@ pub(super) struct Draft {
     symbols: Vec<SymbolText>,
     adaptive: Option<Definition>,
     picked: usize,
+    /// Its reference planes: drawn and moved in its plans and elevations.
+    planes: Vec<RefPlane>,
+    /// Its options: Family Category and Parameters' table, Properties' Other group.
+    options: super::options::OptionsText,
 }
 
 impl Draft {
@@ -67,6 +106,8 @@ impl Draft {
             symbols: ed.symbols.clone(),
             adaptive: ed.adaptive.clone(),
             picked: ed.picked,
+            planes: ed.planes.clone(),
+            options: ed.options.clone(),
         }
     }
 
@@ -80,6 +121,8 @@ impl Draft {
         ed.symbols = self.symbols;
         ed.adaptive = self.adaptive;
         ed.picked = self.picked;
+        ed.planes = self.planes;
+        ed.options = self.options;
         // What is selected and no longer there goes from the selection.
         let nodes = ed.adaptive.as_ref().map(|d| d.nodes.iter().map(|n| n.id.clone()).collect::<Vec<_>>()).unwrap_or_default();
         ed.modeller.selection.retain(|id| nodes.contains(id));
@@ -88,6 +131,33 @@ impl Draft {
 }
 
 impl FamilyEditor {
+    /// The draft as it is now, for `saved_as` once it has been saved.
+    pub(super) fn draft(&self) -> Draft {
+        Draft::of(self)
+    }
+
+    /// The draft `d` was saved or loaded into the project: changes are counted from it.
+    pub(super) fn saved_as(&mut self, d: Draft) {
+        self.document.clean = Some(d);
+    }
+
+    /// The shared nested families the project already has otherwise, which loading asks about: T6's to work out, and until
+    /// then a test's to inject.
+    #[cfg(test)]
+    pub(crate) fn set_shared_nested(&mut self, names: Vec<String>) {
+        self.document.shared_nested = names;
+    }
+
+    /// Whether Preview Visibility is on: the preview shows the family as placed.
+    pub(crate) fn preview_visibility(&self) -> bool {
+        self.document.preview_visibility
+    }
+
+    /// Whether the draft has changes not saved or loaded into the project since it was opened.
+    pub(crate) fn unsaved(&self) -> bool {
+        self.document.clean.as_ref().is_some_and(|clean| *clean != Draft::of(self))
+    }
+
     /// Whether a dialog of the document's is open: Family Types, Family Category and Parameters, or an association.
     fn modal(&self) -> bool {
         self.dialog.is_some() || self.associating.is_some()
@@ -99,6 +169,8 @@ impl FamilyEditor {
     pub(super) fn history(&mut self, ctx: &Context, ask: &Asked) {
         let now = Draft::of(self);
         let Some(mark) = self.document.mark.take() else {
+            // The document's first frame: the draft as it was opened.
+            self.document.clean.get_or_insert_with(|| now.clone());
             self.document.mark = Some(now);
             return;
         };
@@ -149,6 +221,16 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         Draw::Line(_) => return Some(msg!("Modify | Place Lines")),
         Draw::Modify | Draw::Move { .. } | Draw::Rotate { .. } => {}
     }
+    // A form of a family that isn't adaptive, selected.
+    if ed.adaptive.is_none() {
+        if ed.editing_2d() && ed.views.drawing.is_some() {
+            return Some(msg!("Modify | Place Reference Plane"));
+        }
+        if ed.selected_plane().is_some() {
+            return Some(msg!("Modify | Reference Planes"));
+        }
+        return ed.selected_form().map(|_| msg!("Modify | Form"));
+    }
     let d = ed.adaptive.as_ref()?;
     let r = d.evaluate(&ed.values(), &d.preview);
     let mut kinds = m.selection.iter().map(|id| match r.values.get(id.as_str()) {
@@ -179,7 +261,7 @@ impl BimApp {
     /// The title the window and its title bar give a family document: the family and its view.
     pub(crate) fn family_title(&self) -> Option<String> {
         let ed = self.family_editor.as_ref()?;
-        Some(format!("{} · {}", ed.title(), tf("3D View: {}", &[VIEW])))
+        Some(format!("{} · {}", ed.title(), super::views::view_title(ed.views.shown)))
     }
 
     /// The family document's ribbon: its tabs, then the active tab's panels, folding to fit as the project's do.
@@ -271,8 +353,18 @@ impl BimApp {
                 });
                 ribbon::panel(ui, msg!("Datum"), |ui| {
                     later(ui, Icon::Level, "Level");
-                    later(ui, Icon::Line, msg!("Reference Plane"));
+                    // Drawn in a plan or an elevation of a family that isn't adaptive, as Revit's (F4).
+                    let tip = msg!("Reference Plane (RP): a plane drawn by two clicks in a plan or an elevation");
+                    let on = ed.views.drawing.is_some();
+                    if ui.add_enabled_ui(ed.editing_2d(), |ui| big_button(ui, Icon::Line, msg!("Reference Plane"), on, tip)).inner.clicked()
+                    {
+                        ed.reference_plane_tool();
+                    }
                 });
+                // In {3D} too, where Show draws it over the preview.
+                if !adaptive {
+                    views_work_plane_panel(ui, ed);
+                }
                 if adaptive {
                     self.form_panel(ui, ed, &lines);
                     self.test_placement_panel(ui, ed);
@@ -321,6 +413,7 @@ impl BimApp {
                 ribbon::panel(ui, msg!("Clipboard"), |ui| {
                     later(ui, Icon::Copy, msg!("Paste"));
                 });
+                let form = ed.selected_form();
                 ribbon::panel(ui, msg!("Modify"), |ui| {
                     let some = !ed.modeller.selection.is_empty();
                     for (icon, label) in [(Icon::Align, "Align"), (Icon::Offset, "Offset"), (Icon::MirrorPick, msg!("Mirror - Pick Axis"))]
@@ -365,16 +458,31 @@ impl BimApp {
                     later_small(ui, Icon::Trim, msg!("Trim/Extend"));
                     later_small(ui, Icon::Split, msg!("Split Element"));
                     let tip = msg!("Delete (DE): what is selected, with what depends on it");
-                    if ui.add_enabled_ui(some, |ui| big_button(ui, Icon::Delete, "Delete", false, tip)).inner.clicked()
-                        && let Some(d) = ed.adaptive.as_mut()
+                    let plane = ed.selected_plane().filter(|g| ed.planes.iter().any(|p| p.guid == *g && !p.datum()));
+                    if ui
+                        .add_enabled_ui(some || form.is_some() || plane.is_some(), |ui| big_button(ui, Icon::Delete, "Delete", false, tip))
+                        .inner
+                        .clicked()
                     {
-                        adaptive_view::delete(d, &mut ed.modeller);
+                        if let Some(g) = plane {
+                            if let Err(e) = ed.delete_plane(g) {
+                                self.status = Status { text: e, error: true };
+                            }
+                        } else if let Some(i) = form {
+                            ed.forms.remove(i);
+                            ed.form = None;
+                        } else if let Some(d) = ed.adaptive.as_mut() {
+                            adaptive_view::delete(d, &mut ed.modeller);
+                        }
                     }
                 });
                 ribbon::panel(ui, msg!("Measure"), |ui| {
                     later(ui, Icon::Measure, msg!("Measure"));
                 });
                 if tab == DocTab::Context {
+                    if let Some(i) = ed.selected_form() {
+                        self.form_work_plane_panel(ui, ed, i);
+                    }
                     if !lines.is_empty() {
                         self.form_panel(ui, ed, &lines);
                     }
@@ -409,9 +517,13 @@ impl BimApp {
     fn select_and_properties(&mut self, ui: &mut Ui, ed: &mut FamilyEditor) {
         ribbon::panel(ui, msg!("Select"), |ui| {
             let tip = msg!("Modify (MD): select elements");
-            if big_button(ui, Icon::Modify, "Modify", ed.modeller.tool == Draw::Modify, tip).clicked() {
+            if big_button(ui, Icon::Modify, "Modify", ed.modeller.tool == Draw::Modify && ed.views.drawing.is_none(), tip).clicked() {
                 ed.modeller.tool = Draw::Modify;
                 ed.modeller.picking_plane = false;
+                ed.form = None;
+                ed.views.drawing = None;
+                ed.views.picking_plane = false;
+                ed.views.plane = None;
             }
         });
         let shown = self.docking.shown(Palette::Properties);
@@ -499,6 +611,33 @@ impl BimApp {
         let category = category_label(ed.category);
         let selected = ed.modeller.selection.clone();
         let params = ed.parameter_kinds();
+        // A reference plane selected in a plan or an elevation: its name.
+        if let Some(g) = ed.selected_plane() {
+            selector(ui, Icon::Line, t("Reference Plane"));
+            ui.add_space(6.0);
+            if let Some(p) = ed.planes.iter_mut().find(|p| p.guid == g) {
+                let datum = p.datum();
+                group(ui, msg!("Identity Data"), |ui| {
+                    let l = ui.label(t("Name"));
+                    if datum {
+                        ui.label(t(&p.name)).labelled_by(l.id);
+                    } else {
+                        ui.add(TextEdit::singleline(&mut p.name).desired_width(f32::INFINITY)).labelled_by(l.id);
+                    }
+                    ui.end_row();
+                });
+            }
+            self.family_editor = Some(ed);
+            return;
+        }
+        // A form selected: its own Properties, as Revit's show only what is selected.
+        if let Some(i) = ed.selected_form() {
+            selector(ui, Icon::CreateForm, &ed.forms[i].describe());
+            ui.add_space(6.0);
+            self.form_properties(ui, &mut ed, i);
+            self.family_editor = Some(ed);
+            return;
+        }
         if ed.adaptive.is_none() {
             let materials: Vec<String> = self.session.model.materials.keys().cloned().collect();
             selector(ui, Icon::FamilyEditor, &tf("Family: {}", &[&category]));
@@ -522,10 +661,13 @@ impl BimApp {
                     }
                 }
             }
+            // Last, as Revit's palette lists Other.
+            ui.add_space(6.0);
+            other(ui, &mut ed, self.session.model.units);
             self.family_editor = Some(ed);
             return;
         }
-        if let Some(d) = ed.adaptive.as_mut() {
+        if let Some(d) = ed.adaptive.as_ref() {
             // The type selector's place: what is selected, as Revit names it, or the family.
             let (what, icon) = match selected.as_slice() {
                 [] => (tf("Family: {}", &[&category]), Icon::FamilyEditor),
@@ -548,7 +690,10 @@ impl BimApp {
                             .color(pal().muted),
                     );
                 }
+                other(ui, &mut ed, self.session.model.units);
             }
+        }
+        if let Some(d) = ed.adaptive.as_mut() {
             let mut delete = Vec::new();
             for id in &selected {
                 ui.push_id(id, |ui| {
@@ -598,6 +743,7 @@ impl BimApp {
     /// The family document's Project Browser: its views, as a family template has them, and the forms of a family that isn't
     /// adaptive, each opening its Properties.
     pub(crate) fn family_browser(&mut self, ui: &mut Ui) {
+        let picked = self.family_editor.as_ref().and_then(FamilyEditor::selected_form);
         let forms: Vec<String> = match &self.family_editor {
             Some(ed) if ed.adaptive.is_none() => ed.forms.iter().enumerate().map(|(i, f)| format!("{}. {}", i + 1, f.describe())).collect(),
             _ => Vec::new(),
@@ -605,21 +751,23 @@ impl BimApp {
         ScrollArea::vertical().id_salt("family-browser").auto_shrink([false, false]).show(ui, |ui| {
             Frame::new().inner_margin(8.0).show(ui, |ui| {
                 egui::CollapsingHeader::new(t("Views (all)")).id_salt("family-views").default_open(true).show(ui, |ui| {
-                    let groups: [(&str, &[&str]); 4] = [
-                        (msg!("Floor Plans"), &["Ref. Level"]),
-                        (msg!("Ceiling Plans"), &["Ref. Level"]),
-                        (msg!("3D Views"), &[VIEW]),
-                        (msg!("Elevations"), &["Back", "Front", "Left", "Right"]),
+                    use bimcraft_core::family::views::{Side, Which};
+                    let elevations: Vec<(Option<Which>, &str)> = Side::ALL.iter().map(|s| (Some(Which::Elevation(*s)), s.name())).collect();
+                    type Entries<'a> = Vec<(Option<Which>, &'a str)>;
+                    let groups: [(&str, Entries); 4] = [
+                        (msg!("Floor Plans"), vec![(Some(Which::Plan), "Ref. Level")]),
+                        (msg!("Ceiling Plans"), vec![(Some(Which::Ceiling), "Ref. Level")]),
+                        (msg!("3D Views"), vec![(None, VIEW)]),
+                        (msg!("Elevations"), elevations),
                     ];
+                    let shown = self.family_editor.as_ref().and_then(|ed| ed.views.shown);
                     for (group, views) in groups {
                         egui::CollapsingHeader::new(t(group)).id_salt(("family-views", group)).default_open(true).show(ui, |ui| {
-                            for view in views {
-                                let on = group == msg!("3D Views");
-                                if ui.selectable_label(on, t(view)).clicked() && !on {
-                                    self.status = Status {
-                                        text: t("A family's plans and elevations come with its work planes").into(),
-                                        error: false,
-                                    };
+                            for (which, view) in views {
+                                if ui.selectable_label(shown == which, t(view)).clicked()
+                                    && let Some(ed) = self.family_editor.as_mut()
+                                {
+                                    ed.views.show(which);
                                 }
                             }
                         });
@@ -628,11 +776,14 @@ impl BimApp {
                 if !forms.is_empty() {
                     egui::CollapsingHeader::new(t("Forms")).id_salt("family-forms").default_open(true).show(ui, |ui| {
                         for (i, form) in forms.iter().enumerate() {
-                            if ui.selectable_label(false, form).clicked()
+                            if ui.selectable_label(picked == Some(i), form).clicked()
                                 && let Some(ed) = self.family_editor.as_mut()
                             {
+                                // Selected, as Revit's browser selects what it lists; its own row in the Forms tab opens for
+                                // when it is let go.
                                 ed.tab = Tab::Forms;
                                 ed.document.reveal = Some(i);
+                                ed.form = Some(i);
                             }
                         }
                     });
@@ -650,17 +801,28 @@ impl BimApp {
         self.view_rect = pane;
         self.pane = pane;
         let values = ed.values();
-        if let Some(d) = ed.adaptive.as_mut() {
+        let hidden = ed.adaptive.as_ref().map(|d| ed.temp_hidden(d)).unwrap_or_default();
+        if let Some(which) = ed.views.shown {
+            // A plan or an elevation (F4): the project's own drawing of the family in a scratch model.
+            let base = Arc::clone(&self.session.model);
+            if let Some(e) = ed.view_2d(ui, &base, which, pane) {
+                self.status = Status { text: e, error: true };
+            }
+        } else if let Some(d) = ed.adaptive.as_mut() {
             ui.scope_builder(UiBuilder::new().max_rect(pane), |ui| {
                 let planes = bimcraft_core::family::Planes { planes: &ed.planes, lines: &ed.lines };
-                adaptive_view::show(ui, d, planes, &mut ed.modeller, &values, pane.size());
+                adaptive_view::show(ui, d, planes, &mut ed.modeller, &values, pane.size(), &hidden);
             });
             // What a tool in the view could not do, in the status bar.
             if let Some(e) = ui.ctx().data_mut(|w| w.remove_temp::<String>(UiId::new("adaptive-view-problem"))) {
                 self.status = Status { text: e, error: true };
             }
         } else {
-            let response = ui.interact(pane, UiId::new("family-preview"), Sense::drag());
+            let response = ui.interact(pane, UiId::new("family-preview"), Sense::click_and_drag());
+            // A click in the view lets the selected form go, as a click on nothing does in Revit.
+            if response.clicked() {
+                ed.form = None;
+            }
             ed.document.preview_size = [pane.width().clamp(64.0, 1600.0) as u32, pane.height().clamp(64.0, 1200.0) as u32];
             let orbit = response.dragged_by(PointerButton::Primary)
                 || (response.dragged_by(PointerButton::Middle) && ui.input(|i| i.modifiers.shift));
@@ -670,15 +832,15 @@ impl BimApp {
             }
             let base = Arc::clone(&self.session.model);
             ed.refresh(ui.ctx(), &base);
-            if let Some((_, tile)) = &ed.preview {
-                ui.painter().image(tile.id(), pane, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            if let Some(p) = &ed.preview {
+                ui.painter().image(p.tile.id(), pane, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
             }
         }
         let card = crate::style::card([true, false, true, false]).inner_margin(Margin::same(2));
         let mut over = ui.new_child(UiBuilder::new().id_salt("family-view-tabs").max_rect(pane));
         let foot = card.show(&mut over, |ui| {
             ui.horizontal(|ui| {
-                crate::tab_button(ui, &format!("{} · {VIEW}", ed.title()), true, false);
+                crate::tab_button(ui, &format!("{} · {}", ed.title(), super::views::view_tab(ed.views.shown)), true, false);
                 if icon_button(ui, Icon::Close, msg!("Close Family")).clicked() {
                     ed.ask.cancel = true;
                 }
@@ -694,9 +856,34 @@ impl BimApp {
                     ed.modeller.camera = None;
                     ed.look = (AZIMUTH, ELEVATION);
                 }
+                // Revit's Preview Visibility: the family as placed, the forms its type hides left out rather than ghosted.
+                if ed.adaptive.is_none() {
+                    let on = ed.preview_visibility();
+                    if crate::small_button(ui, Icon::Visibility, PREVIEW_VISIBILITY, on, PREVIEW_VISIBILITY).clicked() {
+                        ed.document.preview_visibility = !on;
+                    }
+                }
+                self.family_temp_menu(ui, &mut ed);
             });
         });
         self.work = pane.with_min_y(pane.top().max(self.tabs_foot));
+        // While it hides anything for now, the project's cyan frame round the view, as Revit draws.
+        let hiding = ed.temporary().hides();
+        if hiding {
+            ui.painter().rect_stroke(pane.shrink(1.5), 0.0, Stroke::new(3.0, crate::footer::FRAME), StrokeKind::Inside);
+        }
+        // While it is on, a frame round the view and its name over it, as Revit marks a view showing what is placed: inside the
+        // cyan one when both are, so each shows.
+        if ed.adaptive.is_none() && ed.preview_visibility() {
+            let inset = if hiding { 4.5 } else { 1.5 };
+            ui.painter().rect_stroke(pane.shrink(inset), 0.0, Stroke::new(3.0, super::PREVIEW_FRAME), StrokeKind::Inside);
+            let text = t(PREVIEW_VISIBILITY);
+            let font = FontId::proportional(13.0);
+            let size = ui.painter().layout_no_wrap(text.to_string(), font.clone(), Color32::WHITE).size() + vec2(20.0, 6.0);
+            let banner = Rect::from_center_size(pos2(pane.center().x, self.work.top() + 6.0 + size.y / 2.0), size);
+            ui.painter().rect_filled(banner, 3.0, super::PREVIEW_FRAME);
+            ui.put(banner, egui::Label::new(RichText::new(text).font(font).color(Color32::WHITE).strong()).selectable(false));
+        }
         // Why a family that isn't adaptive can't be tried or loaded, in the view under its tab (a dialog open says it itself).
         if ed.adaptive.is_none()
             && ed.dialog.is_none()
@@ -715,6 +902,7 @@ impl BimApp {
     /// The family document's Options Bar: the contextual tab's name; drawing, Revit's Placement Plane; with lines selected, the
     /// depth Create Form gives a solid or a void.
     pub(crate) fn family_options(&mut self, ui: &mut Ui) -> bool {
+        let units = self.session.model.units;
         let Some(ed) = self.family_editor.as_mut() else { return false };
         let Some(name) = context(ed) else { return false };
         let values = ed.values();
@@ -749,6 +937,15 @@ impl BimApp {
                 let l = ui.label(t("Depth (mm)"));
                 ui.add(egui::DragValue::new(&mut ed.modeller.depth).speed(5.).range(1.0..=100_000.0)).labelled_by(l.id);
             }
+            // A selected extrusion's Depth, as Revit's Options Bar has it.
+            if let Some(i) = ed.selected_form()
+                && let Some(f) = ed.forms.get_mut(i)
+                && !f.revolve
+                && !f.mesh()
+            {
+                ui.separator();
+                super::extrusion::depth(ui, units, f, &values);
+            }
         });
         true
     }
@@ -761,7 +958,14 @@ impl BimApp {
     /// What the family document's status bar asks for: an adaptive family's modelling view's tool, or how another's preview turns.
     pub(crate) fn family_prompt(&self) -> Option<&'static str> {
         let ed = self.family_editor.as_ref()?;
-        Some(if ed.adaptive.is_some() { adaptive_view::prompt(&ed.modeller) } else { msg!("Drag the picture to turn it.") })
+        Some(match (ed.views.shown, ed.adaptive.is_some()) {
+            (Some(_), true) => msg!("An adaptive family's plans and elevations show its test placement; model it in {3D}."),
+            (Some(_), false) if ed.views.picking_plane => msg!("Click a reference plane or a datum: the view's work plane."),
+            (Some(_), false) if ed.views.drawing.is_some() => msg!("Click two points: a reference plane through them."),
+            (Some(_), false) => msg!("Click a form or a reference plane to select it; drag a selected plane to move it."),
+            (None, true) => adaptive_view::prompt(&ed.modeller),
+            (None, false) => msg!("Drag the picture to turn it."),
+        })
     }
 
     /// Undo in a family document: one step back through its own history, done when the frame ends; the project's is not touched.
@@ -778,12 +982,28 @@ impl BimApp {
         }
     }
 
-    /// The family document's keys: Ctrl+Z undoes a step of its own, Ctrl+Y and Ctrl+Shift+Z redo one, unless a field being typed
-    /// in (whose own they are) or a dialog has them.
+    /// The family document's keys: Ctrl+Z undoes a step of its own, Ctrl+Y and Ctrl+Shift+Z redo one, and the two letters of
+    /// Temporary Hide/Isolate (`temp_hide.rs`), unless a field being typed in (whose own they are) or a dialog has them.
     pub(crate) fn family_keys(&mut self, ctx: &Context) {
-        let Some(ed) = self.family_editor.as_mut() else { return };
+        let Some(ed) = self.family_editor.as_ref() else { return };
         if ed.modal() || ctx.text_edit_focused() {
             return;
+        }
+        // Letters typed, but not while a menu has the keys.
+        if !egui::Popup::is_any_open(ctx) {
+            self.family_typed(ctx);
+        }
+        let Some(ed) = self.family_editor.as_mut() else { return };
+        // Escape lets a selected form go, though a button clicked has the keyboard (the window's own Escape does it otherwise).
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            // The plane being drawn first, then the tool, then the selection.
+            if ed.views.picking_plane {
+                ed.views.picking_plane = false;
+            } else if let Some(first) = ed.views.drawing {
+                ed.views.drawing = first.map(|_| None);
+            } else if ed.views.plane.take().is_none() {
+                ed.let_form_go();
+            }
         }
         let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
         if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Z) || pressed(egui::Modifiers::COMMAND, egui::Key::Y) {
@@ -793,14 +1013,15 @@ impl BimApp {
         }
     }
 
-    /// The dialogs a family document's ribbon opens: Family Types (its parameters and types, on two tabs) and Family
-    /// Category and Parameters (its name, category and, for a door or a window, how it opens). Apply keeps what is typed,
+    /// The dialogs a family document's ribbon opens: Family Types (its types and one table of its parameters: `types_dialog`) and Family
+    /// Category and Parameters (its name, category, options (`options.rs`) and, for a door or a window, how it opens). Apply keeps what is typed,
     /// Cancel puts back what was there when the dialog opened or last applied, OK keeps it and closes the dialog.
     pub(crate) fn document_dialogs(&mut self, ctx: &Context, ed: &mut FamilyEditor, materials: &[String]) {
         // Associate Family Parameter, from a row's "=": a parameter New Parameter makes goes in the family at once, as in Revit.
         ed.associate_dialog(ctx);
         let Some(dialog) = ed.dialog else {
             ed.document.dialog_saved = None;
+            ed.document.category_shown = false;
             return;
         };
         if ed.document.dialog_saved.is_none() {
@@ -810,64 +1031,14 @@ impl BimApp {
             DocDialog::Types => t("Family Types"),
             DocDialog::Category => t("Family Category and Parameters"),
         };
+        let base = Arc::clone(&self.session.model);
+        let units = base.units;
         let (mut apply, mut ok, mut cancel) = (false, false, false);
-        let r = Modal::new(UiId::new(("family-dialog", dialog as u8)), title).width(900.0).show(ctx, |ui| {
+        let width = if dialog == DocDialog::Category { 560.0 } else { 900.0 };
+        let r = Modal::new(UiId::new(("family-dialog", dialog as u8)), title).width(width).show(ctx, |ui| {
             crate::popup::body(ui, |ui| match dialog {
-                DocDialog::Types => {
-                    ui.horizontal(|ui| {
-                        for (tab, label) in [(TypesTab::Parameters, msg!("Parameters")), (TypesTab::Types, msg!("Types"))] {
-                            if ui.selectable_label(ed.types_tab == tab, t(label)).clicked() {
-                                ed.types_tab = tab;
-                            }
-                        }
-                    });
-                    ui.separator();
-                    let room = (ctx.content_rect().height() - 260.0).clamp(160.0, 560.0);
-                    ScrollArea::vertical().max_height(room).auto_shrink([false, true]).show(ui, |ui| match ed.types_tab {
-                        TypesTab::Types => types_tab(ed, ui, materials),
-                        TypesTab::Parameters => parameters_tab(ed, ui, materials),
-                    });
-                    // Said in the dialog: the view's would be under it.
-                    if let Some(p) = ed.problem() {
-                        ui.label(RichText::new(p).color(pal().error));
-                    }
-                }
-                DocDialog::Category => {
-                    Grid::new("family-category").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
-                        let l = ui.label(t("Family name"));
-                        ui.add_sized([260.0, ui.spacing().interact_size.y], TextEdit::singleline(&mut ed.name)).labelled_by(l.id);
-                        ui.end_row();
-                        let l = ui.label(t("Category"));
-                        let c = ComboBox::from_id_salt("family-category-list")
-                            .selected_text(category_label(ed.category))
-                            .width(180.0)
-                            .show_ui(ui, |ui| {
-                                for c in CATEGORIES {
-                                    if ui.selectable_label(ed.category == c, category_label(c)).clicked() {
-                                        ed.category = c;
-                                    }
-                                }
-                            });
-                        c.response.labelled_by(l.id);
-                        ui.end_row();
-                        if ed.category.hosted() {
-                            let l = ui.label(t("Operation"));
-                            let shown = ed.operation.map_or(t("(none)"), |op| t(op.label()));
-                            let c = ComboBox::from_id_salt("family-operation").selected_text(shown).width(220.0).show_ui(ui, |ui| {
-                                if ui.selectable_label(ed.operation.is_none(), t("(none)")).clicked() {
-                                    ed.operation = None;
-                                }
-                                for op in Operation::ALL {
-                                    if ui.selectable_label(ed.operation == Some(op), t(op.label())).clicked() {
-                                        ed.operation = Some(op);
-                                    }
-                                }
-                            });
-                            c.response.labelled_by(l.id);
-                            ui.end_row();
-                        }
-                    });
-                }
+                DocDialog::Types => super::types_dialog::body(ed, ui, &base, materials),
+                DocDialog::Category => category_body(ed, ui, units),
             });
             crate::popup::footer(ui, |ui| {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -877,6 +1048,35 @@ impl BimApp {
                 });
             });
         });
+        if dialog == DocDialog::Types {
+            // Name and Parameter Properties, over Family Types.
+            super::types_dialog::over(ctx, ed);
+        }
+        // A formula that doesn't read is refused, as Revit's Family Types refuses it, with T9's words; Cancel still goes back.
+        if (ok || apply)
+            && !cancel
+            && dialog == DocDialog::Types
+            && let Some(why) = ed.formula_refusal()
+        {
+            ed.refuse_types(why);
+            (ok, apply) = (false, false);
+        }
+        // Options the `family` command would refuse (an OmniClass number that isn't one), said in the dialog, which stays open.
+        if (ok || apply)
+            && !cancel
+            && dialog == DocDialog::Category
+            && let Some(why) = ed.options_refusal()
+        {
+            ed.document.options_refused = Some((Draft::of(ed), why));
+            (ok, apply) = (false, false);
+        }
+        let closing = cancel || r.should_close() || ok;
+        if closing {
+            ed.types_closed();
+            ed.document.options_refused = None;
+            ed.document.category_filter.clear();
+            ed.document.category_shown = false;
+        }
         if cancel || r.should_close() {
             if let Some(saved) = ed.document.dialog_saved.take() {
                 saved.restore(ed);
@@ -890,6 +1090,95 @@ impl BimApp {
         }
     }
 }
+
+/// Family Category and Parameters' body, as Revit's: the family's name; Family Category, the categories in a list under a
+/// filter, the family's picked; Family Parameters, a table of Parameter and Value (its options, `options.rs`, and a door's or a
+/// window's Operation); then what Apply or OK was refused for, or why the draft can't be tried.
+fn category_body(ed: &mut FamilyEditor, ui: &mut Ui, units: Units) {
+    let h = ui.spacing().interact_size.y;
+    Grid::new("family-category").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
+        let l = ui.label(t("Family name"));
+        ui.add_sized([260.0, h], TextEdit::singleline(&mut ed.name)).labelled_by(l.id);
+        ui.end_row();
+    });
+    ui.add_space(8.0);
+    ui.label(RichText::new(t("Family Category")).strong());
+    ui.horizontal(|ui| {
+        let l = ui.label(t("Filter"));
+        let field = TextEdit::singleline(&mut ed.document.category_filter).hint_text(t("Search…"));
+        ui.add_sized([260.0, h], field).labelled_by(l.id);
+    });
+    let filter = ed.document.category_filter.trim().to_lowercase();
+    // The list scrolls to the family's category when the dialog opens.
+    let first = !std::mem::replace(&mut ed.document.category_shown, true);
+    Frame::new().stroke(Stroke::new(1.0, pal().border)).inner_margin(Margin::same(4)).show(ui, |ui| {
+        ScrollArea::vertical().id_salt("family-category-list").max_height(150.0).auto_shrink([false, true]).show(ui, |ui| {
+            ui.with_layout(Layout::top_down_justified(Align::Min), |ui| category_list(ed, ui, &filter, first));
+        });
+    });
+    ui.add_space(8.0);
+    ui.label(RichText::new(t("Family Parameters")).strong());
+    // The table as wide as the dialog: the names' column, the values' the rest.
+    const NAME_W: f32 = 230.0;
+    let value_w = (ui.available_width() - NAME_W - 12.0).max(160.0);
+    Grid::new("family-parameters").num_columns(2).striped(true).spacing(vec2(12.0, 4.0)).min_col_width(NAME_W).show(ui, |ui| {
+        ui.label(RichText::new(t("Parameter")).strong());
+        ui.label(RichText::new(t("Value")).strong());
+        ui.end_row();
+        super::options::rows(ui, &mut ed.options, ed.category, units, "family-category-dialog", value_w);
+        if ed.category.hosted() {
+            let l = ui.label(t("Operation"));
+            let shown = ed.operation.map_or(t("(none)"), |op| t(op.label()));
+            let c = ComboBox::from_id_salt("family-operation").selected_text(shown).width(value_w).show_ui(ui, |ui| {
+                if ui.selectable_label(ed.operation.is_none(), t("(none)")).clicked() {
+                    ed.operation = None;
+                }
+                for op in Operation::ALL {
+                    if ui.selectable_label(ed.operation == Some(op), t(op.label())).clicked() {
+                        ed.operation = Some(op);
+                    }
+                }
+            });
+            c.response.labelled_by(l.id);
+            ui.end_row();
+        }
+    });
+    // Said in the dialog: the view's would be under it.
+    let refused = ed.document.options_refused.as_ref().filter(|(d, _)| *d == Draft::of(ed)).map(|(_, w)| w.clone());
+    if refused.is_none() {
+        ed.document.options_refused = None;
+    }
+    if let Some(p) = refused.or_else(|| ed.problem().map(str::to_string)) {
+        ui.add_space(6.0);
+        ui.label(RichText::new(p).color(pal().error));
+    }
+}
+
+/// Family Category and Parameters' list: the categories `filter` keeps, the family's picked; scrolled to it when the dialog
+/// opens (`first`).
+fn category_list(ed: &mut FamilyEditor, ui: &mut Ui, filter: &str, first: bool) {
+    let mut any = false;
+    for c in CATEGORIES {
+        let label = category_label(c);
+        if !filter.is_empty() && !label.to_lowercase().contains(filter) {
+            continue;
+        }
+        any = true;
+        let r = ui.selectable_label(ed.category == c, &label);
+        if first && ed.category == c {
+            r.scroll_to_me(Some(Align::Center));
+        }
+        if r.clicked() {
+            ed.category = c;
+        }
+    }
+    if !any {
+        ui.label(RichText::new(t("Nothing matches the search.")).color(pal().muted));
+    }
+}
+
+/// Revit's Preview Visibility: the view control bar's toggle and the banner over the view while it is on.
+const PREVIEW_VISIBILITY: &str = msg!("Preview Visibility");
 
 /// Placement Plane's first entry: a plane picked in the view.
 const PICK: &str = msg!("Pick…");
@@ -974,6 +1263,42 @@ fn work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
     });
 }
 
+/// Work Plane in a plan or an elevation of a family that isn't adaptive (F4): Set picks the view's work plane from the
+/// family's planes, as A4's list names them, or by a click on one (Pick); Show tints it. Revit's Work Plane dialog is T12's.
+fn views_work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
+    let listed = ed.plane_set().listed();
+    let now = ed.views.work_plane();
+    let mut chosen = None;
+    ribbon::panel(ui, msg!("Work Plane"), |ui| {
+        let tip = msg!("Set: the view's work plane, a plane picked in the view or from the list");
+        let r = big_button(ui, Icon::PickFaces, msg!("Set"), ed.views.picking_plane, tip);
+        // Pick takes a plane clicked in a plan or an elevation; {3D} offers the list alone.
+        let pickable = ed.views.shown.is_some();
+        ribbon::choices(ui, &r, false, |ui| {
+            if pickable && ui.button(t(PICK)).clicked() {
+                ed.views.picking_plane = true;
+                ui.close();
+            }
+            for (plane, label) in &listed {
+                if ui.selectable_label(now == *plane, t(label)).clicked() {
+                    chosen = Some(*plane);
+                    ui.close();
+                }
+            }
+        });
+        crate::stacked(ui, |ui| {
+            let tip = msg!("Show: the view's work plane, tinted");
+            if crate::stacked_button(ui, Icon::Visibility, msg!("Show"), ed.views.show_work_plane, tip).clicked() {
+                ed.views.show_work_plane = !ed.views.show_work_plane;
+            }
+        });
+    });
+    if let Some(p) = chosen {
+        ed.views.set_work_plane(p);
+        ed.views.picking_plane = false;
+    }
+}
+
 /// The family's Identity Data in Properties: its name, typed, and its category.
 fn identity(ui: &mut Ui, name: &mut String, category: &str) {
     group(ui, msg!("Identity Data"), |ui| {
@@ -984,6 +1309,14 @@ fn identity(ui: &mut Ui, name: &mut String, category: &str) {
         ui.label(category);
         ui.end_row();
     });
+}
+
+/// The family's Other group in Properties, as Revit's: its options (`options.rs`), edited in the draft. What the `family`
+/// command would refuse of them is why the draft can't be tried, which the view says (Properties, for an adaptive family).
+fn other(ui: &mut Ui, ed: &mut FamilyEditor, units: Units) {
+    let category = ed.category;
+    let w = (ui.available_width() / 2.0 - 16.0).max(60.0);
+    group(ui, msg!("Other"), |ui| super::options::rows(ui, &mut ed.options, category, units, "family-properties-other", w));
 }
 
 /// Where Properties names what it shows, as Revit's type selector does: an icon and the name, on a box of its own.

@@ -26,20 +26,16 @@ fn family_types_greys_a_value_a_formula_works_out_showing_what_the_type_comes_to
     h.state_mut().edit_family("Cabinet");
     h.run();
     press(&mut h, "Family Types");
-    // Parameters: Height is worked out, so its value is shown, greyed, as type A comes to; Width is typed.
-    assert!(disabled(&h, "Parameter Value 2"), "a formula's value takes no typing");
-    assert_eq!(value(&h, "Parameter Value 2").as_deref(), Some("500"));
-    assert!(!disabled(&h, "Parameter Value 1"));
-    // Types: Height's row is there, greyed, with what each type comes to; the type's own tick is typed.
-    press_near(&mut h, "Types", "Parameter Name 1");
-    assert!(disabled(&h, "Type Value Height"));
-    assert_eq!(value(&h, "Type Value Height").as_deref(), Some("500"));
-    assert!(!disabled(&h, "Type Value Show Top"));
-    // The type previewed, picked in Types: B.
-    press(&mut h, "Type");
-    press_near(&mut h, "B", "Type");
+    // Height is worked out, so its value is shown, greyed, as type A comes to; Width is typed, and so is the type's own tick.
+    assert!(disabled(&h, "Parameter Value Height"), "a formula's value takes no typing");
+    assert_eq!(value(&h, "Parameter Value Height").as_deref(), Some("500"));
+    assert!(!disabled(&h, "Parameter Value Width"));
+    assert!(!disabled(&h, "Parameter Value Show Top"));
+    // The type previewed, picked in Type name: B.
+    press(&mut h, "Type Name");
+    press_near(&mut h, "B", "Type Name");
     h.run();
-    assert_eq!(value(&h, "Type Value Height").as_deref(), Some("300"), "type B: 600 / 2");
+    assert_eq!(value(&h, "Parameter Value Height").as_deref(), Some("300"), "type B: 600 / 2");
     // Loaded into the project, the family is as it was: no type sets Height.
     press(&mut h, "OK");
     press(&mut h, "Load into Project");
@@ -54,14 +50,14 @@ fn a_forms_visible_tied_to_a_yes_no_parameter_through_equals_greys_its_tick() {
     h.set_size(vec2(1800.0, 900.0));
     h.state_mut().edit_family("Cabinet");
     h.run();
-    // The second form, picked in the Project Browser, opens in Properties.
+    // The second form, picked in the Project Browser, is selected: Properties show its own rows (T11).
     press(&mut h, "Symbols");
     h.get_by_label("2. Extrusion").scroll_to_me();
     h.run();
     press(&mut h, "2. Extrusion");
     // Tied to Show Top: greyed, ticked as type A has it.
-    assert!(disabled(&h, "Form Visible 2"), "tied, the tick takes no clicks");
-    assert!(ticked(&h, "Form Visible 2"));
+    assert!(disabled(&h, "Visible"), "tied, the tick takes no clicks");
+    assert!(ticked(&h, "Visible"));
     let equals = "Associate Family Parameter: Visible";
     // Properties scrolls: the row is brought into view before its "=" is pressed.
     let press_equals = |h: &mut Harness<BimApp>| {
@@ -73,17 +69,17 @@ fn a_forms_visible_tied_to_a_yes_no_parameter_through_equals_greys_its_tick() {
     press_equals(&mut h);
     press(&mut h, "<None>");
     press_near(&mut h, "OK", "<None>");
-    assert!(!disabled(&h, "Form Visible 2") && ticked(&h, "Form Visible 2"));
+    assert!(!disabled(&h, "Visible") && ticked(&h, "Visible"));
     // A click hides it in every type.
-    h.get_by_label("Form Visible 2").scroll_to_me();
+    h.get_by_label("Visible").scroll_to_me();
     h.run();
-    press(&mut h, "Form Visible 2");
-    assert!(!ticked(&h, "Form Visible 2"));
+    press(&mut h, "Visible");
+    assert!(!ticked(&h, "Visible"));
     // "=" again, Show Top, OK: tied once more, greyed.
     press_equals(&mut h);
     press_near(&mut h, "Show Top", "<None>");
     press_near(&mut h, "OK", "<None>");
-    assert!(disabled(&h, "Form Visible 2") && ticked(&h, "Form Visible 2"));
+    assert!(disabled(&h, "Visible") && ticked(&h, "Visible"));
     press(&mut h, "Load into Project");
     let f = &h.state().session.model.families["Cabinet"];
     assert_eq!(f.forms[1].visible, Some(bimcraft_core::family::Expr::Formula("Show Top".into())));

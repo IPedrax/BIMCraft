@@ -656,6 +656,22 @@ element has no model pattern, or the lines aren't parallel or have no length), s
 sets it with `modify`. `pattern_origin` and `pattern_angle` are in the `modify`, `filled_region` and `floor` command docs, and
 `elements` shows them for a region and a floor even at their defaults.
 
+## Reference planes in views
+
+A project's reference plane (`hosting.rs`) is drawn as Revit draws one. In every plan, an upright one is a dashed line along it in
+the reference planes' green, and its name, when it has one, is lettered just beyond its end, at the size the view's annotation is
+(`render::plane_name`). A section or an elevation draws each plane square to it (its normal across the way it looks, within
+1e-6, whatever its tilt about that) as its trace over the whole frame, dashed green, named inside the frame by the end it reaches
+(`section_base`); one it looks straight at, or askew, has no trace there. Names don't lie on each other: a view letters them in
+the order it draws the planes, once every plane's trace is known, and a name whose box would overlap one lettered before goes beyond
+its trace's other end; crowded there too, it goes beside its own trace, its box a hair off the line just inside an end (one side,
+then the other, then by the other end, then stepped in along the trace), the first place clear of the other names and of the other
+planes' traces inside the picture taken (`render::plane_name_px`). So a name always touches its own plane's line and never stands
+across another's, and a plane alone is named where it always was. `render::tests::a_named_reference_plane_prints_its_name_in_plan`,
+`a_section_draws_the_reference_planes_square_to_it`, `the_names_of_two_planes_close_together_do_not_overlap` and
+`crowded_plane_names_stay_clear_and_by_their_own_traces` hold these. These are what a family's plans and elevations draw its planes
+with ([families](families.md#the-familys-views)).
+
 ## Linked models
 
 A `Link` element (`link.rs`; commands `link` and `reload`) is another project shown in this one as a reference. The file holds its name, its

@@ -167,7 +167,7 @@ impl Family {
     /// Whether its options are sound: an OmniClass number and title it can carry, and a room calculation point whose
     /// formulas read only its length parameters (a door's or a window's `Wall Thickness` too) and that works out, for every
     /// type, finite and within reach.
-    pub(super) fn check_options(&self) -> Result<(), String> {
+    pub fn check_options(&self) -> Result<(), String> {
         let d = self.default_elevation;
         if !d.is_finite() || d.abs() > crate::model::MAX_COORD {
             return Err(format!("`default_elevation` {d} is not a usable height; give mm within ±{}", crate::model::MAX_COORD));

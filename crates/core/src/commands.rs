@@ -1184,7 +1184,7 @@ other_files(
          dots (`23.30.20.17`) and a title, which IFC writes as a classification reference on its type; work_plane_based (off), \
          always_vertical (on), cut_with_voids_when_loaded (off) and shared (off) are kept for later and change nothing yet; \
          a reply's `options` has them all), \
-         rename?, delete?: true, dry_run?, path?, save?, overwrite?: no|version|version_and_values} a family of \
+         rename?, delete?: true, dry_run?, path?, definition?, save?, overwrite?: no|version|version_and_values} a family of \
          the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .json file at `path` (a \
          family as `inspect` shows it, with its `name`). Without `name` it lists the project's families, each its category and \
          how many types, forms and symbols it has; with only a `name` it reads one — its definition, each of its types' \
@@ -1207,7 +1207,7 @@ other_files(
          family's own. `reporting`, a length or an angle, reads a dimension and drives none: no formula, type or component sets \
          it, and until labelled dimensions exist it holds its `value`. Every reply carries `warnings`: what's \
          worth knowing and doesn't stop the change (a void cutting no solid, a form outside the opening or thicker than its \
-         wall, a door's or window's plan with no symbols). On `path`, `overwrite` chooses `no` (keep the project family), \
+         wall, a door's or window's plan with no symbols). `definition` is a family as such a file holds it, given in place of `path` and loaded as the file would be (read strictly). On `path` or `definition`, `overwrite` chooses `no` (keep the project family), \
          `version` (replace the definition, retaining compatible values) or `version_and_values` (also use incoming values). \
          Omitted: legacy merge. Project-only types and instance overrides stay; incoming formulas replace the old ones. Its forms are profiles drawn in its own axes (x along a component's \
          angle, y to its left, z up from its base): each is drawn on its `host`, a plane of the family, in that plane's own \
@@ -11119,24 +11119,51 @@ fn family(s: &mut Session, p: &Value) -> R {
         Some(Value::String(v)) if matches!(v.as_str(), "no" | "version" | "version_and_values") => Some(v.clone()),
         Some(_) => return Err(bad(c, "`overwrite` must be no, version, or version_and_values")),
     };
-    if overwrite.is_some() && string(c, p, "path")?.is_none() {
-        return Err(bad(c, "`overwrite` is only for loading a family with `path`"));
+    let definition = p.get("definition").filter(|v| !v.is_null());
+    let path = string(c, p, "path")?;
+    if path.is_some() && definition.is_some() {
+        return Err(bad(c, "`path` or `definition`, not both: the family loaded comes from one"));
     }
-    // From a file: its fields under the name given, else its own, else the file's.
+    if overwrite.is_some() && path.is_none() && definition.is_none() {
+        return Err(bad(c, "`overwrite` is only for loading a family with `path` or `definition`"));
+    }
+    // From a file, or a definition as a file holds it: its fields under the name given, else its own, else the file's.
     let mut p = p.clone();
-    if let Some(path) = string(c, &p, "path")? {
-        let path = PathBuf::from(path);
-        let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
-        if size >= MAX_FILE {
-            return Err(bad(c, format!("{} is too large ({size} bytes)", path.display())));
+    let loaded = match (path, definition) {
+        (Some(path), _) => {
+            let path = PathBuf::from(path);
+            let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+            if size >= MAX_FILE {
+                return Err(bad(c, format!("{} is too large ({size} bytes)", path.display())));
+            }
+            let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+            let loaded: Value = serde_json::from_str(&text).map_err(|e| bad(c, format!("{} is not a family: {e}", path.display())))?;
+            let Value::Object(fields) = loaded else {
+                return Err(bad(c, format!("{} is not a family: it isn't an object", path.display())));
+            };
+            let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            Some((fields, json!(stem)))
         }
-        let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-        let loaded: Value = serde_json::from_str(&text).map_err(|e| bad(c, format!("{} is not a family: {e}", path.display())))?;
-        let Value::Object(mut fields) = loaded else {
-            return Err(bad(c, format!("{} is not a family: it isn't an object", path.display())));
-        };
-        let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        let name = p.get("name").filter(|v| !v.is_null()).cloned().or_else(|| fields.remove("name")).unwrap_or(json!(stem));
+        // A command's own definition is read strictly, as any command's params are: a misspelled field is an error.
+        (None, Some(definition)) => {
+            let Value::Object(mut fields) = definition.clone() else {
+                return Err(bad(c, "`definition` is a family as a family file holds it, an object"));
+            };
+            let own = fields.remove("name");
+            serde_json::from_value::<crate::family::Family>(Value::Object(fields.clone()))
+                .map_err(|e| bad(c, format!("`definition`: {e}")))?;
+            if let Some(own) = own {
+                fields.insert("name".into(), own);
+            }
+            Some((fields, Value::Null))
+        }
+        (None, None) => None,
+    };
+    if let Some((mut fields, stem)) = loaded {
+        let name = p.get("name").filter(|v| !v.is_null()).cloned().or_else(|| fields.remove("name")).unwrap_or(stem);
+        if !name.as_str().is_some_and(|n| !n.trim().is_empty()) {
+            return Err(bad(c, "`name` must be a nonempty family name"));
+        }
         // Only the family it holds: what a file says to rename or delete isn't for it to say.
         let mut family: Map<String, Value> = [
             "category",

@@ -22,6 +22,7 @@ mod bounds;
 mod options;
 mod planes;
 mod validate;
+pub mod views;
 
 pub(crate) use validate::check_family_edits;
 

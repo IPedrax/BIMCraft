@@ -92,11 +92,35 @@ docked Properties and Project Browser, and a 3D view: an adaptive family's model
 edited in Properties (whose Adaptive tab makes it adaptive); Family Types and Family Category and Parameters open dialogs
 (Apply, OK, and Cancel putting back what the dialog began from). Form creation tools that need sketch workflows remain
 disabled placeholders. Undo and Redo are the document's own (`Draft`), and never undo the project.
+Family Types is Revit's (`editor/types_dialog.rs`): Type name, a drop-down of the types with New Type (a name asked, the type
+shown copied), Rename Type and Delete Type (refused for the last, saying why); Search parameters (by name, case aside); one table,
+Parameter, Value, Formula and Lock, under the groups' headings in `Group::ALL`'s order (the Properties palette's), each folding.
+A type parameter's Value is the type shown's own (else the family's), an instance parameter's, marked "(default)", the family's;
+a row a formula drives is greyed with what it comes to; words and reporting parameters take no formula. Apply and OK are refused,
+with T9's words, while a parameter's formula doesn't read (`formula_refusal`). Lock is a disabled tick until locked labelled
+dimensions (F7). Under the table: New and Edit Parameter (Parameter Properties: family or shared, picked from a shared parameters
+file by path; name, Type or Instance, reporting, kind, a family type's category, the group), Edit's rename walking the draft as
+`Family::rename_parameter` does; Delete Parameter, the `family` command's `delete_parameter` on a private session holding the
+draft, so it is refused with the command's reason while a formula or a form uses it; Move Up and Move Down within a group and
+Ascending and Descending sorting each group, since `Family::parameters`' order is saved and is the order every list shows.
+Lookup tables and type catalogs are not there.
 The editor keeps text drafts (`FormText`, `ParamText`, ...) and changes the project's family only when Load into Project
 or Load into Project and Close runs a `family` command. Close Family discards the draft. Save Family and Add to Favorites
 prepare a private `Session`, so saving never implicitly loads the draft into the project. The preview is a scratch
 `Session` of its own; errors appear inside the document or its dialog. Connectors, reference planes and lines, form hosts,
 parameter metadata and symbols remain in the draft even when their dedicated tools are not yet available.
+
+A form selected in the document (from the Project Browser's Forms list, or Select in the Forms tab; Escape, a click in the view or
+Modify lets it go) shows its own Properties in place of the family's tabs, as Revit's do for an Extrusion (`editor/extrusion.rs`):
+Constraints (Extrusion End and Start in the project's units, each with `=`, a revolve's angles instead; the Work Plane, read-only,
+named as `Planes::listed` names it), Graphics (Visible with `=`; Visibility/Graphics Overrides is F8's and shows greyed), Materials
+and Finishes (Material with `=`) and Identity Data (Solid/Void). A value tied to a parameter or worked out by a formula is greyed. The
+contextual tab is "Modify | Form", with Delete and Edit Work Plane, which drops down the family's planes; the Options Bar shows
+Depth (End less Start: typed, Start stays and End moves; greyed while End is tied). Edits go to the draft and its history. Solid/Void
+and Edit Work Plane run `family` (its `form` patch) and `edit_work_plane` on a private session holding the draft, as Save Family
+does, and take the form back with the id and GUID it had: the form moves with the plane. Sketch mode (Edit Extrusion, Finish and
+Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's, Revit's Work Plane dialog T12's, Visibility Settings F8's;
+the 3D preview does not highlight the form selected.
 
 Expression-valued form and symbol properties (their numbers, Visible and a form's Material) offer `=` (`editor/association.rs`),
 which opens the Associate Family Parameter an adaptive element's rows open (`adaptive_editor::associate`, through the `Tied`
@@ -199,8 +223,28 @@ a section and IFC leave it out alike, and a change of type, of the type's tick o
 family document's Properties (its Forms tab) show it as Revit's do: a Visible tick with "=" at its end (Associate Family Parameter,
 the same dialog an adaptive element's rows open, through `adaptive_editor::Tied`), which ties it to a yes/no parameter or, with
 <None>, unties it keeping what it came to; tied, or given a formula, the tick is greyed, showing what the type previewed comes
-to, the formula beside it. Revit's "Preview Visibility" (forms hidden in a type drawn greyed in the family's own views) is left
-out: the editor's preview shows each type as it builds.
+to, the formula beside it. As Revit's family editor, the document's preview draws a solid form the type previewed hides ghosted
+(grey and see-through: a material of the preview's scratch project, `editor.rs::ghosted`), so it can still be picked and edited;
+the view control bar's Preview Visibility shows the family as placed, the form left out, with an orange frame round the view and
+its name over it. The camera is fitted to every form either way, so the toggle doesn't move it; a change of type redraws both. The
+toggle is the document's (`document::State`), off when a family opens, and no part of the draft: not saved, no unsaved change, no
+step of its history. A void hidden in a type cuts nothing in either.
+
+Temporary Hide/Isolate works in the family document's view as in the project's (`editor/temp_hide.rs`): Hide Element (HH), Hide
+Category (HC), Isolate Element (HI), Isolate Category (IC) and Reset (HR), from the keys (or what Keyboard Shortcuts made them) or
+the view control bar's Temporary Hide/Isolate menu (Apply Hide/Isolate to View greyed: a family's views keep nothing hidden for
+good yet). It acts on what is selected: the form selected in a family that isn't adaptive, the points, lines and forms selected in
+the modelling view; the selection goes. A family has no categories of elements, so the view's own stand for them, as Revit's
+family editor names them: Forms (solid and void alike: forms have no subcategory), Reference Points, Lines, Reference Planes (the
+datums and the family's planes the modelling view draws) and, in a door's or a window's preview, the wall it stands in. Only forms,
+points and lines are selected, so they are what HC hides; IC hides every other category the view draws, and HI the reference
+planes or the wall with the other elements. The preview leaves a hidden solid form out of what it draws (`temp_hide::without`; a
+hidden void still cuts, being never drawn) and hides the wall by its category; the modelling view neither draws nor picks a
+hidden element (`adaptive_view::Hidden`), the datums staying placed round everything. A form is known by a `tag` the document
+gives it, so a hidden one stays hidden as forms move in the list. A hidden form stays in the Forms list. What is hidden is the
+document's (`document::State::temp`), as Preview Visibility: not saved, no step of the history, no unsaved change, gone when the
+family closes. While it hides anything the view wears the project's cyan frame (`footer::FRAME`) and the bar says
+"Temporary Hide/Isolate (HR resets)"; Preview Visibility's orange frame is then drawn just inside it, so both show.
 
 ## Shared parameters file
 
@@ -277,13 +321,57 @@ and `ref_line` and deletes with `delete_ref_plane` and `delete_ref_line` by id o
 line is drawn on is refused, naming them. A new plane or line may carry a GUID of its own, so forms are drawn on it in the
 same command; a host given as an id is resolved to that plane's GUID (`Family::resolve_hosts`). A plane or line whose GUID
 the sync gives anew (a family loaded twice) takes what is drawn on it along (`Family::rehost`). The Family Editor keeps the
-planes, lines and hosts as they are; its Plane list picks a datum. A connector has no place yet: when it gets `at` and
+planes, lines and hosts as they are; its Plane list picks a datum, and its plans and elevations draw, select and move
+planes (*The family's views*, below). A connector has no place yet: when it gets `at` and
 `direction` (upstream #269) it takes an optional host too. IFC is unchanged: it writes the forms' triangles.
 
 An adaptive family's work planes are these planes too: a reference point is drawn on a datum, a named plane of the family's own
 or a reference line's face, and keeps it as its Work Plane by `PlaneRef`; the three datums an adaptive definition had of its own
 before are the datum planes, read from an older file by name ([adaptive families](adaptive-families.md)). `Family::hosted_on`,
 `rehost` and `resolve_hosts` follow its points as they follow forms and lines.
+
+## The family's views
+
+F4: the family document's Project Browser opens the Ref. Level floor and ceiling plans and the four elevations, Back, Front, Left
+and Right, beside {3D}, and the view's tab and the window's title name the one shown (`Floor Plan: Ref. Level`, `Elevation:
+Front`). Each is the project's own drawing of a scratch model (`family/views.rs`, `stage`), as `render {family}` and the 3D
+preview make theirs: the family placed at the origin (a door or a window in its wall), the first level renamed Ref. Level and
+the others taken away, each of the family's planes but Ref. Level a project reference plane there, across what the views frame
+(named as it is, mapped back to the family's plane by GUID in `Staged::planes`), and four elevations outside it, Front looking
+north, so its right is east, Back south, Left east and Right west, as Revit's. The mapping lives in the scratch model alone:
+the project gets no element and no step from a view, and the family only the planes drawn and moved in one. A view's scale is
+the one at which, fitted, its annotation and pens are their size on paper, so names read as on a sheet and grow when it is
+zoomed (the wheel; the middle button moves it). The plan is `render::draw` with, over it, each component's forms seen from above
+at any height and, where a form crosses the level's cut plane (1200), its outline there in the cut pen (`render::family_plan`,
+`plan_cut`, the section's slicing turned on its side); a project's plans never cut a component. The ceiling plan is the project's.
+An elevation is a section's picture and drawing (`section_picture`, `section_over`): forms seen, Ref. Level a level with its name.
+The planes are drawn with the rules in [views and graphics](views-and-graphics.md#reference-planes-in-views). The family's reference
+lines (`Family.lines`) are drawn over each plan and elevation as the view sees them, solid in the planes' green and the thinnest
+pen, as Revit's: true length where their plane is square to the view, foreshortened where it isn't, nothing for one seen end on
+(`render::reference_lines`). They are owned by nothing in the drawing, so a click doesn't select one there yet. Views are drawn on
+the interface's thread, being one family, and kept until what they show changes (`editor/views.rs`).
+
+In a family that isn't adaptive, a click selects a form (`views::form_at`: the one nearest the eye there, highest in plan; its
+Properties and contextual tab as T11's) or a plane (Properties: its name, read-only for a datum; "Modify | Reference Planes",
+whose Delete takes away a plane of the family's own unless something is drawn on it). The selected form is outlined, the
+selected plane's trace drawn heavier. A plane of the family's own, selected, moves square to itself by a drag; a datum doesn't.
+Reference Plane (RP, the Create tab's Datum) draws one by two clicks: in plan upright (`up` the vertical), in an elevation
+`up` the way it looks, so its normal lies in the elevation's plane (`views::new_plane`); it has no name, is Weak, and is a step
+of the document's history (`Draft` keeps the planes). Work Plane on the Create tab: each view has its own work plane for the
+session (Ref. Level in plan, the Center plane an elevation faces), which Set picks from the family's planes as A4's list names
+them, or by a click on one (Pick; the Work Plane dialog is T12's); Show tints it, all over where the view looks straight at it,
+along its trace where across it. {3D} has a work plane of its own too (Ref. Level until Set, from the list alone): Show draws it
+into its picture over the patch the project's 3D view lays its work plane on (`workplane::patch`), what the family takes up and
+300 mm round: tinted as the plans tint it, with its outline and a grid through the family's origin whose step leaves about 5 to 20
+lines across it (10, 50, 100, 500 or 1000 mm, `workplane::grid_step`), depth tested against the picture
+(`view3d::Image::draw_plane`), so a form in front of the plane hides it and one behind it is seen through its tint.
+An adaptive family's modelling view keeps its own Work Plane panel and Show. While Preview Visibility is off, the solid forms the type hides are a second component of a
+family of their own in the scratch model, drawn halftone, as {3D} ghosts them (not for a door or a window, whose wall holds one
+opening); on, they are left out. Temporary Hide/Isolate leaves a form hidden for now out of every view; a selected plane can be
+hidden (HH), isolated or hidden with every plane (HC). It keeps **one state for the whole family document**, every view showing
+what it hides, a deliberate limit: Revit keeps it per view, and Apply Hide/Isolate to View stays greyed. An adaptive family's
+plans and elevations show its test placement and nothing more (no selection, no Reference Plane, no drag); its tools stay in
+{3D}, its modelling view. None of this is a field of the family or a step of FORMAT: what a view keeps is the session's.
 
 ## Family options
 
@@ -293,8 +381,15 @@ out of the file (`lenient.rs`) and opens it, the family then as it was before th
 room its insertion point's, no classification). `family {name, options: {…}}` merges what it is given over what the family
 has, `null` taking one back to its default, and every reply that shows a family carries `options` with all eight, defaults
 too (`Family::options_json`); a dry run lists the ones it would change in `changes.options`. A family file holds them flat,
-as a project does, and `path` reads them back into `options`. The Family Editor has no tab for them yet: it keeps them as
-the family has them and sends them back whole when it saves.
+as a project does, and `path` reads them back into `options`. The family document edits them (T5b, `editor/options.rs`) in Family Category and
+Parameters' Family Parameters table (Parameter | Value, Revit's order, under the category list and its filter) and in
+Properties' Other group when nothing is selected, both in the draft, so the dialog's visit is one step of its history and
+Cancel puts back what it began from; it sends them back whole when it loads or saves. Room Calculation Point turned on
+starts at the insertion point, 300 mm up (so the room is the insertion point's until it is moved); a coordinate a formula
+gives is shown, not typed over. Enable Cutting in Views is a tick beside By Category: ticked, the category's rule decides
+and the tick shows it, greyed. OK or Apply runs `Family::check_options`, and what it refuses (an OmniClass number that
+isn't digits and dots) is said in the dialog, which stays open. Turning Work Plane-Based off while a component of the
+family is on a plane is refused by the project on Load into Project, said in the document.
 
 - `work_plane_based` (off) lets a component of the family be hosted on a reference plane of the project, and
   `always_vertical` (on, Revit's default, and allowed off without `work_plane_based`: a wall-hosted family has it too) keeps
@@ -512,12 +607,26 @@ a ceiling or a roof (`host`) keep their host, place and Offset from Host, and ad
 while components rely on it is refused as a whole. The incoming family's formulas are checked as any edit's are: one that
 names a parameter the incoming family doesn't have refuses the reload (`no` never reads the file's formulas).
 
-The option is only accepted with `path`, and is the caller's decision: a field named `overwrite` inside a family file cannot
-choose the policy. With no option the original merge behaviour is preserved, including partial definitions. A family not
+The option is only accepted with `path` or `definition` (the family as such a file holds it, given in the command, read
+strictly), and is the caller's decision: a field named `overwrite` inside a family file cannot choose the policy. With no option the original merge behaviour is preserved, including partial definitions. A family not
 yet in the project is loaded normally under all three policies. This changes commands, not the saved file format.
 
-The overwrite dialogs and nested shared-family decisions are separate UI work. Dimension references to family forms and
-reference planes are not supported yet; reload does not silently delete project dimensions.
+Dimension references to family forms and reference planes are not supported yet; reload does not silently delete project
+dimensions.
+
+In the desktop (`editor/exists.rs`), Load into Project, Load into Project and Close and the Component tool's Load Family ask
+as Revit's "Family Already Exists" does when the project has a family of that name defined otherwise: Overwrite the existing
+version (`version`), Overwrite the existing version and its parameter values (`version_and_values`), or Cancel, which keeps the
+project's (as `no`) and changes nothing. The dialog only picks `overwrite`: the family document loads its draft as a
+`definition`, a file by its `path`. A family the project hasn't, or one that would load unchanged (the draft as the project's
+family opens, or the core's dry run saying `overwritten: false`), asks nothing and the unchanged one adds no undo step. A
+document renamed renames the project's family as before, asking nothing. Load into Project and Close closes only once the
+family went in; on Cancel or a refusal the document stays open, a refusal said in it.
+
+A load asks its questions in turn (`Question`): the family's own, then "Shared Family Already Loaded" for each shared family
+nested in it that the project has otherwise (keep the project's version, or overwrite it with the family's). Nested families
+(T6) don't exist yet, so nothing detects the second question: the document's `shared_nested` is where T6 puts what it finds,
+and until then only tests inject it. The answers are kept as the load's `Decided`, for the command to take once it can.
 
 Load matches family and type names exactly, including case. The caller's `name` overrides the file's name. A new family name
 creates a separate library definition; imported part identities are reconciled by the normal library sync and do not rename

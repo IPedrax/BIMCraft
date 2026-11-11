@@ -581,9 +581,7 @@ fn the_equals_button_ties_each_offset_and_rotation_of_a_point_to_a_family_parame
     assert_eq!(tied(&h), bimcraft_core::family::Expr::Formula("Panel Offset".into()));
     // The type's value changed in Family Types moves the point.
     tool(&mut h, "Family Types");
-    // Its row is the last of the parameters.
-    let row = h.state().family_editor.as_ref().map(|e| e.parameter_kinds().len()).unwrap();
-    type_into(&mut h, &format!("Parameter Value {row}"), "800");
+    type_into(&mut h, "Parameter Value Panel Offset", "800");
     press(&mut h, "OK");
     assert!((height(&h) - 800.).abs() < 1e-6, "the parameter drives the offset: {}", height(&h));
     // A rotation takes angles only: Panel Offset is not offered.

@@ -752,6 +752,10 @@ pub struct BimApp {
     favorites_dialog: Option<favorites::FavoritesDialog>,
     /// The Family Editor, while it's open.
     family_editor: Option<editor::FamilyEditor>,
+    /// A family being loaded into the project, waiting on "Family Already Exists" (`editor::exists`).
+    family_loading: Option<editor::exists::Loading>,
+    /// What the last family load decided: how the project's family was overwritten, and its shared nested families.
+    pub(crate) family_decided: Option<editor::exists::Decided>,
     favorites_path: Option<std::path::PathBuf>,
     /// The files File > Open Recent lists, and where they are kept (see [`BimApp::keep_recent_in`]; none until the app is told).
     recent: recent::Recent,
@@ -1423,6 +1427,8 @@ impl BimApp {
             family_dialog: None,
             favorites_dialog: None,
             family_editor: None,
+            family_loading: None,
+            family_decided: None,
             favorites_path: None,
             recent: recent::Recent::default(),
             recent_path: None,
@@ -2831,6 +2837,12 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
+        // A form selected in a family document goes first.
+        if let Some(ed) = self.family_editor.as_mut()
+            && ed.let_form_go()
+        {
+            return;
+        }
         // Pick in View goes back to its dialog.
         if self.stop_work_plane_pick() {
             return;
@@ -4566,13 +4578,8 @@ impl BimApp {
                 let tip = msg!("Load Family: a family saved as a .json file, BIMCraft's own");
                 if big_button(ui, Icon::LoadFamily, "Load Family", false, tip).clicked() {
                     let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]);
-                    self.ask_file(ui.ctx(), dialog, false, |app, path| {
-                        if let Some(r) = app.run("family", json!({"path": path.to_string_lossy()})) {
-                            let name = r["name"].as_str().unwrap_or_default().to_string();
-                            let first = r["family"]["types"].as_object().and_then(|t| t.keys().next().cloned()).unwrap_or_default();
-                            app.component = Some((name, first));
-                        }
-                    });
+                    // A family the project has otherwise asks first: Family Already Exists.
+                    self.ask_file(ui.ctx(), dialog, false, |app, path| app.load_family_file(&path));
                 }
             });
         }
@@ -5300,7 +5307,9 @@ impl BimApp {
                 if let Some(note) = self.snap_note() {
                     ui.label(RichText::new(note).color(pal().accent_ink));
                 }
-                if self.dirty() {
+                // The active document's: an open family's draft, else the project.
+                let unsaved = self.family_editor.as_ref().map_or_else(|| self.dirty(), |ed| ed.unsaved());
+                if unsaved {
                     ui.label(RichText::new(t("Unsaved changes")).color(pal().muted));
                 }
                 self.option_selector(ui);
@@ -5502,6 +5511,7 @@ impl BimApp {
         self.materials_window(ctx);
         self.favorites_window(ctx);
         self.family_editor_window(ctx);
+        self.family_load_dialog(ctx);
         self.snaps_window(ctx);
         self.parameters_window(ctx);
         self.new_schedule_window(ctx);

@@ -3943,6 +3943,67 @@ impl Image {
         Ok(())
     }
 
+    /// A plane drawn into the picture taken through `cam`, as a work plane is shown: the patch of it from `lo` to `hi` (along
+    /// `across` and `up` from `origin`, unit and square to each other) tinted, with grid lines `step` apart through `origin`
+    /// and its outline, a pixel wide wherever it is seen. Each colour is premultiplied red, green, blue and alpha, laid over
+    /// what is there. Only where no opaque surface stands nearer the camera than the plane: a form in front of it hides it,
+    /// one behind it is seen through its tint.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_plane(
+        &mut self,
+        cam: &Camera,
+        origin: P3,
+        (across, up): (P3, P3),
+        (lo, hi): ((f64, f64), (f64, f64)),
+        step: f64,
+        tint: [u8; 4],
+        grid: [u8; 4],
+        edge: [u8; 4],
+    ) {
+        let (w, h) = (self.width as usize, self.height as usize);
+        let normal = unit(cross(across, up));
+        // Where each pixel's ray meets the plane, in its axes, and how near the camera that is.
+        let at: Vec<Option<(f64, f64, f64)>> = (0..w * h)
+            .map(|k| {
+                let p = cam.on(((k % w) as f64 + 0.5, (k / w) as f64 + 0.5), origin, normal)?;
+                let d = sub(p, origin);
+                Some((dot(d, across), dot(d, up), cam.project(p).2))
+            })
+            .collect();
+        let over = |px: &mut [u8], c: [u8; 4]| {
+            let keep = 1.0 - f32::from(c[3]) / 255.0;
+            for i in 0..3 {
+                px[i] = (f32::from(c[i]) + f32::from(px[i]) * keep).round().min(255.0) as u8;
+            }
+        };
+        let near = |v: f64, mark: f64, reach: f64| (v - mark).abs() <= reach;
+        for k in 0..w * h {
+            let Some((u, v, z)) = at[k] else { continue };
+            if u < lo.0 || u > hi.0 || v < lo.1 || v > hi.1 {
+                continue;
+            }
+            if self.depth.get(k).is_some_and(|s| s.is_finite() && f64::from(*s) > z + 0.5) {
+                continue;
+            }
+            // How far the plane runs across a pixel here: half that either side of a line is that line's pixel.
+            let next = |j: usize| at.get(j).copied().flatten();
+            let (mut fu, mut fv) = (0.0f64, 0.0f64);
+            for (ok, j) in [(k % w + 1 < w, k + 1), (k / w + 1 < h, k + w)] {
+                if let Some((u2, v2, _)) = next(j).filter(|_| ok) {
+                    (fu, fv) = (fu.max((u2 - u).abs()), fv.max((v2 - v).abs()));
+                }
+            }
+            let (ru, rv) = (fu.max(fv) / 2.0, fu.max(fv) / 2.0);
+            let px = &mut self.rgba[4 * k..4 * k + 4];
+            over(px, tint);
+            if near(u, lo.0, 2.0 * ru) || near(u, hi.0, 2.0 * ru) || near(v, lo.1, 2.0 * rv) || near(v, hi.1, 2.0 * rv) {
+                over(px, edge);
+            } else if step > 0.0 && (near(u, (u / step).round() * step, ru) || near(v, (v / step).round() * step, rv)) {
+                over(px, grid);
+            }
+        }
+    }
+
     /// Whether a pixel is covered by model geometry, including linked elements and meshes
     /// without named faces. Canvas backgrounds may show through only where this is false.
     pub fn covered(&self, x: f64, y: f64) -> bool {
