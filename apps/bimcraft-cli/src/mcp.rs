@@ -49,6 +49,13 @@ enum Backend {
 }
 
 impl Backend {
+    fn desktop_context(&mut self) -> Result<Value, String> {
+        match self {
+            Backend::Own(_) => Err(bimcraft_core::bridge::NO_CONTEXT.into()),
+            Backend::Window(w) => w.ask(json!({"op": "context"})),
+        }
+    }
+
     fn execute(&mut self, command: &str, params: &Value) -> Result<Value, String> {
         match self {
             Backend::Own(s) => s.execute(command, params),
@@ -119,6 +126,8 @@ fn tool_error(e: &str) -> Value {
 
 fn tools() -> Value {
     json!([
+        {"name": "desktop_context", "description": "Read the connected desktop's current selection (element IDs, GUIDs and categories) and active view (kind, name, ID and GUID). Empty selection is []; Home has no active view (null). Built-in views without model elements have null IDs/GUIDs. Read-only; requires mcp --connect and never changes selection or navigation.",
+         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}, "annotations": {"readOnlyHint": true}},
         {"name": "execute", "description": "Run any BIMCraft command with JSON params, e.g. wall {points: [[0,0],[5000,0]]}, door {at: [2500, 0]}, \
             room {point: [x, y], name}, modify {id, …fields}, delete {ids}, undo. list_commands shows them all with their parameters.",
          "inputSchema": {"type": "object", "properties": {"command": {"type": "string"}, "params": {"type": "object"}}, "required": ["command"]}},
@@ -131,8 +140,8 @@ fn tools() -> Value {
          "inputSchema": {"type": "object", "properties": {"filter": {"type": "string"}}}},
         {"name": "inspect_model", "description": "The model at a glance: levels, element counts, types, warnings (such as rooms no longer enclosed) and undo history.",
          "inputSchema": {"type": "object", "properties": {}}},
-        {"name": "query_elements", "description": "Elements with their six-digit `id` and their `guid` (never changes), fields and derived values (wall length and height, room area_m2 and enclosed, door position `at`); what an element points at (level, host, view) is a GUID, and commands take an element by id or GUID. Filter by category and level; page with limit and offset.",
-         "inputSchema": {"type": "object", "properties": {"category": {"type": "string"}, "level": {"type": ["string", "integer"]}, "limit": {"type": "integer"}, "offset": {"type": "integer"}}}},
+        {"name": "query_elements", "description": "Elements with their six-digit `id` and their `guid` (never changes), fields and derived values (wall length and height, room area_m2 and enclosed, door position `at`); what an element points at (level, host, view) is a GUID, and commands take an element by id or GUID. Filter by category and level, and by a field of the category's schedule (`Type`, `Mark`, a project parameter) with the value it holds: text in any case, a number (millimetres, m² for an area), true or false, or \"\" for none; `field` without `value` finds those holding any. Page with limit and offset.",
+         "inputSchema": {"type": "object", "properties": {"category": {"type": "string"}, "level": {"type": ["string", "integer"]}, "field": {"type": "string"}, "value": {"type": ["string", "number", "boolean"]}, "limit": {"type": "integer"}, "offset": {"type": "integer"}}}},
         {"name": "schedule", "description": "A schedule's columns, rows and totals, and the fields it could show (`available`). `category` alone reads that category's own: rooms (number, name, level, area, perimeter), doors, windows, walls, floors, levels; ceilings, roofs, columns, components, stairs, ramps and railings too. `name` and `category` make a new one; category `multicategory` lists the elements of several categories at once, as Revit's Multi-Category Schedule (`categories`: [\"walls\", \"doors\"…], none for every built one), with the fields they share: Category, Family, Type, Level, Count, Width, Height, Length, Thickness, Area, Material. `fields` (names, or {name, formula, kind, heading, total}: a calculated one such as Area * 120, lengths in mm and areas in m²), `filters` ([{field, op: equals, greater, contains, has-value…, value}]), `sort` ([field or {field, descending}]) and `grouped` change it, each list replacing the last.",
          "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}, "category": {"type": "string"}, "categories": {"type": "array", "items": {"type": "string"}}, "fields": {"type": "array"}, "filters": {"type": "array"}, "sort": {"type": "array"}, "grouped": {"type": "boolean"}}}},
         {"name": "render", "description": "Look at the model as a PNG: a level's floor plan (walls and columns with poché, doors with swings, windows, stairs, ramps and railings, roofs, room tags with areas, grids, dimensions, door and window tags), or with ceiling true its reflected ceiling plan, a section or elevation by name (the cut in poché, what's beyond, levels and grids), a sheet by number (its title block, unless it has none, and the views on it), or with view \"{3D}\" the 3D view, seen from azimuth degrees round from east (counter-clockwise) and elevation degrees up; by default from the south-east, 30° up. With `family`, that family alone instead of the model: its `type` (the first by default) in a model of its own — in a wall `wall_thickness` mm thick (200) if it's a door's or a window's, on a floor of its own footprint if it isn't — mode \"3d\" (default), \"plan\" (what its symbols draw) or \"elevation\" (front-on); the project is touched by none of it and keeps no elements and no undo steps from it. `path` writes a .png there instead of sending it back.",
@@ -237,7 +246,7 @@ impl Server {
                 let mut instructions = match self.backend {
                     Backend::Own(_) => INSTRUCTIONS.to_string(),
                     Backend::Window(_) => format!(
-                        "{INSTRUCTIONS} You are attached to the window the user has open: what you make is in their project, to see and to undo. new_model and open are not available; the user starts and opens projects in the window."
+                        "{INSTRUCTIONS} You are attached to the window the user has open: what you make is in their project, to see and to undo. new_model and open are not available; the user starts and opens projects in the window. Use desktop_context to read their current selection and active view; request it again after they select or navigate."
                     ),
                 };
                 if self.reads_only() {
@@ -280,6 +289,12 @@ impl Server {
         }
         let b = &mut self.backend;
         let result = match name {
+            "desktop_context" => {
+                if args.as_object().is_some_and(|o| !o.is_empty()) {
+                    return Err((INVALID_PARAMS, "`desktop_context` takes no arguments".into()));
+                }
+                b.desktop_context()
+            }
             "execute" => {
                 let params = args.get("params").cloned().unwrap_or_else(|| json!({}));
                 b.execute(args["command"].as_str().unwrap_or_default(), &params)
@@ -383,6 +398,18 @@ mod tests {
         let content = &r["result"]["content"][0];
         assert_ne!(r["result"]["isError"], json!(true), "{name} failed: {content}");
         if content["type"] == "text" { serde_json::from_str(content["text"].as_str().unwrap()).unwrap() } else { content.clone() }
+    }
+
+    #[test]
+    fn desktop_context_is_discoverable_and_headless_sessions_report_why_it_is_unavailable() {
+        let mut s = Server::new();
+        let list = call(&mut s, 1, "tools/list", json!({}));
+        assert!(list["result"]["tools"].as_array().unwrap().iter().any(|t| t["name"] == "desktop_context"));
+        let reply = call(&mut s, 2, "tools/call", json!({"name": "desktop_context", "arguments": {}}));
+        assert_eq!(reply["result"]["isError"], true);
+        assert_eq!(reply["result"]["content"][0]["text"], bimcraft_core::bridge::NO_CONTEXT);
+        let bad = call(&mut s, 3, "tools/call", json!({"name": "desktop_context", "arguments": {"selection": [100002]}}));
+        assert_eq!(bad["error"]["code"], INVALID_PARAMS);
     }
 
     #[test]

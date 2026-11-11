@@ -370,6 +370,11 @@ fn the_tools_read_the_model_and_list_commands_by_filter() {
     // A page of elements is held to 200, however many were asked for.
     let page = run(&mut s, "query_elements", json!({"limit": 100000})).unwrap();
     assert!(page["elements"].as_array().unwrap().len() <= 200);
+    // A field's value is what it holds.
+    let wall = run(&mut s, "query_elements", json!({"category": "wall"})).unwrap();
+    let kind = wall["elements"][0]["type"].as_str().unwrap().to_string();
+    let found = run(&mut s, "query_elements", json!({"category": "wall", "field": "Type", "value": kind})).unwrap();
+    assert_eq!(found["count"], 1);
 }
 
 #[test]

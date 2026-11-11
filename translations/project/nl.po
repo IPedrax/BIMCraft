@@ -3,7 +3,7 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nLanguage: nl\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: crates/core/src/sheet.rs:297
+#: crates/core/src/sheet.rs:310
 msgid "AS INDICATED"
 msgstr ""
 
@@ -40,7 +40,7 @@ msgstr "Baksteen"
 msgid "Brick 225 x 75"
 msgstr "Baksteen 225 x 75"
 
-#: crates/core/src/commands.rs:4318
+#: crates/core/src/commands.rs:4358
 msgid "Camera"
 msgstr "Camera"
 
@@ -56,7 +56,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Plafondarmatuur"
 
-#: crates/core/src/render.rs:3055
+#: crates/core/src/render.rs:3067
 msgid "Ceiling Plan"
 msgstr "Plafondplan"
 
@@ -99,7 +99,7 @@ msgstr ""
 msgid "Copper"
 msgstr "Koper"
 
-#: crates/core/src/commands.rs:1261
+#: crates/core/src/commands.rs:1264
 msgid "Copy"
 msgstr "Kopie"
 
@@ -111,7 +111,7 @@ msgstr "Aantal"
 msgid "Crosshatch"
 msgstr "Kruisarcering"
 
-#: crates/core/src/render.rs:3647
+#: crates/core/src/render.rs:3658
 msgid "DN"
 msgstr "DN"
 
@@ -132,7 +132,7 @@ msgstr "Data-aansluiting"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:10537
+#: crates/core/src/commands.rs:10615
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -217,8 +217,8 @@ msgstr "Elektrische verlichting"
 msgid "Electrical Power"
 msgstr "Elektrische voeding"
 
-#: crates/core/src/commands.rs:10321
-#: crates/core/src/commands.rs:12896
+#: crates/core/src/commands.rs:10399
+#: crates/core/src/commands.rs:12974
 msgid "Elevation"
 msgstr "Gevel"
 
@@ -280,7 +280,7 @@ msgid "Gate Valve"
 msgstr "Schuifafsluiter"
 
 #: crates/core/src/family.rs:2205
-#: crates/core/src/view3d.rs:1002
+#: crates/core/src/view3d.rs:1004
 msgid "Glass"
 msgstr "Glas"
 
@@ -320,7 +320,7 @@ msgstr "Horizontaal"
 msgid "Inspection Box"
 msgstr "Controleputje"
 
-#: crates/core/src/import.rs:1366
+#: crates/core/src/import.rs:1440
 msgid "Insulation"
 msgstr "Isolatie"
 
@@ -344,7 +344,7 @@ msgstr "Breedte poot"
 msgid "Length"
 msgstr "Lengte"
 
-#: crates/core/src/commands.rs:6733
+#: crates/core/src/commands.rs:6780
 #: crates/core/src/model.rs:3197
 msgid "Level"
 msgstr "Niveau"
@@ -385,7 +385,7 @@ msgstr "Merkteken"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:8329
+#: crates/core/src/commands.rs:8378
 msgid "Mass"
 msgstr "Massa"
 
@@ -397,7 +397,7 @@ msgstr ""
 msgid "Medium Lines"
 msgstr "Middeldikke lijnen"
 
-#: crates/core/src/import.rs:1369
+#: crates/core/src/import.rs:1443
 msgid "Membrane"
 msgstr "Membraan"
 
@@ -409,7 +409,7 @@ msgstr "Metaal"
 msgid "Mounting Height"
 msgstr "Montagehoogte"
 
-#: crates/core/src/render.rs:2883
+#: crates/core/src/render.rs:2895
 msgid "NOT ENCLOSED"
 msgstr "NIET OMSLOTEN"
 
@@ -421,7 +421,7 @@ msgstr "Naam"
 msgid "New Construction"
 msgstr "Nieuwbouw"
 
-#: crates/core/src/schedule.rs:1227
+#: crates/core/src/schedule.rs:1241
 msgid "No"
 msgstr "Nee"
 
@@ -490,11 +490,11 @@ msgstr ""
 msgid "Porcelain"
 msgstr "Porselein"
 
-#: crates/core/src/commands.rs:3005
+#: crates/core/src/commands.rs:3044
 msgid "Project"
 msgstr "Project"
 
-#: crates/core/src/render.rs:2883
+#: crates/core/src/render.rs:2895
 msgid "REDUNDANT"
 msgstr "OVERBODIG"
 
@@ -518,7 +518,7 @@ msgstr "Optreden"
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
-#: crates/core/src/commands.rs:8554
+#: crates/core/src/commands.rs:8603
 msgid "Room"
 msgstr "Ruimte"
 
@@ -534,11 +534,11 @@ msgstr ""
 msgid "Room Schedule"
 msgstr "Ruimtelijst"
 
-#: crates/core/src/sheet.rs:286
+#: crates/core/src/sheet.rs:299
 msgid "SCALE"
 msgstr "SCHAAL"
 
-#: crates/core/src/sheet.rs:288
+#: crates/core/src/sheet.rs:301
 msgid "SCALE AS INDICATED"
 msgstr "SCHAAL ZOALS AANGEGEVEN"
 
@@ -554,8 +554,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Zithoogte"
 
-#: crates/core/src/commands.rs:10298
-#: crates/core/src/commands.rs:12895
+#: crates/core/src/commands.rs:10376
+#: crates/core/src/commands.rs:12973
 msgid "Section"
 msgstr "Doorsnede"
 
@@ -672,7 +672,7 @@ msgstr "Tegel 300"
 msgid "Timber"
 msgstr "Hout"
 
-#: crates/core/src/sheet.rs:225
+#: crates/core/src/sheet.rs:238
 msgid "Total"
 msgstr "Totaal"
 
@@ -689,7 +689,7 @@ msgstr ""
 msgid "Type"
 msgstr "Type"
 
-#: crates/core/src/render.rs:3647
+#: crates/core/src/render.rs:3658
 msgid "UP"
 msgstr "OMHOOG"
 
@@ -701,7 +701,7 @@ msgstr "Onbegrensde hoogte"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:10678
+#: crates/core/src/commands.rs:10756
 msgid "Unnamed"
 msgstr "Naamloos"
 
@@ -770,7 +770,7 @@ msgstr "Ramenlijst"
 msgid "Worktop"
 msgstr "Werkblad"
 
-#: crates/core/src/schedule.rs:1227
+#: crates/core/src/schedule.rs:1241
 msgid "Yes"
 msgstr "Ja"
 
