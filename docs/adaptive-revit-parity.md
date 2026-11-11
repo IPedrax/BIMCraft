@@ -12,9 +12,8 @@ names are kept where they are what a Revit user looks for, as BIMCraft already d
 
 - **[observed]**: seen in Revit 2025 on 2026-11-02, through its API, in a Generic Model Adaptive family. The calls only read,
   or ran in a transaction that was rolled back.
-- **[documented]**: Autodesk's help (the 2014 to 2025 pages) or the Revit API reference states it. The API reference was
-  read through The Building Coder (Jeremy Tammik), revitapidocs.com and rvtdocs.com.
-- **[practitioner]**: blogs, forums, Autodesk University handouts and tutorials, with no official page behind them.
+- **[unverified]**: reported, but not yet seen in Revit here; to be observed in a model of our own before it is relied on.
+- **[practitioner]**: blogs, forums and tutorials by practitioners.
 - **[guess]**: inferred, and still to be checked in Revit.
 
 The research notes with every URL are kept outside the repository; the main pages are listed at the end.
@@ -24,14 +23,14 @@ The research notes with every URL are kept outside the repository; the main page
 ### 1.1 The family editor
 
 - An adaptive family starts from the **Generic Model Adaptive** template. Make Adaptive exists only there and in the two
-  pattern-based templates. The plain mass template does not have it [documented].
+  pattern-based templates. The plain mass template does not have it [unverified].
 - The template, opened empty from Revit 2025's English templates, holds [observed]:
   - the level **Ref. Level** at 0;
   - two reference planes, **Center (Front/Back)** (normal Y) and **Center (Left/Right)** (normal X);
   - the views Floor Plan and Ceiling Plan "Ref. Level", the elevations Front, Back, Left and Right, and a 3D view "{3D}".
     The 3D view is where adaptive families are modelled.
   - one hidden reference point at the origin, and no adaptive points.
-- It is the conceptual design environment [documented]:
+- It is the conceptual design environment [unverified]:
   - levels and reference planes show as planes in 3D;
   - the work plane under the cursor highlights, and a click on it makes it the active one;
   - **Create > Work Plane** has **Set** and **Show**;
@@ -39,7 +38,7 @@ The research notes with every URL are kept outside the repository; the main page
 
 ### 1.2 Points
 
-There are three kinds of reference point [documented]:
+There are three kinds of reference point [unverified]:
 
 - **Free**: placed on a work plane, and it depends on nothing else. The 3D control moves it anywhere.
 - **Hosted**: placed on a line, an edge, a face or another point's plane. It follows its host and slides only along it.
@@ -47,7 +46,7 @@ There are three kinds of reference point [documented]:
 
 Each point carries **three planes of its own** (its XY, XZ and YZ). They move with the point, any of them can be picked as a work
 plane, and points, lines and forms can be hosted on them. That is how a family is built: point on point, plane on plane
-[documented].
+[unverified].
 
 **Point** (Properties > Adaptive Component) is the point's type [observed]:
 
@@ -56,7 +55,7 @@ plane, and points, lines and forms can be hosted on them. That is how a family i
 - **Shape Handle Point (Adaptive)**: not clicked when placing; it is dragged afterwards to reshape the instance. It has no number.
 
 **Make Adaptive** (Modify | Reference Points > Adaptive Component) turns the selected points into placement points. On a point
-that is adaptive already it turns it back into a reference point: the same button is a toggle [documented].
+that is adaptive already it turns it back into a reference point: the same button is a toggle [unverified].
 
 **A point's Properties**, with Revit's defaults [observed]. Which rows appear depends on the point's kind:
 
@@ -80,7 +79,7 @@ that is adaptive already it turns it back into a reference point: the same butto
 | Work Plane | the plane it is on, read-only | |
 
 Every number in the table (Offset, the measurement's value, Rotation Angle) can be tied to a family parameter, with the small
-button at the end of its row [documented].
+button at the end of its row [unverified].
 
 ### 1.3 Numbering
 
@@ -89,12 +88,12 @@ All of these were observed in Revit:
 - A point made adaptive takes the **next number**: with 4 placement points, the next one is 5.
 - A point turned back into a reference point **closes the gap**: the numbers above it move down by one.
 - Typing a number another point holds **swaps** the two. The number can be typed in Properties or on its label in the view
-  [documented].
+  [unverified].
 - Numbers always run 1..N without gaps. A shape handle has none.
 
 ### 1.4 Orients to
 
-**Orients to** sets how an adaptive point's axes are taken once the family is placed. Three terms come first [documented]:
+**Orients to** sets how an adaptive point's axes are taken once the family is placed. Three terms come first [unverified]:
 
 - **instance**: the instance's own axes;
 - **host**: the element the point was clicked on (if it was clicked on nothing, the host is global);
@@ -141,11 +140,11 @@ When a form could not be built, Revit resolved the error by deleting the instanc
 [observed].
 
 **Constrained** on a shape handle keeps it on one of the point's planes (YZ, ZX, XY) or axes (X, Y, Z). The interface offers
-them as Center (Left/Right), Center (Front/Back) and Ref. Level [documented; the mapping to the API's seven values is a guess].
+them as Center (Left/Right), Center (Front/Back) and Ref. Level [unverified; the mapping to the API's seven values is a guess].
 
 ### 1.5 Hosting and measuring
 
-A point is hosted in one of six ways [documented]:
+A point is hosted in one of six ways [unverified]:
 
 - on an edge or line, by a measurement;
 - on a face, by U and V;
@@ -165,30 +164,30 @@ On a line the place is given by **Measurement Type** [observed]:
 - Chord Length (in a straight line);
 - Angle (arcs and circles only).
 
-**Measure From** (Beginning or End) says which end the measurement starts from. Arrows by the point flip it [documented].
+**Measure From** (Beginning or End) says which end the measurement starts from. Arrows by the point flip it [unverified].
 
 In the studio's test family, points sit on the planes of the adaptive points at an Offset of 400 mm, on reference lines at a
 Segment Length of 400 mm, and at the crossings of lines. That is the everyday way a family is built [observed].
 
 ### 1.6 Lines
 
-- The Draw panel has a **Model / Reference** switch [documented]:
+- The Draw panel has a **Model / Reference** switch [unverified]:
   - a model line is taken into the form it makes;
   - a reference line stays, and the form follows it. Its profile is locked to it.
   - **Is Reference Line** switches a line between the two.
 - **Spline Through Points**: two points selected give a line, three or more a spline through them. The points become driving
-  points [documented].
-- The Options Bar while drawing [documented]:
+  points [unverified].
+- The Options Bar while drawing [unverified]:
   - **Placement Plane**;
   - **Make surface from closed loops**;
   - **3D Snapping**, which snaps to points and vertices in 3D, so a line drawn point to point is tied to them;
   - **Chain**, **Offset** and **Radius**.
-- **Draw on Work Plane** makes free points; **Draw on Face** hosts them on what is clicked [documented].
+- **Draw on Work Plane** makes free points; **Draw on Face** hosts them on what is clicked [unverified].
 
 ### 1.7 Create Form
 
 There is one button (Create Form, with Solid Form and Void Form below it), and Revit works out the form from what is selected
-[documented, with the practitioner rows marked]:
+[unverified, with the practitioner rows marked]:
 
 | Selected | Result |
 |---|---|
@@ -201,7 +200,7 @@ There is one button (Create Form, with Solid Form and Void Form below it), and R
 | a profile and a straight line on its plane | a revolve |
 | a closed loop of reference lines | a choice between surface and solid, picked in the view [practitioner] |
 
-A form selected shows **Modify | Form** [documented]:
+A form selected shows **Modify | Form** [unverified]:
 
 - **X-Ray**, **Add Edge**, **Add Profile**, **Dissolve**, **Lock Profiles**, **Pick New Host**;
 - **Edit Profile**;
@@ -211,7 +210,7 @@ A void cuts the solids it meets.
 
 ### 1.8 The 3D control
 
-A selected point, edge, face or form shows the 3D control [documented]:
+A selected point, edge, face or form shows the 3D control [unverified]:
 
 - arrows move along an axis, and angle-shaped handles move in a plane;
 - blue is global Z, red and green are the global horizontals, and orange is any local axis;
@@ -222,7 +221,7 @@ A selected point, edge, face or form shows the 3D control [documented]:
 
 ### 1.9 In a project
 
-**Placing** [documented]:
+**Placing** [unverified]:
 
 - Component, or a drag from the Project Browser, then a click per placement point in number order;
 - a preview of the shape follows the cursor;
@@ -235,17 +234,17 @@ surface. The point is then hosted on it. Adaptive points do not use the usual sm
 
 **Editing a placed instance:**
 
-- its points can be selected (Tab) and dragged; a hosted one slides on its host [documented];
-- **Pick New Host** rehosts a point [documented];
-- the instance has **Flipped** [documented];
-- Ctrl-drag copies the instance [documented];
+- its points can be selected (Tab) and dragged; a hosted one slides on its host [unverified];
+- **Pick New Host** rehosts a point [unverified];
+- the instance has **Flipped** [unverified];
+- Ctrl-drag copies the instance [unverified];
 - a tag follows the points [practitioner];
 - deleting a host deletes the instance without warning, by one 2014 report [practitioner].
 
 **Repeat:** an instance whose points sit on nodes of a divided path or surface is repeated over all of them as one element
-[documented].
+[unverified].
 
-**API shape**, for agents and import [documented]:
+**API shape**, for agents and import [unverified]:
 
 - AdaptiveComponentFamilyUtils and AdaptiveComponentInstanceUtils;
 - placement points come back in number order;
@@ -388,10 +387,6 @@ repository.
 
 ## Main sources
 
-- Autodesk Revit help, the pages on adaptive components, reference points, the conceptual design environment, forms and the
-  3D control (2014 to 2025): help.autodesk.com.
-- The Revit API reference for AdaptiveComponentFamilyUtils, AdaptiveComponentInstanceUtils, ReferencePoint and
-  PointElementReference: revitapidocs.com, rvtdocs.com.
 - The Building Coder, Jeremy Tammik:
   - "The Revit Form Creation API" (0179);
   - What's New in the 2012, 2013, 2014 and 2016 APIs (0903, 0904, 0938, 1311);
