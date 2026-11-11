@@ -114,6 +114,30 @@ mod tests {
     }
 
     #[test]
+    fn a_window_refuses_the_gate_operations() {
+        let mut s = Session::new();
+        for operation in ["sectional", "roller"] {
+            let before = (*s.model).clone();
+            // A new window type, an existing one turned into a gate, and a window family: none opens as a gate.
+            let error = s
+                .execute("type", &json!({"category":"window", "name":"Shop", "width":2400, "height":1200, "operation":operation}))
+                .unwrap_err();
+            assert!(error.contains("window type `Shop`") && error.contains(operation), "{error}");
+            assert_eq!(*s.model, before);
+            s.execute("type", &json!({"category":"window", "name":"Plain", "width":1200, "height":1200})).unwrap();
+            let before = (*s.model).clone();
+            assert!(s.execute("type", &json!({"category":"window", "name":"Plain", "operation":operation})).is_err());
+            assert_eq!(*s.model, before);
+            let error = s.execute("family", &json!({"name":"Fixed Window", "operation":operation})).unwrap_err();
+            assert!(error.contains(operation), "{error}");
+            assert_eq!(*s.model, before);
+            // A door's type and family may.
+            s.execute("type", &json!({"category":"door", "name":"Gate", "width":3000, "height":3200, "operation":operation})).unwrap();
+            s.execute("family", &json!({"name":"Single Door", "operation":operation})).unwrap();
+        }
+    }
+
+    #[test]
     fn old_files_keep_unspecified_swing_and_newer_files_are_refused() {
         let mut s = Session::new();
         s.execute("type", &json!({"category":"door","name":"Legacy","width":900,"height":2100})).unwrap();

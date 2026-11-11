@@ -1052,7 +1052,8 @@ impl BimApp {
                             if ui.selectable_label(ed.operation.is_none(), t("(none)")).clicked() {
                                 ed.operation = None;
                             }
-                            for op in Operation::ALL {
+                            // A window offers no gate's operation, which the family would refuse.
+                            for op in Operation::ALL.into_iter().filter(|op| ed.category != Category::Window || !op.industrial()) {
                                 if ui.selectable_label(ed.operation == Some(op), t(op.label())).clicked() {
                                     ed.operation = Some(op);
                                 }

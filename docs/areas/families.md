@@ -30,6 +30,8 @@ it as the door's `OperationType` (`Operation::ifc_door`, its side from `flip_han
 `IfcDoorStyle`'s (IFC2x3), onto the type it makes. Schedules have it as the `Operation` field, in the project's language. A
 window's panel operation (`IfcWindowPanelProperties`, a sliding sash) needs an `IfcWindowType`, which the export doesn't write yet.
 The Family Editor's Operation selector uses the same choices; changing the operation preserves authored forms and symbols.
+Sectional and roller are a door's: `Model::check` refuses them on a window type and `Family::check` on a window family, and the
+selector offers a window family neither.
 Project-owned sectional door types generate roughly 600 mm closed panels, jamb guides and overhead tracks; roller types generate
 a closed curtain, guides and a 450 mm coil box (`doors.rs`). These reuse `opening_local`'s pieces for 3D, sections and IFC; plans draw
 cut equipment solid and overhead equipment dashed, including it in Zoom to Fit. The equipment follows Facing Flip; Hand Flip keeps

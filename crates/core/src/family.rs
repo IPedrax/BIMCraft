@@ -1228,6 +1228,12 @@ impl Family {
         if let Some(m) = &self.ifc {
             m.check()?;
         }
+        // A sectional or roller door is a gate's: no window opens that way.
+        if self.category == Category::Window
+            && let Some(op) = self.operation.filter(|op| op.industrial())
+        {
+            return Err(format!("`operation` `{}` is a door's, a gate's; a window family takes another", op.name()));
+        }
         if self.category.hosted() {
             for name in [WIDTH, HEIGHT] {
                 if !self.parameters.iter().any(|p| p.name == name && p.kind == Kind::Length) {

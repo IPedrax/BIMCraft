@@ -34,3 +34,19 @@ fn family_editor_selects_vertical_gate_operations_and_save_reopen_keeps_them() {
         assert_eq!(h.state().session.model.families["Single Door"].operation.unwrap().name(), operation);
     }
 }
+
+#[test]
+fn a_window_family_is_offered_no_gate_operation() {
+    let mut h = app(&format!("{BOX}\nwindow {{\"at\":[2000,0],\"family\":\"Fixed Window\"}}"));
+    let window = find(&h, |e| matches!(e, Element::Window(_)));
+    h.state_mut().selection = vec![window];
+    h.set_size(vec2(1800.0, 1000.0));
+    press(&mut h, "Manage");
+    press(&mut h, "Edit Family");
+    pick(&mut h, Role::ComboBox, "Operation");
+    // A window opens as a window does; the family would refuse a gate's operation.
+    assert!(h.query_by_label("Sliding").is_some(), "Operation offers a window's");
+    for label in ["Sectional", "Roller"] {
+        assert!(h.query_by_label(label).is_none(), "a window is offered {label}");
+    }
+}

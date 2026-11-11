@@ -6229,6 +6229,14 @@ impl Model {
                 size(&format!("{cat} type `{n}` width"), t.width)?;
                 size(&format!("{cat} type `{n}` height"), t.height)?;
                 coord(&format!("{cat} type `{n}` sill"), t.sill)?;
+                if cat == "window"
+                    && let Some(op) = t.operation.filter(|op| op.industrial())
+                {
+                    return Err(format!(
+                        "window type `{n}`: `{}` is a door's operation, a gate's; give the window another, or make it a door type",
+                        op.name()
+                    ));
+                }
             }
         }
         if self.images.len() > MAX_IMAGES {
