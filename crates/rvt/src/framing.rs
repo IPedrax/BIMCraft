@@ -71,6 +71,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts) {
             offset: micron(mm(r.bbox[5]) - mm(elevation)),
             end_offset: None,
             justify: Justify::Top,
+            join: true,
             system: String::new(),
             params: Default::default(),
         };

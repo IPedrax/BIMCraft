@@ -243,8 +243,10 @@ other_files(
         ui_msg!("Door"),
         &["DR"],
         "{at: [x,y] | wall: id, offset?, type?, family?, level?, mark?, flip_facing?, flip_hand?} in the wall under `at`, \
-         or in `wall` centred `offset` mm from its start; with `family`, a door family's `type` (its first by default), \
-         which sizes the opening and draws the door; it may rise past a low wall's top, as Revit lets it",
+         or in `wall` centred `offset` mm from its start; without `level`, prefer the lowest level at or above elevation 0 \
+         whose plan cuts a wall there, then the highest below 0; with `family`, a door family's `type` (its first by default), \
+         which sizes the opening and draws the door; an explicit `level` different from the wall's places it at that \
+         level's elevation, otherwise at the wall's base; it may rise past a low wall's top, as Revit lets it",
         door,
     )
     .menu("Architecture > Door"),
@@ -706,8 +708,9 @@ other_files(
         &[],
         "{level?, boundary?: [[x,y],…], courtyards?: [[[x,y],…],…] | sketch?: [[[x,y],[x,y]],…], slope?, slopes?: [degrees, …], overhang?, gables?: [edge, …], gable?, offset?, \
          extrusion?, openings?: [[[x,y],…],…], join?, type?} a roof on `level` (by default the one above the lowest), its \
-         base `offset` mm above it. Over `boundary` or else the walls of the level below, `overhang` mm (500) past their \
-         faces, round any `courtyards` (holes in it, inside it and apart, with eaves of their own; over the walls, by \
+         base `offset` mm above it. Over the walls of the level below, `overhang` mm (500) past their faces; over an explicit \
+         `boundary` or `sketch`, eaves `overhang` mm (0) beyond the drawn wall line, the base at it. Round any `courtyards` \
+         (holes in it, inside it and apart, with eaves of their own; over the walls, by \
          default each loop of them standing free inside, joined to none of the outer ones and with no room in it): flat \
          at `slope` 0, else every edge sloping up at `slope` degrees (30), hips, valleys and ridges where the slopes meet, \
          but the edges in `gables` (edge i runs from point i to the next, the courtyards' edges numbered on after the \
@@ -745,11 +748,17 @@ other_files(
          across, through its centre; arc_length: how long a curved wall's centre line or face, or an arc, is along it \
          (all of it, or with two point refs after it, between them), its line an arc through `at`. A ref is {id, face?}: a wall's centre (the default), left or right face (of its \
          start-to-end direction), start or end; a door's or window's centre, or its jamb toward its wall's start or end; \
+         a column's or structural column's centre line along its angle (the default; west to east at angle 0), `across`, \
+         its centre line square to that (south to north), its left or right face (of its angle's direction: north or \
+         south), or its start or end cap (west or east); a round column has only its two centre lines (radial: its edge); \
          a grid's line; a straight detail line, or its start or end (radial: a circle or an arc of one). With `point: \
          start|end`, {id, face?, point} is the point at that end of the line: a wall's centre line's end, a face's \
-         corner, a grid's, a detail line's (of any shape) or a jamb's end. Or a point [x, y] on one of those lines (for \
-         radial and diameter, on a round edge; for arc_length, on the arc), or {endpoint: [x, y]}, the end of one nearest \
-         it, within 100 mm. It follows what it measures",
+         corner, a column's corner or centre line's end, a grid's, a detail line's (of any shape) or a jamb's end. Or a \
+         point [x, y] on one of those lines (for radial and diameter, on a round edge; for arc_length, on the arc), or \
+         {endpoint: [x, y]}, the end of one nearest it, within 100 mm, found in the plan of `level` as it draws it: among \
+         the walls and columns its cut plane passes through, whatever level they stand on (a column from a level below \
+         that runs up through it too), their doors and windows, the grids and the plan's detail lines. It follows what it \
+         measures",
         dimension,
     ),
     edit(
@@ -885,9 +894,43 @@ other_files(
         "sheet",
         "Sheet",
         &[],
-        "{number?, name?, size?: A0|A1|A2|A3|A4} a sheet of paper, landscape (A3 by default), with a title block; numbers \
-         run A101, A102…",
+        "{number?, name?, size?: ISO A0–A4|ISO B1–B4|ARCH A–E|ARCH E1–E3|ANSI A–E|SUPER B|width x height in mm, title_block?, \
+         fields?: {KEY: text}} a sheet of paper (A3 by default), with a title block: the built-in one, or the project's \
+         `title_block` of that name (see `title_block`), its sheet fields filled in from `fields`, or with `title_block` \
+         \"none\" (or false) none at all: no border, title box or folding marks, for one drawn on the sheet itself; named \
+         sizes landscape, custom ones as given, 100 to 1219.2 mm a side and, with a title block, wide enough for the \
+         standard's title block and margins (210 mm, 211.75 under ANSI); numbers run A101, A102…. `modify` changes them \
+         later: `title_block` (\"\" or true for the built-in, \"none\" or false for none), `fields` (a key's value null \
+         to clear it)",
         new_sheet,
+    ),
+    edit(
+        "title_block",
+        "Title Blocks",
+        &[],
+        "{name?, like?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, font?, lines?, fills?, \
+         texts?, fields?} a title block of the project's own, as Revit's title block families with labels, which a sheet names to be \
+         drawn with it in its bottom right corner, inside the border, in place of the built-in title box. Without `name`, the \
+         project's title blocks, its title fields' values and the automatic fields. All lengths are mm on paper from the title \
+         block's bottom left corner: `width` and `height` its box; `font` what letters its texts (Arial unless told; any the system has); `lines` [{points: [[x, y], …], closed?, pen?: 0 to 16 (1)}]; \
+         `fills` [{rings: [[[x, y], …], …]}], filled through (a logo); `texts` [{at: [x, y] on the baseline, text, size?: \
+         capitals mm (2.5), angle?: degrees, align?: left|center|right, width_factor?: 0.1 to 10 (1), color?: [r, g, b]}]. A text may name fields as `{KEY}`: the automatic ones \
+         (PROJECT, SHEET_NAME, SHEET_NUMBER, SCALE, DATE, SHEET_INDEX, SHEET_COUNT, REVISION) or the title block's `fields` \
+         [{key, label?, scope?: sheet|project, default?}]: a project field has one value for every sheet (`title_values`), a \
+         sheet field each sheet's own (`sheet`'s and `modify`'s `fields`). `path` reads a DXF (or a DWG, which the desktop and the \
+         command line read as DXF) drawn at full size on paper, in `units` (auto: the file's own, else mm): its lines, arcs, \
+         circles and polylines as lines, its solid hatches as fills, its texts as texts, moved to its extents' corner, which \
+         become its box; each key its texts name becomes a sheet field, or keeps the field it was. A new one starts as the \
+         built-in title box drawn as one (`like` another), and what's given goes over it",
+        title_block,
+    ),
+    edit(
+        "title_values",
+        "Project Information",
+        &[],
+        "{values?: {KEY: text or null}} the project's values of its title blocks' project fields (and of an automatic field, \
+         DATE say, to give every sheet that instead): a key's null clears it. Without `values`, what they are",
+        title_values,
     ),
     edit(
         "place",
@@ -1134,6 +1177,8 @@ other_files(
         "Modify",
         &[],
         "{id | ids: [id,…], …fields} change fields as `elements` shows them, of one element or several; `level` and `top_level` may be names. \
+         `join: false` on a wall or a run turns off its joins: its ends stay square and it neither stretches with its neighbours nor pulls \
+         them (Revit's Disallow Join). \
          A filled region's or a floor's model pattern is set by `pattern_origin` [x, y], plan mm, where its lines start, and \
          `pattern_angle`, degrees counter-clockwise (both shown by `elements`); to put a pattern line of one on a reference \
          line, Model::align_pattern gives the `pattern_origin` that does. A floor's, a ceiling's, a roof's or a shaft's \
@@ -1175,7 +1220,7 @@ other_files(
         ui_msg!("Move"),
         &["MV"],
         "{ids: [id,…], by: [dx, dy], end?: start|end} moves elements in plan; walls joined to a moved wall stretch to stay \
-         joined, and doors and windows slide along their walls. With `end`, only that end of one wall moves",
+         joined, and doors and windows slide along their walls. With `end`, only that end of one wall or one run moves",
         move_elements,
     ),
     edit(
@@ -1509,7 +1554,7 @@ other_files(
         "purge",
         "Purge Unused",
         &["PU"],
-        "{kinds?: [type|family|material|picture|filter|template, …], dry_run?} takes out what nothing uses, again for what that \
+        "{kinds?: [type|family|material|picture|filter|template|titleblock, …], dry_run?} takes out what nothing uses, again for what that \
          leaves unused: types and families unless `kinds` says; a category keeps a type and a family a type; with `dry_run` it \
          lists what would go and changes nothing",
         purge,
@@ -1602,6 +1647,14 @@ other_files(
     )
     .menu("Manage > Technical Standards"),
     other(
+        "timber_framing",
+        "Timber Wall Framing",
+        "{wall, layer, window, spacing, thickness, depth, header_height} read the framing members and clear bays of a straight isolated wall. \
+         Select its structural layer and one rectangular window by id or GUID. Supply lengths in mm. Dimensions are measured from the interior layer face. \
+         Each xz rectangle [left,right,bottom,top] spans the layer depth. Keys are local to the returned wall and layer GUIDs.",
+        crate::timber::query,
+    ),
+    other(
         "inspect",
         "Inspect",
         "{brief?} levels, element counts, types, warnings and undo history; with `brief` the library is its size only \
@@ -1622,7 +1675,7 @@ other_files(
          30° up), fitted; in perspective (see `perspective`) through its lens, and with `eye_elevation` from an eye that high \
          (mm) looking at the same point, as a PNG (pngBase64), or written to a path: .png, .svg for a plan, .pdf for a sheet. A plan, section, \
          elevation or sheet that could not draw something as asked (a fill pattern too dense for the view, more ink behind \
-         a region than is kept above it) says so in the reply's `notes`",
+         a region than is kept above it, or unsupported drawing lettering replaced with a question mark) says so in the reply's `notes`",
         render_view,
         Files::Conditional,
     ),
@@ -1916,6 +1969,24 @@ other_files(
         hydrant_size,
     ),
     other(
+        "network",
+        "Pipe Network",
+        "{system?, level?, tolerance?} the pipe network, worked out from the model and never stored: where pipes' ends and the \
+         pipe connectors of fixtures, fittings and valves meet. Points within `tolerance` mm (1 by default, 50 at most) are one node; a \
+         pipe's end or a connector on another pipe's length is a node too, splitting that pipe into two edges (the element stays \
+         whole); a fitting's or a valve's connectors are joined through it, a fixture's are not (its waste and its water are \
+         networks of their own). `system` keeps the networks that pipe system's pipes are in; `level` (a name, id or GUID) only \
+         that level's pipes and components. It replies `nodes` (`at`, what meets there: a pipe's `start` or `end`, a pipe `along` \
+         which it lies, a component's `connector` and its `domain`), `edges` (a pipe's piece and its `length`, or `through` a \
+         fitting), `groups` (the elements joined together, their pipes' systems and their connectors' domains), `open` (ends and \
+         connectors that meet nothing, as Revit's Show Disconnects marks) and `warnings`, which never refuse the model: \
+         `systems_meet` (pipes of two systems in one network), `domains_meet` (connectors of two domains, waste and cold water), \
+         `joined_mid_run` (a pipe met along its length, with no fitting) and `smaller_downstream` (in a network with a waste \
+         connector, a pipe leaving a node downhill narrower than one coming down to it). It has no shortcut: Revit has no tool for it. \
+         It changes nothing",
+        network,
+    ),
+    other(
         "load_points",
         "Residential Load Points",
         "{rooms?: [{name, area, perimeter, kind?: bath|kitchen|service|dry|veranda|other, points?}], alternative?, standard?} the lighting \
@@ -1924,7 +1995,10 @@ other_files(
          `NBR 5410:2004` the default and only one so far, and the answer gives `standard`, `standard_source`, `lighting_source` and \
          each room's `source`. The rooms are `rooms` (`area` in m², \
          `perimeter` in millimetres, `points` the outlets the room has, the least it needs when absent) or, without it, the rooms of the \
-         model, measured inside the walls' finish. A room's kind is known by its name (Portuguese or English: banheiro, cozinha, copa, \
+         model, measured inside the walls' finish, with the power outlets and the luminaires that stand in each (the room a \
+         component's point is in, at the walls' centre lines; standing in the last phase, primary design options): `tug_points` and \
+         `lighting_points` are those drawn, and a room with no luminaire is not `ok`. Where the model draws no outlet, or no \
+         luminaire, at all, that count is the least instead (`counted` says which were drawn). A room's kind is known by its name (Portuguese or English: banheiro, cozinha, copa, \
          área de serviço, lavanderia, sala, dormitório, varanda…) unless `kind` gives it; a name that says none is `other`. Lighting: 1 \
          ceiling point of 100 VA up to 6 m² and 60 VA more for each whole 4 m² above. Outlets: a bathroom 1; kitchen, pantry, service \
          area, laundry one for each 3.5 m of perimeter; room, bedroom one for each 5 m; veranda 1; the others 1 up to 6 m² and one \
@@ -1939,9 +2013,11 @@ other_files(
     other(
         "dr_check",
         "Check Residual-Current Protection",
-        "{circuits: [{name, points: [{place, kind, rating?, height?, outdoor?}], residual?, it_continuity?}], building?: residential|other} \
+        "{circuits: [{name, points: [{place, kind, rating?, height?, outdoor?}], residual?, it_continuity?}], building?: residential|other, standard?} \
          which circuits NBR 5410:2004 asks additional protection by a high-sensitivity residual-current device (DR, 30 mA at most) \
-         for. A circuit's `points` are what it serves: `place` is bath (a place with a bathtub or a shower), external, kitchen (or \
+         for. The rules are data (`data/dr-check.json`, one rule set for each standard, every rule naming its source): `standard` \
+         names the set, `NBR 5410:2004` the default and only one so far, and the answer gives `standard`, `standard_source` and, \
+         for each circuit, the `sources` of its `reasons`. A circuit's `points` are what it serves: `place` is bath (a place with a bathtub or a shower), external, kitchen (or \
          pantry-kitchen), laundry, service (service area), garage, wet (another wet internal area) or dry; `kind` is outlet, lighting or \
          fixed (another point of use); `rating` an outlet's rated current in A (32 A at most is covered; unknown, it is taken as covered), \
          `height` a light's in mm (in a dwelling a light 2500 mm up or more in the wet rooms is left out), `outdoor` an internal outlet \
@@ -2100,9 +2176,11 @@ other_files(
     other(
         "elements",
         ui_msg!("Elements"),
-        "{category?, level?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, \
+        "{category?, level?, field?, value?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, \
          never changed), fields and derived values (length, height, area_m2…); what an element points at (its level, host, \
-         view…) it holds by GUID. Wherever a command takes an element, its id or its GUID will do",
+         view…) it holds by GUID. Wherever a command takes an element, its id or its GUID will do. `field` is one its category's \
+         schedule has (`Type`, `Mark`, a project parameter), and `value` what it holds: text in any case, a number (mm, m² for \
+         an area), yes or no, or `\"\"` for text holding none; without `value`, those holding one (a yes or no reads no when unset)",
         elements,
     ),
 ];
@@ -2367,7 +2445,7 @@ fn off_centre(m: &Model, w: &Wall, p: P2) -> f64 {
 }
 
 /// The nearest wall at `at` on any level, with the heights it spans: what a level that does not cut it should be told about.
-fn wall_elsewhere(m: &Model, at: P2) -> Option<(Id, f64, f64)> {
+fn wall_elsewhere(m: &Model, at: P2) -> Option<(Id, Guid, f64, f64)> {
     m.elements
         .iter()
         .filter_map(|(id, e)| match e {
@@ -2376,7 +2454,32 @@ fn wall_elsewhere(m: &Model, at: P2) -> Option<(Id, f64, f64)> {
         })
         .filter(|(_, w, d)| *d <= m.thickness(w) / 2.0 + 100.0)
         .min_by(|a, b| a.2.total_cmp(&b.2))
-        .map(|(id, w, _)| (*id, m.base_z(w), m.top_z(w)))
+        .map(|(id, w, _)| (*id, w.level, m.base_z(w), m.top_z(w)))
+}
+
+/// Keep the nearby wall's span and the relevant plan cut in both explicit and inferred-level failures.
+fn opening_host_error(c: &str, m: &Model, at: P2, level: Option<Guid>) -> String {
+    let where_on = level.map_or_else(|| "any level".into(), |level| level_name(m, level));
+    let none = format!("no wall at [{}, {}] on {where_on}", at.0, at.1);
+    let fix = if level.is_some() {
+        "give the wall that level, or a view range that cuts it"
+    } else {
+        "give `wall` with `offset`, or a view range that cuts it"
+    };
+    match wall_elsewhere(m, at) {
+        Some((id, host_level, bottom, top)) => {
+            let level = level.unwrap_or(host_level);
+            bad(
+                c,
+                format!(
+                    "{none}; wall {id} stands there but spans {bottom} to {top} mm and {} cuts at {} mm: {fix}",
+                    level_name(m, level),
+                    m.plan_range(level).cut
+                ),
+            )
+        }
+        None => bad(c, if level.is_some() { none } else { format!("{none}; {fix}") }),
+    }
 }
 
 /// The wall a plan of `level` cuts nearest `at`, within its half thickness plus 100 mm of its centre
@@ -2391,6 +2494,13 @@ fn wall_at(m: &Model, level: impl Key, at: P2) -> Option<(Guid, f64)> {
         .filter(|(_, w, d)| *d <= m.thickness(w) / 2.0 + 100.0)
         .min_by(|a, b| a.2.total_cmp(&b.2))
         .map(|(id, w, _)| (id, along(w, at)))
+}
+
+/// The same plan-cut lookup as an explicit level, ordered from ground upwards, then downwards below ground.
+fn wall_on_any_level(m: &Model, at: P2) -> Option<(Guid, f64)> {
+    let levels = m.levels();
+    let ground = levels.partition_point(|(_, level)| level.elevation < 0.0);
+    levels[ground..].iter().chain(levels[..ground].iter().rev()).find_map(|(id, _)| wall_at(m, *id, at))
 }
 
 /// The outline `floor` gives a floor on `level` by default, along the centre lines of the walls
@@ -2522,6 +2632,15 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert(key.into(), json!(g));
         }
     });
+    // The room a component stands in, as Revit's Room parameter: by GUID, with its number and name for schedules and tags.
+    if let Element::Component(c) = e
+        && let Some(id) = rooms.room_at(c.level, c.at)
+        && let Some(Element::Room(r)) = m.elements.get(id)
+    {
+        extra.insert("room".into(), json!(m.guid(id)));
+        extra.insert("room_number".into(), json!(r.number));
+        extra.insert("room_name".into(), json!(r.name));
+    }
     match e {
         Element::CadImport(ci) => {
             if let Some(cad) = m.cads.get(&ci.cad) {
@@ -2662,7 +2781,16 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("outline".into(), json!(outline.into_iter().map(micron).collect::<Vec<_>>()));
         }
         Element::Sheet(sh) => {
+            // Which title block it's drawn with, the built-in one ("") too, which the file leaves out.
+            extra.insert("title_block".into(), json!(sh.title_block));
             extra.insert("paper".into(), json!(paper(&sh.size)));
+            // What its title block's fields say, filled in; and which of them are its own to give.
+            extra.insert("title_values".into(), json!(sheet::title_values(m, id)));
+            if let Some(tb) = m.title_blocks.get(&sh.title_block) {
+                let own: Vec<&str> =
+                    tb.fields.iter().filter(|f| f.scope == crate::titleblock::Scope::Sheet).map(|f| f.key.as_str()).collect();
+                extra.insert("sheet_fields".into(), json!(own));
+            }
             let on: Vec<Id> =
                 m.elements.iter().filter(|(_, e)| matches!(e, Element::Viewport(v) if m.same(v.sheet, id))).map(|(id, _)| *id).collect();
             extra.insert("viewports".into(), json!(on));
@@ -3449,21 +3577,22 @@ fn render_view(s: &mut Session, p: &Value) -> R {
         }
         return png_reply(c, p, render::png(&d)?, info);
     }
-    let level = level_param(c, m, p, "view")?;
+    let (level, plan) = plan_param(c, m, p, "view")?;
+    let plan = plan.unwrap_or(level);
+    let name = m.view_name(plan).unwrap_or_default();
     let (d, kind) = match flag(c, p, "ceiling")? {
-        true => (render::ceiling_plan(m, level, w, h), "ceiling plan"),
-        false => (render::plan(m, level, w, h), "plan"),
+        true => (render::ceiling_plan(m, plan, w, h), "ceiling plan"),
+        false => (render::plan(m, plan, w, h), "plan"),
     };
     match string(c, p, "path")? {
         Some(path) => {
             let path = PathBuf::from(path);
             write_plan(&d, &path)?;
-            Ok(with_notes(json!({"path": path, "width": w, "height": h, "view": level_name(m, level), "kind": kind}), &d.notes))
+            Ok(with_notes(json!({"path": path, "width": w, "height": h, "view": name, "kind": kind}), &d.notes))
         }
-        None => Ok(with_notes(
-            json!({"pngBase64": base64(&render::png(&d)?), "width": w, "height": h, "view": level_name(m, level), "kind": kind}),
-            &d.notes,
-        )),
+        None => {
+            Ok(with_notes(json!({"pngBase64": base64(&render::png(&d)?), "width": w, "height": h, "view": name, "kind": kind}), &d.notes))
+        }
     }
 }
 
@@ -4956,7 +5085,7 @@ fn conduit_fill(_: &mut Session, p: &Value) -> R {
 }
 
 fn drain_size(_: &mut Session, p: &Value) -> R {
-    use crate::drainage::{self, FIXTURES, Role};
+    use crate::drainage::{self, Role};
     let c = "drain_size";
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["units", "fixtures", "role", "slope", "floors", "min_dn"];
@@ -4971,9 +5100,8 @@ fn drain_size(_: &mut Session, p: &Value) -> R {
         Some(Value::Object(f)) => {
             let mut sum = 0.0;
             for (kind, n) in f {
-                let (u, dn) = drainage::fixture(kind).ok_or_else(|| {
-                    bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", FIXTURES.iter().map(|x| x.0).collect::<Vec<_>>().join(", ")))
-                })?;
+                let (u, dn) = drainage::fixture(kind)
+                    .ok_or_else(|| bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", crate::plumbing::kinds().join(", "))))?;
                 let n = n
                     .as_f64()
                     .filter(|n| n.is_finite() && *n >= 0.0 && *n <= 10_000.0 && n.fract() == 0.0)
@@ -5643,6 +5771,40 @@ fn dps_check(_: &mut Session, p: &Value) -> R {
     }))
 }
 
+fn network(s: &mut Session, p: &Value) -> R {
+    let c = "network";
+    if !p.is_object() {
+        return Err(bad(c, "params must be an object"));
+    }
+    only(c, p, &["system", "level", "tolerance"])?;
+    let m = &s.model;
+    let system = string(c, p, "system")?;
+    let level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
+    let tolerance = within(c, p, "tolerance", crate::network::TOLERANCE, 0.01, crate::network::MAX_TOLERANCE)?;
+    let n = crate::network::network(m, system.as_deref(), level, tolerance).map_err(|e| bad(c, e))?;
+    let round = |p: [f64; 3]| p.map(|x| (x * 100.0).round() / 100.0 + 0.0);
+    use crate::network::Joint;
+    let joint = |j: &Joint| match j {
+        Joint::RunEnd { run, end } => json!({"pipe": run, "end": if *end { "end" } else { "start" }}),
+        Joint::RunSide { run } => json!({"pipe": run, "along": true}),
+        Joint::Connector { element, index, domain } => json!({"component": element, "connector": index, "domain": domain}),
+    };
+    let nodes: Vec<Value> =
+        n.nodes.iter().map(|x| json!({"at": round(x.at), "joins": x.joints.iter().map(joint).collect::<Vec<_>>()})).collect();
+    let edges: Vec<Value> = n
+        .edges
+        .iter()
+        .map(|e| match e.length {
+            Some(l) => json!({"pipe": e.element, "from": e.from, "to": e.to, "length": (l * 100.0).round() / 100.0}),
+            None => json!({"through": e.element, "from": e.from, "to": e.to}),
+        })
+        .collect();
+    let groups: Vec<Value> = n.groups.iter().map(|g| json!({"elements": g.elements, "systems": g.systems, "domains": g.domains})).collect();
+    let warnings: Vec<Value> =
+        n.warnings.iter().map(|w| json!({"kind": w.kind, "at": w.at.map(round), "elements": w.elements, "message": w.message})).collect();
+    Ok(json!({"nodes": nodes, "edges": edges, "groups": groups, "open": n.open, "warnings": warnings}))
+}
+
 fn load_points(s: &mut Session, p: &Value) -> R {
     use crate::loads::{self, KINDS, Kind};
     let c = "load_points";
@@ -5657,14 +5819,25 @@ fn load_points(s: &mut Session, p: &Value) -> R {
     let round = |x: f64| (x * 100.0).round() / 100.0 + 0.0;
     // (name, kind, area m2, perimeter m, points, kind given)
     let mut input: Vec<(String, Kind, f64, f64, Option<u32>, bool)> = Vec::new();
+    // The lighting points each room has, where the model draws any.
+    let mut lit: Vec<Option<u32>> = Vec::new();
     let mut skipped = Vec::new();
+    let mut counted = (false, false);
     match p.get("rooms").filter(|v| !absent(Some(v))) {
         None => {
             let m = &s.model;
+            let rooms = crate::rooms::Rooms::new(m);
+            let (outlets, lights) = drawn_points(m, &rooms);
+            counted = (outlets.is_some(), lights.is_some());
+            let count = |by: &Option<BTreeMap<Id, u32>>, id: Id| by.as_ref().map(|by| by.get(&id).copied().unwrap_or(0));
             for (id, e) in m.elements.iter() {
                 let Element::Room(r) = e else { continue };
-                match m.room_region_at(r, RoomArea::Finish) {
-                    Some(g) => input.push((r.name.clone(), loads::kind_of(&r.name), g.area() / 1.0e6, g.perimeter() / 1000.0, None, false)),
+                match rooms.region_at(r, RoomArea::Finish) {
+                    Some(g) => {
+                        let area = g.area() / 1.0e6;
+                        input.push((r.name.clone(), loads::kind_of(&r.name), area, g.perimeter() / 1000.0, count(&outlets, *id), false));
+                        lit.push(count(&lights, *id));
+                    }
                     None => skipped.push(json!({"id": id, "name": r.name, "why": "not enclosed by walls"})),
                 }
             }
@@ -5706,13 +5879,15 @@ fn load_points(s: &mut Session, p: &Value) -> R {
         input.iter().map(|r| loads::Room { name: &r.0, kind: r.1, area: r.2, perimeter: r.3, provided: r.4 }).collect();
     let t = set.total(&rooms, alternative);
     let mut list = Vec::new();
-    for (r, sh) in input.iter().zip(&t.rooms) {
+    let mut all_ok = true;
+    for (i, (r, sh)) in input.iter().zip(&t.rooms).enumerate() {
         let mut o = Map::new();
         o.insert("name".into(), json!(r.0));
         o.insert("kind".into(), json!(r.1.key()));
         o.insert("area_m2".into(), json!(round(r.2)));
         o.insert("perimeter_m".into(), json!(round(r.3)));
-        o.insert("lighting_points".into(), json!(1));
+        let lights = lit.get(i).copied().flatten();
+        o.insert("lighting_points".into(), json!(lights.unwrap_or(1)));
         o.insert("lighting_va".into(), json!(sh.lighting_va));
         o.insert("tug_minimum".into(), json!(sh.minimum));
         o.insert("tug_points".into(), json!(sh.points));
@@ -5720,7 +5895,9 @@ fn load_points(s: &mut Session, p: &Value) -> R {
         if sh.counter_outlets > 0 {
             o.insert("counter_outlets".into(), json!(sh.counter_outlets));
         }
-        o.insert("ok".into(), json!(sh.points >= sh.minimum));
+        let ok = sh.points >= sh.minimum && lights.is_none_or(|n| n >= 1);
+        all_ok &= ok;
+        o.insert("ok".into(), json!(ok));
         o.insert("source".into(), json!(set.room(r.1).source));
         if r.1 == Kind::Other && !r.5 {
             o.insert("note".into(), json!("the name says no kind of room: treated as `other`; give `kind`"));
@@ -5739,9 +5916,39 @@ fn load_points(s: &mut Session, p: &Value) -> R {
         "wet_points": t.wet_points,
         "alternative_possible": t.alternative_possible,
         "alternative_applied": t.alternative_applied,
-        "ok": t.rooms.iter().all(|sh| sh.points >= sh.minimum),
+        "ok": all_ok,
+        "counted": {"outlets": counted.0, "lighting": counted.1},
         "not_covered": "the exceptions to the lighting point and to a veranda's outlet, the placement of the outlets (near the lavatory, over a counter, up to 0.80 m outside the door of a room of 2.25 m² or less) and the TUE",
     }))
+}
+
+/// How many of something stand in each room, by the room's id.
+type PerRoom = BTreeMap<Id, u32>;
+
+/// The power outlets and the luminaires standing in each room of `m` (in the last phase, of the primary design options), by
+/// the room's id: `None` for a category of which the model has none standing anywhere, so a model that draws no outlets is
+/// taken to have the least, as `rooms` without `points` is. Every outlet counts, a specific-use one too.
+fn drawn_points(m: &Model, rooms: &crate::rooms::Rooms) -> (Option<PerRoom>, Option<PerRoom>) {
+    use crate::phasing::{self, Status};
+    let last = m.phases.len().saturating_sub(1);
+    let shown = crate::graphics::Graphics::default();
+    let (mut outlets, mut lights): (Option<PerRoom>, Option<PerRoom>) = (None, None);
+    for e in m.elements.values() {
+        let Element::Component(c) = e else { continue };
+        let by = match m.families.get(&c.family).map(|f| f.category) {
+            Some(crate::family::Category::Outlet) => &mut outlets,
+            Some(crate::family::Category::Lighting) => &mut lights,
+            _ => continue,
+        };
+        if !matches!(phasing::status(m, e, last), Some(Status::New | Status::Existing)) || !phasing::option_shown(m, &shown, e) {
+            continue;
+        }
+        let by = by.get_or_insert_with(BTreeMap::new);
+        if let Some(room) = rooms.room_at(c.level, c.at) {
+            *by.entry(room).or_insert(0) += 1;
+        }
+    }
+    (outlets, lights)
 }
 
 fn dr_check(_: &mut Session, p: &Value) -> R {
@@ -5750,7 +5957,10 @@ fn dr_check(_: &mut Session, p: &Value) -> R {
     if !p.is_object() {
         return Err(bad(c, "params must be an object"));
     }
-    only(c, p, &["circuits", "building"])?;
+    only(c, p, &["circuits", "building", "standard"])?;
+    let names: Vec<&str> = dr::rule_sets().iter().map(|r| r.standard.as_str()).collect();
+    let standard = choice(c, p, "standard", &names, dr::DEFAULT)?;
+    let set = dr::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/dr-check.json")))?;
     let residential = choice(c, p, "building", &["residential", "other"], "residential")? == "residential";
     let list = match p.get("circuits") {
         Some(Value::Array(a)) if !a.is_empty() && a.len() <= 5000 => a,
@@ -5803,7 +6013,7 @@ fn dr_check(_: &mut Session, p: &Value) -> R {
             Some(_) => Some(within(c, item, "residual", 0.0, 0.0, 1.0e6).map_err(at)?),
         };
         let circuit = dr::Circuit { points, residual, it_continuity: flag(c, item, "it_continuity").map_err(at)? };
-        let v = dr::check(&circuit, residential);
+        let v = set.check(&circuit, residential);
         if v.ok == Some(false) {
             missing.push(name.clone());
         }
@@ -5812,16 +6022,20 @@ fn dr_check(_: &mut Session, p: &Value) -> R {
             "required": v.required,
             "exempt": v.exempt,
             "reasons": v.reasons,
+            "sources": v.sources,
             "residual_ma": residual,
             "ok": v.ok,
         }));
     }
     Ok(json!({
+        "standard": set.standard,
+        "standard_source": set.source,
         "circuits": out,
         "missing": missing,
-        "max_residual_ma": dr::MAX_RESIDUAL,
+        "max_residual_ma": set.max_residual_ma,
+        "max_outlet_a": set.max_outlet_a,
         "building": if residential { "residential" } else { "other" },
-        "not_covered": "the further rules for the volumes of a bathroom and for swimming pools, and the other protections against shock, which the device does not replace",
+        "not_covered": set.not_covered,
     }))
 }
 
@@ -5934,7 +6148,7 @@ fn hydrant_size(_: &mut Session, p: &Value) -> R {
 }
 
 fn water_size(_: &mut Session, p: &Value) -> R {
-    use crate::water::{self, FITTINGS, FIXTURES, MAX_SPEED, MIN_USE_KPA, Method};
+    use crate::water::{self, FITTINGS, MAX_SPEED, MIN_USE_KPA, Method};
     let c = "water_size";
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["fixtures", "flow", "method", "dn", "length", "fittings", "pressure", "rise"];
@@ -5954,10 +6168,7 @@ fn water_size(_: &mut Session, p: &Value) -> R {
             let mut list: Vec<(&str, f64)> = Vec::new();
             for (kind, n) in f {
                 if water::fixture(kind).is_none() {
-                    return Err(bad(
-                        c,
-                        format!("`fixtures`: no fixture `{kind}`, use {}", FIXTURES.iter().map(|x| x.0).collect::<Vec<_>>().join(", ")),
-                    ));
+                    return Err(bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", crate::plumbing::kinds().join(", "))));
                 }
                 let n = whole("fixtures", kind, n)?;
                 list.push((kind.as_str(), n));
@@ -7237,6 +7448,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 attach_top,
                 attach_base,
                 room_bounding,
+                join: true,
             }))),
             _ => None,
         })
@@ -7322,6 +7534,7 @@ pub fn opening_of(m: &Model, p: &Value, is_door: bool) -> Result<Element, String
 
 fn build_opening(m: &Model, p: &Value, is_door: bool) -> Result<Opening, String> {
     let c = if is_door { "door" } else { "window" };
+    let requested_level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
     let types = if is_door { &m.types.door } else { &m.types.window };
     // Of a family's type, or one of the project's own.
     let family = string(c, p, "family")?;
@@ -7351,23 +7564,14 @@ fn build_opening(m: &Model, p: &Value, is_door: bool) -> Result<Opening, String>
             let w = m.wall(h).ok_or_else(|| bad(c, format!("{h} is not a wall")))?;
             (m.guid(h), at.map_or(w.start.dist(w.end) / 2.0, |a| along(w, a)))
         }
+        None if absent(p.get("level")) => {
+            let at = at.ok_or_else(|| bad(c, "give `at` [x, y] on a wall, or `wall` with `offset`"))?;
+            wall_on_any_level(m, at).ok_or_else(|| opening_host_error(c, m, at, None))?
+        }
         None => {
             let at = at.ok_or_else(|| bad(c, "give `at` [x, y] on a wall, or `wall` with `offset`"))?;
             let level = level_param(c, m, p, "level")?;
-            wall_at(m, level, at).ok_or_else(|| {
-                let none = format!("no wall at [{}, {}] on {}", at.0, at.1, level_name(m, level));
-                match wall_elsewhere(m, at) {
-                    Some((id, bottom, top)) => bad(
-                        c,
-                        format!(
-                            "{none}; wall {id} stands there but spans {bottom} to {top} mm and {} cuts at {} mm: give the wall that level, or a view range that cuts it",
-                            level_name(m, level),
-                            m.plan_range(level).cut
-                        ),
-                    ),
-                    None => bad(c, none),
-                }
-            })?
+            wall_at(m, level, at).ok_or_else(|| opening_host_error(c, m, at, Some(level)))?
         }
     };
     let offset = num(c, p, "offset")?.unwrap_or(along_at);
@@ -7377,6 +7581,16 @@ fn build_opening(m: &Model, p: &Value, is_door: bool) -> Result<Opening, String>
         None => types.get(&type_name).map_or(0.0, |t| t.sill),
     });
     let sill = if is_door { 0.0 } else { num(c, p, "sill")?.unwrap_or(default_sill) };
+    // Files and all geometry keep the sill relative to the host's own base. Only an explicitly requested different
+    // level changes the placement datum; same-level raised walls keep their host-relative placement.
+    let sill = if let Some(level) = requested_level
+        && let Some(w) = m.wall(host)
+        && level != w.level
+    {
+        m.elevation(level) + sill - m.own_base(w)
+    } else {
+        sill
+    };
     let mark = match string(c, p, "mark")? {
         Some(mk) => mk,
         None => next_number(m.elements.values().filter_map(|e| match e {
@@ -7822,8 +8036,8 @@ fn room(s: &mut Session, p: &Value) -> R {
 
 /// The elements whose reference lines may come within `reach` mm of `p` in a plan of `level`, by id: the walls near it
 /// that span the plan's cut height (a wall's faces and caps stay within twice the thickest wall's thickness of its location
-/// line: a cap runs on no farther than the thickest wall meeting it, [`walls::cap`]), the doors and windows in them, and
-/// the grids.
+/// line: a cap runs on no farther than the thickest wall meeting it, [`walls::cap`]), the doors and windows in them, the
+/// grids, and the columns (and structural columns) near it that the plan cuts, from whatever level they stand on.
 fn near_point(m: &Model, level: Guid, p: P2, reach: f64) -> BTreeSet<Id> {
     let look = m.lookup();
     let thickest = m.types.wall.values().map(|t| t.thickness).filter(|t| t.is_finite()).fold(0.0, f64::max);
@@ -7839,11 +8053,20 @@ fn near_point(m: &Model, level: Guid, p: P2, reach: f64) -> BTreeSet<Id> {
     }
     out.extend(walls);
     out.extend(look.grids());
+    // A column's lines stay within its width or depth, the greater, of its centre.
+    out.extend(look.rare("column").chain(look.rare("structuralcolumn")).filter(|&id| match m.elements.get(id) {
+        Some(e @ (Element::Column(c) | Element::StructuralColumn(c))) => {
+            let size = m.column_type(e).map_or(0.0, |t| t.width.max(t.depth));
+            m.column_cut_by(c, level) && c.at.dist(p) <= reach + size
+        }
+        _ => false,
+    }));
     out
 }
 
 /// Of the lines a plan of `level` shows that `keep` takes (walls' faces, centre lines and ends,
-/// doors' and windows' centres and jambs, grids), the nearest `p`, within 100 mm.
+/// doors' and windows' centres and jambs, grids, the centre lines and faces of the columns it cuts), the nearest `p`,
+/// within 100 mm.
 pub(crate) fn reference_near(m: &Model, level: impl Key, p: P2, keep: impl Fn(Line) -> bool) -> Option<Reference> {
     let level = m.guid(level);
     nearest_reference(m, level, p, keep, near_point(m, level, p, 100.0).into_iter())
@@ -7861,6 +8084,7 @@ fn nearest_reference(m: &Model, level: Guid, p: P2, keep: impl Fn(Line) -> bool,
     ids.filter(|id| match m.elements.get(*id) {
         Some(Element::Wall(w)) => cut(Some(w)),
         Some(Element::Door(o) | Element::Window(o)) => cut(m.wall(o.host)),
+        Some(Element::Column(c) | Element::StructuralColumn(c)) => m.column_cut_by(c, level),
         Some(Element::Grid(_)) => true,
         _ => false,
     })
@@ -7871,7 +8095,8 @@ fn nearest_reference(m: &Model, level: Guid, p: P2, keep: impl Fn(Line) -> bool,
 }
 
 /// Of the ends of the lines a plan of `level` (`view`, when not the level's own) shows (walls' centre lines and faces,
-/// doors' and windows' jambs, grids, its detail lines), the nearest `p`, within 100 mm.
+/// doors' and windows' jambs, grids, the corners and centre lines of the columns it cuts, its detail lines), the nearest
+/// `p`, within 100 mm.
 pub(crate) fn endpoint_near(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Reference> {
     let plan = view.unwrap_or(level);
     let mut ids = near_point(m, level, p, 100.0);
@@ -7892,6 +8117,7 @@ fn nearest_end(m: &Model, level: Guid, view: Option<Guid>, p: P2, ids: impl Iter
     ids.filter(|id| match m.elements.get(*id) {
         Some(Element::Wall(w)) => cut(Some(w)),
         Some(Element::Door(o) | Element::Window(o)) => cut(m.wall(o.host)),
+        Some(Element::Column(c) | Element::StructuralColumn(c)) => m.column_cut_by(c, level),
         Some(Element::Grid(_)) => true,
         Some(Element::DetailLine(l)) => m.same(l.view, plan),
         _ => false,
@@ -7934,15 +8160,17 @@ fn sweep_near(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Refer
         .map(|(r, _)| r)
 }
 
-/// Of what a plan of `level` (`view`, when not the level's own) shows round (its round columns, its curved walls' centre
-/// lines and faces, its detail lines that are circles or arcs), the one whose edge passes nearest `p`, within 100 mm.
+/// Of what a plan of `level` (`view`, when not the level's own) shows round (the round columns it cuts, its round footings,
+/// its curved walls' centre lines and faces, its detail lines that are circles or arcs), the one whose edge passes nearest
+/// `p`, within 100 mm.
 fn arc_near(m: &Model, level: Guid, view: Option<Guid>, p: P2) -> Option<Reference> {
     let plan = view.unwrap_or(level);
     m.elements
         .with_guids()
         .flat_map(|(_, id, e)| {
             match e {
-                e if e.column().is_some_and(|col| col.level == level) => vec![Face::Centre],
+                Element::Column(col) | Element::StructuralColumn(col) if m.column_cut_by(col, level) => vec![Face::Centre],
+                Element::Footing(f) if f.level == level => vec![Face::Centre],
                 Element::Wall(w) if w.arc != 0.0 && m.cut_by(w, level) => vec![Face::Centre, Face::Left, Face::Right],
                 Element::DetailLine(l) if m.same(l.view, plan) => vec![Face::Centre],
                 _ => Vec::new(),
@@ -8031,7 +8259,7 @@ fn dimension(s: &mut Session, p: &Value) -> R {
             let q = point(e).ok_or_else(|| bad(c, format!("`endpoint` is a point [x, y], not {e}")))?;
             refs.push(
                 endpoint_near(m, level, view, q)
-                    .ok_or_else(|| near(q, "end of a wall, a wall face, a door, a window, a grid or a detail line"))?,
+                    .ok_or_else(|| near(q, "end of a wall, a wall face, a door, a window, a column, a grid or a detail line"))?,
             );
             continue;
         }
@@ -8045,7 +8273,7 @@ fn dimension(s: &mut Session, p: &Value) -> R {
                 let first = refs.first().and_then(|r| m.reference_line(r).ok());
                 let keep = |l: Line| first.is_none_or(|(a, b)| geom::parallel(a, b, l.0, l.1) == (kind == DimKind::Aligned));
                 reference_near(m, level, q, keep)
-                    .ok_or_else(|| near(q, "wall face, wall centre line, wall end, door, window or grid line"))?
+                    .ok_or_else(|| near(q, "wall face, wall centre line, wall end, door, window, column or grid line"))?
             }
             None => serde_json::from_value::<Reference>(v.clone())
                 .map_err(|e| bad(c, format!("{v} is not a reference {{id, face?}} or a point [x, y]: {e}")))?,
@@ -8680,6 +8908,7 @@ pub fn runs_of(m: &Model, p: &Value, category: &str) -> Result<Vec<Element>, Str
                     offset,
                     end_offset,
                     justify,
+                    join: true,
                     system: system.clone(),
                     params: Default::default(),
                 },
@@ -8861,6 +9090,24 @@ fn roof(s: &mut Session, p: &Value) -> R {
     if absent(p.get("slopes")) {
         r.slopes = slopes_of_edges(&r, &lines, &[]);
     }
+    // Match sketch slopes before moving the edges: offsets keep their numbers, not their locations.
+    // An edited boundary is already the eave outline, so this applies only at creation.
+    if given && r.extrusion.is_none() {
+        r.boundary = roof_eaves(&r.boundary, overhang)
+            .ok_or_else(|| bad(c, format!("`boundary` is too small for an overhang of {overhang} mm; make it less")))?;
+        r.courtyards = r
+            .courtyards
+            .iter()
+            .map(|ring| {
+                roof_eaves(ring, -overhang)
+                    .ok_or_else(|| bad(c, format!("a courtyard is too small for an overhang of {overhang} mm; make it less")))
+            })
+            .collect::<Result<_, _>>()?;
+        if overhang != 0.0 {
+            // The input curves describe the wall line, not the eaves. Picking and Edit Boundary must use the actual outline.
+            r.sketch.clear();
+        }
+    }
     let id = s.model_mut().insert(Element::Roof(r));
     Ok(json!({"id": id}))
 }
@@ -8972,6 +9219,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             attach_top: Some(roof_guid),
             attach_base: Some(host),
             room_bounding: true,
+            join: true,
         })
     };
     let (l, r) = (micron(at + n * (w / 2.0)), micron(at - n * (w / 2.0)));
@@ -9482,6 +9730,17 @@ fn shaped<T: serde::de::DeserializeOwned>(c: &str, p: &Value, key: &str, shape: 
     }
 }
 
+/// Move a roof's wall-line ring outward by `d` (inward when negative), preserving winding and edge numbers.
+/// A collapsing or reversed edge cannot carry the requested overhang; model validation checks the resulting outline too.
+pub(crate) fn roof_eaves(ring: &[P2], d: f64) -> Option<Vec<P2>> {
+    if d == 0.0 || ring.len() < 3 {
+        return Some(ring.to_vec());
+    }
+    let grown: Vec<P2> = geom::grow(ring, if geom::area(ring) < 0.0 { -d } else { d }).into_iter().map(micron).collect();
+    let kept = geom::ring_edges(ring).zip(geom::ring_edges(&grown)).all(|((p, q), (r, s))| (q - p).dot(s - r) > 0.0);
+    (kept && grown.iter().all(|p| p.is_finite())).then_some(grown)
+}
+
 /// The footprint `roof` gives a roof on `level` by default, over the walls of the level below: their
 /// outline, `overhang` mm past their outer faces, counter-clockwise; and its courtyards, the ones
 /// `floor_outline` finds in those walls, `overhang` mm past their faces into each, clockwise; each
@@ -9906,8 +10165,177 @@ fn new_sheet(s: &mut Session, p: &Value) -> R {
     };
     let name = string(c, p, "name")?.unwrap_or_else(|| m.language.word(msg!("Unnamed")).into());
     let size = string(c, p, "size")?.map_or_else(|| "A3".into(), |z| z.trim().to_ascii_uppercase());
-    let id = s.model_mut().insert(Element::Sheet(Sheet { number: number.clone(), name, size }));
+    let title_block = match p.get("title_block") {
+        v if absent(v) => String::new(),
+        Some(v) => sheet_title_block(c, v)?,
+        None => String::new(),
+    };
+    let fields = match p.get("fields") {
+        v if absent(v) => BTreeMap::new(),
+        Some(v) => field_values(c, "fields", v, &BTreeMap::new())?,
+        None => BTreeMap::new(),
+    };
+    let id = s.model_mut().insert(Element::Sheet(Sheet { number: number.clone(), name, size, title_block, fields }));
     Ok(json!({"id": id, "number": number}))
+}
+
+/// A sheet's `title_block` as `sheet` and `modify` take it: `""` or true the built-in one, `none` in any case or false none
+/// at all ([`crate::titleblock::NONE`]), else the name of a title block of the project's (`Model::check` sees it's there).
+fn sheet_title_block(c: &str, v: &Value) -> Result<String, String> {
+    use crate::titleblock::{NONE, means_none};
+    match v {
+        Value::Bool(true) => Ok(String::new()),
+        Value::Bool(false) => Ok(NONE.into()),
+        Value::String(n) if means_none(n) => Ok(NONE.into()),
+        Value::String(n) => Ok(n.trim().to_string()),
+        _ => Err(bad(
+            c,
+            format!("`title_block` is a title block's name, \"\" (or true) for the built-in one or \"{NONE}\" (or false), not {v}"),
+        )),
+    }
+}
+
+/// `v`, fields' values by key (`{KEY: text or null}`), over `old`: each key uppercase, a null taking the key's value away.
+fn field_values(c: &str, key: &str, v: &Value, old: &BTreeMap<String, String>) -> Result<BTreeMap<String, String>, String> {
+    let o = v.as_object().ok_or_else(|| bad(c, format!("`{key}` is {{KEY: text or null}}, not {v}")))?;
+    let mut out = old.clone();
+    for (k, x) in o {
+        if !crate::titleblock::valid_key(k) {
+            return Err(bad(c, format!("`{k}` isn't a field's key: letters, digits and `_`, starting with a letter")));
+        }
+        let k = k.to_ascii_uppercase();
+        match x {
+            Value::Null => {
+                out.remove(&k);
+            }
+            Value::String(t) => {
+                out.insert(k, t.clone());
+            }
+            Value::Number(n) => {
+                out.insert(k, n.to_string());
+            }
+            _ => return Err(bad(c, format!("`{key}`'s `{k}` is text, or null to clear it, not {x}"))),
+        }
+    }
+    Ok(out)
+}
+
+fn title_values(s: &mut Session, p: &Value) -> R {
+    let c = "title_values";
+    only(c, p, &["values"])?;
+    match p.get("values") {
+        v if absent(v) => {}
+        Some(v) => {
+            let values = field_values(c, "values", v, &s.model.title_values)?;
+            if values != s.model.title_values {
+                s.model_mut().title_values = values;
+            }
+        }
+        None => {}
+    }
+    Ok(json!({"values": s.model.title_values}))
+}
+
+fn title_block(s: &mut Session, p: &Value) -> R {
+    use crate::titleblock::{self, TitleBlock};
+    let c = "title_block";
+    only(c, p, &["name", "like", "rename", "delete", "path", "units", "width", "height", "font", "lines", "fills", "texts", "fields"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        let auto: Map<String, Value> = titleblock::AUTO.iter().map(|(k, what)| ((*k).to_string(), json!(what))).collect();
+        return Ok(json!({"title_blocks": s.model.title_blocks, "values": s.model.title_values, "auto": auto}));
+    };
+    if flag(c, p, "delete")? {
+        let m = &s.model;
+        if !m.title_blocks.contains_key(&name) {
+            return Err(bad(c, format!("there's no title block `{name}`")));
+        }
+        if let Some(sh) = m.elements.values().find_map(|e| match e {
+            Element::Sheet(sh) if sh.title_block == name => Some(sh),
+            _ => None,
+        }) {
+            return Err(bad(c, format!("sheet {} is drawn with `{name}`; give it another title block first", sh.number)));
+        }
+        s.model_mut().title_blocks.remove(&name);
+        return Ok(json!({"deleted": name}));
+    }
+    let m = &s.model;
+    let mut t = match (m.title_blocks.get(&name), name_param(c, p, "like")?) {
+        (Some(t), _) => t.clone(),
+        (None, Some(like)) => {
+            m.title_blocks.get(&like).cloned().ok_or_else(|| bad(c, format!("there's no title block `{like}` to start from")))?
+        }
+        (None, None) => TitleBlock::default(),
+    };
+    let mut notes = Vec::new();
+    let mut left_out = BTreeMap::new();
+    if let Some(path) = string(c, p, "path")? {
+        let units = match string(c, p, "units")? {
+            None => None,
+            Some(u) if u.trim().eq_ignore_ascii_case("auto") => None,
+            Some(u) => Some(cloud::unit(&u).ok_or_else(|| bad(c, format!("`units` is auto, mm, cm, m, in or ft, not {u}")))?),
+        };
+        let (bytes, read_notes) = read_dxf_file(s, &path).map_err(|e| bad(c, e))?;
+        notes = read_notes;
+        let titleblock::Read { title_block: read, left_out: out, note } =
+            titleblock::read_dxf(&bytes, units).map_err(|e| bad(c, format!("{path}: {e}")))?;
+        notes.extend(note);
+        if read.lines.is_empty() && read.fills.is_empty() && read.texts.is_empty() {
+            return Err(bad(c, format!("{path} draws nothing in its model space; draw the title block there, at full size")));
+        }
+        // The fields it had keep their labels, whose and defaults where the drawing still names them.
+        let fields = read.fields.iter().map(|f| t.field(&f.key).cloned().unwrap_or_else(|| f.clone())).collect();
+        t = TitleBlock { fields, ..read };
+        left_out = out;
+    } else if p.get("units").is_some() {
+        return Err(bad(c, "`units` is the unit of the DXF `path` names"));
+    }
+    // What's given goes over it, read as a file reads one: a key it hasn't is an error.
+    let mut v = serde_json::to_value(&t).map_err(|e| bad(c, e))?;
+    if let Some(o) = v.as_object_mut() {
+        for key in ["width", "height", "font", "lines", "fills", "texts", "fields"] {
+            match p.get(key) {
+                None => {}
+                Some(Value::Null) => {
+                    o.remove(key);
+                }
+                Some(x) => {
+                    o.insert(key.into(), x.clone());
+                }
+            }
+        }
+    }
+    let mut t: TitleBlock = serde_json::from_value(v).map_err(|e| bad(c, e))?;
+    for f in &mut t.fields {
+        f.key = f.key.trim().to_ascii_uppercase();
+    }
+    let m = s.model_mut();
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.title_blocks.contains_key(&to) {
+                return Err(bad(c, format!("there's already a title block `{to}`")));
+            }
+            m.title_blocks.remove(&name);
+            rename_entry(m, &LibKind::TitleBlock, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    t.check(&name).map_err(|e| bad(c, e))?;
+    let undefined = t.undefined();
+    if m.title_blocks.get(&name) != Some(&t) {
+        m.title_blocks.insert(name.clone(), t.clone());
+    }
+    let mut out = json!({"name": name, "title_block": t});
+    if !undefined.is_empty() {
+        out["undefined"] = json!(undefined);
+    }
+    if !left_out.is_empty() {
+        out["left_out"] = json!(left_out);
+    }
+    if !notes.is_empty() {
+        out["notes"] = json!(notes);
+    }
+    Ok(out)
 }
 
 fn place(s: &mut Session, p: &Value) -> R {
@@ -11185,7 +11613,12 @@ fn modify(s: &mut Session, p: &Value) -> R {
     let fields = p.as_object().ok_or_else(|| bad(c, "params must be {id | ids, …fields}"))?;
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
-    let (mut edited, mut rescaled) = (Vec::new(), Vec::new());
+    let mut edited = Vec::new();
+    let mut rescaled = Vec::new();
+    // Footings the command changes itself, and the ones that follow their wall's base as it goes up or down.
+    let moving_footings: Vec<Id> =
+        ids.iter().copied().filter(|id| m.elements.get(*id).is_some_and(|e| e.category() == "stripfooting")).collect();
+    let mut following: Vec<(Id, Element)> = Vec::new();
     for &id in &ids {
         let e = m.elements.get(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
         let mut v = serde_json::to_value(e).map_err(|e| bad(c, e))?;
@@ -11196,6 +11629,12 @@ fn modify(s: &mut Session, p: &Value) -> R {
                 "category" if obj.get("category") == Some(val) => continue,
                 "category" => return Err(bad(c, "`category` can't change; delete the element and create another")),
                 "level" | "top_level" if val.is_string() => json!(level_param(c, m, p, k)?),
+                // A sheet's title block as `sheet` takes it: none as `none` or false, the built-in one as "" or true.
+                "title_block" if matches!(e, Element::Sheet(_)) => json!(sheet_title_block(c, val)?),
+                // A sheet's fields by their keys in capitals, as its title block names them, whatever case they're given in.
+                "fields" if matches!(e, Element::Sheet(_)) && val.is_object() => {
+                    Value::Object(val.as_object().into_iter().flatten().map(|(k, v)| (k.to_ascii_uppercase(), v.clone())).collect())
+                }
                 _ => val.clone(),
             };
             match obj.get_mut(k) {
@@ -11217,6 +11656,25 @@ fn modify(s: &mut Session, p: &Value) -> R {
             n.runs = crate::text::remap(&old.text, &n.text, &old.runs);
         }
         graphics::check_followed(m, e, &e2).map_err(|err| bad(c, format!("element {id}: {err}")))?;
+        // A strip footing glued to the wall keeps its top on the wall's base: raised or lowered along its level
+        // (its `base_offset` or the level's), the footing rises or falls with it. A footing changed by hand is
+        // soon no footing of that wall: the condition is read again from the geometry.
+        if let (Element::Wall(old), Element::Wall(w)) = (e, &e2) {
+            let (before, after) = (m.base_z(old), m.base_z(w));
+            if (after - before).abs() > 1e-9 {
+                for (fid, fid_wall) in crate::glue::footings_of(m, &[id]) {
+                    if fid_wall != id || moving_footings.contains(&fid) {
+                        continue;
+                    }
+                    let Some(r) = m.run_of(fid) else { continue };
+                    if let Some(on) = crate::glue::on_base(m, r, "stripfooting", after)
+                        && let Some(e) = Element::of_run("stripfooting", on)
+                    {
+                        following.push((fid, e));
+                    }
+                }
+            }
+        }
         // A wall put on another of its lines stays where it is: its line moves across it instead.
         if let (Element::Wall(old), Element::Wall(w)) = (e, &mut e2)
             && old.location != w.location
@@ -11244,6 +11702,13 @@ fn modify(s: &mut Session, p: &Value) -> R {
         edited.push((id, e2));
     }
     edited.extend(rescaled);
+    // A footing under a wall raised or lowered goes with it, unless the command set the footing itself.
+    for (fid, e) in following {
+        if !ids.contains(&fid) {
+            edited.retain(|(id, _)| *id != fid);
+            edited.push((fid, e));
+        }
+    }
     let m = s.model_mut();
     for (id, e) in edited {
         m.elements.insert(id, e);
@@ -11539,9 +12004,44 @@ fn place_tag(m: &mut Model, id: Id, head: P2) {
     }
 }
 
+/// How many walls and runs that join have an end at `at` at heights `(lo, hi)`: the arms of the node
+/// there. Three or more is a corner where several elements meet, not one element simply carrying on
+/// under another.
+fn arms_at(m: &Model, at: P2, (lo, hi): (f64, f64)) -> usize {
+    m.elements
+        .values()
+        .filter(|e| match e {
+            Element::Wall(w) => {
+                w.join && (w.start.dist(at) <= TOL || w.end.dist(at) <= TOL) && m.base_z(w) <= hi + TOL && lo - TOL <= m.top_z(w)
+            }
+            e => e.run().is_some_and(|r| {
+                r.join
+                    && (r.start.dist(at) <= TOL || r.end.dist(at) <= TOL)
+                    && m.run_geom(e).is_some_and(|g| {
+                        let (rlo, rhi) = g.z_span();
+                        rlo <= hi + TOL && lo - TOL <= rhi
+                    })
+            }),
+        })
+        .count()
+}
+
+/// Whether two lines run the same way, so that one carries on under the other rather than meeting it
+/// at a corner.
+fn same_way(a: (P2, P2), b: (P2, P2)) -> bool {
+    let (u, v) = (a.1 - a.0, b.1 - b.0);
+    u.length() > TOL && v.length() > TOL && u.unit().cross(v.unit()).abs() <= 1e-9
+}
+
+/// The line of the first of `candidates` that `line_of` gives one for and whose span holds `was`, within `TOL`: the
+/// staying wall or run a taken end lay on, along which that end slides to the new crossing.
+fn host_line(was: P2, candidates: impl IntoIterator<Item = Id>, line_of: impl FnMut(Id) -> Option<(P2, P2)>) -> Option<(P2, P2)> {
+    candidates.into_iter().filter_map(line_of).find(|&(a, b)| geom::dist_to_segment(was, a, b) <= TOL)
+}
+
 /// Take elements by `mo`, keeping walls joined: walls joined to a taken wall stretch to stay
 /// joined, and doors and windows in walls that changed keep their place or go with their wall.
-/// With `end` (`Some(true)` the start, `Some(false)` the end), only that end of one wall goes.
+/// With `end` (`Some(true)` the start, `Some(false)` the end), only that end of one wall or one run goes.
 fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>) -> Result<(), String> {
     let m = &s.model;
     // The walls, and what points at each: found among those, not every element.
@@ -11554,6 +12054,8 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
     let carried = |host: Guid| moving_guids.contains(&host) && end.is_none();
     let mut walls: BTreeMap<Id, Wall> = BTreeMap::new();
     let mut others: Vec<(Id, Element)> = Vec::new();
+    // The runs taken, as they were and as they now stand: what stretches to keep its joins with them.
+    let mut taken: BTreeMap<Id, (crate::model::Run, crate::model::Run)> = BTreeMap::new();
     for &id in ids {
         match transformed(c, m, id, mo, &moving)? {
             Element::Wall(mut w) => {
@@ -11565,47 +12067,153 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                 walls.insert(id, w);
             }
             Element::Door(o) | Element::Window(o) if moving_guids.contains(&o.host) => {}
-            e => others.push((id, e)),
+            // Moving one end of a run: the other end stays where it was, as a wall's does.
+            mut e => {
+                if let (Some(at_start), Some(me), Some(old)) = (end, e.run_mut(), m.run_of(id)) {
+                    if at_start { me.end = old.end } else { me.start = old.start }
+                }
+                if let (Some(before), Some(after)) = (m.run_of(id).cloned(), e.run().cloned()) {
+                    taken.insert(id, (before, after));
+                }
+                others.push((id, e));
+            }
         }
     }
     let old = |id: &Id| m.wall(*id);
-    // A taken wall's end that was on a wall staying put slides back onto it, along the taken wall.
-    // (A wall's end taken on its own goes where it's told.)
-    for (id, w) in walls.iter_mut().filter(|_| end.is_none()) {
-        let Some(before) = old(id).filter(|b| b.arc == 0.0) else { continue };
-        let line = (w.start, w.end);
-        for (end, was) in [(&mut w.start, before.start), (&mut w.end, before.end)] {
-            let at = ([was.0, was.1, was.0, was.1], m.base_z(before), m.top_z(before));
-            let host = lookup.walls_near_at(&[at], 2.0 * TOL).into_iter().find_map(|other| match m.elements.get(other) {
-                Some(Element::Wall(o))
-                    if !moving.contains(&other)
-                        && o.arc == 0.0
-                        && stacked(m, o, before)
-                        && geom::dist_to_segment(was, o.start, o.end) <= TOL =>
-                {
+    // Glued footings move with their walls; make that planned move a taken run before finding what stretches to
+    // keep its joins. Otherwise an angled footing sees only the old position and stays behind after the glue runs.
+    let mut glued: Vec<(Id, crate::model::Run, crate::model::Run)> = if end.is_none() {
+        let walls: Vec<Id> = walls.keys().copied().collect();
+        crate::glue::footings_of(m, &walls)
+            .into_iter()
+            .filter_map(|(fid, _)| {
+                let r = m.run_of(fid)?.clone();
+                let after = crate::glue::mapped(&r, f);
+                Some((fid, r, after))
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let glued_moving: BTreeSet<Id> = glued.iter().map(|(id, ..)| *id).collect();
+    for (id, before, after) in &glued {
+        if !moving.contains(id) {
+            taken.entry(*id).or_insert_with(|| (before.clone(), after.clone()));
+        }
+    }
+    let index = crate::walls::Index::new(m);
+    let thickest = m.types.wall.values().map(|t| t.thickness).filter(|t| t.is_finite()).fold(0.0, f64::max);
+    // What a taken end may slide along: neither taken nor riding a taken wall.
+    let staying = |other: Id| !moving.contains(&other) && !glued_moving.contains(&other);
+    // A taken line's end that was on a staying line slides along that line to the new crossing, as two
+    // walls' ends do: the staying element keeps its own axis and only runs on or is cut back. An end taken
+    // on its own (with `end`) goes where it is told. Runs of one category meet each other; a strip footing
+    // meets a wall by its top touching the wall's base, as the run's own outline has it.
+    if end.is_none() {
+        for (id, w) in walls.iter_mut() {
+            let Some(before) = old(id).filter(|b| b.arc == 0.0) else { continue };
+            let line = (w.start, w.end);
+            for (end, was) in [(&mut w.start, before.start), (&mut w.end, before.end)] {
+                let (lo, hi) = (m.base_z(before), m.top_z(before));
+                let at = ([was.0, was.1, was.0, was.1], lo, hi);
+                let host = host_line(was, lookup.walls_near_at(&[at], 2.0 * TOL), |other| {
+                    let o = m.wall(other).filter(|o| staying(other) && o.join && before.join && o.arc == 0.0 && stacked(m, o, before))?;
                     Some((o.start, o.end))
+                })
+                .or_else(|| {
+                    host_line(was, index.runs_near(was, lo - TOL, hi + TOL), |other| {
+                        let e = m.elements.get(other).filter(|e| staying(other) && e.category() == "stripfooting")?;
+                        let r = e.run().filter(|r| r.join && before.join && crate::runs::flat(r))?;
+                        let (rlo, rhi) = m.run_geom(e)?.z_span();
+                        (rlo - TOL <= hi && lo - TOL <= rhi).then_some((r.start, r.end))
+                    })
+                });
+                if let Some((a, b)) = host {
+                    *end = geom::line_intersection(line.0, line.1, a, b).map_or(*end, micron);
                 }
-                _ => None,
-            });
-            if let Some((a, b)) = host {
-                *end = geom::line_intersection(line.0, line.1, a, b).map_or(*end, micron);
+            }
+        }
+        for (id, (before, after)) in taken.iter_mut() {
+            if !before.join || !after.join || !crate::runs::flat(before) {
+                continue;
+            }
+            let Some(e) = m.elements.get(*id) else { continue };
+            let category = e.category();
+            let Some((lo, hi)) = m.run_geom(e).map(|g| g.z_span()) else { continue };
+            let line = (after.start, after.end);
+            for (end, was) in [(&mut after.start, before.start), (&mut after.end, before.end)] {
+                let host = host_line(was, index.runs_near(was, lo - TOL, hi + TOL), |other| {
+                    let oe = m.elements.get(other).filter(|oe| other != *id && staying(other) && oe.category() == category)?;
+                    let r = oe.run().filter(|r| r.join && crate::runs::flat(r))?;
+                    let (olo, ohi) = m.run_geom(oe)?.z_span();
+                    (lo < ohi && olo < hi).then_some((r.start, r.end))
+                })
+                .or_else(|| {
+                    if category != "stripfooting" {
+                        return None;
+                    }
+                    let at = ([was.0, was.1, was.0, was.1], lo - TOL, hi + TOL);
+                    host_line(was, lookup.walls_near_at(&[at], thickest + 1.0), |other| {
+                        let w = m.wall(other).filter(|w| !moving.contains(&other) && w.join && w.arc == 0.0)?;
+                        (lo - TOL <= m.top_z(w) && m.base_z(w) - TOL <= hi).then_some((w.start, w.end))
+                    })
+                });
+                if let Some((a, b)) = host {
+                    *end = geom::line_intersection(line.0, line.1, a, b).map_or(*end, micron);
+                }
+            }
+        }
+        // A glued footing rides the corrected line of its wall: take the wall's crossing, not the bare move.
+        for (id, _, after) in glued.iter_mut() {
+            if let Some((_, corrected)) = taken.get(id) {
+                *after = corrected.clone();
+            }
+        }
+        // The taken runs themselves stand where they were cut or run on to the crossing, as the walls do.
+        for (id, (_, after)) in &taken {
+            if !moving.contains(id) {
+                continue;
+            }
+            let Some(e) = m.elements.get(*id) else { continue };
+            if let Some(corrected) = Element::of_run(e.category(), after.clone())
+                && let Some(slot) = others.iter_mut().find(|(other, _)| other == id)
+            {
+                slot.1 = corrected;
             }
         }
     }
     // Walls staying put stretch to keep their joins with the taken ones: an end on a taken wall's
-    // end goes with it; an end on a taken wall's span slides along its own wall onto it.
+    // end goes with it; an end on a taken wall's span slides along its own wall onto it. At a corner
+    // where a strip footing ends too, the wall's end and the footing's go together, as walls' do.
     let moved: Vec<(Wall, Wall)> = walls.iter().filter_map(|(id, w)| Some((old(id)?.clone(), w.clone()))).collect();
-    // The walls whose ends may lie on a taken wall's line as it was.
+    // The walls whose ends may lie on a taken wall's line as it was, and those near a taken footing: its end
+    // or span may meet a wall's end there, as the footing's own outline meets it.
     let boxes: Vec<_> = moved.iter().map(|(before, _)| (crate::derived::axis_box(before), m.base_z(before), m.top_z(before))).collect();
-    let near = if boxes.is_empty() { BTreeSet::new() } else { lookup.walls_near_at(&boxes, 2.0 * TOL) };
+    let mut near = if boxes.is_empty() { BTreeSet::new() } else { lookup.walls_near_at(&boxes, 2.0 * TOL) };
+    for (rid, (before, _)) in &taken {
+        let Some(e) = m.elements.get(*rid) else { continue };
+        let Some(g) = m.run_geom(e) else { continue };
+        if e.category() != "stripfooting" || !before.join {
+            continue;
+        }
+        let box_of = [
+            before.start.0.min(before.end.0),
+            before.start.1.min(before.end.1),
+            before.start.0.max(before.end.0),
+            before.start.1.max(before.end.1),
+        ];
+        let (lo, hi) = g.z_span();
+        near.extend(lookup.walls_near_at(&[(box_of, lo - TOL, hi + TOL)], thickest + g.width / 2.0 + 1.0));
+    }
     for id in near {
         let Some(w) = m.wall(id) else { continue };
-        if moving.contains(&id) {
+        // An unjoined wall stretches for no one, as it joins nothing itself.
+        if moving.contains(&id) || !w.join {
             continue;
         }
         let mut n = w.clone();
         for (end, at) in [(&mut n.start, w.start), (&mut n.end, w.end)] {
-            for (before, after) in moved.iter().filter(|(before, _)| stacked(m, w, before)) {
+            for (before, after) in moved.iter().filter(|(before, _)| before.join && stacked(m, w, before)) {
                 if at.dist(before.start) <= TOL || at.dist(before.end) <= TOL {
                     *end = if at.dist(before.start) <= TOL { after.start } else { after.end };
                     break;
@@ -11617,9 +12225,184 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                     break;
                 }
             }
+            // A strip footing meets a wall by its top touching the wall's base, as it does in the run's own
+            // outline: the wall's end goes with a footing's the same way it goes with another wall's.
+            for (rid, (before, after)) in taken.iter() {
+                if !before.join || !after.join || !crate::runs::flat(before) {
+                    continue;
+                }
+                let Some(e) = m.elements.get(*rid) else { continue };
+                if e.category() != "stripfooting" {
+                    continue;
+                }
+                let Some(g) = m.run_geom(e) else { continue };
+                let (lo, hi) = g.z_span();
+                if !(lo - TOL <= m.top_z(w) && m.base_z(w) - TOL <= hi) {
+                    continue;
+                }
+                // A footing simply running on under the wall keeps its length: only a real corner, where
+                // another element also ends, takes the footing's end with the wall's.
+                let same = w.arc == 0.0 && same_way((w.start, w.end), (before.start, before.end));
+                if same && arms_at(m, at, (m.base_z(w), m.top_z(w))) <= 2 {
+                    continue;
+                }
+                if at.dist(before.start) <= TOL || at.dist(before.end) <= TOL {
+                    *end = if at.dist(before.start) <= TOL { after.start } else { after.end };
+                    break;
+                }
+                if geom::dist_to_segment(at, before.start, before.end) <= TOL {
+                    let straight = w.arc == 0.0;
+                    *end =
+                        geom::line_intersection(w.start, w.end, after.start, after.end).filter(|_| straight).map_or_else(|| f(at), micron);
+                    break;
+                }
+            }
         }
         if n != *w {
             walls.insert(id, n);
+        }
+    }
+    // A footing glued to a wall the move dragged (not taken itself) rides it too. Under a taken wall it takes the
+    // command's motion, as the footing under either of two collinear wall segments does; under a dragged wall it
+    // follows that wall's own new line, so a corner does not push it past the wall it carries.
+    let mut glued_ids: BTreeSet<Id> = glued.iter().map(|(id, ..)| *id).collect();
+    let glued_walls: Vec<Id> = walls.keys().copied().collect();
+    for (fid, _) in if end.is_none() { crate::glue::footings_of(m, &glued_walls) } else { Vec::new() } {
+        if glued_ids.contains(&fid) {
+            continue;
+        }
+        let Some(before) = m.run_of(fid).cloned() else { continue };
+        let category = m.elements.get(fid).map(|e| e.category()).unwrap_or_default();
+        let under_taken = moved.iter().any(|(wall, _)| crate::glue::holds(m, wall, &before, category));
+        let along_wall =
+            (!under_taken).then(|| crate::glue::wall_of(m, fid)).flatten().and_then(|w| Some((m.wall(w)?.clone(), walls.get(&w)?.clone())));
+        let after = match along_wall {
+            Some((was, now)) => {
+                let u = was.end - was.start;
+                let along = |p: P2| {
+                    if u.length() <= TOL { f(p) } else { now.start + (now.end - now.start) * ((p - was.start).dot(u) / u.dot(u)) }
+                };
+                crate::glue::mapped(&before, along)
+            }
+            None => crate::glue::mapped(&before, f),
+        };
+        taken.insert(fid, (before.clone(), after.clone()));
+        glued.push((fid, before, after));
+        glued_ids.insert(fid);
+    }
+    // Runs staying put stretch to keep their joins with the taken ones, as the walls above do: an end on
+    // a taken run's end goes with it; an end on its span slides along the staying run's own line onto the
+    // intersection. A strip footing takes a taken wall's end at a corner the same way, and what refuses to
+    // join, doesn't lie flat, or shares no category or heights with the taken run is left where it is — the
+    // flags act on the whole element, both ends alike.
+    if !taken.is_empty() || !moved.is_empty() {
+        // The heights a run reaches: its section's, worked out as every view draws it — of a taken run
+        // from the model, whose plan a command changes nothing of (its heights are what stay put).
+        let span_of = |id: &Id| m.elements.get(*id).and_then(|e| m.run_geom(e)).map(|g| g.z_span());
+        let box_of =
+            |r: &crate::model::Run| [r.start.0.min(r.end.0), r.start.1.min(r.end.1), r.start.0.max(r.end.0), r.start.1.max(r.end.1)];
+        let mut met: BTreeSet<Id> = taken
+            .iter()
+            .filter(|(id, (before, after))| {
+                before.join && after.join && crate::runs::flat(before) && crate::runs::flat(after) && span_of(id).is_some()
+            })
+            .flat_map(|(id, (before, _))| {
+                let (lo, hi) = span_of(id).unwrap_or((0.0, 0.0));
+                index.runs_near_box(box_of(before), 2.0 * TOL, lo, hi)
+            })
+            .collect();
+        // A strip footing ending on a taken wall follows it too: the touch of its top with the wall's base
+        // is its joint, as the run's own outline has it.
+        for (before, after) in &moved {
+            if !before.join || !after.join {
+                continue;
+            }
+            let (lo, hi) = (m.base_z(before), m.top_z(before));
+            met.extend(index.runs_near_box(crate::derived::axis_box(before), 2.0 * TOL, lo - TOL, hi + TOL));
+        }
+        for id in met {
+            if moving.contains(&id) {
+                continue;
+            }
+            let Some(e) = m.elements.get(id) else { continue };
+            let (Some(r), category) = (e.run(), e.category()) else { continue };
+            let Some((lo, hi)) = span_of(&id) else { continue };
+            if !r.join || !crate::runs::flat(r) {
+                continue;
+            }
+            let mut n = r.clone();
+            for (end, at) in [(&mut n.start, r.start), (&mut n.end, r.end)] {
+                for (tid, (before, after)) in taken.iter() {
+                    if !before.join || !after.join || !crate::runs::flat(before) || !crate::runs::flat(after) {
+                        continue;
+                    }
+                    if m.elements.get(*tid).is_none_or(|o| o.category() != category) {
+                        continue;
+                    }
+                    let Some((blo, bhi)) = span_of(tid) else { continue };
+                    if !(lo < bhi && blo < hi) {
+                        continue;
+                    }
+                    if at.dist(before.start) <= TOL {
+                        *end = after.start;
+                        break;
+                    }
+                    if at.dist(before.end) <= TOL {
+                        *end = after.end;
+                        break;
+                    }
+                    if geom::dist_to_segment(at, before.start, before.end) <= TOL {
+                        *end = geom::line_intersection(r.start, r.end, after.start, after.end).map_or_else(|| f(at), micron);
+                        break;
+                    }
+                }
+                if category != "stripfooting" {
+                    continue;
+                }
+                for (before, after) in moved.iter().filter(|(before, after)| before.join && after.join) {
+                    let (wlo, whi) = (m.base_z(before), m.top_z(before));
+                    if !(lo - TOL <= whi && wlo - TOL <= hi) {
+                        continue;
+                    }
+                    // As above: a wall running on over the footing leaves its length be; a corner takes it.
+                    let same = before.arc == 0.0 && same_way((r.start, r.end), (before.start, before.end));
+                    if same && arms_at(m, at, (lo, hi)) <= 2 {
+                        continue;
+                    }
+                    if at.dist(before.start) <= TOL {
+                        *end = after.start;
+                        break;
+                    }
+                    if at.dist(before.end) <= TOL {
+                        *end = after.end;
+                        break;
+                    }
+                    if geom::dist_to_segment(at, before.start, before.end) <= TOL {
+                        let straight = before.arc == 0.0 && after.arc == 0.0;
+                        *end = geom::line_intersection(r.start, r.end, after.start, after.end)
+                            .filter(|_| straight)
+                            .map_or_else(|| f(at), micron);
+                        break;
+                    }
+                }
+            }
+            if n != *r
+                && let Some(moved_run) = Element::of_run(category, n)
+            {
+                others.push((id, moved_run));
+            }
+        }
+    }
+    // The strip footings glued to the walls taken whole ride them in plan, by the very transformation: their
+    // lines are the walls', so the lines still are after. A wall's end dragged (with `end`) doesn't move its
+    // footing as a whole: the condition is left to be read again after the command.
+    for (id, _, after) in glued {
+        if moving.contains(&id) {
+            continue;
+        }
+        if let Some(e) = crate::model::Element::of_run("stripfooting", after) {
+            others.retain(|(other, _)| *other != id);
+            others.push((id, e));
         }
     }
     // Doors and windows in walls that changed keep their place, or go with their wall: those pointing at them, by id.
@@ -11668,9 +12451,17 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             })
             .collect();
         let turned = |id: &Guid| moving_guids.contains(id) || hosts.get(id).is_some_and(|h| moving_guids.contains(h));
+        let columns: BTreeSet<Guid> = moving_guids
+            .iter()
+            .copied()
+            .filter(|g| matches!(m.elements.get(*g), Some(Element::Column(_) | Element::StructuralColumn(_))))
+            .collect();
         for e in m.elements.values_mut() {
             if let Element::Dimension(d) = e {
-                d.refs.iter_mut().filter(|r| turned(&r.id)).for_each(|r| *r = r.mirrored(hosts.contains_key(&r.id)));
+                d.refs
+                    .iter_mut()
+                    .filter(|r| turned(&r.id))
+                    .for_each(|r| *r = if columns.contains(&r.id) { r.mirrored_column() } else { r.mirrored(hosts.contains_key(&r.id)) });
             }
         }
     }
@@ -11770,9 +12561,10 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
                 for r in &mut d.refs {
                     if let Some(&to) = hosts.get(&r.id) {
                         let opening = matches!(m.elements.get(r.id), Some(Element::Door(_) | Element::Window(_)));
+                        let column = matches!(m.elements.get(r.id), Some(Element::Column(_) | Element::StructuralColumn(_)));
                         r.id = to;
                         if mo.mirror {
-                            *r = r.mirrored(opening);
+                            *r = if column { r.mirrored_column() } else { r.mirrored(opening) };
                         }
                     }
                 }
@@ -11913,8 +12705,8 @@ fn move_elements(s: &mut Session, p: &Value) -> R {
         Some("end") => Some(false),
         Some(other) => return Err(bad(c, format!("`end` is `start` or `end`, not `{other}`"))),
     };
-    if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some()) {
-        return Err(bad(c, "`end` moves an end of one wall; give `ids` one wall"));
+    if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some() || s.model.run_of(*one).is_some()) {
+        return Err(bad(c, "`end` moves an end of one wall or one run; give `ids` one wall or one run"));
     }
     relocate(c, s, &ids, &Motion { map: &|q| q + by, slide: Some(by), mirror: false }, end)?;
     Ok(json!({"moved": ids}))
@@ -13687,20 +14479,106 @@ fn inspect(s: &mut Session, p: &Value) -> R {
     Ok(out)
 }
 
+/// `v` as a number: one, or a number written as text (`"300"`, `"2.5"`).
+fn number(v: &Value) -> Option<f64> {
+    match v {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.trim().parse().ok(),
+        _ => None,
+    }
+}
+
+/// Whether `v` is a value a field holding `kind` can hold: text, a number, or yes or no.
+fn value_fits(kind: schedule::Kind, v: &Value) -> bool {
+    match (kind, v) {
+        (schedule::Kind::Text, Value::String(s)) => s.chars().count() <= MAX_TEXT,
+        (schedule::Kind::YesNo, Value::Bool(_)) => true,
+        (schedule::Kind::Text | schedule::Kind::YesNo, _) => false,
+        (_, v) => number(v).is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD),
+    }
+}
+
+/// Whether a field holding `held` is the value `wanted`, as a schedule compares them: text in any
+/// case, numbers (or numbers written as text) equal, yes or no.
+fn holds(kind: schedule::Kind, held: &Value, wanted: &Value) -> bool {
+    match (kind, wanted) {
+        (schedule::Kind::Text, Value::String(s)) => held.as_str().is_some_and(|h| h.to_lowercase() == s.to_lowercase()),
+        (schedule::Kind::YesNo, Value::Bool(b)) => held.as_bool() == Some(*b),
+        (schedule::Kind::Text | schedule::Kind::YesNo, _) => false,
+        _ => number(held).zip(number(wanted)).is_some_and(|(a, b)| a == b),
+    }
+}
+
 fn elements(s: &mut Session, p: &Value) -> R {
     let c = "elements";
     let m = &s.model;
     let cat = string(c, p, "category")?.map(|k| category(&k));
     let level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
     let (limit, offset) = (count_opt(c, p, "limit", 500)?, count_opt(c, p, "offset", 0)?);
+    // A field of a schedule of the category, and the value it holds.
+    let field = string(c, p, "field")?.map(|f| f.trim().to_string()).filter(|f| !f.is_empty());
+    let value = match p.get("value") {
+        None | Some(Value::Null) => None,
+        Some(v @ (Value::String(_) | Value::Number(_) | Value::Bool(_))) => Some(v.clone()),
+        Some(v) => return Err(bad(c, format!("`value` is a value as a field holds it, not {v}"))),
+    };
+    if value.is_some() && field.is_none() {
+        return Err(bad(c, "`value` needs a `field`: the field whose value it is"));
+    }
+    let kinds: Option<(String, BTreeMap<String, schedule::Kind>)> = match &field {
+        None => None,
+        Some(name) => {
+            let mut kinds = BTreeMap::new();
+            if let Some(k) = &cat {
+                match schedule::fields(m, k).into_iter().find(|(n, _)| n == name) {
+                    Some((_, kind)) => {
+                        kinds.insert(k.clone(), kind);
+                    }
+                    None => return Err(bad(c, format!("a {k} has no field `{name}`"))),
+                }
+            } else {
+                for k in schedule::all_categories() {
+                    if let Some((_, kind)) = schedule::fields(m, k).into_iter().find(|(n, _)| n == name) {
+                        kinds.insert(k.to_string(), kind);
+                    }
+                }
+                if kinds.is_empty() {
+                    return Err(bad(c, format!("no category has a field `{name}`")));
+                }
+            }
+            Some((name.clone(), kinds))
+        }
+    };
+    if let (Some((name, kinds)), Some(v)) = (&kinds, &value)
+        && !kinds.values().any(|k| value_fits(*k, v))
+    {
+        let mut kind_names: Vec<&str> = kinds.values().map(|k| schedule::holding(*k)).collect();
+        kind_names.sort_unstable();
+        kind_names.dedup();
+        return Err(bad(c, format!("`{name}` holds {}, and `value` must be one: {v}", kind_names.join(" or "))));
+    }
+    let rooms = crate::rooms::Rooms::new(m);
     let hits: Vec<Id> = m
         .elements
         .iter()
         .filter(|(_, e)| cat.as_deref().is_none_or(|k| e.category() == k))
         .filter(|(_, e)| level.is_none_or(|l| m.level_of(e) == Some(l)))
+        .filter(|(id, e)| match &kinds {
+            None => true,
+            Some((name, kinds)) => kinds.get(e.category()).is_some_and(|kind| {
+                let held = schedule::field_value_with(m, **id, name, &rooms);
+                let empty = held.as_ref().is_none_or(|(_, v)| v.is_null() || v.as_str() == Some(""));
+                match &value {
+                    None => !empty,
+                    Some(wanted) => match &held {
+                        Some((_, v)) => holds(*kind, v, wanted),
+                        None => wanted.as_str() == Some(""),
+                    },
+                }
+            }),
+        })
         .map(|(id, _)| *id)
         .collect();
-    let rooms = crate::rooms::Rooms::new(m);
     let page: Vec<Value> = hits.iter().skip(offset).take(limit).map(|id| element_json_with(m, *id, &rooms)).collect();
     Ok(json!({"count": hits.len(), "returned": page.len(), "elements": page}))
 }
