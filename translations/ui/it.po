@@ -8,6 +8,70 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+#: crates/ui-egui/src/editor/visibility.rs:77
+msgid "A symbol is drawn only in plan: only its detail levels change"
+msgstr ""
+
+#: crates/ui-egui/src/footer.rs:385
+msgid "Detail Level: the family forms the 3D view draws, as their Visibility Settings say"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1128
+msgid "Detail Level: the forms and symbols each view of the family draws, as their Visibility Settings say"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:96 crates/ui-egui/src/editor.rs:1464
+msgid "Detail Levels"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:79
+msgid "Display in 3D views and:"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:72
+msgid "Family Element Visibility Settings"
+msgstr ""
+
+#: crates/ui-egui/src/editor/extrusion.rs:188
+msgid "Family Element Visibility Settings: the views and detail levels it is drawn in"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:81
+msgid "Front/Back"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:81
+msgid "Left/Right"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:90
+msgid "Only shown when cut"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:81
+msgid "Plan/RCP"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:1466
+msgid "Symbol Visibility Settings"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:76
+msgid "View Specific Display"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1727
+msgid "Visibility Settings"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1725
+msgid "Visibility Settings: the views it is drawn in (Plan/RCP, Front/Back, Left/Right, only when cut) and at which detail levels"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:104
+msgid "What a view leaves out stays in the model, its schedules and IFC."
+msgstr ""
+
 #: crates/ui-egui/src/editor/sketch.rs:1334
 msgid "<By Sketch>"
 msgstr ""
@@ -12629,6 +12693,98 @@ msgstr ""
 #: crates/core/src/triad.rs:111
 msgctxt "side"
 msgid "Top"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1140
+msgid "Click a circle, then click where the dimension goes."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:441
+msgid "Diameter Dimension: pick a circle of a form's sketch, then click where it goes"
+msgstr ""
+
+#: crates/ui-egui/src/editor/views.rs:709
+msgid "Pick a circle, then click where the dimension goes."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:435
+msgid "Radial Dimension: pick a circle of a form's sketch, then click where it goes"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:411
+msgid "Aligned Dimension (DI): pick parallel reference planes or extrusion ends, then click where it goes"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1103
+msgid "Click a form, a reference plane or a dimension to select it; drag a selected plane to move it."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1098
+msgid "Click parallel reference planes or extrusion ends, then click where the dimension goes."
+msgstr ""
+
+#: crates/ui-egui/src/editor/views.rs:535
+msgid "Pick a reference plane or an extrusion's end."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:971
+msgid "Click a form or a reference plane to select it; drag a selected plane to move it."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:375
+msgid "Load Family: open a family file here"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:234
+msgid "Pick Points"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:232
+msgid "Pick Points: click three points on the model in the 3D view, each snapping to a corner near the pointer; the dialog comes back with them"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:222
+msgid "Pick Surface"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:221
+msgid "Pick Surface: click a face of the model in the 3D view, a wall's or a roof's; the dialog comes back with it"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:218
+msgid "Pick a surface"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:413
+msgid "Pick a surface first: Pick Surface, then a click on a face of the model."
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:201
+msgid "Pick from list"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:414
+msgid "Pick three points first: Pick Points, then three clicks on the model."
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:160
+msgid "Set Work Plane: the plane the 3D view sketches on, a level, a surface or three points, with an offset; its patch in the view sets it too"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:199
+msgid "What the 3D view sketches on."
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:151
+msgid "Work Plane: what the 3D view sketches on: a level, a surface of the model or three points, each with an offset"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:226 crates/ui-egui/src/workplane.rs:238
+msgid "none picked yet"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:237
+msgid "{}° from level"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:1199

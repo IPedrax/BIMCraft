@@ -82,6 +82,7 @@ impl Mesh {
             top: if top.is_finite() { top } else { 0. },
             material,
             round: false,
+            vis: None,
         }
     }
     pub fn face_frame(&self, index: usize, barycentric: P3) -> Result<Frame, String> {

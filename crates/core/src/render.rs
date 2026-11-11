@@ -2104,7 +2104,11 @@ fn section_base_cancellable(
         }
         assert!(s.cuts(v.start + u * first, u, last - first).is_empty(), "{} is cut by a line it lies all on one side of", s.owner());
     }
-    for s in solids.iter().filter(|s| !matches!(m.elements.get(s.owner()), Some(Element::Mass(_))) && !one_side(s.owner())) {
+    // A family's form whose Visibility Settings keep it out of this view's cut isn't cut (F8).
+    for s in solids
+        .iter()
+        .filter(|s| !matches!(m.elements.get(s.owner()), Some(Element::Mass(_))) && !one_side(s.owner()) && look.forms_show(s.vis(), true))
+    {
         if cancelled() {
             return None;
         }
@@ -2135,7 +2139,7 @@ fn section_base_cancellable(
         if cancelled() {
             return None;
         }
-        for s in view3d::lazy_solids(m, *id, e, &mut lazy) {
+        for s in view3d::lazy_solids(m, *id, e, &mut lazy).into_iter().filter(|s| look.forms_show(s.vis(), true)) {
             let rings = s.cuts(v.start + u * first, u, last - first);
             // Its twin, which tests hold it to: what is left out cuts nothing.
             #[cfg(test)]
@@ -2999,17 +3003,21 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     // the cut plane and over the view depth; and the symbols of those on its level.
     for (&id, e) in all().filter(|(id, _)| shown(**id)) {
         let Element::Component(c) = e else { continue };
-        let pieces = components.pieces(c);
+        let mut pieces = components.pieces(c);
         d.owner = Some(id);
         if !up && !pieces.is_empty() {
             let (bottom, top) = components.heights(c);
             if bottom < range.cut && top > range.depth {
+                // Its forms the plan's Visibility Settings leave out (F8) aren't drawn, nor hide what is under them.
+                pieces.retain(|p| plan_draws(p, d.detail, range.cut));
                 component(&mut d, m, &pieces);
             }
         }
-        // Its symbols are annotation of its level: in that level's plan and ceiling plan, whatever height its forms reach.
-        if c.level == level && d.detail != Detail::Coarse {
-            marks(&mut d, &m.component_marks(c));
+        // Its symbols are annotation of its level: in that level's plan and ceiling plan, whatever height its forms reach, at
+        // the detail levels their Visibility Settings say (Medium and Fine, unless they say).
+        if c.level == level {
+            let shown = m.component_marks_in(c, d.detail);
+            marks(&mut d, &shown);
         }
     }
     // Walls and columns below the cut plane, as seen from it; past the bottom, faint.
@@ -3408,6 +3416,12 @@ fn marks(d: &mut Drawing, marks: &[crate::family::Mark]) {
             }
         }
     }
+}
+
+/// Whether a plan at `detail` cutting at height `cut` draws `p`, as its form's Visibility Settings say (F8): where it has
+/// none, always.
+fn plan_draws(p: &crate::family::Piece, detail: Detail, cut: f64) -> bool {
+    p.vis.is_none_or(|v| v.in_plan(detail, p.bottom < cut && cut < p.top))
 }
 
 /// A component seen from above: each of its forms' outlines, but where a higher form covers it (a
@@ -3914,17 +3928,23 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
         wall_voids(d, &axis, (ext, int), past, &voids, cut);
     }
     d.own(owner);
-    if !shown || d.detail == Detail::Coarse {
+    if !shown {
         return;
     }
-    // Of a family: the forms the cut plane passes through, outlined, and the lines of its symbols (a door's swing).
+    // Of a family: the forms the cut plane passes through, outlined, and the lines of its symbols (a door's swing). A form
+    // with Visibility Settings is drawn where they say (F8); one without, as before, at Medium and Fine.
     if o.family.is_some() {
-        for piece in m.opening_pieces(e).iter().filter(|p| p.bottom <= cut && cut < p.top) {
+        let detail = d.detail;
+        let drawn = |p: &crate::family::Piece| match p.vis {
+            Some(v) => v.in_plan(detail, true),
+            None => detail != Detail::Coarse,
+        };
+        for piece in m.opening_pieces(e).iter().filter(|p| p.bottom <= cut && cut < p.top && drawn(p)) {
             d.line(&piece.outline, BY_CATEGORY, INK, true);
         }
         d.part(Part::Projection);
         // Each in its subcategory, which the view may hide (Doors > Opening: the swing) or draw its own way.
-        for (mark, sub) in m.opening_marks(e) {
+        for (mark, sub) in m.opening_marks_in(e, detail) {
             if sub.is_some_and(hides) {
                 continue;
             }
@@ -3933,6 +3953,9 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
         }
         d.sub(None);
         d.part(Part::Cut);
+        return;
+    }
+    if d.detail == Detail::Coarse {
         return;
     }
     if matches!(e, Element::Door(_)) {
@@ -4941,7 +4964,8 @@ pub(crate) fn family_plan(m: &Model, level: Id, view: View) -> Drawing {
         if !look.shows(id) {
             continue;
         }
-        let pieces = m.component_pieces(c);
+        let mut pieces = m.component_pieces(c);
+        pieces.retain(|p| plan_draws(p, d.detail, cut));
         extra.owner = Some(id);
         extra.part(Part::Projection);
         component(&mut extra, m, &pieces);

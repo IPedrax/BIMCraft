@@ -103,6 +103,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 ///   swing an Angle parameter or a number of its own, within limits.
 /// - Nested families (T6a): a family may nest families (`nested`, each its whole definition) and place their instances
 ///   (`nested_instances`).
+/// - Visibility (F8): a family's forms, symbols and nested instances may carry Visibility Settings (`visibility`): the views
+///   they are drawn in by the way those look, and their detail level.
 /// - Subcategories: a view's graphics, a view template and the object styles may name `dooropening` and `windowopening`
 ///   (Doors > Opening, Windows > Opening), and a family's symbol the subcategory it is drawn in (`subcategory`).
 /// - Adaptive families: a family may be adaptive (`adaptive`: its points, lines and forms), and a component may hold its
@@ -3416,6 +3418,15 @@ impl Model {
     /// Component `c`'s plan marks in the model: its family's symbols in its own axes, mirrored if it is, turned and moved to
     /// where it stands. A label is lettered upright in the family's axes, so it turns (and mirrors) with the component.
     pub fn component_marks(&self, c: &Component) -> Vec<crate::family::Mark> {
+        self.component_marks_at(c, None)
+    }
+
+    /// [`Model::component_marks`] that a plan at detail level `detail` draws ([`crate::family::Family::marks_in`]).
+    pub fn component_marks_in(&self, c: &Component, detail: crate::graphics::Detail) -> Vec<crate::family::Mark> {
+        self.component_marks_at(c, Some(detail))
+    }
+
+    fn component_marks_at(&self, c: &Component, detail: Option<crate::graphics::Detail>) -> Vec<crate::family::Mark> {
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
         if f.symbols.is_empty() {
             return Vec::new();
@@ -3424,7 +3435,11 @@ impl Model {
         if !self.component_placement(c).upright {
             return Vec::new();
         }
-        let Ok(marks) = f.values(&c.type_name, &c.params).and_then(|v| f.marks(&v)) else { return Vec::new() };
+        let marks = f.values(&c.type_name, &c.params).and_then(|v| match detail {
+            Some(d) => f.marks_in(&v, d).map(|m| m.into_iter().map(|(k, _)| k).collect()),
+            None => f.marks(&v),
+        });
+        let Ok(marks) = marks else { return Vec::new() };
         let (sin, cos) = c.angle.to_radians().sin_cos();
         let flip = if c.mirrored { -1.0 } else { 1.0 };
         marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
@@ -3685,7 +3700,8 @@ impl Model {
         // still reads as the datum plane of the same frame (`Host::World`'s `plane_or_datum`), so nothing moves.
         // The rest needs nothing of a file of 17, which holds none of it: an adaptive family and a component's adaptive
         // frames, a family's dimensions of every kind, labels, locks and Align's locks, pivots, nested families, Blends
-        // and Sweeps (every form of 17 is an extrusion or a revolve, built as it was), a family parameter's group, shared GUID and reporting (each defaults to what a file of 17 means: grouped by its kind, the family's own, set), Doors > Opening
+        // and Sweeps (every form of 17 is an extrusion or a revolve, built as it was), Visibility Settings (a part without them draws as it did,
+        // `family::visibility`), a family parameter's group, shared GUID and reporting (each defaults to what a file of 17 means: grouped by its kind, the family's own, set), Doors > Opening
         // and Windows > Opening, and the project's reference planes and components hosted on them or on faces (a hosted
         // component's `at` and `offset` are worked out from its host whatever the file says).
         if self.format < 18 {
@@ -4397,10 +4413,19 @@ impl Model {
     /// the opening's flips as mirror images (its hinge on the other jamb, its swing to the wall's other side);
     /// none for one that isn't of a family, or doesn't build.
     pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Tagged>)> {
+        self.opening_local_at(e, None)
+    }
+
+    /// [`Model::opening_local`], its marks those a plan at `detail` draws if it says.
+    fn opening_local_at(&self, e: &Element, detail: Option<crate::graphics::Detail>) -> Option<(Vec<Piece>, Vec<crate::family::Tagged>)> {
         let (Element::Door(o) | Element::Window(o)) = e else { return None };
         let f = self.families.get(o.family.as_ref()?)?;
         let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
-        let (pieces, marks) = (f.pieces(&values).ok()?, f.marks_tagged(&values).ok()?);
+        let marks = match detail {
+            Some(d) => f.marks_in(&values, d),
+            None => f.marks_tagged(&values),
+        };
+        let (pieces, marks) = (f.pieces(&values).ok()?, marks.ok()?);
         let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
         let mirrored = fx * fy < 0.0;
         let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
@@ -4485,8 +4510,17 @@ impl Model {
     /// The marks a door's or window's family draws in plan, where it stands, each with the subcategory it is drawn in
     /// (`dooropening`; none, its category).
     pub fn opening_marks(&self, e: &Element) -> Vec<crate::family::Tagged> {
+        self.opening_marks_at(e, None)
+    }
+
+    /// [`Model::opening_marks`] that a plan at detail level `detail` draws ([`crate::family::Family::marks_in`]).
+    pub fn opening_marks_in(&self, e: &Element, detail: crate::graphics::Detail) -> Vec<crate::family::Tagged> {
+        self.opening_marks_at(e, Some(detail))
+    }
+
+    fn opening_marks_at(&self, e: &Element, detail: Option<crate::graphics::Detail>) -> Vec<crate::family::Tagged> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let (Some((_, marks)), Some((at, u, _))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
+        let (Some((_, marks)), Some((at, u, _))) = (self.opening_local_at(e, detail), self.opening_frame(o)) else { return Vec::new() };
         marks.iter().map(|(k, sub)| (k.map(|q| at + u * q.0 + u.perp() * q.1), *sub)).collect()
     }
 

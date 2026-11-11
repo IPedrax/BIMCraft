@@ -217,7 +217,7 @@ pub const MAX_LINEWORK: usize = 2000;
 /// How much a view draws of what it cuts. Coarse: the cut in one poché, an opening only its gap and jambs. Medium: a
 /// compound element's layers, each a fill with a line between, and an opening's leaf, swing and glass. Fine: the layers'
 /// patterns too, and a floor's surface pattern.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Detail {
     Coarse,
@@ -1048,6 +1048,8 @@ pub struct Look {
     section: Option<([f64; 3], [f64; 3])>,
     /// A 3D view's Graphic Display Options: its edges, silhouettes and ambient shadows.
     display: crate::view3d::DisplayOptions,
+    /// How it looks at a family's forms and at what detail, which their Visibility Settings read (F8).
+    forms: crate::family::visibility::FormView,
 }
 
 /// `c` halfway to the paper.
@@ -1079,7 +1081,30 @@ impl Look {
             Some(Element::View3D(v)) => v.display,
             _ => Default::default(),
         };
-        Look { section: m.section_box(view), display, ..look }
+        use crate::family::visibility::Seen;
+        let seen = match m.elements.get(m.plan_source(view)) {
+            Some(Element::Level(_) | Element::PlanView(_)) => Seen::Plan,
+            Some(Element::Section(v) | Element::Elevation(v)) => Seen::Along(v.looking()),
+            _ => Seen::ThreeD,
+        };
+        let forms = crate::family::visibility::FormView { seen, ..look.forms };
+        Look { section: m.section_box(view), display, forms, ..look }
+    }
+
+    /// How it looks at a family's forms, and at what detail (F8).
+    pub fn forms(&self) -> crate::family::visibility::FormView {
+        self.forms
+    }
+
+    /// This look seeing forms as `forms` says instead.
+    pub fn with_forms(self, forms: crate::family::visibility::FormView) -> Look {
+        Look { forms, ..self }
+    }
+
+    /// Whether it draws a triangle or a solid whose Visibility Settings are packed as `vis`
+    /// ([`crate::family::visibility::packed`]): in projection, or (`cut`) as a section's poché.
+    pub fn forms_show(&self, vis: u32, cut: bool) -> bool {
+        vis == 0 || self.forms.shows(vis, cut)
     }
 
     /// How a 3D view draws its edges and shadows: its Graphic Display Options.
@@ -1108,7 +1133,8 @@ impl Look {
     /// (a room's area) makes redraws slow.
     pub fn with(m: &Model, own: &Graphics) -> Look {
         let g = own.resolved(m);
-        let mut look = Look { style: g.style, layers: own.layers.clone(), ..Look::default() };
+        let forms = crate::family::visibility::FormView { detail: g.detail, ..Default::default() };
+        let mut look = Look { style: g.style, layers: own.layers.clone(), forms, ..Look::default() };
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
         let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));
         if own.draws_as_is() && !linked && !crate::phasing::any(m) && m.rare("mass").is_empty() {

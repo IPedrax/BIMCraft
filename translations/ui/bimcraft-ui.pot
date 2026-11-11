@@ -7,6 +7,70 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+#: crates/ui-egui/src/editor/visibility.rs:77
+msgid "A symbol is drawn only in plan: only its detail levels change"
+msgstr ""
+
+#: crates/ui-egui/src/footer.rs:385
+msgid "Detail Level: the family forms the 3D view draws, as their Visibility Settings say"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1128
+msgid "Detail Level: the forms and symbols each view of the family draws, as their Visibility Settings say"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:96 crates/ui-egui/src/editor.rs:1464
+msgid "Detail Levels"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:79
+msgid "Display in 3D views and:"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:72
+msgid "Family Element Visibility Settings"
+msgstr ""
+
+#: crates/ui-egui/src/editor/extrusion.rs:188
+msgid "Family Element Visibility Settings: the views and detail levels it is drawn in"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:81
+msgid "Front/Back"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:81
+msgid "Left/Right"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:90
+msgid "Only shown when cut"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:81
+msgid "Plan/RCP"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:1466
+msgid "Symbol Visibility Settings"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:76
+msgid "View Specific Display"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1727
+msgid "Visibility Settings"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1725
+msgid "Visibility Settings: the views it is drawn in (Plan/RCP, Front/Back, Left/Right, only when cut) and at which detail levels"
+msgstr ""
+
+#: crates/ui-egui/src/editor/visibility.rs:104
+msgid "What a view leaves out stays in the model, its schedules and IFC."
+msgstr ""
+
 #: crates/ui-egui/src/editor/sketch.rs:1334
 msgid "<By Sketch>"
 msgstr ""
