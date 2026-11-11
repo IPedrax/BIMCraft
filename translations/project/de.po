@@ -39,7 +39,7 @@ msgstr "Ziegel"
 msgid "Brick 225 x 75"
 msgstr "Ziegel 225 x 75"
 
-#: crates/core/src/commands.rs:4285
+#: crates/core/src/commands.rs:4286
 msgid "Camera"
 msgstr "Kamera"
 
@@ -87,7 +87,7 @@ msgstr "Betonblock"
 msgid "Copper"
 msgstr "Kupfer"
 
-#: crates/core/src/commands.rs:1226
+#: crates/core/src/commands.rs:1227
 msgid "Copy"
 msgstr "Kopie"
 
@@ -115,7 +115,7 @@ msgstr "Strich-Punkt"
 msgid "Data Outlet"
 msgstr "Datenanschluss"
 
-#: crates/core/src/commands.rs:9976
+#: crates/core/src/commands.rs:9991
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -191,8 +191,8 @@ msgstr "Elektro Beleuchtung"
 msgid "Electrical Power"
 msgstr "Elektro Energie"
 
-#: crates/core/src/commands.rs:9760
-#: crates/core/src/commands.rs:12338
+#: crates/core/src/commands.rs:9775
+#: crates/core/src/commands.rs:12353
 msgid "Elevation"
 msgstr "Ansicht"
 
@@ -309,7 +309,7 @@ msgstr "Beinbreite"
 msgid "Length"
 msgstr "Länge"
 
-#: crates/core/src/commands.rs:6496
+#: crates/core/src/commands.rs:6497
 #: crates/core/src/model.rs:3250
 msgid "Level"
 msgstr "Geschoss"
@@ -334,7 +334,7 @@ msgstr "Marke"
 msgid "Masking"
 msgstr "Maskierung"
 
-#: crates/core/src/commands.rs:7755
+#: crates/core/src/commands.rs:7770
 msgid "Mass"
 msgstr "Volumenkörper"
 
@@ -422,7 +422,7 @@ msgstr "Putz"
 msgid "Porcelain"
 msgstr "Porzellan"
 
-#: crates/core/src/commands.rs:2972
+#: crates/core/src/commands.rs:2973
 msgid "Project"
 msgstr "Projekt"
 
@@ -450,7 +450,7 @@ msgstr "Steigungen"
 msgid "Roof tiles"
 msgstr "Dachziegel"
 
-#: crates/core/src/commands.rs:7980
+#: crates/core/src/commands.rs:7995
 msgid "Room"
 msgstr "Raum"
 
@@ -486,8 +486,8 @@ msgstr "Estrich"
 msgid "Seat Height"
 msgstr "Sitzhöhe"
 
-#: crates/core/src/commands.rs:9737
-#: crates/core/src/commands.rs:12337
+#: crates/core/src/commands.rs:9752
+#: crates/core/src/commands.rs:12352
 msgid "Section"
 msgstr "Schnitt"
 
@@ -611,7 +611,7 @@ msgstr "AUF"
 msgid "Unbounded Height"
 msgstr "Unbegrenzte Höhe"
 
-#: crates/core/src/commands.rs:10117
+#: crates/core/src/commands.rs:10132
 msgid "Unnamed"
 msgstr "Unbenannt"
 

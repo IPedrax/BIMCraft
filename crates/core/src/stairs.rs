@@ -152,6 +152,34 @@ pub fn stair(m: &Model, st: &Stair) -> Layout {
     chain(st.foot(), st.angle, st.width, runs, &turns, each)
 }
 
+/// `st` climbing the other way: its first riser where its top was, its runs, landings and winders the same ones met in
+/// the other order, its top where its foot was. None for a stair with no run.
+pub fn flipped(m: &Model, st: &Stair) -> Option<Stair> {
+    let (n, _, _) = m.flight(st);
+    let l = stair(m, st);
+    let last = l.runs.last()?;
+    let u = last.u * -1.0;
+    let mut out = st.clone();
+    out.angle = (u.1.atan2(u.0).to_degrees() * 1e9).round() / 1e9;
+    out.offset = -st.offset + 0.0;
+    out.line = match st.line {
+        crate::model::StairLine::Left => crate::model::StairLine::Right,
+        crate::model::StairLine::Right => crate::model::StairLine::Left,
+        line => line,
+    };
+    out.landings = st
+        .landings
+        .iter()
+        .rev()
+        .map(|t| crate::model::Landing { at: f64::from(n) - t.at - f64::from(t.wound()), turn: -t.turn + 0.0, ..*t })
+        .collect();
+    // Its line is where it was: `start` is put so the middle of the first riser is the old top's.
+    out.start = last.end();
+    let off = out.foot() - out.start;
+    out.start = crate::commands::micron(out.start - off);
+    Some(out)
+}
+
 /// A ramp's runs: its rise split at its landings' heights, each run as long as its slope makes it.
 pub fn ramp(m: &Model, r: &Ramp) -> Layout {
     let (base, top) = m.span(r.level, 0.0, r.top_level, r.height);

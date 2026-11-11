@@ -2694,12 +2694,20 @@ impl BimApp {
         }
     }
 
-    /// The selected walls turned round about their location lines: Revit's flip arrows, or Space.
+    /// The selected walls turned round about their location lines: Revit's flip arrows, or Space. Stairs selected climb
+    /// the other way.
     fn flip(&mut self) {
-        let walls = self.selected_walls();
-        if !walls.is_empty() {
-            self.run("flip", json!({"ids": walls}));
+        let mut ids = self.selected_walls();
+        ids.extend(self.selected_stairs());
+        if !ids.is_empty() {
+            self.run("flip", json!({"ids": ids}));
         }
+    }
+
+    /// The stairs in the selection.
+    fn selected_stairs(&self) -> Vec<Id> {
+        let m = &self.session.model;
+        self.selection.iter().copied().filter(|id| matches!(m.elements.get(*id), Some(Element::Stair(_)))).collect()
     }
 
     /// The middle of what's selected: where Rotate turns it about until told otherwise.
@@ -4508,6 +4516,30 @@ impl BimApp {
                     self.explode_polyline();
                 }
                 self.vertex_buttons(ui);
+            });
+        }
+        // Stairs selected: which way they climb, and what their building code says of them.
+        let stairs = self.selected_stairs();
+        if !stairs.is_empty() && self.tool == Tool::Modify {
+            panel(ui, msg!("Modify Stair"), |ui| {
+                let tip = msg!("Flip (Space): the stair climbs the other way, from where its top was to where its foot was");
+                if big_button(ui, Icon::Flip, "Flip", false, tip).clicked() {
+                    self.flip();
+                }
+                let tip = msg!("Check: the rules of the project's building code this stair is outside of");
+                if let [id] = stairs.as_slice()
+                    && big_button(ui, Icon::Stair, "Code Check", self.code_findings.is_some(), tip).clicked()
+                {
+                    let m = &self.session.model;
+                    let outside =
+                        matches!(m.elements.get(*id), Some(Element::Stair(st)) if !bimcraft_core::codes::stair_findings(m, st).is_empty());
+                    if outside {
+                        self.code_findings = Some(*id);
+                    } else {
+                        self.status =
+                            Status { text: t("The stair is inside the rules of the project's building code.").to_string(), error: false };
+                    }
+                }
             });
         }
         // Walls selected: Revit's Modify Wall panel.

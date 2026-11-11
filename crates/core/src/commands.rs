@@ -1166,8 +1166,9 @@ other_files(
         "flip",
         "Flip",
         &[],
-        "{ids: [wall,…]} turns walls round about their location lines, as Revit's flip arrows do: their exterior sides go to the \
-         other side, their doors and windows stay where they are",
+        "{ids: [wall | stair,…]} turns walls round about their location lines, as Revit's flip arrows do: their exterior sides go to the \
+         other side, their doors and windows stay where they are. A stair climbs the other way: from where its top was, down the \
+         same runs, landings and winders, to where its foot was",
         flip,
     ),
     edit(
@@ -7475,10 +7476,24 @@ fn flip(s: &mut Session, p: &Value) -> R {
     let c = "flip";
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
-    if let Some(id) = ids.iter().find(|id| m.wall(**id).is_none()) {
-        return Err(bad(c, format!("{} {id} isn't a wall", m.elements.get(id).map_or("element", Element::category))));
+    let stair = |id: &Id| matches!(m.elements.get(id), Some(Element::Stair(_)));
+    if let Some(id) = ids.iter().find(|id| m.wall(**id).is_none() && !stair(id)) {
+        return Err(bad(c, format!("{} {id} isn't a wall or a stair", m.elements.get(id).map_or("element", Element::category))));
     }
+    // A stair climbs the other way: from where its top was, down the same runs, to where its foot was.
+    let flipped: BTreeMap<Id, Stair> = ids
+        .iter()
+        .filter_map(|id| match m.elements.get(id) {
+            Some(Element::Stair(st)) => Some((*id, stairs::flipped(m, st)?)),
+            _ => None,
+        })
+        .collect();
     let m = s.model_mut();
+    for (id, st) in flipped {
+        if let Some(Element::Stair(old)) = m.elements.get_mut(id) {
+            *old = st;
+        }
+    }
     let lengths: BTreeMap<Guid, f64> = ids.iter().filter_map(|id| Some((m.guid(*id), Axis::of(m.wall(*id)?).length()))).collect();
     for (id, e) in m.elements.iter_mut() {
         match e {

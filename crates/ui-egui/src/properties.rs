@@ -1106,6 +1106,7 @@ impl BimApp {
         if !ids.is_empty() {
             self.parameters(ui, &model, &ids, rows);
             if let Subject::Element(id) = subject {
+                self.stair_turns(ui, &model, id);
                 self.ties(ui, &model, id);
             }
             self.component_parameters(ui, &model, &ids);
@@ -1825,6 +1826,125 @@ impl BimApp {
         });
         if let Some(other) = select {
             self.selection = vec![other];
+        }
+    }
+
+    /// A stair's landings and turns, one after another going up: after how many risers, which way the next run goes,
+    /// whether the turn is winders and how many, and how long the landing is. A landing is added (where the longest run
+    /// is halved), taken away, or all of them placed as the building code asks.
+    fn stair_turns(&mut self, ui: &mut Ui, model: &Model, id: Id) {
+        use bimcraft_core::model::Landing;
+        let Some(Element::Stair(st)) = model.elements.get(id) else { return };
+        let group = msg!("Landings and Turns");
+        let open = !self.collapsed.contains(group);
+        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
+            self.collapsed.insert(group);
+        }
+        if !open {
+            return;
+        }
+        const TURNS: [(f64, &str); 5] =
+            [(0.0, "Straight On"), (90.0, "Left"), (-90.0, "Right"), (180.0, "Back, to the Left"), (-180.0, "Back, to the Right")];
+        let (n, each, _) = model.flight(st);
+        let rules = model.stair_rules();
+        let units = model.units;
+        let mut landings = st.landings.clone();
+        let mut changed = false;
+        let mut failed = None;
+        grid(ui, ("stair-turns", id), |ui| {
+            let mut gone = None;
+            for (i, l) in landings.iter_mut().enumerate() {
+                let nth = (i + 1).to_string();
+                ui.label(RichText::new(tf("Turn {}", &[&nth])).strong());
+                if ui.small_button(t("Remove")).on_hover_text(t("Take this landing away: the runs on its two sides become one")).clicked() {
+                    gone = Some(i);
+                }
+                ui.end_row();
+
+                let name = ui.label(t("After Risers"));
+                if let Some(typed) = self.field(ui, id, &format!("landing-{i}-at"), l.at.to_string(), name.id, "") {
+                    match number(&typed) {
+                        Some(x) => (l.at, changed) = (x.round(), true),
+                        None => failed = Some(tf("`{}` is not a number", &[&typed])),
+                    }
+                }
+                ui.end_row();
+
+                let name = ui.label(t("Next Run Goes"));
+                let now = TURNS.iter().find(|(a, _)| *a == l.turn).map_or("", |(_, s)| s);
+                let options: Vec<String> = TURNS.iter().map(|(_, s)| t(s).to_string()).collect();
+                if let Some(picked) = combo(ui, (id, &format!("landing-{i}-turn")), name.id, t(now), &options)
+                    && let Some((a, _)) = TURNS.iter().find(|(_, s)| t(s) == picked)
+                {
+                    l.turn = *a;
+                    if l.turn == 0.0 {
+                        l.winders = 0;
+                    }
+                    changed = true;
+                }
+                ui.end_row();
+
+                if l.turn != 0.0 {
+                    let name = ui.label(t("Winders")).on_hover_text(t("How many winder treads the turn is made of; 0 turns on a landing"));
+                    if let Some(typed) = self.field(ui, id, &format!("landing-{i}-winders"), l.winders.to_string(), name.id, "") {
+                        match typed.trim().parse::<u32>() {
+                            Ok(x) => (l.winders, changed) = (x, true),
+                            Err(_) => failed = Some(tf("`{}` is not a number", &[&typed])),
+                        }
+                    }
+                    ui.end_row();
+                }
+                if l.winders == 0 {
+                    let name = ui
+                        .label(t("Landing Length"))
+                        .on_hover_text(t("Along the run that climbs onto it; empty for as deep as the stair is wide"));
+                    let now = if l.length > 0.0 { units.length(l.length) } else { String::new() };
+                    let hint = units.length(st.width);
+                    if let Some(typed) = self.field(ui, id, &format!("landing-{i}-length"), now, name.id, &hint) {
+                        match (typed.trim().is_empty(), units.parse(&typed)) {
+                            (true, _) => (l.length, changed) = (0.0, true),
+                            (_, Some(x)) => (l.length, changed) = (x, true),
+                            _ => failed = Some(tf("`{}` is not a length", &[typed.trim()])),
+                        }
+                    }
+                    ui.end_row();
+                }
+            }
+            if let Some(i) = gone {
+                landings.remove(i);
+                changed = true;
+            }
+            // A landing more, where the longest run is halved.
+            if wide_button(ui, t("Add Landing")).clicked() {
+                let mut ends: Vec<(f64, f64)> = Vec::new();
+                let mut from = 0.0;
+                for l in &landings {
+                    ends.push((from, l.at));
+                    from = l.at + f64::from(l.wound());
+                }
+                ends.push((from, f64::from(n)));
+                if let Some((a, b)) = ends.into_iter().max_by(|x, y| (x.1 - x.0).total_cmp(&(y.1 - y.0))) {
+                    let at = ((a + b) / 2.0).round();
+                    let length = rules.landing_length_for(st.width, each, st.tread);
+                    let place = landings.iter().position(|l| l.at > at).unwrap_or(landings.len());
+                    landings.insert(place, Landing { at, length, ..Landing::default() });
+                    changed = true;
+                }
+            }
+            if wide_button(ui, t("By the Code"))
+                .on_hover_text(t("The landings the building code says are due, straight on, in place of these"))
+                .clicked()
+            {
+                let length = rules.landing_length_for(st.width, each, st.tread);
+                landings = rules.landings(n, each).into_iter().map(|l| Landing { length, ..l }).collect();
+                changed = true;
+            }
+            ui.end_row();
+        });
+        if let Some(e) = failed {
+            self.status = Status { text: e, error: true };
+        } else if changed {
+            self.run("modify", json!({"id": id, "landings": landings}));
         }
     }
 

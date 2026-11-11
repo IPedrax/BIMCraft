@@ -321,3 +321,34 @@ fn a_project_saves_its_rules_as_a_code_of_its_own_and_hands_it_on_as_xml() {
     }
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn a_stair_flipped_climbs_the_other_way_over_the_same_ground() {
+    let mut s = Session::new();
+    let p = json!({"start": [0, 0], "angle": 90, "width": 1000, "line": "left", "offset": 100,
+        "landings": [{"at": 5, "turn": 90, "winders": 3}, {"at": 11, "turn": -180, "length": 1400}]});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    let ground = |s: &Session| {
+        let l = crate::stairs::stair(&s.model, &stair_of(s, id));
+        let mut pts: Vec<(i64, i64)> = l
+            .runs
+            .iter()
+            .flat_map(|r| r.ring(l.width))
+            .chain(l.pads.iter().flat_map(|p| p.ring.clone()))
+            .map(|p| ((p.0 * 10.0).round() as i64, (p.1 * 10.0).round() as i64))
+            .collect();
+        pts.sort_unstable();
+        pts.dedup();
+        (pts, l.runs.iter().map(|r| r.risers).collect::<Vec<_>>())
+    };
+    let (before, risers) = ground(&s);
+    run(&mut s, "flip", json!({"ids": [id]}));
+    let (after, back) = ground(&s);
+    assert_eq!(after, before, "the same runs, landings and winders");
+    assert_eq!(back, risers.iter().rev().copied().collect::<Vec<_>>());
+    let st = stair_of(&s, id);
+    assert_eq!(st.landings.iter().map(|l| (l.at, l.turn, l.winders)).collect::<Vec<_>>(), [(6.0, 180.0, 0), (10.0, -90.0, 3)]);
+    assert_eq!(st.line, crate::model::StairLine::Right);
+    run(&mut s, "flip", json!({"ids": [id]}));
+    assert_eq!(ground(&s).0, before);
+}
