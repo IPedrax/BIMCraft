@@ -285,8 +285,15 @@ fn components_work_plane(s: &mut Session, p: &Value) -> R {
     Ok(json!({"ids": changed.iter().map(|(id, _)| *id).collect::<Vec<_>>()}))
 }
 
-/// A plane of family `f` by name (a datum's too), or as `PlaneRef` takes it.
+/// A plane of family `f` by name (a datum's too), as the Work Plane dialog lists it (`"Reference Line 1 : Vertical"`), or
+/// as `PlaneRef` takes it.
 fn family_host(c: &str, f: &crate::family::Family, v: &Value) -> Result<PlaneRef, String> {
+    if let Value::String(n) = v {
+        return f.plane_set().by_name(n).ok_or_else(|| {
+            let names: Vec<String> = f.plane_set().listed().into_iter().map(|(_, l)| l).collect();
+            bad(c, format!("the family has no work plane named `{n}`; by name they are: {}", names.join(", ")))
+        });
+    }
     if let Some(Value::String(n)) = v.get("plane")
         && Guid::parse(n).is_none()
     {

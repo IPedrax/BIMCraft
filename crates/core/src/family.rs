@@ -28,7 +28,7 @@ pub mod views;
 
 pub(crate) use validate::check_family_edits;
 
-pub use constraints::{DimRef, DimView, Extent, FamilyDimension, MAX_DIMENSIONS, Unsat};
+pub use constraints::{DimKind, DimRef, DimView, Extent, FamilyDimension, MAX_DIMENSIONS, Spot, Unsat};
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 
 pub use planes::{
@@ -2031,6 +2031,7 @@ impl Family {
                 .values(t, &BTreeMap::new())
                 .and_then(|v| {
                     self.marks(&v)?;
+                    self.check_dimensions_for(&v)?;
                     // Its dimensions solved for the type: what they hold built where they put it.
                     match self.flexed_with(&v, &mut solving).map_err(|e| e.to_string())? {
                         Cow::Borrowed(_) => self.build(&v, &mut read, &mut cuts),
@@ -2552,6 +2553,11 @@ pub fn lettering(text: &str, at: P2, height: f64, align: Align) -> Vec<Vec<P2>> 
         .into_iter()
         .map(|line| line.into_iter().map(|(x, y)| P2(left + f64::from(x), at.1 - height / 2.0 - f64::from(y))).collect())
         .collect()
+}
+
+/// What `e` is worth for `values`: a number, or a formula worked out.
+pub(crate) fn worth(e: &Expr, values: &BTreeMap<String, Val>) -> Result<f64, String> {
+    number(e, values, &mut HashMap::new())
 }
 
 fn number<'a>(e: &'a Expr, values: &BTreeMap<String, Val>, read: &mut HashMap<&'a str, Result<Node, String>>) -> Result<f64, String> {

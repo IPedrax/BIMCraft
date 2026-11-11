@@ -60,6 +60,8 @@ mod family_plane_tests;
 #[cfg(test)]
 mod family_section_tests;
 #[cfg(test)]
+mod family_sketch_lock_tests;
+#[cfg(test)]
 mod family_sketch_tests;
 pub mod favorites;
 pub mod fills;
@@ -176,6 +178,8 @@ pub mod view3d;
 mod wall_top_offset_tests;
 pub mod walls;
 pub mod water;
+#[cfg(test)]
+mod work_plane_dialog_tests;
 #[cfg(test)]
 mod work_plane_tests;
 pub mod workplane;

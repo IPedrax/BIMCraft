@@ -3,7 +3,7 @@
 //! Every change to the project is a `family` command, so it's checked, and undone, like any other.
 
 mod association;
-mod dimensions;
+pub(crate) mod dimensions;
 pub(crate) mod document;
 pub(crate) mod exists;
 mod extrusion;
@@ -12,6 +12,7 @@ pub(crate) mod sketch;
 mod temp_hide;
 mod types_dialog;
 pub(crate) mod views;
+pub(crate) mod work_plane;
 
 use crate::popup::Modal;
 
@@ -130,6 +131,11 @@ struct FormText {
 static TAGS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 impl FormText {
+    /// Form `f` as typed again, keeping the tag `tag` it is known by while the document is open.
+    pub(crate) fn again(f: &Form, tag: u64) -> FormText {
+        FormText { tag, ..FormText::of(f) }
+    }
+
     fn of(f: &Form) -> FormText {
         let axis =
             f.axis().map_or_else(Default::default, |[a, b]| [expr_text(&a[0]), expr_text(&a[1]), expr_text(&b[0]), expr_text(&b[1])]);
@@ -495,8 +501,6 @@ pub(crate) struct FamilyEditor {
     pub(crate) views: views::Views,
     /// A form being sketched (F5, `editor/sketch.rs`): no part of the draft until Finish.
     pub(crate) sketch: Option<Box<sketch::FormSketch>>,
-    /// Go To View, asked by Create > Extrusion or Revolve (revolve, void) where the view doesn't see the work plane flat.
-    pub(crate) go_to: Option<(bool, bool)>,
     /// What a sketch snaps to, as Manage > Snaps says: the window's, given each frame.
     pub(crate) snaps: bimcraft_core::snap::Snaps,
 }
@@ -603,7 +607,6 @@ impl FamilyEditor {
             form: None,
             views: Default::default(),
             sketch: None,
-            go_to: None,
             snaps: Default::default(),
         }
     }
@@ -1495,7 +1498,6 @@ impl BimApp {
         let Some(mut ed) = self.family_editor.take() else { return };
         let materials: Vec<String> = self.session.model.materials.keys().cloned().collect();
         self.document_dialogs(ctx, &mut ed, &materials);
-        self.go_to_view_dialog(ctx, &mut ed);
         let ask = std::mem::take(&mut ed.ask);
         ed.history(ctx, &ask);
         self.family_asked(ctx, ed, ask);

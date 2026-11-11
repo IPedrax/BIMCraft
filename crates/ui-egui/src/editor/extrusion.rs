@@ -44,7 +44,13 @@ impl FamilyEditor {
 
     /// `command` run on form `i` in a private session holding the draft's family (`params` given the family's name and the
     /// form's GUID there), and the form taken back from it, keeping the id and GUID the draft gave it.
-    fn through(&mut self, base: &Arc<Model>, i: usize, command: &str, params: impl FnOnce(&str, Value) -> Value) -> Result<(), String> {
+    pub(super) fn through(
+        &mut self,
+        base: &Arc<Model>,
+        i: usize,
+        command: &str,
+        params: impl FnOnce(&str, Value) -> Value,
+    ) -> Result<(), String> {
         let p = self.command(base)?;
         let mut s = Session::new();
         s.model = Arc::clone(base);
@@ -229,33 +235,18 @@ impl BimApp {
         }
     }
 
-    /// Revit's Work Plane panel on a selected form's contextual tab: Edit Work Plane, dropping down the family's planes
-    /// (`Planes::listed`); the one picked runs `edit_work_plane`, so the form moves with its plane. Revit's Work Plane dialog is
-    /// T12's.
+    /// Revit's Work Plane panel on a selected form's contextual tab: Edit Work Plane opens the Work Plane dialog for the form
+    /// (T12); the plane it takes runs `edit_work_plane`, so the form moves with its plane.
     pub(super) fn form_work_plane_panel(&mut self, ui: &mut Ui, ed: &mut FamilyEditor, i: usize) {
         let Some(f) = ed.forms.get(i) else { return };
-        let (current, mesh) = (f.host, f.mesh());
-        let planes = ed.plane_set().listed();
-        let mut picked = None;
+        let mesh = f.mesh();
         ribbon::panel(ui, msg!("Work Plane"), |ui| {
-            let tip = msg!("Edit Work Plane: the form onto another of the family's planes, moving with it");
+            let tip = msg!("Edit Work Plane: the form onto another of the family's planes, moving with it (the Work Plane dialog)");
             let r = ui.add_enabled_ui(!mesh, |ui| crate::big_button(ui, Icon::PickFaces, msg!("Edit Work Plane"), false, tip)).inner;
-            ribbon::choices(ui, &r, false, |ui| {
-                for (host, label) in &planes {
-                    if ui.selectable_label(*host == current, t(label)).clicked() {
-                        picked = Some(*host);
-                        ui.close();
-                    }
-                }
-            });
-        });
-        if let Some(host) = picked.filter(|h| *h != current) {
-            let base = Arc::clone(&self.session.model);
-            let call = |name: &str, guid: Value| json!({"family": name, "form": guid, "host": host});
-            if let Err(e) = ed.through(&base, i, "edit_work_plane", call) {
-                self.status = Status { text: e, error: true };
+            if r.clicked() {
+                ed.open_work_plane_dialog(super::work_plane::Target::Form(i));
             }
-        }
+        });
     }
 }
 

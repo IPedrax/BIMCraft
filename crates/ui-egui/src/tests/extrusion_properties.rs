@@ -126,7 +126,15 @@ fn edit_work_plane_moves_the_form_onto_another_plane() {
     let mut h = selected();
     assert_eq!(heights(&h), (10., 60.));
     press(&mut h, "Edit Work Plane");
-    press(&mut h, "Reference Plane : Up");
+    // The Work Plane dialog (T12), on the form's plane; Name chooses Up.
+    assert!(h.query_by_label("Current Work Plane").is_some(), "the dialog");
+    let up = draft(&h).planes.iter().find(|p| p.name == "Up").unwrap().guid;
+    if let Some(d) = h.state_mut().family_editor.as_mut().and_then(|ed| ed.views.dialog.as_mut()) {
+        assert_eq!(d.chosen, PlaneRef::default(), "Name starts on the form's own plane");
+        d.chosen = PlaneRef::Plane(up);
+    }
+    press(&mut h, "OK");
+    assert!(h.state().family_editor.as_ref().unwrap().views.dialog.is_none());
     let f = draft(&h);
     let up = f.planes.iter().find(|p| p.name == "Up").unwrap().guid;
     assert_eq!(f.forms[0].host, PlaneRef::Plane(up));

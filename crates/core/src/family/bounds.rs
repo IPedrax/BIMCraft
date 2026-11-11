@@ -19,7 +19,16 @@ impl Family {
     /// callers must keep the instance. Visible voids and revolved forms currently
     /// return unknown, and so does an adaptive family, whose geometry its instances' points decide. These envelopes must
     /// not replace exact framing extrema.
-    pub fn conservative_bounds<'a>(&'a self, values: &BTreeMap<String, Val>) -> Option<[P3; 2]> {
+    pub fn conservative_bounds(&self, values: &BTreeMap<String, Val>) -> Option<[P3; 2]> {
+        // Where its dimensions put its planes, ends and sketches for the type (F7).
+        match self.flexed(values).ok()? {
+            Cow::Borrowed(f) => f.bounds_as_drawn(values),
+            Cow::Owned(f) => f.bounds_as_drawn(values),
+        }
+    }
+
+    /// [`Family::conservative_bounds`] of what is drawn, as it is drawn.
+    fn bounds_as_drawn<'a>(&'a self, values: &BTreeMap<String, Val>) -> Option<[P3; 2]> {
         if self.adaptive.is_some() {
             return None;
         }

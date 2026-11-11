@@ -217,7 +217,8 @@ other_files(
         "{ids, host: {level: name|id} | {plane: name|id|GUID} | {face: {element: id|GUID, face}}} puts components on a level \
          (at their plan point, on it), a reference plane of the project or a face of a wall, a floor, a ceiling or a roof \
          (taken onto it; one from another plane or face keeps its Offset from Host). \
-         {family, form | ref_line: id|GUID, host: {plane: name|id|GUID} | {line, face}, keep?, dry_run?} puts a family's form \
+         {family, form | ref_line: id|GUID, host: {plane: name|id|GUID} | {line, face} | a name as the Work Plane dialog \
+         lists it (`Reference Line 1 : Vertical`), keep?, dry_run?} puts a family's form \
          or reference line on another of its planes: it moves with the plane, as Revit's Edit Work Plane, keeping its profile \
          and start and end in the new plane's axes; with `keep` it stays where it is, which only a plane parallel to its old \
          one allows (a reference line, only one it already lies on)",
@@ -1169,7 +1170,9 @@ other_files(
          ref_plane?: {id | guid, …a plane's fields}, delete_ref_plane?: [id | guid, …], ref_lines?: [{guid?, start: [x, y, z], \
          end: [x, y, z], host?: {plane: guid} | {line: guid, face}, reference?, subcategory?}], ref_line?: {id | guid, …}, \
          delete_ref_line?: [id | guid, …], dimensions?: [{guid?, view?: plan|ceiling|front|back|left|right, refs: [{plane: guid} | \
-         {form: guid, end: start|end}, …], at: [x, y, z], label?: parameter, locked?: [{segment, length}], equal?, alignment?}], \
+         {form: guid, end: start|end} | {form: guid, line: guid} | {form: guid, line: guid, point: start|end|centre} | \
+         {line: guid, face: horizontal|vertical|start|end}, …], at: [x, y, z], kind?: aligned|radial|diameter, label?: parameter, \
+         locked?: [{segment, length}], equal?, alignment?}], \
          dimension?: {id | guid, …a dimension's fields} (none: one added), delete_dimension?: [id | guid, …], \
          invalid_dimensions?: delete, solve?: type, \
          operation?: swing|double-swing|sliding|double-sliding|folding|fixed (a door's or window's, for IFC and schedules), \
@@ -1211,17 +1214,22 @@ other_files(
          family's own. `reporting`, a length or an angle, reads a dimension and drives none: no formula, type or component sets \
          it: a dimension labelled with it measures it, and formulas read what it measures (no label may be worked out from one). \
          `dimensions` are Revit's family dimensions (F7): each between two or more parallel references (its planes, the datums, an \
-         extrusion's `start` or `end` face), in order along the way it measures, drawn in `view` (which must see them edge on) \
-         with its line through `at`. A `label` (one segment, a length parameter) makes the segment that parameter's value in \
+         extrusion's `start` or `end` face, a straight line of a form's sketch, `{form, line}`: the plane through it square to \
+         the form's plane, a reference line's face), in order along the way it measures, drawn in `view` (which must see them \
+         edge on) with its line through `at`; a line's end or a circle's centre (`point`) is measured along the others. A \
+         `radial` or `diameter` one measures one circle of a sketch, seen flat in its view. A line or a form is named by its \
+         GUID or its id. A `label` (one segment, a length parameter) makes the segment that parameter's value in \
          every type; `locked` keeps a segment at a length (a labelled one's lock stops dragging from changing it); `equal` keeps \
          its segments equal (EQ); `alignment` is Align's lock, two references, its segment locked at 0. Flexing a type solves \
-         them: the planes and extrusion ends they measure to take the least change from where they are drawn that holds them \
-         all (a datum or a plane that defines the origin stays), and what is drawn on a plane moves with it; a constraint that \
+         them: the planes, extrusion ends and sketch points they measure to take the least change from where they are drawn \
+         that holds them all (a datum or a plane that defines the origin stays; a sketch's lines that meet stay joined), and \
+         what is drawn on a plane moves with it; a constraint that \
          adds nothing to the others is refused as over-constrained, naming them, and a labelled length of 0 or less is refused \
-         for its type. Deleting a plane or form takes it out of the dimensions measuring to it (a dimension left with one \
-         reference goes: `deleted_dimensions`). A dimension measuring to what the family hasn't is refused, unless \
+         for its type. Deleting a plane, a form or a sketch line (a form given \
+         again without it) takes it out of the dimensions measuring to it (a dimension left with one reference goes: \
+         `deleted_dimensions`). A dimension measuring to what the family hasn't is refused, unless \
          `invalid_dimensions` is `delete` (a reload's Delete Dimension(s)); a file opened leaves it out. `solve` reads, for a \
-         type, where its planes and forms' ends go and each dimension's lengths, and changes nothing. Every reply carries `warnings`: what's \
+         type, where its planes, forms' ends and sketches' lines go and each dimension's lengths, and changes nothing. Every reply carries `warnings`: what's \
          worth knowing and doesn't stop the change (a void cutting no solid, a form outside the opening or thicker than its \
          wall, a door's or window's plan with no symbols). `definition` is a family as such a file holds it, given in place of `path` and loaded as the file would be (read strictly). On `path` or `definition`, `overwrite` chooses `no` (keep the project family), \
          `version` (replace the definition, retaining compatible values) or `version_and_values` (also use incoming values). \
@@ -1957,8 +1965,12 @@ other_files(
          along its normal (up, for a level; 0 unless given), and may lie at any angle, upright too: what a tool may sketch on \
          it is up to the tool (a floor, a ceiling, a roof and a shaft need a level plane, and stand on the highest level at or \
          below it). Given only `offset`, the plane as it is is moved by that instead. Given nothing, it's the lowest level \
-         again, as it is until set. A level deleted takes its work plane with it. Says the plane: a point of it (`origin`), its \
-         `normal`, its height at the origin where it isn't upright (`z`) and its `slope` in degrees from level",
+         again, as it is until set. A level deleted takes its work plane with it. As the Work Plane dialog's Name: `name` \
+         (`Level : Level 2`, `Reference Plane : Ramp`, or a level's or a named reference plane's own name), or `ref_plane` (a \
+         reference plane of the project by name, id or GUID): on a reference plane the work plane follows it, moved and turned \
+         with it; `dissociate: true` leaves it where the plane is now and no longer following (as does deleting the plane). \
+         Says the plane: its `name` as the dialog's Current Work Plane says it, its `level` or `ref_plane` (ids), a point of \
+         it (`origin`), its `normal`, its height at the origin where it isn't upright (`z`) and its `slope` in degrees from level",
         work_plane,
     ),
     edit(
@@ -4450,7 +4462,7 @@ fn camera(s: &mut Session, p: &Value) -> R {
 
 fn work_plane(s: &mut Session, p: &Value) -> R {
     let c = "work_plane";
-    only(c, p, &["view", "level", "offset", "points", "surface"])?;
+    only(c, p, &["view", "level", "offset", "points", "surface", "name", "ref_plane", "dissociate"])?;
     let m = &s.model;
     let default = absent(p.get("view"))
         || matches!(p.get("view"), Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D"));
@@ -4480,9 +4492,50 @@ fn work_plane(s: &mut Session, p: &Value) -> R {
         None => None,
     };
     let level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
-    let given = WorkPlane { level, offset: offset.unwrap_or(0.0), points, surface };
-    let plane = if level.is_some() || points.is_some() || surface.is_some() {
-        Some(given)
+    // By name, as the Work Plane dialog's Name lists them; a reference plane of the project by name, id or GUID.
+    let named = string(c, p, "name")?.map(|n| crate::workplane::by_name(m, &n).map_err(|e| bad(c, e))).transpose()?;
+    let ref_plane = match p.get("ref_plane") {
+        v if absent(v) => None,
+        Some(v) => {
+            let id = match v {
+                Value::String(n) if Guid::parse(n).is_none() => m
+                    .rare("refplane")
+                    .into_iter()
+                    .find(|id| matches!(m.elements.get(*id), Some(Element::RefPlane(rp)) if rp.name == *n))
+                    .ok_or_else(|| bad(c, format!("no reference plane named `{n}`")))?,
+                v => element_id(c, m, v)?,
+            };
+            match m.elements.get(id) {
+                Some(Element::RefPlane(_)) => Some(m.guid(id)),
+                Some(e) => return Err(bad(c, format!("`ref_plane`: {} {id} isn't a reference plane", e.category()))),
+                None => return Err(bad(c, format!("no element {id}"))),
+            }
+        }
+        None => None,
+    };
+    let dissociate = flag(c, p, "dissociate")?;
+    let given = [level.is_some(), points.is_some(), surface.is_some(), named.is_some(), ref_plane.is_some()];
+    if given.iter().filter(|g| **g).count() > 1 {
+        return Err(bad(c, "give only one of `level`, `points`, `surface`, `name` and `ref_plane`: a work plane is on one of them"));
+    }
+    if dissociate && given.iter().any(|g| *g) {
+        return Err(bad(c, "`dissociate` keeps the work plane where it is: give it without a new plane"));
+    }
+    let plane = if dissociate {
+        let now = m.work_plane(view);
+        let Some(wp) = now.dissociated(m) else {
+            return Err(bad(
+                c,
+                format!("the work plane, {}, follows no reference plane: there's nothing to dissociate it from", now.name(m)),
+            ));
+        };
+        Some(WorkPlane { offset: offset.unwrap_or(wp.offset), ..wp })
+    } else if let Some(wp) = named {
+        Some(WorkPlane { offset: offset.unwrap_or(0.0), ..wp })
+    } else if let Some(g) = ref_plane {
+        Some(WorkPlane { ref_plane: Some(g), offset: offset.unwrap_or(0.0), ..WorkPlane::default() })
+    } else if level.is_some() || points.is_some() || surface.is_some() {
+        Some(WorkPlane { level, offset: offset.unwrap_or(0.0), points: points.map(Box::new), surface, ref_plane: None })
     } else {
         offset.map(|offset| WorkPlane { offset, ..m.work_plane(view) })
     };
@@ -4494,12 +4547,15 @@ fn work_plane(s: &mut Session, p: &Value) -> R {
     if let Some(Element::View3D(v3)) = s.model_mut().elements.get_mut(v) {
         v3.work_plane = plane;
     }
+    // On a reference plane, its snapshot where it is now, as after every command.
+    s.model_mut().settle_work_planes();
     let wp = s.model.work_plane(Some(v));
     let level = wp.level.and_then(|g| s.model.elements.id(g));
+    let ref_plane = wp.ref_plane.and_then(|g| s.model.elements.id(g));
     let z = resolved.over_plan().map(|p| p.z);
     Ok(json!({
-        "view": v, "level": level, "offset": wp.offset, "points": wp.points, "surface": wp.surface,
-        "origin": resolved.origin, "normal": resolved.normal, "z": z, "slope": resolved.slope(),
+        "view": v, "name": wp.name(&s.model), "level": level, "ref_plane": ref_plane, "offset": wp.offset, "points": wp.points,
+        "surface": wp.surface, "origin": resolved.origin, "normal": resolved.normal, "z": z, "slope": resolved.slope(),
     }))
 }
 
@@ -11349,7 +11405,27 @@ fn family(s: &mut Session, p: &Value) -> R {
             .filter(|q| !q.datum())
             .map(|q| json!({"guid": q.guid, "id": q.id, "name": q.name, "offset": crate::view3d::dot(q.start, q.frame().z)}))
             .collect();
-        let forms: Vec<Value> = flexed.forms.iter().map(|x| json!({"guid": x.guid, "id": x.id, "from": x.from, "to": x.to})).collect();
+        // Each form's ends and its sketch's lines, worked out for the type.
+        let forms: Vec<Value> = flexed
+            .forms
+            .iter()
+            .map(|x| {
+                let sketch: Vec<Value> = x
+                    .sketch
+                    .iter()
+                    .filter_map(|l| {
+                        let drawn = l.curve(&mut |e| crate::family::worth(e, &values)).ok()?;
+                        Some(match drawn.curve {
+                            crate::curves::Curve::Circle { centre, radius } => {
+                                json!({"guid": l.guid, "id": l.id, "centre": [centre.0, centre.1], "radius": radius})
+                            }
+                            c => json!({"guid": l.guid, "id": l.id, "start": [c.start().0, c.start().1], "end": [c.end().0, c.end().1]}),
+                        })
+                    })
+                    .collect();
+                json!({"guid": x.guid, "id": x.id, "from": x.from, "to": x.to, "sketch": sketch})
+            })
+            .collect();
         let lengths = f.measured(&values).map_err(|e| bad(c, e))?;
         let dims: Vec<Value> =
             f.dimensions.iter().zip(lengths).map(|(d, l)| json!({"guid": d.guid, "id": d.id, "label": d.label, "lengths": l})).collect();
@@ -11442,6 +11518,8 @@ fn family(s: &mut Session, p: &Value) -> R {
     if let Some(v) = p.get("ref_line").filter(|v| !v.is_null()) {
         patches.lines_patched.push(patch_part(c, &name, &mut f.lines, v, "ref_line")?);
     }
+    // The forms as they were: a sketch line a form no longer has takes its dimensions with it (F7b).
+    let forms_were = f.forms.clone();
     if let Some(v) = p.get("forms").filter(|v| !v.is_null()) {
         let mut forms: Vec<crate::family::Form> = serde_json::from_value(v.clone()).map_err(|e| field("forms", e))?;
         crate::library::keep_parts(&mut f.forms, &mut forms);
@@ -11470,6 +11548,7 @@ fn family(s: &mut Session, p: &Value) -> R {
     if let Some(v) = p.get("symbol").filter(|v| !v.is_null()) {
         patches.symbols_patched.push(patch_part(c, &name, &mut f.symbols, v, "symbol")?);
     }
+    patches.dimensions_dropped += f.forget_lines_gone(&forms_were);
     if let Some(list) = p.get("delete_form").and_then(Value::as_array) {
         for v in list {
             let at = part_at(c, &mut f.forms, v, "form", &name)?;

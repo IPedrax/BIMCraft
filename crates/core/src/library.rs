@@ -1056,6 +1056,7 @@ impl Model {
         }
         for f in self.families.values_mut() {
             let forms_were: Vec<Guid> = f.forms.iter().map(|x| x.guid).collect();
+            let lines_were: Vec<Guid> = f.forms.iter().flat_map(|x| x.sketch.iter().map(|l| l.guid)).collect();
             f.forms.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             f.forms.iter_mut().flat_map(|x| x.sketch.iter_mut()).for_each(|l| give(&mut l.id, &mut l.guid));
             f.symbols.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
@@ -1071,10 +1072,11 @@ impl Model {
             let planes = moved(&was.0, f.planes.iter().map(|x| x.guid).collect());
             let lines = moved(&was.1, f.lines.iter().map(|x| x.guid).collect());
             f.rehost(&planes, &lines);
-            // A dimension measuring to a form given another GUID (a copy's) measures to it still.
-            let forms = moved(&forms_were, f.forms.iter().map(|x| x.guid).collect());
-            if !forms.is_empty() {
-                f.resolve_dimension_refs(&[], &forms);
+            // A dimension measuring to a form or a sketch line given another GUID (a copy's) measures to it still.
+            let mut parts = moved(&forms_were, f.forms.iter().map(|x| x.guid).collect());
+            parts.extend(moved(&lines_were, f.forms.iter().flat_map(|x| x.sketch.iter().map(|l| l.guid)).collect()));
+            if !parts.is_empty() {
+                f.resolve_dimension_refs(&parts);
             }
         }
         for g in self.detail_groups.values_mut() {

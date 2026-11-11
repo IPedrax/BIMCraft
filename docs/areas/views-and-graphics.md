@@ -304,8 +304,16 @@ transparency shows in 3D only. A surface is seen through as much as the greater 
 plain views too) and the view's override for its element (not in a plain view); both painters take it from `Tri::alpha`.
 
 A 3D view sketches on its work plane (`workplane.rs`), as Revit's Work Plane > Set and more: `View3D::work_plane`, a `WorkPlane` on a
-`level` (a GUID, in `visit_refs!`), through three `points`, or on a `surface` picked on the model (a point and a normal), each moved
-`offset` mm along its normal; with none, the lowest level (`Model::work_plane`). `WorkPlane::resolve` gives it as a `workplane::Frame`,
+`level` (a GUID, in `visit_refs!`), through three `points`, on a `surface` picked on the model (a point and a normal), or on a
+reference plane of the project (`ref_plane`, a GUID in `visit_refs!` too; T12), each moved `offset` mm along its normal; with none, the
+lowest level (`Model::work_plane`). On a reference plane it follows the plane, moved or turned with it; its `surface` is kept beside
+it as where the plane is now (`Model::settle_work_planes`, after every command where `settle_hosts` runs), so a build that doesn't
+know `ref_plane` leaves the key out and reads the same plane, dissociated: no FORMAT step. `work_plane {dissociate: true}` (Revit's
+Dissociate) drops `ref_plane` and keeps the surface; deleting the plane does the same. `work_plane {name}` takes a label of
+`workplane::choices` (`Level : Level 2`, `Reference Plane : Ramp`: the levels low to high, then the named planes by name) or a bare
+name, refusing one that is both a level's and a plane's; `{ref_plane: name | id | GUID}` names the plane directly; the reply says the
+`name` the dialog's Current Work Plane shows (`WorkPlane::name`) and the `ref_plane`'s id. `Model::check` refuses a `ref_plane` beside
+a `level` or `points`, or naming what isn't a reference plane. `WorkPlane::resolve` gives it as a `workplane::Frame`,
 a point and a unit normal, at any angle, upright too: three points along a line are refused (`workplane::through`, facing up unless
 upright), and `Model::check` resolves it. `Frame::over_plan` is it as a `walls::Plane` over the plan, as a floor's top is, for a sketch
 that stays plan lines raised onto it (none for an upright one); `Frame::axes` are its level and up directions. The `work_plane` command
@@ -667,7 +675,10 @@ the order it draws the planes, once every plane's trace is known, and a name who
 its trace's other end; crowded there too, it goes beside its own trace, its box a hair off the line just inside an end (one side,
 then the other, then by the other end, then stepped in along the trace), the first place clear of the other names and of the other
 planes' traces inside the picture taken (`render::plane_name_px`). So a name always touches its own plane's line and never stands
-across another's, and a plane alone is named where it always was. `render::tests::a_named_reference_plane_prints_its_name_in_plan`,
+across another's, and a plane alone is named where it always was. In a section or an elevation, whose traces run to the frame, a
+trace stops short of every name that lies on it, its own beyond its end (so it runs up to its name, as Revit's) and any other's
+crowded onto it, a stub left past a name going too (`render::cut_traces`): no name lies on a trace in any of a family's views
+(`family::views::tests::no_plane_name_lies_on_a_trace_in_any_view`). `render::tests::a_named_reference_plane_prints_its_name_in_plan`,
 `a_section_draws_the_reference_planes_square_to_it`, `the_names_of_two_planes_close_together_do_not_overlap` and
 `crowded_plane_names_stay_clear_and_by_their_own_traces` hold these. These are what a family's plans and elevations draw its planes
 with ([families](families.md#the-familys-views)).

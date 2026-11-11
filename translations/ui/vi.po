@@ -10,6 +10,187 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+#: crates/ui-egui/src/editor/sketch.rs:1064
+msgid "Align (AL): pick a reference, then a line of the sketch that moves onto it; its padlock locks them"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:416
+msgid "Aligned Dimension (DI): pick parallel reference planes, extrusion ends or lines of forms, then click where it goes"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1140
+msgid "Click a circle, then click where the dimension goes."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1133
+msgid "Click a reference line: the work plane it was sketched in. Esc goes back to the dialog."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1136
+msgid "Click a reference plane or a datum for the work plane. Esc goes back to the dialog."
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:577
+msgid "Click a wall, a beam, a pipe or another element drawn along a line: its level is the work plane. Esc goes back to the dialog."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1143
+msgid "Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1125
+msgid "Click the line of the sketch that moves onto it; its padlock locks them."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1124
+msgid "Click the reference to align to: a reference plane, a reference line or a line."
+msgstr ""
+
+#: crates/ui-egui/src/editor/work_plane.rs:193
+#: crates/ui-egui/src/workplane.rs:252
+msgid "Current Work Plane"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:441
+msgid "Diameter Dimension: pick a circle of a form's sketch, then click where it goes"
+msgstr ""
+
+#: crates/ui-egui/src/editor/work_plane.rs:205
+#: crates/ui-egui/src/workplane.rs:269
+msgid "Dissociate"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:266
+msgid "Dissociate: a component stays on its host, which it moves with"
+msgstr ""
+
+#: crates/ui-egui/src/editor/work_plane.rs:204
+msgid "Dissociate: a family's work plane is always one of its planes or lines, which forms are drawn on"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:264
+msgid "Dissociate: only a work plane on a reference plane follows it; this one follows nothing"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:262
+msgid "Dissociate: the work plane left where its reference plane is now, no longer following it"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4404
+msgid "Edit Work Plane: the components onto a level, a reference plane or a face picked (the Work Plane dialog), keeping their Offset from Host"
+msgstr ""
+
+#: crates/ui-egui/src/editor/extrusion.rs:244
+msgid "Edit Work Plane: the form onto another of the family's planes, moving with it (the Work Plane dialog)"
+msgstr ""
+
+#: crates/ui-egui/src/editor/work_plane.rs:288
+msgid "Open View"
+msgstr ""
+
+#: crates/ui-egui/src/editor/views.rs:709
+msgid "Pick a circle, then click where the dimension goes."
+msgstr ""
+
+#: crates/ui-egui/src/editor/work_plane.rs:227
+#: crates/ui-egui/src/workplane.rs:299
+msgid "Pick a line and use the work plane it was sketched in"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:578
+msgid "Pick a line: a wall, a beam, a pipe or another element drawn along a line."
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:301
+msgid "Pick a line: after OK, click a wall, a beam, a pipe or another element drawn along a line; its level is taken"
+msgstr ""
+
+#: crates/ui-egui/src/editor/work_plane.rs:159
+msgid "Pick a line: click a reference line in the view."
+msgstr ""
+
+#: crates/ui-egui/src/editor/work_plane.rs:227
+#: crates/ui-egui/src/workplane.rs:294
+msgid "Pick a plane"
+msgstr ""
+
+#: crates/ui-egui/src/editor/views.rs:726
+msgid "Pick a plane or a line too: points alone face no way to measure along."
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:579
+msgid "Pick a plane: a component goes on a face of a wall, a floor, a ceiling or a roof."
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:295
+msgid "Pick a plane: after OK, click a face of the model in the 3D view, a wall's or a roof's"
+msgstr ""
+
+#: crates/ui-egui/src/editor/work_plane.rs:161
+msgid "Pick a plane: click a reference plane or a datum in the view."
+msgstr ""
+
+#: crates/ui-egui/src/editor/sketch.rs:812
+msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
+msgstr ""
+
+#: crates/ui-egui/src/editor/views.rs:738
+msgid "Pick a reference plane, an extrusion's end or a line of a form."
+msgstr ""
+
+#: crates/ui-egui/src/editor/sketch.rs:817
+msgid "Pick a straight line of the sketch: it moves onto the reference."
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:307
+msgid "Pick three points: after OK, click three points on the model, each snapping to a corner near the pointer"
+msgstr ""
+
+#: crates/ui-egui/src/editor/work_plane.rs:308
+msgid "Pick works in a plan or an elevation, where the family's planes and lines are drawn"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:435
+msgid "Radial Dimension: pick a circle of a form's sketch, then click where it goes"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:177
+msgid "Set Work Plane: the plane the 3D view sketches on, by name or picked on the model, with an offset; its patch in the view sets it too"
+msgstr ""
+
+#: crates/ui-egui/src/editor/sketch.rs:1077
+msgid "Set: the plane the sketch is drawn on, by name or picked in the view (the Work Plane dialog); its lines go with it"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1506
+msgid "Set: the view's work plane, by name or picked in the view (the Work Plane dialog)"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:260
+msgid "Show: the work plane drawn as a grid in the 3D view, on or off"
+msgstr ""
+
+#: crates/ui-egui/src/editor/work_plane.rs:202
+msgid "Show: the work plane tinted in the view, on or off"
+msgstr ""
+
+#: crates/ui-egui/src/editor/work_plane.rs:208
+#: crates/ui-egui/src/workplane.rs:275
+msgid "Specify a new Work Plane"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:239
+msgid "Surface, {}"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:167
+msgid "Work Plane: what the 3D view sketches on: a level, a reference plane, a surface of the model or three points, each with an offset"
+msgstr ""
+
+#: crates/ui-egui/src/editor/work_plane.rs:273
+msgid "{} isn't parallel to this view. Open a view that shows it flat:"
+msgstr ""
+
 #: crates/ui-egui/src/editor/extrusion.rs:115
 msgid "A dimension sets it: unlock it to change it here."
 msgstr ""
