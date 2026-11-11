@@ -743,7 +743,8 @@ A definition may set `drawing_area: [[left,bottom],[right,top]]` in millimetres 
 must contain the rectangle. The first automatic viewport is centered there. Subsequent frames are placed to the right when they fit,
 otherwise at the rectangle's top right. An oversized frame reports both sizes. Explicit centers and existing viewports keep their
 positions. Set `template_border: true` for a frame drawn by the template's own lines; standard fold marks still print.
-Both options are under Size in the title-block editor. Format 19 saves them; earlier definitions keep the standard behavior.
+Both options are under Size in the title-block editor, and FORMAT 18 holds them; a definition without them keeps the standard
+border and placement.
 
 A sheet may also have no title block at all: `sheet {"title_block": "none"}` (`titleblock::NONE`, in any case, or `false`; `true` or
 `""` is the built-in one), for one drawn on the sheet itself. It leaves out the border, the title box and its lettering and the folding

@@ -70,14 +70,14 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 19: optional title-block drawing area and template-owned border.
-/// 18: a family's connector may be a `pipe`,
+/// The version of the project file this build writes, and the newest it reads. 18: a family's connector may be a `pipe`,
 /// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
 /// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
-/// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
-/// values of its fields (`fields`), or name `none` to have no title block at all (no border, title box or folding marks); a
-/// wall or a run may refuse to join its neighbours (`join: false`, written only then); and a dimension may measure to the line
-/// across a column, square to its angle (`across`). Nothing in a file of 17 changes, but a build that reads up to 17 would
+/// kind `title-block`; one may give the paper rectangle views are placed in by default, `drawing_area`, and draw the sheet's
+/// border itself, `template_border`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`)
+/// and hold its values of its fields (`fields`), or name `none` to have no title block at all (no border, title box or folding
+/// marks); a wall or a run may refuse to join its neighbours (`join: false`, written only then); and a dimension may measure to
+/// the line across a column, square to its angle (`across`). Nothing in a file of 17 changes, but a build that reads up to 17 would
 /// answer such a connector or dimension with a serde error ("unknown variant", "missing field `system`"), would leave the
 /// title blocks out as fields it doesn't know, drawing every sheet with the built-in title box, and would silently drop
 /// `join: false` and join the element again, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
@@ -118,7 +118,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 19;
+pub const FORMAT: u32 = 18;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3528,12 +3528,11 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
-        // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, their fields'
-        // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column) has none
-        // either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
+        // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, with a drawing
+        // area and a border of their own, their fields' values, and sheets with none; walls and runs that refuse to join; a
+        // dimension to the line across a column) has none either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
         // file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
         // did, and none of its dimensions measures `across`.
-        // 18 to 19 needs no conversion: earlier templates keep the standard border and placement.
         self.format = FORMAT;
     }
 
