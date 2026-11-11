@@ -224,9 +224,32 @@ mod tests {
             assert_eq!(segment["length"], 2828.43);
         }
         assert_eq!(
-            bimcraft_core::site::bearing(bimcraft_core::geom::P2(0.0, 0.0), bimcraft_core::geom::P2(-0.0001, 1000.0)),
+            bimcraft_core::site::bearing(bimcraft_core::geom::P2(0.0, 0.0), bimcraft_core::geom::P2(-0.0001, 1000.0), 0.0),
             ("N 0°00'00\" E".into(), 0.0)
         );
+    }
+
+    #[test]
+    fn bearings_are_from_the_georeferences_north_on_a_rotated_project() {
+        let mut s = Session::new();
+        let square = json!({"points":[[0,0],[1000,0],[1000,1000],[0,1000]]});
+        run(&mut s, "property_line", square.clone());
+        let segments = |s: &mut Session| run(s, "elements", json!({"category":"propertyline"}))["elements"][0]["segments"].clone();
+        // Without a georeference, the project's +y is north.
+        let plain = segments(&mut s);
+        assert_eq!((plain[0]["azimuth"].clone(), plain[0]["bearing"].clone()), (json!(90.0), json!("N 90°00'00\" E")));
+        // The project's x axis turned 30° counterclockwise from the map's east: its +x runs N 60° E and its +y N 30° W.
+        run(&mut s, "georeference", json!({"crs":"EPSG:31983", "rotation":30}));
+        let turned = segments(&mut s);
+        let expected = [(60.0, "N 60°00'00\" E"), (330.0, "N 30°00'00\" W"), (240.0, "S 60°00'00\" W"), (150.0, "S 30°00'00\" E")];
+        for (k, (az, bearing)) in expected.into_iter().enumerate() {
+            assert_eq!(turned[k]["azimuth"], az, "edge {k}: {}", turned[k]);
+            assert_eq!(turned[k]["bearing"], bearing, "edge {k}: {}", turned[k]);
+            assert_eq!(turned[k]["length"], 1000.0);
+        }
+        // Turned the other way, past north.
+        run(&mut s, "georeference", json!({"rotation":-45}));
+        assert_eq!(segments(&mut s)[1]["bearing"], "N 45°00'00\" E");
     }
 
     #[test]

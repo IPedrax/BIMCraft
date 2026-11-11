@@ -471,7 +471,8 @@ other_files(
         "{points: [[x,y],…], name?, level?} a named closed property boundary (mm), on the lowest level unless given. \
          A repeated closing point is accepted. The outline must be simple, without crossings, spikes or repeated corners. \
          Plans draw a dash-dot boundary with its name and area. `elements` gives area_m2, perimeter_m and segments \
-         (length in mm, bearing in survey quadrants, azimuth clockwise from north). Schedules list name, area and perimeter. \
+         (length in mm, bearing in survey quadrants, azimuth clockwise from north: the map's, turned by the georeference's \
+         `rotation`; without one, the project's +y). Schedules list name, area and perimeter. \
          IFC writes closed curves in the site's FootPrint. Returns id, name, area_m2",
         property_line,
     ),
@@ -2665,9 +2666,11 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         Element::PropertyLine(pl) => {
             extra.insert("area_m2".into(), json!(m2(geom::area(&pl.points).abs())));
             extra.insert("perimeter_m".into(), json!((geom::perimeter(&pl.points) / 10.0).round() / 100.0));
+            // From north on the map, where the project lies on one turned.
+            let rotation = m.georeference.as_ref().map_or(0.0, |g| g.rotation);
             let segments: Vec<Value> = geom::ring_edges(&pl.points)
                 .map(|(a, b)| {
-                    let (bearing, azimuth) = crate::site::bearing(a, b);
+                    let (bearing, azimuth) = crate::site::bearing(a, b, rotation);
                     json!({"from": a, "to": b, "length": hundredth(a.dist(b)), "bearing": bearing, "azimuth": azimuth})
                 })
                 .collect();
