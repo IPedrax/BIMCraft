@@ -7130,9 +7130,9 @@ impl Model {
                 if let Some(d) = v.depth {
                     size(&format!("{who} depth"), d)?;
                 }
-                for q in v.mark.iter().chain(v.reference.iter().flatten()) {
-                    coord(&format!("{who} mark"), q.0)?;
-                    coord(&format!("{who} mark"), q.1)?;
+                for (what, q) in v.mark.iter().map(|q| ("mark", q)).chain(v.reference.iter().flatten().map(|q| ("reference", q))) {
+                    coord(&format!("{who} {what}"), q.0)?;
+                    coord(&format!("{who} {what}"), q.1)?;
                 }
                 if let Some([bottom, top]) = v.crop {
                     coord(&format!("{who} crop"), bottom)?;
