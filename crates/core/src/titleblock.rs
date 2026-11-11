@@ -344,9 +344,7 @@ impl TitleBlock {
         if let Some([lo, hi]) = self.drawing_area
             && !(lo.0 >= 0.0 && lo.1 >= 0.0 && hi.0 <= paper && hi.1 <= paper && lo.0 < hi.0 && lo.1 < hi.1)
         {
-            return Err(format!(
-                "{who}: drawing_area needs ordered bottom-left and top-right paper coordinates in mm, from 0 to {paper}"
-            ));
+            return Err(format!("{who}: drawing_area needs ordered bottom-left and top-right paper coordinates in mm, from 0 to {paper}"));
         }
         let items = self.lines.len() + self.fills.len() + self.texts.len();
         if items > MAX_ITEMS {
