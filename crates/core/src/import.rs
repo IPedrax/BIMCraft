@@ -135,6 +135,52 @@ fn refs(v: Option<&V>) -> Vec<u64> {
     list(v).iter().filter_map(|x| reference(Some(x))).collect()
 }
 
+/// The property sets of some names on a file's products, each set read once: its properties by name (the first of each
+/// name), and for each product of the file the sets on it, in the order the file relates them, each once. A set on many
+/// products, or related by many relations, is held once, and a product the file doesn't have is passed over, so what this
+/// holds grows with the file and never with its products times a set's properties, which a small hostile file could make
+/// as many as memory holds.
+struct PropertySets<'a> {
+    sets: Vec<HashMap<&'a str, &'a Entity>>,
+    on: HashMap<u64, Vec<usize>>,
+}
+
+impl<'a> PropertySets<'a> {
+    /// The sets called one of `called` that the relations `rels` (`IfcRelDefinesByProperties`) put on products.
+    fn read(r: &Reader<'a>, rels: &[u64], called: &[&str]) -> Self {
+        let (mut sets, mut index, mut on, mut paired) =
+            (Vec::new(), HashMap::<u64, usize>::new(), HashMap::<u64, Vec<usize>>::new(), HashSet::<(u64, usize)>::new());
+        for rel in rels.iter().filter_map(|id| r.get(*id)) {
+            let Some(at) = reference(rel.args.get(5)) else { continue };
+            let Some(set) = r.get(at).filter(|x| x.name == "IFCPROPERTYSET" && text(x.args.get(2)).is_some_and(|n| called.contains(&n)))
+            else {
+                continue;
+            };
+            let k = *index.entry(at).or_insert_with(|| {
+                let mut props = HashMap::new();
+                for p in refs(set.args.get(4)).into_iter().filter_map(|id| r.get(id)) {
+                    if let Some(name) = text(p.args.first()) {
+                        props.entry(name).or_insert(p);
+                    }
+                }
+                sets.push(props);
+                sets.len() - 1
+            });
+            for product in refs(rel.args.get(4)) {
+                if r.get(product).is_some() && paired.insert((product, k)) {
+                    on.entry(product).or_default().push(k);
+                }
+            }
+        }
+        PropertySets { sets, on }
+    }
+
+    /// What the sets on `product` say of `name`: the property of that name of the first of them that has one.
+    fn said(&self, product: u64, name: &str) -> Option<&'a Entity> {
+        self.on.get(&product)?.iter().find_map(|k| self.sets.get(*k)?.get(name).copied())
+    }
+}
+
 fn enumeration(v: Option<&V>) -> Option<&str> {
     match v? {
         V::Enum(e) => Some(e),
@@ -2918,19 +2964,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // left out, with why, and the board stays.
     {
         use crate::electrical::{MAX_MAINS, MAX_SLOTS, Panel};
-        let mut sets: HashMap<u64, Vec<&crate::step::Entity>> = HashMap::new();
-        for rel in named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e) {
-            let Some(set) = reference(rel.args.get(5))
-                .and_then(e)
-                .filter(|x| x.name == "IFCPROPERTYSET" && text(x.args.get(2)) == Some(crate::ifc::PANEL))
-            else {
-                continue;
-            };
-            let props: Vec<&crate::step::Entity> = refs(set.args.get(4)).into_iter().filter_map(e).collect();
-            for product in refs(rel.args.get(4)) {
-                sets.insert(product, props.clone());
-            }
-        }
+        let sets = PropertySets::read(&r, &named(&["IFCRELDEFINESBYPROPERTIES"]), &[crate::ifc::PANEL]);
         let by_global: HashMap<&str, u64> =
             ids.iter().filter_map(|id| Some((text(e(*id)?.args.first())?, *id))).filter(|(g, _)| g.len() == 22).collect();
         let boards: Vec<(u64, Id)> = elements_from
@@ -2941,10 +2975,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let mut boards = boards;
         boards.sort_by_key(|(_, cid)| *cid);
         for (product, cid) in &boards {
-            let props = sets.get(product).cloned().unwrap_or_default();
-            let said = |name: &str| {
-                props.iter().find(|p| p.name == "IFCPROPERTYSINGLEVALUE" && text(p.args.first()) == Some(name)).and_then(|p| p.args.get(2))
-            };
+            let said = |name: &str| sets.said(*product, name).filter(|p| p.name == "IFCPROPERTYSINGLEVALUE").and_then(|p| p.args.get(2));
             let at = from.get(cid).cloned().unwrap_or_default();
             let mut data = Panel {
                 mains: real(said("Mains")).filter(|a| *a > 0.0 && *a <= MAX_MAINS),
