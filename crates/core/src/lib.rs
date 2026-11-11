@@ -41,6 +41,7 @@ mod eberick_tests;
 pub mod electrical;
 #[cfg(test)]
 mod electrical_tests;
+pub mod elevation;
 pub mod engine;
 pub mod falls;
 pub mod family;

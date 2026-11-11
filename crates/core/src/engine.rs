@@ -460,6 +460,10 @@ impl Session {
                 if unsettled {
                     self.model_mut().keep_rooms();
                 }
+                // An elevation that looks at a reference looks at it from wherever the command left its mark.
+                if cmd.undoable {
+                    crate::elevation::keep(self, &before, verified);
+                }
                 // Locked and equal dimensions moved what they measure to as the command moved it.
                 if cmd.undoable {
                     crate::constraints::keep(self, &before)?;

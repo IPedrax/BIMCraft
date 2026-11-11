@@ -1586,6 +1586,10 @@ impl BimApp {
             Tool::Round(DimKind::ArcLength, picked) => picked.first().and_then(|arc| {
                 d.pick_all(q, PICK).into_iter().find(|id| bimcraft_core::dims::arc_point(&model, arc, *id, view.mm(q), near).is_some())
             }),
+            // What an elevation would look at: a straight wall, a line, a slab's edge, the project's or a link's.
+            Tool::Elevation => {
+                d.pick_all(q, PICK).into_iter().find(|id| bimcraft_core::elevation::reference(&model, *id, view.mm(q)).is_some())
+            }
             // What a spot elevation would read.
             Tool::Spot => model.spot_host(level, view.mm(q)),
             // The floor or roof a spot slope would read.
@@ -1771,8 +1775,27 @@ impl BimApp {
         }
         match (self.canvas.drag, local) {
             (Some(Drag::Move(from)), Some(q)) => {
-                let (a, b) = (view.px(from), view.px(from + self.dragged(&model, &view, from, view.mm(q))));
-                ghost(&p, d.place, &d, &self.selection, &|q| q + vec2(b.0 - a.0, b.1 - a.1));
+                let by = self.dragged(&model, &view, from, view.mm(q));
+                let (a, b) = (view.px(from), view.px(from + by));
+                // An elevation that looks at a reference, dragged alone: as it will stand, turned round past its line.
+                let turned = match self.selection.as_slice() {
+                    &[id] => match model.elements.get(id) {
+                        Some(Element::Elevation(e)) if e.reference.is_some() => {
+                            let mut e = Section { start: e.start + by, end: e.end + by, ..e.clone() };
+                            bimcraft_core::elevation::settle(&mut e);
+                            Some(Element::Elevation(e))
+                        }
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                match turned {
+                    Some(e) => {
+                        let id = model.next_id;
+                        ghost(&p, Place::at(p.clip_rect().min), &render::sketch(&model, view, id, &e), &[id], &|pt| pt);
+                    }
+                    None => ghost(&p, d.place, &d, &self.selection, &|q| q + vec2(b.0 - a.0, b.1 - a.1)),
+                }
             }
             (Some(Drag::Box(from)), Some(q)) => p.extend(box_shapes(rect, from, q)),
             _ => {}
@@ -2047,9 +2070,17 @@ impl BimApp {
                 self.run("room", json!({"point": point(round(v.mm(at))), "level": level}));
             }
             Tool::Level => {}
-            Tool::Elevation => {
-                self.run("elevation", json!({"at": point(round(v.mm(at)))}));
-            }
+            Tool::Elevation => match hovered {
+                Some(id) => {
+                    self.run("elevation", json!({"on": id, "at": point(round(v.mm(at)))}));
+                }
+                None => {
+                    self.status = Status {
+                        text: t("Click a straight wall, a line or a slab's edge for the elevation to look at.").into(),
+                        error: false,
+                    }
+                }
+            },
             Tool::Wall(_) if self.shape() == draw::Shape::Fillet => {
                 let picked = hovered.filter(|id| m.wall(*id).is_some());
                 self.fillet_pick(picked.map(draw::Picked::Element), v.mm(at));
@@ -3724,17 +3755,29 @@ impl BimApp {
                     end,
                     depth: None,
                     crop: None,
+                    reference: None,
                     graphics: Default::default(),
                 }));
                 return;
             }
             Tool::Elevation => {
                 let at = round(v.mm(q));
-                if let Some(f) = m.facing_from(at)
-                    && let Some((start, end)) = m.elevation_line(f, Some(at))
+                if let Some(line) = hovered.and_then(|id| bimcraft_core::elevation::reference(m, id, at))
+                    && let Some((start, end)) = bimcraft_core::elevation::new_line(line, bimcraft_core::elevation::place(line, at))
                 {
-                    let name = m.free_view_name(f.name(), false);
-                    sketched(&Element::Elevation(Section { name, start, end, depth: None, crop: None, graphics: Default::default() }));
+                    let name = m.free_view_name(m.language.word("Elevation"), true);
+                    let reference = Some([line.0, line.1]);
+                    // The edge it would look at, and the mark where it would stand.
+                    p.line_segment([sc.screen(line.0), sc.screen(line.1)], stroke);
+                    sketched(&Element::Elevation(Section {
+                        name,
+                        start,
+                        end,
+                        depth: None,
+                        crop: None,
+                        reference,
+                        graphics: Default::default(),
+                    }));
                 }
                 return;
             }

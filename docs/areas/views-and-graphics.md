@@ -767,3 +767,28 @@ key beside it, with Make Text (`TitleBlock::make_text`: back to plain text, the 
 text has Make Field, keyed by what it says (`TitleBlock::free_key`, numbered past the keys there are) as each sheet's. An
 MTEXT's colour is the one its formatting sets before its first word (`\C`, `\c`), over the entity's. The stroke lettering has the
 ordinals º and ª.
+
+## Elevations that look at a reference
+
+The Elevation tool asks for something to look at (`elevation.rs`): a straight wall, a line (a detail line, a grid, a line of a
+CAD drawing) or the edge of a floor, a roof, a ceiling or anything else with a straight edge, the project's or a link's. The
+canvas hovers what `elevation::reference` answers for, in the model the views draw (`link::seen`), and a click runs
+`elevation {on, at}`: `on` the element's id (a link's element by the id that model gives it, which the command looks up in
+`link::seen` again) and `at` the point clicked. `reference` gives the line outright instead, for a script or an agent.
+
+The edge is taken once and kept in the elevation as a line (`Section::reference`, two points): a wall's centre line as far as its
+outline reaches, else the element's straight edge nearest `at` (`align::nearest`). It is not a tie: the wall may move or be
+deleted and the elevation stays as it is, and a link's element needs no id that survives a reload. `elevation::place` puts the
+mark at `at`, or `OUT` (1.5 m) from the line on `at`'s side when `at` is on the line (within a metre, as a click on a wall is),
+and `new_line` runs the view's line through the mark, long enough to see the whole edge and a metre past each end.
+
+An elevation with a reference always looks square at its line from the side its mark (the middle of its line) is on:
+`elevation::settle` turns it about its mark, keeping its length, and the engine settles every elevation a command made or
+changed (`elevation::keep`, after the command and before the checks), so a move, a turn, a mirror or a `modify` of its ends
+all leave it facing its line, and one taken to the line's other side turns round. Past the line's ends it looks at the line
+carried on; on the line itself it stays as it was. Moved alone (or with other marks) its reference stays where it is; moved,
+turned, mirrored or copied together with anything else, the reference goes through the same motion (`transformed`), so a
+building moved with its elevations keeps them as they were. The desktop draws a mark dragged alone as it will stand, turned
+round past its line. `modify` with `reference` null lets the line go, and the elevation is then an ordinary one;
+the building elevations of `facing` and those of `start` and `end` never have one. A file's `reference` is a field an older
+BIMCraft leaves out, which reads the elevation as it stands.

@@ -1964,14 +1964,31 @@ fn the_section_tool_draws_a_section_whose_view_opens_from_the_browser_or_a_doubl
 }
 
 #[test]
-fn the_elevation_tool_looks_at_the_building_from_where_it_is_clicked() {
+fn the_elevation_tool_looks_at_the_wall_clicked_and_turns_round_when_dragged_past_it() {
     let mut h = app(BOX);
     press(&mut h, "View");
     press(&mut h, "Elevation");
-    click(&mut h, P2(4000.0, 7000.0));
+    // Beside the building there is nothing to look at: no elevation.
+    click(&mut h, P2(4000.0, 9000.0));
+    assert!(ids(&h, "elevation").is_empty());
+    // The north wall, clicked on its outer half: the mark stands 1.5 m outside its centre line, looking south at it.
+    click(&mut h, P2(4000.0, 6050.0));
     let made = ids(&h, "elevation");
-    assert_eq!((field(&h, made[0], "name"), field(&h, made[0], "looking")), (json!("North"), json!([0.0, -1.0])));
+    assert_eq!(made.len(), 1);
+    assert_eq!((field(&h, made[0], "name"), field(&h, made[0], "looking")), (json!("Elevation 1"), json!([0.0, -1.0])));
+    // The wall's centre line, as far as its mitred corners reach.
+    assert_eq!(field(&h, made[0], "reference"), json!([[8100.0, 6000.0], [-100.0, 6000.0]]));
+    let mid = |h: &Harness<'static, BimApp>| {
+        let v = h.state().session.model.section(made[0]).unwrap().clone();
+        (v.start + v.end) * 0.5
+    };
+    assert_eq!(mid(&h), P2(4000.0, 7500.0));
     assert!(h.query_by_label("Elevations (Building Elevation)").is_some());
+    // Dragged inside the building, to the wall's other side: it looks north at the same wall.
+    key(&mut h, Key::Escape);
+    drag(&mut h, P2(4000.0, 7500.0), P2(4000.0, 4000.0));
+    assert_eq!(mid(&h), P2(4000.0, 4000.0));
+    assert_eq!(field(&h, made[0], "looking"), json!([0.0, 1.0]));
 }
 
 #[test]

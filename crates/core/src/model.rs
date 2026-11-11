@@ -1877,6 +1877,10 @@ pub struct Section {
     pub depth: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crop: Option<[f64; 2]>,
+    /// The line an elevation looks at, square to it from whichever side its mark stands on (`elevation.rs`): the edge it
+    /// was placed on, kept as a line of its own, not a tie to what had the edge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<[P2; 2]>,
     /// What it hides and how it draws the rest.
     #[serde(default, skip_serializing_if = "Graphics::is_default")]
     pub graphics: Graphics,

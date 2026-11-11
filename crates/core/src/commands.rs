@@ -882,9 +882,15 @@ other_files(
         "elevation",
         "Elevation",
         &[],
-        "{facing?: north|south|east|west, at?: [x,y], start?, end?, depth?, name?} an elevation view of the building's side \
-         `facing` (North shows the north side, looking south), from 3 m out, or through `at`; with `at` alone, of the side it's \
-         on; with `start` and `end`, along that line, looking to its left; with none, the four not there yet",
+        "{on?: id, reference?: [[x,y],[x,y]], facing?: north|south|east|west, at?: [x,y], start?, end?, depth?, name?} an \
+         elevation view. With `on` (a wall, a line, a floor's, roof's or ceiling's edge, a grid or any element with a straight \
+         edge, the project's or a link's by the id its view gives it) and `at`, it looks square at that element's straight edge \
+         nearest `at` (a wall's centre line) from `at`'s side of it: its mark stands at `at`, or 1.5 m out from the edge when \
+         `at` is on it (within a metre). `reference` gives the line itself instead of `on`. That line is kept in the \
+         elevation as `reference`, a line of its own and no tie to the element: moved to the line's other side the elevation \
+         turns round to look at it still, and `modify` with `reference` null lets it go. Without those, of the building's \
+         side `facing` (North shows the north side, looking south), from 3 m out, or through `at`; with `at` alone, of the \
+         side it's on; with `start` and `end`, along that line, looking to its left; with none, the four not there yet",
         elevation,
     ),
     edit(
@@ -9663,6 +9669,7 @@ fn section(s: &mut Session, p: &Value) -> R {
         end,
         depth,
         crop: None,
+        reference: None,
         graphics: Graphics::default(),
     }));
     Ok(json!({"id": id, "name": name}))
@@ -9677,6 +9684,58 @@ fn elevation(s: &mut Session, p: &Value) -> R {
         None => None,
     };
     let nothing = || bad(c, "there are no walls or floors to look at; draw some, or give `start` and `end`");
+    // The line it looks at: an element's edge, or one given.
+    let reference = match (p.get("on").filter(|v| !v.is_null()), p.get("reference").filter(|v| !v.is_null())) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `on` or `reference`, not both")),
+        (None, None) => None,
+        (on, given) => {
+            let at = at.ok_or_else(|| bad(c, "`at` [x, y] is required with `on` or `reference`: the side to look from"))?;
+            let line = match (on, given) {
+                (Some(on), _) => {
+                    let id = on.as_u64().ok_or_else(|| bad(c, format!("`on` is an element's id, not {on}")))?;
+                    // A link's element is in the model the views draw.
+                    let seen = if crate::link::is_linked(id) { crate::link::seen(&s.model) } else { Arc::clone(&s.model) };
+                    let e = seen.elements.get(id).ok_or_else(|| bad(c, format!("there is no element {id}")))?;
+                    crate::elevation::reference(&seen, id, at).ok_or_else(|| {
+                        bad(
+                            c,
+                            format!("{} {id} has no straight edge to look at; pick a straight wall, a line or a slab's edge", e.category()),
+                        )
+                    })?
+                }
+                (None, Some(v)) => match v.as_array().map(Vec::as_slice) {
+                    Some([a, b]) => point(a).zip(point(b)),
+                    _ => None,
+                }
+                .ok_or_else(|| bad(c, format!("`reference` is a line [[x, y], [x, y]] in mm, got {v}")))?,
+                (None, None) => return Err(bad(c, "give `on` or `reference`")),
+            };
+            if line.0.dist(line.1) <= TOL {
+                return Err(bad(c, "`reference` has no length: give a line to look at"));
+            }
+            let line = (micron(line.0), micron(line.1));
+            Some((line, crate::elevation::place(line, at)))
+        }
+    };
+    if let Some((line, mid)) = reference {
+        if facing.is_some() || p.get("start").is_some_and(|v| !v.is_null()) || p.get("end").is_some_and(|v| !v.is_null()) {
+            return Err(bad(c, "an elevation on a reference looks square at it: leave out `facing`, `start` and `end`"));
+        }
+        let (start, end) =
+            crate::elevation::new_line(line, mid).ok_or_else(|| bad(c, "`at` is on the reference; give a point beside it"))?;
+        let name = name.unwrap_or_else(|| m.free_view_name(m.language.word("Elevation"), true));
+        let v = Section {
+            name: name.clone(),
+            start: micron(start),
+            end: micron(end),
+            depth,
+            crop: None,
+            reference: Some([line.0, line.1]),
+            graphics: Graphics::default(),
+        };
+        let id = s.model_mut().insert(Element::Elevation(v));
+        return Ok(json!({"id": id, "name": name, "at": mid, "reference": [line.0, line.1]}));
+    }
     let lines: Vec<(String, P2, P2)> = match (point_opt(c, p, "start")?, point_opt(c, p, "end")?) {
         (Some(a), Some(b)) => vec![(name.unwrap_or_else(|| m.free_view_name(m.language.word("Elevation"), true)), a, b)],
         (None, None) => {
@@ -9707,7 +9766,15 @@ fn elevation(s: &mut Session, p: &Value) -> R {
         .into_iter()
         .map(|(name, start, end)| {
             (
-                m.insert(Element::Elevation(Section { name: name.clone(), start, end, depth, crop: None, graphics: Graphics::default() })),
+                m.insert(Element::Elevation(Section {
+                    name: name.clone(),
+                    start,
+                    end,
+                    depth,
+                    crop: None,
+                    reference: None,
+                    graphics: Graphics::default(),
+                })),
                 name,
             )
         })
@@ -11689,6 +11756,13 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             if mo.mirror {
                 std::mem::swap(&mut v.start, &mut v.end);
             }
+            // The line an elevation looks at goes with it when it is carried along with other things; taken on its own
+            // (or with other marks), the line stays and it looks at it from where it comes to stand.
+            let marks = |id: &Id| matches!(m.elements.get(*id), Some(Element::Section(_) | Element::Elevation(_)));
+            if !with.iter().all(marks) {
+                v.reference = v.reference.map(|[a, b]| [micron(f(a)), micron(f(b))]);
+            }
+            crate::elevation::settle(v);
         }
     }
     Ok(e)
