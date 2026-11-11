@@ -32,7 +32,7 @@ msgstr ""
 msgid "Bed"
 msgstr ""
 
-#: crates/core/src/model.rs:3023
+#: crates/core/src/model.rs:3026
 msgid "Brick"
 msgstr ""
 
@@ -40,7 +40,7 @@ msgstr ""
 msgid "Brick 225 x 75"
 msgstr ""
 
-#: crates/core/src/commands.rs:4225
+#: crates/core/src/commands.rs:4228
 msgid "Camera"
 msgstr ""
 
@@ -68,7 +68,7 @@ msgstr ""
 msgid "Centre Lines"
 msgstr ""
 
-#: crates/core/src/model.rs:3031
+#: crates/core/src/model.rs:3034
 msgid "Ceramic tile"
 msgstr ""
 
@@ -80,15 +80,15 @@ msgstr ""
 msgid "Concrete"
 msgstr ""
 
-#: crates/core/src/model.rs:3025
+#: crates/core/src/model.rs:3028
 msgid "Concrete block"
 msgstr ""
 
-#: crates/core/src/model.rs:3039
+#: crates/core/src/model.rs:3042
 msgid "Copper"
 msgstr ""
 
-#: crates/core/src/commands.rs:1226
+#: crates/core/src/commands.rs:1229
 msgid "Copy"
 msgstr ""
 
@@ -116,7 +116,7 @@ msgstr ""
 msgid "Data Outlet"
 msgstr ""
 
-#: crates/core/src/commands.rs:9960
+#: crates/core/src/commands.rs:9983
 msgid "Dependent"
 msgstr ""
 
@@ -160,11 +160,11 @@ msgstr ""
 msgid "Double Door"
 msgstr ""
 
-#: crates/core/src/model.rs:2547
+#: crates/core/src/model.rs:2550
 msgid "Double Sliding"
 msgstr ""
 
-#: crates/core/src/model.rs:2545
+#: crates/core/src/model.rs:2548
 msgid "Double Swing"
 msgstr ""
 
@@ -172,7 +172,7 @@ msgstr ""
 msgid "Earthing Electrode"
 msgstr ""
 
-#: crates/core/src/model.rs:1912
+#: crates/core/src/model.rs:1915
 msgid "East"
 msgstr ""
 
@@ -192,9 +192,9 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:9722
-#: crates/core/src/commands.rs:9736
-#: crates/core/src/commands.rs:12316
+#: crates/core/src/commands.rs:9730
+#: crates/core/src/commands.rs:9745
+#: crates/core/src/commands.rs:12339
 msgid "Elevation"
 msgstr ""
 
@@ -210,7 +210,7 @@ msgstr ""
 msgid "Family"
 msgstr ""
 
-#: crates/core/src/model.rs:2549
+#: crates/core/src/model.rs:2552
 msgid "Fixed"
 msgstr ""
 
@@ -226,7 +226,7 @@ msgstr ""
 msgid "Floor Schedule"
 msgstr ""
 
-#: crates/core/src/model.rs:2548
+#: crates/core/src/model.rs:2551
 msgid "Folding"
 msgstr ""
 
@@ -255,7 +255,7 @@ msgstr ""
 msgid "Gross Floor Area"
 msgstr ""
 
-#: crates/core/src/model.rs:3030
+#: crates/core/src/model.rs:3033
 msgid "Gypsum board"
 msgstr ""
 
@@ -311,8 +311,8 @@ msgstr ""
 msgid "Length"
 msgstr ""
 
-#: crates/core/src/commands.rs:6436
-#: crates/core/src/model.rs:3169
+#: crates/core/src/commands.rs:6439
+#: crates/core/src/model.rs:3172
 msgid "Level"
 msgstr ""
 
@@ -336,7 +336,7 @@ msgstr ""
 msgid "Masking"
 msgstr ""
 
-#: crates/core/src/commands.rs:7695
+#: crates/core/src/commands.rs:7698
 msgid "Mass"
 msgstr ""
 
@@ -376,7 +376,7 @@ msgstr ""
 msgid "No"
 msgstr ""
 
-#: crates/core/src/model.rs:1910
+#: crates/core/src/model.rs:1913
 msgid "North"
 msgstr ""
 
@@ -424,7 +424,7 @@ msgstr ""
 msgid "Porcelain"
 msgstr ""
 
-#: crates/core/src/commands.rs:2912
+#: crates/core/src/commands.rs:2915
 msgid "Project"
 msgstr ""
 
@@ -448,11 +448,11 @@ msgstr ""
 msgid "Risers"
 msgstr ""
 
-#: crates/core/src/model.rs:3032
+#: crates/core/src/model.rs:3035
 msgid "Roof tiles"
 msgstr ""
 
-#: crates/core/src/commands.rs:7920
+#: crates/core/src/commands.rs:7923
 msgid "Room"
 msgstr ""
 
@@ -480,7 +480,7 @@ msgstr ""
 msgid "Sand"
 msgstr ""
 
-#: crates/core/src/model.rs:3028
+#: crates/core/src/model.rs:3031
 msgid "Screed"
 msgstr ""
 
@@ -488,8 +488,8 @@ msgstr ""
 msgid "Seat Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:9664
-#: crates/core/src/commands.rs:12315
+#: crates/core/src/commands.rs:9667
+#: crates/core/src/commands.rs:12338
 msgid "Section"
 msgstr ""
 
@@ -525,7 +525,7 @@ msgstr ""
 msgid "Single Door"
 msgstr ""
 
-#: crates/core/src/model.rs:2546
+#: crates/core/src/model.rs:2549
 msgid "Sliding"
 msgstr ""
 
@@ -553,11 +553,11 @@ msgstr ""
 msgid "Solid fill"
 msgstr ""
 
-#: crates/core/src/model.rs:1911
+#: crates/core/src/model.rs:1914
 msgid "South"
 msgstr ""
 
-#: crates/core/src/model.rs:2544
+#: crates/core/src/model.rs:2547
 msgid "Swing"
 msgstr ""
 
@@ -613,7 +613,7 @@ msgstr ""
 msgid "Unbounded Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:10101
+#: crates/core/src/commands.rs:10124
 msgid "Unnamed"
 msgstr ""
 
@@ -653,7 +653,7 @@ msgstr ""
 msgid "Weight"
 msgstr ""
 
-#: crates/core/src/model.rs:1913
+#: crates/core/src/model.rs:1916
 msgid "West"
 msgstr ""
 

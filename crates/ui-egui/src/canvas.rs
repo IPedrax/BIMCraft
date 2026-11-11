@@ -326,6 +326,9 @@ pub struct Canvas {
     crop_drag: Option<(Id, usize)>,
     /// A selected wall's end being dragged: the wall, and whether it's its start.
     grip: Option<(Id, bool)>,
+    /// A part of the selected section or elevation being dragged in plan: the view, the part (its line, an end, its far
+    /// clip) and the model point it was taken at.
+    view_grip: Option<(Id, bimcraft_core::elevation::Part, P2)>,
     /// A selected level's end being dragged in a section or an elevation: the level, and whether
     /// it's its far end.
     level_grip: Option<(Id, bool)>,
@@ -360,6 +363,7 @@ impl Default for Canvas {
             cycle: 0,
             crop_drag: None,
             grip: None,
+            view_grip: None,
             level_grip: None,
             press: None,
             lifted: None,
@@ -1620,6 +1624,7 @@ impl BimApp {
         self.canvas.found.set(None);
         self.grip_drag(ui, &response, rect, &view, level);
         self.line_grip_drag(ui, &response, rect, &view, level);
+        self.view_grip_drag(ui, &response, rect, &view);
         let dragged = self.shape_grip_drag(ui, &response, rect, &view, level) || dragged;
         // A drag from an element moves the selection; from empty floor, it draws a selection box.
         if response.drag_started_by(PointerButton::Primary)
@@ -1628,6 +1633,7 @@ impl BimApp {
             && !writing
             && self.canvas.crop_drag.is_none()
             && self.canvas.grip.is_none()
+            && self.canvas.view_grip.is_none()
             && self.drawing.grip.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
         {
@@ -1650,7 +1656,13 @@ impl BimApp {
                 Drag::Move(from) => {
                     let by = self.dragged(&model, &view, from, view.mm(q));
                     if by.length() > 0.0 {
-                        self.run("move", json!({"ids": self.selection, "by": point(by)}));
+                        // An elevation taken alone is taken by its mark, which goes apart from its line.
+                        match self.selection.as_slice() {
+                            &[id] if matches!(model.elements.get(id), Some(Element::Elevation(_))) => {
+                                self.run("move", json!({"ids": [id], "by": point(by), "end": "mark"}))
+                            }
+                            _ => self.run("move", json!({"ids": self.selection, "by": point(by)})),
+                        };
                     }
                 }
                 Drag::Box(from) => self.pick_up(d.in_box(from, q, q.0 < from.0), click_modifiers(ui)),
@@ -1777,14 +1789,12 @@ impl BimApp {
             (Some(Drag::Move(from)), Some(q)) => {
                 let by = self.dragged(&model, &view, from, view.mm(q));
                 let (a, b) = (view.px(from), view.px(from + by));
-                // An elevation that looks at a reference, dragged alone: as it will stand, turned round past its line.
+                // An elevation dragged alone: its mark as it will stand, turned round past the line it looks at.
                 let turned = match self.selection.as_slice() {
                     &[id] => match model.elements.get(id) {
-                        Some(Element::Elevation(e)) if e.reference.is_some() => {
-                            let mut e = Section { start: e.start + by, end: e.end + by, ..e.clone() };
-                            bimcraft_core::elevation::settle(&mut e);
-                            Some(Element::Elevation(e))
-                        }
+                        Some(Element::Elevation(e)) => bimcraft_core::elevation::dragged(e, true, bimcraft_core::elevation::Part::Mark, by)
+                            .ok()
+                            .map(Element::Elevation),
                         _ => None,
                     },
                     _ => None,
@@ -1825,6 +1835,7 @@ impl BimApp {
             }
         }
         self.grip_overlay(ui, &model, &view, rect, level, &d, d.place);
+        self.view_extent_overlay(ui, &model, &view, rect);
         // Where the cursor snaps is worked out only while a grip is held to it.
         let cursor = self
             .drawing
@@ -3073,6 +3084,110 @@ impl BimApp {
         Some(p)
     }
 
+    /// The section or elevation selected alone, with Modify: the one whose extent a plan shows, with its grips. With it,
+    /// whether it is an elevation.
+    fn view_gripped(&self) -> Option<(Id, Section, bool)> {
+        match (self.selection.as_slice(), &self.tool) {
+            (&[id], Tool::Modify) => match self.session.model.elements.get(id)? {
+                Element::Section(v) => Some((id, v.clone(), false)),
+                Element::Elevation(v) => Some((id, v.clone(), true)),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// A drag from a grip of the selected section or elevation moves that part: an end of its line along it (while the
+    /// view is cropped), its far clip to and from it; from an elevation's line, the line the way it looks, its mark staying.
+    /// On release, `move` with the part as its `end`.
+    fn view_grip_drag(&mut self, ui: &Ui, response: &Response, rect: Rect, view: &View) {
+        use bimcraft_core::elevation::{self, Part};
+        let Some((id, v, is_elevation)) = self.view_gripped() else {
+            self.canvas.view_grip = None;
+            return;
+        };
+        let at = |p: P2| pos(rect.min, view.px(p));
+        if response.drag_started_by(PointerButton::Primary)
+            && self.canvas.crop_drag.is_none()
+            && let Some(o) = ui.input(|i| i.pointer.press_origin())
+        {
+            let near = |p: P2| at(p).distance(o);
+            let from = view.mm((o.x - rect.min.x, o.y - rect.min.y));
+            let grip = elevation::grips(&v).into_iter().filter(|(_, p)| near(*p) <= 9.0).min_by(|a, b| near(a.1).total_cmp(&near(b.1)));
+            // An elevation's line is taken anywhere along it, off its mark.
+            let on_line = || {
+                let (a, b) = (at(v.start), at(v.end));
+                let (ab, ao) = (b - a, o - a);
+                let t = (ao.dot(ab) / ab.length_sq().max(1e-6)).clamp(0.0, 1.0);
+                is_elevation && (a + ab * t).distance(o) <= 5.0 && near(elevation::mark(&v)) > 18.0
+            };
+            if let Some((part, _)) = grip {
+                self.canvas.view_grip = Some((id, part, from));
+            } else if on_line() {
+                self.canvas.view_grip = Some((id, Part::Line, from));
+            }
+        }
+        let Some((held, part, from)) = self.canvas.view_grip else { return };
+        if held != id {
+            self.canvas.view_grip = None;
+            return;
+        }
+        if response.drag_stopped() {
+            self.canvas.view_grip = None;
+            if !self.canvas.quick()
+                && let Some(q) = ui.input(|i| i.pointer.latest_pos())
+            {
+                let by = view.mm((q.x - rect.min.x, q.y - rect.min.y)) - from;
+                if by.length() > 1e-6 {
+                    self.run("move", json!({"ids": [id], "by": point(by), "end": part.name()}));
+                }
+            }
+        }
+    }
+
+    /// The selected section's or elevation's extent in plan, as Revit shows it: the line the view starts at; with a far
+    /// clip, the line it sees as far as and the sides between them; a round grip at each end of the line while the view
+    /// is cropped, and a pair of arrows on the far clip. A part being dragged shows where it would come to.
+    fn view_extent_overlay(&self, ui: &Ui, m: &Model, view: &View, rect: Rect) {
+        use bimcraft_core::elevation;
+        let Some((id, v, is_elevation)) = self.view_gripped() else { return };
+        if m.section(id).is_none() {
+            return;
+        }
+        let v = match (self.canvas.view_grip, ui.input(|i| i.pointer.latest_pos())) {
+            (Some((held, part, from)), Some(q)) if held == id => {
+                let by = view.mm((q.x - rect.min.x, q.y - rect.min.y)) - from;
+                elevation::dragged(&v, is_elevation, part, by).unwrap_or(v)
+            }
+            _ => v,
+        };
+        let p = ui.painter_at(rect);
+        let at = |q: P2| pos(rect.min, view.px(q));
+        let blue = canvas_pal().accent;
+        let (a, b) = (at(v.start), at(v.end));
+        // The line it starts at: long dashes with a dot between, as a cut line is drawn.
+        p.extend(Shape::dashed_line_with_offset(&[a, b], Stroke::new(1.5, blue), &[12.0, 2.0], &[4.0, 4.0], 0.0));
+        if let Some((fa, fb)) = elevation::far(&v) {
+            let faint = Stroke::new(1.0, blue.gamma_multiply(0.7));
+            p.extend(Shape::dashed_line(&[a, at(fa), at(fb), b], faint, 5.0, 4.0));
+        }
+        for (part, g) in elevation::grips(&v) {
+            let c = at(g);
+            if part == elevation::Part::Far {
+                // Two arrows, to and from the view's line.
+                let l = v.looking();
+                let (n, t) = (vec2(l.0 as f32, -l.1 as f32), vec2(-l.1 as f32, -l.0 as f32));
+                for k in [1.0, -1.0] {
+                    let tip = c + n * (9.0 * k);
+                    let base = c + n * (1.5 * k);
+                    p.add(Shape::convex_polygon(vec![tip, base + t * 4.5, base - t * 4.5], blue, Stroke::new(1.0, pal().surface)));
+                }
+            } else {
+                p.circle(c, 4.5, blue.gamma_multiply(0.75), Stroke::new(1.0, blue));
+            }
+        }
+    }
+
     /// The wall or run selected alone, with Modify: the one whose ends are grips.
     fn gripped(&self) -> Option<Id> {
         let m = &self.session.model;
@@ -3756,6 +3871,7 @@ impl BimApp {
                     depth: None,
                     crop: None,
                     reference: None,
+                    mark: None,
                     graphics: Default::default(),
                 }));
                 return;
@@ -3776,6 +3892,7 @@ impl BimApp {
                         depth: None,
                         crop: None,
                         reference,
+                        mark: None,
                         graphics: Default::default(),
                     }));
                 }

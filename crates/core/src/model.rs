@@ -1881,6 +1881,9 @@ pub struct Section {
     /// was placed on, kept as a line of its own, not a tie to what had the edge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference: Option<[P2; 2]>,
+    /// Where an elevation's mark stands in plan, apart from its line; none: at the line's middle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<P2>,
     /// What it hides and how it draws the rest.
     #[serde(default, skip_serializing_if = "Graphics::is_default")]
     pub graphics: Graphics,
@@ -7081,6 +7084,10 @@ impl Model {
                 line(&who, v.start, v.end)?;
                 if let Some(d) = v.depth {
                     size(&format!("{who} depth"), d)?;
+                }
+                for q in v.mark.iter().chain(v.reference.iter().flatten()) {
+                    coord(&format!("{who} mark"), q.0)?;
+                    coord(&format!("{who} mark"), q.1)?;
                 }
                 if let Some([bottom, top]) = v.crop {
                     coord(&format!("{who} crop"), bottom)?;

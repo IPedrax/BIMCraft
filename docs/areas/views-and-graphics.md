@@ -782,8 +782,9 @@ deleted and the elevation stays as it is, and a link's element needs no id that 
 mark at `at`, or `OUT` (1.5 m) from the line on `at`'s side when `at` is on the line (within a metre, as a click on a wall is),
 and `new_line` runs the view's line through the mark, long enough to see the whole edge and a metre past each end.
 
-An elevation with a reference always looks square at its line from the side its mark (the middle of its line) is on:
-`elevation::settle` turns it about its mark, keeping its length, and the engine settles every elevation a command made or
+An elevation with a reference always looks square at its line from the side its mark (`elevation::mark`: the middle of its
+line, or where the mark was put apart from it) is on:
+`elevation::settle` turns its line about the line's own middle, keeping its length, and the engine settles every elevation a command made or
 changed (`elevation::keep`, after the command and before the checks), so a move, a turn, a mirror or a `modify` of its ends
 all leave it facing its line, and one taken to the line's other side turns round. Past the line's ends it looks at the line
 carried on; on the line itself it stays as it was. Moved alone (or with other marks) its reference stays where it is; moved,
@@ -792,3 +793,23 @@ building moved with its elevations keeps them as they were. The desktop draws a 
 round past its line. `modify` with `reference` null lets the line go, and the elevation is then an ordinary one;
 the building elevations of `facing` and those of `start` and `end` never have one. A file's `reference` is a field an older
 BIMCraft leaves out, which reads the elevation as it stands.
+
+## A section's and an elevation's extent in plan
+
+Selected alone with Modify, a section or an elevation shows its extent on the plan as Revit does (`canvas.rs`'s
+`view_extent_overlay`, from `elevation.rs`): the line the view starts at, long dashes and dots in the accent colour, and, when
+its far clip is on (`depth`, Properties' Far Clip Offset), the line it sees as far as (`elevation::far`) with the two sides
+between them, dashed. `elevation::grips` says what can be held: a round grip at each end of the line only while the view is
+cropped (uncropped the line moves and doesn't stretch, since the view then shows everything along it), and a pair of arrows in
+the middle of the far clip line.
+
+Each part moves through `move` with the part as its `end` (`elevation::Part`, worked out by `elevation::dragged`, which the
+desktop also draws its preview from): `start` and `end` go along the line and no shorter than `SHORTEST` (what is noted in
+the view keeps its spot over the model, as after `crop`); `far` goes to and from the line and sets `depth`; `line` moves the
+line the way it looks, which is how a drag from an elevation's line off its mark goes. A section dragged by its line moves whole.
+
+An elevation's mark is apart from its line (`Section::mark`; none while it has never been moved apart, and the mark is then at
+the line's middle). A drag of an elevation's mark runs `move` with `end: mark`: the mark alone goes anywhere. When it crosses
+the line the elevation looks at, the elevation turns round and its line comes over to the mark's side, as far from the
+reference as it was; moved whole across (the Move tool, or with other things), the line turns round where it stands. Changing
+the line (its grips, `crop`) pins the mark where it stood. An older BIMCraft leaves `mark` out and draws the mark at the middle.

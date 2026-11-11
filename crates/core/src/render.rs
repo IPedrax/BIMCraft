@@ -1132,7 +1132,7 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
             Element::Grid(g) => extent.extend([g.start, g.end]),
             Element::RoomSeparator(rs) if rs.level == level => extent.extend([rs.start, rs.end]),
             Element::Dimension(dm) if m.annotation_in(e, key) => extent.push(dm.at),
-            Element::Section(v) | Element::Elevation(v) => extent.extend([v.start, v.end]),
+            Element::Section(v) | Element::Elevation(v) => extent.extend([v.start, v.end].into_iter().chain(v.mark)),
             Element::Tag(t) if m.annotation_in(e, key) => extent.extend(m.anchor(t.host).map(|a| a + t.offset)),
             Element::Stair(Stair { level: l, top_level: t, .. }) | Element::Ramp(Ramp { level: l, top_level: t, .. })
                 if *l == level || *t == Some(level) =>
@@ -3013,7 +3013,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             Element::Spot(sp) if m.annotation_in(e, key) && inside(sp.at) => spot_mark(&mut d, view.px(sp.at), m.spot_value(sp), m.units),
             // A section's line is cropped as a line is.
             Element::Section(v) => section_mark(&mut d, v),
-            Element::Elevation(v) if inside(v.start + (v.end - v.start) * 0.5) => elevation_mark(&mut d, v),
+            Element::Elevation(v) if inside(crate::elevation::mark(v)) => elevation_mark(&mut d, v),
             // A camera stands on its level's plan: a symbol at its eye, and a line to what it looks at.
             Element::View3D(v) if !up && v.camera.is_some_and(|c| m.camera_level(c.eye[2]) == m.elements.id(level)) => {
                 camera_mark(&mut d, v)
@@ -4272,11 +4272,11 @@ fn section_mark(d: &mut Drawing, v: &Section) {
     d.grow(from, b);
 }
 
-/// An elevation's marker in plan, at its line's middle: a circle with a flag pointing the way it
+/// An elevation's marker in plan, where its mark stands (its line's middle unless it was moved apart): a circle with a flag pointing the way it
 /// looks, and its name behind it.
 fn elevation_mark(d: &mut Drawing, v: &Section) {
     const R: f32 = 9.0;
-    let c = d.view.px(v.start + (v.end - v.start) * 0.5);
+    let c = d.view.px(crate::elevation::mark(v));
     let from = d.prims.len();
     let ring: Vec<(f32, f32)> = (0..32)
         .map(|i| {

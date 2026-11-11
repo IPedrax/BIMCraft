@@ -62,15 +62,142 @@ pub fn new_line(reference: Line, mid: P2) -> Option<Line> {
     line(reference, mid, reach + PAST)
 }
 
-/// `v` turned about its mark to look at its reference, when it has one and doesn't already: whether it changed.
+/// Where an elevation's mark stands: where it was put, else at the middle of its line.
+pub fn mark(v: &Section) -> P2 {
+    v.mark.unwrap_or((v.start + v.end) * 0.5)
+}
+
+/// `v` brought round to look at its reference from the side its mark stands on, when it has one and doesn't already:
+/// whether it changed. Its line keeps its length and stays square to the way it looks; when the mark alone went to the
+/// other side, the line follows it there, as far from the reference as it was.
 pub fn settle(v: &mut Section) -> bool {
     let Some([a, b]) = v.reference else { return false };
-    let Some((start, end)) = line((a, b), (v.start + v.end) * 0.5, v.start.dist(v.end) / 2.0) else { return false };
+    let n = (b - a).unit().perp();
+    let side = |q: P2| (q - a).dot(n);
+    let d = side(mark(v));
+    if d.abs() <= TOL || n == P2(0.0, 0.0) {
+        return false;
+    }
+    // It looks to its left: along the reference when that is to the left, against it otherwise.
+    let look = if d > 0.0 { n * -1.0 } else { n };
+    let along = P2(look.1, -look.0);
+    let (mut mid, half) = ((v.start + v.end) * 0.5, v.start.dist(v.end) / 2.0);
+    if v.mark.is_some() && v.looking().dot(look) < 0.0 && side(mid) * d < 0.0 {
+        mid = mid - n * (2.0 * side(mid));
+    }
+    let (start, end) = (mid - along * half, mid + along * half);
     if start.dist(v.start) <= TOL && end.dist(v.end) <= TOL {
         return false;
     }
     (v.start, v.end) = (crate::commands::micron(start), crate::commands::micron(end));
     true
+}
+
+/// The shortest a view's line gets by its grips, mm.
+pub const SHORTEST: f64 = 100.0;
+
+/// A part of a section or an elevation as a plan shows it selected, each moved on its own (`move`'s `end`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Part {
+    /// An elevation's mark, which stands anywhere.
+    Mark,
+    /// The line the view starts at, moved the way it looks.
+    Line,
+    /// An end of that line, when the view is cropped.
+    Start,
+    End,
+    /// The line it sees as far as, when its far clip is on.
+    Far,
+}
+
+impl Part {
+    pub const ALL: [Part; 5] = [Part::Mark, Part::Line, Part::Start, Part::End, Part::Far];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Part::Mark => "mark",
+            Part::Line => "line",
+            Part::Start => "start",
+            Part::End => "end",
+            Part::Far => "far",
+        }
+    }
+
+    pub fn named(name: &str) -> Option<Part> {
+        Part::ALL.into_iter().find(|p| p.name() == name)
+    }
+}
+
+/// The line a view sees as far as, when its far clip is on: its own line, `depth` on the way it looks.
+pub fn far(v: &Section) -> Option<Line> {
+    let by = v.looking() * v.depth?;
+    Some((v.start + by, v.end + by))
+}
+
+/// The grips a selected section or elevation has in plan, each where it is held: an end of its line when it is cropped
+/// (uncropped, the line moves and doesn't stretch), and the middle of its far clip line when it has one.
+pub fn grips(v: &Section) -> Vec<(Part, P2)> {
+    let mut out = Vec::new();
+    if v.crop.is_some() {
+        out.extend([(Part::Start, v.start), (Part::End, v.end)]);
+    }
+    if let Some((a, b)) = far(v) {
+        out.push((Part::Far, (a + b) * 0.5));
+    }
+    out
+}
+
+/// `v` with `part` dragged `by`, `elevation` saying which kind it is: the mark goes anywhere (and the elevation turns to
+/// its reference from there), the line moves the way it looks, an end along the line, the far clip to and from the line.
+/// The error says why a part doesn't move.
+pub fn dragged(v: &Section, elevation: bool, part: Part, by: P2) -> Result<Section, String> {
+    let mut v = v.clone();
+    let (look, u) = (v.looking(), (v.end - v.start).unit());
+    // Its mark stays where it is while its line changes under it.
+    let pin = |v: &mut Section| {
+        if elevation {
+            v.mark = Some(crate::commands::micron(mark(v)));
+        }
+    };
+    match part {
+        Part::Mark if !elevation => return Err("a section has no mark apart from its line; move it whole".into()),
+        Part::Mark => {
+            v.mark = Some(crate::commands::micron(mark(&v) + by));
+            settle(&mut v);
+        }
+        Part::Line => {
+            pin(&mut v);
+            let by = look * by.dot(look);
+            (v.start, v.end) = (crate::commands::micron(v.start + by), crate::commands::micron(v.end + by));
+        }
+        Part::Start | Part::End => {
+            if v.crop.is_none() {
+                return Err("its line stretches only while the view is cropped; crop it first (`crop`)".into());
+            }
+            pin(&mut v);
+            let d = by.dot(u);
+            let length = v.start.dist(v.end) + if part == Part::Start { -d } else { d };
+            if length < SHORTEST {
+                return Err(format!("that leaves its line {length:.0} mm long; it is at least {SHORTEST} mm"));
+            }
+            if part == Part::Start {
+                v.start = crate::commands::micron(v.start + u * d);
+            } else {
+                v.end = crate::commands::micron(v.end + u * d);
+            }
+        }
+        Part::Far => {
+            let Some(depth) = v.depth else {
+                return Err("it has no far clip to move; give it a `depth` first (`modify`)".into());
+            };
+            let depth = depth + by.dot(look);
+            if depth < 1.0 {
+                return Err(format!("that puts its far clip {depth:.0} mm from its line; it is at least 1 mm past it"));
+            }
+            v.depth = Some((depth * 1000.0).round() / 1000.0);
+        }
+    }
+    Ok(v)
 }
 
 /// After a command: every elevation it made or changed looks at its reference, however it was moved, turned or edited.
@@ -254,5 +381,89 @@ mod tests {
         assert!(err.contains("reference"), "{err}");
         let err = s.execute("elevation", &json!({"reference": [[0, 0], [1e300, 0]], "at": [5, 5]})).unwrap_err();
         assert!(err.contains("reference"), "{err}");
+    }
+
+    #[test]
+    fn an_elevations_mark_moves_apart_from_its_line_and_turns_it_round_past_the_reference() {
+        let mut s = Session::new();
+        let wall = a_wall(&mut s, json!({"points": [[0, 0], [8000, 0]]}));
+        let e = id(&run(&mut s, "elevation", json!({"on": wall, "at": [4000, -2000]})));
+        let line = |s: &Session| {
+            let v = s.model.section(e).unwrap();
+            (v.start, v.end)
+        };
+        let was = line(&s);
+        // The mark alone, on its side of the wall: the line stays.
+        run(&mut s, "move", json!({"ids": [e], "by": [3000, -1000], "end": "mark"}));
+        assert_eq!(line(&s), was);
+        assert_eq!(s.model.section(e).unwrap().mark, Some(P2(7000.0, -3000.0)));
+        assert_eq!(s.model.section(e).unwrap().looking(), P2(0.0, 1.0));
+        // Past the wall: it looks back at it, and its line comes over, as far from the wall as it was.
+        run(&mut s, "move", json!({"ids": [e], "by": [0, 4000], "end": "mark"}));
+        let v = s.model.section(e).unwrap().clone();
+        assert_eq!((v.mark, v.looking()), (Some(P2(7000.0, 1000.0)), P2(0.0, -1.0)));
+        assert_eq!((v.start, v.end), (P2(was.1.0, 2000.0), P2(was.0.0, 2000.0)));
+        // Moved whole, mark and line go together and it looks the same way.
+        run(&mut s, "move", json!({"ids": [e], "by": [0, 500]}));
+        let v = s.model.section(e).unwrap().clone();
+        assert_eq!((v.mark, v.start.1, v.looking()), (Some(P2(7000.0, 1500.0)), 2500.0, P2(0.0, -1.0)));
+        // Whole across the wall: it turns round where it stands.
+        run(&mut s, "move", json!({"ids": [e], "by": [0, -5000]}));
+        let v = s.model.section(e).unwrap().clone();
+        assert_eq!((v.mark, v.start.1, v.end.1, v.looking()), (Some(P2(7000.0, -3500.0)), -2500.0, -2500.0, P2(0.0, 1.0)));
+        // A section has no mark of its own.
+        let cut = id(&run(&mut s, "section", json!({"start": [0, -1000], "end": [0, 1000]})));
+        let err = s.execute("move", &json!({"ids": [cut], "by": [1, 1], "end": "mark"})).unwrap_err();
+        assert!(err.contains("no mark"), "{err}");
+    }
+
+    #[test]
+    fn a_views_line_moves_the_way_it_looks_and_stretches_only_when_cropped() {
+        let mut s = Session::new();
+        let wall = a_wall(&mut s, json!({"points": [[0, 0], [8000, 0]]}));
+        let e = id(&run(&mut s, "elevation", json!({"on": wall, "at": [4000, -2000]})));
+        // The line moves square to itself, whatever the drag; the mark stays.
+        run(&mut s, "move", json!({"ids": [e], "by": [700, -1000], "end": "line"}));
+        let v = s.model.section(e).unwrap().clone();
+        assert_eq!((v.start, v.end, v.mark), (P2(-1000.0, -3000.0), P2(9000.0, -3000.0), Some(P2(4000.0, -2000.0))));
+        // Uncropped, it has no grips and its ends stay.
+        assert!(super::grips(&v).is_empty());
+        let err = s.execute("move", &json!({"ids": [e], "by": [500, 0], "end": "start"})).unwrap_err();
+        assert!(err.contains("cropped"), "{err}");
+        // Cropped, a grip at each end, moved along the line only.
+        run(&mut s, "crop", json!({"view": e, "region": [[0, -500], [10000, 4000]]}));
+        let v = s.model.section(e).unwrap().clone();
+        assert_eq!(super::grips(&v), vec![(super::Part::Start, v.start), (super::Part::End, v.end)]);
+        run(&mut s, "move", json!({"ids": [e], "by": [1500, 900], "end": "start"}));
+        run(&mut s, "move", json!({"ids": [e], "by": [-2000, 0], "end": "end"}));
+        let v = s.model.section(e).unwrap().clone();
+        assert_eq!((v.start, v.end, v.mark), (P2(500.0, -3000.0), P2(7000.0, -3000.0), Some(P2(4000.0, -2000.0))));
+        let err = s.execute("move", &json!({"ids": [e], "by": [6450, 0], "end": "start"})).unwrap_err();
+        assert!(err.contains("at least"), "{err}");
+    }
+
+    #[test]
+    fn a_far_clip_is_a_line_past_the_views_own_with_a_grip_that_sets_its_depth() {
+        let mut s = Session::new();
+        let cut = id(&run(&mut s, "section", json!({"start": [0, 0], "end": [6000, 0]})));
+        assert_eq!(super::far(s.model.section(cut).unwrap()), None);
+        let err = s.execute("move", &json!({"ids": [cut], "by": [0, 500], "end": "far"})).unwrap_err();
+        assert!(err.contains("far clip"), "{err}");
+        run(&mut s, "modify", json!({"id": cut, "depth": 3000}));
+        let v = s.model.section(cut).unwrap().clone();
+        assert_eq!(super::far(&v), Some((P2(0.0, 3000.0), P2(6000.0, 3000.0))));
+        assert_eq!(super::grips(&v), vec![(super::Part::Far, P2(3000.0, 3000.0))]);
+        run(&mut s, "move", json!({"ids": [cut], "by": [250, 1500], "end": "far"}));
+        assert_eq!(s.model.section(cut).unwrap().depth, Some(4500.0));
+        let err = s.execute("move", &json!({"ids": [cut], "by": [0, -4500], "end": "far"})).unwrap_err();
+        assert!(err.contains("at least"), "{err}");
+        // A section's start, cropped: what is noted in the view stays over the model.
+        run(&mut s, "crop", json!({"view": cut, "region": [[0, 0], [6000, 3000]]}));
+        let note = id(&run(&mut s, "text", json!({"view": cut, "at": [2000, 1000], "text": "here"})));
+        run(&mut s, "move", json!({"ids": [cut], "by": [500, 0], "end": "start"}));
+        let Some(Element::Text(n)) = s.model.elements.get(note) else { panic!("no note") };
+        assert_eq!(n.at, P2(1500.0, 1000.0));
+        s.execute("undo", &json!({})).unwrap();
+        assert_eq!(s.model.section(cut).unwrap().start, P2(0.0, 0.0));
     }
 }

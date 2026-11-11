@@ -1218,7 +1218,10 @@ other_files(
         ui_msg!("Move"),
         &["MV"],
         "{ids: [id,…], by: [dx, dy], end?: start|end} moves elements in plan; walls joined to a moved wall stretch to stay \
-         joined, and doors and windows slide along their walls. With `end`, only that end of one wall or one run moves",
+         joined, and doors and windows slide along their walls. With `end`, only that end of one wall or one run moves. One \
+         section or elevation takes `end` as the part its grips in plan move: `line` (the line it starts at, the way it \
+         looks), `start` or `end` (an end along the line, while it is cropped), `far` (its far clip, changing `depth`) and, \
+         an elevation, `mark` (its mark alone, anywhere: past its reference it turns round and its line comes over)",
         move_elements,
     ),
     edit(
@@ -9670,6 +9673,7 @@ fn section(s: &mut Session, p: &Value) -> R {
         depth,
         crop: None,
         reference: None,
+        mark: None,
         graphics: Graphics::default(),
     }));
     Ok(json!({"id": id, "name": name}))
@@ -9731,6 +9735,7 @@ fn elevation(s: &mut Session, p: &Value) -> R {
             depth,
             crop: None,
             reference: Some([line.0, line.1]),
+            mark: None,
             graphics: Graphics::default(),
         };
         let id = s.model_mut().insert(Element::Elevation(v));
@@ -9773,6 +9778,7 @@ fn elevation(s: &mut Session, p: &Value) -> R {
                     depth,
                     crop: None,
                     reference: None,
+                    mark: None,
                     graphics: Graphics::default(),
                 })),
                 name,
@@ -9838,27 +9844,40 @@ fn crop(s: &mut Session, p: &Value) -> R {
                 None => v.crop = Some(render::section_heights(m, view)),
             }
             let crop = v.crop;
-            let m = s.model_mut();
-            let guid = m.guid(view);
-            if let Some(Element::Section(old) | Element::Elevation(old)) = m.elements.get_mut(view) {
-                *old = v;
+            // An elevation's mark stays where it stands while its line changes under it.
+            if (shift != 0.0 || region.is_some_and(|r| r.is_some()))
+                && let Some(Element::Elevation(old)) = m.elements.get(view)
+            {
+                v.mark = Some(micron(crate::elevation::mark(old)));
             }
-            // What's noted in the view keeps its spot over the model.
-            for e in m.elements.values_mut() {
-                match e {
-                    Element::Text(n) if n.view == guid => {
-                        n.at.0 -= shift;
-                        if let Some(l) = &mut n.leader {
-                            l.0 -= shift;
-                        }
-                    }
-                    Element::Spot(sp) if sp.view == guid => sp.at.0 -= shift,
-                    _ => {}
-                }
-            }
+            view_line(s.model_mut(), view, v, shift);
             Ok(json!({"view": view, "crop": crop}))
         }
         _ => Err(bad(c, format!("{} isn't a plan, a section or an elevation; only those crop", view_title(m, view)))),
+    }
+}
+
+/// Section or elevation `view` becomes `v`, its start having moved `shift` mm along its line: what's noted in the view
+/// keeps its spot over the model.
+fn view_line(m: &mut Model, view: Id, v: Section, shift: f64) {
+    let guid = m.guid(view);
+    if let Some(Element::Section(old) | Element::Elevation(old)) = m.elements.get_mut(view) {
+        *old = v;
+    }
+    if shift == 0.0 {
+        return;
+    }
+    for e in m.elements.values_mut() {
+        match e {
+            Element::Text(n) if n.view == guid => {
+                n.at.0 -= shift;
+                if let Some(l) = &mut n.leader {
+                    l.0 -= shift;
+                }
+            }
+            Element::Spot(sp) if sp.view == guid => sp.at.0 -= shift,
+            _ => {}
+        }
     }
 }
 
@@ -11751,7 +11770,7 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         // A tag's place hangs on its door or window's: see `relocate` and `duplicate`.
         Element::Tag(_) => {}
         Element::Section(v) | Element::Elevation(v) => {
-            (v.start, v.end) = (f(v.start), f(v.end));
+            (v.start, v.end, v.mark) = (f(v.start), f(v.end), v.mark.map(|q| micron(f(q))));
             // A mirror image of it looks the mirrored way round: to the left of its line again.
             if mo.mirror {
                 std::mem::swap(&mut v.start, &mut v.end);
@@ -12495,14 +12514,29 @@ fn move_elements(s: &mut Session, p: &Value) -> R {
     let ids = ids_param(c, &s.model, p)?;
     let by = point_req(c, p, "by")?;
     // Moving one end: `Some(true)` the start, `Some(false)` the end.
-    let end = match string(c, p, "end")?.as_deref() {
+    let end = match string(c, p, "end")? {
         None => None,
-        Some("start") => Some(true),
-        Some("end") => Some(false),
-        Some(other) => return Err(bad(c, format!("`end` is `start` or `end`, not `{other}`"))),
+        Some(name) => {
+            // A part of a section or an elevation, as its grips in plan move it.
+            if let [one] = ids.as_slice()
+                && let Some(e @ (Element::Section(v) | Element::Elevation(v))) = s.model.elements.get(*one)
+            {
+                let part = crate::elevation::Part::named(&name)
+                    .ok_or_else(|| bad(c, format!("`end` of a section or an elevation is mark, line, start, end or far, not `{name}`")))?;
+                let moved = crate::elevation::dragged(v, matches!(e, Element::Elevation(_)), part, by).map_err(|e| bad(c, e))?;
+                let shift = (moved.start - v.start).dot((v.end - v.start).unit());
+                view_line(s.model_mut(), *one, moved, shift);
+                return Ok(json!({"moved": ids, "end": name}));
+            }
+            match name.as_str() {
+                "start" => Some(true),
+                "end" => Some(false),
+                other => return Err(bad(c, format!("`end` is `start` or `end`, not `{other}`"))),
+            }
+        }
     };
     if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some() || s.model.run_of(*one).is_some()) {
-        return Err(bad(c, "`end` moves an end of one wall or one run; give `ids` one wall or one run"));
+        return Err(bad(c, "`end` moves an end of one wall or one run, or a part of one section or elevation; give `ids` one of those"));
     }
     relocate(c, s, &ids, &Motion { map: &|q| q + by, slide: Some(by), mirror: false }, end)?;
     Ok(json!({"moved": ids}))
