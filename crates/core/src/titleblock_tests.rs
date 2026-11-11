@@ -411,6 +411,9 @@ fn automatic_frames_fit_the_drawing_area_and_template_edits_keep_placed_views() 
     second["at"] = json!([15, 20]);
     assert_eq!(run(&mut s, "place", second)["at"], json!([15.0, 20.0]));
     assert!(s.execute("title_block", &json!({"name":"Frame","drawing_area":[[20,5],[10,10]]})).unwrap_err().contains("ordered"));
+    // No paper is larger than the largest a sheet may have: a title block no sheet could name is refused as it is made.
+    let past = json!({"name":"Other","drawing_area":[[0,0],[1e300,1e300]]});
+    assert!(s.execute("title_block", &past).unwrap_err().contains("ordered"));
 }
 
 #[test]
