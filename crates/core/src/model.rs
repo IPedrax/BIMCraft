@@ -70,9 +70,7 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 20: a project holds panel schedules (an element of
-/// the `panelschedule` category) and `demand_factors`, and a circuit's number is its first slot; nothing in a file of 19
-/// changes, but a build that reads up to 19 would answer one of 20 with a serde error, not "saved by a newer BIMCraft". 18: a family's connector may be a `pipe`,
+/// The version of the project file this build writes, and the newest it reads. 18: a family's connector may be a `pipe`,
 /// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
 /// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
 /// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
@@ -80,11 +78,12 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// wall or a run may refuse to join its neighbours (`join: false`, written only then); a dimension may measure to the line
 /// across a column, square to its angle (`across`); a distribution board may hold its electrical data (a component's
 /// `panel`: its distribution system, mains, slots and the board that supplies it); and a project may hold circuits (the
-/// `circuit` category). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a connector,
-/// dimension or circuit with a serde error ("unknown variant", "missing field `system`"), would leave the title blocks out
-/// as fields it doesn't know, drawing every sheet with the built-in title box, would silently drop `join: false` and join
-/// the element again, and would leave a board's `panel` out the same way, its supply tree with it, not say "saved by a
-/// newer BIMCraft". 17: a schedule may list several categories
+/// `circuit` category, each on its board's slots from its `number`), panel schedules (`panelschedule`) and demand factors
+/// by classification (`demand_factors`). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such
+/// a connector, dimension, circuit or panel schedule with a serde error ("unknown variant", "missing field `system`"), would
+/// leave the title blocks out as fields it doesn't know, drawing every sheet with the built-in title box, would silently
+/// drop `join: false` and join the element again, and would leave a board's `panel` and the `demand_factors` out the same
+/// way, a board's supply tree with them, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -122,7 +121,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 20;
+pub const FORMAT: u32 = 18;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3562,11 +3561,11 @@ impl Model {
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
         // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, their fields'
         // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column; a
-        // distribution board's `panel`; circuits) has none
+        // distribution board's `panel`; circuits, panel schedules and `demand_factors`) has none
         // either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
         // file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
-        // did, none of its dimensions measures `across`, none of its components has a `panel`, and it has no circuits.
-        // 19 to 20 (panel schedules and `demand_factors`) has no step: a file of 19 holds none, and a circuit's slots are its number as ever.
+        // did, none of its dimensions measures `across`, none of its components has a `panel`, and it has no circuits, panel
+        // schedules or `demand_factors`.
         self.format = FORMAT;
     }
 
