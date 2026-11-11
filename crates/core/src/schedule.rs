@@ -207,6 +207,9 @@ const COUNT: Own = (msg!("Count"), Kind::Number, From::Count);
 const PHASE_CREATED: Own = ("Phase Created", Kind::Text, From::Param);
 const PHASE_DEMOLISHED: Own = ("Phase Demolished", Kind::Text, From::Param);
 const DESIGN_OPTION: Own = ("Design Option", Kind::Text, From::Param);
+/// The room a component stands in (`room_number`, `room_name` in its JSON), as Revit's Room: Number and Room: Name.
+const ROOM_NUMBER: Own = (msg!("Room Number"), Kind::Text, From::Key("room_number"));
+const ROOM_NAME: Own = (msg!("Room Name"), Kind::Text, From::Key("room_name"));
 const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
 
 /// A multi-category schedule's category: a row for each element of the categories it lists (`Schedule::categories`),
@@ -432,7 +435,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("component", 4, &[FAMILY, TYPE, LEVEL, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    ("component", 4, &[FAMILY, TYPE, LEVEL, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION, ROOM_NUMBER, ROOM_NAME]),
     (
         "stair",
         7,
@@ -519,6 +522,11 @@ pub fn categories() -> Vec<&'static str> {
     OWN.iter().map(|(c, _, _)| *c).collect()
 }
 
+/// Every category with fields: schedules' own, then what schedules aren't of (`MORE`).
+pub fn all_categories() -> Vec<&'static str> {
+    categories().into_iter().chain(MORE.iter().map(|(c, _, _)| *c)).collect()
+}
+
 /// The categories a multi-category schedule lists where it names none: what's built, not rooms, levels and masses.
 pub fn built() -> Vec<&'static str> {
     categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor" | "propertyline")).collect()
@@ -585,8 +593,10 @@ pub fn field_text(m: &Model, id: impl crate::ids::Key, name: &str) -> Option<Str
     field_text_with(m, id, name, &Rooms::new(m))
 }
 
-/// [`field_text`], a room's boundary found among `rooms`.
-pub fn field_text_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &Rooms) -> Option<String> {
+/// Field `name` of element `id`, and what it holds, as its category's schedule works it out: a
+/// length in mm, an area in m², a yes or no as a boolean. None where the element has no such
+/// field, or no value for it.
+pub(crate) fn field_value_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &Rooms) -> Option<(Kind, Value)> {
     let id = m.elements.id(id)?;
     let e = m.elements.get(id)?;
     let cat = e.category();
@@ -595,8 +605,15 @@ pub fn field_text_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &
     let mut row = Row { m, e, cat, json: element_json_with(m, id, rooms), formulas: &formulas, done: BTreeMap::new() };
     match row.get(name) {
         Value::Null => None,
-        v => Some(shown(m.units, kind, &v)),
+        v => Some((kind, v)),
     }
+}
+
+/// [`field_value_with`] as its category's schedule shows it (a length or an area in the project's
+/// units, a yes or no as `Yes` or `No`): what a tag shows.
+pub fn field_text_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &Rooms) -> Option<String> {
+    let (kind, v) = field_value_with(m, id, name, rooms)?;
+    Some(shown(m.units, kind, &v))
 }
 
 /// The fields a schedule of category `cat` shows unless it chooses.
@@ -611,7 +628,7 @@ fn chosen(sc: &Schedule, cat: &str) -> Vec<Field> {
 }
 
 /// What `what` holds, said: `text`, `a number`…
-fn holding(k: Kind) -> &'static str {
+pub(crate) fn holding(k: Kind) -> &'static str {
     match k {
         Kind::Text => "text",
         Kind::Number => "a number",

@@ -254,6 +254,7 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::Voltage => one(&mut to.voltages, Some(&from.voltages), name),
         Kind::DistributionSystem => one(&mut to.distribution_systems, Some(&from.distribution_systems), name),
         Kind::WireType => one(&mut to.wire_types, Some(&from.wire_types), name),
+        Kind::TitleBlock => one(&mut to.title_blocks, Some(&from.title_blocks), name),
         _ => false,
     }
 }

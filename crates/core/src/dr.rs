@@ -14,13 +14,15 @@
 //! An outlet is covered up to a rated current of 32 A (Note 1 of 5.1.3.2.2), in a bathroom too. A circuit or sector of an IT scheme that must not be cut, for the safety of
 //! persons or to keep lives, is left out. What is not covered, and the caller says so: the further rules for the volumes of a
 //! bathroom and for swimming pools, and the other protections against shock the device does not replace.
+//!
+//! The rules are data, not code: `data/dr-check.json` holds a rule set for each standard, every rule naming its source, and
+//! `check` only reads them (`RuleSet`). NBR 5410:2004 is the default and, for now, the only set.
 
-/// The most the device's rated residual current may be, mA.
-pub const MAX_RESIDUAL: f64 = 30.0;
-/// The most an outlet's rated current may be for the rule to cover it, A.
-pub const MAX_OUTLET: f64 = 32.0;
-/// A light at this height (mm) or above, in a dwelling, is left out.
-pub const LIGHT_HEIGHT: f64 = 2500.0;
+use serde::Deserialize;
+use std::sync::OnceLock;
+
+/// The standard `dr_check` follows when none is named.
+pub const DEFAULT: &str = "NBR 5410:2004";
 
 /// Where a point is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,11 +55,6 @@ impl Place {
             "dry" => Place::Dry,
             _ => return None,
         })
-    }
-
-    /// The rooms of a dwelling whose every point needs it, but for high lights.
-    fn wet(self) -> bool {
-        matches!(self, Place::Kitchen | Place::Laundry | Place::Service | Place::Garage | Place::Wet)
     }
 }
 
@@ -113,49 +110,158 @@ pub struct Verdict {
     /// It would need it, but is an IT circuit that must not be cut.
     pub exempt: bool,
     pub reasons: Vec<String>,
+    /// The source of each reason, the standard's item.
+    pub sources: Vec<String>,
     /// Whether what it has is enough; `None` for a circuit that does not need it.
     pub ok: Option<bool>,
 }
 
-fn covered(p: &Point) -> bool {
-    p.kind != Kind::Outlet || p.rating.is_none_or(|a| a <= MAX_OUTLET)
+/// What a building is, as a rule tells them apart.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Building {
+    #[default]
+    Any,
+    Residential,
+    Other,
 }
 
-/// Why a point asks for it, if it does.
-fn reason(p: &Point, residential: bool) -> Option<&'static str> {
-    if !covered(p) {
-        return None;
-    }
-    if p.place == Place::Bath {
-        return Some("bath: a point in a place with a bathtub or a shower");
-    }
-    match (p.place, p.kind) {
-        (Place::External, Kind::Outlet) => Some("external: an outlet in an external area"),
-        (Place::External, _) => None,
-        (_, Kind::Outlet) if p.outdoor => Some("outdoor: an internal outlet that may feed equipment outdoors"),
-        (place, kind) if place.wet() => match (residential, kind) {
-            (true, Kind::Lighting) if p.height.is_some_and(|h| h >= LIGHT_HEIGHT) => None,
-            (true, _) => Some("wet: a point in a kitchen, laundry, service area, garage or other wet internal area of a dwelling"),
-            (false, Kind::Outlet) => Some("wet: an outlet in a kitchen, laundry, service area, garage or other wet internal area"),
-            (false, _) => None,
-        },
-        _ => None,
+/// One case a standard asks the device for, a row of `data/dr-check.json`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Rule {
+    /// A word for the case, which leads the reason the answer gives.
+    pub reason: String,
+    /// The case, in words.
+    pub says: String,
+    /// Keys of `PLACES`; any place when empty.
+    #[serde(default)]
+    pub places: Vec<String>,
+    /// Keys of `KINDS`; any kind when empty.
+    #[serde(default)]
+    pub kinds: Vec<String>,
+    #[serde(default)]
+    pub building: Building,
+    /// Only an internal outlet that may feed equipment outdoors.
+    #[serde(default)]
+    pub outdoor: bool,
+    /// A light this high (mm) or higher is left out.
+    #[serde(default)]
+    pub lights_from_mm: Option<f64>,
+    pub source: String,
+}
+
+/// One standard's rules, an entry of `data/dr-check.json`.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuleSet {
+    /// Its name and edition, which `dr_check {standard}` takes.
+    pub standard: String,
+    /// The document, its item and the other standards that answer the same question.
+    pub source: String,
+    /// The most the device's rated residual current may be, mA.
+    pub max_residual_ma: f64,
+    /// The highest rated current (A) of an outlet the rules reach; none above it.
+    pub max_outlet_a: Option<f64>,
+    #[serde(default)]
+    pub max_outlet_source: String,
+    /// Whether a circuit of an IT scheme that must not be cut is left out.
+    #[serde(default)]
+    pub it_exempt: bool,
+    #[serde(default)]
+    pub it_source: String,
+    pub rules: Vec<Rule>,
+    /// What the set does not check, which the answer says.
+    pub not_covered: String,
+}
+
+#[derive(Default, Deserialize)]
+struct Data {
+    rule_sets: Vec<RuleSet>,
+}
+
+/// The rule sets of `data/dr-check.json`; none if it does not read, which a test keeps from happening.
+pub fn rule_sets() -> &'static [RuleSet] {
+    static SETS: OnceLock<Vec<RuleSet>> = OnceLock::new();
+    SETS.get_or_init(|| serde_json::from_str::<Data>(include_str!("../data/dr-check.json")).map(|d| d.rule_sets).unwrap_or_default())
+}
+
+/// The rule set of a standard, by its name.
+pub fn rule_set(standard: &str) -> Option<&'static RuleSet> {
+    rule_sets().iter().find(|s| s.standard == standard)
+}
+
+impl Place {
+    pub fn key(self) -> &'static str {
+        PLACES[self as usize]
     }
 }
 
-/// What a circuit needs and whether it has it; `residential` says the building is a dwelling.
-pub fn check(c: &Circuit, residential: bool) -> Verdict {
-    let mut reasons: Vec<String> = Vec::new();
-    for r in c.points.iter().filter_map(|p| reason(p, residential)) {
-        if !reasons.iter().any(|x| x == r) {
-            reasons.push(r.to_string());
+impl Kind {
+    pub fn key(self) -> &'static str {
+        KINDS[self as usize]
+    }
+}
+
+impl Rule {
+    /// Whether a point meets this rule in a building that is, or is not, a dwelling.
+    fn holds(&self, p: &Point, residential: bool) -> bool {
+        let building = match self.building {
+            Building::Any => true,
+            Building::Residential => residential,
+            Building::Other => !residential,
+        };
+        let any = |list: &[String], key: &str| list.is_empty() || list.iter().any(|k| k == key);
+        let high_light = p.kind == Kind::Lighting && self.lights_from_mm.is_some_and(|h| p.height.is_some_and(|x| x >= h));
+        building
+            && any(&self.places, p.place.key())
+            && any(&self.kinds, p.kind.key())
+            && (!self.outdoor || (p.kind == Kind::Outlet && p.outdoor))
+            && !high_light
+    }
+}
+
+impl RuleSet {
+    fn covered(&self, p: &Point) -> bool {
+        p.kind != Kind::Outlet || p.rating.is_none_or(|a| self.max_outlet_a.is_none_or(|m| a <= m))
+    }
+
+    /// The rule a point meets first, if any.
+    pub fn rule(&self, p: &Point, residential: bool) -> Option<&Rule> {
+        if !self.covered(p) {
+            return None;
         }
+        self.rules.iter().find(|r| r.holds(p, residential))
     }
-    let asked = !reasons.is_empty();
-    let exempt = asked && c.it_continuity;
-    let required = asked && !exempt;
-    let ok = required.then(|| c.residual.is_some_and(|r| r <= MAX_RESIDUAL));
-    Verdict { required, exempt, reasons, ok }
+
+    /// What a circuit needs and whether it has it; `residential` says the building is a dwelling.
+    pub fn check(&self, c: &Circuit, residential: bool) -> Verdict {
+        let mut reasons: Vec<String> = Vec::new();
+        let mut sources: Vec<String> = Vec::new();
+        for r in c.points.iter().filter_map(|p| self.rule(p, residential)) {
+            let reason = format!("{}: {}", r.reason, r.says);
+            if !reasons.contains(&reason) {
+                reasons.push(reason);
+                sources.push(r.source.clone());
+            }
+        }
+        let asked = !reasons.is_empty();
+        let exempt = asked && self.it_exempt && c.it_continuity;
+        let required = asked && !exempt;
+        let ok = required.then(|| c.residual.is_some_and(|r| r <= self.max_residual_ma));
+        Verdict { required, exempt, reasons, sources, ok }
+    }
+}
+
+/// The default standard's rules (empty, so asking nothing, if the data did not read).
+pub fn default_set() -> &'static RuleSet {
+    static EMPTY: OnceLock<RuleSet> = OnceLock::new();
+    rule_set(DEFAULT).unwrap_or_else(|| EMPTY.get_or_init(RuleSet::default))
+}
+
+/// What a circuit needs by the default standard; `residential` says the building is a dwelling.
+pub fn check(c: &Circuit, residential: bool) -> Verdict {
+    default_set().check(c, residential)
 }
 
 #[cfg(test)]

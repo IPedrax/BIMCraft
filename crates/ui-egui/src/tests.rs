@@ -609,6 +609,33 @@ fn a_tool_acts_on_what_lay_under_the_press_not_under_where_the_hand_let_go() {
 }
 
 #[test]
+fn upper_plan_opening_preview_and_placement_use_the_upper_level() {
+    let mut h = app(r#"level {"name":"Upper","elevation":3400}
+wall {"points":[[0,0],[8000,0],[8000,6000],[0,6000]],"closed":true,"height":7200}"#);
+    // The first browser entry is the floor plan; use its accessible action even below the palette's fold.
+    h.get_all_by_label("Upper").min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap().click_accesskit();
+    h.run();
+    let upper = find(&h, |e| matches!(e, Element::Level(l) if l.name == "Upper"));
+    assert_eq!(h.state().sheet, Sheet::Plan(upper));
+    for (name, point, expected) in [("Window", P2(4000.0, 0.0), 4300.0), ("Door", P2(8000.0, 3000.0), 3400.0)] {
+        tool(&mut h, name);
+        assert_eq!(h.state().sheet, Sheet::Plan(upper));
+        let s = &h.state().session;
+        let preview = bimcraft_core::opening_of(&s.model, &json!({"at":[point.0,point.1],"level":"Upper"}), name == "Door").unwrap();
+        let (Element::Door(o) | Element::Window(o)) = preview else { panic!("not an opening") };
+        assert_eq!(s.model.opening_frame(&o).unwrap().2, expected, "preview {name}");
+        click(&mut h, point);
+        assert!(!h.state().status.error, "{}", h.state().status.text);
+        let id = ids(&h, &name.to_lowercase())[0];
+        let (Element::Door(o) | Element::Window(o)) = h.state().session.model.elements.get(id).unwrap() else { panic!("not an opening") };
+        assert_eq!(h.state().session.model.opening_frame(o).unwrap().2, expected, "placed {name}");
+        key(&mut h, Key::Escape);
+        click(&mut h, point);
+        assert!(h.state().selection.contains(&id), "placed opening can be picked on Upper");
+    }
+}
+
+#[test]
 fn doors_and_windows_go_into_the_wall_clicked() {
     let mut h = app(BOX);
     let bottom = ids(&h, "wall")[0];
@@ -958,6 +985,8 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
 #[test]
 fn manage_tab_opens_keyboard_shortcuts_dialog() {
     let mut h = app(BOX);
+    // Wide enough that the Manage tab shows every panel unfolded.
+    h.set_size(vec2(1800.0, 900.0));
     press(&mut h, "Manage");
     press(&mut h, "Shortcuts");
     assert!(h.state().show_shortcuts);
@@ -4129,6 +4158,9 @@ fn grids_drawn_near_alignment_guide_snap_to_other_grids_reference_points() {
 fn shortcut_toggles_alignment_guides() {
     let mut h = app("");
     assert!(h.state().snaps.alignment_guides);
+    // F11 is free now: only F8, and the legacy two-letter sequences, move the guides.
+    key(&mut h, Key::F11);
+    assert!(h.state().snaps.alignment_guides, "F11 no longer toggles the guides");
     key(&mut h, Key::F8);
     assert!(!h.state().snaps.alignment_guides);
     key(&mut h, Key::F8);
@@ -4190,6 +4222,48 @@ fn a_selected_walls_ends_are_grips_to_drag_and_ctrl_turns_it_about_the_other_end
     let (a, b) = walls(&h)[0];
     drag(&mut h, (a + b) * 0.5, (a + b) * 0.5 + P2(0.0, 500.0));
     let (c, d) = walls(&h)[0];
+    assert!(c.1 > a.1 + 400.0 && d.1 > b.1 + 400.0, "{a:?} {b:?} -> {c:?} {d:?}: both ends went up");
+}
+
+#[test]
+fn a_selected_runs_ends_are_grips_that_drag_one_end_with_snaps_and_ctrl_keeps_the_length() {
+    let mut h = app(r#"strip_footing {"points": [[0,0],[4000,0]]}"#);
+    let footing = ids(&h, "stripfooting")[0];
+    h.state_mut().selection = vec![footing];
+    h.run();
+    let ends = |h: &Harness<BimApp>| match h.state().session.model.elements.get(footing).map(|e| e.run().unwrap().clone()) {
+        Some(r) => (r.start, r.end),
+        None => panic!("the footing is there"),
+    };
+    assert_eq!(h.state().tool, Tool::Modify, "Modify is the tool that grips");
+    // The end is a grip: dragged, only that end goes, with the snap of the point it lands on.
+    drag(&mut h, P2(4000.0, 0.0), P2(5500.0, 1200.0));
+    let (a, b) = ends(&h);
+    assert_eq!(a, P2(0.0, 0.0), "the start stayed");
+    assert_eq!(b, P2(5500.0, 1200.0), "the end went where it was dropped");
+    assert_eq!(h.state().selection, vec![footing], "still selected, to drag again");
+    // Ctrl keeps its length: it turns about its start toward the cursor.
+    let length = a.dist(b);
+    h.event(Event::ModifiersChanged(Modifiers::COMMAND));
+    h.run();
+    drag(&mut h, b, P2(2000.0, 4000.0));
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    let (a, b) = ends(&h);
+    assert_eq!(a, P2(0.0, 0.0));
+    assert!((a.dist(b) - length).abs() < 1e-2, "{} {length}", a.dist(b));
+    assert!((degrees(a, b) - degrees(P2(0.0, 0.0), P2(2000.0, 4000.0))).abs() < 1e-2, "{b:?}");
+    // The start is a grip too, and the other end stays.
+    drag(&mut h, P2(0.0, 0.0), P2(-500.0, 200.0));
+    let (a, b) = ends(&h);
+    assert_eq!((a, b), (P2(-500.0, 200.0), b));
+    // Reframe, so the middle of the run is on screen to drag from.
+    h.get_by_label("Zoom to Fit").click();
+    h.run();
+    // A drag that starts away from the ends moves the whole run, as it did.
+    let mid = (a + b) * 0.5;
+    drag(&mut h, mid, mid + P2(0.0, 500.0));
+    let (c, d) = ends(&h);
     assert!(c.1 > a.1 + 400.0 && d.1 > b.1 + 400.0, "{a:?} {b:?} -> {c:?} {d:?}: both ends went up");
 }
 
@@ -5859,6 +5933,7 @@ fn the_massing_tab_makes_floors_walls_a_floor_and_a_roof_from_the_selected_mass(
 }
 
 mod align;
+mod assistant;
 mod autosave;
 mod browser;
 mod cad;
@@ -5903,6 +5978,7 @@ mod revit;
 mod rooms;
 mod section_box;
 mod shape3d;
+mod sheets;
 mod shortcuts_kept;
 mod sketch;
 mod sketch3d;
@@ -5913,6 +5989,7 @@ mod start;
 mod templates;
 mod themes;
 mod titlebar;
+mod titleblocks;
 mod tools;
 mod triad;
 mod trim;
@@ -6472,6 +6549,39 @@ fn a_right_click_in_a_plan_opens_a_menu_of_what_the_view_and_the_selection_can_d
     choose_item(&mut h, "Edit Type");
     assert!(h.state().type_dialog.is_some(), "Type Properties is open");
     assert_eq!(h.state().selection, [south], "a right click leaves the selection as it was");
+}
+
+#[test]
+fn a_wall_or_a_run_selected_offers_to_refuse_or_take_up_its_joins() {
+    let mut h = app(r#"strip_footing {"points": [[0, 0], [4000, 0]]}"#);
+    let footing = ids(&h, "stripfooting")[0];
+    let joined = |h: &Harness<BimApp>| h.state().session.model.run_of(footing).unwrap().join;
+    click(&mut h, P2(2000.0, 0.0));
+    assert_eq!(h.state().selection, [footing]);
+    let at = h.state().screen(P2(2000.0, 2000.0));
+    let items = offered(&mut h, at, &["Disallow Join", "Allow Join"]);
+    assert!(items.contains(&"Disallow Join") && items.contains(&"Allow Join"), "{items:?}");
+    assert!(joined(&h));
+    // Refused: the flag holds on the element, written only when it is off.
+    choose_item(&mut h, "Disallow Join");
+    assert!(!joined(&h), "the joins are refused");
+    assert_eq!(field(&h, footing, "join"), json!(false));
+    // Taken up again.
+    let at = h.state().screen(P2(2000.0, 2000.0));
+    offered(&mut h, at, &["Disallow Join", "Allow Join"]);
+    choose_item(&mut h, "Allow Join");
+    assert!(joined(&h), "the joins are back");
+    assert_eq!(field(&h, footing, "join"), serde_json::Value::Null, "joining is written nowhere");
+    // A wall offers it too; a room offers nothing.
+    let mut h2 = app(&format!("{BOX}\nroom {{\"point\": [4000, 3000]}}"));
+    click(&mut h2, P2(4000.0, 0.0));
+    let at = h2.state().screen(P2(4000.0, 3000.0));
+    assert!(offered(&mut h2, at, &["Disallow Join"]).contains(&"Disallow Join"));
+    let room = ids(&h2, "room")[0];
+    h2.state_mut().selection = vec![room];
+    h2.run();
+    let at = h2.state().screen(P2(4000.0, 3000.0));
+    assert!(offered(&mut h2, at, &["Disallow Join", "Allow Join"]).is_empty());
 }
 
 #[test]
