@@ -2454,6 +2454,10 @@ fn hostile_params_never_panic_or_break_the_model() {
         // A sheet's title block that's neither a name nor true or false, and a title block that would be called none.
         json!({"number": "Z2", "title_block": [false], "name": "none", "rename": " NONE "}),
         json!({"id": 100000, "title_block": {"none": true}}),
+        // A drawing area out of order, past any paper or not two corners, and a template border that isn't a flag.
+        json!({"name": "T", "drawing_area": [[50, 50], [10, 10]], "template_border": "x"}),
+        json!({"name": "T", "drawing_area": [[0, 0], [f64::MAX, 1e300]]}),
+        json!({"name": "T", "drawing_area": [[0, 0]], "template_border": true}),
     ];
     let mut base = Session::new();
     house(&mut base);
