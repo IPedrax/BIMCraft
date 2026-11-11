@@ -103,6 +103,14 @@ wall opens it at the opening as ever; one cutting over the wall's top cuts neith
 from above (`walls::notches`). IFC writes the opening's void at its full height (a boolean takes off only what is in the wall)
 and the door or window at its own size, and the wall's net quantities take off only the part of each opening in the wall; the
 IFC import brings such an opening in, and leaves out with a note naming the file's wall one whose sill is at or over its top.
+When `door` or `window` explicitly names a `level` different from its host wall's level, placement starts at that level's
+elevation (a window adds its supplied or type/family default sill). The command converts that absolute elevation to the
+native `Opening::sill`, which remains relative to `Model::own_base` of the host; previews use the same builder. For example,
+a level at 3400 mm and a window sill of 900 mm give a window at 4300 mm even in a wall starting at ground level.
+With no requested level, or with the host's own level requested, placement keeps its host-base-relative meaning, including
+raised wall base offsets. A supplied level is validated even with an explicit `wall`. Existing host-fit checks and rollback
+still refuse a sill below the host base or at/above its top. This is a placement conversion, with no native format change;
+moving a level later does not rehost an existing opening.
 A roof by footprint is the straight skeleton of its outline and its `courtyards` (`skeleton::faces`: the outline
 counter-clockwise, the courtyards clockwise, the roof to the left of every edge): each edge moves in at speed 1, a gable's at
 0, and its slope rises from it, reaching the roof's base `overhang` in from its eaves; a courtyard's edges number on after
