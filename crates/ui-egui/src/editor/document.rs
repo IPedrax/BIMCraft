@@ -1049,9 +1049,29 @@ impl BimApp {
             }
         } else {
             let response = ui.interact(pane, UiId::new("family-preview"), Sense::click_and_drag());
-            // A click in the view lets the selected form go, as a click on nothing does in Revit.
-            if response.clicked() && !ed.sketching() {
-                ed.form = None;
+            // Where a point of the pane is in the picture last drawn, through the camera it was drawn with.
+            let drawn = ed.preview.as_ref().map(|p| (p.cam, p.size));
+            let in_picture = |p: egui::Pos2, size: [u32; 2]| {
+                (
+                    f64::from((p.x - pane.min.x) * size[0] as f32 / pane.width().max(1.0)),
+                    f64::from((p.y - pane.min.y) * size[1] as f32 / pane.height().max(1.0)),
+                )
+            };
+            // A click selects the form or the nested instance under it, and on nothing lets the selection go, as in Revit
+            // and the project's 3D view; the pointer over one lights it first (T11).
+            if let Some((cam, size)) = drawn
+                && !ed.sketching()
+            {
+                if response.clicked()
+                    && let Some(p) = response.interact_pointer_pos()
+                {
+                    ed.click_3d(&cam, in_picture(p, size));
+                }
+                let still = !response.dragged() && ui.input(|i| !i.pointer.any_down());
+                let at = response.hover_pos().filter(|_| still).map(|p| (p, in_picture(p, size)));
+                ed.hover_3d(at, &cam);
+            } else {
+                ed.views.hover3d = None;
             }
             ed.document.preview_size = [pane.width().clamp(64.0, 1600.0) as u32, pane.height().clamp(64.0, 1200.0) as u32];
             // While sketching, a drag drags a picked line's end rather than turn the view, unless none is held.
@@ -1069,10 +1089,7 @@ impl BimApp {
                 && !ed.sketching()
                 && let (Some(p), Some((cam, size))) = (response.interact_pointer_pos(), ed.preview.as_ref().map(|p| (p.cam, p.size)))
             {
-                let px = (
-                    f64::from((p.x - pane.min.x) * size[0] as f32 / pane.width().max(1.0)),
-                    f64::from((p.y - pane.min.y) * size[1] as f32 / pane.height().max(1.0)),
-                );
+                let px = in_picture(p, size);
                 let values = ed.values();
                 let hit = ed.family().ok().and_then(|f| bimcraft_core::family::views::form_at_3d(&f, &values, &cam, px));
                 if let Some(i) = hit {

@@ -3865,6 +3865,82 @@ pub fn inside(m: &Model, cam: Camera) -> Camera {
     Camera { target: middle, scale: f / 1000.0, ..cam }
 }
 
+/// A rectangle of a plane drawn into a 3D picture as a work plane is shown, and its patch (`Image::draw_marks`, and the card's
+/// `fs_marks`): from `lo` to `hi` along its `axes` (across it and up it, unit and square to each other) from `origin`,
+/// filled with `fill`, grid lines `step` apart through `origin` (none for 0) in `grid`, and its outline `edge_width` pixels
+/// wide inside it in `edge`. Each colour is premultiplied red, green, blue and alpha, laid over what is there. It is depth
+/// tested as a surface is: hidden where an opaque surface stands nearer the camera, by more than half a pixel's worth (so
+/// a face it lies on, a level's floor top, doesn't hide it), and seen through its fill elsewhere.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PlaneMark {
+    pub origin: P3,
+    pub axes: (P3, P3),
+    pub lo: (f64, f64),
+    pub hi: (f64, f64),
+    pub step: f64,
+    pub fill: [u8; 4],
+    pub grid: [u8; 4],
+    pub edge: [u8; 4],
+    pub edge_width: f64,
+}
+
+/// How much nearer than a mark, in pixels' worth of depth, a surface must be to hide it: the card's `MARK_SLACK`.
+pub const MARK_SLACK: f64 = 0.5;
+
+/// `c` laid over `under`, both premultiplied and 0 to 255, unclamped: the card blends a pixel's marks so, then lays them over
+/// the picture once.
+fn laid(c: [f32; 4], under: [f32; 4]) -> [f32; 4] {
+    let keep = 1.0 - c[3] / 255.0;
+    std::array::from_fn(|i| c[i] + under[i] * keep)
+}
+
+/// Mark `m` laid over what `acc` holds of the marks before it at each pixel (`width` by `height`), hidden where `depth`
+/// (nearness, as [`Camera::project`] gives it; none for a picture with no surfaces) says an opaque surface is nearer.
+fn paint_mark(acc: &mut [[f32; 4]], depth: &[f32], (w, h): (usize, usize), cam: &Camera, m: &PlaneMark) {
+    let (across, up) = m.axes;
+    let normal = unit(cross(across, up));
+    if acc.len() < w * h {
+        return;
+    }
+    // Where each pixel's ray meets the plane, in its axes, and how near the camera that is.
+    let at: Vec<Option<(f64, f64, f64)>> = (0..w * h)
+        .map(|k| {
+            let p = cam.on(((k % w) as f64 + 0.5, (k / w) as f64 + 0.5), m.origin, normal)?;
+            let d = sub(p, m.origin);
+            Some((dot(d, across), dot(d, up), cam.project(p).2))
+        })
+        .collect();
+    let float = |c: [u8; 4]| c.map(f32::from);
+    let near = |v: f64, mark: f64, reach: f64| (v - mark).abs() <= reach;
+    let (lo, hi) = (m.lo, m.hi);
+    for k in 0..w * h {
+        let Some((u, v, z)) = at[k] else { continue };
+        if u < lo.0 || u > hi.0 || v < lo.1 || v > hi.1 {
+            continue;
+        }
+        if depth.get(k).is_some_and(|s| s.is_finite() && f64::from(*s) > z + cam.slack(MARK_SLACK, z)) {
+            continue;
+        }
+        // How far the plane runs across a pixel here: half that either side of a line is that line's pixel.
+        let next = |j: usize| at.get(j).copied().flatten();
+        let (mut fu, mut fv) = (0.0f64, 0.0f64);
+        for (ok, j) in [(k % w + 1 < w, k + 1), (k / w + 1 < h, k + w)] {
+            if let Some((u2, v2, _)) = next(j).filter(|_| ok) {
+                (fu, fv) = (fu.max((u2 - u).abs()), fv.max((v2 - v).abs()));
+            }
+        }
+        let r = fu.max(fv) / 2.0;
+        let e = 2.0 * r * m.edge_width;
+        let mut c = float(m.fill);
+        if near(u, lo.0, e) || near(u, hi.0, e) || near(v, lo.1, e) || near(v, hi.1, e) {
+            c = laid(float(m.edge), c);
+        } else if m.step > 0.0 && (near(u, (u / m.step).round() * m.step, r) || near(v, (v / m.step).round() * m.step, r)) {
+            c = laid(float(m.grid), c);
+        }
+        acc[k] = laid(c, acc[k]);
+    }
+}
+
 /// A picture of the 3D view: its pixels, and which element each one shows.
 #[derive(Clone)]
 pub struct Image {
@@ -3947,59 +4023,85 @@ impl Image {
     /// `across` and `up` from `origin`, unit and square to each other) tinted, with grid lines `step` apart through `origin`
     /// and its outline, a pixel wide wherever it is seen. Each colour is premultiplied red, green, blue and alpha, laid over
     /// what is there. Only where no opaque surface stands nearer the camera than the plane: a form in front of it hides it,
-    /// one behind it is seen through its tint.
+    /// one behind it is seen through its tint ([`PlaneMark`]).
     #[allow(clippy::too_many_arguments)]
     pub fn draw_plane(
         &mut self,
         cam: &Camera,
         origin: P3,
-        (across, up): (P3, P3),
+        axes: (P3, P3),
         (lo, hi): ((f64, f64), (f64, f64)),
         step: f64,
-        tint: [u8; 4],
+        fill: [u8; 4],
         grid: [u8; 4],
         edge: [u8; 4],
     ) {
+        self.draw_marks(cam, &[PlaneMark { origin, axes, lo, hi, step, fill, grid, edge, edge_width: 1.0 }]);
+    }
+
+    /// `marks` drawn into the picture taken through `cam`, one over another, each where no opaque surface stands nearer.
+    pub fn draw_marks(&mut self, cam: &Camera, marks: &[PlaneMark]) {
+        let mut rgba = std::mem::take(&mut self.rgba);
+        self.mark(&mut rgba, cam, marks);
+        self.rgba = rgba;
+    }
+
+    /// `marks` drawn over `rgba` (red, green, blue and alpha, as big as this picture: this picture's pixels as they are
+    /// shown), as [`draw_marks`](Self::draw_marks) draws them into it, hidden where this picture's opaque surfaces are nearer.
+    pub fn mark(&self, rgba: &mut [u8], cam: &Camera, marks: &[PlaneMark]) {
         let (w, h) = (self.width as usize, self.height as usize);
-        let normal = unit(cross(across, up));
-        // Where each pixel's ray meets the plane, in its axes, and how near the camera that is.
-        let at: Vec<Option<(f64, f64, f64)>> = (0..w * h)
-            .map(|k| {
-                let p = cam.on(((k % w) as f64 + 0.5, (k / w) as f64 + 0.5), origin, normal)?;
-                let d = sub(p, origin);
-                Some((dot(d, across), dot(d, up), cam.project(p).2))
-            })
-            .collect();
-        let over = |px: &mut [u8], c: [u8; 4]| {
-            let keep = 1.0 - f32::from(c[3]) / 255.0;
+        let mut acc = vec![[0.0f32; 4]; w * h];
+        for m in marks {
+            paint_mark(&mut acc, &self.depth, (w, h), cam, m);
+        }
+        // All of a pixel's marks laid over it at once, as the card blends them.
+        for (px, c) in rgba.as_chunks_mut::<4>().0.iter_mut().zip(&acc).filter(|(_, c)| c[3] > 0.0 || c[..3].iter().any(|v| *v > 0.0)) {
+            let under = [f32::from(px[0]), f32::from(px[1]), f32::from(px[2]), 255.0];
+            let out = laid(*c, under);
             for i in 0..3 {
-                px[i] = (f32::from(c[i]) + f32::from(px[i]) * keep).round().min(255.0) as u8;
+                px[i] = out[i].round().clamp(0.0, 255.0) as u8;
             }
-        };
-        let near = |v: f64, mark: f64, reach: f64| (v - mark).abs() <= reach;
-        for k in 0..w * h {
-            let Some((u, v, z)) = at[k] else { continue };
-            if u < lo.0 || u > hi.0 || v < lo.1 || v > hi.1 {
+        }
+    }
+
+    /// The line from `a` to `b` drawn into the picture taken through `cam`, `width` pixels wide in `color` (premultiplied red,
+    /// green, blue and alpha, laid over what is there), where no opaque surface stands nearer than it by more than
+    /// [`MARK_SLACK`] pixels' worth: a line a form stands in front of is hidden there, as a mark is.
+    pub fn draw_line(&mut self, cam: &Camera, [a, b]: [P3; 2], width: f64, color: [u8; 4]) {
+        let (w, h) = (self.width as usize, self.height as usize);
+        let Some([a, b]) = cam.in_front(a, b) else { return };
+        let (pa, pb) = (cam.project(a), cam.project(b));
+        if ![pa.0, pa.1, pb.0, pb.1].iter().all(|v| v.is_finite()) {
+            return;
+        }
+        // A step at most half a pixel along it on screen, each step's point found along the line in the model.
+        let long = ((pb.0 - pa.0).hypot(pb.1 - pa.1) * 2.0).ceil().min(1e5) as usize + 1;
+        let reach = (width / 2.0).max(0.5);
+        let mut done = vec![false; w * h];
+        for i in 0..=long {
+            let t = i as f64 / long as f64;
+            let (x, y, z) = cam.project(add(a, mul(sub(b, a), t)));
+            if !(x.is_finite() && y.is_finite() && z.is_finite()) {
                 continue;
             }
-            if self.depth.get(k).is_some_and(|s| s.is_finite() && f64::from(*s) > z + 0.5) {
-                continue;
-            }
-            // How far the plane runs across a pixel here: half that either side of a line is that line's pixel.
-            let next = |j: usize| at.get(j).copied().flatten();
-            let (mut fu, mut fv) = (0.0f64, 0.0f64);
-            for (ok, j) in [(k % w + 1 < w, k + 1), (k / w + 1 < h, k + w)] {
-                if let Some((u2, v2, _)) = next(j).filter(|_| ok) {
-                    (fu, fv) = (fu.max((u2 - u).abs()), fv.max((v2 - v).abs()));
+            let (x0, x1) = ((x - reach).floor().max(0.0) as usize, ((x + reach).ceil().max(0.0) as usize).min(w));
+            let (y0, y1) = ((y - reach).floor().max(0.0) as usize, ((y + reach).ceil().max(0.0) as usize).min(h));
+            for py in y0..y1 {
+                for px in x0..x1 {
+                    let k = py * w + px;
+                    let (cx, cy) = (px as f64 + 0.5, py as f64 + 0.5);
+                    if done[k] || (cx - x).abs() > reach || (cy - y).abs() > reach {
+                        continue;
+                    }
+                    if self.depth.get(k).is_some_and(|s| s.is_finite() && f64::from(*s) > z + cam.slack(MARK_SLACK, z)) {
+                        continue;
+                    }
+                    done[k] = true;
+                    let keep = 1.0 - f32::from(color[3]) / 255.0;
+                    for (v, c) in self.rgba[4 * k..4 * k + 3].iter_mut().zip(color) {
+                        *v = (f32::from(c) + f32::from(*v) * keep).round().min(255.0) as u8;
+                    }
                 }
-            }
-            let (ru, rv) = (fu.max(fv) / 2.0, fu.max(fv) / 2.0);
-            let px = &mut self.rgba[4 * k..4 * k + 4];
-            over(px, tint);
-            if near(u, lo.0, 2.0 * ru) || near(u, hi.0, 2.0 * ru) || near(v, lo.1, 2.0 * rv) || near(v, hi.1, 2.0 * rv) {
-                over(px, edge);
-            } else if step > 0.0 && (near(u, (u / step).round() * step, ru) || near(v, (v / step).round() * step, rv)) {
-                over(px, grid);
             }
         }
     }
