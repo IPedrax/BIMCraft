@@ -69,10 +69,10 @@ const CONNECTOR: u64 = 55;
 const CONNECTOR_DEFINES: u64 = 56;
 const TYPE_MATERIALS: u64 = 57;
 const USAGE_MATERIALS: u64 = 58;
-const GRID: u64 = 59;
-const GRID_CONTAINS: u64 = 60;
 const WALLED: u64 = 61;
 const WALLED_DEFINES: u64 = 62;
+const GRID: u64 = 73;
+const GRID_CONTAINS: u64 = 74;
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
