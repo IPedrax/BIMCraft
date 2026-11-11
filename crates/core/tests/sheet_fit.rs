@@ -76,6 +76,24 @@ mod tests {
     }
 
     #[test]
+    fn fitting_uses_the_room_the_sheets_title_block_leaves() {
+        // No title block: the 1 : 200 picture, 379 x 215 mm and its title under it, has the whole border, 380 x 267 mm in.
+        let mut s = building(60000.0, 40000.0);
+        s.execute("sheet", &json!({"number": "A102", "size": "A3", "title_block": "none"})).unwrap();
+        let placed = s.execute("place", &json!({"sheet": "A102", "view": "{3D}"})).unwrap();
+        assert_eq!(placed["scale"], 200.0, "{placed}");
+        assert!(placed.get("warning").is_none(), "{placed}");
+        // A drawing area 200 mm wide: seen horizontally, the picture 379 mm wide at 1 : 200 takes 1 : 500 to fit it.
+        let mut s = building(60000.0, 40000.0);
+        s.execute("title_block", &json!({"name": "Area", "drawing_area": [[25, 60], [225, 280]]})).unwrap();
+        s.execute("sheet", &json!({"number": "A102", "size": "A3", "title_block": "Area"})).unwrap();
+        let placed = s.execute("place", &json!({"sheet": "A102", "view": "{3D}", "elevation": 0, "azimuth": -45})).unwrap();
+        assert_eq!(placed["scale"], 500.0, "{placed}");
+        let at = placed["at"].as_array().unwrap().iter().map(|v| v.as_f64().unwrap()).collect::<Vec<_>>();
+        assert!((25.0..=225.0).contains(&at[0]) && (60.0..=280.0).contains(&at[1]), "in the drawing area: {placed}");
+    }
+
+    #[test]
     fn fitting_uses_the_finest_offered_imperial_scale_that_fits() {
         let mut s = building(60000.0, 40000.0);
         s.execute("units", &json!({"length": "in"})).unwrap();
