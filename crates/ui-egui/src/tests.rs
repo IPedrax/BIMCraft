@@ -2844,7 +2844,7 @@ fn nothing_a_translated_interface_shows_is_left_in_english() {
     use egui_kittest::kittest::{By, NodeT};
     // A label in English that the table translates is a string the window forgot to translate: a
     // widget's name, or a plain label's text, which egui gives screen readers as its value.
-    // A shortcut key (PN, UP) is not English prose: the Keyboard Shortcuts window shows it as it is in every language.
+    // A shortcut key (PR, UP) is not English prose: the Keyboard Shortcuts window shows it as it is in every language.
     let keys: Vec<&str> = crate::shortcuts().into_iter().map(|(k, _)| k).collect();
     let english = |h: &Harness<BimApp>, l: Lang| -> Vec<String> {
         h.query_all(By::new())

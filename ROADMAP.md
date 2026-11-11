@@ -84,7 +84,7 @@ The goal is the editing tools a working architect reaches for every hour.
 |---|---|
 | Arrays, linear and radial, optionally kept as a group | M |
 | Groups (model groups) with group types, edit group, and exclude a member | L |
-| ~~Pin and unpin~~; a selection filter; match type properties | S | Pin and unpin done: `pin` and `unpin` (PR, UP) keep elements where they are, and the commands that place, draw or delete them refuse them, `modify`'s placing fields included; the selection filter (`selection.rs`) and `match_properties` (MA) were already in |
+| Pin and unpin: done (`pin` and `unpin`, PR and UP, keep elements where they are, and the commands that place, draw or delete them refuse them, `modify`'s placing fields included); a selection filter (`selection.rs`) and match type properties (`match_properties`, MA): done | S |
 | Locked and equal dimension constraints: done (`constraints.rs`: padlocks and EQ on aligned and linear dimensions, kept after every command); left: dimensions bound to parameters (labels) | M |
 | Copy to the clipboard, and paste aligned to the same place, to selected levels or to the current view | M |
 | Join and cut geometry (wall to floor, column to wall cleanups in plan and section) | M |

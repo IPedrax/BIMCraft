@@ -7147,6 +7147,9 @@ fn reinforce_host(s: &mut Session, p: &Value) -> R {
     let weight: f64 = made.iter().flat_map(|(_, _, _, bars)| bars).map(|b| rebar::weight_kg(b.diameter, rebar::length(&b.path))).sum();
     let m = s.model_mut();
     for i in &old {
+        // A pinned bar the rule made goes as the others do, and its pin with it: the bars in its place are new elements.
+        let g = m.guid(*i);
+        m.pinned.remove(&g);
         m.elements.remove(*i);
     }
     let mut ids: Vec<Id> = Vec::new();
