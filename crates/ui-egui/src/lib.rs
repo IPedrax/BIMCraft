@@ -1689,6 +1689,7 @@ impl BimApp {
         self.poll_plugins(&ctx);
         self.poll_autosave(&ctx);
         self.keys(&ctx);
+        self.family_keys(&ctx);
         self.os_requests(&ctx);
         self.dialog_answered();
         self.watch_window(&ctx);
@@ -3331,19 +3332,29 @@ impl BimApp {
                 }
                 ui.separator();
                 ui.spacing_mut().item_spacing.x = 0.0;
+                // A family document's Undo and Redo are its own: the project's steps are not offered while it is open.
+                let family = self.family_doc();
                 if icon_button(ui, Icon::Undo, "Undo").clicked() {
-                    if self.family_doc() {
+                    if family {
                         self.family_undo();
                     } else {
                         self.run("undo", json!({}));
                     }
                 }
-                self.steps_list(ui, false);
-                ui.add_space(4.0);
-                if icon_button(ui, Icon::Redo, "Redo").clicked() && !self.family_doc() {
-                    self.run("redo", json!({}));
+                if !family {
+                    self.steps_list(ui, false);
                 }
-                self.steps_list(ui, true);
+                ui.add_space(4.0);
+                if icon_button(ui, Icon::Redo, "Redo").clicked() {
+                    if family {
+                        self.family_redo();
+                    } else {
+                        self.run("redo", json!({}));
+                    }
+                }
+                if !family {
+                    self.steps_list(ui, true);
+                }
                 ui.spacing_mut().item_spacing.x = 8.0;
                 ui.separator();
                 if icon_button(ui, Icon::View3D, "Default 3D View").clicked() {

@@ -5761,24 +5761,29 @@ fn the_family_editor_edits_a_family_says_what_wont_build_and_starts_a_new_one_of
     press(&mut h, "Edit Family");
     assert!(h.state().family_editor.is_some(), "the window is open on the table's family");
     // The table's parameters, a row each: its fourth is its top's thickness, 40 mm.
+    press(&mut h, "Family Types");
     type_into(&mut h, "Parameter Value 4", "55");
-    press_near(&mut h, "Apply", "Cancel");
+    press(&mut h, "OK");
+    press(&mut h, "Load into Project");
     let thickness = |h: &Harness<BimApp>| h.state().session.model.families["Table"].parameters[3].value.clone();
     assert_eq!(thickness(&h), json!(55.0));
     // A formula naming what isn't there is said, in the window; the project's family is as it was.
+    press(&mut h, "Family Types");
     type_into(&mut h, "Parameter Formula 4", "Nope + 1");
     press_near(&mut h, "Apply", "Cancel");
     assert!(h.state().status.text.is_empty(), "the window says it itself: a box over the view's corner would lie on its buttons");
     assert_eq!(h.query_all_by_label_contains("Nope").count(), 1, "the window says what's wrong, once");
     assert_eq!(h.state().session.model.families["Table"].parameters[3].formula, None);
     press(&mut h, "Cancel");
-    assert!(h.state().family_editor.is_none(), "Cancel closes it");
+    assert!(h.state().family_editor.is_some(), "Cancel closes Family Types and restores its draft");
+    press(&mut h, "Close Family");
+    assert!(h.state().family_editor.is_none());
     // A new family of a category: its name, then OK; a door's has the opening's Width and Height.
     key(&mut h, Key::Escape);
     press(&mut h, "New Family");
     press(&mut h, "Door");
     type_into(&mut h, "Family name", "Cupboard Door");
-    press(&mut h, "OK");
+    press(&mut h, "Load into Project and Close");
     let f = &h.state().session.model.families["Cupboard Door"];
     assert_eq!(f.category, bimcraft_core::family::Category::Door);
     assert!(f.parameters.iter().any(|p| p.name == "Width") && !f.forms.is_empty());
@@ -6929,3 +6934,5 @@ fn adaptive_editor_visual_preview_in_three_looks() {
     }
 }
 mod background_grid;
+
+mod family_document;

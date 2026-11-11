@@ -626,7 +626,7 @@ impl BimApp {
         match p {
             Palette::Properties | Palette::Tools | Palette::Assistant => t(p.label()).to_string(),
             Palette::Browser => match &self.family_editor {
-                Some(ed) if ed.document() => format!("{} · {}", t(p.label()), ed.title()),
+                Some(ed) => format!("{} · {}", t(p.label()), ed.title()),
                 _ => format!("{} · {}", t(p.label()), self.session.model.name),
             },
         }

@@ -8,3 +8,6 @@ target/
 /COMPILADO/
 /COMPILADO_COMPLETO/
 .vscode/
+
+# Headless UI visual-verification exports.
+/crates/ui-egui/target/

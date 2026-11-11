@@ -2,6 +2,7 @@
 //! preview as they're typed, then made the project's, saved to a file or kept in the Favorites.
 //! Every change to the project is a `family` command, so it's checked, and undone, like any other.
 
+mod association;
 pub(crate) mod document;
 
 use crate::popup::Modal;
@@ -94,7 +95,7 @@ enum Shape {
 }
 
 /// A form as typed.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct FormText {
     /// What it was: what the editor doesn't edit (a mesh's triangles) stays as it was.
     original: Form,
@@ -184,7 +185,7 @@ impl FormText {
 }
 
 /// A parameter as typed.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct ParamText {
     /// What it was, whose group, shared GUID, reporting and `of` the editor keeps as they are.
     original: Parameter,
@@ -294,7 +295,7 @@ enum Part {
 
 /// A symbol as typed. `centre` is an arc's or a dot's centre or a label's point; `radius` an arc's or a dot's radius or a
 /// label's height.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 struct SymbolText {
     /// Its id and GUID, which it keeps wherever it's moved to in the list.
     ident: (bimcraft_core::model::Id, bimcraft_core::model::Guid),
@@ -406,7 +407,10 @@ pub(crate) struct FamilyEditor {
     operation: Option<Operation>,
     /// Its options (Family Category and Parameters), as the family has them: set with the `family` command, kept as they are.
     options: Value,
+    /// The Properties palette's tab, for a family that isn't adaptive: its forms, its symbols, or making it adaptive.
     pub(crate) tab: Tab,
+    /// Family Types' tab: the parameters, or the types.
+    pub(crate) types_tab: TypesTab,
     /// The type shown in Types and on the preview.
     picked: usize,
     /// How the preview looks at it: azimuth and elevation, degrees.
@@ -415,6 +419,8 @@ pub(crate) struct FamilyEditor {
     preview: Option<(u64, TextureHandle)>,
     /// Why the family can't be tried or made: shown under the preview.
     problem: Option<String>,
+    /// The document's own state: its history, its preview's size, an association being made.
+    document: document::State,
     /// The family document's ribbon tab, and the one it goes back to when the contextual tab goes.
     pub(crate) doc_tab: DocTab,
     pub(crate) doc_back: DocTab,
@@ -464,16 +470,25 @@ pub(crate) struct Asked {
     pub(crate) save: bool,
     pub(crate) favorite: bool,
     pub(crate) load: bool,
+    /// The document's own Undo and Redo, done when the frame ends.
+    pub(crate) undo: bool,
+    pub(crate) redo: bool,
 }
 
+/// What the Properties palette shows of a family that isn't adaptive.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Tab {
-    Parameters,
-    Types,
     Forms,
     Symbols,
     Connectors,
     Adaptive,
+}
+
+/// Family Types' tabs.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum TypesTab {
+    Parameters,
+    Types,
 }
 
 impl FamilyEditor {
@@ -510,11 +525,13 @@ impl FamilyEditor {
             ifc: f.ifc.clone(),
             operation: f.operation,
             options: f.options_json(),
-            tab: Tab::Parameters,
+            tab: Tab::Forms,
+            types_tab: TypesTab::Parameters,
             picked: 0,
             look: (AZIMUTH, ELEVATION),
             preview: None,
             problem: None,
+            document: Default::default(),
             doc_tab: DocTab::Create,
             doc_back: DocTab::Create,
             ask: Asked::default(),
@@ -523,14 +540,15 @@ impl FamilyEditor {
         }
     }
 
-    /// Associate Family Parameter, open from a row's "=" (an adaptive element's, or a form's Visible): a parameter New
-    /// Parameter makes goes in the family at once, as in Revit.
+    /// Associate Family Parameter, open from a row's "=" (an adaptive element's, or a form's or a symbol's of a family that isn't
+    /// adaptive): a parameter New Parameter makes goes in the family at once, as in Revit.
     pub(crate) fn associate_dialog(&mut self, ctx: &Context) {
         use crate::adaptive_editor::{Field, associate};
         let Some(mut a) = self.associating.take() else { return };
         let (params, values) = (self.parameter_kinds(), self.values());
-        let (done, new) = if a.field == Field::FormVisible {
-            associate(ctx, &mut a, &mut FormsVisible(&mut self.forms), &params, &values)
+        let (done, new) = if matches!(a.field, Field::Form(_) | Field::Symbol(_)) {
+            let mut rows = association::Rows { forms: &mut self.forms, symbols: &mut self.symbols };
+            associate(ctx, &mut a, &mut rows, &params, &values)
         } else if let Some(d) = self.adaptive.as_mut() {
             associate(ctx, &mut a, d, &params, &values)
         } else {
@@ -554,11 +572,6 @@ impl FamilyEditor {
     /// Each of its parameters, by name, and what it holds: what a row of Properties may be tied to.
     pub(crate) fn parameter_kinds(&self) -> Vec<(String, Holds)> {
         self.params.iter().map(|p| (p.name.trim().to_string(), p.kind)).collect()
-    }
-
-    /// Whether it is edited as Revit edits a family, a document taking the whole window: an adaptive family is.
-    pub(crate) fn document(&self) -> bool {
-        self.adaptive.is_some()
     }
 
     /// The values of the type it previews (and the instance parameters it replays), for evaluating it.
@@ -594,8 +607,9 @@ impl FamilyEditor {
     }
 
     /// Why it can't be made, if something said so.
+    /// What Load into Project was refused for, while the draft is as it was then, else why it can't be tried.
     pub(crate) fn problem(&self) -> Option<&str> {
-        self.problem.as_deref()
+        self.document.refused.as_deref().or(self.problem.as_deref())
     }
 
     /// A family to start from, of `category`: a box of its width, depth and height, or a door's or window's frame of its own.
@@ -721,6 +735,7 @@ impl FamilyEditor {
 
     /// The preview, drawn again when what it shows or how it's looked at changes.
     fn refresh(&mut self, ctx: &Context, base: &Model) {
+        let ground = crate::canvas::color(bimcraft_core::render::PAPER);
         let result = self.family().and_then(|f| {
             let key = {
                 let mut h = DefaultHasher::new();
@@ -730,6 +745,8 @@ impl FamilyEditor {
                     self.name.trim(),
                     self.look.0.to_bits(),
                     self.look.1.to_bits(),
+                    self.document.preview_size,
+                    ground.to_array(),
                 )
                     .hash(&mut h);
                 (base.materials.len(), base.images.len()).hash(&mut h);
@@ -740,10 +757,12 @@ impl FamilyEditor {
             }
             let model = self.scratch(base, &f)?;
             let scene = Scene::new(&model);
-            let (w, h) = (360_u32, 300_u32);
-            let cam = scene.fit(self.look.0, self.look.1, w, h);
-            let image = scene.render(&cam, &[]);
-            let ground = Color32::from_rgb(pal().panel.r(), pal().panel.g(), pal().panel.b());
+            let [w, h] = self.document.preview_size;
+            let mut graphics = bimcraft_core::graphics::Graphics::default();
+            graphics.categories.insert("level".into(), bimcraft_core::graphics::Override { hidden: true, ..Default::default() });
+            let look = bimcraft_core::graphics::Look::with(&model, &graphics);
+            let cam = scene.fit_in(self.look.0, self.look.1, w, h, &look);
+            let image = scene.render_in(&cam, &[], &look);
             let pixels = image
                 .rgba
                 .as_chunks::<4>()
@@ -759,56 +778,6 @@ impl FamilyEditor {
             Ok(None) => self.problem = None,
             Err(e) => self.problem = Some(e),
         }
-    }
-}
-
-/// Beside the adaptive modelling view, as Revit's Properties palette: what is selected in it, then every element and the test
-/// placement, and what the evaluation says is wrong.
-fn adaptive_side(ui: &mut Ui, ed: &mut FamilyEditor, values: &BTreeMap<String, bimcraft_core::family::Val>) {
-    if let Some(p) = &ed.problem {
-        ui.label(RichText::new(p).color(pal().error));
-    }
-    let params = ed.parameter_kinds();
-    let Some(d) = ed.adaptive.as_mut() else { return };
-    ui.label(RichText::new(t("Properties")).strong());
-    let selected = ed.modeller.selection.clone();
-    if selected.is_empty() {
-        ui.label(RichText::new(t("Select an element in the view to see its properties.")).color(pal().muted));
-    }
-    let mut delete = Vec::new();
-    for id in &selected {
-        ui.push_id(id, |ui| {
-            egui::Frame::group(ui.style()).show(ui, |ui| {
-                let planes = bimcraft_core::family::Planes { planes: &ed.planes, lines: &ed.lines };
-                if let Some(a) = crate::adaptive_editor::point_properties(ui, d, planes, id, values, &params) {
-                    ed.associating = Some(a);
-                }
-                if let Some(node) = d.nodes.iter_mut().find(|n| &n.id == id) {
-                    let (deleted, asked) = crate::adaptive_editor::node_properties(ui, node, values, &params);
-                    if deleted {
-                        delete.push(id.clone());
-                    }
-                    if asked.is_some() {
-                        ed.associating = asked;
-                    }
-                }
-            });
-        });
-    }
-    if !delete.is_empty() {
-        d.remove(&delete);
-        ed.modeller.selection.retain(|id| !delete.contains(id));
-    }
-    ui.separator();
-    if let Some(a) = ui
-        .collapsing(t("All elements and the test placement"), |ui| crate::adaptive_editor::show(ui, &mut ed.adaptive, values, &params))
-        .body_returned
-        .flatten()
-    {
-        ed.associating = Some(a);
-    }
-    if let Some(d) = &ed.adaptive {
-        crate::adaptive_editor::diagnostics(ui, &d.evaluate(values, &d.preview));
     }
 }
 
@@ -1043,22 +1012,22 @@ fn types_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     ui.label(RichText::new(t("A blank value is the family's own, as the Parameters tab has it.")).color(pal().muted));
 }
 
-/// A form's Visible row, as Revit's Properties have it: a tick, and "=" at its end to tie it to a yes/no parameter; tied (or
-/// worked out by a formula), the tick shows what the type previewed comes to, greyed, the formula beside it. Whether "=" was
-/// pressed.
-fn visible_row(ui: &mut Ui, f: &mut FormText, n: usize, values: &BTreeMap<String, bimcraft_core::family::Val>) -> bool {
+/// A form's or a symbol's Visible row, as Revit's Properties have it: a tick, and "=" at its end to tie it to a yes/no parameter;
+/// tied (or worked out by a formula), the tick shows what the type previewed comes to, greyed, the formula beside it. `name`
+/// names the tick for screen readers and tests. Whether "=" was pressed.
+fn visible_row(ui: &mut Ui, visible: &mut String, name: String, values: &BTreeMap<String, bimcraft_core::family::Val>) -> bool {
     let label = msg!("Visible");
     let l = ui.label(t(label));
-    let typed = f.visible.trim().to_string();
+    let typed = visible.trim().to_string();
     let tied = !typed.is_empty() && typed.parse::<f64>().is_err();
     let pressed = ui
         .horizontal(|ui| {
-            let mut on = shows(f, values);
+            let mut on = shows(visible, values);
             let r = ui.add_enabled(!tied, egui::Checkbox::without_text(&mut on)).labelled_by(l.id);
-            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, !tied, on, format!("{} {n}", t("Form Visible"))));
+            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, !tied, on, name.as_str()));
             if r.changed() {
-                // Shown is what a form is unless it says otherwise.
-                f.visible = if on { String::new() } else { "0".into() };
+                // Shown is what a form or a symbol is unless it says otherwise.
+                *visible = if on { String::new() } else { "0".into() };
             }
             if tied {
                 ui.label(RichText::new(&typed).color(pal().muted));
@@ -1070,34 +1039,22 @@ fn visible_row(ui: &mut Ui, f: &mut FormText, n: usize, values: &BTreeMap<String
     pressed
 }
 
-/// Associate Family Parameter's rows of a family's own forms: their Visible, each by its place among them.
-struct FormsVisible<'a>(&'a mut [FormText]);
-
-impl crate::adaptive_editor::Tied for FormsVisible<'_> {
-    fn tie(&mut self, a: &crate::adaptive_editor::Associating, values: &BTreeMap<String, bimcraft_core::family::Val>) {
-        let Some(f) = a.id.parse::<usize>().ok().and_then(|i| self.0.get_mut(i)) else { return };
-        f.visible = match &a.chosen {
-            Some(p) => p.clone(),
-            // Untied, it keeps what it came to.
-            None if shows(f, values) => String::new(),
-            None => "0".into(),
-        };
-    }
-
-    fn value_now(&mut self, a: &crate::adaptive_editor::Associating, values: &BTreeMap<String, bimcraft_core::family::Val>) -> String {
-        let on = a.id.parse::<usize>().ok().and_then(|i| self.0.get(i)).is_none_or(|f| shows(f, values));
-        (if on { "1" } else { "0" }).into()
-    }
-}
-
-/// Whether form `f` shows with `values`: unless it says otherwise, it does.
-fn shows(f: &FormText, values: &BTreeMap<String, bimcraft_core::family::Val>) -> bool {
-    let typed = f.visible.trim();
+/// Whether a form or a symbol whose Visible is typed `visible` shows with `values`: unless it says otherwise, it does.
+fn shows(visible: &str, values: &BTreeMap<String, bimcraft_core::family::Val>) -> bool {
+    let typed = visible.trim();
     typed.is_empty() || crate::adaptive_editor::worth(&text_expr(typed), values).is_some_and(|x| x != 0.0)
 }
 
 /// One form's fields, its Visible tied to the type previewed's `values`. Whether Visible's "=" was pressed.
-fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String], values: &BTreeMap<String, bimcraft_core::family::Val>) -> bool {
+fn form_fields(
+    ui: &mut Ui,
+    f: &mut FormText,
+    i: usize,
+    options: &[String],
+    values: &BTreeMap<String, bimcraft_core::family::Val>,
+    links: &mut association::Controls,
+) -> bool {
+    use crate::adaptive_editor::{Field, Slot};
     let n = i + 1;
     let mut pressed = false;
     // The datums, by the planes they are; a form on a plane of the family's own keeps it until a datum is picked.
@@ -1139,7 +1096,14 @@ fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String], valu
                 ui.label(t("Circle centre and radius"));
                 ui.horizontal(|ui| {
                     for (k, what) in [msg!("Form Circle X"), msg!("Form Circle Y"), msg!("Form Circle Radius")].into_iter().enumerate() {
-                        field(ui, format!("{} {n}", t(what)), &mut f.circle[k], 80.0);
+                        links.field(
+                            ui,
+                            format!("{} {n}", t(what)),
+                            &mut f.circle[k],
+                            80.0,
+                            Holds::Length,
+                            (Field::Form(Slot::Centre(k)), i),
+                        );
                     }
                 });
             }
@@ -1153,24 +1117,52 @@ fn form_fields(ui: &mut Ui, f: &mut FormText, i: usize, options: &[String], valu
                     for (k, what) in
                         [msg!("Form Axis X1"), msg!("Form Axis Y1"), msg!("Form Axis X2"), msg!("Form Axis Y2")].into_iter().enumerate()
                     {
-                        field(ui, format!("{} {n}", t(what)), &mut f.axis[k], 60.0);
+                        links.field(ui, format!("{} {n}", t(what)), &mut f.axis[k], 60.0, Holds::Length, (Field::Form(Slot::Axis(k)), i));
                     }
                 });
                 ui.end_row();
             }
             ui.label(if f.revolve { t("From (degrees)") } else { t("From") });
-            field(ui, format!("{} {n}", t("Form From")), &mut f.from, 200.0);
+            links.field(
+                ui,
+                format!("{} {n}", t("Form From")),
+                &mut f.from,
+                120.0,
+                if f.revolve { Holds::Angle } else { Holds::Length },
+                (Field::Form(Slot::From), i),
+            );
             ui.end_row();
             ui.label(if f.revolve { t("To (degrees)") } else { t("To") });
-            field(ui, format!("{} {n}", t("Form To")), &mut f.to, 200.0);
+            links.field(
+                ui,
+                format!("{} {n}", t("Form To")),
+                &mut f.to,
+                120.0,
+                if f.revolve { Holds::Angle } else { Holds::Length },
+                (Field::Form(Slot::To), i),
+            );
             ui.end_row();
         }
         ui.label(t("Material"));
-        if let Some(m) = pick(ui, format!("{} {n}", t("Form Material")), &f.material, options) {
-            f.material = m;
+        if links.bound(&f.material, Holds::Material) {
+            links.field(
+                ui,
+                format!("{} {n}", t("Form Material")),
+                &mut f.material,
+                120.,
+                Holds::Material,
+                (Field::Form(Slot::Material), i),
+            );
+        } else {
+            ui.horizontal(|ui| {
+                if let Some(m) = pick(ui, format!("{} {n}", t("Form Material")), &f.material, options) {
+                    f.material = m;
+                }
+                links.button(ui, format!("{} {n}", t("Form Material")), &f.material, Holds::Material, (Field::Form(Slot::Material), i));
+            });
         }
         ui.end_row();
-        pressed = visible_row(ui, f, n, values);
+        pressed = visible_row(ui, &mut f.visible, format!("{} {n}", t("Form Visible")), values);
         ui.label(t("Void"));
         let r = ui.checkbox(&mut f.void, t("cuts the forms listed above it"));
         r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, f.void, format!("{} {n}", t("Form Void"))));
@@ -1186,14 +1178,19 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     options.extend(materials.iter().cloned());
     let mut act: Option<(usize, i8)> = None;
     let (values, params) = (ed.values(), ed.parameter_kinds());
+    let mut links = association::Controls::new(ed);
+    // A form picked in the Project Browser opens.
+    let reveal = ed.document.reveal.take();
     for i in 0..ed.forms.len() {
         let heading = format!("{}. {}", i + 1, ed.forms[i].describe());
-        CollapsingHeader::new(heading).id_salt(("fe-form", i)).default_open(ed.forms.len() == 1).show(ui, |ui| {
-            if form_fields(ui, &mut ed.forms[i], i, &options, &values) {
+        let header = CollapsingHeader::new(heading).id_salt(("fe-form", i)).default_open(ed.forms.len() == 1);
+        let header = if reveal == Some(i) { header.open(Some(true)) } else { header };
+        header.show(ui, |ui| {
+            if form_fields(ui, &mut ed.forms[i], i, &options, &values, &mut links) {
                 let typed = ed.forms[i].visible.trim().to_string();
                 ed.associating = Some(crate::adaptive_editor::associating(
                     &i.to_string(),
-                    crate::adaptive_editor::Field::FormVisible,
+                    crate::adaptive_editor::Field::Form(crate::adaptive_editor::Slot::Visible),
                     Holds::YesNo,
                     msg!("Visible"),
                     Some(typed.as_str()),
@@ -1212,6 +1209,9 @@ fn forms_tab(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
                 }
             });
         });
+    }
+    if links.request.is_some() {
+        ed.associating = links.request;
     }
     match act {
         Some((i, -1)) => ed.forms.swap(i, i - 1),
@@ -1290,6 +1290,9 @@ fn connectors_tab(ed: &FamilyEditor, ui: &mut Ui) {
 }
 
 fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
+    use crate::adaptive_editor::{Field, Slot};
+    let mut links = association::Controls::new(ed);
+    let (values, params) = (ed.values(), ed.parameter_kinds());
     ui.label(
         RichText::new(t("Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."))
             .color(pal().muted),
@@ -1317,20 +1320,41 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                     ui.label(t(if y.part == Part::Text { msg!("Middle of the text") } else { msg!("Centre") }));
                     ui.horizontal(|ui| {
                         for (k, what) in [msg!("Symbol Centre X"), msg!("Symbol Centre Y")].into_iter().enumerate() {
-                            field(ui, format!("{} {n}", t(what)), &mut y.centre[k], 170.0);
+                            links.field(
+                                ui,
+                                format!("{} {n}", t(what)),
+                                &mut y.centre[k],
+                                90.0,
+                                Holds::Length,
+                                (Field::Symbol(Slot::Centre(k)), i),
+                            );
                         }
                     });
                     ui.end_row();
                     let size = if y.part == Part::Text { msg!("Height") } else { msg!("Radius") };
                     ui.label(t(size));
-                    field(ui, format!("{} {n}", t(msg!("Symbol Radius"))), &mut y.radius, 200.0);
+                    links.field(
+                        ui,
+                        format!("{} {n}", t(msg!("Symbol Radius"))),
+                        &mut y.radius,
+                        120.0,
+                        Holds::Length,
+                        (Field::Symbol(Slot::Radius), i),
+                    );
                     ui.end_row();
                     if y.part == Part::Arc {
                         for (label, what, text) in
                             [("From (degrees)", msg!("Symbol From"), &mut y.from), ("To (degrees)", msg!("Symbol To"), &mut y.to)]
                         {
                             ui.label(t(label));
-                            field(ui, format!("{} {n}", t(what)), text, 200.0);
+                            links.field(
+                                ui,
+                                format!("{} {n}", t(what)),
+                                text,
+                                120.0,
+                                Holds::Angle,
+                                (Field::Symbol(if what == "Symbol From" { Slot::From } else { Slot::To }), i),
+                            );
                             ui.end_row();
                         }
                     }
@@ -1349,9 +1373,18 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                         ui.end_row();
                     }
                 }
-                ui.label(t("Visible when"));
-                field(ui, format!("{} {n}", t("Symbol Visible")), &mut y.visible, 200.0);
-                ui.end_row();
+                if visible_row(ui, &mut y.visible, format!("{} {n}", t("Symbol Visible")), &values) {
+                    let typed = y.visible.trim().to_string();
+                    let field = Field::Symbol(Slot::Visible);
+                    links.request = Some(crate::adaptive_editor::associating(
+                        &i.to_string(),
+                        field,
+                        Holds::YesNo,
+                        msg!("Visible"),
+                        Some(&typed),
+                        &params,
+                    ));
+                }
                 // Drawn in a subcategory a view hides or restyles apart (a door's swing in Doors > Opening), or the category.
                 if !subs.is_empty() || !y.subcategory.is_empty() {
                     ui.label(t("Subcategory"));
@@ -1370,6 +1403,9 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                 remove = Some(i);
             }
         });
+    }
+    if links.request.is_some() {
+        ed.associating = links.request;
     }
     if let Some(i) = remove {
         ed.symbols.remove(i);
@@ -1451,195 +1487,25 @@ impl BimApp {
             .collect::<Vec<_>>()
     }
 
-    /// The Family Editor, while it's open: a dialog over the project, or for a family document (an adaptive family) only what
-    /// its ribbon asked for and the dialogs it opened, the window drawing the rest.
+    /// The family document, while one is open: what its ribbon asked for and the dialogs it opened, the window drawing the
+    /// rest; then a step of its own history for what changed this frame.
     pub(crate) fn family_editor_window(&mut self, ctx: &Context) {
         let Some(mut ed) = self.family_editor.take() else { return };
-        let base = Arc::clone(&self.session.model);
-        let materials: Vec<String> = base.materials.keys().cloned().collect();
-        if ed.document() {
-            self.document_dialogs(ctx, &mut ed, &materials);
-            let ask = std::mem::take(&mut ed.ask);
-            let close = ask.cancel || ask.ok;
-            self.family_asked(ctx, ed, ask, close);
-            return;
-        }
-        ed.refresh(ctx, &base);
-        let capture_sources = self.capture_sources();
-        let mut capture_context = false;
-        let mut place_adaptive = false;
-        let mut apply_placement = false;
-        let (mut apply, mut ok, mut cancel, mut save, mut favorite, mut load) = (false, false, false, false, false, false);
-        // An adaptive family is modelled in a view of its own, as wide as the screen allows, with no preview beside it.
-        let wide = ed.tab == Tab::Adaptive && ed.adaptive.is_some();
-        let width = if wide { (ctx.content_rect().width() - 40.0).clamp(1000.0, 1500.0) } else { 1000.0 };
-        let r = Modal::new(UiId::new("family-editor"), t("Family Editor")).width(width).show(ctx, |ui| {
-            crate::popup::body(ui, |ui| {
-                ui.add_space(4.0);
-                Grid::new("fe-head").num_columns(4).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
-                    let l = ui.label(t("Family name"));
-                    ui.add_sized([220.0, ui.spacing().interact_size.y], TextEdit::singleline(&mut ed.name)).labelled_by(l.id);
-                    let l = ui.label(t("Category"));
-                    let c =
-                        ComboBox::from_id_salt("fe-category").selected_text(category_label(ed.category)).width(150.0).show_ui(ui, |ui| {
-                            for c in CATEGORIES {
-                                if ui.selectable_label(ed.category == c, category_label(c)).clicked() {
-                                    ed.category = c;
-                                }
-                            }
-                        });
-                    c.response.labelled_by(l.id);
-                    ui.end_row();
-                    if ed.category.hosted() {
-                        let l = ui.label(t("Operation"));
-                        let shown = ed.operation.map_or(t("(none)"), |op| t(op.label()));
-                        let c = ComboBox::from_id_salt("fe-operation").selected_text(shown).width(220.0).show_ui(ui, |ui| {
-                            if ui.selectable_label(ed.operation.is_none(), t("(none)")).clicked() {
-                                ed.operation = None;
-                            }
-                            for op in Operation::ALL {
-                                if ui.selectable_label(ed.operation == Some(op), t(op.label())).clicked() {
-                                    ed.operation = Some(op);
-                                }
-                            }
-                        });
-                        c.response.labelled_by(l.id);
-                        ui.end_row();
-                    }
-                });
-                ui.add_space(6.0);
-                // What the tabs leave of the screen, to the buttons below: a small one scrolls them.
-                let room = (ctx.content_rect().height() - 330.0).clamp(160.0, 470.0);
-                ui.horizontal_top(|ui| {
-                    ui.vertical(|ui| {
-                        ui.set_width(if wide { width - 30.0 } else { 620.0 });
-                        ui.horizontal(|ui| {
-                            for (tab, label) in [
-                                (Tab::Parameters, msg!("Parameters")),
-                                (Tab::Types, msg!("Types")),
-                                (Tab::Forms, msg!("Forms")),
-                                (Tab::Symbols, msg!("Symbols")),
-                                (Tab::Connectors, msg!("Connectors")),
-                                (Tab::Adaptive, msg!("Adaptive")),
-                            ] {
-                                if ui.selectable_label(ed.tab == tab, t(label)).clicked() {
-                                    ed.tab = tab;
-                                }
-                            }
-                        });
-                        ui.separator();
-                        let values = ed
-                            .family()
-                            .ok()
-                            .and_then(|f| ed.types.get(ed.picked).and_then(|(name, _)| f.values(name, &ed.preview_params).ok()))
-                            .unwrap_or_default();
-                        if wide {
-                            ui.horizontal(|ui| {
-                                capture_context = ui
-                                    .add_enabled(
-                                        !capture_sources.is_empty(),
-                                        egui::Button::new(t("Capture selected placement frames in project coordinates")),
-                                    )
-                                    .clicked();
-                                if let Some(id) = ed.replay {
-                                    ui.label(tf("Replaying instance {} with its exact parameters and placement", &[&id.to_string()]));
-                                    apply_placement = ui.button(t("Apply test frames to this instance")).clicked();
-                                }
-                                place_adaptive = ui.button(t("Place test frames as a new instance")).clicked();
-                            });
-                            let side = 360.0;
-                            let view = vec2((width - side - 60.0).max(400.0), (room - 40.0).max(260.0));
-                            ui.horizontal_top(|ui| {
-                                ui.vertical(|ui| {
-                                    ui.set_width(view.x);
-                                    if let Some(d) = ed.adaptive.as_mut() {
-                                        let planes = bimcraft_core::family::Planes { planes: &ed.planes, lines: &ed.lines };
-                                        crate::adaptive_view::show(ui, d, planes, &mut ed.modeller, &values, view);
-                                    }
-                                });
-                                ui.vertical(|ui| {
-                                    ui.set_width(side);
-                                    ScrollArea::vertical().id_salt("adaptive-side").max_height(view.y + 60.0).show(ui, |ui| {
-                                        adaptive_side(ui, &mut ed, &values);
-                                    });
-                                });
-                            });
-                        } else {
-                            ScrollArea::vertical().max_height(room).min_scrolled_height(room).auto_shrink([false, false]).show(ui, |ui| {
-                                match ed.tab {
-                                    Tab::Parameters => parameters_tab(&mut ed, ui, &materials),
-                                    Tab::Types => types_tab(&mut ed, ui, &materials),
-                                    Tab::Forms => forms_tab(&mut ed, ui, &materials),
-                                    Tab::Symbols => symbols_tab(&mut ed, ui),
-                                    Tab::Connectors => connectors_tab(&ed, ui),
-                                    Tab::Adaptive => {
-                                        let params = ed.parameter_kinds();
-                                        if let Some(a) = crate::adaptive_editor::show(ui, &mut ed.adaptive, &values, &params) {
-                                            ed.associating = Some(a);
-                                        }
-                                    }
-                                }
-                            });
-                        }
-                    });
-                    if wide {
-                        return;
-                    }
-                    ui.add_space(8.0);
-                    ui.vertical(|ui| {
-                        ui.set_width(340.0);
-                        ui.label(RichText::new(t("Preview")).strong());
-                        let (rect, response) = ui.allocate_exact_size(vec2(340.0, 283.0), Sense::drag());
-                        if let Some((_, tile)) = &ed.preview {
-                            ui.painter().image(tile.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-                        }
-                        ui.painter().rect_stroke(rect, 2.0, Stroke::new(1.0, pal().border), StrokeKind::Inside);
-                        if response.dragged_by(PointerButton::Primary) {
-                            let d = response.drag_delta();
-                            ed.look = (ed.look.0 - f64::from(d.x) * 0.5, (ed.look.1 + f64::from(d.y) * 0.5).clamp(-89.0, 89.0));
-                        }
-                        ui.label(RichText::new(t("Drag the picture to turn it.")).color(pal().muted));
-                        let names: Vec<String> = ed.types.iter().map(|(n, _)| n.clone()).collect();
-                        let now = names.get(ed.picked).cloned().unwrap_or_default();
-                        ui.horizontal(|ui| {
-                            ui.label(t("Previewing"));
-                            if let Some(n) = pick(ui, t("Preview Type").to_string(), &now, &names)
-                                && let Some(i) = names.iter().position(|x| *x == n)
-                            {
-                                ed.picked = i;
-                            }
-                        });
-                        if let Some(p) = &ed.problem {
-                            ui.label(RichText::new(p).color(pal().error));
-                        }
-                    });
-                });
-            });
-            crate::popup::footer(ui, |ui| {
-                ui.horizontal(|ui| {
-                    load = ui.button(t("Load Family…")).clicked();
-                    save = ui.button(t("Save Family…")).clicked();
-                    favorite = ui.button(t("Add to Favorites")).clicked();
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ok = ui.button(t("OK")).clicked();
-                        cancel = ui.button(t("Cancel")).clicked();
-                        apply = ui.button(t("Apply")).clicked();
-                    });
-                });
-            });
-        });
-        ed.associate_dialog(ctx);
-        let ask = Asked { capture: capture_context, place: place_adaptive, apply_placement, apply, ok, cancel, save, favorite, load };
-        let close = cancel || r.should_close();
+        let materials: Vec<String> = self.session.model.materials.keys().cloned().collect();
+        self.document_dialogs(ctx, &mut ed, &materials);
+        let ask = std::mem::take(&mut ed.ask);
+        ed.history(ctx, &ask);
+        let close = ask.cancel || ask.ok;
         self.family_asked(ctx, ed, ask, close);
     }
 
-    /// Does what the editor's buttons (or a family document's ribbon) asked for: capturing the selection's frames, loading a
-    /// file, making the family the project's (Apply, OK, saving, Favorites, placing the test frames), then closing it on `close`
-    /// (Cancel) or on OK when it was made. It stays open otherwise.
+    /// Does what the family document's ribbon asked for: capturing the selection's frames, loading a file, making the family the
+    /// project's (Load into Project, placing the test frames), saving it to a file or the Favorites (from a session of its own,
+    /// which never touches the project), then closing it on `close` (Close Family) or on Load into Project and Close when it
+    /// was made. It stays open otherwise.
     fn family_asked(&mut self, ctx: &Context, mut ed: FamilyEditor, ask: Asked, close: bool) {
         let base = Arc::clone(&self.session.model);
-        let Asked { capture: capture_context, place: place_adaptive, apply_placement, apply, ok, cancel, save, favorite, load } = ask;
+        let Asked { capture: capture_context, place: place_adaptive, apply_placement, apply, ok, cancel, save, favorite, load, .. } = ask;
         let capture_sources = self.capture_sources();
         if capture_context && let Some(value) = self.run("adaptive_capture", json!({"sources":capture_sources})) {
             match serde_json::from_value(value) {
@@ -1665,20 +1531,22 @@ impl BimApp {
                 Err(text) => app.status = Status { text, error: true },
             });
         }
-        // Made the project's: Apply and OK do it, and so do saving to a file or to the Favorites, which keep what's in the project.
+        // Made the project's: Load into Project does it, and so does placing the test frames, which places the family's.
         let mut made = false;
-        if apply || ok || save || favorite || place_adaptive || apply_placement {
+        if apply || ok || place_adaptive || apply_placement {
             match ed.command(&base) {
                 Ok(p) => {
                     if self.run("family", p).is_some() {
                         ed.original = Some(ed.name.trim().to_string());
+                        ed.document.refused = None;
                         made = true;
                     } else {
-                        // Said in the window; the box over the view's corner would lie on its buttons.
-                        ed.problem = Some(std::mem::take(&mut self.status).text);
+                        // Said in the document; the box over the view's corner would lie on its buttons. Kept apart from
+                        // what the preview says, which is worked out again every frame, so drawing it never hides this.
+                        ed.document.refused = Some(std::mem::take(&mut self.status).text);
                     }
                 }
-                Err(e) => ed.problem = Some(e),
+                Err(e) => ed.document.refused = Some(e),
             }
         }
         if made && let Some(d) = &ed.adaptive {
@@ -1693,18 +1561,34 @@ impl BimApp {
                 );
             }
         }
-        let name = ed.name.trim().to_string();
-        if made && save {
-            let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]).set_file_name(format!("{name}.json"));
-            let family = name.clone();
-            self.ask_file(ctx, dialog, true, move |app, path| {
-                app.run("family", json!({"name": family, "save": path.to_string_lossy()}));
+        // Save and Favorites use a private Session: neither implicitly loads the draft into the project.
+        if save || favorite {
+            let prepared = ed.command(&base).and_then(|p| {
+                let mut draft = Session::new();
+                draft.model = Arc::clone(&base);
+                draft.execute("family", &p)?;
+                Ok(draft)
             });
-        }
-        if made && favorite {
-            let p = self.favorite_params("save", "family", &name);
-            if self.run("favorite", p).is_some() {
-                self.status = Status { text: tf("Saved {} to your Favorites", &[&name]), error: false };
+            match prepared {
+                Ok(mut draft) => {
+                    let name = ed.name.trim().to_string();
+                    if save {
+                        let dialog =
+                            rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]).set_file_name(format!("{name}.json"));
+                        self.ask_file(ctx, dialog, true, move |app, path| {
+                            if let Err(text) = draft.execute("family", &json!({"name":name,"save":path.to_string_lossy()})) {
+                                app.status = Status { text, error: true };
+                            }
+                        });
+                    } else {
+                        let p = self.favorite_params("save", "family", &name);
+                        match draft.execute("favorite", &p) {
+                            Ok(_) => self.status = Status { text: tf("Saved {} to your Favorites", &[&name]), error: false },
+                            Err(e) => ed.problem = Some(e),
+                        }
+                    }
+                }
+                Err(e) => ed.problem = Some(e),
             }
         }
         let closed = cancel || (ok && made) || (close && !ok);

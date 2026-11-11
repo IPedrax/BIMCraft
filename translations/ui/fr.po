@@ -8,6 +8,22 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+#: crates/ui-egui/src/editor/document.rs:260
+msgid "Blend"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:260
+msgid "Sweep"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:260
+msgid "Swept Blend"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:260
+msgid "Void Forms"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4934
 msgid "Click to enter the reference plane's end point."
 msgstr "Cliquer pour saisir le point final du plan de référence."
