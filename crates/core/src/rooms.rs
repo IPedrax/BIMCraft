@@ -156,29 +156,6 @@ impl<'a> Rooms<'a> {
             .map(|(id, _)| *id)
     }
 
-    /// The room on `level` whose boundary (where the project measures rooms) holds `point`, the first by id; none where no
-    /// enclosed room does. A point in a wall is in no room.
-    pub fn room_at(&self, level: Guid, point: P2) -> Option<Id> {
-        let rooms = self.placed(level);
-        rooms.iter().find(|(id, r)| self.cached_region(*id, r).is_some_and(|g| region_holds(&g, point))).map(|(id, _)| *id)
-    }
-
-    /// The room component `c` is in: the one holding its family's room calculation point, placed where it stands
-    /// ([`Model::component_room_point`]), on its level; its insertion point's where its family has none.
-    pub fn component(&self, c: &crate::model::Component) -> Option<Id> {
-        let [x, y, _] = self.m.component_room_point(c);
-        self.room_at(c.level, P2(x, y))
-    }
-
-    fn cached_region(&self, id: Id, r: &Room) -> Option<Rc<Region>> {
-        if let Some(g) = self.regions.borrow().get(&id) {
-            return g.clone();
-        }
-        let g = self.region(r).map(Rc::new);
-        self.regions.borrow_mut().insert(id, g.clone());
-        g
-    }
-
     /// The rooms on `level`, in order of id: what points at it, from the lookup when it is made, else among every element.
     fn placed(&self, level: Guid) -> Placed<'a> {
         if let Some(rooms) = self.placed.borrow().get(&level) {

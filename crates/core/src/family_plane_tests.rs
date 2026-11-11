@@ -1,5 +1,5 @@
 //! Reference planes and lines (F2, T1, T18): every family's three datums, the planes and lines a family adds, the checks on
-//! them, forms hosted on any of them, and files of 19 brought up to 20 building the same triangles.
+//! them, forms hosted on any of them, and files of 17 brought up to 18 building the same triangles.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -445,9 +445,9 @@ fn planes_lines_and_hosts_come_back_from_a_file_and_a_copy_keeps_its_own() {
     assert_eq!(s.model.check(), Ok(()));
 }
 
-/// Every form of a family in a file, as a file of 19 holds it: `plane` where it says `host`, a form on Center (Front/Back)
+/// Every form of a family in a file, as a file of 17 holds it: `plane` where it says `host`, a form on Center (Front/Back)
 /// swept along +y; no `planes`.
-fn as_19(family: &mut Value) {
+fn as_17(family: &mut Value) {
     let neg = |e: &Value| match e {
         Value::String(f) => match f.strip_prefix("-(").and_then(|f| f.strip_suffix(')')) {
             Some(inner) => json!(inner),
@@ -477,9 +477,9 @@ fn as_19(family: &mut Value) {
 }
 
 #[test]
-fn a_file_of_19_opens_with_its_forms_on_the_datums_building_what_they_built() {
+fn a_file_of_17_opens_with_its_forms_on_the_datums_building_what_they_built() {
     let mut s = Session::new();
-    // A family with forms across xz (numbers and formulas, and a revolve) and yz, as a command of 19 made it.
+    // A family with forms across xz (numbers and formulas, and a revolve) and yz, as a command of 17 made it.
     run(
         &mut s,
         "family",
@@ -498,11 +498,11 @@ fn a_file_of_19_opens_with_its_forms_on_the_datums_building_what_they_built() {
     let close = |a: [f64; 3], b: [f64; 3]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-6);
     assert!(close(boxes[0].min, [0.0, 10.0, 0.0]) && close(boxes[0].max, [100.0, 30.0, 50.0]), "{:?}", boxes[0]);
     assert!(close(boxes[1].min, [5.0, 0.0, 0.0]) && close(boxes[1].max, [25.0, 200.0, 40.0]), "{:?}", boxes[1]);
-    // The whole project written as 19 writes it opens as it is now, every starter family with it.
+    // The whole project written as 17 writes it opens as it is now, every starter family with it.
     let mut file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
-    file["format"] = json!(19);
+    file["format"] = json!(17);
     for family in file["families"].as_object_mut().unwrap().values_mut() {
-        as_19(family);
+        as_17(family);
     }
     let (opened, left_out) = Model::read(&file.to_string()).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");

@@ -376,7 +376,7 @@ fn a_hosted_component_goes_through_a_file_and_ifc_tilted() {
     let text = s.model.to_json().unwrap();
     let v: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(v["format"], json!(FORMAT));
-    const { assert!(FORMAT >= 22) };
+    const { assert!(FORMAT >= 18) };
     let (m, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
     // As it was, but for the last bit a file's decimals may lose.
@@ -386,9 +386,9 @@ fn a_hosted_component_goes_through_a_file_and_ifc_tilted() {
     // IFC: its placement's z axis is the plane's normal.
     let ifc = crate::ifc::export(&s.model);
     assert!(ifc.contains(&format!("IFCDIRECTION((0.,{},{}))", ratio(-SIN30), ratio(COS30))), "no tilted axis");
-    // A file of 21 has no hosts and reads as it did.
+    // A file of 17 has no hosts and reads as it did.
     let mut old: Value = v.clone();
-    old["format"] = json!(21);
+    old["format"] = json!(17);
     for e in old["elements"].as_object_mut().unwrap().values_mut() {
         if let Some(o) = e.as_object_mut() {
             o.remove("host");

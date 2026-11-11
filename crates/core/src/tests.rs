@@ -1766,7 +1766,7 @@ fn warnings_are_collected_not_stopped_at_the_first() {
 }
 
 /// What a family is in a file: its own fields, no more and no less, and a project written here read
-/// back whole (ТЗ-003 §6.8). FORMAT 20 grew its `planes` (the datums, always written) and a form's `host`.
+/// back whole (ТЗ-003 §6.8). FORMAT 18 grew its `planes` (the datums, always written) and a form's `host`.
 #[test]
 fn a_family_is_saved_with_the_fields_it_has_always_had() {
     let mut s = Session::new();

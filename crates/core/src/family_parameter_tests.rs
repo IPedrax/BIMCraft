@@ -376,5 +376,5 @@ fn a_file_of_the_format_before_reads_every_parameter_as_a_family_one() {
     let f = &m.families["Cabinet"];
     assert!(f.parameters.iter().all(|p| p.shared.is_none() && !p.reporting && p.group.is_none()));
     assert_eq!(f.parameters.iter().find(|p| p.name == "Height").map(|p| p.group()), Some(Group::Dimensions));
-    const { assert!(crate::model::FORMAT >= 19, "18 is another branch's") };
+    const { assert!(crate::model::FORMAT >= 18) };
 }

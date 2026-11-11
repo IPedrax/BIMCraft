@@ -144,7 +144,7 @@ values following. `instance` switched moves values, not loses them (`patch_param
 component takes its type's value (a type with nothing placed loses it, as Revit's does); to type, each type takes the value its
 components agree on, refused naming the components where they don't. `delete_parameter` takes parameters away with their
 values; whatever still names one is `Family::problems`'s to refuse. A file of 17 reads unchanged (every parameter the family's,
-grouped by its kind); FORMAT 19 says an older build can't read the new kinds and fields (18 is another branch's number).
+grouped by its kind); FORMAT 18 says an older build can't read the new kinds and fields.
 
 ## Shared parameters file
 
@@ -215,7 +215,7 @@ drawn in the host's axes and `from` and `to` run along its normal (Revit's Extru
 shorthand from before (`family::Plane`), read as it always was by the command and by a file of 19 (`FormIn`): `xy` and `yz`
 are Ref. Level and Center (Left/Right) as they were; `xz` swept along +y and Center (Front/Back)'s normal is -y, so its
 `from` and `to` are negated and swap places (a formula wrapped as `-(…)`), a revolve's angles kept. The starter families
-still say `plane`, and build the same triangles (`family_plane_tests`); FORMAT 20 is this change. The `family` command
+still say `plane`, and build the same triangles (`family_plane_tests`); FORMAT 18 is this change. The `family` command
 replaces the lists with `ref_planes` and `ref_lines` (datums given back as they are are kept), patches one with `ref_plane`
 and `ref_line` and deletes with `delete_ref_plane` and `delete_ref_line` by id or GUID, as forms; deleting one a form or a
 line is drawn on is refused, naming them. A new plane or line may carry a GUID of its own, so forms are drawn on it in the
